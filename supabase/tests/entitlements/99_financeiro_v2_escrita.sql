@@ -430,6 +430,77 @@ begin
   raise notice 'PASS atribuicoes_edge_cases';
 end $$;
 
+-- ativo_on_encerrado_client_rejected: turning a member on for a client that is encerrado at v
+do $$
+declare v_ws uuid := pg_temp.novo_ws(); v_dono uuid; v_tal bigint; v_caio bigint; v_ana bigint; v_cin bigint; v_err text;
+begin
+  perform pg_temp.fixture_planilha(v_ws);
+  v_dono := pg_temp.dono(v_ws);
+  v_tal := pg_temp.cid(v_ws, 'Talitha'); v_cin := pg_temp.cid(v_ws, 'Cinara');
+  v_caio := pg_temp.mid(v_ws, 'Caio'); v_ana := pg_temp.mid(v_ws, 'Ana');
+  perform pg_temp.ok(v_dono, format(
+    'select public.financeiro_cliente_salvar(%s, %L, 2500, null, %L)', v_tal, '2026-10-01', 'encerrado'));
+  v_err := pg_temp.exec_as(v_dono, format('select public.financeiro_atribuicoes_salvar(%L, %L::jsonb)', '2026-10-01',
+    jsonb_build_array(jsonb_build_object('membro_id', v_caio, 'cliente_id', v_tal, 'ativo', true))));
+  assert v_err = 'P0001:cliente_encerrado', 'encerrado_rejected: same start ' || coalesce(v_err, 'success');
+  -- the encerrado version carries forward to later starts
+  v_err := pg_temp.exec_as(v_dono, format('select public.financeiro_atribuicoes_salvar(%L, %L::jsonb)', '2026-11-01',
+    jsonb_build_array(jsonb_build_object('membro_id', v_caio, 'cliente_id', v_tal, 'ativo', true))));
+  assert v_err = 'P0001:cliente_encerrado', 'encerrado_rejected: later start ' || coalesce(v_err, 'success');
+  -- the whole batch rolls back, including a valid entry before the rejected one
+  v_err := pg_temp.exec_as(v_dono, format('select public.financeiro_atribuicoes_salvar(%L, %L::jsonb)', '2026-11-01',
+    jsonb_build_array(jsonb_build_object('membro_id', v_ana, 'cliente_id', v_cin, 'ativo', false),
+                      jsonb_build_object('membro_id', v_ana, 'cliente_id', v_tal, 'ativo', true))));
+  assert v_err = 'P0001:cliente_encerrado', 'encerrado_rejected: batch ' || coalesce(v_err, 'success');
+  assert (select ate from financeiro_atribuicoes where membro_id = v_ana and cliente_id = v_cin) is null, 'encerrado_rejected: partial write';
+  assert not exists (select 1 from financeiro_atribuicoes where cliente_id = v_tal), 'encerrado_rejected: a row was written';
+  -- turning someone off is still allowed (a no-op here)
+  perform pg_temp.ok(v_dono, format('select public.financeiro_atribuicoes_salvar(%L, %L::jsonb)', '2026-10-01',
+    jsonb_build_array(jsonb_build_object('membro_id', v_caio, 'cliente_id', v_tal, 'ativo', false))));
+  raise notice 'PASS ativo_on_encerrado_client_rejected';
+end $$;
+
+-- ativo_clamped_before_future_encerrado: an assignment turned on before a future encerrado ends at it,
+-- and does not come back when the client is reactivated later
+do $$
+declare v_ws uuid := pg_temp.novo_ws(); v_dono uuid; v_tal bigint; v_caio bigint; v_ana bigint; v_lia bigint; r jsonb;
+begin
+  perform pg_temp.fixture_planilha(v_ws);
+  v_dono := pg_temp.dono(v_ws);
+  v_tal := pg_temp.cid(v_ws, 'Talitha');
+  v_caio := pg_temp.mid(v_ws, 'Caio'); v_ana := pg_temp.mid(v_ws, 'Ana'); v_lia := pg_temp.mid(v_ws, 'Lia');
+  perform pg_temp.ok(v_dono, format(
+    'select public.financeiro_cliente_salvar(%s, %L, 2500, null, %L)', v_tal, '2026-11-01', 'encerrado'));
+  -- Caio on (insert), Ana off then on (insert after delete), Lia on (already covers October)
+  perform pg_temp.ok(v_dono, format('select public.financeiro_atribuicoes_salvar(%L, %L::jsonb)', '2026-10-01',
+    jsonb_build_array(jsonb_build_object('membro_id', v_caio, 'cliente_id', v_tal, 'ativo', true),
+                      jsonb_build_object('membro_id', v_ana, 'cliente_id', v_tal, 'ativo', false),
+                      jsonb_build_object('membro_id', v_ana, 'cliente_id', v_tal, 'ativo', true),
+                      jsonb_build_object('membro_id', v_lia, 'cliente_id', v_tal, 'ativo', true))));
+  assert (select ate from financeiro_atribuicoes where membro_id = v_caio and cliente_id = v_tal) = date '2026-11-01',
+    'clamped: Caio ate ' || coalesce((select ate::text from financeiro_atribuicoes where membro_id = v_caio and cliente_id = v_tal), 'null');
+  assert (select ate from financeiro_atribuicoes where membro_id = v_ana and cliente_id = v_tal) = date '2026-11-01', 'clamped: Ana ate';
+  assert (select ate from financeiro_atribuicoes where membro_id = v_lia and cliente_id = v_tal) = date '2026-11-01', 'clamped: Lia ate';
+  assert not exists (select 1 from financeiro_atribuicoes where cliente_id = v_tal and (ate is null or ate > date '2026-11-01')),
+    'clamped: an assignment outlives the encerrado start';
+  r := public._financeiro_calcular(v_ws, date '2026-10-01');
+  assert pg_temp.atende(r, 'Talitha', 'Caio') and pg_temp.atende(r, 'Talitha', 'Ana'), 'clamped: active in October';
+  -- reactivated two periods later: nobody comes back on their own
+  perform pg_temp.ok(v_dono, format(
+    'select public.financeiro_cliente_salvar(%s, %L, 2500, null, %L)', v_tal, '2026-12-01', 'ativo'));
+  r := public._financeiro_calcular(v_ws, date '2026-12-01');
+  assert pg_temp.c(r, 'Talitha')->>'status' = 'ativo', 'clamped: Talitha listed again in December';
+  assert not pg_temp.atende(r, 'Talitha', 'Caio') and not pg_temp.atende(r, 'Talitha', 'Ana'),
+    'clamped: Caio or Ana came back in December';
+  assert jsonb_array_length(pg_temp.c(r, 'Talitha')->'pessoas') = 0, 'clamped: December pessoas ' || (pg_temp.c(r, 'Talitha')->'pessoas')::text;
+  -- turned on again from December (after the cutoff, no later encerrado): open-ended
+  perform pg_temp.ok(v_dono, format('select public.financeiro_atribuicoes_salvar(%L, %L::jsonb)', '2026-12-01',
+    jsonb_build_array(jsonb_build_object('membro_id', v_caio, 'cliente_id', v_tal, 'ativo', true))));
+  assert (select count(*) from financeiro_atribuicoes where membro_id = v_caio and cliente_id = v_tal and desde = date '2026-12-01' and ate is null) = 1,
+    'clamped: December assignment is open';
+  raise notice 'PASS ativo_clamped_before_future_encerrado';
+end $$;
+
 -- acordo_por_entrega_legacy_null
 do $$
 declare v_ws uuid := pg_temp.novo_ws(); v_ana bigint; v_av record; v_dono uuid; r jsonb;

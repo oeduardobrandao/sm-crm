@@ -394,9 +394,13 @@ $$;
 
 -- Who serves whom, from p_vale_desde on. p_mudancas = [{membro_id, cliente_id, ativo}],
 -- all applied in this one transaction (one bad entry rolls back the batch). Per pair:
---   ativo:   the pair must be active from v on. Rows starting after v are subsumed and
---            deleted; then a row covering v, or one ending exactly at v, is reopened
---            (ate = NULL); otherwise a row (desde = v, ate = NULL) is inserted.
+--   ativo:   the pair must be active from v until the client ends. A client whose
+--            effective version at v is encerrado is rejected (cliente_encerrado).
+--            Rows starting after v are subsumed and deleted; then a row covering v, or
+--            one ending exactly at v, is extended, otherwise a row (desde = v) is
+--            inserted. Either way ate = the client's first encerrado version after v
+--            (NULL when there is none), so an assignment never outlives an encerrado
+--            cutoff and does not come back if the client is reactivated later.
 --   inativo: the pair must be inactive from v on. Rows starting at or after v are
 --            deleted (on and off from the same start leaves nothing); a row running
 --            past v gets ate = v.
@@ -414,6 +418,7 @@ DECLARE
   v_cliente bigint;
   v_ativo   boolean;
   v_id      bigint;
+  v_corte   date;
 BEGIN
   IF public.effective_plan_feature(v_conta, 'feature_financial') IS NOT TRUE THEN
     RAISE EXCEPTION 'feature_disabled:feature_financial' USING ERRCODE = 'P0001';
@@ -447,6 +452,15 @@ BEGIN
     END IF;
 
     IF v_ativo THEN
+      IF (SELECT cv.status FROM public.financeiro_cliente_versoes cv
+           WHERE cv.conta_id = v_conta AND cv.cliente_id = v_cliente AND cv.vale_desde <= p_vale_desde
+           ORDER BY cv.vale_desde DESC LIMIT 1) = 'encerrado' THEN
+        RAISE EXCEPTION 'cliente_encerrado' USING ERRCODE = 'P0001';
+      END IF;
+      SELECT min(cv.vale_desde) INTO v_corte FROM public.financeiro_cliente_versoes cv
+       WHERE cv.conta_id = v_conta AND cv.cliente_id = v_cliente
+         AND cv.status = 'encerrado' AND cv.vale_desde > p_vale_desde;
+
       DELETE FROM public.financeiro_atribuicoes t
        WHERE t.conta_id = v_conta AND t.membro_id = v_membro AND t.cliente_id = v_cliente
          AND t.desde > p_vale_desde;
@@ -457,10 +471,11 @@ BEGIN
        ORDER BY t.ate IS NULL DESC, t.ate DESC
        LIMIT 1;
       IF v_id IS NULL THEN
-        INSERT INTO public.financeiro_atribuicoes (conta_id, membro_id, cliente_id, desde)
-        VALUES (v_conta, v_membro, v_cliente, p_vale_desde);
+        INSERT INTO public.financeiro_atribuicoes (conta_id, membro_id, cliente_id, desde, ate)
+        VALUES (v_conta, v_membro, v_cliente, p_vale_desde, v_corte);
       ELSE
-        UPDATE public.financeiro_atribuicoes t SET ate = NULL WHERE t.id = v_id AND t.ate IS NOT NULL;
+        UPDATE public.financeiro_atribuicoes t SET ate = v_corte
+         WHERE t.id = v_id AND t.ate IS DISTINCT FROM v_corte;
       END IF;
     ELSE
       DELETE FROM public.financeiro_atribuicoes t
