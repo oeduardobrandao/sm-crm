@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -108,6 +108,7 @@ export default function AtribuicaoPage() {
         // A new period starts from a clean slate of optimistic state.
         key={valeDesde}
         data={rentabilidade.data}
+        dataUpdatedAt={rentabilidade.dataUpdatedAt}
         valeDesde={valeDesde}
         podeEditar={podeEditar}
         access={canSeeFinancials}
@@ -167,12 +168,14 @@ function Aviso({ children }: { children: React.ReactNode }) {
 
 interface MatrizProps {
   data: RentabilidadeSeeded;
+  /** When `data` last came back from a successful fetch. */
+  dataUpdatedAt: number;
   valeDesde: string;
   podeEditar: boolean;
   access: FinancialAccess;
 }
 
-function Matriz({ data, valeDesde, podeEditar, access }: MatrizProps) {
+function Matriz({ data, dataUpdatedAt, valeDesde, podeEditar, access }: MatrizProps) {
   const qc = useQueryClient();
   const { profile } = useAuth();
   // Optimistic checked state per `membro:cliente`, shown until the refetch lands.
@@ -184,6 +187,25 @@ function Matriz({ data, valeDesde, podeEditar, access }: MatrizProps) {
   // A "Marcar todos" save has no focused or changed control for the silent-update
   // heuristic to see, so the in-flight saves are registered explicitly.
   useUnsavedWork(pendentes.size > 0);
+  // Keys whose save landed but whose own post-save refetch has not answered yet (a count,
+  // since one key can have two such saves). A fetch landing meanwhile may predate the write.
+  const aguardandoRefetch = useRef(new Map<string, number>());
+  const ultimaResposta = useRef(dataUpdatedAt);
+
+  // Any successful fetch is server truth for every key not waiting on a save of its own.
+  // This is what drops an override kept because its post-save refetch failed: the next
+  // good answer (Tentar novamente, a focus refetch, another save) wins over it.
+  useEffect(() => {
+    if (dataUpdatedAt === ultimaResposta.current) return;
+    ultimaResposta.current = dataUpdatedAt;
+    setOverrides((prev) => {
+      const next = new Map(prev);
+      for (const k of prev.keys()) {
+        if (!pendentes.has(k) && !aguardandoRefetch.current.has(k)) next.delete(k);
+      }
+      return next.size === prev.size ? prev : next;
+    });
+  }, [dataUpdatedAt, pendentes]);
 
   const grupos = useMemo(
     () =>
@@ -253,10 +275,21 @@ function Matriz({ data, valeDesde, podeEditar, access }: MatrizProps) {
       }
       return;
     }
+    const aguardando = aguardandoRefetch.current;
+    for (const k of chaves) aguardando.set(k, (aguardando.get(k) ?? 0) + 1);
     soltar();
-    await qc.invalidateQueries({ queryKey: ['financeiro-v2'] });
+    try {
+      await qc.invalidateQueries({ queryKey: ['financeiro-v2'] });
+    } finally {
+      for (const k of chaves) {
+        const n = (aguardando.get(k) ?? 1) - 1;
+        if (n > 0) aguardando.set(k, n);
+        else aguardando.delete(k);
+      }
+    }
     // The refetch has landed: from here the server's answer is the truth. If it failed,
-    // the cached data predates the write that did land, so the override stays.
+    // the cached data predates the write that did land, so the override stays until the
+    // next successful fetch (see the effect above).
     if (qc.getQueryState(['financeiro-v2', 'rentabilidade', valeDesde])?.status === 'error') return;
     limpar(chaves, versao);
   }

@@ -264,6 +264,32 @@ describe('AtribuicaoPage', () => {
     expect(await celula('Ana', 'Cinara')).not.toBeChecked();
   });
 
+  it('drops a kept override once a later fetch answers, even with a different state', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const cb = await celula('Ana', 'Cinara');
+    store.getRentabilidade.mockRejectedValue(new Error('rede'));
+    await user.click(cb);
+    await screen.findByText(
+      'Não foi possível atualizar os dados. Os valores podem estar desatualizados.',
+    );
+    // Kept: the write landed but the refetch failed.
+    expect(cb).not.toBeChecked();
+
+    // Meanwhile a teammate put Ana back on Cinara: the retry returns that, not the override.
+    store.getRentabilidade.mockImplementation(async () => structuredClone(planilha));
+    await user.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+
+    await waitFor(() => expect(cb).toBeChecked());
+    expect(
+      screen.queryByText(
+        'Não foi possível atualizar os dados. Os valores podem estar desatualizados.',
+      ),
+    ).toBeNull();
+    expect(toastMock.error).not.toHaveBeenCalled();
+  });
+
   it('marcar_todos_sends_all_active', async () => {
     const user = userEvent.setup();
     // Roberta pausada: out of "Marcar todos". Caio lacks Cinara and Talitha (both active).
