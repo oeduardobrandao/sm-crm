@@ -130,4 +130,6 @@ Deno.test("blog-rules: source and image schemas reject non-http URLs and empty c
   };
   assertEquals(blogImageSchema.safeParse(image).success, true);
   assertEquals(blogImageSchema.safeParse({ ...image, credit: "" }).success, false);
+  assertEquals(blogImageSchema.safeParse({ ...image, url: "javascript:alert(1)" }).success, false);
+  assertEquals(blogImageSchema.safeParse({ ...image, url: "/x.jpg" }).success, false);
 });

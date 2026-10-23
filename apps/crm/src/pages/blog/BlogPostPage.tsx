@@ -38,7 +38,8 @@ function usePostBody(post: BlogPost): {
       (body) => {
         if (live) setLoaded({ slug: post.slug, body });
       },
-      () => {
+      (err: unknown) => {
+        console.error(`blog: failed to load the body of "${post.slug}"`, err);
         if (live) setFailedSlug(post.slug);
       },
     );

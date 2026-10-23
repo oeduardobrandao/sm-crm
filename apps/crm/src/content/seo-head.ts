@@ -13,15 +13,17 @@ export function canonicalUrl(path: string): string {
 /** Head block injected by scripts/seo/prerender.tsx. Indentation matches the
  * two-space style of apps/crm/index.html. */
 export function buildHeadTags(meta: RouteMeta, jsonLd: object[] = []): string {
-  const url = canonicalUrl(meta.path);
-  const image = meta.ogImage ?? DEFAULT_OG_IMAGE;
+  // Every attribute value is escaped: `ogImage` can be a DB post's cover URL,
+  // and a quote there would otherwise break out of the prerendered <head>.
+  const url = esc(canonicalUrl(meta.path));
+  const image = esc(meta.ogImage ?? DEFAULT_OG_IMAGE);
   const tags = [
     `<title>${esc(meta.title)}</title>`,
     `<meta name="description" content="${esc(meta.description)}" />`,
     `<meta name="robots" content="index, follow, max-image-preview:large" />`,
     `<link rel="canonical" href="${url}" />`,
-    `<meta property="og:type" content="${meta.ogType ?? 'website'}" />`,
-    `<meta property="og:site_name" content="${SITE_NAME}" />`,
+    `<meta property="og:type" content="${esc(meta.ogType ?? 'website')}" />`,
+    `<meta property="og:site_name" content="${esc(SITE_NAME)}" />`,
     `<meta property="og:title" content="${esc(meta.title)}" />`,
     `<meta property="og:description" content="${esc(meta.description)}" />`,
     `<meta property="og:url" content="${url}" />`,

@@ -225,6 +225,9 @@ describe('parseDbPost', () => {
     ['unknown featureSlug', { featureSlug: 'financeiro' }],
     ['draft status', { status: 'rascunho' }],
     ['non-http source url', { sources: [{ ...DB_META.sources[0], url: 'ftp://x.com/a' }] }],
+    ['non-http image url', { images: [{ ...DB_META.images[0], url: 'javascript:alert(1)' }] }],
+    ['relative image url', { images: [{ ...DB_META.images[0], url: '/x.jpg' }] }],
+    ['non-http cover url', { cover: { ...DB_META.cover, url: 'data:image/png;base64,AAAA' } }],
     ['unknown key', { autor: 'equipe' }],
     ['zero reading minutes', { readingMinutes: 0 }],
   ])('rejects %s, naming the slug', (_label, override) => {

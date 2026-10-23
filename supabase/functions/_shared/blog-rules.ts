@@ -83,7 +83,7 @@ export const blogSourceSchema = z
 export const blogImageSchema = z
   .object({
     key: z.string().regex(/^[a-z0-9-]{1,40}$/, "must be 1-40 chars of a-z, 0-9 or -"),
-    url: z.string().min(1),
+    url: httpUrl,
     alt: z.string().min(1).max(200),
     credit: z.string().min(1).max(200),
     license: z.string().min(1).max(120),

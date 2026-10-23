@@ -130,11 +130,15 @@ describe('BlogPostPage, database post', () => {
 
   it('shows the retry copy when the body fails to load, and retries', async () => {
     loadPostBody.mockReset();
-    loadPostBody.mockRejectedValueOnce(new Error('chunk failed'));
+    const failure = new Error('chunk failed');
+    loadPostBody.mockRejectedValueOnce(failure);
     loadPostBody.mockResolvedValueOnce(DB_POST_BODY);
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     renderAt(path);
 
     expect(await screen.findByText('Não foi possível carregar o artigo.')).toBeInTheDocument();
+    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining(DB_POST_META.slug), failure);
+    consoleError.mockRestore();
     fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
     expect(await screen.findByText('Texto de fechamento do artigo.')).toBeInTheDocument();
     expect(loadPostBody).toHaveBeenCalledTimes(2);
