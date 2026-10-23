@@ -126,7 +126,15 @@ export default function CustosEquipePage() {
                   </TableCell>
                   <TableCell>{MODELO_LABEL[m.modelo]}</TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {aInformar ? (
+                    {/* A delivery still to inform does not hide the cost already known. */}
+                    {aInformar && m.custo > 0 ? (
+                      <span className="inline-flex flex-wrap items-center justify-end gap-x-2">
+                        {money(m.custo)}
+                        <Link to={`/equipe/${m.membro_id}`} className="text-xs">
+                          Entregas a informar
+                        </Link>
+                      </span>
+                    ) : aInformar ? (
                       <Link to={`/equipe/${m.membro_id}`}>Entregas a informar</Link>
                     ) : (
                       money(m.custo)

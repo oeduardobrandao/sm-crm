@@ -130,6 +130,24 @@ describe('CustosEquipePage', () => {
     expect(within(row).queryByText(/R\$\s0,00/)).not.toBeInTheDocument();
   });
 
+  it('keeps the known cost next to the a informar link', async () => {
+    const data = structuredClone(planilha) as RentabilidadeSeeded;
+    const lia = data.membros.find((m) => m.membro_id === 2)!;
+    lia.modelo = 'por_entrega';
+    lia.a_informar = true;
+    lia.custo = 90;
+    lia.por_cliente = null;
+    store.getRentabilidade.mockResolvedValue(data);
+    renderPage();
+    await screen.findByRole('link', { name: 'Lia' });
+    const row = linhaDe('Lia');
+    expect(within(row).getByText(/R\$\s90,00/)).toBeInTheDocument();
+    expect(within(row).getByRole('link', { name: 'Entregas a informar' })).toHaveAttribute(
+      'href',
+      '/equipe/2',
+    );
+  });
+
   it('shows_dash_when_por_cliente_is_null', async () => {
     const data = structuredClone(planilha) as RentabilidadeSeeded;
     const lia = data.membros.find((m) => m.membro_id === 2)!;
