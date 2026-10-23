@@ -16,6 +16,8 @@ const { useAuthMock, store } = vi.hoisted(() => ({
     addTransacao: vi.fn(),
     updateTransacao: vi.fn(),
     removeTransacao: vi.fn(),
+    getRecorrentes: vi.fn(),
+    addRecorrente: vi.fn(),
   },
 }));
 
@@ -33,6 +35,7 @@ import FinanceiroPage from '../FinanceiroPage';
 
 const now = new Date();
 const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+const ADICIONAR = 'Adicionar: Entrada, Saída, Importar CSV ou Recorrentes';
 
 const ROWS = [
   {
@@ -102,6 +105,8 @@ beforeEach(() => {
   store.addTransacao.mockResolvedValue({});
   store.updateTransacao.mockResolvedValue(undefined);
   store.removeTransacao.mockResolvedValue(undefined);
+  store.getRecorrentes.mockResolvedValue([]);
+  store.addRecorrente.mockResolvedValue({});
 });
 
 describe('FinanceiroPage on phones', () => {
@@ -138,9 +143,7 @@ describe('FinanceiroPage on phones', () => {
     renderPage();
     await screen.findByText('Clínica Sol');
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Adicionar: Entrada, Saída ou Importar CSV' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: ADICIONAR }));
     const sheet = await screen.findByRole('dialog', { name: 'Adicionar' });
     expect(within(sheet).getByText(/descricao\*, valor\*, data\*/)).toBeInTheDocument();
     expect(within(sheet).getByRole('button', { name: 'Importar CSV' })).toBeInTheDocument();
@@ -260,9 +263,7 @@ describe('FinanceiroPage on phones', () => {
     renderPage({ phoneShell: true });
     await screen.findByText('Clínica Sol');
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Adicionar: Entrada, Saída ou Importar CSV' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: ADICIONAR }));
     fireEvent.click(await screen.findByRole('button', { name: 'Entrada' }));
     const dialog = await screen.findByRole('dialog', { name: 'Registrar Entrada' });
 
@@ -293,5 +294,88 @@ describe('FinanceiroPage on phones', () => {
         }),
       ),
     );
+  });
+
+  it('registers a lançamento that repeats every month from "Repetir todo mês"', async () => {
+    store.addRecorrente.mockResolvedValue({ id: 42 });
+    renderPage({ phoneShell: true });
+    await screen.findByText('Clínica Sol');
+
+    fireEvent.click(screen.getByRole('button', { name: ADICIONAR }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Saída' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Registrar Saída' });
+
+    fireEvent.change(within(dialog).getByLabelText('Descrição'), { target: { value: ' Canva ' } });
+    fireEvent.change(within(dialog).getByLabelText('Valor (R$)'), { target: { value: '99.9' } });
+    fireEvent.change(within(dialog).getByLabelText('Data'), { target: { value: `${ym}-08` } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /Categoria/ }));
+    const picker = await screen.findByRole('dialog', { name: 'Categoria' });
+    fireEvent.click(within(picker).getByRole('button', { name: 'Ferramenta' }));
+    const toggle = within(dialog).getByRole('switch', { name: 'Repetir todo mês' });
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }));
+    await waitFor(() => expect(store.addTransacao).toHaveBeenCalled());
+    expect(store.addRecorrente).toHaveBeenCalledWith({
+      tipo: 'saida',
+      descricao: 'Canva',
+      categoria: 'Ferramenta',
+      valor: 99.9,
+      dia: 8,
+      inicio: `${ym}-01`,
+    });
+    expect(store.addTransacao).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tipo: 'saida',
+        valor: 99.9,
+        data: `${ym}-08`,
+        status: 'pago',
+        detalhe: 'Recorrente',
+        referencia_agendamento: `recorrente_42_${ym.replace('-', '_')}`,
+      }),
+    );
+  });
+
+  it('offers no "Repetir todo mês" when editing a lançamento', async () => {
+    renderPage({ phoneShell: true });
+    await screen.findByText('Anúncios Meta');
+    fireEvent.click(within(rowOf('Anúncios Meta')).getByRole('button', { name: 'Editar' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Editar Transação' });
+    expect(within(dialog).queryByRole('switch', { name: 'Repetir todo mês' })).toBeNull();
+  });
+
+  it('lists the recurring lançamentos from the "+" sheet', async () => {
+    store.getRecorrentes.mockResolvedValue([
+      {
+        id: 7,
+        tipo: 'saida',
+        descricao: 'Canva',
+        categoria: 'Ferramenta',
+        valor: 99.9,
+        dia: 10,
+        inicio: '2026-01-01',
+        fim: null,
+      },
+    ]);
+    renderPage();
+    await screen.findByText('Clínica Sol');
+
+    fireEvent.click(screen.getByRole('button', { name: ADICIONAR }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Recorrentes' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Lançamentos recorrentes' });
+    expect(within(dialog).getByText('Canva')).toBeInTheDocument();
+    expect(within(dialog).getByText('Todo dia 10 · Ferramenta')).toBeInTheDocument();
+  });
+
+  it('hides Recorrentes without financial access', async () => {
+    useAuthMock.mockReturnValue({ canSeeFinancials: false, profile: { conta_id: 'w1' } });
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Adicionar: Entrada, Saída ou Importar CSV' }),
+    );
+    const sheet = await screen.findByRole('dialog', { name: 'Adicionar' });
+    expect(within(sheet).queryByRole('button', { name: 'Recorrentes' })).toBeNull();
+    expect(store.getRecorrentes).not.toHaveBeenCalled();
   });
 });

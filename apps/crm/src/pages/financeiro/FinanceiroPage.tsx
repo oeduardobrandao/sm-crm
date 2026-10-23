@@ -19,6 +19,7 @@ import {
   ArrowUpCircle,
   Wallet,
   TrendingUp,
+  Repeat,
 } from 'lucide-react';
 import { StatCard } from '@/components/StatCard';
 import { StatCardGrid } from '@/components/StatCardGrid';
@@ -33,10 +34,13 @@ import { CardListSkeleton, TableSkeleton } from '@/components/ui/skeletons';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { usePhoneLayout } from '@/components/layout/PhoneLayoutContext';
 import { usePageToolbar } from '@/components/layout/PageToolbarContext';
-import { GroupedList } from '@/components/mobile/GroupedList';
+import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import { FormRow } from '@/components/mobile/FormRow';
 import { PickerCell } from '@/components/mobile/PickerSheet';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { FinanceiroPhone } from './phone/FinanceiroPhone';
+import { RecorrentesDialog } from './RecorrentesDialog';
 import {
   Select,
   SelectContent,
@@ -89,6 +93,9 @@ import {
   getClientes,
   getMembros,
   getTransacoes,
+  getRecorrentes,
+  addRecorrente,
+  referenciaRecorrente,
   projetarAgendamentos,
   addTransacao,
   updateTransacao,
@@ -167,6 +174,9 @@ export default function FinanceiroPage() {
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  // "Repetir todo mês" on a new lançamento.
+  const [recorrente, setRecorrente] = useState(false);
+  const [recorrentesOpen, setRecorrentesOpen] = useState(false);
   // Phone bulk-confirm mode ("Selecionar"). Leaving it drops the selection.
   const [phoneSelecting, setPhoneSelectingState] = useState(false);
   const setPhoneSelecting = (next: boolean) => {
@@ -186,7 +196,19 @@ export default function FinanceiroPage() {
     queryFn: getTransacoes,
   });
 
-  const projected = projetarAgendamentos(transacoesFisicas, clientes, membros, canSeeFinancials);
+  const { data: recorrentes = [] } = useQuery({
+    queryKey: ['transacoes-recorrentes'],
+    queryFn: getRecorrentes,
+    enabled: canSeeFinancials === true,
+  });
+
+  const projected = projetarAgendamentos(
+    transacoesFisicas,
+    clientes,
+    membros,
+    canSeeFinancials,
+    recorrentes,
+  );
   const allTransacoes = projected.filter((t) => !monthFilter || t.data.startsWith(monthFilter));
 
   const recebido = allTransacoes
@@ -238,6 +260,7 @@ export default function FinanceiroPage() {
   const openAdd = (tipo: 'entrada' | 'saida') => {
     setEditing(null);
     setModalTipo(tipo);
+    setRecorrente(false);
     form.reset({ descricao: '', valor: '', data: '', categoria: '' });
     setModalOpen(true);
   };
@@ -259,7 +282,8 @@ export default function FinanceiroPage() {
     try {
       const payload: Omit<Transacao, 'id' | 'user_id' | 'conta_id'> = {
         descricao: values.descricao,
-        detalhe: '',
+        // Keeps "Recorrente" (or an imported detalhe) on an edited row.
+        detalhe: editing?.detalhe ?? '',
         valor: Number(values.valor),
         data: values.data,
         categoria: values.categoria,
@@ -269,6 +293,25 @@ export default function FinanceiroPage() {
       if (editing?.id) {
         await updateTransacao(editing.id, payload);
         toast.success('Transação atualizada');
+      } else if (recorrente) {
+        // The template starts in the month of the chosen date, and this lançamento is that
+        // month's occurrence, so the month is not projected again as agendado.
+        const [ano, mes, dia] = values.data.split('-').map(Number);
+        const r = await addRecorrente({
+          tipo: modalTipo,
+          descricao: values.descricao.trim(),
+          categoria: values.categoria,
+          valor: Number(values.valor),
+          dia,
+          inicio: `${values.data.slice(0, 7)}-01`,
+        });
+        await addTransacao({
+          ...payload,
+          detalhe: 'Recorrente',
+          referencia_agendamento: referenciaRecorrente(r.id!, ano, mes),
+        });
+        toast.success('Transação registrada. Ela se repete todo mês.');
+        qc.invalidateQueries({ queryKey: ['transacoes-recorrentes'] });
       } else {
         await addTransacao(payload);
         toast.success('Transação registrada');
@@ -429,6 +472,14 @@ export default function FinanceiroPage() {
           }
         />
       </GroupedList>
+      {!editing && (
+        <GroupedList footer="Aparece todo mês como agendado, no mesmo dia, para você confirmar.">
+          <Cell
+            label="Repetir todo mês"
+            switch={{ checked: recorrente, onCheckedChange: setRecorrente }}
+          />
+        </GroupedList>
+      )}
     </>
   );
 
@@ -524,6 +575,22 @@ export default function FinanceiroPage() {
                       </FormItem>
                     )}
                   />
+                  {!editing && (
+                    <div className="flex items-start gap-3">
+                      <Switch
+                        id="transacao-recorrente"
+                        checked={recorrente}
+                        onCheckedChange={setRecorrente}
+                        className="mt-0.5"
+                      />
+                      <div className="flex flex-col gap-0.5">
+                        <Label htmlFor="transacao-recorrente">Repetir todo mês</Label>
+                        <span className="text-xs text-muted-foreground">
+                          Aparece todo mês como agendado, no mesmo dia, para você confirmar.
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
               <DialogFooter>
@@ -539,6 +606,15 @@ export default function FinanceiroPage() {
           </Form>
         </DialogContent>
       </Dialog>
+
+      <RecorrentesDialog
+        open={recorrentesOpen}
+        onOpenChange={setRecorrentesOpen}
+        recorrentes={recorrentes}
+        categorias={CATEGORIAS}
+        access={canSeeFinancials}
+        onChanged={() => qc.invalidateQueries({ queryKey: ['transacoes-recorrentes'] })}
+      />
 
       {/* Confirmar pagamento */}
       <AlertDialog
@@ -611,6 +687,26 @@ export default function FinanceiroPage() {
   );
   const csvActions = (
     <>
+      {canSeeFinancials === true && (
+        <>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setRecorrentesOpen(true)}
+            className="header-actions-icon-only"
+            aria-label="Recorrentes"
+          >
+            <Repeat className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setRecorrentesOpen(true)}
+            className="header-actions-full-only"
+          >
+            <Repeat className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Recorrentes
+          </Button>
+        </>
+      )}
       <HelpTooltip
         content={
           <div className="space-y-1.5">
@@ -684,6 +780,7 @@ export default function FinanceiroPage() {
           onMonthFilterChange={setMonthFilter}
           onAdd={openAdd}
           onImport={handleCSVImport}
+          onRecorrentes={canSeeFinancials === true ? () => setRecorrentesOpen(true) : undefined}
           onEdit={openEdit}
           onConfirm={setConfirmT}
           onDelete={setDeleteId}
