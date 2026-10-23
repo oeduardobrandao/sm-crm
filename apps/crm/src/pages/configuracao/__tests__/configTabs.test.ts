@@ -10,10 +10,12 @@ const agentCan = makeCan(fakeMembership({ role: 'agent' }));
 const unresolvedCan = makeCan(null);
 
 describe('configTabs', () => {
-  it('gives agents only the Conta group tabs', () => {
+  it('gives agents the Conta group tabs plus Agentes (MCP)', () => {
+    // MCP is open to every member: they connect Claude with the scopes their own role allows.
     expect(visibleConfigTabs(agentCan, 'agent').map((t) => t.path)).toEqual([
       'perfil',
       'notificacoes',
+      'mcp',
     ]);
   });
 
@@ -38,7 +40,7 @@ describe('configTabs', () => {
     );
   });
 
-  it('falls back to just the "all" tabs (Perfil/Notificações) for an unknown or missing role', () => {
+  it('falls back to just the "all" tabs (Perfil/Notificações/MCP) for an unknown or missing role', () => {
     // `permission: 'all'` bypasses can()/workspaceRole entirely by design
     // (perfil/notificacoes are a member's own account settings, not
     // workspace-permission-gated) -- everything else requires a resolved
@@ -46,14 +48,17 @@ describe('configTabs', () => {
     expect(visibleConfigTabs(unresolvedCan, undefined).map((t) => t.path)).toEqual([
       'perfil',
       'notificacoes',
+      'mcp',
     ]);
     expect(visibleConfigTabs(unresolvedCan, null).map((t) => t.path)).toEqual([
       'perfil',
       'notificacoes',
+      'mcp',
     ]);
     expect(visibleConfigTabs(unresolvedCan, 'superuser').map((t) => t.path)).toEqual([
       'perfil',
       'notificacoes',
+      'mcp',
     ]);
   });
 

@@ -323,3 +323,33 @@ Deno.test("mcp-import: create_member audit row carries member_id via the extende
   const auditRow = insertPayload(calls, "audit_log")! as Record<string, any>;
   assertEquals(auditRow.resource_id, "5", "resource_id from member_id");
 });
+
+Deno.test("mcp-import: an OAuth ctx without financeiro:editar can't set financial fields", async () => {
+  const { db, calls } = makeFakeDb({});
+  const noFinCtx: McpKeyContext = {
+    conta_id: "workspace-A",
+    scopes: ["clientes:write", "membros:write"],
+    key_id: "oauth:claude",
+    created_by: "user-1",
+    can_write_financials: false,
+  };
+  const server = makeFakeServer();
+  registerTools(server as any, { db, ctx: noFinCtx } as unknown as Deps);
+  const client = await server.handlers["create_client"]({ nome: "X", valor_mensal: 1500 });
+  assert(client.isError === true && client.content[0].text.includes("valor_mensal"), "create_client refused");
+  const member = await server.handlers["create_member"]({ nome: "Y", custo_mensal: 900, data_pagamento: 5 });
+  assert(
+    member.isError === true && member.content[0].text.includes("custo_mensal, data_pagamento"),
+    "create_member refused",
+  );
+  assertEquals(calls.length, 0, "refused before any db access");
+});
+
+Deno.test("mcp-import: the financial gate leaves calls without financial fields alone", async () => {
+  const { requireFinancialWrite } = await import("../_shared/mcp-token.ts");
+  const ctx: McpKeyContext = { conta_id: "w", scopes: [], key_id: "k", created_by: "u", can_write_financials: false };
+  requireFinancialWrite(ctx, { nome: "X" }, ["valor_mensal"]);
+  // API keys (flag unset) and OAuth users with financeiro:editar keep writing them.
+  requireFinancialWrite({ ...ctx, can_write_financials: undefined }, { valor_mensal: 1 }, ["valor_mensal"]);
+  requireFinancialWrite({ ...ctx, can_write_financials: true }, { valor_mensal: 1 }, ["valor_mensal"]);
+});

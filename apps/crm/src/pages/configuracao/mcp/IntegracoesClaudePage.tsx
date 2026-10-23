@@ -40,7 +40,9 @@ import {
   CodexHeadersNote,
   CodexSteps,
   KEY_USAGE_NOTE,
+  MANAGER_INTRO,
   MCP_URL,
+  MEMBER_INTRO,
   TryItNote,
   buildConnectSnippets,
   codexConfigToml,
@@ -187,11 +189,9 @@ function CopyField({
 
 export default function IntegracoesClaudePage() {
   const { can } = useAuth();
-  // The `configuracoes` tab itself is already gated on `configuracoes:ver`
-  // at the tab layer (configTabs.ts, Task 12) -- mirrors that here. Was
-  // `role === 'owner' || role === 'admin'`, which a custom role with the
-  // chassis 'agent' role never passed even when it held the tab-level
-  // grant.
+  // The tab is open to every member: anyone can connect Claude via OAuth with the scopes their
+  // own role allows, and sees (and can disconnect) their own connections. API keys and the
+  // workspace's full connection list stay behind `configuracoes:ver`.
   const canViewConfig = can('configuracoes', 'ver') === true;
   // F4 (revisão externa): criar/revogar chave e desconectar um grant são
   // escritas -- um papel `ver`-only via todos esses controles. Aqui as
@@ -222,9 +222,10 @@ export default function IntegracoesClaudePage() {
   const { data: grants = [] } = useQuery({
     queryKey: ['mcp-oauth-grants'],
     queryFn: listOAuthGrants,
-    enabled: canViewConfig,
   });
   const activeGrants = grants.filter((g) => !g.revoked_at);
+  // Codex connects with an API key, which only `configuracoes` can create.
+  const clientTabs = canViewConfig ? CLIENT_TABS : CLIENT_TABS.filter((t) => t.id !== 'codex');
 
   const createMutation = useMutation({
     mutationFn: () => {
@@ -296,8 +297,9 @@ export default function IntegracoesClaudePage() {
     // desktop Dialogs/AlertDialogs below never mount here.
     return (
       <IntegracoesClaudePhone
-        blocked={!canViewConfig}
+        canManage={canViewConfig}
         canEdit={canEditConfig}
+        clientTabs={clientTabs}
         client={client}
         onClientChange={setClient}
         copy={copy}
@@ -340,22 +342,12 @@ export default function IntegracoesClaudePage() {
     );
   }
 
-  if (!canViewConfig) {
-    return (
-      <div className="card animate-up">
-        <p className="text-sm text-muted-foreground">
-          Apenas proprietários e administradores podem gerenciar as chaves de API.
-        </p>
-      </div>
-    );
-  }
-
   return (
     <>
       <p className="text-sm text-muted-foreground" style={{ marginBottom: '0.5rem' }}>
-        Conecte Claude, ChatGPT ou Codex para ler clientes, posts e pautas deste workspace.
+        {canViewConfig ? MANAGER_INTRO : MEMBER_INTRO}
       </p>
-      {!canEditConfig && (
+      {canViewConfig && !canEditConfig && (
         <p className="text-xs text-muted-foreground" style={{ marginBottom: '1.5rem' }}>
           Somente leitura
         </p>
@@ -374,7 +366,7 @@ export default function IntegracoesClaudePage() {
             aria-label="Escolha o assistente"
             style={{ marginBottom: '1rem' }}
           >
-            {CLIENT_TABS.map((t) => (
+            {clientTabs.map((t) => (
               <button
                 key={t.id}
                 type="button"
@@ -397,9 +389,11 @@ export default function IntegracoesClaudePage() {
                 <ClaudeSteps />
               </ol>
               <CopyField value={MCP_URL} copyKey="mcp-url" copy={copy} copiedKey={copiedKey} />
-              <p className="text-xs text-muted-foreground" style={{ margin: 0 }}>
-                <ClaudeKeyNote />
-              </p>
+              {canViewConfig && (
+                <p className="text-xs text-muted-foreground" style={{ margin: 0 }}>
+                  <ClaudeKeyNote />
+                </p>
+              )}
             </div>
           )}
 
@@ -415,7 +409,7 @@ export default function IntegracoesClaudePage() {
             </div>
           )}
 
-          {client === 'codex' && (
+          {client === 'codex' && canViewConfig && (
             <div className="space-y-3 min-w-0">
               <p className="text-xs text-muted-foreground" style={{ margin: 0 }}>
                 {CLIENT_INTRO.codex}
@@ -445,7 +439,7 @@ export default function IntegracoesClaudePage() {
 
         <div className="card animate-up" style={{ marginBottom: '1rem' }}>
           <h3 className="config-title" style={{ margin: 0, marginBottom: '0.25rem' }}>
-            Conexões via conector
+            {canViewConfig ? 'Conexões via conector' : 'Suas conexões'}
           </h3>
           <p
             className="text-xs text-muted-foreground"
@@ -482,7 +476,7 @@ export default function IntegracoesClaudePage() {
                     variant="outline"
                     size="sm"
                     style={{ flexShrink: 0 }}
-                    disabled={!canEditConfig}
+                    disabled={!canEditConfig && !g.mine}
                     onClick={() => setRevokeGrantTarget(g)}
                   >
                     Desconectar
@@ -493,90 +487,92 @@ export default function IntegracoesClaudePage() {
           )}
         </div>
 
-        <div className="card animate-up">
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '1rem',
-            }}
-          >
-            <h3 className="config-title" style={{ margin: 0 }}>
-              Chaves de API
-            </h3>
-            <Button disabled={!canEditConfig} onClick={() => setCreateOpen(true)}>
-              Criar chave
-            </Button>
-          </div>
-
-          {isLoading ? (
-            <ListSkeleton rows={2} />
-          ) : keys.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Nenhuma chave ainda. Crie uma para conectar um agente.
-            </p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {keys.map((k) => (
-                <div
-                  key={k.id}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    gap: '1rem',
-                    borderTop: '1px solid var(--border-color)',
-                    paddingTop: '0.75rem',
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 600 }}>
-                      {k.name}{' '}
-                      <span
-                        className="text-muted-foreground"
-                        style={{ fontFamily: 'var(--font-mono)' }}
-                      >
-                        …{k.token_suffix}
-                      </span>
-                    </div>
-                    <div className="text-muted-foreground" style={{ fontSize: '0.75rem' }}>
-                      {k.scopes.join(', ')}
-                      {k.last_used_at ? ` · usada ${fmtDate(k.last_used_at)}` : ' · nunca usada'}
-                      {k.expires_at ? ` · expira ${fmtDate(k.expires_at)}` : ''}
-                    </div>
-                  </div>
-                  {k.revoked_at ? (
-                    <span className="text-muted-foreground" style={{ fontSize: '0.75rem' }}>
-                      revogada
-                    </span>
-                  ) : (
-                    <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setConnectToken('');
-                          setConnectKey(k);
-                        }}
-                      >
-                        Conectar
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={!canEditConfig}
-                        onClick={() => setRevokeTarget(k)}
-                      >
-                        Revogar
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              ))}
+        {canViewConfig && (
+          <div className="card animate-up">
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '1rem',
+              }}
+            >
+              <h3 className="config-title" style={{ margin: 0 }}>
+                Chaves de API
+              </h3>
+              <Button disabled={!canEditConfig} onClick={() => setCreateOpen(true)}>
+                Criar chave
+              </Button>
             </div>
-          )}
-        </div>
+
+            {isLoading ? (
+              <ListSkeleton rows={2} />
+            ) : keys.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Nenhuma chave ainda. Crie uma para conectar um agente.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {keys.map((k) => (
+                  <div
+                    key={k.id}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '1rem',
+                      borderTop: '1px solid var(--border-color)',
+                      paddingTop: '0.75rem',
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 600 }}>
+                        {k.name}{' '}
+                        <span
+                          className="text-muted-foreground"
+                          style={{ fontFamily: 'var(--font-mono)' }}
+                        >
+                          …{k.token_suffix}
+                        </span>
+                      </div>
+                      <div className="text-muted-foreground" style={{ fontSize: '0.75rem' }}>
+                        {k.scopes.join(', ')}
+                        {k.last_used_at ? ` · usada ${fmtDate(k.last_used_at)}` : ' · nunca usada'}
+                        {k.expires_at ? ` · expira ${fmtDate(k.expires_at)}` : ''}
+                      </div>
+                    </div>
+                    {k.revoked_at ? (
+                      <span className="text-muted-foreground" style={{ fontSize: '0.75rem' }}>
+                        revogada
+                      </span>
+                    ) : (
+                      <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setConnectToken('');
+                            setConnectKey(k);
+                          }}
+                        >
+                          Conectar
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={!canEditConfig}
+                          onClick={() => setRevokeTarget(k)}
+                        >
+                          Revogar
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </FeatureGate>
 
       {/* Create dialog */}

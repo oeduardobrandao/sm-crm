@@ -40,10 +40,22 @@ function renderPage() {
   );
 }
 
-const OWNER_ADMIN_ONLY_TEXT =
-  'Apenas proprietários e administradores podem gerenciar as chaves de API.';
+const API_KEYS_HEADING = 'Chaves de API';
+
+const grant = (id: string, mine: boolean, connected_by: string) => ({
+  id,
+  client_id: 'claude',
+  scopes: ['posts:read'],
+  created_at: '2026-10-23T12:00:00Z',
+  revoked_at: null,
+  connected_by,
+  mine,
+});
 
 /**
+ * The page is open to every member (OAuth connections are capped by the member's own role
+ * server-side); `configuracoes:ver` adds API keys and everyone's connections.
+ *
  * Task 14: `isOwnerOrAdmin = role === 'owner' || role === 'admin'` collapsed
  * onto `can('configuracoes', 'ver') === true`, gating both the page's own
  * queries (mcp-keys, mcp-oauth-grants) and its early "owner/admin only"
@@ -60,33 +72,58 @@ describe('IntegracoesClaudePage — gated on configuracoes:ver', () => {
     listOAuthGrantsMock.mockResolvedValue([]);
   });
 
-  it('keeps a legacy agent blocked (configuracoes preset is none)', async () => {
+  it('shows a legacy agent the connector guide and their own connections, no API keys', async () => {
     useAuthMock.mockReturnValue({ can: makeCan(fakeMembership({ role: 'agent' })) });
+    listOAuthGrantsMock.mockResolvedValue([grant('g1', true, 'Ana')] as never);
     renderPage();
 
-    expect(await screen.findByText(OWNER_ADMIN_ONLY_TEXT)).toBeInTheDocument();
+    expect(await screen.findByText('Suas conexões')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: API_KEYS_HEADING })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Codex' })).not.toBeInTheDocument();
     expect(listMcpKeysMock).not.toHaveBeenCalled();
-    expect(listOAuthGrantsMock).not.toHaveBeenCalled();
+    // Their own connection can be disconnected without configuracoes:editar.
+    await screen.findByText('Ana');
+    expect(screen.getByRole('button', { name: 'Desconectar' })).toBeEnabled();
+  });
+
+  it("keeps someone else's connection read-only for a ver-only role", async () => {
+    useAuthMock.mockReturnValue({
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { configuracoes: 'ver' } }),
+      ),
+    });
+    listOAuthGrantsMock.mockResolvedValue([
+      grant('g1', true, 'Ana'),
+      grant('g2', false, 'Bruno'),
+    ] as never);
+    renderPage();
+
+    await screen.findByText('Bruno');
+    // Rows render in list order: Ana (own) first, then Bruno.
+    const [mine, theirs] = screen.getAllByRole('button', { name: 'Desconectar' });
+    expect(mine).toBeEnabled();
+    expect(theirs).toBeDisabled();
   });
 
   it('keeps a legacy admin unchanged (configuracoes preset resolves to true)', async () => {
     useAuthMock.mockReturnValue({ can: makeCan(fakeMembership({ role: 'admin' })) });
     renderPage();
 
-    expect(screen.queryByText(OWNER_ADMIN_ONLY_TEXT)).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: API_KEYS_HEADING })).toBeInTheDocument();
     await waitFor(() => {
       expect(listMcpKeysMock).toHaveBeenCalled();
       expect(listOAuthGrantsMock).toHaveBeenCalled();
     });
   });
 
-  it('blocks a custom role with no configuracoes grant at all', async () => {
+  it('hides API keys from a custom role with no configuracoes grant at all', async () => {
     useAuthMock.mockReturnValue({
       can: makeCan(fakeMembership({ role: 'agent', role_id: 'role-1', permissions: {} })),
     });
     renderPage();
 
-    expect(await screen.findByText(OWNER_ADMIN_ONLY_TEXT)).toBeInTheDocument();
+    expect(await screen.findByText('Suas conexões')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: API_KEYS_HEADING })).not.toBeInTheDocument();
     expect(listMcpKeysMock).not.toHaveBeenCalled();
   });
 
@@ -102,7 +139,7 @@ describe('IntegracoesClaudePage — gated on configuracoes:ver', () => {
     });
     renderPage();
 
-    expect(screen.queryByText(OWNER_ADMIN_ONLY_TEXT)).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: API_KEYS_HEADING })).toBeInTheDocument();
     await waitFor(() => {
       expect(listMcpKeysMock).toHaveBeenCalled();
       expect(listOAuthGrantsMock).toHaveBeenCalled();

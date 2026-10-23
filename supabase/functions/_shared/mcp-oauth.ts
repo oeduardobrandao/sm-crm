@@ -1,8 +1,11 @@
 import { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { effectivePlanFeature } from "./entitlements-rpc.ts";
+import { hasPermissionFor } from "./permissions.ts";
 import {
   MCP_ALLOWED_SCOPES,
+  MCP_SCOPE_PERMISSION,
   McpKeyContext,
+  McpScope,
   MCP_TOKEN_PREFIX,
   resolveMcpKey,
   validateScopes,
@@ -113,6 +116,31 @@ export function grantActive(
   );
 }
 
+/**
+ * The subset of `scopes` the user's CURRENT role in the workspace allows (MCP_SCOPE_PERMISSION).
+ * Each distinct module/action pair is checked once via has_permission_for, which fails closed:
+ * a non-member, an unknown scope or an RPC error yields no scope.
+ */
+export async function permittedMcpScopes(
+  db: SupabaseClient,
+  userId: string,
+  contaId: string,
+  scopes: readonly string[] = MCP_ALLOWED_SCOPES,
+): Promise<string[]> {
+  const known = scopes.filter((s): s is McpScope => s in MCP_SCOPE_PERMISSION);
+  const pairKey = (s: McpScope) => {
+    const p = MCP_SCOPE_PERMISSION[s];
+    return `${p.module}:${p.action}`;
+  };
+  const pairs = [...new Set(known.map(pairKey))];
+  const results = await Promise.all(pairs.map((pair) => {
+    const [module, action] = pair.split(":") as [string, "ver" | "editar"];
+    return hasPermissionFor(db, userId, contaId, module, action);
+  }));
+  const allowed = new Set(pairs.filter((_, i) => results[i]));
+  return known.filter((s) => allowed.has(pairKey(s)));
+}
+
 /** True if the user currently holds a workspace_members row for the workspace. */
 export async function isWorkspaceMember(
   db: SupabaseClient,
@@ -164,13 +192,21 @@ export async function resolveOAuthCtx(
   // to be re-confirmed empirically once Supabase's OAuth server is enabled.)
   const payload = decodeJwtPayload(token);
   const tokenMcp = mcpScopesFromClaim(payload?.scope ?? payload?.scopes ?? null);
-  const scopes = boundGrantScopes((grant.scopes as string[]) ?? [], tokenMcp);
+  const bounded = boundGrantScopes((grant.scopes as string[]) ?? [], tokenMcp);
+  // Re-capped by the user's CURRENT role on every request, like membership above: a role
+  // downgrade shrinks the connection right away instead of surviving until a reconnect.
+  const [scopes, canWriteFinancials] = await Promise.all([
+    permittedMcpScopes(db, user.id, contaId, bounded),
+    hasPermissionFor(db, user.id, contaId, "financeiro", "editar"),
+  ]);
+  if (scopes.length === 0) return null;
 
   return {
     conta_id: contaId,
     scopes,
     key_id: `oauth:${clientId}`,
     created_by: user.id as string,
+    can_write_financials: canWriteFinancials,
   };
 }
 
