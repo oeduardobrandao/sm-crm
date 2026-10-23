@@ -50,6 +50,13 @@ vi.mock('../../FinanceiroPage', async () => {
 vi.mock('../CustosEquipePage', () => ({
   default: () => <p>Custos da equipe (stub)</p>,
 }));
+// The assignment matrix has its own suite (AtribuicaoPage.test.tsx); here only its
+// placement inside the layout matters.
+vi.mock('../AtribuicaoPage', () => ({
+  default: function AtribuicaoStub() {
+    return <p>Em construção.</p>;
+  },
+}));
 
 import FinanceiroGate from '../FinanceiroGate';
 import FinanceiroPage from '../../FinanceiroPage';
