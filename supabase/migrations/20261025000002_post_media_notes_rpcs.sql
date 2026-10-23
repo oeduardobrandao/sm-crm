@@ -15,8 +15,9 @@
 -- post_not_pending); os handlers casam com includes. pending_suggestion do
 -- record_client_approval passa adiante sem mudança.
 --
--- Toda RPC do Hub trava o post (SELECT ... FOR UPDATE) antes de escrever, então
--- notas, respostas e aprovações de um mesmo post se serializam.
+-- Toda RPC do Hub trava o post (SELECT ... FOR UPDATE, com conta/cliente no
+-- WHERE) antes de escrever, então notas, respostas e aprovações de um mesmo
+-- post se serializam e nenhum token trava post alheio.
 --
 -- Rollback:
 --   drop function hub_create_media_note(uuid, bigint, text, bigint, bigint, numeric, real, real, text),
@@ -113,12 +114,14 @@ DECLARE
   v_anchor record;
   v_id     bigint;
 BEGIN
-  SELECT * INTO v_post FROM workflow_posts WHERE id = p_post_id FOR UPDATE;
-  IF NOT FOUND
-     OR v_post.conta_id IS DISTINCT FROM p_conta_id
-     OR v_post.cliente_id IS DISTINCT FROM p_cliente_id THEN
+  -- Posse no WHERE da trava: um token nunca trava post de outro cliente/workspace.
+  SELECT * INTO v_post FROM workflow_posts
+   WHERE id = p_post_id AND conta_id = p_conta_id AND cliente_id = p_cliente_id
+   FOR UPDATE;
+  IF NOT FOUND THEN
     RAISE EXCEPTION 'post_not_found';
   END IF;
+  -- Gêmeo de HUB_VISIBLE_STATUSES (supabase/functions/hub-approve/handler.ts): mudar os dois juntos.
   IF v_post.status NOT IN ('enviado_cliente', 'aprovado_cliente', 'correcao_cliente',
                            'agendado', 'postado', 'falha_publicacao') THEN
     RAISE EXCEPTION 'post_not_visible';
@@ -166,12 +169,14 @@ BEGIN
     RAISE EXCEPTION 'note_not_found';
   END IF;
 
-  SELECT * INTO v_post FROM workflow_posts WHERE id = v_post_id FOR UPDATE;
-  IF NOT FOUND
-     OR v_post.conta_id IS DISTINCT FROM p_conta_id
-     OR v_post.cliente_id IS DISTINCT FROM p_cliente_id THEN
+  -- Posse no WHERE da trava: um token nunca trava post de outro cliente/workspace.
+  SELECT * INTO v_post FROM workflow_posts
+   WHERE id = v_post_id AND conta_id = p_conta_id AND cliente_id = p_cliente_id
+   FOR UPDATE;
+  IF NOT FOUND THEN
     RAISE EXCEPTION 'note_not_found';
   END IF;
+  -- Gêmeo de HUB_VISIBLE_STATUSES (supabase/functions/hub-approve/handler.ts): mudar os dois juntos.
   IF v_post.status NOT IN ('enviado_cliente', 'aprovado_cliente', 'correcao_cliente',
                            'agendado', 'postado', 'falha_publicacao') THEN
     RAISE EXCEPTION 'post_not_visible';
@@ -192,10 +197,12 @@ GRANT EXECUTE ON FUNCTION hub_add_media_note_reply(uuid, bigint, text, bigint, t
 -- 3. record_client_approval_with_notes
 -- =====================================================================
 -- O snapshot (call 4 do spec) nasce na mesma transação travada da aprovação:
--- trava o post, revalida o status sob a trava, trava as notas abertas do
--- cliente (um resolver/reabrir concorrente do CRM espera ou já está refletido)
--- e liga ao post_approvals exatamente as notas do post com visibility
--- 'client' e status 'open'. Notas internas nunca entram.
+-- trava o post (com a posse no WHERE), revalida o status sob a trava, trava
+-- todas as notas do cliente no post, abertas e resolvidas (um resolver ou
+-- reabrir concorrente do CRM espera o commit ou já está refletido; respostas
+-- do Hub se serializam pela trava do post) e liga ao post_approvals
+-- exatamente as notas do post com visibility 'client' e status 'open'. Notas
+-- internas nunca entram nem são travadas.
 CREATE OR REPLACE FUNCTION record_client_approval_with_notes(
   p_post_id    bigint,
   p_conta_id   uuid,
@@ -217,16 +224,21 @@ DECLARE
   v_count    int;
 BEGIN
   SELECT wp.conta_id, wp.status INTO v_conta, v_status
-    FROM workflow_posts wp WHERE wp.id = p_post_id FOR UPDATE;
-  IF NOT FOUND OR v_conta IS DISTINCT FROM p_conta_id THEN
+    FROM workflow_posts wp
+   WHERE wp.id = p_post_id AND wp.conta_id = p_conta_id
+   FOR UPDATE;
+  IF NOT FOUND THEN
     RAISE EXCEPTION 'post_not_found';
   END IF;
   IF v_status NOT IN ('enviado_cliente', 'correcao_cliente') THEN
     RAISE EXCEPTION 'post_not_pending';
   END IF;
 
+  -- Trava TODA nota do cliente no post, não só as abertas: um reabrir do CRM
+  -- (resolved -> open) de uma nota resolvida espera este commit, então o
+  -- snapshot abaixo e o status das notas não divergem.
   PERFORM 1 FROM post_media_notes n
-   WHERE n.post_id = p_post_id AND n.visibility = 'client' AND n.status = 'open'
+   WHERE n.post_id = p_post_id AND n.visibility = 'client'
    FOR UPDATE;
 
   v_approval := record_client_approval(p_post_id, p_token, p_action, p_comentario, false,

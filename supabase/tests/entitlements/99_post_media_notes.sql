@@ -874,8 +874,9 @@ begin;
 do $$
 declare
   a record; b record;
-  v_post bigint; v_post2 bigint; v_other bigint; v_file bigint; v_ofile bigint;
-  c1 bigint; c2 bigint; c3 bigint; i1 bigint; o1 bigint;
+  v_post bigint; v_post2 bigint; v_post3 bigint; v_other bigint;
+  v_file bigint; v_ofile bigint; v_file3 bigint;
+  c1 bigint; c2 bigint; c3 bigint; c4 bigint; c5 bigint; i1 bigint; o1 bigint;
   v_res record; v_ids bigint[];
 begin
   perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
@@ -897,6 +898,13 @@ begin
     returning id into i1;
   -- nota aberta de outro post: fora do snapshot
   o1 := pg_temp.pmn_client_note(a.ws, v_other, v_ofile);
+  -- resolvida desde o insert (sem UPDATE nesta transação): xmax começa em 0,
+  -- então serve de sonda da trava abaixo (c3 já tem xmax do próprio UPDATE)
+  insert into post_media_notes (conta_id, post_id, file_id, slide_index_at_creation, media_kind,
+      visibility, author_kind, hub_token, body, status, resolved_at)
+    values (a.ws, v_post, v_file, 0, 'image', 'client', 'client', 'tok', 'Ja resolvida', 'resolved', now())
+    returning id into c5;
+  assert (select xmax::text from post_media_notes where id = c5) = '0', 'sonda sem trava antes';
 
   -- workspace errado: post_not_found, nada gravado
   perform pg_temp.pmn_expect_msg(format(
@@ -912,9 +920,18 @@ begin
   select array_agg(note_id order by note_id) into v_ids
     from post_approval_media_notes where post_approval_id = v_res.approval_id;
   assert v_ids = array[c1, c2], format('snapshot so com c1 e c2, veio %s', v_ids);
-  assert not exists (select 1 from post_approval_media_notes where note_id in (c3, i1, o1)),
+  assert not exists (select 1 from post_approval_media_notes where note_id in (c3, c5, i1, o1)),
     'resolvida, interna e de outro post fora';
   assert (select status from workflow_posts where id = v_post) = 'aprovado_cliente', 'post aprovado';
+
+  -- trava: TODA nota do cliente no post fica presa até o commit (inclusive a
+  -- resolvida, para um reabrir concorrente do CRM esperar). Prova numa sessão
+  -- só: SELECT FOR UPDATE grava o xid desta transação em xmax da linha; nota
+  -- de outro post e nota interna continuam com xmax 0.
+  assert (select xmax::text from post_media_notes where id = c5) <> '0', 'resolvida do cliente travada';
+  assert (select xmax::text from post_media_notes where id = c1) <> '0', 'aberta do cliente travada';
+  assert (select xmax::text from post_media_notes where id = o1) = '0', 'nota de outro post livre';
+  assert (select xmax::text from post_media_notes where id = i1) = '0', 'nota interna livre';
   assert exists (select 1 from post_approvals where id = v_res.approval_id and post_id = v_post
                    and action = 'aprovado' and token = 'tok' and not is_workspace_user),
     'post_approvals gravado pelo record_client_approval';
@@ -933,6 +950,21 @@ begin
   assert (select status from workflow_posts where id = v_post2) = 'correcao_cliente', 'post em correcao';
   select * into v_res from record_client_approval_with_notes(v_post2, a.ws, 'tok', 'aprovado', null, 'aprovado_cliente');
   assert v_res.approval_id is not null, 'aprovar a partir de correcao_cliente';
+
+  -- sugestão de edição pendente: pending_suggestion do record_client_approval
+  -- passa adiante e nada fica gravado (nem aprovação nem snapshot)
+  v_post3 := pg_temp.pmn_post(a.ws, a.wf);
+  v_file3 := pg_temp.pmn_file(a.ws);
+  perform pg_temp.pmn_link(a.ws, v_post3, v_file3, 0);
+  c4 := pg_temp.pmn_client_note(a.ws, v_post3, v_file3);
+  insert into post_edit_suggestions (post_id, conta_id, token, changed_fields, status)
+    values (v_post3, a.ws, 'tok', array['legenda'], 'pending');
+  perform pg_temp.pmn_expect_msg(format(
+    'select * from record_client_approval_with_notes(%s, %L::uuid, %L, %L, null, %L)',
+    v_post3, a.ws, 'tok', 'aprovado', 'aprovado_cliente'), 'pending_suggestion');
+  assert not exists (select 1 from post_approval_media_notes where note_id = c4), 'nenhum snapshot no erro';
+  assert not exists (select 1 from post_approvals where post_id = v_post3), 'nenhuma aprovacao no erro';
+  assert (select status from workflow_posts where id = v_post3) = 'enviado_cliente', 'status intacto no erro';
 
   raise notice 'PASS 99_post_media_notes (l) aprovacao com snapshot';
 end $$;
