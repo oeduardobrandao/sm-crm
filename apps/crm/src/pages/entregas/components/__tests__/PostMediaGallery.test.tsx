@@ -372,13 +372,39 @@ describe('media request mode', () => {
   });
 });
 
+describe('tile file names', () => {
+  it('shows each file name under its tile so the order can be checked at a glance', async () => {
+    const media = makeMedia(2);
+    media[1] = { ...media[1], original_filename: 'carrossel-cliente-final-10.png' };
+    vi.mocked(listPostMedia).mockResolvedValueOnce(media);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery postId={1} />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByTitle('img0.jpg')).toHaveTextContent('img0.jpg');
+    // Long names keep their end visible: the slide number is what tells the order.
+    const long = screen.getByTitle('carrossel-cliente-final-10.png');
+    expect(long).toHaveTextContent('carrossel-cliente-final-10.png');
+    expect(long.lastElementChild).toHaveTextContent('l-10.png');
+  });
+});
+
 // ============================================================
 
 // Regression guard: Estúdio was retired, so the gallery can never be design-locked again.
 describe('PostMediaGallery design decoupling regression guard', () => {
   it('never renders a design-ownership banner', async () => {
     vi.mocked(listPostMedia).mockResolvedValueOnce([
-      { id: 10, kind: 'image', origin: 'manual', url: 'https://x/y.jpg' } as never,
+      {
+        id: 10,
+        kind: 'image',
+        origin: 'manual',
+        url: 'https://x/y.jpg',
+        original_filename: 'y.jpg',
+      } as never,
     ]);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
@@ -442,7 +468,13 @@ describe('PostMediaGallery auto-clean placeholder', () => {
 
   it('keeps the normal gallery when the post still has media', async () => {
     vi.mocked(listPostMedia).mockResolvedValueOnce([
-      { id: 10, kind: 'image', origin: 'manual', url: 'https://x/y.jpg' } as never,
+      {
+        id: 10,
+        kind: 'image',
+        origin: 'manual',
+        url: 'https://x/y.jpg',
+        original_filename: 'y.jpg',
+      } as never,
     ]);
     renderStamped({ instagramPermalink: 'https://www.instagram.com/p/abc/' });
 
