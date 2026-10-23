@@ -109,8 +109,8 @@ section.lp-pad.blog-post-section{padding-top:clamp(40px,7vw,88px)}
 [data-theme='dark'] .blog-card-thumb,[data-theme='dark'] .blog-next-thumb,[data-theme='dark'] .blog-cover .blog-figure.blog-figure img{background:#1a1e26}
 [data-theme='dark'] .blog-prose{color:#cbd5e1}
 [data-theme='dark'] .blog-prose h2,[data-theme='dark'] .blog-prose h3,[data-theme='dark'] .blog-prose strong{color:#e8eaf0}
-[data-theme='dark'] .blog-prose a{color:#e8eaf0}
-[data-theme='dark'] .blog-prose a:hover{color:#ffbf30}
+:where([data-theme='dark']) .blog-prose a{color:#e8eaf0}
+:where([data-theme='dark']) .blog-prose a:hover{color:#ffbf30}
 [data-theme='dark'] .blog-prose blockquote:not(.blog-pullquote){background:rgba(234,179,8,.08);color:#cbd5e1}
 [data-theme='dark'] .blog-prose th,[data-theme='dark'] .blog-prose td{border-color:rgba(255,255,255,.1)}
 [data-theme='dark'] .blog-prose th{background:rgba(255,255,255,.04)}
