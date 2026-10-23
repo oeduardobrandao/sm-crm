@@ -14,9 +14,9 @@ SET LOCAL lock_timeout = '5s';
 --       get_my_conta_id() / auth.uid(), runs today's checks in today's order
 --       (feature_financial, feature_financeiro_v2, has_permission / can_see_financials,
 --       and for reabrir / fechar: seeded, then the owner-or-admin role check), then
---       calls the core. Behaviour unchanged (the 99_financeiro_v2_*.sql suites).
---       Exception: financeiro_seed keeps its own full body (see the note where its
---       wrapper would be), and _financeiro_seed_core is a checked copy of it.
+--       calls the core. Behaviour unchanged (the 99_financeiro_v2_*.sql suites; the
+--       seed_legado source-text check of the FOR SHARE lock order now reads
+--       _financeiro_seed_core, where the seed body lives).
 --   <name>_as(p_conta, p_user, ...)  for the MCP: the two flags of p_conta, then
 --       p_user must be the owner of p_conta (42501 owner_only), then the core. The
 --       caller's active workspace is never read. service_role only.
@@ -858,12 +858,28 @@ BEGIN
 END;
 $$;
 
--- financeiro_seed is NOT redefined here: it stays exactly as in 20261027000005.
--- 99_financeiro_v2_seed_legado.sql (seed_locks_legacy_rows) pins its body with
--- pg_get_functiondef('public.financeiro_seed(int)') to prove the FOR SHARE locks come
--- before the copies, so a thin wrapper would fail it. _financeiro_seed_core above is a
--- copy of that body with p_conta / p_user; 99_financeiro_v2_rpc_as.sql
--- (seed_core_mirrors_public) asserts the two stay identical apart from auth.uid().
+CREATE OR REPLACE FUNCTION public.financeiro_seed(p_periodo_dia int)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_conta uuid := public.get_my_conta_id();
+BEGIN
+  IF public.effective_plan_feature(v_conta, 'feature_financial') IS NOT TRUE THEN
+    RAISE EXCEPTION 'feature_disabled:feature_financial' USING ERRCODE = 'P0001';
+  END IF;
+  IF public.effective_plan_feature(v_conta, 'feature_financeiro_v2') IS NOT TRUE THEN
+    RAISE EXCEPTION 'feature_disabled:feature_financeiro_v2' USING ERRCODE = 'P0001';
+  END IF;
+  IF public.has_permission('financeiro', 'editar') IS NOT TRUE THEN
+    RAISE EXCEPTION 'financial_access_denied' USING ERRCODE = '42501';
+  END IF;
+  RETURN public._financeiro_seed_core(v_conta, auth.uid(), p_periodo_dia);
+END;
+$$;
 
 -- Checks, in this order: flags, has_permission('financeiro','editar'), seeded, the
 -- caller's role in the active workspace is owner or admin, then the core (lock,

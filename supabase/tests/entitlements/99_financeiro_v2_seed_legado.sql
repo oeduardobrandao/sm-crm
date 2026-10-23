@@ -208,9 +208,11 @@ end $$;
 -- sees seeded_at). Pinned on the function body: a single session cannot race itself, the RI
 -- checks of the copies already take RowShareLock (FOR KEY SHARE, which does not block an
 -- UPDATE of valor_mensal), so pg_locks cannot tell the two apart, and the stack has neither
--- dblink nor pgrowlocks.
+-- dblink nor pgrowlocks. Since 20261029000002 the body lives in _financeiro_seed_core
+-- (financeiro_seed and financeiro_seed_as only check and delegate), so the pin reads the core.
+-- This targets the post-migration shape: after that migration's rollback the core is gone.
 do $$
-declare v_def text := pg_get_functiondef('public.financeiro_seed(int)'::regprocedure);
+declare v_def text := pg_get_functiondef('public._financeiro_seed_core(uuid,uuid,int)'::regprocedure);
         v_cli int; v_mem int; v_ins int;
 begin
   v_cli := strpos(v_def, 'FROM public.clientes c WHERE c.conta_id = v_conta FOR SHARE');

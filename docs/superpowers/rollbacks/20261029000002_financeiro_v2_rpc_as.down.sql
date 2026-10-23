@@ -5,12 +5,20 @@
 --
 -- Order: 1. the public v2 RPCs back to their last definitions before 20261029000002
 -- (copied verbatim from 20261027000003 / 000004 / 000005 / 000006, with their
--- original REVOKE / GRANT lines), so none of them calls a core any more
--- (financeiro_seed was never redefined by 20261029000002; its restore below is a
--- harmless no-op kept so this section lists every public v2 RPC);
+-- original REVOKE / GRANT lines), so none of them calls a core any more;
 -- 2. DROP FUNCTION of every _as entry point, every _core and _financeiro_exigir_dono.
 -- Anything else that calls an _as function (the MCP edge function) must be rolled
--- back first.
+-- back first, and so must 20261029000003 (its _as functions call
+-- _financeiro_exigir_dono): run 20261029000003_financeiro_mcp_lancamentos.down.sql
+-- before this file.
+--
+-- Tests after this rollback: 99_financeiro_v2_seed_legado.sql targets the
+-- post-migration shape. Its seed_locks_legacy_rows block pins the lock order in
+-- _financeiro_seed_core's source, which this file drops, so that one block fails here
+-- (the restored financeiro_seed below carries the same FOR SHARE locks inline, as in
+-- 20261027000005); its behavioural blocks and the other 99_financeiro_v2_*.sql suites
+-- pass. Rolling back for real also means pointing that block back at
+-- public.financeiro_seed(int), or the next CI run fails.
 
 BEGIN;
 SET LOCAL lock_timeout = '5s';

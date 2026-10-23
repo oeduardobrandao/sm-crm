@@ -154,33 +154,6 @@ begin
   raise notice 'PASS cores_never_read_the_jwt';
 end $$;
 
--- seed_core_mirrors_public: financeiro_seed keeps its own body (99_financeiro_v2_seed_legado
--- pins it with pg_get_functiondef), so _financeiro_seed_core is a copy. Same text from the
--- lock to the final RETURN, apart from auth.uid() -> p_user; the core also locks the legacy
--- rows before copying them.
-do $$
-declare
-  v_pub  text := pg_get_functiondef('public.financeiro_seed(int)'::regprocedure);
-  v_core text := pg_get_functiondef('public._financeiro_seed_core(uuid,uuid,int)'::regprocedure);
-  v_ini  constant text := 'PERFORM pg_advisory_xact_lock(';
-  v_fim  constant text := 'RETURN jsonb_build_object(''seeded'', true, ''ja_existia'', false);';
-  v_pub_corpo text; v_core_corpo text;
-begin
-  assert strpos(v_pub, v_ini) > 0 and strpos(v_pub, v_fim) > 0, 'seed_core: markers missing in financeiro_seed';
-  assert strpos(v_core, v_ini) > 0 and strpos(v_core, v_fim) > 0, 'seed_core: markers missing in the core';
-  v_pub_corpo := substr(v_pub, strpos(v_pub, v_ini), strpos(v_pub, v_fim) + length(v_fim) - strpos(v_pub, v_ini));
-  v_core_corpo := substr(v_core, strpos(v_core, v_ini), strpos(v_core, v_fim) + length(v_fim) - strpos(v_core, v_ini));
-  assert replace(v_pub_corpo, 'auth.uid()', 'p_user') = v_core_corpo,
-    'seed_core: _financeiro_seed_core drifted from financeiro_seed';
-  assert strpos(v_core, 'FROM public.clientes c WHERE c.conta_id = v_conta FOR SHARE')
-           between 1 and strpos(v_core, 'INSERT INTO public.financeiro_cliente_versoes'),
-    'seed_core: clientes not locked before the copy';
-  assert strpos(v_core, 'FROM public.membros m WHERE m.conta_id = v_conta FOR SHARE')
-           between 1 and strpos(v_core, 'INSERT INTO public.financeiro_cliente_versoes'),
-    'seed_core: membros not locked before the copy';
-  raise notice 'PASS seed_core_mirrors_public';
-end $$;
-
 -- owner_as_works: seed, a funcao and a client version through the _as entry points,
 -- as service_role with no user in the JWT
 do $$
@@ -249,16 +222,36 @@ begin
   raise notice 'PASS rpc_as_ignores_active_workspace';
 end $$;
 
--- flags_before_owner: without feature_financeiro_v2 a non-owner gets the flag error
+-- flags_before_owner: without feature_financeiro_v2 (or feature_financial) a non-owner
+-- gets the flag error, not owner_only
 do $$
-declare v_ws uuid := pg_temp.novo_ws(false); v_admin uuid; v_err text;
+declare v_ws uuid := pg_temp.novo_ws(false); v_fin uuid := pg_temp.novo_ws(); v_admin uuid; v_err text;
 begin
   v_admin := pg_temp.membro(v_ws, 'admin');
   v_err := pg_temp.svc_erro(format('select public.financeiro_config_salvar_as(%L, %L, 5, 60)', v_ws, v_admin));
   assert v_err = 'P0001:feature_disabled:feature_financeiro_v2', 'flags_before_owner: ' || coalesce(v_err, 'success');
   v_err := pg_temp.svc_erro(format('select public.financeiro_rentabilidade_as(%L, %L)', v_ws, v_admin));
   assert v_err = 'P0001:feature_disabled:feature_financeiro_v2', 'flags_before_owner: rentabilidade ' || coalesce(v_err, 'success');
+  -- feature_financial off (v2 on): checked first
+  update workspace_plan_overrides set feature_overrides = '{"feature_financeiro_v2": true, "feature_financial": false}'::jsonb
+   where workspace_id = v_fin;
+  v_admin := pg_temp.membro(v_fin, 'admin');
+  v_err := pg_temp.svc_erro(format('select public.financeiro_config_salvar_as(%L, %L, 5, 60)', v_fin, v_admin));
+  assert v_err = 'P0001:feature_disabled:feature_financial', 'flags_before_owner: financial ' || coalesce(v_err, 'success');
+  v_err := pg_temp.svc_erro(format('select public.financeiro_seed_as(%L, %L, 1)', v_fin, pg_temp.dono(v_fin)));
+  assert v_err = 'P0001:feature_disabled:feature_financial', 'flags_before_owner: financial owner ' || coalesce(v_err, 'success');
   raise notice 'PASS flags_before_owner';
+end $$;
+
+-- reabrir_as_unseeded: the core keeps nao_configurado on the _as path
+do $$
+declare v_ws uuid := pg_temp.novo_ws(); v_err text;
+begin
+  v_err := pg_temp.svc_erro(format('select public.financeiro_periodo_reabrir_as(%L, %L, %L)', v_ws, pg_temp.dono(v_ws), '2026-10-01'));
+  assert v_err = 'P0001:nao_configurado', 'reabrir_as_unseeded: ' || coalesce(v_err, 'success');
+  v_err := pg_temp.svc_erro(format('select public.financeiro_periodo_fechar_as(%L, %L, %L)', v_ws, pg_temp.dono(v_ws), '2026-10-01'));
+  assert v_err = 'P0001:nao_configurado', 'reabrir_as_unseeded: fechar ' || coalesce(v_err, 'success');
+  raise notice 'PASS reabrir_as_unseeded';
 end $$;
 
 -- reabrir_audit_actor: reopen then re-close a closed period; the audit rows name the owner
