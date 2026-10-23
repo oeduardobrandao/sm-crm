@@ -64,7 +64,7 @@ describe('ClienteEditDialog with Financeiro v2', () => {
     expect(screen.queryByDisplayValue('1500')).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue('12')).not.toBeInTheDocument();
     const link = screen.getByRole('link', {
-      name: 'A mensalidade agora fica na aba Financeiro.',
+      name: 'A mensalidade e o status agora ficam na aba Financeiro.',
     });
     expect(link).toHaveAttribute('href', '/clientes/42/financeiro');
   });
@@ -81,11 +81,21 @@ describe('ClienteEditDialog with Financeiro v2', () => {
     expect(payload).toMatchObject({ nome: 'Aurora Estética', plano: 'Plano Ouro' });
   });
 
+  it('hides status and omits it from the write payload (it is versioned in the Financeiro tab)', async () => {
+    renderDialog();
+
+    expect(screen.queryByText('Status')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => expect(mockedUpdateCliente).toHaveBeenCalledTimes(1));
+    expect(mockedUpdateCliente.mock.calls[0][1]).not.toHaveProperty('status');
+  });
+
   it('closes the dialog when the link is followed', () => {
     const onOpenChange = vi.fn();
     renderDialog(onOpenChange);
 
-    fireEvent.click(screen.getByRole('link', { name: /A mensalidade agora fica/ }));
+    fireEvent.click(screen.getByRole('link', { name: /A mensalidade e o status agora ficam/ }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
@@ -96,21 +106,23 @@ describe('ClienteEditDialog with Financeiro v2', () => {
     expect(screen.getByText('Valor Mensal')).toBeInTheDocument();
     expect(screen.getByDisplayValue('1500')).toBeInTheDocument();
     expect(screen.getByDisplayValue('12')).toBeInTheDocument();
-    expect(screen.queryByText(/A mensalidade agora fica/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/A mensalidade e o status agora ficam/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
     await waitFor(() => expect(mockedUpdateCliente).toHaveBeenCalledTimes(1));
     expect(mockedUpdateCliente.mock.calls[0][1]).toMatchObject({
       valor_mensal: 1500,
       data_pagamento: 12,
+      status: 'ativo',
     });
+    expect(screen.getByText('Status')).toBeInTheDocument();
   });
 
   it("keeps today's fields when the flag is on but financials are hidden", () => {
     mockedUseAuth.mockReturnValue({ canSeeFinancials: false } as never);
     renderDialog();
 
-    expect(screen.queryByText(/A mensalidade agora fica/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/A mensalidade e o status agora ficam/)).not.toBeInTheDocument();
     expect(screen.getByText('Dia de Pagamento')).toBeInTheDocument();
   });
 });

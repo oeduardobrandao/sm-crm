@@ -39,6 +39,11 @@ vi.mock('../../../lib/csv', () => ({
 
 vi.mock('../../../lib/supabase');
 
+const v2 = vi.hoisted(() => ({ ativo: false }));
+vi.mock('@/hooks/useFinanceiroV2', () => ({
+  useFinanceiroV2: () => ({ ativo: v2.ativo, isLoading: false }),
+}));
+
 // These suites cover the desktop markup (table, header buttons); the phone branch below
 // 768px has its own suite. jsdom's matchMedia would otherwise render the phone branch.
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
@@ -482,6 +487,7 @@ beforeEach(() => {
   toastErrorMock.mockReset();
   mockUseAuth.mockReset();
   mockUseAuth.mockReturnValue({ canSeeFinancials: true, can: () => true });
+  v2.ativo = false;
   mockedSupabase.__resetSupabaseMock();
 
   mockedGetClientes.mockReset();
@@ -723,6 +729,38 @@ describe('ClientesPage', () => {
 
     expect(toastSuccessMock).toHaveBeenCalledWith('Cliente atualizado');
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['clientes'] });
+  });
+
+  it('with Financeiro v2 the edit form neither shows nor writes status', async () => {
+    v2.ativo = true;
+    mockedGetClientes.mockResolvedValue([makeCliente({ id: 7, nome: 'Beta Care' })]);
+    renderPage();
+
+    await screen.findByRole('button', { name: 'Beta Care' });
+    fireEvent.click(within(getClientCard('Beta Care')).getByRole('button', { name: 'Editar' }));
+
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).queryByRole('button', { name: 'Pausado' })).not.toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('link', { name: 'O status agora fica na aba Financeiro.' }),
+    ).toHaveAttribute('href', '/clientes/7/financeiro');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => expect(mockedUpdateCliente).toHaveBeenCalledTimes(1));
+    expect(mockedUpdateCliente.mock.calls[0][1]).not.toHaveProperty('status');
+  });
+
+  it('keeps status in the edit form with v2 on but financials hidden', async () => {
+    v2.ativo = true;
+    mockUseAuth.mockReturnValue({ canSeeFinancials: false, can: () => true });
+    mockedGetClientes.mockResolvedValue([makeCliente({ id: 7, nome: 'Beta Care' })]);
+    renderPage();
+
+    await screen.findByRole('button', { name: 'Beta Care' });
+    fireEvent.click(within(getClientCard('Beta Care')).getByRole('button', { name: 'Editar' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('button', { name: 'Pausado' })).toBeInTheDocument();
+    expect(within(dialog).queryByText(/O status agora fica/)).not.toBeInTheDocument();
   });
 
   it('removes a client after confirmation', async () => {

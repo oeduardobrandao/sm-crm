@@ -40,8 +40,10 @@ export function ClienteEditDialog({ cliente, open, onOpenChange }: ClienteEditDi
   const { t: tc } = useTranslation();
   const queryClient = useQueryClient();
   const { canSeeFinancials } = useAuth();
-  // With Financeiro v2 the mensalidade lives in the Financeiro tab (versioned), so this
-  // dialog neither shows nor writes valor_mensal / data_pagamento.
+  // With Financeiro v2 the mensalidade and the status live in the Financeiro tab
+  // (versioned, with "Vale a partir de"), so this dialog neither shows nor writes
+  // valor_mensal / data_pagamento / status: a legacy write would become a version at the
+  // current period's start and rewrite the whole period without asking.
   const { ativo: v2Ativo } = useFinanceiroV2();
   const v2 = v2Ativo && canSeeFinancials === true;
 
@@ -142,6 +144,7 @@ export function ClienteEditDialog({ cliente, open, onOpenChange }: ClienteEditDi
       if (v2) {
         delete stripped.valor_mensal;
         delete stripped.data_pagamento;
+        delete stripped.status;
       }
       await updateCliente(cliente.id!, stripped);
       queryClient.invalidateQueries({ queryKey: ['cliente', cliente.id] });
@@ -194,7 +197,7 @@ export function ClienteEditDialog({ cliente, open, onOpenChange }: ClienteEditDi
                 className="underline"
                 onClick={() => onOpenChange(false)}
               >
-                A mensalidade agora fica na aba Financeiro.
+                A mensalidade e o status agora ficam na aba Financeiro.
               </Link>
             </p>
           )}
@@ -239,19 +242,21 @@ export function ClienteEditDialog({ cliente, open, onOpenChange }: ClienteEditDi
               <PlatformChips value={fPlataformas} onChange={setFPlataformas} />
             </div>
           )}
-          <div className="space-y-1">
-            <Label>{t('detail.formStatus')}</Label>
-            <Select value={fStatus} onValueChange={(v) => setFStatus(v as Cliente['status'])}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ativo">{tc('status.ativo')}</SelectItem>
-                <SelectItem value="pausado">{tc('status.pausado')}</SelectItem>
-                <SelectItem value="encerrado">{tc('status.encerrado')}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          {!v2 && (
+            <div className="space-y-1">
+              <Label>{t('detail.formStatus')}</Label>
+              <Select value={fStatus} onValueChange={(v) => setFStatus(v as Cliente['status'])}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ativo">{tc('status.ativo')}</SelectItem>
+                  <SelectItem value="pausado">{tc('status.pausado')}</SelectItem>
+                  <SelectItem value="encerrado">{tc('status.encerrado')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="space-y-1">
             <Label>{t('detail.formSpecialty')}</Label>
             <Input value={fEspecialidade} onChange={(e) => setFEspecialidade(e.target.value)} />

@@ -43,6 +43,10 @@ vi.mock('../../../hooks/useEntitlements', () => ({
   useEntitlements: () => ({ isAtLimit: isAtLimitMock, limits: limitsRef.current }),
 }));
 
+vi.mock('@/hooks/useFinanceiroV2', () => ({
+  useFinanceiroV2: () => ({ ativo: false, isLoading: false }),
+}));
+
 vi.mock('../../../hooks/useIsWorkspaceOwner', () => ({
   useIsWorkspaceOwner: () => true,
 }));

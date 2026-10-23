@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import {
@@ -95,6 +95,7 @@ import { useOpenParam } from '../../hooks/useOpenParam';
 import { FeatureGate } from '@/components/paywall/FeatureGate';
 import { captureEvent } from '@/lib/analytics';
 import { useAuth } from '../../context/AuthContext';
+import { useFinanceiroV2 } from '@/hooks/useFinanceiroV2';
 import { assertNoFinancialColumns, stripFinancialFields } from '@/lib/financialAccess';
 import { ClientesPhone } from './phone/ClientesPhone';
 import { ClienteFormPhoneFields } from './phone/ClienteFormPhoneFields';
@@ -153,6 +154,10 @@ export default function ClientesPage() {
   const [editing, setEditing] = useState<Cliente | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  // With Financeiro v2 a client's status is versioned in its Financeiro tab ("Vale a partir
+  // de"): the edit form neither shows nor writes it (the create form keeps 'ativo').
+  const { ativo: v2Ativo } = useFinanceiroV2();
+  const statusNoFinanceiro = v2Ativo && canSeeFinancials === true;
 
   // The edit/add modal can hold a valor_mensal value in its form state. On
   // live revocation, close it rather than let the value linger on screen.
@@ -245,10 +250,10 @@ export default function ClientesPage() {
           data_pagamento: diaPag,
           status: values.status,
         };
-        await updateCliente(
-          editing.id,
-          stripFinancialFields(payload, canSeeFinancials, ['valor_mensal']),
-        );
+        const stripped = stripFinancialFields(payload, canSeeFinancials, ['valor_mensal']);
+        // Omit the key (not undefined): the hidden field still holds the old status.
+        if (statusNoFinanceiro) delete stripped.status;
+        await updateCliente(editing.id, stripped);
         toast.success(t('toast.updated'));
       } else {
         const randomColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
@@ -852,7 +857,7 @@ export default function ClientesPage() {
                       </FormItem>
                     )}
                   />
-                  {editing && (
+                  {editing && !statusNoFinanceiro && (
                     <FormField
                       control={form.control}
                       name="status"
@@ -881,8 +886,19 @@ export default function ClientesPage() {
                 <ClienteFormPhoneFields
                   form={form}
                   showValor={canSeeFinancials === true}
-                  showStatus={!!editing}
+                  showStatus={!!editing && !statusNoFinanceiro}
                 />
+              )}
+              {editing?.id != null && statusNoFinanceiro && (
+                <p className="text-sm text-muted-foreground">
+                  <Link
+                    to={`/clientes/${editing.id}/financeiro`}
+                    className="underline"
+                    onClick={() => setModalOpen(false)}
+                  >
+                    O status agora fica na aba Financeiro.
+                  </Link>
+                </p>
               )}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
