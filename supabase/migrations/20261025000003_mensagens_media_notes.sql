@@ -16,6 +16,9 @@
 --   CRM  conta nota do cliente e resposta do cliente (is_workspace_user false)
 --   Hub  conta resposta da equipe em nota do cliente
 -- Nota interna e as respostas dela nunca geram linha, nem em não lidas.
+-- Toda junção de resposta com nota também filtra n.conta_id (o workspace da
+-- chamada): sem isso o branch de não lidas do Hub, chamado a cada poll, varria
+-- post_media_notes de todos os workspaces.
 --
 -- Rollback: reaplicar as três funções de 20260830000003 (seção 8).
 
@@ -107,7 +110,7 @@ BEGIN
            'resposta_nota', left(r.body, 280),
            r.author_kind = 'team', r.author_user_id, r.created_at
       FROM post_media_note_replies r
-      JOIN post_media_notes n ON n.id = r.note_id AND n.visibility = 'client'
+      JOIN post_media_notes n ON n.id = r.note_id AND n.visibility = 'client' AND n.conta_id = v_conta
       JOIN workflow_posts wp ON wp.id = n.post_id
      WHERE r.conta_id = v_conta
   )
@@ -197,7 +200,7 @@ BEGIN
         UNION ALL
         SELECT wp.cliente_id, r.created_at
           FROM post_media_note_replies r
-          JOIN post_media_notes n ON n.id = r.note_id AND n.visibility = 'client'
+          JOIN post_media_notes n ON n.id = r.note_id AND n.visibility = 'client' AND n.conta_id = v_conta
           JOIN workflow_posts wp ON wp.id = n.post_id
          WHERE r.conta_id = v_conta AND r.author_kind = 'client'
       ) f
@@ -230,7 +233,7 @@ BEGIN
         -- respostas da equipe nas notas do cliente
         SELECT r.created_at
           FROM post_media_note_replies r
-          JOIN post_media_notes n ON n.id = r.note_id AND n.visibility = 'client'
+          JOIN post_media_notes n ON n.id = r.note_id AND n.visibility = 'client' AND n.conta_id = p_conta_id
           JOIN workflow_posts wp ON wp.id = n.post_id
          WHERE r.conta_id = p_conta_id AND wp.cliente_id = p_cliente_id
            AND r.author_kind = 'team'
@@ -314,7 +317,7 @@ BEGIN
            'resposta_nota', left(r.body, 280),
            r.author_kind = 'team', r.author_user_id, r.created_at
       FROM post_media_note_replies r
-      JOIN post_media_notes n ON n.id = r.note_id AND n.visibility = 'client'
+      JOIN post_media_notes n ON n.id = r.note_id AND n.visibility = 'client' AND n.conta_id = v_conta
       JOIN workflow_posts wp ON wp.id = n.post_id
      WHERE r.conta_id = v_conta
   ),

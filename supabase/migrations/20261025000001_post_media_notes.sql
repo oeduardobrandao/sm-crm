@@ -105,6 +105,8 @@ CREATE TABLE post_media_note_replies (
 );
 
 CREATE INDEX post_media_note_replies_note_idx ON post_media_note_replies (note_id);
+-- Branches de resposta das RPCs de Mensagens (filtro por workspace + recência).
+CREATE INDEX post_media_note_replies_conta_created_idx ON post_media_note_replies (conta_id, created_at);
 
 -- =====================================================================
 -- 3. post_approval_media_notes
