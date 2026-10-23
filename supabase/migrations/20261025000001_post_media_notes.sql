@@ -12,7 +12,7 @@
 --    nunca é gravado. Sem vínculo (arquivo trocado, apagado, relinkado em
 --    outro post) = versão anterior, rotulada pelo slide_index_at_creation.
 -- 5. triggers: updated_at, resolved_by/resolved_at na troca de status,
---    resposta do cliente reabre a nota
+--    nota com arquivo exige o vínculo no post, resposta do cliente reabre a nota
 -- 6. RLS e grants: o CRM lê as três tabelas, cria nota interna e resposta da
 --    equipe (INSERT por coluna, sem status/resolved_*/datas/hub_token), e só
 --    troca status. Nota e resposta de cliente entram pelo service
@@ -26,7 +26,8 @@
 -- Rollback:
 --   drop view post_media_notes_v;
 --   drop table post_approval_media_notes, post_media_note_replies, post_media_notes;
---   drop function post_media_notes_before_update(), post_media_note_reply_reopen();
+--   drop function post_media_notes_before_update(), post_media_note_reply_reopen(),
+--     post_media_notes_require_link();
 
 -- =====================================================================
 -- 1. post_media_notes
@@ -123,10 +124,13 @@ CREATE INDEX post_approval_media_notes_note_idx ON post_approval_media_notes (no
 -- security_invoker: quem lê continua sob o RLS de post_media_notes e de
 -- post_file_links. post_file_links é único em (post_id, file_id), então o
 -- casamento é inequívoco. Slide = posição 0-based por (sort_order, id) entre
--- os vínculos do post.
+-- os vínculos do post. Colunas explícitas: hub_token (credencial do Hub)
+-- nunca sai pela view.
 CREATE VIEW post_media_notes_v WITH (security_invoker = true) AS
 SELECT
-  n.*,
+  n.id, n.conta_id, n.post_id, n.file_id, n.slide_index_at_creation, n.media_kind,
+  n.t_seconds, n.x, n.y, n.visibility, n.author_kind, n.author_user_id, n.body,
+  n.status, n.resolved_by, n.resolved_at, n.created_at, n.updated_at,
   l.id                AS current_link_id,
   l.slide_index       AS current_slide_index,
   (l.id IS NULL)      AS is_previous_version
@@ -172,6 +176,34 @@ REVOKE ALL ON FUNCTION post_media_notes_before_update() FROM PUBLIC, anon, authe
 CREATE TRIGGER post_media_notes_before_update
   BEFORE UPDATE ON post_media_notes
   FOR EACH ROW EXECUTE FUNCTION post_media_notes_before_update();
+
+-- Nota nasce presa a uma mídia que está no post: com file_id, exige um
+-- post_file_links (post_id, file_id). Fecha o insert direto do authenticated
+-- (que pularia a validação de create_team_media_note). Só no INSERT: o
+-- arquivo trocado/removido depois é exatamente a "versão anterior".
+-- SECURITY INVOKER de propósito: o authenticated só enxerga vínculos do próprio
+-- workspace (RLS de post_file_links), então o erro não revela se um arquivo de
+-- outro workspace está num post de lá. Service role e RPCs DEFINER veem tudo.
+CREATE OR REPLACE FUNCTION post_media_notes_require_link()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF NEW.file_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM post_file_links
+     WHERE post_id = NEW.post_id AND file_id = NEW.file_id
+  ) THEN
+    RAISE EXCEPTION 'link_not_on_post';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION post_media_notes_require_link() FROM PUBLIC, anon, authenticated;
+
+CREATE TRIGGER post_media_notes_require_link
+  BEFORE INSERT ON post_media_notes
+  FOR EACH ROW EXECUTE FUNCTION post_media_notes_require_link();
 
 -- Resposta do cliente reabre a nota (o BEFORE UPDATE acima limpa resolved_*).
 -- Respostas de cliente só entram pelo service role, que escreve em
