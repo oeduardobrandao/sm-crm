@@ -26,6 +26,8 @@ export interface EligibleWorkspace {
   name: string;
   role: string;
   feature_mcp: boolean;
+  /** Escopos que o papel do usuário neste workspace permite conceder (o resto fica desabilitado). */
+  allowed_scopes: string[];
 }
 
 export interface EligibleResult {
@@ -61,9 +63,14 @@ export interface OAuthGrant {
   created_at: string;
   revoked_at: string | null;
   connected_by: string | null;
+  /** Conexão do próprio usuário: ele pode desconectá-la mesmo sem `configuracoes:editar`. */
+  mine: boolean;
 }
 
-/** Active + revoked Claude OAuth connections for the current workspace (owner/admin). */
+/**
+ * Claude OAuth connections for the current workspace: all of them with `configuracoes:ver`,
+ * otherwise only the caller's own.
+ */
 export function listOAuthGrants(): Promise<OAuthGrant[]> {
   return call<{ grants: OAuthGrant[] }>({ action: 'list-grants' }).then((d) => d.grants);
 }

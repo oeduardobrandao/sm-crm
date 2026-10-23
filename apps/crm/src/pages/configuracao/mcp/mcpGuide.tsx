@@ -21,6 +21,12 @@ export const CLIENT_TABS: { id: McpClient; label: string }[] = [
   { id: 'codex', label: 'Codex' },
 ];
 
+/** Page intro with `configuracoes:ver` (keys + every connection) vs. for any other member. */
+export const MANAGER_INTRO =
+  'Conecte Claude, ChatGPT ou Codex para ler clientes, posts e pautas deste workspace.';
+export const MEMBER_INTRO =
+  'Conecte o Claude ou o ChatGPT à sua conta. O assistente só acessa o que o seu papel permite neste workspace.';
+
 /** The Claude Desktop config block and the Claude Code command for a token. */
 export function buildConnectSnippets(token: string) {
   const desktopConfig = JSON.stringify(

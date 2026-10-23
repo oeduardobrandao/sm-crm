@@ -13,6 +13,27 @@ export const MCP_ALLOWED_SCOPES = [
 ] as const;
 export type McpScope = (typeof MCP_ALLOWED_SCOPES)[number];
 
+/**
+ * CRM permission each MCP scope needs from the user behind an OAuth grant. The MCP tools run
+ * service-role (scoped only by conta_id + scopes), so this map is what keeps a member from
+ * granting Claude more than their own role allows. Enforced at consent and on every request
+ * (permittedMcpScopes in mcp-oauth.ts). Workspace API keys don't go through it: creating a key
+ * already requires configuracoes:editar.
+ */
+export const MCP_SCOPE_PERMISSION: Record<McpScope, { module: string; action: "ver" | "editar" }> = {
+  "clientes:read": { module: "clientes", action: "ver" },
+  "clientes:write": { module: "clientes", action: "editar" },
+  "posts:read": { module: "entregas", action: "ver" },
+  "posts:write": { module: "entregas", action: "editar" },
+  "workflows:read": { module: "entregas", action: "ver" },
+  "templates:write": { module: "entregas", action: "editar" },
+  "ideias:read": { module: "ideias", action: "ver" },
+  "tarefas:read": { module: "tarefas", action: "ver" },
+  "tarefas:write": { module: "tarefas", action: "editar" },
+  "membros:read": { module: "equipe", action: "ver" },
+  "membros:write": { module: "equipe", action: "editar" },
+};
+
 /** Least-privilege preset for a content-writing agent (read-only). */
 export const MCP_AGENT_PRESET: McpScope[] = [
   "clientes:read", "posts:read", "workflows:read", "ideias:read", "tarefas:read", "membros:read",
