@@ -436,10 +436,44 @@ describe('PostMediaLightbox media notes', () => {
     );
   });
 
+  // A tap on the video must reach its own controls (play, pause, seek): before this, the
+  // capture layer covered the frame whenever the client could comment, so tapping play on a
+  // phone opened the composer instead of playing.
+  it('leaves the video to its controls until "Marcar um ponto" is pressed', () => {
+    renderVideo();
+    clock();
+    expect(screen.queryByRole('button', { name: HINT })).toBeNull();
+    const mark = screen.getByRole('button', { name: 'Marcar um ponto' });
+    expect(mark).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(mark);
+    expect(mark).toHaveAttribute('aria-pressed', 'true');
+    expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: HINT })).toBeInTheDocument();
+    fireEvent.click(mark);
+    expect(mark).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByRole('button', { name: HINT })).toBeNull();
+  });
+
+  it('goes back to playback mode after the spot comment is sent or cancelled', async () => {
+    renderVideo();
+    clock();
+    fireEvent.click(screen.getByRole('button', { name: 'Marcar um ponto' }));
+    const capture = screen.getByRole('button', { name: HINT });
+    pointer(capture, 'pointerdown', 200, 100);
+    pointer(capture, 'pointerup', 200, 100);
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancelar' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: HINT })).toBeNull());
+    expect(screen.getByRole('button', { name: 'Marcar um ponto' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
   it('tapping the frame pauses, places a pending pin and comments on the moment and spot', async () => {
     const { onCreateNote } = renderVideo();
     const c = clock();
     c.setTime(42);
+    fireEvent.click(screen.getByRole('button', { name: 'Marcar um ponto' }));
     const capture = screen.getByRole('button', { name: HINT });
     pointer(capture, 'pointerdown', 200, 100);
     pointer(capture, 'pointerup', 200, 100);

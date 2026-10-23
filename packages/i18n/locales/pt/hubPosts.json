@@ -282,6 +282,7 @@
     "statusResolved": "Resolvido",
     "comment": "Comentar",
     "commentWholeSlide": "Comentar o slide inteiro",
+    "markSpot": "Marcar um ponto",
     "commentAtMoment": "Comentar em {{time}}",
     "tapHint": "Toque na imagem para marcar um ponto",
     "composerPoint": "Comentário no ponto marcado do slide {{n}}",
