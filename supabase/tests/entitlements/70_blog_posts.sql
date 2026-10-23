@@ -9,7 +9,9 @@ begin;
 select et_grant_hosted_parity(array['blog_posts']);
 -- Defensive (as in 99_tarefa_series_rls): earlier suites may have committed ALL grants.
 revoke all on public.blog_posts from anon, authenticated;
-grant select on public.blog_posts to anon;
+grant select (id, slug, status, category, title, h1, description, lede, body_md,
+  cover_image, images, sources, feature_slug, author, date, updated, revision)
+  on public.blog_posts to anon;
 
 do $$
 declare
@@ -17,6 +19,7 @@ declare
   v_n bigint;
   v_rejected boolean;
   v_state text;
+  v_col text;
 begin
   foreach v_st in array array['rascunho','ajuste_solicitado','publicando','publicado','rejeitado','despublicado'] loop
     insert into blog_posts (slug, status, category, title, h1, description, sources)
@@ -26,10 +29,19 @@ begin
 
   -- ---- anon ----
   execute 'set local role anon';
-  select count(*) into v_n from blog_posts;
+  select count(*) into v_n from blog_posts where true;
   assert v_n = 2, format('anon saw %s rows, expected 2', v_n);
   select count(*) into v_n from blog_posts where status not in ('publicando','publicado');
   assert v_n = 0, 'anon saw a non-public status';
+
+  perform slug, revision from blog_posts;
+  foreach v_col in array array['revision_note','approved_by','checks','created_at'] loop
+    v_state := null;
+    begin
+      execute format('select %I from blog_posts', v_col);
+    exception when others then v_state := sqlstate; end;
+    assert v_state = '42501', format('anon select %s: expected 42501, got %s', v_col, v_state);
+  end loop;
 
   v_state := null;
   begin
@@ -59,8 +71,7 @@ begin
   begin
     select count(*) into v_n from blog_posts;
   exception when others then v_state := sqlstate; end;
-  assert v_state = '42501' or v_n = 0,
-    format('authenticated read rows: state=%s n=%s', v_state, v_n);
+  assert v_state = '42501', format('authenticated read: expected 42501, got %s', v_state);
 
   v_state := null;
   begin
@@ -133,7 +144,9 @@ begin
   exception when others then v_state := sqlstate; end;
   assert v_state = '23505', format('slug duplicado: expected 23505, got %s', v_state);
 
-  -- ---- bucket ----
+  -- ---- bucket (no SELECT policy on storage.objects) ----
+  assert not exists (select 1 from pg_policies where schemaname='storage' and tablename='objects' and policyname='blog_images_public_read'), 'blog images list policy exists';
+
   assert exists (select 1 from storage.buckets where id = 'blog-images' and public
                  and file_size_limit = 10485760
                  and allowed_mime_types = array['image/jpeg','image/png','image/webp','image/gif']),

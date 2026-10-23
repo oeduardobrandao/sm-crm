@@ -62,7 +62,10 @@ alter table public.blog_posts enable row level security;
 
 -- FROM PUBLIC não cobre anon/authenticated (grants diretos do default ACL do Supabase).
 revoke all on public.blog_posts from anon, authenticated;
-grant select on public.blog_posts to anon;
+-- Column-level: anon (the Vercel build) must not see internal columns.
+grant select (id, slug, status, category, title, h1, description, lede, body_md,
+  cover_image, images, sources, feature_slug, author, date, updated, revision)
+  on public.blog_posts to anon;
 grant all on public.blog_posts to service_role;
 
 create policy blog_posts_public_read on public.blog_posts
@@ -81,8 +84,5 @@ on conflict (id) do update
   set public = excluded.public,
       allowed_mime_types = excluded.allowed_mime_types,
       file_size_limit = excluded.file_size_limit;
-
-drop policy if exists "blog_images_public_read" on storage.objects;
-create policy "blog_images_public_read"
-  on storage.objects for select
-  using (bucket_id = 'blog-images');
+-- Sem policy SELECT em storage.objects: o bucket público serve /object/public/ sem ela,
+-- e com ela qualquer um listaria imagens de rascunhos.
