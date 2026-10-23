@@ -100,7 +100,9 @@ export function MediaNotesList({ notes, canReply, onJump, onReply }: Props) {
               <button
                 type="button"
                 onClick={() => onJump(n)}
-                className="hub-bg-soft hub-txt min-h-[32px] rounded-full px-3 text-[12px] font-semibold"
+                // A previous-version note has no slide to go to.
+                disabled={n.is_previous_version}
+                className="hub-bg-soft hub-txt min-h-[32px] rounded-full px-3 text-[12px] font-semibold disabled:cursor-default"
               >
                 {anchorLabel(n, t, numbers.get(n.id))}
               </button>

@@ -118,6 +118,11 @@ describe('MediaNotesList', () => {
     expect(onJump).toHaveBeenCalledWith(n);
   });
 
+  it('the anchor chip of a previous-version note is disabled', () => {
+    setup([note({ link_id: null, is_previous_version: true, x: null, y: null })]);
+    expect(screen.getByRole('button', { name: 'Slide 3 (versão anterior)' })).toBeDisabled();
+  });
+
   it('numbers pinned notes per slide in the chip', () => {
     setup([note({ id: 1 }), note({ id: 2, body: 'Outra', created_at: '2026-10-23T00:01:00Z' })]);
     expect(screen.getByRole('button', { name: 'Slide 3 · ponto 1' })).toBeTruthy();
