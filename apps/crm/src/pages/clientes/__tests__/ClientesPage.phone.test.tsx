@@ -34,6 +34,10 @@ vi.mock('react-router-dom', async () => {
 vi.mock('sonner', () => ({ toast: { success: toastSuccessMock, error: vi.fn() } }));
 vi.mock('../../../lib/csv', () => ({ openCSVSelector: openCSVSelectorMock }));
 vi.mock('../../../lib/supabase');
+const v2 = vi.hoisted(() => ({ ativo: false }));
+vi.mock('@/hooks/useFinanceiroV2', () => ({
+  useFinanceiroV2: () => ({ ativo: v2.ativo, isLoading: false }),
+}));
 
 vi.mock('../../../context/AuthContext', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../context/AuthContext')>();
@@ -162,6 +166,7 @@ beforeEach(() => {
   isAtLimitMock.mockReset().mockReturnValue(false);
   hasFeatureMock.mockReset().mockReturnValue(true);
   limitsRef.current = null;
+  v2.ativo = false;
   mockUseAuth.mockReset().mockReturnValue({ canSeeFinancials: true, can: () => true });
   mockedGetClientes.mockReset().mockResolvedValue(THREE);
   mockedAddCliente.mockReset().mockImplementation(async (p) => ({ id: 99, ...p }) as store.Cliente);
@@ -325,6 +330,30 @@ describe('ClientesPage on phones', () => {
     expect(screen.getByRole('alertdialog')).toHaveTextContent('Remover este cliente?');
     fireEvent.click(screen.getByRole('button', { name: 'Sim' }));
     await waitFor(() => expect(mockedRemoveCliente).toHaveBeenCalledWith(1));
+  });
+
+  it('hides the status, fee and payment-day rows of the edit form with Financeiro v2 on', async () => {
+    renderPage();
+    await screen.findByText('Carla Care');
+    fireEvent.click(screen.getByRole('button', { name: 'Mais ações de Carla Care' }));
+    let menu = await screen.findByRole('menu', { name: 'Ações do cliente' });
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Editar' }));
+    await screen.findByRole('heading', { name: 'Editar Cliente' });
+    expect(screen.getByLabelText('Status')).toBeInTheDocument();
+    expect(screen.getByLabelText('Dia de Pagamento (1-31)')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+    v2.ativo = true;
+    fireEvent.click(screen.getByRole('button', { name: 'Mais ações de Carla Care' }));
+    menu = await screen.findByRole('menu', { name: 'Ações do cliente' });
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Editar' }));
+    await screen.findByRole('heading', { name: 'Editar Cliente' });
+    expect(screen.queryByLabelText('Status')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Valor Mensal (R$)')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Dia de Pagamento (1-31)')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'A mensalidade e o status agora ficam na aba Financeiro.' }),
+    ).toBeVisible();
   });
 
   it('puts Editar and Remover behind the swipe (and Notion on the leading side)', async () => {

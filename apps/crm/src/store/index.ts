@@ -3,6 +3,7 @@ export * from './workspace';
 export * from './roles';
 export * from './clients';
 export * from './finance';
+export * from './financeiroV2';
 export * from './team';
 export * from './integrations';
 export * from './leads';

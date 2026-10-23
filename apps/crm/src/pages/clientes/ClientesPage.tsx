@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import {
@@ -95,6 +95,7 @@ import { useOpenParam } from '../../hooks/useOpenParam';
 import { FeatureGate } from '@/components/paywall/FeatureGate';
 import { captureEvent } from '@/lib/analytics';
 import { useAuth } from '../../context/AuthContext';
+import { useFinanceiroV2 } from '@/hooks/useFinanceiroV2';
 import { assertNoFinancialColumns, stripFinancialFields } from '@/lib/financialAccess';
 import { ClientesPhone } from './phone/ClientesPhone';
 import { ClienteFormPhoneFields } from './phone/ClienteFormPhoneFields';
@@ -153,6 +154,12 @@ export default function ClientesPage() {
   const [editing, setEditing] = useState<Cliente | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  // With Financeiro v2 a client's fee, payment day and status are versioned in its
+  // Financeiro tab ("Vale a partir de"): the edit form neither shows nor writes them (a
+  // legacy write would become a version at the current period's start). The create form
+  // keeps them: a new client's first version comes from the insert.
+  const { ativo: v2Ativo } = useFinanceiroV2();
+  const noFinanceiro = v2Ativo && canSeeFinancials === true;
 
   // The edit/add modal can hold a valor_mensal value in its form state. On
   // live revocation, close it rather than let the value linger on screen.
@@ -245,10 +252,14 @@ export default function ClientesPage() {
           data_pagamento: diaPag,
           status: values.status,
         };
-        await updateCliente(
-          editing.id,
-          stripFinancialFields(payload, canSeeFinancials, ['valor_mensal']),
-        );
+        const stripped = stripFinancialFields(payload, canSeeFinancials, ['valor_mensal']);
+        // Omit the keys (not undefined): the hidden fields still hold the old values.
+        if (noFinanceiro) {
+          delete stripped.status;
+          delete stripped.valor_mensal;
+          delete stripped.data_pagamento;
+        }
+        await updateCliente(editing.id, stripped);
         toast.success(t('toast.updated'));
       } else {
         const randomColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
@@ -824,7 +835,7 @@ export default function ClientesPage() {
                       </FormItem>
                     )}
                   />
-                  {canSeeFinancials === true && (
+                  {canSeeFinancials === true && !(editing && noFinanceiro) && (
                     <FormField
                       control={form.control}
                       name="valor"
@@ -839,20 +850,22 @@ export default function ClientesPage() {
                       )}
                     />
                   )}
-                  <FormField
-                    control={form.control}
-                    name="diaPag"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('form.paymentDay')}</FormLabel>
-                        <FormControl>
-                          <Input type="number" min={1} max={31} {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  {editing && (
+                  {!(editing && noFinanceiro) && (
+                    <FormField
+                      control={form.control}
+                      name="diaPag"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('form.paymentDay')}</FormLabel>
+                          <FormControl>
+                            <Input type="number" min={1} max={31} {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+                  {editing && !noFinanceiro && (
                     <FormField
                       control={form.control}
                       name="status"
@@ -880,9 +893,21 @@ export default function ClientesPage() {
               ) : (
                 <ClienteFormPhoneFields
                   form={form}
-                  showValor={canSeeFinancials === true}
-                  showStatus={!!editing}
+                  showValor={canSeeFinancials === true && !(editing && noFinanceiro)}
+                  showStatus={!!editing && !noFinanceiro}
+                  showDiaPag={!(editing && noFinanceiro)}
                 />
+              )}
+              {editing?.id != null && noFinanceiro && (
+                <p className="text-sm text-muted-foreground">
+                  <Link
+                    to={`/clientes/${editing.id}/financeiro`}
+                    className="underline"
+                    onClick={() => setModalOpen(false)}
+                  >
+                    {t('form.statusNoFinanceiro')}
+                  </Link>
+                </p>
               )}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>

@@ -59,3 +59,25 @@ describe('mapEntitlementError feature_multiplatform', () => {
     });
   });
 });
+
+describe('mapEntitlementError keys with digits', () => {
+  it('reads the whole feature_financeiro_v2 key and labels it', () => {
+    expect(
+      mapEntitlementError({
+        message: 'feature_disabled:feature_financeiro_v2',
+      }),
+    ).toEqual({
+      kind: 'feature',
+      key: 'feature_financeiro_v2',
+      label: 'Financeiro v2 (rentabilidade)',
+    });
+  });
+
+  it('reads a limit key with digits whole', () => {
+    expect(mapEntitlementError({ message: 'plan_limit_exceeded:max_v2_items' })).toEqual({
+      kind: 'limit',
+      key: 'max_v2_items',
+      label: 'max_v2_items',
+    });
+  });
+});

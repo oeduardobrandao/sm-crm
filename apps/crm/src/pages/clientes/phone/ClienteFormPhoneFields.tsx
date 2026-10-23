@@ -30,10 +30,13 @@ export function ClienteFormPhoneFields({
   form,
   showValor,
   showStatus,
+  showDiaPag = true,
 }: {
   form: UseFormReturn<ClienteFormPhoneValues>;
   showValor: boolean;
   showStatus: boolean;
+  /** Off when the payment day lives in the client's Financeiro tab (Financeiro v2). */
+  showDiaPag?: boolean;
 }) {
   const { t } = useTranslation('clients');
   const { t: tc } = useTranslation();
@@ -77,17 +80,19 @@ export function ClienteFormPhoneFields({
             error={errors.valor?.message}
           />
         )}
-        <FormRow
-          label={t('form.paymentDay')}
-          input={{
-            ...form.register('diaPag'),
-            type: 'number',
-            min: 1,
-            max: 31,
-            inputMode: 'numeric',
-          }}
-          error={errors.diaPag?.message}
-        />
+        {showDiaPag && (
+          <FormRow
+            label={t('form.paymentDay')}
+            input={{
+              ...form.register('diaPag'),
+              type: 'number',
+              min: 1,
+              max: 31,
+              inputMode: 'numeric',
+            }}
+            error={errors.diaPag?.message}
+          />
+        )}
         {showStatus && (
           <FormRow label={t('form.status')}>
             {(field) => (
