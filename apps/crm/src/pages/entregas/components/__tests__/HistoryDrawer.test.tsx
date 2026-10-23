@@ -1,6 +1,6 @@
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render as rtlRender, screen, waitFor } from '@testing-library/react';
+import { render as rtlRender, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Workflow, WorkflowEvent } from '@/store';
 
@@ -24,6 +24,9 @@ vi.mock('@/store', async (importOriginal) => {
     getPostStatusDefinitions: vi.fn(),
   };
 });
+
+// The rich-text editor needs a Router and TipTap; this suite only cares about the sections around it.
+vi.mock('../PostEditor', () => ({ PostEditor: () => null }));
 
 function ev(partial: Partial<WorkflowEvent>): WorkflowEvent {
   return {
@@ -97,5 +100,63 @@ describe('HistoryDrawer — Histórico section', () => {
       expect(screen.getByText('Posts (0)')).toBeInTheDocument();
     });
     expect(screen.queryByText('Histórico')).not.toBeInTheDocument();
+  });
+});
+
+describe('HistoryDrawer: discussão da equipe (somente leitura)', () => {
+  const post = { id: 7, titulo: 'Post com discussão', tipo: 'feed', status: 'rascunho' };
+  const geral = {
+    id: 1,
+    post_id: 7,
+    conta_id: 'conta-1',
+    quoted_text: '',
+    status: 'active',
+    created_by: 'user-1',
+    resolved_by: null,
+    created_at: '2026-06-01T10:00:00Z',
+    resolved_at: null,
+    field: 'geral',
+    anchor_start: null,
+    anchor_end: null,
+    orphaned: false,
+    post_comments: [
+      {
+        id: 100,
+        thread_id: 1,
+        author_id: 'user-1',
+        content: 'Vamos trocar a capa',
+        created_at: '2026-06-01T10:00:00Z',
+        updated_at: null,
+      },
+    ],
+  };
+
+  beforeEach(async () => {
+    const store = await import('@/store');
+    (store.getWorkflowEtapas as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+    (store.getWorkflowPostsWithProperties as ReturnType<typeof vi.fn>)
+      .mockReset()
+      .mockResolvedValue([post]);
+    (store.getMembros as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+    (store.getPostApprovals as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+    (store.getPostCommentThreads as ReturnType<typeof vi.fn>)
+      .mockReset()
+      .mockResolvedValue([geral]);
+    (store.getPostStatusDefinitions as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+    (store.getWorkflowEvents as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+  });
+
+  it('shows the geral thread messages with no composer, bell or chat bridge, and keeps the summary free of it', async () => {
+    render(<HistoryDrawer workflow={workflow} onClose={() => {}} />);
+
+    fireEvent.click(await screen.findByText('Post com discussão'));
+
+    expect(await screen.findByText('Vamos trocar a capa')).toBeInTheDocument();
+    expect(screen.getByText('Discussão da equipe')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/Escreva para a equipe/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Seguir|Seguindo/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Discutir no chat/)).not.toBeInTheDocument();
+    // PostCommentSummary ignores the geral thread: no "Comentários internos" block.
+    expect(screen.queryByText('Comentários internos')).not.toBeInTheDocument();
   });
 });

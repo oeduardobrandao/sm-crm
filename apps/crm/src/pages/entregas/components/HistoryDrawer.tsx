@@ -1,6 +1,15 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, ChevronDown, ChevronRight, MessageSquare, Check, Flag } from 'lucide-react';
+import {
+  X,
+  ChevronDown,
+  ChevronRight,
+  MessageSquare,
+  MessagesSquare,
+  Check,
+  Flag,
+  Lock,
+} from 'lucide-react';
 import {
   getWorkflowEtapas,
   getWorkflowPostsWithProperties,
@@ -14,7 +23,12 @@ import {
   type PostApproval,
   type PostPropertyValue,
   type CommentThreadWithComments,
+  type Membro,
 } from '../../../store';
+import { isGeralThread } from '@/store/comments';
+import { Badge } from '@/components/ui/badge';
+import { DiscussaoTimeline } from '../discussao/DiscussaoEquipe';
+import { buildTimeline } from '../discussao/timeline';
 import { computeDeadlineDate } from '../hooks/useEntregasData';
 import { PostEditor } from './PostEditor';
 import { PropertyPanel } from './PropertyPanel';
@@ -254,6 +268,11 @@ export function HistoryDrawer({
                       membros={membros}
                     />
 
+                    <HistoryDiscussao
+                      threads={commentThreads.filter((t) => t.post_id === post.id)}
+                      membros={membros}
+                    />
+
                     <PostCommentSummary
                       threads={commentThreads.filter((t) => t.post_id === post.id)}
                       membros={membros}
@@ -314,6 +333,50 @@ export function HistoryDrawer({
         {body}
       </div>
     </>
+  );
+}
+
+/**
+ * The post's general team discussion, read-only: messages only, no composer, bell, chat
+ * bridge, read marker or realtime. Passage threads stay in the PostCommentSummary below.
+ */
+function HistoryDiscussao({
+  threads,
+  membros,
+}: {
+  threads: CommentThreadWithComments[];
+  membros: Membro[];
+}) {
+  const items = useMemo(
+    () =>
+      buildTimeline({
+        threads: threads.filter(isGeralThread),
+        lastSeenCommentId: null,
+        currentUserId: '',
+        now: new Date(),
+      }),
+    [threads],
+  );
+  if (items.length === 0) return null;
+
+  return (
+    <section className="discussao" aria-label="Discussão da equipe">
+      <div className="discussao-header">
+        <MessagesSquare className="discussao-header-icon h-4 w-4" aria-hidden="true" />
+        <h3 className="discussao-title">Discussão da equipe</h3>
+        <Badge variant="neutral" size="sm" className="discussao-badge">
+          <Lock className="h-3 w-3" aria-hidden="true" />
+          Só a equipe vê
+        </Badge>
+      </div>
+      <DiscussaoTimeline
+        items={items}
+        membros={membros}
+        workspaceUsers={[]}
+        currentUserId=""
+        onThreadClick={() => {}}
+      />
+    </section>
   );
 }
 
