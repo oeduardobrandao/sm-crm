@@ -208,14 +208,14 @@ vi.mock('@/pages/entregas/components/PostCommentSummary', () => ({
 // stub both, they have their own suites.
 vi.mock('@/pages/entregas/discussao/DiscussaoEquipe', () => ({
   DiscussaoEquipe: ({
-    autoFocus,
-    onAutoFocused,
+    focusRequest,
+    onFocusHandled,
   }: {
-    autoFocus?: boolean;
-    onAutoFocused?: () => void;
+    focusRequest?: number;
+    onFocusHandled?: () => void;
   }) => (
-    <div data-testid="discussao-equipe-stub" data-autofocus={String(!!autoFocus)}>
-      <button type="button" onClick={onAutoFocused}>
+    <div data-testid="discussao-equipe-stub" data-autofocus={String(!!focusRequest)}>
+      <button type="button" onClick={onFocusHandled}>
         stub focused
       </button>
     </div>
@@ -319,7 +319,7 @@ function renderDrawer(
     onClose?: () => void;
     onRefresh?: () => void;
     initialPostId?: number;
-    focusDiscussao?: boolean;
+    focusRequest?: number;
     onDiscussaoFocused?: () => void;
     onOpenWorkflow?: (workflowId: number) => void;
     onDetachedKeepingProcess?: (postIds: number[]) => void;
@@ -364,21 +364,27 @@ function renderDrawer(
     ...overrides.card,
   } as unknown as BoardCard;
 
-  return render(
+  const onClose = overrides.onClose ?? vi.fn();
+  const onRefresh = overrides.onRefresh ?? vi.fn();
+  const tree = (o: typeof overrides) => (
     <QueryClientProvider client={qc}>
       <WorkflowDrawer
         card={card}
         membros={[]}
-        onClose={overrides.onClose ?? vi.fn()}
-        onRefresh={overrides.onRefresh ?? vi.fn()}
-        initialPostId={overrides.initialPostId ?? 1}
-        focusDiscussao={overrides.focusDiscussao}
-        onDiscussaoFocused={overrides.onDiscussaoFocused}
-        onOpenWorkflow={overrides.onOpenWorkflow}
-        onDetachedKeepingProcess={overrides.onDetachedKeepingProcess}
+        onClose={onClose}
+        onRefresh={onRefresh}
+        initialPostId={o.initialPostId ?? 1}
+        focusRequest={o.focusRequest}
+        onDiscussaoFocused={o.onDiscussaoFocused}
+        onOpenWorkflow={o.onOpenWorkflow}
+        onDetachedKeepingProcess={o.onDetachedKeepingProcess}
       />
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const utils = render(tree(overrides));
+  /** Re-renders the SAME drawer instance with other props (no remount). */
+  const rerenderWith = (o: typeof overrides) => utils.rerender(tree({ ...overrides, ...o }));
+  return { ...utils, rerenderWith };
 }
 
 // mockFeatures is set true only inside the "handleDetachedKeepingProcess" describe
@@ -1476,7 +1482,7 @@ describe('WorkflowDrawer discussao=1 deep link', () => {
 
   it('hands the focus request to the linked post only, expanded, and relays the report', async () => {
     const onDiscussaoFocused = vi.fn();
-    renderDrawer(qcNew(), { initialPostId: 2, focusDiscussao: true, onDiscussaoFocused });
+    renderDrawer(qcNew(), { initialPostId: 2, focusRequest: 1, onDiscussaoFocused });
     await screen.findByText('Post 2');
     // Only the linked post is expanded, so it is the only row with a discussion section.
     const stubs = await screen.findAllByTestId('discussao-equipe-stub');
@@ -1484,6 +1490,19 @@ describe('WorkflowDrawer discussao=1 deep link', () => {
     expect(stubs[0]).toHaveAttribute('data-autofocus', 'true');
     fireEvent.click(screen.getByRole('button', { name: 'stub focused' }));
     expect(onDiscussaoFocused).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-expands a collapsed linked post on a new request, without remounting', async () => {
+    const { rerenderWith } = renderDrawer(qcNew(), { initialPostId: 2, focusRequest: 1 });
+    expect(await screen.findAllByTestId('discussao-equipe-stub')).toHaveLength(1);
+
+    // The user collapses the post (its row toggle is the post title).
+    fireEvent.click(screen.getByText('Post 2'));
+    await waitFor(() => expect(screen.queryByTestId('discussao-equipe-stub')).toBeNull());
+
+    rerenderWith({ focusRequest: 2 });
+    const stub = await screen.findByTestId('discussao-equipe-stub');
+    expect(stub).toHaveAttribute('data-autofocus', 'true');
   });
 
   it('does not ask for focus without the flag', async () => {

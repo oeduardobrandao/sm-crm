@@ -256,7 +256,7 @@ describe('PhoneComments discussao=1 deep link', () => {
   const clientNewest = [approval(1, true, at(9, 0)), approval(2, false, at(10, 0))];
 
   it('opens on Equipe even though the newest message is the client, without focusing', () => {
-    setup({ approvals: clientNewest, focusEquipe: true });
+    setup({ approvals: clientNewest, focusRequest: 1 });
     expect(equipePill()).toHaveAttribute('aria-pressed', 'true');
     expect(clientePill()).toHaveAttribute('aria-pressed', 'false');
     // No keyboard on the phone: nothing in the tab takes focus.
@@ -265,7 +265,7 @@ describe('PhoneComments discussao=1 deep link', () => {
 
   it('is not overridden when the participation loads after mount', () => {
     const loading = fakeDiscussao({ participacao: undefined, isParticipant: false });
-    const props = { approvals: clientNewest, focusEquipe: true };
+    const props = { approvals: clientNewest, focusRequest: 1 };
     const { rerender } = render(<PhoneComments {...build(props, loading)} />, {
       wrapper: Wrapper,
     });
@@ -277,6 +277,19 @@ describe('PhoneComments discussao=1 deep link', () => {
       <PhoneComments {...build({ approvals: clientNewest }, fakeDiscussao({ naoLidas: 0 }))} />,
     );
     expect(equipePill()).toHaveAttribute('aria-pressed', 'true');
+  });
+});
+
+describe('PhoneComments discussao=1 re-link while open', () => {
+  it('moves from Cliente back to Equipe when a new request arrives', () => {
+    const approvals = [approval(1, true, at(9, 0)), approval(2, false, at(10, 0))];
+    const { rerender } = render(<PhoneComments {...build({ approvals }, fakeDiscussao())} />, {
+      wrapper: Wrapper,
+    });
+    expect(clientePill()).toHaveAttribute('aria-pressed', 'true');
+    rerender(<PhoneComments {...build({ approvals, focusRequest: 3 }, fakeDiscussao())} />);
+    expect(equipePill()).toHaveAttribute('aria-pressed', 'true');
+    expect(document.body).toHaveFocus();
   });
 });
 

@@ -70,8 +70,9 @@ interface PhoneCommentsProps {
   /** Only the visible tab owns the bottom bar slot (the composer). */
   active: boolean;
   /** `&discussao=1` deep link: open on Equipe whatever the unread/participation state says.
-   *  Never focuses the composer: the keyboard must not pop. */
-  focusEquipe?: boolean;
+   *  Never focuses the composer: the keyboard must not pop. A counter: acts at mount and
+   *  whenever it changes to a new non-zero value (a link while the editor is open). */
+  focusRequest?: number;
 }
 
 /**
@@ -101,22 +102,27 @@ export function PhoneComments({
   onThreadClick,
   suggestion,
   active,
-  focusEquipe,
+  focusRequest,
 }: PhoneCommentsProps) {
   const naoLidasEquipe = discussao.naoLidas;
   const [channel, setChannel] = useState<Channel>(() =>
-    focusEquipe ? 'equipe' : defaultChannel(naoLidasEquipe, approvals),
+    focusRequest ? 'equipe' : defaultChannel(naoLidasEquipe, approvals),
   );
   // The unread count is only meaningful once the participation has loaded, which is after
   // mount on a cold cache: decide again exactly once at that point. After that (or after a
   // tap on a pill) the choice is the user's, so reading the unread messages, which drops
   // the count to 0, never moves them.
-  const settledRef = useRef(focusEquipe || discussao.participacao !== undefined);
+  const settledRef = useRef(!!focusRequest || discussao.participacao !== undefined);
   useEffect(() => {
     if (settledRef.current || discussao.participacao === undefined) return;
     settledRef.current = true;
     setChannel(defaultChannel(discussao.naoLidas, approvals));
   }, [discussao.participacao, discussao.naoLidas, approvals]);
+  useEffect(() => {
+    if (!focusRequest) return;
+    settledRef.current = true;
+    setChannel('equipe');
+  }, [focusRequest]);
   const pick = (next: Channel) => {
     settledRef.current = true;
     setChannel(next);

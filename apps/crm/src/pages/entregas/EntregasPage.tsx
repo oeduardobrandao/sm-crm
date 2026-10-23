@@ -289,8 +289,10 @@ export default function EntregasPage() {
   const [standalonePostId, setStandalonePostId] = useState<number | null>(null);
   // `&discussao=1` deep link: the post whose team discussion the open drawer must scroll to
   // and focus. Cleared by the drawer once it handled it, so reopening the post by hand later
-  // does not steal focus again. `discussaoNonce` re-keys the drawers per such link, so a
-  // link to the post that is already open still expands it and runs the focus again.
+  // does not steal focus again. `discussaoNonce` counts such links and reaches the drawers
+  // as `focusRequest`: a link to the post that is already open changes the counter, so the
+  // open drawer expands the post and focuses again WITHOUT remounting (a remount would drop
+  // the typed drafts and unsaved edits).
   const [discussaoFocusPostId, setDiscussaoFocusPostId] = useState<number | null>(null);
   const [discussaoNonce, setDiscussaoNonce] = useState(0);
   const clearDiscussaoFocus = useCallback(() => setDiscussaoFocusPostId(null), []);
@@ -2293,11 +2295,13 @@ export default function EntregasPage() {
         )}
         {drawerCard && (
           <WorkflowDrawer
-            key={`${drawerCard.workflow.id}:${drawerInitialPostId ?? ''}:${discussaoNonce}`}
+            key={`${drawerCard.workflow.id}:${drawerInitialPostId ?? ''}`}
             card={drawerCard}
             initialPostId={drawerInitialPostId ?? undefined}
-            focusDiscussao={
+            focusRequest={
               drawerInitialPostId != null && discussaoFocusPostId === drawerInitialPostId
+                ? discussaoNonce
+                : 0
             }
             onDiscussaoFocused={clearDiscussaoFocus}
             membros={membros}
@@ -2338,9 +2342,9 @@ export default function EntregasPage() {
         )}
         {standalonePostId != null && (
           <StandalonePostDrawer
-            key={`${standalonePostId}:${discussaoNonce}`}
+            key={standalonePostId}
             postId={standalonePostId}
-            focusDiscussao={discussaoFocusPostId === standalonePostId}
+            focusRequest={discussaoFocusPostId === standalonePostId ? discussaoNonce : 0}
             onDiscussaoFocused={clearDiscussaoFocus}
             membros={membros}
             onClose={() => {

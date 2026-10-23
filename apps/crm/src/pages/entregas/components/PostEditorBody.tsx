@@ -196,10 +196,11 @@ export interface PostEditorBodyProps {
   /**
    * `&discussao=1` deep link, set only for the post the link names. Desktop: scroll to the
    * team discussion and focus its composer. Phone: open Comentários on Equipe, without
-   * focusing (no keyboard). Read at mount; `onDiscussaoFocused` then tells the host it was
-   * applied so a later reopen of the post does not repeat it.
+   * focusing (no keyboard). A counter: acts on mount and whenever it changes to a new
+   * non-zero value (a link to the already-open post), so no remount is needed;
+   * `onDiscussaoFocused` then tells the host it was applied.
    */
-  focusDiscussao?: boolean;
+  focusRequest?: number;
   onDiscussaoFocused?: () => void;
 }
 
@@ -244,7 +245,7 @@ export function PostEditorBody({
   onProcessAvancar,
   layout = 'desktop',
   phone,
-  focusDiscussao,
+  focusRequest,
   onDiscussaoFocused,
 }: PostEditorBodyProps) {
   const isPhone = layout === 'phone' && phone != null;
@@ -490,15 +491,18 @@ export function PostEditorBody({
 
   // ── Phone layout state (hooks run on every layout; only the phone branch reads them) ──
   const [phoneTab, setPhoneTab] = useState<PhoneEditorTab>(
-    isPhone && focusDiscussao ? 'comentarios' : 'conteudo',
+    isPhone && focusRequest ? 'comentarios' : 'conteudo',
   );
-  // The phone has nothing to scroll or focus: the initial tab above (and the Equipe pill in
-  // PhoneComments) is the whole deep link, so it is handled as soon as it mounted.
+  // The phone has nothing to scroll or focus: the Comentários tab (and the Equipe pill in
+  // PhoneComments) is the whole deep link, so it is handled as soon as it is applied. The
+  // initial tab above covers the mount; this covers a new link while the editor is open.
   const onDiscussaoFocusedRef = useRef(onDiscussaoFocused);
   onDiscussaoFocusedRef.current = onDiscussaoFocused;
   useEffect(() => {
-    if (isPhone && focusDiscussao) onDiscussaoFocusedRef.current?.();
-  }, [isPhone, focusDiscussao]);
+    if (!isPhone || !focusRequest) return;
+    setPhoneTab('comentarios');
+    onDiscussaoFocusedRef.current?.();
+  }, [isPhone, focusRequest]);
   const [roteiroOpen, setRoteiroOpen] = useState(false);
   const [captionScreenOpen, setCaptionScreenOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -1195,7 +1199,7 @@ export function PostEditorBody({
             : null
         }
         active={phoneTab === 'comentarios'}
-        focusEquipe={focusDiscussao}
+        focusRequest={focusRequest}
       />
     );
 
@@ -1674,8 +1678,8 @@ export function PostEditorBody({
           membros={membros}
           workspaceUsers={workspaceUsers}
           currentUserId={currentUserId}
-          autoFocus={focusDiscussao}
-          onAutoFocused={onDiscussaoFocused}
+          focusRequest={focusRequest}
+          onFocusHandled={onDiscussaoFocused}
           chatBridge={
             <DiscutirNoChat
               variant="popover"

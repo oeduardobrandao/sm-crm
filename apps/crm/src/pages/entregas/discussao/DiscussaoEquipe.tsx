@@ -426,10 +426,11 @@ export interface DiscussaoEquipeProps {
   onThreadClick: (threadId: number) => void;
   /** "Discutir no chat" control; rendered only on plans with the team chat. */
   chatBridge?: ReactNode;
-  /** Deep link (`&discussao=1`): scroll the section into view and focus the composer. */
-  autoFocus?: boolean;
-  /** Fires once, after `autoFocus` was applied. */
-  onAutoFocused?: () => void;
+  /** Deep link (`&discussao=1`): scroll the section into view and focus the composer. A counter: acts at
+   *  mount and whenever it changes to a new non-zero value, no remount needed. */
+  focusRequest?: number;
+  /** Fires once per request, after it was applied. */
+  onFocusHandled?: () => void;
 }
 
 /**
@@ -444,8 +445,8 @@ export function DiscussaoEquipe({
   currentUserId,
   onThreadClick,
   chatBridge,
-  autoFocus,
-  onAutoFocused,
+  focusRequest,
+  onFocusHandled,
 }: DiscussaoEquipeProps) {
   const titleId = useId();
   const sectionRef = useRef<HTMLElement>(null);
@@ -472,17 +473,17 @@ export function DiscussaoEquipe({
   // Deep link: reveal the section and put the caret in the composer. Next frame, so the
   // drawer's own "scroll the opened post to the top" (same commit) has already run and
   // this scroll wins; the editor handle only focuses once its view is mounted.
-  const onAutoFocusedRef = useRef(onAutoFocused);
-  onAutoFocusedRef.current = onAutoFocused;
+  const onFocusHandledRef = useRef(onFocusHandled);
+  onFocusHandledRef.current = onFocusHandled;
   useEffect(() => {
-    if (!autoFocus) return;
+    if (!focusRequest) return;
     const frame = requestAnimationFrame(() => {
       sectionRef.current?.scrollIntoView?.({ block: 'nearest' });
       editorRef.current?.focus();
-      onAutoFocusedRef.current?.();
+      onFocusHandledRef.current?.();
     });
     return () => cancelAnimationFrame(frame);
-  }, [autoFocus, editorRef]);
+  }, [focusRequest, editorRef]);
 
   return (
     <section ref={sectionRef} className="discussao" aria-labelledby={titleId}>

@@ -148,8 +148,8 @@ function setup(
     discussao?: Partial<UseDiscussaoResult>;
     threads?: CommentThreadWithComments[];
     chatBridge?: ReactNode;
-    autoFocus?: boolean;
-    onAutoFocused?: () => void;
+    focusRequest?: number;
+    onFocusHandled?: () => void;
   } = {},
 ) {
   const discussao = fakeDiscussao(over.discussao);
@@ -162,8 +162,8 @@ function setup(
     currentUserId: ME,
     onThreadClick,
     chatBridge: over.chatBridge,
-    autoFocus: over.autoFocus,
-    onAutoFocused: over.onAutoFocused,
+    focusRequest: over.focusRequest,
+    onFocusHandled: over.onFocusHandled,
   };
   const utils = render(<DiscussaoEquipe {...props} />, { wrapper: Wrapper });
   return { ...utils, discussao, onThreadClick, props };
@@ -521,24 +521,42 @@ describe('DiscussaoEquipe discussao=1 deep link', () => {
   it('scrolls the section into view, focuses the composer and reports once', async () => {
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
-    const onAutoFocused = vi.fn();
-    const { container } = setup({ autoFocus: true, onAutoFocused });
-    await waitFor(() => expect(onAutoFocused).toHaveBeenCalledTimes(1));
+    const onFocusHandled = vi.fn();
+    const { container } = setup({ focusRequest: 1, onFocusHandled });
+    await waitFor(() => expect(onFocusHandled).toHaveBeenCalledTimes(1));
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     expect(scrollIntoView.mock.instances[0]).toBe(container.querySelector('section.discussao'));
     expect(composer()).toHaveFocus();
   });
 
-  it('does nothing without autoFocus', async () => {
+  it('acts again on a new request while mounted (re-link to the open post), keeping the draft', async () => {
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
-    const onAutoFocused = vi.fn();
-    setup({ onAutoFocused });
+    const onFocusHandled = vi.fn();
+    const { rerender, props } = setup({ focusRequest: 1, onFocusHandled });
+    await waitFor(() => expect(onFocusHandled).toHaveBeenCalledTimes(1));
+    setEditorText(composer(), 'rascunho');
+
+    // The host clears the request once handled, then a new link bumps the counter.
+    rerender(<DiscussaoEquipe {...props} focusRequest={0} onFocusHandled={onFocusHandled} />);
+    act(() => composer().blur());
+    rerender(<DiscussaoEquipe {...props} focusRequest={2} onFocusHandled={onFocusHandled} />);
+    await waitFor(() => expect(onFocusHandled).toHaveBeenCalledTimes(2));
+    expect(scrollIntoView).toHaveBeenCalledTimes(2);
+    expect(composer()).toHaveFocus();
+    expect(composer()).toHaveTextContent('rascunho');
+  });
+
+  it('does nothing without a focus request', async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const onFocusHandled = vi.fn();
+    setup({ onFocusHandled });
     await act(async () => {
       await new Promise((r) => requestAnimationFrame(() => r(null)));
     });
     expect(scrollIntoView).not.toHaveBeenCalled();
-    expect(onAutoFocused).not.toHaveBeenCalled();
+    expect(onFocusHandled).not.toHaveBeenCalled();
     expect(composer()).not.toHaveFocus();
   });
 });

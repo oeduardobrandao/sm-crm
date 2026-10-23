@@ -155,14 +155,14 @@ vi.mock('@/pages/entregas/components/PostCommentSummary', () => ({
 // stub both, they have their own suites.
 vi.mock('@/pages/entregas/discussao/DiscussaoEquipe', () => ({
   DiscussaoEquipe: ({
-    autoFocus,
-    onAutoFocused,
+    focusRequest,
+    onFocusHandled,
   }: {
-    autoFocus?: boolean;
-    onAutoFocused?: () => void;
+    focusRequest?: number;
+    onFocusHandled?: () => void;
   }) => (
-    <div data-testid="discussao-equipe-stub" data-autofocus={String(!!autoFocus)}>
-      <button type="button" onClick={onAutoFocused}>
+    <div data-testid="discussao-equipe-stub" data-autofocus={String(!!focusRequest)}>
+      <button type="button" onClick={onFocusHandled}>
         stub focused
       </button>
     </div>
@@ -369,7 +369,7 @@ describe('StandalonePostDrawer', () => {
   it('discussao=1 deep link: asks the discussion section to focus and relays the report', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const onDiscussaoFocused = vi.fn();
-    renderDrawer(qc, { focusDiscussao: true, onDiscussaoFocused });
+    renderDrawer(qc, { focusRequest: 1, onDiscussaoFocused });
 
     const stub = await screen.findByTestId('discussao-equipe-stub');
     expect(stub).toHaveAttribute('data-autofocus', 'true');

@@ -352,7 +352,7 @@ describe('PostEditorBody, phone layout', () => {
             created_at: new Date(2026, 9, 21, 10, 0).toISOString(),
           },
         ] as never,
-        focusDiscussao: true,
+        focusRequest: 1,
         onDiscussaoFocused,
       });
       expect(screen.getByRole('tab', { name: /Comentários/ })).toHaveAttribute(

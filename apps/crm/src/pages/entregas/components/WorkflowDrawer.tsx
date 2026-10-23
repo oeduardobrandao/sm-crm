@@ -182,9 +182,11 @@ interface WorkflowDrawerProps {
   onRefresh: () => void;
   initialPostId?: number;
   /** `&discussao=1` deep link: after opening `initialPostId`, scroll to its team discussion
-   *  and focus the composer (phone: open Comentários on Equipe, no keyboard). */
-  focusDiscussao?: boolean;
-  /** Fires once `focusDiscussao` has been applied, so the host stops asking. */
+   *  and focus the composer (phone: open Comentários on Equipe, no keyboard). A counter, not
+   *  a flag: a new value (also for the post that is already open) asks again without a
+   *  remount; 0/undefined = no request. */
+  focusRequest?: number;
+  /** Fires once `focusRequest` has been applied, so the host stops asking. */
   onDiscussaoFocused?: () => void;
   /** Opens another workflow's drawer (used after moving posts to a new or
    *  existing flow, so the user lands where the posts went). `seed` carries a
@@ -208,7 +210,7 @@ export function WorkflowDrawer({
   onClose,
   onRefresh,
   initialPostId,
-  focusDiscussao,
+  focusRequest,
   onDiscussaoFocused,
   onOpenWorkflow,
   onDetachedKeepingProcess,
@@ -255,6 +257,14 @@ export function WorkflowDrawer({
   // Post a deep link, the calendar or "Novo Post" pointed at: once its row is in the DOM the body
   // scrolls so the whole expanded post is visible, not just its trigger row.
   const [scrollTargetId, setScrollTargetId] = useState<number | null>(initialPostId ?? null);
+  // A `&discussao=1` link to the post this drawer already shows (no remount, so the typed
+  // drafts survive): open it again if the user collapsed it and bring it into view; the
+  // row then scrolls to and focuses its discussion. First mount is covered by the seeds.
+  useEffect(() => {
+    if (!focusRequest || initialPostId == null) return;
+    setExpandedId(initialPostId);
+    setScrollTargetId(initialPostId);
+  }, [focusRequest, initialPostId]);
   const bodyRef = useRef<HTMLDivElement>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
 
@@ -1395,8 +1405,10 @@ export function WorkflowDrawer({
                           showAutoScheduleBadge={offerAutoSchedule(post)}
                           onAutoScheduleClick={() => maybeNudge(post)}
                           phoneListMode={isPhone ? phoneListMode : undefined}
-                          focusDiscussao={focusDiscussao && post.id === initialPostId}
-                          onDiscussaoFocused={onDiscussaoFocused}
+                          focusRequest={post.id === initialPostId ? focusRequest : 0}
+                          onDiscussaoFocused={
+                            post.id === initialPostId ? onDiscussaoFocused : undefined
+                          }
                         />
                       ))}
                     </div>
@@ -1546,8 +1558,10 @@ export function WorkflowDrawer({
               editorVersion={editorVersions[phoneExpandedPost.id!] ?? 0}
               onAcceptSuggestion={handleAcceptSuggestion}
               onRejectSuggestion={handleRejectSuggestion}
-              focusDiscussao={focusDiscussao && phoneExpandedPost.id === initialPostId}
-              onDiscussaoFocused={onDiscussaoFocused}
+              focusRequest={phoneExpandedPost.id === initialPostId ? focusRequest : 0}
+              onDiscussaoFocused={
+                phoneExpandedPost.id === initialPostId ? onDiscussaoFocused : undefined
+              }
             />
           )}
         </PhoneEditorScreen>
@@ -1806,7 +1820,7 @@ interface SortablePostItemProps {
   onAutoScheduleClick: () => void;
   /** Set only on phones (< 768px): the trigger row becomes FluxoPhonePostRow in this mode. */
   phoneListMode?: FluxoPhoneListMode;
-  focusDiscussao?: boolean;
+  focusRequest?: number;
   onDiscussaoFocused?: () => void;
 }
 
@@ -1863,7 +1877,7 @@ function SortablePostItem({
   showAutoScheduleBadge,
   onAutoScheduleClick,
   phoneListMode,
-  focusDiscussao,
+  focusRequest,
   onDiscussaoFocused,
 }: SortablePostItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -2091,7 +2105,7 @@ function SortablePostItem({
         editorVersion={editorVersion}
         onAcceptSuggestion={onAcceptSuggestion}
         onRejectSuggestion={onRejectSuggestion}
-        focusDiscussao={focusDiscussao}
+        focusRequest={focusRequest}
         onDiscussaoFocused={onDiscussaoFocused}
       />
     </div>
