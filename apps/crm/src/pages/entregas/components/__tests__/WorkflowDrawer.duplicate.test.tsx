@@ -10,6 +10,14 @@ import { makeCan, fakeMembership } from '@/test/makeCan';
 // conteúdo direto (Radix precisa de pointer events que o jsdom não entrega bem).
 
 // Desktop layout; the phone branch has its own suite (WorkflowDrawerPhone.test.tsx).
+// Feedback em mídia: the drawers fetch client notes by path (not through the mocked '@/store').
+vi.mock('@/store/mediaNotes', () => ({
+  getMediaNotes: async () => [],
+  mediaNotesKey: (ids: number[]) => ['media-notes', ids.join(',')],
+  replyToMediaNote: async () => undefined,
+  setMediaNoteStatus: async () => undefined,
+}));
+
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 // Desktop editor: jsdom's matchMedia reports no match, which would render the phone editor.

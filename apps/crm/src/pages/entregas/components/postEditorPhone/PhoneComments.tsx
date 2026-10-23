@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { CheckCircle2, RotateCcw, Send } from 'lucide-react';
 import { SegmentedControl, BottomActionBar } from '@/components/mobile';
-import type { CommentThreadWithComments, Membro, PostApproval } from '../../../../store';
+import type { CommentThreadWithComments, Membro, PostApproval, PostMedia } from '../../../../store';
+import type { MediaNote } from '@/store/mediaNotes';
+import { ClientConversation } from '../mediaNotes/ClientConversation';
 // By path, not through the store barrel: the drawer test harnesses mock '@/store'.
 import type { ReferenceItem } from '@/store/postReferences';
 import PostCommentSummary from '../PostCommentSummary';
@@ -21,6 +23,12 @@ function formatWhen(iso: string): string {
 
 interface PhoneCommentsProps {
   approvals: PostApproval[];
+  /** Client notes pinned to the media, and the media they point at. */
+  notes: MediaNote[];
+  media: PostMedia[];
+  onNoteReply: (noteId: number, body: string) => Promise<void>;
+  onNoteStatus: (noteIds: number[], status: 'open' | 'resolved') => Promise<void>;
+  onSelectMedia?: (linkId: number) => void;
   references: ReferenceItem[];
   onOpenReference: (item: ReferenceItem) => void;
   clientName?: string | null;
@@ -46,6 +54,11 @@ interface PhoneCommentsProps {
  */
 export function PhoneComments({
   approvals,
+  notes,
+  media,
+  onNoteReply,
+  onNoteStatus,
+  onSelectMedia,
   references,
   onOpenReference,
   clientName,
@@ -62,6 +75,7 @@ export function PhoneComments({
 }: PhoneCommentsProps) {
   const [channel, setChannel] = useState<Channel>('cliente');
   const client = clientName || 'Cliente';
+  const clientCount = approvals.length + notes.filter((n) => n.visibility === 'client').length;
   const openThreads = threads.filter((t) => t.status === 'active').length;
 
   return (
@@ -73,7 +87,7 @@ export function PhoneComments({
         options={[
           {
             value: 'cliente',
-            label: approvals.length > 0 ? `Com o cliente ${approvals.length}` : 'Com o cliente',
+            label: clientCount > 0 ? `Com o cliente ${clientCount}` : 'Com o cliente',
           },
           { value: 'equipe', label: openThreads > 0 ? `Equipe ${openThreads}` : 'Equipe' },
         ]}
@@ -95,51 +109,65 @@ export function PhoneComments({
               <span className="phone-comments__suggestion-cta">Revisar</span>
             </button>
           )}
-          {approvals.length === 0 && !suggestion && (
+          {approvals.length === 0 && notes.length === 0 && !suggestion && (
             <p className="phone-comments__empty">Nenhuma mensagem com o cliente ainda.</p>
           )}
-          {approvals.map((a) => {
-            const refs = references.filter((r) => r.post_approval_id === a.id);
-            if (a.action === 'aprovado' && !a.is_workspace_user) {
+          <ClientConversation
+            approvals={approvals}
+            notes={notes}
+            media={media}
+            workspaceUsers={workspaceUsers}
+            membros={membros}
+            clientName={client}
+            replyText={replyText}
+            sendingReply={sendingReply}
+            onReplyChange={onReplyChange}
+            onReplySend={onReplySend}
+            onNoteReply={onNoteReply}
+            onNoteStatus={onNoteStatus}
+            onSelectMedia={onSelectMedia}
+            composer="none"
+            className="client-conversation--phone"
+            renderApproval={(a) => {
+              const refs = references.filter((r) => r.post_approval_id === a.id);
+              if (a.action === 'aprovado' && !a.is_workspace_user) {
+                return (
+                  <div className="phone-comments__event">
+                    <span className="phone-comments__meta">{formatWhen(a.created_at)}</span>
+                    <span className="phone-comments__event-label">
+                      <CheckCircle2 aria-hidden="true" /> {client} aprovou o post
+                    </span>
+                    {a.comentario && (
+                      <p className="phone-bubble phone-bubble--client">{a.comentario}</p>
+                    )}
+                  </div>
+                );
+              }
+              const team = a.is_workspace_user;
               return (
-                <div key={a.id} className="phone-comments__event">
-                  <span className="phone-comments__meta">{formatWhen(a.created_at)}</span>
-                  <span className="phone-comments__event-label">
-                    <CheckCircle2 aria-hidden="true" /> {client} aprovou o post
+                <div className={`phone-comments__row${team ? ' phone-comments__row--team' : ''}`}>
+                  <span className="phone-comments__meta">
+                    {team ? 'Equipe' : client}
+                    {a.action === 'correcao' && !team && (
+                      <span className="phone-comments__tag">
+                        <RotateCcw aria-hidden="true" /> Correção solicitada
+                      </span>
+                    )}
+                    {' · '}
+                    {formatWhen(a.created_at)}
                   </span>
                   {a.comentario && (
-                    <p className="phone-bubble phone-bubble--client">{a.comentario}</p>
+                    <p
+                      className={`phone-bubble${team ? ' phone-bubble--team' : ' phone-bubble--client'}`}
+                    >
+                      {a.comentario}
+                    </p>
                   )}
+                  <ReferenceChips references={refs} onOpen={onOpenReference} />
                 </div>
               );
-            }
-            const team = a.is_workspace_user;
-            return (
-              <div
-                key={a.id}
-                className={`phone-comments__row${team ? ' phone-comments__row--team' : ''}`}
-              >
-                <span className="phone-comments__meta">
-                  {team ? 'Equipe' : client}
-                  {a.action === 'correcao' && !team && (
-                    <span className="phone-comments__tag">
-                      <RotateCcw aria-hidden="true" /> Correção solicitada
-                    </span>
-                  )}
-                  {' · '}
-                  {formatWhen(a.created_at)}
-                </span>
-                {a.comentario && (
-                  <p
-                    className={`phone-bubble${team ? ' phone-bubble--team' : ' phone-bubble--client'}`}
-                  >
-                    {a.comentario}
-                  </p>
-                )}
-                <ReferenceChips references={refs} onOpen={onOpenReference} />
-              </div>
-            );
-          })}
+            }}
+          />
           {active && (
             <BottomActionBar className="phone-comments__composer">
               <input

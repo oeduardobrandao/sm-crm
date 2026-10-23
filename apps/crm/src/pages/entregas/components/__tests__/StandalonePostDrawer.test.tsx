@@ -11,6 +11,14 @@ import { makeCan, fakeMembership } from '@/test/makeCan';
 // its own behavior is covered by AttachToFluxoDialog.test.tsx.
 
 // Desktop editor: jsdom's matchMedia reports no match, which would render the phone editor.
+// Feedback em mídia: the drawers fetch client notes by path (not through the mocked '@/store').
+vi.mock('@/store/mediaNotes', () => ({
+  getMediaNotes: async () => [],
+  mediaNotesKey: (ids: number[]) => ['media-notes', ids.join(',')],
+  replyToMediaNote: async () => undefined,
+  setMediaNoteStatus: async () => undefined,
+}));
+
 vi.mock('@/pages/entregas/components/postEditorPhone/useIsPhoneEditor', () => ({
   useIsPhoneEditor: () => false,
 }));

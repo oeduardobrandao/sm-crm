@@ -18,7 +18,7 @@ interface PostCommentSummaryProps {
   readOnly?: boolean;
 }
 
-function resolveAuthorName(
+export function resolveAuthorName(
   userId: string,
   membros: Membro[],
   workspaceUsers: WorkspaceUser[],

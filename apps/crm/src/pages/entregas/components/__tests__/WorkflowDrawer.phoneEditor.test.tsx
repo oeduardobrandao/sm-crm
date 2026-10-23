@@ -10,6 +10,14 @@ import { makeCan, fakeMembership } from '@/test/makeCan';
 // editor. Same lean harness as WorkflowDrawer.duplicate.test.tsx, with PostEditorBody
 // stubbed so only the drawer's wiring (which post, which chrome) is under test.
 
+// Feedback em mídia: the drawers fetch client notes by path (not through the mocked '@/store').
+vi.mock('@/store/mediaNotes', () => ({
+  getMediaNotes: async () => [],
+  mediaNotesKey: (ids: number[]) => ['media-notes', ids.join(',')],
+  replyToMediaNote: async () => undefined,
+  setMediaNoteStatus: async () => undefined,
+}));
+
 vi.mock('@/pages/entregas/components/postEditorPhone/useIsPhoneEditor', () => ({
   useIsPhoneEditor: () => true,
 }));

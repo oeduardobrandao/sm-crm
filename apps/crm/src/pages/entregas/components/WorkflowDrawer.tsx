@@ -140,6 +140,14 @@ import { statusChangeNeedsConfirm, statusKeyToPatch, type StatusKey } from '../s
 import { PostStatusChip } from './PostStatusChip';
 import { formatPostDate, formatPostDateFull } from '@/utils/postDate';
 import { PostEditorBody } from './PostEditorBody';
+// By path, not through the store barrel: the drawer test harnesses mock '@/store'.
+import {
+  getMediaNotes,
+  mediaNotesKey,
+  replyToMediaNote,
+  setMediaNoteStatus,
+} from '@/store/mediaNotes';
+import type { MediaNotesBinding } from './mediaNotes/ClientConversation';
 import { useClienteSocialAccounts } from '@/hooks/useClienteSocialAccounts';
 import { MovePostsToFluxoDialog } from './MovePostsToFluxoDialog';
 import { DuplicateDialog, type DuplicateTarget } from './DuplicateDialog';
@@ -426,6 +434,12 @@ export function WorkflowDrawer({
   const { data: approvals = [] } = useQuery({
     queryKey: ['post-approvals', postIds.join(',')],
     queryFn: () => getPostApprovals(postIds),
+    enabled: postIds.length > 0,
+  });
+
+  const { data: mediaNotes = [] } = useQuery({
+    queryKey: mediaNotesKey(postIds),
+    queryFn: () => getMediaNotes(postIds),
     enabled: postIds.length > 0,
   });
 
@@ -792,6 +806,25 @@ export function WorkflowDrawer({
       setIsSendingSelected(false);
     }
   };
+
+  const refreshMediaNotes = useCallback(async () => {
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ['media-notes'] }),
+      qc.invalidateQueries({ queryKey: ['post-approvals'] }),
+    ]);
+  }, [qc]);
+
+  const mediaNotesFor = (postId: number | undefined): MediaNotesBinding => ({
+    notes: mediaNotes.filter((n) => n.post_id === postId),
+    onReply: async (noteId, body) => {
+      await replyToMediaNote(noteId, body);
+      await refreshMediaNotes();
+    },
+    onStatus: async (noteIds, status) => {
+      await setMediaNoteStatus(noteIds, status);
+      await refreshMediaNotes();
+    },
+  });
 
   const handleReply = async (postId: number) => {
     const text = (replyText[postId] || '').trim();
@@ -1317,6 +1350,7 @@ export function WorkflowDrawer({
                           isExpanded={!isPhoneEditor && expandedId === post.id}
                           isSaving={savingIds.has(post.id!)}
                           approvals={approvals.filter((a) => a.post_id === post.id)}
+                          mediaNotes={mediaNotesFor(post.id)}
                           statusEvents={statusEvents.filter((e) => e.post_id === post.id)}
                           processEvents={processEvents.filter((e) => e.post_id === post.id)}
                           editSuggestion={
@@ -1488,6 +1522,7 @@ export function WorkflowDrawer({
               clientePosts={clientePosts}
               isExpanded
               approvals={approvals.filter((a) => a.post_id === phoneExpandedPost.id)}
+              mediaNotes={mediaNotesFor(phoneExpandedPost.id)}
               statusEvents={statusEvents.filter((e) => e.post_id === phoneExpandedPost.id)}
               editSuggestion={
                 editSuggestions.find((s) => s.post_id === phoneExpandedPost.id) ?? null
@@ -1726,6 +1761,7 @@ interface SortablePostItemProps {
   isExpanded: boolean;
   isSaving: boolean;
   approvals: PostApproval[];
+  mediaNotes: MediaNotesBinding;
   statusEvents: PostStatusEvent[];
   processEvents: PostProcessEvent[];
   editSuggestion: PostEditSuggestion | null;
@@ -1791,6 +1827,7 @@ function SortablePostItem({
   isExpanded,
   isSaving,
   approvals,
+  mediaNotes,
   statusEvents,
   processEvents,
   editSuggestion,
@@ -2025,6 +2062,7 @@ function SortablePostItem({
         clientePosts={clientePosts}
         isExpanded={isExpanded}
         approvals={approvals}
+        mediaNotes={mediaNotes}
         statusEvents={statusEvents}
         editSuggestion={editSuggestion}
         membros={membros}
