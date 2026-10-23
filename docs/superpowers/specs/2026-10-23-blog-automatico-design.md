@@ -80,7 +80,7 @@ Table `blog_posts` (my call on exact columns; builder may refine):
 | `body_md` text | Markdown body (rules in §4) |
 | `cover_image` jsonb | `{url, alt, credit, license, source_url}`; nullable (draft flagged "sem imagem") |
 | `images` jsonb | array of `{key, url, alt, credit, license, source_url}` referenced from the body |
-| `sources` jsonb | array of `{title, publisher, url, published_at?}`, min 1 for `noticia`/`tendencia` |
+| `sources` jsonb | array of `{title, publisher, url, published_at?}`, **min 1 for every post** (Fontes closes every post) |
 | `feature_slug` text null | set on the weekly feature post (key into the feature list, §7) |
 | `topic_reason` text | "Por que este tema", shown in the Admin sidebar |
 | `checks` jsonb | server-computed checklist results (§3) |
@@ -89,6 +89,8 @@ Table `blog_posts` (my call on exact columns; builder may refine):
 | `rejection_reason` text null | |
 | `author` text | `equipe` for automated posts |
 | `date`, `updated` date | `date` set on approve; `updated` on later edits |
+| `revision` int | bumped on every content save; `live_revision` int null = revision confirmed live (§7) |
+| `publish_attempt_at` timestamptz null | last deploy-hook fire, for retry/timeout |
 | `created_at`, `updated_at`, `approved_at`, `approved_by` | |
 
 RLS: no access for `authenticated`. **Public `anon` SELECT only where `status in ('publicando','publicado')`**,
@@ -106,18 +108,22 @@ Migration version: above main's tail at PR time (currently `20261025…`; an ope
 
 ### 2. MCP surface (mcp-admin)
 
-New scopes `blog:read`, `blog:write` in `_shared/mcp-admin-scopes.ts` and the CRM mirror
-`apps/crm/src/lib/mcp-scopes.ts`. Changing scopes = redeploy `mcp-admin` + `mcp-oauth-consent`
+New scopes `blog:read`, `blog:write` in `_shared/mcp-admin-scopes.ts` and **both** UI mirrors:
+the CRM consent mirror `apps/crm/src/lib/mcp-scopes.ts` and the Admin integrations mirror
+`apps/admin/src/lib/mcp-admin-scopes.ts` (extend the existing parity test to cover all three). Changing scopes = redeploy `mcp-admin` + `mcp-oauth-consent`
 + the CRM, and Eduardo re-authorizes the connector with the new scopes ticked.
 
 Tools:
 - `list_blog_posts({status?, since_days?})`: slug, title, category, status, feature_slug,
   revision_note, rejection_reason, created_at, plus the valid `feature_slug` keys. The Routine uses
-  this for dedup (last 60 days, all statuses, including the 6 file posts' slugs/titles), for
-  pending notes, and for feature rotation.
+  this for dedup (last 60 days, all statuses, including the file posts' slugs/titles), for
+  pending notes, and for feature rotation. `mcp-admin` can't read repo Markdown at runtime, so the
+  file posts come from a mirrored catalog `_shared/blog-file-posts.ts` (slug + title), kept honest
+  by a Vitest parity test against `apps/crm/src/content/blog/*.md`. Whoever adds a file post
+  updates it (the test fails otherwise). `create_blog_draft` also rejects a slug in that catalog.
 - `get_blog_post({id})`: full post, for rewrites.
 - `create_blog_draft({...})`: validates every field server-side (limits, slug, category,
-  sources required by category, every image `credit`+`license` non-empty, body rules in §4,
+  at least one source, every image `credit`+`license` non-empty, body rules in §4,
   infographic blocks parse, known `feature_slug`). On failure returns a field-by-field error
   **including the limits** so the Routine can fix and retry. On success runs the checks (§3) and
   returns them.
@@ -147,8 +153,10 @@ Approve stays possible but the confirm dialog lists the failing checks.
 ### 4. Post content format
 
 - Markdown body rendered by the existing `react-markdown` path (`blog.markdown.tsx`, shared by
-  the static mirror and the React page). **No raw HTML passthrough** (never add `rehype-raw`);
-  links pass `sanitizeUrl`; external links keep `rel="nofollow noopener"`.
+  the static mirror and the React page). **No raw HTML passthrough** (never add `rehype-raw`).
+  Today `MARKDOWN_COMPONENTS.a` forwards `href` unchanged: this work must route it through
+  `sanitizeUrl` (`apps/crm/src/utils/security.ts`) in the shared component, with a test.
+  External links keep `rel="nofollow noopener"`. The draft validator also rejects non-http(s) links.
 - Images in the body: `![alt](img:<key>)`, resolved from `images` into a `<figure>` with the
   credit line ("Foto: autor / fonte, licença X"). Plain external image URLs are rejected at draft time.
 - Pull quote: a blockquote whose only child is a paragraph renders as the large centered pull
@@ -181,16 +189,28 @@ The six existing posts **stay as files** in `apps/crm/src/content/blog/` (my cal
 hand-written posts in git and lets CI build without a database). DB posts are merged in at build:
 
 1. New `scripts/seo/blog-sync.ts` runs first in the build. It fetches `publicando`/`publicado`
-   posts from Supabase with `VITE_SUPABASE_URL` + anon key and writes them as `.md` files
-   (frontmatter + body, images/sources/infographics serialized) into a **gitignored**
-   `apps/crm/src/content/blog/_db/`. Both loaders read `blog/**/*.md` (`blog.client.ts` glob and
-   `blog-fs.ts`), so prerender, sitemap, llms.txt, related posts and the React pages pick them up
-   unchanged. Extend the frontmatter schema for the new fields (author, lede, cover, feature, etc.).
+   posts from Supabase with `VITE_SUPABASE_URL` + anon key and writes **one JSON file per post**
+   (`<slug>.json`: every field including `body_md` and `revision`) into a **gitignored**
+   `apps/crm/src/content/blog-db/`. Format decided here, not left to the builder: the JSON is
+   validated by one shared zod schema `dbPostSchema` (in `blog.schema.ts`, relative imports only)
+   that both loaders use, and that maps to the same `BlogPost` type the file posts produce (extend
+   `BlogPost` with optional `author`, `lede`, `cover`, `images`, `sources`, `featureSlug`,
+   `revision`; file posts may gain optional `lede`/`sources` frontmatter later, not in v1).
+   Both loaders change explicitly, since neither is recursive today: `blog-fs.ts` reads
+   `blog/*.md` **and** `blog-db/*.json`; `blog.client.ts` adds a second glob for `blog-db/*.json`.
+   Prerender, sitemap, llms.txt and related posts then see one merged list.
    Note `blog.client.ts`'s glob is `./blog/*.md` (not recursive) and eager today. My call: widen it
    and make post bodies **lazy per post** (non-eager glob, or a generated index of frontmatter plus
    per-post chunks), so the blog chunk doesn't grow with every daily post. The index page needs
    only frontmatter; the post page awaits its body (it's prerendered, so hydration must render the
    same content the static HTML has; builder resolves the loading so first client render matches).
+   Note: blog pages are not hydrated today. The static file is a `.seo.tsx` mirror
+   (`blog.seo.tsx`, a minimal tree) and the client renders its own page (`BlogPostPage` with
+   `LandingHeader`/`LandingFooter`). v1 keeps that split. The requirement is **content parity**:
+   the mirror must carry the same text, figures with credits, infographics (as HTML text), Fontes
+   and feature CTA as the React page. It is not required to match the page visually. Both
+   use the same shared pieces (markdown components, `img:` figure, infographic, Fontes), and a
+   test asserts parity on a fixture post.
 2. Failure modes: on Vercel production (`VERCEL_ENV=production`) a fetch error **fails the build**
    (never silently drop published posts). Elsewhere (CI `landing-prerender-smoke`, local) a missing
    or placeholder URL skips the sync with a log line; zero DB posts is fine there because the six
@@ -218,15 +238,30 @@ New nav item and route "Blog" (`apps/admin`), pattern of the KB pages:
 
 ### 7. Publish flow and feature list
 
-Approve → status `publicando`, `date` = today (São Paulo), `approved_at/by` → `platform-admin`
-POSTs the **Vercel Deploy Hook** (`VERCEL_BLOG_DEPLOY_HOOK`, Supabase secret, document in
-CLAUDE.md). Hook failure: status back to `rascunho` and an error toast.
+Approve → status `publicando`, `date` = today (São Paulo), `approved_at/by`,
+`publish_attempt_at` → `platform-admin` POSTs the **Vercel Deploy Hook**
+(`VERCEL_BLOG_DEPLOY_HOOK`, Supabase secret, document in CLAUDE.md). Hook failure: status back
+to its previous value and an error toast.
 
-Becoming `publicado`: when the Admin lists `publicando` posts, `platform-admin` checks
-`https://www.mesaas.com.br/blog/<slug>` for 200 and flips the status. After 30 minutes still
-`publicando`, the chip turns into "Publicação demorando: verifique o deploy na Vercel" with a
-"Tentar de novo" (re-fires the hook). Editing an already published post sets `updated` and
-re-fires the hook.
+**Revision marker, not a bare 200.** Prerender writes `<meta name="mesaas-blog-rev"
+content="<revision>">` into each DB post's static HTML. When the Admin lists `publicando`
+posts, `platform-admin` fetches `https://www.mesaas.com.br/blog/<slug>` and flips to `publicado`
+(setting `live_revision`) only when the marker equals the row's `revision`. A 200 from an older
+deployment therefore never counts, which matters for edits of an already-live slug. If the new
+build fails, Vercel keeps serving the previous deployment, so the old revision stays live on its
+own. The row stays `publicando` with `live_revision` < `revision`.
+
+After 30 minutes still `publicando`, the chip turns into "Publicação demorando: verifique o
+deploy na Vercel" with "Tentar de novo" (re-fires the hook).
+
+**Edge-runtime rules** (the repo's edge-kill lesson): every outbound fetch (deploy hook,
+marker check, MCP link checks) has an `AbortSignal` timeout well under the function's wall
+clock. State transitions are conditional updates (`… where status = 'publicando' and revision
+= $n`), so a killed or repeated request can't regress or double-apply. Retries are idempotent:
+re-firing the hook for the same revision is harmless.
+
+Editing an already published post bumps `revision`, sets `updated`, goes back to `publicando`
+(the live page keeps the old revision until the marker matches) and re-fires the hook.
 
 Approving deploys `main` as it is right then, same as any deploy. Acceptable.
 
@@ -243,9 +278,12 @@ arrived in 36 hours ("Nenhum rascunho novo desde …: confira a rotina e o conec
 expired connector grant or a Routine that stopped.
 
 Feature list (for the CTA block and the Routine's rotation): a code-side map in
-`apps/crm/src/content/` keyed by `feature_slug` (aprovacao, hub-do-cliente, relatorios,
-agendamento, briefing, agenda, ...; builder fills from existing funnel pages in `paginas/`), each
-with headline, one sentence and target URL. The Deno side needs the same keys (mirror + parity
+`apps/crm/src/content/` keyed by `feature_slug`, each with headline, one sentence and a target
+URL that **must be a public, prerendered route** (a test asserts every target is in the
+`site-meta` manifest). Today that's three: `aprovacao-de-post`, `portal-do-cliente`,
+`agente-de-conteudo-ia`. Reports, scheduling, briefing and agenda join the rotation only once
+their public landing pages exist (the SEO backlog's Fase 1b pages); that's separate work, not
+part of this project. Until then the weekly CTA rotates among the three. The Deno side needs the same keys (mirror + parity
 test, like the schema limits).
 
 ### 8. The Routine (deliverable in the repo)
@@ -254,7 +292,10 @@ test, like the schema limits).
 - Run order: (1) rewrite any `ajuste_solicitado` drafts first, following the note; (2) list the
   last 60 days of posts + pending queue; (3) pick today's topic (news within ~72h preferred,
   otherwise evergreen planning/guide), never repeating; (4) feature post if no non-rejected
-  feature post was created in the last 7 days, rotating `feature_slug` away from the last one;
+  feature post was created in the last 7 days, rotating `feature_slug` away from the last one
+  ("weekly" counts drafts created, the only thing the Routine controls; a rejected one doesn't
+  count, so it tries again the next day). Rewrites from step 1 don't use up the day's new draft:
+  every run makes at most one new draft plus any rewrites;
   (5) research, (6) images, (7) write, (8) `create_blog_draft`, fix and retry on validation errors.
 - Sources: primary sources first (official announcements, docs), reputable press next. Every
   factual claim about news links its source inline; every number in an infographic cites one.
@@ -290,6 +331,11 @@ need a non-interactive auth path in `mcp-admin` (today it's OAuth-only). Not bui
    so steps 1 and 2 go first.
 4. Re-authorize the Admin MCP connector with the new scopes; set up the Routine; dry run.
 
+**Rollback rule.** Once a DB post is live, never roll the frontend (Vercel instant rollback or a
+revert) back past the deploy that introduced `blog-sync`. An older build has no DB posts, and
+`/blog/:slug` would 404 for every one of them. Add this to CLAUDE.md's Gotchas in the same PR.
+Rolling back to any later deploy is safe: each build re-syncs from the DB.
+
 ## Testing
 
 - Vitest: schema (new categories, fields, limits), infographic zod + rendering, `img:` resolution,
@@ -298,7 +344,7 @@ need a non-interactive auth path in `mcp-admin` (today it's OAuth-only). Not bui
 - Deno: MCP tools (validation errors carry limits, scope gating, no approve tool, audit), checks,
   platform-admin actions (approve → hook, publicando → publicado).
 - Entitlements/psql: anon can read only `publicando`/`publicado`; authenticated reads nothing.
-- Browser: a published DB post renders identically in the static HTML and after hydration;
+- Browser: a published DB post's static mirror and React page show the same content (parity, §5);
   `landing-prerender-smoke` still passes with placeholder env.
 
 ## Left to the builder
@@ -322,3 +368,6 @@ is fine).
 - Published posts can be edited in the Admin and unpublished ("Despublicar" → 404 on next build).
 - A 36h "no new draft" warning in the Admin; no non-interactive MCP auth in v1 (spike proves the Routine path first).
 - Post bodies load lazily per post on the client.
+- Every post needs at least one source; rewrites don't count toward the one-new-draft-per-day; "weekly feature" counts drafts created.
+- Weekly CTA rotates among the 3 features that have public pages until more landing pages exist.
+- Static mirror vs. React page: content parity, not visual identity.
