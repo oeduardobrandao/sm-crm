@@ -230,6 +230,16 @@ describe('useDiscussao realtime', () => {
     expect(h.state.listeners).toHaveLength(0);
   });
 
+  it('a remount for the same post gets a fresh channel while the old one is still leaving', () => {
+    const first = setup();
+    first.unmount();
+    // No timers flushed: the previous channel has not seen its leave ack yet.
+    setup();
+    expect(h.state.log.some((e) => e.startsWith('reuse:'))).toBe(false);
+    expect(h.state.log.filter((e) => e.startsWith('subscribe:'))).toHaveLength(2);
+    expect(h.state.listeners.filter((l) => l.table === 'post_comment_threads')).toHaveLength(1);
+  });
+
   it('invalidates the threads and unread prefixes on every event', () => {
     setup();
     const spy = vi.spyOn(qc, 'invalidateQueries');
@@ -499,6 +509,31 @@ describe('useDiscussao bystander anchor', () => {
     await act(() => result.current.toggleSeguir());
     await waitFor(() => expect(result.current.isParticipant).toBe(true));
     // Everything loaded when the section opened (max id 9) counts as seen.
+    expect(result.current.unreadAnchorId).toBe(9);
+  });
+});
+
+describe('useDiscussao bystander anchor, participation before threads', () => {
+  it('follows the max id while a bystander and freezes it when they start following', async () => {
+    const { result, rerender } = setup(
+      { threads: [] },
+      { seguindo: false, last_seen_comment_id: 0, implicito: false },
+    );
+    await waitFor(() => expect(result.current.participacao).toBeDefined());
+    // The participation answered first; the threads arrive afterwards.
+    rerender({ postId: 1, threads: THREADS });
+    participacaoRow = { seguindo: true, last_seen_comment_id: 0, implicito: false };
+    await act(() => result.current.toggleSeguir());
+    await waitFor(() => expect(result.current.isParticipant).toBe(true));
+    expect(result.current.unreadAnchorId).toBe(9);
+    // Once a participant, newer messages stay above the anchor instead of moving it.
+    rerender({
+      postId: 1,
+      threads: [
+        THREADS[0],
+        thread(20, [comment(7, 20, OTHER), comment(9, 20, OTHER), comment(12, 20, OTHER)]),
+      ],
+    });
     expect(result.current.unreadAnchorId).toBe(9);
   });
 });

@@ -17,6 +17,9 @@ const VISIBLE_RATIO = 0.5;
 /** PostgREST/Realtime `in.(...)` filters break past 100 values. */
 const MAX_FILTER_IDS = 100;
 
+/** Realtime topic suffix, unique across every subscription of every hook instance. */
+let channelSeq = 0;
+
 const THREADS_KEY = ['post-comment-threads'] as const;
 const NAO_LIDAS_KEY = ['post-discussao-nao-lidas'] as const;
 const participacaoKey = (postId: number) => ['post-discussao-participacao', postId] as const;
@@ -89,17 +92,26 @@ export function useDiscussao({
   const [anchor, setAnchor] = useState<{ postId: number; id: number } | null>(null);
   const hasFreshParticipacao = participacaoQuery.isFetchedAfterMount && !!participacao;
   useEffect(() => {
-    // Collapsing the post ends the "open" session: the next expand takes a new anchor.
+    // Collapsing the post ends the "open" session: the next expand takes a new anchor
+    // (from the cached participation row, which the hook itself kept fresh, so a re-expand
+    // does not wait for a new fetch).
     if (!enabled) {
       setAnchor(null);
       return;
     }
     if (!hasFreshParticipacao || !participacao) return;
-    // A bystander has no marker (the RPC answers 0). Everything loaded when they opened
-    // counts as seen, so if they follow or write later only newer messages land under
-    // "Não lidas" instead of the whole history.
+    // A bystander has no marker (the RPC answers 0). Everything loaded counts as seen, so
+    // if they follow or write later only newer messages land under "Não lidas" instead of
+    // the whole history. The participation can answer before the threads load, so for as
+    // long as they are a bystander the anchor keeps following the max id and freezes at the
+    // moment they become a participant.
     const captured = isParticipant ? participacao.lastSeenCommentId : maxCommentId;
-    setAnchor((prev) => (prev && prev.postId === postId ? prev : { postId, id: captured }));
+    setAnchor((prev) => {
+      if (prev && prev.postId === postId) {
+        if (isParticipant || prev.id === captured) return prev;
+      }
+      return { postId, id: captured };
+    });
   }, [enabled, hasFreshParticipacao, participacao, isParticipant, maxCommentId, postId]);
   const anchorReady = !!anchor && anchor.postId === postId;
   const unreadAnchorId = anchorReady && isParticipant ? anchor.id : null;
@@ -117,17 +129,17 @@ export function useDiscussao({
 
   // realtime-js reuses a channel whose topic is still in its list, and a channel only
   // leaves that list on the server's leave ack. Rebuilding under the same topic (the thread
-  // set changed) would get the leaving channel back and its subscribe() would be a no-op,
-  // so every subscription gets its own topic.
-  const channelSeqRef = useRef(0);
+  // set changed, or the hook remounted for the same post) would get the leaving channel
+  // back and its subscribe() would be a no-op, so every subscription gets its own topic.
+  // The counter is module-level: a per-instance one restarts at 1 on a remount.
   useEffect(() => {
     if (!enabled) return;
     const onChange = () => {
       void qc.invalidateQueries({ queryKey: THREADS_KEY });
       void qc.invalidateQueries({ queryKey: NAO_LIDAS_KEY });
     };
-    channelSeqRef.current += 1;
-    let channel = supabase.channel(`post-discussao-${postId}-${channelSeqRef.current}`).on(
+    channelSeq += 1;
+    let channel = supabase.channel(`post-discussao-${postId}-${channelSeq}`).on(
       'postgres_changes',
       {
         event: '*',
