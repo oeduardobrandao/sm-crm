@@ -144,7 +144,9 @@ export default function ConsentPage() {
       toast.error(
         msg.includes('feature_disabled')
           ? 'O plano deste workspace não inclui a integração MCP.'
-          : 'Não foi possível registrar a autorização.',
+          : msg.includes('Insufficient permissions')
+            ? 'Uma das permissões escolhidas não faz parte do seu papel neste workspace.'
+            : 'Não foi possível registrar a autorização.',
       );
       setPhase('consent');
       return;

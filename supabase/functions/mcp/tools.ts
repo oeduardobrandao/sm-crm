@@ -1,7 +1,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { z } from "npm:zod@3";
 import { insertAuditLog } from "../_shared/audit.ts";
-import { McpInputError, McpScopeError, requireScope } from "../_shared/mcp-token.ts";
+import { McpInputError, McpScopeError, requireFinancialWrite, requireScope } from "../_shared/mcp-token.ts";
 import { CONTENT_FORMATS, IG_CAPTION_MAX } from "../_shared/platform-registry.ts";
 import {
   createClient,
@@ -347,7 +347,10 @@ export function registerTools(server: any, deps: Deps): void {
       valor_mensal: z.number().min(0).optional(),
       status: STATUS_CLIENTE.optional(),
     },
-    (a) => createClient(deps, a),
+    (a) => {
+      requireFinancialWrite(deps.ctx, a, ["valor_mensal"]);
+      return createClient(deps, a);
+    },
     (a, r) => ({
       client_id: (r as { id?: number })?.id,
       already_existed: (r as { already_existed?: boolean })?.already_existed,
@@ -371,7 +374,10 @@ export function registerTools(server: any, deps: Deps): void {
       custo_mensal: z.number().min(0).optional(),
       data_pagamento: z.number().int().min(1).max(31).optional(),
     },
-    (a) => createMember(deps, a),
+    (a) => {
+      requireFinancialWrite(deps.ctx, a, ["custo_mensal", "data_pagamento"]);
+      return createMember(deps, a);
+    },
     (a, r) => ({
       member_id: (r as { id?: number })?.id,
       already_existed: (r as { already_existed?: boolean })?.already_existed,

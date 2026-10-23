@@ -195,7 +195,10 @@ export async function resolveOAuthCtx(
   const bounded = boundGrantScopes((grant.scopes as string[]) ?? [], tokenMcp);
   // Re-capped by the user's CURRENT role on every request, like membership above: a role
   // downgrade shrinks the connection right away instead of surviving until a reconnect.
-  const scopes = await permittedMcpScopes(db, user.id, contaId, bounded);
+  const [scopes, canWriteFinancials] = await Promise.all([
+    permittedMcpScopes(db, user.id, contaId, bounded),
+    hasPermissionFor(db, user.id, contaId, "financeiro", "editar"),
+  ]);
   if (scopes.length === 0) return null;
 
   return {
@@ -203,6 +206,7 @@ export async function resolveOAuthCtx(
     scopes,
     key_id: `oauth:${clientId}`,
     created_by: user.id as string,
+    can_write_financials: canWriteFinancials,
   };
 }
 

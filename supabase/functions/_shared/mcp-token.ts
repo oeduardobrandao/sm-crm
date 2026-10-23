@@ -59,6 +59,27 @@ export interface McpKeyContext {
   scopes: string[];
   key_id: string;
   created_by: string;
+  /**
+   * Whether write tools may set financial fields (valor_mensal, custo_mensal, data_pagamento).
+   * OAuth: the user's own financeiro:editar, resolved per request. Unset for workspace API keys,
+   * which only a configuracoes:editar holder can create: their behavior is unchanged.
+   */
+  can_write_financials?: boolean;
+}
+
+/** Throws McpInputError when the call sets a financial field the context may not write. */
+export function requireFinancialWrite(
+  ctx: McpKeyContext,
+  args: Record<string, unknown>,
+  fields: readonly string[],
+): void {
+  if (ctx.can_write_financials !== false) return;
+  const set = fields.filter((f) => args[f] != null);
+  if (set.length > 0) {
+    throw new McpInputError(
+      `Seu papel não permite editar valores financeiros (${set.join(", ")}). Remova esses campos ou peça acesso ao Financeiro.`,
+    );
+  }
 }
 
 /** SHA-256 hex digest of the raw token. Deterministic — safe to store/compare. */

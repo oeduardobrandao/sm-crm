@@ -181,5 +181,7 @@ Deno.test("resolveOAuthCtx re-caps the grant by the user's current role on every
   const fn = src.match(/export async function resolveOAuthCtx[\s\S]*?\n\}/)?.[0] ?? "";
   assert(fn.length > 0, "expected resolveOAuthCtx");
   assert(/permittedMcpScopes\(db, user\.id, contaId, bounded\)/.test(fn), "scopes must pass through permittedMcpScopes");
+  assert(/hasPermissionFor\(db, user\.id, contaId, "financeiro", "editar"\)/.test(fn), "financial writes follow the user's financeiro:editar");
+  assert(/can_write_financials: canWriteFinancials/.test(fn));
   assert(/if \(scopes\.length === 0\) return null;/.test(fn), "a grant with no permitted scope must not resolve");
 });
