@@ -22,6 +22,10 @@ export const SCOPE_OPTIONS = [
 /** Helper text shown under an owner-only scope the current user cannot tick. */
 export const OWNER_ONLY_HELP = 'Somente o dono do workspace';
 
+/** Copy for the `owner_only_scope` error from mcp-keys and mcp-oauth-consent (one string, both pages). */
+export const OWNER_ONLY_SCOPE_ERROR =
+  'As permissões do Financeiro são somente do dono do workspace.';
+
 /** Whether `scope` (a `SCOPE_OPTIONS` value) is reserved for the workspace owner. */
 export function isOwnerOnlyScope(scope: string): boolean {
   return SCOPE_OPTIONS.some((s) => s.value === scope && s.ownerOnly);

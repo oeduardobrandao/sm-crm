@@ -29,7 +29,12 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ListSkeleton } from '@/components/ui/skeletons';
 import { listMcpKeys, createMcpKey, revokeMcpKey, type McpKey } from '@/services/mcp-keys';
 import { listOAuthGrants, revokeOAuthGrant, type OAuthGrant } from '@/services/mcp-oauth';
-import { SCOPE_OPTIONS, AGENT_PRESET, OWNER_ONLY_HELP } from '@/lib/mcp-scopes';
+import {
+  SCOPE_OPTIONS,
+  AGENT_PRESET,
+  OWNER_ONLY_HELP,
+  OWNER_ONLY_SCOPE_ERROR,
+} from '@/lib/mcp-scopes';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import {
   CLIENT_INTRO,
@@ -249,7 +254,9 @@ export default function IntegracoesClaudePage() {
           ? 'Limite de chaves atingido para o seu plano.'
           : msg === 'feature_disabled'
             ? 'Recurso não disponível no seu plano.'
-            : 'Erro ao criar chave: ' + msg,
+            : msg === 'owner_only_scope'
+              ? OWNER_ONLY_SCOPE_ERROR
+              : 'Erro ao criar chave: ' + msg,
       );
     },
   });

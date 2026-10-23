@@ -13,6 +13,7 @@ import {
   ADMIN_SCOPE_OPTIONS,
   ADMIN_READ_PRESET,
   OWNER_ONLY_HELP,
+  OWNER_ONLY_SCOPE_ERROR,
   isOwnerOnlyScope,
 } from '@/lib/mcp-scopes';
 import { Button } from '@/components/ui/button';
@@ -150,7 +151,7 @@ export default function ConsentPage() {
         msg.includes('feature_disabled')
           ? 'O plano deste workspace não inclui a integração MCP.'
           : msg.includes('owner_only_scope')
-            ? 'As permissões do Financeiro são somente do dono do workspace.'
+            ? OWNER_ONLY_SCOPE_ERROR
             : 'Não foi possível registrar a autorização.',
       );
       setPhase('consent');
