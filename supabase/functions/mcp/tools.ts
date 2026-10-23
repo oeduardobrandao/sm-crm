@@ -28,7 +28,7 @@ import {
   listWorkflows,
 } from "./queries.ts";
 import { createMediaUpload, setPostMedia } from "./media.ts";
-import { registerFinanceiroTools } from "./financeiro-tools.ts";
+import { DATE_ONLY, registerFinanceiroTools } from "./financeiro-tools.ts";
 import { REGISTERED, register } from "./register.ts";
 
 const STATUS_CLIENTE = z.enum(["ativo", "pausado", "encerrado"]);
@@ -42,7 +42,6 @@ const PROPERTY_TYPE = z.enum([
 ]);
 const TASK_STATUS = z.enum(["pendente", "em_andamento", "concluida"]);
 const TIPO_MEMBRO = z.enum(["clt", "freelancer_mensal", "freelancer_demanda"]);
-const DATE_ONLY = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use o formato YYYY-MM-DD");
 
 /** Owner-only financial fields on the pre-existing tools: a non-owner sending any of them is refused
  * (never silently ignored). The service role skips guard_financial_write, so this is the barrier. */

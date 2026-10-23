@@ -39,7 +39,8 @@ const notFound = () => new McpInputError(FINANCEIRO_ERROS.not_found);
 
 const nowIso = (d: Deps) => d.now?.() ?? new Date().toISOString();
 
-async function rpcAs(d: Deps, name: string, params: Record<string, unknown> = {}): Promise<unknown> {
+/** Chama uma RPC `_as` do v2 com o workspace e o usuário da chave (nunca o workspace ativo do JWT). */
+export async function callAs(d: Deps, name: string, params: Record<string, unknown> = {}): Promise<unknown> {
   const { data, error } = await (d.db as any).rpc(name, {
     p_conta: d.ctx.conta_id,
     p_user: d.ctx.created_by,
@@ -48,9 +49,6 @@ async function rpcAs(d: Deps, name: string, params: Record<string, unknown> = {}
   if (error) fail(error);
   return data;
 }
-
-/** Chama uma RPC `_as` do v2 com o workspace e o usuário da chave (nunca o workspace ativo do JWT). */
-export const callAs = rpcAs;
 
 // ---- lançamentos -------------------------------------------------------------------------------
 
@@ -130,7 +128,7 @@ export async function getCobrancas(d: Deps): Promise<{ clientes: Record<string, 
 // ---- Financeiro v2 -----------------------------------------------------------------------------
 
 export async function getFinanceiroV2(d: Deps) {
-  const [config, funcoes] = await Promise.all([
+  const [config, funcoes, periodos, editaveis] = await Promise.all([
     (d.db as any)
       .from("financeiro_config")
       .select("periodo_dia,meta_margem,seeded_at")
@@ -142,11 +140,11 @@ export async function getFinanceiroV2(d: Deps) {
       .eq("conta_id", d.ctx.conta_id)
       .order("ordem", { ascending: true })
       .order("id", { ascending: true }),
+    callAs(d, "financeiro_periodos_listar_as"),
+    callAs(d, "financeiro_periodos_editaveis_as"),
   ]);
   if (config.error) fail(config.error);
   if (funcoes.error) fail(funcoes.error);
-  const periodos = await rpcAs(d, "financeiro_periodos_listar_as");
-  const editaveis = await rpcAs(d, "financeiro_periodos_editaveis_as");
   const c = config.data as any;
   return {
     config: {
@@ -161,7 +159,7 @@ export async function getFinanceiroV2(d: Deps) {
 }
 
 export async function getRentabilidade(d: Deps, args: { inicio?: string }): Promise<unknown> {
-  return await rpcAs(d, "financeiro_rentabilidade_as", { p_inicio: args.inicio ?? null });
+  return await callAs(d, "financeiro_rentabilidade_as", { p_inicio: args.inicio ?? null });
 }
 
 const CLIENTE_VERSAO_FIELDS = ["vale_desde", "valor_mensal", "dia_pagamento", "status", "created_at"] as const;
@@ -299,7 +297,7 @@ export async function confirmarAgendamento(d: Deps, a: { origem: string; id: num
   if (!Object.hasOwn(ORIGEM_TABELA, a.origem)) throw new McpInputError(FINANCEIRO_ERROS.origem_invalida);
   // O núcleo SQL também filtra por conta_id; conferir aqui recusa o id alheio antes de qualquer escrita.
   await exigirDoWorkspace(d, ORIGEM_TABELA[a.origem as keyof typeof ORIGEM_TABELA], a.id);
-  const row = (await rpcAs(d, "financeiro_agendamento_confirmar_as", { p_origem: a.origem, p_id: a.id })) as any;
+  const row = (await callAs(d, "financeiro_agendamento_confirmar_as", { p_origem: a.origem, p_id: a.id })) as any;
   return row ? pick(row, LANCAMENTO_FIELDS) : null;
 }
 
@@ -333,7 +331,7 @@ export async function createRecorrente(
     }
     dataPrimeiro = a.data_primeiro;
   }
-  const r = (await rpcAs(d, "financeiro_recorrente_criar_as", {
+  const r = (await callAs(d, "financeiro_recorrente_criar_as", {
     p_tipo: a.tipo,
     p_descricao: a.descricao,
     p_categoria: a.categoria,
@@ -423,7 +421,7 @@ async function valeDesdePadrao(d: Deps): Promise<string> {
   if (error) fail(error);
   if (data?.inicio) return String(data.inicio);
   // Seed feito e o job ainda não abriu período: o primeiro editável.
-  const editaveis = (await rpcAs(d, "financeiro_periodos_editaveis_as")) as any[] | null;
+  const editaveis = (await callAs(d, "financeiro_periodos_editaveis_as")) as any[] | null;
   const primeiro = editaveis?.[0]?.inicio;
   if (!primeiro) throw new McpInputError(FINANCEIRO_ERROS.periodo_invalido);
   return String(primeiro);
@@ -497,7 +495,7 @@ export async function setCobrancaCliente(d: Deps, a: Record<string, any>): Promi
     ? atual.dia_pagamento ?? null
     : cliente.data_pagamento ?? null;
   const status = a.status ?? atual?.status ?? legadoStatus;
-  await rpcAs(d, "financeiro_cliente_salvar_as", {
+  await callAs(d, "financeiro_cliente_salvar_as", {
     p_cliente_id: a.cliente_id,
     p_vale_desde: valeDesde,
     p_valor_mensal: valor,
@@ -528,4 +526,112 @@ export async function setCustoMembro(d: Deps, a: Record<string, any>): Promise<R
   if (error) fail(error);
   if (!data) throw notFound();
   return pick(data as any, CUSTO_MEMBRO_SAIDA);
+}
+
+// ---- escritas: Financeiro v2 -------------------------------------------------------------------
+// Todas passam pelas RPCs `_as` (flag, dono e núcleo no banco); aqui só montamos os parâmetros.
+// Os formatos de data e os ids estrangeiros são recusados antes de qualquer escrita.
+
+export async function seedFinanceiroV2(d: Deps, a: { periodo_dia: number }): Promise<Record<string, any>> {
+  const r = (await callAs(d, "financeiro_seed_as", { p_periodo_dia: a.periodo_dia })) as any;
+  return pick(r ?? {}, ["seeded", "ja_existia"]);
+}
+
+export async function saveFinanceiroConfig(
+  d: Deps,
+  a: { periodo_dia?: number; meta_margem?: number },
+): Promise<{ ok: true }> {
+  const patch = patchOf(a, ["periodo_dia", "meta_margem"]);
+  exigirMudanca(patch);
+  await callAs(d, "financeiro_config_salvar_as", {
+    p_periodo_dia: patch.periodo_dia ?? null,
+    p_meta_margem: patch.meta_margem ?? null,
+  });
+  return { ok: true };
+}
+
+export async function saveFuncao(
+  d: Deps,
+  a: { funcao_id?: number; nome: string; ordem?: number },
+): Promise<{ funcao_id: number }> {
+  const id = await callAs(d, "financeiro_funcao_salvar_as", {
+    p_id: a.funcao_id ?? null,
+    p_nome: a.nome,
+    p_ordem: a.ordem ?? null,
+  });
+  return { funcao_id: Number(id) };
+}
+
+export async function deleteFuncao(d: Deps, a: { funcao_id: number }): Promise<{ ok: true }> {
+  await callAs(d, "financeiro_funcao_excluir_as", { p_id: a.funcao_id });
+  return { ok: true };
+}
+
+const ACORDO_CHAVES = [
+  "funcao_id", "modelo", "valor", "unidade", "meta_quantidade", "meta_periodo", "limite_clientes", "dia_pagamento",
+  "vigencia_inicio", "vigencia_fim",
+] as const;
+
+export async function saveAcordo(d: Deps, a: Record<string, any>): Promise<Record<string, any>> {
+  if (a.vale_desde != null) exigirData(a.vale_desde);
+  for (const k of ["vigencia_inicio", "vigencia_fim"]) if (a[k] != null) exigirData(a[k]);
+  await exigirDoWorkspace(d, "membros", a.membro_id);
+
+  const valeDesde: string = a.vale_desde ?? (await valeDesdePadrao(d));
+  // O contrato anexado (arquivo_path) não é editável por aqui: segue o da versão vigente em vale_desde.
+  const { data: atual, error } = await (d.db as any)
+    .from("financeiro_acordo_versoes")
+    .select("arquivo_path")
+    .eq("conta_id", d.ctx.conta_id)
+    .eq("membro_id", a.membro_id)
+    .lte("vale_desde", valeDesde)
+    .order("vale_desde", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) fail(error);
+
+  // Formato completo do AcordoInput do CRM: toda chave presente, omitida = null.
+  const acordo: Record<string, any> = {};
+  for (const k of ACORDO_CHAVES) acordo[k] = a[k] ?? null;
+  acordo.arquivo_path = atual?.arquivo_path ?? null;
+
+  await callAs(d, "financeiro_acordo_salvar_as", {
+    p_membro_id: a.membro_id,
+    p_vale_desde: valeDesde,
+    p_acordo: acordo,
+  });
+  return { ok: true, membro_id: a.membro_id, vale_desde: valeDesde };
+}
+
+export async function saveAtribuicoes(
+  d: Deps,
+  a: { vale_desde?: string; mudancas: { membro_id: number; cliente_id: number; ativo: boolean }[] },
+): Promise<Record<string, any>> {
+  if (a.vale_desde != null) exigirData(a.vale_desde);
+  const valeDesde: string = a.vale_desde ?? (await valeDesdePadrao(d));
+  const mudancas = a.mudancas.map((m) => ({ membro_id: m.membro_id, cliente_id: m.cliente_id, ativo: m.ativo }));
+  await callAs(d, "financeiro_atribuicoes_salvar_as", { p_vale_desde: valeDesde, p_mudancas: mudancas });
+  return { ok: true, vale_desde: valeDesde, mudancas: mudancas.length };
+}
+
+export async function saveEntregas(
+  d: Deps,
+  a: { inicio: string; membro_id: number; itens: { cliente_id: number; quantidade: number | null }[] },
+): Promise<Record<string, any>> {
+  exigirData(a.inicio);
+  const itens = a.itens.map((i) => ({ cliente_id: i.cliente_id, quantidade: i.quantidade ?? null }));
+  await callAs(d, "financeiro_entregas_salvar_as", { p_inicio: a.inicio, p_membro_id: a.membro_id, p_itens: itens });
+  return { ok: true, inicio: a.inicio, membro_id: a.membro_id, itens: itens.length };
+}
+
+export async function fecharPeriodo(d: Deps, a: { inicio: string }): Promise<{ ok: true; inicio: string }> {
+  exigirData(a.inicio);
+  await callAs(d, "financeiro_periodo_fechar_as", { p_inicio: a.inicio });
+  return { ok: true, inicio: a.inicio };
+}
+
+export async function reabrirPeriodo(d: Deps, a: { inicio: string }): Promise<{ ok: true; inicio: string }> {
+  exigirData(a.inicio);
+  await callAs(d, "financeiro_periodo_reabrir_as", { p_inicio: a.inicio });
+  return { ok: true, inicio: a.inicio };
 }

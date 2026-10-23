@@ -22,7 +22,7 @@ export const FINANCEIRO_ERROS: Record<string, string> = {
   "feature_disabled:feature_financial": "O plano deste workspace não inclui o Financeiro.",
   "feature_disabled:feature_financeiro_v2": "O Financeiro v2 não está ativo neste workspace.",
   financial_access_denied: "Sem permissão para acessar o Financeiro deste workspace.",
-  owner_only: "Somente o dono do workspace pode usar as ferramentas do Financeiro.",
+  owner_only: "Permission denied: somente o dono do workspace pode usar as ferramentas do Financeiro.",
   nao_configurado: "O Financeiro v2 ainda não foi configurado. Use seed_financeiro_v2 primeiro.",
   not_found: "Registro não encontrado neste workspace.",
   periodo_invalido: "Período inválido. Use um início listado em editaveis (get_financeiro_v2).",

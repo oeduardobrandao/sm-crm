@@ -68,13 +68,18 @@ Deno.test("mcp-financeiro-read: a non-owner never reaches the db", async () => {
   assertEquals(calls.length, 0);
 });
 
+const V2_READ_TOOLS = ["get_financeiro_v2", "get_rentabilidade", "get_cliente_versoes", "get_acordo_versoes"];
+
 Deno.test("mcp-financeiro-read: v2 tools refuse before any query when feature_financeiro_v2 is off", async () => {
-  const { server, calls } = setup({}, {
-    effective_plan_feature: [{ data: true, error: null }, { data: false, error: null }],
-  });
-  const r = await server.handlers["get_financeiro_v2"]({});
-  assert(r.isError === true);
-  assertEquals(calls.filter((c) => c.table !== "rpc:effective_plan_feature").length, 0);
+  for (const name of V2_READ_TOOLS) {
+    const { server, calls } = setup({}, {
+      effective_plan_feature: [{ data: true, error: null }, { data: false, error: null }],
+    });
+    const r = await server.handlers[name]({ cliente_id: 1, membro_id: 1 });
+    assert(r.isError === true, `${name} refused`);
+    assertEquals(parse(r).error, "O Financeiro v2 não está ativo neste workspace.");
+    assertEquals(calls.filter((c) => c.table !== "rpc:effective_plan_feature").length, 0, `${name} touched the db`);
+  }
 });
 
 // ---- list_lancamentos -------------------------------------------------------------------------

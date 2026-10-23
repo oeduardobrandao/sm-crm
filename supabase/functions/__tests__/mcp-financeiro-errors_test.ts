@@ -64,6 +64,10 @@ Deno.test("mcp-financeiro-errors: mapFinanceiroError maps a P0001 code, 23514, 2
 
   const owner = mapFinanceiroError({ message: "owner_only", code: "42501" });
   assertEquals(owner!.message, FINANCEIRO_ERROS.owner_only);
+  assertEquals(
+    FINANCEIRO_ERROS.owner_only,
+    "Permission denied: somente o dono do workspace pode usar as ferramentas do Financeiro.",
+  );
 
   const chk = mapFinanceiroError({ message: 'new row violates check constraint "x_chk"', code: "23514" });
   assertEquals(chk!.message, "Valor fora do permitido.");

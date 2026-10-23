@@ -9,8 +9,10 @@ import {
   confirmarAgendamento,
   createLancamento,
   createRecorrente,
+  deleteFuncao,
   deleteLancamento,
   encerrarRecorrente,
+  fecharPeriodo,
   getAcordoVersoes,
   getClienteVersoes,
   getCobrancas,
@@ -18,6 +20,13 @@ import {
   getRentabilidade,
   listLancamentos,
   listRecorrentes,
+  reabrirPeriodo,
+  saveAcordo,
+  saveAtribuicoes,
+  saveEntregas,
+  saveFinanceiroConfig,
+  saveFuncao,
+  seedFinanceiroV2,
   setCobrancaCliente,
   setCustoMembro,
   updateLancamento,
@@ -202,4 +211,90 @@ export function registerFinanceiroTools(server: any, deps: Deps): void {
     (a) => setCustoMembro(deps, a),
     (a) => ({ membro_id: a.membro_id }),
     own);
+
+  // ---- escrita do Financeiro v2 (financeiro:write + feature_financeiro_v2) -------------------
+  const DIA_PERIODO = z.number().int().min(1).max(28);
+
+  register(server, deps, "seed_financeiro_v2", "financeiro:write",
+    "Configura o Financeiro v2 do workspace pela primeira vez: periodo_dia (1..28) é o dia em que cada período começa. Abre o período que contém hoje, cria as funções padrão (se não houver nenhuma) e copia a cobrança atual de clientes e acordos dos membros como primeira versão. Idempotente: se já estava configurado devolve ja_existia true sem mudar nada. Devolve { seeded, ja_existia }. Somente para o dono do workspace e com o Financeiro v2 ativo.",
+    { periodo_dia: DIA_PERIODO },
+    (a) => seedFinanceiroV2(deps, a),
+    (a, r) => ({ periodo_dia: a.periodo_dia, ja_existia: r?.ja_existia }),
+    v2);
+
+  register(server, deps, "save_financeiro_config", "financeiro:write",
+    "Altera a configuração do Financeiro v2: periodo_dia (1..28, dia em que cada período começa) e/ou meta_margem (0..100, em %). Informe ao menos um; o omitido fica como está. Somente para o dono do workspace e com o Financeiro v2 ativo.",
+    { periodo_dia: DIA_PERIODO.optional(), meta_margem: z.number().min(0).max(100).optional() },
+    (a) => saveFinanceiroConfig(deps, a),
+    (a) => ({ periodo_dia: a.periodo_dia }),
+    v2);
+
+  register(server, deps, "save_funcao", "financeiro:write",
+    "Cria (sem funcao_id) ou renomeia/reordena (com funcao_id) uma função da equipe no Financeiro v2. nome 1..60 caracteres e único no workspace; ordem >= 0 (padrão: depois da última). Devolve { funcao_id }. Somente para o dono do workspace e com o Financeiro v2 ativo.",
+    { funcao_id: ID.optional(), nome: z.string().trim().min(1).max(60), ordem: z.number().int().min(0).optional() },
+    (a) => saveFuncao(deps, a),
+    (_a, r) => ({ funcao_id: r?.funcao_id }),
+    v2);
+
+  register(server, deps, "delete_funcao", "financeiro:write",
+    "Remove uma função por funcao_id. Os acordos que a usavam ficam sem função. Irreversível. Somente para o dono do workspace e com o Financeiro v2 ativo.",
+    { funcao_id: ID },
+    (a) => deleteFuncao(deps, a),
+    (a) => ({ funcao_id: a.funcao_id }),
+    v2);
+
+  register(server, deps, "save_acordo", "financeiro:write",
+    "Grava uma nova versão do acordo de um membro no Financeiro v2, válida desde vale_desde (YYYY-MM-DD; padrão: início do período aberto; períodos fechados são recusados). Envie o acordo COMPLETO: o que for omitido vira null (não herda da versão anterior; consulte get_acordo_versoes antes). modelo: 'mensal_meta' | 'mensal_limite' | 'por_entrega'; valor em reais (>= 0); unidade, meta_quantidade e meta_periodo ('dia_util'|'semana'|'mes') descrevem a meta; limite_clientes vale para mensal_limite; dia_pagamento 1..31; vigencia_inicio/vigencia_fim YYYY-MM-DD. O contrato anexado é mantido. Somente para o dono do workspace e com o Financeiro v2 ativo.",
+    {
+      membro_id: ID,
+      vale_desde: DATE_ONLY.optional(),
+      funcao_id: ID.nullable().optional(),
+      modelo: z.enum(["mensal_meta", "mensal_limite", "por_entrega"]),
+      valor: z.number().min(0),
+      unidade: z.string().max(40).nullable().optional(),
+      meta_quantidade: z.number().int().min(0).nullable().optional(),
+      meta_periodo: z.enum(["dia_util", "semana", "mes"]).nullable().optional(),
+      limite_clientes: z.number().int().min(0).nullable().optional(),
+      dia_pagamento: DIA.nullable().optional(),
+      vigencia_inicio: DATE_ONLY.nullable().optional(),
+      vigencia_fim: DATE_ONLY.nullable().optional(),
+    },
+    (a) => saveAcordo(deps, a),
+    (a, r) => ({ membro_id: a.membro_id, vale_desde: a.vale_desde ?? r?.vale_desde }),
+    v2);
+
+  register(server, deps, "save_atribuicoes", "financeiro:write",
+    "Atribui (ativo true) ou remove (ativo false) membros de clientes no Financeiro v2, a partir de vale_desde (YYYY-MM-DD; padrão: início do período aberto). Até 200 mudanças por chamada, tudo ou nada. Recusa cliente encerrado e períodos fechados. Somente para o dono do workspace e com o Financeiro v2 ativo.",
+    {
+      vale_desde: DATE_ONLY.optional(),
+      mudancas: z.array(z.object({ membro_id: ID, cliente_id: ID, ativo: z.boolean() })).min(1).max(200),
+    },
+    (a) => saveAtribuicoes(deps, a),
+    (a, r) => ({ vale_desde: a.vale_desde ?? r?.vale_desde, count: r?.mudancas ?? a.mudancas?.length }),
+    v2);
+
+  register(server, deps, "save_entregas", "financeiro:write",
+    "Registra as entregas manuais de um membro no período que começa em inicio (YYYY-MM-DD, um dos editáveis de get_financeiro_v2): quantidade >= 0 por cliente, ou null para apagar o registro manual. O membro precisa estar atribuído ao cliente no período. Até 200 itens, tudo ou nada. Somente para o dono do workspace e com o Financeiro v2 ativo.",
+    {
+      inicio: DATE_ONLY,
+      membro_id: ID,
+      itens: z.array(z.object({ cliente_id: ID, quantidade: z.number().min(0).nullable() })).min(1).max(200),
+    },
+    (a) => saveEntregas(deps, a),
+    (a, r) => ({ inicio: a.inicio, membro_id: a.membro_id, count: r?.itens ?? a.itens?.length }),
+    v2);
+
+  register(server, deps, "fechar_periodo", "financeiro:write",
+    "Fecha o período que começa em inicio (YYYY-MM-DD), congelando um snapshot da rentabilidade. Só períodos abertos. Reversível com reabrir_periodo. Somente para o dono do workspace e com o Financeiro v2 ativo.",
+    { inicio: DATE_ONLY },
+    (a) => fecharPeriodo(deps, a),
+    (a) => ({ inicio: a.inicio }),
+    v2);
+
+  register(server, deps, "reabrir_periodo", "financeiro:write",
+    "Reabre um período fechado que começa em inicio (YYYY-MM-DD) para voltar a editar cobrança, acordos, atribuições e entregas. Somente para o dono do workspace e com o Financeiro v2 ativo.",
+    { inicio: DATE_ONLY },
+    (a) => reabrirPeriodo(deps, a),
+    (a) => ({ inicio: a.inicio }),
+    v2);
 }
