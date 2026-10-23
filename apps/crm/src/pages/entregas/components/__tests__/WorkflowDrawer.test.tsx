@@ -1433,6 +1433,16 @@ describe('WorkflowDrawer discussion badge on the post trigger', () => {
     expect(screen.queryByLabelText('2 mensagens na discussão')).not.toBeInTheDocument();
   });
 
+  it('does not count the general thread in the fallback before the count arrives', async () => {
+    mockGetThreads.mockResolvedValue([
+      { id: 1, post_id: 1, field: 'geral', comments: [] },
+      { id: 2, post_id: 1, field: 'conteudo', comments: [] },
+    ] as never);
+    renderOne();
+    expect(await screen.findByLabelText('1 mensagem na discussão')).toHaveTextContent('1');
+    expect(screen.queryByLabelText('2 mensagens na discussão')).not.toBeInTheDocument();
+  });
+
   it('shows nothing when there is no discussion and no thread', async () => {
     renderOne();
     await screen.findByText('Post A');

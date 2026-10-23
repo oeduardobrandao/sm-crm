@@ -154,6 +154,7 @@ import { Badge } from '@/components/ui/badge';
 // By path, not through the '../../../store' barrel: the drawer test harnesses mock '@/store'
 // with explicit factories, so a new barrel export would be missing from every one of them.
 import { getPostReferenceCounts } from '@/store/postReferences';
+import { isGeralThread } from '@/store/comments';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import {
   FluxoPhoneHeader,
@@ -1861,7 +1862,10 @@ function SortablePostItem({
   };
 
   const isExternallyVisible = isVisibleToClient(post.status);
-  const discussaoBadge = discussaoTriggerBadge(discussao, commentThreads.length);
+  const discussaoBadge = discussaoTriggerBadge(
+    discussao,
+    commentThreads.filter((t) => !isGeralThread(t)).length,
+  );
 
   // Publish date shown in the collapsed row: once a post is actually live the real
   // published_at wins, otherwise fall back to the scheduled "Data de postagem".
