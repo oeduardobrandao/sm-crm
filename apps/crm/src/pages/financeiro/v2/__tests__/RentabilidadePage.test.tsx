@@ -302,6 +302,40 @@ describe('RentabilidadePage', () => {
     );
   });
 
+  it('on a closed period the notice asks to reopen instead of linking to inform', async () => {
+    const data = structuredClone(planilha);
+    data.incompleto = true;
+    getRentabilidadeMock.mockResolvedValue(data);
+    getPeriodosMock.mockResolvedValue([periodo('fechado')]);
+    renderPage();
+
+    await waitFor(() => expect(screen.getAllByText('Fechado').length).toBeGreaterThan(0));
+    expect(screen.getByText('Há entregas a informar neste período.')).toBeInTheDocument();
+    expect(screen.getByText('Reabra o período para informar.')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Informar entregas' })).not.toBeInTheDocument();
+  });
+
+  it('labels the footer as the clients total and notes the cost outside them', async () => {
+    const data = structuredClone(planilha);
+    data.totais.custo_sem_cliente = 900;
+    getRentabilidadeMock.mockResolvedValue(data);
+    renderPage();
+
+    await screen.findByText('Receita recorrente');
+    const rodape = screen.getAllByRole('row').at(-1)!;
+    expect(within(rodape).getByText('Total dos clientes')).toBeInTheDocument();
+    expect(norm(screen.getByText(/^Custo sem cliente:/).textContent)).toBe(
+      'Custo sem cliente: R$ 900,00',
+    );
+  });
+
+  it('has no cost-outside note when every cost is on a client', async () => {
+    renderPage();
+
+    await screen.findByText('Receita recorrente');
+    expect(screen.queryByText(/^Custo sem cliente:/)).not.toBeInTheDocument();
+  });
+
   it('keeps the cost of a função cell that also has a delivery to inform', async () => {
     const data = structuredClone(planilha);
     const talitha = data.clientes.find((c) => c.nome === 'Talitha')!;
@@ -506,6 +540,26 @@ describe('RentabilidadePage', () => {
     expect(
       await screen.findByText('Não foi possível carregar a rentabilidade.'),
     ).toBeInTheDocument();
+  });
+
+  it('phone summary shows "Sem cliente" when some cost has no client', async () => {
+    desktop.value = false;
+    const data = structuredClone(planilha);
+    data.totais.custo_sem_cliente = 900;
+    getRentabilidadeMock.mockResolvedValue(data);
+    renderPage();
+
+    await screen.findByRole('list', { name: 'Clientes' });
+    const celula = screen.getByText('Sem cliente').closest('div')!;
+    expect(norm(celula.textContent)).toBe('Sem clienteR$ 900,00');
+  });
+
+  it('phone summary has three cells when every cost is on a client', async () => {
+    desktop.value = false;
+    renderPage();
+
+    await screen.findByRole('list', { name: 'Clientes' });
+    expect(screen.queryByText('Sem cliente')).not.toBeInTheDocument();
   });
 
   it('phone_renders_list', async () => {

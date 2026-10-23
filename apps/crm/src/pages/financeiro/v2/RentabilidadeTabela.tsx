@@ -26,7 +26,10 @@ interface RentabilidadeTabelaProps {
 
 const NUM = 'text-right tabular-nums whitespace-nowrap';
 
-/** Per-client profitability table: one row per client, one column per função, a totals footer. */
+/**
+ * Per-client profitability table: one row per client, one column per função, and a footer
+ * that sums the clients (cost outside them, "sem cliente", is noted by the page).
+ */
 export function RentabilidadeTabela({
   linhas,
   total,
@@ -136,7 +139,7 @@ export function RentabilidadeTabela({
       </TableBody>
       <TableFooter>
         <TableRow className="font-bold">
-          <TableCell>Total</TableCell>
+          <TableCell>Total dos clientes</TableCell>
           <TableCell className={NUM}>{brl(total.receita)}</TableCell>
           <TableCell className={NUM}>{brl(total.custo)}</TableCell>
           <TableCell className={NUM}>{brl(total.lucro)}</TableCell>

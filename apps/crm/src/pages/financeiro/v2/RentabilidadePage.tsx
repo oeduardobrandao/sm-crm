@@ -34,7 +34,7 @@ import { handleEntitlementMutationError } from '@/lib/entitlement-toast';
 import { formatFinancialBRL } from '@/lib/financialAccess';
 import { fecharPeriodo, getPeriodos, getRentabilidade, reabrirPeriodo } from '@/store';
 import type { PeriodoFinanceiro, RentabilidadeSeeded } from '@/store/financeiroV2';
-import { formatMargem } from './format';
+import { anualizar, formatMargem } from './format';
 import { MensalAnualToggle } from './MensalAnualToggle';
 import { PeriodoSelect } from './PeriodoSelect';
 import { montarCsv, montarLinhas, nomeArquivoCsv, somarLinhas } from './rentabilidade';
@@ -104,7 +104,8 @@ export default function RentabilidadePage() {
     return [data.periodo, ...lista];
   }, [periodosQuery.data, data]);
 
-  // Closed/reopened state comes from the period list: a closed period's snapshot reads 'aberto'.
+  // Closed/reopened state comes from the period list (the payload of a closed period also
+  // reads 'fechado', but the list is what the select and the period actions use).
   const inicioExibido = data?.periodo.inicio;
   // While another period loads, the previous payload is still on screen: no badge or action
   // for it, since the select already names the new one.
@@ -249,9 +250,13 @@ export default function RentabilidadePage() {
     <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
       <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
       <span>Há entregas a informar neste período.</span>
-      <Link to="/financeiro/equipe" className="font-semibold underline">
-        Informar entregas
-      </Link>
+      {status === 'fechado' ? (
+        <span className="font-semibold">Reabra o período para informar.</span>
+      ) : (
+        <Link to="/financeiro/equipe" className="font-semibold underline">
+          Informar entregas
+        </Link>
+      )}
     </p>
   );
 
@@ -376,6 +381,13 @@ export default function RentabilidadePage() {
             selecionadoId={selecionado?.cliente_id ?? null}
             onSelect={setSelecionadoId}
           />
+          {/* The footer sums the clients: the KPIs also count the cost outside them. */}
+          {totais.custo_sem_cliente > 0 && (
+            <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
+              Custo sem cliente{anual ? ' (anual)' : ''}:{' '}
+              {brl(anualizar(totais.custo_sem_cliente, anual))}
+            </p>
+          )}
         </div>
         <aside
           aria-label="Detalhe do cliente"

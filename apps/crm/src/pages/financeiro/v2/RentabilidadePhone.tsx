@@ -8,6 +8,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { formatFinancialBRL, type FinancialAccess } from '@/lib/financialAccess';
+import { cn } from '@/lib/utils';
 import type { RentabilidadeSeeded } from '@/store/financeiroV2';
 import { anualizar, formatMargem } from './format';
 import { RentabilidadeDetalhe } from './RentabilidadeDetalhe';
@@ -23,7 +24,7 @@ interface RentabilidadePhoneProps {
 }
 
 /**
- * Phone rendering of Rentabilidade: a three-cell summary, the Mensal/Anual toggle and
+ * Phone rendering of Rentabilidade: a three-cell summary (four with "Sem cliente"), the Mensal/Anual toggle and
  * one row per client (lowest margin first) with a cost/profit bar. A row opens the
  * client's detail in a bottom sheet.
  */
@@ -38,15 +39,25 @@ export function RentabilidadePhone({
   const brl = (v: number) => formatFinancialBRL(v, access);
   const aberto = data.clientes.find((c) => c.cliente_id === abertoId) ?? null;
 
-  const resumo = [
+  // Lucro counts the whole team cost, so the cost outside the clients (which the rows
+  // below do not show) gets its own cell when there is any.
+  const resumo: Array<readonly [string, string]> = [
     [anual ? 'ARR' : 'MRR', brl(anualizar(data.totais.receita, anual))],
     [anual ? 'LL anual' : 'Lucro', brl(anualizar(data.totais.lucro, anual))],
     ['Margem', formatMargem(data.totais.margem)],
-  ] as const;
+  ];
+  if (data.totais.custo_sem_cliente > 0) {
+    resumo.push(['Sem cliente', brl(anualizar(data.totais.custo_sem_cliente, anual))]);
+  }
 
   return (
     <div className="flex flex-col gap-3.5">
-      <dl className="m-0 grid grid-cols-3 gap-px overflow-hidden rounded-xl border border-border bg-border">
+      <dl
+        className={cn(
+          'm-0 grid gap-px overflow-hidden rounded-xl border border-border bg-border',
+          resumo.length > 3 ? 'grid-cols-2' : 'grid-cols-3',
+        )}
+      >
         {resumo.map(([label, valor]) => (
           <div key={label} className="flex min-w-0 flex-col gap-0.5 bg-card p-3">
             <dt className="text-[11px] text-muted-foreground">{label}</dt>

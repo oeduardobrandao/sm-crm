@@ -14,9 +14,8 @@ export interface PeriodoFinanceiro {
   inicio: string;
   fim: string;
   rotulo: string;
-  /** 'futuro' only comes from `getPeriodosEditaveis`. For a closed period the
-   *  rentabilidade payload still reads 'aberto' (the snapshot is taken in the same
-   *  UPDATE that closes it): take closed/reopened state from `getPeriodos`. */
+  /** 'futuro' only comes from `getPeriodosEditaveis`. A closed period's rentabilidade
+   *  payload reads 'fechado' (the RPC overlays the row's status on the snapshot). */
   status: 'aberto' | 'fechado' | 'reaberto' | 'futuro';
   transicao: boolean;
   /** Present on the rentabilidade payload only, absent on `periodos_listar` rows. */
