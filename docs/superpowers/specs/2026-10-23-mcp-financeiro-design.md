@@ -31,7 +31,8 @@ rentabilidade. Anexos de contrato dos acordos (bucket `financeiro-acordos`) fica
   devolvem as linhas físicas, os modelos recorrentes e a cobrança cadastrada, e documentam que os
   agendados do mês são derivados disso.
 - Mudar o que `list_clients`/`get_client`/`list_members` devolvem. Eles continuam sem campos
-  financeiros; valores só aparecem nas ferramentas novas.
+  financeiros; valores só aparecem nas ferramentas novas. (Exceção na escrita, abaixo:
+  `create_client`/`create_member` passam a exigir dono para os campos financeiros.)
 - Anexos de contrato, exportação CSV, MCP do Admin.
 
 ## Anti-metas
@@ -71,6 +72,20 @@ rentabilidade. Anexos de contrato dos acordos (bucket `financeiro-acordos`) fica
    `financeiro:*` quando o usuário não é dono do workspace (400 `owner_only_scope`). No CRM, os dois
    seletores de escopo mostram esses escopos desabilitados para quem não é dono, com a nota
    "Somente o dono do workspace".
+
+**Ferramentas existentes que já escrevem valores.** Hoje `create_client` aceita `valor_mensal`
+(escopo `clientes:write`) e `create_member` aceita `custo_mensal`/`data_pagamento`
+(`membros:write`), gravando por service role, onde `guard_financial_write` sai cedo
+(`20260904000002:244-247`). Ou seja, um não-dono já consegue gravar valores pelo MCP. Esses
+parâmetros passam a exigir `ctx.role === 'owner'`: para outro papel, a ferramenta recusa com
+`McpOwnerError` se algum deles vier preenchido (não ignora em silêncio). A descrição das duas
+ferramentas diz isso.
+
+**Barreira das ferramentas de tabela direta.** Lançamentos, recorrentes e as colunas legadas
+(v2 desligado) não passam por RPC: a única barreira de dono é o gate `ownerOnly` do edge, já que
+service role ignora RLS e `guard_financial_write`. Decisão aceita: o gate é estrutural (teste
+garante que toda `financeiro:*` é `ownerOnly`) e as duas operações que precisam de atomicidade já
+viram RPC `_as` com checagem de dono no banco.
 
 Plano: o gate do `register` para `financeiro:*` também confere `feature_financial`
 (`effective_plan_feature`) antes de qualquer consulta, leitura ou escrita, porque o service role
@@ -213,3 +228,54 @@ marcando os escopos novos.
 - Sem projeção no servidor; `confirmar_agendamento` cobre a ação de confirmar, só no mês corrente.
 - Confirmar atômico por trava consultiva, sem índice único (evita migração de dados em prod).
 - `set_custo_membro` recusa com v2 ligado (o custo é do acordo).
+
+## Regras de implementação (da revisão)
+
+- **Workspace em tudo.** Toda consulta direta filtra `conta_id = ctx.conta_id`, inclusive
+  `list_recorrentes`, `get_financeiro_v2` (config, funções), `get_cliente_versoes`,
+  `get_acordo_versoes`, `get_cobrancas`. Antes de gravar, todo id recebido (lançamento, recorrente,
+  `cliente_id` de lançamento, cliente/membro de cobrança e de confirmação) é conferido como do
+  workspace: `transacoes.cliente_id` é FK de coluna única para `clientes(id)`, então um id de outro
+  workspace passaria.
+- **`user_id`.** Inserts em `transacoes` e `transacoes_recorrentes` (NOT NULL) usam
+  `user_id = ctx.created_by`, nunca `key_id`. As RPCs `_as` recebem esse mesmo valor em `p_user`.
+- **Ordem das checagens.** Pública: flags (`feature_financial`, depois `feature_financeiro_v2`),
+  `has_permission` (e, em reabrir/fechar, a checagem de papel `owner` ou `admin` que existe hoje,
+  `20261027000006:142-146, 193-197`), então `_core`. `_as`: flags, dono, então `_core`. `_core`:
+  trava, `seeded`, período editável, `not_found`, com `p_conta`/`p_user` explícitos. Assim as suítes
+  que conferem "flag antes de permissão" seguem passando.
+- **`auth.uid()` nos corpos.** Todo uso vira `p_user` no `_core`, inclusive `criado_por` e os
+  inserts em `audit_log` de reabrir/fechar (`20261027000006:162-164, 216-218`).
+  `can_see_financials()` vira `has_permission_for(p_user, p_conta, 'financeiro', 'ver')` (sempre
+  verdadeiro depois da checagem de dono, mantido por paridade).
+- **Trigger legado.** `_financeiro_v2_legado_trigger` grava `created_by = auth.uid()`
+  (`20261027000005:307, 339, 357`), que fica NULL numa escrita legada por service role. Por isso
+  `set_cobranca_cliente` usa `financeiro_cliente_salvar_as` sempre que o workspace tem
+  `financeiro_config.seeded_at` preenchido, com ou sem a flag; colunas legadas só quando nunca
+  houve seed. Para `set_custo_membro` com seed e flag desligada, idem via `financeiro_acordo_salvar_as`
+  não se aplica (acordo é do v2): grava legado e aceita `created_by` NULL na versão gerada.
+- **`set_cobranca_cliente` com v2.** `p_status` não aceita NULL: campos omitidos (status, dia, valor)
+  vêm da versão vigente do cliente, lida antes. `vale_desde` padrão: início do período `aberto`; sem
+  período `aberto` (seed feito, job ainda não rodou), o primeiro de `financeiro_periodos_editaveis_as`.
+- **Confirmar agendamento.** Elegibilidade igual à projeção do CRM no mês corrente
+  (America/Sao_Paulo): cliente `status = 'ativo'` e `data_pagamento` não nulo; membro
+  `data_pagamento` não nulo; recorrente `inicio <= mês-01` e (`fim` nulo ou `fim >= mês-01`). Dia
+  `least(dia, último dia do mês)`. `detalhe`/`categoria`: `'Agendamento automático'`/`'Agendamento'`
+  para cliente e membro, `'Recorrente'`/categoria do modelo para recorrente. Valor nulo ou zero
+  (ex.: membro por entrega, cliente sem mensalidade) recusa com `valor_indefinido` em vez de
+  confirmar R$ 0. Esse código entra na tabela de erros.
+- **Encerrar recorrente.** Mesma regra do CRM: apaga quando `inicio > primeiro dia do mês anterior`
+  (começou neste mês ou depois); senão `fim = primeiro dia do mês anterior`. "Mês" em
+  America/Sao_Paulo.
+- **Plumbing.** `errorResult` mapeia `McpOwnerError`; `audit()` passa a extrair `resource_id`
+  também de `lancamento_id`, `recorrente_id`, `membro_id`, `cliente_id`, `funcao_id`, `inicio`.
+- **`McpKeyContext.role`.** Campo opcional (`role?: string | null`) para não quebrar os ~15 testes
+  que montam o contexto à mão; ausente conta como não-dono. Os resolvers sempre preenchem.
+- **Emissão.** `mcp-keys` checa dono no mesmo `contaId` que já usa (o `active_workspace_id` da
+  membership); `mcp-oauth-consent` no `conta_id` escolhido. No CRM, `ConsentPage`,
+  `IntegracoesClaudePage` e `IntegracoesClaudePhone` desabilitam os escopos (o
+  `eligible-workspaces` já devolve `role`).
+- **Fora de escopo, registrado.** Chave `mesaas_sk_` cujo criador saiu do workspace continua
+  funcionando nas ferramentas não financeiras (comportamento atual); as financeiras param pelo
+  gate de papel.
+
