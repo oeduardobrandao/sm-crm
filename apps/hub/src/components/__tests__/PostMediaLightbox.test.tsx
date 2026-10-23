@@ -1,3 +1,5 @@
+import { Profiler } from 'react';
+import { flushSync } from 'react-dom';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PostMediaLightbox } from '../PostMediaLightbox';
@@ -545,5 +547,169 @@ describe('PostMediaLightbox media notes', () => {
     expect(screen.getByRole('img', { name: 'Cena' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: HINT })).toBeNull();
     expect(screen.queryByRole('button', { name: /^Comentar em/ })).toBeNull();
+  });
+
+  describe('fix round 1', () => {
+    const SECOND = () =>
+      video({ id: 6, url: 'https://cdn.example.com/v2.mp4', thumbnail_url: null });
+
+    function renderTwo(props: Partial<React.ComponentProps<typeof PostMediaLightbox>> = {}) {
+      const onCreateNote = vi.fn().mockResolvedValue(undefined);
+      const onClose = vi.fn();
+      render(
+        <PostMediaLightbox
+          media={[video(), SECOND()]}
+          initialIndex={0}
+          onClose={onClose}
+          notes={[]}
+          canWrite
+          onCreateNote={onCreateNote}
+          {...props}
+        />,
+      );
+      return { onCreateNote, onClose };
+    }
+
+    it('arrow keys typed in the composer do not switch the item, and the note keeps its link and moment', async () => {
+      const { onCreateNote } = renderTwo();
+      const c = clock();
+      c.setTime(42);
+      fireEvent.click(screen.getByRole('button', { name: 'Comentar em 0:42' }));
+      const field = await screen.findByPlaceholderText(PH);
+      fireEvent.keyDown(field, { key: 'ArrowRight' });
+      fireEvent.change(field, { target: { value: 'Na primeira' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Enviar comentário' }));
+      await waitFor(() =>
+        expect(onCreateNote).toHaveBeenCalledWith({
+          link_id: 5,
+          t_seconds: 42,
+          body: 'Na primeira',
+        }),
+      );
+    });
+
+    it('the note keeps the link it was started on even if the item changes before sending', async () => {
+      const { onCreateNote } = renderTwo();
+      const c = clock();
+      c.setTime(42);
+      fireEvent.click(screen.getByRole('button', { name: 'Comentar em 0:42' }));
+      const field = await screen.findByPlaceholderText(PH);
+      // A programmatic move (not a key the guard can see) still must not retarget the note.
+      fireEvent.click(screen.getByRole('button', { name: 'Próxima', hidden: true }));
+      fireEvent.change(field, { target: { value: 'x' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Enviar comentário' }));
+      await waitFor(() =>
+        expect(onCreateNote).toHaveBeenCalledWith({ link_id: 5, t_seconds: 42, body: 'x' }),
+      );
+    });
+
+    it('arrow keys still switch the item when nothing is open', () => {
+      renderTwo();
+      expect(screen.getByText('1 / 2')).toBeInTheDocument();
+      fireEvent.keyDown(window, { key: 'ArrowRight' });
+      expect(screen.getByText('2 / 2')).toBeInTheDocument();
+    });
+
+    it('one Escape closes only the composer even when its close is flushed before the lightbox listener runs', async () => {
+      const { onClose } = renderTwo();
+      clock();
+      fireEvent.click(screen.getByRole('button', { name: /^Comentar em/ }));
+      await screen.findByPlaceholderText(PH);
+      // Radix (registered when the composer mounted) takes Escape in the capture phase and
+      // closes the composer; a real browser flushes that state before the next listener.
+      const flush = () => flushSync(() => undefined);
+      document.addEventListener('keydown', flush, true);
+      fireEvent.keyDown(document, { key: 'Escape' });
+      document.removeEventListener('keydown', flush, true);
+      await waitFor(() => expect(screen.queryByPlaceholderText(PH)).toBeNull());
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('Escape still closes the lightbox when the outer dialog also preventDefaults it', () => {
+      const { onClose } = renderTwo();
+      const outer = (e: Event) => e.preventDefault();
+      document.addEventListener('keydown', outer, true);
+      fireEvent.keyDown(document, { key: 'Escape' });
+      document.removeEventListener('keydown', outer, true);
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not re-render on timeupdate without notes, but does with notes', () => {
+      const commits = vi.fn();
+      const { unmount } = render(
+        <Profiler id="plain" onRender={commits}>
+          <PostMediaLightbox media={[video()]} initialIndex={0} onClose={vi.fn()} />
+        </Profiler>,
+      );
+      const plain = document.querySelector('video')!;
+      let tick = 0;
+      Object.defineProperty(plain, 'currentTime', { configurable: true, get: () => ++tick });
+      const before = commits.mock.calls.length;
+      fireEvent(plain, new Event('timeupdate'));
+      fireEvent(plain, new Event('timeupdate'));
+      expect(commits.mock.calls.length).toBe(before);
+      unmount();
+
+      const withNotes = vi.fn();
+      render(
+        <Profiler id="notes" onRender={withNotes}>
+          <PostMediaLightbox media={[video()]} initialIndex={0} onClose={vi.fn()} notes={[]} />
+        </Profiler>,
+      );
+      const el = document.querySelector('video')!;
+      Object.defineProperty(el, 'currentTime', { configurable: true, value: 3 });
+      const mid = withNotes.mock.calls.length;
+      fireEvent(el, new Event('timeupdate'));
+      expect(withNotes.mock.calls.length).toBeGreaterThan(mid);
+    });
+
+    it('resets the clock when the item changes', () => {
+      renderTwo({ notes: [note({ t_seconds: 25 })] });
+      const c = clock();
+      c.setTime(42);
+      expect(screen.getByRole('button', { name: 'Comentar em 0:42' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Comentário em 0:25' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Próxima' }));
+      expect(screen.getByRole('button', { name: 'Comentar em 0:00' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Comentário em 0:25' })).toBeNull();
+    });
+
+    it('the button label and the composer title come from the same moment', async () => {
+      renderTwo();
+      const c = clock();
+      c.setTime(42);
+      fireEvent.click(screen.getByRole('button', { name: 'Comentar em 0:42' }));
+      expect(
+        await screen.findByRole('textbox', { name: 'Comentário em 0:42' }),
+      ).toBeInTheDocument();
+    });
+
+    it('initialSeek does not re-apply after swiping away and back', () => {
+      renderTwo({ initialSeek: 30 });
+      const first = document.querySelector('video')!;
+      let ct = 0;
+      Object.defineProperty(first, 'currentTime', {
+        configurable: true,
+        get: () => ct,
+        set: (v: number) => {
+          ct = v;
+        },
+      });
+      fireEvent(first, new Event('loadedmetadata'));
+      expect(ct).toBe(30);
+      fireEvent.click(screen.getByRole('button', { name: 'Próxima' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Anterior' }));
+      const again = document.querySelector('video')!;
+      let ct2 = 0;
+      Object.defineProperty(again, 'currentTime', {
+        configurable: true,
+        get: () => ct2,
+        set: (v: number) => {
+          ct2 = v;
+        },
+      });
+      fireEvent(again, new Event('loadedmetadata'));
+      expect(ct2).toBe(0);
+    });
   });
 });

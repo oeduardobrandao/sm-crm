@@ -30,6 +30,11 @@ function videoBoxStyle(m: HubPostMedia, maxVh = 85): React.CSSProperties {
   return { width: '90vw', height: `${maxVh}vh` };
 }
 
+function isEditable(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName);
+}
+
 interface NoteInput {
   link_id: number;
   t_seconds?: number;
@@ -40,6 +45,8 @@ interface NoteInput {
 
 /** What the open composer is about: a video moment, optionally with a spot. */
 interface ComposerTarget {
+  /** The item the note was started on: it keeps that link whatever the lightbox shows later. */
+  linkId: number;
   t: number;
   point: { x: number; y: number } | null;
 }
@@ -95,8 +102,13 @@ export function PostMediaLightbox({
   composerOpenRef.current = composer !== null;
   const seekRef = useRef<number | undefined>(initialSeek);
 
+  // Only notes mode reads the clock: the plain lightbox must not re-render on every timeupdate.
   useEffect(() => {
-    if (!videoEl) return;
+    if (!videoEl || !showNotes) {
+      setTime(0);
+      setDuration(0);
+      return;
+    }
     const sync = () => {
       setTime(videoEl.currentTime || 0);
       setDuration(Number.isFinite(videoEl.duration) ? videoEl.duration : 0);
@@ -107,13 +119,19 @@ export function PostMediaLightbox({
     return () => {
       for (const e of events) videoEl.removeEventListener(e, sync);
     };
-  }, [videoEl]);
+  }, [videoEl, showNotes]);
 
   // initialSeek belongs to the item the lightbox opened on, not to wherever the user swipes.
   const seekTargetId = media[initialIndex]?.id;
   useEffect(() => {
     const el = videoRef.current;
-    if (!videoEl || !el || seekRef.current === undefined || current?.id !== seekTargetId) return;
+    if (seekRef.current === undefined) return;
+    // Swiped away before the seek happened: it is no longer meant for anything.
+    if (current?.id !== seekTargetId) {
+      seekRef.current = undefined;
+      return;
+    }
+    if (!videoEl || !el) return;
     const apply = () => {
       if (seekRef.current === undefined) return;
       el.currentTime = seekRef.current;
@@ -126,20 +144,20 @@ export function PostMediaLightbox({
   }, [videoEl, current?.id, seekTargetId]);
 
   function startMoment(point: { x: number; y: number } | null) {
-    const el = videoRef.current;
-    el?.pause();
-    const t0 = Math.round((el?.currentTime ?? 0) * 100) / 100;
+    if (!current) return;
+    videoRef.current?.pause();
+    // The moment the button/marker row showed, so the label and the composer title agree.
     setPending(point);
-    setComposer({ t: t0, point });
+    setComposer({ linkId: current.id, t: Math.round(time * 100) / 100, point });
   }
   function closeComposer() {
     setComposer(null);
     setPending(null);
   }
   async function submitNote(body: string) {
-    if (!composer || !current || !onCreateNote) return;
+    if (!composer || !onCreateNote) return;
     await onCreateNote({
-      link_id: current.id,
+      link_id: composer.linkId,
       t_seconds: composer.t,
       ...(composer.point ? { x: composer.point.x, y: composer.point.y } : {}),
       body,
@@ -176,17 +194,32 @@ export function PostMediaLightbox({
   }, [idx, media]);
 
   useEffect(() => {
+    // Keys that arrived while the note composer was open. The composer's Radix dialog takes
+    // Escape in the capture phase and React may flush its close before this bubble listener
+    // runs, so "is the composer open" has to be sampled BEFORE Radix sees the key. (Not
+    // `defaultPrevented`: the outer HubDialog preventDefaults Escape too, and the lightbox
+    // must still close on it.)
+    const claimedByComposer = new WeakSet<Event>();
+    const onKeyCapture = (e: KeyboardEvent) => {
+      if (composerOpenRef.current) claimedByComposer.add(e);
+    };
     const onKey = (e: KeyboardEvent) => {
-      // The note composer is a dialog above the lightbox: its Escape is not ours.
+      if (claimedByComposer.has(e)) return;
       if (e.key === 'Escape') {
-        if (!composerOpenRef.current) onClose();
+        onClose();
         return;
       }
+      // Arrows belong to the caret while typing.
+      if (isEditable(e.target)) return;
       if (e.key === 'ArrowLeft') prev();
       if (e.key === 'ArrowRight') next();
     };
+    window.addEventListener('keydown', onKeyCapture, true);
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKeyCapture, true);
+      window.removeEventListener('keydown', onKey);
+    };
   }, [prev, next, onClose]);
 
   // Touch swipe: horizontal swipe > 50px advances; vertical-dominant gestures are ignored
@@ -367,7 +400,7 @@ export function PostMediaLightbox({
                       style={{
                         left: `${Math.min(100, Math.max(0, ((n.t_seconds ?? 0) / duration) * 100))}%`,
                       }}
-                      className="group absolute top-0 flex h-6 w-6 -translate-x-1/2 items-center justify-center"
+                      className="absolute top-0 flex h-6 w-6 -translate-x-1/2 items-center justify-center"
                     >
                       <span
                         className={`block h-3 w-[3px] rounded-full ${
