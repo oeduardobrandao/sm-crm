@@ -453,21 +453,18 @@ export function PostEditor({
       focusThread(threadId: number) {
         if (!editor || editor.isDestroyed) return;
         let from = -1;
-        let to = -1;
         editor.state.doc.descendants((node, pos) => {
           const marked = node.marks.some(
             (m) => m.type.name === 'commentHighlight' && Number(m.attrs.threadId) === threadId,
           );
           if (!marked) return;
           if (from < 0) from = pos;
-          to = pos + node.nodeSize;
         });
         if (from >= 0) {
-          // Phone: no focus, or the keyboard would open and shift the popover's anchor.
-          const chain = phone
-            ? editor.chain()
-            : editor.chain().focus(undefined, { scrollIntoView: false });
-          chain.setTextSelection({ from, to }).run();
+          // A caret at the passage start, without focusing the editor: a focused range
+          // selection would show the formatting bubble and the next keystroke would
+          // replace the commented text. On the phone, focus would also open the keyboard.
+          editor.chain().setTextSelection(from).run();
         }
         // An orphaned thread (its passage was deleted) still opens, anchored to the editor.
         const target =
@@ -481,7 +478,7 @@ export function PostEditor({
         setCommentAddOpen(false);
       },
     }),
-    [editor, phone],
+    [editor],
   );
 
   const handleResolveThread = useCallback(

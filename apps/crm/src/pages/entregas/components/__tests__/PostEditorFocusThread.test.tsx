@@ -104,26 +104,30 @@ async function renderEditor(variant: 'default' | 'phone' = 'default') {
 const popoverQuote = () => document.querySelector('.comment-popover-quoted');
 
 describe('PostEditor focusThread', () => {
-  it('selects the commented passage and opens its popover', async () => {
+  it('puts a caret at the commented passage and opens its popover without focusing the editor', async () => {
     const { ref, editor } = await renderEditor();
     expect(popoverQuote()).toBeNull();
 
     act(() => ref.current!.focusThread(1));
 
     await waitFor(() => expect(popoverQuote()).toHaveTextContent('trecho'));
-    // "Olá " is positions 1..4 inside the paragraph; the mark spans "trecho".
+    // "Olá " is positions 1..4 inside the paragraph; the mark starts at "trecho".
+    // A collapsed caret, unfocused: a focused range would let the next keystroke
+    // replace the commented passage.
     expect(editor.state.selection.from).toBe(5);
-    expect(editor.state.selection.to).toBe(11);
+    expect(editor.state.selection.empty).toBe(true);
+    expect(editor.isFocused).toBe(false);
   });
 
-  it('phone: opens the popover and selects the passage', async () => {
+  it('phone: opens the popover with a caret at the passage, no focus', async () => {
     const { ref, editor } = await renderEditor('phone');
 
     act(() => ref.current!.focusThread(1));
 
     await waitFor(() => expect(popoverQuote()).toHaveTextContent('trecho'));
     expect(editor.state.selection.from).toBe(5);
-    expect(editor.state.selection.to).toBe(11);
+    expect(editor.state.selection.empty).toBe(true);
+    expect(editor.isFocused).toBe(false);
   });
 
   it('opens an orphaned thread (no mark left in the text) anchored to the editor', async () => {
