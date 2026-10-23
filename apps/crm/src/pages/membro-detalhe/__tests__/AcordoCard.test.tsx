@@ -113,6 +113,22 @@ describe('AcordoCard', () => {
     expect(within(historico).getByText(/R\$\s3\.500,00/)).toBeVisible();
   });
 
+  it('lists a paused client as Pausado instead of a cost', async () => {
+    const data = structuredClone(planilha);
+    const cinara = data.clientes.find((c) => c.nome === 'Cinara')!;
+    cinara.status = 'pausado';
+    cinara.pessoas = cinara.pessoas.map((p) => ({ ...p, valor: 0 }));
+    store.getRentabilidade.mockResolvedValue(data);
+    renderCard();
+
+    await screen.findByText('Mensal com meta');
+    const clientes = screen.getByRole('heading', { name: 'Clientes atendidos' }).parentElement!;
+    expect(within(clientes).getAllByRole('listitem')).toHaveLength(15);
+    const linha = within(clientes).getByText('Cinara').closest('li')!;
+    expect(within(linha).getByText('Pausado')).toBeVisible();
+    expect(within(clientes).getAllByText(/R\$\s260,00/)).toHaveLength(14);
+  });
+
   it('offers to register an acordo when none is in force', async () => {
     store.getAcordoVersoes.mockResolvedValue([]);
     renderCard();

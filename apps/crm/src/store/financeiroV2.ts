@@ -40,7 +40,7 @@ export interface PessoaRentabilidade {
   total: number;
   /** How many clients share it. */
   n_clientes: number;
-  /** Only for `entrega`; null = a informar. */
+  /** Only for `entrega`; null = a informar (on an `ativo` client; a `pausado` one owes none). */
   quantidade: number | null;
   valor_unitario: number | null;
 }
@@ -57,6 +57,10 @@ export interface ClienteRentabilidade {
   a_informar: boolean;
   /** Keys are funcao ids as strings. */
   por_funcao: Record<string, number>;
+  /**
+   * Every assigned member with a função. A `pausado` client keeps its people, each at
+   * valor 0 unless deliveries were entered for it: read `status` before showing a rule.
+   */
   pessoas: PessoaRentabilidade[];
 }
 

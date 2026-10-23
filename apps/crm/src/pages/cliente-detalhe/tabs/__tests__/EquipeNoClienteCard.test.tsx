@@ -65,13 +65,15 @@ function setAuth(canEdit: boolean | 'unknown' = true) {
   });
 }
 
-function renderCard(opts: { membros?: typeof planilha.membros } = {}) {
+function renderCard(
+  opts: { membros?: typeof planilha.membros; cliente?: ClienteRentabilidade } = {},
+) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
   render(
     <QueryClientProvider client={queryClient}>
       <EquipeNoClienteCard
-        cliente={talitha()}
+        cliente={opts.cliente ?? talitha()}
         funcoes={planilha.funcoes}
         membros={opts.membros ?? planilha.membros}
         periodoInicio={planilha.periodo.inicio}
@@ -209,5 +211,28 @@ describe('EquipeNoClienteCard', () => {
     await waitFor(() => expect(toastMock.error).toHaveBeenCalled());
     expect(entitlementMock).toHaveBeenCalled();
     expect(toastMock.success).not.toHaveBeenCalled();
+  });
+
+  it('a paused client keeps its people, says Pausado and offers no edit', () => {
+    // Paused: each person costs this client 0 and the assignments wait for the client to resume.
+    const base = talitha();
+    const pausado: ClienteRentabilidade = {
+      ...base,
+      status: 'pausado',
+      receita: 0,
+      custo: 0,
+      lucro: 0,
+      margem: null,
+      pessoas: base.pessoas.map((p) => ({ ...p, valor: 0 })),
+    };
+    renderCard({ cliente: pausado });
+
+    expect(within(grupo('Videomaker')).getByText('Lia')).toBeVisible();
+    expect(within(grupo('Design')).getByText('Ana')).toBeVisible();
+    expect(within(grupo('Design')).getByText('Pausado')).toBeVisible();
+    expect(within(grupo('Design')).queryByText(/÷ 15 clientes/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(screen.queryByText('+ Escolher pessoa')).not.toBeInTheDocument();
+    expect(screen.getByText(/Cliente pausado/)).toBeVisible();
   });
 });

@@ -153,7 +153,9 @@ export function RentabilidadeDetalhe({
                       <span className="font-normal text-muted-foreground"> · {funcao}</span>
                     )}
                   </span>
-                  <span className="text-xs text-muted-foreground">{regraTexto(p, access)}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {regraTexto(p, access, undefined, cliente.status === 'pausado')}
+                  </span>
                 </div>
                 <span className="text-[13px] font-bold tabular-nums">{brl(p.valor)}</span>
               </li>

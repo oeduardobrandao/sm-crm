@@ -102,6 +102,17 @@ describe('regraTexto', () => {
     expect(regraTexto(p, true, 'arte')).toBe('A informar');
   });
 
+  it('cliente pausado mostra "Pausado" no lugar da regra', () => {
+    expect(regraTexto(pessoa({ valor: 0 }), true, undefined, true)).toBe('Pausado');
+    const semQtd = pessoa({ regra: 'entrega', valor: 0, quantidade: null, valor_unitario: 45 });
+    expect(regraTexto(semQtd, true, 'arte', true)).toBe('Pausado');
+  });
+
+  it('cliente pausado com entregas informadas mantem a conta (as entregas contam)', () => {
+    const p = pessoa({ regra: 'entrega', valor: 90, quantidade: 2, valor_unitario: 45 });
+    expect(norm(regraTexto(p, true, 'arte', true))).toBe('2 artes × R$ 45,00');
+  });
+
   it('mascara o dinheiro sem acesso financeiro', () => {
     expect(regraTexto(pessoa({}), false)).toBe(`${MASKED_BRL} ÷ 15 clientes`);
     expect(regraTexto(pessoa({}), 'unknown')).toBe(`${MASKED_BRL} ÷ 15 clientes`);

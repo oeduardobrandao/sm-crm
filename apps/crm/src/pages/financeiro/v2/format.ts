@@ -28,12 +28,16 @@ export function anualizar(v: number, anual: boolean): number {
  * The one-line "how was this cost computed" text of a pessoa in a client's breakdown.
  * `unidade` (the acordo's unit, e.g. 'arte') is not on PessoaRentabilidade, so the
  * caller passes it; it is pluralised by appending 's' when quantidade !== 1.
+ * `pausado`: the client is paused, so the person is listed (the assignment is kept) but
+ * costs it nothing, unless deliveries were entered for it (they still count).
  */
 export function regraTexto(
   p: PessoaRentabilidade,
   access: FinancialAccess,
   unidade = 'entrega',
+  pausado = false,
 ): string {
+  if (pausado && !(p.regra === 'entrega' && p.quantidade !== null)) return 'Pausado';
   if (p.regra === 'exclusivo') {
     return `Só este cliente: ${formatFinancialBRL(p.total, access)} por mês`;
   }

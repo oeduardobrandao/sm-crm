@@ -12,7 +12,7 @@ import { abaixoDaMeta, anualizar } from './format';
 export interface CelulaFuncao {
   funcaoId: number;
   valor: number;
-  /** A por_entrega member of this função still has no quantity for this client. */
+  /** A por_entrega member of this função still has no quantity for this (active) client. */
   aInformar: boolean;
 }
 
@@ -59,9 +59,12 @@ export function montarLinhas(data: RentabilidadeSeeded, anual: boolean): LinhaRe
     funcoes: data.funcoes.map((f) => ({
       funcaoId: f.id,
       valor: anualizar(c.por_funcao[String(f.id)] ?? 0, anual),
-      aInformar: c.pessoas.some(
-        (p) => p.funcao_id === f.id && p.regra === 'entrega' && p.quantidade === null,
-      ),
+      // A paused client lists its people but owes no delivery (same as its a_informar).
+      aInformar:
+        c.status === 'ativo' &&
+        c.pessoas.some(
+          (p) => p.funcao_id === f.id && p.regra === 'entrega' && p.quantidade === null,
+        ),
     })),
   }));
 }

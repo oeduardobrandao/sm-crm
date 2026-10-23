@@ -160,8 +160,13 @@ export function AcordoCard({ membro }: { membro: Membro }) {
                   >
                     <span className="text-sm">{cliente.nome}</span>
                     <span className="text-sm text-muted-foreground">
-                      {pessoa.regra === 'entrega'
-                        ? regraTexto(pessoa, canSeeFinancials, atual.unidade ?? undefined)
+                      {pessoa.regra === 'entrega' || cliente.status === 'pausado'
+                        ? regraTexto(
+                            pessoa,
+                            canSeeFinancials,
+                            atual.unidade ?? undefined,
+                            cliente.status === 'pausado',
+                          )
                         : formatFinancialBRL(pessoa.valor, canSeeFinancials)}
                     </span>
                   </li>

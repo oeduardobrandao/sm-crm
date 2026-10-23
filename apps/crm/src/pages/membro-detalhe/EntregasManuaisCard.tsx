@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -150,9 +151,18 @@ export function EntregasManuaisCard({ membroId }: { membroId: number }) {
               const texto = textoDe(cliente.cliente_id);
               const q = parseQuantidade(texto);
               const unitario = pessoa.valor_unitario ?? atual.valor;
+              // Deliveries for a paused client still count (they are optional there).
+              const pausado = cliente.status === 'pausado';
               return (
                 <li key={cliente.cliente_id} className="flex items-center gap-3">
-                  <span className="min-w-0 flex-1 truncate text-sm">{cliente.nome}</span>
+                  <span className="flex min-w-0 flex-1 items-center gap-2">
+                    <span className="truncate text-sm">{cliente.nome}</span>
+                    {pausado && (
+                      <Badge variant="neutral" size="sm">
+                        Pausado
+                      </Badge>
+                    )}
+                  </span>
                   <Input
                     type="number"
                     inputMode="numeric"
@@ -170,7 +180,9 @@ export function EntregasManuaisCard({ membroId }: { membroId: number }) {
                   <span className="w-28 text-right text-sm text-muted-foreground">
                     {typeof q === 'number'
                       ? formatFinancialBRL(q * unitario, canSeeFinancials)
-                      : 'A informar'}
+                      : pausado
+                        ? '-'
+                        : 'A informar'}
                   </span>
                 </li>
               );

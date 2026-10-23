@@ -47,7 +47,10 @@ export function EquipeNoClienteCard({
 }: EquipeNoClienteCardProps) {
   const { canSeeFinancials, can, profile } = useAuth();
   const qc = useQueryClient();
-  const canEdit = can('financeiro', 'editar') === true;
+  // A paused client keeps its people (they come back when it resumes) but is not edited
+  // here, like its disabled row in the matrix.
+  const pausado = cliente.status === 'pausado';
+  const canEdit = can('financeiro', 'editar') === true && !pausado;
   const [busy, setBusy] = useState(false);
 
   const editaveis = useQuery({
@@ -85,6 +88,11 @@ export function EquipeNoClienteCard({
           </strong>
         </p>
       </div>
+      {pausado && (
+        <p className="mb-4 text-sm text-muted-foreground">
+          Cliente pausado: a equipe fica guardada e volta a contar quando ele for reativado.
+        </p>
+      )}
       <div className="flex flex-col gap-4">
         {funcoes.map((funcao) => {
           const pessoas = cliente.pessoas.filter((p) => p.funcao_id === funcao.id);
@@ -120,7 +128,7 @@ export function EquipeNoClienteCard({
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {regraTexto(pessoa, canSeeFinancials)}
+                      {regraTexto(pessoa, canSeeFinancials, undefined, pausado)}
                     </p>
                   </div>
                   <span className="text-sm font-semibold tabular-nums text-foreground">

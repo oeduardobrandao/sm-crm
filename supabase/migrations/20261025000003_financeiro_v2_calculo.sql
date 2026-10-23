@@ -247,6 +247,10 @@ BEGIN
     SELECT cf.cliente_id, jsonb_object_agg(cf.funcao_id::text, trim_scale(round(cf.v, 2))) AS obj
       FROM cf GROUP BY cf.cliente_id
   ),
+  -- who serves each listed client: every assigned member with a funcao, on any client
+  -- status. A pausado client keeps its people (at valor 0 unless a per-delivery quantity
+  -- was entered) so the screens show the assignments it resumes with; costs and totals
+  -- stay on `linha`.
   pes AS (
     SELECT l.cliente_id,
            jsonb_agg(jsonb_build_object(
@@ -260,7 +264,8 @@ BEGIN
              'quantidade', CASE WHEN l.modelo = 'por_entrega' THEN l.quantidade END,
              'valor_unitario', CASE WHEN l.modelo = 'por_entrega' THEN trim_scale(round(l.valor, 2)) END
            ) ORDER BY mc.funcao_ordem, mc.nome, l.membro_id) AS arr
-      FROM linha l JOIN mc ON mc.membro_id = l.membro_id
+      FROM aloc l JOIN mc ON mc.membro_id = l.membro_id
+     WHERE l.funcao_id IS NOT NULL
      GROUP BY l.cliente_id
   ),
   cagg AS (

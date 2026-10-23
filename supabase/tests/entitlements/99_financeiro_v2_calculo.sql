@@ -356,7 +356,45 @@ begin
   -- totals come from unrounded values: the 14 Design shares add up to 3900, not 14 x 278.57
   assert (r->'totais'->>'custo_total')::numeric = 12310 and (r->'totais'->>'custo_sem_cliente')::numeric = 0,
     'pausado: totals reconcile';
+  -- assignments are kept while paused: every assigned member is still listed, at 0
+  assert (select array_agg(e->>'nome' order by o) from jsonb_array_elements(v_ty->'pessoas') with ordinality x(e, o))
+       = array['Caio','Ana','Bruno','Duda'], 'pausado: Tyciana pessoas ' || (v_ty->'pessoas')::text;
+  assert not exists (select 1 from jsonb_array_elements(v_ty->'pessoas') e where (e->>'valor')::numeric <> 0),
+    'pausado: a pessoa costs Tyciana something';
+  assert (select (e->>'total')::numeric = 3900 and (e->>'n_clientes')::int = 14
+            from jsonb_array_elements(v_ty->'pessoas') e where e->>'nome' = 'Ana'),
+    'pausado: Ana on Tyciana';
   raise notice 'PASS pausado_excluded';
+end $$;
+
+-- pausado_keeps_pessoas: a por_entrega member on a paused client is listed with no quantity
+-- (and the client is not a_informar); with a quantity it counts (R7); a member without a
+-- funcao is still not listed
+do $$
+declare v_ws uuid := pg_temp.novo_ws(); r jsonb; v_ty jsonb; v_p jsonb;
+begin
+  perform pg_temp.fixture_planilha(v_ws);
+  update financeiro_cliente_versoes set status = 'pausado' where conta_id = v_ws and cliente_id = pg_temp.cid(v_ws, 'Tyciana');
+  update financeiro_acordo_versoes set modelo = 'por_entrega', valor = 45
+   where conta_id = v_ws and membro_id = pg_temp.mid(v_ws, 'Ana');
+  update financeiro_acordo_versoes set funcao_id = null
+   where conta_id = v_ws and membro_id = pg_temp.mid(v_ws, 'Bruno');
+  r := public._financeiro_calcular(v_ws, date '2026-10-01');
+  v_ty := pg_temp.c(r, 'Tyciana');
+  select e into v_p from jsonb_array_elements(v_ty->'pessoas') e where e->>'nome' = 'Ana';
+  assert v_p->>'regra' = 'entrega' and v_p->'quantidade' = 'null'::jsonb and (v_p->>'valor')::numeric = 0,
+    'pausado_pessoas: Ana without quantity ' || coalesce(v_p::text, 'missing');
+  assert v_ty->'a_informar' = 'false'::jsonb, 'pausado_pessoas: paused client a_informar';
+  assert not exists (select 1 from jsonb_array_elements(v_ty->'pessoas') e where e->>'nome' = 'Bruno'),
+    'pausado_pessoas: sem funcao listed';
+  insert into financeiro_entregas_manuais (conta_id, periodo_inicio, membro_id, cliente_id, quantidade)
+    values (v_ws, date '2026-10-01', pg_temp.mid(v_ws, 'Ana'), pg_temp.cid(v_ws, 'Tyciana'), 2);
+  r := public._financeiro_calcular(v_ws, date '2026-10-01');
+  v_ty := pg_temp.c(r, 'Tyciana');
+  select e into v_p from jsonb_array_elements(v_ty->'pessoas') e where e->>'nome' = 'Ana';
+  assert (v_p->>'quantidade')::int = 2 and (v_p->>'valor')::numeric = 90, 'pausado_pessoas: Ana with quantity ' || v_p::text;
+  assert (v_ty->>'custo')::numeric = 90, 'pausado_pessoas: quantity counts on the paused client';
+  raise notice 'PASS pausado_keeps_pessoas';
 end $$;
 
 do $$

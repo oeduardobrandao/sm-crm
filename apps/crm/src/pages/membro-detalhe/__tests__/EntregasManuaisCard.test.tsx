@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -160,6 +160,22 @@ describe('EntregasManuaisCard', () => {
     expect(
       screen.queryByRole('spinbutton', { name: 'Entregas de Roberta' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('keeps a paused client in the list, marked Pausado and not "a informar"', async () => {
+    const rent = anaPorEntrega();
+    const roberta = rent.clientes.find((c) => c.cliente_id === 2)!;
+    roberta.status = 'pausado';
+    roberta.a_informar = false;
+    store.getRentabilidade.mockResolvedValue(rent);
+    renderCard();
+
+    const input = await screen.findByRole('spinbutton', { name: 'Entregas de Roberta' });
+    const linha = input.closest('li')!;
+    expect(within(linha).getByText('Pausado')).toBeVisible();
+    expect(within(linha).queryByText('A informar')).not.toBeInTheDocument();
+    const cinara = screen.getByRole('spinbutton', { name: 'Entregas de Cinara' }).closest('li')!;
+    expect(within(cinara).getByText('A informar')).toBeVisible();
   });
 
   it('renders nothing for a member who is not paid per delivery', async () => {
