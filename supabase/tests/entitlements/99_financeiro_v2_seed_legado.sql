@@ -203,6 +203,27 @@ begin
   raise notice 'PASS seed_idempotent';
 end $$;
 
+-- seed_locks_legacy_rows: the seed locks the workspace's clientes / membros FOR SHARE before
+-- copying them, so a legacy UPDATE that lands mid-seed waits for the commit (its trigger then
+-- sees seeded_at). Pinned on the function body: a single session cannot race itself, the RI
+-- checks of the copies already take RowShareLock (FOR KEY SHARE, which does not block an
+-- UPDATE of valor_mensal), so pg_locks cannot tell the two apart, and the stack has neither
+-- dblink nor pgrowlocks.
+do $$
+declare v_def text := pg_get_functiondef('public.financeiro_seed(int)'::regprocedure);
+        v_cli int; v_mem int; v_ins int;
+begin
+  v_cli := strpos(v_def, 'FROM public.clientes c WHERE c.conta_id = v_conta FOR SHARE');
+  v_mem := strpos(v_def, 'FROM public.membros m WHERE m.conta_id = v_conta FOR SHARE');
+  v_ins := strpos(v_def, 'INSERT INTO public.financeiro_cliente_versoes');
+  assert v_cli > 0, 'seed_locks: clientes not locked FOR SHARE';
+  assert v_mem > 0, 'seed_locks: membros not locked FOR SHARE';
+  assert v_cli < v_ins and v_mem < v_ins, 'seed_locks: the lock comes after the copy';
+  assert strpos(v_def, 'RETURN jsonb_build_object(''seeded'', true, ''ja_existia'', true)') < v_cli,
+    'seed_locks: an already seeded workspace should not lock its rows';
+  raise notice 'PASS seed_locks_legacy_rows';
+end $$;
+
 -- seed_matches_cargo
 do $$
 declare v_ws uuid := pg_temp.novo_ws();

@@ -182,6 +182,13 @@ BEGIN
     RETURN jsonb_build_object('seeded', true, 'ja_existia', true);
   END IF;
 
+  -- The legacy trigger returns early while seeded_at is unset (it takes no lock), so a
+  -- legacy UPDATE committed between the copies below and this commit would be lost.
+  -- Lock the source rows first: such an UPDATE now waits for the seed to commit and its
+  -- trigger then sees seeded_at set. No deadlock: the unseeded trigger takes no lock.
+  PERFORM 1 FROM public.clientes c WHERE c.conta_id = v_conta FOR SHARE;
+  PERFORM 1 FROM public.membros m WHERE m.conta_id = v_conta FOR SHARE;
+
   v_inicio := public.financeiro_periodo_inicio_de((now() AT TIME ZONE 'America/Sao_Paulo')::date, p_periodo_dia);
   INSERT INTO public.financeiro_periodos (conta_id, inicio, fim)
   VALUES (v_conta, v_inicio, (v_inicio + interval '1 month')::date)
@@ -361,13 +368,16 @@ $$;
 REVOKE ALL ON FUNCTION public._financeiro_v2_legado_trigger() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public._financeiro_v2_legado_trigger() TO service_role;
 
-DROP TRIGGER IF EXISTS trg_financeiro_v2_clientes_legado ON public.clientes;
-CREATE TRIGGER trg_financeiro_v2_clientes_legado
+-- CREATE OR REPLACE TRIGGER (PG14+), not DROP TRIGGER IF EXISTS + CREATE: the DROP takes
+-- ACCESS EXCLUSIVE on clientes / membros even when the trigger does not exist, blocking
+-- every read of the two hottest tables. This takes SHARE ROW EXCLUSIVE (reads go on,
+-- writes to clientes / membros wait until this migration commits).
+
+CREATE OR REPLACE TRIGGER trg_financeiro_v2_clientes_legado
   AFTER INSERT OR UPDATE OF valor_mensal, data_pagamento, status ON public.clientes
   FOR EACH ROW EXECUTE FUNCTION public._financeiro_v2_legado_trigger();
 
-DROP TRIGGER IF EXISTS trg_financeiro_v2_membros_legado ON public.membros;
-CREATE TRIGGER trg_financeiro_v2_membros_legado
+CREATE OR REPLACE TRIGGER trg_financeiro_v2_membros_legado
   AFTER INSERT OR UPDATE OF custo_mensal, data_pagamento ON public.membros
   FOR EACH ROW EXECUTE FUNCTION public._financeiro_v2_legado_trigger();
 
