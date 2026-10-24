@@ -243,6 +243,8 @@ describe('RentabilidadePage', () => {
     expect(screen.getByRole('columnheader', { name: 'Custo anual' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'LL anual' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Videomaker' })).toBeInTheDocument();
+    // Nobody is assigned to Copy: its column would be empty, so it is left out.
+    expect(screen.queryByRole('columnheader', { name: 'Copy' })).not.toBeInTheDocument();
     const talitha = norm(linha('Talitha').textContent);
     expect(talitha).toContain('R$ 30.000,00');
     expect(talitha).toContain('R$ 14.160,00');
@@ -260,7 +262,7 @@ describe('RentabilidadePage', () => {
     const detalhe = screen.getByRole('complementary', { name: 'Detalhe do cliente' });
     expect(norm(detalhe.textContent)).toContain('Só este cliente: R$ 550,00 por mês');
     expect(norm(detalhe.textContent)).toContain('R$ 3.900,00 ÷ 15 clientes');
-    expect(within(detalhe).getByText('Copy: ninguém atribuído')).toBeInTheDocument();
+    expect(within(detalhe).getByText('Ninguém atribuído em Copy')).toBeInTheDocument();
     expect(
       within(detalhe).getByRole('img', {
         name: 'Videomaker 22%, Design 10%, Edição de vídeo 8%, Gestão de projetos 6%, Lucro 53%',
@@ -294,7 +296,7 @@ describe('RentabilidadePage', () => {
     expect(within(linha('Talitha')).getByText('A informar')).toBeInTheDocument();
     const detalhe = screen.getByRole('complementary', { name: 'Detalhe do cliente' });
     expect(within(detalhe).getByText('A informar')).toBeInTheDocument();
-    expect(within(detalhe).queryByText('Copy: ninguém atribuído')).not.toBeInTheDocument();
+    expect(within(detalhe).queryByText(/Ninguém atribuído em/)).not.toBeInTheDocument();
     expect(screen.getByText('Há entregas a informar neste período.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Informar entregas' })).toHaveAttribute(
       'href',
