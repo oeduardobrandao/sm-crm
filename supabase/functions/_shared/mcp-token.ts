@@ -1,5 +1,6 @@
 import { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { effectivePlanFeature } from "./entitlements-rpc.ts";
+import { hasPermissionFor } from "./permissions.ts";
 
 export const MCP_TOKEN_PREFIX = "mesaas_sk_";
 
@@ -20,7 +21,7 @@ export type McpScope = (typeof MCP_ALLOWED_SCOPES)[number];
  * service-role (scoped only by conta_id + scopes), so this map is what keeps a member from
  * granting Claude more than their own role allows. Enforced at consent and on every request
  * (permittedMcpScopes in mcp-oauth.ts). Workspace API keys don't go through it: creating a key
- * already requires configuracoes:editar.
+ * already requires configuracoes:editar. Financial fields are capped for both (can_write_financials).
  */
 export const MCP_SCOPE_PERMISSION: Record<McpScope, { module: string; action: "ver" | "editar" }> = {
   "clientes:read": { module: "clientes", action: "ver" },
@@ -69,8 +70,8 @@ export interface McpKeyContext {
   role?: string | null;
   /**
    * Whether write tools may set financial fields (valor_mensal, custo_mensal, data_pagamento).
-   * OAuth: the user's own financeiro:editar, resolved per request. Unset for workspace API keys,
-   * which only a configuracoes:editar holder can create: their behavior is unchanged.
+   * The financeiro:editar of the user behind the context (the OAuth user, or the API key's
+   * creator), resolved on every request by both resolvers. Unset counts as false.
    */
   can_write_financials?: boolean;
 }
@@ -81,7 +82,7 @@ export function requireFinancialWrite(
   args: Record<string, unknown>,
   fields: readonly string[],
 ): void {
-  if (ctx.can_write_financials !== false) return;
+  if (ctx.can_write_financials === true) return;
   const set = fields.filter((f) => args[f] != null);
   if (set.length > 0) {
     throw new McpInputError(
@@ -214,8 +215,12 @@ export async function resolveMcpKey(
     // ignore
   }
 
-  // Role is read on every request: a creator demoted from owner loses Financeiro access at once.
-  const role = await memberRole(db, data.created_by as string, data.conta_id as string);
+  // Role and financeiro:editar are read on every request: a creator who is demoted (from owner, or
+  // out of the Financeiro) loses that access at once. has_permission_for fails closed.
+  const [role, canWriteFinancials] = await Promise.all([
+    memberRole(db, data.created_by as string, data.conta_id as string),
+    hasPermissionFor(db, data.created_by as string, data.conta_id as string, "financeiro", "editar"),
+  ]);
 
   return {
     conta_id: data.conta_id as string,
@@ -223,5 +228,6 @@ export async function resolveMcpKey(
     key_id: data.id as string,
     created_by: data.created_by as string,
     role,
+    can_write_financials: canWriteFinancials,
   };
 }

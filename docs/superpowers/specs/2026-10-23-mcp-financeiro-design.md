@@ -78,8 +78,9 @@ rentabilidade. Anexos de contrato dos acordos (bucket `financeiro-acordos`) fica
 (`membros:write`), gravando por service role, onde `guard_financial_write` sai cedo
 (`20260904000002:244-247`). Ou seja, um não-dono já consegue gravar valores pelo MCP. Esses
 parâmetros seguem a regra do PR #740 (decisão do Eduardo ao combinar os dois PRs, 2026-10-23):
-exigem `financeiro:editar` do usuário da conexão OAuth (`ctx.can_write_financials`, resolvido a
-cada requisição); chaves de API, que só quem tem `configuracoes:editar` cria, não mudam. Sem a
+exigem `financeiro:editar` do usuário por trás do contexto (`ctx.can_write_financials`, resolvido
+a cada requisição): o usuário da conexão OAuth ou, numa chave de API, quem a criou (desde o PR
+seguinte ao #741; antes as chaves não passavam por essa checagem). Sem a flag, recusa. Sem a
 permissão, a ferramenta recusa se algum deles vier preenchido (não ignora em silêncio). A
 descrição das duas ferramentas diz isso. As ferramentas `financeiro:*` continuam só do dono, e na
 tela de consentimento os escopos `financeiro:*` só aparecem habilitados para o dono (o servidor os
