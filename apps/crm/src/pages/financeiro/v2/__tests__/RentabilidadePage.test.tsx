@@ -189,19 +189,61 @@ describe('RentabilidadePage', () => {
     expect(screen.queryByRole('status', { name: 'Equipe sem atribuição' })).toBeNull();
   });
 
-  it('sorted_by_margin_first_is_tyciana_or_cricia', async () => {
+  it('sorts A-Z by default, and by any column from its header', async () => {
+    const user = userEvent.setup();
     renderPage();
 
     await screen.findByRole('button', { name: 'Talitha' });
-    const rows = within(screen.getByRole('table')).getAllByRole('row');
-    // Two header rows, then the clients.
-    const first = rows[2];
-    expect(['Crícia', 'Tyciana']).toContain(within(first).getAllByRole('button')[0].textContent);
-    // Ties keep the payload order (by nome): Crícia, then Tyciana.
-    expect(within(rows[2]).getByRole('button')).toHaveTextContent('Crícia');
-    expect(within(rows[3]).getByRole('button')).toHaveTextContent('Tyciana');
-    expect(within(rows[4]).getByRole('button')).toHaveTextContent('Talitha');
+    // Client names are the toggle buttons (aria-pressed) of the body rows.
+    const nomes = () =>
+      within(screen.getByRole('table'))
+        .getAllByRole('button')
+        .filter((b) => b.hasAttribute('aria-pressed'))
+        .map((b) => b.textContent);
+    const cabecalho = (nome: string) =>
+      screen.getByRole('button', { name: nome }).closest('th') as HTMLElement;
+
+    expect(nomes().slice(0, 3)).toEqual(['Beatriz', 'Cinara', 'Crícia']);
+    expect(cabecalho('Cliente')).toHaveAttribute('aria-sort', 'ascending');
+
+    // Margem: lowest first on the first click (ties by name: Crícia, then Tyciana).
+    await user.click(screen.getByRole('button', { name: 'Margem' }));
+    expect(nomes().slice(0, 3)).toEqual(['Crícia', 'Tyciana', 'Talitha']);
+    expect(cabecalho('Margem')).toHaveAttribute('aria-sort', 'ascending');
+    expect(cabecalho('Cliente')).not.toHaveAttribute('aria-sort');
     expect(within(linha('Crícia')).getByText('47,0%')).toBeInTheDocument();
+
+    // A second click flips it.
+    await user.click(screen.getByRole('button', { name: 'Margem' }));
+    expect(cabecalho('Margem')).toHaveAttribute('aria-sort', 'descending');
+    expect(nomes()[0]).not.toBe('Crícia');
+
+    // Money columns start with the highest value.
+    await user.click(screen.getByRole('button', { name: 'MRR' }));
+    expect(nomes()[0]).toBe('Talitha');
+  });
+
+  it('opens the table full screen and sorts it there', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Expandir tabela' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Rentabilidade por cliente' });
+    const tabela = within(dialog).getByRole('table');
+    // No side panel here: names are plain text.
+    expect(within(tabela).queryByRole('button', { name: 'Beatriz' })).not.toBeInTheDocument();
+    expect(within(tabela).getAllByRole('row')[2]).toHaveTextContent('Beatriz');
+
+    await user.click(within(dialog).getByRole('button', { name: 'Margem' }));
+    expect(within(tabela).getAllByRole('row')[2]).toHaveTextContent('Crícia');
+
+    await user.click(within(dialog).getByRole('button', { name: 'Fechar' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    // The order chosen there is kept on the page.
+    expect(screen.getByRole('button', { name: 'Margem' }).closest('th')).toHaveAttribute(
+      'aria-sort',
+      'ascending',
+    );
   });
 
   it('sorts clients without a margin last', async () => {
@@ -471,7 +513,8 @@ describe('RentabilidadePage', () => {
     expect(lines[0]).toBe(
       'Cliente;MRR;Custo;Lucro;Margem;Videomaker;Design;Edição de vídeo;Gestão de projetos;Copy',
     );
-    expect(lines[1].startsWith('Crícia;')).toBe(true);
+    // Same order as the table: A-Z by default.
+    expect(lines[1].startsWith('Beatriz;')).toBe(true);
     expect(lines).toContain(
       'Talitha;2500,00;1180,00;1320,00;52,8;550,00;260,00;210,00;160,00;0,00',
     );
@@ -572,14 +615,17 @@ describe('RentabilidadePage', () => {
     const lista = await screen.findByRole('list', { name: 'Clientes' });
     const itens = within(lista).getAllByRole('button');
     expect(itens).toHaveLength(15);
-    expect(itens[0]).toHaveTextContent('Crícia');
-    expect(norm(itens[0].textContent)).toContain('47,0%');
-    expect(norm(itens[0].textContent)).toContain('R$ 705,00');
+    expect(itens[0]).toHaveTextContent('Beatriz');
+    const cricia = within(lista).getByRole('button', { name: /Crícia/ });
+    expect(norm(cricia.textContent)).toContain('47,0%');
+    expect(norm(cricia.textContent)).toContain('R$ 705,00');
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Mensal' })).toHaveAttribute('aria-pressed', 'true');
 
     await user.click(screen.getByRole('button', { name: 'Anual' }));
-    expect(norm(within(lista).getAllByRole('button')[0].textContent)).toContain('R$ 8.460,00');
+    expect(norm(within(lista).getByRole('button', { name: /Crícia/ }).textContent)).toContain(
+      'R$ 8.460,00',
+    );
 
     await user.click(within(lista).getByRole('button', { name: /Talitha/ }));
     const sheet = await screen.findByRole('dialog');

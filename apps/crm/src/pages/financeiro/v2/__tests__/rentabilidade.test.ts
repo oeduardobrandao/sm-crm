@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { RentabilidadeSeeded } from '@/store/financeiroV2';
-import { montarLinhas, nomeArquivoCsv } from '../rentabilidade';
+import {
+  direcaoInicial,
+  montarLinhas,
+  nomeArquivoCsv,
+  ORDEM_PADRAO,
+  ordenarLinhas,
+} from '../rentabilidade';
 import { planilha } from './fixtures/planilha';
 
 /** Ana (Design, id 2) per delivery with no quantity on Cinara (ativo) and Tyciana (pausado). */
@@ -30,6 +36,96 @@ describe('montarLinhas', () => {
 
   it('does not flag a paused client (its assignments are listed, nothing is owed)', () => {
     expect(celulaDesign(semQuantidade(), 'Tyciana').aInformar).toBe(false);
+  });
+});
+
+describe('ordenarLinhas', () => {
+  /** Three clients: Bia (pausada), ana and Ébano, with receita/custo chosen per test. */
+  function linhas(
+    rows: Array<[nome: string, receita: number, custo: number, status?: 'ativo' | 'pausado']>,
+  ) {
+    const data = structuredClone(planilha);
+    const base = data.clientes[0];
+    data.clientes = rows.map(([nome, receita, custo, status], i) => ({
+      ...base,
+      cliente_id: 100 + i,
+      nome,
+      status: status ?? 'ativo',
+      receita,
+      custo,
+      lucro: receita - custo,
+      margem: receita > 0 ? (receita - custo) / receita : null,
+      por_funcao: { '1': custo },
+    }));
+    return montarLinhas(data, false);
+  }
+  const nomes = (ls: ReturnType<typeof linhas>) => ls.map((l) => l.cliente.nome);
+
+  it('defaults to A-Z ignoring case and accents, paused clients last', () => {
+    const ls = linhas([
+      ['Bia', 1000, 100, 'pausado'],
+      ['Ébano', 1000, 500],
+      ['ana', 1000, 900],
+      ['Carla', 1000, 200],
+    ]);
+    expect(nomes(ordenarLinhas(ls, ORDEM_PADRAO))).toEqual(['ana', 'Carla', 'Ébano', 'Bia']);
+    expect(nomes(ordenarLinhas(ls, { coluna: 'cliente', direcao: 'desc' }))).toEqual([
+      'Ébano',
+      'Carla',
+      'ana',
+      'Bia',
+    ]);
+  });
+
+  it('sorts money and função columns, keeping paused clients last either way', () => {
+    const ls = linhas([
+      ['Bia', 5000, 4000, 'pausado'],
+      ['Ana', 2000, 300],
+      ['Carla', 3000, 1200],
+    ]);
+    expect(nomes(ordenarLinhas(ls, { coluna: 'receita', direcao: 'desc' }))).toEqual([
+      'Carla',
+      'Ana',
+      'Bia',
+    ]);
+    expect(nomes(ordenarLinhas(ls, { coluna: 'receita', direcao: 'asc' }))).toEqual([
+      'Ana',
+      'Carla',
+      'Bia',
+    ]);
+    expect(nomes(ordenarLinhas(ls, { coluna: 'funcao:1', direcao: 'desc' }))).toEqual([
+      'Carla',
+      'Ana',
+      'Bia',
+    ]);
+  });
+
+  it('puts a client without margem last in both directions, ties by name', () => {
+    const ls = linhas([
+      ['Zé', 0, 100],
+      ['Bia', 1000, 500],
+      ['Ana', 1000, 500],
+      ['Caio', 1000, 900],
+    ]);
+    expect(nomes(ordenarLinhas(ls, { coluna: 'margem', direcao: 'asc' }))).toEqual([
+      'Caio',
+      'Ana',
+      'Bia',
+      'Zé',
+    ]);
+    expect(nomes(ordenarLinhas(ls, { coluna: 'margem', direcao: 'desc' }))).toEqual([
+      'Ana',
+      'Bia',
+      'Caio',
+      'Zé',
+    ]);
+  });
+
+  it('first click: names and margem ascending, money descending', () => {
+    expect(direcaoInicial('cliente')).toBe('asc');
+    expect(direcaoInicial('margem')).toBe('asc');
+    expect(direcaoInicial('lucro')).toBe('desc');
+    expect(direcaoInicial('funcao:3')).toBe('desc');
   });
 });
 
