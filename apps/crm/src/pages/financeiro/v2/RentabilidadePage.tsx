@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   ChartColumn,
   Download,
+  Maximize2,
   Percent,
   UserPlus,
   UserX,
@@ -26,6 +27,13 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { TableSkeleton } from '@/components/ui/skeletons';
 import { useAuth } from '@/context/AuthContext';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
@@ -37,7 +45,17 @@ import type { PeriodoFinanceiro, RentabilidadeSeeded } from '@/store/financeiroV
 import { anualizar, formatMargem } from './format';
 import { MensalAnualToggle } from './MensalAnualToggle';
 import { PeriodoSelect } from './PeriodoSelect';
-import { montarCsv, montarLinhas, nomeArquivoCsv, somarLinhas } from './rentabilidade';
+import {
+  direcaoInicial,
+  montarCsv,
+  montarLinhas,
+  nomeArquivoCsv,
+  ORDEM_PADRAO,
+  ordenarLinhas,
+  somarLinhas,
+  type ColunaOrdem,
+  type Ordenacao,
+} from './rentabilidade';
 import { RentabilidadeDetalhe } from './RentabilidadeDetalhe';
 import { RentabilidadePhone } from './RentabilidadePhone';
 import { RentabilidadeTabela } from './RentabilidadeTabela';
@@ -69,8 +87,9 @@ const ACAO_COPY: Record<
 const metaTexto = (meta: number) => `Meta: ${String(meta).replace('.', ',')}%`;
 
 /**
- * Financeiro › Rentabilidade: KPIs, the per-client profitability table (lowest margin
- * first) with its side panel, and the period controls. Renders inside the v2 layout,
+ * Financeiro › Rentabilidade: KPIs, the per-client profitability table (A-Z by default,
+ * any column sortable, paused clients last) with its side panel and an expanded view, and the
+ * period controls. Renders inside the v2 layout,
  * which owns the title, the tab bar and the not-seeded onboarding.
  */
 export default function RentabilidadePage() {
@@ -82,6 +101,8 @@ export default function RentabilidadePage() {
   const [selecionadoId, setSelecionadoId] = useState<number | null>(null);
   const [acao, setAcao] = useState<AcaoPeriodo | null>(null);
   const [busy, setBusy] = useState(false);
+  const [ordem, setOrdem] = useState<Ordenacao>(ORDEM_PADRAO);
+  const [expandido, setExpandido] = useState(false);
 
   const rentabilidade = useQuery({
     queryKey: ['financeiro-v2', 'rentabilidade', inicio ?? 'atual'],
@@ -95,7 +116,17 @@ export default function RentabilidadePage() {
 
   const data: RentabilidadeSeeded | null =
     rentabilidade.data?.seeded === true ? rentabilidade.data : null;
-  const linhas = useMemo(() => (data ? montarLinhas(data, anual) : []), [data, anual]);
+  // The table, the phone list and the CSV all read the rows in the order chosen here.
+  const linhas = useMemo(
+    () => (data ? ordenarLinhas(montarLinhas(data, anual), ordem) : []),
+    [data, anual, ordem],
+  );
+  const ordenar = (coluna: ColunaOrdem) =>
+    setOrdem((atual) =>
+      atual.coluna === coluna
+        ? { coluna, direcao: atual.direcao === 'asc' ? 'desc' : 'asc' }
+        : { coluna, direcao: direcaoInicial(coluna) },
+    );
   const total = useMemo(() => somarLinhas(linhas, data?.funcoes ?? []), [linhas, data]);
 
   const periodos: PeriodoFinanceiro[] = useMemo(() => {
@@ -354,10 +385,14 @@ export default function RentabilidadePage() {
         <div className="flex flex-wrap items-center gap-3">
           <MensalAnualToggle anual={anual} onChange={setAnual} />
           <span className="text-[13px] text-muted-foreground">
-            Ordenado por margem, menor primeiro. Clique num cliente para ver de onde vem o custo.
+            Clique no nome de uma coluna para ordenar e num cliente para ver de onde vem o custo.
           </span>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button variant="ghost" size="sm" className="mb-0" onClick={() => setExpandido(true)}>
+            <Maximize2 aria-hidden="true" />
+            Expandir tabela
+          </Button>
           <Button asChild variant="outline" size="sm" className="mb-0">
             <Link to="/financeiro/atribuicao">Atribuir equipe</Link>
           </Button>
@@ -380,6 +415,8 @@ export default function RentabilidadePage() {
             access={access}
             selecionadoId={selecionado?.cliente_id ?? null}
             onSelect={setSelecionadoId}
+            ordem={ordem}
+            onOrdenar={ordenar}
           />
           {/* The footer sums the clients: the KPIs also count the cost outside them. */}
           {totais.custo_sem_cliente > 0 && (
@@ -401,6 +438,42 @@ export default function RentabilidadePage() {
           />
         </aside>
       </div>
+      <Dialog open={expandido} onOpenChange={setExpandido}>
+        <DialogContent layout="fullscreen" className="flex flex-col">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-5 py-3">
+            <div className="min-w-0 flex-1">
+              <DialogTitle className="text-base font-semibold">
+                Rentabilidade por cliente
+              </DialogTitle>
+              <DialogDescription className="text-[13px] text-muted-foreground">
+                {data.periodo.rotulo} · Clique no nome de uma coluna para ordenar.
+              </DialogDescription>
+            </div>
+            <MensalAnualToggle anual={anual} onChange={setAnual} />
+            <DialogClose asChild>
+              <Button variant="outline" size="sm" className="mb-0">
+                Fechar
+              </Button>
+            </DialogClose>
+          </div>
+          {/* The table's own container is the scroller, so its header row and client column stick. */}
+          <div className="min-h-0 flex-1 p-4 [&_[data-slot=table-container]]:h-full">
+            <div className="h-full overflow-hidden rounded-xl border border-border bg-card">
+              <RentabilidadeTabela
+                linhas={linhas}
+                total={total}
+                funcoes={data.funcoes}
+                anual={anual}
+                access={access}
+                selecionadoId={null}
+                ordem={ordem}
+                onOrdenar={ordenar}
+                fixarCabecalho
+              />
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
       {dialogo}
     </div>
   );

@@ -70,7 +70,7 @@ export function RentabilidadePhone({
 
       <div className="overflow-hidden rounded-xl border border-border bg-card">
         <div className="flex justify-between px-3.5 py-2.5 text-xs text-muted-foreground">
-          <span>Cliente · menor margem primeiro</span>
+          <span>Cliente</span>
           <span>{anual ? 'LL anual' : 'Lucro'}</span>
         </div>
         <ul role="list" aria-label="Clientes" className="m-0 list-none p-0">

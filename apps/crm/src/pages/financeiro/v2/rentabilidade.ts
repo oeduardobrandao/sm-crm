@@ -69,6 +69,57 @@ export function montarLinhas(data: RentabilidadeSeeded, anual: boolean): LinhaRe
   }));
 }
 
+/** A sortable column of the table: the fixed ones, or a função column by id. */
+export type ColunaOrdem = 'cliente' | 'receita' | 'custo' | 'lucro' | 'margem' | `funcao:${number}`;
+
+export interface Ordenacao {
+  coluna: ColunaOrdem;
+  direcao: 'asc' | 'desc';
+}
+
+/** Default order: clients A-Z (paused ones are always last, see ordenarLinhas). */
+export const ORDEM_PADRAO: Ordenacao = { coluna: 'cliente', direcao: 'asc' };
+
+/** First click on a column: names A-Z and margem lowest first (the ones to look at), money
+ *  highest first. A second click on the same column flips it. */
+export function direcaoInicial(coluna: ColunaOrdem): Ordenacao['direcao'] {
+  return coluna === 'cliente' || coluna === 'margem' ? 'asc' : 'desc';
+}
+
+const porNome = (a: LinhaRentabilidade, b: LinhaRentabilidade) =>
+  a.cliente.nome.localeCompare(b.cliente.nome, 'pt-BR', { sensitivity: 'base' });
+
+function valorDaColuna(l: LinhaRentabilidade, coluna: ColunaOrdem): number | null {
+  if (coluna === 'receita' || coluna === 'custo' || coluna === 'lucro') return l[coluna];
+  if (coluna === 'margem') return l.margem;
+  const id = Number(coluna.slice('funcao:'.length));
+  return l.funcoes.find((c) => c.funcaoId === id)?.valor ?? 0;
+}
+
+/**
+ * Rows in the chosen order. Paused clients always go last, whatever the column, and a row
+ * without a margem (no receita) goes last in either direction. Ties fall back to the name.
+ */
+export function ordenarLinhas(
+  linhas: LinhaRentabilidade[],
+  ordem: Ordenacao,
+): LinhaRentabilidade[] {
+  const sinal = ordem.direcao === 'asc' ? 1 : -1;
+  return [...linhas].sort((a, b) => {
+    const pausaA = a.cliente.status === 'pausado' ? 1 : 0;
+    const pausaB = b.cliente.status === 'pausado' ? 1 : 0;
+    if (pausaA !== pausaB) return pausaA - pausaB;
+    if (ordem.coluna === 'cliente') return sinal * porNome(a, b);
+    const va = valorDaColuna(a, ordem.coluna);
+    const vb = valorDaColuna(b, ordem.coluna);
+    if (va === null || vb === null) {
+      if (va !== vb) return va === null ? 1 : -1;
+      return porNome(a, b);
+    }
+    return sinal * (va - vb) || porNome(a, b);
+  });
+}
+
 /** Footer of the table: the sum of the rendered rows (cost outside the clients is in the KPIs). */
 export function somarLinhas(
   linhas: LinhaRentabilidade[],
