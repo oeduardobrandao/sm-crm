@@ -79,7 +79,7 @@ export function RentabilidadeDetalhe({
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-0.5">
           <span className="text-xs text-muted-foreground">Cliente selecionado</span>
-          <span className="truncate text-lg font-bold">{cliente.nome}</span>
+          <span className="break-words text-lg font-bold leading-snug">{cliente.nome}</span>
         </div>
         {cliente.status === 'pausado' ? (
           <Badge variant="neutral">Pausado</Badge>
@@ -90,7 +90,8 @@ export function RentabilidadeDetalhe({
         )}
       </div>
 
-      <dl className="grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-border bg-border">
+      {/* One row per figure: the panel can be 300px wide and amounts reach R$ 100.000,00. */}
+      <dl className="m-0 flex flex-col divide-y divide-border rounded-lg border border-border">
         {(
           [
             ['Mensalidade', cliente.receita],
@@ -98,9 +99,11 @@ export function RentabilidadeDetalhe({
             ['Lucro', cliente.lucro],
           ] as const
         ).map(([label, valor]) => (
-          <div key={label} className="flex min-w-0 flex-col gap-0.5 bg-card px-3 py-2.5">
+          <div key={label} className="flex items-baseline justify-between gap-3 px-3 py-2">
             <dt className="text-xs text-muted-foreground">{label}</dt>
-            <dd className="m-0 text-[15px] font-bold tabular-nums">{brl(valor)}</dd>
+            <dd className="m-0 whitespace-nowrap text-[15px] font-bold tabular-nums">
+              {brl(valor)}
+            </dd>
           </div>
         ))}
       </dl>
@@ -161,15 +164,11 @@ export function RentabilidadeDetalhe({
               </li>
             );
           })}
-          {semNinguem.map((f) => (
-            <li
-              key={`vazio-${f.id}`}
-              className="flex items-center gap-3 border-t border-border py-2 text-xs text-muted-foreground"
-            >
-              <span className="flex-1">{f.nome}: ninguém atribuído</span>
-              <span className="tabular-nums">{brl(0)}</span>
+          {semNinguem.length > 0 && (
+            <li className="border-t border-border py-2 text-xs text-muted-foreground">
+              Ninguém atribuído em {semNinguem.map((f) => f.nome).join(', ')}
             </li>
-          ))}
+          )}
         </ul>
       </section>
     </div>
