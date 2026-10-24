@@ -227,6 +227,38 @@ Deno.test("mcp-financeiro-gate: demoted creator loses access (resolveMcpKey read
   assertEquals(ctxGone?.role, null);
 });
 
+Deno.test("mcp-financeiro-gate: resolveMcpKey sets can_write_financials from the creator's current financeiro:editar", async () => {
+  const raw = "mesaas_sk_" + "b".repeat(64);
+  const keyRow = {
+    id: "key-2", conta_id: "workspace-A", created_by: "user-1", scopes: ["clientes:write"],
+    expires_at: null, revoked_at: null,
+  };
+  for (const allowed of [true, false]) {
+    const { db, calls } = makeFakeDb(
+      {
+        mcp_api_keys: [{ data: keyRow, error: null }, { data: null, error: null }],
+        workspace_members: [{ data: { role: "admin" }, error: null }],
+      },
+      { has_permission_for: [{ data: allowed, error: null }] },
+    );
+    const ctx = await resolveMcpKey(db as any, raw, "2026-10-23T12:00:00.000Z");
+    assertEquals(ctx?.can_write_financials, allowed);
+    const rpc = calls.find((c) => c.table === "rpc:has_permission_for");
+    assertEquals(rpc?.args[0], {
+      p_user: "user-1", p_workspace: "workspace-A", p_module: "financeiro", p_action: "editar",
+    });
+  }
+  // The permission check fails closed: an RPC error means no financial writes.
+  const { db } = makeFakeDb(
+    {
+      mcp_api_keys: [{ data: keyRow, error: null }, { data: null, error: null }],
+      workspace_members: [{ data: { role: "owner" }, error: null }],
+    },
+    { has_permission_for: [{ data: null, error: { message: "boom" } }] },
+  );
+  assertEquals((await resolveMcpKey(db as any, raw, "2026-10-23T12:00:00.000Z"))?.can_write_financials, false);
+});
+
 Deno.test("mcp-financeiro-gate: memberRole fails loud when the workspace_members read errors", async () => {
   const { db } = makeFakeDb({ workspace_members: [{ data: null, error: { message: "boom" } }] });
   let caught: unknown;
@@ -303,7 +335,7 @@ Deno.test("mcp-financeiro-gate: create_client valor_mensal follows financeiro:ed
     assert(errorText(res).includes(FINANCIAL_WRITE_MSG));
     assert(!calls.some((c) => c.method === "insert" || c.method === "update"), "nothing written");
   }
-  for (const ctx of [{ role: "admin", can_write_financials: true }, { role: "agent" }]) {
+  for (const ctx of [{ role: "admin", can_write_financials: true }, { role: "agent", can_write_financials: true }]) {
     const { db, calls } = makeFakeDb({
       clientes: [
         { data: [], error: null },

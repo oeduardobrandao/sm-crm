@@ -356,7 +356,14 @@ Deno.test("mcp-import: the financial gate leaves calls without financial fields 
   const { requireFinancialWrite } = await import("../_shared/mcp-token.ts");
   const ctx: McpKeyContext = { conta_id: "w", scopes: [], key_id: "k", created_by: "u", can_write_financials: false };
   requireFinancialWrite(ctx, { nome: "X" }, ["valor_mensal"]);
-  // API keys (flag unset) and OAuth users with financeiro:editar keep writing them.
-  requireFinancialWrite({ ...ctx, can_write_financials: undefined }, { valor_mensal: 1 }, ["valor_mensal"]);
+  // Only an explicit true writes them. Both resolvers always set the flag, so unset means a
+  // context nobody resolved, which fails closed.
   requireFinancialWrite({ ...ctx, can_write_financials: true }, { valor_mensal: 1 }, ["valor_mensal"]);
+  let refused: unknown;
+  try {
+    requireFinancialWrite({ ...ctx, can_write_financials: undefined }, { valor_mensal: 1 }, ["valor_mensal"]);
+  } catch (e) {
+    refused = e;
+  }
+  assert(refused instanceof Error && refused.message.includes("valor_mensal"), "unset flag refused");
 });
