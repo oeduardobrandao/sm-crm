@@ -8,6 +8,7 @@ import {
   Check,
   Edit2,
   Plus,
+  Repeat,
   Trash2,
   Upload,
 } from 'lucide-react';
@@ -52,6 +53,8 @@ export interface FinanceiroPhoneProps {
   onMonthFilterChange: (month: string) => void;
   onAdd: (tipo: 'entrada' | 'saida') => void;
   onImport: () => void;
+  /** Opens the recurring lançamentos list; absent when the user cannot see financials. */
+  onRecorrentes?: () => void;
   onEdit: (t: Transacao) => void;
   onConfirm: (t: Transacao) => void;
   onDelete: (id: number) => void;
@@ -204,6 +207,7 @@ export function FinanceiroPhone(props: FinanceiroPhoneProps) {
     onMonthFilterChange,
     onAdd,
     onImport,
+    onRecorrentes,
     onEdit,
     onConfirm,
     onDelete,
@@ -318,7 +322,11 @@ export function FinanceiroPhone(props: FinanceiroPhoneProps) {
                 Selecionar
               </button>
               <PhoneIconButton
-                label="Adicionar: Entrada, Saída ou Importar CSV"
+                label={
+                  onRecorrentes
+                    ? 'Adicionar: Entrada, Saída, Importar CSV ou Recorrentes'
+                    : 'Adicionar: Entrada, Saída ou Importar CSV'
+                }
                 variant="ink"
                 aria-haspopup="dialog"
                 onClick={() => setAddOpen(true)}
@@ -443,6 +451,15 @@ export function FinanceiroPhone(props: FinanceiroPhoneProps) {
             immediate: true,
             onSelect: onImport,
           },
+          ...(onRecorrentes
+            ? [
+                {
+                  label: 'Recorrentes',
+                  icon: <Repeat aria-hidden="true" />,
+                  onSelect: onRecorrentes,
+                },
+              ]
+            : []),
         ]}
       />
       <MonthSheet

@@ -9,7 +9,12 @@ const { mockGetTransacoes, mockGetClientes, mockGetMembros } = vi.hoisted(() => 
   mockGetMembros: vi.fn(),
 }));
 
-vi.mock('../finance', () => ({ getTransacoes: mockGetTransacoes }));
+vi.mock('../finance', () => ({
+  getTransacoes: mockGetTransacoes,
+  getRecorrentes: () => Promise.resolve([]),
+  referenciaRecorrente: (id: number, ano: number, mes: number) =>
+    `recorrente_${id}_${ano}_${String(mes).padStart(2, '0')}`,
+}));
 vi.mock('../clients', () => ({ getClientes: mockGetClientes }));
 vi.mock('../team', () => ({ getMembros: mockGetMembros }));
 

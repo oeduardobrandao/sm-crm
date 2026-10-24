@@ -16,6 +16,8 @@ const { useAuthMock, store } = vi.hoisted(() => ({
     addTransacao: vi.fn(),
     updateTransacao: vi.fn(),
     removeTransacao: vi.fn(),
+    getRecorrentes: vi.fn(),
+    addRecorrente: vi.fn(),
   },
 }));
 
@@ -49,6 +51,7 @@ beforeEach(() => {
   store.getTransacoes.mockResolvedValue([]);
   store.getClientes.mockResolvedValue([]);
   store.getMembros.mockResolvedValue([]);
+  store.getRecorrentes.mockResolvedValue([]);
 });
 
 describe('FinanceiroPage in the Vidro toolbar', () => {
