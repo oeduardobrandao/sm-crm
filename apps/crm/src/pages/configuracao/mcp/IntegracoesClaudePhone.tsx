@@ -10,7 +10,7 @@ import { ContextMenu, type ContextMenuAction } from '@/components/mobile/Context
 import { SwipeRow, type SwipeAction } from '@/components/mobile/SwipeRow';
 import { CheckList } from '@/components/mobile/CheckList';
 import { PickerCell } from '@/components/mobile/PickerSheet';
-import { SCOPE_OPTIONS, AGENT_PRESET } from '@/lib/mcp-scopes';
+import { SCOPE_OPTIONS, AGENT_PRESET, OWNER_ONLY_HELP } from '@/lib/mcp-scopes';
 import type { McpKey } from '@/services/mcp-keys';
 import type { OAuthGrant } from '@/services/mcp-oauth';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -44,16 +44,25 @@ const EXPIRY_OPTIONS: { value: Expiry; label: string }[] = [
   { value: '90', label: '90 dias' },
 ];
 
-const SCOPE_CHECK_OPTIONS = SCOPE_OPTIONS.map((s) => ({
-  value: s.value as string,
-  label: s.label,
-}));
+/** Owner-only scopes (financeiro:*) are disabled, with the reason, unless the user owns the workspace. */
+const scopeCheckOptions = (isWorkspaceOwner: boolean) =>
+  SCOPE_OPTIONS.map((s) => {
+    const locked = s.ownerOnly && !isWorkspaceOwner;
+    return {
+      value: s.value as string,
+      label: s.label,
+      disabled: locked,
+      subtitle: locked ? OWNER_ONLY_HELP : undefined,
+    };
+  });
 
 export interface IntegracoesClaudePhoneProps {
   /** `configuracoes:ver`: API keys and every member's connections. Without it, only the
    *  connector guide and the member's own connections render. */
   canManage: boolean;
   canEdit: boolean;
+  /** Owner of the active workspace (workspaceRole === 'owner'); gates the financeiro:* scopes. */
+  isWorkspaceOwner: boolean;
   /** Assistants offered in the guide (Codex needs an API key, so managers only). */
   clientTabs: { id: McpClient; label: string }[];
   client: McpClient;
@@ -548,6 +557,7 @@ function KeySheet({
   onNameChange,
   scopes,
   onScopesChange,
+  isWorkspaceOwner,
   expiry,
   onExpiryChange,
   creating,
@@ -619,7 +629,7 @@ function KeySheet({
           <CheckList<string>
             multiple
             header="Permissões"
-            options={SCOPE_CHECK_OPTIONS}
+            options={scopeCheckOptions(isWorkspaceOwner)}
             value={scopes}
             onChange={onScopesChange}
           />

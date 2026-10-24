@@ -86,6 +86,8 @@ const ALL_SCOPES = [
   'tarefas:write',
   'clientes:write',
   'membros:write',
+  'financeiro:read',
+  'financeiro:write',
 ];
 
 describe('ConsentPage', () => {
@@ -193,6 +195,73 @@ describe('ConsentPage', () => {
       authorization_id: 'auth-1',
       target: 'platform',
       scopes: ['banners:read', 'popups:read', 'kb:read', 'platform:read', 'blog:read'],
+    });
+  });
+
+  describe('financeiro scopes (owner-only)', () => {
+    it('non-owner sees financeiro scopes disabled with the owner-only helper text', async () => {
+      listWorkspaces.mockResolvedValue({
+        workspaces: [
+          {
+            id: 'conta-1',
+            name: 'Agência X',
+            role: 'admin',
+            feature_mcp: true,
+            // The server leaves owner-only scopes out of allowed_scopes for a non-owner.
+            allowed_scopes: ALL_SCOPES.filter((s) => !s.startsWith('financeiro:')),
+          },
+        ],
+        platform_admin: false,
+      });
+      renderPage();
+      await screen.findByText('Agência X');
+
+      expect(screen.getByLabelText('Financeiro (leitura, só donos)')).toBeDisabled();
+      expect(screen.getByLabelText('Financeiro (escrita, só donos)')).toBeDisabled();
+      expect(screen.getAllByText('Somente o dono do workspace')).toHaveLength(2);
+      // Other scopes stay editable.
+      expect(screen.getByLabelText('Posts (escrita)')).not.toBeDisabled();
+    });
+
+    it('owner can tick them, and they are sent in the grant', async () => {
+      renderPage();
+      await screen.findByText('Agência X');
+
+      const read = screen.getByLabelText('Financeiro (leitura, só donos)');
+      expect(read).not.toBeDisabled();
+      expect(screen.queryByText('Somente o dono do workspace')).toBeNull();
+      fireEvent.click(read);
+      fireEvent.click(screen.getByRole('button', { name: 'Autorizar' }));
+
+      await waitFor(() => expect(recordGrant).toHaveBeenCalledTimes(1));
+      expect(recordGrant.mock.calls[0][0].scopes).toContain('financeiro:read');
+    });
+
+    it('strips financeiro scopes the request named when the workspace role is not owner', async () => {
+      getDetails.mockResolvedValue({
+        data: { ...DETAILS, scope: 'posts:read financeiro:read' },
+        error: null,
+      });
+      listWorkspaces.mockResolvedValue({
+        workspaces: [
+          {
+            id: 'conta-1',
+            name: 'Agência X',
+            role: 'admin',
+            feature_mcp: true,
+            // The server leaves owner-only scopes out of allowed_scopes for a non-owner.
+            allowed_scopes: ALL_SCOPES.filter((s) => !s.startsWith('financeiro:')),
+          },
+        ],
+        platform_admin: false,
+      });
+      renderPage();
+      await screen.findByText('Agência X');
+      expect(screen.getByLabelText('Financeiro (leitura, só donos)')).not.toBeChecked();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Autorizar' }));
+      await waitFor(() => expect(recordGrant).toHaveBeenCalledTimes(1));
+      expect(recordGrant.mock.calls[0][0].scopes).toEqual(['posts:read']);
     });
   });
 

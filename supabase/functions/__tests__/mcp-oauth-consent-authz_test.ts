@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { hasPermissionFor } from "../_shared/permissions.ts";
+import { ownerOnlyScopeViolation } from "../_shared/mcp-token.ts";
 import { permittedMcpScopes } from "../_shared/mcp-oauth.ts";
 
 // mcp-oauth-consent/index.ts wraps its handler in Deno.serve, which no test in
@@ -49,7 +50,7 @@ Deno.test("mcp-oauth-consent: connecting no longer requires configuracoes; scope
     !/hasPermissionFor\(svc,\s*user\.id,\s*[^,]+,\s*["']configuracoes["'],\s*["']editar["']\)/.test(source),
     "neither eligible-workspaces nor approve may gate on configuracoes:editar any more",
   );
-  assertMatch(source, /const allowed_scopes = await permittedMcpScopes\(svc, user\.id, m\.workspace_id as string\)/);
+  assertMatch(source, /const allowed_scopes = \(await permittedMcpScopes\(svc, user\.id, m\.workspace_id as string\)\)\s*\.filter\(\(s\) => !ownerOnlyScopeViolation\(\[s\], m\.role as string\)\)/);
   assertMatch(source, /const permitted = await permittedMcpScopes\(svc, user\.id, contaId, scopes\);\s*if \(permitted\.length !== scopes\.length\)/);
 });
 
@@ -209,4 +210,29 @@ Deno.test("mcp-oauth-consent: target platform exige platform_admins e grava em a
   assertMatch(src, /target === "platform"[\s\S]*?isPlatformAdmin\(svc, user\.id\)[\s\S]*?from\("admin_mcp_oauth_grants"\)[\s\S]*?upsert\(/, "approve platform: gate + upsert na tabela do admin");
   assertMatch(src, /action === "list-admin-grants" \|\| action === "revoke-admin-grant"[\s\S]*?isPlatformAdmin\(svc, user\.id\)/, "list/revoke admin grants gated por platform_admins");
   assert(!/admin_mcp_oauth_grants"\)[\s\S]{0,400}assertPlanFeature/.test(src), "grants do admin não passam por feature_mcp");
+});
+
+// --- financeiro:* scopes: owner-only grants (Task 7) ---
+
+Deno.test("mcp-oauth-consent approve: owner check on the CHOSEN conta_id, before the grant upsert", () => {
+  assertMatch(source, /ownerOnlyScopeViolation/);
+  assertMatch(source, /memberRole/);
+  assertMatch(
+    source,
+    /ownerOnlyScopeViolation\(grantScopes,\s*await memberRole\(svc,\s*user\.id,\s*contaId\)\)/,
+  );
+  assertMatch(source, /error:\s*["']owner_only_scope["']/);
+  const violationIdx = source.indexOf("ownerOnlyScopeViolation(grantScopes");
+  const boundIdx = source.indexOf("boundGrantScopes(scopes, requestedMcp)");
+  const upsertIdx = source.indexOf('.from("mcp_oauth_grants")');
+  assert(boundIdx > -1 && violationIdx > boundIdx, "owner check runs on the bounded grant scopes");
+  assert(upsertIdx > violationIdx, "owner check runs before the mcp_oauth_grants upsert");
+});
+
+Deno.test("mcp-oauth-consent approve: owner gate decision for the chosen workspace", () => {
+  assertEquals(ownerOnlyScopeViolation(["posts:read", "financeiro:read"], "admin"), true);
+  assertEquals(ownerOnlyScopeViolation(["financeiro:write"], "agent"), true);
+  assertEquals(ownerOnlyScopeViolation(["financeiro:write"], null), true);
+  assertEquals(ownerOnlyScopeViolation(["financeiro:read", "financeiro:write"], "owner"), false);
+  assertEquals(ownerOnlyScopeViolation(["posts:read"], "admin"), false);
 });

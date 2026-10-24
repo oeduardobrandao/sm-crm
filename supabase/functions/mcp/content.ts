@@ -176,9 +176,10 @@ export function allowlistClient(row: Record<string, unknown>): Record<string, un
   return out;
 }
 
-/** Roster fields safe for agent consumption. custo_mensal is deliberately absent. */
+/** Roster fields safe for agent consumption. No financial field (custo_mensal, data_pagamento):
+ * those are owner-only and live in the financeiro:* tools. */
 export const MEMBER_PUBLIC_FIELDS = [
-  "id", "nome", "cargo", "tipo", "data_pagamento", "crm_user_id", "created_at",
+  "id", "nome", "cargo", "tipo", "crm_user_id", "created_at",
 ] as const;
 
 export function allowlistMember(row: Record<string, unknown>): Record<string, unknown> {

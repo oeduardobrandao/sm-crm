@@ -143,13 +143,16 @@ Deno.test("MCP_SCOPE_PERMISSION maps every allowlisted scope", () => {
   for (const s of MCP_ALLOWED_SCOPES) assert(s in MCP_SCOPE_PERMISSION, `missing ${s}`);
 });
 
-Deno.test("permittedMcpScopes: default agent role (equipe none) loses only membros:*", async () => {
+Deno.test("permittedMcpScopes: default agent role (equipe none, no financeiro) loses membros:* and financeiro:*", async () => {
   const { db } = permDb([
     "clientes:ver", "clientes:editar", "entregas:ver", "entregas:editar",
     "ideias:ver", "ideias:editar", "tarefas:ver", "tarefas:editar",
   ]);
   const got = await permittedMcpScopes(db, "u1", "ws-a");
-  assertEquals(got, MCP_ALLOWED_SCOPES.filter((s) => !s.startsWith("membros:")));
+  assertEquals(
+    got,
+    MCP_ALLOWED_SCOPES.filter((s) => !s.startsWith("membros:") && !s.startsWith("financeiro:")),
+  );
 });
 
 Deno.test("permittedMcpScopes: ver-only role keeps reads, drops writes", async () => {

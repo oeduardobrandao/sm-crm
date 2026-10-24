@@ -7,6 +7,7 @@ import {
   McpKeyContext,
   McpScope,
   MCP_TOKEN_PREFIX,
+  memberRole,
   resolveMcpKey,
   validateScopes,
 } from "./mcp-token.ts";
@@ -147,13 +148,7 @@ export async function isWorkspaceMember(
   userId: string,
   contaId: string,
 ): Promise<boolean> {
-  const { data } = await db
-    .from("workspace_members")
-    .select("user_id")
-    .eq("user_id", userId)
-    .eq("workspace_id", contaId)
-    .maybeSingle();
-  return data !== null;
+  return (await memberRole(db, userId, contaId)) !== null;
 }
 
 /**
@@ -183,7 +178,8 @@ export async function resolveOAuthCtx(
 
   const contaId = grant.conta_id as string;
   const featureOn = await effectivePlanFeature(db, contaId, "feature_mcp");
-  const isMember = await isWorkspaceMember(db, user.id, contaId);
+  const role = await memberRole(db, user.id, contaId);
+  const isMember = role !== null;
   if (!grantActive(grant as { revoked_at: string | null }, featureOn, isMember)) return null;
 
   // Enforce the token's granted scopes: when the JWT carries MCP-domain scopes (the client
@@ -206,6 +202,7 @@ export async function resolveOAuthCtx(
     scopes,
     key_id: `oauth:${clientId}`,
     created_by: user.id as string,
+    role,
     can_write_financials: canWriteFinancials,
   };
 }

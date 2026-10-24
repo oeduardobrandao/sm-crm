@@ -10,6 +10,8 @@ export const MCP_TOKEN_PREFIX = "mesaas_sk_";
 export const MCP_ALLOWED_SCOPES = [
   "clientes:read", "posts:read", "workflows:read", "ideias:read", "tarefas:read", "membros:read",
   "posts:write", "templates:write", "tarefas:write", "clientes:write", "membros:write",
+  // Owner-only (OWNER_ONLY_SCOPES): never in MCP_AGENT_PRESET.
+  "financeiro:read", "financeiro:write",
 ] as const;
 export type McpScope = (typeof MCP_ALLOWED_SCOPES)[number];
 
@@ -32,6 +34,9 @@ export const MCP_SCOPE_PERMISSION: Record<McpScope, { module: string; action: "v
   "tarefas:write": { module: "tarefas", action: "editar" },
   "membros:read": { module: "equipe", action: "ver" },
   "membros:write": { module: "equipe", action: "editar" },
+  // Also owner-only (OWNER_ONLY_SCOPES): the role check runs on top of this permission.
+  "financeiro:read": { module: "financeiro", action: "ver" },
+  "financeiro:write": { module: "financeiro", action: "editar" },
 };
 
 /** Least-privilege preset for a content-writing agent (read-only). */
@@ -59,6 +64,9 @@ export interface McpKeyContext {
   scopes: string[];
   key_id: string;
   created_by: string;
+  /** Papel do principal (`created_by`) em workspace_members do `conta_id`, lido a cada requisição.
+   * Ausente ou null conta como não-dono. Opcional para os contextos montados à mão nos testes. */
+  role?: string | null;
   /**
    * Whether write tools may set financial fields (valor_mensal, custo_mensal, data_pagamento).
    * OAuth: the user's own financeiro:editar, resolved per request. Unset for workspace API keys,
@@ -133,6 +141,46 @@ export class McpScopeError extends Error {
  */
 export class McpInputError extends Error {}
 
+/** Refusal for a non-owner calling an owner-only (Financeiro) tool. */
+export class McpOwnerError extends Error {
+  constructor() {
+    super("owner_only");
+  }
+}
+
+/** Scopes that only the workspace owner may hold (checked at issue time and on every call). */
+export const OWNER_ONLY_SCOPES = ["financeiro:read", "financeiro:write"] as const;
+
+/** True if `scopes` carries an owner-only scope and `role` is not 'owner'. */
+export function ownerOnlyScopeViolation(scopes: string[], role?: string | null): boolean {
+  if (role === "owner") return false;
+  return scopes.some((s) => (OWNER_ONLY_SCOPES as readonly string[]).includes(s));
+}
+
+/** Throws McpOwnerError unless the principal is the workspace owner. */
+export function requireOwner(ctx: McpKeyContext): void {
+  if (ctx.role !== "owner") throw new McpOwnerError();
+}
+
+/** The user's role in the workspace (workspace_members.role), or null when not a member.
+ * A failed read throws (fail loud): it must never be mistaken for "not a member" or open a gate. */
+export async function memberRole(
+  db: SupabaseClient,
+  userId: string,
+  contaId: string,
+): Promise<string | null> {
+  const { data, error } = await db
+    .from("workspace_members")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("workspace_id", contaId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const role = (data as { role?: unknown }).role;
+  return typeof role === "string" ? role : null;
+}
+
 /** Throws McpScopeError if `ctx` lacks `scope`. */
 export function requireScope(ctx: McpKeyContext, scope: string): void {
   if (!hasScope(ctx.scopes, scope)) throw new McpScopeError(scope);
@@ -166,10 +214,14 @@ export async function resolveMcpKey(
     // ignore
   }
 
+  // Role is read on every request: a creator demoted from owner loses Financeiro access at once.
+  const role = await memberRole(db, data.created_by as string, data.conta_id as string);
+
   return {
     conta_id: data.conta_id as string,
     scopes: (data.scopes as string[]) ?? [],
     key_id: data.id as string,
     created_by: data.created_by as string,
+    role,
   };
 }

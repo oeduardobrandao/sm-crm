@@ -124,6 +124,7 @@ Monorepo with npm workspaces:
 - `_shared/cors.ts` -- `buildCorsHeaders(req)` for CORS (never use wildcard `*`)
 - `_shared/audit.ts` -- `insertAuditLog()` for audit trail
 - `_shared/r2.ts` -- Cloudflare R2 storage client (presigned URLs)
+- `mcp/` -- MCP do workspace (chaves `mcp-keys` e OAuth `mcp-oauth-consent`). Escopos em `_shared/mcp-token.ts` (`MCP_ALLOWED_SCOPES`), espelhados no CRM (`apps/crm/src/lib/mcp-scopes.ts`). Os escopos `financeiro:*` são só do dono (`OWNER_ONLY_SCOPES`): a emissão recusa não-dono (`owner_only_scope`, papel de `workspace_members` do workspace da chave/grant) e a ferramenta confere o papel a cada chamada, então um dono rebaixado perde acesso na chamada seguinte. Mudar escopo = redeploy de `mcp`, `mcp-keys` e `mcp-oauth-consent` + CRM
 - `mcp-admin/` -- MCP do Admin da plataforma (OAuth-only; `platform_admins` + `admin_mcp_oauth_grants`; banners, popups, artigos da KB em Markdown, leituras de workspaces/planos/dashboard, rascunhos do blog). Escopos em `_shared/mcp-admin-scopes.ts`, bundlados também em `mcp-oauth-consent` e espelhados no CRM (`apps/crm/src/lib/mcp-scopes.ts`) e no Admin (`apps/admin/src/lib/mcp-admin-scopes.ts`): mudar escopo = redeploy dos dois + CRM + Admin
 - Cron functions authenticate via `x-cron-secret` header (not JWT)
 - All other functions verify JWT via `Authorization: Bearer <token>` header

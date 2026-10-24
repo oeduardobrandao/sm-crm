@@ -56,8 +56,11 @@ const GRANT = {
 
 const writeText = vi.fn(async () => {});
 
-function renderPage(role: 'owner' | 'agent' = 'owner') {
-  svc.useAuth.mockReturnValue({ can: makeCan(fakeMembership({ role })) });
+function renderPage(
+  role: 'owner' | 'agent' = 'owner',
+  workspaceRole: 'owner' | 'admin' | 'agent' | null = role,
+) {
+  svc.useAuth.mockReturnValue({ can: makeCan(fakeMembership({ role })), workspaceRole });
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -203,5 +206,35 @@ describe('IntegracoesClaudePage on phones', () => {
     expect(within(confirm).getByText(/perderá o acesso imediatamente/)).toBeInTheDocument();
     fireEvent.click(within(confirm).getByRole('button', { name: 'Desconectar' }));
     await waitFor(() => expect(svc.revokeOAuthGrant).toHaveBeenCalledWith('g1'));
+  });
+
+  describe('financeiro scopes (owner-only)', () => {
+    async function openSheet(workspaceRole: 'owner' | 'admin' | null) {
+      renderPage('owner', workspaceRole);
+      await screen.findByText('Agente de pautas');
+      fireEvent.click(screen.getByRole('button', { name: 'Criar chave' }));
+      return screen.findByRole('dialog', { name: 'Criar chave de API' });
+    }
+
+    it('non-owner sees them disabled with the helper text', async () => {
+      const sheet = await openSheet('admin');
+      expect(within(sheet).getByRole('button', { name: /Financeiro \(leitura/ })).toBeDisabled();
+      expect(within(sheet).getByRole('button', { name: /Financeiro \(escrita/ })).toBeDisabled();
+      expect(within(sheet).getAllByText('Somente o dono do workspace')).toHaveLength(2);
+    });
+
+    it('null workspaceRole counts as not owner', async () => {
+      const sheet = await openSheet(null);
+      expect(within(sheet).getByRole('button', { name: /Financeiro \(leitura/ })).toBeDisabled();
+    });
+
+    it('owner can tick them', async () => {
+      const sheet = await openSheet('owner');
+      const read = within(sheet).getByRole('button', { name: /Financeiro \(leitura/ });
+      expect(read).not.toBeDisabled();
+      expect(within(sheet).queryByText('Somente o dono do workspace')).toBeNull();
+      fireEvent.click(read);
+      expect(read).toHaveAttribute('aria-pressed', 'true');
+    });
   });
 });

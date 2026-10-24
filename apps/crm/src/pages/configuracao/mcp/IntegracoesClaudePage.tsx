@@ -29,7 +29,12 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ListSkeleton } from '@/components/ui/skeletons';
 import { listMcpKeys, createMcpKey, revokeMcpKey, type McpKey } from '@/services/mcp-keys';
 import { listOAuthGrants, revokeOAuthGrant, type OAuthGrant } from '@/services/mcp-oauth';
-import { SCOPE_OPTIONS, AGENT_PRESET } from '@/lib/mcp-scopes';
+import {
+  SCOPE_OPTIONS,
+  AGENT_PRESET,
+  OWNER_ONLY_HELP,
+  OWNER_ONLY_SCOPE_ERROR,
+} from '@/lib/mcp-scopes';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import {
   CLIENT_INTRO,
@@ -188,7 +193,9 @@ function CopyField({
 }
 
 export default function IntegracoesClaudePage() {
-  const { can } = useAuth();
+  const { can, workspaceRole } = useAuth();
+  // financeiro:* scopes are owner-only. null (unresolved) counts as not owner.
+  const isWorkspaceOwner = workspaceRole === 'owner';
   // The tab is open to every member: anyone can connect Claude via OAuth with the scopes their
   // own role allows, and sees (and can disconnect) their own connections. API keys and the
   // workspace's full connection list stay behind `configuracoes:ver`.
@@ -248,7 +255,9 @@ export default function IntegracoesClaudePage() {
           ? 'Limite de chaves atingido para o seu plano.'
           : msg === 'feature_disabled'
             ? 'Recurso não disponível no seu plano.'
-            : 'Erro ao criar chave: ' + msg,
+            : msg === 'owner_only_scope'
+              ? OWNER_ONLY_SCOPE_ERROR
+              : 'Erro ao criar chave: ' + msg,
       );
     },
   });
@@ -299,6 +308,7 @@ export default function IntegracoesClaudePage() {
       <IntegracoesClaudePhone
         canManage={canViewConfig}
         canEdit={canEditConfig}
+        isWorkspaceOwner={isWorkspaceOwner}
         clientTabs={clientTabs}
         client={client}
         onClientChange={setClient}
@@ -606,23 +616,34 @@ export default function IntegracoesClaudePage() {
                   Preset: Agente de conteúdo
                 </button>
               </div>
-              {SCOPE_OPTIONS.map((s) => (
-                <label
-                  key={s.value}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <Checkbox
-                    checked={scopes.includes(s.value)}
-                    onCheckedChange={() => toggleScope(s.value)}
-                  />
-                  <span className="text-sm">{s.label}</span>
-                </label>
-              ))}
+              {SCOPE_OPTIONS.map((s) => {
+                const locked = s.ownerOnly && !isWorkspaceOwner;
+                return (
+                  <div key={s.value}>
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        cursor: locked ? 'not-allowed' : 'pointer',
+                        opacity: locked ? 0.6 : 1,
+                      }}
+                    >
+                      <Checkbox
+                        checked={scopes.includes(s.value)}
+                        disabled={locked}
+                        onCheckedChange={() => toggleScope(s.value)}
+                      />
+                      <span className="text-sm">{s.label}</span>
+                    </label>
+                    {locked && (
+                      <p className="text-xs text-muted-foreground" style={{ marginLeft: '1.5rem' }}>
+                        {OWNER_ONLY_HELP}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
             <div className="space-y-1">
               <Label>Expiração</Label>

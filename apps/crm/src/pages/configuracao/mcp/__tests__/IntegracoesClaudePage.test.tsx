@@ -1,14 +1,19 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 
-const { useAuthMock, listMcpKeysMock, listOAuthGrantsMock } = vi.hoisted(() => ({
-  useAuthMock: vi.fn(),
-  listMcpKeysMock: vi.fn(async () => []),
-  listOAuthGrantsMock: vi.fn(async () => []),
-}));
+const { useAuthMock, listMcpKeysMock, listOAuthGrantsMock, createMcpKeyMock, toastErrorMock } =
+  vi.hoisted(() => ({
+    useAuthMock: vi.fn(),
+    listMcpKeysMock: vi.fn(async () => []),
+    listOAuthGrantsMock: vi.fn(async () => []),
+    createMcpKeyMock: vi.fn(),
+    toastErrorMock: vi.fn(),
+  }));
+
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: toastErrorMock } }));
 
 vi.mock('@/context/AuthContext', () => ({ useAuth: useAuthMock }));
 // jsdom has no matchMedia match: keep this suite on the desktop layout (phone has its own suite).
@@ -16,7 +21,7 @@ vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 vi.mock('@/services/mcp-keys', () => ({
   listMcpKeys: listMcpKeysMock,
-  createMcpKey: vi.fn(),
+  createMcpKey: createMcpKeyMock,
   revokeMcpKey: vi.fn(),
 }));
 
@@ -208,5 +213,84 @@ describe('IntegracoesClaudePage — mutation controls gated on configuracoes:edi
 
     expect(screen.getByRole('button', { name: 'Criar chave' })).not.toBeDisabled();
     expect(screen.queryByText('Somente leitura')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * financeiro:* scopes are owner-only. The picker follows `workspaceRole` (the active
+ * workspace membership), never the profile role; null/unresolved counts as not owner.
+ */
+describe('IntegracoesClaudePage — financeiro scopes are owner-only', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    listMcpKeysMock.mockResolvedValue([]);
+    listOAuthGrantsMock.mockResolvedValue([]);
+  });
+
+  async function openCreate(workspaceRole: 'owner' | 'admin' | 'agent' | null, role = 'owner') {
+    useAuthMock.mockReturnValue({
+      can: makeCan(fakeMembership({ role: role as 'owner' })),
+      workspaceRole,
+    });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Criar chave' }));
+    await screen.findByText('Preset: Agente de conteúdo');
+  }
+
+  it('non-owner sees financeiro scopes disabled with the helper text', async () => {
+    await openCreate('admin', 'admin');
+    expect(screen.getByLabelText('Financeiro (leitura, só donos)')).toBeDisabled();
+    expect(screen.getByLabelText('Financeiro (escrita, só donos)')).toBeDisabled();
+    expect(screen.getAllByText('Somente o dono do workspace')).toHaveLength(2);
+    expect(screen.getByLabelText('Posts (escrita)')).not.toBeDisabled();
+  });
+
+  it('treats an unresolved workspaceRole (null) as not owner', async () => {
+    await openCreate(null);
+    expect(screen.getByLabelText('Financeiro (leitura, só donos)')).toBeDisabled();
+  });
+
+  it('owner can tick them', async () => {
+    await openCreate('owner');
+    const write = screen.getByLabelText('Financeiro (escrita, só donos)');
+    expect(write).not.toBeDisabled();
+    expect(screen.queryByText('Somente o dono do workspace')).toBeNull();
+    fireEvent.click(write);
+    expect(write).toBeChecked();
+  });
+});
+
+/**
+ * mcp-keys answers `owner_only_scope` when a non-owner asks for financeiro:* (the server-side
+ * check, e.g. a role changed after the page loaded). The toast says it in Portuguese, with the
+ * same copy the OAuth consent page uses, instead of "Erro ao criar chave: owner_only_scope".
+ */
+describe('IntegracoesClaudePage — owner_only_scope error copy', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    listMcpKeysMock.mockResolvedValue([]);
+    listOAuthGrantsMock.mockResolvedValue([]);
+  });
+
+  it('maps owner_only_scope to the consent page copy', async () => {
+    createMcpKeyMock.mockRejectedValue(new Error('owner_only_scope'));
+    useAuthMock.mockReturnValue({
+      can: makeCan(fakeMembership({ role: 'owner' })),
+      workspaceRole: 'owner',
+    });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Criar chave' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByPlaceholderText('Ex: Agente de conteúdo'), {
+      target: { value: 'Agente financeiro' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Criar chave' }));
+
+    await waitFor(() => expect(createMcpKeyMock).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        'As permissões do Financeiro são somente do dono do workspace.',
+      ),
+    );
   });
 });
