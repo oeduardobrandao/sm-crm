@@ -4,6 +4,13 @@ import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { coerceHasPassword } from "../_shared/invite-classify.ts";
 import type { DemoSeedCounts, sendDemoAccessEmail } from "../_shared/invite-email.ts";
+import {
+  findActiveAffiliate,
+  isSelfReferral,
+  MSG_AFFILIATE_NOT_FOUND as MSG_AFFILIATE,
+  MSG_AFFILIATE_SELF,
+  normalizeRefCode,
+} from "./workspace-affiliate.ts";
 
 /**
  * Plans a demo can never use. Mirrors `INTERNAL_PLAN_IDS` in
@@ -14,15 +21,11 @@ import type { DemoSeedCounts, sendDemoAccessEmail } from "../_shared/invite-emai
 export const DEMO_EXCLUDED_PLAN_IDS = new Set(["lifetime"]);
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-// Same normalisation as the on_auth_user_created_zz_affiliate_referral trigger.
-const REF_CODE_RE = /^[a-z0-9]{4,32}$/;
 const DEFAULT_EMPRESA = "Minha agência";
 
 const MSG_EMAIL = "E-mail inválido.";
 const MSG_PLAN_REQUIRED = "Escolha um plano.";
 const MSG_PLAN_INVALID = "Este plano não pode ser usado em uma conta demo.";
-const MSG_AFFILIATE = "Código de afiliado não encontrado ou inativo.";
-const MSG_AFFILIATE_SELF = "O afiliado não pode indicar o próprio e-mail.";
 const MSG_DUPLICATE = "Já existe uma conta Mesaas com este e-mail.";
 const MSG_CREATE_FAILED = "Não foi possível criar a conta demo. Nada foi criado.";
 const MSG_PASSWORD_SET = "O dono já definiu a senha.";
@@ -46,9 +49,9 @@ export function validateDemoInput(body: unknown): DemoInput {
   if (!planId) return { ok: false, status: 400, error: MSG_PLAN_REQUIRED };
   const nome = trimmed(b.nome) || null;
   const empresa = trimmed(b.empresa) || DEFAULT_EMPRESA;
-  const ref = trimmed(b.ref_code).toLowerCase();
-  if (ref && !REF_CODE_RE.test(ref)) return { ok: false, status: 400, error: MSG_AFFILIATE };
-  return { ok: true, email, planId, nome, empresa, refCode: ref || null };
+  const ref = normalizeRefCode(b.ref_code);
+  if (!ref.ok) return { ok: false, status: 400, error: MSG_AFFILIATE };
+  return { ok: true, email, planId, nome, empresa, refCode: ref.code };
 }
 
 export interface DemoDeps {
@@ -118,16 +121,15 @@ export async function createDemoWorkspace(deps: DemoDeps, body: unknown, actor: 
 
   let affiliateId: string | null = null;
   if (input.refCode) {
-    const { data: aff, error: affErr } = await db
-      .from("affiliates").select("id, code, email").eq("code", input.refCode).eq("status", "active").maybeSingle();
-    if (affErr) {
+    let aff;
+    try {
+      aff = await findActiveAffiliate(db, input.refCode);
+    } catch (affErr) {
       console.error("[platform-admin:create-demo] affiliate lookup failed", affErr);
       return { status: 500, body: { error: MSG_CREATE_FAILED } };
     }
     if (!aff) return { status: 400, body: { error: MSG_AFFILIATE } };
-    if (typeof aff.email === "string" && aff.email.trim().toLowerCase() === input.email) {
-      return { status: 400, body: { error: MSG_AFFILIATE_SELF } };
-    }
+    if (isSelfReferral(aff, input.email)) return { status: 400, body: { error: MSG_AFFILIATE_SELF } };
     affiliateId = aff.id;
   }
 
