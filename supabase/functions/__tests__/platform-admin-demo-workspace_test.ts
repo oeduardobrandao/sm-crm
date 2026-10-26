@@ -64,6 +64,8 @@ function happyResponses(over: Record<string, Resp[]> = {}): Record<string, Resp[
 
 interface FakeDepsOpts {
   existingUser?: { id: string } | null;
+  /** Returned by findUserByEmail calls after the first (the re-check after a createUser failure). */
+  existingUserOnRecheck?: { id: string } | null;
   createError?: unknown;
   generateError?: unknown;
   sendError?: unknown;
@@ -80,7 +82,9 @@ function makeDeps(db: unknown, events: string[], opts: FakeDepsOpts = {}) {
     db: db as SupabaseClient,
     redirectBase: "https://app.test",
     findUserByEmail: (email) => {
+      const isRecheck = events.some((e) => e.startsWith("findUserByEmail"));
       events.push(`findUserByEmail:${email}`);
+      if (isRecheck && opts.existingUserOnRecheck !== undefined) return Promise.resolve(opts.existingUserOnRecheck);
       return Promise.resolve(opts.existingUser ?? null);
     },
     getUserEmail: (id) => {
@@ -207,6 +211,19 @@ Deno.test("createDemoWorkspace maps a non-duplicate createUser failure to the ge
   const res = await createDemoWorkspace(t.deps, BODY, ACTOR);
   assertEquals(res.status, 500);
   assertEquals(res.body.error, "Não foi possível criar a conta demo. Nada foi criado.");
+  assertEquals(t.links.length, 0);
+  assertEquals(t.events.includes("rpc:demo_workspace_discard"), false);
+  assertEquals(t.deleted.length, 0);
+});
+
+Deno.test("createDemoWorkspace maps a lost createUser race (500 unexpected_failure, user now exists) to 409", async () => {
+  // GoTrue's answer to a concurrent insert of the same new e-mail (unique index violation).
+  const err = Object.assign(new Error("Database error creating new user"), { code: "unexpected_failure", status: 500 });
+  const t = setup(happyResponses(), { createError: err, existingUserOnRecheck: { id: "u-winner" } });
+  const res = await createDemoWorkspace(t.deps, BODY, ACTOR);
+  assertEquals(res.status, 409);
+  assertEquals(res.body.error, "Já existe uma conta Mesaas com este e-mail.");
+  assertEquals(t.events.filter((e) => e.startsWith("findUserByEmail")).length, 2);
   assertEquals(t.links.length, 0);
   assertEquals(t.events.includes("rpc:demo_workspace_discard"), false);
   assertEquals(t.deleted.length, 0);

@@ -150,10 +150,18 @@ export async function createDemoWorkspace(deps: DemoDeps, body: unknown, actor: 
   try {
     ({ userId } = await deps.createUser(input.email, meta));
   } catch (e) {
-    // Two requests racing for the same new e-mail: only one createUser wins, the other gets
-    // code email_exists (422). Match the code, never the message text. Nothing was created.
+    // Nothing was created either way. An e-mail that already exists is code email_exists (422):
+    // match the code, never the message text. Two requests racing for the same NEW e-mail are
+    // different: the loser's insert hits the unique index inside GoTrue, which answers 500
+    // unexpected_failure. So any other failure re-checks the e-mail: a user there now means
+    // another request won, which is the same 409.
     if ((e as { code?: unknown })?.code === "email_exists") return { status: 409, body: { error: MSG_DUPLICATE } };
     console.error("[platform-admin:create-demo] createUser failed", e);
+    try {
+      if (await deps.findUserByEmail(input.email)) return { status: 409, body: { error: MSG_DUPLICATE } };
+    } catch (lookupErr) {
+      console.error("[platform-admin:create-demo] user re-check failed", lookupErr);
+    }
     return { status: 500, body: { error: MSG_CREATE_FAILED } };
   }
 
