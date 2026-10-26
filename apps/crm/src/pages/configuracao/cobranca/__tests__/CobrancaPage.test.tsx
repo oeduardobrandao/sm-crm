@@ -197,6 +197,21 @@ describe('CobrancaPage', () => {
       expect(screen.queryByRole('button', { name: /teste de 30 dias/i })).toBeNull();
     });
 
+    it('yearly 12x "Assinar" opens the Pagar.me dialog without the trial', async () => {
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN_PAGARME]);
+      asDemo();
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Assinar' }));
+
+      expect(await screen.findByText('Assinar o plano Pro')).toBeInTheDocument();
+      expect(startCheckout).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: 'Confirmar assinatura' })).toBeInTheDocument();
+      expect(screen.queryByText(/30 dias grátis/)).toBeNull();
+    });
+
     it('starts a no-trial checkout for the current plan from "Assinar"', async () => {
       asDemo();
       renderPage();

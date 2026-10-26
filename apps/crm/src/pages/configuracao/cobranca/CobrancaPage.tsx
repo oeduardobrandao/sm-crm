@@ -139,8 +139,8 @@ export default function CobrancaPage() {
   // Source of truth for the workspace's plan, incl. comp overrides (e.g. Lifetime)
   // that have no Stripe subscription and would otherwise read as Free. planSource is
   // used below to hide the switch CTA from comped (plan_source='manual') workspaces —
-  // a distinct query key from the ['billing', 'effective-plan'] TrialNudgeCard/ComecarPage
-  // share, since its queryFn returns a different shape.
+  // the same query key TrialNudgeCard/ComecarPage share, so one cache entry feeds all three
+  // (wasDemo also drives the trial gate via hasUsedTrial).
   const { data: effectivePlan, refetch: refetchEffectivePlan } = useQuery({
     queryKey: ['billing', 'effective-plan-with-source'],
     queryFn: getEffectivePlanWithSource,
@@ -361,6 +361,8 @@ export default function CobrancaPage() {
       );
     }
     if (upgradable) {
+      // A demo always has wasDemo, so firstTime is false for it: the 'Assinar' label below
+      // relies on that (the trial label would win otherwise).
       const firstTime = !hasUsedTrial(subscription, effectivePlan);
       // The à vista escape hatch only makes sense next to the 12x path itself: month plans and
       // non-gated year plans already charge price_brl_annual (or price_brl) directly via

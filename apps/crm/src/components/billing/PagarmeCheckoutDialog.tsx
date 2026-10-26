@@ -62,7 +62,7 @@ export interface PagarmeCheckoutDialogProps {
     pagarme_installment_cents: number;
   } | null;
   source: CheckoutSource;
-  /** Checkout mode only: !subscription.hasEverSubscribed. */
+  /** Checkout mode only: !hasUsedTrial(subscription, effectivePlan) (a demo has used it too). */
   trialEligible: boolean;
   /**
    * Checkout mode only. When provided, an "À vista sai por ..." escape hatch renders below the
