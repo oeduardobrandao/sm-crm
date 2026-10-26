@@ -1,6 +1,6 @@
 # Linha editorial: design
 
-Status: draft for review · 2026-10-26
+Status: reviewed (Fable + Codex), ready for planning · 2026-10-26
 Mockups (approved direction, Option B): https://claude.ai/artifact/LYRyx2HdmXXmAmuP45xnU6
 
 ## 1. Why
@@ -92,9 +92,18 @@ service_role` block used in `20261029000001_transacoes_recorrentes.sql`.
 This covers items and replies too. An INSERT-only `enforce_plan_feature` trigger would leave
 existing linhas editable after the flag is turned off.
 
-Access follows the rule `workflow_posts` uses today, and the builder confirms it against the
-latest `workflow_posts` policy migration. If posts check a module permission, linhas use the
-same one; if they only check `conta_id`, so do linhas.
+Access follows `workflow_posts`, which checks only `conta_id` (`workspace_posts_all`,
+`20260402_workflow_posts.sql:82-85`, never narrowed by the roles migrations). Linhas add no
+module permission.
+
+**Column-level UPDATE grants.** `authenticated` gets UPDATE only on the editable columns:
+
+- items: `data`, `tipo`, `titulo`, `direcao`, `valores`, `ordem`;
+- linhas: `updated_at`;
+- colunas: everything but `conta_id`.
+
+`status`, `rodada`, `enviada_*`, `decidida_at`, `post_id`, `convertido_*`, `linha_id` and
+`conta_id` are written only by the RPCs and the FK cascade.
 
 Use composite same-tenant FKs `(id, conta_id)`, as `post_processes` does
 (`20260918000002_post_processes_schema.sql`), so a row can never point at another workspace's
@@ -128,7 +137,7 @@ call)**.
 | `nome` | text not null | unique per conta on `lower(unaccent(trim(nome)))` (the `unaccent` extension already exists, see `20260928000001_workspace_slug_unaccent.sql`), so "Pilar" and "Pílar" cannot coexist and §7's name mapping is deterministic |
 | `tipo` | text not null | subset of `PropertyType`: `text`, `number`, `select`, `multiselect`, `date`, `person`, `checkbox`, `url` |
 | `config` | jsonb not null default `'{}'` | select options `{options: SelectOption[]}`, same shape as `template_property_definitions.config` |
-| `visivel_cliente` | boolean not null default true | shown in the Hub (mirrors `portal_visible`) |
+| `visivel_cliente` | boolean not null default true | shown in the Hub. Unlike `template_property_definitions.portal_visible` (default false: internal production metadata), linha columns exist to describe the plan to the client, so they default to visible **(my call)** |
 | `oculta` | boolean not null default false | hidden from the CRM table, values kept |
 | `ordem` | int not null | |
 | `created_at` | | |
@@ -164,7 +173,7 @@ no matching column. This needs no exception to the freeze trigger.
 | `direcao` | text not null default `''` | plain text, multi-line |
 | `valores` | jsonb not null default `'{}'` | `{ [coluna_id]: value }`, same value shapes as `post_property_values.value` |
 | `ordem` | int not null | manual order inside the linha |
-| `post_id` | → workflow_posts on delete set null | set on conversion (match the `workflow_posts.id` type) |
+| `post_id` | bigint null → workflow_posts on delete set null | set on conversion (`workflow_posts.id` is bigserial) |
 | `convertido_at`, `convertido_por` | | |
 | `created_at`, `updated_at` | | |
 
@@ -175,8 +184,13 @@ A BEFORE INSERT/UPDATE trigger enforces:
 - A linha has at most 100 items. A month is 8 to 40 in practice; the cap bounds the Hub
   payload (§8.1).
 - Once `post_id` is set, `data`, `tipo`, `titulo`, `direcao` and `valores` are frozen. The
-  post is the source of truth (anti-goal "silent divergence"). Only `ordem` can change, and
-  `post_id` can be cleared by the FK.
+  post is the source of truth (anti-goal "silent divergence").
+  - The freeze applies only when `OLD.post_id IS NOT NULL AND NEW.post_id IS NOT DISTINCT
+    FROM OLD.post_id`. That lets the FK's `ON DELETE SET NULL` cascade, itself an UPDATE,
+    release the row.
+  - Only `ordem` can change on a frozen row.
+- `linha_id` is immutable after insert, so a row can't move to another client's linha. Follow
+  `post_move_requires_rpc` (`20260830000001:95-110`).
 
 When the post is deleted, `post_id` goes back to null and the row becomes convertible again.
 The row keeps its last values.
@@ -203,6 +217,10 @@ This mirrors `post_approvals`.
 Client rows are written only by the edge function, through service-role RPCs. Team users may
 insert `comentario` rows (replies) through RLS. INSERT is limited to `is_workspace_user = true`
 and `author_user_id = auth.uid()`.
+
+Composite FKs `(linha_id, conta_id)` and `(item_id, linha_id)` make sure a reply can only
+attach to an item of the same linha, and that linha to the same conta. That needs a
+`UNIQUE (id, linha_id)` on itens.
 
 ## 5. State machine and RPCs
 
@@ -239,6 +257,11 @@ aprovada --enviar de novo--> enviada            (re-approval after big changes)
   - It locks those items `FOR UPDATE`, then fails with `ja_convertido` if any already has a
     `post_id`.
   - The set it converts is exactly the set in the payload, one post per item.
+  - Plan limits apply per inserted post: `trg_limit_posts` per fluxo, and
+    `trg_limit_posts_avulsos` per client (`20260830000001:151-165`). If one trips, the whole
+    batch rolls back **(my call: no partial conversion)**. The CRM maps the
+    `plan_limit_exceeded:*` error through `mapEntitlementError` so the toast names the
+    limit.
 
 Plain cell edits (rows, column definitions, reorder) go through PostgREST with RLS. That
 keeps cell editing fast and matches how posts are edited. `status`, `rodada` and the
@@ -256,9 +279,12 @@ another client's linha, even with a guessed id.
 
 - `record_linha_decision(p_linha_id, p_conta_id, p_cliente_id, p_token, p_acao, p_comentario)`
   requires `status = 'enviada'`. It inserts a `respostas` row with the current `rodada` and
-  `item_id = null` (the general comment travels on the decision row), sets `aprovada` or
-  `ajustes` plus `decidida_at`, and calls `create_linha_notification`. `ajustes` requires a
-  non-empty comment unless the current rodada already has client comments.
+  `item_id = null` (the general comment travels on the decision row), and sets `aprovada` or
+  `ajustes` plus `decidida_at`. `ajustes` requires a non-empty comment unless the current
+  rodada already has client comments.
+  - It does **not** notify. As in `hub-approve` (`handler.ts:318-324`), the edge function
+    calls `create_linha_notification` after the decision commits, so a notification failure
+    never rolls back the client's decision.
 - `record_linha_comment(p_linha_id, p_item_id, p_conta_id, p_cliente_id, p_token, p_comentario)`
   requires `enviada`.
   - `p_item_id` is optional: null is a comment on the whole linha, which is supported.
@@ -266,9 +292,11 @@ another client's linha, even with a guessed id.
   - Comments create no notification; the decision carries the count (anti-goal "Hub noise").
 - `create_linha_notification(p_linha_id, p_acao)` uses the type `linha_editorial_aprovada` or
   `linha_editorial_ajustes`.
-  - **Targets:** owner and admin via `resolve_notification_targets`, plus `enviada_por` when
-    that user is still a member. Deduplicated.
-  - **Link:** `/entregas?view=linha&cliente=<id>&mes=YYYY-MM`.
+  - **Targets:** `resolve_notification_targets(conta, NULL, ARRAY['owner','admin'])`. Its
+    second argument is a `membros.id`, not a user id, so pass NULL. Then append `enviada_por`
+    when it is still in `workspace_members` for the conta, and dedupe in SQL;
+    `insert_notification_batch` does not dedupe.
+  - **Link:** `/entregas?view=linha&clientes=<id>&mes=YYYY-MM`.
   - **Metadata:** `cliente_nome`, `periodo`, `comentarios` (count in this rodada).
   - **Insert:** through `insert_notification_batch`.
 
@@ -280,17 +308,24 @@ Grant all three to `service_role` only, per `20260925000001_lockdown_definer_fun
 
 - `viewQuery.ts`:
   - Add `'linha'` to `ActiveView` and `VIEWS`.
-  - Add the view-gated params `cliente` (id) and `mes` (`YYYY-MM`), parsed with the
-    `parseInt` + `isNaN` guard and dropped for other views.
+  - The selected client reuses the existing `clientes=` param (`filterClientes`,
+    `viewQuery.ts:126`). In this view only its first value is read, so there's no second
+    source of truth for "which client".
+  - Add a view-gated `mes` param (`YYYY-MM`), validated and dropped for other views.
   - Saved views need no schema change.
+  - The notification link becomes `/entregas?view=linha&clientes=<id>&mes=YYYY-MM`.
 - `VIEW_TABS` in `EntregasPage.tsx`:
   - Add `{ id: 'linha', label: 'Linha editorial', icon: <Table2 /> }` (lucide), after Lista.
-  - Show it only when `feature_linha_editorial` is on (same pattern as `postProcessesEnabled`).
+  - `VIEW_TABS` is a module-level const, so filter it inside the component when
+    `feature_linha_editorial` is off. That covers both the tab row and the Vidro toolbar's
+    dropdown (`EntregasPage.tsx:1583-1607`).
   - Update `VIEW_ICONS` (`VistasTabs.tsx`, exhaustive record), `PHONE_VIEWS`
     (`EntregasPhoneHeader.tsx`), the loading-skeleton map and the render branch.
   - Mode, entity and filter toggles are hidden in this view. Only the vista row and the
     search remain.
   - A saved vista or shared link with `view=linha` falls back to Kanban when the flag is off.
+    The fallback happens in `EntregasPage` after `features` resolves, not in
+    `parseEntregasQuery`, so a link doesn't bounce to Kanban while the flags are loading.
 - New folder `apps/crm/src/pages/entregas/linha/`. The page is already large, so keep the view
   out of `EntregasPage.tsx` beyond the branch.
 - Store: a new `apps/crm/src/store/linhaEditorial.ts` with plain async functions (repo
@@ -323,8 +358,12 @@ Grant all three to `service_role` only, per `20260925000001_lockdown_definer_fun
   - Cells edit in place. Tab moves to the next cell, and Enter moves to the cell below.
   - Saves are optimistic per cell, with debounced text fields and `trackUnsavedWork` around
     the in-flight save, per the seamless-updates rule.
-  - Formato is a menu of `PostTipoBadge`. Data is a date picker limited to the month. Select
-    cells use the existing `PropertyValue` editors where they fit.
+  - Formato is a menu of the four formats. Use `TIPO_LABELS`, `TIPO_ORDER` and the type
+    colors in `pages/entregas/postLabels.ts`; there is no `PostTipoBadge` component in the
+    CRM, it only exists in the design-system mockups. Extract a small shared format pill if
+    useful.
+  - Data is a date picker limited to the month. Select cells use the existing
+    `PropertyValue` editors where they fit.
 - **Rows:** "Nova linha" appends a row; its date defaults to the day after the last dated row
   **(my call)**, or null ("sem data") when that would fall past the month's end, so the
   date-in-month trigger never rejects the optimistic insert. Rows are reordered by drag and sorted by date on demand ("Ordenar por data").
@@ -355,11 +394,15 @@ Grant all three to `service_role` only, per `20260925000001_lockdown_definer_fun
 ### 6.5 Notifications
 
 - Add the new types `linha_editorial_aprovada` and `linha_editorial_ajustes` to:
-  - the SQL checks `notifications_type_check`, `notification_inapp_prefs_type_check` and
-    `notification_email_prefs_type_check` (copy the latest full lists, see
-    `20261025000002_post_discussao_participantes.sql`);
-  - `NotificationType`, `NOTIFICATION_CATALOG` (category "Aprovações", both email-eligible)
-    and `getNotificationDisplay()`;
+  - `notifications_type_check` and `notification_inapp_prefs_type_check` (latest full lists
+    in `20261025000002_post_discussao_participantes.sql:405-444`);
+  - `notification_email_prefs_type_check` (latest in `20261008000002_agenda_convidados.sql:153-160`);
+  - the **hard-coded type array inside `claim_notification_emails`**
+    (`20261008000002_agenda_convidados.sql`, `n2.type = any (array[...])`). Without it the
+    digest silently skips them;
+  - `NotificationType` (`store/notifications.ts:3`), `NOTIFICATION_CATALOG` (category
+    `aprovacoes_hub`, both email-eligible) and `getNotificationDisplay()`
+    (`lib/notification-config.ts:142`);
   - the e-mail label map in `_shared/notification-email.ts`.
 - Display copy:
   - aprovada: "{cliente} aprovou a linha editorial de {mês}", with body "{n} comentários" when
@@ -390,11 +433,16 @@ atomically.
   It is null when the item has no date. There is no workspace timezone in the schema today,
   and 19 migrations already hard-code `America/Sao_Paulo`, so this follows them **(my call)**.
   A canonical workspace timezone is out of scope.
-- `conteudo` / `conteudo_plain`: a TipTap doc with:
+- `conteudo` / `conteudo_plain`: there is no shared doc-to-text helper (the drawers take
+  `plain` from the live editor), so this function serializes both itself. The content is a
+  TipTap doc with:
   1. a bold paragraph "Direção do conteúdo" and the direction text, one paragraph per line;
   2. "Da linha editorial", a bullet list `Nome: valor` of every extra column that was not
      mapped to a property below, skipping empty values and rendering URLs as links.
-- `property_values`: for fluxo conversion only.
+- `property_values`: for fluxo conversion only, and only when the new workflow has a
+  `template_id`. Preset or from-zero wizard sources leave it null unless the user saved a
+  template; then every column goes to the bullet list. Template definitions only exist where
+  `feature_custom_properties` was on.
   - An extra column maps to a template property definition when the normalized names match
     (case- and accent-insensitive) and the types are compatible.
   - Select values map option labels to the definition's options. A missing label goes to the
@@ -408,10 +456,11 @@ The RPC `linha_editorial_converter` then:
    workflow (same conta and same `cliente_id` as the linha, when given).
 2. Inserts `workflow_posts` with the item's own `titulo` and `tipo` (taken server-side,
    ignoring the payload) and `status = 'rascunho'`, plus:
-   - `cliente_id`;
+   - `cliente_id` (for a fluxo, `post_a0_sync_cliente` overwrites it from the workflow, which
+     is why the same-client check in step 1 is load-bearing, not defensive);
    - `workflow_id` (or null);
-   - `ordem` (fluxo order = item date order) or `board_ordem` for avulsos, following
-     `createAvulsoPost`;
+   - `ordem` (fluxo order = item date order; `0` for avulsos, like `createAvulsoPost`).
+     `board_ordem` is left null;
    - `scheduled_at` (derived as above), `conteudo`, `conteudo_plain` and
      `created_via = 'linha_editorial'`.
 3. Inserts `post_property_values` after validating that each definition id belongs to the
@@ -419,10 +468,20 @@ The RPC `linha_editorial_converter` then:
 4. Sets `post_id`, `convertido_at` and `convertido_por` on each item.
 5. Returns `[{item_id, post_id}]`.
 
-Check `created_via` and the platform targets: if `workflow_posts.created_via` has a CHECK, add
-`'linha_editorial'`. Platform targets follow whatever `addWorkflowPost` and `createAvulsoPost`
-do today. The builder mirrors them, for example deriving them from the fluxo's
-`plataformas`.
+**Platform targets:** the RPC never sets `platform`. Targets are seeded by the insert triggers
+`workflow_posts_z4b_platform_on_insert` and `workflow_posts_z6_seed_targets`, which use
+`post_board_platforms(workflow_id, cliente_id)` (`20261010100002_post_targets.sql:119-243`). An
+explicit value would count as "written on purpose" and break multi-platform fluxos.
+
+**`created_via`:** the column has an inline CHECK `('human','agent')`
+(`20260624000001_mcp_created_via.sql`), auto-named `workflow_posts_created_via_check`. Drop it
+by name and recreate it with `'linha_editorial'`. Then:
+
+- widen `WorkflowPost.created_via` (`store/posts.ts:110`);
+- grep for exhaustive `'human' | 'agent'` handling of posts.
+
+`get_client_health_aggregates` only counts `= 'agent'` and is unaffected, and `origem_agg`
+reads `workflows.created_via`, which this feature does not change.
 
 ### 7.1 Criar fluxo (mockups "3 · Aprovada" and "4a")
 
@@ -435,10 +494,14 @@ do today. The builder mirrors them, for example deriving them from the fluxo's
 - The Revisar step lists the posts that will be created, as in mockup 4a, without per-post
   deadlines: deadlines stay per etapa of the fluxo, as today. The button reads "Criar fluxo
   com N posts".
-- On submit, `createWorkflowFromWizard` runs first (existing code). Then
-  `buildPostsFromItens(…, template defs)` and `linha_editorial_converter(linha, workflow.id,
-  …)` run. If the RPC fails, call `removeWorkflow(workflow.id)`, the existing cleanup path,
-  and show the error.
+- **On submit:** today `onCreated` is `() => void`, and `handleCreate` calls it and closes
+  right after the toast (`NewWorkflowWizard.tsx:86`, `:189-217`). So the seed carries an async
+  hook, `seed.afterCreate(workflow) => Promise<void>`. `handleCreate` awaits it between
+  `createWorkflowFromWizard` resolving and `onCreated()`.
+  - The hook runs `buildPostsFromItens(…, defs of result.workflow.template_id)` and then
+    `linha_editorial_converter(linha, workflow.id, …)`.
+  - If the hook fails, it calls `removeWorkflow(workflow.id)` (the existing cleanup path) and
+    rethrows, so the wizard's existing catch shows the error and the dialog stays open.
 - A template the user chose to save ("salvar como template") is kept even when conversion
   fails. That matches `createWorkflowFromWizard`'s current behavior when workflow creation
   fails after the template is saved (`createWorkflow.ts:137`); it was the user's explicit
@@ -457,7 +520,8 @@ do today. The builder mirrors them, for example deriving them from the fluxo's
 - On submit, run `linha_editorial_converter(linha, null, …)`. Then, for each created post with
   a template chosen, run `applyPostProcess` (existing RPC `apply_post_process`), sequentially
   with a progress line.
-  - A process that fails to apply leaves the post created without a process.
+  - A process that fails to apply leaves the post created without a process. That includes
+    `template_changed` when the template is edited mid-loop; the loop continues.
   - The toast reads "12 posts criados. 2 sem processo: aplique pelo post."
 - Success toast: "N posts criados", with the action "Ver posts", which opens the Lista view
   with `entidade=posts` and the client filter.
@@ -489,11 +553,18 @@ only when they were mapped (fluxo posts). Otherwise they are in Roteiro e briefi
   - the column definitions for those columns;
   - the `respostas` of the current `rodada`.
 
-  It never returns `post_id` or internal user ids.
+  Selects use explicit column lists, never `*`. The response never includes `post_id`,
+  `convertido_por`, `enviada_por`, `created_by`, `author_user_id` or `token`.
 - **POST** `{token, linha_id, acao: 'comentario'|'aprovado'|'ajustes', item_id?, comentario?}`
-  calls the §5.2 RPCs and writes `insertAuditLog` for decisions.
-- **Rate limit:** reuse the hub write limiter used by `hub-approve`. Writes must not debit the
-  `hub-read` budget (see the hub rate-limit budgets memory). GET uses `hub-read`.
+  calls the §5.2 RPCs. After a committed decision it calls `create_linha_notification`, and it
+  writes `insertAuditLog` for decisions, injected through `deps.auditLog` as `hub-agenda`
+  does (`handler.ts:37-38`).
+- **Rate limit:** do **not** copy `hub-approve`, which debits `hub-read` on writes too
+  (`handler.ts:190-197`). Copy `hub-post-references` (`handler.ts:111-112`):
+  - GET uses `hub-read`.
+  - POST uses only `hub-write:hub-linha-editorial`, at 60 per hour, like
+    hub-agenda/hub-media-notes. A client commenting on 20 rows must not hit the limit.
+  - Keep the `hub-badtoken` branch for invalid tokens.
 
 ### 8.2 Bootstrap and navigation
 
@@ -520,10 +591,16 @@ only when they were mapped (fluxo posts). Otherwise they are in Roteiro e briefi
   - "Aprovar" with comments shows them as notes; there is no extra confirm.
 - **After a decision**, the card shows "Aprovada em {data}" or "Ajustes pedidos em {data}" and
   becomes read-only. Older linhas sit under "Anteriores", collapsed.
-- **Both Hub identities** (default and Pauta, `feature_hub_pauta`) must render. Use the
-  existing `HubCard`, `HubPill` and `HubButton` patterns and the `pauta` branch AprovacoesPage
-  already has.
-- **i18n:** a new namespace `hubLinha` in `packages/i18n/locales/{pt,en}`.
+- **Both Hub identities** (default and Pauta, `feature_hub_pauta`) must render, using the
+  `pauta` branch AprovacoesPage already has (`useHubLook()`).
+  - The Hub's card, pill and button styles are CSS classes in `apps/hub/index.html`
+    (`.hub-card`, `.hub-pill`, `.hub-pill-st-*`, `.hub-btn-primary/secondary`). `HubCard`,
+    `HubPill` and `HubButton` are design-system mockup names, not Hub components.
+  - Tailwind variants don't apply to `hub-*` classes.
+  - Existing components to reuse: `PageHeader`, `StatusPill`, `FloatingFilterBar`,
+    `ui/HubConfirmDialog`.
+- **i18n:** a new namespace `hubLinha` in `packages/i18n/locales/{pt,en}`, registered in the
+  static imports of `apps/hub/src/main.tsx` (`:14-15`, `:45`, `:59`).
 - **Phone:** the mockup "2 · Hub no celular", with stacked cards and a bottom bar of two
   full-width buttons, primary on top.
 
@@ -532,7 +609,13 @@ only when they were mapped (fluxo posts). Otherwise they are in Roteiro e briefi
 v1 extends the client e-mail digest (`client-event-email-cron`, `_shared/client-event-email.ts`,
 RPC `claim_client_event_emails`) with a "Linha editorial de {mês} aguardando sua aprovação"
 item for linhas sent since the last digest. This is a separate task in the plan, because that
-cron has its own claim semantics. The "Link do Hub" button (§6.2) covers the WhatsApp habit
+cron has its own claim semantics:
+
+- `claim_client_event_emails` gates only on `feature_hub_portal`, so the linha item adds its
+  own `feature_linha_editorial` check.
+- The cron reads events in a cursor window (`client-event-email-cron/handler.ts:36-40`,
+  `:385-417`). Linhas match on `status = 'enviada' AND enviada_at in (event_cursor_at,
+  event_claim_through]`. The "Link do Hub" button (§6.2) covers the WhatsApp habit
 meanwhile.
 
 ## 9. Gating and rollout
@@ -543,9 +626,14 @@ meanwhile.
   in this spec.
 - **Files the flag touches:**
   - the migration;
-  - `FEATURE_COLUMNS` in `_shared/entitlements.ts`, then redeploy its importers
-    (workspace-limits, platform-admin, paywall-report, automation-media, data-import,
-    mcp-keys, mcp-oauth-consent);
+  - `FEATURE_COLUMNS` in `_shared/entitlements.ts`, then redeploy all eight importers:
+    workspace-limits, platform-admin, paywall-report, automation-media, data-import,
+    equipe-chat-media, mcp-keys, mcp-oauth-consent.
+    - **Non-negotiable:** the `plans.feature_linha_editorial` column must exist before any of
+      them deploys. `platform-admin/plan-mutations.ts` spreads `FEATURE_COLUMNS` into plan
+      writes, so every Admin plan save would 400 otherwise. See the header of
+      `20261027000001_feature_financeiro_v2.sql`.
+  - the Admin `featureFlags.test.ts`, alongside the Admin `api.ts` lists;
   - `FeatureFlags` in `useWorkspaceLimits.ts`;
   - `entitlement-errors.ts`;
   - the Admin `api.ts` lists;
@@ -565,7 +653,7 @@ meanwhile.
 - **Vitest:**
   - `viewQuery` round-trips `view=linha&cliente&mes`;
   - `buildPostsFromItens` (property mapping, accent-insensitive names, select label misses,
-    URL rendering, null dates, timezone);
+    URL rendering, null dates; the converter test covers the 10:00 São Paulo derivation);
   - the selection bar's format breakdown;
   - the Hub week grouping;
   - the badge count.
@@ -580,6 +668,9 @@ meanwhile.
   - status not writable through PostgREST;
   - writes blocked on all four tables with the flag off, reads still allowed;
   - the Hub RPCs refuse a linha of another client in the same conta;
+  - a reply cannot attach to an item of another linha, and `linha_id` cannot be updated;
+  - deleting a converted post releases its item (the FK cascade passes the freeze trigger);
+  - a plan-limit hit in the converter rolls back every post;
   - column delete with a converted item succeeds and leaves that item's `valores` alone;
   - `linha_editorial_converter` rejects another conta's workflow, a different client's
     workflow, already converted items, duplicate `item_id`s and items from another linha,
@@ -607,6 +698,9 @@ meanwhile.
 13. The Hub shows linhas from 3 months back to 3 months ahead, never rascunho. Each linha is
     capped at 100 rows.
 14. The client e-mail digest includes sent linhas, as a separate plan task.
+15. Extra columns are visible to the client by default (unlike template properties).
+16. A plan limit hit during conversion fails the whole batch; there is no partial conversion.
+17. The client's decision notifies after commit, from the edge function, not inside the RPC.
 
 ## 12. Left to the builder
 
