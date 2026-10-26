@@ -51,6 +51,8 @@ export interface CobrancaPhoneProps {
   onIntervalChange: (interval: BillingInterval) => void;
   annualSavingsPct: number;
   firstTime: boolean;
+  /** Discreet demo-account line (null unless plan_source='demo'). */
+  demoNote?: ReactNode;
   /** The plan cards, rendered by the page (same CTAs and conditions as desktop). */
   plans: ReactNode;
   /** The Pagar.me checkout dialog (it picks its own phone layout). */
@@ -86,6 +88,7 @@ export function CobrancaPhone({
   onIntervalChange,
   annualSavingsPct,
   firstTime,
+  demoNote,
   plans,
   checkout,
 }: CobrancaPhoneProps) {
@@ -174,6 +177,8 @@ export function CobrancaPhone({
           </ul>
         )}
       </div>
+
+      {demoNote}
 
       <div className="phone-cobranca-plans">{plans}</div>
 

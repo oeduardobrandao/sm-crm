@@ -15,7 +15,7 @@ vi.mock('@/services/billing', async (importOriginal) => {
     ...actual,
     listActivePlans: vi.fn(),
     getWorkspaceSubscription: vi.fn(),
-    getEffectivePlanId: vi.fn(),
+    getEffectivePlanWithSource: vi.fn(),
     startCheckout: vi.fn(),
   };
 });
@@ -31,7 +31,7 @@ vi.mock('@/components/support/WhatsAppSupportButton', () => ({
 
 import { useAuth } from '@/context/AuthContext';
 import {
-  getEffectivePlanId,
+  getEffectivePlanWithSource,
   getWorkspaceSubscription,
   listActivePlans,
   startCheckout,
@@ -78,6 +78,12 @@ const PLANS = [
 // price_brl_annual / 12, so a regression back to that derivation would fail these tests.
 const PRO_PAGARME = { ...PLANS[1], pagarme_12x_enabled: true, pagarme_installment_cents: 12990 };
 
+const plan = (planId: string | null, wasDemo = false) => ({
+  planId,
+  planSource: 'system',
+  wasDemo,
+});
+
 const NEVER_SUBSCRIBED = {
   status: null,
   plan_id: null,
@@ -95,7 +101,7 @@ beforeEach(() => {
   vi.mocked(listActivePlans).mockResolvedValue(PLANS as never);
   vi.mocked(getWorkspaceSubscription).mockResolvedValue(NEVER_SUBSCRIBED as never);
   // A brand-new workspace has workspaces.plan_id = NULL; it resolves to 'free'.
-  vi.mocked(getEffectivePlanId).mockResolvedValue(null);
+  vi.mocked(getEffectivePlanWithSource).mockResolvedValue(plan(null));
   vi.mocked(startCheckout).mockResolvedValue('https://checkout.stripe.com/abc');
 });
 
@@ -136,8 +142,10 @@ async function renderPageWithEnv(whatsAppNumber: string | undefined) {
   vi.doMock('@/services/billing', () => ({
     listActivePlans: vi.fn(),
     getWorkspaceSubscription: vi.fn(),
-    getEffectivePlanId: vi.fn(),
+    getEffectivePlanWithSource: vi.fn(),
     startCheckout: vi.fn(),
+    hasUsedTrial: (sub: { hasEverSubscribed?: boolean } | null, p: { wasDemo?: boolean } | null) =>
+      Boolean(sub?.hasEverSubscribed || p?.wasDemo),
   }));
   vi.doMock('@/lib/analytics', () => ({ captureEvent: vi.fn() }));
   vi.doMock('@/components/support/WhatsAppSupportButton', () => ({
@@ -153,7 +161,7 @@ async function renderPageWithEnv(whatsAppNumber: string | undefined) {
   const {
     listActivePlans: listActivePlansDynamic,
     getWorkspaceSubscription: getWorkspaceSubscriptionDynamic,
-    getEffectivePlanId: getEffectivePlanIdDynamic,
+    getEffectivePlanWithSource: getEffectivePlanWithSourceDynamic,
     startCheckout: startCheckoutDynamic,
   } = await import('@/services/billing');
   const { default: ComecarPageDynamic } = await import('../ComecarPage');
@@ -161,7 +169,7 @@ async function renderPageWithEnv(whatsAppNumber: string | undefined) {
   vi.mocked(useAuthDynamic).mockReturnValue({ role: 'owner', loading: false } as never);
   vi.mocked(listActivePlansDynamic).mockResolvedValue(PLANS as never);
   vi.mocked(getWorkspaceSubscriptionDynamic).mockResolvedValue(NEVER_SUBSCRIBED as never);
-  vi.mocked(getEffectivePlanIdDynamic).mockResolvedValue(null);
+  vi.mocked(getEffectivePlanWithSourceDynamic).mockResolvedValue(plan(null));
   vi.mocked(startCheckoutDynamic).mockResolvedValue('https://checkout.stripe.com/abc');
 
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -185,6 +193,13 @@ describe('ComecarPage', () => {
     expect(await screen.findByText('Painel')).toBeInTheDocument();
   });
 
+  it('redirects an ex-demo on Free that has no subscription row (no trial offer)', async () => {
+    vi.mocked(getEffectivePlanWithSource).mockResolvedValue(plan('free', true));
+    renderPage();
+    expect(await screen.findByText('Painel')).toBeInTheDocument();
+    expect(startCheckout).not.toHaveBeenCalled();
+  });
+
   it('redirects a workspace that has subscribed before', async () => {
     vi.mocked(getWorkspaceSubscription).mockResolvedValue({
       ...NEVER_SUBSCRIBED,
@@ -199,14 +214,14 @@ describe('ComecarPage', () => {
   // effective plan id is what catches it — the same invariant canUpgradeTo
   // enforces on Plano e Cobrança.
   it('redirects a workspace on a comp/internal plan', async () => {
-    vi.mocked(getEffectivePlanId).mockResolvedValue('lifetime');
+    vi.mocked(getEffectivePlanWithSource).mockResolvedValue(plan('lifetime'));
     renderPage();
     expect(await screen.findByText('Painel')).toBeInTheDocument();
     expect(startCheckout).not.toHaveBeenCalled();
   });
 
   it('does not auto-start checkout for a comp/internal plan carrying an intent', async () => {
-    vi.mocked(getEffectivePlanId).mockResolvedValue('lifetime');
+    vi.mocked(getEffectivePlanWithSource).mockResolvedValue(plan('lifetime'));
     renderPage('?plan=pro&interval=month');
     expect(await screen.findByText('Painel')).toBeInTheDocument();
     expect(startCheckout).not.toHaveBeenCalled();
@@ -214,7 +229,7 @@ describe('ComecarPage', () => {
   });
 
   it('redirects a workspace already on a paid plan', async () => {
-    vi.mocked(getEffectivePlanId).mockResolvedValue('pro');
+    vi.mocked(getEffectivePlanWithSource).mockResolvedValue(plan('pro'));
     renderPage();
     expect(await screen.findByText('Painel')).toBeInTheDocument();
     expect(startCheckout).not.toHaveBeenCalled();
