@@ -144,7 +144,7 @@ call)**.
 
 Fixed columns are not rows here. They are always present on every item: **Data, Formato,
 Título, Direção do conteúdo**. "Direção do conteúdo" can be hidden from the table through a
-per-workspace preference **(my call)**. It is still always shown to the client and always
+per-conta browser preference in `entregasPrefs.ts` **(my call)**. It is still always shown to the client and always
 carried into the post. The mockup's "Colunas" menu shows it with a toggle; the other three
 show "fixa".
 
@@ -606,10 +606,11 @@ only when they were mapped (fluxo posts). Otherwise they are in Roteiro e briefi
 
 ### 8.4 Telling the client
 
-v1 extends the client e-mail digest (`client-event-email-cron`, `_shared/client-event-email.ts`,
-RPC `claim_client_event_emails`) with a "Linha editorial de {mês} aguardando sua aprovação"
-item for linhas sent since the last digest. This is a separate task in the plan, because that
-cron has its own claim semantics:
+v1 extends the client e-mail digest (`client-event-email-cron`, `_shared/client-event-email.ts`)
+with a "Linha editorial de {mês} aguardando sua aprovação" item for linhas sent since the last
+digest. It needs no SQL change: `claim_client_event_emails` returns eligible clientes, and the
+handler loads each client's content, which is where the linha query goes. This is a separate
+task in the plan:
 
 - `claim_client_event_emails` gates only on `feature_hub_portal`, so the linha item adds its
   own `feature_linha_editorial` check.

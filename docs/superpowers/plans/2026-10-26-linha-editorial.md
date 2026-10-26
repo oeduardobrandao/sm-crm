@@ -20,19 +20,29 @@
 **Repo and git**
 
 - Worktree `/Users/eduardosouza/projects/sm-crm/.claude/worktrees/linha-editorial-creation-c560c5`, branch `claude/linha-editorial-creation-c560c5`. Run every command from there.
-- Commit with explicit pathspecs only (`git commit -- <files>`). Never commit `supabase/config.toml` or any `.env*`.
+- Commit with explicit pathspecs only (`git commit -- <files>`). Never commit any `.env*`.
+- `supabase/config.toml`: never commit the temporary port overrides. Task 5 does commit one hunk, `[functions.hub-linha-editorial] verify_jwt = false`, following the other `hub-*` blocks at `config.toml:43-76`.
 - Formatters only on your own files (`npx prettier --write <paths>`), never repo-wide.
 
 **Migrations**
 
-- Files are `20261031000001_linha_editorial_schema.sql`, `20261031000002_linha_editorial_rpcs.sql`, `20261031000003_linha_editorial_hub_notifications.sql` and `20261031000004_linha_editorial_client_digest.sql`.
+- Files are `20261031000001_linha_editorial_schema.sql`, `20261031000002_linha_editorial_rpcs.sql` and `20261031000003_linha_editorial_hub_notifications.sql`.
 - No other new prefixes. `20261030*` belongs to the open "conta demo" PR #746. Renumber above main's tail before `gh pr create`.
 
 **Local DB**
 
 - Docker is colima (`colima start --cpu 4 --memory 8`). Other worktrees may hold the default ports: use temporary port overrides in `supabase/config.toml` and restore it afterwards (memory `reference_local_supabase_colima`).
 - Run suites with `SUPABASE_DB_URL=<your db url> bash scripts/test-entitlements.sh`, or one file with `psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f <file>`.
-- New suites call `select et_grant_hosted_parity(array[...tables])` inside their `begin`.
+- New suites call `select et_grant_hosted_parity(array['linhas_editoriais','linha_editorial_colunas','linha_editorial_itens','linha_editorial_respostas'])` inside their `begin`. The argument is an **exclude** list: the helper grants ALL on every other table, the way hosted does. Without the exclusion it would undo the column-level grants these suites test.
+- Turn the flag on in suites with an override:
+
+  ```sql
+  insert into workspace_plan_overrides (workspace_id, feature_overrides)
+  values (<ws>, '{"feature_linha_editorial": true}')
+  ```
+
+  (pattern `99_crm_vidro_flag.sql:21-22`). Flag-off cases delete that row.
+- `npm run test:db` and every `99_linha_editorial_*` suite need colima running and a free port set.
 
 **Deno**
 
@@ -51,6 +61,8 @@
 - `ContentFormat` = `'feed' | 'carrossel' | 'reels' | 'stories'`.
 - Statuses: linha `rascunho | enviada | ajustes | aprovada`; resposta `acao` `comentario | aprovado | ajustes`.
 - The flag key is `feature_linha_editorial` everywhere. CRM reads `features?.feature_linha_editorial === true`. The Hub reads `bootstrap.feature_linha_editorial === true`.
+- RPCs refuse a disabled flag with the message `feature_disabled:feature_linha_editorial`, so `mapEntitlementError` (`entitlement-errors.ts:65`) can name it; precedent `20261005000001_agenda_eventos.sql:968`.
+- Converted post content is typed `Record<string, unknown>`, like `WorkflowPost.conteudo` (`store/posts.ts:67`), not `JSONContent`.
 - `scheduled_at` is derived in SQL only:
 
   ```sql
@@ -101,21 +113,29 @@
   - `nome_norm_unique`: "Pilar" then "pílar " raises `23505`.
   - `resposta_item_of_other_linha_refused`: the composite FK raises.
   - `periodo_first_day`: `2026-11-02` raises.
+  - `item_delete_nulls_resposta_item_id`: deleting an item with replies succeeds and leaves the replies with `item_id` null.
+  - `resposta_rodada_stamped`: a team reply inserted with `rodada = 99` is stored with the linha's `rodada`.
+  - `insert_into_other_conta_linha_refused`: a conta-B user inserting an item into conta-A's linha fails. The guard trigger treats "parent not visible" as an error, not only RLS WITH CHECK.
 
   Use the helpers from `99_transacoes_recorrentes.sql` (`pg_temp.erro`, `pg_temp.vistos`, `pg_temp.afetadas`).
 - [ ] **Step 2: Run the suite and see it fail** (the tables don't exist yet).
 - [ ] **Step 3: Write the migration.** It holds:
   - the plan column;
-  - the four tables with composite same-tenant FKs to `clientes(id, conta_id)` and `workflow_posts(id, conta_id)`, and `post_id ON DELETE SET NULL`;
-  - triggers `linha_item_guard` (date in month, conta match, cap 100, `linha_id` immutable, freeze only when `OLD.post_id IS NOT NULL AND NEW.post_id IS NOT DISTINCT FROM OLD.post_id`) and `linha_resposta_guard` (conta match);
+  - the four tables with composite same-tenant FKs to `clientes(id, conta_id)` (`clientes_id_conta_uq`) and `workflow_posts(id, conta_id)` (`workflow_posts_id_conta_uq`);
+    - `(post_id, conta_id) → workflow_posts ON DELETE SET NULL (post_id)`, with the column list (PG15+; precedent `20260918000002:55-58`). A bare `SET NULL` would also null the NOT NULL `conta_id` and fail;
+    - respostas `(item_id, linha_id) → itens(id, linha_id) ON DELETE SET NULL (item_id)`, so a deleted row's comments survive as linha-level comments **(my call)**;
+  - triggers:
+    - `linha_item_guard`: date in month, conta match, cap 100, `linha_id` immutable, and the freeze only when `OLD.post_id IS NOT NULL AND NEW.post_id IS NOT DISTINCT FROM OLD.post_id`. A parent not found is an error;
+    - `linha_resposta_guard`: conta match, and it stamps `NEW.rodada` from the linha;
+  - a migration header note that `linha_nome_norm` wraps `unaccent` as IMMUTABLE, so a change to the unaccent dictionary needs the index rebuilt;
   - the `updated_at` touch;
   - RLS: SELECT `conta_id IN (SELECT get_my_conta_id())`, and INSERT, UPDATE and DELETE add `effective_plan_feature(conta_id,'feature_linha_editorial')`. The respostas INSERT policy also requires `is_workspace_user AND author_user_id = auth.uid()`;
-  - the grants: `REVOKE ALL … FROM PUBLIC, anon` and `GRANT ALL … TO service_role`. For authenticated:
+  - the grants: **`REVOKE ALL ON TABLE <the four tables> FROM PUBLIC, anon, authenticated`**, then `GRANT ALL … TO service_role`. Hosted Supabase's default ACL grants ALL to `authenticated` on new tables, and column grants only bite once that table grant is gone (`20261027000002_financeiro_v2_schema.sql:207-213`, `20260728000002:68-76`). The local suite cannot see this, so the migration text is the only defense. Then, for authenticated:
     - SELECT on all four tables.
     - **No INSERT on `linhas_editoriais`.** Linhas are created only through `linha_editorial_criar`, so nobody can insert one already `aprovada`.
-    - Column-level INSERT on itens: `(linha_id, conta_id, data, tipo, titulo, direcao, valores, ordem)`. `post_id` and `convertido_*` are never insertable.
+    - Column-level INSERT on itens: `(id, linha_id, conta_id, data, tipo, titulo, direcao, valores, ordem)`. `id` is included so "Nova linha" can insert optimistically with a client uuid. `post_id` and `convertido_*` are never insertable.
     - Column-level INSERT on colunas: everything but `id` and `created_at`.
-    - Column-level INSERT on respostas: `(conta_id, linha_id, item_id, acao, comentario, rodada, is_workspace_user, author_user_id)`. The policy also requires `acao = 'comentario'`.
+    - Column-level INSERT on respostas: `(conta_id, linha_id, item_id, acao, comentario, is_workspace_user, author_user_id)`. `rodada` is stamped by the trigger, and the policy also requires `acao = 'comentario'`.
     - DELETE on itens and colunas.
     - Column-level UPDATE per spec §4.
 - [ ] **Step 4: Run** `$SB db reset` and the suite. Expected: all pass.
@@ -129,7 +149,7 @@
 
 **Interfaces:**
 - Consumes: Task 1 tables.
-- Produces. Every RPC is SECURITY DEFINER, `set search_path = public`, granted to authenticated, and raises `feature_disabled`, `nao_encontrada` or `status_invalido` as errcodes P0001 with those messages:
+- Produces. Every RPC is SECURITY DEFINER, `set search_path = public`, granted to authenticated, and raises errcode P0001 with the messages `feature_disabled:feature_linha_editorial`, `nao_encontrada` or `status_invalido`:
   - `linha_editorial_criar(p_cliente_id bigint, p_periodo date) returns uuid`: idempotent. It seeds Pilar, CTA and Referência (spec §4.2) when the conta has no columns.
   - `linha_editorial_enviar(p_linha_id uuid) returns void`: from rascunho, ajustes or aprovada. It runs `rodada+1`, sets `enviada_at = now()` and `enviada_por = auth.uid()`, and raises `linha_vazia` when there are no items.
   - `linha_editorial_recolher(p_linha_id uuid) returns void`: enviada → rascunho.
@@ -156,6 +176,7 @@
   - `converter_limit_rolls_back`: set the plan's `max_posts_per_workflow` to 1, convert 2 items, and check that zero posts exist and no item has `post_id`.
   - `post_delete_releases_item`.
   - `other_conta_cannot_call_any_rpc`.
+  - `rpc_refused_when_flag_off`: criar, enviar, recolher, coluna_excluir and converter raise `feature_disabled:feature_linha_editorial`.
 - [ ] **Step 2: Run the suite and see it fail.**
 - [ ] **Step 3: Write the migration.** In the converter:
   - Lock items `FOR UPDATE` after checking the payload ids are distinct, all in the linha and the counts are equal.
@@ -173,7 +194,9 @@
 
 **Interfaces:**
 - Produces. All three are service_role only:
-  - `record_linha_decision(p_linha_id uuid, p_conta_id uuid, p_cliente_id bigint, p_token text, p_acao text, p_comentario text) returns jsonb` → `{status, comentarios}`. It raises `nao_encontrada` when the scoped lookup misses, `status_invalido` when not enviada, and `comentario_obrigatorio` for an `ajustes` with no comment in the rodada.
+  - `record_linha_decision(p_linha_id uuid, p_conta_id uuid, p_cliente_id bigint, p_token text, p_acao text, p_comentario text) returns jsonb` → `{status, comentarios}`.
+    - It raises `nao_encontrada` when the scoped lookup misses, `status_invalido` when not enviada, and `comentario_obrigatorio` for an `ajustes` with no client comment in the rodada (`is_workspace_user = false`).
+    - Both Hub RPCs first check the flag and raise `feature_disabled:feature_linha_editorial`.
   - `record_linha_comment(p_linha_id uuid, p_item_id uuid, p_conta_id uuid, p_cliente_id bigint, p_token text, p_comentario text) returns uuid`.
   - `create_linha_notification(p_linha_id uuid, p_acao text) returns void`: types `linha_editorial_aprovada` and `linha_editorial_ajustes`; metadata `{linha_id, cliente_id, cliente_nome, periodo, comentarios}`; link `/entregas?view=linha&clientes=<id>&mes=YYYY-MM`.
   - The new types are appended to `notifications_type_check`, `notification_inapp_prefs_type_check`, `notification_email_prefs_type_check` and the type array in `claim_notification_emails`. Copy each latest definition verbatim from spec §6.5's sources, then add the two types.
@@ -185,6 +208,8 @@
   - `aprovado_sets_status_and_decidida_at`.
   - `comment_item_must_belong_to_linha`.
   - `comment_null_item_allowed`.
+  - `comment_requires_enviada`.
+  - `hub_rpcs_refused_when_flag_off`.
   - `notification_targets_owner_admin_and_sender_deduped`: the sender who is also owner gets one row.
   - `sender_removed_from_workspace_not_notified`.
   - `authenticated_cannot_execute_hub_rpcs`.
@@ -205,10 +230,12 @@
   - `apps/crm/src/lib/entitlement-errors.ts` (label "Linha editorial");
   - `apps/admin/src/lib/api.ts` (type, list and label).
 - Test: `apps/admin/src/**/featureFlags.test.ts`, `supabase/functions/__tests__/hub-bootstrap_test.ts`.
+- Create: `supabase/functions/__tests__/entitlements_feature_linha_editorial_test.ts`, copying `entitlements_feature_financeiro_v2_test.ts`.
 
 - [ ] **Step 1: Extend the tests.**
   - The admin `featureFlags.test.ts` expects `feature_linha_editorial` in the list with the label "Linha editorial".
   - `hub-bootstrap_test.ts` gets `returns feature_linha_editorial from effectivePlanFeature, false on error`.
+  - The new entitlements test pins `feature_linha_editorial` in `FEATURE_COLUMNS`.
 - [ ] **Step 2: Run them and see them fail.**
 - [ ] **Step 3: Implement** the changes listed above.
 - [ ] **Step 4: Run** the vitest file, the deno test and `npm run check:functions`. Expected: pass.
@@ -219,6 +246,7 @@
 **Files:**
 - Create: `supabase/functions/hub-linha-editorial/handler.ts`, `supabase/functions/hub-linha-editorial/index.ts`
 - Create: `supabase/functions/__tests__/hub-linha-editorial_test.ts`
+- Modify: `supabase/config.toml` (add only `[functions.hub-linha-editorial] verify_jwt = false`)
 
 **Interfaces:**
 - Consumes: the Task 3 RPCs, `resolveHubToken`, `effectivePlanFeature`, `insertAuditLog`.
@@ -234,11 +262,14 @@
   }
   ```
 
-  - Linhas: status in enviada, ajustes or aprovada, with `periodo` between the first of (current month − 3) and the first of (current month + 3), São Paulo time.
+  - Linhas: status in enviada, ajustes or aprovada, with `periodo` between the first of (current month − 3) and the first of (current month + 3).
+    - The current month comes from `deps.now()` through `Intl.DateTimeFormat('en-CA', {timeZone: 'America/Sao_Paulo'})`, never `Date#getMonth()`, because the edge runtime is UTC.
   - Items: ordered by `data` nulls last, then `ordem`.
-  - Columns: only `visivel_cliente` and not `oculta`; `valores` keys outside those are stripped.
+  - Columns: only `visivel_cliente`. `oculta` only hides a column from the CRM table, per spec §4.2. `valores` keys outside the visible columns are stripped.
+  - GET is `hub-read` at 300/300, the same as `hub-posts/handler.ts:101-103`.
   - Respostas: current `rodada` only.
 - **POST** `{token, linha_id, acao, item_id?, comentario?}` → `{ ok: true, status? }`.
+  - `linha_id` and `item_id` are validated as uuids, and `acao` against its enum, before any RPC call. Either failure is a 400.
   - Errors map to 404 (`nao_encontrada`), 409 (`status_invalido`) and 422 (`comentario_obrigatorio`, empty comment).
   - Generic bodies `{error: 'Não foi possível concluir. Tente novamente.'}`.
 - Uses explicit `select('col, col')` lists only.
@@ -249,7 +280,9 @@
   - `POST debits only hub-write:hub-linha-editorial at 60/3600`.
   - `flag off returns 403 feature_disabled`.
   - `GET strips hidden columns and never returns post_id, enviada_por, convertido_por, created_by, author_user_id, token`.
-  - `GET excludes rascunho`.
+  - `GET excludes rascunho`: assert on the recorded `.in('status', …)` modifier, because the mock records calls but doesn't filter.
+  - `GET scopes by the token's conta and cliente`: the recorded `.eq` calls carry the token's ids.
+  - `invalid uuid or acao returns 400 without calling the RPC`.
   - `POST another client's linha returns 404`, with the RPC called with the token's conta and cliente and never the body's.
   - `decision calls create_linha_notification after the RPC, and a notification failure still returns 200`.
   - `decision writes audit log`.
@@ -293,6 +326,9 @@
   - `responderComentario(linhaId, itemId|null, texto)`
   - `converterItens(linhaId, workflowId|null, posts: ConverterPostPayload[]): Promise<{item_id:string; post_id:number}[]>`
   - `getOrigemDoPost(postId): Promise<{linha: LinhaEditorial; item: LinhaItem} | null>`
+  - `listPostsDaLinha(postIds: number[]): Promise<LinhaPost[]>`, where `LinhaPost = {id, status, custom_status_id, titulo, workflow_id, workflow_titulo}`. It selects `id, status, custom_status_id, titulo, workflow_id, workflows(titulo)` under query key `['linha-posts', linhaId]`.
+  - `listLinhasDoMes` embeds `linha_editorial_itens(count)` and a converted count, for the rail's "N posts" and "N de M em produção".
+- In `store/posts.ts:110`, widen `WorkflowPost.created_via` to `'human' | 'agent' | 'linha_editorial'`. Grep for exhaustive switches over it.
 - `linhaLogic.ts`:
   - `normalizeNome(s): string` (lowercase, NFD with accents stripped, trimmed)
   - `defaultNovaData(itens, periodo): string|null`
@@ -339,7 +375,7 @@
 **Interfaces:**
 - Produces:
   - `ActiveView` includes `'linha'`;
-  - `EntregasQuery.mes?: string` (`YYYY-MM`, only kept when `view=linha`);
+  - `EntregasViewState.mes?: string` (`viewQuery.ts:34`; `YYYY-MM`, only kept when `view=linha`);
   - `<LinhaEditorialView contaId clientes filterClientes mes onChange(q: {clientes?: number[]; mes?: string}) />`.
 
 - [ ] **Step 1: Write the tests.**
@@ -365,7 +401,7 @@
   - `apps/crm/src/pages/entregas/linha/LinhaClientRail.tsx`
   - `apps/crm/src/pages/entregas/linha/LinhaHeader.tsx`
   - `apps/crm/src/pages/entregas/linha/useLinhaQueries.ts`
-- Create: `apps/crm/src/pages/entregas/linha/linha.css`. Every class starts with `linha-`. It is imported from `LinhaEditorialView` and lives in the app chunk; no class may be used by public pages (`cssSplitBoundary.test.ts`).
+- Create: `apps/crm/src/pages/entregas/linha/linha.css`. Every class starts with `linha-`, and it is imported from `LinhaEditorialView`, like `pages/ideias/ideiasPhone.css`. Do not add these rules to `app.css`.
 - Test: `apps/crm/src/pages/entregas/linha/__tests__/LinhaEditorialView.test.tsx`
 
 **Interfaces:**
@@ -376,7 +412,7 @@
   - "Sem linha neste mês" with "Criar";
   - month switcher labels "Mês anterior" and "Próximo mês".
 - Header actions: rascunho or ajustes → "Colunas", "Enviar ao cliente"; enviada → "Colunas", "Link do Hub", "Recolher"; aprovada → "Colunas", and "Enviar de novo" in the overflow menu.
-- "Link do Hub" copies `${hubBase}/${workspaceSlug}/hub/${compactHubToken(token)}/aprovacoes?aba=linha`, using the existing hub-link helper the client page uses.
+- "Link do Hub" copies `${window.location.origin}/${workspaceSlug}/hub/${compactHubToken(token)}/aprovacoes?aba=linha`. That is built inline, like `pages/entregas/hooks/useEntregasData.ts:283-286`. `compactHubToken` comes from `lib/hubLinks.ts`, and the token from `getHubToken(clienteId)` (`store/hub.ts:91`). With no token, the button is disabled with the tooltip "Gere o link do Hub na página do cliente."
 - The enviada banner reads "O cliente vê as alterações ao abrir o Hub."
 
 - [ ] **Step 1: Write the tests.**
@@ -399,7 +435,10 @@
   - `apps/crm/src/pages/entregas/linha/ColunasPopover.tsx`
   - `apps/crm/src/pages/entregas/linha/LinhaComentariosPanel.tsx`
   - `apps/crm/src/pages/entregas/linha/FormatoPill.tsx`, built from `TIPO_LABELS` and the colors in `postLabels.ts`
+- Modify: `apps/crm/src/pages/entregas/linha/LinhaEditorialView.tsx` (mount the table and the comments panel)
 - Test: `apps/crm/src/pages/entregas/linha/__tests__/LinhaTable.test.tsx`, `…/ColunasPopover.test.tsx`
+- Converted rows render `PostStatusChip({post, registry})` (`components/PostStatusChip.tsx:24`) from `listPostsDaLinha` plus `useStatusRegistry`.
+- The "Direção do conteúdo" hide preference is stored in `entregasPrefs.ts` (per conta, per browser) **(my call; spec §4.2 said per-workspace, and a server preference isn't worth a table here)**.
 
 **Interfaces:**
 - Consumes: the Task 6 store and logic, `PropertyValue` editors where the types match.
@@ -433,6 +472,7 @@
 
 **Files:**
 - Create: `apps/crm/src/pages/entregas/linha/LinhaSelectionBar.tsx`, `apps/crm/src/pages/entregas/linha/CriarPostsDialog.tsx`
+- Modify: `apps/crm/src/pages/entregas/linha/LinhaEditorialView.tsx` (mount the bar and the dialog)
 - Test: `apps/crm/src/pages/entregas/linha/__tests__/CriarPostsDialog.test.tsx`
 
 **Interfaces:**
@@ -483,6 +523,7 @@
   - StepReview lists the items: date, `FormatoPill`, title, first line of direction. There are no per-post deadlines.
   - The create button reads "Criar fluxo com N posts".
   - `handleCreate` awaits `seed.afterCreate(result.workflow)` between `createWorkflowFromWizard` and `onCreated()`. On a throw it calls `removeWorkflow(result.workflow.id)` and rethrows into the existing catch, so the dialog stays open. A saved template is kept.
+  - With a seed, the success toast (`NewWorkflowWizard.tsx:206`) moves after `afterCreate` and reads "Fluxo criado com N posts". Without a seed it is unchanged.
 - The view's `afterCreate`: `getPropertyDefinitions(workflow.template_id)` when non-null, then `buildPostsFromItens`, then `converterItens(linha.id, workflow.id, …)`.
 
 - [ ] **Step 1: Write the tests.**
@@ -490,6 +531,7 @@
   - `review lists seeded posts without deadlines`.
   - `afterCreate called with created workflow before onCreated`.
   - `converter failure removes workflow and keeps wizard open`.
+  - `success toast fires after afterCreate`.
   - `no seed keeps current behavior` (the existing wizard tests still pass).
 - [ ] **Step 2: Run the tests and see them fail.**
 - [ ] **Step 3: Implement** the seed prop and the view's `afterCreate`.
@@ -527,7 +569,7 @@
   - `apps/crm/src/lib/notification-catalog.ts` (category `aprovacoes_hub`, `emailEligible: true`)
   - `apps/crm/src/lib/notification-config.ts:142`
   - `supabase/functions/_shared/notification-email.ts` (lines ~21 and ~79)
-- Test: the existing notification catalog/config tests (add cases), and the Deno test for `notification-email` if one exists, else `supabase/functions/__tests__/notification-email-linha_test.ts`.
+- Test: create `apps/crm/src/lib/__tests__/notification-config.linha-editorial.test.ts`, and extend `supabase/functions/__tests__/notification-email_test.ts`.
 
 - [ ] **Step 1: Write the tests.**
   - The display for `linha_editorial_aprovada` with metadata `{cliente_nome:'Dr. Rafael Lima', periodo:'2026-11-01', comentarios:2}` has title "Dr. Rafael Lima aprovou a linha editorial de novembro" and body "2 comentários".
@@ -546,7 +588,7 @@
   - `apps/hub/src/api.ts` (`fetchLinhas(token)`, `submitLinhaAcao(token, body)`, using the existing `get`/`post` helpers)
   - `apps/hub/src/queries.ts` (`hubLinhasQuery(token)`, key `['hub-linhas', token]`)
   - `apps/hub/src/types.ts` (`HubLinha`, mirroring Task 5)
-  - `apps/hub/src/hooks/usePendingApprovalsCount.ts` (adds enviada linhas when the flag is on)
+  - `apps/hub/src/hooks/usePendingApprovalsCount.ts`: it gains a `featureLinha: boolean` parameter and adds enviada linhas when true. Update both callers, `apps/hub/src/shell/HubSidebar.tsx:28` and `apps/hub/src/shell/HubMobileNav.tsx:29` (pass `bootstrap.feature_linha_editorial === true`), and `apps/hub/src/hooks/__tests__/usePendingApprovalsCount.test.tsx`, which needs a `fetchLinhas` mock.
   - `apps/hub/src/pages/AprovacoesPage.tsx` (tabs by `?aba=linha`, only when the flag is on)
   - `apps/hub/src/main.tsx` (register the `hubLinha` namespace)
 - Create:
@@ -600,23 +642,39 @@
 ### Task 16: Client e-mail digest includes sent linhas
 
 **Files:**
-- Create: `supabase/migrations/20261031000004_linha_editorial_client_digest.sql`, which redefines `claim_client_event_emails`, copied verbatim from its latest definition (spec §8.4)
-- Modify: `supabase/functions/_shared/client-event-email.ts`, `supabase/functions/client-event-email-cron/handler.ts`
-- Test: `supabase/functions/__tests__/client-event-email*_test.ts` (extend), and `supabase/tests/entitlements/99_linha_editorial_hub.sql` (add the claim case)
+- No migration. `claim_client_event_emails` (`20260904000001_client_event_emails.sql:130-157`) returns eligible *clientes*, and the handler loads content per client, so the claim stays as it is.
+- Modify: `supabase/functions/client-event-email-cron/handler.ts`, `supabase/functions/_shared/client-event-email.ts`
+- Test: `supabase/functions/__tests__/client-event-email-cron_test.ts`, `supabase/functions/__tests__/client-event-email_test.ts` (extend)
 
-**Interfaces:** the claim returns linhas with `status='enviada' AND enviada_at in (event_cursor_at, event_claim_through]` for clientes whose conta has `feature_linha_editorial`. The e-mail item copy is "Linha editorial de {mês} aguardando sua aprovação", linking to the Hub `/aprovacoes?aba=linha`.
+**Interfaces:**
+- In the handler's per-client loop (`handler.ts:385-417`), after the existing content queries:
+  - When `effectivePlanFeature(db, row.conta_id, 'feature_linha_editorial')` is true, query with the service role:
+
+    ```
+    linhas_editoriais(id, periodo, enviada_at) where cliente_id = row.id and status = 'enviada'
+      and enviada_at > <the same lower bound the approvals query uses> and enviada_at <= row.event_claim_through
+    ```
+
+  - Add `linha:<id>:<enviada_at>` to `buildClientEventIdempotencyKey` (`:579-583`).
+  - Count linhas in the `skippedNoContent` check (`:536-540`).
+  - Pass `linhas` to `buildClientEventEmail`.
+- The item copy is "Linha editorial de {mês} aguardando sua aprovação", linking to the Hub `/aprovacoes?aba=linha`.
 
 - [ ] **Step 1: Write the tests.**
-  - SQL: `claim includes linha sent in window`, `excludes flag-off conta`, `excludes rascunho`.
-  - Deno: `digest renders linha item with hub link`.
+  - `digest includes linha sent in window`.
+  - `linha outside window ignored`.
+  - `flag off skips linha query`.
+  - `client with only a linha is not skipped as no content`.
+  - `idempotency key changes when a linha is re-sent`.
+  - `email renders linha item with hub link`.
 - [ ] **Step 2: Run the tests and see them fail.**
-- [ ] **Step 3: Implement** the migration and both function changes.
+- [ ] **Step 3: Implement** the handler and the shared e-mail builder.
 - [ ] **Step 4: Run** the suites and `check:functions`. Expected: pass.
 - [ ] **Step 5: Commit** `feat(linha): client digest lists linhas awaiting approval`.
 
 ### Task 17: Full verification
 
-- [ ] **Step 1:** Run `npm run lint`, `npm run format:check`, and the four `tsc` calls: `npx tsc -p apps/crm/tsconfig.json --noEmit`, the same for hub and admin, and `npx tsc -p tsconfig.scripts.json`. Then `npm run test`, `npm run check:functions`, `npm run test:functions` and `npm run test:db`. Expected: all green, and `git status` clean apart from intended files.
+- [ ] **Step 1:** Run `npm run lint`, `npm run format:check`, and the four `tsc` calls: `npx tsc -p apps/crm/tsconfig.json --noEmit`, the same for hub and admin, and `npx tsc -p tsconfig.scripts.json`. Then `npm run test`, `npm run coverage:check` (the floor is functions 54, branches 72), `npm run check:functions`, `npm run test:functions` and `npm run test:db` (colima). Expected: all green, and `git status` clean apart from intended files.
 - [ ] **Step 2: Browser check** against the local stack with the flag overridden on for the seed workspace (memory `reference_seed_login_browser_verification`, `reference_local_browser_verify_stub_edge_functions`):
   1. Create a linha, add 6 reels and 6 carrosséis, add a column, send.
   2. Open the Hub, comment and approve.
