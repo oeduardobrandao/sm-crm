@@ -79,10 +79,18 @@ for review.
 
 All new tables are scoped by `conta_id` with RLS `conta_id IN (SELECT public.get_my_conta_id())`.
 Each one has the `REVOKE ALL … FROM PUBLIC, anon; GRANT … TO authenticated; GRANT ALL … TO
-service_role` block used in `20261029000001_transacoes_recorrentes.sql`, plus a BEFORE INSERT
-`enforce_plan_feature('feature_linha_editorial', 'direct', 'conta_id')` trigger. The
-`enforce_plan_feature` trigger goes on `linhas_editoriais` and `linha_editorial_colunas`.
-Items inherit the gate through their parent.
+service_role` block used in `20261029000001_transacoes_recorrentes.sql`.
+
+**The flag is authorization, not just UI.** All four tables gate every write with the flag:
+
+- Their INSERT, UPDATE and DELETE policies add
+  `public.effective_plan_feature(conta_id, 'feature_linha_editorial')`.
+- SELECT stays open to the conta, so data survives a downgrade and shows again if the flag
+  returns.
+- Every RPC in §5 checks the same flag first and fails with `feature_disabled`.
+
+This covers items and replies too. An INSERT-only `enforce_plan_feature` trigger would leave
+existing linhas editable after the flag is turned off.
 
 Access follows the rule `workflow_posts` uses today, and the builder confirms it against the
 latest `workflow_posts` policy migration. If posts check a module permission, linhas use the
@@ -117,7 +125,7 @@ call)**.
 |---|---|---|
 | `id` | uuid pk | |
 | `conta_id` | uuid not null | |
-| `nome` | text not null | unique per conta, case-insensitive |
+| `nome` | text not null | unique per conta on `lower(unaccent(trim(nome)))` (the `unaccent` extension already exists, see `20260928000001_workspace_slug_unaccent.sql`), so "Pilar" and "Pílar" cannot coexist and §7's name mapping is deterministic |
 | `tipo` | text not null | subset of `PropertyType`: `text`, `number`, `select`, `multiselect`, `date`, `person`, `checkbox`, `url` |
 | `config` | jsonb not null default `'{}'` | select options `{options: SelectOption[]}`, same shape as `template_property_definitions.config` |
 | `visivel_cliente` | boolean not null default true | shown in the Hub (mirrors `portal_visible`) |
@@ -138,8 +146,10 @@ has no columns yet:
 - `CTA` (`select`: Salvar, Comentar, Compartilhar, Seguir)
 - `Referência` (`url`)
 
-The agency renames or deletes them freely. Deleting a column also deletes its values: the
-JSON keys are cleaned by the delete RPC.
+The agency renames or deletes them freely. Deleting a column strips its key from the
+`valores` of **unconverted** items only. Converted items are frozen (§4.3), so they keep the
+orphan key. Every reader (CRM table, Hub GET, `buildPostsFromItens`) ignores keys that have
+no matching column. This needs no exception to the freeze trigger.
 
 ### 4.3 `linha_editorial_itens` (the rows)
 
@@ -162,6 +172,8 @@ A BEFORE INSERT/UPDATE trigger enforces:
 
 - `data` is null or falls inside the parent's month.
 - `conta_id` equals the parent's.
+- A linha has at most 100 items. A month is 8 to 40 in practice; the cap bounds the Hub
+  payload (§8.1).
 - Once `post_id` is set, `data`, `tipo`, `titulo`, `direcao` and `valores` are frozen. The
   post is the source of truth (anti-goal "silent divergence"). Only `ordem` can change, and
   `post_id` can be cleared by the FK.
@@ -219,10 +231,14 @@ aprovada --enviar de novo--> enviada            (re-approval after big changes)
   linha with zero rows.
 - `linha_editorial_recolher(p_linha_id)`: `enviada` → `rascunho` (the team pulls it back).
 - `linha_editorial_coluna_excluir(p_coluna_id)`: deletes the column and strips its key from
-  every item's `valores` in that conta.
+  unconverted items' `valores` in that conta (see §4.2).
 - `linha_editorial_converter(p_linha_id, p_workflow_id, p_posts jsonb) → jsonb`: see §7. It is
-  atomic: it locks the items (`FOR UPDATE`) and fails with `ja_convertido` if any already has
-  `post_id`.
+  atomic, with a strict payload contract:
+  - It rejects duplicate `item_id`s in `p_posts` (`payload_invalido`).
+  - Every `item_id` must belong to `p_linha_id`.
+  - It locks those items `FOR UPDATE`, then fails with `ja_convertido` if any already has a
+    `post_id`.
+  - The set it converts is exactly the set in the payload, one post per item.
 
 Plain cell edits (rows, column definitions, reorder) go through PostgREST with RLS. That
 keeps cell editing fast and matches how posts are edited. `status`, `rodada` and the
@@ -231,13 +247,23 @@ trigger blocks them, so only the RPCs move the state machine.
 
 ### 5.2 Hub RPCs (service_role only, called by the edge function)
 
+**Tenant scope first.** `p_conta_id` and `p_cliente_id` always come from `resolveHubToken()`,
+never from the request body. Both RPCs load the linha with
+`WHERE id = p_linha_id AND conta_id = p_conta_id AND cliente_id = p_cliente_id FOR UPDATE`
+before anything else. No row means `nao_encontrada`, which the function answers as 404. Any
+`item_id` is then checked against that already scoped linha. A valid token can never act on
+another client's linha, even with a guessed id.
+
 - `record_linha_decision(p_linha_id, p_conta_id, p_cliente_id, p_token, p_acao, p_comentario)`
-  locks the linha and requires `status = 'enviada'`. It inserts a `respostas` row with the
-  current `rodada`, sets `aprovada` or `ajustes` plus `decidida_at`, and calls
-  `create_linha_notification`.
+  requires `status = 'enviada'`. It inserts a `respostas` row with the current `rodada` and
+  `item_id = null` (the general comment travels on the decision row), sets `aprovada` or
+  `ajustes` plus `decidida_at`, and calls `create_linha_notification`. `ajustes` requires a
+  non-empty comment unless the current rodada already has client comments.
 - `record_linha_comment(p_linha_id, p_item_id, p_conta_id, p_cliente_id, p_token, p_comentario)`
-  requires `enviada`. The item must belong to the linha. Comments create no notification;
-  the decision carries the count (anti-goal "Hub noise").
+  requires `enviada`.
+  - `p_item_id` is optional: null is a comment on the whole linha, which is supported.
+  - When given, the item must belong to the scoped linha.
+  - Comments create no notification; the decision carries the count (anti-goal "Hub noise").
 - `create_linha_notification(p_linha_id, p_acao)` uses the type `linha_editorial_aprovada` or
   `linha_editorial_ajustes`.
   - **Targets:** owner and admin via `resolve_notification_targets`, plus `enviada_por` when
@@ -300,7 +326,8 @@ Grant all three to `service_role` only, per `20260925000001_lockdown_definer_fun
   - Formato is a menu of `PostTipoBadge`. Data is a date picker limited to the month. Select
     cells use the existing `PropertyValue` editors where they fit.
 - **Rows:** "Nova linha" appends a row; its date defaults to the day after the last dated row
-  **(my call)**. Rows are reordered by drag and sorted by date on demand ("Ordenar por data").
+  **(my call)**, or null ("sem data") when that would fall past the month's end, so the
+  date-in-month trigger never rejects the optimistic insert. Rows are reordered by drag and sorted by date on demand ("Ordenar por data").
   Delete is in the row menu, with a confirm only for converted rows.
 - **Converted rows** are read-only (§4.3). They show a `PostStatusChip` and a link to the post
   or fluxo in Produção, and their row menu offers "Abrir post".
@@ -350,12 +377,19 @@ Editing and conversion show "Edite a linha no computador." **(my call)**.
 The posts are built client-side by a pure, unit-tested function. The RPC then writes them
 atomically.
 
-`buildPostsFromItens(itens, colunas, templatePropertyDefs | null, timezone) → p_posts` returns,
-per item:
+`buildPostsFromItens(itens, colunas, templatePropertyDefs | null) → p_posts` returns, per item:
 
 - `item_id`.
-- `scheduled_at`: the item's `data` at 10:00 in the workspace timezone (America/Sao_Paulo
-  fallback) **(my call)**. Null when the item has no date.
+- No `scheduled_at`. The RPC derives it from the locked item, so the browser cannot schedule a
+  post on a date other than the planned one:
+
+  ```sql
+  scheduled_at = (item.data + time '10:00') AT TIME ZONE 'America/Sao_Paulo'
+  ```
+
+  It is null when the item has no date. There is no workspace timezone in the schema today,
+  and 19 migrations already hard-code `America/Sao_Paulo`, so this follows them **(my call)**.
+  A canonical workspace timezone is out of scope.
 - `conteudo` / `conteudo_plain`: a TipTap doc with:
   1. a bold paragraph "Direção do conteúdo" and the direction text, one paragraph per line;
   2. "Da linha editorial", a bullet list `Nome: valor` of every extra column that was not
@@ -378,7 +412,8 @@ The RPC `linha_editorial_converter` then:
    - `workflow_id` (or null);
    - `ordem` (fluxo order = item date order) or `board_ordem` for avulsos, following
      `createAvulsoPost`;
-   - `scheduled_at`, `conteudo`, `conteudo_plain` and `created_via = 'linha_editorial'`.
+   - `scheduled_at` (derived as above), `conteudo`, `conteudo_plain` and
+     `created_via = 'linha_editorial'`.
 3. Inserts `post_property_values` after validating that each definition id belongs to the
    workflow's `template_id`.
 4. Sets `post_id`, `convertido_at` and `convertido_por` on each item.
@@ -404,6 +439,10 @@ do today. The builder mirrors them, for example deriving them from the fluxo's
   `buildPostsFromItens(…, template defs)` and `linha_editorial_converter(linha, workflow.id,
   …)` run. If the RPC fails, call `removeWorkflow(workflow.id)`, the existing cleanup path,
   and show the error.
+- A template the user chose to save ("salvar como template") is kept even when conversion
+  fails. That matches `createWorkflowFromWizard`'s current behavior when workflow creation
+  fails after the template is saved (`createWorkflow.ts:137`); it was the user's explicit
+  choice and is useful on retry.
 - The "Levar para cada post" checkboxes in the mockup are **not** built in v1 **(my call)**.
   Everything is always carried. They added choices without a clear use.
 
@@ -443,8 +482,9 @@ only when they were mapped (fluxo posts). Otherwise they are in Roteiro e briefi
   which fails closed. CORS is `buildCorsHeaders(req)`. Errors are generic outside and logged
   inside.
 - **GET** returns the client's linhas with status `enviada`, `ajustes` or `aprovada` and a
-  `periodo` within the last 3 months plus all future ones **(my call)**. `rascunho` linhas
-  are never returned. Each linha comes with:
+  `periodo` from 3 months back to 3 months ahead **(my call)**. That is at most 7 linhas,
+  each capped at 100 items (§4.3), so the payload is bounded like `hub-posts`. `rascunho`
+  linhas are never returned. Each linha comes with:
   - its items (fixed fields, plus `valores` restricted to columns with `visivel_cliente`);
   - the column definitions for those columns;
   - the `respostas` of the current `rodada`.
@@ -538,8 +578,12 @@ meanwhile.
   - the freeze trigger after conversion;
   - the date-in-month trigger;
   - status not writable through PostgREST;
+  - writes blocked on all four tables with the flag off, reads still allowed;
+  - the Hub RPCs refuse a linha of another client in the same conta;
+  - column delete with a converted item succeeds and leaves that item's `valores` alone;
   - `linha_editorial_converter` rejects another conta's workflow, a different client's
-    workflow, and already converted items;
+    workflow, already converted items, duplicate `item_id`s and items from another linha,
+    and derives `scheduled_at` from `data`;
   - service-role-only grants on the Hub RPCs.
 - **Browser:** build, send, approve via Hub (fake backend per the hub visual-check memory, if
   prod writes are blocked), convert to fluxo, convert to avulsos, open the post and see the
@@ -555,12 +599,13 @@ meanwhile.
 5. Conversion is allowed before approval, behind a confirm.
 6. Converted rows are frozen. Deleting the post frees the row.
 7. Client comments don't notify; the decision notification carries the count.
-8. Posts are scheduled at 10:00 on the row's date.
+8. Posts are scheduled at 10:00 São Paulo time on the row's date, derived server-side.
 9. The wizard's Revisar step shows no per-post deadlines (fluxo deadlines stay per etapa).
 10. The "Levar para cada post" checkboxes are dropped; everything is carried.
 11. Bulk "um processo por formato" only offers `padrao` templates.
 12. The phone gets a read view only.
-13. The Hub shows the last 3 months plus future linhas, never rascunho.
+13. The Hub shows linhas from 3 months back to 3 months ahead, never rascunho. Each linha is
+    capped at 100 rows.
 14. The client e-mail digest includes sent linhas, as a separate plan task.
 
 ## 12. Left to the builder
