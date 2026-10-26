@@ -21,6 +21,7 @@ import {
   getWorkspaceSubscription,
   getEffectivePlanId,
   getEffectivePlanWithSource,
+  hasUsedTrial,
   startPagarmeCheckout,
   cancelPagarmeSubscription,
   updatePagarmeCard,
@@ -325,7 +326,7 @@ describe('billing service', () => {
     it('getEffectivePlanId returns just the plan id, selecting plan_id + plan_source in one read', async () => {
       const { wsSelect } = mockWorkspaceRow({ plan_id: 'pro', plan_source: 'stripe' });
       await expect(getEffectivePlanId()).resolves.toBe('pro');
-      expect(wsSelect).toHaveBeenCalledWith('plan_id, plan_source');
+      expect(wsSelect).toHaveBeenCalledWith('plan_id, plan_source, demo_created_at');
     });
 
     it('getEffectivePlanId returns null when the user has no profile/workspace', async () => {
@@ -344,8 +345,9 @@ describe('billing service', () => {
       await expect(getEffectivePlanWithSource()).resolves.toEqual({
         planId: 'pro',
         planSource: 'manual',
+        wasDemo: false,
       });
-      expect(wsSelect).toHaveBeenCalledWith('plan_id, plan_source');
+      expect(wsSelect).toHaveBeenCalledWith('plan_id, plan_source, demo_created_at');
     });
 
     it('getEffectivePlanWithSource returns nulls for a signed-out user, never throws', async () => {
@@ -353,7 +355,30 @@ describe('billing service', () => {
       await expect(getEffectivePlanWithSource()).resolves.toEqual({
         planId: null,
         planSource: null,
+        wasDemo: false,
       });
+    });
+
+    it('getEffectivePlanWithSource flags wasDemo from demo_created_at, even after leaving demo', async () => {
+      mockWorkspaceRow({
+        plan_id: 'free',
+        plan_source: 'system',
+        demo_created_at: '2026-10-20T10:00:00Z',
+      });
+      await expect(getEffectivePlanWithSource()).resolves.toMatchObject({ wasDemo: true });
+    });
+  });
+
+  describe('hasUsedTrial', () => {
+    it('is true for wasDemo without a subscription row', () => {
+      expect(hasUsedTrial(null, { wasDemo: true })).toBe(true);
+    });
+    it('is true for hasEverSubscribed alone', () => {
+      expect(hasUsedTrial({ hasEverSubscribed: true } as never, { wasDemo: false })).toBe(true);
+    });
+    it('is false for neither, including while data is missing', () => {
+      expect(hasUsedTrial({ hasEverSubscribed: false } as never, { wasDemo: false })).toBe(false);
+      expect(hasUsedTrial(undefined, undefined)).toBe(false);
     });
   });
 

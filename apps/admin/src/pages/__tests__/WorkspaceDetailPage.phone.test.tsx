@@ -8,6 +8,7 @@ vi.mock('../../lib/api', async (importOriginal) => ({
   listPlans: vi.fn(),
   setWorkspacePlan: vi.fn(),
   unsetWorkspacePlan: vi.fn(),
+  resendDemoAccess: vi.fn(),
   setWorkspaceOverrides: vi.fn(),
   clearWorkspaceOverrides: vi.fn(),
   listWorkspaceMcpKeys: vi.fn(),
@@ -25,6 +26,8 @@ vi.mock('../../lib/api', async (importOriginal) => ({
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import {
+  resendDemoAccess,
+  unsetWorkspacePlan,
   adminCreateInvite,
   getWorkspace,
   revokeMcpKey,
@@ -290,5 +293,61 @@ describe('WorkspaceDetailPage (phone)', () => {
     expect((screen.getByLabelText('Máx. de clientes') as HTMLInputElement).value).toBe('15');
     expect(idx()).toBe(start);
     expect(router.state.location.pathname).toBe('/admin/workspaces/ws1');
+  });
+});
+
+const DEMO = {
+  ...WORKSPACE,
+  workspace: {
+    ...WORKSPACE.workspace,
+    plan_source: 'demo',
+    demo_created_at: '2026-10-25T12:00:00Z',
+  },
+  affiliate: { id: 'a1', name: 'Bia Parceira', code: 'bia2026' },
+};
+
+describe('WorkspaceDetailPage demo account (phone)', () => {
+  let restore: () => void = () => {};
+  beforeEach(() => {
+    vi.clearAllMocks();
+    primeApi();
+    restore = mockPhone();
+    vi.mocked(getWorkspace).mockResolvedValue(DEMO);
+    vi.mocked(unsetWorkspacePlan).mockResolvedValue({ message: 'ok', plan_source: 'subscription' });
+    vi.mocked(resendDemoAccess).mockResolvedValue({ message: 'ok' });
+  });
+  afterEach(() => {
+    restore();
+    vi.restoreAllMocks();
+  });
+
+  it('offers Encerrar demo, which calls unsetWorkspacePlan', async () => {
+    renderPage();
+    const btn = await screen.findByRole('button', { name: 'Encerrar demo' });
+    expect(screen.queryByText(/Remover comp/)).toBeNull();
+    fireEvent.click(btn);
+    await waitFor(() => expect(unsetWorkspacePlan).toHaveBeenCalledWith('ws1'));
+  });
+
+  it('offers Reenviar acesso when demo_created_at is set', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Reenviar acesso' }));
+    await waitFor(() => expect(resendDemoAccess).toHaveBeenCalledWith('ws1'));
+  });
+
+  it('hides Reenviar acesso and Encerrar demo on a normal workspace', async () => {
+    vi.mocked(getWorkspace).mockResolvedValue(WORKSPACE);
+    renderPage();
+    await screen.findByRole('heading', { name: 'Social Bee', level: 1 });
+    expect(screen.queryByRole('button', { name: 'Reenviar acesso' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Encerrar demo' })).toBeNull();
+  });
+
+  it('shows the Afiliado row', async () => {
+    renderPage();
+    expect(await screen.findByRole('link', { name: /Bia Parceira/ })).toHaveAttribute(
+      'href',
+      '/admin/afiliados/a1',
+    );
   });
 });

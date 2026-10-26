@@ -78,13 +78,15 @@ function makeDb(fx: {
   /** Error injected ONLY on the orphan-pointer update (attempt update carrying
    * pagarme_subscription_id without a state). */
   attemptPointerError?: { message: string } | null;
+  /** Error injected on the workspaces demo_created_at (trial) read only. */
+  trialWsError?: { message: string } | null;
   /** Error injected on the workspaces plan-grant update (plan-writer). */
   planWriteError?: { message: string } | null;
   /** Rows returned by the stale-pending-attempt read (step 3). Defaults to none. */
   stalePending?: Array<{ id: string; pagarme_subscription_id: string | null }>;
   /** Linha devolvida pelo read de workspaces do PASSO 3b do switch (plan_id + plan_source)
    * e pelo read do plan-writer (que so olha plan_source). */
-  workspaceRow?: { plan_id?: string | null; plan_source: string };
+  workspaceRow?: { plan_id?: string | null; plan_source: string; demo_created_at?: string | null };
   /** True = existe attempt quarantined para o workspace (gate amigavel da decisao 10). */
   quarantinedAttempt?: boolean;
   /** Faz o SEGUNDO update de workspace_subscriptions em diante devolver zero linhas (o
@@ -100,7 +102,11 @@ function makeDb(fx: {
     const filters: Array<[string, string, unknown]> = [];
     // deno-lint-ignore no-explicit-any
     const chain: any = {};
-    chain.select = () => chain;
+    let selected = "";
+    chain.select = (cols?: string) => {
+      selected = cols ?? "";
+      return chain;
+    };
     chain.lt = () => chain;
     chain.limit = () => chain;
     chain.abortSignal = () => chain;
@@ -157,6 +163,9 @@ function makeDb(fx: {
         values?.pagarme_subscription_id !== undefined && values?.state === undefined
       ) {
         return { data: null, error: fx.attemptPointerError ?? null };
+      }
+      if (table === "workspaces" && op === "read" && selected === "demo_created_at") {
+        return { data: fx.trialWsError ? null : { demo_created_at: fx.workspaceRow?.demo_created_at ?? null }, error: fx.trialWsError ?? null };
       }
       if (table === "workspaces" && op === "read") {
         return { data: fx.workspaceRow ?? { plan_source: "system" }, error: null };
@@ -525,6 +534,31 @@ Deno.test("trial path: fresh workspace gets start_at ceiled to the next UTC midn
   assertEquals((ins.values as Record<string, unknown>).provider, "pagarme");
   assertEquals((ins.values as Record<string, unknown>).amount_cents, 113880);
   assertEquals((ins.values as Record<string, unknown>).workspace_id, WS);
+});
+
+Deno.test("a fresh (non-switch) checkout for an ex-demo workspace gets no trial", async () => {
+  const { calls, result } = run(
+    {
+      plan: PLAN,
+      subRow: null,
+      workspaceRow: { plan_source: "demo", demo_created_at: "2026-10-01T00:00:00Z" },
+    },
+    { subStatus: "active" },
+  );
+  await result;
+  const subInput = calls[2].args[0] as Record<string, unknown>;
+  assertEquals(subInput.start_at, undefined);
+});
+
+Deno.test("trial workspace read error DENIES: generic 500, no trial start, no remote call", async () => {
+  const { calls, events, result } = run(
+    { plan: PLAN, subRow: null, trialWsError: { message: "boom" } },
+    { subStatus: "future" },
+  );
+  const r = await result;
+  assertEquals(r.status, 500);
+  assertEquals(calls.length, 0);
+  assertEquals(events.filter((e) => e.table === "workspace_subscriptions" && e.op === "insert").length, 0);
 });
 
 Deno.test("legacy stripe id alone kills the trial", async () => {

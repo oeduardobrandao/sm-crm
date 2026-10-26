@@ -46,7 +46,12 @@ export function canUpgradeTo(
   planId: string,
   currentPlanId: string,
   hasActiveSub: boolean,
+  planSource?: string | null,
 ): boolean {
+  // A demo has no subscription, so its own plan is purchasable like any first checkout.
+  if (planSource === 'demo' && planId === currentPlanId) {
+    return !hasActiveSub && planId !== 'free' && !isInternalPlan(planId);
+  }
   if (planId === currentPlanId) return false;
   if (isInternalPlan(currentPlanId)) return false;
   return !hasActiveSub && planId !== 'free';

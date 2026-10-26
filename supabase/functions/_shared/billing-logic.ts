@@ -61,9 +61,12 @@ export function hasEverSubscribed(
     }
     | null
     | undefined,
+  // An ex-demo workspace (Admin-created demo that was later converted) never gets a trial.
+  workspace?: { demo_created_at?: string | null } | null,
 ): boolean {
   return Boolean(
-    row?.ever_subscribed_at || row?.stripe_subscription_id || row?.pagarme_subscription_id,
+    row?.ever_subscribed_at || row?.stripe_subscription_id || row?.pagarme_subscription_id ||
+      workspace?.demo_created_at,
   );
 }
 

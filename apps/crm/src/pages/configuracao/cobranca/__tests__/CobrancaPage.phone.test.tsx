@@ -102,7 +102,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(useAuth).mockReturnValue({ role: 'owner', workspaceRole: 'owner' } as never);
   vi.mocked(listActivePlans).mockResolvedValue([STARTER_PLAN, PRO_PLAN]);
-  vi.mocked(getEffectivePlanWithSource).mockResolvedValue({ planId: 'free', planSource: 'system' });
+  vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+    planId: 'free',
+    planSource: 'system',
+    wasDemo: false,
+  });
   vi.mocked(startCheckout).mockResolvedValue('https://checkout.stripe.com/abc');
   vi.mocked(useWorkspaceLimits).mockReturnValue({
     limits: null,
@@ -127,6 +131,24 @@ function renderPage() {
 }
 
 describe('CobrancaPage (phone)', () => {
+  it('shows the demo note and "Assinar" on the current plan for a demo workspace', async () => {
+    vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+      planId: 'pro',
+      planSource: 'demo',
+      wasDemo: true,
+    });
+    vi.mocked(getWorkspaceSubscription).mockResolvedValue(subscription({}));
+    renderPage();
+
+    expect(
+      await screen.findByText(
+        'Conta demo: você está usando o plano Pro sem custo. Para continuar depois, é só assinar um plano.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Assinar' })).toBeInTheDocument();
+    expect(screen.queryByText(/Seus primeiros 30 dias/)).toBeNull();
+  });
+
   it('renders the nav bar, the title and the plan cards in the phone column, without the desktop toggle', async () => {
     vi.mocked(getWorkspaceSubscription).mockResolvedValue(subscription({}));
     const { container } = renderPage();
@@ -169,6 +191,7 @@ describe('CobrancaPage (phone)', () => {
     vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
       planId: 'pro',
       planSource: 'pagarme',
+      wasDemo: false,
     });
     vi.mocked(getWorkspaceSubscription).mockResolvedValue(PAGARME_ACTIVE);
     renderPage();
@@ -188,6 +211,7 @@ describe('CobrancaPage (phone)', () => {
     vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
       planId: 'pro',
       planSource: 'pagarme',
+      wasDemo: false,
     });
     vi.mocked(getWorkspaceSubscription).mockResolvedValue(PAGARME_ACTIVE);
     renderPage();
@@ -220,6 +244,7 @@ describe('CobrancaPage (phone)', () => {
     vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
       planId: 'pro',
       planSource: 'pagarme',
+      wasDemo: false,
     });
     vi.mocked(getWorkspaceSubscription).mockResolvedValue(PAGARME_ACTIVE);
     vi.mocked(cancelPagarmeSubscription).mockResolvedValue({ status: 'canceled' } as never);
@@ -245,6 +270,7 @@ describe('CobrancaPage (phone)', () => {
     vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
       planId: 'pro',
       planSource: 'pagarme',
+      wasDemo: false,
     });
     vi.mocked(getWorkspaceSubscription).mockResolvedValue(PAGARME_ACTIVE);
     renderPage();
@@ -259,6 +285,7 @@ describe('CobrancaPage (phone)', () => {
     vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
       planId: 'pro',
       planSource: 'pagarme',
+      wasDemo: false,
     });
     vi.mocked(getWorkspaceSubscription).mockResolvedValue(PAGARME_ACTIVE);
     vi.mocked(cancelPagarmeSubscription).mockRejectedValueOnce(new Error('Falhou.'));
@@ -281,6 +308,7 @@ describe('CobrancaPage (phone)', () => {
     vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
       planId: 'pro',
       planSource: 'pagarme',
+      wasDemo: false,
     });
     vi.mocked(getWorkspaceSubscription).mockResolvedValue(
       subscription({

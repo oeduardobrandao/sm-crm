@@ -5,7 +5,8 @@ import { toast } from 'sonner';
 import { Check, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import {
-  getEffectivePlanId,
+  getEffectivePlanWithSource,
+  hasUsedTrial,
   getWorkspaceSubscription,
   listActivePlans,
   startCheckout,
@@ -103,13 +104,13 @@ export default function ComecarPage() {
   // admin portal, has no Stripe subscription and would otherwise sail past the
   // guard and start a paid subscription on top of its comp arrangement.
   const {
-    data: effectivePlanId,
+    data: effectivePlan,
     isLoading: planLoading,
     isError: planError,
     refetch: refetchEffectivePlan,
   } = useQuery({
-    queryKey: ['billing', 'effective-plan'],
-    queryFn: getEffectivePlanId,
+    queryKey: ['billing', 'effective-plan-with-source'],
+    queryFn: getEffectivePlanWithSource,
     enabled: isOwner,
   });
 
@@ -121,12 +122,12 @@ export default function ComecarPage() {
   // `free` is the only state that may start a trial. A NULL workspaces.plan_id
   // is a brand-new workspace and resolves to 'free'; anything else (paid, or a
   // comp/internal plan like Lifetime) is already provisioned.
-  const currentPlanId = resolveCurrentPlanId(effectivePlanId, subscription?.plan_id);
+  const currentPlanId = resolveCurrentPlanId(effectivePlan?.planId, subscription?.plan_id);
   // A failed subscription query must never read as "never subscribed" - that
   // would let a workspace that already subscribed reopen a trial checkout.
   // `eligible` stays false while any query has errored.
   const eligible =
-    ready && !hasError && subscription?.hasEverSubscribed !== true && currentPlanId === 'free';
+    ready && !hasError && !hasUsedTrial(subscription, effectivePlan) && currentPlanId === 'free';
 
   /**
    * Dispatches to the Pagar.me 12x dialog for a gated annual plan, or falls back to the
@@ -204,7 +205,7 @@ export default function ComecarPage() {
     );
   }
 
-  if (subscription?.hasEverSubscribed) return <Navigate to="/dashboard" replace />;
+  if (hasUsedTrial(subscription, effectivePlan)) return <Navigate to="/dashboard" replace />;
   // Already on a paid or comp/internal plan. /comecar is a typeable URL that
   // WorkspaceSetupPage links to unconditionally, so this has to be enforced
   // here and not only by hiding the entry point. Mirrors the invariant
@@ -345,7 +346,7 @@ export default function ComecarPage() {
             : null
         }
         source="onboarding"
-        trialEligible={!subscription?.hasEverSubscribed}
+        trialEligible={!hasUsedTrial(subscription, effectivePlan)}
         onPayUpfront={
           pagarmeDialog
             ? () => {

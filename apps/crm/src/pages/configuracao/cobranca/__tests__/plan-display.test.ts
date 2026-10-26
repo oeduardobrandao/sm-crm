@@ -53,6 +53,16 @@ describe('plan-display', () => {
   });
 
   describe('canUpgradeTo', () => {
+    it('allows the current plan when the source is demo', () => {
+      expect(canUpgradeTo('pro', 'pro', false, 'demo')).toBe(true);
+    });
+
+    it('still refuses the current plan otherwise', () => {
+      expect(canUpgradeTo('pro', 'pro', false)).toBe(false);
+      expect(canUpgradeTo('pro', 'pro', false, 'manual')).toBe(false);
+      expect(canUpgradeTo('pro', 'pro', false, 'stripe')).toBe(false);
+    });
+
     it('offers paid plans to a free workspace with no subscription', () => {
       expect(canUpgradeTo('pro', 'free', false)).toBe(true);
       expect(canUpgradeTo('max', 'free', false)).toBe(true);

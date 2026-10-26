@@ -10,6 +10,8 @@ import type { McpKeyRow, OAuthGrantRow } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { WorkspaceAvatar } from '../../components/WorkspaceAvatar';
 import { KpiGrid } from '../../components/shell/KpiTile';
+import { GlassPanel } from '../../components/shell/GlassPanel';
+import { AffiliateRow } from './AffiliateRow';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import {
@@ -87,9 +89,16 @@ export function WorkspaceDetailDesktop(props: WorkspaceDetailViewProps) {
           ))}
         </SelectContent>
       </Select>
-      {data.workspace.plan_source === 'manual' && (
+      {(data.workspace.plan_source === 'manual' || data.workspace.plan_source === 'demo') && (
         <Button variant="secondary" onClick={props.onUnsetComp} disabled={props.unsetPending}>
-          Remover comp (voltar à cobrança)
+          {data.workspace.plan_source === 'demo'
+            ? 'Encerrar demo'
+            : 'Remover comp (voltar à cobrança)'}
+        </Button>
+      )}
+      {data.workspace.demo_created_at && (
+        <Button variant="secondary" onClick={props.onResendAccess} disabled={props.resendPending}>
+          Reenviar acesso
         </Button>
       )}
     </>
@@ -138,6 +147,7 @@ export function WorkspaceDetailDesktop(props: WorkspaceDetailViewProps) {
             )}
             {status && <Badge variant={STATUS_BADGE_VARIANT[status.tone]}>{status.label}</Badge>}
             {data.workspace.plan_source === 'manual' && <Badge variant="info">Comp</Badge>}
+            {data.workspace.plan_source === 'demo' && <Badge variant="primary">Demo</Badge>}
             {overrides > 0 && <Badge variant="primary">Overrides</Badge>}
           </div>
           <SegmentedControl
@@ -168,6 +178,9 @@ export function WorkspaceDetailDesktop(props: WorkspaceDetailViewProps) {
               <NotesPanel {...props} />
             </div>
             <div className="flex min-w-0 flex-col gap-4">
+              <GlassPanel title="Afiliado" titleId="wd-affiliate" flush>
+                <AffiliateRow workspaceId={workspaceId} affiliate={data.affiliate} />
+              </GlassPanel>
               <SubscriptionPanel data={data} />
               <OverridesPanel {...props} />
             </div>

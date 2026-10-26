@@ -1,9 +1,12 @@
-import type { JSX } from 'react';
+import { useState, type JSX } from 'react';
+import { Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '../../components/PageHeader';
+import { Button } from '../../components/ui/button';
 import { GlassPanel } from '../../components/shell/GlassPanel';
 import { workspaceDetailPath } from '../../lib/routes';
 import type { ColumnPrefs } from '../workspaces-columns';
+import { CreateDemoDialog } from './CreateDemoDialog';
 import { WorkspacesFilterChips } from './WorkspacesFilterChips';
 import { WorkspacesListState } from './WorkspacesListState';
 import { WorkspacesPagination } from './WorkspacesPagination';
@@ -38,6 +41,7 @@ export function WorkspacesDesktop({
   exporting,
 }: WorkspacesDesktopProps) {
   const navigate = useNavigate();
+  const [demoOpen, setDemoOpen] = useState(false);
 
   let body: JSX.Element;
   if (state === 'pending') {
@@ -79,7 +83,17 @@ export function WorkspacesDesktop({
 
   return (
     <div>
-      <PageHeader title="Workspaces" description={headerDescription} />
+      <PageHeader
+        title="Workspaces"
+        description={headerDescription}
+        actions={
+          <Button onClick={() => setDemoOpen(true)}>
+            <Plus aria-hidden="true" />
+            Criar conta demo
+          </Button>
+        }
+      />
+      <CreateDemoDialog plans={plans} open={demoOpen} onOpenChange={setDemoOpen} />
       <WorkspacesToolbar
         params={params}
         plans={plans}
