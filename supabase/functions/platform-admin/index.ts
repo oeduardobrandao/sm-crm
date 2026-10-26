@@ -455,48 +455,23 @@ function demoDeps(svc: SupabaseClient): DemoDeps {
       const { error } = await svc.auth.admin.deleteUser(userId);
       if (error) throw error;
     },
-    generateLink: async (type, email, data, redirectTo) => {
-      if (type === "recovery") {
-        const { data: link, error } = await svc.auth.admin.generateLink({ type, email, options: { redirectTo } });
-        if (error) throw error; // raw AuthError: callers read error.code
-        if (!link?.properties?.action_link || !link.user?.id) throw new Error("generate_link_empty");
-        return { userId: link.user.id, actionLink: link.properties.action_link };
-      }
-      // `invite` creates the unconfirmed user (firing the fresh-signup trigger, no conta_id)
-      // without sending Supabase's own e-mail.
-      const { data: link, error } = await svc.auth.admin.generateLink({
-        type: "invite",
-        email,
-        options: { data, redirectTo },
-      });
-      if (error) throw error;
-      if (link?.user?.id && link.properties?.action_link) {
-        return { userId: link.user.id, actionLink: link.properties.action_link };
-      }
-      // Fallback (spec §2): create the unconfirmed user, then mint a recovery link.
-      console.warn("[platform-admin:create-demo] invite generateLink returned no user, using createUser fallback");
-      const { data: created, error: cErr } = await svc.auth.admin.createUser({
+    createUser: async (email, data) => {
+      const { data: created, error } = await svc.auth.admin.createUser({
         email,
         email_confirm: false,
         user_metadata: data,
       });
-      if (cErr) throw cErr;
-      const newId = created.user?.id;
-      if (!newId) throw new Error("create_user_empty");
-      const { data: rec, error: rErr } = await svc.auth.admin.generateLink({
-        type: "recovery",
-        email,
-        options: { redirectTo },
-      });
-      if (rErr || !rec?.properties?.action_link) {
-        // The user exists now but the caller never learns its id: delete it here. Its trigger
-        // rows (workspace etc.) are left behind; this path only runs if invite links stop
-        // creating users, and it is logged.
-        console.error("[platform-admin:create-demo] fallback recovery link failed", rErr);
-        await svc.auth.admin.deleteUser(newId).catch(() => {});
-        throw rErr ?? new Error("generate_link_empty");
-      }
-      return { userId: newId, actionLink: rec.properties.action_link };
+      if (error) throw error; // raw AuthError: callers read error.code (email_exists)
+      if (!created?.user?.id) throw new Error("create_user_empty");
+      return { userId: created.user.id };
+    },
+    // Mints the link without sending Supabase's own e-mail. For `invite` the user already exists
+    // (createUser above); GoTrue answers 200 with a fresh token for an unconfirmed user.
+    generateLink: async (type, email, redirectTo) => {
+      const { data: link, error } = await svc.auth.admin.generateLink({ type, email, options: { redirectTo } });
+      if (error) throw error;
+      if (!link?.properties?.action_link) throw new Error("generate_link_empty");
+      return { actionLink: link.properties.action_link };
     },
   };
 }

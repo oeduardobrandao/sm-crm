@@ -56,13 +56,14 @@ export function validateDemoInput(body: unknown): DemoInput {
 
 export interface DemoDeps {
   db: SupabaseClient;
-  /** `invite` creates the (unconfirmed) user and fires the signup trigger; `recovery` only mints a link. */
-  generateLink(
-    type: "invite" | "recovery",
-    email: string,
-    data: Record<string, string>,
-    redirectTo: string,
-  ): Promise<{ userId: string; actionLink: string }>;
+  /**
+   * Creates the unconfirmed user (firing the fresh-signup trigger). Throws the raw AuthError:
+   * an existing e-mail is code `email_exists` (422). This, not generateLink, is the step that
+   * refuses a duplicate: generateLink(invite) answers 200 for an existing unconfirmed user.
+   */
+  createUser(email: string, data: Record<string, string>): Promise<{ userId: string }>;
+  /** Only mints a link for an existing user (`invite` for a new demo, `recovery` for a resend). */
+  generateLink(type: "invite" | "recovery", email: string, redirectTo: string): Promise<{ actionLink: string }>;
   findUserByEmail(email: string): Promise<{ id: string } | null>;
   getUserEmail(userId: string): Promise<string | null>;
   deleteUser(userId: string): Promise<void>;
@@ -146,24 +147,20 @@ export async function createDemoWorkspace(deps: DemoDeps, body: unknown, actor: 
     ? { nome: input.nome, empresa: input.empresa }
     : { empresa: input.empresa };
   let userId: string;
-  let actionLink: string;
   try {
-    ({ userId, actionLink } = await deps.generateLink(
-      "invite",
-      input.email,
-      meta,
-      deps.redirectBase + "/configurar-senha",
-    ));
+    ({ userId } = await deps.createUser(input.email, meta));
   } catch (e) {
-    // Two requests racing for the same new e-mail: Auth answers code email_exists (422).
+    // Two requests racing for the same new e-mail: only one createUser wins, the other gets
+    // code email_exists (422). Match the code, never the message text. Nothing was created.
     if ((e as { code?: unknown })?.code === "email_exists") return { status: 409, body: { error: MSG_DUPLICATE } };
-    console.error("[platform-admin:create-demo] generateLink failed", e);
+    console.error("[platform-admin:create-demo] createUser failed", e);
     return { status: 500, body: { error: MSG_CREATE_FAILED } };
   }
 
-  // ── Steps 2-4 (+ affiliate row): any failure rolls everything back. ──
+  // ── Steps 2-4 (+ invite link, affiliate row): any failure rolls everything back. ──
   let workspaceId: string | null = null;
   let counts: DemoSeedCounts;
+  let actionLink: string;
   try {
     const { data: member, error: mErr } = await db
       .from("workspace_members").select("workspace_id").eq("user_id", userId).eq("role", "owner").maybeSingle();
@@ -180,13 +177,24 @@ export async function createDemoWorkspace(deps: DemoDeps, body: unknown, actor: 
     if (!workspaceId) throw new Error("demo_step_failed:workspace_missing");
 
     // Plan before seeding: the posts limit triggers count against the plan.
-    const { error: wErr } = await db.from("workspaces").update({
+    // Compare-and-set on demo_created_at: if another request already marked this workspace,
+    // it owns it, so answer 409 and touch nothing (no rollback, which would delete its account).
+    const { data: marked, error: wErr } = await db.from("workspaces").update({
       plan_id: plan.id,
       plan_source: "demo",
       demo_created_at: new Date().toISOString(),
       demo_created_by: actor.userId,
-    }).eq("id", workspaceId);
+    }).eq("id", workspaceId).is("demo_created_at", null).select("id");
     ensureOk(wErr, "workspace_update");
+    if (!Array.isArray(marked) || marked.length === 0) {
+      console.error("[platform-admin:create-demo] workspace already marked as demo, not touching it", {
+        workspaceId,
+        userId,
+      });
+      return { status: 409, body: { error: MSG_DUPLICATE } };
+    }
+
+    ({ actionLink } = await deps.generateLink("invite", input.email, deps.redirectBase + "/configurar-senha"));
 
     // Same create/reset as handleSetWorkspacePlan (platform-admin/index.ts).
     const { data: existing, error: oSelErr } = await db
@@ -327,7 +335,7 @@ export async function resendDemoAccess(
       ? await db.from("plans").select("name").eq("id", ws.plan_id).maybeSingle()
       : { data: null };
 
-    const { actionLink } = await deps.generateLink("recovery", email, {}, deps.redirectBase + "/configurar-senha");
+    const { actionLink } = await deps.generateLink("recovery", email, deps.redirectBase + "/configurar-senha");
 
     let emailSent = true;
     try {
