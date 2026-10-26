@@ -84,6 +84,14 @@ Deno.serve(async (req: Request) => {
       return json({ error: "Internal server error" }, 500, headers);
     }
 
+    // Ex-demo workspaces never get the trial; fail closed if the read fails.
+    const { data: trialWs, error: trialWsErr } = await svc
+      .from("workspaces").select("demo_created_at").eq("id", workspaceId)
+      .abortSignal(AbortSignal.timeout(10_000)).single();
+    if (trialWsErr) {
+      console.error("[billing-checkout] workspace read failed:", trialWsErr.message);
+      return json({ error: "Internal server error" }, 500, headers);
+    }
     // A workspace mid-subscription belongs in the billing portal, not a second
     // checkout. Without this, a stale tab could open a duplicate subscription
     // against the same customer.
@@ -176,13 +184,6 @@ Deno.serve(async (req: Request) => {
     }
 
     // Every workspace that has never subscribed gets the trial. No code, no gate.
-    // Ex-demo workspaces never get the trial; fail closed if the read fails.
-    const { data: trialWs, error: trialWsErr } = await svc
-      .from("workspaces").select("demo_created_at").eq("id", workspaceId).single();
-    if (trialWsErr) {
-      console.error("[billing-checkout] workspace read failed:", trialWsErr.message);
-      return json({ error: "Internal server error" }, 500, headers);
-    }
     const trialDays = resolveTrialDays(hasEverSubscribed(subRow, trialWs));
     const source = resolveCheckoutSource(body.source);
     const returnPaths = resolveReturnPaths(source);

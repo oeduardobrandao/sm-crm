@@ -344,9 +344,11 @@ export function createPagarmeCheckoutHandler(deps: {
     // Ex-demo workspaces never get the trial. Separate read: the switch-path workspaces read
     // above is inside `if (isSwitch)`, and the trial is only computed on the non-switch path.
     // A failed read denies (fail closed) rather than granting a trial by default.
-    const { data: trialWs, error: trialWsErr } = await db
-      .from("workspaces").select("demo_created_at").eq("id", ctx.workspaceId)
-      .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS)).single();
+    const { data: trialWs, error: trialWsErr } = isSwitch
+      ? { data: null, error: null }
+      : await db
+        .from("workspaces").select("demo_created_at").eq("id", ctx.workspaceId)
+        .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS)).single();
     if (trialWsErr) {
       console.error("[pagarme-checkout] workspace read failed:", trialWsErr.message);
       return { status: 500, body: GENERIC_500 };
