@@ -149,21 +149,27 @@ Validation:
 
 Steps, in this order:
 1. **Create the user without `conta_id`** so the fresh-signup trigger branch
-   runs: `auth.admin.generateLink({ type: 'invite', email, options: { data: {
-   nome, empresa }, redirectTo: OAUTH_REDIRECT_BASE + '/configurar-senha' } })`.
-   This creates the unconfirmed user (firing the trigger) and returns the action
-   link without sending Supabase's own e-mail. Defaults: `nome` falls back to
-   the trigger's e-mail-prefix rule; `empresa` falls back to "Minha agência"
-   (my call, instead of the trigger's "Meu Workspace").
-   *Builder: confirm `generateLink type 'invite'` creates the user and fires the
-   trigger on this Supabase version; if not, `createUser` (unconfirmed, same
-   metadata) then `generateLink type 'recovery'`.*
+   runs: `auth.admin.createUser({ email, email_confirm: false, user_metadata:
+   { nome, empresa } })`, then `auth.admin.generateLink({ type: 'invite',
+   email, options: { redirectTo: OAUTH_REDIRECT_BASE + '/configurar-senha' } })`
+   for the action link (no Supabase e-mail is sent). `createUser` comes first
+   because it is the call that refuses a duplicate: verified on local GoTrue,
+   `generateLink type 'invite'` for an existing unconfirmed user returns 200 with
+   the same user and a new token, while `createUser` returns 422 `email_exists`
+   (and 500 `unexpected_failure` for the loser of two concurrent inserts, which
+   the handler maps to 409 after re-checking the e-mail). Defaults: `nome` falls
+   back to the trigger's e-mail-prefix rule; `empresa` falls back to "Minha
+   agência" (my call, instead of the trigger's "Meu Workspace").
 2. Read back the new workspace id (`profiles.active_workspace_id` /
    `workspace_members` owner row for the new user id).
 3. **Set the plan before seeding** (the posts limit triggers count against the
    plan): `plan_id = <chosen>`, `plan_source = 'demo'`, `demo_created_at =
    now()`, `demo_created_by = admin.id`, and create/reset the
-   `workspace_plan_overrides` row the same way `set-workspace-plan` does.
+   `workspace_plan_overrides` row the same way `set-workspace-plan` does. The
+   write is a compare-and-set on `demo_created_at is null`: zero rows means
+   another request owns the workspace, so the handler answers 409 and does
+   **not** roll back. `demo_workspace_discard` also refuses any workspace older
+   than one hour or not in demo, so a rollback can never remove a real account.
 4. **Seed the example data** (section 4) in **one SQL call**.
 5. `insertAuditLog` action `admin-create-demo`, `conta_id` = new workspace,
    metadata `{ email, plan_id }`. From here on the account exists for good.
@@ -431,9 +437,13 @@ does not pass `ref_code` in the metadata. Instead `platform-admin` writes the
 
 Per the house rule (merge deploys the frontend immediately):
 1. Migration on staging, then prod.
-2. Deploy `platform-admin`, `billing-checkout`, `pagarme-checkout`,
-   `pagarme-subscription`, `pagarme-webhook`, `stripe-webhook` and
-   `billing-downgrade-cron` to staging, then prod.
+2. Deploy `platform-admin`, `mcp-admin` (it bundles the `get-workspace`
+   handler), `billing-checkout`, `pagarme-checkout`, `pagarme-subscription`,
+   `pagarme-webhook`, `stripe-webhook` and `billing-downgrade-cron` to staging,
+   then prod. **Hard dependency:** both checkouts, `platform-admin` and
+   `mcp-admin` read `workspaces.demo_created_at` and fail closed, so deploying
+   any of them before the migration makes every checkout (and the Admin
+   workspace detail) answer 500.
 3. Merge (CRM + Admin go live).
 
 The new backend tolerates the old frontend (the action is only called by the
