@@ -56,6 +56,9 @@ import {
   handleUpdateBlogPost,
 } from "./blog-posts.ts";
 import { createStreamDirectUpload, deleteStreamVideo, getStreamVideo, isStreamCleanupEnabled } from "../_shared/stream.ts";
+import { createDemoWorkspace, type DemoDeps, resendDemoAccess } from "./demo-workspace.ts";
+import { findAuthUserByEmail } from "../_shared/invite-actions.ts";
+import { sendDemoAccessEmail } from "../_shared/invite-email.ts";
 
 // Registra o loader do Stripe só para este function -- ver _shared/stripe-loader.ts. mcp-admin
 // não registra nada, e cai no fallback do espelho/catálogo (o comportamento desejado para as
@@ -152,6 +155,14 @@ Deno.serve(async (req: Request) => {
         return await handleDeletePlan(svc, body, headers);
       case "set-workspace-plan":
         return await handleSetWorkspacePlan(svc, body, admin.id, headers);
+      case "create-demo-workspace": {
+        const r = await createDemoWorkspace(demoDeps(svc), body, { adminId: admin.id, userId: user.id });
+        return new Response(JSON.stringify(r.body), { status: r.status, headers });
+      }
+      case "resend-demo-access": {
+        const r = await resendDemoAccess(demoDeps(svc), body, { adminId: admin.id, userId: user.id });
+        return new Response(JSON.stringify(r.body), { status: r.status, headers });
+      }
       case "unset-workspace-plan":
         return await handleUnsetWorkspacePlan(svc, body, admin.id, headers);
       case "set-workspace-overrides":
@@ -419,6 +430,72 @@ async function handleDeletePlan(
   if (error) throw error;
 
   return new Response(JSON.stringify({ message: "Plan deleted" }), { status: 200, headers });
+}
+
+// ─── Conta demo (spec 2026-10-26-conta-demo-admin §2) ───────────
+
+function demoDeps(svc: SupabaseClient): DemoDeps {
+  return {
+    db: svc,
+    redirectBase: Deno.env.get("OAUTH_REDIRECT_BASE") || "http://localhost:5173",
+    sendEmail: sendDemoAccessEmail,
+    findUserByEmail: async (email) => {
+      const u = await findAuthUserByEmail(svc, email);
+      return u ? { id: u.id } : null;
+    },
+    getUserEmail: async (userId) => {
+      const { data, error } = await svc.auth.admin.getUserById(userId);
+      if (error) throw error;
+      return data.user?.email ?? null;
+    },
+    deleteUser: async (userId) => {
+      const { error } = await svc.auth.admin.deleteUser(userId);
+      if (error) throw error;
+    },
+    generateLink: async (type, email, data, redirectTo) => {
+      if (type === "recovery") {
+        const { data: link, error } = await svc.auth.admin.generateLink({ type, email, options: { redirectTo } });
+        if (error) throw error; // raw AuthError: callers read error.code
+        if (!link?.properties?.action_link || !link.user?.id) throw new Error("generate_link_empty");
+        return { userId: link.user.id, actionLink: link.properties.action_link };
+      }
+      // `invite` creates the unconfirmed user (firing the fresh-signup trigger, no conta_id)
+      // without sending Supabase's own e-mail.
+      const { data: link, error } = await svc.auth.admin.generateLink({
+        type: "invite",
+        email,
+        options: { data, redirectTo },
+      });
+      if (error) throw error;
+      if (link?.user?.id && link.properties?.action_link) {
+        return { userId: link.user.id, actionLink: link.properties.action_link };
+      }
+      // Fallback (spec §2): create the unconfirmed user, then mint a recovery link.
+      console.warn("[platform-admin:create-demo] invite generateLink returned no user, using createUser fallback");
+      const { data: created, error: cErr } = await svc.auth.admin.createUser({
+        email,
+        email_confirm: false,
+        user_metadata: data,
+      });
+      if (cErr) throw cErr;
+      const newId = created.user?.id;
+      if (!newId) throw new Error("create_user_empty");
+      const { data: rec, error: rErr } = await svc.auth.admin.generateLink({
+        type: "recovery",
+        email,
+        options: { redirectTo },
+      });
+      if (rErr || !rec?.properties?.action_link) {
+        // The user exists now but the caller never learns its id: delete it here. Its trigger
+        // rows (workspace etc.) are left behind; this path only runs if invite links stop
+        // creating users, and it is logged.
+        console.error("[platform-admin:create-demo] fallback recovery link failed", rErr);
+        await svc.auth.admin.deleteUser(newId).catch(() => {});
+        throw rErr ?? new Error("generate_link_empty");
+      }
+      return { userId: newId, actionLink: rec.properties.action_link };
+    },
+  };
 }
 
 // ─── Workspace Plan Assignment ─────────────────────────────────
