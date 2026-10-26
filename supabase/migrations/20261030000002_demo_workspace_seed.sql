@@ -12,6 +12,9 @@
 --
 -- demo_workspace_discard(p_conta): apaga a conta demo inteira (sem tocar em auth.users), filhos
 -- primeiro. Usada no rollback do Admin; o deleteUser depois remove o usuario sem violar FK.
+-- Trava: so apaga um workspace criado na ultima hora que seja demo (plan_source = 'demo') ou
+-- ainda nao marcado (demo_created_at nulo, rollback antes da marcacao). Qualquer outro caso
+-- levanta 'demo_discard_refused' e nao apaga nada.
 
 create or replace function public.demo_workspace_seed(p_conta uuid, p_owner uuid)
 returns jsonb
@@ -46,14 +49,14 @@ declare
   v_day        date;
   v_post       record;
   v_leads      jsonb := '[
-    {"nome":"Padaria Trigo Bom (exemplo)","email":"contato@trigobom.example","instagram":"@padariatrigobom","status":"novo","origem":"instagram"},
-    {"nome":"Studio Pilates Leve (exemplo)","email":"contato@pilatesleve.example","instagram":"@studiopilatesleve","status":"contatado","origem":"manual"},
-    {"nome":"Ótica Visão Clara (exemplo)","email":"contato@visaoclara.example","instagram":"@oticavisaoclara","status":"qualificado","origem":"instagram"}
+    {"nome":"Padaria Trigo Bom (exemplo)","email":"contato@trigobom.example","instagram":"@trigobom.exemplo","status":"novo","origem":"instagram"},
+    {"nome":"Studio Pilates Leve (exemplo)","email":"contato@pilatesleve.example","instagram":"@pilatesleve.exemplo","status":"contatado","origem":"manual"},
+    {"nome":"Ótica Visão Clara (exemplo)","email":"contato@visaoclara.example","instagram":"@visaoclara.exemplo","status":"qualificado","origem":"instagram"}
   ]';
   v_ideias     jsonb := '[
-    {"titulo":"Bastidores da torra do café","descricao":"Mostrar a torra em vídeo curto, do grão verde ao aroma da primeira xícara.","status":"nova"},
-    {"titulo":"Receita de cold brew em 30 segundos","descricao":"Passo a passo rápido para o reels da semana.","status":"em_analise"},
-    {"titulo":"Enquete: qual o café da semana?","descricao":"Enquete nos stories para engajar e escolher o destaque do cardápio.","status":"aprovada"}
+    {"titulo":"Bastidores da torra do café (exemplo)","descricao":"Mostrar a torra em vídeo curto, do grão verde ao aroma da primeira xícara.","status":"nova"},
+    {"titulo":"Receita de cold brew em 30 segundos (exemplo)","descricao":"Passo a passo rápido para o reels da semana.","status":"em_analise"},
+    {"titulo":"Enquete: qual o café da semana? (exemplo)","descricao":"Enquete nos stories para engajar e escolher o destaque do cardápio.","status":"aprovada"}
   ]';
   v_posts      jsonb := '[
     {"tipo":"carrossel","titulo":"5 cafés para começar a manhã (exemplo)","status":"rascunho","dias":2,
@@ -87,19 +90,22 @@ begin
     returning id into v_membro;
   v_n_membros := 1;
 
-  -- Cliente sem mensalidade nem dia de pagamento. Se o limite de clientes nao comporta nem um,
+  -- Cliente sem mensalidade nem dia de pagamento, e sem e-mail de evento (o endereco e ficticio). Se o limite de clientes nao comporta nem um,
   -- pula so o que depende do cliente (fluxo, posts, ideias); leads e evento seguem.
   if v_lim_cli is null or v_lim_cli >= 1 then
-    insert into public.clientes (user_id, conta_id, nome, sigla, cor, especialidade, status, email)
+    insert into public.clientes
+      (user_id, conta_id, nome, sigla, cor, especialidade, status, email, send_event_email)
       values (p_owner, p_conta, 'Café Aurora (exemplo)', 'CA', '#b45309', 'Cafeteria', 'ativo',
-              'contato@cafeaurora.example')
+              'contato@cafeaurora.example', false)
       returning id into v_cliente;
     v_n_clientes := 1;
   end if;
 
   -- Fluxo + etapas.
   if v_cliente is not null and (v_lim_wf is null or v_lim_wf >= 1) then
-    -- etapa_atual: indice 0-based da etapa Mídia no template Padrão (Copy 0, Aprovação 1, Mídia 2).
+    -- etapa_atual e workflow_etapas.ordem sao 0-based, como em todo outro escritor
+    -- (createWorkflow.ts, seed-demo.mjs, RPCs de template): Copy 0, Aprovação 1, Mídia 2.
+    -- v_i abaixo conta a partir de 1; ordem = v_i - 1, entao a etapa ativa (v_i = 3) tem ordem 2.
     insert into public.workflows (user_id, conta_id, cliente_id, titulo, status, etapa_atual, modo_prazo)
       values (p_owner, p_conta, v_cliente, 'Conteúdo de novembro (exemplo)', 'ativo', 2, 'padrao')
       returning id into v_wf;
@@ -111,7 +117,7 @@ begin
       insert into public.workflow_etapas
         (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status, responsavel_id, iniciado_em, concluido_em)
       values (
-        v_wf, v_i, v_et->>'nome', coalesce((v_et->>'prazo_dias')::int, 1),
+        v_wf, v_i - 1, v_et->>'nome', coalesce((v_et->>'prazo_dias')::int, 1),
         coalesce(v_et->>'tipo_prazo', 'uteis'), coalesce(v_et->>'tipo', 'padrao'),
         case when v_i <= 2 then 'concluido' when v_i = 3 then 'ativo' else 'pendente' end,
         case when v_i = 3 then v_membro end,
@@ -187,6 +193,15 @@ security definer
 set search_path = public
 as $$
 begin
+  if not exists (
+    select 1 from public.workspaces
+     where id = p_conta
+       and created_at > now() - interval '1 hour'
+       and (plan_source = 'demo' or demo_created_at is null)
+  ) then
+    raise exception 'demo_discard_refused';
+  end if;
+
   delete from public.agenda_ocorrencias
    where evento_id in (select id from public.agenda_eventos where conta_id = p_conta);
   delete from public.agenda_eventos where conta_id = p_conta;

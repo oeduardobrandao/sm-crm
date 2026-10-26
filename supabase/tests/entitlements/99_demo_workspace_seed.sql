@@ -44,7 +44,8 @@ begin
   if exists (select 1 from clientes where conta_id = v_conta and nome not like '%(exemplo)')
      or exists (select 1 from membros where conta_id = v_conta and nome not like '%(exemplo)')
      or exists (select 1 from leads where conta_id = v_conta and nome not like '%(exemplo)')
-     or exists (select 1 from workflows where conta_id = v_conta and titulo not like '%(exemplo)') then
+     or exists (select 1 from workflows where conta_id = v_conta and titulo not like '%(exemplo)')
+     or exists (select 1 from ideias where workspace_id = v_conta and titulo not like '%(exemplo)') then
     raise exception '99s-1: nome sem (exemplo)';
   end if;
   if exists (select 1 from workflow_posts where conta_id = v_conta
@@ -56,6 +57,22 @@ begin
                   where w.conta_id = v_conta and e.nome = 'Mídia' and e.status = 'ativo'
                     and e.responsavel_id = v_cam) then
     raise exception '99s-1: etapa Midia nao esta ativa com a Camila';
+  end if;
+  -- ordem 0-based, e a etapa ativa e a apontada por workflows.etapa_atual.
+  if (select min(e.ordem) from workflow_etapas e join workflows w on w.id = e.workflow_id
+       where w.conta_id = v_conta) <> 0 then
+    raise exception '99s-1: workflow_etapas.ordem nao comeca em 0';
+  end if;
+  if (select e.ordem from workflow_etapas e join workflows w on w.id = e.workflow_id
+       where w.conta_id = v_conta and e.status = 'ativo')
+     is distinct from (select etapa_atual from workflows where conta_id = v_conta) then
+    raise exception '99s-1: etapa ativa nao bate com workflows.etapa_atual';
+  end if;
+  if exists (select 1 from clientes where conta_id = v_conta and send_event_email is distinct from false) then
+    raise exception '99s-1: cliente de exemplo com send_event_email ligado';
+  end if;
+  if exists (select 1 from leads where conta_id = v_conta and instagram not like '%.exemplo') then
+    raise exception '99s-1: instagram de lead fora de .exemplo';
   end if;
   select count(*) into n from agenda_ocorrencias o join agenda_eventos ev on ev.id = o.evento_id
    where ev.conta_id = v_conta;
@@ -165,6 +182,44 @@ begin
     raise exception '99s-4: o descarte tocou outra conta (% -> %)', v_before, v_after;
   end if;
   raise notice 'PASS 99s-4';
+end $$;
+rollback;
+
+-- 99s-7: discard recusa workspace antigo ou que nao e demo, sem apagar nada.
+begin;
+do $$
+declare
+  v_uid uuid; v_conta uuid; n_before int; n_after int; v_refused boolean;
+  v_case text;
+begin
+  select * into v_uid, v_conta from pg_temp.mk_demo('seed99s7@example.com', '{"r":null,"f":{"feature_agenda":true}}'::jsonb);
+  perform public.demo_workspace_seed(v_conta, v_uid);
+  foreach v_case in array array['antigo', 'nao_demo', 'inexistente'] loop
+    if v_case = 'antigo' then
+      update workspaces set created_at = now() - interval '2 hours' where id = v_conta;
+    elsif v_case = 'nao_demo' then
+      -- recente, mas ja marcado e com plano de verdade (conta real convertida).
+      update workspaces set created_at = now(), plan_source = 'manual', demo_created_at = now()
+       where id = v_conta;
+    end if;
+    select (select count(*) from clientes where conta_id = v_conta) + (select count(*) from workflows where conta_id = v_conta)
+         + (select count(*) from workflow_posts where conta_id = v_conta) + (select count(*) from membros where conta_id = v_conta)
+         + (select count(*) from workspaces where id = v_conta) into n_before;
+    v_refused := false;
+    begin
+      perform public.demo_workspace_discard(case when v_case = 'inexistente' then gen_random_uuid() else v_conta end);
+    exception when others then
+      if sqlerrm like '%demo_discard_refused%' then v_refused := true; else raise; end if;
+    end;
+    if not v_refused then raise exception '99s-7 %: discard nao recusou', v_case; end if;
+    select (select count(*) from clientes where conta_id = v_conta) + (select count(*) from workflows where conta_id = v_conta)
+         + (select count(*) from workflow_posts where conta_id = v_conta) + (select count(*) from membros where conta_id = v_conta)
+         + (select count(*) from workspaces where id = v_conta) into n_after;
+    if n_before = 0 or n_after <> n_before then
+      raise exception '99s-7 %: discard apagou algo (% -> %)', v_case, n_before, n_after;
+    end if;
+  end loop;
+  raise notice 'PASS 99s-7';
 end $$;
 rollback;
 
