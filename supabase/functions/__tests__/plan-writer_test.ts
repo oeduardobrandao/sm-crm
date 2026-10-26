@@ -46,3 +46,9 @@ Deno.test("writeWorkspacePlan writes system/stripe sources on a fallback write",
     assertEquals(updates, [{ plan_id: "free", plan_source: "stripe" }]);
   }
 });
+
+Deno.test("writeWorkspacePlan writes a null plan_source on a fallback write", async () => {
+  const { svc, updates } = makeSvc(null);
+  await writeWorkspacePlan(svc, "ws-1", "free", "stripe", "fallback");
+  assertEquals(updates, [{ plan_id: "free", plan_source: "stripe" }]);
+});

@@ -7,6 +7,8 @@ const DB_TIMEOUT_MS = 10_000;
 
 /**
  * Effective-plan write, guarded so admin comps (plan_source='manual') are never overridden.
+ * A demo (plan_source='demo') is ended by a "subscribed" write but kept by a "fallback" write
+ * (default plan written because a subscription ended or its price is unknown).
  * Read and write errors THROW (they were silently discarded before): in stripe-webhook a
  * throw becomes a 5xx → Stripe redelivery → retried write (the Fase 2 "a failed write must
  * not ack" rule); in pagarme-checkout the caller decides (post-bind failures log CRITICAL
