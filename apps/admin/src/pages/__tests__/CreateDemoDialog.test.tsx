@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -127,5 +128,56 @@ describe('CreateDemoDialog', () => {
       'Conta criada, mas o e-mail não foi enviado. Use Reenviar acesso.',
     );
     expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  describe('reopening', () => {
+    function Harness() {
+      const [open, setOpen] = useState(true);
+      return (
+        <>
+          <button onClick={() => setOpen(true)}>abrir</button>
+          <CreateDemoDialog plans={PLANS} open={open} onOpenChange={setOpen} />
+        </>
+      );
+    }
+    function renderHarness() {
+      const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+      render(
+        <QueryClientProvider client={qc}>
+          <MemoryRouter initialEntries={['/admin/workspaces']}>
+            <Routes>
+              <Route path="/admin/workspaces" element={<Harness />} />
+              <Route path="/admin/workspaces/:id" element={<Harness />} />
+            </Routes>
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+    }
+    const expectEmpty = async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'abrir' }));
+      expect((await screen.findByLabelText('E-mail')) as HTMLInputElement).toHaveValue('');
+      expect(screen.getByLabelText('Plano')).toHaveValue('');
+      expect(screen.queryByRole('alert')).toBeNull();
+    };
+
+    it('clears fields and error after cancel', async () => {
+      mocked.mockRejectedValue(new Error('Já existe uma conta com este e-mail.'));
+      renderHarness();
+      fill('ana@x.com');
+      fireEvent.click(submit());
+      await screen.findByRole('alert');
+      fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+      await waitFor(() => expect(screen.queryByLabelText('E-mail')).toBeNull());
+      await expectEmpty();
+    });
+
+    it('clears fields after a successful create', async () => {
+      mocked.mockResolvedValue({ workspace_id: 'ws-9', email: 'ana@x.com', email_sent: true });
+      renderHarness();
+      fill('ana@x.com');
+      fireEvent.click(submit());
+      await waitFor(() => expect(screen.queryByLabelText('E-mail')).toBeNull());
+      await expectEmpty();
+    });
   });
 });

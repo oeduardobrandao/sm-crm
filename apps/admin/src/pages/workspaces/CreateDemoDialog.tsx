@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -45,6 +45,17 @@ export function CreateDemoDialog({ plans, open, onOpenChange }: CreateDemoDialog
   const [error, setError] = useState<string | null>(null);
   // React Query flips isPending a tick late: a fast double click would otherwise create twice.
   const inFlight = useRef(false);
+
+  // Reopening must not show the previous draft (it invites a duplicate-email 409).
+  useEffect(() => {
+    if (open) return;
+    setEmail('');
+    setPlanId('');
+    setNome('');
+    setEmpresa('');
+    setRefCode('');
+    setError(null);
+  }, [open]);
 
   const options = demoPlans(plans);
   const trimmedEmail = email.trim();

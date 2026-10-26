@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { setWorkspaceAffiliate } from '../../lib/api';
 import { affiliateDetailPath } from '../../lib/routes';
 import { Button } from '../../components/ui/button';
@@ -29,6 +30,8 @@ export function AffiliateRow({ workspaceId, affiliate }: AffiliateRowProps) {
     },
     onError: (err: Error) => setError(err.message || 'Não foi possível salvar o afiliado.'),
   });
+
+  useUnsavedWork(editing && (code.trim() !== (affiliate?.code ?? '') || mutation.isPending));
 
   function startEdit() {
     setCode(affiliate?.code ?? '');

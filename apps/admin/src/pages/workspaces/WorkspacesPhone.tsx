@@ -126,7 +126,7 @@ function WorkspaceCell({ ws, now }: { ws: WorkspaceSummary; now: Date }) {
           {/* The meta line wraps to a second line at word breaks instead of ellipsizing
               "há 4 …" mid-word. */}
           <span className="mt-0.5 flex min-w-0 items-start gap-1.5">
-            {ws.plan_name ? (
+            {ws.plan_name || ws.plan_source === 'demo' || ws.plan_source === 'manual' ? (
               <span className="shrink-0 whitespace-nowrap">
                 <PlanCell ws={ws} />
               </span>

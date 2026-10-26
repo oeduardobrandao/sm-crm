@@ -24,9 +24,15 @@ vi.mock('../../lib/api', async (importOriginal) => ({
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-import { getWorkspace, revokeMcpKey, setWorkspaceOverrides, setWorkspacePlan } from '../../lib/api';
+import {
+  getWorkspace,
+  resendDemoAccess,
+  revokeMcpKey,
+  setWorkspaceOverrides,
+  setWorkspacePlan,
+  unsetWorkspacePlan,
+} from '../../lib/api';
 import { WORKSPACE, primeApi, renderPage } from './workspace-detail-fixture';
-import { resendDemoAccess, unsetWorkspacePlan } from '../../lib/api';
 
 // jsdom has no scrollIntoView; Radix's Select calls it when committing a selection.
 Element.prototype.scrollIntoView = vi.fn();
