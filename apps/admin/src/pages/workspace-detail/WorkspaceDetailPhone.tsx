@@ -9,6 +9,7 @@ import { sanitizeExternalUrl } from '../../lib/security';
 import { getPlanColor } from '../../lib/plan-colors';
 import { PageHeader } from '../../components/PageHeader';
 import { KpiGrid } from '../../components/shell/KpiTile';
+import { AffiliateRow } from './AffiliateRow';
 import { Badge } from '../../components/ui/badge';
 import WorkspaceInvitesCard from '../WorkspaceInvitesCard';
 import WorkspaceEventsCard from '../WorkspaceEventsCard';
@@ -85,15 +86,33 @@ export function WorkspaceDetailPhone(props: WorkspaceDetailViewProps) {
           emptyOption={{ label: 'Sem plano' }}
           options={props.plans.map((p) => ({ value: p.id, label: p.name }))}
         />
-        {data.workspace.plan_source === 'manual' && (
+        {(data.workspace.plan_source === 'manual' || data.workspace.plan_source === 'demo') && (
           <Cell
-            label="Remover comp (voltar à cobrança)"
+            label={
+              data.workspace.plan_source === 'demo'
+                ? 'Encerrar demo'
+                : 'Remover comp (voltar à cobrança)'
+            }
             destructive
             disabled={props.unsetPending}
             onClick={props.onUnsetComp}
           />
         )}
+        {data.workspace.demo_created_at && (
+          <Cell
+            label="Reenviar acesso"
+            disabled={props.resendPending}
+            onClick={props.onResendAccess}
+          />
+        )}
       </GroupedList>
+
+      <section className="phone-group" aria-labelledby="wdp-affiliate">
+        <SectionHeader id="wdp-affiliate" title="Afiliado" />
+        <div className="mx-4 rounded-[10px] bg-[var(--phone-fill)]">
+          <AffiliateRow workspaceId={props.workspaceId} affiliate={data.affiliate} />
+        </div>
+      </section>
 
       <KpiGrid>
         {usageTiles(data).map((t) => (

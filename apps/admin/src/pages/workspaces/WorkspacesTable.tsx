@@ -59,6 +59,22 @@ export function PlanBadge({ name }: { name: string | null }) {
   );
 }
 
+/** Comp (manual) and demo workspaces say so next to the plan. */
+export function PlanSourceBadge({ source }: { source: string | null | undefined }) {
+  if (source === 'demo') return <Badge variant="primary">Demo</Badge>;
+  if (source === 'manual') return <Badge variant="info">Comp</Badge>;
+  return null;
+}
+
+export function PlanCell({ ws }: { ws: WorkspaceSummary }) {
+  return (
+    <span className="flex items-center gap-1.5 whitespace-nowrap">
+      <PlanBadge name={ws.plan_name} />
+      <PlanSourceBadge source={ws.plan_source} />
+    </span>
+  );
+}
+
 function SubscriptionCell({ ws }: { ws: WorkspaceSummary }) {
   if (!hasSubscription(ws.subscription)) return <span className="text-dim-foreground">—</span>;
   const meta = statusMeta(ws.subscription.status);
@@ -128,7 +144,7 @@ function cellFor(key: WorkspaceColumnKey, ws: WorkspaceSummary, now: Date, showO
     case 'owner':
       return null;
     case 'plan':
-      return <PlanBadge name={ws.plan_name} />;
+      return <PlanCell ws={ws} />;
     case 'subscription':
       return <SubscriptionCell ws={ws} />;
     case 'client_count':

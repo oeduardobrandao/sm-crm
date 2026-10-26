@@ -24,6 +24,9 @@ export interface WorkspaceDetailViewProps {
   onPlanChange: (planId: string) => void;
   onUnsetComp: () => void;
   unsetPending: boolean;
+  /** Re-sends the demo owner's set-password e-mail (only offered when demo_created_at is set). */
+  onResendAccess: () => void;
+  resendPending: boolean;
   notes: string;
   onNotesChange: (notes: string) => void;
   onSaveNotes: () => void;
