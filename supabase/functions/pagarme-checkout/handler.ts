@@ -341,12 +341,23 @@ export function createPagarmeCheckoutHandler(deps: {
       }
     };
 
+    // Ex-demo workspaces never get the trial. Separate read: the switch-path workspaces read
+    // above is inside `if (isSwitch)`, and the trial is only computed on the non-switch path.
+    // A failed read denies (fail closed) rather than granting a trial by default.
+    const { data: trialWs, error: trialWsErr } = await db
+      .from("workspaces").select("demo_created_at").eq("id", ctx.workspaceId)
+      .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS)).single();
+    if (trialWsErr) {
+      console.error("[pagarme-checkout] workspace read failed:", trialWsErr.message);
+      return { status: 500, body: GENERIC_500 };
+    }
+
     let stage: "customer" | "card" | "subscription" = "customer";
     try {
       // (4) Trial (checkout comum) OU fronteira do switch. O switch NUNCA consulta
       // resolveTrialDays: o "periodo gratis" dele e o mes Stripe ja pago, e a 1a parcela
       // cai no ceil da fronteira (spec: nao ha gap de acesso; o plano e concedido no bind).
-      const trialDays = isSwitch ? undefined : resolveTrialDays(hasEverSubscribed(row));
+      const trialDays = isSwitch ? undefined : resolveTrialDays(hasEverSubscribed(row, trialWs));
       const startAt = isSwitch && switchBoundary
         ? ceilToUtcMidnightDate(switchBoundary)
         : resolveStartAt(trialDays, now);

@@ -84,7 +84,7 @@ function makeDb(fx: {
   stalePending?: Array<{ id: string; pagarme_subscription_id: string | null }>;
   /** Linha devolvida pelo read de workspaces do PASSO 3b do switch (plan_id + plan_source)
    * e pelo read do plan-writer (que so olha plan_source). */
-  workspaceRow?: { plan_id?: string | null; plan_source: string };
+  workspaceRow?: { plan_id?: string | null; plan_source: string; demo_created_at?: string | null };
   /** True = existe attempt quarantined para o workspace (gate amigavel da decisao 10). */
   quarantinedAttempt?: boolean;
   /** Faz o SEGUNDO update de workspace_subscriptions em diante devolver zero linhas (o
@@ -525,6 +525,20 @@ Deno.test("trial path: fresh workspace gets start_at ceiled to the next UTC midn
   assertEquals((ins.values as Record<string, unknown>).provider, "pagarme");
   assertEquals((ins.values as Record<string, unknown>).amount_cents, 113880);
   assertEquals((ins.values as Record<string, unknown>).workspace_id, WS);
+});
+
+Deno.test("a fresh (non-switch) checkout for an ex-demo workspace gets no trial", async () => {
+  const { calls, result } = run(
+    {
+      plan: PLAN,
+      subRow: null,
+      workspaceRow: { plan_source: "demo", demo_created_at: "2026-10-01T00:00:00Z" },
+    },
+    { subStatus: "active" },
+  );
+  await result;
+  const subInput = calls[2].args[0] as Record<string, unknown>;
+  assertEquals(subInput.start_at, undefined);
 });
 
 Deno.test("legacy stripe id alone kills the trial", async () => {
