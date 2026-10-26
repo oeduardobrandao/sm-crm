@@ -356,6 +356,7 @@ Deno.test("createDemoWorkspace audits rollback_failed when the rollback itself f
     string,
     unknown
   >;
+  assertEquals(audit.action, "admin-create-demo-failed");
   const meta = audit.metadata as Record<string, unknown>;
   assertEquals(meta.rollback_failed, true);
   assertEquals(meta.email, "ana@gmail.com");

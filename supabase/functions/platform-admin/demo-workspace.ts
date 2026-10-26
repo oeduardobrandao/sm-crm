@@ -260,7 +260,8 @@ async function rollback(
     await insertAuditLog(deps.db, {
       conta_id: workspaceId ?? undefined,
       actor_user_id: actor.userId,
-      action: "admin-create-demo",
+      // Distinct action so the workspace history never shows a half-rolled-back demo as created.
+      action: "admin-create-demo-failed",
       resource_type: "workspace",
       resource_id: workspaceId ?? undefined,
       metadata: { email, plan_id: planId, user_id: userId, rollback_failed: true },
