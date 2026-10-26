@@ -57,7 +57,7 @@
   - Drop/re-add the `plan_source` check (constraint name from `20260812000001_pagarme_provider.sql:35`) with `('system','stripe','manual','pagarme','demo')`.
   - Add the two columns.
   - `create or replace function public.grant_pagarme_plan` copied from `20260813000002`, with the update guard becoming `w.plan_source is distinct from 'manual' and not (w.plan_source = 'demo' and p_status not in ('active','trialing'))`. Re-apply its revoke/grant.
-  - `create or replace` `admin_list_workspaces` copied from the latest definition (`20260912000001_admin_list_workspaces_instagram_accounts.sql`), adding `'plan_source', <workspace>.plan_source` next to `'plan_name'` in the per-workspace object. Keep its grants.
+  - `create or replace` `admin_list_workspaces` copied from the latest definition (`20260912000001_admin_list_workspaces_instagram_accounts.sql`), adding `w.plan_source` to the `base` CTE's column list (next to `plan_name`, ~line 36; the later CTEs carry it via `b.*`/`p.*`) AND `'plan_source', p.plan_source` next to `'plan_name'` in the per-workspace jsonb object. Keep its grants.
 - [ ] **Step 4:** `npx supabase db reset` locally (or apply the file), rerun the suite → PASS; whole script green.
 - [ ] **Step 5: Commit** `feat(db): plan_source demo, demo marker, demo-aware grant_pagarme_plan`.
 
@@ -77,17 +77,18 @@
   - `99s-1` full plan: returns counts `membros 1, clientes 1, workflows 1, posts 4, ideias 3, leads 3, eventos 1`; table counts match; every `clientes.nome`, `membros.nome`, `leads.nome`, `workflows.titulo` ends with `(exemplo)`; no `workflow_posts.status` in `('agendado','postado','falha_publicacao')`; the Mídia etapa is `ativo` with `responsavel_id` = Camila's `membros.id`; `agenda_ocorrencias` has ≥1 row for the event.
   - `99s-2` plan overrides `feature_leads=false, feature_ideas=false, feature_agenda=false`: returns `leads 0, ideias 0, eventos 0`, no error.
   - `99s-3` override `max_posts_per_workflow=2`: returns `posts 2`.
-  - `99s-4` `demo_workspace_discard(conta)` after a seed leaves zero rows with that `conta_id`/`workspace_id` in: `agenda_ocorrencias`, `agenda_eventos`, `workflow_posts`, `workflow_etapas` (via workflows), `workflows`, `workflow_templates`, `ideias`, `leads`, `clientes`, `membros`, `workspace_plan_overrides`, `affiliate_referrals`, `workspace_members`, `profiles` (by `conta_id`), `workspaces`, `contas`.
+  - `99s-4` `demo_workspace_discard(conta)` after a seed, followed by `delete from auth.users where id = v_uid` (must succeed: this is the FK path the TS rollback's `deleteUser` depends on, see #616), leaves zero rows with that `conta_id`/`workspace_id` in: `agenda_ocorrencias`, `agenda_eventos`, `workflow_posts`, `workflow_etapas` (via workflows), `workflows`, `workflow_templates`, `ideias`, `leads`, `clientes`, `membros`, `workspace_plan_overrides`, `affiliate_referrals`, `workspace_members`, `profiles` (by `conta_id`), `workspaces`, `contas`.
   - `99s-5` both functions are not executable by `authenticated` (`has_function_privilege('authenticated', ..., 'execute') = false`).
 - [ ] **Step 2:** Run the script → FAIL.
 - [ ] **Step 3: Write `demo_workspace_seed`** (`security definer`, `set search_path = public`), content exactly per the spec's §4 table. Decisions:
   - Read features with `public.effective_plan_feature(p_conta, 'feature_leads' | 'feature_ideas' | 'feature_agenda')`; read limits with the existing effective-limit function (the one `trg_limit_posts` uses) for posts per workflow; trim the post list from the end (keep order carrossel, reels, feed, stories).
   - Workflow from the trigger's "Padrão" template of `p_conta`: etapas Copy + Aprovação da Copy `concluido`, Mídia `ativo` (`iniciado_em = now()`, `responsavel_id` = Camila), the rest `pendente`; `etapa_atual` pointing at Mídia.
   - Posts: statuses carrossel `rascunho`, reels `revisao_interna`, feed `enviado_cliente`, stories `aprovado_cliente`; planned dates `now() + 2, 5, 9, 12 days`; `platform 'instagram'`; captions Portuguese, no em-dashes.
-  - Event: `dtstart` = next business day after tomorrow 10:00 local, `duracao_min 60`, `tz 'America/Sao_Paulo'`, `organizador_id = p_owner`, no participants; then `perform agenda_materializar(<id>, now() + interval '90 days')`.
+  - Event: `dtstart` = next business day after tomorrow 10:00 local, `duracao_min 60`, `tz 'America/Sao_Paulo'`, `organizador_id = p_owner`, no participants; then `perform agenda_materializar(<id>, current_date + 90)` (signature is `(bigint, date)`; a timestamptz argument does not resolve).
+  - `workflow_posts`: find the current DDL first (the table is not in the baseline; status CHECK in `20260427000001_instagram_publishing.sql:17`, `platform` in `20261010100002_post_targets.sql:60`, `cliente_id` NOT NULL since `20260830000001`); take the `tipo` CHECK values and the planned-date column name from there.
   - `user_id` columns = `p_owner`.
   - Before writing, read each insert trigger on these tables (`trg_limit_posts`, `trg_limit_posts_avulsos`, `workflow_posts_z6_seed_targets`, `z4b_platform_on_insert`, `trg_guard_clientes_valor`, `trg_guard_membros_custo`, `trg_financeiro_v2_*_legado`, and any `enviado_cliente`/`aprovado_cliente` notification trigger) and confirm none needs `auth.uid()` or sends anything when there is no hub token; if one does, note it in the commit message and set what it needs explicitly.
-- [ ] **Step 4: Write `demo_workspace_discard`**: deletes in dependency order the tables listed in `99s-4`, child tables first. Revoke/grant both functions.
+- [ ] **Step 4: Write `demo_workspace_discard`**: deletes in dependency order the tables listed in `99s-4`, child tables first. Revoke/grant both functions. Cascade-child lists cannot be trusted from a grep of migrations: drive the final list from `99s-4` failures (FK violations on the `workspaces`/`contas` delete name the missing table). `audit_log.conta_id` is `ON DELETE SET NULL`, so it needs no delete.
 - [ ] **Step 5:** Run the script → PASS.
 - [ ] **Step 6: Commit** `feat(db): demo_workspace_seed and demo_workspace_discard`.
 
@@ -108,7 +109,7 @@
   - `writeWorkspacePlan still skips manual on a subscribed write`.
   - `writeWorkspacePlan writes system/stripe sources on a fallback write` (regression).
 - [ ] **Step 2:** `deno test supabase/functions/__tests__/plan-writer_test.ts` → FAIL.
-- [ ] **Step 3:** Implement. In `stripe-webhook` pass `kind = (sub.status === "active" || sub.status === "trialing") ? "subscribed" : "fallback"`.
+- [ ] **Step 3:** Implement. In `stripe-webhook` pass `kind = resolved && (sub.status === "active" || sub.status === "trialing") ? "subscribed" : "fallback"` (`resolved` from ~line 197: an unresolved price falls back to the default plan and must not end a demo).
 - [ ] **Step 4:** Run the test, then `npm run check:functions` and `npm run test:functions` → PASS. (Restore `deno.lock` and run `npm ci` if they dirty it, per memory.)
 - [ ] **Step 5: Commit** `feat(billing): a paid write ends a demo, a fallback write keeps it`.
 
@@ -126,9 +127,9 @@
 - [ ] **Step 1: Failing tests:**
   - `hasEverSubscribed is true for a never-subscribed workspace with demo_created_at`.
   - `hasEverSubscribed is false with no row and no demo marker` (regression).
-  - In `pagarme-checkout-handler_test.ts`: `a fresh checkout for an ex-demo workspace gets no trial` (assert the subscription request has no future `start_at` / trial).
+  - In `pagarme-checkout-handler_test.ts`: `a fresh (non-switch) checkout for an ex-demo workspace gets no trial` (drive the NON-switch path; assert the subscription request has no future `start_at` / trial).
 - [ ] **Step 2:** Run → FAIL.
-- [ ] **Step 3:** Implement. Both checkouts read `workspaces.demo_created_at` for the workspace (pagarme-checkout already reads `plan_id, plan_source` at ~175: add the column there and pass it through) and call `hasEverSubscribed(row, ws)`.
+- [ ] **Step 3:** Implement. Both checkouts read `workspaces.demo_created_at` for the workspace and call `hasEverSubscribed(row, ws)`. In `pagarme-checkout` do NOT reuse the `plan_id, plan_source` read at ~172-177: it sits inside `if (isSwitch) {` (opens ~131), and the trial at ~349 is only computed on the non-switch path. Add a separate `workspaces` read before step (4), outside the switch block. `billing-checkout` has no workspace read today: add one.
 - [ ] **Step 4:** Run tests + `npm run check:functions` → PASS.
 - [ ] **Step 5: Commit** `feat(billing): ex-demo workspaces never get the checkout trial`.
 
@@ -176,7 +177,7 @@
   - `validateDemoInput normalises " Ana@Gmail.com "` → `ana@gmail.com`; blank empresa → `Minha agência`; blank nome → null.
   - `createDemoWorkspace rejects the default plan and internal plans with 400`.
   - `createDemoWorkspace returns 409 when an auth user already exists for the e-mail` (no generateLink call).
-  - `createDemoWorkspace maps Auth duplicate-user error to 409` (generateLink throws the duplicate error; no discard call).
+  - `createDemoWorkspace maps Auth duplicate-user error to 409` (generateLink fails with Supabase's `error.code === "email_exists"`, status 422; match the code, never the message text; no discard call).
   - `createDemoWorkspace rejects an unknown, inactive or self affiliate code with 400 before creating anything`.
   - `createDemoWorkspace sets plan_source demo and demo marker before seeding` (order: generateLink → workspaces update → seed RPC → affiliate insert → audit → sendEmail).
   - `createDemoWorkspace rolls back on seed failure` (seed RPC errors → `demo_workspace_discard` + `deleteUser` called, 500 body `Não foi possível criar a conta demo. Nada foi criado.`, no e-mail).
@@ -184,7 +185,7 @@
   - `createDemoWorkspace audits admin-create-demo with email and plan_id`.
   - `resendDemoAccess refuses when the owner already has a password (409)` and `sends a recovery link otherwise`.
 - [ ] **Step 2:** Run → FAIL.
-- [ ] **Step 3:** Implement. Affiliate: look up `affiliates` by code with `status='active'`; refuse if `affiliates.email = email`; insert `affiliate_referrals {workspace_id, affiliate_id, ref_code}` (never put `ref_code` in the Auth metadata). Rollback failure: `console.error("[platform-admin:create-demo] CRITICAL rollback failed", {userId, workspaceId})` and audit with `metadata.rollback_failed = true`.
+- [ ] **Step 3:** Implement. The `workspaces` update sets `plan_id`, `plan_source='demo'`, `demo_created_at=now()`, `demo_created_by=adminId`; then create or reset `workspace_plan_overrides` exactly as `handleSetWorkspacePlan` (`platform-admin/index.ts:426-469`) does. Affiliate: look up `affiliates` by code with `status='active'`; refuse if `affiliates.email = email`; insert `affiliate_referrals {workspace_id, affiliate_id, ref_code}` (never put `ref_code` in the Auth metadata). Rollback failure: `console.error("[platform-admin:create-demo] CRITICAL rollback failed", {userId, workspaceId})` and audit with `metadata.rollback_failed = true`.
 - [ ] **Step 4:** Run + `npm run check:functions` → PASS.
 - [ ] **Step 5: Commit** `feat(admin): create-demo-workspace and resend-demo-access`.
 
@@ -199,9 +200,9 @@
 - Produces:
   - action `set-workspace-affiliate` body `{ workspace_id: string; ref_code: string | null }` → `{ affiliate: { id, name, code } | null }`; 400 `Código de afiliado não encontrado ou inativo.`; 400 on self-referral (owner e-mail = affiliate e-mail); audit `admin-set-affiliate` with `{ old_affiliate_id, new_affiliate_id }`.
   - `get-workspace` response gains `affiliate: { id: string; name: string; code: string } | null` and `workspace.demo_created_at: string | null`.
-- [ ] **Step 1: Failing tests:** set (insert), change (update keeps `created_at`), clear (delete), unknown code 400, self 400, audit metadata; detail includes `affiliate` and `demo_created_at`.
+- [ ] **Step 1: Failing tests:** set (insert), change (update), clear (delete), unknown code 400, self 400, audit metadata; detail includes `affiliate` and `demo_created_at`.
 - [ ] **Step 2:** Run → FAIL.
-- [ ] **Step 3:** Implement. Before writing the update path, read how `stripe-webhook` computes the commission window: if it uses `affiliate_referrals.created_at`, the update must not touch `created_at` (the test above pins it). Never modify `affiliate_commissions`.
+- [ ] **Step 3:** Implement. Never modify `affiliate_commissions`. The commission window is `sum(affiliate_commissions.covered_months)` per `workspace_id` (`_shared/affiliate-commission.ts:188-197`), so months already paid to the old affiliate keep counting against the window for the new one; that matches the spec, no extra work.
 - [ ] **Step 4:** Run → PASS.
 - [ ] **Step 5: Commit** `feat(admin): edit a workspace's affiliate`.
 
@@ -227,6 +228,7 @@
   - `CreateDemoDialog on success toasts "Conta demo criada. O acesso foi enviado para ana@x.com." and navigates to the workspace`; with `email_sent:false` shows `Conta criada, mas o e-mail não foi enviado. Use Reenviar acesso.`.
   - `plan cell shows a Demo badge for plan_source demo and Comp for manual`.
   - `AffiliateRow shows the current affiliate and saves a new code / clears it`.
+  - `workspace detail offers "Encerrar demo" for plan_source demo` (desktop and phone): the "Remover comp" control is gated on `plan_source === 'manual'` today (`WorkspaceDetailPhone.tsx:88`, same in Desktop); extend it to `'demo'` with the label `Encerrar demo`, calling the existing `unsetWorkspacePlan` (backend already handles demo).
 - [ ] **Step 2:** `npx vitest run apps/admin/src/pages/__tests__/CreateDemoDialog.test.tsx apps/admin/src/pages/__tests__/AffiliateRow.test.tsx` → FAIL.
 - [ ] **Step 3:** Implement with the Admin `components/ui` copies (import `cn` from `../../lib/utils`). Labels: `Criar conta demo`, `E-mail`, `Nome (opcional)`, `Nome da agência (opcional)`, `Plano`, `Código de afiliado (opcional)`, submit `Criar e enviar acesso`. Detail: `Demo` badge where `Comp` shows today; `Afiliado` row on every workspace; `Reenviar acesso` button only when `demo_created_at` is set.
 - [ ] **Step 4:** Run tests + `npx tsc -p apps/admin/tsconfig.json --noEmit` → PASS.
@@ -245,6 +247,7 @@
   - `EffectivePlan` gains `wasDemo: boolean` (from `demo_created_at` in the same `workspaces` select).
   - `export function hasUsedTrial(sub: WorkspaceSubscription | null | undefined, plan: Pick<EffectivePlan, 'wasDemo'> | null | undefined): boolean` = `Boolean(sub?.hasEverSubscribed || plan?.wasDemo)`. Every former `subscription?.hasEverSubscribed` read for trial purposes (the five CobrancaPage/Comecar/TrialNudgeCard sites listed above) uses it.
   - `canUpgradeTo(planId, currentPlanId, hasActiveSub, planSource?: string | null)`: when `planSource === 'demo'`, the current plan is upgradable too.
+  - **The real lever is `renderCta`:** it returns the static "Plano atual" (`CobrancaPage.tsx:342`) before `canUpgradeTo` is ever called. That early return must be skipped when `planSource === 'demo'`. `CobrancaPhone.tsx` is presentational (gets `plans` as a ReactNode from `CobrancaPage`, ~line 532), so `renderCta` covers both layouts; the phone only needs a slot/prop for the demo note. `canUpgradeTo` still gets the parameter for every other caller.
 - [ ] **Step 1: Failing tests:**
   - `canUpgradeTo allows the current plan when the source is demo` and `still refuses it otherwise`.
   - `hasUsedTrial is true for wasDemo without a subscription row`.
@@ -260,5 +263,5 @@
 
 - [ ] **Step 1:** Run every gate from Global Constraints; all green. `npm ci` afterwards if Deno touched `node_modules`.
 - [ ] **Step 2: Browser check (local, seed login per memory):** Admin `npm run dev:admin` against local Supabase with stubbed Resend: open Workspaces → "Criar conta demo" → create → detail shows Demo badge, Afiliado row, Reenviar acesso. CRM: log in as the new owner (set a password via the generated link) → dashboard, Clientes, Ideias, Leads, Fluxos, Agenda show the examples; Configurações > Cobrança shows the note and "Assinar" on the current plan. Screenshot both.
-- [ ] **Step 3: Staging rollout (from the spec):** migrations (`npx supabase db push --linked` on staging) → deploy `platform-admin`, `billing-checkout`, `pagarme-checkout`, `pagarme-subscription`, `pagarme-webhook`, `stripe-webhook`, `billing-downgrade-cron` with `--use-api` (and `--no-verify-jwt` for the ones that already use it) → create a demo on staging, receive the e-mail, set the password, subscribe with a Stripe test card: no trial, plan switches, Demo badge gone.
+- [ ] **Step 3: Staging rollout (from the spec):** migrations (`npx supabase db push --linked` on staging) → deploy `platform-admin`, `billing-checkout`, `pagarme-checkout`, `pagarme-subscription`, `pagarme-webhook`, `stripe-webhook`, `billing-downgrade-cron` with `--use-api` (and `--no-verify-jwt` for the ones that already use it: see memory `feedback_deploy_edge_functions.md` and CLAUDE.md "Gotchas"; `stripe-webhook`, `pagarme-webhook` and `billing-downgrade-cron` handle their own auth) → create a demo on staging, receive the e-mail, set the password, subscribe with a Stripe test card: no trial, plan switches, Demo badge gone.
 - [ ] **Step 4:** Prod: same migrations and functions BEFORE merging the PR (merge deploys the frontend immediately).
