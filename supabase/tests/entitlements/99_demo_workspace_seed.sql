@@ -60,6 +60,19 @@ begin
   select count(*) into n from agenda_ocorrencias o join agenda_eventos ev on ev.id = o.evento_id
    where ev.conta_id = v_conta;
   if n < 1 then raise exception '99s-1: evento nao materializado'; end if;
+  if (select count(distinct status) from workflow_posts where conta_id = v_conta
+         and status in ('rascunho','revisao_interna','enviado_cliente','aprovado_cliente')) <> 4 then
+    raise exception '99s-1: esperava um post de cada status editorial';
+  end if;
+  if exists (select 1 from clientes where conta_id = v_conta and email not like '%.example')
+     or exists (select 1 from leads where conta_id = v_conta and email not like '%.example') then
+    raise exception '99s-1: e-mail fora de .example';
+  end if;
+  if exists (select 1 from clientes where conta_id = v_conta
+             and (valor_mensal is not null or data_pagamento is not null))
+     or exists (select 1 from membros where conta_id = v_conta and custo_mensal is not null) then
+    raise exception '99s-1: valor_mensal/custo_mensal preenchido';
+  end if;
   raise notice 'PASS 99s-1';
 end $$;
 rollback;
@@ -93,14 +106,35 @@ begin
 end $$;
 rollback;
 
+-- 99s-6: max_clients = 0: sem cliente, fluxo, posts e ideias; leads e evento seguem.
+begin;
+do $$
+declare v_uid uuid; v_conta uuid; r jsonb;
+begin
+  select * into v_uid, v_conta from pg_temp.mk_demo('seed99s6@example.com',
+    '{"r":{"max_clients":0},"f":{"feature_agenda":true}}'::jsonb);
+  r := public.demo_workspace_seed(v_conta, v_uid);
+  if (r->>'clientes')::int <> 0 or (r->>'workflows')::int <> 0 or (r->>'posts')::int <> 0
+     or (r->>'ideias')::int <> 0 or (r->>'leads')::int <> 3 or (r->>'eventos')::int <> 1 then
+    raise exception '99s-6: %', r;
+  end if;
+  raise notice 'PASS 99s-6';
+end $$;
+rollback;
+
 -- 99s-4: discard + delete do usuario.
 begin;
 do $$
 declare
   v_uid uuid; v_conta uuid; r jsonb; t text; n int;
+  v_uid2 uuid; v_conta2 uuid; v_before int; v_after int;
 begin
   select * into v_uid, v_conta from pg_temp.mk_demo('seed99s4@example.com', '{"r":null,"f":{"feature_agenda":true}}'::jsonb);
   r := public.demo_workspace_seed(v_conta, v_uid);
+  select * into v_uid2, v_conta2 from pg_temp.mk_demo('seed99s4b@example.com', '{"r":null,"f":{"feature_agenda":true}}'::jsonb);
+  perform public.demo_workspace_seed(v_conta2, v_uid2);
+  select (select count(*) from clientes where conta_id = v_conta2) + (select count(*) from workflow_posts where conta_id = v_conta2)
+       + (select count(*) from leads where conta_id = v_conta2) + (select count(*) from agenda_eventos where conta_id = v_conta2) into v_before;
   perform public.demo_workspace_discard(v_conta);
   delete from auth.users where id = v_uid;
 
@@ -125,6 +159,11 @@ begin
     execute split_part(t, ':', 2) into n using v_conta;
     if n <> 0 then raise exception '99s-4: % ainda tem % linha(s)', split_part(t, ':', 1), n; end if;
   end loop;
+  select (select count(*) from clientes where conta_id = v_conta2) + (select count(*) from workflow_posts where conta_id = v_conta2)
+       + (select count(*) from leads where conta_id = v_conta2) + (select count(*) from agenda_eventos where conta_id = v_conta2) into v_after;
+  if v_before = 0 or v_after <> v_before or not exists (select 1 from workspaces where id = v_conta2) then
+    raise exception '99s-4: o descarte tocou outra conta (% -> %)', v_before, v_after;
+  end if;
   raise notice 'PASS 99s-4';
 end $$;
 rollback;

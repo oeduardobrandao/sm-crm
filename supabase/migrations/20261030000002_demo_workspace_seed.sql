@@ -87,19 +87,19 @@ begin
     returning id into v_membro;
   v_n_membros := 1;
 
-  -- Cliente sem mensalidade nem dia de pagamento.
-  if v_lim_cli is not null and v_lim_cli < 1 then
-    return jsonb_build_object('membros', v_n_membros, 'clientes', 0, 'workflows', 0, 'posts', 0,
-                              'ideias', 0, 'leads', 0, 'eventos', 0);
+  -- Cliente sem mensalidade nem dia de pagamento. Se o limite de clientes nao comporta nem um,
+  -- pula so o que depende do cliente (fluxo, posts, ideias); leads e evento seguem.
+  if v_lim_cli is null or v_lim_cli >= 1 then
+    insert into public.clientes (user_id, conta_id, nome, sigla, cor, especialidade, status, email)
+      values (p_owner, p_conta, 'Café Aurora (exemplo)', 'CA', '#b45309', 'Cafeteria', 'ativo',
+              'contato@cafeaurora.example')
+      returning id into v_cliente;
+    v_n_clientes := 1;
   end if;
-  insert into public.clientes (user_id, conta_id, nome, sigla, cor, especialidade, status, email)
-    values (p_owner, p_conta, 'Café Aurora (exemplo)', 'CA', '#b45309', 'Cafeteria', 'ativo',
-            'contato@cafeaurora.example')
-    returning id into v_cliente;
-  v_n_clientes := 1;
 
   -- Fluxo + etapas.
-  if v_lim_wf is null or v_lim_wf >= 1 then
+  if v_cliente is not null and (v_lim_wf is null or v_lim_wf >= 1) then
+    -- etapa_atual: indice 0-based da etapa Mídia no template Padrão (Copy 0, Aprovação 1, Mídia 2).
     insert into public.workflows (user_id, conta_id, cliente_id, titulo, status, etapa_atual, modo_prazo)
       values (p_owner, p_conta, v_cliente, 'Conteúdo de novembro (exemplo)', 'ativo', 2, 'padrao')
       returning id into v_wf;
@@ -142,7 +142,7 @@ begin
   end if;
 
   -- Ideias.
-  if v_ideias_on then
+  if v_ideias_on and v_cliente is not null then
     insert into public.ideias (workspace_id, cliente_id, titulo, descricao, status, origem, tipo)
       select p_conta, v_cliente, x->>'titulo', x->>'descricao', x->>'status', 'agencia', 'ideia'
         from jsonb_array_elements(v_ideias) x;
