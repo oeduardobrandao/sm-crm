@@ -74,6 +74,13 @@ Deno.test('buildDemoAccessEmail has the button and never says "convidado" or an 
   assertEquals(html.includes("\u2014"), false);
 });
 
+Deno.test('buildDemoAccessEmail says the link expires and points to "Esqueci minha senha"', () => {
+  const html = buildDemoAccessEmail(demoBase);
+  assertStringIncludes(html, "Este link expira.");
+  assertStringIncludes(html, "Esqueci minha senha");
+  assertStringIncludes(html, "página de login");
+});
+
 Deno.test("buildDemoAccessEmail escapes the name", () => {
   const html = buildDemoAccessEmail({ ...demoBase, nome: "<b>x</b>" });
   assertEquals(html.includes("<b>x</b>"), false);

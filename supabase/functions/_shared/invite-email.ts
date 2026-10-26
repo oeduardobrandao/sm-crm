@@ -99,7 +99,12 @@ export function buildDemoAccessEmail(
           "0",
         ),
       button(params.actionLink, "Definir minha senha") + fallbackLink(params.actionLink) +
-        paragraph("Se você não esperava este e-mail, ignore esta mensagem.", "small", "16px 0 0"),
+        paragraph(
+          "Este link expira. Se ele não funcionar mais, use “Esqueci minha senha” na página de login.",
+          "small",
+          "16px 0 0",
+        ) +
+        paragraph("Se você não esperava este e-mail, ignore esta mensagem.", "small", "8px 0 0"),
     ],
     footerLines: [],
   });
