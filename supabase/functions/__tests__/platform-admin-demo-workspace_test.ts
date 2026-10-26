@@ -335,8 +335,58 @@ Deno.test("createDemoWorkspace rolls back when the affiliate referral insert fai
   assertEquals(t.sent.length, 0);
 });
 
+Deno.test("createDemoWorkspace finds the workspace by created_by when the owner row is missing, and discards it", async () => {
+  const t = setup(happyResponses({
+    workspace_members: [{ data: null, error: null }],
+    workspaces: [{ data: { id: "ws-fallback" }, error: null }, { data: null, error: null }],
+    "rpc:demo_workspace_seed": [{ data: null, error: { message: "boom" } }],
+  }));
+  const res = await createDemoWorkspace(t.deps, BODY, ACTOR);
+  assertEquals(res.status, 500);
+  const createdBy = t.calls.find((c) => c.table === "workspaces" && c.method === "eq" && c.args[0] === "created_by");
+  assertEquals(createdBy?.args[1], "user-new");
+  const discard = t.calls.find((c) => c.table === "demo_workspace_discard");
+  assertEquals(discard?.args[0], { p_conta: "ws-fallback" });
+  assertEquals(t.deleted, ["user-new"]);
+});
+
+Deno.test("createDemoWorkspace still deletes the user when the discard RPC fails, and records both outcomes", async () => {
+  const t = setup(happyResponses({
+    "rpc:demo_workspace_seed": [{ data: null, error: { message: "boom" } }],
+    "rpc:demo_workspace_discard": [{ data: null, error: { message: "discard boom" } }],
+  }));
+  const res = await createDemoWorkspace(t.deps, BODY, ACTOR);
+  assertEquals(res.status, 500);
+  assertEquals(t.deleted, ["user-new"]);
+  const audit = t.calls.find((c) => c.table === "audit_log" && c.method === "insert")!.args[0] as Record<
+    string,
+    unknown
+  >;
+  const meta = audit.metadata as Record<string, unknown>;
+  assertEquals(meta.rollback_failed, true);
+  assertEquals(meta.discard, "failed");
+  assertEquals(meta.delete_user, "ok");
+});
+
+Deno.test("createDemoWorkspace records a failed deleteUser after a successful discard", async () => {
+  const t = setup(
+    happyResponses({ "rpc:demo_workspace_seed": [{ data: null, error: { message: "boom" } }] }),
+    { deleteError: new Error("auth down") },
+  );
+  const res = await createDemoWorkspace(t.deps, BODY, ACTOR);
+  assertEquals(res.status, 500);
+  const audit = t.calls.find((c) => c.table === "audit_log" && c.method === "insert")!.args[0] as Record<
+    string,
+    unknown
+  >;
+  assertEquals(audit.action, "admin-create-demo-failed");
+  const meta = audit.metadata as Record<string, unknown>;
+  assertEquals(meta.discard, "ok");
+  assertEquals(meta.delete_user, "failed");
+});
+
 Deno.test("createDemoWorkspace deletes the user even when the new workspace cannot be found", async () => {
-  const t = setup(happyResponses({ workspace_members: [{ data: null, error: null }] }));
+  const t = setup(happyResponses({ workspace_members: [{ data: null, error: null }], workspaces: [{ data: null, error: null }] }));
   const res = await createDemoWorkspace(t.deps, BODY, ACTOR);
   assertEquals(res.status, 500);
   assertEquals(t.events.includes("rpc:demo_workspace_discard"), false);
@@ -397,7 +447,7 @@ Deno.test("resendDemoAccess sends a recovery link otherwise", async () => {
   });
   const res = await resendDemoAccess(t.deps, { workspace_id: "ws-d" }, ACTOR);
   assertEquals(res.status, 200);
-  assertEquals(res.body, { email: "dono@x.com", email_sent: true });
+  assertEquals(res.body, { message: "Acesso reenviado.", email: "dono@x.com" });
   const pw = t.calls.find((c) => c.table === "user_has_password");
   assertEquals(pw?.args[0], { p_user_id: "owner-1" });
   assertEquals(t.links[0].type, "recovery");
@@ -430,6 +480,12 @@ Deno.test("resendDemoAccess reports email_sent false when the send fails", async
     "rpc:user_has_password": [{ data: false, error: null }],
   }, { sendError: new Error("down") });
   const res = await resendDemoAccess(t.deps, { workspace_id: "ws-d" }, ACTOR);
-  assertEquals(res.status, 200);
-  assertEquals(res.body.email_sent, false);
+  assertEquals(res.status, 502);
+  assertEquals(res.body, { error: "Não foi possível enviar o e-mail de acesso. Tente novamente." });
+  const audit = t.calls.find((c) => c.table === "audit_log" && c.method === "insert")!.args[0] as Record<
+    string,
+    unknown
+  >;
+  assertEquals(audit.action, "admin-resend-demo-access");
+  assertEquals((audit.metadata as Record<string, unknown>).email_sent, false);
 });

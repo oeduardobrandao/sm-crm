@@ -28,6 +28,7 @@ const MSG_CREATE_FAILED = "Não foi possível criar a conta demo. Nada foi criad
 const MSG_PASSWORD_SET = "O dono já definiu a senha.";
 const MSG_NOT_DEMO = "Este workspace não é uma conta demo.";
 const MSG_RESEND_FAILED = "Não foi possível reenviar o acesso.";
+const MSG_RESEND_EMAIL_FAILED = "Não foi possível enviar o e-mail de acesso. Tente novamente.";
 
 export type DemoInput =
   | { ok: true; email: string; planId: string; nome: string | null; empresa: string; refCode: string | null }
@@ -94,11 +95,9 @@ function toCounts(raw: unknown): DemoSeedCounts {
   };
 }
 
+/** Throws without logging: the rollback path logs the failure once, with its step. */
 function ensureOk(error: unknown, step: string): void {
-  if (error) {
-    console.error(`[platform-admin:create-demo] ${step} failed`, error);
-    throw new Error(`demo_step_failed:${step}`);
-  }
+  if (error) throw new Error(`demo_step_failed:${step}`, { cause: error });
 }
 
 export async function createDemoWorkspace(deps: DemoDeps, body: unknown, actor: DemoActor): Promise<Result> {
@@ -167,8 +166,16 @@ export async function createDemoWorkspace(deps: DemoDeps, body: unknown, actor: 
     const { data: member, error: mErr } = await db
       .from("workspace_members").select("workspace_id").eq("user_id", userId).eq("role", "owner").maybeSingle();
     ensureOk(mErr, "workspace_lookup");
-    if (!member?.workspace_id) throw new Error("demo_step_failed:workspace_missing");
-    workspaceId = member.workspace_id as string;
+    workspaceId = (member?.workspace_id as string | undefined) ?? null;
+    if (!workspaceId) {
+      // Fallback: the trigger sets workspaces.created_by to the new user, so the discard can
+      // still run when the owner membership row is missing.
+      const { data: ws, error: wsErr } = await db
+        .from("workspaces").select("id").eq("created_by", userId).maybeSingle();
+      ensureOk(wsErr, "workspace_lookup_fallback");
+      workspaceId = (ws?.id as string | undefined) ?? null;
+    }
+    if (!workspaceId) throw new Error("demo_step_failed:workspace_missing");
 
     // Plan before seeding: the posts limit triggers count against the plan.
     const { error: wErr } = await db.from("workspaces").update({
@@ -249,14 +256,33 @@ async function rollback(
   planId: string,
   actor: DemoActor,
 ): Promise<void> {
-  try {
-    if (workspaceId) {
+  // Each half runs independently: a failed discard must not leave the auth user behind.
+  let discardError: unknown = null;
+  if (workspaceId) {
+    try {
       const { error } = await deps.db.rpc("demo_workspace_discard", { p_conta: workspaceId });
-      if (error) throw error;
+      if (error) discardError = error;
+    } catch (e) {
+      discardError = e;
     }
+  }
+  let deleteUserError: unknown = null;
+  try {
     await deps.deleteUser(userId);
   } catch (e) {
-    console.error("[platform-admin:create-demo] CRITICAL rollback failed", { userId, workspaceId, error: e });
+    deleteUserError = e;
+  }
+  if (discardError || deleteUserError) {
+    const discard = !workspaceId ? "skipped" : discardError ? "failed" : "ok";
+    const deleteUser = deleteUserError ? "failed" : "ok";
+    console.error("[platform-admin:create-demo] CRITICAL rollback failed", {
+      userId,
+      workspaceId,
+      discard,
+      deleteUser,
+      discardError,
+      deleteUserError,
+    });
     await insertAuditLog(deps.db, {
       conta_id: workspaceId ?? undefined,
       actor_user_id: actor.userId,
@@ -264,7 +290,7 @@ async function rollback(
       action: "admin-create-demo-failed",
       resource_type: "workspace",
       resource_id: workspaceId ?? undefined,
-      metadata: { email, plan_id: planId, user_id: userId, rollback_failed: true },
+      metadata: { email, plan_id: planId, user_id: userId, rollback_failed: true, discard, delete_user: deleteUser },
     });
   }
 }
@@ -325,7 +351,9 @@ export async function resendDemoAccess(
       metadata: { email, email_sent: emailSent },
     });
 
-    return { status: 200, body: { email, email_sent: emailSent } };
+    // The Admin UI treats any 2xx as "Acesso reenviado", so a failed send must not be 2xx.
+    if (!emailSent) return { status: 502, body: { error: MSG_RESEND_EMAIL_FAILED } };
+    return { status: 200, body: { message: "Acesso reenviado.", email } };
   } catch (e) {
     console.error("[platform-admin:resend-demo] failed", { workspaceId, error: e });
     return { status: 500, body: { error: MSG_RESEND_FAILED } };
