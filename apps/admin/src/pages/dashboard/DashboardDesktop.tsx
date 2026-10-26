@@ -282,6 +282,7 @@ export function DashboardDesktop({
                 <TableHead>Dono</TableHead>
                 <TableHead>Plano</TableHead>
                 <TableHead>Membros</TableHead>
+                <TableHead>Última atividade</TableHead>
                 <TableHead>Criado</TableHead>
               </TableRow>
             </TableHeader>
@@ -304,6 +305,9 @@ export function DashboardDesktop({
                     <PlanBadge name={ws.plan_name} />
                   </TableCell>
                   <TableCell className="font-sf text-sm">{ws.member_count}</TableCell>
+                  <TableCell>
+                    <ActivityCell ws={ws} />
+                  </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {new Date(ws.created_at).toLocaleDateString('pt-BR', {
                       day: '2-digit',
