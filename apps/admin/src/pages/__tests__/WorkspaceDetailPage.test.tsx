@@ -211,7 +211,6 @@ const DEMO = {
 };
 
 describe('WorkspaceDetailPage demo account (desktop)', () => {
-  let restore: () => void = () => {};
   beforeEach(() => {
     vi.clearAllMocks();
     primeApi();
@@ -221,7 +220,6 @@ describe('WorkspaceDetailPage demo account (desktop)', () => {
     vi.mocked(resendDemoAccess).mockResolvedValue({ message: 'ok' });
   });
   afterEach(() => {
-    restore();
     vi.restoreAllMocks();
   });
 
