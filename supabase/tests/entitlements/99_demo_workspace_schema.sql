@@ -71,6 +71,28 @@ begin
 end $$;
 rollback;
 
+-- 99d-2b: demo + assinatura trialing tambem converte.
+begin;
+do $$
+declare
+  v_ws uuid;
+  v_n int;
+  v_src text;
+begin
+  v_ws := et_make_workspace('free');
+  update public.workspaces set plan_source = 'demo' where id = v_ws;
+  insert into public.workspace_subscriptions
+    (workspace_id, provider, pagarme_customer_id, pagarme_subscription_id, status)
+    values (v_ws, 'pagarme', 'cus_99d2b', 'sub_99d2b', 'trialing');
+  select public.grant_pagarme_plan(v_ws, 'max', 'sub_99d2b', 'trialing') into v_n;
+  select plan_source into v_src from public.workspaces where id = v_ws;
+  if v_n <> 1 or v_src <> 'pagarme' then
+    raise exception '99d-2b: esperava 1/pagarme, veio %/%', v_n, v_src;
+  end if;
+  raise notice 'PASS 99d-2b';
+end $$;
+rollback;
+
 -- 99d-3: demo + assinatura canceled: retorna 0 e a conta segue demo no mesmo plano.
 begin;
 do $$

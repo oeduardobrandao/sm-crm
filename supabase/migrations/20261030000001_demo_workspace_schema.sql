@@ -54,6 +54,9 @@ begin
 end;
 $$;
 
+-- service_role only (o webhook usa a service key). Esta funcao nao confere o chamador no corpo:
+-- o grant e toda a fronteira de seguranca. REVOKE FROM PUBLIC nao remove os EXECUTE que o
+-- Supabase da a anon/authenticated, entao os nomeia explicitamente.
 revoke all on function public.grant_pagarme_plan(uuid, text, text, text) from public, anon, authenticated;
 grant execute on function public.grant_pagarme_plan(uuid, text, text, text) to service_role;
 
