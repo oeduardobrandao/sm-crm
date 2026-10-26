@@ -290,7 +290,11 @@ async function syncSubscription(
 
   const targetPlanId = statusToPlanId(sub.status, subscribedPlanId, defaultPlanId);
   if (targetPlanId !== null) {
-    await writeWorkspacePlan(svc, workspaceId, targetPlanId, "stripe");
+    // An unresolved price falls back to the default plan and must not end a demo.
+    const kind = resolved && (sub.status === "active" || sub.status === "trialing")
+      ? "subscribed"
+      : "fallback";
+    await writeWorkspacePlan(svc, workspaceId, targetPlanId, "stripe", kind);
   }
 }
 

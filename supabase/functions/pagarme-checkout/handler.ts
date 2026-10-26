@@ -608,7 +608,7 @@ export function createPagarmeCheckoutHandler(deps: {
       // the request would tell the user to retry a checkout that can only 409 now. Log
       // CRITICAL and answer 200; recovery is support/admin (and the Fase 4 webhook).
       try {
-        await writeWorkspacePlan(db, ctx.workspaceId, reqData.planId, "pagarme");
+        await writeWorkspacePlan(db, ctx.workspaceId, reqData.planId, "pagarme", "subscribed");
       } catch (e) {
         console.error(
           `[pagarme-checkout] CRITICAL: plan grant failed for workspace ${ctx.workspaceId}:`,
@@ -702,7 +702,7 @@ export function createPagarmeCheckoutHandler(deps: {
         }
         // (iii) Re-grant do plano-fonte (falha: CRITICAL, precedente do grant pos-bind).
         try {
-          await writeWorkspacePlan(db, ctx.workspaceId, switchSourcePlanId!, "stripe");
+          await writeWorkspacePlan(db, ctx.workspaceId, switchSourcePlanId!, "stripe", "subscribed");
         } catch (e) {
           console.error(
             `[pagarme-checkout] CRITICAL: rollback plan re-grant failed for workspace ${ctx.workspaceId}:`,
