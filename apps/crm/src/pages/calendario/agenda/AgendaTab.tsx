@@ -190,6 +190,9 @@ export default function AgendaTab() {
     };
   }, [isPhone, vistaPhone, ancora]);
   const periodoAtual = usaFullCalendar ? periodo : periodoPhone;
+  // Recomputed at render (not read from `titulo`) so a language switch retitles the period.
+  const tituloVisivel = (p: Periodo | null) =>
+    p ? tituloDoPeriodo(p.view, p.currentStart, p.currentEnd) : '';
   // The phone sheets stay mounted after closing (their history entry pops on close):
   // these say whether they are open; `popover` / `camadaPopover` keep the last item.
   const [popoverAberto, setPopoverAberto] = useState(false);
@@ -712,7 +715,7 @@ export default function AgendaTab() {
     return (
       <div className="phone-agenda" ref={containerRef}>
         <AgendaTopoPhone
-          titulo={periodoAtual?.titulo ?? ''}
+          titulo={tituloVisivel(periodoAtual)}
           vista={vistaPhone}
           onVista={mudarVistaPhone}
           onHoje={hojePhone}
@@ -756,7 +759,7 @@ export default function AgendaTab() {
               initialView="timeGridDay"
               initialDate={dataSelecionada}
               view="timeGridDay"
-              titulo={periodoAtual?.titulo ?? ''}
+              titulo={tituloVisivel(periodoAtual)}
               eventos={eventos}
               onDatesSet={onDatesSet}
               onEventClick={abrirPopover}
@@ -851,7 +854,7 @@ export default function AgendaTab() {
           calRef={calRef}
           isMobile={false}
           view={periodo?.view ?? 'timeGridWeek'}
-          titulo={periodo?.titulo ?? ''}
+          titulo={tituloVisivel(periodo)}
           eventos={eventos}
           onDatesSet={onDatesSet}
           initialDate={dataSelecionada}
