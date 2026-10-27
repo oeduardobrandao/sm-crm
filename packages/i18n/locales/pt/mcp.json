@@ -1,1 +1,114 @@
-{}
+{
+  "guide": {
+    "managerIntro": "Conecte Claude, ChatGPT ou Codex para ler clientes, posts e pautas deste workspace.",
+    "memberIntro": "Conecte o Claude ou o ChatGPT à sua conta. O assistente só acessa o que o seu papel permite neste workspace.",
+    "clientIntro": {
+      "claude": "Sem chave: a conexão usa OAuth e pode ser revogada aqui a qualquer momento.",
+      "chatgpt": "Sem chave: a conexão usa OAuth. Requer o modo de desenvolvedor do ChatGPT (não exige plano pago).",
+      "codex": "O Codex CLI conecta com uma chave de API deste workspace, direto via HTTP (sem dependências extras)."
+    },
+    "claudeSteps": {
+      "step1": "No claude.ai ou no Claude Desktop, abra <b>Configurações → Conectores → Adicionar conector personalizado</b>.",
+      "step2": "Cole a URL abaixo, deixe os campos de OAuth em branco e clique em <b>Adicionar</b>.",
+      "step3": "Faça login no Mesaas, escolha o workspace e as permissões e clique em <b>Autorizar</b>."
+    },
+    "chatgptSteps": {
+      "step1": "No ChatGPT, abra <b>Configurações → Security and login</b> e ative o <b>Developer mode</b> (opção marcada como \"elevated risk\"; também acessível em <b>Configurações → Plugins</b>).",
+      "step2": "Abra <b>chatgpt.com/plugins</b>, clique no botão <b>+</b> e, no diálogo <b>New Plugin</b>, dê o nome \"Mesaas\", cole a URL abaixo em <b>MCP Server URL</b> e escolha <b>OAuth</b> como autenticação.",
+      "step3": "Opcional: para o conector aparecer com a nossa marca, <logo>baixe a logo do Mesaas (PNG)</logo> e envie no campo <b>Icon</b>. O ícone só pode ser definido nesse passo: depois de criado o conector, não dá para trocar.",
+      "step4": "Marque a confirmação de risco, clique em <b>Create</b> e depois em <b>Sign in with Mesaas</b>: faça login, escolha o workspace e as permissões e clique em <b>Autorizar</b>.",
+      "step5": "Na conversa, clique no botão <b>+</b> do campo de mensagem e ative o <b>Mesaas</b>."
+    },
+    "codexSteps": {
+      "step1": "Crie uma chave em <b>Chaves de API</b> abaixo e copie o valor (ele aparece uma única vez).",
+      "step2": "Adicione o bloco abaixo ao arquivo <c>~/.codex/config.toml</c>, trocando <c>SUA_CHAVE</c> pela chave copiada.",
+      "step3": "Abra o Codex e confirme com <c>/mcp</c> que o servidor <b>mesaas</b> aparece na lista."
+    },
+    "claudeKeyNote": "Claude Code, API ou agentes headless usam uma chave: crie uma em <b>Chaves de API</b> abaixo e copie o comando pronto.",
+    "codexHeadersNote": "Use <c>http_headers</c> como no bloco: o campo <c>bearer_token</c> não é aceito para servidores HTTP.",
+    "tryIt": "Depois, peça ao assistente: <em>\"liste meus clientes ativos\"</em> ou <em>\"mostre o post X com métricas\"</em>.",
+    "keyUsageNote": "Esta chave é para Claude Code, Codex, API ou agentes headless. No claude.ai, Claude Desktop ou ChatGPT, conecte pelo conector (sem chave): veja \"Como conectar\".",
+    "keyPlaceholder": "SUA_CHAVE",
+    "keyHerePlaceholder": "SUA_CHAVE_AQUI"
+  },
+  "snippets": {
+    "desktopHelp": "Configurações → Desenvolvedor → Editar configuração (<c>claude_desktop_config.json</c>), cole o bloco, salve e reinicie o app.",
+    "codeHelp": "Rode este comando no terminal.",
+    "codexHelp": "Adicione este bloco ao arquivo <c>~/.codex/config.toml</c>."
+  },
+  "page": {
+    "readOnly": "Somente leitura",
+    "featureLabel": "Integração com agentes (MCP)",
+    "howToConnect": "Como conectar",
+    "chooseAssistant": "Escolha o assistente",
+    "grantsTitleManager": "Conexões via conector",
+    "grantsTitleMember": "Suas conexões",
+    "grantsHelp": "Conexões OAuth (claude.ai, Claude Desktop, ChatGPT). Desconecte para revogar o acesso na hora.",
+    "noGrants": "Nenhuma conexão ativa.",
+    "grantFallback": "Conexão via conector",
+    "grantMeta": "{{scopes}} · conectada {{date}}",
+    "disconnect": "Desconectar",
+    "apiKeys": "Chaves de API",
+    "createKey": "Criar chave",
+    "noKeys": "Nenhuma chave ainda. Crie uma para conectar um agente.",
+    "keyUsed": "usada {{date}}",
+    "keyNeverUsed": "nunca usada",
+    "keyExpires": "expira {{date}}",
+    "revoked": "revogada",
+    "connect": "Conectar",
+    "revoke": "Revogar",
+    "createKeyTitle": "Criar chave de API",
+    "createKeyDescription": "Gere uma chave para conectar um agente a este workspace.",
+    "name": "Nome",
+    "namePlaceholder": "Ex: Agente de conteúdo",
+    "permissions": "Permissões",
+    "presetAgent": "Preset: Agente de conteúdo",
+    "expiry": "Expiração",
+    "expiryNever": "Nunca",
+    "expiry30": "30 dias",
+    "expiry90": "90 dias",
+    "creating": "Criando…",
+    "revealTitle": "Copie sua chave agora",
+    "revealDescription": "Por segurança, não mostraremos esta chave novamente.",
+    "yourKey": "Sua chave",
+    "yourKeyOptional": "Sua chave (opcional)",
+    "done": "Concluído",
+    "connectTitle": "Conectar: {{name}}",
+    "connectDescription": "Por segurança não armazenamos a chave. Cole a chave que você copiou ao criar — ou use o modelo abaixo substituindo <c>SUA_CHAVE_AQUI</c>.",
+    "revokeKeyTitle": "Revogar chave?",
+    "revokeKeyMessage": "A chave <b>{{name}}</b> deixará de funcionar imediatamente. Agentes conectados perderão o acesso. Esta ação não pode ser desfeita.",
+    "revokeGrantTitle": "Desconectar?",
+    "revokeGrantMessageNamed": "A conexão de <b>{{name}}</b> perderá o acesso imediatamente. Para reconectar, será necessário autorizar novamente.",
+    "revokeGrantMessageConnector": "A conexão via conector perderá o acesso imediatamente. Para reconectar, será necessário autorizar novamente."
+  },
+  "toast": {
+    "keyLimit": "Limite de chaves atingido para o seu plano.",
+    "featureDisabled": "Recurso não disponível no seu plano.",
+    "createError": "Erro ao criar chave: {{message}}",
+    "keyRevoked": "Chave revogada.",
+    "revokeError": "Erro ao revogar: {{message}}",
+    "grantRevoked": "Conexão revogada.",
+    "disconnectError": "Erro ao desconectar: {{message}}"
+  },
+  "phone": {
+    "title": "Agentes (MCP)",
+    "readOnly": "Somente leitura.",
+    "copied": "Copiado",
+    "copy": "Copiar",
+    "copyWhat": "Copiar {{what}}",
+    "desktopConfigWhat": "configuração do Claude Desktop",
+    "codeCmdWhat": "comando do Claude Code",
+    "codexCliWhat": "configuração do Codex CLI",
+    "codexWhat": "configuração do Codex",
+    "mcpUrlWhat": "URL do MCP",
+    "keyWhat": "chave",
+    "serverUrl": "URL do servidor MCP",
+    "howToConnectFor": "Como conectar: {{client}}",
+    "grantActions": "Ações de {{who}}",
+    "keyActions": "Ações da chave {{name}}",
+    "keyGroup": "Chave",
+    "presetGroup": "Preset de permissões",
+    "presetSubtitle": "Só leitura: clientes, posts, fluxos, ideias, tarefas e equipe",
+    "connectDescription": "Por segurança não armazenamos a chave. Cole a chave que você copiou ao criar, ou use o modelo abaixo substituindo <c>SUA_CHAVE_AQUI</c>."
+  }
+}
