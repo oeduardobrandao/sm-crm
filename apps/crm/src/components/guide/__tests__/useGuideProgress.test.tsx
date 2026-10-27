@@ -21,6 +21,15 @@ describe('useGuideProgress', () => {
     expect(result.current.isConcluded).toBe(false);
   });
 
+  it('com limites Free (0 portais, 1 usuário) o guia tem 13 páginas; sem limites, 15', () => {
+    const free = renderHook(() =>
+      useGuideProgress('ws-1', NO_SIGNALS, ALL_ON, { max_hub_tokens: 0, max_team_members: 1 }),
+    );
+    expect(free.result.current.totals.total).toBe(13);
+    const unlimited = renderHook(() => useGuideProgress('ws-1', NO_SIGNALS, ALL_ON, null));
+    expect(unlimited.result.current.totals.total).toBe(15);
+  });
+
   it('markSeen conclui página SEM sinal, mas não página COM sinal', () => {
     const { result } = renderHook(() => useGuideProgress('ws-1', NO_SIGNALS, ALL_ON));
     act(() => result.current.markSeen('t1p1'));

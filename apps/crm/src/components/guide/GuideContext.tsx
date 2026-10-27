@@ -46,7 +46,7 @@ export function useGuide(): GuideApi | null {
 export function GuideProvider({ children }: { children: ReactNode }) {
   const { loading, profile } = useAuth();
   const isOwner = useIsWorkspaceOwner();
-  const { hasFeature } = useEntitlements();
+  const { hasFeature, limits } = useEntitlements();
   const location = useLocation();
 
   const contaId = profile?.conta_id ?? null;
@@ -60,7 +60,7 @@ export function GuideProvider({ children }: { children: ReactNode }) {
   const [concludedGate, setConcludedGate] = useState(initiallyConcluded);
 
   const signals = useGuideSignals(isOwner && !concludedGate);
-  const view = useGuideProgress(contaId, signals, hasFeature);
+  const view = useGuideProgress(contaId, signals, hasFeature, limits);
 
   useEffect(() => {
     if (!concludedGate && view.progress.concludedAt) setConcludedGate(true);

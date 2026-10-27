@@ -22,6 +22,8 @@ import {
   checkoutBlocked,
   ceilPeriodEndToUtcDate,
   switchEligible,
+  planHasPortal,
+  planHasReports,
 } from './plan-display';
 import { captureCheckoutStarted } from '@/lib/checkout-analytics';
 import { isPagarme12xEnabled } from '@/lib/pagarme-gate';
@@ -97,8 +99,8 @@ function planFeatures(p: BillingPlan): string[] {
   );
   if (p.storage_quota_bytes != null)
     out.push(`${formatStorage(p.storage_quota_bytes)} de armazenamento`);
-  if (p.feature_hub_portal) out.push('Portal de aprovação do cliente');
-  if (p.feature_analytics_reports) out.push('Relatórios de desempenho');
+  if (planHasPortal(p)) out.push('Portal de aprovação do cliente');
+  if (planHasReports(p)) out.push('Relatórios de desempenho');
   if (p.feature_brand_customization) out.push('Personalização de marca');
   return out;
 }
