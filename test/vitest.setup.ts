@@ -68,6 +68,14 @@ import ptAgenda from '../packages/i18n/locales/pt/agenda.json';
 import enAgenda from '../packages/i18n/locales/en/agenda.json';
 import ptAgendaEvento from '../packages/i18n/locales/pt/agendaEvento.json';
 import enAgendaEvento from '../packages/i18n/locales/en/agendaEvento.json';
+import ptSettings from '../packages/i18n/locales/pt/settings.json';
+import enSettings from '../packages/i18n/locales/en/settings.json';
+import ptSettingsHub from '../packages/i18n/locales/pt/settingsHub.json';
+import enSettingsHub from '../packages/i18n/locales/en/settingsHub.json';
+import ptBilling from '../packages/i18n/locales/pt/billing.json';
+import enBilling from '../packages/i18n/locales/en/billing.json';
+import ptMcp from '../packages/i18n/locales/pt/mcp.json';
+import enMcp from '../packages/i18n/locales/en/mcp.json';
 
 initI18n({
   pt: {
@@ -88,6 +96,10 @@ initI18n({
     calendario: ptCalendario,
     agenda: ptAgenda,
     agendaEvento: ptAgendaEvento,
+    settings: ptSettings,
+    settingsHub: ptSettingsHub,
+    billing: ptBilling,
+    mcp: ptMcp,
     hubHome: ptHubHome,
     hubPostCard: ptHubPostCard,
     hubPosts: ptHubPosts,
@@ -118,6 +130,10 @@ initI18n({
     calendario: enCalendario,
     agenda: enAgenda,
     agendaEvento: enAgendaEvento,
+    settings: enSettings,
+    settingsHub: enSettingsHub,
+    billing: enBilling,
+    mcp: enMcp,
     hubHome: enHubHome,
     hubPostCard: enHubPostCard,
     hubPosts: enHubPosts,

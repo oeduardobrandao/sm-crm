@@ -29,6 +29,10 @@ const LAZY_LOCALES: Record<string, Record<string, () => LocaleModule>> = {
     calendario: () => import('../../../../packages/i18n/locales/pt/calendario.json'),
     agenda: () => import('../../../../packages/i18n/locales/pt/agenda.json'),
     agendaEvento: () => import('../../../../packages/i18n/locales/pt/agendaEvento.json'),
+    settings: () => import('../../../../packages/i18n/locales/pt/settings.json'),
+    settingsHub: () => import('../../../../packages/i18n/locales/pt/settingsHub.json'),
+    billing: () => import('../../../../packages/i18n/locales/pt/billing.json'),
+    mcp: () => import('../../../../packages/i18n/locales/pt/mcp.json'),
   },
   en: {
     dashboard: () => import('../../../../packages/i18n/locales/en/dashboard.json'),
@@ -48,6 +52,10 @@ const LAZY_LOCALES: Record<string, Record<string, () => LocaleModule>> = {
     calendario: () => import('../../../../packages/i18n/locales/en/calendario.json'),
     agenda: () => import('../../../../packages/i18n/locales/en/agenda.json'),
     agendaEvento: () => import('../../../../packages/i18n/locales/en/agendaEvento.json'),
+    settings: () => import('../../../../packages/i18n/locales/en/settings.json'),
+    settingsHub: () => import('../../../../packages/i18n/locales/en/settingsHub.json'),
+    billing: () => import('../../../../packages/i18n/locales/en/billing.json'),
+    mcp: () => import('../../../../packages/i18n/locales/en/mcp.json'),
   },
 };
 
