@@ -80,6 +80,43 @@ export interface BlogPostDetail extends BlogPostRow {
   author: string;
 }
 
+/** Search Console URL-inspection result for a post (null until the collector exists). */
+export interface IndexStatus {
+  verdict: string | null;
+  coverage_state: string | null;
+  last_crawl_time: string | null;
+  inspection_link: string | null;
+  checked_at: string;
+}
+
+export interface SearchTotals {
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number | null;
+}
+
+/** One post in `blog-metrics`. Slugs with no views are absent from the map. */
+export interface PostMetrics {
+  views_7d: number;
+  views_30d: number;
+  views_total: number;
+  search: SearchTotals | null;
+  index: IndexStatus | null;
+}
+
+export interface BlogMetricsResponse {
+  /** Last successful Search Console sync; null means it never ran (not configured). */
+  gsc_updated_at: string | null;
+  posts: Record<string, PostMetrics>;
+}
+
+/** `blog-post-metrics`: `views` is zero-filled, one entry per day ending today (São Paulo). */
+export interface BlogPostMetricsResponse {
+  views: Array<{ day: string; views: number }>;
+  search: Array<{ day: string; clicks: number; impressions: number }>;
+}
+
 export type EditableField = 'title' | 'h1' | 'description' | 'lede' | 'body_md';
 
 /** Editor counters. title/h1/description come from the shared model; lede and body mirror

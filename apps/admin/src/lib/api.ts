@@ -1,7 +1,9 @@
 import { supabase } from './supabase';
 import type { SubscriptionInfo, SubscriptionSummary, WorkspaceStatusGroup } from './subscription';
 import type {
+  BlogMetricsResponse,
   BlogPostDetail,
+  BlogPostMetricsResponse,
   BlogPostRow,
   BlogTab,
   EditableField,
@@ -1150,6 +1152,14 @@ export function listBlogPosts(tab: BlogTab) {
   }>('list-blog-posts', {
     tab,
   });
+}
+
+export function getBlogMetrics() {
+  return adminApi<BlogMetricsResponse>('blog-metrics');
+}
+
+export function getBlogPostMetrics(slug: string, days?: number) {
+  return adminApi<BlogPostMetricsResponse>('blog-post-metrics', { slug, days });
 }
 
 export function getBlogPost(id: string) {
