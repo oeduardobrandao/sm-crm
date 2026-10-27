@@ -898,7 +898,8 @@ derived, not stored"): a custom title is stored, and the derived one stays the f
 ### 14.1 Data
 
 Migration `20261101000004`: `linhas_editoriais.titulo text NULL`, with
-`CHECK (titulo IS NULL OR (titulo = btrim(titulo) AND length(titulo) BETWEEN 1 AND 120))`.
+`CHECK (titulo IS NULL OR (titulo = btrim(titulo) AND length(titulo) BETWEEN 1 AND 120 AND
+titulo !~ '[[:cntrl:]]'))`: one line, because the title reaches the team digest's subject.
 Null means "use the derived title". `authenticated` gets `UPDATE (titulo)`; the existing update
 policy (conta + flag) already covers it. No RPC: renaming is a plain cell-like edit. The
 title is allowed in every status, like row edits (§5); while `enviada` the client sees it on
@@ -959,7 +960,7 @@ migration goes first.
 ### 14.6 Tests
 
 - Entitlement suite: authenticated can update `titulo` on its own linha, not another conta's
-  and not with the flag off; the CHECK refuses blank, padded and 121-character titles; the
+  and not with the flag off; the CHECK refuses blank, padded, multi-line and 121-character titles; the
   notification metadata carries `titulo`.
 - Deno: the GET returns `titulo`; digest heading and client e-mail item for both forms,
   including HTML escaping of a title with `<`.

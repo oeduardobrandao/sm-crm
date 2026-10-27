@@ -196,17 +196,21 @@ begin
     'owner (also the sender) once and the admin, never the agent: ' || coalesce(v_users::text, 'null');
   assert v_link = format('/entregas?view=linha&clientes=%s&mes=2026-11', v_c1), 'link: ' || coalesce(v_link, 'null');
   assert v_meta = jsonb_build_object('linha_id', v_l1, 'cliente_id', v_c1, 'cliente_nome', 'Clínica Sol',
-                                     'periodo', '2026-11-01', 'comentarios', 1, 'itens_ajustes', 0),
+                                     'periodo', '2026-11-01', 'comentarios', 1, 'itens_ajustes', 0,
+                                     'titulo', null),
     'metadata: ' || coalesce(v_meta::text, 'null');
   assert jsonb_typeof(v_meta->'comentarios') = 'number', 'comentarios is a number';
-  -- an agent sender is appended
-  update linhas_editoriais set enviada_por = u_ag where id = v_l4;
+  -- a renamed linha carries its title (20261101000004)
+  update linhas_editoriais set enviada_por = u_ag, titulo = 'Campanha de Natal' where id = v_l4;
   v_e := pg_temp.erro_sr(format('select public.create_linha_notification(%L, ''aprovado'')', v_l4));
   assert v_e is null, 'create_linha_notification aprovado: ' || coalesce(v_e, '');
   select array_agg(user_id order by user_id) into v_users
     from notifications where workspace_id = v_a and type = 'linha_editorial_aprovada';
   assert v_users = (select array_agg(u order by u) from unnest(array[u_o, u_adm, u_ag]) u),
     'the agent who sent it is notified too: ' || coalesce(v_users::text, 'null');
+  assert (select bool_and(metadata->>'titulo' = 'Campanha de Natal') from notifications
+           where workspace_id = v_a and type = 'linha_editorial_aprovada'), 'metadata carries the custom title';
+  update linhas_editoriais set titulo = null where id = v_l4;
   v_e := pg_temp.erro_sr(format('select public.create_linha_notification(%L, ''comentario'')', v_l4));
   assert v_e is null and (select count(*) from notifications where workspace_id = v_a and type like 'linha_editorial_%') = 5,
     'an unknown acao notifies nobody: ' || coalesce(v_e, '');

@@ -1539,6 +1539,15 @@ function linhaDb(linhas: Row[], flag = true, clienteId = 30) {
   );
 }
 
+Deno.test("digest names a renamed linha by its title (spec §14)", async () => {
+  const db = linhaDb([linhaRow({ titulo: "Campanha de Natal" })]);
+  const { deps, sent } = makeDeps(db);
+  await runClientEventEmailCron(deps);
+  assertEquals(sent.length, 1);
+  assert(sent[0].html.includes("Campanha de Natal aguardando sua aprovação"), "expected the custom title");
+  assert(!sent[0].html.includes("Linha editorial de setembro"), "the month form is not used for a renamed linha");
+});
+
 Deno.test("digest includes linha sent in window", async () => {
   const db = linhaDb([linhaRow()]);
   const { deps, sent, auditCalls } = makeDeps(db);

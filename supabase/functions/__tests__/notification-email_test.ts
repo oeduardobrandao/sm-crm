@@ -311,6 +311,16 @@ Deno.test("resolveDigestItem: linha editorial types name the client and the mont
   assert(!vazio.heading.includes("—"));
 });
 
+Deno.test("resolveDigestItem: a renamed linha is named by its title in curly quotes", () => {
+  const meta = { cliente_nome: "Dr. Rafael Lima", periodo: "2026-11-01", comentarios: 0, titulo: "Campanha de Natal" };
+  const ok = resolveDigestItem({ type: "linha_editorial_aprovada", metadata: meta, link: "/" });
+  assertEquals(ok.heading, "Dr. Rafael Lima aprovou a linha editorial “Campanha de Natal”");
+  const aj = resolveDigestItem({ type: "linha_editorial_ajustes", metadata: { ...meta, titulo: "  " }, link: "/" });
+  assertEquals(aj.heading, "Dr. Rafael Lima pediu ajustes na linha editorial de novembro");
+  const nulo = resolveDigestItem({ type: "linha_editorial_aprovada", metadata: { ...meta, titulo: null }, link: "/" });
+  assertEquals(nulo.heading, "Dr. Rafael Lima aprovou a linha editorial de novembro");
+});
+
 Deno.test("digestPreheader: 1, 3 and 25 items", () => {
   const mk = (n: number) => Array.from({ length: n }, (_, i) => ({ priority: 1, heading: `T${i + 1}`, link: "/" }));
   assertEquals(digestPreheader(mk(1)), "T1.");

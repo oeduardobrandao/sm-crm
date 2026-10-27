@@ -159,6 +159,7 @@ interface MensagemRow {
 interface LinhaRow {
   id: string;
   periodo: string;
+  titulo: string | null;
   enviada_at: string;
 }
 
@@ -528,7 +529,7 @@ export async function runClientEventEmailCron(
       if (await linhaFeatureEnabled(deps.db, row.conta_id)) {
         const { data: linhaRows, error: linhaErr } = await deps.db
           .from("linhas_editoriais")
-          .select("id, periodo, enviada_at")
+          .select("id, periodo, titulo, enviada_at")
           .eq("conta_id", row.conta_id)
           .eq("cliente_id", row.id)
           .eq("status", "enviada")
@@ -640,7 +641,7 @@ export async function runClientEventEmailCron(
         hubUrl,
         unsubUrl,
         pendingEvents: reminders,
-        linhas: linhas.map((l): ClientEventLinha => ({ periodo: l.periodo })),
+        linhas: linhas.map((l): ClientEventLinha => ({ periodo: l.periodo, titulo: l.titulo })),
       });
       const idempotencyKey = await buildClientEventIdempotencyKey(row.id, [
         ...approvalIds,

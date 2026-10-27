@@ -80,6 +80,8 @@ export interface HubLinhaResposta {
 export interface HubLinha {
   id: string;
   periodo: string;
+  /** Custom title (spec §14); null means the derived "Linha editorial de {mês}". */
+  titulo: string | null;
   status: string;
   enviada_at: string | null;
   decidida_at: string | null;
@@ -194,6 +196,7 @@ function parsePost(body: Record<string, unknown>): ParsedPost {
 interface LinhaRow {
   id: string;
   periodo: string;
+  titulo: string | null;
   status: string;
   enviada_at: string | null;
   decidida_at: string | null;
@@ -398,7 +401,7 @@ export function createHubLinhaEditorialHandler(deps: HubLinhaEditorialHandlerDep
 /** The GET payload. Every select is an explicit column list; output objects are built field by field. */
 async function loadLinhas(db: DbClient, contaId: string, clienteId: number, nowIso: string): Promise<HubLinha[]> {
   const { data: linhaData, error: linhaErr } = await db.from("linhas_editoriais")
-    .select("id, periodo, status, enviada_at, decidida_at, rodada")
+    .select("id, periodo, titulo, status, enviada_at, decidida_at, rodada")
     .eq("conta_id", contaId)
     .eq("cliente_id", clienteId)
     .in("status", VISIBLE_STATUSES)
@@ -474,6 +477,7 @@ async function loadLinhas(db: DbClient, contaId: string, clienteId: number, nowI
   return linhas.map((l) => ({
     id: l.id,
     periodo: l.periodo,
+    titulo: l.titulo ?? null,
     status: l.status,
     enviada_at: l.enviada_at,
     decidida_at: l.decidida_at,
