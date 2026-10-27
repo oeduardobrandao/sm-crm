@@ -10,6 +10,10 @@ vi.mock('../../../hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: vi.fn(),
 }));
 
+vi.mock('../useTrialOfferRedirect', () => ({
+  useTrialOfferRedirect: () => ({ pending: false, redirect: false }),
+}));
+
 import { useAuth } from '../../../context/AuthContext';
 import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
 import ProtectedRoute from '../ProtectedRoute';
