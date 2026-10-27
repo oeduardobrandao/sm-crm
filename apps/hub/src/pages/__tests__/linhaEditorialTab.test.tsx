@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import i18n from 'i18next';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import ptHubLinha from '../../../../../packages/i18n/locales/pt/hubLinha.json';
 import enHubLinha from '../../../../../packages/i18n/locales/en/hubLinha.json';
 import { HubContext } from '../../HubContext';
@@ -81,12 +81,18 @@ function linha(over: Partial<HubLinha> = {}): HubLinha {
   };
 }
 
+function LocationProbe() {
+  const loc = useLocation();
+  return <span data-testid="location">{`${loc.pathname}${loc.search}`}</span>;
+}
+
 function renderPage(path: string, opts: { linha?: boolean; pauta?: boolean } = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const result = render(
     <QueryClientProvider client={qc}>
       <HubContext.Provider value={hubValue(opts)}>
         <MemoryRouter initialEntries={[path]}>
+          <LocationProbe />
           <Routes>
             <Route path="/:workspace/hub/:token/aprovacoes/:postId?" element={<AprovacoesPage />} />
           </Routes>
@@ -157,6 +163,21 @@ describe('Aprovações, Linha editorial tab', () => {
     renderPage(BASE);
     fireEvent.click(await screen.findByRole('tab', { name: 'Linha editorial · 1' }));
     expect(await screen.findByText(/Este é o plano do mês/)).toBeTruthy();
+  });
+
+  it('the linha tab on a post deep link goes to the list with aba=linha', async () => {
+    // A failed posts fetch renders no post dialog, so the tabs stay reachable on /:postId.
+    mockedFetchPosts.mockRejectedValue(new Error('rede'));
+    renderPage(`${BASE}/1`);
+    expect(await screen.findByText('Erro ao carregar aprovações.')).toBeTruthy();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Linha editorial · 1' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('location').textContent).toBe(`${BASE}?aba=linha`),
+    );
+    expect(await screen.findByText(/Este é o plano do mês/)).toBeTruthy();
+    expect(
+      screen.getByRole('tab', { name: 'Linha editorial · 1' }).getAttribute('aria-selected'),
+    ).toBe('true');
   });
 
   it('shows the empty state when nothing was sent', async () => {

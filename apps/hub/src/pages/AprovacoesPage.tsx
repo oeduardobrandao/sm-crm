@@ -268,7 +268,13 @@ export function AprovacoesPage() {
           active={showLinha ? 'linha' : 'posts'}
           postsCount={pending.length}
           linhasCount={linhasWaiting}
-          onSelect={(tab) =>
+          onSelect={(tab) => {
+            // On a post deep link the linha view can't show (`showLinha` needs the list
+            // route): leave the post the same way closing it does, landing on the linha tab.
+            if (tab === 'linha' && currentId !== null) {
+              navigate(`${base}?aba=linha`, { replace: true });
+              return;
+            }
             setSearchParams(
               (prev) => {
                 const next = new URLSearchParams(prev);
@@ -277,8 +283,8 @@ export function AprovacoesPage() {
                 return next;
               },
               { replace: true },
-            )
-          }
+            );
+          }}
         />
       )}
 
