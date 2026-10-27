@@ -36,7 +36,7 @@ import { LinhaSelectionBar } from './LinhaSelectionBar';
 import { LinhaTable } from './LinhaTable';
 import { formatBreakdown, linhaRef, nomeFluxoPadrao, periodoFromMes } from './linhaLogic';
 import { useIsLinhaPhone } from './useIsLinhaPhone';
-import { linhaItensKey, linhasKey, useLinhaQueries } from './useLinhaQueries';
+import { linhaColunasKey, linhaItensKey, linhasKey, useLinhaQueries } from './useLinhaQueries';
 import './linha.css';
 
 export interface LinhaEditorialViewProps {
@@ -162,6 +162,8 @@ export function LinhaEditorialView({
     onMutate: (clienteId) => setCriandoId(clienteId),
     onSuccess: (_id, clienteId) => {
       void qc.invalidateQueries({ queryKey: linhasKey(periodo) });
+      // The conta's first linha seeds the default columns (Pilar, CTA, Referência).
+      void qc.invalidateQueries({ queryKey: linhaColunasKey });
       onChange({ clientes: [clienteId] });
     },
     onError: (err) => toast.error(erroDeAcao(err, t('view.erroCriar'))),

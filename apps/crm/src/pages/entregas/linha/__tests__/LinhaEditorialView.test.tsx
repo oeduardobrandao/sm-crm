@@ -198,6 +198,20 @@ describe('LinhaEditorialView rail', () => {
     await waitFor(() => expect(onChange).toHaveBeenCalledWith({ clientes: [2] }));
   });
 
+  it('Criar refetches the columns the first linha seeds', async () => {
+    const user = userEvent.setup();
+    const pilar = { id: 'col-pilar', nome: 'Pilar' };
+    m.listColunas.mockResolvedValueOnce([]).mockResolvedValue([pilar]);
+    const { qc } = renderView();
+    await screen.findAllByText('Sem linha neste mês');
+    await waitFor(() => expect(m.listColunas).toHaveBeenCalledTimes(1));
+    const row = screen.getByText('Ana Clínica').closest('li')!;
+    await user.click(within(row).getByRole('button', { name: 'Criar' }));
+    await waitFor(() => expect(m.criarLinha).toHaveBeenCalled());
+    await waitFor(() => expect(m.listColunas).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(qc.getQueryData(['linha-colunas'])).toEqual([pilar]));
+  });
+
   it('shows N de M em produção once rows are converted', async () => {
     m.listLinhasDoMes.mockResolvedValue([
       linha({ cliente_id: 1, status: 'aprovada', itens_total: 5, itens_convertidos: 2 }),
