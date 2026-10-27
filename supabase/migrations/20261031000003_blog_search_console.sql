@@ -62,7 +62,8 @@ grant select, insert, update on blog_search_state to service_role;
 
 -- Troca a janela [p_from, p_to] inteira: o Google omite dias sem dados, entao um upsert deixaria
 -- para tras o dia que foi revisado para zero. p_rows: [{slug, day, clicks, impressions, position}].
--- Uma transacao (a da chamada): erro em qualquer linha desfaz o delete.
+-- Uma transacao (a da chamada): erro em qualquer linha desfaz o delete. Linha malformada tambem
+-- falha, com 23502 (campo faltando) ou 23505 (slug/day repetido em p_rows), e desfaz a chamada toda.
 create or replace function public.blog_search_replace(p_from date, p_to date, p_rows jsonb)
 returns void
 language plpgsql
@@ -95,7 +96,9 @@ $$;
 
 -- Totais por post nos p_days dias que terminam em max(day) da tabela (o dado do Google chega com
 -- atraso, entao "hoje" nao serve de ancora). Posicao ponderada por impressoes; sem impressoes,
--- ctr e posicao saem 0 (o chamador mostra "sem dados"). p_days nulo ou < 1 vira 28; teto 486.
+-- ctr sai 0 e a posicao sai null (posicao do Google e >= 1, entao 0 nao existe). p_days nulo ou
+-- < 1 vira 28; o teto 486 dias e o que o Search Console guarda (~16 meses, o mesmo horizonte do
+-- backfill do cron) e valores maiores sao limitados a ele.
 create or replace function public.blog_search_stats(p_days int default 28)
 returns table (slug text, clicks bigint, impressions bigint, ctr numeric, "position" numeric)
 language sql
@@ -114,7 +117,7 @@ as $$
          case when sum(d.impressions) > 0
               then sum(d.clicks)::numeric / sum(d.impressions) else 0 end,
          case when sum(d.impressions) > 0
-              then sum(d.position * d.impressions) / sum(d.impressions) else 0 end
+              then sum(d.position * d.impressions) / sum(d.impressions) else null end
   from blog_search_daily d, w
   where d.day > w.last_day - w.days
   group by d.slug;

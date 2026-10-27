@@ -101,7 +101,9 @@ begin
   select count(*) into v_n from blog_search_daily where day = d1;
   assert v_n = 0, 'janela com array vazio deveria apagar d1';
 
-  -- linha fora da janela: 22023 e nada muda (transacao da funcao desfeita)
+  -- linha fora da janela: 22023 e nada muda (linhas existentes em d1/d2 sobrevivem)
+  insert into blog_search_daily (slug, day, clicks, impressions, position) values
+    ('p', d1, 11, 110, 2), ('p', d2, 12, 120, 2);
   begin
     perform blog_search_replace(d1, d2, jsonb_build_array(
       jsonb_build_object('slug', 'p', 'day', d1, 'clicks', 1, 'impressions', 1, 'position', 1),
@@ -111,8 +113,12 @@ begin
   exception when sqlstate '22023' then
     null;
   end;
-  select count(*) into v_n from blog_search_daily where day in (d1, d2);
+  select count(*) into v_n from blog_search_daily
+    where slug = 'p' and day in (d1, d2) and clicks in (11, 12);
+  assert v_n = 2, format('erro 22023 deveria preservar d1/d2 (sobraram %s de 2)', v_n);
+  select count(*) into v_n from blog_search_daily where day = d3;
   assert v_n = 0, 'insercao parcial apos erro 22023';
+  delete from blog_search_daily;
 
   -- janela invertida e p_rows que nao e array tambem sao 22023
   begin
@@ -143,6 +149,7 @@ begin
 
   select * into r from blog_search_stats(28) where slug = 'z';
   assert r.ctr = 0, 'ctr sem impressoes deveria ser 0';
+  assert r.position is null, 'posicao sem impressoes deveria ser null';
 
   select count(*) into v_n from blog_search_stats(28) where slug = 'old';
   assert v_n = 0, 'linha de 100 dias antes de max(day) entrou na janela de 28';
