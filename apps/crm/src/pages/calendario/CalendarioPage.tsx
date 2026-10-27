@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { Globe, Flag } from 'lucide-react';
 import {
   Select,
@@ -60,6 +61,7 @@ function FinanceiroCalendar({
   datasImportantes: ClienteData[];
   canSeeFinancials: FinancialAccess;
 }) {
+  const { t } = useTranslation('calendario');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(new Date().getDate());
   const { pedirConfirmacao, dialog: confirmDialog } = useConfirmarPagamento(canSeeFinancials);
@@ -68,21 +70,8 @@ function FinanceiroCalendar({
   const month = currentDate.getMonth();
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const monthNames = [
-    'Janeiro',
-    'Fevereiro',
-    'Março',
-    'Abril',
-    'Maio',
-    'Junho',
-    'Julho',
-    'Agosto',
-    'Setembro',
-    'Outubro',
-    'Novembro',
-    'Dezembro',
-  ];
-  const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  const monthName = (m: number) => t(`months.${m}`);
+  const weekDays = [0, 1, 2, 3, 4, 5, 6].map((d) => t(`weekdaysShort.${d}`));
 
   const today = new Date();
   const isSameMonth =
@@ -117,7 +106,7 @@ function FinanceiroCalendar({
         <div className="calendar-main">
           <div className="calendar-header">
             <div className="calendar-title-group">
-              <h2>{monthNames[month]}</h2>
+              <h2>{monthName(month)}</h2>
               <span>{year}</span>
             </div>
             <div className="calendar-nav">
@@ -178,16 +167,20 @@ function FinanceiroCalendar({
                   <span className="day-number">{d}</span>
                   <div className="day-events">
                     {dayIncomes.length > 0 && (
-                      <div className="event-pill income">↗ {dayIncomes.length} Receb.</div>
+                      <div className="event-pill income">
+                        ↗ {t('financeiro.pillIncome', { count: dayIncomes.length })}
+                      </div>
                     )}
                     {dayExpenses.length > 0 && (
-                      <div className="event-pill expense">↘ {dayExpenses.length} Desp.</div>
+                      <div className="event-pill expense">
+                        ↘ {t('financeiro.pillExpense', { count: dayExpenses.length })}
+                      </div>
                     )}
                     {dayDeadlines.length > 0 && (
                       <div
                         className={`event-pill deadline${dayDeadlines.some((dl) => dl.estourado) ? ' overdue' : ''}`}
                       >
-                        ⚑ {dayDeadlines.length} Entrega{dayDeadlines.length > 1 ? 's' : ''}
+                        ⚑ {t('financeiro.pillDeadline', { count: dayDeadlines.length })}
                       </div>
                     )}
                     {dayBirthdays.length > 0 && (
@@ -199,7 +192,7 @@ function FinanceiroCalendar({
                           fontWeight: 600,
                         }}
                       >
-                        🎂 {dayBirthdays.length} Aniv.
+                        🎂 {t('financeiro.pillBirthday', { count: dayBirthdays.length })}
                       </div>
                     )}
                     {dayDatas.length > 0 && (
@@ -211,7 +204,7 @@ function FinanceiroCalendar({
                           fontWeight: 600,
                         }}
                       >
-                        📅 {dayDatas.length} Data{dayDatas.length > 1 ? 's' : ''}
+                        📅 {t('financeiro.pillDate', { count: dayDatas.length })}
                       </div>
                     )}
                   </div>
@@ -223,9 +216,9 @@ function FinanceiroCalendar({
 
         <div className="scheduled-panel">
           <div className="scheduled-header">
-            <h3>Agendado</h3>
+            <h3>{t('financeiro.scheduled')}</h3>
             <p>
-              {selectedDay} de {monthNames[month]}, {year}
+              {t('financeiro.selectedDate', { day: selectedDay, month: monthName(month), year })}
             </p>
           </div>
           <div className="scheduled-list">
@@ -235,7 +228,7 @@ function FinanceiroCalendar({
             birthdayClients.length === 0 &&
             selectedDatas.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--text-muted)' }}>
-                <p>Nenhuma movimentação neste dia.</p>
+                <p>{t('shared.noActivity')}</p>
               </div>
             ) : (
               <>
@@ -251,7 +244,7 @@ function FinanceiroCalendar({
                         />
                         {paid ? (
                           <span className="badge badge-success">
-                            <i className="ph ph-check-circle" /> Pago
+                            <i className="ph ph-check-circle" /> {t('shared.paid')}
                           </span>
                         ) : (
                           <button
@@ -266,7 +259,7 @@ function FinanceiroCalendar({
                               )
                             }
                           >
-                            <i className="ph ph-check-circle" /> CONFIRMAR
+                            <i className="ph ph-check-circle" /> {t('financeiro.confirm')}
                           </button>
                         )}
                       </div>
@@ -278,10 +271,12 @@ function FinanceiroCalendar({
                       >
                         {c.nome}
                       </div>
-                      <div className="item-subtitle">PLANO: {c.plano?.toUpperCase() || 'N/A'}</div>
+                      <div className="item-subtitle">
+                        {t('financeiro.plan', { plan: c.plano?.toUpperCase() || 'N/A' })}
+                      </div>
                       <div className="item-divider" />
                       <div className="item-meta">
-                        <i className="ph ph-money" /> Previsto:{' '}
+                        <i className="ph ph-money" /> {t('financeiro.expected')}{' '}
                         {formatFinancialBRL(c.valor_mensal, canSeeFinancials)}
                       </div>
                     </div>
@@ -300,7 +295,7 @@ function FinanceiroCalendar({
                         />
                         {paid ? (
                           <span className="badge badge-success">
-                            <i className="ph ph-check-circle" /> Pago
+                            <i className="ph ph-check-circle" /> {t('shared.paid')}
                           </span>
                         ) : (
                           <button
@@ -315,7 +310,7 @@ function FinanceiroCalendar({
                               )
                             }
                           >
-                            <i className="ph ph-check-circle" /> CONFIRMAR
+                            <i className="ph ph-check-circle" /> {t('financeiro.confirm')}
                           </button>
                         )}
                       </div>
@@ -328,11 +323,14 @@ function FinanceiroCalendar({
                         {m.nome}
                       </div>
                       <div className="item-subtitle">
-                        EQUIPE - {m.cargo?.toUpperCase()} ({m.tipo.replace('_', ' ').toUpperCase()})
+                        {t('financeiro.team', {
+                          role: m.cargo?.toUpperCase() ?? '',
+                          type: m.tipo.replace('_', ' ').toUpperCase(),
+                        })}
                       </div>
                       <div className="item-divider" />
                       <div className="item-meta">
-                        <i className="ph ph-money" /> Previsto:{' '}
+                        <i className="ph ph-money" /> {t('financeiro.expected')}{' '}
                         {formatFinancialBRL(m.custo_mensal, canSeeFinancials)}
                       </div>
                     </div>
@@ -349,11 +347,11 @@ function FinanceiroCalendar({
                       </div>
                       <div className="item-title">{d.workflowTitle}</div>
                       <div className="item-subtitle">
-                        {d.clienteNome} · ETAPA: {d.etapaNome}
+                        {t('financeiro.stage', { client: d.clienteNome, stage: d.etapaNome })}
                       </div>
                       <div className="item-divider" />
                       <div className="item-meta">
-                        <i className="ph ph-flag" /> Prazo da etapa
+                        <i className="ph ph-flag" /> {t('financeiro.stageDeadline')}
                       </div>
                     </div>
                   );
@@ -371,7 +369,7 @@ function FinanceiroCalendar({
                           color: '#ec4899',
                         }}
                       >
-                        🎂 ANIVERSÁRIO
+                        🎂 {t('financeiro.birthdayBadge')}
                       </span>
                     </div>
                     <div className="item-title">{c.nome}</div>
@@ -379,26 +377,15 @@ function FinanceiroCalendar({
                       {(() => {
                         if (!c.data_aniversario) return '';
                         const [mm, dd] = c.data_aniversario.split('-');
-                        const meses = [
-                          'Janeiro',
-                          'Fevereiro',
-                          'Março',
-                          'Abril',
-                          'Maio',
-                          'Junho',
-                          'Julho',
-                          'Agosto',
-                          'Setembro',
-                          'Outubro',
-                          'Novembro',
-                          'Dezembro',
-                        ];
-                        return `${parseInt(dd)} de ${meses[parseInt(mm) - 1]}`;
+                        return t('shared.dayMonth', {
+                          day: parseInt(dd),
+                          month: monthName(parseInt(mm) - 1),
+                        });
                       })()}
                     </div>
                     <div className="item-divider" />
                     <div className="item-meta">
-                      <i className="ph ph-cake" /> Aniversário do cliente
+                      <i className="ph ph-cake" /> {t('shared.clientBirthday')}
                     </div>
                   </div>
                 ))}
@@ -417,7 +404,7 @@ function FinanceiroCalendar({
                             color: '#6366f1',
                           }}
                         >
-                          📅 DATA IMPORTANTE
+                          📅 {t('financeiro.importantDateBadge')}
                         </span>
                       </div>
                       <div className="item-title">{d.titulo}</div>
@@ -442,6 +429,7 @@ function FinanceiroCalendar({
 
 // ---- Niche Calendar (Datas Comemorativas) ----
 function NicheCalendar({ niche }: { niche: NicheCalendarDef }) {
+  const { t } = useTranslation('calendario');
   const [activeFilter, setActiveFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -453,12 +441,12 @@ function NicheCalendar({ niche }: { niche: NicheCalendarDef }) {
   }, [niche.key]);
 
   const filterOptions = [
-    { key: 'all', label: 'Todos' },
+    { key: 'all', label: t('shared.filters.all') },
     {
       key: 'br',
       label: (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-          <Flag className="h-3.5 w-3.5" /> Brasil
+          <Flag className="h-3.5 w-3.5" /> {t('shared.filters.br')}
         </span>
       ),
     },
@@ -466,11 +454,11 @@ function NicheCalendar({ niche }: { niche: NicheCalendarDef }) {
       key: 'world',
       label: (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-          <Globe className="h-3.5 w-3.5" /> Mundial
+          <Globe className="h-3.5 w-3.5" /> {t('shared.filters.world')}
         </span>
       ),
     },
-    { key: 'prof', label: 'Profissional' },
+    { key: 'prof', label: t('shared.filters.prof') },
     ...Object.entries(niche.filterLabels).map(([key, label]) => ({ key, label })),
   ];
 
@@ -514,7 +502,7 @@ function NicheCalendar({ niche }: { niche: NicheCalendarDef }) {
           ))}
           <input
             type="text"
-            placeholder="Buscar data..."
+            placeholder={t('shared.searchPlaceholder')}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             style={{
@@ -533,30 +521,30 @@ function NicheCalendar({ niche }: { niche: NicheCalendarDef }) {
         </div>
 
         <div className="niche-count">
-          <span>{totalVisible}</span> DATAS EXIBIDAS
+          <span>{totalVisible}</span> {t('niche.shown')}
         </div>
       </div>
 
       <div className="niche-legend" style={{ marginBottom: '2rem' }}>
         <div className="niche-legend-item">
           <div className="niche-legend-dot" style={{ background: dotColorMap.br }} />
-          Brasil
+          {t('shared.legend.br')}
         </div>
         <div className="niche-legend-item">
           <div className="niche-legend-dot" style={{ background: dotColorMap.world }} />
-          Mundial / OMS / OPAS
+          {t('shared.legend.world')}
         </div>
         <div className="niche-legend-item">
           <div className="niche-legend-dot" style={{ background: dotColorMap.prof }} />
-          Profissões
+          {t('shared.legend.prof')}
         </div>
         <div className="niche-legend-item">
           <div className="niche-legend-dot" style={{ background: dotColorMap.week }} />
-          Semanas
+          {t('shared.legend.week')}
         </div>
         <div className="niche-legend-item">
           <div className="niche-legend-dot" style={{ background: dotColorMap.month }} />
-          Meses temáticos
+          {t('shared.legend.month')}
         </div>
       </div>
 
@@ -576,7 +564,9 @@ function NicheCalendar({ niche }: { niche: NicheCalendarDef }) {
             <div key={monthData.month} className="niche-month-card">
               <div className="niche-month-header">
                 <div>
-                  <div className="niche-month-name">{monthData.month}</div>
+                  <div className="niche-month-name">
+                    {t(`months.${Number(monthData.num) - 1}`, { defaultValue: monthData.month })}
+                  </div>
                   <div className="niche-month-num">{monthData.num}</div>
                 </div>
                 {monthData.badge && <span className="niche-month-badge">{monthData.badge}</span>}
@@ -606,12 +596,14 @@ function NicheCalendar({ niche }: { niche: NicheCalendarDef }) {
  *  tabs. With `feature_agenda` on, both become layers of the Agenda instead. */
 function CalendarioClassico() {
   const isPhone = !useIsDesktop(768);
+  const { t } = useTranslation('calendario');
   const [activeTab, setActiveTab] = useState<'financeiro' | 'comemorativas'>('financeiro');
 
   useEffect(() => {
-    const nome = activeTab === 'financeiro' ? 'Calendário' : 'Datas Comemorativas';
+    const nome =
+      activeTab === 'financeiro' ? t('shared.calendarTitle') : t('page.commemorativeTab');
     document.title = `${nome} | Mesaas`;
-  }, [activeTab]);
+  }, [activeTab, t]);
   const nicheKeys = NICHE_CALENDARS.map((n) => n.key);
   const [activeNicheKey, setActiveNicheKey] = useState(() =>
     readStoredNicheKey(nicheKeys, DEFAULT_NICHE_KEY),
@@ -659,21 +651,21 @@ function CalendarioClassico() {
     [workflows, etapasPorWorkflow, clientes],
   );
 
-  const titulo = activeTab === 'financeiro' ? 'Calendário' : activeNiche.title;
-  const subtitulo = activeTab === 'financeiro' ? 'Visão geral mensal.' : activeNiche.subtitle;
+  const titulo = activeTab === 'financeiro' ? t('shared.calendarTitle') : activeNiche.title;
+  const subtitulo = activeTab === 'financeiro' ? t('shared.monthlyOverview') : activeNiche.subtitle;
   const calendarTabs = (
     <div className="calendar-tabs animate-up">
       <button
         className={`calendar-tab${activeTab === 'financeiro' ? ' active' : ''}`}
         onClick={() => setActiveTab('financeiro')}
       >
-        Calendário
+        {t('shared.calendarTitle')}
       </button>
       <button
         className={`calendar-tab${activeTab === 'comemorativas' ? ' active' : ''}`}
         onClick={() => setActiveTab('comemorativas')}
       >
-        Datas Comemorativas
+        {t('page.commemorativeTab')}
       </button>
     </div>
   );
@@ -753,14 +745,15 @@ function CalendarioClassico() {
 /** No tab bar: the old tabs live on as layers of the Agenda. `?evento=` and
  *  `?data=` are read by AgendaTab itself. */
 function AgendaPagina() {
+  const { t } = useTranslation('calendario');
   const isPhone = !useIsDesktop(768);
   useEffect(() => {
-    document.title = 'Agenda | Mesaas';
-  }, []);
+    document.title = `${t('page.agendaTitle')} | Mesaas`;
+  }, [t]);
 
   const inToolbar = usePageToolbar({
-    title: 'Agenda',
-    subtitle: 'Eventos, reuniões e gravações da equipe.',
+    title: t('page.agendaTitle'),
+    subtitle: t('page.agendaSubtitle'),
   });
 
   // Phones: AgendaTab draws its own page header (title, period, filters, "+").
@@ -777,8 +770,8 @@ function AgendaPagina() {
       {!inToolbar && (
         <header className="header animate-up">
           <div className="header-title">
-            <h1>Agenda</h1>
-            <p style={{ color: 'var(--text-muted)' }}>Eventos, reuniões e gravações da equipe.</p>
+            <h1>{t('page.agendaTitle')}</h1>
+            <p style={{ color: 'var(--text-muted)' }}>{t('page.agendaSubtitle')}</p>
           </div>
         </header>
       )}
@@ -793,10 +786,11 @@ function AgendaPagina() {
 }
 
 function CalendarioEsqueleto() {
+  const { t } = useTranslation('calendario');
   return (
     <div
       role="status"
-      aria-label="Carregando calendário"
+      aria-label={t('page.loading')}
       style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}
     >
       <div className="flex flex-col gap-2">

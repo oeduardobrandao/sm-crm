@@ -1,10 +1,17 @@
+import { i18n } from '@mesaas/i18n';
 import type { NicheCalendarDef } from './types';
 
 export const belezaEsteticaDef: NicheCalendarDef = {
   key: 'beleza-estetica',
-  label: 'Beleza & Estética',
-  title: 'Calendário de Beleza & Estética',
-  subtitle: 'Brasil & Mundial — Datas de Beleza & Bem-estar',
+  get label() {
+    return i18n.t('calendario:niches.belezaEstetica.label');
+  },
+  get title() {
+    return i18n.t('calendario:niches.belezaEstetica.title');
+  },
+  get subtitle() {
+    return i18n.t('calendario:niches.belezaEstetica.subtitle');
+  },
   data: [
     {
       month: 'Janeiro',
@@ -352,11 +359,23 @@ export const belezaEsteticaDef: NicheCalendarDef = {
     },
   ],
   filterLabels: {
-    capilar: 'Capilar',
-    pele: 'Pele',
-    unhas: 'Unhas',
-    maquiagem: 'Maquiagem',
-    'bem-estar': 'Bem-estar',
-    barbearia: 'Barbearia',
+    get capilar() {
+      return i18n.t('calendario:niches.belezaEstetica.filterLabels.capilar');
+    },
+    get pele() {
+      return i18n.t('calendario:niches.belezaEstetica.filterLabels.pele');
+    },
+    get unhas() {
+      return i18n.t('calendario:niches.belezaEstetica.filterLabels.unhas');
+    },
+    get maquiagem() {
+      return i18n.t('calendario:niches.belezaEstetica.filterLabels.maquiagem');
+    },
+    get 'bem-estar'() {
+      return i18n.t('calendario:niches.belezaEstetica.filterLabels.bem-estar');
+    },
+    get barbearia() {
+      return i18n.t('calendario:niches.belezaEstetica.filterLabels.barbearia');
+    },
   },
 };

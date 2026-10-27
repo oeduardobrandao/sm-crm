@@ -1,0 +1,208 @@
+{
+  "shared": {
+    "paid": "Paid",
+    "confirmNamed": "Confirm {{name}}",
+    "noActivity": "Nothing scheduled for this day.",
+    "calendarTitle": "Calendar",
+    "monthlyOverview": "Monthly overview.",
+    "clientBirthday": "Client birthday",
+    "birthday": "Birthday",
+    "dayMonth": "{{month}} {{day}}",
+    "dueToday": "Due today",
+    "searchPlaceholder": "Search dates...",
+    "niche": "Niche",
+    "filters": {
+      "all": "All",
+      "br": "Brazil",
+      "world": "Worldwide",
+      "prof": "Professional"
+    },
+    "legend": {
+      "br": "Brazil",
+      "world": "Worldwide / WHO / PAHO",
+      "prof": "Professions",
+      "week": "Weeks",
+      "month": "Themed months"
+    },
+    "count": {
+      "receivables_zero": "{{count}} receivables",
+      "receivables_one": "{{count}} receivable",
+      "receivables_other": "{{count}} receivables",
+      "payments_zero": "{{count}} payments",
+      "payments_one": "{{count}} payment",
+      "payments_other": "{{count}} payments",
+      "deliveries_zero": "{{count}} deadlines",
+      "deliveries_one": "{{count}} deadline",
+      "deliveries_other": "{{count}} deadlines",
+      "birthdays_zero": "{{count}} birthdays",
+      "birthdays_one": "{{count}} birthday",
+      "birthdays_other": "{{count}} birthdays",
+      "dates_zero": "{{count}} dates",
+      "dates_one": "{{count}} date",
+      "dates_other": "{{count}} dates"
+    }
+  },
+  "deadlineStatus": {
+    "none": "No deadline",
+    "overdue": "{{count}}d overdue",
+    "remaining_one": "{{count}}d left",
+    "remaining_other": "{{count}}d left"
+  },
+  "page": {
+    "commemorativeTab": "Commemorative Dates",
+    "agendaTitle": "Events",
+    "agendaSubtitle": "Team events, meetings and shoots.",
+    "loading": "Loading calendar"
+  },
+  "financeiro": {
+    "pillIncome": "{{count}} Inc.",
+    "pillExpense": "{{count}} Exp.",
+    "pillDeadline_one": "{{count}} Deadline",
+    "pillDeadline_other": "{{count}} Deadlines",
+    "pillBirthday": "{{count}} Bday",
+    "pillDate_one": "{{count}} Date",
+    "pillDate_other": "{{count}} Dates",
+    "scheduled": "Scheduled",
+    "selectedDate": "{{month}} {{day}}, {{year}}",
+    "confirm": "CONFIRM",
+    "plan": "PLAN: {{plan}}",
+    "team": "TEAM - {{role}} ({{type}})",
+    "expected": "Expected:",
+    "stage": "{{client}} · STAGE: {{stage}}",
+    "stageDeadline": "Stage deadline",
+    "birthdayBadge": "BIRTHDAY",
+    "importantDateBadge": "IMPORTANT DATE"
+  },
+  "niche": {
+    "shown": "DATES SHOWN"
+  },
+  "phone": {
+    "viewAria": "Calendar view",
+    "commemorativeTab": "Commemorative dates",
+    "incomeSubtitle": "Plan: {{plan}} · Expected {{value}}",
+    "expenseSubtitle": "Team · {{details}} · Expected {{value}}",
+    "stage": "{{client}} · Stage: {{stage}}",
+    "noClient": "No client",
+    "legend": {
+      "income": "Receivable",
+      "expense": "Payment",
+      "deadline": "Deadline",
+      "importantDate": "Important date"
+    },
+    "filterAria": "Filter dates",
+    "closeSearch": "Close search",
+    "searchDate": "Search dates",
+    "shown_zero": "{{count}} dates shown",
+    "shown_one": "{{count}} date shown",
+    "shown_other": "{{count}} dates shown",
+    "noDates": "No dates found."
+  },
+  "camadas": {
+    "rotulo": {
+      "posts": "Scheduled posts",
+      "prazos": "Delivery deadlines",
+      "recebimentos": "Receivables",
+      "pagamentos": "Team payments",
+      "datas": "Client dates",
+      "comemorativas": "Commemorative dates"
+    },
+    "group": "Layers",
+    "postOf": "Post for {{client}}",
+    "clientFallback": "client",
+    "monthPrefix": "Month",
+    "weekPrefix": "Week"
+  },
+  "popover": {
+    "dateLong": "MMMM d, yyyy",
+    "until": "{{start}} to {{end}}",
+    "deadline": "Due: {{date}}",
+    "overdue_zero": "Overdue by {{count}} days",
+    "overdue_one": "Overdue by {{count}} day",
+    "overdue_other": "Overdue by {{count}} days",
+    "remaining_one": "{{count}} day left",
+    "remaining_other": "{{count}} days left",
+    "openPost": "Open post",
+    "openWorkflow": "Open workflow",
+    "openClient": "Open client",
+    "workflow": "Workflow: {{title}}",
+    "client": "Client: {{name}}",
+    "adjustedDay": "Day {{day}}, moved to the last day of the month",
+    "tipos": {
+      "br": "Brazil",
+      "world": "Worldwide",
+      "prof": "Professional",
+      "week": "Week",
+      "month": "Themed month"
+    }
+  },
+  "confirmarPagamento": {
+    "title": "Confirm Scheduled Payment",
+    "description": "Confirm the scheduled receivable/payment for {{desc}} ({{value}})?",
+    "success": "Payment confirmed!",
+    "error": "Error"
+  },
+  "niches": {
+    "medico": {
+      "label": "Medical",
+      "title": "Medical Calendar",
+      "subtitle": "Brazil & Worldwide: Health & Awareness Dates",
+      "filterLabels": {
+        "cancer": "Cancer",
+        "cardio": "Cardiology",
+        "saude-mental": "Mental Health",
+        "infeccao": "Infection"
+      }
+    },
+    "juridico": {
+      "label": "Legal",
+      "title": "Legal Calendar",
+      "subtitle": "Brazil & Worldwide: Law & Justice Dates",
+      "filterLabels": {
+        "trabalhista": "Labor",
+        "civil": "Civil",
+        "criminal": "Criminal",
+        "tributario": "Tax",
+        "consumidor": "Consumer",
+        "empresarial": "Corporate",
+        "digital": "Digital"
+      }
+    },
+    "varejo": {
+      "label": "Retail",
+      "title": "Retail Calendar",
+      "subtitle": "Brazil & Worldwide: Shopping & Commerce Dates",
+      "filterLabels": {
+        "sazonal": "Seasonal / Sales",
+        "ecommerce": "E-commerce",
+        "consumidor": "Consumer",
+        "moda": "Fashion",
+        "pet": "Pet",
+        "casa": "Home & Decor"
+      }
+    },
+    "belezaEstetica": {
+      "label": "Beauty & Aesthetics",
+      "title": "Beauty & Aesthetics Calendar",
+      "subtitle": "Brazil & Worldwide: Beauty & Wellness Dates",
+      "filterLabels": {
+        "capilar": "Hair",
+        "pele": "Skin",
+        "unhas": "Nails",
+        "maquiagem": "Makeup",
+        "bem-estar": "Wellness",
+        "barbearia": "Barbershop"
+      }
+    },
+    "gastronomia": {
+      "label": "Food & Dining",
+      "title": "Food & Dining Calendar",
+      "subtitle": "Brazil & Worldwide: Food & Dining Dates",
+      "filterLabels": {
+        "bebidas": "Drinks",
+        "doces": "Sweets & Pastry",
+        "culinaria-regional": "Regional Cuisine",
+        "sustentabilidade": "Sustainability"
+      }
+    }
+  }
+}

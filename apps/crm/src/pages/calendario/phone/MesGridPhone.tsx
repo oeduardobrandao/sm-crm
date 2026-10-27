@@ -1,18 +1,12 @@
 import type { ReactNode } from 'react';
 import { format, isSameDay } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { useTranslation } from 'react-i18next';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import { cn } from '@/lib/utils';
 import './calendarioPhone.css';
 
-const SEMANA: { short: string; long: string }[] = [
-  { short: 'D', long: 'domingo' },
-  { short: 'S', long: 'segunda' },
-  { short: 'T', long: 'terça' },
-  { short: 'Q', long: 'quarta' },
-  { short: 'Q', long: 'quinta' },
-  { short: 'S', long: 'sexta' },
-  { short: 'S', long: 'sábado' },
-];
+/** Weekday indexes, Sunday first; the initial comes from `common:weekdays` (D S T Q Q S S). */
+const SEMANA = [0, 1, 2, 3, 4, 5, 6] as const;
 
 export interface MesGridPhoneProps {
   /** Any day of the month shown. */
@@ -47,7 +41,9 @@ export function MesGridPhone({
   const month = mes.getMonth();
   const diasNoMes = new Date(year, month + 1, 0).getDate();
   const vazios = (new Date(year, month, 1).getDay() - weekStartsOn + 7) % 7;
-  const nomeMes = format(mes, 'MMMM', { locale: ptBR });
+  const { t } = useTranslation('calendario');
+  const locale = useDateFnsLocale();
+  const nomeMes = format(mes, 'MMMM', { locale });
   const hoje = new Date();
   const semana = [...SEMANA.slice(weekStartsOn), ...SEMANA.slice(0, weekStartsOn)];
 
@@ -56,7 +52,7 @@ export function MesGridPhone({
       {cabecalho}
       <div className="phone-cal-month__weekdays" aria-hidden="true">
         {semana.map((d) => (
-          <span key={d.long}>{d.short}</span>
+          <span key={d}>{t(`weekdays.${d}`).charAt(0)}</span>
         ))}
       </div>
       <div className="phone-cal-month__grid">
@@ -78,7 +74,7 @@ export function MesGridPhone({
                 selected && 'phone-cal-month__day--selected',
               )}
               aria-pressed={selected}
-              aria-label={`${i + 1} de ${nomeMes}${resumo ? `, ${resumo}` : ''}`}
+              aria-label={`${t('shared.dayMonth', { day: i + 1, month: nomeMes })}${resumo ? `, ${resumo}` : ''}`}
               onClick={() => onSelect(dia)}
             >
               {i + 1}

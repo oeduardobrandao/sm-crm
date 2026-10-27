@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { addDays, format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { useTranslation } from 'react-i18next';
+import { getDateFnsLocale, i18n } from '@mesaas/i18n';
 import { cn } from '@/lib/utils';
 import type { AgendaOcorrencia } from '../../../../store/agenda';
 import { IconeDaCamada } from '../../camadas/icones';
@@ -15,8 +16,12 @@ const hora = (d: Date) => format(d, 'HH:mm');
 
 /** "Segunda, 5 de outubro". */
 export function diaComSemana(d: Date): string {
-  const semana = format(d, 'EEEE', { locale: ptBR }).replace('-feira', '');
-  return `${maiuscula(semana)}, ${format(d, "d 'de' MMMM", { locale: ptBR })}`;
+  const locale = getDateFnsLocale();
+  const semana = format(d, 'EEEE', { locale }).replace('-feira', '');
+  return i18n.t('agenda:periodo.day', {
+    weekday: maiuscula(semana),
+    date: format(d, i18n.t('agenda:logic.dayMonthFormat'), { locale }),
+  });
 }
 
 const aguardandoResposta = (o: AgendaOcorrencia, meuId: string | null) =>
@@ -40,6 +45,7 @@ function LinhaAgenda({
   meuId: string | null;
   abrir: AbrirItem;
 }) {
+  const { t } = useTranslation('agenda');
   const o = item.ocorrencia;
   const camada = item.camada;
   const pendente = o ? aguardandoResposta(o, meuId) : false;
@@ -49,7 +55,7 @@ function LinhaAgenda({
     ? CAMADA_ROTULO[camada.camada]
     : o && !o.mascarado
       ? [
-          pendente ? 'Aguardando sua resposta' : null,
+          pendente ? t('shared.aguardandoResposta') : null,
           o.cliente_nome || (o.tipo ? TIPO_LABEL[o.tipo] : null),
           o.local,
         ]
@@ -67,7 +73,7 @@ function LinhaAgenda({
       >
         <span className="phone-agenda-row__hora">
           {item.diaInteiro ? (
-            <strong>Dia inteiro</strong>
+            <strong>{t('view.allDay')}</strong>
           ) : (
             <>
               <strong>{inicioNoDia ? hora(item.inicio) : '00:00'}</strong>
@@ -147,13 +153,14 @@ export function AgendaListaPhone({
   meuId: string | null;
   abrir: AbrirItem;
 }) {
+  const { t } = useTranslation('agenda');
   const itens = useMemo(() => paraItens(eventos), [eventos]);
   const dias: { dia: Date; itens: ItemAgenda[] }[] = [];
   for (let d = inicio; d < fim; d = addDays(d, 1)) {
     const doDia = itensDoDia(itens, d);
     if (doDia.length) dias.push({ dia: d, itens: doDia });
   }
-  if (dias.length === 0) return <p className="phone-agenda-vazio">Nenhum evento neste período.</p>;
+  if (dias.length === 0) return <p className="phone-agenda-vazio">{t('view.noEvents')}</p>;
   return (
     <div className="phone-agenda-lista">
       {dias.map(({ dia, itens: doDia }) => (
@@ -180,6 +187,7 @@ export function AgendaMesPhone({
   meuId: string | null;
   abrir: AbrirItem;
 }) {
+  const { t } = useTranslation('agenda');
   const itens = useMemo(() => paraItens(eventos), [eventos]);
   const doDia = itensDoDia(itens, selecionado);
   return (
@@ -192,13 +200,13 @@ export function AgendaMesPhone({
         dotsDoDia={(d) => [...new Set(itensDoDia(itens, d).map((i) => i.cor))]}
         resumoDoDia={(d) => {
           const n = itensDoDia(itens, d).length;
-          return n ? `${n} ${n === 1 ? 'item' : 'itens'}` : '';
+          return n ? t('phone.itens', { count: n }) : '';
         }}
       />
       {doDia.length ? (
         <GrupoDoDia dia={selecionado} itens={doDia} meuId={meuId} abrir={abrir} />
       ) : (
-        <p className="phone-agenda-vazio">Nenhum evento neste dia.</p>
+        <p className="phone-agenda-vazio">{t('phone.nenhumNoDia')}</p>
       )}
     </>
   );

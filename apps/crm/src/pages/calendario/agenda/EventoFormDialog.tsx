@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -191,6 +192,7 @@ interface EscopoPendente {
 /** Criar / editar evento (spec: EventoFormDialog). On create, dates and times
  *  are the browser's wall clock; on edit, the series tz's (emFuso). */
 export function EventoFormDialog(props: EventoFormDialogProps) {
+  const { t } = useTranslation('agendaEvento');
   const confirmCopy = useConfirmCloseCopy();
   const { open, onOpenChange } = props;
   const ocorrencia = props.modo === 'editar' ? props.ocorrencia : null;
@@ -265,8 +267,12 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
     () =>
       (usuarios as { id: string; nome: string | null; avatar_url?: string | null }[])
         .filter((u) => u.id && u.id !== organizadorId)
-        .map((u) => ({ id: u.id, nome: u.nome || 'Sem nome', avatar_url: u.avatar_url ?? null })),
-    [usuarios, organizadorId],
+        .map((u) => ({
+          id: u.id,
+          nome: u.nome || t('eventoFormDialog.noName'),
+          avatar_url: u.avatar_url ?? null,
+        })),
+    [usuarios, organizadorId, t],
   );
 
   const v = useWatch({ control: form.control }) as EventoFormValues;
@@ -289,11 +295,11 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
   const mostrarCompartilhar = !!v.cliente_id && v.cliente_id !== 'none' && !v.privado;
   const ajudaCompartilhar = clienteSemEmail
     ? temHub
-      ? 'Este cliente não tem e-mail cadastrado. O evento aparece só no portal.'
-      : 'Este cliente não tem e-mail cadastrado e o plano não inclui o Hub. O cliente não será avisado deste evento.'
+      ? t('eventoFormDialog.shareHelp.noEmailHub')
+      : t('eventoFormDialog.shareHelp.noEmailNoHub')
     : temHub
-      ? 'Aparece no portal do cliente e ele recebe o convite por e-mail.'
-      : 'O cliente recebe o convite por e-mail.';
+      ? t('eventoFormDialog.shareHelp.hub')
+      : t('eventoFormDialog.shareHelp.noHub');
   const clientesVisiveis = useMemo(
     () =>
       sortClientesByNome(
@@ -329,7 +335,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
     // past the materialized horizon (today + 24 months), like on create.
     onSuccess: () => {
       terminar();
-      toast.success('Evento atualizado');
+      toast.success(t('eventoFormDialog.updated'));
       setEscopo(null);
       fechar();
     },
@@ -429,10 +435,12 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
     <Dialog open={open} onOpenChange={(o) => !o && !salvando && fechar()}>
       <DialogContent layout="fullscreen" confirmClose={isDirty || salvando} onConfirmClose={fechar}>
         <DialogTitle className="sr-only">
-          {ocorrencia ? 'Editar evento' : 'Novo evento'}
+          {ocorrencia ? t('eventoFormDialog.titleEdit') : t('eventoFormDialog.titleNew')}
         </DialogTitle>
         <DialogDescription className="sr-only">
-          {ocorrencia ? 'Edite os campos do evento.' : 'Preencha os campos do novo evento.'}
+          {ocorrencia
+            ? t('eventoFormDialog.descriptionEdit')
+            : t('eventoFormDialog.descriptionNew')}
         </DialogDescription>
         <Form {...form}>
           {/* Mobile: the whole form scrolls and the top bar sticks. md+: only the body scrolls. */}
@@ -453,7 +461,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                 type="button"
                 variant="ghost"
                 size="icon"
-                aria-label="Fechar"
+                aria-label={t('ui.close')}
                 onClick={pedirFechar}
                 disabled={salvando}
                 className="mb-0 mt-0.5 shrink-0"
@@ -467,8 +475,8 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                   <FormItem className="min-w-0 flex-1 space-y-1">
                     <FormControl>
                       <Input
-                        aria-label="Título"
-                        placeholder="Adicionar título"
+                        aria-label={t('eventoFormDialog.titleLabel')}
+                        placeholder={t('eventoFormDialog.titlePlaceholder')}
                         autoFocus
                         maxLength={200}
                         className="h-11 rounded-none border-0 border-b-2 bg-transparent px-1 text-[22px] font-medium shadow-none focus-visible:border-[var(--text-main)] focus-visible:ring-0 md:text-[22px]"
@@ -485,7 +493,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                 disabled={salvando || privadoComConvidados || convidadoInvalido}
                 className="mb-0 mt-1 shrink-0"
               >
-                Salvar
+                {t('actions.save')}
               </Button>
             </div>
 
@@ -502,7 +510,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                         checked={diaInteiro}
                         onCheckedChange={mudarDiaInteiro}
                       />
-                      <Label htmlFor={`${ids}-dia-inteiro`}>Dia inteiro</Label>
+                      <Label htmlFor={`${ids}-dia-inteiro`}>{t('eventoFormDialog.allDay')}</Label>
                     </div>
                     <RepetirSelect
                       inicio={dataInicio}
@@ -530,7 +538,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                   style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)' }}
                 >
                   <h2 id={`${ids}-detalhes`} className="text-[15px] font-semibold">
-                    Detalhes do evento
+                    {t('eventoFormDialog.details')}
                   </h2>
 
                   <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
@@ -540,22 +548,22 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                       render={({ field }) => (
                         <Linha icone={Tag}>
                           <FormItem>
-                            <FormLabel>Tipo</FormLabel>
+                            <FormLabel>{t('eventoFormDialog.type')}</FormLabel>
                             <Select value={field.value} onValueChange={field.onChange}>
                               <FormControl>
-                                <SelectTrigger aria-label="Tipo">
+                                <SelectTrigger aria-label={t('eventoFormDialog.type')}>
                                   <SelectValue />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                {TIPOS.map((t) => (
-                                  <SelectItem key={t} value={t}>
+                                {TIPOS.map((tipo) => (
+                                  <SelectItem key={tipo} value={tipo}>
                                     <span className="inline-flex items-center gap-2">
                                       <span
                                         className="inline-block h-[9px] w-[9px] rounded-full"
-                                        style={{ background: TIPO_COR[t] }}
+                                        style={{ background: TIPO_COR[tipo] }}
                                       />
-                                      {TIPO_LABEL[t]}
+                                      {TIPO_LABEL[tipo]}
                                     </span>
                                   </SelectItem>
                                 ))}
@@ -571,7 +579,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                       render={({ field }) => (
                         <Linha icone={Building2}>
                           <FormItem>
-                            <FormLabel>Cliente</FormLabel>
+                            <FormLabel>{t('eventoFormDialog.client')}</FormLabel>
                             <Select
                               value={field.value}
                               onValueChange={(valor) => {
@@ -582,12 +590,14 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                               }}
                             >
                               <FormControl>
-                                <SelectTrigger aria-label="Cliente">
+                                <SelectTrigger aria-label={t('eventoFormDialog.client')}>
                                   <SelectValue />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                <SelectItem value="none">Sem cliente</SelectItem>
+                                <SelectItem value="none">
+                                  {t('eventoFormDialog.noClient')}
+                                </SelectItem>
                                 {clientesVisiveis.map((c) => (
                                   <SelectItem key={c.id} value={String(c.id)}>
                                     {c.nome}
@@ -597,7 +607,8 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                                 {clienteAtual !== null &&
                                   !clientesVisiveis.some((c) => c.id === clienteAtual) && (
                                     <SelectItem value={String(clienteAtual)}>
-                                      {ocorrencia?.cliente_nome ?? 'Cliente'}
+                                      {ocorrencia?.cliente_nome ??
+                                        t('eventoFormDialog.clientFallback')}
                                     </SelectItem>
                                   )}
                               </SelectContent>
@@ -623,7 +634,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                                 htmlFor={`${ids}-compartilhar`}
                                 className="text-sm font-semibold"
                               >
-                                Compartilhar com o cliente
+                                {t('eventoFormDialog.share')}
                               </Label>
                               <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                                 {ajudaCompartilhar}
@@ -647,7 +658,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                       render={({ field }) => (
                         <Linha icone={MapPin}>
                           <FormItem>
-                            <FormLabel>Local</FormLabel>
+                            <FormLabel>{t('eventoFormDialog.location')}</FormLabel>
                             <FormControl>
                               <LocalAutocomplete maxLength={300} {...field} />
                             </FormControl>
@@ -662,7 +673,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                       render={({ field }) => (
                         <Linha icone={Video}>
                           <FormItem>
-                            <FormLabel>Link da reunião</FormLabel>
+                            <FormLabel>{t('eventoFormDialog.meetingLink')}</FormLabel>
                             <FormControl>
                               <Input
                                 type="url"
@@ -685,7 +696,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                     render={({ field }) => (
                       <Linha icone={Bell}>
                         <FormItem>
-                          <FormLabel>Lembretes</FormLabel>
+                          <FormLabel>{t('eventoFormDialog.reminders')}</FormLabel>
                           <div className="flex flex-wrap items-center gap-2">
                             {[...field.value]
                               .sort((a, b) => a - b)
@@ -700,7 +711,9 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                                     {rotulo}
                                     <button
                                       type="button"
-                                      aria-label={`Remover lembrete ${rotulo}`}
+                                      aria-label={t('eventoFormDialog.removeReminder', {
+                                        label: rotulo,
+                                      })}
                                       onClick={() =>
                                         field.onChange(field.value.filter((x) => x !== m))
                                       }
@@ -724,7 +737,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                                   }
                                 >
                                   <Plus className="mr-1 h-3.5 w-3.5" />
-                                  Adicionar lembrete
+                                  {t('eventoFormDialog.addReminder')}
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="start" className={MENU_SOBRE_DIALOG_Z}>
@@ -756,10 +769,10 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                         >
                           <div>
                             <Label htmlFor={`${ids}-privado`} className="text-sm font-semibold">
-                              Evento privado
+                              {t('eventoFormDialog.private')}
                             </Label>
                             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                              Outras pessoas verão apenas &quot;Ocupado&quot; nesse horário.
+                              {t('eventoFormDialog.privateHelp')}
                             </p>
                           </div>
                           <Switch
@@ -782,7 +795,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                     render={({ field }) => (
                       <Linha icone={AlignLeft}>
                         <FormItem>
-                          <FormLabel>Descrição</FormLabel>
+                          <FormLabel>{t('eventoFormDialog.description')}</FormLabel>
                           <FormControl>
                             <Textarea
                               rows={8}
@@ -807,7 +820,9 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                     name="participantes"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-[15px] font-semibold">Participantes</FormLabel>
+                        <FormLabel className="text-[15px] font-semibold">
+                          {t('eventoFormDialog.participants')}
+                        </FormLabel>
                         <PessoasCombobox
                           pessoas={pessoas}
                           value={field.value}
@@ -815,7 +830,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                           max={MAX_PARTICIPANTES}
                         />
                         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                          Quem for adicionado recebe a notificação no app e por e-mail.
+                          {t('eventoFormDialog.participantsHelp')}
                         </p>
                         <FormMessage />
                       </FormItem>
@@ -829,7 +844,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel className="text-[15px] font-semibold">
-                            Convidados externos
+                            {t('eventoFormDialog.guests')}
                           </FormLabel>
                           <FormControl>
                             <ConvidadosInput
@@ -846,12 +861,11 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                               className="m-0 text-xs"
                               style={{ color: 'var(--danger-text)' }}
                             >
-                              Remova os convidados externos antes de tornar o evento privado.
+                              {t('eventoFormDialog.privateWithGuests')}
                             </p>
                           )}
                           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                            Recebem o convite por e-mail, com título, horário, local, link e
-                            descrição, e respondem por um link, sem precisar de conta.
+                            {t('eventoFormDialog.guestsHelp')}
                           </p>
                           <FormMessage />
                         </FormItem>

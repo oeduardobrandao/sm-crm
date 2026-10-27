@@ -1,4 +1,5 @@
 import { CalendarSync } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { BottomSheet } from '@/components/mobile/BottomSheet';
 import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import { PickerCell } from '@/components/mobile/PickerSheet';
@@ -57,6 +58,7 @@ function Corpo({
   camadas,
   onSincronizar,
 }: Omit<AgendaFiltrosSheetProps, 'open' | 'onOpenChange'>) {
+  const { t } = useTranslation('agenda');
   const { closeThen } = useSheetActions();
   const ordenadas = [...pessoas].sort((a, b) => Number(b.id === meuId) - Number(a.id === meuId));
   const camadasVisiveis = CAMADAS.filter(
@@ -79,20 +81,20 @@ function Corpo({
 
   return (
     <div className="phone-agenda-filtros">
-      <h3 className="phone-agenda-filtros__rotulo">Mostrar</h3>
+      <h3 className="phone-agenda-filtros__rotulo">{t('sidebar.mostrar')}</h3>
       <SegmentedControl<AgendaFiltro['modo']>
-        aria-label="Mostrar"
+        aria-label={t('sidebar.mostrar')}
         className="phone-agenda-filtros__modo"
         options={[
-          { value: 'minha', label: 'Minha agenda' },
-          { value: 'equipe', label: 'Toda a equipe' },
+          { value: 'minha', label: t('sidebar.minha') },
+          { value: 'equipe', label: t('sidebar.equipe') },
         ]}
         value={filtro.modo}
         onChange={(modo) => onFiltroChange({ ...filtro, modo })}
       />
 
       {ordenadas.length > 0 && (
-        <GroupedList header="Pessoas" headerAs="h3">
+        <GroupedList header={t('sidebar.pessoas')} headerAs="h3">
           {ordenadas.map((p) => (
             <Cell
               key={p.id}
@@ -104,7 +106,7 @@ function Corpo({
                   className="phone-agenda-filtros__avatar"
                 />
               }
-              label={p.id === meuId ? `${p.nome} (você)` : p.nome}
+              label={p.id === meuId ? t('sidebar.voce', { nome: p.nome }) : p.nome}
               switch={{
                 checked: pessoaVisivel(filtro, meuId, p.id),
                 onCheckedChange: (c) => alternarPessoa(p.id, c),
@@ -114,7 +116,7 @@ function Corpo({
         </GroupedList>
       )}
 
-      <GroupedList header="Camadas" headerAs="h3">
+      <GroupedList header={t('filtros.camadas')} headerAs="h3">
         {camadasVisiveis.map((id) => {
           const Icone = CAMADA_ICONE[id];
           return (
@@ -138,7 +140,7 @@ function Corpo({
         })}
         {camadas.ativas.comemorativas && (
           <PickerCell
-            label="Nicho"
+            label={t('filtros.nicho')}
             value={camadas.nichoKey}
             options={NICHE_CALENDARS.map((n) => ({ value: n.key, label: n.label }))}
             onChange={(v) => v && camadas.onNichoChange(v)}
@@ -146,29 +148,27 @@ function Corpo({
         )}
       </GroupedList>
 
-      <GroupedList aria-label="Sincronizar">
+      <GroupedList aria-label={t('filtros.sincronizar')}>
         <Cell
           icon={<CalendarSync aria-hidden="true" />}
-          label="Sincronizar com seu calendário"
+          label={t('feed.titulo')}
           chevron
           onClick={() => closeThen(onSincronizar)}
         />
       </GroupedList>
 
-      <GroupedList header="Legenda" headerAs="h3">
-        {TIPOS.map((t) => (
+      <GroupedList header={t('sidebar.legenda')} headerAs="h3">
+        {TIPOS.map((tipo) => (
           <Cell
-            key={t}
+            key={tipo}
             icon={
-              <span className="phone-agenda-filtros__dot" style={{ background: TIPO_COR[t] }} />
+              <span className="phone-agenda-filtros__dot" style={{ background: TIPO_COR[tipo] }} />
             }
-            label={TIPO_LABEL[t]}
+            label={TIPO_LABEL[tipo]}
           />
         ))}
       </GroupedList>
-      <p className="phone-agenda-filtros__nota">
-        Evento com barra tracejada: aguardando sua resposta.
-      </p>
+      <p className="phone-agenda-filtros__nota">{t('filtros.legendaNota')}</p>
     </div>
   );
 }
@@ -176,11 +176,12 @@ function Corpo({
 /** "Pessoas e filtros" below 768px (FAgendaFiltros): the desktop sidebar's filters as a
  *  sheet. The mini calendar moved to the header's period picker. */
 export function AgendaFiltrosSheet({ open, onOpenChange, ...rest }: AgendaFiltrosSheetProps) {
+  const { t } = useTranslation('agenda');
   return (
     <BottomSheet
       open={open}
       onOpenChange={onOpenChange}
-      title="Pessoas e filtros"
+      title={t('filtros.titulo')}
       detents={['large']}
     >
       <Corpo {...rest} />

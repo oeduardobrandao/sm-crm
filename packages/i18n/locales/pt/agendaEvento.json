@@ -1,0 +1,132 @@
+{
+  "eventoFormDialog": {
+    "titleEdit": "Editar evento",
+    "titleNew": "Novo evento",
+    "descriptionEdit": "Edite os campos do evento.",
+    "descriptionNew": "Preencha os campos do novo evento.",
+    "titleLabel": "Título",
+    "titlePlaceholder": "Adicionar título",
+    "allDay": "Dia inteiro",
+    "details": "Detalhes do evento",
+    "type": "Tipo",
+    "client": "Cliente",
+    "noClient": "Sem cliente",
+    "clientFallback": "Cliente",
+    "share": "Compartilhar com o cliente",
+    "shareHelp": {
+      "noEmailHub": "Este cliente não tem e-mail cadastrado. O evento aparece só no portal.",
+      "noEmailNoHub": "Este cliente não tem e-mail cadastrado e o plano não inclui o Hub. O cliente não será avisado deste evento.",
+      "hub": "Aparece no portal do cliente e ele recebe o convite por e-mail.",
+      "noHub": "O cliente recebe o convite por e-mail."
+    },
+    "location": "Local",
+    "meetingLink": "Link da reunião",
+    "reminders": "Lembretes",
+    "removeReminder": "Remover lembrete {{label}}",
+    "addReminder": "Adicionar lembrete",
+    "private": "Evento privado",
+    "privateHelp": "Outras pessoas verão apenas \"Ocupado\" nesse horário.",
+    "description": "Descrição",
+    "participants": "Participantes",
+    "participantsHelp": "Quem for adicionado recebe a notificação no app e por e-mail.",
+    "guests": "Convidados externos",
+    "privateWithGuests": "Remova os convidados externos antes de tornar o evento privado.",
+    "guestsHelp": "Recebem o convite por e-mail, com título, horário, local, link e descrição, e respondem por um link, sem precisar de conta.",
+    "noName": "Sem nome",
+    "updated": "Evento atualizado"
+  },
+  "recorrenciaPersonalizada": {
+    "title": "Repetição personalizada",
+    "description": "Defina de quanto em quanto tempo o evento se repete e quando termina.",
+    "repeatEvery": "Repetir a cada",
+    "unit": "Unidade da repetição",
+    "onDays": "Nos dias",
+    "dayOfMonth": "Dia do mês",
+    "ends": "Termina",
+    "never": "Nunca",
+    "on": "Em",
+    "endDate": "Data final",
+    "endDateFormat": "d 'de' MMM 'de' yyyy",
+    "after": "Após",
+    "occurrencesCount": "Número de ocorrências",
+    "occurrences": "ocorrências",
+    "done": "Concluir"
+  },
+  "quandoCampos": {
+    "when": "Quando",
+    "startDate": "Data de início",
+    "endDate": "Data de fim",
+    "dateFormat": "EEE, d 'de' MMM 'de' yyyy",
+    "startTime": "Hora de início",
+    "until": "até",
+    "endTime": "Hora de fim",
+    "timezone": "Horários no fuso {{tz}}"
+  },
+  "repetirSelect": {
+    "label": "Repetir",
+    "customize": "Personalizar…"
+  },
+  "escopoEventoDialog": {
+    "titleDelete": "Excluir evento recorrente?",
+    "titleEdit": "Editar evento recorrente",
+    "description": "Escolha a quais eventos da série a alteração se aplica.",
+    "applyTo": "Aplicar a",
+    "options": {
+      "esta": "Este evento",
+      "seguintes": "Este e os seguintes",
+      "todas": "Todos os eventos"
+    },
+    "cancelNotice": "Os participantes recebem um aviso de cancelamento.",
+    "delete": "Excluir"
+  },
+  "pessoasCombobox": {
+    "memberFallback": "Pessoa da equipe",
+    "remove": "Remover {{name}}",
+    "add": "Adicionar pessoa da equipe",
+    "search": "Buscar pessoa",
+    "empty": "Ninguém encontrado."
+  },
+  "convidadosInput": {
+    "invalidEmail": "Informe um e-mail válido.",
+    "remove": "Remover {{email}}",
+    "emailLabel": "E-mail do convidado",
+    "placeholder": "nome@empresa.com",
+    "counter": "{{n}} de {{max}}"
+  },
+  "localAutocomplete": {
+    "suggestions": "Sugestões de endereço"
+  },
+  "schema": {
+    "maxChars": "Use no máximo {{n}} caracteres.",
+    "maxParticipants": "Adicione no máximo {{max}} pessoas.",
+    "maxGuests": "Convide no máximo {{max}} pessoas.",
+    "maxReminders": "Use no máximo {{max}} lembretes.",
+    "titleRequired": "Informe um título.",
+    "endBeforeStart": "O fim precisa ser depois do início.",
+    "maxDays": "O evento pode durar no máximo {{max}} dias.",
+    "linkInvalid": "Informe um link que comece com http:// ou https://.",
+    "repeatRequired": "Escolha como o evento se repete.",
+    "seriesReason": "Vale para toda a série.",
+    "seriesReasonField": "Vale para toda a série: você mudou {{field}}.",
+    "seriesFields": {
+      "regra": "a repetição",
+      "lembretes": "os lembretes",
+      "tipo": "o tipo",
+      "cor": "a cor",
+      "cliente_id": "o cliente",
+      "privado": "a opção Evento privado",
+      "compartilhado_cliente": "o compartilhamento com o cliente",
+      "dia_inteiro": "a opção Dia inteiro",
+      "participantes": "os participantes",
+      "convidados": "os convidados externos"
+    },
+    "custom": {
+      "intervalRange": "Use um número de 1 a 99.",
+      "weekdayRequired": "Escolha ao menos um dia da semana.",
+      "endDateRequired": "Escolha a data final.",
+      "endDateBeforeStart": "A data final precisa ser igual ou depois do início.",
+      "countRange": "Use um número de 1 a 730."
+    },
+    "dtstartDate": "d 'de' MMMM"
+  }
+}
