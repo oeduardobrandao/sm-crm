@@ -15,6 +15,7 @@ import {
   Route,
   CircleDashed,
   ListChecks,
+  Table2,
   CircleHelp,
   PlayCircle,
   ChevronDown,
@@ -69,6 +70,7 @@ import { PostsKanbanView } from './views/PostsKanbanView';
 import { PostsListView } from './views/PostsListView';
 import { ConcludedView } from './views/ConcludedView';
 import { MinhaFilaView } from './views/MinhaFilaView';
+import { LinhaEditorialView } from './linha/LinhaEditorialView';
 import { buildMinhaFila, EMPTY_FILA, type FilaOrdem } from './minhaFila';
 import { useCurrentMembro } from '@/hooks/useCurrentMembro';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
@@ -147,9 +149,16 @@ const VIEW_TABS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
   { id: 'chart', label: 'Visão geral', icon: <BarChart2 className="h-3.5 w-3.5" /> },
   { id: 'calendar', label: 'Calendário', icon: <Calendar className="h-3.5 w-3.5" /> },
   { id: 'list', label: 'Lista', icon: <List className="h-3.5 w-3.5" /> },
+  { id: 'linha', label: 'Linha editorial', icon: <Table2 className="h-3.5 w-3.5" /> },
   { id: 'fila', label: 'Minha fila', icon: <ListChecks className="h-3.5 w-3.5" /> },
   { id: 'concluded', label: 'Concluídas', icon: <Archive className="h-3.5 w-3.5" /> },
 ];
+
+/** Mês corrente no formato `YYYY-MM` (o `mes` da URL da Linha editorial). */
+function currentMonthKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
 
 const EMPTY_POST_ENTITIES: PostEntity[] = [];
 const EMPTY_CARDS: BoardCard[] = [];
@@ -192,10 +201,24 @@ export default function EntregasPage() {
   const tiktokEnabled = features?.feature_tiktok === true;
   // Plataformas por fluxo (P2): chips por destino no card. Dark por plano.
   const multiplatformEnabled = features?.feature_multiplatform === true;
+  // Linha editorial (spec 2026-10-26): a aba some com a flag desligada. `features` é null
+  // enquanto os limites carregam, então só `features != null` autoriza o fallback.
+  const linhaEnabled = features?.feature_linha_editorial === true;
+  const viewTabs = useMemo(
+    () => (linhaEnabled ? VIEW_TABS : VIEW_TABS.filter((tab) => tab.id !== 'linha')),
+    [linhaEnabled],
+  );
 
   const { isAtLimit } = useEntitlements();
 
   const [activeView, setActiveView] = useState<ActiveView>(initialQuery.view);
+  // Mês da Linha editorial (`YYYY-MM`); vazio = mês corrente. Só vale na vista 'linha'.
+  const [linhaMes, setLinhaMes] = useState<string>(initialQuery.mes ?? '');
+  // Link ou vista salva com view=linha e a flag desligada cai no Kanban, mas só depois que
+  // `features` resolve: durante o carregamento o link não pode "quicar" para o Kanban.
+  useEffect(() => {
+    if (features != null && !linhaEnabled && activeView === 'linha') setActiveView('kanban');
+  }, [features, linhaEnabled, activeView]);
   const [filters, setFilters] = useState<FilterState>(initialQuery.filters);
   const [concludedClientSearch, setConcludedClientSearch] = useState('');
   const [listSort, setListSort] = useState<{ column: string; direction: 'asc' | 'desc' }>({
@@ -578,6 +601,7 @@ export default function EntregasPage() {
     filaMembro: activeView === 'fila' ? filaMembro : null,
     listGroupBy: effectiveListGroupBy,
     showPostados,
+    mes: activeView === 'linha' ? linhaMes : undefined,
     entidade:
       activeMode === 'entregas' && (activeView === 'kanban' || activeView === 'list')
         ? effectiveEntidade
@@ -924,6 +948,7 @@ export default function EntregasPage() {
     // null para qualquer vista que não seja a fila: aplicar uma vista do Kanban
     // também limpa uma escolha explícita de membro, como uma URL sem `membro=`.
     setFilaMembro(parsed.filaMembro);
+    setLinhaMes(parsed.mes ?? '');
   };
 
   // Publicações mode (Kanban/Lista): every post of every active workflow, fetched
@@ -958,6 +983,7 @@ export default function EntregasPage() {
   const showFilters =
     activeView !== 'concluded' &&
     activeView !== 'fila' &&
+    activeView !== 'linha' &&
     !(activeView === 'calendar' && mode === 'publicacoes');
 
   // Processo individual ativo de cada avulso, pela projeção que o quadro de
@@ -1580,7 +1606,7 @@ export default function EntregasPage() {
 
   // Under the Vidro shell the view switcher is one dropdown in the toolbar (like the vista picker
   // below it). The classic tablist in the content keeps its inline styles.
-  const activeViewTab = VIEW_TABS.find((tab) => tab.id === activeView) ?? VIEW_TABS[0];
+  const activeViewTab = viewTabs.find((tab) => tab.id === activeView) ?? viewTabs[0];
   const toolbarViewTabs = (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -1596,7 +1622,7 @@ export default function EntregasPage() {
           onValueChange={(view) => setActiveView(view as ActiveView)}
           aria-label="Modos de visualização"
         >
-          {VIEW_TABS.map((tab) => (
+          {viewTabs.map((tab) => (
             <DropdownMenuRadioItem key={tab.id} value={tab.id} className="gap-2">
               {tab.icon} {tab.label}
             </DropdownMenuRadioItem>
@@ -1689,6 +1715,7 @@ export default function EntregasPage() {
               currentQuery={currentQuery}
               onApplyView={applySavedView}
               activeView={activeView}
+              linhaEnabled={linhaEnabled}
               onViewChange={setActiveView}
               mode={mode}
               onModeChange={setMode}
@@ -1878,7 +1905,7 @@ export default function EntregasPage() {
                           }}
                           className="animate-up no-scrollbar"
                         >
-                          {VIEW_TABS.map((tab) => (
+                          {viewTabs.map((tab) => (
                             <button
                               key={tab.id}
                               type="button"
@@ -2161,6 +2188,18 @@ export default function EntregasPage() {
               setDrawerCard(null);
               setDrawerInitialPostId(null);
               setStandalonePostId(postId);
+            }}
+          />
+        )}
+        {activeView === 'linha' && linhaEnabled && (
+          <LinhaEditorialView
+            contaId={contaId}
+            clientes={clientes}
+            filterClientes={filters.filterClientes}
+            mes={linhaMes || currentMonthKey()}
+            onChange={(q) => {
+              if (q.clientes) setFilters((f) => ({ ...f, filterClientes: q.clientes! }));
+              if (q.mes) setLinhaMes(q.mes);
             }}
           />
         )}

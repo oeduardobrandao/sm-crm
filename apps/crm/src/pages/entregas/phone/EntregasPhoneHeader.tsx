@@ -15,6 +15,7 @@ import {
   Route,
   Search,
   SlidersHorizontal,
+  Table2,
   X,
 } from 'lucide-react';
 import { ActionSheet } from '@/components/mobile/ActionSheet';
@@ -38,8 +39,14 @@ export const PHONE_VIEWS: { id: ActiveView; label: string; icon: ReactNode }[] =
   { id: 'calendar', label: 'Calendário', icon: <Calendar aria-hidden="true" /> },
   { id: 'list', label: 'Lista', icon: <List aria-hidden="true" /> },
   { id: 'fila', label: 'Minha fila', icon: <ListChecks aria-hidden="true" /> },
+  { id: 'linha', label: 'Linha editorial', icon: <Table2 aria-hidden="true" /> },
   { id: 'concluded', label: 'Concluídas', icon: <Archive aria-hidden="true" /> },
 ];
+
+/** The views the phone menus offer: Linha editorial only while its flag is on. */
+function phoneViews(linhaEnabled: boolean | undefined) {
+  return linhaEnabled ? PHONE_VIEWS : PHONE_VIEWS.filter((v) => v.id !== 'linha');
+}
 
 const ENTIDADE_OPTIONS: { id: EntidadeFilter; label: string }[] = [
   { id: 'todos', label: 'Fluxos e posts individuais' },
@@ -52,6 +59,8 @@ export interface EntregasPhoneHeaderProps {
   currentQuery: string;
   onApplyView: (query: string) => void;
   activeView: ActiveView;
+  /** feature_linha_editorial: offers the Linha editorial view in the view menus. */
+  linhaEnabled?: boolean;
   onViewChange: (view: ActiveView) => void;
   mode: EntregasMode;
   onModeChange: (mode: EntregasMode) => void;
@@ -119,7 +128,8 @@ export function EntregasPhoneHeader(props: EntregasPhoneHeaderProps) {
   const newRef = useRef<HTMLButtonElement>(null);
   const viewRef = useRef<HTMLButtonElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const currentView = PHONE_VIEWS.find((v) => v.id === activeView) ?? PHONE_VIEWS[0];
+  const views = phoneViews(props.linhaEnabled);
+  const currentView = PHONE_VIEWS.find((v) => v.id === activeView) ?? views[0];
   const vistaName = selection.activeVista?.name ?? 'Padrão';
 
   return (
@@ -265,7 +275,7 @@ export function EntregasPhoneHeader(props: EntregasPhoneHeaderProps) {
         onOpenChange={setViewsOpen}
         title="Exibir como"
         returnFocusRef={viewRef}
-        actions={PHONE_VIEWS.map((v) => ({
+        actions={views.map((v) => ({
           label: v.id === activeView ? `✓ ${v.label}` : v.label,
           icon: v.icon,
           onSelect: () => onViewChange(v.id),
@@ -289,6 +299,7 @@ function ViewsMenuBody({
   onApplyView,
   activeView,
   onViewChange,
+  linhaEnabled,
   entidade,
   onEntidadeChange,
   showEntidade,
@@ -419,7 +430,7 @@ function ViewsMenuBody({
       )}
 
       <GroupedList header="Exibir como">
-        {PHONE_VIEWS.map((v) => (
+        {phoneViews(linhaEnabled).map((v) => (
           <Cell
             key={v.id}
             label={v.label}

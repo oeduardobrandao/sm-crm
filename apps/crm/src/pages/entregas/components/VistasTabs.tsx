@@ -10,6 +10,7 @@ import {
   ListChecks,
   MoreHorizontal,
   Plus,
+  Table2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,6 +35,7 @@ const VIEW_ICONS: Record<ActiveView, React.ReactNode> = {
   list: <List className="h-3.5 w-3.5" />,
   concluded: <Archive className="h-3.5 w-3.5" />,
   fila: <ListChecks className="h-3.5 w-3.5" />,
+  linha: <Table2 className="h-3.5 w-3.5" />,
 };
 
 function viewIcon(query: string): React.ReactNode {
