@@ -22,11 +22,14 @@ import { captureEvent } from '@/lib/analytics';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { toast } from 'sonner';
 import type { PlatformId } from '@mesaas/platforms';
-import type { Cliente, Membro, WorkflowTemplate } from '../../../store';
+import { removeWorkflow } from '../../../store';
+import type { Cliente, Membro, Workflow, WorkflowTemplate } from '../../../store';
+import type { LinhaItem } from '@/store/linhaEditorial';
 import type { EtapaFormData } from '../components/SortableEtapaList';
 import { type WorkflowPreset } from './presets';
 import {
   dataEntregaAvailability,
+  postsLabel,
   etapasFromPreset,
   etapasFromTemplate,
   suggestName,
@@ -77,6 +80,26 @@ const INITIAL: WizardState = {
 
 const STEP_COUNT = 5;
 
+/**
+ * Opens the wizard to turn rows of a linha editorial into a fluxo (spec §7.1). The client is
+ * locked, the name is preset, and `afterCreate` creates the posts once the fluxo exists.
+ */
+export interface WizardSeed {
+  clienteId: number;
+  nome: string;
+  /** "linha editorial de novembro". */
+  origemLabel: string;
+  itens: LinhaItem[];
+  /** Runs after the fluxo is created and before `onCreated`. A throw removes the fluxo. */
+  afterCreate: (workflow: Workflow) => Promise<void>;
+}
+
+function initialState(seed: WizardSeed | undefined): WizardState {
+  if (!seed) return INITIAL;
+  // `nomeEdited` keeps the seeded name when a template is picked on step 1.
+  return { ...INITIAL, clienteId: String(seed.clienteId), nome: seed.nome, nomeEdited: true };
+}
+
 export function NewWorkflowWizard(props: {
   open: boolean;
   onClose: () => void;
@@ -86,10 +109,12 @@ export function NewWorkflowWizard(props: {
   onCreated: () => void;
   /** Quick-add from a board row: preselects this template and opens on step 2. */
   initialTemplateId?: number;
+  /** Creating a fluxo from linha editorial rows. */
+  seed?: WizardSeed;
 }) {
   const confirmCopy = useConfirmCloseCopy();
-  const { open, onClose, clientes, membros, templates, onCreated, initialTemplateId } = props;
-  const [s, setS] = useState<WizardState>(INITIAL);
+  const { open, onClose, clientes, membros, templates, onCreated, initialTemplateId, seed } = props;
+  const [s, setS] = useState<WizardState>(() => initialState(seed));
   const multiplatform = useWorkspaceLimits().features?.feature_multiplatform === true;
   const [cancelConfirm, setCancelConfirm] = useState(false);
   // Step 3's errors surface only after a blocked Continuar, then track edits live so a row
@@ -101,7 +126,10 @@ export function NewWorkflowWizard(props: {
 
   const patch = (p: Partial<WizardState>) => setS((prev) => ({ ...prev, ...p }));
 
-  const isDirty = s.source !== null || s.clienteId !== '' || s.nome !== '';
+  // Measured against the opening state, so a seeded wizard nobody touched closes quietly.
+  const baseline = initialState(seed);
+  const isDirty =
+    s.source !== null || s.clienteId !== baseline.clienteId || s.nome !== baseline.nome;
 
   // Quick-add path: apply the board row's template once, as if the user had
   // picked it on step 1. Ref-guarded because selectSource is a fresh closure
@@ -116,7 +144,7 @@ export function NewWorkflowWizard(props: {
   });
 
   const requestClose = () => {
-    setS(INITIAL);
+    setS(initialState(seed));
     setCancelConfirm(false);
     setEtapasChecked(false);
     setPrazosChecked(false);
@@ -202,7 +230,23 @@ export function NewWorkflowWizard(props: {
         membros,
         plataformas: multiplatform ? s.plataformas : ['instagram'],
       });
-      toast.success('Fluxo criado com sucesso!');
+      if (seed) {
+        try {
+          await seed.afterCreate(result.workflow);
+        } catch (err) {
+          // The posts were not created, so neither is the fluxo. A saved template is kept,
+          // as when createWorkflowFromWizard fails after saving it.
+          try {
+            await removeWorkflow(result.workflow.id!);
+          } catch {
+            /* best effort: the toast names the conversion error */
+          }
+          throw err;
+        }
+      }
+      toast.success(
+        seed ? `Fluxo criado com ${postsLabel(seed.itens.length)}` : 'Fluxo criado com sucesso!',
+      );
       if (result.warning) toast.warning(result.warning);
       captureEvent('workflow_wizard_source', {
         source: s.source?.kind === 'preset' ? s.source.presetId : (s.source?.kind ?? 'zero'),
@@ -271,6 +315,22 @@ export function NewWorkflowWizard(props: {
           </div>
         </DialogHeader>
 
+        {seed && s.step < STEP_COUNT && (
+          <p
+            role="status"
+            style={{
+              margin: 0,
+              fontSize: '0.8rem',
+              background: 'rgba(234,179,8,0.08)',
+              border: '1px solid rgba(234,179,8,0.35)',
+              borderRadius: 10,
+              padding: '0.55rem 0.8rem',
+            }}
+          >
+            {`${postsLabel(seed.itens.length)} ${seed.itens.length === 1 ? 'vem' : 'vêm'} da ${seed.origemLabel}.`}
+          </p>
+        )}
+
         {s.step === 1 && (
           <StepTemplate
             templates={templates}
@@ -287,7 +347,9 @@ export function NewWorkflowWizard(props: {
             onSelectZero={() => selectSource({ kind: 'zero' })}
           />
         )}
-        {s.step === 2 && <StepBasics state={s} patch={patch} clientes={clientes} />}
+        {s.step === 2 && (
+          <StepBasics state={s} patch={patch} clientes={clientes} clienteLocked={!!seed} />
+        )}
         {s.step === 3 && (
           <StepEtapas
             state={s}
@@ -310,7 +372,13 @@ export function NewWorkflowWizard(props: {
           />
         )}
         {s.step === 5 && (
-          <StepReview state={s} patch={patch} modoPrazo={modoEfetivo} cliente={cliente} />
+          <StepReview
+            state={s}
+            patch={patch}
+            modoPrazo={modoEfetivo}
+            cliente={cliente}
+            seed={seed}
+          />
         )}
 
         <div
@@ -346,7 +414,11 @@ export function NewWorkflowWizard(props: {
               </Button>
               <Button onClick={goNext} disabled={continueDisabled}>
                 {saving && <Spinner size="sm" />}
-                {s.step === STEP_COUNT ? '✓ Criar Fluxo' : 'Continuar →'}
+                {s.step !== STEP_COUNT
+                  ? 'Continuar →'
+                  : seed
+                    ? `Criar fluxo com ${postsLabel(seed.itens.length)}`
+                    : '✓ Criar Fluxo'}
               </Button>
             </div>
           )}

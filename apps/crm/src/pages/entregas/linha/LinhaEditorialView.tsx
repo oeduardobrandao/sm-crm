@@ -4,14 +4,25 @@ import { Loader2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { QueryErrorCard } from '@/components/QueryErrorCard';
 import { useClienteAvatars } from '@/hooks/useClienteAvatars';
+import { captureEvent } from '@/lib/analytics';
 import { entitlementMessage, mapEntitlementError } from '@/lib/entitlement-errors';
 import { compactHubToken } from '@/lib/hubLinks';
 import { buildUsableTokenMap } from '@/lib/hubTokenMap';
-import type { Cliente } from '@/store';
+import type { Cliente, Workflow } from '@/store';
 import { getHubToken, getWorkspaceSlug } from '@/store/hub';
-import { criarLinha, enviarLinha, recolherLinha, type LinhaItem } from '@/store/linhaEditorial';
+import {
+  criarLinha,
+  enviarLinha,
+  linhaPostsKey,
+  recolherLinha,
+  type LinhaItem,
+} from '@/store/linhaEditorial';
+import { getMembros } from '@/store/team';
+import { getWorkflowTemplates } from '@/store/workflows';
 import type { ContentFormat } from '@mesaas/platforms';
 import { loadLinhaDirecaoOculta, persistLinhaDirecaoOculta } from '../entregasPrefs';
+import { NewWorkflowWizard } from '../wizard/NewWorkflowWizard';
+import { converterParaFluxo } from './criarFluxoDaLinha';
 import { ColunasPopover } from './ColunasPopover';
 import { CriarPostsDialog } from './CriarPostsDialog';
 import { LinhaClientRail } from './LinhaClientRail';
@@ -20,7 +31,7 @@ import { LinhaHeader } from './LinhaHeader';
 import { LinhaPhoneView } from './LinhaPhoneView';
 import { LinhaSelectionBar } from './LinhaSelectionBar';
 import { LinhaTable } from './LinhaTable';
-import { formatBreakdown, periodoFromMes } from './linhaLogic';
+import { formatBreakdown, mesLabel, nomeFluxoPadrao, periodoFromMes } from './linhaLogic';
 import { useIsLinhaPhone } from './useIsLinhaPhone';
 import { linhaItensKey, linhasKey, useLinhaQueries } from './useLinhaQueries';
 import './linha.css';
@@ -79,6 +90,8 @@ export function LinhaEditorialView({
     open: false,
     itens: [],
   });
+  // Rows being turned into a fluxo (Task 11); non-null while the wizard is open.
+  const [fluxoItens, setFluxoItens] = useState<LinhaItem[] | null>(null);
 
   // The selected client decides which linha the per-linha queries read, so the month's
   // linhas run first (same query key as the second call below, so it is one request).
@@ -177,6 +190,33 @@ export function LinhaEditorialView({
     onError: (err) =>
       toast.error(erroDeAcao(err, 'Não foi possível recolher a linha. Tente de novo.')),
   });
+
+  // The wizard needs the team and the templates; same keys as the board, so the cache is shared.
+  const { data: membros = [] } = useQuery({
+    queryKey: ['membros'],
+    queryFn: getMembros,
+    enabled: fluxoItens != null,
+  });
+  const { data: templates = [] } = useQuery({
+    queryKey: ['workflow-templates'],
+    queryFn: getWorkflowTemplates,
+    enabled: fluxoItens != null,
+  });
+
+  /** Opens the wizard seeded with these rows (the selection bar's "Criar fluxo"). */
+  const abrirCriarFluxo = (sel: LinhaItem[]) => {
+    if (sel.length > 0) setFluxoItens(sel);
+  };
+
+  /** Seed `afterCreate`: create the rows' posts in the new fluxo, then refresh what they touch. */
+  const criarPostsNoFluxo = async (linhaId: string, workflow: Workflow, sel: LinhaItem[]) => {
+    await converterParaFluxo(linhaId, workflow, sel, colunasData);
+    void qc.invalidateQueries({ queryKey: linhaItensKey(linhaId) });
+    void qc.invalidateQueries({ queryKey: linhaPostsKey(linhaId) });
+    void qc.invalidateQueries({ queryKey: linhasKey(periodo) });
+    void qc.invalidateQueries({ queryKey: ['linha-origem'] });
+    setSelecao({ linhaId: null, ids: [] });
+  };
 
   const copiarHub = async (url: string) => {
     try {
@@ -320,8 +360,9 @@ export function LinhaEditorialView({
                 itens={itensData}
                 selected={selectedIds}
                 linhaStatus={linha.status}
-                // Task 11 wires this
-                onCriarFluxo={() => {}}
+                onCriarFluxo={() =>
+                  abrirCriarFluxo(itensData.filter((i) => selectedIds.includes(i.id)))
+                }
                 onCriarPosts={() =>
                   setCriarPosts({
                     open: true,
@@ -347,6 +388,35 @@ export function LinhaEditorialView({
               item={painelItem}
               respostas={respostasData}
             />
+            {fluxoItens && (
+              <NewWorkflowWizard
+                open
+                onClose={() => setFluxoItens(null)}
+                clientes={clientes}
+                membros={membros}
+                templates={templates}
+                onCreated={() => {
+                  captureEvent('workflow_created');
+                  for (const key of [
+                    'workflows',
+                    'workflow-templates',
+                    'all-active-etapas',
+                    'workflow-covers',
+                    'workflow-posts-counts',
+                    'active-posts',
+                  ]) {
+                    void qc.invalidateQueries({ queryKey: [key] });
+                  }
+                }}
+                seed={{
+                  clienteId: linha.cliente_id,
+                  nome: nomeFluxoPadrao(fluxoItens, periodo),
+                  origemLabel: `linha editorial de ${mesLabel(periodo)}`,
+                  itens: fluxoItens,
+                  afterCreate: (workflow) => criarPostsNoFluxo(linha.id, workflow, fluxoItens),
+                }}
+              />
+            )}
           </>
         )}
       </section>
