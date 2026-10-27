@@ -63,7 +63,7 @@ export default function MarketingPage({ page }: { page: MarketingPageContent }) 
                   letterSpacing: '.08em',
                 }}
               >
-                Comece grátis · sem cartão de crédito
+                O Free não pede cartão · planos pagos com 30 dias grátis
               </div>
             </div>
           </div>

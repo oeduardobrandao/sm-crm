@@ -75,7 +75,7 @@ export const PUBLIC_ROUTES: RouteMeta[] = [
     file: 'precos.html',
     title: 'Preços do Mesaas — planos para agências de social media',
     description:
-      'Compare os planos Free, Start, Pro e Max do Mesaas. Comece grátis, sem cartão de crédito, e evolua conforme sua agência cresce. Cancele quando quiser.',
+      'Compare os planos Free, Start, Pro e Max do Mesaas. Teste os planos pagos por 30 dias e evolua conforme sua agência cresce.',
     lastmod: '2026-07-24',
   },
   {

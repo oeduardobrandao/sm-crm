@@ -39,7 +39,7 @@ export const PORTAL_DO_CLIENTE: MarketingPageContent = {
     },
     {
       q: 'Posso usar a identidade visual da minha agência?',
-      a: 'Sim. O portal aplica a cor da sua marca e sua identidade, para o cliente viver uma experiência da sua agência.',
+      a: 'Sim. O portal aplica a cor da sua marca e sua identidade, para o cliente viver uma experiência da sua agência. A identidade visual da agência está disponível nos planos pagos.',
     },
     {
       q: 'O link do portal é seguro?',
@@ -52,6 +52,6 @@ export const PORTAL_DO_CLIENTE: MarketingPageContent = {
   ],
   cta: {
     title: 'Dê um portal profissional para cada cliente',
-    sub: 'Crie sua conta grátis e gere o primeiro link de portal em minutos.',
+    sub: 'Teste grátis por 30 dias e gere o primeiro link de portal em minutos.',
   },
 };

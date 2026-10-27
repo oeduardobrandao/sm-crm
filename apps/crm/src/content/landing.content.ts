@@ -45,7 +45,7 @@ export const LANDING: {
     titleEm: 'em planilha e grupo de WhatsApp',
     titleAfter: '.',
     sub: 'O Mesaas reúne clientes, entregas, aprovações, agendamento no Instagram e métricas em um único lugar. Feito para quem gerencia social media, sozinho ou com equipe.',
-    note: '30 dias grátis em qualquer plano.',
+    note: '30 dias grátis em qualquer plano pago.',
   },
   ticker: [
     'Clientes + contratos',
@@ -90,7 +90,7 @@ export const LANDING: {
     {
       title: 'Métricas do Instagram prontas para o relatório do cliente.',
       description:
-        'Seguidores, alcance, engajamento e top posts atualizados todo dia, direto da API oficial. Dados confiáveis para provar o resultado do seu trabalho.',
+        'Seguidores, alcance, engajamento e top posts atualizados todo dia nos planos pagos, direto da API oficial. Dados confiáveis para provar o resultado do seu trabalho.',
       bullets: [
         'Dados da <strong>API oficial do Meta</strong>, sem scraping',
         'Crescimento de seguidores, <strong>alcance e engajamento</strong> por período',
@@ -151,7 +151,7 @@ export const LANDING: {
         n: '01',
         title: 'Cadastre sua agência',
         description:
-          'Crie sua conta grátis, importe seus clientes por planilha e configure os modelos de contrato.',
+          'Comece o teste grátis de 30 dias, importe seus clientes por planilha e configure os modelos de contrato.',
       },
       {
         n: '02',

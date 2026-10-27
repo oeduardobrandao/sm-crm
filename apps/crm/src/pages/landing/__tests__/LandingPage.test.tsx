@@ -10,9 +10,19 @@ const authState = vi.hoisted(() => ({
 
 vi.mock('@/services/billing', () => ({
   listPublicPricingPlans: vi.fn(),
+  getEffectivePlanWithSource: vi.fn(),
+  getWorkspaceSubscription: vi.fn(),
+  hasUsedTrial: (
+    sub: { hasEverSubscribed?: boolean } | null | undefined,
+    plan: { wasDemo?: boolean } | null | undefined,
+  ) => Boolean(sub?.hasEverSubscribed || plan?.wasDemo),
 }));
 
-import { listPublicPricingPlans } from '@/services/billing';
+import {
+  getEffectivePlanWithSource,
+  getWorkspaceSubscription,
+  listPublicPricingPlans,
+} from '@/services/billing';
 import LandingPage from '../LandingPage';
 import { HERO_MACBOOK_SIZES, HERO_MACBOOK_SRCSET } from '../landing-visuals';
 
@@ -45,6 +55,7 @@ const PRICING_PLANS: PublicPricingPlan[] = [
     max_workflow_templates: 1,
     max_instagram_accounts: 1,
     max_hub_tokens: 0,
+    rate_report_generations_per_month: 0,
     storage_quota_bytes: 100 * 1024 ** 2,
     feature_analytics_reports: false,
     feature_post_scheduling: false,
@@ -69,6 +80,7 @@ const PRICING_PLANS: PublicPricingPlan[] = [
     max_workflow_templates: 3,
     max_instagram_accounts: 5,
     max_hub_tokens: 5,
+    rate_report_generations_per_month: 10,
     storage_quota_bytes: 5 * 1024 ** 3,
     ...PAID_FEATURES,
     pagarme_12x_enabled: false,
@@ -85,6 +97,7 @@ const PRICING_PLANS: PublicPricingPlan[] = [
     max_workflow_templates: null,
     max_instagram_accounts: 15,
     max_hub_tokens: 15,
+    rate_report_generations_per_month: 30,
     storage_quota_bytes: 10 * 1024 ** 3,
     ...PAID_FEATURES,
     pagarme_12x_enabled: false,
@@ -101,6 +114,7 @@ const PRICING_PLANS: PublicPricingPlan[] = [
     max_workflow_templates: null,
     max_instagram_accounts: null,
     max_hub_tokens: null,
+    rate_report_generations_per_month: null,
     storage_quota_bytes: 25 * 1024 ** 3,
     ...PAID_FEATURES,
     pagarme_12x_enabled: false,
@@ -172,6 +186,14 @@ describe('LandingPage', () => {
     MockIntersectionObserver.instances = [];
     vi.stubGlobal('IntersectionObserver', MockIntersectionObserver);
     vi.mocked(listPublicPricingPlans).mockResolvedValue(PRICING_PLANS);
+    // Signed-in visitor on Free who never trialed: the trial copy stays on the paid CTAs.
+    vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+      planId: 'free',
+      planSource: 'system',
+      wasDemo: false,
+      trialOfferSeenAt: null,
+    });
+    vi.mocked(getWorkspaceSubscription).mockResolvedValue(null);
     document.body.classList.remove('landing-page');
     document.documentElement.removeAttribute('data-theme');
     localStorage.clear();
@@ -297,8 +319,9 @@ describe('LandingPage', () => {
     expect(
       within(freeCard as HTMLElement).getByRole('link', { name: 'Acessar painel' }),
     ).toHaveAttribute('href', '/dashboard');
+    // The trial label waits for the subscription lookups, so it appears after the cards.
     expect(
-      within(startCard as HTMLElement).getByRole('link', { name: 'Começar teste grátis' }),
+      await within(startCard as HTMLElement).findByRole('link', { name: 'Começar teste grátis' }),
     ).toHaveAttribute('href', '/configuracao/cobranca');
 
     const comparison = screen.getByRole('table', { name: 'Comparação detalhada dos planos' });
@@ -547,6 +570,7 @@ describe('LandingPage', () => {
         max_workflow_templates: null,
         max_instagram_accounts: null,
         max_hub_tokens: null,
+        rate_report_generations_per_month: null,
         storage_quota_bytes: null,
         ...PAID_FEATURES,
       },
