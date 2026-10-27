@@ -126,7 +126,7 @@ interface TrialReminderCandidate {
   workspace_name: string;
   owner_email: string;
   owner_nome: string | null;
-  plan_name: string;
+  plan_name: string | null;
   provider: string;
   amount_cents: number | null;
   amount_interval: string | null;
@@ -136,6 +136,23 @@ interface TrialReminderCandidate {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The amount and interval the reminder tells the owner they will be charged
+ * (the ledger audit of what was announced). Pagar.me stores the annual total
+ * and the email shows 12 monthly installments, so the ledger records the
+ * installment; Stripe is month or year. Both null when no amount is announced.
+ */
+function announcedCharge(
+  c: TrialReminderCandidate,
+): { amount_cents: number | null; amount_interval: string | null } {
+  if (c.amount_cents == null) return { amount_cents: null, amount_interval: null };
+  if (c.provider === "pagarme") {
+    return { amount_cents: Math.round(c.amount_cents / 12), amount_interval: "month" };
+  }
+  const yearly = c.amount_interval === "year" || c.billing_interval === "year";
+  return { amount_cents: c.amount_cents, amount_interval: yearly ? "year" : "month" };
+}
 
 /** Claim refresh: bumps sent_at and writes attempts = prior + 1 (RPC-supplied). */
 async function claim(
@@ -308,10 +325,10 @@ export async function runLifecycleEmailCron(
             ref_at: c.first_charge_at,
             delivered_at: null,
             meta: {
-              plan_name: c.plan_name,
+              to: c.owner_email,
+              ...announcedCharge(c),
               provider: c.provider,
-              first_charge: firstCharge,
-              days_left: daysLeft,
+              first_charge_at: c.first_charge_at,
             },
           },
           "email_type,workspace_id",

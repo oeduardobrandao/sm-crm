@@ -118,7 +118,8 @@ export function formatChargeDate(iso: string): string {
 export function buildTrialReminderEmail(p: {
   firstName: string | null;
   workspaceName: string;
-  planName: string;
+  // plan_name is coalesce(plans.name, plan_id) and can still be NULL.
+  planName: string | null;
   firstCharge: string | null;
   firstChargeDate: string;
   daysLeft: number;
@@ -126,7 +127,11 @@ export function buildTrialReminderEmail(p: {
 }): { subject: string; html: string } {
   const base = p.appBaseUrl.replace(/\/+$/, "");
   const billingUrl = `${base}/configuracao/cobranca`;
-  const subject = `Seu teste do Mesaas ${sanitizeSubjectValue(p.planName)} termina em ${p.daysLeft} dias`;
+  const planName = p.planName ? sanitizeSubjectValue(p.planName) : "";
+  const subject = `Seu teste do Mesaas${planName ? ` ${planName}` : ""} termina em ${p.daysLeft} dias`;
+  const trialLead = p.planName?.trim()
+    ? `Seu teste grátis do plano ${p.planName.trim()} no workspace`
+    : "Seu teste grátis no workspace";
   const chargeLine = p.firstCharge
     ? `Nesse dia fazemos a primeira cobrança de ${p.firstCharge} no cartão cadastrado.`
     : "Nesse dia fazemos a primeira cobrança do valor do seu plano no cartão cadastrado.";
@@ -136,7 +141,7 @@ export function buildTrialReminderEmail(p: {
     sections: [
       paragraph(p.firstName ? `Oi, ${p.firstName},` : "Oi,") +
         paragraph(
-          `Seu teste grátis do plano ${p.planName} no workspace ${p.workspaceName} termina em ${p.firstChargeDate}.`,
+          `${trialLead} ${p.workspaceName} termina em ${p.firstChargeDate}.`,
         ) +
         paragraph(chargeLine) +
         paragraph("Se quiser continuar, não precisa fazer nada.", "body", "0 0 20px") +

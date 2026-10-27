@@ -671,6 +671,17 @@ Deno.test("buildTrialReminderEmail: escapes interpolated values and sanitizes th
   assert(!/[\r\n]/.test(subject), "subject has no control characters");
 });
 
+Deno.test("buildTrialReminderEmail: null or blank plan name drops the plan cleanly", () => {
+  for (const planName of [null, "", "   "]) {
+    const { subject, html } = buildTrialReminderEmail({ ...REMINDER, planName });
+    assertEquals(subject, "Seu teste do Mesaas termina em 7 dias");
+    assertStringIncludes(html, "Seu teste grátis no workspace Agência X termina em 26 de novembro.");
+    assert(!html.includes("null") && !html.includes("undefined"));
+    assert(!subject.includes("  ") && !html.includes("plano  "));
+    assert(!html.includes("do plano"));
+  }
+});
+
 Deno.test("buildTrialReminderEmail: no em dash anywhere", () => {
   assert(!buildTrialReminderEmail(REMINDER).html.includes("\u2014"));
   assert(!buildTrialReminderEmail({ ...REMINDER, firstCharge: null }).subject.includes("\u2014"));

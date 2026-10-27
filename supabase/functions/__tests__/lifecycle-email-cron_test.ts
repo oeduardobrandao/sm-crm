@@ -1,4 +1,4 @@
-import { assert } from "./assert.ts";
+import { assert, assertEquals } from "./assert.ts";
 import {
   type CronReportDetail,
   type LifecycleCronDeps,
@@ -30,7 +30,7 @@ function makeFakeDb(opts: {
     workspace_name?: string;
     owner_email?: string;
     owner_nome?: string | null;
-    plan_name?: string;
+    plan_name?: string | null;
     provider?: string;
     amount_cents?: number | null;
     amount_interval?: string | null;
@@ -395,7 +395,62 @@ Deno.test("trial reminder sweep claims with ref_at, sends with its key, marks de
   const row = db.rows.find((r) => r.email_type === "trial_reminder")!;
   assert(row.workspace_id === "w1" && row.ref_at === chargeAt && row.delivered);
   assert(row.attempts === 1);
-  assert(row.meta?.plan_name === "Pro" && row.meta?.days_left === 7);
+  assertEquals(row.meta, {
+    to: "dono@x.test",
+    amount_cents: 13990,
+    amount_interval: "month",
+    provider: "stripe",
+    first_charge_at: chargeAt,
+  });
+});
+
+Deno.test("trial reminder: ledger meta records the Pagar.me installment, not the annual total", async () => {
+  const chargeAt = "2026-08-06T12:00:00Z";
+  const db = makeFakeDb({
+    trialCandidates: [{
+      workspace_id: "w1",
+      provider: "pagarme",
+      amount_cents: 155880,
+      amount_interval: "year",
+      billing_interval: "year",
+      first_charge_at: chargeAt,
+    }],
+  });
+  const { deps, reminders } = makeDeps(db);
+  await runLifecycleEmailCron(deps);
+  assert(reminders[0].html.includes("12x de R$ 129,90"));
+  const row = db.rows.find((r) => r.email_type === "trial_reminder")!;
+  assertEquals(row.meta, {
+    to: "dono@x.test",
+    amount_cents: 12990,
+    amount_interval: "month",
+    provider: "pagarme",
+    first_charge_at: chargeAt,
+  });
+});
+
+Deno.test("trial reminder: ledger meta amount is null when no amount is announced", async () => {
+  const db = makeFakeDb({
+    trialCandidates: [{ workspace_id: "w1", first_charge_at: "2026-08-06T12:00:00Z", amount_cents: null }],
+  });
+  const { deps } = makeDeps(db);
+  await runLifecycleEmailCron(deps);
+  const row = db.rows.find((r) => r.email_type === "trial_reminder")!;
+  assert(row.meta?.amount_cents === null && row.meta?.amount_interval === null);
+});
+
+Deno.test("trial reminder: a null plan_name is claimed, sent without a plan name, and delivered", async () => {
+  const db = makeFakeDb({
+    trialCandidates: [{ workspace_id: "w1", plan_name: null, first_charge_at: "2026-08-06T12:00:00Z" }],
+  });
+  const { deps, reminders } = makeDeps(db);
+  const result = await runLifecycleEmailCron(deps);
+  assert(result.trialRemindersSent === 1 && result.failed === 0);
+  assertEquals(reminders[0].subject, "Seu teste do Mesaas termina em 7 dias");
+  assert(!reminders[0].html.includes("null") && !reminders[0].html.includes("undefined"));
+  assert(reminders[0].html.includes("Seu teste grátis no workspace Agencia X termina em"));
+  const row = db.rows.find((r) => r.email_type === "trial_reminder")!;
+  assert(row.delivered && row.attempts === 1);
 });
 
 Deno.test("trial reminder: a send 7d30m before the charge still says 7 dias", async () => {
