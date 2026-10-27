@@ -47,7 +47,9 @@ export function PostOrigemLinha({ postId }: { postId: number | undefined }) {
         className="inline-flex w-fit items-center gap-1.5 rounded-full border border-[var(--border-color)] bg-[var(--surface-hover)] px-2.5 py-1 text-xs font-medium text-[var(--text-main)] no-underline hover:bg-[var(--surface-1)]"
       >
         <ListChecks size={13} aria-hidden="true" />
-        {t('postOrigem.chip', { mes: mesLabel(linha.periodo) })}
+        {linha.titulo?.trim()
+          ? t('postOrigem.chipTitulo', { titulo: linha.titulo.trim() })
+          : t('postOrigem.chip', { mes: mesLabel(linha.periodo) })}
       </Link>
       {comentarios.length > 0 && (
         <section aria-label={t('postOrigem.comentarios')} className="flex flex-col gap-1.5">

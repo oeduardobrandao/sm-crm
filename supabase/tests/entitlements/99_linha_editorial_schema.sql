@@ -5,7 +5,8 @@
 -- feature_linha_editorial flag as write authorization, the guard triggers and the
 -- column-level grants that keep status, rodada, post_id and convertido_* RPC-only.
 -- 20261031000005_linha_item_aprovacao.sql adds aprovacao / aprovacao_at, readable by the CRM
--- and written only by the RPCs.
+-- and written only by the RPCs. 20261101000004_linha_titulo.sql adds titulo, updatable by the
+-- CRM under the same policy.
 
 begin;
 -- The four tables are excluded: the helper would grant ALL on them and undo the
@@ -184,6 +185,30 @@ begin
   update linha_editorial_itens set aprovacao = null, aprovacao_at = null where id = v_item;
   raise notice 'PASS aprovacao_rpc_only';
 
+  -- ---------- titulo_editable (20261101000004) ----------
+  assert (select titulo is null from linhas_editoriais where id = v_linha), 'titulo starts null (derived title)';
+  assert pg_temp.afetadas(u_a, format('update public.linhas_editoriais set titulo = ''Campanha de Natal'' where id = %L', v_linha)) = 1,
+    'owner renames the linha';
+  assert (select titulo from linhas_editoriais where id = v_linha) = 'Campanha de Natal', 'title stored';
+  assert pg_temp.afetadas(u_b, format('update public.linhas_editoriais set titulo = ''Invasão'' where id = %L', v_linha)) in (-1, 0),
+    'another conta cannot rename it';
+  assert (select titulo from linhas_editoriais where id = v_linha) = 'Campanha de Natal', 'title untouched by conta B';
+  v_e := pg_temp.erro(u_a, format('update public.linhas_editoriais set titulo = ''   '' where id = %L', v_linha));
+  assert v_e like '23514:%', 'blank title refused: ' || coalesce(v_e, 'null');
+  v_e := pg_temp.erro(u_a, format('update public.linhas_editoriais set titulo = '' Natal '' where id = %L', v_linha));
+  assert v_e like '23514:%', 'untrimmed title refused: ' || coalesce(v_e, 'null');
+  v_e := pg_temp.erro(u_a, format('update public.linhas_editoriais set titulo = %L where id = %L', E'Natal\nBcc: x', v_linha));
+  assert v_e like '23514:%', 'title with a newline refused: ' || coalesce(v_e, 'null');
+  v_e := pg_temp.erro(u_a, format('update public.linhas_editoriais set titulo = %L where id = %L', repeat('a', 121), v_linha));
+  assert v_e like '23514:%', '121-character title refused: ' || coalesce(v_e, 'null');
+  v_e := pg_temp.erro(u_a, format('update public.linhas_editoriais set titulo = %L where id = %L', repeat('a', 120), v_linha));
+  assert v_e is null, '120-character title accepted: ' || coalesce(v_e, '');
+  assert pg_temp.afetadas(u_a, format('update public.linhas_editoriais set titulo = null where id = %L', v_linha)) = 1,
+    'clearing the title goes back to the derived one';
+  v_e := pg_temp.erro(u_a, format('update public.linhas_editoriais set titulo = ''X'', status = ''aprovada'' where id = %L', v_linha));
+  assert v_e like '42501:%', 'renaming does not open status: ' || coalesce(v_e, 'null');
+  raise notice 'PASS titulo_editable';
+
   -- ---------- periodo_first_day ----------
   v_e := pg_temp.erro_sr(format('insert into public.linhas_editoriais (conta_id, cliente_id, periodo) values (%L, %s, ''2026-11-02'')', v_a, v_cli_a));
   assert v_e like '23514:%', 'periodo off the 1st refused: ' || coalesce(v_e, 'null');
@@ -304,6 +329,8 @@ begin
   -- UPDATE
   assert pg_temp.afetadas(u_a, format('update public.linhas_editoriais set updated_at = now() where id = %L', v_linha)) in (-1, 0),
     'flag off: linha update blocked';
+  assert pg_temp.afetadas(u_a, format('update public.linhas_editoriais set titulo = ''Off'' where id = %L', v_linha)) in (-1, 0),
+    'flag off: rename blocked';
   assert pg_temp.afetadas(u_a, format('update public.linha_editorial_colunas set nome = ''Pilar 2'' where id = %L', v_col)) in (-1, 0),
     'flag off: coluna update blocked';
   assert pg_temp.afetadas(u_a, format('update public.linha_editorial_itens set titulo = ''Off'' where id = %L', v_item)) in (-1, 0),
@@ -354,6 +381,9 @@ begin
   assert has_column_privilege('authenticated', 'public.linha_editorial_itens', 'aprovacao', 'SELECT'), 'aprovacao readable';
   assert has_column_privilege('authenticated', 'public.linha_editorial_itens', 'aprovacao_at', 'SELECT'), 'aprovacao_at readable';
   assert not has_column_privilege('anon', 'public.linha_editorial_itens', 'aprovacao', 'SELECT'), 'anon cannot read aprovacao';
+  assert has_column_privilege('authenticated', 'public.linhas_editoriais', 'titulo', 'UPDATE'), 'titulo updatable';
+  assert not has_column_privilege('authenticated', 'public.linhas_editoriais', 'titulo', 'INSERT'), 'titulo not insertable (linhas come from the RPC)';
+  assert not has_column_privilege('anon', 'public.linhas_editoriais', 'titulo', 'UPDATE'), 'anon cannot rename';
   assert has_table_privilege('service_role', 'public.linha_editorial_itens', 'INSERT, UPDATE, DELETE'), 'service_role holds writes';
   raise notice 'PASS grants';
 end $$;

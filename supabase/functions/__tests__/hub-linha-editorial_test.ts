@@ -80,6 +80,7 @@ function queueFullGet(db: Db) {
       {
         id: LINHA_A,
         periodo: "2026-11-01",
+        titulo: "Campanha de Natal",
         status: "enviada",
         enviada_at: "2026-10-25T13:00:00Z",
         decidida_at: null,
@@ -307,7 +308,10 @@ Deno.test("hub-linha-editorial GET shapes linhas and keeps only the current roda
     { id: a.id, periodo: a.periodo, status: a.status, enviada_at: a.enviada_at, decidida_at: a.decidida_at, rodada: a.rodada },
     { id: LINHA_A, periodo: "2026-11-01", status: "enviada", enviada_at: "2026-10-25T13:00:00Z", decidida_at: null, rodada: 2 },
   );
-  assertEquals(Object.keys(a).sort(), ["colunas", "decidida_at", "enviada_at", "id", "itens", "periodo", "respostas", "rodada", "status"]);
+  assertEquals(Object.keys(a).sort(), ["colunas", "decidida_at", "enviada_at", "id", "itens", "periodo", "respostas", "rodada", "status", "titulo"]);
+  // The custom title (spec §14) passes through; a linha without one reads null, never undefined.
+  assertEquals(a.titulo, "Campanha de Natal");
+  assertEquals(b.titulo, null);
   assertEquals(a.respostas, [
     { id: "r-new", item_id: ITEM_1, acao: "comentario", comentario: "Gostei", is_workspace_user: true, created_at: "2026-10-25T14:00:00Z" },
   ]);
@@ -328,7 +332,7 @@ Deno.test("hub-linha-editorial GET scopes by the token's conta and cliente", asy
   await handler(get());
   const linhaCall = tableCall(db, "linhas_editoriais");
   assertEquals(mods(linhaCall, "eq"), [["conta_id", "conta-1"], ["cliente_id", 14]]);
-  assertEquals(linhaCall?.selectArgs[0][0], "id, periodo, status, enviada_at, decidida_at, rodada");
+  assertEquals(linhaCall?.selectArgs[0][0], "id, periodo, titulo, status, enviada_at, decidida_at, rodada");
   for (const table of ["linha_editorial_itens", "linha_editorial_respostas"]) {
     const call = tableCall(db, table);
     assertEquals(mods(call, "eq"), [["conta_id", "conta-1"]], table);

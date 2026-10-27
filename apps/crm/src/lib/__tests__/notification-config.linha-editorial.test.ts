@@ -80,6 +80,22 @@ describe('linha editorial notifications', () => {
     );
   });
 
+  test('a custom titulo replaces the month, in curly quotes', () => {
+    const t = { ...meta, titulo: 'Campanha de Natal' };
+    expect(getNotificationDisplay('linha_editorial_aprovada', t).title).toBe(
+      'Dr. Rafael Lima aprovou a linha editorial “Campanha de Natal”',
+    );
+    expect(getNotificationDisplay('linha_editorial_ajustes', t).title).toBe(
+      'Dr. Rafael Lima pediu ajustes na linha editorial “Campanha de Natal”',
+    );
+    // Null, blank or a non-string keeps the month.
+    for (const titulo of [null, '  ', 3]) {
+      expect(getNotificationDisplay('linha_editorial_aprovada', { ...meta, titulo }).title).toBe(
+        'Dr. Rafael Lima aprovou a linha editorial de novembro',
+      );
+    }
+  });
+
   test('both are Aprovações e Hub entries and e-mail eligible', () => {
     for (const t of ['linha_editorial_aprovada', 'linha_editorial_ajustes'] as const) {
       expect(NOTIFICATION_CATALOG[t].category).toBe('aprovacoes_hub');

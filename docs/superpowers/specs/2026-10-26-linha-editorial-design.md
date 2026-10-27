@@ -889,3 +889,81 @@ the extra `aprovacao` field is ignored.
   progress copy and its action switch.
 - **Vitest (CRM):** the chip (hidden before the first send, opens the thread on ajuste), the
   header progress, the rail `contagem()` order, the notification body.
+
+## 14. Editable title (addendum, 2026-10-27)
+
+User request: the agency can rename a linha. This revisits call 1 of §11 ("the linha title is
+derived, not stored"): a custom title is stored, and the derived one stays the fallback.
+
+### 14.1 Data
+
+Migration `20261101000004`: `linhas_editoriais.titulo text NULL`, with
+`CHECK (titulo IS NULL OR (titulo = btrim(titulo) AND length(titulo) BETWEEN 1 AND 120 AND
+titulo !~ '[[:cntrl:]]'))`: one line, because the title reaches the team digest's subject.
+Null means "use the derived title". `authenticated` gets `UPDATE (titulo)`; the existing update
+policy (conta + flag) already covers it. No RPC: renaming is a plain cell-like edit. The
+title is allowed in every status, like row edits (§5); while `enviada` the client sees it on
+the next load.
+
+`create_linha_notification` (copied from `20261031000005`) adds `titulo` (null when unset) to
+the metadata. Nothing else in SQL changes.
+
+### 14.2 Wording
+
+Two forms, implemented as a small helper in each place that renders it (CRM `linhaLogic`, Hub,
+`_shared` e-mail code):
+
+- **Title:** the custom title as typed ("Campanha de Natal"); else "Linha editorial de {mês}".
+- **Reference** (inside a sentence): `linha editorial “{titulo}”`; else
+  `linha editorial de {mês}`. Curly quotes, pt-BR.
+
+Where each appears:
+
+| Place | Form |
+|---|---|
+| CRM linha header `<h2>` | title, editable (§14.3) |
+| Post origin chip | "Da {reference}" |
+| Fluxo wizard seed (`origemLabel`) | reference ("vêm da linha editorial “Campanha de Natal”") |
+| Hub card `<h3>` | title; the month eyebrow above it stays |
+| In-app notification title, team e-mail digest heading | "{cliente} aprovou a {reference}" / "pediu ajustes na {reference}" |
+| Client event e-mail item | "{Title} aguardando sua aprovação" when custom, else unchanged |
+
+The default fluxo name (`nomeFluxoPadrao`), the rail and the phone header (client name) are
+unchanged.
+
+### 14.3 CRM editing
+
+The header title is a button-styled heading: clicking it (or Enter/Space on focus) swaps in a
+text input with the current title (the custom one, or empty with the derived title as
+placeholder), `maxLength` 120. Enter or blur saves; Escape cancels. The value is trimmed;
+empty saves `null` (back to the derived title). Optimistic update of the linha in the month
+query, rollback plus toast "Não foi possível renomear a linha." on error. In-flight save is
+wrapped in `trackUnsavedWork`, and an open input with a change calls `useUnsavedWork`. The
+input has `aria-label="Título da linha"`; the button has `title="Renomear"`.
+
+### 14.4 Edge functions
+
+- `hub-linha-editorial` GET selects and returns `titulo`.
+- `notification-email-cron` (via `_shared/notification-email.ts`) reads `metadata.titulo`.
+- `client-event-email-cron` selects `titulo` and passes it to `linhaItemText(periodo, titulo)`;
+  the extra parameter is optional, so `agenda-cliente-email` and `client-email-unsub`, which
+  import the same file, need no redeploy. E-mail text goes through the existing `escapeHtml`
+  in `link()`/`heading()`.
+
+### 14.5 Rollout
+
+Migration → `hub-linha-editorial` (`--no-verify-jwt`), `notification-email-cron`,
+`client-event-email-cron` (keep each one's live verify_jwt) → merge. Old code against the new
+schema ignores the column; new functions against the old schema would fail the select, so the
+migration goes first.
+
+### 14.6 Tests
+
+- Entitlement suite: authenticated can update `titulo` on its own linha, not another conta's
+  and not with the flag off; the CHECK refuses blank, padded, multi-line and 121-character titles; the
+  notification metadata carries `titulo`.
+- Deno: the GET returns `titulo`; digest heading and client e-mail item for both forms,
+  including HTML escaping of a title with `<`.
+- Vitest: the helper's two forms; header edit (Enter saves trimmed, Escape cancels, empty
+  saves null, error rolls back); origin chip and wizard label with a custom title; Hub card
+  heading; notification display.

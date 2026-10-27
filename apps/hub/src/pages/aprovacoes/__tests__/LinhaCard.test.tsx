@@ -49,6 +49,7 @@ function linha(over: Partial<HubLinha> = {}): HubLinha {
     enviada_at: '2026-10-28T13:00:00.000Z',
     decidida_at: null,
     rodada: 1,
+    titulo: null,
     itens: [item('i1'), item('i2'), item('i3')],
     colunas: [],
     respostas: [],
@@ -84,6 +85,24 @@ beforeAll(() => {
 beforeEach(() => {
   vi.clearAllMocks();
   mockedSubmit.mockResolvedValue({ ok: true });
+});
+
+describe('LinhaCard, heading', () => {
+  it('shows the derived title under the month eyebrow without a custom title', () => {
+    renderCard(linha());
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Linha editorial de novembro' }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the custom title, keeping the month eyebrow', () => {
+    renderCard(linha({ titulo: 'Campanha de Natal' }));
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Campanha de Natal' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Linha editorial de novembro')).not.toBeInTheDocument();
+    expect(screen.getByText('novembro')).toBeInTheDocument();
+  });
 });
 
 describe('LinhaCard, per-row approval', () => {

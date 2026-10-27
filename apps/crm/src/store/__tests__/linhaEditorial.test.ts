@@ -21,6 +21,7 @@ import {
   listLinhasDoMes,
   listPostsDaLinha,
   recolherLinha,
+  renameLinha,
   reorderItens,
   responderComentario,
   updateItem,
@@ -256,5 +257,30 @@ describe('store/linhaEditorial', () => {
     expect(q.in).toHaveBeenCalledWith('id', [9, 10]);
     expect(out.map((p) => p.workflow_titulo)).toEqual(['Reels de novembro', null]);
     expect(await listPostsDaLinha([])).toEqual([]);
+  });
+
+  it('renameLinha updates only titulo, trimmed, and saves null for blank', async () => {
+    const q = chain({ data: null, error: null });
+    mockFrom.mockReturnValue(q);
+    await renameLinha('l1', '  Campanha de Natal ');
+    expect(mockFrom).toHaveBeenCalledWith('linhas_editoriais');
+    expect(q.update).toHaveBeenCalledWith({ titulo: 'Campanha de Natal' });
+    expect(q.eq).toHaveBeenCalledWith('id', 'l1');
+    await renameLinha('l1', '   ');
+    await renameLinha('l1', null);
+    expect(q.update.mock.calls.slice(1)).toEqual([[{ titulo: null }], [{ titulo: null }]]);
+  });
+
+  it('renameLinha throws the supabase error', async () => {
+    const err = { message: 'boom' };
+    mockFrom.mockReturnValueOnce(chain({ data: null, error: err }));
+    await expect(renameLinha('l1', 'X')).rejects.toBe(err);
+  });
+
+  it('listLinhasDoMes selects titulo', async () => {
+    const q = chain({ data: [], error: null });
+    mockFrom.mockReturnValueOnce(q);
+    await listLinhasDoMes('2026-11-01');
+    expect(q.select.mock.calls[0][0]).toMatch(/rodada, titulo/);
   });
 });

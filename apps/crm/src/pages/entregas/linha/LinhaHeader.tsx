@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react';
+import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { format, parseISO, type Locale } from 'date-fns';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { useDateFnsLocale } from '@mesaas/i18n';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { Columns3, Link2, Loader2, MoreHorizontal, RotateCcw, Send, Undo2 } from 'lucide-react';
 import { ClienteFoto } from '@/components/ClienteFoto';
 import {
@@ -15,7 +16,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import type { Cliente } from '@/store';
 import type { LinhaEditorial } from '@/store/linhaEditorial';
 import { LinhaStatusBadge } from './LinhaStatusBadge';
-import { mesLabel } from './linhaLogic';
+import { linhaTitulo } from './linhaLogic';
 
 interface LinhaHeaderProps {
   linha: LinhaEditorial;
@@ -31,6 +32,8 @@ interface LinhaHeaderProps {
   onEnviar: () => void;
   onRecolher: () => void;
   onCopiarHub: (url: string) => void;
+  /** Saves the custom title: trimmed, null brings back the derived one (spec §14.3). */
+  onRenomear: (titulo: string | null) => void;
   enviando: boolean;
   recolhendo: boolean;
 }
@@ -53,6 +56,80 @@ function subtitulo(
   return partes.join(' · ');
 }
 
+/**
+ * The header title (spec §14.3): a button that swaps in an input. Enter or blur saves, Escape
+ * cancels; the value is trimmed and empty saves null. An unchanged value saves nothing.
+ */
+function LinhaTitulo({
+  linha,
+  onRenomear,
+}: {
+  linha: LinhaEditorial;
+  onRenomear: (titulo: string | null) => void;
+}) {
+  const { t } = useTranslation('linha');
+  const atual = linha.titulo?.trim() || null;
+  const [editando, setEditando] = useState(false);
+  const [rascunho, setRascunho] = useState('');
+  // Enter and Escape close the input, and the blur that follows must not save again.
+  const fechado = useRef(false);
+
+  useUnsavedWork(editando && (rascunho.trim() || null) !== atual);
+
+  const abrir = () => {
+    fechado.current = false;
+    setRascunho(atual ?? '');
+    setEditando(true);
+  };
+
+  const fechar = (salvar: boolean) => {
+    if (fechado.current) return;
+    fechado.current = true;
+    setEditando(false);
+    if (!salvar) return;
+    const novo = rascunho.trim() || null;
+    if (novo !== atual) onRenomear(novo);
+  };
+
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      fechar(true);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      fechar(false);
+    }
+  };
+
+  return (
+    <h2 className="linha-header__title">
+      {editando ? (
+        <input
+          className="linha-header__title-input"
+          aria-label={t('header.tituloInput')}
+          maxLength={120}
+          autoFocus
+          value={rascunho}
+          placeholder={linhaTitulo({ periodo: linha.periodo })}
+          onChange={(e) => setRascunho(e.target.value)}
+          onKeyDown={onKeyDown}
+          onBlur={() => fechar(true)}
+        />
+      ) : (
+        <button
+          type="button"
+          className="linha-header__title-btn"
+          title={t('header.renomear')}
+          onClick={abrir}
+        >
+          {linhaTitulo(linha)}
+        </button>
+      )}
+    </h2>
+  );
+}
+
 export function LinhaHeader({
   linha,
   cliente,
@@ -64,6 +141,7 @@ export function LinhaHeader({
   onEnviar,
   onRecolher,
   onCopiarHub,
+  onRenomear,
   enviando,
   recolhendo,
 }: LinhaHeaderProps) {
@@ -103,9 +181,7 @@ export function LinhaHeader({
         }
       />
       <div className="linha-header__text">
-        <h2 className="linha-header__title">
-          {t('header.titulo', { mes: mesLabel(linha.periodo) })}
-        </h2>
+        <LinhaTitulo linha={linha} onRenomear={onRenomear} />
         <p className="linha-header__sub">{subtitulo(linha, cliente, t, dateLocale)}</p>
       </div>
       <LinhaStatusBadge status={status} />

@@ -513,6 +513,17 @@ Deno.test("linha: posts keep the title and CTA, linha still listed", () => {
   assert(html.includes("Linha editorial de setembro aguardando sua aprovação"));
 });
 
+Deno.test("linha: a renamed linha is listed by its title, escaped", () => {
+  const html = buildClientEventEmail({
+    ...BASE_PARAMS,
+    pendingPosts: [],
+    linhas: [{ periodo: "2026-12-01", titulo: "Natal <b>2026</b>" }, { periodo: "2026-11-01", titulo: null }],
+  });
+  assert(html.includes("Natal &lt;b&gt;2026&lt;/b&gt; aguardando sua aprovação"), "expected the escaped custom title");
+  assert(!html.includes("<b>2026</b>"), "the title must not inject HTML");
+  assert(html.includes("Linha editorial de novembro aguardando sua aprovação"), "untitled linha keeps the month");
+});
+
 Deno.test("linha: an unreadable periodo falls back to a month-less line", () => {
   const html = buildClientEventEmail({ ...BASE_PARAMS, pendingPosts: [], linhas: [{ periodo: "???" }] });
   assert(html.includes("Linha editorial aguardando sua aprovação"));

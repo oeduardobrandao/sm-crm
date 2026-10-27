@@ -394,7 +394,7 @@ export function LinhaCard({ linha, token, agencia, floatingBar }: LinhaCardProps
           {monthName(linha.periodo, lang)}
         </div>
         <h3 className="font-display text-[22px] leading-tight font-medium hub-txt">
-          {t('titulo', { mes: monthName(linha.periodo, lang) })}
+          {linha.titulo?.trim() || t('titulo', { mes: monthName(linha.periodo, lang) })}
         </h3>
         <p className="mt-1 text-[13.5px] hub-tx2">
           {t(summaryKey, { n: total, agencia, data: sentOn })}

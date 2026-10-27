@@ -63,6 +63,7 @@ function linha(over: Partial<HubLinha> = {}): HubLinha {
     enviada_at: '2026-10-28T13:00:00.000Z',
     decidida_at: null,
     rodada: 1,
+    titulo: null,
     itens: [
       item('i1', '2026-11-03', { valores: { c1: 'o1' } }),
       item('i2', '2026-11-10', { tipo: 'reels' }),

@@ -3,6 +3,8 @@ import {
   contagemLinha,
   defaultNovaData,
   formatBreakdown,
+  linhaRef,
+  linhaTitulo,
   mensagemGuardItem,
   mesLabel,
   nomeFluxoPadrao,
@@ -141,5 +143,21 @@ describe('contagemLinha', () => {
     ).toBe('9 de 12 aprovados');
     expect(contagemLinha({ ...base, rodada: 0, itens_total: 1 })).toBe('1 post');
     expect(contagemLinha({ ...base, rodada: 0, itens_total: 6 })).toBe('6 posts');
+  });
+});
+
+describe('linhaTitulo / linhaRef', () => {
+  it('derives both forms from the month without a custom title', () => {
+    for (const titulo of [undefined, null, '', '   ']) {
+      const l = { titulo, periodo: '2026-11-01' };
+      expect(linhaTitulo(l)).toBe('Linha editorial de novembro');
+      expect(linhaRef(l)).toBe('linha editorial de novembro');
+    }
+  });
+
+  it('uses the custom title as typed, quoted in the reference', () => {
+    const l = { titulo: 'Campanha de Natal', periodo: '2026-12-01' };
+    expect(linhaTitulo(l)).toBe('Campanha de Natal');
+    expect(linhaRef(l)).toBe('linha editorial “Campanha de Natal”');
   });
 });

@@ -31,6 +31,8 @@ export interface ClientEventEmailParams {
 /** One linha editorial awaiting approval: `periodo` is the month, 'YYYY-MM-DD'. */
 export interface ClientEventLinha {
   periodo: string;
+  /** Custom title (spec §14); null or absent means the derived one. */
+  titulo?: string | null;
 }
 
 const MESES_PT = [
@@ -38,10 +40,13 @@ const MESES_PT = [
   "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
 ];
 
-/** "Linha editorial de {mês} aguardando sua aprovação". The month comes from
- * the 'YYYY-MM' prefix of `periodo` as text, never through a Date, so no
- * timezone can shift it; an unreadable value drops the month. */
-export function linhaItemText(periodo: string): string {
+/** "Linha editorial de {mês} aguardando sua aprovação", or "{titulo} aguardando
+ * sua aprovação" for a renamed linha (spec §14.2). The month comes from the
+ * 'YYYY-MM' prefix of `periodo` as text, never through a Date, so no timezone
+ * can shift it; an unreadable value drops the month. The caller escapes. */
+export function linhaItemText(periodo: string, titulo?: string | null): string {
+  const custom = titulo?.trim();
+  if (custom) return `${custom} aguardando sua aprovação`;
   const m = /^\d{4}-(\d{2})/.exec(periodo);
   const mes = m ? MESES_PT[Number(m[1]) - 1] : undefined;
   return mes ? `Linha editorial de ${mes} aguardando sua aprovação` : "Linha editorial aguardando sua aprovação";
@@ -51,7 +56,7 @@ export function linhaItemText(periodo: string): string {
 function linhaList(linhas: ClientEventLinha[], href: string): string {
   const trs = linhas.map((l, i) => {
     const bd = i === linhas.length - 1 ? "" : `border-bottom: 1px solid ${EMAIL.divider};`;
-    return `<tr><td style="padding: 12px 16px; ${bd} font-size: 14px; line-height: 20px; word-break: break-word; overflow-wrap: anywhere;">${link(href, linhaItemText(l.periodo))}</td></tr>`;
+    return `<tr><td style="padding: 12px 16px; ${bd} font-size: 14px; line-height: 20px; word-break: break-word; overflow-wrap: anywhere;">${link(href, linhaItemText(l.periodo, l.titulo))}</td></tr>`;
   }).join("");
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid ${EMAIL.border}; border-radius: 12px; border-collapse: separate;">${trs}</table>`;
 }

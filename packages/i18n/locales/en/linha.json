@@ -47,7 +47,8 @@
     "contagemAprovados": "{{aprovados}} of {{total}} approved",
     "contagemPosts_zero": "{{count}} posts",
     "contagemPosts_one": "{{count}} post",
-    "contagemPosts_other": "{{count}} posts"
+    "contagemPosts_other": "{{count}} posts",
+    "refTitulo": "editorial plan “{{titulo}}”"
   },
   "status": {
     "rascunho": "Draft",
@@ -163,7 +164,8 @@
     "semLinhaSub": "Build {{nome}}'s plan and send it for approval in the Hub.",
     "criarLinha": "Create plan",
     "banner": "The client sees the changes when they open the Hub.",
-    "origemLabel": "editorial plan for {{mes}}"
+    "origemLabel": "editorial plan for {{mes}}",
+    "erroRenomear": "Could not rename the editorial plan."
   },
   "header": {
     "titulo": "Editorial plan for {{mes}}",
@@ -176,7 +178,9 @@
     "gereLink": "Generate the Hub link on the client's page.",
     "recolher": "Withdraw",
     "maisAcoes": "More actions",
-    "enviarDeNovo": "Send again"
+    "enviarDeNovo": "Send again",
+    "renomear": "Rename",
+    "tituloInput": "Plan title"
   },
   "rail": {
     "criar": "Create"
@@ -238,6 +242,7 @@
   },
   "postOrigem": {
     "chip": "From the {{mes}} editorial plan",
-    "comentarios": "Client comments on the editorial plan"
+    "comentarios": "Client comments on the editorial plan",
+    "chipTitulo": "From the editorial plan “{{titulo}}”"
   }
 }

@@ -47,7 +47,8 @@
     "contagemAprovados": "{{aprovados}} de {{total}} aprovados",
     "contagemPosts_zero": "{{count}} posts",
     "contagemPosts_one": "{{count}} post",
-    "contagemPosts_other": "{{count}} posts"
+    "contagemPosts_other": "{{count}} posts",
+    "refTitulo": "linha editorial “{{titulo}}”"
   },
   "status": {
     "rascunho": "Rascunho",
@@ -163,7 +164,8 @@
     "semLinhaSub": "Monte o plano de {{nome}} e envie para aprovação no Hub.",
     "criarLinha": "Criar linha",
     "banner": "O cliente vê as alterações ao abrir o Hub.",
-    "origemLabel": "linha editorial de {{mes}}"
+    "origemLabel": "linha editorial de {{mes}}",
+    "erroRenomear": "Não foi possível renomear a linha."
   },
   "header": {
     "titulo": "Linha editorial de {{mes}}",
@@ -176,7 +178,9 @@
     "gereLink": "Gere o link do Hub na página do cliente.",
     "recolher": "Recolher",
     "maisAcoes": "Mais ações",
-    "enviarDeNovo": "Enviar de novo"
+    "enviarDeNovo": "Enviar de novo",
+    "renomear": "Renomear",
+    "tituloInput": "Título da linha"
   },
   "rail": {
     "criar": "Criar"
@@ -238,6 +242,7 @@
   },
   "postOrigem": {
     "chip": "Da linha editorial de {{mes}}",
-    "comentarios": "Comentários do cliente na linha editorial"
+    "comentarios": "Comentários do cliente na linha editorial",
+    "chipTitulo": "Da linha editorial “{{titulo}}”"
   }
 }
