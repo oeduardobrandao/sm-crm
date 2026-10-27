@@ -9,22 +9,6 @@ begin;
 -- The four tables are excluded: the helper would grant ALL on them and undo the
 -- column-level grants this suite asserts.
 select et_grant_hosted_parity(array['linhas_editoriais','linha_editorial_colunas','linha_editorial_itens','linha_editorial_respostas']);
--- Defensive: 92_reorder_fluxos_board.sql runs et_grant_hosted_parity() outside a transaction,
--- so its GRANT ALL on every table persists into later suites. Re-apply the migration's grants
--- so a leaked table-level grant cannot mask a column-level one (same reason as 97_crisp_sessions).
-revoke all on table public.linhas_editoriais, public.linha_editorial_colunas,
-  public.linha_editorial_itens, public.linha_editorial_respostas from public, anon, authenticated;
-grant select on table public.linhas_editoriais, public.linha_editorial_colunas,
-  public.linha_editorial_itens, public.linha_editorial_respostas to authenticated;
-grant update (updated_at) on public.linhas_editoriais to authenticated;
-grant insert (conta_id, nome, tipo, config, visivel_cliente, oculta, ordem),
-  update (nome, tipo, config, visivel_cliente, oculta, ordem), delete
-  on public.linha_editorial_colunas to authenticated;
-grant insert (id, linha_id, conta_id, data, tipo, titulo, direcao, valores, ordem),
-  update (data, tipo, titulo, direcao, valores, ordem), delete
-  on public.linha_editorial_itens to authenticated;
-grant insert (conta_id, linha_id, item_id, acao, comentario, is_workspace_user, author_user_id)
-  on public.linha_editorial_respostas to authenticated;
 
 -- 'SQLSTATE:message' of the error p_sql raises as p_user (authenticated), or NULL on success
 create or replace function pg_temp.erro(p_user uuid, p_sql text) returns text language plpgsql as $f$
@@ -326,6 +310,11 @@ begin
   foreach v_t in array v_tables loop
     assert not has_table_privilege('anon', 'public.' || v_t, 'SELECT'), format('anon cannot select %s', v_t);
     assert not has_table_privilege('authenticated', 'public.' || v_t, 'TRUNCATE'), format('authenticated cannot truncate %s', v_t);
+  end loop;
+  -- Only column-level INSERT/UPDATE: a table-level grant would mask every column assertion above.
+  foreach v_t in array v_tables loop
+    assert not has_table_privilege('authenticated', 'public.' || v_t, 'INSERT'), format('no table-level insert on %s', v_t);
+    assert not has_table_privilege('authenticated', 'public.' || v_t, 'UPDATE'), format('no table-level update on %s', v_t);
   end loop;
   assert not has_table_privilege('authenticated', 'public.linhas_editoriais', 'INSERT'), 'no insert on linhas';
   assert not has_table_privilege('authenticated', 'public.linhas_editoriais', 'DELETE'), 'no delete on linhas';
