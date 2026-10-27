@@ -17,6 +17,36 @@ export async function exportVideo(
   signal: AbortSignal,
   onProgress: (percent: number) => void,
 ): Promise<File> {
+  return runFfmpeg(
+    file,
+    videoArguments(adjustment, width, height, duration, maxBytes),
+    maxBytes,
+    signal,
+    onProgress,
+    adjustedFilename(file.name, 'video'),
+  );
+}
+
+/** Scale-only re-encode (`scaleVideoArguments`), same worker lifecycle as `exportVideo`. */
+export async function runFfmpegScale(
+  file: File,
+  args: string[],
+  maxBytes: number,
+  signal: AbortSignal,
+  onProgress: (pct: number) => void,
+  outputName: string,
+): Promise<File> {
+  return runFfmpeg(file, args, maxBytes, signal, onProgress, outputName);
+}
+
+async function runFfmpeg(
+  file: File,
+  args: string[],
+  maxBytes: number,
+  signal: AbortSignal,
+  onProgress: (percent: number) => void,
+  outputName: string,
+): Promise<File> {
   signal.throwIfAborted();
   const ffmpeg = new FFmpeg();
   const abort = () => ffmpeg.terminate();
@@ -37,7 +67,7 @@ export async function exportVideo(
     signal.throwIfAborted();
     await ffmpeg.writeFile('input', new Uint8Array(await file.arrayBuffer()));
     signal.throwIfAborted();
-    const code = await ffmpeg.exec(videoArguments(adjustment, width, height, duration, maxBytes));
+    const code = await ffmpeg.exec(args);
     if (code !== 0) throw new VideoExportError('Falha ao processar o vídeo. Tente novamente.');
     signal.throwIfAborted();
     const output = await ffmpeg.readFile('output.mp4');
@@ -46,9 +76,7 @@ export async function exportVideo(
     if (output.byteLength > maxBytes)
       throw new VideoExportError('O vídeo ajustado ainda excede o limite de tamanho.');
     onProgress(100);
-    return new File([new Uint8Array(output)], adjustedFilename(file.name, 'video'), {
-      type: 'video/mp4',
-    });
+    return new File([new Uint8Array(output)], outputName, { type: 'video/mp4' });
   } catch (error) {
     signal.throwIfAborted();
     if (timedOut)
