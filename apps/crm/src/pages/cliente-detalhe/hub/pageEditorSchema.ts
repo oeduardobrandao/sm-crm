@@ -7,6 +7,7 @@ import Highlight from '@tiptap/extension-highlight';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
 import { isAllowedRichTextAutolinkUrl } from '@mesaas/link-policy';
+import { i18n } from '@mesaas/i18n';
 import { CalloutExtension } from '@/pages/entregas/components/CalloutExtension';
 
 /**
@@ -45,7 +46,8 @@ export function pageEditorExtensions(): AnyExtension[] {
       autolink: true,
       isAllowedUri: (url, ctx) => isAllowedRichTextAutolinkUrl(url, ctx),
     }),
-    Placeholder.configure({ placeholder: 'Escreva o conteúdo da página…' }),
+    // Função (não string): resolvida a cada render do placeholder, no idioma atual.
+    Placeholder.configure({ placeholder: () => i18n.t('clientHub:pageEditor.placeholder') }),
     CalloutExtension,
   ];
 }

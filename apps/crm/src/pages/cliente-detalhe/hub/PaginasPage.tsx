@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Save, GripVertical, ArrowUpDown } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import {
   DndContext,
@@ -70,6 +71,7 @@ function hubPagesQueryKey(clienteId: number) {
 export default function PaginasPage() {
   const { clienteId, cliente } = useOutletContext<ClienteDetalheOutletContext>();
   const qc = useQueryClient();
+  const { t } = useTranslation('clientHub');
   // Tri-state: só um `can('configuracoes','editar')` resolvido como `true` libera a
   // busca; 'unknown' (membership ainda carregando) mantém a query desligada.
   const canLoadPortalData = useHubPortalDataEnabled();
@@ -97,8 +99,8 @@ export default function PaginasPage() {
     <div className="hub-page">
       <header className="hub-page__head" hidden={isPhone}>
         <div>
-          <h2 className="hub-page__title">Páginas</h2>
-          <p className="hub-page__sub">Páginas de conteúdo publicadas no portal do cliente.</p>
+          <h2 className="hub-page__title">{t('paginas.title')}</h2>
+          <p className="hub-page__sub">{t('paginas.subtitle')}</p>
         </div>
       </header>
       <HubRoleGate>
@@ -145,13 +147,14 @@ function SortablePageRow({
     opacity: isDragging ? 0.5 : 1,
   };
   const legacy = isLegacyContent(page.content);
+  const { t } = useTranslation('clientHub');
 
   return (
     <div ref={setNodeRef} style={style} className="hub-paginas__row">
       <button
         type="button"
         className="hub-paginas__drag-handle"
-        aria-label="Reordenar página"
+        aria-label={t('paginas.reorderPage')}
         {...attributes}
         {...listeners}
       >
@@ -164,9 +167,9 @@ function SortablePageRow({
         onClick={onSelect}
       >
         <span className="hub-paginas__list-item-title">
-          {page.title || <span className="italic opacity-60">Sem título</span>}
+          {page.title || <span className="italic opacity-60">{t('paginas.untitled')}</span>}
         </span>
-        {legacy && <span className="hub-paginas__badge">Markdown</span>}
+        {legacy && <span className="hub-paginas__badge">{t('paginas.markdown')}</span>}
       </button>
     </div>
   );
@@ -186,6 +189,7 @@ function PagesEditor({
   onSaved: () => void;
 }) {
   const qc = useQueryClient();
+  const { t } = useTranslation('clientHub');
   // `null` tem dois significados possíveis aqui: "ainda não escolhemos nada" (antes da
   // 1ª carga) e "o usuário está compondo uma página nova". O ref de inicialização abaixo
   // decide qual dos dois é, e só decide UMA vez -- depois disso, `null` sempre quer dizer
@@ -209,7 +213,7 @@ function PagesEditor({
   const editorScreenOpen = isPhone && phoneEditorOpen;
   useOverlayHistoryEntry(editorScreenOpen, () => setPhoneEditorOpen(false));
   useClientePhoneHeader({
-    subtitle: isPhone ? 'Páginas de conteúdo publicadas no portal do cliente.' : undefined,
+    subtitle: isPhone ? t('paginas.subtitle') : undefined,
     hideNavBar: editorScreenOpen,
   });
   const phoneSensors = useSensors(
@@ -302,7 +306,7 @@ function PagesEditor({
         next.map((p) => p.id),
       );
     } catch {
-      toast.error('Erro ao reordenar páginas.');
+      toast.error(t('paginas.reorderError'));
     } finally {
       // Sempre busca de novo, dê certo ou errado: um update por linha
       // (Promise.all) pode ter renumerado só parte da lista, e o que a tela
@@ -328,10 +332,10 @@ function PagesEditor({
   async function handlePhoneRemove(id: string) {
     try {
       await removeHubPage(id);
-      toast.success('Página removida.');
+      toast.success(t('paginas.removed'));
       onSaved();
     } catch (e: any) {
-      toast.error(e?.message ?? 'Erro ao remover página.');
+      toast.error(e?.message ?? t('paginas.removeError'));
     }
   }
 
@@ -362,7 +366,7 @@ function PagesEditor({
         {!sortMode && (
           <ClientePhoneNavActions>
             <PhoneIconButton
-              label="Nova página"
+              label={t('paginas.newPage')}
               onClick={() => {
                 setSelectedId(null);
                 setPhoneEditorOpen(true);
@@ -377,13 +381,13 @@ function PagesEditor({
         ) : sortMode ? (
           <>
             <div className="phone-cli-reorder-bar">
-              <span>Segure e arraste pelas alças para reordenar.</span>
+              <span>{t('paginas.reorderHint')}</span>
               <button
                 type="button"
                 className="phone-cli-cal__step"
                 onClick={() => setSortMode(false)}
               >
-                Concluir
+                {t('paginas.done')}
               </button>
             </div>
             <DndContext
@@ -396,14 +400,16 @@ function PagesEditor({
                 strategy={verticalListSortingStrategy}
               >
                 <div className="phone-kit phone-group">
-                  <ul className="phone-group__list" aria-label="Páginas">
+                  <ul className="phone-group__list" aria-label={t('paginas.title')}>
                     {orderedPages.map((p) => (
                       <PhoneSortableRow
                         key={p.id}
                         id={p.id}
-                        handleLabel={`Reordenar página ${p.title || 'Sem título'}`}
+                        handleLabel={t('paginas.reorderPageNamed', {
+                          title: p.title || t('paginas.untitled'),
+                        })}
                       >
-                        {p.title || 'Sem título'}
+                        {p.title || t('paginas.untitled')}
                       </PhoneSortableRow>
                     ))}
                   </ul>
@@ -414,27 +420,26 @@ function PagesEditor({
         ) : (
           <>
             <PhoneSectionList
-              title="Páginas"
+              title={t('paginas.title')}
               empty={
-                <PhoneEmptyCard
-                  title="Nenhuma página ainda."
-                  hint="Toque em + para criar a primeira página do portal."
-                />
+                <PhoneEmptyCard title={t('paginas.emptyTitle')} hint={t('paginas.emptyHint')} />
               }
             >
               {orderedPages.map((p) => (
                 <PhoneRow
                   key={p.id}
-                  title={p.title || 'Sem título'}
-                  subtitle={isLegacyContent(p.content) ? 'Markdown' : undefined}
+                  title={p.title || t('paginas.untitled')}
+                  subtitle={isLegacyContent(p.content) ? t('paginas.markdown') : undefined}
                   onOpen={() => {
                     setSelectedId(p.id);
                     setPhoneEditorOpen(true);
                   }}
-                  menuLabel={`Ações da página ${p.title || 'Sem título'}`}
+                  menuLabel={t('paginas.actionsMenu', {
+                    title: p.title || t('paginas.untitled'),
+                  })}
                   actions={[
                     {
-                      label: 'Remover',
+                      label: t('actions.delete'),
                       icon: <Trash2 aria-hidden="true" />,
                       destructive: true,
                       onSelect: () => setPhoneRemoveId(p.id),
@@ -444,9 +449,9 @@ function PagesEditor({
               ))}
             </PhoneSectionList>
             {orderedPages.length > 1 && (
-              <GroupedList aria-label="Ordem das páginas">
+              <GroupedList aria-label={t('paginas.orderAria')}>
                 <Cell
-                  label="Reordenar"
+                  label={t('paginas.reorder')}
                   icon={<ArrowUpDown />}
                   iconColor="var(--phone-fill)"
                   chevron={false}
@@ -459,11 +464,11 @@ function PagesEditor({
         )}
         <PhoneConfirmSheet
           open={removing !== null}
-          title="Remover esta página?"
-          message="Essa ação não pode ser desfeita."
+          title={t('paginas.removeTitle')}
+          message={t('paginas.removeMessage')}
           actions={[
             {
-              label: 'Remover',
+              label: t('actions.delete'),
               destructive: true,
               onSelect: () => {
                 const id = phoneRemoveId;
@@ -487,7 +492,7 @@ function PagesEditor({
           className="w-full justify-start"
           onClick={() => requestSwitch(null)}
         >
-          <Plus size={14} className="mr-1.5" /> Nova página
+          <Plus size={14} className="mr-1.5" /> {t('paginas.newPage')}
         </Button>
 
         {isLoading ? (
@@ -500,7 +505,7 @@ function PagesEditor({
             ))}
           </div>
         ) : pages.length === 0 ? (
-          <p className="hub-paginas__rail-empty">Nenhuma página ainda.</p>
+          <p className="hub-paginas__rail-empty">{t('paginas.emptyTitle')}</p>
         ) : (
           <DndContext
             sensors={sensors}
@@ -555,15 +560,14 @@ function PagesEditor({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Trocar de página sem salvar?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Você tem alterações não salvas nesta página. Elas ficam guardadas neste navegador e
-              você pode continuar depois, mas ainda não foram enviadas.
-            </AlertDialogDescription>
+            <AlertDialogTitle>{t('paginas.switchTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('paginas.unsavedMessage')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Continuar editando</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmSwitch}>Trocar mesmo assim</AlertDialogAction>
+            <AlertDialogCancel>{t('paginas.keepEditing')}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmSwitch}>
+              {t('paginas.switchAnyway')}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -591,6 +595,7 @@ function PageEditorPane({
   variant?: 'desktop' | 'phone';
   onClose?: () => void;
 }) {
+  const { t } = useTranslation('clientHub');
   const loaded = useMemo(() => readPageDocResult(page?.content), [page?.content]);
   const legacy = useMemo(() => isLegacyContent(page?.content), [page?.content]);
   // Página nova (`page === null`) ainda não tem id -- sem uma chave própria,
@@ -741,7 +746,7 @@ function PageEditorPane({
 
   async function handleSave() {
     if (!title.trim()) {
-      toast.error('Dê um título para a página.');
+      toast.error(t('paginas.titleRequired'));
       return;
     }
     if (draftTimeoutRef.current) {
@@ -760,10 +765,10 @@ function PageEditorPane({
         content: writePageContent(doc),
       });
       clearDraft();
-      toast.success('Página salva!');
+      toast.success(t('paginas.saved'));
       onSaved(wasCreate);
     } catch (e: any) {
-      toast.error(e?.message ?? 'Erro ao salvar página.');
+      toast.error(e?.message ?? t('paginas.saveError'));
     } finally {
       setSaving(false);
     }
@@ -771,8 +776,7 @@ function PageEditorPane({
 
   async function handleDelete(confirmed = false) {
     if (!page) return;
-    if (!confirmed && !window.confirm('Remover esta página? Essa ação não pode ser desfeita.'))
-      return;
+    if (!confirmed && !window.confirm(t('paginas.confirmDelete'))) return;
     // Cancela qualquer debounce pendente ANTES de excluir -- sem isto, um
     // `scheduleDraftSave` dos últimos 400ms ainda dispararia depois do
     // `clearDraft()` abaixo, ressuscitando o rascunho da página que acabou de ser
@@ -785,34 +789,26 @@ function PageEditorPane({
     try {
       await removeHubPage(page.id);
       clearDraft();
-      toast.success('Página removida.');
+      toast.success(t('paginas.removed'));
       onDeleted();
     } catch (e: any) {
-      toast.error(e?.message ?? 'Erro ao remover página.');
+      toast.error(e?.message ?? t('paginas.removeError'));
     }
   }
 
   const notes = (
     <>
-      {legacy && (
-        <p className="hub-paginas__legacy-note">
-          Conteúdo em markdown. Será convertido para o novo formato ao salvar.
-        </p>
-      )}
+      {legacy && <p className="hub-paginas__legacy-note">{t('paginas.legacyNote')}</p>}
       {!loaded.converted && (
         <p className="hub-paginas__legacy-note hub-paginas__legacy-note--warn">
-          Não foi possível converter automaticamente todo o conteúdo antigo. Revise o texto abaixo
-          antes de salvar.
+          {t('paginas.conversionWarning')}
         </p>
       )}
       {hadStoredDraft && !discardedDraft && (
         <p className="hub-paginas__legacy-note hub-paginas__legacy-note--warn hub-paginas__draft-notice">
-          <span>
-            Rascunho restaurado neste navegador. Pode haver uma versão mais recente salva por outra
-            pessoa.
-          </span>
+          <span>{t('paginas.draftRestored')}</span>
           <button type="button" className="hub-paginas__discard-draft" onClick={handleDiscardDraft}>
-            Descartar rascunho
+            {t('paginas.discardDraft')}
           </button>
         </p>
       )}
@@ -827,7 +823,7 @@ function PageEditorPane({
     return (
       <div className="phone-cli-pagina">
         <PhoneNavBar
-          backLabel="Voltar para Páginas"
+          backLabel={t('paginas.backToPages')}
           onBack={requestBack}
           trailing={
             <button
@@ -836,29 +832,29 @@ function PageEditorPane({
               disabled={saving}
               onClick={() => void handleSave()}
             >
-              Salvar
+              {t('actions.save')}
             </button>
           }
         />
         <header className="phone-kit phone-large-title phone-cli-title">
-          <h1 className="phone-large-title__title">{page?.title || 'Nova página'}</h1>
+          <h1 className="phone-large-title__title">{page?.title || t('paginas.newPage')}</h1>
           <p className="phone-large-title__subtitle">
-            {isDirty ? 'Alterações não salvas' : 'Página do portal do cliente'}
+            {isDirty ? t('paginas.unsaved') : t('paginas.portalPage')}
           </p>
         </header>
         {notes}
-        <GroupedList aria-label="Título da página">
+        <GroupedList aria-label={t('paginas.titleAria')}>
           <FormRow
-            label="Título"
+            label={t('paginas.titleLabel')}
             layout="stacked"
             input={{
               value: title,
               onChange: handleTitleChange,
-              placeholder: 'Título da página',
+              placeholder: t('paginas.titlePlaceholder'),
             }}
           />
         </GroupedList>
-        <h2 className="phone-group__header">Conteúdo</h2>
+        <h2 className="phone-group__header">{t('paginas.content')}</h2>
         <PaginaRichTextEditor
           key={editorResetNonce}
           doc={doc}
@@ -866,9 +862,9 @@ function PageEditorPane({
           variant="phone"
         />
         {page && (
-          <GroupedList aria-label="Remover página" className="phone-cli-pagina__danger">
+          <GroupedList aria-label={t('paginas.removePage')} className="phone-cli-pagina__danger">
             <Cell
-              label="Remover página"
+              label={t('paginas.removePage')}
               icon={<Trash2 />}
               destructive
               onClick={() => setConfirmDeleteOpen(true)}
@@ -877,11 +873,11 @@ function PageEditorPane({
         )}
         <PhoneConfirmSheet
           open={confirmDeleteOpen}
-          title="Remover esta página?"
-          message="Essa ação não pode ser desfeita."
+          title={t('paginas.removeTitle')}
+          message={t('paginas.removeMessage')}
           actions={[
             {
-              label: 'Remover',
+              label: t('actions.delete'),
               destructive: true,
               onSelect: () => {
                 setConfirmDeleteOpen(false);
@@ -893,18 +889,18 @@ function PageEditorPane({
         />
         <PhoneConfirmSheet
           open={confirmLeaveOpen}
-          title="Sair sem salvar?"
-          message="Você tem alterações não salvas nesta página. Elas ficam guardadas neste navegador e você pode continuar depois, mas ainda não foram enviadas."
+          title={t('paginas.leaveTitle')}
+          message={t('paginas.unsavedMessage')}
           actions={[
             {
-              label: 'Sair mesmo assim',
+              label: t('paginas.leaveAnyway'),
               onSelect: () => {
                 setConfirmLeaveOpen(false);
                 onClose?.();
               },
             },
           ]}
-          cancelLabel="Continuar editando"
+          cancelLabel={t('paginas.keepEditing')}
           onCancel={() => setConfirmLeaveOpen(false)}
         />
       </div>
@@ -919,23 +915,23 @@ function PageEditorPane({
         <Input
           value={title}
           onChange={handleTitleChange}
-          placeholder="Título da página"
+          placeholder={t('paginas.titlePlaceholder')}
           className="hub-paginas__title-input"
         />
         <div className="hub-paginas__toolbar-actions">
-          {isDirty && <span className="hub-paginas__dirty-badge">Alterações não salvas</span>}
+          {isDirty && <span className="hub-paginas__dirty-badge">{t('paginas.unsaved')}</span>}
           {page && (
             <Button
               size="sm"
               variant="ghost"
               onClick={() => void handleDelete()}
-              aria-label="Remover página"
+              aria-label={t('paginas.removePage')}
             >
               <Trash2 size={14} />
             </Button>
           )}
           <Button size="sm" onClick={handleSave} disabled={saving}>
-            <Save size={14} className="mr-1.5" /> Salvar
+            <Save size={14} className="mr-1.5" /> {t('actions.save')}
           </Button>
         </div>
       </div>

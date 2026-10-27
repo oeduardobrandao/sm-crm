@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Upload, Save } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,6 +23,7 @@ import '../phone/clienteDetalhePhone.css';
 export default function MarcaPage() {
   const { clienteId, cliente } = useOutletContext<ClienteDetalheOutletContext>();
   const qc = useQueryClient();
+  const { t } = useTranslation('clientHub');
   // Tri-state: só um `can('configuracoes','editar')` resolvido como `true` libera a
   // busca; 'unknown' (membership ainda carregando) mantém a query desligada.
   const canLoadPortalData = useHubPortalDataEnabled();
@@ -42,8 +44,8 @@ export default function MarcaPage() {
       {!isPhone && (
         <header className="hub-page__head">
           <div>
-            <h2 className="hub-page__title">Marca</h2>
-            <p className="hub-page__sub">Cores, fontes e referências da marca do cliente.</p>
+            <h2 className="hub-page__title">{t('marca.title')}</h2>
+            <p className="hub-page__sub">{t('marca.subtitle')}</p>
           </div>
         </header>
       )}
@@ -88,6 +90,7 @@ function BrandEditor({
   const logoInputRef = useRef<HTMLInputElement | null>(null);
   const logoPreview = useFileUrl(brand?.logo_file_id ?? null);
   const isPhone = !useIsDesktop(768);
+  const { t } = useTranslation('clientHub');
 
   // Sincroniza SEMPRE com `brand`, mesmo quando ele resolve para `null` (Finding 3):
   // o guard antigo (`if (brand) setForm(brand)`) nunca limpava o formulário ao trocar
@@ -105,15 +108,14 @@ function BrandEditor({
       // stale form (older tab, refetch race) can't null out a logo uploaded in the meantime.
       const { logo_file_id: _logoFileId, ...values } = form;
       await upsertHubBrand(clienteId, values);
-      toast.success('Marca salva!');
+      toast.success(t('marca.saved'));
       onSaved();
     } catch (e) {
       // trg_feature_brand gates hub_brand at the database, on a direct client
       // write with no edge function in the path and no TanStack mutation, so
       // App.tsx's MutationCache.onError never sees it. This catch is the only
       // observation point for feature_brand_customization.
-      if (!handleEntitlementMutationError(e, contaId ?? null))
-        toast.error('Não foi possível salvar a marca.');
+      if (!handleEntitlementMutationError(e, contaId ?? null)) toast.error(t('marca.saveError'));
     } finally {
       setSaving(false);
     }
@@ -126,12 +128,12 @@ function BrandEditor({
     try {
       const record = await uploadFile({ file, folderId: null });
       await upsertHubBrand(clienteId, { logo_file_id: record.id });
-      toast.success('Logo enviado!');
+      toast.success(t('marca.logoUploaded'));
       onSaved();
     } catch (e) {
       // Same trigger, second write path into hub_brand.
       if (!handleEntitlementMutationError(e, contaId ?? null))
-        toast.error('Não foi possível enviar o logo.');
+        toast.error(t('marca.logoUploadError'));
     } finally {
       setUploadingLogo(false);
     }
@@ -162,7 +164,7 @@ function BrandEditor({
                 className="phone-cli-link-button"
                 onClick={() => setForm((f) => ({ ...f, [key]: null }))}
               >
-                Limpar
+                {t('ui.clear')}
               </button>
             )}
             <span id={field.id}>
@@ -178,9 +180,9 @@ function BrandEditor({
     );
     return (
       <div className="phone-cli-marca">
-        <GroupedList header="Logo">
+        <GroupedList header={t('marca.logoHeader')}>
           <FormRow
-            label="URL do Logo"
+            label={t('marca.logoUrl')}
             layout="stacked"
             input={{
               value: form.logo_url ?? '',
@@ -192,11 +194,19 @@ function BrandEditor({
           />
           <Cell
             label={
-              uploadingLogo ? 'Enviando…' : brand?.logo_file_id ? 'Trocar logo' : 'Enviar logo'
+              uploadingLogo
+                ? t('marca.uploading')
+                : brand?.logo_file_id
+                  ? t('marca.replaceLogo')
+                  : t('marca.uploadLogo')
             }
             icon={
               logoPreview.data ? (
-                <img src={logoPreview.data} alt="Logo da marca" className="phone-cli-marca__logo" />
+                <img
+                  src={logoPreview.data}
+                  alt={t('marca.logoAlt')}
+                  className="phone-cli-marca__logo"
+                />
               ) : (
                 <Upload />
               )
@@ -206,13 +216,13 @@ function BrandEditor({
           />
         </GroupedList>
         {logoInput}
-        <GroupedList header="Cores">
-          {colorRow('Cor primária', 'primary_color')}
-          {colorRow('Cor secundária', 'secondary_color')}
+        <GroupedList header={t('marca.colors')}>
+          {colorRow(t('marca.primaryColor'), 'primary_color')}
+          {colorRow(t('marca.secondaryColor'), 'secondary_color')}
         </GroupedList>
-        <GroupedList header="Fontes">
+        <GroupedList header={t('marca.fonts')}>
           <FormRow
-            label="Fonte principal"
+            label={t('marca.fontPrimary')}
             input={{
               value: form.font_primary ?? '',
               onChange: (e) => setForm((f) => ({ ...f, font_primary: e.target.value })),
@@ -220,7 +230,7 @@ function BrandEditor({
             }}
           />
           <FormRow
-            label="Fonte secundária"
+            label={t('marca.fontSecondary')}
             input={{
               value: form.font_secondary ?? '',
               onChange: (e) => setForm((f) => ({ ...f, font_secondary: e.target.value })),
@@ -229,7 +239,7 @@ function BrandEditor({
           />
         </GroupedList>
         {files.length > 0 && (
-          <GroupedList header="Arquivos" className="phone-cli-wrap">
+          <GroupedList header={t('marca.files')} className="phone-cli-wrap">
             {files.map((f) => (
               <Cell key={f.id} label={f.name} />
             ))}
@@ -241,7 +251,7 @@ function BrandEditor({
           onClick={save}
           disabled={saving}
         >
-          <Save aria-hidden="true" /> Salvar marca
+          <Save aria-hidden="true" /> {t('marca.save')}
         </button>
       </div>
     );
@@ -249,10 +259,10 @@ function BrandEditor({
 
   return (
     <section>
-      <h3 className="font-semibold mb-3">Marca</h3>
+      <h3 className="font-semibold mb-3">{t('marca.title')}</h3>
       <div className="hub-brand-editor__grid grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
-          <Label>URL do Logo</Label>
+          <Label>{t('marca.logoUrl')}</Label>
           <Input
             value={form.logo_url ?? ''}
             onChange={(e) => setForm((f) => ({ ...f, logo_url: e.target.value }))}
@@ -260,12 +270,12 @@ function BrandEditor({
           />
         </div>
         <div>
-          <Label>Logo (arquivo)</Label>
+          <Label>{t('marca.logoFile')}</Label>
           <div className="flex items-center gap-3 mt-1">
             {logoPreview.data && (
               <img
                 src={logoPreview.data}
-                alt="Logo da marca"
+                alt={t('marca.logoAlt')}
                 className="h-10 max-w-24 object-contain rounded border border-border p-0.5"
               />
             )}
@@ -276,17 +286,21 @@ function BrandEditor({
               onClick={() => logoInputRef.current?.click()}
             >
               <Upload size={14} className="mr-1.5" />
-              {uploadingLogo ? 'Enviando…' : brand?.logo_file_id ? 'Trocar logo' : 'Enviar logo'}
+              {uploadingLogo
+                ? t('marca.uploading')
+                : brand?.logo_file_id
+                  ? t('marca.replaceLogo')
+                  : t('marca.uploadLogo')}
             </Button>
             {logoInput}
           </div>
         </div>
         <div>
-          <Label>Cor primária</Label>
+          <Label>{t('marca.primaryColor')}</Label>
           <div className="flex items-center gap-2 mt-1">
             <ColorPicker
               value={form.primary_color ?? ''}
-              label="Cor primária"
+              label={t('marca.primaryColor')}
               onChange={(hex) => setForm((f) => ({ ...f, primary_color: hex }))}
             />
             {form.primary_color && (
@@ -295,17 +309,17 @@ function BrandEditor({
                 variant="ghost"
                 onClick={() => setForm((f) => ({ ...f, primary_color: null }))}
               >
-                Limpar
+                {t('ui.clear')}
               </Button>
             )}
           </div>
         </div>
         <div>
-          <Label>Cor secundária</Label>
+          <Label>{t('marca.secondaryColor')}</Label>
           <div className="flex items-center gap-2 mt-1">
             <ColorPicker
               value={form.secondary_color ?? ''}
-              label="Cor secundária"
+              label={t('marca.secondaryColor')}
               onChange={(hex) => setForm((f) => ({ ...f, secondary_color: hex }))}
             />
             {form.secondary_color && (
@@ -314,13 +328,13 @@ function BrandEditor({
                 variant="ghost"
                 onClick={() => setForm((f) => ({ ...f, secondary_color: null }))}
               >
-                Limpar
+                {t('ui.clear')}
               </Button>
             )}
           </div>
         </div>
         <div>
-          <Label>Fonte principal</Label>
+          <Label>{t('marca.fontPrimary')}</Label>
           <Input
             value={form.font_primary ?? ''}
             onChange={(e) => setForm((f) => ({ ...f, font_primary: e.target.value }))}
@@ -328,7 +342,7 @@ function BrandEditor({
           />
         </div>
         <div>
-          <Label>Fonte secundária</Label>
+          <Label>{t('marca.fontSecondary')}</Label>
           <Input
             value={form.font_secondary ?? ''}
             onChange={(e) => setForm((f) => ({ ...f, font_secondary: e.target.value }))}
@@ -338,7 +352,9 @@ function BrandEditor({
       </div>
       {files.length > 0 && (
         <div className="mt-3">
-          <Label className="text-muted-foreground text-xs uppercase tracking-wide">Arquivos</Label>
+          <Label className="text-muted-foreground text-xs uppercase tracking-wide">
+            {t('marca.files')}
+          </Label>
           <div className="mt-1 space-y-1">
             {files.map((f) => (
               <div key={f.id} className="text-sm text-muted-foreground">
@@ -349,7 +365,7 @@ function BrandEditor({
         </div>
       )}
       <Button size="sm" className="mt-3" onClick={save} disabled={saving}>
-        <Save size={14} className="mr-1.5" /> Salvar marca
+        <Save size={14} className="mr-1.5" /> {t('marca.save')}
       </Button>
     </section>
   );
