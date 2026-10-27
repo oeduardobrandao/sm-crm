@@ -556,6 +556,27 @@ Deno.test("welcome: new shell, steps then grid, signature, no emoji icons", () =
   assert(html.includes("Boas-vindas"), "eyebrow");
 });
 
+Deno.test("welcome: paid-plan features sit under the trial lead-in, with a /comecar link", () => {
+  const html = buildWelcomeEmail({ firstName: "Ana", appBaseUrl: "https://app.test/" });
+  assertStringIncludes(html, "No teste grátis de 30 dias dos planos pagos você também tem:");
+  assertStringIncludes(html, `href="https://app.test/comecar"`);
+  assertStringIncludes(html, "Começar meu teste grátis");
+  assert(!html.includes("—"), "em-dash in welcome copy");
+  const lead = html.indexOf("No teste grátis de 30 dias");
+  // Free features come before the lead-in, portal/team/reports after it.
+  assert(html.indexOf("Clientes &amp; CRM") < lead, "Free features must precede the trial lead-in");
+  assert(html.indexOf("Entregas") < lead, "Entregas must precede the trial lead-in");
+  assert(html.indexOf("Hub do cliente") > lead, "portal bullet must sit under the trial lead-in");
+  assert(html.indexOf("Analytics de Instagram") > lead, "reports bullet must sit under the trial lead-in");
+  assert(html.indexOf("Equipe") > lead, "team bullet must sit under the trial lead-in");
+});
+
+Deno.test("welcome: no portal, team or reports promise outside the trial block", () => {
+  const html = buildWelcomeEmail({ firstName: "Ana", appBaseUrl: "https://app.test" });
+  const before = html.slice(0, html.indexOf("No teste grátis de 30 dias"));
+  assert(!/portal|whitelabel|Hub|equipe|relatório/i.test(before), "paid feature promised before the trial lead-in");
+});
+
 // ─── Trial reminder ─────────────────────────────────────────────────────────
 
 Deno.test("formatFirstCharge: stripe monthly", () => {

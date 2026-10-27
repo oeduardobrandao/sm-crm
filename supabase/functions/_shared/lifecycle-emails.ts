@@ -27,7 +27,7 @@ export function buildWelcomeEmail(p: { firstName: string | null; appBaseUrl: str
       heading(p.firstName ? `Olá, ${p.firstName}! Que bom ter você aqui.` : "Olá! Que bom ter você aqui.") +
         paragraph("Aqui é o Eduardo, do Mesaas. Obrigado por criar sua conta.") +
         paragraphHtml(
-          "O Mesaas é uma <strong>plataforma de gestão para agências de social media</strong>: clientes, entregas, aprovações e analytics em um lugar só, com um portal whitelabel para o seu cliente final.",
+          "O Mesaas é uma <strong>plataforma de gestão para agências de social media</strong>: clientes, entregas e calendário editorial em um lugar só.",
           "body",
           "0",
         ),
@@ -35,14 +35,20 @@ export function buildWelcomeEmail(p: { firstName: string | null; appBaseUrl: str
         steps([
           "Cadastre seu primeiro cliente.",
           `<strong>Importe seus dados</strong>: trazemos tudo do Notion, Trello, ClickUp ou CSV em poucos cliques.${spacer(14)}${button(`${base}/importar`, "Importar meus dados")}`,
-          "Convide sua equipe e compartilhe o Hub com o cliente.",
+          "Crie sua primeira entrega e organize o calendário editorial.",
         ]),
       featureGrid([
         { title: "Clientes & CRM", text: "Todos os seus clientes, briefings e contratos organizados." },
         { title: "Entregas", text: "kanban de workflows + calendário editorial." },
-        { title: "Aprovações pelo Hub do cliente", text: "Portal whitelabel, sem login, com a sua marca." },
-        { title: "Analytics de Instagram", text: "Métricas e relatórios prontos para enviar." },
-      ]),
+      ]) +
+        spacer(8) +
+        paragraph("No teste grátis de 30 dias dos planos pagos você também tem:", "body", "0 0 12px") +
+        featureGrid([
+          { title: "Aprovações pelo Hub do cliente", text: "Portal whitelabel, sem login, com a sua marca." },
+          { title: "Equipe", text: "Convide seu time e trabalhe junto nas entregas." },
+          { title: "Analytics de Instagram", text: "Métricas e relatórios prontos para enviar." },
+        ]) +
+        button(`${base}/comecar`, "Começar meu teste grátis", "outline"),
       callout(`Dúvidas? A ${link(`${base}/ajuda`, "Central de Ajuda")} tem guias passo a passo, e as ${link(`${base}/novidades`, "Novidades")} mostram o que estamos lançando.`),
       paragraphHtml(closingLine, "body", "0 0 18px") +
         (waUrl ? button(waUrl, "Falar no WhatsApp", "outline") + spacer(24) : "") +
