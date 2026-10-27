@@ -10,6 +10,7 @@ import {
   type Ref,
 } from 'react';
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { AgendaConvidadoInput } from '@/store/agenda';
 import { emailConvidadoValido, MAX_CONVIDADOS } from './eventoFormSchema';
 
@@ -39,8 +40,6 @@ interface ConvidadosInputProps {
 /** Characters that end an e-mail while typing or pasting. */
 const SEPARADORES = /[\s,;]+/;
 
-const MENSAGEM_INVALIDO = 'Informe um e-mail válido.';
-
 /** External guests as e-mail chips. A chip is committed on Enter, comma, space (typed or
  *  pasted) and blur; an invalid address stays in the field with an inline message. */
 export function ConvidadosInput({
@@ -53,6 +52,7 @@ export function ConvidadosInput({
   id,
   'aria-describedby': describedBy,
 }: ConvidadosInputProps) {
+  const { t } = useTranslation('agendaEvento');
   const [texto, setTexto] = useState('');
   const [erro, setErro] = useState<string | null>(null);
   const erroId = useId();
@@ -72,7 +72,7 @@ export function ConvidadosInput({
       if (vistos.has(email)) continue;
       if (atuais.length >= max) break;
       if (!emailConvidadoValido(email)) {
-        mensagem = MENSAGEM_INVALIDO;
+        mensagem = t('convidadosInput.invalidEmail');
         resto = fichas.slice(i).join(' ');
         break;
       }
@@ -166,7 +166,7 @@ export function ConvidadosInput({
             </span>
             <button
               type="button"
-              aria-label={`Remover ${c.email}`}
+              aria-label={t('convidadosInput.remove', { email: c.email })}
               disabled={disabled}
               onClick={() => remover(c.email)}
               className="rounded px-0.5"
@@ -185,10 +185,10 @@ export function ConvidadosInput({
             autoComplete="off"
             autoCapitalize="none"
             spellCheck={false}
-            aria-label="E-mail do convidado"
+            aria-label={t('convidadosInput.emailLabel')}
             aria-invalid={erro ? true : undefined}
             aria-describedby={erro ? `${erroId} ${describedBy ?? ''}`.trim() : describedBy}
-            placeholder={value.length === 0 ? 'nome@empresa.com' : ''}
+            placeholder={value.length === 0 ? t('convidadosInput.placeholder') : ''}
             disabled={disabled}
             value={texto}
             onChange={aoDigitar}
@@ -209,7 +209,7 @@ export function ConvidadosInput({
           {erro}
         </p>
         <span className="shrink-0 text-xs" style={{ color: 'var(--text-muted)' }}>
-          {value.length} de {max}
+          {t('convidadosInput.counter', { n: value.length, max })}
         </span>
       </div>
     </div>

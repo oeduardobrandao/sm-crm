@@ -1,1 +1,132 @@
-{}
+{
+  "eventoFormDialog": {
+    "titleEdit": "Edit event",
+    "titleNew": "New event",
+    "descriptionEdit": "Edit the event fields.",
+    "descriptionNew": "Fill in the fields of the new event.",
+    "titleLabel": "Title",
+    "titlePlaceholder": "Add title",
+    "allDay": "All day",
+    "details": "Event details",
+    "type": "Type",
+    "client": "Client",
+    "noClient": "No client",
+    "clientFallback": "Client",
+    "share": "Share with the client",
+    "shareHelp": {
+      "noEmailHub": "This client has no e-mail on file. The event only shows in the portal.",
+      "noEmailNoHub": "This client has no e-mail on file and your plan does not include the Hub. The client will not be notified of this event.",
+      "hub": "Shows in the client portal and the client gets the invite by e-mail.",
+      "noHub": "The client gets the invite by e-mail."
+    },
+    "location": "Location",
+    "meetingLink": "Meeting link",
+    "reminders": "Reminders",
+    "removeReminder": "Remove reminder {{label}}",
+    "addReminder": "Add reminder",
+    "private": "Private event",
+    "privateHelp": "Other people will only see \"Busy\" at this time.",
+    "description": "Description",
+    "participants": "Participants",
+    "participantsHelp": "Anyone added gets notified in the app and by e-mail.",
+    "guests": "External guests",
+    "privateWithGuests": "Remove the external guests before making the event private.",
+    "guestsHelp": "They get the invite by e-mail, with the title, time, location, link and description, and reply through a link, no account needed.",
+    "noName": "No name",
+    "updated": "Event updated"
+  },
+  "recorrenciaPersonalizada": {
+    "title": "Custom recurrence",
+    "description": "Set how often the event repeats and when it ends.",
+    "repeatEvery": "Repeat every",
+    "unit": "Recurrence unit",
+    "onDays": "On",
+    "dayOfMonth": "Day of the month",
+    "ends": "Ends",
+    "never": "Never",
+    "on": "On",
+    "endDate": "End date",
+    "endDateFormat": "MMM d, yyyy",
+    "after": "After",
+    "occurrencesCount": "Number of occurrences",
+    "occurrences": "occurrences",
+    "done": "Done"
+  },
+  "quandoCampos": {
+    "when": "When",
+    "startDate": "Start date",
+    "endDate": "End date",
+    "dateFormat": "EEE, MMM d, yyyy",
+    "startTime": "Start time",
+    "until": "to",
+    "endTime": "End time",
+    "timezone": "Times in the {{tz}} time zone"
+  },
+  "repetirSelect": {
+    "label": "Repeat",
+    "customize": "Customize…"
+  },
+  "escopoEventoDialog": {
+    "titleDelete": "Delete recurring event?",
+    "titleEdit": "Edit recurring event",
+    "description": "Choose which events in the series the change applies to.",
+    "applyTo": "Apply to",
+    "options": {
+      "esta": "This event",
+      "seguintes": "This and following events",
+      "todas": "All events"
+    },
+    "cancelNotice": "Participants get a cancellation notice.",
+    "delete": "Delete"
+  },
+  "pessoasCombobox": {
+    "memberFallback": "Team member",
+    "remove": "Remove {{name}}",
+    "add": "Add team member",
+    "search": "Search people",
+    "empty": "No one found."
+  },
+  "convidadosInput": {
+    "invalidEmail": "Enter a valid e-mail.",
+    "remove": "Remove {{email}}",
+    "emailLabel": "Guest e-mail",
+    "placeholder": "name@company.com",
+    "counter": "{{n}} of {{max}}"
+  },
+  "localAutocomplete": {
+    "suggestions": "Address suggestions"
+  },
+  "schema": {
+    "maxChars": "Use at most {{n}} characters.",
+    "maxParticipants": "Add at most {{max}} people.",
+    "maxGuests": "Invite at most {{max}} people.",
+    "maxReminders": "Use at most {{max}} reminders.",
+    "titleRequired": "Enter a title.",
+    "endBeforeStart": "The end must be after the start.",
+    "maxDays": "The event can last at most {{max}} days.",
+    "linkInvalid": "Enter a link that starts with http:// or https://.",
+    "repeatRequired": "Choose how the event repeats.",
+    "seriesReason": "Applies to the whole series.",
+    "seriesReasonField": "Applies to the whole series: you changed {{field}}.",
+    "seriesFields": {
+      "regra": "the recurrence",
+      "lembretes": "the reminders",
+      "tipo": "the type",
+      "cor": "the color",
+      "cliente_id": "the client",
+      "privado": "the Private event option",
+      "compartilhado_cliente": "sharing with the client",
+      "dia_inteiro": "the All day option",
+      "participantes": "the participants",
+      "convidados": "the external guests"
+    },
+    "custom": {
+      "intervalRange": "Use a number from 1 to 99.",
+      "weekdayRequired": "Choose at least one day of the week.",
+      "endDateRequired": "Choose the end date.",
+      "endDateBeforeStart": "The end date must be on or after the start.",
+      "countRange": "Use a number from 1 to 730."
+    },
+    "dtstartDate": "MMMM d"
+  }
+}
