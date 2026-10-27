@@ -591,6 +591,8 @@ export interface HubLinha {
   enviada_at: string | null;
   decidida_at: string | null;
   rodada: number;
+  /** Custom title set by the agency (null: "Linha editorial de {mês}"). */
+  titulo: string | null;
   itens: HubLinhaItem[];
   colunas: HubLinhaColuna[];
   /** Current rodada only. */

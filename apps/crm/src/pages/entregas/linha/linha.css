@@ -212,6 +212,41 @@
   font-size: 1.25rem;
   font-weight: 600;
 }
+.linha-header__title-btn,
+.linha-header__title-input {
+  font: inherit;
+  color: inherit;
+  margin: 0 0 0 -6px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  max-width: 100%;
+}
+.linha-header__title-btn {
+  display: block;
+  background: none;
+  border: 1px solid transparent;
+  text-align: left;
+  cursor: text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.linha-header__title-btn:hover {
+  background: var(--surface-hover);
+}
+.linha-header__title-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 1px;
+}
+.linha-header__title-input {
+  width: min(100%, 32rem);
+  background: var(--surface-main);
+  border: 1px solid var(--border-color);
+}
+.linha-header__title-input:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 1px;
+}
 .linha-header__sub {
   margin: 2px 0 0;
   color: var(--text-muted);

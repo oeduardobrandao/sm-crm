@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Loader2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import { QueryErrorCard } from '@/components/QueryErrorCard';
 import { useClienteAvatars } from '@/hooks/useClienteAvatars';
 import { captureEvent } from '@/lib/analytics';
@@ -16,6 +17,8 @@ import {
   enviarLinha,
   linhaPostsKey,
   recolherLinha,
+  renameLinha,
+  type LinhaEditorial,
   type LinhaItem,
 } from '@/store/linhaEditorial';
 import { getMembros } from '@/store/team';
@@ -31,7 +34,7 @@ import { LinhaHeader } from './LinhaHeader';
 import { LinhaPhoneView } from './LinhaPhoneView';
 import { LinhaSelectionBar } from './LinhaSelectionBar';
 import { LinhaTable } from './LinhaTable';
-import { formatBreakdown, mesLabel, nomeFluxoPadrao, periodoFromMes } from './linhaLogic';
+import { formatBreakdown, linhaRef, nomeFluxoPadrao, periodoFromMes } from './linhaLogic';
 import { useIsLinhaPhone } from './useIsLinhaPhone';
 import { linhaItensKey, linhasKey, useLinhaQueries } from './useLinhaQueries';
 import './linha.css';
@@ -183,6 +186,30 @@ export function LinhaEditorialView({
     onError: (err) => toast.error(erroDeAcao(err, t('view.erroRecolher'))),
   });
 
+  // Rename (spec §14.3): optimistic in the month's linhas, rolled back on error.
+  const renomear = useMutation({
+    mutationFn: ({ id, titulo }: { id: string; titulo: string | null }) =>
+      trackUnsavedWork(renameLinha(id, titulo)),
+    onMutate: async ({ id, titulo }) => {
+      const key = linhasKey(periodo);
+      await qc.cancelQueries({ queryKey: key });
+      const prev = qc.getQueryData<LinhaEditorial[]>(key);
+      qc.setQueryData<LinhaEditorial[]>(key, (old) =>
+        old?.map((l) => (l.id === id ? { ...l, titulo } : l)),
+      );
+      return { key, prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx) qc.setQueryData(ctx.key, ctx.prev);
+      toast.error(t('view.erroRenomear'));
+    },
+    onSettled: (_data, _err, _vars, ctx) => {
+      if (ctx) void qc.invalidateQueries({ queryKey: ctx.key });
+      // The post origin chip caches its linha for a minute.
+      void qc.invalidateQueries({ queryKey: ['linha-origem'] });
+    },
+  });
+
   // The wizard needs the team and the templates; same keys as the board, so the cache is shared.
   const { data: membros = [] } = useQuery({
     queryKey: ['membros'],
@@ -314,6 +341,9 @@ export function LinhaEditorialView({
         ) : (
           <>
             <LinhaHeader
+              // Keyed by linha: switching client or month mid-edit drops the draft instead of
+              // saving it on another linha.
+              key={linha.id}
               linha={linha}
               cliente={cliente}
               fotos={fotosDe(cliente)}
@@ -329,6 +359,7 @@ export function LinhaEditorialView({
               onEnviar={() => enviar.mutate(linha.id)}
               onRecolher={() => recolher.mutate(linha.id)}
               onCopiarHub={(url) => void copiarHub(url)}
+              onRenomear={(titulo) => renomear.mutate({ id: linha.id, titulo })}
               enviando={enviar.isPending}
               recolhendo={recolher.isPending}
             />
@@ -415,7 +446,7 @@ export function LinhaEditorialView({
                 seed={{
                   clienteId: linha.cliente_id,
                   nome: nomeFluxoPadrao(fluxoItens, periodo),
-                  origemLabel: t('view.origemLabel', { mes: mesLabel(periodo) }),
+                  origemLabel: linhaRef(linha),
                   itens: fluxoItens,
                   afterCreate: (workflow) => criarPostsNoFluxo(linha.id, workflow, fluxoItens),
                 }}

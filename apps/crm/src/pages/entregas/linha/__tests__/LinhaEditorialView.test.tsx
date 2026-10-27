@@ -15,6 +15,7 @@ const m = vi.hoisted(() => ({
   criarLinha: vi.fn(),
   enviarLinha: vi.fn(),
   recolherLinha: vi.fn(),
+  renameLinha: vi.fn(),
   converterItens: vi.fn(),
   getHubToken: vi.fn(),
   getWorkspaceSlug: vi.fn(),
@@ -39,6 +40,7 @@ vi.mock('@/store/linhaEditorial', async (importOriginal) => ({
   criarLinha: m.criarLinha,
   enviarLinha: m.enviarLinha,
   recolherLinha: m.recolherLinha,
+  renameLinha: m.renameLinha,
   converterItens: m.converterItens,
 }));
 vi.mock('@/store/hub', () => ({
@@ -142,6 +144,7 @@ beforeEach(() => {
   m.criarLinha.mockResolvedValue('new-linha');
   m.enviarLinha.mockResolvedValue(undefined);
   m.recolherLinha.mockResolvedValue(undefined);
+  m.renameLinha.mockResolvedValue(undefined);
   m.getHubToken.mockResolvedValue(null);
   m.getWorkspaceSlug.mockResolvedValue('acme');
   m.getMembros.mockResolvedValue([{ id: 9, nome: 'Ana' }] as Membro[]);
@@ -386,6 +389,86 @@ describe('LinhaEditorialView header', () => {
   });
 });
 
+describe('LinhaEditorialView title', () => {
+  const titulo = () => screen.findByRole('button', { name: 'Linha editorial de novembro' });
+
+  it('Enter saves the trimmed title once and shows it at once', async () => {
+    const user = userEvent.setup();
+    let resolve!: () => void;
+    m.renameLinha.mockReturnValue(new Promise<void>((r) => (resolve = r)));
+    m.listLinhasDoMes.mockResolvedValue([linha({ cliente_id: 1 })]);
+    renderView({ filterClientes: [1] });
+    const btn = await titulo();
+    expect(btn).toHaveAttribute('title', 'Renomear');
+    await user.click(btn);
+    const input = screen.getByRole('textbox', { name: 'Título da linha' });
+    expect(input).toHaveValue('');
+    expect(input).toHaveAttribute('placeholder', 'Linha editorial de novembro');
+    expect(input).toHaveAttribute('maxLength', '120');
+    await user.type(input, '  Campanha de Natal  {Enter}');
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Campanha de Natal' }),
+    ).toBeInTheDocument();
+    expect(m.renameLinha).toHaveBeenCalledTimes(1);
+    expect(m.renameLinha).toHaveBeenCalledWith('l-1', 'Campanha de Natal');
+    resolve();
+  });
+
+  it('Escape cancels without saving', async () => {
+    const user = userEvent.setup();
+    m.listLinhasDoMes.mockResolvedValue([linha({ cliente_id: 1 })]);
+    renderView({ filterClientes: [1] });
+    await user.click(await titulo());
+    await user.type(screen.getByRole('textbox', { name: 'Título da linha' }), 'Outro{Escape}');
+    expect(screen.queryByRole('textbox', { name: 'Título da linha' })).not.toBeInTheDocument();
+    expect(await titulo()).toBeInTheDocument();
+    expect(m.renameLinha).not.toHaveBeenCalled();
+  });
+
+  it('blur saves; an unchanged title saves nothing', async () => {
+    const user = userEvent.setup();
+    m.listLinhasDoMes.mockResolvedValue([linha({ cliente_id: 1, titulo: 'Natal' })]);
+    renderView({ filterClientes: [1] });
+    await user.click(await screen.findByRole('button', { name: 'Natal' }));
+    const input = screen.getByRole('textbox', { name: 'Título da linha' });
+    expect(input).toHaveValue('Natal');
+    await user.type(input, ' {Enter}');
+    expect(m.renameLinha).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole('button', { name: 'Natal' }));
+    await user.type(screen.getByRole('textbox', { name: 'Título da linha' }), ' 2');
+    await user.click(document.body);
+    await waitFor(() => expect(m.renameLinha).toHaveBeenCalledWith('l-1', 'Natal 2'));
+    expect(m.renameLinha).toHaveBeenCalledTimes(1);
+  });
+
+  it('empty saves null and brings back the derived title', async () => {
+    const user = userEvent.setup();
+    m.listLinhasDoMes
+      .mockResolvedValueOnce([linha({ cliente_id: 1, titulo: 'Natal' })])
+      .mockResolvedValue([linha({ cliente_id: 1, titulo: null })]);
+    renderView({ filterClientes: [1] });
+    await user.click(await screen.findByRole('button', { name: 'Natal' }));
+    await user.clear(screen.getByRole('textbox', { name: 'Título da linha' }));
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(m.renameLinha).toHaveBeenCalledWith('l-1', null));
+    expect(await titulo()).toBeInTheDocument();
+  });
+
+  it('an error rolls the title back and toasts', async () => {
+    const user = userEvent.setup();
+    let reject!: (e: unknown) => void;
+    m.renameLinha.mockReturnValue(new Promise<void>((_r, rj) => (reject = rj)));
+    m.listLinhasDoMes.mockResolvedValue([linha({ cliente_id: 1 })]);
+    renderView({ filterClientes: [1] });
+    await user.click(await titulo());
+    await user.type(screen.getByRole('textbox', { name: 'Título da linha' }), 'Natal{Enter}');
+    expect(await screen.findByRole('button', { name: 'Natal' })).toBeInTheDocument();
+    reject(new Error('boom'));
+    expect(await titulo()).toBeInTheDocument();
+    expect(m.toastError).toHaveBeenCalledWith('Não foi possível renomear a linha.');
+  });
+});
+
 describe('LinhaEditorialView selection', () => {
   it('selecting rows shows the bar and Criar posts individuais converts them as avulsos', async () => {
     const user = userEvent.setup();
@@ -435,6 +518,21 @@ describe('LinhaEditorialView rail errors', () => {
 });
 
 describe('LinhaEditorialView Criar fluxo', () => {
+  it('the wizard names a custom title as the origin', async () => {
+    const user = userEvent.setup();
+    m.listLinhasDoMes.mockResolvedValue([
+      linha({ cliente_id: 1, status: 'aprovada', itens_total: 1, titulo: 'Campanha de Natal' }),
+    ]);
+    m.listItens.mockResolvedValue([item(1)]);
+    renderView({ filterClientes: [1] });
+    await user.click(await screen.findByRole('checkbox', { name: 'Selecionar Post 1' }));
+    const bar = await screen.findByTestId('linha-selection-bar');
+    await user.click(within(bar).getByRole('button', { name: 'Criar fluxo' }));
+    expect(
+      await screen.findByText('1 post vem da linha editorial “Campanha de Natal”.'),
+    ).toBeInTheDocument();
+  });
+
   it('selected rows open the seeded wizard and convert into the new fluxo', async () => {
     const user = userEvent.setup();
     m.listLinhasDoMes.mockResolvedValue([

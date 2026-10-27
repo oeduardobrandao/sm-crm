@@ -169,7 +169,9 @@ function linhaEditorialDisplay(
 ): NotificationDisplay {
   const quem = s(m.cliente_nome, 'Cliente');
   const mes = monthName(m.periodo);
-  const de = mes ? ` de ${mes}` : '';
+  // Reference form (spec §14.2): the custom title in curly quotes, else the month.
+  const titulo = typeof m.titulo === 'string' ? m.titulo.trim() : '';
+  const ref = titulo ? `linha editorial “${titulo}”` : `linha editorial${mes ? ` de ${mes}` : ''}`;
   const n = typeof m.comentarios === 'number' && Number.isFinite(m.comentarios) ? m.comentarios : 0;
   const comentarios = n > 0 ? `${n} ${n === 1 ? 'comentário' : 'comentários'}` : '';
   const ajustes =
@@ -182,13 +184,13 @@ function linhaEditorialDisplay(
     ? {
         icon: CheckCircle,
         tone: 'success',
-        title: `${quem} aprovou a linha editorial${de}`,
+        title: `${quem} aprovou a ${ref}`,
         body,
       }
     : {
         icon: AlertTriangle,
         tone: 'warning',
-        title: `${quem} pediu ajustes na linha editorial${de}`,
+        title: `${quem} pediu ajustes na ${ref}`,
         body,
       };
 }

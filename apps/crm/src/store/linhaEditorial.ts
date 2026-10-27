@@ -35,6 +35,8 @@ export interface LinhaEditorial {
   enviada_por: string | null;
   decidida_at: string | null;
   rodada: number;
+  /** Custom title (spec §14); null or absent means the derived "Linha editorial de {mês}". */
+  titulo?: string | null;
   /** Only on `listLinhasDoMes`: rows in the linha. */
   itens_total?: number;
   /** Only on `listLinhasDoMes`: rows already turned into posts. */
@@ -119,7 +121,7 @@ export type LinhaColunaPatch = Partial<
 export const linhaPostsKey = (linhaId: string) => ['linha-posts', linhaId] as const;
 
 const LINHA_COLS =
-  'id, conta_id, cliente_id, periodo, status, enviada_at, enviada_por, decidida_at, rodada';
+  'id, conta_id, cliente_id, periodo, status, enviada_at, enviada_por, decidida_at, rodada, titulo';
 const COLUNA_COLS = 'id, nome, tipo, config, visivel_cliente, oculta, ordem';
 
 type CountEmbed = { count: number }[] | null | undefined;
@@ -279,6 +281,13 @@ export async function updateColuna(id: string, patch: LinhaColunaPatch): Promise
 /** Deletes the column and strips its key from unconverted items' `valores`. */
 export async function excluirColuna(id: string): Promise<void> {
   const { error } = await supabase.rpc('linha_editorial_coluna_excluir', { p_coluna_id: id });
+  if (error) throw error;
+}
+
+/** Renames the linha (spec §14.3). Trimmed here too; an empty title saves null. */
+export async function renameLinha(id: string, titulo: string | null): Promise<void> {
+  const value = titulo?.trim() || null;
+  const { error } = await supabase.from('linhas_editoriais').update({ titulo: value }).eq('id', id);
   if (error) throw error;
 }
 

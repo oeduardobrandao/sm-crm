@@ -92,6 +92,18 @@ describe('PostOrigemLinha', () => {
     expect(screen.queryByText('De outro item')).not.toBeInTheDocument();
   });
 
+  it('the chip names a custom title', async () => {
+    storeMock.getOrigemDoPost.mockResolvedValue({
+      linha: { ...linha, titulo: 'Campanha de Natal' },
+      item,
+    });
+    storeMock.listRespostas.mockResolvedValue([]);
+    renderIt();
+    expect(
+      await screen.findByRole('link', { name: 'Da linha editorial “Campanha de Natal”' }),
+    ).toBeInTheDocument();
+  });
+
   it('hidden when flag off', async () => {
     limitsMock.features = { feature_linha_editorial: false };
     storeMock.getOrigemDoPost.mockResolvedValue({ linha, item });

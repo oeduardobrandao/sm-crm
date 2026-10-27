@@ -69,6 +69,27 @@ export function mesLabel(periodo: string): string {
   );
 }
 
+type LinhaNome = { titulo?: string | null; periodo: string };
+
+/** Custom title, or null when the linha has none (blank counts as none). */
+function tituloCustom(l: LinhaNome): string | null {
+  return l.titulo?.trim() || null;
+}
+
+/** Title form (spec §14.2): the custom title, else "Linha editorial de novembro". */
+export function linhaTitulo(l: LinhaNome): string {
+  return tituloCustom(l) ?? i18n.t('linha:header.titulo', { mes: mesLabel(l.periodo) });
+}
+
+/** Reference form, inside a sentence: linha editorial “Campanha de Natal”, else
+ * "linha editorial de novembro". */
+export function linhaRef(l: LinhaNome): string {
+  const t = tituloCustom(l);
+  return t
+    ? i18n.t('linha:logic.refTitulo', { titulo: t })
+    : i18n.t('linha:view.origemLabel', { mes: mesLabel(l.periodo) });
+}
+
 /** `YYYY-MM` (the `mes` URL param) to the period date `YYYY-MM-01`. */
 export function periodoFromMes(mes: string): string {
   return `${mes.slice(0, 7)}-01`;
