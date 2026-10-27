@@ -27,4 +27,10 @@ describe('TermosPage: planos e teste grátis', () => {
     expect(container.textContent).not.toMatch(/período beta/i);
     expect(container.textContent).not.toMatch(/entrarem em vigor/i);
   });
+
+  it('mostra a data de atualização do rodapé em outubro de 2026', () => {
+    const { container } = renderPage();
+    expect(container.textContent).toContain('Última atualização: outubro de 2026');
+    expect(container.textContent).not.toContain('abril de 2025');
+  });
 });

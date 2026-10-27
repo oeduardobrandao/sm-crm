@@ -305,7 +305,7 @@ export default function TermosPage() {
           fontSize: '0.9rem',
         }}
       >
-        Última atualização: abril de 2025
+        Última atualização: outubro de 2026
         <br />
         Mesaas — EBS IT SOLUTIONS · CNPJ 63.758.902/0001-01
       </p>
