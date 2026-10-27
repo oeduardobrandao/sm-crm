@@ -12,6 +12,7 @@ import {
   fetchAgendaPeriodo,
   fetchBootstrap,
   fetchConvite,
+  fetchLinhas,
   fetchPost,
   fetchPosts,
   fetchPostsInRange,
@@ -82,6 +83,18 @@ export function invalidateHubPosts(qc: QueryClient, token: string) {
     qc.invalidateQueries({ queryKey: [HUB_POSTS_KEY, token, 'range'], refetchType: 'none' }),
   ]);
 }
+
+// ── Linha editorial ─────────────────────────────────────────────────────────
+
+export const HUB_LINHAS_KEY = 'hub-linhas';
+
+/** Gate it with `enabled` at the call site: the endpoint answers 403 when the flag is off. */
+export const hubLinhasQuery = (token: string) =>
+  queryOptions({
+    queryKey: [HUB_LINHAS_KEY, token],
+    queryFn: () => fetchLinhas(token),
+    staleTime: 30_000,
+  });
 
 // ── Agenda ──────────────────────────────────────────────────────────────────
 

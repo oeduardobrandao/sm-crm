@@ -1,0 +1,49 @@
+{
+  "abas": {
+    "rotulo": "Seções de aprovações",
+    "posts": "Posts · {{n}}",
+    "linha": "Linha editorial · {{n}}"
+  },
+  "titulo": "Linha editorial de {{mes}}",
+  "resumo": {
+    "um": "1 post planejado por {{agencia}} · enviada em {{data}}",
+    "varios": "{{n}} posts planejados por {{agencia}} · enviada em {{data}}",
+    "semEnvio": {
+      "um": "1 post planejado por {{agencia}}",
+      "varios": "{{n}} posts planejados por {{agencia}}"
+    }
+  },
+  "intro": "Este é o plano do mês: temas, formatos e datas. Os posts prontos chegam depois, para você aprovar um a um.",
+  "semana": "Semana de {{inicio}} a {{fim}} de {{mes}}",
+  "semData": "Sem data",
+  "semTitulo": "Sem título",
+  "formato": {
+    "feed": "Feed",
+    "carrossel": "Carrossel",
+    "reels": "Reels",
+    "stories": "Stories"
+  },
+  "comentar": "Comentar",
+  "seuComentario": "Seu comentário",
+  "salvarComentario": "Salvar comentário",
+  "cancelar": "Cancelar",
+  "salvando": "Enviando...",
+  "equipe": "Equipe",
+  "voce": "Você",
+  "comentariosNaLinha": {
+    "um": "{{n}} comentário na linha",
+    "varios": "{{n}} comentários na linha"
+  },
+  "pedirAjustes": "Pedir ajustes",
+  "ajustesRotulo": "O que precisa mudar",
+  "ajustesObrigatorio": "Conte o que precisa mudar.",
+  "enviarAjustes": "Enviar pedido de ajustes",
+  "aprovar": "Aprovar linha editorial",
+  "aprovadaEm": "Aprovada em {{data}}",
+  "ajustesEm": "Ajustes pedidos em {{data}}",
+  "anteriores": "Anteriores",
+  "vazio": "Nenhuma linha editorial para aprovar.",
+  "sim": "Sim",
+  "erroCarregar": "Não foi possível carregar a linha editorial. Atualize a página.",
+  "erroAcao": "Não foi possível enviar agora. Tente novamente."
+}

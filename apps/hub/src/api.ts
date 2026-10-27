@@ -28,6 +28,8 @@ import type {
   HubAgendaResponse,
   ConviteItem,
   ConviteResponse,
+  HubLinhaAcaoBody,
+  HubLinhasResponse,
 } from './types';
 
 const BASE = import.meta.env.VITE_SUPABASE_URL as string;
@@ -552,4 +554,19 @@ export function conviteIcsUrl(token: string, ocorrenciaId: number) {
   const url = new URL(`${BASE}/functions/v1/agenda-convite/ocorrencia/${ocorrenciaId}.ics`);
   url.searchParams.set('token', token);
   return url.toString();
+}
+
+// ── Linha editorial ─────────────────────────────────────────────────────────
+
+export function fetchLinhas(token: string) {
+  return get<HubLinhasResponse>('hub-linha-editorial', { token });
+}
+
+/**
+ * Comment on a row, or decide the whole linha. Every failure (404 gone or not this client's,
+ * 409 already decided, 422 empty comment) comes back with the same generic message, so
+ * callers show one "try again" and refetch the list to resync.
+ */
+export function submitLinhaAcao(token: string, body: HubLinhaAcaoBody) {
+  return post<{ ok: true; status?: string }>('hub-linha-editorial', { token, ...body });
 }
