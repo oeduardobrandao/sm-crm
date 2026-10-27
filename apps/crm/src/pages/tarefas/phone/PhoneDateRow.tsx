@@ -1,4 +1,5 @@
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { FormRow } from '@/components/mobile/FormRow';
 import { parseDateOnly, toDateOnlyString } from '../tarefasLogic';
 import './tarefasPhone.css';
@@ -27,6 +28,7 @@ export function PhoneDateRow({
   helper,
   disabled,
 }: PhoneDateRowProps) {
+  const { t } = useTranslation('tasksPhone');
   return (
     <FormRow
       label={label}
@@ -38,7 +40,7 @@ export function PhoneDateRow({
           <button
             type="button"
             className="phone-tar-form__date-clear"
-            aria-label={`Limpar ${label.toLowerCase()}`}
+            aria-label={t('dateRow.clear', { label: label.toLowerCase() })}
             onClick={() => onChange(undefined)}
           >
             <X aria-hidden="true" />

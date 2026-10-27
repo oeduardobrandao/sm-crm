@@ -9,6 +9,7 @@ import {
   Trash2,
   User,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import {
   ContextMenu,
   type ContextMenuAction,
@@ -62,7 +63,7 @@ type Sheet = 'move' | 'assign' | 'prazo' | 'delete' | null;
 export function TarefaActionsMenu({
   tarefa,
   moveTargets = [],
-  moveTitle = 'Mover para',
+  moveTitle: moveTitleProp,
   onMove,
   showAssign = true,
   onReschedule,
@@ -72,6 +73,8 @@ export function TarefaActionsMenu({
   apiRef,
   children,
 }: TarefaActionsMenuProps) {
+  const { t } = useTranslation('tasksPhone');
+  const moveTitle = moveTitleProp ?? t('shared.moveTo');
   const ctx = useTarefasPhoneActions();
   const [sheet, setSheetState] = useState<Sheet>(null);
   // A sheet mounts on its first use and stays mounted: its history entry is popped on
@@ -93,12 +96,12 @@ export function TarefaActionsMenu({
   const main: ContextMenuAction[] = [];
   if (ctx)
     main.push({
-      label: 'Abrir',
+      label: t('actionsMenu.open'),
       icon: <ExternalLink aria-hidden="true" />,
       onSelect: () => ctx.openDetail(tarefa),
     });
   main.push({
-    label: done ? 'Reabrir' : 'Concluir',
+    label: done ? t('shared.reopen') : t('shared.complete'),
     icon: done ? <RotateCcw aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />,
     onSelect: () => void toggleTarefaConcluida(tarefa, !done, onRefresh),
   });
@@ -106,28 +109,35 @@ export function TarefaActionsMenu({
   const move: ContextMenuAction[] = [];
   if (onMove && moveTargets.length > 0)
     move.push({
-      label: `${moveTitle}…`,
+      label: t('actionsMenu.moveEllipsis', { title: moveTitle }),
       icon: <ArrowRightLeft aria-hidden="true" />,
       onSelect: () => setSheet('move'),
     });
   if (showAssign && membros.length > 0)
     move.push({
-      label: tarefa.responsavel_id != null ? 'Trocar responsável…' : 'Atribuir responsável…',
+      label:
+        tarefa.responsavel_id != null ? t('actionsMenu.changeAssignee') : t('actionsMenu.assign'),
       icon: <User aria-hidden="true" />,
       onSelect: () => setSheet('assign'),
     });
   move.push({
-    label: tarefa.data_limite ? 'Mudar prazo…' : 'Definir prazo…',
+    label: tarefa.data_limite ? t('actionsMenu.changeDueDate') : t('actionsMenu.setDueDate'),
     icon: <CalendarDays aria-hidden="true" />,
     onSelect: () => setSheet('prazo'),
   });
 
   const edit: ContextMenuAction[] = ctx
-    ? [{ label: 'Editar', icon: <Edit2 aria-hidden="true" />, onSelect: () => ctx.edit(tarefa) }]
+    ? [
+        {
+          label: t('actionsMenu.edit'),
+          icon: <Edit2 aria-hidden="true" />,
+          onSelect: () => ctx.edit(tarefa),
+        },
+      ]
     : [];
   const danger: ContextMenuAction[] = [
     {
-      label: 'Excluir',
+      label: t('shared.delete'),
       icon: <Trash2 aria-hidden="true" />,
       destructive: true,
       onSelect: () => setSheet('delete'),
@@ -144,7 +154,7 @@ export function TarefaActionsMenu({
   return (
     <>
       <ContextMenu
-        label={`Ações da tarefa ${tarefa.titulo}`}
+        label={t('actionsMenu.menuLabel', { title: tarefa.titulo })}
         sections={[main, move, edit, danger].filter((s) => s.length > 0)}
         preview={preview}
         className={className}
@@ -159,7 +169,7 @@ export function TarefaActionsMenu({
           open={sheet === 'move'}
           onOpenChange={close}
           title={moveTitle}
-          description={`${moveTitle}: ${tarefa.titulo}`}
+          description={t('actionsMenu.moveDescription', { moveTitle, title: tarefa.titulo })}
           options={moveTargets.map((t) => ({ value: t.id, label: t.label }))}
           value={null}
           onPick={(id) => {
@@ -171,10 +181,10 @@ export function TarefaActionsMenu({
         <ActionPickerSheet<number>
           open={sheet === 'assign'}
           onOpenChange={close}
-          title="Responsável"
-          description={`Responsável por ${tarefa.titulo}`}
+          title={t('shared.assignee')}
+          description={t('actionsMenu.assigneeDescription', { title: tarefa.titulo })}
           searchable={sortedMembros.length > 8}
-          emptyOption={{ label: 'Sem responsável' }}
+          emptyOption={{ label: t('shared.noAssignee') }}
           options={sortedMembros.map((m) => ({
             value: m.id!,
             label: m.nome,

@@ -10,8 +10,9 @@ import {
   startOfMonth,
   subMonths,
 } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import { BottomSheet } from '@/components/mobile/BottomSheet';
 import { Chip, ChipRow } from '@/components/mobile/ChipRow';
 import { useSheetActions } from '@/components/mobile/sheetActions';
@@ -22,15 +23,8 @@ import { membroOf, TarefasPhoneContext, useTarefasPhoneActions } from './parts';
 import { TarefaPhoneRow } from './TarefasPhoneList';
 import './tarefasPhone.css';
 
-const WEEK_DAYS = [
-  { short: 'S', long: 'segunda' },
-  { short: 'T', long: 'terça' },
-  { short: 'Q', long: 'quarta' },
-  { short: 'Q', long: 'quinta' },
-  { short: 'S', long: 'sexta' },
-  { short: 'S', long: 'sábado' },
-  { short: 'D', long: 'domingo' },
-];
+/** Monday-first column indexes for the weekday header (`calendar.weekdaysNarrow.N`). */
+const WEEK_DAYS = [0, 1, 2, 3, 4, 5, 6] as const;
 
 function monthCells(month: Date): (Date | null)[] {
   const start = startOfMonth(month);
@@ -65,6 +59,7 @@ function SemDataList({
   onTarefaClick: (tarefa: TarefaWithRelations) => void;
   onRefresh: () => void;
 }) {
+  const { t } = useTranslation('tasksPhone');
   const { closeThen } = useSheetActions();
   const ctx = useTarefasPhoneActions();
   const scoped = useMemo(
@@ -93,9 +88,7 @@ function SemDataList({
             />
           ))}
         </ul>
-        <p className="phone-tar-footnote">
-          Use Definir prazo no menu de uma tarefa (segure a linha) para colocá-la no calendário.
-        </p>
+        <p className="phone-tar-footnote">{t('calendar.noDateFootnote')}</p>
       </TarefasPhoneContext.Provider>
     </div>
   );
@@ -116,12 +109,14 @@ export function TarefasPhoneCalendar({
   onRefresh,
   onCreateTask,
 }: TarefasPhoneCalendarProps) {
+  const { t } = useTranslation('tasksPhone');
+  const dateLocale = useDateFnsLocale();
   const now = new Date();
   const [selected, setSelected] = useState<Date | null>(() =>
     isSameMonth(currentMonth, now) ? now : startOfMonth(currentMonth),
   );
   const [semDataOpen, setSemDataOpen] = useState(false);
-  const monthName = format(currentMonth, 'MMMM', { locale: ptBR });
+  const monthName = format(currentMonth, 'MMMM', { locale: dateLocale });
   const cells = monthCells(currentMonth);
   const todayStr = toDateOnlyString(now);
 
@@ -148,7 +143,7 @@ export function TarefasPhoneCalendar({
   const selectedStr = shownSelected ? toDateOnlyString(shownSelected) : null;
   const dayTarefas = selectedStr ? (byDay.get(selectedStr) ?? []) : [];
   const dayHeader = shownSelected
-    ? format(shownSelected, "EEEE, d 'de' MMMM", { locale: ptBR })
+    ? format(shownSelected, t('common:dateFormat.weekdayDayMonth'), { locale: dateLocale })
     : null;
 
   const toneOf = (t: TarefaWithRelations): string | undefined => {
@@ -160,21 +155,25 @@ export function TarefasPhoneCalendar({
   return (
     <div className="phone-tar-calendar">
       {semData.length > 0 && (
-        <ChipRow aria-label="Tarefas sem data" className="phone-tar-chips">
-          <Chip label="Sem data" count={semData.length} onClick={() => setSemDataOpen(true)} />
+        <ChipRow aria-label={t('calendar.noDateChips')} className="phone-tar-chips">
+          <Chip
+            label={t('calendar.noDate')}
+            count={semData.length}
+            onClick={() => setSemDataOpen(true)}
+          />
         </ChipRow>
       )}
 
       <div className="phone-tar-cal">
         <div className="phone-tar-cal__head">
           <h2 className="phone-tar-cal__month">
-            {format(currentMonth, 'MMMM yyyy', { locale: ptBR })}
+            {format(currentMonth, t('calendar.monthHeading'), { locale: dateLocale })}
           </h2>
           <span className="phone-tar-cal__nav">
             <button
               type="button"
               className="phone-tar-round-btn"
-              aria-label="Mês anterior"
+              aria-label={t('calendar.prevMonth')}
               onClick={() => changeMonth(subMonths(currentMonth, 1))}
             >
               <ChevronLeft aria-hidden="true" />
@@ -182,7 +181,7 @@ export function TarefasPhoneCalendar({
             <button
               type="button"
               className="phone-tar-round-btn"
-              aria-label="Próximo mês"
+              aria-label={t('calendar.nextMonth')}
               onClick={() => changeMonth(addMonths(currentMonth, 1))}
             >
               <ChevronRight aria-hidden="true" />
@@ -191,7 +190,7 @@ export function TarefasPhoneCalendar({
         </div>
         <div className="phone-tar-cal__weekdays" aria-hidden="true">
           {WEEK_DAYS.map((d) => (
-            <span key={d.long}>{d.short}</span>
+            <span key={d}>{t(`calendar.weekdaysNarrow.${d}`)}</span>
           ))}
         </div>
         <div className="phone-tar-cal__grid">
@@ -211,11 +210,15 @@ export function TarefasPhoneCalendar({
                   isSelected && 'phone-tar-cal__day--selected',
                 )}
                 aria-pressed={isSelected}
-                aria-label={`${d} de ${monthName}${
+                aria-label={
                   list.length > 0
-                    ? `, ${list.length} ${list.length === 1 ? 'tarefa' : 'tarefas'}`
-                    : ''
-                }`}
+                    ? t('calendar.dayLabelWithTasks', {
+                        day: d,
+                        month: monthName,
+                        tasks: t('shared.taskCount', { count: list.length }),
+                      })
+                    : t('calendar.dayLabel', { day: d, month: monthName })
+                }
                 onClick={() => setSelected(date)}
               >
                 {d}
@@ -234,7 +237,7 @@ export function TarefasPhoneCalendar({
         <section className="phone-tar-section" aria-label={dayHeader ?? undefined}>
           <h2 className="phone-tar-section__head">{dayHeader}</h2>
           {dayTarefas.length === 0 ? (
-            <p className="phone-tar-empty">Nenhuma tarefa neste dia.</p>
+            <p className="phone-tar-empty">{t('calendar.emptyDay')}</p>
           ) : (
             <ul className="phone-tar-list">
               {dayTarefas.map((t) => (
@@ -254,7 +257,10 @@ export function TarefasPhoneCalendar({
             className="phone-tar-board__add phone-tar-cal__new"
             onClick={() => onCreateTask(selectedStr)}
           >
-            <Plus aria-hidden="true" /> Nova tarefa em {format(shownSelected, 'dd/MM')}
+            <Plus aria-hidden="true" />{' '}
+            {t('calendar.newOnDate', {
+              date: format(shownSelected, t('calendar.shortDate')),
+            })}
           </button>
         </section>
       )}
@@ -262,7 +268,7 @@ export function TarefasPhoneCalendar({
       <BottomSheet
         open={semDataOpen}
         onOpenChange={setSemDataOpen}
-        title={`Sem data · ${semData.length}`}
+        title={t('calendar.noDateTitle', { count: semData.length })}
         detents={['medium', 'large']}
       >
         <SemDataList

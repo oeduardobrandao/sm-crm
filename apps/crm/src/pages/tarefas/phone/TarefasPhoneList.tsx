@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { CheckCircle2, ChevronRight, MoreHorizontal, RotateCcw, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { SwipeRow, type SwipeAction } from '@/components/mobile/SwipeRow';
 import type { Membro, TarefaWithRelations } from '../../../store';
 import { DUE_BUCKETS, groupByDueBucket, STATUS_LABELS, STATUS_ORDER } from '../tarefasLogic';
@@ -30,13 +31,14 @@ export function TarefaPhoneRow({
   onOpen: () => void;
   onRefresh: () => void;
 }) {
+  const { t } = useTranslation('tasksPhone');
   const done = tarefa.status === 'concluida';
   const menuRef = useRef<TarefaActionsMenuApi | null>(null);
   const toggle = () => void toggleTarefaConcluida(tarefa, !done, onRefresh);
 
   const leading: SwipeAction[] = [
     {
-      label: done ? 'Reabrir' : 'Concluir',
+      label: done ? t('shared.reopen') : t('shared.complete'),
       icon: done ? <RotateCcw aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />,
       tone: 'success',
       onAction: toggle,
@@ -44,13 +46,13 @@ export function TarefaPhoneRow({
   ];
   const trailing: SwipeAction[] = [
     {
-      label: 'Mais',
+      label: t('list.more'),
       icon: <MoreHorizontal aria-hidden="true" />,
       tone: 'neutral',
       onAction: () => menuRef.current?.openMenu(),
     },
     {
-      label: 'Excluir',
+      label: t('shared.delete'),
       icon: <Trash2 aria-hidden="true" />,
       tone: 'destructive',
       onAction: () => menuRef.current?.requestDelete(),
@@ -62,7 +64,7 @@ export function TarefaPhoneRow({
       <TarefaActionsMenu
         tarefa={tarefa}
         apiRef={menuRef}
-        moveTitle="Mover para"
+        moveTitle={t('shared.moveTo')}
         moveTargets={STATUS_ORDER.filter((s) => s !== tarefa.status).map((s) => ({
           id: s,
           label: STATUS_LABELS[s],
@@ -76,7 +78,7 @@ export function TarefaPhoneRow({
           <div className="phone-tar-row-item" data-done={done || undefined}>
             <TarefaCheck
               checked={done}
-              label={done ? 'Reabrir tarefa' : 'Concluir tarefa'}
+              label={done ? t('list.reopenTask') : t('list.completeTask')}
               onToggle={toggle}
             />
             <button type="button" className="phone-tar-row-item__main" onClick={onOpen}>
@@ -103,6 +105,7 @@ export function TarefasPhoneList({
   onTarefaClick,
   onRefresh,
 }: TarefasPhoneListProps) {
+  const { t } = useTranslation('tasksPhone');
   const [showConcluidas, setShowConcluidas] = useState(false);
   const now = new Date();
   const buckets = groupByDueBucket(tarefas, now);
@@ -125,11 +128,7 @@ export function TarefasPhoneList({
 
   return (
     <div className="phone-tar-lista">
-      {totalOpen === 0 && (
-        <p className="phone-tar-empty">
-          Nenhuma tarefa aberta. Crie uma nova ou ajuste os filtros.
-        </p>
-      )}
+      {totalOpen === 0 && <p className="phone-tar-empty">{t('list.empty')}</p>}
       {DUE_BUCKETS.map((bucket) => {
         const items = buckets[bucket.id];
         if (items.length === 0) return null;
@@ -159,7 +158,7 @@ export function TarefasPhoneList({
                 aria-expanded={showConcluidas}
                 onClick={() => setShowConcluidas((v) => !v)}
               >
-                <span className="phone-tar-toggle__label">Concluídas</span>
+                <span className="phone-tar-toggle__label">{t('list.done')}</span>
                 <span className="phone-tar-toggle__count">{concluidas.length}</span>
                 <ChevronRight aria-hidden="true" />
               </button>
