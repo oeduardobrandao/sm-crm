@@ -1,17 +1,19 @@
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { AudioPlayer } from '@mesaas/ui/AudioPlayer';
 import { Badge } from '@/components/ui/badge';
 import { CRM_AUDIO_VARS } from '@/lib/audioVars';
 import { fetchBriefingAudio } from '@/services/briefingAudio';
 import type { HubBriefingQuestionRow } from '@/store/hub';
 
-const STATUS: Record<string, { label: string; variant: 'success' | 'warning' | 'danger' }> = {
-  done: { label: 'Transcrito', variant: 'success' },
-  pending: { label: 'Transcrição pendente', variant: 'warning' },
-  failed: { label: 'Falha na transcrição', variant: 'danger' },
+const STATUS: Record<string, { variant: 'success' | 'warning' | 'danger' }> = {
+  done: { variant: 'success' },
+  pending: { variant: 'warning' },
+  failed: { variant: 'danger' },
 };
 
 export function BriefingAudioPlayer({ question }: { question: HubBriefingQuestionRow }) {
+  const { t } = useTranslation('clientBriefing');
   const { data, isError } = useQuery({
     queryKey: [
       'briefing-audio-url',
@@ -38,24 +40,25 @@ export function BriefingAudioPlayer({ question }: { question: HubBriefingQuestio
       ? (data?.transcription_status ?? 'pending')
       : question.audio_transcription_status;
   const status = rawStatus ? STATUS[rawStatus] : null;
+  const statusLabel = status && rawStatus ? t(`audioPlayer.status.${rawStatus}`) : null;
   return (
     <div className="mt-2 flex flex-wrap items-center gap-3">
       {data ? (
         <AudioPlayer
           src={data.url}
           durationSeconds={question.audio_duration_seconds}
-          label="Resposta em áudio"
+          label={t('audioPlayer.label')}
           className="w-full max-w-[380px] text-foreground"
           style={CRM_AUDIO_VARS}
         />
       ) : isError ? (
-        <span className="text-xs text-muted-foreground">Não foi possível carregar o áudio.</span>
+        <span className="text-xs text-muted-foreground">{t('audioPlayer.loadError')}</span>
       ) : (
-        <span className="text-xs text-muted-foreground">Carregando áudio…</span>
+        <span className="text-xs text-muted-foreground">{t('audioPlayer.loading')}</span>
       )}
       {status && (
         <Badge variant={status.variant} size="sm">
-          {status.label}
+          {statusLabel}
         </Badge>
       )}
     </div>
