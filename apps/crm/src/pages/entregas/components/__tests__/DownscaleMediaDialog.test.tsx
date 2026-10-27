@@ -198,4 +198,26 @@ describe('DownscaleMediaDialog', () => {
     );
     await act(async () => {});
   });
+
+  it('does not restart when media is replaced by a new object of the same id mid-convert', async () => {
+    let signal!: AbortSignal;
+    let finish!: (v: unknown) => void;
+    m.downscaleVideo.mockImplementation(
+      (_f: File, _p: unknown, o: { signal: AbortSignal }) =>
+        new Promise((res) => {
+          signal = o.signal;
+          finish = res;
+        }),
+    );
+    const props = { forStories: false, onOpenChange: vi.fn(), onDone: vi.fn() };
+    const { rerender } = render(<DownscaleMediaDialog media={media} {...props} />);
+    await waitFor(() => expect(m.downscaleVideo).toHaveBeenCalled());
+    rerender(<DownscaleMediaDialog media={{ ...media, url: 'https://x/new.mp4' }} {...props} />);
+    await act(async () => {});
+    expect(m.downscaleVideo).toHaveBeenCalledTimes(1);
+    expect(m.fetchMediaFile).toHaveBeenCalledTimes(1);
+    expect(signal.aborted).toBe(false);
+    finish({ file: output, engine: 'webcodecs', hdr: false, width: 1080, height: 1920 });
+    await waitFor(() => expect(props.onDone).toHaveBeenCalled());
+  });
 });

@@ -34,7 +34,7 @@ interface Props {
 const isAbort = (e: unknown) => e instanceof Error && e.name === 'AbortError';
 
 async function thumbnailFor(media: PostMedia, output: File, signal: AbortSignal): Promise<File> {
-  const url = (media as PostMedia & { thumbnail_url?: string | null }).thumbnail_url;
+  const url = media.thumbnail_url;
   try {
     if (!url) throw new Error('no thumbnail');
     const res = await fetchWithRetry(url, { signal });
@@ -89,6 +89,7 @@ export function DownscaleMediaDialog({ media, forStories, onOpenChange, onDone }
         ms: Date.now() - startedAt,
       });
     let saveAttempted = false;
+    let timedOut = false;
 
     void trackUnsavedWork(
       (async () => {
@@ -105,13 +106,22 @@ export function DownscaleMediaDialog({ media, forStories, onOpenChange, onDone }
         >;
         let output: File;
         try {
-          const file = await fetchMediaFile(
-            media.url,
-            media.original_filename,
-            media.mime_type,
-            ctl.signal,
-            setPct,
-          );
+          const timer = setTimeout(() => {
+            timedOut = true;
+            ctl.abort();
+          }, 120_000);
+          let file: File;
+          try {
+            file = await fetchMediaFile(
+              media.url,
+              media.original_filename,
+              media.mime_type,
+              ctl.signal,
+              setPct,
+            );
+          } finally {
+            clearTimeout(timer);
+          }
           ctl.signal.throwIfAborted();
           setStage('convert');
           setPct(0);
@@ -125,7 +135,7 @@ export function DownscaleMediaDialog({ media, forStories, onOpenChange, onDone }
           output = result.file;
           ctl.signal.throwIfAborted();
         } catch (e) {
-          if (ctl.signal.aborted || isAbort(e)) {
+          if (!timedOut && (ctl.signal.aborted || isAbort(e))) {
             report('cancelled');
             return;
           }
@@ -177,7 +187,7 @@ export function DownscaleMediaDialog({ media, forStories, onOpenChange, onDone }
     );
     return () => ctl.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [media, forStories]);
+  }, [media?.id, forStories]);
 
   if (!media) return <></>;
   const saving = stage === 'save';
