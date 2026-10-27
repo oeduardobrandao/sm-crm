@@ -351,8 +351,9 @@
 .linha-td--formato {
   width: 150px;
 }
+/* 200px for the title plus room for the approval chip (§13.6), so the title isn't cut. */
 .linha-td--titulo {
-  min-width: 200px;
+  min-width: 300px;
 }
 /* Title cell: the editable title, then the row's approval chip (spec §13.6). */
 .linha-titulo {
