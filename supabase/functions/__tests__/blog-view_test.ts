@@ -13,6 +13,7 @@ interface FakeOpts {
   dbError?: boolean;
   saltError?: boolean;
   recordError?: boolean;
+  recordResult?: string;
 }
 
 function fakeDb(opts: FakeOpts = {}) {
@@ -30,7 +31,7 @@ function fakeDb(opts: FakeOpts = {}) {
       return Promise.resolve(
         fn === "record_blog_view" && opts.recordError
           ? { data: null, error: { message: "boom" } }
-          : { data: null, error: null },
+          : { data: fn === "record_blog_view" ? (opts.recordResult ?? "inserted") : null, error: null },
       );
     },
     from(table: string) {
@@ -52,9 +53,7 @@ function fakeDb(opts: FakeOpts = {}) {
   return { db: db as unknown as SupabaseClient, rpcCalls, fromCalls };
 }
 
-const SLUG_KEY_PREFIX = "blog-view:slug:";
-
-function setup(opts: FakeOpts & { rateAllowed?: boolean | ((key: string) => boolean) } = {}) {
+function setup(opts: FakeOpts & { rateAllowed?: boolean } = {}) {
   const f = fakeDb(opts);
   const rateKeys: string[] = [];
   const rateArgs: Array<[number, number]> = [];
@@ -64,8 +63,7 @@ function setup(opts: FakeOpts & { rateAllowed?: boolean | ((key: string) => bool
     rateLimit: (key, max, windowSeconds) => {
       rateKeys.push(key);
       rateArgs.push([max, windowSeconds]);
-      const allowed = typeof opts.rateAllowed === "function" ? opts.rateAllowed(key) : opts.rateAllowed;
-      return Promise.resolve(allowed ?? true);
+      return Promise.resolve(opts.rateAllowed ?? true);
     },
     getClientIP: () => IP,
   });
@@ -81,9 +79,7 @@ function setup(opts: FakeOpts & { rateAllowed?: boolean | ((key: string) => bool
     );
   };
   const records = () => f.rpcCalls.filter((c) => c.fn === "record_blog_view");
-  const sourceKeys = () => rateKeys.filter((k) => !k.startsWith(SLUG_KEY_PREFIX));
-  const slugKeys = () => rateKeys.filter((k) => k.startsWith(SLUG_KEY_PREFIX));
-  return { ...f, handler, post, rateKeys, rateArgs, records, sourceKeys, slugKeys };
+  return { ...f, handler, post, rateKeys, rateArgs, records };
 }
 
 Deno.test("isBotUserAgent: bots, empty and null are bots; browsers are not", () => {
@@ -190,32 +186,31 @@ Deno.test("rate key ignores the UA, carries a salted hash and never the raw IP",
   const t = setup();
   await t.post({ slug: "meu-post" }, BROWSER_UA);
   await t.post({ slug: "meu-post" }, "Mozilla/5.0 (Windows NT 10.0) Firefox/121.0");
-  const keys = t.sourceKeys();
+  const keys = t.rateKeys;
   assertEquals(keys.length, 2);
   assertEquals(keys[0], keys[1]);
   assertEquals(keys[0], "blog-view:" + await sha256Hex(SALT + IP));
   assert(!t.rateKeys.some((k) => k.includes(IP)));
 });
 
-Deno.test("a per-post cap bounds writes even when the source key rotates (spoofed X-Forwarded-For)", async () => {
-  const t = setup();
-  await t.post({ slug: "meu-post" });
-  assertEquals(t.slugKeys(), ["blog-view:slug:meu-post"]);
-  const i = t.rateKeys.indexOf("blog-view:slug:meu-post");
-  assertEquals(t.rateArgs[i], [1000, 3600]);
-  assertEquals(t.records().length, 1);
-
-  const capped = setup({ rateAllowed: (key) => !key.startsWith(SLUG_KEY_PREFIX) });
-  const res = await capped.post({ slug: "meu-post" });
-  assertEquals(res.status, 204);
-  assertEquals(capped.records().length, 0);
-});
-
-Deno.test("a source over its own limit never touches the per-post budget", async () => {
-  const t = setup({ rateAllowed: (key) => key.startsWith(SLUG_KEY_PREFIX) });
-  await t.post({ slug: "meu-post" });
-  assertEquals(t.slugKeys().length, 0);
-  assertEquals(t.records().length, 0);
+Deno.test("per-post cap (inside record_blog_view): logs one line with the slug only, still 204", async () => {
+  const warned: string[] = [];
+  const original = console.warn;
+  console.warn = (...args: unknown[]) => void warned.push(args.join(" "));
+  try {
+    const capped = setup({ recordResult: "capped" });
+    const res = await capped.post({ slug: "meu-post" });
+    assertEquals(res.status, 204);
+    assertEquals(await res.text(), "");
+    // A dedupe hit or a new row logs nothing.
+    for (const recordResult of ["duplicate", "inserted"]) await setup({ recordResult }).post({ slug: "meu-post" });
+  } finally {
+    console.warn = original;
+  }
+  assertEquals(warned.length, 1);
+  assert(warned[0].includes("meu-post"));
+  assert(!warned[0].includes(IP) && !warned[0].includes("Mozilla"));
+  assert(!/[0-9a-f]{64}/.test(warned[0]), "logged a hash");
 });
 
 Deno.test("visitor hash: same IP+UA is stable, a different UA differs, raw IP/UA never reach the db", async () => {

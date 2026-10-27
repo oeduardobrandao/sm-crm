@@ -3,7 +3,8 @@
 
 -- Contagem anonima de views do blog (migration 20261101000001).
 -- (a) grants: tabelas e sequence fechadas para anon/authenticated; as cinco funcoes so service_role.
--- (b) record_blog_view deduplica por (slug, hash) em 30 min. (c) blog_view_salt_today devolve o
+-- (b) record_blog_view deduplica por (slug, hash) em 30 min, devolve 'inserted' / 'duplicate' /
+--     'capped' e para de gravar num post com 1000 views na ultima hora (so linhas novas contam). (c) blog_view_salt_today devolve o
 --     mesmo sal de 64 hex no dia e apaga sais de dias anteriores; blog_view_prune_salts tambem.
 -- (d) blog_view_stats / blog_view_daily: janelas 7d/30d/total, so dias com views.
 begin;
@@ -33,6 +34,7 @@ declare
   v_id   bigint;
   r      record;
   v_fn   text;
+  v_res  text;
 begin
   -- ---- (a) grants ----
   assert not has_table_privilege('anon', 'public.blog_page_views', 'SELECT'),
@@ -68,8 +70,10 @@ begin
   delete from blog_page_views;
   delete from blog_view_salts;
 
-  perform record_blog_view('a', 'h');
-  perform record_blog_view('a', 'h');   -- dedupe 30 min
+  v_res := record_blog_view('a', 'h');
+  assert v_res = 'inserted', format('primeira chamada devolveu %s, esperado inserted', v_res);
+  v_res := record_blog_view('a', 'h');   -- dedupe 30 min
+  assert v_res = 'duplicate', format('repeticao devolveu %s, esperado duplicate', v_res);
   select count(*) into v_n from blog_page_views;
   assert v_n = 1, format('duas chamadas seguidas gravaram %s linhas, esperado 1', v_n);
 
@@ -85,6 +89,23 @@ begin
   perform record_blog_view('b', 'h');   -- outro slug, mesmo hash: grava
   select count(*) into v_n from blog_page_views;
   assert v_n = 4, format('outro slug: %s linhas, esperado 4', v_n);
+
+  -- teto por post: 1000 linhas na ultima hora bloqueiam um hash novo; a repeticao de um hash
+  -- ja gravado continua 'duplicate' (nao gasta o teto); linhas com mais de 1 h nao contam.
+  insert into blog_page_views (slug, visitor_hash, viewed_at)
+    select 'cheio', 'f' || g, now() - interval '61 minutes' from generate_series(1, 5) g;
+  insert into blog_page_views (slug, visitor_hash)
+    select 'cheio', 'c' || g from generate_series(1, 999) g;
+  v_res := record_blog_view('cheio', 'novo-1');
+  assert v_res = 'inserted', format('999 na hora: devolveu %s, esperado inserted', v_res);
+  v_res := record_blog_view('cheio', 'novo-2');
+  assert v_res = 'capped', format('1000 na hora: devolveu %s, esperado capped', v_res);
+  v_res := record_blog_view('cheio', 'c1');
+  assert v_res = 'duplicate', format('repeticao no teto devolveu %s, esperado duplicate', v_res);
+  select count(*) into v_n from blog_page_views where slug = 'cheio';
+  assert v_n = 1005, format('post no teto tem %s linhas, esperado 1005', v_n);
+  v_res := record_blog_view('outro-post', 'novo-2');
+  assert v_res = 'inserted', 'o teto de um post bloqueou outro post';
 
   -- ---- (c) sal do dia ----
   v_salt := blog_view_salt_today();

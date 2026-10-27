@@ -34,9 +34,16 @@ grant usage, select on sequence blog_page_views_id_seq to service_role;
 grant select, insert, delete on blog_view_salts to service_role;
 
 -- Grava uma view, salvo se o mesmo (slug, visitor_hash) ja tem linha nos ultimos 30 min (mesma
--- janela de record_kb_view). Duplicata ocasional sob concorrencia e aceita.
-create or replace function public.record_blog_view(p_slug text, p_visitor_hash text)
-returns void
+-- janela de record_kb_view) ou se o post ja tem 1000 views na ultima hora. O teto existe porque o
+-- IP que a edge function usa vem do X-Forwarded-For, que o cliente controla: girando esse header
+-- daria para inflar a contagem sem limite. Fica aqui, depois do dedupe, para que so linha nova
+-- gaste o teto (recarregar a pagina nao gasta). Custo aceito: quem girar o header pode esgotar o
+-- teto de um post e suprimir views reais dele por ate uma hora. Duplicata ocasional e um leve
+-- estouro do teto sob concorrencia sao aceitos. Devolve 'inserted', 'duplicate' ou 'capped'.
+-- O drop deixa reaplicar sobre a versao antiga (returns void) num banco local.
+drop function if exists public.record_blog_view(text, text);
+create function public.record_blog_view(p_slug text, p_visitor_hash text)
+returns text
 language plpgsql
 security definer
 set search_path = public
@@ -48,9 +55,17 @@ begin
       and v.visitor_hash = p_visitor_hash
       and v.viewed_at > now() - interval '30 minutes'
   ) then
-    return;
+    return 'duplicate';
+  end if;
+  if (
+    select count(*) from blog_page_views v
+    where v.slug = p_slug
+      and v.viewed_at > now() - interval '1 hour'
+  ) >= 1000 then
+    return 'capped';
   end if;
   insert into blog_page_views (slug, visitor_hash) values (p_slug, p_visitor_hash);
+  return 'inserted';
 end;
 $$;
 

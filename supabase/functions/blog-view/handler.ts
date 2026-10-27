@@ -9,9 +9,13 @@
  * ligamos um hash a um IP. IP e UA brutos nunca são gravados, logados nem usados como chave de
  * rate limit. O sal é lido a CADA requisição contada, nunca guardado em memória do módulo.
  *
- * Rate limit em dois níveis: 120/h por origem (hash salgado do IP) e 1000/h por post. O IP vem
- * do X-Forwarded-For mais à esquerda, que o cliente controla; quem gira esse header escapa do
- * primeiro limite, então o teto por post é o que limita as escritas.
+ * Dois limites: 120/h por origem (hash salgado do IP, aqui) e 1000 views novas por hora por post
+ * (dentro do record_blog_view, depois do dedupe, então recarregar a página não gasta o teto). O IP
+ * vem do X-Forwarded-For mais à esquerda, que o cliente controla; quem gira esse header escapa do
+ * primeiro limite, e o teto por post é o que limita as escritas. Custo aceito: girando o header,
+ * alguém pode esgotar o teto de um post e suprimir as views reais dele por até uma hora (é uma
+ * métrica de vaidade; antes supressão limitada que inflação sem limite). Quando o teto bate,
+ * logamos uma linha só com o slug.
  *
  * Sempre responde 204 (exceto 405): descartes, rate limit e erros internos não aparecem para
  * o cliente; erros vão só para o log.
@@ -31,8 +35,6 @@ export interface BlogViewDeps {
 
 const RATE_MAX = 120;
 const RATE_WINDOW_SECONDS = 3600;
-// Muito acima do tráfego real de um post; existe para limitar o crescimento da tabela.
-const SLUG_RATE_MAX = 1000;
 const MAX_BODY_CHARS = 1024;
 
 async function readSlug(req: Request): Promise<string | null> {
@@ -73,13 +75,11 @@ export function createBlogViewHandler(deps: BlogViewDeps) {
       const ip = deps.getClientIP(req);
       const ipKey = await sha256Hex(salt + ip);
       if (!(await deps.rateLimit(`blog-view:${ipKey}`, RATE_MAX, RATE_WINDOW_SECONDS))) return noContent();
-      if (!(await deps.rateLimit(`blog-view:slug:${slug}`, SLUG_RATE_MAX, RATE_WINDOW_SECONDS))) {
-        return noContent();
-      }
 
       const visitorHash = await sha256Hex(salt + ip + (ua ?? "") + slug);
-      const { error } = await db.rpc("record_blog_view", { p_slug: slug, p_visitor_hash: visitorHash });
+      const { data, error } = await db.rpc("record_blog_view", { p_slug: slug, p_visitor_hash: visitorHash });
       if (error) console.error("[blog-view] record failed", error.message);
+      else if (data === "capped") console.warn("[blog-view] per-post cap reached", slug);
     } catch (err) {
       // PostgREST errors are plain objects, not Error instances.
       console.error("[blog-view] unexpected error", (err as { message?: string } | null)?.message ?? "unknown");
