@@ -93,5 +93,7 @@ configurado" no lugar dos números do Google (as views continuam aparecendo).
 - Cada execução faz o backfill de até quatro janelas de 30 dias, então os 16 meses de histórico
   completam em cerca de quatro execuções diárias.
 - Falha de token ou da consulta chama `reportCronFailure` (e-mail e triagem, ver
-  `docs/cron-triage.md`). Erro 403 do Google quase sempre é a conta de serviço sem acesso à
+  `docs/cron-triage.md`). Se todas as inspeções de URL tentadas falharem, a execução fecha ok
+  (os números foram atualizados), mas também chama `reportCronFailure` e grava o motivo em
+  `blog_search_runs.error`. Erro 403 do Google quase sempre é a conta de serviço sem acesso à
   propriedade (passo 2) ou a API não ativada (passo 1).

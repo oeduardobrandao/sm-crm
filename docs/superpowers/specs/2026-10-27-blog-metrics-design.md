@@ -339,7 +339,9 @@ nothing there.
 
 ## 5. Admin UI
 
-New `platform-admin` actions (authorized as today; generic 500 on error):
+New `platform-admin` actions (authorized as today; generic 500 when the views read fails; a
+Search Console read failure is logged by step name and only empties the Google part:
+`gsc_updated_at`/`search`/`index` null in `blog-metrics`, `search: []` in `blog-post-metrics`):
 
 - `blog-metrics` → `{ gsc_updated_at: string | null (null = no successful sync yet: "Search Console não configurado"), posts: Record<slug,
   { views_7d, views_30d, views_total,
