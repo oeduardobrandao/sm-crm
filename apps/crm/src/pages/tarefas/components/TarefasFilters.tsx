@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -67,6 +68,7 @@ function MultiSelectFilter<T extends string | number>({
   onSelectedChange: (next: T[]) => void;
   isStacked: boolean;
 }) {
+  const { t } = useTranslation('tasks');
   const selectedOptions = options.filter((o) => selected.includes(o.value));
   const first = selectedOptions[0];
   const label = !first
@@ -105,7 +107,7 @@ function MultiSelectFilter<T extends string | number>({
       <DropdownMenuContent align="start" className="max-h-[320px] overflow-y-auto min-w-[200px]">
         {options.length === 0 && (
           <DropdownMenuItem disabled className="text-xs">
-            Nenhuma opção
+            {t('tarefasFilters.noOptions')}
           </DropdownMenuItem>
         )}
         {options.map((o) => {
@@ -148,7 +150,7 @@ function MultiSelectFilter<T extends string | number>({
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => onSelectedChange([])} className="text-xs">
-              Limpar seleção
+              {t('tarefasFilters.clearSelection')}
             </DropdownMenuItem>
           </>
         )}
@@ -172,11 +174,12 @@ function FilterControls({
   sortedMembros: Membro[];
   sortedTags: TarefaTag[];
 }) {
+  const { t } = useTranslation('tasks');
   const isStacked = layout === 'stacked';
   return (
     <div className={isStacked ? 'flex flex-col gap-3' : 'flex gap-2 flex-wrap'}>
       <MultiSelectFilter
-        placeholder="Status"
+        placeholder={t('tarefasFilters.status')}
         options={STATUS_ORDER.map((s) => ({
           value: s,
           label: STATUS_LABELS[s],
@@ -187,7 +190,7 @@ function FilterControls({
         isStacked={isStacked}
       />
       <MultiSelectFilter
-        placeholder="Todos os membros"
+        placeholder={t('tarefasFilters.allMembers')}
         options={sortedMembros
           .filter((m) => m.id != null)
           .map((m) => ({ value: m.id!, label: m.nome }))}
@@ -196,7 +199,7 @@ function FilterControls({
         isStacked={isStacked}
       />
       <MultiSelectFilter
-        placeholder="Todos os clientes"
+        placeholder={t('tarefasFilters.allClients')}
         options={activeClientes
           .filter((c) => c.id != null)
           .map((c) => ({ value: c.id!, label: c.nome }))}
@@ -205,10 +208,10 @@ function FilterControls({
         isStacked={isStacked}
       />
       <MultiSelectFilter
-        placeholder="Todas as tags"
+        placeholder={t('tarefasFilters.allTags')}
         options={sortedTags
-          .filter((t) => t.id != null)
-          .map((t) => ({ value: t.id!, label: t.nome, color: t.cor }))}
+          .filter((tag) => tag.id != null)
+          .map((tag) => ({ value: tag.id!, label: tag.nome, color: tag.cor }))}
         selected={filters.filterTags}
         onSelectedChange={(filterTags) => onChange({ ...filters, filterTags })}
         isStacked={isStacked}
@@ -224,6 +227,7 @@ export function TarefasFilters({
   membros,
   tags,
 }: TarefasFiltersProps) {
+  const { t } = useTranslation('tasks');
   const [sheetOpen, setSheetOpen] = useState(false);
   const activeClientes = clientes
     .filter((c) => c.status === 'ativo')
@@ -241,7 +245,7 @@ export function TarefasFilters({
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
           <Input
-            placeholder="Buscar tarefa..."
+            placeholder={t('tarefasFilters.searchPlaceholder')}
             value={filters.filterSearch}
             onChange={(e) => onChange({ ...filters, filterSearch: e.target.value })}
             className="!rounded-full !text-xs h-9 pl-8 pr-4 mb-0 w-[180px]"
@@ -257,7 +261,7 @@ export function TarefasFilters({
               onChange({ ...EMPTY_TAREFA_FILTERS, filterSearch: filters.filterSearch })
             }
           >
-            Limpar filtros
+            {t('tarefasFilters.clearFilters')}
           </Button>
         )}
       </div>
@@ -267,7 +271,7 @@ export function TarefasFilters({
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
           <Input
-            placeholder="Buscar tarefa..."
+            placeholder={t('tarefasFilters.searchPlaceholder')}
             value={filters.filterSearch}
             onChange={(e) => onChange({ ...filters, filterSearch: e.target.value })}
             className="!rounded-full !text-xs h-9 pl-8 pr-4 mb-0 w-full"
@@ -279,7 +283,7 @@ export function TarefasFilters({
           onClick={() => setSheetOpen(true)}
         >
           <SlidersHorizontal className="h-3.5 w-3.5" />
-          Filtros
+          {t('tarefasFilters.filters')}
           {activeCount > 0 && (
             <span
               className="inline-flex items-center justify-center rounded-full text-[0.6rem] font-semibold leading-none"
@@ -299,8 +303,10 @@ export function TarefasFilters({
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent side="bottom" className="rounded-t-[24px] max-h-[85vh] overflow-y-auto pb-24">
           <SheetHeader className="mb-4">
-            <SheetTitle className="text-base">Filtros</SheetTitle>
-            <SheetDescription className="sr-only">Filtre as tarefas</SheetDescription>
+            <SheetTitle className="text-base">{t('tarefasFilters.filters')}</SheetTitle>
+            <SheetDescription className="sr-only">
+              {t('tarefasFilters.sheetDescription')}
+            </SheetDescription>
           </SheetHeader>
           <FilterControls layout="stacked" {...sharedProps} />
           {activeCount > 0 && (
@@ -311,7 +317,7 @@ export function TarefasFilters({
                 onChange({ ...EMPTY_TAREFA_FILTERS, filterSearch: filters.filterSearch })
               }
             >
-              Limpar filtros
+              {t('tarefasFilters.clearFilters')}
             </Button>
           )}
         </SheetContent>

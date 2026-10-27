@@ -1,1 +1,193 @@
-{}
+{
+  "shared": {
+    "status": {
+      "pendente": "To do",
+      "em_andamento": "In progress",
+      "concluida": "Done"
+    },
+    "dueBuckets": {
+      "atrasadas": "Overdue",
+      "hoje": "Today",
+      "estaSemana": "This week",
+      "depois": "Later",
+      "semData": "No due date"
+    },
+    "board": {
+      "atrasado": "Overdue",
+      "hoje": "Today",
+      "amanha": "Tomorrow",
+      "depois": "Later",
+      "semData": "No due date"
+    },
+    "weekdayLong": {
+      "0": "Sunday",
+      "1": "Monday",
+      "2": "Tuesday",
+      "3": "Wednesday",
+      "4": "Thursday",
+      "5": "Friday",
+      "6": "Saturday"
+    },
+    "dueBadge": {
+      "overdue_one": "{{count}} day overdue",
+      "overdue_other": "{{count}} days overdue",
+      "today": "Today",
+      "tomorrow": "Tomorrow",
+      "inDays": "{{days}} days"
+    },
+    "repetir": {
+      "never": "Does not repeat",
+      "daily": "Daily",
+      "weekly": "Weekly",
+      "monthly": "Monthly",
+      "yearly": "Yearly"
+    },
+    "weekdayChip": {
+      "0": "S",
+      "1": "M",
+      "2": "T",
+      "3": "W",
+      "4": "T",
+      "5": "F",
+      "6": "S"
+    },
+    "weekdayName": {
+      "0": "Sunday",
+      "1": "Monday",
+      "2": "Tuesday",
+      "3": "Wednesday",
+      "4": "Thursday",
+      "5": "Friday",
+      "6": "Saturday"
+    },
+    "unit": {
+      "daily": {
+        "singular": "day",
+        "plural": "days"
+      },
+      "weekly": {
+        "singular": "week",
+        "plural": "weeks"
+      },
+      "monthly": {
+        "singular": "month",
+        "plural": "months"
+      },
+      "yearly": {
+        "singular": "year",
+        "plural": "years"
+      }
+    },
+    "dateNumeric": "MM/dd/yyyy",
+    "recorrencia": {
+      "joinLast": "{{rest}} and {{last}}",
+      "day": "day {{day}}",
+      "dayOrLast": "day {{day}} (or the last day)",
+      "daily": "Every day",
+      "dailyN": "Every {{n}} days",
+      "weeklyMasc": "Every {{days}}",
+      "weeklyFem": "Every {{days}}",
+      "weeklyNMasc": "Every {{n}} weeks on {{days}}",
+      "weeklyNFem": "Every {{n}} weeks on {{days}}",
+      "monthly": "Every month on {{day}}",
+      "monthlyN": "Every {{n}} months on {{day}}",
+      "yearlyDate": "{{month}} {{day}}",
+      "yearly": "Every year on {{date}}",
+      "yearlyN": "Every {{n}} years on {{date}}",
+      "until": "{{base}} until {{date}}"
+    },
+    "modo": {
+      "aoConcluir": "creates the next one when completed",
+      "calendario": "creates one on every date in the rule"
+    },
+    "serieEstado": {
+      "encerrada": "Ended",
+      "pausada": "Paused",
+      "concluida": "Completed",
+      "terminaEm": "Ends on {{date}}"
+    },
+    "recurringTask": "Recurring task",
+    "noAssignee": "No assignee"
+  },
+  "commands": {
+    "serieNeedsDueDate": "Tasks in a series need a due date.",
+    "dueDateUpdated": "Due date updated!",
+    "dueDateRemoved": "Due date removed!",
+    "serieDateConflict": "This series already has an occurrence on that day.",
+    "dueDateError": "Couldn't update the due date",
+    "taskCompleted": "Task completed!",
+    "statusUpdated": "Status updated!",
+    "statusError": "Couldn't update the status",
+    "taskReopened": "Task reopened!",
+    "taskError": "Couldn't update the task",
+    "assigneeUpdated": "Assignee updated!",
+    "assigneeError": "Couldn't update the assignee"
+  },
+  "tarefasPage": {
+    "title": "Tasks",
+    "newTask": "New task",
+    "empty": "No tasks yet. Create your team's first task.",
+    "views": {
+      "lista": "List",
+      "membros": "By member",
+      "kanban": "Kanban",
+      "calendario": "Calendar"
+    },
+    "escopo": {
+      "minhas": "My tasks",
+      "todas": "All tasks"
+    },
+    "subtitle": {
+      "open_zero": "{{count}} open",
+      "open_one": "{{count}} open",
+      "open_other": "{{count}} open",
+      "overdue_zero": "{{count}} overdue",
+      "overdue_one": "{{count}} overdue",
+      "overdue_other": "{{count}} overdue",
+      "dueToday_zero": "{{count}} due today",
+      "dueToday_one": "{{count}} due today",
+      "dueToday_other": "{{count}} due today"
+    }
+  },
+  "statsHeader": {
+    "abertas": "Open",
+    "vencemHoje": "Due today",
+    "atrasadas": "Overdue",
+    "concluidasHoje": "Done today"
+  },
+  "tarefasFilters": {
+    "noOptions": "No options",
+    "clearSelection": "Clear selection",
+    "status": "Status",
+    "allMembers": "All members",
+    "allClients": "All clients",
+    "allTags": "All tags",
+    "searchPlaceholder": "Search tasks...",
+    "clearFilters": "Clear filters",
+    "filters": "Filters",
+    "sheetDescription": "Filter the tasks"
+  },
+  "views": {
+    "chipsDueDates": "Due dates",
+    "chipsMembers": "Members",
+    "chipsStatus": "Status",
+    "addTask": "Add task",
+    "noTasks": "No tasks"
+  },
+  "listView": {
+    "reopenTask": "Reopen task",
+    "completeTask": "Complete task",
+    "emptyOpen": "No open tasks. Create a new one or adjust the filters.",
+    "concluidas": "Done"
+  },
+  "calendarView": {
+    "semData": "No due date · {{n}}",
+    "semDataHint": "Drag a task here to remove its due date.",
+    "modoLabel": "Calendar mode",
+    "modo": {
+      "board": "Board",
+      "mes": "Month"
+    },
+    "more": "+{{n}} more"
+  }
+}

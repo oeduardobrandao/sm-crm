@@ -1,3 +1,4 @@
+import { getIntlLocale, i18n } from '@mesaas/i18n';
 import type { TarefaStatus, TarefaWithRelations } from '../../store';
 
 // Pure logic for the Tarefas page — no React, unit-tested in __tests__/tarefasLogic.test.ts.
@@ -56,13 +57,15 @@ export function sortTarefas(a: TarefaWithRelations, b: TarefaWithRelations): num
 
 export type DueBucket = 'atrasadas' | 'hoje' | 'estaSemana' | 'depois' | 'semData';
 
-export const DUE_BUCKETS: { id: DueBucket; label: string }[] = [
-  { id: 'atrasadas', label: 'Atrasadas' },
-  { id: 'hoje', label: 'Hoje' },
-  { id: 'estaSemana', label: 'Esta semana' },
-  { id: 'depois', label: 'Depois' },
-  { id: 'semData', label: 'Sem data' },
-];
+const DUE_BUCKET_IDS: DueBucket[] = ['atrasadas', 'hoje', 'estaSemana', 'depois', 'semData'];
+
+/** `label` is a getter, resolved in the current UI language on every read. */
+export const DUE_BUCKETS: { id: DueBucket; label: string }[] = DUE_BUCKET_IDS.map((id) => ({
+  id,
+  get label() {
+    return i18n.t(`tasks:shared.dueBuckets.${id}`);
+  },
+}));
 
 /** Groups OPEN tasks (status != concluida) into due buckets, each sorted. */
 export function groupByDueBucket(
@@ -108,7 +111,9 @@ export interface BoardBucket {
   tarefas: TarefaWithRelations[];
 }
 
-const WEEKDAY_LABELS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+/** Board column title for a weekday (0 = Sunday), in the current UI language. */
+const weekdayLabel = (day: number) => i18n.t(`tasks:shared.weekdayLong.${day}`);
+const boardLabel = (key: string) => i18n.t(`tasks:shared.board.${key}`);
 
 /**
  * Buckets tasks for the Tarefas "Board" view: Em atraso, Hoje, Amanhã, one
@@ -153,21 +158,21 @@ export function groupByBoardColumn(tarefas: TarefaWithRelations[], now: Date): B
   const buckets: BoardBucket[] = [
     {
       key: 'atrasado',
-      label: 'Em atraso',
+      label: boardLabel('atrasado'),
       date: null,
       droppable: false,
       tarefas: atrasado.sort(sortTarefas),
     },
     {
       key: 'hoje',
-      label: 'Hoje',
+      label: boardLabel('hoje'),
       date: toDateOnlyString(today),
       droppable: true,
       tarefas: hoje.sort(sortTarefas),
     },
     {
       key: 'amanha',
-      label: 'Amanhã',
+      label: boardLabel('amanha'),
       date: toDateOnlyString(tomorrow),
       droppable: true,
       tarefas: amanha.sort(sortTarefas),
@@ -180,7 +185,7 @@ export function groupByBoardColumn(tarefas: TarefaWithRelations[], now: Date): B
     const dateStr = toDateOnlyString(cursor);
     buckets.push({
       key: `dia:${dateStr}`,
-      label: WEEKDAY_LABELS[cursor.getDay()],
+      label: weekdayLabel(cursor.getDay()),
       date: dateStr,
       droppable: true,
       tarefas: (porDia.get(dateStr) ?? []).sort(sortTarefas),
@@ -190,14 +195,14 @@ export function groupByBoardColumn(tarefas: TarefaWithRelations[], now: Date): B
 
   buckets.push({
     key: 'depois',
-    label: 'Mais tarde',
+    label: boardLabel('depois'),
     date: null,
     droppable: false,
     tarefas: depois.sort(sortTarefas),
   });
   buckets.push({
     key: 'semData',
-    label: 'Sem data',
+    label: boardLabel('semData'),
     date: null,
     droppable: true,
     tarefas: semData.sort(sortTarefas),
@@ -344,23 +349,36 @@ export function dueBadge(t: TarefaWithRelations, now: Date): DueBadge | null {
   if (diffDays < 0) {
     const d = Math.abs(diffDays);
     return {
-      label: d === 1 ? '1 dia de atraso' : `${d} dias de atraso`,
+      label: i18n.t('tasks:shared.dueBadge.overdue', { count: d }),
       className: 'deadline-overdue',
     };
   }
-  if (diffDays === 0) return { label: 'Hoje', className: 'deadline-warning' };
-  if (diffDays === 1) return { label: 'Amanhã', className: 'deadline-caution' };
-  if (diffDays <= 3) return { label: `${diffDays} dias`, className: 'deadline-caution' };
+  if (diffDays === 0)
+    return { label: i18n.t('tasks:shared.dueBadge.today'), className: 'deadline-warning' };
+  if (diffDays === 1)
+    return { label: i18n.t('tasks:shared.dueBadge.tomorrow'), className: 'deadline-caution' };
+  if (diffDays <= 3)
+    return {
+      label: i18n.t('tasks:shared.dueBadge.inDays', { days: diffDays }),
+      className: 'deadline-caution',
+    };
   return {
-    label: parseDateOnly(t.data_limite).toLocaleDateString('pt-BR'),
+    label: parseDateOnly(t.data_limite).toLocaleDateString(getIntlLocale()),
     className: 'deadline-ok',
   };
 }
 
-export const STATUS_LABELS: Record<TarefaStatus, string> = {
-  pendente: 'A fazer',
-  em_andamento: 'Em andamento',
-  concluida: 'Concluída',
-};
-
 export const STATUS_ORDER: TarefaStatus[] = ['pendente', 'em_andamento', 'concluida'];
+
+/** Enumerable getters: every read resolves in the current UI language, so importers
+ *  (searchModel, the form, the phone header) can keep indexing it like a plain map. */
+export const STATUS_LABELS: Record<TarefaStatus, string> = (() => {
+  const o = {} as Record<TarefaStatus, string>;
+  for (const st of STATUS_ORDER) {
+    Object.defineProperty(o, st, {
+      enumerable: true,
+      get: () => i18n.t(`tasks:shared.status.${st}`),
+    });
+  }
+  return o;
+})();
