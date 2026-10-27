@@ -223,7 +223,7 @@ Monorepo with npm workspaces:
   spec `docs/superpowers/specs/2026-10-27-blog-metrics-design.md`
 - `GSC_SITE_URL` -- propriedade do Search Console consultada pelo mesmo cron (padrão
   `sc-domain:mesaas.com.br`). Só defina se o site estiver registrado de outra forma (prefixo de
-  URL). Mudar não precisa de deploy do código, mas a função só lê no boot
+  URL). Secret comum: mudar não precisa de deploy
 - `REPORT_PRINT_BASE` -- origem pública que serve a página de print do relatório
   de blocos (ex.: https://mesaas.com.br). Usada por report-docs POST /:id/pdf
   para montar a URL que o Gotenberg imprime. Opcional: sem ela (ou sem
@@ -334,7 +334,7 @@ Monorepo with npm workspaces:
 - Page param validation: `Math.max(1, parseInt(pageStr) || 1)`
 - localStorage iteration: collect keys first, then remove. Modifying during iteration skips items
 - Roles are `owner | admin | agent` -- always check via `AuthContext`, never hardcode
-- Supabase edge function deploy always needs `--no-verify-jwt` flag for functions that handle their own auth (OAuth callbacks, cron, hub). `hub-briefing`, `hub-agenda`, `hub-post-references`, `hub-media-notes` and `hub-linha-editorial` (token do hub), `agenda-convite` (token do convidado externo), `agenda-cliente-email` (cron, `x-cron-secret`), `briefing-audio`, `geo-autocomplete` and `post-references` (verify the user JWT themselves) need it too, and so do `affiliate-public` (programa de afiliados, link mágico por e-mail trocado por sessão) and `affiliate-payout-cron` (cron, `x-cron-secret`), and so do `blog-view` (contador de views do blog, público e anônimo) and `blog-search-console-cron` (cron, `x-cron-secret`)
+- Supabase edge function deploy always needs `--no-verify-jwt` flag for functions that handle their own auth (OAuth callbacks, cron, hub). `hub-briefing`, `hub-agenda`, `hub-post-references`, `hub-media-notes` and `hub-linha-editorial` (token do hub), `agenda-convite` (token do convidado externo), `agenda-cliente-email` (cron, `x-cron-secret`), `briefing-audio`, `geo-autocomplete` and `post-references` (verify the user JWT themselves) need it too, and so do `affiliate-public` (programa de afiliados, link mágico por e-mail trocado por sessão) and `affiliate-payout-cron` (cron, `x-cron-secret`), `blog-view` (contador de views do blog, público e anônimo) and `blog-search-console-cron` (cron, `x-cron-secret`)
 - Hub app uses token-based access (no Supabase auth), builds to `dist/hub/` with base path `/hub/`
 - Vercel rewrites in `vercel.json` route Hub URLs to `/hub/index.html` and CRM URLs to `/index.html`
 - `membros` and `clientes` use column-level `GRANT SELECT` allowlists (Migration `20260728000002`). Any column added to either table is invisible to the CRM until it is added to the grant, to `membros_v`/`clientes_v`, and to the `*_SAFE_COLUMNS` constants in `store/team.ts` / `store/clients.ts`. The failure surfaces as a confusing missing-column error. The same allowlist also keeps six PostgREST embeds, ten dependent RLS policies and `get_client_health_aggregates()` working -- none of which a `from('clientes')` grep finds.

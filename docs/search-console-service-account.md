@@ -9,6 +9,8 @@ Spec: `docs/superpowers/specs/2026-10-27-blog-metrics-design.md` (seção 4).
 
 ## 1. Criar a conta de serviço no Google Cloud
 
+Pré-requisito: `jq` instalado (vem com o macOS 15 ou mais novo; senão `brew install jq`).
+
 1. No [Google Cloud Console](https://console.cloud.google.com/), crie um projeto novo (por
    exemplo `mesaas-search-console`) ou escolha um existente que não seja de produção de outro
    serviço.
@@ -19,6 +21,8 @@ Spec: `docs/superpowers/specs/2026-10-27-blog-metrics-design.md` (seção 4).
    Search Console, que é dado no passo 2.
 4. Na conta criada, aba **Chaves > Adicionar chave > Criar nova chave > JSON**. O navegador baixa
    um arquivo `.json`. Ele é a credencial inteira: trate como senha.
+   Se a política de organização `iam.disableServiceAccountKeyCreation` bloquear a criação da
+   chave, um administrador da organização precisa liberá-la para este projeto.
 5. Anote o e-mail da conta (`...@<projeto>.iam.gserviceaccount.com`).
 
 ## 2. Dar acesso à propriedade no Search Console
@@ -40,27 +44,39 @@ valor de arquivo direto (`NAME=@arquivo` não existe), então use `--env-file` c
 temporário que contenha o JSON numa linha só. O arquivo fica fora do repositório.
 
 ```bash
-# KEY é o caminho do JSON baixado. O comando só cita caminhos, nunca o conteúdo da chave.
-KEY="$HOME/Downloads/<arquivo-baixado>.json"
-ENVF="$(mktemp)"
-printf "GSC_SERVICE_ACCOUNT_JSON='%s'\n" "$(jq -c . "$KEY")" > "$ENVF"
+(
+  set -eu
+  # KEY é o caminho do JSON baixado. O comando só cita caminhos, nunca o conteúdo da chave.
+  KEY="$HOME/Downloads/<arquivo-baixado>.json"
+  ENVF="$(mktemp)"
+  trap 'rm -f "$ENVF"' EXIT   # o arquivo temporário some em qualquer saída, Ctrl-C incluído
 
-npx supabase secrets set --env-file "$ENVF" --project-ref <PROD_REF>
+  JSON="$(jq -c . "$KEY")"    # se o jq falhar, o set -e aborta aqui
+  [ -n "$JSON" ]              # e um JSON vazio também aborta
+  printf "GSC_SERVICE_ACCOUNT_JSON='%s'\n" "$JSON" > "$ENVF"
 
-# apague tudo, inclusive o arquivo baixado
-rm -f "$ENVF" "$KEY"
+  npx supabase secrets set --env-file "$ENVF" --project-ref <PROD_REF>
+
+  rm -f "$KEY"                # só chega aqui se o secrets set deu certo
+)
 ```
+
+O bloco roda num subshell para que uma falha não derrube o terminal. Se qualquer passo falhar,
+o arquivo temporário é apagado e a chave baixada continua onde estava: corrija o problema e rode
+de novo. Depois confira com `npx supabase secrets list --project-ref <PROD_REF>`: o nome
+`GSC_SERVICE_ACCOUNT_JSON` precisa aparecer na lista.
 
 Cuidados:
 
-- Apague o `.json` baixado assim que o secret estiver gravado. A chave passa a existir só no
-  Supabase; se precisar de outra, gere uma nova no passo 1 e revogue a antiga.
+- O `.json` baixado é apagado pelo próprio bloco depois que o secret é gravado. A chave passa a
+  existir só no Supabase; se precisar de outra, gere uma nova no passo 1 e revogue a antiga.
 - Nunca commite o arquivo da chave nem o `--env-file` temporário. O `mktemp` acima cria o
   arquivo fora do repositório; mantenha assim.
 - `npx supabase secrets list --project-ref <PROD_REF>` confirma que o secret existe (mostra só
   o nome e um hash, nunca o valor).
-- Secrets são lidos no boot da função: depois de gravar, redeploy de `blog-search-console-cron`
-  (`--no-verify-jwt`) para valer.
+- Não precisa de redeploy: a edge function lê os secrets quando sobe um isolate novo, então a
+  próxima execução do cron já usa o valor gravado. O deploy de `blog-search-console-cron` só é
+  necessário uma vez, antes de agendar o cron (`--no-verify-jwt`).
 
 ## 4. Staging
 
@@ -74,8 +90,8 @@ configurado" no lugar dos números do Google (as views continuam aparecendo).
   `20261031000004_blog_search_console_cron.sql`.
 - A última execução fica em `blog_search_runs` (`ok`, `finished_at`); os números por dia em
   `blog_search_daily` e o status de indexação em `blog_index_status`.
-- O backfill do histórico anda por janelas de 30 dias a cada execução, então os 16 meses de
-  histórico completam em alguns dias.
+- Cada execução faz o backfill de até quatro janelas de 30 dias, então os 16 meses de histórico
+  completam em cerca de quatro execuções diárias.
 - Falha de token ou da consulta chama `reportCronFailure` (e-mail e triagem, ver
   `docs/cron-triage.md`). Erro 403 do Google quase sempre é a conta de serviço sem acesso à
   propriedade (passo 2) ou a API não ativada (passo 1).
