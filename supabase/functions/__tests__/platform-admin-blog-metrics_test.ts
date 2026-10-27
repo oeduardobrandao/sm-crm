@@ -14,6 +14,18 @@ async function quietly<T>(fn: () => Promise<T>): Promise<T> {
     console.error = original;
   }
 }
+// Runs fn and returns what it logged through console.error, so a test can prove the raw error
+// text never reaches the log either.
+async function capturingErrors<T>(fn: () => Promise<T>): Promise<{ result: T; logged: string }> {
+  const original = console.error;
+  const lines: string[] = [];
+  console.error = (...args: unknown[]) => void lines.push(args.map((a) => JSON.stringify(a)).join(" "));
+  try {
+    return { result: await fn(), logged: lines.join("\n") };
+  } finally {
+    console.error = original;
+  }
+}
 // Empty Search Console side, for the tests that only care about views.
 function queueNoSearch(db: ReturnType<typeof createSupabaseQueryMock>) {
   db.queueRpc("blog_search_stats", { data: [] });
@@ -230,10 +242,56 @@ Deno.test("blog-metrics: fills search, index and gsc_updated_at, and keeps slugs
   assert(run?.modifiers.some((m) => m.method === "eq" && m.args[0] === "ok" && m.args[1] === true));
 });
 
-Deno.test("blog-metrics: a search rpc error is a generic 500", async () => {
+// A Search Console read failure must not take the views down. Any failing part drops the whole
+// Search Console side (gsc_updated_at null), because the Admin gates every Search Console element
+// on gsc_updated_at: a fresh date over zeroed tiles would be a silent false zero.
+for (const failing of ["stats", "index", "runs"] as const) {
+  Deno.test(`blog-metrics: a Search Console ${failing} read error keeps the views and drops Search Console`, async () => {
+    const db = createSupabaseQueryMock();
+    const boom = { data: null, error: { message: "secret detail" } };
+    db.queueRpc("blog_view_stats", {
+      data: [{ slug: "post-a", views_7d: 1, views_30d: 2, views_total: 3 }],
+    });
+    db.queueRpc(
+      "blog_search_stats",
+      failing === "stats" ? boom : { data: [{ slug: "post-a", clicks: 5, impressions: 50, ctr: 0.1, position: 3 }] },
+    );
+    db.queue(
+      "blog_index_status",
+      "select",
+      failing === "index" ? boom : {
+        data: [{
+          slug: "post-a",
+          verdict: "PASS",
+          coverage_state: "Submitted and indexed",
+          last_crawl_time: null,
+          inspection_link: null,
+          checked_at: "2026-10-27T03:00:00Z",
+        }],
+      },
+    );
+    db.queue(
+      "blog_search_runs",
+      "select",
+      failing === "runs" ? boom : { data: { finished_at: "2026-10-27T03:05:00Z" } },
+    );
+    const { result: res, logged } = await capturingErrors(() => handleBlogMetrics(db as never, H));
+    assertEquals(res.status, 200);
+    assertEquals(await readJson(res), {
+      gsc_updated_at: null,
+      posts: { "post-a": { views_7d: 1, views_30d: 2, views_total: 3, search: null, index: null } },
+    });
+    assert(logged.length > 0, "the failure was not logged");
+    assert(!logged.includes("secret detail"), "logged the raw error");
+  });
+}
+
+Deno.test("blog-metrics: a views error is still a generic 500 even when Search Console is fine", async () => {
   const db = createSupabaseQueryMock();
-  db.queueRpc("blog_view_stats", { data: [] });
-  db.queueRpc("blog_search_stats", { data: null, error: { message: "secret detail" } });
+  db.queueRpc("blog_view_stats", { data: null, error: { message: "secret detail" } });
+  db.queueRpc("blog_search_stats", { data: [] });
+  db.queue("blog_index_status", "select", { data: [] });
+  db.queue("blog_search_runs", "select", { data: { finished_at: "2026-10-27T03:05:00Z" } });
   const res = await quietly(() => handleBlogMetrics(db as never, H));
   assertEquals(res.status, 500);
   assert(!JSON.stringify(await readJson(res)).includes("secret detail"));
@@ -275,12 +333,25 @@ Deno.test("blog-post-metrics: an empty blog_search_daily gives an empty search s
   assertEquals(body.views.length, 3);
 });
 
-Deno.test("blog-post-metrics: a search rpc error is a generic 500", async () => {
-  const db = createSupabaseQueryMock();
-  db.queueRpc("blog_view_daily", { data: [] });
-  db.queueRpc("blog_search_series", { data: null, error: { message: "secret detail" } });
-  db.queue("blog_search_daily", "select", { data: null });
-  const res = await quietly(() => handleBlogPostMetrics(db as never, { slug: "post-a" }, H, NOW));
-  assertEquals(res.status, 500);
-  assert(!JSON.stringify(await readJson(res)).includes("secret detail"));
-});
+for (const failing of ["series", "max day"] as const) {
+  Deno.test(`blog-post-metrics: a Search Console ${failing} read error keeps the views, search is empty`, async () => {
+    const db = createSupabaseQueryMock();
+    const boom = { data: null, error: { message: "secret detail" } };
+    db.queueRpc("blog_view_daily", { data: [{ day: "2026-10-27", views: 4 }] });
+    db.queueRpc(
+      "blog_search_series",
+      failing === "series" ? boom : { data: [{ day: "2026-10-25", clicks: 1, impressions: 9 }] },
+    );
+    db.queue("blog_search_daily", "select", failing === "max day" ? boom : { data: { day: "2026-10-25" } });
+    const { result: res, logged } = await capturingErrors(() =>
+      handleBlogPostMetrics(db as never, { slug: "post-a", days: 2 }, H, NOW)
+    );
+    assertEquals(res.status, 200);
+    assertEquals(await readJson(res), {
+      views: [{ day: "2026-10-26", views: 0 }, { day: "2026-10-27", views: 4 }],
+      search: [],
+    });
+    assert(logged.length > 0, "the failure was not logged");
+    assert(!logged.includes("secret detail"), "logged the raw error");
+  });
+}

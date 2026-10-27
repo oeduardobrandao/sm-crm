@@ -3,6 +3,11 @@
 // vêm das RPCs blog_search_stats() / blog_search_series() e das tabelas blog_index_status,
 // blog_search_runs e blog_search_daily (coletadas por blog-search-console-cron).
 // A autorização (platform_admins) já aconteceu em index.ts.
+//
+// Só uma falha de leitura das views responde 500. Uma falha de leitura do Search Console é logada
+// (só o nome da etapa) e derruba apenas a parte do Google: em blog-metrics, gsc_updated_at, search
+// e index voltam null para todos (o Admin esconde tudo do Search Console quando gsc_updated_at é
+// null, em vez de mostrar zeros sob uma data recente); em blog-post-metrics, search volta [].
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { BLOG_SLUG_RE } from "../_shared/blog-live.ts";
 
@@ -132,11 +137,19 @@ export async function handleBlogMetrics(svc: SupabaseClient, headers: Headers): 
       .limit(1)
       .maybeSingle(),
   ]);
-  const failed = views.error || search.error || index.error || run.error;
-  if (failed) {
-    console.error("[platform-admin] blog-metrics:", failed);
+  if (views.error) {
+    console.error("[platform-admin] blog-metrics: views read failed:", views.error);
     return internalError(headers);
   }
+  const gscFailed = [
+    search.error && "blog_search_stats",
+    index.error && "blog_index_status",
+    run.error && "blog_search_runs",
+  ].filter(Boolean);
+  if (gscFailed.length > 0) {
+    console.error(`[platform-admin] blog-metrics: search console read failed (${gscFailed.join(", ")})`);
+  }
+  const gscOk = gscFailed.length === 0;
 
   // Um slug com dado so do Search Console (sem views) tambem entra, com views zeradas.
   const posts: Record<string, PostMetrics> = {};
@@ -148,7 +161,7 @@ export async function handleBlogMetrics(svc: SupabaseClient, headers: Headers): 
     m.views_30d = toCount(row.views_30d);
     m.views_total = toCount(row.views_total);
   }
-  for (const row of (search.data ?? []) as BlogSearchStatsRow[]) {
+  for (const row of (gscOk ? search.data ?? [] : []) as BlogSearchStatsRow[]) {
     entry(row.slug).search = {
       clicks: toCount(row.clicks),
       impressions: toCount(row.impressions),
@@ -156,7 +169,7 @@ export async function handleBlogMetrics(svc: SupabaseClient, headers: Headers): 
       position: toNumber(row.position),
     };
   }
-  for (const row of (index.data ?? []) as BlogIndexRow[]) {
+  for (const row of (gscOk ? index.data ?? [] : []) as BlogIndexRow[]) {
     const link = str(row.inspection_link);
     entry(row.slug).index = {
       verdict: str(row.verdict),
@@ -167,7 +180,7 @@ export async function handleBlogMetrics(svc: SupabaseClient, headers: Headers): 
     };
   }
 
-  const finishedAt = (run.data as { finished_at?: unknown } | null)?.finished_at;
+  const finishedAt = gscOk ? (run.data as { finished_at?: unknown } | null)?.finished_at : null;
   return json({ gsc_updated_at: str(finishedAt), posts }, 200, headers);
 }
 
@@ -190,10 +203,13 @@ export async function handleBlogPostMetrics(
     svc.from("blog_search_daily").select("day").order("day", { ascending: false }).limit(1)
       .maybeSingle(),
   ]);
-  const failed = daily.error || series.error || latest.error;
-  if (failed) {
-    console.error("[platform-admin] blog-post-metrics:", failed);
+  if (daily.error) {
+    console.error("[platform-admin] blog-post-metrics: views read failed:", daily.error);
     return internalError(headers);
+  }
+  const gscFailed = [series.error && "blog_search_series", latest.error && "blog_search_daily"].filter(Boolean);
+  if (gscFailed.length > 0) {
+    console.error(`[platform-admin] blog-post-metrics: search console read failed (${gscFailed.join(", ")})`);
   }
 
   // A RPC filtra por janela móvel mas agrupa por data de São Paulo, então pode devolver um dia
@@ -209,8 +225,8 @@ export async function handleBlogPostMetrics(
   }
 
   // Search Console usa os dias do Google, que terminam no ultimo dia com dado (2-3 dias atras).
-  // Tabela vazia: serie vazia.
-  const lastDay = str((latest.data as { day?: unknown } | null)?.day);
+  // Tabela vazia ou leitura falhou: serie vazia.
+  const lastDay = gscFailed.length > 0 ? null : str((latest.data as { day?: unknown } | null)?.day);
   const searchByDay = new Map<string, { clicks: number; impressions: number }>();
   for (const row of (series.data ?? []) as BlogSearchSeriesRow[]) {
     searchByDay.set(row.day, { clicks: toCount(row.clicks), impressions: toCount(row.impressions) });
