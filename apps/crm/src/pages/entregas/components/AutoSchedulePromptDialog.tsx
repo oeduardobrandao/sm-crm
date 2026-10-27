@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { useTranslation } from 'react-i18next';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -53,6 +54,8 @@ export function AutoSchedulePromptDialog({
   onClose,
   onScheduled,
 }: AutoSchedulePromptDialogProps) {
+  const { t } = useTranslation('workflows');
+  const dateLocale = useDateFnsLocale();
   const [loading, setLoading] = useState(false);
   const [pickedDate, setPickedDate] = useState<Date | undefined>(undefined);
 
@@ -77,7 +80,7 @@ export function AutoSchedulePromptDialog({
     setLoading(false);
     onClose();
     if (err) {
-      toast.error((err as Error).message || 'Erro ao agendar');
+      toast.error((err as Error).message || t('autoSchedulePrompt.scheduleError'));
       if (datePersisted) onScheduled();
     } else {
       toast.success(scheduleSuccessMessage(platform));
@@ -122,7 +125,9 @@ export function AutoSchedulePromptDialog({
   };
 
   const formattedDate = post.scheduled_at
-    ? format(new Date(post.scheduled_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
+    ? format(new Date(post.scheduled_at), t('autoSchedulePrompt.dateFormat'), {
+        locale: dateLocale,
+      })
     : null;
 
   return (
@@ -134,11 +139,16 @@ export function AutoSchedulePromptDialog({
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Agendar a publicação agora?</AlertDialogTitle>
+          <AlertDialogTitle>{t('autoSchedulePrompt.title')}</AlertDialogTitle>
           <AlertDialogDescription>
             {eligible
-              ? `Este cliente agenda a publicação automaticamente quando um post é aprovado. Deseja agendar "${post.titulo || 'Post sem título'}" para ${formattedDate}?`
-              : `Este cliente agenda a publicação automaticamente quando um post é aprovado, mas este post não tem uma data válida. Escolha uma data para agendar "${post.titulo || 'Post sem título'}".`}
+              ? t('autoSchedulePrompt.descEligible', {
+                  title: post.titulo || t('shared.postUntitled'),
+                  date: formattedDate,
+                })
+              : t('autoSchedulePrompt.descNeedsDate', {
+                  title: post.titulo || t('shared.postUntitled'),
+                })}
           </AlertDialogDescription>
         </AlertDialogHeader>
 
@@ -158,10 +168,10 @@ export function AutoSchedulePromptDialog({
         )}
 
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={loading}>Cancelar</AlertDialogCancel>
+          <AlertDialogCancel disabled={loading}>{t('actions.cancel')}</AlertDialogCancel>
           {eligible ? (
             <Button onClick={handleScheduleNow} disabled={loading}>
-              Agendar
+              {t('shared.schedule')}
             </Button>
           ) : (
             <Button
@@ -170,7 +180,7 @@ export function AutoSchedulePromptDialog({
                 loading || !pickedDate || !isEligibleToScheduleNow(pickedDate.toISOString())
               }
             >
-              Definir e agendar
+              {t('autoSchedulePrompt.setAndSchedule')}
             </Button>
           )}
         </AlertDialogFooter>

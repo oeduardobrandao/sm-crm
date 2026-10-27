@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -43,7 +44,6 @@ export interface ApplyProcessDialogProps {
   initialTemplateId?: number;
 }
 
-const ESTADO_LABEL = { ignorado: 'Ignorada', ativo: 'Inicial', pendente: 'Pendente' } as const;
 const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 
 /**
@@ -60,6 +60,7 @@ export function ApplyProcessDialog({
   onApplied,
   initialTemplateId,
 }: ApplyProcessDialogProps) {
+  const { t } = useTranslation('workflows');
   const qc = useQueryClient();
   const { data: templates = [] } = useQuery({
     queryKey: ['workflow-templates'],
@@ -78,7 +79,7 @@ export function ApplyProcessDialog({
   const [fixedDates, setFixedDates] = useState<Record<number, string | undefined>>({});
   const [month, setMonth] = useState<string>('');
   const [busy, setBusy] = useState(false);
-  const template = templates.find((t) => t.id === templateId) ?? null;
+  const template = templates.find((tpl) => tpl.id === templateId) ?? null;
 
   // Reset only on open/target-post change — NOT on `cliente?.dia_entrega`. `getClientes` and
   // `getWorkflowTemplates` are two independent queries; if templates resolve first, the user can
@@ -130,7 +131,7 @@ export function ApplyProcessDialog({
         : null,
     [template, startOrdem, fixedDates, deliveryDate, cliente?.dia_entrega, responsaveis],
   );
-  const blocker = !template ? 'Escolha um modelo.' : plan?.blockers[0];
+  const blocker = !template ? t('applyProcess.chooseTemplate') : plan?.blockers[0];
 
   const confirm = async () => {
     if (!template || !plan || blocker) return;
@@ -143,7 +144,7 @@ export function ApplyProcessDialog({
         startOrdem,
         stepOverrides: plan.overrides,
       });
-      toast.success('Processo aplicado.');
+      toast.success(t('applyProcess.applied'));
       for (const key of [
         ['post-processes'],
         ['post-process', post.id],
@@ -155,7 +156,7 @@ export function ApplyProcessDialog({
       onApplied(result);
       onClose();
     } catch (err) {
-      toast.error(getPostProcessErrorToast(err, 'Erro ao aplicar processo'));
+      toast.error(getPostProcessErrorToast(err, t('applyProcess.applyError')));
       if (isStaleStateError(err)) {
         qc.invalidateQueries({ queryKey: ['workflow-templates'] });
         qc.invalidateQueries({ queryKey: ['post-process', post.id] });
@@ -170,10 +171,9 @@ export function ApplyProcessDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-[520px]">
         <DialogHeader>
-          <DialogTitle>Aplicar processo</DialogTitle>
+          <DialogTitle>{t('applyProcess.title')}</DialogTitle>
           <DialogDescription>
-            &quot;{post.titulo || 'Post sem título'}&quot; passa a ter etapas, responsáveis e prazos
-            próprios. Status, conteúdo e aprovações não mudam.
+            {t('applyProcess.desc', { title: post.titulo || t('shared.postUntitled') })}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3">
@@ -181,18 +181,20 @@ export function ApplyProcessDialog({
             value={templateId != null ? String(templateId) : ''}
             onValueChange={(v) => setTemplateId(Number(v))}
           >
-            <SelectTrigger aria-label="Modelo de processo">
-              <SelectValue placeholder="Escolha um modelo" />
+            <SelectTrigger aria-label={t('applyProcess.templateAria')}>
+              <SelectValue placeholder={t('applyProcess.choosePlaceholder')} />
             </SelectTrigger>
             <SelectContent>
-              {templates.map((t) => (
+              {templates.map((tpl) => (
                 <SelectItem
-                  key={t.id}
-                  value={String(t.id)}
-                  disabled={!Array.isArray(t.etapas) || t.etapas.length === 0}
+                  key={tpl.id}
+                  value={String(tpl.id)}
+                  disabled={!Array.isArray(tpl.etapas) || tpl.etapas.length === 0}
                 >
-                  {t.nome}
-                  {!Array.isArray(t.etapas) || t.etapas.length === 0 ? ' (sem etapas)' : ''}
+                  {tpl.nome}
+                  {!Array.isArray(tpl.etapas) || tpl.etapas.length === 0
+                    ? t('applyProcess.noStages')
+                    : ''}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -200,7 +202,7 @@ export function ApplyProcessDialog({
           {template && plan && (
             <>
               <Select value={String(startOrdem)} onValueChange={(v) => setStartOrdem(Number(v))}>
-                <SelectTrigger aria-label="Etapa inicial">
+                <SelectTrigger aria-label={t('applyProcess.startStageAria')}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -213,9 +215,11 @@ export function ApplyProcessDialog({
               </Select>
               {plan.modo === 'data_entrega' && (
                 <label className="text-sm flex flex-col gap-1">
-                  Mês de entrega{cliente?.dia_entrega ? ` (dia ${cliente.dia_entrega})` : ''}
+                  {cliente?.dia_entrega
+                    ? t('applyProcess.deliveryMonthWithDay', { day: cliente.dia_entrega })
+                    : t('applyProcess.deliveryMonth')}
                   <Select value={month} onValueChange={setMonth}>
-                    <SelectTrigger aria-label="Mês de entrega">
+                    <SelectTrigger aria-label={t('applyProcess.deliveryMonth')}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -232,8 +236,11 @@ export function ApplyProcessDialog({
                 {plan.steps.map((s) => (
                   <li key={s.ordem} className="flex flex-col gap-1 py-1">
                     <span>
-                      <strong>{s.nome}</strong> · <span>{ESTADO_LABEL[s.estado]}</span>
-                      {s.tipo === 'aprovacao_cliente' ? ' · Aprovação do cliente' : ''}
+                      <strong>{s.nome}</strong> ·{' '}
+                      <span>{t(`applyProcess.estado.${s.estado}`)}</span>
+                      {s.tipo === 'aprovacao_cliente'
+                        ? ` · ${t('applyProcess.clientApproval')}`
+                        : ''}
                     </span>
                     {s.estado !== 'ignorado' && (
                       <span className="flex flex-wrap gap-2 items-center">
@@ -247,13 +254,13 @@ export function ApplyProcessDialog({
                           }
                         >
                           <SelectTrigger
-                            aria-label={`Responsável da etapa ${s.nome}`}
+                            aria-label={t('applyProcess.assigneeAria', { name: s.nome })}
                             className="h-7 w-44 text-xs"
                           >
-                            <SelectValue placeholder="Sem responsável" />
+                            <SelectValue placeholder={t('shared.noAssignee')} />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="none">Sem responsável</SelectItem>
+                            <SelectItem value="none">{t('shared.noAssignee')}</SelectItem>
                             {membros.map((m) => (
                               <SelectItem key={m.id} value={String(m.id)}>
                                 {m.nome}
@@ -264,7 +271,7 @@ export function ApplyProcessDialog({
                         {plan.modo === 'data_fixa' ? (
                           <input
                             type="date"
-                            aria-label={`Data da etapa ${s.nome}`}
+                            aria-label={t('applyProcess.dateAria', { name: s.nome })}
                             value={fixedDates[s.ordem] ?? ''}
                             onChange={(e) =>
                               setFixedDates((d) => ({
@@ -278,7 +285,7 @@ export function ApplyProcessDialog({
                           <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
                             {s.prazoEfetivo
                               ? formatEtapaDeadlineDay(new Date(s.prazoEfetivo))
-                              : 'Prazo definido ao ativar'}
+                              : t('applyProcess.deadlineOnActivate')}
                           </span>
                         )}
                       </span>
@@ -296,10 +303,10 @@ export function ApplyProcessDialog({
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
-            Cancelar
+            {t('actions.cancel')}
           </Button>
           <Button type="button" onClick={confirm} disabled={busy || !!blocker}>
-            {busy ? 'Aplicando...' : 'Aplicar processo'}
+            {busy ? t('applyProcess.applying') : t('applyProcess.title')}
           </Button>
         </DialogFooter>
       </DialogContent>

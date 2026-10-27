@@ -1,4 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -37,12 +39,8 @@ export interface ApprovalExitDialogProps {
   onCancel: () => void;
 }
 
-const COUNTS_ERROR = 'Não foi possível carregar os posts.';
-const SAFETY_NOTE = 'Posts agendados ou publicados nunca são alterados.';
-
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
 function optionCopy(
+  t: TFunction<'workflows'>,
   option: ApprovalExitOption,
   isPost: boolean,
   n: ApprovalExitDialogProps['numbers'],
@@ -50,34 +48,37 @@ function optionCopy(
   switch (option) {
     case 'manter':
       return isPost
-        ? { title: 'Manter status', description: 'O status do post não muda.' }
-        : { title: 'Manter status atuais', description: 'Nenhum post muda.' };
+        ? { title: t('approvalExit.keepPostTitle'), description: t('approvalExit.keepPostDesc') }
+        : { title: t('approvalExit.keepFlowTitle'), description: t('approvalExit.keepFlowDesc') };
     case 'aprovar':
       return isPost
-        ? { title: 'Aprovar', description: 'O post fica aprovado pela equipe.' }
+        ? {
+            title: t('approvalExit.approvePostTitle'),
+            description: t('approvalExit.approvePostDesc'),
+          }
         : {
-            title: 'Aprovar todos',
-            description: `${plural(n.pendentes, 'post pendente fica', 'posts pendentes ficam')} aprovado${n.pendentes === 1 ? '' : 's'} pela equipe.`,
+            title: t('approvalExit.approveFlowTitle'),
+            description: t('approvalExit.approveFlowDesc', { count: n.pendentes }),
           };
     case 'voltar_rascunho':
       return isPost
         ? {
-            title: 'Voltar para rascunho',
-            description: 'O post volta para rascunho. O histórico de aprovações é mantido.',
+            title: t('approvalExit.draftPostTitle'),
+            description: t('approvalExit.draftPostDesc'),
           }
         : {
-            title: 'Voltar todos para rascunho',
-            description: `${plural(n.alteraveisRascunho, 'post volta', 'posts voltam')} para rascunho. O histórico de aprovações é mantido.`,
+            title: t('approvalExit.draftFlowTitle'),
+            description: t('approvalExit.draftFlowDesc', { count: n.alteraveisRascunho }),
           };
     case 'enviar_portal':
       return isPost
         ? {
-            title: 'Enviar ao portal',
-            description: 'O post vai para o cliente aprovar. O processo não avança.',
+            title: t('approvalExit.sendPortal'),
+            description: t('approvalExit.sendPortalPostDesc'),
           }
         : {
-            title: 'Enviar ao portal',
-            description: `${plural(n.aprovadoInterno, 'post aprovado internamente vai', 'posts aprovados internamente vão')} para o cliente aprovar. O fluxo não avança.`,
+            title: t('approvalExit.sendPortal'),
+            description: t('approvalExit.sendPortalFlowDesc', { count: n.aprovadoInterno }),
           };
   }
 }
@@ -99,6 +100,7 @@ export function ApprovalExitDialog({
   onConfirm,
   onCancel,
 }: ApprovalExitDialogProps) {
+  const { t } = useTranslation('workflows');
   const isPost = entityKind === 'post';
   const isPhone = !useIsDesktop(768);
   const groupId = useId();
@@ -125,13 +127,14 @@ export function ApprovalExitDialog({
 
   const title =
     nextEtapaName === null
-      ? `Concluir "${entityTitle}"?`
-      : `Avançar "${entityTitle}" para ${nextEtapaName}?`;
-  const intro = isPost
-    ? 'Este post está saindo de uma etapa de aprovação. Escolha o que acontece com ele.'
-    : 'Este fluxo está saindo de uma etapa de aprovação. Escolha o que acontece com os posts.';
-  const advanceLabel = nextEtapaName === null ? 'Concluir' : 'Avançar';
-  const primaryLabel = selected === 'enviar_portal' ? 'Enviar ao portal' : advanceLabel;
+      ? t('approvalExit.titleComplete', { title: entityTitle })
+      : t('approvalExit.titleAdvance', { title: entityTitle, next: nextEtapaName });
+  const intro = isPost ? t('approvalExit.introPost') : t('approvalExit.introFlow');
+  const advanceLabel =
+    nextEtapaName === null ? t('approvalExit.complete') : t('approvalExit.advance');
+  const primaryLabel = selected === 'enviar_portal' ? t('approvalExit.sendPortal') : advanceLabel;
+  const countsErrorText = t('approvalExit.countsError');
+  const safetyNote = t('approvalExit.safetyNote');
   const disabled = counts === null || !!busy;
 
   const chips = counts
@@ -139,7 +142,9 @@ export function ApprovalExitDialog({
         .filter(([, n]) => (n ?? 0) > 0)
         .map(([status, n]) => ({
           status,
-          label: isPost ? STATUS_LABELS[status] : `${STATUS_LABELS[status]}: ${n}`,
+          label: isPost
+            ? STATUS_LABELS[status]
+            : t('approvalExit.statusChip', { label: STATUS_LABELS[status], n }),
         }))
     : [];
 
@@ -149,14 +154,17 @@ export function ApprovalExitDialog({
       : [recommended, ...options.filter((o) => o !== recommended)];
     // Description do sheet é um <p>: só spans aqui dentro.
     const message = locked ? (
-      'O status do post não muda.'
+      t('approvalExit.keepPostDesc')
     ) : countsError ? (
-      COUNTS_ERROR
+      countsErrorText
     ) : (
       <>
         <span className="block">{intro}</span>
         {chips.length > 0 && (
-          <span className="mt-2 flex flex-wrap justify-center gap-1.5" aria-label="Status atuais">
+          <span
+            className="mt-2 flex flex-wrap justify-center gap-1.5"
+            aria-label={t('approvalExit.currentStatuses')}
+          >
             {chips.map((c) => (
               <span
                 key={c.status}
@@ -167,7 +175,7 @@ export function ApprovalExitDialog({
             ))}
           </span>
         )}
-        <span className="mt-2 block text-xs">{SAFETY_NOTE}</span>
+        <span className="mt-2 block text-xs">{safetyNote}</span>
       </>
     );
     if (countsError && !locked) {
@@ -177,7 +185,7 @@ export function ApprovalExitDialog({
           open={open}
           title={title}
           message={message}
-          actions={[{ label: 'Tentar de novo', onSelect: () => onRetry?.() }]}
+          actions={[{ label: t('approvalExit.retry'), onSelect: () => onRetry?.() }]}
           onCancel={onCancel}
         />
       );
@@ -189,11 +197,11 @@ export function ApprovalExitDialog({
         title={title}
         message={message}
         actions={ordered.map((opt) => {
-          const copy = optionCopy(opt, isPost, numbers);
+          const copy = optionCopy(t, opt, isPost, numbers);
           const label = locked
             ? advanceLabel
             : opt === recommended
-              ? `${copy.title} (Recomendado)`
+              ? t('approvalExit.recommendedSuffix', { title: copy.title })
               : copy.title;
           return {
             label: locked ? (
@@ -234,12 +242,12 @@ export function ApprovalExitDialog({
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         {locked ? (
-          <p className="text-sm text-muted-foreground">O status do post não muda.</p>
+          <p className="text-sm text-muted-foreground">{t('approvalExit.keepPostDesc')}</p>
         ) : (
           <>
             <p className="text-sm text-muted-foreground">{intro}</p>
             {chips.length > 0 && (
-              <ul className="flex flex-wrap gap-1.5" aria-label="Status atuais">
+              <ul className="flex flex-wrap gap-1.5" aria-label={t('approvalExit.currentStatuses')}>
                 {chips.map((c) => (
                   <li
                     key={c.status}
@@ -255,20 +263,20 @@ export function ApprovalExitDialog({
                 role="alert"
                 className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm text-[var(--danger-text)]"
               >
-                <span>{COUNTS_ERROR}</span>
+                <span>{countsErrorText}</span>
                 <Button variant="outline" size="sm" onClick={() => onRetry?.()}>
-                  Tentar de novo
+                  {t('approvalExit.retry')}
                 </Button>
               </div>
             )}
             <div
               ref={groupRef}
               role="radiogroup"
-              aria-label="O que acontece"
+              aria-label={t('approvalExit.whatHappens')}
               className="flex flex-col gap-2"
             >
               {options.map((opt) => {
-                const copy = optionCopy(opt, isPost, numbers);
+                const copy = optionCopy(t, opt, isPost, numbers);
                 const checked = selected === opt;
                 return (
                   <label
@@ -290,7 +298,7 @@ export function ApprovalExitDialog({
                         {copy.title}
                         {opt === recommended && (
                           <span className="rounded-md bg-primary px-1.5 py-px text-[11px] font-medium text-primary-foreground">
-                            Recomendado
+                            {t('approvalExit.recommended')}
                           </span>
                         )}
                       </span>
@@ -302,12 +310,12 @@ export function ApprovalExitDialog({
                 );
               })}
             </div>
-            <p className="text-xs text-muted-foreground">{SAFETY_NOTE}</p>
+            <p className="text-xs text-muted-foreground">{safetyNote}</p>
           </>
         )}
         <DialogFooter>
           <Button variant="ghost" onClick={onCancel}>
-            Cancelar
+            {t('actions.cancel')}
           </Button>
           <Button onClick={() => onConfirm(locked ? 'manter' : selected)} disabled={disabled}>
             {locked ? advanceLabel : primaryLabel}

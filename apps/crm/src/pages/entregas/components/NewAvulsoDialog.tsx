@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -42,13 +44,15 @@ import { buildTemplateFingerprint } from '../fingerprint';
 import { buildApplyPlan } from '../applyProcessDeadlines';
 import { getPostProcessErrorToast } from '../postProcessErrors';
 
-const avulsoSchema = z.object({
-  cliente_id: z.string().min(1, 'Selecione um cliente'),
-  titulo: z.string().trim().min(1, 'Informe o título do post'),
-  tipo: z.enum(CONTENT_FORMATS),
-});
+// Built per render language so the validation messages follow the UI language.
+const makeAvulsoSchema = (t: TFunction<'workflows'>) =>
+  z.object({
+    cliente_id: z.string().min(1, t('newAvulso.selectClient')),
+    titulo: z.string().trim().min(1, t('newAvulso.titleRequired')),
+    tipo: z.enum(CONTENT_FORMATS),
+  });
 
-type AvulsoFormValues = z.infer<typeof avulsoSchema>;
+type AvulsoFormValues = z.infer<ReturnType<typeof makeAvulsoSchema>>;
 
 const BLANK: AvulsoFormValues = { cliente_id: '', titulo: '', tipo: 'feed' };
 
@@ -91,8 +95,10 @@ export function NewAvulsoDialog({
   templates,
   onNeedsManualApply,
 }: NewAvulsoDialogProps) {
+  const { t } = useTranslation('workflows');
   const qc = useQueryClient();
   const [saving, setSaving] = useState(false);
+  const avulsoSchema = useMemo(() => makeAvulsoSchema(t), [t]);
 
   const form = useForm<AvulsoFormValues>({
     resolver: zodResolver(avulsoSchema),
@@ -115,11 +121,11 @@ export function NewAvulsoDialog({
         titulo: values.titulo.trim(),
         tipo: values.tipo,
       });
-      toast.success('Post avulso criado');
+      toast.success(t('newAvulso.created'));
       qc.invalidateQueries({ queryKey: ['active-posts'] });
 
       const template =
-        templateId != null ? (templates ?? []).find((t) => t.id === templateId) : undefined;
+        templateId != null ? (templates ?? []).find((tpl) => tpl.id === templateId) : undefined;
       if (template) {
         // buildApplyPlan/applyPostProcess treat a missing modo_prazo the same
         // as 'padrao' (see applyProcessDeadlines.ts) -- match that here so a
@@ -155,7 +161,7 @@ export function NewAvulsoDialog({
             ])
               qc.invalidateQueries({ queryKey: key });
           } catch (err) {
-            toast.error(getPostProcessErrorToast(err, 'Erro ao aplicar processo'));
+            toast.error(getPostProcessErrorToast(err, t('newAvulso.applyError')));
           }
           // Sucesso: o post já tem processo, então quem revela é o quadro de
           // Fluxos. Falha: cai no drawer de avulso (spec §3, estado recuperável
@@ -174,7 +180,7 @@ export function NewAvulsoDialog({
       }
       onClose();
     } catch {
-      toast.error('Erro ao criar post avulso');
+      toast.error(t('newAvulso.createError'));
     } finally {
       setSaving(false);
     }
@@ -184,8 +190,8 @@ export function NewAvulsoDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-[420px]">
         <DialogHeader>
-          <DialogTitle>Post avulso</DialogTitle>
-          <DialogDescription className="sr-only">Crie um post fora de um fluxo</DialogDescription>
+          <DialogTitle>{t('newAvulso.title')}</DialogTitle>
+          <DialogDescription className="sr-only">{t('newAvulso.srDesc')}</DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4">
@@ -194,11 +200,11 @@ export function NewAvulsoDialog({
               name="cliente_id"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Cliente</FormLabel>
+                  <FormLabel>{t('newAvulso.client')}</FormLabel>
                   <Select value={field.value} onValueChange={field.onChange}>
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Selecione um cliente" />
+                        <SelectValue placeholder={t('newAvulso.selectClient')} />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
@@ -218,9 +224,9 @@ export function NewAvulsoDialog({
               name="titulo"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Título</FormLabel>
+                  <FormLabel>{t('newAvulso.postTitle')}</FormLabel>
                   <FormControl>
-                    <Input placeholder="Título do post" autoFocus {...field} />
+                    <Input placeholder={t('newAvulso.postTitlePlaceholder')} autoFocus {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -231,7 +237,7 @@ export function NewAvulsoDialog({
               name="tipo"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Tipo</FormLabel>
+                  <FormLabel>{t('newAvulso.type')}</FormLabel>
                   <Select value={field.value} onValueChange={field.onChange}>
                     <FormControl>
                       <SelectTrigger>
@@ -239,9 +245,9 @@ export function NewAvulsoDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {TIPO_ORDER.map((t) => (
-                        <SelectItem key={t} value={t}>
-                          {TIPO_LABELS[t]}
+                      {TIPO_ORDER.map((tipo) => (
+                        <SelectItem key={tipo} value={tipo}>
+                          {TIPO_LABELS[tipo]}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -252,10 +258,10 @@ export function NewAvulsoDialog({
             />
             <DialogFooter>
               <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
-                Cancelar
+                {t('actions.cancel')}
               </Button>
               <Button type="submit" disabled={saving}>
-                {saving ? 'Criando...' : 'Criar post'}
+                {saving ? t('newAvulso.creating') : t('newAvulso.create')}
               </Button>
             </DialogFooter>
           </form>

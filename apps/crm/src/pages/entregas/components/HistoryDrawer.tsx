@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import {
   X,
   ChevronDown,
@@ -45,11 +47,11 @@ import './historyPage.css';
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatDateShort(iso: string): string {
-  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+  return new Date(iso).toLocaleDateString(getIntlLocale(), { day: '2-digit', month: 'short' });
 }
 
 function formatDateFull(iso: string): string {
-  return new Date(iso).toLocaleDateString('pt-BR', {
+  return new Date(iso).toLocaleDateString(getIntlLocale(), {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -108,6 +110,7 @@ export function HistoryDrawer({
   onClose,
   variant = 'drawer',
 }: HistoryDrawerProps) {
+  const { t } = useTranslation('workflows');
   const workflowId = workflow.id!;
   const [expandedPostId, setExpandedPostId] = useState<number | null>(null);
 
@@ -163,20 +166,20 @@ export function HistoryDrawer({
   const subtitle = (
     <>
       {clienteName || '—'}
-      {lastEnd && <> &bull; Concluído em {formatDateFull(lastEnd)}</>}
+      {lastEnd && <> &bull; {t('historyDrawer.concludedOn', { date: formatDateFull(lastEnd) })}</>}
     </>
   );
   const duration =
     totalDays !== null ? (
       <div className="history-duration">
-        Duração total: {totalDays} dia{totalDays !== 1 ? 's' : ''}
+        {t('historyDrawer.totalDuration', { count: totalDays })}
       </div>
     ) : null;
 
   const body = (
     <div className="drawer-body">
       <div style={{ marginBottom: '1.5rem' }}>
-        <div className="history-section-title">Etapas</div>
+        <div className="history-section-title">{t('historyDrawer.stages')}</div>
         <div className="history-timeline">
           {compliance.map((c, i) => {
             const isLate = c.daysOverdue > 0;
@@ -195,14 +198,24 @@ export function HistoryDrawer({
                   <div className="history-step-header">
                     <span className="history-step-name">{c.etapa.nome}</span>
                     <span className={`history-step-badge history-step-badge--${mod}`}>
-                      {isLate ? `${c.daysOverdue}d de atraso` : '✓ No prazo'}
+                      {isLate
+                        ? t('historyDrawer.daysLate', { n: c.daysOverdue })
+                        : t('historyDrawer.onTime')}
                     </span>
                   </div>
                   <div className="history-step-detail">
-                    {c.assigneeName} &bull; {formatDateShort(c.etapa.iniciado_em!)} →{' '}
-                    {formatDateShort(c.etapa.concluido_em!)} &bull; {c.daysUsed} dia
-                    {c.daysUsed !== 1 ? 's' : ''} (prazo: {c.etapa.prazo_dias}d{' '}
-                    {c.etapa.tipo_prazo === 'uteis' ? 'úteis' : 'corridos'})
+                    {t('historyDrawer.stepDetail', {
+                      assignee: c.assigneeName,
+                      start: formatDateShort(c.etapa.iniciado_em!),
+                      end: formatDateShort(c.etapa.concluido_em!),
+                      count: c.daysUsed,
+                      deadline: t(
+                        c.etapa.tipo_prazo === 'uteis'
+                          ? 'historyDrawer.deadlineUteis'
+                          : 'historyDrawer.deadlineCorridos',
+                        { n: c.etapa.prazo_dias },
+                      ),
+                    })}
                   </div>
                 </div>
               </div>
@@ -212,20 +225,22 @@ export function HistoryDrawer({
             <div className="history-final-icon">
               <Flag className="h-3 w-3" />
             </div>
-            <span>Fluxo concluído</span>
+            <span>{t('historyDrawer.flowDone')}</span>
           </div>
         </div>
       </div>
 
       {historyNodes.length > 0 && (
         <div style={{ marginBottom: '1.5rem' }}>
-          <div className="history-section-title">Histórico</div>
+          <div className="history-section-title">{t('historyDrawer.history')}</div>
           <WorkflowHistoryList nodes={historyNodes} />
         </div>
       )}
 
       <div>
-        <div className="history-section-title">Posts ({posts.length})</div>
+        <div className="history-section-title">
+          {t('historyDrawer.postsCount', { n: posts.length })}
+        </div>
         <div className="drawer-posts-list">
           {posts.map((post) => {
             const isExpanded = expandedPostId === post.id;
@@ -243,7 +258,9 @@ export function HistoryDrawer({
                       <ChevronRight className="h-4 w-4 drawer-post-chevron" />
                     )}
                     <span className="post-tipo-badge">{TIPO_LABELS[post.tipo]}</span>
-                    <span className="drawer-post-titulo">{post.titulo || 'Post sem título'}</span>
+                    <span className="drawer-post-titulo">
+                      {post.titulo || t('shared.postUntitled')}
+                    </span>
                   </div>
                   <div className="drawer-post-trigger-right">
                     <PostStatusChip post={post} registry={statusRegistry} />
@@ -292,8 +309,8 @@ export function HistoryDrawer({
                     {postApprovals.length > 0 && (
                       <div className="history-approval-thread">
                         <div className="history-thread-label">
-                          <MessageSquare className="h-3.5 w-3.5" /> Comentários (
-                          {postApprovals.length})
+                          <MessageSquare className="h-3.5 w-3.5" />{' '}
+                          {t('historyDrawer.comments', { n: postApprovals.length })}
                         </div>
                         {postApprovals.map((a) => (
                           <ApprovalBubble key={a.id} approval={a} />
@@ -313,7 +330,7 @@ export function HistoryDrawer({
   if (variant === 'page') {
     return (
       <div className="phone-history-page">
-        <PhoneNavBar backLabel="Voltar" onBack={onClose} />
+        <PhoneNavBar backLabel={t('actions.back')} onBack={onClose} />
         <header className="phone-kit phone-large-title phone-history-page__head">
           <h1 className="phone-large-title__title">{workflow.titulo}</h1>
           <p className="phone-large-title__subtitle">{subtitle}</p>
@@ -334,7 +351,11 @@ export function HistoryDrawer({
             <div className="drawer-header-subtitle">{subtitle}</div>
             {duration}
           </div>
-          <button className="drawer-close-btn drawer-dismiss-btn" onClick={onClose} title="Fechar">
+          <button
+            className="drawer-close-btn drawer-dismiss-btn"
+            onClick={onClose}
+            title={t('ui.close')}
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -358,6 +379,7 @@ function HistoryDiscussao({
   membros: Membro[];
   workspaceUsers: DiscussaoWorkspaceUser[];
 }) {
+  const { t } = useTranslation('workflows');
   const items = useMemo(
     () =>
       buildTimeline({
@@ -371,13 +393,13 @@ function HistoryDiscussao({
   if (items.length === 0) return null;
 
   return (
-    <section className="discussao" aria-label="Discussão da equipe">
+    <section className="discussao" aria-label={t('historyDrawer.discussion')}>
       <div className="discussao-header">
         <MessagesSquare className="discussao-header-icon h-4 w-4" aria-hidden="true" />
-        <h3 className="discussao-title">Discussão da equipe</h3>
+        <h3 className="discussao-title">{t('historyDrawer.discussion')}</h3>
         <Badge variant="neutral" size="sm" className="discussao-badge">
           <Lock className="h-3 w-3" aria-hidden="true" />
-          Só a equipe vê
+          {t('historyDrawer.teamOnly')}
         </Badge>
       </div>
       <DiscussaoTimeline
@@ -392,14 +414,15 @@ function HistoryDiscussao({
 }
 
 function ApprovalBubble({ approval }: { approval: PostApproval }) {
+  const { t } = useTranslation('workflows');
   const isTeam = approval.is_workspace_user;
   const actionLabel = isTeam
-    ? 'Equipe'
+    ? t('historyDrawer.team')
     : approval.action === 'correcao'
-      ? 'Correção solicitada'
+      ? t('historyDrawer.changesRequested')
       : approval.action === 'aprovado'
-        ? 'Aprovado'
-        : 'Cliente';
+        ? t('historyDrawer.approved')
+        : t('historyDrawer.client');
 
   return (
     <div
@@ -408,7 +431,7 @@ function ApprovalBubble({ approval }: { approval: PostApproval }) {
       <div className="approval-bubble-meta">
         <span className="approval-bubble-author">{actionLabel}</span>
         <span className="approval-bubble-date">
-          {new Date(approval.created_at).toLocaleDateString('pt-BR', {
+          {new Date(approval.created_at).toLocaleDateString(getIntlLocale(), {
             day: '2-digit',
             month: 'short',
             hour: '2-digit',

@@ -15,6 +15,8 @@ import {
   List,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -39,19 +41,27 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { handleEntitlementMutationError } from '@/lib/entitlement-toast';
 
-const TYPE_ITEMS: { type: PropertyType; label: string; icon: React.ReactNode }[] = [
-  { type: 'text', label: 'Texto', icon: <Type className="h-4 w-4" /> },
-  { type: 'number', label: 'Número', icon: <Hash className="h-4 w-4" /> },
-  { type: 'select', label: 'Seleção', icon: <ChevronDown className="h-4 w-4" /> },
-  { type: 'multiselect', label: 'Multi-seleção', icon: <List className="h-4 w-4" /> },
-  { type: 'status', label: 'Status', icon: <Tag className="h-4 w-4" /> },
-  { type: 'date', label: 'Data', icon: <Calendar className="h-4 w-4" /> },
-  { type: 'person', label: 'Pessoa', icon: <User className="h-4 w-4" /> },
-  { type: 'checkbox', label: 'Checkbox', icon: <CheckSquare className="h-4 w-4" /> },
-  { type: 'url', label: 'URL', icon: <Link className="h-4 w-4" /> },
-  { type: 'email', label: 'Email', icon: <Mail className="h-4 w-4" /> },
-  { type: 'phone', label: 'Telefone', icon: <Phone className="h-4 w-4" /> },
-  { type: 'created_time', label: 'Criado em', icon: <Clock className="h-4 w-4" /> },
+// Labels live in `workflows:propertyTypes.<type>`, resolved at render time.
+const TYPE_ITEMS: { type: PropertyType; icon: React.ReactNode }[] = [
+  { type: 'text', icon: <Type className="h-4 w-4" /> },
+  { type: 'number', icon: <Hash className="h-4 w-4" /> },
+  { type: 'select', icon: <ChevronDown className="h-4 w-4" /> },
+  { type: 'multiselect', icon: <List className="h-4 w-4" /> },
+  { type: 'status', icon: <Tag className="h-4 w-4" /> },
+  { type: 'date', icon: <Calendar className="h-4 w-4" /> },
+  { type: 'person', icon: <User className="h-4 w-4" /> },
+  { type: 'checkbox', icon: <CheckSquare className="h-4 w-4" /> },
+  { type: 'url', icon: <Link className="h-4 w-4" /> },
+  { type: 'email', icon: <Mail className="h-4 w-4" /> },
+  { type: 'phone', icon: <Phone className="h-4 w-4" /> },
+  { type: 'created_time', icon: <Clock className="h-4 w-4" /> },
+];
+
+/** Default options a new Status property starts with, in the current UI language. */
+const defaultStatusOptions = (t: TFunction<'workflows'>): SelectOption[] => [
+  { id: crypto.randomUUID(), label: t('propertyDefinition.statusNotStarted'), color: '#94a3b8' },
+  { id: crypto.randomUUID(), label: t('propertyDefinition.statusInProgress'), color: '#3b82f6' },
+  { id: crypto.randomUUID(), label: t('propertyDefinition.statusDone'), color: '#22c55e' },
 ];
 
 const PRESET_COLORS = [
@@ -73,6 +83,7 @@ interface Props {
 }
 
 export function PropertyDefinitionPanel({ templateId, definition, onSave, onClose }: Props) {
+  const { t } = useTranslation('workflows');
   const { profile } = useAuth();
   const isEditing = !!definition?.id;
   const [selectedType, setSelectedType] = useState<PropertyType>(definition?.type ?? 'text');
@@ -92,11 +103,7 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
       return (definition.config.options as SelectOption[]) ?? [];
     }
     if (selectedType === 'status') {
-      return [
-        { id: crypto.randomUUID(), label: 'Não iniciado', color: '#94a3b8' },
-        { id: crypto.randomUUID(), label: 'Em andamento', color: '#3b82f6' },
-        { id: crypto.randomUUID(), label: 'Concluído', color: '#22c55e' },
-      ];
+      return defaultStatusOptions(t);
     }
     return [];
   });
@@ -135,25 +142,21 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
   const handleTypeChange = (type: PropertyType) => {
     setSelectedType(type);
     if (type === 'status' && options.length === 0) {
-      setOptions([
-        { id: crypto.randomUUID(), label: 'Não iniciado', color: '#94a3b8' },
-        { id: crypto.randomUUID(), label: 'Em andamento', color: '#3b82f6' },
-        { id: crypto.randomUUID(), label: 'Concluído', color: '#22c55e' },
-      ]);
+      setOptions(defaultStatusOptions(t));
     }
   };
 
   const handleSave = async () => {
     const trimmedName = name.trim();
     if (!trimmedName) {
-      toast.error('Nome da propriedade é obrigatório.');
+      toast.error(t('propertyDefinition.nameRequired'));
       return;
     }
     if (
       (selectedType === 'select' || selectedType === 'multiselect' || selectedType === 'status') &&
       options.length === 0
     ) {
-      toast.error('Adicione pelo menos uma opção.');
+      toast.error(t('propertyDefinition.addOneOption'));
       return;
     }
     setSaving(true);
@@ -167,10 +170,10 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
       };
       if (isEditing) {
         await updatePropertyDefinition(definition!.id!, payload);
-        toast.success('Propriedade atualizada!');
+        toast.success(t('propertyDefinition.updated'));
       } else {
         await createPropertyDefinition(templateId, payload);
-        toast.success('Propriedade criada!');
+        toast.success(t('propertyDefinition.created'));
       }
       onSave();
     } catch (err: unknown) {
@@ -182,7 +185,7 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
       // otherwise show the user the literal
       // "feature_disabled:feature_custom_properties" Postgres string.
       if (!handleEntitlementMutationError(err, profile?.conta_id ?? null))
-        toast.error((err as Error).message || 'Erro ao salvar propriedade');
+        toast.error((err as Error).message || t('propertyDefinition.saveError'));
     } finally {
       setSaving(false);
     }
@@ -193,13 +196,11 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
       <AlertDialog open={confirmCloseOpen} onOpenChange={setConfirmCloseOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Fechar sem salvar?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Você tem alterações não salvas. Deseja fechar mesmo assim?
-            </AlertDialogDescription>
+            <AlertDialogTitle>{t('propertyDefinition.closeTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('propertyDefinition.closeDesc')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Continuar editando</AlertDialogCancel>
+            <AlertDialogCancel>{t('propertyDefinition.keepEditing')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 setConfirmCloseOpen(false);
@@ -207,7 +208,7 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
               }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Fechar mesmo assim
+              {t('propertyDefinition.closeAnyway')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -252,7 +253,7 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
             }}
           >
             <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>
-              {isEditing ? 'Editar propriedade' : 'Nova propriedade'}
+              {isEditing ? t('propertyDefinition.editTitle') : t('propertyDefinition.newTitle')}
             </h3>
             <button
               onClick={onClose}
@@ -284,7 +285,7 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
                   margin: '0 0 0.25rem',
                 }}
               >
-                Tipo
+                {t('propertyDefinition.type')}
               </p>
               {TYPE_ITEMS.map((item) => (
                 <button
@@ -309,7 +310,7 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
                   }}
                 >
                   {item.icon}
-                  {item.label}
+                  {t(`propertyTypes.${item.type}`)}
                 </button>
               ))}
             </div>
@@ -317,11 +318,13 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
             {/* Right: config */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.25rem' }}>
               <div style={{ marginBottom: '1rem' }}>
-                <Label style={{ fontSize: '0.8rem' }}>Nome da propriedade *</Label>
+                <Label style={{ fontSize: '0.8rem' }}>{t('propertyDefinition.nameLabel')}</Label>
                 <Input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder={`Ex: ${TYPE_ITEMS.find((t) => t.type === selectedType)?.label}`}
+                  placeholder={t('propertyDefinition.namePlaceholder', {
+                    example: t(`propertyTypes.${selectedType}`),
+                  })}
                   style={{ marginTop: 4 }}
                   autoFocus
                 />
@@ -332,7 +335,7 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
                 selectedType === 'multiselect' ||
                 selectedType === 'status') && (
                 <div style={{ marginBottom: '1rem' }}>
-                  <Label style={{ fontSize: '0.8rem' }}>Opções</Label>
+                  <Label style={{ fontSize: '0.8rem' }}>{t('propertyDefinition.options')}</Label>
                   <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {options.map((opt) => (
                       <div
@@ -387,7 +390,7 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <Input
-                      placeholder="Nome da opção"
+                      placeholder={t('propertyDefinition.optionName')}
                       value={newOptionLabel}
                       onChange={(e) => setNewOptionLabel(e.target.value)}
                       onKeyDown={(e) => {
@@ -399,7 +402,7 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
                       style={{ flex: 1, fontSize: '0.82rem' }}
                     />
                     <Button variant="outline" size="sm" onClick={handleAddOption}>
-                      + Adicionar
+                      {t('propertyDefinition.add')}
                     </Button>
                   </div>
                 </div>
@@ -407,17 +410,17 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
 
               {selectedType === 'number' && (
                 <div style={{ marginBottom: '1rem' }}>
-                  <Label style={{ fontSize: '0.8rem' }}>Formato</Label>
+                  <Label style={{ fontSize: '0.8rem' }}>{t('propertyDefinition.format')}</Label>
                   <select
                     className="drawer-select"
                     value={numberFormat}
                     onChange={(e) => setNumberFormat(e.target.value)}
                     style={{ marginTop: 4, width: '100%' }}
                   >
-                    <option value="integer">Inteiro</option>
-                    <option value="decimal">Decimal</option>
-                    <option value="percentage">Percentual (%)</option>
-                    <option value="currency">Moeda (R$)</option>
+                    <option value="integer">{t('propertyDefinition.formatInteger')}</option>
+                    <option value="decimal">{t('propertyDefinition.formatDecimal')}</option>
+                    <option value="percentage">{t('propertyDefinition.formatPercentage')}</option>
+                    <option value="currency">{t('propertyDefinition.formatCurrency')}</option>
                   </select>
                 </div>
               )}
@@ -426,7 +429,7 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
                 <p
                   style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1rem' }}
                 >
-                  Preenchido automaticamente com a data de criação do post.
+                  {t('propertyDefinition.createdTimeHint')}
                 </p>
               )}
 
@@ -447,7 +450,7 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
                   onCheckedChange={(v) => setPortalVisible(v as boolean)}
                 />
                 <label htmlFor="portal-visible" style={{ fontSize: '0.85rem', cursor: 'pointer' }}>
-                  Visível no portal do cliente
+                  {t('propertyDefinition.portalVisible')}
                 </label>
               </div>
 
@@ -459,7 +462,7 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
                     marginBottom: '0.75rem',
                   }}
                 >
-                  Esta propriedade será adicionada a todos os posts deste template.
+                  {t('propertyDefinition.addedToAll')}
                 </p>
               )}
             </div>
@@ -476,10 +479,14 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
             }}
           >
             <Button variant="outline" onClick={onClose} disabled={saving}>
-              Cancelar
+              {t('actions.cancel')}
             </Button>
             <Button onClick={handleSave} disabled={saving}>
-              {saving ? 'Salvando…' : isEditing ? 'Salvar alterações' : 'Criar propriedade'}
+              {saving
+                ? t('propertyDefinition.saving')
+                : isEditing
+                  ? t('propertyDefinition.saveChanges')
+                  : t('propertyDefinition.create')}
             </Button>
           </div>
         </div>

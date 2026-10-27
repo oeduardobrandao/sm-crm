@@ -21,6 +21,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { captureEvent } from '@/lib/analytics';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import type { PlatformId } from '@mesaas/platforms';
 import { removeWorkflow } from '../../../store';
 import type { Cliente, Membro, Workflow, WorkflowTemplate } from '../../../store';
@@ -112,6 +113,7 @@ export function NewWorkflowWizard(props: {
   /** Creating a fluxo from linha editorial rows. */
   seed?: WizardSeed;
 }) {
+  const { t } = useTranslation('workflows');
   const confirmCopy = useConfirmCloseCopy();
   const { open, onClose, clientes, membros, templates, onCreated, initialTemplateId, seed } = props;
   const [s, setS] = useState<WizardState>(() => initialState(seed));
@@ -205,7 +207,7 @@ export function NewWorkflowWizard(props: {
   const prazosError =
     etapasIssues.globalError ??
     (etapasIssues.rowErrors.size > 0
-      ? 'Revise os responsáveis das etapas abaixo antes de continuar.'
+      ? t('wizard.reviewAssignees')
       : modoEfetivo === 'data_entrega' && !availability.enabled
         ? availability.reason
         : validatePrazos(s.etapas, modoEfetivo));
@@ -245,7 +247,9 @@ export function NewWorkflowWizard(props: {
         }
       }
       toast.success(
-        seed ? `Fluxo criado com ${postsLabel(seed.itens.length)}` : 'Fluxo criado com sucesso!',
+        seed
+          ? t('wizard.createdWithPosts', { posts: postsLabel(seed.itens.length) })
+          : t('wizard.created'),
       );
       if (result.warning) toast.warning(result.warning);
       captureEvent('workflow_wizard_source', {
@@ -255,7 +259,7 @@ export function NewWorkflowWizard(props: {
       onCreated();
       requestClose();
     } catch (err: unknown) {
-      toast.error((err as Error).message || 'Erro ao criar fluxo');
+      toast.error((err as Error).message || t('wizard.createError'));
     } finally {
       setSaving(false);
     }
@@ -299,7 +303,10 @@ export function NewWorkflowWizard(props: {
         style={{ maxWidth: 760, width: 'calc(100vw - 2rem)' }}
       >
         <DialogHeader>
-          <DialogTitle>Novo Fluxo{sourceLabel ? ` · ${sourceLabel}` : ''}</DialogTitle>
+          <DialogTitle>
+            {t('wizard.title')}
+            {sourceLabel ? ` · ${sourceLabel}` : ''}
+          </DialogTitle>
           <div style={{ display: 'flex', gap: 4, marginTop: '0.5rem' }} aria-hidden="true">
             {Array.from({ length: STEP_COUNT }, (_, i) => (
               <span
@@ -327,7 +334,11 @@ export function NewWorkflowWizard(props: {
               padding: '0.55rem 0.8rem',
             }}
           >
-            {`${postsLabel(seed.itens.length)} ${seed.itens.length === 1 ? 'vem' : 'vêm'} da ${seed.origemLabel}.`}
+            {t('wizard.seedNotice', {
+              count: seed.itens.length,
+              posts: postsLabel(seed.itens.length),
+              origem: seed.origemLabel,
+            })}
           </p>
         )}
 
@@ -337,11 +348,11 @@ export function NewWorkflowWizard(props: {
             onSelectPreset={(p) =>
               selectSource({ kind: 'preset', presetId: p.id, presetNome: p.nome }, p)
             }
-            onSelectTemplate={(t) =>
+            onSelectTemplate={(tpl) =>
               selectSource(
-                { kind: 'template', templateId: t.id, templateNome: t.nome },
+                { kind: 'template', templateId: tpl.id, templateNome: tpl.nome },
                 undefined,
-                t,
+                tpl,
               )
             }
             onSelectZero={() => selectSource({ kind: 'zero' })}
@@ -396,7 +407,7 @@ export function NewWorkflowWizard(props: {
               else requestClose();
             }}
           >
-            Cancelar
+            {t('actions.cancel')}
           </Button>
           {s.step > 1 && (
             <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -410,15 +421,15 @@ export function NewWorkflowWizard(props: {
                   patch({ step: (s.step - 1) as WizardState['step'] });
                 }}
               >
-                ← Voltar
+                {t('wizard.back')}
               </Button>
               <Button onClick={goNext} disabled={continueDisabled}>
                 {saving && <Spinner size="sm" />}
                 {s.step !== STEP_COUNT
-                  ? 'Continuar →'
+                  ? t('wizard.continue')
                   : seed
-                    ? `Criar fluxo com ${postsLabel(seed.itens.length)}`
-                    : '✓ Criar Fluxo'}
+                    ? t('wizard.createWithPosts', { posts: postsLabel(seed.itens.length) })
+                    : t('wizard.create')}
               </Button>
             </div>
           )}

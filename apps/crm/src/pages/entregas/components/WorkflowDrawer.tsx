@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useId } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import {
   X,
@@ -224,6 +225,7 @@ export function WorkflowDrawer({
   onOpenWorkflow,
   onDetachedKeepingProcess,
 }: WorkflowDrawerProps) {
+  const { t } = useTranslation('workflows');
   const workflowId = card.workflow.id!;
   const qc = useQueryClient();
   const { features } = useWorkspaceLimits();
@@ -375,7 +377,7 @@ export function WorkflowDrawer({
           choice: 'manter',
           expectedCounts: null,
         });
-        toast.success('Todos os posts aprovados. Etapa concluída!');
+        toast.success(t('workflowDrawer.allApproved'));
         qc.invalidateQueries({ queryKey: ['workflow-events', workflowId] });
         onRefresh();
       } catch {
@@ -405,12 +407,12 @@ export function WorkflowDrawer({
     setDismissedCiclo(ciclo);
     try {
       await resolveWorkflowRascunhoBanner(workflowId, ciclo, reset);
-      if (reset) toast.success('Posts voltaram para rascunho.');
+      if (reset) toast.success(t('workflowDrawer.backToDraft'));
       qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', workflowId] });
       onRefresh();
     } catch (err) {
       setDismissedCiclo(null);
-      toast.error(getPostProcessErrorToast(err, 'Não foi possível atualizar o aviso.'));
+      toast.error(getPostProcessErrorToast(err, t('workflowDrawer.bannerUpdateError')));
       if (getErrorIdentifier(err) === 'ciclo_changed') onRefresh();
     } finally {
       setBannerBusy(false);
@@ -587,11 +589,11 @@ export function WorkflowDrawer({
         await reorderWorkflowPosts(newIds.map((id, ordem) => ({ id, ordem })));
         qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', workflowId] });
       } catch {
-        toast.error('Erro ao reordenar posts');
+        toast.error(t('workflowDrawer.reorderError'));
         setLocalOrder(null);
       }
     },
-    [orderedPosts, qc, workflowId],
+    [orderedPosts, qc, workflowId, t],
   );
 
   // ── Actions ───────────────────────────────────────────────────────────────
@@ -612,7 +614,7 @@ export function WorkflowDrawer({
       setExpandedId(newPost.id!);
       setScrollTargetId(newPost.id!);
     } catch {
-      toast.error('Erro ao criar post');
+      toast.error(t('workflowDrawer.createError'));
     }
   };
 
@@ -627,7 +629,7 @@ export function WorkflowDrawer({
       if (expandedId === id) setExpandedId(null);
       refresh();
     } catch {
-      toast.error('Erro ao remover post');
+      toast.error(t('workflowDrawer.removeError'));
     }
   };
 
@@ -649,7 +651,7 @@ export function WorkflowDrawer({
         refresh();
         maybeNudge(updated);
       } catch {
-        toast.error('Erro ao atualizar post');
+        toast.error(t('workflowDrawer.updateError'));
       }
       return;
     }
@@ -658,7 +660,7 @@ export function WorkflowDrawer({
       refresh();
       return true;
     } catch {
-      toast.error('Erro ao atualizar post');
+      toast.error(t('workflowDrawer.updateError'));
       return false;
     }
   };
@@ -672,7 +674,7 @@ export function WorkflowDrawer({
       refresh();
       maybeNudge(updated);
     } catch {
-      toast.error('Erro ao atualizar status');
+      toast.error(t('workflowDrawer.statusError'));
     }
   };
 
@@ -698,7 +700,7 @@ export function WorkflowDrawer({
         await updateWorkflowPost(id, { conteudo: json, conteudo_plain: plain });
         refresh();
       } catch {
-        toast.error('Erro ao salvar conteúdo');
+        toast.error(t('workflowDrawer.contentSaveError'));
       } finally {
         setSavingIds((prev) => {
           const s = new Set(prev);
@@ -721,7 +723,7 @@ export function WorkflowDrawer({
       await updateWorkflowPost(id, { status: 'revisao_interna' });
       refresh();
     } catch {
-      toast.error('Não foi possível invalidar a aprovação. O conteúdo não foi salvo.');
+      toast.error(t('workflowDrawer.invalidateError'));
       return;
     }
     confirmedEditIds.current.add(id);
@@ -735,7 +737,7 @@ export function WorkflowDrawer({
         });
         refresh();
       } catch {
-        toast.error('Erro ao salvar conteúdo');
+        toast.error(t('workflowDrawer.contentSaveError'));
       } finally {
         setSavingIds((prev) => {
           const s = new Set(prev);
@@ -760,9 +762,7 @@ export function WorkflowDrawer({
     );
     const blocked = mediaByPost.filter((m) => hasVideoMissingThumbnail(m.media));
     if (blocked.length > 0) {
-      toast.error(
-        `Há ${blocked.length} post(s) com vídeos sem thumbnail. Adicione uma thumbnail antes de enviar.`,
-      );
+      toast.error(t('workflowDrawer.missingThumbnail', { n: blocked.length }));
       return true;
     }
     return false;
@@ -771,7 +771,7 @@ export function WorkflowDrawer({
   const handleSendToCliente = async () => {
     const readyPosts = posts.filter((p) => p.status === 'aprovado_interno');
     if (readyPosts.length === 0) {
-      toast.error('Nenhum post aprovado internamente para enviar.');
+      toast.error(t('workflowDrawer.noneReady'));
       return;
     }
 
@@ -780,13 +780,11 @@ export function WorkflowDrawer({
     setIsSending(true);
     try {
       await sendPostsToCliente(workflowId);
-      toast.success(
-        `${readyPosts.length} post${readyPosts.length > 1 ? 's' : ''} enviado${readyPosts.length > 1 ? 's' : ''} ao cliente!`,
-      );
+      toast.success(t('workflowDrawer.sent', { count: readyPosts.length }));
       refresh();
       onRefresh();
     } catch {
-      toast.error('Erro ao enviar posts ao cliente');
+      toast.error(t('workflowDrawer.sendError'));
     } finally {
       setIsSending(false);
     }
@@ -799,9 +797,7 @@ export function WorkflowDrawer({
       (p) => p.id != null && selectedPostIds.has(p.id) && isSendableFromSelection(p.status),
     );
     if (sendable.length === 0) {
-      toast.error(
-        'Nenhum dos posts selecionados pode ser enviado. Eles já estão no portal, aprovados ou agendados.',
-      );
+      toast.error(t('workflowDrawer.noneSendable'));
       return;
     }
     setSendSelectedTarget(sendable.map((p) => p.id!));
@@ -818,20 +814,18 @@ export function WorkflowDrawer({
       const sent = await sendSelectedPostsToCliente(workflowId, ids);
       const skipped = selectedPostIds.size - sent;
       if (sent === 0) {
-        toast.error('Nenhum post foi enviado. Eles mudaram de status, atualize e tente de novo.');
+        toast.error(t('workflowDrawer.noneSent'));
       } else {
         toast.success(
-          `${sent} post${sent > 1 ? 's' : ''} enviado${sent > 1 ? 's' : ''} ao cliente!` +
-            (skipped > 0
-              ? ` ${skipped} ${skipped > 1 ? 'ficaram' : 'ficou'} de fora (já no portal, aprovado ou agendado).`
-              : ''),
+          t('workflowDrawer.sent', { count: sent }) +
+            (skipped > 0 ? ` ${t('workflowDrawer.skipped', { count: skipped })}` : ''),
         );
         setSelectedPostIds(new Set());
       }
       refresh();
       onRefresh();
     } catch {
-      toast.error('Erro ao enviar posts ao cliente');
+      toast.error(t('workflowDrawer.sendError'));
     } finally {
       setIsSendingSelected(false);
     }
@@ -867,7 +861,7 @@ export function WorkflowDrawer({
       setReplyText((prev) => ({ ...prev, [postId]: '' }));
       refresh();
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao enviar resposta');
+      toast.error(err.message || t('workflowDrawer.replyError'));
     } finally {
       setSendingReply(null);
     }
@@ -901,7 +895,7 @@ export function WorkflowDrawer({
   }, []);
 
   const afterDetach = (n: number, archived: boolean) => {
-    toast.success(`${n} post${n === 1 ? '' : 's'} desmembrado${n === 1 ? '' : 's'}`);
+    toast.success(t('workflowDrawer.detached', { count: n }));
     setSelectedPostIds(new Set());
     setDetachTarget(null);
     if (archived) {
@@ -986,20 +980,20 @@ export function WorkflowDrawer({
           ...prev,
           [suggestion.post_id]: (prev[suggestion.post_id] ?? 0) + 1,
         }));
-        toast.success('Sugestão aceita!');
+        toast.success(t('workflowDrawer.suggestionAccepted'));
         refresh();
         onRefresh();
       } catch (err) {
         // PostgrestError is a plain object, not an Error instance.
         if (String((err as { message?: unknown })?.message ?? '').includes('suggestion_changed')) {
-          toast.error('A sugestão foi atualizada pelo cliente. Revise a nova versão.');
+          toast.error(t('workflowDrawer.suggestionChanged'));
           refresh();
           return;
         }
-        toast.error('Erro ao aceitar sugestão');
+        toast.error(t('workflowDrawer.suggestionAcceptError'));
       }
     },
-    [refresh, onRefresh, qc, workflowId],
+    [refresh, onRefresh, qc, workflowId, t],
   );
 
   const handleRejectSuggestion = useCallback((id: number) => {
@@ -1012,12 +1006,12 @@ export function WorkflowDrawer({
     setPendingRejectSuggestionId(null);
     try {
       await rejectEditSuggestion(id);
-      toast.success('Sugestão rejeitada');
+      toast.success(t('workflowDrawer.suggestionRejected'));
       refresh();
     } catch {
-      toast.error('Erro ao rejeitar sugestão');
+      toast.error(t('workflowDrawer.suggestionRejectError'));
     }
-  }, [pendingRejectSuggestionId, refresh]);
+  }, [pendingRejectSuggestionId, refresh, t]);
 
   // ── Comment thread handlers ───────────────────────────────────────────────
 
@@ -1039,13 +1033,13 @@ export function WorkflowDrawer({
       try {
         await saveIgCaption(postId, text, anchors);
       } catch (err) {
-        toast.error('Erro ao atualizar post');
+        toast.error(t('workflowDrawer.updateError'));
         throw err;
       }
       await refetchComments();
       refresh();
     },
-    [refresh, refetchComments],
+    [refresh, refetchComments, t],
   );
 
   const handleReplyToComment = useCallback(
@@ -1120,7 +1114,7 @@ export function WorkflowDrawer({
     const id = post.id!;
     const actions: PhoneMenuAction[] = [
       {
-        label: 'Copiar link',
+        label: t('workflowDrawer.copyLink'),
         immediate: true,
         onSelect: () => void copyAppLink(`/entregas?post=${id}`),
       },
@@ -1128,19 +1122,19 @@ export function WorkflowDrawer({
     if (card.hubUrl) {
       const hubUrl = card.hubUrl;
       actions.push({
-        label: 'Copiar link da postagem',
+        label: t('workflowDrawer.copyPostingLink'),
         immediate: true,
         onSelect: () => {
           navigator.clipboard.writeText(buildHubPostLink(hubUrl, id)).then(
-            () => toast.success('Link copiado!'),
-            () => toast.error('Não foi possível copiar o link.'),
+            () => toast.success(t('shared.linkCopied')),
+            () => toast.error(t('shared.linkCopyFailed')),
           );
         },
       });
     }
     if (canDuplicate) {
       actions.push({
-        label: 'Duplicar',
+        label: t('workflowDrawer.duplicate'),
         // Com um save de conteúdo pendente ou em voo a cópia sairia sem a edição.
         disabled: savingIds.has(id),
         onSelect: () => setDuplicateTarget({ kind: 'post', postId: id, status: post.status }),
@@ -1148,14 +1142,18 @@ export function WorkflowDrawer({
     }
     actions.push(
       {
-        label: 'Mover para outro fluxo',
+        label: t('shared.moveToOtherFlow'),
         onSelect: () => phoneScreenRef.current?.closeThen(() => setMoveTarget([id])),
       },
       {
-        label: 'Desmembrar do fluxo',
+        label: t('shared.detachFromFlow'),
         onSelect: () => phoneScreenRef.current?.closeThen(() => openDetachConfirm([id])),
       },
-      { label: 'Excluir post', destructive: true, onSelect: () => handleDeletePost(id) },
+      {
+        label: t('workflowDrawer.deletePost'),
+        destructive: true,
+        onSelect: () => handleDeletePost(id),
+      },
     );
     return actions;
   };
@@ -1200,7 +1198,8 @@ export function WorkflowDrawer({
             <div className="drawer-header-info">
               <div className="drawer-header-title">{card.workflow.titulo}</div>
               <div className="drawer-header-subtitle">
-                {card.cliente?.nome || '—'} &bull; Etapa: {card.etapa.nome}
+                {card.cliente?.nome || '—'} &bull;{' '}
+                {t('workflowDrawer.stageLabel', { name: card.etapa.nome })}
               </div>
             </div>
             <div className="drawer-header-actions">
@@ -1209,54 +1208,54 @@ export function WorkflowDrawer({
                   className="drawer-send-btn"
                   onClick={handleSendToCliente}
                   disabled={isSending}
-                  title={`Enviar ${readyToSend} post${readyToSend > 1 ? 's' : ''} aprovados ao cliente`}
+                  title={t('workflowDrawer.sendApprovedTitle', { count: readyToSend })}
                 >
                   <Send className="h-3.5 w-3.5" />
-                  Enviar ao cliente ({readyToSend})
+                  {t('workflowDrawer.sendToClientCount', { n: readyToSend })}
                 </button>
               )}
               <div className="drawer-view-toggle" role="tablist">
                 <button
                   className={`drawer-calendar-btn${drawerView === 'posts' ? ' active' : ''}`}
                   onClick={() => setDrawerView('posts')}
-                  title="Ver posts"
+                  title={t('workflowDrawer.viewPosts')}
                 >
-                  Posts
+                  {t('shared.posts')}
                 </button>
                 <button
                   className={`drawer-calendar-btn${drawerView === 'grid' ? ' active' : ''}`}
                   onClick={() => setDrawerView('grid')}
-                  title="Ver a grade do Instagram do cliente"
+                  title={t('workflowDrawer.viewGrid')}
                 >
                   <LayoutGrid className="h-3.5 w-3.5" />
-                  Grade
+                  {t('workflowDrawer.grid')}
                 </button>
                 <button
                   className={`drawer-calendar-btn${drawerView === 'calendar' ? ' active' : ''}`}
                   onClick={() => setDrawerView('calendar')}
-                  title="Ver calendário do cliente"
+                  title={t('workflowDrawer.viewCalendar')}
                 >
                   <CalendarIcon className="h-3.5 w-3.5" />
-                  Calendário
+                  {t('workflowDrawer.calendar')}
                 </button>
                 <button
                   className={`drawer-calendar-btn${drawerView === 'history' ? ' active' : ''}`}
                   onClick={() => setDrawerView('history')}
-                  title="Ver histórico do fluxo"
+                  title={t('workflowDrawer.viewHistory')}
                 >
                   <History className="h-3.5 w-3.5" />
-                  Histórico
+                  {t('workflowDrawer.history')}
                 </button>
               </div>
               <CopyLinkButton
                 path={`/entregas?drawer=${workflowId}`}
-                label="Copiar link do fluxo"
+                label={t('workflowDrawer.copyFlowLink')}
                 className="drawer-close-btn"
               />
               <button
                 className="drawer-close-btn drawer-fullscreen-btn"
                 onClick={toggleFullscreen}
-                title={isFullscreen ? 'Recolher' : 'Expandir'}
+                title={isFullscreen ? t('workflowDrawer.collapse') : t('workflowDrawer.expand')}
               >
                 {isFullscreen ? (
                   <Minimize2 className="h-4 w-4" />
@@ -1268,7 +1267,7 @@ export function WorkflowDrawer({
             <button
               className="drawer-close-btn drawer-dismiss-btn"
               onClick={onClose}
-              title="Fechar"
+              title={t('ui.close')}
             >
               <X className="h-5 w-5" />
             </button>
@@ -1323,10 +1322,13 @@ export function WorkflowDrawer({
               ) : (
                 <div className="drawer-section-header">
                   <span className="drawer-section-title">
-                    Posts
+                    {t('shared.posts')}
                     {clientFacingCount > 0 && (
                       <span className="drawer-post-count">
-                        {approvedCount} de {clientFacingCount} aprovados pelo cliente
+                        {t('workflowDrawer.approvedByClient', {
+                          approved: approvedCount,
+                          total: clientFacingCount,
+                        })}
                       </span>
                     )}
                     {awaitingAutoScheduleCount > 0 && (
@@ -1334,15 +1336,15 @@ export function WorkflowDrawer({
                         type="button"
                         className="auto-schedule-badge auto-schedule-badge--action"
                         onClick={() => setBatchScheduleWfId(workflowId)}
-                        title="Agendar de uma vez os posts aprovados que ainda têm data válida."
+                        title={t('workflowDrawer.batchScheduleTitle')}
                       >
                         <CalendarClock className="h-3 w-3" aria-hidden="true" />
-                        {awaitingAutoScheduleCount} aguardando agendamento automático
+                        {t('workflowDrawer.awaitingAutoSchedule', { n: awaitingAutoScheduleCount })}
                       </button>
                     )}
                   </span>
                   <button className="drawer-add-post-btn" onClick={handleAddPost}>
-                    <Plus className="h-3.5 w-3.5" /> Novo Post
+                    <Plus className="h-3.5 w-3.5" /> {t('workflowDrawer.newPost')}
                   </button>
                 </div>
               )}
@@ -1360,9 +1362,7 @@ export function WorkflowDrawer({
               {isLoading ? (
                 <CardListSkeleton rows={4} />
               ) : posts.length === 0 ? (
-                <div className="drawer-empty">
-                  Nenhum post ainda. Clique em "Novo Post" para começar.
-                </div>
+                <div className="drawer-empty">{t('workflowDrawer.empty')}</div>
               ) : (
                 <DndContext
                   sensors={sensors}
@@ -1462,11 +1462,11 @@ export function WorkflowDrawer({
                 <div
                   className="drawer-selection-bar"
                   role="toolbar"
-                  aria-label="Ações da seleção"
+                  aria-label={t('workflowDrawer.selectionActions')}
                   data-testid="drawer-selection-bar"
                 >
                   <span className="drawer-selection-bar-count">
-                    {selectedPostIds.size} selecionado{selectedPostIds.size === 1 ? '' : 's'}
+                    {t('workflowDrawer.selected', { count: selectedPostIds.size })}
                   </span>
                   <span aria-hidden="true">&middot;</span>
                   <button
@@ -1474,7 +1474,7 @@ export function WorkflowDrawer({
                     className="drawer-selection-bar-link"
                     onClick={selectAllPosts}
                   >
-                    Selecionar todos
+                    {t('workflowDrawer.selectAll')}
                   </button>
                   <div className="drawer-selection-bar-actions">
                     <button
@@ -1483,28 +1483,28 @@ export function WorkflowDrawer({
                       onClick={openSendSelected}
                       disabled={isSendingSelected}
                     >
-                      <Send className="h-3.5 w-3.5" /> Enviar ao cliente
+                      <Send className="h-3.5 w-3.5" /> {t('shared.sendToClient')}
                     </button>
                     <button
                       type="button"
                       className="drawer-selection-bar-btn"
                       onClick={() => setMoveTarget(Array.from(selectedPostIds))}
                     >
-                      Mover para outro fluxo
+                      {t('shared.moveToOtherFlow')}
                     </button>
                     <button
                       type="button"
                       className="drawer-selection-bar-btn"
                       onClick={() => openDetachConfirm(Array.from(selectedPostIds))}
                     >
-                      Desmembrar do fluxo
+                      {t('shared.detachFromFlow')}
                     </button>
                     <button
                       type="button"
                       className="drawer-selection-bar-btn drawer-selection-bar-btn--ghost"
                       onClick={clearSelection}
                     >
-                      Limpar
+                      {t('ui.clear')}
                     </button>
                   </div>
                 </div>
@@ -1530,7 +1530,7 @@ export function WorkflowDrawer({
         <PhoneEditorScreen
           open={phoneExpandedPost != null}
           onClose={() => setExpandedId(null)}
-          label="Editor do post"
+          label={t('workflowDrawer.postEditor')}
           apiRef={phoneScreenRef}
         >
           {phoneExpandedPost && (
@@ -1616,15 +1616,14 @@ export function WorkflowDrawer({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover post?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta ação não pode ser desfeita. O post e seu conteúdo serão excluídos
-              permanentemente.
-            </AlertDialogDescription>
+            <AlertDialogTitle>{t('workflowDrawer.removePostTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('workflowDrawer.removePostDesc')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingDeleteId(null)}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeletePost}>Remover</AlertDialogAction>
+            <AlertDialogCancel onClick={() => setPendingDeleteId(null)}>
+              {t('actions.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeletePost}>{t('actions.delete')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1638,15 +1637,14 @@ export function WorkflowDrawer({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Post aprovado</AlertDialogTitle>
-            <AlertDialogDescription>
-              Este post foi aprovado. Editá-lo vai invalidar a aprovação e resetar o status para "Em
-              revisão". Deseja continuar?
-            </AlertDialogDescription>
+            <AlertDialogTitle>{t('workflowDrawer.approvedPostTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('workflowDrawer.editApprovedDesc')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleCancelEdit}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmEdit}>Confirmar edição</AlertDialogAction>
+            <AlertDialogCancel onClick={handleCancelEdit}>{t('actions.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmEdit}>
+              {t('workflowDrawer.confirmEdit')}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1660,16 +1658,18 @@ export function WorkflowDrawer({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Post aprovado</AlertDialogTitle>
+            <AlertDialogTitle>{t('workflowDrawer.approvedPostTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Este post foi aprovado. Alterar o status vai invalidar a aprovação. Deseja continuar?
+              {t('workflowDrawer.statusApprovedDesc')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setPendingStatusChange(null)}>
-              Cancelar
+              {t('actions.cancel')}
             </AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmStatusChange}>Confirmar</AlertDialogAction>
+            <AlertDialogAction onClick={handleConfirmStatusChange}>
+              {t('actions.confirm')}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1706,17 +1706,18 @@ export function WorkflowDrawer({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Rejeitar sugestão?</AlertDialogTitle>
+            <AlertDialogTitle>{t('workflowDrawer.rejectSuggestionTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              A sugestão do cliente será rejeitada e ele será notificado. O conteúdo original do
-              post será mantido.
+              {t('workflowDrawer.rejectSuggestionDesc')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setPendingRejectSuggestionId(null)}>
-              Cancelar
+              {t('actions.cancel')}
             </AlertDialogCancel>
-            <AlertDialogAction onClick={confirmRejectSuggestion}>Rejeitar</AlertDialogAction>
+            <AlertDialogAction onClick={confirmRejectSuggestion}>
+              {t('workflowDrawer.reject')}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1731,24 +1732,22 @@ export function WorkflowDrawer({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Enviar {sendSelectedTarget?.length ?? 0} post
-              {(sendSelectedTarget?.length ?? 0) === 1 ? '' : 's'} ao cliente?
+              {t('workflowDrawer.sendSelectedTitle', { count: sendSelectedTarget?.length ?? 0 })}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {(sendSelectedTarget?.length ?? 0) === 1
-                ? 'O post fica visível'
-                : 'Os posts ficam visíveis'}{' '}
-              no portal do cliente, aguardando aprovação.
+              {t('workflowDrawer.sendSelectedDesc', { count: sendSelectedTarget?.length ?? 0 })}
               {sendSelectedTarget && selectedPostIds.size > sendSelectedTarget.length
-                ? selectedPostIds.size - sendSelectedTarget.length === 1
-                  ? ' 1 dos selecionados já está no portal, aprovado ou agendado, e fica como está.'
-                  : ` ${selectedPostIds.size - sendSelectedTarget.length} dos selecionados já estão no portal, aprovados ou agendados, e ficam como estão.`
+                ? ` ${t('workflowDrawer.alreadySent', {
+                    count: selectedPostIds.size - sendSelectedTarget.length,
+                  })}`
                 : ''}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmSendSelected}>Enviar ao cliente</AlertDialogAction>
+            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmSendSelected}>
+              {t('shared.sendToClient')}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1787,7 +1786,7 @@ export function WorkflowDrawer({
           refresh();
           setExpandedId(newId);
           setScrollTargetId(newId);
-          toast.success('Post duplicado');
+          toast.success(t('workflowDrawer.duplicated'));
         }}
       />
     </>
@@ -1927,6 +1926,7 @@ function SortablePostItem({
     id: post.id!,
   });
 
+  const { t } = useTranslation('workflows');
   const statusRegistry = useStatusRegistry();
 
   const style = {
@@ -1984,7 +1984,9 @@ function SortablePostItem({
               checked={isSelected}
               onCheckedChange={(checked) => onSelectChange(checked === true)}
               onClick={(e) => e.stopPropagation()}
-              aria-label={`Selecionar ${post.titulo || 'post sem título'}`}
+              aria-label={t('workflowDrawer.selectPostAria', {
+                title: post.titulo || t('workflowDrawer.postUntitledLower'),
+              })}
             />
             <span
               className="drawer-drag-handle"
@@ -2019,15 +2021,15 @@ function SortablePostItem({
                 <EyeOff className="h-3.5 w-3.5" />
               )}
             </span>
-            <span className="drawer-post-titulo">{post.titulo || 'Post sem título'}</span>
+            <span className="drawer-post-titulo">{post.titulo || t('shared.postUntitled')}</span>
             {hasMedia && (
-              <span className="drawer-post-media-badge" title="Mídia anexada">
+              <span className="drawer-post-media-badge" title={t('workflowDrawer.mediaAttached')}>
                 <ImageIcon className="h-3.5 w-3.5" />
               </span>
             )}
             {editSuggestion && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold rounded bg-amber-100 text-amber-800">
-                Sugestão pendente
+                {t('workflowDrawer.pendingSuggestion')}
               </span>
             )}
             {referenceCount > 0 && (
@@ -2035,10 +2037,10 @@ function SortablePostItem({
                 variant="info"
                 size="sm"
                 className="inline-flex items-center gap-1"
-                title="Referências enviadas pelo cliente no Hub"
+                title={t('workflowDrawer.referencesTitle')}
               >
                 <Paperclip className="h-3 w-3" aria-hidden="true" />
-                {referenceCount === 1 ? '1 referência' : `${referenceCount} referências`}
+                {t('workflowDrawer.references', { count: referenceCount })}
               </Badge>
             )}
             {discussaoBadge && (
@@ -2054,7 +2056,9 @@ function SortablePostItem({
             )}
           </div>
           <div className="drawer-post-trigger-right" onClick={(e) => e.stopPropagation()}>
-            {isSaving && <span className="drawer-saving-indicator">Salvando…</span>}
+            {isSaving && (
+              <span className="drawer-saving-indicator">{t('workflowDrawer.saving')}</span>
+            )}
             <PostTimelinePopover
               post={post}
               events={statusEvents}
@@ -2064,12 +2068,19 @@ function SortablePostItem({
             {publishIso ? (
               <span
                 className="drawer-post-date"
-                title={`${isPublished ? 'Publicado em' : 'Agendado para'} ${formatPostDateFull(publishIso)}`}
+                title={t(
+                  isPublished ? 'workflowDrawer.publishedAt' : 'workflowDrawer.scheduledFor',
+                  {
+                    date: formatPostDateFull(publishIso),
+                  },
+                )}
               >
                 {formatPostDate(publishIso)}
               </span>
             ) : (
-              <span className="drawer-post-date drawer-post-date--empty">A definir</span>
+              <span className="drawer-post-date drawer-post-date--empty">
+                {t('workflowDrawer.toBeDefined')}
+              </span>
             )}
             <PostStatusChip post={post} registry={statusRegistry} />
             <OpenNotesBadge approvals={approvals} notes={mediaNotes.notes} />
@@ -2080,29 +2091,37 @@ function SortablePostItem({
               />
             )}
             <CopyPostLinkButton hubUrl={hubUrl} postId={post.id!} />
-            <button className="drawer-delete-btn" onClick={onDelete} title="Remover post">
+            <button
+              className="drawer-delete-btn"
+              onClick={onDelete}
+              title={t('workflowDrawer.removePost')}
+            >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="drawer-kebab-btn" title="Mais ações">
+                <button className="drawer-kebab-btn" title={t('workflowDrawer.moreActions')}>
                   <MoreVertical className="h-3.5 w-3.5" />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => copyAppLink(`/entregas?post=${post.id}`)}>
                   <Copy className="h-3.5 w-3.5" />
-                  Copiar link do post
+                  {t('workflowDrawer.copyPostLink')}
                 </DropdownMenuItem>
                 {onDuplicateRequest && (
                   // Com um save de conteúdo pendente ou em voo a cópia sairia sem a edição.
                   <DropdownMenuItem onClick={onDuplicateRequest} disabled={isSaving}>
                     <CopyPlus className="h-3.5 w-3.5" />
-                    Duplicar post
+                    {t('workflowDrawer.duplicatePost')}
                   </DropdownMenuItem>
                 )}
-                <DropdownMenuItem onClick={onMoveRequest}>Mover para outro fluxo</DropdownMenuItem>
-                <DropdownMenuItem onClick={onDetachRequest}>Desmembrar do fluxo</DropdownMenuItem>
+                <DropdownMenuItem onClick={onMoveRequest}>
+                  {t('shared.moveToOtherFlow')}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onDetachRequest}>
+                  {t('shared.detachFromFlow')}
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
