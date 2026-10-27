@@ -19,6 +19,7 @@ import {
   submitApproval,
   submitBriefingAnswer,
   submitEditSuggestion,
+  submitLinhaAcao,
   updateIdeia,
 } from '../api';
 
@@ -61,6 +62,23 @@ describe('hub api client', () => {
     await expect(submitApproval('token-hub', 12, 'mensagem')).rejects.toThrow(
       'Comentário obrigatório',
     );
+  });
+
+  it('keeps the error message and carries the HTTP status and code', async () => {
+    fetchHarness.queueResponse({
+      ok: false,
+      status: 409,
+      json: { error: 'Não foi possível concluir. Tente novamente.', code: 'itens_com_ajustes' },
+    });
+
+    await expect(
+      submitLinhaAcao('token-hub', { linha_id: 'l1', acao: 'aprovado' }),
+    ).rejects.toMatchObject({
+      name: 'HubApiError',
+      message: 'Não foi possível concluir. Tente novamente.',
+      status: 409,
+      code: 'itens_com_ajustes',
+    });
   });
 
   describe('429 retry', () => {

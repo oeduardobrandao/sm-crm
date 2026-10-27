@@ -1,9 +1,13 @@
+import { format, parseISO } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import type { LinhaItem } from '@/store/linhaEditorial';
 import type { Cliente } from '../../../../store';
-import { countApprovals } from '../wizardLogic';
+import { FormatoPill } from '../../linha/FormatoPill';
+import { countApprovals, postsLabel } from '../wizardLogic';
 import { resolveDeliveryDate } from '../createWorkflow';
-import type { WizardState } from '../NewWorkflowWizard';
+import type { WizardSeed, WizardState } from '../NewWorkflowWizard';
 
 type ModoPrazo = WizardState['modoPrazo'];
 
@@ -30,17 +34,132 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** Date order (the order the fluxo gets), undated rows last. */
+function porData(itens: LinhaItem[]): LinhaItem[] {
+  return [...itens].sort((a, b) => {
+    if (a.data !== b.data) {
+      if (a.data == null) return 1;
+      if (b.data == null) return -1;
+      return a.data < b.data ? -1 : 1;
+    }
+    return a.ordem - b.ordem;
+  });
+}
+
+/** The posts a linha editorial seed will create. Deadlines stay per etapa, so none show here. */
+function SeedPosts({ seed }: { seed: WizardSeed }) {
+  const n = seed.itens.length;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+      <p id="wizard-seed-posts" style={{ margin: 0, fontSize: '0.8rem', fontWeight: 600 }}>
+        {`${postsLabel(n)} ${n === 1 ? 'vindo' : 'vindos'} da ${seed.origemLabel}, ${
+          n === 1 ? 'já preenchido' : 'já preenchidos'
+        }`}
+      </p>
+      <ul
+        aria-label="Posts da linha editorial"
+        style={{
+          listStyle: 'none',
+          margin: 0,
+          padding: 0,
+          maxHeight: 240,
+          overflowY: 'auto',
+          border: '1px solid var(--border-color)',
+          borderRadius: 10,
+        }}
+      >
+        {porData(seed.itens).map((item, i) => {
+          const d = item.data ? parseISO(item.data) : null;
+          const direcao =
+            item.direcao
+              .split('\n')
+              .find((l) => l.trim())
+              ?.trim() ?? '';
+          return (
+            <li
+              key={item.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                padding: '0.5rem 0.75rem',
+                borderTop: i === 0 ? 'none' : '1px solid var(--border-color)',
+              }}
+            >
+              <span
+                style={{
+                  flexShrink: 0,
+                  width: 64,
+                  fontSize: '0.72rem',
+                  color: 'var(--text-muted)',
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {d ? (
+                  <>
+                    <span style={{ display: 'block', fontWeight: 600, color: 'var(--text-main)' }}>
+                      {format(d, 'dd/MM')}
+                    </span>
+                    {format(d, 'EEE', { locale: ptBR })}
+                  </>
+                ) : (
+                  'Sem data'
+                )}
+              </span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span
+                  style={{
+                    display: 'block',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {item.titulo.trim() || 'Sem título'}
+                </span>
+                {direcao && (
+                  <span
+                    style={{
+                      display: 'block',
+                      fontSize: '0.72rem',
+                      color: 'var(--text-muted)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {direcao}
+                  </span>
+                )}
+              </span>
+              <FormatoPill tipo={item.tipo} />
+            </li>
+          );
+        })}
+      </ul>
+      <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+        Os prazos seguem as etapas do fluxo.
+      </p>
+    </div>
+  );
+}
+
 export function StepReview({
   state,
   patch,
   modoPrazo,
   cliente,
+  seed,
 }: {
   state: WizardState;
   patch: (p: Partial<WizardState>) => void;
   /** The EFFECTIVE mode — the shell falls back to `padrao` when data_entrega is unavailable. */
   modoPrazo: ModoPrazo;
   cliente: Cliente | undefined;
+  /** Linha editorial rows this fluxo will carry as posts. */
+  seed?: WizardSeed;
 }) {
   // Blank rows are dropped at creation, so the summary counts only what will actually be saved.
   const etapas = state.etapas.filter((e) => e.nome.trim());
@@ -86,6 +205,8 @@ export function StepReview({
         <Row label="Prazos" value={prazosValor} />
         <Row label="Recorrente" value={state.recorrente ? 'Sim' : 'Não'} />
       </div>
+
+      {seed && <SeedPosts seed={seed} />}
 
       <label
         style={{

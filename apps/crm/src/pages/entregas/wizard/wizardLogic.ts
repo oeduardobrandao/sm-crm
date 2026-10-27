@@ -127,3 +127,8 @@ export function validatePrazos(
     ? 'Defina uma data limite para todas as etapas no modo Datas fixas.'
     : null;
 }
+
+/** "3 posts" / "1 post", for the linha editorial seed copy. */
+export function postsLabel(n: number): string {
+  return `${n} ${n === 1 ? 'post' : 'posts'}`;
+}

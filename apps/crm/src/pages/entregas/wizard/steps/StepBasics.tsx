@@ -15,10 +15,13 @@ export function StepBasics({
   state,
   patch,
   clientes,
+  clienteLocked = false,
 }: {
   state: WizardState;
   patch: (p: Partial<WizardState>) => void;
   clientes: Cliente[];
+  /** The client comes from a linha editorial and cannot change. */
+  clienteLocked?: boolean;
 }) {
   const activeClientes = clientes
     .filter((c) => c.status === 'ativo')
@@ -32,7 +35,7 @@ export function StepBasics({
       <div className="space-y-1">
         <Label htmlFor="wizard-cliente">Cliente</Label>
         <Select value={state.clienteId} onValueChange={(v) => patch({ clienteId: v })}>
-          <SelectTrigger id="wizard-cliente">
+          <SelectTrigger id="wizard-cliente" disabled={clienteLocked}>
             <SelectValue placeholder="Selecione o cliente" />
           </SelectTrigger>
           <SelectContent>
@@ -43,6 +46,11 @@ export function StepBasics({
             ))}
           </SelectContent>
         </Select>
+        {clienteLocked && (
+          <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>
+            O cliente é o da linha editorial.
+          </p>
+        )}
       </div>
 
       <div className="space-y-1">

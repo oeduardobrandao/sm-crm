@@ -1,12 +1,12 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useHub } from '../HubContext';
 import { compactHubToken } from '../lib/hubLinks';
 import { useHubLook } from '../hooks/useHubLook';
 import { fetchInstagramFeed } from '../api';
-import { hubPostsQuery, invalidateHubPosts } from '../queries';
+import { hubLinhasQuery, hubPostsQuery, invalidateHubPosts } from '../queries';
 import { FeedPreviewButton } from '../components/FeedPreviewButton';
 import { PageHeader } from '../components/PageHeader';
 import { MediaFilterDropdown, type MediaFilter } from '../components/MediaFilterDropdown';
@@ -23,6 +23,7 @@ import {
   type PostSortDirection,
 } from '../lib/postView';
 import { PostGridSkeleton } from '../components/Skeleton';
+import { LinhaEditorialTab } from './aprovacoes/LinhaEditorialTab';
 
 function SortToggle({
   value,
@@ -59,12 +60,53 @@ function SortToggle({
   );
 }
 
+function ApprovalTabs({
+  active,
+  postsCount,
+  linhasCount,
+  onSelect,
+}: {
+  active: 'posts' | 'linha';
+  postsCount: number;
+  linhasCount: number;
+  onSelect: (tab: 'posts' | 'linha') => void;
+}) {
+  const { t } = useTranslation('hubLinha');
+  const look = useHubLook();
+  const tabs = [
+    { key: 'posts' as const, label: t('abas.posts', { n: postsCount }) },
+    { key: 'linha' as const, label: t('abas.linha', { n: linhasCount }) },
+  ];
+  return (
+    <div role="tablist" aria-label={t('abas.rotulo')} className="mb-6 flex flex-wrap gap-2">
+      {tabs.map((tab) => {
+        const selected = active === tab.key;
+        return (
+          <button
+            key={tab.key}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            onClick={() => onSelect(tab.key)}
+            className={FILTER_PILL_CLASS}
+            style={filterPillStyle(selected, look)}
+          >
+            {tab.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function AprovacoesPage() {
   const { t } = useTranslation('hubPosts');
   const pauta = useHubLook() === 'pauta';
   const { token, workspace, bootstrap } = useHub();
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const featureLinha = bootstrap.feature_linha_editorial === true;
   const { postId } = useParams<{ postId: string }>();
   const base = `/${workspace}/hub/${compactHubToken(token)}/aprovacoes`;
   const currentId =
@@ -81,6 +123,11 @@ export function AprovacoesPage() {
   const [sortDir, setSortDir] = useState<PostSortDirection>('asc');
 
   const { data, isLoading, isError } = useQuery(hubPostsQuery(token));
+  // Same cache entry the tab and the nav badge read. Flag off: never fetched.
+  const { data: linhasData } = useQuery({ ...hubLinhasQuery(token), enabled: featureLinha });
+  const linhasWaiting = (linhasData?.linhas ?? []).filter((l) => l.status === 'enviada').length;
+  // A post deep link (/aprovacoes/:id) always means the Posts view.
+  const showLinha = featureLinha && searchParams.get('aba') === 'linha' && currentId === null;
   const { data: feedData } = useQuery({
     queryKey: ['hub-instagram-feed', token],
     queryFn: () => fetchInstagramFeed(token),
@@ -160,7 +207,7 @@ export function AprovacoesPage() {
   // The count/empty line is only truthful once the fetch has succeeded; while loading or
   // after a failure "Tudo em dia" would claim an empty queue we haven't actually seen.
   const description =
-    isLoading || fatalError
+    showLinha || isLoading || fatalError
       ? undefined
       : mode === 'select'
         ? t(
@@ -187,6 +234,7 @@ export function AprovacoesPage() {
           title={t('aprovacoes.title', 'Aprovações')}
           description={description}
           action={
+            !showLinha &&
             instagramProfile &&
             pending.length > 0 && (
               <span className="flex items-center gap-2">
@@ -215,7 +263,35 @@ export function AprovacoesPage() {
         />
       </div>
 
-      {isLoading ? (
+      {featureLinha && (
+        <ApprovalTabs
+          active={showLinha ? 'linha' : 'posts'}
+          postsCount={pending.length}
+          linhasCount={linhasWaiting}
+          onSelect={(tab) => {
+            // On a post deep link the linha view can't show (`showLinha` needs the list
+            // route): leave the post the same way closing it does, landing on the linha tab.
+            if (tab === 'linha' && currentId !== null) {
+              navigate(`${base}?aba=linha`, { replace: true });
+              return;
+            }
+            setSearchParams(
+              (prev) => {
+                const next = new URLSearchParams(prev);
+                if (tab === 'linha') next.set('aba', 'linha');
+                else next.delete('aba');
+                return next;
+              },
+              { replace: true },
+            );
+          }}
+        />
+      )}
+
+      {showLinha ? (
+        // No `.hub-fade-up` here either: the decision bar is `position: fixed`.
+        <LinhaEditorialTab />
+      ) : isLoading ? (
         <div className="hub-fade-up">
           <PostGridSkeleton />
         </div>

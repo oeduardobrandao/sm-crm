@@ -41,6 +41,7 @@ import {
 } from '@/services/inlineImage';
 import { listPostMedia } from '../../../services/postMedia';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
+import { PostOrigemLinha } from '../linha/PostOrigemLinha';
 import { InstagramCaptionField, type InstagramCaptionFieldHandle } from './InstagramCaptionField';
 import { PlatformSelector } from './PlatformSelector';
 import { TikTokSettingsPanel } from './TikTokSettingsPanel';
@@ -951,6 +952,7 @@ export function PostEditorBody({
     const detalhesPane = (
       <>
         {statusAutomationHint && <p className="phone-editor-notice">{statusAutomationHint}</p>}
+        <PostOrigemLinha postId={post.id} />
         <GroupedList aria-label="Detalhes do post">
           <li className="phone-cell phone-field">
             <label className="phone-field__label" htmlFor={`phone-titulo-${post.id}`}>
@@ -1341,6 +1343,7 @@ export function PostEditorBody({
 
   return (
     <div className="drawer-post-content">
+      <PostOrigemLinha postId={post.id} />
       <div className="drawer-post-meta-row">
         <div className="drawer-post-field">
           <label>Título</label>

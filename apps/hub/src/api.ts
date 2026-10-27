@@ -28,6 +28,8 @@ import type {
   HubAgendaResponse,
   ConviteItem,
   ConviteResponse,
+  HubLinhaAcaoBody,
+  HubLinhasResponse,
 } from './types';
 
 const BASE = import.meta.env.VITE_SUPABASE_URL as string;
@@ -60,6 +62,22 @@ function sleep(ms: number, signal?: AbortSignal) {
   });
 }
 
+/**
+ * What request() throws on a non-OK answer. The message stays the body's `error` (callers
+ * match on it, e.g. the agenda-convite contract); `status` and `code` are there for the
+ * callers that need to tell one failure from another.
+ */
+export class HubApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = 'HubApiError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
 function throwIfAborted(signal?: AbortSignal) {
   if (signal?.aborted) throw new DOMException('Request superseded', 'AbortError');
 }
@@ -79,8 +97,12 @@ async function request<T>(input: string, init: RequestInit, signal?: AbortSignal
       await sleep(RETRY_AFTER_429_MS[attempt], signal);
       continue;
     }
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+    const body = (await res.json().catch(() => ({}))) as { error?: string; code?: unknown };
+    throw new HubApiError(
+      body.error ?? `HTTP ${res.status}`,
+      res.status,
+      typeof body.code === 'string' ? body.code : undefined,
+    );
   }
 }
 
@@ -552,4 +574,28 @@ export function conviteIcsUrl(token: string, ocorrenciaId: number) {
   const url = new URL(`${BASE}/functions/v1/agenda-convite/ocorrencia/${ocorrenciaId}.ics`);
   url.searchParams.set('token', token);
   return url.toString();
+}
+
+// ── Linha editorial ─────────────────────────────────────────────────────────
+
+export function fetchLinhas(token: string) {
+  return get<HubLinhasResponse>('hub-linha-editorial', { token });
+}
+
+/**
+ * Comment on a row, decide a row (`item_id` with aprovado, ajustes or pendente, which
+ * returns the linha's counts), or finish the whole linha (no `item_id`). Every failure
+ * (404 gone or not this client's, 409 already decided, 422 empty comment) comes back with the
+ * same generic message, so callers show one "try again" and refetch the list to resync. The
+ * one exception is a finish with `aprovado` while a row has an ajuste: a 409 whose
+ * `HubApiError.code` is `itens_com_ajustes`.
+ */
+export function submitLinhaAcao(token: string, body: HubLinhaAcaoBody) {
+  return post<{
+    ok: true;
+    status?: string;
+    aprovados?: number;
+    ajustes?: number;
+    pendentes?: number;
+  }>('hub-linha-editorial', { token, ...body });
 }

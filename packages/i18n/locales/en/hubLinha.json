@@ -1,0 +1,61 @@
+{
+  "abas": {
+    "rotulo": "Approval sections",
+    "posts": "Posts · {{n}}",
+    "linha": "Editorial plan · {{n}}"
+  },
+  "titulo": "Editorial plan for {{mes}}",
+  "resumo": {
+    "um": "1 post planned by {{agencia}} · sent on {{data}}",
+    "varios": "{{n}} posts planned by {{agencia}} · sent on {{data}}",
+    "semEnvio": {
+      "um": "1 post planned by {{agencia}}",
+      "varios": "{{n}} posts planned by {{agencia}}"
+    }
+  },
+  "intro": "This is the plan for the month: themes, formats and dates. The finished posts come later, for you to approve one by one.",
+  "semana": "Week of {{mes}} {{inicio}} to {{fim}}",
+  "semanaEntreMeses": "Week of {{mesInicio}} {{inicio}} to {{mes}} {{fim}}",
+  "semData": "No date",
+  "semTitulo": "Untitled",
+  "formato": {
+    "feed": "Feed",
+    "carrossel": "Carousel",
+    "reels": "Reels",
+    "stories": "Stories"
+  },
+  "comentar": "Comment",
+  "seuComentario": "Your comment",
+  "salvarComentario": "Save comment",
+  "cancelar": "Cancel",
+  "salvando": "Sending...",
+  "equipe": "Team",
+  "voce": "You",
+  "item": {
+    "aprovar": "Approve",
+    "pedirAjuste": "Request change",
+    "desfazer": "Undo",
+    "aprovado": "Approved",
+    "ajustePedido": "Change requested",
+    "ajusteRotulo": "What needs to change?",
+    "ajusteObrigatorio": "Tell us what needs to change in this post.",
+    "ajusteComComentario": "You already commented on this post. You can send it without text."
+  },
+  "progresso": "{{a}} of {{total}} approved",
+  "progressoAjustes": " · {{n}} with changes requested",
+  "aprovarPendentesAviso": "Posts without an answer yet will be approved too.",
+  "enviarAjustesLinha": "Send changes",
+  "erroItensComAjustes": "A post has a change request. Refresh the page.",
+  "pedirAjustes": "Request changes",
+  "ajustesRotulo": "What needs to change",
+  "ajustesObrigatorio": "Tell us what needs to change.",
+  "enviarAjustes": "Send change request",
+  "aprovar": "Approve editorial plan",
+  "aprovadaEm": "Approved on {{data}}",
+  "ajustesEm": "Changes requested on {{data}}",
+  "anteriores": "Previous",
+  "vazio": "No editorial plan to approve.",
+  "sim": "Yes",
+  "erroCarregar": "Could not load the editorial plan. Refresh the page.",
+  "erroAcao": "Could not send right now. Try again."
+}

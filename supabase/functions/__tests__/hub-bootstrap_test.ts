@@ -146,14 +146,14 @@ Deno.test("a throwing touchToken must NOT break the client's portal", async () =
 
 Deno.test("post-auth lookups run alongside touchToken, not behind it", async () => {
   const db = makeDb({ cliente_id: 15, conta_id: "ws-1", is_active: true });
-  // resolveHubToken's feature_hub_portal check is RPC #1; the five plan
-  // features the bootstrap serves are #2-#6.
+  // resolveHubToken's feature_hub_portal check is RPC #1; the six plan
+  // features the bootstrap serves are #2-#7.
   let rpcCalls = 0;
   let allFeaturesStarted!: () => void;
   const featuresStarted = new Promise<void>((resolve) => (allFeaturesStarted = resolve));
   const rpc = db.rpc;
   db.rpc = async () => {
-    if (++rpcCalls === 6) allFeaturesStarted();
+    if (++rpcCalls === 7) allFeaturesStarted();
     return await rpc();
   };
 
@@ -182,7 +182,7 @@ Deno.test("post-auth lookups run alongside touchToken, not behind it", async () 
   clearTimeout(timer);
   assertEquals(res.status, 200);
   assertEquals(touchWaitedOut, false);
-  assertEquals(rpcCalls, 6);
+  assertEquals(rpcCalls, 7);
 });
 
 Deno.test("feature_mensagens reflects the effective_plan_feature RPC result", async () => {
@@ -268,6 +268,40 @@ Deno.test("feature_hub_pauta is false and does NOT break the response when its R
   assertEquals(res.status, 200);
   const body = await res.json();
   assertEquals(body.feature_hub_pauta, false);
+  assertEquals(body.feature_mensagens, true);
+});
+
+Deno.test("returns feature_linha_editorial from effectivePlanFeature, false on error", async () => {
+  const make = (flags: Record<string, boolean>) =>
+    createHubBootstrapHandler({
+      buildCorsHeaders: cors,
+      createDb: () =>
+        makeDbWithFeatureFlags({ cliente_id: 15, conta_id: "ws-1", is_active: true }, flags) as any,
+      now: () => NOW,
+      touchToken: async () => {},
+      rateLimit: async () => true,
+    });
+  const on = await (await make({ feature_linha_editorial: true, feature_mensagens: false })(req())).json();
+  assertEquals(on.feature_linha_editorial, true);
+  assertEquals(on.feature_mensagens, false);
+  const off = await (await make({ feature_linha_editorial: false })(req())).json();
+  assertEquals(off.feature_linha_editorial, false);
+
+  const broken = createHubBootstrapHandler({
+    buildCorsHeaders: cors,
+    createDb: () =>
+      makeDbWithThrowingFeature(
+        { cliente_id: 15, conta_id: "ws-1", is_active: true },
+        "feature_linha_editorial",
+      ) as any,
+    now: () => NOW,
+    touchToken: async () => {},
+    rateLimit: async () => true,
+  });
+  const res = await broken(req());
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.feature_linha_editorial, false);
   assertEquals(body.feature_mensagens, true);
 });
 

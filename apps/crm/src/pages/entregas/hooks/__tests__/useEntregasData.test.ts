@@ -339,6 +339,20 @@ describe('useEntregasData', () => {
     expect(postsCounts.get(2)).toBe(3);
   });
 
+  it('refresh() also invalidates the linha editorial queries (a deleted post frees its row)', async () => {
+    const { useEntregasData } = await import('../useEntregasData');
+    const { Wrapper, queryClient } = createWrapper();
+    const spy = vi.spyOn(queryClient, 'invalidateQueries');
+
+    const { result } = renderHook(() => useEntregasData(), { wrapper: Wrapper });
+    result.current.refresh();
+
+    const keys = spy.mock.calls.map(([filters]) => filters?.queryKey);
+    expect(keys).toContainEqual(['linha']);
+    expect(keys).toContainEqual(['linha-itens']);
+    expect(keys).toContainEqual(['linha-posts']);
+  });
+
   it('returns postResponsaveis as a Map with per-workflow responsavel arrays', async () => {
     const { useEntregasData } = await import('../useEntregasData');
 

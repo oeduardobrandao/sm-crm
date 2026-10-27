@@ -480,6 +480,11 @@ export function useEntregasData(options: UseEntregasDataOptions = {}) {
     // enquanto ConcludedView não estiver montada.
     qc.invalidateQueries({ queryKey: ['concluded-workflows'] });
     qc.invalidateQueries({ queryKey: ['concluded-summaries'] });
+    // Linha editorial: a post deleted (or moved) from a drawer frees or relabels its row.
+    // Inert while the linha view is not mounted.
+    qc.invalidateQueries({ queryKey: ['linha'] });
+    qc.invalidateQueries({ queryKey: ['linha-itens'] });
+    qc.invalidateQueries({ queryKey: ['linha-posts'] });
   }
 
   const isLoading = loadingWf || etapasQuery.isLoading || vigenteQuery.isLoading;

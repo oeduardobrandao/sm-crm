@@ -137,6 +137,62 @@ function eventBody(m: Record<string, unknown>): string {
   return when ? `${title} · ${when}` : title;
 }
 
+const MESES = [
+  'janeiro',
+  'fevereiro',
+  'março',
+  'abril',
+  'maio',
+  'junho',
+  'julho',
+  'agosto',
+  'setembro',
+  'outubro',
+  'novembro',
+  'dezembro',
+];
+
+/** Lowercase pt-BR month of a 'YYYY-MM-DD' (or 'YYYY-MM') string, read from the text so a
+ * local timezone can never shift it. Empty when the value is not a valid month. */
+function monthName(periodo: unknown): string {
+  const mm = typeof periodo === 'string' ? /^\d{4}-(\d{2})/.exec(periodo) : null;
+  return (mm && MESES[Number(mm[1]) - 1]) || '';
+}
+
+/**
+ * linha_editorial_aprovada / linha_editorial_ajustes. Body = comment count (omitted for 0); for
+ * ajustes, the rows with an ajuste (`itens_ajustes`, spec §13.3) when there are any.
+ */
+function linhaEditorialDisplay(
+  type: 'linha_editorial_aprovada' | 'linha_editorial_ajustes',
+  m: Record<string, unknown>,
+): NotificationDisplay {
+  const quem = s(m.cliente_nome, 'Cliente');
+  const mes = monthName(m.periodo);
+  const de = mes ? ` de ${mes}` : '';
+  const n = typeof m.comentarios === 'number' && Number.isFinite(m.comentarios) ? m.comentarios : 0;
+  const comentarios = n > 0 ? `${n} ${n === 1 ? 'comentário' : 'comentários'}` : '';
+  const ajustes =
+    typeof m.itens_ajustes === 'number' && Number.isFinite(m.itens_ajustes) ? m.itens_ajustes : 0;
+  const body =
+    type === 'linha_editorial_ajustes' && ajustes > 0
+      ? `${ajustes} ${ajustes === 1 ? 'post' : 'posts'} com ajuste`
+      : comentarios;
+  return type === 'linha_editorial_aprovada'
+    ? {
+        icon: CheckCircle,
+        tone: 'success',
+        title: `${quem} aprovou a linha editorial${de}`,
+        body,
+      }
+    : {
+        icon: AlertTriangle,
+        tone: 'warning',
+        title: `${quem} pediu ajustes na linha editorial${de}`,
+        body,
+      };
+}
+
 const RSVP_LABELS: Record<string, string> = { sim: 'Sim', nao: 'Não', talvez: 'Talvez' };
 
 export function getNotificationDisplay(
@@ -441,6 +497,9 @@ export function getNotificationDisplay(
         title: `${reminderPrefix(m)}: ${s(m.titulo, 'Evento')}`,
         body: formatEventWhen(m),
       };
+    case 'linha_editorial_aprovada':
+    case 'linha_editorial_ajustes':
+      return linhaEditorialDisplay(type, m);
     default:
       // Resilience: a notification type the DB allows but the UI doesn't know yet
       // (e.g. added by a migration ahead of the frontend) must never crash the list.

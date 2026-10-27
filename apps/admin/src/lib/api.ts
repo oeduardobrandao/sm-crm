@@ -127,6 +127,7 @@ export interface Plan {
   feature_crm_vidro: boolean;
   feature_financeiro_v2: boolean;
   feature_team_chat: boolean;
+  feature_linha_editorial: boolean;
   rate_instagram_syncs_per_day: number | null;
   rate_ai_analyses_per_month: number | null;
   rate_report_generations_per_month: number | null;
@@ -279,6 +280,7 @@ export const FEATURE_FLAG_KEYS = [
   'feature_crm_vidro',
   'feature_financeiro_v2',
   'feature_team_chat',
+  'feature_linha_editorial',
 ] as const;
 
 export const FEATURE_FLAG_LABELS: Record<string, string> = {
@@ -312,6 +314,7 @@ export const FEATURE_FLAG_LABELS: Record<string, string> = {
   feature_crm_vidro: 'Visual vidro (CRM desktop)',
   feature_financeiro_v2: 'Financeiro v2 (rentabilidade)',
   feature_team_chat: 'Chat da equipe',
+  feature_linha_editorial: 'Linha editorial',
 };
 
 export const RATE_LIMIT_KEYS = [

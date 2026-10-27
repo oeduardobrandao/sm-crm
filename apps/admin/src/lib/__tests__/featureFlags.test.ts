@@ -13,6 +13,8 @@ describe('flags de plano no Admin', () => {
     expect(FEATURE_FLAG_LABELS.feature_crm_vidro).toBe('Visual vidro (CRM desktop)');
     expect(FEATURE_FLAG_KEYS).toContain('feature_financeiro_v2');
     expect(FEATURE_FLAG_LABELS.feature_financeiro_v2).toBe('Financeiro v2 (rentabilidade)');
+    expect(FEATURE_FLAG_KEYS).toContain('feature_linha_editorial');
+    expect(FEATURE_FLAG_LABELS.feature_linha_editorial).toBe('Linha editorial');
     for (const key of FEATURE_FLAG_KEYS) {
       expect(FEATURE_FLAG_LABELS[key], `sem rótulo para ${key}`).toBeTruthy();
     }

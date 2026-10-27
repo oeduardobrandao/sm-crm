@@ -126,6 +126,10 @@ function makeFakeDb(
     lembretes?: Record<number, Row[]>;
     /** Makes agenda_cliente_lembretes_pendentes return this error. */
     lembretesError?: string;
+    /** linhas_editoriais rows (the handler queries them with the service role). */
+    linhas?: Row[];
+    /** effective_plan_feature('feature_linha_editorial') per conta (default off). */
+    linhaFlag?: Record<string, boolean>;
   } = {},
 ) {
   // Captures the FULL patch object (not just ids) so tests can assert that a
@@ -136,8 +140,12 @@ function makeFakeDb(
   const successCalls: Array<{ ids: number[]; patch: Record<string, unknown> }> = [];
   const lembretesCalls: Array<Record<string, unknown>> = [];
   const marcarCalls: Array<Record<string, unknown>> = [];
+  const fromTables: string[] = [];
+  const featureCalls: Array<Record<string, unknown>> = [];
   let rpcCalls = 0;
   const db = {
+    fromTables,
+    featureCalls,
     releaseCalls,
     successCalls,
     lembretesCalls,
@@ -156,6 +164,10 @@ function makeFakeDb(
         }
         return Promise.resolve({ data: tables.lembretes?.[args.p_cliente as number] ?? [], error: null });
       }
+      if (fn === "effective_plan_feature") {
+        featureCalls.push(args);
+        return Promise.resolve({ data: tables.linhaFlag?.[args.ws_id as string] ?? false, error: null });
+      }
       if (fn === "agenda_cliente_lembretes_marcar") {
         marcarCalls.push(args);
         return Promise.resolve({ data: null, error: null });
@@ -163,6 +175,7 @@ function makeFakeDb(
       return Promise.resolve({ data: null, error: { message: `unexpected rpc ${fn}` } });
     },
     from(table: string) {
+      fromTables.push(table);
       if (table === "clientes") {
         return {
           update(patch: Record<string, unknown>) {
@@ -187,6 +200,8 @@ function makeFakeDb(
         ? tables.mensagensLastSeen ?? []
         : table === "workspaces"
         ? tables.workspaces ?? []
+        : table === "linhas_editoriais"
+        ? tables.linhas ?? []
         : [];
       return {
         select(_cols: string) {
@@ -1495,4 +1510,123 @@ Deno.test("reminders: a failing reminders query degrades to no reminders, the di
   assertEquals(r.emailed, 1);
   assertEquals(sent[0].idempotencyKey, await buildClientEventIdempotencyKey(27, ["pse:270"]));
   assertEquals(db.marcarCalls.length, 0);
+});
+
+// --- linha editorial (spec §8.4) -------------------------------------------------
+
+const LINHA_CURSOR = "2026-08-13T00:00:00.000Z";
+
+function linhaRow(over: Row = {}): Row {
+  return {
+    id: "11111111-1111-1111-1111-111111111111",
+    conta_id: "ws1",
+    cliente_id: 30,
+    status: "enviada",
+    periodo: "2026-09-01",
+    enviada_at: "2026-08-13T10:00:00.000Z",
+    ...over,
+  };
+}
+
+function linhaDb(linhas: Row[], flag = true, clienteId = 30) {
+  return makeFakeDb(
+    [claimedRow({ id: clienteId, conta_id: "ws1", event_cursor_at: LINHA_CURSOR })],
+    {
+      workspaces: [{ id: "ws1", name: "Agencia X", brand_color: "#ffbf30", logo_url: null }],
+      linhas,
+      linhaFlag: { ws1: flag },
+    },
+  );
+}
+
+Deno.test("digest includes linha sent in window", async () => {
+  const db = linhaDb([linhaRow()]);
+  const { deps, sent, auditCalls } = makeDeps(db);
+  const r = await runClientEventEmailCron(deps);
+  assertEquals(r, { claimed: 1, emailed: 1, skippedNoContent: 0, skippedNoHub: 0, failed: 0, released: 0 });
+  assertEquals(sent.length, 1);
+  assert(sent[0].html.includes("Linha editorial de setembro aguardando sua aprovação"), "expected the linha item");
+  assertEquals(db.featureCalls, [{ ws_id: "ws1", feature_key: "feature_linha_editorial" }]);
+  assertEquals(db.successCalls.length, 1);
+  assertEquals(auditCalls[0].metadata, { posts: 0, messages: 0, linhas: 1 });
+});
+
+Deno.test("linha outside window ignored", async () => {
+  const db = linhaDb([
+    linhaRow({ id: "old", enviada_at: "2026-08-12T23:59:59.000Z" }), // before the cursor
+    linhaRow({ id: "new", enviada_at: "2026-08-13T12:00:01.000Z" }), // after claim_through
+    linhaRow({ id: "draft", status: "rascunho", enviada_at: "2026-08-13T10:00:00.000Z" }),
+    linhaRow({ id: "other", cliente_id: 99, enviada_at: "2026-08-13T10:00:00.000Z" }),
+  ]);
+  const { deps, sent } = makeDeps(db);
+  const r = await runClientEventEmailCron(deps);
+  assertEquals(r.emailed, 0);
+  assertEquals(r.skippedNoContent, 1);
+  assertEquals(sent.length, 0);
+});
+
+Deno.test("flag off skips linha query", async () => {
+  const db = linhaDb([linhaRow()], false);
+  const { deps, sent } = makeDeps(db);
+  const r = await runClientEventEmailCron(deps);
+  assertEquals(r.skippedNoContent, 1);
+  assertEquals(sent.length, 0);
+  assert(!db.fromTables.includes("linhas_editoriais"), "linhas_editoriais must not be queried with the flag off");
+  assertEquals(db.featureCalls, [{ ws_id: "ws1", feature_key: "feature_linha_editorial" }]);
+});
+
+Deno.test("client with only a linha is not skipped as no content", async () => {
+  const db = linhaDb([linhaRow({ periodo: "2026-12-01" })]);
+  const { deps, sent } = makeDeps(db);
+  const r = await runClientEventEmailCron(deps);
+  assertEquals(r.skippedNoContent, 0);
+  assertEquals(r.emailed, 1);
+  assert(sent[0].html.includes("1 linha editorial espera sua aprovação"), "expected the linha-only title");
+  assert(sent[0].html.includes("Linha editorial de dezembro aguardando sua aprovação"));
+  assert(
+    sent[0].html.includes('href="https://app.mesaas.com.br/w/x/hub/tok/aprovacoes?aba=linha"'),
+    "linha item/CTA must open the Hub linha tab",
+  );
+});
+
+Deno.test("idempotency key changes when a linha is re-sent", async () => {
+  const first = linhaDb([linhaRow({ enviada_at: "2026-08-13T10:00:00.000Z" })]);
+  const a = makeDeps(first);
+  await runClientEventEmailCron(a.deps);
+  const second = linhaDb([linhaRow({ enviada_at: "2026-08-13T11:00:00.000Z" })]);
+  const b = makeDeps(second);
+  await runClientEventEmailCron(b.deps);
+  assertEquals(
+    a.sent[0].idempotencyKey,
+    await buildClientEventIdempotencyKey(30, ["linha:11111111-1111-1111-1111-111111111111:2026-08-13T10:00:00.000Z"]),
+  );
+  assert(a.sent[0].idempotencyKey !== b.sent[0].idempotencyKey, "re-sent linha must produce a new key");
+});
+
+Deno.test("linha query failure fails the client and releases the lease (nothing silently dropped)", async () => {
+  const db = linhaDb([linhaRow()]);
+  const original = db.from.bind(db);
+  db.from = ((table: string) => {
+    if (table === "linhas_editoriais") {
+      return {
+        select: () => ({
+          eq() { return this; },
+          gt() { return this; },
+          lte() { return this; },
+          order() { return this; },
+          limit() { return this; },
+          then(f: (v: unknown) => unknown) {
+            return Promise.resolve(f({ data: null, error: { message: "boom" } }));
+          },
+        }),
+      };
+    }
+    return original(table);
+  }) as typeof db.from;
+  const { deps, sent } = makeDeps(db);
+  const r = await runClientEventEmailCron(deps);
+  assertEquals(r.failed, 1);
+  assertEquals(sent.length, 0);
+  assertEquals(db.successCalls.length, 0);
+  assertEquals(db.releaseCalls.length, 1);
 });

@@ -41,6 +41,11 @@ export interface HubBootstrap {
    * feature_agenda: absent = classic look.
    */
   feature_hub_pauta?: boolean;
+  /**
+   * Linha editorial (feature_linha_editorial). Optional for the same reason as
+   * feature_agenda: absent = off.
+   */
+  feature_linha_editorial?: boolean;
   /** Absent on a stale/pre-migration bootstrap response — treat as neutral (no customization). */
   hub_theme?: HubThemeInfo;
 }
@@ -534,4 +539,71 @@ export interface ConviteResponse {
   organizador_nome: string | null;
   titulo: string;
   itens: ConviteItem[];
+}
+
+// ── Linha editorial (hub-linha-editorial) ───────────────────────────────────
+
+export type HubLinhaStatus = 'enviada' | 'ajustes' | 'aprovada';
+/** The `acao` of a stored resposta. */
+export type HubLinhaAcao = 'comentario' | 'aprovado' | 'ajustes';
+/** The `acao` a POST may carry: `pendente` undoes a row decision (needs `item_id`). */
+export type HubLinhaAcaoEnvio = HubLinhaAcao | 'pendente';
+/** The client's decision on one row; null = pending. */
+export type HubLinhaItemAprovacao = 'aprovado' | 'ajustes' | null;
+export type HubLinhaFormato = 'feed' | 'carrossel' | 'reels' | 'stories';
+
+export interface HubLinhaItem {
+  id: string;
+  /** YYYY-MM-DD, null = "sem data". */
+  data: string | null;
+  tipo: HubLinhaFormato;
+  titulo: string;
+  direcao: string;
+  /** `{ [coluna_id]: value }`, only keys of the visible columns. */
+  valores: Record<string, unknown>;
+  aprovacao: HubLinhaItemAprovacao;
+}
+
+export interface HubLinhaColuna {
+  id: string;
+  nome: string;
+  /** text, number, select, multiselect, date, person, checkbox or url. */
+  tipo: string;
+  config: { options?: { id: string; label: string; color?: string }[] };
+  ordem: number;
+}
+
+export interface HubLinhaResposta {
+  id: string;
+  /** null = a comment on the whole linha. */
+  item_id: string | null;
+  acao: HubLinhaAcao;
+  comentario: string | null;
+  is_workspace_user: boolean;
+  created_at: string;
+}
+
+export interface HubLinha {
+  id: string;
+  /** First day of the month, YYYY-MM-DD. */
+  periodo: string;
+  status: HubLinhaStatus;
+  enviada_at: string | null;
+  decidida_at: string | null;
+  rodada: number;
+  itens: HubLinhaItem[];
+  colunas: HubLinhaColuna[];
+  /** Current rodada only. */
+  respostas: HubLinhaResposta[];
+}
+
+export interface HubLinhasResponse {
+  linhas: HubLinha[];
+}
+
+export interface HubLinhaAcaoBody {
+  linha_id: string;
+  acao: HubLinhaAcaoEnvio;
+  item_id?: string;
+  comentario?: string;
 }

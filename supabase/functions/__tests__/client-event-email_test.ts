@@ -477,3 +477,43 @@ Deno.test("pendências: event tiles in brand colour, light brand flips text, no 
   const bad = buildClientEventEmail({ ...BASE_PARAMS, brandColor: "red;x", hubUrl: "https://x.test/hub/tok" });
   assert(!bad.includes("red;x") && bad.includes("#eab308"));
 });
+
+// --- linha editorial (spec §8.4) -------------------------------------------------
+
+Deno.test("email renders linha item with hub link", () => {
+  const html = buildClientEventEmail({
+    ...BASE_PARAMS,
+    pendingPosts: [],
+    linhas: [{ periodo: "2026-09-01" }, { periodo: "2026-10-01" }],
+  });
+  assert(html.includes("Linha editorial de setembro aguardando sua aprovação"), "expected the setembro item");
+  assert(html.includes("Linha editorial de outubro aguardando sua aprovação"), "expected the outubro item");
+  assert(
+    html.includes('href="https://app.mesaas.com.br/w/agencia-x/hub/tok123/aprovacoes?aba=linha"'),
+    "expected the Hub linha tab link",
+  );
+  assert(html.includes("2 linhas editoriais esperam sua aprovação"), "expected the plural linha title");
+  assert(html.includes("2 linhas editoriais aguardando sua aprovação"), "expected the linha preheader");
+  assert(!html.includes("—"), "no em dash");
+});
+
+Deno.test("linha: month name comes from periodo without a timezone shift", () => {
+  const html = buildClientEventEmail({
+    ...BASE_PARAMS,
+    pendingPosts: [],
+    linhas: [{ periodo: "2026-03-01" }, { periodo: "2026-01-01" }],
+  });
+  assert(html.includes("Linha editorial de março"), "expected março");
+  assert(html.includes("Linha editorial de janeiro"), "expected janeiro");
+});
+
+Deno.test("linha: posts keep the title and CTA, linha still listed", () => {
+  const html = buildClientEventEmail({ ...BASE_PARAMS, linhas: [{ periodo: "2026-09-01" }] });
+  assert(html.includes("1 post espera sua aprovação"), "posts win the title");
+  assert(html.includes("Linha editorial de setembro aguardando sua aprovação"));
+});
+
+Deno.test("linha: an unreadable periodo falls back to a month-less line", () => {
+  const html = buildClientEventEmail({ ...BASE_PARAMS, pendingPosts: [], linhas: [{ periodo: "???" }] });
+  assert(html.includes("Linha editorial aguardando sua aprovação"));
+});

@@ -26,7 +26,7 @@ export function HubMobileNav() {
   const { t, i18n } = useTranslation();
   const pauta = useHubLook() === 'pauta';
   const base = `/${workspace}/hub/${compactHubToken(token)}`;
-  const pendingCount = usePendingApprovalsCount(token);
+  const pendingCount = usePendingApprovalsCount(token, bootstrap.feature_linha_editorial === true);
   const mensagensUnread = useMensagensUnreadCount(token, bootstrap.feature_mensagens);
   const badgeCounts: Record<HubBadgeKey, number> = {
     aprovacoes: pendingCount,

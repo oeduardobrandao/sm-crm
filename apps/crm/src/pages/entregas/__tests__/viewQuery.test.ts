@@ -247,4 +247,40 @@ describe('viewQuery', () => {
       ).toBe('view=list&mode=publicacoes&agrupar=cliente&postados=1&clientes=3');
     });
   });
+  describe('Linha editorial (view=linha)', () => {
+    const base = {
+      view: 'kanban' as const,
+      mode: 'entregas' as const,
+      entidade: 'fluxos' as const,
+      filaMembro: null,
+      listGroupBy: 'prazo' as const,
+      showPostados: false,
+      filters: EMPTY_FILTERS,
+    };
+
+    it('round-trips view=linha&clientes=14&mes=2026-11', () => {
+      const qs = 'view=linha&clientes=14&mes=2026-11';
+      const parsed = parseEntregasQuery(new URLSearchParams(qs));
+      expect(parsed.view).toBe('linha');
+      expect(parsed.filters.filterClientes).toEqual([14]);
+      expect(parsed.mes).toBe('2026-11');
+      const out = serializeEntregasQuery(parsed);
+      expect(new URLSearchParams(out).get('view')).toBe('linha');
+      expect(new URLSearchParams(out).get('clientes')).toBe('14');
+      expect(new URLSearchParams(out).get('mes')).toBe('2026-11');
+      expect(parseEntregasQuery(new URLSearchParams(out))).toEqual(parsed);
+    });
+
+    it('drops mes for view=list, on parse and on serialize', () => {
+      const parsed = parseEntregasQuery(new URLSearchParams('view=list&mes=2026-11'));
+      expect(parsed.mes).toBeUndefined();
+      expect(serializeEntregasQuery({ ...base, view: 'list', mes: '2026-11' })).toBe('view=list');
+    });
+
+    it('drops an invalid mes such as 2026-13', () => {
+      expect(parseEntregasQuery(new URLSearchParams('view=linha&mes=2026-13')).mes).toBeUndefined();
+      expect(parseEntregasQuery(new URLSearchParams('view=linha&mes=nov')).mes).toBeUndefined();
+      expect(serializeEntregasQuery({ ...base, view: 'linha', mes: '2026-13' })).toBe('view=linha');
+    });
+  });
 });

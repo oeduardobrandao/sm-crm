@@ -60,6 +60,9 @@ export interface FeatureFlags {
   /** Rollout flag for the desktop Vidro shell. Optional on purpose: read only as
    *  `features?.feature_crm_vidro === true`. */
   feature_crm_vidro?: boolean;
+  /** Linha editorial (spec 2026-10-26-linha-editorial). Optional: read it only as
+   *  `features?.feature_linha_editorial === true`, never through hasFeature. */
+  feature_linha_editorial?: boolean;
   /** Rollout flag for Financeiro v2 (rentabilidade por cliente). Optional on purpose:
    *  read only as `features?.feature_financeiro_v2 === true` (fail-closed). */
   feature_financeiro_v2?: boolean;

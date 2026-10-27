@@ -73,6 +73,14 @@ describe('mapEntitlementError keys with digits', () => {
     });
   });
 
+  it('labels feature_linha_editorial', () => {
+    expect(mapEntitlementError({ message: 'feature_disabled:feature_linha_editorial' })).toEqual({
+      kind: 'feature',
+      key: 'feature_linha_editorial',
+      label: 'Linha editorial',
+    });
+  });
+
   it('reads a limit key with digits whole', () => {
     expect(mapEntitlementError({ message: 'plan_limit_exceeded:max_v2_items' })).toEqual({
       kind: 'limit',
