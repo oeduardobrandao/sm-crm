@@ -40,7 +40,7 @@ alter table workspace_subscriptions
   add column if not exists switched_from_trialing boolean null;
 
 comment on column workspace_subscriptions.switched_from_trialing is
-  'true = o switch Stripe -> Pagar.me 12x aconteceu enquanto a assinatura de origem ainda estava em teste (trialing). Escrito por pagarme-checkout. null/false = switch de periodo pago ou sem switch.';
+  'true = o switch Stripe -> Pagar.me 12x aconteceu enquanto a assinatura de origem ainda estava em teste (trialing). Escrito por pagarme-checkout. null/false = switch de periodo pago ou sem switch. Nao e limpo pelo undo nem pelo leg D; so vale lido enquanto switched_from_stripe_subscription_id estiver setado.';
 
 -- 4) mark_trial_offer_seen(): stamp the CALLER's active workspace, owners only,
 -- first call wins. Anything else is a silent no-op (the screen must never fail
@@ -103,7 +103,7 @@ as $$
          ws.name,
          u.email::text,
          p.nome,
-         pl.name,
+         coalesce(pl.name, s.plan_id),
          s.provider,
          s.amount_cents,
          s.amount_interval,

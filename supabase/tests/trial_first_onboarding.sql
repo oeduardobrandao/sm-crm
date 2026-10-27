@@ -188,6 +188,19 @@ begin
   ) then
     raise exception 'candidates_window: returned columns do not match the subscription';
   end if;
+
+  -- A subscription whose plan_id has no plans row (stripe-webhook can leave it
+  -- unresolved) is still a candidate, and plan_name falls back to the raw id.
+  -- The FK is dropped inside this rolled-back transaction to build that state.
+  alter table workspace_subscriptions drop constraint workspace_subscriptions_plan_id_fkey;
+  declare wx uuid := tfo_trial_sub(et_make_workspace('max'), interval '5 days');
+  begin
+    update workspace_subscriptions set plan_id = 'plano_sem_linha' where workspace_id = wx;
+    if (select plan_name from get_trial_reminder_candidates() where workspace_id = wx)
+         is distinct from 'plano_sem_linha' then
+      raise exception 'candidates_window: plan_name must fall back to the raw plan_id';
+    end if;
+  end;
   raise notice 'candidates_window: ok';
 end $$;
 rollback;
