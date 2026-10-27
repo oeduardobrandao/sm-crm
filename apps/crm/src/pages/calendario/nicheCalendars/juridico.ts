@@ -1,10 +1,17 @@
+import { i18n } from '@mesaas/i18n';
 import type { NicheCalendarDef } from './types';
 
 export const juridicoDef: NicheCalendarDef = {
   key: 'juridico',
-  label: 'Jurídico',
-  title: 'Calendário Jurídico',
-  subtitle: 'Brasil & Mundial — Datas do Direito & Justiça',
+  get label() {
+    return i18n.t('calendario:niches.juridico.label');
+  },
+  get title() {
+    return i18n.t('calendario:niches.juridico.title');
+  },
+  get subtitle() {
+    return i18n.t('calendario:niches.juridico.subtitle');
+  },
   data: [
     {
       month: 'Janeiro',
@@ -520,12 +527,26 @@ export const juridicoDef: NicheCalendarDef = {
     },
   ],
   filterLabels: {
-    trabalhista: 'Trabalhista',
-    civil: 'Civil',
-    criminal: 'Criminal',
-    tributario: 'Tributário',
-    consumidor: 'Consumidor',
-    empresarial: 'Empresarial',
-    digital: 'Digital',
+    get trabalhista() {
+      return i18n.t('calendario:niches.juridico.filterLabels.trabalhista');
+    },
+    get civil() {
+      return i18n.t('calendario:niches.juridico.filterLabels.civil');
+    },
+    get criminal() {
+      return i18n.t('calendario:niches.juridico.filterLabels.criminal');
+    },
+    get tributario() {
+      return i18n.t('calendario:niches.juridico.filterLabels.tributario');
+    },
+    get consumidor() {
+      return i18n.t('calendario:niches.juridico.filterLabels.consumidor');
+    },
+    get empresarial() {
+      return i18n.t('calendario:niches.juridico.filterLabels.empresarial');
+    },
+    get digital() {
+      return i18n.t('calendario:niches.juridico.filterLabels.digital');
+    },
   },
 };

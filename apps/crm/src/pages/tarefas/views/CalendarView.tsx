@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   DndContext,
   DragOverlay,
@@ -103,6 +104,7 @@ function DayCell({
   tarefas: TarefaWithRelations[];
   onTarefaClick: (t: TarefaWithRelations) => void;
 }) {
+  const { t: tr } = useTranslation('tasks');
   const { setNodeRef, isOver } = useDroppable({
     id: buildDropId({ kind: 'day', date: toDateOnlyString(date) }),
   });
@@ -141,7 +143,9 @@ function DayCell({
         <DraggableChip key={t.id} tarefa={t} onClick={() => onTarefaClick(t)} />
       ))}
       {hidden > 0 && (
-        <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>+{hidden} mais</span>
+        <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>
+          {tr('calendarView.more', { n: hidden })}
+        </span>
       )}
     </div>
   );
@@ -154,6 +158,7 @@ function SemDataRail({
   tarefas: TarefaWithRelations[];
   onTarefaClick: (t: TarefaWithRelations) => void;
 }) {
+  const { t: tr } = useTranslation('tasks');
   const { setNodeRef, isOver } = useDroppable({ id: buildDropId({ kind: 'day', date: null }) });
   return (
     <div
@@ -179,11 +184,11 @@ function SemDataRail({
           marginBottom: '0.25rem',
         }}
       >
-        Sem data · {tarefas.length}
+        {tr('calendarView.semData', { n: tarefas.length })}
       </span>
       {tarefas.length === 0 && (
         <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-          Arraste uma tarefa para cá para remover o prazo.
+          {tr('calendarView.semDataHint')}
         </span>
       )}
       {tarefas.map((t) => (
@@ -202,6 +207,7 @@ export function CalendarView({
   onRefresh,
   onCreateTask,
 }: CalendarViewProps) {
+  const { t: tr } = useTranslation('tasks');
   const isDesktop = useIsDesktop(768);
   const { profile } = useAuth();
   const contaId = profile?.active_workspace_id ?? profile?.conta_id ?? 'unknown';
@@ -276,7 +282,7 @@ export function CalendarView({
             cursor: 'pointer',
           }}
         >
-          {option === 'board' ? 'Board' : 'Mês'}
+          {tr(`calendarView.modo.${option}`)}
         </button>
       ))}
     </div>
@@ -289,12 +295,12 @@ export function CalendarView({
       <div className="phone-tar-calendario">
         <div className="phone-tar-cal-bar">
           <SegmentedControl
-            aria-label="Modo do calendário"
+            aria-label={tr('calendarView.modoLabel')}
             value={modo}
             onChange={handleModoChange}
             options={[
-              { value: 'board', label: 'Board' },
-              { value: 'mes', label: 'Mês' },
+              { value: 'board', label: tr('calendarView.modo.board') },
+              { value: 'mes', label: tr('calendarView.modo.mes') },
             ]}
           />
         </div>

@@ -1,8 +1,7 @@
 import { toast } from 'sonner';
+import { i18n } from '@mesaas/i18n';
 import { supabase } from '@/lib/supabase';
 import type { AgendaOcorrencia } from '@/store/agenda';
-
-const ERRO = 'Não foi possível baixar o arquivo.';
 
 /** File name stem: lowercase, no accents, non-alphanumerics -> '-', max 60. */
 export function slugDoTitulo(titulo: string): string {
@@ -46,6 +45,6 @@ export async function baixarIcsDaOcorrencia(o: AgendaOcorrencia): Promise<void> 
       setTimeout(() => URL.revokeObjectURL(href), 10_000);
     }
   } catch {
-    toast.error(ERRO);
+    toast.error(i18n.t('agenda:ics.erro'));
   }
 }

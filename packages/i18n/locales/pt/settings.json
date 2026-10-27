@@ -1,0 +1,532 @@
+{
+  "shared": {
+    "readOnly": "Somente leitura",
+    "error": "Erro: {{message}}",
+    "remove": "Remover",
+    "name": "Nome",
+    "email": "E-mail"
+  },
+  "tabs": {
+    "perfil": "Perfil",
+    "notificacoes": "Notificações",
+    "workspace": "Workspace",
+    "membros": "Membros",
+    "papeis": "Papéis",
+    "relatorios": "Relatórios",
+    "status": "Status de posts",
+    "hub": "Hub",
+    "armazenamento": "Armazenamento",
+    "mcp": "Agentes (MCP)",
+    "cobranca": "Plano & Cobrança",
+    "groups": {
+      "conta": "Conta",
+      "workspace": "Workspace",
+      "avancado": "Avançado"
+    }
+  },
+  "layout": {
+    "removedTitle": "Sem acesso a este workspace",
+    "removedBody": "Você não tem mais acesso a este workspace. Fale com o proprietário se acha que isso é um engano.",
+    "errorTitle": "Não foi possível confirmar seu acesso",
+    "errorBody": "Houve um problema ao verificar seu acesso a este workspace. Isso costuma ser temporário — tente novamente.",
+    "retry": "Tentar novamente",
+    "navAria": "Seções de configurações"
+  },
+  "index": {
+    "profileAria": "Perfil: {{name}}"
+  },
+  "phoneScreen": {
+    "backToSettings": "Voltar para Configurações"
+  },
+  "invite": {
+    "roles": {
+      "owner": "Dono",
+      "admin": "Admin",
+      "agent": "Agente"
+    },
+    "rolesLower": {
+      "owner": "dono",
+      "admin": "admin",
+      "agent": "agente"
+    },
+    "status": {
+      "pending": "Pendente",
+      "expired": "Expirado",
+      "accepted": "Aceito"
+    },
+    "sent": "Convite enviado!",
+    "timeLeftDays": "{{days}}d {{hours}}h restantes",
+    "timeLeftHours": "{{hours}}h restantes"
+  },
+  "notifications": {
+    "saveError": "Não foi possível salvar. Tente novamente.",
+    "transactional": {
+      "invite": {
+        "label": "Convite para a equipe",
+        "when": "você convida alguém para o workspace",
+        "recipients": "o convidado"
+      },
+      "billing": {
+        "label": "Cobrança e pagamento",
+        "when": "um pagamento falha (avisos de retry e cancelamento)",
+        "recipients": "dono do workspace"
+      },
+      "instagram": {
+        "label": "Instagram conectado",
+        "when": "o cliente conclui a conexão pelo link que você enviou",
+        "recipients": "quem criou o link"
+      }
+    },
+    "marketingLabel": "Novidades e dicas do Mesaas",
+    "marketingWhen": "marketing ocasional",
+    "marketingRecipients": "você (opt-in)",
+    "when": "Quando: {{when}}",
+    "recipients": "Quem recebe: {{recipients}}",
+    "whenWho": "Quando: {{when}} · Quem recebe: {{recipients}}",
+    "always": "sempre",
+    "inApp": "No app",
+    "pauseAll": "Pausar tudo",
+    "pauseAllInApp": "Pausar tudo (no app)",
+    "pauseAllEmail": "Pausar tudo (e-mail)",
+    "rowInApp": "{{label}} (no app)",
+    "rowEmail": "{{label}} (e-mail)",
+    "noEmailType": "Este tipo não vira e-mail",
+    "noEmailTypeAria": "{{label}}: este tipo não vira e-mail",
+    "noEmailShort": "Não vira e-mail",
+    "emails": {
+      "title": "E-mails automáticos",
+      "description": "E-mails que a sua conta envia sozinha, para transparência. Os 3 primeiros são sempre enviados; só o último depende de você.",
+      "sameControl": "Mesmo controle que está no seu Perfil.",
+      "alwaysSent": "Sempre enviados",
+      "dependsOnYou": "Depende de você"
+    },
+    "suas": {
+      "title": "Suas notificações",
+      "description": "O que aparece no sino e o que chega no seu e-mail. Preferência individual: vale só para você."
+    },
+    "clientes": {
+      "title": "Seus clientes",
+      "description": "O relatório mensal e as pendências do Hub de cada cliente, um por um. Os gerais ligam ou desligam todo mundo de uma vez.",
+      "monthlyReport": "Relatório mensal",
+      "monthlyReportHint": "todo dia 1º, com PDF e resumo do mês",
+      "hubPending": "Pendências do Hub",
+      "hubPendingHint": "posts a aprovar e mensagens não lidas · máx. 1 e-mail a cada 4h",
+      "allClients": "Todos os clientes",
+      "reportAllAria": "Relatório mensal para todos os clientes",
+      "pendingAllAria": "Pendências do Hub para todos os clientes",
+      "searchPlaceholder": "Buscar cliente…",
+      "searchAria": "Buscar cliente",
+      "empty": "Nenhum cliente encontrado.",
+      "identifiedName": "{{name}} (cliente {{id}})",
+      "statusTag": {
+        "pausado": "(pausado)",
+        "encerrado": "(encerrado)"
+      },
+      "noEmail": "sem e-mail cadastrado",
+      "noEmailTitle": "Sem e-mail cadastrado",
+      "reportAria": "Relatório mensal para {{name}} ({{email}})",
+      "pendingAria": "Pendências do Hub para {{name}} ({{email}})",
+      "noEmailReportAria": "{{name}}: sem e-mail cadastrado (relatório mensal)",
+      "noEmailPendingAria": "{{name}}: sem e-mail cadastrado (pendências do Hub)",
+      "unsubbed": "desativado pelo cliente",
+      "emailUnsubbed": "{{email}} · desativado pelo cliente",
+      "footer": "Clientes sem e-mail cadastrado não recebem nada. Cadastre o e-mail na ficha do cliente.",
+      "reactivateTitle": "Reativar pendências do Hub?",
+      "reactivateTitleFor": "Reativar pendências do Hub para {{name}}?",
+      "reactivateBody": "O cliente pediu para não receber estes e-mails. Reativar mesmo assim?",
+      "reactivate": "Reativar",
+      "clientSwitchAria": "E-mail editado pelos botões dos clientes",
+      "header": "Clientes"
+    },
+    "phone": {
+      "subtitle": "O que aparece no sino e o que chega no seu e-mail. Vale só para você.",
+      "channelAria": "Canal editado pelos botões",
+      "channelNote": "Os botões abaixo ligam e desligam o canal {{channel}}.",
+      "pauseAllAria": "Pausar tudo ({{channel}})",
+      "pausedFooter": "Canal {{channel}} pausado: os tipos abaixo ficam travados até você despausar.",
+      "otherEmails": "Outros e-mails",
+      "emailsSubtitle": "Convite, cobrança, Instagram e novidades",
+      "clientesSubtitle": "Relatório mensal e pendências do Hub"
+    }
+  },
+  "perfil": {
+    "photoDescription": "Aparece para a sua equipe em todo o CRM: Entregas, Tarefas, Agenda e Mensagens. Os clientes não veem.",
+    "nameRequired": "Nome é obrigatório.",
+    "updated": "Perfil atualizado!",
+    "saveError": "Erro ao salvar: {{message}}",
+    "passwordMin": "Mínimo 8 caracteres.",
+    "passwordMismatch": "As senhas não coincidem.",
+    "passwordUpdated": "Senha atualizada!",
+    "passwordError": "Erro ao atualizar senha: {{message}}",
+    "activeAccount": "Conta Ativa",
+    "yourPhoto": "Sua foto",
+    "nameLabel": "Nome *",
+    "company": "Empresa",
+    "phone": "Telefone",
+    "whatsapp": "WhatsApp",
+    "marketing": "Comunicações de marketing",
+    "marketingOn": "Você receberá novidades e comunicações de marketing por SMS e WhatsApp.",
+    "marketingOff": "Você não receberá comunicações de marketing. Mensagens sobre sua conta continuam sendo enviadas.",
+    "saveProfile": "Salvar Perfil",
+    "changePassword": "Alterar Senha",
+    "newPassword": "Nova Senha",
+    "confirmNewPassword": "Confirmar Nova Senha",
+    "updatePassword": "Atualizar Senha",
+    "restrictionTitle": "Configurações do workspace",
+    "restrictionBody": "As configurações de workspace, sincronização do Instagram e gerenciamento de membros estão disponíveis apenas para proprietários e administradores.",
+    "account": "Conta",
+    "userId": "ID do Usuário",
+    "createdAt": "Criado em",
+    "lastAccess": "Último acesso",
+    "provider": "Provedor",
+    "privacyBody": "Escolha quais ferramentas opcionais (análise de uso e chat de suporte) podem usar o armazenamento do seu navegador.",
+    "cookies": "Preferências de cookies",
+    "session": "Sessão",
+    "signOut": "Sair da Conta",
+    "phoneScreen": {
+      "changePassword": "Alterar senha",
+      "passwordAria": "Senha",
+      "passwordFooter": "Mínimo de 8 caracteres.",
+      "newPassword": "Nova senha",
+      "updatePassword": "Atualizar senha",
+      "hidePassword": "Ocultar senha",
+      "showPassword": "Mostrar senha",
+      "saveProfileAria": "Salvar perfil",
+      "profileData": "Dados do perfil",
+      "communications": "Comunicações",
+      "security": "Segurança",
+      "ownersAndAdmins": "Disponível para donos e admins",
+      "userId": "ID do usuário",
+      "signOut": "Sair da conta"
+    }
+  },
+  "workspace": {
+    "fileTooLarge": "Arquivo deve ser menor que 2MB.",
+    "logoUpdated": "Logo atualizada!",
+    "logoUploadError": "Erro ao enviar logo: {{message}}",
+    "logoRemoved": "Logo removida.",
+    "updated": "Workspace atualizado!",
+    "autoSyncOn": "Auto-sync ativado.",
+    "autoSyncOff": "Auto-sync desativado.",
+    "logo": "Logo",
+    "changeLogo": "Trocar Logo",
+    "uploadLogo": "Enviar Logo",
+    "logoHint": "PNG, JPG ou WebP. Máx 2MB. Será redimensionado para 512px.",
+    "workspaceName": "Nome do Workspace",
+    "autoSyncTitle": "Auto-Sync Instagram",
+    "autoSyncAria": "Auto-sync do Instagram",
+    "autoSyncEnabled": "Sincronização automática ativada",
+    "autoSyncDisabled": "Sincronização automática desativada",
+    "autoSyncHint": "Quando ativada, os dados do Instagram são sincronizados automaticamente uma vez por dia.",
+    "importTitle": "Importar dados",
+    "importBody": "Traga clientes, posts, entregas e ideias de Notion, Trello, ClickUp ou planilhas.",
+    "importOpen": "Abrir assistente de importação",
+    "removeLogoTitle": "Remover logo?",
+    "phone": {
+      "changeLogo": "Trocar logo",
+      "uploadLogo": "Enviar logo",
+      "saveNameAria": "Salvar nome do workspace",
+      "identity": "Identidade",
+      "uploading": "Enviando…",
+      "noLogo": "Sem logo",
+      "autoSync": "Sincronização automática",
+      "logoMenuTitle": "Logo do workspace"
+    }
+  },
+  "membros": {
+    "roleUpdated": "Função atualizada!",
+    "memberRemoved": "Membro removido.",
+    "financialOn": "Acesso financeiro liberado.",
+    "financialOff": "Acesso financeiro restrito.",
+    "financialError": "Não foi possível atualizar o acesso.",
+    "emailRequired": "Email é obrigatório.",
+    "httpError": "Erro {{status}}",
+    "inviteError": "Erro ao convidar: {{message}}",
+    "inviteCanceled": "Convite cancelado.",
+    "inviteResent": "Convite reenviado!",
+    "title": "Membros do Workspace",
+    "invite": "Convidar",
+    "financialLabel": "Ver financeiro",
+    "financialAria": "Acesso financeiro de {{name}}",
+    "role": "Função",
+    "invites": "Convites",
+    "resend": "Reenviar",
+    "editRoleTitle": "Editar função — {{name}}",
+    "inviteTitle": "Convidar Membro",
+    "emailLabel": "Email *",
+    "onlyOwnersAdmins": "Apenas donos e admins convidam com função elevada ou papel.",
+    "sendInvite": "Enviar Convite",
+    "removeTitle": "Remover membro?",
+    "cancelInviteTitle": "Cancelar convite?",
+    "phone": {
+      "header": "Membros do workspace",
+      "footerManage": "Toque em um membro para mudar a função, ligar o acesso ao financeiro ou remover.",
+      "footerEmail": "Toque em um membro para ver o e-mail.",
+      "roleWithFinancial": "{{role}} · vê o financeiro",
+      "self": "{{name}} (você)",
+      "invitesFooter": "Deslize um convite para reenviar ou cancelar.",
+      "financialAccess": "Acesso financeiro",
+      "removeFromWorkspace": "Remover do workspace",
+      "cancelInvite": "Cancelar convite",
+      "inviteActions": "Ações do convite para {{email}}",
+      "moreInviteActions": "Mais ações do convite para {{email}}",
+      "inviteAria": "Convite",
+      "email": "Email",
+      "emailPlaceholder": "nome@empresa.com"
+    }
+  },
+  "papeis": {
+    "errors": {
+      "notOwner": "Você não tem permissão para gerenciar papéis.",
+      "invalidName": "Informe um nome para o papel.",
+      "invalidPermissions": "Permissões inválidas.",
+      "duplicateName": "Já existe um papel com este nome.",
+      "roleInUse": "Reatribua os membros antes de excluir este papel.",
+      "roleNotFound": "Este papel não existe mais.",
+      "generic": "Algo deu errado. Tente novamente."
+    },
+    "created": "Papel criado!",
+    "updated": "Papel atualizado!",
+    "deleted": "Papel excluído.",
+    "systemDefault": "Padrão do sistema",
+    "members_zero": "{{count}} membros",
+    "members_one": "{{count}} membro",
+    "members_other": "{{count}} membros",
+    "delete": "Excluir",
+    "server": "servidor",
+    "levelAria": "Nível de acesso para {{module}}",
+    "newRole": "Novo papel",
+    "editRole": "Editar papel",
+    "createRole": "Criar papel",
+    "startFrom": "Começar de",
+    "changesApply_one": "As mudanças valem na hora para o 1 membro com este papel.",
+    "changesApply_other": "As mudanças valem na hora para os {{count}} membros com este papel.",
+    "serverNote": "Módulos com selo \"servidor\" são aplicados no banco. Os demais são aplicados na interface do CRM.",
+    "saveChanges": "Salvar alterações",
+    "deleteTitle": "Excluir papel \"{{name}}\"?",
+    "deleteBody": "Esta ação não pode ser desfeita.",
+    "emptyFooter": "Toque em + para criar um papel personalizado.",
+    "customSubtitle": "Papel personalizado · {{members}}",
+    "rowSubtitle": "{{members}} · {{summary}}",
+    "deleteRole": "Excluir papel",
+    "roleAria": "Papel",
+    "namePlaceholder": "Nome do papel",
+    "modules": {
+      "analytics": "Analytics e Relatórios",
+      "configuracoes": "Configurações do workspace"
+    },
+    "levels": {
+      "none": "Sem acesso",
+      "ver": "Pode ver",
+      "editar": "Pode editar"
+    },
+    "segments": {
+      "none": "Sem acesso",
+      "ver": "Ver",
+      "editar": "Editar"
+    },
+    "presets": {
+      "agente": "Agente",
+      "administrador": "Administrador",
+      "em_branco": "Em branco"
+    },
+    "groups": {
+      "trabalho": "Trabalho",
+      "clientes": "Clientes e análise"
+    },
+    "summary": {
+      "editar": "{{n}} editar",
+      "ver": "{{n}} ver",
+      "none": "{{n}} sem acesso"
+    },
+    "adminSummary": "Edita tudo · Financeiro conforme o acesso de cada admin",
+    "adminFinanceOverride": "Conforme o acesso financeiro de cada admin"
+  },
+  "catalog": {
+    "category": {
+      "aprovacoes_hub": "Aprovações e Hub",
+      "entregas_fluxo": "Entregas e fluxo",
+      "equipe": "Equipe",
+      "agenda": "Agenda",
+      "integracoes": "Integrações",
+      "sistema": "Sistema"
+    },
+    "types": {
+      "post_approved": {
+        "label": "Post aprovado pelo cliente",
+        "when": "o cliente aprova um post no Hub",
+        "recipients": "responsável pelo item + donos e admins"
+      },
+      "post_correction": {
+        "label": "Correção solicitada",
+        "when": "o cliente pede correção em um post",
+        "recipients": "responsável pelo item + donos e admins"
+      },
+      "post_message": {
+        "label": "Mensagem em um post",
+        "when": "o cliente comenta em um post específico",
+        "recipients": "responsável pelo item + donos e admins"
+      },
+      "post_edit_suggestion": {
+        "label": "Sugestão de edição",
+        "when": "o cliente sugere ou atualiza uma alteração de texto ou legenda no Hub",
+        "recipients": "responsável pelo item + donos e admins"
+      },
+      "post_client_reference": {
+        "label": "Referências do cliente",
+        "when": "o cliente anexa fotos, vídeos, PDFs ou links a um post no Hub",
+        "recipients": "responsável pelo item + donos e admins"
+      },
+      "idea_submitted": {
+        "label": "Ideia enviada",
+        "when": "o cliente envia uma ideia ou solicitação",
+        "recipients": "donos e admins"
+      },
+      "briefing_answered": {
+        "label": "Briefing respondido",
+        "when": "o cliente responde uma pergunta do briefing",
+        "recipients": "donos e admins"
+      },
+      "client_message": {
+        "label": "Mensagem do cliente",
+        "when": "o cliente escreve no feed de mensagens",
+        "recipients": "donos e admins"
+      },
+      "linha_editorial_aprovada": {
+        "label": "Linha editorial aprovada",
+        "when": "o cliente aprova a linha editorial do mês no Hub",
+        "recipients": "responsável pelo item + donos e admins"
+      },
+      "linha_editorial_ajustes": {
+        "label": "Ajustes na linha editorial",
+        "when": "o cliente pede ajustes na linha editorial do mês no Hub",
+        "recipients": "responsável pelo item + donos e admins"
+      },
+      "step_activated": {
+        "label": "Etapa ativada",
+        "when": "uma etapa do fluxo fica ativa",
+        "recipients": "responsável pelo item + donos e admins"
+      },
+      "step_completed": {
+        "label": "Etapa concluída",
+        "when": "uma etapa do fluxo é concluída",
+        "recipients": "donos e admins"
+      },
+      "post_assigned": {
+        "label": "Post atribuído a você",
+        "when": "um post é atribuído a você",
+        "recipients": "somente quem foi atribuído"
+      },
+      "task_assigned": {
+        "label": "Tarefa atribuída a você",
+        "when": "uma tarefa é criada para você ou reatribuída",
+        "recipients": "somente quem foi atribuído"
+      },
+      "workflow_completed": {
+        "label": "Fluxo concluído",
+        "when": "um fluxo inteiro é concluído",
+        "recipients": "donos e admins"
+      },
+      "deadline_approaching": {
+        "label": "Prazo se aproximando",
+        "when": "uma etapa ativa vence amanhã",
+        "recipients": "responsável pelo item + donos e admins"
+      },
+      "post_status_automation": {
+        "label": "Automação de status",
+        "when": "uma regra sua de status dispara uma notificação",
+        "recipients": "conforme a regra configurada"
+      },
+      "invite_accepted": {
+        "label": "Convite aceito",
+        "when": "alguém entra no workspace",
+        "recipients": "donos e admins"
+      },
+      "member_role_changed": {
+        "label": "Papel alterado",
+        "when": "o papel de um membro muda",
+        "recipients": "donos e admins"
+      },
+      "member_removed": {
+        "label": "Membro removido",
+        "when": "um membro é removido do workspace",
+        "recipients": "donos e admins"
+      },
+      "mention": {
+        "label": "Menções",
+        "when": "alguém menciona você com @",
+        "recipients": "somente quem foi mencionado"
+      },
+      "event_invited": {
+        "label": "Convites para eventos",
+        "when": "alguém adiciona você a um evento",
+        "recipients": "Participantes do evento"
+      },
+      "event_updated": {
+        "label": "Eventos alterados",
+        "when": "muda o horário, o local ou a repetição de um evento seu",
+        "recipients": "Participantes do evento"
+      },
+      "event_cancelled": {
+        "label": "Eventos cancelados",
+        "when": "um evento seu é cancelado ou você é removido dele",
+        "recipients": "Participantes do evento"
+      },
+      "event_rsvp": {
+        "label": "Respostas aos seus convites",
+        "when": "um participante responde a um evento que você organizou",
+        "recipients": "Organizador do evento"
+      },
+      "event_client_rsvp": {
+        "label": "Cliente respondeu a um evento",
+        "when": "o cliente confirma ou recusa um evento compartilhado com ele",
+        "recipients": "Organizador do evento (ou donos e admins)"
+      },
+      "event_guest_rsvp": {
+        "label": "Convidado externo respondeu a um evento",
+        "when": "um convidado externo confirma ou recusa um evento seu",
+        "recipients": "Organizador do evento (ou donos e admins)"
+      },
+      "event_reschedule_requested": {
+        "label": "Cliente pediu para remarcar",
+        "when": "o cliente pede para remarcar um evento compartilhado com ele",
+        "recipients": "Organizador do evento (ou donos e admins)"
+      },
+      "event_reminder": {
+        "label": "Lembretes de eventos",
+        "when": "no horário dos lembretes que você definiu",
+        "recipients": "Participantes do evento"
+      },
+      "team_message": {
+        "label": "Mensagem no chat da equipe",
+        "when": "alguém envia uma mensagem em uma conversa do chat de equipe da qual você participa",
+        "recipients": "participantes da conversa, exceto quem enviou"
+      },
+      "post_discussion": {
+        "label": "Mensagem na discussão de um post",
+        "when": "alguém escreve na discussão de um post que você segue",
+        "recipients": "quem escreveu, foi mencionado ou é responsável pelo post e segue a discussão"
+      },
+      "instagram_connected_by_client": {
+        "label": "Instagram conectado",
+        "when": "o cliente conclui a conexão pelo link que você enviou",
+        "recipients": "quem criou o link"
+      },
+      "post_publish_failed": {
+        "label": "Falha na publicação",
+        "when": "um post agendado falha ao publicar",
+        "recipients": "responsável pelo item + donos e admins"
+      },
+      "instagram_automation_failed": {
+        "label": "Automação do Instagram com problema",
+        "when": "uma automação de comentário para DM para de funcionar",
+        "recipients": "donos e admins"
+      },
+      "storage_autoclean_report": {
+        "label": "Limpeza de armazenamento",
+        "when": "a limpeza noturna remove arquivos antigos",
+        "recipients": "donos e admins"
+      }
+    }
+  }
+}

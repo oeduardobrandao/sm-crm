@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CheckSquare, ChevronDown, ChevronRight } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
@@ -29,6 +30,7 @@ function TarefaRow({
   onClick: () => void;
   onToggleComplete: (concluida: boolean) => void;
 }) {
+  const { t } = useTranslation('tasks');
   const badge = dueBadge(tarefa, now);
   const done = tarefa.status === 'concluida';
   return (
@@ -52,7 +54,7 @@ function TarefaRow({
       <span onClick={(e) => e.stopPropagation()} style={{ display: 'inline-flex' }}>
         <Checkbox
           checked={done}
-          aria-label={done ? 'Reabrir tarefa' : 'Concluir tarefa'}
+          aria-label={done ? t('listView.reopenTask') : t('listView.completeTask')}
           onCheckedChange={(checked) => onToggleComplete(checked === true)}
         />
       </span>
@@ -137,6 +139,7 @@ function TarefaRow({
 
 /** List grouped by due date buckets, with a collapsed "Concluídas" section. */
 export function ListView({ tarefas, membros, onTarefaClick, onRefresh }: ListViewProps) {
+  const { t: tr } = useTranslation('tasks');
   const isDesktop = useIsDesktop(768);
   const [showConcluidas, setShowConcluidas] = useState(false);
   if (!isDesktop) {
@@ -178,9 +181,7 @@ export function ListView({ tarefas, membros, onTarefaClick, onRefresh }: ListVie
             borderRadius: '12px',
           }}
         >
-          <p style={{ fontSize: '0.85rem' }}>
-            Nenhuma tarefa aberta. Crie uma nova ou ajuste os filtros.
-          </p>
+          <p style={{ fontSize: '0.85rem' }}>{tr('listView.emptyOpen')}</p>
         </div>
       )}
       {DUE_BUCKETS.map((bucket) => {
@@ -266,7 +267,7 @@ export function ListView({ tarefas, membros, onTarefaClick, onRefresh }: ListVie
                 color: 'var(--text-muted)',
               }}
             >
-              Concluídas
+              {tr('listView.concluidas')}
             </span>
             <span
               style={{

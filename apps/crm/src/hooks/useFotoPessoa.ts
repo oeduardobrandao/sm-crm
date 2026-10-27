@@ -1,6 +1,7 @@
 import { useRef, useState, type ChangeEvent, type RefObject } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { i18n } from '@mesaas/i18n';
 import { holdUnsavedWork } from '@mesaas/app-lifecycle';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -61,7 +62,7 @@ export function useFotoPessoa(alvo: FotoAlvo): {
 
   async function upload(file: File): Promise<boolean> {
     if (file.size > MAX_PESSOA_FOTO_BYTES) {
-      toast.error('A foto deve ter até 10 MB.');
+      toast.error(i18n.t('photo.tooLarge'));
       return false;
     }
     setUploading(true);
@@ -76,10 +77,10 @@ export function useFotoPessoa(alvo: FotoAlvo): {
       if (error) throw error;
       await setMemberPhoto(alvo, path);
       invalidate();
-      toast.success('Foto atualizada.');
+      toast.success(i18n.t('photo.updated'));
       return true;
     } catch {
-      toast.error('Erro ao enviar a foto.');
+      toast.error(i18n.t('photo.uploadError'));
       return false;
     } finally {
       release();
@@ -93,9 +94,9 @@ export function useFotoPessoa(alvo: FotoAlvo): {
     try {
       await setMemberPhoto(alvo, null);
       invalidate();
-      toast.success('Foto removida.');
+      toast.success(i18n.t('photo.removed'));
     } catch {
-      toast.error('Erro ao remover a foto.');
+      toast.error(i18n.t('photo.removeError'));
     } finally {
       release();
       setUploading(false);

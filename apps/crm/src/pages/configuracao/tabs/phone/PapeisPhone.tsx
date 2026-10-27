@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { GroupedList, Cell } from '@/components/mobile/GroupedList';
 import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
@@ -13,16 +14,17 @@ import type { WorkspaceRole } from '../../../../store';
 import { ConfigPhoneScreen, ConfigPhoneSkeleton } from '../../phone/ConfigPhoneScreen';
 import { useConfigSubScreen } from '../../phone/useConfigSubScreen';
 import {
-  ADMIN_PERMISSION_OVERRIDES,
+  adminPermissionOverrides,
   ADMIN_PERMISSIONS,
-  LEVEL_LABELS,
+  levelLabel,
   LEVEL_ORDER,
-  LEVEL_SEGMENT_LABELS,
+  levelSegmentLabel,
   MODULE_GROUPS,
-  MODULE_LABELS,
+  moduleGroupLabel,
+  moduleLabel,
   memberCountLabel,
   normalizePermissions,
-  PRESET_LABELS,
+  presetLabel,
   PRESET_ORDER,
   SERVER_ENFORCED_MODULES,
   summarizePermissions,
@@ -32,9 +34,6 @@ import {
   type RolePermissions,
 } from './papeisModel';
 import './papeisPhone.css';
-
-const SERVER_FOOTER =
-  'Módulos com selo "servidor" são aplicados no banco. Os demais são aplicados na interface do CRM.';
 
 type PapelScreen =
   | { kind: 'system'; which: 'administrador' | 'agente' }
@@ -66,7 +65,8 @@ export interface PapeisPhoneProps {
 }
 
 function ServerTag() {
-  return <span className="phone-papeis-server-tag">servidor</span>;
+  const { t } = useTranslation('settings');
+  return <span className="phone-papeis-server-tag">{t('papeis.server')}</span>;
 }
 
 /**
@@ -75,6 +75,7 @@ function ServerTag() {
  * ones and for "Novo papel"). State, validation and mutations stay in PapeisTab.
  */
 export function PapeisPhone(props: PapeisPhoneProps) {
+  const { t } = useTranslation('settings');
   const {
     roles,
     rolesLoading,
@@ -103,11 +104,11 @@ export function PapeisPhone(props: PapeisPhoneProps) {
   const confirmSheet = (
     <PhoneConfirmSheet
       open={deleteTarget !== null}
-      title={`Excluir papel "${deleteTarget?.nome ?? ''}"?`}
-      message="Esta ação não pode ser desfeita."
+      title={t('papeis.deleteTitle', { name: deleteTarget?.nome ?? '' })}
+      message={t('papeis.deleteBody')}
       actions={[
         {
-          label: 'Excluir',
+          label: t('papeis.delete'),
           destructive: true,
           onSelect: () => {
             if (deleteTarget) onConfirmDelete(deleteTarget, onCloseForm);
@@ -122,9 +123,9 @@ export function PapeisPhone(props: PapeisPhoneProps) {
     const isAdmin = screen.which === 'administrador';
     return (
       <SystemRoleScreen
-        nome={isAdmin ? 'Administrador' : 'Agente'}
+        nome={isAdmin ? t('papeis.presets.administrador') : t('papeis.presets.agente')}
         permissions={isAdmin ? ADMIN_PERMISSIONS : AGENT_ROLE_PRESET}
-        overrides={isAdmin ? ADMIN_PERMISSION_OVERRIDES : undefined}
+        overrides={isAdmin ? adminPermissionOverrides() : undefined}
         onBack={close}
       />
     );
@@ -146,10 +147,10 @@ export function PapeisPhone(props: PapeisPhoneProps) {
 
   return (
     <ConfigPhoneScreen
-      title="Papéis"
+      title={t('tabs.papeis')}
       trailing={
         <PhoneIconButton
-          label="Novo papel"
+          label={t('papeis.newRole')}
           variant="ink"
           onClick={() => {
             onOpenCreate();
@@ -161,22 +162,18 @@ export function PapeisPhone(props: PapeisPhoneProps) {
       }
     >
       <GroupedList
-        aria-label="Papéis"
-        footer={
-          !rolesLoading && roles.length === 0
-            ? 'Toque em + para criar um papel personalizado.'
-            : undefined
-        }
+        aria-label={t('tabs.papeis')}
+        footer={!rolesLoading && roles.length === 0 ? t('papeis.emptyFooter') : undefined}
       >
         <Cell
-          label="Administrador"
-          subtitle="Padrão do sistema"
+          label={t('papeis.presets.administrador')}
+          subtitle={t('papeis.systemDefault')}
           chevron
           onClick={() => sub.open({ kind: 'system', which: 'administrador' })}
         />
         <Cell
-          label="Agente"
-          subtitle="Padrão do sistema"
+          label={t('papeis.presets.agente')}
+          subtitle={t('papeis.systemDefault')}
           chevron
           onClick={() => sub.open({ kind: 'system', which: 'agente' })}
         />
@@ -186,7 +183,10 @@ export function PapeisPhone(props: PapeisPhoneProps) {
             <Cell
               key={role.id}
               label={role.nome}
-              subtitle={`${memberCountLabel(memberCounts?.[role.id] ?? 0)} · ${summary}`}
+              subtitle={t('papeis.rowSubtitle', {
+                members: memberCountLabel(memberCounts?.[role.id] ?? 0),
+                summary,
+              })}
               chevron
               onClick={() => {
                 onOpenEdit(role);
@@ -213,13 +213,14 @@ function SystemRoleScreen({
   overrides?: PermissionOverrides;
   onBack: () => void;
 }) {
+  const { t } = useTranslation('settings');
   return (
-    <ConfigPhoneScreen title={nome} subtitle="Padrão do sistema" onBack={onBack}>
+    <ConfigPhoneScreen title={nome} subtitle={t('papeis.systemDefault')} onBack={onBack}>
       {MODULE_GROUPS.map((group, gi) => (
         <GroupedList
-          key={group.label}
-          header={group.label}
-          footer={gi === MODULE_GROUPS.length - 1 ? SERVER_FOOTER : undefined}
+          key={group.key}
+          header={moduleGroupLabel(group.key)}
+          footer={gi === MODULE_GROUPS.length - 1 ? t('papeis.serverNote') : undefined}
         >
           {group.modules.map((mod) => {
             const override = overrides?.[mod];
@@ -228,12 +229,12 @@ function SystemRoleScreen({
                 key={mod}
                 label={
                   <>
-                    {MODULE_LABELS[mod]}
+                    {moduleLabel(mod)}
                     {SERVER_ENFORCED_MODULES.has(mod) && <ServerTag />}
                   </>
                 }
                 subtitle={override}
-                value={override ? undefined : LEVEL_LABELS[permissions[mod]]}
+                value={override ? undefined : levelLabel(permissions[mod])}
               />
             );
           })}
@@ -267,6 +268,7 @@ function RoleFormScreen({
   // Mounted with the form already set (both change in the same tap), so this is the
   // state the screen opened with. No close confirmation, as on desktop: only the
   // silent-update hold while there is something to lose.
+  const { t } = useTranslation('settings');
   const [initial] = useState(() => serializeForm(form));
   const dirty = serializeForm(form) !== initial;
   useUnsavedWork(dirty || saving);
@@ -276,13 +278,15 @@ function RoleFormScreen({
 
   return (
     <ConfigPhoneScreen
-      title={editingRole ? editingRole.nome : 'Novo papel'}
-      subtitle={isEdit ? `Papel personalizado · ${memberCountLabel(memberCount)}` : undefined}
+      title={editingRole ? editingRole.nome : t('papeis.newRole')}
+      subtitle={
+        isEdit ? t('papeis.customSubtitle', { members: memberCountLabel(memberCount) }) : undefined
+      }
       onBack={onBack}
       trailing={
         editingRole ? (
           <PhoneIconButton
-            label="Excluir papel"
+            label={t('papeis.deleteRole')}
             className="phone-papeis-delete"
             onClick={() => onRequestDelete(editingRole)}
           >
@@ -291,13 +295,13 @@ function RoleFormScreen({
         ) : undefined
       }
     >
-      <GroupedList aria-label="Papel">
+      <GroupedList aria-label={t('papeis.roleAria')}>
         <FormRow
-          label="Nome"
+          label={t('shared.name')}
           input={{
             id: 'papeis-phone-nome',
             value: form.nome,
-            placeholder: 'Nome do papel',
+            placeholder: t('papeis.namePlaceholder'),
             autoComplete: 'off',
             onChange: (e) => onNomeChange(e.target.value),
           }}
@@ -305,15 +309,15 @@ function RoleFormScreen({
       </GroupedList>
 
       {!isEdit && (
-        <GroupedList header="Começar de">
+        <GroupedList header={t('papeis.startFrom')}>
           <li className="phone-cell phone-papeis-preset">
             <SegmentedControl<PresetChoice>
-              aria-label="Começar de"
+              aria-label={t('papeis.startFrom')}
               value={form.preset}
               onChange={onPresetChange}
               options={PRESET_ORDER.map((preset) => ({
                 value: preset,
-                label: PRESET_LABELS[preset],
+                label: presetLabel(preset),
               }))}
             />
           </li>
@@ -322,31 +326,30 @@ function RoleFormScreen({
 
       {isEdit && memberCount > 0 && (
         <p role="alert" className="phone-papeis-warning">
-          As mudanças valem na hora para{' '}
-          {memberCount === 1 ? 'o 1 membro' : `os ${memberCount} membros`} com este papel.
+          {t('papeis.changesApply', { count: memberCount })}
         </p>
       )}
 
       {MODULE_GROUPS.map((group, gi) => (
         <GroupedList
-          key={group.label}
-          header={group.label}
-          footer={gi === MODULE_GROUPS.length - 1 ? SERVER_FOOTER : undefined}
+          key={group.key}
+          header={moduleGroupLabel(group.key)}
+          footer={gi === MODULE_GROUPS.length - 1 ? t('papeis.serverNote') : undefined}
         >
           {group.modules.map((mod) => (
             <li key={mod} className="phone-cell phone-papeis-module">
               <span className="phone-papeis-module__label">
-                {MODULE_LABELS[mod]}
+                {moduleLabel(mod)}
                 {SERVER_ENFORCED_MODULES.has(mod) && <ServerTag />}
               </span>
               <SegmentedControl<PermissionLevel>
                 className="phone-papeis-level"
-                aria-label={`Nível de acesso para ${MODULE_LABELS[mod]}`}
+                aria-label={t('papeis.levelAria', { module: moduleLabel(mod) })}
                 value={form.permissions[mod]}
                 onChange={(level) => onLevelChange(mod, level)}
                 options={LEVEL_ORDER.map((level) => ({
                   value: level,
-                  label: LEVEL_SEGMENT_LABELS[level],
+                  label: levelSegmentLabel(level),
                 }))}
               />
             </li>
@@ -363,7 +366,7 @@ function RoleFormScreen({
           aria-busy={saving || undefined}
         >
           {saving && <Spinner size="sm" />}
-          {isEdit ? 'Salvar alterações' : 'Criar papel'}
+          {isEdit ? t('papeis.saveChanges') : t('papeis.createRole')}
         </button>
       </BottomActionBar>
     </ConfigPhoneScreen>

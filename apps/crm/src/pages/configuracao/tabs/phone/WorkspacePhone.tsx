@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Building2, Upload } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { GroupedList, Cell } from '@/components/mobile/GroupedList';
 import { FormRow } from '@/components/mobile/FormRow';
 import { ActionSheet } from '@/components/mobile/ActionSheet';
@@ -28,42 +29,48 @@ export interface WorkspacePhoneProps {
 
 /** Workspace on phones: logo, name, Instagram auto-sync and the import wizard link. */
 export function WorkspacePhone(props: WorkspacePhoneProps) {
+  const { t } = useTranslation('settings');
   const [logoMenuOpen, setLogoMenuOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
 
   if (!props.loaded) {
     return (
-      <ConfigPhoneScreen title="Workspace">
+      <ConfigPhoneScreen title={t('tabs.workspace')}>
         <ConfigPhoneSkeleton groups={2} rows={2} />
       </ConfigPhoneScreen>
     );
   }
 
-  const logoLabel = props.logoUrl ? 'Trocar logo' : 'Enviar logo';
+  const logoLabel = props.logoUrl
+    ? t('workspace.phone.changeLogo')
+    : t('workspace.phone.uploadLogo');
 
   return (
     <ConfigPhoneScreen
-      title="Workspace"
-      subtitle={props.canEdit ? undefined : 'Somente leitura'}
+      title={t('tabs.workspace')}
+      subtitle={props.canEdit ? undefined : t('shared.readOnly')}
       trailing={
         props.canEdit ? (
           <ConfigNavTextButton
             onClick={props.onSaveName}
             disabled={!props.name.trim()}
-            aria-label="Salvar nome do workspace"
+            aria-label={t('workspace.phone.saveNameAria')}
           >
-            Salvar
+            {t('actions.save')}
           </ConfigNavTextButton>
         ) : undefined
       }
     >
-      <GroupedList
-        aria-label="Identidade"
-        footer="PNG, JPG ou WebP. Máx 2MB. Será redimensionado para 512px."
-      >
+      <GroupedList aria-label={t('workspace.phone.identity')} footer={t('workspace.logoHint')}>
         <Cell
-          label="Logo"
-          subtitle={props.logoBusy ? 'Enviando…' : props.logoUrl ? undefined : 'Sem logo'}
+          label={t('workspace.logo')}
+          subtitle={
+            props.logoBusy
+              ? t('workspace.phone.uploading')
+              : props.logoUrl
+                ? undefined
+                : t('workspace.phone.noLogo')
+          }
           icon={
             props.logoUrl ? (
               <img src={props.logoUrl} alt="" className="phone-workspace-logo" />
@@ -82,35 +89,29 @@ export function WorkspacePhone(props: WorkspacePhoneProps) {
           }
         />
         <FormRow
-          label="Nome"
+          label={t('shared.name')}
           input={{
             value: props.name,
             disabled: !props.canEdit,
-            'aria-label': 'Nome do Workspace',
+            'aria-label': t('workspace.workspaceName'),
             onChange: (e) => props.onNameChange(e.target.value),
           }}
         />
       </GroupedList>
 
       {props.autoSync && (
-        <GroupedList
-          header="Auto-Sync Instagram"
-          footer="Quando ativada, os dados do Instagram são sincronizados automaticamente uma vez por dia."
-        >
+        <GroupedList header={t('workspace.autoSyncTitle')} footer={t('workspace.autoSyncHint')}>
           <Cell
-            label="Sincronização automática"
+            label={t('workspace.phone.autoSync')}
             disabled={!props.canEdit}
             switch={{ checked: props.autoSync.enabled, onCheckedChange: props.autoSync.onChange }}
           />
         </GroupedList>
       )}
 
-      <GroupedList
-        header="Importar dados"
-        footer="Traga clientes, posts, entregas e ideias de Notion, Trello, ClickUp ou planilhas."
-      >
+      <GroupedList header={t('workspace.importTitle')} footer={t('workspace.importBody')}>
         <Cell
-          label="Abrir assistente de importação"
+          label={t('workspace.importOpen')}
           icon={<Upload />}
           iconColor="#007aff"
           to="/importar"
@@ -120,20 +121,24 @@ export function WorkspacePhone(props: WorkspacePhoneProps) {
       <ActionSheet
         open={logoMenuOpen}
         onOpenChange={setLogoMenuOpen}
-        title="Logo do workspace"
+        title={t('workspace.phone.logoMenuTitle')}
         hideTitle
         actions={[
           // The file picker only opens from inside the tap itself on iOS.
-          { label: 'Trocar logo', onSelect: props.onPickLogo, immediate: true },
-          { label: 'Remover', destructive: true, onSelect: () => setRemoveOpen(true) },
+          {
+            label: t('workspace.phone.changeLogo'),
+            onSelect: props.onPickLogo,
+            immediate: true,
+          },
+          { label: t('shared.remove'), destructive: true, onSelect: () => setRemoveOpen(true) },
         ]}
       />
       <PhoneConfirmSheet
         open={removeOpen}
-        title="Remover logo?"
+        title={t('workspace.removeLogoTitle')}
         actions={[
           {
-            label: 'Remover',
+            label: t('shared.remove'),
             destructive: true,
             onSelect: () => {
               setRemoveOpen(false);

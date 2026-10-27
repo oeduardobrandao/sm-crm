@@ -62,6 +62,26 @@ import ptEntregasPhone from '../packages/i18n/locales/pt/entregasPhone.json';
 import enEntregasPhone from '../packages/i18n/locales/en/entregasPhone.json';
 import ptPostPanels from '../packages/i18n/locales/pt/postPanels.json';
 import enPostPanels from '../packages/i18n/locales/en/postPanels.json';
+import ptCalendario from '../packages/i18n/locales/pt/calendario.json';
+import enCalendario from '../packages/i18n/locales/en/calendario.json';
+import ptAgenda from '../packages/i18n/locales/pt/agenda.json';
+import enAgenda from '../packages/i18n/locales/en/agenda.json';
+import ptAgendaEvento from '../packages/i18n/locales/pt/agendaEvento.json';
+import enAgendaEvento from '../packages/i18n/locales/en/agendaEvento.json';
+import ptSettings from '../packages/i18n/locales/pt/settings.json';
+import enSettings from '../packages/i18n/locales/en/settings.json';
+import ptSettingsHub from '../packages/i18n/locales/pt/settingsHub.json';
+import enSettingsHub from '../packages/i18n/locales/en/settingsHub.json';
+import ptBilling from '../packages/i18n/locales/pt/billing.json';
+import enBilling from '../packages/i18n/locales/en/billing.json';
+import ptMcp from '../packages/i18n/locales/pt/mcp.json';
+import enMcp from '../packages/i18n/locales/en/mcp.json';
+import ptTasks from '../packages/i18n/locales/pt/tasks.json';
+import enTasks from '../packages/i18n/locales/en/tasks.json';
+import ptTasksForm from '../packages/i18n/locales/pt/tasksForm.json';
+import enTasksForm from '../packages/i18n/locales/en/tasksForm.json';
+import ptTasksPhone from '../packages/i18n/locales/pt/tasksPhone.json';
+import enTasksPhone from '../packages/i18n/locales/en/tasksPhone.json';
 
 initI18n({
   pt: {
@@ -79,6 +99,16 @@ initI18n({
     entregasViews: ptEntregasViews,
     entregasPhone: ptEntregasPhone,
     postPanels: ptPostPanels,
+    calendario: ptCalendario,
+    agenda: ptAgenda,
+    agendaEvento: ptAgendaEvento,
+    settings: ptSettings,
+    settingsHub: ptSettingsHub,
+    billing: ptBilling,
+    mcp: ptMcp,
+    tasks: ptTasks,
+    tasksForm: ptTasksForm,
+    tasksPhone: ptTasksPhone,
     hubHome: ptHubHome,
     hubPostCard: ptHubPostCard,
     hubPosts: ptHubPosts,
@@ -106,6 +136,16 @@ initI18n({
     entregasViews: enEntregasViews,
     entregasPhone: enEntregasPhone,
     postPanels: enPostPanels,
+    calendario: enCalendario,
+    agenda: enAgenda,
+    agendaEvento: enAgendaEvento,
+    settings: enSettings,
+    settingsHub: enSettingsHub,
+    billing: enBilling,
+    mcp: enMcp,
+    tasks: enTasks,
+    tasksForm: enTasksForm,
+    tasksPhone: enTasksPhone,
     hubHome: enHubHome,
     hubPostCard: enHubPostCard,
     hubPosts: enHubPosts,

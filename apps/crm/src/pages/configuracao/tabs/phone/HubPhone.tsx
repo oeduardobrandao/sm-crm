@@ -1,5 +1,6 @@
 import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Palette, Droplet, Type as TypeIcon, LayoutGrid, IdCard, Upload } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import { SegmentedControl } from '@/components/mobile/SegmentedControl';
 import { PickerCell } from '@/components/mobile/PickerSheet';
@@ -87,21 +88,22 @@ export interface HubPhoneProps {
   onSave: () => void;
 }
 
-const SECTION_TITLES: Record<HubSection, string> = {
-  aparencia: 'Aparência',
-  cor: 'Cor da marca',
-  tipografia: 'Tipografia',
-  componentes: 'Componentes',
-  identidade: 'Identidade',
+// i18n keys (settingsHub) of each section's title.
+const SECTION_TITLE_KEYS: Record<HubSection, string> = {
+  aparencia: 'shared.appearance',
+  cor: 'shared.brandColor',
+  tipografia: 'shared.typography',
+  componentes: 'shared.components',
+  identidade: 'shared.identity',
 };
 
 // Desktop SectionCard descriptions, reused as the sub-screens' subtitles.
-const SECTION_SUBTITLES: Record<HubSection, string> = {
-  aparencia: 'O clima geral do hub. O cliente ainda pode alternar claro e escuro.',
-  cor: 'Aplicada a botões, navegação ativa e calendário. Contraste garantido.',
-  tipografia: 'Comece por uma combinação pronta. Ajuste fino abaixo, se quiser.',
-  componentes: 'A forma dos cards e controles do hub.',
-  identidade: 'Como a marca da agência aparece dentro do hub.',
+const SECTION_SUBTITLE_KEYS: Record<HubSection, string> = {
+  aparencia: 'hubTab.appearanceDescription',
+  cor: 'hubTab.brandColorDescription',
+  tipografia: 'hubTab.typographyDescription',
+  componentes: 'shared.componentsDescription',
+  identidade: 'shared.identityDescription',
 };
 
 function labelOf<V extends string>(options: { value: V; label: string }[], value: string) {
@@ -230,6 +232,7 @@ export function HubPhone(props: HubPhoneProps) {
     previewDraft: draft,
     fontOptions,
   } = props;
+  const { t } = useTranslation('settingsHub');
   const sub = useConfigSubScreen<HubSection>();
   const [previewOpen, setPreviewOpen] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -243,15 +246,14 @@ export function HubPhone(props: HubPhoneProps) {
         disabled={props.saving || controlsDisabled}
         aria-busy={props.saving || undefined}
       >
-        {props.saving && <Spinner size="sm" />} Salvar
+        {props.saving && <Spinner size="sm" />} {t('actions.save')}
       </button>
     </BottomActionBar>
   );
 
   const failedNote = brandingFailed && (
     <p role="alert" className="phone-hub-alert">
-      Não foi possível carregar as configurações do Hub. Recarregue a página. Salvar agora
-      sobrescreveria a sua personalização com os valores padrão.
+      {t('shared.loadError')}
     </p>
   );
 
@@ -259,15 +261,15 @@ export function HubPhone(props: HubPhoneProps) {
     const section = sub.screen;
     return (
       <ConfigPhoneScreen
-        title={SECTION_TITLES[section]}
-        subtitle={SECTION_SUBTITLES[section]}
+        title={t(SECTION_TITLE_KEYS[section])}
+        subtitle={t(SECTION_SUBTITLE_KEYS[section])}
         onBack={sub.close}
-        backLabel="Voltar para Hub"
+        backLabel={t('hubPhone.backToHub')}
       >
         {section === 'cor' ? (
           <BrandColorSection {...props} />
         ) : (
-          <FeatureGate flag="feature_brand_customization" label="Personalização do Hub">
+          <FeatureGate flag="feature_brand_customization" label={t('shared.gateLabel')}>
             {section === 'aparencia' && <AppearanceSection {...props} />}
             {section === 'tipografia' && <TypographySection {...props} />}
             {section === 'componentes' && <ComponentsSection {...props} />}
@@ -302,7 +304,7 @@ export function HubPhone(props: HubPhoneProps) {
 
   if (loading) {
     return (
-      <ConfigPhoneScreen title="Hub" subtitle="Como o Hub aparece para os seus clientes.">
+      <ConfigPhoneScreen title={t('hubPhone.title')} subtitle={t('hubPhone.subtitle')}>
         <ConfigPhoneSkeleton groups={3} rows={2} />
       </ConfigPhoneScreen>
     );
@@ -321,7 +323,7 @@ export function HubPhone(props: HubPhoneProps) {
     <Cell
       key={section}
       className="phone-hub-section-cell"
-      label={SECTION_TITLES[section]}
+      label={t(SECTION_TITLE_KEYS[section])}
       icon={icon}
       iconColor="var(--phone-fill)"
       value={value}
@@ -331,12 +333,15 @@ export function HubPhone(props: HubPhoneProps) {
   );
 
   return (
-    <ConfigPhoneScreen title="Hub" subtitle="Como o Hub aparece para os seus clientes.">
-      <GroupedList aria-label="Pré-visualização" footer={canEdit ? undefined : 'Somente leitura'}>
+    <ConfigPhoneScreen title={t('hubPhone.title')} subtitle={t('hubPhone.subtitle')}>
+      <GroupedList
+        aria-label={t('reportsPhone.previewCell')}
+        footer={canEdit ? undefined : t('reports.readOnly')}
+      >
         <Cell
           className="phone-hub-preview-cell"
-          label="Pré-visualização ao vivo"
-          subtitle="Veja o Hub como o cliente vê. Celular ou computador, claro ou escuro."
+          label={t('hubPreview.livePreview')}
+          subtitle={t('hubPhone.previewSubtitle')}
           icon={<PreviewThumb draft={draft} customized={customized} look={look} />}
           chevron
           aria-haspopup="dialog"
@@ -344,7 +349,7 @@ export function HubPhone(props: HubPhoneProps) {
         />
       </GroupedList>
 
-      <GroupedList header="Personalizar">
+      <GroupedList header={t('hubPhone.customize')}>
         {sectionCell(
           'aparencia',
           <Palette />,
@@ -374,10 +379,10 @@ export function HubPhone(props: HubPhoneProps) {
         {sectionCell('identidade', <IdCard />, labelOf(LOGO_STYLE_OPTIONS, draft.logoStyle))}
       </GroupedList>
 
-      <FeatureGate flag="feature_brand_customization" label="Personalização do Hub">
-        <GroupedList aria-label="Marca Mesaas">
+      <FeatureGate flag="feature_brand_customization" label={t('shared.gateLabel')}>
+        <GroupedList aria-label={t('hubPhone.mesaasBrandAria')}>
           <Cell
-            label='Ocultar "powered by mesaas"'
+            label={t('shared.hidePoweredBy')}
             disabled={controlsDisabled}
             switch={{ checked: draft.hideBranding, onCheckedChange: props.setHideBranding }}
           />
@@ -390,7 +395,7 @@ export function HubPhone(props: HubPhoneProps) {
       <BottomSheet
         open={previewOpen}
         onOpenChange={setPreviewOpen}
-        title="Pré-visualização ao vivo"
+        title={t('hubPreview.livePreview')}
         hideTitle
         detents={['large']}
         className="phone-hub-preview-sheet"
@@ -412,11 +417,12 @@ export function HubPhone(props: HubPhoneProps) {
 
 function AppearanceSection(props: HubPhoneProps) {
   const { previewDraft: draft, controlsDisabled } = props;
+  const { t } = useTranslation('settingsHub');
   return (
     <>
-      <BlockGroup header="Tema de superfície">
+      <BlockGroup header={t('shared.surfaceTheme')}>
         <PhoneOptionGrid<HubSurface>
-          groupLabel="Tema de superfície"
+          groupLabel={t('shared.surfaceTheme')}
           value={draft.surface}
           onChange={props.setSurface}
           disabled={controlsDisabled}
@@ -427,9 +433,9 @@ function AppearanceSection(props: HubPhoneProps) {
           }))}
         />
       </BlockGroup>
-      <BlockGroup header="Aparência padrão" footer="O cliente ainda pode alternar no hub.">
+      <BlockGroup header={t('shared.defaultAppearance')} footer={t('hubTab.defaultAppearanceHint')}>
         <SegmentedControl
-          aria-label="Aparência padrão"
+          aria-label={t('shared.defaultAppearance')}
           value={draft.defaultAppearance}
           onChange={props.setDefaultAppearance}
           options={APPEARANCE_OPTIONS.map((opt) => ({
@@ -452,10 +458,11 @@ function AppearanceSection(props: HubPhoneProps) {
 function BrandColorSection(props: HubPhoneProps) {
   const { previewDraft: draft, controlsDisabled } = props;
   const brandColor = draft.brandColor;
+  const { t } = useTranslation('settingsHub');
   return (
     <>
-      <BlockGroup header="Cores sugeridas">
-        <div role="group" aria-label="Cores sugeridas" className="phone-hub-swatches">
+      <BlockGroup header={t('shared.suggestedColors')}>
+        <div role="group" aria-label={t('shared.suggestedColors')} className="phone-hub-swatches">
           {BRAND_PRESET_COLORS.map((hex) => (
             <button
               key={hex}
@@ -470,10 +477,7 @@ function BrandColorSection(props: HubPhoneProps) {
           ))}
         </div>
       </BlockGroup>
-      <BlockGroup
-        header="Cor personalizada"
-        footer="A mesma cor do relatório mensal. Marca o calendário do Hub e os destaques do relatório."
-      >
+      <BlockGroup header={t('hubPhone.customColor')} footer={t('shared.brandColorHint')}>
         {/* Same picker and hex-only contract as desktop (see HubTab), full width. */}
         <FigmaColorPicker
           value={brandColor}
@@ -486,7 +490,7 @@ function BrandColorSection(props: HubPhoneProps) {
           <div className="phone-hub-picker-row">
             <div
               role="img"
-              aria-label={`Cor selecionada: ${brandColor}`}
+              aria-label={t('hubTab.selectedColor', { color: brandColor })}
               className="phone-hub-picker-swatch"
               style={{ background: brandColor }}
             />
@@ -502,11 +506,12 @@ function BrandColorSection(props: HubPhoneProps) {
 
 function TypographySection(props: HubPhoneProps) {
   const { previewDraft: draft, controlsDisabled, fontOptions, pauta } = props;
+  const { t } = useTranslation('settingsHub');
   return (
     <>
-      <BlockGroup header="Combinações sugeridas">
+      <BlockGroup header={t('hubPhone.suggestedPairings')}>
         <PhoneOptionGrid<string>
-          groupLabel="Combinações de fontes sugeridas"
+          groupLabel={t('hubTab.fontPairingsAria')}
           columns={2}
           value={
             fontOptions.pairings.find(
@@ -527,21 +532,21 @@ function TypographySection(props: HubPhoneProps) {
               value: pairing.label,
               label:
                 pauta && pairing.display === PAUTA_FONTS.display
-                  ? `${pairing.label} · Padrão`
+                  ? `${pairing.label} · ${t('shared.defaultFont')}`
                   : pairing.label,
               sublabel: `${displayFont?.label ?? ''} · ${bodyFont?.label ?? ''}`,
               glyph: (
                 <span className="phone-hub-specimen" style={{ fontFamily: displayFont?.css }}>
-                  Ag
+                  {'Ag'}
                 </span>
               ),
             };
           })}
         />
       </BlockGroup>
-      <GroupedList header="Escolher fontes separadamente">
+      <GroupedList header={t('hubTab.pickFontsSeparately')}>
         <PickerCell<string>
-          label="Fonte de títulos"
+          label={t('shared.displayFont')}
           value={draft.fontDisplay}
           onChange={(v) => v && props.setFontDisplay(v)}
           disabled={controlsDisabled}
@@ -552,7 +557,7 @@ function TypographySection(props: HubPhoneProps) {
           }))}
         />
         <PickerCell<string>
-          label="Fonte de texto"
+          label={t('shared.bodyFont')}
           value={draft.fontBody}
           onChange={(v) => v && props.setFontBody(v)}
           disabled={controlsDisabled}
@@ -569,11 +574,12 @@ function TypographySection(props: HubPhoneProps) {
 
 function ComponentsSection(props: HubPhoneProps) {
   const { previewDraft: draft, controlsDisabled } = props;
+  const { t } = useTranslation('settingsHub');
   return (
     <>
-      <BlockGroup header="Cantos">
+      <BlockGroup header={t('shared.corners')}>
         <PhoneOptionGrid<HubRadius>
-          groupLabel="Cantos"
+          groupLabel={t('shared.corners')}
           value={draft.radius}
           onChange={props.setRadius}
           disabled={controlsDisabled}
@@ -584,9 +590,9 @@ function ComponentsSection(props: HubPhoneProps) {
           }))}
         />
       </BlockGroup>
-      <BlockGroup header="Estilo de cards">
+      <BlockGroup header={t('shared.cardStyle')}>
         <PhoneOptionGrid<HubCardStyle>
-          groupLabel="Estilo de cards"
+          groupLabel={t('shared.cardStyle')}
           value={draft.cardStyle}
           onChange={props.setCardStyle}
           disabled={controlsDisabled}
@@ -612,11 +618,12 @@ function IdentitySection(props: HubPhoneProps & { onPickLogo: () => void; logoIn
     fontDisplayCss,
   } = props;
   const logoDarkUrl = draft.logoDarkUrl;
+  const { t } = useTranslation('settingsHub');
   return (
     <>
-      <BlockGroup header="Logo no hub">
+      <BlockGroup header={t('shared.hubLogo')}>
         <PhoneOptionGrid<string>
-          groupLabel="Logo no hub"
+          groupLabel={t('shared.hubLogo')}
           columns={2}
           value={draft.logoStyle}
           onChange={props.setLogoStyle}
@@ -638,15 +645,12 @@ function IdentitySection(props: HubPhoneProps & { onPickLogo: () => void; logoIn
         />
       </BlockGroup>
 
-      <GroupedList
-        header="Logo para modo escuro"
-        footer="PNG · até 2MB. Usada quando o cliente está no modo escuro."
-      >
+      <GroupedList header={t('shared.darkLogo')} footer={t('hubTab.darkLogoHint')}>
         {logoDarkUrl && (
           <li className="phone-config-block phone-hub-block">
             <img
               src={logoDarkUrl}
-              alt="Logo para modo escuro"
+              alt={t('shared.darkLogo')}
               className="phone-hub-dark-logo"
               style={{ opacity: logoUploading ? 0.5 : 1 }}
             />
@@ -656,10 +660,10 @@ function IdentitySection(props: HubPhoneProps & { onPickLogo: () => void; logoIn
           id="hub-logo-dark-trigger"
           label={
             logoUploading
-              ? 'Enviando…'
+              ? t('reports.uploading')
               : logoDarkUrl
-                ? 'Trocar logo'
-                : 'Enviar variante clara do logo'
+                ? t('shared.changeLogo')
+                : t('hubTab.uploadLightLogo')
           }
           icon={logoUploading ? <Spinner size="sm" /> : <Upload />}
           disabled={logoUploading || !canEdit}
@@ -667,7 +671,7 @@ function IdentitySection(props: HubPhoneProps & { onPickLogo: () => void; logoIn
         />
         {logoDarkUrl && (
           <Cell
-            label="Remover"
+            label={t('actions.delete')}
             destructive
             disabled={logoUploading || !canEdit}
             onClick={() => props.setRemoveLogoOpen(true)}
@@ -678,10 +682,10 @@ function IdentitySection(props: HubPhoneProps & { onPickLogo: () => void; logoIn
 
       <PhoneConfirmSheet
         open={props.removeLogoOpen}
-        title="Remover a logo para modo escuro?"
+        title={t('shared.removeDarkLogoTitle')}
         actions={[
           {
-            label: 'Remover',
+            label: t('actions.delete'),
             destructive: true,
             disabled: logoUploading || !canEdit,
             onSelect: props.onRemoveLogoDark,

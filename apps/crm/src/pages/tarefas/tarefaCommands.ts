@@ -1,4 +1,5 @@
 import { toast } from 'sonner';
+import { i18n } from '@mesaas/i18n';
 import {
   isSerieDateConflict,
   updateTarefa,
@@ -27,20 +28,22 @@ export async function rescheduleTarefa(
 ): Promise<void> {
   if ((tarefa.data_limite ?? null) === date) return;
   if (date === null && tarefa.serie) {
-    toast.error('Tarefas de uma série precisam de prazo.');
+    toast.error(i18n.t('tasks:commands.serieNeedsDueDate'));
     return;
   }
   optimistic?.apply(tarefa.id!, { data_limite: date });
   try {
     await updateTarefa(tarefa.id!, { data_limite: date });
-    toast.success(date ? 'Prazo atualizado!' : 'Prazo removido!');
+    toast.success(
+      date ? i18n.t('tasks:commands.dueDateUpdated') : i18n.t('tasks:commands.dueDateRemoved'),
+    );
     onRefresh();
   } catch (e) {
     optimistic?.clear(tarefa.id!);
     toast.error(
       isSerieDateConflict(e)
-        ? 'Já existe uma ocorrência desta série nesse dia.'
-        : 'Erro ao atualizar prazo',
+        ? i18n.t('tasks:commands.serieDateConflict')
+        : i18n.t('tasks:commands.dueDateError'),
     );
   }
 }
@@ -57,11 +60,15 @@ export async function setTarefaStatus(
   optimistic?.apply(tarefa.id!, { status });
   try {
     await updateTarefa(tarefa.id!, { status });
-    toast.success(status === 'concluida' ? 'Tarefa concluída!' : 'Status atualizado!');
+    toast.success(
+      status === 'concluida'
+        ? i18n.t('tasks:commands.taskCompleted')
+        : i18n.t('tasks:commands.statusUpdated'),
+    );
     onRefresh();
   } catch {
     optimistic?.clear(tarefa.id!);
-    toast.error('Erro ao atualizar status');
+    toast.error(i18n.t('tasks:commands.statusError'));
   }
 }
 
@@ -73,10 +80,12 @@ export async function toggleTarefaConcluida(
 ): Promise<void> {
   try {
     await updateTarefa(tarefa.id!, { status: concluida ? 'concluida' : 'pendente' });
-    toast.success(concluida ? 'Tarefa concluída!' : 'Tarefa reaberta!');
+    toast.success(
+      concluida ? i18n.t('tasks:commands.taskCompleted') : i18n.t('tasks:commands.taskReopened'),
+    );
     onRefresh();
   } catch {
-    toast.error('Erro ao atualizar tarefa');
+    toast.error(i18n.t('tasks:commands.taskError'));
   }
 }
 
@@ -91,10 +100,10 @@ export async function assignTarefa(
   optimistic?.apply(tarefa.id!, { responsavel_id: responsavelId });
   try {
     await updateTarefa(tarefa.id!, { responsavel_id: responsavelId });
-    toast.success('Responsável atualizado!');
+    toast.success(i18n.t('tasks:commands.assigneeUpdated'));
     onRefresh();
   } catch {
     optimistic?.clear(tarefa.id!);
-    toast.error('Erro ao atualizar responsável');
+    toast.error(i18n.t('tasks:commands.assigneeError'));
   }
 }

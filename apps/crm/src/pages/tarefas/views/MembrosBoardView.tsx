@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import type { Membro, TarefaWithRelations } from '../../../store';
 import { buildDropId, parseDropId, sortTarefas } from '../tarefasLogic';
 import { useOptimisticTarefas } from '../hooks/useOptimisticTarefas';
@@ -24,6 +25,7 @@ export function MembrosBoardView({
   onRefresh,
   onlyMembroId = null,
 }: MembrosBoardViewProps) {
+  const { t: tr } = useTranslation('tasks');
   const { merged, applyOverride, clearOverride } = useOptimisticTarefas(tarefas);
   const now = new Date();
 
@@ -34,7 +36,7 @@ export function MembrosBoardView({
   const columns: BoardColumn[] = [
     {
       dropId: buildDropId({ kind: 'membro', membroId: null }),
-      title: 'Sem responsável',
+      title: tr('shared.noAssignee'),
       tarefas: open.filter((t) => t.responsavel_id == null).sort(sortTarefas),
     },
     ...columnMembros
@@ -64,7 +66,7 @@ export function MembrosBoardView({
       onCardClick={onTarefaClick}
       onDropCard={handleDrop}
       onRefresh={onRefresh}
-      phoneChipsLabel="Membros"
+      phoneChipsLabel={tr('views.chipsMembers')}
     />
   );
 }

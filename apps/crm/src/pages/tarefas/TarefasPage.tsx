@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Calendar, Columns, List, ListChecks, Plus, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { usePageToolbar } from '@/components/layout/PageToolbarContext';
@@ -29,14 +30,16 @@ import { TarefasPhoneHeader } from './phone/TarefasPhoneHeader';
 
 type ActiveView = 'lista' | 'membros' | 'kanban' | 'calendario';
 
-const VIEW_TABS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
-  { id: 'lista', label: 'Lista', icon: <List className="h-4 w-4" /> },
-  { id: 'membros', label: 'Por membro', icon: <Users className="h-4 w-4" /> },
-  { id: 'kanban', label: 'Kanban', icon: <Columns className="h-4 w-4" /> },
-  { id: 'calendario', label: 'Calendário', icon: <Calendar className="h-4 w-4" /> },
+// Labels resolve per render through `tarefasPage.views.<id>`.
+const VIEW_TABS: { id: ActiveView; icon: React.ReactNode }[] = [
+  { id: 'lista', icon: <List className="h-4 w-4" /> },
+  { id: 'membros', icon: <Users className="h-4 w-4" /> },
+  { id: 'kanban', icon: <Columns className="h-4 w-4" /> },
+  { id: 'calendario', icon: <Calendar className="h-4 w-4" /> },
 ];
 
 export default function TarefasPage() {
+  const { t } = useTranslation('tasks');
   const isDesktop = useIsDesktop(768);
   const [activeView, setActiveView] = useState<ActiveView>('lista');
   const [filters, setFilters] = useState<TarefaFilterState>(EMPTY_TAREFA_FILTERS);
@@ -131,17 +134,17 @@ export default function TarefasPage() {
 
   const subtitle = (
     <>
-      {stats.abertas} aberta{stats.abertas === 1 ? '' : 's'}
+      {t('tarefasPage.subtitle.open', { count: stats.abertas })}
       {stats.atrasadas > 0 && (
         <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
           {' '}
-          · {stats.atrasadas} atrasada{stats.atrasadas === 1 ? '' : 's'}
+          · {t('tarefasPage.subtitle.overdue', { count: stats.atrasadas })}
         </span>
       )}
       {stats.vencemHoje > 0 && (
         <span style={{ color: 'var(--warning)', fontWeight: 600 }}>
           {' '}
-          · {stats.vencemHoje} vence{stats.vencemHoje === 1 ? '' : 'm'} hoje
+          · {t('tarefasPage.subtitle.dueToday', { count: stats.vencemHoje })}
         </span>
       )}
     </>
@@ -149,7 +152,7 @@ export default function TarefasPage() {
 
   const primaryAction = (
     <Button onClick={() => openForm(null)}>
-      <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Nova tarefa
+      <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('tarefasPage.newTask')}
     </Button>
   );
 
@@ -157,7 +160,7 @@ export default function TarefasPage() {
   // header keeps today's inline styles.
   const escopoOptions = ['minhas', 'todas'] as const;
   const escopoLabel = (option: TarefasEscopo) =>
-    option === 'minhas' ? 'Minhas tarefas' : 'Todas as tarefas';
+    option === 'minhas' ? t('tarefasPage.escopo.minhas') : t('tarefasPage.escopo.todas');
   const escopoSwitchVidro =
     currentMembroId != null ? (
       <div className="vidro-seg">
@@ -213,7 +216,7 @@ export default function TarefasPage() {
     isLoading
       ? null
       : {
-          title: 'Tarefas',
+          title: t('tarefasPage.title'),
           subtitle,
           segmented: escopoSwitchVidro,
           primary: primaryAction,
@@ -299,9 +302,9 @@ export default function TarefasPage() {
           {tarefas.length === 0 && activeView === 'lista' ? (
             <div className="phone-tar-empty">
               <ListChecks aria-hidden="true" />
-              <p>Nenhuma tarefa ainda. Crie a primeira tarefa da equipe.</p>
+              <p>{t('tarefasPage.empty')}</p>
               <button type="button" className="phone-tar-ink-btn" onClick={() => openForm(null)}>
-                <Plus aria-hidden="true" /> Nova tarefa
+                <Plus aria-hidden="true" /> {t('tarefasPage.newTask')}
               </button>
             </div>
           ) : (
@@ -329,7 +332,7 @@ export default function TarefasPage() {
       {!inToolbar && (
         <header className="header animate-up">
           <div className="header-title">
-            <h1>Tarefas</h1>
+            <h1>{t('tarefasPage.title')}</h1>
             <p>{subtitle}</p>
           </div>
           <div className="header-actions">{primaryAction}</div>
@@ -357,7 +360,7 @@ export default function TarefasPage() {
                 aria-pressed={activeView === tab.id}
                 onClick={() => setActiveView(tab.id)}
               >
-                {tab.icon} {tab.label}
+                {tab.icon} {t(`tarefasPage.views.${tab.id}`)}
               </button>
             ))}
           </div>
@@ -394,7 +397,7 @@ export default function TarefasPage() {
                   whiteSpace: 'nowrap',
                 }}
               >
-                {tab.icon} {tab.label}
+                {tab.icon} {t(`tarefasPage.views.${tab.id}`)}
               </button>
             ))}
           </div>
@@ -422,11 +425,10 @@ export default function TarefasPage() {
           }}
         >
           <ListChecks className="h-8 w-8" style={{ margin: '0 auto 0.75rem', opacity: 0.35 }} />
-          <p style={{ fontSize: '0.85rem', marginBottom: '1rem' }}>
-            Nenhuma tarefa ainda. Crie a primeira tarefa da equipe.
-          </p>
+          <p style={{ fontSize: '0.85rem', marginBottom: '1rem' }}>{t('tarefasPage.empty')}</p>
           <Button onClick={() => openForm(null)}>
-            <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Nova tarefa
+            <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} />{' '}
+            {t('tarefasPage.newTask')}
           </Button>
         </div>
       ) : (

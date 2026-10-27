@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type Ref } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { MapPin } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { buscarEnderecos, MIN_TEXTO_ENDERECO, type SugestaoEndereco } from './geoAutocomplete';
@@ -47,6 +48,7 @@ export function LocalAutocomplete({
   'aria-invalid': ariaInvalid,
   debounceMs = 300,
 }: LocalAutocompleteProps) {
+  const { t } = useTranslation('agendaEvento');
   const texto = value ?? '';
   const listaId = useId();
   // Only what the user typed searches; a picked suggestion or a value that
@@ -59,8 +61,8 @@ export function LocalAutocomplete({
 
   useEffect(() => {
     if (!digitado) return;
-    const t = setTimeout(() => setTermo(texto.trim()), debounceMs);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setTermo(texto.trim()), debounceMs);
+    return () => clearTimeout(timer);
   }, [texto, digitado, debounceMs]);
 
   const buscar = digitado && termo.length >= MIN_TEXTO_ENDERECO;
@@ -191,7 +193,7 @@ export function LocalAutocomplete({
           <ul
             id={listaId}
             role="listbox"
-            aria-label="Sugestões de endereço"
+            aria-label={t('localAutocomplete.suggestions')}
             className="m-0 list-none p-1"
           >
             {sugestoes.map((s, i) => (
@@ -243,7 +245,8 @@ export function LocalAutocomplete({
               onMouseDown={(e) => e.preventDefault()}
               style={{ color: 'inherit' }}
             >
-              Powered by Geoapify
+              {/* Geoapify/OSM attribution: kept literal in every language. */}
+              {'Powered by Geoapify'}
             </a>
             {' · '}
             <a
@@ -254,7 +257,7 @@ export function LocalAutocomplete({
               onMouseDown={(e) => e.preventDefault()}
               style={{ color: 'inherit' }}
             >
-              © OpenStreetMap
+              {'© OpenStreetMap'}
             </a>
           </div>
         </div>

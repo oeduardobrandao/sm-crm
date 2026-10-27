@@ -5,6 +5,7 @@ import type {
   WorkflowPost,
   createPostStatusAutomation,
 } from '../../../../store';
+import { i18n } from '@mesaas/i18n';
 import { STATUS_LABELS, POST_STATUS_ORDER } from '../../../entregas/postLabels';
 
 /**
@@ -70,15 +71,28 @@ export function triggerOptions(
 export type AutomationAction = 'notify' | 'assign_responsavel';
 export type NotifyTarget = 'responsavel' | 'roles' | 'member';
 
+/** `label` is a getter resolved through i18n on every read, so it follows the UI language. */
+function option<V extends string>(value: V, key: string): { value: V; label: string } {
+  return {
+    value,
+    get label() {
+      return i18n.t(key);
+    },
+  };
+}
+
 export const ACTION_OPTIONS: { value: AutomationAction; label: string }[] = [
-  { value: 'notify', label: 'Notificar' },
-  { value: 'assign_responsavel', label: 'Atribuir responsável' },
+  option<AutomationAction>('notify', 'settingsHub:statusModel.action.notify'),
+  option<AutomationAction>(
+    'assign_responsavel',
+    'settingsHub:statusModel.action.assignResponsavel',
+  ),
 ];
 
 export const NOTIFY_TARGET_OPTIONS: { value: NotifyTarget; label: string }[] = [
-  { value: 'responsavel', label: 'Responsável do post' },
-  { value: 'roles', label: 'Owners e admins' },
-  { value: 'member', label: 'Membro específico' },
+  option<NotifyTarget>('responsavel', 'settingsHub:statusModel.target.responsavel'),
+  option<NotifyTarget>('roles', 'settingsHub:statusModel.target.roles'),
+  option<NotifyTarget>('member', 'settingsHub:statusModel.target.member'),
 ];
 
 export function automationNeedsMembro(action: AutomationAction, target: NotifyTarget): boolean {
@@ -97,7 +111,7 @@ export function buildAutomationPayload(input: {
 }): { payload: AutomationCreatePayload } | { error: string } {
   const { trigger, action, notifyTarget, membroId } = input;
   if (automationNeedsMembro(action, notifyTarget) && membroId === '') {
-    return { error: 'Escolha um membro' };
+    return { error: i18n.t('settingsHub:statusModel.chooseMember') };
   }
   const config =
     action === 'assign_responsavel'
@@ -116,7 +130,7 @@ export function automationTriggerLabel(
 ): string {
   if (a.trigger_custom_status_id) {
     const def = defs.find((d) => d.id === a.trigger_custom_status_id);
-    return def ? `· ${def.nome}` : 'Status removido';
+    return def ? `· ${def.nome}` : i18n.t('settingsHub:statusModel.removedStatus');
   }
   return a.trigger_status ? STATUS_LABELS[a.trigger_status] : '';
 }
@@ -128,13 +142,17 @@ export function automationActionLabel(
   if (a.action_type === 'assign_responsavel') {
     const membroId = 'membro_id' in a.config ? a.config.membro_id : null;
     const membro = membros.find((m) => m.id === membroId);
-    return `Atribuir a ${membro?.nome ?? 'membro removido'}`;
+    return i18n.t('settingsHub:statusModel.assignTo', {
+      name: membro?.nome ?? i18n.t('settingsHub:statusModel.removedMember'),
+    });
   }
   const cfg = a.config as { target?: string; membro_id?: number };
   if (cfg.target === 'member') {
     const membro = membros.find((m) => m.id === cfg.membro_id);
-    return `Notificar ${membro?.nome ?? 'membro removido'}`;
+    return i18n.t('settingsHub:statusModel.notifyMember', {
+      name: membro?.nome ?? i18n.t('settingsHub:statusModel.removedMember'),
+    });
   }
-  if (cfg.target === 'roles') return 'Notificar owners e admins';
-  return 'Notificar o responsável do post';
+  if (cfg.target === 'roles') return i18n.t('settingsHub:statusModel.notifyRoles');
+  return i18n.t('settingsHub:statusModel.notifyResponsavel');
 }

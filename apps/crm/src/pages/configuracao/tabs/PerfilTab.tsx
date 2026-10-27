@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { LogOut } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { useIntlLocale } from '@mesaas/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
@@ -15,12 +17,10 @@ import { supabase } from '../../../lib/supabase';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { PerfilPhone } from './phone/PerfilPhone';
 
-/** Who sees the photo, under the editor (desktop and phone). */
-const PERFIL_FOTO_DESCRICAO =
-  'Aparece para a sua equipe em todo o CRM: Entregas, Tarefas, Agenda e Mensagens. Os clientes não veem.';
-
 /** Personal settings: profile, password, account details and sign-out. */
 export default function PerfilTab() {
+  const { t } = useTranslation('settings');
+  const intlLocale = useIntlLocale();
   const { user, profile, can, signOut, refetchProfile } = useAuth();
   const isPhone = !useIsDesktop(768);
   // The `configuracoes` tab itself is already gated on `configuracoes:ver`
@@ -50,7 +50,7 @@ export default function PerfilTab() {
 
   const handleProfileSave = async () => {
     if (!pNome) {
-      toast.error('Nome é obrigatório.');
+      toast.error(t('perfil.nameRequired'));
       return;
     }
     setProfileLoading(true);
@@ -67,9 +67,9 @@ export default function PerfilTab() {
         .eq('id', user!.id);
       if (error) throw error;
       await refetchProfile();
-      toast.success('Perfil atualizado!');
+      toast.success(t('perfil.updated'));
     } catch (err: unknown) {
-      toast.error('Erro ao salvar: ' + (err as Error).message);
+      toast.error(t('perfil.saveError', { message: (err as Error).message }));
     } finally {
       setProfileLoading(false);
     }
@@ -82,11 +82,11 @@ export default function PerfilTab() {
 
   const handlePasswordSave = async () => {
     if (!senha || senha.length < 8) {
-      toast.error('Mínimo 8 caracteres.');
+      toast.error(t('perfil.passwordMin'));
       return;
     }
     if (senha !== confirmar) {
-      toast.error('As senhas não coincidem.');
+      toast.error(t('perfil.passwordMismatch'));
       return;
     }
     setPwLoading(true);
@@ -95,9 +95,9 @@ export default function PerfilTab() {
       if (error) throw error;
       setSenha('');
       setConfirmar('');
-      toast.success('Senha atualizada!');
+      toast.success(t('perfil.passwordUpdated'));
     } catch (err: unknown) {
-      toast.error('Erro ao atualizar senha: ' + (err as Error).message);
+      toast.error(t('perfil.passwordError', { message: (err as Error).message }));
     } finally {
       setPwLoading(false);
     }
@@ -113,7 +113,7 @@ export default function PerfilTab() {
       seed={user.id}
       fotoUrl={profile?.avatar_url ?? null}
       variant={variant}
-      descricao={PERFIL_FOTO_DESCRICAO}
+      descricao={t('perfil.photoDescription')}
     />
   );
 
@@ -176,12 +176,14 @@ export default function PerfilTab() {
             >
               {user.email}
             </p>
-            <span className="badge badge-success">Conta Ativa</span>
+            <span className="badge badge-success">{t('perfil.activeAccount')}</span>
           </div>
         </div>
 
         <div style={{ marginBottom: '1.5rem' }}>
-          <h4 style={{ margin: '0 0 0.75rem', fontSize: '1rem', fontWeight: 600 }}>Sua foto</h4>
+          <h4 style={{ margin: '0 0 0.75rem', fontSize: '1rem', fontWeight: 600 }}>
+            {t('perfil.yourPhoto')}
+          </h4>
           {fotoEditor('desktop')}
         </div>
         <div style={{ height: 1, background: 'var(--border-color)', marginBottom: '1.5rem' }} />
@@ -189,19 +191,19 @@ export default function PerfilTab() {
         <div className="space-y-3">
           <div className="config-form-grid">
             <div className="space-y-1">
-              <Label>Nome *</Label>
+              <Label>{t('perfil.nameLabel')}</Label>
               <Input value={pNome} onChange={(e) => setPNome(e.target.value)} />
             </div>
             <div className="space-y-1">
-              <Label>Empresa</Label>
+              <Label>{t('perfil.company')}</Label>
               <Input value={pEmpresa} onChange={(e) => setPEmpresa(e.target.value)} />
             </div>
             <div className="space-y-1">
-              <Label>Telefone</Label>
+              <Label>{t('perfil.phone')}</Label>
               <Input value={pTelefone} onChange={(e) => setPTelefone(e.target.value)} />
             </div>
             <div className="space-y-1">
-              <Label>WhatsApp</Label>
+              <Label>{t('perfil.whatsapp')}</Label>
               <Input value={pWhatsapp} onChange={(e) => setPWhatsapp(e.target.value)} />
             </div>
           </div>
@@ -212,34 +214,32 @@ export default function PerfilTab() {
               onCheckedChange={setPMarketingOptIn}
             />
             <div>
-              <div style={{ fontWeight: 500 }}>Comunicações de marketing</div>
+              <div style={{ fontWeight: 500 }}>{t('perfil.marketing')}</div>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                {pMarketingOptIn
-                  ? 'Você receberá novidades e comunicações de marketing por SMS e WhatsApp.'
-                  : 'Você não receberá comunicações de marketing. Mensagens sobre sua conta continuam sendo enviadas.'}
+                {pMarketingOptIn ? t('perfil.marketingOn') : t('perfil.marketingOff')}
               </div>
             </div>
           </div>
           <Button onClick={handleProfileSave} disabled={profileLoading}>
-            {profileLoading && <Spinner size="sm" />} Salvar Perfil
+            {profileLoading && <Spinner size="sm" />} {t('perfil.saveProfile')}
           </Button>
         </div>
       </div>
 
       {/* Password */}
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-        <h3 className="config-title">Alterar Senha</h3>
+        <h3 className="config-title">{t('perfil.changePassword')}</h3>
         <div className="space-y-3">
           <div className="space-y-1">
-            <Label>Nova Senha</Label>
+            <Label>{t('perfil.newPassword')}</Label>
             <PasswordInput value={senha} onChange={(e) => setSenha(e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label>Confirmar Nova Senha</Label>
+            <Label>{t('perfil.confirmNewPassword')}</Label>
             <PasswordInput value={confirmar} onChange={(e) => setConfirmar(e.target.value)} />
           </div>
           <Button onClick={handlePasswordSave} disabled={pwLoading}>
-            {pwLoading && <Spinner size="sm" />} Atualizar Senha
+            {pwLoading && <Spinner size="sm" />} {t('perfil.updatePassword')}
           </Button>
         </div>
       </div>
@@ -249,18 +249,18 @@ export default function PerfilTab() {
       {!canViewConfig && (
         <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
           <RoleRestrictionNotice
-            title="Configurações do workspace"
-            description="As configurações de workspace, sincronização do Instagram e gerenciamento de membros estão disponíveis apenas para proprietários e administradores."
+            title={t('perfil.restrictionTitle')}
+            description={t('perfil.restrictionBody')}
           />
         </div>
       )}
 
       {/* Account Info */}
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-        <h3 className="config-title">Conta</h3>
+        <h3 className="config-title">{t('perfil.account')}</h3>
         <div className="client-info-grid">
           <div className="client-info-item">
-            <span className="client-info-label">ID do Usuário</span>
+            <span className="client-info-label">{t('perfil.userId')}</span>
             <span
               className="client-info-value"
               style={{ fontFamily: "'SF Pro Text', sans-serif", fontSize: '0.8rem' }}
@@ -269,19 +269,21 @@ export default function PerfilTab() {
             </span>
           </div>
           <div className="client-info-item">
-            <span className="client-info-label">Criado em</span>
+            <span className="client-info-label">{t('perfil.createdAt')}</span>
             <span className="client-info-value">
-              {user.created_at ? new Date(user.created_at).toLocaleDateString('pt-BR') : '—'}
+              {user.created_at ? new Date(user.created_at).toLocaleDateString(intlLocale) : '—'}
             </span>
           </div>
           <div className="client-info-item">
-            <span className="client-info-label">Último acesso</span>
+            <span className="client-info-label">{t('perfil.lastAccess')}</span>
             <span className="client-info-value">
-              {user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleString('pt-BR') : '—'}
+              {user.last_sign_in_at
+                ? new Date(user.last_sign_in_at).toLocaleString(intlLocale)
+                : '—'}
             </span>
           </div>
           <div className="client-info-item">
-            <span className="client-info-label">Provedor</span>
+            <span className="client-info-label">{t('perfil.provider')}</span>
             <span className="client-info-value">{user.app_metadata?.provider ?? 'email'}</span>
           </div>
         </div>
@@ -289,21 +291,20 @@ export default function PerfilTab() {
 
       {/* Privacy */}
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-        <h3 className="config-title">Privacidade</h3>
+        <h3 className="config-title">{t('nav.privacidade')}</h3>
         <p style={{ color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-          Escolha quais ferramentas opcionais (análise de uso e chat de suporte) podem usar o
-          armazenamento do seu navegador.
+          {t('perfil.privacyBody')}
         </p>
         <Button variant="outline" onClick={() => openConsentPreferences()}>
-          Preferências de cookies
+          {t('perfil.cookies')}
         </Button>
       </div>
 
       {/* Logout */}
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-        <h3 className="config-title">Sessão</h3>
+        <h3 className="config-title">{t('perfil.session')}</h3>
         <Button variant="ghost" className="text-destructive" onClick={signOut}>
-          <LogOut className="h-4 w-4" /> Sair da Conta
+          <LogOut className="h-4 w-4" /> {t('perfil.signOut')}
         </Button>
       </div>
     </>

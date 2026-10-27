@@ -1,5 +1,10 @@
 import { z } from 'zod';
+import { i18n } from '@mesaas/i18n';
 import { toDateOnlyString } from '../tarefasLogic';
+
+// Messages resolve at validation time (never at module load) so they follow the
+// current UI language.
+const schemaT = (key: string): string => i18n.t(`tasksForm:schema.${key}`);
 
 // Shared by TarefaFormDialog and RecorrenciaFields. Rule fields are validated
 // only when `repetir` is not 'never'. `serie_nova` is a hidden form value the
@@ -8,7 +13,10 @@ import { toDateOnlyString } from '../tarefasLogic';
 // must start today or later while an existing occurrence may sit in the past.
 export const tarefaFormSchema = z
   .object({
-    titulo: z.string().trim().min(1, 'Informe o título da tarefa'),
+    titulo: z
+      .string()
+      .trim()
+      .min(1, { error: () => schemaT('titleRequired') }),
     descricao: z.string(),
     responsavel_id: z.string(),
     cliente_id: z.string(),
@@ -28,7 +36,7 @@ export const tarefaFormSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['data_limite'],
-        message: 'Defina um prazo: ele será a primeira ocorrência.',
+        message: schemaT('dueRequired'),
       });
       return;
     }
@@ -36,14 +44,14 @@ export const tarefaFormSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['data_limite'],
-        message: 'Para repetir, o prazo precisa ser hoje ou depois.',
+        message: schemaT('dueInPast'),
       });
     }
     if (v.repetir === 'weekly' && v.dias_semana.length === 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['dias_semana'],
-        message: 'Escolha ao menos um dia da semana.',
+        message: schemaT('weekdayRequired'),
       });
     }
     if (
@@ -54,14 +62,14 @@ export const tarefaFormSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['intervalo'],
-        message: 'Use um número de 1 a 99.',
+        message: schemaT('intervalRange'),
       });
     }
     if (v.fim && toDateOnlyString(v.fim) < toDateOnlyString(v.data_limite)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['fim'],
-        message: 'A data final precisa ser igual ou depois do prazo.',
+        message: schemaT('endBeforeDue'),
       });
     }
   });

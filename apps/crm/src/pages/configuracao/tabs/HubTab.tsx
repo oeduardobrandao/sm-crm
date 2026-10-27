@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { holdUnsavedWork } from '@mesaas/app-lifecycle';
 import {
   Palette,
@@ -257,10 +258,11 @@ function FontPairingCards({
   onPick: (display: string, body: string) => void;
   disabled?: boolean;
 }) {
+  const { t } = useTranslation('settingsHub');
   return (
     <div
       role="group"
-      aria-label="Combinações de fontes sugeridas"
+      aria-label={t('hubTab.fontPairingsAria')}
       style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))',
@@ -290,7 +292,8 @@ function FontPairingCards({
                 color: 'var(--text-main)',
               }}
             >
-              Ag
+              {/* Font specimen glyphs, not copy. */}
+              {'Ag'}
             </span>
             <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)' }}>
               {pairing.label}
@@ -326,6 +329,7 @@ function FontSelectsDisclosure({
   bodyOptions: [string, HubFontOption][];
   disabled?: boolean;
 }) {
+  const { t } = useTranslation('settingsHub');
   const [open, setOpen] = useState(false);
   return (
     <div>
@@ -354,7 +358,7 @@ function FontSelectsDisclosure({
             transition: 'transform 150ms cubic-bezier(0.4, 0, 0.2, 1)',
           }}
         />
-        Escolher fontes separadamente
+        {t('hubTab.pickFontsSeparately')}
       </button>
       {open && (
         <div
@@ -363,7 +367,7 @@ function FontSelectsDisclosure({
         >
           <div style={{ flex: '1 1 160px' }}>
             <Label htmlFor="hub-font-display" style={FIELD_LABEL}>
-              Fonte de títulos
+              {t('shared.displayFont')}
             </Label>
             <Select value={fontDisplay} onValueChange={setFontDisplay} disabled={disabled}>
               <SelectTrigger id="hub-font-display">
@@ -380,7 +384,7 @@ function FontSelectsDisclosure({
           </div>
           <div style={{ flex: '1 1 160px' }}>
             <Label htmlFor="hub-font-body" style={FIELD_LABEL}>
-              Fonte de texto
+              {t('shared.bodyFont')}
             </Label>
             <Select value={fontBody} onValueChange={setFontBody} disabled={disabled}>
               <SelectTrigger id="hub-font-body">
@@ -413,10 +417,11 @@ function PresetSwatches({
   onPick: (hex: string) => void;
   disabled?: boolean;
 }) {
+  const { t } = useTranslation('settingsHub');
   return (
     <div
       role="group"
-      aria-label="Cores sugeridas"
+      aria-label={t('shared.suggestedColors')}
       style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.75rem' }}
     >
       {BRAND_PRESET_COLORS.map((hex) => {
@@ -448,6 +453,7 @@ function PresetSwatches({
 
 /** Branding for the client-facing Hub (Configurações → Hub), with a live preview. */
 export default function HubTab() {
+  const { t } = useTranslation('settingsHub');
   const isPhone = !useIsDesktop(768);
   const { can } = useAuth();
   const queryClient = useQueryClient();
@@ -558,7 +564,7 @@ export default function HubTab() {
   const handleLogoDarkUpload = async (file: File) => {
     if (!workspace) return;
     if (file.size > MAX_LOGO_BYTES) {
-      toast.error('Arquivo deve ser menor que 2MB.');
+      toast.error(t('hubTab.toast.fileTooLarge'));
       return;
     }
     setLogoUploading(true);
@@ -596,10 +602,10 @@ export default function HubTab() {
       queryClient.setQueryData(['workspace-hub-branding'], (old: HubBranding | undefined) =>
         old ? { ...old, hub_logo_dark_url: publicUrl } : old,
       );
-      toast.success('Logo para modo escuro atualizada.');
+      toast.success(t('hubTab.toast.darkLogoUpdated'));
     } catch (err: unknown) {
       console.error('hub dark logo upload failed', err);
-      toast.error('Não foi possível enviar a logo. Tente novamente.');
+      toast.error(t('hubTab.toast.darkLogoUploadError'));
     } finally {
       release();
       setLogoUploading(false);
@@ -615,10 +621,10 @@ export default function HubTab() {
       queryClient.setQueryData(['workspace-hub-branding'], (old: HubBranding | undefined) =>
         old ? { ...old, hub_logo_dark_url: null } : old,
       );
-      toast.success('Logo para modo escuro removida.');
+      toast.success(t('hubTab.toast.darkLogoRemoved'));
     } catch (err: unknown) {
       console.error('hub dark logo removal failed', err);
-      toast.error('Não foi possível remover a logo. Tente novamente.');
+      toast.error(t('hubTab.toast.darkLogoRemoveError'));
     } finally {
       setLogoUploading(false);
       setRemoveLogoOpen(false);
@@ -644,11 +650,11 @@ export default function HubTab() {
       // caches need to move together or the report tab shows a stale swatch.
       queryClient.invalidateQueries({ queryKey: ['workspace-hub-branding'] });
       queryClient.invalidateQueries({ queryKey: ['workspace-branding'] });
-      toast.success('Hub atualizado!');
+      toast.success(t('hubTab.toast.saved'));
     },
     onError: (err: unknown) => {
       console.error('hub branding save failed', err);
-      toast.error('Não foi possível salvar. Tente novamente.');
+      toast.error(t('storage.toast.saveError'));
     },
   });
 
@@ -709,10 +715,8 @@ export default function HubTab() {
   return (
     <div>
       <div style={{ marginBottom: '1.5rem' }}>
-        <h3 className="config-title">Personalizar Hub</h3>
-        <p style={{ ...HINT, marginTop: 0 }}>
-          A aparência do portal que seus clientes usam para aprovar posts e acompanhar entregas.
-        </p>
+        <h3 className="config-title">{t('hubTab.title')}</h3>
+        <p style={{ ...HINT, marginTop: 0 }}>{t('hubTab.subtitle')}</p>
       </div>
 
       {/* Live preview: a large full-width block, shown first so the user sees the
@@ -724,7 +728,7 @@ export default function HubTab() {
           client's actual link. HubPreview owns its own "Pré-visualização ao vivo"
           caption + toggles header. */}
       {!canEditConfig && (
-        <p style={{ ...HINT, marginTop: 0, marginBottom: '1rem' }}>Somente leitura</p>
+        <p style={{ ...HINT, marginTop: 0, marginBottom: '1rem' }}>{t('reports.readOnly')}</p>
       )}
 
       <div style={{ marginBottom: '2rem' }}>
@@ -742,16 +746,16 @@ export default function HubTab() {
           auto-fit — see .config-hub-sections-grid. Identidade spans the full row
           below (gridColumn: '1 / -1' on its SectionCard). */}
       <div className="config-hub-sections-grid">
-        <FeatureGate flag="feature_brand_customization" label="Personalização do Hub">
+        <FeatureGate flag="feature_brand_customization" label={t('shared.gateLabel')}>
           <SectionCard
             icon={Palette}
-            title="Aparência"
-            description="O clima geral do hub. O cliente ainda pode alternar claro e escuro."
+            title={t('shared.appearance')}
+            description={t('hubTab.appearanceDescription')}
           >
             <div style={FIELD}>
-              <Label style={FIELD_LABEL}>Tema de superfície</Label>
+              <Label style={FIELD_LABEL}>{t('shared.surfaceTheme')}</Label>
               <OptionCardGroup
-                groupLabel="Tema de superfície"
+                groupLabel={t('shared.surfaceTheme')}
                 value={surface}
                 onChange={setSurface}
                 disabled={controlsDisabled}
@@ -763,15 +767,15 @@ export default function HubTab() {
               />
             </div>
             <div>
-              <Label style={FIELD_LABEL}>Aparência padrão</Label>
+              <Label style={FIELD_LABEL}>{t('shared.defaultAppearance')}</Label>
               <SegmentedControl
                 value={defaultAppearance}
                 onChange={setDefaultAppearance}
                 options={APPEARANCE_OPTIONS}
-                ariaLabel="Aparência padrão"
+                ariaLabel={t('shared.defaultAppearance')}
                 disabled={controlsDisabled}
               />
-              <p style={HINT}>O cliente ainda pode alternar no hub.</p>
+              <p style={HINT}>{t('hubTab.defaultAppearanceHint')}</p>
             </div>
           </SectionCard>
         </FeatureGate>
@@ -780,8 +784,8 @@ export default function HubTab() {
             regardless of plan. */}
         <SectionCard
           icon={Droplet}
-          title="Cor da marca"
-          description="Aplicada a botões, navegação ativa e calendário. Contraste garantido."
+          title={t('shared.brandColor')}
+          description={t('hubTab.brandColorDescription')}
         >
           <PresetSwatches value={brandColor} onPick={setBrandColor} disabled={controlsDisabled} />
           {/* workspaces.brand_color is CHECK'd to 6-digit hex, and resolveHubTheme
@@ -802,7 +806,7 @@ export default function HubTab() {
                   color you picked" signal. */}
               <div
                 role="img"
-                aria-label={`Cor selecionada: ${brandColor}`}
+                aria-label={t('hubTab.selectedColor', { color: brandColor })}
                 title={brandColor}
                 style={{
                   width: 36,
@@ -818,22 +822,20 @@ export default function HubTab() {
             </div>
           </FigmaColorPicker>
           <AccentChips brandColor={brandColor} />
-          <p style={HINT}>
-            A mesma cor do relatório mensal. Marca o calendário do Hub e os destaques do relatório.
-          </p>
+          <p style={HINT}>{t('shared.brandColorHint')}</p>
         </SectionCard>
 
-        <FeatureGate flag="feature_brand_customization" label="Personalização do Hub">
+        <FeatureGate flag="feature_brand_customization" label={t('shared.gateLabel')}>
           <SectionCard
             icon={TypeIcon}
-            title="Tipografia"
-            description="Comece por uma combinação pronta. Ajuste fino abaixo, se quiser."
+            title={t('shared.typography')}
+            description={t('hubTab.typographyDescription')}
           >
             <FontPairingCards
               fontDisplay={fontDisplay}
               fontBody={fontBody}
               pairings={fontOptions.pairings}
-              defaultLabel={pauta ? 'Padrão' : undefined}
+              defaultLabel={pauta ? t('shared.defaultFont') : undefined}
               disabled={controlsDisabled}
               onPick={(display, body) => {
                 setFontDisplay(display);
@@ -853,13 +855,13 @@ export default function HubTab() {
 
           <SectionCard
             icon={LayoutGrid}
-            title="Componentes"
-            description="A forma dos cards e controles do hub."
+            title={t('shared.components')}
+            description={t('shared.componentsDescription')}
           >
             <div style={FIELD}>
-              <Label style={FIELD_LABEL}>Cantos</Label>
+              <Label style={FIELD_LABEL}>{t('shared.corners')}</Label>
               <OptionCardGroup
-                groupLabel="Cantos"
+                groupLabel={t('shared.corners')}
                 value={radius}
                 onChange={setRadius}
                 disabled={controlsDisabled}
@@ -871,9 +873,9 @@ export default function HubTab() {
               />
             </div>
             <div>
-              <Label style={FIELD_LABEL}>Estilo de cards</Label>
+              <Label style={FIELD_LABEL}>{t('shared.cardStyle')}</Label>
               <OptionCardGroup
-                groupLabel="Estilo de cards"
+                groupLabel={t('shared.cardStyle')}
                 value={cardStyle}
                 onChange={setCardStyle}
                 disabled={controlsDisabled}
@@ -888,14 +890,14 @@ export default function HubTab() {
 
           <SectionCard
             icon={IdCard}
-            title="Identidade"
-            description="Como a marca da agência aparece dentro do hub."
+            title={t('shared.identity')}
+            description={t('shared.identityDescription')}
             style={{ gridColumn: '1 / -1' }}
           >
             <div style={FIELD}>
-              <Label style={FIELD_LABEL}>Logo no hub</Label>
+              <Label style={FIELD_LABEL}>{t('shared.hubLogo')}</Label>
               <OptionCardGroup
-                groupLabel="Logo no hub"
+                groupLabel={t('shared.hubLogo')}
                 value={logoStyle}
                 onChange={setLogoStyle}
                 disabled={controlsDisabled}
@@ -917,12 +919,12 @@ export default function HubTab() {
             </div>
 
             <div style={FIELD}>
-              <Label style={FIELD_LABEL}>Logo para modo escuro</Label>
+              <Label style={FIELD_LABEL}>{t('shared.darkLogo')}</Label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                 {logoDarkUrl && (
                   <img
                     src={logoDarkUrl}
-                    alt="Logo para modo escuro"
+                    alt={t('shared.darkLogo')}
                     style={{
                       width: 56,
                       height: 56,
@@ -960,10 +962,10 @@ export default function HubTab() {
                   )}
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-main)' }}>
                     {logoUploading
-                      ? 'Enviando…'
+                      ? t('reports.uploading')
                       : logoDarkUrl
-                        ? 'Trocar logo'
-                        : 'Enviar variante clara do logo'}
+                        ? t('shared.changeLogo')
+                        : t('hubTab.uploadLightLogo')}
                   </span>
                 </button>
                 {logoDarkUrl && (
@@ -974,11 +976,11 @@ export default function HubTab() {
                     disabled={logoUploading || !canEditConfig}
                     style={{ alignSelf: 'flex-start' }}
                   >
-                    Remover
+                    {t('actions.delete')}
                   </Button>
                 )}
               </div>
-              <p style={HINT}>PNG · até 2MB. Usada quando o cliente está no modo escuro.</p>
+              <p style={HINT}>{t('hubTab.darkLogoHint')}</p>
               <input
                 ref={logoInputRef}
                 type="file"
@@ -1003,7 +1005,7 @@ export default function HubTab() {
               />
               <div>
                 <Label htmlFor="hub-hide-branding" style={{ fontWeight: 500, cursor: 'pointer' }}>
-                  Ocultar &quot;powered by mesaas&quot;
+                  {t('shared.hidePoweredBy')}
                 </Label>
               </div>
             </div>
@@ -1021,8 +1023,7 @@ export default function HubTab() {
             marginBottom: 0,
           }}
         >
-          Não foi possível carregar as configurações do Hub. Recarregue a página. Salvar agora
-          sobrescreveria a sua personalização com os valores padrão.
+          {t('shared.loadError')}
         </p>
       )}
 
@@ -1031,22 +1032,22 @@ export default function HubTab() {
         disabled={saveMutation.isPending || controlsDisabled}
         style={{ marginTop: brandingFailed ? '0.75rem' : '1.25rem' }}
       >
-        {saveMutation.isPending && <Spinner size="sm" />} Salvar
+        {saveMutation.isPending && <Spinner size="sm" />} {t('actions.save')}
       </Button>
 
       {/* Remove Dark Logo Confirm */}
       <AlertDialog open={removeLogoOpen} onOpenChange={setRemoveLogoOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover a logo para modo escuro?</AlertDialogTitle>
+            <AlertDialogTitle>{t('shared.removeDarkLogoTitle')}</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleRemoveLogoDark}
               disabled={logoUploading || !canEditConfig}
             >
-              Remover
+              {t('actions.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

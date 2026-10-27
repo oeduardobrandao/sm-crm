@@ -1,6 +1,7 @@
 import { Fragment, useEffect } from 'react';
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { UserX, AlertTriangle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SkeletonStatus } from '@/components/ui/skeletons';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
@@ -20,6 +21,7 @@ import { ConfigPhoneScreen, ConfigPhoneSkeleton } from './phone/ConfigPhoneScree
  * (ConfigPhoneScreen), so the layout only keeps the guards.
  */
 export default function ConfiguracaoLayout() {
+  const { t } = useTranslation('settings');
   const { user, workspaceRole, membershipResolved, can, loading } = useAuth();
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -28,7 +30,7 @@ export default function ConfiguracaoLayout() {
   // tab's nav bar unmounting and the next lazy tab mounting its own.
   usePhoneChrome({ pageHeader: isPhone });
   // Desktop Vidro toolbar: the layout registers for every tab under it (tabs never do).
-  const inToolbar = usePageToolbar({ title: 'Configurações' });
+  const inToolbar = usePageToolbar({ title: t('nav.configuracoes') });
   const current = pathname.replace(/^\/configuracao\/?/, '').split('/')[0];
 
   useEffect(() => {
@@ -42,16 +44,16 @@ export default function ConfiguracaoLayout() {
     if (isPhone) {
       // Which tabs exist depends on the role that is still loading; the screen's own
       // title doesn't, so a tab's silhouette already carries it.
-      const tabLabel = CONFIG_TABS.find((t) => t.path === current)?.label;
+      const tabLabelKey = CONFIG_TABS.find((tab) => tab.path === current)?.labelKey;
       return (
         <div className="config-phone">
-          {tabLabel ? (
-            <ConfigPhoneScreen title={tabLabel}>
+          {tabLabelKey ? (
+            <ConfigPhoneScreen title={t(tabLabelKey)}>
               <ConfigPhoneSkeleton />
             </ConfigPhoneScreen>
           ) : (
             <>
-              <PhonePageHeader title="Configurações" />
+              <PhonePageHeader title={t('nav.configuracoes')} />
               <ConfigPhoneSkeleton groups={3} />
             </>
           )}
@@ -107,13 +109,12 @@ export default function ConfiguracaoLayout() {
   if (workspaceRole === null && membershipResolved === true) {
     return (
       <div className="page-content">
-        {isPhone && <PhonePageHeader title="Configurações" />}
+        {isPhone && <PhonePageHeader title={t('nav.configuracoes')} />}
         <div className="card" style={{ maxWidth: 480, margin: '3rem auto', textAlign: 'center' }}>
           <UserX size={40} style={{ color: 'var(--text-muted)', marginBottom: '1rem' }} />
-          <h3 style={{ marginBottom: '0.75rem' }}>Sem acesso a este workspace</h3>
+          <h3 style={{ marginBottom: '0.75rem' }}>{t('layout.removedTitle')}</h3>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            Você não tem mais acesso a este workspace. Fale com o proprietário se acha que isso é um
-            engano.
+            {t('layout.removedBody')}
           </p>
         </div>
       </div>
@@ -123,16 +124,15 @@ export default function ConfiguracaoLayout() {
   if (workspaceRole === null) {
     return (
       <div className="page-content">
-        {isPhone && <PhonePageHeader title="Configurações" />}
+        {isPhone && <PhonePageHeader title={t('nav.configuracoes')} />}
         <div className="card" style={{ maxWidth: 480, margin: '3rem auto', textAlign: 'center' }}>
           <AlertTriangle size={40} style={{ color: 'var(--warning)', marginBottom: '1rem' }} />
-          <h3 style={{ marginBottom: '0.75rem' }}>Não foi possível confirmar seu acesso</h3>
+          <h3 style={{ marginBottom: '0.75rem' }}>{t('layout.errorTitle')}</h3>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>
-            Houve um problema ao verificar seu acesso a este workspace. Isso costuma ser temporário
-            — tente novamente.
+            {t('layout.errorBody')}
           </p>
           <button className="btn-secondary" onClick={() => window.location.reload()}>
-            Tentar novamente
+            {t('layout.retry')}
           </button>
         </div>
       </div>
@@ -158,26 +158,28 @@ export default function ConfiguracaoLayout() {
       <div className="config-shell">
         {!inToolbar && (
           <header className="config-shell-header">
-            <h1>Configurações</h1>
+            <h1>{t('nav.configuracoes')}</h1>
           </header>
         )}
 
         <div className={`config-shell-body${tabs.length > 1 ? '' : ' config-shell-body--single'}`}>
           {/* A single visible tab is not a choice — don't render a nav for it. */}
           {tabs.length > 1 && (
-            <nav className="config-nav" aria-label="Seções de configurações">
+            <nav className="config-nav" aria-label={t('layout.navAria')}>
               {tabs.map((tab, i) => {
                 const Icon = tab.icon;
                 const startsGroup = i === 0 || tabs[i - 1].group !== tab.group;
                 return (
                   <Fragment key={tab.path}>
-                    {startsGroup && <span className="config-nav-label">{tab.group}</span>}
+                    {startsGroup && (
+                      <span className="config-nav-label">{t(`tabs.groups.${tab.group}`)}</span>
+                    )}
                     <NavLink
                       to={tab.path}
                       className={({ isActive }) => `config-nav-item${isActive ? ' active' : ''}`}
                     >
                       <Icon aria-hidden="true" />
-                      {tab.label}
+                      {t(tab.labelKey)}
                     </NavLink>
                   </Fragment>
                 );

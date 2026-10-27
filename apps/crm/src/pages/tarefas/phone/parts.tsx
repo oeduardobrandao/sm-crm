@@ -1,5 +1,6 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import { Calendar as CalendarIcon, Check, CheckSquare, Repeat, User2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { cn } from '@/lib/utils';
 import type { Membro, TarefaTag, TarefaWithRelations } from '../../../store';
@@ -116,11 +117,12 @@ export function TagChip({ tag }: { tag: TarefaTag }) {
 }
 
 export function RepeatIcon({ tarefa }: { tarefa: TarefaWithRelations }) {
+  const { t } = useTranslation('tasksPhone');
   if (!tarefa.serie) return null;
   return (
     <span
       role="img"
-      aria-label={`Tarefa recorrente: ${describeRecorrencia(tarefa.serie)}`}
+      aria-label={t('parts.recurring', { description: describeRecorrencia(tarefa.serie) })}
       className="phone-tar-meta__item"
     >
       <Repeat aria-hidden="true" />
@@ -129,13 +131,17 @@ export function RepeatIcon({ tarefa }: { tarefa: TarefaWithRelations }) {
 }
 
 export function SubtasksCount({ tarefa }: { tarefa: TarefaWithRelations }) {
+  const { t } = useTranslation('tasksPhone');
   if (tarefa.subtarefas_total <= 0) return null;
   const complete = tarefa.subtarefas_concluidas === tarefa.subtarefas_total;
   return (
     <span
       className="phone-tar-meta__item"
       data-complete={complete || undefined}
-      aria-label={`${tarefa.subtarefas_concluidas} de ${tarefa.subtarefas_total} subtarefas`}
+      aria-label={t('parts.subtasksOf', {
+        done: tarefa.subtarefas_concluidas,
+        total: tarefa.subtarefas_total,
+      })}
     >
       <CheckSquare aria-hidden="true" />
       {tarefa.subtarefas_concluidas}/{tarefa.subtarefas_total}

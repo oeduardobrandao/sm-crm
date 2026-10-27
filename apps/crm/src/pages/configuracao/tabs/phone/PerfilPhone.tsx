@@ -1,5 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Eye, EyeOff, KeyRound, Lock } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { useIntlLocale } from '@mesaas/i18n';
 import { GroupedList, Cell } from '@/components/mobile/GroupedList';
 import { FormRow } from '@/components/mobile/FormRow';
 import { BottomActionBar } from '@/components/mobile/BottomActionBar';
@@ -42,6 +44,7 @@ export interface PerfilPhoneProps {
 }
 
 function PasswordRow({ label, field }: { label: string; field: Field }) {
+  const { t } = useTranslation('settings');
   const [visible, setVisible] = useState(false);
   return (
     <FormRow
@@ -56,7 +59,9 @@ function PasswordRow({ label, field }: { label: string; field: Field }) {
         <button
           type="button"
           className="phone-perfil-eye"
-          aria-label={visible ? 'Ocultar senha' : 'Mostrar senha'}
+          aria-label={
+            visible ? t('perfil.phoneScreen.hidePassword') : t('perfil.phoneScreen.showPassword')
+          }
           aria-pressed={visible}
           onClick={() => setVisible((v) => !v)}
         >
@@ -69,15 +74,20 @@ function PasswordRow({ label, field }: { label: string; field: Field }) {
 
 /** Perfil on phones (FConfigPerfil): grouped form, account details, cookies, sign-out. */
 export function PerfilPhone(props: PerfilPhoneProps) {
+  const { t } = useTranslation('settings');
+  const intlLocale = useIntlLocale();
   const sub = useConfigSubScreen<'senha'>();
   const { user } = props;
 
   if (sub.screen === 'senha') {
     return (
-      <ConfigPhoneScreen title="Alterar senha" onBack={sub.close}>
-        <GroupedList aria-label="Senha" footer="Mínimo de 8 caracteres.">
-          <PasswordRow label="Nova senha" field={props.senha} />
-          <PasswordRow label="Confirmar" field={props.confirmar} />
+      <ConfigPhoneScreen title={t('perfil.phoneScreen.changePassword')} onBack={sub.close}>
+        <GroupedList
+          aria-label={t('perfil.phoneScreen.passwordAria')}
+          footer={t('perfil.phoneScreen.passwordFooter')}
+        >
+          <PasswordRow label={t('perfil.phoneScreen.newPassword')} field={props.senha} />
+          <PasswordRow label={t('actions.confirm')} field={props.confirmar} />
         </GroupedList>
         <BottomActionBar aboveTabBar>
           <button
@@ -87,7 +97,7 @@ export function PerfilPhone(props: PerfilPhoneProps) {
             disabled={props.passwordSaving}
             aria-busy={props.passwordSaving || undefined}
           >
-            Atualizar senha
+            {t('perfil.phoneScreen.updatePassword')}
           </button>
         </BottomActionBar>
       </ConfigPhoneScreen>
@@ -109,14 +119,14 @@ export function PerfilPhone(props: PerfilPhoneProps) {
 
   return (
     <ConfigPhoneScreen
-      title="Perfil"
+      title={t('tabs.perfil')}
       trailing={
         <ConfigNavTextButton
           onClick={props.onSaveProfile}
           busy={props.profileSaving}
-          aria-label="Salvar perfil"
+          aria-label={t('perfil.phoneScreen.saveProfileAria')}
         >
-          Salvar
+          {t('actions.save')}
         </ConfigNavTextButton>
       }
     >
@@ -126,25 +136,21 @@ export function PerfilPhone(props: PerfilPhoneProps) {
         <span className="phone-perfil-card__text">
           <span className="phone-perfil-card__name">{props.displayName}</span>
           <span className="phone-perfil-card__email">{user.email}</span>
-          <span className="phone-perfil-card__badge">Conta Ativa</span>
+          <span className="phone-perfil-card__badge">{t('perfil.activeAccount')}</span>
         </span>
       </div>
 
-      <GroupedList aria-label="Dados do perfil">
-        {textRow('Nome', props.nome, { required: true })}
-        {textRow('Empresa', props.empresa)}
-        {textRow('Telefone', props.telefone, { type: 'tel' })}
-        {textRow('WhatsApp', props.whatsapp, { type: 'tel' })}
+      <GroupedList aria-label={t('perfil.phoneScreen.profileData')}>
+        {textRow(t('shared.name'), props.nome, { required: true })}
+        {textRow(t('perfil.company'), props.empresa)}
+        {textRow(t('perfil.phone'), props.telefone, { type: 'tel' })}
+        {textRow(t('perfil.whatsapp'), props.whatsapp, { type: 'tel' })}
       </GroupedList>
 
-      <GroupedList aria-label="Comunicações">
+      <GroupedList aria-label={t('perfil.phoneScreen.communications')}>
         <Cell
-          label="Comunicações de marketing"
-          subtitle={
-            props.marketingOptIn
-              ? 'Você receberá novidades e comunicações de marketing por SMS e WhatsApp.'
-              : 'Você não receberá comunicações de marketing. Mensagens sobre sua conta continuam sendo enviadas.'
-          }
+          label={t('perfil.marketing')}
+          subtitle={props.marketingOptIn ? t('perfil.marketingOn') : t('perfil.marketingOff')}
           switch={{
             checked: props.marketingOptIn,
             onCheckedChange: props.onMarketingOptInChange,
@@ -152,9 +158,9 @@ export function PerfilPhone(props: PerfilPhoneProps) {
         />
       </GroupedList>
 
-      <GroupedList aria-label="Segurança">
+      <GroupedList aria-label={t('perfil.phoneScreen.security')}>
         <Cell
-          label="Alterar senha"
+          label={t('perfil.phoneScreen.changePassword')}
           icon={<KeyRound />}
           iconColor="#8e8e93"
           chevron
@@ -163,38 +169,32 @@ export function PerfilPhone(props: PerfilPhoneProps) {
       </GroupedList>
 
       {props.showRestriction && (
-        <GroupedList
-          header="Configurações do workspace"
-          footer="As configurações de workspace, sincronização do Instagram e gerenciamento de membros estão disponíveis apenas para proprietários e administradores."
-        >
-          <Cell label="Disponível para donos e admins" icon={<Lock />} />
+        <GroupedList header={t('perfil.restrictionTitle')} footer={t('perfil.restrictionBody')}>
+          <Cell label={t('perfil.phoneScreen.ownersAndAdmins')} icon={<Lock />} />
         </GroupedList>
       )}
 
-      <GroupedList header="Conta">
-        <FormRow label="ID do usuário" value={`${user.id.substring(0, 18)}…`} />
+      <GroupedList header={t('perfil.account')}>
+        <FormRow label={t('perfil.phoneScreen.userId')} value={`${user.id.substring(0, 18)}…`} />
         <FormRow
-          label="Criado em"
-          value={user.created_at ? new Date(user.created_at).toLocaleDateString('pt-BR') : '-'}
+          label={t('perfil.createdAt')}
+          value={user.created_at ? new Date(user.created_at).toLocaleDateString(intlLocale) : '-'}
         />
         <FormRow
-          label="Último acesso"
+          label={t('perfil.lastAccess')}
           value={
-            user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleString('pt-BR') : '-'
+            user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleString(intlLocale) : '-'
           }
         />
-        <FormRow label="Provedor" value={user.app_metadata?.provider ?? 'email'} />
+        <FormRow label={t('perfil.provider')} value={user.app_metadata?.provider ?? 'email'} />
       </GroupedList>
 
-      <GroupedList
-        header="Privacidade"
-        footer="Escolha quais ferramentas opcionais (análise de uso e chat de suporte) podem usar o armazenamento do seu navegador."
-      >
-        <Cell label="Preferências de cookies" chevron onClick={() => openConsentPreferences()} />
+      <GroupedList header={t('nav.privacidade')} footer={t('perfil.privacyBody')}>
+        <Cell label={t('perfil.cookies')} chevron onClick={() => openConsentPreferences()} />
       </GroupedList>
 
-      <GroupedList aria-label="Sessão">
-        <Cell label="Sair da conta" destructive onClick={props.onSignOut} />
+      <GroupedList aria-label={t('perfil.session')}>
+        <Cell label={t('perfil.phoneScreen.signOut')} destructive onClick={props.onSignOut} />
       </GroupedList>
     </ConfigPhoneScreen>
   );

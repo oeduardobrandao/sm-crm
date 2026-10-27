@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import {
   getAllClienteDatas,
   getClientes,
@@ -41,6 +42,8 @@ export function useCamadas(
   canSeeFinancials: FinancialAccess | undefined,
   nichoKey: string,
 ): CamadaItem[] {
+  // Birthday items carry a translated title: rebuild them when the UI language changes.
+  const { t } = useTranslation('calendario');
   const financeiro = canSeeFinancials === true;
   const recebimentos = ativas.recebimentos && financeiro;
   const pagamentos = ativas.pagamentos && financeiro;
@@ -124,7 +127,7 @@ export function useCamadas(
       itens.push(...expandirPagamentos(membros, transacoes, start, end));
     }
     if (ativas.datas && clientes) {
-      itens.push(...expandirDatasClientes(clientes, datas ?? [], start, end));
+      itens.push(...expandirDatasClientes(clientes, datas ?? [], start, end, t('shared.birthday')));
     }
     if (ativas.comemorativas) {
       const niche = NICHE_CALENDARS.find((n) => n.key === nichoKey) ?? NICHE_CALENDARS[0];
@@ -146,5 +149,6 @@ export function useCamadas(
     transacoes,
     datas,
     nichoKey,
+    t,
   ]);
 }

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { useWorkspaceUsage } from '@/hooks/useWorkspaceUsage';
 import { useIsWorkspaceOwner } from '@/hooks/useIsWorkspaceOwner';
@@ -12,6 +13,7 @@ import { SkeletonStatus } from '@/components/ui/skeletons';
  * workflows per client) and max_workspaces_per_user are deliberately absent.
  */
 export function UsagePanel() {
+  const { t } = useTranslation('billing');
   const { limits, planName, isLoading: limitsLoading, isUnlimited } = useWorkspaceLimits();
   const { usage, isLoading: usageLoading, isError } = useWorkspaceUsage();
   const isOwner = useIsWorkspaceOwner();
@@ -26,7 +28,7 @@ export function UsagePanel() {
   if (limitsLoading || usageLoading) {
     return (
       <div className="card usage-panel">
-        <h3 className="usage-panel-title">Uso do plano</h3>
+        <h3 className="usage-panel-title">{t('usagePanel.title')}</h3>
         <SkeletonStatus>
           <Skeleton className="h-3 w-28 mb-4" />
           <div className="usage-grid">
@@ -50,8 +52,8 @@ export function UsagePanel() {
     // surfacing the real "we don't know" state.
     return (
       <div className="card usage-panel">
-        <h3 className="usage-panel-title">Uso do plano</h3>
-        <p className="usage-panel-sub">Não foi possível carregar o uso do plano.</p>
+        <h3 className="usage-panel-title">{t('usagePanel.title')}</h3>
+        <p className="usage-panel-sub">{t('usagePanel.loadError')}</p>
       </div>
     );
   }
@@ -60,9 +62,10 @@ export function UsagePanel() {
   const pending = usage.pending_invites ?? 0;
   const seatSub =
     pending > 0
-      ? `${members} ${members === 1 ? 'membro' : 'membros'} e ${pending} ${
-          pending === 1 ? 'convite pendente' : 'convites pendentes'
-        }`
+      ? t('usagePanel.seatSub', {
+          members: t('usagePanel.members', { count: members }),
+          invites: t('usagePanel.pendingInvites', { count: pending }),
+        })
       : undefined;
 
   const meters: Array<{
@@ -72,38 +75,48 @@ export function UsagePanel() {
     format?: (n: number) => string;
     subText?: string;
   }> = [
-    { label: 'Clientes', used: usage.clients ?? 0, limit: limits.max_clients },
+    { label: t('usagePanel.meters.clients'), used: usage.clients ?? 0, limit: limits.max_clients },
     {
-      label: 'Vagas de equipe',
+      label: t('usagePanel.meters.seats'),
       used: members + pending,
       limit: limits.max_team_members,
       subText: seatSub,
     },
     {
-      label: 'Armazenamento',
+      label: t('usagePanel.meters.storage'),
       used: usage.storage_used_bytes ?? 0,
       limit: limits.storage_quota_bytes,
       format: formatStorageBytes,
     },
-    { label: 'Leads', used: usage.leads ?? 0, limit: limits.max_leads },
+    { label: t('usagePanel.meters.leads'), used: usage.leads ?? 0, limit: limits.max_leads },
     {
-      label: 'Modelos de fluxo',
+      label: t('usagePanel.meters.workflowTemplates'),
       used: usage.workflow_templates ?? 0,
       limit: limits.max_workflow_templates,
     },
     {
-      label: 'Contas de Instagram',
+      label: t('usagePanel.meters.instagramAccounts'),
       used: usage.instagram_accounts ?? 0,
       limit: limits.max_instagram_accounts,
     },
-    { label: 'Portais do Hub', used: usage.hub_tokens ?? 0, limit: limits.max_hub_tokens },
-    { label: 'Chaves MCP', used: usage.mcp_keys ?? 0, limit: limits.max_mcp_keys },
+    {
+      label: t('usagePanel.meters.hubPortals'),
+      used: usage.hub_tokens ?? 0,
+      limit: limits.max_hub_tokens,
+    },
+    {
+      label: t('usagePanel.meters.mcpKeys'),
+      used: usage.mcp_keys ?? 0,
+      limit: limits.max_mcp_keys,
+    },
   ];
 
   return (
     <div className="card usage-panel">
-      <h3 className="usage-panel-title">Uso do plano</h3>
-      {planName && <p className="usage-panel-sub">Plano {planName}</p>}
+      <h3 className="usage-panel-title">{t('usagePanel.title')}</h3>
+      {planName && (
+        <p className="usage-panel-sub">{t('usagePanel.planName', { name: planName })}</p>
+      )}
       <div className="usage-grid">
         {meters.map((m) => (
           <UsageMeter key={m.label} size="full" showUpgradeCta={isOwner} {...m} />

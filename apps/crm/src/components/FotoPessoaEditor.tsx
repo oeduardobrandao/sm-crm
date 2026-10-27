@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Camera } from 'lucide-react';
 import { ActionSheet, type ActionSheetAction } from '@/components/mobile/ActionSheet';
 import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
@@ -27,10 +28,6 @@ interface FotoPessoaEditorProps {
   descricao?: string;
 }
 
-const AJUDA = 'JPG, PNG ou HEIC até 10 MB. A foto é recortada em quadrado.';
-const REMOVER_TITULO = 'Remover a foto?';
-const REMOVER_DESCRICAO = 'Volta a aparecer as iniciais.';
-
 /**
  * Large avatar with a camera button plus "Alterar foto" / "Remover foto" (with
  * confirmation), for Perfil (self) and the member detail (editors only; the caller
@@ -45,12 +42,13 @@ export function FotoPessoaEditor({
   variant,
   descricao,
 }: FotoPessoaEditorProps) {
+  const { t } = useTranslation();
   const foto = useFotoPessoa(alvo);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const temFoto = !!fotoUrl;
-  const acao = temFoto ? 'Alterar foto' : 'Adicionar foto';
-  const cameraLabel = `${acao} de ${nome}`;
+  const acao = temFoto ? t('photo.change') : t('photo.add');
+  const cameraLabel = temFoto ? t('photo.changeFor', { nome }) : t('photo.addFor', { nome });
 
   const avatar = <PessoaAvatar nome={nome} fotoUrl={fotoUrl} seed={seed} size={96} />;
   const inputs = (
@@ -63,12 +61,12 @@ export function FotoPessoaEditor({
   if (variant === 'phone') {
     const actions: ActionSheetAction[] = [
       // `immediate`: iOS Safari only opens the file picker inside the tap itself.
-      { label: 'Escolher da galeria', onSelect: foto.pick, immediate: true },
-      { label: 'Tirar foto', onSelect: foto.pickCamera, immediate: true },
+      { label: t('photo.gallery'), onSelect: foto.pick, immediate: true },
+      { label: t('photo.camera'), onSelect: foto.pickCamera, immediate: true },
     ];
     if (temFoto)
       actions.push({
-        label: 'Remover foto',
+        label: t('photo.remove'),
         destructive: true,
         onSelect: () => setConfirmOpen(true),
       });
@@ -105,16 +103,16 @@ export function FotoPessoaEditor({
         <ActionSheet
           open={sheetOpen}
           onOpenChange={setSheetOpen}
-          title="Foto de perfil"
+          title={t('photo.sheetTitle')}
           actions={actions}
         />
         <PhoneConfirmSheet
           open={confirmOpen}
-          title={REMOVER_TITULO}
-          message={REMOVER_DESCRICAO}
+          title={t('photo.removeTitle')}
+          message={t('photo.removeDescription')}
           actions={[
             {
-              label: 'Remover',
+              label: t('photo.removeConfirm'),
               destructive: true,
               onSelect: () => {
                 setConfirmOpen(false);
@@ -169,22 +167,22 @@ export function FotoPessoaEditor({
               disabled={foto.uploading}
               onClick={() => setConfirmOpen(true)}
             >
-              Remover foto
+              {t('photo.remove')}
             </Button>
           )}
         </div>
-        <p className="text-xs text-muted-foreground">{AJUDA}</p>
+        <p className="text-xs text-muted-foreground">{t('photo.help')}</p>
       </div>
       {inputs}
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{REMOVER_TITULO}</AlertDialogTitle>
-            <AlertDialogDescription>{REMOVER_DESCRICAO}</AlertDialogDescription>
+            <AlertDialogTitle>{t('photo.removeTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('photo.removeDescription')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRemove}>Remover</AlertDialogAction>
+            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRemove}>{t('photo.removeConfirm')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

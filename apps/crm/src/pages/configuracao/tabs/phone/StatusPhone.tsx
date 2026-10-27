@@ -1,5 +1,6 @@
 import { createElement, useState } from 'react';
 import { toast } from 'sonner';
+import { Trans, useTranslation } from 'react-i18next';
 import { Archive, ArrowDown, ArrowUp, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
 import { GroupedList, Cell } from '@/components/mobile/GroupedList';
 import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
@@ -37,10 +38,13 @@ import {
 } from './statusModel';
 import './statusPhone.css';
 
-const BEHAVES_AS_PICKER_OPTIONS = BEHAVES_AS_OPTIONS.map((s) => ({
-  value: s,
-  label: STATUS_LABELS[s],
-}));
+/** Resolved per render: STATUS_LABELS follows the UI language. */
+function behavesAsPickerOptions() {
+  return BEHAVES_AS_OPTIONS.map((s) => ({
+    value: s,
+    label: STATUS_LABELS[s],
+  }));
+}
 
 export interface StatusPhoneProps {
   defs: PostStatusDefinition[];
@@ -111,6 +115,7 @@ export function StatusPhone(props: StatusPhoneProps) {
     onToggleAutomation,
     onRemoveAutomation,
   } = props;
+  const { t } = useTranslation('settingsHub');
   const [picking, setPicking] = useState<PostStatusDefinition | null>(null);
   const [pendingRemove, setPendingRemove] = useState<PostStatusAutomation | null>(null);
   const [createStatusOpen, setCreateStatusOpen] = useState(false);
@@ -121,10 +126,10 @@ export function StatusPhone(props: StatusPhoneProps) {
 
   return (
     <ConfigPhoneScreen
-      title="Status de posts"
+      title={t('statusPhone.title')}
       trailing={
         <PhoneIconButton
-          label="Novo status"
+          label={t('statusTab.newStatus')}
           variant="ink"
           onClick={() => setCreateStatusOpen(true)}
         >
@@ -135,15 +140,10 @@ export function StatusPhone(props: StatusPhoneProps) {
       {isLoading ? (
         <ConfigPhoneSkeleton groups={1} rows={3} />
       ) : (
-        <GroupedList
-          header="Status personalizados"
-          footer="O nome aparece só para a equipe. Toque e segure para mover para cima ou para baixo. Deslize para arquivar."
-        >
+        <GroupedList header={t('statusTab.title')} footer={t('statusPhone.statusesFooter')}>
           {defs.length === 0 ? (
             <li className="phone-cell">
-              <p className="phone-config-block phone-status-empty">
-                Nenhum status personalizado ainda.
-              </p>
+              <p className="phone-config-block phone-status-empty">{t('statusTab.empty')}</p>
             </li>
           ) : (
             defs.map((def, i) => (
@@ -153,7 +153,7 @@ export function StatusPhone(props: StatusPhoneProps) {
                 className="phone-status-row"
                 trailingActions={[
                   {
-                    label: 'Arquivar',
+                    label: t('statusTab.archive'),
                     icon: <Archive />,
                     tone: 'destructive',
                     onAction: () => onRequestArchive(def),
@@ -161,17 +161,17 @@ export function StatusPhone(props: StatusPhoneProps) {
                 ]}
               >
                 <ContextMenu
-                  label={`Ações de ${def.nome}`}
+                  label={t('statusPhone.actionsOf', { name: def.nome })}
                   sections={[
                     [
                       {
-                        label: 'Mover para cima',
+                        label: t('statusPhone.moveUp'),
                         icon: <ArrowUp />,
                         disabled: i === 0 || reordering,
                         onSelect: () => onMove(i, -1),
                       },
                       {
-                        label: 'Mover para baixo',
+                        label: t('statusPhone.moveDown'),
                         icon: <ArrowDown />,
                         disabled: i === defs.length - 1 || reordering,
                         onSelect: () => onMove(i, 1),
@@ -179,7 +179,7 @@ export function StatusPhone(props: StatusPhoneProps) {
                     ],
                     [
                       {
-                        label: 'Arquivar',
+                        label: t('statusTab.archive'),
                         icon: <Archive />,
                         destructive: true,
                         onSelect: () => onRequestArchive(def),
@@ -199,14 +199,16 @@ export function StatusPhone(props: StatusPhoneProps) {
                         <span className="phone-status-row__text">
                           <span className="phone-status-row__title">{def.nome}</span>
                           <span className="phone-status-row__subtitle">
-                            Se comporta como: {STATUS_LABELS[def.behaves_as]}
+                            {t('statusPhone.behavesAsValue', {
+                              status: STATUS_LABELS[def.behaves_as],
+                            })}
                           </span>
                         </span>
                       </button>
                       <button
                         {...triggerProps}
                         className="phone-status-row__more"
-                        aria-label={`Mais ações de ${def.nome}`}
+                        aria-label={t('statusPhone.moreActionsOf', { name: def.nome })}
                       >
                         <MoreHorizontal aria-hidden="true" />
                       </button>
@@ -223,12 +225,12 @@ export function StatusPhone(props: StatusPhoneProps) {
         <ConfigPhoneSkeleton groups={1} rows={2} />
       ) : (
         <GroupedList
-          header="Automações por status"
-          footer={automations.length > 0 ? 'Deslize uma automação para remover.' : undefined}
+          header={t('statusTab.automationsTitle')}
+          footer={automations.length > 0 ? t('statusPhone.automationsFooter') : undefined}
         >
           {automations.length === 0 && (
             <li className="phone-cell">
-              <p className="phone-config-block phone-status-empty">Nenhuma automação ainda.</p>
+              <p className="phone-config-block phone-status-empty">{t('shared.noAutomations')}</p>
             </li>
           )}
           {automations.map((a) => {
@@ -240,7 +242,7 @@ export function StatusPhone(props: StatusPhoneProps) {
                 className="phone-status-row"
                 trailingActions={[
                   {
-                    label: 'Remover',
+                    label: t('actions.delete'),
                     icon: <Trash2 />,
                     tone: 'destructive',
                     onAction: () => setPendingRemove(a),
@@ -250,18 +252,23 @@ export function StatusPhone(props: StatusPhoneProps) {
                 <div className="phone-status-auto">
                   <span className="phone-status-auto__text" data-inactive={!a.ativo || undefined}>
                     <span className="phone-status-auto__title">
-                      Quando entrar em <strong>{trigger}</strong>
+                      <Trans
+                        t={t}
+                        i18nKey="statusTab.whenEntersRich"
+                        values={{ status: trigger }}
+                        components={{ b: <strong /> }}
+                      />
                     </span>
                     <span className="phone-status-row__subtitle">
                       {automationActionLabel(a, membros)}
-                      {a.ativo ? '' : ' · Inativa'}
+                      {a.ativo ? '' : t('statusPhone.inactiveSuffix')}
                     </span>
                   </span>
                   <button
                     type="button"
                     role="switch"
                     aria-checked={a.ativo}
-                    aria-label={`Automação: ${trigger}`}
+                    aria-label={t('statusPhone.automationAria', { trigger })}
                     className="phone-switch"
                     onClick={() => onToggleAutomation(a, !a.ativo)}
                   >
@@ -272,7 +279,7 @@ export function StatusPhone(props: StatusPhoneProps) {
             );
           })}
           <Cell
-            label="Nova automação"
+            label={t('shared.newAutomation')}
             className="phone-status-new"
             icon={<Plus />}
             aria-haspopup="dialog"
@@ -286,9 +293,9 @@ export function StatusPhone(props: StatusPhoneProps) {
         onOpenChange={(open) => {
           if (!open) setPicking(null);
         }}
-        title="Se comporta como"
+        title={t('shared.behavesAs')}
         description={picking?.nome}
-        options={BEHAVES_AS_PICKER_OPTIONS}
+        options={behavesAsPickerOptions()}
         value={picking?.behaves_as ?? null}
         onChange={(value) => {
           if (picking && value && value !== picking.behaves_as) onChangeBehavesAs(picking, value);
@@ -297,13 +304,13 @@ export function StatusPhone(props: StatusPhoneProps) {
 
       <PhoneConfirmSheet
         open={pendingArchive !== null}
-        title={`Arquivar "${pendingArchive?.nome ?? ''}"?`}
-        message={`Os posts que estão nesse status voltarão ao status padrão correspondente (${
-          pendingArchive ? STATUS_LABELS[pendingArchive.behaves_as] : ''
-        }). O histórico dos posts mantém o nome antigo.`}
+        title={t('shared.archiveTitle', { name: pendingArchive?.nome ?? '' })}
+        message={t('statusTab.archiveDescription', {
+          status: pendingArchive ? STATUS_LABELS[pendingArchive.behaves_as] : '',
+        })}
         actions={[
           {
-            label: 'Arquivar',
+            label: t('statusTab.archive'),
             destructive: true,
             onSelect: () => {
               if (pendingArchive) onConfirmArchive(pendingArchive);
@@ -315,11 +322,11 @@ export function StatusPhone(props: StatusPhoneProps) {
 
       <PhoneConfirmSheet
         open={pendingRemove !== null}
-        title="Remover automação?"
-        message={`"Quando entrar em ${removeTrigger}: ${removeAction}" deixa de rodar.`}
+        title={t('statusPhone.removeTitle')}
+        message={t('statusPhone.removeMessage', { trigger: removeTrigger, action: removeAction })}
         actions={[
           {
-            label: 'Remover',
+            label: t('actions.delete'),
             destructive: true,
             onSelect: () => {
               if (pendingRemove) onRemoveAutomation(pendingRemove);
@@ -333,11 +340,11 @@ export function StatusPhone(props: StatusPhoneProps) {
       <BottomSheet
         open={createStatusOpen}
         onOpenChange={setCreateStatusOpen}
-        title="Novo status"
-        description="Cada status se comporta como um status padrão: é isso que define visibilidade no Hub do cliente, publicação e contagens."
+        title={t('statusTab.newStatus')}
+        description={t('statusPhone.newStatusDescription')}
         detents={['large']}
       >
-        <FeatureGate flag="feature_custom_properties" label="Status personalizados">
+        <FeatureGate flag="feature_custom_properties" label={t('statusTab.title')}>
           <CreateStatusSheetBody
             creating={props.creatingStatus}
             onCreate={(payload) => props.onCreateStatus(payload, () => setCreateStatusOpen(false))}
@@ -348,11 +355,11 @@ export function StatusPhone(props: StatusPhoneProps) {
       <BottomSheet
         open={createAutomationOpen}
         onOpenChange={setCreateAutomationOpen}
-        title="Nova automação"
-        description="Quando um post entrar em um status (padrão ou personalizado), rode uma ação. Se um post entrar em um personalizado, regras do status padrão equivalente também disparam."
+        title={t('shared.newAutomation')}
+        description={t('statusPhone.newAutomationDescription')}
         detents={['large']}
       >
-        <FeatureGate flag="feature_custom_properties" label="Automações por status">
+        <FeatureGate flag="feature_custom_properties" label={t('statusTab.automationsTitle')}>
           <CreateAutomationSheetBody
             defs={defs}
             membros={membros}
@@ -375,6 +382,7 @@ function CreateStatusSheetBody({
   onCreate: (payload: StatusCreatePayload) => void;
   creating: boolean;
 }) {
+  const { t } = useTranslation('settingsHub');
   const [nome, setNome] = useState('');
   const [cor, setCor] = useState(PRESET_COLORS[1]);
   const [icone, setIcone] = useState<string | null>(null);
@@ -383,7 +391,7 @@ function CreateStatusSheetBody({
   const submit = () => {
     const trimmed = nome.trim();
     if (!trimmed) {
-      toast.error('Dê um nome ao status');
+      toast.error(t('shared.nameRequired'));
       return;
     }
     onCreate({ nome: trimmed, cor, icone, behaves_as: behavesAs });
@@ -391,14 +399,14 @@ function CreateStatusSheetBody({
 
   return (
     <div className="phone-status-sheet">
-      <GroupedList aria-label="Novo status">
+      <GroupedList aria-label={t('statusTab.newStatus')}>
         <FormRow
-          label="Nome"
+          label={t('statusPhone.name')}
           input={{
             id: 'status-phone-nome',
             value: nome,
             maxLength: 40,
-            placeholder: 'Ex.: Em design',
+            placeholder: t('statusPhone.namePlaceholder'),
             autoComplete: 'off',
             onChange: (e) => setNome(e.target.value),
             onKeyDown: (e) => {
@@ -407,8 +415,8 @@ function CreateStatusSheetBody({
           }}
         />
         <PickerCell<CustomStatusBehavesAs>
-          label="Se comporta como"
-          options={BEHAVES_AS_PICKER_OPTIONS}
+          label={t('shared.behavesAs')}
+          options={behavesAsPickerOptions()}
           value={behavesAs}
           onChange={(value) => {
             if (value) setBehavesAs(value);
@@ -416,13 +424,13 @@ function CreateStatusSheetBody({
         />
       </GroupedList>
 
-      <GroupedList header="Ícone">
+      <GroupedList header={t('statusPhone.icon')}>
         <li className="phone-cell">
-          <div className="phone-status-grid" role="group" aria-label="Ícone">
+          <div className="phone-status-grid" role="group" aria-label={t('statusPhone.icon')}>
             <button
               type="button"
               className="phone-status-grid__item"
-              aria-label="Sem ícone (dot de cor)"
+              aria-label={t('statusTab.noIcon')}
               aria-pressed={icone === null}
               onClick={() => setIcone(null)}
             >
@@ -444,15 +452,15 @@ function CreateStatusSheetBody({
         </li>
       </GroupedList>
 
-      <GroupedList header="Cor">
+      <GroupedList header={t('statusPhone.color')}>
         <li className="phone-cell">
-          <div className="phone-status-grid" role="group" aria-label="Cor">
+          <div className="phone-status-grid" role="group" aria-label={t('statusPhone.color')}>
             {PRESET_COLORS.map((c) => (
               <button
                 key={c}
                 type="button"
                 className="phone-status-grid__item phone-status-swatch"
-                aria-label={`Cor ${c}`}
+                aria-label={t('statusPhone.colorValue', { color: c })}
                 aria-pressed={cor === c}
                 onClick={() => setCor(c)}
               >
@@ -472,7 +480,7 @@ function CreateStatusSheetBody({
           aria-busy={creating || undefined}
         >
           {creating ? <Spinner size="sm" /> : <Plus aria-hidden="true" />}
-          Novo status
+          {t('statusTab.newStatus')}
         </button>
       </div>
     </div>
@@ -491,6 +499,7 @@ function CreateAutomationSheetBody({
   onCreate: (payload: AutomationCreatePayload) => void;
   creating: boolean;
 }) {
+  const { t } = useTranslation('settingsHub');
   const [trigger, setTrigger] = useState<TriggerValue>('canonical:correcao_cliente');
   const [action, setAction] = useState<AutomationAction>('notify');
   const [notifyTarget, setNotifyTarget] = useState<NotifyTarget>('responsavel');
@@ -512,9 +521,9 @@ function CreateAutomationSheetBody({
 
   return (
     <div className="phone-status-sheet">
-      <GroupedList aria-label="Nova automação">
+      <GroupedList aria-label={t('shared.newAutomation')}>
         <PickerCell<TriggerValue>
-          label="Quando entrar em"
+          label={t('shared.whenEnters')}
           options={triggerOptions(defs)}
           value={trigger}
           onChange={(value) => {
@@ -522,7 +531,7 @@ function CreateAutomationSheetBody({
           }}
         />
         <PickerCell<AutomationAction>
-          label="Ação"
+          label={t('statusPhone.action')}
           options={ACTION_OPTIONS}
           value={action}
           onChange={(value) => {
@@ -531,7 +540,7 @@ function CreateAutomationSheetBody({
         />
         {action === 'notify' && (
           <PickerCell<NotifyTarget>
-            label="Notificar"
+            label={t('statusModel.action.notify')}
             options={NOTIFY_TARGET_OPTIONS}
             value={notifyTarget}
             onChange={(value) => {
@@ -541,10 +550,10 @@ function CreateAutomationSheetBody({
         )}
         {needsMembro && (
           <PickerCell<number>
-            label="Membro"
+            label={t('statusPhone.member')}
             options={membroOptions}
             value={membroId === '' ? null : membroId}
-            placeholder="Escolha o membro…"
+            placeholder={t('shared.chooseMemberOption')}
             searchable={membroOptions.length > 8}
             onChange={(value) => setMembroId(value ?? '')}
           />
@@ -560,7 +569,7 @@ function CreateAutomationSheetBody({
           aria-busy={creating || undefined}
         >
           {creating ? <Spinner size="sm" /> : <Plus aria-hidden="true" />}
-          Nova automação
+          {t('shared.newAutomation')}
         </button>
       </div>
     </div>

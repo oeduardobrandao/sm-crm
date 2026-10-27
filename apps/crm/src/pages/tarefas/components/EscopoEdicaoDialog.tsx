@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,22 +30,21 @@ export function EscopoEdicaoDialog({
   onEstaEProximas,
   onCancel,
 }: EscopoEdicaoDialogProps) {
+  const { t } = useTranslation('tasksForm');
   return (
     <AlertDialog open={open} onOpenChange={(o) => !o && !saving && onCancel()}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Aplicar a quais tarefas?</AlertDialogTitle>
-          <AlertDialogDescription>
-            As próximas tarefas criadas usarão estas alterações. Tarefas que já existem não mudam.
-          </AlertDialogDescription>
+          <AlertDialogTitle>{t('escopoEdicao.title')}</AlertDialogTitle>
+          <AlertDialogDescription>{t('escopoEdicao.description')}</AlertDialogDescription>
         </AlertDialogHeader>
         {regraAlterada && (
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            A regra de repetição vale para toda a série.
+            {t('escopoEdicao.ruleWholeSeries')}
           </p>
         )}
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={saving}>Cancelar</AlertDialogCancel>
+          <AlertDialogCancel disabled={saving}>{t('actions.cancel')}</AlertDialogCancel>
           <AlertDialogAction
             onClick={(e) => {
               // keep Radix from auto-closing before the async save resolves;
@@ -54,7 +54,7 @@ export function EscopoEdicaoDialog({
             }}
             disabled={regraAlterada || saving}
           >
-            Somente esta
+            {t('escopoEdicao.onlyThis')}
           </AlertDialogAction>
           <AlertDialogAction
             onClick={(e) => {
@@ -63,7 +63,7 @@ export function EscopoEdicaoDialog({
             }}
             disabled={saving}
           >
-            Esta e as próximas
+            {t('escopoEdicao.thisAndFollowing')}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

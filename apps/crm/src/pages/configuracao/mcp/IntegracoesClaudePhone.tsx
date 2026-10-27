@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
+import { getIntlLocale, i18n } from '@mesaas/i18n';
 import { Check, Copy, KeyRound, Link2, MoreHorizontal, Plus, Unplug } from 'lucide-react';
 import { FeatureGate } from '@/components/paywall/FeatureGate';
 import { GroupedList, Cell } from '@/components/mobile/GroupedList';
@@ -10,21 +12,21 @@ import { ContextMenu, type ContextMenuAction } from '@/components/mobile/Context
 import { SwipeRow, type SwipeAction } from '@/components/mobile/SwipeRow';
 import { CheckList } from '@/components/mobile/CheckList';
 import { PickerCell } from '@/components/mobile/PickerSheet';
-import { SCOPE_OPTIONS, AGENT_PRESET, OWNER_ONLY_HELP } from '@/lib/mcp-scopes';
+import { SCOPE_OPTIONS, AGENT_PRESET, ownerOnlyHelp, scopeLabel } from '@/lib/mcp-scopes';
 import type { McpKey } from '@/services/mcp-keys';
 import type { OAuthGrant } from '@/services/mcp-oauth';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ConfigPhoneScreen } from '../phone/ConfigPhoneScreen';
 import {
-  CLIENT_INTRO,
-  MANAGER_INTRO,
-  MEMBER_INTRO,
   ChatgptSteps,
   ClaudeKeyNote,
   ClaudeSteps,
+  ClientIntro,
   CodexHeadersNote,
   CodexSteps,
-  KEY_USAGE_NOTE,
+  KeyUsageNote,
+  ManagerIntro,
+  MemberIntro,
   MCP_URL,
   TryItNote,
   buildConnectSnippets,
@@ -36,12 +38,13 @@ import './mcpPhone.css';
 type Expiry = 'never' | '30' | '90';
 type CopyFn = (text: string, key: string) => void;
 
-const fmtDate = (s: string) => new Date(s).toLocaleDateString('pt-BR');
+const fmtDate = (s: string) => new Date(s).toLocaleDateString(getIntlLocale());
 
-const EXPIRY_OPTIONS: { value: Expiry; label: string }[] = [
-  { value: 'never', label: 'Nunca' },
-  { value: '30', label: '30 dias' },
-  { value: '90', label: '90 dias' },
+/** Resolved at render time so the labels follow the current language. */
+const expiryOptions = (): { value: Expiry; label: string }[] => [
+  { value: 'never', label: i18n.t('mcp:page.expiryNever') },
+  { value: '30', label: i18n.t('mcp:page.expiry30') },
+  { value: '90', label: i18n.t('mcp:page.expiry90') },
 ];
 
 /** Owner-only scopes (financeiro:*) are disabled, with the reason, unless the user owns the workspace. */
@@ -50,9 +53,9 @@ const scopeCheckOptions = (isWorkspaceOwner: boolean) =>
     const locked = s.ownerOnly && !isWorkspaceOwner;
     return {
       value: s.value as string,
-      label: s.label,
+      label: scopeLabel(s.value),
       disabled: locked,
-      subtitle: locked ? OWNER_ONLY_HELP : undefined,
+      subtitle: locked ? ownerOnlyHelp() : undefined,
     };
   });
 
@@ -114,12 +117,13 @@ function CopyCell({
   copy: CopyFn;
   copiedKey: string | null;
 }) {
+  const { t } = useTranslation('mcp');
   const copied = copiedKey === copyKey;
   return (
     <Cell
-      label={copied ? 'Copiado' : 'Copiar'}
+      label={copied ? t('phone.copied') : t('phone.copy')}
       icon={copied ? <Check /> : <Copy />}
-      aria-label={`Copiar ${what}`}
+      aria-label={t('phone.copyWhat', { what })}
       className="phone-mcp-copy"
       onClick={() => copy(value, copyKey)}
     />
@@ -164,30 +168,25 @@ function PhoneConnectSnippets({
   copiedKey: string | null;
   idPrefix: string;
 }) {
+  const { t } = useTranslation('mcp');
   const { desktopConfig, claudeCodeCmd, codexToml } = buildConnectSnippets(token);
   return (
     <>
       <GroupedList
         header="Claude Desktop"
-        footer={
-          <>
-            Configurações → Desenvolvedor → Editar configuração (
-            <code>claude_desktop_config.json</code>
-            ), cole o bloco, salve e reinicie o app.
-          </>
-        }
+        footer={<Trans t={t} i18nKey="snippets.desktopHelp" components={{ c: <code /> }} />}
       >
         <CodeCells
-          what="configuração do Claude Desktop"
+          what={t('phone.desktopConfigWhat')}
           value={desktopConfig}
           copyKey={`${idPrefix}-desktop`}
           copy={copy}
           copiedKey={copiedKey}
         />
       </GroupedList>
-      <GroupedList header="Claude Code" footer="Rode este comando no terminal.">
+      <GroupedList header="Claude Code" footer={t('snippets.codeHelp')}>
         <CodeCells
-          what="comando do Claude Code"
+          what={t('phone.codeCmdWhat')}
           value={claudeCodeCmd}
           copyKey={`${idPrefix}-code`}
           copy={copy}
@@ -196,14 +195,10 @@ function PhoneConnectSnippets({
       </GroupedList>
       <GroupedList
         header="Codex CLI"
-        footer={
-          <>
-            Adicione este bloco ao arquivo <code>~/.codex/config.toml</code>.
-          </>
-        }
+        footer={<Trans t={t} i18nKey="snippets.codexHelp" components={{ c: <code /> }} />}
       >
         <CodeCells
-          what="configuração do Codex CLI"
+          what={t('phone.codexCliWhat')}
           value={codexToml}
           copyKey={`${idPrefix}-codex`}
           copy={copy}
@@ -282,6 +277,7 @@ const STEPS: Record<McpClient, () => ReactNode> = {
 /** Configurações > Agentes (MCP) on phones. Presentational: state and mutations live in
  *  IntegracoesClaudePage. */
 export function IntegracoesClaudePhone(props: IntegracoesClaudePhoneProps) {
+  const { t } = useTranslation('mcp');
   const {
     canManage,
     canEdit,
@@ -301,19 +297,21 @@ export function IntegracoesClaudePhone(props: IntegracoesClaudePhoneProps) {
 
   return (
     <ConfigPhoneScreen
-      title="Agentes (MCP)"
+      title={t('phone.title')}
       subtitle={
         <>
-          {canManage ? MANAGER_INTRO : MEMBER_INTRO}
-          {canManage && !canEdit && <span className="phone-mcp-readonly"> Somente leitura.</span>}
+          {canManage ? <ManagerIntro /> : <MemberIntro />}
+          {canManage && !canEdit && (
+            <span className="phone-mcp-readonly">{` ${t('phone.readOnly')}`}</span>
+          )}
         </>
       }
     >
-      <FeatureGate flag="feature_mcp" label="Integração com agentes (MCP)">
-        <h2 className="phone-group__header phone-mcp-heading">Como conectar</h2>
+      <FeatureGate flag="feature_mcp" label={t('page.featureLabel')}>
+        <h2 className="phone-group__header phone-mcp-heading">{t('page.howToConnect')}</h2>
         <SegmentedControl<McpClient>
           semantics="tablist"
-          aria-label="Escolha o assistente"
+          aria-label={t('page.chooseAssistant')}
           className="phone-config-segmented"
           value={client}
           onChange={onClientChange}
@@ -326,7 +324,9 @@ export function IntegracoesClaudePhone(props: IntegracoesClaudePhoneProps) {
         />
         <div role="tabpanel" id={panelId} aria-labelledby={tabId(client)}>
           <GroupedList
-            aria-label={`Como conectar: ${clientTabs.find((t) => t.id === client)?.label}`}
+            aria-label={t('phone.howToConnectFor', {
+              client: clientTabs.find((tab) => tab.id === client)?.label,
+            })}
             footer={
               client === 'claude' ? (
                 canManage ? (
@@ -338,15 +338,17 @@ export function IntegracoesClaudePhone(props: IntegracoesClaudePhoneProps) {
             }
           >
             <li className="phone-cell phone-config-block phone-mcp-guide">
-              <p className="phone-mcp-guide__intro">{CLIENT_INTRO[client]}</p>
+              <p className="phone-mcp-guide__intro">
+                <ClientIntro client={client} />
+              </p>
               <ol className="phone-mcp-steps">
                 <Steps />
               </ol>
             </li>
             {client === 'codex' ? (
               <CodeCells
-                what="configuração do Codex"
-                value={codexConfigToml('SUA_CHAVE')}
+                what={t('phone.codexWhat')}
+                value={codexConfigToml(t('guide.keyPlaceholder'))}
                 copyKey="codex-toml"
                 copy={copy}
                 copiedKey={copiedKey}
@@ -354,12 +356,12 @@ export function IntegracoesClaudePhone(props: IntegracoesClaudePhoneProps) {
             ) : (
               <>
                 <Cell
-                  label="URL do servidor MCP"
+                  label={t('phone.serverUrl')}
                   subtitle={<span className="phone-mcp-mono">{MCP_URL}</span>}
                   className="phone-mcp-url"
                 />
                 <CopyCell
-                  what="URL do MCP"
+                  what={t('phone.mcpUrlWhat')}
                   value={MCP_URL}
                   copyKey="mcp-url"
                   copy={copy}
@@ -374,26 +376,29 @@ export function IntegracoesClaudePhone(props: IntegracoesClaudePhoneProps) {
         </p>
 
         <GroupedList
-          header={canManage ? 'Conexões via conector' : 'Suas conexões'}
-          footer="Conexões OAuth (claude.ai, Claude Desktop, ChatGPT). Desconecte para revogar o acesso na hora."
+          header={canManage ? t('page.grantsTitleManager') : t('page.grantsTitleMember')}
+          footer={t('page.grantsHelp')}
         >
           {grants.length === 0 ? (
-            <Cell label="Nenhuma conexão ativa." className="phone-mcp-empty" />
+            <Cell label={t('page.noGrants')} className="phone-mcp-empty" />
           ) : (
             grants.map((g) => {
-              const who = g.connected_by ?? 'Conexão via conector';
+              const who = g.connected_by ?? t('page.grantFallback');
               const disconnect = () => props.onRevokeGrant(g);
               const canDisconnect = canEdit || g.mine;
               return (
                 <MenuRow
                   key={g.id}
                   label={who}
-                  subtitle={`${g.scopes.join(', ')} · conectada ${fmtDate(g.created_at)}`}
-                  menuLabel={`Ações de ${who}`}
+                  subtitle={t('page.grantMeta', {
+                    scopes: g.scopes.join(', '),
+                    date: fmtDate(g.created_at),
+                  })}
+                  menuLabel={t('phone.grantActions', { who })}
                   sections={[
                     [
                       {
-                        label: 'Desconectar',
+                        label: t('page.disconnect'),
                         icon: <Unplug />,
                         destructive: true,
                         disabled: !canDisconnect,
@@ -405,7 +410,7 @@ export function IntegracoesClaudePhone(props: IntegracoesClaudePhoneProps) {
                     canDisconnect
                       ? [
                           {
-                            label: 'Desconectar',
+                            label: t('page.disconnect'),
                             icon: <Unplug />,
                             tone: 'destructive',
                             onAction: disconnect,
@@ -421,15 +426,11 @@ export function IntegracoesClaudePhone(props: IntegracoesClaudePhoneProps) {
 
         {canManage && (
           <GroupedList
-            header="Chaves de API"
-            footer={
-              !keysLoading && keys.length === 0
-                ? 'Nenhuma chave ainda. Crie uma para conectar um agente.'
-                : undefined
-            }
+            header={t('page.apiKeys')}
+            footer={!keysLoading && keys.length === 0 ? t('page.noKeys') : undefined}
           >
             <Cell
-              label="Criar chave"
+              label={t('page.createKey')}
               icon={<Plus />}
               className="phone-mcp-action"
               disabled={!canEdit}
@@ -446,8 +447,10 @@ export function IntegracoesClaudePhone(props: IntegracoesClaudePhoneProps) {
               const meta = [
                 `…${k.token_suffix}`,
                 k.scopes.join(', '),
-                k.last_used_at ? `usada ${fmtDate(k.last_used_at)}` : 'nunca usada',
-                k.expires_at ? `expira ${fmtDate(k.expires_at)}` : null,
+                k.last_used_at
+                  ? t('page.keyUsed', { date: fmtDate(k.last_used_at) })
+                  : t('page.keyNeverUsed'),
+                k.expires_at ? t('page.keyExpires', { date: fmtDate(k.expires_at) }) : null,
               ]
                 .filter(Boolean)
                 .join(' · ');
@@ -457,8 +460,8 @@ export function IntegracoesClaudePhone(props: IntegracoesClaudePhoneProps) {
                     key={k.id}
                     label={k.name}
                     subtitle={meta}
-                    value="revogada"
-                    menuLabel={`Ações da chave ${k.name}`}
+                    value={t('page.revoked')}
+                    menuLabel={t('phone.keyActions', { name: k.name })}
                     sections={[]}
                     swipeActions={[]}
                   />
@@ -471,13 +474,13 @@ export function IntegracoesClaudePhone(props: IntegracoesClaudePhoneProps) {
                   key={k.id}
                   label={k.name}
                   subtitle={meta}
-                  menuLabel={`Ações da chave ${k.name}`}
+                  menuLabel={t('phone.keyActions', { name: k.name })}
                   onTap={connect}
                   sections={[
-                    [{ label: 'Conectar', icon: <Link2 />, onSelect: connect }],
+                    [{ label: t('page.connect'), icon: <Link2 />, onSelect: connect }],
                     [
                       {
-                        label: 'Revogar',
+                        label: t('page.revoke'),
                         icon: <KeyRound />,
                         destructive: true,
                         disabled: !canEdit,
@@ -486,11 +489,16 @@ export function IntegracoesClaudePhone(props: IntegracoesClaudePhoneProps) {
                     ],
                   ]}
                   swipeActions={[
-                    { label: 'Conectar', icon: <Link2 />, tone: 'neutral', onAction: connect },
+                    {
+                      label: t('page.connect'),
+                      icon: <Link2 />,
+                      tone: 'neutral',
+                      onAction: connect,
+                    },
                     ...(canEdit
                       ? [
                           {
-                            label: 'Revogar',
+                            label: t('page.revoke'),
                             icon: <KeyRound />,
                             tone: 'destructive' as const,
                             onAction: revoke,
@@ -510,34 +518,35 @@ export function IntegracoesClaudePhone(props: IntegracoesClaudePhoneProps) {
 
       <PhoneConfirmSheet
         open={!!props.revokeTarget}
-        title="Revogar chave?"
+        title={t('page.revokeKeyTitle')}
         message={
-          <>
-            A chave <strong>{props.revokeTarget?.name}</strong> deixará de funcionar imediatamente.
-            Agentes conectados perderão o acesso. Esta ação não pode ser desfeita.
-          </>
+          <Trans
+            t={t}
+            i18nKey="page.revokeKeyMessage"
+            values={{ name: props.revokeTarget?.name ?? '' }}
+            components={{ b: <strong /> }}
+          />
         }
-        actions={[{ label: 'Revogar', destructive: true, onSelect: props.onConfirmRevoke }]}
+        actions={[{ label: t('page.revoke'), destructive: true, onSelect: props.onConfirmRevoke }]}
         onCancel={props.onCancelRevoke}
       />
       <PhoneConfirmSheet
         open={!!props.revokeGrantTarget}
-        title="Desconectar?"
+        title={t('page.revokeGrantTitle')}
         message={
-          <>
-            A conexão{' '}
-            {props.revokeGrantTarget?.connected_by ? (
-              <>
-                de <strong>{props.revokeGrantTarget.connected_by}</strong>
-              </>
-            ) : (
-              'via conector'
-            )}{' '}
-            perderá o acesso imediatamente. Para reconectar, será necessário autorizar novamente.
-          </>
+          props.revokeGrantTarget?.connected_by ? (
+            <Trans
+              t={t}
+              i18nKey="page.revokeGrantMessageNamed"
+              values={{ name: props.revokeGrantTarget.connected_by }}
+              components={{ b: <strong /> }}
+            />
+          ) : (
+            t('page.revokeGrantMessageConnector')
+          )
         }
         actions={[
-          { label: 'Desconectar', destructive: true, onSelect: props.onConfirmRevokeGrant },
+          { label: t('page.disconnect'), destructive: true, onSelect: props.onConfirmRevokeGrant },
         ]}
         onCancel={props.onCancelRevokeGrant}
       />
@@ -565,6 +574,7 @@ function KeySheet({
   copy,
   copiedKey,
 }: IntegracoesClaudePhoneProps) {
+  const { t } = useTranslation('mcp');
   const revealing = !!revealToken;
   const canSubmit = !creating && !!name.trim() && scopes.length > 0;
   return (
@@ -573,26 +583,22 @@ function KeySheet({
       onOpenChange={(open) => {
         if (!open) onCloseKeySheet();
       }}
-      title={revealing ? 'Copie sua chave agora' : 'Criar chave de API'}
-      description={
-        revealing
-          ? 'Por segurança, não mostraremos esta chave novamente.'
-          : 'Gere uma chave para conectar um agente a este workspace.'
-      }
+      title={revealing ? t('page.revealTitle') : t('page.createKeyTitle')}
+      description={revealing ? t('page.revealDescription') : t('page.createKeyDescription')}
       detents={['large']}
       showClose
       className="phone-mcp-sheet"
     >
       {revealing ? (
         <>
-          <GroupedList header="Sua chave">
+          <GroupedList header={t('page.yourKey')}>
             <li className="phone-cell phone-mcp-code">
-              <pre className="phone-mcp-code__pre" tabIndex={0} aria-label="Sua chave">
+              <pre className="phone-mcp-code__pre" tabIndex={0} aria-label={t('page.yourKey')}>
                 {revealToken}
               </pre>
             </li>
             <CopyCell
-              what="chave"
+              what={t('phone.keyWhat')}
               value={revealToken ?? ''}
               copyKey="token"
               copy={copy}
@@ -605,46 +611,48 @@ function KeySheet({
             copiedKey={copiedKey}
             idPrefix="reveal"
           />
-          <p className="phone-mcp-note">{KEY_USAGE_NOTE}</p>
+          <p className="phone-mcp-note">
+            <KeyUsageNote />
+          </p>
           <button
             type="button"
             className="phone-config-primary phone-config-primary--block"
             onClick={onCloseKeySheet}
           >
-            Concluído
+            {t('page.done')}
           </button>
         </>
       ) : (
         <>
-          <GroupedList aria-label="Chave">
+          <GroupedList aria-label={t('phone.keyGroup')}>
             <FormRow
-              label="Nome"
+              label={t('page.name')}
               input={{
                 value: name,
                 onChange: (e) => onNameChange(e.target.value),
-                placeholder: 'Ex: Agente de conteúdo',
+                placeholder: t('page.namePlaceholder'),
               }}
             />
           </GroupedList>
           <CheckList<string>
             multiple
-            header="Permissões"
+            header={t('page.permissions')}
             options={scopeCheckOptions(isWorkspaceOwner)}
             value={scopes}
             onChange={onScopesChange}
           />
-          <GroupedList aria-label="Preset de permissões">
+          <GroupedList aria-label={t('phone.presetGroup')}>
             <Cell
-              label="Preset: Agente de conteúdo"
-              subtitle="Só leitura: clientes, posts, fluxos, ideias, tarefas e equipe"
+              label={t('page.presetAgent')}
+              subtitle={t('phone.presetSubtitle')}
               className="phone-mcp-action"
               onClick={() => onScopesChange(AGENT_PRESET)}
             />
           </GroupedList>
-          <GroupedList aria-label="Expiração">
+          <GroupedList aria-label={t('page.expiry')}>
             <PickerCell<Expiry>
-              label="Expiração"
-              options={EXPIRY_OPTIONS}
+              label={t('page.expiry')}
+              options={expiryOptions()}
               value={expiry}
               onChange={(v) => onExpiryChange(v ?? 'never')}
             />
@@ -655,7 +663,7 @@ function KeySheet({
             disabled={!canSubmit}
             onClick={onCreate}
           >
-            {creating ? 'Criando…' : 'Criar chave'}
+            {creating ? t('page.creating') : t('page.createKey')}
           </button>
         </>
       )}
@@ -672,26 +680,22 @@ function ConnectSheet({
   copy,
   copiedKey,
 }: IntegracoesClaudePhoneProps) {
+  const { t } = useTranslation('mcp');
   return (
     <BottomSheet
       open={!!connectKey}
       onOpenChange={(open) => {
         if (!open) onCloseConnect();
       }}
-      title={`Conectar: ${connectKey?.name ?? ''}`}
-      description={
-        <>
-          Por segurança não armazenamos a chave. Cole a chave que você copiou ao criar, ou use o
-          modelo abaixo substituindo <code>SUA_CHAVE_AQUI</code>.
-        </>
-      }
+      title={t('page.connectTitle', { name: connectKey?.name ?? '' })}
+      description={<Trans t={t} i18nKey="phone.connectDescription" components={{ c: <code /> }} />}
       detents={['large']}
       showClose
       className="phone-mcp-sheet"
     >
-      <GroupedList aria-label="Chave">
+      <GroupedList aria-label={t('phone.keyGroup')}>
         <FormRow
-          label="Sua chave (opcional)"
+          label={t('page.yourKeyOptional')}
           layout="stacked"
           input={{
             value: connectToken,
@@ -704,18 +708,20 @@ function ConnectSheet({
         />
       </GroupedList>
       <PhoneConnectSnippets
-        token={connectToken.trim() || 'SUA_CHAVE_AQUI'}
+        token={connectToken.trim() || t('guide.keyHerePlaceholder')}
         copy={copy}
         copiedKey={copiedKey}
         idPrefix="connect"
       />
-      <p className="phone-mcp-note">{KEY_USAGE_NOTE}</p>
+      <p className="phone-mcp-note">
+        <KeyUsageNote />
+      </p>
       <button
         type="button"
         className="phone-config-primary phone-config-primary--block"
         onClick={onCloseConnect}
       >
-        Fechar
+        {t('common:actions.close')}
       </button>
     </BottomSheet>
   );

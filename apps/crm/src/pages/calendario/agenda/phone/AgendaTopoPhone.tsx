@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { ptBR } from 'date-fns/locale';
 import { ChevronDown, ChevronLeft, ChevronRight, Plus, SlidersHorizontal } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import { BottomSheet } from '@/components/mobile/BottomSheet';
 import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
 import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
@@ -11,10 +12,10 @@ import './agendaPhone.css';
 
 export type VistaPhone = Exclude<AgendaViewType, 'timeGridWeek'>;
 
-const VISTAS: { value: VistaPhone; label: string }[] = [
-  { value: 'dayGridMonth', label: 'Mês' },
-  { value: 'timeGridDay', label: 'Dia' },
-  { value: 'listWeek', label: 'Lista' },
+const VISTAS: { value: VistaPhone; key: 'month' | 'day' | 'list' }[] = [
+  { value: 'dayGridMonth', key: 'month' },
+  { value: 'timeGridDay', key: 'day' },
+  { value: 'listWeek', key: 'list' },
 ];
 
 export interface AgendaTopoPhoneProps {
@@ -51,6 +52,8 @@ export function AgendaTopoPhone({
   dataSelecionada,
   onIrPara,
 }: AgendaTopoPhoneProps) {
+  const { t } = useTranslation('agenda');
+  const dateLocale = useDateFnsLocale();
   const [irParaAberto, setIrParaAberto] = useState(false);
   const [mes, setMes] = useState(dataSelecionada);
   const nav = NAV_LABELS[vista];
@@ -58,13 +61,13 @@ export function AgendaTopoPhone({
   return (
     <>
       <PhonePageHeader
-        title="Agenda"
+        title={t('phone.titulo')}
         subtitle={
           <button
             type="button"
             className="phone-agenda-periodo"
             aria-haspopup="dialog"
-            aria-label={titulo ? `${titulo}. Ir para uma data` : 'Ir para uma data'}
+            aria-label={titulo ? t('phone.irParaComTitulo', { titulo }) : t('phone.irParaUmaData')}
             onClick={() => {
               setMes(dataSelecionada);
               setIrParaAberto(true);
@@ -77,7 +80,7 @@ export function AgendaTopoPhone({
         actions={
           <>
             <PhoneIconButton
-              label="Pessoas e filtros"
+              label={t('filtros.titulo')}
               aria-haspopup="dialog"
               badge={filtrosAtivos}
               onClick={onFiltros}
@@ -85,7 +88,7 @@ export function AgendaTopoPhone({
               <SlidersHorizontal aria-hidden="true" />
             </PhoneIconButton>
             {onCriar && (
-              <PhoneIconButton label="Criar evento" variant="ink" onClick={onCriar}>
+              <PhoneIconButton label={t('sidebar.criar')} variant="ink" onClick={onCriar}>
                 <Plus aria-hidden="true" />
               </PhoneIconButton>
             )}
@@ -94,14 +97,14 @@ export function AgendaTopoPhone({
       >
         <div className="phone-agenda-toolbar">
           <SegmentedControl<VistaPhone>
-            aria-label="Visão"
+            aria-label={t('view.viewLabel')}
             className="phone-agenda-toolbar__vistas"
-            options={VISTAS}
+            options={VISTAS.map((v) => ({ value: v.value, label: t(`view.${v.key}`) }))}
             value={vista}
             onChange={onVista}
           />
           <button type="button" className="phone-agenda-toolbar__hoje" onClick={onHoje}>
-            Hoje
+            {t('view.today')}
           </button>
           <PhoneIconButton label={nav.prev} onClick={onAnterior}>
             <ChevronLeft aria-hidden="true" />
@@ -115,13 +118,13 @@ export function AgendaTopoPhone({
       <BottomSheet
         open={irParaAberto}
         onOpenChange={setIrParaAberto}
-        title="Ir para a data"
+        title={t('phone.irParaData')}
         detents={['fit']}
       >
         <div className="phone-agenda-ir-para">
           <Calendar
             mode="single"
-            locale={ptBR}
+            locale={dateLocale}
             weekStartsOn={1}
             selected={dataSelecionada}
             month={mes}

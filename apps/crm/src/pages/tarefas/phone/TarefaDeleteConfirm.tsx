@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
 import { deleteTarefa, deleteTarefaSerieCompleta, type TarefaWithRelations } from '../../../store';
@@ -36,6 +37,7 @@ export function TarefaDeleteConfirm({
   onRefresh,
   onDeleted,
 }: TarefaDeleteConfirmProps) {
+  const { t } = useTranslation('tasksPhone');
   // Ref guard: two taps in the same tick must not both delete.
   const inFlight = useRef(false);
   const serie = tarefa.serie;
@@ -46,15 +48,19 @@ export function TarefaDeleteConfirm({
     try {
       if (kind === 'serie' && serie) {
         await deleteTarefaSerieCompleta(serie.id);
-        toast.success('Série excluída!');
+        toast.success(t('deleteConfirm.seriesDeleted'));
       } else {
         await deleteTarefa(tarefa.id!);
-        toast.success('Tarefa excluída!');
+        toast.success(t('deleteConfirm.taskDeleted'));
       }
       onDeleted?.();
       onRefresh();
     } catch {
-      toast.error(kind === 'serie' ? 'Erro ao excluir a série' : 'Erro ao excluir tarefa');
+      toast.error(
+        kind === 'serie'
+          ? t('deleteConfirm.seriesDeleteError')
+          : t('deleteConfirm.taskDeleteError'),
+      );
     } finally {
       inFlight.current = false;
     }
@@ -71,14 +77,14 @@ export function TarefaDeleteConfirm({
       <PhoneConfirmSheet
         open={open}
         onCancel={close}
-        title="Excluir tarefa recorrente?"
-        message={`A tarefa "${tarefa.titulo}" faz parte de uma série.`}
+        title={t('deleteConfirm.recurringTitle')}
+        message={t('deleteConfirm.recurringMessage', { title: tarefa.titulo })}
         actions={[
           {
             label: (
               <Choice
-                title="Somente esta"
-                desc={proximaNormal ? 'A próxima ocorrência será criada normalmente.' : undefined}
+                title={t('deleteConfirm.onlyThis')}
+                desc={proximaNormal ? t('deleteConfirm.nextCreatedNormally') : undefined}
               />
             ),
             onSelect: () => {
@@ -89,8 +95,8 @@ export function TarefaDeleteConfirm({
           {
             label: (
               <Choice
-                title="Toda a série"
-                desc="Remove a série e as ocorrências abertas. As concluídas ficam."
+                title={t('deleteConfirm.wholeSeries')}
+                desc={t('deleteConfirm.wholeSeriesDesc')}
               />
             ),
             destructive: true,
@@ -108,11 +114,11 @@ export function TarefaDeleteConfirm({
     <PhoneConfirmSheet
       open={open}
       onCancel={close}
-      title="Excluir tarefa?"
-      message={`A tarefa "${tarefa.titulo}" e suas subtarefas serão excluídas. Essa ação não pode ser desfeita.`}
+      title={t('deleteConfirm.title')}
+      message={t('deleteConfirm.message', { title: tarefa.titulo })}
       actions={[
         {
-          label: 'Excluir tarefa',
+          label: t('deleteConfirm.confirm'),
           destructive: true,
           onSelect: () => {
             close();

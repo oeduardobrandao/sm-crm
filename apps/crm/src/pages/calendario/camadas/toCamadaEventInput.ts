@@ -1,5 +1,6 @@
 import type { EventInput } from '@fullcalendar/core';
 import { addMinutes } from 'date-fns';
+import { i18n } from '@mesaas/i18n';
 import { formatFinancialBRL } from '@/lib/financialAccess';
 import { dotColorMap } from '../nicheCalendars/types';
 import {
@@ -13,18 +14,25 @@ import {
 /** Visual length of a post in the week/day grids (a post is an instant). */
 export const DURACAO_POST_MIN = 30;
 
-const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
-
-/** Prefix "Semana: " / "Mês: " unless the name already starts with it. */
-function comRotulo(prefixo: string, nome: string): string {
-  return nome.toLowerCase().startsWith(prefixo.toLowerCase()) ? nome : `${prefixo}: ${nome}`;
+/** Prefix "Semana: " / "Mês: " unless the name already starts with it. The names are
+ *  Brazilian content, so the Portuguese word is checked too, whatever the UI language. */
+function comRotulo(prefixoPt: string, prefixo: string, nome: string): string {
+  const n = nome.toLowerCase();
+  return n.startsWith(prefixoPt.toLowerCase()) || n.startsWith(prefixo.toLowerCase())
+    ? nome
+    : `${prefixo}: ${nome}`;
 }
 
 /** Chip title of a layer item (also the list view text). */
 export function tituloDaCamada(item: CamadaItem): string {
   switch (item.camada) {
     case 'posts':
-      return item.post.titulo?.trim() || `Post de ${item.post.cliente_nome || 'cliente'}`;
+      return (
+        item.post.titulo?.trim() ||
+        i18n.t('calendario:camadas.postOf', {
+          client: item.post.cliente_nome || i18n.t('calendario:camadas.clientFallback'),
+        })
+      );
     case 'prazos':
       return item.prazo.clienteId !== null
         ? `${item.prazo.etapaNome} · ${item.prazo.clienteNome}`
@@ -32,17 +40,21 @@ export function tituloDaCamada(item: CamadaItem): string {
     case 'recebimentos':
     case 'pagamentos': {
       const total = item.itens.reduce((s, i) => s + (Number(i.valor) || 0), 0);
-      const contagem =
+      const contagem = i18n.t(
         item.camada === 'recebimentos'
-          ? plural(item.itens.length, 'recebimento', 'recebimentos')
-          : plural(item.itens.length, 'pagamento', 'pagamentos');
+          ? 'calendario:shared.count.receivables'
+          : 'calendario:shared.count.payments',
+        { count: item.itens.length },
+      );
       return `${contagem} · ${formatFinancialBRL(total, true)}`;
     }
     case 'datas':
       return item.cliente.nome ? `${item.titulo} · ${item.cliente.nome}` : item.titulo;
     case 'comemorativas':
-      if (item.rotulo === 'mes') return comRotulo('Mês', item.nome);
-      if (item.rotulo === 'semana') return comRotulo('Semana', item.nome);
+      if (item.rotulo === 'mes')
+        return comRotulo('Mês', i18n.t('calendario:camadas.monthPrefix'), item.nome);
+      if (item.rotulo === 'semana')
+        return comRotulo('Semana', i18n.t('calendario:camadas.weekPrefix'), item.nome);
       return item.nome;
   }
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { addMonths, format, subMonths } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { useTranslation } from 'react-i18next';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import type { Cliente, ClienteData, Membro, Transacao } from '../../../store';
 import { formatDate } from '../../../store';
@@ -32,7 +33,6 @@ const DOT = {
   data: '#6366f1',
 } as const;
 
-const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
 const maiuscula = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export interface CalendarioClassicoPhoneProps {
@@ -57,18 +57,19 @@ export interface CalendarioClassicoPhoneProps {
  * per month.
  */
 export function CalendarioClassicoPhone(p: CalendarioClassicoPhoneProps) {
+  const { t } = useTranslation('calendario');
   return (
     <div className="phone-cal">
       <PhonePageHeader
-        title={p.aba === 'financeiro' ? 'Calendário' : p.niche.title}
-        subtitle={p.aba === 'financeiro' ? 'Visão geral mensal.' : p.niche.subtitle}
+        title={p.aba === 'financeiro' ? t('shared.calendarTitle') : p.niche.title}
+        subtitle={p.aba === 'financeiro' ? t('shared.monthlyOverview') : p.niche.subtitle}
       >
         <SegmentedControl<Aba>
-          aria-label="Visão do calendário"
+          aria-label={t('phone.viewAria')}
           className="phone-cal-tabs"
           options={[
-            { value: 'financeiro', label: 'Calendário' },
-            { value: 'comemorativas', label: 'Datas comemorativas' },
+            { value: 'financeiro', label: t('shared.calendarTitle') },
+            { value: 'comemorativas', label: t('phone.commemorativeTab') },
           ]}
           value={p.aba}
           onChange={p.onAbaChange}
@@ -84,6 +85,8 @@ export function CalendarioClassicoPhone(p: CalendarioClassicoPhoneProps) {
 }
 
 function MesFinanceiro(p: CalendarioClassicoPhoneProps) {
+  const { t } = useTranslation('calendario');
+  const locale = useDateFnsLocale();
   const [mes, setMes] = useState(() => new Date());
   const [dia, setDia] = useState(() => new Date().getDate());
   const { pedirConfirmacao, dialog } = useConfirmarPagamento(p.canSeeFinancials);
@@ -121,11 +124,11 @@ function MesFinanceiro(p: CalendarioClassicoPhoneProps) {
   const resumoDoDia = (d: Date) => {
     const itens = itensDoDia(fontes, year, month, d.getDate());
     return [
-      itens.incomes.length ? plural(itens.incomes.length, 'recebimento', 'recebimentos') : '',
-      itens.expenses.length ? plural(itens.expenses.length, 'pagamento', 'pagamentos') : '',
-      itens.deadlines.length ? plural(itens.deadlines.length, 'entrega', 'entregas') : '',
-      itens.birthdays.length ? plural(itens.birthdays.length, 'aniversário', 'aniversários') : '',
-      itens.datas.length ? plural(itens.datas.length, 'data', 'datas') : '',
+      itens.incomes.length ? t('shared.count.receivables', { count: itens.incomes.length }) : '',
+      itens.expenses.length ? t('shared.count.payments', { count: itens.expenses.length }) : '',
+      itens.deadlines.length ? t('shared.count.deliveries', { count: itens.deadlines.length }) : '',
+      itens.birthdays.length ? t('shared.count.birthdays', { count: itens.birthdays.length }) : '',
+      itens.datas.length ? t('shared.count.dates', { count: itens.datas.length }) : '',
     ]
       .filter(Boolean)
       .join(', ');
@@ -143,13 +146,19 @@ function MesFinanceiro(p: CalendarioClassicoPhoneProps) {
         cabecalho={
           <div className="phone-cal-month__head">
             <h2 className="phone-cal-month__title">
-              {maiuscula(format(mes, "MMMM 'de' yyyy", { locale: ptBR }))}
+              {maiuscula(format(mes, t('dateFormat.monthYear'), { locale }))}
             </h2>
             <span className="phone-cal-month__nav">
-              <PhoneIconButton label="Mês anterior" onClick={() => mudarMes(subMonths(mes, 1))}>
+              <PhoneIconButton
+                label={t('ui.previousMonth')}
+                onClick={() => mudarMes(subMonths(mes, 1))}
+              >
                 <ChevronLeft aria-hidden="true" />
               </PhoneIconButton>
-              <PhoneIconButton label="Próximo mês" onClick={() => mudarMes(addMonths(mes, 1))}>
+              <PhoneIconButton
+                label={t('ui.nextMonth')}
+                onClick={() => mudarMes(addMonths(mes, 1))}
+              >
                 <ChevronRight aria-hidden="true" />
               </PhoneIconButton>
             </span>
@@ -158,10 +167,10 @@ function MesFinanceiro(p: CalendarioClassicoPhoneProps) {
       />
 
       {diaVazio(selecionado) ? (
-        <p className="phone-cal-empty">Nenhuma movimentação neste dia.</p>
+        <p className="phone-cal-empty">{t('shared.noActivity')}</p>
       ) : (
         <GroupedList
-          header={maiuscula(format(dataSelecionada, "EEEE, d 'de' MMMM", { locale: ptBR }))}
+          header={maiuscula(format(dataSelecionada, t('dateFormat.weekdayDayMonth'), { locale }))}
         >
           {selecionado.incomes.map((c) => {
             const refId = refPagamento('cliente', c.id, year, month);
@@ -171,15 +180,18 @@ function MesFinanceiro(p: CalendarioClassicoPhoneProps) {
                 key={`in-${c.id}`}
                 icon={<i className="phone-cal-dot" style={{ background: DOT.income }} />}
                 label={<span className={pago ? 'phone-cal-pago' : undefined}>{c.nome}</span>}
-                subtitle={`Plano: ${c.plano?.toUpperCase() || 'N/A'} · Previsto ${formatFinancialBRL(c.valor_mensal, p.canSeeFinancials)}`}
+                subtitle={t('phone.incomeSubtitle', {
+                  plan: c.plano?.toUpperCase() || 'N/A',
+                  value: formatFinancialBRL(c.valor_mensal, p.canSeeFinancials),
+                })}
                 accessory={
                   pago ? (
-                    <span className="phone-cal-badge phone-cal-badge--ok">Pago</span>
+                    <span className="phone-cal-badge phone-cal-badge--ok">{t('shared.paid')}</span>
                   ) : (
                     <button
                       type="button"
                       className="phone-cal-confirm"
-                      aria-label={`Confirmar ${c.nome}`}
+                      aria-label={t('shared.confirmNamed', { name: c.nome })}
                       onClick={() =>
                         pedirConfirmacao({
                           refId,
@@ -190,7 +202,7 @@ function MesFinanceiro(p: CalendarioClassicoPhoneProps) {
                         })
                       }
                     >
-                      Confirmar
+                      {t('actions.confirm')}
                     </button>
                   )
                 }
@@ -205,15 +217,18 @@ function MesFinanceiro(p: CalendarioClassicoPhoneProps) {
                 key={`out-${m.id}`}
                 icon={<i className="phone-cal-dot" style={{ background: DOT.expense }} />}
                 label={<span className={pago ? 'phone-cal-pago' : undefined}>{m.nome}</span>}
-                subtitle={`Equipe · ${[m.cargo, m.tipo?.replace('_', ' ')].filter(Boolean).join(', ')} · Previsto ${formatFinancialBRL(m.custo_mensal, p.canSeeFinancials)}`}
+                subtitle={t('phone.expenseSubtitle', {
+                  details: [m.cargo, m.tipo?.replace('_', ' ')].filter(Boolean).join(', '),
+                  value: formatFinancialBRL(m.custo_mensal, p.canSeeFinancials),
+                })}
                 accessory={
                   pago ? (
-                    <span className="phone-cal-badge phone-cal-badge--ok">Pago</span>
+                    <span className="phone-cal-badge phone-cal-badge--ok">{t('shared.paid')}</span>
                   ) : (
                     <button
                       type="button"
                       className="phone-cal-confirm"
-                      aria-label={`Confirmar ${m.nome}`}
+                      aria-label={t('shared.confirmNamed', { name: m.nome })}
                       onClick={() =>
                         pedirConfirmacao({
                           refId,
@@ -224,7 +239,7 @@ function MesFinanceiro(p: CalendarioClassicoPhoneProps) {
                         })
                       }
                     >
-                      Confirmar
+                      {t('actions.confirm')}
                     </button>
                   )
                 }
@@ -241,7 +256,7 @@ function MesFinanceiro(p: CalendarioClassicoPhoneProps) {
                 />
               }
               label={d.workflowTitle}
-              subtitle={`${d.clienteNome} · Etapa: ${d.etapaNome}`}
+              subtitle={t('phone.stage', { client: d.clienteNome, stage: d.etapaNome })}
               value={formatDeadlineStatus(d.diasRestantes, d.estourado)}
             />
           ))}
@@ -250,7 +265,7 @@ function MesFinanceiro(p: CalendarioClassicoPhoneProps) {
               key={`bd-${c.id}`}
               icon={<i className="phone-cal-dot" style={{ background: DOT.birthday }} />}
               label={c.nome}
-              subtitle="Aniversário do cliente"
+              subtitle={t('shared.clientBirthday')}
             />
           ))}
           {selecionado.datas.map((d) => (
@@ -258,26 +273,31 @@ function MesFinanceiro(p: CalendarioClassicoPhoneProps) {
               key={`dt-${d.id}`}
               icon={<i className="phone-cal-dot" style={{ background: DOT.data }} />}
               label={d.titulo}
-              subtitle={`${p.clientes.find((c) => c.id === d.cliente_id)?.nome || 'Sem cliente'} · ${formatDate(d.data)}`}
+              subtitle={`${p.clientes.find((c) => c.id === d.cliente_id)?.nome || t('phone.noClient')} · ${formatDate(d.data)}`}
             />
           ))}
         </GroupedList>
       )}
       <p className="phone-cal-legend" aria-hidden="true">
         <span>
-          <i className="phone-cal-dot" style={{ background: DOT.income }} /> Recebimento
+          <i className="phone-cal-dot" style={{ background: DOT.income }} />{' '}
+          {t('phone.legend.income')}
         </span>
         <span>
-          <i className="phone-cal-dot" style={{ background: DOT.expense }} /> Pagamento
+          <i className="phone-cal-dot" style={{ background: DOT.expense }} />{' '}
+          {t('phone.legend.expense')}
         </span>
         <span>
-          <i className="phone-cal-dot" style={{ background: DOT.deadline }} /> Entrega
+          <i className="phone-cal-dot" style={{ background: DOT.deadline }} />{' '}
+          {t('phone.legend.deadline')}
         </span>
         <span>
-          <i className="phone-cal-dot" style={{ background: DOT.birthday }} /> Aniversário
+          <i className="phone-cal-dot" style={{ background: DOT.birthday }} />{' '}
+          {t('shared.birthday')}
         </span>
         <span>
-          <i className="phone-cal-dot" style={{ background: DOT.data }} /> Data importante
+          <i className="phone-cal-dot" style={{ background: DOT.data }} />{' '}
+          {t('phone.legend.importantDate')}
         </span>
       </p>
       {dialog}
@@ -285,13 +305,8 @@ function MesFinanceiro(p: CalendarioClassicoPhoneProps) {
   );
 }
 
-const LEGENDA: { type: keyof typeof dotColorMap; label: string }[] = [
-  { type: 'br', label: 'Brasil' },
-  { type: 'world', label: 'Mundial / OMS / OPAS' },
-  { type: 'prof', label: 'Profissões' },
-  { type: 'week', label: 'Semanas' },
-  { type: 'month', label: 'Meses temáticos' },
-];
+/** Legend order; labels under `shared.legend.<type>`. */
+const LEGENDA = ['br', 'world', 'prof', 'week', 'month'] as const;
 
 function DatasComemorativas({
   niche,
@@ -300,6 +315,7 @@ function DatasComemorativas({
   niche: NicheCalendarDef;
   onNicheChange: (key: string) => void;
 }) {
+  const { t } = useTranslation('calendario');
   const [filtro, setFiltro] = useState('all');
   const [busca, setBusca] = useState('');
   const [buscaAberta, setBuscaAberta] = useState(false);
@@ -312,10 +328,10 @@ function DatasComemorativas({
   }, [niche.key]);
 
   const filtros = [
-    { key: 'all', label: 'Todos' },
-    { key: 'br', label: 'Brasil' },
-    { key: 'world', label: 'Mundial' },
-    { key: 'prof', label: 'Profissional' },
+    { key: 'all', label: t('shared.filters.all') },
+    { key: 'br', label: t('shared.filters.br') },
+    { key: 'world', label: t('shared.filters.world') },
+    { key: 'prof', label: t('shared.filters.prof') },
     ...Object.entries(niche.filterLabels).map(([key, label]) => ({ key, label })),
   ];
 
@@ -333,12 +349,15 @@ function DatasComemorativas({
       .filter((m) => m.events.length > 0);
   }, [niche.data, filtro, busca]);
   const total = meses.reduce((n, m) => n + m.events.length, 0);
+  // The month name in the UI language (`num` is "01".."12"); the pt data name is the fallback.
+  const nomeDoMes = (m: { month: string; num: string }) =>
+    t(`months.${Number(m.num) - 1}`, { defaultValue: m.month });
 
   return (
     <>
-      <GroupedList aria-label="Nicho">
+      <GroupedList aria-label={t('shared.niche')}>
         <PickerCell
-          label="Nicho"
+          label={t('shared.niche')}
           value={niche.key}
           options={NICHE_CALENDARS.map((n) => ({ value: n.key, label: n.label }))}
           onChange={(v) => v && onNicheChange(v)}
@@ -346,7 +365,7 @@ function DatasComemorativas({
       </GroupedList>
 
       <div className="phone-cal-filters">
-        <ChipRow aria-label="Filtrar datas" className="phone-cal-chips">
+        <ChipRow aria-label={t('phone.filterAria')} className="phone-cal-chips">
           {filtros.map((f) => (
             <Chip
               key={f.key}
@@ -357,7 +376,7 @@ function DatasComemorativas({
           ))}
         </ChipRow>
         <PhoneIconButton
-          label={buscaAberta ? 'Fechar busca' : 'Buscar data'}
+          label={buscaAberta ? t('phone.closeSearch') : t('phone.searchDate')}
           aria-expanded={buscaAberta}
           onClick={() => {
             if (buscaAberta) setBusca('');
@@ -376,28 +395,27 @@ function DatasComemorativas({
             enterKeyHint="search"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar data..."
-            aria-label="Buscar data"
+            placeholder={t('shared.searchPlaceholder')}
+            aria-label={t('phone.searchDate')}
           />
         </div>
       )}
 
-      <p className="phone-cal-count">
-        {total} {total === 1 ? 'data exibida' : 'datas exibidas'}
-      </p>
+      <p className="phone-cal-count">{t('phone.shown', { count: total })}</p>
       <p className="phone-cal-legend">
-        {LEGENDA.map((l) => (
-          <span key={l.type}>
-            <i className="phone-cal-dot" style={{ background: dotColorMap[l.type] }} /> {l.label}
+        {LEGENDA.map((tipo) => (
+          <span key={tipo}>
+            <i className="phone-cal-dot" style={{ background: dotColorMap[tipo] }} />{' '}
+            {t(`shared.legend.${tipo}`)}
           </span>
         ))}
       </p>
 
-      {meses.length === 0 && <p className="phone-cal-empty">Nenhuma data encontrada.</p>}
+      {meses.length === 0 && <p className="phone-cal-empty">{t('phone.noDates')}</p>}
       {meses.map((m) => (
         <GroupedList
           key={m.month}
-          header={m.badge ? `${m.month} · ${m.badge}` : m.month}
+          header={m.badge ? `${nomeDoMes(m)} · ${m.badge}` : nomeDoMes(m)}
           className="phone-cal-niche-month"
         >
           {m.events.map((e, i) => (

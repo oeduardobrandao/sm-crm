@@ -9,6 +9,8 @@ import {
   LayoutList,
   MoreHorizontal,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 // Cross-boundary import, same precedent as ReportPreview.tsx importing the report
 // template's theme resolver: the preview must render with the EXACT resolver the
 // real Hub uses, not a hand-copied approximation that can drift from it. `apps/hub`
@@ -63,28 +65,38 @@ interface HubPreviewProps {
 
 const GOOGLE_FONTS_LINK_ID = 'crm-hub-preview-fonts';
 
-const NAV_ITEMS = ['Início', 'Postagens', 'Aprovações', 'Marca'];
+// Mock portal copy, resolved per render so it follows the UI language.
+const navItems = (t: TFunction) => [
+  t('hubPreview.mock.nav.home'),
+  t('hubPreview.mock.nav.posts'),
+  t('hubPreview.mock.nav.approvals'),
+  t('hubPreview.mock.nav.brand'),
+];
 const ACTIVE_NAV_INDEX = 1;
 const CALENDAR_DAYS = [18, 19, 20, 21, 22];
 const ACCENT_DAY_INDEX = 2;
 
-const MOBILE_NAV_ITEMS: { label: string; icon: typeof Home }[] = [
-  { label: 'Início', icon: Home },
-  { label: 'Aprovar', icon: CheckSquare },
-  { label: 'Posts', icon: LayoutList },
-  { label: 'Mais', icon: MoreHorizontal },
+const mobileNavItems = (t: TFunction): { label: string; icon: typeof Home }[] => [
+  { label: t('hubPreview.mock.nav.home'), icon: Home },
+  { label: t('hubPreview.mock.mobileNav.approve'), icon: CheckSquare },
+  { label: t('hubPreview.mock.mobileNav.posts'), icon: LayoutList },
+  { label: t('hubPreview.mock.mobileNav.more'), icon: MoreHorizontal },
 ];
 
-const STATUS_PILLS = ['Aprovado · 8', 'Em revisão · 2', 'Agendado · 5'];
+const statusPills = (t: TFunction) => [
+  t('hubPreview.mock.pills.approved', { n: 8 }),
+  t('hubPreview.mock.pills.inReview', { n: 2 }),
+  t('hubPreview.mock.pills.scheduled', { n: 5 }),
+];
 
 // Fixed, illustrative heights (%). Not derived from real data — the preview has
 // none — just enough visual variety that a sparkline reads as a sparkline instead
 // of a flat bar. Last bar always the accent, matching "today" being the highlighted
 // point in a trend.
-const KPI_STATS: { label: string; value: string; spark: number[] }[] = [
-  { label: 'Aprovações', value: '8', spark: [35, 55, 40, 70, 50, 65, 85] },
-  { label: 'Agendados', value: '5', spark: [50, 35, 60, 45, 70, 55, 40] },
-  { label: 'Rascunhos', value: '3', spark: [20, 40, 25, 50, 35, 45, 30] },
+const kpiStats = (t: TFunction): { label: string; value: string; spark: number[] }[] => [
+  { label: t('hubPreview.mock.kpi.approvals'), value: '8', spark: [35, 55, 40, 70, 50, 65, 85] },
+  { label: t('hubPreview.mock.kpi.scheduled'), value: '5', spark: [50, 35, 60, 45, 70, 55, 40] },
+  { label: t('hubPreview.mock.kpi.drafts'), value: '3', spark: [20, 40, 25, 50, 35, 45, 30] },
 ];
 
 /** Per-device sizing. The preview reads as a real browser window now (max-width
@@ -223,6 +235,8 @@ export function HubPreview({
   look = 'classic',
   initialDevice = 'desktop',
 }: HubPreviewProps) {
+  const { t } = useTranslation('settingsHub');
+  const kpiList = kpiStats(t);
   const pauta = look === 'pauta';
   const [dark, setDark] = useState(draft.defaultAppearance === 'dark');
   const [device, setDevice] = useState<'desktop' | 'mobile'>(initialDevice);
@@ -343,7 +357,7 @@ export function HubPreview({
     </div>
   );
 
-  const kpiCards = (device === 'mobile' ? KPI_STATS.slice(0, 2) : KPI_STATS).map((kpi) => (
+  const kpiCards = (device === 'mobile' ? kpiList.slice(0, 2) : kpiList).map((kpi) => (
     <div
       key={kpi.label}
       style={{
@@ -370,7 +384,7 @@ export function HubPreview({
 
   const statusPillsRow = (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }} data-testid="preview-status-pills">
-      {STATUS_PILLS.map((pill) => (
+      {statusPills(t).map((pill) => (
         <span
           key={pill}
           style={{
@@ -418,7 +432,7 @@ export function HubPreview({
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0, flex: 1 }}>
         <div style={{ fontSize: dims.approvalTextFont, lineHeight: 1.35, color: 'var(--hub-tx2)' }}>
-          Uma postagem nova está pronta para aprovação.
+          {t('hubPreview.mock.approvalText')}
         </div>
         <button
           type="button"
@@ -435,7 +449,7 @@ export function HubPreview({
             cursor: 'default',
           }}
         >
-          Ver postagem
+          {t('hubPreview.mock.viewPost')}
         </button>
       </div>
     </div>
@@ -471,7 +485,7 @@ export function HubPreview({
           whiteSpace: 'nowrap',
         }}
       >
-        Ver tudo
+        {t('hubPreview.mock.seeAll')}
       </span>
     </div>
   );
@@ -485,13 +499,14 @@ export function HubPreview({
         color: 'var(--hub-txt)',
       }}
     >
-      Bem-vindo(a) de volta
+      {t('hubPreview.mock.welcomeBack')}
     </div>
   );
 
   const poweredBy = showPoweredBy && (
     <div style={{ fontSize: dims.poweredByFont, textAlign: 'center', color: 'var(--hub-tx3)' }}>
-      powered by mesaas
+      {/* Brand mark, untranslated, same as the real Hub's PoweredByMesaas. */}
+      {'powered by mesaas'}
     </div>
   );
 
@@ -513,7 +528,7 @@ export function HubPreview({
       {pauta ? (
         <PautaPreviewKpiRow
           dims={dims}
-          kpis={device === 'mobile' ? KPI_STATS.slice(0, 2) : KPI_STATS}
+          kpis={device === 'mobile' ? kpiList.slice(0, 2) : kpiList}
         />
       ) : (
         <div style={{ display: 'flex', gap: dims.kpiGap }}>{kpiCards}</div>
@@ -537,13 +552,13 @@ export function HubPreview({
         }}
       >
         <span style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-main)' }}>
-          Pré-visualização ao vivo
+          {t('hubPreview.livePreview')}
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
           <button
             type="button"
             aria-pressed={device === 'desktop'}
-            aria-label="Computador"
+            aria-label={t('hubPreview.desktop')}
             onClick={() => setDevice('desktop')}
             style={togglePillStyle(device === 'desktop')}
           >
@@ -552,7 +567,7 @@ export function HubPreview({
           <button
             type="button"
             aria-pressed={device === 'mobile'}
-            aria-label="Celular"
+            aria-label={t('hubPreview.mobile')}
             onClick={() => setDevice('mobile')}
             style={togglePillStyle(device === 'mobile')}
           >
@@ -568,7 +583,7 @@ export function HubPreview({
             onClick={() => setDark(false)}
             style={togglePillStyle(!dark)}
           >
-            Claro
+            {t('hubParts.appearance.light')}
           </button>
           <button
             type="button"
@@ -576,7 +591,7 @@ export function HubPreview({
             onClick={() => setDark(true)}
             style={togglePillStyle(dark)}
           >
-            Escuro
+            {t('hubParts.appearance.dark')}
           </button>
         </div>
       </div>
@@ -643,7 +658,7 @@ export function HubPreview({
                 whiteSpace: 'nowrap',
               }}
             >
-              app.mesaas.com.br/•••/hub
+              {'app.mesaas.com.br/•••/hub'}
             </span>
           </div>
 
@@ -687,7 +702,7 @@ export function HubPreview({
                       color: 'var(--hub-txt)',
                     }}
                   >
-                    {workspaceName || 'Seu workspace'}
+                    {workspaceName || t('hubPreview.yourWorkspace')}
                   </div>
                 )}
                 <nav
@@ -699,7 +714,7 @@ export function HubPreview({
                     marginTop: 8,
                   }}
                 >
-                  {NAV_ITEMS.map((item, i) => (
+                  {navItems(t).map((item, i) => (
                     <div
                       key={item}
                       style={{
@@ -760,7 +775,7 @@ export function HubPreview({
                     background: 'var(--hub-card)',
                   }}
                 >
-                  {MOBILE_NAV_ITEMS.map(({ label, icon: Icon }, i) => {
+                  {mobileNavItems(t).map(({ label, icon: Icon }, i) => {
                     const active = i === 0;
                     return (
                       <div
@@ -817,7 +832,7 @@ export function HubPreview({
           textAlign: 'center',
         }}
       >
-        Fontes reais carregam ao vivo · dados fictícios
+        {t('hubPreview.footnote')}
       </p>
     </div>
   );

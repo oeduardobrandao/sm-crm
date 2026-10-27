@@ -1,27 +1,31 @@
 import { Clock } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 
 export function RoleBadge({ role }: { role: string }) {
+  const { t } = useTranslation('settings');
   const map: Record<string, string> = {
     owner: 'badge-primary',
     admin: 'badge-info',
     agent: 'badge-neutral',
   };
-  const pt: Record<string, string> = { owner: 'Dono', admin: 'Admin', agent: 'Agente' };
-  return <span className={`badge ${map[role] ?? 'badge-neutral'}`}>{pt[role] ?? role}</span>;
+  const label =
+    role === 'owner' || role === 'admin' || role === 'agent' ? t(`invite.roles.${role}`) : role;
+  return <span className={`badge ${map[role] ?? 'badge-neutral'}`}>{label}</span>;
 }
 
 export function InviteStatusBadge({ status }: { status: string }) {
+  const { t } = useTranslation('settings');
   const map: Record<string, string> = {
     pending: 'badge-warning',
     expired: 'badge-danger',
     accepted: 'badge-success',
   };
-  const pt: Record<string, string> = {
-    pending: 'Pendente',
-    expired: 'Expirado',
-    accepted: 'Aceito',
-  };
-  return <span className={`badge ${map[status] ?? 'badge-neutral'}`}>{pt[status] ?? status}</span>;
+  const label =
+    status === 'pending' || status === 'expired' || status === 'accepted'
+      ? t(`invite.status.${status}`)
+      : status;
+  return <span className={`badge ${map[status] ?? 'badge-neutral'}`}>{label}</span>;
 }
 
 export function computeEffectiveInviteStatus<
@@ -42,16 +46,18 @@ export function computeEffectiveInviteStatus<
  * case from owners, who then assumed a mail was in flight.
  */
 export function inviteSuccessMessage(result: { message?: string }): string {
-  return result.message?.trim() || 'Convite enviado!';
+  return result.message?.trim() || i18n.t('settings:invite.sent');
 }
 
 export function InviteTimeLeft({ expiresAt, status }: { expiresAt: string; status: string }) {
+  const { t } = useTranslation('settings');
   if (status !== 'pending' || !expiresAt) return null;
   const diff = new Date(expiresAt).getTime() - Date.now();
   if (diff <= 0) return null;
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
   const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-  const label = days > 0 ? `${days}d ${hours}h restantes` : `${hours}h restantes`;
+  const label =
+    days > 0 ? t('invite.timeLeftDays', { days, hours }) : t('invite.timeLeftHours', { hours });
   return (
     <span
       style={{

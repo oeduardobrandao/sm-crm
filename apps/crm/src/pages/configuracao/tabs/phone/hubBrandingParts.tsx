@@ -1,5 +1,7 @@
 import type { CSSProperties } from 'react';
 import { Sun, Moon, type LucideIcon } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 // Same cross-boundary reach as HubPreview.tsx (see its header comment).
 import {
   PALETTES,
@@ -20,30 +22,47 @@ export const HEX_6_RE = /^#[0-9a-fA-F]{6}$/;
 // one-click presets here instead of an arbitrary swatch set.
 export const BRAND_PRESET_COLORS = ['#eab308', '#E1306C', '#42c8f5', '#3ecf8e'];
 
+/** An option whose `label` (and any extra fields) is a getter resolved through i18n on
+ * every read, so the lists below follow the UI language instead of freezing at module load. */
+function opt<T extends object, F extends string>(
+  base: T,
+  keys: Record<F, string>,
+): T & Record<F, string> {
+  const o = { ...base } as T & Record<F, string>;
+  for (const [field, key] of Object.entries(keys) as [F, string][]) {
+    Object.defineProperty(o, field, { enumerable: true, get: () => i18n.t(key) });
+  }
+  return o;
+}
+const k = (key: string) => `settingsHub:hubParts.${key}`;
+
 export const SURFACE_OPTIONS: { value: HubSurface; label: string }[] = [
-  { value: 'neutral', label: 'Neutro' },
-  { value: 'warm', label: 'Quente' },
-  { value: 'cool', label: 'Frio' },
+  opt({ value: 'neutral' as HubSurface }, { label: k('surface.neutral') }),
+  opt({ value: 'warm' as HubSurface }, { label: k('surface.warm') }),
+  opt({ value: 'cool' as HubSurface }, { label: k('surface.cool') }),
 ];
 // Suave leads: it's hub_radius's default (migration 20260731000001), so it's what
 // most workspaces already have — putting it first matches what they'll see.
 export const RADIUS_OPTIONS: { value: HubRadius; label: string }[] = [
-  { value: 'soft', label: 'Suave' },
-  { value: 'square', label: 'Reto' },
-  { value: 'pill', label: 'Pílula' },
+  opt({ value: 'soft' as HubRadius }, { label: k('radius.soft') }),
+  opt({ value: 'square' as HubRadius }, { label: k('radius.square') }),
+  opt({ value: 'pill' as HubRadius }, { label: k('radius.pill') }),
 ];
 export const CARD_STYLE_OPTIONS: { value: HubCardStyle; label: string }[] = [
-  { value: 'filled', label: 'Preenchido' },
-  { value: 'outline', label: 'Contorno' },
-  { value: 'tonal', label: 'Tonal' },
+  opt({ value: 'filled' as HubCardStyle }, { label: k('cardStyle.filled') }),
+  opt({ value: 'outline' as HubCardStyle }, { label: k('cardStyle.outline') }),
+  opt({ value: 'tonal' as HubCardStyle }, { label: k('cardStyle.tonal') }),
 ];
 export const LOGO_STYLE_OPTIONS: { value: string; label: string; sublabel: string }[] = [
-  { value: 'round', label: 'Redondo', sublabel: 'avatar circular' },
-  { value: 'wordmark', label: 'Horizontal', sublabel: 'wordmark' },
+  opt({ value: 'round' }, { label: k('logoStyle.round'), sublabel: k('logoStyle.roundSub') }),
+  opt(
+    { value: 'wordmark' },
+    { label: k('logoStyle.wordmark'), sublabel: k('logoStyle.wordmarkSub') },
+  ),
 ];
 export const APPEARANCE_OPTIONS: { value: string; label: string; icon: LucideIcon }[] = [
-  { value: 'light', label: 'Claro', icon: Sun },
-  { value: 'dark', label: 'Escuro', icon: Moon },
+  opt({ value: 'light', icon: Sun as LucideIcon }, { label: k('appearance.light') }),
+  opt({ value: 'dark', icon: Moon as LucideIcon }, { label: k('appearance.dark') }),
 ];
 
 // Radius values a small (~32px) glyph actually renders at. Mirrors theme.ts's
@@ -240,13 +259,14 @@ export function AccentChips({ brandColor }: { brandColor: string }) {
     },
     false,
   ).vars as CSSProperties;
+  const { t } = useTranslation('settingsHub');
   return (
     <div
       style={{ ...vars, display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.85rem' }}
     >
-      <span style={accentChipStyle('filled')}>Botão</span>
-      <span style={accentChipStyle('outline')}>Nav ativa</span>
-      <span style={accentChipStyle('outline')}>Calendário</span>
+      <span style={accentChipStyle('filled')}>{t('hubParts.accentChips.button')}</span>
+      <span style={accentChipStyle('outline')}>{t('hubParts.accentChips.activeNav')}</span>
+      <span style={accentChipStyle('outline')}>{t('hubParts.accentChips.calendar')}</span>
     </div>
   );
 }

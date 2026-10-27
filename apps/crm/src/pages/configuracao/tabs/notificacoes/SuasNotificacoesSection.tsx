@@ -1,13 +1,15 @@
+import { useTranslation } from 'react-i18next';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SkeletonStatus } from '@/components/ui/skeletons';
-import { CATEGORY_LABELS, isEmailEligibleType } from '@/lib/notification-catalog';
+import { categoryLabel, isEmailEligibleType } from '@/lib/notification-catalog';
 import { MASTER_PAUSE_TYPE } from '@/store/notificationPrefs';
 import { enabledOf, useSuasNotificacoes } from './useSuasNotificacoes';
 
 /** "Suas notificações": in-app x e-mail matrix for all catalog types,
  * grouped by category, plus a master "Pausar tudo" row per channel. */
 export default function SuasNotificacoesSection() {
+  const { t } = useTranslation('settings');
   const {
     loading,
     inappPrefs,
@@ -49,35 +51,34 @@ export default function SuasNotificacoesSection() {
   return (
     <div className="card animate-up">
       <div className="mb-4">
-        <h2 className="text-lg font-semibold">Suas notificações</h2>
+        <h2 className="text-lg font-semibold">{t('notifications.suas.title')}</h2>
         <p className="text-sm text-[color:var(--text-muted)]">
-          O que aparece no sino e o que chega no seu e-mail. Preferência individual: vale só para
-          você.
+          {t('notifications.suas.description')}
         </p>
       </div>
 
       <div className="grid grid-cols-[1fr_72px_72px] items-center gap-2 pb-2">
         <span />
         <span className="text-center text-xs font-medium text-[color:var(--text-muted)]">
-          No app
+          {t('notifications.inApp')}
         </span>
         <span className="text-center text-xs font-medium text-[color:var(--text-muted)]">
-          E-mail
+          {t('shared.email')}
         </span>
       </div>
 
       <div className="grid grid-cols-[1fr_72px_72px] items-center gap-2 rounded-lg bg-[color-mix(in_srgb,var(--warning)_15%,transparent)] p-3">
-        <span className="font-medium">Pausar tudo</span>
+        <span className="font-medium">{t('notifications.pauseAll')}</span>
         <span className="flex justify-center">
           <Switch
-            aria-label="Pausar tudo (no app)"
+            aria-label={t('notifications.pauseAllInApp')}
             checked={inappPaused}
             onCheckedChange={(v) => saveInapp({ type: MASTER_PAUSE_TYPE, enabled: !v })}
           />
         </span>
         <span className="flex justify-center">
           <Switch
-            aria-label="Pausar tudo (e-mail)"
+            aria-label={t('notifications.pauseAllEmail')}
             checked={emailPaused}
             onCheckedChange={(v) => saveEmail({ type: MASTER_PAUSE_TYPE, enabled: !v })}
           />
@@ -87,7 +88,7 @@ export default function SuasNotificacoesSection() {
       {categories.map(({ category, rows }) => (
         <div key={category} className="mt-4">
           <h3 className="mb-2 text-sm font-semibold text-[color:var(--text-main)]">
-            {CATEGORY_LABELS[category]}
+            {categoryLabel(category)}
           </h3>
           <div className="divide-y divide-[color:var(--border-color)]">
             {rows.map((row) => {
@@ -101,14 +102,16 @@ export default function SuasNotificacoesSection() {
                 >
                   <div>
                     <div className="font-medium">{row.label}</div>
-                    <div className="text-sm text-[color:var(--text-muted)]">Quando: {row.when}</div>
                     <div className="text-sm text-[color:var(--text-muted)]">
-                      Quem recebe: {row.recipients}
+                      {t('notifications.when', { when: row.when })}
+                    </div>
+                    <div className="text-sm text-[color:var(--text-muted)]">
+                      {t('notifications.recipients', { recipients: row.recipients })}
                     </div>
                   </div>
                   <span className="flex justify-center">
                     <Switch
-                      aria-label={`${row.label} (no app)`}
+                      aria-label={t('notifications.rowInApp', { label: row.label })}
                       disabled={inappPaused}
                       checked={enabledOf(inappPrefs, row.type)}
                       onCheckedChange={(v) => saveInapp({ type: row.type, enabled: v })}
@@ -117,7 +120,7 @@ export default function SuasNotificacoesSection() {
                   <span className="flex justify-center">
                     {emailType ? (
                       <Switch
-                        aria-label={`${row.label} (e-mail)`}
+                        aria-label={t('notifications.rowEmail', { label: row.label })}
                         disabled={emailPaused}
                         checked={enabledOf(emailPrefs, row.type)}
                         onCheckedChange={(v) => saveEmail({ type: emailType, enabled: v })}
@@ -125,8 +128,8 @@ export default function SuasNotificacoesSection() {
                     ) : (
                       <span
                         className="text-center text-[color:var(--text-muted)]"
-                        title="Este tipo não vira e-mail"
-                        aria-label={`${row.label}: este tipo não vira e-mail`}
+                        title={t('notifications.noEmailType')}
+                        aria-label={t('notifications.noEmailTypeAria', { label: row.label })}
                       >
                         ·
                       </span>

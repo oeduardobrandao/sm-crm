@@ -1,10 +1,17 @@
+import { i18n } from '@mesaas/i18n';
 import type { NicheCalendarDef } from './types';
 
 export const gastronomiaDef: NicheCalendarDef = {
   key: 'gastronomia',
-  label: 'Gastronomia',
-  title: 'Calendário de Gastronomia',
-  subtitle: 'Brasil & Mundial — Datas de Gastronomia & Alimentação',
+  get label() {
+    return i18n.t('calendario:niches.gastronomia.label');
+  },
+  get title() {
+    return i18n.t('calendario:niches.gastronomia.title');
+  },
+  get subtitle() {
+    return i18n.t('calendario:niches.gastronomia.subtitle');
+  },
   data: [
     {
       month: 'Janeiro',
@@ -333,9 +340,17 @@ export const gastronomiaDef: NicheCalendarDef = {
     },
   ],
   filterLabels: {
-    bebidas: 'Bebidas',
-    doces: 'Doces & Confeitaria',
-    'culinaria-regional': 'Culinária Regional',
-    sustentabilidade: 'Sustentabilidade',
+    get bebidas() {
+      return i18n.t('calendario:niches.gastronomia.filterLabels.bebidas');
+    },
+    get doces() {
+      return i18n.t('calendario:niches.gastronomia.filterLabels.doces');
+    },
+    get 'culinaria-regional'() {
+      return i18n.t('calendario:niches.gastronomia.filterLabels.culinaria-regional');
+    },
+    get sustentabilidade() {
+      return i18n.t('calendario:niches.gastronomia.filterLabels.sustentabilidade');
+    },
   },
 };
