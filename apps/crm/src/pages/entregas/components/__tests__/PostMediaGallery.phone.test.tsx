@@ -16,6 +16,7 @@ vi.mock('../../../../services/postMedia', async (importOriginal) => {
     deletePostMedia: vi.fn(),
     reorderPostMedia: vi.fn(),
     updateVideoThumbnail: vi.fn(),
+    probeVideo: vi.fn(async () => ({ width: 1080, height: 1920, duration_seconds: 30 })),
   };
 });
 
@@ -190,5 +191,29 @@ describe('PostMediaGallery, phone strip, open notes', () => {
       await screen.findByRole('button', { name: /^b\.jpg.*2 comentários em aberto/ }),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^a\.jpg/ })).not.toHaveAccessibleName(/em aberto/);
+  });
+});
+
+describe('PostMediaGallery, phone strip, oversized video', () => {
+  it('the hold menu of a 4K video offers "Reduzir resolução" beside "Ajustar proporção"', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([
+      {
+        ...item(9, 'uhd.mp4', 0),
+        kind: 'video',
+        mime_type: 'video/mp4',
+        width: 2160,
+        height: 3840,
+        duration_seconds: 30,
+      } as PostMedia,
+    ]);
+    renderPhoneGallery();
+    await screen.findByRole('button', { name: /^uhd\.mp4/ });
+    fireEvent.contextMenu(tile('uhd\\.mp4'));
+    const menu = await screen.findByRole('dialog', { name: 'Ações de uhd.mp4' });
+    const labels = within(menu)
+      .getAllByRole('menuitem')
+      .map((b) => b.textContent?.trim());
+    expect(labels).toContain('Reduzir resolução');
+    expect(labels).toContain('Ajustar proporção');
   });
 });

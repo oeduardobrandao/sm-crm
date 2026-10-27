@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ComponentProps } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { toast } from 'sonner';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -16,6 +17,7 @@ vi.mock('../../../../services/postMedia', async (importOriginal) => {
     deletePostMedia: vi.fn(),
     reorderPostMedia: vi.fn(),
     updateVideoThumbnail: vi.fn(),
+    probeVideo: vi.fn(async () => ({ width: 1080, height: 1920, duration_seconds: 30 })),
   };
 });
 
@@ -994,5 +996,308 @@ describe('PostMediaGallery feedback em mídia', () => {
     await waitFor(() => expect(onNotesChanged).toHaveBeenCalled());
     expect(setMediaNoteStatus).toHaveBeenCalledWith([77], 'resolved');
     expect(toast.error).not.toHaveBeenCalled();
+  });
+});
+
+// ── Oversized-video downscale (4K) ──────────────────────────────────────────────
+const ds = vi.hoisted(() => ({
+  probes: new Map<string, { width: number; height: number; duration_seconds: number } | null>(),
+  inspectForDownscale: vi.fn(),
+  downscaleVideo: vi.fn(),
+  captureEvent: vi.fn(),
+  planNull: false,
+}));
+
+// planDownscale only returns null for a budget under 100 kbps, which no video inside
+// Instagram's duration limits reaches; the flag forces it to exercise the guard.
+vi.mock('../../media-editor/downscalePlan', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../media-editor/downscalePlan')>();
+  return {
+    ...actual,
+    planDownscale: (...args: Parameters<typeof actual.planDownscale>) =>
+      ds.planNull ? null : actual.planDownscale(...args),
+  };
+});
+
+vi.mock('../../media-editor/oversize', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../media-editor/oversize')>();
+  return {
+    ...actual,
+    probeWithTimeout: vi.fn(async (f: File) =>
+      ds.probes.has(f.name) ? ds.probes.get(f.name)! : actual.probeWithTimeout(f),
+    ),
+  };
+});
+
+vi.mock('../../media-editor/downscaleVideo', () => ({
+  inspectForDownscale: ds.inspectForDownscale,
+  downscaleVideo: ds.downscaleVideo,
+  EngineUnavailable: class EngineUnavailable extends Error {
+    name = 'EngineUnavailable';
+  },
+  DownscaleOutputInvalid: class DownscaleOutputInvalid extends Error {},
+}));
+
+vi.mock('@/lib/analytics', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/analytics')>()),
+  captureEvent: ds.captureEvent,
+}));
+
+vi.mock('../DownscaleMediaDialog', () => ({
+  DownscaleMediaDialog: ({ media }: { media: PostMedia | null }) =>
+    media ? (
+      <div data-testid="downscale-media-dialog">Reduzindo {media.original_filename}</div>
+    ) : null,
+}));
+
+describe('PostMediaGallery oversized-video downscale at upload', () => {
+  const FOUR_K = { width: 2160, height: 3840, duration_seconds: 30 };
+  // A 9:16 video beside other files is a carousel slide and breaks the feed ratio too, so it
+  // is not offered there; a 16:9 4K one only breaks the width.
+  const FOUR_K_LANDSCAPE = { width: 3840, height: 2160, duration_seconds: 30 };
+  const GB = 1024 * 1024 * 1024;
+
+  function renderWith(props: Partial<ComponentProps<typeof PostMediaGallery>> = {}) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery postId={42} {...props} />
+      </QueryClientProvider>,
+    );
+  }
+
+  function bigFile(name: string, size: number) {
+    const f = createFile(name, 'video/mp4');
+    Object.defineProperty(f, 'size', { value: size });
+    return f;
+  }
+
+  const converted = () => createFile('4k (1080p).mp4', 'video/mp4');
+
+  beforeEach(() => {
+    ds.probes.clear();
+    ds.planNull = false;
+    ds.inspectForDownscale.mockResolvedValue({ engine: 'webcodecs', hdr: false });
+    ds.downscaleVideo.mockImplementation(async () => ({
+      file: converted(),
+      engine: 'webcodecs',
+      hdr: false,
+      width: 1080,
+      height: 1920,
+    }));
+    vi.mocked(listPostMedia).mockResolvedValue([]);
+  });
+
+  async function reduceButton() {
+    const btn = await screen.findByRole('button', { name: 'Reduzir e enviar' });
+    await waitFor(() => expect(btn).toBeEnabled());
+    return btn;
+  }
+
+  it('holds a 4K video back behind the offer, then converts and uploads it', async () => {
+    ds.probes.set('4k.mp4', FOUR_K);
+    renderWith();
+    await pickFiles([createFile('4k.mp4', 'video/mp4')]);
+
+    expect(await screen.findByText('Vídeo acima do limite do Instagram')).toBeInTheDocument();
+    expect(uploadPostMediaMock).not.toHaveBeenCalled();
+
+    fireEvent.click(await reduceButton());
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(1));
+    expect(ds.downscaleVideo).toHaveBeenCalledTimes(1);
+    const call = uploadPostMediaMock.mock.calls[0][0];
+    expect(call.file.name).toBe('4k (1080p).mp4');
+    expect(call.sortOrder).toBe(0);
+    expect(ds.captureEvent).toHaveBeenCalledWith(
+      'video_downscaled',
+      expect.objectContaining({ source: 'upload', outcome: 'ok', engine: 'webcodecs' }),
+    );
+  });
+
+  it('uploads the passing files of a mixed batch right away, the 4K one after the decision', async () => {
+    ds.probes.set('4k.mp4', FOUR_K_LANDSCAPE);
+    renderWith();
+    const img = createFile('a.jpg', 'image/jpeg');
+    const ok = createFile('ok.mp4', 'video/mp4');
+    await pickFiles([img, ok, createFile('4k.mp4', 'video/mp4')]);
+
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(2));
+    const first = uploadPostMediaMock.mock.calls.map((c) => [c[0].file.name, c[0].sortOrder]);
+    expect(first).toEqual(
+      expect.arrayContaining([
+        ['a.jpg', 0],
+        ['ok.mp4', 1],
+      ]),
+    );
+    fireEvent.click(await reduceButton());
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(3));
+    expect(uploadPostMediaMock.mock.calls[2][0]).toMatchObject({ sortOrder: 2 });
+    expect(uploadPostMediaMock.mock.calls[2][0].file.name).toBe('4k (1080p).mp4');
+  });
+
+  it('"Enviar original" uploads the original file', async () => {
+    ds.probes.set('4k.mp4', FOUR_K);
+    renderWith();
+    const original = createFile('4k.mp4', 'video/mp4');
+    await pickFiles([original]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Enviar original' }));
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(1));
+    expect(uploadPostMediaMock.mock.calls[0][0].file).toBe(original);
+    expect(ds.downscaleVideo).not.toHaveBeenCalled();
+  });
+
+  it('dismissing uploads nothing for the held-back file, re-enables the tile and still reports the rest once', async () => {
+    ds.probes.set('4k.mp4', FOUR_K_LANDSCAPE);
+    renderWith();
+    await pickFiles([createFile('a.jpg', 'image/jpeg'), createFile('4k.mp4', 'video/mp4')]);
+    await screen.findByText('Vídeo acima do limite do Instagram');
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(1));
+    expect(screen.getByText('Enviando…')).toBeInTheDocument();
+    expect(toast.success).not.toHaveBeenCalledWith('Upload concluído');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
+    await waitFor(() => expect(screen.getByText('Adicionar')).toBeInTheDocument());
+    expect(uploadPostMediaMock).toHaveBeenCalledTimes(1);
+    expect(ds.downscaleVideo).not.toHaveBeenCalled();
+    expect(
+      vi.mocked(toast.success).mock.calls.filter((c) => c[0] === 'Upload concluído'),
+    ).toHaveLength(1);
+  });
+
+  it('a failed conversion warns and uploads the original', async () => {
+    ds.probes.set('4k.mp4', FOUR_K);
+    ds.downscaleVideo.mockRejectedValue(new Error('boom'));
+    renderWith();
+    const original = createFile('4k.mp4', 'video/mp4');
+    await pickFiles([original]);
+    fireEvent.click(await reduceButton());
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(1));
+    expect(uploadPostMediaMock.mock.calls[0][0].file).toBe(original);
+    expect(toast.error).toHaveBeenCalledWith(
+      '4k.mp4: não foi possível reduzir o vídeo. Enviamos o original.',
+    );
+    expect(ds.captureEvent).toHaveBeenCalledWith(
+      'video_downscaled',
+      expect.objectContaining({ source: 'upload', outcome: 'error' }),
+    );
+  });
+
+  it('a probe that fails uploads as today, without the offer', async () => {
+    ds.probes.set('4k.mp4', null);
+    renderWith();
+    await pickFiles([createFile('4k.mp4', 'video/mp4')]);
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('Vídeo acima do limite do Instagram')).not.toBeInTheDocument();
+  });
+
+  it('a 4K video joining an existing image (carousel) is not offered', async () => {
+    ds.probes.set('4k.mp4', FOUR_K);
+    vi.mocked(listPostMedia).mockResolvedValue(makeMedia(1));
+    renderWith();
+    await screen.findByText('img0.jpg');
+    await pickFiles([createFile('4k.mp4', 'video/mp4')]);
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('Vídeo acima do limite do Instagram')).not.toBeInTheDocument();
+  });
+
+  it('a post that does not target Instagram is not offered', async () => {
+    ds.probes.set('4k.mp4', FOUR_K);
+    renderWith({ targetsInstagram: false });
+    await pickFiles([createFile('4k.mp4', 'video/mp4')]);
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('Vídeo acima do limite do Instagram')).not.toBeInTheDocument();
+  });
+
+  it('an over-2 GB video the browser cannot reduce is neither converted nor uploaded', async () => {
+    ds.probes.set('huge.mp4', FOUR_K_LANDSCAPE);
+    ds.inspectForDownscale.mockResolvedValue({ engine: 'none', hdr: false });
+    renderWith();
+    await pickFiles([createFile('a.jpg', 'image/jpeg'), bigFile('huge.mp4', 3 * GB)]);
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(1));
+    // Reduzir is disabled (no engine) and Enviar original too (over 2 GB): only closing is left.
+    expect(await screen.findByRole('button', { name: 'Enviar original' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
+    await waitFor(() => expect(screen.getByText('Adicionar')).toBeInTheDocument());
+    expect(ds.downscaleVideo).not.toHaveBeenCalled();
+    expect(uploadPostMediaMock).toHaveBeenCalledTimes(1);
+    expect(uploadPostMediaMock.mock.calls[0][0].file.name).toBe('a.jpg');
+  });
+
+  it('an over-2 GB video too long to fit the budget is skipped with an error, no dialog', async () => {
+    ds.probes.set('longo.mp4', FOUR_K);
+    ds.planNull = true;
+    renderWith();
+    await pickFiles([bigFile('longo.mp4', 3 * GB)]);
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('longo.mp4: não foi possível reduzir o vídeo.'),
+    );
+    expect(screen.queryByText('Vídeo acima do limite do Instagram')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Adicionar')).toBeInTheDocument());
+    expect(uploadPostMediaMock).not.toHaveBeenCalled();
+    expect(ds.downscaleVideo).not.toHaveBeenCalled();
+  });
+
+  it('a converted file whose thumbnail cannot be extracted goes to the manual-thumbnail flow', async () => {
+    ds.probes.set('4k.mp4', FOUR_K);
+    extractVideoFrameMock.mockRejectedValue(new Error('decode failed'));
+    renderWith();
+    await pickFiles([createFile('4k.mp4', 'video/mp4')]);
+    fireEvent.click(await reduceButton());
+    expect(await screen.findByText('4k (1080p).mp4')).toBeInTheDocument();
+    expect(screen.getByText('Escolher thumbnail')).toBeInTheDocument();
+    expect(uploadPostMediaMock).not.toHaveBeenCalled();
+  });
+
+  it('reports "Upload concluído" once, after the held-back file finished', async () => {
+    ds.probes.set('4k.mp4', FOUR_K_LANDSCAPE);
+    renderWith();
+    await pickFiles([createFile('a.jpg', 'image/jpeg'), createFile('4k.mp4', 'video/mp4')]);
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(1));
+    expect(toast.success).not.toHaveBeenCalledWith('Upload concluído');
+    fireEvent.click(await reduceButton());
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        vi.mocked(toast.success).mock.calls.filter((c) => c[0] === 'Upload concluído'),
+      ).toHaveLength(1),
+    );
+  });
+});
+
+describe('PostMediaGallery warning box: oversized existing video', () => {
+  const video4k = {
+    id: 60,
+    post_id: 42,
+    kind: 'video',
+    mime_type: 'video/mp4',
+    original_filename: 'uhd.mp4',
+    url: 'https://example.test/uhd.mp4',
+    thumbnail_url: 'https://example.test/uhd.jpg',
+    width: 2160,
+    height: 3840,
+    size_bytes: 1024,
+    duration_seconds: 30,
+    is_cover: true,
+  } as PostMedia;
+
+  it('offers "Reduzir resolução" with the width reason and opens the downscale dialog', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([video4k]);
+    renderGallery();
+    const btn = await screen.findByRole('button', { name: 'Reduzir resolução de uhd.mp4' });
+    expect(
+      screen.getByText('Largura acima de 1920 px (ex.: 4K). O Instagram não aceita.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ajustar proporção de uhd.mp4' })).toBeNull();
+    fireEvent.click(btn);
+    expect(await screen.findByTestId('downscale-media-dialog')).toHaveTextContent('uhd.mp4');
+  });
+
+  it('keeps "Ajustar proporção" for a 9:16 4K video inside a carousel', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([video4k, { ...makeMedia(2)[1], height: 1350 }]);
+    renderGallery();
+    expect(
+      await screen.findByRole('button', { name: 'Ajustar proporção de uhd.mp4' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reduzir resolução de uhd.mp4' })).toBeNull();
   });
 });
