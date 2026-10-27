@@ -9,6 +9,7 @@ import {
   Legend,
   type ChartOptions,
 } from 'chart.js';
+import { Trans, useTranslation } from 'react-i18next';
 import { AlertTriangle, CalendarClock, CheckCircle2, Clock, UserCheck } from 'lucide-react';
 
 import { StatCard } from '@/components/StatCard';
@@ -52,13 +53,7 @@ const STATUS_SEMANTIC: Record<DeadlineStatus, keyof ChartTheme['semantic']> = {
   atrasado: 'danger',
 };
 
-const UPCOMING_TABS: { value: UpcomingTab; label: string; empty: string }[] = [
-  { value: 'hoje', label: 'Hoje', empty: 'Nada vence hoje. Bom sinal.' },
-  { value: 'semana', label: 'Esta semana', empty: 'Semana livre de vencimentos.' },
-  { value: 'atrasadas', label: 'Atrasadas', empty: 'Nenhuma entrega atrasada.' },
-];
-
-const EMPTY_ROWS = 'Nenhuma entrega encontrada. Ajuste os filtros.';
+const UPCOMING_TAB_VALUES: UpcomingTab[] = ['hoje', 'semana', 'atrasadas'];
 
 export interface ChartViewProps {
   /** Cards already narrowed by the page filters. */
@@ -164,6 +159,7 @@ function StackedBarChart({
   ariaLabel: string;
   onSegment: (row: StackedRow, status: DeadlineStatus) => void;
 }) {
+  const { t } = useTranslation('entregasViews');
   const chartRef = useRef<ChartJS<'bar'>>(null);
 
   const data = useMemo(
@@ -219,7 +215,7 @@ function StackedBarChart({
     onSegment(row, status);
   }
 
-  if (rows.length === 0) return <EmptyLine>{EMPTY_ROWS}</EmptyLine>;
+  if (rows.length === 0) return <EmptyLine>{t('shared.noEntregasFiltered')}</EmptyLine>;
 
   return (
     <div style={{ position: 'relative', height: Math.max(200, rows.length * 34) }}>
@@ -245,6 +241,7 @@ function AgingBarChart({
   theme: ChartTheme;
   onBucket: (bucket: AgingBucket) => void;
 }) {
+  const { t } = useTranslation('entregasViews');
   const chartRef = useRef<ChartJS<'bar'>>(null);
 
   const data = useMemo(
@@ -252,7 +249,7 @@ function AgingBarChart({
       labels: buckets.map((b) => b.label),
       datasets: [
         {
-          label: 'Atrasadas',
+          label: t('chartView.atrasadas'),
           data: buckets.map((b) => b.count),
           backgroundColor: theme.semantic.danger,
           borderWidth: 0,
@@ -260,7 +257,7 @@ function AgingBarChart({
         },
       ],
     }),
-    [buckets, theme],
+    [buckets, theme, t],
   );
 
   const options = useMemo<ChartOptions<'bar'>>(
@@ -301,7 +298,7 @@ function AgingBarChart({
         options={options}
         onClick={handleClick}
         role="img"
-        aria-label="Gráfico de barras: idade das entregas atrasadas"
+        aria-label={t('chartView.agingChartAria')}
       />
     </div>
   );
@@ -309,6 +306,7 @@ function AgingBarChart({
 
 /** One "Próximos vencimentos" chip: cliente, título do fluxo, etapa e prazo. */
 function UpcomingChip({ card, onClick }: { card: BoardCard; onClick: () => void }) {
+  const { t } = useTranslation('entregasViews');
   const prazo = formatEtapaPrazo(card.deadline);
   return (
     <button
@@ -374,7 +372,7 @@ function UpcomingChip({ card, onClick }: { card: BoardCard; onClick: () => void 
             textOverflow: 'ellipsis',
           }}
         >
-          {card.cliente?.nome ?? 'Sem cliente'}
+          {card.cliente?.nome ?? t('chartData.semCliente')}
         </span>
         <span
           style={{
@@ -408,7 +406,7 @@ function UpcomingChip({ card, onClick }: { card: BoardCard; onClick: () => void 
           textOverflow: 'ellipsis',
         }}
       >
-        etapa: {card.etapa.nome}
+        {t('chartView.chipEtapa', { name: card.etapa.nome })}
       </div>
     </button>
   );
@@ -429,6 +427,7 @@ export function ChartView({
   postProcessesEnabled,
   onGoToKanban,
 }: ChartViewProps) {
+  const { t } = useTranslation('entregasViews');
   const isPhone = !useIsDesktop(768);
   const isDark = useIsDark();
   const theme = useMemo(() => getChartTheme(isDark), [isDark]);
@@ -447,17 +446,34 @@ export function ChartView({
   const aguardandoTotal = useMemo(() => aguardandoClienteCount(cards), [cards]);
   const aguardandoEtapas = useMemo(() => aguardandoClienteEtapaNames(cards), [cards]);
 
-  const clienteRows = useMemo(() => buildClienteRows(cards), [cards]);
-  const responsavelRows = useMemo(() => buildResponsavelRows(cards), [cards]);
+  // Labels passed in through `t`, so a language switch recomputes the rows.
+  const clienteRows = useMemo(() => buildClienteRows(cards, t('chartData.semCliente')), [cards, t]);
+  const responsavelRows = useMemo(
+    () => buildResponsavelRows(cards, t('chartData.semResponsavel')),
+    [cards, t],
+  );
   const etapaRows = useMemo(() => buildEtapaRows(cards), [cards]);
-  const agingBuckets = useMemo(() => buildAgingBuckets(cards), [cards]);
+  const agingBuckets = useMemo(
+    () => buildAgingBuckets(cards, new Date(), (key) => t(`chartData.${key}`)),
+    [cards, t],
+  );
 
   const upcoming = useMemo(() => selectUpcoming(cards, upcomingTab), [cards, upcomingTab]);
   const upcomingShown = upcoming.slice(0, CHIP_CAP);
   const upcomingExtra = upcoming.length - upcomingShown.length;
-  const activeTab = UPCOMING_TABS.find((t) => t.value === upcomingTab) ?? UPCOMING_TABS[0];
+  const upcomingTabs = useMemo(
+    () =>
+      UPCOMING_TAB_VALUES.map((value) => ({
+        value,
+        label: t(`chartView.tabs.${value}.label`),
+        empty: t(`chartView.tabs.${value}.empty`),
+      })),
+    [t],
+  );
+  const activeTab = upcomingTabs.find((tab) => tab.value === upcomingTab) ?? upcomingTabs[0];
+  const emptyRows = t('shared.noEntregasFiltered');
 
-  const sub = `de ${totalCards} fluxos`;
+  const sub = t('chartView.ofTotal', { count: totalCards });
   const statusActive = (status: DeadlineStatus) =>
     filters.filterStatus.length === 1 && filters.filterStatus[0] === status;
   // "Hoje" only counts as applied when nothing else narrows prazo: a leftover
@@ -519,10 +535,8 @@ export function ChartView({
 
   const idadeCaption =
     stats.atrasado === 0
-      ? 'nenhum prazo estourado no momento'
-      : stats.atrasado === 1
-        ? 'há quanto tempo a entrega atrasada está estourada'
-        : `há quanto tempo as ${stats.atrasado} atrasadas estão estouradas`;
+      ? t('chartView.idadeCaptionNone')
+      : t('chartView.idadeCaption', { count: stats.atrasado });
 
   function filterByCliente(row: StackedRow, status: DeadlineStatus) {
     if (!row.clickable) return;
@@ -564,7 +578,7 @@ export function ChartView({
     return (
       <ChartViewPhone
         empty={cards.length === 0}
-        emptyText={EMPTY_ROWS}
+        emptyText={emptyRows}
         postProcessesEnabled={postProcessesEnabled}
         onGoToKanban={onGoToKanban}
         theme={theme}
@@ -578,7 +592,7 @@ export function ChartView({
         onToggleStatus={toggleStatus}
         onToggleVencemHoje={toggleVencemHoje}
         onToggleAguardando={toggleAguardandoCliente}
-        upcomingTabs={UPCOMING_TABS}
+        upcomingTabs={upcomingTabs}
         upcomingTab={upcomingTab}
         onUpcomingTabChange={setUpcomingTab}
         upcomingShown={upcomingShown}
@@ -609,15 +623,23 @@ export function ChartView({
           className="card animate-up"
           style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}
         >
-          <p>{EMPTY_ROWS}</p>
+          <p>{emptyRows}</p>
         </div>
         {postProcessesEnabled && (
           <p className="entregas-somente-fluxos">
-            Somente fluxos. Posts individuais aparecem no{' '}
-            <button type="button" className="entregas-somente-fluxos-link" onClick={onGoToKanban}>
-              quadro
-            </button>
-            .
+            <Trans
+              t={t}
+              i18nKey="shared.somenteFluxos"
+              components={{
+                btn: (
+                  <button
+                    type="button"
+                    className="entregas-somente-fluxos-link"
+                    onClick={onGoToKanban}
+                  />
+                ),
+              }}
+            />
           </p>
         )}
       </div>
@@ -628,16 +650,24 @@ export function ChartView({
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       {postProcessesEnabled && (
         <p className="entregas-somente-fluxos">
-          Somente fluxos. Posts individuais aparecem no{' '}
-          <button type="button" className="entregas-somente-fluxos-link" onClick={onGoToKanban}>
-            quadro
-          </button>
-          .
+          <Trans
+            t={t}
+            i18nKey="shared.somenteFluxos"
+            components={{
+              btn: (
+                <button
+                  type="button"
+                  className="entregas-somente-fluxos-link"
+                  onClick={onGoToKanban}
+                />
+              ),
+            }}
+          />
         </p>
       )}
       <StatCardGrid maxCols={5} className="animate-up">
         <StatCard
-          label="Atrasadas"
+          label={t('chartView.atrasadas')}
           value={stats.atrasado}
           icon={AlertTriangle}
           tone="red"
@@ -646,7 +676,7 @@ export function ChartView({
           active={statusActive('atrasado')}
         />
         <StatCard
-          label="Urgentes (24h)"
+          label={t('chartView.urgentes')}
           value={stats.urgente}
           icon={Clock}
           tone="amber"
@@ -655,7 +685,7 @@ export function ChartView({
           active={statusActive('urgente')}
         />
         <StatCard
-          label="Em dia"
+          label={t('chartView.emDia')}
           value={stats.em_dia}
           icon={CheckCircle2}
           tone="green"
@@ -664,7 +694,7 @@ export function ChartView({
           active={statusActive('em_dia')}
         />
         <StatCard
-          label="Vencem hoje"
+          label={t('chartView.vencemHoje')}
           value={vencemHoje}
           icon={CalendarClock}
           tone="amber"
@@ -673,7 +703,7 @@ export function ChartView({
           active={hojeActive}
         />
         <StatCard
-          label="Aguardando cliente"
+          label={t('chartView.aguardandoCliente')}
           value={aguardandoTotal}
           icon={UserCheck}
           tone="blue"
@@ -684,12 +714,12 @@ export function ChartView({
       </StatCardGrid>
 
       <SectionCard
-        title="Próximos vencimentos"
-        caption="clique num card para abrir o fluxo"
+        title={t('chartView.upcomingTitle')}
+        caption={t('chartView.upcomingCaption')}
         action={
           <div
             role="tablist"
-            aria-label="Período dos vencimentos"
+            aria-label={t('chartView.upcomingTabsAria')}
             style={{
               display: 'flex',
               gap: 2,
@@ -699,7 +729,7 @@ export function ChartView({
               flexShrink: 0,
             }}
           >
-            {UPCOMING_TABS.map((tab) => {
+            {upcomingTabs.map((tab) => {
               const selected = tab.value === upcomingTab;
               return (
                 <button
@@ -763,7 +793,7 @@ export function ChartView({
                     cursor: 'pointer',
                   }}
                 >
-                  +{upcomingExtra} · ver na lista
+                  {t('chartView.seeInList', { n: upcomingExtra })}
                 </button>
               )}
             </>
@@ -779,31 +809,33 @@ export function ChartView({
         }}
       >
         <SectionCard
-          title="Situação por cliente"
-          caption="clique num segmento para filtrar por cliente e status"
-          footer={clienteRows.length === ROW_CAP ? 'mostrando os 10 clientes de maior risco' : null}
+          title={t('chartView.byClienteTitle')}
+          caption={t('chartView.byClienteCaption')}
+          footer={
+            clienteRows.length === ROW_CAP ? t('chartView.byClienteFooter', { n: ROW_CAP }) : null
+          }
         >
           <StackedBarChart
             rows={clienteRows}
             theme={theme}
-            ariaLabel="Gráfico de barras: situação das entregas por cliente"
+            ariaLabel={t('chartView.byClienteAria')}
             onSegment={filterByCliente}
           />
         </SectionCard>
 
         <SectionCard
-          title="Carga por responsável"
-          caption="quem está afogado e quem tem folga. Clique para filtrar"
+          title={t('chartView.byResponsavelTitle')}
+          caption={t('chartView.byResponsavelCaption')}
           footer={
             responsavelRows.length === ROW_CAP
-              ? 'mostrando os 10 responsáveis de maior risco'
+              ? t('chartView.byResponsavelFooter', { n: ROW_CAP })
               : null
           }
         >
           <StackedBarChart
             rows={responsavelRows}
             theme={theme}
-            ariaLabel="Gráfico de barras: situação das entregas por responsável"
+            ariaLabel={t('chartView.byResponsavelAria')}
             onSegment={filterByResponsavel}
           />
         </SectionCard>
@@ -817,22 +849,24 @@ export function ChartView({
         }}
       >
         <SectionCard
-          title="Fluxos por etapa"
-          caption="onde o trabalho está acumulado agora"
-          footer={etapaRows.length === ROW_CAP ? 'mostrando as 10 etapas com mais fluxos' : null}
+          title={t('chartView.byEtapaTitle')}
+          caption={t('chartView.byEtapaCaption')}
+          footer={
+            etapaRows.length === ROW_CAP ? t('chartView.byEtapaFooter', { n: ROW_CAP }) : null
+          }
         >
           <StackedBarChart
             rows={etapaRows}
             theme={theme}
-            ariaLabel="Gráfico de barras: situação das entregas por etapa"
+            ariaLabel={t('chartView.byEtapaAria')}
             onSegment={filterByEtapa}
           />
         </SectionCard>
 
         <SectionCard
-          title="Idade dos atrasos"
+          title={t('chartView.agingTitle')}
           caption={idadeCaption}
-          footer={stats.atrasado > 0 ? 'clique numa faixa para filtrar por atrasado e prazo' : null}
+          footer={stats.atrasado > 0 ? t('chartView.agingFooter') : null}
         >
           {stats.atrasado === 0 ? (
             <div
@@ -849,7 +883,7 @@ export function ChartView({
                 aria-hidden
               />
               <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                Nenhuma entrega atrasada
+                {t('chartView.noneAtrasada')}
               </span>
             </div>
           ) : (

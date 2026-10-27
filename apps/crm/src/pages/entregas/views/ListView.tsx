@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronUp, ChevronDown, FileText } from 'lucide-react';
+import { i18n } from '@mesaas/i18n';
 import type { BoardCard } from '../hooks/useEntregasData';
 import type { PostEntity } from '../boardEntity';
 import { DEADLINE_STATUS, classifyDeadline } from '../deadlineStatus';
@@ -30,15 +32,8 @@ interface ListViewProps {
   groupBy?: ListGroupBy;
 }
 
-type Column = { key: string; label: string };
-const COLUMNS: Column[] = [
-  { key: 'titulo', label: 'Título' },
-  { key: 'cliente', label: 'Cliente' },
-  { key: 'etapa', label: 'Etapa atual' },
-  { key: 'responsavel', label: 'Responsável' },
-  { key: 'prazo', label: 'Prazo' },
-  { key: 'status', label: 'Status' },
-];
+/** Column keys; each label lives at `listView.columns.<key>`. */
+const COLUMNS = ['titulo', 'cliente', 'etapa', 'responsavel', 'prazo', 'status'] as const;
 
 /** Projeção comum de fluxo e post para a tabela: etapa, responsável e prazo
  *  resolvidos pela entidade. */
@@ -97,11 +92,13 @@ function sortRows(rows: ListRow[], column: string, direction: 'asc' | 'desc'): L
 }
 
 function formatPrazo(row: ListRow): string {
-  if (!row.hasDeadline) return 'Sem prazo';
+  if (!row.hasDeadline) return i18n.t('entregasViews:listView.semPrazo');
   const d = row.deadline;
-  if (d.estourado) return `${Math.abs(d.diasRestantes)}d atrasado`;
-  if (d.diasRestantes === 0) return `${d.horasRestantes}h restantes`;
-  return `${d.diasRestantes}d restantes`;
+  if (d.estourado)
+    return i18n.t('entregasViews:listView.daysLate', { n: Math.abs(d.diasRestantes) });
+  if (d.diasRestantes === 0)
+    return i18n.t('entregasViews:listView.hoursLeft', { n: d.horasRestantes });
+  return i18n.t('entregasViews:listView.daysLeft', { n: d.diasRestantes });
 }
 
 export function ListView({
@@ -113,6 +110,7 @@ export function ListView({
   onPostClick,
   groupBy = 'nenhum',
 }: ListViewProps) {
+  const { t } = useTranslation('entregasViews');
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   const isPhone = !useIsDesktop(768);
 
@@ -122,7 +120,7 @@ export function ListView({
         className="card animate-up"
         style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}
       >
-        <p>Nenhuma entrega encontrada. Ajuste os filtros.</p>
+        <p>{t('shared.noEntregasFiltered')}</p>
       </div>
     );
   }
@@ -189,7 +187,7 @@ export function ListView({
               style={{ marginLeft: '0.5rem' }}
             >
               <FileText size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
-              Individual
+              {t('shared.individual')}
             </span>
           )}
         </td>
@@ -250,16 +248,16 @@ export function ListView({
       const display: PhoneRowDisplay = {
         title: row.titulo,
         subtitle: [
-          row.clienteNome || 'Sem cliente',
+          row.clienteNome || t('chartData.semCliente'),
           row.etapaNome,
-          row.responsavelNome || 'Sem responsável',
+          row.responsavelNome || t('chartData.semResponsavel'),
         ]
           .filter(Boolean)
           .join(' · '),
         tag: row.individual ? (
           <span className="phone-ent-l-tag">
             <FileText aria-hidden="true" />
-            Individual
+            {t('shared.individual')}
           </span>
         ) : undefined,
         aside: (
@@ -289,7 +287,7 @@ export function ListView({
     };
     return (
       <PhoneListSections
-        label="Entregas"
+        label={t('listView.phoneLabel')}
         groups={groups}
         rows={sorted}
         renderRow={renderPhoneRow}
@@ -311,8 +309,8 @@ export function ListView({
           <tr>
             {COLUMNS.map((col) => (
               <th
-                key={col.key}
-                onClick={() => handleSort(col.key)}
+                key={col}
+                onClick={() => handleSort(col)}
                 style={{
                   padding: '0.75rem 1rem',
                   textAlign: 'left',
@@ -320,13 +318,13 @@ export function ListView({
                   userSelect: 'none',
                   whiteSpace: 'nowrap',
                   borderBottom: '1px solid var(--border-color)',
-                  color: sort.column === col.key ? 'var(--accent)' : 'var(--text-secondary)',
+                  color: sort.column === col ? 'var(--accent)' : 'var(--text-secondary)',
                   fontWeight: 600,
                 }}
               >
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                  {col.label}
-                  {sort.column === col.key ? (
+                  {t(`listView.columns.${col}`)}
+                  {sort.column === col ? (
                     sort.direction === 'asc' ? (
                       <ChevronUp className="h-3 w-3" />
                     ) : (

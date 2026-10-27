@@ -2,6 +2,7 @@ import { Fragment, memo, useCallback, useMemo, useState, type CSSProperties } fr
 import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import {
   DndContext,
   DragOverlay,
@@ -221,6 +222,7 @@ function PostBoardCardContent({
   tiktokEnabled?: boolean;
   multiplatformEnabled?: boolean;
 }) {
+  const { t } = useTranslation('entregasViews');
   const opt = registry.resolve(post);
   const locked = LOCKED_STATUSES.has(opt.canonical);
   const membro = card?.membro;
@@ -269,15 +271,17 @@ function PostBoardCardContent({
             <span
               className="board-card-discussao-badge"
               role="img"
-              aria-label={`${discussaoNaoLidas} ${discussaoNaoLidas === 1 ? 'mensagem nova' : 'mensagens novas'} na discussão`}
-              title={`${discussaoNaoLidas} ${discussaoNaoLidas === 1 ? 'mensagem nova' : 'mensagens novas'} na discussão`}
+              aria-label={t('postsKanbanView.discussaoNaoLidas', { count: discussaoNaoLidas })}
+              title={t('postsKanbanView.discussaoNaoLidas', { count: discussaoNaoLidas })}
             >
               <MessageSquare className="h-3 w-3" aria-hidden="true" />
               {discussaoNaoLidas}
             </span>
           )}
           {getPostPublishState(post) === 'publicando' && (
-            <span className="board-post-prazo-pill board-post-publicando">Publicando…</span>
+            <span className="board-post-prazo-pill board-post-publicando">
+              {t('postsKanbanView.publicando')}
+            </span>
           )}
           {prazo && (
             <span
@@ -316,7 +320,7 @@ function PostBoardCardContent({
           )}
         </span>
       </div>
-      <div className="item-title">{post.titulo || 'Post sem título'}</div>
+      <div className="item-title">{post.titulo || t('shared.untitledPost')}</div>
       {multiplatformEnabled && <DestinationChips post={post} />}
       {card ? (
         <span className="post-fluxo-tag post-fluxo-tag--static">
@@ -326,12 +330,12 @@ function PostBoardCardContent({
       ) : post.workflow_id === null && processEtapa ? (
         <span className="post-fluxo-tag post-fluxo-tag--avulso post-fluxo-tag--individual">
           <Route size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
-          Individual · {processEtapa}
+          {t('shared.individual')} · {processEtapa}
         </span>
       ) : post.workflow_id === null ? (
         <span className="post-fluxo-tag post-fluxo-tag--avulso">
           <CircleDashed size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
-          Avulso
+          {t('shared.avulso')}
         </span>
       ) : null}
       <div className="item-meta board-post-footer">
@@ -374,7 +378,7 @@ function PostBoardCardContent({
           )}
         </span>
         <span className="board-post-date">
-          {post.scheduled_at ? formatPostDate(post.scheduled_at) : 'Sem data'}
+          {post.scheduled_at ? formatPostDate(post.scheduled_at) : t('postsKanbanView.semData')}
         </span>
       </div>
     </>
@@ -515,6 +519,7 @@ const PostBoardColumn = memo(function PostBoardColumn({
   tiktokEnabled?: boolean;
   multiplatformEnabled?: boolean;
 }) {
+  const { t } = useTranslation('entregasViews');
   const { setNodeRef } = useDroppable({ id: `${COL_PREFIX}${option.key}` });
   const tint = columnTintFor(option);
   // Vidro: neutral header and count; the status icon keeps the colour cue.
@@ -578,7 +583,7 @@ const PostBoardColumn = memo(function PostBoardColumn({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                aria-label={`Ordenar coluna ${option.label}`}
+                aria-label={t('kanbanView.sortColumn', { name: option.label })}
                 className="board-column-sort"
                 style={tinted ? { color: tinted } : undefined}
               >
@@ -623,7 +628,7 @@ const PostBoardColumn = memo(function PostBoardColumn({
           strategy={verticalListSortingStrategy}
         >
           {posts.length === 0 && dropSlot == null ? (
-            <div className="board-empty">Nenhum post</div>
+            <div className="board-empty">{t('postsKanbanView.columnEmpty')}</div>
           ) : (
             <>
               {posts.map((p, idx) => (
@@ -688,6 +693,7 @@ export function PostsKanbanView({
   tiktokEnabled,
   multiplatformEnabled,
 }: PostsKanbanViewProps) {
+  const { t } = useTranslation('entregasViews');
   const registry = useStatusRegistry();
   const updateStatus = useUpdatePostStatus();
   const qc = useQueryClient();
@@ -789,7 +795,7 @@ export function PostsKanbanView({
       return old.map((p) => (byId.has(p.id) ? { ...p, board_ordem: byId.get(p.id)! } : p));
     });
     reorderBoardPosts(updates).catch(() => {
-      toast.error('Erro ao salvar a ordem');
+      toast.error(t('postsKanbanView.saveOrderError'));
       qc.invalidateQueries({ queryKey: ACTIVE_POSTS_KEY });
     });
   };
@@ -852,15 +858,15 @@ export function PostsKanbanView({
         });
       },
     });
-    toast(`Post movido para "${move.targetLabel}".`, {
+    toast(t('postsKanbanView.movedTo', { label: move.targetLabel }), {
       duration: 6000,
       action: {
-        label: 'Desfazer',
+        label: t('postsKanbanView.undo'),
         onClick: () => {
           const cachedPosts = qc.getQueryData<ActivePost[]>(ACTIVE_POSTS_KEY);
           const guard = resolveUndoGuard(cachedPosts, move, registry);
           if (guard === 'stale') {
-            toast.info('O post já mudou de novo. Nada foi desfeito.');
+            toast.info(t('postsKanbanView.undoStale'));
             return;
           }
           // Same cached post the guard above just checked: its board_ordem
@@ -1040,13 +1046,13 @@ export function PostsKanbanView({
         style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}
       >
         {filtersActive ? (
-          <p>Nenhum post encontrado. Ajuste os filtros.</p>
+          <p>{t('shared.noPostsFiltered')}</p>
         ) : (
           <>
-            <p>Nenhum post por aqui ainda.</p>
+            <p>{t('shared.noPostsYet')}</p>
             <Button type="button" onClick={onCreateAvulso} style={{ marginTop: '1rem' }}>
               <Plus className="h-4 w-4" />
-              Criar post avulso
+              {t('shared.createAvulso')}
             </Button>
           </>
         )}
@@ -1054,9 +1060,8 @@ export function PostsKanbanView({
     );
   }
 
-  const confirmTitle = 'Post aprovado';
-  const confirmMessage =
-    'Este post foi aprovado. Alterar o status vai invalidar a aprovação. Deseja continuar?';
+  const confirmTitle = t('postsKanbanView.confirmTitle');
+  const confirmMessage = t('postsKanbanView.confirmMessage');
   const nudgeDialog = (
     <AutoSchedulePromptDialog
       post={nudgePost}
@@ -1101,9 +1106,7 @@ export function PostsKanbanView({
           isOpenable={(post) => isPostOpenable(post, openableWorkflowIds)}
           onOpen={onPostClick}
           isLockedOption={(o) => LOCKED_STATUSES.has(o.canonical)}
-          lockedReason={(o) =>
-            LOCKED_TOOLTIPS[o.canonical] ?? 'Esta coluna é controlada pelo sistema.'
-          }
+          lockedReason={(o) => LOCKED_TOOLTIPS[o.canonical] ?? t('postsKanbanView.lockedFallback')}
           optionOf={(post) => registry.resolve(post)}
           onMoveTo={(post, key) => moveToStatus(post, key)}
           sensors={phoneSensors}
@@ -1120,7 +1123,7 @@ export function PostsKanbanView({
           open={!!pendingConfirm}
           title={confirmTitle}
           message={confirmMessage}
-          actions={[{ label: 'Confirmar', onSelect: handleConfirmStatusChange }]}
+          actions={[{ label: t('actions.confirm'), onSelect: handleConfirmStatusChange }]}
           onCancel={() => setPendingConfirm(null)}
         />
         {nudgeDialog}
@@ -1201,8 +1204,12 @@ export function PostsKanbanView({
             <AlertDialogDescription>{confirmMessage}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingConfirm(null)}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmStatusChange}>Confirmar</AlertDialogAction>
+            <AlertDialogCancel onClick={() => setPendingConfirm(null)}>
+              {t('actions.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmStatusChange}>
+              {t('actions.confirm')}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
