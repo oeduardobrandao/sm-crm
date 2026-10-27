@@ -606,6 +606,14 @@ describe('BlogPage metrics', () => {
     expect(screen.queryByRole('radio', { name: 'Mais cliques' })).not.toBeInTheDocument();
   });
 
+  it('scopes the sort control with blog-sort so admin-kit.css can split it evenly', async () => {
+    renderAt('/admin/blog?tab=publicados');
+    await screen.findByText('1.240 views (30d)');
+    const group = screen.getByRole('radiogroup', { name: 'Ordem' });
+    expect(group).toHaveClass('blog-sort');
+    expect(within(group).getAllByRole('radio')).toHaveLength(2);
+  });
+
   it('sorts by views from ?ordem= and keeps it in the row links', async () => {
     renderAt('/admin/blog?tab=publicados&ordem=vistos');
     await screen.findByText('1.240 views (30d)');

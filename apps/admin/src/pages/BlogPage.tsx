@@ -351,7 +351,7 @@ export default function BlogPage() {
               { replace: true },
             )
           }
-          className="flex w-full [&>button]:flex-1 [&>button]:px-2"
+          className="blog-sort flex w-full [&>button]:min-w-0 [&>button]:flex-1 [&>button]:overflow-hidden [&>button]:text-ellipsis [&>button]:whitespace-nowrap [&>button]:px-2"
         />
       </div>
     ) : null;
