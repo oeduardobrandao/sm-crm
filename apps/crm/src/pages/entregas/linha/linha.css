@@ -1,0 +1,267 @@
+/* ===== LINHA EDITORIAL (Entregas, view=linha) ==================================
+   Client rail, header and status actions. Imported by LinhaEditorialView only, so it
+   ships with the lazy Entregas chunk. Every class starts with `linha-`. */
+
+.linha-view {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+  color: var(--text-main);
+}
+
+/* ---- rail ---- */
+.linha-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+}
+.linha-rail__mes {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+.linha-rail__mes-label {
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.linha-rail__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.linha-rail__item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 10px;
+}
+.linha-rail__item:hover {
+  background: var(--surface-hover);
+}
+.linha-rail__item.is-active {
+  background: var(--surface-2);
+}
+.linha-rail__select {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  padding: 0.5rem;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.linha-rail__select:focus-visible,
+.linha-rail__criar:focus-visible,
+.linha-btn:focus-visible,
+.linha-icon-btn:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+.linha-rail__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.linha-rail__name {
+  overflow: hidden;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.linha-rail__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+.linha-rail__criar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-right: 0.5rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--card-bg);
+  color: var(--text-main);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.linha-rail__criar:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.linha-rail__criar:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* ---- avatar ---- */
+.linha-avatar {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.linha-avatar--lg {
+  width: 44px;
+  height: 44px;
+  font-size: 0.85rem;
+}
+
+/* ---- buttons ---- */
+.linha-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.linha-icon-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-main);
+}
+.linha-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 34px;
+  padding: 0 0.85rem;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--card-bg);
+  color: var(--text-main);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.linha-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.linha-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.linha-btn--primary {
+  border-color: transparent;
+  background: var(--primary-color);
+  color: #12151a;
+}
+.linha-btn--primary:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+.linha-tip-wrap {
+  display: inline-flex;
+}
+
+/* ---- main ---- */
+.linha-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+.linha-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+}
+.linha-header__text {
+  flex: 1;
+  min-width: 200px;
+}
+.linha-header__title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+.linha-header__sub {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+.linha-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.linha-banner {
+  margin: 0;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+.linha-summary {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+.linha-table-slot {
+  min-width: 0;
+}
+.linha-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 3rem 1.5rem;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  text-align: center;
+}
+.linha-empty__title {
+  margin: 0;
+  color: var(--text-main);
+  font-weight: 600;
+}
+.linha-empty__sub {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+@media (max-width: 900px) {
+  .linha-view {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
