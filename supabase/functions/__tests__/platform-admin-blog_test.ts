@@ -18,6 +18,7 @@ import {
   parseBlogRevMarker,
 } from "../platform-admin/blog-posts.ts";
 import { fireHook, isDeployHookConfigured } from "../_shared/vercel-deploy-hook.ts";
+import { BLOG_FILE_POSTS } from "../_shared/blog-file-posts.ts";
 
 const H = { "Content-Type": "application/json" };
 const ADMIN = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -402,6 +403,34 @@ Deno.test("list: aba publicados traz publicado e despublicado; aba inválida →
   const out = await body(await handleListBlogPosts(db, { tab: "publicados" }, ADMIN, H, deps));
   assertEquals(out.posts.map((p: Row) => p.status).sort(), ["despublicado", "publicado"]);
   assertEquals((await handleListBlogPosts(db, { tab: "todos" }, ADMIN, H, deps)).status, 400);
+});
+
+Deno.test('list publicados includes the six file posts with kind "arquivo"', async () => {
+  const { db } = makeDb([post({ status: "publicado" })]);
+  const { deps } = makeDeps();
+  const out = await body(await handleListBlogPosts(db, { tab: "publicados" }, ADMIN, H, deps));
+  assertEquals(out.file_posts.length, 6);
+  for (const p of out.file_posts) {
+    assertEquals(p.kind, "arquivo");
+    for (const k of ["slug", "title", "description", "category", "date"]) {
+      assertEquals(typeof p[k], "string");
+    }
+  }
+  assertEquals(out.file_posts.map((p: Row) => p.slug), BLOG_FILE_POSTS.map((p) => p.slug));
+});
+
+Deno.test("list aguardando has file_posts []", async () => {
+  const { db } = makeDb([post()]);
+  const { deps } = makeDeps();
+  const out = await body(await handleListBlogPosts(db, { tab: "aguardando" }, ADMIN, H, deps));
+  assertEquals(out.file_posts, []);
+  const rej = await body(await handleListBlogPosts(db, { tab: "rejeitados" }, ADMIN, H, deps));
+  assertEquals(rej.file_posts, []);
+});
+
+Deno.test('get-blog-post with id "file:mesaas-vs-mlabs" is 400', async () => {
+  const { db } = makeDb([post()]);
+  assertEquals((await handleGetBlogPost(db, { id: "file:mesaas-vs-mlabs" }, H)).status, 400);
 });
 
 Deno.test("get-blog-post → linha completa; desconhecido → 404", async () => {

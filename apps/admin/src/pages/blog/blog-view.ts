@@ -60,6 +60,16 @@ export interface BlogPostRow {
   approved_at: string | null;
 }
 
+/** A hand-written post that lives as a file in the CRM (list-blog-posts `file_posts`). */
+export interface FilePostRow {
+  kind: 'arquivo';
+  slug: string;
+  title: string;
+  description: string;
+  category: string;
+  date: string;
+}
+
 /** get-blog-post: the whole row. */
 export interface BlogPostDetail extends BlogPostRow {
   lede: string;

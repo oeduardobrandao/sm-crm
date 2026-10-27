@@ -113,6 +113,7 @@ beforeEach(() => {
           ? []
           : [row()],
     last_draft_at: ago(2 * HOUR),
+    file_posts: [],
   }));
   vi.mocked(getBlogPost).mockImplementation(async (id) => ({
     post:
@@ -167,7 +168,11 @@ describe('BlogPage', () => {
   });
 
   it('warns when no draft arrived in 36 hours', async () => {
-    vi.mocked(listBlogPosts).mockResolvedValue({ posts: [row()], last_draft_at: ago(40 * HOUR) });
+    vi.mocked(listBlogPosts).mockResolvedValue({
+      posts: [row()],
+      last_draft_at: ago(40 * HOUR),
+      file_posts: [],
+    });
     renderAt('/admin/blog');
     expect(
       await screen.findByText(/Nenhum rascunho novo desde .+\. Confira a rotina e o conector\./),
