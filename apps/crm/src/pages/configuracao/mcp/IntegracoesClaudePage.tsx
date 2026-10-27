@@ -34,8 +34,9 @@ import { listOAuthGrants, revokeOAuthGrant, type OAuthGrant } from '@/services/m
 import {
   SCOPE_OPTIONS,
   AGENT_PRESET,
-  OWNER_ONLY_HELP,
-  OWNER_ONLY_SCOPE_ERROR,
+  ownerOnlyHelp,
+  ownerOnlyScopeError,
+  scopeLabel,
 } from '@/lib/mcp-scopes';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import {
@@ -258,7 +259,7 @@ export default function IntegracoesClaudePage() {
           : msg === 'feature_disabled'
             ? t('toast.featureDisabled')
             : msg === 'owner_only_scope'
-              ? OWNER_ONLY_SCOPE_ERROR
+              ? ownerOnlyScopeError()
               : t('toast.createError', { message: msg }),
       );
     },
@@ -639,11 +640,11 @@ export default function IntegracoesClaudePage() {
                         disabled={locked}
                         onCheckedChange={() => toggleScope(s.value)}
                       />
-                      <span className="text-sm">{s.label}</span>
+                      <span className="text-sm">{scopeLabel(s.value)}</span>
                     </label>
                     {locked && (
                       <p className="text-xs text-muted-foreground" style={{ marginLeft: '1.5rem' }}>
-                        {OWNER_ONLY_HELP}
+                        {ownerOnlyHelp()}
                       </p>
                     )}
                   </div>

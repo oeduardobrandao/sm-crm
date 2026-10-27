@@ -110,5 +110,22 @@
     "presetGroup": "Permission preset",
     "presetSubtitle": "Read only: clients, posts, workflows, ideas, tasks and team",
     "connectDescription": "For security, we don't store the key. Paste the key you copied when you created it, or use the template below replacing <c>YOUR_KEY_HERE</c>."
+  },
+  "scopes": {
+    "clientes_read": "Clients (read)",
+    "posts_read": "Posts (read)",
+    "workflows_read": "Workflows (read)",
+    "ideias_read": "Ideas (read)",
+    "tarefas_read": "Tasks (read)",
+    "membros_read": "Team (read)",
+    "posts_write": "Posts (write)",
+    "templates_write": "Templates (write)",
+    "tarefas_write": "Tasks (write)",
+    "clientes_write": "Clients (write)",
+    "membros_write": "Team (write)",
+    "financeiro_read": "Financial (read, owners only)",
+    "financeiro_write": "Financial (write, owners only)",
+    "ownerOnlyHelp": "Workspace owner only",
+    "ownerOnlyError": "Financial permissions are for the workspace owner only."
   }
 }

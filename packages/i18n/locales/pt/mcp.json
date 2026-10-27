@@ -110,5 +110,22 @@
     "presetGroup": "Preset de permissões",
     "presetSubtitle": "Só leitura: clientes, posts, fluxos, ideias, tarefas e equipe",
     "connectDescription": "Por segurança não armazenamos a chave. Cole a chave que você copiou ao criar, ou use o modelo abaixo substituindo <c>SUA_CHAVE_AQUI</c>."
+  },
+  "scopes": {
+    "clientes_read": "Clientes (leitura)",
+    "posts_read": "Posts (leitura)",
+    "workflows_read": "Fluxos (leitura)",
+    "ideias_read": "Ideias/Pautas (leitura)",
+    "tarefas_read": "Tarefas (leitura)",
+    "membros_read": "Equipe (leitura)",
+    "posts_write": "Posts (escrita)",
+    "templates_write": "Modelos (escrita)",
+    "tarefas_write": "Tarefas (escrita)",
+    "clientes_write": "Clientes (escrita)",
+    "membros_write": "Equipe (escrita)",
+    "financeiro_read": "Financeiro (leitura, só donos)",
+    "financeiro_write": "Financeiro (escrita, só donos)",
+    "ownerOnlyHelp": "Somente o dono do workspace",
+    "ownerOnlyError": "As permissões do Financeiro são somente do dono do workspace."
   }
 }

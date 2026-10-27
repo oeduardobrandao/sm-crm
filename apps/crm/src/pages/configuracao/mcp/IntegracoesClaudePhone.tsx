@@ -12,7 +12,7 @@ import { ContextMenu, type ContextMenuAction } from '@/components/mobile/Context
 import { SwipeRow, type SwipeAction } from '@/components/mobile/SwipeRow';
 import { CheckList } from '@/components/mobile/CheckList';
 import { PickerCell } from '@/components/mobile/PickerSheet';
-import { SCOPE_OPTIONS, AGENT_PRESET, OWNER_ONLY_HELP } from '@/lib/mcp-scopes';
+import { SCOPE_OPTIONS, AGENT_PRESET, ownerOnlyHelp, scopeLabel } from '@/lib/mcp-scopes';
 import type { McpKey } from '@/services/mcp-keys';
 import type { OAuthGrant } from '@/services/mcp-oauth';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -53,9 +53,9 @@ const scopeCheckOptions = (isWorkspaceOwner: boolean) =>
     const locked = s.ownerOnly && !isWorkspaceOwner;
     return {
       value: s.value as string,
-      label: s.label,
+      label: scopeLabel(s.value),
       disabled: locked,
-      subtitle: locked ? OWNER_ONLY_HELP : undefined,
+      subtitle: locked ? ownerOnlyHelp() : undefined,
     };
   });
 
