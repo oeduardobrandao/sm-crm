@@ -46,7 +46,7 @@ without retyping titles, dates or directions.
   follow-ups (the MCP content agent drafting linhas especially), but out of scope here.
 - Converting rows into an existing fluxo.
 - Editing the table on the phone. The phone gets a read view; see §6.6.
-- Per-row approval states on the client side. The decision is per linha.
+- ~~Per-row approval states on the client side.~~ Added 2026-10-27 on user request: see §13.
 
 **Anti-goals (would make this a failure even if it works)**
 
@@ -718,3 +718,174 @@ meanwhile.
 - Whether the selection bar becomes a shared component with the fluxo drawer's.
 - Whether to virtualize the table (a month is 8 to 40 rows, so probably not).
 - Query key structure and invalidation.
+
+## 13. Per-row approval (addendum, 2026-10-27)
+
+The client approves or asks for an ajuste on each row, then finishes the review with one
+button. The agency sees each row's state in the CRM. This replaces the v1 non-goal "Per-row
+approval states on the client side".
+
+### 13.1 Decisions (user, 2026-10-27)
+
+1. **Rows, then one finish.** Each row gets "Aprovar" and "Pedir ajuste" (an ajuste needs a
+   comment), saved as the client clicks. One button finishes the review and notifies the
+   agency once: "Aprovar linha editorial" when no row has an ajuste, "Enviar ajustes" when
+   one does.
+2. **An agency edit keeps the row's approval.** Editing an approved row does not reset it.
+3. **"Enviar de novo" carries approvals over.** Approved rows stay approved; rows with an
+   ajuste come back as pending.
+4. **CRM shows** a status chip per row (table and phone cards) and the approval progress in
+   the client rail and the linha header. The conversion confirm (§5) is unchanged: it still
+   keys on the linha's status.
+
+### 13.2 Data model
+
+`linha_editorial_itens` gains two columns (migration `20261031000005`):
+
+| column | type | notes |
+|---|---|---|
+| `aprovacao` | text null, CHECK in (`aprovado`, `ajustes`) | null means pending |
+| `aprovacao_at` | timestamptz null | last client decision on the row |
+
+Neither column is in the `authenticated` INSERT/UPDATE column grants, so only the RPCs below
+write them (the table-level SELECT already exposes them to the CRM). The freeze trigger is
+unchanged: the client can still decide on a converted row, since the decision is about the
+plan, not the post. `ON DELETE` of the post leaves the state alone.
+
+No resposta row is written for a row approval: threads stay comments only. An ajuste writes
+its comment as a plain client resposta (`acao = 'comentario'`, `item_id` = the row), so it
+shows in the row's thread in both apps and counts as a client comment everywhere comments are
+counted (Hub `isClientComment`, CRM counts, `metadata.comentarios`). Not `acao = 'ajustes'`:
+the item FK is `ON DELETE SET NULL (item_id)`, so deleting the row would turn it into a fake
+linha-level "Pediu ajustes". The row's chip carries the state; the thread carries the text.
+
+"A client comment on the row in the current rodada" means, here and in §13.3/§13.5: a
+resposta with that `item_id`, the linha's current `rodada`, `is_workspace_user = false` and a
+non-blank `comentario`. Team replies never count.
+
+**Undo** (`pendente`) clears the state only. The comment stays in the thread as an ordinary
+comment, and a later "Pedir ajuste" on that row needs no new comment (the rule above is met).
+This is intended.
+
+### 13.3 RPCs
+
+- **New** `record_linha_item_decision(p_linha_id, p_item_id, p_conta_id, p_cliente_id,
+  p_token, p_acao, p_comentario) → jsonb` (service_role only, SECURITY DEFINER):
+  - same tenant scope and flag check as `record_linha_comment`; the linha is read `FOR
+    SHARE` (decisions on rows run in parallel but wait for a finish in flight), the item
+    `FOR UPDATE` and must belong to the scoped linha (`nao_encontrada` otherwise);
+  - requires `status = 'enviada'` (`status_invalido`);
+  - `p_acao`: `aprovado`, `ajustes` or `pendente` (undo, sets null); anything else is
+    `acao_invalida`;
+  - `ajustes` needs a non-blank `p_comentario` unless the row already has a client comment
+    in the current rodada (`comentario_obrigatorio`); when given, the comment is inserted as
+    a client `comentario` resposta on the row (§13.2);
+  - sets `aprovacao` and `aprovacao_at = now()` (both null for `pendente`);
+  - returns `{aprovados, ajustes, pendentes}` counted over the linha's rows;
+  - notifies nobody (anti-goal "Hub noise").
+- **Changed** `record_linha_decision` (same signature):
+  - `aprovado` raises `itens_com_ajustes` when any row has `aprovacao = 'ajustes'`.
+    Otherwise it sets every pending row to `aprovado` (with `aprovacao_at`), then the linha to
+    `aprovada`, as before.
+  - `ajustes` is unchanged (pending rows stay pending). An ajuste on a row always carries a
+    comment, so the existing "needs a comment unless the rodada has client comments" rule is
+    met whenever a row has one.
+- **Changed** `linha_editorial_enviar`: also sets `aprovacao = null, aprovacao_at = null` on
+  rows with `aprovacao = 'ajustes'`. Approved rows keep their state.
+- **Changed** `create_linha_notification`: metadata gains `itens_ajustes` (rows with
+  `aprovacao = 'ajustes'`). The in-app body of `linha_editorial_ajustes` becomes "{n} posts com
+  ajuste" when n > 0, else unchanged (`getNotificationDisplay`). The e-mail copy is unchanged,
+  so `notification-email-cron` needs no redeploy.
+- `linha_editorial_recolher` and `linha_editorial_converter` do not touch the new columns.
+
+### 13.4 Edge function `hub-linha-editorial`
+
+- **GET:** each item carries `aprovacao` (`'aprovado' | 'ajustes' | null`). Nothing else new.
+- **POST:** with `item_id` set, `acao` may be `comentario` (as before), `aprovado`, `ajustes`
+  or `pendente`; the last three call `record_linha_item_decision` and return its counts. Without
+  `item_id`, `pendente` is a 400. `itens_com_ajustes` maps to 409. Row decisions are not
+  audited (only the finish is) and never notify.
+- Existing tests this flips: `hub-linha-editorial_test.ts` asserts `{acao:'aprovado', item_id}`
+  is a 400 (now a row decision) and the write pool at `60, 3600` (now 300). The handler comment
+  "A decision is always about the whole linha" goes.
+- `ACOES` splits: the POST body accepts `comentario | aprovado | ajustes | pendente`; resposta
+  rows keep `comentario | aprovado | ajustes`.
+- **Rate limit:** the write pool goes from 60 to 300 per hour. A linha has up to 100 rows, and
+  approving them one by one plus a few comments must not hit the limit. GET is unchanged.
+
+### 13.5 Hub
+
+- **Each row** (while `enviada`) shows, under the title and direction, "Aprovar" and "Pedir
+  ajuste" next to "Comentar".
+  - "Aprovar" saves at once; the row then shows the pill "Aprovado" and a "Desfazer" link.
+  - "Pedir ajuste" opens the row's textarea with the label "O que precisa mudar?", required
+    unless the row already has a comment of the client in this rodada. Saving shows the pill
+    "Ajuste pedido", the comment in the row's thread, and "Desfazer".
+  - "Desfazer" sends `pendente`.
+  - The pills use `StatusPill` (`semantic="ok"` for Aprovado, `semantic="fix"` for Ajuste
+    pedido), like the linha-level pills.
+- **The sticky bar** replaces "{n} comentários" with the progress "{a} de {total} aprovados"
+  plus " · {n} com ajuste" when n > 0. Actions:
+  - no row with an ajuste: "Pedir ajustes" (secondary, general comment as in §8.3) and
+    "Aprovar linha editorial" (primary, approves the pending rows too: its helper text
+    under the bar reads "Os posts ainda sem resposta também serão aprovados." when any row is
+    pending);
+  - some row with an ajuste: only "Enviar ajustes" (primary), which finishes with `ajustes`.
+- **After the finish** (`aprovada` or `ajustes`), each row keeps its pill read-only; pending
+  rows show none.
+- "Required unless the row already has a client comment" uses the §13.2 predicate (client,
+  non-blank, current rodada); the existing `itemNotes` includes team replies and must not be
+  reused for it.
+- A 409 whose body maps to `itens_com_ajustes` (a stale tab: the bar never offers "Aprovar"
+  then) shows "Um post tem pedido de ajuste. Atualize a página." instead of the generic error;
+  the card refetches as it already does on settle.
+- Types: `HubLinhaAcao` (resposta) stays; a new `HubLinhaAcaoEnvio` adds `pendente` for
+  `HubLinhaAcaoBody.acao`. `HubLinhaItem.aprovacao: 'aprovado' | 'ajustes' | null`.
+- The badge count (`usePendingApprovalsCount`) is unchanged: one per `enviada` linha.
+- i18n keys go in `hubLinha` (pt and en).
+
+### 13.6 CRM
+
+- `LinhaItem` gains optional `aprovacao?: 'aprovado' | 'ajustes' | null` and
+  `aprovacao_at?: string | null` (optional, so fixtures and the optimistic "Nova linha" insert
+  need no change; absent reads as pending). A small `LinhaAprovacaoChip` renders
+  "Aprovado" (success), "Ajuste pedido" (warning) or "Pendente" (neutral), with the date in its
+  title. It shows only once the linha has been sent (`rodada > 0`). Clicking an "Ajuste
+  pedido" chip opens that row's thread (`onOpenComentarios`).
+- **Table:** the chip sits in the title cell's trailing area, before the comment count. No new
+  column.
+- **Phone cards:** the same chip next to the format pill.
+- **Header:** the summary line gains the progress after the format breakdown, when
+  `rodada > 0`: "12 posts · Reels 6 · Carrossel 6 · 9 aprovados · 1 com ajuste · 2 pendentes"
+  (zero parts omitted).
+- **Rail:** `listLinhasDoMes` adds an `aprovados` count embed (filtered on
+  `aprovacao = 'aprovado'`, as `convertidos`), and `contagem()` becomes: "N de M em produção"
+  when any row is converted, else "A de M aprovados" when the linha was sent, else "M posts".
+- Client decisions arrive with the existing refetch on focus and the notification on finish;
+  no realtime.
+
+### 13.7 Rollout
+
+Migration `20261031000005` (staging, then prod) → deploy `hub-linha-editorial` (staging, then
+prod, `--no-verify-jwt`) → merge. Old code against the new schema is safe: the old function
+never sends row decisions, and `record_linha_decision('aprovado')` only refuses when a row has
+an ajuste, which nothing old can set. The new function against old Hub code is safe too:
+the extra `aprovacao` field is ignored.
+
+### 13.8 Tests
+
+- **Entitlement suite:** the new RPC's tenant scope (another client's linha and an item of
+  another linha are `nao_encontrada`), `status_invalido` outside `enviada`, the comment rule,
+  undo, service-role-only grant; `authenticated` cannot write `aprovacao`; finish `aprovado`
+  refuses with a row in ajustes and otherwise approves the pending rows; `enviar` resets
+  ajustes rows and keeps approved ones; an agency edit keeps the approval; the ajuste comment
+  is stored as a client `comentario` on the row; a team reply alone does not satisfy the
+  comment rule. The migration's DO block asserts `aprovacao`/`aprovacao_at` have no
+  INSERT/UPDATE grant for authenticated, anon or PUBLIC.
+- **Deno:** POST routing by `item_id` + `acao`, `pendente` without `item_id` is 400,
+  `itens_com_ajustes` is 409, `aprovacao` in the GET payload, row decisions skip the audit
+  and notification.
+- **Vitest (Hub):** row buttons and undo, the ajuste textarea's required rule, the bar's
+  progress copy and its action switch.
+- **Vitest (CRM):** the chip (hidden before the first send, opens the thread on ajuste), the
+  header progress, the rail `contagem()` order, the notification body.
