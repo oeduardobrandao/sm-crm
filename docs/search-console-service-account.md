@@ -43,11 +43,16 @@ A chave nunca vai na linha de comando nem no histórico do shell. O CLI do Supab
 valor de arquivo direto (`NAME=@arquivo` não existe), então use `--env-file` com um arquivo
 temporário que contenha o JSON numa linha só. O arquivo fica fora do repositório.
 
+Troque só a linha `KEY` pelo caminho do arquivo baixado e cole o bloco inteiro no terminal.
+Não deixe nenhum `<...>` no comando: o zsh lê `<` como redirecionamento e o bloco inteiro falha
+com `parse error near '\n'`, sem rodar nada.
+
 ```bash
 (
   set -eu
   # KEY é o caminho do JSON baixado. O comando só cita caminhos, nunca o conteúdo da chave.
-  KEY="$HOME/Downloads/<arquivo-baixado>.json"
+  KEY="$HOME/Downloads/mesaas-search-console-chave.json"
+  PROD_REF="skjzpekeqefvlojenfsw"
   ENVF="$(mktemp)"
   trap 'rm -f "$ENVF"' EXIT   # o arquivo temporário some em qualquer saída, Ctrl-C incluído
 
@@ -55,7 +60,7 @@ temporário que contenha o JSON numa linha só. O arquivo fica fora do repositó
   [ -n "$JSON" ]              # e um JSON vazio também aborta
   printf "GSC_SERVICE_ACCOUNT_JSON='%s'\n" "$JSON" > "$ENVF"
 
-  npx supabase secrets set --env-file "$ENVF" --project-ref <PROD_REF>
+  npx --yes supabase@2.110.0 secrets set --env-file "$ENVF" --project-ref "$PROD_REF"
 
   rm -f "$KEY"                # só chega aqui se o secrets set deu certo
 )
@@ -63,8 +68,15 @@ temporário que contenha o JSON numa linha só. O arquivo fica fora do repositó
 
 O bloco roda num subshell para que uma falha não derrube o terminal. Se qualquer passo falhar,
 o arquivo temporário é apagado e a chave baixada continua onde estava: corrija o problema e rode
-de novo. Depois confira com `npx supabase secrets list --project-ref <PROD_REF>`: o nome
-`GSC_SERVICE_ACCOUNT_JSON` precisa aparecer na lista.
+de novo. Depois confira (o nome `GSC_SERVICE_ACCOUNT_JSON` precisa aparecer na lista):
+
+```bash
+npx --yes supabase@2.110.0 secrets list --project-ref skjzpekeqefvlojenfsw | grep GSC
+```
+
+O CLI vai fixado em `supabase@2.110.0` porque um `npx supabase` sem versão pode pegar do cache
+do npx uma versão que não traz o binário do Mac e falha com `No matching Supabase CLI binary
+package found for darwin-arm64`.
 
 Cuidados:
 
@@ -72,8 +84,8 @@ Cuidados:
   existir só no Supabase; se precisar de outra, gere uma nova no passo 1 e revogue a antiga.
 - Nunca commite o arquivo da chave nem o `--env-file` temporário. O `mktemp` acima cria o
   arquivo fora do repositório; mantenha assim.
-- `npx supabase secrets list --project-ref <PROD_REF>` confirma que o secret existe (mostra só
-  o nome e um hash, nunca o valor).
+- O `secrets list` acima confirma que o secret existe (mostra só o nome e um hash, nunca o
+  valor).
 - Não precisa de redeploy: a edge function lê os secrets quando sobe um isolate novo, então a
   próxima execução do cron já usa o valor gravado. O deploy de `blog-search-console-cron` só é
   necessário uma vez, antes de agendar o cron (`--no-verify-jwt`).
