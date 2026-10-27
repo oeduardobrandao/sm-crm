@@ -36,6 +36,8 @@ const LAZY_LOCALES: Record<string, Record<string, () => LocaleModule>> = {
     tasks: () => import('../../../../packages/i18n/locales/pt/tasks.json'),
     tasksForm: () => import('../../../../packages/i18n/locales/pt/tasksForm.json'),
     tasksPhone: () => import('../../../../packages/i18n/locales/pt/tasksPhone.json'),
+    clientHub: () => import('../../../../packages/i18n/locales/pt/clientHub.json'),
+    clientBriefing: () => import('../../../../packages/i18n/locales/pt/clientBriefing.json'),
   },
   en: {
     dashboard: () => import('../../../../packages/i18n/locales/en/dashboard.json'),
@@ -62,6 +64,8 @@ const LAZY_LOCALES: Record<string, Record<string, () => LocaleModule>> = {
     tasks: () => import('../../../../packages/i18n/locales/en/tasks.json'),
     tasksForm: () => import('../../../../packages/i18n/locales/en/tasksForm.json'),
     tasksPhone: () => import('../../../../packages/i18n/locales/en/tasksPhone.json'),
+    clientHub: () => import('../../../../packages/i18n/locales/en/clientHub.json'),
+    clientBriefing: () => import('../../../../packages/i18n/locales/en/clientBriefing.json'),
   },
 };
 
