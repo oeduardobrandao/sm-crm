@@ -282,7 +282,8 @@ Deno.test("list_blog_posts devolve posts, file_posts e feature_slugs; since_days
   const { db, calls } = makeFakeDb({ blog_posts: [{ data: posts, error: null }] });
   const out = await listBlogPosts(makeDeps(db), { since_days: 60, status: "rascunho" });
   assertEquals(out.posts, posts);
-  assertEquals(out.file_posts, BLOG_FILE_POSTS);
+  assertEquals(out.file_posts, BLOG_FILE_POSTS.map(({ slug, title }) => ({ slug, title })));
+  for (const fp of out.file_posts) assertEquals(Object.keys(fp), ["slug", "title"]);
   assertEquals(out.feature_slugs, [...BLOG_FEATURE_SLUGS]);
   assert(calls.some((c) => c.method === "gte" && c.args[0] === "created_at" && c.args[1] === "2026-07-06T12:00:00.000Z"));
   assert(calls.some((c) => c.method === "eq" && c.args[0] === "status" && c.args[1] === "rascunho"));

@@ -1,6 +1,12 @@
 import { supabase } from './supabase';
 import type { SubscriptionInfo, SubscriptionSummary, WorkspaceStatusGroup } from './subscription';
-import type { BlogPostDetail, BlogPostRow, BlogTab, EditableField } from '../pages/blog/blog-view';
+import type {
+  BlogPostDetail,
+  BlogPostRow,
+  BlogTab,
+  EditableField,
+  FilePostRow,
+} from '../pages/blog/blog-view';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 
@@ -1137,7 +1143,11 @@ export function updateAffiliateCommissionRule(params: UpdateAffiliateCommissionR
 type BlogFields = Partial<Record<EditableField, string>>;
 
 export function listBlogPosts(tab: BlogTab) {
-  return adminApi<{ posts: BlogPostRow[]; last_draft_at: string | null }>('list-blog-posts', {
+  return adminApi<{
+    posts: BlogPostRow[];
+    last_draft_at: string | null;
+    file_posts: FilePostRow[];
+  }>('list-blog-posts', {
     tab,
   });
 }

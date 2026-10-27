@@ -3,6 +3,7 @@
  * blog-posts.ts): the list and every mutation return the list columns, get-blog-post the full
  * row. The Admin cannot import apps/crm, so the shapes are declared here. */
 import { BLOG_LIMITS, type BlogImage, type BlogSource } from '@mesaas/ui/blog/model';
+import { blogFilePostPath, blogPostPath } from '../../lib/routes';
 
 export type BlogTab = 'aguardando' | 'publicados' | 'rejeitados';
 export const BLOG_TABS: Array<{ value: BlogTab; label: string }> = [
@@ -58,6 +59,16 @@ export interface BlogPostRow {
   created_at: string;
   updated_at: string;
   approved_at: string | null;
+}
+
+/** A hand-written post that lives as a file in the CRM (list-blog-posts `file_posts`). */
+export interface FilePostRow {
+  kind: 'arquivo';
+  slug: string;
+  title: string;
+  description: string;
+  category: string;
+  date: string;
 }
 
 /** get-blog-post: the whole row. */
@@ -272,6 +283,67 @@ export function actionsFor(row: Pick<BlogPostRow, 'status'>): BlogAction[] {
 export function showsRetry(row: BlogPostRow, now: Date): boolean {
   if (!actionsFor(row).includes('retry')) return false;
   return row.status === 'despublicado' || isSlowPublish(row, now);
+}
+
+/** One row of the Admin list: a rotina post (DB, actionable) or a hand-written one (file,
+ * read-only). */
+export type BlogListItem =
+  | { kind: 'rotina'; row: BlogPostRow }
+  | { kind: 'arquivo'; row: FilePostRow };
+
+/** Publicados: DB and file posts merged by publication date, newest first. A DB row without a
+ * `date` falls back to when it was approved, then created. The review tabs keep the queue
+ * order and never hold file posts. */
+export function itemsFor(
+  tab: BlogTab,
+  posts: BlogPostRow[],
+  files: FilePostRow[],
+  now: Date,
+): BlogListItem[] {
+  if (tab !== 'publicados') {
+    return sortQueue(posts, now).map((row) => ({ kind: 'rotina', row }));
+  }
+  // An unparseable date sorts last.
+  const at = (iso: string | null): number => {
+    const t = ms(iso);
+    return Number.isNaN(t) ? -Infinity : t;
+  };
+  const dated = [
+    ...posts.map((row) => ({
+      item: { kind: 'rotina', row } satisfies BlogListItem,
+      at: at(row.date ?? row.approved_at ?? row.created_at),
+    })),
+    ...files.map((row) => ({
+      item: { kind: 'arquivo', row } satisfies BlogListItem,
+      at: at(row.date),
+    })),
+  ];
+  // Array.sort is stable: equal dates keep DB-then-file order.
+  return dated.sort((a, b) => b.at - a.at).map((d) => d.item);
+}
+
+/** File posts are always on the site; rotina posts once publicado/publicando. */
+export function isLiveItem(item: BlogListItem): boolean {
+  return item.kind === 'arquivo' || isLive(item.row);
+}
+
+export const itemSlug = (item: BlogListItem): string => item.row.slug;
+
+/** Selection key: the row id for rotina posts, `arquivo:<slug>` for files (slugs are not ids). */
+export const itemKey = (item: BlogListItem): string =>
+  item.kind === 'arquivo' ? `arquivo:${item.row.slug}` : item.row.id;
+
+export function itemPath(item: BlogListItem, tab: BlogTab): string {
+  return item.kind === 'arquivo' ? blogFilePostPath(item.row.slug) : blogPostPath(item.row.id, tab);
+}
+
+const LIVE_BASE = 'https://www.mesaas.com.br/blog/';
+
+/** Public URL of a post. Constant origin + encoded slug: nothing user-controlled reaches the
+ * scheme or host. `fromAdmin` tags the visit (`?ref=admin`) so the site can leave it out of the
+ * blog view counts; a copied/shared link never carries it. */
+export function liveUrl(slug: string, opts?: { fromAdmin?: boolean }): string {
+  return `${LIVE_BASE}${encodeURIComponent(slug)}${opts?.fromAdmin ? '?ref=admin' : ''}`;
 }
 
 /** Editing a live row republishes it on save. */

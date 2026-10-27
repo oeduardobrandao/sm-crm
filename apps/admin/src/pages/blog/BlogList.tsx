@@ -5,15 +5,19 @@ import { ErrorState } from '../../components/ErrorState';
 import { RowLink } from '../../components/RowLink';
 import { Badge } from '../../components/ui/badge';
 import { Skeleton } from '../../components/ui/skeleton';
-import { blogPostPath } from '../../lib/routes';
 import { cn } from '../../lib/utils';
 import {
   CATEGORY_LABEL,
   chipsFor,
   formatDateTime,
-  type BlogPostRow,
+  formatDay,
+  isLiveItem,
+  itemKey,
+  itemPath,
+  type BlogListItem,
   type BlogTab,
 } from './blog-view';
+import { LiveRowLink } from './LiveLinkButtons';
 
 const EMPTY: Record<BlogTab, { title: string; description: string }> = {
   aguardando: {
@@ -25,9 +29,10 @@ const EMPTY: Record<BlogTab, { title: string; description: string }> = {
 };
 
 export interface BlogListProps {
-  rows: BlogPostRow[];
+  items: BlogListItem[];
   tab: BlogTab;
-  selectedId: string | null;
+  /** `itemKey` of the open row. */
+  selectedKey: string | null;
   now: Date;
   isLoading: boolean;
   isError: boolean;
@@ -38,9 +43,9 @@ export interface BlogListProps {
 }
 
 export function BlogList({
-  rows,
+  items,
   tab,
-  selectedId,
+  selectedKey,
   now,
   isLoading,
   isError,
@@ -60,7 +65,7 @@ export function BlogList({
   }
   if (isError)
     return <ErrorState message="Não foi possível carregar os posts." onRetry={onRetry} />;
-  if (rows.length === 0) {
+  if (items.length === 0) {
     return (
       <EmptyState icon={Newspaper} title={EMPTY[tab].title} description={EMPTY[tab].description} />
     );
@@ -68,14 +73,17 @@ export function BlogList({
 
   return (
     <ul aria-label="Posts">
-      {rows.map((r) => {
-        const to = blogPostPath(r.id, tab);
-        const selected = r.id === selectedId;
-        const chips = chipsFor(r, now);
+      {items.map((item) => {
+        const r = item.row;
+        const key = itemKey(item);
+        const to = itemPath(item, tab);
+        const selected = key === selectedKey;
+        // Hand-written posts carry no checks, sources or review state: no chips.
+        const chips = item.kind === 'rotina' ? chipsFor(item.row, now) : [];
         return (
           <li
-            key={r.id}
-            onClick={() => (onOpen && r.id !== selectedId ? onOpen(to) : navigate(to))}
+            key={key}
+            onClick={() => (onOpen && !selected ? onOpen(to) : navigate(to))}
             aria-current={selected ? 'true' : undefined}
             className={cn(
               'flex cursor-pointer gap-3 border-t border-border/60 px-[18px] py-3 transition-colors first:border-t-0 hover:bg-foreground/[0.04]',
@@ -83,9 +91,9 @@ export function BlogList({
             )}
           >
             <div className="flex h-14 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-secondary text-muted-foreground">
-              {r.cover_image ? (
+              {item.kind === 'rotina' && item.row.cover_image ? (
                 <img
-                  src={r.cover_image.url}
+                  src={item.row.cover_image.url}
                   alt=""
                   loading="lazy"
                   decoding="async"
@@ -101,12 +109,16 @@ export function BlogList({
                   {CATEGORY_LABEL[r.category] ?? r.category}
                 </span>
                 <span aria-hidden="true">·</span>
-                <span className="tabular-nums">{formatDateTime(r.created_at)}</span>
+                <span className="tabular-nums">
+                  {item.kind === 'arquivo'
+                    ? formatDay(item.row.date)
+                    : formatDateTime(item.row.created_at)}
+                </span>
               </div>
               <RowLink
                 to={to}
                 onClick={(e) => {
-                  if (onOpen && r.id !== selectedId) {
+                  if (onOpen && !selected) {
                     e.preventDefault();
                     onOpen(to);
                   }
@@ -115,8 +127,13 @@ export function BlogList({
               >
                 {r.title}
               </RowLink>
-              {chips.length > 0 && (
+              {(item.kind === 'arquivo' || chips.length > 0) && (
                 <div className="mt-1.5 flex flex-wrap gap-1">
+                  {item.kind === 'arquivo' && (
+                    <Badge variant="neutral" size="sm">
+                      Escrito à mão
+                    </Badge>
+                  )}
                   {chips.map((c) => (
                     <Badge key={c.label} variant={c.tone} size="sm">
                       {c.label}
@@ -125,6 +142,7 @@ export function BlogList({
                 </div>
               )}
             </div>
+            {isLiveItem(item) && <LiveRowLink slug={r.slug} title={r.title} />}
           </li>
         );
       })}

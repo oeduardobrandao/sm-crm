@@ -11,6 +11,8 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { BLOG_DRAFT_FIELDS, validateBlogDraft } from "../_shared/blog-validate.ts";
+import { BLOG_FILE_POSTS } from "../_shared/blog-file-posts.ts";
+import { BLOG_LIVE_STATUSES } from "../_shared/blog-live.ts";
 import { type BlogCheckPost, type BlogChecks, runBlogChecks } from "../_shared/blog-checks.ts";
 import { readBodyCapped, withDeadline } from "../_shared/safe-image-fetch.ts";
 import { saoPauloDate } from "../_shared/sao-paulo-date.ts";
@@ -55,7 +57,7 @@ const TABS: Record<string, string[]> = {
 };
 
 const REVIEWABLE = ["rascunho", "ajuste_solicitado"];
-const LIVE = ["publicado", "publicando"];
+const LIVE: string[] = [...BLOG_LIVE_STATUSES];
 const EDITABLE_STATUSES = [...REVIEWABLE, ...LIVE];
 /** Editar texto (spec §6): título, H1, descrição, lede e corpo. Slug nunca muda (URL pública). */
 export const EDITABLE_FIELDS = ["title", "h1", "description", "lede", "body_md"] as const;
@@ -269,6 +271,10 @@ export async function handleListBlogPosts(
   return json({
     posts: rows.filter((r) => statuses.includes(r.status)),
     last_draft_at: (last.data as Row | null)?.created_at ?? null,
+    // Posts escritos à mão (arquivos do CRM): só aparecem entre os publicados, nunca ganham id.
+    file_posts: body.tab === "publicados"
+      ? BLOG_FILE_POSTS.map((p) => ({ kind: "arquivo" as const, ...p }))
+      : [],
   }, 200, headers);
 }
 

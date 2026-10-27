@@ -80,7 +80,13 @@ describe('Deno blog-rules schemas and validator', () => {
 
 describe('Deno blog-file-posts mirror', () => {
   const source = readFileSync(resolve(SHARED, 'blog-file-posts.ts'), 'utf8');
-  const mirrored = literal(source, 'BLOG_FILE_POSTS') as Array<{ slug: string; title: string }>;
+  const mirrored = literal(source, 'BLOG_FILE_POSTS') as Array<{
+    slug: string;
+    title: string;
+    description: string;
+    category: string;
+    date: string;
+  }>;
   const files = readdirSync(BLOG_DIR)
     .filter((f) => f.endsWith('.md'))
     .sort();
@@ -93,6 +99,15 @@ describe('Deno blog-file-posts mirror', () => {
     for (const post of mirrored) {
       const { data } = splitFrontmatter(readFileSync(resolve(BLOG_DIR, `${post.slug}.md`), 'utf8'));
       expect(post.title, post.slug).toBe(data.title);
+    }
+  });
+
+  test('carries each file post date, category and description from its frontmatter', () => {
+    for (const post of mirrored) {
+      const { data } = splitFrontmatter(readFileSync(resolve(BLOG_DIR, `${post.slug}.md`), 'utf8'));
+      expect(post.date, post.slug).toBe(String(data.date));
+      expect(post.category, post.slug).toBe(data.category);
+      expect(post.description, post.slug).toBe(data.description);
     }
   });
 });

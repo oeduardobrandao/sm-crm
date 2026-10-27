@@ -3,11 +3,17 @@ import {
   actionsFor,
   chipsFor,
   failingChecks,
+  isLiveItem,
   isStale,
+  itemPath,
+  itemSlug,
+  itemsFor,
+  liveUrl,
   noRecentDraft,
   showsRetry,
   sortQueue,
   type BlogPostRow,
+  type FilePostRow,
 } from '../blog-view';
 
 const NOW = new Date('2026-10-23T12:00:00Z');
@@ -194,5 +200,83 @@ describe('showsRetry', () => {
     for (const status of ['rascunho', 'ajuste_solicitado', 'publicado', 'rejeitado'] as const) {
       expect(showsRetry(row({ status, publish_attempt_at: ago(2 * HOUR) }), NOW)).toBe(false);
     }
+  });
+});
+
+describe('liveUrl', () => {
+  it('builds the canonical URL', () => {
+    expect(liveUrl('mesaas-vs-mlabs')).toBe('https://www.mesaas.com.br/blog/mesaas-vs-mlabs');
+    expect(liveUrl('a b')).toBe('https://www.mesaas.com.br/blog/a%20b');
+    expect(liveUrl('x', { fromAdmin: true })).toBe('https://www.mesaas.com.br/blog/x?ref=admin');
+  });
+});
+
+function fileRow(over: Partial<FilePostRow> = {}): FilePostRow {
+  return {
+    kind: 'arquivo',
+    slug: 'post-a-mao',
+    title: 'Post escrito à mão',
+    description: 'Descrição',
+    category: 'guia',
+    date: '2026-10-25',
+    ...over,
+  };
+}
+
+describe('itemsFor', () => {
+  it('merges file and DB posts on Publicados, newest date first', () => {
+    const items = itemsFor(
+      'publicados',
+      [row({ id: 'db1', status: 'publicado', date: '2026-10-20' })],
+      [
+        fileRow({ slug: 'velho', date: '2026-07-01' }),
+        fileRow({ slug: 'novo', date: '2026-10-25' }),
+      ],
+      NOW,
+    );
+    expect(items.map((i) => i.kind)).toEqual(['arquivo', 'rotina', 'arquivo']);
+    expect(items.map(itemSlug)).toEqual(['novo', 'post', 'velho']);
+  });
+
+  it('dates a DB row without a date by approved_at, then created_at', () => {
+    const items = itemsFor(
+      'publicados',
+      [
+        row({ id: 'a', slug: 'aprovado', date: null, approved_at: '2026-10-22T12:00:00Z' }),
+        row({ id: 'b', slug: 'criado', date: null, approved_at: null, created_at: '2026-10-21' }),
+      ],
+      [fileRow({ slug: 'arq', date: '2026-10-21T20:00:00Z' })],
+      NOW,
+    );
+    expect(items.map(itemSlug)).toEqual(['aprovado', 'arq', 'criado']);
+  });
+
+  it('keeps sortQueue order on the review tabs and ignores file posts there', () => {
+    const fresh = row({ id: 'f', slug: 'f', created_at: ago(HOUR) });
+    const older = row({ id: 'o', slug: 'o', created_at: ago(5 * HOUR) });
+    for (const tab of ['aguardando', 'rejeitados'] as const) {
+      const items = itemsFor(tab, [older, fresh], [fileRow()], NOW);
+      expect(items.map(itemSlug)).toEqual(['f', 'o']);
+      expect(items.every((i) => i.kind === 'rotina')).toBe(true);
+    }
+  });
+});
+
+describe('isLiveItem / itemPath', () => {
+  it('treats file posts, publicado and publicando as live', () => {
+    expect(isLiveItem({ kind: 'arquivo', row: fileRow() })).toBe(true);
+    expect(isLiveItem({ kind: 'rotina', row: row({ status: 'publicando' }) })).toBe(true);
+    expect(isLiveItem({ kind: 'rotina', row: row({ status: 'publicado' }) })).toBe(true);
+    expect(isLiveItem({ kind: 'rotina', row: row({ status: 'despublicado' }) })).toBe(false);
+    expect(isLiveItem({ kind: 'rotina', row: row({ status: 'rascunho' }) })).toBe(false);
+  });
+
+  it('routes file posts to the arquivo path and DB posts to their id', () => {
+    expect(itemPath({ kind: 'arquivo', row: fileRow({ slug: 'a b' }) }, 'publicados')).toBe(
+      '/admin/blog/arquivo/a%20b?tab=publicados',
+    );
+    expect(itemPath({ kind: 'rotina', row: row({ id: 'db1' }) }, 'publicados')).toBe(
+      '/admin/blog/db1?tab=publicados',
+    );
   });
 });

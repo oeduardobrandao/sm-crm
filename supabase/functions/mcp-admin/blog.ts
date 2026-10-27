@@ -46,7 +46,7 @@ export async function listBlogPosts(d: Deps, args: { status?: string; since_days
   }
   const { data, error } = await q.order("created_at", { ascending: false }).limit(LIST_LIMIT);
   if (error) throw error;
-  return { posts: data ?? [], file_posts: BLOG_FILE_POSTS, feature_slugs: [...BLOG_FEATURE_SLUGS] };
+  return { posts: data ?? [], file_posts: BLOG_FILE_POSTS.map(({ slug, title }) => ({ slug, title })), feature_slugs: [...BLOG_FEATURE_SLUGS] };
 }
 
 async function loadPost(d: Deps, postId: string) {
