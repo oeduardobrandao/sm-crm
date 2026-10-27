@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Contagem anonima de views do blog (migration 20261031000001).
+-- Contagem anonima de views do blog (migration 20261101000001).
 -- (a) grants: tabelas fechadas para anon/authenticated; as cinco funcoes so service_role.
 -- (b) record_blog_view deduplica por (slug, hash) em 30 min. (c) blog_view_salt_today devolve o
 --     mesmo sal de 64 hex no dia e apaga sais de dias anteriores; blog_view_prune_salts tambem.
