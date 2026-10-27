@@ -240,6 +240,16 @@
 .linha-table-slot {
   min-width: 0;
 }
+/* Selection bar (Task 10): the fluxo drawer's `drawer-selection-bar`, floating over the
+   bottom of the page instead of the drawer body. */
+.drawer-selection-bar.linha-selection-bar {
+  bottom: 1rem;
+  z-index: 20;
+  margin-top: 0;
+}
+.linha-selection-bar__tipo {
+  white-space: nowrap;
+}
 .linha-empty {
   display: flex;
   flex-direction: column;

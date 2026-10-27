@@ -15,6 +15,7 @@ const m = vi.hoisted(() => ({
   criarLinha: vi.fn(),
   enviarLinha: vi.fn(),
   recolherLinha: vi.fn(),
+  converterItens: vi.fn(),
   getHubToken: vi.fn(),
   getWorkspaceSlug: vi.fn(),
   toastSuccess: vi.fn(),
@@ -31,6 +32,7 @@ vi.mock('@/store/linhaEditorial', async (importOriginal) => ({
   criarLinha: m.criarLinha,
   enviarLinha: m.enviarLinha,
   recolherLinha: m.recolherLinha,
+  converterItens: m.converterItens,
 }));
 vi.mock('@/store/hub', () => ({
   getHubToken: m.getHubToken,
@@ -266,5 +268,41 @@ describe('LinhaEditorialView header', () => {
     await user.click(await within(main).findByRole('button', { name: 'Criar linha' }));
     await waitFor(() => expect(m.criarLinha).toHaveBeenCalledWith(2, '2026-11-01'));
     await waitFor(() => expect(onChange).toHaveBeenCalledWith({ clientes: [2] }));
+  });
+});
+
+describe('LinhaEditorialView selection', () => {
+  it('selecting rows shows the bar and Criar posts individuais converts them as avulsos', async () => {
+    const user = userEvent.setup();
+    m.listLinhasDoMes.mockResolvedValue([
+      linha({ cliente_id: 1, status: 'aprovada', itens_total: 2 }),
+    ]);
+    m.listItens.mockResolvedValue([item(1), item(2)]);
+    m.converterItens.mockResolvedValue([{ item_id: 'i1', post_id: 501 }]);
+    const onVerPosts = vi.fn();
+    renderView({ filterClientes: [1], onVerPosts });
+    expect(screen.queryByTestId('linha-selection-bar')).not.toBeInTheDocument();
+    await user.click(await screen.findByRole('checkbox', { name: 'Selecionar Post 1' }));
+    const bar = await screen.findByTestId('linha-selection-bar');
+    expect(within(bar).getByText('1 selecionado')).toBeInTheDocument();
+    expect(within(bar).getByText('1 reels')).toBeInTheDocument();
+    await user.click(within(bar).getByRole('button', { name: 'Criar posts individuais' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Criar 1 post individual' }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Criar 1 post' }));
+    await waitFor(() =>
+      expect(m.converterItens).toHaveBeenCalledWith('l-1', null, expect.any(Array)),
+    );
+    expect(m.converterItens.mock.calls[0][2].map((p: { item_id: string }) => p.item_id)).toEqual([
+      'i1',
+    ]);
+    await waitFor(() =>
+      expect(screen.queryByTestId('linha-selection-bar')).not.toBeInTheDocument(),
+    );
+    const [msg, opts] = m.toastSuccess.mock.calls.at(-1)!;
+    expect(msg).toBe('1 post criado');
+    opts.action.onClick();
+    expect(onVerPosts).toHaveBeenCalledWith(1);
   });
 });

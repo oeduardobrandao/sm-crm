@@ -9,14 +9,16 @@ import { compactHubToken } from '@/lib/hubLinks';
 import { buildUsableTokenMap } from '@/lib/hubTokenMap';
 import type { Cliente } from '@/store';
 import { getHubToken, getWorkspaceSlug } from '@/store/hub';
-import { criarLinha, enviarLinha, recolherLinha } from '@/store/linhaEditorial';
+import { criarLinha, enviarLinha, recolherLinha, type LinhaItem } from '@/store/linhaEditorial';
 import type { ContentFormat } from '@mesaas/platforms';
 import { loadLinhaDirecaoOculta, persistLinhaDirecaoOculta } from '../entregasPrefs';
 import { ColunasPopover } from './ColunasPopover';
+import { CriarPostsDialog } from './CriarPostsDialog';
 import { LinhaClientRail } from './LinhaClientRail';
 import { LinhaComentariosPanel } from './LinhaComentariosPanel';
 import { LinhaHeader } from './LinhaHeader';
 import { LinhaPhoneView } from './LinhaPhoneView';
+import { LinhaSelectionBar } from './LinhaSelectionBar';
 import { LinhaTable } from './LinhaTable';
 import { formatBreakdown, periodoFromMes } from './linhaLogic';
 import { useIsLinhaPhone } from './useIsLinhaPhone';
@@ -33,6 +35,8 @@ export interface LinhaEditorialViewProps {
   mes: string;
   /** Writes the selected client and/or month back to the page (and so to the URL). */
   onChange: (q: { clientes?: number[]; mes?: string }) => void;
+  /** "Ver posts" after creating avulsos: the page's Lista view of the client's posts. */
+  onVerPosts?: (clienteId: number) => void;
 }
 
 /** Summary-line names (spec §6.2: "Reels 6"); `TIPO_LABELS` calls reels "Vídeo vertical". */
@@ -54,6 +58,7 @@ export function LinhaEditorialView({
   filterClientes,
   mes,
   onChange,
+  onVerPosts,
 }: LinhaEditorialViewProps) {
   const qc = useQueryClient();
   const periodo = periodoFromMes(mes);
@@ -68,6 +73,12 @@ export function LinhaEditorialView({
     ids: [],
   });
   const [painel, setPainel] = useState<{ linhaId: string; itemId: string | null } | null>(null);
+  // "Criar posts individuais": the rows are a snapshot taken on open, so the dialog keeps
+  // its count while the selection clears behind it.
+  const [criarPosts, setCriarPosts] = useState<{ open: boolean; itens: LinhaItem[] }>({
+    open: false,
+    itens: [],
+  });
 
   // The selected client decides which linha the per-linha queries read, so the month's
   // linhas run first (same query key as the second call below, so it is one request).
@@ -304,6 +315,31 @@ export function LinhaEditorialView({
                 />
               )}
             </div>
+            {selectedIds.length > 0 && (
+              <LinhaSelectionBar
+                itens={itensData}
+                selected={selectedIds}
+                linhaStatus={linha.status}
+                // Task 11 wires this
+                onCriarFluxo={() => {}}
+                onCriarPosts={() =>
+                  setCriarPosts({
+                    open: true,
+                    itens: itensData.filter((i) => selectedIds.includes(i.id)),
+                  })
+                }
+                onLimpar={() => setSelecao({ linhaId: linha.id, ids: [] })}
+              />
+            )}
+            <CriarPostsDialog
+              open={criarPosts.open}
+              onOpenChange={(open) => setCriarPosts((c) => ({ ...c, open }))}
+              linha={linha}
+              itens={criarPosts.itens}
+              colunas={colunasData}
+              onDone={() => setSelecao({ linhaId: linha.id, ids: [] })}
+              onVerPosts={onVerPosts}
+            />
             <LinhaComentariosPanel
               open={painelAberto}
               onOpenChange={(open) => !open && setPainel(null)}

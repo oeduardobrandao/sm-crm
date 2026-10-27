@@ -2201,6 +2201,7 @@ export default function EntregasPage() {
               if (q.clientes) setFilters((f) => ({ ...f, filterClientes: q.clientes! }));
               if (q.mes) setLinhaMes(q.mes);
             }}
+            onVerPosts={(id) => applySavedView(`view=list&entidade=posts&clientes=${id}`)}
           />
         )}
         {activeView === 'fila' && (
