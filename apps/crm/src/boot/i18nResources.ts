@@ -26,6 +26,9 @@ const LAZY_LOCALES: Record<string, Record<string, () => LocaleModule>> = {
     entregasViews: () => import('../../../../packages/i18n/locales/pt/entregasViews.json'),
     entregasPhone: () => import('../../../../packages/i18n/locales/pt/entregasPhone.json'),
     postPanels: () => import('../../../../packages/i18n/locales/pt/postPanels.json'),
+    calendario: () => import('../../../../packages/i18n/locales/pt/calendario.json'),
+    agenda: () => import('../../../../packages/i18n/locales/pt/agenda.json'),
+    agendaEvento: () => import('../../../../packages/i18n/locales/pt/agendaEvento.json'),
   },
   en: {
     dashboard: () => import('../../../../packages/i18n/locales/en/dashboard.json'),
@@ -42,6 +45,9 @@ const LAZY_LOCALES: Record<string, Record<string, () => LocaleModule>> = {
     entregasViews: () => import('../../../../packages/i18n/locales/en/entregasViews.json'),
     entregasPhone: () => import('../../../../packages/i18n/locales/en/entregasPhone.json'),
     postPanels: () => import('../../../../packages/i18n/locales/en/postPanels.json'),
+    calendario: () => import('../../../../packages/i18n/locales/en/calendario.json'),
+    agenda: () => import('../../../../packages/i18n/locales/en/agenda.json'),
+    agendaEvento: () => import('../../../../packages/i18n/locales/en/agendaEvento.json'),
   },
 };
 

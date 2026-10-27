@@ -62,6 +62,12 @@ import ptEntregasPhone from '../packages/i18n/locales/pt/entregasPhone.json';
 import enEntregasPhone from '../packages/i18n/locales/en/entregasPhone.json';
 import ptPostPanels from '../packages/i18n/locales/pt/postPanels.json';
 import enPostPanels from '../packages/i18n/locales/en/postPanels.json';
+import ptCalendario from '../packages/i18n/locales/pt/calendario.json';
+import enCalendario from '../packages/i18n/locales/en/calendario.json';
+import ptAgenda from '../packages/i18n/locales/pt/agenda.json';
+import enAgenda from '../packages/i18n/locales/en/agenda.json';
+import ptAgendaEvento from '../packages/i18n/locales/pt/agendaEvento.json';
+import enAgendaEvento from '../packages/i18n/locales/en/agendaEvento.json';
 
 initI18n({
   pt: {
@@ -79,6 +85,9 @@ initI18n({
     entregasViews: ptEntregasViews,
     entregasPhone: ptEntregasPhone,
     postPanels: ptPostPanels,
+    calendario: ptCalendario,
+    agenda: ptAgenda,
+    agendaEvento: ptAgendaEvento,
     hubHome: ptHubHome,
     hubPostCard: ptHubPostCard,
     hubPosts: ptHubPosts,
@@ -106,6 +115,9 @@ initI18n({
     entregasViews: enEntregasViews,
     entregasPhone: enEntregasPhone,
     postPanels: enPostPanels,
+    calendario: enCalendario,
+    agenda: enAgenda,
+    agendaEvento: enAgendaEvento,
     hubHome: enHubHome,
     hubPostCard: enHubPostCard,
     hubPosts: enHubPosts,
