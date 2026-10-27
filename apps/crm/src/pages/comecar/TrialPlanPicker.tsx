@@ -115,13 +115,6 @@ export function TrialPlanPicker({
             ))}
           </div>
         </fieldset>
-
-        <div className="comecar-picker__free">
-          <button type="button" className="comecar-link" onClick={onSkip}>
-            Continuar no Free
-          </button>
-          <p>2 clientes, só você, sem portal de aprovação nem relatórios.</p>
-        </div>
       </section>
 
       <section className="comecar-reco" aria-live="polite">
@@ -179,6 +172,15 @@ export function TrialPlanPicker({
           </>
         )}
       </section>
+
+      {/* After the card in the DOM, so on a phone the trial comes before the Free exit;
+          the grid places it under the questions on wider screens. */}
+      <div className="comecar-picker__free">
+        <button type="button" className="comecar-link" onClick={onSkip}>
+          Continuar no Free
+        </button>
+        <p>2 clientes, só você, sem portal de aprovação nem relatórios.</p>
+      </div>
     </div>
   );
 }

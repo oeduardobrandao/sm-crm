@@ -184,19 +184,39 @@
   margin-bottom: 1rem;
 }
 
-/* Trial plan picker (default view): questions left, recommendation right. Stacks
-   under ~860px, since both columns refuse to shrink below 420px. */
+/* Trial plan picker (default view): questions and the Free exit left, recommendation
+   right. Stacks under 860px as questions, recommendation, then Free, so the trial
+   comes first on a phone. The second row takes the slack so the Free exit sits right
+   under the questions however tall the card is. */
 .comecar-picker {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2rem;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    'intro reco'
+    'free reco';
+  column-gap: 2rem;
+  align-items: start;
   margin-bottom: 1.75rem;
 }
-.comecar-picker__intro,
-.comecar-reco {
-  flex: 1 1 420px;
+.comecar-picker__intro {
+  grid-area: intro;
   min-width: 0;
+}
+.comecar-reco {
+  grid-area: reco;
+  min-width: 0;
+}
+@media (max-width: 860px) {
+  .comecar-picker {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    grid-template-areas:
+      'intro'
+      'reco'
+      'free';
+    row-gap: 0.5rem;
+  }
 }
 .comecar-picker__intro h1 {
   font-family: var(--font-heading);
@@ -252,6 +272,7 @@
   outline-offset: 2px;
 }
 .comecar-picker__free {
+  grid-area: free;
   margin-top: 1.5rem;
 }
 .comecar-picker__free p {
