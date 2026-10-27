@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/store/kb', () => ({ getPublishedArticles: vi.fn() }));
@@ -66,12 +66,18 @@ afterEach(() => {
   delete (HTMLMediaElement.prototype as { canPlayType?: unknown }).canPlayType;
 });
 
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="location">{location.pathname + location.search}</output>;
+}
+
 function renderPage(path = '/ajuda') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[path]}>
         <AjudaPage />
+        <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -106,5 +112,46 @@ describe('AjudaPage videos', () => {
       'href',
       '/ajuda/video/relatorio-mensal',
     );
+  });
+
+  it('leaves a plain /ajuda alone until a video is picked', async () => {
+    renderPage();
+    await screen.findByRole('heading', { name: 'Primeiro acesso' });
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/ajuda$/);
+  });
+
+  it('writes ?video= when a video is picked in the rail, keeping ?q=', async () => {
+    renderPage('/ajuda?q=fatura');
+    await screen.findByRole('heading', { name: 'Primeiro acesso' });
+    fireEvent.click(screen.getByRole('button', { name: /Relatório mensal/ }));
+    expect(await screen.findByRole('heading', { name: 'Relatório mensal' })).toBeInTheDocument();
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/ajuda?q=fatura&video=relatorio-mensal',
+    );
+  });
+
+  it('writes ?video= when another series is picked', async () => {
+    const outra = {
+      id: 's2',
+      title: 'Agenda',
+      slug: 'agenda',
+      description: null,
+      display_order: 2,
+      videos: [
+        {
+          ...SERIES[0].videos[0],
+          id: 3,
+          series_id: 's2',
+          title: 'Conhecendo a Agenda',
+          slug: 'agenda-conhecendo',
+        },
+      ],
+    };
+    vi.mocked(getPublishedVideoSeries).mockResolvedValue([...SERIES, outra] as never);
+    renderPage('/ajuda?video=relatorio-mensal');
+    await screen.findByRole('heading', { name: 'Relatório mensal' });
+    fireEvent.click(screen.getByRole('tab', { name: /Agenda/ }));
+    expect(await screen.findByRole('heading', { name: 'Conhecendo a Agenda' })).toBeInTheDocument();
+    expect(screen.getByTestId('location')).toHaveTextContent('/ajuda?video=agenda-conhecendo');
   });
 });
