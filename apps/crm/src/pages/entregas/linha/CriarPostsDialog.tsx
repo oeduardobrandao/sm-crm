@@ -54,7 +54,7 @@ export interface CriarPostsDialogProps {
   colunas: LinhaColuna[];
   /** After the posts exist (clears the selection). */
   onDone: () => void;
-  /** The toast's "Ver posts": the Lista view, `entidade=posts`, filtered by the client. */
+  /** The toast's "Ver posts": the Lista in Publicações mode, filtered by the client. */
   onVerPosts?: (clienteId: number) => void;
 }
 
@@ -165,11 +165,11 @@ export function CriarPostsDialog({
         void qc.invalidateQueries({ queryKey: key });
     }
 
-    // "Ver posts" opens the Lista's posts entity, which only exists with feature_post_processes.
-    const action =
-      onVerPosts && processosOn
-        ? { label: 'Ver posts', onClick: () => onVerPosts(linha.cliente_id) }
-        : undefined;
+    // "Ver posts" opens the Lista in Publicações mode, which lists posts with or without a
+    // process (the posts entity lists only processes, so "Sem processo" would land empty).
+    const action = onVerPosts
+      ? { label: 'Ver posts', onClick: () => onVerPosts(linha.cliente_id) }
+      : undefined;
     if (falhas > 0) {
       toast.warning(`${criados(feitos.length)}. ${falhas} sem processo: aplique pelo post.`, {
         action,

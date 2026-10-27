@@ -265,14 +265,17 @@ describe('CriarPostsDialog', () => {
     expect(m.applyPostProcess).not.toHaveBeenCalled();
   });
 
-  it('no "Ver posts" when feature_post_processes is off (no Lista posts entity)', async () => {
+  it('"Ver posts" also offered when feature_post_processes is off (Publicações lists every post)', async () => {
     m.features = { feature_post_processes: false };
-    renderDialog([item(1), item(2)]);
+    const onVerPosts = vi.fn();
+    renderDialog([item(1), item(2)], { onVerPosts });
     await userEvent.click(screen.getByRole('button', { name: 'Criar 2 posts' }));
     await waitFor(() => expect(m.toastSuccess).toHaveBeenCalled());
     const [msg, opts] = m.toastSuccess.mock.calls[0];
     expect(msg).toBe('2 posts criados');
-    expect(opts.action).toBeUndefined();
+    expect(opts.action.label).toBe('Ver posts');
+    opts.action.onClick();
+    expect(onVerPosts).toHaveBeenCalledWith(7);
   });
 
   it('plan limit error toast uses mapEntitlementError', async () => {
