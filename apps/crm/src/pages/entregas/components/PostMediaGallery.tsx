@@ -450,7 +450,9 @@ export function PostMediaGallery({
     }));
     // Oversize-only videos wait for the downscale offer; everything else uploads now.
     const { immediate: items, held } = targetsInstagram
-      ? await downscaleOffer.split(all, base)
+      ? // Probing takes up to 10 s before any upload row exists; track it so a
+        // silent deploy swap can't drop the pick in that window.
+        await trackUnsavedWork(downscaleOffer.split(all, base - (reelCover ? 1 : 0)))
       : { immediate: all, held: [] };
     setUploadQueue((prev) => {
       const next = new Map(prev);
@@ -779,7 +781,7 @@ export function PostMediaGallery({
                 {canAdjust && oversize.eligible && (
                   <button
                     type="button"
-                    aria-label={`${t('mediaGallery.downscale.action')} de ${m.original_filename}`}
+                    aria-label={t('mediaGallery.downscale.actionOf', { name: m.original_filename })}
                     onClick={() => setDownscalingMedia(m)}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-[#12151a] px-3 py-2 text-xs font-semibold text-white hover:bg-black"
                   >

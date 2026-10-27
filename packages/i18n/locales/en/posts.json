@@ -131,6 +131,7 @@
       "convertFailed": "{{name}}: could not reduce the video. We uploaded the original.",
       "convertFailedNoFallback": "{{name}}: could not reduce the video.",
       "action": "Reduce resolution",
+      "actionOf": "Reduce resolution of {{name}}",
       "dialogTitle": "Reducing resolution",
       "stageDownload": "Downloading…",
       "stageConvert": "Converting…",
