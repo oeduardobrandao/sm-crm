@@ -524,7 +524,9 @@ reads `workflows.created_via`, which this feature does not change.
     `template_changed` when the template is edited mid-loop; the loop continues.
   - The toast reads "12 posts criados. 2 sem processo: aplique pelo post."
 - Success toast: "N posts criados", with the action "Ver posts", which opens the Lista view
-  with `entidade=posts` and the client filter.
+  in Publicações mode (`mode=publicacoes`) with the client filter. That mode lists posts with
+  or without a process; `entidade=posts` lists only processes and would land empty after
+  "Sem processo".
 
 ### 7.3 The post shows its origin (mockup "5")
 
