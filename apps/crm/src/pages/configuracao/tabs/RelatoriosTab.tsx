@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { holdUnsavedWork } from '@mesaas/app-lifecycle';
 import { Button } from '@/components/ui/button';
@@ -47,6 +48,7 @@ const HINT: CSSProperties = {
 
 /** Branding for the monthly client report, with a live preview. */
 export default function RelatoriosTab() {
+  const { t } = useTranslation('settingsHub');
   const { can } = useAuth();
   const queryClient = useQueryClient();
   // The `configuracoes` tab itself is already gated on `configuracoes:ver`
@@ -122,11 +124,11 @@ export default function RelatoriosTab() {
   const handleSplashUpload = async (file: File) => {
     if (!workspace) return;
     if (!SPLASH_TYPES.includes(file.type)) {
-      toast.error('Formato não aceito. Envie um JPEG, PNG ou WebP.');
+      toast.error(t('reports.toast.badFormat'));
       return;
     }
     if (file.size > MAX_SPLASH_BYTES) {
-      toast.error('Imagem muito grande. O limite é 4MB.');
+      toast.error(t('reports.toast.tooLarge'));
       return;
     }
     setSplashUploading(true);
@@ -148,10 +150,10 @@ export default function RelatoriosTab() {
       queryClient.setQueryData(['workspace-branding'], (old: WorkspaceBranding | undefined) =>
         old ? { ...old, report_splash_url: publicUrl } : old,
       );
-      toast.success('Arte da capa atualizada.');
+      toast.success(t('reports.toast.splashUpdated'));
     } catch (err: unknown) {
       console.error('report splash upload failed', err);
-      toast.error('Não foi possível enviar a arte. Tente novamente.');
+      toast.error(t('reports.toast.splashUploadError'));
     } finally {
       release();
       setSplashUploading(false);
@@ -167,10 +169,10 @@ export default function RelatoriosTab() {
       queryClient.setQueryData(['workspace-branding'], (old: WorkspaceBranding | undefined) =>
         old ? { ...old, report_splash_url: null } : old,
       );
-      toast.success('Arte da capa removida.');
+      toast.success(t('reports.toast.splashRemoved'));
     } catch (err: unknown) {
       console.error('report splash removal failed', err);
-      toast.error('Não foi possível remover a arte. Tente novamente.');
+      toast.error(t('reports.toast.splashRemoveError'));
     } finally {
       setSplashUploading(false);
       setSplashRemoveOpen(false);
@@ -187,11 +189,11 @@ export default function RelatoriosTab() {
       // A matriz de Configuração > Notificações > Seus clientes lê o mesmo
       // campo por outra chave: invalida para não ficar defasada entre telas.
       queryClient.invalidateQueries({ queryKey: ['seus-clientes-branding'] });
-      toast.success('Configurações de relatório salvas!');
+      toast.success(t('reports.toast.saved'));
     },
     onError: (err: unknown) => {
       console.error('report branding save failed', err);
-      toast.error('Não foi possível salvar. Tente novamente.');
+      toast.error(t('storage.toast.saveError'));
     },
   });
 
@@ -246,12 +248,12 @@ export default function RelatoriosTab() {
   return (
     <>
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-        <h3 className="config-title">Relatório Mensal</h3>
+        <h3 className="config-title">{t('reports.monthlyTitle')}</h3>
         <p style={{ ...HINT, marginTop: 0, marginBottom: canEditConfig ? '1.5rem' : '0.5rem' }}>
-          A marca que seus clientes veem no relatório mensal do Instagram.
+          {t('reports.subtitle')}
         </p>
         {!canEditConfig && (
-          <p style={{ ...HINT, marginTop: 0, marginBottom: '1.5rem' }}>Somente leitura</p>
+          <p style={{ ...HINT, marginTop: 0, marginBottom: '1.5rem' }}>{t('reports.readOnly')}</p>
         )}
 
         <div className="config-report-grid">
@@ -259,7 +261,7 @@ export default function RelatoriosTab() {
             {/* Accent colour: read-only, edited from Configurações → Hub now (it's
               shared with the client Hub calendar, so it has one editor). */}
             <div style={FIELD}>
-              <Label style={FIELD_LABEL}>Cor de destaque</Label>
+              <Label style={FIELD_LABEL}>{t('reports.accentColor')}</Label>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                 <span
                   aria-hidden="true"
@@ -284,16 +286,15 @@ export default function RelatoriosTab() {
                 </span>
               </div>
               <p style={HINT}>
-                A mesma cor do Hub do Cliente. Marca títulos e destaques; os gráficos mantêm as
-                cores próprias, para os dados seguirem legíveis.{' '}
-                <Link to="/configuracao/hub">Editar em Configurações · Hub</Link>
+                {t('reports.accentHint')}{' '}
+                <Link to="/configuracao/hub">{t('reports.editInHub')}</Link>
               </p>
             </div>
 
             {/* Cover splash art */}
             <div style={FIELD}>
               <Label htmlFor="report-splash-trigger" style={FIELD_LABEL}>
-                Arte da capa
+                {t('reports.coverArt')}
               </Label>
               {/* Wraps so the destructive action stays reachable on narrow screens,
                 where thumbnail + both buttons overflow a single row. */}
@@ -308,7 +309,7 @@ export default function RelatoriosTab() {
                 {splashUrl && (
                   <img
                     src={splashUrl}
-                    alt="Arte da capa"
+                    alt={t('reports.coverArt')}
                     style={{
                       width: 72,
                       height: 72,
@@ -327,7 +328,11 @@ export default function RelatoriosTab() {
                   disabled={splashUploading || !canEditConfig}
                 >
                   {splashUploading && <Spinner size="sm" />}
-                  {splashUploading ? 'Enviando…' : splashUrl ? 'Substituir arte' : 'Enviar arte'}
+                  {splashUploading
+                    ? t('reports.uploading')
+                    : splashUrl
+                      ? t('reports.replaceArt')
+                      : t('reports.uploadArt')}
                 </Button>
                 {splashUrl && (
                   <Button
@@ -336,14 +341,11 @@ export default function RelatoriosTab() {
                     onClick={() => setSplashRemoveOpen(true)}
                     disabled={splashUploading || !canEditConfig}
                   >
-                    Remover arte
+                    {t('reports.removeArt')}
                   </Button>
                 )}
               </div>
-              <p style={HINT}>
-                Formato quadrado (1:1), JPEG, PNG ou WebP, até 4MB. Salva assim que você envia. Sem
-                arte, a capa fica apenas tipográfica.
-              </p>
+              <p style={HINT}>{t('reports.coverArtHint')}</p>
               {splashInput}
             </div>
 
@@ -358,12 +360,9 @@ export default function RelatoriosTab() {
               />
               <div>
                 <Label htmlFor="report-email" style={{ fontWeight: 500, cursor: 'pointer' }}>
-                  Enviar relatórios por e-mail
+                  {t('reports.sendEmail')}
                 </Label>
-                <p style={{ ...HINT, marginTop: '0.25rem' }}>
-                  Envia o relatório automaticamente, todo mês, para os clientes com envio
-                  habilitado.
-                </p>
+                <p style={{ ...HINT, marginTop: '0.25rem' }}>{t('reports.sendEmailHint')}</p>
               </div>
             </div>
 
@@ -377,8 +376,7 @@ export default function RelatoriosTab() {
                   marginBottom: '0.75rem',
                 }}
               >
-                Não foi possível carregar as configurações de relatório. Recarregue a página. Salvar
-                agora sobrescreveria a sua marca com os valores padrão.
+                {t('reports.loadError')}
               </p>
             )}
 
@@ -390,20 +388,20 @@ export default function RelatoriosTab() {
                 brandingMutation.isPending || brandingPending || brandingFailed || !canEditConfig
               }
             >
-              {brandingMutation.isPending && <Spinner size="sm" />} Salvar
+              {brandingMutation.isPending && <Spinner size="sm" />} {t('actions.save')}
             </Button>
           </div>
 
           {/* Live preview */}
           <div>
-            <Label style={FIELD_LABEL}>Prévia</Label>
+            <Label style={FIELD_LABEL}>{t('reports.preview')}</Label>
             <ReportPreview
               accentColor={brandColor}
               splashUrl={splashUrl}
               logoUrl={workspace?.logo_url ?? null}
               workspaceName={workspace?.name ?? ''}
             />
-            <p style={{ ...HINT, maxWidth: 240 }}>O logo e o nome vêm da aba Workspace.</p>
+            <p style={{ ...HINT, maxWidth: 240 }}>{t('reports.previewHint')}</p>
           </div>
         </div>
 
@@ -411,19 +409,16 @@ export default function RelatoriosTab() {
         <AlertDialog open={splashRemoveOpen} onOpenChange={setSplashRemoveOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Remover a arte da capa?</AlertDialogTitle>
-              <AlertDialogDescription>
-                A capa dos próximos relatórios volta a ser apenas tipográfica. Você pode enviar
-                outra arte quando quiser.
-              </AlertDialogDescription>
+              <AlertDialogTitle>{t('reports.removeTitle')}</AlertDialogTitle>
+              <AlertDialogDescription>{t('reports.removeDescription')}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
               <AlertDialogAction
                 onClick={handleRemoveSplash}
                 disabled={splashUploading || !canEditConfig}
               >
-                Remover arte
+                {t('reports.removeArt')}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

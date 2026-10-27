@@ -1,6 +1,9 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Trans, useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
+import { useIntlLocale } from '@mesaas/i18n';
 import { Clock, HardDrive, Info, Trash2, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -36,15 +39,15 @@ const FIELD_LABEL: CSSProperties = { display: 'block', marginBottom: '0.5rem' };
 
 // Value NaN never matches, so a custom DB value (e.g. delay 14 saved elsewhere)
 // falls through to the extra option appended at render time.
-const DELAY_OPTIONS: { value: number; label: string }[] = [
-  { value: 0, label: 'Imediatamente' },
-  { value: 7, label: '7 dias' },
-  { value: 30, label: '30 dias' },
-  { value: 90, label: '90 dias' },
+const delayOptionsFor = (t: TFunction): { value: number; label: string }[] => [
+  { value: 0, label: t('storage.immediately') },
+  { value: 7, label: t('storage.days', { count: 7 }) },
+  { value: 30, label: t('storage.days', { count: 30 }) },
+  { value: 90, label: t('storage.days', { count: 90 }) },
 ];
 // null = sempre executa (sem limiar).
-const THRESHOLD_OPTIONS: { value: number | null; label: string }[] = [
-  { value: null, label: 'Sempre' },
+const thresholdOptionsFor = (t: TFunction): { value: number | null; label: string }[] => [
+  { value: null, label: t('storage.always') },
   { value: 50, label: '50%' },
   { value: 75, label: '75%' },
   { value: 90, label: '90%' },
@@ -118,6 +121,8 @@ function SegmentedControl({
 const thresholdToStr = (v: number | null) => (v === null ? 'null' : String(v));
 
 export default function ArmazenamentoTab() {
+  const { t } = useTranslation('settingsHub');
+  const intlLocale = useIntlLocale();
   const isOwner = useIsWorkspaceOwner();
   const isPhone = !useIsDesktop(768);
   const queryClient = useQueryClient();
@@ -169,11 +174,11 @@ export default function ArmazenamentoTab() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspace-storage-autoclean'] });
-      toast.success('Configuração de armazenamento salva!');
+      toast.success(t('storage.toast.saved'));
     },
     onError: (err: unknown) => {
       console.error('storage autoclean save failed', err);
-      toast.error('Não foi possível salvar. Tente novamente.');
+      toast.error(t('storage.toast.saveError'));
     },
   });
 
@@ -181,19 +186,17 @@ export default function ArmazenamentoTab() {
   if (!isOwner) {
     if (isPhone) {
       return (
-        <ConfigPhoneScreen title="Armazenamento">
-          <GroupedList aria-label="Armazenamento">
-            <li className="phone-cell phone-config-block">
-              Somente o dono do workspace pode ver e alterar estas configurações.
-            </li>
+        <ConfigPhoneScreen title={t('storage.title')}>
+          <GroupedList aria-label={t('storage.title')}>
+            <li className="phone-cell phone-config-block">{t('storage.ownerOnly')}</li>
           </GroupedList>
         </ConfigPhoneScreen>
       );
     }
     return (
       <div>
-        <h3 className="config-title">Armazenamento</h3>
-        <p style={HINT}>Somente o dono do workspace pode ver e alterar estas configurações.</p>
+        <h3 className="config-title">{t('storage.title')}</h3>
+        <p style={HINT}>{t('storage.ownerOnly')}</p>
       </div>
     );
   }
@@ -207,61 +210,54 @@ export default function ArmazenamentoTab() {
   const usedBytes = usage?.storage_used_bytes ?? 0;
   const controlsDisabled = settingsLoading || settingsFailed;
 
-  const delayOptions = DELAY_OPTIONS.some((o) => o.value === delayDays)
-    ? DELAY_OPTIONS
-    : [...DELAY_OPTIONS, { value: delayDays, label: `${delayDays} dias` }].sort(
-        (a, b) => a.value - b.value,
-      );
-  const thresholdOptions = THRESHOLD_OPTIONS.some((o) => o.value === thresholdPct)
-    ? THRESHOLD_OPTIONS
-    : [...THRESHOLD_OPTIONS, { value: thresholdPct, label: `${thresholdPct}%` }];
+  const baseDelayOptions = delayOptionsFor(t);
+  const delayOptions = baseDelayOptions.some((o) => o.value === delayDays)
+    ? baseDelayOptions
+    : [
+        ...baseDelayOptions,
+        { value: delayDays, label: t('storage.days', { count: delayDays }) },
+      ].sort((a, b) => a.value - b.value);
+  const baseThresholdOptions = thresholdOptionsFor(t);
+  const thresholdOptions = baseThresholdOptions.some((o) => o.value === thresholdPct)
+    ? baseThresholdOptions
+    : [...baseThresholdOptions, { value: thresholdPct, label: `${thresholdPct}%` }];
 
   const previewBytes = preview?.bytes_total ?? 0;
   const previewCount = preview?.files_count ?? 0;
 
   const lastRun = settings?.storage_autoclean_last_run_at;
 
-  const estimate = previewLoading ? (
-    'Calculando estimativa...'
-  ) : (
-    <>
-      Com essas regras, hoje {previewCount === 1 ? 'seria liberado' : 'seriam liberados'} ~
-      {formatStorageBytes(previewBytes)} ({previewCount}{' '}
-      {previewCount === 1 ? 'arquivo' : 'arquivos'}).
-    </>
-  );
+  const estimate = previewLoading
+    ? t('storage.estimating')
+    : t('storage.estimate', { count: previewCount, bytes: formatStorageBytes(previewBytes) });
   const lastRunText = lastRun
-    ? `Última limpeza: ${new Date(lastRun).toLocaleString('pt-BR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      })} · ${settings?.storage_autoclean_last_files ?? 0} ${
-        (settings?.storage_autoclean_last_files ?? 0) === 1 ? 'arquivo' : 'arquivos'
-      } · ${formatStorageBytes(settings?.storage_autoclean_last_bytes ?? 0)} liberados`
-    : 'Nunca executada';
+    ? t('storage.lastRun', {
+        date: new Date(lastRun).toLocaleString(intlLocale, {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        count: settings?.storage_autoclean_last_files ?? 0,
+        bytes: formatStorageBytes(settings?.storage_autoclean_last_bytes ?? 0),
+      })
+    : t('storage.neverRun');
 
   if (isPhone) {
     return (
-      <ConfigPhoneScreen
-        title="Armazenamento"
-        subtitle="Acompanhe o uso do workspace e libere espaço automaticamente."
-      >
-        <GroupedList
-          header="Uso de armazenamento"
-          footer="Espaço ocupado por imagens, vídeos e documentos do workspace."
-        >
+      <ConfigPhoneScreen title={t('storage.title')} subtitle={t('storage.subtitle')}>
+        <GroupedList header={t('storage.usageTitle')} footer={t('storage.usageDescription')}>
           <li className="phone-cell phone-config-block">
             <UsageMeter
-              label="Armazenamento"
+              label={t('storage.title')}
               used={usedBytes}
               limit={limitsLoading ? usedBytes || 1 : quota}
               format={formatStorageBytes}
               showUpgradeCta={isOwner}
               subText={
                 planName && quota !== null
-                  ? `Seu plano ${planName} inclui ${formatStorageBytes(quota)}.`
+                  ? t('storage.planIncludes', { plan: planName, quota: formatStorageBytes(quota) })
                   : undefined
               }
             />
@@ -269,27 +265,23 @@ export default function ArmazenamentoTab() {
         </GroupedList>
 
         <GroupedList
-          header="Limpeza automática"
-          footer="Remove as mídias de posts já publicados no Instagram e no TikTok. O post continua no histórico, com o link da publicação. Arquivos da página Arquivos, documentos e mídias de posts não publicados nunca são removidos."
+          header={t('storage.autocleanTitle')}
+          footer={t('storage.autocleanDescription')}
         >
           <Cell
-            label="Ativar limpeza automática"
+            label={t('storage.enableAutoclean')}
             disabled={controlsDisabled}
             switch={{ checked: enabled, onCheckedChange: setEnabled }}
           />
         </GroupedList>
 
         <GroupedList
-          aria-label="Regras da limpeza"
-          footer={
-            storageUnlimited
-              ? 'Contado a partir da publicação do post.'
-              : 'Contado a partir da publicação do post. A limpeza roda uma vez por dia, de madrugada.'
-          }
+          aria-label={t('storage.rulesAria')}
+          footer={storageUnlimited ? t('storage.countedFrom') : t('storage.countedFromAndSchedule')}
         >
           <PickerCell<number>
-            label="Quando remover"
-            sheetTitle="Quando remover a mídia após a publicação"
+            label={t('storage.whenRemove')}
+            sheetTitle={t('storage.whenRemoveLong')}
             options={delayOptions.map((o) => ({ value: o.value, label: o.label }))}
             value={delayDays}
             onChange={(v) => {
@@ -299,12 +291,12 @@ export default function ArmazenamentoTab() {
           />
           {!storageUnlimited && (
             <PickerCell<number>
-              label="Somente acima de"
-              sheetTitle="Somente quando o uso passar de"
+              label={t('storage.onlyAbove')}
+              sheetTitle={t('storage.onlyWhenAbove')}
               options={thresholdOptions
                 .filter((o): o is { value: number; label: string } => o.value !== null)
                 .map((o) => ({ value: o.value, label: o.label }))}
-              emptyOption={{ label: 'Sempre' }}
+              emptyOption={{ label: t('storage.always') }}
               value={thresholdPct}
               onChange={setThresholdPct}
               disabled={controlsDisabled || !enabled}
@@ -312,10 +304,7 @@ export default function ArmazenamentoTab() {
           )}
         </GroupedList>
 
-        <GroupedList
-          header="Estimativa"
-          footer="Estimativa ao vivo. Arquivos usados em ideias ou em posts ainda não publicados ficam de fora."
-        >
+        <GroupedList header={t('storage.estimateTitle')} footer={t('storage.estimateNote')}>
           <li className="phone-cell phone-config-block" aria-live="polite">
             {estimate}
           </li>
@@ -330,8 +319,7 @@ export default function ArmazenamentoTab() {
             className="phone-group__footer"
             style={{ color: 'var(--phone-destructive)' }}
           >
-            Não foi possível carregar as configurações de armazenamento. Recarregue a página. Salvar
-            agora sobrescreveria a sua configuração com os valores padrão.
+            {t('storage.loadError')}
           </p>
         )}
 
@@ -343,7 +331,7 @@ export default function ArmazenamentoTab() {
             disabled={saveMutation.isPending || controlsDisabled}
             aria-busy={saveMutation.isPending || undefined}
           >
-            Salvar alterações
+            {t('shared.saveChanges')}
           </button>
         </BottomActionBar>
       </ConfigPhoneScreen>
@@ -353,26 +341,24 @@ export default function ArmazenamentoTab() {
   return (
     <div>
       <div style={{ marginBottom: '1.5rem' }}>
-        <h3 className="config-title">Armazenamento</h3>
-        <p style={{ ...HINT, marginTop: '0.25rem' }}>
-          Acompanhe o uso do workspace e libere espaço automaticamente.
-        </p>
+        <h3 className="config-title">{t('storage.title')}</h3>
+        <p style={{ ...HINT, marginTop: '0.25rem' }}>{t('storage.subtitle')}</p>
       </div>
 
       <SectionCard
         icon={HardDrive}
-        title="Uso de armazenamento"
-        description="Espaço ocupado por imagens, vídeos e documentos do workspace."
+        title={t('storage.usageTitle')}
+        description={t('storage.usageDescription')}
       >
         <UsageMeter
-          label="Armazenamento"
+          label={t('storage.title')}
           used={usedBytes}
           limit={limitsLoading ? usedBytes || 1 : quota}
           format={formatStorageBytes}
           showUpgradeCta={isOwner}
           subText={
             planName && quota !== null
-              ? `Seu plano ${planName} inclui ${formatStorageBytes(quota)}.`
+              ? t('storage.planIncludes', { plan: planName, quota: formatStorageBytes(quota) })
               : undefined
           }
         />
@@ -380,8 +366,8 @@ export default function ArmazenamentoTab() {
 
       <SectionCard
         icon={Trash2}
-        title="Limpeza automática"
-        description="Remove as mídias de posts já publicados no Instagram e no TikTok. O post continua no histórico, com o link da publicação. Arquivos da página Arquivos, documentos e mídias de posts não publicados nunca são removidos."
+        title={t('storage.autocleanTitle')}
+        description={t('storage.autocleanDescription')}
       >
         <div
           style={{
@@ -393,7 +379,7 @@ export default function ArmazenamentoTab() {
           }}
         >
           <Label htmlFor="storage-autoclean-enabled" style={{ fontWeight: 500, cursor: 'pointer' }}>
-            Ativar limpeza automática
+            {t('storage.enableAutoclean')}
           </Label>
           <Switch
             id="storage-autoclean-enabled"
@@ -404,20 +390,20 @@ export default function ArmazenamentoTab() {
         </div>
 
         <div style={FIELD}>
-          <Label style={FIELD_LABEL}>Quando remover</Label>
+          <Label style={FIELD_LABEL}>{t('storage.whenRemove')}</Label>
           <SegmentedControl
             value={String(delayDays)}
             onChange={(v) => setDelayDays(Number(v))}
             options={delayOptions.map((o) => ({ value: String(o.value), label: o.label }))}
-            ariaLabel="Quando remover a mídia após a publicação"
+            ariaLabel={t('storage.whenRemoveLong')}
             disabled={controlsDisabled || !enabled}
           />
-          <p style={{ ...HINT, marginTop: '0.4rem' }}>Contado a partir da publicação do post.</p>
+          <p style={{ ...HINT, marginTop: '0.4rem' }}>{t('storage.countedFrom')}</p>
         </div>
 
         {!storageUnlimited && (
           <div style={FIELD}>
-            <Label style={FIELD_LABEL}>Somente quando o uso passar de</Label>
+            <Label style={FIELD_LABEL}>{t('storage.onlyWhenAbove')}</Label>
             <SegmentedControl
               value={thresholdToStr(thresholdPct)}
               onChange={(v) => setThresholdPct(v === 'null' ? null : Number(v))}
@@ -425,12 +411,10 @@ export default function ArmazenamentoTab() {
                 value: thresholdToStr(o.value),
                 label: o.label,
               }))}
-              ariaLabel="Limiar de uso para executar a limpeza"
+              ariaLabel={t('storage.thresholdAria')}
               disabled={controlsDisabled || !enabled}
             />
-            <p style={{ ...HINT, marginTop: '0.4rem' }}>
-              A limpeza roda uma vez por dia, de madrugada.
-            </p>
+            <p style={{ ...HINT, marginTop: '0.4rem' }}>{t('storage.schedule')}</p>
           </div>
         )}
 
@@ -454,19 +438,19 @@ export default function ArmazenamentoTab() {
           <div>
             <p style={{ fontSize: '0.82rem', margin: 0, color: 'var(--text-main)' }}>
               {previewLoading ? (
-                'Calculando estimativa...'
+                t('storage.estimating')
               ) : (
-                <>
-                  Com essas regras, hoje{' '}
-                  {previewCount === 1 ? 'seria liberado' : 'seriam liberados'}{' '}
-                  <strong>~{formatStorageBytes(previewBytes)}</strong> ({previewCount}{' '}
-                  {previewCount === 1 ? 'arquivo' : 'arquivos'}).
-                </>
+                <Trans
+                  t={t}
+                  i18nKey="storage.estimateRich"
+                  count={previewCount}
+                  values={{ bytes: formatStorageBytes(previewBytes) }}
+                  components={{ b: <strong /> }}
+                />
               )}
             </p>
             <p style={{ ...HINT, marginTop: '0.25rem', marginBottom: 0, fontSize: '0.72rem' }}>
-              Estimativa ao vivo. Arquivos usados em ideias ou em posts ainda não publicados ficam
-              de fora.
+              {t('storage.estimateNote')}
             </p>
           </div>
         </div>
@@ -483,30 +467,13 @@ export default function ArmazenamentoTab() {
           }}
         >
           <Clock size={13} aria-hidden="true" />
-          {lastRun ? (
-            <span>
-              Última limpeza:{' '}
-              {new Date(lastRun).toLocaleString('pt-BR', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-              })}{' '}
-              · {settings?.storage_autoclean_last_files ?? 0}{' '}
-              {(settings?.storage_autoclean_last_files ?? 0) === 1 ? 'arquivo' : 'arquivos'} ·{' '}
-              {formatStorageBytes(settings?.storage_autoclean_last_bytes ?? 0)} liberados
-            </span>
-          ) : (
-            <span>Nunca executada</span>
-          )}
+          {lastRun ? <span>{lastRunText}</span> : <span>{t('storage.neverRun')}</span>}
         </div>
       </SectionCard>
 
       {settingsFailed && (
         <p role="alert" style={{ ...HINT, color: 'var(--danger-text)', marginBottom: 0 }}>
-          Não foi possível carregar as configurações de armazenamento. Recarregue a página. Salvar
-          agora sobrescreveria a sua configuração com os valores padrão.
+          {t('storage.loadError')}
         </p>
       )}
 
@@ -515,7 +482,7 @@ export default function ArmazenamentoTab() {
         disabled={saveMutation.isPending || controlsDisabled}
         style={{ marginTop: settingsFailed ? '0.75rem' : '0.25rem' }}
       >
-        {saveMutation.isPending && <Spinner size="sm" />} Salvar alterações
+        {saveMutation.isPending && <Spinner size="sm" />} {t('shared.saveChanges')}
       </Button>
     </div>
   );

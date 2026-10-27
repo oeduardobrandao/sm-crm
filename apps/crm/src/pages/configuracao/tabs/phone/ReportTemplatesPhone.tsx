@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Copy, Eye, Lock, MoreHorizontal, Pencil, Plus, Star, Trash2, Type } from 'lucide-react';
 import { GroupedList, Cell } from '@/components/mobile/GroupedList';
 import { FormRow } from '@/components/mobile/FormRow';
@@ -118,19 +119,20 @@ export function ReportTemplatesPhone({
   removePending,
   blockCount,
 }: ReportTemplatesPhoneProps) {
+  const { t } = useTranslation('settingsHub');
   const canSubmitRename = !renamePending && !!renameValue.trim();
   return (
     <>
       <GroupedList
-        header="Modelos de relatório"
+        header={t('templates.title')}
         footer={
           !isLoading && templates.length === 0
-            ? 'Layouts usados ao gerar relatórios. O padrão vem pré-selecionado. Crie um modelo para reaproveitar a mesma estrutura em todos os relatórios.'
-            : 'Layouts usados ao gerar relatórios. O padrão vem pré-selecionado.'
+            ? t('templatesPhone.footerEmpty')
+            : t('templates.description')
         }
       >
         <Cell
-          label="Novo modelo"
+          label={t('templates.newTemplate')}
           icon={<Plus />}
           className="phone-reltpl-action"
           disabled={busy}
@@ -139,53 +141,62 @@ export function ReportTemplatesPhone({
         <TemplateRow
           testId="system"
           label={systemName}
-          subtitle="embutido"
+          subtitle={t('templates.builtIn')}
           icon={<Lock />}
-          menuLabel={`Ações de ${systemName}`}
+          menuLabel={t('statusPhone.actionsOf', { name: systemName })}
           onTap={onViewSystem}
           sections={[
             [
-              { label: 'Visualizar', icon: <Eye />, onSelect: onViewSystem },
-              { label: 'Duplicar', icon: <Copy />, disabled: busy, onSelect: onDuplicateSystem },
+              { label: t('templates.view'), icon: <Eye />, onSelect: onViewSystem },
+              {
+                label: t('templates.duplicate'),
+                icon: <Copy />,
+                disabled: busy,
+                onSelect: onDuplicateSystem,
+              },
             ],
           ]}
         />
-        {templates.map((t) => (
+        {templates.map((tpl) => (
           <TemplateRow
-            key={t.id}
-            testId={t.id}
-            label={t.name}
-            subtitle={blockCount(t.layout.blocks.length)}
-            accessory={t.is_default ? <span className="phone-reltpl-badge">padrão</span> : null}
-            menuLabel={`Mais ações de ${t.name}`}
-            onTap={() => onEdit(t)}
+            key={tpl.id}
+            testId={tpl.id}
+            label={tpl.name}
+            subtitle={blockCount(tpl.layout.blocks.length)}
+            accessory={
+              tpl.is_default ? (
+                <span className="phone-reltpl-badge">{t('templates.defaultBadge')}</span>
+              ) : null
+            }
+            menuLabel={t('statusPhone.moreActionsOf', { name: tpl.name })}
+            onTap={() => onEdit(tpl)}
             sections={[
               [
-                { label: 'Editar', icon: <Pencil />, onSelect: () => onEdit(t) },
-                ...(t.is_default
+                { label: t('actions.edit'), icon: <Pencil />, onSelect: () => onEdit(tpl) },
+                ...(tpl.is_default
                   ? []
                   : [
                       {
-                        label: 'Definir como padrão',
+                        label: t('templates.makeDefault'),
                         icon: <Star />,
                         disabled: makeDefaultPending,
-                        onSelect: () => onMakeDefault(t),
+                        onSelect: () => onMakeDefault(tpl),
                       },
                     ]),
-                { label: 'Renomear', icon: <Type />, onSelect: () => onRename(t) },
+                { label: t('templates.rename'), icon: <Type />, onSelect: () => onRename(tpl) },
                 {
-                  label: 'Duplicar',
+                  label: t('templates.duplicate'),
                   icon: <Copy />,
                   disabled: busy,
-                  onSelect: () => onDuplicate(t),
+                  onSelect: () => onDuplicate(tpl),
                 },
               ],
               [
                 {
-                  label: 'Excluir',
+                  label: t('templates.delete'),
                   icon: <Trash2 />,
                   destructive: true,
-                  onSelect: () => onDelete(t),
+                  onSelect: () => onDelete(tpl),
                 },
               ],
             ]}
@@ -198,7 +209,7 @@ export function ReportTemplatesPhone({
         onOpenChange={(open) => {
           if (!open) onCloseRename();
         }}
-        title="Renomear modelo"
+        title={t('templates.renameTitle')}
         detents={['fit']}
         showClose
         headerTrailing={
@@ -207,13 +218,13 @@ export function ReportTemplatesPhone({
             disabled={!canSubmitRename}
             busy={renamePending}
           >
-            Salvar
+            {t('actions.save')}
           </ConfigNavTextButton>
         }
       >
-        <GroupedList aria-label="Modelo">
+        <GroupedList aria-label={t('templatesPhone.templateAria')}>
           <FormRow
-            label="Nome do modelo"
+            label={t('templates.nameLabel')}
             layout="stacked"
             input={{
               value: renameValue,
@@ -229,11 +240,11 @@ export function ReportTemplatesPhone({
 
       <PhoneConfirmSheet
         open={deleting !== null}
-        title="Excluir o modelo?"
-        message={`${deleting?.name ?? ''}. Relatórios já gerados com ele não mudam.`}
+        title={t('templates.deleteTitle')}
+        message={t('templates.deleteMessage', { name: deleting?.name ?? '' })}
         actions={[
           {
-            label: 'Excluir modelo',
+            label: t('templates.deleteConfirm'),
             destructive: true,
             disabled: removePending,
             onSelect: onConfirmDelete,

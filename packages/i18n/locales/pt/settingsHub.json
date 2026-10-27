@@ -1,1 +1,327 @@
-{}
+{
+  "statusModel": {
+    "action": {
+      "notify": "Notificar",
+      "assignResponsavel": "Atribuir responsável"
+    },
+    "target": {
+      "responsavel": "Responsável do post",
+      "roles": "Owners e admins",
+      "member": "Membro específico"
+    },
+    "chooseMember": "Escolha um membro",
+    "removedStatus": "Status removido",
+    "removedMember": "membro removido",
+    "assignTo": "Atribuir a {{name}}",
+    "notifyMember": "Notificar {{name}}",
+    "notifyRoles": "Notificar owners e admins",
+    "notifyResponsavel": "Notificar o responsável do post"
+  },
+  "statusTab": {
+    "toast": {
+      "created": "Status criado!",
+      "createError": "Erro ao criar status",
+      "updateError": "Erro ao atualizar status",
+      "archived": "Status arquivado. Os posts voltaram ao status padrão.",
+      "archiveError": "Erro ao arquivar status",
+      "reorderError": "Erro ao reordenar",
+      "automationCreated": "Automação criada!",
+      "automationCreateError": "Erro ao criar automação",
+      "automationUpdateError": "Erro ao atualizar automação",
+      "automationDeleteError": "Erro ao remover automação"
+    },
+    "title": "Status personalizados",
+    "description": "Crie etapas próprias para os posts. Cada status se comporta como um status padrão: é isso que define visibilidade no Hub do cliente, publicação e contagens. O nome personalizado aparece só para a equipe.",
+    "empty": "Nenhum status personalizado ainda.",
+    "moveUp": "Subir",
+    "moveDown": "Descer",
+    "archive": "Arquivar",
+    "archiveDescription": "Os posts que estão nesse status voltarão ao status padrão correspondente ({{status}}). O histórico dos posts mantém o nome antigo.",
+    "namePlaceholder": "Nome do status (ex.: Em design)",
+    "noIcon": "Sem ícone (dot de cor)",
+    "newStatus": "Novo status",
+    "automationsTitle": "Automações por status",
+    "automationsDescription": "Quando um post entrar em um status (padrão ou personalizado), rode uma ação. Se um post entrar em um personalizado, regras do status padrão equivalente também disparam. Ao agendar ou publicar, o sistema move o post sozinho e as regras desses status disparam normalmente.",
+    "whenEntersRich": "Quando entrar em <b>{{status}}</b>",
+    "active": "Ativa",
+    "inactive": "Inativa"
+  },
+  "shared": {
+    "behavesAs": "Se comporta como",
+    "archiveTitle": "Arquivar \"{{name}}\"?",
+    "nameRequired": "Dê um nome ao status",
+    "noAutomations": "Nenhuma automação ainda.",
+    "whenEnters": "Quando entrar em",
+    "chooseMemberOption": "Escolha o membro…",
+    "newAutomation": "Nova automação",
+    "saveChanges": "Salvar alterações",
+    "displayFont": "Fonte de títulos",
+    "bodyFont": "Fonte de texto",
+    "suggestedColors": "Cores sugeridas",
+    "gateLabel": "Personalização do Hub",
+    "appearance": "Aparência",
+    "surfaceTheme": "Tema de superfície",
+    "defaultAppearance": "Aparência padrão",
+    "brandColor": "Cor da marca",
+    "brandColorHint": "A mesma cor do relatório mensal. Marca o calendário do Hub e os destaques do relatório.",
+    "typography": "Tipografia",
+    "defaultFont": "Padrão",
+    "components": "Componentes",
+    "componentsDescription": "A forma dos cards e controles do hub.",
+    "corners": "Cantos",
+    "cardStyle": "Estilo de cards",
+    "identity": "Identidade",
+    "identityDescription": "Como a marca da agência aparece dentro do hub.",
+    "hubLogo": "Logo no hub",
+    "darkLogo": "Logo para modo escuro",
+    "changeLogo": "Trocar logo",
+    "hidePoweredBy": "Ocultar \"powered by mesaas\"",
+    "loadError": "Não foi possível carregar as configurações do Hub. Recarregue a página. Salvar agora sobrescreveria a sua personalização com os valores padrão.",
+    "removeDarkLogoTitle": "Remover a logo para modo escuro?"
+  },
+  "statusPhone": {
+    "title": "Status de posts",
+    "statusesFooter": "O nome aparece só para a equipe. Toque e segure para mover para cima ou para baixo. Deslize para arquivar.",
+    "actionsOf": "Ações de {{name}}",
+    "moreActionsOf": "Mais ações de {{name}}",
+    "moveUp": "Mover para cima",
+    "moveDown": "Mover para baixo",
+    "behavesAsValue": "Se comporta como: {{status}}",
+    "automationsFooter": "Deslize uma automação para remover.",
+    "inactiveSuffix": " · Inativa",
+    "automationAria": "Automação: {{trigger}}",
+    "removeTitle": "Remover automação?",
+    "removeMessage": "\"Quando entrar em {{trigger}}: {{action}}\" deixa de rodar.",
+    "newStatusDescription": "Cada status se comporta como um status padrão: é isso que define visibilidade no Hub do cliente, publicação e contagens.",
+    "newAutomationDescription": "Quando um post entrar em um status (padrão ou personalizado), rode uma ação. Se um post entrar em um personalizado, regras do status padrão equivalente também disparam.",
+    "name": "Nome",
+    "namePlaceholder": "Ex.: Em design",
+    "icon": "Ícone",
+    "color": "Cor",
+    "colorValue": "Cor {{color}}",
+    "action": "Ação",
+    "member": "Membro"
+  },
+  "storage": {
+    "immediately": "Imediatamente",
+    "days_one": "{{count}} dias",
+    "days_other": "{{count}} dias",
+    "always": "Sempre",
+    "toast": {
+      "saved": "Configuração de armazenamento salva!",
+      "saveError": "Não foi possível salvar. Tente novamente."
+    },
+    "title": "Armazenamento",
+    "ownerOnly": "Somente o dono do workspace pode ver e alterar estas configurações.",
+    "estimating": "Calculando estimativa...",
+    "estimate_zero": "Com essas regras, hoje seriam liberados ~{{bytes}} ({{count}} arquivos).",
+    "estimate_one": "Com essas regras, hoje seria liberado ~{{bytes}} ({{count}} arquivo).",
+    "estimate_other": "Com essas regras, hoje seriam liberados ~{{bytes}} ({{count}} arquivos).",
+    "estimateRich_zero": "Com essas regras, hoje seriam liberados <b>~{{bytes}}</b> ({{count}} arquivos).",
+    "estimateRich_one": "Com essas regras, hoje seria liberado <b>~{{bytes}}</b> ({{count}} arquivo).",
+    "estimateRich_other": "Com essas regras, hoje seriam liberados <b>~{{bytes}}</b> ({{count}} arquivos).",
+    "lastRun_zero": "Última limpeza: {{date}} · {{count}} arquivos · {{bytes}} liberados",
+    "lastRun_one": "Última limpeza: {{date}} · {{count}} arquivo · {{bytes}} liberados",
+    "lastRun_other": "Última limpeza: {{date}} · {{count}} arquivos · {{bytes}} liberados",
+    "neverRun": "Nunca executada",
+    "subtitle": "Acompanhe o uso do workspace e libere espaço automaticamente.",
+    "usageTitle": "Uso de armazenamento",
+    "usageDescription": "Espaço ocupado por imagens, vídeos e documentos do workspace.",
+    "planIncludes": "Seu plano {{plan}} inclui {{quota}}.",
+    "autocleanTitle": "Limpeza automática",
+    "autocleanDescription": "Remove as mídias de posts já publicados no Instagram e no TikTok. O post continua no histórico, com o link da publicação. Arquivos da página Arquivos, documentos e mídias de posts não publicados nunca são removidos.",
+    "enableAutoclean": "Ativar limpeza automática",
+    "rulesAria": "Regras da limpeza",
+    "countedFrom": "Contado a partir da publicação do post.",
+    "countedFromAndSchedule": "Contado a partir da publicação do post. A limpeza roda uma vez por dia, de madrugada.",
+    "whenRemove": "Quando remover",
+    "whenRemoveLong": "Quando remover a mídia após a publicação",
+    "onlyAbove": "Somente acima de",
+    "onlyWhenAbove": "Somente quando o uso passar de",
+    "thresholdAria": "Limiar de uso para executar a limpeza",
+    "schedule": "A limpeza roda uma vez por dia, de madrugada.",
+    "estimateTitle": "Estimativa",
+    "estimateNote": "Estimativa ao vivo. Arquivos usados em ideias ou em posts ainda não publicados ficam de fora.",
+    "loadError": "Não foi possível carregar as configurações de armazenamento. Recarregue a página. Salvar agora sobrescreveria a sua configuração com os valores padrão."
+  },
+  "reports": {
+    "toast": {
+      "badFormat": "Formato não aceito. Envie um JPEG, PNG ou WebP.",
+      "tooLarge": "Imagem muito grande. O limite é 4MB.",
+      "splashUpdated": "Arte da capa atualizada.",
+      "splashUploadError": "Não foi possível enviar a arte. Tente novamente.",
+      "splashRemoved": "Arte da capa removida.",
+      "splashRemoveError": "Não foi possível remover a arte. Tente novamente.",
+      "saved": "Configurações de relatório salvas!"
+    },
+    "title": "Relatórios",
+    "monthlyTitle": "Relatório Mensal",
+    "subtitle": "A marca que seus clientes veem no relatório mensal do Instagram.",
+    "readOnly": "Somente leitura",
+    "readOnlySuffix": " Somente leitura.",
+    "brand": "Marca",
+    "accentColor": "Cor de destaque",
+    "accentHint": "A mesma cor do Hub do Cliente. Marca títulos e destaques; os gráficos mantêm as cores próprias, para os dados seguirem legíveis.",
+    "editInHub": "Editar em Configurações · Hub",
+    "coverArt": "Arte da capa",
+    "uploading": "Enviando…",
+    "replaceArt": "Substituir arte",
+    "uploadArt": "Enviar arte",
+    "removeArt": "Remover arte",
+    "coverArtHint": "Formato quadrado (1:1), JPEG, PNG ou WebP, até 4MB. Salva assim que você envia. Sem arte, a capa fica apenas tipográfica.",
+    "sendEmail": "Enviar relatórios por e-mail",
+    "sendEmailHint": "Envia o relatório automaticamente, todo mês, para os clientes com envio habilitado.",
+    "loadError": "Não foi possível carregar as configurações de relatório. Recarregue a página. Salvar agora sobrescreveria a sua marca com os valores padrão.",
+    "preview": "Prévia",
+    "previewHint": "O logo e o nome vêm da aba Workspace.",
+    "removeTitle": "Remover a arte da capa?",
+    "removeDescription": "A capa dos próximos relatórios volta a ser apenas tipográfica. Você pode enviar outra arte quando quiser."
+  },
+  "reportsPhone": {
+    "brandFooter": "A mesma cor do Hub do Cliente. Marca títulos e destaques; os gráficos mantêm as cores próprias, para os dados seguirem legíveis. Arte da capa: formato quadrado (1:1), JPEG, PNG ou WebP, até 4MB. Salva assim que você envia. Sem arte, a capa fica apenas tipográfica.",
+    "artUploaded": "Arte enviada",
+    "typographicOnly": "Apenas tipográfica",
+    "emailAria": "Envio por e-mail",
+    "previewCell": "Pré-visualização",
+    "artSheetMessage": "Formato quadrado (1:1), JPEG, PNG ou WebP, até 4MB."
+  },
+  "templates": {
+    "blockCount_zero": "{{count}} blocos",
+    "blockCount_one": "{{count}} bloco",
+    "blockCount_other": "{{count}} blocos",
+    "toast": {
+      "createError": "Não foi possível criar o modelo.",
+      "defaultUpdated": "Modelo padrão atualizado.",
+      "genericError": "Não foi possível atualizar o modelo.",
+      "renamed": "Modelo renomeado.",
+      "deleted": "Modelo excluído.",
+      "deleteError": "Não foi possível excluir o modelo."
+    },
+    "newTemplate": "Novo modelo",
+    "systemCopyName": "{{name}} (cópia)",
+    "copyOfName": "Cópia de {{name}}",
+    "title": "Modelos de relatório",
+    "description": "Layouts usados ao gerar relatórios. O padrão vem pré-selecionado.",
+    "builtIn": "embutido",
+    "view": "Visualizar",
+    "duplicate": "Duplicar",
+    "defaultBadge": "padrão",
+    "makeDefault": "Definir como padrão",
+    "rename": "Renomear",
+    "delete": "Excluir",
+    "empty": "Crie um modelo para reaproveitar a mesma estrutura em todos os relatórios.",
+    "renameTitle": "Renomear modelo",
+    "nameLabel": "Nome do modelo",
+    "deleteTitle": "Excluir o modelo?",
+    "deleteMessage": "{{name}}. Relatórios já gerados com ele não mudam.",
+    "deleteConfirm": "Excluir modelo"
+  },
+  "templatesPhone": {
+    "footerEmpty": "Layouts usados ao gerar relatórios. O padrão vem pré-selecionado. Crie um modelo para reaproveitar a mesma estrutura em todos os relatórios.",
+    "templateAria": "Modelo"
+  },
+  "hubParts": {
+    "surface": {
+      "neutral": "Neutro",
+      "warm": "Quente",
+      "cool": "Frio"
+    },
+    "radius": {
+      "soft": "Suave",
+      "square": "Reto",
+      "pill": "Pílula"
+    },
+    "cardStyle": {
+      "filled": "Preenchido",
+      "outline": "Contorno",
+      "tonal": "Tonal"
+    },
+    "logoStyle": {
+      "round": "Redondo",
+      "roundSub": "avatar circular",
+      "wordmark": "Horizontal",
+      "wordmarkSub": "wordmark"
+    },
+    "appearance": {
+      "light": "Claro",
+      "dark": "Escuro"
+    },
+    "accentChips": {
+      "button": "Botão",
+      "activeNav": "Nav ativa",
+      "calendar": "Calendário"
+    }
+  },
+  "hubPreview": {
+    "mock": {
+      "nav": {
+        "home": "Início",
+        "posts": "Postagens",
+        "approvals": "Aprovações",
+        "brand": "Marca"
+      },
+      "mobileNav": {
+        "approve": "Aprovar",
+        "posts": "Posts",
+        "more": "Mais"
+      },
+      "pills": {
+        "approved": "Aprovado · {{n}}",
+        "inReview": "Em revisão · {{n}}",
+        "scheduled": "Agendado · {{n}}"
+      },
+      "kpi": {
+        "approvals": "Aprovações",
+        "scheduled": "Agendados",
+        "drafts": "Rascunhos"
+      },
+      "approvalText": "Uma postagem nova está pronta para aprovação.",
+      "viewPost": "Ver postagem",
+      "seeAll": "Ver tudo",
+      "welcomeBack": "Bem-vindo(a) de volta",
+      "pautaDate": "Quinta, 8 de outubro",
+      "pautaGreeting": "Bom dia, {{name}}.",
+      "pautaPills": {
+        "waiting": "Aguardando",
+        "approved": "Aprovado",
+        "scheduled": "Agendado"
+      }
+    },
+    "livePreview": "Pré-visualização ao vivo",
+    "desktop": "Computador",
+    "mobile": "Celular",
+    "yourWorkspace": "Seu workspace",
+    "footnote": "Fontes reais carregam ao vivo · dados fictícios"
+  },
+  "hubTab": {
+    "fontPairingsAria": "Combinações de fontes sugeridas",
+    "pickFontsSeparately": "Escolher fontes separadamente",
+    "toast": {
+      "fileTooLarge": "Arquivo deve ser menor que 2MB.",
+      "darkLogoUpdated": "Logo para modo escuro atualizada.",
+      "darkLogoUploadError": "Não foi possível enviar a logo. Tente novamente.",
+      "darkLogoRemoved": "Logo para modo escuro removida.",
+      "darkLogoRemoveError": "Não foi possível remover a logo. Tente novamente.",
+      "saved": "Hub atualizado!"
+    },
+    "title": "Personalizar Hub",
+    "subtitle": "A aparência do portal que seus clientes usam para aprovar posts e acompanhar entregas.",
+    "appearanceDescription": "O clima geral do hub. O cliente ainda pode alternar claro e escuro.",
+    "defaultAppearanceHint": "O cliente ainda pode alternar no hub.",
+    "brandColorDescription": "Aplicada a botões, navegação ativa e calendário. Contraste garantido.",
+    "selectedColor": "Cor selecionada: {{color}}",
+    "typographyDescription": "Comece por uma combinação pronta. Ajuste fino abaixo, se quiser.",
+    "uploadLightLogo": "Enviar variante clara do logo",
+    "darkLogoHint": "PNG · até 2MB. Usada quando o cliente está no modo escuro."
+  },
+  "hubPhone": {
+    "backToHub": "Voltar para Hub",
+    "title": "Hub",
+    "subtitle": "Como o Hub aparece para os seus clientes.",
+    "previewSubtitle": "Veja o Hub como o cliente vê. Celular ou computador, claro ou escuro.",
+    "customize": "Personalizar",
+    "mesaasBrandAria": "Marca Mesaas",
+    "customColor": "Cor personalizada",
+    "suggestedPairings": "Combinações sugeridas"
+  }
+}

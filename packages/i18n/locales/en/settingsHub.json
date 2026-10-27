@@ -1,1 +1,327 @@
-{}
+{
+  "statusModel": {
+    "action": {
+      "notify": "Notify",
+      "assignResponsavel": "Assign owner"
+    },
+    "target": {
+      "responsavel": "Post owner",
+      "roles": "Owners and admins",
+      "member": "Specific member"
+    },
+    "chooseMember": "Choose a member",
+    "removedStatus": "Removed status",
+    "removedMember": "removed member",
+    "assignTo": "Assign to {{name}}",
+    "notifyMember": "Notify {{name}}",
+    "notifyRoles": "Notify owners and admins",
+    "notifyResponsavel": "Notify the post owner"
+  },
+  "statusTab": {
+    "toast": {
+      "created": "Status created!",
+      "createError": "Couldn't create the status",
+      "updateError": "Couldn't update the status",
+      "archived": "Status archived. Its posts went back to the default status.",
+      "archiveError": "Couldn't archive the status",
+      "reorderError": "Couldn't reorder",
+      "automationCreated": "Automation created!",
+      "automationCreateError": "Couldn't create the automation",
+      "automationUpdateError": "Couldn't update the automation",
+      "automationDeleteError": "Couldn't remove the automation"
+    },
+    "title": "Custom statuses",
+    "description": "Create your own stages for posts. Each status behaves like a default status, which controls visibility in the client's Hub, publishing and counts. The custom name is only shown to your team.",
+    "empty": "No custom statuses yet.",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "archive": "Archive",
+    "archiveDescription": "Posts in this status will go back to the matching default status ({{status}}). Post history keeps the old name.",
+    "namePlaceholder": "Status name (e.g. In design)",
+    "noIcon": "No icon (color dot)",
+    "newStatus": "New status",
+    "automationsTitle": "Status automations",
+    "automationsDescription": "When a post enters a status (default or custom), run an action. When a post enters a custom status, rules for the matching default status also fire. On scheduling or publishing, the system moves the post on its own and the rules for those statuses fire as usual.",
+    "whenEntersRich": "When it enters <b>{{status}}</b>",
+    "active": "Active",
+    "inactive": "Inactive"
+  },
+  "shared": {
+    "behavesAs": "Behaves as",
+    "archiveTitle": "Archive \"{{name}}\"?",
+    "nameRequired": "Give the status a name",
+    "noAutomations": "No automations yet.",
+    "whenEnters": "When it enters",
+    "chooseMemberOption": "Choose the member…",
+    "newAutomation": "New automation",
+    "saveChanges": "Save changes",
+    "displayFont": "Heading font",
+    "bodyFont": "Body font",
+    "suggestedColors": "Suggested colors",
+    "gateLabel": "Hub customization",
+    "appearance": "Appearance",
+    "surfaceTheme": "Surface theme",
+    "defaultAppearance": "Default appearance",
+    "brandColor": "Brand color",
+    "brandColorHint": "The same color as the monthly report. It marks the Hub calendar and the report highlights.",
+    "typography": "Typography",
+    "defaultFont": "Default",
+    "components": "Components",
+    "componentsDescription": "The shape of the Hub's cards and controls.",
+    "corners": "Corners",
+    "cardStyle": "Card style",
+    "identity": "Identity",
+    "identityDescription": "How the agency's brand shows up inside the Hub.",
+    "hubLogo": "Logo in the Hub",
+    "darkLogo": "Dark mode logo",
+    "changeLogo": "Change logo",
+    "hidePoweredBy": "Hide \"powered by mesaas\"",
+    "loadError": "Couldn't load the Hub settings. Reload the page. Saving now would overwrite your customization with the default values.",
+    "removeDarkLogoTitle": "Remove the dark mode logo?"
+  },
+  "statusPhone": {
+    "title": "Post statuses",
+    "statusesFooter": "The name is only shown to your team. Touch and hold to move up or down. Swipe to archive.",
+    "actionsOf": "Actions for {{name}}",
+    "moreActionsOf": "More actions for {{name}}",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "behavesAsValue": "Behaves as: {{status}}",
+    "automationsFooter": "Swipe an automation to remove it.",
+    "inactiveSuffix": " · Inactive",
+    "automationAria": "Automation: {{trigger}}",
+    "removeTitle": "Remove automation?",
+    "removeMessage": "\"When it enters {{trigger}}: {{action}}\" will stop running.",
+    "newStatusDescription": "Each status behaves like a default status, which controls visibility in the client's Hub, publishing and counts.",
+    "newAutomationDescription": "When a post enters a status (default or custom), run an action. When a post enters a custom status, rules for the matching default status also fire.",
+    "name": "Name",
+    "namePlaceholder": "E.g. In design",
+    "icon": "Icon",
+    "color": "Color",
+    "colorValue": "Color {{color}}",
+    "action": "Action",
+    "member": "Member"
+  },
+  "storage": {
+    "immediately": "Immediately",
+    "days_one": "{{count}} day",
+    "days_other": "{{count}} days",
+    "always": "Always",
+    "toast": {
+      "saved": "Storage settings saved!",
+      "saveError": "Couldn't save. Please try again."
+    },
+    "title": "Storage",
+    "ownerOnly": "Only the workspace owner can view and change these settings.",
+    "estimating": "Calculating estimate...",
+    "estimate_zero": "With these rules, ~{{bytes}} would be freed today ({{count}} files).",
+    "estimate_one": "With these rules, ~{{bytes}} would be freed today ({{count}} file).",
+    "estimate_other": "With these rules, ~{{bytes}} would be freed today ({{count}} files).",
+    "estimateRich_zero": "With these rules, <b>~{{bytes}}</b> would be freed today ({{count}} files).",
+    "estimateRich_one": "With these rules, <b>~{{bytes}}</b> would be freed today ({{count}} file).",
+    "estimateRich_other": "With these rules, <b>~{{bytes}}</b> would be freed today ({{count}} files).",
+    "lastRun_zero": "Last cleanup: {{date}} · {{count}} files · {{bytes}} freed",
+    "lastRun_one": "Last cleanup: {{date}} · {{count}} file · {{bytes}} freed",
+    "lastRun_other": "Last cleanup: {{date}} · {{count}} files · {{bytes}} freed",
+    "neverRun": "Never run",
+    "subtitle": "Track the workspace's usage and free up space automatically.",
+    "usageTitle": "Storage usage",
+    "usageDescription": "Space taken up by the workspace's images, videos and documents.",
+    "planIncludes": "Your {{plan}} plan includes {{quota}}.",
+    "autocleanTitle": "Automatic cleanup",
+    "autocleanDescription": "Removes the media of posts already published on Instagram and TikTok. The post stays in the history, with the link to the published post. Files on the Files page, documents and media of unpublished posts are never removed.",
+    "enableAutoclean": "Turn on automatic cleanup",
+    "rulesAria": "Cleanup rules",
+    "countedFrom": "Counted from when the post is published.",
+    "countedFromAndSchedule": "Counted from when the post is published. Cleanup runs once a day, overnight.",
+    "whenRemove": "When to remove",
+    "whenRemoveLong": "When to remove media after publishing",
+    "onlyAbove": "Only above",
+    "onlyWhenAbove": "Only when usage goes over",
+    "thresholdAria": "Usage threshold to run the cleanup",
+    "schedule": "Cleanup runs once a day, overnight.",
+    "estimateTitle": "Estimate",
+    "estimateNote": "Live estimate. Files used in ideas or in posts not yet published are left out.",
+    "loadError": "Couldn't load the storage settings. Reload the page. Saving now would overwrite your settings with the default values."
+  },
+  "reports": {
+    "toast": {
+      "badFormat": "Format not supported. Upload a JPEG, PNG or WebP.",
+      "tooLarge": "Image too large. The limit is 4MB.",
+      "splashUpdated": "Cover art updated.",
+      "splashUploadError": "Couldn't upload the art. Please try again.",
+      "splashRemoved": "Cover art removed.",
+      "splashRemoveError": "Couldn't remove the art. Please try again.",
+      "saved": "Report settings saved!"
+    },
+    "title": "Reports",
+    "monthlyTitle": "Monthly Report",
+    "subtitle": "The brand your clients see in the monthly Instagram report.",
+    "readOnly": "Read only",
+    "readOnlySuffix": " Read only.",
+    "brand": "Brand",
+    "accentColor": "Accent color",
+    "accentHint": "The same color as the client Hub. It marks titles and highlights; charts keep their own colors so the data stays readable.",
+    "editInHub": "Edit in Settings · Hub",
+    "coverArt": "Cover art",
+    "uploading": "Uploading…",
+    "replaceArt": "Replace art",
+    "uploadArt": "Upload art",
+    "removeArt": "Remove art",
+    "coverArtHint": "Square format (1:1), JPEG, PNG or WebP, up to 4MB. Saved as soon as you upload. Without art, the cover is text only.",
+    "sendEmail": "Email reports",
+    "sendEmailHint": "Sends the report automatically every month to clients with sending turned on.",
+    "loadError": "Couldn't load the report settings. Reload the page. Saving now would overwrite your brand with the default values.",
+    "preview": "Preview",
+    "previewHint": "The logo and name come from the Workspace tab.",
+    "removeTitle": "Remove the cover art?",
+    "removeDescription": "The cover of upcoming reports goes back to text only. You can upload new art at any time."
+  },
+  "reportsPhone": {
+    "brandFooter": "The same color as the client Hub. It marks titles and highlights; charts keep their own colors so the data stays readable. Cover art: square format (1:1), JPEG, PNG or WebP, up to 4MB. Saved as soon as you upload. Without art, the cover is text only.",
+    "artUploaded": "Art uploaded",
+    "typographicOnly": "Text only",
+    "emailAria": "Email delivery",
+    "previewCell": "Preview",
+    "artSheetMessage": "Square format (1:1), JPEG, PNG or WebP, up to 4MB."
+  },
+  "templates": {
+    "blockCount_zero": "{{count}} blocks",
+    "blockCount_one": "{{count}} block",
+    "blockCount_other": "{{count}} blocks",
+    "toast": {
+      "createError": "Couldn't create the template.",
+      "defaultUpdated": "Default template updated.",
+      "genericError": "Couldn't update the template.",
+      "renamed": "Template renamed.",
+      "deleted": "Template deleted.",
+      "deleteError": "Couldn't delete the template."
+    },
+    "newTemplate": "New template",
+    "systemCopyName": "{{name}} (copy)",
+    "copyOfName": "Copy of {{name}}",
+    "title": "Report templates",
+    "description": "Layouts used when generating reports. The default one comes preselected.",
+    "builtIn": "built-in",
+    "view": "View",
+    "duplicate": "Duplicate",
+    "defaultBadge": "default",
+    "makeDefault": "Set as default",
+    "rename": "Rename",
+    "delete": "Delete",
+    "empty": "Create a template to reuse the same structure across all your reports.",
+    "renameTitle": "Rename template",
+    "nameLabel": "Template name",
+    "deleteTitle": "Delete the template?",
+    "deleteMessage": "{{name}}. Reports already generated with it won't change.",
+    "deleteConfirm": "Delete template"
+  },
+  "templatesPhone": {
+    "footerEmpty": "Layouts used when generating reports. The default one comes preselected. Create a template to reuse the same structure across all your reports.",
+    "templateAria": "Template"
+  },
+  "hubParts": {
+    "surface": {
+      "neutral": "Neutral",
+      "warm": "Warm",
+      "cool": "Cool"
+    },
+    "radius": {
+      "soft": "Soft",
+      "square": "Square",
+      "pill": "Pill"
+    },
+    "cardStyle": {
+      "filled": "Filled",
+      "outline": "Outline",
+      "tonal": "Tonal"
+    },
+    "logoStyle": {
+      "round": "Round",
+      "roundSub": "circular avatar",
+      "wordmark": "Horizontal",
+      "wordmarkSub": "wordmark"
+    },
+    "appearance": {
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "accentChips": {
+      "button": "Button",
+      "activeNav": "Active nav",
+      "calendar": "Calendar"
+    }
+  },
+  "hubPreview": {
+    "mock": {
+      "nav": {
+        "home": "Home",
+        "posts": "Posts",
+        "approvals": "Approvals",
+        "brand": "Brand"
+      },
+      "mobileNav": {
+        "approve": "Approve",
+        "posts": "Posts",
+        "more": "More"
+      },
+      "pills": {
+        "approved": "Approved · {{n}}",
+        "inReview": "In review · {{n}}",
+        "scheduled": "Scheduled · {{n}}"
+      },
+      "kpi": {
+        "approvals": "Approvals",
+        "scheduled": "Scheduled",
+        "drafts": "Drafts"
+      },
+      "approvalText": "A new post is ready for approval.",
+      "viewPost": "View post",
+      "seeAll": "See all",
+      "welcomeBack": "Welcome back",
+      "pautaDate": "Thursday, October 8",
+      "pautaGreeting": "Good morning, {{name}}.",
+      "pautaPills": {
+        "waiting": "Waiting",
+        "approved": "Approved",
+        "scheduled": "Scheduled"
+      }
+    },
+    "livePreview": "Live preview",
+    "desktop": "Desktop",
+    "mobile": "Mobile",
+    "yourWorkspace": "Your workspace",
+    "footnote": "Real fonts load live · sample data"
+  },
+  "hubTab": {
+    "fontPairingsAria": "Suggested font pairings",
+    "pickFontsSeparately": "Choose fonts separately",
+    "toast": {
+      "fileTooLarge": "File must be smaller than 2MB.",
+      "darkLogoUpdated": "Dark mode logo updated.",
+      "darkLogoUploadError": "Couldn't upload the logo. Please try again.",
+      "darkLogoRemoved": "Dark mode logo removed.",
+      "darkLogoRemoveError": "Couldn't remove the logo. Please try again.",
+      "saved": "Hub updated!"
+    },
+    "title": "Customize Hub",
+    "subtitle": "The look of the portal your clients use to approve posts and follow deliverables.",
+    "appearanceDescription": "The overall feel of the Hub. The client can still switch between light and dark.",
+    "defaultAppearanceHint": "The client can still switch in the Hub.",
+    "brandColorDescription": "Applied to buttons, active navigation and the calendar. Contrast guaranteed.",
+    "selectedColor": "Selected color: {{color}}",
+    "typographyDescription": "Start with a ready-made pairing. Fine-tune below if you like.",
+    "uploadLightLogo": "Upload a light version of the logo",
+    "darkLogoHint": "PNG · up to 2MB. Used when the client is in dark mode."
+  },
+  "hubPhone": {
+    "backToHub": "Back to Hub",
+    "title": "Hub",
+    "subtitle": "How the Hub looks to your clients.",
+    "previewSubtitle": "See the Hub the way your client does. Mobile or desktop, light or dark.",
+    "customize": "Customize",
+    "mesaasBrandAria": "Mesaas brand",
+    "customColor": "Custom color",
+    "suggestedPairings": "Suggested pairings"
+  }
+}

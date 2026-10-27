@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Trans, useTranslation } from 'react-i18next';
 import { ArrowDown, ArrowUp, Archive, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ListSkeleton } from '@/components/ui/skeletons';
@@ -57,6 +58,7 @@ import { StatusPhone } from './phone/StatusPhone';
 const DEFS_KEY = ['post-status-definitions'];
 
 export default function StatusTab() {
+  const { t } = useTranslation('settingsHub');
   const { profile } = useAuth();
   const qc = useQueryClient();
   const isPhone = !useIsDesktop(768);
@@ -86,10 +88,10 @@ export default function StatusTab() {
         ordem: defs.reduce((max, d) => Math.max(max, d.ordem), -1) + 1,
       }),
     onSuccess: () => {
-      toast.success('Status criado!');
+      toast.success(t('statusTab.toast.created'));
       invalidate();
     },
-    onError: (err) => onMutationError(err, 'Erro ao criar status'),
+    onError: (err) => onMutationError(err, t('statusTab.toast.createError')),
   });
 
   const updateMutation = useMutation({
@@ -99,16 +101,16 @@ export default function StatusTab() {
     }: { id: string } & Parameters<typeof updatePostStatusDefinition>[1]) =>
       updatePostStatusDefinition(id, payload),
     onSuccess: invalidate,
-    onError: (err) => onMutationError(err, 'Erro ao atualizar status'),
+    onError: (err) => onMutationError(err, t('statusTab.toast.updateError')),
   });
 
   const archiveMutation = useMutation({
     mutationFn: (id: string) => archivePostStatusDefinition(id),
     onSuccess: () => {
-      toast.success('Status arquivado. Os posts voltaram ao status padrão.');
+      toast.success(t('statusTab.toast.archived'));
       invalidate();
     },
-    onError: (err) => onMutationError(err, 'Erro ao arquivar status'),
+    onError: (err) => onMutationError(err, t('statusTab.toast.archiveError')),
   });
 
   // Serialized: buttons disable while a swap is in flight, so two quick
@@ -127,7 +129,7 @@ export default function StatusTab() {
       await updatePostStatusDefinition(b.id, { ordem: a.ordem });
       await invalidate();
     } catch (err) {
-      onMutationError(err, 'Erro ao reordenar');
+      onMutationError(err, t('statusTab.toast.reorderError'));
     } finally {
       setReordering(false);
     }
@@ -170,19 +172,15 @@ export default function StatusTab() {
   return (
     <div>
       <section className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-        <h3 className="config-title">Status personalizados</h3>
+        <h3 className="config-title">{t('statusTab.title')}</h3>
         <p style={{ margin: '0 0 1rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-          Crie etapas próprias para os posts. Cada status se comporta como um status padrão: é isso
-          que define visibilidade no Hub do cliente, publicação e contagens. O nome personalizado
-          aparece só para a equipe.
+          {t('statusTab.description')}
         </p>
 
         {isLoading ? (
           <ListSkeleton rows={3} />
         ) : defs.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            Nenhum status personalizado ainda.
-          </p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('statusTab.empty')}</p>
         ) : (
           <div style={{ display: 'grid', gap: 8 }}>
             {defs.map((def, i) => (
@@ -229,7 +227,7 @@ export default function StatusTab() {
                     color: 'var(--text-muted)',
                   }}
                 >
-                  Se comporta como
+                  {t('shared.behavesAs')}
                   <select
                     className="drawer-select"
                     value={def.behaves_as}
@@ -251,7 +249,7 @@ export default function StatusTab() {
                   <Button
                     variant="outline"
                     size="icon"
-                    title="Subir"
+                    title={t('statusTab.moveUp')}
                     disabled={i === 0 || reordering}
                     onClick={() => move(i, -1)}
                   >
@@ -260,7 +258,7 @@ export default function StatusTab() {
                   <Button
                     variant="outline"
                     size="icon"
-                    title="Descer"
+                    title={t('statusTab.moveDown')}
                     disabled={i === defs.length - 1 || reordering}
                     onClick={() => move(i, 1)}
                   >
@@ -269,7 +267,7 @@ export default function StatusTab() {
                   <Button
                     variant="outline"
                     size="icon"
-                    title="Arquivar"
+                    title={t('statusTab.archive')}
                     onClick={() => setPendingArchive(def)}
                   >
                     <Archive className="h-3.5 w-3.5" />
@@ -281,7 +279,7 @@ export default function StatusTab() {
         )}
 
         <div style={{ marginTop: '1rem' }}>
-          <FeatureGate flag="feature_custom_properties" label="Status personalizados">
+          <FeatureGate flag="feature_custom_properties" label={t('statusTab.title')}>
             <CreateStatusForm
               onCreate={(payload) => createMutation.mutate(payload)}
               creating={createMutation.isPending}
@@ -298,22 +296,24 @@ export default function StatusTab() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Arquivar "{pendingArchive?.nome}"?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t('shared.archiveTitle', { name: pendingArchive?.nome })}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Os posts que estão nesse status voltarão ao status padrão correspondente (
-              {pendingArchive ? STATUS_LABELS[pendingArchive.behaves_as] : ''}). O histórico dos
-              posts mantém o nome antigo.
+              {t('statusTab.archiveDescription', {
+                status: pendingArchive ? STATUS_LABELS[pendingArchive.behaves_as] : '',
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (pendingArchive) archiveMutation.mutate(pendingArchive.id);
                 setPendingArchive(null);
               }}
             >
-              Arquivar
+              {t('statusTab.archive')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -329,6 +329,7 @@ function CreateStatusForm({
   onCreate: (payload: StatusCreatePayload) => void;
   creating: boolean;
 }) {
+  const { t } = useTranslation('settingsHub');
   const [nome, setNome] = useState('');
   const [cor, setCor] = useState(PRESET_COLORS[1]);
   const [icone, setIcone] = useState<string | null>(null);
@@ -337,7 +338,7 @@ function CreateStatusForm({
   const submit = () => {
     const trimmed = nome.trim();
     if (!trimmed) {
-      toast.error('Dê um nome ao status');
+      toast.error(t('shared.nameRequired'));
       return;
     }
     onCreate({ nome: trimmed, cor, icone, behaves_as: behavesAs });
@@ -358,7 +359,7 @@ function CreateStatusForm({
         <input
           className="drawer-input"
           style={{ flex: 1, minWidth: 180, maxWidth: 420 }}
-          placeholder="Nome do status (ex.: Em design)"
+          placeholder={t('statusTab.namePlaceholder')}
           value={nome}
           maxLength={40}
           onChange={(e) => setNome(e.target.value)}
@@ -374,7 +375,7 @@ function CreateStatusForm({
             whiteSpace: 'nowrap',
           }}
         >
-          Se comporta como
+          {t('shared.behavesAs')}
           <select
             className="drawer-select"
             value={behavesAs}
@@ -391,7 +392,7 @@ function CreateStatusForm({
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
         <button
           type="button"
-          title="Sem ícone (dot de cor)"
+          title={t('statusTab.noIcon')}
           onClick={() => setIcone(null)}
           style={{
             width: 26,
@@ -449,7 +450,7 @@ function CreateStatusForm({
           ))}
         </div>
         <Button size="sm" onClick={submit} disabled={creating} style={{ marginLeft: 'auto' }}>
-          <Plus className="h-3.5 w-3.5" /> Novo status
+          <Plus className="h-3.5 w-3.5" /> {t('statusTab.newStatus')}
         </Button>
       </div>
     </div>
@@ -466,6 +467,7 @@ function useStatusAutomations(
   defs: PostStatusDefinition[],
   onMutationError: (err: unknown, fallback: string) => void,
 ) {
+  const { t } = useTranslation('settingsHub');
   const qc = useQueryClient();
 
   const { data: automations = [], isLoading } = useQuery({
@@ -479,21 +481,21 @@ function useStatusAutomations(
   const createMutation = useMutation({
     mutationFn: createPostStatusAutomation,
     onSuccess: () => {
-      toast.success('Automação criada!');
+      toast.success(t('statusTab.toast.automationCreated'));
       invalidate();
     },
-    onError: (err) => onMutationError(err, 'Erro ao criar automação'),
+    onError: (err) => onMutationError(err, t('statusTab.toast.automationCreateError')),
   });
   const toggleMutation = useMutation({
     mutationFn: ({ id, ativo }: { id: string; ativo: boolean }) =>
       updatePostStatusAutomation(id, { ativo }),
     onSuccess: invalidate,
-    onError: (err) => onMutationError(err, 'Erro ao atualizar automação'),
+    onError: (err) => onMutationError(err, t('statusTab.toast.automationUpdateError')),
   });
   const deleteMutation = useMutation({
     mutationFn: deletePostStatusAutomation,
     onSuccess: invalidate,
-    onError: (err) => onMutationError(err, 'Erro ao remover automação'),
+    onError: (err) => onMutationError(err, t('statusTab.toast.automationDeleteError')),
   });
 
   const triggerLabel = (a: PostStatusAutomation): string => automationTriggerLabel(a, defs);
@@ -522,19 +524,20 @@ function AutomationsSection({
   triggerLabel,
   actionLabel,
 }: { defs: PostStatusDefinition[] } & ReturnType<typeof useStatusAutomations>) {
+  const { t } = useTranslation('settingsHub');
   return (
     <section className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-      <h3 className="config-title">Automações por status</h3>
+      <h3 className="config-title">{t('statusTab.automationsTitle')}</h3>
       <p style={{ margin: '0 0 1rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-        Quando um post entrar em um status (padrão ou personalizado), rode uma ação. Se um post
-        entrar em um personalizado, regras do status padrão equivalente também disparam. Ao agendar
-        ou publicar, o sistema move o post sozinho e as regras desses status disparam normalmente.
+        {t('statusTab.automationsDescription')}
       </p>
 
       {isLoading ? (
         <ListSkeleton rows={3} />
       ) : automations.length === 0 ? (
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Nenhuma automação ainda.</p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+          {t('shared.noAutomations')}
+        </p>
       ) : (
         <div style={{ display: 'grid', gap: 8 }}>
           {automations.map((a) => (
@@ -553,18 +556,23 @@ function AutomationsSection({
               }}
             >
               <span>
-                Quando entrar em <strong>{triggerLabel(a)}</strong>
+                <Trans
+                  t={t}
+                  i18nKey="statusTab.whenEntersRich"
+                  values={{ status: triggerLabel(a) }}
+                  components={{ b: <strong /> }}
+                />
               </span>
               <span>{actionLabel(a)}</span>
               <Switch
                 checked={a.ativo}
                 onCheckedChange={(ativo) => toggleMutation.mutate({ id: a.id, ativo })}
-                title={a.ativo ? 'Ativa' : 'Inativa'}
+                title={a.ativo ? t('statusTab.active') : t('statusTab.inactive')}
               />
               <Button
                 variant="outline"
                 size="icon"
-                title="Remover"
+                title={t('actions.delete')}
                 onClick={() => deleteMutation.mutate(a.id)}
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -575,7 +583,7 @@ function AutomationsSection({
       )}
 
       <div style={{ marginTop: '1rem' }}>
-        <FeatureGate flag="feature_custom_properties" label="Automações por status">
+        <FeatureGate flag="feature_custom_properties" label={t('statusTab.automationsTitle')}>
           <CreateAutomationForm
             defs={defs}
             membros={membros}
@@ -599,6 +607,7 @@ function CreateAutomationForm({
   onCreate: (payload: AutomationCreatePayload) => void;
   creating: boolean;
 }) {
+  const { t } = useTranslation('settingsHub');
   const [trigger, setTrigger] = useState<TriggerValue>('canonical:correcao_cliente');
   const [action, setAction] = useState<AutomationAction>('notify');
   const [notifyTarget, setNotifyTarget] = useState<NotifyTarget>('responsavel');
@@ -629,7 +638,7 @@ function CreateAutomationForm({
       }}
     >
       <label style={{ display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
-        Quando entrar em
+        {t('shared.whenEnters')}
         <select
           className="drawer-select"
           style={{ width: 'auto', minWidth: 190 }}
@@ -676,7 +685,7 @@ function CreateAutomationForm({
           value={membroId}
           onChange={(e) => setMembroId(e.target.value ? Number(e.target.value) : '')}
         >
-          <option value="">Escolha o membro…</option>
+          <option value="">{t('shared.chooseMemberOption')}</option>
           {membros
             .filter((m) => m.id != null)
             .map((m) => (
@@ -687,7 +696,7 @@ function CreateAutomationForm({
         </select>
       )}
       <Button size="sm" onClick={submit} disabled={creating} style={{ marginLeft: 'auto' }}>
-        <Plus className="h-3.5 w-3.5" /> Nova automação
+        <Plus className="h-3.5 w-3.5" /> {t('shared.newAutomation')}
       </Button>
     </div>
   );

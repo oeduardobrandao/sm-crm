@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Eye, ImageIcon, Mail, Palette } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { GroupedList, Cell } from '@/components/mobile/GroupedList';
 import { ActionSheet } from '@/components/mobile/ActionSheet';
 import { BottomSheet } from '@/components/mobile/BottomSheet';
@@ -56,38 +57,31 @@ export function RelatoriosPhone({
   workspaceName,
   templates,
 }: RelatoriosPhoneProps) {
+  const { t } = useTranslation('settingsHub');
   const [artSheetOpen, setArtSheetOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
 
   return (
     <ConfigPhoneScreen
-      title="Relatórios"
+      title={t('reports.title')}
       subtitle={
         <>
-          A marca que seus clientes veem no relatório mensal do Instagram.
-          {!canEdit && <span className="phone-relatorios-readonly"> Somente leitura.</span>}
+          {t('reports.subtitle')}
+          {!canEdit && (
+            <span className="phone-relatorios-readonly">{t('reports.readOnlySuffix')}</span>
+          )}
         </>
       }
       trailing={
         <ConfigNavTextButton onClick={onSave} disabled={saveDisabled} busy={saving}>
-          Salvar
+          {t('actions.save')}
         </ConfigNavTextButton>
       }
     >
-      <GroupedList
-        header="Marca"
-        footer={
-          <>
-            A mesma cor do Hub do Cliente. Marca títulos e destaques; os gráficos mantêm as cores
-            próprias, para os dados seguirem legíveis. Arte da capa: formato quadrado (1:1), JPEG,
-            PNG ou WebP, até 4MB. Salva assim que você envia. Sem arte, a capa fica apenas
-            tipográfica.
-          </>
-        }
-      >
+      <GroupedList header={t('reports.brand')} footer={t('reportsPhone.brandFooter')}>
         <Cell
-          label="Cor de destaque"
-          subtitle="Editar em Configurações · Hub"
+          label={t('reports.accentColor')}
+          subtitle={t('reports.editInHub')}
           icon={<Palette />}
           iconColor="#8e8e93"
           value={<span className="phone-relatorios-hex">{brandColor}</span>}
@@ -102,9 +96,13 @@ export function RelatoriosPhone({
           data-testid="relatorios-brand-color"
         />
         <Cell
-          label="Arte da capa"
+          label={t('reports.coverArt')}
           subtitle={
-            splashUploading ? 'Enviando…' : splashUrl ? 'Arte enviada' : 'Apenas tipográfica'
+            splashUploading
+              ? t('reports.uploading')
+              : splashUrl
+                ? t('reportsPhone.artUploaded')
+                : t('reportsPhone.typographicOnly')
           }
           icon={
             splashUrl ? (
@@ -127,12 +125,9 @@ export function RelatoriosPhone({
       </GroupedList>
       {splashInput}
 
-      <GroupedList
-        aria-label="Envio por e-mail"
-        footer="Envia o relatório automaticamente, todo mês, para os clientes com envio habilitado."
-      >
+      <GroupedList aria-label={t('reportsPhone.emailAria')} footer={t('reports.sendEmailHint')}>
         <Cell
-          label="Enviar relatórios por e-mail"
+          label={t('reports.sendEmail')}
           icon={<Mail />}
           iconColor="#0a84ff"
           disabled={emailDisabled}
@@ -141,14 +136,13 @@ export function RelatoriosPhone({
       </GroupedList>
       {brandingFailed && (
         <p role="alert" className="phone-relatorios-alert">
-          Não foi possível carregar as configurações de relatório. Recarregue a página. Salvar agora
-          sobrescreveria a sua marca com os valores padrão.
+          {t('reports.loadError')}
         </p>
       )}
 
-      <GroupedList aria-label="Prévia" footer="O logo e o nome vêm da aba Workspace.">
+      <GroupedList aria-label={t('reports.preview')} footer={t('reports.previewHint')}>
         <Cell
-          label="Pré-visualização"
+          label={t('reportsPhone.previewCell')}
           icon={<Eye />}
           iconColor="#30b0c7"
           chevron
@@ -162,11 +156,11 @@ export function RelatoriosPhone({
       <ActionSheet
         open={artSheetOpen}
         onOpenChange={setArtSheetOpen}
-        title="Arte da capa"
-        message="Formato quadrado (1:1), JPEG, PNG ou WebP, até 4MB."
+        title={t('reports.coverArt')}
+        message={t('reportsPhone.artSheetMessage')}
         actions={[
           {
-            label: splashUrl ? 'Substituir arte' : 'Enviar arte',
+            label: splashUrl ? t('reports.replaceArt') : t('reports.uploadArt'),
             // The picker needs the tap itself: run before the sheet closes.
             immediate: true,
             disabled: splashUploading || !canEdit,
@@ -175,7 +169,7 @@ export function RelatoriosPhone({
           ...(splashUrl
             ? [
                 {
-                  label: 'Remover arte',
+                  label: t('reports.removeArt'),
                   destructive: true,
                   disabled: splashUploading || !canEdit,
                   onSelect: () => onSplashRemoveOpenChange(true),
@@ -187,11 +181,11 @@ export function RelatoriosPhone({
 
       <PhoneConfirmSheet
         open={splashRemoveOpen}
-        title="Remover a arte da capa?"
-        message="A capa dos próximos relatórios volta a ser apenas tipográfica. Você pode enviar outra arte quando quiser."
+        title={t('reports.removeTitle')}
+        message={t('reports.removeDescription')}
         actions={[
           {
-            label: 'Remover arte',
+            label: t('reports.removeArt'),
             destructive: true,
             disabled: splashUploading || !canEdit,
             onSelect: onRemoveSplash,
@@ -203,8 +197,8 @@ export function RelatoriosPhone({
       <BottomSheet
         open={previewOpen}
         onOpenChange={setPreviewOpen}
-        title="Prévia"
-        description="O logo e o nome vêm da aba Workspace."
+        title={t('reports.preview')}
+        description={t('reports.previewHint')}
         detents={['large']}
         showClose
       >
