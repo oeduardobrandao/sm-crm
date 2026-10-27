@@ -264,6 +264,9 @@ verify_jwt = false
 [functions.blog-view]
 verify_jwt = false
 
+[functions.blog-search-console-cron]
+verify_jwt = false
+
 [functions.affiliate-payout-cron]
 verify_jwt = false
 
