@@ -246,5 +246,12 @@
     "limitReached": "Limite do plano atingido.",
     "csvLocked": "Importação CSV não está disponível no seu plano."
   },
-  "optional": "(opcional)"
+  "optional": "(opcional)",
+  "usage": {
+    "of": "{{used}} de {{limit}}",
+    "ofLabel": "{{used}} de {{limit}} {{label}}",
+    "notIncluded": "Não incluído no plano",
+    "unlimited": "Ilimitado",
+    "upgrade": "Fazer upgrade"
+  }
 }

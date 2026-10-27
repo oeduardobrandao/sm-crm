@@ -246,5 +246,12 @@
     "limitReached": "Plan limit reached.",
     "csvLocked": "CSV import is not available on your plan."
   },
-  "optional": "(optional)"
+  "optional": "(optional)",
+  "usage": {
+    "of": "{{used}} of {{limit}}",
+    "ofLabel": "{{used}} of {{limit}} {{label}}",
+    "notIncluded": "Not included in your plan",
+    "unlimited": "Unlimited",
+    "upgrade": "Upgrade"
+  }
 }
