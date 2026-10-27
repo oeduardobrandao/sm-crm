@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { getEffectivePlanWithSource, getWorkspaceSubscription } from '@/services/billing';
@@ -49,9 +50,26 @@ export function useTrialOfferRedirect(pathname: string): TrialOfferRedirectState
     enabled,
   });
 
+  // Once the hook has settled in this mount it must never report `pending` again. In TanStack
+  // v5 a query that errored with no data goes back to `status: 'pending'` on every refetch
+  // (window focus, remount, a `['billing']` invalidation), and `pending` makes ProtectedRoute
+  // swap the whole app for a skeleton, which would unmount the page and lose unsaved work.
+  const settled = useRef(false);
+
   if (!enabled) return { pending: false, redirect: false };
-  if (plan.isError || sub.isError) return { pending: false, redirect: false };
-  if (plan.isLoading || sub.isLoading) return { pending: true, redirect: false };
+
+  // `isFetched` is monotonic (a first fetch has finished), unlike `isLoading`/`isError`, which a
+  // refetch resets for a query that has no data. A failure in either query ends the wait at once.
+  const failed = plan.isError || sub.isError;
+  if (!settled.current) {
+    if (!failed && !(plan.isFetched && sub.isFetched)) {
+      return { pending: true, redirect: false };
+    }
+    settled.current = true;
+  }
+
+  // Fail open: no data (a failed or refetching-after-failure query) never redirects. A later
+  // successful refetch can still produce a redirect, never a skeleton.
   if (plan.data === undefined || sub.data === undefined) return { pending: false, redirect: false };
 
   return {

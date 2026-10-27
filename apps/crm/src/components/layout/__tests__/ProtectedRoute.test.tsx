@@ -11,15 +11,17 @@ vi.mock('../../../hooks/useWorkspaceLimits', () => ({
 }));
 
 vi.mock('../useTrialOfferRedirect', () => ({
-  useTrialOfferRedirect: () => ({ pending: false, redirect: false }),
+  useTrialOfferRedirect: vi.fn(),
 }));
 
 import { useAuth } from '../../../context/AuthContext';
 import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
+import { useTrialOfferRedirect } from '../useTrialOfferRedirect';
 import ProtectedRoute from '../ProtectedRoute';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 
 const mockedUseWorkspaceLimits = vi.mocked(useWorkspaceLimits);
+const mockedTrialOffer = vi.mocked(useTrialOfferRedirect);
 
 const mockedUseAuth = vi.mocked(useAuth);
 
@@ -45,6 +47,7 @@ const defaultLimits = {
 
 beforeEach(() => {
   mockedUseWorkspaceLimits.mockReturnValue(defaultLimits);
+  mockedTrialOffer.mockReturnValue({ pending: false, redirect: false });
 });
 
 function renderRoute(pathname: string) {
@@ -52,6 +55,7 @@ function renderRoute(pathname: string) {
     <MemoryRouter initialEntries={[pathname]}>
       <Routes>
         <Route path="/login" element={<div>Tela de login</div>} />
+        <Route path="/comecar" element={<div>Tela de oferta</div>} />
         <Route
           path="/dashboard"
           element={
@@ -717,5 +721,61 @@ describe('ProtectedRoute', () => {
 
     expect(screen.getByText('Área protegida')).toBeInTheDocument();
     expect(screen.queryByText('Área protegida: dashboard')).toBeNull();
+  });
+
+  describe('trial offer', () => {
+    const owner = (profile: Record<string, unknown>) => ({
+      user: { id: 'owner-1' } as never,
+      profile: { id: 'owner-1', role: 'owner', ...profile } as never,
+      role: 'owner' as const,
+      can: ownerCan,
+      loading: false,
+      refetchProfile: vi.fn(),
+      signOut: vi.fn(),
+    });
+
+    it('sends the owner to /comecar when the hook says redirect', () => {
+      mockedUseAuth.mockReturnValue(owner({ empresa: 'Mesaas' }));
+      mockedTrialOffer.mockReturnValue({ pending: false, redirect: true });
+
+      renderRoute('/dashboard');
+
+      expect(screen.getByText('Tela de oferta')).toBeInTheDocument();
+      expect(screen.queryByText('Área protegida: dashboard')).toBeNull();
+    });
+
+    it('renders the skeleton, not the page, while the hook is pending', () => {
+      mockedUseAuth.mockReturnValue(owner({ empresa: 'Mesaas' }));
+      mockedTrialOffer.mockReturnValue({ pending: true, redirect: false });
+
+      renderRoute('/dashboard');
+
+      expect(screen.getByTestId('crm-skeleton')).toBeInTheDocument();
+      expect(screen.queryByText('Área protegida: dashboard')).toBeNull();
+      expect(screen.queryByText('Tela de oferta')).toBeNull();
+    });
+
+    it('lets workspace setup win over the offer redirect', () => {
+      mockedUseAuth.mockReturnValue(owner({}));
+      // The real hook exempts /workspace-setup; model that so the second hop (after the
+      // setup redirect) does not bounce to the offer.
+      mockedTrialOffer.mockImplementation((path) => ({
+        pending: false,
+        redirect: path === '/dashboard',
+      }));
+
+      renderRoute('/dashboard');
+
+      expect(screen.getByText('Área protegida: setup')).toBeInTheDocument();
+      expect(screen.queryByText('Tela de oferta')).toBeNull();
+    });
+
+    it('passes the lowercased pathname to the hook', () => {
+      mockedUseAuth.mockReturnValue(owner({ empresa: 'Mesaas' }));
+
+      renderRoute('/Dashboard');
+
+      expect(mockedTrialOffer).toHaveBeenCalledWith('/dashboard');
+    });
   });
 });

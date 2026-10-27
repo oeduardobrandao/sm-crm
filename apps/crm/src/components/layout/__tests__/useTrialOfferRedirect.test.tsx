@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -36,7 +36,16 @@ function run(pathname: string) {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
-  return renderHook(() => useTrialOfferRedirect(pathname), { wrapper });
+  const seen: { pending: boolean; redirect: boolean }[] = [];
+  const hook = renderHook(
+    () => {
+      const state = useTrialOfferRedirect(pathname);
+      seen.push(state);
+      return state;
+    },
+    { wrapper },
+  );
+  return { ...hook, client, seen };
 }
 
 beforeEach(() => {
@@ -131,5 +140,44 @@ describe('useTrialOfferRedirect', () => {
     vi.mocked(getWorkspaceSubscription).mockRejectedValue(new Error('boom'));
     const { result } = run('/dashboard');
     await waitFor(() => expect(result.current).toEqual({ pending: false, redirect: false }));
+  });
+
+  it('never goes back to pending when an errored query refetches', async () => {
+    vi.mocked(getEffectivePlanWithSource).mockRejectedValueOnce(new Error('boom'));
+    const { result, client, seen } = run('/dashboard');
+    await waitFor(() => expect(result.current).toEqual({ pending: false, redirect: false }));
+    const settledAt = seen.length;
+
+    // The refetch stays in flight long enough to be observed, then succeeds.
+    let release: (value: ReturnType<typeof plan>) => void = () => {};
+    vi.mocked(getEffectivePlanWithSource).mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    await act(async () => {
+      void client.invalidateQueries({ queryKey: ['billing'] });
+    });
+    expect(client.getQueryState(['billing', 'effective-plan-with-source'])?.fetchStatus).toBe(
+      'fetching',
+    );
+    expect(result.current.pending).toBe(false);
+
+    await act(async () => {
+      release(plan());
+    });
+    await waitFor(() => expect(result.current.redirect).toBe(true));
+    expect(seen.slice(settledAt).some((state) => state.pending)).toBe(false);
+  });
+
+  it('stays settled when the subscription query fails and is then reset', async () => {
+    vi.mocked(getWorkspaceSubscription).mockRejectedValueOnce(new Error('boom'));
+    const { result, client, seen } = run('/dashboard');
+    await waitFor(() => expect(result.current.pending).toBe(false));
+    const settledAt = seen.length;
+    await act(async () => {
+      await client.resetQueries({ queryKey: ['billing'] });
+    });
+    expect(seen.slice(settledAt).some((state) => state.pending)).toBe(false);
   });
 });
