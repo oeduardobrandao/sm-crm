@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { PostEditor } from '@/pages/entregas/components/PostEditor';
 import {
   extractR2Keys,
@@ -20,6 +21,7 @@ export function TarefaDescriptionEditor({
   onUpdate,
   onUploadStateChange,
 }: TarefaDescriptionEditorProps) {
+  const { t } = useTranslation('tasksForm');
   const [resolvedContent, setResolvedContent] = useState<TarefaDescriptionDoc>(initialContent);
   const [ready, setReady] = useState(() => extractR2Keys(initialContent).length === 0);
 
@@ -49,15 +51,15 @@ export function TarefaDescriptionEditor({
   }, [initialContent]);
 
   if (!ready) {
-    return <div className="text-sm text-muted-foreground">Carregando descrição...</div>;
+    return <div className="text-sm text-muted-foreground">{t('description.loading')}</div>;
   }
 
   return (
     <PostEditor
       initialContent={resolvedContent}
       onUpdate={onUpdate}
-      placeholder="Detalhes, contexto, links..."
-      ariaLabel="Descrição"
+      placeholder={t('description.placeholder')}
+      ariaLabel={t('description.label')}
       showCharacterCount={false}
       onUploadStateChange={onUploadStateChange}
       onUploadInlineImage={async (file) => {
@@ -66,8 +68,8 @@ export function TarefaDescriptionEditor({
         } catch (error) {
           toast.error(
             error instanceof Error && error.message === 'quota_exceeded'
-              ? 'Limite de armazenamento atingido'
-              : 'Falha ao enviar imagem',
+              ? t('description.quotaExceeded')
+              : t('description.uploadFailed'),
           );
           throw error;
         }

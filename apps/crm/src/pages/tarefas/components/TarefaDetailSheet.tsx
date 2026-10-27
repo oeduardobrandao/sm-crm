@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { useIntlLocale } from '@mesaas/i18n';
 import {
   Ban,
   CalendarDays,
@@ -81,6 +83,8 @@ export function TarefaDetailSheet({
   // Same gate as the dialog primitives (F0c): the phone layout only inside the phone
   // shell, so suites that render the sheet alone keep the desktop markup.
   const { isPhone } = usePhoneLayout();
+  const { t } = useTranslation('tasksForm');
+  const intlLocale = useIntlLocale();
   const queryClient = useQueryClient();
   const [newSubtarefa, setNewSubtarefa] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -111,20 +115,22 @@ export function TarefaDetailSheet({
     if (status === tarefa.status) return;
     try {
       await updateTarefa(tarefa.id!, { status });
-      toast.success(status === 'concluida' ? 'Tarefa concluída!' : 'Status atualizado!');
+      toast.success(
+        status === 'concluida' ? t('detail.toast.completed') : t('detail.toast.statusUpdated'),
+      );
       onRefresh();
     } catch {
-      toast.error('Erro ao atualizar status');
+      toast.error(t('detail.toast.statusError'));
     }
   };
 
   const handleAssign = async (responsavelId: number | null) => {
     try {
       await updateTarefa(tarefa.id!, { responsavel_id: responsavelId });
-      toast.success('Responsável atualizado!');
+      toast.success(t('detail.toast.assigneeUpdated'));
       onRefresh();
     } catch {
-      toast.error('Erro ao atualizar responsável');
+      toast.error(t('detail.toast.assigneeError'));
     }
   };
 
@@ -141,7 +147,7 @@ export function TarefaDetailSheet({
       setNewSubtarefa('');
       refreshSubtarefas();
     } catch {
-      toast.error('Erro ao adicionar subtarefa');
+      toast.error(t('detail.toast.subtaskAddError'));
     }
   };
 
@@ -150,7 +156,7 @@ export function TarefaDetailSheet({
       await toggleSubtarefa(id, concluida);
       refreshSubtarefas();
     } catch {
-      toast.error('Erro ao atualizar subtarefa');
+      toast.error(t('detail.toast.subtaskUpdateError'));
     }
   };
 
@@ -159,7 +165,7 @@ export function TarefaDetailSheet({
       await deleteSubtarefa(id);
       refreshSubtarefas();
     } catch {
-      toast.error('Erro ao remover subtarefa');
+      toast.error(t('detail.toast.subtaskRemoveError'));
     }
   };
 
@@ -169,12 +175,12 @@ export function TarefaDetailSheet({
     setDeleteBusy(true);
     try {
       await deleteTarefa(tarefa.id!);
-      toast.success('Tarefa excluída!');
+      toast.success(t('detail.toast.deleted'));
       setConfirmDelete(false);
       onClose();
       onRefresh();
     } catch {
-      toast.error('Erro ao excluir tarefa');
+      toast.error(t('detail.toast.deleteError'));
     } finally {
       deleteInFlight.current = false;
       setDeleteBusy(false);
@@ -188,15 +194,15 @@ export function TarefaDetailSheet({
       await definirEstadoSerie(serie.id, verbo);
       toast.success(
         verbo === 'pausar'
-          ? 'Série pausada!'
+          ? t('detail.toast.seriesPaused')
           : verbo === 'retomar'
-            ? 'Série retomada!'
-            : 'Série encerrada!',
+            ? t('detail.toast.seriesResumed')
+            : t('detail.toast.seriesEnded'),
       );
       setConfirmEncerrar(false);
       onRefresh();
     } catch {
-      toast.error('Erro ao atualizar a série');
+      toast.error(t('detail.toast.seriesError'));
     } finally {
       setSerieBusy(false);
     }
@@ -208,12 +214,12 @@ export function TarefaDetailSheet({
     setDeleteBusy(true);
     try {
       await deleteTarefaSerieCompleta(serie.id);
-      toast.success('Série excluída!');
+      toast.success(t('detail.toast.seriesDeleted'));
       setConfirmDelete(false);
       onClose();
       onRefresh();
     } catch {
-      toast.error('Erro ao excluir a série');
+      toast.error(t('detail.toast.seriesDeleteError'));
     } finally {
       deleteInFlight.current = false;
       setDeleteBusy(false);
@@ -251,7 +257,7 @@ export function TarefaDetailSheet({
       <SheetContent className="w-full sm:max-w-[440px] overflow-y-auto">
         <SheetHeader className="mb-4 pr-8">
           <SheetTitle className="text-left leading-snug">{tarefa.titulo}</SheetTitle>
-          <SheetDescription className="sr-only">Detalhes da tarefa</SheetDescription>
+          <SheetDescription className="sr-only">{t('detail.srDescription')}</SheetDescription>
           {tarefa.tags.length > 0 && (
             <div className="flex flex-wrap gap-1 pt-1">
               {tarefa.tags.map((tag) => (
@@ -294,7 +300,7 @@ export function TarefaDetailSheet({
           <div className="flex flex-col gap-2.5 text-sm">
             <div className="flex items-center gap-2">
               <span className="text-xs w-24 shrink-0" style={{ color: 'var(--text-muted)' }}>
-                Responsável
+                {t('detail.assignee')}
               </span>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -346,7 +352,7 @@ export function TarefaDetailSheet({
                             fontStyle: 'italic',
                           }}
                         >
-                          Sem responsável
+                          {t('detail.noAssignee')}
                         </span>
                       </>
                     )}
@@ -358,7 +364,7 @@ export function TarefaDetailSheet({
                     className="text-xs italic"
                     style={{ color: 'var(--text-muted)' }}
                   >
-                    Sem responsável
+                    {t('detail.noAssignee')}
                   </DropdownMenuItem>
                   {membros
                     .filter((m) => m.id != null)
@@ -384,13 +390,13 @@ export function TarefaDetailSheet({
 
             <div className="flex items-center gap-2">
               <span className="text-xs w-24 shrink-0" style={{ color: 'var(--text-muted)' }}>
-                Prazo
+                {t('detail.due')}
               </span>
               <span className="inline-flex items-center gap-2 text-sm">
                 <CalendarDays className="h-3.5 w-3.5" style={{ color: 'var(--text-muted)' }} />
                 {tarefa.data_limite
-                  ? parseDateOnly(tarefa.data_limite).toLocaleDateString('pt-BR')
-                  : 'Sem prazo'}
+                  ? parseDateOnly(tarefa.data_limite).toLocaleDateString(intlLocale)
+                  : t('detail.noDue')}
                 {badge && (
                   <span className={`board-card-deadline ${badge.className}`}>{badge.label}</span>
                 )}
@@ -403,13 +409,16 @@ export function TarefaDetailSheet({
                   className="text-xs w-24 shrink-0 pt-0.5"
                   style={{ color: 'var(--text-muted)' }}
                 >
-                  Repetição
+                  {t('detail.recurrence')}
                 </span>
                 <div className="flex flex-col gap-1.5 text-sm">
                   <span className="inline-flex items-center gap-2 flex-wrap">
                     <Repeat className="h-3.5 w-3.5" style={{ color: 'var(--text-muted)' }} />
                     <span>
-                      Repete: {describeRecorrencia(serie)} · {modoLabel(serie.modo)}
+                      {t('detail.repeats', {
+                        rule: describeRecorrencia(serie),
+                        mode: modoLabel(serie.modo),
+                      })}
                     </span>
                     {estadoLabel && (
                       <span
@@ -431,7 +440,7 @@ export function TarefaDetailSheet({
                           disabled={serieBusy}
                           onClick={() => handleSerieEstado('pausar')}
                         >
-                          <Pause className="h-3 w-3 mr-1" /> Pausar série
+                          <Pause className="h-3 w-3 mr-1" /> {t('detail.pauseSeries')}
                         </Button>
                       ) : (
                         <Button
@@ -442,7 +451,7 @@ export function TarefaDetailSheet({
                           disabled={serieBusy}
                           onClick={() => handleSerieEstado('retomar')}
                         >
-                          <Play className="h-3 w-3 mr-1" /> Retomar série
+                          <Play className="h-3 w-3 mr-1" /> {t('detail.resumeSeries')}
                         </Button>
                       )}
                       <Button
@@ -453,7 +462,7 @@ export function TarefaDetailSheet({
                         disabled={serieBusy}
                         onClick={() => setConfirmEncerrar(true)}
                       >
-                        <Ban className="h-3 w-3 mr-1" /> Encerrar série
+                        <Ban className="h-3 w-3 mr-1" /> {t('detail.endSeries')}
                       </Button>
                     </div>
                   )}
@@ -464,7 +473,7 @@ export function TarefaDetailSheet({
             {tarefa.cliente_nome && (
               <div className="flex items-center gap-2">
                 <span className="text-xs w-24 shrink-0" style={{ color: 'var(--text-muted)' }}>
-                  Cliente
+                  {t('detail.client')}
                 </span>
                 <span className="text-sm">{tarefa.cliente_nome}</span>
               </div>
@@ -474,7 +483,7 @@ export function TarefaDetailSheet({
           {(tarefa.descricao_rich || tarefa.descricao) && (
             <div>
               <div className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
-                Descrição
+                {t('detail.description')}
               </div>
               <div className="text-sm" style={{ color: 'var(--text-main)' }}>
                 <TarefaDescriptionContent
@@ -488,7 +497,7 @@ export function TarefaDetailSheet({
           {/* Checklist */}
           <div>
             <div className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
-              Subtarefas
+              {t('detail.subtasks')}
               {subtarefas.length > 0 && (
                 <span>
                   {' '}
@@ -498,8 +507,7 @@ export function TarefaDetailSheet({
             </div>
             {serie && (
               <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
-                As próximas ocorrências usam a lista da série. Para mudar, edite a tarefa e escolha
-                Esta e as próximas.
+                {t('detail.seriesChecklistHint')}
               </p>
             )}
             <div className="flex flex-col gap-1.5">
@@ -520,7 +528,7 @@ export function TarefaDetailSheet({
                   </span>
                   <button
                     type="button"
-                    aria-label="Remover subtarefa"
+                    aria-label={t('detail.removeSubtask')}
                     onClick={() => handleDeleteSubtarefa(s.id!)}
                     className="opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity"
                     style={{
@@ -536,7 +544,7 @@ export function TarefaDetailSheet({
               ))}
               <div className="flex items-center gap-2 mt-1">
                 <Input
-                  placeholder="Nova subtarefa..."
+                  placeholder={t('detail.newSubtaskPlaceholder')}
                   value={newSubtarefa}
                   onChange={(e) => setNewSubtarefa(e.target.value)}
                   onKeyDown={(e) => {
@@ -564,7 +572,7 @@ export function TarefaDetailSheet({
           {/* Actions */}
           <div className="flex items-center justify-between pt-2 border-t border-[var(--border-color)]">
             <Button type="button" variant="ink" size="sm" onClick={onEdit}>
-              <Pencil className="h-3.5 w-3.5 mr-1.5" /> Editar
+              <Pencil className="h-3.5 w-3.5 mr-1.5" /> {t('actions.edit')}
             </Button>
             <Button
               type="button"
@@ -573,7 +581,7 @@ export function TarefaDetailSheet({
               style={{ color: 'var(--danger-text)' }}
               onClick={() => setConfirmDelete(true)}
             >
-              <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Excluir
+              <Trash2 className="h-3.5 w-3.5 mr-1.5" /> {t('detail.delete')}
             </Button>
           </div>
         </div>
@@ -583,9 +591,9 @@ export function TarefaDetailSheet({
             {serie ? (
               <>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Excluir tarefa recorrente?</AlertDialogTitle>
+                  <AlertDialogTitle>{t('detail.deleteRecurringTitle')}</AlertDialogTitle>
                   <AlertDialogDescription>
-                    A tarefa &quot;{tarefa.titulo}&quot; faz parte de uma série.
+                    {t('detail.deleteRecurringDescription', { title: tarefa.titulo })}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <div className="flex flex-col gap-3 text-sm">
@@ -597,13 +605,13 @@ export function TarefaDetailSheet({
                       disabled={deleteBusy}
                       onClick={handleDeleteTarefa}
                     >
-                      Somente esta
+                      {t('detail.onlyThis')}
                     </Button>
                     {tarefa.status !== 'concluida' &&
                       serie.modo === 'ao_concluir' &&
                       estado === 'ativa' && (
                         <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                          A próxima ocorrência será criada normalmente.
+                          {t('detail.nextWillBeCreated')}
                         </p>
                       )}
                   </div>
@@ -614,33 +622,32 @@ export function TarefaDetailSheet({
                       disabled={deleteBusy}
                       onClick={handleDeleteSerie}
                     >
-                      Toda a série
+                      {t('detail.wholeSeries')}
                     </Button>
                     <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                      Remove a série e as ocorrências abertas. As concluídas ficam.
+                      {t('detail.wholeSeriesHint')}
                     </p>
                   </div>
                 </div>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
                 </AlertDialogFooter>
               </>
             ) : (
               <>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Excluir tarefa?</AlertDialogTitle>
+                  <AlertDialogTitle>{t('detail.deleteTitle')}</AlertDialogTitle>
                   <AlertDialogDescription>
-                    A tarefa &quot;{tarefa.titulo}&quot; e suas subtarefas serão excluídas. Essa
-                    ação não pode ser desfeita.
+                    {t('detail.deleteDescription', { title: tarefa.titulo })}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
                   <AlertDialogAction
                     className="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
                     onClick={handleDeleteTarefa}
                   >
-                    Excluir tarefa
+                    {t('detail.deleteConfirm')}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </>
@@ -651,13 +658,11 @@ export function TarefaDetailSheet({
         <AlertDialog open={confirmEncerrar} onOpenChange={setConfirmEncerrar}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Encerrar série?</AlertDialogTitle>
-              <AlertDialogDescription>
-                As ocorrências já criadas continuam como estão. Nenhuma nova será criada.
-              </AlertDialogDescription>
+              <AlertDialogTitle>{t('detail.endSeriesTitle')}</AlertDialogTitle>
+              <AlertDialogDescription>{t('detail.endSeriesDescription')}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
               <AlertDialogAction
                 disabled={serieBusy}
                 onClick={(e) => {
@@ -665,7 +670,7 @@ export function TarefaDetailSheet({
                   handleSerieEstado('encerrar');
                 }}
               >
-                Encerrar
+                {t('detail.endConfirm')}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

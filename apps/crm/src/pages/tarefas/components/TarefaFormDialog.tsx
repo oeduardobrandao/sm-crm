@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import { captureEvent } from '@/lib/analytics';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
@@ -74,9 +76,10 @@ export type TarefaFormPayload = {
 
 /** RPC failures carry a pt-BR RAISE message worth showing; PostgREST table
  *  errors do not. Errors from criarTarefaSerie/aplicarEdicaoSerie are
- *  PostgrestError objects whose message is the RAISE text. */
+ *  PostgrestError objects whose message is the RAISE text. The prefixes below
+ *  match that server text, so they stay in Portuguese. */
 function mensagemErro(e: unknown, fallback: string, fromOnCreate: boolean): string {
-  if (isSerieDateConflict(e)) return 'Já existe uma ocorrência desta série nesse dia.';
+  if (isSerieDateConflict(e)) return i18n.t('tasksForm:formDialog.toast.dateConflict');
   const msg =
     e && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : '';
   const conhecida =
@@ -134,6 +137,7 @@ export function TarefaFormDialog({
   // Phones (inside the phone shell, the gate the dialog primitive itself uses): grouped
   // rows, picker sheets and native date inputs instead of selects and popovers.
   const { isPhone } = usePhoneLayout();
+  const { t } = useTranslation('tasksForm');
   const [saving, setSaving] = useState(false);
   const [imageUploading, setImageUploading] = useState(false);
   const [tagIds, setTagIds] = useState<number[]>([]);
@@ -252,7 +256,7 @@ export function TarefaFormDialog({
         if (values.repetir === 'never' || !regra) {
           // "Não repete": "Esta e as próximas" by construction, so no dialog
           await aplicarEdicaoSerie(editing.id!, payload, tagIds, regraAtual, true);
-          toast.success('Tarefa atualizada!');
+          toast.success(t('formDialog.toast.updated'));
         } else {
           setEscopo({ payload, regra, regraAlterada: !regraIgual(regra, regraAtual) });
           return; // the dialog's handlers finish the save; `finally` clears saving
@@ -260,27 +264,31 @@ export function TarefaFormDialog({
       } else if (editing && regra) {
         // standalone task promoted to a series: no scope dialog
         await criarTarefaSerie(regra, payload, tagIds, [], editing.id!);
-        toast.success('Tarefa atualizada!');
+        toast.success(t('formDialog.toast.updated'));
       } else if (editing) {
         await updateTarefa(editing.id!, payload);
         await setTarefaTags(editing.id!, tagIds);
-        toast.success('Tarefa atualizada!');
+        toast.success(t('formDialog.toast.updated'));
       } else if (onCreate) {
         await onCreate(payload, tagIds);
       } else if (regra) {
         await criarTarefaSerie(regra, payload, tagIds, []);
         captureEvent('task_created', { status: values.status, recorrente: true });
-        toast.success('Tarefa criada!');
+        toast.success(t('formDialog.toast.created'));
       } else {
         await addTarefa(payload, tagIds);
         captureEvent('task_created', { status: values.status });
-        toast.success('Tarefa criada!');
+        toast.success(t('formDialog.toast.created'));
       }
       onSaved();
       onClose();
     } catch (e) {
       toast.error(
-        mensagemErro(e, editing ? 'Erro ao atualizar tarefa' : 'Erro ao criar tarefa', !!onCreate),
+        mensagemErro(
+          e,
+          editing ? t('formDialog.toast.updateError') : t('formDialog.toast.createError'),
+          !!onCreate,
+        ),
       );
     } finally {
       setSaving(false);
@@ -292,12 +300,12 @@ export function TarefaFormDialog({
     setSaving(true);
     try {
       await run();
-      toast.success('Tarefa atualizada!');
+      toast.success(t('formDialog.toast.updated'));
       setEscopo(null);
       onSaved();
       onClose();
     } catch (e) {
-      toast.error(mensagemErro(e, 'Erro ao atualizar tarefa', false));
+      toast.error(mensagemErro(e, t('formDialog.toast.updateError'), false));
     } finally {
       setSaving(false);
     }
@@ -333,37 +341,37 @@ export function TarefaFormDialog({
   );
 
   const submitLabel = imageUploading
-    ? 'Enviando imagem...'
+    ? t('formDialog.uploadingImage')
     : saving
-      ? 'Salvando...'
+      ? t('formDialog.saving')
       : editing
-        ? 'Salvar'
-        : 'Criar tarefa';
+        ? t('actions.save')
+        : t('formDialog.create');
 
   const errors = form.formState.errors;
   const phoneFields = (
     <div className="phone-kit phone-tar-form">
-      <GroupedList aria-label="Tarefa">
+      <GroupedList aria-label={t('formDialog.task')}>
         <FormRow
-          label="Título"
+          label={t('formDialog.fieldTitle')}
           layout="stacked"
           error={errors.titulo?.message}
-          input={{ placeholder: 'O que precisa ser feito?', ...form.register('titulo') }}
+          input={{ placeholder: t('formDialog.titlePlaceholder'), ...form.register('titulo') }}
         />
       </GroupedList>
-      <GroupedList header="Descrição">
+      <GroupedList header={t('formDialog.fieldDescription')}>
         <li className="phone-cell phone-form-row">
           <div className="phone-tar-form__editor">{descriptionField}</div>
         </li>
       </GroupedList>
-      <GroupedList aria-label="Detalhes">
+      <GroupedList aria-label={t('formDialog.details')}>
         <FormField
           control={form.control}
           name="responsavel_id"
           render={({ field }) => (
             <PickerCell<string>
-              label="Responsável"
-              emptyOption={{ label: 'Sem responsável' }}
+              label={t('formDialog.fieldAssignee')}
+              emptyOption={{ label: t('formDialog.noAssignee') }}
               searchable={sortedMembros.length > 8}
               options={sortedMembros
                 .filter((m) => m.id != null)
@@ -378,8 +386,8 @@ export function TarefaFormDialog({
           name="cliente_id"
           render={({ field }) => (
             <PickerCell<string>
-              label="Cliente"
-              emptyOption={{ label: 'Sem cliente' }}
+              label={t('formDialog.fieldClient')}
+              emptyOption={{ label: t('formDialog.noClient') }}
               searchable={activeClientes.length > 8}
               disabled={lockCliente}
               options={activeClientes
@@ -395,10 +403,10 @@ export function TarefaFormDialog({
           name="data_limite"
           render={({ field }) => (
             <PhoneDateRow
-              label="Prazo"
+              label={t('formDialog.fieldDue')}
               value={field.value}
               onChange={field.onChange}
-              emptyLabel="Sem prazo"
+              emptyLabel={t('formDialog.noDue')}
               error={errors.data_limite?.message}
             />
           )}
@@ -409,7 +417,7 @@ export function TarefaFormDialog({
             name="status"
             render={({ field }) => (
               <PickerCell<TarefaFormValues['status']>
-                label="Status"
+                label={t('formDialog.fieldStatus')}
                 options={STATUS_ORDER.map((st) => ({ value: st, label: STATUS_LABELS[st] }))}
                 value={field.value}
                 onChange={(v) => {
@@ -426,10 +434,10 @@ export function TarefaFormDialog({
           form={form}
           landing={landing}
           disabled={repetirBloqueado}
-          disabledHint={repetirBloqueado ? 'Reabra a tarefa para torná-la recorrente.' : undefined}
+          disabledHint={repetirBloqueado ? t('formDialog.reopenToRepeat') : undefined}
         />
       )}
-      <GroupedList aria-label="Tags">
+      <GroupedList aria-label={t('formDialog.tags')}>
         <TagPicker
           layout="phone"
           tags={tags}
@@ -445,7 +453,7 @@ export function TarefaFormDialog({
           onClick={onClose}
           disabled={saving || imageUploading}
         >
-          Cancelar
+          {t('actions.cancel')}
         </button>
         <button type="submit" className="phone-tar-ink-btn" disabled={saving || imageUploading}>
           {submitLabel}
@@ -460,14 +468,18 @@ export function TarefaFormDialog({
         <DialogContent className="sm:max-w-[640px]">
           <DialogHeader>
             <DialogTitle>
-              {editing ? 'Editar tarefa' : onCreate ? 'Converter em tarefa' : 'Nova tarefa'}
+              {editing
+                ? t('formDialog.titleEdit')
+                : onCreate
+                  ? t('formDialog.titleConvert')
+                  : t('formDialog.titleNew')}
             </DialogTitle>
             <DialogDescription className="sr-only">
               {editing
-                ? 'Edite os campos da tarefa'
+                ? t('formDialog.descEdit')
                 : onCreate
-                  ? 'Preencha os campos para converter a solicitação em tarefa'
-                  : 'Preencha os campos da nova tarefa'}
+                  ? t('formDialog.descConvert')
+                  : t('formDialog.descNew')}
             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
@@ -481,9 +493,13 @@ export function TarefaFormDialog({
                     name="titulo"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Título</FormLabel>
+                        <FormLabel>{t('formDialog.fieldTitle')}</FormLabel>
                         <FormControl>
-                          <Input placeholder="O que precisa ser feito?" autoFocus {...field} />
+                          <Input
+                            placeholder={t('formDialog.titlePlaceholder')}
+                            autoFocus
+                            {...field}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -494,7 +510,7 @@ export function TarefaFormDialog({
                     name="descricao"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Descrição</FormLabel>
+                        <FormLabel>{t('formDialog.fieldDescription')}</FormLabel>
                         <TarefaDescriptionEditor
                           key={editorRevision}
                           initialContent={editorInitialContent}
@@ -514,7 +530,7 @@ export function TarefaFormDialog({
                       name="responsavel_id"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Responsável</FormLabel>
+                          <FormLabel>{t('formDialog.fieldAssignee')}</FormLabel>
                           <Select value={field.value} onValueChange={field.onChange}>
                             <FormControl>
                               <SelectTrigger>
@@ -522,7 +538,7 @@ export function TarefaFormDialog({
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="none">Sem responsável</SelectItem>
+                              <SelectItem value="none">{t('formDialog.noAssignee')}</SelectItem>
                               {sortedMembros
                                 .filter((m) => m.id != null)
                                 .map((m) => (
@@ -541,7 +557,7 @@ export function TarefaFormDialog({
                       name="cliente_id"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Cliente</FormLabel>
+                          <FormLabel>{t('formDialog.fieldClient')}</FormLabel>
                           <Select
                             value={field.value}
                             onValueChange={field.onChange}
@@ -553,7 +569,7 @@ export function TarefaFormDialog({
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="none">Sem cliente</SelectItem>
+                              <SelectItem value="none">{t('formDialog.noClient')}</SelectItem>
                               {activeClientes
                                 .filter((c) => c.id != null)
                                 .map((c) => (
@@ -574,12 +590,12 @@ export function TarefaFormDialog({
                       name="data_limite"
                       render={({ field }) => (
                         <FormItem className="flex flex-col">
-                          <FormLabel>Prazo</FormLabel>
+                          <FormLabel>{t('formDialog.fieldDue')}</FormLabel>
                           <FormControl>
                             <DatePicker
                               value={field.value}
                               onChange={field.onChange}
-                              placeholder="Sem prazo"
+                              placeholder={t('formDialog.noDue')}
                             />
                           </FormControl>
                           <FormMessage />
@@ -592,7 +608,7 @@ export function TarefaFormDialog({
                         name="status"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="block">Status</FormLabel>
+                            <FormLabel className="block">{t('formDialog.fieldStatus')}</FormLabel>
                             <Select value={field.value} onValueChange={field.onChange}>
                               <FormControl>
                                 <SelectTrigger>
@@ -618,13 +634,11 @@ export function TarefaFormDialog({
                       form={form}
                       landing={landing}
                       disabled={repetirBloqueado}
-                      disabledHint={
-                        repetirBloqueado ? 'Reabra a tarefa para torná-la recorrente.' : undefined
-                      }
+                      disabledHint={repetirBloqueado ? t('formDialog.reopenToRepeat') : undefined}
                     />
                   )}
                   <div>
-                    <FormLabel className="mb-2 block">Tags</FormLabel>
+                    <FormLabel className="mb-2 block">{t('formDialog.tags')}</FormLabel>
                     <TagPicker
                       tags={tags}
                       selectedIds={tagIds}
@@ -639,7 +653,7 @@ export function TarefaFormDialog({
                       onClick={onClose}
                       disabled={saving || imageUploading}
                     >
-                      Cancelar
+                      {t('actions.cancel')}
                     </Button>
                     <Button type="submit" disabled={saving || imageUploading}>
                       {submitLabel}
