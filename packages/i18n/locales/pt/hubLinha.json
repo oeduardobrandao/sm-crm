@@ -31,10 +31,21 @@
   "salvando": "Enviando...",
   "equipe": "Equipe",
   "voce": "Você",
-  "comentariosNaLinha": {
-    "um": "{{n}} comentário na linha",
-    "varios": "{{n}} comentários na linha"
+  "item": {
+    "aprovar": "Aprovar",
+    "pedirAjuste": "Pedir ajuste",
+    "desfazer": "Desfazer",
+    "aprovado": "Aprovado",
+    "ajustePedido": "Ajuste pedido",
+    "ajusteRotulo": "O que precisa mudar?",
+    "ajusteObrigatorio": "Conte o que precisa mudar neste post.",
+    "ajusteComComentario": "Você já comentou este post. Pode enviar sem texto."
   },
+  "progresso": "{{a}} de {{total}} aprovados",
+  "progressoAjustes": " · {{n}} com ajuste",
+  "aprovarPendentesAviso": "Os posts ainda sem resposta também serão aprovados.",
+  "enviarAjustesLinha": "Enviar ajustes",
+  "erroItensComAjustes": "Um post tem pedido de ajuste. Atualize a página.",
   "pedirAjustes": "Pedir ajustes",
   "ajustesRotulo": "O que precisa mudar",
   "ajustesObrigatorio": "Conte o que precisa mudar.",

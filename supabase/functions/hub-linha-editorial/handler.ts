@@ -6,15 +6,18 @@
  *               3 months ahead, with items, client-visible columns and the current
  *               rodada's respostas.
  * POST {token, linha_id, acao, item_id?, comentario?}
- *               acao comentario  -> record_linha_comment
- *               acao aprovado|ajustes -> record_linha_decision, then
- *               create_linha_notification (non-fatal) and the audit log.
+ *               acao comentario  -> record_linha_comment (item_id optional)
+ *               acao aprovado|ajustes|pendente WITH item_id -> record_linha_item_decision
+ *               (one row's decision; returns the linha's row counts, notifies nobody,
+ *               not audited)
+ *               acao aprovado|ajustes WITHOUT item_id -> record_linha_decision (the
+ *               finish), then create_linha_notification (non-fatal) and the audit log.
  *
  * conta_id and cliente_id always come from the token, never from the body; the RPCs
  * scope the linha by both before anything else, so a guessed linha_id of another
  * client is a 404.
  *
- * Spec: docs/superpowers/specs/2026-10-26-linha-editorial-design.md (sections 4, 5.2, 8.1)
+ * Spec: docs/superpowers/specs/2026-10-26-linha-editorial-design.md (sections 4, 5.2, 8.1, 13.4)
  */
 import { createJsonResponder } from "../_shared/http.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
@@ -53,6 +56,8 @@ export interface HubLinhaItem {
   titulo: string;
   direcao: string;
   valores: Record<string, unknown>;
+  /** The client's decision on this row; null is pending (spec 13.2). */
+  aprovacao: "aprovado" | "ajustes" | null;
 }
 
 export interface HubLinhaColuna {
@@ -89,9 +94,10 @@ export interface HubLinha {
 const FEATURE = "feature_linha_editorial";
 const READ_MAX = 300;
 const READ_WINDOW = 300;
-// Writes debit ONLY this pool, never the shared hub-read (spec 8.1): a client
-// commenting on 20 rows must not hit the limit.
-const WRITE_MAX = 60;
+// Writes debit ONLY this pool, never the shared hub-read (spec 8.1). Sized for
+// per-row decisions (spec 13.4): up to 100 rows approved one by one plus comments
+// must not hit the limit.
+const WRITE_MAX = 300;
 const WRITE_WINDOW = 3600;
 const MAX_COMENTARIO = 2000;
 const WINDOW_MONTHS = 3;
@@ -104,15 +110,24 @@ const MSG_BAD_TOKEN = "Link inválido.";
 const FEATURE_DISABLED_BODY = { error: "feature_disabled", feature: FEATURE };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const ACOES = ["comentario", "aprovado", "ajustes"] as const;
-type Acao = typeof ACOES[number];
+/** What the POST body accepts. `pendente` (undo a row's decision) needs an item_id. */
+const ACOES_ENVIO = ["comentario", "aprovado", "ajustes", "pendente"] as const;
+type AcaoEnvio = typeof ACOES_ENVIO[number];
+/** Resposta rows (and the finish) keep `comentario | aprovado | ajustes`. */
+type AcaoDecisao = Exclude<AcaoEnvio, "comentario" | "pendente">;
 
 /** RPC raise codes (P0001) to HTTP status. Matched as a substring: context may wrap them. */
 const RPC_ERROR_STATUS: Array<[string, number]> = [
   ["nao_encontrada", 404],
   ["status_invalido", 409],
+  ["itens_com_ajustes", 409],
   ["comentario_obrigatorio", 422],
 ];
+/**
+ * Codes echoed in the body as `code` so the Hub can show a specific message (spec 13.5:
+ * a stale tab finishing "aprovado" while a row has an ajuste). The rest stay generic.
+ */
+const EXPOSED_CODES = new Set(["itens_com_ajustes"]);
 
 const isUuid = (v: unknown): v is string => typeof v === "string" && UUID_RE.test(v);
 
@@ -141,25 +156,25 @@ function monthStart(nowIso: string, offset: number): string {
 }
 
 type ParsedPost =
-  | { ok: true; linhaId: string; acao: Acao; itemId: string | null; comentario: string | null }
+  | { ok: true; linhaId: string; acao: AcaoEnvio; itemId: string | null; comentario: string | null }
   | { ok: false; status: number; message: string };
 
 /** Shape validation; runs before any DB round-trip so a bad payload costs nothing. */
 function parsePost(body: Record<string, unknown>): ParsedPost {
   const { linha_id, acao, item_id, comentario } = body;
   if (!isUuid(linha_id)) return { ok: false, status: 400, message: MSG_INVALID };
-  if (typeof acao !== "string" || !(ACOES as readonly string[]).includes(acao)) {
+  if (typeof acao !== "string" || !(ACOES_ENVIO as readonly string[]).includes(acao)) {
     return { ok: false, status: 400, message: MSG_INVALID };
   }
-  const parsedAcao = acao as Acao;
+  const parsedAcao = acao as AcaoEnvio;
 
   let itemId: string | null = null;
   if (item_id !== undefined && item_id !== null) {
     if (!isUuid(item_id)) return { ok: false, status: 400, message: MSG_INVALID };
-    // A decision is always about the whole linha (its row has item_id null).
-    if (parsedAcao !== "comentario") return { ok: false, status: 400, message: MSG_INVALID };
     itemId = item_id;
   }
+  // Undo only exists per row: the linha-level finish has no "pendente".
+  if (parsedAcao === "pendente" && itemId === null) return { ok: false, status: 400, message: MSG_INVALID };
 
   let texto: string | null = null;
   if (comentario !== undefined && comentario !== null) {
@@ -192,6 +207,7 @@ interface ItemRow {
   titulo: string;
   direcao: string;
   valores: Record<string, unknown> | null;
+  aprovacao?: string | null;
 }
 interface ColunaRow {
   id: string;
@@ -284,6 +300,7 @@ export function createHubLinhaEditorialHandler(deps: HubLinhaEditorialHandlerDep
       const mapped = RPC_ERROR_STATUS.find(([code]) => message.includes(code));
       const code = (error as { code?: unknown } | null)?.code;
       console.error(`[hub-linha-editorial] ${fn} failed:`, mapped ? mapped[0] : String(code ?? "unknown"));
+      if (mapped && EXPOSED_CODES.has(mapped[0])) return json({ error: MSG_GENERIC, code: mapped[0] }, mapped[1]);
       return fail(mapped ? mapped[1] : 500, MSG_GENERIC);
     };
 
@@ -302,12 +319,37 @@ export function createHubLinhaEditorialHandler(deps: HubLinhaEditorialHandlerDep
         return json({ ok: true });
       }
 
+      if (p.itemId !== null) {
+        // One row's decision (spec 13.4). Notifies nobody and is not audited: only the
+        // finish is. An ajuste's comment is written by the RPC as a row comentario.
+        const { data, error } = await db.rpc("record_linha_item_decision", {
+          p_linha_id: p.linhaId,
+          p_item_id: p.itemId,
+          p_conta_id: contaId,
+          p_cliente_id: clienteId,
+          p_token: token,
+          p_acao: p.acao,
+          p_comentario: p.comentario,
+        });
+        if (error) return rpcFailure("record_linha_item_decision", error);
+        const counts = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
+        const num = (v: unknown) => (typeof v === "number" ? v : 0);
+        return json({
+          ok: true,
+          aprovados: num(counts.aprovados),
+          ajustes: num(counts.ajustes),
+          pendentes: num(counts.pendentes),
+        });
+      }
+
+      // parsePost refuses `pendente` without an item_id, so only the finish is left.
+      const acao = p.acao as AcaoDecisao;
       const { data, error } = await db.rpc("record_linha_decision", {
         p_linha_id: p.linhaId,
         p_conta_id: contaId,
         p_cliente_id: clienteId,
         p_token: token,
-        p_acao: p.acao,
+        p_acao: acao,
         p_comentario: p.comentario,
       });
       if (error) return rpcFailure("record_linha_decision", error);
@@ -319,7 +361,7 @@ export function createHubLinhaEditorialHandler(deps: HubLinhaEditorialHandlerDep
       try {
         const { error: notifErr } = await db.rpc("create_linha_notification", {
           p_linha_id: p.linhaId,
-          p_acao: p.acao,
+          p_acao: acao,
         });
         if (notifErr) {
           console.error("[hub-linha-editorial] notification failed:", rpcErrorMessage(notifErr) || "unknown");
@@ -331,12 +373,12 @@ export function createHubLinhaEditorialHandler(deps: HubLinhaEditorialHandlerDep
       try {
         await deps.auditLog({
           conta_id: contaId,
-          action: `hub_linha_editorial_${p.acao}`,
+          action: `hub_linha_editorial_${acao}`,
           resource_type: "linha_editorial",
           resource_id: p.linhaId,
           metadata: {
             cliente_id: clienteId,
-            acao: p.acao,
+            acao,
             status: status ?? null,
             comentarios: typeof result.comentarios === "number" ? result.comentarios : null,
           },
@@ -376,7 +418,7 @@ async function loadLinhas(db: DbClient, contaId: string, clienteId: number, nowI
       .eq("visivel_cliente", true)
       .order("ordem", { ascending: true }),
     db.from("linha_editorial_itens")
-      .select("id, linha_id, data, tipo, titulo, direcao, valores, ordem")
+      .select("id, linha_id, data, tipo, titulo, direcao, valores, ordem, aprovacao")
       .eq("conta_id", contaId)
       .in("linha_id", ids)
       .order("data", { ascending: true, nullsFirst: false })
@@ -408,7 +450,8 @@ async function loadLinhas(db: DbClient, contaId: string, clienteId: number, nowI
       if (visible.has(k)) valores[k] = v;
     }
     const list = itensByLinha.get(i.linha_id) ?? [];
-    list.push({ id: i.id, data: i.data, tipo: i.tipo, titulo: i.titulo, direcao: i.direcao, valores });
+    const aprovacao = i.aprovacao === "aprovado" || i.aprovacao === "ajustes" ? i.aprovacao : null;
+    list.push({ id: i.id, data: i.data, tipo: i.tipo, titulo: i.titulo, direcao: i.direcao, valores, aprovacao });
     itensByLinha.set(i.linha_id, list);
   }
 

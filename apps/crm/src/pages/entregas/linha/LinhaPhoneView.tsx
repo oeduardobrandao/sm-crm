@@ -7,7 +7,9 @@ import { QueryErrorCard } from '@/components/QueryErrorCard';
 import type { Cliente } from '@/store';
 import type { LinhaEditorial, LinhaItem, LinhaResposta } from '@/store/linhaEditorial';
 import { FormatoPill } from './FormatoPill';
+import { LinhaAprovacaoChip } from './LinhaAprovacaoChip';
 import { LinhaStatusBadge } from './LinhaStatusBadge';
+import { contagemLinha } from './linhaLogic';
 import { mesTitulo, shiftMes } from './mesNav';
 
 export const NOTA_EDITAR_NO_COMPUTADOR = 'Edite a linha no computador.';
@@ -136,9 +138,7 @@ export function LinhaPhoneView({
                     />
                     <span className="linha-phone__cliente-nome">{c.nome}</span>
                     {l && !linhasLoading && (
-                      <span className="linha-phone__cliente-meta">
-                        {plural(l.itens_total ?? 0, 'post', 'posts')}
-                      </span>
+                      <span className="linha-phone__cliente-meta">{contagemLinha(l)}</span>
                     )}
                   </button>
                 </li>
@@ -191,6 +191,7 @@ export function LinhaPhoneView({
                               : 'Sem data'}
                           </span>
                           <FormatoPill tipo={item.tipo} />
+                          <LinhaAprovacaoChip item={item} rodada={linha.rodada} />
                           {n > 0 && (
                             <span
                               className="linha-bubble linha-phone__bubble"

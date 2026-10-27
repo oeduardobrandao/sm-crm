@@ -544,7 +544,12 @@ export interface ConviteResponse {
 // ── Linha editorial (hub-linha-editorial) ───────────────────────────────────
 
 export type HubLinhaStatus = 'enviada' | 'ajustes' | 'aprovada';
+/** The `acao` of a stored resposta. */
 export type HubLinhaAcao = 'comentario' | 'aprovado' | 'ajustes';
+/** The `acao` a POST may carry: `pendente` undoes a row decision (needs `item_id`). */
+export type HubLinhaAcaoEnvio = HubLinhaAcao | 'pendente';
+/** The client's decision on one row; null = pending. */
+export type HubLinhaItemAprovacao = 'aprovado' | 'ajustes' | null;
 export type HubLinhaFormato = 'feed' | 'carrossel' | 'reels' | 'stories';
 
 export interface HubLinhaItem {
@@ -556,6 +561,7 @@ export interface HubLinhaItem {
   direcao: string;
   /** `{ [coluna_id]: value }`, only keys of the visible columns. */
   valores: Record<string, unknown>;
+  aprovacao: HubLinhaItemAprovacao;
 }
 
 export interface HubLinhaColuna {
@@ -597,7 +603,7 @@ export interface HubLinhasResponse {
 
 export interface HubLinhaAcaoBody {
   linha_id: string;
-  acao: HubLinhaAcao;
+  acao: HubLinhaAcaoEnvio;
   item_id?: string;
   comentario?: string;
 }

@@ -191,6 +191,31 @@ describe('LinhaPhoneView', () => {
     expect(screen.queryByRole('button', { name: 'Criar linha' })).toBeNull();
   });
 
+  it('cards show the row state next to the format once the linha was sent', async () => {
+    m.listLinhasDoMes.mockResolvedValue([linha({ status: 'ajustes', rodada: 1 })]);
+    m.listItens.mockResolvedValue([
+      item(1, { aprovacao: 'aprovado' }),
+      item(2, { aprovacao: 'ajustes' }),
+      item(3),
+    ]);
+    renderView();
+    const cards = await screen.findAllByTestId('linha-phone-card');
+    expect(within(cards[0]).getByText('Aprovado')).toBeInTheDocument();
+    // Read only on the phone: no thread to open, so the chip is not a button.
+    expect(within(cards[1]).getByText('Ajuste pedido')).toBeInTheDocument();
+    expect(within(cards[1]).queryByRole('button', { name: 'Ajuste pedido' })).toBeNull();
+    expect(within(cards[2]).getByText('Pendente')).toBeInTheDocument();
+  });
+
+  it('cards show no state before the first send', async () => {
+    m.listLinhasDoMes.mockResolvedValue([linha({ rodada: 0 })]);
+    m.listItens.mockResolvedValue([item(1, { aprovacao: 'aprovado' }), item(2)]);
+    renderView();
+    await screen.findAllByTestId('linha-phone-card');
+    expect(screen.queryByText('Aprovado')).toBeNull();
+    expect(screen.queryByText('Pendente')).toBeNull();
+  });
+
   it('renders directly from props', () => {
     render(
       <LinhaPhoneView

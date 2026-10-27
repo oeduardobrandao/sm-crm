@@ -6,6 +6,11 @@
 -- need status enviada and the flag; create_linha_notification targets owner/admin plus the
 -- sender while still a member, deduped; the two new types reach the type checks and the
 -- e-mail digest. All three are service_role only.
+-- Per-row approval (20261031000005_linha_item_aprovacao.sql, spec §13):
+-- record_linha_item_decision has the same scope, needs enviada, requires a client comment in
+-- the rodada for an ajuste (writing it as a plain comentario on the row) and is service_role
+-- only; record_linha_decision 'aprovado' refuses while a row has an ajuste and otherwise
+-- approves the pending rows; the notification metadata carries itens_ajustes.
 
 begin;
 select et_grant_hosted_parity(array['linhas_editoriais','linha_editorial_colunas','linha_editorial_itens','linha_editorial_respostas']);
@@ -67,12 +72,14 @@ do $$
 declare
   v_a uuid; v_b uuid; u_o uuid; u_adm uuid; u_ag uuid; u_ag2 uuid; u_b uuid;
   v_c1 bigint; v_c2 bigint;
-  v_l1 uuid; v_l2 uuid; v_l3 uuid; v_l4 uuid; v_l5 uuid; v_l6 uuid; v_l7 uuid;
+  v_l1 uuid; v_l2 uuid; v_l3 uuid; v_l4 uuid; v_l5 uuid; v_l6 uuid; v_l7 uuid; v_l8 uuid;
+  v_i1 uuid; v_i2 uuid; v_i3 uuid; v_j1 uuid; v_j2 uuid; v_wf bigint; v_post bigint;
   v_item uuid; v_item_outro uuid; v_resp uuid;
   v_res jsonb; v_e text; v_n bigint; v_users uuid[]; v_meta jsonb; v_link text;
   v_ids uuid[]; v_claimed uuid[];
   v_dec constant text := 'select public.record_linha_decision(%L, %L, %s, ''tok-1'', %L, %L)';
   v_com constant text := 'select public.record_linha_comment(%L, %L, %L, %s, ''tok-1'', %L)';
+  v_idec constant text := 'select public.record_linha_item_decision(%L, %L, %L, %s, ''tok-1'', %L, %L)';
 begin
   -- ---------- fixture ----------
   v_a := et_make_workspace('max');
@@ -189,7 +196,7 @@ begin
     'owner (also the sender) once and the admin, never the agent: ' || coalesce(v_users::text, 'null');
   assert v_link = format('/entregas?view=linha&clientes=%s&mes=2026-11', v_c1), 'link: ' || coalesce(v_link, 'null');
   assert v_meta = jsonb_build_object('linha_id', v_l1, 'cliente_id', v_c1, 'cliente_nome', 'Clínica Sol',
-                                     'periodo', '2026-11-01', 'comentarios', 1),
+                                     'periodo', '2026-11-01', 'comentarios', 1, 'itens_ajustes', 0),
     'metadata: ' || coalesce(v_meta::text, 'null');
   assert jsonb_typeof(v_meta->'comentarios') = 'number', 'comentarios is a number';
   -- an agent sender is appended
@@ -222,6 +229,8 @@ begin
   assert v_e = 'P0001:feature_disabled:feature_linha_editorial', 'flag off: decision: ' || coalesce(v_e, 'null');
   v_e := pg_temp.erro_sr(format(v_com, v_l6, null, v_a, v_c1, 'oi'));
   assert v_e = 'P0001:feature_disabled:feature_linha_editorial', 'flag off: comment: ' || coalesce(v_e, 'null');
+  v_e := pg_temp.erro_sr(format(v_idec, v_l6, (select id from linha_editorial_itens where linha_id = v_l6), v_a, v_c1, 'aprovado', null));
+  assert v_e = 'P0001:feature_disabled:feature_linha_editorial', 'flag off: row decision: ' || coalesce(v_e, 'null');
   v_e := pg_temp.erro_sr(format(v_dec, gen_random_uuid(), v_a, v_c1, 'aprovado', null));
   assert v_e = 'P0001:feature_disabled:feature_linha_editorial', 'flag checked before the lookup: ' || coalesce(v_e, 'null');
   assert (select status from linhas_editoriais where id = v_l6) = 'enviada', 'flag off: nothing decided';
@@ -232,6 +241,9 @@ begin
   assert not has_function_privilege('authenticated', 'public.record_linha_decision(uuid, uuid, bigint, text, text, text)', 'EXECUTE'), 'authenticated: decision';
   assert not has_function_privilege('authenticated', 'public.record_linha_comment(uuid, uuid, uuid, bigint, text, text)', 'EXECUTE'), 'authenticated: comment';
   assert not has_function_privilege('authenticated', 'public.create_linha_notification(uuid, text)', 'EXECUTE'), 'authenticated: notification';
+  assert not has_function_privilege('authenticated', 'public.record_linha_item_decision(uuid, uuid, uuid, bigint, text, text, text)', 'EXECUTE'), 'authenticated: row decision';
+  assert not has_function_privilege('anon', 'public.record_linha_item_decision(uuid, uuid, uuid, bigint, text, text, text)', 'EXECUTE'), 'anon: row decision';
+  assert has_function_privilege('service_role', 'public.record_linha_item_decision(uuid, uuid, uuid, bigint, text, text, text)', 'EXECUTE'), 'service_role: row decision';
   assert not has_function_privilege('anon', 'public.record_linha_decision(uuid, uuid, bigint, text, text, text)', 'EXECUTE'), 'anon: decision';
   assert not has_function_privilege('anon', 'public.record_linha_comment(uuid, uuid, uuid, bigint, text, text)', 'EXECUTE'), 'anon: comment';
   assert not has_function_privilege('anon', 'public.create_linha_notification(uuid, text)', 'EXECUTE'), 'anon: notification';
@@ -240,6 +252,8 @@ begin
   assert has_function_privilege('service_role', 'public.create_linha_notification(uuid, text)', 'EXECUTE'), 'service_role: notification';
   v_e := pg_temp.erro_auth(u_o, format(v_dec, v_l6, v_a, v_c1, 'aprovado', null));
   assert v_e like '42501:%', 'an agency user cannot decide for the client: ' || coalesce(v_e, 'null');
+  v_e := pg_temp.erro_auth(u_o, format(v_idec, v_l6, (select id from linha_editorial_itens where linha_id = v_l6), v_a, v_c1, 'aprovado', null));
+  assert v_e like '42501:%', 'an agency user cannot decide a row for the client: ' || coalesce(v_e, 'null');
   raise notice 'PASS authenticated_cannot_execute_hub_rpcs';
 
   -- ---------- claim_notification_emails_includes_new_types ----------
@@ -254,6 +268,145 @@ begin
   insert into notification_email_prefs (user_id, type, enabled) values (u_o, 'linha_editorial_aprovada', false), (u_o, 'linha_editorial_ajustes', true);
   insert into notification_inapp_prefs (user_id, type, enabled) values (u_o, 'linha_editorial_aprovada', false), (u_o, 'linha_editorial_ajustes', true);
   raise notice 'PASS claim_notification_emails_includes_new_types';
+  -- ---------- item_decision_scoped_to_token_and_linha ----------
+  v_l7 := pg_temp.linha(v_a, v_c1, '2027-05-01', 'enviada', u_o);
+  select id into v_i1 from linha_editorial_itens where linha_id = v_l7;
+  insert into linha_editorial_itens (linha_id, conta_id, data, tipo, titulo, ordem)
+    values (v_l7, v_a, '2027-05-04', 'reels', 'Item 2', 1) returning id into v_i2;
+  insert into linha_editorial_itens (linha_id, conta_id, data, tipo, titulo, ordem)
+    values (v_l7, v_a, '2027-05-05', 'stories', 'Item 3', 2) returning id into v_i3;
+  v_e := pg_temp.erro_sr(format(v_idec, v_l7, v_i1, v_a, v_c2, 'aprovado', null));
+  assert v_e = 'P0001:nao_encontrada', 'row decision with another client''s token: ' || coalesce(v_e, 'null');
+  v_e := pg_temp.erro_sr(format(v_idec, v_l7, v_i1, v_b, v_c1, 'aprovado', null));
+  assert v_e = 'P0001:nao_encontrada', 'row decision with another conta''s token: ' || coalesce(v_e, 'null');
+  v_e := pg_temp.erro_sr(format(v_idec, v_l7, v_item_outro, v_a, v_c1, 'aprovado', null));
+  assert v_e = 'P0001:nao_encontrada', 'row decision on an item of another linha: ' || coalesce(v_e, 'null');
+  v_e := pg_temp.erro_sr(format(v_idec, v_l7, null, v_a, v_c1, 'aprovado', null));
+  assert v_e = 'P0001:nao_encontrada', 'row decision without an item: ' || coalesce(v_e, 'null');
+  v_e := pg_temp.erro_sr(format(v_idec, v_l7, v_i1, v_a, v_c1, 'comentario', 'x'));
+  assert v_e = 'P0001:acao_invalida', 'row decision with acao comentario: ' || coalesce(v_e, 'null');
+  v_e := pg_temp.erro_sr(format(v_idec, v_l7, v_i1, v_a, v_c1, null, null));
+  assert v_e = 'P0001:acao_invalida', 'row decision without an acao: ' || coalesce(v_e, 'null');
+  assert not exists (select 1 from linha_editorial_itens
+                      where linha_id = v_l7 and (aprovacao is not null or aprovacao_at is not null)),
+    'no row decided';
+  raise notice 'PASS item_decision_scoped_to_token_and_linha';
+
+  -- ---------- item_decision_requires_enviada ----------
+  v_e := pg_temp.erro_sr(format(v_idec, v_l2, (select id from linha_editorial_itens where linha_id = v_l2), v_a, v_c1, 'aprovado', null));
+  assert v_e = 'P0001:status_invalido', 'row decision on a rascunho: ' || coalesce(v_e, 'null');
+  v_e := pg_temp.erro_sr(format(v_idec, v_l4, v_item_outro, v_a, v_c1, 'aprovado', null));
+  assert v_e = 'P0001:status_invalido', 'row decision on an aprovada: ' || coalesce(v_e, 'null');
+  v_e := pg_temp.erro_sr(format(v_idec, v_l1, v_item, v_a, v_c1, 'pendente', null));
+  assert v_e = 'P0001:status_invalido', 'row undo on a linha in ajustes: ' || coalesce(v_e, 'null');
+  raise notice 'PASS item_decision_requires_enviada';
+
+  -- ---------- item_decision_aprovado_and_undo ----------
+  v_res := pg_temp.val_sr(format(v_idec, v_l7, v_i1, v_a, v_c1, 'aprovado', null))::jsonb;
+  assert v_res = '{"aprovados": 1, "ajustes": 0, "pendentes": 2}'::jsonb, 'aprovado counts: ' || v_res;
+  assert (select aprovacao = 'aprovado' and aprovacao_at = now() from linha_editorial_itens where id = v_i1), 'row approved';
+  assert not exists (select 1 from linha_editorial_respostas where linha_id = v_l7), 'a row approval writes no resposta';
+  assert (select status = 'enviada' and decidida_at is null from linhas_editoriais where id = v_l7), 'the linha stays enviada';
+  assert not exists (select 1 from notifications where metadata->>'linha_id' = v_l7::text), 'a row decision notifies nobody';
+  v_res := pg_temp.val_sr(format(v_idec, v_l7, v_i1, v_a, v_c1, 'pendente', null))::jsonb;
+  assert v_res = '{"aprovados": 0, "ajustes": 0, "pendentes": 3}'::jsonb, 'undo counts: ' || v_res;
+  assert (select aprovacao is null and aprovacao_at is null from linha_editorial_itens where id = v_i1), 'undo clears both columns';
+  -- a converted row can still be decided (the decision is about the plan, not the post)
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status) values (u_o, v_a, v_c1, 'WF', 'ativo') returning id into v_wf;
+  insert into workflow_posts (workflow_id, conta_id, titulo, ordem, status) values (v_wf, v_a, 'Item 3', 0, 'rascunho') returning id into v_post;
+  update linha_editorial_itens set post_id = v_post, convertido_at = now(), convertido_por = u_o where id = v_i3;
+  v_e := pg_temp.erro_sr(format(v_idec, v_l7, v_i3, v_a, v_c1, 'aprovado', null));
+  assert v_e is null and (select aprovacao = 'aprovado' from linha_editorial_itens where id = v_i3),
+    'a converted row is approved: ' || coalesce(v_e, '');
+  v_e := pg_temp.erro_sr(format(v_idec, v_l7, v_i3, v_a, v_c1, 'pendente', null));
+  assert v_e is null, 'a converted row is undone: ' || coalesce(v_e, '');
+  raise notice 'PASS item_decision_aprovado_and_undo';
+
+  -- ---------- item_decision_ajustes_comment_rule ----------
+  v_e := pg_temp.erro_sr(format(v_idec, v_l7, v_i2, v_a, v_c1, 'ajustes', null));
+  assert v_e = 'P0001:comentario_obrigatorio', 'row ajuste without a comment: ' || coalesce(v_e, 'null');
+  v_e := pg_temp.erro_sr(format(v_idec, v_l7, v_i2, v_a, v_c1, 'ajustes', '   '));
+  assert v_e = 'P0001:comentario_obrigatorio', 'row ajuste with a blank comment: ' || coalesce(v_e, 'null');
+  -- none of these count: a client comment of an earlier rodada, a team reply on the row, a
+  -- client comment on another row, a linha-level client comment
+  insert into linha_editorial_respostas (conta_id, linha_id, item_id, acao, comentario, is_workspace_user, token)
+    values (v_a, v_l7, v_i2, 'comentario', 'rodada antiga', false, 'tok-1');
+  update linhas_editoriais set rodada = 2 where id = v_l7;
+  insert into linha_editorial_respostas (conta_id, linha_id, item_id, acao, comentario, is_workspace_user, author_user_id)
+    values (v_a, v_l7, v_i2, 'comentario', 'resposta da equipe', true, u_o);
+  v_e := pg_temp.erro_sr(format(v_com, v_l7, v_i3, v_a, v_c1, 'Sobre o item 3'));
+  assert v_e is null, 'client comment on another row: ' || coalesce(v_e, '');
+  v_e := pg_temp.erro_sr(format(v_com, v_l7, null, v_a, v_c1, 'Sobre a linha'));
+  assert v_e is null, 'linha-level client comment: ' || coalesce(v_e, '');
+  v_e := pg_temp.erro_sr(format(v_idec, v_l7, v_i2, v_a, v_c1, 'ajustes', null));
+  assert v_e = 'P0001:comentario_obrigatorio', 'only a client comment on this row in this rodada counts: ' || coalesce(v_e, 'null');
+  assert (select aprovacao is null from linha_editorial_itens where id = v_i2), 'refused ajuste leaves the row pending';
+  -- with a comment: stored as a plain client comentario on the row, trimmed
+  v_res := pg_temp.val_sr(format(v_idec, v_l7, v_i2, v_a, v_c1, 'ajustes', '  Trocar o gancho  '))::jsonb;
+  assert v_res = '{"aprovados": 0, "ajustes": 1, "pendentes": 2}'::jsonb, 'ajustes counts: ' || v_res;
+  assert (select aprovacao = 'ajustes' and aprovacao_at = now() from linha_editorial_itens where id = v_i2), 'row in ajustes';
+  assert (select count(*) from linha_editorial_respostas
+           where linha_id = v_l7 and item_id = v_i2 and acao = 'comentario' and comentario = 'Trocar o gancho'
+             and rodada = 2 and not is_workspace_user and author_user_id is null and token = 'tok-1') = 1,
+    'the ajuste comment is a client comentario on the row';
+  assert not exists (select 1 from linha_editorial_respostas where linha_id = v_l7 and acao <> 'comentario'),
+    'a row ajuste never writes acao ajustes';
+  -- undo keeps the comment; asking again needs no new comment and writes none
+  select count(*) into v_n from linha_editorial_respostas where linha_id = v_l7;
+  v_res := pg_temp.val_sr(format(v_idec, v_l7, v_i2, v_a, v_c1, 'pendente', null))::jsonb;
+  assert v_res = '{"aprovados": 0, "ajustes": 0, "pendentes": 3}'::jsonb, 'undo ajuste counts: ' || v_res;
+  assert exists (select 1 from linha_editorial_respostas where item_id = v_i2 and comentario = 'Trocar o gancho'),
+    'undo keeps the comment';
+  v_res := pg_temp.val_sr(format(v_idec, v_l7, v_i2, v_a, v_c1, 'ajustes', null))::jsonb;
+  assert v_res = '{"aprovados": 0, "ajustes": 1, "pendentes": 2}'::jsonb, 'second ajuste without a comment: ' || v_res;
+  assert (select count(*) from linha_editorial_respostas where linha_id = v_l7) = v_n, 'no resposta written without a comment';
+  raise notice 'PASS item_decision_ajustes_comment_rule';
+
+  -- ---------- finish_aprovado_refused_with_row_in_ajustes ----------
+  v_res := pg_temp.val_sr(format(v_idec, v_l7, v_i1, v_a, v_c1, 'aprovado', null))::jsonb;
+  assert v_res = '{"aprovados": 1, "ajustes": 1, "pendentes": 1}'::jsonb, 'mixed counts: ' || v_res;
+  update linha_editorial_itens set aprovacao_at = '2026-01-01 00:00+00' where id = v_i1;
+  v_e := pg_temp.erro_sr(format(v_dec, v_l7, v_a, v_c1, 'aprovado', null));
+  assert v_e = 'P0001:itens_com_ajustes', 'aprovado with a row in ajustes: ' || coalesce(v_e, 'null');
+  assert (select status = 'enviada' and decidida_at is null from linhas_editoriais where id = v_l7), 'linha still enviada';
+  assert (select aprovacao is null from linha_editorial_itens where id = v_i3), 'pending row untouched';
+  assert not exists (select 1 from linha_editorial_respostas where linha_id = v_l7 and acao = 'aprovado'), 'no decision resposta';
+  raise notice 'PASS finish_aprovado_refused_with_row_in_ajustes';
+
+  -- ---------- finish_aprovado_approves_pending_rows ----------
+  v_res := pg_temp.val_sr(format(v_idec, v_l7, v_i2, v_a, v_c1, 'pendente', null))::jsonb;
+  assert v_res = '{"aprovados": 1, "ajustes": 0, "pendentes": 2}'::jsonb, 'undo before finishing: ' || v_res;
+  v_res := pg_temp.val_sr(format(v_dec, v_l7, v_a, v_c1, 'aprovado', null))::jsonb;
+  assert v_res->>'status' = 'aprovada', 'finish aprovado: ' || v_res;
+  assert (select count(*) from linha_editorial_itens where linha_id = v_l7 and aprovacao = 'aprovado') = 3,
+    'every pending row approved by the finish';
+  assert (select aprovacao_at = '2026-01-01 00:00+00' from linha_editorial_itens where id = v_i1),
+    'a row approved before the finish keeps its timestamp';
+  assert (select bool_and(aprovacao_at = now()) from linha_editorial_itens where id in (v_i2, v_i3)),
+    'pending rows stamped by the finish (the converted one included)';
+  v_e := pg_temp.erro_sr(format(v_idec, v_l7, v_i1, v_a, v_c1, 'pendente', null));
+  assert v_e = 'P0001:status_invalido', 'row decision after the finish: ' || coalesce(v_e, 'null');
+  assert (select aprovacao = 'aprovado' from linha_editorial_itens where id = v_i1), 'row kept after the refused undo';
+  raise notice 'PASS finish_aprovado_approves_pending_rows';
+
+  -- ---------- finish_ajustes_keeps_pending_and_notification_counts_rows ----------
+  v_l8 := pg_temp.linha(v_a, v_c1, '2027-06-01', 'enviada', u_o);
+  select id into v_j1 from linha_editorial_itens where linha_id = v_l8;
+  insert into linha_editorial_itens (linha_id, conta_id, data, tipo, titulo, ordem)
+    values (v_l8, v_a, '2027-06-04', 'reels', 'Item 2', 1) returning id into v_j2;
+  v_res := pg_temp.val_sr(format(v_idec, v_l8, v_j1, v_a, v_c1, 'ajustes', 'Muda o tema'))::jsonb;
+  assert v_res = '{"aprovados": 0, "ajustes": 1, "pendentes": 1}'::jsonb, 'row ajuste on v_l8: ' || v_res;
+  v_res := pg_temp.val_sr(format(v_dec, v_l8, v_a, v_c1, 'ajustes', null))::jsonb;
+  assert v_res = '{"status": "ajustes", "comentarios": 1}'::jsonb, 'finish ajustes met by the row''s comment: ' || v_res;
+  assert (select aprovacao = 'ajustes' from linha_editorial_itens where id = v_j1)
+     and (select aprovacao is null from linha_editorial_itens where id = v_j2), 'finish ajustes leaves rows as they were';
+  delete from notifications where workspace_id = v_a;
+  v_e := pg_temp.erro_sr(format('select public.create_linha_notification(%L, ''ajustes'')', v_l8));
+  assert v_e is null, 'create_linha_notification: ' || coalesce(v_e, '');
+  select (array_agg(metadata))[1] into v_meta from notifications where workspace_id = v_a and type = 'linha_editorial_ajustes';
+  assert v_meta->'itens_ajustes' = '1'::jsonb and v_meta->'comentarios' = '1'::jsonb,
+    'metadata counts the rows in ajustes: ' || coalesce(v_meta::text, 'null');
+  raise notice 'PASS finish_ajustes_keeps_pending_and_notification_counts_rows';
 end $$;
 
 rollback;

@@ -13,14 +13,7 @@ import type { SelectOption, WorkflowPost } from './posts';
 export type LinhaStatus = 'rascunho' | 'enviada' | 'ajustes' | 'aprovada';
 
 export type LinhaColunaTipo =
-  | 'text'
-  | 'number'
-  | 'select'
-  | 'multiselect'
-  | 'date'
-  | 'person'
-  | 'checkbox'
-  | 'url';
+  'text' | 'number' | 'select' | 'multiselect' | 'date' | 'person' | 'checkbox' | 'url';
 
 export type LinhaRespostaAcao = 'comentario' | 'aprovado' | 'ajustes';
 
@@ -39,7 +32,12 @@ export interface LinhaEditorial {
   itens_total?: number;
   /** Only on `listLinhasDoMes`: rows already turned into posts. */
   itens_convertidos?: number;
+  /** Only on `listLinhasDoMes`: rows the client approved (spec §13.6). */
+  itens_aprovados?: number;
 }
+
+/** The client's decision on one row (spec §13). `null` (or absent) means pending. */
+export type LinhaItemAprovacao = 'aprovado' | 'ajustes';
 
 export interface LinhaColuna {
   id: string;
@@ -64,6 +62,10 @@ export interface LinhaItem {
   ordem: number;
   post_id: number | null;
   convertido_at?: string | null;
+  /** Written only by the Hub RPCs. Optional so fixtures and optimistic inserts can omit it. */
+  aprovacao?: LinhaItemAprovacao | null;
+  /** Last client decision on the row. */
+  aprovacao_at?: string | null;
 }
 
 export interface LinhaResposta {
@@ -119,22 +121,25 @@ export async function listLinhasDoMes(periodo: string): Promise<LinhaEditorial[]
   const { data, error } = await supabase
     .from('linhas_editoriais')
     .select(
-      `${LINHA_COLS}, itens:linha_editorial_itens(count), convertidos:linha_editorial_itens(count)`,
+      `${LINHA_COLS}, itens:linha_editorial_itens(count), convertidos:linha_editorial_itens(count), aprovados:linha_editorial_itens(count)`,
     )
     .eq('periodo', periodo)
-    // Filters only the `convertidos` embed (no !inner), so the other embed keeps every row.
+    // Each filter narrows only its own embed (no !inner), so `itens` keeps every row.
     .not('convertidos.post_id', 'is', null)
+    .eq('aprovados.aprovacao', 'aprovado')
     .order('created_at', { ascending: true });
   if (error) throw error;
   return (
     (data ?? []) as unknown as (LinhaEditorial & {
       itens?: CountEmbed;
       convertidos?: CountEmbed;
+      aprovados?: CountEmbed;
     })[]
-  ).map(({ itens, convertidos, ...linha }) => ({
+  ).map(({ itens, convertidos, aprovados, ...linha }) => ({
     ...linha,
     itens_total: itens?.[0]?.count ?? 0,
     itens_convertidos: convertidos?.[0]?.count ?? 0,
+    itens_aprovados: aprovados?.[0]?.count ?? 0,
   }));
 }
 

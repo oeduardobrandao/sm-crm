@@ -1,5 +1,6 @@
 import type { ContentFormat } from '@mesaas/platforms';
 import { TIPO_ORDER } from '../postLabels';
+import type { LinhaEditorial } from '@/store/linhaEditorial';
 
 // Pure helpers of the linha editorial view. No React, no Supabase.
 
@@ -94,4 +95,14 @@ export function mensagemGuardItem(err: unknown): string | null {
   }
   if (msg.includes('linha_item_convertido')) return 'Esta linha já virou post. Atualize a página.';
   return null;
+}
+
+/** Rail and phone list count: production first, then the client's approvals once the linha
+ * was sent, else the row count (spec §13.6). */
+export function contagemLinha(l: LinhaEditorial): string {
+  const total = l.itens_total ?? 0;
+  const prod = l.itens_convertidos ?? 0;
+  if (prod > 0) return `${prod} de ${total} em produção`;
+  if (l.rodada > 0) return `${l.itens_aprovados ?? 0} de ${total} aprovados`;
+  return `${total} ${total === 1 ? 'post' : 'posts'}`;
 }

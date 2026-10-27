@@ -31,10 +31,21 @@
   "salvando": "Sending...",
   "equipe": "Team",
   "voce": "You",
-  "comentariosNaLinha": {
-    "um": "{{n}} comment on the plan",
-    "varios": "{{n}} comments on the plan"
+  "item": {
+    "aprovar": "Approve",
+    "pedirAjuste": "Request change",
+    "desfazer": "Undo",
+    "aprovado": "Approved",
+    "ajustePedido": "Change requested",
+    "ajusteRotulo": "What needs to change?",
+    "ajusteObrigatorio": "Tell us what needs to change in this post.",
+    "ajusteComComentario": "You already commented on this post. You can send it without text."
   },
+  "progresso": "{{a}} of {{total}} approved",
+  "progressoAjustes": " · {{n}} with changes requested",
+  "aprovarPendentesAviso": "Posts without an answer yet will be approved too.",
+  "enviarAjustesLinha": "Send changes",
+  "erroItensComAjustes": "A post has a change request. Refresh the page.",
   "pedirAjustes": "Request changes",
   "ajustesRotulo": "What needs to change",
   "ajustesObrigatorio": "Tell us what needs to change.",

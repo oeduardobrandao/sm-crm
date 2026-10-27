@@ -229,12 +229,22 @@ export function LinhaEditorialView({
     }
   };
 
+  const rodada = linha?.rodada ?? 0;
   const resumo = useMemo(() => {
     const n = itensData.length;
     const partes = [`${n} ${n === 1 ? 'post' : 'posts'}`];
     for (const b of formatBreakdown(itensData)) partes.push(`${TIPO_RESUMO[b.tipo]} ${b.n}`);
+    // Approval progress once the linha was sent (spec §13.6); zero parts are left out.
+    if (rodada > 0) {
+      const aprovados = itensData.filter((i) => i.aprovacao === 'aprovado').length;
+      const ajustes = itensData.filter((i) => i.aprovacao === 'ajustes').length;
+      const pendentes = n - aprovados - ajustes;
+      if (aprovados > 0) partes.push(`${aprovados} ${aprovados === 1 ? 'aprovado' : 'aprovados'}`);
+      if (ajustes > 0) partes.push(`${ajustes} com ajuste`);
+      if (pendentes > 0) partes.push(`${pendentes} ${pendentes === 1 ? 'pendente' : 'pendentes'}`);
+    }
     return partes.join(' · ');
-  }, [itensData]);
+  }, [itensData, rodada]);
 
   // Phone: read-only cards (spec §6.6). After every hook so the hook order never changes.
   const phone = useIsLinhaPhone();

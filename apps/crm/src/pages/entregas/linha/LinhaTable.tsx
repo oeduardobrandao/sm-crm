@@ -66,6 +66,7 @@ import { getMembros, type Membro } from '@/store/team';
 import { PostStatusChip } from '../components/PostStatusChip';
 import type { StatusRegistry } from '../statusRegistry';
 import { FormatoPill } from './FormatoPill';
+import { LinhaAprovacaoChip } from './LinhaAprovacaoChip';
 import {
   DateCell,
   FormatoCell,
@@ -254,6 +255,8 @@ interface RowProps {
   membros: Membro[];
   selected: boolean;
   comentarios: number;
+  /** The linha's `rodada`: the approval chip shows once it was sent. */
+  rodada: number;
   writes: ReturnType<typeof useItemWrites>;
   onToggle: (on: boolean) => void;
   onOpenComentarios?: (itemId: string) => void;
@@ -273,6 +276,7 @@ function LinhaRow({
   membros,
   selected,
   comentarios,
+  rodada,
   writes,
   onToggle,
   onOpenComentarios,
@@ -344,17 +348,20 @@ function LinhaRow({
         )}
       </td>
       <td className="linha-td linha-td--titulo">
-        {convertido ? (
-          <span className="linha-text">{item.titulo}</span>
-        ) : (
-          <TextCell
-            value={item.titulo}
-            label="Título"
-            placeholder="Sobre o que é o post"
-            nav={nav('titulo')}
-            onSave={(titulo) => writes.patch(item.id, { titulo })}
-          />
-        )}
+        <span className="linha-titulo">
+          {convertido ? (
+            <span className="linha-text">{item.titulo}</span>
+          ) : (
+            <TextCell
+              value={item.titulo}
+              label="Título"
+              placeholder="Sobre o que é o post"
+              nav={nav('titulo')}
+              onSave={(titulo) => writes.patch(item.id, { titulo })}
+            />
+          )}
+          <LinhaAprovacaoChip item={item} rodada={rodada} onOpenComentarios={onOpenComentarios} />
+        </span>
       </td>
       {!direcaoOculta && (
         <td className="linha-td linha-td--direcao">
@@ -641,6 +648,7 @@ export function LinhaTable({
                     membros={membros}
                     selected={selected.has(item.id)}
                     comentarios={comentariosPorItem.get(item.id) ?? 0}
+                    rodada={linha.rodada}
                     writes={writes}
                     onToggle={(on) =>
                       onSelect(

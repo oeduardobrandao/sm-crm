@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  contagemLinha,
   defaultNovaData,
   formatBreakdown,
   mensagemGuardItem,
@@ -104,5 +105,41 @@ describe('mensagemGuardItem', () => {
     expect(mensagemGuardItem(pg('boom'))).toBeNull();
     expect(mensagemGuardItem(new Error('linha_nao_encontrada'))).toBeNull();
     expect(mensagemGuardItem(null)).toBeNull();
+  });
+});
+
+describe('contagemLinha', () => {
+  const base = {
+    id: 'l1',
+    conta_id: 'c',
+    cliente_id: 1,
+    periodo: '2026-11-01',
+    status: 'enviada' as const,
+    enviada_at: null,
+    enviada_por: null,
+    decidida_at: null,
+  };
+
+  it('puts production first, then approvals once sent, else the row count', () => {
+    expect(
+      contagemLinha({
+        ...base,
+        rodada: 1,
+        itens_total: 8,
+        itens_convertidos: 4,
+        itens_aprovados: 8,
+      }),
+    ).toBe('4 de 8 em produção');
+    expect(
+      contagemLinha({
+        ...base,
+        rodada: 1,
+        itens_total: 12,
+        itens_convertidos: 0,
+        itens_aprovados: 9,
+      }),
+    ).toBe('9 de 12 aprovados');
+    expect(contagemLinha({ ...base, rodada: 0, itens_total: 1 })).toBe('1 post');
+    expect(contagemLinha({ ...base, rodada: 0, itens_total: 6 })).toBe('6 posts');
   });
 });

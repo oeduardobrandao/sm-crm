@@ -159,7 +159,10 @@ function monthName(periodo: unknown): string {
   return (mm && MESES[Number(mm[1]) - 1]) || '';
 }
 
-/** linha_editorial_aprovada / linha_editorial_ajustes. Body = comment count (omitted for 0). */
+/**
+ * linha_editorial_aprovada / linha_editorial_ajustes. Body = comment count (omitted for 0); for
+ * ajustes, the rows with an ajuste (`itens_ajustes`, spec §13.3) when there are any.
+ */
 function linhaEditorialDisplay(
   type: 'linha_editorial_aprovada' | 'linha_editorial_ajustes',
   m: Record<string, unknown>,
@@ -168,7 +171,13 @@ function linhaEditorialDisplay(
   const mes = monthName(m.periodo);
   const de = mes ? ` de ${mes}` : '';
   const n = typeof m.comentarios === 'number' && Number.isFinite(m.comentarios) ? m.comentarios : 0;
-  const body = n > 0 ? `${n} ${n === 1 ? 'comentário' : 'comentários'}` : '';
+  const comentarios = n > 0 ? `${n} ${n === 1 ? 'comentário' : 'comentários'}` : '';
+  const ajustes =
+    typeof m.itens_ajustes === 'number' && Number.isFinite(m.itens_ajustes) ? m.itens_ajustes : 0;
+  const body =
+    type === 'linha_editorial_ajustes' && ajustes > 0
+      ? `${ajustes} ${ajustes === 1 ? 'post' : 'posts'} com ajuste`
+      : comentarios;
   return type === 'linha_editorial_aprovada'
     ? {
         icon: CheckCircle,

@@ -354,6 +354,25 @@
 .linha-td--titulo {
   min-width: 200px;
 }
+/* Title cell: the editable title, then the row's approval chip (spec §13.6). */
+.linha-titulo {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.linha-titulo > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.linha-aprovacao {
+  flex-shrink: 0;
+}
+.linha-aprovacao--btn {
+  cursor: pointer;
+}
+.linha-aprovacao--btn:hover {
+  filter: brightness(0.96);
+}
 .linha-td--direcao {
   min-width: 240px;
 }
@@ -565,6 +584,7 @@
   color: var(--text-main);
 }
 .linha-bubble:focus-visible,
+.linha-aprovacao--btn:focus-visible,
 .linha-drag:focus-visible,
 .linha-nova:focus-visible,
 .linha-check:focus-visible {

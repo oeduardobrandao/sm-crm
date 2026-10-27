@@ -4,6 +4,8 @@
 -- Linha editorial schema (20261031000001_linha_editorial_schema.sql): the four tables, the
 -- feature_linha_editorial flag as write authorization, the guard triggers and the
 -- column-level grants that keep status, rodada, post_id and convertido_* RPC-only.
+-- 20261031000005_linha_item_aprovacao.sql adds aprovacao / aprovacao_at, readable by the CRM
+-- and written only by the RPCs.
 
 begin;
 -- The four tables are excluded: the helper would grant ALL on them and undo the
@@ -160,6 +162,27 @@ begin
   assert pg_temp.afetadas(u_a, format('update public.linhas_editoriais set updated_at = now() where id = %L', v_linha)) = 1,
     'updated_at stays writable';
   raise notice 'PASS status_not_writable';
+
+  -- ---------- aprovacao_rpc_only ----------
+  v_e := pg_temp.erro(u_a, format('update public.linha_editorial_itens set aprovacao = ''aprovado'' where id = %L', v_item));
+  assert v_e like '42501:%', 'aprovacao update denied: ' || coalesce(v_e, 'null');
+  v_e := pg_temp.erro(u_a, format('update public.linha_editorial_itens set aprovacao_at = now() where id = %L', v_item));
+  assert v_e like '42501:%', 'aprovacao_at update denied: ' || coalesce(v_e, 'null');
+  v_e := pg_temp.erro(u_a, format('insert into public.linha_editorial_itens (linha_id, conta_id, tipo, ordem, aprovacao) values (%L, %L, ''feed'', 9, ''aprovado'')', v_linha, v_a));
+  assert v_e like '42501:%', 'item insert with aprovacao denied: ' || coalesce(v_e, 'null');
+  v_e := pg_temp.erro(u_a, format('insert into public.linha_editorial_itens (linha_id, conta_id, tipo, ordem, aprovacao_at) values (%L, %L, ''feed'', 9, now())', v_linha, v_a));
+  assert v_e like '42501:%', 'item insert with aprovacao_at denied: ' || coalesce(v_e, 'null');
+  assert (select aprovacao is null and aprovacao_at is null from linha_editorial_itens where id = v_item), 'row still pending';
+  -- the CRM reads both columns
+  v_e := pg_temp.erro(u_a, format('select aprovacao, aprovacao_at from public.linha_editorial_itens where id = %L', v_item));
+  assert v_e is null, 'aprovacao readable by authenticated: ' || coalesce(v_e, '');
+  -- only the two states, null meaning pending
+  v_e := pg_temp.erro_sr(format('update public.linha_editorial_itens set aprovacao = ''pendente'' where id = %L', v_item));
+  assert v_e like '23514:%', 'aprovacao outside the check refused: ' || coalesce(v_e, 'null');
+  v_e := pg_temp.erro_sr(format('update public.linha_editorial_itens set aprovacao = ''ajustes'', aprovacao_at = now() where id = %L', v_item));
+  assert v_e is null, 'service_role writes aprovacao: ' || coalesce(v_e, '');
+  update linha_editorial_itens set aprovacao = null, aprovacao_at = null where id = v_item;
+  raise notice 'PASS aprovacao_rpc_only';
 
   -- ---------- periodo_first_day ----------
   v_e := pg_temp.erro_sr(format('insert into public.linhas_editoriais (conta_id, cliente_id, periodo) values (%L, %s, ''2026-11-02'')', v_a, v_cli_a));
@@ -324,6 +347,13 @@ begin
   assert not has_column_privilege('authenticated', 'public.linha_editorial_respostas', 'rodada', 'INSERT'), 'rodada not insertable';
   assert not has_column_privilege('authenticated', 'public.linha_editorial_respostas', 'token', 'INSERT'), 'token not insertable';
   assert not has_column_privilege('authenticated', 'public.linha_editorial_colunas', 'conta_id', 'UPDATE'), 'coluna conta_id not updatable';
+  assert not has_column_privilege('authenticated', 'public.linha_editorial_itens', 'aprovacao', 'INSERT'), 'aprovacao not insertable';
+  assert not has_column_privilege('authenticated', 'public.linha_editorial_itens', 'aprovacao', 'UPDATE'), 'aprovacao not updatable';
+  assert not has_column_privilege('authenticated', 'public.linha_editorial_itens', 'aprovacao_at', 'INSERT'), 'aprovacao_at not insertable';
+  assert not has_column_privilege('authenticated', 'public.linha_editorial_itens', 'aprovacao_at', 'UPDATE'), 'aprovacao_at not updatable';
+  assert has_column_privilege('authenticated', 'public.linha_editorial_itens', 'aprovacao', 'SELECT'), 'aprovacao readable';
+  assert has_column_privilege('authenticated', 'public.linha_editorial_itens', 'aprovacao_at', 'SELECT'), 'aprovacao_at readable';
+  assert not has_column_privilege('anon', 'public.linha_editorial_itens', 'aprovacao', 'SELECT'), 'anon cannot read aprovacao';
   assert has_table_privilege('service_role', 'public.linha_editorial_itens', 'INSERT, UPDATE, DELETE'), 'service_role holds writes';
   raise notice 'PASS grants';
 end $$;

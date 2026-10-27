@@ -500,3 +500,57 @@ describe('LinhaTable write failures and ordering', () => {
     refetch.resolve([item(1), item(2)]);
   });
 });
+
+describe('LinhaTable aprovação por linha', () => {
+  const ITENS = [
+    item(1, { aprovacao: 'aprovado', aprovacao_at: '2026-11-02T13:00:00Z' }),
+    item(2, { aprovacao: 'ajustes', aprovacao_at: '2026-11-03T13:00:00Z' }),
+    item(3),
+  ];
+
+  it('shows no chip before the first send', async () => {
+    m.listLinhasDoMes.mockResolvedValue([{ ...LINHA, rodada: 0 }]);
+    m.listItens.mockResolvedValue(ITENS);
+    renderView();
+    await screen.findAllByLabelText('Título');
+    expect(screen.queryByText('Aprovado')).toBeNull();
+    expect(screen.queryByText('Ajuste pedido')).toBeNull();
+    expect(screen.queryByText('Pendente')).toBeNull();
+  });
+
+  it('shows each row state in the title cell, dated in its title', async () => {
+    m.listLinhasDoMes.mockResolvedValue([{ ...LINHA, status: 'ajustes', rodada: 1 }]);
+    m.listItens.mockResolvedValue(ITENS);
+    renderView();
+    await screen.findAllByLabelText('Título');
+    const row = (id: string) => within(screen.getByTestId(`linha-row-${id}`));
+
+    const aprovado = row('i1').getByText('Aprovado');
+    expect(aprovado.closest('td')).toHaveClass('linha-td--titulo');
+    expect(aprovado).toHaveAttribute('title', 'Aprovado em 02/11/2026');
+    expect(row('i1').queryByRole('button', { name: 'Aprovado' })).toBeNull();
+
+    const ajuste = row('i2').getByRole('button', { name: 'Ajuste pedido' });
+    expect(ajuste).toHaveAttribute('title', 'Ajuste pedido em 03/11/2026');
+
+    const pendente = row('i3').getByText('Pendente');
+    expect(pendente).not.toHaveAttribute('title');
+    expect(row('i3').queryByRole('button', { name: 'Pendente' })).toBeNull();
+  });
+
+  it('clicking Ajuste pedido opens the row thread', async () => {
+    const user = userEvent.setup();
+    m.listLinhasDoMes.mockResolvedValue([{ ...LINHA, status: 'ajustes', rodada: 1 }]);
+    m.listItens.mockResolvedValue(ITENS);
+    m.listRespostas.mockResolvedValue([
+      resposta({ id: 'r1', item_id: 'i2', comentario: 'Trocar a capa' }),
+      resposta({ id: 'r2', item_id: 'i1', comentario: 'Gostei deste' }),
+    ]);
+    renderView();
+    const row2 = within(await screen.findByTestId('linha-row-i2'));
+    await user.click(row2.getByRole('button', { name: 'Ajuste pedido' }));
+    const panel = await screen.findByRole('dialog');
+    expect(within(panel).getByText('Trocar a capa')).toBeInTheDocument();
+    expect(within(panel).queryByText('Gostei deste')).toBeNull();
+  });
+});

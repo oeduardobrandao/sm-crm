@@ -94,7 +94,7 @@ const linha = (over: Partial<LinhaEditorial> & { cliente_id: number }): LinhaEdi
   enviada_at: null,
   enviada_por: null,
   decidida_at: null,
-  rodada: 1,
+  rodada: 0,
   itens_total: 0,
   itens_convertidos: 0,
   ...over,
@@ -204,6 +204,36 @@ describe('LinhaEditorialView rail', () => {
     expect(within(screen.getByTestId('linha-rail')).getByText('Aprovada')).toBeInTheDocument();
   });
 
+  it('shows A de M aprovados once the linha was sent', async () => {
+    m.listLinhasDoMes.mockResolvedValue([
+      linha({ cliente_id: 1, status: 'ajustes', rodada: 1, itens_total: 12, itens_aprovados: 9 }),
+      linha({ cliente_id: 2, status: 'enviada', rodada: 1, itens_total: 4 }),
+    ]);
+    renderView();
+    const rail = within(screen.getByTestId('linha-rail'));
+    expect(await rail.findByText('9 de 12 aprovados')).toBeInTheDocument();
+    expect(rail.getByText('0 de 4 aprovados')).toBeInTheDocument();
+  });
+
+  it('em produção wins over aprovados, and a never-sent linha counts posts', async () => {
+    m.listLinhasDoMes.mockResolvedValue([
+      linha({
+        cliente_id: 1,
+        status: 'aprovada',
+        rodada: 1,
+        itens_total: 5,
+        itens_convertidos: 2,
+        itens_aprovados: 5,
+      }),
+      linha({ cliente_id: 2, rodada: 0, itens_total: 1, itens_aprovados: 0 }),
+    ]);
+    renderView();
+    const rail = within(screen.getByTestId('linha-rail'));
+    expect(await rail.findByText('2 de 5 em produção')).toBeInTheDocument();
+    expect(rail.getByText('1 post')).toBeInTheDocument();
+    expect(rail.queryByText(/aprovados/)).toBeNull();
+  });
+
   it('month switch writes mes', async () => {
     const user = userEvent.setup();
     const { onChange } = renderView();
@@ -241,6 +271,42 @@ describe('LinhaEditorialView header', () => {
     expect(await screen.findByText(/2 posts · Carrossel 1 · Reels 1/)).toBeInTheDocument();
     await user.click(btn);
     await waitFor(() => expect(m.enviarLinha).toHaveBeenCalledWith('l-1'));
+  });
+
+  it('summary appends the approval progress once the linha was sent', async () => {
+    m.listLinhasDoMes.mockResolvedValue([
+      linha({ cliente_id: 1, status: 'ajustes', rodada: 1, itens_total: 6 }),
+    ]);
+    m.listItens.mockResolvedValue([
+      { ...item(1), aprovacao: 'aprovado' },
+      { ...item(2), aprovacao: 'aprovado' },
+      { ...item(3), aprovacao: 'aprovado' },
+      { ...item(4, 'carrossel'), aprovacao: 'ajustes' },
+      item(5, 'carrossel'),
+      { ...item(6, 'carrossel'), aprovacao: null },
+    ]);
+    renderView({ filterClientes: [1] });
+    expect(
+      await screen.findByText(/^6 posts · .* · 3 aprovados · 1 com ajuste · 2 pendentes$/),
+    ).toBeInTheDocument();
+  });
+
+  it('summary omits zero parts and uses the singular', async () => {
+    m.listLinhasDoMes.mockResolvedValue([
+      linha({ cliente_id: 1, status: 'enviada', rodada: 2, itens_total: 2 }),
+    ]);
+    m.listItens.mockResolvedValue([{ ...item(1), aprovacao: 'aprovado' }, item(2)]);
+    renderView({ filterClientes: [1] });
+    expect(
+      await screen.findByText('2 posts · Reels 2 · 1 aprovado · 1 pendente'),
+    ).toBeInTheDocument();
+  });
+
+  it('summary has no progress before the first send', async () => {
+    m.listLinhasDoMes.mockResolvedValue([linha({ cliente_id: 1, itens_total: 1 })]);
+    m.listItens.mockResolvedValue([{ ...item(1), aprovacao: 'aprovado' }]);
+    renderView({ filterClientes: [1] });
+    expect(await screen.findByText('1 post · Reels 1')).toBeInTheDocument();
   });
 
   it('enviada shows Recolher and the banner', async () => {

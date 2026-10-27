@@ -5,6 +5,9 @@
 -- the default columns), enviar / recolher (state machine), coluna_excluir (strips unconverted
 -- values only) and the atomic converter (payload contract, same-client workflow, template
 -- definitions, plan limits roll the whole batch back). Every RPC checks the flag first.
+-- Per-row approval (20261031000005_linha_item_aprovacao.sql, spec §13): enviar brings rows
+-- in ajustes back to pending and keeps approved ones; an agency edit, recolher and the
+-- converter never touch a row's approval.
 
 begin;
 select et_grant_hosted_parity(array['linhas_editoriais','linha_editorial_colunas','linha_editorial_itens','linha_editorial_respostas']);
@@ -57,7 +60,8 @@ declare
   v_c1 bigint; v_c2 bigint; v_cb bigint;
   v_tpl bigint; v_tpl_outro bigint; v_def bigint; v_def_outro bigint;
   v_wf bigint; v_wf_c2 bigint; v_wf_b bigint; v_wf_lim bigint;
-  v_l1 uuid; v_l1b uuid; v_l2 uuid; v_lb uuid; v_lx uuid;
+  v_l1 uuid; v_l1b uuid; v_l2 uuid; v_lb uuid; v_lx uuid; v_lr uuid;
+  v_r1 uuid; v_r2 uuid; v_r3 uuid; v_r4 uuid;
   v_ia uuid; v_ib uuid; v_iw uuid; v_ix uuid; v_iy uuid; v_iz uuid; v_ie uuid; v_if uuid; v_ig uuid; v_ih uuid;
   v_col uuid; v_res jsonb; v_e text; v_post bigint; v_post2 bigint;
   v_conv constant text := 'select public.linha_editorial_converter(%L, %s, %L::jsonb)';
@@ -146,6 +150,56 @@ begin
   assert v_e = 'P0001:status_invalido', 'recolher from aprovada refused: ' || coalesce(v_e, 'null');
   update linhas_editoriais set status = 'rascunho' where id = v_l1;
   raise notice 'PASS recolher_only_from_enviada';
+
+  -- ---------- enviar_resets_ajustes_keeps_aprovados ----------
+  v_lr := pg_temp.val(u_a, format('select public.linha_editorial_criar(%s, ''2027-02-01'')', v_c1))::uuid;
+  v_r1 := pg_temp.item(v_lr, '2027-02-03', 'feed', 'Aprovado', 0);
+  v_r2 := pg_temp.item(v_lr, '2027-02-04', 'reels', 'Ajuste', 1);
+  v_r3 := pg_temp.item(v_lr, '2027-02-05', 'stories', 'Pendente', 2);
+  v_e := pg_temp.erro(u_a, format('select public.linha_editorial_enviar(%L)', v_lr));
+  assert v_e is null, 'enviar: ' || coalesce(v_e, '');
+  assert not exists (select 1 from linha_editorial_itens where linha_id = v_lr and (aprovacao is not null or aprovacao_at is not null)),
+    'rows start pending';
+  -- the client's row decisions (record_linha_item_decision is covered in 99_linha_editorial_hub)
+  update linha_editorial_itens set aprovacao = 'aprovado', aprovacao_at = '2026-01-01 00:00+00' where id = v_r1;
+  update linha_editorial_itens set aprovacao = 'ajustes', aprovacao_at = '2026-01-02 00:00+00' where id = v_r2;
+  -- an agency edit keeps the approval
+  v_e := pg_temp.erro(u_a, format('update public.linha_editorial_itens set titulo = ''Editado'', direcao = ''Nova'', data = ''2027-02-06'', valores = ''{"x": 1}'' where id = %L', v_r1));
+  assert v_e is null and (select aprovacao = 'aprovado' and aprovacao_at = '2026-01-01 00:00+00' and titulo = 'Editado'
+                            from linha_editorial_itens where id = v_r1),
+    'editing an approved row keeps its approval: ' || coalesce(v_e, '');
+  -- recolher leaves the decisions alone
+  v_e := pg_temp.erro(u_a, format('select public.linha_editorial_recolher(%L)', v_lr));
+  assert v_e is null, 'recolher: ' || coalesce(v_e, '');
+  assert (select aprovacao = 'aprovado' from linha_editorial_itens where id = v_r1)
+     and (select aprovacao = 'ajustes' from linha_editorial_itens where id = v_r2), 'recolher keeps the row decisions';
+  -- enviar de novo: ajustes back to pending, approvals carried over, a row added since is pending
+  v_r4 := pg_temp.item(v_lr, '2027-02-07', 'feed', 'Nova', 3);
+  v_e := pg_temp.erro(u_a, format('select public.linha_editorial_enviar(%L)', v_lr));
+  assert v_e is null and (select status = 'enviada' and rodada = 2 from linhas_editoriais where id = v_lr),
+    'enviar de novo: ' || coalesce(v_e, '');
+  assert (select aprovacao = 'aprovado' and aprovacao_at = '2026-01-01 00:00+00' from linha_editorial_itens where id = v_r1),
+    'an approved row stays approved';
+  assert (select aprovacao is null and aprovacao_at is null from linha_editorial_itens where id = v_r2),
+    'a row in ajustes comes back as pending';
+  assert (select count(*) from linha_editorial_itens where id in (v_r3, v_r4) and aprovacao is null and aprovacao_at is null) = 2,
+    'pending and new rows stay pending';
+  -- from ajustes and from aprovada too
+  update linha_editorial_itens set aprovacao = 'ajustes', aprovacao_at = now() where id = v_r3;
+  update linhas_editoriais set status = 'ajustes' where id = v_lr;
+  v_e := pg_temp.erro(u_a, format('select public.linha_editorial_enviar(%L)', v_lr));
+  assert v_e is null and (select aprovacao is null from linha_editorial_itens where id = v_r3),
+    'enviar from ajustes resets the row: ' || coalesce(v_e, '');
+  update linha_editorial_itens set aprovacao = 'ajustes', aprovacao_at = now() where id = v_r3;
+  update linhas_editoriais set status = 'aprovada' where id = v_lr;
+  v_e := pg_temp.erro(u_a, format('select public.linha_editorial_enviar(%L)', v_lr));
+  assert v_e is null and (select aprovacao is null from linha_editorial_itens where id = v_r3),
+    'enviar from aprovada resets the row: ' || coalesce(v_e, '');
+  -- the converter keeps the approval
+  v_res := pg_temp.val(u_a, format(v_conv, v_lr, 'null', jsonb_build_array(jsonb_build_object('item_id', v_r1))))::jsonb;
+  assert (select post_id is not null and aprovacao = 'aprovado' and aprovacao_at = '2026-01-01 00:00+00'
+            from linha_editorial_itens where id = v_r1), 'converting a row keeps its approval';
+  raise notice 'PASS enviar_resets_ajustes_keeps_aprovados';
 
   -- ---------- converter_avulso_creates_rascunho_posts ----------
   v_ib := pg_temp.item(v_l1, null, 'feed', 'Feed sem data', 1);

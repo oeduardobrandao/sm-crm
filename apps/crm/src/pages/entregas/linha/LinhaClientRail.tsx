@@ -5,6 +5,7 @@ import { useClienteAvatars } from '@/hooks/useClienteAvatars';
 import type { Cliente } from '@/store';
 import type { LinhaEditorial } from '@/store/linhaEditorial';
 import { LinhaStatusBadge } from './LinhaStatusBadge';
+import { contagemLinha } from './linhaLogic';
 import { mesTitulo, shiftMes } from './mesNav';
 
 interface LinhaClientRailProps {
@@ -21,13 +22,6 @@ interface LinhaClientRailProps {
   onSelect: (clienteId: number) => void;
   onCriar: (clienteId: number) => void;
   onMesChange: (mes: string) => void;
-}
-
-function contagem(l: LinhaEditorial): string {
-  const total = l.itens_total ?? 0;
-  const prod = l.itens_convertidos ?? 0;
-  if (prod > 0) return `${prod} de ${total} em produção`;
-  return `${total} ${total === 1 ? 'post' : 'posts'}`;
 }
 
 export function LinhaClientRail({
@@ -105,7 +99,7 @@ export function LinhaClientRail({
                   {linha ? (
                     <span className="linha-rail__meta">
                       <LinhaStatusBadge status={linha.status} />
-                      <span>{contagem(linha)}</span>
+                      <span>{contagemLinha(linha)}</span>
                     </span>
                   ) : carregando ? null : (
                     <span className="linha-rail__meta">Sem linha neste mês</span>

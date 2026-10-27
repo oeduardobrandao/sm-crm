@@ -114,6 +114,7 @@ describe('store/linhaEditorial', () => {
           periodo: '2026-11-01',
           itens: [{ count: 8 }],
           convertidos: [{ count: 3 }],
+          aprovados: [{ count: 5 }],
         },
       ],
       error: null,
@@ -126,7 +127,15 @@ describe('store/linhaEditorial', () => {
     expect(q.select.mock.calls[0][0]).toContain('linha_editorial_itens(count)');
     expect(q.eq).toHaveBeenCalledWith('periodo', '2026-11-01');
     expect(q.not).toHaveBeenCalledWith('convertidos.post_id', 'is', null);
-    expect(out[0]).toMatchObject({ id: 'l1', itens_total: 8, itens_convertidos: 3 });
+    expect(q.select.mock.calls[0][0]).toContain('aprovados:linha_editorial_itens(count)');
+    expect(q.eq).toHaveBeenCalledWith('aprovados.aprovacao', 'aprovado');
+    expect(out[0]).toMatchObject({
+      id: 'l1',
+      itens_total: 8,
+      itens_convertidos: 3,
+      itens_aprovados: 5,
+    });
+    expect(out[0]).not.toHaveProperty('aprovados');
   });
 
   it('addItem sends a client id, conta_id, linha_id and never post_id', async () => {

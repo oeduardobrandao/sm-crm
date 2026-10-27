@@ -116,6 +116,8 @@ function queueFullGet(db: Db) {
         direcao: "Três mitos",
         valores: { [COL_VISIVEL]: "Educação", [COL_OCULTA]: "interno", "orfa": 1 },
         ordem: 0,
+        aprovacao: "aprovado",
+        aprovacao_at: "2026-10-25T15:00:00Z",
         post_id: 999,
         convertido_por: "user-secret",
         convertido_at: "2026-10-01T00:00:00Z",
@@ -208,12 +210,12 @@ Deno.test("hub-linha-editorial GET debits hub-read at 300/300", async () => {
   assertEquals(limits, [["hub-read:conta-1:14", 300, 300]]);
 });
 
-Deno.test("hub-linha-editorial POST debits only hub-write:hub-linha-editorial at 60/3600", async () => {
+Deno.test("hub-linha-editorial POST debits only hub-write:hub-linha-editorial at 300/3600", async () => {
   const { db, limits, handler } = setup();
   db.queueRpc("record_linha_decision", { data: { status: "aprovada", comentarios: 0 }, error: null });
   const res = await handler(post({ token: "hub-123", linha_id: LINHA_A, acao: "aprovado" }));
   assertEquals(res.status, 200);
-  assertEquals(limits, [["hub-write:hub-linha-editorial:conta-1:14", 60, 3600]]);
+  assertEquals(limits, [["hub-write:hub-linha-editorial:conta-1:14", 300, 3600]]);
   assert(!limits.some(([k]) => k.startsWith("hub-read:")));
 });
 
@@ -274,9 +276,25 @@ Deno.test("hub-linha-editorial GET strips hidden columns and never returns post_
   const [a, b] = body.linhas;
   assertEquals(a.colunas, [{ id: COL_VISIVEL, nome: "Pilar", tipo: "select", config: { options: [] }, ordem: 0 }]);
   assertEquals(a.itens, [
-    { id: ITEM_1, data: "2026-11-03", tipo: "carrossel", titulo: "Mitos do sono", direcao: "Três mitos", valores: { [COL_VISIVEL]: "Educação" } },
+    {
+      id: ITEM_1,
+      data: "2026-11-03",
+      tipo: "carrossel",
+      titulo: "Mitos do sono",
+      direcao: "Três mitos",
+      valores: { [COL_VISIVEL]: "Educação" },
+      aprovacao: "aprovado",
+    },
   ]);
-  assertEquals(b.itens, [{ id: ITEM_2, data: null, tipo: "reels", titulo: "Bastidores", direcao: "", valores: {} }]);
+  // A row with no decision (or a select without the column) reads as pending: null.
+  assertEquals(b.itens, [
+    { id: ITEM_2, data: null, tipo: "reels", titulo: "Bastidores", direcao: "", valores: {}, aprovacao: null },
+  ]);
+  assertEquals(
+    tableCall(db, "linha_editorial_itens")?.selectArgs[0][0],
+    "id, linha_id, data, tipo, titulo, direcao, valores, ordem, aprovacao",
+  );
+  assert(!raw.includes("aprovacao_at"), "aprovacao_at stays CRM-only");
 });
 
 Deno.test("hub-linha-editorial GET shapes linhas and keeps only the current rodada's respostas", async () => {
@@ -380,7 +398,10 @@ Deno.test("hub-linha-editorial invalid uuid or acao returns 400 without calling 
     { linha_id: LINHA_A },
     { linha_id: LINHA_A, acao: "comentario", item_id: "x", comentario: "oi" },
     { linha_id: LINHA_A, acao: "comentario", item_id: 7, comentario: "oi" },
-    { linha_id: LINHA_A, acao: "aprovado", item_id: ITEM_1 },
+    { linha_id: LINHA_A, acao: "pendente" },
+    { linha_id: LINHA_A, acao: "pendente", item_id: null },
+    { linha_id: LINHA_A, acao: "pendente", item_id: "x" },
+    { linha_id: LINHA_A, acao: "aprovado", item_id: "x" },
     { linha_id: LINHA_A, acao: "comentario", comentario: 42 },
   ];
   for (const patch of bad) {
@@ -400,11 +421,13 @@ Deno.test("hub-linha-editorial invalid uuid or acao returns 400 without calling 
 
 Deno.test("hub-linha-editorial comentario over 2000 chars returns 422", async () => {
   for (const acao of ["comentario", "ajustes", "aprovado"]) {
-    const { db, handler } = setup();
-    const res = await handler(post({ token: "hub-123", linha_id: LINHA_A, acao, comentario: "a".repeat(2001) }));
-    assertEquals(res.status, 422, acao);
-    assertEquals(await readJson(res), { error: GENERIC });
-    assertEquals(db.calls.length, 0, acao);
+    for (const item_id of [undefined, ITEM_1]) {
+      const { db, handler } = setup();
+      const res = await handler(post({ token: "hub-123", linha_id: LINHA_A, acao, item_id, comentario: "a".repeat(2001) }));
+      assertEquals(res.status, 422, `${acao} ${item_id}`);
+      assertEquals(await readJson(res), { error: GENERIC });
+      assertEquals(db.calls.length, 0, `${acao} ${item_id}`);
+    }
   }
   // Exactly 2000 is fine.
   const { db, handler } = setup();
@@ -563,6 +586,100 @@ Deno.test("hub-linha-editorial decision writes audit log", async () => {
   broken.db.queueRpc("record_linha_decision", { data: { status: "ajustes", comentarios: 1 }, error: null });
   const res = await quiet(() => broken.handler(post({ token: "hub-123", linha_id: LINHA_A, acao: "ajustes" })));
   assertEquals(res.status, 200);
+});
+
+// ── POST: row decisions (spec 13.4) ────────────────────────────────────────
+
+const COUNTS = { aprovados: 3, ajustes: 1, pendentes: 8 };
+
+Deno.test("hub-linha-editorial row decision calls record_linha_item_decision with token scope and returns the counts", async () => {
+  for (const acao of ["aprovado", "ajustes", "pendente"]) {
+    const { db, audits, handler } = setup();
+    db.queueRpc("record_linha_item_decision", { data: COUNTS, error: null });
+    const res = await handler(post({
+      token: "hub-123",
+      linha_id: LINHA_A,
+      item_id: ITEM_1,
+      acao,
+      comentario: acao === "ajustes" ? "  Trocar a capa  " : undefined,
+      conta_id: "evil",
+      cliente_id: 1,
+    }));
+    assertEquals(res.status, 200, acao);
+    assertEquals(await readJson(res), { ok: true, ...COUNTS }, acao);
+    assertEquals(rpcCalls(db, "record_linha_item_decision")[0].payload, {
+      p_linha_id: LINHA_A,
+      p_item_id: ITEM_1,
+      p_conta_id: "conta-1",
+      p_cliente_id: 14,
+      p_token: "hub-123",
+      p_acao: acao,
+      p_comentario: acao === "ajustes" ? "Trocar a capa" : null,
+    }, acao);
+    // Row decisions never notify, are not audited, and never touch the linha-level RPCs.
+    assertEquals(rpcCalls(db, "create_linha_notification").length, 0, acao);
+    assertEquals(rpcCalls(db, "record_linha_decision").length, 0, acao);
+    assertEquals(rpcCalls(db, "record_linha_comment").length, 0, acao);
+    assertEquals(audits.length, 0, acao);
+  }
+});
+
+Deno.test("hub-linha-editorial row ajustes without a comment still reaches the RPC (it owns the comment rule)", async () => {
+  const { db, handler } = setup();
+  db.queueRpc("record_linha_item_decision", { data: COUNTS, error: null });
+  const res = await handler(post({ token: "hub-123", linha_id: LINHA_A, item_id: ITEM_1, acao: "ajustes", comentario: "  " }));
+  assertEquals(res.status, 200);
+  assertEquals((rpcCalls(db, "record_linha_item_decision")[0].payload as Record<string, unknown>).p_comentario, null);
+});
+
+Deno.test("hub-linha-editorial row decision debits the write pool, not hub-read", async () => {
+  const { db, limits, handler } = setup();
+  db.queueRpc("record_linha_item_decision", { data: COUNTS, error: null });
+  await handler(post({ token: "hub-123", linha_id: LINHA_A, item_id: ITEM_1, acao: "aprovado" }));
+  assertEquals(limits, [["hub-write:hub-linha-editorial:conta-1:14", 300, 3600]]);
+});
+
+Deno.test("hub-linha-editorial row decision maps RPC errors like the other writes", async () => {
+  const cases: Array<[string, number]> = [
+    ["nao_encontrada", 404],
+    ["status_invalido", 409],
+    ["comentario_obrigatorio", 422],
+    ["secret db detail", 500],
+  ];
+  for (const [message, status] of cases) {
+    const { db, audits, handler } = setup();
+    db.queueRpc("record_linha_item_decision", { data: null, error: { code: "P0001", message } });
+    const res = await quiet(() =>
+      handler(post({ token: "hub-123", linha_id: LINHA_A, item_id: ITEM_1, acao: "ajustes" }))
+    );
+    assertEquals(res.status, status, message);
+    assertEquals(await readJson(res), { error: GENERIC }, message);
+    assertEquals(audits.length, 0, message);
+  }
+  const f = setup();
+  f.db.queueRpc("record_linha_item_decision", {
+    data: null,
+    error: { code: "P0001", message: "feature_disabled:feature_linha_editorial" },
+  });
+  const fres = await quiet(() => f.handler(post({ token: "hub-123", linha_id: LINHA_A, item_id: ITEM_1, acao: "aprovado" })));
+  assertEquals(fres.status, 403);
+  assertEquals(await readJson(fres), { error: "feature_disabled", feature: "feature_linha_editorial" });
+});
+
+Deno.test("hub-linha-editorial finish aprovado with a row in ajustes is a 409 carrying code itens_com_ajustes", async () => {
+  const { db, audits, handler } = setup();
+  db.queueRpc("record_linha_decision", { data: null, error: { code: "P0001", message: "itens_com_ajustes" } });
+  const res = await quiet(() => handler(post({ token: "hub-123", linha_id: LINHA_A, acao: "aprovado" })));
+  assertEquals(res.status, 409);
+  assertEquals(await readJson(res), { error: GENERIC, code: "itens_com_ajustes" });
+  assertEquals(rpcCalls(db, "create_linha_notification").length, 0);
+  assertEquals(audits.length, 0);
+
+  // Other mapped errors never expose their code.
+  const s = setup();
+  s.db.queueRpc("record_linha_decision", { data: null, error: { code: "P0001", message: "status_invalido" } });
+  const sres = await quiet(() => s.handler(post({ token: "hub-123", linha_id: LINHA_A, acao: "aprovado" })));
+  assertEquals(await readJson(sres), { error: GENERIC });
 });
 
 Deno.test("hub-linha-editorial rejects other methods with 405", async () => {

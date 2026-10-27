@@ -3,7 +3,15 @@ import type { HubLinhaItem } from '../../../types';
 import { currentPeriodo, groupByWeek } from '../linhaWeeks';
 
 function item(id: string, data: string | null): HubLinhaItem {
-  return { id, data, tipo: 'feed', titulo: `Post ${id}`, direcao: '', valores: {} };
+  return {
+    id,
+    data,
+    tipo: 'feed',
+    titulo: `Post ${id}`,
+    direcao: '',
+    valores: {},
+    aprovacao: null,
+  };
 }
 
 describe('groupByWeek', () => {

@@ -50,6 +50,7 @@ function item(id: string, data: string | null, over: Partial<HubLinhaItem> = {})
     titulo: `Post ${id}`,
     direcao: `Direção ${id}`,
     valores: {},
+    aprovacao: null,
     ...over,
   };
 }
@@ -221,7 +222,7 @@ describe('Aprovações, Linha editorial tab', () => {
     );
   });
 
-  it('shows client comments and team replies, and counts the client ones', async () => {
+  it('shows client comments and team replies', async () => {
     mockedFetchLinhas.mockResolvedValue({
       linhas: [
         linha({
@@ -249,13 +250,12 @@ describe('Aprovações, Linha editorial tab', () => {
     renderPage(`${BASE}?aba=linha`);
     expect(await screen.findByText('Gostei da ideia')).toBeTruthy();
     expect(screen.getByText('Combinado, obrigado')).toBeTruthy();
-    expect(screen.getByText('1 comentário na linha')).toBeTruthy();
+    expect(screen.getByText('0 de 3 aprovados')).toBeTruthy();
   });
 
   it('Pedir ajustes without comments requires text', async () => {
     renderPage(`${BASE}?aba=linha`);
-    expect(await screen.findByText('0 comentários na linha')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Pedir ajustes' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Pedir ajustes' }));
     const box = screen.getByLabelText('O que precisa mudar');
     fireEvent.click(screen.getByRole('button', { name: 'Enviar pedido de ajustes' }));
     expect((await screen.findByRole('alert')).textContent).toBe('Conte o que precisa mudar.');

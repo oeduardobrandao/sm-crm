@@ -37,6 +37,22 @@ describe('linha editorial notifications', () => {
     expect(d.body).toBe('2 comentários');
   });
 
+  test('ajustes body counts the rows with an ajuste when there are any', () => {
+    expect(
+      getNotificationDisplay('linha_editorial_ajustes', { ...meta, itens_ajustes: 3 }).body,
+    ).toBe('3 posts com ajuste');
+    expect(
+      getNotificationDisplay('linha_editorial_ajustes', { ...meta, itens_ajustes: 1 }).body,
+    ).toBe('1 post com ajuste');
+    expect(
+      getNotificationDisplay('linha_editorial_ajustes', { ...meta, itens_ajustes: 0 }).body,
+    ).toBe('2 comentários');
+    // Only the ajustes notification reads it.
+    expect(
+      getNotificationDisplay('linha_editorial_aprovada', { ...meta, itens_ajustes: 3 }).body,
+    ).toBe('2 comentários');
+  });
+
   test('month is parsed without a timezone shift (first and last days)', () => {
     const first = getNotificationDisplay('linha_editorial_ajustes', {
       ...meta,
