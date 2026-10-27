@@ -1,3 +1,5 @@
+import type { DownscalePlan } from './downscalePlan';
+
 export type Adjustment = {
   width: number;
   height: number;
@@ -101,6 +103,52 @@ export function videoArguments(
     'yuv420p',
     '-r',
     '30',
+    '-b:v',
+    String(bitrate),
+    '-maxrate',
+    String(Math.min(25_000_000, bitrate * 2)),
+    '-bufsize',
+    String(bitrate * 2),
+    '-g',
+    '60',
+    '-flags',
+    '+cgop',
+    '-c:a',
+    'aac',
+    '-ar',
+    '48000',
+    '-ac',
+    '2',
+    '-b:a',
+    '128k',
+    '-movflags',
+    '+faststart',
+    '-use_editlist',
+    '0',
+    '-map_metadata',
+    '-1',
+    'output.mp4',
+  ];
+}
+
+/** Plain re-encode to the plan's size: no crop, pad, blur or frame-rate change. */
+export function scaleVideoArguments(plan: DownscalePlan): string[] {
+  const { bitrate } = plan;
+  return [
+    '-i',
+    'input',
+    '-map',
+    '0:v:0',
+    '-map',
+    '0:a:0?',
+    '-vf',
+    `scale=${plan.width}:${plan.height}:force_divisible_by=2`,
+    '-c:v',
+    'libx264',
+    '-preset',
+    'ultrafast',
+    '-pix_fmt',
+    'yuv420p',
     '-b:v',
     String(bitrate),
     '-maxrate',

@@ -16,6 +16,8 @@ export type AnalyticsEvent =
   | 'vidro_intro_shown'
   | 'vidro_intro_dismissed'
   | 'client_created'
+  // Oversized video reduced in the browser before upload (entregas media gallery).
+  | 'video_downscaled'
   // Two distinct steps, deliberately not collapsed: `_started` fires when the user leaves for
   // Meta's consent screen, `instagram_connected` is the activation milestone and may only be
   // fired once the callback confirms a live connection. Nothing fires it yet — the OAuth success

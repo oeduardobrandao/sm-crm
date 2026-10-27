@@ -115,7 +115,31 @@
     "reelCoverAction": "Use as Reel cover",
     "reelCoverMoving": "Moving cover…",
     "reelCoverMoved": "Reel cover updated",
-    "reelCoverFetchError": "Couldn't load the cover image. Try again."
+    "reelCoverFetchError": "Couldn't load the cover image. Try again.",
+    "downscale": {
+      "reasonWidth": "Width above 1920 px (e.g. 4K). Instagram does not accept it.",
+      "reasonSize": "Above 300 MB (100 MB for Stories).",
+      "offerTitle_one": "Video above Instagram's limit",
+      "offerTitle_other": "{{count}} videos above Instagram's limit",
+      "offerReduce": "Reduce and upload",
+      "offerOriginal": "Upload original",
+      "slowEngine": "Conversion is slower in this browser.",
+      "unsupported": "This browser can't reduce a video this large. Export at 1080p on your phone or use Chrome.",
+      "overClientCap": "File above 2 GB: it can only be uploaded reduced.",
+      "hdr": "HDR video: colors may change slightly.",
+      "converting": "Converting… {{pct}}%",
+      "convertFailed": "{{name}}: could not reduce the video. We uploaded the original.",
+      "convertFailedNoFallback": "{{name}}: could not reduce the video.",
+      "action": "Reduce resolution",
+      "dialogTitle": "Reducing resolution",
+      "stageDownload": "Downloading…",
+      "stageConvert": "Converting…",
+      "stageSave": "Saving…",
+      "done": "Video reduced to {{w}}×{{h}}.",
+      "replaceOrphan": "Could not replace the media. The reduced version was saved in Files.",
+      "cancel": "Cancel",
+      "tooLong": "Video too long to fit within the limit."
+    }
   },
   "thumbnailEditor": {
     "title": "Video thumbnail",
