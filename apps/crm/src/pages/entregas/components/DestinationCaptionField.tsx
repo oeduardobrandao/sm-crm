@@ -1,6 +1,7 @@
 import { forwardRef, useImperativeHandle } from 'react';
 import { Copy, Lock } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import type { CommentThread } from '@/store';
@@ -44,10 +45,11 @@ export const DestinationCaptionField = forwardRef<
   { id, label, value, max, placeholder, hint, disabled, lockedMessage, showCopy, onSave },
   ref,
 ) {
+  const { t } = useTranslation('postPanels');
   const { text, change, getText } = useCaptionDraft({
     value,
     threads: NO_THREADS,
-    onSave: (t) => onSave(t),
+    onSave: (next) => onSave(next),
     max,
   });
   useImperativeHandle(ref, () => ({ getText }), [getText]);
@@ -55,8 +57,8 @@ export const DestinationCaptionField = forwardRef<
   const over = max != null && text.length > max;
   const copy = () => {
     navigator.clipboard.writeText(getText()).then(
-      () => toast.success('Legenda copiada.'),
-      () => toast.error('Não foi possível copiar a legenda.'),
+      () => toast.success(t('destinationCaption.copied')),
+      () => toast.error(t('destinationCaption.copyError')),
     );
   };
 
@@ -87,7 +89,7 @@ export const DestinationCaptionField = forwardRef<
             disabled={!text}
           >
             <Copy className="h-3.5 w-3.5" />
-            Copiar legenda
+            {t('destinationCaption.copy')}
           </Button>
         )}
         <span
@@ -97,7 +99,9 @@ export const DestinationCaptionField = forwardRef<
             fontFamily: 'var(--font-mono)',
           }}
         >
-          {max == null ? `${text.length} caracteres` : `${text.length} / ${max}`}
+          {max == null
+            ? t('destinationCaption.chars', { count: text.length })
+            : `${text.length} / ${max}`}
         </span>
       </div>
       {/* bare: same white bordered field as the Instagram caption, not Vidro's gray fill. */}

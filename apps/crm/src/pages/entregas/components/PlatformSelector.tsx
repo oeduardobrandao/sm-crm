@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import type { WorkflowPost } from '../../../store';
 
@@ -44,6 +45,7 @@ export function PlatformSelector({
   isExpress = false,
   onChange,
 }: PlatformSelectorProps) {
+  const { t } = useTranslation('postPanels');
   const isStories = tipo === 'stories';
   // 'other' (só Geral): destinos vêm do quadro; nada aqui deve reescrevê-lo.
   const isOther = value === 'other';
@@ -60,7 +62,7 @@ export function PlatformSelector({
       if (!revertingRef.current) {
         revertingRef.current = true;
         onChange('instagram');
-        toast.info('Plataforma revertida para Instagram: Stories não são suportados no TikTok.');
+        toast.info(t('platformSelector.reverted'));
       }
     } else {
       revertingRef.current = false;
@@ -74,9 +76,9 @@ export function PlatformSelector({
   if (!tiktokFeatureEnabled || isOther || isExpress) return null;
 
   const disabledReason = isStories
-    ? 'Stories não são suportados no TikTok'
+    ? t('platformSelector.storiesUnsupported')
     : !hasActiveTikTokAccount
-      ? 'Cliente sem conta TikTok ativa'
+      ? t('platformSelector.noTikTokAccount')
       : null;
   const tiktokDisabled = disabledReason !== null;
 
@@ -90,9 +92,9 @@ export function PlatformSelector({
   return (
     <div
       className="drawer-post-field drawer-post-field--platform"
-      title={disabled ? 'Cancelar agendamento para editar' : undefined}
+      title={disabled ? t('platformSelector.cancelToEdit') : undefined}
     >
-      <label>Plataforma</label>
+      <label>{t('platformSelector.label')}</label>
       {/* Radix propagates root `disabled` to every item, so the schedule lock greys the
           whole group without touching the per-item TikTok gating below. */}
       <ToggleGroup
@@ -111,8 +113,12 @@ export function PlatformSelector({
           </ToggleGroupItem>
         </span>
         <span title={tiktokDisabled ? (disabledReason as string) : undefined}>
-          <ToggleGroupItem value="both" aria-label="Ambas" disabled={tiktokDisabled}>
-            Ambas
+          <ToggleGroupItem
+            value="both"
+            aria-label={t('platformSelector.both')}
+            disabled={tiktokDisabled}
+          >
+            {t('platformSelector.both')}
           </ToggleGroupItem>
         </span>
       </ToggleGroup>

@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
   Check,
@@ -40,7 +41,7 @@ interface PostProcessCardProps {
   onForwardClick?: () => void;
   onRevertClick?: () => void;
   dragHandle?: React.ReactNode;
-  forwardLabel?: 'Avançar etapa' | 'Concluir processo';
+  forwardLabel?: string;
   canRevert?: boolean;
   /** Encerra o processo individual: `remove_post_process` desliga o processo e
    *  mantém o post, não apaga nada -- daí o rótulo "Encerrar processo" (spec
@@ -93,6 +94,7 @@ export function PostProcessCard({
   showPublishDate,
   discussaoNaoLidas,
 }: PostProcessCardProps) {
+  const { t } = useTranslation('postPanels');
   const navigate = useNavigate();
   // Under Vidro the board actions trade the `!important` .btn-edit-workflow for
   // vidro-board-action and drop their inline radius/padding, so buttons.css can paint them.
@@ -109,16 +111,19 @@ export function PostProcessCard({
         : 'deadline-ok';
   const hasDeadline = entity.prazoEfetivo != null;
   const deadlineText = !hasDeadline
-    ? 'Sem prazo'
+    ? t('postProcessCard.noDeadline')
     : dl.estourado
-      ? `${Math.abs(dl.diasRestantes)}d atrasado`
+      ? t('postProcessCard.daysOverdue', { days: Math.abs(dl.diasRestantes) })
       : dl.diasRestantes === 0 && dl.horasRestantes === 0
-        ? 'Vence agora'
+        ? t('postProcessCard.dueNow')
         : dl.diasRestantes === 0
-          ? `${dl.horasRestantes}h restantes`
+          ? t('postProcessCard.hoursLeft', { hours: dl.horasRestantes })
           : dl.horasRestantes > 0
-            ? `${dl.diasRestantes}d ${dl.horasRestantes}h restantes`
-            : `${dl.diasRestantes}d restantes`;
+            ? t('postProcessCard.daysHoursLeft', {
+                days: dl.diasRestantes,
+                hours: dl.horasRestantes,
+              })
+            : t('postProcessCard.daysLeft', { days: dl.diasRestantes });
   const etapaIdx = entity.steps.findIndex((s) => s.ordem === entity.etapaOrdem);
   const total = entity.steps.length;
   const progressPct = total > 0 && etapaIdx >= 0 ? Math.round((etapaIdx / total) * 100) : 0;
@@ -195,7 +200,7 @@ export function PostProcessCard({
         <div style={{ minWidth: 0, flex: '1 1 auto', display: 'flex', flexDirection: 'column' }}>
           <div
             className="board-card-title"
-            title={entity.titulo || 'Post sem título'}
+            title={entity.titulo || t('postProcessCard.untitled')}
             style={{
               fontSize: '0.86rem',
               fontWeight: 700,
@@ -206,7 +211,7 @@ export function PostProcessCard({
               whiteSpace: 'nowrap',
             }}
           >
-            {entity.titulo || 'Post sem título'}
+            {entity.titulo || t('postProcessCard.untitled')}
           </div>
           <span
             className="board-card-client"
@@ -298,8 +303,8 @@ export function PostProcessCard({
           <span
             className="board-card-discussao-badge"
             role="img"
-            aria-label={`${discussaoNaoLidas} ${discussaoNaoLidas === 1 ? 'mensagem nova' : 'mensagens novas'} na discussão`}
-            title={`${discussaoNaoLidas} ${discussaoNaoLidas === 1 ? 'mensagem nova' : 'mensagens novas'} na discussão`}
+            aria-label={t('postProcessCard.newMessages', { count: discussaoNaoLidas })}
+            title={t('postProcessCard.newMessages', { count: discussaoNaoLidas })}
           >
             <MessageSquare className="h-3 w-3" aria-hidden="true" />
             {discussaoNaoLidas}
@@ -308,8 +313,8 @@ export function PostProcessCard({
         <span
           className="post-fluxo-tag post-fluxo-tag--avulso post-fluxo-tag--individual post-fluxo-tag--icon-only"
           role="img"
-          aria-label="Processo individual"
-          title="Processo individual"
+          aria-label={t('postProcessCard.individualProcess')}
+          title={t('postProcessCard.individualProcess')}
           style={{ flexShrink: 0 }}
         >
           <FileText size={12} aria-hidden="true" />
@@ -372,7 +377,7 @@ export function PostProcessCard({
           aria-valuemax={total}
           aria-valuenow={etapaIdx + 1}
           aria-valuetext={`${entity.etapaNome} ${etapaIdx + 1}/${total}`}
-          aria-label="Progresso do processo"
+          aria-label={t('postProcessCard.progressAria')}
           title={`${entity.etapaNome} ${etapaIdx + 1}/${total}`}
           style={{
             flex: '1 1 auto',
@@ -451,7 +456,7 @@ export function PostProcessCard({
               </>
             ) : (
               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                Sem responsável
+                {t('postProcessCard.noAssignee')}
               </span>
             )}
           </div>
@@ -471,8 +476,8 @@ export function PostProcessCard({
                 <button
                   type="button"
                   className={`${boardAction} board-card-kebab`}
-                  aria-label="Mais opções"
-                  title="Mais opções"
+                  aria-label={t('postProcessCard.moreOptions')}
+                  title={t('postProcessCard.moreOptions')}
                   style={
                     vidroShell
                       ? { height: 26, flexShrink: 0 }
@@ -491,7 +496,7 @@ export function PostProcessCard({
                   }}
                 >
                   <Copy className="h-3.5 w-3.5" />
-                  Copiar link do post
+                  {t('postProcessCard.copyLink')}
                 </DropdownMenuItem>
                 {onClick && (
                   <DropdownMenuItem
@@ -501,7 +506,7 @@ export function PostProcessCard({
                     }}
                   >
                     <ExternalLink className="h-3.5 w-3.5" />
-                    Abrir
+                    {t('postProcessCard.open')}
                   </DropdownMenuItem>
                 )}
                 {onDuplicateClick && (
@@ -512,7 +517,7 @@ export function PostProcessCard({
                     }}
                   >
                     <CopyPlus className="h-3.5 w-3.5" />
-                    Duplicar post
+                    {t('postProcessCard.duplicate')}
                   </DropdownMenuItem>
                 )}
                 {canRevert && onRevertClick && (
@@ -523,7 +528,7 @@ export function PostProcessCard({
                     }}
                   >
                     <ArrowLeft className="h-3.5 w-3.5" />
-                    Voltar etapa
+                    {t('postProcessCard.revert')}
                   </DropdownMenuItem>
                 )}
                 {onRemoveProcessClick && (
@@ -534,7 +539,7 @@ export function PostProcessCard({
                     }}
                   >
                     <FolderMinus className="h-3.5 w-3.5" />
-                    Encerrar processo
+                    {t('postProcessCard.closeProcess')}
                   </DropdownMenuItem>
                 )}
                 {onDeleteClick && (
@@ -546,7 +551,7 @@ export function PostProcessCard({
                     }}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                    Excluir post
+                    {t('postProcessCard.deletePost')}
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>
@@ -556,8 +561,8 @@ export function PostProcessCard({
           {onForwardClick && (
             <button
               className={`${boardAction} btn-forward-etapa`}
-              aria-label={forwardLabel ?? 'Avançar etapa'}
-              title={forwardLabel ?? 'Avançar etapa'}
+              aria-label={forwardLabel ?? t('postProcessCard.forward')}
+              title={forwardLabel ?? t('postProcessCard.forward')}
               style={{
                 height: 26,
                 ...(vidroShell ? null : { padding: '0 0.5rem', borderRadius: '8px' }),

@@ -1,7 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { i18n, getDateFnsLocale } from '@mesaas/i18n';
 import {
   Bell,
   BellOff,
@@ -54,7 +55,10 @@ function resolveAuthor(
   const wsUser = workspaceUsers.find((u) => u.id === userId);
   if (wsUser) return { nome: wsUser.nome, avatarUrl: wsUser.avatar_url };
   const membro = membros.find((m) => m.crm_user_id === userId);
-  return { nome: membro?.nome ?? 'Membro', avatarUrl: membro?.avatar_url ?? null };
+  return {
+    nome: membro?.nome ?? i18n.t('postPanels:discussao.memberFallback'),
+    avatarUrl: membro?.avatar_url ?? null,
+  };
 }
 
 function timeOf(iso: string): string {
@@ -62,17 +66,19 @@ function timeOf(iso: string): string {
 }
 
 function fullDateOf(iso: string): string {
-  return format(new Date(iso), "d 'de' MMMM 'às' HH:mm", { locale: ptBR });
+  return format(new Date(iso), i18n.t('postPanels:discussao.fullDateFormat'), {
+    locale: getDateFnsLocale(),
+  });
 }
 
 function threadCountLabel(replies: number, novas: number): string | null {
-  if (novas > 0) return novas === 1 ? '1 nova' : `${novas} novas`;
-  if (replies > 0) return replies === 1 ? '1 resposta' : `${replies} respostas`;
+  if (novas > 0) return i18n.t('postPanels:discussao.newCount', { count: novas });
+  if (replies > 0) return i18n.t('postPanels:discussao.replyCount', { count: replies });
   return null;
 }
 
 function resolvedLabel(n: number): string {
-  return n === 1 ? '1 comentário no texto resolvido' : `${n} comentários no texto resolvidos`;
+  return i18n.t('postPanels:discussao.resolvedCount', { count: n });
 }
 
 // ── Timeline ──────────────────────────────────────────────────────────────────
@@ -102,6 +108,7 @@ export function DiscussaoTimeline({
   onEditMessage,
   onDeleteMessage,
 }: DiscussaoTimelineProps) {
+  const { t } = useTranslation('postPanels');
   return (
     <div className="discussao-timeline">
       {items.map((item) => {
@@ -123,9 +130,9 @@ export function DiscussaoTimeline({
                 key={item.key}
                 className="discussao-divider discussao-divider--unread"
                 role="separator"
-                aria-label="Não lidas"
+                aria-label={t('discussao.unread')}
               >
-                <span>Não lidas</span>
+                <span>{t('discussao.unread')}</span>
               </div>
             );
           case 'message':
@@ -180,6 +187,7 @@ function DiscussaoMessage({
   onEdit?: (comment: PostComment, content: string) => Promise<void>;
   onDelete?: (comment: PostComment) => Promise<void>;
 }) {
+  const { t } = useTranslation('postPanels');
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(comment.content);
   const [busy, setBusy] = useState(false);
@@ -204,19 +212,19 @@ function DiscussaoMessage({
       await onEdit(comment, trimmed);
       setEditing(false);
     } catch {
-      toast.error('Não foi possível salvar. Tente novamente.');
+      toast.error(t('discussao.saveError'));
     } finally {
       setBusy(false);
     }
   };
 
   const remove = async () => {
-    if (!onDelete || !window.confirm('Excluir mensagem?')) return;
+    if (!onDelete || !window.confirm(t('discussao.deleteConfirm'))) return;
     setBusy(true);
     try {
       await onDelete(comment);
     } catch {
-      toast.error('Não foi possível excluir. Tente novamente.');
+      toast.error(t('discussao.deleteError'));
     } finally {
       setBusy(false);
     }
@@ -243,14 +251,16 @@ function DiscussaoMessage({
           >
             {timeOf(comment.created_at)}
           </time>
-          {comment.updated_at && <span className="discussao-message-edited">(editado)</span>}
+          {comment.updated_at && (
+            <span className="discussao-message-edited">{t('discussao.edited')}</span>
+          )}
           {canAct && !editing && (
             <span className="discussao-message-actions">
               <button
                 type="button"
                 className="discussao-icon-btn"
-                aria-label="Editar mensagem"
-                title="Editar"
+                aria-label={t('discussao.editMessage')}
+                title={t('discussao.edit')}
                 onClick={startEdit}
                 disabled={busy}
               >
@@ -259,8 +269,8 @@ function DiscussaoMessage({
               <button
                 type="button"
                 className="discussao-icon-btn discussao-icon-btn--danger"
-                aria-label="Excluir mensagem"
-                title="Excluir"
+                aria-label={t('discussao.deleteMessage')}
+                title={t('discussao.delete')}
                 onClick={remove}
                 disabled={busy}
               >
@@ -274,7 +284,7 @@ function DiscussaoMessage({
             <MentionEditor
               className="discussao-input"
               rootClassName="discussao-edit-field"
-              placeholder="Editar mensagem"
+              placeholder={t('discussao.editMessage')}
               value={draft}
               onValueChange={setDraft}
               disabled={busy}
@@ -282,7 +292,7 @@ function DiscussaoMessage({
             />
             {tooLong && (
               <p className="discussao-limit" role="alert">
-                Mensagem muito longa. O limite é de {DISCUSSAO_MAX_CHARS} caracteres.
+                {t('discussao.tooLong', { max: DISCUSSAO_MAX_CHARS })}
               </p>
             )}
             <div className="discussao-edit-actions">
@@ -292,7 +302,7 @@ function DiscussaoMessage({
                 onClick={save}
                 disabled={busy || !trimmed || tooLong}
               >
-                Salvar
+                {t('actions.save')}
               </button>
               <button
                 type="button"
@@ -300,7 +310,7 @@ function DiscussaoMessage({
                 onClick={() => setEditing(false)}
                 disabled={busy}
               >
-                Cancelar
+                {t('actions.cancel')}
               </button>
             </div>
           </div>
@@ -329,6 +339,7 @@ function DiscussaoThreadCard({
   workspaceUsers: DiscussaoWorkspaceUser[];
   onThreadClick: (threadId: number) => void;
 }) {
+  const { t } = useTranslation('postPanels');
   const author = resolveAuthor(thread.created_by, membros, workspaceUsers);
   const first = thread.post_comments?.[0];
   const count = threadCountLabel(replies, novas);
@@ -343,9 +354,11 @@ function DiscussaoThreadCard({
       <TextQuote className="discussao-thread-icon h-4 w-4" aria-hidden="true" />
       <span className="discussao-thread-body">
         <span className="discussao-thread-meta">
-          <span className="discussao-thread-author">{author.nome}</span> comentou no trecho ·{' '}
-          {timeOf(thread.created_at)}
-          {thread.orphaned && <span className="discussao-thread-chip">texto removido</span>}
+          <span className="discussao-thread-author">{author.nome}</span>{' '}
+          {t('discussao.commentedOnPassage')} {timeOf(thread.created_at)}
+          {thread.orphaned && (
+            <span className="discussao-thread-chip">{t('discussao.textRemoved')}</span>
+          )}
         </span>
         <span className="discussao-thread-quote">“{thread.quoted_text}”</span>
         {(first || count) && (
@@ -366,7 +379,7 @@ function DiscussaoThreadCard({
           </span>
         )}
       </span>
-      <span className="discussao-thread-link">Ver no texto</span>
+      <span className="discussao-thread-link">{t('discussao.viewInText')}</span>
     </button>
   );
 }
@@ -399,11 +412,11 @@ function ResolvedGroup({
         {resolvedLabel(threads.length)}
       </button>
       {open &&
-        threads.map((t) => (
+        threads.map((th) => (
           <DiscussaoThreadCard
-            key={t.id}
-            thread={t}
-            replies={Math.max(0, (t.post_comments?.length ?? 0) - 1)}
+            key={th.id}
+            thread={th}
+            replies={Math.max(0, (th.post_comments?.length ?? 0) - 1)}
             novas={0}
             membros={membros}
             workspaceUsers={workspaceUsers}
@@ -448,6 +461,7 @@ export function DiscussaoEquipe({
   focusRequest,
   onFocusHandled,
 }: DiscussaoEquipeProps) {
+  const { t } = useTranslation('postPanels');
   const titleId = useId();
   const sectionRef = useRef<HTMLElement>(null);
   const showBridge = useShowChatBridge();
@@ -490,11 +504,11 @@ export function DiscussaoEquipe({
       <div className="discussao-header">
         <MessagesSquare className="discussao-header-icon h-4 w-4" aria-hidden="true" />
         <h3 id={titleId} className="discussao-title">
-          Discussão da equipe
+          {t('discussao.title')}
         </h3>
         <Badge variant="neutral" size="sm" className="discussao-badge">
           <Lock className="h-3 w-3" aria-hidden="true" />
-          Só a equipe vê
+          {t('discussao.teamOnly')}
         </Badge>
         <span className="discussao-header-spacer" />
         {seguir.ready && (
@@ -509,7 +523,7 @@ export function DiscussaoEquipe({
             ) : (
               <BellOff className="h-3.5 w-3.5" aria-hidden="true" />
             )}
-            {following ? 'Seguindo' : 'Seguir'}
+            {following ? t('discussao.following') : t('discussao.follow')}
           </button>
         )}
         {showBridge && chatBridge}
@@ -536,7 +550,7 @@ export function DiscussaoEquipe({
             ref={editorRef}
             className="discussao-input"
             rootClassName="discussao-composer-field"
-            placeholder="Escreva para a equipe. Use @ para mencionar."
+            placeholder={t('discussao.composerPlaceholder')}
             value={draft}
             onValueChange={setDraft}
             onKeyDown={handleKeyDown}
@@ -544,7 +558,7 @@ export function DiscussaoEquipe({
           <button
             type="button"
             className="discussao-send"
-            aria-label="Enviar"
+            aria-label={t('discussao.send')}
             // Clicking must not pull focus out of the editor.
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => void handleSend()}
@@ -555,12 +569,10 @@ export function DiscussaoEquipe({
         </div>
         {tooLong && (
           <p className="discussao-limit" role="alert">
-            Mensagem muito longa. O limite é de {DISCUSSAO_MAX_CHARS} caracteres.
+            {t('discussao.tooLong', { max: DISCUSSAO_MAX_CHARS })}
           </p>
         )}
-        <p className="discussao-hint">
-          Quem participa da discussão recebe aviso. Enter envia, Shift+Enter quebra a linha.
-        </p>
+        <p className="discussao-hint">{t('discussao.composerHint')}</p>
       </div>
     </section>
   );

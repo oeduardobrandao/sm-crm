@@ -1,5 +1,6 @@
 import { useState, type ClipboardEvent, type KeyboardEvent, type Ref } from 'react';
 import { AlertCircle, Users, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import {
   COLLAB_ERROR_COPY,
   MAX_COLLABORATORS,
@@ -21,13 +22,6 @@ interface InstagramCollaboratorsFieldProps {
   idPrefix: string;
 }
 
-const HELP =
-  'Cada conta recebe um convite quando o post for publicado e precisa aceitar no próprio Instagram. Só contas públicas.';
-const LIMIT_LINE = 'Limite de 3 colaboradores por post. Remova um para trocar.';
-const LOCK_LINE = 'Cancelar agendamento para editar';
-const TRIAL_LINE =
-  'Reels de teste não aceitam colaboradores. Desligue o Reel de teste para convidar.';
-
 /**
  * Campo de colaboradores do Instagram (tag input). Apresentacional: quem
  * monta decide se ele aparece (conta conectada, não-stories, mira Instagram).
@@ -41,6 +35,7 @@ export function InstagramCollaboratorsField({
   inputRef,
   idPrefix,
 }: InstagramCollaboratorsFieldProps) {
+  const { t } = useTranslation('postPanels');
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -123,11 +118,15 @@ export function InstagramCollaboratorsField({
   const refusedLine =
     refusedInValue.length === 0
       ? null
-      : refusedInValue.length === 1
-        ? 'O Instagram não encontrou este perfil, ou ele é privado.'
-        : 'O Instagram não encontrou estes perfis, ou eles são privados.';
+      : t('collaborators.refused', { count: refusedInValue.length });
 
-  const statusLine = locked ? LOCK_LINE : trialOn ? TRIAL_LINE : atLimit ? LIMIT_LINE : HELP;
+  const statusLine = locked
+    ? t('collaborators.locked')
+    : trialOn
+      ? t('collaborators.trial')
+      : atLimit
+        ? t('collaborators.limit')
+        : t('collaborators.help');
 
   const inputId = `${idPrefix}-input`;
   const labelId = `${idPrefix}-label`;
@@ -143,13 +142,13 @@ export function InstagramCollaboratorsField({
           style={{ fontSize: '0.78rem', fontWeight: 500, color: 'var(--text-muted)' }}
         >
           <Users className="h-3.5 w-3.5" aria-hidden="true" />
-          Colaboradores
+          {t('collaborators.label')}
         </span>
         <span
           className="whitespace-nowrap text-xs"
           style={{ color: 'var(--text-light)', fontFamily: 'var(--font-mono)' }}
         >
-          {value.length} de {MAX_COLLABORATORS}
+          {t('collaborators.count', { n: value.length, max: MAX_COLLABORATORS })}
         </span>
       </div>
 
@@ -190,7 +189,7 @@ export function InstagramCollaboratorsField({
               {!readOnly && (
                 <button
                   type="button"
-                  aria-label={`Remover @${u}`}
+                  aria-label={t('collaborators.removeAria', { username: u })}
                   disabled={disabled}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -212,7 +211,7 @@ export function InstagramCollaboratorsField({
             type="text"
             value={draft}
             disabled={disabled}
-            placeholder="Adicionar @usuário"
+            placeholder={t('collaborators.placeholder')}
             aria-labelledby={labelId}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? `${errorId} ${statusId}` : statusId}

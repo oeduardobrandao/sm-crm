@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, FileText, MessageSquare, Search } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import {
   createEquipeConversa,
@@ -38,10 +39,6 @@ import {
 export { buildBridgeMessage };
 export type { BridgePost };
 
-const TITULO = 'Levar este post para o chat';
-const SUBTITULO = 'A mensagem vai com um link para o post.';
-const ERRO_ENVIO = 'Não foi possível enviar. Tente novamente.';
-
 type Destino = { kind: 'grupo'; conversaId: number } | { kind: 'pessoa'; userId: string };
 
 interface DiscutirNoChatProps {
@@ -55,6 +52,7 @@ function normalize(s: string): string {
 }
 
 export function DiscutirNoChat({ post, variant }: DiscutirNoChatProps) {
+  const { t } = useTranslation('postPanels');
   const [open, setOpen] = useState(false);
 
   const panel = <DiscutirPanel post={post} open={open} variant={variant} onClose={setOpen} />;
@@ -65,7 +63,7 @@ export function DiscutirNoChat({ post, variant }: DiscutirNoChatProps) {
         <SheetTrigger asChild>
           <button
             type="button"
-            aria-label="Discutir no chat"
+            aria-label={t('discutirNoChat.trigger')}
             className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-[var(--border-color)] bg-[var(--card-bg)] text-[var(--text-muted)] hover:text-[var(--text-main)]"
           >
             <MessageSquare size={18} aria-hidden="true" />
@@ -73,8 +71,8 @@ export function DiscutirNoChat({ post, variant }: DiscutirNoChatProps) {
         </SheetTrigger>
         <SheetContent side="bottom" className="flex max-h-[85dvh] flex-col gap-3 p-4">
           <SheetHeader>
-            <SheetTitle className="text-base">{TITULO}</SheetTitle>
-            <SheetDescription>{SUBTITULO}</SheetDescription>
+            <SheetTitle className="text-base">{t('discutirNoChat.title')}</SheetTitle>
+            <SheetDescription>{t('discutirNoChat.subtitle')}</SheetDescription>
           </SheetHeader>
           {panel}
         </SheetContent>
@@ -87,13 +85,13 @@ export function DiscutirNoChat({ post, variant }: DiscutirNoChatProps) {
       <PopoverTrigger asChild>
         <Button type="button" variant="outline" size="sm" className="mb-0 gap-1.5">
           <MessageSquare aria-hidden="true" />
-          Discutir no chat
+          {t('discutirNoChat.trigger')}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="flex w-[360px] max-w-[92vw] flex-col gap-3 p-4">
         <div>
-          <h2 className="text-sm font-semibold">{TITULO}</h2>
-          <p className="text-xs text-muted-foreground">{SUBTITULO}</p>
+          <h2 className="text-sm font-semibold">{t('discutirNoChat.title')}</h2>
+          <p className="text-xs text-muted-foreground">{t('discutirNoChat.subtitle')}</p>
         </div>
         {panel}
       </PopoverContent>
@@ -112,6 +110,7 @@ function DiscutirPanel({
   variant: 'popover' | 'sheet';
   onClose: (open: boolean) => void;
 }) {
+  const { t } = useTranslation('postPanels');
   const { user } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -169,12 +168,15 @@ function DiscutirPanel({
     onSuccess: (conversaId) => {
       qc.invalidateQueries({ queryKey: ['equipe-conversas'] });
       qc.invalidateQueries({ queryKey: ['equipe-mensagens'] });
-      toast.success(`Enviado para ${destinoNome ?? 'a conversa'}.`, {
-        action: {
-          label: 'Abrir conversa',
-          onClick: () => navigate(`/mensagens/equipe/${conversaId}`),
+      toast.success(
+        t('discutirNoChat.sentTo', { name: destinoNome ?? t('discutirNoChat.theConversation') }),
+        {
+          action: {
+            label: t('discutirNoChat.openConversation'),
+            onClick: () => navigate(`/mensagens/equipe/${conversaId}`),
+          },
         },
-      });
+      );
       setTexto('');
       setBusca('');
       setDestino(null);
@@ -182,7 +184,7 @@ function DiscutirPanel({
     },
     onError: () => {
       // Keep the text and the selection: the user retries with one click.
-      toast.error(ERRO_ENVIO);
+      toast.error(t('discutirNoChat.sendError'));
     },
   });
 
@@ -218,27 +220,29 @@ function DiscutirPanel({
         <input
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
-          placeholder="Buscar conversa ou pessoa"
-          aria-label="Buscar conversa ou pessoa"
+          placeholder={t('discutirNoChat.searchPlaceholder')}
+          aria-label={t('discutirNoChat.searchPlaceholder')}
           className="w-full rounded-md border border-input bg-background py-2 pl-8 pr-3 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring md:text-sm"
         />
       </div>
 
       <div
         role="listbox"
-        aria-label="Conversas e pessoas"
+        aria-label={t('discutirNoChat.listAria')}
         className="min-h-0 max-h-56 overflow-y-auto rounded-md border border-[var(--border-color)]"
       >
         {carregando && (
-          <p className="py-6 text-center text-sm text-muted-foreground">Carregando…</p>
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            {t('discutirNoChat.loading')}
+          </p>
         )}
         {!carregando && vazio && (
           <p className="py-6 text-center text-sm text-muted-foreground">
-            Nenhuma conversa ou pessoa encontrada.
+            {t('discutirNoChat.empty')}
           </p>
         )}
         {gruposVisiveis.length > 0 && (
-          <Secao titulo="Grupos">
+          <Secao titulo={t('discutirNoChat.groups')}>
             {gruposVisiveis.map((g) => (
               <Linha
                 key={`g-${g.conversa_id}`}
@@ -246,14 +250,14 @@ function DiscutirPanel({
                 selecionado={destino?.kind === 'grupo' && destino.conversaId === g.conversa_id}
                 avatar={<EquipeConversaAvatar conversa={g} size={32} />}
                 nome={g.display_nome}
-                detalhe={`${g.participantes_count} ${g.participantes_count === 1 ? 'pessoa' : 'pessoas'}`}
+                detalhe={t('discutirNoChat.peopleCount', { count: g.participantes_count })}
                 onClick={() => setDestino({ kind: 'grupo', conversaId: g.conversa_id })}
               />
             ))}
           </Secao>
         )}
         {pessoasVisiveis.length > 0 && (
-          <Secao titulo="Pessoas">
+          <Secao titulo={t('discutirNoChat.people')}>
             {pessoasVisiveis.map((m: EquipeChatMember) => (
               <Linha
                 key={`p-${m.user_id}`}
@@ -280,8 +284,16 @@ function DiscutirPanel({
         onChange={(e) => setTexto(e.target.value)}
         maxLength={maxTexto}
         rows={3}
-        aria-label={destinoNome ? `Mensagem para ${destinoNome}` : 'Mensagem'}
-        placeholder={destinoNome ? `Mensagem para ${destinoNome}` : 'Mensagem'}
+        aria-label={
+          destinoNome
+            ? t('discutirNoChat.messageTo', { name: destinoNome })
+            : t('discutirNoChat.message')
+        }
+        placeholder={
+          destinoNome
+            ? t('discutirNoChat.messageTo', { name: destinoNome })
+            : t('discutirNoChat.message')
+        }
         className={variant === 'sheet' ? 'min-h-[72px]' : 'min-h-[64px]'}
       />
 
@@ -290,12 +302,12 @@ function DiscutirPanel({
         data-testid="discutir-post-chip"
       >
         <FileText size={13} aria-hidden="true" className="shrink-0 text-muted-foreground" />
-        <span className="truncate">{post.titulo.trim() || 'Post sem título'}</span>
+        <span className="truncate">{post.titulo.trim() || t('discutirNoChat.untitled')}</span>
       </div>
 
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" size="sm" className="mb-0" onClick={cancelar}>
-          Cancelar
+          {t('actions.cancel')}
         </Button>
         <Button
           type="button"
@@ -305,7 +317,9 @@ function DiscutirPanel({
           disabled={!podeEnviar}
           onClick={enviar}
         >
-          {destinoNome ? `Enviar para ${destinoNome}` : 'Enviar'}
+          {destinoNome
+            ? t('discutirNoChat.sendTo', { name: destinoNome })
+            : t('discutirNoChat.send')}
         </Button>
       </div>
     </div>

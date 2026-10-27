@@ -1,3 +1,4 @@
+import { i18n } from '@mesaas/i18n';
 import { formatMentionToken } from '@/components/mentions/mentionTokens';
 
 export interface BridgePost {
@@ -16,7 +17,7 @@ export function bridgePostToken(post: BridgePost): string {
   return formatMentionToken({
     entityType: 'post',
     id: post.id,
-    label: post.titulo.trim() || 'Post sem título',
+    label: post.titulo.trim() || i18n.t('postPanels:discutirNoChat.untitled'),
     ...(post.workflowId != null ? { parentId: post.workflowId } : {}),
   });
 }

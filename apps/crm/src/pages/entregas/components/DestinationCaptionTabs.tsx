@@ -1,4 +1,5 @@
 import type { ReactNode, Ref } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PLATFORM_DEFS, captionMaxFor, type PlatformId } from '@mesaas/platforms';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -54,10 +55,11 @@ export function DestinationCaptionTabs({
   geralFieldRef,
   onSaveCaption,
 }: DestinationCaptionTabsProps) {
+  const { t } = useTranslation('postPanels');
   if (loading) {
     return (
       <p className="mt-3 text-xs" style={{ color: 'var(--text-light)' }}>
-        Carregando destinos…
+        {t('destinationTabs.loading')}
       </p>
     );
   }
@@ -65,11 +67,11 @@ export function DestinationCaptionTabs({
     return (
       <div className="mt-3 flex items-center gap-2">
         <p className="text-xs" style={{ color: 'var(--danger-text)' }}>
-          Não foi possível carregar os destinos.
+          {t('destinationTabs.loadError')}
         </p>
         {onRetry && (
           <Button type="button" variant="link" size="sm" className="mb-0" onClick={onRetry}>
-            Tentar de novo
+            {t('destinationTabs.retry')}
           </Button>
         )}
       </div>
@@ -78,13 +80,13 @@ export function DestinationCaptionTabs({
   if (targets.length === 0) {
     return (
       <p className="mt-3 text-xs" style={{ color: 'var(--text-light)' }}>
-        Este post não tem destinos. Ative um em Destinos.
+        {t('destinationTabs.empty')}
       </p>
     );
   }
   const value =
-    activeTab && targets.some((t) => t.platform === activeTab) ? activeTab : targets[0].platform;
-  const geral = targets.find((t) => t.platform === 'geral');
+    activeTab && targets.some((tg) => tg.platform === activeTab) ? activeTab : targets[0].platform;
+  const geral = targets.find((tg) => tg.platform === 'geral');
 
   return (
     <Tabs
@@ -94,15 +96,15 @@ export function DestinationCaptionTabs({
       style={{ borderColor: 'var(--border-color)', background: 'var(--surface-hover)' }}
     >
       <TabsList className="h-auto flex-wrap justify-start gap-1">
-        {targets.map((t) => {
-          const Icon = PLATFORM_ICONS[t.platform];
+        {targets.map((tg) => {
+          const Icon = PLATFORM_ICONS[tg.platform];
           return (
-            <TabsTrigger key={t.platform} value={t.platform} className="gap-1.5">
+            <TabsTrigger key={tg.platform} value={tg.platform} className="gap-1.5">
               <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-              {PLATFORM_DEFS[t.platform].label}
+              {PLATFORM_DEFS[tg.platform].label}
               <DestinationStatusPill
-                platform={t.platform}
-                state={resolveDestinationState(post, t)}
+                platform={tg.platform}
+                state={resolveDestinationState(post, tg)}
                 showIcon={false}
               />
             </TabsTrigger>
@@ -110,55 +112,55 @@ export function DestinationCaptionTabs({
         })}
       </TabsList>
 
-      {targets.map((t) => {
-        const hint = nativeFormatHint(t.platform, post.tipo);
+      {targets.map((tg) => {
+        const hint = nativeFormatHint(tg.platform, post.tipo);
         return (
           <TabsContent
-            key={t.platform}
-            value={t.platform}
+            key={tg.platform}
+            value={tg.platform}
             forceMount
             className="data-[state=inactive]:hidden"
           >
             {hint && (
               <p className="mb-2 text-xs" style={{ color: 'var(--text-light)' }}>
-                Formato: {hint}
+                {t('destinationTabs.format', { hint })}
               </p>
             )}
-            {t.platform === 'instagram' && instagramCaption}
-            {t.platform === 'tiktok' && (
+            {tg.platform === 'instagram' && instagramCaption}
+            {tg.platform === 'tiktok' && (
               <div className="flex flex-col gap-3">
                 <DestinationCaptionField
                   key={post.id}
                   ref={tiktokFieldRef}
                   id={`tt-dest-caption-${post.id}`}
-                  label="Legenda do TikTok"
+                  label={t('destinationTabs.tiktokLabel')}
                   // O publicador do TikTok posta tiktok_caption ?? ig_caption: a aba mostra
                   // exatamente isso. Editar aqui grava tiktok_caption e separa as duas.
                   value={post.tiktok_caption ?? post.ig_caption ?? ''}
                   max={captionMaxFor('tiktok', post.tipo)}
-                  placeholder="Texto exato que será publicado no TikTok."
+                  placeholder={t('destinationTabs.tiktokPlaceholder')}
                   hint={
                     post.tiktok_caption == null && post.ig_caption
-                      ? 'Usando a legenda do Instagram até você editar aqui.'
+                      ? t('destinationTabs.tiktokUsingIg')
                       : undefined
                   }
                   disabled={locked}
-                  lockedMessage="Cancelar agendamento para editar"
+                  lockedMessage={t('destinationTabs.cancelToEdit')}
                   onSave={(text) => onSaveCaption('tiktok', text)}
                 />
                 {tiktokSettings}
               </div>
             )}
-            {t.platform === 'geral' && geral && (
+            {tg.platform === 'geral' && geral && (
               <DestinationCaptionField
                 key={post.id}
                 ref={geralFieldRef}
                 id={`geral-caption-${post.id}`}
-                label="Legenda (Geral)"
+                label={t('destinationTabs.geralLabel')}
                 value={geral.caption ?? ''}
                 max={null}
-                placeholder="Legenda que acompanha o conteúdo para baixar."
-                hint="Geral não é publicado automaticamente: o conteúdo fica disponível para baixar."
+                placeholder={t('destinationTabs.geralPlaceholder')}
+                hint={t('destinationTabs.geralHint')}
                 showCopy
                 onSave={(text) => onSaveCaption('geral', text)}
               />

@@ -1,1 +1,316 @@
-{}
+{
+  "postProductionSection": {
+    "stepState": {
+      "pendente": "Pendente",
+      "ativo": "Em andamento",
+      "concluido": "Concluída",
+      "herdado": "Herdada",
+      "ignorado": "Ignorada",
+      "interrompido": "Interrompida"
+    },
+    "processState": {
+      "ativo": "Ativo",
+      "concluido": "Concluído",
+      "encerrado": "Encerrado"
+    },
+    "editStepError": "Erro ao editar etapa",
+    "originSplit": "Desmembrado de {{origin}}",
+    "originTemplate": "Template: {{name}}",
+    "originIndividual": "Processo individual",
+    "noDeadline": "Sem prazo",
+    "noAssignee": "Sem responsável",
+    "title": "Produção",
+    "clientApprovedHint": "Cliente aprovou. Avançar etapa?",
+    "clientApprovalTag": " · Aprovação do cliente",
+    "assigneeAria": "Responsável da etapa {{step}}",
+    "daysAria": "Dias da etapa {{step}}",
+    "deadlineTypeAria": "Tipo de prazo da etapa {{step}}",
+    "businessDays": "Dias úteis",
+    "calendarDays": "Dias corridos",
+    "noDeadlineLower": "sem prazo",
+    "setOnStart": "definida ao iniciar a etapa",
+    "useFixedDateAria": "{{label}}: usar data fixa na etapa {{step}}",
+    "deadlineAria": "Prazo da etapa {{step}}",
+    "useDaysAria": "Usar dias na etapa {{step}}",
+    "useDays": "Usar dias",
+    "templatePropsNote": "Propriedades do template só valem dentro de um fluxo",
+    "historyTitle": "Histórico do processo"
+  },
+  "postProcessCard": {
+    "noDeadline": "Sem prazo",
+    "daysOverdue": "{{days}}d atrasado",
+    "dueNow": "Vence agora",
+    "hoursLeft": "{{hours}}h restantes",
+    "daysHoursLeft": "{{days}}d {{hours}}h restantes",
+    "daysLeft": "{{days}}d restantes",
+    "untitled": "Post sem título",
+    "newMessages_one": "{{count}} mensagem nova na discussão",
+    "newMessages_other": "{{count}} mensagens novas na discussão",
+    "individualProcess": "Processo individual",
+    "progressAria": "Progresso do processo",
+    "noAssignee": "Sem responsável",
+    "moreOptions": "Mais opções",
+    "copyLink": "Copiar link do post",
+    "open": "Abrir",
+    "duplicate": "Duplicar post",
+    "revert": "Voltar etapa",
+    "closeProcess": "Encerrar processo",
+    "deletePost": "Excluir post",
+    "forward": "Avançar etapa"
+  },
+  "scheduleButton": {
+    "chip": {
+      "published": "publicado",
+      "pending": "pendente",
+      "failed": "falhou",
+      "processing": "processando"
+    },
+    "viewOnTikTok": "Ver no TikTok",
+    "tiktokProcessing": "Processando no TikTok. Pode levar alguns minutos.",
+    "publishNowDescription": {
+      "both": "O post será publicado imediatamente no Instagram e no TikTok. Esta ação não pode ser desfeita.",
+      "tiktok": "O post será publicado imediatamente no TikTok. Esta ação não pode ser desfeita.",
+      "instagram": "O post será publicado imediatamente no Instagram. Esta ação não pode ser desfeita."
+    },
+    "progress": {
+      "both": "Enviando para o Instagram e o TikTok…",
+      "tiktok": "Enviando para o TikTok…",
+      "instagram": "Enviando para o Instagram…"
+    },
+    "publishingWait": {
+      "both": "Aguarde enquanto o post é publicado no Instagram e no TikTok.",
+      "tiktok": "Aguarde enquanto o post é publicado no TikTok.",
+      "instagram": "Aguarde enquanto o post é publicado no Instagram."
+    },
+    "warning": {
+      "igRevoked": "Token do Instagram foi revogado. Reconecte a conta nas configurações do cliente.",
+      "igExpired": "Token do Instagram expirou. Reconecte a conta nas configurações do cliente.",
+      "missingPermission": "Permissão de publicação não concedida. Reconecte a conta com as permissões necessárias.",
+      "ttRevoked": "Token do TikTok foi revogado. Reconecte a conta nas configurações do cliente.",
+      "ttExpired": "Token do TikTok expirou. Reconecte a conta nas configurações do cliente."
+    },
+    "toast": {
+      "sentBoth": "Enviado ao Instagram e ao TikTok. No TikTok, pode levar alguns minutos para aparecer no perfil.",
+      "sentTikTok": "Enviado ao TikTok. Pode levar alguns minutos para aparecer no perfil.",
+      "publishedInstagram": "Post publicado no Instagram!",
+      "publishingSoon": "Post será publicado automaticamente em instantes.",
+      "scheduleCanceled": "Agendamento cancelado",
+      "igReconnectOnlyTikTok": "Conta do Instagram precisa ser reconectada — apenas o TikTok será reenviado",
+      "ttReconnectOnlyInstagram": "Conta do TikTok precisa ser reconectada — apenas o Instagram será reenviado",
+      "resent": "Post reenviado para publicação"
+    },
+    "missing": {
+      "media": "mídia",
+      "publishDate": "data de publicação",
+      "caption": "legenda",
+      "tiktokCaption": "legenda do TikTok",
+      "instagramCaption": "legenda do Instagram",
+      "tiktokSettings": "configurações do TikTok"
+    },
+    "completeTikTokSettings": "Complete as configurações do TikTok",
+    "publishing": "Publicando…",
+    "publishNowQuestion": "Publicar agora?",
+    "done": "Concluído!",
+    "publish": "Publicar",
+    "connectInstagram": "Conecte a conta do Instagram do cliente para agendar ou publicar este post.",
+    "scheduledMayFail": "A publicação agendada pode falhar.",
+    "scheduled": "Agendado",
+    "retry": "Tentar novamente",
+    "schedule": "Agendar",
+    "schedulePublication": "Agendar publicação",
+    "publishNow": "Publicar agora",
+    "missingLine": "Falta: {{items}}"
+  },
+  "discussao": {
+    "memberFallback": "Membro",
+    "fullDateFormat": "d 'de' MMMM 'às' HH:mm",
+    "newCount_one": "{{count}} nova",
+    "newCount_other": "{{count}} novas",
+    "replyCount_one": "{{count}} resposta",
+    "replyCount_other": "{{count}} respostas",
+    "resolvedCount_one": "{{count}} comentário no texto resolvido",
+    "resolvedCount_other": "{{count}} comentários no texto resolvidos",
+    "unread": "Não lidas",
+    "saveError": "Não foi possível salvar. Tente novamente.",
+    "deleteConfirm": "Excluir mensagem?",
+    "deleteError": "Não foi possível excluir. Tente novamente.",
+    "edited": "(editado)",
+    "editMessage": "Editar mensagem",
+    "edit": "Editar",
+    "deleteMessage": "Excluir mensagem",
+    "delete": "Excluir",
+    "tooLong": "Mensagem muito longa. O limite é de {{max}} caracteres.",
+    "commentedOnPassage": "comentou no trecho ·",
+    "textRemoved": "texto removido",
+    "viewInText": "Ver no texto",
+    "title": "Discussão da equipe",
+    "teamOnly": "Só a equipe vê",
+    "following": "Seguindo",
+    "follow": "Seguir",
+    "composerPlaceholder": "Escreva para a equipe. Use @ para mencionar.",
+    "send": "Enviar",
+    "composerHint": "Quem participa da discussão recebe aviso. Enter envia, Shift+Enter quebra a linha.",
+    "today": "Hoje",
+    "yesterday": "Ontem",
+    "dayFormat": "d 'de' MMMM",
+    "sendError": "Não foi possível enviar. Tente novamente.",
+    "updateError": "Não foi possível atualizar. Tente novamente.",
+    "badgeNew_one": "{{count}} mensagem nova na discussão",
+    "badgeNew_other": "{{count}} mensagens novas na discussão",
+    "badgeTotal_one": "{{count}} mensagem na discussão",
+    "badgeTotal_other": "{{count}} mensagens na discussão"
+  },
+  "shared": {
+    "actor": {
+      "client": "Cliente",
+      "system": "Sistema"
+    }
+  },
+  "versionHistory": {
+    "viaSuggestion": "via sugestão aceita",
+    "initialVersion": "Versão inicial",
+    "igCaption": "Legenda do Instagram",
+    "tiktokCaption": "Legenda do TikTok",
+    "title": "Histórico de versões",
+    "empty": "Sem histórico registrado ainda. Versões passam a ser guardadas a partir da próxima edição de conteúdo deste post.",
+    "readOnly": "Somente leitura. Nenhuma versão pode ser restaurada por aqui."
+  },
+  "suggestTime": {
+    "dayFormat": "EEEE, dd/MM",
+    "when": "{{day}} às {{hour}}h",
+    "why_zero": "{{pct}}% de engajamento médio · {{count}} posts",
+    "why_one": "{{pct}}% de engajamento médio · {{count}} post",
+    "why_other": "{{pct}}% de engajamento médio · {{count}} posts",
+    "slotPassed": "Esse horário já passou. A lista foi atualizada.",
+    "trigger": "Sugerir horário",
+    "bestThisDay": "Melhor horário neste dia",
+    "upcoming": "Próximos melhores horários",
+    "basedOn": "Baseado em {{total}} posts do Instagram nos últimos 90 dias."
+  },
+  "timePicker": {
+    "dateFormat": "d 'de' MMMM, yyyy",
+    "hour": "Hora",
+    "minute": "Minuto"
+  },
+  "commentPopover": {
+    "sendError": "Não foi possível enviar. Tente novamente.",
+    "deleteConfirm": "Excluir este comentário?",
+    "resolve": "Resolver",
+    "reopen": "Reabrir",
+    "replyPlaceholder": "Responder..."
+  },
+  "commentSummary": {
+    "title": "Comentários internos",
+    "hideResolved": "Ocultar resolvidos",
+    "showResolved": "Mostrar resolvidos",
+    "captionChip": "Legenda"
+  },
+  "addComment": {
+    "label": "Adicionar comentário",
+    "placeholder": "Escreva seu comentário...",
+    "submit": "Comentar"
+  },
+  "destinationCaption": {
+    "copied": "Legenda copiada.",
+    "copyError": "Não foi possível copiar a legenda.",
+    "copy": "Copiar legenda",
+    "chars_zero": "{{count}} caracteres",
+    "chars_one": "{{count}} caractere",
+    "chars_other": "{{count}} caracteres"
+  },
+  "destinationTabs": {
+    "loading": "Carregando destinos…",
+    "loadError": "Não foi possível carregar os destinos.",
+    "retry": "Tentar de novo",
+    "empty": "Este post não tem destinos. Ative um em Destinos.",
+    "format": "Formato: {{hint}}",
+    "tiktokLabel": "Legenda do TikTok",
+    "tiktokPlaceholder": "Texto exato que será publicado no TikTok.",
+    "tiktokUsingIg": "Usando a legenda do Instagram até você editar aqui.",
+    "cancelToEdit": "Cancelar agendamento para editar",
+    "geralLabel": "Legenda (Geral)",
+    "geralPlaceholder": "Legenda que acompanha o conteúdo para baixar.",
+    "geralHint": "Geral não é publicado automaticamente: o conteúdo fica disponível para baixar."
+  },
+  "destinationToggles": {
+    "label": "Destinos",
+    "needsOne": "O post precisa de pelo menos um destino."
+  },
+  "igCaption": {
+    "textChanged": "O texto mudou. Selecione o trecho de novo.",
+    "createError": "Não foi possível criar o comentário.",
+    "label": "Legenda do Instagram",
+    "selectToComment": "Selecione um trecho da legenda para comentar",
+    "comment": "Comentar",
+    "placeholder": "Texto exato que será publicado no Instagram. Suporta emojis e hashtags."
+  },
+  "collaborators": {
+    "help": "Cada conta recebe um convite quando o post for publicado e precisa aceitar no próprio Instagram. Só contas públicas.",
+    "limit": "Limite de 3 colaboradores por post. Remova um para trocar.",
+    "locked": "Cancelar agendamento para editar",
+    "trial": "Reels de teste não aceitam colaboradores. Desligue o Reel de teste para convidar.",
+    "refused_one": "O Instagram não encontrou este perfil, ou ele é privado.",
+    "refused_other": "O Instagram não encontrou estes perfis, ou eles são privados.",
+    "label": "Colaboradores",
+    "count": "{{n}} de {{max}}",
+    "removeAria": "Remover @{{username}}",
+    "placeholder": "Adicionar @usuário"
+  },
+  "platformSelector": {
+    "reverted": "Plataforma revertida para Instagram: Stories não são suportados no TikTok.",
+    "storiesUnsupported": "Stories não são suportados no TikTok",
+    "noTikTokAccount": "Cliente sem conta TikTok ativa",
+    "cancelToEdit": "Cancelar agendamento para editar",
+    "label": "Plataforma",
+    "both": "Ambas"
+  },
+  "references": {
+    "today": "hoje, {{time}}",
+    "yesterday": "ontem, {{time}}",
+    "date": "{{day}} {{month}}, {{time}}",
+    "dateWithYear": "{{day}} {{month}} {{year}}, {{time}}",
+    "link": "Link",
+    "file": "Arquivo",
+    "deleted": "Referência excluída",
+    "deleteForbidden": "Você não tem permissão para excluir referências.",
+    "deleteError": "Não foi possível excluir a referência. Tente novamente.",
+    "title": "Referências do cliente",
+    "fromHub": "Enviadas pelo Hub",
+    "deleteTitle": "Excluir referência?",
+    "deleteDescription": "{{label}} sai deste post para a equipe e para o cliente. Não dá para desfazer.",
+    "delete": "Excluir",
+    "attachedAria": "Referências anexadas",
+    "openAria": "Abrir {{label}}",
+    "open": "Abrir",
+    "download": "Baixar",
+    "deleteReference": "Excluir referência",
+    "client": "Cliente",
+    "inRevision": "Na correção",
+    "videoPlaybackError": "Não foi possível reproduzir aqui. Baixe o arquivo.",
+    "sentByClient": "Referência enviada pelo cliente",
+    "pdf": "PDF"
+  },
+  "discutirNoChat": {
+    "title": "Levar este post para o chat",
+    "subtitle": "A mensagem vai com um link para o post.",
+    "sendError": "Não foi possível enviar. Tente novamente.",
+    "trigger": "Discutir no chat",
+    "sentTo": "Enviado para {{name}}.",
+    "theConversation": "a conversa",
+    "openConversation": "Abrir conversa",
+    "searchPlaceholder": "Buscar conversa ou pessoa",
+    "listAria": "Conversas e pessoas",
+    "loading": "Carregando…",
+    "empty": "Nenhuma conversa ou pessoa encontrada.",
+    "groups": "Grupos",
+    "people": "Pessoas",
+    "peopleCount_zero": "{{count}} pessoas",
+    "peopleCount_one": "{{count}} pessoa",
+    "peopleCount_other": "{{count}} pessoas",
+    "messageTo": "Mensagem para {{name}}",
+    "message": "Mensagem",
+    "untitled": "Post sem título",
+    "sendTo": "Enviar para {{name}}",
+    "send": "Enviar"
+  }
+}
