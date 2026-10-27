@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -16,6 +16,7 @@ vi.mock('@/services/billing', async (importOriginal) => {
     listActivePlans: vi.fn(),
     getWorkspaceSubscription: vi.fn(),
     getEffectivePlanWithSource: vi.fn(),
+    markTrialOfferSeen: vi.fn(),
     startCheckout: vi.fn(),
   };
 });
@@ -34,8 +35,10 @@ import {
   getEffectivePlanWithSource,
   getWorkspaceSubscription,
   listActivePlans,
+  markTrialOfferSeen,
   startCheckout,
 } from '@/services/billing';
+import { captureEvent } from '@/lib/analytics';
 import { captureCheckoutStarted } from '@/lib/checkout-analytics';
 import ComecarPage from '../ComecarPage';
 
@@ -78,11 +81,29 @@ const PLANS = [
 // price_brl_annual / 12, so a regression back to that derivation would fail these tests.
 const PRO_PAGARME = { ...PLANS[1], pagarme_12x_enabled: true, pagarme_installment_cents: 12990 };
 
-const plan = (planId: string | null, wasDemo = false) => ({
+const plan = (planId: string | null, wasDemo = false, planSource = 'system') => ({
   planId,
-  planSource: 'system',
+  planSource,
   wasDemo,
+  trialOfferSeenAt: null,
 });
+
+const PICKER_HEADING = 'Vamos montar sua conta';
+const GRID_HEADING = 'Comece com 30 dias grátis';
+
+/** The plan grid sits behind "Ver todos os planos" now that the picker is the default view. */
+async function openGrid() {
+  fireEvent.click(await screen.findByRole('button', { name: 'Ver todos os planos' }));
+  await screen.findByText(GRID_HEADING);
+}
+
+function deferred<T>() {
+  let resolve: (value: T) => void = () => {};
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
 
 const NEVER_SUBSCRIBED = {
   status: null,
@@ -103,6 +124,10 @@ beforeEach(() => {
   // A brand-new workspace has workspaces.plan_id = NULL; it resolves to 'free'.
   vi.mocked(getEffectivePlanWithSource).mockResolvedValue(plan(null));
   vi.mocked(startCheckout).mockResolvedValue('https://checkout.stripe.com/abc');
+  vi.mocked(markTrialOfferSeen).mockReset();
+  vi.mocked(markTrialOfferSeen).mockResolvedValue(undefined);
+  vi.mocked(captureEvent).mockClear();
+  vi.mocked(captureCheckoutStarted).mockClear();
 });
 
 afterEach(() => {
@@ -144,6 +169,7 @@ async function renderPageWithEnv(whatsAppNumber: string | undefined) {
     getWorkspaceSubscription: vi.fn(),
     getEffectivePlanWithSource: vi.fn(),
     startCheckout: vi.fn(),
+    markTrialOfferSeen: vi.fn().mockResolvedValue(undefined),
     hasUsedTrial: (sub: { hasEverSubscribed?: boolean } | null, p: { wasDemo?: boolean } | null) =>
       Boolean(sub?.hasEverSubscribed || p?.wasDemo),
   }));
@@ -242,7 +268,7 @@ describe('ComecarPage', () => {
       loading: false,
     } as never);
     renderPage();
-    expect(await screen.findByText('Comece com 30 dias grátis')).toBeInTheDocument();
+    expect(await screen.findByText(PICKER_HEADING)).toBeInTheDocument();
   });
 
   it('redirects when workspaceRole is agent despite a stale profile-level owner role', async () => {
@@ -260,6 +286,7 @@ describe('ComecarPage', () => {
       { ...PLANS[1], price_brl_annual: null },
     ] as never);
     renderPage();
+    await openGrid();
 
     const monthly = await screen.findByRole('button', { name: 'Começar teste' });
     expect(monthly).toBeEnabled();
@@ -273,11 +300,12 @@ describe('ComecarPage', () => {
 
   it('stays on the step after an abandoned checkout left a status-less row', async () => {
     renderPage();
-    expect(await screen.findByText('Comece com 30 dias grátis')).toBeInTheDocument();
+    expect(await screen.findByText(PICKER_HEADING)).toBeInTheDocument();
   });
 
   it('lists paid plans only, never Free', async () => {
     renderPage();
+    await openGrid();
     expect(await screen.findByText('Pro')).toBeInTheDocument();
     expect(screen.queryByText('Free')).not.toBeInTheDocument();
   });
@@ -311,13 +339,13 @@ describe('ComecarPage', () => {
   it('falls back to the plan list when the intent checkout fails', async () => {
     vi.mocked(startCheckout).mockRejectedValue(new Error('Stripe indisponível'));
     renderPage('?plan=pro&interval=month');
-    expect(await screen.findByText('Comece com 30 dias grátis')).toBeInTheDocument();
+    expect(await screen.findByText(PICKER_HEADING)).toBeInTheDocument();
     expect(assign).not.toHaveBeenCalled();
   });
 
   it('ignores an intent naming a plan nobody can self-serve', async () => {
     renderPage('?plan=lifetime');
-    expect(await screen.findByText('Comece com 30 dias grátis')).toBeInTheDocument();
+    expect(await screen.findByText(PICKER_HEADING)).toBeInTheDocument();
     expect(startCheckout).not.toHaveBeenCalled();
   });
 
@@ -337,6 +365,7 @@ describe('ComecarPage', () => {
       }),
     );
     renderPage();
+    await openGrid();
 
     const buttons = await screen.findAllByRole('button', { name: 'Começar teste' });
     expect(buttons).toHaveLength(2);
@@ -357,7 +386,7 @@ describe('ComecarPage', () => {
     vi.mocked(getWorkspaceSubscription).mockRejectedValue(new Error('network error'));
     renderPage();
     expect(await screen.findByText('Não foi possível carregar seu plano')).toBeInTheDocument();
-    expect(screen.queryByText('Comece com 30 dias grátis')).not.toBeInTheDocument();
+    expect(screen.queryByText(PICKER_HEADING)).not.toBeInTheDocument();
     expect(startCheckout).not.toHaveBeenCalled();
   });
 
@@ -377,7 +406,7 @@ describe('ComecarPage', () => {
     vi.mocked(getWorkspaceSubscription).mockResolvedValue(NEVER_SUBSCRIBED as never);
     fireEvent.click(retryButton);
 
-    expect(await screen.findByText('Comece com 30 dias grátis')).toBeInTheDocument();
+    expect(await screen.findByText(PICKER_HEADING)).toBeInTheDocument();
   });
 
   it('does not render the WhatsApp support section when VITE_WHATSAPP_SUPPORT_NUMBER is absent', async () => {
@@ -385,7 +414,7 @@ describe('ComecarPage', () => {
     // with the variable in their local .env would otherwise see this test fail,
     // since the static import captures the value at module load.
     await renderPageWithEnv(undefined);
-    await screen.findByText('Comece com 30 dias grátis');
+    await screen.findByText(PICKER_HEADING);
     expect(screen.queryByText('Fale com a gente no WhatsApp')).not.toBeInTheDocument();
     expect(screen.queryByText('Prefere falar com uma pessoa?')).not.toBeInTheDocument();
     vi.unstubAllEnvs();
@@ -400,10 +429,121 @@ describe('ComecarPage', () => {
 
   it('does not render the WhatsApp support section when VITE_WHATSAPP_SUPPORT_NUMBER is an empty string', async () => {
     await renderPageWithEnv('');
-    await screen.findByText('Comece com 30 dias grátis');
+    await screen.findByText(PICKER_HEADING);
     expect(screen.queryByText('Fale com a gente no WhatsApp')).not.toBeInTheDocument();
     expect(screen.queryByText('Prefere falar com uma pessoa?')).not.toBeInTheDocument();
     vi.unstubAllEnvs();
+  });
+
+  describe('trial plan picker', () => {
+    it('shows the picker to an eligible owner and marks the offer seen once', async () => {
+      renderPage();
+      expect(await screen.findByText(PICKER_HEADING)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Começar 30 dias grátis do Pro' })).toBeEnabled();
+      await waitFor(() => expect(markTrialOfferSeen).toHaveBeenCalledTimes(1));
+    });
+
+    it('still renders the picker when marking the offer seen fails', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.mocked(markTrialOfferSeen).mockRejectedValue(new Error('rpc down'));
+      renderPage();
+      expect(await screen.findByText(PICKER_HEADING)).toBeInTheDocument();
+      await waitFor(() => expect(warn).toHaveBeenCalled());
+      expect(screen.getByText(PICKER_HEADING)).toBeInTheDocument();
+      warn.mockRestore();
+    });
+
+    it('falls back to the grid when no plan has a monthly price', async () => {
+      vi.mocked(listActivePlans).mockResolvedValue([
+        PLANS[0],
+        { ...PLANS[1], price_brl: null },
+      ] as never);
+      renderPage();
+      expect(await screen.findByText(GRID_HEADING)).toBeInTheDocument();
+      expect(screen.queryByText(PICKER_HEADING)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Voltar' })).not.toBeInTheDocument();
+    });
+
+    it('"Ver todos os planos" opens the grid with the Mensal/Anual toggle, and Voltar returns', async () => {
+      renderPage();
+      await openGrid();
+      expect(screen.getByRole('button', { name: 'Mensal' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Anual' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Voltar' }));
+      expect(await screen.findByText(PICKER_HEADING)).toBeInTheDocument();
+    });
+
+    it('starts a monthly checkout from the picker with the recommendation context', async () => {
+      renderPage();
+      fireEvent.click(await screen.findByRole('button', { name: 'Começar 30 dias grátis do Pro' }));
+      await waitFor(() => expect(assign).toHaveBeenCalledWith('https://checkout.stripe.com/abc'));
+      expect(startCheckout).toHaveBeenCalledWith('pro', 'month', 'onboarding');
+      expect(captureCheckoutStarted).toHaveBeenCalledWith('pro', 'month', 'onboarding', 'stripe', {
+        recommended_plan_id: 'pro',
+        accepted_recommendation: true,
+      });
+    });
+
+    it('reports the recommendation once both questions are answered', async () => {
+      renderPage();
+      await screen.findByText(PICKER_HEADING);
+      fireEvent.click(
+        within(screen.getByRole('group', { name: 'Quantos clientes você atende hoje?' })).getByRole(
+          'button',
+          { name: '6 a 15' },
+        ),
+      );
+      fireEvent.click(
+        within(
+          screen.getByRole('group', { name: 'Quantas pessoas trabalham com você, contando você?' }),
+        ).getByRole('button', { name: '3 a 5' }),
+      );
+      expect(captureEvent).toHaveBeenCalledWith('trial_plan_recommended', {
+        clients_bucket: '6-15',
+        team_bucket: '3-5',
+        plan_id: 'pro',
+      });
+    });
+
+    it('waits for the seen marker before the intent auto-checkout', async () => {
+      const seen = deferred<void>();
+      vi.mocked(markTrialOfferSeen).mockReturnValue(seen.promise);
+      renderPage('?plan=pro&interval=month');
+      expect(await screen.findByText(/Preparando seu teste do plano/)).toBeInTheDocument();
+      expect(
+        screen.getByText('Levamos você ao pagamento seguro. Nada é cobrado nos próximos 30 dias.'),
+      ).toBeInTheDocument();
+      await waitFor(() => expect(markTrialOfferSeen).toHaveBeenCalledTimes(1));
+      expect(startCheckout).not.toHaveBeenCalled();
+
+      seen.resolve();
+      await waitFor(() => expect(startCheckout).toHaveBeenCalledWith('pro', 'month', 'onboarding'));
+      expect(markTrialOfferSeen).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(assign).toHaveBeenCalledWith('https://checkout.stripe.com/abc'));
+    });
+
+    it('"Continuar no Free" waits for the seen marker before leaving', async () => {
+      const seen = deferred<void>();
+      vi.mocked(markTrialOfferSeen).mockReturnValue(seen.promise);
+      renderPage();
+      fireEvent.click(await screen.findByRole('button', { name: 'Continuar no Free' }));
+      expect(captureEvent).toHaveBeenCalledWith('trial_skipped');
+      // Let pending microtasks run: navigation must still be held by the marker.
+      await new Promise((r) => setTimeout(r, 20));
+      expect(screen.queryByText('Painel')).not.toBeInTheDocument();
+      expect(screen.getByText(PICKER_HEADING)).toBeInTheDocument();
+
+      seen.resolve();
+      expect(await screen.findByText('Painel')).toBeInTheDocument();
+      expect(markTrialOfferSeen).toHaveBeenCalledTimes(1);
+    });
+
+    it('redirects an owner an admin put on Free by hand', async () => {
+      vi.mocked(getEffectivePlanWithSource).mockResolvedValue(plan('free', false, 'manual'));
+      renderPage();
+      expect(await screen.findByText('Painel')).toBeInTheDocument();
+      expect(markTrialOfferSeen).not.toHaveBeenCalled();
+    });
   });
 
   describe('Pagar.me 12x', () => {
@@ -411,6 +551,7 @@ describe('ComecarPage', () => {
       vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
       vi.mocked(listActivePlans).mockResolvedValue([PLANS[0], PRO_PAGARME] as never);
       renderPage();
+      await openGrid();
 
       fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
       fireEvent.click(await screen.findByRole('button', { name: 'Começar teste' }));
@@ -431,7 +572,7 @@ describe('ComecarPage', () => {
       expect(assign).not.toHaveBeenCalled();
       expect(captureCheckoutStarted).toHaveBeenCalledWith('pro', 'year', 'onboarding', 'pagarme');
       // The standby "Preparando checkout" screen must not linger behind the dialog: intent
-      // is cleared as part of opening it, so the plan grid is the page underneath.
+      // is cleared as part of opening it, so the picker is the page underneath.
       expect(screen.queryByText(/Preparando seu teste do plano/)).not.toBeInTheDocument();
     });
 
@@ -439,6 +580,7 @@ describe('ComecarPage', () => {
       vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
       vi.mocked(listActivePlans).mockResolvedValue([PLANS[0], PRO_PAGARME] as never);
       renderPage();
+      await openGrid();
 
       // Interval defaults to Mensal; the gate only applies to the year interval.
       fireEvent.click(await screen.findByRole('button', { name: 'Começar teste' }));
@@ -452,6 +594,7 @@ describe('ComecarPage', () => {
       vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
       vi.mocked(listActivePlans).mockResolvedValue([PLANS[0], PRO_PAGARME] as never);
       renderPage();
+      await openGrid();
 
       fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
 
@@ -471,6 +614,7 @@ describe('ComecarPage', () => {
       vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
       vi.mocked(listActivePlans).mockResolvedValue([PLANS[0], PRO_PAGARME] as never);
       renderPage();
+      await openGrid();
 
       fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
       fireEvent.click(await screen.findByRole('button', { name: 'Começar teste' }));

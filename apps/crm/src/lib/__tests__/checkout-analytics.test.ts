@@ -45,4 +45,23 @@ describe('captureCheckoutStarted', () => {
       { sendInstantly: true },
     );
   });
+
+  it('merges the recommendation context into the props', () => {
+    captureCheckoutStarted('start', 'month', 'onboarding', 'stripe', {
+      recommended_plan_id: 'pro',
+      accepted_recommendation: false,
+    });
+    expect(captureEvent).toHaveBeenCalledWith(
+      'checkout_started',
+      {
+        plan_id: 'start',
+        billing_interval: 'month',
+        source: 'onboarding',
+        provider: 'stripe',
+        recommended_plan_id: 'pro',
+        accepted_recommendation: false,
+      },
+      { sendInstantly: true },
+    );
+  });
 });
