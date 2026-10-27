@@ -274,6 +274,15 @@ export function showsRetry(row: BlogPostRow, now: Date): boolean {
   return row.status === 'despublicado' || isSlowPublish(row, now);
 }
 
+const LIVE_BASE = 'https://www.mesaas.com.br/blog/';
+
+/** Public URL of a post. Constant origin + encoded slug: nothing user-controlled reaches the
+ * scheme or host. `fromAdmin` tags the visit (`?ref=admin`) so the site can leave it out of the
+ * blog view counts; a copied/shared link never carries it. */
+export function liveUrl(slug: string, opts?: { fromAdmin?: boolean }): string {
+  return `${LIVE_BASE}${encodeURIComponent(slug)}${opts?.fromAdmin ? '?ref=admin' : ''}`;
+}
+
 /** Editing a live row republishes it on save. */
 export function isLive(row: Pick<BlogPostRow, 'status'>): boolean {
   return row.status === 'publicado' || row.status === 'publicando';

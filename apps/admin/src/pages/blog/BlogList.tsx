@@ -11,9 +11,11 @@ import {
   CATEGORY_LABEL,
   chipsFor,
   formatDateTime,
+  isLive,
   type BlogPostRow,
   type BlogTab,
 } from './blog-view';
+import { LiveRowLink } from './LiveLinkButtons';
 
 const EMPTY: Record<BlogTab, { title: string; description: string }> = {
   aguardando: {
@@ -125,6 +127,7 @@ export function BlogList({
                 </div>
               )}
             </div>
+            {isLive(r) && <LiveRowLink slug={r.slug} title={r.title} />}
           </li>
         );
       })}

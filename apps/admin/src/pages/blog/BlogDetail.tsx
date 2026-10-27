@@ -20,6 +20,7 @@ import { Textarea } from '../../components/ui/textarea';
 import { cn } from '../../lib/utils';
 import { BlogEditor } from './BlogEditor';
 import { BlogPreview } from './BlogPreview';
+import { LiveLinkButtons } from './LiveLinkButtons';
 import {
   NOTE_MAX,
   STATUS_LABEL,
@@ -28,13 +29,13 @@ import {
   chipsFor,
   failingChecks,
   formatDateTime,
+  isLive,
   isSlowPublish,
+  liveUrl,
   showsRetry,
   type BlogPostDetail,
   type EditableField,
 } from './blog-view';
-
-const LIVE_BASE = 'https://www.mesaas.com.br/blog/';
 
 export type BlogCommand =
   | { kind: 'approve' }
@@ -178,8 +179,7 @@ export function BlogDetail(p: BlogDetailProps) {
   );
   const slow = isSlowPublish(post, p.now);
   const canRequest = actions.includes('request');
-  // Constant origin + encoded slug: nothing user-controlled reaches the scheme or host.
-  const liveHref = `${LIVE_BASE}${encodeURIComponent(post.slug)}`;
+  const liveHref = liveUrl(post.slug, { fromAdmin: true });
 
   const confirmAndClose = async (command: Parameters<BlogDetailProps['run']>[0]) => {
     // Closed on failure too: after a conflict the dialog must not confirm the reloaded post.
@@ -224,6 +224,7 @@ export function BlogDetail(p: BlogDetailProps) {
           <p className="text-xs text-muted-foreground">/blog/{post.slug}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {isLive(post) && <LiveLinkButtons slug={post.slug} />}
           {actions.includes('reject') && (
             <Button variant="destructive" onClick={() => setConfirm('reject')} disabled={p.pending}>
               Rejeitar

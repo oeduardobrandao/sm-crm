@@ -4,6 +4,7 @@ import {
   chipsFor,
   failingChecks,
   isStale,
+  liveUrl,
   noRecentDraft,
   showsRetry,
   sortQueue,
@@ -194,5 +195,13 @@ describe('showsRetry', () => {
     for (const status of ['rascunho', 'ajuste_solicitado', 'publicado', 'rejeitado'] as const) {
       expect(showsRetry(row({ status, publish_attempt_at: ago(2 * HOUR) }), NOW)).toBe(false);
     }
+  });
+});
+
+describe('liveUrl', () => {
+  it('builds the canonical URL', () => {
+    expect(liveUrl('mesaas-vs-mlabs')).toBe('https://www.mesaas.com.br/blog/mesaas-vs-mlabs');
+    expect(liveUrl('a b')).toBe('https://www.mesaas.com.br/blog/a%20b');
+    expect(liveUrl('x', { fromAdmin: true })).toBe('https://www.mesaas.com.br/blog/x?ref=admin');
   });
 });
