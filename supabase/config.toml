@@ -76,6 +76,9 @@ verify_jwt = false
 [functions.hub-agenda]
 verify_jwt = false
 
+[functions.hub-linha-editorial]
+verify_jwt = false
+
 [functions.agenda-convite]
 verify_jwt = false
 
