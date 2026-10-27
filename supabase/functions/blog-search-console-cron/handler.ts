@@ -13,6 +13,7 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import { liveBlogSlugs } from "../_shared/blog-live.ts";
+import { chunk } from "../_shared/paginate.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
 import {
   aggregateRows,
@@ -34,12 +35,20 @@ export interface BlogSearchConsoleDeps {
   siteUrl: string;
   /** Defaults to reportCronFailure on `db`; injectable so tests never send mail. */
   reportFailure?: (message: string) => Promise<void>;
+  /**
+   * Soft wall-clock budget, measured with `now()` from the start of the handler. Edge isolates
+   * are killed (150 s idle, 400 s wall), which skips the catch below and leaves the run row
+   * unfinished, so the backfill and inspection loops stop on their own first. Default 100 s.
+   */
+  deadlineMs?: number;
 }
 
 const CRON_NAME = "blog-search-console-cron";
 const GOOGLE_API = "https://searchconsole.googleapis.com";
 const CANONICAL_BASE = "https://www.mesaas.com.br/blog";
 const GOOGLE_TIMEOUT_MS = 15_000;
+const DEFAULT_DEADLINE_MS = 100_000;
+const SLUG_IN_CHUNK = 100; // keeps the `.in("slug", ...)` request URL short
 const PAGE_SIZE = 25_000;
 const MAX_PAGES = 20; // 500k rows: a runaway pager must not loop forever
 const JSON_HEADERS = { "Content-Type": "application/json" };
@@ -67,6 +76,10 @@ export function createBlogSearchConsoleHandler(deps: BlogSearchConsoleDeps) {
   const { db } = deps;
   const reportFailure = deps.reportFailure ??
     ((message: string) => reportCronFailure(db, CRON_NAME, { stack: message }));
+
+  const deadlineMs = deps.deadlineMs ?? DEFAULT_DEADLINE_MS;
+  let startedAt = 0;
+  const overDeadline = () => deps.now().getTime() - startedAt > deadlineMs;
 
   async function googlePost(token: string, step: string, url: string, body: unknown): Promise<unknown> {
     let res: Response;
@@ -119,17 +132,24 @@ export function createBlogSearchConsoleHandler(deps: BlogSearchConsoleDeps) {
   }
 
   /** Never throws: a backfill problem must not fail the run the refresh already made good. */
-  async function backfill(token: string, fallbackCursor: string): Promise<number> {
+  async function backfill(token: string, fallbackCursor: string): Promise<{ done: number; stopped: boolean }> {
     let done = 0;
+    let stopped = false;
     try {
       const { data, error } = await db.from("blog_search_state").select("backfill_before").eq("id", 1).maybeSingle();
       if (error) throw new Error(`read cursor failed: ${error.message ?? "unknown"}`);
       const cursor = (data as { backfill_before: string | null } | null)?.backfill_before ?? fallbackCursor;
-      for (const chunk of backfillChunks(cursor, backfillHorizon(deps.now()))) {
-        await replaceWindow(token, chunk.from, chunk.to);
+      const chunks = backfillChunks(cursor, backfillHorizon(deps.now()));
+      for (const [i, c] of chunks.entries()) {
+        if (overDeadline()) {
+          stopped = true;
+          console.log(`${CRON_NAME}: deadline reached, backfill skipped ${chunks.length - i} chunk(s)`);
+          break;
+        }
+        await replaceWindow(token, c.from, c.to);
         const { error: updError } = await db
           .from("blog_search_state")
-          .update({ backfill_before: chunk.from })
+          .update({ backfill_before: c.from })
           .eq("id", 1);
         // The window is already replaced and replacing is idempotent, so a cursor that did not
         // move only costs the next run a repeat of this chunk.
@@ -139,18 +159,35 @@ export function createBlogSearchConsoleHandler(deps: BlogSearchConsoleDeps) {
     } catch (e) {
       console.error(`${CRON_NAME}: backfill stopped:`, e instanceof Error ? e.message : "unknown");
     }
-    return done;
+    return { done, stopped };
   }
 
-  async function inspectAll(token: string): Promise<number> {
-    const live = await liveBlogSlugs(db);
-    const { data, error } = await db.from("blog_index_status").select("slug, checked_at");
-    if (error) throw new Error(`read index status failed: ${error.message ?? "unknown"}`);
-    const checked: Record<string, string> = {};
-    for (const r of (data ?? []) as Array<{ slug: string; checked_at: string }>) checked[r.slug] = r.checked_at;
+  /** Never throws: a failed candidate load only skips inspection, the data above is already saved. */
+  async function inspectAll(token: string): Promise<{ inspected: number; stopped: boolean }> {
+    let targets: string[];
+    try {
+      // PostgREST caps a plain select at 1000 rows by default; fine for this blog's size.
+      const live = await liveBlogSlugs(db);
+      const checked: Record<string, string> = {};
+      for (const slugs of chunk(live.map((p) => p.slug), SLUG_IN_CHUNK)) {
+        const { data, error } = await db.from("blog_index_status").select("slug, checked_at").in("slug", slugs);
+        if (error) throw new Error(`read index status failed: ${error.message ?? "unknown"}`);
+        for (const r of (data ?? []) as Array<{ slug: string; checked_at: string }>) checked[r.slug] = r.checked_at;
+      }
+      targets = pickInspectionTargets(live, checked, deps.now());
+    } catch (e) {
+      console.error(`${CRON_NAME}: inspection candidates unavailable, skipping inspection:`, e instanceof Error ? e.message : "unknown");
+      return { inspected: 0, stopped: false };
+    }
 
     let inspected = 0;
-    for (const slug of pickInspectionTargets(live, checked, deps.now())) {
+    let stopped = false;
+    for (const [i, slug] of targets.entries()) {
+      if (overDeadline()) {
+        stopped = true;
+        console.log(`${CRON_NAME}: deadline reached, inspection skipped ${targets.length - i} URL(s)`);
+        break;
+      }
       try {
         const body = await googlePost(token, "url inspection", `${GOOGLE_API}/v1/urlInspection/index:inspect`, {
           inspectionUrl: `${CANONICAL_BASE}/${slug}`,
@@ -176,7 +213,7 @@ export function createBlogSearchConsoleHandler(deps: BlogSearchConsoleDeps) {
         console.error(`${CRON_NAME}: inspection skipped for ${slug}:`, e instanceof Error ? e.message : "unknown");
       }
     }
-    return inspected;
+    return { inspected, stopped };
   }
 
   return async function handler(req: Request): Promise<Response> {
@@ -188,6 +225,7 @@ export function createBlogSearchConsoleHandler(deps: BlogSearchConsoleDeps) {
       return json({ skipped: "not_configured" }, 200);
     }
 
+    startedAt = deps.now().getTime();
     let runId: number | null = null;
     try {
       const { data, error } = await db.from("blog_search_runs").insert({}).select("id").single();
@@ -198,14 +236,21 @@ export function createBlogSearchConsoleHandler(deps: BlogSearchConsoleDeps) {
       const window = refreshWindow(deps.now());
       const refreshed = await replaceWindow(token, window.from, window.to);
       const backfilled = await backfill(token, window.from);
-      const inspected = await inspectAll(token);
+      const inspection = await inspectAll(token);
 
       const { error: finishError } = await db
         .from("blog_search_runs")
         .update({ ok: true, finished_at: deps.now().toISOString() })
         .eq("id", runId);
       if (finishError) console.error(`${CRON_NAME}: could not close run ${runId}`);
-      return json({ success: true, refreshed, backfilled, inspected }, 200);
+      return json({
+        success: true,
+        refreshed,
+        backfilled: backfilled.done,
+        backfill_stopped: backfilled.stopped,
+        inspected: inspection.inspected,
+        inspection_stopped: inspection.stopped,
+      }, 200);
     } catch (err) {
       const message = err instanceof Error ? err.message : "unknown";
       console.error(`${CRON_NAME} failed:`, message);
