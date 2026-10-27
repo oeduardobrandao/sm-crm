@@ -1,4 +1,6 @@
 import { Calendar, Loader2, RefreshCw, Send, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import { BottomActionBar } from '@/components/mobile';
 import { formatPostWeekday } from '@/utils/postDate';
 import type { WorkflowPost } from '../../../../store';
@@ -11,7 +13,7 @@ import type { PhoneEditorChrome } from './types';
 export function formatPhoneDateTime(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
-  const time = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const time = d.toLocaleTimeString(getIntlLocale(), { hour: '2-digit', minute: '2-digit' });
   return `${formatPostWeekday(iso)} · ${time}`;
 }
 
@@ -28,6 +30,7 @@ interface PhoneBottomBarProps {
  * has no action, so the screen keeps its full height.
  */
 export function PhoneBottomBar({ post, actions: s, sendToClient }: PhoneBottomBarProps) {
+  const { t } = useTranslation('postEditor');
   if (post.status === 'aprovado_interno' && sendToClient && sendToClient.count > 0) {
     return (
       <BottomActionBar className="phone-editor-bar">
@@ -39,8 +42,8 @@ export function PhoneBottomBar({ post, actions: s, sendToClient }: PhoneBottomBa
         >
           <Send aria-hidden="true" />
           {sendToClient.count > 1
-            ? `Enviar ${sendToClient.count} posts ao cliente`
-            : 'Enviar ao cliente'}
+            ? t('phoneBottomBar.sendPostsToClient', { count: sendToClient.count })
+            : t('phoneBottomBar.sendToClient')}
         </button>
       </BottomActionBar>
     );
@@ -55,21 +58,24 @@ export function PhoneBottomBar({ post, actions: s, sendToClient }: PhoneBottomBa
         <div className="phone-editor-bar__column">
           {s.warningMessage && (
             <p className="phone-editor-bar__warning" role="alert">
-              {s.warningMessage} A publicação agendada pode falhar.
+              {s.warningMessage} {t('phoneBottomBar.scheduledMayFail')}
             </p>
           )}
           <div className="phone-editor-bar__row phone-editor-bar__row--stacked">
             <span className="phone-editor-bar__state">
               {publishing ? (
                 <>
-                  <Loader2 aria-hidden="true" className="animate-spin" /> Publicando…
+                  <Loader2 aria-hidden="true" className="animate-spin" />{' '}
+                  {t('phoneBottomBar.publishing')}
                 </>
               ) : (
                 <>
                   <Calendar aria-hidden="true" />
                   {post.scheduled_at
-                    ? `Agendado para ${formatPhoneDateTime(post.scheduled_at)}`
-                    : 'Agendado'}
+                    ? t('phoneBottomBar.scheduledFor', {
+                        when: formatPhoneDateTime(post.scheduled_at),
+                      })
+                    : t('phoneBottomBar.scheduled')}
                 </>
               )}
             </span>
@@ -79,7 +85,7 @@ export function PhoneBottomBar({ post, actions: s, sendToClient }: PhoneBottomBa
               onClick={s.handleCancel}
               disabled={s.loading}
             >
-              <X aria-hidden="true" /> Cancelar agendamento
+              <X aria-hidden="true" /> {t('phoneBottomBar.cancelSchedule')}
             </button>
           </div>
         </div>
@@ -91,7 +97,7 @@ export function PhoneBottomBar({ post, actions: s, sendToClient }: PhoneBottomBa
     // platform 'both' with one side failed: retry sends only that side (handleRetry).
     const onlyOne =
       s.platform === 'both' && s.igFailed !== s.ttFailed
-        ? `Só o ${s.igFailed ? 'Instagram' : 'TikTok'} será reenviado`
+        ? t('phoneBottomBar.onlyOneRetried', { platform: s.igFailed ? 'Instagram' : 'TikTok' })
         : null;
     return (
       <BottomActionBar className="phone-editor-bar">
@@ -108,7 +114,7 @@ export function PhoneBottomBar({ post, actions: s, sendToClient }: PhoneBottomBa
             onClick={s.handleRetry}
             disabled={s.loading || s.retryBlocked}
           >
-            <RefreshCw aria-hidden="true" /> Tentar novamente
+            <RefreshCw aria-hidden="true" /> {t('phoneBottomBar.retry')}
           </button>
         </div>
       </BottomActionBar>
@@ -118,7 +124,7 @@ export function PhoneBottomBar({ post, actions: s, sendToClient }: PhoneBottomBa
   if (post.status === 'aprovado_cliente') {
     const missing =
       !s.accountWarning && !s.canPublishNow && s.missingItems.length > 0
-        ? `Falta: ${s.missingItems.join(', ')}`
+        ? t('shared.missingItems', { items: s.missingItems.join(', ') })
         : null;
     return (
       <BottomActionBar className="phone-editor-bar">
@@ -133,7 +139,7 @@ export function PhoneBottomBar({ post, actions: s, sendToClient }: PhoneBottomBa
             <p className="phone-editor-bar__warning">
               {s.mediaViolations.length === 1
                 ? s.mediaViolations[0]
-                : `${s.mediaViolations.length} problemas na mídia. Veja em Publicar.`}
+                : t('phoneBottomBar.mediaProblems', { count: s.mediaViolations.length })}
             </p>
           )}
           {/* TikTok audit A3: the declaration sits directly above every control that
@@ -152,7 +158,7 @@ export function PhoneBottomBar({ post, actions: s, sendToClient }: PhoneBottomBa
               disabled={!s.canPublishNow || s.loading}
               title={s.tiktokBlockedTitle}
             >
-              <Send aria-hidden="true" /> Publicar agora
+              <Send aria-hidden="true" /> {t('phoneBottomBar.publishNow')}
             </button>
             <button
               type="button"
@@ -161,7 +167,7 @@ export function PhoneBottomBar({ post, actions: s, sendToClient }: PhoneBottomBa
               disabled={!s.canSchedule || s.loading}
               title={s.tiktokBlockedTitle}
             >
-              <Calendar aria-hidden="true" /> Agendar publicação
+              <Calendar aria-hidden="true" /> {t('phoneBottomBar.schedulePublishing')}
             </button>
           </div>
         </div>

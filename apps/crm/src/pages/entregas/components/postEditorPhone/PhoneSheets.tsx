@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import { BottomSheet } from '@/components/mobile';
 import { useSheetActions } from '@/components/mobile/sheetActions';
 import type {
@@ -41,11 +43,12 @@ export function PhoneSuggestionSheet({
   onAccept: (s: PostEditSuggestion) => void;
   onReject: (id: number) => void;
 }) {
+  const { t } = useTranslation('postEditor');
   return (
     <BottomSheet
       open={open && !!suggestion}
       onOpenChange={onOpenChange}
-      title="Sugestão do cliente"
+      title={t('shared.clientSuggestion')}
       detents={['large']}
     >
       {suggestion && (
@@ -80,12 +83,13 @@ function SuggestionBody({
   onAccept: (s: PostEditSuggestion) => void;
   onReject: (id: number) => void;
 }) {
+  const { t } = useTranslation('postEditor');
   const { closeThen } = useSheetActions();
   return (
     <div className="phone-suggestion">
       <p className="phone-suggestion__meta">
-        {clientName || 'Cliente'} ·{' '}
-        {new Date(suggestion.updated_at).toLocaleDateString('pt-BR', {
+        {clientName || t('postApprovalBubble.client')} ·{' '}
+        {new Date(suggestion.updated_at).toLocaleDateString(getIntlLocale(), {
           day: '2-digit',
           month: 'short',
           hour: '2-digit',
@@ -94,7 +98,7 @@ function SuggestionBody({
       </p>
       {suggestion.changed_fields.includes('conteudo') && resolvedContent && resolvedSuggestion && (
         <section className="phone-suggestion__block">
-          <h3 className="phone-group__header">Roteiro e briefing</h3>
+          <h3 className="phone-group__header">{t('shared.scriptAndBrief')}</h3>
           <div className="phone-suggestion__card">
             <ReadOnlyTipTap content={computeTipTapDiff(resolvedContent, resolvedSuggestion)} />
           </div>
@@ -102,7 +106,7 @@ function SuggestionBody({
       )}
       {suggestion.changed_fields.includes('ig_caption') && (
         <section className="phone-suggestion__block">
-          <h3 className="phone-group__header">Legenda do Instagram</h3>
+          <h3 className="phone-group__header">{t('shared.igCaption')}</h3>
           <div className="phone-suggestion__card">
             <DiffView
               segments={computeWordDiff(
@@ -114,8 +118,8 @@ function SuggestionBody({
         </section>
       )}
       <p className="phone-suggestion__legend">
-        <span className="phone-suggestion__legend-out">Sai</span>
-        <span className="phone-suggestion__legend-in">Entra</span>
+        <span className="phone-suggestion__legend-out">{t('phoneSuggestionSheet.out')}</span>
+        <span className="phone-suggestion__legend-in">{t('phoneSuggestionSheet.in')}</span>
       </p>
       <div className="phone-suggestion__actions">
         <button
@@ -123,14 +127,14 @@ function SuggestionBody({
           className="phone-editor-bar__secondary"
           onClick={() => closeThen(() => onReject(suggestion.id))}
         >
-          Rejeitar
+          {t('shared.reject')}
         </button>
         <button
           type="button"
           className="phone-editor-bar__primary phone-editor-bar__primary--success"
           onClick={() => closeThen(() => onAccept(suggestion))}
         >
-          Aceitar
+          {t('shared.accept')}
         </button>
       </div>
     </div>
@@ -153,11 +157,12 @@ export function PhoneTimelineSheet({
   approvals: PostApproval[];
   processEvents?: PostProcessEvent[];
 }) {
+  const { t } = useTranslation('postEditor');
   return (
     <BottomSheet
       open={open}
       onOpenChange={onOpenChange}
-      title="Histórico do post"
+      title={t('shared.postHistory')}
       detents={['medium', 'large']}
     >
       {open && (

@@ -1,4 +1,5 @@
 import type { WorkflowPost, PostApproval, PostStatusEvent, PostProcessEvent } from '../../../store';
+import { i18n } from '@mesaas/i18n';
 import { STATUS_LABELS } from '../postLabels';
 
 export type TimelineTone = 'neutral' | 'approved' | 'correction' | 'published' | 'failed';
@@ -22,8 +23,8 @@ const TONE_BY_STATUS: Partial<Record<WorkflowPost['status'], TimelineTone>> = {
 };
 
 function actorLabelFor(ev: PostStatusEvent): string {
-  if (ev.source === 'client') return 'Cliente';
-  if (ev.source === 'system') return 'Sistema';
+  if (ev.source === 'client') return i18n.t('postEditor:postTimeline.client');
+  if (ev.source === 'system') return i18n.t('postEditor:postTimeline.system');
   return ev.actor_name ?? '—';
 }
 
@@ -38,25 +39,36 @@ export function processEventLabel(ev: PostProcessEvent): string {
   const depois = ev.depois ?? {};
   switch (ev.evento) {
     case 'desmembrado':
-      return `Desmembrado de ${str(antes.workflow_titulo, 'um fluxo')} na etapa ${str(antes.etapa_nome, 'atual')}`;
+      return i18n.t('postEditor:postTimeline.process.desmembrado', {
+        fluxo: str(antes.workflow_titulo, i18n.t('postEditor:postTimeline.process.aFluxo')),
+        etapa: str(antes.etapa_nome, i18n.t('postEditor:postTimeline.process.currentStage')),
+      });
     case 'aplicado':
-      return `Processo aplicado: ${str(depois.template_nome, 'template')}`;
+      return i18n.t('postEditor:postTimeline.process.aplicado', {
+        template: str(depois.template_nome, i18n.t('postEditor:postTimeline.process.template')),
+      });
     case 'avancou':
-      return `Avançou para ${str(depois.etapa_nome, 'a próxima etapa')}`;
+      return i18n.t('postEditor:postTimeline.process.avancou', {
+        etapa: str(depois.etapa_nome, i18n.t('postEditor:postTimeline.process.nextStage')),
+      });
     case 'voltou':
-      return `Voltou para ${str(depois.etapa_nome, 'a etapa anterior')}`;
+      return i18n.t('postEditor:postTimeline.process.voltou', {
+        etapa: str(depois.etapa_nome, i18n.t('postEditor:postTimeline.process.previousStage')),
+      });
     case 'concluido':
-      return 'Processo concluído';
+      return i18n.t('postEditor:postTimeline.process.concluido');
     case 'reaberto':
-      return 'Processo reaberto';
+      return i18n.t('postEditor:postTimeline.process.reaberto');
     case 'removido':
-      return 'Processo removido';
+      return i18n.t('postEditor:postTimeline.process.removido');
     case 'vinculado':
-      return 'Vinculado a um fluxo, processo encerrado';
+      return i18n.t('postEditor:postTimeline.process.vinculado');
     case 'etapa_editada':
-      return `Etapa ${str(depois.nome, '')} editada`.replace('  ', ' ');
+      return i18n
+        .t('postEditor:postTimeline.process.etapaEditada', { nome: str(depois.nome, '') })
+        .replace('  ', ' ');
     case 'voltou_rascunho':
-      return 'Voltou para Rascunho';
+      return i18n.t('postEditor:postTimeline.process.voltouRascunho');
     default:
       return ev.evento;
   }
@@ -74,7 +86,7 @@ export function buildPostTimeline(
     nodes.push({
       key: 'created',
       kind: 'created',
-      label: 'Criado',
+      label: i18n.t('postEditor:postTimeline.created'),
       at: post.created_at,
       actorLabel: '—',
       comment: null,
@@ -110,7 +122,8 @@ export function buildPostTimeline(
       kind: 'process',
       label: processEventLabel(ev),
       at: ev.created_at,
-      actorLabel: ev.origem === 'system' ? 'Sistema' : (ev.actor_name ?? '—'),
+      actorLabel:
+        ev.origem === 'system' ? i18n.t('postEditor:postTimeline.system') : (ev.actor_name ?? '—'),
       comment: null,
       tone: ev.evento === 'concluido' ? 'approved' : 'neutral',
     });

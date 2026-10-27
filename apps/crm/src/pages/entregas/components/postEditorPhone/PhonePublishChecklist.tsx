@@ -1,4 +1,5 @@
 import { AlertCircle, Check } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Cell, GroupedList } from '@/components/mobile';
 import type { WorkflowPost } from '../../../../store';
 import type { PostMedia } from '../../../../store/posts';
@@ -6,10 +7,14 @@ import type { ScheduleActions } from '../ScheduleButton';
 import { formatPhoneDateTime } from './PhoneBottomBar';
 
 function Mark({ ok }: { ok: boolean }) {
+  const { t } = useTranslation('postEditor');
   return ok ? (
-    <Check aria-label="Pronto" className="phone-editor-check phone-editor-check--ok" />
+    <Check
+      aria-label={t('phonePublishChecklist.ready')}
+      className="phone-editor-check phone-editor-check--ok"
+    />
   ) : (
-    <span className="phone-editor-missing">Falta</span>
+    <span className="phone-editor-missing">{t('phonePublishChecklist.missing')}</span>
   );
 }
 
@@ -28,12 +33,13 @@ export function PhonePublishChecklist({
   media: PostMedia[] | undefined;
   actions: ScheduleActions;
 }) {
+  const { t } = useTranslation('postEditor');
   if (s.visibility === 'missing-ig-account-note') {
     return (
-      <GroupedList header="Antes de agendar" headerAs="h3">
+      <GroupedList header={t('phonePublishChecklist.header')} headerAs="h3">
         <Cell
-          label="Conta do Instagram"
-          subtitle="Conecte a conta do Instagram do cliente para agendar ou publicar este post."
+          label={t('phonePublishChecklist.igAccount')}
+          subtitle={t('phonePublishChecklist.connectIg')}
           accessory={<Mark ok={false} />}
         />
       </GroupedList>
@@ -43,30 +49,28 @@ export function PhonePublishChecklist({
 
   const captionLabel =
     s.targetsInstagram && s.targetsTikTok
-      ? 'Legenda'
+      ? t('shared.caption')
       : s.targetsTikTok
-        ? 'Legenda do TikTok'
-        : 'Legenda do Instagram';
+        ? t('phonePublishChecklist.tiktokCaption')
+        : t('shared.igCaption');
   const mediaCount = media?.length ?? 0;
 
   return (
     <GroupedList
-      header="Antes de agendar"
+      header={t('phonePublishChecklist.header')}
       headerAs="h3"
       footer={
         !s.accountWarning && !s.canPublishNow && s.missingItems.length > 0
-          ? `Falta: ${s.missingItems.join(', ')}`
+          ? t('shared.missingItems', { items: s.missingItems.join(', ') })
           : undefined
       }
     >
       <Cell
-        label="Mídia"
+        label={t('phonePublishChecklist.media')}
         value={
           mediaCount === 0
-            ? 'Nenhum arquivo'
-            : mediaCount === 1
-              ? '1 arquivo'
-              : `${mediaCount} arquivos`
+            ? t('phonePublishChecklist.noFiles')
+            : t('phonePublishChecklist.files', { count: mediaCount })
         }
         subtitle={s.mediaViolations.length > 0 ? s.mediaViolations.join(' ') : undefined}
         // While media is still loading neither mark would be true yet.
@@ -81,19 +85,19 @@ export function PhonePublishChecklist({
       )}
       {s.targetsTikTok && (
         <Cell
-          label="Configurações do TikTok"
+          label={t('phonePublishChecklist.tiktokSettings')}
           subtitle={!s.tiktokReady ? s.tiktokBlockedTitle : undefined}
           accessory={<Mark ok={s.tiktokReady} />}
         />
       )}
       <Cell
-        label="Data"
+        label={t('phonePublishChecklist.date')}
         value={post.scheduled_at ? formatPhoneDateTime(post.scheduled_at) : undefined}
         accessory={<Mark ok={!!post.scheduled_at} />}
       />
       {s.warningMessage && (
         <Cell
-          label="Conta"
+          label={t('phonePublishChecklist.account')}
           subtitle={s.warningMessage}
           icon={<AlertCircle />}
           accessory={<Mark ok={false} />}

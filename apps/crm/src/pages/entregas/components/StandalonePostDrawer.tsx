@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import {
   X,
@@ -177,6 +178,7 @@ export function StandalonePostDrawer({
   onProcessApplied,
   onDuplicated,
 }: StandalonePostDrawerProps) {
+  const { t } = useTranslation('postEditor');
   const qc = useQueryClient();
   const navigate = useNavigate();
   const isPhoneEditor = useIsPhoneEditor();
@@ -374,7 +376,7 @@ export function StandalonePostDrawer({
     setHiddenBannerCiclo(ciclo);
     try {
       await resolvePostProcessRascunhoBanner(postProcess.id, ciclo, reset);
-      if (reset) toast.success('O post voltou para rascunho.');
+      if (reset) toast.success(t('standalonePostDrawer.backToDraft'));
       qc.invalidateQueries({ queryKey: ['post-process', postId] });
       qc.invalidateQueries({ queryKey: ['standalone-post', postId] });
       onRefresh();
@@ -383,7 +385,9 @@ export function StandalonePostDrawer({
       toast.error(
         getPostProcessErrorToast(
           err,
-          reset ? 'Erro ao voltar o post para rascunho' : 'Erro ao dispensar o aviso',
+          reset
+            ? t('standalonePostDrawer.backToDraftError')
+            : t('standalonePostDrawer.dismissNoticeError'),
         ),
       );
       if (isStaleStateError(err)) {
@@ -421,7 +425,7 @@ export function StandalonePostDrawer({
         await updateWorkflowPost(postId, statusKeyToPatch(key));
         refresh();
       } catch {
-        toast.error('Erro ao atualizar post');
+        toast.error(t('standalonePostDrawer.updatePostError'));
       }
       return;
     }
@@ -430,7 +434,7 @@ export function StandalonePostDrawer({
       refresh();
       return true;
     } catch {
-      toast.error('Erro ao atualizar post');
+      toast.error(t('standalonePostDrawer.updatePostError'));
       return false;
     }
   };
@@ -443,7 +447,7 @@ export function StandalonePostDrawer({
       await updateWorkflowPost(postId, statusKeyToPatch(key));
       refresh();
     } catch {
-      toast.error('Erro ao atualizar status');
+      toast.error(t('standalonePostDrawer.updateStatusError'));
     }
   };
 
@@ -474,7 +478,7 @@ export function StandalonePostDrawer({
         await updateWorkflowPost(postId, { conteudo: json, conteudo_plain: plain });
         refresh();
       } catch {
-        toast.error('Erro ao salvar conteúdo');
+        toast.error(t('standalonePostDrawer.saveContentError'));
       } finally {
         setIsSaving(false);
       }
@@ -491,7 +495,7 @@ export function StandalonePostDrawer({
       await updateWorkflowPost(postId, { status: 'revisao_interna' });
       refresh();
     } catch {
-      toast.error('Não foi possível invalidar a aprovação. O conteúdo não foi salvo.');
+      toast.error(t('standalonePostDrawer.invalidateApprovalError'));
       return;
     }
     confirmedEditRef.current = true;
@@ -505,7 +509,7 @@ export function StandalonePostDrawer({
         });
         refresh();
       } catch {
-        toast.error('Erro ao salvar conteúdo');
+        toast.error(t('standalonePostDrawer.saveContentError'));
       } finally {
         setIsSaving(false);
       }
@@ -544,20 +548,20 @@ export function StandalonePostDrawer({
         // it back over the suggestion we just accepted.
         await qc.invalidateQueries({ queryKey: ['standalone-post', postId] });
         setEditorVersion((v) => v + 1);
-        toast.success('Sugestão aceita!');
+        toast.success(t('standalonePostDrawer.suggestionAccepted'));
         refresh();
         onRefresh();
       } catch (err) {
         // PostgrestError is a plain object, not an Error instance.
         if (String((err as { message?: unknown })?.message ?? '').includes('suggestion_changed')) {
-          toast.error('A sugestão foi atualizada pelo cliente. Revise a nova versão.');
+          toast.error(t('standalonePostDrawer.suggestionChanged'));
           refresh();
           return;
         }
-        toast.error('Erro ao aceitar sugestão');
+        toast.error(t('standalonePostDrawer.acceptSuggestionError'));
       }
     },
-    [refresh, onRefresh, qc, postId],
+    [refresh, onRefresh, qc, postId, t],
   );
 
   const [pendingRejectSuggestionId, setPendingRejectSuggestionId] = useState<number | null>(null);
@@ -568,12 +572,12 @@ export function StandalonePostDrawer({
     setPendingRejectSuggestionId(null);
     try {
       await rejectEditSuggestion(id);
-      toast.success('Sugestão rejeitada');
+      toast.success(t('standalonePostDrawer.suggestionRejected'));
       refresh();
     } catch {
-      toast.error('Erro ao rejeitar sugestão');
+      toast.error(t('standalonePostDrawer.rejectSuggestionError'));
     }
-  }, [pendingRejectSuggestionId, refresh]);
+  }, [pendingRejectSuggestionId, refresh, t]);
 
   // ── Comment threads ───────────────────────────────────────────────────────────
 
@@ -591,13 +595,13 @@ export function StandalonePostDrawer({
       try {
         await saveIgCaption(targetPostId, text, anchors);
       } catch (err) {
-        toast.error('Erro ao atualizar post');
+        toast.error(t('standalonePostDrawer.updatePostError'));
         throw err;
       }
       await refetchComments(); // threads first, then the post (see WorkflowDrawer)
       refresh();
     },
-    [refresh, refetchComments],
+    [refresh, refetchComments, t],
   );
 
   const handleReplyToComment = useCallback(
@@ -686,7 +690,7 @@ export function StandalonePostDrawer({
       setReplyText('');
       refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao enviar resposta');
+      toast.error(err instanceof Error ? err.message : t('standalonePostDrawer.replyError'));
     } finally {
       setSendingReply(false);
     }
@@ -703,7 +707,7 @@ export function StandalonePostDrawer({
       onRefresh();
       onClose();
     } catch {
-      toast.error('Erro ao remover post');
+      toast.error(t('standalonePostDrawer.removePostError'));
     }
   };
 
@@ -743,9 +747,14 @@ export function StandalonePostDrawer({
           refresh();
           onRefresh();
           toast.success(
-            'Post duplicado',
+            t('standalonePostDrawer.postDuplicated'),
             onDuplicated
-              ? { action: { label: 'Abrir', onClick: () => onDuplicated(newId) } }
+              ? {
+                  action: {
+                    label: t('standalonePostDrawer.open'),
+                    onClick: () => onDuplicated(newId),
+                  },
+                }
               : undefined,
           );
         }}
@@ -754,15 +763,16 @@ export function StandalonePostDrawer({
       <AlertDialog open={pendingDelete} onOpenChange={(open) => !open && setPendingDelete(false)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover post?</AlertDialogTitle>
+            <AlertDialogTitle>{t('standalonePostDrawer.deleteTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta ação não pode ser desfeita. O post e seu conteúdo serão excluídos
-              permanentemente.
+              {t('standalonePostDrawer.deleteDescription')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingDelete(false)}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeletePost}>Remover</AlertDialogAction>
+            <AlertDialogCancel onClick={() => setPendingDelete(false)}>
+              {t('actions.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeletePost}>{t('actions.delete')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -770,15 +780,16 @@ export function StandalonePostDrawer({
       <AlertDialog open={!!pendingEditData} onOpenChange={(open) => !open && handleCancelEdit()}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Post aprovado</AlertDialogTitle>
+            <AlertDialogTitle>{t('standalonePostDrawer.approvedTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Este post foi aprovado. Editá-lo vai invalidar a aprovação e resetar o status para "Em
-              revisão". Deseja continuar?
+              {t('standalonePostDrawer.approvedEditDescription')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleCancelEdit}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmEdit}>Confirmar edição</AlertDialogAction>
+            <AlertDialogCancel onClick={handleCancelEdit}>{t('actions.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmEdit}>
+              {t('standalonePostDrawer.confirmEdit')}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -789,16 +800,18 @@ export function StandalonePostDrawer({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Post aprovado</AlertDialogTitle>
+            <AlertDialogTitle>{t('standalonePostDrawer.approvedTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Este post foi aprovado. Alterar o status vai invalidar a aprovação. Deseja continuar?
+              {t('standalonePostDrawer.approvedStatusDescription')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setPendingStatusChange(null)}>
-              Cancelar
+              {t('actions.cancel')}
             </AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmStatusChange}>Confirmar</AlertDialogAction>
+            <AlertDialogAction onClick={handleConfirmStatusChange}>
+              {t('actions.confirm')}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -809,17 +822,18 @@ export function StandalonePostDrawer({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Rejeitar sugestão?</AlertDialogTitle>
+            <AlertDialogTitle>{t('standalonePostDrawer.rejectTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              A sugestão do cliente será rejeitada e ele será notificado. O conteúdo original do
-              post será mantido.
+              {t('standalonePostDrawer.rejectDescription')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setPendingRejectSuggestionId(null)}>
-              Cancelar
+              {t('actions.cancel')}
             </AlertDialogCancel>
-            <AlertDialogAction onClick={confirmRejectSuggestion}>Rejeitar</AlertDialogAction>
+            <AlertDialogAction onClick={confirmRejectSuggestion}>
+              {t('shared.reject')}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -833,7 +847,7 @@ export function StandalonePostDrawer({
     if (post && target && target.process.estado === 'ativo') {
       if (previousStepOf(target.process)) {
         phoneMenuActions.push({
-          label: 'Voltar etapa',
+          label: t('standalonePostDrawer.previousStage'),
           disabled: commands.busy,
           onSelect: () => commands.voltar(target),
         });
@@ -847,57 +861,63 @@ export function StandalonePostDrawer({
     }
     if (post && target && target.process.estado === 'concluido') {
       phoneMenuActions.push({
-        label: 'Reabrir processo',
+        label: t('standalonePostDrawer.reopenProcess'),
         disabled: commands.busy,
         onSelect: () => commands.reabrir(target),
       });
     }
     if (post && target) {
       phoneMenuActions.push({
-        label: 'Remover processo',
+        label: t('standalonePostDrawer.removeProcess'),
         disabled: commands.busy,
         onSelect: () => commands.remover(target),
       });
     }
     if (post && !postProcess && postProcessesEnabled) {
-      phoneMenuActions.push({ label: 'Aplicar processo', onSelect: () => setApplyOpen(true) });
+      phoneMenuActions.push({
+        label: t('standalonePostDrawer.applyProcess'),
+        onSelect: () => setApplyOpen(true),
+      });
     }
     if (post) {
-      phoneMenuActions.push({ label: 'Vincular a um fluxo', onSelect: () => setAttachOpen(true) });
+      phoneMenuActions.push({
+        label: t('standalonePostDrawer.attachToWorkflow'),
+        onSelect: () => setAttachOpen(true),
+      });
     }
     if (clienteId != null) {
       phoneMenuActions.push({
-        label: 'Ver calendário do cliente',
+        label: t('standalonePostDrawer.viewClientCalendar'),
         onSelect: () => setDrawerView('calendar'),
       });
     }
     if (hubUrl) {
       phoneMenuActions.push({
-        label: 'Copiar link da postagem',
+        label: t('standalonePostDrawer.copyHubPostLink'),
         immediate: true,
         onSelect: () => {
           navigator.clipboard.writeText(buildHubPostLink(hubUrl, postId)).then(
-            () => toast.success('Link copiado!'),
-            () => toast.error('Não foi possível copiar o link.'),
+            () => toast.success(t('standalonePostDrawer.linkCopied')),
+            () => toast.error(t('standalonePostDrawer.linkCopyError')),
           );
         },
       });
     }
     phoneMenuActions.push({
-      label: 'Copiar link',
+      label: t('standalonePostDrawer.copyLink'),
       immediate: true,
       onSelect: () => void copyAppLink(`/entregas?post=${postId}`),
     });
     if (canDuplicate && post) {
       phoneMenuActions.push({
-        label: 'Duplicar',
+        label: t('standalonePostDrawer.duplicate'),
         // Com um save de conteúdo pendente ou em voo a cópia sairia sem a edição.
         disabled: isSaving,
         onSelect: () => setDuplicateTarget({ kind: 'post', postId, status: post.status }),
       });
     }
     phoneMenuActions.push({
-      label: 'Excluir post',
+      label: t('standalonePostDrawer.deletePost'),
       destructive: true,
       onSelect: () => setPendingDelete(true),
     });
@@ -907,7 +927,7 @@ export function StandalonePostDrawer({
         <div className="phone-editor__scroll">
           <header className="phone-editor-header">
             <div className="phone-editor-header__bar">
-              <PhoneIconButton label="Voltar" onClick={onBack}>
+              <PhoneIconButton label={t('actions.back')} onClick={onBack}>
                 <ChevronLeft aria-hidden="true" />
               </PhoneIconButton>
             </div>
@@ -920,17 +940,22 @@ export function StandalonePostDrawer({
 
     return (
       <>
-        <PhoneEditorScreen open onClose={onClose} label="Editor do post" historyEntry={false}>
+        <PhoneEditorScreen
+          open
+          onClose={onClose}
+          label={t('standalonePostDrawer.postEditor')}
+          historyEntry={false}
+        >
           {isLoading ? (
-            backOnly('Carregando post…', <PostEditorSkeleton />)
+            backOnly(t('standalonePostDrawer.loadingPost'), <PostEditorSkeleton />)
           ) : !post ? (
             backOnly(
-              'Post não encontrado',
-              <div className="drawer-empty">Este post não existe mais.</div>,
+              t('standalonePostDrawer.postNotFound'),
+              <div className="drawer-empty">{t('standalonePostDrawer.postGone')}</div>,
             )
           ) : drawerView === 'calendar' && clienteId != null ? (
             backOnly(
-              'Calendário do cliente',
+              t('standalonePostDrawer.clientCalendar'),
               <WorkflowCalendarView
                 clienteId={clienteId}
                 clienteNome={post.cliente_nome || '—'}
@@ -953,10 +978,12 @@ export function StandalonePostDrawer({
                 onBack: onClose,
                 subtitle: `${post.cliente_nome || '—'} · ${
                   postProcess
-                    ? `Individual · ${activeStepName ?? 'Processo concluído'}`
+                    ? t('standalonePostDrawer.individual', {
+                        step: activeStepName ?? t('standalonePostDrawer.processDone'),
+                      })
                     : postProcessesEnabled
-                      ? 'Avulso · Sem processo'
-                      : 'Avulso'
+                      ? t('standalonePostDrawer.standaloneNoProcess')
+                      : t('standalonePostDrawer.standalone')
                 }`,
                 clientName: post.cliente_nome,
                 saving: isSaving,
@@ -1031,9 +1058,9 @@ export function StandalonePostDrawer({
               {isLoading ? (
                 <Skeleton className="h-5 w-48 max-w-full" aria-hidden="true" />
               ) : post ? (
-                post.titulo || 'Post sem título'
+                post.titulo || t('standalonePostDrawer.untitled')
               ) : (
-                'Post não encontrado'
+                t('standalonePostDrawer.postNotFound')
               )}
             </div>
             {post && (
@@ -1042,12 +1069,16 @@ export function StandalonePostDrawer({
                 {postProcess ? (
                   <span className="post-fluxo-tag post-fluxo-tag--avulso post-fluxo-tag--individual">
                     <Route size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
-                    Individual · {activeStepName ?? 'Processo concluído'}
+                    {t('standalonePostDrawer.individual', {
+                      step: activeStepName ?? t('standalonePostDrawer.processDone'),
+                    })}
                   </span>
                 ) : (
                   <span className="post-fluxo-tag post-fluxo-tag--avulso">
                     <CircleDashed size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
-                    {postProcessesEnabled ? 'Avulso · Sem processo' : 'Avulso'}
+                    {postProcessesEnabled
+                      ? t('standalonePostDrawer.standaloneNoProcess')
+                      : t('standalonePostDrawer.standalone')}
                   </span>
                 )}
               </div>
@@ -1061,11 +1092,12 @@ export function StandalonePostDrawer({
                     {previousStepOf(target.process) && (
                       <button
                         className="drawer-add-post-btn"
-                        aria-label="Voltar etapa"
+                        aria-label={t('standalonePostDrawer.previousStage')}
                         onClick={() => commands.voltar(target)}
                         disabled={commands.busy}
                       >
-                        <ArrowLeft className="h-3.5 w-3.5" /> Voltar etapa
+                        <ArrowLeft className="h-3.5 w-3.5" />{' '}
+                        {t('standalonePostDrawer.previousStage')}
                       </button>
                     )}
                     <button
@@ -1085,34 +1117,34 @@ export function StandalonePostDrawer({
                 {target && target.process.estado === 'concluido' && (
                   <button
                     className="drawer-add-post-btn"
-                    aria-label="Reabrir processo"
+                    aria-label={t('standalonePostDrawer.reopenProcess')}
                     onClick={() => commands.reabrir(target)}
                     disabled={commands.busy}
                   >
-                    <RotateCcw className="h-3.5 w-3.5" /> Reabrir processo
+                    <RotateCcw className="h-3.5 w-3.5" /> {t('standalonePostDrawer.reopenProcess')}
                   </button>
                 )}
                 {target && (
                   <button
                     className="drawer-add-post-btn"
-                    aria-label="Remover processo"
+                    aria-label={t('standalonePostDrawer.removeProcess')}
                     onClick={() => commands.remover(target)}
                     disabled={commands.busy}
                   >
-                    <CircleOff className="h-3.5 w-3.5" /> Remover processo
+                    <CircleOff className="h-3.5 w-3.5" /> {t('standalonePostDrawer.removeProcess')}
                   </button>
                 )}
                 {!postProcess && postProcessesEnabled && (
                   <button
                     className="drawer-add-post-btn"
-                    aria-label="Aplicar processo"
+                    aria-label={t('standalonePostDrawer.applyProcess')}
                     onClick={() => setApplyOpen(true)}
                   >
-                    <Route className="h-3.5 w-3.5" /> Aplicar processo
+                    <Route className="h-3.5 w-3.5" /> {t('standalonePostDrawer.applyProcess')}
                   </button>
                 )}
                 <button className="drawer-add-post-btn" onClick={() => setAttachOpen(true)}>
-                  <Link2 className="h-3.5 w-3.5" /> Vincular a um fluxo
+                  <Link2 className="h-3.5 w-3.5" /> {t('standalonePostDrawer.attachToWorkflow')}
                 </button>
                 {clienteId != null && (
                   <div className="drawer-view-toggle" role="tablist">
@@ -1122,10 +1154,10 @@ export function StandalonePostDrawer({
                       aria-selected={drawerView === 'post'}
                       className={`drawer-calendar-btn${drawerView === 'post' ? ' active' : ''}`}
                       onClick={() => setDrawerView('post')}
-                      title="Ver o post"
+                      title={t('standalonePostDrawer.viewPost')}
                     >
                       <FileText className="h-3.5 w-3.5" />
-                      Post
+                      {t('standalonePostDrawer.postTab')}
                     </button>
                     <button
                       type="button"
@@ -1133,10 +1165,10 @@ export function StandalonePostDrawer({
                       aria-selected={drawerView === 'calendar'}
                       className={`drawer-calendar-btn${drawerView === 'calendar' ? ' active' : ''}`}
                       onClick={() => setDrawerView('calendar')}
-                      title="Ver calendário do cliente"
+                      title={t('standalonePostDrawer.viewClientCalendar')}
                     >
                       <CalendarIcon className="h-3.5 w-3.5" />
-                      Calendário
+                      {t('standalonePostDrawer.calendarTab')}
                     </button>
                   </div>
                 )}
@@ -1148,7 +1180,10 @@ export function StandalonePostDrawer({
                 />
                 <OpenNotesBadge approvals={approvals} notes={mediaNotes} />
                 <CopyPostLinkButton hubUrl={hubUrl} postId={postId} />
-                <CopyLinkButton path={`/entregas?post=${postId}`} label="Copiar link do post" />
+                <CopyLinkButton
+                  path={`/entregas?post=${postId}`}
+                  label={t('standalonePostDrawer.copyPostLink')}
+                />
                 {canDuplicate && post && (
                   <button
                     className="drawer-delete-btn"
@@ -1157,8 +1192,8 @@ export function StandalonePostDrawer({
                     }
                     // Com um save de conteúdo pendente ou em voo a cópia sairia sem a edição.
                     disabled={isSaving}
-                    title="Duplicar post"
-                    aria-label="Duplicar post"
+                    title={t('standalonePostDrawer.duplicatePost')}
+                    aria-label={t('standalonePostDrawer.duplicatePost')}
                   >
                     <CopyPlus className="h-3.5 w-3.5" />
                   </button>
@@ -1166,7 +1201,7 @@ export function StandalonePostDrawer({
                 <button
                   className="drawer-delete-btn"
                   onClick={() => setPendingDelete(true)}
-                  title="Remover post"
+                  title={t('standalonePostDrawer.removePost')}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
@@ -1175,12 +1210,18 @@ export function StandalonePostDrawer({
             <button
               className="drawer-close-btn drawer-fullscreen-btn"
               onClick={toggleFullscreen}
-              title={isFullscreen ? 'Recolher' : 'Expandir'}
+              title={
+                isFullscreen ? t('standalonePostDrawer.collapse') : t('standalonePostDrawer.expand')
+              }
             >
               {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </button>
           </div>
-          <button className="drawer-close-btn drawer-dismiss-btn" onClick={onClose} title="Fechar">
+          <button
+            className="drawer-close-btn drawer-dismiss-btn"
+            onClick={onClose}
+            title={t('ui.close')}
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -1189,7 +1230,7 @@ export function StandalonePostDrawer({
           {isLoading ? (
             <PostEditorSkeleton />
           ) : !post ? (
-            <div className="drawer-empty">Este post não existe mais.</div>
+            <div className="drawer-empty">{t('standalonePostDrawer.postGone')}</div>
           ) : drawerView === 'calendar' && clienteId != null ? (
             <WorkflowCalendarView
               clienteId={clienteId}
@@ -1261,7 +1302,9 @@ export function StandalonePostDrawer({
               />
             </>
           )}
-          {isSaving && <span className="drawer-saving-indicator">Salvando…</span>}
+          {isSaving && (
+            <span className="drawer-saving-indicator">{t('standalonePostDrawer.saving')}</span>
+          )}
         </div>
       </div>
 

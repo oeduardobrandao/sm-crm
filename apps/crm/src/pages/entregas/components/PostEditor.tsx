@@ -11,6 +11,8 @@ import Color from '@tiptap/extension-color';
 import { TextStyle } from '@tiptap/extension-text-style';
 import Highlight from '@tiptap/extension-highlight';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import { isAllowedRichTextAutolinkUrl, normalizeRichTextLinkUrl } from '@mesaas/link-policy';
 import {
   Bold,
@@ -40,14 +42,7 @@ import PostCommentPopover from './PostCommentPopover';
 import { MAX_CAPTION_CHARS } from './useCaptionDraft';
 import { AddCommentPopover } from './AddCommentPopover';
 import type { CommentThreadWithComments, Membro } from '@/store';
-import { PhoneFormatBar } from './postEditorPhone/PhoneFormatBar';
-
-// Mensagem mostrada quando o usuário tenta aplicar um link que a política recusa
-// (@mesaas/link-policy) -- sem isso o popover simplesmente fechava e a marca nunca
-// era aplicada, sem qualquer explicação (ver PaginaRichTextEditor.tsx para a mesma
-// checagem no editor de páginas do Hub).
-const LINK_REJECTED_MESSAGE =
-  'Não foi possível aplicar o link. Use um endereço válido (http, https, e-mail ou telefone).';
+import { PhoneFormatBar, colorChoiceLabel } from './postEditorPhone/PhoneFormatBar';
 
 export const TEXT_COLORS = [
   { name: 'Padrão', color: null },
@@ -72,7 +67,7 @@ export const TEXT_COLORS = [
 export function postEditorExtensions({
   mentionSearch,
   onUploadInlineImage,
-  placeholder = 'Escreva o conteúdo do post...',
+  placeholder = i18n.t('postEditor:postEditor.placeholder'),
   onUploadStart,
   onUploadEnd,
 }: {
@@ -193,12 +188,14 @@ export function PostEditor({
   onEditComment,
   onDeleteComment,
   onUploadInlineImage,
-  placeholder = 'Escreva o conteúdo do post...',
+  placeholder: placeholderProp,
   ariaLabel,
   showCharacterCount = true,
   onUploadStateChange,
   variant = 'default',
 }: PostEditorProps) {
+  const { t } = useTranslation('postEditor');
+  const placeholder = placeholderProp ?? t('postEditor.placeholder');
   const phone = variant === 'phone';
   const navigate = useNavigate();
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
@@ -358,12 +355,14 @@ export function PostEditor({
     // open with an explanation instead of silently closing.
     const normalized = normalizeRichTextLinkUrl(url);
     if (!normalized) {
-      toast.error(LINK_REJECTED_MESSAGE);
+      // Sem isso o popover simplesmente fechava e a marca nunca era aplicada, sem
+      // qualquer explicação (ver PaginaRichTextEditor.tsx para a mesma checagem).
+      toast.error(t('postEditor.linkRejected'));
       return;
     }
     editor.chain().focus().setLink({ href: normalized }).run();
     setLinkPopoverOpen(false);
-  }, [editor, linkInputValue]);
+  }, [editor, linkInputValue, t]);
 
   const removeLink = useCallback(() => {
     editor?.chain().focus().unsetLink().run();
@@ -528,7 +527,7 @@ export function PostEditor({
               e.preventDefault();
               editor?.chain().focus().toggleBulletList().run();
             }}
-            data-tooltip="Lista"
+            data-tooltip={t('shared.format.bulletList')}
           >
             <List className="h-3.5 w-3.5" />
           </button>
@@ -539,7 +538,7 @@ export function PostEditor({
               e.preventDefault();
               editor?.chain().focus().toggleOrderedList().run();
             }}
-            data-tooltip="Lista numerada"
+            data-tooltip={t('shared.format.orderedList')}
           >
             <ListOrdered className="h-3.5 w-3.5" />
           </button>
@@ -549,10 +548,10 @@ export function PostEditor({
               <button
                 type="button"
                 className="post-editor-btn"
-                aria-label="Inserir imagem"
+                aria-label={t('shared.format.insertImage')}
                 disabled={imageUploading}
                 onClick={() => imageInputRef.current?.click()}
-                data-tooltip="Inserir imagem"
+                data-tooltip={t('shared.format.insertImage')}
               >
                 {imageUploading ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -579,7 +578,7 @@ export function PostEditor({
               e.preventDefault();
               editor?.chain().focus().insertCallout().run();
             }}
-            data-tooltip="Callout"
+            data-tooltip={t('shared.format.callout')}
           >
             <Lightbulb className="h-3.5 w-3.5" />
           </button>
@@ -601,7 +600,7 @@ export function PostEditor({
               e.preventDefault();
               editor.chain().focus().toggleBold().run();
             }}
-            data-tooltip="Negrito"
+            data-tooltip={t('shared.format.bold')}
           >
             <Bold className="h-3.5 w-3.5" />
           </button>
@@ -612,7 +611,7 @@ export function PostEditor({
               e.preventDefault();
               editor.chain().focus().toggleItalic().run();
             }}
-            data-tooltip="Itálico"
+            data-tooltip={t('shared.format.italic')}
           >
             <Italic className="h-3.5 w-3.5" />
           </button>
@@ -623,7 +622,7 @@ export function PostEditor({
               e.preventDefault();
               editor.chain().focus().toggleUnderline().run();
             }}
-            data-tooltip="Sublinhado"
+            data-tooltip={t('shared.format.underline')}
           >
             <UnderlineIcon className="h-3.5 w-3.5" />
           </button>
@@ -636,7 +635,7 @@ export function PostEditor({
                 e.preventDefault();
                 openLinkPopover();
               }}
-              data-tooltip="Inserir link"
+              data-tooltip={t('shared.format.insertLink')}
             >
               <LinkIcon className="h-3.5 w-3.5" />
             </button>
@@ -647,7 +646,7 @@ export function PostEditor({
                   className="post-editor-link-input"
                   type="url"
                   placeholder="https://..."
-                  aria-label="Endereço do link"
+                  aria-label={t('shared.format.linkAddress')}
                   value={linkInputValue}
                   onChange={(e) => setLinkInputValue(e.target.value)}
                   onKeyDown={(e) => {
@@ -659,11 +658,11 @@ export function PostEditor({
                   }}
                 />
                 <button type="button" className="post-editor-link-apply" onClick={applyLink}>
-                  OK
+                  {t('shared.ok')}
                 </button>
                 {editor.isActive('link') && (
                   <button type="button" className="post-editor-link-remove" onClick={removeLink}>
-                    Remover
+                    {t('actions.delete')}
                   </button>
                 )}
               </div>
@@ -683,7 +682,7 @@ export function PostEditor({
                 setHighlightOpen(false);
                 setLinkPopoverOpen(false);
               }}
-              data-tooltip="Cor do texto"
+              data-tooltip={t('shared.format.textColor')}
               style={{ position: 'relative' }}
             >
               <Baseline className="h-3.5 w-3.5" />
@@ -694,7 +693,7 @@ export function PostEditor({
             </button>
             {textColorOpen && (
               <div className="color-dropdown" onMouseDown={(e) => e.stopPropagation()}>
-                <div className="color-dropdown-label">Cor do texto</div>
+                <div className="color-dropdown-label">{t('shared.format.textColor')}</div>
                 <div className="color-dropdown-grid">
                   {TEXT_COLORS.map((tc) => (
                     <button
@@ -702,7 +701,7 @@ export function PostEditor({
                       type="button"
                       className={`color-swatch${currentTextColor === tc.color || (!currentTextColor && !tc.color) ? ' active' : ''}${!tc.color ? ' color-swatch--default' : ''}`}
                       style={tc.color ? { background: tc.color } : undefined}
-                      title={tc.name}
+                      title={colorChoiceLabel(tc.name)}
                       onMouseDown={(e) => {
                         e.preventDefault();
                         applyTextColor(tc.color);
@@ -730,7 +729,7 @@ export function PostEditor({
                 setTextColorOpen(false);
                 setLinkPopoverOpen(false);
               }}
-              data-tooltip="Cor de fundo"
+              data-tooltip={t('shared.format.backgroundColor')}
               style={{ position: 'relative' }}
             >
               <Highlighter className="h-3.5 w-3.5" />
@@ -747,7 +746,7 @@ export function PostEditor({
             </button>
             {highlightOpen && (
               <div className="color-dropdown" onMouseDown={(e) => e.stopPropagation()}>
-                <div className="color-dropdown-label">Cor de fundo</div>
+                <div className="color-dropdown-label">{t('shared.format.backgroundColor')}</div>
                 <div className="color-dropdown-grid">
                   {HIGHLIGHT_COLORS.map((hc) => (
                     <button
@@ -756,7 +755,7 @@ export function PostEditor({
                       className={`color-swatch${currentHighlight === hc.color || (!currentHighlight && !hc.color) ? ' active' : ''}${!hc.color ? ' color-swatch--default' : ''}`}
                       style={hc.color ? { background: hc.cssColor } : undefined}
                       data-highlight={hc.color ?? undefined}
-                      title={hc.name}
+                      title={colorChoiceLabel(hc.name)}
                       onMouseDown={(e) => {
                         e.preventDefault();
                         applyHighlight(hc.color);
@@ -794,7 +793,7 @@ export function PostEditor({
                   setHighlightOpen(false);
                   setLinkPopoverOpen(false);
                 }}
-                data-tooltip="Comentar"
+                data-tooltip={t('shared.format.comment')}
               >
                 <MessageSquare className="h-3.5 w-3.5" />
               </button>
@@ -848,7 +847,7 @@ export function PostEditor({
                     type="url"
                     inputMode="url"
                     placeholder="https://..."
-                    aria-label="Endereço do link"
+                    aria-label={t('shared.format.linkAddress')}
                     value={linkInputValue}
                     onChange={(e) => setLinkInputValue(e.target.value)}
                     onKeyDown={(e) => {
@@ -861,14 +860,14 @@ export function PostEditor({
                   />
                   {editor.isActive('link') && (
                     <button type="button" onClick={removeLink}>
-                      Remover
+                      {t('actions.delete')}
                     </button>
                   )}
                   <button type="button" onClick={() => setLinkPopoverOpen(false)}>
-                    Cancelar
+                    {t('actions.cancel')}
                   </button>
                   <button type="button" className="phone-format-bar__link-ok" onClick={applyLink}>
-                    OK
+                    {t('shared.ok')}
                   </button>
                 </div>
               ) : undefined

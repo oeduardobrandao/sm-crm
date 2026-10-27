@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Check, ChevronDown, ChevronLeft, MoreHorizontal } from 'lucide-react';
 import { ActionSheet, BottomSheet, Cell, GroupedList, PhoneIconButton } from '@/components/mobile';
 import { useSheetActions } from '@/components/mobile/sheetActions';
@@ -39,6 +40,7 @@ export function PhoneEditorHeader({
   onStatusOpenChange: setStatusOpen,
   extra,
 }: PhoneEditorHeaderProps) {
+  const { t } = useTranslation('postEditor');
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const statusButtonRef = useRef<HTMLButtonElement>(null);
@@ -47,16 +49,16 @@ export function PhoneEditorHeader({
   return (
     <header className="phone-editor-header">
       <div className="phone-editor-header__bar">
-        <PhoneIconButton label="Voltar" onClick={onBack}>
+        <PhoneIconButton label={t('actions.back')} onClick={onBack}>
           <ChevronLeft aria-hidden="true" />
         </PhoneIconButton>
         <div className="phone-editor-header__trailing">
           <span className="phone-editor-header__save" role="status">
-            {saving ? 'Salvando…' : 'Salvo'}
+            {saving ? t('phoneEditorHeader.saving') : t('phoneEditorHeader.saved')}
           </span>
           <PhoneIconButton
             ref={menuButtonRef}
-            label="Mais ações do post"
+            label={t('phoneEditorHeader.moreActions')}
             aria-haspopup="dialog"
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen(true)}
@@ -65,13 +67,15 @@ export function PhoneEditorHeader({
           </PhoneIconButton>
         </div>
       </div>
-      <h1 className="phone-editor-header__title">{post.titulo || 'Post sem título'}</h1>
+      <h1 className="phone-editor-header__title">
+        {post.titulo || t('standalonePostDrawer.untitled')}
+      </h1>
       <div className="phone-editor-header__meta">
         <button
           ref={statusButtonRef}
           type="button"
           className="phone-editor-status"
-          aria-label={`Status: ${current.label}. Trocar status`}
+          aria-label={t('phoneEditorHeader.statusButton', { status: current.label })}
           aria-haspopup="dialog"
           aria-expanded={statusOpen}
           onClick={() => setStatusOpen(true)}
@@ -86,7 +90,7 @@ export function PhoneEditorHeader({
       <ActionSheet
         open={menuOpen}
         onOpenChange={setMenuOpen}
-        title="Ações do post"
+        title={t('phoneEditorHeader.postActions')}
         hideTitle
         returnFocusRef={menuButtonRef}
         actions={menuActions.map((a) => ({
@@ -102,7 +106,7 @@ export function PhoneEditorHeader({
       <BottomSheet
         open={statusOpen}
         onOpenChange={setStatusOpen}
-        title="Status"
+        title={t('shared.status')}
         detents={['medium', 'large']}
         returnFocusRef={statusButtonRef}
       >
