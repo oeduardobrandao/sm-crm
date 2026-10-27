@@ -20,7 +20,7 @@
     "noDeadline": "No deadline",
     "noAssignee": "No assignee",
     "title": "Production",
-    "clientApprovedHint": "Client approved. Move to the next step?",
+    "clientApprovedHint": "Client approved. Move to the next stage?",
     "clientApprovalTag": " · Client approval",
     "assigneeAria": "Assignee for stage {{step}}",
     "daysAria": "Days for stage {{step}}",
@@ -56,7 +56,7 @@
     "revert": "Previous stage",
     "closeProcess": "Close process",
     "deletePost": "Delete post",
-    "forward": "Next step"
+    "forward": "Next stage"
   },
   "scheduleButton": {
     "chip": {

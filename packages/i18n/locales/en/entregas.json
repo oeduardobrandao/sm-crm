@@ -56,7 +56,7 @@
       "internal": "Internal: the client does not see this post"
     },
     "forward": {
-      "avancar": "Next step",
+      "avancar": "Next stage",
       "concluir": "Complete process"
     },
     "sendToPortalReason": "The post is already in the portal, waiting for the client.",
@@ -74,13 +74,13 @@
     }
   },
   "applyPlan": {
-    "noEtapas": "This template has no steps.",
-    "pickStart": "Choose the starting step.",
-    "dateRequired": "Enter the date for the \"{{etapa}}\" step.",
+    "noEtapas": "This template has no stages.",
+    "pickStart": "Choose the starting stage.",
+    "dateRequired": "Enter the date for the \"{{etapa}}\" stage.",
     "noDeliveryDay": "The client has no delivery day set up.",
     "pickMonth": "Choose the delivery month.",
-    "needsApproval": "The template needs a client approval step from the starting step onward.",
-    "cannotCompute": "Could not calculate the date for the \"{{etapa}}\" step."
+    "needsApproval": "The template needs a client approval stage from the starting stage onward.",
+    "cannotCompute": "Could not calculate the date for the \"{{etapa}}\" stage."
   },
   "publicacaoPill": {
     "publishedAt": "Published on {{date}}",
@@ -89,7 +89,7 @@
     "noDateTitle": "No publishing date"
   },
   "boardRows": {
-    "customEtapas": "Custom steps"
+    "customEtapas": "Custom stages"
   },
   "rescheduleToast": {
     "when": "{{date}} at {{time}}",
@@ -148,7 +148,7 @@
     "noName": "No name",
     "noCliente": "No client",
     "noResponsavel": "No assignee",
-    "noEtapa": "No step"
+    "noEtapa": "No stage"
   },
   "postProcessErrors": {
     "workspace_not_found": "Active workspace not found. Reload the page.",
@@ -156,28 +156,28 @@
     "invalid_arguments": "Could not save the column order. Reload and try again.",
     "post_ids_required": "Select at least one post.",
     "post_not_found": "One or more posts were not found.",
-    "post_not_in_source_flow": "One of the posts is no longer in this flow. Reload the list.",
-    "post_in_workflow": "This post already belongs to a flow. Reload to see the current state.",
-    "post_already_in_flow": "This post already belongs to a flow.",
-    "post_has_active_process": "This post has an individual process in progress. Use \"Link to a flow\" to end it and link.",
+    "post_not_in_source_flow": "One of the posts is no longer in this workflow. Reload the list.",
+    "post_in_workflow": "This post already belongs to a workflow. Reload to see the current state.",
+    "post_already_in_flow": "This post already belongs to a workflow.",
+    "post_has_active_process": "This post has an individual process in progress. Use \"Link to a workflow\" to end it and link.",
     "post_belongs_to_another_client": "This post belongs to another client.",
     "post_changed": "The post status changed elsewhere. Reload and try again.",
-    "workflow_not_found": "Flow not found.",
-    "workflow_not_active": "This flow is no longer active.",
-    "workflow_changed": "The flow was changed elsewhere. Reload and try again.",
-    "workflow_etapas_inconsistent": "The steps of this flow are inconsistent. It can only be split off as a standalone post without steps.",
-    "template_not_found": "Flow template not found.",
-    "template_empty": "This template has no steps.",
-    "template_invalid": "This template has invalid steps. Fix the template before applying it.",
+    "workflow_not_found": "Workflow not found.",
+    "workflow_not_active": "This workflow is no longer active.",
+    "workflow_changed": "The workflow was changed elsewhere. Reload and try again.",
+    "workflow_etapas_inconsistent": "The stages of this workflow are inconsistent. It can only be split off as a standalone post without stages.",
+    "template_not_found": "Workflow template not found.",
+    "template_empty": "This template has no stages.",
+    "template_invalid": "This template has invalid stages. Fix the template before applying it.",
     "template_changed": "The template changed after you opened this dialog. Reload and try again.",
-    "invalid_start_ordem": "Invalid starting step for this template.",
+    "invalid_start_ordem": "Invalid starting stage for this template.",
     "invalid_step_overrides": "Invalid assignees or deadlines. Check the fields.",
-    "invalid_step_deadlines": "Invalid deadlines for upcoming steps. Check the fields.",
-    "start_deadline_required": "The starting step needs a deadline.",
-    "step_deadline_required": "Every step from the starting one onward needs a date.",
-    "data_entrega_requires_approval_step": "In delivery date mode there must be a client approval step from the starting step onward.",
-    "active_deadline_required": "Could not calculate the deadline for the current step.",
-    "next_deadline_required": "Could not calculate the deadline for the next step.",
+    "invalid_step_deadlines": "Invalid deadlines for upcoming stages. Check the fields.",
+    "start_deadline_required": "The starting stage needs a deadline.",
+    "step_deadline_required": "Every stage from the starting one onward needs a date.",
+    "data_entrega_requires_approval_step": "In delivery date mode there must be a client approval stage from the starting stage onward.",
+    "active_deadline_required": "Could not calculate the deadline for the current stage.",
+    "next_deadline_required": "Could not calculate the deadline for the next stage.",
     "expected_post_status_required": "Could not check the post status. Reload and try again.",
     "approval_choice_required": "Choose how to proceed with the approval.",
     "invalid_approval_choice": "Invalid approval option.",
@@ -188,16 +188,16 @@
     "process_not_active": "This process is not in progress.",
     "process_not_concluded": "Only a completed process can be reopened.",
     "process_already_closed": "This process has already been closed.",
-    "step_not_found": "Step not found.",
-    "step_not_editable": "Only pending or in-progress steps can be edited.",
+    "step_not_found": "Stage not found.",
+    "step_not_editable": "Only pending or in-progress stages can be edited.",
     "tipo_prazo_invalido": "Invalid deadline type. Choose business or calendar days.",
-    "no_next_step": "There is no next step. Use \"Complete process\".",
-    "no_previous_step": "This is already the first step.",
-    "pending_steps_remaining": "There are still pending steps. Advance to the last one before completing.",
+    "no_next_step": "There is no next stage. Use \"Complete process\".",
+    "no_previous_step": "This is already the first stage.",
+    "pending_steps_remaining": "There are still pending stages. Advance to the last one before completing.",
     "request_id_required": "Could not identify the operation. Try again.",
     "request_not_found": "Could not identify the operation. Try again.",
-    "etapa_changed": "This flow was already moved by someone else. Reload and check.",
-    "not_approval_etapa": "This step is no longer an approval step. The screen was updated.",
+    "etapa_changed": "This workflow was already moved by someone else. Reload and check.",
+    "not_approval_etapa": "This stage is no longer an approval stage. The screen was updated.",
     "expected_counts_required": "Could not check the posts. Try again.",
     "posts_changed": "The posts changed while you were choosing. Check the numbers and confirm again.",
     "ciclo_changed": "This notice is out of date. Reload and check.",
@@ -329,7 +329,7 @@
   "entidadeToggle": {
     "aria": "Board entities",
     "todos": "All",
-    "fluxos": "Flows",
+    "fluxos": "Workflows",
     "posts": "Individual posts"
   },
   "filaMembroPicker": {
@@ -338,7 +338,7 @@
     "you": "{{name}} (you)"
   },
   "filaOrdemPicker": {
-    "prazo": "Step deadline",
+    "prazo": "Stage deadline",
     "publicacao": "Publishing date",
     "aria": "Sort queue by",
     "sortLabel": "Sort:"
@@ -348,7 +348,7 @@
     "closeAll": "Collapse all"
   },
   "modeToggle": {
-    "entregas": "Steps",
+    "entregas": "Stages",
     "publicacoes": "Status"
   },
   "calendarDetail": {
@@ -362,7 +362,7 @@
     "content": "Content",
     "noContent": "No content yet.",
     "caption": "Caption",
-    "avulsoNote": "Standalone post, no flow.",
+    "avulsoNote": "Standalone post, no workflow.",
     "belongsTo": "Belongs to workflow «{{workflow}}»",
     "reschedule": "Reschedule",
     "viewOnInstagram": "View on Instagram",
@@ -376,29 +376,29 @@
     "closeTitle": "Close. You can reopen it from “How it works”",
     "objects": {
       "title": "The objects",
-      "fluxo": "Flow",
+      "fluxo": "Workflow",
       "fluxoDefProcesses": "one delivery cycle for a client: a kanban card",
       "fluxoDef": "one delivery cycle for a client: the kanban card",
-      "etapas": "Steps",
-      "etapasDefProcesses": "the phases of the flow or individual post: only one is active at a time",
-      "etapasDef": "the phases of the flow: only one is active at a time",
+      "etapas": "Stages",
+      "etapasDefProcesses": "the phases of the workflow or individual post: only one is active at a time",
+      "etapasDef": "the phases of the workflow: only one is active at a time",
       "posts": "Posts",
       "postsDef": "the content itself, each with its own status",
       "individual": "Individual post",
-      "individualDef": "a post with its own steps and no flow: also a kanban card",
-      "modelo": "A <term>template</term> is the reusable skeleton of a flow. Editing it updates the <b>open</b> steps of the flows that use it, but keeps what was adjusted in the flow itself, such as a different deadline or assignee."
+      "individualDef": "a post with its own stages and no workflow: also a kanban card",
+      "modelo": "A <term>template</term> is the reusable skeleton of a workflow. Editing it updates the <b>open</b> stages of the workflows that use it, but keeps what was adjusted in the workflow itself, such as a different deadline or assignee."
     },
     "tracks": {
       "title": "There are two separate tracks",
       "movesBy": "moves by",
-      "etapa": "step",
+      "etapa": "stage",
       "post": "Post",
       "status": "status",
       "punch": "The two do not sync.",
-      "body": "Advancing the step does not touch the post statuses, and changing a post status does not advance the step. A flow can be in “Scheduling” with everything still in Draft.",
-      "exception": "<b>Exception:</b> when you complete an approval step, you choose what happens to the posts: keep them, approve all, or send them back to Draft.",
-      "noFluxoProcesses": "A post can also exist without a flow: standalone, moving only along the status track on the Posts board, or individual, with its own steps on the Flows board.",
-      "noFluxo": "A post can also exist without a flow (standalone post): it moves only along the status track, on the Posts board."
+      "body": "Advancing the stage does not touch the post statuses, and changing a post status does not advance the stage. A workflow can be in “Scheduling” with everything still in Draft.",
+      "exception": "<b>Exception:</b> when you complete an approval stage, you choose what happens to the posts: keep them, approve all, or send them back to Draft.",
+      "noFluxoProcesses": "A post can also exist without a workflow: standalone, moving only along the status track on the Posts board, or individual, with its own stages on the Workflows board.",
+      "noFluxo": "A post can also exist without a workflow (standalone post): it moves only along the status track, on the Posts board."
     },
     "auto": {
       "title": "What happens on its own",
@@ -407,14 +407,14 @@
       "a2": "Status becomes “Posted” or “Failed”",
       "a3": "Failures are retried up to 3×",
       "a4": "Client approval arrives from the portal",
-      "a5": "Recurring flow creates the next cycle",
+      "a5": "Recurring workflow creates the next cycle",
       "a6": "Deadlines follow the delivery date",
       "manualTitle": "You do",
-      "m1": "Move the step forward or back",
+      "m1": "Move the stage forward or back",
       "m2": "Create posts and write",
       "m3": "Send to the client",
       "m4": "Schedule the post",
-      "m5": "Complete or archive the flow"
+      "m5": "Complete or archive the workflow"
     },
     "visibility": {
       "title": "Who sees what",
@@ -430,13 +430,13 @@
     "noOptions": "No options",
     "clearSelection": "Clear selection",
     "custom": "Custom",
-    "prazo": "Step deadline",
+    "prazo": "Stage deadline",
     "from": "From",
     "to": "To",
     "cliente": "Client",
     "postStatus": "Post status",
     "responsavel": "Assignee",
-    "allEtapas": "All steps",
+    "allEtapas": "All stages",
     "allTipos": "All types",
     "status": "Status",
     "postResponsavel": "Post assignee",
@@ -444,7 +444,7 @@
     "clearFilters": "Clear filters",
     "filters": "Filters",
     "sheetDescPosts": "Filter the posts",
-    "sheetDescFluxos": "Filter the flows"
+    "sheetDescFluxos": "Filter the workflows"
   },
   "exampleBoard": {
     "columns": {
@@ -465,11 +465,11 @@
   "listToolbar": {
     "groupBy": {
       "title": "Group by",
-      "prazo": "Step deadline",
+      "prazo": "Stage deadline",
       "postagem": "Posting date",
       "cliente": "Client",
       "responsavel": "Assignee",
-      "etapa": "Step",
+      "etapa": "Stage",
       "nenhum": "None"
     },
     "groupByShort": {
@@ -477,7 +477,7 @@
       "postagem": "Posting",
       "cliente": "Client",
       "responsavel": "Assignee",
-      "etapa": "Step",
+      "etapa": "Stage",
       "nenhum": "None"
     },
     "options": "List options",
@@ -492,7 +492,7 @@
     "selectDay": "Select a day.",
     "emptyDay": "No posts on this day.",
     "tiktokIncomplete": "Open the post to set up TikTok",
-    "openInFluxo": "Open in flow",
+    "openInFluxo": "Open in workflow",
     "open": "Open"
   },
   "semProcesso": {
@@ -509,7 +509,7 @@
     "subtitle": "Drag onto the calendar",
     "allScheduled": "All posts are scheduled ✓",
     "legend": "Legend",
-    "fromFluxo": "From a flow",
+    "fromFluxo": "From a workflow",
     "fromOtherWorkflow": "From another workflow"
   },
   "workflowGrid": {
@@ -525,7 +525,7 @@
     "dateRemoveError": "Error removing the post date",
     "scheduleError": "Error scheduling the post",
     "rescheduleError": "Error rescheduling the post",
-    "hintAvulso": "💡 Drag posts from the side list to schedule them, or between dates to reschedule, including posts from flows. Drag back to remove the date (standalone posts only).",
+    "hintAvulso": "💡 Drag posts from the side list to schedule them, or between dates to reschedule, including posts from workflows. Drag back to remove the date (standalone posts only).",
     "hintFluxo": "💡 Drag posts from the side list to schedule them, or between dates to reschedule, including posts from other workflows. Drag back to remove the date (posts in this workflow only).",
     "closeHint": "Close tip"
   },
@@ -552,36 +552,36 @@
       "chart": "Overview",
       "calendar": "Calendar",
       "list": "List",
-      "linha": "Editorial line",
+      "linha": "Editorial plan",
       "fila": "My queue",
       "concluded": "Completed"
     },
     "toast": {
-      "fluxoNotOnBoard": "This post is in a flow that no longer shows on the board.",
-      "fluxoNotFound": "Flow not found",
+      "fluxoNotOnBoard": "This post is in a workflow that no longer shows on the board.",
+      "fluxoNotFound": "Workflow not found",
       "postNotFound": "Post not found",
-      "fluxoDeleted": "Flow deleted!",
-      "fluxoDeleteError": "Error deleting flow",
+      "fluxoDeleted": "Workflow deleted!",
+      "fluxoDeleteError": "Error deleting workflow",
       "postDeleted": "Post deleted.",
       "postDeleteError": "Error deleting post",
       "postDuplicated": "Post duplicated",
-      "fluxoDuplicated": "Flow duplicated",
+      "fluxoDuplicated": "Workflow duplicated",
       "open": "Open",
       "postNotOnBoard": "The post did not show up on the board. Reload the page.",
       "filtersCleared": "Filters cleared to show the post on the board.",
       "cycleCreated": "New cycle created!",
       "cycleError": "Error creating cycle"
     },
-    "responsaveisCaptionPosts": "Who has the post at the current step",
-    "responsaveisCaptionFluxos": "Assignee of the current step",
+    "responsaveisCaptionPosts": "Who has the post at the current stage",
+    "responsaveisCaptionFluxos": "Assignee of the current stage",
     "responsaveisDesc": "Filter the list by assignee",
-    "headerHint": "Track the progress of deliveries and active flows.",
+    "headerHint": "Track the progress of deliveries and active workflows.",
     "comoFunciona": "How it works",
     "replayTour": "Replay tour",
     "help": "Help",
     "totalsTitle": "Overall totals, no filters",
     "header": {
-      "activeFluxos": "active flows: {{n}}",
+      "activeFluxos": "active workflows: {{n}}",
       "individualPosts": " · individual posts: {{n}}",
       "overdue_one": "• {{count}} overdue",
       "overdue_other": "• {{count}} overdue",
@@ -593,17 +593,17 @@
       "overdue_other": "{{count}} overdue",
       "urgent_one": "{{count}} urgent",
       "urgent_other": "{{count}} urgent",
-      "fluxos_zero": "{{count}} flows",
-      "fluxos_one": "{{count}} flow",
-      "fluxos_other": "{{count}} flows",
+      "fluxos_zero": "{{count}} workflows",
+      "fluxos_one": "{{count}} workflow",
+      "fluxos_other": "{{count}} workflows",
       "posts_zero": "{{count}} posts",
       "posts_one": "{{count}} post",
       "posts_other": "{{count}} posts"
     },
     "phone": {
-      "activeFluxos_zero": "{{count}} active flows",
-      "activeFluxos_one": "{{count}} active flow",
-      "activeFluxos_other": "{{count}} active flows",
+      "activeFluxos_zero": "{{count}} active workflows",
+      "activeFluxos_one": "{{count}} active workflow",
+      "activeFluxos_other": "{{count}} active workflows",
       "individuais": " · {{n}} individual",
       "overdue_one": "· {{count}} overdue",
       "overdue_other": "· {{count}} overdue",
@@ -612,17 +612,17 @@
     },
     "templates": "Templates",
     "new": "New",
-    "newFluxo": "New flow",
+    "newFluxo": "New workflow",
     "searchCliente": "Search client...",
     "searchPost": "Search post...",
-    "searchFluxo": "Search flow...",
+    "searchFluxo": "Search workflow...",
     "searchPostShort": "Search post",
-    "searchFluxoShort": "Search flow",
+    "searchFluxoShort": "Search workflow",
     "viewMode": "View mode",
     "viewModes": "View modes",
     "deleteFluxo": {
-      "title": "Delete flow?",
-      "description": "\"{{title}}\" and its steps will be permanently deleted. This action cannot be undone."
+      "title": "Delete workflow?",
+      "description": "\"{{title}}\" and its stages will be permanently deleted. This action cannot be undone."
     },
     "deletePost": {
       "title": "Delete post?",
