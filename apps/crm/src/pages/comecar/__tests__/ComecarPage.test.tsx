@@ -453,6 +453,38 @@ describe('ComecarPage', () => {
       warn.mockRestore();
     });
 
+    it('stamps the cached plan as seen instead of refetching it', async () => {
+      const { client } = renderPage();
+      await screen.findByText(PICKER_HEADING);
+      await waitFor(() =>
+        expect(
+          client.getQueryData<{ trialOfferSeenAt: string | null }>([
+            'billing',
+            'effective-plan-with-source',
+          ])?.trialOfferSeenAt,
+        ).toEqual(expect.any(String)),
+      );
+      expect(getEffectivePlanWithSource).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the picker when a later effective-plan refetch fails', async () => {
+      const { client } = renderPage();
+      await screen.findByText(PICKER_HEADING);
+      await waitFor(() => expect(markTrialOfferSeen).toHaveBeenCalledTimes(1));
+
+      vi.mocked(getEffectivePlanWithSource).mockRejectedValue(new Error('network error'));
+      await client.refetchQueries({ queryKey: ['billing', 'effective-plan-with-source'] });
+      await waitFor(() =>
+        expect(client.getQueryState(['billing', 'effective-plan-with-source'])?.status).toBe(
+          'error',
+        ),
+      );
+
+      expect(screen.getByText(PICKER_HEADING)).toBeInTheDocument();
+      expect(screen.queryByText('Não foi possível carregar seu plano')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Começar 30 dias grátis do Pro' })).toBeEnabled();
+    });
+
     it('falls back to the grid when no plan has a monthly price', async () => {
       vi.mocked(listActivePlans).mockResolvedValue([
         PLANS[0],

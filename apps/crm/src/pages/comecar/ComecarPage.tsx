@@ -139,7 +139,13 @@ export default function ComecarPage() {
   // readiness themselves. `ready` is what keeps them from firing against
   // undefined data mid-load.
   const ready = !authLoading && isOwner && !subLoading && !plansLoading && !planLoading;
-  const hasError = subError || plansError || planError;
+  // Only a query that never produced data gates the screen. A failed background
+  // refetch (window focus, a later invalidation) keeps the last good value, so it must
+  // never replace the picker or unmount an open Pagar.me dialog.
+  const hasError =
+    (subError && subscription === undefined) ||
+    (plansError && plans === undefined) ||
+    (planError && effectivePlan === undefined);
   // Only a Free workspace (a NULL workspaces.plan_id resolves to 'free') that was not
   // put there by an admin (`manual`) and has never trialed may start a trial. Paid and
   // comp/internal plans like Lifetime are already provisioned.
@@ -148,12 +154,19 @@ export default function ComecarPage() {
   // `eligible` stays false while any query has errored.
   const eligible = ready && !hasError && isTrialOfferEligible(effectivePlan, subscription);
 
+  /** Stamps the cached effective plan as seen, without a refetch that could fail. */
+  const markSeenInCache = () => {
+    queryClient.setQueryData<EffectivePlan>(EFFECTIVE_PLAN_KEY, (old) =>
+      old ? { ...old, trialOfferSeenAt: old.trialOfferSeenAt ?? new Date().toISOString() } : old,
+    );
+  };
+
   /** Records that the offer was shown. Failures are logged and swallowed: the screen must still work. */
   const ensureTrialOfferSeen = (): Promise<void> => {
     if (!seenPromise.current) {
       seenPromise.current = markTrialOfferSeen().then(
         () => {
-          void queryClient.invalidateQueries({ queryKey: EFFECTIVE_PLAN_KEY });
+          markSeenInCache();
         },
         (err: unknown) => {
           console.warn('[comecar] mark_trial_offer_seen failed', err);
@@ -301,9 +314,8 @@ export default function ComecarPage() {
     // The dashboard redirect reads the cached effective plan: mark it seen (and the
     // cache with it) first, or a fast click bounces straight back to /comecar.
     await ensureTrialOfferSeen();
-    queryClient.setQueryData<EffectivePlan>(EFFECTIVE_PLAN_KEY, (old) =>
-      old ? { ...old, trialOfferSeenAt: old.trialOfferSeenAt ?? new Date().toISOString() } : old,
-    );
+    // Unconditional: also covers a failed RPC, so the click never bounces back here.
+    markSeenInCache();
     navigate('/dashboard', { replace: true });
   }
 
