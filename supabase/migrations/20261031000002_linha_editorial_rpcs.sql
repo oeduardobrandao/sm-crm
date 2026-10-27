@@ -198,6 +198,7 @@ DECLARE
   v_base     integer := 0;
   v_ids      uuid[];
   v_n        integer;
+  v_locked   integer;
   v_post     bigint;
   v_out      jsonb := '[]'::jsonb;
   r          record;
@@ -264,8 +265,14 @@ BEGIN
   END IF;
 
   -- Lock the items, then refuse any already converted. A row released by a post delete
-  -- (post_id back to null) converts again.
-  PERFORM 1 FROM public.linha_editorial_itens i WHERE i.id = ANY (v_ids) ORDER BY i.id FOR UPDATE;
+  -- (post_id back to null) converts again. The membership count above ran before the lock,
+  -- so count again under it: a row deleted in between must fail the whole batch.
+  PERFORM 1 FROM public.linha_editorial_itens i
+   WHERE i.linha_id = p_linha_id AND i.id = ANY (v_ids) ORDER BY i.id FOR UPDATE;
+  GET DIAGNOSTICS v_locked = ROW_COUNT;
+  IF v_locked <> v_n THEN
+    RAISE EXCEPTION 'payload_invalido' USING ERRCODE = 'P0001';
+  END IF;
   IF EXISTS (SELECT 1 FROM public.linha_editorial_itens i WHERE i.id = ANY (v_ids) AND i.post_id IS NOT NULL) THEN
     RAISE EXCEPTION 'ja_convertido' USING ERRCODE = 'P0001';
   END IF;
