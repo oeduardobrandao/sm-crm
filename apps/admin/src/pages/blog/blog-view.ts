@@ -469,6 +469,10 @@ export function formatDateTime(iso: string | null): string {
 
 export function formatDay(iso: string | null): string {
   if (!iso) return '';
+  // A bare calendar date has no time zone: format its digits as-is instead of
+  // parsing it as UTC midnight (which shows the previous day in São Paulo).
+  const bare = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (bare) return `${bare[3]}/${bare[2]}/${bare[1]}`;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleDateString('pt-BR', {

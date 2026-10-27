@@ -3,6 +3,7 @@ import {
   actionsFor,
   chipsFor,
   failingChecks,
+  formatDay,
   isLiveItem,
   isStale,
   itemPath,
@@ -381,5 +382,20 @@ describe('withSort', () => {
     expect(withSort('/admin/blog/x?tab=publicados', 'recentes')).toBe(
       '/admin/blog/x?tab=publicados',
     );
+  });
+});
+
+describe('formatDay', () => {
+  it('formats a bare YYYY-MM-DD date as its calendar day, without a timezone shift', () => {
+    expect(formatDay('2026-07-27')).toBe('27/07/2026');
+    expect(formatDay('2026-01-01')).toBe('01/01/2026');
+  });
+
+  it('converts a full timestamp to the São Paulo calendar day', () => {
+    expect(formatDay('2026-10-24T01:30:00Z')).toBe('23/10/2026');
+  });
+
+  it('returns an empty string for null', () => {
+    expect(formatDay(null)).toBe('');
   });
 });
