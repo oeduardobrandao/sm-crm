@@ -1,3 +1,4 @@
+import { Trans, useTranslation } from 'react-i18next';
 import { Boxes, Eye, EyeOff, Hand, Layers, Route, X, Zap } from 'lucide-react';
 import { STATUS_LABELS, VISIBILITY_TEXT_LABEL } from '../postLabels';
 
@@ -36,6 +37,7 @@ export function ComoFuncionaPanel({
   /** Inside a phone sheet: the sheet carries the title and the close button. */
   embedded?: boolean;
 }) {
+  const { t } = useTranslation('entregas');
   return (
     <section
       className={embedded ? 'ex-panel ex-panel--embedded' : 'ex-panel'}
@@ -43,13 +45,13 @@ export function ComoFuncionaPanel({
     >
       {!embedded && (
         <div className="ex-head">
-          <h2 id="entregas-explainer-title">Como funciona esta página</h2>
+          <h2 id="entregas-explainer-title">{t('comoFunciona.title')}</h2>
           <button
             type="button"
             className="ex-close"
             onClick={onDismiss}
-            aria-label="Fechar explicação"
-            title="Fechar — você pode reabrir em “Como funciona”"
+            aria-label={t('comoFunciona.closeAria')}
+            title={t('comoFunciona.closeTitle')}
           >
             <X className="h-4 w-4" />
           </button>
@@ -61,44 +63,44 @@ export function ComoFuncionaPanel({
         <article className="ex-card">
           <h3>
             <Boxes className="h-4 w-4" aria-hidden="true" />
-            Os objetos
+            {t('comoFunciona.objects.title')}
           </h3>
 
           <ol className="ex-tree">
             <li className="ex-tree-l0">
-              <span className="ex-term">Fluxo</span>
+              <span className="ex-term">{t('comoFunciona.objects.fluxo')}</span>
               <span className="ex-def">
                 {postProcessesEnabled
-                  ? 'um ciclo de entrega de um cliente: um card do kanban'
-                  : 'um ciclo de entrega de um cliente — o card do kanban'}
+                  ? t('comoFunciona.objects.fluxoDefProcesses')
+                  : t('comoFunciona.objects.fluxoDef')}
               </span>
             </li>
             <li className="ex-tree-l1">
-              <span className="ex-term">Etapas</span>
+              <span className="ex-term">{t('comoFunciona.objects.etapas')}</span>
               <span className="ex-def">
                 {postProcessesEnabled
-                  ? 'as fases do fluxo ou do post individual: só uma fica ativa por vez'
-                  : 'as fases do fluxo — só uma fica ativa por vez'}
+                  ? t('comoFunciona.objects.etapasDefProcesses')
+                  : t('comoFunciona.objects.etapasDef')}
               </span>
             </li>
             <li className="ex-tree-l2">
-              <span className="ex-term">Posts</span>
-              <span className="ex-def">o conteúdo em si, cada um com o seu status</span>
+              <span className="ex-term">{t('comoFunciona.objects.posts')}</span>
+              <span className="ex-def">{t('comoFunciona.objects.postsDef')}</span>
             </li>
             {postProcessesEnabled && (
               <li className="ex-tree-l0">
-                <span className="ex-term">Post individual</span>
-                <span className="ex-def">
-                  um post com etapas próprias, sem fluxo: também é um card do kanban
-                </span>
+                <span className="ex-term">{t('comoFunciona.objects.individual')}</span>
+                <span className="ex-def">{t('comoFunciona.objects.individualDef')}</span>
               </li>
             )}
           </ol>
 
           <p className="ex-aside">
-            <span className="ex-term">Modelo</span> é o esqueleto reutilizável de um fluxo. Editá-lo
-            atualiza as etapas <strong>em aberto</strong> dos fluxos que o usam, mas mantém o que
-            foi ajustado no próprio fluxo, como um prazo ou responsável diferente.
+            <Trans
+              t={t}
+              i18nKey="comoFunciona.objects.modelo"
+              components={{ term: <span className="ex-term" />, b: <strong /> }}
+            />
           </p>
         </article>
 
@@ -106,70 +108,67 @@ export function ComoFuncionaPanel({
         <article className="ex-card">
           <h3>
             <Route className="h-4 w-4" aria-hidden="true" />
-            São dois trilhos separados
+            {t('comoFunciona.tracks.title')}
           </h3>
 
           <div className="ex-tracks">
             <div className="ex-track">
-              <span className="ex-track-obj">Fluxo</span>
-              <span className="ex-track-verb">anda por</span>
-              <span className="ex-chip ex-chip--etapa">etapa</span>
+              <span className="ex-track-obj">{t('comoFunciona.objects.fluxo')}</span>
+              <span className="ex-track-verb">{t('comoFunciona.tracks.movesBy')}</span>
+              <span className="ex-chip ex-chip--etapa">{t('comoFunciona.tracks.etapa')}</span>
             </div>
             <div className="ex-track">
-              <span className="ex-track-obj">Post</span>
-              <span className="ex-track-verb">anda por</span>
-              <span className="ex-chip ex-chip--status">status</span>
+              <span className="ex-track-obj">{t('comoFunciona.tracks.post')}</span>
+              <span className="ex-track-verb">{t('comoFunciona.tracks.movesBy')}</span>
+              <span className="ex-chip ex-chip--status">{t('comoFunciona.tracks.status')}</span>
             </div>
           </div>
 
-          <p className="ex-punch">Os dois não se sincronizam.</p>
-          <p className="ex-body">
-            Avançar a etapa não mexe no status dos posts, e mudar o status de um post não avança a
-            etapa — um fluxo pode estar em “Agendamento” com tudo ainda em Rascunho.
-          </p>
+          <p className="ex-punch">{t('comoFunciona.tracks.punch')}</p>
+          <p className="ex-body">{t('comoFunciona.tracks.body')}</p>
           <p className="ex-aside">
-            <strong>Exceção:</strong> ao concluir uma etapa de aprovação, você escolhe o que
-            acontece com os posts: manter, aprovar todos ou voltar para Rascunho.
+            <Trans t={t} i18nKey="comoFunciona.tracks.exception" components={{ b: <strong /> }} />
           </p>
           <p className="ex-aside">
             {postProcessesEnabled
-              ? 'Um post também pode existir sem fluxo: avulso, andando só pelo trilho de status no quadro de Publicações, ou individual, com etapas próprias no quadro de Fluxos.'
-              : 'Um post também pode existir sem fluxo (publicação avulsa): ele anda só pelo trilho de status, no quadro de Publicações.'}
+              ? t('comoFunciona.tracks.noFluxoProcesses')
+              : t('comoFunciona.tracks.noFluxo')}
           </p>
         </article>
 
         {/* ── Automático vs manual ─ two columns, colour-coded */}
         <article className="ex-card">
           <h3>
-            <Layers className="h-4 w-4" aria-hidden="true" />O que acontece sozinho
+            <Layers className="h-4 w-4" aria-hidden="true" />
+            {t('comoFunciona.auto.title')}
           </h3>
 
           <div className="ex-split">
             <div className="ex-split-col ex-split-col--auto">
               <h4>
                 <Zap className="h-3.5 w-3.5" aria-hidden="true" />
-                Automático
+                {t('comoFunciona.auto.autoTitle')}
               </h4>
               <ul>
-                <li>Post agendado publica na data</li>
-                <li>Status vira “Postado” ou “Falha”</li>
-                <li>Falha é tentada de novo até 3×</li>
-                <li>Aprovação do cliente chega do portal</li>
-                <li>Fluxo recorrente gera o próximo ciclo</li>
-                <li>Prazos seguem a data de entrega</li>
+                <li>{t('comoFunciona.auto.a1')}</li>
+                <li>{t('comoFunciona.auto.a2')}</li>
+                <li>{t('comoFunciona.auto.a3')}</li>
+                <li>{t('comoFunciona.auto.a4')}</li>
+                <li>{t('comoFunciona.auto.a5')}</li>
+                <li>{t('comoFunciona.auto.a6')}</li>
               </ul>
             </div>
             <div className="ex-split-col ex-split-col--manual">
               <h4>
                 <Hand className="h-3.5 w-3.5" aria-hidden="true" />
-                Você faz
+                {t('comoFunciona.auto.manualTitle')}
               </h4>
               <ul>
-                <li>Avançar ou voltar a etapa</li>
-                <li>Criar posts e escrever</li>
-                <li>Enviar ao cliente</li>
-                <li>Agendar a publicação</li>
-                <li>Concluir ou arquivar o fluxo</li>
+                <li>{t('comoFunciona.auto.m1')}</li>
+                <li>{t('comoFunciona.auto.m2')}</li>
+                <li>{t('comoFunciona.auto.m3')}</li>
+                <li>{t('comoFunciona.auto.m4')}</li>
+                <li>{t('comoFunciona.auto.m5')}</li>
               </ul>
             </div>
           </div>
@@ -179,10 +178,10 @@ export function ComoFuncionaPanel({
         <article className="ex-card">
           <h3>
             <Eye className="h-4 w-4" aria-hidden="true" />
-            Quem vê o quê
+            {t('comoFunciona.visibility.title')}
           </h3>
 
-          <p className="ex-body">O status decide sozinho se o cliente enxerga o post no portal.</p>
+          <p className="ex-body">{t('comoFunciona.visibility.body')}</p>
 
           <ul className="ex-vis">
             <li>
@@ -204,15 +203,13 @@ export function ComoFuncionaPanel({
               <span className="ex-vis-text">
                 <strong>{VISIBILITY_TEXT_LABEL.visible}</strong>
                 <span className="ex-vis-list">
-                  de {STATUS_LABELS.enviado_cliente} em diante — e não volta atrás
+                  {t('comoFunciona.visibility.fromOn', { status: STATUS_LABELS.enviado_cliente })}
                 </span>
               </span>
             </li>
           </ul>
 
-          <p className="ex-aside">
-            O olho aparece em cada post, e cada status no seletor diz qual dos dois é.
-          </p>
+          <p className="ex-aside">{t('comoFunciona.visibility.aside')}</p>
         </article>
       </div>
     </section>

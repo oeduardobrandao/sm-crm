@@ -1,1 +1,633 @@
-{}
+{
+  "shared": {
+    "tipo": {
+      "feed": "Imagem",
+      "carrossel": "Carrossel",
+      "reels": "Vídeo vertical",
+      "stories": "Stories"
+    },
+    "platform": {
+      "instagram": "Instagram",
+      "tiktok": "TikTok",
+      "both": "Ambas",
+      "other": "Geral"
+    },
+    "status": {
+      "rascunho": "Rascunho",
+      "revisao_interna": "Em revisão",
+      "aprovado_interno": "Aprovado internamente",
+      "enviado_cliente": "Enviado ao cliente",
+      "aprovado_cliente": "Aprovado pelo cliente",
+      "correcao_cliente": "Correção solicitada",
+      "agendado": "Agendado",
+      "postado": "Postado",
+      "falha_publicacao": "Falha na publicação"
+    },
+    "publicando": "Publicando…",
+    "lockedTooltip": {
+      "agendado": "Post já agendado no Instagram — cancele o agendamento para mover",
+      "postado": "Post já publicado",
+      "falha_publicacao": "Post com falha de publicação — resolva o erro antes de reagendar"
+    },
+    "statusOwner": {
+      "equipe": "Você define",
+      "cliente": "O cliente define — pelo portal",
+      "sistema": "O sistema define — automático"
+    },
+    "automationHint": {
+      "publicando": "Publicando agora. O status vira \"Postado\" sozinho assim que a rede confirmar.",
+      "agendadoAt": "Publica sozinho em {{date}}. Data, tipo, plataforma e legenda ficam travados até você cancelar o agendamento.",
+      "agendado": "Publica sozinho na data agendada. Data, tipo, plataforma e legenda ficam travados até você cancelar o agendamento.",
+      "enviado_cliente": "Visível para o cliente no portal. O status muda sozinho quando ele aprovar ou pedir correção.",
+      "aprovado_cliente": "O cliente aprovou pelo portal. Continua visível para ele.",
+      "correcao_cliente": "O cliente pediu correção pelo portal. Nada acontece sozinho a partir daqui.",
+      "falha_publicacao": "A publicação falhou. O sistema tenta de novo sozinho até 3 vezes; erros não recuperáveis param na hora."
+    },
+    "visibilityOption": {
+      "visible": "👁 o cliente vê",
+      "internal": "🔒 interno"
+    },
+    "visibilityText": {
+      "visible": "o cliente vê",
+      "internal": "interno"
+    },
+    "visibilityBadge": {
+      "visible": "Visível para o cliente no portal",
+      "internal": "Interno — o cliente não vê este post"
+    },
+    "forward": {
+      "avancar": "Avançar etapa",
+      "concluir": "Concluir processo"
+    },
+    "sendToPortalReason": "O post já está no portal, aguardando o cliente.",
+    "prazoPreset": {
+      "atrasado": "Atrasado",
+      "hoje": "Hoje",
+      "amanha": "Amanhã",
+      "proximos7": "Próximos 7 dias"
+    },
+    "etapaPrazo": {
+      "overdue": "{{count}}d atrasado",
+      "overdueShort": "{{count}}d atr.",
+      "hoursLeft": "{{count}}h restantes",
+      "daysLeft": "{{count}}d restantes"
+    }
+  },
+  "applyPlan": {
+    "noEtapas": "Este modelo não tem etapas.",
+    "pickStart": "Escolha a etapa inicial.",
+    "dateRequired": "Informe a data da etapa \"{{etapa}}\".",
+    "noDeliveryDay": "O cliente não tem dia de entrega configurado.",
+    "pickMonth": "Escolha o mês de entrega.",
+    "needsApproval": "O modelo precisa de uma etapa de aprovação do cliente a partir da etapa inicial.",
+    "cannotCompute": "Não foi possível calcular a data da etapa \"{{etapa}}\"."
+  },
+  "publicacaoPill": {
+    "publishedAt": "Publicado em {{date}}",
+    "scheduledAt": "Publicação em {{date}}",
+    "noDate": "Sem data",
+    "noDateTitle": "Sem data de publicação"
+  },
+  "boardRows": {
+    "customEtapas": "Etapas personalizadas"
+  },
+  "rescheduleToast": {
+    "when": "{{date}} às {{time}}",
+    "ownerAvulso": "Post avulso",
+    "ownerFluxo": "Post de «{{fluxo}}»",
+    "ownerPost": "Post",
+    "agendado": "{{owner}} agendado para {{when}}",
+    "reagendado": "{{owner}} reagendado para {{when}}"
+  },
+  "collaborators": {
+    "invalid": "Use só letras, números, ponto e sublinhado, sem espaços.",
+    "duplicate": "@{{username}} já está na lista."
+  },
+  "deadlineStatus": {
+    "em_dia": "Em dia",
+    "urgente": "Urgente",
+    "atrasado": "Atrasado"
+  },
+  "fluxosColumnSort": {
+    "prazo": "Prazo",
+    "publicacao": "Data de publicação",
+    "manual": "Manual"
+  },
+  "igLimits": {
+    "durationStories": "3–60 segundos",
+    "durationVideo": "3 segundos a 15 minutos",
+    "imageFormat": "Imagens devem estar em formato JPEG ou PNG",
+    "imageSize": "Imagem excede 8 MB (limite do Instagram)",
+    "imageRatio": "Proporção da imagem fora do permitido (3:4 a 1.91:1)",
+    "videoFormat": "Vídeos devem estar em formato MP4 ou MOV",
+    "videoSize": "Vídeo excede {{mb}} MB (limite do Instagram)",
+    "videoDuration": "Duração do vídeo fora do permitido ({{range}})",
+    "videoWidth": "Vídeo excede a largura máxima de 1920 pixels",
+    "videoRatioCarousel": "Proporção do vídeo fora do permitido (3:4 a 1.91:1)",
+    "videoRatio": "Proporção do vídeo fora do permitido"
+  },
+  "fila": {
+    "prazo": {
+      "atrasado": "Atrasado",
+      "hoje": "Hoje",
+      "amanha": "Amanhã",
+      "proximos7": "Próximos 7 dias",
+      "depois": "Depois",
+      "sem_prazo": "Sem prazo"
+    },
+    "publicacao": {
+      "atrasado": "Data passada",
+      "hoje": "Hoje",
+      "amanha": "Amanhã",
+      "proximos7": "Próximos 7 dias",
+      "depois": "Depois",
+      "sem_prazo": "Sem data"
+    }
+  },
+  "listGroups": {
+    "noName": "Sem nome",
+    "noCliente": "Sem cliente",
+    "noResponsavel": "Sem responsável",
+    "noEtapa": "Sem etapa"
+  },
+  "postProcessErrors": {
+    "workspace_not_found": "Workspace ativo não encontrado. Recarregue a página.",
+    "permission_denied": "Você não tem permissão para editar entregas neste workspace.",
+    "invalid_arguments": "Não foi possível salvar a ordem da coluna. Recarregue e tente de novo.",
+    "post_ids_required": "Selecione pelo menos um post.",
+    "post_not_found": "Um ou mais posts não foram encontrados.",
+    "post_not_in_source_flow": "Um dos posts já não está neste fluxo. Recarregue a lista.",
+    "post_in_workflow": "Este post já pertence a um fluxo. Recarregue para ver o estado atual.",
+    "post_already_in_flow": "Este post já pertence a um fluxo.",
+    "post_has_active_process": "Este post tem um processo individual em andamento. Use \"Vincular a um fluxo\" para encerrá-lo e vincular.",
+    "post_belongs_to_another_client": "Este post pertence a outro cliente.",
+    "post_changed": "O status do post mudou em outro lugar. Recarregue e tente de novo.",
+    "workflow_not_found": "Fluxo não encontrado.",
+    "workflow_not_active": "Este fluxo não está mais ativo.",
+    "workflow_changed": "O fluxo foi alterado em outro lugar. Recarregue e tente de novo.",
+    "workflow_etapas_inconsistent": "As etapas deste fluxo estão inconsistentes. Só é possível desmembrar como avulso sem etapas.",
+    "template_not_found": "Modelo de fluxo não encontrado.",
+    "template_empty": "Este modelo não tem etapas.",
+    "template_invalid": "Este modelo tem etapas inválidas. Corrija o modelo antes de aplicá-lo.",
+    "template_changed": "O modelo foi alterado depois que você abriu este diálogo. Recarregue e tente de novo.",
+    "invalid_start_ordem": "Etapa inicial inválida para este modelo.",
+    "invalid_step_overrides": "Responsáveis ou prazos inválidos. Revise os campos.",
+    "invalid_step_deadlines": "Prazos das etapas futuras inválidos. Revise os campos.",
+    "start_deadline_required": "A etapa inicial precisa de um prazo.",
+    "step_deadline_required": "Todas as etapas a partir da inicial precisam de uma data.",
+    "data_entrega_requires_approval_step": "No modo data de entrega é preciso haver uma etapa de aprovação do cliente a partir da etapa inicial.",
+    "active_deadline_required": "Não foi possível calcular o prazo da etapa atual.",
+    "next_deadline_required": "Não foi possível calcular o prazo da próxima etapa.",
+    "expected_post_status_required": "Não foi possível conferir o status do post. Recarregue e tente de novo.",
+    "approval_choice_required": "Escolha como prosseguir com a aprovação.",
+    "invalid_approval_choice": "Opção de aprovação inválida.",
+    "invalid_command": "Comando inválido.",
+    "membro_not_found": "Responsável não encontrado neste workspace.",
+    "process_not_found": "Processo não encontrado.",
+    "process_changed": "Este processo foi alterado em outro lugar. Recarregue e tente de novo.",
+    "process_not_active": "Este processo não está em andamento.",
+    "process_not_concluded": "Só um processo concluído pode ser reaberto.",
+    "process_already_closed": "Este processo já foi encerrado.",
+    "step_not_found": "Etapa não encontrada.",
+    "step_not_editable": "Só etapas pendentes ou em andamento podem ser editadas.",
+    "tipo_prazo_invalido": "Tipo de prazo inválido. Escolha úteis ou corridos.",
+    "no_next_step": "Não há próxima etapa. Use \"Concluir processo\".",
+    "no_previous_step": "Esta já é a primeira etapa.",
+    "pending_steps_remaining": "Ainda há etapas pendentes. Avance até a última antes de concluir.",
+    "request_id_required": "Não foi possível identificar a operação. Tente de novo.",
+    "request_not_found": "Não foi possível identificar a operação. Tente de novo.",
+    "etapa_changed": "Este fluxo já foi movido por outra pessoa. Recarregue e confira.",
+    "not_approval_etapa": "Esta etapa não é mais de aprovação. A tela foi atualizada.",
+    "expected_counts_required": "Não foi possível conferir os posts. Tente de novo.",
+    "posts_changed": "Os posts mudaram enquanto você escolhia. Confira os números e confirme de novo.",
+    "ciclo_changed": "Este aviso ficou desatualizado. Recarregue e confira.",
+    "post_locked": "Posts agendados, publicados ou com falha na publicação não voltam para rascunho.",
+    "request_mismatch": "A seleção mudou desde a última tentativa. Feche o diálogo e tente de novo."
+  },
+  "publishError": {
+    "TOKEN_EXPIRED": {
+      "titulo": "Conexão com o Instagram expirou",
+      "explicacao": "A autorização da conta do Instagram expirou ou foi revogada. Reconecte a conta na página do cliente e reagende o post."
+    },
+    "MEDIA_TOO_LARGE": {
+      "titulo": "Mídia muito pesada para o Instagram",
+      "explicacao": "O Instagram recusou o arquivo por tamanho. Imagens: até 8 MB. Vídeos: até 250 MB. Ajuste a mídia na galeria e tente novamente."
+    },
+    "CAROUSEL_LIMIT": {
+      "titulo": "Carrossel acima do limite do Instagram",
+      "explicacao": "A publicação via API aceita no máximo 10 itens por carrossel. Remova itens na galeria e tente novamente."
+    },
+    "NO_MEDIA": {
+      "titulo": "Post sem mídia anexada",
+      "explicacao": "O post foi agendado sem nenhuma imagem ou vídeo. Anexe a mídia na galeria e reagende."
+    },
+    "MEDIA_UNSUPPORTED": {
+      "titulo": "Instagram não conseguiu processar a mídia",
+      "explicacao": "O arquivo tem formato, proporção ou duração que o Instagram não aceita. Confira a mídia na galeria e tente novamente."
+    },
+    "TRIAL_INELIGIBLE": {
+      "titulo": "Reel de teste não aceito",
+      "explicacao": "O post precisa de exatamente um vídeo e a conta precisa ser profissional, pública e ter 1.000+ seguidores. Ajuste o post ou a conta, ou desligue o Reel de teste, e tente novamente."
+    },
+    "CAPTION_TOO_LONG": {
+      "titulo": "Legenda acima do limite do Instagram",
+      "explicacao": "O Instagram aceita no máximo 2.200 caracteres na legenda. Reduza o texto na galeria e tente novamente."
+    },
+    "COLLABORATOR_INVALID": {
+      "titulo": "O Instagram recusou um colaborador",
+      "explicacao": "Confira se o @ está certo e se o perfil é público. Edite os colaboradores e tente novamente."
+    },
+    "ACCOUNT_RESTRICTED": {
+      "titulo": "Acesso da conta restrito pelo Instagram",
+      "explicacao": "O Instagram restringiu o acesso desta conta. Confira o aplicativo do Instagram por avisos ou restrições antes de tentar novamente."
+    },
+    "CONTAINER_EXPIRED": {
+      "titulo": "Publicação preparada expirou no Instagram",
+      "explicacao": "O Instagram descarta publicações preparadas que não são concluídas em 24 horas. Tente novamente para recomeçar do zero."
+    },
+    "RATE_LIMIT": {
+      "titulo": "Limite de publicações do Instagram atingido",
+      "explicacao": "O Instagram limita a quantidade de publicações via API em 24 horas por conta. Aguarde um pouco e tente novamente."
+    },
+    "IG_TRANSIENT": {
+      "titulo": "Instabilidade temporária do Instagram",
+      "explicacao": "O Instagram retornou um erro temporário. Normalmente funciona ao tentar novamente."
+    },
+    "INTERNAL": {
+      "titulo": "Erro interno ao publicar",
+      "explicacao": "Algo falhou do nosso lado, não é um problema do post nem da conta. Tente novamente e, se persistir, fale com o suporte informando o post."
+    },
+    "UNKNOWN": {
+      "titulo": "Falha na publicação",
+      "explicacao": "O Instagram retornou um erro não reconhecido. Tente novamente e, se persistir, fale com o suporte."
+    }
+  },
+  "destinationState": {
+    "pendente": "Pendente",
+    "aguardando_aprovacao": "Aguardando aprovação",
+    "agendado": "Agendado",
+    "processando": "Publicando",
+    "publicado": "Publicado",
+    "falha": "Falhou",
+    "disponivel": "Disponível"
+  },
+  "destinationToggle": {
+    "published": "Já publicado",
+    "storiesTikTok": "Stories não são suportados no TikTok",
+    "unsupportedFormat": "{{platform}} não aceita {{format}}",
+    "noTikTokAccount": "Cliente sem conta TikTok ativa"
+  },
+  "boardColumnSort": {
+    "manual": "Manual",
+    "data": "Data agendada",
+    "recentes": "Mais recentes",
+    "antigos": "Mais antigos"
+  },
+  "kanbanDrop": {
+    "lockedColumn": "Esta coluna é controlada pelo sistema."
+  },
+  "scheduleSuccess": {
+    "noAutoDestination": "Este post não tem destino com publicação automática.",
+    "both": "Post agendado para publicação no Instagram e no TikTok",
+    "tiktok": "Post agendado para publicação no TikTok",
+    "instagram": "Post agendado para publicação no Instagram"
+  },
+  "tiktokRules": {
+    "disclosureIncomplete": "Indique se o conteúdo promove você, um terceiro ou ambos.",
+    "creatorLoading": "Carregando informações do criador no TikTok…",
+    "mediaLoading": "Carregando mídias do post…",
+    "mediaError": "Não foi possível carregar as mídias. Reabra o post.",
+    "unauditedSuffix": "(disponível após a aprovação do app)",
+    "brandedPrivateSuffix": "(não disponível para conteúdo de marca)",
+    "brandedPrivateHelper": "Conteúdo de marca não pode ter visibilidade privada.",
+    "cannotPost": "O TikTok não permite novas publicações nesta conta agora. Tente novamente mais tarde.",
+    "privacyRequired": "Escolha a privacidade do post no TikTok.",
+    "promotional": "Conteúdo promocional",
+    "paidPartnership": "Parceria paga"
+  },
+  "calendarGrid": {
+    "untitled": "Post sem título",
+    "avulso": "Avulso",
+    "suffixAvulso": " (avulso)",
+    "suffixOtherWorkflow": " (outro workflow)",
+    "ariaWorkflow": " — workflow {{workflow}}",
+    "dragHandle": "Mover post (arraste, ou foque e use as setas)",
+    "more": "+{{count}} mais",
+    "dayFormat": "dd 'de' MMMM",
+    "workflowTitle": "Workflow: {{workflow}}",
+    "dropHere": "Soltar aqui"
+  },
+  "deadlinePill": {
+    "uteis": "úteis",
+    "corridos": "corridos",
+    "dueWas": "Venceu {{date}}",
+    "dueIs": "Vence {{date}}",
+    "titleShowDays": "{{relative}}. Clique para ver em dias",
+    "titleShowDateWas": "Venceu em {{date}}. Clique para ver a data",
+    "titleShowDateIs": "Vence em {{date}}. Clique para ver a data"
+  },
+  "entidadeToggle": {
+    "aria": "Entidades do quadro",
+    "todos": "Todos",
+    "fluxos": "Fluxos",
+    "posts": "Posts individuais"
+  },
+  "filaMembroPicker": {
+    "aria": "Fila de",
+    "placeholder": "Escolha um membro",
+    "you": "{{name}} (você)"
+  },
+  "filaOrdemPicker": {
+    "prazo": "Prazo da etapa",
+    "publicacao": "Data de publicação",
+    "aria": "Ordenar fila por",
+    "sortLabel": "Ordenar:"
+  },
+  "listGroupsToggle": {
+    "openAll": "Abrir todos",
+    "closeAll": "Fechar todos"
+  },
+  "modeToggle": {
+    "entregas": "Etapas",
+    "publicacoes": "Status"
+  },
+  "calendarDetail": {
+    "title": "Detalhes do post",
+    "trial": "Teste",
+    "close": "Fechar",
+    "closePanel": "Fechar painel",
+    "dateFormat": "dd MMM yyyy '·' HH:mm",
+    "toBeDefined": "A definir",
+    "collaborators": "Colaboradores",
+    "content": "Conteúdo",
+    "noContent": "Sem conteúdo ainda.",
+    "caption": "Legenda",
+    "avulsoNote": "Post avulso, sem fluxo.",
+    "belongsTo": "Pertence ao workflow «{{workflow}}»",
+    "reschedule": "Reagendar",
+    "viewOnInstagram": "Ver no Instagram",
+    "openFull": "Abrir post completo",
+    "openPublication": "Abrir publicação",
+    "removeDate": "Remover data"
+  },
+  "comoFunciona": {
+    "title": "Como funciona esta página",
+    "closeAria": "Fechar explicação",
+    "closeTitle": "Fechar — você pode reabrir em “Como funciona”",
+    "objects": {
+      "title": "Os objetos",
+      "fluxo": "Fluxo",
+      "fluxoDefProcesses": "um ciclo de entrega de um cliente: um card do kanban",
+      "fluxoDef": "um ciclo de entrega de um cliente — o card do kanban",
+      "etapas": "Etapas",
+      "etapasDefProcesses": "as fases do fluxo ou do post individual: só uma fica ativa por vez",
+      "etapasDef": "as fases do fluxo — só uma fica ativa por vez",
+      "posts": "Posts",
+      "postsDef": "o conteúdo em si, cada um com o seu status",
+      "individual": "Post individual",
+      "individualDef": "um post com etapas próprias, sem fluxo: também é um card do kanban",
+      "modelo": "<term>Modelo</term> é o esqueleto reutilizável de um fluxo. Editá-lo atualiza as etapas <b>em aberto</b> dos fluxos que o usam, mas mantém o que foi ajustado no próprio fluxo, como um prazo ou responsável diferente."
+    },
+    "tracks": {
+      "title": "São dois trilhos separados",
+      "movesBy": "anda por",
+      "etapa": "etapa",
+      "post": "Post",
+      "status": "status",
+      "punch": "Os dois não se sincronizam.",
+      "body": "Avançar a etapa não mexe no status dos posts, e mudar o status de um post não avança a etapa — um fluxo pode estar em “Agendamento” com tudo ainda em Rascunho.",
+      "exception": "<b>Exceção:</b> ao concluir uma etapa de aprovação, você escolhe o que acontece com os posts: manter, aprovar todos ou voltar para Rascunho.",
+      "noFluxoProcesses": "Um post também pode existir sem fluxo: avulso, andando só pelo trilho de status no quadro de Publicações, ou individual, com etapas próprias no quadro de Fluxos.",
+      "noFluxo": "Um post também pode existir sem fluxo (publicação avulsa): ele anda só pelo trilho de status, no quadro de Publicações."
+    },
+    "auto": {
+      "title": "O que acontece sozinho",
+      "autoTitle": "Automático",
+      "a1": "Post agendado publica na data",
+      "a2": "Status vira “Postado” ou “Falha”",
+      "a3": "Falha é tentada de novo até 3×",
+      "a4": "Aprovação do cliente chega do portal",
+      "a5": "Fluxo recorrente gera o próximo ciclo",
+      "a6": "Prazos seguem a data de entrega",
+      "manualTitle": "Você faz",
+      "m1": "Avançar ou voltar a etapa",
+      "m2": "Criar posts e escrever",
+      "m3": "Enviar ao cliente",
+      "m4": "Agendar a publicação",
+      "m5": "Concluir ou arquivar o fluxo"
+    },
+    "visibility": {
+      "title": "Quem vê o quê",
+      "body": "O status decide sozinho se o cliente enxerga o post no portal.",
+      "fromOn": "de {{status}} em diante — e não volta atrás",
+      "aside": "O olho aparece em cada post, e cada status no seletor diz qual dos dois é."
+    }
+  },
+  "entregasFilters": {
+    "statusAtrasado": "Atrasados",
+    "statusUrgente": "Urgentes",
+    "statusEmDia": "Em dia",
+    "noOptions": "Nenhuma opção",
+    "clearSelection": "Limpar seleção",
+    "custom": "Personalizado",
+    "prazo": "Prazo da etapa",
+    "from": "De",
+    "to": "Até",
+    "cliente": "Cliente",
+    "postStatus": "Status do post",
+    "responsavel": "Responsável",
+    "allEtapas": "Todas as etapas",
+    "allTipos": "Todos os tipos",
+    "status": "Status",
+    "postResponsavel": "Responsável do post",
+    "allTemplates": "Todos os templates",
+    "clearFilters": "Limpar filtros",
+    "filters": "Filtros",
+    "sheetDescPosts": "Filtre os posts",
+    "sheetDescFluxos": "Filtre os fluxos"
+  },
+  "exampleBoard": {
+    "columns": {
+      "criacao": "Criação",
+      "revisao": "Revisão interna",
+      "aprovacao": "Aprovação do cliente",
+      "ajustes": "Ajustes"
+    },
+    "badge": "Exemplo",
+    "cardTitle": "Posts de Agosto",
+    "cardClient": "Cliente Exemplo",
+    "deadline": "3d restantes",
+    "posts": "📄 4 posts",
+    "empty": "Nenhuma entrega",
+    "hide": "Ocultar exemplo",
+    "assignee": "👤 Maria"
+  },
+  "listToolbar": {
+    "groupBy": {
+      "title": "Agrupar por",
+      "prazo": "Prazo da etapa",
+      "postagem": "Data de postagem",
+      "cliente": "Cliente",
+      "responsavel": "Responsável",
+      "etapa": "Etapa",
+      "nenhum": "Nenhum"
+    },
+    "groupByShort": {
+      "prazo": "Prazo",
+      "postagem": "Postagem",
+      "cliente": "Cliente",
+      "responsavel": "Responsável",
+      "etapa": "Etapa",
+      "nenhum": "Nenhum"
+    },
+    "options": "Opções da lista",
+    "groupByAria": "Agrupar por: {{value}}",
+    "groupLabel": "Agrupar:",
+    "responsaveis": "Responsáveis",
+    "showPosted": "Mostrar postados",
+    "current": "(atual)"
+  },
+  "publicacoesPanel": {
+    "title": "Publicações",
+    "selectDay": "Selecione um dia.",
+    "emptyDay": "Nenhuma publicação neste dia.",
+    "tiktokIncomplete": "Abra o post para configurar o TikTok",
+    "openInFluxo": "Abrir no fluxo",
+    "open": "Abrir"
+  },
+  "semProcesso": {
+    "title": "Sem processo",
+    "viewAll": "Ver todos",
+    "viewAllPublicacoes": "Ver todos em Publicações",
+    "filtersNote": "Filtros de produção não se aplicam aos posts sem processo",
+    "applyTo": "Aplicar processo em {{title}}",
+    "apply": "Aplicar processo"
+  },
+  "unscheduledSidebar": {
+    "locked": "Post com status bloqueado",
+    "dragToSchedule": "Arraste para agendar: {{title}}",
+    "subtitle": "Arraste para o calendário",
+    "allScheduled": "Todos os posts estão agendados ✓",
+    "legend": "Legenda",
+    "fromFluxo": "De um fluxo",
+    "fromOtherWorkflow": "De outro workflow"
+  },
+  "workflowGrid": {
+    "empty": "Nenhum post para exibir na grade. Agende posts para ver como o feed vai ficar."
+  },
+  "workflowHistory": {
+    "empty": "Nenhum evento registrado ainda."
+  },
+  "workflowCalendar": {
+    "rejectAvulso": "Post avulso: desagende pela publicação.",
+    "rejectForeign": "Só é possível remover a data de posts deste workflow.",
+    "dateRemoved": "Data removida do post",
+    "dateRemoveError": "Erro ao remover data do post",
+    "scheduleError": "Erro ao agendar post",
+    "rescheduleError": "Erro ao reagendar post",
+    "hintAvulso": "💡 Arraste posts da lista lateral para agendar, ou entre datas para reagendar — inclusive posts de fluxos. Arraste de volta para remover a data (apenas posts avulsos).",
+    "hintFluxo": "💡 Arraste posts da lista lateral para agendar, ou entre datas para reagendar — inclusive posts de outros workflows. Arraste de volta para remover a data (apenas posts deste workflow).",
+    "closeHint": "Fechar dica"
+  },
+  "vistasTabs": {
+    "saveHint": "Salva a exibição, o modo e os filtros atuais.",
+    "save": "Salvar",
+    "default": "Padrão",
+    "updateWithCurrent": "Atualizar com estado atual",
+    "rename": "Renomear",
+    "delete": "Excluir",
+    "nameLabel": "Nome da visualização",
+    "modifiedTab": "Visualização modificada: use ⋯ para salvar as alterações",
+    "modifiedPicker": "Visualização modificada: abra o menu para salvar as alterações",
+    "optionsFor": "Opções da visualização {{name}}",
+    "new": "Nova visualização",
+    "renameTitle": "Renomear visualização",
+    "saved": "Visualizações salvas"
+  },
+  "entregasPage": {
+    "title": "Entregas",
+    "documentTitle": "Entregas | Mesaas",
+    "views": {
+      "kanban": "Kanban",
+      "chart": "Visão geral",
+      "calendar": "Calendário",
+      "list": "Lista",
+      "linha": "Linha editorial",
+      "fila": "Minha fila",
+      "concluded": "Concluídas"
+    },
+    "toast": {
+      "fluxoNotOnBoard": "Este post está em um fluxo que não aparece mais no quadro.",
+      "fluxoNotFound": "Fluxo não encontrado",
+      "postNotFound": "Post não encontrado",
+      "fluxoDeleted": "Fluxo excluído!",
+      "fluxoDeleteError": "Erro ao excluir fluxo",
+      "postDeleted": "Post excluído.",
+      "postDeleteError": "Erro ao excluir post",
+      "postDuplicated": "Post duplicado",
+      "fluxoDuplicated": "Fluxo duplicado",
+      "open": "Abrir",
+      "postNotOnBoard": "O post não apareceu no quadro. Recarregue a página.",
+      "filtersCleared": "Filtros removidos para mostrar o post no quadro.",
+      "cycleCreated": "Novo ciclo criado!",
+      "cycleError": "Erro ao criar ciclo"
+    },
+    "responsaveisCaptionPosts": "Quem está com o post na etapa atual",
+    "responsaveisCaptionFluxos": "Responsável pela etapa atual",
+    "responsaveisDesc": "Filtre a lista por responsável",
+    "headerHint": "Acompanhe o andamento das entregas e fluxos ativos.",
+    "comoFunciona": "Como funciona",
+    "replayTour": "Ver tour novamente",
+    "help": "Ajuda",
+    "totalsTitle": "Totais gerais, sem filtros",
+    "header": {
+      "activeFluxos": "fluxos ativos: {{n}}",
+      "individualPosts": " · posts individuais: {{n}}",
+      "overdue_one": "• {{count}} atrasado",
+      "overdue_other": "• {{count}} atrasados",
+      "urgent_one": "• {{count}} urgente",
+      "urgent_other": "• {{count}} urgentes"
+    },
+    "toolbar": {
+      "overdue_one": "{{count}} atrasado",
+      "overdue_other": "{{count}} atrasados",
+      "urgent_one": "{{count}} urgente",
+      "urgent_other": "{{count}} urgentes",
+      "fluxos_zero": "{{count}} fluxos",
+      "fluxos_one": "{{count}} fluxo",
+      "fluxos_other": "{{count}} fluxos",
+      "posts_zero": "{{count}} posts",
+      "posts_one": "{{count}} post",
+      "posts_other": "{{count}} posts"
+    },
+    "phone": {
+      "activeFluxos_zero": "{{count}} fluxos ativos",
+      "activeFluxos_one": "{{count}} fluxo ativo",
+      "activeFluxos_other": "{{count}} fluxos ativos",
+      "individuais": " · {{n}} individuais",
+      "overdue_one": "· {{count}} atrasado",
+      "overdue_other": "· {{count}} atrasados",
+      "urgent_one": "· {{count}} urgente",
+      "urgent_other": "· {{count}} urgentes"
+    },
+    "templates": "Templates",
+    "new": "Novo",
+    "newFluxo": "Novo fluxo",
+    "searchCliente": "Buscar cliente...",
+    "searchPost": "Buscar post...",
+    "searchFluxo": "Buscar fluxo...",
+    "searchPostShort": "Buscar post",
+    "searchFluxoShort": "Buscar fluxo",
+    "viewMode": "Modo de visualização",
+    "viewModes": "Modos de visualização",
+    "deleteFluxo": {
+      "title": "Excluir fluxo?",
+      "description": "\"{{title}}\" e suas etapas serão excluídos permanentemente. Esta ação não pode ser desfeita."
+    },
+    "deletePost": {
+      "title": "Excluir post?",
+      "description": "\"{{title}}\" será excluído permanentemente. Esta ação não pode ser desfeita."
+    },
+    "cancel": "Cancelar"
+  }
+}

@@ -1,4 +1,5 @@
 import type { ActivePost } from '@/store';
+import { lazyLabels } from './postLabels';
 
 /** Sort modes a Publicações column header offers. 'manual' is the default:
  *  board_ordem asc with the never-positioned tail in automatic order. */
@@ -6,12 +7,10 @@ export type BoardColumnSort = 'manual' | 'data' | 'recentes' | 'antigos';
 
 export const BOARD_COLUMN_SORTS: BoardColumnSort[] = ['manual', 'data', 'recentes', 'antigos'];
 
-export const BOARD_COLUMN_SORT_LABELS: Record<BoardColumnSort, string> = {
-  manual: 'Manual',
-  data: 'Data agendada',
-  recentes: 'Mais recentes',
-  antigos: 'Mais antigos',
-};
+export const BOARD_COLUMN_SORT_LABELS: Record<BoardColumnSort, string> = lazyLabels(
+  BOARD_COLUMN_SORTS,
+  (k) => `entregas:boardColumnSort.${k}`,
+);
 
 /** Spacing between materialized ranks; midpoints halve the gap ~50 times
  *  before a re-materialization is needed. */

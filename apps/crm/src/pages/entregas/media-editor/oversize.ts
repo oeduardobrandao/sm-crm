@@ -8,8 +8,6 @@ import { probeVideo } from '@/services/postMedia';
 
 export type OversizeReason = 'width' | 'size';
 
-const WIDTH_MESSAGE = 'Vídeo excede a largura máxima de 1920 pixels';
-
 export function videoMaxBytes(forStories: boolean): number {
   return forStories ? STORY_VIDEO_MAX_BYTES : VIDEO_MAX_BYTES;
 }
@@ -22,12 +20,9 @@ export function oversizeOnly(
 ): { eligible: boolean; reasons: OversizeReason[] } {
   const reasons: OversizeReason[] = [];
   for (const e of validateMedia([m], opts)) {
-    if (e.message === WIDTH_MESSAGE) reasons.push('width');
-    else if (
-      e.message.startsWith('Vídeo excede ') &&
-      e.message.endsWith('MB (limite do Instagram)')
-    )
-      reasons.push('size');
+    // Match on the stable code: `message` is translated.
+    if (e.code === 'width') reasons.push('width');
+    else if (e.code === 'size') reasons.push('size');
     else return { eligible: false, reasons: [] };
   }
   reasons.sort((a, b) => (a === b ? 0 : a === 'width' ? -1 : 1));

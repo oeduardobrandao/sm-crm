@@ -1,18 +1,22 @@
+import { useTranslation } from 'react-i18next';
+const COLUMNS = ['criacao', 'revisao', 'aprovacao', 'ajustes'] as const;
+
 export function ExampleBoard({ onDismiss }: { onDismiss: () => void }) {
+  const { t } = useTranslation('entregas');
   return (
     <div className="animate-up" style={{ position: 'relative' }}>
       <div className="board-container">
-        {['Criação', 'Revisão interna', 'Aprovação do cliente', 'Ajustes'].map((col) => (
+        {COLUMNS.map((col) => (
           <div key={col} className="board-column">
             <div
               className="board-column-header"
-              {...(col === 'Aprovação do cliente' ? { 'data-tour': 'wf-col-aprovacao' } : {})}
+              {...(col === 'aprovacao' ? { 'data-tour': 'wf-col-aprovacao' } : {})}
             >
-              <span className="board-column-title">{col}</span>
-              <span className="board-column-count">{col === 'Criação' ? 1 : 0}</span>
+              <span className="board-column-title">{t(`exampleBoard.columns.${col}`)}</span>
+              <span className="board-column-count">{col === 'criacao' ? 1 : 0}</span>
             </div>
             <div className="board-column-body" style={{ minHeight: 60 }}>
-              {col === 'Criação' ? (
+              {col === 'criacao' ? (
                 <div
                   className="board-card deadline-ok"
                   data-tour="wf-card"
@@ -37,13 +41,13 @@ export function ExampleBoard({ onDismiss }: { onDismiss: () => void }) {
                       textTransform: 'uppercase',
                     }}
                   >
-                    Exemplo
+                    {t('exampleBoard.badge')}
                   </span>
                   <div className="board-card-title" style={{ fontWeight: 600 }}>
-                    Posts de Agosto
+                    {t('exampleBoard.cardTitle')}
                   </div>
                   <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: 6 }}>
-                    Cliente Exemplo
+                    {t('exampleBoard.cardClient')}
                   </div>
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     <span
@@ -51,22 +55,22 @@ export function ExampleBoard({ onDismiss }: { onDismiss: () => void }) {
                       className="badge badge-success"
                       style={{ fontSize: '0.62rem' }}
                     >
-                      3d restantes
+                      {t('exampleBoard.deadline')}
                     </span>
                     <span
                       data-tour="wf-posts"
                       className="badge badge-neutral"
                       style={{ fontSize: '0.62rem' }}
                     >
-                      📄 4 posts
+                      {t('exampleBoard.posts')}
                     </span>
                     <span className="badge badge-neutral" style={{ fontSize: '0.62rem' }}>
-                      👤 Maria
+                      {t('exampleBoard.assignee')}
                     </span>
                   </div>
                 </div>
               ) : (
-                <div className="board-empty">Nenhuma entrega</div>
+                <div className="board-empty">{t('exampleBoard.empty')}</div>
               )}
             </div>
           </div>
@@ -85,7 +89,7 @@ export function ExampleBoard({ onDismiss }: { onDismiss: () => void }) {
           textDecoration: 'underline',
         }}
       >
-        Ocultar exemplo
+        {t('exampleBoard.hide')}
       </button>
     </div>
   );

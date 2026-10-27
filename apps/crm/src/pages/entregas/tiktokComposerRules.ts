@@ -1,3 +1,4 @@
+import { i18n } from '@mesaas/i18n';
 import { TIKTOK_MSG, tiktokErrorMessage } from '@mesaas/tiktok-messages';
 
 // Spec 2026-10-08-tiktok-audit-readiness A0-A7: every composer decision lives here, pure.
@@ -29,6 +30,8 @@ export interface ComposerInputs {
   mediaError: boolean;
 }
 
+// pt copy kept for compatibility (imported elsewhere); the functions below return the
+// translated text through i18n at call time.
 export const DISCLOSURE_INCOMPLETE_MSG =
   'Indique se o conteúdo promove você, um terceiro ou ambos.';
 export const CREATOR_LOADING_MSG = 'Carregando informações do criador no TikTok…';
@@ -37,9 +40,6 @@ export const MEDIA_ERROR_MSG = 'Não foi possível carregar as mídias. Reabra o
 export const UNAUDITED_OPTION_SUFFIX = '(disponível após a aprovação do app)';
 export const BRANDED_PRIVATE_OPTION_SUFFIX = '(não disponível para conteúdo de marca)';
 export const BRANDED_PRIVATE_HELPER = 'Conteúdo de marca não pode ter visibilidade privada.';
-
-const CANNOT_POST_FALLBACK =
-  'O TikTok não permite novas publicações nesta conta agora. Tente novamente mais tarde.';
 
 // A missing field (older deploy) counts as audited, so the composer behaves as it did before.
 export function isAppAudited(creator: ComposerInputs['creator']): boolean {
@@ -61,24 +61,27 @@ export function longestVideoSeconds(media: ComposerInputs['media']): number | nu
 
 export function cannotPostMessage(creator: ComposerInputs['creator']): string | null {
   if (creator?.can_post !== false) return null;
-  return tiktokErrorMessage(creator.cannot_post_reason) ?? CANNOT_POST_FALLBACK;
+  return (
+    tiktokErrorMessage(creator.cannot_post_reason) ?? i18n.t('entregas:tiktokRules.cannotPost')
+  );
 }
 
 // The first failing rule sets the reason. Order matters: mediaError is checked before
 // media === undefined so a failed query never reads as "still loading".
 export function computeTikTokReadiness(i: ComposerInputs): TikTokReadiness {
   const fail = (reason: string): TikTokReadiness => ({ complete: false, reason });
-  if (i.loading) return fail(CREATOR_LOADING_MSG);
+  if (i.loading) return fail(i18n.t('entregas:tiktokRules.creatorLoading'));
   if (i.loadError) return fail(i.loadError);
   const cannot = cannotPostMessage(i.creator);
   if (cannot) return fail(cannot);
   if (isPublicAccountInTestMode(i.creator)) return fail(TIKTOK_MSG.publicAccountInTestMode);
-  if (i.mediaError) return fail(MEDIA_ERROR_MSG);
-  if (i.media === undefined) return fail(MEDIA_LOADING_MSG);
+  if (i.mediaError) return fail(i18n.t('entregas:tiktokRules.mediaError'));
+  if (i.media === undefined) return fail(i18n.t('entregas:tiktokRules.mediaLoading'));
   if (i.media.length === 0) return fail(TIKTOK_MSG.mediaMissing);
   if (i.media.some((m) => m.media_lost_at != null)) return fail(TIKTOK_MSG.mediaLost);
-  if (!i.privacyLevel) return fail('Escolha a privacidade do post no TikTok.');
-  if (i.disclosureOn && !i.brandOrganic && !i.brandContent) return fail(DISCLOSURE_INCOMPLETE_MSG);
+  if (!i.privacyLevel) return fail(i18n.t('entregas:tiktokRules.privacyRequired'));
+  if (i.disclosureOn && !i.brandOrganic && !i.brandContent)
+    return fail(i18n.t('entregas:tiktokRules.disclosureIncomplete'));
   if (i.brandContent && i.privacyLevel === 'SELF_ONLY') return fail(TIKTOK_MSG.brandedPrivate);
   const max = i.creator?.max_video_post_duration_sec;
   const longest = longestVideoSeconds(i.media);
@@ -92,8 +95,10 @@ export function disclosureLabel(
   brandOrganic: boolean,
   brandContent: boolean,
 ): 'Conteúdo promocional' | 'Parceria paga' | null {
-  if (brandOrganic && !brandContent) return 'Conteúdo promocional';
-  if (brandContent) return 'Parceria paga';
+  // The literal return type is kept for callers; the value follows the UI language.
+  type Label = 'Conteúdo promocional' | 'Parceria paga';
+  if (brandOrganic && !brandContent) return i18n.t('entregas:tiktokRules.promotional') as Label;
+  if (brandContent) return i18n.t('entregas:tiktokRules.paidPartnership') as Label;
   return null;
 }
 
@@ -102,10 +107,10 @@ export function privacyOptionState(
   ctx: { audited: boolean; brandContent: boolean },
 ): { disabled: boolean; suffix?: string } {
   if (!ctx.audited && option !== 'SELF_ONLY') {
-    return { disabled: true, suffix: UNAUDITED_OPTION_SUFFIX };
+    return { disabled: true, suffix: i18n.t('entregas:tiktokRules.unauditedSuffix') };
   }
   if (ctx.audited && ctx.brandContent && option === 'SELF_ONLY') {
-    return { disabled: true, suffix: BRANDED_PRIVATE_OPTION_SUFFIX };
+    return { disabled: true, suffix: i18n.t('entregas:tiktokRules.brandedPrivateSuffix') };
   }
   return { disabled: false };
 }
@@ -115,7 +120,9 @@ export function brandedCheckboxState(ctx: { audited: boolean; privacyLevel: stri
   suffix?: string;
   helper?: string;
 } {
-  if (!ctx.audited) return { disabled: true, suffix: UNAUDITED_OPTION_SUFFIX };
-  if (ctx.privacyLevel === 'SELF_ONLY') return { disabled: true, helper: BRANDED_PRIVATE_HELPER };
+  if (!ctx.audited)
+    return { disabled: true, suffix: i18n.t('entregas:tiktokRules.unauditedSuffix') };
+  if (ctx.privacyLevel === 'SELF_ONLY')
+    return { disabled: true, helper: i18n.t('entregas:tiktokRules.brandedPrivateHelper') };
   return { disabled: false };
 }

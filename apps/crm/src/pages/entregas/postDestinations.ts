@@ -1,3 +1,4 @@
+import { i18n } from '@mesaas/i18n';
 import {
   CONTENT_FORMAT_LABELS,
   PLATFORM_DEFS,
@@ -10,6 +11,7 @@ import {
 // type-only: PostsKanbanView.test mocks '@/store' com uma lista fixa de exports.
 import type { PostTargetSummary } from '@/store/postTargets';
 import type { WorkflowPost } from '@/store/posts';
+import { lazyLabels, TIPO_LABELS } from './postLabels';
 
 // Regras dos destinos de um post (P2). Spec 2026-09-29-platform-agnostic-posts.
 // O estado de cada destino é derivado aqui, e não numa view SQL (desvio 1 do plano P2):
@@ -24,15 +26,18 @@ export type DestinationState =
   | 'falha'
   | 'disponivel';
 
-export const DESTINATION_STATE_LABELS: Record<DestinationState, string> = {
-  pendente: 'Pendente',
-  aguardando_aprovacao: 'Aguardando aprovação',
-  agendado: 'Agendado',
-  processando: 'Publicando',
-  publicado: 'Publicado',
-  falha: 'Falhou',
-  disponivel: 'Disponível',
-};
+export const DESTINATION_STATE_LABELS: Record<DestinationState, string> = lazyLabels(
+  [
+    'pendente',
+    'aguardando_aprovacao',
+    'agendado',
+    'processando',
+    'publicado',
+    'falha',
+    'disponivel',
+  ] as const,
+  (k) => `entregas:destinationState.${k}`,
+);
 
 export type DestinationPostFields = Pick<
   WorkflowPost,
@@ -89,8 +94,9 @@ export function resolveDestinationState(
 export function nativeFormatHint(platform: PlatformId, tipo: ContentFormat): string | null {
   const native = PLATFORM_DEFS[platform].nativeFormats[tipo];
   if (!native) return null;
-  const neutral = CONTENT_FORMAT_LABELS[tipo];
-  return native.label === neutral ? neutral : `${neutral} → ${native.label}`;
+  // Compare on the registry's pt label (native labels are pt too); display the translated one.
+  const neutral = TIPO_LABELS[tipo];
+  return native.label === CONTENT_FORMAT_LABELS[tipo] ? neutral : `${neutral} → ${native.label}`;
 }
 
 /** Corta em `max` unidades UTF-16 sem deixar meio par substituto (emoji) no fim. */
@@ -163,14 +169,17 @@ export function destinationToggleOptions(args: {
     let disabledReason: string | null = null;
     if (on && published.includes(p)) {
       // Tirar um destino publicado apagaria o registro de onde o post saiu.
-      disabledReason = 'Já publicado';
+      disabledReason = i18n.t('entregas:destinationToggle.published');
     } else if (!on) {
       if (p === 'tiktok' && tipo === 'stories') {
-        disabledReason = 'Stories não são suportados no TikTok';
+        disabledReason = i18n.t('entregas:destinationToggle.storiesTikTok');
       } else if (!supportsFormat(p, tipo)) {
-        disabledReason = `${PLATFORM_DEFS[p].label} não aceita ${CONTENT_FORMAT_LABELS[tipo]}`;
+        disabledReason = i18n.t('entregas:destinationToggle.unsupportedFormat', {
+          platform: PLATFORM_DEFS[p].label,
+          format: TIPO_LABELS[tipo],
+        });
       } else if (p === 'tiktok' && !hasActiveTikTokAccount) {
-        disabledReason = 'Cliente sem conta TikTok ativa';
+        disabledReason = i18n.t('entregas:destinationToggle.noTikTokAccount');
       }
     }
     return { platform: p, on, disabledReason };

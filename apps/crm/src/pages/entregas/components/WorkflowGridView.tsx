@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -49,6 +50,7 @@ interface WorkflowGridViewProps {
  * planned tile swaps publish dates (persisted via the CRM reorder endpoint).
  */
 export function WorkflowGridView({ clienteId, clienteNome }: WorkflowGridViewProps) {
+  const { t } = useTranslation('entregas');
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -180,11 +182,7 @@ export function WorkflowGridView({ clienteId, clienteNome }: WorkflowGridViewPro
   }
 
   if (items.length === 0) {
-    return (
-      <div className="drawer-empty">
-        Nenhum post para exibir na grade. Agende posts para ver como o feed vai ficar.
-      </div>
-    );
+    return <div className="drawer-empty">{t('workflowGrid.empty')}</div>;
   }
 
   return (

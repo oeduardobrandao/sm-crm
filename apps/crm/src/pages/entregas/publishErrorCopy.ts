@@ -1,3 +1,5 @@
+import { i18n } from '@mesaas/i18n';
+
 // Copy acionável em PT para cada código de falha de publicação.
 // Espelha o enum de supabase/functions/_shared/publish-error-codes.ts.
 // Regra da casa: sem em-dash em copy de UI.
@@ -30,100 +32,142 @@ export interface PublishErrorDisplay {
 
 export const PUBLISH_ERROR_COPY: Record<PublishErrorCode, PublishErrorDisplay> = {
   TOKEN_EXPIRED: {
-    titulo: 'Conexão com o Instagram expirou',
-    explicacao:
-      'A autorização da conta do Instagram expirou ou foi revogada. Reconecte a conta na página do cliente e reagende o post.',
+    get titulo() {
+      return i18n.t('entregas:publishError.TOKEN_EXPIRED.titulo');
+    },
+    get explicacao() {
+      return i18n.t('entregas:publishError.TOKEN_EXPIRED.explicacao');
+    },
     acao: 'reconnect',
     mostrarDetalhes: false,
   },
   MEDIA_TOO_LARGE: {
-    titulo: 'Mídia muito pesada para o Instagram',
-    explicacao:
-      'O Instagram recusou o arquivo por tamanho. Imagens: até 8 MB. Vídeos: até 250 MB. Ajuste a mídia na galeria e tente novamente.',
+    get titulo() {
+      return i18n.t('entregas:publishError.MEDIA_TOO_LARGE.titulo');
+    },
+    get explicacao() {
+      return i18n.t('entregas:publishError.MEDIA_TOO_LARGE.explicacao');
+    },
     acao: 'media',
     mostrarDetalhes: true,
   },
   CAROUSEL_LIMIT: {
-    titulo: 'Carrossel acima do limite do Instagram',
-    explicacao:
-      'A publicação via API aceita no máximo 10 itens por carrossel. Remova itens na galeria e tente novamente.',
+    get titulo() {
+      return i18n.t('entregas:publishError.CAROUSEL_LIMIT.titulo');
+    },
+    get explicacao() {
+      return i18n.t('entregas:publishError.CAROUSEL_LIMIT.explicacao');
+    },
     acao: 'media',
     mostrarDetalhes: true,
   },
   NO_MEDIA: {
-    titulo: 'Post sem mídia anexada',
-    explicacao:
-      'O post foi agendado sem nenhuma imagem ou vídeo. Anexe a mídia na galeria e reagende.',
+    get titulo() {
+      return i18n.t('entregas:publishError.NO_MEDIA.titulo');
+    },
+    get explicacao() {
+      return i18n.t('entregas:publishError.NO_MEDIA.explicacao');
+    },
     acao: 'media',
     mostrarDetalhes: false,
   },
   MEDIA_UNSUPPORTED: {
-    titulo: 'Instagram não conseguiu processar a mídia',
-    explicacao:
-      'O arquivo tem formato, proporção ou duração que o Instagram não aceita. Confira a mídia na galeria e tente novamente.',
+    get titulo() {
+      return i18n.t('entregas:publishError.MEDIA_UNSUPPORTED.titulo');
+    },
+    get explicacao() {
+      return i18n.t('entregas:publishError.MEDIA_UNSUPPORTED.explicacao');
+    },
     acao: 'media',
     mostrarDetalhes: true,
   },
   TRIAL_INELIGIBLE: {
-    titulo: 'Reel de teste não aceito',
-    explicacao:
-      'O post precisa de exatamente um vídeo e a conta precisa ser profissional, pública e ter 1.000+ seguidores. Ajuste o post ou a conta, ou desligue o Reel de teste, e tente novamente.',
+    get titulo() {
+      return i18n.t('entregas:publishError.TRIAL_INELIGIBLE.titulo');
+    },
+    get explicacao() {
+      return i18n.t('entregas:publishError.TRIAL_INELIGIBLE.explicacao');
+    },
     acao: 'retry',
     mostrarDetalhes: false,
   },
   CAPTION_TOO_LONG: {
-    titulo: 'Legenda acima do limite do Instagram',
-    explicacao:
-      'O Instagram aceita no máximo 2.200 caracteres na legenda. Reduza o texto na galeria e tente novamente.',
+    get titulo() {
+      return i18n.t('entregas:publishError.CAPTION_TOO_LONG.titulo');
+    },
+    get explicacao() {
+      return i18n.t('entregas:publishError.CAPTION_TOO_LONG.explicacao');
+    },
     acao: 'media',
     mostrarDetalhes: true,
   },
   COLLABORATOR_INVALID: {
-    titulo: 'O Instagram recusou um colaborador',
-    explicacao:
-      'Confira se o @ está certo e se o perfil é público. Edite os colaboradores e tente novamente.',
+    get titulo() {
+      return i18n.t('entregas:publishError.COLLABORATOR_INVALID.titulo');
+    },
+    get explicacao() {
+      return i18n.t('entregas:publishError.COLLABORATOR_INVALID.explicacao');
+    },
     acao: 'collaborators',
     mostrarDetalhes: false,
   },
   ACCOUNT_RESTRICTED: {
-    titulo: 'Acesso da conta restrito pelo Instagram',
-    explicacao:
-      'O Instagram restringiu o acesso desta conta. Confira o aplicativo do Instagram por avisos ou restrições antes de tentar novamente.',
+    get titulo() {
+      return i18n.t('entregas:publishError.ACCOUNT_RESTRICTED.titulo');
+    },
+    get explicacao() {
+      return i18n.t('entregas:publishError.ACCOUNT_RESTRICTED.explicacao');
+    },
     acao: 'retry',
     mostrarDetalhes: true,
   },
   CONTAINER_EXPIRED: {
-    titulo: 'Publicação preparada expirou no Instagram',
-    explicacao:
-      'O Instagram descarta publicações preparadas que não são concluídas em 24 horas. Tente novamente para recomeçar do zero.',
+    get titulo() {
+      return i18n.t('entregas:publishError.CONTAINER_EXPIRED.titulo');
+    },
+    get explicacao() {
+      return i18n.t('entregas:publishError.CONTAINER_EXPIRED.explicacao');
+    },
     acao: 'retry',
     mostrarDetalhes: true,
   },
   RATE_LIMIT: {
-    titulo: 'Limite de publicações do Instagram atingido',
-    explicacao:
-      'O Instagram limita a quantidade de publicações via API em 24 horas por conta. Aguarde um pouco e tente novamente.',
+    get titulo() {
+      return i18n.t('entregas:publishError.RATE_LIMIT.titulo');
+    },
+    get explicacao() {
+      return i18n.t('entregas:publishError.RATE_LIMIT.explicacao');
+    },
     acao: 'retry',
     mostrarDetalhes: true,
   },
   IG_TRANSIENT: {
-    titulo: 'Instabilidade temporária do Instagram',
-    explicacao:
-      'O Instagram retornou um erro temporário. Normalmente funciona ao tentar novamente.',
+    get titulo() {
+      return i18n.t('entregas:publishError.IG_TRANSIENT.titulo');
+    },
+    get explicacao() {
+      return i18n.t('entregas:publishError.IG_TRANSIENT.explicacao');
+    },
     acao: 'retry',
     mostrarDetalhes: true,
   },
   INTERNAL: {
-    titulo: 'Erro interno ao publicar',
-    explicacao:
-      'Algo falhou do nosso lado, não é um problema do post nem da conta. Tente novamente e, se persistir, fale com o suporte informando o post.',
+    get titulo() {
+      return i18n.t('entregas:publishError.INTERNAL.titulo');
+    },
+    get explicacao() {
+      return i18n.t('entregas:publishError.INTERNAL.explicacao');
+    },
     acao: 'support',
     mostrarDetalhes: false,
   },
   UNKNOWN: {
-    titulo: 'Falha na publicação',
-    explicacao:
-      'O Instagram retornou um erro não reconhecido. Tente novamente e, se persistir, fale com o suporte.',
+    get titulo() {
+      return i18n.t('entregas:publishError.UNKNOWN.titulo');
+    },
+    get explicacao() {
+      return i18n.t('entregas:publishError.UNKNOWN.explicacao');
+    },
     acao: 'retry',
     mostrarDetalhes: true,
   },

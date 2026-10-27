@@ -1,3 +1,4 @@
+import { i18n } from '@mesaas/i18n';
 /** Máximo de colaboradores por post (limite do Instagram). */
 export const MAX_COLLABORATORS = 3;
 
@@ -35,6 +36,6 @@ export function validateCollaborator(u: string, current: string[]): Collaborator
 }
 
 export const COLLAB_ERROR_COPY: Record<'invalid' | 'duplicate', (u: string) => string> = {
-  invalid: () => 'Use só letras, números, ponto e sublinhado, sem espaços.',
-  duplicate: (u) => `@${u} já está na lista.`,
+  invalid: () => i18n.t('entregas:collaborators.invalid'),
+  duplicate: (u) => i18n.t('entregas:collaborators.duplicate', { username: u }),
 };

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useVidroShell } from '@/components/layout/PageToolbarContext';
 
 export type EntregasMode = 'entregas' | 'publicacoes';
@@ -17,10 +18,11 @@ interface ModeToggleProps {
  *  serialized into the URL and into saved vistas, and renaming it would
  *  silently reset every shared link. */
 export function ModeToggle({ mode, onModeChange }: ModeToggleProps) {
+  const { t } = useTranslation('entregas');
   const vidroShell = useVidroShell();
   const options = [
-    ['entregas', 'Etapas'],
-    ['publicacoes', 'Status'],
+    ['entregas', t('modeToggle.entregas')],
+    ['publicacoes', t('modeToggle.publicacoes')],
   ] as const;
   // Under the Vidro shell the toggle takes the skin's segmented-capsule styles
   // (data-slot hooks) and drops its inline styles, which would win over them.

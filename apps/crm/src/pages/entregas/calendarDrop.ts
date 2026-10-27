@@ -1,3 +1,4 @@
+import { getIntlLocale, i18n } from '@mesaas/i18n';
 import { parseISO } from 'date-fns';
 import type { ClientePost } from '@/store/posts';
 
@@ -74,12 +75,15 @@ export function formatRescheduleToast({
 }): string {
   const hh = String(datetime.getHours()).padStart(2, '0');
   const mm = String(datetime.getMinutes()).padStart(2, '0');
-  const when = `${datetime.toLocaleDateString('pt-BR')} às ${hh}:${mm}`;
+  const when = i18n.t('entregas:rescheduleToast.when', {
+    date: datetime.toLocaleDateString(getIntlLocale()),
+    time: `${hh}:${mm}`,
+  });
   const owner =
     post && post.workflow_id === null
-      ? 'Post avulso'
+      ? i18n.t('entregas:rescheduleToast.ownerAvulso')
       : post && post.workflow_id !== currentWorkflowId
-        ? `Post de «${post.workflow_titulo}»`
-        : 'Post';
-  return `${owner} ${verb} para ${when}`;
+        ? i18n.t('entregas:rescheduleToast.ownerFluxo', { fluxo: post.workflow_titulo })
+        : i18n.t('entregas:rescheduleToast.ownerPost');
+  return i18n.t(`entregas:rescheduleToast.${verb}`, { owner, when });
 }

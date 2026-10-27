@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useRef, useState } from 'react';
 import {
   Archive,
@@ -78,6 +79,7 @@ export function VistasTabs({
     removeVista,
     renameVista,
   } = useSavedViewSelection(contaId, currentQuery);
+  const { t } = useTranslation('entregas');
   const vidroShell = useVidroShell();
   const [addOpen, setAddOpen] = useState(false);
   const [newName, setNewName] = useState('');
@@ -125,9 +127,7 @@ export function VistasTabs({
 
   const newForm = (
     <>
-      <p className="px-1 pb-2 text-[0.7rem] text-muted-foreground">
-        Salva a exibição, o modo e os filtros atuais.
-      </p>
+      <p className="px-1 pb-2 text-[0.7rem] text-muted-foreground">{t('vistasTabs.saveHint')}</p>
       <div className="flex items-center gap-2">
         <Input
           autoFocus
@@ -137,7 +137,7 @@ export function VistasTabs({
           onKeyDown={(e) => {
             if (e.key === 'Enter') void saveNew();
           }}
-          placeholder="Nome da visualização"
+          placeholder={t('vistasTabs.nameLabel')}
           className="h-8 flex-1 min-w-0 !text-xs mb-0 px-2"
         />
         <Button
@@ -146,7 +146,7 @@ export function VistasTabs({
           className="h-8 px-3 text-xs mb-0"
           variant="outline"
         >
-          Salvar
+          {t('vistasTabs.save')}
         </Button>
       </div>
     </>
@@ -163,7 +163,7 @@ export function VistasTabs({
         }}
       >
         <span className="vista-tab-ico">{VIEW_ICONS.kanban}</span>
-        Padrão
+        {t('vistasTabs.default')}
       </button>
 
       {isLoading && (
@@ -209,10 +209,7 @@ export function VistasTabs({
                   <span className="vista-tab-ico">{viewIcon(v.query)}</span>
                   {v.name}
                   {isActive && modified && (
-                    <span
-                      className="vista-tab-dot"
-                      title="Visualização modificada: use ⋯ para salvar as alterações"
-                    />
+                    <span className="vista-tab-dot" title={t('vistasTabs.modifiedTab')} />
                   )}
                 </button>
                 <DropdownMenu>
@@ -220,24 +217,24 @@ export function VistasTabs({
                     <button
                       type="button"
                       className="vista-tab-more"
-                      aria-label={`Opções da visualização ${v.name}`}
+                      aria-label={t('vistasTabs.optionsFor', { name: v.name })}
                     >
                       <MoreHorizontal className="h-3.5 w-3.5" />
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="min-w-[190px]">
                     <DropdownMenuItem className="text-xs" onSelect={() => updateWithCurrent(v)}>
-                      Atualizar com estado atual
+                      {t('vistasTabs.updateWithCurrent')}
                     </DropdownMenuItem>
                     <DropdownMenuItem className="text-xs" onSelect={() => startRename(v)}>
-                      Renomear
+                      {t('vistasTabs.rename')}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       className="text-xs text-[var(--danger-text)]"
                       onSelect={() => removeVista(v)}
                     >
-                      Excluir
+                      {t('vistasTabs.delete')}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -250,7 +247,7 @@ export function VistasTabs({
       <Popover open={addOpen} onOpenChange={setAddOpen}>
         <PopoverTrigger asChild>
           <button type="button" className="vista-tab vista-tab--add">
-            <Plus className="h-3.5 w-3.5" /> Nova visualização
+            <Plus className="h-3.5 w-3.5" /> {t('vistasTabs.new')}
           </button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-[260px] p-2">
@@ -274,7 +271,9 @@ export function VistasTabs({
     };
     const renameForm = (
       <>
-        <p className="px-1 pb-2 text-[0.7rem] text-muted-foreground">Renomear visualização</p>
+        <p className="px-1 pb-2 text-[0.7rem] text-muted-foreground">
+          {t('vistasTabs.renameTitle')}
+        </p>
         <div className="flex items-center gap-2">
           <Input
             autoFocus
@@ -284,7 +283,7 @@ export function VistasTabs({
             onKeyDown={(e) => {
               if (e.key === 'Enter') void commitRename();
             }}
-            aria-label="Nome da visualização"
+            aria-label={t('vistasTabs.nameLabel')}
             className="h-8 flex-1 min-w-0 !text-xs mb-0 px-2"
           />
           <Button
@@ -293,7 +292,7 @@ export function VistasTabs({
             className="h-8 px-3 text-xs mb-0"
             variant="outline"
           >
-            Salvar
+            {t('vistasTabs.save')}
           </Button>
         </div>
       </>
@@ -316,17 +315,16 @@ export function VistasTabs({
                     variant="outline"
                     size="sm"
                     className="vista-picker mb-0 h-8 max-w-[240px]"
-                    title="Visualizações salvas"
+                    title={t('vistasTabs.saved')}
                   >
                     <span className="vista-tab-ico">
                       {active ? viewIcon(active.query) : VIEW_ICONS.kanban}
                     </span>
-                    <span className="truncate">{active ? active.name : 'Padrão'}</span>
+                    <span className="truncate">
+                      {active ? active.name : t('vistasTabs.default')}
+                    </span>
                     {active && modified && (
-                      <span
-                        className="vista-tab-dot"
-                        title="Visualização modificada: abra o menu para salvar as alterações"
-                      />
+                      <span className="vista-tab-dot" title={t('vistasTabs.modifiedPicker')} />
                     )}
                     <ChevronDown className="h-3.5 w-3.5 opacity-60" />
                   </Button>
@@ -347,7 +345,7 @@ export function VistasTabs({
                     }}
                   >
                     <span className="vista-tab-ico">{VIEW_ICONS.kanban}</span>
-                    <span className="flex-1">Padrão</span>
+                    <span className="flex-1">{t('vistasTabs.default')}</span>
                     {activeId == null && <Check className="h-3.5 w-3.5" aria-hidden />}
                   </DropdownMenuItem>
                   {isLoading && (
@@ -372,16 +370,16 @@ export function VistasTabs({
                   {active && (
                     <>
                       <DropdownMenuItem onSelect={() => updateWithCurrent(active)}>
-                        Atualizar com estado atual
+                        {t('vistasTabs.updateWithCurrent')}
                       </DropdownMenuItem>
                       <DropdownMenuItem onSelect={() => openNameForm(() => startRename(active))}>
-                        Renomear
+                        {t('vistasTabs.rename')}
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         className="text-[var(--danger-text)]"
                         onSelect={() => removeVista(active)}
                       >
-                        Excluir
+                        {t('vistasTabs.delete')}
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                     </>
@@ -394,7 +392,7 @@ export function VistasTabs({
                       })
                     }
                   >
-                    <Plus className="h-3.5 w-3.5" /> Nova visualização
+                    <Plus className="h-3.5 w-3.5" /> {t('vistasTabs.new')}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

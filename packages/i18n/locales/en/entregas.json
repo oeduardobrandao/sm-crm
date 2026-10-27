@@ -1,1 +1,633 @@
-{}
+{
+  "shared": {
+    "tipo": {
+      "feed": "Image",
+      "carrossel": "Carousel",
+      "reels": "Vertical video",
+      "stories": "Stories"
+    },
+    "platform": {
+      "instagram": "Instagram",
+      "tiktok": "TikTok",
+      "both": "Both",
+      "other": "General"
+    },
+    "status": {
+      "rascunho": "Draft",
+      "revisao_interna": "In review",
+      "aprovado_interno": "Approved internally",
+      "enviado_cliente": "Sent to client",
+      "aprovado_cliente": "Approved by client",
+      "correcao_cliente": "Changes requested",
+      "agendado": "Scheduled",
+      "postado": "Posted",
+      "falha_publicacao": "Publishing failed"
+    },
+    "publicando": "Publishing…",
+    "lockedTooltip": {
+      "agendado": "Post already scheduled on Instagram. Cancel the schedule to move it",
+      "postado": "Post already published",
+      "falha_publicacao": "Post failed to publish. Fix the error before rescheduling"
+    },
+    "statusOwner": {
+      "equipe": "You set it",
+      "cliente": "The client sets it, via the portal",
+      "sistema": "The system sets it, automatically"
+    },
+    "automationHint": {
+      "publicando": "Publishing now. The status changes to \"Posted\" on its own once the network confirms.",
+      "agendadoAt": "Publishes on its own on {{date}}. Date, type, platform and caption stay locked until you cancel the schedule.",
+      "agendado": "Publishes on its own on the scheduled date. Date, type, platform and caption stay locked until you cancel the schedule.",
+      "enviado_cliente": "Visible to the client in the portal. The status changes on its own when they approve or request changes.",
+      "aprovado_cliente": "The client approved it in the portal. It stays visible to them.",
+      "correcao_cliente": "The client requested changes in the portal. Nothing happens automatically from here.",
+      "falha_publicacao": "Publishing failed. The system retries on its own up to 3 times; unrecoverable errors stop right away."
+    },
+    "visibilityOption": {
+      "visible": "👁 client sees it",
+      "internal": "🔒 internal"
+    },
+    "visibilityText": {
+      "visible": "client sees it",
+      "internal": "internal"
+    },
+    "visibilityBadge": {
+      "visible": "Visible to the client in the portal",
+      "internal": "Internal: the client does not see this post"
+    },
+    "forward": {
+      "avancar": "Next step",
+      "concluir": "Complete process"
+    },
+    "sendToPortalReason": "The post is already in the portal, waiting for the client.",
+    "prazoPreset": {
+      "atrasado": "Overdue",
+      "hoje": "Today",
+      "amanha": "Tomorrow",
+      "proximos7": "Next 7 days"
+    },
+    "etapaPrazo": {
+      "overdue": "{{count}}d overdue",
+      "overdueShort": "{{count}}d late",
+      "hoursLeft": "{{count}}h left",
+      "daysLeft": "{{count}}d left"
+    }
+  },
+  "applyPlan": {
+    "noEtapas": "This template has no steps.",
+    "pickStart": "Choose the starting step.",
+    "dateRequired": "Enter the date for the \"{{etapa}}\" step.",
+    "noDeliveryDay": "The client has no delivery day set up.",
+    "pickMonth": "Choose the delivery month.",
+    "needsApproval": "The template needs a client approval step from the starting step onward.",
+    "cannotCompute": "Could not calculate the date for the \"{{etapa}}\" step."
+  },
+  "publicacaoPill": {
+    "publishedAt": "Published on {{date}}",
+    "scheduledAt": "Publishing on {{date}}",
+    "noDate": "No date",
+    "noDateTitle": "No publishing date"
+  },
+  "boardRows": {
+    "customEtapas": "Custom steps"
+  },
+  "rescheduleToast": {
+    "when": "{{date}} at {{time}}",
+    "ownerAvulso": "Standalone post",
+    "ownerFluxo": "Post from «{{fluxo}}»",
+    "ownerPost": "Post",
+    "agendado": "{{owner}} scheduled for {{when}}",
+    "reagendado": "{{owner}} rescheduled for {{when}}"
+  },
+  "collaborators": {
+    "invalid": "Use only letters, numbers, periods and underscores, no spaces.",
+    "duplicate": "@{{username}} is already on the list."
+  },
+  "deadlineStatus": {
+    "em_dia": "On track",
+    "urgente": "Urgent",
+    "atrasado": "Overdue"
+  },
+  "fluxosColumnSort": {
+    "prazo": "Deadline",
+    "publicacao": "Publishing date",
+    "manual": "Manual"
+  },
+  "igLimits": {
+    "durationStories": "3 to 60 seconds",
+    "durationVideo": "3 seconds to 15 minutes",
+    "imageFormat": "Images must be JPEG or PNG",
+    "imageSize": "Image exceeds 8 MB (Instagram limit)",
+    "imageRatio": "Image aspect ratio out of range (3:4 to 1.91:1)",
+    "videoFormat": "Videos must be MP4 or MOV",
+    "videoSize": "Video exceeds {{mb}} MB (Instagram limit)",
+    "videoDuration": "Video duration out of range ({{range}})",
+    "videoWidth": "Video exceeds the maximum width of 1920 pixels",
+    "videoRatioCarousel": "Video aspect ratio out of range (3:4 to 1.91:1)",
+    "videoRatio": "Video aspect ratio out of range"
+  },
+  "fila": {
+    "prazo": {
+      "atrasado": "Overdue",
+      "hoje": "Today",
+      "amanha": "Tomorrow",
+      "proximos7": "Next 7 days",
+      "depois": "Later",
+      "sem_prazo": "No deadline"
+    },
+    "publicacao": {
+      "atrasado": "Past date",
+      "hoje": "Today",
+      "amanha": "Tomorrow",
+      "proximos7": "Next 7 days",
+      "depois": "Later",
+      "sem_prazo": "No date"
+    }
+  },
+  "listGroups": {
+    "noName": "No name",
+    "noCliente": "No client",
+    "noResponsavel": "No assignee",
+    "noEtapa": "No step"
+  },
+  "postProcessErrors": {
+    "workspace_not_found": "Active workspace not found. Reload the page.",
+    "permission_denied": "You do not have permission to edit deliveries in this workspace.",
+    "invalid_arguments": "Could not save the column order. Reload and try again.",
+    "post_ids_required": "Select at least one post.",
+    "post_not_found": "One or more posts were not found.",
+    "post_not_in_source_flow": "One of the posts is no longer in this flow. Reload the list.",
+    "post_in_workflow": "This post already belongs to a flow. Reload to see the current state.",
+    "post_already_in_flow": "This post already belongs to a flow.",
+    "post_has_active_process": "This post has an individual process in progress. Use \"Link to a flow\" to end it and link.",
+    "post_belongs_to_another_client": "This post belongs to another client.",
+    "post_changed": "The post status changed elsewhere. Reload and try again.",
+    "workflow_not_found": "Flow not found.",
+    "workflow_not_active": "This flow is no longer active.",
+    "workflow_changed": "The flow was changed elsewhere. Reload and try again.",
+    "workflow_etapas_inconsistent": "The steps of this flow are inconsistent. It can only be split off as a standalone post without steps.",
+    "template_not_found": "Flow template not found.",
+    "template_empty": "This template has no steps.",
+    "template_invalid": "This template has invalid steps. Fix the template before applying it.",
+    "template_changed": "The template changed after you opened this dialog. Reload and try again.",
+    "invalid_start_ordem": "Invalid starting step for this template.",
+    "invalid_step_overrides": "Invalid assignees or deadlines. Check the fields.",
+    "invalid_step_deadlines": "Invalid deadlines for upcoming steps. Check the fields.",
+    "start_deadline_required": "The starting step needs a deadline.",
+    "step_deadline_required": "Every step from the starting one onward needs a date.",
+    "data_entrega_requires_approval_step": "In delivery date mode there must be a client approval step from the starting step onward.",
+    "active_deadline_required": "Could not calculate the deadline for the current step.",
+    "next_deadline_required": "Could not calculate the deadline for the next step.",
+    "expected_post_status_required": "Could not check the post status. Reload and try again.",
+    "approval_choice_required": "Choose how to proceed with the approval.",
+    "invalid_approval_choice": "Invalid approval option.",
+    "invalid_command": "Invalid command.",
+    "membro_not_found": "Assignee not found in this workspace.",
+    "process_not_found": "Process not found.",
+    "process_changed": "This process was changed elsewhere. Reload and try again.",
+    "process_not_active": "This process is not in progress.",
+    "process_not_concluded": "Only a completed process can be reopened.",
+    "process_already_closed": "This process has already been closed.",
+    "step_not_found": "Step not found.",
+    "step_not_editable": "Only pending or in-progress steps can be edited.",
+    "tipo_prazo_invalido": "Invalid deadline type. Choose business or calendar days.",
+    "no_next_step": "There is no next step. Use \"Complete process\".",
+    "no_previous_step": "This is already the first step.",
+    "pending_steps_remaining": "There are still pending steps. Advance to the last one before completing.",
+    "request_id_required": "Could not identify the operation. Try again.",
+    "request_not_found": "Could not identify the operation. Try again.",
+    "etapa_changed": "This flow was already moved by someone else. Reload and check.",
+    "not_approval_etapa": "This step is no longer an approval step. The screen was updated.",
+    "expected_counts_required": "Could not check the posts. Try again.",
+    "posts_changed": "The posts changed while you were choosing. Check the numbers and confirm again.",
+    "ciclo_changed": "This notice is out of date. Reload and check.",
+    "post_locked": "Scheduled, published or failed posts cannot go back to draft.",
+    "request_mismatch": "The selection changed since the last attempt. Close the dialog and try again."
+  },
+  "publishError": {
+    "TOKEN_EXPIRED": {
+      "titulo": "Instagram connection expired",
+      "explicacao": "The Instagram account authorization expired or was revoked. Reconnect the account on the client page and reschedule the post."
+    },
+    "MEDIA_TOO_LARGE": {
+      "titulo": "Media too large for Instagram",
+      "explicacao": "Instagram rejected the file because of its size. Images: up to 8 MB. Videos: up to 250 MB. Adjust the media in the gallery and try again."
+    },
+    "CAROUSEL_LIMIT": {
+      "titulo": "Carousel over the Instagram limit",
+      "explicacao": "Publishing through the API accepts at most 10 items per carousel. Remove items in the gallery and try again."
+    },
+    "NO_MEDIA": {
+      "titulo": "Post has no media attached",
+      "explicacao": "The post was scheduled without any image or video. Attach the media in the gallery and reschedule."
+    },
+    "MEDIA_UNSUPPORTED": {
+      "titulo": "Instagram could not process the media",
+      "explicacao": "The file has a format, aspect ratio or duration that Instagram does not accept. Check the media in the gallery and try again."
+    },
+    "TRIAL_INELIGIBLE": {
+      "titulo": "Trial reel not accepted",
+      "explicacao": "The post needs exactly one video, and the account must be professional, public and have 1,000+ followers. Adjust the post or the account, or turn off Trial reel, and try again."
+    },
+    "CAPTION_TOO_LONG": {
+      "titulo": "Caption over the Instagram limit",
+      "explicacao": "Instagram accepts at most 2,200 characters in the caption. Shorten the text in the gallery and try again."
+    },
+    "COLLABORATOR_INVALID": {
+      "titulo": "Instagram rejected a collaborator",
+      "explicacao": "Check that the @ is correct and that the profile is public. Edit the collaborators and try again."
+    },
+    "ACCOUNT_RESTRICTED": {
+      "titulo": "Account access restricted by Instagram",
+      "explicacao": "Instagram restricted access to this account. Check the Instagram app for notices or restrictions before trying again."
+    },
+    "CONTAINER_EXPIRED": {
+      "titulo": "Prepared post expired on Instagram",
+      "explicacao": "Instagram discards prepared posts that are not completed within 24 hours. Try again to start over."
+    },
+    "RATE_LIMIT": {
+      "titulo": "Instagram publishing limit reached",
+      "explicacao": "Instagram limits how many posts an account can publish through the API in 24 hours. Wait a bit and try again."
+    },
+    "IG_TRANSIENT": {
+      "titulo": "Temporary Instagram instability",
+      "explicacao": "Instagram returned a temporary error. It usually works when you try again."
+    },
+    "INTERNAL": {
+      "titulo": "Internal error while publishing",
+      "explicacao": "Something failed on our side; it is not a problem with the post or the account. Try again and, if it persists, contact support with the post details."
+    },
+    "UNKNOWN": {
+      "titulo": "Publishing failed",
+      "explicacao": "Instagram returned an unrecognized error. Try again and, if it persists, contact support."
+    }
+  },
+  "destinationState": {
+    "pendente": "Pending",
+    "aguardando_aprovacao": "Awaiting approval",
+    "agendado": "Scheduled",
+    "processando": "Publishing",
+    "publicado": "Published",
+    "falha": "Failed",
+    "disponivel": "Available"
+  },
+  "destinationToggle": {
+    "published": "Already published",
+    "storiesTikTok": "Stories are not supported on TikTok",
+    "unsupportedFormat": "{{platform}} does not accept {{format}}",
+    "noTikTokAccount": "Client has no active TikTok account"
+  },
+  "boardColumnSort": {
+    "manual": "Manual",
+    "data": "Scheduled date",
+    "recentes": "Newest",
+    "antigos": "Oldest"
+  },
+  "kanbanDrop": {
+    "lockedColumn": "This column is controlled by the system."
+  },
+  "scheduleSuccess": {
+    "noAutoDestination": "This post has no destination with automatic publishing.",
+    "both": "Post scheduled for publishing on Instagram and TikTok",
+    "tiktok": "Post scheduled for publishing on TikTok",
+    "instagram": "Post scheduled for publishing on Instagram"
+  },
+  "tiktokRules": {
+    "disclosureIncomplete": "Indicate whether the content promotes you, a third party or both.",
+    "creatorLoading": "Loading TikTok creator info…",
+    "mediaLoading": "Loading post media…",
+    "mediaError": "Could not load the media. Reopen the post.",
+    "unauditedSuffix": "(available after app approval)",
+    "brandedPrivateSuffix": "(not available for branded content)",
+    "brandedPrivateHelper": "Branded content cannot have private visibility.",
+    "cannotPost": "TikTok is not allowing new posts on this account right now. Try again later.",
+    "privacyRequired": "Choose the TikTok post privacy.",
+    "promotional": "Promotional content",
+    "paidPartnership": "Paid partnership"
+  },
+  "calendarGrid": {
+    "untitled": "Untitled post",
+    "avulso": "Standalone",
+    "suffixAvulso": " (standalone)",
+    "suffixOtherWorkflow": " (other workflow)",
+    "ariaWorkflow": ", workflow {{workflow}}",
+    "dragHandle": "Move post (drag, or focus and use the arrow keys)",
+    "more": "+{{count}} more",
+    "dayFormat": "MMMM dd",
+    "workflowTitle": "Workflow: {{workflow}}",
+    "dropHere": "Drop here"
+  },
+  "deadlinePill": {
+    "uteis": "business",
+    "corridos": "calendar",
+    "dueWas": "Was due {{date}}",
+    "dueIs": "Due {{date}}",
+    "titleShowDays": "{{relative}}. Click to see in days",
+    "titleShowDateWas": "Was due on {{date}}. Click to see the date",
+    "titleShowDateIs": "Due on {{date}}. Click to see the date"
+  },
+  "entidadeToggle": {
+    "aria": "Board entities",
+    "todos": "All",
+    "fluxos": "Flows",
+    "posts": "Individual posts"
+  },
+  "filaMembroPicker": {
+    "aria": "Queue of",
+    "placeholder": "Choose a member",
+    "you": "{{name}} (you)"
+  },
+  "filaOrdemPicker": {
+    "prazo": "Step deadline",
+    "publicacao": "Publishing date",
+    "aria": "Sort queue by",
+    "sortLabel": "Sort:"
+  },
+  "listGroupsToggle": {
+    "openAll": "Expand all",
+    "closeAll": "Collapse all"
+  },
+  "modeToggle": {
+    "entregas": "Steps",
+    "publicacoes": "Status"
+  },
+  "calendarDetail": {
+    "title": "Post details",
+    "trial": "Trial",
+    "close": "Close",
+    "closePanel": "Close panel",
+    "dateFormat": "MMM dd yyyy '·' HH:mm",
+    "toBeDefined": "To be defined",
+    "collaborators": "Collaborators",
+    "content": "Content",
+    "noContent": "No content yet.",
+    "caption": "Caption",
+    "avulsoNote": "Standalone post, no flow.",
+    "belongsTo": "Belongs to workflow «{{workflow}}»",
+    "reschedule": "Reschedule",
+    "viewOnInstagram": "View on Instagram",
+    "openFull": "Open full post",
+    "openPublication": "Open post",
+    "removeDate": "Remove date"
+  },
+  "comoFunciona": {
+    "title": "How this page works",
+    "closeAria": "Close explanation",
+    "closeTitle": "Close. You can reopen it from “How it works”",
+    "objects": {
+      "title": "The objects",
+      "fluxo": "Flow",
+      "fluxoDefProcesses": "one delivery cycle for a client: a kanban card",
+      "fluxoDef": "one delivery cycle for a client: the kanban card",
+      "etapas": "Steps",
+      "etapasDefProcesses": "the phases of the flow or individual post: only one is active at a time",
+      "etapasDef": "the phases of the flow: only one is active at a time",
+      "posts": "Posts",
+      "postsDef": "the content itself, each with its own status",
+      "individual": "Individual post",
+      "individualDef": "a post with its own steps and no flow: also a kanban card",
+      "modelo": "A <term>template</term> is the reusable skeleton of a flow. Editing it updates the <b>open</b> steps of the flows that use it, but keeps what was adjusted in the flow itself, such as a different deadline or assignee."
+    },
+    "tracks": {
+      "title": "There are two separate tracks",
+      "movesBy": "moves by",
+      "etapa": "step",
+      "post": "Post",
+      "status": "status",
+      "punch": "The two do not sync.",
+      "body": "Advancing the step does not touch the post statuses, and changing a post status does not advance the step. A flow can be in “Scheduling” with everything still in Draft.",
+      "exception": "<b>Exception:</b> when you complete an approval step, you choose what happens to the posts: keep them, approve all, or send them back to Draft.",
+      "noFluxoProcesses": "A post can also exist without a flow: standalone, moving only along the status track on the Posts board, or individual, with its own steps on the Flows board.",
+      "noFluxo": "A post can also exist without a flow (standalone post): it moves only along the status track, on the Posts board."
+    },
+    "auto": {
+      "title": "What happens on its own",
+      "autoTitle": "Automatic",
+      "a1": "Scheduled post publishes on the date",
+      "a2": "Status becomes “Posted” or “Failed”",
+      "a3": "Failures are retried up to 3×",
+      "a4": "Client approval arrives from the portal",
+      "a5": "Recurring flow creates the next cycle",
+      "a6": "Deadlines follow the delivery date",
+      "manualTitle": "You do",
+      "m1": "Move the step forward or back",
+      "m2": "Create posts and write",
+      "m3": "Send to the client",
+      "m4": "Schedule the post",
+      "m5": "Complete or archive the flow"
+    },
+    "visibility": {
+      "title": "Who sees what",
+      "body": "The status alone decides whether the client sees the post in the portal.",
+      "fromOn": "from {{status}} onward, and it does not go back",
+      "aside": "The eye shows on every post, and each status in the picker says which of the two it is."
+    }
+  },
+  "entregasFilters": {
+    "statusAtrasado": "Overdue",
+    "statusUrgente": "Urgent",
+    "statusEmDia": "On track",
+    "noOptions": "No options",
+    "clearSelection": "Clear selection",
+    "custom": "Custom",
+    "prazo": "Step deadline",
+    "from": "From",
+    "to": "To",
+    "cliente": "Client",
+    "postStatus": "Post status",
+    "responsavel": "Assignee",
+    "allEtapas": "All steps",
+    "allTipos": "All types",
+    "status": "Status",
+    "postResponsavel": "Post assignee",
+    "allTemplates": "All templates",
+    "clearFilters": "Clear filters",
+    "filters": "Filters",
+    "sheetDescPosts": "Filter the posts",
+    "sheetDescFluxos": "Filter the flows"
+  },
+  "exampleBoard": {
+    "columns": {
+      "criacao": "Creation",
+      "revisao": "Internal review",
+      "aprovacao": "Client approval",
+      "ajustes": "Adjustments"
+    },
+    "badge": "Example",
+    "cardTitle": "August posts",
+    "cardClient": "Example Client",
+    "deadline": "3d left",
+    "posts": "📄 4 posts",
+    "empty": "No deliveries",
+    "hide": "Hide example",
+    "assignee": "👤 Maria"
+  },
+  "listToolbar": {
+    "groupBy": {
+      "title": "Group by",
+      "prazo": "Step deadline",
+      "postagem": "Posting date",
+      "cliente": "Client",
+      "responsavel": "Assignee",
+      "etapa": "Step",
+      "nenhum": "None"
+    },
+    "groupByShort": {
+      "prazo": "Deadline",
+      "postagem": "Posting",
+      "cliente": "Client",
+      "responsavel": "Assignee",
+      "etapa": "Step",
+      "nenhum": "None"
+    },
+    "options": "List options",
+    "groupByAria": "Group by: {{value}}",
+    "groupLabel": "Group:",
+    "responsaveis": "Assignees",
+    "showPosted": "Show posted",
+    "current": "(current)"
+  },
+  "publicacoesPanel": {
+    "title": "Posts",
+    "selectDay": "Select a day.",
+    "emptyDay": "No posts on this day.",
+    "tiktokIncomplete": "Open the post to set up TikTok",
+    "openInFluxo": "Open in flow",
+    "open": "Open"
+  },
+  "semProcesso": {
+    "title": "No process",
+    "viewAll": "View all",
+    "viewAllPublicacoes": "View all in Posts",
+    "filtersNote": "Production filters do not apply to posts without a process",
+    "applyTo": "Apply process to {{title}}",
+    "apply": "Apply process"
+  },
+  "unscheduledSidebar": {
+    "locked": "Post status is locked",
+    "dragToSchedule": "Drag to schedule: {{title}}",
+    "subtitle": "Drag onto the calendar",
+    "allScheduled": "All posts are scheduled ✓",
+    "legend": "Legend",
+    "fromFluxo": "From a flow",
+    "fromOtherWorkflow": "From another workflow"
+  },
+  "workflowGrid": {
+    "empty": "No posts to show in the grid. Schedule posts to see how the feed will look."
+  },
+  "workflowHistory": {
+    "empty": "No events recorded yet."
+  },
+  "workflowCalendar": {
+    "rejectAvulso": "Standalone post: unschedule it from the post itself.",
+    "rejectForeign": "You can only remove the date of posts in this workflow.",
+    "dateRemoved": "Date removed from the post",
+    "dateRemoveError": "Error removing the post date",
+    "scheduleError": "Error scheduling the post",
+    "rescheduleError": "Error rescheduling the post",
+    "hintAvulso": "💡 Drag posts from the side list to schedule them, or between dates to reschedule, including posts from flows. Drag back to remove the date (standalone posts only).",
+    "hintFluxo": "💡 Drag posts from the side list to schedule them, or between dates to reschedule, including posts from other workflows. Drag back to remove the date (posts in this workflow only).",
+    "closeHint": "Close tip"
+  },
+  "vistasTabs": {
+    "saveHint": "Saves the current view, mode and filters.",
+    "save": "Save",
+    "default": "Default",
+    "updateWithCurrent": "Update with current state",
+    "rename": "Rename",
+    "delete": "Delete",
+    "nameLabel": "View name",
+    "modifiedTab": "View modified: use ⋯ to save the changes",
+    "modifiedPicker": "View modified: open the menu to save the changes",
+    "optionsFor": "Options for view {{name}}",
+    "new": "New view",
+    "renameTitle": "Rename view",
+    "saved": "Saved views"
+  },
+  "entregasPage": {
+    "title": "Deliveries",
+    "documentTitle": "Deliveries | Mesaas",
+    "views": {
+      "kanban": "Kanban",
+      "chart": "Overview",
+      "calendar": "Calendar",
+      "list": "List",
+      "linha": "Editorial line",
+      "fila": "My queue",
+      "concluded": "Completed"
+    },
+    "toast": {
+      "fluxoNotOnBoard": "This post is in a flow that no longer shows on the board.",
+      "fluxoNotFound": "Flow not found",
+      "postNotFound": "Post not found",
+      "fluxoDeleted": "Flow deleted!",
+      "fluxoDeleteError": "Error deleting flow",
+      "postDeleted": "Post deleted.",
+      "postDeleteError": "Error deleting post",
+      "postDuplicated": "Post duplicated",
+      "fluxoDuplicated": "Flow duplicated",
+      "open": "Open",
+      "postNotOnBoard": "The post did not show up on the board. Reload the page.",
+      "filtersCleared": "Filters cleared to show the post on the board.",
+      "cycleCreated": "New cycle created!",
+      "cycleError": "Error creating cycle"
+    },
+    "responsaveisCaptionPosts": "Who has the post at the current step",
+    "responsaveisCaptionFluxos": "Assignee of the current step",
+    "responsaveisDesc": "Filter the list by assignee",
+    "headerHint": "Track the progress of deliveries and active flows.",
+    "comoFunciona": "How it works",
+    "replayTour": "Replay tour",
+    "help": "Help",
+    "totalsTitle": "Overall totals, no filters",
+    "header": {
+      "activeFluxos": "active flows: {{n}}",
+      "individualPosts": " · individual posts: {{n}}",
+      "overdue_one": "• {{count}} overdue",
+      "overdue_other": "• {{count}} overdue",
+      "urgent_one": "• {{count}} urgent",
+      "urgent_other": "• {{count}} urgent"
+    },
+    "toolbar": {
+      "overdue_one": "{{count}} overdue",
+      "overdue_other": "{{count}} overdue",
+      "urgent_one": "{{count}} urgent",
+      "urgent_other": "{{count}} urgent",
+      "fluxos_zero": "{{count}} flows",
+      "fluxos_one": "{{count}} flow",
+      "fluxos_other": "{{count}} flows",
+      "posts_zero": "{{count}} posts",
+      "posts_one": "{{count}} post",
+      "posts_other": "{{count}} posts"
+    },
+    "phone": {
+      "activeFluxos_zero": "{{count}} active flows",
+      "activeFluxos_one": "{{count}} active flow",
+      "activeFluxos_other": "{{count}} active flows",
+      "individuais": " · {{n}} individual",
+      "overdue_one": "· {{count}} overdue",
+      "overdue_other": "· {{count}} overdue",
+      "urgent_one": "· {{count}} urgent",
+      "urgent_other": "· {{count}} urgent"
+    },
+    "templates": "Templates",
+    "new": "New",
+    "newFluxo": "New flow",
+    "searchCliente": "Search client...",
+    "searchPost": "Search post...",
+    "searchFluxo": "Search flow...",
+    "searchPostShort": "Search post",
+    "searchFluxoShort": "Search flow",
+    "viewMode": "View mode",
+    "viewModes": "View modes",
+    "deleteFluxo": {
+      "title": "Delete flow?",
+      "description": "\"{{title}}\" and its steps will be permanently deleted. This action cannot be undone."
+    },
+    "deletePost": {
+      "title": "Delete post?",
+      "description": "\"{{title}}\" will be permanently deleted. This action cannot be undone."
+    },
+    "cancel": "Cancel"
+  }
+}

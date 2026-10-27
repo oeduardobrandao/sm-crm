@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useDroppable, useDraggable, useDndContext } from '@dnd-kit/core';
 import type { ClientePost } from '@/store/posts';
 import { TIPO_LABELS, TIPO_BADGE_COLORS, TIPO_COLORS, TIPO_ORDER } from '../postLabels';
@@ -11,6 +12,7 @@ interface UnscheduledPostsSidebarProps {
 }
 
 function DraggablePostCard({ post }: { post: ClientePost }) {
+  const { t } = useTranslation('entregas');
   const isLocked = LOCKED_STATUSES.has(post.status);
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `unscheduled-${post.id}`,
@@ -28,14 +30,20 @@ function DraggablePostCard({ post }: { post: ClientePost }) {
         cursor: isLocked ? 'not-allowed' : 'grab',
       }}
       {...(isLocked ? {} : { ...attributes, ...listeners })}
-      title={isLocked ? 'Post com status bloqueado' : `Arraste para agendar: ${post.titulo}`}
+      title={
+        isLocked
+          ? t('unscheduledSidebar.locked')
+          : t('unscheduledSidebar.dragToSchedule', { title: post.titulo })
+      }
     >
-      <div className="sidebar-post-title">{post.titulo || 'Post sem título'}</div>
+      <div className="sidebar-post-title">{post.titulo || t('calendarGrid.untitled')}</div>
       <div className="sidebar-post-meta">
         <span className="sidebar-tipo-badge" style={{ background: colors.bg, color: colors.text }}>
           {TIPO_LABELS[post.tipo]}
         </span>
-        <span className="sidebar-workflow-label">{post.workflow_titulo ?? 'Avulso'}</span>
+        <span className="sidebar-workflow-label">
+          {post.workflow_titulo ?? t('calendarGrid.avulso')}
+        </span>
       </div>
     </div>
   );
@@ -45,6 +53,7 @@ export function UnscheduledPostsSidebar({
   posts,
   currentWorkflowId,
 }: UnscheduledPostsSidebarProps) {
+  const { t } = useTranslation('entregas');
   const isAvulsoContext = currentWorkflowId === null;
   const { setNodeRef, isOver } = useDroppable({ id: 'unscheduled-zone' });
   const { active } = useDndContext();
@@ -65,20 +74,20 @@ export function UnscheduledPostsSidebar({
       }}
     >
       <div className="sidebar-header">
-        <div className="sidebar-title">Sem data</div>
-        <div className="sidebar-subtitle">Arraste para o calendário</div>
+        <div className="sidebar-title">{t('publicacaoPill.noDate')}</div>
+        <div className="sidebar-subtitle">{t('unscheduledSidebar.subtitle')}</div>
       </div>
 
       <div className="sidebar-posts-list">
         {currentWorkflowPosts.length === 0 ? (
-          <div className="sidebar-empty">Todos os posts estão agendados ✓</div>
+          <div className="sidebar-empty">{t('unscheduledSidebar.allScheduled')}</div>
         ) : (
           currentWorkflowPosts.map((post) => <DraggablePostCard key={post.id} post={post} />)
         )}
       </div>
 
       <div className="sidebar-legend">
-        <div className="sidebar-legend-title">Legenda</div>
+        <div className="sidebar-legend-title">{t('unscheduledSidebar.legend')}</div>
         <div className="sidebar-legend-tipos">
           {TIPO_ORDER.map((tipo) => (
             <span key={tipo} className="sidebar-legend-item">
@@ -89,7 +98,9 @@ export function UnscheduledPostsSidebar({
         </div>
         <div className="sidebar-legend-item sidebar-legend-item--ownership">
           <span className="sidebar-legend-swatch" />
-          {isAvulsoContext ? 'De um fluxo' : 'De outro workflow'}
+          {isAvulsoContext
+            ? t('unscheduledSidebar.fromFluxo')
+            : t('unscheduledSidebar.fromOtherWorkflow')}
         </div>
       </div>
     </div>

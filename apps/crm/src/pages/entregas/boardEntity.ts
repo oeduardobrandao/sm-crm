@@ -1,3 +1,4 @@
+import { i18n } from '@mesaas/i18n';
 import type { BoardCard } from './hooks/useEntregasData';
 import { formatPostDateFull } from '@/utils/postDate';
 import type { Cliente, Membro, PostMedia, PostProcessStep, PostProcessWithPost } from '../../store';
@@ -224,17 +225,25 @@ export function publicacaoPill(e: PostEntity): PublicacaoPill {
     return {
       estado: 'publicado',
       text: formatEtapaDeadlineDay(new Date(published_at)),
-      title: `Publicado em ${formatPostDateFull(published_at)}`,
+      title: i18n.t('entregas:publicacaoPill.publishedAt', {
+        date: formatPostDateFull(published_at),
+      }),
     };
   }
   if (scheduled_at) {
     return {
       estado: 'agendado',
       text: formatEtapaDeadlineDay(new Date(scheduled_at)),
-      title: `Publicação em ${formatPostDateFull(scheduled_at)}`,
+      title: i18n.t('entregas:publicacaoPill.scheduledAt', {
+        date: formatPostDateFull(scheduled_at),
+      }),
     };
   }
-  return { estado: 'sem_data', text: 'Sem data', title: 'Sem data de publicação' };
+  return {
+    estado: 'sem_data',
+    text: i18n.t('entregas:publicacaoPill.noDate'),
+    title: i18n.t('entregas:publicacaoPill.noDateTitle'),
+  };
 }
 
 /** Ordem manual mista (spec §4.2): valor numérico dos dois campos, desempate por id. */

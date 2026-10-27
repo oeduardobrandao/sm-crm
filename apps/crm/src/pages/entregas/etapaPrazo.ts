@@ -1,18 +1,19 @@
 import type { BoardCard } from './hooks/useEntregasData';
 import { computeDeadlineDate } from './hooks/useEntregasData';
 import { MESES_ABREV } from '@/utils/postDate';
+import { format } from 'date-fns';
+import { getDateFnsLocale, getIntlLocale, i18n } from '@mesaas/i18n';
+import { lazyLabels } from './postLabels';
 
 /** Presets for the "Prazo da etapa" filter in the Publicações modes. */
 export type PrazoPreset = 'atrasado' | 'hoje' | 'amanha' | 'proximos7';
 
-export const PRAZO_PRESET_LABELS: Record<PrazoPreset, string> = {
-  atrasado: 'Atrasado',
-  hoje: 'Hoje',
-  amanha: 'Amanhã',
-  proximos7: 'Próximos 7 dias',
-};
-
 export const PRAZO_PRESET_ORDER: PrazoPreset[] = ['atrasado', 'hoje', 'amanha', 'proximos7'];
+
+export const PRAZO_PRESET_LABELS: Record<PrazoPreset, string> = lazyLabels(
+  PRAZO_PRESET_ORDER,
+  (k) => `entregas:shared.prazoPreset.${k}`,
+);
 
 /**
  * The calendar date the card's current etapa is due, or null when it has no
@@ -197,6 +198,11 @@ export function matchesEtapaPrazo(
 
 /** Compact pt-BR calendar day, e.g. "20 jul" (year appended only when it differs). */
 export function formatEtapaDeadlineDay(d: Date, now: Date = new Date()): string {
+  if (getIntlLocale() === 'en-US') {
+    return format(d, d.getFullYear() !== now.getFullYear() ? 'MMM d yyyy' : 'MMM d', {
+      locale: getDateFnsLocale(),
+    });
+  }
   const ano = d.getFullYear() !== now.getFullYear() ? ` ${d.getFullYear()}` : '';
   return `${d.getDate()} ${MESES_ABREV[d.getMonth()]}${ano}`;
 }
@@ -209,15 +215,23 @@ export function formatEtapaPrazo(deadline: BoardCard['deadline']): {
 } {
   if (deadline.estourado) {
     const d = Math.abs(deadline.diasRestantes);
-    return { label: `${d}d atrasado`, shortLabel: `${d}d atr.`, color: 'var(--danger)' };
+    return {
+      label: i18n.t('entregas:shared.etapaPrazo.overdue', { count: d }),
+      shortLabel: i18n.t('entregas:shared.etapaPrazo.overdueShort', { count: d }),
+      color: 'var(--danger)',
+    };
   }
   if (deadline.diasRestantes === 0) {
     const h = deadline.horasRestantes;
-    return { label: `${h}h restantes`, shortLabel: `${h}h`, color: 'var(--warning)' };
+    return {
+      label: i18n.t('entregas:shared.etapaPrazo.hoursLeft', { count: h }),
+      shortLabel: `${h}h`,
+      color: 'var(--warning)',
+    };
   }
   const d = deadline.diasRestantes;
   return {
-    label: `${d}d restantes`,
+    label: i18n.t('entregas:shared.etapaPrazo.daysLeft', { count: d }),
     shortLabel: `${d}d`,
     color: deadline.urgente ? 'var(--warning)' : 'var(--text-muted)',
   };

@@ -1,3 +1,4 @@
+import { lazyLabels } from './postLabels';
 import type { EntregasMode } from './components/ModeToggle';
 import type { EntidadeFilter, ListGroupBy } from './viewQuery';
 import { BOARD_COLUMN_SORTS, type BoardColumnSort } from './postsBoardOrder';
@@ -11,11 +12,10 @@ export type FluxosColumnSort = 'prazo' | 'publicacao' | 'manual';
 /** Ordem em que o menu do header da coluna lista os modos. */
 export const FLUXOS_COLUMN_SORTS: FluxosColumnSort[] = ['prazo', 'publicacao', 'manual'];
 
-export const FLUXOS_COLUMN_SORT_LABELS: Record<FluxosColumnSort, string> = {
-  prazo: 'Prazo',
-  publicacao: 'Data de publicação',
-  manual: 'Manual',
-};
+export const FLUXOS_COLUMN_SORT_LABELS: Record<FluxosColumnSort, string> = lazyLabels(
+  FLUXOS_COLUMN_SORTS,
+  (k) => `entregas:fluxosColumnSort.${k}`,
+);
 
 const fluxosSortsKey = (contaId: string) => `entregas_fluxos_sorts_${contaId}`;
 

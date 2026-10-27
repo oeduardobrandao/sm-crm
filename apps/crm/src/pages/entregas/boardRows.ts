@@ -1,3 +1,4 @@
+import { i18n } from '@mesaas/i18n';
 import type { WorkflowTemplate } from '../../store';
 import type { BoardCard } from './hooks/useEntregasData';
 import {
@@ -91,7 +92,7 @@ function rowNameFor(
   if (entity.kind === 'post' && entity.process.template_nome) {
     return entity.process.template_nome;
   }
-  return 'Etapas personalizadas';
+  return i18n.t('entregas:boardRows.customEtapas');
 }
 
 export function buildBoardRows(

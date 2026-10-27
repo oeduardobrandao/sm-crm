@@ -1,3 +1,5 @@
+import { lazyLabels } from '../postLabels';
+import { useTranslation } from 'react-i18next';
 import { ArrowUpDown } from 'lucide-react';
 import {
   Select,
@@ -8,12 +10,12 @@ import {
 } from '@/components/ui/select';
 import type { FilaOrdem } from '../minhaFila';
 
-export const FILA_ORDEM_LABELS: Record<FilaOrdem, string> = {
-  prazo: 'Prazo da etapa',
-  publicacao: 'Data de publicação',
-};
+export const FILA_ORDEM_OPTIONS: FilaOrdem[] = ['prazo', 'publicacao'];
 
-export const FILA_ORDEM_OPTIONS = Object.keys(FILA_ORDEM_LABELS) as FilaOrdem[];
+export const FILA_ORDEM_LABELS: Record<FilaOrdem, string> = lazyLabels(
+  FILA_ORDEM_OPTIONS,
+  (k) => `entregas:filaOrdemPicker.${k}`,
+);
 const OPTIONS = FILA_ORDEM_OPTIONS;
 
 /** Seletor "Ordenar" da Minha fila, ao lado do FilaMembroPicker na linha das
@@ -25,6 +27,7 @@ export function FilaOrdemPicker({
   ordem: FilaOrdem;
   onChange: (ordem: FilaOrdem) => void;
 }) {
+  const { t } = useTranslation('entregas');
   return (
     <Select
       value={ordem}
@@ -36,10 +39,10 @@ export function FilaOrdemPicker({
       {/* md:text-xs: o md:text-sm do SelectTrigger sobrevive ao merge (como no ListToolbar). */}
       <SelectTrigger
         className="h-8 w-auto rounded-full text-xs md:text-xs gap-1.5"
-        aria-label="Ordenar fila por"
+        aria-label={t('filaOrdemPicker.aria')}
       >
         <ArrowUpDown className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />
-        <span style={{ color: 'var(--text-muted)' }}>Ordenar:</span>
+        <span style={{ color: 'var(--text-muted)' }}>{t('filaOrdemPicker.sortLabel')}</span>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

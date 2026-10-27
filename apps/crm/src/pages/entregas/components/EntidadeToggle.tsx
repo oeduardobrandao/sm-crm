@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import type { EntidadeFilter } from '../viewQuery';
 
@@ -6,21 +7,19 @@ interface EntidadeToggleProps {
   onChange: (value: EntidadeFilter) => void;
 }
 
-const OPTIONS: { id: EntidadeFilter; label: string }[] = [
-  { id: 'todos', label: 'Todos' },
-  { id: 'fluxos', label: 'Fluxos' },
-  { id: 'posts', label: 'Posts individuais' },
-];
+const OPTION_IDS: EntidadeFilter[] = ['todos', 'fluxos', 'posts'];
 
 /** Filtro de entidade do quadro de Fluxos (spec §4.1), no mesmo desenho de
  *  ModeToggle. */
 export function EntidadeToggle({ value, onChange }: EntidadeToggleProps) {
+  const { t } = useTranslation('entregas');
   const vidroShell = useVidroShell();
+  const OPTIONS = OPTION_IDS.map((id) => ({ id, label: t(`entidadeToggle.${id}`) }));
   // Under the Vidro shell the toggle takes the skin's segmented-capsule styles
   // (data-slot hooks) and drops its inline styles, which would win over them.
   if (vidroShell) {
     return (
-      <div role="radiogroup" aria-label="Entidades do quadro" data-slot="toggle-group">
+      <div role="radiogroup" aria-label={t('entidadeToggle.aria')} data-slot="toggle-group">
         {OPTIONS.map((o) => (
           <button
             key={o.id}
@@ -40,7 +39,7 @@ export function EntidadeToggle({ value, onChange }: EntidadeToggleProps) {
   return (
     <div
       role="radiogroup"
-      aria-label="Entidades do quadro"
+      aria-label={t('entidadeToggle.aria')}
       style={{
         display: 'flex',
         gap: '0.25rem',
