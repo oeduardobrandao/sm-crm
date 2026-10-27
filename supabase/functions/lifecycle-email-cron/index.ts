@@ -8,6 +8,7 @@ import {
   sendFounderSignupNotice,
   sendFounderSubscriptionNotice,
   sendThankYouEmail,
+  sendTrialReminderEmail,
   sendWelcomeEmail,
 } from "../_shared/lifecycle-emails.ts";
 import { type LifecycleCronDeps, runLifecycleEmailCron } from "./handler.ts";
@@ -50,6 +51,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       now: () => new Date(),
       sendWelcome: sendWelcomeEmail,
       sendThanks: sendThankYouEmail,
+      sendTrialReminder: sendTrialReminderEmail,
       sendFounderSignup: sendFounderSignupNotice,
       sendFounderSubscription: sendFounderSubscriptionNotice,
       report: (detail) => reportCronFailure(svc, CRON_NAME, detail),

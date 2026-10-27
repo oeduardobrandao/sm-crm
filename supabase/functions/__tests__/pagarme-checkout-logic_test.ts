@@ -307,6 +307,7 @@ Deno.test("buildPagarmeSubscriptionColumns: provider flip and amount mirror in O
     switched_from_stripe_subscription_id: null,
     switched_from_plan_id: null,
     switched_from_cancel_at_period_end: null,
+    switched_from_trialing: null,
     switch_checked_at: null,
     ever_subscribed_at: "2026-01-01T00:00:00Z",
     failed_payment_count: 0,
@@ -335,7 +336,9 @@ Deno.test("buildPagarmeSubscriptionColumns: markers do switch no MESMO payload +
     switchedFromStripeSubscriptionId: "sub_s1",
     switchedFromPlanId: "start",
     switchedFromCancelAtPeriodEnd: true,
+    switchedFromTrialing: true,
   });
+  assertEquals(cols.switched_from_trialing, true);
   assertEquals(cols.switched_from_stripe_subscription_id, "sub_s1");
   assertEquals(cols.switched_from_plan_id, "start");
   assertEquals(cols.switched_from_cancel_at_period_end, true);

@@ -552,6 +552,7 @@ export function createPagarmeCheckoutHandler(deps: {
             : null,
           switchedFromPlanId: isSwitch ? switchSourcePlanId : null,
           switchedFromCancelAtPeriodEnd: isSwitch ? switchObserved!.cancelAtPeriodEnd : null,
+          switchedFromTrialing: isSwitch ? row!.status === "trialing" : null,
         });
         if (row) {
           const observedProvider = (row.provider as string | null) ?? "stripe";

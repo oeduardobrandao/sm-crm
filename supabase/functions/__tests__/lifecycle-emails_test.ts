@@ -7,8 +7,11 @@ import {
   buildFounderSignupNotice,
   buildFounderSubscriptionNotice,
   buildThankYouEmail,
+  buildTrialReminderEmail,
   buildWelcomeEmail,
   firstNameFrom,
+  formatChargeDate,
+  formatFirstCharge,
   FOUNDER_NOTICE_FROM,
   LIFECYCLE_FROM,
   sendFounderSignupNotice,
@@ -551,4 +554,103 @@ Deno.test("welcome: new shell, steps then grid, signature, no emoji icons", () =
   assert(html.includes("Fundador do Mesaas"));
   assert(!/[👥📋✅📈📚]/u.test(html));
   assert(html.includes("Boas-vindas"), "eyebrow");
+});
+
+// ─── Trial reminder ─────────────────────────────────────────────────────────
+
+Deno.test("formatFirstCharge: stripe monthly", () => {
+  assertEquals(
+    formatFirstCharge({ provider: "stripe", amount_cents: 13990, amount_interval: "month", billing_interval: "month" }),
+    "R$ 139,90 por mês",
+  );
+});
+
+Deno.test("formatFirstCharge: stripe yearly (amount_interval or billing_interval)", () => {
+  assertEquals(
+    formatFirstCharge({ provider: "stripe", amount_cents: 134300, amount_interval: "year", billing_interval: null }),
+    "R$ 1.343,00 por ano",
+  );
+  assertEquals(
+    formatFirstCharge({ provider: "stripe", amount_cents: 134300, amount_interval: null, billing_interval: "year" }),
+    "R$ 1.343,00 por ano",
+  );
+});
+
+Deno.test("formatFirstCharge: pagarme is 12 installments of the annual total", () => {
+  assertEquals(
+    formatFirstCharge({ provider: "pagarme", amount_cents: 155880, amount_interval: "year", billing_interval: "year" }),
+    "12x de R$ 129,90 (total de R$ 1.558,80)",
+  );
+});
+
+Deno.test("formatFirstCharge: null amount_cents is null", () => {
+  assertEquals(
+    formatFirstCharge({ provider: "stripe", amount_cents: null, amount_interval: null, billing_interval: null }),
+    null,
+  );
+});
+
+Deno.test("formatChargeDate uses the São Paulo calendar, not UTC", () => {
+  assertEquals(formatChargeDate("2026-11-26T15:00:00Z"), "26 de novembro");
+  // 01:30Z is still the previous evening in São Paulo (UTC-3).
+  assertEquals(formatChargeDate("2026-11-27T01:30:00Z"), "26 de novembro");
+});
+
+const REMINDER = {
+  firstName: "Ana" as string | null,
+  workspaceName: "Agência X",
+  planName: "Pro",
+  firstCharge: "R$ 139,90 por mês" as string | null,
+  firstChargeDate: "26 de novembro",
+  daysLeft: 7,
+  appBaseUrl: BASE,
+};
+
+Deno.test("buildTrialReminderEmail: subject, copy and the two plan links", () => {
+  const { subject, html } = buildTrialReminderEmail(REMINDER);
+  assertEquals(subject, "Seu teste do Mesaas Pro termina em 7 dias");
+  assertStringIncludes(html, "Oi, Ana,");
+  assertStringIncludes(
+    html,
+    "Seu teste grátis do plano Pro no workspace Agência X termina em 26 de novembro.",
+  );
+  assertStringIncludes(
+    html,
+    "Nesse dia fazemos a primeira cobrança de R$ 139,90 por mês no cartão cadastrado.",
+  );
+  assertStringIncludes(html, "Se quiser continuar, não precisa fazer nada.");
+  assertStringIncludes(html, "Ver meu plano");
+  assertStringIncludes(
+    html,
+    "No plano Free você volta a ter 2 clientes, só você na conta e nenhum portal de aprovação ou relatório.",
+  );
+  const href = `href="${BASE}/configuracao/cobranca"`;
+  assertEquals(html.split(href).length - 1, 2, "button + text link");
+});
+
+Deno.test("buildTrialReminderEmail: no first name, no amount", () => {
+  const { html } = buildTrialReminderEmail({ ...REMINDER, firstName: null, firstCharge: null });
+  assertStringIncludes(html, "Oi,</p>");
+  assertStringIncludes(
+    html,
+    "Nesse dia fazemos a primeira cobrança do valor do seu plano no cartão cadastrado.",
+  );
+});
+
+Deno.test("buildTrialReminderEmail: escapes interpolated values and sanitizes the subject", () => {
+  const { subject, html } = buildTrialReminderEmail({
+    ...REMINDER,
+    firstName: "<i>Ana</i>",
+    workspaceName: "<b>x</b>",
+    planName: "Pro\r\nBcc: a@b.c",
+  });
+  assert(!html.includes("<b>x</b>"));
+  assertStringIncludes(html, "&lt;b&gt;x&lt;/b&gt;");
+  assert(!html.includes("<i>Ana</i>"));
+  assert(!/[\r\n]/.test(subject), "subject has no control characters");
+});
+
+Deno.test("buildTrialReminderEmail: no em dash anywhere", () => {
+  assert(!buildTrialReminderEmail(REMINDER).html.includes("\u2014"));
+  assert(!buildTrialReminderEmail({ ...REMINDER, firstCharge: null }).subject.includes("\u2014"));
 });

@@ -77,6 +77,82 @@ export function buildThankYouEmail(
   });
 }
 
+export interface FirstChargeInput {
+  provider: string;
+  amount_cents: number | null;
+  amount_interval: string | null;
+  billing_interval: string | null;
+}
+
+/**
+ * The first-charge amount as the trial reminder states it, or null when the
+ * subscription row carries no amount. Pagar.me stores the ANNUAL total in
+ * amount_cents and bills it in 12 installments; Stripe is month or year.
+ */
+export function formatFirstCharge(c: FirstChargeInput): string | null {
+  if (c.amount_cents == null) return null;
+  if (c.provider === "pagarme") {
+    return `12x de ${formatMoney(Math.round(c.amount_cents / 12), "brl")} (total de ${
+      formatMoney(c.amount_cents, "brl")
+    })`;
+  }
+  const yearly = c.amount_interval === "year" || c.billing_interval === "year";
+  return `${formatMoney(c.amount_cents, "brl")} ${yearly ? "por ano" : "por mês"}`;
+}
+
+/** "26 de novembro", in the São Paulo calendar (not UTC). */
+export function formatChargeDate(iso: string): string {
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "numeric",
+    month: "long",
+  }).format(new Date(iso));
+}
+
+export function buildTrialReminderEmail(p: {
+  firstName: string | null;
+  workspaceName: string;
+  planName: string;
+  firstCharge: string | null;
+  firstChargeDate: string;
+  daysLeft: number;
+  appBaseUrl: string;
+}): { subject: string; html: string } {
+  const base = p.appBaseUrl.replace(/\/+$/, "");
+  const billingUrl = `${base}/configuracao/cobranca`;
+  const subject = `Seu teste do Mesaas ${sanitizeSubjectValue(p.planName)} termina em ${p.daysLeft} dias`;
+  const chargeLine = p.firstCharge
+    ? `Nesse dia fazemos a primeira cobrança de ${p.firstCharge} no cartão cadastrado.`
+    : "Nesse dia fazemos a primeira cobrança do valor do seu plano no cartão cadastrado.";
+  const html = mesaasEmail({
+    preheader: `Sua primeira cobrança será em ${p.firstChargeDate}.`,
+    eyebrow: "Seu teste grátis",
+    sections: [
+      paragraph(p.firstName ? `Oi, ${p.firstName},` : "Oi,") +
+        paragraph(
+          `Seu teste grátis do plano ${p.planName} no workspace ${p.workspaceName} termina em ${p.firstChargeDate}.`,
+        ) +
+        paragraph(chargeLine) +
+        paragraph("Se quiser continuar, não precisa fazer nada.", "body", "0 0 20px") +
+        button(billingUrl, "Ver meu plano"),
+      paragraphHtml(
+        `Se preferir cancelar ou trocar de plano, é só acessar Plano e cobrança antes dessa data: ${
+          link(billingUrl, billingUrl)
+        }.`,
+        "small",
+        "0 0 10px",
+      ) +
+        paragraph(
+          "No plano Free você volta a ter 2 clientes, só você na conta e nenhum portal de aprovação ou relatório.",
+          "small",
+          "0",
+        ),
+    ],
+    footerLines: [`Você recebeu este e-mail porque o workspace ${p.workspaceName} está em teste grátis no Mesaas.`],
+  });
+  return { subject, html };
+}
+
 export const LIFECYCLE_FROM = "Eduardo do Mesaas <eduardo@mesaas.com.br>";
 
 /** Internal founder notices ship from the alerts sender, not the founder one. */
@@ -273,6 +349,13 @@ export async function sendWelcomeEmail(
     buildWelcomeEmail({ firstName: p.firstName, appBaseUrl: p.appBaseUrl }),
     p.idempotencyKey,
   );
+}
+
+/** Trial reminder: the handler builds subject/html (so it can log and test them); this only ships. */
+export async function sendTrialReminderEmail(
+  p: { to: string; subject: string; html: string; idempotencyKey: string },
+): Promise<void> {
+  await sendViaResend(p.to, p.subject, p.html, p.idempotencyKey, LIFECYCLE_FROM);
 }
 
 export async function sendThankYouEmail(
