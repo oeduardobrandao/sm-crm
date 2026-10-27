@@ -3,15 +3,15 @@ import { NOTIFICATION_CATALOG, CATEGORY_ORDER, CATEGORY_LABELS } from '@/lib/not
 import { EMAIL_NOTIFICATION_TYPES } from '@/store/notificationPrefs';
 
 describe('notification-catalog', () => {
-  it('cobre exatamente os 33 tipos', () => {
-    expect(Object.keys(NOTIFICATION_CATALOG)).toHaveLength(33);
+  it('cobre exatamente os 35 tipos', () => {
+    expect(Object.keys(NOTIFICATION_CATALOG)).toHaveLength(35);
   });
   it('todo tipo elegível a e-mail está marcado emailEligible', () => {
     for (const t of EMAIL_NOTIFICATION_TYPES.map((e) => e.type)) {
       expect(NOTIFICATION_CATALOG[t].emailEligible).toBe(true);
     }
     const eligible = Object.values(NOTIFICATION_CATALOG).filter((e) => e.emailEligible);
-    expect(eligible).toHaveLength(16);
+    expect(eligible).toHaveLength(18);
   });
   it('toda categoria usada existe em ORDER e LABELS', () => {
     for (const e of Object.values(NOTIFICATION_CATALOG)) {

@@ -33,7 +33,9 @@ export type NotificationType =
   | 'event_reschedule_requested'
   | 'event_reminder'
   | 'team_message'
-  | 'post_discussion';
+  | 'post_discussion'
+  | 'linha_editorial_aprovada'
+  | 'linha_editorial_ajustes';
 
 export interface Notification {
   id: string;

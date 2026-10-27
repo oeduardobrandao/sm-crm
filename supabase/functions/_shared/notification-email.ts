@@ -31,6 +31,8 @@ const DIGEST_BADGES: Record<string, { tone: BadgeTone; label: string }> = {
   event_client_rsvp: { tone: "info", label: "Resposta" },
   event_guest_rsvp: { tone: "info", label: "Resposta" },
   event_reschedule_requested: { tone: "warning", label: "Remarcação" },
+  linha_editorial_aprovada: { tone: "success", label: "Linha aprovada" },
+  linha_editorial_ajustes: { tone: "warning", label: "Ajustes na linha" },
 };
 const DEFAULT_BADGE = { tone: "neutral" as const, label: "Notificação" };
 
@@ -43,6 +45,32 @@ function s(metadata: Record<string, unknown> | null, key: string): string | unde
 
 function ctx(a?: string, b?: string): string | undefined {
   return [a, b].filter(Boolean).join(" · ") || undefined;
+}
+
+const MESES = [
+  "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+];
+
+/** Lowercase pt-BR month of 'YYYY-MM-DD', read from the text (no timezone shift). */
+function monthName(periodo: string | undefined): string {
+  const mm = periodo ? /^\d{4}-(\d{2})/.exec(periodo) : null;
+  return (mm && MESES[Number(mm[1]) - 1]) || "";
+}
+
+function linhaEditorialItem(
+  m: Record<string, unknown> | null,
+  link: string,
+  verb: string,
+): DigestItem {
+  const mes = monthName(s(m, "periodo"));
+  const n = typeof m?.comentarios === "number" ? m.comentarios : 0;
+  return {
+    priority: 4,
+    heading: `${s(m, "cliente_nome") ?? "Cliente"} ${verb} linha editorial${mes ? ` de ${mes}` : ""}`,
+    body: n > 0 ? `${n} ${n === 1 ? "comentário" : "comentários"}` : undefined,
+    link,
+  };
 }
 
 function eventHeading(prefix: string, titulo?: string): string {
@@ -121,6 +149,10 @@ function resolveDigestItemBase(
         context: s(m, "cliente_nome"),
         link,
       };
+    case "linha_editorial_aprovada":
+      return linhaEditorialItem(m, link, "aprovou a");
+    case "linha_editorial_ajustes":
+      return linhaEditorialItem(m, link, "pediu ajustes na");
     default:
       return { priority: 9, heading: "Nova notificação no Mesaas", context: undefined, link };
   }

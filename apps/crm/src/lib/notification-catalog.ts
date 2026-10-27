@@ -96,6 +96,20 @@ export const NOTIFICATION_CATALOG = {
     recipients: ADMINS,
     emailEligible: true,
   },
+  linha_editorial_aprovada: {
+    category: 'aprovacoes_hub',
+    label: 'Linha editorial aprovada',
+    when: 'o cliente aprova a linha editorial do mês no Hub',
+    recipients: RESP_ADMINS,
+    emailEligible: true,
+  },
+  linha_editorial_ajustes: {
+    category: 'aprovacoes_hub',
+    label: 'Ajustes na linha editorial',
+    when: 'o cliente pede ajustes na linha editorial do mês no Hub',
+    recipients: RESP_ADMINS,
+    emailEligible: true,
+  },
   step_activated: {
     category: 'entregas_fluxo',
     label: 'Etapa ativada',
