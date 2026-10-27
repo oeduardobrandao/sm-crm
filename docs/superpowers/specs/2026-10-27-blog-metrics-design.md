@@ -325,7 +325,7 @@ Google".
 
 New `platform-admin` actions (authorized as today; generic 500 on error):
 
-- `blog-metrics` → `{ configured_gsc: boolean, gsc_updated_at: string | null, posts: Record<slug,
+- `blog-metrics` → `{ gsc_updated_at: string | null (null = no successful sync yet: "Search Console não configurado"), posts: Record<slug,
   { views_7d, views_30d, views_total, clicks_28d, impressions_28d, ctr_28d, position_28d,
   index: { verdict, coverage_state, last_crawl_time, inspection_link, checked_at } | null }> }`.
   Fetched by `BlogPage` alongside the list on Publicados and Aguardando (for live rows there). Missing slug = zeros.
