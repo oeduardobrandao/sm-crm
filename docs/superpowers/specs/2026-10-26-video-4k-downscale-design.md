@@ -23,7 +23,10 @@ proportion problem, and the button doesn't fit the fix (it forces a framing choi
    convert it to a compliant size, keeping the aspect ratio, before the upload.
 2. For such a video already on a post, offer the same one-click conversion from the warning
    box (replaces the post's media via the existing replace flow).
-3. Fast and cheap: hardware-accelerated in the browser (WebCodecs), no server cost.
+3. Fast and cheap: hardware-accelerated in the browser (WebCodecs), no added server cost. The
+   converted file still goes through `file-upload-finalize` and Cloudflare Stream ingest like any
+   upload (same minutes as the original). In flow B the original stays in the library, so both
+   copies are kept in Stream until someone deletes the original; accepted.
 4. Copy that names the real problem (resolution / size), not proportion.
 
 ## Non-goals
@@ -86,10 +89,15 @@ downscaleVideo(file: File, plan: DownscalePlan, opts: {
    - Preconditions: `canEncodeVideo('avc', { width, height, bitrate })` is true,
      `conversion.isValid`, and **`discardedTracks.length === 0`** (a discarded audio track
      leaves the conversion valid but silent; Firefox and iOS < 17.4 have no AAC encoder).
-     Any failure → fall through to ffmpeg.
+     Any failure → fall through to ffmpeg, but only if ffmpeg was eligible for this file
+     **before** starting (`file.size ≤ ceiling`, decided up front against the original). Before
+     the fallback starts, the failed attempt is released: `conversion.cancel()` if running, and
+     the `Input`, `Output` and `BufferTarget` references dropped so the partial output can be
+     collected.
    - Cancel: `signal` abort → `conversion.cancel()`; `ConversionCanceledError` maps to the
      abort path. `conversion.onProgress = (p) => onProgress(round(p × 100))` before `execute()`.
-   - `hdr` from `InputVideoTrack.hasHighDynamicRange()` (analytics + dialog note).
+   - `hdr` from `await InputVideoTrack.hasHighDynamicRange()` (it returns a Promise); a
+     rejection counts as `false` and never fails the conversion (analytics + dialog note).
 2. **Fallback: ffmpeg.wasm** — a sibling `runFfmpegScale(file, args, …)` next to
    `exportVideo` (its 8-arg signature and `exportVideo.test.ts` stay untouched), with
    `scaleVideoArguments(plan)`: `scale=W:H:force_divisible_by=2`, `-pix_fmt yuv420p`, no
@@ -138,6 +146,18 @@ aceita."** Size reason: **"Acima de 300 MB (100 MB nos Stories)."**
   - A file over the 2 GB client cap (`validateFile`): "Enviar original" is not available for it
     ("Arquivo acima de 2 GB"); only reducing (when possible) or skipping.
   - Closing the dialog skips the held-back files (not uploaded).
+- Per-file outcome of each batch action (the actions apply to every held-back file):
+
+  | File | "Reduzir e enviar" | "Enviar original" |
+  |---|---|---|
+  | convertible, ≤ 2 GB | converted, then uploaded | original uploaded |
+  | convertible, > 2 GB | converted, then uploaded | skipped, `overClientCap` error |
+  | not convertible (no engine / no budget), ≤ 2 GB | original uploaded | original uploaded |
+  | not convertible, > 2 GB | skipped, error | skipped, error |
+
+  A skipped file never enters the upload queue (terminal state decided before any upload, not a
+  late `validateFile` failure). The `uploadDone` toast reports only when every non-skipped file
+  finished; skipped files get their own error toast.
 - On "Reduzir e enviar": queue rows show **"Convertendo… N%"**, then upload progress. One
   conversion at a time; uploads keep today's concurrency. `sort_order` = `base + i` from the
   original selection index. The `uploadDone` toast and the `uploading` flag account for the
