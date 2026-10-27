@@ -657,7 +657,7 @@ export function personalizadaParaRegra(s: RecorrenciaPersonalizada, inicio: Date
 export function rotuloDtstart(dtstart: string): string {
   const d = parseDateOnly(dtstart.slice(0, 10));
   const locale = getDateFnsLocale();
-  // WEEKDAY_NAMES (tarefas) is Portuguese-only: English takes date-fns' weekday name.
+  // WEEKDAY_NAMES keeps the lowercase pt form; English takes date-fns' capitalized weekday name.
   const diaSemana =
     getIntlLocale() === 'en-US' ? format(d, 'EEEE', { locale }) : WEEKDAY_NAMES[d.getDay()];
   return `${diaSemana}, ${format(d, i18n.t('agendaEvento:schema.dtstartDate'), { locale })}`;
