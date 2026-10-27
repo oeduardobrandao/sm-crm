@@ -107,7 +107,7 @@
   - `runLifecycleEmailCron` return type gains `trialRemindersSent: number`.
 
 **Email content (exact copy, pt-BR):**
-- Subject: `Seu teste do Mesaas ${planName} termina em ${daysLeft} dias` (`daysLeft` = whole days, `Math.ceil` of `(first_charge_at - now)` in days).
+- Subject: `Seu teste do Mesaas ${planName} termina em ${daysLeft} dias`. `daysLeft` = `Math.round((first_charge_at - now) / 1 day)`, so a normal send at 7d00m–7d59m reads "7 dias", matching the screen's promise. Not `Math.ceil`, which would say 8.
 - Body paragraphs:
   1. "Oi, {firstName}," (or "Oi," when there is no first name)
   2. "Seu teste grátis do plano {planName} no workspace {workspaceName} termina em {firstChargeDate}."
@@ -134,6 +134,7 @@
   - the html contains no `—` character.
 - [ ] **Step 2: Write the failing sweep tests** in `lifecycle-email-cron_test.ts`, using the file's existing fake `LifecycleDb`:
   - a candidate leads to a claim with `email_type 'trial_reminder'` and `ref_at` set, a send with idempotency key `trial_reminder/<ws>/<date>`, then delivered, with `trialRemindersSent === 1`;
+  - a candidate with `first_charge_at = now + 7d30m` gets the subject "… termina em 7 dias";
   - a send failure on candidate 1 still sends candidate 2;
   - an RPC error is reported and the welcome/thank-you sweeps still run.
 - [ ] **Step 3: Run them to verify they fail**
@@ -268,7 +269,9 @@
 - State `view: 'picker' | 'grid'`, default `'picker'`.
 - If `trialCandidates(plans).length === 0` it renders the existing grid (Review Focus 5).
 - The grid view is today's markup unchanged, plus a "Voltar" link to the picker.
+- **Eligibility:** replace `ComecarPage`'s `eligible` computation and its "not free" redirect (around lines 125-130 and 208-213) with `isTrialOfferEligible(effectivePlan, subscription)`, so a manual-Free owner typing `/comecar` is sent to the dashboard.
 - **Mark seen:** a `useRef` latch effect. When `eligible` becomes true (this includes the intent path), call `markTrialOfferSeen()` once, then `queryClient.invalidateQueries({ queryKey: ['billing','effective-plan-with-source'] })`. A rejected call is swallowed with `console.warn`, because the screen must still work.
+- **No race with checkout:** `beginCheckout` (used by the intent auto-checkout and the manual buttons) first `await`s that same mark-seen promise, reused, not a second call, and only then redirects or opens the Pagar.me dialog. Failures are swallowed. Otherwise a fast redirect to Stripe can leave the marker null, and a lagging webhook would bounce a person who just entered their card back to the picker.
 - `onRecommended` calls `captureEvent('trial_plan_recommended', { clients_bucket, team_bucket, plan_id })`.
 - `onStart` calls the existing `beginCheckout(planId, 'month')` and passes `extra` to `captureCheckoutStarted` (`accepted_recommendation: planId === recommendedPlanId`). The grid path passes no `extra`.
 - Replace `planHighlights`' portal line with `planHasPortal(p)` (spec A2).
@@ -289,6 +292,8 @@
   - With only annual-priced plans the grid renders.
   - "Ver todos os planos" shows the Mensal/Anual toggle.
   - Starting from the picker calls `startCheckout('pro','month','onboarding')`.
+  - With a plan intent, `startCheckout` is called only after the `markTrialOfferSeen` promise resolves (a deferred mock that resolves later).
+  - `planSource: 'manual'` on Free redirects to `/dashboard`.
 - [ ] **Step 3: Run** `npx vitest run apps/crm/src/pages/comecar`. Expected: FAIL.
 - [ ] **Step 4: Implement** with the Mesaas tokens/classes already in `comecar.css`. The layout stacks under 768px (flex-wrap, both columns `flex: 1 1 420px; min-width: 0`).
 - [ ] **Step 5: Run** the same command plus `npx tsc -p apps/crm/tsconfig.json --noEmit`. Expected: PASS.
