@@ -359,6 +359,55 @@ export function itemsFor(
   return dated.sort((a, b) => b.at - a.at).map((d) => d.item);
 }
 
+export type BlogSort = 'recentes' | 'vistos' | 'cliques';
+export const BLOG_SORTS: Array<{ value: BlogSort; label: string }> = [
+  { value: 'recentes', label: 'Mais recentes' },
+  { value: 'vistos', label: 'Mais vistos' },
+  { value: 'cliques', label: 'Mais cliques' },
+];
+
+export function parseSort(value: string | null): BlogSort {
+  return value === 'vistos' || value === 'cliques' ? value : 'recentes';
+}
+
+/** Appends `?ordem=` / `&ordem=` so opening a row keeps the Publicados sort. */
+export function withSort(path: string, sort: BlogSort): string {
+  if (sort === 'recentes') return path;
+  return `${path}${path.includes('?') ? '&' : '?'}ordem=${sort}`;
+}
+
+const nf = new Intl.NumberFormat('pt-BR');
+const nf1 = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+export const formatInt = (n: number): string => nf.format(n);
+export const formatPosition = (n: number): string => nf1.format(n);
+
+/** Publicados sort. `recentes` keeps the incoming order (already by date); the others are a
+ * stable descending sort, so ties keep date order. A slug with no metrics counts as zero. */
+export function sortItems(
+  items: BlogListItem[],
+  metrics: Record<string, PostMetrics>,
+  sort: BlogSort,
+): BlogListItem[] {
+  if (sort === 'recentes') return items;
+  const score = (item: BlogListItem): number => {
+    const m = metrics[item.row.slug];
+    return sort === 'vistos' ? (m?.views_30d ?? 0) : (m?.search?.clicks ?? 0);
+  };
+  return [...items].sort((a, b) => score(b) - score(a));
+}
+
+/** "1.240 views (30d) · 38 cliques · posição 12,4". Search Console parts only once it has run. */
+export function metricLine(m: PostMetrics | undefined, gscReady: boolean): string {
+  const views = m?.views_30d ?? 0;
+  const parts = [`${formatInt(views)} ${views === 1 ? 'view' : 'views'} (30d)`];
+  const s = gscReady ? m?.search : null;
+  if (s) {
+    parts.push(`${formatInt(s.clicks)} ${s.clicks === 1 ? 'clique' : 'cliques'}`);
+    if (s.position !== null) parts.push(`posição ${formatPosition(s.position)}`);
+  }
+  return parts.join(' · ');
+}
+
 /** File posts are always on the site; rotina posts once publicado/publicando. */
 export function isLiveItem(item: BlogListItem): boolean {
   return item.kind === 'arquivo' || isLive(item.row);

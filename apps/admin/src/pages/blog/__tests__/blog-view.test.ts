@@ -9,10 +9,16 @@ import {
   itemSlug,
   itemsFor,
   liveUrl,
+  metricLine,
   noRecentDraft,
+  parseSort,
   showsRetry,
+  sortItems,
   sortQueue,
+  withSort,
+  type BlogListItem,
   type BlogPostRow,
+  type PostMetrics,
   type FilePostRow,
 } from '../blog-view';
 
@@ -277,6 +283,103 @@ describe('isLiveItem / itemPath', () => {
     );
     expect(itemPath({ kind: 'rotina', row: row({ id: 'db1' }) }, 'publicados')).toBe(
       '/admin/blog/db1?tab=publicados',
+    );
+  });
+});
+
+const pm = (over: Partial<PostMetrics> = {}): PostMetrics => ({
+  views_7d: 0,
+  views_30d: 0,
+  views_total: 0,
+  search: null,
+  index: null,
+  ...over,
+});
+const search = (clicks: number, position: number | null = null) => ({
+  clicks,
+  impressions: 100,
+  ctr: 0.1,
+  position,
+});
+
+describe('metricLine', () => {
+  it('joins views, clicks and position with Brazilian number formatting', () => {
+    expect(metricLine(pm({ views_30d: 1240, search: search(38, 12.4) }), true)).toBe(
+      '1.240 views (30d) · 38 cliques · posição 12,4',
+    );
+  });
+
+  it('shows only views while Search Console is not ready', () => {
+    expect(metricLine(pm({ views_30d: 1240, search: search(38, 12.4) }), false)).toBe(
+      '1.240 views (30d)',
+    );
+  });
+
+  it('shows zero views for a slug with no metrics and skips a missing position', () => {
+    expect(metricLine(undefined, true)).toBe('0 views (30d)');
+    expect(metricLine(pm({ views_30d: 5, search: search(1, null) }), true)).toBe(
+      '5 views (30d) · 1 clique',
+    );
+  });
+});
+
+describe('parseSort', () => {
+  it('accepts the three sorts and falls back to recentes', () => {
+    expect(parseSort('vistos')).toBe('vistos');
+    expect(parseSort('cliques')).toBe('cliques');
+    expect(parseSort('recentes')).toBe('recentes');
+    expect(parseSort('x')).toBe('recentes');
+    expect(parseSort(null)).toBe('recentes');
+  });
+});
+
+describe('sortItems', () => {
+  const mk = (slug: string): BlogListItem => ({
+    kind: 'arquivo',
+    row: {
+      kind: 'arquivo',
+      slug,
+      title: slug,
+      description: '',
+      category: 'guia',
+      date: '2026-10-01',
+    },
+  });
+  const items = [mk('a'), mk('b'), mk('c'), mk('d')];
+  const metrics = {
+    a: pm({ views_30d: 10, search: search(1) }),
+    b: pm({ views_30d: 50, search: search(9) }),
+    c: pm({ views_30d: 10 }),
+    // d has no metrics at all
+  };
+  const slugs = (xs: BlogListItem[]) => xs.map((i) => i.row.slug);
+
+  it('keeps the incoming (date) order for recentes', () => {
+    expect(slugs(sortItems(items, metrics, 'recentes'))).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('orders by 30-day views, ties keeping date order', () => {
+    expect(slugs(sortItems(items, metrics, 'vistos'))).toEqual(['b', 'a', 'c', 'd']);
+  });
+
+  it('orders by clicks, null counting as zero', () => {
+    expect(slugs(sortItems(items, metrics, 'cliques'))).toEqual(['b', 'a', 'c', 'd']);
+  });
+
+  it('does not mutate its input', () => {
+    sortItems(items, metrics, 'vistos');
+    expect(slugs(items)).toEqual(['a', 'b', 'c', 'd']);
+  });
+});
+
+describe('withSort', () => {
+  it('appends ordem to a path that already has a query, and skips the default', () => {
+    expect(withSort('/admin/blog/x?tab=publicados', 'vistos')).toBe(
+      '/admin/blog/x?tab=publicados&ordem=vistos',
+    );
+    expect(withSort('/admin/blog', 'cliques')).toBe('/admin/blog?ordem=cliques');
+    expect(withSort('/admin/blog/x?tab=publicados', 'recentes')).toBe(
+      '/admin/blog/x?tab=publicados',
     );
   });
 });

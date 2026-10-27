@@ -3,7 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+vi.mock('react-chartjs-2', () => ({
+  Bar: () => <div data-testid="bar-chart" />,
+  Line: () => <div data-testid="line-chart" />,
+}));
 vi.mock('../../lib/api', () => ({
+  getBlogMetrics: vi.fn(),
+  getBlogPostMetrics: vi.fn(),
   listBlogPosts: vi.fn(),
   getBlogPost: vi.fn(),
   updateBlogPost: vi.fn(),
@@ -19,7 +25,9 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 import { toast } from 'sonner';
 import {
   approveBlogPost,
+  getBlogMetrics,
   getBlogPost,
+  getBlogPostMetrics,
   listBlogPosts,
   requestBlogChanges,
   retryBlogPublish,
@@ -122,6 +130,8 @@ beforeEach(() => {
         ? detail({ id: ID2, status: 'publicado', title: 'Post que está no ar' })
         : detail(),
   }));
+  vi.mocked(getBlogMetrics).mockResolvedValue({ gsc_updated_at: null, posts: {} });
+  vi.mocked(getBlogPostMetrics).mockResolvedValue({ views: [], search: [] });
   vi.mocked(approveBlogPost).mockResolvedValue({ post: row({ status: 'publicando' }) });
   vi.mocked(requestBlogChanges).mockResolvedValue({ post: row({ status: 'ajuste_solicitado' }) });
 });
@@ -539,5 +549,133 @@ describe('BlogPage', () => {
         restore();
       }
     });
+  });
+});
+
+describe('BlogPage metrics', () => {
+  const pm = (views_30d: number, clicks: number | null = null) => ({
+    views_7d: 1,
+    views_30d,
+    views_total: views_30d,
+    search:
+      clicks === null ? null : { clicks, impressions: 100, ctr: 0.1, position: 12.4 as number },
+    index: null,
+  });
+  const file = {
+    kind: 'arquivo' as const,
+    slug: 'post-a-mao',
+    title: 'Post escrito à mão',
+    description: 'Descrição do post de arquivo.',
+    category: 'guia',
+    date: '2026-10-25',
+  };
+
+  beforeEach(() => {
+    vi.mocked(listBlogPosts).mockImplementation(async (tab) => ({
+      posts:
+        tab === 'publicados'
+          ? [
+              row({
+                id: ID2,
+                slug: 'no-ar',
+                status: 'publicado',
+                title: 'Post que está no ar',
+                date: '2026-10-20',
+              }),
+            ]
+          : [row()],
+      last_draft_at: ago(2 * HOUR),
+      file_posts: tab === 'publicados' ? [file] : [],
+    }));
+    vi.mocked(getBlogMetrics).mockResolvedValue({
+      gsc_updated_at: null,
+      posts: { 'no-ar': pm(1240), 'post-a-mao': pm(100) },
+    });
+  });
+
+  const order = () =>
+    screen
+      .getAllByRole('link', { name: /Post (que está no ar|escrito à mão)$/ })
+      .map((a) => a.textContent);
+
+  it('shows the views line under live rows only, and no Mais cliques without Search Console', async () => {
+    renderAt('/admin/blog?tab=publicados');
+    expect(await screen.findByText('1.240 views (30d)')).toBeInTheDocument();
+    expect(screen.getByText('100 views (30d)')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Mais vistos' })).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'Mais cliques' })).not.toBeInTheDocument();
+  });
+
+  it('sorts by views from ?ordem= and keeps it in the row links', async () => {
+    renderAt('/admin/blog?tab=publicados&ordem=vistos');
+    await screen.findByText('1.240 views (30d)');
+    expect(order()).toEqual(['Post que está no ar', 'Post escrito à mão']);
+    expect(screen.getByRole('link', { name: 'Post que está no ar' })).toHaveAttribute(
+      'href',
+      `/admin/blog/${ID2}?tab=publicados&ordem=vistos`,
+    );
+  });
+
+  it('changes the order from the segmented control', async () => {
+    renderAt('/admin/blog?tab=publicados');
+    await screen.findByText('1.240 views (30d)');
+    expect(order()).toEqual(['Post escrito à mão', 'Post que está no ar']); // by date
+    fireEvent.click(screen.getByRole('radio', { name: 'Mais vistos' }));
+    await waitFor(() =>
+      expect(screen.getByRole('radio', { name: 'Mais vistos' })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      ),
+    );
+    expect(order()).toEqual(['Post que está no ar', 'Post escrito à mão']);
+  });
+
+  it('offers Mais cliques and shows clicks once Search Console has synced', async () => {
+    vi.mocked(getBlogMetrics).mockResolvedValue({
+      gsc_updated_at: '2026-10-26T06:00:00Z',
+      posts: { 'no-ar': pm(10, 90), 'post-a-mao': pm(5000, 3) },
+    });
+    renderAt('/admin/blog?tab=publicados&ordem=cliques');
+    expect(
+      await screen.findByText('10 views (30d) · 90 cliques · posição 12,4'),
+    ).toBeInTheDocument();
+    expect(order()).toEqual(['Post que está no ar', 'Post escrito à mão']);
+  });
+
+  it('falls back to recentes for ?ordem=cliques while Search Console is not configured', async () => {
+    renderAt('/admin/blog?tab=publicados&ordem=cliques');
+    await screen.findByText('1.240 views (30d)');
+    expect(screen.getByRole('radio', { name: 'Mais recentes' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+  });
+
+  it('has no sort control or metric line on Aguardando', async () => {
+    renderAt('/admin/blog');
+    await screen.findByText('Como montar um calendário editorial em 2026 sem sofrer');
+    expect(screen.queryByRole('radio', { name: 'Mais vistos' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/views \(30d\)/)).not.toBeInTheDocument();
+  });
+
+  it('shows Desempenho in the detail of a live DB post, not of a draft', async () => {
+    vi.mocked(getBlogPost).mockResolvedValue({
+      post: detail({ id: ID2, slug: 'no-ar', status: 'publicado', title: 'Post que está no ar' }),
+    });
+    const live = renderAt(`/admin/blog/${ID2}?tab=publicados`);
+    expect(await screen.findByRole('heading', { name: 'Desempenho' })).toBeInTheDocument();
+    expect(getBlogPostMetrics).toHaveBeenCalledWith('no-ar', 90);
+    live.unmount();
+
+    vi.mocked(getBlogPost).mockResolvedValue({ post: detail() });
+    renderAt(`/admin/blog/${ID1}`);
+    await screen.findByLabelText('Nota para a rotina');
+    expect(screen.queryByRole('heading', { name: 'Desempenho' })).not.toBeInTheDocument();
+  });
+
+  it('shows Desempenho in the detail of a hand-written post', async () => {
+    renderAt('/admin/blog/arquivo/post-a-mao?tab=publicados');
+    expect(await screen.findByRole('heading', { name: 'Desempenho' })).toBeInTheDocument();
+    expect(screen.getAllByText('100')).toHaveLength(2);
   });
 });

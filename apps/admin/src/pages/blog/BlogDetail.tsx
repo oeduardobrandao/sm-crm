@@ -19,6 +19,7 @@ import { Skeleton } from '../../components/ui/skeleton';
 import { Textarea } from '../../components/ui/textarea';
 import { cn } from '../../lib/utils';
 import { BlogEditor } from './BlogEditor';
+import { BlogPerformance } from './BlogPerformance';
 import { BlogPreview } from './BlogPreview';
 import { LiveLinkButtons } from './LiveLinkButtons';
 import {
@@ -33,6 +34,7 @@ import {
   isSlowPublish,
   liveUrl,
   showsRetry,
+  type BlogMetricsResponse,
   type BlogPostDetail,
   type EditableField,
 } from './blog-view';
@@ -68,6 +70,8 @@ export interface BlogDetailProps {
   onEditorDirtyChange: (dirty: boolean) => void;
   /** Runs one action (the caller toasts and refetches). */
   run: (command: BlogCommand) => Promise<RunResult>;
+  /** Absent while blog-metrics loads or fails: the Desempenho section waits for it. */
+  metrics?: BlogMetricsResponse;
 }
 
 type ConfirmKind = 'approve' | 'reject' | 'unpublish' | 'republish';
@@ -277,6 +281,14 @@ export function BlogDetail(p: BlogDetailProps) {
             ? 'Publicação demorando: verifique o deploy na Vercel e tente de novo.'
             : 'Publicando. O status muda quando a versão nova estiver no ar.'}
         </p>
+      )}
+
+      {isLive(post) && p.metrics && (
+        <BlogPerformance
+          slug={post.slug}
+          metrics={p.metrics.posts[post.slug]}
+          gscUpdatedAt={p.metrics.gsc_updated_at}
+        />
       )}
 
       <div className="flex flex-col xl:grid xl:grid-cols-[minmax(0,1fr)_300px]">

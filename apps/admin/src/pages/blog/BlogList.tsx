@@ -14,7 +14,11 @@ import {
   isLiveItem,
   itemKey,
   itemPath,
+  metricLine,
+  withSort,
   type BlogListItem,
+  type BlogMetricsResponse,
+  type BlogSort,
   type BlogTab,
 } from './blog-view';
 import { LiveRowLink } from './LiveLinkButtons';
@@ -37,6 +41,11 @@ export interface BlogListProps {
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
+  /** Views and Search Console totals. Undefined while loading or failed: no metric line then,
+   * rather than a false zero. */
+  metrics?: BlogMetricsResponse;
+  /** Publicados sort; carried into each row's link so opening a post keeps it. */
+  sort?: BlogSort;
   /** Set while leaving the open post needs a confirmation (an edited draft); it gets the
    * target instead of the router. */
   onOpen?: (to: string) => void;
@@ -50,6 +59,8 @@ export function BlogList({
   isLoading,
   isError,
   onRetry,
+  metrics,
+  sort = 'recentes',
   onOpen,
 }: BlogListProps) {
   const navigate = useNavigate();
@@ -76,7 +87,7 @@ export function BlogList({
       {items.map((item) => {
         const r = item.row;
         const key = itemKey(item);
-        const to = itemPath(item, tab);
+        const to = withSort(itemPath(item, tab), sort);
         const selected = key === selectedKey;
         // Hand-written posts carry no checks, sources or review state: no chips.
         const chips = item.kind === 'rotina' ? chipsFor(item.row, now) : [];
@@ -127,6 +138,11 @@ export function BlogList({
               >
                 {r.title}
               </RowLink>
+              {metrics && isLiveItem(item) && (
+                <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
+                  {metricLine(metrics.posts[r.slug], metrics.gsc_updated_at !== null)}
+                </p>
+              )}
               {(item.kind === 'arquivo' || chips.length > 0) && (
                 <div className="mt-1.5 flex flex-wrap gap-1">
                   {item.kind === 'arquivo' && (
