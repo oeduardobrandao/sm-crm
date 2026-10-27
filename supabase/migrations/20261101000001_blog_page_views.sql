@@ -1,7 +1,8 @@
 -- Contagem anonima de views do blog (spec 2026-10-27-blog-metrics-design.md, secao 3).
 --
--- visitor_hash = sha256(sal_do_dia || ip || user_agent), calculado na edge function `blog-view`
--- e usado so para deduplicar em 30 min. O sal vive o dia de Sao Paulo e e apagado na virada,
+-- visitor_hash = sha256(sal_do_dia || ip || user_agent || slug), calculado na edge function
+-- `blog-view` e usado so para deduplicar em 30 min. Com o slug no hash, o mesmo leitor tem um
+-- hash diferente em cada post. O sal vive o dia de Sao Paulo e e apagado na virada,
 -- entao depois disso ninguem consegue ligar um hash a um IP. IP e UA crus nunca sao gravados.
 --
 -- Tudo aqui e service_role: a edge function publica chama blog_view_salt_today() e

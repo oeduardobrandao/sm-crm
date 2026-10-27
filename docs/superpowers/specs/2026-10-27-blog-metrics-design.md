@@ -161,9 +161,12 @@ named explicitly.
 
 ### Privacy
 
-`visitor_hash = sha256(salt_of_today || ip || user_agent)`, used only for the 30-minute dedupe.
-The salt lives for its São Paulo calendar day and is deleted at the turn of the day, so after
-that no one, including us, can link a hash back to an IP. Raw IP and UA are
+`visitor_hash = sha256(salt_of_today || ip || user_agent || slug)` (inputs in that order), used
+only for the 30-minute dedupe. The slug is part of the hash so the same reader gets a different
+hash on every post: the stored rows never form a per-reader reading trail, not even within one
+day. The salt lives for its São Paulo calendar day and is deleted at the turn of the day, so after
+that no one, including us, can link a hash back to an IP (Supabase backups/PITR keep a deleted
+salt for the backup window). Raw IP and UA are
 never stored. No cookie, no localStorage. Unique visitors are deliberately not reported (the
 hash changes daily, so cross-day uniques are impossible by design).
 
@@ -185,8 +188,11 @@ Modeled on `affiliate-public` (public, no user auth). `POST { slug }`.
 4. Rate limit per source, independent of the User-Agent (so rotating the UA does not escape it):
    `ip_key = sha256(salt_of_today || ip)`, `checkRateLimit(svc, "blog-view:" + ip_key, 120, 3600)`.
    The key carries the salted hash, never the IP (`rate_limit_log` is pruned hourly). Over the
-   limit: 204. This bounds one IP; a distributed flood is out of scope (a vanity counter, not
-   billing), and Supabase's own gateway limits apply on top.
+   limit: 204. The IP is the left-most `X-Forwarded-For`, which the client controls, so this
+   bounds an honest source only. A second cap bounds writes per post whatever the source:
+   `checkRateLimit(svc, "blog-view:slug:" + slug, 1000, 3600)`, far above one post's real
+   traffic. A distributed flood beyond that is out of scope (a vanity counter, not billing), and
+   Supabase's own gateway limits apply on top.
 5. `record_blog_view(slug, hash)`. Always answer 204; errors are logged, never returned.
 
 ### CRM blog page

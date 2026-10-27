@@ -52,7 +52,9 @@ function fakeDb(opts: FakeOpts = {}) {
   return { db: db as unknown as SupabaseClient, rpcCalls, fromCalls };
 }
 
-function setup(opts: FakeOpts & { rateAllowed?: boolean } = {}) {
+const SLUG_KEY_PREFIX = "blog-view:slug:";
+
+function setup(opts: FakeOpts & { rateAllowed?: boolean | ((key: string) => boolean) } = {}) {
   const f = fakeDb(opts);
   const rateKeys: string[] = [];
   const rateArgs: Array<[number, number]> = [];
@@ -62,7 +64,8 @@ function setup(opts: FakeOpts & { rateAllowed?: boolean } = {}) {
     rateLimit: (key, max, windowSeconds) => {
       rateKeys.push(key);
       rateArgs.push([max, windowSeconds]);
-      return Promise.resolve(opts.rateAllowed ?? true);
+      const allowed = typeof opts.rateAllowed === "function" ? opts.rateAllowed(key) : opts.rateAllowed;
+      return Promise.resolve(allowed ?? true);
     },
     getClientIP: () => IP,
   });
@@ -78,7 +81,9 @@ function setup(opts: FakeOpts & { rateAllowed?: boolean } = {}) {
     );
   };
   const records = () => f.rpcCalls.filter((c) => c.fn === "record_blog_view");
-  return { ...f, handler, post, rateKeys, rateArgs, records };
+  const sourceKeys = () => rateKeys.filter((k) => !k.startsWith(SLUG_KEY_PREFIX));
+  const slugKeys = () => rateKeys.filter((k) => k.startsWith(SLUG_KEY_PREFIX));
+  return { ...f, handler, post, rateKeys, rateArgs, records, sourceKeys, slugKeys };
 }
 
 Deno.test("isBotUserAgent: bots, empty and null are bots; browsers are not", () => {
@@ -129,7 +134,8 @@ Deno.test("valid live slug with a browser UA records one view with a hashed visi
   assertEquals(args.p_slug, "meu-post");
   assert(/^[0-9a-f]{64}$/.test(args.p_visitor_hash));
   assert(args.p_visitor_hash !== IP);
-  assertEquals(args.p_visitor_hash, await sha256Hex(SALT + IP + BROWSER_UA));
+  // Hash input order: salt, IP, UA, slug.
+  assertEquals(args.p_visitor_hash, await sha256Hex(SALT + IP + BROWSER_UA + "meu-post"));
   assertEquals(t.rateArgs[0], [120, 3600]);
 });
 
@@ -184,10 +190,32 @@ Deno.test("rate key ignores the UA, carries a salted hash and never the raw IP",
   const t = setup();
   await t.post({ slug: "meu-post" }, BROWSER_UA);
   await t.post({ slug: "meu-post" }, "Mozilla/5.0 (Windows NT 10.0) Firefox/121.0");
-  assertEquals(t.rateKeys.length, 2);
-  assertEquals(t.rateKeys[0], t.rateKeys[1]);
-  assertEquals(t.rateKeys[0], "blog-view:" + await sha256Hex(SALT + IP));
-  assert(!t.rateKeys[0].includes(IP));
+  const keys = t.sourceKeys();
+  assertEquals(keys.length, 2);
+  assertEquals(keys[0], keys[1]);
+  assertEquals(keys[0], "blog-view:" + await sha256Hex(SALT + IP));
+  assert(!t.rateKeys.some((k) => k.includes(IP)));
+});
+
+Deno.test("a per-post cap bounds writes even when the source key rotates (spoofed X-Forwarded-For)", async () => {
+  const t = setup();
+  await t.post({ slug: "meu-post" });
+  assertEquals(t.slugKeys(), ["blog-view:slug:meu-post"]);
+  const i = t.rateKeys.indexOf("blog-view:slug:meu-post");
+  assertEquals(t.rateArgs[i], [1000, 3600]);
+  assertEquals(t.records().length, 1);
+
+  const capped = setup({ rateAllowed: (key) => !key.startsWith(SLUG_KEY_PREFIX) });
+  const res = await capped.post({ slug: "meu-post" });
+  assertEquals(res.status, 204);
+  assertEquals(capped.records().length, 0);
+});
+
+Deno.test("a source over its own limit never touches the per-post budget", async () => {
+  const t = setup({ rateAllowed: (key) => key.startsWith(SLUG_KEY_PREFIX) });
+  await t.post({ slug: "meu-post" });
+  assertEquals(t.slugKeys().length, 0);
+  assertEquals(t.records().length, 0);
 });
 
 Deno.test("visitor hash: same IP+UA is stable, a different UA differs, raw IP/UA never reach the db", async () => {
@@ -202,6 +230,15 @@ Deno.test("visitor hash: same IP+UA is stable, a different UA differs, raw IP/UA
   const everything = JSON.stringify(t.rpcCalls) + t.rateKeys.join("|");
   assert(!everything.includes(IP));
   assert(!everything.includes("Mozilla"));
+});
+
+Deno.test("visitor hash: the same reader gets a different hash on each post", async () => {
+  const t = setup({ liveRows: [{ slug: "post-um", status: "publicado" }, { slug: "post-dois", status: "publicado" }] });
+  await t.post({ slug: "post-um" });
+  await t.post({ slug: "post-dois" });
+  const hashes = t.records().map((c) => (c.args as { p_visitor_hash: string }).p_visitor_hash);
+  assertEquals(hashes.length, 2);
+  assert(hashes[0] !== hashes[1], "one reader is linkable across posts");
 });
 
 Deno.test("the salt is fetched on every counted request, never cached", async () => {

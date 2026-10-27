@@ -2,11 +2,16 @@
  * blog-view: contador público de visualizações do blog (sem sessão, deploy com
  * --no-verify-jwt). A página do post faz POST { slug } uma vez por visita.
  *
- * Privacidade: visitor_hash = sha256(sal_do_dia + ip + user_agent), usado só para deduplicar
- * em 30 min dentro do record_blog_view. O sal vive só até o fim do dia de São Paulo, então
- * depois disso nem nós ligamos um hash a um IP. IP e UA brutos nunca são gravados, logados
- * nem usados como chave de rate limit. O sal é lido a CADA requisição contada, nunca guardado
- * em memória do módulo.
+ * Privacidade: visitor_hash = sha256(sal_do_dia + ip + user_agent + slug), nessa ordem, usado
+ * só para deduplicar em 30 min dentro do record_blog_view. O slug entra no hash para que o mesmo
+ * leitor tenha um hash diferente em cada post: as linhas guardadas não formam uma trilha de
+ * leitura por pessoa. O sal vive só até o fim do dia de São Paulo, então depois disso nem nós
+ * ligamos um hash a um IP. IP e UA brutos nunca são gravados, logados nem usados como chave de
+ * rate limit. O sal é lido a CADA requisição contada, nunca guardado em memória do módulo.
+ *
+ * Rate limit em dois níveis: 120/h por origem (hash salgado do IP) e 1000/h por post. O IP vem
+ * do X-Forwarded-For mais à esquerda, que o cliente controla; quem gira esse header escapa do
+ * primeiro limite, então o teto por post é o que limita as escritas.
  *
  * Sempre responde 204 (exceto 405): descartes, rate limit e erros internos não aparecem para
  * o cliente; erros vão só para o log.
@@ -26,6 +31,8 @@ export interface BlogViewDeps {
 
 const RATE_MAX = 120;
 const RATE_WINDOW_SECONDS = 3600;
+// Muito acima do tráfego real de um post; existe para limitar o crescimento da tabela.
+const SLUG_RATE_MAX = 1000;
 const MAX_BODY_CHARS = 1024;
 
 async function readSlug(req: Request): Promise<string | null> {
@@ -66,8 +73,11 @@ export function createBlogViewHandler(deps: BlogViewDeps) {
       const ip = deps.getClientIP(req);
       const ipKey = await sha256Hex(salt + ip);
       if (!(await deps.rateLimit(`blog-view:${ipKey}`, RATE_MAX, RATE_WINDOW_SECONDS))) return noContent();
+      if (!(await deps.rateLimit(`blog-view:slug:${slug}`, SLUG_RATE_MAX, RATE_WINDOW_SECONDS))) {
+        return noContent();
+      }
 
-      const visitorHash = await sha256Hex(salt + ip + (ua ?? ""));
+      const visitorHash = await sha256Hex(salt + ip + (ua ?? "") + slug);
       const { error } = await db.rpc("record_blog_view", { p_slug: slug, p_visitor_hash: visitorHash });
       if (error) console.error("[blog-view] record failed", error.message);
     } catch (err) {
