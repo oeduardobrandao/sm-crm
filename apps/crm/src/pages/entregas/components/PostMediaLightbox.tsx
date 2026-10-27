@@ -10,6 +10,7 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { VideoPlayer } from '@mesaas/ui/VideoPlayer';
 import { formatMoment, pinNumbers } from '@mesaas/ui/mediaPins/geometry';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
@@ -65,6 +66,7 @@ export function PostMediaLightbox({
   onNoteStatus,
   authors,
 }: PostMediaLightboxProps) {
+  const { t } = useTranslation('posts');
   const [index, setIndex] = useState(initialIndex);
   const [downloading, setDownloading] = useState(false);
 
@@ -223,16 +225,16 @@ export function PostMediaLightbox({
       resetNote();
     } catch {
       // The draft stays so nothing typed is lost. Never surface raw RPC / RLS text.
-      toast.error('Não foi possível salvar a nota. Tente novamente.');
+      toast.error(t('mediaLightbox.noteSaveFailed'));
     } finally {
       setSavingNote(false);
     }
   };
   const composerTitle = isVideo
     ? draft.t != null
-      ? `Nota interna em ${formatMoment(draft.t)}`
-      : 'Nota interna no vídeo'
-    : `Nota interna no slide ${index + 1}`;
+      ? t('mediaLightbox.composerAtTime', { time: formatMoment(draft.t) })
+      : t('mediaLightbox.composerVideo')
+    : t('mediaLightbox.composerSlide', { n: index + 1 });
 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
@@ -249,7 +251,7 @@ export function PostMediaLightbox({
           className="fixed inset-0 z-[9005] flex items-center justify-center focus:outline-none pointer-events-none"
         >
           <DialogPrimitive.Title className="sr-only">
-            Pré-visualização de mídia
+            {t('mediaLightbox.title')}
           </DialogPrimitive.Title>
 
           <div className="relative flex items-center justify-center max-h-[85vh] max-w-[90vw] touch-none pointer-events-auto">
@@ -308,7 +310,7 @@ export function PostMediaLightbox({
               {internalOpen && (
                 <section
                   id={internalListId}
-                  aria-label={`Notas internas (${internalNotes.length})`}
+                  aria-label={t('mediaLightbox.internalNotes', { count: internalNotes.length })}
                   className="max-h-[min(12rem,40vh)] w-full overflow-y-auto rounded-xl bg-white p-2 text-xs text-stone-900 shadow-lg"
                 >
                   <ul className="space-y-1">
@@ -317,12 +319,12 @@ export function PostMediaLightbox({
                       const spot = internalPinNumbers.get(n.id);
                       const where =
                         spot != null
-                          ? `Interno ${spot}`
+                          ? t('mediaLightbox.internalSpot', { n: spot })
                           : n.media_kind === 'video' && n.t_seconds != null
-                            ? `Vídeo ${formatMoment(n.t_seconds)}`
+                            ? t('mediaLightbox.videoAt', { time: formatMoment(n.t_seconds) })
                             : n.media_kind === 'video'
-                              ? 'Vídeo inteiro'
-                              : 'Slide inteiro';
+                              ? t('mediaLightbox.wholeVideo')
+                              : t('mediaLightbox.wholeSlide');
                       return (
                         <li
                           key={n.id}
@@ -331,7 +333,7 @@ export function PostMediaLightbox({
                           <p className="flex items-center justify-between gap-2 font-semibold">
                             <span>{where}</span>
                             <span className="font-normal text-stone-500">
-                              {resolved ? 'Resolvida' : 'Em aberto'}
+                              {resolved ? t('mediaLightbox.resolvedNote') : t('mediaNotes.open')}
                             </span>
                           </p>
                           <p className="whitespace-pre-wrap break-words">{n.body}</p>
@@ -343,7 +345,7 @@ export function PostMediaLightbox({
                                 void onNoteStatus([n.id], resolved ? 'open' : 'resolved')
                               }
                             >
-                              {resolved ? 'Reabrir' : 'Marcar como resolvido'}
+                              {resolved ? t('mediaNotes.reopen') : t('mediaNotes.markResolved')}
                             </button>
                           )}
                         </li>
@@ -359,7 +361,7 @@ export function PostMediaLightbox({
                 onClick={() => setInternalOpen((v) => !v)}
                 className="min-h-[44px] px-3 rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 flex items-center gap-1.5 text-sm ring-1 ring-white/20"
               >
-                Notas internas ({internalNotes.length})
+                {t('mediaLightbox.internalNotes', { count: internalNotes.length })}
                 {internalOpen ? (
                   <ChevronDown className="h-4 w-4" aria-hidden="true" />
                 ) : (
@@ -376,34 +378,30 @@ export function PostMediaLightbox({
               className="fixed top-[calc(1rem+env(safe-area-inset-top,0px))] left-4 h-10 px-3 rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 flex items-center gap-1.5 text-sm pointer-events-auto ring-1 ring-white/20"
             >
               <MessageSquarePlus className="h-4 w-4" aria-hidden="true" />
-              Nota interna
+              {t('mediaLightbox.internalNote')}
             </button>
           )}
 
           {canNote && mode === 'placing' && (
             <div className="fixed bottom-16 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm text-stone-900 shadow-lg pointer-events-auto">
-              <span>
-                {isVideo
-                  ? 'Toque no quadro para marcar o ponto.'
-                  : 'Toque na imagem para marcar o ponto.'}
-              </span>
+              <span>{isVideo ? t('mediaLightbox.tapFrame') : t('mediaLightbox.tapImage')}</span>
               <button
                 type="button"
                 className="rounded-lg border border-stone-300 px-2 py-1 text-xs font-semibold hover:bg-stone-100"
                 onClick={placeWithoutSpot}
               >
                 {isVideo && videoEl
-                  ? `Comentar em ${formatMoment(videoEl.currentTime)}`
+                  ? t('mediaLightbox.commentAt', { time: formatMoment(videoEl.currentTime) })
                   : isVideo
-                    ? 'Comentar o vídeo'
-                    : 'Comentar o slide inteiro'}
+                    ? t('mediaLightbox.commentVideo')
+                    : t('mediaLightbox.commentSlide')}
               </button>
               <button
                 type="button"
                 className="rounded-lg px-2 py-1 text-xs text-stone-600 hover:bg-stone-100"
                 onClick={resetNote}
               >
-                Cancelar
+                {t('actions.cancel')}
               </button>
             </div>
           )}
@@ -419,11 +417,11 @@ export function PostMediaLightbox({
               </p>
               <textarea
                 autoFocus
-                aria-label="Nota interna"
+                aria-label={t('mediaLightbox.internalNote')}
                 value={noteBody}
                 onChange={(e) => setNoteBody(e.target.value)}
                 rows={3}
-                placeholder="Só a equipe vê esta nota."
+                placeholder={t('mediaLightbox.notePlaceholder')}
                 // 16px: iOS Safari zooms the page on smaller inputs.
                 className="w-full resize-none rounded-lg border border-stone-300 p-2 text-base"
               />
@@ -433,7 +431,7 @@ export function PostMediaLightbox({
                   className="rounded-lg px-3 py-1.5 text-sm text-stone-600 hover:bg-stone-100"
                   onClick={resetNote}
                 >
-                  Cancelar
+                  {t('actions.cancel')}
                 </button>
                 <button
                   type="button"
@@ -441,14 +439,14 @@ export function PostMediaLightbox({
                   className="rounded-lg bg-[#12151a] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
                   onClick={() => void saveNote()}
                 >
-                  Salvar nota interna
+                  {t('mediaLightbox.saveNote')}
                 </button>
               </div>
             </div>
           )}
 
           <DialogPrimitive.Close
-            aria-label="Fechar"
+            aria-label={t('actions.close')}
             className="fixed top-[calc(1rem+env(safe-area-inset-top,0px))] right-4 w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 flex items-center justify-center pointer-events-auto ring-1 ring-white/20"
           >
             <X className="h-5 w-5" />
@@ -459,14 +457,14 @@ export function PostMediaLightbox({
           {current.url && (
             <button
               type="button"
-              aria-label="Baixar"
+              aria-label={t('mediaGallery.download')}
               disabled={downloading}
               onClick={async () => {
                 setDownloading(true);
                 try {
                   await downloadMedia(current);
                 } catch {
-                  toast.error('Erro ao baixar arquivo');
+                  toast.error(t('mediaLightbox.downloadFailed'));
                 } finally {
                   setDownloading(false);
                 }
@@ -481,7 +479,7 @@ export function PostMediaLightbox({
             <>
               <button
                 type="button"
-                aria-label="Anterior"
+                aria-label={t('mediaLightbox.previous')}
                 onClick={prev}
                 className="fixed left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 flex items-center justify-center pointer-events-auto ring-1 ring-white/20"
               >
@@ -489,7 +487,7 @@ export function PostMediaLightbox({
               </button>
               <button
                 type="button"
-                aria-label="Próximo"
+                aria-label={t('mediaLightbox.next')}
                 onClick={next}
                 className="fixed right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 flex items-center justify-center pointer-events-auto ring-1 ring-white/20"
               >

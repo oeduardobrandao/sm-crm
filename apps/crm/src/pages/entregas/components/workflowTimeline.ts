@@ -1,5 +1,5 @@
 import { differenceInDays, format, parseISO } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { getDateFnsLocale, i18n } from '@mesaas/i18n';
 import type { WorkflowEvent, WorkflowEventChange } from '../../../store';
 
 export type WorkflowTimelineTone = 'neutral' | 'approved' | 'correction' | 'published';
@@ -34,19 +34,25 @@ const TONE_BY_EVENT_TYPE: Record<WorkflowEvent['event_type'], WorkflowTimelineTo
   fluxo_concluido: 'published',
 };
 
-const FIELD_LABELS: Record<string, string> = {
-  titulo: 'Título',
-  cliente_id: 'Cliente',
-  recorrente: 'Recorrente',
-  link_notion: 'Link Notion',
-  link_drive: 'Link Drive',
-  nome: 'Nome',
-  prazo_dias: 'Prazo',
-  tipo_prazo: 'Tipo de prazo',
-  data_limite: 'Data limite',
-  responsavel_id: 'Responsável',
-  tipo: 'Tipo',
+// Field -> key under workflowTimeline.fields, resolved at call time (never at module load).
+const FIELD_LABEL_KEYS: Record<string, string> = {
+  titulo: 'titulo',
+  cliente_id: 'cliente',
+  recorrente: 'recorrente',
+  link_notion: 'linkNotion',
+  link_drive: 'linkDrive',
+  nome: 'nome',
+  prazo_dias: 'prazo',
+  tipo_prazo: 'tipoPrazo',
+  data_limite: 'dataLimite',
+  responsavel_id: 'responsavel',
+  tipo: 'tipo',
 };
+
+function fieldLabel(field: string): string {
+  const key = FIELD_LABEL_KEYS[field];
+  return key ? i18n.t(`postEditor:workflowTimeline.fields.${key}`) : field;
+}
 
 // The "start anchor" event types for tempo-na-etapa math. etapa_iniciada is
 // the normal case; etapa_revertida and fluxo_reaberto carry the
@@ -66,35 +72,44 @@ const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}/;
 function labelFor(ev: WorkflowEvent): string {
   switch (ev.event_type) {
     case 'criado':
-      return 'Fluxo criado';
+      return i18n.t('postEditor:workflowTimeline.events.criado');
     case 'etapa_iniciada':
-      return `Etapa iniciada: ${ev.etapa_nome ?? '—'}`;
+      return i18n.t('postEditor:workflowTimeline.events.etapaIniciada', {
+        etapa: ev.etapa_nome ?? '—',
+      });
     case 'etapa_concluida':
-      return `Etapa concluída: ${ev.etapa_nome ?? '—'}`;
+      return i18n.t('postEditor:workflowTimeline.events.etapaConcluida', {
+        etapa: ev.etapa_nome ?? '—',
+      });
     case 'etapa_revertida': {
       const voltouDe = typeof ev.metadata.voltou_de === 'string' ? ev.metadata.voltou_de : '—';
-      return `Etapa revertida: ${voltouDe} → ${ev.etapa_nome ?? '—'}`;
+      return i18n.t('postEditor:workflowTimeline.events.etapaRevertida', {
+        from: voltouDe,
+        to: ev.etapa_nome ?? '—',
+      });
     }
     case 'etapa_editada':
-      return `Etapa editada: ${ev.etapa_nome ?? '—'}`;
+      return i18n.t('postEditor:workflowTimeline.events.etapaEditada', {
+        etapa: ev.etapa_nome ?? '—',
+      });
     case 'fluxo_editado':
-      return 'Fluxo editado';
+      return i18n.t('postEditor:workflowTimeline.events.fluxoEditado');
     case 'fluxo_concluido':
-      return 'Fluxo concluído';
+      return i18n.t('postEditor:workflowTimeline.events.fluxoConcluido');
     case 'fluxo_reaberto':
-      return 'Fluxo reaberto';
+      return i18n.t('postEditor:workflowTimeline.events.fluxoReaberto');
     case 'fluxo_arquivado':
-      return 'Fluxo arquivado';
+      return i18n.t('postEditor:workflowTimeline.events.fluxoArquivado');
     case 'template_migrado': {
       const from =
         typeof ev.metadata.from_template_nome === 'string' ? ev.metadata.from_template_nome : '—';
       const to =
         typeof ev.metadata.to_template_nome === 'string' ? ev.metadata.to_template_nome : '—';
-      return `Template migrado: ${from} → ${to}`;
+      return i18n.t('postEditor:workflowTimeline.events.templateMigrado', { from, to });
     }
     case 'template_propagado': {
       const nome = typeof ev.metadata.template_nome === 'string' ? ev.metadata.template_nome : '—';
-      return `Template atualizado: ${nome}`;
+      return i18n.t('postEditor:workflowTimeline.events.templatePropagado', { nome });
     }
     default:
       // Forward-compat: an event_type the frontend doesn't yet know how to
@@ -105,24 +120,31 @@ function labelFor(ev: WorkflowEvent): string {
 
 function formatChangeValue(field: string, value: unknown): string {
   if (value === null || value === undefined) return '—';
-  if (field === 'recorrente') return value ? 'Sim' : 'Não';
-  if (field === 'prazo_dias') return `${value} dias`;
+  if (field === 'recorrente')
+    return value
+      ? i18n.t('postEditor:workflowTimeline.values.yes')
+      : i18n.t('postEditor:workflowTimeline.values.no');
+  if (field === 'prazo_dias')
+    return i18n.t('postEditor:workflowTimeline.values.days', { value: String(value) });
   if (field === 'data_limite' && typeof value === 'string' && ISO_DATE_RE.test(value)) {
-    return format(parseISO(value), 'dd/MM/yyyy', { locale: ptBR });
+    return format(parseISO(value), i18n.t('postEditor:workflowTimeline.dateFormat'), {
+      locale: getDateFnsLocale(),
+    });
   }
   if (field === 'tipo_prazo') {
-    return value === 'uteis' ? 'úteis' : String(value);
+    return value === 'uteis' ? i18n.t('postEditor:workflowTimeline.values.uteis') : String(value);
   }
   if (field === 'tipo') {
-    if (value === 'padrao') return 'Padrão';
-    if (value === 'aprovacao_cliente') return 'Aprovação do cliente';
+    if (value === 'padrao') return i18n.t('postEditor:workflowTimeline.values.padrao');
+    if (value === 'aprovacao_cliente')
+      return i18n.t('postEditor:workflowTimeline.values.aprovacaoCliente');
     return String(value);
   }
   return String(value);
 }
 
 function renderChange(change: WorkflowEventChange): string {
-  const label = FIELD_LABELS[change.field] ?? change.field;
+  const label = fieldLabel(change.field);
   const fromDisplay = change.from_label ?? formatChangeValue(change.field, change.from);
   const toDisplay = change.to_label ?? formatChangeValue(change.field, change.to);
   return `${label}: ${fromDisplay} → ${toDisplay}`;
@@ -158,8 +180,8 @@ function renderDuration(fromISO: string, toISO: string): string {
   // Floor, not round/ceiling: a 3.9-day stay reading as "3 dias" undersells
   // it less than a 2.1-day stay reading as "3 dias" would oversell it.
   const days = differenceInDays(parseISO(toISO), parseISO(fromISO));
-  if (days <= 0) return 'menos de 1 dia na etapa';
-  return `${days} dia(s) na etapa`;
+  if (days <= 0) return i18n.t('postEditor:workflowTimeline.lessThanADay');
+  return i18n.t('postEditor:workflowTimeline.daysInStage', { count: days });
 }
 
 function detailFor(ev: WorkflowEvent, sorted: WorkflowEvent[], index: number): string | null {
@@ -176,8 +198,9 @@ function actorLabelFor(ev: WorkflowEvent): string {
   // source: 'workspace_user' via the DB trigger's user_id fallback, so
   // source alone can never distinguish an agent-created workflow from a
   // human-created one — only metadata.created_via on 'criado' can.
-  if (ev.event_type === 'criado' && ev.metadata.created_via === 'agent') return 'Agente';
-  if (ev.source === 'system') return 'Sistema';
+  if (ev.event_type === 'criado' && ev.metadata.created_via === 'agent')
+    return i18n.t('postEditor:workflowTimeline.agent');
+  if (ev.source === 'system') return i18n.t('postEditor:workflowTimeline.system');
   return ev.actor_name ?? '—';
 }
 

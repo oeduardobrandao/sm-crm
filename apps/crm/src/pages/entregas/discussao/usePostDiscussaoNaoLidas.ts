@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { i18n } from '@mesaas/i18n';
 import { getDiscussaoNaoLidas, type DiscussaoNaoLidas } from '../../../store';
 
 /** Prefix invalidated after sends, reads and realtime events (see the discussion store). */
@@ -75,13 +76,13 @@ export function discussaoTriggerBadge(
     return {
       count: naoLidas,
       unread: true,
-      label: `${naoLidas} ${naoLidas === 1 ? 'mensagem nova' : 'mensagens novas'} na discussão`,
+      label: i18n.t('postPanels:discussao.badgeNew', { count: naoLidas }),
     };
   }
   if (total <= 0) return null;
   return {
     count: total,
     unread: false,
-    label: `${total} ${total === 1 ? 'mensagem' : 'mensagens'} na discussão`,
+    label: i18n.t('postPanels:discussao.badgeTotal', { count: total }),
   };
 }

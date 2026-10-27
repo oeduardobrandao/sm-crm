@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -24,7 +26,7 @@ const AUTO = '__auto__';
 export function mesesDeEntrega(today: Date = new Date()): { value: string; label: string }[] {
   return Array.from({ length: 6 }, (_, i) => {
     const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
-    const label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    const label = d.toLocaleDateString(getIntlLocale(), { month: 'long', year: 'numeric' });
     return {
       value: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
       label: label.charAt(0).toUpperCase() + label.slice(1),
@@ -56,6 +58,7 @@ export function StepPrazos({
   // `countApprovals` counts unnamed rows too, so a blank row whose "Aprovação externa" pill was
   // flipped before it was named would otherwise make a one-approval fluxo look ambiguous. Only
   // named rows reach the database, so only named rows can be the anchor.
+  const { t } = useTranslation('workflows');
   const aprovacoes = countApprovals(state.etapas.filter((e) => e.nome.trim()));
   // `modoPrazo` only ever differs from the stored value via the shell's auto-fallback.
   const ajustado = modoPrazo !== state.modoPrazo;
@@ -69,41 +72,41 @@ export function StepPrazos({
   const opcoes: { value: ModoPrazo; titulo: string; descricao: string }[] = [
     {
       value: 'padrao',
-      titulo: 'Duração por etapa',
-      descricao: 'Cada etapa tem um prazo em dias, contado a partir do momento em que ela começa.',
+      titulo: t('wizard.modes.padrao'),
+      descricao: t('wizard.modeDesc.padrao'),
     },
     {
       value: 'data_fixa',
-      titulo: 'Datas fixas',
-      descricao: 'Você define uma data limite manual para cada etapa.',
+      titulo: t('wizard.modes.data_fixa'),
+      descricao: t('wizard.modeDesc.data_fixa'),
     },
     {
       value: 'data_entrega',
-      titulo: 'Data de entrega do cliente',
-      descricao: `Prazos calculados de trás pra frente a partir do dia de entrega do cliente${
-        cliente?.dia_entrega ? ` (dia ${cliente.dia_entrega})` : ''
-      }, usando a etapa de aprovação como âncora.`,
+      titulo: t('wizard.modes.data_entrega'),
+      descricao: cliente?.dia_entrega
+        ? t('wizard.modeDesc.data_entregaWithDay', { day: cliente.dia_entrega })
+        : t('wizard.modeDesc.data_entrega'),
     },
   ];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <h3 style={{ margin: 0 }}>Os prazos</h3>
+      <h3 style={{ margin: 0 }}>{t('wizard.deadlinesTitle')}</h3>
       <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>
-        Como o Mesaas deve calcular o prazo de cada etapa deste fluxo.
+        {t('wizard.deadlinesHint')}
       </p>
 
       {ajustado && (
         <p style={{ fontSize: '0.75rem', color: 'var(--warning)', margin: 0 }}>
           {blocoDiaEntrega
-            ? 'Modo ajustado para Duração por etapa — o cliente não tem dia de entrega configurado.'
-            : `Modo ajustado para Duração por etapa — ${availability.reason}`}
+            ? t('wizard.adjustedNoDay')
+            : t('wizard.adjustedReason', { reason: availability.reason })}
         </p>
       )}
 
       <div
         role="radiogroup"
-        aria-label="Modo de prazo"
+        aria-label={t('wizard.deadlineModeAria')}
         style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}
       >
         {opcoes.map((o) => {
@@ -151,7 +154,7 @@ export function StepPrazos({
                           color: '#12151a',
                         }}
                       >
-                        Recomendado
+                        {t('wizard.recommended')}
                       </span>
                     )}
                   </span>
@@ -175,7 +178,7 @@ export function StepPrazos({
                     <>
                       {' '}
                       <Link to={`/clientes/${cliente.id}`} style={{ textDecoration: 'underline' }}>
-                        Configurar dia de entrega
+                        {t('wizard.setDeliveryDay')}
                       </Link>
                     </>
                   )}
@@ -190,12 +193,11 @@ export function StepPrazos({
         <>
           {aprovacoes >= 2 && (
             <p style={{ color: 'var(--warning)', fontSize: '0.75rem' }}>
-              ⚠ Este fluxo tem {aprovacoes} etapas de aprovação — a primeira será a âncora da data
-              de entrega.
+              {t('wizard.manyApprovals', { n: aprovacoes })}
             </p>
           )}
           <div className="space-y-1">
-            <Label htmlFor="wizard-mes-entrega">Mês de Entrega</Label>
+            <Label htmlFor="wizard-mes-entrega">{t('wizard.deliveryMonth')}</Label>
             {/* Wizard state stores '' for "próximo mês disponível"; '__auto__' is a Select-only
                 sentinel because Radix treats '' as "no value selected". */}
             <Select
@@ -206,7 +208,7 @@ export function StepPrazos({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={AUTO}>Próximo mês disponível</SelectItem>
+                <SelectItem value={AUTO}>{t('wizard.nextAvailableMonth')}</SelectItem>
                 {mesesDeEntrega().map((m) => (
                   <SelectItem key={m.value} value={m.value}>
                     {m.label}

@@ -161,29 +161,31 @@ export function ThumbnailPickerDialog({
       )}
       {media && (pendingUrl || media.thumbnail_url) && (
         <div className="rounded-lg border p-3">
-          <p className="mb-2 text-xs font-semibold">Prévia da capa no Instagram</p>
+          <p className="mb-2 text-xs font-semibold">{t('thumbnailEditor.instagramPreview')}</p>
           <div className="flex items-start gap-4">
             <figure className="w-20">
               <img
                 src={pendingUrl ?? media.thumbnail_url ?? undefined}
-                alt="Capa do Reel em 9:16"
+                alt={t('thumbnailEditor.reelCoverAlt')}
                 className="aspect-[9/16] w-full rounded-md object-cover"
               />
               <figcaption className="mt-1 text-[11px] text-muted-foreground">
-                Reel · 9:16
+                {t('thumbnailEditor.reelCaption')}
               </figcaption>
             </figure>
             <figure className="w-20">
               <img
                 src={pendingUrl ?? media.thumbnail_url ?? undefined}
-                alt="Recorte central da capa no feed"
+                alt={t('thumbnailEditor.feedCropAlt')}
                 className="aspect-square w-full rounded-md object-cover"
               />
-              <figcaption className="mt-1 text-[11px] text-muted-foreground">Feed · 1:1</figcaption>
+              <figcaption className="mt-1 text-[11px] text-muted-foreground">
+                {t('thumbnailEditor.feedCaption')}
+              </figcaption>
             </figure>
           </div>
           <p className="mt-2 text-[11px] text-muted-foreground">
-            O Instagram usa o recorte central da imagem.
+            {t('thumbnailEditor.centerCropHint')}
           </p>
         </div>
       )}

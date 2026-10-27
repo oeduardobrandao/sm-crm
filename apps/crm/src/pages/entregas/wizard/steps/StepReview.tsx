@@ -1,5 +1,6 @@
 import { format, parseISO } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { useTranslation } from 'react-i18next';
+import { useDateFnsLocale, useIntlLocale } from '@mesaas/i18n';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { LinhaItem } from '@/store/linhaEditorial';
@@ -10,12 +11,6 @@ import { resolveDeliveryDate } from '../createWorkflow';
 import type { WizardSeed, WizardState } from '../NewWorkflowWizard';
 
 type ModoPrazo = WizardState['modoPrazo'];
-
-const MODO_LABEL: Record<ModoPrazo, string> = {
-  padrao: 'Duração por etapa',
-  data_fixa: 'Datas fixas',
-  data_entrega: 'Data de entrega do cliente',
-};
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -48,16 +43,16 @@ function porData(itens: LinhaItem[]): LinhaItem[] {
 
 /** The posts a linha editorial seed will create. Deadlines stay per etapa, so none show here. */
 function SeedPosts({ seed }: { seed: WizardSeed }) {
+  const { t } = useTranslation('workflows');
+  const dateLocale = useDateFnsLocale();
   const n = seed.itens.length;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
       <p id="wizard-seed-posts" style={{ margin: 0, fontSize: '0.8rem', fontWeight: 600 }}>
-        {`${postsLabel(n)} ${n === 1 ? 'vindo' : 'vindos'} da ${seed.origemLabel}, ${
-          n === 1 ? 'já preenchido' : 'já preenchidos'
-        }`}
+        {t('wizard.seedPosts', { count: n, posts: postsLabel(n), origem: seed.origemLabel })}
       </p>
       <ul
-        aria-label="Posts da linha editorial"
+        aria-label={t('wizard.seedPostsAria')}
         style={{
           listStyle: 'none',
           margin: 0,
@@ -100,10 +95,10 @@ function SeedPosts({ seed }: { seed: WizardSeed }) {
                     <span style={{ display: 'block', fontWeight: 600, color: 'var(--text-main)' }}>
                       {format(d, 'dd/MM')}
                     </span>
-                    {format(d, 'EEE', { locale: ptBR })}
+                    {format(d, 'EEE', { locale: dateLocale })}
                   </>
                 ) : (
-                  'Sem data'
+                  t('wizard.noDate')
                 )}
               </span>
               <span style={{ flex: 1, minWidth: 0 }}>
@@ -117,7 +112,7 @@ function SeedPosts({ seed }: { seed: WizardSeed }) {
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  {item.titulo.trim() || 'Sem título'}
+                  {item.titulo.trim() || t('wizard.untitled')}
                 </span>
                 {direcao && (
                   <span
@@ -140,7 +135,7 @@ function SeedPosts({ seed }: { seed: WizardSeed }) {
         })}
       </ul>
       <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-        Os prazos seguem as etapas do fluxo.
+        {t('wizard.seedDeadlinesHint')}
       </p>
     </div>
   );
@@ -162,13 +157,18 @@ export function StepReview({
   seed?: WizardSeed;
 }) {
   // Blank rows are dropped at creation, so the summary counts only what will actually be saved.
+  const { t } = useTranslation('workflows');
+  const intlLocale = useIntlLocale();
   const etapas = state.etapas.filter((e) => e.nome.trim());
   const aprovacoes = countApprovals(etapas);
 
-  let prazosValor = MODO_LABEL[modoPrazo];
+  let prazosValor = t(`wizard.modes.${modoPrazo}`);
   if (modoPrazo === 'data_entrega' && cliente?.dia_entrega) {
     const entrega = resolveDeliveryDate(state.mesEntrega, cliente.dia_entrega);
-    prazosValor += ` · entrega em ${entrega.toLocaleDateString('pt-BR')}`;
+    prazosValor = t('wizard.deliveryOn', {
+      mode: prazosValor,
+      date: entrega.toLocaleDateString(intlLocale),
+    });
   }
 
   // Vindo de um template, o padrão NÃO pode ser o nome do próprio template: a
@@ -179,31 +179,35 @@ export function StepReview({
   const sourceTemplateNome = state.source?.kind === 'template' ? state.source.templateNome : null;
   const defaultTemplateName =
     state.source?.kind === 'preset'
-      ? `${state.source.presetNome} — ${cliente?.nome ?? ''}`.trim()
+      ? t('wizard.presetTemplateName', {
+          preset: state.source.presetNome,
+          client: cliente?.nome ?? '',
+        }).trim()
       : sourceTemplateNome
-        ? `${sourceTemplateNome} (cópia)`
+        ? t('wizard.copySuffix', { name: sourceTemplateNome })
         : state.nome;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <h3 style={{ margin: 0 }}>Revisar e criar</h3>
+      <h3 style={{ margin: 0 }}>{t('wizard.reviewTitle')}</h3>
 
       <div>
-        <Row label="Cliente" value={cliente?.nome ?? '—'} />
-        <Row label="Nome" value={state.nome} />
+        <Row label={t('wizard.rowClient')} value={cliente?.nome ?? '—'} />
+        <Row label={t('wizard.rowName')} value={state.nome} />
         {/* The row's label already says "Etapas", so the value is just the count. */}
         <Row
-          label="Etapas"
+          label={t('wizard.rowStages')}
           value={
             aprovacoes > 0
-              ? `${etapas.length} (${aprovacoes} ${
-                  aprovacoes === 1 ? 'aprovação do cliente' : 'aprovações do cliente'
-                })`
+              ? t('wizard.stagesWithApprovals', { count: aprovacoes, total: etapas.length })
               : String(etapas.length)
           }
         />
-        <Row label="Prazos" value={prazosValor} />
-        <Row label="Recorrente" value={state.recorrente ? 'Sim' : 'Não'} />
+        <Row label={t('wizard.rowDeadlines')} value={prazosValor} />
+        <Row
+          label={t('wizard.rowRecurring')}
+          value={state.recorrente ? t('actions.yes') : t('actions.no')}
+        />
       </div>
 
       {seed && <SeedPosts seed={seed} />}
@@ -230,18 +234,18 @@ export function StepReview({
           }
         />
         <span>
-          <b>Salvar estas etapas como um modelo novo</b>
+          <b>{t('wizard.saveAsTemplate')}</b>
           <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
             {sourceTemplateNome
-              ? `Cria um modelo separado. O modelo "${sourceTemplateNome}" não é alterado: para mudar o original, use Gerenciar Templates no quadro de Fluxos.`
-              : 'A receita fica disponível no passo 1 para os próximos fluxos.'}
+              ? t('wizard.saveAsTemplateFromTemplate', { name: sourceTemplateNome })
+              : t('wizard.saveAsTemplateHint')}
           </span>
         </span>
       </label>
 
       {state.saveAsTemplate && (
         <div className="space-y-1">
-          <Label htmlFor="wizard-template-nome">Nome do modelo</Label>
+          <Label htmlFor="wizard-template-nome">{t('wizard.templateName')}</Label>
           <Input
             id="wizard-template-nome"
             value={state.templateName}
@@ -251,7 +255,7 @@ export function StepReview({
               than dropping the request without a word. */}
           {!state.templateName.trim() && (
             <p role="alert" style={{ fontSize: '0.7rem', color: 'var(--danger)', margin: 0 }}>
-              Dê um nome ao modelo: sem nome, o fluxo é criado mas o modelo não é salvo.
+              {t('wizard.templateNameRequired')}
             </p>
           )}
         </div>

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { History } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { i18n, getIntlLocale } from '@mesaas/i18n';
 import { getPostContentVersions, type PostApproval, type PostStatusEvent } from '../../../store';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ListSkeleton } from '@/components/ui/skeletons';
@@ -28,17 +30,17 @@ interface PostVersionHistorySheetProps {
 }
 
 function actorLabelFor(source: 'workspace_user' | 'client' | 'system', actorName: string | null) {
-  if (source === 'client') return 'Cliente';
-  if (source === 'system') return 'Sistema';
+  if (source === 'client') return i18n.t('postPanels:shared.actor.client');
+  if (source === 'system') return i18n.t('postPanels:shared.actor.system');
   return actorName ?? '—';
 }
 
 function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleTimeString(getIntlLocale(), { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatDateTime(iso: string) {
-  return new Date(iso).toLocaleDateString('pt-BR', {
+  return new Date(iso).toLocaleDateString(getIntlLocale(), {
     day: '2-digit',
     month: 'short',
     hour: '2-digit',
@@ -65,6 +67,7 @@ export function PostVersionHistorySheet({
   approvals,
   layout = 'default',
 }: PostVersionHistorySheetProps) {
+  const { t } = useTranslation('postPanels');
   const { data: versions = [], isLoading } = useQuery({
     queryKey: ['post-content-versions', String(postId)],
     queryFn: () => getPostContentVersions([postId]),
@@ -180,7 +183,7 @@ export function PostVersionHistorySheet({
         </div>
         {node.version.suggestion_id != null && (
           <span className="mt-1 inline-block text-[11px] text-muted-foreground">
-            via sugestão aceita
+            {t('versionHistory.viaSuggestion')}
           </span>
         )}
       </button>
@@ -200,7 +203,9 @@ export function PostVersionHistorySheet({
   const diffPanel = !selectedNode ? null : (
     <div className="space-y-4">
       {!precedingVersion && (
-        <p className="text-[12px] font-medium text-muted-foreground">Versão inicial</p>
+        <p className="text-[12px] font-medium text-muted-foreground">
+          {t('versionHistory.initialVersion')}
+        </p>
       )}
       {selectedNode.version.conteudo && resolvedCurrent && (
         <ReadOnlyTipTap
@@ -215,7 +220,7 @@ export function PostVersionHistorySheet({
       {showIgCaption && (
         <div className="border-t pt-3">
           <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">
-            Legenda do Instagram
+            {t('versionHistory.igCaption')}
           </p>
           <DiffView
             segments={computeWordDiff(
@@ -228,7 +233,9 @@ export function PostVersionHistorySheet({
       )}
       {showTiktokCaption && (
         <div className="border-t pt-3">
-          <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">Legenda do TikTok</p>
+          <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">
+            {t('versionHistory.tiktokCaption')}
+          </p>
           <DiffView
             segments={computeWordDiff(
               (precedingVersion
@@ -247,16 +254,13 @@ export function PostVersionHistorySheet({
       <BottomSheet
         open={open}
         onOpenChange={onOpenChange}
-        title="Histórico de versões"
+        title={t('versionHistory.title')}
         detents={['large']}
       >
         {isLoading ? (
           <ListSkeleton rows={5} />
         ) : versions.length === 0 ? (
-          <p className="phone-sheet-note">
-            Sem histórico registrado ainda. Versões passam a ser guardadas a partir da próxima
-            edição de conteúdo deste post.
-          </p>
+          <p className="phone-sheet-note">{t('versionHistory.empty')}</p>
         ) : (
           <div className="phone-versions">
             {nodes.map((node) => (
@@ -269,9 +273,7 @@ export function PostVersionHistorySheet({
             ))}
           </div>
         )}
-        <p className="phone-sheet-note">
-          Somente leitura. Nenhuma versão pode ser restaurada por aqui.
-        </p>
+        <p className="phone-sheet-note">{t('versionHistory.readOnly')}</p>
       </BottomSheet>
     );
   }
@@ -285,7 +287,7 @@ export function PostVersionHistorySheet({
       >
         <SheetHeader className="border-b px-5 py-4 text-left">
           <SheetTitle className="flex items-center gap-2 text-[15px]">
-            <History className="h-4 w-4" /> Histórico de versões
+            <History className="h-4 w-4" /> {t('versionHistory.title')}
           </SheetTitle>
         </SheetHeader>
 
@@ -293,8 +295,7 @@ export function PostVersionHistorySheet({
           <ListSkeleton rows={5} className="flex-1 px-5 py-6" />
         ) : versions.length === 0 ? (
           <div className="flex-1 px-5 py-6 text-[13px] text-muted-foreground">
-            Sem histórico registrado ainda. Versões passam a ser guardadas a partir da próxima
-            edição de conteúdo deste post.
+            {t('versionHistory.empty')}
           </div>
         ) : (
           <div className="flex flex-1 overflow-hidden">
@@ -307,7 +308,7 @@ export function PostVersionHistorySheet({
         )}
 
         <div className="border-t px-5 py-2.5 text-[11px] text-muted-foreground">
-          Somente leitura. Nenhuma versão pode ser restaurada por aqui.
+          {t('versionHistory.readOnly')}
         </div>
       </SheetContent>
     </Sheet>

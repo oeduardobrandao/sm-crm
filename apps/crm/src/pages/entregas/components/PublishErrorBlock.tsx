@@ -47,10 +47,10 @@ export function PublishErrorBlock({
     setLoading(true);
     try {
       await (opts ? retryInstagramPublish(post.id, opts) : retryInstagramPublish(post.id));
-      toast.success('Post reagendado. A publicação será tentada novamente.');
+      toast.success(t('publishError.rescheduled'));
       onStatusChange?.();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Erro ao tentar novamente.');
+      toast.error(e instanceof Error ? e.message : t('publishError.retryFailed'));
     } finally {
       setLoading(false);
     }
@@ -87,7 +87,7 @@ export function PublishErrorBlock({
           onClick={() => handleRetry()}
           style={{ background: '#f55a42', color: 'white' }}
         >
-          <RefreshCw className="h-3 w-3 mr-1" /> Tentar novamente
+          <RefreshCw className="h-3 w-3 mr-1" /> {t('publishError.retry')}
         </Button>
       )}
       {d.acao === 'collaborators' && (
@@ -99,7 +99,7 @@ export function PublishErrorBlock({
             onClick={() => handleRetry()}
             style={{ background: '#f55a42', color: 'white' }}
           >
-            <RefreshCw className="h-3 w-3 mr-1" /> Tentar novamente
+            <RefreshCw className="h-3 w-3 mr-1" /> {t('publishError.retry')}
           </Button>
           {onEditCollaborators && (
             <Button
@@ -108,7 +108,7 @@ export function PublishErrorBlock({
               className="text-xs font-semibold"
               onClick={onEditCollaborators}
             >
-              Editar colaboradores
+              {t('publishError.editCollaborators')}
             </Button>
           )}
           <Button
@@ -118,20 +118,20 @@ export function PublishErrorBlock({
             disabled={loading}
             onClick={() => setConfirmClearOpen(true)}
           >
-            Publicar sem colaboradores
+            {t('publishError.publishWithoutCollaborators')}
           </Button>
           <AlertDialog open={confirmClearOpen} onOpenChange={setConfirmClearOpen}>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Publicar sem colaboradores?</AlertDialogTitle>
+                <AlertDialogTitle>{t('publishError.confirmTitle')}</AlertDialogTitle>
                 <AlertDialogDescription>
-                  O post será publicado só no perfil do cliente.
+                  {t('publishError.confirmDescription')}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
                 <AlertDialogAction onClick={() => handleRetry({ clearCollaborators: true })}>
-                  Publicar sem colaboradores
+                  {t('publishError.publishWithoutCollaborators')}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -148,7 +148,7 @@ export function PublishErrorBlock({
             onClick={() => setShowDetails((v) => !v)}
           >
             {showDetails ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-            Detalhes técnicos
+            {t('publishError.technicalDetails')}
           </button>
           {showDetails && (
             <p

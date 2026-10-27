@@ -277,7 +277,8 @@ const DESTINATION_OPTIONS = (Object.keys(DESTINATION_LABELS) as Destination[]).m
   value: d,
   label: DESTINATION_LABELS[d],
 }));
-const STATUS_OPTIONS = POST_STATUS_TARGETS.map((s) => ({ value: s, label: STATUS_LABELS[s] }));
+// Built per render: STATUS_LABELS resolves in the current UI language on each read.
+const statusOptions = () => POST_STATUS_TARGETS.map((s) => ({ value: s, label: STATUS_LABELS[s] }));
 
 export function PhoneStepMapeamento({
   bundle,
@@ -412,7 +413,7 @@ export function PhoneStepMapeamento({
                     key={key}
                     label={key}
                     sheetTitle={`Status "${key}"`}
-                    options={STATUS_OPTIONS}
+                    options={statusOptions()}
                     value={mapping.statusMap[key] ?? 'rascunho'}
                     onChange={(v) => {
                       if (v)

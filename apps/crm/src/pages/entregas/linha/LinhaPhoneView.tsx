@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { useTranslation } from 'react-i18next';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import { ChevronLeft, ChevronRight, Loader2, MessageSquare, Send } from 'lucide-react';
 import { ClienteFoto } from '@/components/ClienteFoto';
 import { QueryErrorCard } from '@/components/QueryErrorCard';
@@ -11,8 +12,6 @@ import { LinhaAprovacaoChip } from './LinhaAprovacaoChip';
 import { LinhaStatusBadge } from './LinhaStatusBadge';
 import { contagemLinha } from './linhaLogic';
 import { mesTitulo, shiftMes } from './mesNav';
-
-export const NOTA_EDITAR_NO_COMPUTADOR = 'Edite a linha no computador.';
 
 interface LinhaPhoneViewProps {
   clientes: Cliente[];
@@ -37,8 +36,6 @@ interface LinhaPhoneViewProps {
   onRetry: () => void;
 }
 
-const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
-
 /**
  * Phone layout of the linha editorial (spec §6.6): the client list, then a read-only list of
  * item cards for the selected client, its status and "Enviar ao cliente". Editing and
@@ -62,6 +59,8 @@ export function LinhaPhoneView({
   onEnviar,
   onRetry,
 }: LinhaPhoneViewProps) {
+  const { t } = useTranslation('linha');
+  const dateLocale = useDateFnsLocale();
   const linhaPorCliente = useMemo(() => new Map(linhas.map((l) => [l.cliente_id, l])), [linhas]);
   // Clients with a linha first, then alphabetical inside each group (same order as the rail).
   const ordenados = useMemo(
@@ -95,7 +94,7 @@ export function LinhaPhoneView({
         <button
           type="button"
           className="linha-icon-btn"
-          aria-label="Mês anterior"
+          aria-label={t('ui.previousMonth')}
           onClick={() => onMesChange(shiftMes(mes, -1))}
         >
           <ChevronLeft className="h-4 w-4" />
@@ -104,7 +103,7 @@ export function LinhaPhoneView({
         <button
           type="button"
           className="linha-icon-btn"
-          aria-label="Próximo mês"
+          aria-label={t('ui.nextMonth')}
           onClick={() => onMesChange(shiftMes(mes, 1))}
         >
           <ChevronRight className="h-4 w-4" />
@@ -115,7 +114,7 @@ export function LinhaPhoneView({
         <QueryErrorCard onRetry={onRetry} />
       ) : (
         <>
-          <ul className="linha-phone__clientes" aria-label="Clientes">
+          <ul className="linha-phone__clientes" aria-label={t('phone.clientes')}>
             {ordenados.map((c) => {
               const l = linhaPorCliente.get(c.id!);
               const ativo = c.id === selectedId;
@@ -148,20 +147,23 @@ export function LinhaPhoneView({
 
           {!cliente ? (
             <div className="linha-empty">
-              <p className="linha-empty__title">Nenhum cliente ativo</p>
-              <p className="linha-empty__sub">Cadastre um cliente para montar a linha editorial.</p>
+              <p className="linha-empty__title">{t('shared.nenhumClienteTitulo')}</p>
+              <p className="linha-empty__sub">{t('shared.nenhumClienteSub')}</p>
             </div>
           ) : linhasLoading ? (
             <div className="linha-empty">
-              <Loader2 className="h-5 w-5 animate-spin" aria-label="Carregando" />
+              <Loader2 className="h-5 w-5 animate-spin" aria-label={t('shared.carregando')} />
             </div>
           ) : !linha ? (
             <div className="linha-empty">
-              <p className="linha-empty__title">Sem linha neste mês</p>
-              <p className="linha-empty__sub">Crie a linha de {cliente.nome} no computador.</p>
+              <p className="linha-empty__title">{t('shared.semLinhaNoMes')}</p>
+              <p className="linha-empty__sub">{t('phone.semLinhaSub', { nome: cliente.nome })}</p>
             </div>
           ) : (
-            <section className="linha-phone__linha" aria-label={`Linha de ${cliente.nome}`}>
+            <section
+              className="linha-phone__linha"
+              aria-label={t('phone.linhaDe', { nome: cliente.nome })}
+            >
               <div className="linha-phone__topo">
                 <h2 className="linha-header__title">{cliente.nome}</h2>
                 <LinhaStatusBadge status={linha.status} />
@@ -170,10 +172,10 @@ export function LinhaPhoneView({
                 <QueryErrorCard onRetry={onRetry} />
               ) : itensLoading ? (
                 <div className="linha-empty">
-                  <Loader2 className="h-5 w-5 animate-spin" aria-label="Carregando" />
+                  <Loader2 className="h-5 w-5 animate-spin" aria-label={t('shared.carregando')} />
                 </div>
               ) : itens.length === 0 ? (
-                <p className="linha-vazio">Nenhum post nesta linha.</p>
+                <p className="linha-vazio">{t('phone.vazio')}</p>
               ) : (
                 <ul className="linha-phone__cards">
                   {itens.map((item) => {
@@ -187,22 +189,26 @@ export function LinhaPhoneView({
                         <div className="linha-phone__card-topo">
                           <span className="linha-phone__data">
                             {item.data
-                              ? format(parseISO(item.data), 'd MMM', { locale: ptBR })
-                              : 'Sem data'}
+                              ? format(parseISO(item.data), t('phone.dayMonthFormat'), {
+                                  locale: dateLocale,
+                                })
+                              : t('shared.semData')}
                           </span>
                           <FormatoPill tipo={item.tipo} />
                           <LinhaAprovacaoChip item={item} rodada={linha.rodada} />
                           {n > 0 && (
                             <span
                               className="linha-bubble linha-phone__bubble"
-                              aria-label={plural(n, 'comentário', 'comentários')}
+                              aria-label={t('shared.comentarios', { count: n })}
                             >
                               <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
                               {n}
                             </span>
                           )}
                         </div>
-                        <p className="linha-phone__titulo">{item.titulo || 'Sem título'}</p>
+                        <p className="linha-phone__titulo">
+                          {item.titulo || t('shared.semTitulo')}
+                        </p>
                         {item.direcao.trim() && (
                           <p className="linha-phone__direcao">{item.direcao}</p>
                         )}
@@ -211,7 +217,7 @@ export function LinhaPhoneView({
                   })}
                 </ul>
               )}
-              <p className="linha-phone__nota">{NOTA_EDITAR_NO_COMPUTADOR}</p>
+              <p className="linha-phone__nota">{t('phone.notaComputador')}</p>
               {mostraEnviar && (
                 <button
                   type="button"
@@ -224,7 +230,7 @@ export function LinhaPhoneView({
                   ) : (
                     <Send className="h-4 w-4" />
                   )}
-                  Enviar ao cliente
+                  {t('shared.enviarAoCliente')}
                 </button>
               )}
             </section>

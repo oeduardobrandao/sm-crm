@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronUp, ChevronDown, CircleDashed, Plus, Route, Users } from 'lucide-react';
 import type { ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
@@ -55,18 +56,18 @@ interface PostsListViewProps {
   hiddenPostados?: number;
 }
 
-type Column = { key: string; label: string };
-const COLUMNS: Column[] = [
-  { key: 'titulo', label: 'Título' },
-  { key: 'cliente', label: 'Cliente' },
-  { key: 'fluxo', label: 'Fluxo' },
-  { key: 'etapa', label: 'Etapa atual' },
-  { key: 'tipo', label: 'Tipo' },
-  { key: 'status', label: 'Status' },
-  { key: 'responsavel', label: 'Responsável' },
-  { key: 'prazo_etapa', label: 'Prazo da etapa' },
-  { key: 'agendado', label: 'Agendado para' },
-];
+/** Column keys; each label lives at `postsListView.columns.<key>`. */
+const COLUMNS = [
+  'titulo',
+  'cliente',
+  'fluxo',
+  'etapa',
+  'tipo',
+  'status',
+  'responsavel',
+  'prazo_etapa',
+  'agendado',
+] as const;
 
 const oneLineCell: React.CSSProperties = {
   padding: '0.6rem 1rem',
@@ -107,6 +108,7 @@ export function PostsListView({
   membroNomeById = EMPTY_NOMES,
   hiddenPostados = 0,
 }: PostsListViewProps) {
+  const { t } = useTranslation('entregasViews');
   const [sort, setSort] = useState<{ column: string; direction: 'asc' | 'desc' }>({
     column: 'agendado',
     direction: 'asc',
@@ -196,19 +198,15 @@ export function PostsListView({
         style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}
       >
         {hiddenPostados > 0 ? (
-          <p>
-            {hiddenPostados === 1
-              ? 'Nenhum post a mostrar. 1 post postado está oculto.'
-              : `Nenhum post a mostrar. ${hiddenPostados} posts postados estão ocultos.`}
-          </p>
+          <p>{t('shared.hiddenPostados', { count: hiddenPostados })}</p>
         ) : filtersActive ? (
-          <p>Nenhum post encontrado. Ajuste os filtros.</p>
+          <p>{t('shared.noPostsFiltered')}</p>
         ) : (
           <>
-            <p>Nenhum post por aqui ainda.</p>
+            <p>{t('shared.noPostsYet')}</p>
             <Button type="button" onClick={onCreateAvulso} style={{ marginTop: '1rem' }}>
               <Plus className="h-4 w-4" />
-              Criar post avulso
+              {t('shared.createAvulso')}
             </Button>
           </>
         )}
@@ -246,7 +244,7 @@ export function PostsListView({
         onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
         onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
       >
-        <td style={oneLineCell}>{p.titulo || 'Post sem título'}</td>
+        <td style={oneLineCell}>{p.titulo || t('shared.untitledPost')}</td>
         <td style={{ padding: '0.6rem 1rem' }}>
           {p.cliente_id != null ? (
             <TooltipProvider delayDuration={200}>
@@ -272,12 +270,12 @@ export function PostsListView({
             processEtapa ? (
               <span className="post-fluxo-tag post-fluxo-tag--avulso post-fluxo-tag--individual">
                 <Route size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
-                Individual · {processEtapa}
+                {t('shared.individual')} · {processEtapa}
               </span>
             ) : (
               <span className="post-fluxo-tag post-fluxo-tag--avulso">
                 <CircleDashed size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
-                Avulso
+                {t('shared.avulso')}
               </span>
             )
           ) : card ? (
@@ -288,7 +286,7 @@ export function PostsListView({
                 e.stopPropagation();
                 onFluxoClick(workflowId);
               }}
-              title={`Abrir fluxo: ${p.workflow_titulo}`}
+              title={t('shared.openWorkflowTitle', { title: p.workflow_titulo ?? '' })}
             >
               {p.workflow_titulo}
             </button>
@@ -300,15 +298,17 @@ export function PostsListView({
         <td style={{ padding: '0.6rem 1rem' }}>
           <span className="post-tipo-badge">{TIPO_LABELS[p.tipo]}</span>
           {p.ig_trial_strategy && (
-            <span className="post-tipo-badge post-tipo-badge--trial">Teste</span>
+            <span className="post-tipo-badge post-tipo-badge--trial">{t('shared.trial')}</span>
           )}
           {collaborators.length > 0 && (
             <span
               className="post-tipo-badge post-tipo-badge--collab"
-              title={`Colaboradores: ${collaborators.map((u) => `@${u}`).join(', ')}`}
+              title={t('shared.collaboratorsTitle', {
+                list: collaborators.map((u) => `@${u}`).join(', '),
+              })}
             >
               <Users className="h-3 w-3" aria-hidden="true" />
-              Collab {collaborators.length}
+              {t('shared.collab', { n: collaborators.length })}
             </span>
           )}
         </td>
@@ -317,7 +317,7 @@ export function PostsListView({
         </td>
         <td
           style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap' }}
-          title={stage ? `Etapa: ${stage.etapaNome}` : undefined}
+          title={stage ? t('postsListView.etapaTitle', { name: stage.etapaNome }) : undefined}
         >
           {membroNome(p) || '—'}
         </td>
@@ -379,24 +379,28 @@ export function PostsListView({
       const fluxo =
         workflowId == null
           ? processEtapa
-            ? 'Individual'
-            : 'Avulso'
-          : p.workflow_titulo || 'Fluxo';
+            ? t('shared.individual')
+            : t('shared.avulso')
+          : p.workflow_titulo || t('postsListView.fluxoFallback');
       const display: PhoneRowDisplay = {
-        title: p.titulo || 'Post sem título',
+        title: p.titulo || t('shared.untitledPost'),
         subtitle: [
-          p.cliente_nome || 'Sem cliente',
+          p.cliente_nome || t('chartData.semCliente'),
           stage?.etapaNome,
-          membroNome(p) || 'Sem responsável',
+          membroNome(p) || t('chartData.semResponsavel'),
         ]
           .filter(Boolean)
           .join(' · '),
         meta: [
           fluxo,
           TIPO_LABELS[p.tipo],
-          p.ig_trial_strategy ? 'Teste' : null,
-          (p.ig_collaborators?.length ?? 0) > 0 ? `Collab ${p.ig_collaborators?.length}` : null,
-          p.scheduled_at ? `Agendado ${formatPostDate(p.scheduled_at)}` : null,
+          p.ig_trial_strategy ? t('shared.trial') : null,
+          (p.ig_collaborators?.length ?? 0) > 0
+            ? t('shared.collab', { n: p.ig_collaborators?.length })
+            : null,
+          p.scheduled_at
+            ? t('postsListView.scheduledMeta', { date: formatPostDate(p.scheduled_at) })
+            : null,
         ]
           .filter(Boolean)
           .join(' · '),
@@ -420,7 +424,7 @@ export function PostsListView({
     };
     return (
       <PhoneListSections
-        label="Posts"
+        label={t('postsListView.phoneLabel')}
         groups={groups}
         rows={sorted}
         renderRow={renderPhoneRow}
@@ -442,8 +446,8 @@ export function PostsListView({
           <tr>
             {COLUMNS.map((col) => (
               <th
-                key={col.key}
-                onClick={() => handleSort(col.key)}
+                key={col}
+                onClick={() => handleSort(col)}
                 style={{
                   padding: '0.75rem 1rem',
                   textAlign: 'left',
@@ -451,13 +455,13 @@ export function PostsListView({
                   userSelect: 'none',
                   whiteSpace: 'nowrap',
                   borderBottom: '1px solid var(--border-color)',
-                  color: sort.column === col.key ? 'var(--accent)' : 'var(--text-secondary)',
+                  color: sort.column === col ? 'var(--accent)' : 'var(--text-secondary)',
                   fontWeight: 600,
                 }}
               >
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                  {col.label}
-                  {sort.column === col.key ? (
+                  {t(`postsListView.columns.${col}`)}
+                  {sort.column === col ? (
                     sort.direction === 'asc' ? (
                       <ChevronUp className="h-3 w-3" />
                     ) : (

@@ -1,14 +1,16 @@
 import { Clock, Check, RotateCcw, Send, AlertTriangle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import type { WorkflowPost, PostApproval, PostStatusEvent, PostProcessEvent } from '../../../store';
 import { buildPostTimeline, type TimelineNode, type TimelineTone } from './postTimeline';
 
 function formatNodeDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+  return new Date(iso).toLocaleDateString(getIntlLocale(), { day: '2-digit', month: 'short' });
 }
 
 function formatNodeDateFull(iso: string): string {
-  return new Date(iso).toLocaleString('pt-BR', {
+  return new Date(iso).toLocaleString(getIntlLocale(), {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -66,6 +68,7 @@ export function PostTimelinePopover({
   approvals,
   processEvents,
 }: PostTimelinePopoverProps) {
+  const { t } = useTranslation('postEditor');
   const nodes = buildPostTimeline(post, events, approvals, processEvents);
   return (
     <Popover>
@@ -73,7 +76,7 @@ export function PostTimelinePopover({
         <button
           type="button"
           className="drawer-post-history-btn"
-          title="Histórico do post"
+          title={t('shared.postHistory')}
           onClick={(e) => e.stopPropagation()}
         >
           <Clock className="h-3.5 w-3.5" />
@@ -85,7 +88,7 @@ export function PostTimelinePopover({
         style={{ zIndex: 9999 }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="post-timeline-title">Histórico</div>
+        <div className="post-timeline-title">{t('postTimelinePopover.title')}</div>
         <PostTimelineList nodes={nodes} />
       </PopoverContent>
     </Popover>

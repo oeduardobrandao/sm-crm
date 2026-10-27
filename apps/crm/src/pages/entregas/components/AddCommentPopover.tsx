@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { MentionEditor } from '@/components/mentions/MentionEditor';
 
 export interface AddCommentPopoverProps {
@@ -20,6 +21,7 @@ export function AddCommentPopover({
   ignoreRefs = [],
   className,
 }: AddCommentPopoverProps) {
+  const { t } = useTranslation('postPanels');
   const [text, setText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -57,10 +59,10 @@ export function AddCommentPopover({
       style={{ position: 'fixed', top: position.top, left: position.left, zIndex: 9999 }}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <div className="comment-add-label">Adicionar comentário</div>
+      <div className="comment-add-label">{t('addComment.label')}</div>
       <MentionEditor
         className="comment-add-input"
-        placeholder="Escreva seu comentário..."
+        placeholder={t('addComment.placeholder')}
         value={text}
         onValueChange={setText}
         onKeyDown={(e) => {
@@ -78,7 +80,7 @@ export function AddCommentPopover({
         onClick={() => void submit()}
         disabled={!text.trim() || submitting}
       >
-        Comentar
+        {t('addComment.submit')}
       </button>
     </div>,
     document.body,

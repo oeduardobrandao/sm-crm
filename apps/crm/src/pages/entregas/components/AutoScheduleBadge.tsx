@@ -1,4 +1,5 @@
 import { CalendarClock } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export interface AutoScheduleBadgeProps {
   /** Sem onClick o badge é estático: é assim que ele aparece no clone do
@@ -8,10 +9,6 @@ export interface AutoScheduleBadgeProps {
   needsDate: boolean;
 }
 
-const TITLE_READY = 'Este cliente agenda automaticamente. Clique para agendar este post.';
-const TITLE_NEEDS_DATE =
-  'Este cliente agenda automaticamente, mas este post não tem data válida. Clique para definir a data e agendar.';
-
 /**
  * Indicador persistente da peça 3 da spec: aparece em todo post em
  * aprovado_cliente que passou os gates de shouldOfferAutoSchedule e está esperando um agendamento que
@@ -19,11 +16,14 @@ const TITLE_NEEDS_DATE =
  * (shouldOfferAutoSchedule); este componente é só a superfície.
  */
 export function AutoScheduleBadge({ onClick, needsDate }: AutoScheduleBadgeProps) {
-  const title = needsDate ? TITLE_NEEDS_DATE : TITLE_READY;
+  const { t } = useTranslation('workflows');
+  const title = needsDate
+    ? t('autoScheduleBadge.titleNeedsDate')
+    : t('autoScheduleBadge.titleReady');
   if (!onClick) {
     return (
       <span className="auto-schedule-badge" title={title} aria-label={title}>
-        <CalendarClock className="h-3 w-3" aria-hidden="true" /> Agendar
+        <CalendarClock className="h-3 w-3" aria-hidden="true" /> {t('autoScheduleBadge.schedule')}
       </span>
     );
   }
@@ -42,7 +42,7 @@ export function AutoScheduleBadge({ onClick, needsDate }: AutoScheduleBadgeProps
         onClick();
       }}
     >
-      <CalendarClock className="h-3 w-3" aria-hidden="true" /> Agendar
+      <CalendarClock className="h-3 w-3" aria-hidden="true" /> {t('autoScheduleBadge.schedule')}
     </button>
   );
 }

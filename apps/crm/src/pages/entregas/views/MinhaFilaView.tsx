@@ -1,4 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import {
   ArrowRight,
   ArrowUpDown,
@@ -78,29 +80,18 @@ const BUCKET_TONE: Record<FilaBucket, Tone> = {
   sem_prazo: 'neutral',
 };
 
-const BUCKET_SUB: Record<FilaOrdem, Record<FilaBucket, string>> = {
-  prazo: {
-    atrasado: 'o prazo já passou',
-    hoje: 'vence hoje',
-    amanha: 'vence amanhã',
-    proximos7: 'vence nos próximos 7 dias',
-    depois: 'vence depois de 7 dias',
-    sem_prazo: 'sem prazo definido',
-  },
-  publicacao: {
-    atrasado: 'o horário de publicação já passou',
-    hoje: 'publica hoje',
-    amanha: 'publica amanhã',
-    proximos7: 'publica nos próximos 7 dias',
-    depois: 'publica depois de 7 dias',
-    sem_prazo: 'sem data de publicação',
-  },
-};
+/** Copy for the fila, resolved at call time (never at module load). */
+function ft(key: string, options?: Record<string, unknown>): string {
+  return i18n.t(`entregasViews:minhaFila.${key}`, options);
+}
 
-const STAT_LABELS: Record<FilaOrdem, { atrasados: string; hoje: string }> = {
-  prazo: { atrasados: 'Atrasados', hoje: 'Vencem hoje' },
-  publicacao: { atrasados: 'Data passada', hoje: 'Publicam hoje' },
-};
+function bucketSub(ordem: FilaOrdem, bucket: FilaBucket): string {
+  return ft(`bucketSub.${ordem}.${bucket}`);
+}
+
+function statLabel(ordem: FilaOrdem, stat: 'atrasados' | 'hoje'): string {
+  return ft(`stats.${ordem}.${stat}`);
+}
 
 function prazoTone(deadline: DeadlineInfo): Tone {
   if (deadline.estourado) return 'red';
@@ -108,8 +99,8 @@ function prazoTone(deadline: DeadlineInfo): Tone {
   return 'neutral';
 }
 
-function plural(n: number, one: string, many: string): string {
-  return `${n} ${n === 1 ? one : many}`;
+function postsCount(n: number): string {
+  return ft('posts', { count: n });
 }
 
 function joinDot(...parts: (string | null | undefined)[]): string {
@@ -140,6 +131,12 @@ function margemFill(margem: FilaItem['margem']): number {
   return Math.max(8, Math.round(100 / (1 + 0.6 * margem.dias)));
 }
 
+function margemLabel(margem: FilaItem['margem']): string {
+  return margem.kind === 'sem_margem'
+    ? ft('semMargem')
+    : ft('margem', { n: margem.kind === 'dias' ? margem.dias : 0 });
+}
+
 function Margem({ margem }: { margem: FilaItem['margem'] }) {
   if (margem.kind === 'sem_prazo' || margem.kind === 'sem_data') {
     return <span className="fila-row-margem" />;
@@ -154,7 +151,7 @@ function Margem({ margem }: { margem: FilaItem['margem'] }) {
   return (
     <span className="fila-row-margem">
       <span className={`fila-pill fila-pill--${tone} fila-margem ${cls}`}>
-        {margem.kind === 'sem_margem' ? 'sem margem' : `margem ${margem.dias}d`}
+        {margemLabel(margem)}
       </span>
       <span className="fila-bar" aria-hidden="true">
         <span
@@ -167,15 +164,16 @@ function Margem({ margem }: { margem: FilaItem['margem'] }) {
 }
 
 function Publica({ post }: { post: ActivePost }) {
+  const { t } = useTranslation('entregasViews');
   return (
     <span className="fila-publica">
-      <span className="fila-publica-label">Publica</span>
+      <span className="fila-publica-label">{t('minhaFila.publicaLabel')}</span>
       {post.scheduled_at ? (
         <span className="fila-publica-date" title={formatPostDateFull(post.scheduled_at)}>
           {formatPostWeekday(post.scheduled_at)}
         </span>
       ) : (
-        <span className="fila-publica-date is-empty">sem data de publicação</span>
+        <span className="fila-publica-date is-empty">{t('minhaFila.semDataPublicacao')}</span>
       )}
     </span>
   );
@@ -192,25 +190,25 @@ function TipoIcon({ post, dim }: { post: ActivePost; dim?: boolean }) {
 
 /** "publica amanhã, 24 set" / "publica hoje, 23 set" / "publica qua, 30 set". */
 function publicaRelativa(post: ActivePost, now: Date): string {
-  if (!post.scheduled_at) return 'sem data de publicação';
+  if (!post.scheduled_at) return ft('semDataPublicacao');
   const d = new Date(post.scheduled_at);
   const diff = dayDiff(d, now);
   const dia = formatEtapaDeadlineDay(d, now);
-  if (diff === 0) return `publica hoje, ${dia}`;
-  if (diff === 1) return `publica amanhã, ${dia}`;
-  return `publica ${formatPostWeekday(post.scheduled_at, now)}`;
+  if (diff === 0) return ft('publicaHoje', { dia });
+  if (diff === 1) return ft('publicaAmanha', { dia });
+  return ft('publicaEm', { dia: formatPostWeekday(post.scheduled_at, now) });
 }
 
 /** "Design atrasado 1d" / "Design vence hoje" / "Design vence 25 set". Só para
  *  prazo de etapa: o fallback pela data de publicação já aparece como "publica". */
 function etapaStatus(item: FilaItem, now: Date): string | null {
   if (item.prazoOrigem !== 'etapa' || !item.prazoDate) return null;
-  const etapa = item.stage?.etapaNome ?? item.card?.etapa.nome ?? 'Etapa';
+  const etapa = item.stage?.etapaNome ?? item.card?.etapa.nome ?? ft('etapaFallback');
   if (item.deadline.estourado) {
-    return `${etapa} atrasado ${Math.abs(item.deadline.diasRestantes)}d`;
+    return ft('etapaAtrasada', { etapa, n: Math.abs(item.deadline.diasRestantes) });
   }
-  if (dayDiff(item.prazoDate, now) === 0) return `${etapa} vence hoje`;
-  return `${etapa} vence ${formatEtapaDeadlineDay(item.prazoDate, now)}`;
+  if (dayDiff(item.prazoDate, now) === 0) return ft('etapaVenceHoje', { etapa });
+  return ft('etapaVenceEm', { etapa, dia: formatEtapaDeadlineDay(item.prazoDate, now) });
 }
 
 /** Contexto de uma linha. Fluxo em grupo já tem cabeçalho, então a linha
@@ -222,8 +220,8 @@ function rowContext(item: FilaItem, inGroup: boolean): string {
     return joinDot(
       item.post.cliente_nome,
       tipo,
-      'Individual',
-      item.stage?.etapaNome && `etapa ${item.stage.etapaNome}`,
+      i18n.t('entregasViews:shared.individual'),
+      item.stage?.etapaNome && ft('etapaLower', { name: item.stage.etapaNome }),
     );
   }
   if (item.card) return joinDot(item.post.cliente_nome, tipo, item.card.workflow.titulo);
@@ -243,6 +241,7 @@ function PostRow({
   registry: StatusRegistry;
   onClick: () => void;
 }) {
+  const { t } = useTranslation('entregasViews');
   return (
     <button type="button" className={`fila-row${isTop ? ' is-top' : ''}`} onClick={onClick}>
       <TipoIcon post={item.post} />
@@ -250,7 +249,9 @@ function PostRow({
         <span className="fila-row-title">{item.post.titulo}</span>
         <span className="fila-row-sub">
           <span>{rowContext(item, inGroup)}</span>
-          {item.origem === 'responsavel' && <span className="fila-tag">responsável pelo post</span>}
+          {item.origem === 'responsavel' && (
+            <span className="fila-tag">{t('minhaFila.responsavelPeloPost')}</span>
+          )}
           <PostStatusChip post={item.post} registry={registry} />
         </span>
       </span>
@@ -286,7 +287,7 @@ function GroupBlock({
   if (group.kind !== 'fluxo' || !group.card) return <>{rows}</>;
   const card = group.card;
   const prazo = group.prazoDate
-    ? `${group.deadline.estourado ? 'venceu' : 'vence'} ${formatEtapaDeadlineDay(group.prazoDate)}`
+    ? groupPrazo(group.deadline.estourado, formatEtapaDeadlineDay(group.prazoDate))
     : null;
   return (
     <div className="fila-group">
@@ -299,7 +300,9 @@ function GroupBlock({
         <span className="fila-group-title">
           {joinDot(card.cliente?.nome, card.workflow.titulo)}
         </span>
-        <span className="fila-group-sub">{joinDot(`Etapa ${card.etapa.nome}`, prazo)}</span>
+        <span className="fila-group-sub">
+          {joinDot(ft('etapaUpper', { name: card.etapa.nome }), prazo)}
+        </span>
         <span className="fila-group-end">
           <PrazoChip prazoDate={group.prazoDate} deadline={group.deadline} />
         </span>
@@ -309,15 +312,22 @@ function GroupBlock({
   );
 }
 
+/** "venceu 25 set" / "vence 25 set". */
+function groupPrazo(estourado: boolean, dia: string): string {
+  return estourado ? ft('venceu', { dia }) : ft('vence', { dia });
+}
+
 /** "em Copy com Bruno" / "em Copy, sem responsável". */
 function agoraEm(item: ChegandoItem): string {
   return item.responsavelAtual
-    ? `em ${item.etapaAtual} com ${item.responsavelAtual}`
-    : `em ${item.etapaAtual}, sem responsável`;
+    ? ft('agoraEmCom', { etapa: item.etapaAtual, responsavel: item.responsavelAtual })
+    : ft('agoraEmSemResponsavel', { etapa: item.etapaAtual });
 }
 
 function chega(item: ChegandoItem): string {
-  return item.chegaDate ? `chega ~${formatEtapaDeadlineDay(item.chegaDate)}` : 'sem previsão';
+  return item.chegaDate
+    ? ft('chega', { dia: formatEtapaDeadlineDay(item.chegaDate) })
+    : ft('semPrevisao');
 }
 
 function ChegandoRow({
@@ -331,7 +341,11 @@ function ChegandoRow({
 }) {
   const sub = inGroup
     ? TIPO_LABELS[item.post.tipo]
-    : joinDot(item.post.cliente_nome, item.entity ? 'Individual' : null, agoraEm(item));
+    : joinDot(
+        item.post.cliente_nome,
+        item.entity ? i18n.t('entregasViews:shared.individual') : null,
+        agoraEm(item),
+      );
   return (
     <button type="button" className="fila-row is-chegando" onClick={onClick}>
       <TipoIcon post={item.post} dim />
@@ -374,8 +388,8 @@ function groupChegando(chegando: ChegandoItem[]): ChegandoGroup[] {
 function chegandoSub(chegando: ChegandoItem[]): string {
   const proximas = new Set(chegando.map((c) => c.proximaEtapa).filter(Boolean));
   return proximas.size === 1
-    ? `ainda não é sua vez. ${[...proximas][0]} é a próxima etapa`
-    : 'ainda não é sua vez';
+    ? ft('naoEhSuaVezProxima', { etapa: [...proximas][0] })
+    : ft('naoEhSuaVez');
 }
 
 function toggleKey<T>(prev: Set<T>, key: T): Set<T> {
@@ -406,6 +420,7 @@ function ChegandoSection({
   chegando: ChegandoItem[];
   onPostClick: (post: ActivePost) => void;
 }) {
+  const { t } = useTranslation('entregasViews');
   const groups = useMemo(() => groupChegando(chegando), [chegando]);
   const [open, setOpen] = useState<Set<string>>(() => new Set());
   const toggle = (key: string) => setOpen((prev) => toggleKey(prev, key));
@@ -414,7 +429,7 @@ function ChegandoSection({
   return (
     <section className="fila-section" data-testid="fila-chegando">
       <div className="fila-section-label">
-        <span className="fila-pill fila-pill--blue fila-pill--lg">Chegando</span>
+        <span className="fila-pill fila-pill--blue fila-pill--lg">{t('minhaFila.chegando')}</span>
         <span className="fila-section-sub">{sub}</span>
       </div>
       <div className="fila-group">
@@ -453,7 +468,7 @@ function ChegandoSection({
                 <span className="fila-group-sub">{agoraEm(first)}</span>
                 <span className="fila-group-end">
                   <span className="fila-chega">{chega(first)}</span>
-                  <span className="fila-tag">{plural(g.items.length, 'post', 'posts')}</span>
+                  <span className="fila-tag">{postsCount(g.items.length)}</span>
                 </span>
               </button>
               {isOpen &&
@@ -533,6 +548,7 @@ export function MinhaFilaView({
   onMembroChange,
   onOrdemChange,
 }: MinhaFilaViewProps) {
+  const { t } = useTranslation('entregasViews');
   const isPhone = !useIsDesktop(768);
   const [open, setOpen] = useState<Set<FilaBucket>>(() => new Set(OPEN_BY_DEFAULT));
   const toggle = (b: FilaBucket) => setOpen((prev) => toggleKey(prev, b));
@@ -569,36 +585,33 @@ export function MinhaFilaView({
 
   return (
     <div className="fila animate-up">
-      {isError && (
-        <p className="fila-note">Não foi possível carregar a fila. Recarregue a página.</p>
-      )}
+      {isError && <p className="fila-note">{t('minhaFila.loadError')}</p>}
 
       {!isError && isLoading && <FilaSkeleton />}
 
       {!isError && !isLoading && membroId == null && (
-        <p className="fila-note">
-          Seu usuário ainda não está vinculado a um membro da equipe. Peça a um administrador para
-          fazer o vínculo na página Equipe. Você ainda pode ver a fila de outra pessoa pelo seletor
-          acima.
-        </p>
+        <p className="fila-note">{t('minhaFila.semMembro')}</p>
       )}
 
       {empty && (
         <p className="fila-note">
           {isSelf
-            ? 'Nada na sua fila. Quando uma etapa ou um post for atribuído a você, ele aparece aqui.'
+            ? t('minhaFila.emptySelf')
             : membroNome
-              ? `Nada na fila de ${membroNome}.`
-              : 'Nada na fila deste membro.'}
+              ? t('minhaFila.emptyOther', { name: membroNome })
+              : t('minhaFila.emptyUnknown')}
         </p>
       )}
 
       {showBody && !empty && (
         <div className="fila-stats" data-testid="fila-summary">
-          <Stat label={STAT_LABELS[ordem].atrasados} value={fila.counts.atrasados} tone="red" />
-          <Stat label={STAT_LABELS[ordem].hoje} value={countOf('hoje')} tone="amber" />
-          <Stat label="Esta semana" value={countOf('amanha') + countOf('proximos7')} />
-          <Stat label="Chegando" value={fila.chegando.length} />
+          <Stat label={statLabel(ordem, 'atrasados')} value={fila.counts.atrasados} tone="red" />
+          <Stat label={statLabel(ordem, 'hoje')} value={countOf('hoje')} tone="amber" />
+          <Stat
+            label={t('minhaFila.stats.semana')}
+            value={countOf('amanha') + countOf('proximos7')}
+          />
+          <Stat label={t('minhaFila.chegando')} value={fila.chegando.length} />
         </div>
       )}
 
@@ -616,7 +629,7 @@ export function MinhaFilaView({
             })()}
           </span>
           <span className="fila-top-body">
-            <span className="fila-top-label">Comece por aqui</span>
+            <span className="fila-top-label">{t('minhaFila.comecePorAqui')}</span>
             <span className="fila-top-title">{top.post.titulo}</span>
             <span className="fila-top-sub">
               {joinDot(
@@ -628,7 +641,7 @@ export function MinhaFilaView({
             </span>
           </span>
           <span className="fila-top-cta">
-            Abrir post
+            {t('minhaFila.abrirPost')}
             <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </span>
         </button>
@@ -655,14 +668,14 @@ export function MinhaFilaView({
                       >
                         {label}
                       </span>
-                      <span className="fila-section-sub">{BUCKET_SUB[ordem][section.bucket]}</span>
+                      <span className="fila-section-sub">{bucketSub(ordem, section.bucket)}</span>
                       <ChevronUp className="fila-section-chevron h-4 w-4" aria-hidden="true" />
                     </>
                   ) : (
                     <>
                       <span className="fila-section-name">{label}</span>
                       <span className="fila-section-sub">
-                        {`${plural(section.count, 'post', 'posts')} · recolhido`}
+                        {`${postsCount(section.count)} · ${t('minhaFila.recolhido')}`}
                       </span>
                       <ChevronDown className="h-4 w-4 fila-section-sub" aria-hidden="true" />
                     </>
@@ -727,15 +740,15 @@ function MargemText({ margem }: { margem: FilaItem['margem'] }) {
   if (margem.kind === 'sem_prazo' || margem.kind === 'sem_data') return null;
   return (
     <span className={cn('phone-ent-v-row__end-sub', TONE_CLASS[margemTone(margem)])}>
-      {margem.kind === 'sem_margem' ? 'sem margem' : `margem ${margem.dias}d`}
+      {margemLabel(margem)}
     </span>
   );
 }
 
 function publicaCurta(post: ActivePost): string {
   return post.scheduled_at
-    ? `publica ${formatPostWeekday(post.scheduled_at)}`
-    : 'sem data de publicação';
+    ? ft('publicaEm', { dia: formatPostWeekday(post.scheduled_at) })
+    : ft('semDataPublicacao');
 }
 
 /** One phone row: tipo icon, title, context, chips, and the publish/margem column. */
@@ -800,6 +813,7 @@ function FilaPhoneItemRow({
   registry: StatusRegistry;
   onClick: () => void;
 }) {
+  const { t } = useTranslation('entregasViews');
   return (
     <FilaPhoneRow
       post={item.post}
@@ -809,7 +823,7 @@ function FilaPhoneItemRow({
       meta={
         <>
           {item.origem === 'responsavel' && (
-            <span className="phone-ent-v-tag">responsável pelo post</span>
+            <span className="phone-ent-v-tag">{t('minhaFila.responsavelPeloPost')}</span>
           )}
           <PostStatusChip post={item.post} registry={registry} />
         </>
@@ -842,18 +856,18 @@ function FilaPhoneBlock({
   const card = head.kind === 'fluxo' ? head.card : undefined;
   const prazo =
     card && head.prazoDate
-      ? `${head.deadline.estourado ? 'venceu' : 'vence'} ${formatEtapaDeadlineDay(head.prazoDate)}`
+      ? groupPrazo(head.deadline.estourado, formatEtapaDeadlineDay(head.prazoDate))
       : null;
   return (
     <GroupedList
-      aria-label={card ? joinDot(card.cliente?.nome, card.workflow.titulo) : 'Posts'}
+      aria-label={card ? joinDot(card.cliente?.nome, card.workflow.titulo) : ft('postsAria')}
       className="phone-ent-v-group"
     >
       {card && (
         <Cell
           icon={<GitFork />}
           label={joinDot(card.cliente?.nome, card.workflow.titulo)}
-          subtitle={joinDot(`Etapa ${card.etapa.nome}`, prazo)}
+          subtitle={joinDot(ft('etapaUpper', { name: card.etapa.nome }), prazo)}
           value={
             head.prazoDate ? (
               <span className={TONE_CLASS[prazoTone(head.deadline)]}>
@@ -889,6 +903,7 @@ function FilaPhoneChegando({
   chegando: ChegandoItem[];
   onPostClick: (post: ActivePost) => void;
 }) {
+  const { t } = useTranslation('entregasViews');
   const groups = useMemo(() => groupChegando(chegando), [chegando]);
   const [open, setOpen] = useState<Set<string>>(() => new Set());
   const row = (item: ChegandoItem, inGroup: boolean) => (
@@ -900,7 +915,11 @@ function FilaPhoneChegando({
       subtitle={
         inGroup
           ? TIPO_LABELS[item.post.tipo]
-          : joinDot(item.post.cliente_nome, item.entity ? 'Individual' : null, agoraEm(item))
+          : joinDot(
+              item.post.cliente_nome,
+              item.entity ? t('shared.individual') : null,
+              agoraEm(item),
+            )
       }
       end={
         <>
@@ -914,10 +933,10 @@ function FilaPhoneChegando({
   return (
     <section className="phone-ent-v-section" data-testid="fila-chegando">
       <h2 className="phone-ent-v-section-label phone-ent-v-tone--blue">
-        Chegando
+        {t('minhaFila.chegando')}
         <span className="phone-ent-v-section-sub">{chegandoSub(chegando)}</span>
       </h2>
-      <GroupedList aria-label="Chegando" className="phone-ent-v-group">
+      <GroupedList aria-label={t('minhaFila.chegando')} className="phone-ent-v-group">
         {groups.flatMap((g) => {
           // Fluxo com um post só vira linha solta, como no desktop.
           if (!g.card || g.items.length === 1) return [row(g.items[0], false)];
@@ -929,7 +948,7 @@ function FilaPhoneChegando({
               icon={isOpen ? <ChevronDown /> : <ChevronRight />}
               label={joinDot(g.card.cliente?.nome, g.card.workflow.titulo)}
               subtitle={agoraEm(first)}
-              value={`${chega(first)} · ${plural(g.items.length, 'post', 'posts')}`}
+              value={`${chega(first)} · ${postsCount(g.items.length)}`}
               aria-expanded={isOpen}
               onClick={() => setOpen((prev) => toggleKey(prev, g.key))}
             />,
@@ -952,9 +971,10 @@ function MembroPickerList({
   currentMembroId: number | null;
   onChange: (membroId: number | null) => void;
 }) {
+  const { t } = useTranslation('entregasViews');
   const { closeThen } = useSheetActions();
   return (
-    <GroupedList aria-label="Membros">
+    <GroupedList aria-label={t('minhaFila.membrosAria')}>
       {[...membros]
         .filter((m) => m.id != null)
         .sort(byNome)
@@ -964,7 +984,7 @@ function MembroPickerList({
           return (
             <Cell
               key={id}
-              label={id === currentMembroId ? `${m.nome} (você)` : m.nome}
+              label={id === currentMembroId ? t('minhaFila.voce', { name: m.nome }) : m.nome}
               accessory={
                 selected ? <Check className="phone-ent-v-check" aria-hidden="true" /> : undefined
               }
@@ -1004,6 +1024,7 @@ function FilaPhone({
     open: Set<FilaBucket>;
     onToggle: (b: FilaBucket) => void;
   }) {
+  const { t } = useTranslation('entregasViews');
   const [picker, setPicker] = useState<'membro' | 'ordem' | null>(null);
   const now = new Date();
   const isSelf = membroId != null && membroId === currentMembroId;
@@ -1014,13 +1035,17 @@ function FilaPhone({
   const countOf = (b: FilaBucket) => fila.sections.find((s) => s.bucket === b)?.count ?? 0;
   const top = fila.top;
   const membroLabel =
-    membroId == null ? 'Escolha um membro' : `${membroNome}${isSelf ? ' (você)' : ''}`;
+    membroId == null
+      ? t('minhaFila.escolhaMembro')
+      : isSelf
+        ? t('minhaFila.voce', { name: membroNome })
+        : membroNome;
 
   const stats: { label: string; value: number; tone?: Tone }[] = [
-    { label: STAT_LABELS[ordem].atrasados, value: fila.counts.atrasados, tone: 'red' },
-    { label: STAT_LABELS[ordem].hoje, value: countOf('hoje'), tone: 'amber' },
-    { label: 'Esta semana', value: countOf('amanha') + countOf('proximos7') },
-    { label: 'Chegando', value: fila.chegando.length },
+    { label: statLabel(ordem, 'atrasados'), value: fila.counts.atrasados, tone: 'red' },
+    { label: statLabel(ordem, 'hoje'), value: countOf('hoje'), tone: 'amber' },
+    { label: t('minhaFila.stats.semana'), value: countOf('amanha') + countOf('proximos7') },
+    { label: t('minhaFila.chegando'), value: fila.chegando.length },
   ];
 
   return (
@@ -1034,7 +1059,7 @@ function FilaPhone({
               aria-haspopup="dialog"
               onClick={() => setPicker('membro')}
             >
-              <span>Fila de:</span>
+              <span>{t('minhaFila.filaDeColon')}</span>
               <strong>{membroLabel}</strong>
               <ChevronDown aria-hidden="true" />
             </button>
@@ -1044,7 +1069,7 @@ function FilaPhone({
               type="button"
               className="phone-ent-v-pill"
               aria-haspopup="dialog"
-              aria-label={`Ordenar fila por: ${FILA_ORDEM_LABELS[ordem]}`}
+              aria-label={t('minhaFila.ordenarFilaPorAria', { label: FILA_ORDEM_LABELS[ordem] })}
               onClick={() => setPicker('ordem')}
             >
               <span>{FILA_ORDEM_LABELS[ordem]}</span>
@@ -1054,27 +1079,21 @@ function FilaPhone({
         </div>
       )}
 
-      {isError && (
-        <p className="phone-ent-v-note">Não foi possível carregar a fila. Recarregue a página.</p>
-      )}
+      {isError && <p className="phone-ent-v-note">{t('minhaFila.loadError')}</p>}
 
       {!isError && isLoading && <FilaSkeleton />}
 
       {!isError && !isLoading && membroId == null && (
-        <p className="phone-ent-v-note">
-          Seu usuário ainda não está vinculado a um membro da equipe. Peça a um administrador para
-          fazer o vínculo na página Equipe. Você ainda pode ver a fila de outra pessoa pelo seletor
-          acima.
-        </p>
+        <p className="phone-ent-v-note">{t('minhaFila.semMembro')}</p>
       )}
 
       {empty && (
         <p className="phone-ent-v-note">
           {isSelf
-            ? 'Nada na sua fila. Quando uma etapa ou um post for atribuído a você, ele aparece aqui.'
+            ? t('minhaFila.emptySelf')
             : membroNome
-              ? `Nada na fila de ${membroNome}.`
-              : 'Nada na fila deste membro.'}
+              ? t('minhaFila.emptyOther', { name: membroNome })
+              : t('minhaFila.emptyUnknown')}
         </p>
       )}
 
@@ -1103,7 +1122,7 @@ function FilaPhone({
           data-testid="fila-top"
           onClick={() => onPostClick(top.post)}
         >
-          <span className="phone-ent-v-hero__label">Comece por aqui</span>
+          <span className="phone-ent-v-hero__label">{t('minhaFila.comecePorAqui')}</span>
           <span className="phone-ent-v-hero__title">{top.post.titulo}</span>
           <span className="phone-ent-v-hero__sub">
             {joinDot(
@@ -1114,7 +1133,7 @@ function FilaPhone({
             )}
           </span>
           <span className="phone-ent-v-hero__cta" aria-hidden="true">
-            Abrir post
+            {t('minhaFila.abrirPost')}
           </span>
         </button>
       )}
@@ -1145,7 +1164,7 @@ function FilaPhone({
                       {`${label} · ${section.count}`}
                     </span>
                     <span className="phone-ent-v-section-sub">
-                      {isOpen ? BUCKET_SUB[ordem][section.bucket] : 'recolhido'}
+                      {isOpen ? bucketSub(ordem, section.bucket) : t('minhaFila.recolhido')}
                     </span>
                   </span>
                   {isOpen ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
@@ -1173,7 +1192,7 @@ function FilaPhone({
         <BottomSheet
           open={picker === 'membro'}
           onOpenChange={(next) => setPicker(next ? 'membro' : null)}
-          title="Fila de"
+          title={t('minhaFila.filaDe')}
           detents={['medium', 'large']}
         >
           <MembroPickerList
@@ -1189,12 +1208,12 @@ function FilaPhone({
         <ActionSheet
           open={picker === 'ordem'}
           onOpenChange={(next) => setPicker(next ? 'ordem' : null)}
-          title="Ordenar fila por"
+          title={t('minhaFila.ordenarFilaPor')}
           actions={FILA_ORDEM_OPTIONS.map((o) => ({
             label: (
               <>
                 {FILA_ORDEM_LABELS[o]}
-                {o === ordem && <span className="sr-only">, selecionado</span>}
+                {o === ordem && <span className="sr-only">{t('minhaFila.selecionadoSr')}</span>}
               </>
             ),
             icon: o === ordem ? <Check /> : undefined,

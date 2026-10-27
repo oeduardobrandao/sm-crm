@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { Node, mergeAttributes } from '@tiptap/core';
 import {
   ReactNodeViewRenderer,
@@ -22,6 +23,7 @@ export const CALLOUT_COLORS = [
 ] as const;
 
 function CalloutNodeView({ node, updateAttributes }: ReactNodeViewProps) {
+  const { t } = useTranslation('postEditor');
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [pickerPos, setPickerPos] = useState<{ top: number; left: number } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -93,14 +95,14 @@ function CalloutNodeView({ node, updateAttributes }: ReactNodeViewProps) {
                 ))}
               </div>
               <div className="callout-color-section">
-                <span className="callout-color-label">Cor</span>
+                <span className="callout-color-label">{t('callout.color')}</span>
                 <div className="callout-color-grid">
                   {CALLOUT_COLORS.map((c) => (
                     <button
                       key={c.value}
                       type="button"
                       className={`callout-color-dot callout-color-dot--${c.value}${color === c.value ? ' active' : ''}`}
-                      title={c.name}
+                      title={t(`shared.colors.${c.value}`)}
                       onClick={() => updateAttributes({ color: c.value })}
                     />
                   ))}

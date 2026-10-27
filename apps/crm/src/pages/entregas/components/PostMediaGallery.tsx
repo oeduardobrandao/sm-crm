@@ -59,7 +59,7 @@ import { oversizeOnly } from '../media-editor/oversize';
 import { IMAGE_AR_MIN, validateMedia } from '../instagramLimits';
 import { ThumbnailPickerDialog } from './ThumbnailPickerDialog';
 import { useTranslation } from 'react-i18next';
-import { getIntlLocale } from '@mesaas/i18n';
+import { getIntlLocale, i18n } from '@mesaas/i18n';
 import type { PostMedia } from '../../../store';
 import { OptimizedImage } from '../../../components/OptimizedImage';
 import { MediaUnavailable } from '../../../components/MediaUnavailable';
@@ -291,7 +291,7 @@ export function PostMediaGallery({
     try {
       await setMediaNoteStatus(ids, status);
     } catch {
-      toast.error('Não foi possível atualizar a nota. Tente novamente.');
+      toast.error(t('mediaGallery.noteUpdateFailed'));
       return false;
     }
     try {
@@ -558,7 +558,12 @@ export function PostMediaGallery({
               const blob = await res.blob();
               return { filename: m.original_filename, blob };
             } catch (err) {
-              throw new Error(`Falha ao baixar ${m.original_filename}: ${(err as Error).message}`);
+              throw new Error(
+                t('mediaGallery.downloadFileFailed', {
+                  name: m.original_filename,
+                  error: (err as Error).message,
+                }),
+              );
             }
           }),
       );
@@ -653,7 +658,7 @@ export function PostMediaGallery({
     try {
       await Promise.all(fileIds.map((fileId, i) => linkFileToPost(fileId, postId, base + i)));
       refresh();
-      toast.success(`${fileIds.length} arquivo(s) vinculado(s)`);
+      toast.success(t('mediaGallery.filesLinked', { n: fileIds.length }));
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -754,9 +759,7 @@ export function PostMediaGallery({
         <div className="space-y-3 rounded-xl bg-amber-50 px-3 py-3 text-amber-950 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:text-amber-100">
           <p className="flex items-center gap-2 text-sm font-semibold">
             <AlertTriangle size={16} />
-            {invalidMedia.length === 1
-              ? '1 arquivo precisa de ajuste'
-              : `${invalidMedia.length} arquivos precisam de ajuste`}
+            {t('mediaGallery.filesNeedAdjustment', { count: invalidMedia.length })}
           </p>
           {invalidMedia.map((m) => {
             const oversize = oversizeOnly(m, validationOpts);
@@ -792,12 +795,12 @@ export function PostMediaGallery({
                 {canAdjust && !oversize.eligible && (
                   <button
                     type="button"
-                    aria-label={`Ajustar proporção de ${m.original_filename}`}
+                    aria-label={t('mediaGallery.adjustRatioOf', { name: m.original_filename })}
                     onClick={() => startAdjust(m)}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-[#12151a] px-3 py-2 text-xs font-semibold text-white hover:bg-black"
                   >
                     <Crop size={14} />
-                    Ajustar proporção
+                    {t('mediaGallery.adjustRatio')}
                   </button>
                 )}
               </div>
@@ -807,9 +810,7 @@ export function PostMediaGallery({
       )}
       {canAdjust && portraitSuggestions.length > 0 && (
         <div className="rounded-xl border p-3 text-xs text-muted-foreground">
-          <p className="mb-2">
-            O formato 9:16 é recomendado. Suas mídias podem ser publicadas na proporção atual.
-          </p>
+          <p className="mb-2">{t('mediaGallery.portraitRecommended')}</p>
           {portraitSuggestions.map((m) => (
             <button
               key={m.id}
@@ -817,7 +818,7 @@ export function PostMediaGallery({
               onClick={() => startAdjust(m)}
               className="mr-2 mt-1 rounded-lg border px-2 py-1 text-foreground hover:bg-muted"
             >
-              Ajustar {m.original_filename} para 9:16
+              {t('mediaGallery.adjustToPortrait', { name: m.original_filename })}
             </button>
           ))}
         </div>
@@ -868,13 +869,13 @@ export function PostMediaGallery({
             if (!effectiveDisabled) {
               if (i > 0)
                 edit.push({
-                  label: 'Definir como capa',
+                  label: t('mediaGallery.setAsCover'),
                   onSelect: () => void moveToFront(m.id),
                   icon: <Star />,
                 });
               if (m.kind === 'video' && !m.media_lost_at)
                 edit.push({
-                  label: 'Escolher miniatura',
+                  label: t('mediaGallery.chooseThumbnailAction'),
                   onSelect: () => setEditingMedia(m),
                   icon: <ImageIcon />,
                 });
@@ -891,7 +892,7 @@ export function PostMediaGallery({
                 });
               if (canAdjust && !m.media_lost_at)
                 edit.push({
-                  label: 'Ajustar proporção',
+                  label: t('mediaGallery.adjustRatio'),
                   onSelect: () => startAdjust(m),
                   icon: <Crop />,
                 });
@@ -904,7 +905,7 @@ export function PostMediaGallery({
                 });
               if (media.length > 1)
                 edit.push({
-                  label: 'Reordenar',
+                  label: t('mediaGallery.reorder'),
                   onSelect: () => setReorderMode(true),
                   icon: <Move />,
                 });
@@ -913,12 +914,16 @@ export function PostMediaGallery({
             if (edit.length) sections.push(edit);
             if (m.url && !m.media_lost_at)
               sections.push([
-                { label: 'Baixar', onSelect: () => void downloadSingle(m), icon: <Download /> },
+                {
+                  label: t('mediaGallery.download'),
+                  onSelect: () => void downloadSingle(m),
+                  icon: <Download />,
+                },
               ]);
             if (!effectiveDisabled)
               sections.push([
                 {
-                  label: 'Remover',
+                  label: t('mediaGallery.remove'),
                   destructive: true,
                   onSelect: () => void handleDelete(m.id),
                   icon: <Trash2 />,
@@ -1216,13 +1221,16 @@ function PhoneMediaStrip({
   openNoteCounts,
   actionsFor,
 }: PhoneMediaStripProps) {
+  const { t } = useTranslation('posts');
   const canReorder = reorderMode && !disabled && media.length > 1;
   return (
-    <section className="phone-media" aria-label="Mídia">
+    <section className="phone-media" aria-label={t('labels.media')}>
       <div className="phone-media__head">
-        <span className="phone-media__title">Mídia</span>
+        <span className="phone-media__title">{t('labels.media')}</span>
         <span className="phone-media__count">
-          {max != null ? `${media.length} de ${max}` : `${media.length}`}
+          {max != null
+            ? t('mediaGallery.countOfMax', { count: media.length, max })
+            : `${media.length}`}
         </span>
         <span className="phone-media__actions">
           {reorderMode ? (
@@ -1231,7 +1239,7 @@ function PhoneMediaStrip({
               className="phone-media__link"
               onClick={() => onReorderModeChange(false)}
             >
-              Concluir
+              {t('mediaGallery.done')}
             </button>
           ) : (
             media.length > 0 && (
@@ -1249,7 +1257,7 @@ function PhoneMediaStrip({
       </div>
       {reorderMode && (
         <p className="phone-media__hint" role="status">
-          Segure e arraste para mudar a ordem. O primeiro item é a capa.
+          {t('mediaGallery.reorderHint')}
         </p>
       )}
       <DndContext
@@ -1265,7 +1273,7 @@ function PhoneMediaStrip({
               ) : (
                 <ContextMenu
                   key={m.id}
-                  label={`Ações de ${m.original_filename}`}
+                  label={t('mediaGallery.actionsOf', { name: m.original_filename })}
                   sections={actionsFor(m, i)}
                   className="phone-media__hold"
                   preview={<PhoneTileVisual media={m} large />}
@@ -1273,17 +1281,23 @@ function PhoneMediaStrip({
                   <button
                     type="button"
                     className="phone-media__tile"
-                    aria-label={`${m.original_filename}${i === 0 ? ' (capa)' : ''}${openNoteLabel(openNoteCounts.get(m.id) ?? 0)}. Toque para ver, segure para mais ações`}
+                    aria-label={t('mediaGallery.phoneTileLabel', {
+                      name: m.original_filename,
+                      cover: i === 0 ? t('mediaGallery.coverSuffix') : '',
+                      notes: openNoteLabel(openNoteCounts.get(m.id) ?? 0),
+                    })}
                     onClick={() => onOpen(i)}
                   >
                     <PhoneTileVisual media={m} />
-                    {i === 0 && <span className="phone-media__badge">Capa</span>}
+                    {i === 0 && (
+                      <span className="phone-media__badge">{t('mediaGallery.cover')}</span>
+                    )}
                     <OpenNotesCount
                       count={openNoteCounts.get(m.id) ?? 0}
                       className="phone-media__notes"
                     />
                     {(invalidMedia.includes(m) || m.id === reelCoverImageId) && (
-                      <span className="phone-media__warn" title="Mídia precisa de ajuste">
+                      <span className="phone-media__warn" title={t('mediaGallery.needsAdjustment')}>
                         <AlertTriangle size={12} aria-hidden="true" />
                       </span>
                     )}
@@ -1323,6 +1337,7 @@ function PhoneMediaStrip({
 }
 
 function PhoneTileVisual({ media: m, large = false }: { media: PostMedia; large?: boolean }) {
+  const { t } = useTranslation('posts');
   if (m.media_lost_at) return <MediaUnavailable size="full" />;
   const src = m.kind === 'image' ? m.url : (m.thumbnail_url ?? null);
   return (
@@ -1334,12 +1349,13 @@ function PhoneTileVisual({ media: m, large = false }: { media: PostMedia; large?
       ) : (
         <ImageIcon aria-hidden="true" />
       )}
-      {m.kind === 'video' && <span className="phone-media__video">Vídeo</span>}
+      {m.kind === 'video' && <span className="phone-media__video">{t('shared.video')}</span>}
     </span>
   );
 }
 
 function PhoneSortableTile({ media: m, index }: { media: PostMedia; index: number }) {
+  const { t } = useTranslation('posts');
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: m.id,
   });
@@ -1354,10 +1370,10 @@ function PhoneSortableTile({ media: m, index }: { media: PostMedia; index: numbe
       {...attributes}
       {...listeners}
       className="phone-media__tile phone-media__tile--sortable"
-      aria-label={`${m.original_filename}, posição ${index + 1}`}
+      aria-label={t('mediaGallery.positionLabel', { name: m.original_filename, n: index + 1 })}
     >
       <PhoneTileVisual media={m} />
-      {index === 0 && <span className="phone-media__badge">Capa</span>}
+      {index === 0 && <span className="phone-media__badge">{t('mediaGallery.cover')}</span>}
     </div>
   );
 }
@@ -1389,6 +1405,7 @@ function SortableMediaTile({
   downscaleLabel,
   needsAdjustment,
 }: SortableMediaTileProps) {
+  const { t } = useTranslation('posts');
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: m.id,
     disabled,
@@ -1439,7 +1456,7 @@ function SortableMediaTile({
         {needsAdjustment && (
           <span
             className="absolute bottom-1.5 left-1.5 rounded-md bg-amber-100 p-1 text-amber-800"
-            title="Mídia precisa de ajuste"
+            title={t('mediaGallery.needsAdjustment')}
           >
             <AlertTriangle size={14} />
           </span>
@@ -1465,8 +1482,8 @@ function SortableMediaTile({
               <button
                 type="button"
                 onClick={onAdjust}
-                title="Ajustar proporção"
-                aria-label="Ajustar proporção"
+                title={t('mediaGallery.adjustRatio')}
+                aria-label={t('mediaGallery.adjustRatio')}
                 className="flex h-6 w-6 items-center justify-center rounded-full bg-[#12151a] text-white hover:bg-black"
               >
                 <Crop className="h-3 w-3" />
@@ -1476,7 +1493,7 @@ function SortableMediaTile({
               <button
                 type="button"
                 onClick={onEditThumbnail}
-                title="Miniatura do vídeo"
+                title={t('mediaGallery.videoThumbnail')}
                 className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-stone-900"
               >
                 <ImageIcon className="h-3 w-3" />
@@ -1485,7 +1502,7 @@ function SortableMediaTile({
             <button
               type="button"
               onClick={onDelete}
-              title="Remover"
+              title={t('mediaGallery.remove')}
               className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-rose-600"
             >
               <Trash2 className="h-3 w-3" />
@@ -1522,7 +1539,7 @@ function OpenNotesCount({ count, className }: { count: number; className: string
     <span className={className}>
       <MessageSquare className="h-2.5 w-2.5" aria-hidden="true" />
       <span aria-hidden="true">{count}</span>
-      <span className="sr-only">{`${count} ${count === 1 ? 'comentário' : 'comentários'} em aberto`}</span>
+      <span className="sr-only">{i18n.t('posts:mediaGallery.openComments', { count })}</span>
     </span>
   );
 }
@@ -1530,7 +1547,7 @@ function OpenNotesCount({ count, className }: { count: number; className: string
 /** ", 2 comentários em aberto" for a tile button's accessible name; empty for none. */
 function openNoteLabel(count: number): string {
   if (count <= 0) return '';
-  return `, ${count} ${count === 1 ? 'comentário' : 'comentários'} em aberto`;
+  return i18n.t('posts:mediaGallery.openCommentsSuffix', { count });
 }
 
 // Exported helper so WorkflowDrawer can gate the "send to client" button.

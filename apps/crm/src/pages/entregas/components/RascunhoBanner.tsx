@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,21 +27,20 @@ export function RascunhoBanner({
   onReset,
   onDismiss,
 }: RascunhoBannerProps) {
+  const { t } = useTranslation('workflows');
   const [confirming, setConfirming] = useState(false);
   const isPost = entityKind === 'post';
   const headline = isPost
-    ? 'Este post continua aprovado.'
-    : count === 1
-      ? '1 post continua aprovado.'
-      : `${count} posts continuam aprovados.`;
-  const detail = isPost
-    ? 'A próxima etapa de aprovação vai precisar dele em rascunho para enviar ao cliente de novo.'
-    : 'A próxima etapa de aprovação vai precisar deles em rascunho para enviar ao cliente de novo.';
+    ? t('rascunhoBanner.headlinePost')
+    : t('rascunhoBanner.headline', { count });
+  const detail = isPost ? t('rascunhoBanner.detailPost') : t('rascunhoBanner.detailFlow');
   const confirmTitle = isPost
-    ? 'Voltar o post para rascunho?'
-    : `Voltar ${count} ${count === 1 ? 'post' : 'posts'} para rascunho?`;
+    ? t('rascunhoBanner.confirmTitlePost')
+    : t('rascunhoBanner.confirmTitle', { count });
   const singular = isPost || count === 1;
-  const confirmBody = `${singular ? 'Ele sai de Aprovado e volta' : 'Eles saem de Aprovado e voltam'} para Rascunho. O histórico de aprovações é mantido.`;
+  const confirmBody = singular
+    ? t('rascunhoBanner.confirmBodySingular')
+    : t('rascunhoBanner.confirmBodyPlural');
 
   return (
     <>
@@ -55,12 +55,12 @@ export function RascunhoBanner({
           disabled={busy}
           onClick={() => setConfirming(true)}
         >
-          {isPost ? 'Voltar para rascunho' : 'Voltar todos para rascunho'}
+          {isPost ? t('rascunhoBanner.backToDraft') : t('rascunhoBanner.allBackToDraft')}
         </button>
         <button
           type="button"
           className="rascunho-banner__close"
-          aria-label="Dispensar aviso"
+          aria-label={t('rascunhoBanner.dismiss')}
           disabled={busy}
           onClick={onDismiss}
         >
@@ -74,14 +74,14 @@ export function RascunhoBanner({
             <AlertDialogDescription>{confirmBody}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 setConfirming(false);
                 onReset();
               }}
             >
-              Voltar para rascunho
+              {t('rascunhoBanner.backToDraft')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

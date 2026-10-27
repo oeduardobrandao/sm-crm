@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Check, RotateCcw, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import type { CommentThreadWithComments, PostComment, Membro } from '@/store';
 // By path, not through the store barrel: the drawer test harnesses mock '@/store'.
 import { DISCUSSAO_MAX_CHARS } from '@/store/comments';
@@ -30,7 +32,7 @@ interface PostCommentPopoverProps {
 }
 
 function formatCommentDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('pt-BR', {
+  return new Date(dateStr).toLocaleDateString(getIntlLocale(), {
     day: '2-digit',
     month: 'short',
     hour: '2-digit',
@@ -54,7 +56,8 @@ function AuthorAvatar({
 }: {
   membro: { nome: string; avatar_url: string | null } | undefined;
 }) {
-  const name = membro?.nome ?? 'Membro';
+  const { t } = useTranslation('postPanels');
+  const name = membro?.nome ?? t('discussao.memberFallback');
   return (
     <PessoaAvatar
       nome={name}
@@ -82,6 +85,7 @@ function CommentItem({
   onEdit: (commentId: number, content: string) => Promise<void>;
   onDelete: (commentId: number) => void;
 }) {
+  const { t } = useTranslation('postPanels');
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState(comment.content);
   const [saving, setSaving] = useState(false);
@@ -127,7 +131,9 @@ function CommentItem({
       <div className="comment-item-header">
         <AuthorAvatar membro={membro} />
         <div className="comment-item-header-text">
-          <span className="comment-item-author">{membro?.nome ?? 'Membro'}</span>
+          <span className="comment-item-author">
+            {membro?.nome ?? t('discussao.memberFallback')}
+          </span>
           <span className="comment-item-date">{formatCommentDate(comment.created_at)}</span>
         </div>
         {!readOnly && !editing && (isAuthor || canDelete) && (
@@ -135,7 +141,7 @@ function CommentItem({
             {isAuthor && (
               <button
                 className="comment-item-action"
-                title="Editar"
+                title={t('discussao.edit')}
                 onClick={() => {
                   setEditContent(comment.content);
                   setEditing(true);
@@ -147,7 +153,7 @@ function CommentItem({
             {canDelete && (
               <button
                 className="comment-item-action comment-item-action--danger"
-                title="Excluir"
+                title={t('discussao.delete')}
                 onClick={() => onDelete(comment.id)}
               >
                 <Trash2 size={12} />
@@ -172,10 +178,10 @@ function CommentItem({
               onClick={handleSaveEdit}
               disabled={saving || !editContent.trim()}
             >
-              Salvar
+              {t('actions.save')}
             </button>
             <button className="comment-edit-cancel" onClick={handleCancelEdit} disabled={saving}>
-              Cancelar
+              {t('actions.cancel')}
             </button>
           </div>
         </>
@@ -184,7 +190,9 @@ function CommentItem({
           <p className="comment-item-content">
             <MentionText text={comment.content} />
           </p>
-          {comment.updated_at && <span className="comment-item-edited">(editado)</span>}
+          {comment.updated_at && (
+            <span className="comment-item-edited">{t('discussao.edited')}</span>
+          )}
         </div>
       )}
     </div>
@@ -204,6 +212,7 @@ export default function PostCommentPopover({
   onClose,
   readOnly,
 }: PostCommentPopoverProps) {
+  const { t } = useTranslation('postPanels');
   const [replyContent, setReplyContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -237,11 +246,11 @@ export default function PostCommentPopover({
     } catch {
       // The reply goes through `post_discussao_enviar`, which can reject (thread resolved
       // meanwhile, post gone, network). The typed text stays for a retry.
-      toast.error('Não foi possível enviar. Tente novamente.');
+      toast.error(t('commentPopover.sendError'));
     } finally {
       setSubmitting(false);
     }
-  }, [replyTrimmed, replyTooLong, submitting, onReply, thread.id]);
+  }, [replyTrimmed, replyTooLong, submitting, onReply, thread.id, t]);
 
   const handleReplyKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -269,7 +278,7 @@ export default function PostCommentPopover({
   };
 
   const handleDelete = (commentId: number) => {
-    if (window.confirm('Excluir este comentário?')) {
+    if (window.confirm(t('commentPopover.deleteConfirm'))) {
       onDeleteComment(commentId, thread.id);
     }
   };
@@ -282,7 +291,7 @@ export default function PostCommentPopover({
           {!readOnly && thread.status === 'active' && (
             <button
               className="comment-popover-action-btn"
-              title="Resolver"
+              title={t('commentPopover.resolve')}
               onClick={handleResolve}
               disabled={submitting}
             >
@@ -292,14 +301,14 @@ export default function PostCommentPopover({
           {!readOnly && thread.status === 'resolved' && (
             <button
               className="comment-popover-action-btn"
-              title="Reabrir"
+              title={t('commentPopover.reopen')}
               onClick={handleReopen}
               disabled={submitting}
             >
               <RotateCcw size={14} />
             </button>
           )}
-          <button className="comment-popover-action-btn" title="Fechar" onClick={onClose}>
+          <button className="comment-popover-action-btn" title={t('ui.close')} onClick={onClose}>
             <X size={14} />
           </button>
         </div>
@@ -325,7 +334,7 @@ export default function PostCommentPopover({
           <MentionEditor
             className="comment-reply-input"
             rootClassName="comment-reply-field"
-            placeholder="Responder..."
+            placeholder={t('commentPopover.replyPlaceholder')}
             value={replyContent}
             onValueChange={setReplyContent}
             onKeyDown={handleReplyKeyDown}
@@ -336,13 +345,13 @@ export default function PostCommentPopover({
             onClick={handleReply}
             disabled={submitting || !replyTrimmed || replyTooLong}
           >
-            Enviar
+            {t('discussao.send')}
           </button>
         </div>
       )}
       {!readOnly && thread.status === 'active' && replyTooLong && (
         <p className="discussao-limit comment-popover-limit" role="alert">
-          Mensagem muito longa. O limite é de {DISCUSSAO_MAX_CHARS} caracteres.
+          {t('discussao.tooLong', { max: DISCUSSAO_MAX_CHARS })}
         </p>
       )}
     </div>

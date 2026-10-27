@@ -16,6 +16,8 @@ import {
   Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import { BottomSheet } from '@/components/mobile';
 import { usePhoneTextScreenOpen } from './PhoneTextScreen';
 
@@ -23,6 +25,27 @@ export interface ColorChoice {
   name: string;
   color: string | null;
   cssColor?: string;
+}
+
+// `name` is the Portuguese id of a palette entry (TEXT_COLORS / HIGHLIGHT_COLORS in
+// PostEditor). The label is resolved here, at call time, so the palettes stay constants.
+const COLOR_NAME_KEYS: Record<string, string> = {
+  Padrão: 'default',
+  Nenhum: 'none',
+  Cinza: 'gray',
+  Marrom: 'brown',
+  Laranja: 'orange',
+  Amarelo: 'yellow',
+  Verde: 'green',
+  Azul: 'blue',
+  Roxo: 'purple',
+  Rosa: 'pink',
+};
+
+/** Display label of a palette entry in the current language; unknown names pass through. */
+export function colorChoiceLabel(name: string): string {
+  const key = COLOR_NAME_KEYS[name];
+  return key ? i18n.t(`postEditor:shared.colors.${key}`) : name;
 }
 
 interface PhoneFormatBarProps {
@@ -96,6 +119,7 @@ export function PhoneFormatBar({
   linkRow,
   extraButtons,
 }: PhoneFormatBarProps) {
+  const { t } = useTranslation('postEditor');
   const screenOpen = usePhoneTextScreenOpen();
   const [, rerender] = useReducer((n: number) => n + 1, 0);
   const [colorsOpen, setColorsOpen] = useState(false);
@@ -141,8 +165,8 @@ export function PhoneFormatBar({
     const { from, to } = editor.state.selection;
     const text = editor.state.doc.textBetween(from, to, '\n');
     navigator.clipboard?.writeText(text).then(
-      () => toast.success('Texto copiado.'),
-      () => toast.error('Não foi possível copiar o texto.'),
+      () => toast.success(t('phoneFormatBar.textCopied')),
+      () => toast.error(t('phoneFormatBar.textCopyError')),
     );
   };
 
@@ -155,56 +179,56 @@ export function PhoneFormatBar({
         <div
           className="phone-selection-menu"
           role="toolbar"
-          aria-label="Seleção"
+          aria-label={t('phoneFormatBar.selection')}
           style={{ top: menu.top, left: menu.left }}
           onMouseDown={(e) => e.preventDefault()}
         >
           <button type="button" onClick={copySelection}>
-            <Copy aria-hidden="true" /> Copiar
+            <Copy aria-hidden="true" /> {t('phoneFormatBar.copy')}
           </button>
           {onComment && (
             <button type="button" onClick={onComment}>
-              <MessageSquare aria-hidden="true" /> Comentar
+              <MessageSquare aria-hidden="true" /> {t('shared.format.comment')}
             </button>
           )}
           <button type="button" onClick={onLink}>
-            <LinkIcon aria-hidden="true" /> Link
+            <LinkIcon aria-hidden="true" /> {t('phoneFormatBar.link')}
           </button>
         </div>
       )}
-      <div className="phone-format-bar" role="toolbar" aria-label="Formatação">
+      <div className="phone-format-bar" role="toolbar" aria-label={t('phoneFormatBar.formatting')}>
         {linkRow ?? (
           <>
             <PhoneFormatBarButton
-              label="Negrito"
+              label={t('shared.format.bold')}
               active={editor.isActive('bold')}
               onPress={() => editor.chain().focus().toggleBold().run()}
             >
               <Bold aria-hidden="true" />
             </PhoneFormatBarButton>
             <PhoneFormatBarButton
-              label="Itálico"
+              label={t('shared.format.italic')}
               active={editor.isActive('italic')}
               onPress={() => editor.chain().focus().toggleItalic().run()}
             >
               <Italic aria-hidden="true" />
             </PhoneFormatBarButton>
             <PhoneFormatBarButton
-              label="Sublinhado"
+              label={t('shared.format.underline')}
               active={editor.isActive('underline')}
               onPress={() => editor.chain().focus().toggleUnderline().run()}
             >
               <UnderlineIcon aria-hidden="true" />
             </PhoneFormatBarButton>
             <PhoneFormatBarButton
-              label="Lista"
+              label={t('shared.format.bulletList')}
               active={editor.isActive('bulletList')}
               onPress={() => editor.chain().focus().toggleBulletList().run()}
             >
               <List aria-hidden="true" />
             </PhoneFormatBarButton>
             <PhoneFormatBarButton
-              label="Lista numerada"
+              label={t('shared.format.orderedList')}
               active={editor.isActive('orderedList')}
               onPress={() => editor.chain().focus().toggleOrderedList().run()}
             >
@@ -212,21 +236,21 @@ export function PhoneFormatBar({
             </PhoneFormatBarButton>
             {extraButtons}
             <PhoneFormatBarButton
-              label="Inserir link"
+              label={t('shared.format.insertLink')}
               active={editor.isActive('link')}
               onPress={onLink}
             >
               <LinkIcon aria-hidden="true" />
             </PhoneFormatBarButton>
             <PhoneFormatBarButton
-              label="Cores"
+              label={t('phoneFormatBar.colors')}
               active={!!currentTextColor || !!currentHighlight}
               onPress={() => setColorsOpen(true)}
             >
               <Palette aria-hidden="true" />
             </PhoneFormatBarButton>
             <PhoneFormatBarButton
-              label="Callout"
+              label={t('shared.format.callout')}
               active={editor.isActive('callout')}
               onPress={() => editor.chain().focus().insertCallout().run()}
             >
@@ -234,7 +258,7 @@ export function PhoneFormatBar({
             </PhoneFormatBarButton>
             {onPickImage && (
               <PhoneFormatBarButton
-                label="Inserir imagem"
+                label={t('shared.format.insertImage')}
                 disabled={imageUploading}
                 onPress={onPickImage}
               >
@@ -247,7 +271,7 @@ export function PhoneFormatBar({
             )}
             {onComment && (
               <PhoneFormatBarButton
-                label="Comentar"
+                label={t('shared.format.comment')}
                 disabled={editor.state.selection.empty}
                 onPress={onComment}
               >
@@ -261,11 +285,11 @@ export function PhoneFormatBar({
       <BottomSheet
         open={colorsOpen}
         onOpenChange={setColorsOpen}
-        title="Cores"
+        title={t('phoneFormatBar.colors')}
         detents={['medium']}
       >
         <ColorGrid
-          label="Cor do texto"
+          label={t('shared.format.textColor')}
           choices={textColors}
           current={currentTextColor}
           onPick={(c) => {
@@ -274,7 +298,7 @@ export function PhoneFormatBar({
           }}
         />
         <ColorGrid
-          label="Cor de fundo"
+          label={t('shared.format.backgroundColor')}
           choices={highlightColors}
           current={currentHighlight}
           onPick={(c) => {
@@ -309,7 +333,7 @@ function ColorGrid({
               key={c.name}
               type="button"
               className="phone-color-grid__swatch"
-              aria-label={c.name}
+              aria-label={colorChoiceLabel(c.name)}
               aria-pressed={selected}
               style={c.color ? { background: c.cssColor ?? c.color } : undefined}
               onClick={() => onPick(c.color)}

@@ -1,21 +1,19 @@
+import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import type { LinhaStatus } from '@/store/linhaEditorial';
 
-const STATUS: Record<
-  LinhaStatus,
-  { label: string; variant: 'neutral' | 'info' | 'warning' | 'success' }
-> = {
-  rascunho: { label: 'Rascunho', variant: 'neutral' },
-  enviada: { label: 'Enviada ao cliente', variant: 'info' },
-  ajustes: { label: 'Ajustes pedidos', variant: 'warning' },
-  aprovada: { label: 'Aprovada', variant: 'success' },
+const VARIANT: Record<LinhaStatus, 'neutral' | 'info' | 'warning' | 'success'> = {
+  rascunho: 'neutral',
+  enviada: 'info',
+  ajustes: 'warning',
+  aprovada: 'success',
 };
 
 export function LinhaStatusBadge({ status }: { status: LinhaStatus }) {
-  const { label, variant } = STATUS[status];
+  const { t } = useTranslation('linha');
   return (
-    <Badge variant={variant} size="sm">
-      {label}
+    <Badge variant={VARIANT[status]} size="sm">
+      {t(`status.${status}`)}
     </Badge>
   );
 }

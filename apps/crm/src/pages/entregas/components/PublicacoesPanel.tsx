@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { ExternalLink, ChevronRight } from 'lucide-react';
 import type { ScheduledPost, WorkflowPost, IgAccountStatus } from '@/store';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -59,19 +60,22 @@ export function PublicacoesPanel({
   onPostClick,
   onStatusChange,
 }: PublicacoesPanelProps) {
+  const { t } = useTranslation('entregas');
   const statusRegistry = useStatusRegistry();
   return (
     <div className="scheduled-panel">
       <div className="scheduled-header">
-        <h3>Publicações</h3>
-        <p>{selectedLabel ?? 'Selecione um dia.'}</p>
+        <h3>{t('publicacoesPanel.title')}</h3>
+        <p>{selectedLabel ?? t('publicacoesPanel.selectDay')}</p>
       </div>
       <div className="scheduled-list">
         {isLoading ? (
           <PublicacoesSkeleton />
         ) : posts.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--text-muted)' }}>
-            <p>{selectedLabel ? 'Nenhuma publicação neste dia.' : 'Selecione um dia.'}</p>
+            <p>
+              {selectedLabel ? t('publicacoesPanel.emptyDay') : t('publicacoesPanel.selectDay')}
+            </p>
           </div>
         ) : (
           posts.map((p) => {
@@ -97,7 +101,7 @@ export function PublicacoesPanel({
                   <PostStatusChip post={p} registry={statusRegistry} />
                 </div>
                 <div className="item-title">{p.cliente_nome || '—'}</div>
-                <div className="item-subtitle">{p.titulo || 'Post sem título'}</div>
+                <div className="item-subtitle">{p.titulo || t('calendarGrid.untitled')}</div>
                 <div className="item-divider" />
                 <div className="item-meta">{formatPostDate(p.scheduled_at)}</div>
 
@@ -113,7 +117,7 @@ export function PublicacoesPanel({
                     // tiktok/both post can never be "ready" here — schedule/publish-now
                     // stay gated until the user opens the post in the full drawer.
                     tiktokSettingsComplete={false}
-                    tiktokIncompleteTooltip="Abra o post para configurar o TikTok"
+                    tiktokIncompleteTooltip={t('publicacoesPanel.tiktokIncomplete')}
                     onStatusChange={onStatusChange}
                     compact
                   />
@@ -134,7 +138,7 @@ export function PublicacoesPanel({
                       marginTop: 8,
                     }}
                   >
-                    <ExternalLink className="h-3 w-3" /> Ver no Instagram
+                    <ExternalLink className="h-3 w-3" /> {t('calendarDetail.viewOnInstagram')}
                   </a>
                 )}
 
@@ -151,7 +155,9 @@ export function PublicacoesPanel({
                   >
                     {/* Post avulso (workflowId null) has no fluxo to open into --
                         rest of its avulso-specific visual treatment is Task 16. */}
-                    {workflowId != null ? 'Abrir no fluxo' : 'Abrir'}{' '}
+                    {workflowId != null
+                      ? t('publicacoesPanel.openInFluxo')
+                      : t('publicacoesPanel.open')}{' '}
                     <ChevronRight className="h-3 w-3" />
                   </div>
                 )}

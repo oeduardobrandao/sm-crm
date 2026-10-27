@@ -1,3 +1,4 @@
+import { i18n } from '@mesaas/i18n';
 import { entitlementMessage, mapEntitlementError } from '@/lib/entitlement-errors';
 import type { Workflow } from '@/store';
 import { converterItens, type LinhaColuna, type LinhaItem } from '@/store/linhaEditorial';
@@ -22,10 +23,6 @@ export async function converterParaFluxo(
     return await converterItens(linhaId, workflow.id!, posts);
   } catch (err) {
     const ent = mapEntitlementError(err);
-    throw new Error(
-      ent
-        ? entitlementMessage(ent)
-        : 'Não foi possível criar os posts da linha. O fluxo não foi criado. Tente de novo.',
-    );
+    throw new Error(ent ? entitlementMessage(ent) : i18n.t('linha:conversao.erroFluxo'));
   }
 }

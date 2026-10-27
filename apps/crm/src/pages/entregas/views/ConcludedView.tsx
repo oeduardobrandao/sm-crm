@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import { RotateCcw, FileText, Search } from 'lucide-react';
 import {
   getConcludedWorkflows,
@@ -45,7 +47,7 @@ type ClientGroup = ConcludedClientGroup;
 const EMPTY_PROCESSES: PostProcessWithPost[] = [];
 
 function formatDateShort(iso: string): string {
-  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+  return new Date(iso).toLocaleDateString(getIntlLocale(), { day: '2-digit', month: 'short' });
 }
 
 export function ConcludedView({
@@ -62,6 +64,7 @@ export function ConcludedView({
    * campo não aparece. */
   onClientSearchChange?: (value: string) => void;
 } = {}) {
+  const { t } = useTranslation('entregasViews');
   const isPhone = !useIsDesktop(768);
   const [selectedClienteId, setSelectedClienteId] = useState<number | null>(null);
   const [selectedWorkflow, setSelectedWorkflow] = useState<{
@@ -164,7 +167,7 @@ export function ConcludedView({
     if (!reopenTarget) return;
     try {
       await reopenWorkflow(reopenTarget.id);
-      toast.success('Fluxo reaberto com sucesso!');
+      toast.success(t('concludedView.reopenSuccess'));
       qc.invalidateQueries({ queryKey: ['concluded-workflows'] });
       qc.invalidateQueries({ queryKey: ['concluded-summaries'] });
       qc.invalidateQueries({ queryKey: ['workflows'] });
@@ -172,7 +175,7 @@ export function ConcludedView({
       qc.invalidateQueries({ queryKey: ['workflow-events'] });
       qc.invalidateQueries({ queryKey: ['post-processes'] });
     } catch {
-      toast.error('Erro ao reabrir fluxo.');
+      toast.error(t('concludedView.reopenError'));
     }
     setReopenTarget(null);
   };
@@ -184,9 +187,7 @@ export function ConcludedView({
   if (summaries.length === 0 && concludedProcesses.length === 0 && !isLoadingCombined) {
     return (
       <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}>
-        {postProcessesEnabled
-          ? 'Nenhum fluxo ou post individual concluído ainda.'
-          : 'Nenhum fluxo concluído ainda.'}
+        {postProcessesEnabled ? t('concludedView.emptyWithProcesses') : t('concludedView.empty')}
       </div>
     );
   }
@@ -242,7 +243,7 @@ export function ConcludedView({
     <>
       {visibleGroups.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)' }}>
-          Nenhum cliente encontrado para "{clientSearch}".
+          {t('concludedView.noClientMatch', { query: clientSearch })}
         </div>
       ) : (
         <div className="concluded-client-grid animate-up">
@@ -265,10 +266,9 @@ export function ConcludedView({
                 <span className="concluded-client-card-name">{group.cliente.nome}</span>
               </div>
               <div className="concluded-client-card-stats">
-                {group.workflows.length} fluxo{group.workflows.length !== 1 ? 's' : ''} concluído
-                {group.workflows.length !== 1 ? 's' : ''}
+                {t('concludedView.statsWorkflows', { count: group.workflows.length })}
                 {group.processes.length > 0 &&
-                  ` · ${group.processes.length} post${group.processes.length !== 1 ? 's' : ''} individua${group.processes.length !== 1 ? 'is' : 'l'}`}
+                  ` · ${t('concludedView.statsProcesses', { count: group.processes.length })}`}
               </div>
             </div>
           ))}
@@ -296,14 +296,14 @@ export function ConcludedView({
                 </SheetTitle>
               </div>
               <SheetDescription className="sr-only">
-                Fluxos e posts concluídos de {selectedGroup.cliente.nome}
+                {t('concludedView.sheetDescription', { name: selectedGroup.cliente.nome })}
               </SheetDescription>
             </SheetHeader>
 
             <div className="relative mb-3">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
               <Input
-                placeholder="Buscar fluxo..."
+                placeholder={t('concludedView.searchPlaceholder')}
                 value={fluxoSearch}
                 onChange={(e) => setFluxoSearch(e.target.value)}
                 className="!rounded-full !text-xs h-8 pl-8 pr-4 mb-0 w-full"
@@ -314,7 +314,7 @@ export function ConcludedView({
               <div
                 style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)' }}
               >
-                Nenhum fluxo encontrado para "{fluxoSearch}".
+                {t('concludedView.noWorkflowMatch', { query: fluxoSearch })}
               </div>
             ) : (
               <div className="concluded-client-workflows">
@@ -333,20 +333,17 @@ export function ConcludedView({
                     <div>
                       <div className="concluded-wf-title">{s.workflow.titulo}</div>
                       <div className="concluded-wf-meta">
-                        {s.postCount} post{s.postCount !== 1 ? 's' : ''}
-                        {s.totalDays !== null && (
-                          <>
-                            {' '}
-                            &bull; {s.totalDays} dia{s.totalDays !== 1 ? 's' : ''}
-                          </>
-                        )}
-                        {s.completedAt && <> &bull; Concluído {formatDateShort(s.completedAt)}</>}
+                        {t('concludedView.postCount', { count: s.postCount })}
+                        {s.totalDays !== null &&
+                          ` • ${t('concludedView.dayCount', { count: s.totalDays })}`}
+                        {s.completedAt &&
+                          ` • ${t('concludedView.concludedOn', { date: formatDateShort(s.completedAt) })}`}
                       </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <button
                         className="concluded-reopen-btn"
-                        title="Reabrir fluxo"
+                        title={t('concludedView.reopenWorkflow')}
                         onClick={(e) => {
                           e.stopPropagation();
                           setReopenTarget({ id: s.workflow.id!, titulo: s.workflow.titulo });
@@ -369,25 +366,26 @@ export function ConcludedView({
                   >
                     <div>
                       <div className="concluded-wf-title">
-                        {p.post.titulo || 'Post sem título'}
+                        {p.post.titulo || t('shared.untitledPost')}
                         <span
                           className="post-fluxo-tag post-fluxo-tag--avulso post-fluxo-tag--individual"
                           style={{ marginLeft: '0.5rem' }}
                         >
                           <FileText size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
-                          Post individual
+                          {t('shared.individualPost')}
                         </span>
                       </div>
                       <div className="concluded-wf-meta">
-                        {p.template_nome ?? 'Etapas personalizadas'}
-                        {p.concluido_em && <> &bull; Concluído {formatDateShort(p.concluido_em)}</>}
+                        {p.template_nome ?? t('shared.customStages')}
+                        {p.concluido_em &&
+                          ` • ${t('concludedView.concludedOn', { date: formatDateShort(p.concluido_em) })}`}
                       </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <button
                         className="concluded-reopen-btn"
-                        title="Reabrir processo"
-                        aria-label="Reabrir processo"
+                        title={t('concludedView.reopenProcess')}
+                        aria-label={t('concludedView.reopenProcess')}
                         onClick={(e) => {
                           e.stopPropagation();
                           commands.reabrir({
@@ -429,15 +427,16 @@ export function ConcludedView({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Reabrir fluxo?</AlertDialogTitle>
+            <AlertDialogTitle>{t('concludedView.reopenTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              O fluxo "{reopenTarget?.titulo}" será reaberto e voltará para a última etapa no
-              Kanban.
+              {t('concludedView.reopenDescription', { title: reopenTarget?.titulo ?? '' })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleReopenConfirm}>Reabrir</AlertDialogAction>
+            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleReopenConfirm}>
+              {t('concludedView.reopen')}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

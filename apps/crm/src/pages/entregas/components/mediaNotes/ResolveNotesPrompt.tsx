@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,7 +33,7 @@ export function ResolveNotesPrompt({
   // The action button also closes the dialog (onOpenChange(false)): that close must not
   // be reported as a cancel after the confirm already ran.
   const confirmed = useRef(false);
-  const where = kind === 'video' ? 'deste vídeo' : 'deste slide';
+  const { t } = useTranslation('posts');
   return (
     <AlertDialog
       open={open}
@@ -48,24 +49,22 @@ export function ResolveNotesPrompt({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            {count === 1
-              ? `Marcar como resolvido o comentário ${where}?`
-              : `Marcar como resolvidos os ${count} comentários ${where}?`}
+            {t(
+              kind === 'video' ? 'resolveNotesPrompt.titleVideo' : 'resolveNotesPrompt.titleSlide',
+              { count },
+            )}
           </AlertDialogTitle>
-          <AlertDialogDescription>
-            Vale para os comentários do cliente e para as notas internas. Todos continuam no
-            histórico do post.
-          </AlertDialogDescription>
+          <AlertDialogDescription>{t('resolveNotesPrompt.description')}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Agora não</AlertDialogCancel>
+          <AlertDialogCancel>{t('resolveNotesPrompt.notNow')}</AlertDialogCancel>
           <AlertDialogAction
             onClick={() => {
               confirmed.current = true;
               onConfirm();
             }}
           >
-            {count === 1 ? 'Marcar como resolvido' : 'Marcar como resolvidos'}
+            {t('resolveNotesPrompt.confirm', { count })}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -1,14 +1,9 @@
 import { useId, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { SegmentedControl } from '@/components/mobile';
 
 export type PhoneEditorTab = 'conteudo' | 'detalhes' | 'publicar' | 'comentarios';
 
-const TAB_LABELS: Record<PhoneEditorTab, string> = {
-  conteudo: 'Conteúdo',
-  detalhes: 'Detalhes',
-  publicar: 'Publicar',
-  comentarios: 'Comentários',
-};
 const ORDER: PhoneEditorTab[] = ['conteudo', 'detalhes', 'publicar', 'comentarios'];
 
 interface PhoneEditorTabsProps {
@@ -26,12 +21,14 @@ interface PhoneEditorTabsProps {
  * never dialogs (a permanently mounted dialog would stall silent deploy swaps).
  */
 export function PhoneEditorTabs({ value, onChange, commentCount, panes }: PhoneEditorTabsProps) {
+  const { t } = useTranslation('postEditor');
   const baseId = useId();
+  const tabLabel = (tab: PhoneEditorTab) => t(`phoneEditorTabs.${tab}`);
   return (
     <>
       <div className="phone-editor-tabs">
         <SegmentedControl
-          aria-label="Seções do post"
+          aria-label={t('phoneEditorTabs.sections')}
           semantics="tablist"
           value={value}
           onChange={onChange}
@@ -41,18 +38,18 @@ export function PhoneEditorTabs({ value, onChange, commentCount, panes }: PhoneE
             controls: `${baseId}-pane-${tab}`,
             ariaLabel:
               tab === 'comentarios' && commentCount > 0
-                ? `${TAB_LABELS[tab]}, ${commentCount}`
+                ? `${tabLabel(tab)}, ${commentCount}`
                 : undefined,
             label:
               tab === 'comentarios' && commentCount > 0 ? (
                 <>
-                  {TAB_LABELS[tab]}{' '}
+                  {tabLabel(tab)}{' '}
                   <span className="phone-editor-tabs__count" aria-hidden="true">
                     {commentCount}
                   </span>
                 </>
               ) : (
-                TAB_LABELS[tab]
+                tabLabel(tab)
               ),
           }))}
         />

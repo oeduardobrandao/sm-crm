@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -15,10 +16,6 @@ import { getWorkflowPosts } from '@/store';
 import { partitionByScheduleEligibility, targetsTikTokService } from '../autoScheduleNudge';
 import { scheduleApprovedPost } from '../scheduleApprovedPost';
 import { declarationBrandedFlag, TikTokPostingDeclaration } from './TikTokPostingDeclaration';
-
-function plural(n: number, one: string, many: string): string {
-  return n === 1 ? one : many;
-}
 
 export interface AutoScheduleBatchDialogProps {
   /** null fecha o diálogo. Não-null abre e busca os posts desse fluxo. */
@@ -69,6 +66,7 @@ export function AutoScheduleBatchDialog({
   onClose,
   onScheduled,
 }: AutoScheduleBatchDialogProps) {
+  const { t } = useTranslation('workflows');
   const [running, setRunning] = useState(false);
 
   const {
@@ -145,10 +143,13 @@ export function AutoScheduleBatchDialog({
     setRunning(false);
     onClose();
     if (fail === 0) {
-      toast.success(`${ok} ${plural(ok, 'post agendado', 'posts agendados')}.`);
+      toast.success(t('autoScheduleBatch.scheduled', { count: ok }));
     } else {
       toast.error(
-        `${ok} ${plural(ok, 'post agendado', 'posts agendados')}, ${fail} ${plural(fail, 'falhou', 'falharam')}.`,
+        t('autoScheduleBatch.partial', {
+          scheduled: t('autoScheduleBatch.scheduledPart', { count: ok }),
+          failed: t('autoScheduleBatch.failedPart', { count: fail }),
+        }),
       );
     }
     if (ok > 0) onScheduled();
@@ -163,20 +164,24 @@ export function AutoScheduleBatchDialog({
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Agendar os posts aprovados?</AlertDialogTitle>
+          <AlertDialogTitle>{t('autoScheduleBatch.title')}</AlertDialogTitle>
           <AlertDialogDescription>
             {isLoading
-              ? 'Carregando os posts do fluxo…'
-              : `${approved.length} ${plural(approved.length, 'post aprovado', 'posts aprovados')}. ${eligible.length} ${plural(eligible.length, 'já tem data definida e pode', 'já têm data definida e podem')} ser agendado agora. Este cliente agenda a publicação automaticamente quando o próprio cliente aprova pelo portal.`}
+              ? t('autoScheduleBatch.loading')
+              : [
+                  t('autoScheduleBatch.approved', { count: approved.length }),
+                  t('autoScheduleBatch.eligible', { count: eligible.length }),
+                  t('autoScheduleBatch.autoNote'),
+                ].join(' ')}
           </AlertDialogDescription>
         </AlertDialogHeader>
 
         {missingDate.length > 0 && (
           <div className="px-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-            <p className="font-semibold">Sem data válida, agende manualmente:</p>
+            <p className="font-semibold">{t('autoScheduleBatch.missingDate')}</p>
             <ul>
               {missingDate.map((p) => (
-                <li key={p.id}>{p.titulo || 'Post sem título'}</li>
+                <li key={p.id}>{p.titulo || t('shared.postUntitled')}</li>
               ))}
             </ul>
           </div>
@@ -184,10 +189,10 @@ export function AutoScheduleBatchDialog({
 
         {tiktokBlocked.length > 0 && (
           <div className="px-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-            <p className="font-semibold">Bloqueado: requer o recurso do TikTok.</p>
+            <p className="font-semibold">{t('autoScheduleBatch.tiktokBlocked')}</p>
             <ul>
               {tiktokBlocked.map((p) => (
-                <li key={p.id}>{p.titulo || 'Post sem título'}</li>
+                <li key={p.id}>{p.titulo || t('shared.postUntitled')}</li>
               ))}
             </ul>
           </div>
@@ -198,7 +203,7 @@ export function AutoScheduleBatchDialog({
         )}
 
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={running}>Agora não</AlertDialogCancel>
+          <AlertDialogCancel disabled={running}>{t('autoScheduleBatch.notNow')}</AlertDialogCancel>
           {/* isFetching trava a ação enquanto a busca está em voo: com staleTime 0
               toda reabertura refetcha, e agir sobre a lista anterior mandaria
               posts já agendados ao servidor (422). Botão totalmente OMITIDO (não
@@ -207,7 +212,7 @@ export function AutoScheduleBatchDialog({
               CTA morto. */}
           {eligible.length > 0 && (
             <Button onClick={handleScheduleAll} disabled={running || isFetching}>
-              {`Agendar ${eligible.length} ${plural(eligible.length, 'post', 'posts')}`}
+              {t('autoScheduleBatch.scheduleN', { count: eligible.length })}
             </Button>
           )}
         </AlertDialogFooter>

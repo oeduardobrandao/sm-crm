@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Bell, BellOff, CheckCircle2, Eye, Lock, RotateCcw, Send } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import { BottomActionBar } from '@/components/mobile';
 import { MentionEditor } from '@/components/mentions/MentionEditor';
 import type { CommentThreadWithComments, Membro, PostApproval, PostMedia } from '../../../../store';
@@ -23,7 +25,7 @@ import { ClientConversation } from '../mediaNotes/ClientConversation';
 type Channel = 'cliente' | 'equipe';
 
 function formatWhen(iso: string): string {
-  return new Date(iso).toLocaleDateString('pt-BR', {
+  return new Date(iso).toLocaleDateString(getIntlLocale(), {
     weekday: 'short',
     day: '2-digit',
     month: 'short',
@@ -127,6 +129,7 @@ export function PhoneComments({
   active,
   focusRequest,
 }: PhoneCommentsProps) {
+  const { t } = useTranslation('postEditor');
   const naoLidasEquipe = discussao.naoLidas;
   const clientNotes = useMemo(() => notes.filter((n) => n.visibility === 'client'), [notes]);
   const openClientNotes = clientNotes.filter((n) => n.status === 'open').length;
@@ -152,7 +155,7 @@ export function PhoneComments({
     settledRef.current = true;
     setChannel(next);
   };
-  const client = clientName || 'Cliente';
+  const client = clientName || t('postApprovalBubble.client');
   const showBridge = useShowChatBridge();
 
   const now = useMinuteClock();
@@ -172,11 +175,15 @@ export function PhoneComments({
     useDiscussaoComposer(discussao);
 
   const novasLabel =
-    naoLidasEquipe > 0 ? ` · ${naoLidasEquipe} ${naoLidasEquipe === 1 ? 'nova' : 'novas'}` : '';
+    naoLidasEquipe > 0 ? ` · ${t('phoneComments.newCount', { count: naoLidasEquipe })}` : '';
 
   return (
     <div className="phone-comments" data-post-id={postId}>
-      <div className="phone-comments__pills" role="group" aria-label="Conversa">
+      <div
+        className="phone-comments__pills"
+        role="group"
+        aria-label={t('phoneComments.conversation')}
+      >
         <button
           type="button"
           className="phone-comments__pill"
@@ -184,7 +191,8 @@ export function PhoneComments({
           onClick={() => pick('equipe')}
         >
           <Lock aria-hidden="true" />
-          Equipe{novasLabel}
+          {t('phoneComments.team')}
+          {novasLabel}
         </button>
         <button
           type="button"
@@ -193,19 +201,24 @@ export function PhoneComments({
           onClick={() => pick('cliente')}
         >
           <Eye aria-hidden="true" />
-          Cliente{openClientNotes > 0 ? ` · ${openClientNotes} em aberto` : ''}
+          {t('phoneComments.client')}
+          {openClientNotes > 0
+            ? ` · ${t('phoneComments.openCount', { count: openClientNotes })}`
+            : ''}
         </button>
       </div>
 
       <div className="phone-comments__pane" data-pane="equipe" hidden={channel !== 'equipe'}>
         <div className="phone-comments__team-note">
-          <span>Só a equipe vê esta conversa.</span>
+          <span>{t('phoneComments.teamOnly')}</span>
           <span className="phone-comments__team-actions">
             {seguir.ready && (
               <button
                 type="button"
                 className="phone-comments__icon-btn"
-                aria-label={seguir.following ? 'Seguindo' : 'Seguir'}
+                aria-label={
+                  seguir.following ? t('phoneComments.following') : t('phoneComments.follow')
+                }
                 onClick={seguir.toggle}
                 disabled={seguir.disabled}
               >
@@ -216,9 +229,7 @@ export function PhoneComments({
           </span>
         </div>
         {items.length === 0 ? (
-          <p className="phone-comments__empty">
-            Nenhuma mensagem ainda. Escreva para a equipe abaixo.
-          </p>
+          <p className="phone-comments__empty">{t('phoneComments.teamEmpty')}</p>
         ) : (
           <DiscussaoTimeline
             items={items}
@@ -235,7 +246,7 @@ export function PhoneComments({
         <div ref={discussao.sectionRef} className="phone-comments__end" aria-hidden="true" />
         {tooLong && (
           <p className="discussao-limit" role="alert">
-            Mensagem muito longa. O limite é de {DISCUSSAO_MAX_CHARS} caracteres.
+            {t('phoneComments.tooLong', { max: DISCUSSAO_MAX_CHARS })}
           </p>
         )}
         {/* Fixed like the client bar: only the visible tab may own the slot, so neither
@@ -246,7 +257,7 @@ export function PhoneComments({
               ref={editorRef}
               className="phone-comments__editor-input"
               rootClassName="phone-comments__editor"
-              placeholder="Mensagem para a equipe"
+              placeholder={t('phoneComments.teamPlaceholder')}
               value={draft}
               onValueChange={setDraft}
               onKeyDown={handleKeyDown}
@@ -254,7 +265,7 @@ export function PhoneComments({
             <button
               type="button"
               className="phone-comments__send"
-              aria-label="Enviar mensagem para a equipe"
+              aria-label={t('phoneComments.sendTeamMessage')}
               disabled={!canSend}
               // A tap must not take focus (and the keyboard) away from the editor.
               onMouseDown={(e) => e.preventDefault()}
@@ -267,7 +278,11 @@ export function PhoneComments({
       </div>
 
       <div className="phone-comments__pane" data-pane="cliente" hidden={channel !== 'cliente'}>
-        <div className="phone-comments__thread" aria-label="Conversa com o cliente" role="log">
+        <div
+          className="phone-comments__thread"
+          aria-label={t('postEditorBody.clientConversation')}
+          role="log"
+        >
           {suggestion && (
             <button
               type="button"
@@ -276,14 +291,14 @@ export function PhoneComments({
             >
               <span className="phone-comments__suggestion-dot" aria-hidden="true" />
               <span>
-                <strong>Sugestão do cliente</strong>
+                <strong>{t('shared.clientSuggestion')}</strong>
                 <span className="phone-comments__meta">{formatWhen(suggestion.when)}</span>
               </span>
-              <span className="phone-comments__suggestion-cta">Revisar</span>
+              <span className="phone-comments__suggestion-cta">{t('phoneComments.review')}</span>
             </button>
           )}
           {approvals.length === 0 && clientNotes.length === 0 && !suggestion && (
-            <p className="phone-comments__empty">Nenhuma mensagem com o cliente ainda.</p>
+            <p className="phone-comments__empty">{t('phoneComments.clientEmpty')}</p>
           )}
           <ClientConversation
             approvals={approvals}
@@ -308,7 +323,8 @@ export function PhoneComments({
                   <div className="phone-comments__event">
                     <span className="phone-comments__meta">{formatWhen(a.created_at)}</span>
                     <span className="phone-comments__event-label">
-                      <CheckCircle2 aria-hidden="true" /> {client} aprovou o post
+                      <CheckCircle2 aria-hidden="true" />{' '}
+                      {t('phoneComments.clientApproved', { client })}
                     </span>
                     {a.comentario && (
                       <p className="phone-bubble phone-bubble--client">{a.comentario}</p>
@@ -320,10 +336,11 @@ export function PhoneComments({
               return (
                 <div className={`phone-comments__row${team ? ' phone-comments__row--team' : ''}`}>
                   <span className="phone-comments__meta">
-                    {team ? 'Equipe' : client}
+                    {team ? t('phoneComments.team') : client}
                     {a.action === 'correcao' && !team && (
                       <span className="phone-comments__tag">
-                        <RotateCcw aria-hidden="true" /> Correção solicitada
+                        <RotateCcw aria-hidden="true" />{' '}
+                        {t('postApprovalBubble.correctionRequested')}
                       </span>
                     )}
                     {' · '}
@@ -345,8 +362,8 @@ export function PhoneComments({
             <BottomActionBar className="phone-comments__composer">
               <input
                 className="phone-comments__input"
-                placeholder="Responder ao cliente…"
-                aria-label="Responder ao cliente"
+                placeholder={t('phoneComments.replyPlaceholder')}
+                aria-label={t('phoneComments.replyToClient')}
                 value={replyText}
                 onChange={(e) => onReplyChange(e.target.value)}
                 onKeyDown={(e) => {
@@ -359,7 +376,7 @@ export function PhoneComments({
               <button
                 type="button"
                 className="phone-comments__send"
-                aria-label="Enviar resposta"
+                aria-label={t('phoneComments.sendReply')}
                 disabled={sendingReply || !replyText.trim()}
                 onClick={onReplySend}
               >

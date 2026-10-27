@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import type { MentionEditorHandle } from '@/components/mentions/MentionEditor';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
@@ -15,8 +16,6 @@ import type { UseDiscussaoResult } from './useDiscussao';
 // Defined next to the RPC wrapper; re-exported for the composers that import it from here.
 export { DISCUSSAO_MAX_CHARS };
 const NOW_REFRESH_MS = 60_000;
-
-const SEND_ERROR = 'Não foi possível enviar. Tente novamente.';
 
 /** Keeps "Hoje"/"Ontem" right across midnight without recomputing on every render. */
 export function useMinuteClock(): Date {
@@ -44,6 +43,7 @@ export function useShowChatBridge(): boolean {
  * a draft exists or a send is in flight.
  */
 export function useDiscussaoComposer(discussao: UseDiscussaoResult) {
+  const { t } = useTranslation('postPanels');
   const [draft, setDraft] = useState('');
   const editorRef = useRef<MentionEditorHandle>(null);
   const trimmed = draft.trim();
@@ -72,7 +72,7 @@ export function useDiscussaoComposer(discussao: UseDiscussaoResult) {
         if (!active || active === document.body) editorRef.current?.focus();
       }
     } catch {
-      toast.error(SEND_ERROR);
+      toast.error(t('discussao.sendError'));
     }
   };
 
@@ -89,6 +89,7 @@ export function useDiscussaoComposer(discussao: UseDiscussaoResult) {
 
 /** The follow bell: for the implicit responsible "following" is true and a click unfollows. */
 export function useSeguirToggle(discussao: UseDiscussaoResult) {
+  const { t } = useTranslation('postPanels');
   const [busy, setBusy] = useState(false);
   const following = discussao.isParticipant;
   const toggle = async () => {
@@ -96,7 +97,7 @@ export function useSeguirToggle(discussao: UseDiscussaoResult) {
     try {
       await discussao.toggleSeguir();
     } catch {
-      toast.error('Não foi possível atualizar. Tente novamente.');
+      toast.error(t('discussao.updateError'));
     } finally {
       setBusy(false);
     }

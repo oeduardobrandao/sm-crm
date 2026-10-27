@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Plus, Trash2, GripVertical, UserCheck } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import {
   DndContext,
   PointerSensor,
@@ -130,6 +131,7 @@ function SortableEtapaRow(props: {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
   });
+  const { t } = useTranslation('workflows');
   const rowRef = useRef<HTMLDivElement | null>(null);
   const nomeInputRef = useRef<HTMLInputElement | null>(null);
   const style = {
@@ -188,7 +190,7 @@ function SortableEtapaRow(props: {
         </div>
         <Input
           ref={nomeInputRef}
-          placeholder="Nome da etapa"
+          placeholder={t('sortableEtapaList.stageName')}
           value={nome}
           onChange={(e) => onChange('nome', e.target.value)}
           className="h-8 min-w-0 flex-1 text-sm"
@@ -198,7 +200,7 @@ function SortableEtapaRow(props: {
         {modoPrazo === 'data_fixa' ? (
           <Input
             type="date"
-            aria-label="Data limite"
+            aria-label={t('shared.dueDate')}
             value={dataLimite}
             onChange={(e) => onChange('dataLimite', e.target.value)}
             className="h-8 w-36 text-sm"
@@ -210,7 +212,7 @@ function SortableEtapaRow(props: {
               min={1}
               max={MAX_PRAZO_DIAS}
               step={1}
-              aria-label="Prazo em dias"
+              aria-label={t('sortableEtapaList.deadlineInDays')}
               value={prazo}
               onChange={(e) =>
                 onChange(
@@ -222,15 +224,15 @@ function SortableEtapaRow(props: {
             />
             <Select value={tipoPrazo} onValueChange={(val) => onChange('tipoPrazo', val)}>
               <SelectTrigger
-                aria-label="Tipo de prazo"
-                title="Dias corridos ou úteis"
+                aria-label={t('shared.deadlineType')}
+                title={t('sortableEtapaList.calendarOrBusiness')}
                 className="h-8 w-24 text-xs"
               >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="corridos">Corridos</SelectItem>
-                <SelectItem value="uteis">Úteis</SelectItem>
+                <SelectItem value="corridos">{t('sortableEtapaList.corridos')}</SelectItem>
+                <SelectItem value="uteis">{t('sortableEtapaList.uteis')}</SelectItem>
               </SelectContent>
             </Select>
           </>
@@ -242,11 +244,11 @@ function SortableEtapaRow(props: {
               onChange('responsavelId', val === '__none__' ? null : Number(val))
             }
           >
-            <SelectTrigger aria-label="Responsável" className="h-8 w-40 text-xs">
-              <SelectValue placeholder="Sem responsável" />
+            <SelectTrigger aria-label={t('shared.assignee')} className="h-8 w-40 text-xs">
+              <SelectValue placeholder={t('shared.noAssignee')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__none__">Sem responsável</SelectItem>
+              <SelectItem value="__none__">{t('shared.noAssignee')}</SelectItem>
               {[...membros]
                 .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
                 .map((m) => (
@@ -260,11 +262,11 @@ function SortableEtapaRow(props: {
         <button
           type="button"
           aria-pressed={approval}
-          aria-label="Aprovação externa"
+          aria-label={t('sortableEtapaList.externalApproval')}
           title={
             approval
-              ? 'Aprovação externa ativa: o cliente aprova esta etapa no Hub'
-              : 'Marcar como aprovação externa: o cliente aprova esta etapa no Hub'
+              ? t('sortableEtapaList.externalApprovalOn')
+              : t('sortableEtapaList.externalApprovalOff')
           }
           onClick={() => onChange('tipo', approval ? 'padrao' : 'aprovacao_cliente')}
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md"
@@ -280,7 +282,7 @@ function SortableEtapaRow(props: {
         <Button
           size="icon"
           variant="ghost"
-          aria-label="Remover etapa"
+          aria-label={t('sortableEtapaList.removeStage')}
           className="h-8 w-8 shrink-0 text-destructive"
           onClick={onRemove}
         >
@@ -291,11 +293,11 @@ function SortableEtapaRow(props: {
         <div className="w-full">
           <EmptyStateGuide
             icon="👤"
-            title="Nenhum membro cadastrado"
-            description="Para atribuir responsáveis às etapas, adicione membros na página"
-            actionLabel="Equipe"
+            title={t('wizard.noMembersTitle')}
+            description={t('wizard.noMembersDesc')}
+            actionLabel={t('wizard.teamPage')}
             actionHref="/equipe"
-            hint="💡 Membros são pessoas da equipe (designers, redatores, etc). Para dar acesso ao CRM, vincule o membro a um usuário do workspace."
+            hint={t('sortableEtapaList.noMembersHint')}
           />
         </div>
       )}
@@ -310,7 +312,7 @@ function SortableEtapaRow(props: {
       )}
       {approval && (
         <p className="w-full" style={{ fontSize: '0.7rem', color: '#1d4ed8', margin: 0 }}>
-          Etapa especial: envia os posts para aprovação no portal do cliente (Hub).
+          {t('sortableEtapaList.approvalNote')}
         </p>
       )}
     </div>
@@ -335,6 +337,7 @@ export function SortableEtapaList({
 }) {
   // The parent (wizard chips/Personalizada) and the list's own "Adicionar Etapa" button both
   // request highlights; the freshest token wins.
+  const { t } = useTranslation('workflows');
   const [internalHighlight, setInternalHighlight] = useState<EtapaHighlight | null>(null);
   const effectiveHighlight =
     highlight && internalHighlight
@@ -380,10 +383,12 @@ export function SortableEtapaList({
       }}
     >
       <div className="mb-2 flex items-center gap-1.5">
-        <h4 style={{ margin: 0 }}>{etapas.length > 0 ? `Etapas · ${etapas.length}` : 'Etapas'}</h4>
-        {modoPrazo !== 'data_fixa' && (
-          <HelpTooltip content="Corridos = todos os dias do calendário, incluindo fins de semana. Úteis = apenas dias úteis (exceto sábados e domingos)." />
-        )}
+        <h4 style={{ margin: 0 }}>
+          {etapas.length > 0
+            ? t('sortableEtapaList.stagesCount', { n: etapas.length })
+            : t('sortableEtapaList.stages')}
+        </h4>
+        {modoPrazo !== 'data_fixa' && <HelpTooltip content={t('sortableEtapaList.deadlineHelp')} />}
       </div>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={etapas.map((e) => e._id)} strategy={verticalListSortingStrategy}>
@@ -414,7 +419,7 @@ export function SortableEtapaList({
         </SortableContext>
       </DndContext>
       <Button size="sm" variant="outline" onClick={handleAdd}>
-        <Plus className="h-3 w-3" /> Adicionar Etapa
+        <Plus className="h-3 w-3" /> {t('sortableEtapaList.addStage')}
       </Button>
     </div>
   );

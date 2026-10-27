@@ -1,5 +1,6 @@
 import { useId } from 'react';
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Checkbox } from '@/components/ui/checkbox';
 import { PessoaAvatar } from '@/components/PessoaAvatar';
 import type { Membro } from '../../../store';
@@ -34,6 +35,7 @@ export function ResponsaveisPanel({
   // Prefixo único por instância do painel: a contagem de cada membro vira a
   // descrição do checkbox dele (aria-describedby), e dois painéis na página não
   // podem repetir o id.
+  const { t } = useTranslation('workflows');
   const panelId = useId();
   const sorted = membros.filter((m) => m.id != null).sort(byNome);
   const toggle = (id: number, checked: boolean) =>
@@ -46,7 +48,7 @@ export function ResponsaveisPanel({
       <div className={`flex items-start justify-between gap-2${onClose ? '' : ' pr-8'}`}>
         <div className="min-w-0">
           <h2 className="text-sm font-semibold" style={{ color: 'var(--text-main)' }}>
-            Responsáveis
+            {t('responsaveisPanel.title')}
           </h2>
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
             {caption}
@@ -60,13 +62,13 @@ export function ResponsaveisPanel({
               style={{ color: 'var(--text-muted)', background: 'none', border: 'none' }}
               onClick={() => onChange([])}
             >
-              Limpar
+              {t('ui.clear')}
             </button>
           )}
           {onClose && (
             <button
               type="button"
-              aria-label="Fechar painel de responsáveis"
+              aria-label={t('responsaveisPanel.closeAria')}
               onClick={onClose}
               className="rounded-md p-1 hover:bg-[var(--surface-hover)]"
               style={{ color: 'var(--text-muted)' }}
@@ -78,7 +80,7 @@ export function ResponsaveisPanel({
       </div>
       {sorted.length === 0 ? (
         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          Nenhum membro na equipe.
+          {t('responsaveisPanel.empty')}
         </p>
       ) : (
         <ul className="flex flex-col gap-0.5">

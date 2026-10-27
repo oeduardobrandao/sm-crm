@@ -44,6 +44,7 @@ import {
   type FluxosColumnSort,
 } from '../entregasPrefs';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { updateWorkflowPositions, reorderFluxosBoard } from '../../../store';
 import {
   buildBoardRows,
@@ -498,6 +499,7 @@ export function KanbanView({
   tiktokEnabled,
   recurringWfId,
 }: KanbanViewProps) {
+  const { t } = useTranslation('entregasViews');
   // Vidro: the column headers drop their inline etapa tints (the CSS paints a neutral header
   // with a coloured dot from --col-tint) and the tabs show template names as typed.
   const vidroShell = useVidroShell();
@@ -873,7 +875,7 @@ export function KanbanView({
   const findPost = (id: string) => posts.find((p) => p.id === id);
   const templateEtapasOf = (card: BoardCard) =>
     card.workflow.template_id != null
-      ? templates.find((t) => t.id === card.workflow.template_id)?.etapas
+      ? templates.find((tpl) => tpl.id === card.workflow.template_id)?.etapas
       : undefined;
 
   const handleDragStart = useCallback(
@@ -1054,7 +1056,7 @@ export function KanbanView({
           onRefresh();
         } catch (err) {
           rollbackOptimisticOrder(merged);
-          toast.error(getPostProcessErrorToast(err, 'Erro ao salvar ordem dos cartões'));
+          toast.error(getPostProcessErrorToast(err, t('kanbanView.saveOrderError')));
         }
       } else {
         // Between-column move: a coluna alvo precisa ser a da etapa seguinte ou
@@ -1078,7 +1080,7 @@ export function KanbanView({
           : nextPendingStepOf(draggedPost!.process)?.ordem === targetColumn.ordem ||
             previousStepOf(draggedPost!.process)?.ordem === targetColumn.ordem;
         if (!valid) {
-          toast.error('Só é possível mover para a etapa adjacente');
+          toast.error(t('kanbanView.adjacentOnly'));
           return;
         }
 
@@ -1114,10 +1116,10 @@ export function KanbanView({
         };
 
         if (draggedPost) {
-          const t = targetOf(draggedPost);
+          const target = targetOf(draggedPost);
           const forward = nextPendingStepOf(draggedPost.process)?.ordem === targetColumn.ordem;
-          if (forward) commands.avancar(t);
-          else commands.voltar(t);
+          if (forward) commands.avancar(target);
+          else commands.voltar(target);
           return;
         }
 
@@ -1148,6 +1150,7 @@ export function KanbanView({
       applyOptimisticOrder,
       rollbackOptimisticOrder,
       commands,
+      t,
     ],
   );
 
@@ -1159,10 +1162,10 @@ export function KanbanView({
         <div className="phone-ent-board__empty phone-ent-board__empty--page">
           <p>
             {showExample
-              ? 'Nenhum fluxo ainda. Um fluxo acompanha uma entrega do cliente, etapa por etapa.'
+              ? t('kanbanView.emptyExample')
               : postProcessesEnabled
-                ? 'Nenhum fluxo ou post individual encontrado. Ajuste os filtros ou crie um novo fluxo.'
-                : 'Nenhuma entrega encontrada. Ajuste os filtros ou crie um novo fluxo.'}
+                ? t('kanbanView.emptyWithProcesses')
+                : t('kanbanView.empty')}
           </p>
           {onAddWorkflow && (
             <button
@@ -1171,7 +1174,7 @@ export function KanbanView({
               onClick={() => onAddWorkflow(null)}
             >
               <Plus aria-hidden="true" />
-              Novo fluxo
+              {t('kanbanView.newWorkflow')}
             </button>
           )}
         </div>
@@ -1192,9 +1195,7 @@ export function KanbanView({
       >
         <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem', opacity: 0.3 }}>▣</div>
         <p style={{ fontSize: '0.82rem', fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
-          {postProcessesEnabled
-            ? 'Nenhum fluxo ou post individual encontrado. Ajuste os filtros ou crie um novo fluxo.'
-            : 'Nenhuma entrega encontrada. Ajuste os filtros ou crie um novo fluxo.'}
+          {postProcessesEnabled ? t('kanbanView.emptyWithProcesses') : t('kanbanView.empty')}
         </p>
       </div>
     );
@@ -1282,7 +1283,7 @@ export function KanbanView({
         const mixed: BoardEntity[] = displayMixed(row.key, column.ordem, column);
         const countLabel =
           stepCards.length > 0 && stepPosts.length > 0
-            ? `${stepCards.length} ${stepCards.length === 1 ? 'fluxo' : 'fluxos'} · ${stepPosts.length} ${stepPosts.length === 1 ? 'post' : 'posts'}`
+            ? `${t('kanbanView.countWorkflows', { count: stepCards.length })} · ${t('kanbanView.countPosts', { count: stepPosts.length })}`
             : String(stepCards.length + stepPosts.length);
         return (
           <div
@@ -1319,7 +1320,7 @@ export function KanbanView({
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      aria-label={`Ordenar coluna ${stepName}`}
+                      aria-label={t('kanbanView.sortColumn', { name: stepName })}
                       className="board-column-sort"
                       style={vidroShell ? undefined : { color: tint }}
                     >
@@ -1364,17 +1365,17 @@ export function KanbanView({
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button type="button" className="board-add-card">
-                        <Plus className="h-3.5 w-3.5" /> Novo ▾
+                        <Plus className="h-3.5 w-3.5" /> {t('kanbanView.newMenu')}
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="min-w-[150px]">
                       <DropdownMenuItem onSelect={() => onAddWorkflow(row.templateId)}>
-                        Fluxo
+                        {t('kanbanView.workflowOption')}
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onSelect={() => onAddPostIndividual(row.templateId as number)}
                       >
-                        Post individual
+                        {t('shared.individualPost')}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -1384,7 +1385,7 @@ export function KanbanView({
                     className="board-add-card"
                     onClick={() => onAddWorkflow(row.templateId)}
                   >
-                    <Plus className="h-3.5 w-3.5" /> Novo fluxo
+                    <Plus className="h-3.5 w-3.5" /> {t('kanbanView.newWorkflow')}
                   </button>
                 ))}
               <SortableContext
@@ -1392,7 +1393,7 @@ export function KanbanView({
                 strategy={verticalListSortingStrategy}
               >
                 {mixed.length === 0 && colKeyStr !== dropSlot?.colKey ? (
-                  <div className="board-empty">Nenhuma entrega</div>
+                  <div className="board-empty">{t('kanbanView.columnEmpty')}</div>
                 ) : (
                   mixed.map((entity, idx) => {
                     const slot = colKeyStr === dropSlot?.colKey && dropSlot.index === idx && (
@@ -1504,13 +1505,15 @@ export function KanbanView({
         <button
           type="button"
           className="board-tab board-tab-add"
-          aria-label="Novo template"
-          title={createTemplateDisabled ? 'Limite do plano atingido' : 'Novo template'}
+          aria-label={t('kanbanView.newTemplate')}
+          title={
+            createTemplateDisabled ? t('shared.planLimitReached') : t('kanbanView.newTemplate')
+          }
           disabled={createTemplateDisabled}
           onClick={onCreateTemplate}
         >
           <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-          Novo template
+          {t('kanbanView.newTemplate')}
         </button>
       )}
     </div>

@@ -9,7 +9,8 @@ import {
   startOfMonth,
   subMonths,
 } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { Trans, useTranslation } from 'react-i18next';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import { ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
 import type { IgAccountStatus, ScheduledPost } from '@/store';
 import { cn } from '@/lib/utils';
@@ -38,19 +39,13 @@ export interface CalendarDeadlineEvent {
   date: Date;
 }
 
-const WEEK_DAYS = [
-  { short: 'S', long: 'segunda' },
-  { short: 'T', long: 'terça' },
-  { short: 'Q', long: 'quarta' },
-  { short: 'Q', long: 'quinta' },
-  { short: 'S', long: 'sexta' },
-  { short: 'S', long: 'sábado' },
-  { short: 'D', long: 'domingo' },
-];
+/** Monday first; each id resolves to its initial under `calendar.weekdayInitial`. */
+const WEEK_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 
+/** Keys (entregasPhone) resolved at render. */
 const EVENT_LABEL: Record<CalendarDeadlineEvent['type'], string> = {
-  etapa: 'Prazo da etapa',
-  workflow: 'Conclusão prevista',
+  etapa: 'shared.stageDeadline',
+  workflow: 'shared.expectedCompletion',
 };
 
 export interface CalendarViewPhoneProps {
@@ -87,18 +82,17 @@ function monthCells(month: Date): (Date | null)[] {
   return [...Array.from({ length: lead }, () => null), ...days];
 }
 
-function plural(n: number, one: string, many: string): string {
-  return `${n} ${n === 1 ? one : many}`;
-}
-
 function SomenteFluxos({ onGoToKanban }: { onGoToKanban?: () => void }) {
+  const { t } = useTranslation('entregasPhone');
   return (
     <p className="phone-ent-v-note phone-ent-v-note--inline">
-      Somente fluxos. Posts individuais aparecem no{' '}
-      <button type="button" className="phone-ent-v-link" onClick={onGoToKanban}>
-        quadro
-      </button>
-      .
+      <Trans
+        t={t}
+        i18nKey="shared.somenteFluxos"
+        components={{
+          btn: <button type="button" className="phone-ent-v-link" onClick={onGoToKanban} />,
+        }}
+      />
     </p>
   );
 }
@@ -110,17 +104,18 @@ function UndatedList({
   cards: BoardCard[];
   onCardClick: (card: BoardCard) => void;
 }) {
+  const { t } = useTranslation('entregasPhone');
   const { closeThen } = useSheetActions();
   return (
-    <GroupedList
-      aria-label="Fluxos sem data"
-      footer="A etapa atual destes fluxos ainda não começou, então eles ainda não têm prazo no calendário."
-    >
+    <GroupedList aria-label={t('calendar.undatedAria')} footer={t('calendar.undatedFooter')}>
       {cards.map((card) => (
         <Cell
           key={card.workflow.id}
           label={card.workflow.titulo}
-          subtitle={`${card.cliente?.nome || 'Sem cliente'} · Etapa: ${card.etapa.nome}`}
+          subtitle={t('shared.clienteEtapa', {
+            cliente: card.cliente?.nome || t('shared.noCliente'),
+            etapa: card.etapa.nome,
+          })}
           chevron
           onClick={() => closeThen(() => onCardClick(card))}
         />
@@ -144,6 +139,7 @@ function PostRow({
   onPostClick: (post: ScheduledPost) => void;
   onStatusChange: () => void;
 }) {
+  const { t } = useTranslation('entregasPhone');
   const registry = useStatusRegistry();
   const safePermalink =
     post.status === 'postado' && post.instagram_permalink
@@ -166,11 +162,13 @@ function PostRow({
             }
           />
           <span className="phone-ent-v-cal-item__client-name">
-            {post.cliente_nome || 'Sem cliente'}
+            {post.cliente_nome || t('shared.noCliente')}
           </span>
           <span className="phone-ent-v-cal-item__tipo">{TIPO_LABELS[post.tipo]}</span>
         </span>
-        <span className="phone-ent-v-cal-item__title">{post.titulo || 'Post sem título'}</span>
+        <span className="phone-ent-v-cal-item__title">
+          {post.titulo || t('shared.untitledPost')}
+        </span>
       </span>
       <PostStatusChip post={post} registry={registry} />
     </>
@@ -196,7 +194,7 @@ function PostRow({
           hasInstagramAccount={igStatus != null}
           igAccountStatus={igStatus}
           tiktokSettingsComplete={false}
-          tiktokIncompleteTooltip="Abra o post para configurar o TikTok"
+          tiktokIncompleteTooltip={t('calendar.tiktokIncomplete')}
           onStatusChange={onStatusChange}
           compact
         />
@@ -207,7 +205,7 @@ function PostRow({
             rel="noopener noreferrer"
             className="phone-ent-v-link phone-ent-v-cal-item__permalink"
           >
-            <ExternalLink aria-hidden="true" /> Ver no Instagram
+            <ExternalLink aria-hidden="true" /> {t('calendar.viewOnInstagram')}
           </a>
         )}
       </div>
@@ -222,12 +220,14 @@ function PostRow({
  * `onCardClick`, a post through `onPostClick` only when its fluxo is openable.
  */
 export function CalendarViewPhone(p: CalendarViewPhoneProps) {
+  const { t } = useTranslation('entregasPhone');
+  const dfLocale = useDateFnsLocale();
   const [undatedOpen, setUndatedOpen] = useState(false);
   const shownMonth = p.currentDate;
   const year = shownMonth.getFullYear();
   const month = shownMonth.getMonth();
   const today = new Date();
-  const monthName = format(shownMonth, 'MMMM', { locale: ptBR });
+  const monthName = format(shownMonth, 'MMMM', { locale: dfLocale });
   const cells = monthCells(shownMonth);
 
   const selectedDate = p.selectedDay != null ? new Date(year, month, p.selectedDay) : null;
@@ -236,13 +236,13 @@ export function CalendarViewPhone(p: CalendarViewPhoneProps) {
     : [];
   const selectedPosts = selectedDate ? (p.byDay.get(dateDayKey(selectedDate)) ?? []) : [];
   const dayHeader = selectedDate
-    ? format(selectedDate, "EEEE, d 'de' MMMM", { locale: ptBR })
+    ? format(selectedDate, t('dateFormat.weekdayDayMonth'), { locale: dfLocale })
     : null;
 
   if (p.mode === 'entregas' && p.noCards) {
     return (
       <div className="phone-ent-v">
-        <p className="phone-ent-v-note">Nenhuma entrega encontrada. Ajuste os filtros.</p>
+        <p className="phone-ent-v-note">{t('calendar.noEntregasFiltered')}</p>
         {p.postProcessesEnabled && <SomenteFluxos onGoToKanban={p.onGoToKanban} />}
       </div>
     );
@@ -254,8 +254,8 @@ export function CalendarViewPhone(p: CalendarViewPhoneProps) {
       const etapas = evs.filter((e) => e.type === 'etapa').length;
       const wfs = evs.length - etapas;
       const parts = [
-        etapas > 0 ? plural(etapas, 'prazo de etapa', 'prazos de etapa') : null,
-        wfs > 0 ? plural(wfs, 'conclusão prevista', 'conclusões previstas') : null,
+        etapas > 0 ? t('calendar.dayEtapaDeadlines', { count: etapas }) : null,
+        wfs > 0 ? t('calendar.dayExpectedCompletions', { count: wfs }) : null,
       ].filter(Boolean);
       return {
         dots: evs.slice(0, 3).map((e) => `phone-ent-v-dot--${e.type}`),
@@ -265,9 +265,9 @@ export function CalendarViewPhone(p: CalendarViewPhoneProps) {
     const posts = p.byDay.get(dateDayKey(date)) ?? [];
     const { total, postados, falhas } = summarizeDay(posts);
     const parts = [
-      total > 0 ? plural(total, 'post', 'posts') : null,
-      postados > 0 ? plural(postados, 'postado', 'postados') : null,
-      falhas > 0 ? plural(falhas, 'falha', 'falhas') : null,
+      total > 0 ? t('calendar.dayPosts', { count: total }) : null,
+      postados > 0 ? t('calendar.dayPostados', { count: postados }) : null,
+      falhas > 0 ? t('calendar.dayFalhas', { count: falhas }) : null,
     ].filter(Boolean);
     return {
       dots: posts
@@ -290,9 +290,9 @@ export function CalendarViewPhone(p: CalendarViewPhoneProps) {
       )}
 
       {p.mode === 'entregas' && p.undatedCards.length > 0 && (
-        <ChipRow aria-label="Fluxos sem data" className="phone-ent-v-chips">
+        <ChipRow aria-label={t('calendar.undatedAria')} className="phone-ent-v-chips">
           <Chip
-            label="Sem data"
+            label={t('calendar.noDate')}
             count={p.undatedCards.length}
             onClick={() => setUndatedOpen(true)}
           />
@@ -302,13 +302,13 @@ export function CalendarViewPhone(p: CalendarViewPhoneProps) {
       <div className="phone-ent-v-cal">
         <div className="phone-ent-v-cal__head">
           <h2 className="phone-ent-v-cal__month">
-            {format(shownMonth, 'MMMM yyyy', { locale: ptBR })}
+            {format(shownMonth, 'MMMM yyyy', { locale: dfLocale })}
           </h2>
           <span className="phone-ent-v-cal__nav">
             <button
               type="button"
               className="phone-ent-v-round-btn"
-              aria-label="Mês anterior"
+              aria-label={t('ui.previousMonth')}
               onClick={() => p.onMonthChange(subMonths(shownMonth, 1))}
             >
               <ChevronLeft aria-hidden="true" />
@@ -316,7 +316,7 @@ export function CalendarViewPhone(p: CalendarViewPhoneProps) {
             <button
               type="button"
               className="phone-ent-v-round-btn"
-              aria-label="Próximo mês"
+              aria-label={t('ui.nextMonth')}
               onClick={() => p.onMonthChange(addMonths(shownMonth, 1))}
             >
               <ChevronRight aria-hidden="true" />
@@ -325,7 +325,7 @@ export function CalendarViewPhone(p: CalendarViewPhoneProps) {
         </div>
         <div className="phone-ent-v-cal__weekdays" aria-hidden="true">
           {WEEK_DAYS.map((d) => (
-            <span key={d.long}>{d.short}</span>
+            <span key={d}>{t(`calendar.weekdayInitial.${d}`)}</span>
           ))}
         </div>
         <div className="phone-ent-v-cal__grid">
@@ -344,7 +344,7 @@ export function CalendarViewPhone(p: CalendarViewPhoneProps) {
                   selected && 'phone-ent-v-cal__day--selected',
                 )}
                 aria-pressed={selected}
-                aria-label={`${d} de ${monthName}${label ? `, ${label}` : ''}`}
+                aria-label={`${t('calendar.dayAria', { day: d, month: monthName })}${label ? `, ${label}` : ''}`}
                 onClick={() => p.onSelectDay(d)}
               >
                 {d}
@@ -363,7 +363,7 @@ export function CalendarViewPhone(p: CalendarViewPhoneProps) {
         <>
           {selectedEvents.length === 0 ? (
             <p className="phone-ent-v-empty">
-              {selectedDate ? 'Nenhuma entrega neste dia.' : 'Selecione um dia.'}
+              {selectedDate ? t('calendar.noEntregasDay') : t('calendar.selectDay')}
             </p>
           ) : (
             <GroupedList header={dayHeader} className="phone-ent-v-group">
@@ -379,8 +379,11 @@ export function CalendarViewPhone(p: CalendarViewPhoneProps) {
                     />
                   }
                   label={ev.card.workflow.titulo}
-                  subtitle={`${ev.card.cliente?.nome || 'Sem cliente'} · Etapa: ${ev.card.etapa.nome}`}
-                  value={EVENT_LABEL[ev.type]}
+                  subtitle={t('shared.clienteEtapa', {
+                    cliente: ev.card.cliente?.nome || t('shared.noCliente'),
+                    etapa: ev.card.etapa.nome,
+                  })}
+                  value={t(EVENT_LABEL[ev.type])}
                   onClick={() => p.onCardClick(ev.card)}
                 />
               ))}
@@ -388,10 +391,11 @@ export function CalendarViewPhone(p: CalendarViewPhoneProps) {
           )}
           <p className="phone-ent-v-legend" aria-hidden="true">
             <span className="phone-ent-v-legend__item">
-              <i className="phone-ent-v-dot phone-ent-v-dot--etapa" /> Prazo da etapa
+              <i className="phone-ent-v-dot phone-ent-v-dot--etapa" /> {t('shared.stageDeadline')}
             </span>
             <span className="phone-ent-v-legend__item">
-              <i className="phone-ent-v-dot phone-ent-v-dot--workflow" /> Conclusão prevista
+              <i className="phone-ent-v-dot phone-ent-v-dot--workflow" />{' '}
+              {t('shared.expectedCompletion')}
             </span>
           </p>
         </>
@@ -411,7 +415,7 @@ export function CalendarViewPhone(p: CalendarViewPhoneProps) {
         </SkeletonStatus>
       ) : selectedPosts.length === 0 ? (
         <p className="phone-ent-v-empty">
-          {selectedDate ? 'Nenhuma publicação neste dia.' : 'Selecione um dia.'}
+          {selectedDate ? t('calendar.noPostsDay') : t('calendar.selectDay')}
         </p>
       ) : (
         <GroupedList header={dayHeader} className="phone-ent-v-group">
@@ -436,7 +440,7 @@ export function CalendarViewPhone(p: CalendarViewPhoneProps) {
         <BottomSheet
           open={undatedOpen}
           onOpenChange={setUndatedOpen}
-          title={`Sem data · ${p.undatedCards.length}`}
+          title={t('calendar.undatedSheetTitle', { count: p.undatedCards.length })}
           detents={['medium', 'large']}
         >
           <UndatedList cards={p.undatedCards} onCardClick={p.onCardClick} />

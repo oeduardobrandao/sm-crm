@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { i18n } from '@mesaas/i18n';
 import type { EntregasSavedView } from '@/store/savedViews';
 import { useSavedViews } from './useSavedViews';
 
@@ -27,7 +28,7 @@ export function useSavedViewSelection(contaId: string, currentQuery: string) {
   }, [isLoading, views, currentQuery]);
 
   useEffect(() => {
-    if (isError) toast.error('Não foi possível carregar as visualizações salvas.');
+    if (isError) toast.error(i18n.t('entregasPhone:savedViews.loadError'));
   }, [isError]);
 
   const activeVista = activeId != null ? views.find((v) => v.id === activeId) : undefined;
@@ -46,10 +47,10 @@ export function useSavedViewSelection(contaId: string, currentQuery: string) {
     try {
       const row = await save({ name: trimmed, query: currentQuery });
       choose(row.id);
-      toast.success(`Visualização "${trimmed}" salva!`);
+      toast.success(i18n.t('entregasPhone:savedViews.saved', { name: trimmed }));
       return true;
     } catch {
-      toast.error('Não foi possível salvar a visualização. Tente novamente.');
+      toast.error(i18n.t('entregasPhone:savedViews.saveError'));
       return false;
     }
   };
@@ -58,9 +59,9 @@ export function useSavedViewSelection(contaId: string, currentQuery: string) {
     choose(v.id);
     try {
       await updateQuery({ id: v.id, query: currentQuery });
-      toast.success(`Visualização "${v.name}" atualizada!`);
+      toast.success(i18n.t('entregasPhone:savedViews.updated', { name: v.name }));
     } catch {
-      toast.error('Não foi possível atualizar a visualização. Tente novamente.');
+      toast.error(i18n.t('entregasPhone:savedViews.updateError'));
     }
   };
 
@@ -69,7 +70,7 @@ export function useSavedViewSelection(contaId: string, currentQuery: string) {
     try {
       await remove(v.id);
     } catch {
-      toast.error('Não foi possível excluir a visualização. Tente novamente.');
+      toast.error(i18n.t('entregasPhone:savedViews.deleteError'));
     }
   };
 
@@ -84,7 +85,7 @@ export function useSavedViewSelection(contaId: string, currentQuery: string) {
     try {
       await rename({ id: from.id, name: to, replaceId: replaced?.id ?? null });
     } catch {
-      toast.error('Não foi possível renomear a visualização. Tente novamente.');
+      toast.error(i18n.t('entregasPhone:savedViews.renameError'));
     }
   };
 

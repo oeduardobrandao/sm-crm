@@ -1,4 +1,5 @@
 import { useId, type CSSProperties } from 'react';
+import { useTranslation } from 'react-i18next';
 import * as ToggleGroup from '@radix-ui/react-toggle-group';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { WorkflowPost } from '@/store';
@@ -22,10 +23,11 @@ export function TipoToggle({
   lockedReason: string | null;
   onChange: (tipo: Tipo) => void;
 }) {
+  const { t } = useTranslation('postEditor');
   const labelId = useId();
   return (
     <div className="drawer-post-field drawer-post-field--tipo">
-      <label id={labelId}>Tipo</label>
+      <label id={labelId}>{t('tipoToggle.label')}</label>
       <TooltipProvider delayDuration={200}>
         <ToggleGroup.Root
           type="single"
@@ -37,15 +39,15 @@ export function TipoToggle({
             if (v) onChange(v as Tipo);
           }}
         >
-          {TIPO_ORDER.map((t) => {
-            const Icon = TIPO_ICONS[t];
+          {TIPO_ORDER.map((tipo) => {
+            const Icon = TIPO_ICONS[tipo];
             return (
-              <IconTip key={t} label={TIPO_LABELS[t]} reason={lockedReason}>
+              <IconTip key={tipo} label={TIPO_LABELS[tipo]} reason={lockedReason}>
                 <ToggleGroup.Item
-                  value={t}
-                  aria-label={TIPO_LABELS[t]}
+                  value={tipo}
+                  aria-label={TIPO_LABELS[tipo]}
                   className="icon-seg__item"
-                  style={{ '--tipo-color': TIPO_COLORS[t] } as CSSProperties}
+                  style={{ '--tipo-color': TIPO_COLORS[tipo] } as CSSProperties}
                 >
                   <Icon size={16} aria-hidden="true" />
                 </ToggleGroup.Item>

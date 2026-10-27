@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { Paperclip } from 'lucide-react';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import {
@@ -30,6 +31,7 @@ export interface PostClientReferencesProps {
 /** "Referências do cliente": what the client attached in the Hub. Read-only for the team
  *  except for deletion; renders nothing when there are none (the team cannot add). */
 export function PostClientReferences({ postId, references, onOpen }: PostClientReferencesProps) {
+  const { t } = useTranslation('postPanels');
   const qc = useQueryClient();
   const headingId = useId();
   const { can } = useAuth();
@@ -44,13 +46,13 @@ export function PostClientReferences({ postId, references, onOpen }: PostClientR
       qc.invalidateQueries({ queryKey: ['post-references', postId] });
       // Prefix: the drawer keys counts by workflow id, which this section does not know.
       qc.invalidateQueries({ queryKey: ['post-reference-counts'] });
-      toast.success('Referência excluída');
+      toast.success(t('references.deleted'));
     },
     onError: (err) => {
       toast.error(
         err instanceof Error && err.message === 'forbidden'
-          ? 'Você não tem permissão para excluir referências.'
-          : 'Não foi possível excluir a referência. Tente novamente.',
+          ? t('references.deleteForbidden')
+          : t('references.deleteError'),
       );
     },
   });
@@ -66,12 +68,12 @@ export function PostClientReferences({ postId, references, onOpen }: PostClientR
       <header className="flex flex-wrap items-center gap-2">
         <Paperclip className="h-4 w-4 text-[var(--text-muted)]" aria-hidden="true" />
         <h4 id={headingId} className="text-[13px] font-semibold text-[var(--text-main)]">
-          Referências do cliente
+          {t('references.title')}
         </h4>
         <Badge variant="info" size="sm">
           {references.length}
         </Badge>
-        <span className="text-[12px] text-[var(--text-light)]">Enviadas pelo Hub</span>
+        <span className="text-[12px] text-[var(--text-light)]">{t('references.fromHub')}</span>
       </header>
 
       <ul className="grid grid-cols-3 gap-3 min-[900px]:grid-cols-4">
@@ -95,22 +97,22 @@ export function PostClientReferences({ postId, references, onOpen }: PostClientR
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir referência?</AlertDialogTitle>
+            <AlertDialogTitle>{t('references.deleteTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
               {pendingDelete
-                ? `${referenceLabel(pendingDelete)} sai deste post para a equipe e para o cliente. Não dá para desfazer.`
+                ? t('references.deleteDescription', { label: referenceLabel(pendingDelete) })
                 : ''}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => {
                 if (pendingDelete) removal.mutate(pendingDelete.id);
               }}
             >
-              Excluir
+              {t('references.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

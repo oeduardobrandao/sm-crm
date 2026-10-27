@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { MessageSquare, ChevronDown, ChevronRight } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { useTranslation } from 'react-i18next';
+import { i18n, useDateFnsLocale } from '@mesaas/i18n';
 import type { CommentThreadWithComments, Membro } from '@/store';
 import { isGeralThread } from '@/store/comments';
 
@@ -26,7 +27,10 @@ export function resolveAuthorName(
 ): string {
   const wsUser = workspaceUsers.find((u) => u.id === userId);
   if (wsUser) return wsUser.nome;
-  return membros.find((m) => m.crm_user_id === userId)?.nome ?? 'Membro';
+  return (
+    membros.find((m) => m.crm_user_id === userId)?.nome ??
+    i18n.t('postPanels:discussao.memberFallback')
+  );
 }
 
 export default function PostCommentSummary({
@@ -36,9 +40,11 @@ export default function PostCommentSummary({
   onThreadClick,
 }: PostCommentSummaryProps) {
   // The general discussion thread has no passage: it is shown by the discussion section.
-  const threads = allThreads.filter((t) => !isGeralThread(t));
-  const activeThreads = threads.filter((t) => t.status === 'active');
-  const resolvedThreads = threads.filter((t) => t.status === 'resolved');
+  const { t } = useTranslation('postPanels');
+  const dateLocale = useDateFnsLocale();
+  const threads = allThreads.filter((th) => !isGeralThread(th));
+  const activeThreads = threads.filter((th) => th.status === 'active');
+  const resolvedThreads = threads.filter((th) => th.status === 'resolved');
 
   const [expanded, setExpanded] = useState(activeThreads.length > 0);
   const [showResolved, setShowResolved] = useState(false);
@@ -56,7 +62,7 @@ export default function PostCommentSummary({
           <ChevronRight className="h-3.5 w-3.5" />
         )}
         <MessageSquare className="h-3.5 w-3.5" />
-        <span className="comment-summary-title">Comentários internos</span>
+        <span className="comment-summary-title">{t('commentSummary.title')}</span>
         <span className="comment-summary-count">({threads.length})</span>
 
         {resolvedThreads.length > 0 && (
@@ -67,7 +73,7 @@ export default function PostCommentSummary({
               setShowResolved((prev) => !prev);
             }}
           >
-            {showResolved ? 'Ocultar resolvidos' : 'Mostrar resolvidos'}
+            {showResolved ? t('commentSummary.hideResolved') : t('commentSummary.showResolved')}
           </button>
         )}
       </div>
@@ -93,10 +99,12 @@ export default function PostCommentSummary({
                 <div className="comment-summary-content">
                   {thread.field === 'ig_caption' && (
                     <span className="comment-summary-badges">
-                      <span className="comment-summary-chip">Legenda</span>
+                      <span className="comment-summary-chip">
+                        {t('commentSummary.captionChip')}
+                      </span>
                       {thread.orphaned && (
                         <span className="comment-summary-chip comment-summary-chip--muted">
-                          texto removido
+                          {t('discussao.textRemoved')}
                         </span>
                       )}
                     </span>
@@ -113,14 +121,14 @@ export default function PostCommentSummary({
                     </span>
                     <span className="comment-summary-date">
                       {formatDistanceToNow(new Date(thread.created_at), {
-                        locale: ptBR,
+                        locale: dateLocale,
                         addSuffix: true,
                       })}
                     </span>
                   </div>
                   {replyCount > 0 && (
                     <span className="comment-summary-replies">
-                      {replyCount === 1 ? '1 resposta' : `${replyCount} respostas`}
+                      {t('discussao.replyCount', { count: replyCount })}
                     </span>
                   )}
                 </div>

@@ -1,3 +1,5 @@
+import { i18n } from '@mesaas/i18n';
+import { useTranslation } from 'react-i18next';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useLocation, useNavigationType, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -144,14 +146,15 @@ import {
 } from '../../store';
 import { captureEvent } from '@/lib/analytics';
 
-const VIEW_TABS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
-  { id: 'kanban', label: 'Kanban', icon: <Columns className="h-3.5 w-3.5" /> },
-  { id: 'chart', label: 'Visão geral', icon: <BarChart2 className="h-3.5 w-3.5" /> },
-  { id: 'calendar', label: 'Calendário', icon: <Calendar className="h-3.5 w-3.5" /> },
-  { id: 'list', label: 'Lista', icon: <List className="h-3.5 w-3.5" /> },
-  { id: 'linha', label: 'Linha editorial', icon: <Table2 className="h-3.5 w-3.5" /> },
-  { id: 'fila', label: 'Minha fila', icon: <ListChecks className="h-3.5 w-3.5" /> },
-  { id: 'concluded', label: 'Concluídas', icon: <Archive className="h-3.5 w-3.5" /> },
+/** Labels resolve at render (`entregasPage.views.<id>`). */
+const VIEW_TABS: { id: ActiveView; icon: React.ReactNode }[] = [
+  { id: 'kanban', icon: <Columns className="h-3.5 w-3.5" /> },
+  { id: 'chart', icon: <BarChart2 className="h-3.5 w-3.5" /> },
+  { id: 'calendar', icon: <Calendar className="h-3.5 w-3.5" /> },
+  { id: 'list', icon: <List className="h-3.5 w-3.5" /> },
+  { id: 'linha', icon: <Table2 className="h-3.5 w-3.5" /> },
+  { id: 'fila', icon: <ListChecks className="h-3.5 w-3.5" /> },
+  { id: 'concluded', icon: <Archive className="h-3.5 w-3.5" /> },
 ];
 
 /** Mês corrente no formato `YYYY-MM` (o `mes` da URL da Linha editorial). */
@@ -167,6 +170,7 @@ const EMPTY_POST_ENTITY_MAP: Map<number, PostEntity> = new Map();
 const EMPTY_COUNTS: ReadonlyMap<number, number> = new Map();
 
 export default function EntregasPage() {
+  const { t } = useTranslation('entregas');
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const navigationType = useNavigationType();
@@ -205,8 +209,12 @@ export default function EntregasPage() {
   // enquanto os limites carregam, então só `features != null` autoriza o fallback.
   const linhaEnabled = features?.feature_linha_editorial === true;
   const viewTabs = useMemo(
-    () => (linhaEnabled ? VIEW_TABS : VIEW_TABS.filter((tab) => tab.id !== 'linha')),
-    [linhaEnabled],
+    () =>
+      (linhaEnabled ? VIEW_TABS : VIEW_TABS.filter((tab) => tab.id !== 'linha')).map((tab) => ({
+        ...tab,
+        label: t(`entregasPage.views.${tab.id}`),
+      })),
+    [linhaEnabled, t],
   );
 
   const { isAtLimit } = useEntitlements();
@@ -413,7 +421,7 @@ export default function EntregasPage() {
   // leaking into every other route the same way.
   useEffect(() => {
     const previousTitle = document.title;
-    document.title = 'Entregas | Mesaas';
+    document.title = i18n.t('entregas:entregasPage.documentTitle');
     return () => {
       document.title = previousTitle;
     };
@@ -687,7 +695,7 @@ export default function EntregasPage() {
     if (pendingDeepLink.fromDrawerFallback) {
       // Segunda tentativa (o post apontou para outro fluxo e ele também não está
       // no quadro): parar aqui.
-      toast.error('Este post está em um fluxo que não aparece mais no quadro.');
+      toast.error(i18n.t('entregas:entregasPage.toast.fluxoNotOnBoard'));
       setPendingDeepLink(null);
       return;
     }
@@ -704,7 +712,7 @@ export default function EntregasPage() {
       });
       return;
     }
-    toast.error('Fluxo não encontrado');
+    toast.error(i18n.t('entregas:entregasPage.toast.fluxoNotFound'));
     setPendingDeepLink(null);
   }, [cards, isLoading, isFetching, pendingDeepLink]);
 
@@ -723,7 +731,7 @@ export default function EntregasPage() {
       .then((post) => {
         if (cancelled) return;
         if (!post) {
-          toast.error('Post não encontrado');
+          toast.error(i18n.t('entregas:entregasPage.toast.postNotFound'));
           setPendingDeepLink(null);
           return;
         }
@@ -745,7 +753,7 @@ export default function EntregasPage() {
           post.workflow_id === pendingDeepLink.failedWorkflowId
         ) {
           // O post continua no fluxo que já não casou com o quadro: parar aqui.
-          toast.error('Este post está em um fluxo que não aparece mais no quadro.');
+          toast.error(i18n.t('entregas:entregasPage.toast.fluxoNotOnBoard'));
           setPendingDeepLink(null);
         } else {
           // Reanexado (e.g. re-attached since the link was shared) ou movido para
@@ -767,7 +775,7 @@ export default function EntregasPage() {
       })
       .catch(() => {
         if (!cancelled) {
-          toast.error('Post não encontrado');
+          toast.error(i18n.t('entregas:entregasPage.toast.postNotFound'));
           setPendingDeepLink(null);
         }
       });
@@ -833,10 +841,10 @@ export default function EntregasPage() {
     setDeleteWorkflowTarget(null);
     try {
       await removeWorkflow(card.workflow.id!);
-      toast.success('Fluxo excluído!');
+      toast.success(t('entregasPage.toast.fluxoDeleted'));
       refresh();
     } catch {
-      toast.error('Erro ao excluir fluxo');
+      toast.error(t('entregasPage.toast.fluxoDeleteError'));
     }
   };
   // "Excluir post" no kebab: mesma RPC que StandalonePostDrawer usa no botão
@@ -847,10 +855,10 @@ export default function EntregasPage() {
     setDeletePostTarget(null);
     try {
       await removeWorkflowPost(entity.process.post_id);
-      toast.success('Post excluído.');
+      toast.success(t('entregasPage.toast.postDeleted'));
       refresh();
     } catch {
-      toast.error('Erro ao excluir post');
+      toast.error(t('entregasPage.toast.postDeleteError'));
     }
   };
   // "Duplicar" nos cards do quadro. "Abrir" usa os mesmos caminhos do deep
@@ -859,9 +867,9 @@ export default function EntregasPage() {
   const handleDuplicated = (newId: number, target: DuplicateTarget) => {
     refresh();
     if (target.kind === 'post') {
-      toast.success('Post duplicado', {
+      toast.success(t('entregasPage.toast.postDuplicated'), {
         action: {
-          label: 'Abrir',
+          label: t('entregasPage.toast.open'),
           onClick: () => {
             setDrawerCard(null);
             setDrawerInitialPostId(null);
@@ -872,11 +880,11 @@ export default function EntregasPage() {
       return;
     }
     toast.success(
-      'Fluxo duplicado',
+      t('entregasPage.toast.fluxoDuplicated'),
       target.active
         ? {
             action: {
-              label: 'Abrir',
+              label: t('entregasPage.toast.open'),
               onClick: () => setPendingDeepLink({ workflowId: newId, postId: null }),
             },
           }
@@ -1191,8 +1199,8 @@ export default function EntregasPage() {
       onChange={(filterMembros) => setFilters({ ...filters, filterMembros })}
       caption={
         mode === 'publicacoes'
-          ? 'Quem está com o post na etapa atual'
-          : 'Responsável pela etapa atual'
+          ? t('entregasPage.responsaveisCaptionPosts')
+          : t('entregasPage.responsaveisCaptionFluxos')
       }
       onClose={onClose}
     />
@@ -1276,14 +1284,14 @@ export default function EntregasPage() {
     const found = postEntities.filter((e) => pendingReveal.postIds.includes(e.process.post_id));
     if (found.length < pendingReveal.postIds.length) {
       if (isLoading || isFetching || !sawFetchingRef.current) return;
-      toast.error('O post não apareceu no quadro. Recarregue a página.');
+      toast.error(i18n.t('entregas:entregasPage.toast.postNotOnBoard'));
       setPendingReveal(null);
       return;
     }
     const { filters: next, cleared } = filtersToReveal(found, filters);
     if (cleared.length) {
       setFilters(next);
-      toast.info('Filtros removidos para mostrar o post no quadro.');
+      toast.info(i18n.t('entregas:entregasPage.toast.filtersCleared'));
     }
     if (pendingReveal.openDrawer) setStandalonePostId(pendingReveal.postIds[0]);
     setPendingReveal(null);
@@ -1367,9 +1375,9 @@ export default function EntregasPage() {
     if (!recurringWfId) return;
     try {
       await duplicateWorkflow(recurringWfId);
-      toast.success('Novo ciclo criado!');
+      toast.success(t('entregasPage.toast.cycleCreated'));
     } catch {
-      toast.error('Erro ao criar ciclo');
+      toast.error(t('entregasPage.toast.cycleError'));
     }
     setRecurringWfId(null);
     refresh();
@@ -1379,7 +1387,7 @@ export default function EntregasPage() {
   const headerTitleAccessory = (
     <>
       <span
-        data-tooltip="Acompanhe o andamento das entregas e fluxos ativos."
+        data-tooltip={t('entregasPage.headerHint')}
         data-tooltip-dir="right"
         style={{ display: 'flex' }}
       >
@@ -1388,7 +1396,7 @@ export default function EntregasPage() {
       {!explainerOpen && (
         <button type="button" onClick={reopenExplainer} className="entregas-explainer-reopen">
           <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
-          Como funciona
+          {t('entregasPage.comoFunciona')}
         </button>
       )}
       {/* Only on the kanban view in Entregas mode — the tour's data-tour anchors live
@@ -1408,25 +1416,26 @@ export default function EntregasPage() {
             textDecoration: 'underline',
           }}
         >
-          Ver tour novamente
+          {t('entregasPage.replayTour')}
         </button>
       )}
     </>
   );
   const headerCounts = (
     <>
-      fluxos ativos: {activeWorkflows.length}
-      {postProcessesVisible && <> · posts individuais: {activePostProcessCount}</>}
+      {t('entregasPage.header.activeFluxos', { n: activeWorkflows.length })}
+      {postProcessesVisible &&
+        t('entregasPage.header.individualPosts', { n: activePostProcessCount })}
       {overdue > 0 && (
         <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
           {' '}
-          • {overdue} atrasado{overdue > 1 ? 's' : ''}
+          {t('entregasPage.header.overdue', { count: overdue })}
         </span>
       )}
       {urgent > 0 && (
         <span style={{ color: 'var(--warning)', fontWeight: 600 }}>
           {' '}
-          • {urgent} urgente{urgent > 1 ? 's' : ''}
+          {t('entregasPage.header.urgent', { count: urgent })}
         </span>
       )}
     </>
@@ -1454,25 +1463,30 @@ export default function EntregasPage() {
   const toolbarHelp = (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Ajuda" className="vidro-toolbar-help">
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={t('entregasPage.help')}
+          className="vidro-toolbar-help"
+        >
           <CircleHelp className="h-4 w-4" aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
         <DropdownMenuLabel className="font-normal text-muted-foreground">
-          Acompanhe o andamento das entregas e fluxos ativos.
+          {t('entregasPage.headerHint')}
         </DropdownMenuLabel>
         {!explainerOpen && (
           <DropdownMenuItem onClick={reopenExplainer}>
             <BookOpen className="h-4 w-4" aria-hidden="true" />
-            Como funciona
+            {t('entregasPage.comoFunciona')}
           </DropdownMenuItem>
         )}
         {/* Same gate as the classic link: the tour's anchors only exist on this board. */}
         {activeView === 'kanban' && mode === 'entregas' && (
           <DropdownMenuItem onClick={handleReplay}>
             <PlayCircle className="h-4 w-4" aria-hidden="true" />
-            Ver tour novamente
+            {t('entregasPage.replayTour')}
           </DropdownMenuItem>
         )}
       </DropdownMenuContent>
@@ -1487,7 +1501,7 @@ export default function EntregasPage() {
           aria-pressed={statusFilterOnly('atrasado')}
           onClick={() => toggleStatusFilter('atrasado')}
         >
-          {overdue} atrasado{overdue > 1 ? 's' : ''}
+          {t('entregasPage.toolbar.overdue', { count: overdue })}
         </button>
       )}
       {urgent > 0 && (
@@ -1497,15 +1511,15 @@ export default function EntregasPage() {
           aria-pressed={statusFilterOnly('urgente')}
           onClick={() => toggleStatusFilter('urgente')}
         >
-          {urgent} urgente{urgent > 1 ? 's' : ''}
+          {t('entregasPage.toolbar.urgent', { count: urgent })}
         </button>
       )}
-      <span title="Totais gerais, sem filtros">
-        {activeWorkflows.length} fluxo{activeWorkflows.length === 1 ? '' : 's'}
+      <span title={t('entregasPage.totalsTitle')}>
+        {t('entregasPage.toolbar.fluxos', { count: activeWorkflows.length })}
         {postProcessesVisible && (
           <>
             {' · '}
-            {activePostProcessCount} post{activePostProcessCount === 1 ? '' : 's'}
+            {t('entregasPage.toolbar.posts', { count: activePostProcessCount })}
           </>
         )}
       </span>
@@ -1526,7 +1540,8 @@ export default function EntregasPage() {
         onClick={() => setTemplatesOpen(true)}
         className="header-actions-full-only"
       >
-        <LayoutGrid className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Templates
+        <LayoutGrid className="h-4 w-4" style={{ marginRight: '0.5rem' }} />{' '}
+        {t('entregasPage.templates')}
       </Button>
     </>
   );
@@ -1534,12 +1549,12 @@ export default function EntregasPage() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button data-tour="novo-fluxo-btn">
-          <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Novo
+          <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('entregasPage.new')}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={() => setNewWorkflowOpen(true)}>
-          <Route aria-hidden="true" /> Novo fluxo
+          <Route aria-hidden="true" /> {t('entregasPage.newFluxo')}
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => {
@@ -1547,7 +1562,7 @@ export default function EntregasPage() {
             setNewAvulsoOpen(true);
           }}
         >
-          <CircleDashed aria-hidden="true" /> Post avulso
+          <CircleDashed aria-hidden="true" /> {t('rescheduleToast.ownerAvulso')}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -1562,7 +1577,7 @@ export default function EntregasPage() {
     <div className="relative w-[220px]" style={{ marginLeft: 'auto', flexShrink: 0 }}>
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
       <Input
-        placeholder="Buscar cliente..."
+        placeholder={t('entregasPage.searchCliente')}
         value={concludedClientSearch}
         onChange={(e) => setConcludedClientSearch(e.target.value)}
         className="!rounded-full !text-xs h-8 pl-8 pr-4 mb-0 w-full"
@@ -1593,7 +1608,7 @@ export default function EntregasPage() {
     <div className="relative w-[220px]">
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
       <Input
-        placeholder={postsMode ? 'Buscar post...' : 'Buscar fluxo...'}
+        placeholder={postsMode ? t('entregasPage.searchPost') : t('entregasPage.searchFluxo')}
         value={filters.filterSearch}
         onChange={(e) => setFilters({ ...filters, filterSearch: e.target.value })}
         className="!rounded-full !text-xs h-8 pl-8 pr-4 mb-0 w-full"
@@ -1610,7 +1625,7 @@ export default function EntregasPage() {
   const toolbarViewTabs = (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" className="vidro-view-picker" title="Modo de visualização">
+        <Button variant="outline" className="vidro-view-picker" title={t('entregasPage.viewMode')}>
           {activeViewTab.icon}
           <span>{activeViewTab.label}</span>
           <ChevronDown className="h-3.5 w-3.5 opacity-60" />
@@ -1620,7 +1635,7 @@ export default function EntregasPage() {
         <DropdownMenuRadioGroup
           value={activeView}
           onValueChange={(view) => setActiveView(view as ActiveView)}
-          aria-label="Modos de visualização"
+          aria-label={t('entregasPage.viewModes')}
         >
           {viewTabs.map((tab) => (
             <DropdownMenuRadioItem key={tab.id} value={tab.id} className="gap-2">
@@ -1657,7 +1672,7 @@ export default function EntregasPage() {
     isLoading
       ? null
       : {
-          title: 'Entregas',
+          title: t('entregasPage.title'),
           titleAccessory: toolbarHelp,
           // Same unfiltered totals as the classic header's line (see the note there), under the
           // title so neither gets cut. The neutral totals carry a native title tooltip.
@@ -1731,27 +1746,24 @@ export default function EntregasPage() {
               }
               subtitle={
                 <>
-                  {activeWorkflows.length} fluxo{activeWorkflows.length === 1 ? '' : 's'} ativo
-                  {activeWorkflows.length === 1 ? '' : 's'}
-                  {postProcessesVisible && <> · {activePostProcessCount} individuais</>}
+                  {t('entregasPage.phone.activeFluxos', { count: activeWorkflows.length })}
+                  {postProcessesVisible &&
+                    t('entregasPage.phone.individuais', { n: activePostProcessCount })}
                   {overdue > 0 && (
                     <span className="phone-ent-header__overdue">
                       {' '}
-                      · {overdue} atrasado{overdue > 1 ? 's' : ''}
+                      {t('entregasPage.phone.overdue', { count: overdue })}
                     </span>
                   )}
-                  {urgent > 0 && (
-                    <>
-                      {' '}
-                      · {urgent} urgente{urgent > 1 ? 's' : ''}
-                    </>
-                  )}
+                  {urgent > 0 && <> {t('entregasPage.phone.urgent', { count: urgent })}</>}
                 </>
               }
               showFilters={showFilters}
               search={filters.filterSearch}
               onSearchChange={(filterSearch) => setFilters({ ...filters, filterSearch })}
-              searchPlaceholder={postsMode ? 'Buscar post' : 'Buscar fluxo'}
+              searchPlaceholder={
+                postsMode ? t('entregasPage.searchPostShort') : t('entregasPage.searchFluxoShort')
+              }
               activeFilterCount={countActiveFilters(filters, filtersMode)}
               onOpenFilters={() => setPhoneFiltersOpen(true)}
               filtersButtonRef={phoneFiltersButtonRef}
@@ -1786,7 +1798,7 @@ export default function EntregasPage() {
             <BottomSheet
               open={phoneExplainerOpen}
               onOpenChange={setPhoneExplainerOpen}
-              title="Como funciona esta página"
+              title={t('comoFunciona.title')}
               detents={['large']}
             >
               <div className="phone-ent-explainer">
@@ -1804,13 +1816,13 @@ export default function EntregasPage() {
               <header className="header header--flush animate-up">
                 <div className="header-title">
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <h1>Entregas</h1>
+                    <h1>{t('entregasPage.title')}</h1>
                     {headerTitleAccessory}
                   </div>
                   {/* Deliberately unfiltered: the Visão geral's KPIs are the filtered
               read of the same numbers, and the two disagreeing looks like a bug
               unless the header says which one it is. */}
-                  <p data-tooltip="Totais gerais, sem filtros" data-tooltip-dir="right">
+                  <p data-tooltip={t('entregasPage.totalsTitle')} data-tooltip-dir="right">
                     {headerCounts}
                   </p>
                 </div>
@@ -1889,7 +1901,7 @@ export default function EntregasPage() {
                       {!inToolbar && (
                         <div
                           role="tablist"
-                          aria-label="Modos de visualização"
+                          aria-label={t('entregasPage.viewModes')}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -2140,7 +2152,7 @@ export default function EntregasPage() {
             {isDesktop && responsaveisOpen && (
               <aside
                 className="card animate-up"
-                aria-label="Responsáveis"
+                aria-label={t('listToolbar.responsaveis')}
                 style={{ width: 260, flexShrink: 0, padding: '1rem' }}
               >
                 {renderResponsaveisPanel(closeResponsaveisAside)}
@@ -2152,8 +2164,8 @@ export default function EntregasPage() {
           <BottomSheet
             open={responsaveisOpen}
             onOpenChange={setResponsaveisOpen}
-            title="Responsáveis"
-            description="Filtre a lista por responsável"
+            title={t('listToolbar.responsaveis')}
+            description={t('entregasPage.responsaveisDesc')}
             detents={['medium', 'large']}
             returnFocusRef={responsaveisToggleRef}
           >
@@ -2172,9 +2184,9 @@ export default function EntregasPage() {
                 responsaveisToggleRef.current?.focus();
               }}
             >
-              <SheetTitle className="sr-only">Responsáveis</SheetTitle>
+              <SheetTitle className="sr-only">{t('listToolbar.responsaveis')}</SheetTitle>
               <SheetDescription className="sr-only">
-                Filtre a lista por responsável
+                {t('entregasPage.responsaveisDesc')}
               </SheetDescription>
               {renderResponsaveisPanel()}
             </SheetContent>
@@ -2270,17 +2282,20 @@ export default function EntregasPage() {
         >
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Excluir fluxo?</AlertDialogTitle>
+              <AlertDialogTitle>{t('entregasPage.deleteFluxo.title')}</AlertDialogTitle>
               <AlertDialogDescription>
-                &quot;{deleteWorkflowTarget?.workflow.titulo}&quot; e suas etapas serão excluídos
-                permanentemente. Esta ação não pode ser desfeita.
+                {t('entregasPage.deleteFluxo.description', {
+                  title: deleteWorkflowTarget?.workflow.titulo ?? '',
+                })}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel onClick={() => setDeleteWorkflowTarget(null)}>
-                Cancelar
+                {t('entregasPage.cancel')}
               </AlertDialogCancel>
-              <AlertDialogAction onClick={confirmDeleteWorkflow}>Excluir</AlertDialogAction>
+              <AlertDialogAction onClick={confirmDeleteWorkflow}>
+                {t('vistasTabs.delete')}
+              </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
@@ -2290,17 +2305,20 @@ export default function EntregasPage() {
         >
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Excluir post?</AlertDialogTitle>
+              <AlertDialogTitle>{t('entregasPage.deletePost.title')}</AlertDialogTitle>
               <AlertDialogDescription>
-                &quot;{deletePostTarget?.titulo}&quot; será excluído permanentemente. Esta ação não
-                pode ser desfeita.
+                {t('entregasPage.deletePost.description', {
+                  title: deletePostTarget?.titulo ?? '',
+                })}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel onClick={() => setDeletePostTarget(null)}>
-                Cancelar
+                {t('entregasPage.cancel')}
               </AlertDialogCancel>
-              <AlertDialogAction onClick={confirmDeletePost}>Excluir</AlertDialogAction>
+              <AlertDialogAction onClick={confirmDeletePost}>
+                {t('vistasTabs.delete')}
+              </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

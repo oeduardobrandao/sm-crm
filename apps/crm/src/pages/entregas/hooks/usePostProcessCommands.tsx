@@ -2,6 +2,8 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -86,33 +88,34 @@ const EXIT_CHOICE: Record<Exclude<ApprovalExitOption, 'enviar_portal'>, Approval
   voltar_rascunho: 'voltar_rascunho',
 };
 
+/** Chaves (namespace entregasPhone) resolvidas na hora do toast, não no load do módulo. */
 const SUCCESS: Record<ProcessCommand, string> = {
-  avancar: 'Etapa avançada.',
-  voltar: 'Etapa revertida.',
-  concluir: 'Processo concluído. O post mantém status e agendamento.',
-  reabrir: 'Processo reaberto na última etapa.',
+  avancar: 'postProcess.success.avancar',
+  voltar: 'postProcess.success.voltar',
+  concluir: 'postProcess.success.concluir',
+  reabrir: 'postProcess.success.reabrir',
 };
 
 /** Saída de uma etapa de aprovação: o toast diz o que aconteceu com o post. Um
  *  toast só por transição. */
 const EXIT_SUCCESS: Record<'avancar' | 'concluir', Record<ApprovalChoice, string>> = {
   avancar: {
-    sem_alterar: 'Etapa avançada. Status do post mantido.',
-    aprovar_interno: 'Etapa avançada. Post aprovado.',
-    voltar_rascunho: 'Etapa avançada. O post voltou para rascunho.',
+    sem_alterar: 'postProcess.exitSuccess.avancar.semAlterar',
+    aprovar_interno: 'postProcess.exitSuccess.avancar.aprovarInterno',
+    voltar_rascunho: 'postProcess.exitSuccess.avancar.voltarRascunho',
   },
   concluir: {
-    sem_alterar: 'Processo concluído. O post mantém status e agendamento.',
-    aprovar_interno: 'Processo concluído. Post aprovado.',
-    voltar_rascunho: 'Processo concluído. O post voltou para rascunho.',
+    sem_alterar: 'postProcess.exitSuccess.concluir.semAlterar',
+    aprovar_interno: 'postProcess.exitSuccess.concluir.aprovarInterno',
+    voltar_rascunho: 'postProcess.exitSuccess.concluir.voltarRascunho',
   },
 };
 
 function successMessage(command: ProcessCommand, choice: ApprovalChoice | null): string {
   if (choice && (command === 'avancar' || command === 'concluir')) {
-    return EXIT_SUCCESS[command][choice];
+    return i18n.t(`entregasPhone:${EXIT_SUCCESS[command][choice]}`);
   }
-  return SUCCESS[command];
+  return i18n.t(`entregasPhone:${SUCCESS[command]}`);
 }
 
 /**
@@ -123,6 +126,8 @@ function successMessage(command: ProcessCommand, choice: ApprovalChoice | null):
  * `revisao` esperada e rollback em falha (spec §9.6).
  */
 export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): PostProcessCommands {
+  // `tr`, não `t`: `t` aqui é sempre o ProcessTarget.
+  const { t: tr } = useTranslation('entregasPhone');
   const qc = useQueryClient();
   const [pending, setPending] = useState<Pending | null>(null);
   const [choice, setChoice] = useState<Choice | null>(null);
@@ -184,18 +189,7 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
       } catch (err) {
         opts.onOptimisticStep?.(t.process.id, null);
         toast.error(
-          getPostProcessErrorToast(
-            err,
-            `Erro ao ${
-              command === 'avancar'
-                ? 'avançar etapa'
-                : command === 'voltar'
-                  ? 'voltar etapa'
-                  : command === 'concluir'
-                    ? 'concluir processo'
-                    : 'reabrir processo'
-            }`,
-          ),
+          getPostProcessErrorToast(err, i18n.t(`entregasPhone:postProcess.error.${command}`)),
         );
         if (isStaleStateError(err)) invalidate(t);
       } finally {
@@ -224,10 +218,12 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
           invalidate(t);
           return;
         }
-        toast.success('Post enviado ao portal do cliente.');
+        toast.success(i18n.t('entregasPhone:postProcess.sentToPortal'));
         invalidate(t);
       } catch (err) {
-        toast.error(getPostProcessErrorToast(err, 'Erro ao enviar ao portal'));
+        toast.error(
+          getPostProcessErrorToast(err, i18n.t('entregasPhone:shared.sendToPortalError')),
+        );
       } finally {
         setBusy(false);
       }
@@ -240,10 +236,10 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
       setBusy(true);
       try {
         await removePostProcess(t.process.id, t.process.revisao);
-        toast.success('Processo removido. O post continua em Publicações.');
+        toast.success(i18n.t('entregasPhone:postProcess.removed'));
         invalidate(t);
       } catch (err) {
-        toast.error(getPostProcessErrorToast(err, 'Erro ao remover processo'));
+        toast.error(getPostProcessErrorToast(err, i18n.t('entregasPhone:postProcess.removeError')));
         if (isStaleStateError(err)) invalidate(t);
       } finally {
         setBusy(false);
@@ -311,7 +307,7 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
     <>
       <ForwardConfirmDialog
         open={p?.kind === 'forward'}
-        entityTitle={p?.t.post.titulo || 'Post sem título'}
+        entityTitle={p?.t.post.titulo || tr('shared.untitledPost')}
         nextEtapaName={nextName}
         onConfirm={() => {
           if (p?.kind === 'forward') {
@@ -325,7 +321,7 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
       />
       <RevertConfirmDialog
         open={p?.kind === 'revert'}
-        entityTitle={p?.t.post.titulo || 'Post sem título'}
+        entityTitle={p?.t.post.titulo || tr('shared.untitledPost')}
         onConfirm={() => {
           if (p?.kind === 'revert') {
             const t = p.t;
@@ -339,7 +335,7 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
       <ApprovalExitDialog
         open={!!choice}
         entityKind="post"
-        entityTitle={choice?.t.post.titulo || 'Post sem título'}
+        entityTitle={choice?.t.post.titulo || tr('shared.untitledPost')}
         nextEtapaName={
           choice?.command === 'avancar' ? (nextPendingStepOf(choice.t.process)?.nome ?? '') : null
         }
@@ -384,23 +380,20 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
           <AlertDialogHeader>
             <AlertDialogTitle>
               {p?.kind === 'conclude'
-                ? 'Concluir processo?'
+                ? tr('postProcess.confirm.concludeTitle')
                 : p?.kind === 'reopen'
-                  ? 'Reabrir processo?'
-                  : 'Remover processo?'}
+                  ? tr('postProcess.confirm.reopenTitle')
+                  : tr('postProcess.confirm.removeTitle')}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {p?.kind === 'conclude' &&
-                'O processo vai para Concluídas. Status, visibilidade no portal e agendamento do post não mudam.'}
-              {p?.kind === 'reopen' &&
-                'O processo volta para a última etapa, com o prazo salvo (mesmo vencido). O status do post não muda.'}
-              {p?.kind === 'remove' &&
-                'O histórico fica guardado, o status e o conteúdo do post não mudam, e o post volta para Sem processo.'}
+              {p?.kind === 'conclude' && tr('postProcess.confirm.concludeBody')}
+              {p?.kind === 'reopen' && tr('postProcess.confirm.reopenBody')}
+              {p?.kind === 'remove' && tr('postProcess.confirm.removeBody')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={close} disabled={busy}>
-              Cancelar
+              {tr('actions.cancel')}
             </AlertDialogCancel>
             <AlertDialogAction
               disabled={busy}
@@ -414,7 +407,11 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
                 else if (kind === 'remove') void remove(t);
               }}
             >
-              {p?.kind === 'conclude' ? 'Concluir' : p?.kind === 'reopen' ? 'Reabrir' : 'Remover'}
+              {p?.kind === 'conclude'
+                ? tr('postProcess.confirm.concludeAction')
+                : p?.kind === 'reopen'
+                  ? tr('postProcess.confirm.reopenAction')
+                  : tr('postProcess.confirm.removeAction')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

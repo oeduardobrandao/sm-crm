@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { CheckCircle2, RotateCcw, Send } from 'lucide-react';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { getIntlLocale, i18n } from '@mesaas/i18n';
 import type { Membro } from '@/store';
 import type { MediaNote } from '@/store/mediaNotes';
 import type { PostMedia } from '@/store/posts';
@@ -19,13 +21,15 @@ export function authorLabel(
   userId: string | null,
   { clientName, membros, workspaceUsers }: MediaNoteAuthors,
 ): string {
-  if (kind === 'client') return clientName || 'Cliente';
-  return userId ? resolveAuthorName(userId, membros, workspaceUsers) : 'Equipe';
+  if (kind === 'client') return clientName || i18n.t('posts:mediaNotes.client');
+  return userId
+    ? resolveAuthorName(userId, membros, workspaceUsers)
+    : i18n.t('posts:mediaNotes.team');
 }
 
 /** "23 de out., 10:00" style stamp shared by the note cards and the pin details. */
 export function formatWhen(iso: string): string {
-  return new Date(iso).toLocaleDateString('pt-BR', {
+  return new Date(iso).toLocaleDateString(getIntlLocale(), {
     day: '2-digit',
     month: 'short',
     hour: '2-digit',
@@ -53,6 +57,7 @@ export function MediaNoteCard({
   onSelectMedia,
   ...authors
 }: MediaNoteCardProps) {
+  const { t } = useTranslation('posts');
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [changing, setChanging] = useState(false);
@@ -71,7 +76,7 @@ export function MediaNoteCard({
       await onReply(note.id, body);
       setText('');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao enviar resposta');
+      toast.error(err instanceof Error ? err.message : t('mediaNotes.replyFailed'));
     } finally {
       setSending(false);
     }
@@ -82,7 +87,7 @@ export function MediaNoteCard({
     try {
       await onStatus([note.id], resolved ? 'open' : 'resolved');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao atualizar o comentário');
+      toast.error(err instanceof Error ? err.message : t('mediaNotes.statusFailed'));
     } finally {
       setChanging(false);
     }
@@ -108,7 +113,7 @@ export function MediaNoteCard({
         <span
           className={`media-note-card__status media-note-card__status--${resolved ? 'resolved' : 'open'}`}
         >
-          {resolved ? 'Resolvido' : 'Em aberto'}
+          {resolved ? t('mediaNotes.resolved') : t('mediaNotes.open')}
         </span>
       </div>
       <div className="media-note-card__meta">
@@ -137,8 +142,8 @@ export function MediaNoteCard({
       <div className="media-note-card__reply-row">
         <input
           className="drawer-input"
-          placeholder="Responder ao cliente…"
-          aria-label={`Responder ao cliente sobre ${anchor}`}
+          placeholder={t('conversation.replyPlaceholder')}
+          aria-label={t('mediaNotes.replyAbout', { anchor })}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
@@ -151,7 +156,7 @@ export function MediaNoteCard({
         <button
           type="button"
           className="drawer-reply-btn"
-          aria-label={`Enviar resposta sobre ${anchor}`}
+          aria-label={t('mediaNotes.sendReplyAbout', { anchor })}
           disabled={sending || !text.trim()}
           onClick={() => void send()}
         >
@@ -167,11 +172,12 @@ export function MediaNoteCard({
       >
         {resolved ? (
           <>
-            <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" /> Reabrir
+            <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" /> {t('mediaNotes.reopen')}
           </>
         ) : (
           <>
-            <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> Marcar como resolvido
+            <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />{' '}
+            {t('mediaNotes.markResolved')}
           </>
         )}
       </button>

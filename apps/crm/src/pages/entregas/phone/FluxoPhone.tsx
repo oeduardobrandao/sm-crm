@@ -1,5 +1,7 @@
 import { useState, type HTMLAttributes } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import {
   ArrowRightLeft,
   CalendarClock,
@@ -56,8 +58,6 @@ import { buildPostTimeline } from '../components/postTimeline';
 export type FluxoPhoneListMode = 'normal' | 'select' | 'reorder';
 export type FluxoDrawerView = 'posts' | 'calendar' | 'grid' | 'history';
 
-const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
-
 // ── Header ──────────────────────────────────────────────────────────────────
 
 export interface FluxoPhoneHeaderProps {
@@ -76,12 +76,7 @@ export interface FluxoPhoneHeaderProps {
   tabIdPrefix: string;
 }
 
-const VIEW_OPTIONS: { value: FluxoDrawerView; label: string }[] = [
-  { value: 'posts', label: 'Posts' },
-  { value: 'grid', label: 'Grade' },
-  { value: 'calendar', label: 'Calendário' },
-  { value: 'history', label: 'Histórico' },
-];
+const VIEW_OPTIONS: FluxoDrawerView[] = ['posts', 'grid', 'calendar', 'history'];
 
 export function FluxoPhoneHeader({
   workflowId,
@@ -97,8 +92,9 @@ export function FluxoPhoneHeader({
   panelId,
   tabIdPrefix,
 }: FluxoPhoneHeaderProps) {
+  const { t } = useTranslation('entregasPhone');
   const [actionsOpen, setActionsOpen] = useState(false);
-  const sendLabel = `Enviar ${readyToSend} ${plural(readyToSend, 'post aprovado', 'posts aprovados')} ao cliente`;
+  const sendLabel = t('fluxo.sendApproved', { count: readyToSend });
 
   const actions: ActionSheetAction[] = [
     ...(readyToSend > 0
@@ -112,7 +108,7 @@ export function FluxoPhoneHeader({
         ]
       : []),
     {
-      label: 'Copiar link do fluxo',
+      label: t('shared.copyFluxoLink'),
       icon: <LinkIcon />,
       onSelect: () => void copyAppLink(`/entregas?drawer=${workflowId}`),
     },
@@ -124,21 +120,25 @@ export function FluxoPhoneHeader({
         as="h2"
         className="phone-ent-fluxo__header"
         title={title}
-        subtitle={clienteNome ? `${clienteNome} · Etapa: ${etapaNome}` : `Etapa: ${etapaNome}`}
+        subtitle={
+          clienteNome
+            ? t('shared.clienteEtapa', { cliente: clienteNome, etapa: etapaNome })
+            : t('fluxo.etapaOnly', { etapa: etapaNome })
+        }
         leading={
           <button
             type="button"
             className="phone-ent-fluxo__back"
-            aria-label="Voltar para Entregas"
+            aria-label={t('fluxo.backAria')}
             onClick={onClose}
           >
             <ChevronLeft aria-hidden="true" />
-            <span aria-hidden="true">Entregas</span>
+            <span aria-hidden="true">{t('shared.entregas')}</span>
           </button>
         }
         trailing={
           <PhoneIconButton
-            label="Ações do fluxo"
+            label={t('shared.fluxoActions')}
             aria-haspopup="dialog"
             onClick={() => setActionsOpen(true)}
           >
@@ -155,18 +155,19 @@ export function FluxoPhoneHeader({
             aria-label={sendLabel}
           >
             <Send aria-hidden="true" />
-            Enviar ao cliente ({readyToSend})
+            {t('fluxo.sendCount', { count: readyToSend })}
           </button>
         )}
         <SegmentedControl
           semantics="tablist"
-          aria-label="Visão do fluxo"
+          aria-label={t('fluxo.viewAria')}
           className="phone-ent-fluxo__tabs"
           value={view}
           onChange={onViewChange}
-          options={VIEW_OPTIONS.map((o) => ({
-            ...o,
-            id: `${tabIdPrefix}-${o.value}`,
+          options={VIEW_OPTIONS.map((value) => ({
+            value,
+            label: t(`fluxo.views.${value}`),
+            id: `${tabIdPrefix}-${value}`,
             controls: panelId,
           }))}
         />
@@ -174,7 +175,7 @@ export function FluxoPhoneHeader({
       <ActionSheet
         open={actionsOpen}
         onOpenChange={setActionsOpen}
-        title="Ações do fluxo"
+        title={t('shared.fluxoActions')}
         hideTitle
         actions={actions}
       />
@@ -207,10 +208,11 @@ export function FluxoPhonePostsToolbar({
   onAddPost,
   onSelectAll,
 }: FluxoPhonePostsToolbarProps) {
+  const { t } = useTranslation('entregasPhone');
   const counter =
     clientFacingCount > 0
-      ? `${approvedCount} de ${clientFacingCount} aprovados pelo cliente`
-      : `${postsCount} ${plural(postsCount, 'post', 'posts')}`;
+      ? t('fluxo.approvedOf', { approved: approvedCount, total: clientFacingCount })
+      : t('fluxo.postsCount', { count: postsCount });
 
   return (
     <div className="phone-ent-fluxo__toolbar">
@@ -220,14 +222,14 @@ export function FluxoPhonePostsToolbar({
           {mode === 'select' ? (
             <>
               <button type="button" className="phone-ent-fluxo__link" onClick={onSelectAll}>
-                Selecionar todos
+                {t('fluxo.selectAll')}
               </button>
               <button
                 type="button"
                 className="phone-ent-fluxo__link"
                 onClick={() => onModeChange('normal')}
               >
-                Cancelar
+                {t('actions.cancel')}
               </button>
             </>
           ) : mode === 'reorder' ? (
@@ -236,7 +238,7 @@ export function FluxoPhonePostsToolbar({
               className="phone-ent-fluxo__link phone-ent-fluxo__link--strong"
               onClick={() => onModeChange('normal')}
             >
-              Concluir
+              {t('fluxo.done')}
             </button>
           ) : (
             postsCount > 0 && (
@@ -247,7 +249,7 @@ export function FluxoPhonePostsToolbar({
                     className="phone-ent-fluxo__link"
                     onClick={() => onModeChange('reorder')}
                   >
-                    Reordenar
+                    {t('shared.reorder')}
                   </button>
                 )}
                 <button
@@ -255,7 +257,7 @@ export function FluxoPhonePostsToolbar({
                   className="phone-ent-fluxo__link"
                   onClick={() => onModeChange('select')}
                 >
-                  Selecionar
+                  {t('fluxo.select')}
                 </button>
               </>
             )
@@ -265,24 +267,22 @@ export function FluxoPhonePostsToolbar({
       {mode === 'normal' && (
         <div className="phone-ent-fluxo__toolbar-row phone-ent-fluxo__toolbar-row--wrap">
           <button type="button" className="phone-ent-fluxo__new" onClick={onAddPost}>
-            <Plus aria-hidden="true" /> Novo Post
+            <Plus aria-hidden="true" /> {t('fluxo.newPost')}
           </button>
           {awaitingAutoScheduleCount > 0 && (
             <button
               type="button"
               className="auto-schedule-badge auto-schedule-badge--action"
               onClick={onBatchSchedule}
-              title="Agendar de uma vez os posts aprovados que ainda têm data válida."
+              title={t('fluxo.batchScheduleTitle')}
             >
               <CalendarClock className="h-3 w-3" aria-hidden="true" />
-              {awaitingAutoScheduleCount} aguardando agendamento automático
+              {t('fluxo.awaitingAutoSchedule', { count: awaitingAutoScheduleCount })}
             </button>
           )}
         </div>
       )}
-      {mode === 'reorder' && (
-        <p className="phone-ent-fluxo__hint">Arraste pela alça para mudar a ordem dos posts.</p>
-      )}
+      {mode === 'reorder' && <p className="phone-ent-fluxo__hint">{t('fluxo.reorderHint')}</p>}
     </div>
   );
 }
@@ -304,10 +304,11 @@ export function FluxoPhoneSelectionBar({
   onSend,
   sending = false,
 }: FluxoPhoneSelectionBarProps) {
+  const { t } = useTranslation('entregasPhone');
   return (
     <BottomActionBar className="phone-ent-fluxo__bar" data-testid="phone-ent-fluxo-selection-bar">
       <span className="phone-ent-fluxo__bar-count" aria-live="polite">
-        {count} {plural(count, 'selecionado', 'selecionados')}
+        {t('fluxo.selectedCount', { count })}
       </span>
       <button
         type="button"
@@ -315,7 +316,7 @@ export function FluxoPhoneSelectionBar({
         disabled={count === 0 || sending}
         onClick={onSend}
       >
-        Enviar ao cliente
+        {t('fluxo.sendToClient')}
       </button>
       <div className="phone-ent-fluxo__bar-actions">
         <button
@@ -324,7 +325,7 @@ export function FluxoPhoneSelectionBar({
           disabled={count === 0}
           onClick={onMove}
         >
-          Mover para outro fluxo
+          {t('shared.moveToOtherFluxo')}
         </button>
         <button
           type="button"
@@ -332,7 +333,7 @@ export function FluxoPhoneSelectionBar({
           disabled={count === 0}
           onClick={onDetach}
         >
-          Desmembrar
+          {t('fluxo.detach')}
         </button>
       </div>
     </BottomActionBar>
@@ -372,9 +373,9 @@ async function copyHubPostLink(hubUrl: string, postId: number) {
   // Same action as the desktop CopyPostLinkButton.
   try {
     await navigator.clipboard.writeText(buildHubPostLink(hubUrl, postId));
-    toast.success('Link copiado!');
+    toast.success(i18n.t('entregasPhone:shared.linkCopied'));
   } catch {
-    toast.error('Não foi possível copiar o link.');
+    toast.error(i18n.t('entregasPhone:shared.linkCopyError'));
   }
 }
 
@@ -408,12 +409,13 @@ export function FluxoPhonePostRow({
   onDetachRequest,
   onDelete,
 }: FluxoPhonePostRowProps) {
+  const { t } = useTranslation('entregasPhone');
   const registry = useStatusRegistry();
   const [historyOpen, setHistoryOpen] = useState(false);
-  const title = post.titulo || 'Post sem título';
+  const title = post.titulo || t('shared.untitledPost');
   const TipoIcon = TIPO_ICONS[post.tipo] ?? ImageIcon;
   const publishIso = post.published_at || post.scheduled_at || null;
-  const dateLabel = publishIso ? formatPostDate(publishIso) : 'A definir';
+  const dateLabel = publishIso ? formatPostDate(publishIso) : t('fluxo.dateTbd');
   const postId = post.id!;
   const visibilityLabel = isVisibleToClient(post.status)
     ? VISIBILITY_BADGE_LABEL.visible
@@ -422,14 +424,14 @@ export function FluxoPhonePostRow({
   const sections: ContextMenuAction[][] = [
     [
       {
-        label: 'Copiar link do post',
+        label: t('shared.copyPostLink'),
         icon: <Copy />,
         onSelect: () => void copyAppLink(`/entregas?post=${postId}`),
       },
       ...(hubUrl
         ? [
             {
-              label: 'Copiar link da postagem no Hub',
+              label: t('fluxo.copyHubLink'),
               icon: <LinkIcon />,
               onSelect: () => void copyHubPostLink(hubUrl, postId),
             },
@@ -440,7 +442,7 @@ export function FluxoPhonePostRow({
       ...(onDuplicateRequest
         ? [
             {
-              label: 'Duplicar post',
+              label: t('shared.duplicatePost'),
               icon: <CopyPlus />,
               // With a content save pending or in flight the copy would miss the edit.
               disabled: isSaving,
@@ -448,11 +450,15 @@ export function FluxoPhonePostRow({
             },
           ]
         : []),
-      { label: 'Mover para outro fluxo', icon: <ArrowRightLeft />, onSelect: onMoveRequest },
-      { label: 'Desmembrar do fluxo', icon: <Unlink />, onSelect: onDetachRequest },
-      { label: 'Histórico do post', icon: <Clock />, onSelect: () => setHistoryOpen(true) },
+      {
+        label: t('shared.moveToOtherFluxo'),
+        icon: <ArrowRightLeft />,
+        onSelect: onMoveRequest,
+      },
+      { label: t('fluxo.detachFromFluxo'), icon: <Unlink />, onSelect: onDetachRequest },
+      { label: t('shared.postHistory'), icon: <Clock />, onSelect: () => setHistoryOpen(true) },
     ],
-    [{ label: 'Remover post', icon: <Trash2 />, destructive: true, onSelect: onDelete }],
+    [{ label: t('fluxo.removePost'), icon: <Trash2 />, destructive: true, onSelect: onDelete }],
   ];
 
   const onRowClick = () => {
@@ -463,7 +469,7 @@ export function FluxoPhonePostRow({
   return (
     <>
       <ContextMenu
-        label="Ações do post"
+        label={t('shared.postActions')}
         sections={sections}
         disabled={mode !== 'normal'}
         className="phone-ent-fluxo-row__hold"
@@ -481,14 +487,14 @@ export function FluxoPhonePostRow({
                 checked={isSelected}
                 onCheckedChange={(checked) => onSelectChange(checked === true)}
                 onClick={(e) => e.stopPropagation()}
-                aria-label={`Selecionar ${title}`}
+                aria-label={t('fluxo.selectAria', { title })}
               />
             )}
             {mode === 'reorder' && (
               <span
                 {...dragHandleProps}
                 className="phone-ent-fluxo-row__handle"
-                aria-label={`Arrastar ${title}`}
+                aria-label={t('fluxo.dragAria', { title })}
                 data-testid="phone-ent-fluxo-drag-handle"
                 onClick={(e) => e.stopPropagation()}
               >
@@ -524,10 +530,10 @@ export function FluxoPhonePostRow({
                     <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />
                   )}
                 </span>
-                {isSaving && <span className="drawer-saving-indicator">Salvando…</span>}
+                {isSaving && <span className="drawer-saving-indicator">{t('fluxo.saving')}</span>}
                 {editSuggestion && (
                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold rounded bg-amber-100 text-amber-800">
-                    Sugestão pendente
+                    {t('fluxo.pendingSuggestion')}
                   </span>
                 )}
                 {referenceCount > 0 && (
@@ -535,10 +541,10 @@ export function FluxoPhonePostRow({
                     variant="info"
                     size="sm"
                     className="inline-flex items-center gap-1"
-                    title="Referências enviadas pelo cliente no Hub"
+                    title={t('fluxo.referencesTitle')}
                   >
                     <Paperclip className="h-3 w-3" aria-hidden="true" />
-                    {referenceCount === 1 ? '1 referência' : `${referenceCount} referências`}
+                    {t('fluxo.references', { count: referenceCount })}
                   </Badge>
                 )}
                 {discussaoBadge && (
@@ -555,8 +561,8 @@ export function FluxoPhonePostRow({
                 {hasMedia && (
                   <span
                     className="drawer-post-media-badge"
-                    title="Mídia anexada"
-                    aria-label="Mídia anexada"
+                    title={t('fluxo.mediaAttached')}
+                    aria-label={t('fluxo.mediaAttached')}
                   >
                     <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />
                   </span>
@@ -573,7 +579,7 @@ export function FluxoPhonePostRow({
               <button
                 {...triggerProps}
                 className="phone-ent-fluxo-row__more"
-                aria-label={`Ações do post ${title}`}
+                aria-label={t('fluxo.postActionsAria', { title })}
                 onClick={(e) => {
                   // The row toggles the post on click: opening the menu must not expand it.
                   e.stopPropagation();
@@ -589,7 +595,7 @@ export function FluxoPhonePostRow({
       <BottomSheet
         open={historyOpen}
         onOpenChange={setHistoryOpen}
-        title="Histórico do post"
+        title={t('shared.postHistory')}
         description={title}
         detents={['medium', 'large']}
       >

@@ -1,3 +1,5 @@
+import { useIntlLocale } from '@mesaas/i18n';
+import { useTranslation } from 'react-i18next';
 import { useSyncExternalStore, type CSSProperties } from 'react';
 import { formatEtapaDeadlineDay } from '../etapaPrazo';
 
@@ -71,8 +73,14 @@ export function DeadlinePill({
   style,
   dataTour,
 }: DeadlinePillProps) {
+  const { t } = useTranslation('entregas');
+  const intlLocale = useIntlLocale();
   const mode = useDeadlineDisplayMode();
-  const tipoLabel = tipoPrazo ? (tipoPrazo === 'uteis' ? 'úteis' : 'corridos') : null;
+  const tipoLabel = tipoPrazo
+    ? tipoPrazo === 'uteis'
+      ? t('deadlinePill.uteis')
+      : t('deadlinePill.corridos')
+    : null;
 
   if (!dueDate) {
     return (
@@ -84,8 +92,10 @@ export function DeadlinePill({
   }
 
   const showDate = mode === 'data';
-  const dateText = `${estourado ? 'Venceu' : 'Vence'} ${formatEtapaDeadlineDay(dueDate)}`;
-  const fullDate = dueDate.toLocaleDateString('pt-BR', {
+  const dateText = t(estourado ? 'deadlinePill.dueWas' : 'deadlinePill.dueIs', {
+    date: formatEtapaDeadlineDay(dueDate),
+  });
+  const fullDate = dueDate.toLocaleDateString(intlLocale, {
     day: '2-digit',
     month: 'long',
     year: 'numeric',
@@ -99,8 +109,10 @@ export function DeadlinePill({
       data-tour={dataTour}
       title={
         showDate
-          ? `${relativeText}. Clique para ver em dias`
-          : `${estourado ? 'Venceu' : 'Vence'} em ${fullDate}. Clique para ver a data`
+          ? t('deadlinePill.titleShowDays', { relative: relativeText })
+          : t(estourado ? 'deadlinePill.titleShowDateWas' : 'deadlinePill.titleShowDateIs', {
+              date: fullDate,
+            })
       }
       onClick={(e) => {
         e.stopPropagation();

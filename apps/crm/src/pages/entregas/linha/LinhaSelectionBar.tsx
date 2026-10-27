@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { ContentFormat } from '@mesaas/platforms';
+import { useTranslation } from 'react-i18next';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,14 +12,6 @@ import {
 } from '@/components/ui/alert-dialog';
 import type { LinhaItem, LinhaStatus } from '@/store/linhaEditorial';
 import { formatBreakdown } from './linhaLogic';
-
-/** Lower-case breakdown names ("6 reels · 2 imagens"), singular then plural. */
-const TIPO_CONTAGEM: Record<ContentFormat, [string, string]> = {
-  feed: ['imagem', 'imagens'],
-  carrossel: ['carrossel', 'carrosséis'],
-  reels: ['reels', 'reels'],
-  stories: ['stories', 'stories'],
-};
 
 export interface LinhaSelectionBarProps {
   /** Every row of the linha; the breakdown counts the selected ones. */
@@ -46,14 +38,16 @@ export function LinhaSelectionBar({
   onCriarPosts,
   onLimpar,
 }: LinhaSelectionBarProps) {
+  const { t } = useTranslation('linha');
   const [pendente, setPendente] = useState<Acao | null>(null);
 
+  // Lower-case breakdown names ("6 reels · 2 imagens").
   const breakdown = useMemo(() => {
     const ids = new Set(selected);
-    return formatBreakdown(itens.filter((i) => ids.has(i.id))).map(
-      ({ tipo, n }) => `${n} ${TIPO_CONTAGEM[tipo][n === 1 ? 0 : 1]}`,
+    return formatBreakdown(itens.filter((i) => ids.has(i.id))).map(({ tipo, n }) =>
+      t(`selectionBar.tipoContagem.${tipo}`, { count: n }),
     );
-  }, [itens, selected]);
+  }, [itens, selected, t]);
 
   const run = (acao: Acao) => (acao === 'fluxo' ? onCriarFluxo() : onCriarPosts());
   const pedir = (acao: Acao) => {
@@ -67,11 +61,11 @@ export function LinhaSelectionBar({
       <div
         className="drawer-selection-bar linha-selection-bar"
         role="toolbar"
-        aria-label="Ações da seleção"
+        aria-label={t('selectionBar.acoes')}
         data-testid="linha-selection-bar"
       >
         <span className="drawer-selection-bar-count">
-          {n} selecionado{n === 1 ? '' : 's'}
+          {t('selectionBar.selecionados', { count: n })}
         </span>
         {breakdown.map((b) => (
           <span key={b} className="linha-selection-bar__tipo">
@@ -85,30 +79,30 @@ export function LinhaSelectionBar({
             className="drawer-selection-bar-btn drawer-selection-bar-btn--primary"
             onClick={() => pedir('fluxo')}
           >
-            Criar fluxo
+            {t('selectionBar.criarFluxo')}
           </button>
           <button type="button" className="drawer-selection-bar-btn" onClick={() => pedir('posts')}>
-            Criar posts individuais
+            {t('selectionBar.criarPosts')}
           </button>
           <button
             type="button"
             className="drawer-selection-bar-btn drawer-selection-bar-btn--ghost"
             onClick={onLimpar}
           >
-            Limpar
+            {t('ui.clear')}
           </button>
         </div>
       </div>
       <AlertDialog open={pendente != null} onOpenChange={(open) => !open && setPendente(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Linha não aprovada</AlertDialogTitle>
+            <AlertDialogTitle>{t('selectionBar.naoAprovadaTitulo')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta linha ainda não foi aprovada pelo cliente. Criar mesmo assim?
+              {t('selectionBar.naoAprovadaDescricao')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 const acao = pendente;
@@ -116,7 +110,7 @@ export function LinhaSelectionBar({
                 if (acao) run(acao);
               }}
             >
-              Criar mesmo assim
+              {t('selectionBar.criarMesmoAssim')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

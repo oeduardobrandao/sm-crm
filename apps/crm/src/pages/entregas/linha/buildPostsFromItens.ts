@@ -1,4 +1,5 @@
 import type { JSONContent } from '@tiptap/core';
+import { i18n } from '@mesaas/i18n';
 import type { TemplatePropertyDefinition } from '@/store/posts';
 import type { ConverterPostPayload, LinhaColuna, LinhaItem } from '@/store/linhaEditorial';
 import { normalizeNome } from './linhaLogic';
@@ -55,7 +56,7 @@ function displayValue(col: LinhaColuna, v: unknown): string | null {
     case 'person':
       return (v as { name?: string })?.name?.trim() || null;
     case 'checkbox':
-      return 'Sim';
+      return i18n.t('linha:conversao.sim');
     default:
       return String(v).trim();
   }
@@ -126,7 +127,8 @@ export function buildPostsFromItens(
       .split(/\r?\n/)
       .map((l) => l.trim())
       .filter(Boolean);
-    if (lines.length) content.push(bold('Direção do conteúdo'), ...lines.map(paragraph));
+    if (lines.length)
+      content.push(bold(i18n.t('linha:conversao.direcaoTitulo')), ...lines.map(paragraph));
 
     const property_values: ConverterPostPayload['property_values'] = [];
     const bullets: JSONContent[] = [];
@@ -146,7 +148,10 @@ export function buildPostsFromItens(
       if (text) bullets.push({ type: 'listItem', content: [bulletParagraph(col, text)] });
     }
     if (bullets.length) {
-      content.push(bold('Da linha editorial'), { type: 'bulletList', content: bullets });
+      content.push(bold(i18n.t('linha:conversao.daLinha')), {
+        type: 'bulletList',
+        content: bullets,
+      });
     }
 
     const conteudo: JSONContent = {

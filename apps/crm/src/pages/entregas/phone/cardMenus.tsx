@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import {
   ArrowLeft,
   Check,
@@ -73,6 +75,7 @@ export function WorkflowCardMenu({
   className,
   children,
 }: WorkflowCardMenuProps) {
+  const { t } = useTranslation('entregasPhone');
   const navigate = useNavigate();
   const [assignOpen, setAssignOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -86,13 +89,13 @@ export function WorkflowCardMenu({
     });
   if (onRevert && card.etapaIdx > 0)
     stage.push({
-      label: 'Voltar etapa',
+      label: t('shared.revertEtapa'),
       icon: <ArrowLeft aria-hidden="true" />,
       onSelect: onRevert,
     });
   if (membros)
     stage.push({
-      label: card.membro ? 'Trocar responsável' : 'Atribuir responsável',
+      label: card.membro ? t('menus.changeResponsavel') : t('menus.assignResponsavel'),
       icon: <User aria-hidden="true" />,
       onSelect: () => setAssignOpen(true),
     });
@@ -100,26 +103,27 @@ export function WorkflowCardMenu({
   const open: ContextMenuAction[] = [];
   if (onOpenPosts)
     open.push({
-      label: 'Abrir posts',
+      label: t('menus.openPosts'),
       icon: <FileText aria-hidden="true" />,
       onSelect: onOpenPosts,
     });
-  if (onEdit) open.push({ label: 'Editar', icon: <Edit2 aria-hidden="true" />, onSelect: onEdit });
+  if (onEdit)
+    open.push({ label: t('actions.edit'), icon: <Edit2 aria-hidden="true" />, onSelect: onEdit });
   if (onDuplicate)
     open.push({
-      label: 'Duplicar fluxo',
+      label: t('menus.duplicateFluxo'),
       icon: <CopyPlus aria-hidden="true" />,
       onSelect: onDuplicate,
     });
   open.push({
-    label: 'Copiar link do fluxo',
+    label: t('shared.copyFluxoLink'),
     icon: <Copy aria-hidden="true" />,
     onSelect: () => void copyAppLink(`/entregas?drawer=${card.workflow.id}`),
   });
   if (card.hubUrl) {
     const hubUrl = card.hubUrl;
     open.push({
-      label: 'Abrir Hub do cliente',
+      label: t('menus.openClienteHub'),
       icon: <ExternalLink aria-hidden="true" />,
       onSelect: () => window.open(sanitizeUrl(hubUrl), '_blank', 'noopener,noreferrer'),
     });
@@ -127,13 +131,13 @@ export function WorkflowCardMenu({
   if (card.cliente?.id != null) {
     const clienteId = card.cliente.id;
     open.push({
-      label: 'Abrir cliente',
+      label: t('menus.openCliente'),
       icon: <UserRound aria-hidden="true" />,
       onSelect: () => navigate(`/clientes/${clienteId}`),
     });
   }
   open.push({
-    label: 'Histórico do fluxo',
+    label: t('menus.fluxoHistory'),
     icon: <Clock aria-hidden="true" />,
     onSelect: () => setHistoryOpen(true),
   });
@@ -141,7 +145,7 @@ export function WorkflowCardMenu({
   const danger: ContextMenuAction[] = onDelete
     ? [
         {
-          label: 'Excluir',
+          label: t('header.delete'),
           icon: <Trash2 aria-hidden="true" />,
           onSelect: onDelete,
           destructive: true,
@@ -152,7 +156,7 @@ export function WorkflowCardMenu({
   return (
     <>
       <ContextMenu
-        label="Ações do fluxo"
+        label={t('shared.fluxoActions')}
         sections={[stage, open, danger].filter((s) => s.length > 0)}
         preview={preview}
         disabled={disabled}
@@ -172,7 +176,7 @@ export function WorkflowCardMenu({
       <BottomSheet
         open={historyOpen}
         onOpenChange={setHistoryOpen}
-        title="Histórico do fluxo"
+        title={t('menus.fluxoHistory')}
         detents={['medium', 'large']}
       >
         {historyOpen && (
@@ -202,25 +206,26 @@ function AssignResponsavelSheet({
   membros: Membro[];
   onRefresh?: () => void;
 }) {
+  const { t } = useTranslation('entregasPhone');
   const assign = async (m: Membro) => {
     onOpenChange(false);
     try {
       await updateWorkflowEtapa(card.etapa.id!, { responsavel_id: m.id });
-      toast.success('Responsável atualizado!');
+      toast.success(i18n.t('entregasPhone:menus.responsavelUpdated'));
       onRefresh?.();
     } catch {
-      toast.error('Erro ao atualizar');
+      toast.error(i18n.t('entregasPhone:menus.updateError'));
     }
   };
   return (
     <BottomSheet
       open={open}
       onOpenChange={onOpenChange}
-      title="Responsável"
-      description={`Responsável pela etapa ${card.etapa.nome}`}
+      title={t('filters.groups.responsavel')}
+      description={t('menus.responsavelFor', { etapa: card.etapa.nome })}
       detents={['medium', 'large']}
     >
-      <GroupedList header={`Etapa ${card.etapa.nome}`}>
+      <GroupedList header={t('menus.etapaHeader', { etapa: card.etapa.nome })}>
         {membros.map((m) => (
           <Cell
             key={m.id}
@@ -236,7 +241,7 @@ function AssignResponsavelSheet({
             }
             accessory={
               m.id === card.membro?.id ? (
-                <Check className="phone-ent-check" aria-label="Atual" />
+                <Check className="phone-ent-check" aria-label={t('statusBoard.current')} />
               ) : undefined
             }
             onClick={() => void assign(m)}
@@ -251,7 +256,7 @@ export interface PostProcessCardMenuProps {
   entity: PostEntity;
   onOpen?: () => void;
   onForward?: () => void;
-  forwardLabel?: 'Avançar etapa' | 'Concluir processo';
+  forwardLabel?: string;
   canRevert?: boolean;
   onRevert?: () => void;
   onRemoveProcess?: () => void;
@@ -280,31 +285,36 @@ export function PostProcessCardMenu({
   className,
   children,
 }: PostProcessCardMenuProps) {
+  const { t } = useTranslation('entregasPhone');
   const stage: ContextMenuAction[] = [];
   if (onForward)
     stage.push({
-      label: forwardLabel ?? 'Avançar etapa',
+      label: forwardLabel ?? t('shared.advanceEtapa'),
       icon: <Check aria-hidden="true" />,
       onSelect: onForward,
     });
   if (canRevert && onRevert)
     stage.push({
-      label: 'Voltar etapa',
+      label: t('shared.revertEtapa'),
       icon: <ArrowLeft aria-hidden="true" />,
       onSelect: onRevert,
     });
 
   const open: ContextMenuAction[] = [];
   if (onOpen)
-    open.push({ label: 'Abrir', icon: <ExternalLink aria-hidden="true" />, onSelect: onOpen });
+    open.push({
+      label: t('statusBoard.open'),
+      icon: <ExternalLink aria-hidden="true" />,
+      onSelect: onOpen,
+    });
   if (onDuplicate)
     open.push({
-      label: 'Duplicar post',
+      label: t('shared.duplicatePost'),
       icon: <CopyPlus aria-hidden="true" />,
       onSelect: onDuplicate,
     });
   open.push({
-    label: 'Copiar link do post',
+    label: t('shared.copyPostLink'),
     icon: <Copy aria-hidden="true" />,
     onSelect: () => void copyAppLink(`/entregas?post=${entity.process.post.id}`),
   });
@@ -312,13 +322,13 @@ export function PostProcessCardMenu({
   const end: ContextMenuAction[] = [];
   if (onRemoveProcess)
     end.push({
-      label: 'Encerrar processo',
+      label: t('menus.endProcess'),
       icon: <FolderMinus aria-hidden="true" />,
       onSelect: onRemoveProcess,
     });
   if (onDelete)
     end.push({
-      label: 'Excluir post',
+      label: t('menus.deletePost'),
       icon: <Trash2 aria-hidden="true" />,
       onSelect: onDelete,
       destructive: true,
@@ -326,7 +336,7 @@ export function PostProcessCardMenu({
 
   return (
     <ContextMenu
-      label="Ações do post"
+      label={t('shared.postActions')}
       sections={[stage, open, end].filter((s) => s.length > 0)}
       preview={preview}
       disabled={disabled}

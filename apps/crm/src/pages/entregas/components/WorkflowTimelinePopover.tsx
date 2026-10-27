@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Clock } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { WorkflowHistoryView } from './WorkflowHistoryView';
 
@@ -8,6 +9,7 @@ interface WorkflowTimelinePopoverProps {
 }
 
 export function WorkflowTimelinePopover({ workflowId }: WorkflowTimelinePopoverProps) {
+  const { t } = useTranslation('workflows');
   const [open, setOpen] = useState(false);
 
   return (
@@ -16,7 +18,7 @@ export function WorkflowTimelinePopover({ workflowId }: WorkflowTimelinePopoverP
         <button
           type="button"
           className="drawer-post-history-btn"
-          title="Histórico do fluxo"
+          title={t('workflowTimelinePopover.title')}
           onClick={(e) => e.stopPropagation()}
         >
           <Clock className="h-3.5 w-3.5" />
@@ -28,7 +30,7 @@ export function WorkflowTimelinePopover({ workflowId }: WorkflowTimelinePopoverP
         style={{ zIndex: 9999 }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="post-timeline-title">Histórico</div>
+        <div className="post-timeline-title">{t('workflowTimelinePopover.heading')}</div>
         {open && <WorkflowHistoryView workflowId={workflowId} />}
       </PopoverContent>
     </Popover>

@@ -10,6 +10,7 @@ import {
 import { createPortal } from 'react-dom';
 import { Instagram, Lock, MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
@@ -63,6 +64,7 @@ export const InstagramCaptionField = forwardRef<
   { value, threads, disabled, lockedMessage, onSave, comments, frameless = false },
   ref,
 ) {
+  const { t } = useTranslation('postPanels');
   const { text, anchors, change, flush, getText } = useCaptionDraft({ value, threads, onSave });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mirrorRef = useRef<HTMLDivElement>(null);
@@ -82,7 +84,7 @@ export const InstagramCaptionField = forwardRef<
   const [activeThreadId, setActiveThreadId] = useState<number | null>(null);
   const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
 
-  const threadsById = useMemo(() => new Map(threads.map((t) => [t.id, t])), [threads]);
+  const threadsById = useMemo(() => new Map(threads.map((th) => [th.id, th])), [threads]);
 
   const paintable = useMemo(
     () =>
@@ -224,7 +226,7 @@ export const InstagramCaptionField = forwardRef<
     const saved = await flush();
     if (!saved) return;
     if (getText().slice(adding.start, adding.end) !== adding.quoted) {
-      toast.error('O texto mudou. Selecione o trecho de novo.');
+      toast.error(t('igCaption.textChanged'));
       setAdding(null);
       setSelection(null);
       return;
@@ -236,7 +238,7 @@ export const InstagramCaptionField = forwardRef<
         end: adding.end,
       });
     } catch (err) {
-      toast.error('Não foi possível criar o comentário.');
+      toast.error(t('igCaption.createError'));
       // Reject so AddCommentPopover stays open and the typed comment is not lost.
       throw err;
     }
@@ -261,7 +263,7 @@ export const InstagramCaptionField = forwardRef<
           className="whitespace-nowrap text-sm font-semibold"
           style={{ color: 'var(--text-main)' }}
         >
-          Legenda do Instagram
+          {t('igCaption.label')}
         </span>
         {disabled && lockedMessage && (
           <TooltipProvider>
@@ -277,10 +279,7 @@ export const InstagramCaptionField = forwardRef<
           </TooltipProvider>
         )}
         {comments && (
-          <span
-            className="ml-auto"
-            title={selection ? undefined : 'Selecione um trecho da legenda para comentar'}
-          >
+          <span className="ml-auto" title={selection ? undefined : t('igCaption.selectToComment')}>
             <Button
               ref={commentBtnRef}
               type="button"
@@ -292,7 +291,7 @@ export const InstagramCaptionField = forwardRef<
               onClick={openAdd}
             >
               <MessageSquare className="h-3.5 w-3.5" />
-              Comentar
+              {t('igCaption.comment')}
             </Button>
           </span>
         )}
@@ -339,13 +338,13 @@ export const InstagramCaptionField = forwardRef<
           }}
           onClick={handleClick}
           readOnly={disabled}
-          placeholder="Texto exato que será publicado no Instagram. Suporta emojis e hashtags."
+          placeholder={t('igCaption.placeholder')}
           className="relative min-h-[80px] resize-none overflow-hidden bg-transparent read-only:cursor-default read-only:opacity-70"
           style={FIELD_STYLE}
         />
       </div>
       <p className="text-xs mt-1" style={{ color: 'var(--text-light)' }}>
-        Texto exato que será publicado no Instagram. Suporta emojis e hashtags.
+        {t('igCaption.placeholder')}
       </p>
 
       {adding && comments && (

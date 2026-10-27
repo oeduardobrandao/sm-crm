@@ -15,6 +15,7 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { ArrowRightLeft, ArrowUpDown, ExternalLink, Lock, MoreHorizontal } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { ActionSheet } from '@/components/mobile/ActionSheet';
 import { Chip, ChipRow } from '@/components/mobile/ChipRow';
 import { ContextMenu } from '@/components/mobile/ContextMenu';
@@ -71,6 +72,7 @@ function DropTarget({
   locked: boolean;
   over: boolean;
 }) {
+  const { t } = useTranslation('entregasPhone');
   const { setNodeRef } = useDroppable({ id: `${COL_PREFIX}${option.key}` });
   return (
     <li
@@ -82,7 +84,7 @@ function DropTarget({
     >
       {locked && <Lock aria-hidden="true" />}
       <span className="phone-ent-drop__label">{option.label}</span>
-      <span className="phone-ent-drop__count">{current ? 'Atual' : count}</span>
+      <span className="phone-ent-drop__count">{current ? t('statusBoard.current') : count}</span>
     </li>
   );
 }
@@ -98,16 +100,17 @@ function SortableStatusCard({
   locked: boolean;
   children: (handle: ReactNode | undefined) => ReactNode;
 }) {
+  const { t } = useTranslation('entregasPhone');
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: String(post.id),
     disabled: !reorder || locked,
   });
   const handle = !reorder ? undefined : locked ? (
-    <span className="phone-ent-card__icon-btn" role="img" aria-label="Status travado">
+    <span className="phone-ent-card__icon-btn" role="img" aria-label={t('statusBoard.locked')}>
       <Lock aria-hidden="true" />
     </span>
   ) : (
-    <PhoneDragHandle label="Arrastar para mover" {...attributes} {...listeners} />
+    <PhoneDragHandle label={t('statusBoard.dragToMove')} {...attributes} {...listeners} />
   );
   return (
     <li
@@ -151,6 +154,7 @@ export function PhoneStatusBoard({
   onDragCancel,
   activePost,
 }: PhoneStatusBoardProps) {
+  const { t } = useTranslation('entregasPhone');
   const [chosenKey, setChosenKey] = useState<StatusKey | null>(null);
   const [reorder, setReorder] = useState(false);
   const [sortSheet, setSortSheet] = useState(false);
@@ -201,9 +205,9 @@ export function PhoneStatusBoard({
                 ? isLockedOption(overOption)
                   ? lockedReason(overOption)
                   : overOption.key === option.key
-                    ? 'Solte para mudar a ordem nesta coluna'
-                    : `Solte para mover para ${overOption.label}`
-                : 'Arraste até um status'}
+                    ? t('statusBoard.dropReorder')
+                    : t('statusBoard.dropMove', { status: overOption.label })
+                : t('statusBoard.dragToStatus')}
             </p>
             <ul className="phone-ent-drop-grid__list">
               {options.map((o) => (
@@ -219,7 +223,11 @@ export function PhoneStatusBoard({
             </ul>
           </div>
         ) : (
-          <ChipRow aria-label="Status" semantics="tablist" className="phone-ent-board__chips">
+          <ChipRow
+            aria-label={t('header.modeStatus')}
+            semantics="tablist"
+            className="phone-ent-board__chips"
+          >
             {options.map((o) => (
               <Chip
                 key={o.key}
@@ -253,19 +261,22 @@ export function PhoneStatusBoard({
                   className="phone-ent-text-btn phone-ent-text-btn--strong"
                   onClick={() => setReorder(false)}
                 >
-                  OK
+                  {t('board.ok')}
                 </button>
               ) : (
                 <>
                   {list.length > 0 && (
                     <button type="button" className="phone-ent-text-btn" onClick={enterReorder}>
-                      Reordenar
+                      {t('shared.reorder')}
                     </button>
                   )}
                   <button
                     type="button"
                     className="phone-ent-text-btn"
-                    aria-label={`Ordenar coluna ${option.label}: ${BOARD_COLUMN_SORT_LABELS[sort]}`}
+                    aria-label={t('board.sortColumnAria', {
+                      column: option.label,
+                      sort: BOARD_COLUMN_SORT_LABELS[sort],
+                    })}
                     onClick={() => setSortSheet(true)}
                   >
                     <ArrowUpDown aria-hidden="true" />
@@ -277,7 +288,7 @@ export function PhoneStatusBoard({
           </div>
           {reorder && !dragging && (
             <p className="phone-ent-board__hint" role="status">
-              Arraste pela alça até outro status, ou dentro da coluna para mudar a ordem.
+              {t('statusBoard.reorderHint')}
             </p>
           )}
 
@@ -286,25 +297,25 @@ export function PhoneStatusBoard({
             strategy={verticalListSortingStrategy}
           >
             {list.length === 0 ? (
-              <p className="phone-ent-board__empty">Nenhum post</p>
+              <p className="phone-ent-board__empty">{t('statusBoard.empty')}</p>
             ) : (
               <ul className="phone-ent-board__list">
                 {list.map((post) => {
                   const own = optionOf(post);
                   const locked = isLockedOption(own);
                   const openable = isOpenable(post);
-                  const title = post.titulo || 'Post sem título';
+                  const title = post.titulo || t('shared.untitledPost');
                   return (
                     <SortableStatusCard key={post.id} post={post} reorder={reorder} locked={locked}>
                       {(handle) => (
                         <ContextMenu
-                          label="Ações do post"
+                          label={t('shared.postActions')}
                           disabled={reorder}
                           sections={[
                             openable
                               ? [
                                   {
-                                    label: 'Abrir',
+                                    label: t('statusBoard.open'),
                                     icon: <ExternalLink aria-hidden="true" />,
                                     onSelect: () => onOpen(post),
                                   },
@@ -312,7 +323,7 @@ export function PhoneStatusBoard({
                               : [],
                             [
                               {
-                                label: locked ? lockedReason(own) : 'Mover para…',
+                                label: locked ? lockedReason(own) : t('statusBoard.moveToEllipsis'),
                                 icon: <ArrowRightLeft aria-hidden="true" />,
                                 disabled: locked,
                                 onSelect: () => setMoving(post),
@@ -337,7 +348,7 @@ export function PhoneStatusBoard({
                                       triggerProps.onClick();
                                     }}
                                     className="phone-ent-card__icon-btn"
-                                    aria-label={`Mais ações de ${title}`}
+                                    aria-label={t('shared.moreActions', { title })}
                                   >
                                     <MoreHorizontal aria-hidden="true" />
                                   </button>
@@ -366,7 +377,7 @@ export function PhoneStatusBoard({
       <ActionSheet
         open={sortSheet}
         onOpenChange={setSortSheet}
-        title={`Ordenar coluna ${option.label}`}
+        title={t('board.sortColumn', { column: option.label })}
         actions={BOARD_COLUMN_SORTS.map((mode) => ({
           label: `${sort === mode ? '✓ ' : ''}${BOARD_COLUMN_SORT_LABELS[mode]}`,
           onSelect: () => onSortChange?.(option.key, mode),
@@ -377,8 +388,8 @@ export function PhoneStatusBoard({
         onOpenChange={(open) => {
           if (!open) setMoving(null);
         }}
-        title="Mover para"
-        message={moving ? moving.titulo || 'Post sem título' : undefined}
+        title={t('statusBoard.moveTo')}
+        message={moving ? moving.titulo || t('shared.untitledPost') : undefined}
         actions={
           moving
             ? options
@@ -386,7 +397,7 @@ export function PhoneStatusBoard({
                 .map((o) => {
                   const locked = isLockedOption(o);
                   return {
-                    label: locked ? `${o.label} (automático)` : o.label,
+                    label: locked ? t('statusBoard.automatic', { status: o.label }) : o.label,
                     disabled: locked,
                     onSelect: () => onMoveTo(moving, o.key),
                   };

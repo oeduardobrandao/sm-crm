@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { MessageSquare, Send } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { Membro } from '@/store';
 import type { MediaNote } from '@/store/mediaNotes';
 import type { PostApproval, PostMedia } from '@/store/posts';
@@ -75,11 +76,15 @@ export function ClientConversation({
   headerId,
   className,
 }: ClientConversationProps) {
+  const { t, i18n } = useTranslation('posts');
   const [filter, setFilter] = useState<Filter>('tudo');
 
+  // The labels inside are resolved at build time, so a language switch rebuilds them.
+  const language = i18n.language;
   const items = useMemo(
     () => buildConversationItems(approvals, notes, media),
-    [approvals, notes, media],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [approvals, notes, media, language],
   );
   const clientNotes = useMemo(() => notes.filter((n) => n.visibility === 'client'), [notes]);
   const openCount = clientNotes.filter((n) => n.status === 'open').length;
@@ -98,7 +103,7 @@ export function ClientConversation({
         <Thread className="drawer-approval-thread" aria-labelledby={header ? headerId : undefined}>
           {header ?? (
             <div className="drawer-thread-label">
-              <MessageSquare className="h-3.5 w-3.5" /> Comentários
+              <MessageSquare className="h-3.5 w-3.5" /> {t('conversation.comments')}
             </div>
           )}
 
@@ -106,13 +111,13 @@ export function ClientConversation({
             <div
               className="client-conversation__filters"
               role="group"
-              aria-label="Filtrar conversa"
+              aria-label={t('conversation.filterLabel')}
             >
               {(
                 [
-                  ['tudo', 'Tudo'],
-                  ['abertas', `Em aberto (${openCount})`],
-                  ['midia', 'Na mídia'],
+                  ['tudo', t('conversation.filterAll')],
+                  ['abertas', t('conversation.filterOpen', { n: openCount })],
+                  ['midia', t('conversation.filterMedia')],
                 ] as const
               ).map(([value, label]) => (
                 <button
@@ -130,9 +135,7 @@ export function ClientConversation({
 
           {items.length > 0 && visible.length === 0 && (
             <p className="client-conversation__empty">
-              {filter === 'abertas'
-                ? 'Nenhum comentário em aberto na mídia.'
-                : 'Nenhum comentário na mídia.'}
+              {filter === 'abertas' ? t('conversation.emptyOpen') : t('conversation.emptyMedia')}
             </p>
           )}
 
@@ -173,8 +176,8 @@ export function ClientConversation({
         <div className="drawer-reply-row">
           <input
             className="drawer-input"
-            placeholder="Responder ao cliente…"
-            aria-label="Responder ao cliente"
+            placeholder={t('conversation.replyPlaceholder')}
+            aria-label={t('conversation.replyLabel')}
             value={replyText}
             onChange={(e) => onReplyChange(e.target.value)}
             onKeyDown={(e) => {
@@ -186,7 +189,7 @@ export function ClientConversation({
           />
           <button
             className="drawer-reply-btn"
-            aria-label="Enviar resposta"
+            aria-label={t('conversation.sendReply')}
             disabled={sendingReply || !replyText.trim()}
             onClick={onReplySend}
           >

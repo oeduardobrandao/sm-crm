@@ -1,7 +1,8 @@
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { parseISO, format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import {
   X,
   Calendar as CalendarIcon,
@@ -52,6 +53,8 @@ export function CalendarPostDetailPanel({
   onRemoveDate,
   onOpenPost,
 }: CalendarPostDetailPanelProps) {
+  const { t } = useTranslation('entregas');
+  const dfLocale = useDateFnsLocale();
   const navigate = useNavigate();
 
   const { data: preview } = useQuery({
@@ -79,7 +82,7 @@ export function CalendarPostDetailPanel({
   // A post avulso has no workflow to name -- 'Avulso' fills the slot instead of
   // rendering blank next to the Folder icon.
   const isAvulso = post.workflow_id === null;
-  const workflowLabel = post.workflow_titulo ?? 'Avulso';
+  const workflowLabel = post.workflow_titulo ?? t('calendarGrid.avulso');
   const collaborators = post.ig_collaborators ?? [];
   // Rescheduling follows lock status only; removing a date stays own-workflow, because the
   // calendar sidebar only lists this workflow's backlog. An avulso post has no own-workflow
@@ -92,21 +95,23 @@ export function CalendarPostDetailPanel({
       : null;
 
   return (
-    <aside className="calendar-detail-panel" aria-label="Detalhes do post">
+    <aside className="calendar-detail-panel" aria-label={t('calendarDetail.title')}>
       <div className="calendar-detail-head">
         <div className="calendar-detail-head-info">
-          <span className="calendar-detail-eyebrow">Detalhes do post</span>
+          <span className="calendar-detail-eyebrow">{t('calendarDetail.title')}</span>
           <span className="post-tipo-badge">{TIPO_LABELS[post.tipo]}</span>
           {post.ig_trial_strategy && (
-            <span className="post-tipo-badge post-tipo-badge--trial">Teste</span>
+            <span className="post-tipo-badge post-tipo-badge--trial">
+              {t('calendarDetail.trial')}
+            </span>
           )}
-          <h3 className="calendar-detail-title">{post.titulo || 'Post sem título'}</h3>
+          <h3 className="calendar-detail-title">{post.titulo || t('calendarGrid.untitled')}</h3>
         </div>
         <button
           className="calendar-detail-close"
           onClick={onClose}
-          title="Fechar"
-          aria-label="Fechar painel"
+          title={t('calendarDetail.close')}
+          aria-label={t('calendarDetail.closePanel')}
         >
           <X className="h-4 w-4" />
         </button>
@@ -120,8 +125,8 @@ export function CalendarPostDetailPanel({
             <CalendarIcon className="h-4 w-4" />
             <span className="calendar-detail-mono">
               {scheduled
-                ? format(scheduled, "dd MMM yyyy '·' HH:mm", { locale: ptBR })
-                : 'A definir'}
+                ? format(scheduled, t('calendarDetail.dateFormat'), { locale: dfLocale })
+                : t('calendarDetail.toBeDefined')}
             </span>
           </div>
           <div className="calendar-detail-meta-row">
@@ -130,13 +135,15 @@ export function CalendarPostDetailPanel({
           </div>
           <div className="calendar-detail-meta-row">
             <User className="h-4 w-4" />
-            <span>{responsavel ?? 'Sem responsável'}</span>
+            <span>{responsavel ?? t('listGroups.noResponsavel')}</span>
           </div>
           {collaborators.length > 0 && (
             <div className="calendar-detail-meta-row">
               <Users className="h-4 w-4" aria-hidden="true" />
               <span>
-                <span style={{ color: 'var(--text-muted)' }}>Colaboradores</span>{' '}
+                <span style={{ color: 'var(--text-muted)' }}>
+                  {t('calendarDetail.collaborators')}
+                </span>{' '}
                 <span>{collaborators.map((u) => `@${u}`).join(', ')}</span>
               </span>
             </div>
@@ -144,7 +151,7 @@ export function CalendarPostDetailPanel({
         </div>
 
         <div className="calendar-detail-section">
-          <div className="calendar-detail-section-label">Conteúdo</div>
+          <div className="calendar-detail-section-label">{t('calendarDetail.content')}</div>
           <div className="calendar-detail-preview">
             {thumbUrl ? (
               <img className="calendar-detail-thumb" src={thumbUrl} alt="" />
@@ -160,11 +167,11 @@ export function CalendarPostDetailPanel({
                 )}
               </div>
             )}
-            <p className="calendar-detail-excerpt">{excerpt || 'Sem conteúdo ainda.'}</p>
+            <p className="calendar-detail-excerpt">{excerpt || t('calendarDetail.noContent')}</p>
           </div>
           {preview?.ig_caption ? (
             <div className="calendar-detail-caption">
-              <div className="calendar-detail-section-label">Legenda</div>
+              <div className="calendar-detail-section-label">{t('calendarDetail.caption')}</div>
               <p>{preview.ig_caption}</p>
             </div>
           ) : null}
@@ -172,13 +179,15 @@ export function CalendarPostDetailPanel({
 
         {!isCurrentWorkflow && (
           <div className="calendar-detail-note">
-            {isAvulso ? 'Post avulso, sem fluxo.' : `Pertence ao workflow «${workflowLabel}»`}
+            {isAvulso
+              ? t('calendarDetail.avulsoNote')
+              : t('calendarDetail.belongsTo', { workflow: workflowLabel })}
           </div>
         )}
 
         {canReschedule && (
           <div className="calendar-detail-section">
-            <div className="calendar-detail-section-label">Reagendar</div>
+            <div className="calendar-detail-section-label">{t('calendarDetail.reschedule')}</div>
             <DateTimePicker
               value={scheduled ?? undefined}
               onChange={(date) => date && onReschedule(date)}
@@ -205,12 +214,12 @@ export function CalendarPostDetailPanel({
             target="_blank"
             rel="noopener noreferrer"
           >
-            <ExternalLink className="h-4 w-4" /> Ver no Instagram
+            <ExternalLink className="h-4 w-4" /> {t('calendarDetail.viewOnInstagram')}
           </a>
         )}
         {isCurrentWorkflow && (
           <button className="calendar-detail-btn calendar-detail-btn--primary" onClick={onOpenPost}>
-            <ExternalLink className="h-4 w-4" /> Abrir post completo
+            <ExternalLink className="h-4 w-4" /> {t('calendarDetail.openFull')}
           </button>
         )}
         {isAvulso && !isCurrentWorkflow && (
@@ -218,7 +227,7 @@ export function CalendarPostDetailPanel({
             className="calendar-detail-btn calendar-detail-btn--primary"
             onClick={() => navigate(`/entregas?post=${post.id}`)}
           >
-            <ExternalLink className="h-4 w-4" /> Abrir publicação
+            <ExternalLink className="h-4 w-4" /> {t('calendarDetail.openPublication')}
           </button>
         )}
         <CopyPostLinkButton hubUrl={hubUrl} postId={post.id} />
@@ -227,7 +236,7 @@ export function CalendarPostDetailPanel({
             className="calendar-detail-btn calendar-detail-btn--danger"
             onClick={onRemoveDate}
           >
-            <Trash2 className="h-4 w-4" /> Remover data
+            <Trash2 className="h-4 w-4" /> {t('calendarDetail.removeDate')}
           </button>
         )}
       </div>

@@ -2,6 +2,8 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { Expand } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import { Eye, History, Loader2 } from 'lucide-react';
 import {
   type WorkflowPost,
@@ -136,8 +138,6 @@ import type { PhoneEditorChrome, PhoneMenuAction } from './postEditorPhone/types
 const EMPTY_REFERENCES: ReferenceItem[] = [];
 const EMPTY_MEDIA_NOTES: MediaNote[] = [];
 const noopAsync = async () => {};
-const COLLABORATORS_CLEARED_NOT_INSTAGRAM =
-  'Colaboradores removidos: o post não vai mais para o Instagram.';
 
 export interface PostEditorBodyProps {
   post: WorkflowPost & { property_values?: PostPropertyValue[] };
@@ -259,6 +259,7 @@ export function PostEditorBody({
   focusRequest,
   onDiscussaoFocused,
 }: PostEditorBodyProps) {
+  const { t } = useTranslation('postEditor');
   const isPhone = layout === 'phone' && phone != null;
   // Per-row scheduled-day dots for this post's date picker: same client-wide post list for
   // every row (stable identity from the TanStack cache), each row excludes only its own post
@@ -564,9 +565,9 @@ export function PostEditorBody({
     .map((t) => t.platform);
   const destinationLockReason =
     post.status === 'agendado'
-      ? 'Cancelar agendamento para editar'
+      ? t('shared.cancelScheduleToEdit')
       : post.status === 'postado'
-        ? 'Post já publicado'
+        ? t('postEditorBody.postAlreadyPublished')
         : null;
 
   const showCollaborators =
@@ -577,10 +578,10 @@ export function PostEditorBody({
     if (collaborators.length === 0) return;
     if (change.tipo === 'stories') {
       setCollaborators([]);
-      toast.info('Colaboradores removidos: Stories não aceitam colaboradores.');
+      toast.info(t('postEditorBody.collaboratorsClearedStories'));
     } else if (change.platform === 'tiktok') {
       setCollaborators([]);
-      toast.info(COLLABORATORS_CLEARED_NOT_INSTAGRAM);
+      toast.info(t('postEditorBody.collaboratorsClearedNotInstagram'));
     }
   };
   const focusCollaborators = () =>
@@ -633,7 +634,10 @@ export function PostEditorBody({
         : null;
     if (seed && seed.cut > 0) {
       toast.info(
-        `A legenda copiada foi cortada em ${seed.cut} caracteres para caber no limite do ${PLATFORM_DEFS[platform].label}.`,
+        t('postEditorBody.captionTrimmed', {
+          cut: seed.cut,
+          platform: PLATFORM_DEFS[platform].label,
+        }),
       );
     }
     if (!on && platform === 'geral') {
@@ -648,10 +652,10 @@ export function PostEditorBody({
         {
           onSuccess: () => {
             if (!lost.trim()) return;
-            toast('Geral removido.', {
+            toast(t('postEditorBody.geralRemoved'), {
               duration: 8000,
               action: {
-                label: 'Desfazer',
+                label: t('postEditorBody.undo'),
                 onClick: () => {
                   destinations.toggle.mutate({ platform: 'geral', on: true, seedCaption: lost });
                   setCaptionTab('geral');
@@ -668,7 +672,7 @@ export function PostEditorBody({
       // onSettled do hook recarrega o post, então o editor larga os chips velhos.
       destinations.toggle.mutate(
         { platform, on, seedCaption: null },
-        { onSuccess: () => toast.info(COLLABORATORS_CLEARED_NOT_INSTAGRAM) },
+        { onSuccess: () => toast.info(t('postEditorBody.collaboratorsClearedNotInstagram')) },
       );
       return;
     }
@@ -678,7 +682,7 @@ export function PostEditorBody({
 
   const storiesNote = (
     <p className="mt-3 text-xs" style={{ color: 'var(--text-light)' }}>
-      Stories: uma ou mais mídias (cada uma vira um segmento), sem legenda, formato vertical 9:16.
+      {t('postEditorBody.storiesNote')}
     </p>
   );
   const instagramCaptionField = (frameless: boolean) => (
@@ -689,7 +693,7 @@ export function PostEditorBody({
       value={post.ig_caption ?? ''}
       threads={commentThreads}
       disabled={isScheduleLocked}
-      lockedMessage="Cancelar agendamento para editar"
+      lockedMessage={t('shared.cancelScheduleToEdit')}
       onSave={(text, anchors) => onSaveCaption(post.id!, text, anchors)}
       comments={
         currentUserId
@@ -734,12 +738,10 @@ export function PostEditorBody({
     const commentCount = discussao.naoLidas + approvals.length + openClientNotes;
     const paragraphs = (post.conteudo_plain ?? '').split(/\n+/).filter((l) => l.trim()).length;
     const roteiroSummary = editSuggestion
-      ? 'Sugestão pendente'
+      ? t('postEditorBody.suggestionPending')
       : paragraphs === 0
-        ? 'Vazio'
-        : paragraphs === 1
-          ? '1 parágrafo'
-          : `${paragraphs} parágrafos`;
+        ? t('postEditorBody.empty')
+        : t('postEditorBody.paragraphs', { count: paragraphs });
     const postsToTikTok = multiplatform
       ? currentPlatforms.includes('tiktok')
       : post.platform === 'tiktok' || post.platform === 'both';
@@ -747,9 +749,9 @@ export function PostEditorBody({
     // Host actions first, the editor's own before the destructive ones (Excluir last).
     const editorActions: PhoneMenuAction[] = [
       ...(post.id != null
-        ? [{ label: 'Histórico de versões', onSelect: () => setVersionHistoryOpen(true) }]
+        ? [{ label: t('shared.versionHistory'), onSelect: () => setVersionHistoryOpen(true) }]
         : []),
-      { label: 'Histórico do post', onSelect: () => setTimelineOpen(true) },
+      { label: t('shared.postHistory'), onSelect: () => setTimelineOpen(true) },
     ];
     const firstDestructive = phone.menuActions.findIndex((a) => a.destructive);
     const menuActions =
@@ -775,7 +777,7 @@ export function PostEditorBody({
       }
       if (thread?.field !== 'ig_caption') return;
       if (multiplatform && !currentPlatforms.includes('instagram')) {
-        toast.info('Ative o Instagram em Destinos para ver este comentário.');
+        toast.info(t('postEditorBody.enableInstagramToSeeComment'));
         return;
       }
       setPhoneTab('conteudo');
@@ -811,7 +813,7 @@ export function PostEditorBody({
     const phoneEditor = editSuggestion ? null : !canMountEditor ? (
       <div className="phone-editor-loading">
         <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-        Carregando conteúdo…
+        {t('shared.loadingContent')}
       </div>
     ) : (
       <PostEditor
@@ -828,8 +830,8 @@ export function PostEditorBody({
                 } catch (err) {
                   toast.error(
                     err instanceof Error && err.message === 'quota_exceeded'
-                      ? 'Limite de armazenamento atingido'
-                      : 'Falha ao enviar imagem',
+                      ? t('shared.storageLimitReached')
+                      : t('shared.imageUploadFailed'),
                   );
                   throw err;
                 }
@@ -855,8 +857,8 @@ export function PostEditorBody({
         {isExternallyVisible && (
           <p className="phone-editor-notice">
             {isScheduleLocked
-              ? 'Este post está agendado para publicação. Data, tipo, plataforma e legenda do Instagram estão travados: cancele o agendamento para editá-los.'
-              : 'Este post já está visível no portal do cliente. Alterações serão refletidas imediatamente.'}
+              ? t('postEditorBody.scheduledLockedNotice')
+              : t('postEditorBody.visibleToClientNotice')}
           </p>
         )}
         <div className="phone-editor-card">
@@ -884,22 +886,22 @@ export function PostEditorBody({
         </div>
 
         {captionBlock && (
-          <section className="phone-editor-section" aria-label="Legenda">
+          <section className="phone-editor-section" aria-label={t('shared.caption')}>
             <div className="phone-editor-section__head">
-              <h2 className="phone-editor-section__title">Legenda</h2>
+              <h2 className="phone-editor-section__title">{t('shared.caption')}</h2>
               {post.id != null && (
                 <button
                   type="button"
                   className="phone-editor-link"
                   onClick={() => setVersionHistoryOpen(true)}
                 >
-                  Versões
+                  {t('postEditorBody.versions')}
                 </button>
               )}
               <button
                 type="button"
                 className="phone-editor-link"
-                aria-label="Editar legenda em tela cheia"
+                aria-label={t('postEditorBody.editCaptionFullscreen')}
                 onClick={() => setCaptionScreenOpen(true)}
               >
                 <Expand aria-hidden="true" />
@@ -908,30 +910,28 @@ export function PostEditorBody({
             <PhoneTextScreen
               open={captionScreenOpen}
               onOpenChange={setCaptionScreenOpen}
-              title="Legenda"
+              title={t('shared.caption')}
             >
               <div className="phone-editor-card phone-editor-card--caption">{captionBlock}</div>
             </PhoneTextScreen>
             {captionThreadCount > 0 && (
               <p className="phone-editor-footnote">
-                {captionThreadCount === 1
-                  ? '1 comentário no texto'
-                  : `${captionThreadCount} comentários no texto`}
+                {t('postEditorBody.captionComments', { count: captionThreadCount })}
               </p>
             )}
           </section>
         )}
 
-        <GroupedList aria-label="Roteiro e referências">
+        <GroupedList aria-label={t('postEditorBody.scriptAndReferences')}>
           <Cell
-            label="Roteiro e briefing"
+            label={t('shared.scriptAndBrief')}
             value={roteiroSummary}
             chevron
             onClick={() => (editSuggestion ? setSuggestionOpen(true) : setRoteiroOpen(true))}
           />
           {references.length > 0 && (
             <Cell
-              label="Referências do cliente"
+              label={t('shared.clientReferences')}
               value={String(references.length)}
               chevron
               onClick={() => setReferencesOpen(true)}
@@ -941,7 +941,7 @@ export function PostEditorBody({
         <PhoneTextScreen
           open={roteiroOpen}
           onOpenChange={setRoteiroOpen}
-          title="Roteiro e briefing"
+          title={t('shared.scriptAndBrief')}
           hiddenWhenClosed
         >
           {phoneEditor}
@@ -953,10 +953,10 @@ export function PostEditorBody({
       <>
         {statusAutomationHint && <p className="phone-editor-notice">{statusAutomationHint}</p>}
         <PostOrigemLinha postId={post.id} />
-        <GroupedList aria-label="Detalhes do post">
+        <GroupedList aria-label={t('postEditorBody.postDetails')}>
           <li className="phone-cell phone-field">
             <label className="phone-field__label" htmlFor={`phone-titulo-${post.id}`}>
-              Título
+              {t('shared.title')}
             </label>
             <input
               id={`phone-titulo-${post.id}`}
@@ -972,13 +972,13 @@ export function PostEditorBody({
                   tituloDirty.current = false;
                 }
               }}
-              placeholder="Título do post"
+              placeholder={t('shared.postTitlePlaceholder')}
             />
           </li>
           <li className="phone-cell phone-field">
             <TipoToggle
               value={post.tipo}
-              lockedReason={isScheduleLocked ? 'Cancelar agendamento para editar' : null}
+              lockedReason={isScheduleLocked ? t('shared.cancelScheduleToEdit') : null}
               onChange={(v) => {
                 onFieldChange('tipo', v);
                 if (v !== 'reels' && post.ig_trial_strategy) {
@@ -1023,7 +1023,7 @@ export function PostEditorBody({
             )}
           </li>
           <Cell
-            label="Status"
+            label={t('shared.status')}
             value={statusOption.label}
             subtitle={
               isVisibleToClient(statusOption.canonical)
@@ -1036,7 +1036,7 @@ export function PostEditorBody({
           {membros.length > 0 && (
             <li className="phone-cell phone-field phone-field--inline">
               <label className="phone-field__label" htmlFor={`phone-resp-${post.id}`}>
-                Responsável do post
+                {t('shared.postOwner')}
               </label>
               <select
                 id={`phone-resp-${post.id}`}
@@ -1046,7 +1046,7 @@ export function PostEditorBody({
                   onFieldChange('responsavel_id', e.target.value ? Number(e.target.value) : null)
                 }
               >
-                <option value="">Sem responsável</option>
+                <option value="">{t('shared.noOwner')}</option>
                 {membros.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.nome}
@@ -1057,7 +1057,7 @@ export function PostEditorBody({
           )}
           <li className="phone-cell phone-field">
             <div className="phone-field__head">
-              <span className="phone-field__label">Data de postagem</span>
+              <span className="phone-field__label">{t('shared.postDate')}</span>
               {hasInstagramAccount && (
                 <SuggestTimeButton
                   clientId={clienteId}
@@ -1103,22 +1103,22 @@ export function PostEditorBody({
           </div>
         )}
 
-        <GroupedList aria-label="Histórico">
-          <Cell label="Histórico do post" chevron onClick={() => setTimelineOpen(true)} />
+        <GroupedList aria-label={t('postEditorBody.history')}>
+          <Cell label={t('shared.postHistory')} chevron onClick={() => setTimelineOpen(true)} />
           {post.id != null && (
             <Cell
-              label="Histórico de versões"
+              label={t('shared.versionHistory')}
               chevron
               onClick={() => setVersionHistoryOpen(true)}
             />
           )}
           {phone.autoSchedule && (
             <Cell
-              label="Aguardando agendamento automático"
+              label={t('postEditorBody.awaitingAutoSchedule')}
               subtitle={
                 phone.autoSchedule.needsDate
-                  ? 'Defina uma data futura para agendar.'
-                  : 'Agendar agora o post aprovado.'
+                  ? t('postEditorBody.setFutureDate')
+                  : t('postEditorBody.scheduleApprovedNow')
               }
               chevron
               onClick={phone.autoSchedule.onClick}
@@ -1184,7 +1184,7 @@ export function PostEditorBody({
         </div>
 
         {multiplatform && targets.length > 0 && (
-          <GroupedList header="Destinos" headerAs="h3">
+          <GroupedList header={t('postEditorBody.destinations')} headerAs="h3">
             {targets.map((t) => (
               <Cell
                 key={t.platform}
@@ -1203,8 +1203,11 @@ export function PostEditorBody({
         {!multiplatform && <PlatformStatusRow post={post} />}
 
         {post.status === 'agendado' && post.scheduled_at && (
-          <GroupedList header="Publicação" headerAs="h3">
-            <Cell label="Data e hora" value={formatPhoneDateTime(post.scheduled_at)} />
+          <GroupedList header={t('postEditorBody.publishing')} headerAs="h3">
+            <Cell
+              label={t('postEditorBody.dateAndTime')}
+              value={formatPhoneDateTime(post.scheduled_at)}
+            />
           </GroupedList>
         )}
       </>
@@ -1326,7 +1329,7 @@ export function PostEditorBody({
           <BottomSheet
             open={referencesOpen && references.length > 0}
             onOpenChange={setReferencesOpen}
-            title="Referências do cliente"
+            title={t('shared.clientReferences')}
             detents={['medium', 'large']}
           >
             <PostClientReferences
@@ -1346,7 +1349,7 @@ export function PostEditorBody({
       <PostOrigemLinha postId={post.id} />
       <div className="drawer-post-meta-row">
         <div className="drawer-post-field">
-          <label>Título</label>
+          <label>{t('shared.title')}</label>
           <input
             className="drawer-input"
             value={tituloLocal}
@@ -1360,7 +1363,7 @@ export function PostEditorBody({
                 tituloDirty.current = false;
               }
             }}
-            placeholder="Título do post"
+            placeholder={t('shared.postTitlePlaceholder')}
           />
         </div>
         {/* Locked while agendado: the publish cron builds the Instagram container up
@@ -1368,7 +1371,7 @@ export function PostEditorBody({
             container in the old format — the publish phase then posts the wrong thing. */}
         <TipoToggle
           value={post.tipo}
-          lockedReason={isScheduleLocked ? 'Cancelar agendamento para editar' : null}
+          lockedReason={isScheduleLocked ? t('shared.cancelScheduleToEdit') : null}
           onChange={(v) => {
             onFieldChange('tipo', v);
             if (v !== 'reels' && post.ig_trial_strategy) {
@@ -1410,7 +1413,7 @@ export function PostEditorBody({
           />
         )}
         <div className="drawer-post-field">
-          <label>Status</label>
+          <label>{t('shared.status')}</label>
           <select
             className="drawer-select"
             value={statusRegistry.resolve(post).key}
@@ -1433,7 +1436,7 @@ export function PostEditorBody({
         </div>
         {membros.length > 0 && (
           <div className="drawer-post-field">
-            <label>Responsável do post</label>
+            <label>{t('shared.postOwner')}</label>
             <select
               className="drawer-select"
               value={post.responsavel_id ?? ''}
@@ -1441,7 +1444,7 @@ export function PostEditorBody({
                 onFieldChange('responsavel_id', e.target.value ? Number(e.target.value) : null)
               }
             >
-              <option value="">Sem responsável</option>
+              <option value="">{t('shared.noOwner')}</option>
               {membros.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.nome}
@@ -1452,7 +1455,7 @@ export function PostEditorBody({
         )}
         <div className="drawer-post-field">
           <div className="drawer-post-field-head">
-            <label>Data de postagem</label>
+            <label>{t('shared.postDate')}</label>
             {hasInstagramAccount && (
               <SuggestTimeButton
                 clientId={clienteId}
@@ -1491,8 +1494,8 @@ export function PostEditorBody({
       {isExternallyVisible && (
         <div className="drawer-external-warning">
           {isScheduleLocked
-            ? '⚠ Este post está agendado para publicação. Data, tipo, plataforma e legenda do Instagram estão travados: cancele o agendamento para editá-los.'
-            : '⚠ Este post já está visível no portal do cliente. Alterações serão refletidas imediatamente.'}
+            ? `⚠ ${t('postEditorBody.scheduledLockedNotice')}`
+            : `⚠ ${t('postEditorBody.visibleToClientNotice')}`}
         </div>
       )}
       {/* Custom properties — shown when template has properties defined. A post avulso
@@ -1553,7 +1556,7 @@ export function PostEditorBody({
             onClick={() => setVersionHistoryOpen(true)}
             className="flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
-            <History className="h-3.5 w-3.5" /> Histórico de versões
+            <History className="h-3.5 w-3.5" /> {t('shared.versionHistory')}
           </button>
         </div>
       )}
@@ -1563,9 +1566,11 @@ export function PostEditorBody({
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-amber-200/60 bg-amber-50">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-amber-400" />
-              <span className="text-[13px] font-semibold text-amber-900">Sugestão do cliente</span>
+              <span className="text-[13px] font-semibold text-amber-900">
+                {t('shared.clientSuggestion')}
+              </span>
               <span className="text-[11px] text-amber-600">
-                {new Date(editSuggestion.updated_at).toLocaleDateString('pt-BR', {
+                {new Date(editSuggestion.updated_at).toLocaleDateString(getIntlLocale(), {
                   day: '2-digit',
                   month: 'short',
                   hour: '2-digit',
@@ -1578,13 +1583,13 @@ export function PostEditorBody({
                 onClick={() => onRejectSuggestion(editSuggestion.id)}
                 className="px-3 py-1 text-[12px] font-medium rounded border border-stone-300 bg-white text-stone-700 hover:bg-stone-50 transition-colors"
               >
-                Rejeitar
+                {t('shared.reject')}
               </button>
               <button
                 onClick={() => onAcceptSuggestion(editSuggestion)}
                 className="px-3 py-1 text-[12px] font-medium rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
               >
-                Aceitar
+                {t('shared.accept')}
               </button>
             </div>
           </div>
@@ -1597,7 +1602,7 @@ export function PostEditorBody({
             {editSuggestion.changed_fields.includes('ig_caption') && (
               <div className="border-t border-amber-200/60 pt-3">
                 <p className="text-[11px] font-medium text-stone-500 mb-1.5">
-                  Legenda do Instagram
+                  {t('shared.igCaption')}
                 </p>
                 <DiffView
                   segments={computeWordDiff(
@@ -1615,7 +1620,7 @@ export function PostEditorBody({
           style={{ color: 'var(--text-light)' }}
         >
           <Loader2 className="h-4 w-4 animate-spin" />
-          Carregando conteúdo…
+          {t('shared.loadingContent')}
         </div>
       ) : (
         <PostEditor
@@ -1631,8 +1636,8 @@ export function PostEditorBody({
                   } catch (err) {
                     toast.error(
                       err instanceof Error && err.message === 'quota_exceeded'
-                        ? 'Limite de armazenamento atingido'
-                        : 'Falha ao enviar imagem',
+                        ? t('shared.storageLimitReached')
+                        : t('shared.imageUploadFailed'),
                     );
                     throw err;
                   }
@@ -1754,7 +1759,7 @@ export function PostEditorBody({
             if (thread?.field !== 'ig_caption') return;
             if (multiplatform) {
               if (!currentPlatforms.includes('instagram')) {
-                toast.info('Ative o Instagram em Destinos para ver este comentário.');
+                toast.info(t('postEditorBody.enableInstagramToSeeComment'));
                 return;
               }
               setCaptionTab('instagram');
@@ -1787,10 +1792,10 @@ export function PostEditorBody({
           <div className="drawer-client-thread-header">
             <Eye className="drawer-client-thread-icon h-3.5 w-3.5" aria-hidden="true" />
             <h3 id={`cliente-conversa-${post.id}`} className="drawer-client-thread-title">
-              Conversa com o cliente
+              {t('postEditorBody.clientConversation')}
             </h3>
             <Badge variant="info" size="sm">
-              O cliente vê
+              {t('postEditorBody.clientSees')}
             </Badge>
           </div>
         }
@@ -1830,14 +1835,15 @@ function PostApprovalBubble({
   references: ReferenceItem[];
   onOpenReference: (item: ReferenceItem) => void;
 }) {
+  const { t } = useTranslation('postEditor');
   const isTeam = approval.is_workspace_user;
   const actionLabel = isTeam
-    ? 'Equipe'
+    ? t('postApprovalBubble.team')
     : approval.action === 'correcao'
-      ? 'Correção solicitada'
+      ? t('postApprovalBubble.correctionRequested')
       : approval.action === 'aprovado'
-        ? 'Aprovado'
-        : 'Cliente';
+        ? t('postApprovalBubble.approved')
+        : t('postApprovalBubble.client');
 
   return (
     <div
@@ -1846,7 +1852,7 @@ function PostApprovalBubble({
       <div className="approval-bubble-meta">
         <span className="approval-bubble-author">{actionLabel}</span>
         <span className="approval-bubble-date">
-          {new Date(approval.created_at).toLocaleDateString('pt-BR', {
+          {new Date(approval.created_at).toLocaleDateString(getIntlLocale(), {
             day: '2-digit',
             month: 'short',
             hour: '2-digit',

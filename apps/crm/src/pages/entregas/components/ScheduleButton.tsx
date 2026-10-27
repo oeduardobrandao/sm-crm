@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type ReactElement } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { Calendar, AlertCircle, RefreshCw, X, Send, Loader2, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -67,11 +68,12 @@ const CHIP_STYLES: Record<PlatformChipState, { bg: string; color: string; icon: 
   failed: { bg: 'rgba(245, 90, 66, 0.12)', color: '#f55a42', icon: '✗' },
 };
 
-const CHIP_TEXT: Record<PlatformChipState, string> = {
-  published: 'publicado',
-  pending: 'pendente',
-  failed: 'falhou',
-};
+/** Copy key for the per-platform variants: anything that isn't tiktok/both reads as Instagram. */
+function platformCopyKey(platform: Platform): 'both' | 'tiktok' | 'instagram' {
+  if (platform === 'both') return 'both';
+  if (platform === 'tiktok') return 'tiktok';
+  return 'instagram';
+}
 
 function PlatformChip({
   label,
@@ -82,8 +84,10 @@ function PlatformChip({
   state: PlatformChipState;
   pendingLabel?: string;
 }) {
+  const { t } = useTranslation('postPanels');
   const style = CHIP_STYLES[state];
-  const text = state === 'pending' && pendingLabel ? pendingLabel : CHIP_TEXT[state];
+  const text =
+    state === 'pending' && pendingLabel ? pendingLabel : t(`scheduleButton.chip.${state}`);
   return (
     <span
       className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold"
@@ -97,6 +101,7 @@ function PlatformChip({
 /** Per-platform status chips + "Ver no TikTok" link. Renders nothing for
  * `platform === 'instagram'` (or unset) — chips are additive, TikTok-surface-only UI. */
 export function PlatformStatusRow({ post }: { post: WorkflowPost }) {
+  const { t } = useTranslation('postPanels');
   const platform: Platform = post.platform ?? 'instagram';
   const targetsInstagram = platform === 'instagram' || platform === 'both';
   const targetsTikTok = platform === 'tiktok' || platform === 'both';
@@ -111,7 +116,11 @@ export function PlatformStatusRow({ post }: { post: WorkflowPost }) {
         <PlatformChip
           label={PLATFORM_LABELS.tiktok}
           state={tiktokChipState(post)}
-          pendingLabel={post.tiktok_publish_status === 'processing' ? 'processando' : undefined}
+          pendingLabel={
+            post.tiktok_publish_status === 'processing'
+              ? t('scheduleButton.chip.processing')
+              : undefined
+          }
         />
         {post.tiktok_post_url && (
           <a
@@ -121,34 +130,18 @@ export function PlatformStatusRow({ post }: { post: WorkflowPost }) {
             className="inline-flex items-center gap-1 text-xs font-medium"
             style={{ color: 'var(--primary-color)' }}
           >
-            <ExternalLink className="h-3 w-3" /> Ver no TikTok
+            <ExternalLink className="h-3 w-3" /> {t('scheduleButton.viewOnTikTok')}
           </a>
         )}
       </div>
       {(post.tiktok_publish_status === 'initiated' ||
         post.tiktok_publish_status === 'processing') && (
         <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-          Processando no TikTok. Pode levar alguns minutos.
+          {t('scheduleButton.tiktokProcessing')}
         </p>
       )}
     </>
   );
-}
-
-function publishNowDescription(platform: Platform): string {
-  if (platform === 'both') {
-    return 'O post será publicado imediatamente no Instagram e no TikTok. Esta ação não pode ser desfeita.';
-  }
-  if (platform === 'tiktok') {
-    return 'O post será publicado imediatamente no TikTok. Esta ação não pode ser desfeita.';
-  }
-  return 'O post será publicado imediatamente no Instagram. Esta ação não pode ser desfeita.';
-}
-
-function publishingProgressLabel(platform: Platform): string {
-  if (platform === 'both') return 'Enviando para o Instagram e o TikTok…';
-  if (platform === 'tiktok') return 'Enviando para o TikTok…';
-  return 'Enviando para o Instagram…';
 }
 
 interface ScheduleButtonProps {
@@ -213,6 +206,7 @@ export function useScheduleActions({
   explainMissingInstagramAccount = false,
   beforeServerAction,
 }: Omit<ScheduleButtonProps, 'compact'>) {
+  const { t } = useTranslation('postPanels');
   const [loading, setLoading] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -253,18 +247,15 @@ export function useScheduleActions({
 
   let warningMessage: string | null = null;
   if (targetsInstagram && igAccountStatus?.revoked) {
-    warningMessage =
-      'Token do Instagram foi revogado. Reconecte a conta nas configurações do cliente.';
+    warningMessage = t('scheduleButton.warning.igRevoked');
   } else if (targetsInstagram && igAccountStatus?.expired) {
-    warningMessage = 'Token do Instagram expirou. Reconecte a conta nas configurações do cliente.';
+    warningMessage = t('scheduleButton.warning.igExpired');
   } else if (targetsInstagram && missingPublishPermission) {
-    warningMessage =
-      'Permissão de publicação não concedida. Reconecte a conta com as permissões necessárias.';
+    warningMessage = t('scheduleButton.warning.missingPermission');
   } else if (targetsTikTok && ttAccountStatus?.revoked) {
-    warningMessage =
-      'Token do TikTok foi revogado. Reconecte a conta nas configurações do cliente.';
+    warningMessage = t('scheduleButton.warning.ttRevoked');
   } else if (targetsTikTok && ttAccountStatus?.expired) {
-    warningMessage = 'Token do TikTok expirou. Reconecte a conta nas configurações do cliente.';
+    warningMessage = t('scheduleButton.warning.ttExpired');
   }
 
   const tiktokReady = !targetsTikTok || tiktokSettingsComplete === true;
@@ -313,15 +304,13 @@ export function useScheduleActions({
         setConfirmOpen(false);
 
         if (!igError && !ttError) {
-          toast.success(
-            'Enviado ao Instagram e ao TikTok. No TikTok, pode levar alguns minutos para aparecer no perfil.',
-          );
+          toast.success(t('scheduleButton.toast.sentBoth'));
         } else if (igError && ttError) {
           toast.error(`Instagram: ${igError}; TikTok: ${ttError}`);
         } else if (igError) {
           toast.error(`Instagram: ${igError}`);
           // The TikTok half did go out: say so, or the user only sees the failure.
-          toast.success('Enviado ao TikTok. Pode levar alguns minutos para aparecer no perfil.');
+          toast.success(t('scheduleButton.toast.sentTikTok'));
         } else {
           toast.error(`TikTok: ${ttError}`);
         }
@@ -334,7 +323,7 @@ export function useScheduleActions({
         setConfirmOpen(false);
         // Spec A8: TikTok processes the upload asynchronously whether the response says
         // `postado` or still processing, so both get the same "may take a few minutes" notice.
-        toast.success('Enviado ao TikTok. Pode levar alguns minutos para aparecer no perfil.');
+        toast.success(t('scheduleButton.toast.sentTikTok'));
         onStatusChange();
       } else {
         const result = await publishInstagramPostNow(post.id!);
@@ -343,9 +332,9 @@ export function useScheduleActions({
         await new Promise((r) => setTimeout(r, 600));
         setConfirmOpen(false);
         if (result.status === 'postado') {
-          toast.success('Post publicado no Instagram!');
+          toast.success(t('scheduleButton.toast.publishedInstagram'));
         } else {
-          toast.info(result.message ?? 'Post será publicado automaticamente em instantes.');
+          toast.info(result.message ?? t('scheduleButton.toast.publishingSoon'));
         }
         onStatusChange();
       }
@@ -387,7 +376,7 @@ export function useScheduleActions({
       } else {
         await cancelInstagramSchedule(post.id!);
       }
-      toast.success('Agendamento cancelado');
+      toast.success(t('scheduleButton.toast.scheduleCanceled'));
       onStatusChange();
     } catch (err: any) {
       toast.error(err.message);
@@ -424,9 +413,9 @@ export function useScheduleActions({
         const igSkip = igFailed && igTokenBlocked;
         const ttSkip = ttFailed && ttTokenBlocked;
         if (igSkip) {
-          toast.info('Conta do Instagram precisa ser reconectada — apenas o TikTok será reenviado');
+          toast.info(t('scheduleButton.toast.igReconnectOnlyTikTok'));
         } else if (ttSkip) {
-          toast.info('Conta do TikTok precisa ser reconectada — apenas o Instagram será reenviado');
+          toast.info(t('scheduleButton.toast.ttReconnectOnlyInstagram'));
         }
         let igError: string | undefined;
         let ttError: string | undefined;
@@ -445,7 +434,7 @@ export function useScheduleActions({
           }
         }
         if (!igError && !ttError) {
-          toast.success('Post reenviado para publicação');
+          toast.success(t('scheduleButton.toast.resent'));
         } else if (igError && ttError) {
           toast.error(`Instagram: ${igError}; TikTok: ${ttError}`);
         } else if (igError) {
@@ -455,10 +444,10 @@ export function useScheduleActions({
         }
       } else if (platform === 'tiktok') {
         await retryTikTokPublish(post.id!);
-        toast.success('Post reenviado para publicação');
+        toast.success(t('scheduleButton.toast.resent'));
       } else {
         await retryInstagramPublish(post.id!);
-        toast.success('Post reenviado para publicação');
+        toast.success(t('scheduleButton.toast.resent'));
       }
       onStatusChange();
     } catch (err: any) {
@@ -495,25 +484,27 @@ export function useScheduleActions({
     tiktokReady &&
     mediaViolations.length === 0;
   const missingItems: string[] = [];
-  if (missingMedia) missingItems.push('mídia');
-  if (!post.scheduled_at) missingItems.push('data de publicação');
+  if (missingMedia) missingItems.push(t('scheduleButton.missing.media'));
+  if (!post.scheduled_at) missingItems.push(t('scheduleButton.missing.publishDate'));
   const captionLabel =
     targetsInstagram && targetsTikTok
-      ? 'legenda'
+      ? t('scheduleButton.missing.caption')
       : targetsTikTok
-        ? 'legenda do TikTok'
-        : 'legenda do Instagram';
+        ? t('scheduleButton.missing.tiktokCaption')
+        : t('scheduleButton.missing.instagramCaption');
   if (!isStoryPost && !hasRequiredCaption) missingItems.push(captionLabel);
   if (targetsTikTok && !tiktokReady) {
     missingItems.push(
       tiktokIncompleteReason
         ? tiktokIncompleteReason.replace(/\.$/, '').replace(/^./, (c) => c.toLowerCase())
-        : 'configurações do TikTok',
+        : t('scheduleButton.missing.tiktokSettings'),
     );
   }
   const tiktokBlockedTitle =
     targetsTikTok && !tiktokReady
-      ? (tiktokIncompleteReason ?? tiktokIncompleteTooltip ?? 'Complete as configurações do TikTok')
+      ? (tiktokIncompleteReason ??
+        tiktokIncompleteTooltip ??
+        t('scheduleButton.completeTikTokSettings'))
       : undefined;
 
   return {
@@ -557,6 +548,7 @@ export type ScheduleActions = ReturnType<typeof useScheduleActions>;
 /** The "Publicar agora?" confirmation with its progress bar. Rendered by whichever
  *  surface owns the publish-now button (desktop ScheduleButton or the phone editor). */
 export function PublishNowConfirmDialog({ actions }: { actions: ScheduleActions }) {
+  const { t } = useTranslation('postPanels');
   const {
     platform,
     targetsTikTok,
@@ -579,17 +571,23 @@ export function PublishNowConfirmDialog({ actions }: { actions: ScheduleActions 
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{publishing ? 'Publicando…' : 'Publicar agora?'}</AlertDialogTitle>
+          <AlertDialogTitle>
+            {publishing ? t('scheduleButton.publishing') : t('scheduleButton.publishNowQuestion')}
+          </AlertDialogTitle>
           <AlertDialogDescription>
             {publishing
-              ? `Aguarde enquanto o post é publicado ${platform === 'both' ? 'no Instagram e no TikTok' : platform === 'tiktok' ? 'no TikTok' : 'no Instagram'}.`
-              : publishNowDescription(platform)}
+              ? t(`scheduleButton.publishingWait.${platformCopyKey(platform)}`)
+              : t(`scheduleButton.publishNowDescription.${platformCopyKey(platform)}`)}
           </AlertDialogDescription>
         </AlertDialogHeader>
         {publishing && (
           <div className="px-1">
             <div className="flex items-center justify-between text-xs text-stone-500 mb-1.5">
-              <span>{publishPct < 100 ? publishingProgressLabel(platform) : 'Concluído!'}</span>
+              <span>
+                {publishPct < 100
+                  ? t(`scheduleButton.progress.${platformCopyKey(platform)}`)
+                  : t('scheduleButton.done')}
+              </span>
               <span className="tabular-nums font-medium text-stone-900">{publishPct}%</span>
             </div>
             <div className="h-2 rounded-full bg-stone-200 overflow-hidden">
@@ -613,7 +611,7 @@ export function PublishNowConfirmDialog({ actions }: { actions: ScheduleActions 
         )}
         {!publishing && (
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
             {/* The TikTok gate can close while the dialog is open (the declaration above
                 disappears with it), so the confirm re-checks it. */}
             <Button
@@ -621,7 +619,7 @@ export function PublishNowConfirmDialog({ actions }: { actions: ScheduleActions 
               disabled={!canPublishNow}
               style={canPublishNow ? publishColor : undefined}
             >
-              Publicar
+              {t('scheduleButton.publish')}
             </Button>
           </AlertDialogFooter>
         )}
@@ -631,6 +629,7 @@ export function PublishNowConfirmDialog({ actions }: { actions: ScheduleActions 
 }
 
 export function ScheduleButton({ compact = false, ...props }: ScheduleButtonProps) {
+  const { t } = useTranslation('postPanels');
   const actions = useScheduleActions(props);
   const { post } = props;
   const {
@@ -660,7 +659,7 @@ export function ScheduleButton({ compact = false, ...props }: ScheduleButtonProp
   if (visibility === 'missing-ig-account-note') {
     return (
       <p className="mt-3 text-xs" style={{ color: 'var(--text-light)' }}>
-        Conecte a conta do Instagram do cliente para agendar ou publicar este post.
+        {t('scheduleButton.connectInstagram')}
       </p>
     );
   }
@@ -673,8 +672,8 @@ export function ScheduleButton({ compact = false, ...props }: ScheduleButtonProp
             className="text-xs mb-2 flex items-center gap-1 rounded-md px-2 py-1.5"
             style={{ color: '#f55a42', background: 'rgba(245, 90, 66, 0.08)' }}
           >
-            <AlertCircle className="h-3 w-3 flex-shrink-0" /> {warningMessage} A publicação agendada
-            pode falhar.
+            <AlertCircle className="h-3 w-3 flex-shrink-0" /> {warningMessage}{' '}
+            {t('scheduleButton.scheduledMayFail')}
           </p>
         )}
         <div className="flex flex-wrap items-center gap-2">
@@ -687,14 +686,14 @@ export function ScheduleButton({ compact = false, ...props }: ScheduleButtonProp
                   : { background: 'var(--surface-hover)', color: 'var(--text-main)' }
               }
             >
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Publicando…
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('scheduleButton.publishing')}
             </div>
           ) : (
             <div
               className="inline-flex items-center gap-1.5 px-3 h-8 mb-2 rounded-md text-xs font-semibold"
               style={{ background: 'rgba(62, 207, 142, 0.12)', color: '#3ecf8e' }}
             >
-              <Calendar className="h-3.5 w-3.5" /> Agendado
+              <Calendar className="h-3.5 w-3.5" /> {t('scheduleButton.scheduled')}
             </div>
           )}
           <Button
@@ -705,7 +704,7 @@ export function ScheduleButton({ compact = false, ...props }: ScheduleButtonProp
             className="h-8 text-xs"
             style={{ color: '#f55a42', borderColor: 'rgba(245, 90, 66, 0.25)' }}
           >
-            <X className="h-3 w-3 mr-1" /> Cancelar
+            <X className="h-3 w-3 mr-1" /> {t('actions.cancel')}
           </Button>
         </div>
         <PlatformStatusRow post={post} />
@@ -731,7 +730,7 @@ export function ScheduleButton({ compact = false, ...props }: ScheduleButtonProp
           className="text-xs font-semibold"
           style={!retryBlocked ? { background: '#f55a42', color: 'white' } : undefined}
         >
-          <RefreshCw className="h-3 w-3 mr-1" /> Tentar novamente
+          <RefreshCw className="h-3 w-3 mr-1" /> {t('scheduleButton.retry')}
         </Button>
         {targetsInstagram &&
           (post.publish_error || post.publish_error_code) &&
@@ -800,7 +799,8 @@ export function ScheduleButton({ compact = false, ...props }: ScheduleButtonProp
               style={canSchedule ? { background: '#eab308', color: '#12151a' } : undefined}
               title={tiktokBlockedTitle}
             >
-              <Calendar className="h-3 w-3 mr-1" /> {compact ? 'Agendar' : 'Agendar publicação'}
+              <Calendar className="h-3 w-3 mr-1" />{' '}
+              {compact ? t('scheduleButton.schedule') : t('scheduleButton.schedulePublication')}
             </Button>,
           )}
           {withBlockedTooltip(
@@ -812,13 +812,15 @@ export function ScheduleButton({ compact = false, ...props }: ScheduleButtonProp
               style={canPublishNow ? publishColor : undefined}
               title={tiktokBlockedTitle}
             >
-              <Send className="h-3 w-3 mr-1" /> {compact ? 'Publicar' : 'Publicar agora'}
+              <Send className="h-3 w-3 mr-1" />{' '}
+              {compact ? t('scheduleButton.publish') : t('scheduleButton.publishNow')}
             </Button>,
           )}
         </div>
         {!accountWarning && !canPublishNow && missingItems.length > 0 && (
           <p className="text-xs mt-1 flex items-center gap-1" style={{ color: '#f5a342' }}>
-            <AlertCircle className="h-3 w-3" /> Falta: {missingItems.join(', ')}
+            <AlertCircle className="h-3 w-3" />{' '}
+            {t('scheduleButton.missingLine', { items: missingItems.join(', ') })}
           </p>
         )}
         {mediaViolations.length > 0 && (

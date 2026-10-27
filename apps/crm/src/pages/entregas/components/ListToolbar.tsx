@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useState, type Ref } from 'react';
 import { Check, CheckCheck, ChevronDown, Rows3, Users } from 'lucide-react';
 import { ActionSheet } from '@/components/mobile/ActionSheet';
@@ -14,24 +16,10 @@ import {
 import type { ListGroupBy } from '../viewQuery';
 import '../phone/listPhone.css';
 
-const LIST_GROUP_BY_LABELS: Record<ListGroupBy, string> = {
-  prazo: 'Prazo da etapa',
-  postagem: 'Data de postagem',
-  cliente: 'Cliente',
-  responsavel: 'Responsável',
-  etapa: 'Etapa',
-  nenhum: 'Nenhum',
-};
+const groupByLabel = (t: TFunction, g: ListGroupBy) => t(`listToolbar.groupBy.${g}`);
 
 /** Rótulo curto no chip do celular ("Agrupar: Prazo", mockup EntregasLista). */
-const LIST_GROUP_BY_SHORT: Record<ListGroupBy, string> = {
-  prazo: 'Prazo',
-  postagem: 'Postagem',
-  cliente: 'Cliente',
-  responsavel: 'Responsável',
-  etapa: 'Etapa',
-  nenhum: 'Nenhum',
-};
+const groupByShort = (t: TFunction, g: ListGroupBy) => t(`listToolbar.groupByShort.${g}`);
 
 /** Controles da vista Lista: "Agrupar por", "Mostrar postados" (só na Lista de
  *  Publicações) e o botão do painel Responsáveis, por último para ficar sobre
@@ -63,6 +51,7 @@ export function ListToolbar({
    *  atuais. Ausente, o botão não aparece. */
   postados?: { count: number; shown: boolean; onToggle: () => void };
 }) {
+  const { t } = useTranslation('entregas');
   const isPhone = !useIsDesktop(768);
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -70,19 +59,19 @@ export function ListToolbar({
     // Celular: chips numa linha que rola de lado; "Agrupar" abre uma action sheet.
     return (
       <>
-        <ChipRow aria-label="Opções da lista" className="phone-ent-l-toolbar">
+        <ChipRow aria-label={t('listToolbar.options')} className="phone-ent-l-toolbar">
           <button
             type="button"
             className="phone-chip"
             data-state="off"
             aria-haspopup="dialog"
             aria-expanded={pickerOpen}
-            aria-label={`Agrupar por: ${LIST_GROUP_BY_LABELS[groupBy]}`}
+            aria-label={t('listToolbar.groupByAria', { value: groupByLabel(t, groupBy) })}
             onClick={() => setPickerOpen(true)}
           >
             <span>
-              Agrupar:{' '}
-              <strong className="phone-ent-l-toolbar__value">{LIST_GROUP_BY_SHORT[groupBy]}</strong>
+              {t('listToolbar.groupLabel')}{' '}
+              <strong className="phone-ent-l-toolbar__value">{groupByShort(t, groupBy)}</strong>
             </span>
             <ChevronDown className="phone-ent-l-toolbar__chevron" aria-hidden="true" />
           </button>
@@ -94,14 +83,14 @@ export function ListToolbar({
             aria-expanded={responsaveisOpen}
             onClick={onToggleResponsaveis}
           >
-            <span>Responsáveis</span>
+            <span>{t('listToolbar.responsaveis')}</span>
             {selectedResponsaveis > 0 && (
               <span className="phone-ent-l-toolbar__badge">{selectedResponsaveis}</span>
             )}
           </button>
           {postados && (
             <Chip
-              label="Mostrar postados"
+              label={t('listToolbar.showPosted')}
               count={postados.count > 0 ? postados.count : undefined}
               selected={postados.shown}
               onClick={postados.onToggle}
@@ -111,15 +100,15 @@ export function ListToolbar({
         <ActionSheet
           open={pickerOpen}
           onOpenChange={setPickerOpen}
-          title="Agrupar por"
+          title={t('listToolbar.groupBy.title')}
           actions={groupByOptions.map((o) => ({
             label: (
               <span className="phone-ent-l-pick">
-                {LIST_GROUP_BY_LABELS[o]}
+                {groupByLabel(t, o)}
                 {o === groupBy && (
                   <>
                     <Check className="phone-ent-l-pick__check" aria-hidden="true" />
-                    <span className="sr-only">(atual)</span>
+                    <span className="sr-only">{t('listToolbar.current')}</span>
                   </>
                 )}
               </span>
@@ -148,16 +137,16 @@ export function ListToolbar({
             select em 14px ao lado do botão de 12px. */}
         <SelectTrigger
           className="h-8 w-auto rounded-full text-xs md:text-xs gap-1.5"
-          aria-label="Agrupar por"
+          aria-label={t('listToolbar.groupBy.title')}
         >
           <Rows3 className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />
-          <span style={{ color: 'var(--text-muted)' }}>Agrupar:</span>
+          <span style={{ color: 'var(--text-muted)' }}>{t('listToolbar.groupLabel')}</span>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           {groupByOptions.map((o) => (
             <SelectItem key={o} value={o}>
-              {LIST_GROUP_BY_LABELS[o]}
+              {groupByLabel(t, o)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -173,7 +162,7 @@ export function ListToolbar({
           onClick={postados.onToggle}
         >
           <CheckCheck className="!h-3.5 !w-3.5" aria-hidden="true" />
-          Mostrar postados
+          {t('listToolbar.showPosted')}
           {postados.count > 0 && (
             <span
               className="inline-flex items-center justify-center rounded-full text-[0.6rem] font-semibold leading-none px-1"
@@ -203,7 +192,7 @@ export function ListToolbar({
         {/* !h/!w: o [&_svg]:size-4 do Button vence um h-3.5 sem importante e deixaria o
             ícone em 16px ao lado do Rows3 de 14px. */}
         <Users className="!h-3.5 !w-3.5" aria-hidden="true" />
-        Responsáveis
+        {t('listToolbar.responsaveis')}
         {selectedResponsaveis > 0 && (
           <span
             className="inline-flex items-center justify-center rounded-full text-[0.6rem] font-semibold leading-none"

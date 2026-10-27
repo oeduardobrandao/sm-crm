@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   containedRect,
   isNearMoment,
@@ -54,6 +55,7 @@ export function CrmPinLayer({
   onStatus,
 }: CrmPinLayerProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation('posts');
   const [box, setBox] = useState<Box | null>(null);
   const [openId, setOpenId] = useState<number | null>(null);
   const [changing, setChanging] = useState(false);
@@ -146,7 +148,10 @@ export function CrmPinLayer({
           const internal = n.visibility === 'internal';
           const resolved = n.status === 'resolved';
           const num = numbers.get(n.id) ?? 1;
-          const label = `${internal ? 'Interno' : 'Ponto'} ${num}: ${n.body}`;
+          const label = t(internal ? 'mediaNotes.pinInternal' : 'mediaNotes.pinClient', {
+            n: num,
+            body: n.body,
+          });
           const expanded = openId === n.id;
           return (
             <span
@@ -173,13 +178,13 @@ export function CrmPinLayer({
               {expanded && (
                 <div
                   role="group"
-                  aria-label="Detalhes da nota"
+                  aria-label={t('mediaNotes.details')}
                   className="crm-pin-details"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <p className="crm-pin-details__meta">
                     <strong>
-                      {internal ? 'Interno · ' : ''}
+                      {internal ? t('mediaNotes.internalPrefix') : ''}
                       {authorLabel(
                         n.author_kind,
                         n.author_user_id,
@@ -187,7 +192,7 @@ export function CrmPinLayer({
                       )}
                     </strong>
                     <span>{formatWhen(n.created_at)}</span>
-                    <span>{resolved ? 'Resolvido' : 'Em aberto'}</span>
+                    <span>{resolved ? t('mediaNotes.resolved') : t('mediaNotes.open')}</span>
                   </p>
                   <p className="crm-pin-details__body">{n.body}</p>
                   <div className="crm-pin-details__actions">
@@ -197,11 +202,11 @@ export function CrmPinLayer({
                         disabled={changing}
                         onClick={() => void toggleStatus(n)}
                       >
-                        {resolved ? 'Reabrir' : 'Marcar como resolvido'}
+                        {resolved ? t('mediaNotes.reopen') : t('mediaNotes.markResolved')}
                       </button>
                     )}
                     <button type="button" onClick={() => setOpenId(null)}>
-                      Fechar
+                      {t('actions.close')}
                     </button>
                   </div>
                 </div>

@@ -1,5 +1,5 @@
 import { format, isSameDay, subDays } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { i18n, getDateFnsLocale } from '@mesaas/i18n';
 import { isGeralThread, type CommentThreadWithComments, type PostComment } from '@/store/comments';
 
 export type TimelineItem =
@@ -20,9 +20,9 @@ type Entry =
   | { at: number; id: number; kind: 'thread'; thread: CommentThreadWithComments };
 
 function dayLabel(date: Date, now: Date): string {
-  if (isSameDay(date, now)) return 'Hoje';
-  if (isSameDay(date, subDays(now, 1))) return 'Ontem';
-  return format(date, "d 'de' MMMM", { locale: ptBR });
+  if (isSameDay(date, now)) return i18n.t('postPanels:discussao.today');
+  if (isSameDay(date, subDays(now, 1))) return i18n.t('postPanels:discussao.yesterday');
+  return format(date, i18n.t('postPanels:discussao.dayFormat'), { locale: getDateFnsLocale() });
 }
 
 function byTime(a: { at: number; id: number }, b: { at: number; id: number }): number {

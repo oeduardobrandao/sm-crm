@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useSheetHistory } from '@/components/mobile/useSheetHistory';
 import { useVisualViewportBox } from './useVisualViewportBox';
@@ -37,6 +38,7 @@ export function PhoneTextScreen({
   headerExtra,
   children,
 }: PhoneTextScreenProps) {
+  const { t } = useTranslation('postEditor');
   const close = useCallback(() => onOpenChange(false), [onOpenChange]);
   useSheetHistory(open, close);
   const box = useVisualViewportBox(open);
@@ -66,7 +68,7 @@ export function PhoneTextScreen({
               close();
             }}
           >
-            OK
+            {t('shared.ok')}
           </button>
         </div>
       )}
