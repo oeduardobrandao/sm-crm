@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Trans, useTranslation } from 'react-i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import { Copy, Check } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { FeatureGate } from '@/components/paywall/FeatureGate';
@@ -32,22 +34,23 @@ import { listOAuthGrants, revokeOAuthGrant, type OAuthGrant } from '@/services/m
 import {
   SCOPE_OPTIONS,
   AGENT_PRESET,
-  OWNER_ONLY_HELP,
-  OWNER_ONLY_SCOPE_ERROR,
+  ownerOnlyHelp,
+  ownerOnlyScopeError,
+  scopeLabel,
 } from '@/lib/mcp-scopes';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import {
-  CLIENT_INTRO,
   CLIENT_TABS,
   ChatgptSteps,
   ClaudeKeyNote,
   ClaudeSteps,
+  ClientIntro,
   CodexHeadersNote,
   CodexSteps,
-  KEY_USAGE_NOTE,
-  MANAGER_INTRO,
+  KeyUsageNote,
+  ManagerIntro,
   MCP_URL,
-  MEMBER_INTRO,
+  MemberIntro,
   TryItNote,
   buildConnectSnippets,
   codexConfigToml,
@@ -55,7 +58,7 @@ import {
 } from './mcpGuide';
 import { IntegracoesClaudePhone } from './IntegracoesClaudePhone';
 
-const fmtDate = (s: string) => new Date(s).toLocaleDateString('pt-BR');
+const fmtDate = (s: string) => new Date(s).toLocaleDateString(getIntlLocale());
 
 /** Copy-paste connection snippets for a given token (real at creation, or a placeholder/pasted). */
 function ConnectSnippets({
@@ -69,15 +72,14 @@ function ConnectSnippets({
   copiedKey: string | null;
   idPrefix: string;
 }) {
+  const { t } = useTranslation('mcp');
   const { desktopConfig, claudeCodeCmd, codexToml } = buildConnectSnippets(token);
   return (
     <>
       <div className="space-y-1 min-w-0">
-        <Label>Claude Desktop</Label>
+        <Label>{'Claude Desktop' /* product name */}</Label>
         <p className="text-xs text-muted-foreground">
-          Configurações → Desenvolvedor → Editar configuração (
-          <code>claude_desktop_config.json</code>
-          ), cole o bloco, salve e reinicie o app.
+          <Trans t={t} i18nKey="snippets.desktopHelp" components={{ c: <code /> }} />
         </p>
         <CopyBlock
           value={desktopConfig}
@@ -88,8 +90,8 @@ function ConnectSnippets({
       </div>
 
       <div className="space-y-1 min-w-0">
-        <Label>Claude Code</Label>
-        <p className="text-xs text-muted-foreground">Rode este comando no terminal.</p>
+        <Label>{'Claude Code' /* product name */}</Label>
+        <p className="text-xs text-muted-foreground">{t('snippets.codeHelp')}</p>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', minWidth: 0 }}>
           <Input
             readOnly
@@ -111,9 +113,9 @@ function ConnectSnippets({
       </div>
 
       <div className="space-y-1 min-w-0">
-        <Label>Codex CLI</Label>
+        <Label>{'Codex CLI' /* product name */}</Label>
         <p className="text-xs text-muted-foreground">
-          Adicione este bloco ao arquivo <code>~/.codex/config.toml</code>.
+          <Trans t={t} i18nKey="snippets.codexHelp" components={{ c: <code /> }} />
         </p>
         <CopyBlock
           value={codexToml}
@@ -193,6 +195,7 @@ function CopyField({
 }
 
 export default function IntegracoesClaudePage() {
+  const { t } = useTranslation('mcp');
   const { can, workspaceRole } = useAuth();
   // financeiro:* scopes are owner-only. null (unresolved) counts as not owner.
   const isWorkspaceOwner = workspaceRole === 'owner';
@@ -252,12 +255,12 @@ export default function IntegracoesClaudePage() {
       const msg = (e as Error).message;
       toast.error(
         msg === 'key_limit_reached'
-          ? 'Limite de chaves atingido para o seu plano.'
+          ? t('toast.keyLimit')
           : msg === 'feature_disabled'
-            ? 'Recurso não disponível no seu plano.'
+            ? t('toast.featureDisabled')
             : msg === 'owner_only_scope'
-              ? OWNER_ONLY_SCOPE_ERROR
-              : 'Erro ao criar chave: ' + msg,
+              ? ownerOnlyScopeError()
+              : t('toast.createError', { message: msg }),
       );
     },
   });
@@ -266,18 +269,19 @@ export default function IntegracoesClaudePage() {
     mutationFn: (id: string) => revokeMcpKey(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mcp-keys'] });
-      toast.success('Chave revogada.');
+      toast.success(t('toast.keyRevoked'));
     },
-    onError: (e: unknown) => toast.error('Erro ao revogar: ' + (e as Error).message),
+    onError: (e: unknown) => toast.error(t('toast.revokeError', { message: (e as Error).message })),
   });
 
   const revokeGrantMutation = useMutation({
     mutationFn: (id: string) => revokeOAuthGrant(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mcp-oauth-grants'] });
-      toast.success('Conexão revogada.');
+      toast.success(t('toast.grantRevoked'));
     },
-    onError: (e: unknown) => toast.error('Erro ao desconectar: ' + (e as Error).message),
+    onError: (e: unknown) =>
+      toast.error(t('toast.disconnectError', { message: (e as Error).message })),
   });
 
   const toggleScope = (value: string) =>
@@ -355,25 +359,25 @@ export default function IntegracoesClaudePage() {
   return (
     <>
       <p className="text-sm text-muted-foreground" style={{ marginBottom: '0.5rem' }}>
-        {canViewConfig ? MANAGER_INTRO : MEMBER_INTRO}
+        {canViewConfig ? <ManagerIntro /> : <MemberIntro />}
       </p>
       {canViewConfig && !canEditConfig && (
         <p className="text-xs text-muted-foreground" style={{ marginBottom: '1.5rem' }}>
-          Somente leitura
+          {t('page.readOnly')}
         </p>
       )}
       {canEditConfig && <div style={{ marginBottom: '1rem' }} />}
 
-      <FeatureGate flag="feature_mcp" label="Integração com agentes (MCP)">
+      <FeatureGate flag="feature_mcp" label={t('page.featureLabel')}>
         <div className="card animate-up" style={{ marginBottom: '1rem' }}>
           <h3 className="config-title" style={{ margin: 0, marginBottom: '0.75rem' }}>
-            Como conectar
+            {t('page.howToConnect')}
           </h3>
 
           <div
             className="page-tabs page-tabs--inline"
             role="tablist"
-            aria-label="Escolha o assistente"
+            aria-label={t('page.chooseAssistant')}
             style={{ marginBottom: '1rem' }}
           >
             {clientTabs.map((t) => (
@@ -393,7 +397,7 @@ export default function IntegracoesClaudePage() {
           {client === 'claude' && (
             <div className="space-y-3 min-w-0">
               <p className="text-xs text-muted-foreground" style={{ margin: 0 }}>
-                {CLIENT_INTRO.claude}
+                <ClientIntro client="claude" />
               </p>
               <ol className="mcp-steps">
                 <ClaudeSteps />
@@ -410,7 +414,7 @@ export default function IntegracoesClaudePage() {
           {client === 'chatgpt' && (
             <div className="space-y-3 min-w-0">
               <p className="text-xs text-muted-foreground" style={{ margin: 0 }}>
-                {CLIENT_INTRO.chatgpt}
+                <ClientIntro client="chatgpt" />
               </p>
               <ol className="mcp-steps">
                 <ChatgptSteps />
@@ -422,13 +426,13 @@ export default function IntegracoesClaudePage() {
           {client === 'codex' && canViewConfig && (
             <div className="space-y-3 min-w-0">
               <p className="text-xs text-muted-foreground" style={{ margin: 0 }}>
-                {CLIENT_INTRO.codex}
+                <ClientIntro client="codex" />
               </p>
               <ol className="mcp-steps">
                 <CodexSteps />
               </ol>
               <CopyBlock
-                value={codexConfigToml('SUA_CHAVE')}
+                value={codexConfigToml(t('guide.keyPlaceholder'))}
                 copyKey="codex-toml"
                 copy={copy}
                 copiedKey={copiedKey}
@@ -449,17 +453,16 @@ export default function IntegracoesClaudePage() {
 
         <div className="card animate-up" style={{ marginBottom: '1rem' }}>
           <h3 className="config-title" style={{ margin: 0, marginBottom: '0.25rem' }}>
-            {canViewConfig ? 'Conexões via conector' : 'Suas conexões'}
+            {canViewConfig ? t('page.grantsTitleManager') : t('page.grantsTitleMember')}
           </h3>
           <p
             className="text-xs text-muted-foreground"
             style={{ margin: 0, marginBottom: '0.75rem' }}
           >
-            Conexões OAuth (claude.ai, Claude Desktop, ChatGPT). Desconecte para revogar o acesso na
-            hora.
+            {t('page.grantsHelp')}
           </p>
           {activeGrants.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nenhuma conexão ativa.</p>
+            <p className="text-sm text-muted-foreground">{t('page.noGrants')}</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {activeGrants.map((g) => (
@@ -476,10 +479,13 @@ export default function IntegracoesClaudePage() {
                 >
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 600 }}>
-                      {g.connected_by ?? 'Conexão via conector'}
+                      {g.connected_by ?? t('page.grantFallback')}
                     </div>
                     <div className="text-muted-foreground" style={{ fontSize: '0.75rem' }}>
-                      {g.scopes.join(', ')} · conectada {fmtDate(g.created_at)}
+                      {t('page.grantMeta', {
+                        scopes: g.scopes.join(', '),
+                        date: fmtDate(g.created_at),
+                      })}
                     </div>
                   </div>
                   <Button
@@ -489,7 +495,7 @@ export default function IntegracoesClaudePage() {
                     disabled={!canEditConfig && !g.mine}
                     onClick={() => setRevokeGrantTarget(g)}
                   >
-                    Desconectar
+                    {t('page.disconnect')}
                   </Button>
                 </div>
               ))}
@@ -508,19 +514,17 @@ export default function IntegracoesClaudePage() {
               }}
             >
               <h3 className="config-title" style={{ margin: 0 }}>
-                Chaves de API
+                {t('page.apiKeys')}
               </h3>
               <Button disabled={!canEditConfig} onClick={() => setCreateOpen(true)}>
-                Criar chave
+                {t('page.createKey')}
               </Button>
             </div>
 
             {isLoading ? (
               <ListSkeleton rows={2} />
             ) : keys.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Nenhuma chave ainda. Crie uma para conectar um agente.
-              </p>
+              <p className="text-sm text-muted-foreground">{t('page.noKeys')}</p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {keys.map((k) => (
@@ -547,13 +551,17 @@ export default function IntegracoesClaudePage() {
                       </div>
                       <div className="text-muted-foreground" style={{ fontSize: '0.75rem' }}>
                         {k.scopes.join(', ')}
-                        {k.last_used_at ? ` · usada ${fmtDate(k.last_used_at)}` : ' · nunca usada'}
-                        {k.expires_at ? ` · expira ${fmtDate(k.expires_at)}` : ''}
+                        {k.last_used_at
+                          ? ` · ${t('page.keyUsed', { date: fmtDate(k.last_used_at) })}`
+                          : ` · ${t('page.keyNeverUsed')}`}
+                        {k.expires_at
+                          ? ` · ${t('page.keyExpires', { date: fmtDate(k.expires_at) })}`
+                          : ''}
                       </div>
                     </div>
                     {k.revoked_at ? (
                       <span className="text-muted-foreground" style={{ fontSize: '0.75rem' }}>
-                        revogada
+                        {t('page.revoked')}
                       </span>
                     ) : (
                       <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
@@ -565,7 +573,7 @@ export default function IntegracoesClaudePage() {
                             setConnectKey(k);
                           }}
                         >
-                          Conectar
+                          {t('page.connect')}
                         </Button>
                         <Button
                           variant="outline"
@@ -573,7 +581,7 @@ export default function IntegracoesClaudePage() {
                           disabled={!canEditConfig}
                           onClick={() => setRevokeTarget(k)}
                         >
-                          Revogar
+                          {t('page.revoke')}
                         </Button>
                       </div>
                     )}
@@ -589,31 +597,29 @@ export default function IntegracoesClaudePage() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Criar chave de API</DialogTitle>
-            <DialogDescription>
-              Gere uma chave para conectar um agente a este workspace.
-            </DialogDescription>
+            <DialogTitle>{t('page.createKeyTitle')}</DialogTitle>
+            <DialogDescription>{t('page.createKeyDescription')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 min-w-0">
             <div className="space-y-1">
-              <Label>Nome</Label>
+              <Label>{t('page.name')}</Label>
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Ex: Agente de conteúdo"
+                placeholder={t('page.namePlaceholder')}
               />
             </div>
             <div className="space-y-2">
               <div
                 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
               >
-                <Label>Permissões</Label>
+                <Label>{t('page.permissions')}</Label>
                 <button
                   type="button"
                   className="text-xs underline text-primary"
                   onClick={() => setScopes(AGENT_PRESET)}
                 >
-                  Preset: Agente de conteúdo
+                  {t('page.presetAgent')}
                 </button>
               </div>
               {SCOPE_OPTIONS.map((s) => {
@@ -634,11 +640,11 @@ export default function IntegracoesClaudePage() {
                         disabled={locked}
                         onCheckedChange={() => toggleScope(s.value)}
                       />
-                      <span className="text-sm">{s.label}</span>
+                      <span className="text-sm">{scopeLabel(s.value)}</span>
                     </label>
                     {locked && (
                       <p className="text-xs text-muted-foreground" style={{ marginLeft: '1.5rem' }}>
-                        {OWNER_ONLY_HELP}
+                        {ownerOnlyHelp()}
                       </p>
                     )}
                   </div>
@@ -646,28 +652,28 @@ export default function IntegracoesClaudePage() {
               })}
             </div>
             <div className="space-y-1">
-              <Label>Expiração</Label>
+              <Label>{t('page.expiry')}</Label>
               <select
                 value={expiry}
                 onChange={(e) => setExpiry(e.target.value as 'never' | '30' | '90')}
                 className="form-input"
                 style={{ width: '100%' }}
               >
-                <option value="never">Nunca</option>
-                <option value="30">30 dias</option>
-                <option value="90">90 dias</option>
+                <option value="never">{t('page.expiryNever')}</option>
+                <option value="30">{t('page.expiry30')}</option>
+                <option value="90">{t('page.expiry90')}</option>
               </select>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
-              Cancelar
+              {t('common:actions.cancel')}
             </Button>
             <Button
               onClick={() => createMutation.mutate()}
               disabled={createMutation.isPending || !name.trim() || scopes.length === 0}
             >
-              {createMutation.isPending ? 'Criando…' : 'Criar chave'}
+              {createMutation.isPending ? t('page.creating') : t('page.createKey')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -677,14 +683,12 @@ export default function IntegracoesClaudePage() {
       <Dialog open={!!revealToken} onOpenChange={(o) => !o && setRevealToken(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Copie sua chave agora</DialogTitle>
-            <DialogDescription>
-              Por segurança, não mostraremos esta chave novamente.
-            </DialogDescription>
+            <DialogTitle>{t('page.revealTitle')}</DialogTitle>
+            <DialogDescription>{t('page.revealDescription')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 min-w-0">
             <div className="space-y-1 min-w-0">
-              <Label>Sua chave</Label>
+              <Label>{t('page.yourKey')}</Label>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', minWidth: 0 }}>
                 <Input
                   readOnly
@@ -712,10 +716,12 @@ export default function IntegracoesClaudePage() {
               idPrefix="reveal"
             />
 
-            <p className="text-xs text-muted-foreground">{KEY_USAGE_NOTE}</p>
+            <p className="text-xs text-muted-foreground">
+              <KeyUsageNote />
+            </p>
           </div>
           <DialogFooter>
-            <Button onClick={() => setRevealToken(null)}>Concluído</Button>
+            <Button onClick={() => setRevealToken(null)}>{t('page.done')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -724,15 +730,14 @@ export default function IntegracoesClaudePage() {
       <Dialog open={!!connectKey} onOpenChange={(o) => !o && setConnectKey(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Conectar: {connectKey?.name}</DialogTitle>
+            <DialogTitle>{t('page.connectTitle', { name: connectKey?.name ?? '' })}</DialogTitle>
             <DialogDescription>
-              Por segurança não armazenamos a chave. Cole a chave que você copiou ao criar — ou use
-              o modelo abaixo substituindo <code>SUA_CHAVE_AQUI</code>.
+              <Trans t={t} i18nKey="page.connectDescription" components={{ c: <code /> }} />
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 min-w-0">
             <div className="space-y-1">
-              <Label>Sua chave (opcional)</Label>
+              <Label>{t('page.yourKeyOptional')}</Label>
               <Input
                 value={connectToken}
                 onChange={(e) => setConnectToken(e.target.value)}
@@ -741,15 +746,17 @@ export default function IntegracoesClaudePage() {
               />
             </div>
             <ConnectSnippets
-              token={connectToken.trim() || 'SUA_CHAVE_AQUI'}
+              token={connectToken.trim() || t('guide.keyHerePlaceholder')}
               copy={copy}
               copiedKey={copiedKey}
               idPrefix="connect"
             />
-            <p className="text-xs text-muted-foreground">{KEY_USAGE_NOTE}</p>
+            <p className="text-xs text-muted-foreground">
+              <KeyUsageNote />
+            </p>
           </div>
           <DialogFooter>
-            <Button onClick={() => setConnectKey(null)}>Fechar</Button>
+            <Button onClick={() => setConnectKey(null)}>{t('common:actions.close')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -758,19 +765,23 @@ export default function IntegracoesClaudePage() {
       <AlertDialog open={!!revokeTarget} onOpenChange={(o) => !o && setRevokeTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Revogar chave?</AlertDialogTitle>
+            <AlertDialogTitle>{t('page.revokeKeyTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              A chave <strong>{revokeTarget?.name}</strong> deixará de funcionar imediatamente.
-              Agentes conectados perderão o acesso. Esta ação não pode ser desfeita.
+              <Trans
+                t={t}
+                i18nKey="page.revokeKeyMessage"
+                values={{ name: revokeTarget?.name ?? '' }}
+                components={{ b: <strong /> }}
+              />
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('common:actions.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmRevoke}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Revogar
+              {t('page.revoke')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -783,26 +794,27 @@ export default function IntegracoesClaudePage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Desconectar?</AlertDialogTitle>
+            <AlertDialogTitle>{t('page.revokeGrantTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              A conexão{' '}
               {revokeGrantTarget?.connected_by ? (
-                <>
-                  de <strong>{revokeGrantTarget.connected_by}</strong>
-                </>
+                <Trans
+                  t={t}
+                  i18nKey="page.revokeGrantMessageNamed"
+                  values={{ name: revokeGrantTarget.connected_by }}
+                  components={{ b: <strong /> }}
+                />
               ) : (
-                'via conector'
-              )}{' '}
-              perderá o acesso imediatamente. Para reconectar, será necessário autorizar novamente.
+                t('page.revokeGrantMessageConnector')
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('common:actions.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmRevokeGrant}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Desconectar
+              {t('page.disconnect')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -27,17 +27,22 @@ export type ConfigPermission =
   | 'owner'
   | 'all';
 
+/** Section id of a tab in the settings nav; its label is `settings:tabs.groups.<id>`. */
+export type ConfigTabGroup = 'conta' | 'workspace' | 'avancado';
+
 export interface ConfigTab {
   /** Path segment under /configuracao. */
   path: string;
-  label: string;
+  /** i18n key (namespace `settings`) of the tab's label. */
+  labelKey: string;
   /** Permission gate for the tab. See `ConfigPermission`. */
   permission: ConfigPermission;
   /**
    * Section heading in the settings nav. Consecutive tabs sharing a group
-   * render under one label, so tabs of the same group must stay adjacent.
+   * render under one label, so tabs of the same group must stay adjacent. An id, never
+   * a translated string: the label is `settings:tabs.groups.<group>`.
    */
-  group: string;
+  group: ConfigTabGroup;
   icon: LucideIcon;
 }
 
@@ -52,65 +57,77 @@ export interface ConfigTab {
  * tab that would render a "no access" screen.
  */
 export const CONFIG_TABS: ConfigTab[] = [
-  { path: 'perfil', label: 'Perfil', permission: 'all', group: 'Conta', icon: User },
-  { path: 'notificacoes', label: 'Notificações', permission: 'all', group: 'Conta', icon: Bell },
+  { path: 'perfil', labelKey: 'tabs.perfil', permission: 'all', group: 'conta', icon: User },
+  {
+    path: 'notificacoes',
+    labelKey: 'tabs.notificacoes',
+    permission: 'all',
+    group: 'conta',
+    icon: Bell,
+  },
   {
     path: 'workspace',
-    label: 'Workspace',
+    labelKey: 'tabs.workspace',
     permission: { module: 'configuracoes', action: 'ver' },
-    group: 'Workspace',
+    group: 'workspace',
     icon: Building2,
   },
   {
     path: 'membros',
-    label: 'Membros',
+    labelKey: 'tabs.membros',
     permission: { module: 'equipe', action: 'ver' },
-    group: 'Workspace',
+    group: 'workspace',
     icon: Users,
   },
-  { path: 'papeis', label: 'Papéis', permission: 'owner', group: 'Workspace', icon: ShieldCheck },
+  {
+    path: 'papeis',
+    labelKey: 'tabs.papeis',
+    permission: 'owner',
+    group: 'workspace',
+    icon: ShieldCheck,
+  },
   {
     path: 'relatorios',
-    label: 'Relatórios',
+    labelKey: 'tabs.relatorios',
     permission: { module: 'configuracoes', action: 'ver' },
-    group: 'Workspace',
+    group: 'workspace',
     icon: BarChart3,
   },
   {
     path: 'status',
-    label: 'Status de posts',
+    labelKey: 'tabs.status',
     permission: { module: 'configuracoes', action: 'ver' },
-    group: 'Workspace',
+    group: 'workspace',
     icon: Tags,
   },
   {
     path: 'hub',
-    label: 'Hub',
+    labelKey: 'tabs.hub',
     permission: { module: 'configuracoes', action: 'ver' },
-    group: 'Workspace',
+    group: 'workspace',
     icon: Globe,
   },
   {
     path: 'armazenamento',
-    label: 'Armazenamento',
+    labelKey: 'tabs.armazenamento',
     permission: 'owner',
-    group: 'Workspace',
+    group: 'workspace',
     icon: HardDrive,
   },
   {
     path: 'mcp',
-    label: 'Agentes (MCP)',
+    labelKey: 'tabs.mcp',
     // Every member can connect Claude with the scopes their own role allows. The page shows
     // API keys and everyone's connections only with `configuracoes:ver`.
     permission: 'all',
-    group: 'Avançado',
+    group: 'avancado',
     icon: Plug,
   },
   {
     path: 'cobranca',
-    label: 'Plano & Cobrança',
+    labelKey: 'tabs.cobranca',
     permission: 'owner',
-    group: 'Avançado',
+    group: 'avancado',
     icon: CreditCard,
   },
 ];

@@ -1,3 +1,5 @@
+import { i18n } from '@mesaas/i18n';
+
 // MCP permission scopes shown in the CRM — single source of truth for both the API-key page
 // (/configuracao/mcp) and the OAuth consent page (/oauth/consent). Mirror of MCP_ALLOWED_SCOPES
 // in supabase/functions/_shared/mcp-token.ts (can't import across the Deno/Vite boundary).
@@ -62,3 +64,21 @@ export const ADMIN_READ_PRESET: string[] = [
   'platform:read',
   'blog:read',
 ];
+
+/**
+ * `SCOPE_OPTIONS` label / owner-only copy in the current UI language, for the translated settings
+ * pages. Read at call time; falls back to the Portuguese constant while the `mcp` bundle loads.
+ * The consent page (not translated yet) keeps reading the constants.
+ */
+export function scopeLabel(scope: string): string {
+  const pt = SCOPE_OPTIONS.find((s) => s.value === scope)?.label ?? scope;
+  return i18n.t(`mcp:scopes.${scope.replace(':', '_')}`, { defaultValue: pt });
+}
+
+export function ownerOnlyHelp(): string {
+  return i18n.t('mcp:scopes.ownerOnlyHelp', { defaultValue: OWNER_ONLY_HELP });
+}
+
+export function ownerOnlyScopeError(): string {
+  return i18n.t('mcp:scopes.ownerOnlyError', { defaultValue: OWNER_ONLY_SCOPE_ERROR });
+}

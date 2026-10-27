@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Timer, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -26,6 +27,7 @@ function isDismissalActive(raw: string | null): boolean {
 }
 
 export function TrialNudgeCard() {
+  const { t } = useTranslation('billing');
   const { role, workspaceRole, profile } = useAuth();
   // Follow the ACTIVE workspace role, not the stale profile-level role — a user
   // can be owner in one workspace and agent in another (see DashboardPage).
@@ -68,23 +70,20 @@ export function TrialNudgeCard() {
     <div className="card trial-nudge">
       <Timer size={22} aria-hidden="true" className="trial-nudge__icon" />
       <div className="trial-nudge__body">
-        <p className="trial-nudge__title">Seus 30 dias grátis ainda estão disponíveis</p>
-        <p className="trial-nudge__text">
-          Você está no plano Free. Ative o teste para liberar relatórios, portal do cliente e
-          agendamento.
-        </p>
+        <p className="trial-nudge__title">{t('trialNudge.title')}</p>
+        <p className="trial-nudge__text">{t('trialNudge.text')}</p>
       </div>
       <Link
         to="/comecar"
         className="btn-primary trial-nudge__cta"
         onClick={() => captureEvent('trial_nudge_clicked')}
       >
-        Ativar teste
+        {t('trialNudge.cta')}
       </Link>
       <button
         type="button"
         onClick={handleDismiss}
-        aria-label="Fechar aviso"
+        aria-label={t('trialNudge.dismissAria')}
         className="trial-nudge__close"
       >
         <X size={16} />

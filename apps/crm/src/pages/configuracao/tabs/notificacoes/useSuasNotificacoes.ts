@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { NOTIFICATION_CATALOG, CATEGORY_ORDER } from '@/lib/notification-catalog';
+import { i18n } from '@mesaas/i18n';
+import { NOTIFICATION_CATALOG, CATEGORY_ORDER, catalogText } from '@/lib/notification-catalog';
 import {
   getNotificationEmailPrefs,
   setNotificationEmailPref,
@@ -30,8 +31,6 @@ export type CatalogRow = (typeof CATALOG_ROWS)[number];
 /** Sem linha = ligado (default on). */
 export const enabledOf = (prefs: Record<string, boolean> | undefined, type: string) =>
   prefs?.[type] !== false;
-
-const SAVE_ERROR_MESSAGE = 'Não foi possível salvar. Tente novamente.';
 
 /**
  * State and saves of "Suas notificações" (in-app x e-mail per catalog type plus a
@@ -76,7 +75,7 @@ export function useSuasNotificacoes() {
     },
     onError: (_e, _v, ctx) => {
       if (ctx?.prev) qc.setQueryData(INAPP_PREFS_QUERY_KEY, ctx.prev);
-      toast.error(SAVE_ERROR_MESSAGE);
+      toast.error(i18n.t('settings:notifications.saveError'));
     },
     onSettled: () => {
       // The bell (popover + unread badge) reads its own prefs query and
@@ -110,18 +109,19 @@ export function useSuasNotificacoes() {
     },
     onError: (_e, _v, ctx) => {
       if (ctx?.prev) qc.setQueryData(EMAIL_PREFS_QUERY_KEY, ctx.prev);
-      toast.error(SAVE_ERROR_MESSAGE);
+      toast.error(i18n.t('settings:notifications.saveError'));
     },
     onSettled: () => qc.invalidateQueries({ queryKey: EMAIL_PREFS_QUERY_KEY }),
   });
 
   /** Categories in display order, each with its visible rows; empty ones dropped (no
-   * "Agenda" header when every row of the category is hidden). */
+   * "Agenda" header when every row of the category is hidden). Row copy (label, when,
+   * recipients) is resolved here, at render, in the current UI language. */
   const categories = CATEGORY_ORDER.map((category) => ({
     category,
     rows: CATALOG_ROWS.filter(
       (row) => row.category === category && (agendaAtiva || row.category !== 'agenda'),
-    ),
+    ).map((row) => ({ ...row, ...catalogText(row.type) })),
   })).filter((group) => group.rows.length > 0);
 
   return {

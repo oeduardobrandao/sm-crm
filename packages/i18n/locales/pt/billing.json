@@ -1,0 +1,193 @@
+{
+  "shared": {
+    "wait": "Aguarde…",
+    "ownerOnly": "Apenas o proprietário da conta pode gerenciar a assinatura.",
+    "yourPlan": "Seu plano",
+    "currentPlan": "Plano atual",
+    "updateCard": "Atualizar cartão",
+    "cancelSubscription": "Cancelar assinatura",
+    "keepSubscription": "Manter assinatura",
+    "confirmCancel": "Sim, cancelar assinatura",
+    "cancelling": "Cancelando…",
+    "undoSwitch": "Desfazer a troca",
+    "manageSubscription": "Gerenciar assinatura",
+    "billingPeriod": "Período de cobrança",
+    "monthly": "Mensal",
+    "annual": "Anual",
+    "annualSavings": "Economize até {{pct}}% no anual",
+    "firstDaysFree": "Seus primeiros 30 dias são grátis",
+    "cardChargeFailed": "Não conseguimos cobrar seu cartão. Atualize os dados para manter o acesso.",
+    "switchToAnnual12x": "Trocar para o anual em 12x"
+  },
+  "cobrancaPage": {
+    "toastPaymentConfirmed": "Pagamento confirmado! Atualizando seu plano…",
+    "toastCheckoutCancelled": "Checkout cancelado.",
+    "checkoutError": "Erro ao iniciar checkout: {{message}}",
+    "portalError": "Erro ao abrir portal: {{message}}",
+    "switchReverted": "Troca desfeita. Seu plano mensal continua como estava.",
+    "subscriptionCancelled": "Assinatura cancelada.",
+    "switchToPlan12x": "Mudar para {{name}} em 12x",
+    "switchFirstInstallmentOn": "Primeira parcela prevista para {{date}}. Sem cobrança agora.",
+    "switchNoChargeNow": "Sem cobrança agora. A primeira parcela vem depois do período já pago.",
+    "blockedNote": "Cancele ou aguarde o fim do período atual para trocar de plano.",
+    "startTrial": "Começar teste de 30 dias",
+    "subscribe": "Assinar",
+    "upgrade": "Fazer upgrade",
+    "payUpfront": "Assinar à vista",
+    "cancelDesc": {
+      "switchWindow": "Seu plano mensal continua como estava e o 12x agendado é cancelado sem cobrança.",
+      "trialing": "Sua assinatura será cancelada agora, sem cobrança.",
+      "pastDue": "Sua assinatura será cancelada agora.",
+      "untilDate": "Seu acesso continua até {{date}}. Depois disso, o workspace volta ao plano gratuito.",
+      "default": "Sua assinatura será cancelada."
+    },
+    "demoNote": "Conta demo: você está usando o plano {{plan}} sem custo. Para continuar depois, é só assinar um plano.",
+    "recommended": "Recomendado",
+    "annualLeadGated": "em 12x de",
+    "annualLeadBilled": "cobrado anualmente,",
+    "exclusivePlan": "Plano exclusivo",
+    "perMonth": "/mês",
+    "free": "Grátis",
+    "orUpfront": "ou {{price}} à vista",
+    "status": {
+      "switchScheduled": "Troca agendada",
+      "trialing": "Teste",
+      "pastDue": "Pagamento pendente",
+      "active": "Ativo"
+    },
+    "period": {
+      "firstCharge": "Primeira cobrança em",
+      "cancels": "Cancela em",
+      "renews": "Renova em"
+    },
+    "features": {
+      "clientsUnlimited": "Clientes ilimitados",
+      "clients_zero": "{{count}} clientes",
+      "clients_one": "{{count}} cliente",
+      "clients_other": "{{count}} clientes",
+      "usersUnlimited": "Usuários ilimitados",
+      "users_zero": "{{count}} usuários",
+      "users_one": "{{count}} usuário",
+      "users_other": "{{count}} usuários",
+      "storage": "{{size}} de armazenamento",
+      "hubPortal": "Portal de aprovação do cliente",
+      "analyticsReports": "Relatórios de desempenho",
+      "brandCustomization": "Personalização de marca"
+    }
+  },
+  "cobrancaPhone": {
+    "title": "Plano & Cobrança",
+    "subscriptionAria": "Assinatura",
+    "plan": "Plano",
+    "status": "Status",
+    "actionsAria": "Ações da assinatura"
+  },
+  "usagePanel": {
+    "title": "Uso do plano",
+    "loadError": "Não foi possível carregar o uso do plano.",
+    "planName": "Plano {{name}}",
+    "seatSub": "{{members}} e {{invites}}",
+    "members_zero": "{{count}} membros",
+    "members_one": "{{count}} membro",
+    "members_other": "{{count}} membros",
+    "pendingInvites_zero": "{{count}} convites pendentes",
+    "pendingInvites_one": "{{count}} convite pendente",
+    "pendingInvites_other": "{{count}} convites pendentes",
+    "meters": {
+      "clients": "Clientes",
+      "seats": "Vagas de equipe",
+      "storage": "Armazenamento",
+      "leads": "Leads",
+      "workflowTemplates": "Modelos de fluxo",
+      "instagramAccounts": "Contas de Instagram",
+      "hubPortals": "Portais do Hub",
+      "mcpKeys": "Chaves MCP"
+    }
+  },
+  "dunningBanner": {
+    "title": "Não conseguimos processar seu pagamento.",
+    "retryOn": "Vamos tentar novamente em {{date}}. Atualize sua forma de pagamento para manter o acesso.",
+    "noRetry": "Atualize sua forma de pagamento para não perder o acesso ao seu plano.",
+    "cta": "Regularizar"
+  },
+  "trialNudge": {
+    "title": "Seus 30 dias grátis ainda estão disponíveis",
+    "text": "Você está no plano Free. Ative o teste para liberar relatórios, portal do cliente e agendamento.",
+    "cta": "Ativar teste",
+    "dismissAria": "Fechar aviso"
+  },
+  "pagarmeCheckout": {
+    "genericError": "Não foi possível concluir a operação. Tente novamente.",
+    "cardUpdated": "Cartão atualizado!",
+    "validation": {
+      "cardNumber": "Número de cartão inválido.",
+      "holderName": "Informe o nome do titular.",
+      "expiry": "Validade inválida.",
+      "cvv": "CVV inválido.",
+      "cep": "CEP inválido.",
+      "line1": "Informe o endereço.",
+      "city": "Informe a cidade.",
+      "state": "UF inválida.",
+      "document": "CPF ou CNPJ inválido.",
+      "phone": "Celular inválido."
+    },
+    "cta": {
+      "startTrial": "Começar 30 dias grátis",
+      "confirmSubscription": "Confirmar assinatura",
+      "confirmSwitch": "Confirmar troca",
+      "saveCard": "Salvar novo cartão"
+    },
+    "successTitle": {
+      "switch": "Troca confirmada!",
+      "subscription": "Assinatura confirmada!"
+    },
+    "success": {
+      "switchFirstCharge": "Primeira parcela de 12x em {{date}}. ",
+      "switchScheduled": "Sua troca para o anual em 12x está agendada. ",
+      "switchPlanNow": "Os recursos do plano {{name}} passam a valer imediatamente.",
+      "switchNothingChanges": "Até lá nada muda no seu acesso.",
+      "trialEnds": "Seu teste grátis termina em {{date}}. Depois disso a cobrança de 12x começa automaticamente.",
+      "active": "Sua assinatura está ativa."
+    },
+    "formTitleCheckout": "Assinar o plano {{name}}",
+    "formDescriptionPlan": "Anual no cartão de crédito",
+    "formDescriptionUpdateCard": "A próxima cobrança usa o novo cartão.",
+    "installments": "12x de {{price}}",
+    "interestFree": "sem juros",
+    "totalPerYear": "total {{price}}/ano",
+    "upfrontPrice": "À vista sai por {{price}}. ",
+    "payUpfront": "Pagar à vista",
+    "fields": {
+      "cardNumber": "Número do cartão",
+      "holderName": "Nome impresso no cartão",
+      "holderNamePlaceholder": "Como aparece no cartão",
+      "expiry": "Validade",
+      "expiryPlaceholder": "MM/AA",
+      "cvv": "CVV",
+      "document": "CPF ou CNPJ",
+      "phone": "Celular",
+      "cep": "CEP",
+      "line1": "Endereço de cobrança",
+      "line1Placeholder": "Rua, número",
+      "city": "Cidade",
+      "cityPlaceholder": "São Paulo",
+      "state": "UF",
+      "statePlaceholder": "SP"
+    },
+    "notes": {
+      "trialOn": "30 dias grátis. A primeira parcela só é cobrada em {{date}} e você pode cancelar antes disso.",
+      "trialNoDate": "30 dias grátis. A primeira parcela só é cobrada depois do teste e você pode cancelar antes disso.",
+      "switchOn": "Sem cobrança agora. A primeira parcela está prevista para {{date}}, quando termina o período que você já pagou.",
+      "switchNoDate": "Sem cobrança agora. A primeira parcela vem quando terminar o período que você já pagou.",
+      "security": "Seus dados vão direto para a Pagar.me com segurança. Nós não armazenamos o número do seu cartão."
+    },
+    "processing": "Processando...",
+    "goToDashboard": "Ir para o painel",
+    "close": "Fechar"
+  },
+  "tokenization": {
+    "unavailable": "Pagamento indisponível no momento.",
+    "network": "Não foi possível validar o cartão. Verifique sua conexão.",
+    "declined": "Cartão recusado. Confira os dados ou tente outro cartão."
+  }
+}

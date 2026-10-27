@@ -1,0 +1,193 @@
+{
+  "shared": {
+    "wait": "Please wait…",
+    "ownerOnly": "Only the account owner can manage the subscription.",
+    "yourPlan": "Your plan",
+    "currentPlan": "Current plan",
+    "updateCard": "Update card",
+    "cancelSubscription": "Cancel subscription",
+    "keepSubscription": "Keep subscription",
+    "confirmCancel": "Yes, cancel subscription",
+    "cancelling": "Canceling…",
+    "undoSwitch": "Undo the switch",
+    "manageSubscription": "Manage subscription",
+    "billingPeriod": "Billing period",
+    "monthly": "Monthly",
+    "annual": "Annual",
+    "annualSavings": "Save up to {{pct}}% with annual billing",
+    "firstDaysFree": "Your first 30 days are free",
+    "cardChargeFailed": "We couldn't charge your card. Update your details to keep access.",
+    "switchToAnnual12x": "Switch to annual in 12 installments"
+  },
+  "cobrancaPage": {
+    "toastPaymentConfirmed": "Payment confirmed! Updating your plan…",
+    "toastCheckoutCancelled": "Checkout canceled.",
+    "checkoutError": "Couldn't start checkout: {{message}}",
+    "portalError": "Couldn't open the billing portal: {{message}}",
+    "switchReverted": "Switch undone. Your monthly plan stays as it was.",
+    "subscriptionCancelled": "Subscription canceled.",
+    "switchToPlan12x": "Switch to {{name}} in 12 installments",
+    "switchFirstInstallmentOn": "First installment expected on {{date}}. No charge now.",
+    "switchNoChargeNow": "No charge now. The first installment comes after the period you already paid for.",
+    "blockedNote": "Cancel or wait for the current period to end to change plans.",
+    "startTrial": "Start 30-day trial",
+    "subscribe": "Subscribe",
+    "upgrade": "Upgrade",
+    "payUpfront": "Pay in full",
+    "cancelDesc": {
+      "switchWindow": "Your monthly plan stays as it was and the scheduled 12-installment plan is canceled at no charge.",
+      "trialing": "Your subscription will be canceled now, at no charge.",
+      "pastDue": "Your subscription will be canceled now.",
+      "untilDate": "You keep access until {{date}}. After that, the workspace goes back to the free plan.",
+      "default": "Your subscription will be canceled."
+    },
+    "demoNote": "Demo account: you're using the {{plan}} plan at no cost. To keep going later, just subscribe to a plan.",
+    "recommended": "Recommended",
+    "annualLeadGated": "12 installments of",
+    "annualLeadBilled": "billed annually,",
+    "exclusivePlan": "Exclusive plan",
+    "perMonth": "/mo",
+    "free": "Free",
+    "orUpfront": "or {{price}} paid in full",
+    "status": {
+      "switchScheduled": "Switch scheduled",
+      "trialing": "Trial",
+      "pastDue": "Payment pending",
+      "active": "Active"
+    },
+    "period": {
+      "firstCharge": "First charge on",
+      "cancels": "Cancels on",
+      "renews": "Renews on"
+    },
+    "features": {
+      "clientsUnlimited": "Unlimited clients",
+      "clients_zero": "{{count}} clients",
+      "clients_one": "{{count}} client",
+      "clients_other": "{{count}} clients",
+      "usersUnlimited": "Unlimited users",
+      "users_zero": "{{count}} users",
+      "users_one": "{{count}} user",
+      "users_other": "{{count}} users",
+      "storage": "{{size}} of storage",
+      "hubPortal": "Client approval portal",
+      "analyticsReports": "Performance reports",
+      "brandCustomization": "Brand customization"
+    }
+  },
+  "cobrancaPhone": {
+    "title": "Plan & Billing",
+    "subscriptionAria": "Subscription",
+    "plan": "Plan",
+    "status": "Status",
+    "actionsAria": "Subscription actions"
+  },
+  "usagePanel": {
+    "title": "Plan usage",
+    "loadError": "Couldn't load plan usage.",
+    "planName": "{{name}} plan",
+    "seatSub": "{{members}} and {{invites}}",
+    "members_zero": "{{count}} members",
+    "members_one": "{{count}} member",
+    "members_other": "{{count}} members",
+    "pendingInvites_zero": "{{count}} pending invites",
+    "pendingInvites_one": "{{count}} pending invite",
+    "pendingInvites_other": "{{count}} pending invites",
+    "meters": {
+      "clients": "Clients",
+      "seats": "Team seats",
+      "storage": "Storage",
+      "leads": "Leads",
+      "workflowTemplates": "Workflow templates",
+      "instagramAccounts": "Instagram accounts",
+      "hubPortals": "Hub portals",
+      "mcpKeys": "MCP keys"
+    }
+  },
+  "dunningBanner": {
+    "title": "We couldn't process your payment.",
+    "retryOn": "We'll try again on {{date}}. Update your payment method to keep access.",
+    "noRetry": "Update your payment method so you don't lose access to your plan.",
+    "cta": "Fix payment"
+  },
+  "trialNudge": {
+    "title": "Your 30 free days are still available",
+    "text": "You're on the Free plan. Start the trial to unlock reports, the client portal and scheduling.",
+    "cta": "Start trial",
+    "dismissAria": "Dismiss notice"
+  },
+  "pagarmeCheckout": {
+    "genericError": "Couldn't complete the operation. Please try again.",
+    "cardUpdated": "Card updated!",
+    "validation": {
+      "cardNumber": "Invalid card number.",
+      "holderName": "Enter the cardholder name.",
+      "expiry": "Invalid expiration date.",
+      "cvv": "Invalid CVV.",
+      "cep": "Invalid postal code.",
+      "line1": "Enter the address.",
+      "city": "Enter the city.",
+      "state": "Invalid state.",
+      "document": "Invalid CPF or CNPJ.",
+      "phone": "Invalid mobile number."
+    },
+    "cta": {
+      "startTrial": "Start 30 days free",
+      "confirmSubscription": "Confirm subscription",
+      "confirmSwitch": "Confirm switch",
+      "saveCard": "Save new card"
+    },
+    "successTitle": {
+      "switch": "Switch confirmed!",
+      "subscription": "Subscription confirmed!"
+    },
+    "success": {
+      "switchFirstCharge": "First of 12 installments on {{date}}. ",
+      "switchScheduled": "Your switch to annual in 12 installments is scheduled. ",
+      "switchPlanNow": "The {{name}} plan features take effect immediately.",
+      "switchNothingChanges": "Until then, nothing changes in your access.",
+      "trialEnds": "Your free trial ends on {{date}}. After that, the 12 installments start automatically.",
+      "active": "Your subscription is active."
+    },
+    "formTitleCheckout": "Subscribe to the {{name}} plan",
+    "formDescriptionPlan": "Annual, by credit card",
+    "formDescriptionUpdateCard": "The next charge uses the new card.",
+    "installments": "12x {{price}}",
+    "interestFree": "interest-free",
+    "totalPerYear": "total {{price}}/year",
+    "upfrontPrice": "Paid in full: {{price}}. ",
+    "payUpfront": "Pay in full",
+    "fields": {
+      "cardNumber": "Card number",
+      "holderName": "Name on card",
+      "holderNamePlaceholder": "As it appears on the card",
+      "expiry": "Expiration",
+      "expiryPlaceholder": "MM/YY",
+      "cvv": "CVV",
+      "document": "CPF or CNPJ",
+      "phone": "Mobile",
+      "cep": "Postal code",
+      "line1": "Billing address",
+      "line1Placeholder": "Street, number",
+      "city": "City",
+      "cityPlaceholder": "São Paulo",
+      "state": "State",
+      "statePlaceholder": "SP"
+    },
+    "notes": {
+      "trialOn": "30 days free. The first installment is only charged on {{date}} and you can cancel before then.",
+      "trialNoDate": "30 days free. The first installment is only charged after the trial and you can cancel before then.",
+      "switchOn": "No charge now. The first installment is expected on {{date}}, when the period you already paid for ends.",
+      "switchNoDate": "No charge now. The first installment comes when the period you already paid for ends.",
+      "security": "Your details go straight to Pagar.me securely. We don't store your card number."
+    },
+    "processing": "Processing...",
+    "goToDashboard": "Go to dashboard",
+    "close": "Close"
+  },
+  "tokenization": {
+    "unavailable": "Payment is unavailable right now.",
+    "network": "Could not validate the card. Check your connection.",
+    "declined": "Card declined. Check the details or try another card."
+  }
+}

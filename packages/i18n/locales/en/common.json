@@ -206,7 +206,9 @@
       "message": "You have unsaved changes. Close anyway?",
       "keepEditing": "Keep editing",
       "discard": "Close anyway"
-    }
+    },
+    "showPassword": "Show password",
+    "hidePassword": "Hide password"
   },
   "dateFormat": {
     "monthYear": "MMMM yyyy",
@@ -246,5 +248,35 @@
     "limitReached": "Plan limit reached.",
     "csvLocked": "CSV import is not available on your plan."
   },
-  "optional": "(optional)"
+  "optional": "(optional)",
+  "usage": {
+    "of": "{{used}} of {{limit}}",
+    "ofLabel": "{{used}} of {{limit}} {{label}}",
+    "notIncluded": "Not included in your plan",
+    "unlimited": "Unlimited",
+    "upgrade": "Upgrade"
+  },
+  "paywall": {
+    "notAvailable": "{{label}} is not available on your plan.",
+    "thisFeature": "This feature"
+  },
+  "photo": {
+    "add": "Add photo",
+    "change": "Change photo",
+    "addFor": "Add photo for {{nome}}",
+    "changeFor": "Change photo for {{nome}}",
+    "gallery": "Choose from library",
+    "camera": "Take photo",
+    "remove": "Remove photo",
+    "removeConfirm": "Remove",
+    "sheetTitle": "Profile photo",
+    "removeTitle": "Remove the photo?",
+    "removeDescription": "Your initials will show again.",
+    "help": "JPG, PNG or HEIC up to 10 MB. The photo is cropped to a square.",
+    "tooLarge": "The photo must be 10 MB or less.",
+    "updated": "Photo updated.",
+    "uploadError": "Could not upload the photo.",
+    "removed": "Photo removed.",
+    "removeError": "Could not remove the photo."
+  }
 }

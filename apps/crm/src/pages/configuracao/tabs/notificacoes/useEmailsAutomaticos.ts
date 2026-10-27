@@ -1,32 +1,27 @@
 import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { i18n } from '@mesaas/i18n';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 
-const SAVE_ERROR_MESSAGE = 'Não foi possível salvar. Tente novamente.';
+const TRANSACTIONAL_IDS = ['invite', 'billing', 'instagram'] as const;
 
 /** The 3 transactional rows: always sent, no user control, listed here only
- * for transparency. Content is fixed by the Task 8 brief. */
-export const TRANSACTIONAL_ROWS = [
-  {
-    label: 'Convite para a equipe',
-    when: 'você convida alguém para o workspace',
-    recipients: 'o convidado',
-  },
-  {
-    label: 'Cobrança e pagamento',
-    when: 'um pagamento falha (avisos de retry e cancelamento)',
-    recipients: 'dono do workspace',
-  },
-  {
-    label: 'Instagram conectado',
-    when: 'o cliente conclui a conexão pelo link que você enviou',
-    recipients: 'quem criou o link',
-  },
-];
+ * for transparency. Content is fixed by the Task 8 brief. Resolved at call time so
+ * the copy follows the UI language. */
+export function transactionalRows(): { label: string; when: string; recipients: string }[] {
+  return TRANSACTIONAL_IDS.map((id) => ({
+    label: i18n.t(`settings:notifications.transactional.${id}.label`),
+    when: i18n.t(`settings:notifications.transactional.${id}.when`),
+    recipients: i18n.t(`settings:notifications.transactional.${id}.recipients`),
+  }));
+}
 
-export const MARKETING_LABEL = 'Novidades e dicas do Mesaas';
+/** Label of the one opt-in e-mail (marketing). */
+export function marketingLabel(): string {
+  return i18n.t('settings:notifications.marketingLabel');
+}
 
 /**
  * The marketing opt-in of "E-mails automáticos", wired to the same
@@ -63,7 +58,7 @@ export function useEmailsAutomaticos() {
     },
     onError: (_err, _enabled, ctx) => {
       if (ctx) setMarketingOptIn(ctx.prev);
-      toast.error(SAVE_ERROR_MESSAGE);
+      toast.error(i18n.t('settings:notifications.saveError'));
     },
   });
 

@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import { useAuth } from '@/context/AuthContext';
 import {
   listActivePlans,
@@ -45,7 +48,7 @@ const RECOMMENDED_ID = 'pro';
 
 /** plans.price_brl is stored in centavos (e.g. 9990 = R$ 99,90). */
 function formatBRL(centavos: number): string {
-  return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  return (centavos / 100).toLocaleString(getIntlLocale(), { style: 'currency', currency: 'BRL' });
 }
 
 function formatStorage(bytes: number): string {
@@ -58,7 +61,7 @@ function formatDate(iso: string | null): string {
   if (!iso) return '';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+  return d.toLocaleDateString(getIntlLocale(), { day: '2-digit', month: 'long', year: 'numeric' });
 }
 
 /** True when `iso` is either a YYYY-MM-DD-prefixed string or anything else `Date` can parse. */
@@ -83,27 +86,28 @@ function formatPeriodEnd(iso: string | null, provider: string | null): string {
   return formatDate(iso);
 }
 
-function planFeatures(p: BillingPlan): string[] {
+function planFeatures(p: BillingPlan, t: TFunction): string[] {
   const out: string[] = [];
   out.push(
     p.max_clients == null
-      ? 'Clientes ilimitados'
-      : `${p.max_clients} ${p.max_clients === 1 ? 'cliente' : 'clientes'}`,
+      ? t('cobrancaPage.features.clientsUnlimited')
+      : t('cobrancaPage.features.clients', { count: p.max_clients }),
   );
   out.push(
     p.max_team_members == null
-      ? 'Usuários ilimitados'
-      : `${p.max_team_members} ${p.max_team_members === 1 ? 'usuário' : 'usuários'}`,
+      ? t('cobrancaPage.features.usersUnlimited')
+      : t('cobrancaPage.features.users', { count: p.max_team_members }),
   );
   if (p.storage_quota_bytes != null)
-    out.push(`${formatStorage(p.storage_quota_bytes)} de armazenamento`);
-  if (p.feature_hub_portal) out.push('Portal de aprovação do cliente');
-  if (p.feature_analytics_reports) out.push('Relatórios de desempenho');
-  if (p.feature_brand_customization) out.push('Personalização de marca');
+    out.push(t('cobrancaPage.features.storage', { size: formatStorage(p.storage_quota_bytes) }));
+  if (p.feature_hub_portal) out.push(t('cobrancaPage.features.hubPortal'));
+  if (p.feature_analytics_reports) out.push(t('cobrancaPage.features.analyticsReports'));
+  if (p.feature_brand_customization) out.push(t('cobrancaPage.features.brandCustomization'));
   return out;
 }
 
 export default function CobrancaPage() {
+  const { t } = useTranslation('billing');
   const { role, workspaceRole } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [interval, setInterval] = useState<BillingInterval>('month');
@@ -172,12 +176,12 @@ export default function CobrancaPage() {
     const status = searchParams.get('status');
     if (!status) return;
     if (status === 'success') {
-      toast.success('Pagamento confirmado! Atualizando seu plano…');
+      toast.success(t('cobrancaPage.toastPaymentConfirmed'));
       const id = startPlanRefetchPoll();
       setSearchParams({}, { replace: true });
       return () => window.clearInterval(id);
     }
-    toast('Checkout cancelado.');
+    toast(t('cobrancaPage.toastCheckoutCancelled'));
     setSearchParams({}, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -197,9 +201,7 @@ export default function CobrancaPage() {
     if (isPhone) return <CobrancaPhoneLocked />;
     return (
       <div className="card">
-        <p style={{ color: 'var(--text-muted)' }}>
-          Apenas o proprietário da conta pode gerenciar a assinatura.
-        </p>
+        <p style={{ color: 'var(--text-muted)' }}>{t('shared.ownerOnly')}</p>
       </div>
     );
   }
@@ -246,6 +248,18 @@ export default function CobrancaPage() {
   const switchPreviewDate = subscription?.current_period_end
     ? ceilPeriodEndToUtcDate(subscription.current_period_end)
     : null;
+  const statusLabel = switchWindow
+    ? t('cobrancaPage.status.switchScheduled')
+    : subscription?.status === 'trialing'
+      ? t('cobrancaPage.status.trialing')
+      : subscription?.status === 'past_due'
+        ? t('cobrancaPage.status.pastDue')
+        : t('cobrancaPage.status.active');
+  const periodLabel = switchWindow
+    ? t('cobrancaPage.period.firstCharge')
+    : subscription?.cancel_at_period_end
+      ? t('cobrancaPage.period.cancels')
+      : t('cobrancaPage.period.renews');
 
   /**
    * Starts the Stripe checkout for `planId` at the current `interval`. Shared by the Stripe
@@ -260,7 +274,7 @@ export default function CobrancaPage() {
       captureCheckoutStarted(planId, interval, 'billing');
       window.location.assign(url);
     } catch (err) {
-      toast.error('Erro ao iniciar checkout: ' + (err as Error).message);
+      toast.error(t('cobrancaPage.checkoutError', { message: (err as Error).message }));
       setBusy(null);
     }
   }
@@ -287,7 +301,7 @@ export default function CobrancaPage() {
       const url = await openBillingPortal();
       window.location.assign(url);
     } catch (err) {
-      toast.error('Erro ao abrir portal: ' + (err as Error).message);
+      toast.error(t('cobrancaPage.portalError', { message: (err as Error).message }));
       setBusy(null);
     }
   }
@@ -298,8 +312,8 @@ export default function CobrancaPage() {
       const result = await cancelPagarmeSubscription();
       toast.success(
         result.status === 'reverted'
-          ? 'Troca desfeita. Seu plano mensal continua como estava.'
-          : 'Assinatura cancelada.',
+          ? t('cobrancaPage.switchReverted')
+          : t('cobrancaPage.subscriptionCancelled'),
       );
       startPlanRefetchPoll();
       // Close only on success: a failure must leave the dialog open with the button
@@ -331,15 +345,17 @@ export default function CobrancaPage() {
             disabled={busy === p.id}
           >
             {busy === p.id
-              ? 'Aguarde…'
+              ? t('shared.wait')
               : p.id === currentPlanId
-                ? 'Trocar para o anual em 12x'
-                : `Mudar para ${p.name} em 12x`}
+                ? t('shared.switchToAnnual12x')
+                : t('cobrancaPage.switchToPlan12x', { name: p.name })}
           </button>
           <p className="plan-cta__note">
             {switchPreviewDate
-              ? `Primeira parcela prevista para ${formatUtcDateBR(switchPreviewDate)}. Sem cobrança agora.`
-              : 'Sem cobrança agora. A primeira parcela vem depois do período já pago.'}
+              ? t('cobrancaPage.switchFirstInstallmentOn', {
+                  date: formatUtcDateBR(switchPreviewDate),
+                })
+              : t('cobrancaPage.switchNoChargeNow')}
           </p>
         </>
       );
@@ -347,18 +363,14 @@ export default function CobrancaPage() {
     // A demo has no subscription: its own plan is a first checkout, so it gets a CTA (below)
     // instead of the static label.
     if (p.id === currentPlanId && !isDemo) {
-      return <span className="plan-cta__static">Plano atual</span>;
+      return <span className="plan-cta__static">{t('shared.currentPlan')}</span>;
     }
     const upgradable = canUpgradeTo(p.id, currentPlanId, hasActiveSub, planSource);
     // Suppress a CTA the backend would 409 on: this only fires for the past_due /
     // canceled-but-paid-through cases hasActiveSub doesn't cover — hasActiveSub already
     // makes `upgradable` false for active/trialing, so that path never reaches here.
     if (upgradable && blocked) {
-      return (
-        <p className="plan-cta__note">
-          Cancele ou aguarde o fim do período atual para trocar de plano.
-        </p>
-      );
+      return <p className="plan-cta__note">{t('cobrancaPage.blockedNote')}</p>;
     }
     if (upgradable) {
       // A demo always has wasDemo, so firstTime is false for it: the 'Assinar' label below
@@ -376,12 +388,12 @@ export default function CobrancaPage() {
             disabled={busy === p.id}
           >
             {busy === p.id
-              ? 'Aguarde…'
+              ? t('shared.wait')
               : firstTime
-                ? 'Começar teste de 30 dias'
+                ? t('cobrancaPage.startTrial')
                 : isDemo && p.id === currentPlanId
-                  ? 'Assinar'
-                  : 'Fazer upgrade'}
+                  ? t('cobrancaPage.subscribe')
+                  : t('cobrancaPage.upgrade')}
           </button>
           {showUpfront && (
             <button
@@ -390,7 +402,7 @@ export default function CobrancaPage() {
               onClick={() => startStripeUpgrade(p.id)}
               disabled={busy === p.id}
             >
-              Assinar à vista
+              {t('cobrancaPage.payUpfront')}
             </button>
           )}
         </>
@@ -407,19 +419,20 @@ export default function CobrancaPage() {
   const cancelDialogDescription = !showPagarmeManage
     ? ''
     : switchWindow
-      ? 'Seu plano mensal continua como estava e o 12x agendado é cancelado sem cobrança.'
+      ? t('cobrancaPage.cancelDesc.switchWindow')
       : subscription?.status === 'trialing'
-        ? 'Sua assinatura será cancelada agora, sem cobrança.'
+        ? t('cobrancaPage.cancelDesc.trialing')
         : subscription?.status === 'past_due'
-          ? 'Sua assinatura será cancelada agora.'
+          ? t('cobrancaPage.cancelDesc.pastDue')
           : subscription?.current_period_end && isFormattableDate(subscription.current_period_end)
-            ? `Seu acesso continua até ${formatUtcDateBR(subscription.current_period_end)}. Depois disso, o workspace volta ao plano gratuito.`
-            : 'Sua assinatura será cancelada.';
+            ? t('cobrancaPage.cancelDesc.untilDate', {
+                date: formatUtcDateBR(subscription.current_period_end),
+              })
+            : t('cobrancaPage.cancelDesc.default');
 
   const demoNote = isDemo ? (
     <p className="billing-demo-note text-sm text-muted-foreground">
-      Conta demo: você está usando o plano {currentPlan?.name ?? currentPlanId} sem custo. Para
-      continuar depois, é só assinar um plano.
+      {t('cobrancaPage.demoNote', { plan: currentPlan?.name ?? currentPlanId })}
     </p>
   ) : null;
 
@@ -466,40 +479,44 @@ export default function CobrancaPage() {
                   {isCurrent ? (
                     <span className="plan-tag plan-tag--current">
                       {isInternal && <i className="ph ph-crown-simple" aria-hidden="true" />}
-                      Plano atual
+                      {t('shared.currentPlan')}
                     </span>
                   ) : isReco ? (
-                    <span className="plan-tag plan-tag--reco">Recomendado</span>
+                    <span className="plan-tag plan-tag--reco">{t('cobrancaPage.recommended')}</span>
                   ) : null}
                 </div>
 
                 <div>
                   {!isInternal && isYear && monthly != null && monthly > 0 && (
                     <div className="plan-annual-lead">
-                      {gated ? 'em 12x de' : 'cobrado anualmente,'}
+                      {gated
+                        ? t('cobrancaPage.annualLeadGated')
+                        : t('cobrancaPage.annualLeadBilled')}
                     </div>
                   )}
                   <div className="plan-price">
                     {isInternal ? (
-                      <span className="plan-price__note">Plano exclusivo</span>
+                      <span className="plan-price__note">{t('cobrancaPage.exclusivePlan')}</span>
                     ) : monthly != null && monthly > 0 ? (
                       <>
                         <span className="plan-price__amount">{formatBRL(monthly)}</span>
-                        {!isYear && <span className="plan-price__period">/mês</span>}
+                        {!isYear && (
+                          <span className="plan-price__period">{t('cobrancaPage.perMonth')}</span>
+                        )}
                       </>
                     ) : (
-                      <span className="plan-price__free">Grátis</span>
+                      <span className="plan-price__free">{t('cobrancaPage.free')}</span>
                     )}
                   </div>
                   {gated && p.price_brl_annual != null && p.price_brl_annual > 0 && (
                     <div className="plan-price__secondary">
-                      {`ou ${formatBRL(p.price_brl_annual)} à vista`}
+                      {t('cobrancaPage.orUpfront', { price: formatBRL(p.price_brl_annual) })}
                     </div>
                   )}
                 </div>
 
                 <ul className="plan-features">
-                  {planFeatures(p).map((f) => (
+                  {planFeatures(p, t).map((f) => (
                     <li key={f}>
                       <i className="ph ph-check" aria-hidden="true" />
                       {f}
@@ -554,25 +571,9 @@ export default function CobrancaPage() {
       <CobrancaPhone
         showCurrent={showCurrent}
         planName={currentPlan?.name ?? currentPlanId}
-        statusLabel={
-          switchWindow
-            ? 'Troca agendada'
-            : subscription?.status === 'trialing'
-              ? 'Teste'
-              : subscription?.status === 'past_due'
-                ? 'Pagamento pendente'
-                : 'Ativo'
-        }
+        statusLabel={statusLabel}
         statusWarning={subscription?.status === 'past_due'}
-        periodLabel={
-          subscription?.current_period_end
-            ? switchWindow
-              ? 'Primeira cobrança em'
-              : subscription.cancel_at_period_end
-                ? 'Cancela em'
-                : 'Renova em'
-            : null
-        }
+        periodLabel={subscription?.current_period_end ? periodLabel : null}
         periodDate={
           subscription?.current_period_end
             ? formatPeriodEnd(subscription.current_period_end, subscription.provider)
@@ -581,7 +582,7 @@ export default function CobrancaPage() {
         warning={
           (showPagarmeManage && subscription?.status === 'past_due') ||
           (!showPagarmeManage && showStripeManage)
-            ? 'Não conseguimos cobrar seu cartão. Atualize os dados para manter o acesso.'
+            ? t('shared.cardChargeFailed')
             : null
         }
         showPagarmeManage={showPagarmeManage}
@@ -619,28 +620,18 @@ export default function CobrancaPage() {
         <div className="card" style={{ marginBottom: '1.5rem' }}>
           <div className="billing-current">
             <div>
-              <span className="billing-current__label">Seu plano</span>
+              <span className="billing-current__label">{t('shared.yourPlan')}</span>
               <div className="billing-current__plan">
                 <span className="billing-current__name">{currentPlan?.name ?? currentPlanId}</span>
                 <span
                   className={`badge ${subscription?.status === 'past_due' ? 'badge-warning' : 'badge-success'}`}
                 >
-                  {switchWindow
-                    ? 'Troca agendada'
-                    : subscription?.status === 'trialing'
-                      ? 'Teste'
-                      : subscription?.status === 'past_due'
-                        ? 'Pagamento pendente'
-                        : 'Ativo'}
+                  {statusLabel}
                 </span>
               </div>
               {subscription?.current_period_end && (
                 <div className="billing-current__meta">
-                  {switchWindow
-                    ? 'Primeira cobrança em '
-                    : subscription.cancel_at_period_end
-                      ? 'Cancela em '
-                      : 'Renova em '}
+                  {periodLabel}{' '}
                   {formatPeriodEnd(subscription.current_period_end, subscription.provider)}
                 </div>
               )}
@@ -648,28 +639,24 @@ export default function CobrancaPage() {
             {showPagarmeManage ? (
               <div className="billing-current__actions">
                 {subscription?.status === 'past_due' && (
-                  <p className="billing-current__warning">
-                    Não conseguimos cobrar seu cartão. Atualize os dados para manter o acesso.
-                  </p>
+                  <p className="billing-current__warning">{t('shared.cardChargeFailed')}</p>
                 )}
                 <div className="billing-current__action-row">
                   <button
                     className="btn-secondary"
                     onClick={() => setPagarmeDialog({ mode: 'update-card', plan: null })}
                   >
-                    Atualizar cartão
+                    {t('shared.updateCard')}
                   </button>
                   <button className="btn-secondary" onClick={() => setCancelDialogOpen(true)}>
-                    {switchWindow ? 'Desfazer a troca' : 'Cancelar assinatura'}
+                    {switchWindow ? t('shared.undoSwitch') : t('shared.cancelSubscription')}
                   </button>
                 </div>
               </div>
             ) : (
               <div className="billing-current__actions">
                 {showStripeManage && (
-                  <p className="billing-current__warning">
-                    Não conseguimos cobrar seu cartão. Atualize os dados para manter o acesso.
-                  </p>
+                  <p className="billing-current__warning">{t('shared.cardChargeFailed')}</p>
                 )}
                 <button
                   className="btn-secondary"
@@ -677,7 +664,7 @@ export default function CobrancaPage() {
                   disabled={busy === 'portal'}
                 >
                   <i className="ph ph-gear-six" aria-hidden="true" />
-                  {busy === 'portal' ? 'Aguarde…' : 'Gerenciar assinatura'}
+                  {busy === 'portal' ? t('shared.wait') : t('shared.manageSubscription')}
                 </button>
               </div>
             )}
@@ -688,24 +675,24 @@ export default function CobrancaPage() {
       <UsagePanel />
 
       <div className="billing-toolbar">
-        <div className="billing-toggle" role="group" aria-label="Período de cobrança">
+        <div className="billing-toggle" role="group" aria-label={t('shared.billingPeriod')}>
           <button aria-pressed={interval === 'month'} onClick={() => setInterval('month')}>
-            Mensal
+            {t('shared.monthly')}
           </button>
           <button aria-pressed={interval === 'year'} onClick={() => setInterval('year')}>
-            Anual
+            {t('shared.annual')}
           </button>
         </div>
         {annualSavingsPct > 0 && (
           <span className="billing-save-hint">
             <i className="ph ph-tag" aria-hidden="true" />
-            Economize até {annualSavingsPct}% no anual
+            {t('shared.annualSavings', { pct: annualSavingsPct })}
           </span>
         )}
         {!hasUsedTrial(subscription, effectivePlan) && (
           <span className="billing-save-hint">
             <i className="ph ph-tag" aria-hidden="true" />
-            Seus primeiros 30 dias são grátis
+            {t('shared.firstDaysFree')}
           </span>
         )}
       </div>
@@ -719,11 +706,13 @@ export default function CobrancaPage() {
       <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Cancelar assinatura</AlertDialogTitle>
+            <AlertDialogTitle>{t('shared.cancelSubscription')}</AlertDialogTitle>
             <AlertDialogDescription>{cancelDialogDescription}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={cancelling}>Manter assinatura</AlertDialogCancel>
+            <AlertDialogCancel disabled={cancelling}>
+              {t('shared.keepSubscription')}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 // AlertDialogAction is Radix's DialogPrimitive.Close under the hood: without
@@ -736,7 +725,7 @@ export default function CobrancaPage() {
               }}
               disabled={cancelling}
             >
-              {cancelling ? 'Cancelando…' : 'Sim, cancelar assinatura'}
+              {cancelling ? t('shared.cancelling') : t('shared.confirmCancel')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

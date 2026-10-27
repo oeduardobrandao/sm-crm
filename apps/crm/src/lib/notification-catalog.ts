@@ -1,3 +1,4 @@
+import { i18n } from '@mesaas/i18n';
 import type { NotificationType } from '@/store/notifications';
 
 export type NotificationCategory =
@@ -302,3 +303,29 @@ export function isEmailEligibleType(type: NotificationType): type is Notificatio
 export const EMAIL_ELIGIBLE_TYPES: NotificationEmailType[] = (
   Object.keys(NOTIFICATION_CATALOG) as NotificationType[]
 ).filter(isEmailEligibleType);
+
+/** i18next key segment for a type: `.` and `:` are key/namespace separators. */
+const catalogKey = (type: string) => type.replace(/[.:]/g, '_');
+
+/** Category header in the current UI language (CATEGORY_LABELS keeps the pt copy). */
+export function categoryLabel(category: NotificationCategory): string {
+  return i18n.t(`settings:catalog.category.${catalogKey(category)}`, {
+    defaultValue: CATEGORY_LABELS[category],
+  });
+}
+
+/** label / when / recipients of a catalog type in the current UI language, resolved at
+ * call time (NOTIFICATION_CATALOG keeps the pt copy). */
+export function catalogText(type: NotificationType): {
+  label: string;
+  when: string;
+  recipients: string;
+} {
+  const entry: NotificationCatalogEntry = NOTIFICATION_CATALOG[type];
+  const base = `settings:catalog.types.${catalogKey(type)}`;
+  return {
+    label: i18n.t(`${base}.label`, { defaultValue: entry.label }),
+    when: i18n.t(`${base}.when`, { defaultValue: entry.when }),
+    recipients: i18n.t(`${base}.recipients`, { defaultValue: entry.recipients }),
+  };
+}

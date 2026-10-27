@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import { Copy, Eye, Lock, MoreHorizontal, Pencil, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -40,7 +42,6 @@ import {
   deleteReportTemplate,
   listReportTemplates,
   setDefaultReportTemplate,
-  SYSTEM_TEMPLATE_NAME,
   updateReportTemplate,
   type ReportTemplateRow,
 } from '../../../services/reportTemplates';
@@ -49,10 +50,8 @@ import { ReportTemplatesPhone } from './phone/ReportTemplatesPhone';
 
 const LIST_KEY = ['report-templates'] as const;
 const detailKey = (id: string) => ['report-template', id] as const;
-const GENERIC_ERROR = 'Não foi possível atualizar o modelo.';
-
 function blockCount(n: number): string {
-  return n === 1 ? '1 bloco' : `${n} blocos`;
+  return i18n.t('settingsHub:templates.blockCount', { count: n });
 }
 
 const ROW_STYLE = {
@@ -67,6 +66,7 @@ const ROW_STYLE = {
 const META_STYLE = { fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.5rem' };
 
 export function ReportTemplatesCard() {
+  const { t } = useTranslation('settingsHub');
   const navigate = useNavigate();
   const qc = useQueryClient();
   const isPhone = !useIsDesktop(768);
@@ -89,16 +89,16 @@ export function ReportTemplatesCard() {
       await qc.invalidateQueries({ queryKey: LIST_KEY });
       navigate(`/relatorios/modelos/${row.id}`);
     },
-    onError: () => toast.error('Não foi possível criar o modelo.'),
+    onError: () => toast.error(t('templates.toast.createError')),
   });
 
   const makeDefault = useMutation({
     mutationFn: (id: string) => setDefaultReportTemplate(id),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: LIST_KEY });
-      toast.success('Modelo padrão atualizado.');
+      toast.success(t('templates.toast.defaultUpdated'));
     },
-    onError: () => toast.error(GENERIC_ERROR),
+    onError: () => toast.error(t('templates.toast.genericError')),
   });
 
   const rename = useMutation({
@@ -111,9 +111,9 @@ export function ReportTemplatesCard() {
         qc.invalidateQueries({ queryKey: detailKey(id) }),
       ]);
       setRenaming(null);
-      toast.success('Modelo renomeado.');
+      toast.success(t('templates.toast.renamed'));
     },
-    onError: () => toast.error(GENERIC_ERROR),
+    onError: () => toast.error(t('templates.toast.genericError')),
   });
 
   const remove = useMutation({
@@ -122,9 +122,9 @@ export function ReportTemplatesCard() {
       qc.removeQueries({ queryKey: detailKey(id) });
       await qc.invalidateQueries({ queryKey: LIST_KEY });
       setDeleting(null);
-      toast.success('Modelo excluído.');
+      toast.success(t('templates.toast.deleted'));
     },
-    onError: () => toast.error('Não foi possível excluir o modelo.'),
+    onError: () => toast.error(t('templates.toast.deleteError')),
   });
 
   const busy = create.isPending;
@@ -136,21 +136,25 @@ export function ReportTemplatesCard() {
       <ReportTemplatesPhone
         templates={templates}
         isLoading={isLoading}
-        systemName={SYSTEM_TEMPLATE_NAME}
+        systemName={t('templates.systemName')}
         busy={busy}
-        onCreate={() => create.mutate({ name: 'Novo modelo', layout: buildSystemDefaultLayout() })}
+        onCreate={() =>
+          create.mutate({ name: t('templates.newTemplate'), layout: buildSystemDefaultLayout() })
+        }
         onViewSystem={() => navigate('/relatorios/modelos/padrao')}
         onDuplicateSystem={() =>
           create.mutate({
-            name: `${SYSTEM_TEMPLATE_NAME} (cópia)`,
+            name: t('templates.systemCopyName', { name: t('templates.systemName') }),
             layout: buildSystemDefaultLayout(),
           })
         }
-        onEdit={(t) => navigate(`/relatorios/modelos/${t.id}`)}
-        onMakeDefault={(t) => makeDefault.mutate(t.id)}
+        onEdit={(tpl) => navigate(`/relatorios/modelos/${tpl.id}`)}
+        onMakeDefault={(tpl) => makeDefault.mutate(tpl.id)}
         makeDefaultPending={makeDefault.isPending}
         onRename={setRenaming}
-        onDuplicate={(t) => create.mutate({ name: `Cópia de ${t.name}`, layout: t.layout })}
+        onDuplicate={(tpl) =>
+          create.mutate({ name: t('templates.copyOfName', { name: tpl.name }), layout: tpl.layout })
+        }
         onDelete={setDeleting}
         renaming={renaming}
         renameValue={renameValue}
@@ -190,17 +194,19 @@ export function ReportTemplatesCard() {
         }}
       >
         <div>
-          <h3 className="config-title">Modelos de relatório</h3>
+          <h3 className="config-title">{t('templates.title')}</h3>
           <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
-            Layouts usados ao gerar relatórios. O padrão vem pré-selecionado.
+            {t('templates.description')}
           </p>
         </div>
         <Button
           size="sm"
           disabled={busy}
-          onClick={() => create.mutate({ name: 'Novo modelo', layout: buildSystemDefaultLayout() })}
+          onClick={() =>
+            create.mutate({ name: t('templates.newTemplate'), layout: buildSystemDefaultLayout() })
+          }
         >
-          <Plus className="h-3.5 w-3.5" /> Novo modelo
+          <Plus className="h-3.5 w-3.5" /> {t('templates.newTemplate')}
         </Button>
       </div>
 
@@ -212,8 +218,8 @@ export function ReportTemplatesCard() {
               aria-hidden="true"
               style={{ color: 'var(--text-muted)', marginRight: '0.5rem' }}
             />
-            <span>{SYSTEM_TEMPLATE_NAME}</span>
-            <span style={META_STYLE}>embutido</span>
+            <span>{t('templates.systemName')}</span>
+            <span style={META_STYLE}>{t('templates.builtIn')}</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Button
@@ -221,7 +227,7 @@ export function ReportTemplatesCard() {
               size="sm"
               onClick={() => navigate('/relatorios/modelos/padrao')}
             >
-              <Eye className="h-3.5 w-3.5" /> Visualizar
+              <Eye className="h-3.5 w-3.5" /> {t('templates.view')}
             </Button>
             <Button
               variant="outline"
@@ -229,59 +235,72 @@ export function ReportTemplatesCard() {
               disabled={busy}
               onClick={() =>
                 create.mutate({
-                  name: `${SYSTEM_TEMPLATE_NAME} (cópia)`,
+                  name: t('templates.systemCopyName', { name: t('templates.systemName') }),
                   layout: buildSystemDefaultLayout(),
                 })
               }
             >
-              <Copy className="h-3.5 w-3.5" /> Duplicar
+              <Copy className="h-3.5 w-3.5" /> {t('templates.duplicate')}
             </Button>
           </div>
         </div>
 
-        {templates.map((t) => (
-          <div key={t.id} data-template-row={t.id} style={ROW_STYLE}>
+        {templates.map((tpl) => (
+          <div key={tpl.id} data-template-row={tpl.id} style={ROW_STYLE}>
             <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
-              <span>{t.name}</span>
-              {t.is_default && (
+              <span>{tpl.name}</span>
+              {tpl.is_default && (
                 <span className="badge badge-neutral badge--sm" style={{ marginLeft: '0.5rem' }}>
-                  padrão
+                  {t('templates.defaultBadge')}
                 </span>
               )}
-              <span style={META_STYLE}>{blockCount(t.layout.blocks.length)}</span>
+              <span style={META_STYLE}>{blockCount(tpl.layout.blocks.length)}</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => navigate(`/relatorios/modelos/${t.id}`)}
+                onClick={() => navigate(`/relatorios/modelos/${tpl.id}`)}
               >
-                <Pencil className="h-3.5 w-3.5" /> Editar
+                <Pencil className="h-3.5 w-3.5" /> {t('actions.edit')}
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" aria-label={`Mais ações de ${t.name}`}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={t('statusPhone.moreActionsOf', { name: tpl.name })}
+                  >
                     <MoreHorizontal className="h-3.5 w-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  {!t.is_default && (
+                  {!tpl.is_default && (
                     <DropdownMenuItem
                       disabled={makeDefault.isPending}
-                      onSelect={() => makeDefault.mutate(t.id)}
+                      onSelect={() => makeDefault.mutate(tpl.id)}
                     >
-                      Definir como padrão
+                      {t('templates.makeDefault')}
                     </DropdownMenuItem>
                   )}
-                  <DropdownMenuItem onSelect={() => setRenaming(t)}>Renomear</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setRenaming(tpl)}>
+                    {t('templates.rename')}
+                  </DropdownMenuItem>
                   <DropdownMenuItem
                     disabled={busy}
-                    onSelect={() => create.mutate({ name: `Cópia de ${t.name}`, layout: t.layout })}
+                    onSelect={() =>
+                      create.mutate({
+                        name: t('templates.copyOfName', { name: tpl.name }),
+                        layout: tpl.layout,
+                      })
+                    }
                   >
-                    Duplicar
+                    {t('templates.duplicate')}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={() => setDeleting(t)}>Excluir</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setDeleting(tpl)}>
+                    {t('templates.delete')}
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -290,7 +309,7 @@ export function ReportTemplatesCard() {
 
         {!isLoading && templates.length === 0 && (
           <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.75rem 0 0' }}>
-            Crie um modelo para reaproveitar a mesma estrutura em todos os relatórios.
+            {t('templates.empty')}
           </p>
         )}
       </div>
@@ -303,10 +322,10 @@ export function ReportTemplatesCard() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Renomear modelo</DialogTitle>
+            <DialogTitle>{t('templates.renameTitle')}</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="rename-template-name">Nome do modelo</Label>
+            <Label htmlFor="rename-template-name">{t('templates.nameLabel')}</Label>
             <Input
               id="rename-template-name"
               value={renameValue}
@@ -315,7 +334,7 @@ export function ReportTemplatesCard() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRenaming(null)}>
-              Cancelar
+              {t('actions.cancel')}
             </Button>
             <Button
               disabled={rename.isPending || !renameValue.trim()}
@@ -323,7 +342,7 @@ export function ReportTemplatesCard() {
                 renaming && rename.mutate({ id: renaming.id, name: renameValue.trim() })
               }
             >
-              Salvar
+              {t('actions.save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -337,13 +356,13 @@ export function ReportTemplatesCard() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir o modelo?</AlertDialogTitle>
+            <AlertDialogTitle>{t('templates.deleteTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              {deleting?.name}. Relatórios já gerados com ele não mudam.
+              {t('templates.deleteMessage', { name: deleting?.name ?? '' })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               disabled={remove.isPending}
               onClick={(e) => {
@@ -351,7 +370,7 @@ export function ReportTemplatesCard() {
                 if (deleting) remove.mutate(deleting.id);
               }}
             >
-              Excluir modelo
+              {t('templates.deleteConfirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

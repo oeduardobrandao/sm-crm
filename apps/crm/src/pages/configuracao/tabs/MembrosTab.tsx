@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Plus } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -51,6 +52,7 @@ import {
   inviteSuccessMessage,
 } from '../inviteHelpers';
 import { MembrosPhone } from './phone/MembrosPhone';
+import { inviteRoleLabel } from './phone/membrosPhoneHelpers';
 
 /** The roster rows with each member's login e-mail (empty when not visible). */
 function useMemberEmailsMerge(wsUsers: Record<string, string>[] | undefined) {
@@ -63,6 +65,7 @@ function useMemberEmailsMerge(wsUsers: Record<string, string>[] | undefined) {
 
 /** Workspace members and pending invites. */
 export default function MembrosTab() {
+  const { t } = useTranslation('settings');
   const { user, profile, workspaceRole, can } = useAuth();
   const isPhone = !useIsDesktop(768);
   const canViewTeam = can('equipe', 'ver') === true;
@@ -169,10 +172,10 @@ export default function MembrosTab() {
         : { role: roleValue as 'admin' | 'agent' };
       await updateWorkspaceUserRole(userId, value);
       refetchWsUsers();
-      toast.success('Função atualizada!');
+      toast.success(t('membros.roleUpdated'));
       return true;
     } catch (err: unknown) {
-      toast.error('Erro: ' + (err as Error).message);
+      toast.error(t('shared.error', { message: (err as Error).message }));
       return false;
     } finally {
       setEditRoleLoading(false);
@@ -189,9 +192,9 @@ export default function MembrosTab() {
     try {
       await removeWorkspaceUser(removeUserId);
       refetchWsUsers();
-      toast.success('Membro removido.');
+      toast.success(t('membros.memberRemoved'));
     } catch (err: unknown) {
-      toast.error('Erro: ' + (err as Error).message);
+      toast.error(t('shared.error', { message: (err as Error).message }));
     } finally {
       setRemoveUserId(null);
     }
@@ -207,10 +210,10 @@ export default function MembrosTab() {
     setFinancialAccessLoadingId(memberId);
     try {
       await setWorkspaceUserFinancialAccess(memberId, checked);
-      toast.success(checked ? 'Acesso financeiro liberado.' : 'Acesso financeiro restrito.');
+      toast.success(checked ? t('membros.financialOn') : t('membros.financialOff'));
       await refetchWsUsers();
     } catch {
-      toast.error('Não foi possível atualizar o acesso.');
+      toast.error(t('membros.financialError'));
     } finally {
       setFinancialAccessLoadingId(null);
     }
@@ -225,7 +228,7 @@ export default function MembrosTab() {
 
   const handleInvite = async () => {
     if (!inviteEmail) {
-      toast.error('Email é obrigatório.');
+      toast.error(t('membros.emailRequired'));
       return;
     }
     setInviteLoading(true);
@@ -253,7 +256,11 @@ export default function MembrosTab() {
         body: JSON.stringify(body),
       });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error || result.message || `Erro ${res.status}`);
+      if (!res.ok) {
+        throw new Error(
+          result.error || result.message || t('membros.httpError', { status: res.status }),
+        );
+      }
       refetchInvites();
       setInviteOpen(false);
       setInviteEmail('');
@@ -261,7 +268,7 @@ export default function MembrosTab() {
       toast.success(inviteSuccessMessage(result));
       captureEvent('invite_sent', { source: 'configuracao' });
     } catch (err: unknown) {
-      toast.error('Erro ao convidar: ' + (err as Error).message);
+      toast.error(t('membros.inviteError', { message: (err as Error).message }));
     } finally {
       setInviteLoading(false);
     }
@@ -281,11 +288,11 @@ export default function MembrosTab() {
         },
       );
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error || `Erro ${res.status}`);
+      if (!res.ok) throw new Error(result.error || t('membros.httpError', { status: res.status }));
       await refetchInvites();
-      toast.success('Convite cancelado.');
+      toast.success(t('membros.inviteCanceled'));
     } catch (err: unknown) {
-      toast.error('Erro: ' + (err as Error).message);
+      toast.error(t('shared.error', { message: (err as Error).message }));
     } finally {
       setCancelInviteId(null);
     }
@@ -316,11 +323,11 @@ export default function MembrosTab() {
         }),
       });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error || `Erro ${res.status}`);
+      if (!res.ok) throw new Error(result.error || t('membros.httpError', { status: res.status }));
       refetchInvites();
-      toast.success(result.message || 'Convite reenviado!');
+      toast.success(result.message || t('membros.inviteResent'));
     } catch (err: unknown) {
-      toast.error('Erro: ' + (err as Error).message);
+      toast.error(t('shared.error', { message: (err as Error).message }));
     }
   };
 
@@ -378,10 +385,10 @@ export default function MembrosTab() {
             marginBottom: '1rem',
           }}
         >
-          <h3 className="config-title">Membros do Workspace</h3>
+          <h3 className="config-title">{t('membros.title')}</h3>
           {canManageTeam && (
             <Button onClick={() => setInviteOpen(true)}>
-              <Plus className="h-4 w-4" /> Convidar
+              <Plus className="h-4 w-4" /> {t('membros.invite')}
             </Button>
           )}
         </div>
@@ -442,13 +449,13 @@ export default function MembrosTab() {
                   }}
                 >
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    Ver financeiro
+                    {t('membros.financialLabel')}
                   </span>
                   <Switch
                     checked={Boolean(u.can_see_financials)}
                     disabled={financialAccessLoadingId === u.id}
                     onCheckedChange={(checked) => handleToggleFinancialAccess(u.id, checked)}
-                    aria-label={`Acesso financeiro de ${u.nome}`}
+                    aria-label={t('membros.financialAria', { name: u.nome })}
                   />
                 </div>
               )}
@@ -456,7 +463,7 @@ export default function MembrosTab() {
                 <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                   {canAssignRoles && (
                     <Button size="sm" variant="outline" onClick={() => handleEditRole(u)}>
-                      Função
+                      {t('membros.role')}
                     </Button>
                   )}
                   <Button
@@ -465,7 +472,7 @@ export default function MembrosTab() {
                     className="text-destructive"
                     onClick={() => setRemoveUserId(u.id)}
                   >
-                    Remover
+                    {t('shared.remove')}
                   </Button>
                 </div>
               )}
@@ -484,7 +491,7 @@ export default function MembrosTab() {
                 textTransform: 'uppercase',
               }}
             >
-              Convites
+              {t('membros.invites')}
             </h4>
             {(invites ?? []).map((inv: Record<string, string>) => (
               <div key={inv.id} className="config-member-row">
@@ -510,9 +517,7 @@ export default function MembrosTab() {
                   >
                     <InviteStatusBadge status={inv.status} />
                     <span style={{ marginLeft: 8, color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                      {(
-                        { owner: 'dono', admin: 'admin', agent: 'agente' } as Record<string, string>
-                      )[inv.role] ?? inv.role}
+                      {inviteRoleLabel(inv.role)}
                     </span>
                     <InviteTimeLeft expiresAt={inv.expires_at} status={inv.status} />
                   </div>
@@ -521,7 +526,7 @@ export default function MembrosTab() {
                   <div style={{ display: 'flex', gap: 8 }}>
                     {(inv.status === 'expired' || inv.status === 'pending') && (
                       <Button size="sm" variant="outline" onClick={() => handleResendInvite(inv)}>
-                        Reenviar
+                        {t('membros.resend')}
                       </Button>
                     )}
                     <Button
@@ -530,7 +535,7 @@ export default function MembrosTab() {
                       className="text-destructive"
                       onClick={() => setCancelInviteId(inv.id)}
                     >
-                      Cancelar
+                      {t('actions.cancel')}
                     </Button>
                   </div>
                 )}
@@ -544,17 +549,19 @@ export default function MembrosTab() {
       <Dialog open={editRoleOpen} onOpenChange={setEditRoleOpen}>
         <DialogContent onConfirmClose={() => setEditRoleOpen(false)}>
           <DialogHeader>
-            <DialogTitle>Editar função — {editRoleUser?.nome}</DialogTitle>
+            <DialogTitle>
+              {t('membros.editRoleTitle', { name: editRoleUser?.nome ?? '' })}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-1">
-            <Label>Função</Label>
+            <Label>{t('membros.role')}</Label>
             <Select value={editRoleValue} onValueChange={setEditRoleValue}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="admin">Admin</SelectItem>
-                <SelectItem value="agent">Agente</SelectItem>
+                <SelectItem value="admin">{t('invite.roles.admin')}</SelectItem>
+                <SelectItem value="agent">{t('invite.roles.agent')}</SelectItem>
                 {workspaceRoles.map((r) => (
                   <SelectItem key={r.id} value={`custom:${r.id}`}>
                     {r.nome}
@@ -565,10 +572,10 @@ export default function MembrosTab() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditRoleOpen(false)}>
-              Cancelar
+              {t('actions.cancel')}
             </Button>
             <Button onClick={handleEditRoleSave} disabled={editRoleLoading}>
-              {editRoleLoading && <Spinner size="sm" />} Salvar
+              {editRoleLoading && <Spinner size="sm" />} {t('actions.save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -593,11 +600,11 @@ export default function MembrosTab() {
           }}
         >
           <DialogHeader>
-            <DialogTitle>Convidar Membro</DialogTitle>
+            <DialogTitle>{t('membros.inviteTitle')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label>Email *</Label>
+              <Label>{t('membros.emailLabel')}</Label>
               <Input
                 type="email"
                 value={inviteEmail}
@@ -611,14 +618,16 @@ export default function MembrosTab() {
                 um beco sem saída: o convite só falhava depois de enviado.
                 Agente é a única opção que esse ator pode de fato usar. */}
             <div className="space-y-1">
-              <Label>Função</Label>
+              <Label>{t('membros.role')}</Label>
               <Select value={inviteRole} onValueChange={setInviteRole}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {canAssignRoles && <SelectItem value="admin">Admin</SelectItem>}
-                  <SelectItem value="agent">Agente</SelectItem>
+                  {canAssignRoles && (
+                    <SelectItem value="admin">{t('invite.roles.admin')}</SelectItem>
+                  )}
+                  <SelectItem value="agent">{t('invite.roles.agent')}</SelectItem>
                   {canAssignRoles &&
                     workspaceRoles.map((r) => (
                       <SelectItem key={r.id} value={`custom:${r.id}`}>
@@ -629,7 +638,7 @@ export default function MembrosTab() {
               </Select>
               {!canAssignRoles && (
                 <p className="text-xs text-[color:var(--text-muted)]">
-                  Apenas donos e admins convidam com função elevada ou papel.
+                  {t('membros.onlyOwnersAdmins')}
                 </p>
               )}
             </div>
@@ -643,10 +652,10 @@ export default function MembrosTab() {
                 setInviteRole('agent');
               }}
             >
-              Cancelar
+              {t('actions.cancel')}
             </Button>
             <Button onClick={handleInvite} disabled={inviteLoading}>
-              {inviteLoading && <Spinner size="sm" />} Enviar Convite
+              {inviteLoading && <Spinner size="sm" />} {t('membros.sendInvite')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -661,11 +670,11 @@ export default function MembrosTab() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover membro?</AlertDialogTitle>
+            <AlertDialogTitle>{t('membros.removeTitle')}</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRemoveUser}>Remover</AlertDialogAction>
+            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRemoveUser}>{t('shared.remove')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -679,11 +688,11 @@ export default function MembrosTab() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Cancelar convite?</AlertDialogTitle>
+            <AlertDialogTitle>{t('membros.cancelInviteTitle')}</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Não</AlertDialogCancel>
-            <AlertDialogAction onClick={handleCancelInvite}>Sim</AlertDialogAction>
+            <AlertDialogCancel>{t('actions.no')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleCancelInvite}>{t('actions.yes')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

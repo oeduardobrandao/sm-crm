@@ -3,6 +3,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { getIntlLocale, i18n } from '@mesaas/i18n';
 import { format } from 'date-fns';
 import { CalendarDays, CreditCard, Lock } from 'lucide-react';
 import { captureEvent } from '@/lib/analytics';
@@ -79,8 +81,6 @@ export interface PagarmeCheckoutDialogProps {
   switchChangesPlan?: boolean;
 }
 
-const GENERIC_ERROR_MESSAGE = 'Não foi possível concluir a operação. Tente novamente.';
-
 /**
  * Espelho do TRIAL_DAYS de supabase/functions/_shared/trial.ts, usado só para a data PREVISTA
  * no aviso verde (mesma conta do resolveStartAt do backend: now + 30d com ceil para a próxima
@@ -97,7 +97,7 @@ const ITEM_CLASS = 'space-y-0.5';
 
 /** plans.price_brl_annual is stored in centavos (e.g. 999000 = R$ 9.990,00). */
 function formatBRL(centavos: number): string {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+  return new Intl.NumberFormat(getIntlLocale(), { style: 'currency', currency: 'BRL' }).format(
     centavos / 100,
   );
 }
@@ -124,7 +124,14 @@ export function formatUtcDateBR(iso: string): string {
     }
   }
   const [, y, mo, d] = m;
+  // English shows the US order (MM/dd/yyyy); Portuguese keeps dd/MM/yyyy.
+  if (getIntlLocale() === 'en-US') return `${mo}/${d}/${y}`;
   return `${d}/${mo}/${y}`;
+}
+
+/** Validation copy, resolved when the schema runs (not when it is built) so it follows the language. */
+function vt(key: string): string {
+  return i18n.t(`billing:pagarmeCheckout.validation.${key}`);
 }
 
 interface FormValues {
@@ -178,59 +185,59 @@ function buildSchema(mode: 'checkout' | 'update-card' | 'switch') {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['cardNumber'],
-          message: 'Número de cartão inválido.',
+          message: vt('cardNumber'),
         });
       }
       if (v.holderName.trim().length < 2) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['holderName'],
-          message: 'Informe o nome do titular.',
+          message: vt('holderName'),
         });
       }
       if (parseExpiry(v.expiry) === null) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['expiry'],
-          message: 'Validade inválida.',
+          message: vt('expiry'),
         });
       }
       if (!/^\d{3,4}$/.test(v.cvv)) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['cvv'], message: 'CVV inválido.' });
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['cvv'], message: vt('cvv') });
       }
       if (onlyDigits(v.cep).length !== 8) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['cep'], message: 'CEP inválido.' });
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['cep'], message: vt('cep') });
       }
       if (v.line1.trim().length < 3) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['line1'],
-          message: 'Informe o endereço.',
+          message: vt('line1'),
         });
       }
       if (v.city.trim().length < 2) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['city'],
-          message: 'Informe a cidade.',
+          message: vt('city'),
         });
       }
       if (!/^[A-Za-z]{2}$/.test(v.state)) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['state'], message: 'UF inválida.' });
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['state'], message: vt('state') });
       }
       if (mode === 'checkout' || mode === 'switch') {
         if (!documentValid(v.document)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             path: ['document'],
-            message: 'CPF ou CNPJ inválido.',
+            message: vt('document'),
           });
         }
         if (splitPhone(v.phone) === null) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             path: ['phone'],
-            message: 'Celular inválido.',
+            message: vt('phone'),
           });
         }
       }
@@ -249,6 +256,7 @@ export function PagarmeCheckoutDialog({
   firstChargeAt,
   switchChangesPlan,
 }: PagarmeCheckoutDialogProps) {
+  const { t } = useTranslation('billing');
   const [step, setStep] = useState<'form' | 'success'>('form');
   const [saving, setSaving] = useState(false);
   const [successResult, setSuccessResult] = useState<PagarmeCheckoutResult | null>(null);
@@ -352,20 +360,20 @@ export function PagarmeCheckoutDialog({
             captureEvent('checkout_failed', { plan_id: plan.id, code: err.code ?? null });
             toast.error(err.message);
           } else {
-            toast.error(GENERIC_ERROR_MESSAGE);
+            toast.error(t('pagarmeCheckout.genericError'));
           }
         }
       } else {
         try {
           await updatePagarmeCard(token, billingAddress);
-          toast.success('Cartão atualizado!');
+          toast.success(t('pagarmeCheckout.cardUpdated'));
           onSuccess();
           onClose();
         } catch (err) {
           if (err instanceof BillingApiError) {
             toast.error(err.message);
           } else {
-            toast.error(GENERIC_ERROR_MESSAGE);
+            toast.error(t('pagarmeCheckout.genericError'));
           }
         }
       }
@@ -384,49 +392,64 @@ export function PagarmeCheckoutDialog({
   const ctaLabel =
     mode === 'checkout'
       ? trialEligible
-        ? 'Começar 30 dias grátis'
-        : 'Confirmar assinatura'
+        ? t('pagarmeCheckout.cta.startTrial')
+        : t('pagarmeCheckout.cta.confirmSubscription')
       : mode === 'switch'
-        ? 'Confirmar troca'
-        : 'Salvar novo cartão';
+        ? t('pagarmeCheckout.cta.confirmSwitch')
+        : t('pagarmeCheckout.cta.saveCard');
 
-  const successTitle = mode === 'switch' ? 'Troca confirmada!' : 'Assinatura confirmada!';
+  const successTitle =
+    mode === 'switch'
+      ? t('pagarmeCheckout.successTitle.switch')
+      : t('pagarmeCheckout.successTitle.subscription');
   const successDescription =
     mode === 'switch'
       ? `${
           successResult?.first_charge_at
-            ? `Primeira parcela de 12x em ${formatUtcDateBR(successResult.first_charge_at)}. `
-            : 'Sua troca para o anual em 12x está agendada. '
+            ? t('pagarmeCheckout.success.switchFirstCharge', {
+                date: formatUtcDateBR(successResult.first_charge_at),
+              })
+            : t('pagarmeCheckout.success.switchScheduled')
         }${
           switchChangesPlan
-            ? `Os recursos do plano ${plan?.name} passam a valer imediatamente.`
-            : 'Até lá nada muda no seu acesso.'
+            ? t('pagarmeCheckout.success.switchPlanNow', { name: plan?.name })
+            : t('pagarmeCheckout.success.switchNothingChanges')
         }`
       : successResult?.trial_ends_at
-        ? `Seu teste grátis termina em ${formatUtcDateBR(successResult.trial_ends_at)}. Depois disso a cobrança de 12x começa automaticamente.`
-        : 'Sua assinatura está ativa.';
+        ? t('pagarmeCheckout.success.trialEnds', {
+            date: formatUtcDateBR(successResult.trial_ends_at),
+          })
+        : t('pagarmeCheckout.success.active');
 
   const formTitle =
     mode === 'checkout'
-      ? `Assinar o plano ${plan?.name}`
+      ? t('pagarmeCheckout.formTitleCheckout', { name: plan?.name })
       : mode === 'switch'
-        ? 'Trocar para o anual em 12x'
-        : 'Atualizar cartão';
+        ? t('shared.switchToAnnual12x')
+        : t('shared.updateCard');
 
   const formDescription =
     mode === 'checkout' || mode === 'switch'
-      ? 'Anual no cartão de crédito'
-      : 'A próxima cobrança usa o novo cartão.';
+      ? t('pagarmeCheckout.formDescriptionPlan')
+      : t('pagarmeCheckout.formDescriptionUpdateCard');
 
   const planSummary = (
     <>
       {(mode === 'checkout' || mode === 'switch') && plan && (
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 rounded-2xl bg-muted px-4 py-2">
           <p className="whitespace-nowrap">
-            <span className="text-xl font-bold tracking-tight">{`12x de ${formatBRL(plan.pagarme_installment_cents)}`}</span>{' '}
-            <span className="text-sm">sem juros</span>
+            <span className="text-xl font-bold tracking-tight">
+              {t('pagarmeCheckout.installments', {
+                price: formatBRL(plan.pagarme_installment_cents),
+              })}
+            </span>{' '}
+            <span className="text-sm">{t('pagarmeCheckout.interestFree')}</span>
           </p>
-          <p className="text-sm text-muted-foreground">{`total ${formatBRL(plan.pagarme_installment_cents * 12)}/ano`}</p>
+          <p className="text-sm text-muted-foreground">
+            {t('pagarmeCheckout.totalPerYear', {
+              price: formatBRL(plan.pagarme_installment_cents * 12),
+            })}
+          </p>
         </div>
       )}
     </>
@@ -436,14 +459,14 @@ export function PagarmeCheckoutDialog({
     <>
       {mode === 'checkout' && plan && onPayUpfront && (
         <p className="text-xs text-muted-foreground">
-          {`À vista sai por ${formatBRL(plan.price_brl_annual)}. `}
+          {t('pagarmeCheckout.upfrontPrice', { price: formatBRL(plan.price_brl_annual) })}
           <button
             type="button"
             className="underline underline-offset-2 disabled:no-underline disabled:opacity-50"
             onClick={onPayUpfront}
             disabled={saving}
           >
-            Pagar à vista
+            {t('pagarmeCheckout.payUpfront')}
           </button>
         </p>
       )}
@@ -457,7 +480,7 @@ export function PagarmeCheckoutDialog({
         name="cardNumber"
         render={({ field }) => (
           <FormItem className={ITEM_CLASS}>
-            <FormLabel className="text-xs">Número do cartão</FormLabel>
+            <FormLabel className="text-xs">{t('pagarmeCheckout.fields.cardNumber')}</FormLabel>
             {/* O wrapper do ícone fica FORA do FormControl: o Slot precisa do Input
               como filho direto para o id/aria cair no input (senão o label quebra). */}
             <div className="relative">
@@ -485,11 +508,11 @@ export function PagarmeCheckoutDialog({
         name="holderName"
         render={({ field }) => (
           <FormItem className={ITEM_CLASS}>
-            <FormLabel className="text-xs">Nome impresso no cartão</FormLabel>
+            <FormLabel className="text-xs">{t('pagarmeCheckout.fields.holderName')}</FormLabel>
             <FormControl>
               <Input
                 {...field}
-                placeholder="Como aparece no cartão"
+                placeholder={t('pagarmeCheckout.fields.holderNamePlaceholder')}
                 autoComplete="cc-name"
                 className={`${FIELD_CLASS} ph-no-capture`}
               />
@@ -504,12 +527,12 @@ export function PagarmeCheckoutDialog({
           name="expiry"
           render={({ field }) => (
             <FormItem className={ITEM_CLASS}>
-              <FormLabel className="text-xs">Validade</FormLabel>
+              <FormLabel className="text-xs">{t('pagarmeCheckout.fields.expiry')}</FormLabel>
               <FormControl>
                 <Input
                   {...field}
                   onChange={(e) => field.onChange(maskExpiry(e.target.value))}
-                  placeholder="MM/AA"
+                  placeholder={t('pagarmeCheckout.fields.expiryPlaceholder')}
                   autoComplete="cc-exp"
                   inputMode="numeric"
                   className={`${FIELD_CLASS} ph-no-capture`}
@@ -524,7 +547,7 @@ export function PagarmeCheckoutDialog({
           name="cvv"
           render={({ field }) => (
             <FormItem className={ITEM_CLASS}>
-              <FormLabel className="text-xs">CVV</FormLabel>
+              <FormLabel className="text-xs">{t('pagarmeCheckout.fields.cvv')}</FormLabel>
               <FormControl>
                 <Input
                   {...field}
@@ -548,7 +571,7 @@ export function PagarmeCheckoutDialog({
             name="document"
             render={({ field }) => (
               <FormItem className={ITEM_CLASS}>
-                <FormLabel className="text-xs">CPF ou CNPJ</FormLabel>
+                <FormLabel className="text-xs">{t('pagarmeCheckout.fields.document')}</FormLabel>
                 <FormControl>
                   <Input
                     {...field}
@@ -567,7 +590,7 @@ export function PagarmeCheckoutDialog({
             name="phone"
             render={({ field }) => (
               <FormItem className={ITEM_CLASS}>
-                <FormLabel className="text-xs">Celular</FormLabel>
+                <FormLabel className="text-xs">{t('pagarmeCheckout.fields.phone')}</FormLabel>
                 <FormControl>
                   <Input
                     {...field}
@@ -590,7 +613,7 @@ export function PagarmeCheckoutDialog({
           name="cep"
           render={({ field }) => (
             <FormItem className={ITEM_CLASS}>
-              <FormLabel className="text-xs">CEP</FormLabel>
+              <FormLabel className="text-xs">{t('pagarmeCheckout.fields.cep')}</FormLabel>
               <FormControl>
                 <Input
                   {...field}
@@ -610,11 +633,11 @@ export function PagarmeCheckoutDialog({
           name="line1"
           render={({ field }) => (
             <FormItem className={ITEM_CLASS}>
-              <FormLabel className="text-xs">Endereço de cobrança</FormLabel>
+              <FormLabel className="text-xs">{t('pagarmeCheckout.fields.line1')}</FormLabel>
               <FormControl>
                 <Input
                   {...field}
-                  placeholder="Rua, número"
+                  placeholder={t('pagarmeCheckout.fields.line1Placeholder')}
                   autoComplete="address-line1"
                   className={FIELD_CLASS}
                 />
@@ -630,11 +653,11 @@ export function PagarmeCheckoutDialog({
           name="city"
           render={({ field }) => (
             <FormItem className={ITEM_CLASS}>
-              <FormLabel className="text-xs">Cidade</FormLabel>
+              <FormLabel className="text-xs">{t('pagarmeCheckout.fields.city')}</FormLabel>
               <FormControl>
                 <Input
                   {...field}
-                  placeholder="São Paulo"
+                  placeholder={t('pagarmeCheckout.fields.cityPlaceholder')}
                   autoComplete="address-level2"
                   className={FIELD_CLASS}
                 />
@@ -648,7 +671,7 @@ export function PagarmeCheckoutDialog({
           name="state"
           render={({ field }) => (
             <FormItem className={ITEM_CLASS}>
-              <FormLabel className="text-xs">UF</FormLabel>
+              <FormLabel className="text-xs">{t('pagarmeCheckout.fields.state')}</FormLabel>
               <FormControl>
                 <Input
                   {...field}
@@ -660,7 +683,7 @@ export function PagarmeCheckoutDialog({
                         .slice(0, 2),
                     )
                   }
-                  placeholder="SP"
+                  placeholder={t('pagarmeCheckout.fields.statePlaceholder')}
                   autoComplete="address-level1"
                   className={FIELD_CLASS}
                 />
@@ -680,8 +703,8 @@ export function PagarmeCheckoutDialog({
           <CalendarDays aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
           <p>
             {trialEndPreview
-              ? `30 dias grátis. A primeira parcela só é cobrada em ${formatUtcDateBR(trialEndPreview)} e você pode cancelar antes disso.`
-              : '30 dias grátis. A primeira parcela só é cobrada depois do teste e você pode cancelar antes disso.'}
+              ? t('pagarmeCheckout.notes.trialOn', { date: formatUtcDateBR(trialEndPreview) })
+              : t('pagarmeCheckout.notes.trialNoDate')}
           </p>
         </div>
       )}
@@ -691,8 +714,8 @@ export function PagarmeCheckoutDialog({
           <CalendarDays aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
           <p>
             {firstChargeAt
-              ? `Sem cobrança agora. A primeira parcela está prevista para ${formatUtcDateBR(firstChargeAt)}, quando termina o período que você já pagou.`
-              : 'Sem cobrança agora. A primeira parcela vem quando terminar o período que você já pagou.'}
+              ? t('pagarmeCheckout.notes.switchOn', { date: formatUtcDateBR(firstChargeAt) })
+              : t('pagarmeCheckout.notes.switchNoDate')}
           </p>
         </div>
       )}
@@ -704,10 +727,7 @@ export function PagarmeCheckoutDialog({
       <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
         <div className="flex items-start gap-2">
           <Lock aria-hidden="true" className="mt-px h-3.5 w-3.5 shrink-0" />
-          <p>
-            Seus dados vão direto para a Pagar.me com segurança. Nós não armazenamos o número do seu
-            cartão.
-          </p>
+          <p>{t('pagarmeCheckout.notes.security')}</p>
         </div>
         <PagarmeLogo className="h-6 w-auto shrink-0" />
       </div>
@@ -720,7 +740,7 @@ export function PagarmeCheckoutDialog({
       disabled={saving}
       className="mb-0 h-10 w-full rounded-2xl text-[15px] font-semibold"
     >
-      {saving ? 'Processando...' : ctaLabel}
+      {saving ? t('pagarmeCheckout.processing') : ctaLabel}
     </Button>
   );
   const guardDismiss = {
@@ -772,7 +792,9 @@ export function PagarmeCheckoutDialog({
                   onClick={handleClose}
                   className="phone-pagarme-checkout__submit h-[50px] w-full rounded-2xl text-[17px] font-semibold"
                 >
-                  {source === 'onboarding' ? 'Ir para o painel' : 'Fechar'}
+                  {source === 'onboarding'
+                    ? t('pagarmeCheckout.goToDashboard')
+                    : t('pagarmeCheckout.close')}
                 </Button>
               </div>
             </>
@@ -785,7 +807,7 @@ export function PagarmeCheckoutDialog({
                   onClick={handleClose}
                   disabled={saving}
                 >
-                  Fechar
+                  {t('pagarmeCheckout.close')}
                 </button>
                 <DialogTitle className="phone-pagarme-checkout__nav-title">{formTitle}</DialogTitle>
                 <span />
@@ -836,7 +858,9 @@ export function PagarmeCheckoutDialog({
               <Button onClick={handleClose}>
                 {/* O destino real do CTA vem do onSuccess do pai: só o fluxo de onboarding
                     navega para o painel; no billing o dialog apenas fecha na própria página. */}
-                {source === 'onboarding' ? 'Ir para o painel' : 'Fechar'}
+                {source === 'onboarding'
+                  ? t('pagarmeCheckout.goToDashboard')
+                  : t('pagarmeCheckout.close')}
               </Button>
             </DialogFooter>
           </>

@@ -1,38 +1,40 @@
 import { useState } from 'react';
 import { Search } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import { GroupedList, Cell } from '@/components/mobile/GroupedList';
 import { SegmentedControl } from '@/components/mobile/SegmentedControl';
 import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
-import { CATEGORY_LABELS, isEmailEligibleType } from '@/lib/notification-catalog';
+import { categoryLabel, isEmailEligibleType } from '@/lib/notification-catalog';
 import { MASTER_PAUSE_TYPE } from '@/store/notificationPrefs';
 import type { Cliente } from '@/store';
 import { ConfigPhoneScreen, ConfigPhoneSkeleton } from '../../phone/ConfigPhoneScreen';
 import { useConfigSubScreen } from '../../phone/useConfigSubScreen';
 import { enabledOf, useSuasNotificacoes } from '../notificacoes/useSuasNotificacoes';
 import {
-  MARKETING_LABEL,
-  TRANSACTIONAL_ROWS,
+  marketingLabel,
+  transactionalRows,
   useEmailsAutomaticos,
 } from '../notificacoes/useEmailsAutomaticos';
-import { STATUS_TAG, useSeusClientes } from '../notificacoes/useSeusClientes';
+import { statusTag as statusTagOf, useSeusClientes } from '../notificacoes/useSeusClientes';
 import './notificacoesPhone.css';
 
 type Channel = 'inapp' | 'email';
 type SubScreen = 'emails' | 'clientes';
 type ClientSwitch = 'report' | 'event';
 
-const CHANNEL_OPTIONS: { value: Channel; label: string }[] = [
-  { value: 'inapp', label: 'No app' },
-  { value: 'email', label: 'E-mail' },
+const channelOptions = (): { value: Channel; label: string }[] => [
+  { value: 'inapp', label: i18n.t('settings:notifications.inApp') },
+  { value: 'email', label: i18n.t('settings:shared.email') },
 ];
 
-const CLIENT_SWITCH_OPTIONS: { value: ClientSwitch; label: string }[] = [
-  { value: 'report', label: 'Relatório mensal' },
-  { value: 'event', label: 'Pendências do Hub' },
+const clientSwitchOptions = (): { value: ClientSwitch; label: string }[] => [
+  { value: 'report', label: i18n.t('settings:notifications.clientes.monthlyReport') },
+  { value: 'event', label: i18n.t('settings:notifications.clientes.hubPending') },
 ];
 
 const whenWho = (when: string, recipients: string) =>
-  `Quando: ${when} · Quem recebe: ${recipients}`;
+  i18n.t('settings:notifications.whenWho', { when, recipients });
 
 export interface NotificacoesPhoneProps {
   /** `configuracoes:ver`: same gate as the desktop "Seus clientes" section. */
@@ -46,6 +48,7 @@ export interface NotificacoesPhoneProps {
  * through the same hooks as the desktop sections.
  */
 export function NotificacoesPhone({ canViewConfig }: NotificacoesPhoneProps) {
+  const { t } = useTranslation('settings');
   const sub = useConfigSubScreen<SubScreen>();
   // Kept here, above the sub-screens, so coming back keeps the picked channel.
   const [channel, setChannel] = useState<Channel>('inapp');
@@ -59,38 +62,33 @@ export function NotificacoesPhone({ canViewConfig }: NotificacoesPhoneProps) {
   const isEmail = channel === 'email';
   const paused = isEmail ? suas.emailPaused : suas.inappPaused;
   const prefs = isEmail ? suas.emailPrefs : suas.inappPrefs;
-  const channelName = isEmail ? 'E-mail' : 'No app';
+  const channelName = isEmail ? t('shared.email') : t('notifications.inApp');
 
   return (
-    <ConfigPhoneScreen
-      title="Notificações"
-      subtitle="O que aparece no sino e o que chega no seu e-mail. Vale só para você."
-    >
+    <ConfigPhoneScreen title={t('tabs.notificacoes')} subtitle={t('notifications.phone.subtitle')}>
       {suas.loading ? (
         <ConfigPhoneSkeleton groups={3} rows={4} />
       ) : (
         <>
           <SegmentedControl
             className="phone-config-segmented"
-            aria-label="Canal editado pelos botões"
-            options={CHANNEL_OPTIONS}
+            aria-label={t('notifications.phone.channelAria')}
+            options={channelOptions()}
             value={channel}
             onChange={setChannel}
           />
           <p className="phone-notif-note">
-            Os botões abaixo ligam e desligam o canal {channelName}.
+            {t('notifications.phone.channelNote', { channel: channelName })}
           </p>
 
           <GroupedList
-            aria-label={`Pausar tudo (${channelName})`}
+            aria-label={t('notifications.phone.pauseAllAria', { channel: channelName })}
             footer={
-              paused
-                ? `Canal ${channelName} pausado: os tipos abaixo ficam travados até você despausar.`
-                : undefined
+              paused ? t('notifications.phone.pausedFooter', { channel: channelName }) : undefined
             }
           >
             <Cell
-              label="Pausar tudo"
+              label={t('notifications.pauseAll')}
               subtitle={channelName}
               switch={{
                 checked: paused,
@@ -102,17 +100,17 @@ export function NotificacoesPhone({ canViewConfig }: NotificacoesPhoneProps) {
             />
           </GroupedList>
 
-          <GroupedList aria-label="Outros e-mails">
+          <GroupedList aria-label={t('notifications.phone.otherEmails')}>
             <Cell
-              label="E-mails automáticos"
-              subtitle="Convite, cobrança, Instagram e novidades"
+              label={t('notifications.emails.title')}
+              subtitle={t('notifications.phone.emailsSubtitle')}
               chevron
               onClick={() => sub.open('emails')}
             />
             {canViewConfig && (
               <Cell
-                label="Seus clientes"
-                subtitle="Relatório mensal e pendências do Hub"
+                label={t('notifications.clientes.title')}
+                subtitle={t('notifications.phone.clientesSubtitle')}
                 chevron
                 onClick={() => sub.open('clientes')}
               />
@@ -120,7 +118,7 @@ export function NotificacoesPhone({ canViewConfig }: NotificacoesPhoneProps) {
           </GroupedList>
 
           {suas.categories.map(({ category, rows }) => (
-            <GroupedList key={category} header={CATEGORY_LABELS[category]}>
+            <GroupedList key={category} header={categoryLabel(category)}>
               {rows.map((row) => {
                 const subtitle = whenWho(row.when, row.recipients);
                 if (!isEmail) {
@@ -148,8 +146,8 @@ export function NotificacoesPhone({ canViewConfig }: NotificacoesPhoneProps) {
                       label={row.label}
                       subtitle={subtitle}
                       value={
-                        <span aria-label={`${row.label}: este tipo não vira e-mail`}>
-                          Não vira e-mail
+                        <span aria-label={t('notifications.noEmailTypeAria', { label: row.label })}>
+                          {t('notifications.noEmailShort')}
                         </span>
                       }
                     />
@@ -179,29 +177,36 @@ export function NotificacoesPhone({ canViewConfig }: NotificacoesPhoneProps) {
 
 /** "E-mails automáticos": the 3 always-on e-mails plus the marketing opt-in. */
 function EmailsAutomaticosScreen({ onBack }: { onBack: () => void }) {
+  const { t } = useTranslation('settings');
   const { marketingOptIn, saveMarketing } = useEmailsAutomaticos();
   return (
     <ConfigPhoneScreen
-      title="E-mails automáticos"
-      subtitle="E-mails que a sua conta envia sozinha, para transparência. Os 3 primeiros são sempre enviados; só o último depende de você."
+      title={t('notifications.emails.title')}
+      subtitle={t('notifications.emails.description')}
       onBack={onBack}
     >
-      <GroupedList header="Sempre enviados">
-        {TRANSACTIONAL_ROWS.map((row) => (
+      <GroupedList header={t('notifications.emails.alwaysSent')}>
+        {transactionalRows().map((row) => (
           <Cell
             key={row.label}
             className="phone-notif-row"
             label={row.label}
             subtitle={whenWho(row.when, row.recipients)}
-            value="sempre"
+            value={t('notifications.always')}
           />
         ))}
       </GroupedList>
-      <GroupedList header="Depende de você" footer="Mesmo controle que está no seu Perfil.">
+      <GroupedList
+        header={t('notifications.emails.dependsOnYou')}
+        footer={t('notifications.emails.sameControl')}
+      >
         <Cell
           className="phone-notif-row"
-          label={MARKETING_LABEL}
-          subtitle={whenWho('marketing ocasional', 'você (opt-in)')}
+          label={marketingLabel()}
+          subtitle={whenWho(
+            t('notifications.marketingWhen'),
+            t('notifications.marketingRecipients'),
+          )}
           switch={{ checked: marketingOptIn, onCheckedChange: (v) => saveMarketing(v) }}
         />
       </GroupedList>
@@ -215,14 +220,14 @@ function EmailsAutomaticosScreen({ onBack }: { onBack: () => void }) {
  * edit. A client who unsubscribed goes through the desktop's reactivation confirm.
  */
 function SeusClientesScreen({ onBack }: { onBack: () => void }) {
+  const { t } = useTranslation('settings');
   const s = useSeusClientes();
   const [kind, setKind] = useState<ClientSwitch>('report');
 
   const renderCliente = (cliente: Cliente) => {
     const hasEmail = !!cliente.email;
     const unsubbed = !!cliente.event_email_unsub_at;
-    const statusTag =
-      cliente.status && cliente.status !== 'ativo' ? STATUS_TAG[cliente.status] : null;
+    const statusTag = statusTagOf(cliente.status);
     const label = (
       <>
         {cliente.nome}
@@ -230,7 +235,7 @@ function SeusClientesScreen({ onBack }: { onBack: () => void }) {
       </>
     );
     if (!hasEmail) {
-      return <Cell key={cliente.id} label={label} subtitle="sem e-mail cadastrado" />;
+      return <Cell key={cliente.id} label={label} subtitle={t('notifications.clientes.noEmail')} />;
     }
     if (kind === 'report') {
       return (
@@ -251,7 +256,11 @@ function SeusClientesScreen({ onBack }: { onBack: () => void }) {
         key={cliente.id}
         className={unsubbed ? 'phone-notif-unsub' : undefined}
         label={label}
-        subtitle={unsubbed ? `${cliente.email} · desativado pelo cliente` : cliente.email}
+        subtitle={
+          unsubbed
+            ? t('notifications.clientes.emailUnsubbed', { email: cliente.email })
+            : cliente.email
+        }
         disabled={!s.canEditClients}
         switch={{
           checked: cliente.send_event_email ?? false,
@@ -263,27 +272,27 @@ function SeusClientesScreen({ onBack }: { onBack: () => void }) {
 
   return (
     <ConfigPhoneScreen
-      title="Seus clientes"
-      subtitle="O relatório mensal e as pendências do Hub de cada cliente, um por um. Os gerais ligam ou desligam todo mundo de uma vez."
+      title={t('notifications.clientes.title')}
+      subtitle={t('notifications.clientes.description')}
       onBack={onBack}
     >
       {s.loading ? (
         <ConfigPhoneSkeleton groups={2} rows={3} />
       ) : (
         <>
-          {!s.canEditClients && <p className="phone-notif-note">Somente leitura</p>}
-          <GroupedList header="Todos os clientes">
+          {!s.canEditClients && <p className="phone-notif-note">{t('shared.readOnly')}</p>}
+          <GroupedList header={t('notifications.clientes.allClients')}>
             <Cell
               className="phone-notif-row"
-              label="Relatório mensal"
-              subtitle="todo dia 1º, com PDF e resumo do mês"
+              label={t('notifications.clientes.monthlyReport')}
+              subtitle={t('notifications.clientes.monthlyReportHint')}
               disabled={!s.canEditClients}
               switch={{ checked: s.masterEnabled, onCheckedChange: (v) => s.saveMaster(v) }}
             />
             <Cell
               className="phone-notif-row"
-              label="Pendências do Hub"
-              subtitle="posts a aprovar e mensagens não lidas · máx. 1 e-mail a cada 4h"
+              label={t('notifications.clientes.hubPending')}
+              subtitle={t('notifications.clientes.hubPendingHint')}
               disabled={!s.canEditClients}
               switch={{
                 checked: s.masterEventEnabled,
@@ -296,8 +305,8 @@ function SeusClientesScreen({ onBack }: { onBack: () => void }) {
             <Search aria-hidden="true" />
             <input
               type="search"
-              placeholder="Buscar cliente…"
-              aria-label="Buscar cliente"
+              placeholder={t('notifications.clientes.searchPlaceholder')}
+              aria-label={t('notifications.clientes.searchAria')}
               value={s.search}
               onChange={(e) => s.setSearch(e.target.value)}
             />
@@ -305,18 +314,20 @@ function SeusClientesScreen({ onBack }: { onBack: () => void }) {
 
           <SegmentedControl
             className="phone-config-segmented"
-            aria-label="E-mail editado pelos botões dos clientes"
-            options={CLIENT_SWITCH_OPTIONS}
+            aria-label={t('notifications.clientes.clientSwitchAria')}
+            options={clientSwitchOptions()}
             value={kind}
             onChange={setKind}
           />
 
           <GroupedList
-            header="Clientes"
-            footer="Clientes sem e-mail cadastrado não recebem nada. Cadastre o e-mail na ficha do cliente."
+            header={t('notifications.clientes.header')}
+            footer={t('notifications.clientes.footer')}
           >
             {s.filtered.length === 0 ? (
-              <li className="phone-config-block phone-notif-empty">Nenhum cliente encontrado.</li>
+              <li className="phone-config-block phone-notif-empty">
+                {t('notifications.clientes.empty')}
+              </li>
             ) : (
               s.filtered.map(renderCliente)
             )}
@@ -324,9 +335,18 @@ function SeusClientesScreen({ onBack }: { onBack: () => void }) {
 
           <PhoneConfirmSheet
             open={s.confirmReactivateId != null}
-            title={`Reativar pendências do Hub${s.confirmCliente ? ` para ${s.confirmCliente.nome}` : ''}?`}
-            message="O cliente pediu para não receber estes e-mails. Reativar mesmo assim?"
-            actions={[{ label: 'Reativar', onSelect: s.handleConfirmReactivate }]}
+            title={
+              s.confirmCliente
+                ? t('notifications.clientes.reactivateTitleFor', { name: s.confirmCliente.nome })
+                : t('notifications.clientes.reactivateTitle')
+            }
+            message={t('notifications.clientes.reactivateBody')}
+            actions={[
+              {
+                label: t('notifications.clientes.reactivate'),
+                onSelect: s.handleConfirmReactivate,
+              },
+            ]}
             onCancel={() => s.setConfirmReactivateId(null)}
           />
         </>

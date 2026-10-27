@@ -1,3 +1,4 @@
+import { i18n } from '@mesaas/i18n';
 import {
   AGENT_ROLE_PRESET,
   PERMISSION_MODULES,
@@ -8,58 +9,80 @@ import {
 /**
  * Labels, groups, presets and helpers of the Papéis tab, shared by the desktop list +
  * Dialog (PapeisTab) and the phone screens (PapeisPhone), so both read the same copy
- * and the same permission rules.
+ * and the same permission rules. Every label is resolved at call time (`i18n.t`), so it
+ * follows the UI language.
  */
 
-export const MODULE_LABELS: Record<PermissionModule, string> = {
-  clientes: 'Clientes',
-  entregas: 'Entregas',
-  calendario: 'Calendário',
-  aprovacoes: 'Aprovações',
-  arquivos: 'Arquivos',
-  ideias: 'Ideias',
-  tarefas: 'Tarefas',
-  leads: 'Leads',
-  financeiro: 'Financeiro',
-  contratos: 'Contratos',
-  equipe: 'Equipe',
-  analytics: 'Analytics e Relatórios',
-  automacoes: 'Automações',
-  configuracoes: 'Configurações do workspace',
-};
+/** Module name. Every module but two is named as in the CRM nav (`common:nav.*`). */
+export function moduleLabel(mod: PermissionModule): string {
+  switch (mod) {
+    case 'clientes':
+      return i18n.t('nav.clientes');
+    case 'entregas':
+      return i18n.t('nav.entregas');
+    case 'calendario':
+      return i18n.t('nav.calendario');
+    case 'aprovacoes':
+      return i18n.t('nav.aprovacoes');
+    case 'arquivos':
+      return i18n.t('nav.arquivos');
+    case 'ideias':
+      return i18n.t('nav.ideias');
+    case 'tarefas':
+      return i18n.t('nav.tarefas');
+    case 'leads':
+      return i18n.t('nav.leads');
+    case 'financeiro':
+      return i18n.t('nav.financeiro');
+    case 'contratos':
+      return i18n.t('nav.contratos');
+    case 'equipe':
+      return i18n.t('nav.equipe');
+    case 'analytics':
+      return i18n.t('settings:papeis.modules.analytics');
+    case 'automacoes':
+      return i18n.t('nav.automacoes');
+    case 'configuracoes':
+      return i18n.t('settings:papeis.modules.configuracoes');
+  }
+}
 
 /** Group headers reused as-is for the list's expanded chip rows (Pode editar /
  * Pode ver / Sem acesso, in that order — see PermissionChipGroups). */
-export const LEVEL_LABELS: Record<PermissionLevel, string> = {
-  none: 'Sem acesso',
-  ver: 'Pode ver',
-  editar: 'Pode editar',
-};
+export function levelLabel(level: PermissionLevel): string {
+  return i18n.t(`settings:papeis.levels.${level}`);
+}
 
 /** Short labels for the form's 3-state segmented control (variant 1 of the
  * approved mockup drops the "Pode" prefix on Ver/Editar to fit the pill). */
-export const LEVEL_SEGMENT_LABELS: Record<PermissionLevel, string> = {
-  none: 'Sem acesso',
-  ver: 'Ver',
-  editar: 'Editar',
-};
+export function levelSegmentLabel(level: PermissionLevel): string {
+  return i18n.t(`settings:papeis.segments.${level}`);
+}
 
 /** Order of the segments in the level control (desktop ToggleGroup and phone). */
 export const LEVEL_ORDER: PermissionLevel[] = ['none', 'ver', 'editar'];
 
 /** Grouped single-column sections for the edit/create form (papeis-form-edicao,
  * variant 1 — "Lista única, agrupada por área"). Order matches the mockup. */
-export const MODULE_GROUPS: { label: string; modules: PermissionModule[] }[] = [
+export type ModuleGroupKey = 'trabalho' | 'clientes' | 'gestao';
+
+export const MODULE_GROUPS: { key: ModuleGroupKey; modules: PermissionModule[] }[] = [
   {
-    label: 'Trabalho',
+    key: 'trabalho',
     modules: ['entregas', 'calendario', 'aprovacoes', 'ideias', 'tarefas', 'arquivos'],
   },
-  { label: 'Clientes e análise', modules: ['clientes', 'analytics', 'leads'] },
+  { key: 'clientes', modules: ['clientes', 'analytics', 'leads'] },
   {
-    label: 'Gestão',
+    key: 'gestao',
     modules: ['financeiro', 'contratos', 'equipe', 'automacoes', 'configuracoes'],
   },
 ];
+
+/** Header of a MODULE_GROUPS section. */
+export function moduleGroupLabel(key: ModuleGroupKey): string {
+  if (key === 'gestao') return i18n.t('nav.gestao');
+  return i18n.t(`settings:papeis.groups.${key}`);
+}
 
 /** Modules whose permission is enforced server-side (RLS / RPC), shown with the
  * "servidor" tag in the form per the mockup — the rest are CRM-UI-only gates. */
@@ -87,11 +110,9 @@ export const BLANK_PERMISSIONS: RolePermissions = buildPermissions('none');
 export type PresetChoice = 'administrador' | 'agente' | 'em_branco';
 
 export const PRESET_ORDER: PresetChoice[] = ['agente', 'administrador', 'em_branco'];
-export const PRESET_LABELS: Record<PresetChoice, string> = {
-  agente: 'Agente',
-  administrador: 'Administrador',
-  em_branco: 'Em branco',
-};
+export function presetLabel(preset: PresetChoice): string {
+  return i18n.t(`settings:papeis.presets.${preset}`);
+}
 
 export function presetPermissions(preset: PresetChoice): RolePermissions {
   if (preset === 'administrador') return { ...ADMIN_PERMISSIONS };
@@ -125,16 +146,18 @@ export function summarizePermissions(permissions: RolePermissions): string {
     else none += 1;
   }
   const parts: string[] = [];
-  if (editar > 0) parts.push(`${editar} editar`);
-  if (ver > 0) parts.push(`${ver} ver`);
-  if (none > 0) parts.push(`${none} sem acesso`);
+  if (editar > 0) parts.push(i18n.t('settings:papeis.summary.editar', { n: editar }));
+  if (ver > 0) parts.push(i18n.t('settings:papeis.summary.ver', { n: ver }));
+  if (none > 0) parts.push(i18n.t('settings:papeis.summary.none', { n: none }));
   return parts.join(' · ');
 }
 
 /** Fixed summary for Administrador — real Financeiro access varies per admin
  * (their own "Ver financeiro" switch on the Equipe tab), so a computed count
  * would be misleading; the mockup calls this out explicitly instead. */
-export const ADMIN_SUMMARY = 'Edita tudo · Financeiro conforme o acesso de cada admin';
+export function adminSummary(): string {
+  return i18n.t('settings:papeis.adminSummary');
+}
 
 export interface RoleFormState {
   roleId: string | null;
@@ -150,10 +173,11 @@ export type PermissionOverrides = Partial<Record<PermissionModule, string>>;
 /** Financeiro access for a restricted admin depends on that member's own "Ver
  * financeiro" switch (Equipe tab) — never a fixed level, so the read-only
  * Administrador card must not claim one. */
-export const ADMIN_PERMISSION_OVERRIDES: PermissionOverrides = {
-  financeiro: 'Conforme o acesso financeiro de cada admin',
-};
+export function adminPermissionOverrides(): PermissionOverrides {
+  return { financeiro: i18n.t('settings:papeis.adminFinanceOverride') };
+}
 
+/** "1 membro" / "N membros" (0 included). */
 export function memberCountLabel(count: number): string {
-  return count === 1 ? '1 membro' : `${count} membros`;
+  return i18n.t('settings:papeis.members', { count });
 }

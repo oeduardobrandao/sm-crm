@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -40,10 +41,11 @@ export function ConfigPhoneScreen({
   className,
   children,
 }: ConfigPhoneScreenProps) {
+  const { t } = useTranslation('settings');
   return (
     <div className={cn('phone-kit phone-config-screen', className)}>
       <PhoneNavBar
-        backLabel={backLabel ?? (onBack ? 'Voltar' : 'Voltar para Configurações')}
+        backLabel={backLabel ?? (onBack ? t('actions.back') : t('phoneScreen.backToSettings'))}
         onBack={onBack}
         fallbackTo={fallbackTo}
         trailing={trailing}
