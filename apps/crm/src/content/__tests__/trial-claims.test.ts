@@ -4,6 +4,7 @@ import { PRECOS } from '../precos.content';
 import { PUBLIC_ROUTES } from '../site-meta';
 import { APROVACAO_DE_POST } from '../paginas/aprovacao-de-post';
 import { PORTAL_DO_CLIENTE } from '../paginas/portal-do-cliente';
+import { AGENTE_DE_CONTEUDO_IA } from '../paginas/agente-de-conteudo-ia';
 
 /**
  * Static surfaces (landing, /precos, marketing pages, meta) must match the real plans: the
@@ -51,6 +52,11 @@ describe('trial and plan claims on static surfaces', () => {
     expect(PORTAL_DO_CLIENTE.cta.sub).toBe(
       'Teste grátis por 30 dias e gere o primeiro link de portal em minutos.',
     );
+    // The agent (feature_mcp) is not on every plan, and never on Free: no "conta grátis", no
+    // claim that all paid plans include it, no plan name.
+    expect(AGENTE_DE_CONTEUDO_IA.cta.sub).toBe(
+      'O agente está em um dos planos pagos. Teste esse plano grátis por 30 dias e conecte o Claude ao seu workspace.',
+    );
     expect(portalFaq?.a).toContain(
       'A identidade visual da agência está disponível nos planos pagos.',
     );
@@ -66,6 +72,7 @@ describe('trial and plan claims on static surfaces', () => {
       precosMeta?.description ?? '',
       APROVACAO_DE_POST.cta.sub,
       PORTAL_DO_CLIENTE.cta.sub,
+      AGENTE_DE_CONTEUDO_IA.cta.sub,
     ];
     for (const text of changed) {
       expect(text).not.toMatch(/sem cartão/i);
