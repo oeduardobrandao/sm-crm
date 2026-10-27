@@ -1,3 +1,4 @@
+import { i18n } from '@mesaas/i18n';
 import { getPlacement, type Adjustment } from './geometry';
 
 export function drawAdjustment(
@@ -31,14 +32,14 @@ export async function jpegFromCanvas(
   for (const quality of [0.94, 0.86, 0.76, 0.64]) {
     const blob = await new Promise<Blob>((resolve, reject) =>
       canvas.toBlob(
-        (b) => (b ? resolve(b) : reject(new Error('Não foi possível gerar a imagem.'))),
+        (b) => (b ? resolve(b) : reject(new Error(i18n.t('posts:mediaEditor.imageFailed')))),
         'image/jpeg',
         quality,
       ),
     );
     if (blob.size <= maxBytes) return new File([blob], name, { type: 'image/jpeg' });
   }
-  throw new Error('A imagem ajustada ainda excede 8 MB. Tente outro enquadramento.');
+  throw new Error(i18n.t('posts:mediaEditor.imageTooLarge'));
 }
 
 export function adjustedFilename(name: string, kind: 'image' | 'video') {

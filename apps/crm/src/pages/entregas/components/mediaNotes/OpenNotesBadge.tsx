@@ -1,4 +1,5 @@
 import { MessageSquareWarning } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import type { MediaNote } from '@/store/mediaNotes';
 import type { PostApproval } from '@/store/posts';
@@ -15,6 +16,7 @@ export function OpenNotesBadge({
   approvals: PostApproval[];
   notes: MediaNote[];
 }) {
+  const { t } = useTranslation('posts');
   // The latest client decision wins: a correction after an approval takes the flag away.
   const latest = approvals
     .filter((a) => (a.action === 'aprovado' || a.action === 'correcao') && !a.is_workspace_user)
@@ -29,10 +31,7 @@ export function OpenNotesBadge({
   const open = notes.filter((n) => n.visibility === 'client' && n.status === 'open').length;
   if (open === 0) return null;
 
-  const label =
-    open === 1
-      ? 'Aprovado com 1 comentário em aberto'
-      : `Aprovado com ${open} comentários em aberto`;
+  const label = t('mediaNotes.approvedWithOpen', { count: open });
   return (
     <Badge variant="warning" size="sm" className="open-notes-badge">
       <MessageSquareWarning className="h-3 w-3" aria-hidden="true" />

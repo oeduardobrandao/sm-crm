@@ -70,7 +70,11 @@ export function DownscaleOfferDialog({
               <div className="min-w-0 flex-1 space-y-1">
                 <p className="truncate text-sm font-semibold">{item.name}</p>
                 <p className="text-xs text-muted-foreground">
-                  {item.width}×{item.height} · {mb(item.sizeBytes)} MB
+                  {t('mediaGallery.downscale.dimsSize', {
+                    w: item.width,
+                    h: item.height,
+                    mb: mb(item.sizeBytes),
+                  })}
                   {item.plan && (
                     <>
                       {' → '}

@@ -1,4 +1,6 @@
+import type { ReactNode } from 'react';
 import { Music2 } from 'lucide-react';
+import { Trans, useTranslation } from 'react-i18next';
 
 // Spec 2026-10-08-tiktok-audit-readiness A3. Rendered directly above every control that sends
 // a TikTok post. `brandedContent === undefined` (caller has no settings) renders the branded
@@ -15,7 +17,7 @@ export function declarationBrandedFlag(settings: unknown): boolean | undefined {
   return (settings as { brand_content_toggle?: boolean }).brand_content_toggle === true;
 }
 
-function PolicyLink({ href, children }: { href: string; children: string }) {
+function PolicyLink({ href, children }: { href: string; children?: ReactNode }) {
   return (
     <a
       href={href}
@@ -36,6 +38,7 @@ export function TikTokPostingDeclaration({
   brandedContent: boolean | undefined;
   className?: string;
 }) {
+  const { t } = useTranslation('posts');
   const branded = brandedContent !== false;
   return (
     <p
@@ -45,15 +48,14 @@ export function TikTokPostingDeclaration({
     >
       <Music2 aria-hidden="true" className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
       <span>
-        Ao publicar, você concorda com a{' '}
-        {branded && (
-          <>
-            <PolicyLink href={BRANDED_CONTENT_POLICY_URL}>Política de Conteúdo de Marca</PolicyLink>{' '}
-            e a{' '}
-          </>
-        )}
-        <PolicyLink href={MUSIC_USAGE_CONFIRMATION_URL}>Confirmação de Uso de Música</PolicyLink> do
-        TikTok.
+        <Trans
+          t={t}
+          i18nKey={branded ? 'tiktokDeclaration.withBrandedContent' : 'tiktokDeclaration.musicOnly'}
+          components={{
+            branded: <PolicyLink href={BRANDED_CONTENT_POLICY_URL} />,
+            music: <PolicyLink href={MUSIC_USAGE_CONFIRMATION_URL} />,
+          }}
+        />
       </span>
     </p>
   );

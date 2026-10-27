@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Switch } from '@/components/ui/switch';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import type { PostMedia, WorkflowPost } from '../../../store';
@@ -26,6 +27,7 @@ export function TrialReelPanel({
   collaboratorsCount,
   onFieldChange,
 }: TrialReelPanelProps) {
+  const { t } = useTranslation('posts');
   if (post.tipo !== 'reels' || !targetsInstagram(post.platform)) return null;
 
   const strategy = post.ig_trial_strategy ?? null;
@@ -36,15 +38,15 @@ export function TrialReelPanel({
   const blockedByCollaborators = !enabled && collaboratorsCount > 0;
   // Um motivo só, nesta ordem: agendamento vence colaboradores.
   const reasonLine = disabled
-    ? 'Cancelar agendamento para editar'
+    ? t('trialReel.lockedBySchedule')
     : blockedByCollaborators
-      ? 'Indisponível com colaboradores no post. Remova os colaboradores para publicar como teste.'
+      ? t('trialReel.blockedByCollaborators')
       : null;
 
   return (
     <div className="drawer-post-field drawer-post-field--trial">
       <div className="flex items-center justify-between gap-3">
-        <label htmlFor="trial-reel-switch">Reel de teste</label>
+        <label htmlFor="trial-reel-switch">{t('trialReel.label')}</label>
         <Switch
           id="trial-reel-switch"
           checked={enabled}
@@ -53,7 +55,7 @@ export function TrialReelPanel({
         />
       </div>
       <p className="text-xs" style={{ color: 'var(--text-light)' }}>
-        Publica como teste, visível só para quem não segue a conta.
+        {t('trialReel.description')}
       </p>
       {reasonLine && (
         <p className="mt-1 text-xs" style={{ color: 'var(--text-light)' }}>
@@ -72,19 +74,18 @@ export function TrialReelPanel({
             }}
           >
             <ToggleGroupItem value="auto" className="justify-start text-left">
-              Compartilhar com todos automaticamente se performar bem
+              {t('trialReel.strategyAuto')}
             </ToggleGroupItem>
             <ToggleGroupItem value="manual" className="justify-start text-left">
-              Eu decido manualmente no app do Instagram
+              {t('trialReel.strategyManual')}
             </ToggleGroupItem>
           </ToggleGroup>
           <p className="mt-2 text-xs" style={{ color: 'var(--text-light)' }}>
-            Exige conta profissional pública com pelo menos 1.000 seguidores. Não funciona com
-            colaboradores no post.
+            {t('trialReel.requirements')}
           </p>
           {!mediaQualifies && (
             <p className="mt-1 text-xs" style={{ color: 'var(--danger-text)' }}>
-              Reel de teste exige exatamente um vídeo no post.
+              {t('trialReel.needsOneVideo')}
             </p>
           )}
         </>

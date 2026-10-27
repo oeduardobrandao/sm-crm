@@ -1,3 +1,4 @@
+import { i18n } from '@mesaas/i18n';
 import type { PostApproval, PostMedia } from '@/store/posts';
 import type { MediaNote } from '@/store/mediaNotes';
 
@@ -39,9 +40,11 @@ export function formatMediaTime(seconds: number): string {
 export function noteAnchorLabel(note: MediaNote, notes: MediaNote[], media: PostMedia[]): string {
   const parts: string[] = [];
   if (note.media_kind === 'video') {
-    parts.push(note.t_seconds != null ? formatMediaTime(note.t_seconds) : 'Vídeo');
+    parts.push(
+      note.t_seconds != null ? formatMediaTime(note.t_seconds) : i18n.t('posts:shared.video'),
+    );
   } else {
-    parts.push(`Slide ${slideIndexOf(note, media) + 1}`);
+    parts.push(i18n.t('posts:conversation.slide', { n: slideIndexOf(note, media) + 1 }));
   }
   if (note.x != null && note.y != null && !note.is_previous_version) {
     const sameTarget = notes
@@ -55,14 +58,10 @@ export function noteAnchorLabel(note: MediaNote, notes: MediaNote[], media: Post
       )
       .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id - b.id);
     const pos = sameTarget.findIndex((n) => n.id === note.id);
-    parts.push(`ponto ${(pos >= 0 ? pos : 0) + 1}`);
+    parts.push(i18n.t('posts:conversation.point', { n: (pos >= 0 ? pos : 0) + 1 }));
   }
   const label = parts.join(' · ');
-  return note.is_previous_version ? `${label} (versão anterior)` : label;
-}
-
-function plural(n: number, one: string, many: string): string {
-  return n === 1 ? one : many;
+  return note.is_previous_version ? i18n.t('posts:conversation.previousVersion', { label }) : label;
 }
 
 function summarize(approval: PostApproval, notes: MediaNote[], media: PostMedia[]): string {
@@ -77,10 +76,17 @@ function summarize(approval: PostApproval, notes: MediaNote[], media: PostMedia[
     .map((n) => formatMediaTime(n.t_seconds as number));
   const where: string[] = [];
   if (slides.length > 0)
-    where.push(`${plural(slides.length, 'slide', 'slides')} ${slides.join(', ')}`);
-  if (videoTimes.length > 0) where.push(`vídeo ${[...new Set(videoTimes)].join(', ')}`);
-  const head = `${count} ${plural(count, 'comentário', 'comentários')} na mídia em aberto`;
-  return where.length > 0 ? `${head}: ${where.join('; ')}` : head;
+    where.push(
+      i18n.t('posts:conversation.slidesList', { count: slides.length, list: slides.join(', ') }),
+    );
+  if (videoTimes.length > 0)
+    where.push(
+      i18n.t('posts:conversation.videoList', { list: [...new Set(videoTimes)].join(', ') }),
+    );
+  const head = i18n.t('posts:conversation.openOnMedia', { count });
+  return where.length > 0
+    ? i18n.t('posts:conversation.summary', { head, where: where.join('; ') })
+    : head;
 }
 
 /**
@@ -105,11 +111,9 @@ export function buildConversationItems(
     if (snapshot.length > 0) {
       item.noteSummary = summarize(approval, notes, media);
       if (approval.action === 'aprovado') {
-        const n = snapshot.length;
-        item.openCommentsLabel =
-          n === 1
-            ? 'Aprovado com 1 comentário em aberto'
-            : `Aprovado com ${n} comentários em aberto`;
+        item.openCommentsLabel = i18n.t('posts:mediaNotes.approvedWithOpen', {
+          count: snapshot.length,
+        });
       }
     }
     items.push(item);

@@ -1,4 +1,5 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { i18n } from '@mesaas/i18n';
 import coreURL from '@ffmpeg/core?url';
 import wasmURL from '@ffmpeg/core/wasm?url';
 import { videoArguments, type Adjustment } from './geometry';
@@ -68,23 +69,20 @@ async function runFfmpeg(
     await ffmpeg.writeFile('input', new Uint8Array(await file.arrayBuffer()));
     signal.throwIfAborted();
     const code = await ffmpeg.exec(args);
-    if (code !== 0) throw new VideoExportError('Falha ao processar o vídeo. Tente novamente.');
+    if (code !== 0) throw new VideoExportError(i18n.t('posts:mediaEditor.processFailed'));
     signal.throwIfAborted();
     const output = await ffmpeg.readFile('output.mp4');
     if (typeof output === 'string' || !output.byteLength)
-      throw new VideoExportError('O vídeo processado está vazio.');
+      throw new VideoExportError(i18n.t('posts:mediaEditor.outputEmpty'));
     if (output.byteLength > maxBytes)
-      throw new VideoExportError('O vídeo ajustado ainda excede o limite de tamanho.');
+      throw new VideoExportError(i18n.t('posts:mediaEditor.outputTooLarge'));
     onProgress(100);
     return new File([new Uint8Array(output)], outputName, { type: 'video/mp4' });
   } catch (error) {
     signal.throwIfAborted();
-    if (timedOut)
-      throw new Error(
-        'O processamento demorou demais. Tente um vídeo menor ou outro enquadramento.',
-      );
+    if (timedOut) throw new Error(i18n.t('posts:mediaEditor.processTimeout'));
     if (error instanceof VideoExportError) throw error;
-    throw new Error('Não foi possível processar este vídeo neste navegador. Tente novamente.');
+    throw new Error(i18n.t('posts:mediaEditor.processUnsupported'));
   } finally {
     clearTimeout(timeout);
     signal.removeEventListener('abort', abort);
