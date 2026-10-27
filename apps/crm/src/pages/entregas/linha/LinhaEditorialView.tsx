@@ -16,8 +16,10 @@ import { ColunasPopover } from './ColunasPopover';
 import { LinhaClientRail } from './LinhaClientRail';
 import { LinhaComentariosPanel } from './LinhaComentariosPanel';
 import { LinhaHeader } from './LinhaHeader';
+import { LinhaPhoneView } from './LinhaPhoneView';
 import { LinhaTable } from './LinhaTable';
 import { formatBreakdown, periodoFromMes } from './linhaLogic';
+import { useIsLinhaPhone } from './useIsLinhaPhone';
 import { linhaItensKey, linhasKey, useLinhaQueries } from './useLinhaQueries';
 import './linha.css';
 
@@ -180,6 +182,34 @@ export function LinhaEditorialView({
     for (const b of formatBreakdown(itensData)) partes.push(`${TIPO_RESUMO[b.tipo]} ${b.n}`);
     return partes.join(' · ');
   }, [itensData]);
+
+  // Phone: read-only cards (spec §6.6). After every hook so the hook order never changes.
+  const phone = useIsLinhaPhone();
+  if (phone) {
+    return (
+      <LinhaPhoneView
+        clientes={clientes}
+        linhas={linhas}
+        mes={mes}
+        selectedId={selectedId}
+        fotosDe={fotosDe}
+        linhasLoading={base.linhas.isLoading}
+        linhasError={base.linhas.isError}
+        itens={itensData}
+        itensLoading={itens.isLoading}
+        itensError={itens.isError}
+        respostas={respostasData}
+        enviando={enviar.isPending}
+        onSelect={(id) => onChange({ clientes: [id] })}
+        onMesChange={(m) => onChange({ mes: m })}
+        onEnviar={() => linha && enviar.mutate(linha.id)}
+        onRetry={() => {
+          void base.linhas.refetch();
+          if (linha) void itens.refetch();
+        }}
+      />
+    );
+  }
 
   return (
     <div className="linha-view">
