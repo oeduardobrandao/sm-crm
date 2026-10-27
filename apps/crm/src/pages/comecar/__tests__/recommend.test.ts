@@ -6,6 +6,9 @@ import {
   CLIENT_BUCKETS,
   TEAM_BUCKETS,
   estimateFirstCharge,
+  findFreePlan,
+  freePlanNote,
+  freePlanSummary,
   planUnlocks,
   recommendPlan,
   recommendationReason,
@@ -163,5 +166,60 @@ describe('estimateFirstCharge', () => {
     const now = new Date('2026-10-27T12:00:00.000Z');
     expect(estimateFirstCharge(now, 7).toISOString()).toBe('2026-11-03T12:00:00.000Z');
     expect(now.toISOString()).toBe('2026-10-27T12:00:00.000Z');
+  });
+});
+
+describe('Free copy read from the Free row', () => {
+  it('finds the Free row by id', () => {
+    expect(findFreePlan(catalog)).toBe(free);
+    expect(findFreePlan([pro, max])).toBeNull();
+  });
+
+  it('keeps the current wording for 2 clients and 1 user', () => {
+    expect(freePlanSummary(free)).toBe(
+      '2 clientes, só você, sem portal de aprovação nem relatórios.',
+    );
+    expect(freePlanNote(free, 'Start')).toBe(
+      'O Free também cobre 2 clientes, mas sem portal de aprovação, relatórios e métricas automáticas. Teste o Start e decida depois.',
+    );
+  });
+
+  it('reads singular and plural from the row', () => {
+    const edited = { ...free, max_clients: 1, max_team_members: 3 };
+    expect(freePlanSummary(edited)).toBe(
+      '1 cliente, até 3 pessoas, sem portal de aprovação nem relatórios.',
+    );
+    expect(freePlanNote(edited, 'Start')).toMatch(/^O Free também cobre 1 cliente, mas sem/);
+    expect(freePlanSummary({ ...free, max_clients: 4, max_team_members: 2 })).toMatch(
+      /^4 clientes, até 2 pessoas,/,
+    );
+  });
+
+  it('drops what the Free row includes', () => {
+    const withPortal = { ...free, max_hub_tokens: 1 };
+    expect(freePlanSummary(withPortal)).toBe('2 clientes, só você, sem relatórios.');
+    expect(freePlanNote(withPortal, 'Start')).toBe(
+      'O Free também cobre 2 clientes, mas sem relatórios e métricas automáticas. Teste o Start e decida depois.',
+    );
+    const everything = {
+      ...free,
+      max_hub_tokens: null,
+      rate_report_generations_per_month: null,
+      feature_auto_sync_cron: true,
+    };
+    expect(freePlanSummary(everything)).toBe('2 clientes, só você.');
+    expect(freePlanNote(everything, 'Start')).toBe(
+      'O Free também cobre 2 clientes. Teste o Start e decida depois.',
+    );
+  });
+
+  it('names the recommended plan, not a literal', () => {
+    expect(freePlanNote(free, 'Pro')).toMatch(/Teste o Pro e decida depois\.$/);
+  });
+
+  it('states no figure when the Free row is missing', () => {
+    expect(freePlanSummary(null)).not.toMatch(/\d/);
+    expect(freePlanNote(null, 'Start')).not.toMatch(/\d/);
+    expect(freePlanNote(null, 'Start')).toMatch(/Teste o Start e decida depois\.$/);
   });
 });

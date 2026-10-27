@@ -134,6 +134,61 @@ export function showFreeNote(clients: ClientBucket, team: TeamBucket): boolean {
   return clients === '1-2' && team === '1';
 }
 
+/** The Free row of the catalog, if the page received one. */
+export function findFreePlan(plans: BillingPlan[]): BillingPlan | null {
+  return plans.find((p) => p.id === 'free') ?? null;
+}
+
+function clientsPhrase(max: number | null): string {
+  if (max === null) return 'clientes ilimitados';
+  return max === 1 ? '1 cliente' : `${max} clientes`;
+}
+
+function teamPhrase(max: number | null): string {
+  if (max === null) return 'usuários ilimitados';
+  return max <= 1 ? 'só você' : `até ${max} pessoas`;
+}
+
+/** "A", "A e B", "A, B e C", already lower-case. */
+function joinAnd(parts: string[]): string {
+  if (parts.length <= 1) return parts.join('');
+  return `${parts.slice(0, -1).join(', ')} e ${parts[parts.length - 1]}`;
+}
+
+/**
+ * The line under "Continuar no Free", read from the Free row: "2 clientes, só você, sem
+ * portal de aprovação nem relatórios." With no Free row it states no plan figure at all.
+ */
+export function freePlanSummary(free: BillingPlan | null): string {
+  if (!free) return 'Plano gratuito, com limites menores e menos recursos.';
+  const missing = [
+    !planHasPortal(free) && 'portal de aprovação',
+    !planHasReports(free) && 'relatórios',
+  ].filter((m): m is string => Boolean(m));
+  const parts = [clientsPhrase(free.max_clients), teamPhrase(free.max_team_members)];
+  if (missing.length > 0) parts.push(`sem ${missing.join(' nem ')}`);
+  return `${parts.join(', ')}.`;
+}
+
+/**
+ * The note shown when the answers would fit Free, read from the Free row: "O Free também
+ * cobre 2 clientes, mas sem portal de aprovação, relatórios e métricas automáticas. Teste o
+ * Start e decida depois." With no Free row it states no plan figure at all.
+ */
+export function freePlanNote(free: BillingPlan | null, recommendedName: string): string {
+  const tail = `Teste o ${recommendedName} e decida depois.`;
+  if (!free) return `O Free também serve para começar, com limites menores. ${tail}`;
+  const missing = [
+    !planHasPortal(free) && 'portal de aprovação',
+    !planHasReports(free) && 'relatórios',
+    !free.feature_auto_sync_cron && 'métricas automáticas',
+  ].filter((m): m is string => Boolean(m));
+  const covers = `O Free também cobre ${clientsPhrase(free.max_clients)}`;
+  return missing.length > 0
+    ? `${covers}, mas sem ${joinAnd(missing)}. ${tail}`
+    : `${covers}. ${tail}`;
+}
+
 /** When the card is first charged if the trial is not cancelled: `days` after `now`. */
 export function estimateFirstCharge(now: Date, days = 30): Date {
   return new Date(now.getTime() + days * 24 * 60 * 60 * 1000);

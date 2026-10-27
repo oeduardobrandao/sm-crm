@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 
 import { TrialPlanPicker } from '../TrialPlanPicker';
-import { catalog } from './plan-fixtures';
+import { catalog, free, max, pro, start } from './plan-fixtures';
 
 const now = new Date('2026-10-27T12:00:00-03:00');
 
@@ -149,6 +149,29 @@ describe('TrialPlanPicker', () => {
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Ver todos os planos' }));
     expect(props.onShowAllPlans).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads the Free figures from the Free row of the plans prop', () => {
+    renderPicker({ plans: [{ ...free, max_clients: 1, max_team_members: 3 }, start, pro, max] });
+    expect(
+      screen.getByText('1 cliente, até 3 pessoas, sem portal de aprovação nem relatórios.'),
+    ).toBeInTheDocument();
+    answer('1 a 2', 'Só eu');
+    expect(
+      screen.getByText(
+        'O Free também cobre 1 cliente, mas sem portal de aprovação, relatórios e métricas automáticas. Teste o Start e decida depois.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('states no Free figure when the Free row is missing', () => {
+    const { container } = renderPicker({ plans: [start, pro, max] });
+    const freeBlock = container.querySelector('.comecar-picker__free');
+    expect(freeBlock?.textContent).toContain('Continuar no Free');
+    expect(freeBlock?.textContent).not.toMatch(/\d/);
+    answer('1 a 2', 'Só eu');
+    const note = screen.getByText(/O Free também/);
+    expect(note.textContent).not.toMatch(/\d/);
   });
 
   it('renders no em dash', () => {

@@ -8,6 +8,9 @@ import {
   CLIENT_BUCKETS,
   TEAM_BUCKETS,
   estimateFirstCharge,
+  findFreePlan,
+  freePlanNote,
+  freePlanSummary,
   planUnlocks,
   recommendPlan,
   recommendationReason,
@@ -53,6 +56,7 @@ export function TrialPlanPicker({
   const [team, setTeam] = useState<TeamBucket | null>(null);
 
   const candidates = trialCandidates(plans);
+  const freePlan = findFreePlan(plans);
   const answered = clients !== null && team !== null;
   const plan = answered
     ? recommendPlan(plans, clients, team)
@@ -148,10 +152,7 @@ export function TrialPlanPicker({
               ))}
             </ul>
             {answered && showFreeNote(clients, team) && (
-              <p className="comecar-reco__note">
-                O Free também cobre 2 clientes, mas sem portal de aprovação, relatórios e métricas
-                automáticas. Teste o Start e decida depois.
-              </p>
+              <p className="comecar-reco__note">{freePlanNote(freePlan, plan.name)}</p>
             )}
             <button
               type="button"
@@ -179,7 +180,7 @@ export function TrialPlanPicker({
         <button type="button" className="comecar-link" onClick={onSkip}>
           Continuar no Free
         </button>
-        <p>2 clientes, só você, sem portal de aprovação nem relatórios.</p>
+        <p>{freePlanSummary(freePlan)}</p>
       </div>
     </div>
   );
