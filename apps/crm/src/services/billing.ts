@@ -156,7 +156,22 @@ export interface EffectivePlan {
    * /comecar. Null = not yet shown. Set only by `markTrialOfferSeen`.
    */
   trialOfferSeenAt: string | null;
+  /**
+   * A workspace row was actually read for the signed-in user. False when signed out, when
+   * `profiles.conta_id` is NULL (prod has such rows) or when the `workspaces` read returns
+   * nothing. The other fields are then defaults, not facts: such a user is never offered the
+   * trial, because `mark_trial_offer_seen()` would match no row and the offer would repeat.
+   */
+  hasWorkspace: boolean;
 }
+
+const NO_WORKSPACE: EffectivePlan = {
+  planId: null,
+  planSource: null,
+  wasDemo: false,
+  trialOfferSeenAt: null,
+  hasWorkspace: false,
+};
 
 /**
  * Whether the trial is already spent. A demo has no `workspace_subscriptions` row, so the
@@ -178,25 +193,26 @@ async function fetchEffectivePlan(): Promise<EffectivePlan> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { planId: null, planSource: null, wasDemo: false, trialOfferSeenAt: null };
+  if (!user) return { ...NO_WORKSPACE };
   const { data: profile } = await supabase
     .from('profiles')
     .select('conta_id')
     .eq('id', user.id)
     .single();
-  if (!profile?.conta_id)
-    return { planId: null, planSource: null, wasDemo: false, trialOfferSeenAt: null };
+  if (!profile?.conta_id) return { ...NO_WORKSPACE };
   const { data, error } = await supabase
     .from('workspaces')
     .select('plan_id, plan_source, demo_created_at, trial_offer_seen_at')
     .eq('id', profile.conta_id)
     .maybeSingle();
   if (error) throw new Error(error.message);
+  if (!data) return { ...NO_WORKSPACE };
   return {
-    planId: (data?.plan_id as string | null) ?? null,
-    planSource: (data?.plan_source as string | null) ?? null,
-    wasDemo: Boolean(data?.demo_created_at),
-    trialOfferSeenAt: (data?.trial_offer_seen_at as string | null) ?? null,
+    planId: (data.plan_id as string | null) ?? null,
+    planSource: (data.plan_source as string | null) ?? null,
+    wasDemo: Boolean(data.demo_created_at),
+    trialOfferSeenAt: (data.trial_offer_seen_at as string | null) ?? null,
+    hasWorkspace: true,
   };
 }
 

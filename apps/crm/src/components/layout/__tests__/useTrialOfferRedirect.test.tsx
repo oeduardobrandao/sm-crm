@@ -23,6 +23,7 @@ const plan = (over: Record<string, unknown> = {}) => ({
   planSource: 'system',
   wasDemo: false,
   trialOfferSeenAt: null,
+  hasWorkspace: true,
   ...over,
 });
 const NEVER_SUBSCRIBED = { hasEverSubscribed: false } as never;
@@ -117,6 +118,17 @@ describe('useTrialOfferRedirect', () => {
 
   it('does not redirect a comped (manual) plan', async () => {
     vi.mocked(getEffectivePlanWithSource).mockResolvedValue(plan({ planSource: 'manual' }));
+    const { result } = run('/dashboard');
+    await waitFor(() => expect(result.current.pending).toBe(false));
+    expect(result.current.redirect).toBe(false);
+  });
+
+  it('does not redirect an owner with no workspace row (NULL conta_id), so no bounce loop', async () => {
+    // fetchEffectivePlan's defaults for a profile with no workspace read as Free, never seen.
+    vi.mocked(getEffectivePlanWithSource).mockResolvedValue(
+      plan({ planId: null, planSource: null, hasWorkspace: false }),
+    );
+    vi.mocked(getWorkspaceSubscription).mockResolvedValue(null);
     const { result } = run('/dashboard');
     await waitFor(() => expect(result.current.pending).toBe(false));
     expect(result.current.redirect).toBe(false);

@@ -174,12 +174,19 @@ export function planHasReports(p: { rate_report_generations_per_month: number | 
  * Whether the workspace should be offered the 30-day trial: it resolves to Free, is not a
  * comped (`manual`) plan and has never trialed. `undefined` means a query is still loading,
  * so nothing is offered yet; `null` is a real "no subscription row" value and is eligible.
+ * A plan read with no workspace row behind it (`hasWorkspace === false`) is never eligible:
+ * its Free is a default, and the "seen" marker could never be stored for it.
  */
 export function isTrialOfferEligible(
-  plan: Pick<EffectivePlan, 'planId' | 'planSource' | 'wasDemo'> | null | undefined,
+  plan:
+    | (Pick<EffectivePlan, 'planId' | 'planSource' | 'wasDemo'> &
+        Partial<Pick<EffectivePlan, 'hasWorkspace'>>)
+    | null
+    | undefined,
   sub: WorkspaceSubscription | null | undefined,
 ): boolean {
   if (plan === undefined || sub === undefined) return false;
+  if (plan?.hasWorkspace === false) return false;
   return (
     resolveCurrentPlanId(plan?.planId, sub?.plan_id) === 'free' &&
     plan?.planSource !== 'manual' &&

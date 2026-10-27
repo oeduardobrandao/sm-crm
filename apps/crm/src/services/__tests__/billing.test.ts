@@ -366,6 +366,7 @@ describe('billing service', () => {
         planSource: 'manual',
         wasDemo: false,
         trialOfferSeenAt: null,
+        hasWorkspace: true,
       });
       expect(wsSelect).toHaveBeenCalledWith(
         'plan_id, plan_source, demo_created_at, trial_offer_seen_at',
@@ -379,7 +380,37 @@ describe('billing service', () => {
         planSource: null,
         wasDemo: false,
         trialOfferSeenAt: null,
+        hasWorkspace: false,
       });
+    });
+
+    it('getEffectivePlanWithSource flags hasWorkspace false when profiles.conta_id is NULL', async () => {
+      const profileSingle = vi.fn().mockResolvedValue({ data: { conta_id: null }, error: null });
+      const profileEq = vi.fn().mockReturnValue({ single: profileSingle });
+      const profileSelect = vi.fn().mockReturnValue({ eq: profileEq });
+      vi.mocked(supabase.auth.getUser).mockResolvedValue({
+        data: { user: { id: 'user-1' } },
+      } as never);
+      from.mockReturnValue({ select: profileSelect });
+      await expect(getEffectivePlanWithSource()).resolves.toMatchObject({
+        planId: null,
+        trialOfferSeenAt: null,
+        hasWorkspace: false,
+      });
+    });
+
+    it('getEffectivePlanWithSource flags hasWorkspace false when the workspaces read returns no row', async () => {
+      mockWorkspaceRow(null);
+      await expect(getEffectivePlanWithSource()).resolves.toMatchObject({
+        planId: null,
+        trialOfferSeenAt: null,
+        hasWorkspace: false,
+      });
+    });
+
+    it('getEffectivePlanWithSource flags hasWorkspace true when the row is read', async () => {
+      mockWorkspaceRow({ plan_id: null, plan_source: 'system' });
+      await expect(getEffectivePlanWithSource()).resolves.toMatchObject({ hasWorkspace: true });
     });
 
     it('getEffectivePlanWithSource exposes trialOfferSeenAt from the workspace row', async () => {

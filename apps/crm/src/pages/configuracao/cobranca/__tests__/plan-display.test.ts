@@ -265,7 +265,7 @@ describe('plan-display', () => {
   });
 
   describe('isTrialOfferEligible', () => {
-    const free = { planId: null, planSource: 'system', wasDemo: false };
+    const free = { planId: null, planSource: 'system', wasDemo: false, hasWorkspace: true };
     it('is true for a Free workspace that never subscribed (sub = null)', () => {
       expect(isTrialOfferEligible(free, null)).toBe(true);
     });
@@ -284,6 +284,15 @@ describe('plan-display', () => {
     it('is false while either input is still loading (undefined)', () => {
       expect(isTrialOfferEligible(free, undefined)).toBe(false);
       expect(isTrialOfferEligible(undefined, null)).toBe(false);
+    });
+    it('is false when no workspace row was read (NULL conta_id or missing row)', () => {
+      const noWorkspace = { planId: null, planSource: null, wasDemo: false, hasWorkspace: false };
+      expect(isTrialOfferEligible(noWorkspace, null)).toBe(false);
+    });
+    it('keeps a plan without the hasWorkspace field eligible (only an explicit false gates)', () => {
+      expect(
+        isTrialOfferEligible({ planId: null, planSource: 'system', wasDemo: false }, null),
+      ).toBe(true);
     });
     it('treats a null plan as Free (eligible)', () => {
       expect(isTrialOfferEligible(null, null)).toBe(true);
