@@ -321,7 +321,8 @@ export function ColunasPopover({
                         <MoreHorizontal className="h-4 w-4" />
                       </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
+                    {/* Above the Popover (z-[9012]); the menu's default z-[9011] opens behind it. */}
+                    <DropdownMenuContent align="end" className="z-[9013]">
                       <DropdownMenuItem
                         onSelect={() => abrirModo({ kind: 'renomear', id: col.id }, col)}
                       >

@@ -151,6 +151,16 @@ describe('ColunasPopover', () => {
     await waitFor(() => expect(m.excluirColuna).toHaveBeenCalledWith('c-pilar'));
   });
 
+  it('column actions menu stacks above the popover (z-[9013] over z-[9012])', async () => {
+    const user = userEvent.setup();
+    renderPopover();
+    const pop = await abrir(user);
+    await user.click(within(pop).getByRole('button', { name: 'Ações da coluna Pilar' }));
+    const menu = await screen.findByRole('menu');
+    expect(menu).toHaveClass('z-[9013]');
+    expect(menu).not.toHaveClass('z-[9011]');
+  });
+
   it('Visível para o cliente toggles visivel_cliente', async () => {
     const user = userEvent.setup();
     renderPopover();
