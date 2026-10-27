@@ -1223,6 +1223,41 @@ describe('PostMediaGallery oversized-video downscale at upload', () => {
     expect(uploadPostMediaMock.mock.calls[0][0].file.name).toBe('a.jpg');
   });
 
+  it('"Reduzir e enviar": an over-2 GB video the browser cannot reduce is skipped with an error, the rest converts', async () => {
+    ds.probes.set('4k.mp4', FOUR_K_LANDSCAPE);
+    ds.probes.set('huge.mp4', FOUR_K_LANDSCAPE);
+    ds.inspectForDownscale.mockImplementation(async (f: File) =>
+      f.name === 'huge.mp4' ? { engine: 'none', hdr: false } : { engine: 'webcodecs', hdr: false },
+    );
+    renderWith();
+    await pickFiles([createFile('4k.mp4', 'video/mp4'), bigFile('huge.mp4', 3 * GB)]);
+    fireEvent.click(await reduceButton());
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('huge.mp4: não foi possível reduzir o vídeo.'),
+    );
+    await waitFor(() => expect(screen.getByText('Adicionar')).toBeInTheDocument());
+    expect(ds.downscaleVideo).toHaveBeenCalledTimes(1);
+    expect(uploadPostMediaMock).toHaveBeenCalledTimes(1);
+    expect(uploadPostMediaMock.mock.calls[0][0].file.name).toBe('4k (1080p).mp4');
+  });
+
+  it('"Enviar original": an over-2 GB video is skipped with an error, the other original uploads', async () => {
+    ds.probes.set('4k.mp4', FOUR_K_LANDSCAPE);
+    ds.probes.set('huge.mp4', FOUR_K_LANDSCAPE);
+    renderWith();
+    const small = createFile('4k.mp4', 'video/mp4');
+    await pickFiles([small, bigFile('huge.mp4', 3 * GB)]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Enviar original' }));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'huge.mp4: Arquivo acima de 2 GB: só pode ser enviado reduzido.',
+      ),
+    );
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(1));
+    expect(uploadPostMediaMock.mock.calls[0][0].file).toBe(small);
+    expect(ds.downscaleVideo).not.toHaveBeenCalled();
+  });
+
   it('an over-2 GB video too long to fit the budget is skipped with an error, no dialog', async () => {
     ds.probes.set('longo.mp4', FOUR_K);
     ds.planNull = true;

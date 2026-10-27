@@ -38,13 +38,12 @@ export function useDownscaleOffer({ forStories, upload, setConverting }: Deps) {
   const [items, setItems] = useState<DownscaleOfferItem[] | null>(null);
   const resolver = useRef<((d: Decision) => void) | null>(null);
   const support = useRef(new Map<string, DownscaleSupport>());
-  const abort = useRef<AbortController | null>(null);
 
-  // Unmounting mid-offer must not leave handleFiles waiting forever, nor a conversion running.
+  // Unmounting mid-offer must not leave handleFiles waiting forever. A batch the user already
+  // confirmed keeps running after unmount, like the immediate uploads (trackUnsavedWork).
   useEffect(
     () => () => {
       resolver.current?.('dismiss');
-      abort.current?.abort();
     },
     [],
   );
@@ -171,8 +170,8 @@ export function useDownscaleOffer({ forStories, upload, setConverting }: Deps) {
       input_mb: mb(file.size),
       duration_s: plan.durationSeconds,
     };
+    // No cancel at selection time (spec A): the signal exists only for the engine's contract.
     const ctl = new AbortController();
-    abort.current = ctl;
     setConverting(h, 0);
     try {
       const { downscaleVideo } = await import('../media-editor/downscaleVideo');
@@ -193,29 +192,18 @@ export function useDownscaleOffer({ forStories, upload, setConverting }: Deps) {
       });
       return upload({ ...h, file: result.file });
     } catch (e) {
-      const cancelled = ctl.signal.aborted;
       captureEvent('video_downscaled', {
         ...base,
         engine,
-        outcome: cancelled
-          ? 'cancelled'
-          : e instanceof Error && e.name === 'EngineUnavailable'
-            ? 'unsupported'
-            : 'error',
+        outcome: e instanceof Error && e.name === 'EngineUnavailable' ? 'unsupported' : 'error',
         ms: Date.now() - startedAt,
       });
-      if (cancelled) {
-        setConverting(h, null);
-        return 'skipped';
-      }
       if (offer.overClientCap) {
         setConverting(h, null);
         return skip(noFallback());
       }
       toast.error(t('mediaGallery.downscale.convertFailed', { name: file.name }));
       return upload(h);
-    } finally {
-      if (abort.current === ctl) abort.current = null;
     }
   }
 
