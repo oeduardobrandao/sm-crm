@@ -184,5 +184,10 @@
     "processing": "Processando...",
     "goToDashboard": "Ir para o painel",
     "close": "Fechar"
+  },
+  "tokenization": {
+    "unavailable": "Pagamento indisponível no momento.",
+    "network": "Não foi possível validar o cartão. Verifique sua conexão.",
+    "declined": "Cartão recusado. Confira os dados ou tente outro cartão."
   }
 }

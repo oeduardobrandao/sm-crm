@@ -184,5 +184,10 @@
     "processing": "Processing...",
     "goToDashboard": "Go to dashboard",
     "close": "Close"
+  },
+  "tokenization": {
+    "unavailable": "Payment is unavailable right now.",
+    "network": "Could not validate the card. Check your connection.",
+    "declined": "Card declined. Check the details or try another card."
   }
 }
