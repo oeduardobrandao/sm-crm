@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import type { ContentFormat } from '@mesaas/platforms';
 import { Check, ChevronDown, ExternalLink } from 'lucide-react';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
@@ -47,10 +49,11 @@ function linkSeguro(raw: string): string | null {
   return href && href !== '#' ? href : null;
 }
 
-/** `YYYY-MM-DD` to `dd/MM`, or '' for null. */
+/** `YYYY-MM-DD` to `dd/MM` (`MM/dd` in English), or '' for null. */
 export function formatDia(iso: string | null): string {
   const m = iso ? /^(\d{4})-(\d{2})-(\d{2})/.exec(iso) : null;
-  return m ? `${m[3]}/${m[2]}` : '';
+  if (!m) return '';
+  return getIntlLocale() === 'en-US' ? `${m[2]}/${m[3]}` : `${m[3]}/${m[2]}`;
 }
 
 /**
@@ -115,6 +118,7 @@ export function TextCell({
   type = 'text',
   placeholder,
 }: TextCellProps) {
+  const { t } = useTranslation('linha');
   const { local, change, flush } = useDebouncedField(value, (v) => {
     if (v !== value) onSave(v);
   });
@@ -152,7 +156,7 @@ export function TextCell({
           href={safeHref}
           target="_blank"
           rel="noopener noreferrer"
-          aria-label={`Abrir ${label}`}
+          aria-label={t('cell.abrir', { label })}
           tabIndex={-1}
         >
           <ExternalLink className="h-3.5 w-3.5" />
@@ -213,10 +217,16 @@ export function FormatoCell({
   nav: CellNav;
   onSave: (v: ContentFormat) => void;
 }) {
+  const { t } = useTranslation('linha');
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
-        <button type="button" className="linha-cell-btn" aria-label="Formato" {...navProps(nav)}>
+        <button
+          type="button"
+          className="linha-cell-btn"
+          aria-label={t('shared.fixas.formato')}
+          {...navProps(nav)}
+        >
           <FormatoPill tipo={value} />
           <ChevronDown className="linha-cell-btn__chev h-3.5 w-3.5" aria-hidden="true" />
         </button>
@@ -252,6 +262,7 @@ interface ValorProps {
 
 /** Read-only display of an extra column's value (converted rows). */
 export function ValorDisplay({ coluna, value }: ValorProps) {
+  const { t } = useTranslation('linha');
   if (value == null || value === '' || (Array.isArray(value) && value.length === 0)) {
     return <span className="linha-vazio">-</span>;
   }
@@ -272,7 +283,7 @@ export function ValorDisplay({ coluna, value }: ValorProps) {
       );
     }
     case 'checkbox':
-      return <span>{value === true ? 'Sim' : 'Não'}</span>;
+      return <span>{value === true ? t('actions.yes') : t('actions.no')}</span>;
     case 'date':
       return <span>{formatDia(String(value))}</span>;
     case 'person':
@@ -300,6 +311,7 @@ export function ValorCell({
   nav,
   onSave,
 }: ValorProps & { nav: CellNav; onSave: (v: unknown) => void }) {
+  const { t } = useTranslation('linha');
   const label = coluna.nome;
   switch (coluna.tipo) {
     case 'text':
@@ -361,7 +373,7 @@ export function ValorCell({
           }}
           {...navProps(nav)}
         >
-          <option value="">{v.membro_id == null && v.name ? v.name : 'Ninguém'}</option>
+          <option value="">{v.membro_id == null && v.name ? v.name : t('cell.ninguem')}</option>
           {membros.map((mb) => (
             <option key={mb.id} value={mb.id}>
               {mb.nome}
@@ -400,7 +412,7 @@ export function ValorCell({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
             {opts.length === 0 && (
-              <DropdownMenuItem disabled>Sem opções. Crie em Colunas.</DropdownMenuItem>
+              <DropdownMenuItem disabled>{t('cell.semOpcoes')}</DropdownMenuItem>
             )}
             {multi
               ? opts.map((o) => (
@@ -425,7 +437,7 @@ export function ValorCell({
             {!multi && ids.length > 0 && (
               <>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={() => onSave(null)}>Limpar</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => onSave(null)}>{t('ui.clear')}</DropdownMenuItem>
               </>
             )}
           </DropdownMenuContent>

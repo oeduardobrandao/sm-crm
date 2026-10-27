@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import type { ContentFormat } from '@mesaas/platforms';
@@ -42,9 +43,6 @@ type Modo = 'sem' | 'por_formato';
 /** Select value for "no template for this format" (Radix items cannot use ''). */
 const NENHUM = 'nenhum';
 
-const posts = (n: number) => `${n} ${n === 1 ? 'post' : 'posts'}`;
-const criados = (n: number) => `${posts(n)} ${n === 1 ? 'criado' : 'criados'}`;
-
 export interface CriarPostsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -73,6 +71,7 @@ export function CriarPostsDialog({
   onDone,
   onVerPosts,
 }: CriarPostsDialogProps) {
+  const { t } = useTranslation('linha');
   const qc = useQueryClient();
   const { features } = useWorkspaceLimits();
   const processosOn = features?.feature_post_processes === true;
@@ -115,9 +114,7 @@ export function CriarPostsDialog({
       feitos = await converterItens(linha.id, null, buildPostsFromItens(itens, colunas, null));
     } catch (err) {
       const ent = mapEntitlementError(err);
-      toast.error(
-        ent ? entitlementMessage(ent) : 'Não foi possível criar os posts. Tente de novo.',
-      );
+      toast.error(ent ? entitlementMessage(ent) : t('criarPostsDialog.erroCriar'));
       return;
     }
 
@@ -137,7 +134,7 @@ export function CriarPostsDialog({
     });
     let falhas = 0;
     for (const [idx, { postId, template }] of fila.entries()) {
-      setProgresso(`Aplicando processo ${idx + 1} de ${fila.length}`);
+      setProgresso(t('criarPostsDialog.aplicando', { atual: idx + 1, total: fila.length }));
       try {
         const plan = buildApplyPlan({
           template,
@@ -168,14 +165,13 @@ export function CriarPostsDialog({
     // "Ver posts" opens the Lista in Publicações mode, which lists posts with or without a
     // process (the posts entity lists only processes, so "Sem processo" would land empty).
     const action = onVerPosts
-      ? { label: 'Ver posts', onClick: () => onVerPosts(linha.cliente_id) }
+      ? { label: t('criarPostsDialog.verPosts'), onClick: () => onVerPosts(linha.cliente_id) }
       : undefined;
+    const criados = t('criarPostsDialog.criados', { count: feitos.length });
     if (falhas > 0) {
-      toast.warning(`${criados(feitos.length)}. ${falhas} sem processo: aplique pelo post.`, {
-        action,
-      });
+      toast.warning(t('criarPostsDialog.semProcessoAviso', { criados, falhas }), { action });
     } else {
-      toast.success(criados(feitos.length), { action });
+      toast.success(criados, { action });
     }
     onDone();
     onOpenChange(false);
@@ -195,17 +191,13 @@ export function CriarPostsDialog({
     <Dialog open={open} onOpenChange={(o) => (o || !busy) && onOpenChange(o)}>
       <DialogContent className="sm:max-w-[460px]">
         <DialogHeader>
-          <DialogTitle>
-            Criar {n} {n === 1 ? 'post individual' : 'posts individuais'}
-          </DialogTitle>
-          <DialogDescription>
-            Cada linha vira um post avulso, fora de um fluxo, com a data e o conteúdo da linha.
-          </DialogDescription>
+          <DialogTitle>{t('criarPostsDialog.titulo', { count: n })}</DialogTitle>
+          <DialogDescription>{t('criarPostsDialog.descricao')}</DialogDescription>
         </DialogHeader>
 
         {processosOn && (
           <fieldset className="flex flex-col gap-2" disabled={busy}>
-            <legend className="mb-1 text-sm font-semibold">Processo de produção</legend>
+            <legend className="mb-1 text-sm font-semibold">{t('criarPostsDialog.processo')}</legend>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="radio"
@@ -213,7 +205,7 @@ export function CriarPostsDialog({
                 checked={modo === 'sem'}
                 onChange={() => setModo('sem')}
               />
-              Sem processo
+              {t('criarPostsDialog.semProcesso')}
             </label>
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -222,7 +214,7 @@ export function CriarPostsDialog({
                 checked={modo === 'por_formato'}
                 onChange={() => setModo('por_formato')}
               />
-              Um processo por formato
+              {t('criarPostsDialog.porFormato')}
             </label>
             {modo === 'por_formato' && (
               <div className="ml-6 flex flex-col gap-2">
@@ -235,11 +227,13 @@ export function CriarPostsDialog({
                         setPorTipo((p) => ({ ...p, [tipo]: v === NENHUM ? undefined : Number(v) }))
                       }
                     >
-                      <SelectTrigger aria-label={`Processo para ${TIPO_LABELS[tipo]}`}>
+                      <SelectTrigger
+                        aria-label={t('criarPostsDialog.processoPara', { tipo: TIPO_LABELS[tipo] })}
+                      >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value={NENHUM}>Nenhum</SelectItem>
+                        <SelectItem value={NENHUM}>{t('criarPostsDialog.nenhum')}</SelectItem>
                         {padrao.map((t) => (
                           <SelectItem key={t.id} value={String(t.id)}>
                             {t.nome}
@@ -251,7 +245,7 @@ export function CriarPostsDialog({
                 ))}
                 {padrao.length === 0 && (
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    Nenhum modelo com prazos padrão. Aplique o processo depois, pelo post.
+                    {t('criarPostsDialog.semModelos')}
                   </p>
                 )}
               </div>
@@ -272,10 +266,10 @@ export function CriarPostsDialog({
             onClick={() => onOpenChange(false)}
             disabled={busy}
           >
-            Cancelar
+            {t('actions.cancel')}
           </Button>
           <Button type="button" onClick={() => void submit()} disabled={busy || n === 0}>
-            {busy ? 'Criando...' : `Criar ${posts(n)}`}
+            {busy ? t('criarPostsDialog.criando') : t('criarPostsDialog.criar', { count: n })}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   DndContext,
@@ -93,8 +94,6 @@ export interface LinhaTableProps {
   onOpenComentarios?: (itemId: string | null) => void;
 }
 
-const MSG_SALVAR = 'Não foi possível salvar a alteração. Tente de novo.';
-
 /** Plan limits first, then the row guard's raises, then the caller's fallback. */
 function erroDe(err: unknown, fallback: string): string {
   const ent = mapEntitlementError(err);
@@ -102,14 +101,13 @@ function erroDe(err: unknown, fallback: string): string {
   return mensagemGuardItem(err) ?? fallback;
 }
 
-const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
-
 /**
  * Optimistic writes on the items cache (`linhaItensKey`). Each write updates the cache first,
  * then runs inside `trackUnsavedWork`; a failure refetches the list and toasts. Only the fields
  * being changed travel to PostgREST (`post_id` and the conversion columns are not granted).
  */
 function useItemWrites(linha: LinhaEditorial, itens: LinhaItem[]) {
+  const { t } = useTranslation('linha');
   const qc = useQueryClient();
   const key = linhaItensKey(linha.id);
   /** Rows whose insert is still in flight: a patch or delete on them waits for the insert. */
@@ -150,7 +148,7 @@ function useItemWrites(linha: LinhaEditorial, itens: LinhaItem[]) {
     const durante = setItens((l) => l.map((i) => (i.id === id ? { ...i, ...p } : i)));
     void depoisDoInsert(id, () => updateItem(id, p))
       .then(ressincronizar(durante))
-      .catch(falhou(MSG_SALVAR));
+      .catch(falhou(t('table.erroSalvar')));
   };
 
   /** Writes one extra column's value; the whole `valores` object travels (JSONB column). */
@@ -182,10 +180,13 @@ function useItemWrites(linha: LinhaEditorial, itens: LinhaItem[]) {
     const insert = trackUnsavedWork(addItem(linha.id, { id, data, tipo: 'feed', ordem }));
     inserting.current.set(id, insert);
     void insert
-      .then(() => {
-        contarNoRail();
-        ressincronizar(durante)();
-      }, falhou('Não foi possível criar a linha. Tente de novo.'))
+      .then(
+        () => {
+          contarNoRail();
+          ressincronizar(durante)();
+        },
+        falhou(t('table.erroCriar')),
+      )
       .finally(() => inserting.current.delete(id));
     return id;
   };
@@ -197,7 +198,7 @@ function useItemWrites(linha: LinhaEditorial, itens: LinhaItem[]) {
         contarNoRail();
         ressincronizar(durante)();
       })
-      .catch(falhou('Não foi possível excluir a linha. Tente de novo.'));
+      .catch(falhou(t('table.erroExcluir')));
   };
 
   const reorder = (ids: string[]) => {
@@ -210,7 +211,7 @@ function useItemWrites(linha: LinhaEditorial, itens: LinhaItem[]) {
     });
     void trackUnsavedWork(reorderItens(ids))
       .then(ressincronizar(durante))
-      .catch(falhou('Não foi possível reordenar. Tente de novo.'));
+      .catch(falhou(t('table.erroReordenar')));
   };
 
   return { patch, patchValor, add, remove, reorder };
@@ -286,8 +287,9 @@ function LinhaRow({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
   });
+  const { t } = useTranslation('linha');
   const convertido = item.post_id != null;
-  const nome = item.titulo.trim() || 'sem título';
+  const nome = item.titulo.trim() || t('shared.semTituloLower');
   const nav = (col: string): CellNav => ({ row: index, col });
 
   return (
@@ -306,7 +308,7 @@ function LinhaRow({
         <button
           type="button"
           className="linha-drag"
-          aria-label={`Reordenar ${nome}`}
+          aria-label={t('table.reordenar', { nome })}
           {...attributes}
           {...listeners}
         >
@@ -318,7 +320,7 @@ function LinhaRow({
           <input
             type="checkbox"
             className="linha-check"
-            aria-label={`Selecionar ${nome}`}
+            aria-label={t('table.selecionar', { nome })}
             checked={selected}
             onChange={(e) => onToggle(e.target.checked)}
           />
@@ -326,11 +328,11 @@ function LinhaRow({
       </td>
       <td className="linha-td linha-td--data">
         {convertido ? (
-          <span>{formatDia(item.data) || 'Sem data'}</span>
+          <span>{formatDia(item.data) || t('shared.semData')}</span>
         ) : (
           <DateCell
             value={item.data}
-            label="Data"
+            label={t('shared.fixas.data')}
             nav={nav('data')}
             onSave={(data) => writes.patch(item.id, { data })}
           />
@@ -354,8 +356,8 @@ function LinhaRow({
           ) : (
             <TextCell
               value={item.titulo}
-              label="Título"
-              placeholder="Sobre o que é o post"
+              label={t('shared.fixas.titulo')}
+              placeholder={t('table.tituloPlaceholder')}
               nav={nav('titulo')}
               onSave={(titulo) => writes.patch(item.id, { titulo })}
             />
@@ -371,8 +373,8 @@ function LinhaRow({
             <TextCell
               multiline
               value={item.direcao}
-              label="Direção do conteúdo"
-              placeholder="Gancho, roteiro, referência visual"
+              label={t('shared.fixas.direcao')}
+              placeholder={t('table.direcaoPlaceholder')}
               nav={nav('direcao')}
               onSave={(direcao) => writes.patch(item.id, { direcao })}
             />
@@ -402,12 +404,12 @@ function LinhaRow({
                 <PostStatusChip post={post} registry={registry} />
                 {postHref && (
                   <Link to={postHref} className="linha-link">
-                    {post.workflow_titulo ?? 'Post avulso'}
+                    {post.workflow_titulo ?? t('table.postAvulso')}
                   </Link>
                 )}
               </span>
             ) : (
-              <span className="linha-vazio">Post criado</span>
+              <span className="linha-vazio">{t('table.postCriado')}</span>
             ))}
         </td>
       )}
@@ -417,7 +419,7 @@ function LinhaRow({
             <button
               type="button"
               className="linha-bubble"
-              aria-label={plural(comentarios, 'comentário', 'comentários')}
+              aria-label={t('shared.comentarios', { count: comentarios })}
               onClick={() => onOpenComentarios?.(item.id)}
             >
               <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
@@ -429,7 +431,7 @@ function LinhaRow({
               <button
                 type="button"
                 className="linha-icon-btn"
-                aria-label={`Ações da linha ${nome}`}
+                aria-label={t('table.acoesLinha', { nome })}
               >
                 <MoreHorizontal className="h-4 w-4" />
               </button>
@@ -439,14 +441,14 @@ function LinhaRow({
                 <>
                   <DropdownMenuItem disabled={!postHref} onSelect={onAbrirPost}>
                     <ExternalLink className="mr-2 h-4 w-4" />
-                    Abrir post
+                    {t('table.abrirPost')}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                 </>
               )}
               <DropdownMenuItem className="text-destructive" onSelect={onExcluir}>
                 <Trash2 className="mr-2 h-4 w-4" />
-                Excluir linha
+                {t('shared.excluirLinha')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -466,6 +468,7 @@ export function LinhaTable({
   direcaoOculta = false,
   onOpenComentarios,
 }: LinhaTableProps) {
+  const { t } = useTranslation('linha');
   const qc = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
@@ -590,11 +593,11 @@ export function LinhaTable({
           disabled={!rows.length}
         >
           <ArrowDownUp className="h-4 w-4" />
-          Ordenar por data
+          {t('table.ordenarPorData')}
         </button>
         <button type="button" className="linha-btn" onClick={() => onOpenComentarios?.(null)}>
           <MessageSquare className="h-4 w-4" />
-          Comentários gerais
+          {t('shared.comentariosGerais')}
           {comentariosGerais > 0 && <span className="linha-count">{comentariosGerais}</span>}
         </button>
       </div>
@@ -603,12 +606,12 @@ export function LinhaTable({
           <table ref={tableRef} className="linha-table" onKeyDown={moverFoco}>
             <thead>
               <tr>
-                <th className="linha-th linha-td--handle" aria-label="Ordem" />
+                <th className="linha-th linha-td--handle" aria-label={t('table.ordem')} />
                 <th className="linha-th linha-td--check">
                   <input
                     type="checkbox"
                     className="linha-check"
-                    aria-label="Selecionar todas"
+                    aria-label={t('table.selecionarTodas')}
                     checked={todas}
                     disabled={selecionaveis.length === 0}
                     ref={(el) => {
@@ -617,19 +620,21 @@ export function LinhaTable({
                     onChange={() => onSelect(todas ? [] : selecionaveis)}
                   />
                 </th>
-                <th className="linha-th linha-td--data">Data</th>
-                <th className="linha-th linha-td--formato">Formato</th>
-                <th className="linha-th linha-td--titulo">Título</th>
+                <th className="linha-th linha-td--data">{t('shared.fixas.data')}</th>
+                <th className="linha-th linha-td--formato">{t('shared.fixas.formato')}</th>
+                <th className="linha-th linha-td--titulo">{t('shared.fixas.titulo')}</th>
                 {!direcaoOculta && (
-                  <th className="linha-th linha-td--direcao">Direção do conteúdo</th>
+                  <th className="linha-th linha-td--direcao">{t('shared.fixas.direcao')}</th>
                 )}
                 {extras.map((c) => (
                   <th key={c.id} className="linha-th linha-td--extra">
                     {c.nome}
                   </th>
                 ))}
-                {temProducao && <th className="linha-th linha-td--producao">Produção</th>}
-                <th className="linha-th linha-td--acoes" aria-label="Ações" />
+                {temProducao && (
+                  <th className="linha-th linha-td--producao">{t('table.producao')}</th>
+                )}
+                <th className="linha-th linha-td--acoes" aria-label={t('table.acoes')} />
               </tr>
             </thead>
             <tbody>
@@ -669,7 +674,7 @@ export function LinhaTable({
               {rows.length === 0 && (
                 <tr>
                   <td className="linha-td linha-td--vazio" colSpan={colCount}>
-                    Nenhum post ainda. Comece com Nova linha.
+                    {t('table.vazio')}
                   </td>
                 </tr>
               )}
@@ -679,26 +684,24 @@ export function LinhaTable({
       </div>
       <button type="button" className="linha-nova" onClick={() => setFocusId(writes.add())}>
         <Plus className="h-4 w-4" />
-        Nova linha
+        {t('table.novaLinha')}
       </button>
 
       <AlertDialog open={!!excluindo} onOpenChange={(open) => !open && setExcluindo(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir linha</AlertDialogTitle>
-            <AlertDialogDescription>
-              Excluir esta linha? O post criado a partir dela continua existindo.
-            </AlertDialogDescription>
+            <AlertDialogTitle>{t('shared.excluirLinha')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('table.excluirDescricao')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (excluindo) writes.remove(excluindo.id);
                 setExcluindo(null);
               }}
             >
-              Excluir
+              {t('shared.excluir')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

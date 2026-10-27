@@ -1,3 +1,4 @@
+import { getIntlLocale, i18n } from '@mesaas/i18n';
 import type { ContentFormat } from '@mesaas/platforms';
 import { TIPO_ORDER } from '../postLabels';
 import type { LinhaEditorial } from '@/store/linhaEditorial';
@@ -21,14 +22,6 @@ const MESES = [
   'novembro',
   'dezembro',
 ];
-
-/** Plural used in the default fluxo name: "Reels de novembro". */
-const TIPO_PLURAL: Record<ContentFormat, string> = {
-  feed: 'Imagens',
-  carrossel: 'Carrosséis',
-  reels: 'Reels',
-  stories: 'Stories',
-};
 
 /** Case- and accent-insensitive key for matching column names to property definitions. */
 export function normalizeNome(s: string): string {
@@ -63,9 +56,17 @@ export function formatBreakdown(itens: ItemTipo[]): { tipo: ContentFormat; n: nu
   })).filter((b) => b.n > 0);
 }
 
-/** Lower-case pt-BR month name of a period (`YYYY-MM-01` or `YYYY-MM`): "novembro". */
+/**
+ * Month name of a period (`YYYY-MM-01` or `YYYY-MM`) in the UI language: lower-case in pt-BR
+ * ("novembro"), capitalized in English ("November").
+ */
 export function mesLabel(periodo: string): string {
-  return MESES[Number(periodo.slice(5, 7)) - 1] ?? '';
+  const idx = Number(periodo.slice(5, 7)) - 1;
+  const pt = MESES[idx];
+  if (!pt || getIntlLocale() !== 'en-US') return pt ?? '';
+  return new Intl.DateTimeFormat('en-US', { month: 'long', timeZone: 'UTC' }).format(
+    Date.UTC(2000, idx, 1),
+  );
 }
 
 /** `YYYY-MM` (the `mes` URL param) to the period date `YYYY-MM-01`. */
@@ -77,8 +78,11 @@ export function periodoFromMes(mes: string): string {
 export function nomeFluxoPadrao(itens: ItemTipo[], periodo: string): string {
   const mes = mesLabel(periodo);
   const tipos = new Set(itens.map((i) => i.tipo));
-  if (tipos.size === 1) return `${TIPO_PLURAL[[...tipos][0]]} de ${mes}`;
-  return `Linha de ${mes}`;
+  if (tipos.size === 1) {
+    const tipo = i18n.t(`linha:logic.tipoPlural.${[...tipos][0]}`);
+    return i18n.t('linha:logic.nomeFluxoFormato', { tipo, mes });
+  }
+  return i18n.t('linha:logic.nomeFluxoLinha', { mes });
 }
 
 /**
@@ -91,9 +95,9 @@ export function mensagemGuardItem(err: unknown): string | null {
       ? (err as { message: string }).message
       : '';
   if (msg.includes('linha_item_limite')) {
-    return 'A linha chegou ao limite de 100 posts. Exclua uma linha para criar outra.';
+    return i18n.t('linha:logic.guardLimite');
   }
-  if (msg.includes('linha_item_convertido')) return 'Esta linha já virou post. Atualize a página.';
+  if (msg.includes('linha_item_convertido')) return i18n.t('linha:logic.guardConvertido');
   return null;
 }
 
@@ -102,7 +106,9 @@ export function mensagemGuardItem(err: unknown): string | null {
 export function contagemLinha(l: LinhaEditorial): string {
   const total = l.itens_total ?? 0;
   const prod = l.itens_convertidos ?? 0;
-  if (prod > 0) return `${prod} de ${total} em produção`;
-  if (l.rodada > 0) return `${l.itens_aprovados ?? 0} de ${total} aprovados`;
-  return `${total} ${total === 1 ? 'post' : 'posts'}`;
+  if (prod > 0) return i18n.t('linha:logic.contagemProducao', { prod, total });
+  if (l.rodada > 0) {
+    return i18n.t('linha:logic.contagemAprovados', { aprovados: l.itens_aprovados ?? 0, total });
+  }
+  return i18n.t('linha:logic.contagemPosts', { count: total });
 }

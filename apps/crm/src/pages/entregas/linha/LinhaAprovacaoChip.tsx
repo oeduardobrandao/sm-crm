@@ -1,12 +1,13 @@
 import { format, parseISO } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 import { Badge, badgeVariants } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { LinhaItem } from '@/store/linhaEditorial';
 
-const ESTADO = {
-  aprovado: { label: 'Aprovado', variant: 'success' },
-  ajustes: { label: 'Ajuste pedido', variant: 'warning' },
-  pendente: { label: 'Pendente', variant: 'neutral' },
+const VARIANT = {
+  aprovado: 'success',
+  ajustes: 'warning',
+  pendente: 'neutral',
 } as const;
 
 interface LinhaAprovacaoChipProps {
@@ -17,10 +18,10 @@ interface LinhaAprovacaoChipProps {
   onOpenComentarios?: (itemId: string) => void;
 }
 
-function dataDe(at: string | null | undefined): string | null {
+function dataDe(at: string | null | undefined, pattern: string): string | null {
   if (!at) return null;
   try {
-    return format(parseISO(at), 'dd/MM/yyyy');
+    return format(parseISO(at), pattern);
   } catch {
     return null;
   }
@@ -28,11 +29,13 @@ function dataDe(at: string | null | undefined): string | null {
 
 /** The client's decision on one linha row: "Aprovado", "Ajuste pedido" or "Pendente". */
 export function LinhaAprovacaoChip({ item, rodada, onOpenComentarios }: LinhaAprovacaoChipProps) {
+  const { t } = useTranslation('linha');
   if (rodada <= 0) return null;
   const estado = item.aprovacao ?? 'pendente';
-  const { label, variant } = ESTADO[estado];
-  const data = estado === 'pendente' ? null : dataDe(item.aprovacao_at);
-  const title = data ? `${label} em ${data}` : undefined;
+  const variant = VARIANT[estado];
+  const label = t(`aprovacao.${estado}`);
+  const data = estado === 'pendente' ? null : dataDe(item.aprovacao_at, t('aprovacao.dateFormat'));
+  const title = data ? t('aprovacao.titulo', { label, data }) : undefined;
 
   if (estado === 'ajustes' && onOpenComentarios) {
     return (

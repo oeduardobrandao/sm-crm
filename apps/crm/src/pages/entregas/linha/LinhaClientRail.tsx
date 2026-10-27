@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { ClienteFoto } from '@/components/ClienteFoto';
 import { useClienteAvatars } from '@/hooks/useClienteAvatars';
@@ -35,6 +36,7 @@ export function LinhaClientRail({
   onCriar,
   onMesChange,
 }: LinhaClientRailProps) {
+  const { t } = useTranslation('linha');
   const { fotosDe } = useClienteAvatars(clientes);
   const linhaPorCliente = useMemo(() => new Map(linhas.map((l) => [l.cliente_id, l])), [linhas]);
   // Clients with a linha first, then alphabetical inside each group.
@@ -56,7 +58,7 @@ export function LinhaClientRail({
         <button
           type="button"
           className="linha-icon-btn"
-          aria-label="Mês anterior"
+          aria-label={t('ui.previousMonth')}
           onClick={() => onMesChange(shiftMes(mes, -1))}
         >
           <ChevronLeft className="h-4 w-4" />
@@ -65,7 +67,7 @@ export function LinhaClientRail({
         <button
           type="button"
           className="linha-icon-btn"
-          aria-label="Próximo mês"
+          aria-label={t('ui.nextMonth')}
           onClick={() => onMesChange(shiftMes(mes, 1))}
         >
           <ChevronRight className="h-4 w-4" />
@@ -102,7 +104,7 @@ export function LinhaClientRail({
                       <span>{contagemLinha(linha)}</span>
                     </span>
                   ) : carregando ? null : (
-                    <span className="linha-rail__meta">Sem linha neste mês</span>
+                    <span className="linha-rail__meta">{t('shared.semLinhaNoMes')}</span>
                   )}
                 </span>
               </button>
@@ -114,7 +116,7 @@ export function LinhaClientRail({
                   onClick={() => onCriar(c.id!)}
                 >
                   {criandoId === c.id ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-                  Criar
+                  {t('rail.criar')}
                 </button>
               )}
             </li>

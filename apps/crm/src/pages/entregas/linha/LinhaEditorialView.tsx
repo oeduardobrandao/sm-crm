@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { Loader2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { QueryErrorCard } from '@/components/QueryErrorCard';
@@ -19,7 +20,6 @@ import {
 } from '@/store/linhaEditorial';
 import { getMembros } from '@/store/team';
 import { getWorkflowTemplates } from '@/store/workflows';
-import type { ContentFormat } from '@mesaas/platforms';
 import { loadLinhaDirecaoOculta, persistLinhaDirecaoOculta } from '../entregasPrefs';
 import { NewWorkflowWizard } from '../wizard/NewWorkflowWizard';
 import { converterParaFluxo } from './criarFluxoDaLinha';
@@ -50,14 +50,6 @@ export interface LinhaEditorialViewProps {
   onVerPosts?: (clienteId: number) => void;
 }
 
-/** Summary-line names (spec §6.2: "Reels 6"); `TIPO_LABELS` calls reels "Vídeo vertical". */
-const TIPO_RESUMO: Record<ContentFormat, string> = {
-  feed: 'Imagem',
-  carrossel: 'Carrossel',
-  reels: 'Reels',
-  stories: 'Stories',
-};
-
 function erroDeAcao(err: unknown, fallback: string): string {
   const ent = mapEntitlementError(err);
   return ent ? entitlementMessage(ent) : fallback;
@@ -71,6 +63,7 @@ export function LinhaEditorialView({
   onChange,
   onVerPosts,
 }: LinhaEditorialViewProps) {
+  const { t } = useTranslation('linha');
   const qc = useQueryClient();
   const periodo = periodoFromMes(mes);
   const { fotosDe } = useClienteAvatars(clientes);
@@ -168,8 +161,7 @@ export function LinhaEditorialView({
       void qc.invalidateQueries({ queryKey: linhasKey(periodo) });
       onChange({ clientes: [clienteId] });
     },
-    onError: (err) =>
-      toast.error(erroDeAcao(err, 'Não foi possível criar a linha. Tente de novo.')),
+    onError: (err) => toast.error(erroDeAcao(err, t('view.erroCriar'))),
     onSettled: () => setCriandoId(null),
   });
 
@@ -177,20 +169,18 @@ export function LinhaEditorialView({
     mutationFn: (id: string) => enviarLinha(id),
     onSuccess: () => {
       invalidar();
-      toast.success('Linha enviada ao cliente.');
+      toast.success(t('view.enviada'));
     },
-    onError: (err) =>
-      toast.error(erroDeAcao(err, 'Não foi possível enviar a linha. Tente de novo.')),
+    onError: (err) => toast.error(erroDeAcao(err, t('view.erroEnviar'))),
   });
 
   const recolher = useMutation({
     mutationFn: (id: string) => recolherLinha(id),
     onSuccess: () => {
       invalidar();
-      toast.success('Linha recolhida. Ela volta a ser um rascunho.');
+      toast.success(t('view.recolhida'));
     },
-    onError: (err) =>
-      toast.error(erroDeAcao(err, 'Não foi possível recolher a linha. Tente de novo.')),
+    onError: (err) => toast.error(erroDeAcao(err, t('view.erroRecolher'))),
   });
 
   // The wizard needs the team and the templates; same keys as the board, so the cache is shared.
@@ -223,28 +213,31 @@ export function LinhaEditorialView({
   const copiarHub = async (url: string) => {
     try {
       await navigator.clipboard.writeText(url);
-      toast.success('Link do Hub copiado.');
+      toast.success(t('view.hubCopiado'));
     } catch {
-      toast.error('Não foi possível copiar o link. Copie pela página do cliente.');
+      toast.error(t('view.erroCopiar'));
     }
   };
 
   const rodada = linha?.rodada ?? 0;
   const resumo = useMemo(() => {
     const n = itensData.length;
-    const partes = [`${n} ${n === 1 ? 'post' : 'posts'}`];
-    for (const b of formatBreakdown(itensData)) partes.push(`${TIPO_RESUMO[b.tipo]} ${b.n}`);
+    const partes = [t('view.resumoPosts', { count: n })];
+    // Summary-line names (spec §6.2: "Reels 6"); `TIPO_LABELS` calls reels "Vídeo vertical".
+    for (const b of formatBreakdown(itensData)) {
+      partes.push(`${t(`view.tipoResumo.${b.tipo}`)} ${b.n}`);
+    }
     // Approval progress once the linha was sent (spec §13.6); zero parts are left out.
     if (rodada > 0) {
       const aprovados = itensData.filter((i) => i.aprovacao === 'aprovado').length;
       const ajustes = itensData.filter((i) => i.aprovacao === 'ajustes').length;
       const pendentes = n - aprovados - ajustes;
-      if (aprovados > 0) partes.push(`${aprovados} ${aprovados === 1 ? 'aprovado' : 'aprovados'}`);
-      if (ajustes > 0) partes.push(`${ajustes} com ajuste`);
-      if (pendentes > 0) partes.push(`${pendentes} ${pendentes === 1 ? 'pendente' : 'pendentes'}`);
+      if (aprovados > 0) partes.push(t('view.resumoAprovados', { count: aprovados }));
+      if (ajustes > 0) partes.push(t('view.resumoAjustes', { n: ajustes }));
+      if (pendentes > 0) partes.push(t('view.resumoPendentes', { count: pendentes }));
     }
     return partes.join(' · ');
-  }, [itensData, rodada]);
+  }, [itensData, rodada, t]);
 
   // Phone: read-only cards (spec §6.6). After every hook so the hook order never changes.
   const phone = useIsLinhaPhone();
@@ -293,19 +286,17 @@ export function LinhaEditorialView({
           <QueryErrorCard onRetry={() => void base.linhas.refetch()} />
         ) : !cliente ? (
           <div className="linha-empty">
-            <p className="linha-empty__title">Nenhum cliente ativo</p>
-            <p className="linha-empty__sub">Cadastre um cliente para montar a linha editorial.</p>
+            <p className="linha-empty__title">{t('shared.nenhumClienteTitulo')}</p>
+            <p className="linha-empty__sub">{t('shared.nenhumClienteSub')}</p>
           </div>
         ) : base.linhas.isLoading ? (
           <div className="linha-empty">
-            <Loader2 className="h-5 w-5 animate-spin" aria-label="Carregando" />
+            <Loader2 className="h-5 w-5 animate-spin" aria-label={t('shared.carregando')} />
           </div>
         ) : !linha ? (
           <div className="linha-empty">
-            <p className="linha-empty__title">Sem linha neste mês</p>
-            <p className="linha-empty__sub">
-              Monte o plano de {cliente.nome} e envie para aprovação no Hub.
-            </p>
+            <p className="linha-empty__title">{t('shared.semLinhaNoMes')}</p>
+            <p className="linha-empty__sub">{t('view.semLinhaSub', { nome: cliente.nome })}</p>
             <button
               type="button"
               className="linha-btn linha-btn--primary"
@@ -317,7 +308,7 @@ export function LinhaEditorialView({
               ) : (
                 <Plus className="h-4 w-4" />
               )}
-              Criar linha
+              {t('view.criarLinha')}
             </button>
           </div>
         ) : (
@@ -343,7 +334,7 @@ export function LinhaEditorialView({
             />
             {linha.status === 'enviada' && (
               <p className="linha-banner" role="status">
-                O cliente vê as alterações ao abrir o Hub.
+                {t('view.banner')}
               </p>
             )}
             {itens.isSuccess && <p className="linha-summary">{resumo}</p>}
@@ -353,7 +344,7 @@ export function LinhaEditorialView({
                 <QueryErrorCard onRetry={() => void itens.refetch()} />
               ) : itens.isLoading ? (
                 <div className="linha-empty">
-                  <Loader2 className="h-5 w-5 animate-spin" aria-label="Carregando" />
+                  <Loader2 className="h-5 w-5 animate-spin" aria-label={t('shared.carregando')} />
                 </div>
               ) : (
                 <LinhaTable
@@ -424,7 +415,7 @@ export function LinhaEditorialView({
                 seed={{
                   clienteId: linha.cliente_id,
                   nome: nomeFluxoPadrao(fluxoItens, periodo),
-                  origemLabel: `linha editorial de ${mesLabel(periodo)}`,
+                  origemLabel: t('view.origemLabel', { mes: mesLabel(periodo) }),
                   itens: fluxoItens,
                   afterCreate: (workflow) => criarPostsNoFluxo(linha.id, workflow, fluxoItens),
                 }}
