@@ -12,6 +12,15 @@ const DEFAULT_TOKEN_URI = "https://oauth2.googleapis.com/token";
 const TOKEN_TIMEOUT_MS = 10_000;
 const JWT_LIFETIME_SECONDS = 3600;
 
+function isHttpsUrl(v: unknown): boolean {
+  if (typeof v !== "string") return false;
+  try {
+    return new URL(v).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 /** Parses the downloaded JSON key. Throws a fixed message and never echoes the input. */
 export function parseServiceAccount(json: string): ServiceAccountKey {
   let raw: unknown;
@@ -24,7 +33,7 @@ export function parseServiceAccount(json: string): ServiceAccountKey {
   const o = raw as Record<string, unknown>;
   if (typeof o.client_email !== "string" || !o.client_email) throw new Error("invalid service account");
   if (typeof o.private_key !== "string" || !o.private_key) throw new Error("invalid service account");
-  if (o.token_uri !== undefined && typeof o.token_uri !== "string") throw new Error("invalid service account");
+  if (o.token_uri !== undefined && !isHttpsUrl(o.token_uri)) throw new Error("invalid service account");
   const sa: ServiceAccountKey = { client_email: o.client_email, private_key: o.private_key };
   if (typeof o.token_uri === "string") sa.token_uri = o.token_uri;
   return sa;
@@ -38,7 +47,11 @@ function base64url(input: ArrayBuffer | Uint8Array | string): string {
 }
 
 function pemToPkcs8(pem: string): Uint8Array<ArrayBuffer> {
-  const b64 = pem.replace(/-----(BEGIN|END) PRIVATE KEY-----/g, "").replace(/\s+/g, "");
+  // A literal backslash followed by n survives when the secret was pasted double-escaped; drop it too.
+  const b64 = pem
+    .replace(/-----(BEGIN|END) PRIVATE KEY-----/g, "")
+    .replace(/\\n/g, "")
+    .replace(/\s+/g, "");
   const bin = atob(b64);
   return Uint8Array.from(bin, (c) => c.charCodeAt(0));
 }

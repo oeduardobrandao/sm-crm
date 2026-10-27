@@ -161,8 +161,18 @@ export function pickInspectionTargets(
     .sort((a, b) => Date.parse(b.date!) - Date.parse(a.date!));
   const rest = posts.filter((p) => !isRecent(p));
   const never = rest.filter((p) => !checked[p.slug]);
+  // Compare instants, not strings: "…Z" and "…+00:00" spell the same moment differently.
+  // An unparseable timestamp counts as the oldest, so it gets re-checked first.
+  const checkedAt = (slug: string) => {
+    const t = Date.parse(checked[slug]);
+    return Number.isNaN(t) ? -Infinity : t;
+  };
   const stale = rest
     .filter((p) => !!checked[p.slug])
-    .sort((a, b) => (checked[a.slug] < checked[b.slug] ? -1 : checked[a.slug] > checked[b.slug] ? 1 : 0));
+    .sort((a, b) => {
+      const x = checkedAt(a.slug);
+      const y = checkedAt(b.slug);
+      return x < y ? -1 : x > y ? 1 : 0;
+    });
   return [...recent, ...never, ...stale].slice(0, Math.max(0, cap)).map((p) => p.slug);
 }

@@ -129,6 +129,17 @@ Deno.test("getGoogleAccessToken with an unusable private key throws without echo
   assert(msg.length > 0 && !msg.includes("TOP-SECRET-KEY"), msg);
 });
 
+Deno.test("getGoogleAccessToken imports a double-escaped PEM (literal backslash-n)", async () => {
+  const { pem } = await makeKey();
+  const escaped = pem.trimEnd().replace(/\n/g, "\\n");
+  assert(escaped.includes("\\n") && !escaped.includes("\n"), "fixture must use literal backslash-n");
+  const fakeFetch = () => Promise.resolve(new Response(JSON.stringify({ access_token: "ok" }), { status: 200 }));
+  const token = await getGoogleAccessToken({ client_email: "a@b", private_key: escaped }, "s", {
+    fetch: fakeFetch as typeof fetch,
+  });
+  assertEquals(token, "ok");
+});
+
 Deno.test("parseServiceAccount", () => {
   const sa = parseServiceAccount(
     JSON.stringify({ client_email: "a@b", private_key: "k", token_uri: "https://t", extra: "ignored" }),
@@ -138,7 +149,11 @@ Deno.test("parseServiceAccount", () => {
     client_email: "a@b",
     private_key: "k",
   });
-  for (const bad of ["{}", "not json", "null", "[]", JSON.stringify({ client_email: "a@b" }), JSON.stringify({ client_email: 1, private_key: "k" })]) {
+  for (const bad of [
+    JSON.stringify({ client_email: "a@b", private_key: "k", token_uri: "http://t.example/token" }),
+    JSON.stringify({ client_email: "a@b", private_key: "k", token_uri: "not a url" }),
+    JSON.stringify({ client_email: "a@b", private_key: "k", token_uri: 5 }),
+    "{}", "not json", "null", "[]", JSON.stringify({ client_email: "a@b" }), JSON.stringify({ client_email: 1, private_key: "k" })]) {
     let msg = "";
     try {
       parseServiceAccount(bad);

@@ -22,6 +22,8 @@ Deno.test("slugFromPageUrl maps both hosts, trailing slash, query and fragment",
   assertEquals(slugFromPageUrl("https://mesaas.com.br/blog/x"), "x");
   assertEquals(slugFromPageUrl("https://www.mesaas.com.br/blog/x/"), "x");
   assertEquals(slugFromPageUrl("https://mesaas.com.br/blog/x?utm_source=a#frag"), "x");
+  assertEquals(slugFromPageUrl("https://mesaas.com.br/blog/x#h2"), "x");
+  assertEquals(slugFromPageUrl("https://www.mesaas.com.br/blog/x?utm_source=a"), "x");
   assertEquals(slugFromPageUrl("https://www.mesaas.com.br/blog/como-vender-2026"), "como-vender-2026");
 });
 
@@ -52,12 +54,22 @@ Deno.test("aggregateRows folds hosts into one (slug, day) with impression-weight
     { keys: ["2026-10-20", "https://www.mesaas.com.br/blog/x/"], clicks: 1, impressions: 300, position: 6 },
     { keys: ["2026-10-21", "https://mesaas.com.br/blog/x"], clicks: 0, impressions: 10, position: 9 },
     { keys: ["2026-10-20", "https://mesaas.com.br/blog"], clicks: 99, impressions: 99, position: 1 },
+    { keys: ["2026-10-20", "https://mesaas.com.br/blog/"], clicks: 99, impressions: 99, position: 1 },
     { keys: ["2026-10-20", "https://evil.com/blog/y"], clicks: 99, impressions: 99, position: 1 },
   ]);
   assertEquals(out, [
     { slug: "x", day: "2026-10-20", clicks: 4, impressions: 400, position: 5 },
     { slug: "x", day: "2026-10-21", clicks: 0, impressions: 10, position: 9 },
   ]);
+});
+
+Deno.test("aggregateRows folds the host, query and fragment variants of one post into a single row", () => {
+  const out = aggregateRows([
+    { keys: ["2026-10-20", "https://mesaas.com.br/blog/x"], clicks: 1, impressions: 100, position: 2 },
+    { keys: ["2026-10-20", "https://www.mesaas.com.br/blog/x?utm_source=a"], clicks: 2, impressions: 100, position: 4 },
+    { keys: ["2026-10-20", "https://mesaas.com.br/blog/x#h2"], clicks: 4, impressions: 200, position: 6 },
+  ]);
+  assertEquals(out, [{ slug: "x", day: "2026-10-20", clicks: 7, impressions: 400, position: 4.5 }]);
 });
 
 Deno.test("aggregateRows falls back to the plain average when impressions sum to zero", () => {
@@ -130,6 +142,17 @@ Deno.test("pickInspectionTargets: recent posts first, then never checked, then o
   };
   assertEquals(pickInspectionTargets(live, checked, now, 2), ["new", "never"]);
   assertEquals(pickInspectionTargets(live, checked, now), ["new", "never", "old-stale-check", "old-fresh-check"]);
+});
+
+Deno.test("pickInspectionTargets compares checked_at as instants, not strings", () => {
+  const now = new Date("2026-10-27T12:00:00Z");
+  const live = [
+    { slug: "a", date: null },
+    { slug: "b", date: null },
+  ];
+  // a = 08:00Z and b = 09:00Z, but as strings "…T10:00:00+02:00" sorts after "…T09:00:00Z".
+  const checked = { a: "2026-10-01T10:00:00+02:00", b: "2026-10-01T09:00:00Z" };
+  assertEquals(pickInspectionTargets(live, checked, now), ["a", "b"]);
 });
 
 Deno.test("pickInspectionTargets dedupes, ignores unknown checked slugs and honours the cap", () => {
