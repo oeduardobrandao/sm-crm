@@ -20,6 +20,7 @@ import { Textarea } from '../../components/ui/textarea';
 import { cn } from '../../lib/utils';
 import { BlogEditor } from './BlogEditor';
 import { BlogPerformance } from './BlogPerformance';
+import { MetricsError } from './MetricsError';
 import { BlogPreview } from './BlogPreview';
 import { LiveLinkButtons } from './LiveLinkButtons';
 import {
@@ -72,6 +73,9 @@ export interface BlogDetailProps {
   run: (command: BlogCommand) => Promise<RunResult>;
   /** Absent while blog-metrics loads or fails: the Desempenho section waits for it. */
   metrics?: BlogMetricsResponse;
+  /** blog-metrics failed: a live post shows an error line with a retry instead of Desempenho. */
+  metricsError?: boolean;
+  onRetryMetrics?: () => void;
 }
 
 type ConfirmKind = 'approve' | 'reject' | 'unpublish' | 'republish';
@@ -289,6 +293,9 @@ export function BlogDetail(p: BlogDetailProps) {
           metrics={p.metrics.posts[post.slug]}
           gscUpdatedAt={p.metrics.gsc_updated_at}
         />
+      )}
+      {isLive(post) && !p.metrics && p.metricsError && p.onRetryMetrics && (
+        <MetricsError onRetry={p.onRetryMetrics} />
       )}
 
       <div className="flex flex-col xl:grid xl:grid-cols-[minmax(0,1fr)_300px]">

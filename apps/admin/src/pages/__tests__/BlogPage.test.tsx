@@ -509,6 +509,20 @@ describe('BlogPage', () => {
       }));
     });
 
+    it('describes Publicados as rotina plus hand-written posts, and Aguardando as rotina only', async () => {
+      const pub = renderAt('/admin/blog?tab=publicados');
+      expect(
+        await screen.findByText(
+          'Posts da rotina e os escritos à mão. Nada da rotina vai ao ar sem sua aprovação.',
+        ),
+      ).toBeInTheDocument();
+      pub.unmount();
+      renderAt('/admin/blog');
+      expect(
+        await screen.findByText('Posts escritos pela rotina. Nada vai ao ar sem sua aprovação.'),
+      ).toBeInTheDocument();
+    });
+
     it('lists file posts on Publicados beside the DB posts', async () => {
       renderAt('/admin/blog?tab=publicados');
       expect(await screen.findByRole('link', { name: 'Post escrito à mão' })).toHaveAttribute(
@@ -685,5 +699,59 @@ describe('BlogPage metrics', () => {
     renderAt('/admin/blog/arquivo/post-a-mao?tab=publicados');
     expect(await screen.findByRole('heading', { name: 'Desempenho' })).toBeInTheDocument();
     expect(screen.getAllByText('100')).toHaveLength(2);
+  });
+
+  describe('when blog-metrics fails', () => {
+    const METRICS_ERROR = 'Não foi possível carregar as métricas.';
+    beforeEach(() => {
+      vi.mocked(getBlogMetrics).mockRejectedValue(
+        apiError(500, { error: 'Internal server error' }),
+      );
+    });
+
+    it('says so above the list, keeps date order for Mais vistos, and retries', async () => {
+      renderAt('/admin/blog?tab=publicados&ordem=vistos');
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent(METRICS_ERROR);
+      // Without metrics every post would score zero: the list stays by date, not "sorted".
+      expect(order()).toEqual(['Post escrito à mão', 'Post que está no ar']);
+      expect(screen.getByRole('radio', { name: 'Mais recentes' })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
+      expect(screen.queryByText(/views \(30d\)/)).not.toBeInTheDocument();
+
+      vi.mocked(getBlogMetrics).mockResolvedValue({
+        gsc_updated_at: null,
+        posts: { 'no-ar': pm(1240), 'post-a-mao': pm(100) },
+      });
+      const calls = vi.mocked(getBlogMetrics).mock.calls.length;
+      fireEvent.click(within(alert).getByRole('button', { name: 'Tentar novamente' }));
+      expect(await screen.findByText('1.240 views (30d)')).toBeInTheDocument();
+      expect(vi.mocked(getBlogMetrics).mock.calls.length).toBe(calls + 1);
+      expect(screen.queryByText(METRICS_ERROR)).not.toBeInTheDocument();
+    });
+
+    it('shows the error where Desempenho would be in a live post and a hand-written one', async () => {
+      vi.mocked(getBlogPost).mockResolvedValue({
+        post: detail({ id: ID2, slug: 'no-ar', status: 'publicado', title: 'Post que está no ar' }),
+      });
+      const live = renderAt(`/admin/blog/${ID2}?tab=publicados`);
+      await screen.findByRole('heading', { name: 'Post que está no ar', level: 2 });
+      await waitFor(() => expect(screen.getAllByText(METRICS_ERROR)).toHaveLength(2));
+      expect(screen.queryByRole('heading', { name: 'Desempenho' })).not.toBeInTheDocument();
+      live.unmount();
+
+      renderAt('/admin/blog/arquivo/post-a-mao?tab=publicados');
+      await waitFor(() => expect(screen.getAllByText(METRICS_ERROR)).toHaveLength(2));
+      expect(screen.queryByRole('heading', { name: 'Desempenho' })).not.toBeInTheDocument();
+    });
+
+    it('shows nothing about metrics on a draft', async () => {
+      renderAt(`/admin/blog/${ID1}`);
+      await screen.findByLabelText('Nota para a rotina');
+      await waitFor(() => expect(getBlogMetrics).toHaveBeenCalled());
+      expect(screen.queryByText(METRICS_ERROR)).not.toBeInTheDocument();
+    });
   });
 });

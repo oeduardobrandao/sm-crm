@@ -31,6 +31,7 @@ import {
   DialogTitle,
 } from '../components/ui/dialog';
 import { BlogList } from './blog/BlogList';
+import { MetricsError } from './blog/MetricsError';
 import { FilePostDetail } from './blog/FilePostDetail';
 import { BlogDetail, type BlogCommand, type RunResult } from './blog/BlogDetail';
 import {
@@ -145,11 +146,17 @@ export default function BlogPage() {
     staleTime: METRICS_STALE_MS,
   });
   const metrics = metricsQuery.data;
+  // A failed load with nothing cached: say so (list and detail) instead of showing zeros.
+  const metricsFailed = metricsQuery.isError && !metrics;
+  const retryMetrics = () => void metricsQuery.refetch();
   const gscReady = metrics?.gsc_updated_at != null;
-  // Mais cliques needs Search Console data; a stale ?ordem=cliques falls back to recentes.
+  // Mais cliques needs Search Console data; a stale ?ordem=cliques falls back to recentes. With
+  // no metrics at all every post scores zero, so the list stays by date.
   const parsedSort = parseSort(params.get('ordem'));
   const sort =
-    tab !== 'publicados' || (parsedSort === 'cliques' && !gscReady) ? 'recentes' : parsedSort;
+    tab !== 'publicados' || metricsFailed || (parsedSort === 'cliques' && !gscReady)
+      ? 'recentes'
+      : parsedSort;
 
   const items = useMemo(
     () =>
@@ -359,6 +366,7 @@ export default function BlogPage() {
   const listView = (
     <>
       {sortControl}
+      {tab === 'publicados' && metricsFailed && <MetricsError onRetry={retryMetrics} />}
       <BlogList
         items={items}
         tab={tab}
@@ -375,7 +383,12 @@ export default function BlogPage() {
   );
 
   const detailView = filePost ? (
-    <FilePostDetail post={filePost} metrics={metrics} />
+    <FilePostDetail
+      post={filePost}
+      metrics={metrics}
+      metricsError={metricsFailed}
+      onRetryMetrics={retryMetrics}
+    />
   ) : (
     <BlogDetail
       key={id ?? slug ?? 'none'}
@@ -402,10 +415,16 @@ export default function BlogPage() {
       onEditorDirtyChange={setEditorDirty}
       run={(c) => run(c)}
       metrics={metrics}
+      metricsError={metricsFailed}
+      onRetryMetrics={retryMetrics}
     />
   );
 
-  const description = 'Posts escritos pela rotina. Nada vai ao ar sem sua aprovação.';
+  // Publicados also lists the hand-written posts, which never pass through approval.
+  const description =
+    tab === 'publicados'
+      ? 'Posts da rotina e os escritos à mão. Nada da rotina vai ao ar sem sua aprovação.'
+      : 'Posts escritos pela rotina. Nada vai ao ar sem sua aprovação.';
 
   if (isPhone) {
     if (id || slug) {

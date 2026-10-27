@@ -17,12 +17,7 @@ export function parseTab(value: string | null): BlogTab {
 }
 
 export type BlogPostStatus =
-  | 'rascunho'
-  | 'ajuste_solicitado'
-  | 'publicando'
-  | 'publicado'
-  | 'rejeitado'
-  | 'despublicado';
+  'rascunho' | 'ajuste_solicitado' | 'publicando' | 'publicado' | 'rejeitado' | 'despublicado';
 
 /** `blog_posts.checks`, written by _shared/blog-checks.ts. Null on a row never checked. */
 export interface BlogChecks {
@@ -288,13 +283,7 @@ export function noRecentDraft(lastDraftAt: string | null, now: Date): boolean {
 }
 
 export type BlogAction =
-  | 'reject'
-  | 'edit'
-  | 'request'
-  | 'approve'
-  | 'retry'
-  | 'unpublish'
-  | 'republish';
+  'reject' | 'edit' | 'request' | 'approve' | 'retry' | 'unpublish' | 'republish';
 
 /** What the server accepts from each status (REVIEWABLE / EDITABLE / LIVE in blog-posts.ts),
  * in toolbar order. Gated by the row, not the tab: Aguardando also holds publicando rows. */
@@ -325,8 +314,7 @@ export function showsRetry(row: BlogPostRow, now: Date): boolean {
 /** One row of the Admin list: a rotina post (DB, actionable) or a hand-written one (file,
  * read-only). */
 export type BlogListItem =
-  | { kind: 'rotina'; row: BlogPostRow }
-  | { kind: 'arquivo'; row: FilePostRow };
+  { kind: 'rotina'; row: BlogPostRow } | { kind: 'arquivo'; row: FilePostRow };
 
 /** Publicados: DB and file posts merged by publication date, newest first. A DB row without a
  * `date` falls back to when it was approved, then created. The review tabs keep the queue
