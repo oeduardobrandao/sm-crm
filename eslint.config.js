@@ -33,7 +33,7 @@ export default tseslint.config(
   // left out on purpose: their text comes from the untranslated notification catalog.
   {
     files: [
-      'apps/crm/src/pages/{dashboard,clientes,leads,automacoes,login}/**/*.tsx',
+      'apps/crm/src/pages/{dashboard,clientes,leads,automacoes,login,entregas}/**/*.tsx',
       'apps/crm/src/components/layout/**/*.tsx',
     ],
     ignores: [
