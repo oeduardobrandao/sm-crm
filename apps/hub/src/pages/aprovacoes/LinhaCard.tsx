@@ -74,7 +74,8 @@ interface RowProps {
   error: string | null;
   onOpen: () => void;
   onCancel: () => void;
-  onSave: (text: string) => Promise<void>;
+  /** Resolves true when the comment was saved; false keeps the draft for another try. */
+  onSave: (text: string) => Promise<boolean>;
 }
 
 function Row({
@@ -142,7 +143,9 @@ function Row({
               e.preventDefault();
               const text = draft.trim();
               if (!text) return;
-              void onSave(text).then(() => setDraft(''));
+              void onSave(text).then((saved) => {
+                if (saved) setDraft('');
+              });
             }}
           >
             <textarea
@@ -330,14 +333,13 @@ export function LinhaCard({ linha, token, agencia, floatingBar }: LinhaCardProps
                     setComposingId(null);
                   }}
                   onSave={async (text) => {
-                    if (
-                      await send(item.id, {
-                        acao: 'comentario',
-                        item_id: item.id,
-                        comentario: text,
-                      })
-                    )
-                      setComposingId(null);
+                    const saved = await send(item.id, {
+                      acao: 'comentario',
+                      item_id: item.id,
+                      comentario: text,
+                    });
+                    if (saved) setComposingId(null);
+                    return saved;
                   }}
                 />
               ))}

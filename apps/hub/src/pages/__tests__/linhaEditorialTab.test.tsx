@@ -185,6 +185,21 @@ describe('Aprovações, Linha editorial tab', () => {
     await waitFor(() => expect(mockedFetchLinhas).toHaveBeenCalledTimes(2));
   });
 
+  it('keeps the draft in the textarea when saving a comment fails', async () => {
+    mockedSubmit.mockRejectedValue(new Error('Não foi possível concluir. Tente novamente.'));
+    renderPage(`${BASE}?aba=linha`);
+    const row = (await screen.findByText('Post i2')).closest('[data-linha-item]') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: 'Comentar' }));
+    fireEvent.change(within(row).getByLabelText('Seu comentário'), {
+      target: { value: 'Trocar para quinta' },
+    });
+    fireEvent.click(within(row).getByRole('button', { name: 'Salvar comentário' }));
+    expect((await within(row).findByRole('alert')).textContent).toMatch(/Tente novamente/);
+    expect((within(row).getByLabelText('Seu comentário') as HTMLTextAreaElement).value).toBe(
+      'Trocar para quinta',
+    );
+  });
+
   it('shows client comments and team replies, and counts the client ones', async () => {
     mockedFetchLinhas.mockResolvedValue({
       linhas: [
