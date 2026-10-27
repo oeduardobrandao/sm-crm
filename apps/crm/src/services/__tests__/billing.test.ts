@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { from } = vi.hoisted(() => ({ from: vi.fn() }));
+const { from, rpc } = vi.hoisted(() => ({ from: vi.fn(), rpc: vi.fn() }));
 
 vi.mock('../../lib/supabase', () => ({
   supabase: {
@@ -9,6 +9,7 @@ vi.mock('../../lib/supabase', () => ({
       getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }),
     },
     from,
+    rpc,
   },
 }));
 
@@ -21,6 +22,7 @@ import {
   getWorkspaceSubscription,
   getEffectivePlanId,
   getEffectivePlanWithSource,
+  markTrialOfferSeen,
   hasUsedTrial,
   startPagarmeCheckout,
   cancelPagarmeSubscription,
@@ -37,6 +39,7 @@ describe('billing service', () => {
       data: { session: { access_token: 'tok' } },
     } as never);
     from.mockReset();
+    rpc.mockReset();
     vi.stubGlobal('fetch', vi.fn());
     vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
   });
@@ -53,6 +56,7 @@ describe('billing service', () => {
       max_workflow_templates: null,
       max_instagram_accounts: null,
       max_hub_tokens: null,
+      rate_report_generations_per_month: null,
       storage_quota_bytes: null,
       feature_analytics_reports: true,
       feature_post_scheduling: true,
@@ -77,6 +81,7 @@ describe('billing service', () => {
       max_workflow_templates: 3,
       max_instagram_accounts: 5,
       max_hub_tokens: 5,
+      rate_report_generations_per_month: 30,
       storage_quota_bytes: 5 * 1024 ** 3,
       feature_analytics_reports: true,
       feature_post_scheduling: true,
@@ -100,7 +105,7 @@ describe('billing service', () => {
     ]);
     expect(from).toHaveBeenCalledWith('plans');
     expect(select).toHaveBeenCalledWith(
-      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, max_workflow_templates, max_instagram_accounts, max_hub_tokens, storage_quota_bytes, feature_analytics_reports, feature_post_scheduling, feature_leads, feature_financial, feature_contracts, feature_brand_customization, feature_mcp, feature_instagram_automation, feature_briefing_audio, pagarme_12x_enabled, pagarme_installment_cents',
+      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, max_workflow_templates, max_instagram_accounts, max_hub_tokens, rate_report_generations_per_month, storage_quota_bytes, feature_analytics_reports, feature_post_scheduling, feature_leads, feature_financial, feature_contracts, feature_brand_customization, feature_mcp, feature_instagram_automation, feature_briefing_audio, pagarme_12x_enabled, pagarme_installment_cents',
     );
     expect(eq).toHaveBeenCalledWith('is_active', true);
     expect(order).toHaveBeenCalledWith('sort_order', { ascending: true });
@@ -119,6 +124,18 @@ describe('billing service', () => {
       feature_hub_portal: true,
       feature_analytics_reports: true,
       feature_brand_customization: true,
+      max_hub_tokens: 20,
+      rate_report_generations_per_month: null,
+      feature_instagram_ai: true,
+      feature_auto_sync_cron: true,
+      feature_leads: true,
+      feature_financial: true,
+      feature_contracts: true,
+      feature_agenda: true,
+      feature_mensagens: true,
+      feature_team_chat: true,
+      feature_instagram_automation: true,
+      feature_briefing_audio: true,
       pagarme_12x_enabled: true,
       pagarme_installment_cents: 12990,
     };
@@ -129,7 +146,7 @@ describe('billing service', () => {
 
     await expect(listActivePlans()).resolves.toEqual([pro]);
     expect(select).toHaveBeenCalledWith(
-      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, storage_quota_bytes, feature_hub_portal, feature_analytics_reports, feature_brand_customization, pagarme_12x_enabled, pagarme_installment_cents',
+      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, storage_quota_bytes, feature_hub_portal, feature_analytics_reports, feature_brand_customization, max_hub_tokens, rate_report_generations_per_month, feature_instagram_ai, feature_auto_sync_cron, feature_leads, feature_financial, feature_contracts, feature_agenda, feature_mensagens, feature_team_chat, feature_instagram_automation, feature_briefing_audio, pagarme_12x_enabled, pagarme_installment_cents',
     );
   });
 
@@ -326,7 +343,9 @@ describe('billing service', () => {
     it('getEffectivePlanId returns just the plan id, selecting plan_id + plan_source in one read', async () => {
       const { wsSelect } = mockWorkspaceRow({ plan_id: 'pro', plan_source: 'stripe' });
       await expect(getEffectivePlanId()).resolves.toBe('pro');
-      expect(wsSelect).toHaveBeenCalledWith('plan_id, plan_source, demo_created_at');
+      expect(wsSelect).toHaveBeenCalledWith(
+        'plan_id, plan_source, demo_created_at, trial_offer_seen_at',
+      );
     });
 
     it('getEffectivePlanId returns null when the user has no profile/workspace', async () => {
@@ -346,8 +365,11 @@ describe('billing service', () => {
         planId: 'pro',
         planSource: 'manual',
         wasDemo: false,
+        trialOfferSeenAt: null,
       });
-      expect(wsSelect).toHaveBeenCalledWith('plan_id, plan_source, demo_created_at');
+      expect(wsSelect).toHaveBeenCalledWith(
+        'plan_id, plan_source, demo_created_at, trial_offer_seen_at',
+      );
     });
 
     it('getEffectivePlanWithSource returns nulls for a signed-out user, never throws', async () => {
@@ -356,6 +378,18 @@ describe('billing service', () => {
         planId: null,
         planSource: null,
         wasDemo: false,
+        trialOfferSeenAt: null,
+      });
+    });
+
+    it('getEffectivePlanWithSource exposes trialOfferSeenAt from the workspace row', async () => {
+      mockWorkspaceRow({
+        plan_id: 'free',
+        plan_source: 'system',
+        trial_offer_seen_at: '2026-10-27T12:00:00Z',
+      });
+      await expect(getEffectivePlanWithSource()).resolves.toMatchObject({
+        trialOfferSeenAt: '2026-10-27T12:00:00Z',
       });
     });
 
@@ -366,6 +400,19 @@ describe('billing service', () => {
         demo_created_at: '2026-10-20T10:00:00Z',
       });
       await expect(getEffectivePlanWithSource()).resolves.toMatchObject({ wasDemo: true });
+    });
+  });
+
+  describe('markTrialOfferSeen', () => {
+    it('calls the mark_trial_offer_seen RPC with no arguments', async () => {
+      rpc.mockResolvedValue({ data: null, error: null });
+      await expect(markTrialOfferSeen()).resolves.toBeUndefined();
+      expect(rpc).toHaveBeenCalledWith('mark_trial_offer_seen');
+    });
+
+    it('throws when the RPC errors', async () => {
+      rpc.mockResolvedValue({ data: null, error: { message: 'boom' } });
+      await expect(markTrialOfferSeen()).rejects.toThrow('boom');
     });
   });
 

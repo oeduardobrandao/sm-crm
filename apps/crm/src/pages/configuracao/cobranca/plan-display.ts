@@ -3,6 +3,8 @@
  * component so it can be unit-tested without rendering.
  */
 
+import { hasUsedTrial, type EffectivePlan, type WorkspaceSubscription } from '@/services/billing';
+
 /**
  * Plans that are assigned only by an admin (comp / internal arrangements) and are
  * never offered for self-serve purchase. Today that's just `lifetime`: the user
@@ -156,4 +158,31 @@ export function ceilPeriodEndToUtcDate(iso: string): string | null {
     end.setUTCHours(24, 0, 0, 0);
   }
   return end.toISOString().slice(0, 10);
+}
+
+/** Client portal links are included: unlimited (null) or a positive cap. Free has 0. */
+export function planHasPortal(p: { max_hub_tokens: number | null }): boolean {
+  return p.max_hub_tokens === null || p.max_hub_tokens > 0;
+}
+
+/** Report generations are included: unlimited (null) or a positive monthly cap. Free has 0. */
+export function planHasReports(p: { rate_report_generations_per_month: number | null }): boolean {
+  return p.rate_report_generations_per_month === null || p.rate_report_generations_per_month > 0;
+}
+
+/**
+ * Whether the workspace should be offered the 30-day trial: it resolves to Free, is not a
+ * comped (`manual`) plan and has never trialed. `undefined` means a query is still loading,
+ * so nothing is offered yet; `null` is a real "no subscription row" value and is eligible.
+ */
+export function isTrialOfferEligible(
+  plan: Pick<EffectivePlan, 'planId' | 'planSource' | 'wasDemo'> | null | undefined,
+  sub: WorkspaceSubscription | null | undefined,
+): boolean {
+  if (plan === undefined || sub === undefined) return false;
+  return (
+    resolveCurrentPlanId(plan?.planId, sub?.plan_id) === 'free' &&
+    plan?.planSource !== 'manual' &&
+    !hasUsedTrial(sub, plan)
+  );
 }
