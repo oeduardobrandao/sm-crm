@@ -198,3 +198,24 @@ export function persistFilaOrdem(contaId: string, ordem: FilaOrdem): void {
     // Best effort: a preferência só não sobrevive ao reload.
   }
 }
+
+const linhaDirecaoKey = (contaId: string) => `entregas_linha_direcao_oculta_${contaId}`;
+
+/** Whether the linha editorial table hides "Direção do conteúdo", per conta and browser. The
+ *  column is still shown to the client and carried into the post: this only hides it here. */
+export function loadLinhaDirecaoOculta(contaId: string): boolean {
+  try {
+    return localStorage.getItem(linhaDirecaoKey(contaId)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function persistLinhaDirecaoOculta(contaId: string, oculta: boolean): void {
+  try {
+    if (oculta) localStorage.setItem(linhaDirecaoKey(contaId), '1');
+    else localStorage.removeItem(linhaDirecaoKey(contaId));
+  } catch {
+    // Best effort: a preferência só não sobrevive ao reload.
+  }
+}

@@ -11,8 +11,12 @@ import type { Cliente } from '@/store';
 import { getHubToken, getWorkspaceSlug } from '@/store/hub';
 import { criarLinha, enviarLinha, recolherLinha } from '@/store/linhaEditorial';
 import type { ContentFormat } from '@mesaas/platforms';
+import { loadLinhaDirecaoOculta, persistLinhaDirecaoOculta } from '../entregasPrefs';
+import { ColunasPopover } from './ColunasPopover';
 import { LinhaClientRail } from './LinhaClientRail';
+import { LinhaComentariosPanel } from './LinhaComentariosPanel';
 import { LinhaHeader } from './LinhaHeader';
+import { LinhaTable } from './LinhaTable';
 import { formatBreakdown, periodoFromMes } from './linhaLogic';
 import { linhaItensKey, linhasKey, useLinhaQueries } from './useLinhaQueries';
 import './linha.css';
@@ -43,6 +47,7 @@ function erroDeAcao(err: unknown, fallback: string): string {
 }
 
 export function LinhaEditorialView({
+  contaId,
   clientes,
   filterClientes,
   mes,
@@ -53,6 +58,14 @@ export function LinhaEditorialView({
   const { fotosDe } = useClienteAvatars(clientes);
 
   const [criandoId, setCriandoId] = useState<number | null>(null);
+  const [direcaoOculta, setDirecaoOculta] = useState(() => loadLinhaDirecaoOculta(contaId));
+  // Selection and the comments panel belong to one linha: keyed by its id, so switching
+  // client or month starts clean without an effect.
+  const [selecao, setSelecao] = useState<{ linhaId: string | null; ids: string[] }>({
+    linhaId: null,
+    ids: [],
+  });
+  const [painel, setPainel] = useState<{ linhaId: string; itemId: string | null } | null>(null);
 
   // The selected client decides which linha the per-linha queries read, so the month's
   // linhas run first (same query key as the second call below, so it is one request).
@@ -74,8 +87,25 @@ export function LinhaEditorialView({
 
   const cliente = clientes.find((c) => c.id === selectedId) ?? null;
   const linha = linhas.find((l) => l.cliente_id === selectedId) ?? null;
-  const { itens } = useLinhaQueries(periodo, linha?.id ?? null);
+  const { itens, colunas, respostas } = useLinhaQueries(periodo, linha?.id ?? null);
   const itensData = useMemo(() => itens.data ?? [], [itens.data]);
+  const colunasData = useMemo(() => colunas.data ?? [], [colunas.data]);
+  const respostasData = useMemo(() => respostas.data ?? [], [respostas.data]);
+
+  // Only unconverted rows of this linha that still exist count as selected.
+  const selectedIds = useMemo(() => {
+    if (!linha || selecao.linhaId !== linha.id) return [];
+    const livres = new Set(itensData.filter((i) => i.post_id == null).map((i) => i.id));
+    return selecao.ids.filter((id) => livres.has(id));
+  }, [linha, selecao, itensData]);
+  const painelAberto = !!linha && painel?.linhaId === linha.id;
+  const painelItem =
+    painelAberto && painel.itemId ? (itensData.find((i) => i.id === painel.itemId) ?? null) : null;
+
+  const mudarDirecaoOculta = (oculta: boolean) => {
+    setDirecaoOculta(oculta);
+    persistLinhaDirecaoOculta(contaId, oculta);
+  };
 
   const { data: workspaceSlug } = useQuery({
     queryKey: ['workspace-slug'],
@@ -204,6 +234,13 @@ export function LinhaEditorialView({
               fotos={fotosDe(cliente)}
               totalItens={itens.isSuccess ? itensData.length : (linha.itens_total ?? 0)}
               hubUrl={hubUrl}
+              colunasSlot={
+                <ColunasPopover
+                  colunas={colunasData}
+                  direcaoOculta={direcaoOculta}
+                  onDirecaoOcultaChange={mudarDirecaoOculta}
+                />
+              }
               onEnviar={() => enviar.mutate(linha.id)}
               onRecolher={() => recolher.mutate(linha.id)}
               onCopiarHub={(url) => void copiarHub(url)}
@@ -216,8 +253,34 @@ export function LinhaEditorialView({
               </p>
             )}
             {itens.isSuccess && <p className="linha-summary">{resumo}</p>}
-            {/* Slot for the table (Task 9), the selection bar (Task 10) and the wizard (Task 11). */}
-            <div className="linha-table-slot" data-testid="linha-table-slot" />
+            {/* The table (Task 9); the selection bar (Task 10) and the wizard (Task 11) join it. */}
+            <div className="linha-table-slot" data-testid="linha-table-slot">
+              {itens.isError ? (
+                <QueryErrorCard onRetry={() => void itens.refetch()} />
+              ) : itens.isLoading ? (
+                <div className="linha-empty">
+                  <Loader2 className="h-5 w-5 animate-spin" aria-label="Carregando" />
+                </div>
+              ) : (
+                <LinhaTable
+                  linha={linha}
+                  itens={itensData}
+                  colunas={colunasData}
+                  respostas={respostasData}
+                  selectedIds={selectedIds}
+                  onSelect={(ids) => setSelecao({ linhaId: linha.id, ids })}
+                  direcaoOculta={direcaoOculta}
+                  onOpenComentarios={(itemId) => setPainel({ linhaId: linha.id, itemId })}
+                />
+              )}
+            </div>
+            <LinhaComentariosPanel
+              open={painelAberto}
+              onOpenChange={(open) => !open && setPainel(null)}
+              linha={linha}
+              item={painelItem}
+              respostas={respostasData}
+            />
           </>
         )}
       </section>

@@ -4,6 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Cliente } from '@/store';
 import type { LinhaEditorial, LinhaItem } from '@/store/linhaEditorial';
+import { MemoryRouter } from 'react-router-dom';
+import { buildStatusRegistry } from '../../statusRegistry';
 
 const m = vi.hoisted(() => ({
   listLinhasDoMes: vi.fn(),
@@ -19,7 +21,9 @@ const m = vi.hoisted(() => ({
   toastError: vi.fn(),
 }));
 
-vi.mock('@/store/linhaEditorial', () => ({
+vi.mock('@/store/linhaEditorial', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/store/linhaEditorial')>()),
+  listPostsDaLinha: vi.fn().mockResolvedValue([]),
   listLinhasDoMes: m.listLinhasDoMes,
   listItens: m.listItens,
   listColunas: m.listColunas,
@@ -34,6 +38,9 @@ vi.mock('@/store/hub', () => ({
 }));
 vi.mock('@/hooks/useClienteAvatars', () => ({
   useClienteAvatars: () => ({ igAvatars: undefined, fotosDe: () => [] }),
+}));
+vi.mock('@/hooks/useStatusRegistry', () => ({
+  useStatusRegistry: () => buildStatusRegistry([]),
 }));
 vi.mock('sonner', () => ({ toast: { success: m.toastSuccess, error: m.toastError } }));
 
@@ -86,9 +93,11 @@ function renderView(over: Partial<React.ComponentProps<typeof LinhaEditorialView
     ...over,
   };
   const utils = render(
-    <QueryClientProvider client={qc}>
-      <LinhaEditorialView {...props} />
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={qc}>
+        <LinhaEditorialView {...props} />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
   return { onChange, qc, ...utils };
 }

@@ -1,7 +1,7 @@
 import type { ContentFormat } from '@mesaas/platforms';
 import type { JSONContent } from '@tiptap/core';
 import { supabase, getContaId, getUserId } from './core';
-import type { SelectOption } from './posts';
+import type { SelectOption, WorkflowPost } from './posts';
 
 // Linha editorial: the monthly plan an agency drafts per client and sends to the Hub for
 // approval (spec 2026-10-26-linha-editorial-design.md). Cell edits go through PostgREST under
@@ -80,8 +80,9 @@ export interface ConverterPostPayload {
 
 export interface LinhaPost {
   id: number;
-  status: string;
-  custom_status_id: number | null;
+  status: WorkflowPost['status'];
+  /** uuid of a custom status definition, as `WorkflowPost.custom_status_id`. */
+  custom_status_id: string | null;
   titulo: string;
   workflow_id: number | null;
   workflow_titulo: string | null;
