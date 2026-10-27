@@ -1,3 +1,4 @@
+import { i18n } from '@mesaas/i18n';
 import type { AgendaOcorrencia } from '@/store/agenda';
 
 /** ISO instant (any offset) -> 20261007T130000Z. */
@@ -20,7 +21,7 @@ export function linkGoogleAgenda(o: AgendaOcorrencia): string {
     : `${utc(o.inicio)}/${utc(o.fim)}`;
   const detalhes = [
     o.descricao?.trim() || null,
-    o.link_reuniao ? `Link da reunião: ${o.link_reuniao}` : null,
+    o.link_reuniao ? i18n.t('agenda:google.linkReuniao', { link: o.link_reuniao }) : null,
   ]
     .filter(Boolean)
     .join('\n\n');

@@ -1,1 +1,283 @@
-{}
+{
+  "shared": {
+    "semNome": "Sem nome",
+    "semTitulo": "(Sem título)",
+    "tentarNovamente": "Tentar novamente",
+    "aguardandoResposta": "Aguardando sua resposta",
+    "pessoaEquipe": "Pessoa da equipe"
+  },
+  "tipo": {
+    "reuniao": "Reunião",
+    "gravacao": "Gravação",
+    "captacao": "Captação",
+    "apresentacao": "Apresentação",
+    "interno": "Interno",
+    "outro": "Outro"
+  },
+  "logic": {
+    "weekday": {
+      "0": "domingo",
+      "1": "segunda",
+      "2": "terça",
+      "3": "quarta",
+      "4": "quinta",
+      "5": "sexta",
+      "6": "sábado"
+    },
+    "listAnd": "{{init}} e {{last}}",
+    "dayWithArticle": {
+      "masc": "no {{day}}",
+      "fem": "na {{day}}"
+    },
+    "ordinalWithArticle": {
+      "masc": "no {{ordinal}} {{day}}",
+      "fem": "na {{ordinal}} {{day}}"
+    },
+    "ordinal": {
+      "fem": {
+        "1": "primeira",
+        "2": "segunda",
+        "3": "terceira",
+        "4": "quarta",
+        "last": "última"
+      },
+      "masc": {
+        "1": "primeiro",
+        "2": "segundo",
+        "3": "terceiro",
+        "4": "quarto",
+        "last": "último"
+      }
+    },
+    "dayMonthFormat": "d 'de' MMMM",
+    "fullDateFormat": "d 'de' MMMM 'de' yyyy"
+  },
+  "repetir": {
+    "nao": "Não se repete",
+    "diario": "Todos os dias",
+    "semanal": "Semanal: cada {{day}}",
+    "mensalDia": "Mensal: no dia {{day}}",
+    "mensalOrdinal": "Mensal: {{ordinal}}",
+    "anual": "Anual: em {{date}}",
+    "diasUteis": "Todos os dias úteis (segunda a sexta)",
+    "personalizado": "Personalizar…"
+  },
+  "regra": {
+    "daily": "Todos os dias",
+    "everyNDays": "A cada {{n}} dias",
+    "weekdays": "Todos os dias úteis",
+    "weekly": "Semanalmente",
+    "everyNWeeks": "A cada {{n}} semanas",
+    "monthly": "Mensalmente",
+    "everyNMonths": "A cada {{n}} meses",
+    "onDay": "{{prefix}} no dia {{day}}",
+    "yearly": "Anualmente",
+    "everyNYears": "A cada {{n}} anos",
+    "onDate": "{{prefix}} em {{date}}",
+    "until": ", até {{date}}",
+    "times_zero": ", {{count}} vezes",
+    "times_one": ", {{count}} vez",
+    "times_other": ", {{count}} vezes"
+  },
+  "lembrete": {
+    "atStart": "Na hora",
+    "before": "{{duration}} antes",
+    "after": "{{duration}} depois",
+    "hour": "{{h}}h",
+    "hourMin": "{{h}}h{{m}}",
+    "onDayAt": "No dia às {{time}}",
+    "afterAt": "{{duration}} depois às {{time}}",
+    "beforeAt": "{{duration}} antes às {{time}}",
+    "weeks_one": "{{count}} semana",
+    "weeks_other": "{{count}} semanas",
+    "days_one": "{{count}} dia",
+    "days_other": "{{count}} dias",
+    "hours_one": "{{count}} hora",
+    "hours_other": "{{count}} horas",
+    "minutes_one": "{{count}} minuto",
+    "minutes_other": "{{count}} minutos"
+  },
+  "nav": {
+    "month": {
+      "prev": "Mês anterior",
+      "next": "Próximo mês"
+    },
+    "week": {
+      "prev": "Semana anterior",
+      "next": "Próxima semana"
+    },
+    "day": {
+      "prev": "Dia anterior",
+      "next": "Próximo dia"
+    },
+    "list": {
+      "prev": "Semana anterior",
+      "next": "Próxima semana"
+    }
+  },
+  "periodo": {
+    "day": "{{weekday}}, {{date}}",
+    "range": "{{start}} a {{end}}",
+    "sameMonthStartFormat": "d",
+    "sameMonthEndFormat": "d 'de' MMMM 'de' yyyy"
+  },
+  "view": {
+    "month": "Mês",
+    "week": "Semana",
+    "day": "Dia",
+    "list": "Lista",
+    "sectionLabel": "Agenda",
+    "today": "Hoje",
+    "viewLabel": "Visão",
+    "allDay": "Dia inteiro",
+    "noEvents": "Nenhum evento neste período.",
+    "moreLink": "+{{n}} mais",
+    "rangeSeparator": " a ",
+    "timeRange": "{{start}} a {{end}}",
+    "weekdayShort": {
+      "0": "DOM",
+      "1": "SEG",
+      "2": "TER",
+      "3": "QUA",
+      "4": "QUI",
+      "5": "SEX",
+      "6": "SÁB"
+    }
+  },
+  "sidebar": {
+    "criar": "Criar evento",
+    "mostrar": "Mostrar",
+    "minha": "Minha agenda",
+    "equipe": "Toda a equipe",
+    "pessoas": "Pessoas",
+    "voce": "{{nome}} (você)",
+    "legenda": "Legenda",
+    "legendaNota": "Evento com fundo colorido e borda tracejada: aguardando sua resposta",
+    "sincronizar": "Sincronizar calendário"
+  },
+  "filtros": {
+    "titulo": "Pessoas e filtros",
+    "camadas": "Camadas",
+    "nicho": "Nicho",
+    "sincronizar": "Sincronizar",
+    "legendaNota": "Evento com barra tracejada: aguardando sua resposta."
+  },
+  "phone": {
+    "titulo": "Agenda",
+    "irParaComTitulo": "{{titulo}}. Ir para uma data",
+    "irParaUmaData": "Ir para uma data",
+    "irParaData": "Ir para a data",
+    "itens_one": "{{count}} item",
+    "itens_other": "{{count}} itens",
+    "nenhumNoDia": "Nenhum evento neste dia."
+  },
+  "tab": {
+    "naoEncontrado": "Este evento não existe mais ou você não tem acesso."
+  },
+  "rapido": {
+    "novoEvento": "Novo evento",
+    "titulo": "Título",
+    "tituloPlaceholder": "Adicionar título",
+    "tipo": "Tipo",
+    "local": "Local",
+    "localPlaceholder": "Adicionar local",
+    "maisOpcoes": "Mais opções"
+  },
+  "feed": {
+    "erroLink": "Não foi possível atualizar o link. Tente novamente.",
+    "desativado": "Link desativado",
+    "copiado": "Link copiado",
+    "erroCopiar": "Não foi possível copiar. Selecione o link e copie manualmente.",
+    "titulo": "Sincronizar com seu calendário",
+    "descricao": "Veja seus eventos do Mesaas no Google Agenda, Apple ou Outlook.",
+    "erroCarregar": "Não foi possível carregar o link.",
+    "vazio": "Gere um link secreto e assine no seu calendário. Aparecem os eventos que você organiza ou em que foi convidado, exceto os recusados.",
+    "gerar": "Gerar link",
+    "linkLabel": "Link do seu calendário",
+    "copiar": "Copiar",
+    "abrirGoogle": "Abrir no Google Agenda",
+    "abrirApple": "Abrir no Apple Calendar",
+    "outlook": "No Outlook, use Adicionar calendário > Da Internet e cole o link.",
+    "googleDemora": "O Google Agenda pode levar algumas horas para mostrar mudanças.",
+    "aviso": "Quem tiver este link vê seus eventos. Se ele vazar, gere um novo.",
+    "gerarNovo": "Gerar novo link",
+    "desativar": "Desativar link",
+    "confirmarDesativarTitulo": "Desativar link?",
+    "confirmarGerarTitulo": "Gerar novo link?",
+    "confirmarDesativarTexto": "Os calendários que usam este link deixam de mostrar seus eventos.",
+    "confirmarGerarTexto": "O link atual para de funcionar."
+  },
+  "popover": {
+    "sameMonthEndFormat": "d 'de' MMMM",
+    "multiDay": "{{startDay}} · {{start}} a {{endDay}} · {{end}}",
+    "participantes_zero": "{{count}} participantes",
+    "participantes_one": "{{count}} participante",
+    "participantes_other": "{{count}} participantes",
+    "resumo": {
+      "sim": "sim",
+      "nao": "não",
+      "pendente": "aguardando",
+      "talvez": "talvez"
+    },
+    "badge": {
+      "sim": "Sim",
+      "nao": "Não",
+      "talvez": "Talvez",
+      "pendente": "Aguardando"
+    },
+    "clienteResposta": {
+      "sim": "Confirmou",
+      "nao": "Recusou",
+      "aguardando": "Aguardando resposta"
+    },
+    "sugeridoDiaFormat": "EEEEEE'.,' d 'de' MMM'.'",
+    "sugeridoHoraFormat": "EEEEEE'.,' d 'de' MMM'.,' HH:mm",
+    "maisAcoes": "Mais ações",
+    "detalhes": "Detalhes",
+    "entrarReuniao": "Entrar na reunião",
+    "cliente": "Cliente: {{nome}}",
+    "organizador": "organizador",
+    "convidados": "Convidados",
+    "vaiParticipar": "Vai participar?",
+    "suaResposta": "Sua resposta",
+    "excluido": "Evento excluído",
+    "remarcacaoAceita": "Remarcação aceita",
+    "remarcacaoRecusada": "Remarcação recusada",
+    "erroResolver": "Não foi possível resolver o pedido. Tente novamente.",
+    "pedidoRemarcacao": "Pedido de remarcação",
+    "remarcacaoPedido": "{{cliente}} pediu para remarcar para {{quando}}",
+    "oCliente": "O cliente",
+    "mensagemCliente": "Mensagem para o cliente",
+    "mensagemClientePlaceholder": "Mensagem para o cliente (opcional)",
+    "enviar": "Enviar",
+    "aceitar": "Aceitar",
+    "recusar": "Recusar",
+    "adicionarGoogle": "Adicionar ao Google Agenda",
+    "baixarIcs": "Baixar .ics",
+    "excluir": "Excluir",
+    "responderQual": "Responder a qual evento?",
+    "responderQualDescricao": "Escolha se a resposta vale só para este evento ou para todos os eventos da série.",
+    "esteEvento": "Este evento",
+    "esteESeguintes": "Este e os seguintes",
+    "todosEventos": "Todos os eventos",
+    "excluirRecorrenteTitulo": "Excluir evento recorrente?",
+    "excluirTitulo": "Excluir evento?",
+    "excluirAviso": "Os participantes recebem um aviso de cancelamento.",
+    "editarEvento": "Editar evento",
+    "excluirEvento": "Excluir evento",
+    "participantesLabel": "Participantes"
+  },
+  "mutations": {
+    "movido": "Evento movido",
+    "movidoSerie": "Evento movido. Para mudar o dia de todos, edite o evento.",
+    "desfazer": "Desfazer",
+    "criado": "Evento criado",
+    "serieComeca": "A série começa em {{data}}."
+  },
+  "ics": {
+    "erro": "Não foi possível baixar o arquivo."
+  },
+  "google": {
+    "linkReuniao": "Link da reunião: {{link}}"
+  }
+}

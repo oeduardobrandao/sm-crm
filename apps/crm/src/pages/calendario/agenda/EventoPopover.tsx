@@ -1,8 +1,9 @@
 import { useId, useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { addDays, format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { getDateFnsLocale, getIntlLocale, i18n } from '@mesaas/i18n';
 import {
   AlignLeft,
   Bell,
@@ -58,7 +59,6 @@ import {
 } from '@/store/agenda';
 import { getWorkspaceUsers } from '@/store/workspace';
 import { sanitizeUrl } from '@/utils/security';
-import { WEEKDAY_NAMES } from '../../tarefas/recorrenciaLogic';
 import { parseDateOnly } from '../../tarefas/tarefasLogic';
 import { corDoEvento, descreverRegra, emFuso, rotuloLembrete } from './agendaLogic';
 import { baixarIcsDaOcorrencia } from './baixarIcs';
@@ -94,9 +94,14 @@ interface Pessoa {
 const maiuscula = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const minuscula = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 
+const fmt = (d: Date, key: string) => format(d, i18n.t(key), { locale: getDateFnsLocale() });
+
 /** "Segunda, 5 de outubro". */
 function diaComSemana(d: Date): string {
-  return `${maiuscula(WEEKDAY_NAMES[d.getDay()])}, ${format(d, "d 'de' MMMM", { locale: ptBR })}`;
+  return i18n.t('agenda:periodo.day', {
+    weekday: maiuscula(i18n.t(`agenda:logic.weekday.${d.getDay()}`)),
+    date: fmt(d, 'agenda:logic.dayMonthFormat'),
+  });
 }
 
 const hora = (d: Date) => format(d, 'HH:mm');
@@ -104,14 +109,17 @@ const hora = (d: Date) => format(d, 'HH:mm');
 /** "5 a 7 de outubro", "30 de setembro a 2 de outubro", years only across a year boundary. */
 function intervaloDeDias(ini: Date, ultimo: Date): string {
   if (ini.getFullYear() !== ultimo.getFullYear()) {
-    const f = "d 'de' MMMM 'de' yyyy";
-    return `${format(ini, f, { locale: ptBR })} a ${format(ultimo, f, { locale: ptBR })}`;
+    const f = 'agenda:logic.fullDateFormat';
+    return i18n.t('agenda:periodo.range', { start: fmt(ini, f), end: fmt(ultimo, f) });
   }
   if (ini.getMonth() !== ultimo.getMonth()) {
-    const f = "d 'de' MMMM";
-    return `${format(ini, f, { locale: ptBR })} a ${format(ultimo, f, { locale: ptBR })}`;
+    const f = 'agenda:logic.dayMonthFormat';
+    return i18n.t('agenda:periodo.range', { start: fmt(ini, f), end: fmt(ultimo, f) });
   }
-  return `${ini.getDate()} a ${format(ultimo, "d 'de' MMMM", { locale: ptBR })}`;
+  return i18n.t('agenda:periodo.range', {
+    start: fmt(ini, 'agenda:periodo.sameMonthStartFormat'),
+    end: fmt(ultimo, 'agenda:popover.sameMonthEndFormat'),
+  });
 }
 
 /** Timed events in the browser zone (like the grid); all-day ones as series dates. */
@@ -120,7 +128,7 @@ function quando(o: AgendaOcorrencia): string {
     const ini = parseDateOnly(o.data_inicio_local);
     // data_fim_local is exclusive.
     const ultimo = addDays(parseDateOnly(o.data_fim_local), -1);
-    if (ultimo <= ini) return `${diaComSemana(ini)} · Dia inteiro`;
+    if (ultimo <= ini) return `${diaComSemana(ini)} · ${i18n.t('agenda:view.allDay')}`;
     return intervaloDeDias(ini, ultimo);
   }
   const ini = new Date(o.inicio);
@@ -129,9 +137,16 @@ function quando(o: AgendaOcorrencia): string {
   const ultimoDia =
     fim.getHours() === 0 && fim.getMinutes() === 0 && fim > ini ? addDays(fim, -1) : fim;
   if (format(ini, 'yyyy-MM-dd') === format(ultimoDia, 'yyyy-MM-dd')) {
-    return `${diaComSemana(ini)} · ${hora(ini)} a ${hora(fim)}`;
+    return `${diaComSemana(ini)} · ${i18n.t('agenda:view.timeRange', { start: hora(ini), end: hora(fim) })}`;
   }
-  return `${diaComSemana(ini)} · ${hora(ini)} a ${minuscula(diaComSemana(fim))} · ${hora(fim)}`;
+  // pt lowercases the second weekday mid-sentence; English weekdays stay capitalised.
+  const fimDia = diaComSemana(fim);
+  return i18n.t('agenda:popover.multiDay', {
+    startDay: diaComSemana(ini),
+    start: hora(ini),
+    endDay: getIntlLocale() === 'pt-BR' ? minuscula(fimDia) : fimDia,
+    end: hora(fim),
+  });
 }
 
 /** "4 participantes · 2 sim, 1 não, 1 aguardando": non-zero parts only. */
@@ -144,15 +159,15 @@ function resumoParticipantes(
 } {
   const partes = [
     [c.sim, 'sim'],
-    [c.nao, 'não'],
-    [c.pendente, 'aguardando'],
+    [c.nao, 'nao'],
+    [c.pendente, 'pendente'],
     [c.talvez, 'talvez'],
   ] as const;
   return {
-    titulo: `${total} ${total === 1 ? 'participante' : 'participantes'}`,
+    titulo: i18n.t('agenda:popover.participantes', { count: total }),
     detalhe: partes
       .filter(([n]) => n > 0)
-      .map(([n, rotulo]) => `${n} ${rotulo}`)
+      .map(([n, chave]) => `${n} ${i18n.t(`agenda:popover.resumo.${chave}`)}`)
       .join(', '),
   };
 }
@@ -182,39 +197,41 @@ function linkSeguro(link: string | null): string | null {
   return href === '#' ? null : href;
 }
 
-const BADGE: Record<
-  AgendaResposta,
-  { label: string; variant: 'success' | 'danger' | 'warning' | 'neutral' }
-> = {
-  sim: { label: 'Sim', variant: 'success' },
-  nao: { label: 'Não', variant: 'danger' },
-  talvez: { label: 'Talvez', variant: 'warning' },
-  pendente: { label: 'Aguardando', variant: 'neutral' },
+const BADGE_VARIANT: Record<AgendaResposta, 'success' | 'danger' | 'warning' | 'neutral'> = {
+  sim: 'success',
+  nao: 'danger',
+  talvez: 'warning',
+  pendente: 'neutral',
 };
 
-const CLIENTE_RESPOSTA_LABEL: Record<AgendaClienteResposta, string> = {
-  sim: 'Confirmou',
-  nao: 'Recusou',
-  aguardando: 'Aguardando resposta',
-};
+/** RSVP badge: label resolved at render time. */
+function badgeDaResposta(r: AgendaResposta): {
+  label: string;
+  variant: 'success' | 'danger' | 'warning' | 'neutral';
+} {
+  return { label: i18n.t(`agenda:popover.badge.${r}`), variant: BADGE_VARIANT[r] };
+}
+
+const clienteRespostaLabel = (r: AgendaClienteResposta) =>
+  i18n.t(`agenda:popover.clienteResposta.${r}`);
 
 /** Selo of an external guest: Confirmou / Recusou (the client's copy) or Aguardando. */
 function badgeConvidado(resposta: 'sim' | 'nao' | null): {
   label: string;
   variant: 'success' | 'danger' | 'neutral';
 } {
-  if (resposta === 'sim') return { label: CLIENTE_RESPOSTA_LABEL.sim, variant: 'success' };
-  if (resposta === 'nao') return { label: CLIENTE_RESPOSTA_LABEL.nao, variant: 'danger' };
-  return { label: BADGE.pendente.label, variant: 'neutral' };
+  if (resposta === 'sim') return { label: clienteRespostaLabel('sim'), variant: 'success' };
+  if (resposta === 'nao') return { label: clienteRespostaLabel('nao'), variant: 'danger' };
+  return { label: badgeDaResposta('pendente').label, variant: 'neutral' };
 }
 
 /** "qui., 9 de out., 14:00" (all-day: no time). Timed in the browser zone like the
  *  grid; all-day as the series-local date. */
 function quandoSugerido(iso: string, o: AgendaOcorrencia): string {
   if (o.dia_inteiro) {
-    return format(emFuso(iso, o.tz), "EEEEEE'.,' d 'de' MMM'.'", { locale: ptBR });
+    return fmt(emFuso(iso, o.tz), 'agenda:popover.sugeridoDiaFormat');
   }
-  return format(new Date(iso), "EEEEEE'.,' d 'de' MMM'.,' HH:mm", { locale: ptBR });
+  return fmt(new Date(iso), 'agenda:popover.sugeridoHoraFormat');
 }
 
 /** Max length of the team's message to the client (database limit). */
@@ -228,11 +245,7 @@ const ehPedidoResolvido = (e: unknown) =>
       : '',
   );
 
-const RESPOSTAS: { id: Resposta; label: string }[] = [
-  { id: 'sim', label: 'Sim' },
-  { id: 'nao', label: 'Não' },
-  { id: 'talvez', label: 'Talvez' },
-];
+const RESPOSTAS: Resposta[] = ['sim', 'nao', 'talvez'];
 
 /** Floating-ui virtual element over `anchor`: its rect is read on every
  *  measure, so the popover follows scrolls and re-layouts. A detached anchor
@@ -307,6 +320,7 @@ function AcoesDoSheet({
   onEditar: () => void;
   onMais: () => void;
 }) {
+  const { t } = useTranslation('agenda');
   const { close, closeThen } = useSheetActions();
   return (
     <div className="phone-agenda-evento__acoes">
@@ -316,15 +330,15 @@ function AcoesDoSheet({
           className="phone-agenda-evento__editar"
           onClick={() => closeThen(onEditar)}
         >
-          Editar
+          {t('actions.edit')}
         </button>
       )}
       {mostrarMais && (
-        <PhoneIconButton label="Mais ações" aria-haspopup="dialog" onClick={onMais}>
+        <PhoneIconButton label={t('popover.maisAcoes')} aria-haspopup="dialog" onClick={onMais}>
           <MoreHorizontal aria-hidden="true" />
         </PhoneIconButton>
       )}
-      <PhoneIconButton label="Fechar" onClick={close}>
+      <PhoneIconButton label={t('ui.close')} onClick={close}>
         <X aria-hidden="true" />
       </PhoneIconButton>
     </div>
@@ -381,6 +395,7 @@ function EventoSheet({
   onResponder,
   children,
 }: EventoSheetProps) {
+  const { t } = useTranslation('agenda');
   const mascarado = o.mascarado;
   const temDetalhes = !mascarado && (o.local || href || o.cliente_nome || textoLembretes);
   return (
@@ -417,7 +432,7 @@ function EventoSheet({
           </div>
 
           {temDetalhes && (
-            <GroupedList aria-label="Detalhes">
+            <GroupedList aria-label={t('popover.detalhes')}>
               {o.local && <Cell icon={<MapPin aria-hidden="true" />} label={o.local} />}
               {href && (
                 <li className="phone-cell">
@@ -432,7 +447,7 @@ function EventoSheet({
                     </span>
                     <span className="phone-cell__body">
                       <span className="phone-cell__text">
-                        <span className="phone-cell__label">Entrar na reunião</span>
+                        <span className="phone-cell__label">{t('popover.entrarReuniao')}</span>
                       </span>
                     </span>
                   </a>
@@ -443,8 +458,8 @@ function EventoSheet({
                   icon={<Building2 aria-hidden="true" />}
                   label={
                     clienteResposta
-                      ? `Cliente: ${o.cliente_nome} · ${clienteResposta}`
-                      : `Cliente: ${o.cliente_nome}`
+                      ? `${t('popover.cliente', { nome: o.cliente_nome })} · ${clienteResposta}`
+                      : t('popover.cliente', { nome: o.cliente_nome })
                   }
                 />
               )}
@@ -459,14 +474,20 @@ function EventoSheet({
           {!mascarado && participantes.length > 0 && (
             <GroupedList header={`${resumo.titulo} · ${resumo.detalhe}`} headerAs="h3">
               {participantes.map((p) => {
-                const pessoa = porId.get(p.user_id) ?? { id: p.user_id, nome: 'Pessoa da equipe' };
-                const badge = BADGE[p.resposta ?? 'pendente'];
-                const papel = p.user_id === o.organizador_id ? ' · organizador' : '';
+                const pessoa = porId.get(p.user_id) ?? {
+                  id: p.user_id,
+                  nome: t('shared.pessoaEquipe'),
+                };
+                const badge = badgeDaResposta(p.resposta ?? 'pendente');
+                const papel =
+                  p.user_id === o.organizador_id ? ` · ${t('popover.organizador')}` : '';
+                const nome =
+                  p.user_id === meuId ? t('sidebar.voce', { nome: pessoa.nome }) : pessoa.nome;
                 return (
                   <Cell
                     key={p.user_id}
                     icon={<Avatar pessoa={pessoa} />}
-                    label={`${pessoa.nome}${p.user_id === meuId ? ' (você)' : ''}${papel}`}
+                    label={`${nome}${papel}`}
                     accessory={
                       <Badge variant={badge.variant} size="sm">
                         {badge.label}
@@ -479,7 +500,7 @@ function EventoSheet({
           )}
 
           {convidados.length > 0 && (
-            <GroupedList header="Convidados" headerAs="h3">
+            <GroupedList header={t('popover.convidados')} headerAs="h3">
               {convidados.map((c) => {
                 const badge = badgeConvidado(c.resposta);
                 return (
@@ -500,24 +521,24 @@ function EventoSheet({
 
           {podeResponder && (
             <div className="phone-agenda-evento__rsvp">
-              <span>Vai participar?</span>
+              <span>{t('popover.vaiParticipar')}</span>
               <div
                 role="group"
-                aria-label="Sua resposta"
+                aria-label={t('popover.suaResposta')}
                 className="phone-agenda-evento__respostas"
               >
                 {RESPOSTAS.map((r) => {
-                  const ativa = respostaAtual === r.id;
+                  const ativa = respostaAtual === r;
                   return (
                     <button
-                      key={r.id}
+                      key={r}
                       type="button"
                       className="phone-agenda-evento__resposta"
                       aria-pressed={ativa}
                       disabled={enviando}
-                      onClick={() => onResponder(r.id)}
+                      onClick={() => onResponder(r)}
                     >
-                      {r.label}
+                      {t(`popover.badge.${r}`)}
                     </button>
                   );
                 })}
@@ -544,6 +565,7 @@ export function EventoPopover({
   apresentacao = 'popover',
   open = true,
 }: EventoPopoverProps) {
+  const { t } = useTranslation('agenda');
   const qc = useQueryClient();
   const { user } = useAuth();
   const meuId = user?.id ?? null;
@@ -565,7 +587,7 @@ export function EventoPopover({
   const porId = useMemo(() => new Map(roster.map((p) => [p.id, p])), [roster]);
 
   const participantes = useMemo(() => {
-    const nome = (id: string) => porId.get(id)?.nome ?? 'Pessoa da equipe';
+    const nome = (id: string) => porId.get(id)?.nome ?? i18n.t('agenda:shared.pessoaEquipe');
     return [...o.participantes].sort((a, b) => {
       if (a.user_id === o.organizador_id) return -1;
       if (b.user_id === o.organizador_id) return 1;
@@ -618,7 +640,7 @@ export function EventoPopover({
     try {
       await excluirEvento(o.ocorrencia_id, escopo);
       void invalidarAgenda();
-      toast.success('Evento excluído');
+      toast.success(t('popover.excluido'));
       setEnviando(false);
       setSub(null);
       onClose();
@@ -638,12 +660,12 @@ export function EventoPopover({
       void invalidarAgenda();
       void qc.invalidateQueries({ queryKey: ['notifications'] });
       void qc.invalidateQueries({ queryKey: ['notifications-unread-count'] });
-      toast.success(aceitar ? 'Remarcação aceita' : 'Remarcação recusada');
+      toast.success(aceitar ? t('popover.remarcacaoAceita') : t('popover.remarcacaoRecusada'));
       setEnviando(false);
       // The occurrence moved (or the request is gone): this card is stale.
       onClose();
     } catch (err) {
-      toast.error(formatAgendaError(err, 'Não foi possível resolver o pedido. Tente novamente.'));
+      toast.error(formatAgendaError(err, t('popover.erroResolver')));
       setEnviando(false);
       if (ehPedidoResolvido(err)) {
         void invalidarAgenda();
@@ -667,7 +689,7 @@ export function EventoPopover({
   const respostaAtual = o.minha_resposta;
   const clienteResposta =
     !mascarado && o.compartilhado_cliente && o.cliente_resposta
-      ? CLIENTE_RESPOSTA_LABEL[o.cliente_resposta]
+      ? clienteRespostaLabel(o.cliente_resposta)
       : null;
   // External guests, hidden on masked events (the database sends null there).
   const convidados = (!mascarado && o.convidados) || [];
@@ -676,12 +698,15 @@ export function EventoPopover({
   const blocoRemarcacao = pedidoRemarcacao && (
     <div
       role="group"
-      aria-label="Pedido de remarcação"
+      aria-label={t('popover.pedidoRemarcacao')}
       className="flex flex-col gap-2.5 rounded-[10px] border p-3.5 text-[13px] leading-[18px]"
       style={{ background: 'var(--surface-1)', borderColor: 'var(--warning)' }}
     >
       <div className="font-semibold">
-        {`${o.cliente_nome || 'O cliente'} pediu para remarcar para ${quandoSugerido(pedidoRemarcacao.inicio_sugerido, o)}`}
+        {t('popover.remarcacaoPedido', {
+          cliente: o.cliente_nome || t('popover.oCliente'),
+          quando: quandoSugerido(pedidoRemarcacao.inicio_sugerido, o),
+        })}
       </div>
       {pedidoRemarcacao.mensagem && (
         <div className="whitespace-pre-line break-words" style={{ color: 'var(--text-muted)' }}>
@@ -691,8 +716,8 @@ export function EventoPopover({
       {recusando ? (
         <div className="flex flex-col gap-2">
           <Textarea
-            aria-label="Mensagem para o cliente"
-            placeholder="Mensagem para o cliente (opcional)"
+            aria-label={t('popover.mensagemCliente')}
+            placeholder={t('popover.mensagemClientePlaceholder')}
             rows={3}
             maxLength={MAX_MENSAGEM_REMARCACAO}
             value={mensagemRecusa}
@@ -712,7 +737,7 @@ export function EventoPopover({
                 setMensagemRecusa('');
               }}
             >
-              Voltar
+              {t('actions.back')}
             </Button>
             <Button
               type="button"
@@ -721,7 +746,7 @@ export function EventoPopover({
               disabled={enviando}
               onClick={() => void resolver(false)}
             >
-              Enviar
+              {t('popover.enviar')}
             </Button>
           </div>
         </div>
@@ -734,7 +759,7 @@ export function EventoPopover({
             disabled={enviando}
             onClick={() => void resolver(true)}
           >
-            Aceitar
+            {t('popover.aceitar')}
           </Button>
           <Button
             type="button"
@@ -744,7 +769,7 @@ export function EventoPopover({
             disabled={enviando}
             onClick={() => setRecusando(true)}
           >
-            Recusar
+            {t('popover.recusar')}
           </Button>
         </div>
       )}
@@ -778,21 +803,21 @@ export function EventoPopover({
         <ActionSheet
           open={maisAberto}
           onOpenChange={setMaisAberto}
-          title="Mais ações"
+          title={t('popover.maisAcoes')}
           hideTitle
           actions={[
             ...(mascarado
               ? []
               : [
                   {
-                    label: 'Adicionar ao Google Agenda',
+                    label: t('popover.adicionarGoogle'),
                     icon: <ExternalLink aria-hidden="true" />,
                     immediate: true,
                     onSelect: () =>
                       window.open(linkGoogleAgenda(o), '_blank', 'noopener,noreferrer'),
                   },
                   {
-                    label: 'Baixar .ics',
+                    label: t('popover.baixarIcs'),
                     icon: <Download aria-hidden="true" />,
                     immediate: true,
                     onSelect: () => void baixarIcsDaOcorrencia(o),
@@ -801,7 +826,7 @@ export function EventoPopover({
             ...(podeEditar
               ? [
                   {
-                    label: 'Excluir',
+                    label: t('popover.excluir'),
                     icon: <Trash2 aria-hidden="true" />,
                     destructive: true,
                     onSelect: () => setSub({ tipo: 'excluir' }),
@@ -812,12 +837,12 @@ export function EventoPopover({
         />
         <PhoneConfirmSheet
           open={sub?.tipo === 'rsvp'}
-          title="Responder a qual evento?"
+          title={t('popover.responderQual')}
           onCancel={fecharSub}
           actions={
             sub?.tipo === 'rsvp'
               ? (['esta', 'todas'] as const).map((escopo) => ({
-                  label: escopo === 'esta' ? 'Este evento' : 'Todos os eventos',
+                  label: escopo === 'esta' ? t('popover.esteEvento') : t('popover.todosEventos'),
                   onSelect: () => void responder(sub.resposta, escopo).then(() => setSub(null)),
                 }))
               : []
@@ -825,18 +850,18 @@ export function EventoPopover({
         />
         <PhoneConfirmSheet
           open={sub?.tipo === 'excluir'}
-          title={o.recorrente ? 'Excluir evento recorrente?' : 'Excluir evento?'}
-          message="Os participantes recebem um aviso de cancelamento."
+          title={o.recorrente ? t('popover.excluirRecorrenteTitulo') : t('popover.excluirTitulo')}
+          message={t('popover.excluirAviso')}
           onCancel={fecharSub}
           actions={(o.recorrente
             ? ([
-                ['esta', 'Este evento'],
-                ['seguintes', 'Este e os seguintes'],
-                ['todas', 'Todos os eventos'],
+                ['esta', 'popover.esteEvento'],
+                ['seguintes', 'popover.esteESeguintes'],
+                ['todas', 'popover.todosEventos'],
               ] as const)
-            : ([['todas', 'Excluir']] as const)
-          ).map(([escopo, label]) => ({
-            label,
+            : ([['todas', 'popover.excluir']] as const)
+          ).map(([escopo, chave]) => ({
+            label: t(chave),
             destructive: true,
             onSelect: () => void excluir(escopo).then(() => setSub(null)),
           }))}
@@ -880,7 +905,7 @@ export function EventoPopover({
                 size="icon"
                 className="mb-0 h-9 w-9 rounded-lg"
                 style={{ color: 'var(--text-muted)' }}
-                aria-label="Editar evento"
+                aria-label={t('popover.editarEvento')}
                 onClick={() => onEditar(o)}
               >
                 <Pencil aria-hidden="true" />
@@ -893,7 +918,7 @@ export function EventoPopover({
                 size="icon"
                 className="mb-0 h-9 w-9 rounded-lg"
                 style={{ color: 'var(--text-muted)' }}
-                aria-label="Excluir evento"
+                aria-label={t('popover.excluirEvento')}
                 onClick={() => setSub({ tipo: 'excluir' })}
               >
                 <Trash2 aria-hidden="true" />
@@ -908,7 +933,7 @@ export function EventoPopover({
                     size="icon"
                     className="mb-0 h-9 w-9 rounded-lg"
                     style={{ color: 'var(--text-muted)' }}
-                    aria-label="Mais ações"
+                    aria-label={t('popover.maisAcoes')}
                   >
                     <MoreVertical aria-hidden="true" />
                   </Button>
@@ -921,10 +946,10 @@ export function EventoPopover({
                       window.open(linkGoogleAgenda(o), '_blank', 'noopener,noreferrer')
                     }
                   >
-                    Adicionar ao Google Agenda
+                    {t('popover.adicionarGoogle')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => void baixarIcsDaOcorrencia(o)}>
-                    Baixar .ics
+                    {t('popover.baixarIcs')}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -935,7 +960,7 @@ export function EventoPopover({
               size="icon"
               className="mb-0 h-9 w-9 rounded-lg"
               style={{ color: 'var(--text-muted)' }}
-              aria-label="Fechar"
+              aria-label={t('ui.close')}
               onClick={onClose}
             >
               <X aria-hidden="true" />
@@ -979,15 +1004,15 @@ export function EventoPopover({
                     className="font-medium underline-offset-2 hover:underline"
                     style={{ color: 'var(--text-main)' }}
                   >
-                    Entrar na reunião
+                    {t('popover.entrarReuniao')}
                   </a>
                 </Linha>
               )}
               {o.cliente_nome && (
                 <Linha icone={<Building2 {...ICONE} />}>
                   {clienteResposta
-                    ? `Cliente: ${o.cliente_nome} · ${clienteResposta}`
-                    : `Cliente: ${o.cliente_nome}`}
+                    ? `${t('popover.cliente', { nome: o.cliente_nome })} · ${clienteResposta}`
+                    : t('popover.cliente', { nome: o.cliente_nome })}
                 </Linha>
               )}
               {blocoRemarcacao}
@@ -1010,23 +1035,26 @@ export function EventoPopover({
                     </span>
                   </div>
                   <ul
-                    aria-label="Participantes"
+                    aria-label={t('popover.participantesLabel')}
                     className="m-0 flex list-none flex-col gap-2.5 p-0"
                   >
                     {participantes.map((p) => {
                       const pessoa = porId.get(p.user_id) ?? {
                         id: p.user_id,
-                        nome: 'Pessoa da equipe',
+                        nome: t('shared.pessoaEquipe'),
                       };
-                      const badge = BADGE[p.resposta ?? 'pendente'];
+                      const badge = badgeDaResposta(p.resposta ?? 'pendente');
                       return (
                         <li key={p.user_id} className="flex items-center gap-2.5 text-[13px]">
                           <Avatar pessoa={pessoa} />
                           <span className="min-w-0 flex-1 truncate">
-                            {pessoa.nome}
-                            {p.user_id === meuId && ' (você)'}
+                            {p.user_id === meuId
+                              ? t('sidebar.voce', { nome: pessoa.nome })
+                              : pessoa.nome}
                             {p.user_id === o.organizador_id && (
-                              <span style={{ color: 'var(--text-muted)' }}> · organizador</span>
+                              <span style={{ color: 'var(--text-muted)' }}>
+                                {` · ${t('popover.organizador')}`}
+                              </span>
                             )}
                           </span>
                           <Badge variant={badge.variant} size="sm">
@@ -1044,8 +1072,11 @@ export function EventoPopover({
                   className="flex flex-col gap-2.5 border-t pt-3.5"
                   style={{ borderColor: 'var(--border-color)' }}
                 >
-                  <div className="text-[13px] font-semibold">Convidados</div>
-                  <ul aria-label="Convidados" className="m-0 flex list-none flex-col gap-2.5 p-0">
+                  <div className="text-[13px] font-semibold">{t('popover.convidados')}</div>
+                  <ul
+                    aria-label={t('popover.convidados')}
+                    className="m-0 flex list-none flex-col gap-2.5 p-0"
+                  >
                     {convidados.map((c) => {
                       const badge = badgeConvidado(c.resposta);
                       return (
@@ -1076,23 +1107,23 @@ export function EventoPopover({
                   style={{ borderColor: 'var(--border-color)' }}
                 >
                   <span className="flex-auto text-[13px]" style={{ color: 'var(--text-muted)' }}>
-                    Vai participar?
+                    {t('popover.vaiParticipar')}
                   </span>
-                  <div role="group" aria-label="Sua resposta" className="flex gap-1.5">
+                  <div role="group" aria-label={t('popover.suaResposta')} className="flex gap-1.5">
                     {RESPOSTAS.map((r) => {
-                      const ativa = respostaAtual === r.id;
+                      const ativa = respostaAtual === r;
                       return (
                         <Button
-                          key={r.id}
+                          key={r}
                           type="button"
                           size="sm"
                           variant={ativa ? 'default' : 'outline'}
                           className="mb-0 min-w-[64px]"
                           aria-pressed={ativa}
                           disabled={enviando}
-                          onClick={() => escolherResposta(r.id)}
+                          onClick={() => escolherResposta(r)}
                         >
-                          {r.label}
+                          {t(`popover.badge.${r}`)}
                         </Button>
                       );
                     })}
@@ -1107,14 +1138,14 @@ export function EventoPopover({
       <AlertDialog open={sub?.tipo === 'rsvp'} onOpenChange={(aberto) => !aberto && fecharSub()}>
         <AlertDialogContent className="sm:max-w-[400px]">
           <AlertDialogHeader>
-            <AlertDialogTitle>Responder a qual evento?</AlertDialogTitle>
+            <AlertDialogTitle>{t('popover.responderQual')}</AlertDialogTitle>
             <AlertDialogDescription className="sr-only">
-              Escolha se a resposta vale só para este evento ou para todos os eventos da série.
+              {t('popover.responderQualDescricao')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="gap-2 sm:gap-0">
             <Button type="button" variant="outline" onClick={fecharSub} disabled={enviando}>
-              Cancelar
+              {t('actions.cancel')}
             </Button>
             <Button
               type="button"
@@ -1122,14 +1153,14 @@ export function EventoPopover({
               disabled={enviando}
               onClick={() => sub?.tipo === 'rsvp' && void responder(sub.resposta, 'esta')}
             >
-              Este evento
+              {t('popover.esteEvento')}
             </Button>
             <Button
               type="button"
               disabled={enviando}
               onClick={() => sub?.tipo === 'rsvp' && void responder(sub.resposta, 'todas')}
             >
-              Todos os eventos
+              {t('popover.todosEventos')}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1150,14 +1181,12 @@ export function EventoPopover({
         >
           <AlertDialogContent className="sm:max-w-[400px]">
             <AlertDialogHeader>
-              <AlertDialogTitle>Excluir evento?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Os participantes recebem um aviso de cancelamento.
-              </AlertDialogDescription>
+              <AlertDialogTitle>{t('popover.excluirTitulo')}</AlertDialogTitle>
+              <AlertDialogDescription>{t('popover.excluirAviso')}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter className="gap-2 sm:gap-0">
               <Button type="button" variant="outline" onClick={fecharSub} disabled={enviando}>
-                Cancelar
+                {t('actions.cancel')}
               </Button>
               <Button
                 type="button"
@@ -1165,7 +1194,7 @@ export function EventoPopover({
                 disabled={enviando}
                 onClick={() => void excluir('todas')}
               >
-                Excluir
+                {t('popover.excluir')}
               </Button>
             </AlertDialogFooter>
           </AlertDialogContent>

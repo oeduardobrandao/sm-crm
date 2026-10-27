@@ -6,6 +6,8 @@ import type FullCalendar from '@fullcalendar/react';
 import type { DatesSetArg, EventInput } from '@fullcalendar/core';
 import { addHours, addMonths, addWeeks, format, startOfHour } from 'date-fns';
 import { Plus, SlidersHorizontal } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useAuth } from '@/context/AuthContext';
@@ -56,7 +58,6 @@ import {
 } from '../nicheCalendars/registry';
 
 const FILTRO_KEY = 'agenda-filtro';
-const NAO_ENCONTRADO = 'Este evento não existe mais ou você não tem acesso.';
 const DATA_RE = /^\d{4}-\d{2}-\d{2}$/;
 /** Event id of the quick-create draft chip (also its data-ocorrencia-id). */
 const RASCUNHO_ID = 'rascunho';
@@ -131,7 +132,7 @@ function rascunhoEventInput(r: RascunhoEvento): EventInput {
   const cor = TIPO_COR[r.tipo];
   return {
     id: RASCUNHO_ID,
-    title: r.titulo.trim() || '(Sem título)',
+    title: r.titulo.trim() || i18n.t('agenda:shared.semTitulo'),
     start: r.inicio,
     end: r.fim,
     allDay: r.diaInteiro,
@@ -157,6 +158,7 @@ const inicioDaOcorrencia = (o: AgendaOcorrencia) =>
   o.dia_inteiro ? parseDateOnly(o.data_inicio_local) : new Date(o.inicio);
 
 export default function AgendaTab() {
+  const { t } = useTranslation('agenda');
   const { user, can, canSeeFinancials } = useAuth();
   const meuId = user?.id ?? null;
   // View-only roles never see the create entry points ('unknown' = still resolving).
@@ -252,10 +254,10 @@ export default function AgendaTab() {
     () =>
       (roster as WorkspaceUserRow[]).map((r) => ({
         id: r.id,
-        nome: r.nome || 'Sem nome',
+        nome: r.nome || t('shared.semNome'),
         avatarUrl: r.avatar_url ?? null,
       })),
-    [roster],
+    [roster, t],
   );
 
   const eventosDasOcorrencias = useMemo<EventInput[]>(
@@ -600,7 +602,7 @@ export default function AgendaTab() {
       .then((o) => {
         if (!ativo) return;
         if (!o) {
-          toast(NAO_ENCONTRADO);
+          toast(i18n.t('agenda:tab.naoEncontrado'));
           removerParam();
           return;
         }
@@ -821,25 +823,25 @@ export default function AgendaTab() {
             {podeCriar && (
               <Button type="button" onClick={() => abrirCriar()}>
                 <Plus aria-hidden="true" />
-                Criar evento
+                {t('sidebar.criar')}
               </Button>
             )}
             <Button type="button" variant="outline" onClick={() => setSheetAberto(true)}>
               <SlidersHorizontal aria-hidden="true" />
-              Pessoas e filtros
+              {t('filtros.titulo')}
             </Button>
           </div>
           <Sheet open={sheetAberto} onOpenChange={setSheetAberto}>
             <SheetContent side="left" className="agenda-sheet" aria-describedby={undefined}>
               <SheetHeader>
-                <SheetTitle>Pessoas e filtros</SheetTitle>
+                <SheetTitle>{t('filtros.titulo')}</SheetTitle>
               </SheetHeader>
               {sidebar}
             </SheetContent>
           </Sheet>
         </>
       ) : (
-        <aside className="agenda-aside" aria-label="Pessoas e filtros">
+        <aside className="agenda-aside" aria-label={t('filtros.titulo')}>
           {sidebar}
         </aside>
       )}

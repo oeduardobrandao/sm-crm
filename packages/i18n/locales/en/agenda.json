@@ -1,1 +1,283 @@
-{}
+{
+  "shared": {
+    "semNome": "No name",
+    "semTitulo": "(No title)",
+    "tentarNovamente": "Try again",
+    "aguardandoResposta": "Awaiting your response",
+    "pessoaEquipe": "Team member"
+  },
+  "tipo": {
+    "reuniao": "Meeting",
+    "gravacao": "Recording",
+    "captacao": "Shoot",
+    "apresentacao": "Presentation",
+    "interno": "Internal",
+    "outro": "Other"
+  },
+  "logic": {
+    "weekday": {
+      "0": "Sunday",
+      "1": "Monday",
+      "2": "Tuesday",
+      "3": "Wednesday",
+      "4": "Thursday",
+      "5": "Friday",
+      "6": "Saturday"
+    },
+    "listAnd": "{{init}} and {{last}}",
+    "dayWithArticle": {
+      "masc": "{{day}}",
+      "fem": "{{day}}"
+    },
+    "ordinalWithArticle": {
+      "masc": "on the {{ordinal}} {{day}}",
+      "fem": "on the {{ordinal}} {{day}}"
+    },
+    "ordinal": {
+      "fem": {
+        "1": "first",
+        "2": "second",
+        "3": "third",
+        "4": "fourth",
+        "last": "last"
+      },
+      "masc": {
+        "1": "first",
+        "2": "second",
+        "3": "third",
+        "4": "fourth",
+        "last": "last"
+      }
+    },
+    "dayMonthFormat": "MMMM d",
+    "fullDateFormat": "MMMM d, yyyy"
+  },
+  "repetir": {
+    "nao": "Does not repeat",
+    "diario": "Every day",
+    "semanal": "Weekly on {{day}}",
+    "mensalDia": "Monthly on day {{day}}",
+    "mensalOrdinal": "Monthly {{ordinal}}",
+    "anual": "Annually on {{date}}",
+    "diasUteis": "Every weekday (Monday to Friday)",
+    "personalizado": "Custom…"
+  },
+  "regra": {
+    "daily": "Every day",
+    "everyNDays": "Every {{n}} days",
+    "weekdays": "Every weekday",
+    "weekly": "Weekly on",
+    "everyNWeeks": "Every {{n}} weeks on",
+    "monthly": "Monthly",
+    "everyNMonths": "Every {{n}} months",
+    "onDay": "{{prefix}} on day {{day}}",
+    "yearly": "Annually",
+    "everyNYears": "Every {{n}} years",
+    "onDate": "{{prefix}} on {{date}}",
+    "until": ", until {{date}}",
+    "times_zero": ", {{count}} times",
+    "times_one": ", {{count}} time",
+    "times_other": ", {{count}} times"
+  },
+  "lembrete": {
+    "atStart": "At start time",
+    "before": "{{duration}} before",
+    "after": "{{duration}} after",
+    "hour": "{{h}}:00",
+    "hourMin": "{{h}}:{{m}}",
+    "onDayAt": "On the day at {{time}}",
+    "afterAt": "{{duration}} after at {{time}}",
+    "beforeAt": "{{duration}} before at {{time}}",
+    "weeks_one": "{{count}} week",
+    "weeks_other": "{{count}} weeks",
+    "days_one": "{{count}} day",
+    "days_other": "{{count}} days",
+    "hours_one": "{{count}} hour",
+    "hours_other": "{{count}} hours",
+    "minutes_one": "{{count}} minute",
+    "minutes_other": "{{count}} minutes"
+  },
+  "nav": {
+    "month": {
+      "prev": "Previous month",
+      "next": "Next month"
+    },
+    "week": {
+      "prev": "Previous week",
+      "next": "Next week"
+    },
+    "day": {
+      "prev": "Previous day",
+      "next": "Next day"
+    },
+    "list": {
+      "prev": "Previous week",
+      "next": "Next week"
+    }
+  },
+  "periodo": {
+    "day": "{{weekday}}, {{date}}",
+    "range": "{{start}} to {{end}}",
+    "sameMonthStartFormat": "MMMM d",
+    "sameMonthEndFormat": "d, yyyy"
+  },
+  "view": {
+    "month": "Month",
+    "week": "Week",
+    "day": "Day",
+    "list": "List",
+    "sectionLabel": "Calendar",
+    "today": "Today",
+    "viewLabel": "View",
+    "allDay": "All day",
+    "noEvents": "No events in this period.",
+    "moreLink": "+{{n}} more",
+    "rangeSeparator": " to ",
+    "timeRange": "{{start}} to {{end}}",
+    "weekdayShort": {
+      "0": "SUN",
+      "1": "MON",
+      "2": "TUE",
+      "3": "WED",
+      "4": "THU",
+      "5": "FRI",
+      "6": "SAT"
+    }
+  },
+  "sidebar": {
+    "criar": "Create event",
+    "mostrar": "Show",
+    "minha": "My calendar",
+    "equipe": "Whole team",
+    "pessoas": "People",
+    "voce": "{{nome}} (you)",
+    "legenda": "Legend",
+    "legendaNota": "Event with a colored background and dashed border: awaiting your response",
+    "sincronizar": "Sync calendar"
+  },
+  "filtros": {
+    "titulo": "People and filters",
+    "camadas": "Layers",
+    "nicho": "Niche",
+    "sincronizar": "Sync",
+    "legendaNota": "Event with a dashed bar: awaiting your response."
+  },
+  "phone": {
+    "titulo": "Calendar",
+    "irParaComTitulo": "{{titulo}}. Go to a date",
+    "irParaUmaData": "Go to a date",
+    "irParaData": "Go to date",
+    "itens_one": "{{count}} item",
+    "itens_other": "{{count}} items",
+    "nenhumNoDia": "No events on this day."
+  },
+  "tab": {
+    "naoEncontrado": "This event no longer exists or you don't have access to it."
+  },
+  "rapido": {
+    "novoEvento": "New event",
+    "titulo": "Title",
+    "tituloPlaceholder": "Add title",
+    "tipo": "Type",
+    "local": "Location",
+    "localPlaceholder": "Add location",
+    "maisOpcoes": "More options"
+  },
+  "feed": {
+    "erroLink": "Couldn't update the link. Please try again.",
+    "desativado": "Link deactivated",
+    "copiado": "Link copied",
+    "erroCopiar": "Couldn't copy. Select the link and copy it manually.",
+    "titulo": "Sync with your calendar",
+    "descricao": "See your Mesaas events in Google Calendar, Apple or Outlook.",
+    "erroCarregar": "Couldn't load the link.",
+    "vazio": "Generate a secret link and subscribe to it in your calendar. It shows the events you organize or were invited to, except the ones you declined.",
+    "gerar": "Generate link",
+    "linkLabel": "Your calendar link",
+    "copiar": "Copy",
+    "abrirGoogle": "Open in Google Calendar",
+    "abrirApple": "Open in Apple Calendar",
+    "outlook": "In Outlook, use Add calendar > Subscribe from web and paste the link.",
+    "googleDemora": "Google Calendar may take a few hours to show changes.",
+    "aviso": "Anyone with this link can see your events. If it leaks, generate a new one.",
+    "gerarNovo": "Generate new link",
+    "desativar": "Deactivate link",
+    "confirmarDesativarTitulo": "Deactivate link?",
+    "confirmarGerarTitulo": "Generate new link?",
+    "confirmarDesativarTexto": "Calendars using this link will stop showing your events.",
+    "confirmarGerarTexto": "The current link will stop working."
+  },
+  "popover": {
+    "sameMonthEndFormat": "d",
+    "multiDay": "{{startDay}} · {{start}} to {{endDay}} · {{end}}",
+    "participantes_zero": "{{count}} participants",
+    "participantes_one": "{{count}} participant",
+    "participantes_other": "{{count}} participants",
+    "resumo": {
+      "sim": "yes",
+      "nao": "no",
+      "pendente": "awaiting",
+      "talvez": "maybe"
+    },
+    "badge": {
+      "sim": "Yes",
+      "nao": "No",
+      "talvez": "Maybe",
+      "pendente": "Awaiting"
+    },
+    "clienteResposta": {
+      "sim": "Confirmed",
+      "nao": "Declined",
+      "aguardando": "Awaiting response"
+    },
+    "sugeridoDiaFormat": "EEE, MMM d",
+    "sugeridoHoraFormat": "EEE, MMM d, HH:mm",
+    "maisAcoes": "More actions",
+    "detalhes": "Details",
+    "entrarReuniao": "Join meeting",
+    "cliente": "Client: {{nome}}",
+    "organizador": "organizer",
+    "convidados": "Guests",
+    "vaiParticipar": "Going?",
+    "suaResposta": "Your response",
+    "excluido": "Event deleted",
+    "remarcacaoAceita": "Reschedule accepted",
+    "remarcacaoRecusada": "Reschedule declined",
+    "erroResolver": "Couldn't resolve the request. Please try again.",
+    "pedidoRemarcacao": "Reschedule request",
+    "remarcacaoPedido": "{{cliente}} asked to reschedule to {{quando}}",
+    "oCliente": "The client",
+    "mensagemCliente": "Message to the client",
+    "mensagemClientePlaceholder": "Message to the client (optional)",
+    "enviar": "Send",
+    "aceitar": "Accept",
+    "recusar": "Decline",
+    "adicionarGoogle": "Add to Google Calendar",
+    "baixarIcs": "Download .ics",
+    "excluir": "Delete",
+    "responderQual": "Respond to which event?",
+    "responderQualDescricao": "Choose whether the response applies only to this event or to every event in the series.",
+    "esteEvento": "This event",
+    "esteESeguintes": "This and following events",
+    "todosEventos": "All events",
+    "excluirRecorrenteTitulo": "Delete recurring event?",
+    "excluirTitulo": "Delete event?",
+    "excluirAviso": "Participants get a cancellation notice.",
+    "editarEvento": "Edit event",
+    "excluirEvento": "Delete event",
+    "participantesLabel": "Participants"
+  },
+  "mutations": {
+    "movido": "Event moved",
+    "movidoSerie": "Event moved. To change the day of all events, edit the event.",
+    "desfazer": "Undo",
+    "criado": "Event created",
+    "serieComeca": "The series starts on {{data}}."
+  },
+  "ics": {
+    "erro": "Couldn't download the file."
+  },
+  "google": {
+    "linkReuniao": "Meeting link: {{link}}"
+  }
+}
