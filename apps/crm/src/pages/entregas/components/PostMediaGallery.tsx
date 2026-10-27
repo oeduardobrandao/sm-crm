@@ -943,6 +943,15 @@ export function PostMediaGallery({
                     onOpen={() => setLightboxIndex(i)}
                     openNotes={openNoteCounts.get(m.id) ?? 0}
                     onAdjust={canAdjust && !m.media_lost_at ? () => startAdjust(m) : undefined}
+                    onDownscale={
+                      canAdjust &&
+                      !m.media_lost_at &&
+                      targetsInstagram &&
+                      oversizeOnly(m, validationOpts).eligible
+                        ? () => setDownscalingMedia(m)
+                        : undefined
+                    }
+                    downscaleLabel={t('mediaGallery.downscale.action')}
                     needsAdjustment={invalidMedia.includes(m)}
                     onDelete={() => handleDelete(m.id)}
                     onEditThumbnail={
@@ -1360,6 +1369,9 @@ interface SortableMediaTileProps {
   onDelete: () => void;
   onEditThumbnail?: () => void;
   onAdjust?: () => void;
+  /** Oversize-only video: "Reduzir resolução" beside "Ajustar proporção". */
+  onDownscale?: () => void;
+  downscaleLabel?: string;
   needsAdjustment?: boolean;
 }
 
@@ -1371,6 +1383,8 @@ function SortableMediaTile({
   onDelete,
   onEditThumbnail,
   onAdjust,
+  onDownscale,
+  downscaleLabel,
   needsAdjustment,
 }: SortableMediaTileProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -1434,6 +1448,17 @@ function SortableMediaTile({
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
+            {onDownscale && (
+              <button
+                type="button"
+                onClick={onDownscale}
+                title={downscaleLabel}
+                aria-label={downscaleLabel}
+                className="flex h-6 w-6 items-center justify-center rounded-full bg-[#12151a] text-white hover:bg-black"
+              >
+                <Minimize2 className="h-3 w-3" />
+              </button>
+            )}
             {onAdjust && (
               <button
                 type="button"

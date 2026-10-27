@@ -1258,6 +1258,53 @@ describe('PostMediaGallery oversized-video downscale at upload', () => {
     expect(ds.downscaleVideo).not.toHaveBeenCalled();
   });
 
+  it("a second pick during a conversion keeps each batch's engine info and never converts two at once", async () => {
+    for (const n of ['a4k.mp4', 'b4k.mp4', 'c4k.mp4']) ds.probes.set(n, FOUR_K_LANDSCAPE);
+    const gates = new Map<string, () => void>();
+    let active = 0;
+    let maxActive = 0;
+    ds.downscaleVideo.mockImplementation(async (file: File) => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await new Promise<void>((resolve) => gates.set(file.name, resolve));
+      active--;
+      return {
+        file: createFile(file.name.replace('.mp4', ' (1080p).mp4'), 'video/mp4'),
+        engine: 'webcodecs',
+        hdr: false,
+        width: 1920,
+        height: 1080,
+      };
+    });
+    renderWith();
+    await pickFiles([createFile('a4k.mp4', 'video/mp4'), createFile('b4k.mp4', 'video/mp4')]);
+    fireEvent.click(await reduceButton());
+    await waitFor(() => expect(gates.has('a4k.mp4')).toBe(true));
+
+    // The add tile stays live while uploading ("Enviando…"): pick again mid-conversion.
+    const input = document.querySelector<HTMLInputElement>('input[accept="image/*,video/*"]')!;
+    fireEvent.change(input, { target: { files: [createFile('c4k.mp4', 'video/mp4')] } });
+    fireEvent.click(await reduceButton());
+
+    // Release each running conversion in turn; the queue decides which comes next.
+    const released = new Set<string>();
+    for (let i = 0; i < 3; i++) {
+      await waitFor(() => expect(gates.size).toBe(released.size + 1));
+      const [name, release] = [...gates].find(([n]) => !released.has(n))!;
+      released.add(name);
+      release();
+    }
+
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(3));
+    expect(uploadPostMediaMock.mock.calls.map((c) => c[0].file.name).sort()).toEqual([
+      'a4k (1080p).mp4',
+      'b4k (1080p).mp4',
+      'c4k (1080p).mp4',
+    ]);
+    expect(ds.downscaleVideo).toHaveBeenCalledTimes(3);
+    expect(maxActive).toBe(1);
+  });
+
   it('an over-2 GB video too long to fit the budget is skipped with an error, no dialog', async () => {
     ds.probes.set('longo.mp4', FOUR_K);
     ds.planNull = true;
@@ -1270,6 +1317,8 @@ describe('PostMediaGallery oversized-video downscale at upload', () => {
     await waitFor(() => expect(screen.getByText('Adicionar')).toBeInTheDocument());
     expect(uploadPostMediaMock).not.toHaveBeenCalled();
     expect(ds.downscaleVideo).not.toHaveBeenCalled();
+    // Nothing was sent: no "Upload concluído" next to the skip error.
+    expect(toast.success).not.toHaveBeenCalledWith('Upload concluído');
   });
 
   it('a converted file whose thumbnail cannot be extracted goes to the manual-thumbnail flow', async () => {
@@ -1323,6 +1372,9 @@ describe('PostMediaGallery warning box: oversized existing video', () => {
       screen.getByText('Largura acima de 1920 px (ex.: 4K). O Instagram não aceita.'),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Ajustar proporção de uhd.mp4' })).toBeNull();
+    // The grid tile offers it too, beside its "Ajustar proporção" control.
+    expect(screen.getByTitle('Reduzir resolução')).toBeInTheDocument();
+    expect(screen.getByTitle('Ajustar proporção')).toBeInTheDocument();
     fireEvent.click(btn);
     expect(await screen.findByTestId('downscale-media-dialog')).toHaveTextContent('uhd.mp4');
   });
@@ -1334,5 +1386,6 @@ describe('PostMediaGallery warning box: oversized existing video', () => {
       await screen.findByRole('button', { name: 'Ajustar proporção de uhd.mp4' }),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Reduzir resolução de uhd.mp4' })).toBeNull();
+    expect(screen.queryByTitle('Reduzir resolução')).toBeNull();
   });
 });

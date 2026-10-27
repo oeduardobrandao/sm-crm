@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import { captureEvent } from '@/lib/analytics';
+import { detectKind } from '@/services/postMedia';
 import { planDownscale, type DownscaleSupport } from '../media-editor/downscalePlan';
 import { oversizeOnly, probeWithTimeout, videoMaxBytes } from '../media-editor/oversize';
 import { DownscaleOfferDialog, type DownscaleOfferItem } from './DownscaleOfferDialog';
@@ -28,6 +29,30 @@ interface Deps {
 
 const mb = (bytes: number) => Math.round(bytes / 1048576);
 
+/** Same video test as the upload path; an unsupported type is not a video here. */
+function isVideo(file: File): boolean {
+  try {
+    return detectKind(file) === 'video';
+  } catch {
+    return false;
+  }
+}
+
+type EngineModule = typeof import('../media-editor/downscaleVideo');
+let engineModule: Promise<EngineModule> | null = null;
+/** Lazy (mediabunny/ffmpeg stay out of the gallery chunk) and loaded once: parallel
+ *  `import()`s of the same module per item are needless, and a failed load is retried. */
+function loadEngine(): Promise<EngineModule> {
+  engineModule ??= import('../media-editor/downscaleVideo').catch((e) => {
+    engineModule = null;
+    throw e;
+  });
+  return engineModule;
+}
+
+/** Engine info inspected for one batch, keyed by item uid. Never shared across batches. */
+type SupportMap = Map<string, DownscaleSupport>;
+
 /**
  * Oversized-video offer at file selection (spec "UX" A): probes the picked videos, holds back
  * those that only break the width/size limit, asks once for the whole held-back set, then
@@ -37,16 +62,27 @@ export function useDownscaleOffer({ forStories, upload, setConverting }: Deps) {
   const { t } = useTranslation('posts');
   const [items, setItems] = useState<DownscaleOfferItem[] | null>(null);
   const resolver = useRef<((d: Decision) => void) | null>(null);
-  const support = useRef(new Map<string, DownscaleSupport>());
+  // A second pick can land while an earlier batch is still in its offer or converting:
+  // offers are shown one after another, and conversions run one at a time across batches.
+  const offerQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const convertQueue = useRef<Promise<unknown>>(Promise.resolve());
+
+  function enqueue<T>(queue: { current: Promise<unknown> }, fn: () => Promise<T>): Promise<T> {
+    const run = queue.current.then(fn, fn);
+    queue.current = run.catch(() => undefined);
+    return run;
+  }
 
   // Unmounting mid-offer must not leave handleFiles waiting forever. A batch the user already
   // confirmed keeps running after unmount, like the immediate uploads (trackUnsavedWork).
-  useEffect(
-    () => () => {
+  const unmounted = useRef(false);
+  useEffect(() => {
+    unmounted.current = false;
+    return () => {
+      unmounted.current = true;
       resolver.current?.('dismiss');
-    },
-    [],
-  );
+    };
+  }, []);
 
   function decide(d: Decision) {
     const resolve = resolver.current;
@@ -62,7 +98,7 @@ export function useDownscaleOffer({ forStories, upload, setConverting }: Deps) {
   ): Promise<{ immediate: UploadItem[]; held: HeldItem[] }> {
     const isCarousel = !forStories && existingCount + all.length > 1;
     const probes = await Promise.all(
-      all.map((it) => (it.file.type.startsWith('video/') ? probeWithTimeout(it.file) : null)),
+      all.map((it) => (isVideo(it.file) ? probeWithTimeout(it.file) : null)),
     );
     const immediate: UploadItem[] = [];
     const held: HeldItem[] = [];
@@ -116,11 +152,12 @@ export function useDownscaleOffer({ forStories, upload, setConverting }: Deps) {
     return { immediate, held };
   }
 
-  function ask(held: HeldItem[]): Promise<Decision> {
-    support.current = new Map();
+  function ask(held: HeldItem[], support: SupportMap): Promise<Decision> {
+    // A queued offer whose gallery is gone has no one left to answer it.
+    if (unmounted.current) return Promise.resolve('dismiss');
     setItems(held.map((h) => h.offer));
     const patch = (key: string, s: DownscaleSupport) => {
-      support.current.set(key, s);
+      support.set(key, s);
       setItems((prev) => prev?.map((o) => (o.key === key ? { ...o, support: s } : o)) ?? prev);
     };
     for (const h of held) {
@@ -132,7 +169,7 @@ export function useDownscaleOffer({ forStories, upload, setConverting }: Deps) {
         patch(h.uid, { engine: 'webcodecs', hdr: false });
         continue;
       }
-      void import('../media-editor/downscaleVideo')
+      void loadEngine()
         .then(({ inspectForDownscale }) => inspectForDownscale(h.file, plan))
         .catch((): DownscaleSupport => ({ engine: 'none', hdr: false }))
         .then((s) => patch(h.uid, s));
@@ -142,7 +179,11 @@ export function useDownscaleOffer({ forStories, upload, setConverting }: Deps) {
     });
   }
 
-  async function processOne(h: HeldItem, decision: Decision): Promise<UploadOutcome | 'skipped'> {
+  async function processOne(
+    h: HeldItem,
+    decision: Decision,
+    support: SupportMap,
+  ): Promise<UploadOutcome | 'skipped'> {
     const { file, offer } = h;
     const skip = (message: string) => {
       toast.error(message);
@@ -151,7 +192,7 @@ export function useDownscaleOffer({ forStories, upload, setConverting }: Deps) {
     const noFallback = () =>
       t('mediaGallery.downscale.convertFailedNoFallback', { name: file.name });
     const plan = offer.plan;
-    const engine = support.current.get(h.uid)?.engine ?? 'none';
+    const engine = support.get(h.uid)?.engine ?? 'none';
     if (decision === 'original' || !plan || engine === 'none') {
       if (offer.overClientCap)
         return skip(
@@ -162,7 +203,7 @@ export function useDownscaleOffer({ forStories, upload, setConverting }: Deps) {
       return upload(h);
     }
 
-    const startedAt = Date.now();
+    let startedAt = Date.now();
     const base = {
       source: 'upload',
       input_w: offer.width,
@@ -174,11 +215,14 @@ export function useDownscaleOffer({ forStories, upload, setConverting }: Deps) {
     const ctl = new AbortController();
     setConverting(h, 0);
     try {
-      const { downscaleVideo } = await import('../media-editor/downscaleVideo');
-      const result = await downscaleVideo(file, plan, {
-        forStories,
-        signal: ctl.signal,
-        onProgress: (pct) => setConverting(h, pct),
+      const result = await enqueue(convertQueue, async () => {
+        startedAt = Date.now();
+        const { downscaleVideo } = await loadEngine();
+        return downscaleVideo(file, plan, {
+          forStories,
+          signal: ctl.signal,
+          onProgress: (pct) => setConverting(h, pct),
+        });
       });
       captureEvent('video_downscaled', {
         ...base,
@@ -211,10 +255,11 @@ export function useDownscaleOffer({ forStories, upload, setConverting }: Deps) {
   async function resolveHeld(held: HeldItem[]): Promise<HeldStats> {
     const stats: HeldStats = { attempted: 0, deferred: 0, hasError: false };
     if (held.length === 0) return stats;
-    const decision = await ask(held);
+    const support: SupportMap = new Map();
+    const decision = await enqueue(offerQueue, () => ask(held, support));
     if (decision === 'dismiss') return stats;
     for (const h of held) {
-      const outcome = await trackUnsavedWork(processOne(h, decision));
+      const outcome = await trackUnsavedWork(processOne(h, decision, support));
       if (outcome === 'skipped') continue;
       stats.attempted++;
       if (outcome === 'deferred') stats.deferred++;
