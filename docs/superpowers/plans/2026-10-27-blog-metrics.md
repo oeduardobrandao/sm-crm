@@ -16,7 +16,7 @@
 - "Live" = `status in ('publicado','publicando')` or a `BLOG_FILE_POSTS` slug.
 - Portuguese copy, no em-dashes in user-facing strings. Icons `lucide-react`. Toasts `sonner`.
 - Every new table: RLS on, no policies, `revoke all ... from public, anon, authenticated`, `grant ... to service_role`. Every new function: `revoke all ... from public, anon, authenticated` (+ `service_role` where it must not call), then explicit grants. Each role named.
-- Migration prefixes must be unique and above main's tail at PR time (main's tail today: `20261030000002`). Planned: `20261031000001` … `20261031000004`.
+- Migration prefixes must be unique and above main's tail at PR time (main's tail today: `20261030000002`). Planned: `20261101000001` … `20261031000004`.
 - New public/cron functions deploy with `--no-verify-jwt`. Edge errors: log internally, return generic bodies.
 - No module-level `window`/`document`/`localStorage` in CRM code reachable from the blog page (single-file SSR prerender).
 - Admin cannot import `apps/crm`; shared shapes are declared in `apps/admin/src/pages/blog/blog-view.ts`.
@@ -131,7 +131,7 @@ test('liveUrl builds the canonical URL', () => {
 ### Task 5: Views schema
 
 **Files:**
-- Create: `supabase/migrations/20261031000001_blog_page_views.sql`
+- Create: `supabase/migrations/20261101000001_blog_page_views.sql`
 - Test: `supabase/tests/entitlements/99_blog_page_views.sql` (pattern: `99_kb_content_views.sql`, call `et_grant_hosted_parity(array['blog_page_views','blog_view_salts'])`)
 
 **Interfaces:**

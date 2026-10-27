@@ -36,6 +36,7 @@ import {
   type KbVideoStreamDeps,
 } from "./kb-videos.ts";
 import { handleKbViewStats } from "./kb-views.ts";
+import { handleBlogMetrics, handleBlogPostMetrics } from "./blog-metrics.ts";
 import { handleReorderKbArticles } from "./kb-articles.ts";
 import {
   handleGetAffiliate,
@@ -260,6 +261,10 @@ Deno.serve(async (req: Request) => {
         return await handleUpdateAffiliate(svc, body, user.id, headers);
       case "update-affiliate-commission-rule":
         return await handleUpdateCommissionRule(svc, body, user.id, headers);
+      case "blog-metrics":
+        return await handleBlogMetrics(svc, headers);
+      case "blog-post-metrics":
+        return await handleBlogPostMetrics(svc, body, headers);
       case "list-blog-posts":
         return await handleListBlogPosts(svc, body, user.id, headers, blogDeps);
       case "get-blog-post":

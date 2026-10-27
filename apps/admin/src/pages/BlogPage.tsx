@@ -6,6 +6,7 @@ import { AlertTriangle } from 'lucide-react';
 import { SegmentedControl } from '@mesaas/ios-kit';
 import {
   approveBlogPost,
+  getBlogMetrics,
   getBlogPost,
   listBlogPosts,
   rejectBlogPost,
@@ -30,25 +31,34 @@ import {
   DialogTitle,
 } from '../components/ui/dialog';
 import { BlogList } from './blog/BlogList';
+import { MetricsError } from './blog/MetricsError';
 import { FilePostDetail } from './blog/FilePostDetail';
 import { BlogDetail, type BlogCommand, type RunResult } from './blog/BlogDetail';
 import {
+  BLOG_SORTS,
   BLOG_TABS,
   formatDay,
   isLive,
   itemsFor,
   noRecentDraft,
+  parseSort,
   parseTab,
+  sortItems,
+  withSort,
   type BlogPostDetail,
   type BlogTab,
 } from './blog/blog-view';
 
 const BLOG_KEY = ['admin', 'blog'] as const;
 const listKey = (tab: BlogTab) => [...BLOG_KEY, 'list', tab] as const;
+const metricsKey = [...BLOG_KEY, 'metrics'] as const;
 const postKey = (id: string) => [...BLOG_KEY, 'post', id] as const;
 
 /** A publicando row only turns publicado when list-blog-posts confirms it live. */
 const PUBLISHING_POLL_MS = 60_000;
+
+/** blog-metrics is a daily snapshot plus a counter: five minutes stale is fine. */
+const METRICS_STALE_MS = 5 * 60_000;
 
 const SUCCESS: Record<BlogCommand['kind'], string> = {
   approve: 'Publicação iniciada.',
@@ -84,7 +94,7 @@ export default function BlogPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { id, slug } = useParams<{ id: string; slug: string }>();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   // A hand-written post only exists on Publicados, whatever the query string says.
   const tab = slug ? 'publicados' : parseTab(params.get('tab'));
 
@@ -128,9 +138,34 @@ export default function BlogPage() {
     refetchOnReconnect: !editing,
   });
 
+  // Live rows only exist on Publicados (and Aguardando while publicando); Rejeitados has none.
+  const metricsQuery = useQuery({
+    queryKey: metricsKey,
+    queryFn: getBlogMetrics,
+    enabled: tab !== 'rejeitados',
+    staleTime: METRICS_STALE_MS,
+  });
+  const metrics = metricsQuery.data;
+  // A failed load with nothing cached: say so (list and detail) instead of showing zeros.
+  const metricsFailed = metricsQuery.isError && !metrics;
+  const retryMetrics = () => void metricsQuery.refetch();
+  const gscReady = metrics?.gsc_updated_at != null;
+  // Mais cliques needs Search Console data; a stale ?ordem=cliques falls back to recentes. With
+  // no metrics at all every post scores zero, so the list stays by date.
+  const parsedSort = parseSort(params.get('ordem'));
+  const sort =
+    tab !== 'publicados' || metricsFailed || (parsedSort === 'cliques' && !gscReady)
+      ? 'recentes'
+      : parsedSort;
+
   const items = useMemo(
-    () => itemsFor(tab, list.data?.posts ?? [], list.data?.file_posts ?? [], now),
-    [tab, list.data, now],
+    () =>
+      sortItems(
+        itemsFor(tab, list.data?.posts ?? [], list.data?.file_posts ?? [], now),
+        metrics?.posts ?? {},
+        sort,
+      ),
+    [tab, list.data, now, metrics, sort],
   );
   const filePost = slug ? list.data?.file_posts?.find((f) => f.slug === slug) : undefined;
   const lastDraftAt = list.data?.last_draft_at ?? null;
@@ -305,21 +340,55 @@ export default function BlogPage() {
     </Dialog>
   );
 
+  const sortControl =
+    tab === 'publicados' ? (
+      <div className="border-b border-border/60 px-[18px] py-3">
+        <SegmentedControl
+          aria-label="Ordem"
+          options={BLOG_SORTS.filter((o) => o.value !== 'cliques' || gscReady)}
+          value={sort}
+          onChange={(v) =>
+            setParams(
+              (prev) => {
+                const next = new URLSearchParams(prev);
+                if (v === 'recentes') next.delete('ordem');
+                else next.set('ordem', v);
+                return next;
+              },
+              { replace: true },
+            )
+          }
+          className="blog-sort flex w-full [&>button]:min-w-0 [&>button]:flex-1 [&>button]:overflow-hidden [&>button]:text-ellipsis [&>button]:whitespace-nowrap [&>button]:px-2"
+        />
+      </div>
+    ) : null;
+
   const listView = (
-    <BlogList
-      items={items}
-      tab={tab}
-      selectedKey={slug ? `arquivo:${slug}` : (id ?? null)}
-      now={now}
-      isLoading={list.isLoading}
-      isError={list.isError}
-      onRetry={() => void list.refetch()}
-      onOpen={guard ? go : undefined}
-    />
+    <>
+      {sortControl}
+      {tab === 'publicados' && metricsFailed && <MetricsError onRetry={retryMetrics} />}
+      <BlogList
+        items={items}
+        tab={tab}
+        selectedKey={slug ? `arquivo:${slug}` : (id ?? null)}
+        now={now}
+        isLoading={list.isLoading}
+        isError={list.isError}
+        onRetry={() => void list.refetch()}
+        onOpen={guard ? go : undefined}
+        metrics={metrics}
+        sort={sort}
+      />
+    </>
   );
 
   const detailView = filePost ? (
-    <FilePostDetail post={filePost} />
+    <FilePostDetail
+      post={filePost}
+      metrics={metrics}
+      metricsError={metricsFailed}
+      onRetryMetrics={retryMetrics}
+    />
   ) : (
     <BlogDetail
       key={id ?? slug ?? 'none'}
@@ -345,10 +414,17 @@ export default function BlogPage() {
       onReloadEditor={() => void reloadEditor()}
       onEditorDirtyChange={setEditorDirty}
       run={(c) => run(c)}
+      metrics={metrics}
+      metricsError={metricsFailed}
+      onRetryMetrics={retryMetrics}
     />
   );
 
-  const description = 'Posts escritos pela rotina. Nada vai ao ar sem sua aprovação.';
+  // Publicados also lists the hand-written posts, which never pass through approval.
+  const description =
+    tab === 'publicados'
+      ? 'Posts da rotina e os escritos à mão. Nada da rotina vai ao ar sem sua aprovação.'
+      : 'Posts escritos pela rotina. Nada vai ao ar sem sua aprovação.';
 
   if (isPhone) {
     if (id || slug) {
@@ -357,10 +433,10 @@ export default function BlogPage() {
           <PageHeader
             title="Post"
             back={{
-              to: blogPath(tab),
+              to: withSort(blogPath(tab), sort),
               label: 'Blog',
               // Only while a changed draft is open; otherwise the nav bar's own back.
-              onClick: guard ? () => go(blogPath(tab)) : undefined,
+              onClick: guard ? () => go(withSort(blogPath(tab), sort)) : undefined,
             }}
           />
           <GlassPanel flush>{detailView}</GlassPanel>

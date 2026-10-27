@@ -19,6 +19,7 @@ import { blogPostingJsonLd, breadcrumbJsonLd } from '@/content/jsonld';
 import { usePageMetaFor } from '@/lib/usePageMeta';
 import { ArrowRight } from 'lucide-react';
 import { BlogPostArticle, type BodyStatus } from './BlogPostArticle';
+import { useRecordBlogView } from './useRecordBlogView';
 
 /** File posts carry their body; DB posts load it from a lazy chunk. The header
  * renders at once either way, the body when it arrives. */
@@ -127,6 +128,7 @@ function BlogPostView({ post }: { post: BlogPost }) {
 export default function BlogPostPage() {
   const { slug = '' } = useParams();
   const post = postBySlug(slug);
+  useRecordBlogView(post?.slug ?? null);
   if (!post) return <NotFoundPage />;
   return <BlogPostView post={post} />;
 }

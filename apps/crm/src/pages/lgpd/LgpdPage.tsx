@@ -311,10 +311,14 @@ export default function LgpdPage() {
                   <strong>Sempre ativas:</strong> sessão de login, idioma, tema, a proteção contra
                   versões desatualizadas do app e o registro desta escolha (essenciais para o
                   funcionamento), além do monitoramento de erros (Sentry) e da medição agregada de
-                  acessos (Vercel Analytics), que se apoiam em legítimo interesse (art. 7º, IX).
-                  Preferências de interface (por exemplo, guias e tours já concluídos) ficam apenas
-                  no seu navegador e não são usadas para rastreamento. Você pode se opor ao
-                  tratamento baseado em legítimo interesse a qualquer momento escrevendo para{' '}
+                  acessos (Vercel Analytics), que se apoiam em legítimo interesse (art. 7º, IX). No
+                  blog, contamos leituras de forma anônima, sem cookies e sem guardar o IP: para não
+                  contar a mesma leitura duas vezes, guardamos um código embaralhado com uma chave
+                  do dia. A chave é apagada na virada do dia e, a partir daí, o código não pode mais
+                  ser ligado a um IP. Preferências de interface (por exemplo, guias e tours já
+                  concluídos) ficam apenas no seu navegador e não são usadas para rastreamento. Você
+                  pode se opor ao tratamento baseado em legítimo interesse a qualquer momento
+                  escrevendo para{' '}
                   <a
                     href="mailto:privacidade@mesaas.com.br"
                     style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}

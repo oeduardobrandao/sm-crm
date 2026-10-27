@@ -340,6 +340,23 @@
   min-width: auto;
 }
 
+/* Blog list sort control (Mais recentes / Mais vistos / Mais cliques): the three segments split
+   the list column evenly instead of sizing to their labels (which overflows the 280px column);
+   a label that still does not fit ends in an ellipsis. Same specificity as the desktop rules
+   above, declared after them. */
+.admin-desktop-main .blog-sort.phone-segmented {
+  display: flex;
+  width: 100%;
+}
+.admin-desktop-main .blog-sort .phone-segmented__item {
+  flex: 1 1 0;
+  min-width: 0;
+  padding-inline: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Mais sheet (board Mais): large left-aligned title beside the close button. */
 .admin-mais-sheet .phone-sheet__header > .phone-sheet__header-side:first-child {
   display: none;

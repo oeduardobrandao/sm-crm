@@ -147,10 +147,12 @@ service_role` (hosted Supabase has no default ACL for migration-created objects,
 `20260925130001_metrics_snapshots.sql`). Same lockdown on every function below, with each role
 named explicitly.
 
-- `record_blog_view(p_slug text, p_visitor_hash text) returns void` (SECURITY DEFINER,
+- `record_blog_view(p_slug text, p_visitor_hash text) returns text` (SECURITY DEFINER,
   service_role only): returns without inserting if the same `(slug, visitor_hash)` has a row in
-  the last 30 minutes (same dedupe window as `record_kb_view`); otherwise inserts. Occasional
-  duplicates under concurrency are acceptable.
+  the last 30 minutes (same dedupe window as `record_kb_view`, returns `'duplicate'`), or if the
+  post already has 1000 rows in the last hour (returns `'capped'`, see the endpoint's step 4);
+  otherwise inserts and returns `'inserted'`. Occasional duplicates and a slight overshoot of the
+  cap under concurrency are acceptable.
 - `blog_view_salt_today() returns text` (service_role only): returns today's salt (São Paulo
   day), inserting one with `gen_random_bytes` on conflict-do-nothing if absent, and deletes every
   salt with `day < today` in the same call. A pg_cron job at 00:05 São Paulo runs the same delete,
@@ -161,9 +163,12 @@ named explicitly.
 
 ### Privacy
 
-`visitor_hash = sha256(salt_of_today || ip || user_agent)`, used only for the 30-minute dedupe.
-The salt lives for its São Paulo calendar day and is deleted at the turn of the day, so after
-that no one, including us, can link a hash back to an IP. Raw IP and UA are
+`visitor_hash = sha256(salt_of_today || ip || user_agent || slug)` (inputs in that order), used
+only for the 30-minute dedupe. The slug is part of the hash so the same reader gets a different
+hash on every post: the stored rows never form a per-reader reading trail, not even within one
+day. The salt lives for its São Paulo calendar day and is deleted at the turn of the day, so after
+that no one, including us, can link a hash back to an IP (Supabase backups/PITR keep a deleted
+salt for the backup window). Raw IP and UA are
 never stored. No cookie, no localStorage. Unique visitors are deliberately not reported (the
 hash changes daily, so cross-day uniques are impossible by design).
 
@@ -185,9 +190,16 @@ Modeled on `affiliate-public` (public, no user auth). `POST { slug }`.
 4. Rate limit per source, independent of the User-Agent (so rotating the UA does not escape it):
    `ip_key = sha256(salt_of_today || ip)`, `checkRateLimit(svc, "blog-view:" + ip_key, 120, 3600)`.
    The key carries the salted hash, never the IP (`rate_limit_log` is pruned hourly). Over the
-   limit: 204. This bounds one IP; a distributed flood is out of scope (a vanity counter, not
-   billing), and Supabase's own gateway limits apply on top.
-5. `record_blog_view(slug, hash)`. Always answer 204; errors are logged, never returned.
+   limit: 204. The IP is the left-most `X-Forwarded-For`, which the client controls, so this
+   bounds an honest source only. A second cap bounds writes per post whatever the source: inside
+   `record_blog_view`, after the dedupe, a post with 1000 rows in the last hour gets no new row
+   (far above one post's real traffic). Because it sits after the dedupe, only new rows spend it;
+   reloads do not. Accepted cost: someone rotating the header can exhaust a post's cap and
+   suppress its real views for up to an hour (bounded suppression over unbounded inflation; a
+   vanity counter, not billing). The function logs one line with the slug when the cap trips.
+   Supabase's own gateway limits apply on top.
+5. `record_blog_view(slug, hash)`, which returns `'inserted'`, `'duplicate'` or `'capped'`.
+   Always answer 204; errors are logged, never returned.
 
 ### CRM blog page
 

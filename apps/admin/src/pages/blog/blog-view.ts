@@ -80,6 +80,43 @@ export interface BlogPostDetail extends BlogPostRow {
   author: string;
 }
 
+/** Search Console URL-inspection result for a post (null until the collector exists). */
+export interface IndexStatus {
+  verdict: string | null;
+  coverage_state: string | null;
+  last_crawl_time: string | null;
+  inspection_link: string | null;
+  checked_at: string;
+}
+
+export interface SearchTotals {
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number | null;
+}
+
+/** One post in `blog-metrics`. Slugs with no views are absent from the map. */
+export interface PostMetrics {
+  views_7d: number;
+  views_30d: number;
+  views_total: number;
+  search: SearchTotals | null;
+  index: IndexStatus | null;
+}
+
+export interface BlogMetricsResponse {
+  /** Last successful Search Console sync; null means it never ran (not configured). */
+  gsc_updated_at: string | null;
+  posts: Record<string, PostMetrics>;
+}
+
+/** `blog-post-metrics`: `views` is zero-filled, one entry per day ending today (São Paulo). */
+export interface BlogPostMetricsResponse {
+  views: Array<{ day: string; views: number }>;
+  search: Array<{ day: string; clicks: number; impressions: number }>;
+}
+
 export type EditableField = 'title' | 'h1' | 'description' | 'lede' | 'body_md';
 
 /** Editor counters. title/h1/description come from the shared model; lede and body mirror
@@ -322,6 +359,55 @@ export function itemsFor(
   return dated.sort((a, b) => b.at - a.at).map((d) => d.item);
 }
 
+export type BlogSort = 'recentes' | 'vistos' | 'cliques';
+export const BLOG_SORTS: Array<{ value: BlogSort; label: string }> = [
+  { value: 'recentes', label: 'Mais recentes' },
+  { value: 'vistos', label: 'Mais vistos' },
+  { value: 'cliques', label: 'Mais cliques' },
+];
+
+export function parseSort(value: string | null): BlogSort {
+  return value === 'vistos' || value === 'cliques' ? value : 'recentes';
+}
+
+/** Appends `?ordem=` / `&ordem=` so opening a row keeps the Publicados sort. */
+export function withSort(path: string, sort: BlogSort): string {
+  if (sort === 'recentes') return path;
+  return `${path}${path.includes('?') ? '&' : '?'}ordem=${sort}`;
+}
+
+const nf = new Intl.NumberFormat('pt-BR');
+const nf1 = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+export const formatInt = (n: number): string => nf.format(n);
+export const formatPosition = (n: number): string => nf1.format(n);
+
+/** Publicados sort. `recentes` keeps the incoming order (already by date); the others are a
+ * stable descending sort, so ties keep date order. A slug with no metrics counts as zero. */
+export function sortItems(
+  items: BlogListItem[],
+  metrics: Record<string, PostMetrics>,
+  sort: BlogSort,
+): BlogListItem[] {
+  if (sort === 'recentes') return items;
+  const score = (item: BlogListItem): number => {
+    const m = metrics[item.row.slug];
+    return sort === 'vistos' ? (m?.views_30d ?? 0) : (m?.search?.clicks ?? 0);
+  };
+  return [...items].sort((a, b) => score(b) - score(a));
+}
+
+/** "1.240 views (30d) · 38 cliques · posição 12,4". Search Console parts only once it has run. */
+export function metricLine(m: PostMetrics | undefined, gscReady: boolean): string {
+  const views = m?.views_30d ?? 0;
+  const parts = [`${formatInt(views)} ${views === 1 ? 'view' : 'views'} (30d)`];
+  const s = gscReady ? m?.search : null;
+  if (s) {
+    parts.push(`${formatInt(s.clicks)} ${s.clicks === 1 ? 'clique' : 'cliques'}`);
+    if (s.position !== null) parts.push(`posição ${formatPosition(s.position)}`);
+  }
+  return parts.join(' · ');
+}
+
 /** File posts are always on the site; rotina posts once publicado/publicando. */
 export function isLiveItem(item: BlogListItem): boolean {
   return item.kind === 'arquivo' || isLive(item.row);
@@ -383,6 +469,10 @@ export function formatDateTime(iso: string | null): string {
 
 export function formatDay(iso: string | null): string {
   if (!iso) return '';
+  // A bare calendar date has no time zone: format its digits as-is instead of
+  // parsing it as UTC midnight (which shows the previous day in São Paulo).
+  const bare = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (bare) return `${bare[3]}/${bare[2]}/${bare[1]}`;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleDateString('pt-BR', {
