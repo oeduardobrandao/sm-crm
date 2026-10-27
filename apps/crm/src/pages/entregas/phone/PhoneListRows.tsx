@@ -11,6 +11,8 @@ import {
   MoreHorizontal,
   Route,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import { SwipeRow, type SwipeAction } from '@/components/mobile/SwipeRow';
 import {
   ContextMenu,
@@ -68,6 +70,7 @@ function PhoneListRowBody({
   /** The row has swipe actions, whose "Mais" is the keyboard path to the menu. */
   hasSwipeActions?: boolean;
 }) {
+  const { t } = useTranslation('entregasPhone');
   const openMenu = triggerProps?.onClick;
   useEffect(() => {
     if (openMenuRef) openMenuRef.current = openMenu;
@@ -103,7 +106,7 @@ function PhoneListRowBody({
           {...triggerProps}
           tabIndex={hasSwipeActions ? -1 : undefined}
           className="phone-ent-l-row__more"
-          aria-label={`Mais ações de ${display.title}`}
+          aria-label={t('shared.moreActions', { title: display.title })}
         >
           <MoreHorizontal aria-hidden="true" />
         </button>
@@ -115,7 +118,7 @@ function PhoneListRowBody({
 function trailingActions(onMore: () => void, onForward?: () => void): SwipeAction[] {
   const out: SwipeAction[] = [
     {
-      label: 'Mais',
+      label: i18n.t('entregasPhone:list.more'),
       icon: <MoreHorizontal aria-hidden="true" />,
       tone: 'neutral',
       onAction: onMore,
@@ -123,7 +126,7 @@ function trailingActions(onMore: () => void, onForward?: () => void): SwipeActio
   ];
   if (onForward)
     out.push({
-      label: 'Avançar',
+      label: i18n.t('entregasPhone:list.advance'),
       icon: <Check aria-hidden="true" />,
       tone: 'success',
       onAction: onForward,
@@ -256,6 +259,7 @@ export function PhoneActivePostListRow({
   /** The table's fluxo tag: present only when the fluxo card is loaded. */
   onOpenFluxo?: () => void;
 }) {
+  const { t } = useTranslation('entregasPhone');
   const actions = usePhoneBoardActions();
   const [menuOpen, setMenuOpen] = useState(false);
   const card = post.workflow_id != null ? actions?.cardOfPost(post) : undefined;
@@ -272,7 +276,7 @@ export function PhoneActivePostListRow({
     });
     if (card.etapaIdx > 0)
       stage.push({
-        label: 'Voltar etapa',
+        label: t('shared.revertEtapa'),
         icon: <ArrowLeft aria-hidden="true" />,
         onSelect: () => actions.workflow.revert(card),
       });
@@ -285,7 +289,7 @@ export function PhoneActivePostListRow({
     });
     if (previousStepOf(entity.process) != null)
       stage.push({
-        label: 'Voltar etapa',
+        label: t('shared.revertEtapa'),
         icon: <ArrowLeft aria-hidden="true" />,
         onSelect: () => actions.post.revert(entity),
       });
@@ -295,11 +299,19 @@ export function PhoneActivePostListRow({
     onOpenFluxo ?? (actions && card ? () => actions.workflow.open(card) : undefined);
   const open: ContextMenuAction[] = [];
   if (onOpen)
-    open.push({ label: 'Abrir post', icon: <ExternalLink aria-hidden="true" />, onSelect: onOpen });
+    open.push({
+      label: t('list.openPost'),
+      icon: <ExternalLink aria-hidden="true" />,
+      onSelect: onOpen,
+    });
   if (openFluxo)
-    open.push({ label: 'Abrir fluxo', icon: <Route aria-hidden="true" />, onSelect: openFluxo });
+    open.push({
+      label: t('list.openFluxo'),
+      icon: <Route aria-hidden="true" />,
+      onSelect: openFluxo,
+    });
   open.push({
-    label: 'Copiar link do post',
+    label: t('shared.copyPostLink'),
     icon: <Copy aria-hidden="true" />,
     onSelect: () => void copyAppLink(`/entregas?post=${post.id}`),
   });
@@ -311,7 +323,7 @@ export function PhoneActivePostListRow({
       trailingActions={actions ? trailingActions(() => setMenuOpen(true), onForward) : undefined}
     >
       <ContextMenu
-        label="Ações do post"
+        label={t('shared.postActions')}
         open={menuOpen}
         onOpenChange={setMenuOpen}
         sections={[stage, open].filter((s) => s.length > 0)}
@@ -360,6 +372,7 @@ export function PhoneListSections<T>({
   allCollapsed: boolean;
   onToggleAll: () => void;
 }) {
+  const { t } = useTranslation('entregasPhone');
   if (!groups) {
     return (
       <div className="phone-ent-l animate-up">
@@ -401,7 +414,7 @@ export function PhoneListSections<T>({
               {i === 0 && groups.length > 1 && (
                 <button type="button" className="phone-ent-l-head__all" onClick={onToggleAll}>
                   <ToggleIcon aria-hidden="true" />
-                  {allCollapsed ? 'Abrir todos' : 'Fechar todos'}
+                  {allCollapsed ? t('list.expandAll') : t('list.collapseAll')}
                 </button>
               )}
             </div>

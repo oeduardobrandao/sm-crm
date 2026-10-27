@@ -1,1 +1,436 @@
-{}
+{
+  "postDestinations": {
+    "notRemovable": "Este destino já está publicando ou foi publicado e não pode ser removido.",
+    "updateError": "Não foi possível atualizar os destinos.",
+    "captionError": "Não foi possível salvar a legenda."
+  },
+  "savedViews": {
+    "loadError": "Não foi possível carregar as visualizações salvas.",
+    "saved": "Visualização \"{{name}}\" salva!",
+    "saveError": "Não foi possível salvar a visualização. Tente novamente.",
+    "updated": "Visualização \"{{name}}\" atualizada!",
+    "updateError": "Não foi possível atualizar a visualização. Tente novamente.",
+    "deleteError": "Não foi possível excluir a visualização. Tente novamente.",
+    "renameError": "Não foi possível renomear a visualização. Tente novamente."
+  },
+  "updatePostStatus": {
+    "error": "Erro ao atualizar status"
+  },
+  "shared": {
+    "untitledPost": "Post sem título",
+    "sendToPortalError": "Erro ao enviar ao portal",
+    "somenteFluxos": "Somente fluxos. Posts individuais aparecem no <btn>quadro</btn>.",
+    "stageDeadline": "Prazo da etapa",
+    "expectedCompletion": "Conclusão prevista",
+    "noCliente": "Sem cliente",
+    "clienteEtapa": "{{cliente}} · Etapa: {{etapa}}",
+    "individualPost": "Post individual",
+    "entregas": "Entregas",
+    "newFluxo": "Novo fluxo",
+    "copyFluxoLink": "Copiar link do fluxo",
+    "fluxoActions": "Ações do fluxo",
+    "reorder": "Reordenar",
+    "moveToOtherFluxo": "Mover para outro fluxo",
+    "linkCopied": "Link copiado!",
+    "linkCopyError": "Não foi possível copiar o link.",
+    "copyPostLink": "Copiar link do post",
+    "duplicatePost": "Duplicar post",
+    "postHistory": "Histórico do post",
+    "postActions": "Ações do post",
+    "noResponsavel": "Sem responsável",
+    "moreActions": "Mais ações de {{title}}",
+    "advanceEtapa": "Avançar etapa",
+    "revertEtapa": "Voltar etapa"
+  },
+  "postProcess": {
+    "success": {
+      "avancar": "Etapa avançada.",
+      "voltar": "Etapa revertida.",
+      "concluir": "Processo concluído. O post mantém status e agendamento.",
+      "reabrir": "Processo reaberto na última etapa."
+    },
+    "exitSuccess": {
+      "avancar": {
+        "semAlterar": "Etapa avançada. Status do post mantido.",
+        "aprovarInterno": "Etapa avançada. Post aprovado.",
+        "voltarRascunho": "Etapa avançada. O post voltou para rascunho."
+      },
+      "concluir": {
+        "semAlterar": "Processo concluído. O post mantém status e agendamento.",
+        "aprovarInterno": "Processo concluído. Post aprovado.",
+        "voltarRascunho": "Processo concluído. O post voltou para rascunho."
+      }
+    },
+    "error": {
+      "avancar": "Erro ao avançar etapa",
+      "voltar": "Erro ao voltar etapa",
+      "concluir": "Erro ao concluir processo",
+      "reabrir": "Erro ao reabrir processo"
+    },
+    "sentToPortal": "Post enviado ao portal do cliente.",
+    "removed": "Processo removido. O post continua em Publicações.",
+    "removeError": "Erro ao remover processo",
+    "confirm": {
+      "concludeTitle": "Concluir processo?",
+      "reopenTitle": "Reabrir processo?",
+      "removeTitle": "Remover processo?",
+      "concludeBody": "O processo vai para Concluídas. Status, visibilidade no portal e agendamento do post não mudam.",
+      "reopenBody": "O processo volta para a última etapa, com o prazo salvo (mesmo vencido). O status do post não muda.",
+      "removeBody": "O histórico fica guardado, o status e o conteúdo do post não mudam, e o post volta para Sem processo.",
+      "concludeAction": "Concluir",
+      "reopenAction": "Reabrir",
+      "removeAction": "Remover"
+    }
+  },
+  "workflowStage": {
+    "exitSuccess": {
+      "manter": "Etapa concluída. Status dos posts mantidos.",
+      "aprovarTodos": "Posts aprovados e etapa concluída.",
+      "voltarRascunho": "Etapa concluída. Posts voltaram para rascunho."
+    },
+    "etapaCompleted": "Etapa concluída!",
+    "advanceError": "Erro ao avançar etapa",
+    "sentToPortal": "Posts enviados ao portal do cliente!",
+    "reverted": "Etapa revertida!",
+    "revertError": "Erro ao reverter etapa"
+  },
+  "tour": {
+    "card": {
+      "title": "Card de fluxo",
+      "description": "Isto é um card de fluxo: um ciclo de trabalho de um cliente. Ele avança pelas colunas (etapas) até a entrega."
+    },
+    "cardPostProcesses": {
+      "description": "Isto é um card de fluxo: um ciclo de trabalho de um cliente. Posts individuais com processo próprio também viram cards aqui."
+    },
+    "deadline": {
+      "title": "Prazo e etapa",
+      "description": "Aqui você acompanha o prazo da etapa atual — verde em dia, amarelo urgente, vermelho atrasado."
+    },
+    "posts": {
+      "title": "Posts vivem no card",
+      "description": "Os posts ficam dentro do card. Clique no card para abrir o painel e criar posts."
+    },
+    "postsPostProcesses": {
+      "description": "Os posts de um fluxo ficam dentro do card. Clique no card para abrir o painel e criar posts."
+    },
+    "drag": {
+      "title": "Arraste para avançar",
+      "description": "Arraste o card para a próxima coluna para avançar a etapa."
+    },
+    "approval": {
+      "title": "Aprovação do cliente",
+      "description": "Quando o card chega nesta coluna, os posts podem ser enviados ao portal do cliente para aprovação — sem login."
+    },
+    "firstFluxo": {
+      "title": "Crie seu primeiro fluxo",
+      "description": "Clique em Novo e escolha Novo fluxo para começar. Há modelos prontos."
+    },
+    "progress": "{{current}} de {{total}}",
+    "next": "Próximo →",
+    "prev": "← Voltar",
+    "done": "Concluir"
+  },
+  "phoneFormat": {
+    "overdue": "{{days}}d atrasado",
+    "dueNow": "Vence agora",
+    "hoursLeft": "{{hours}}h restantes",
+    "daysHoursLeft": "{{days}}d {{hours}}h restantes",
+    "daysLeft": "{{days}}d restantes",
+    "approvedByClient": "Aprovado pelo cliente",
+    "awaitingClientApproval": "Aguardando aprovação do cliente",
+    "awaitingInternalApproval": "Aguardando aprovação interna",
+    "postsWithClient_one": "{{count}} post com o cliente",
+    "postsWithClient_other": "{{count}} posts com o cliente",
+    "completeAndAdvance": "Concluir etapa e avançar",
+    "completeFluxo": "Concluir fluxo"
+  },
+  "calendar": {
+    "undatedAria": "Fluxos sem data",
+    "undatedFooter": "A etapa atual destes fluxos ainda não começou, então eles ainda não têm prazo no calendário.",
+    "tiktokIncomplete": "Abra o post para configurar o TikTok",
+    "viewOnInstagram": "Ver no Instagram",
+    "noEntregasFiltered": "Nenhuma entrega encontrada. Ajuste os filtros.",
+    "dayEtapaDeadlines_one": "{{count}} prazo de etapa",
+    "dayEtapaDeadlines_other": "{{count}} prazos de etapa",
+    "dayExpectedCompletions_one": "{{count}} conclusão prevista",
+    "dayExpectedCompletions_other": "{{count}} conclusões previstas",
+    "dayPosts_one": "{{count}} post",
+    "dayPosts_other": "{{count}} posts",
+    "dayPostados_one": "{{count}} postado",
+    "dayPostados_other": "{{count}} postados",
+    "dayFalhas_one": "{{count}} falha",
+    "dayFalhas_other": "{{count}} falhas",
+    "noDate": "Sem data",
+    "weekdayInitial": {
+      "mon": "S",
+      "tue": "T",
+      "wed": "Q",
+      "thu": "Q",
+      "fri": "S",
+      "sat": "S",
+      "sun": "D"
+    },
+    "dayAria": "{{day}} de {{month}}",
+    "noEntregasDay": "Nenhuma entrega neste dia.",
+    "selectDay": "Selecione um dia.",
+    "noPostsDay": "Nenhuma publicação neste dia.",
+    "undatedSheetTitle": "Sem data · {{count}}"
+  },
+  "chart": {
+    "statusCount": {
+      "atrasado_one": "{{count}} atrasada",
+      "atrasado_other": "{{count}} atrasadas",
+      "urgente_one": "{{count}} urgente",
+      "urgente_other": "{{count}} urgentes",
+      "emDia_one": "{{count}} em dia",
+      "emDia_other": "{{count}} em dia"
+    },
+    "tiles": {
+      "atrasadas": "Atrasadas",
+      "urgentes": "Urgentes (24h)",
+      "vencemHoje": "Vencem hoje",
+      "aguardandoCliente": "Aguardando cliente",
+      "emDia": "Em dia"
+    },
+    "upcoming": {
+      "title": "Próximos vencimentos",
+      "caption": "toque num fluxo para abri-lo",
+      "periodAria": "Período dos vencimentos",
+      "subtitle": "{{cliente}} · etapa: {{etapa}}",
+      "seeInList": "+{{count}} · ver na lista"
+    },
+    "byCliente": {
+      "title": "Situação por cliente",
+      "caption": "toque num cliente para filtrar por cliente e status",
+      "footer": "mostrando os 10 clientes de maior risco"
+    },
+    "byResponsavel": {
+      "title": "Carga por responsável",
+      "caption": "quem está afogado e quem tem folga. Toque para filtrar",
+      "footer": "mostrando os 10 responsáveis de maior risco"
+    },
+    "byEtapa": {
+      "title": "Fluxos por etapa",
+      "caption": "onde o trabalho está acumulado agora",
+      "footer": "mostrando as 10 etapas com mais fluxos"
+    },
+    "aging": {
+      "title": "Idade dos atrasos",
+      "footer": "toque numa faixa para filtrar por atrasado e prazo",
+      "none": "Nenhuma entrega atrasada",
+      "rangeDays": "{{range}} dias"
+    },
+    "segment": {
+      "responsavelMessage": "Filtrar as entregas deste responsável por situação",
+      "clienteMessage": "Filtrar as entregas deste cliente por situação"
+    }
+  },
+  "concluded": {
+    "fluxosConcluded_zero": "{{count}} fluxos concluídos",
+    "fluxosConcluded_one": "{{count}} fluxo concluído",
+    "fluxosConcluded_other": "{{count}} fluxos concluídos",
+    "individualPosts_one": "{{count}} post individual",
+    "individualPosts_other": "{{count}} posts individuais",
+    "searchFluxo": "Buscar fluxo...",
+    "noFluxoFound": "Nenhum fluxo encontrado para \"{{search}}\".",
+    "groupAria": "Concluídos de {{cliente}}",
+    "swipeFooter": "Deslize uma linha para a esquerda para reabrir.",
+    "posts_zero": "{{count}} posts",
+    "posts_one": "{{count}} post",
+    "posts_other": "{{count}} posts",
+    "days_zero": "{{count}} dias",
+    "days_one": "{{count}} dia",
+    "days_other": "{{count}} dias",
+    "concludedOn": "Concluído {{date}}",
+    "customEtapas": "Etapas personalizadas",
+    "reopen": "Reabrir",
+    "searchCliente": "Buscar cliente",
+    "noClienteFound": "Nenhum cliente encontrado para \"{{search}}\".",
+    "clientsAria": "Clientes com entregas concluídas",
+    "sheetDescription": "Fluxos e posts concluídos de {{cliente}}",
+    "reopenTitle": "Reabrir fluxo?",
+    "reopenMessage": "O fluxo \"{{titulo}}\" será reaberto e voltará para a última etapa no Kanban."
+  },
+  "header": {
+    "views": {
+      "kanban": "Kanban",
+      "chart": "Visão geral",
+      "calendar": "Calendário",
+      "list": "Lista",
+      "fila": "Minha fila",
+      "linha": "Linha editorial",
+      "concluded": "Concluídas"
+    },
+    "entidade": {
+      "todos": "Fluxos e posts individuais",
+      "fluxos": "Só fluxos",
+      "posts": "Só posts individuais"
+    },
+    "defaultVista": "Padrão",
+    "closeSearch": "Fechar busca",
+    "search": "Buscar",
+    "filtersActive": "Filtros, {{count}} ativos",
+    "filters": "Filtros",
+    "new": "Novo",
+    "titleAria": "Entregas. Visualização: {{vista}}. Trocar visualização",
+    "titleAriaModified": "Entregas. Visualização: {{vista}} (modificada). Trocar visualização",
+    "viewAria": "Exibir como: {{view}}. Trocar",
+    "mode": "Modo",
+    "modeEtapas": "Etapas",
+    "modeStatus": "Status",
+    "activeFilters": "Filtros ativos",
+    "postAvulso": "Post avulso",
+    "showAs": "Exibir como",
+    "vistas": "Visualizações",
+    "vistaName": "Nome da visualização",
+    "savedVistas": "Visualizações salvas",
+    "modified": "Modificada",
+    "saveCurrent": "Salvar visualização atual",
+    "vistaHeader": "Visualização \"{{name}}\"",
+    "updateWithCurrent": "Atualizar com estado atual",
+    "updateWithCurrentHint": "Salva os filtros e a exibição de agora",
+    "rename": "Renomear",
+    "delete": "Excluir",
+    "show": "Mostrar",
+    "templates": "Templates",
+    "comoFunciona": "Como funciona"
+  },
+  "fluxo": {
+    "sendApproved_one": "Enviar {{count}} post aprovado ao cliente",
+    "sendApproved_other": "Enviar {{count}} posts aprovados ao cliente",
+    "etapaOnly": "Etapa: {{etapa}}",
+    "backAria": "Voltar para Entregas",
+    "sendCount": "Enviar ao cliente ({{count}})",
+    "viewAria": "Visão do fluxo",
+    "views": {
+      "posts": "Posts",
+      "grid": "Grade",
+      "calendar": "Calendário",
+      "history": "Histórico"
+    },
+    "approvedOf": "{{approved}} de {{total}} aprovados pelo cliente",
+    "postsCount_zero": "{{count}} posts",
+    "postsCount_one": "{{count}} post",
+    "postsCount_other": "{{count}} posts",
+    "selectAll": "Selecionar todos",
+    "done": "Concluir",
+    "select": "Selecionar",
+    "newPost": "Novo Post",
+    "batchScheduleTitle": "Agendar de uma vez os posts aprovados que ainda têm data válida.",
+    "awaitingAutoSchedule": "{{count}} aguardando agendamento automático",
+    "reorderHint": "Arraste pela alça para mudar a ordem dos posts.",
+    "selectedCount_zero": "{{count}} selecionados",
+    "selectedCount_one": "{{count}} selecionado",
+    "selectedCount_other": "{{count}} selecionados",
+    "sendToClient": "Enviar ao cliente",
+    "detach": "Desmembrar",
+    "dateTbd": "A definir",
+    "copyHubLink": "Copiar link da postagem no Hub",
+    "detachFromFluxo": "Desmembrar do fluxo",
+    "removePost": "Remover post",
+    "selectAria": "Selecionar {{title}}",
+    "dragAria": "Arrastar {{title}}",
+    "saving": "Salvando…",
+    "pendingSuggestion": "Sugestão pendente",
+    "referencesTitle": "Referências enviadas pelo cliente no Hub",
+    "references_one": "{{count}} referência",
+    "references_other": "{{count}} referências",
+    "mediaAttached": "Mídia anexada",
+    "postActionsAria": "Ações do post {{title}}"
+  },
+  "cards": {
+    "discussaoUnread_one": "{{count}} mensagem nova na discussão",
+    "discussaoUnread_other": "{{count}} mensagens novas na discussão",
+    "posts_zero": "{{count}} posts",
+    "posts_one": "{{count}} post",
+    "posts_other": "{{count}} posts",
+    "workflowAria": "{{title}}, {{cliente}}",
+    "noClienteLower": "sem cliente",
+    "recurring": "Recorrente",
+    "createdByAgent": "Criado por agente de IA",
+    "ai": "IA",
+    "fluxoProgress": "Progresso do fluxo: {{etapa}}",
+    "postAria": "{{title}}, post individual",
+    "individualProcess": "Processo individual",
+    "noDeadline": "Sem prazo",
+    "processProgress": "Progresso do processo: {{etapa}}"
+  },
+  "filters": {
+    "noName": "Sem nome",
+    "removeChip": "Remover filtro {{group}}: {{label}}",
+    "groups": {
+      "status": "Status",
+      "prazo": "Prazo",
+      "cliente": "Cliente",
+      "postStatus": "Status do post",
+      "responsavel": "Responsável",
+      "postResponsavel": "Responsável do post",
+      "etapa": "Etapa",
+      "template": "Template",
+      "tipo": "Tipo"
+    },
+    "rangeFrom": "de {{date}}",
+    "rangeTo": "até {{date}}",
+    "allMasc": "Todos",
+    "allFem": "Todas",
+    "situacao": "Situação",
+    "custom": "Personalizado",
+    "from": "De",
+    "to": "Até",
+    "descriptionPosts": "Filtre os posts",
+    "descriptionFluxos": "Filtre os fluxos"
+  },
+  "board": {
+    "dragToReorder": "Arrastar para reordenar",
+    "fluxos_one": "{{count}} fluxo",
+    "fluxos_other": "{{count}} fluxos",
+    "templateAria": "Template: {{template}}. Trocar template",
+    "ok": "OK",
+    "sortColumnAria": "Ordenar coluna {{column}}: {{sort}}",
+    "reorderHint": "Arraste pela alça para mudar a ordem desta etapa.",
+    "empty": "Nenhuma entrega",
+    "templatesMessage": "Escolha o quadro de qual template ver.",
+    "createTemplateLimit": "Criar template (limite do plano atingido)",
+    "createTemplate": "Criar template",
+    "sortColumn": "Ordenar coluna {{column}}",
+    "newIn": "Novo em {{row}}",
+    "fluxo": "Fluxo"
+  },
+  "list": {
+    "more": "Mais",
+    "advance": "Avançar",
+    "openPost": "Abrir post",
+    "openFluxo": "Abrir fluxo",
+    "expandAll": "Abrir todos",
+    "collapseAll": "Fechar todos"
+  },
+  "statusBoard": {
+    "current": "Atual",
+    "locked": "Status travado",
+    "dragToMove": "Arrastar para mover",
+    "dropReorder": "Solte para mudar a ordem nesta coluna",
+    "dropMove": "Solte para mover para {{status}}",
+    "dragToStatus": "Arraste até um status",
+    "reorderHint": "Arraste pela alça até outro status, ou dentro da coluna para mudar a ordem.",
+    "empty": "Nenhum post",
+    "open": "Abrir",
+    "moveToEllipsis": "Mover para…",
+    "moveTo": "Mover para",
+    "automatic": "{{status}} (automático)"
+  },
+  "menus": {
+    "changeResponsavel": "Trocar responsável",
+    "assignResponsavel": "Atribuir responsável",
+    "openPosts": "Abrir posts",
+    "duplicateFluxo": "Duplicar fluxo",
+    "openClienteHub": "Abrir Hub do cliente",
+    "openCliente": "Abrir cliente",
+    "fluxoHistory": "Histórico do fluxo",
+    "responsavelUpdated": "Responsável atualizado!",
+    "updateError": "Erro ao atualizar",
+    "responsavelFor": "Responsável pela etapa {{etapa}}",
+    "etapaHeader": "Etapa {{etapa}}",
+    "endProcess": "Encerrar processo",
+    "deletePost": "Excluir post"
+  }
+}

@@ -1,1 +1,436 @@
-{}
+{
+  "postDestinations": {
+    "notRemovable": "This destination is already publishing or has been published and cannot be removed.",
+    "updateError": "Couldn't update the destinations.",
+    "captionError": "Couldn't save the caption."
+  },
+  "savedViews": {
+    "loadError": "Couldn't load your saved views.",
+    "saved": "View \"{{name}}\" saved!",
+    "saveError": "Couldn't save the view. Please try again.",
+    "updated": "View \"{{name}}\" updated!",
+    "updateError": "Couldn't update the view. Please try again.",
+    "deleteError": "Couldn't delete the view. Please try again.",
+    "renameError": "Couldn't rename the view. Please try again."
+  },
+  "updatePostStatus": {
+    "error": "Couldn't update the status"
+  },
+  "shared": {
+    "untitledPost": "Untitled post",
+    "sendToPortalError": "Couldn't send to the portal",
+    "somenteFluxos": "Workflows only. Individual posts show up on the <btn>board</btn>.",
+    "stageDeadline": "Stage deadline",
+    "expectedCompletion": "Expected completion",
+    "noCliente": "No client",
+    "clienteEtapa": "{{cliente}} · Stage: {{etapa}}",
+    "individualPost": "Individual post",
+    "entregas": "Deliveries",
+    "newFluxo": "New workflow",
+    "copyFluxoLink": "Copy workflow link",
+    "fluxoActions": "Workflow actions",
+    "reorder": "Reorder",
+    "moveToOtherFluxo": "Move to another workflow",
+    "linkCopied": "Link copied!",
+    "linkCopyError": "Couldn't copy the link.",
+    "copyPostLink": "Copy post link",
+    "duplicatePost": "Duplicate post",
+    "postHistory": "Post history",
+    "postActions": "Post actions",
+    "noResponsavel": "No assignee",
+    "moreActions": "More actions for {{title}}",
+    "advanceEtapa": "Advance stage",
+    "revertEtapa": "Move back a stage"
+  },
+  "postProcess": {
+    "success": {
+      "avancar": "Stage advanced.",
+      "voltar": "Stage reverted.",
+      "concluir": "Process completed. The post keeps its status and schedule.",
+      "reabrir": "Process reopened at the last stage."
+    },
+    "exitSuccess": {
+      "avancar": {
+        "semAlterar": "Stage advanced. Post status kept.",
+        "aprovarInterno": "Stage advanced. Post approved.",
+        "voltarRascunho": "Stage advanced. The post went back to draft."
+      },
+      "concluir": {
+        "semAlterar": "Process completed. The post keeps its status and schedule.",
+        "aprovarInterno": "Process completed. Post approved.",
+        "voltarRascunho": "Process completed. The post went back to draft."
+      }
+    },
+    "error": {
+      "avancar": "Couldn't advance the stage",
+      "voltar": "Couldn't move back a stage",
+      "concluir": "Couldn't complete the process",
+      "reabrir": "Couldn't reopen the process"
+    },
+    "sentToPortal": "Post sent to the client portal.",
+    "removed": "Process removed. The post stays in Posts.",
+    "removeError": "Couldn't remove the process",
+    "confirm": {
+      "concludeTitle": "Complete process?",
+      "reopenTitle": "Reopen process?",
+      "removeTitle": "Remove process?",
+      "concludeBody": "The process moves to Completed. The post's status, portal visibility and schedule don't change.",
+      "reopenBody": "The process goes back to the last stage with its saved deadline (even if overdue). The post's status doesn't change.",
+      "removeBody": "The history is kept, the post's status and content don't change, and the post goes back to No process.",
+      "concludeAction": "Complete",
+      "reopenAction": "Reopen",
+      "removeAction": "Remove"
+    }
+  },
+  "workflowStage": {
+    "exitSuccess": {
+      "manter": "Stage completed. Post statuses kept.",
+      "aprovarTodos": "Posts approved and stage completed.",
+      "voltarRascunho": "Stage completed. Posts went back to draft."
+    },
+    "etapaCompleted": "Stage completed!",
+    "advanceError": "Couldn't advance the stage",
+    "sentToPortal": "Posts sent to the client portal!",
+    "reverted": "Stage reverted!",
+    "revertError": "Couldn't revert the stage"
+  },
+  "tour": {
+    "card": {
+      "title": "Workflow card",
+      "description": "This is a workflow card: one work cycle for a client. It moves through the columns (stages) until delivery."
+    },
+    "cardPostProcesses": {
+      "description": "This is a workflow card: one work cycle for a client. Standalone posts with their own process also show up as cards here."
+    },
+    "deadline": {
+      "title": "Deadline and stage",
+      "description": "Track the current stage's deadline here: green is on track, yellow is urgent, red is overdue."
+    },
+    "posts": {
+      "title": "Posts live in the card",
+      "description": "Posts live inside the card. Click the card to open the panel and create posts."
+    },
+    "postsPostProcesses": {
+      "description": "A workflow's posts live inside the card. Click the card to open the panel and create posts."
+    },
+    "drag": {
+      "title": "Drag to advance",
+      "description": "Drag the card to the next column to advance the stage."
+    },
+    "approval": {
+      "title": "Client approval",
+      "description": "When the card reaches this column, its posts can be sent to the client portal for approval. No login needed."
+    },
+    "firstFluxo": {
+      "title": "Create your first workflow",
+      "description": "Click New and choose New workflow to get started. Ready-made templates are available."
+    },
+    "progress": "{{current}} of {{total}}",
+    "next": "Next →",
+    "prev": "← Back",
+    "done": "Done"
+  },
+  "phoneFormat": {
+    "overdue": "{{days}}d overdue",
+    "dueNow": "Due now",
+    "hoursLeft": "{{hours}}h left",
+    "daysHoursLeft": "{{days}}d {{hours}}h left",
+    "daysLeft": "{{days}}d left",
+    "approvedByClient": "Approved by client",
+    "awaitingClientApproval": "Awaiting client approval",
+    "awaitingInternalApproval": "Awaiting internal approval",
+    "postsWithClient_one": "{{count}} post with the client",
+    "postsWithClient_other": "{{count}} posts with the client",
+    "completeAndAdvance": "Complete stage and advance",
+    "completeFluxo": "Complete workflow"
+  },
+  "calendar": {
+    "undatedAria": "Workflows without a date",
+    "undatedFooter": "The current stage of these workflows hasn't started yet, so they don't have a deadline on the calendar.",
+    "tiktokIncomplete": "Open the post to set up TikTok",
+    "viewOnInstagram": "View on Instagram",
+    "noEntregasFiltered": "No deliveries found. Adjust the filters.",
+    "dayEtapaDeadlines_one": "{{count}} stage deadline",
+    "dayEtapaDeadlines_other": "{{count}} stage deadlines",
+    "dayExpectedCompletions_one": "{{count}} expected completion",
+    "dayExpectedCompletions_other": "{{count}} expected completions",
+    "dayPosts_one": "{{count}} post",
+    "dayPosts_other": "{{count}} posts",
+    "dayPostados_one": "{{count}} published",
+    "dayPostados_other": "{{count}} published",
+    "dayFalhas_one": "{{count}} failed",
+    "dayFalhas_other": "{{count}} failed",
+    "noDate": "No date",
+    "weekdayInitial": {
+      "mon": "M",
+      "tue": "T",
+      "wed": "W",
+      "thu": "T",
+      "fri": "F",
+      "sat": "S",
+      "sun": "S"
+    },
+    "dayAria": "{{month}} {{day}}",
+    "noEntregasDay": "No deliveries on this day.",
+    "selectDay": "Select a day.",
+    "noPostsDay": "No posts on this day.",
+    "undatedSheetTitle": "No date · {{count}}"
+  },
+  "chart": {
+    "statusCount": {
+      "atrasado_one": "{{count}} overdue",
+      "atrasado_other": "{{count}} overdue",
+      "urgente_one": "{{count}} urgent",
+      "urgente_other": "{{count}} urgent",
+      "emDia_one": "{{count}} on track",
+      "emDia_other": "{{count}} on track"
+    },
+    "tiles": {
+      "atrasadas": "Overdue",
+      "urgentes": "Urgent (24h)",
+      "vencemHoje": "Due today",
+      "aguardandoCliente": "Awaiting client",
+      "emDia": "On track"
+    },
+    "upcoming": {
+      "title": "Upcoming deadlines",
+      "caption": "tap a workflow to open it",
+      "periodAria": "Deadline period",
+      "subtitle": "{{cliente}} · stage: {{etapa}}",
+      "seeInList": "+{{count}} · see in list"
+    },
+    "byCliente": {
+      "title": "Status by client",
+      "caption": "tap a client to filter by client and status",
+      "footer": "showing the 10 highest-risk clients"
+    },
+    "byResponsavel": {
+      "title": "Workload by assignee",
+      "caption": "who's swamped and who has room. Tap to filter",
+      "footer": "showing the 10 highest-risk assignees"
+    },
+    "byEtapa": {
+      "title": "Workflows by stage",
+      "caption": "where work is piling up right now",
+      "footer": "showing the 10 stages with the most workflows"
+    },
+    "aging": {
+      "title": "Overdue age",
+      "footer": "tap a range to filter by overdue and deadline",
+      "none": "No overdue deliveries",
+      "rangeDays": "{{range}} days"
+    },
+    "segment": {
+      "responsavelMessage": "Filter this assignee's deliveries by status",
+      "clienteMessage": "Filter this client's deliveries by status"
+    }
+  },
+  "concluded": {
+    "fluxosConcluded_zero": "{{count}} completed workflows",
+    "fluxosConcluded_one": "{{count}} completed workflow",
+    "fluxosConcluded_other": "{{count}} completed workflows",
+    "individualPosts_one": "{{count}} individual post",
+    "individualPosts_other": "{{count}} individual posts",
+    "searchFluxo": "Search workflows...",
+    "noFluxoFound": "No workflows found for \"{{search}}\".",
+    "groupAria": "Completed for {{cliente}}",
+    "swipeFooter": "Swipe a row left to reopen.",
+    "posts_zero": "{{count}} posts",
+    "posts_one": "{{count}} post",
+    "posts_other": "{{count}} posts",
+    "days_zero": "{{count}} days",
+    "days_one": "{{count}} day",
+    "days_other": "{{count}} days",
+    "concludedOn": "Completed {{date}}",
+    "customEtapas": "Custom stages",
+    "reopen": "Reopen",
+    "searchCliente": "Search clients",
+    "noClienteFound": "No clients found for \"{{search}}\".",
+    "clientsAria": "Clients with completed deliveries",
+    "sheetDescription": "Completed workflows and posts for {{cliente}}",
+    "reopenTitle": "Reopen workflow?",
+    "reopenMessage": "The workflow \"{{titulo}}\" will be reopened and return to the last stage on the Kanban."
+  },
+  "header": {
+    "views": {
+      "kanban": "Kanban",
+      "chart": "Overview",
+      "calendar": "Calendar",
+      "list": "List",
+      "fila": "My queue",
+      "linha": "Editorial plan",
+      "concluded": "Completed"
+    },
+    "entidade": {
+      "todos": "Workflows and individual posts",
+      "fluxos": "Workflows only",
+      "posts": "Individual posts only"
+    },
+    "defaultVista": "Default",
+    "closeSearch": "Close search",
+    "search": "Search",
+    "filtersActive": "Filters, {{count}} active",
+    "filters": "Filters",
+    "new": "New",
+    "titleAria": "Deliveries. View: {{vista}}. Change view",
+    "titleAriaModified": "Deliveries. View: {{vista}} (modified). Change view",
+    "viewAria": "Show as: {{view}}. Change",
+    "mode": "Mode",
+    "modeEtapas": "Stages",
+    "modeStatus": "Status",
+    "activeFilters": "Active filters",
+    "postAvulso": "Standalone post",
+    "showAs": "Show as",
+    "vistas": "Views",
+    "vistaName": "View name",
+    "savedVistas": "Saved views",
+    "modified": "Modified",
+    "saveCurrent": "Save current view",
+    "vistaHeader": "View \"{{name}}\"",
+    "updateWithCurrent": "Update with current state",
+    "updateWithCurrentHint": "Saves the current filters and display",
+    "rename": "Rename",
+    "delete": "Delete",
+    "show": "Show",
+    "templates": "Templates",
+    "comoFunciona": "How it works"
+  },
+  "fluxo": {
+    "sendApproved_one": "Send {{count}} approved post to the client",
+    "sendApproved_other": "Send {{count}} approved posts to the client",
+    "etapaOnly": "Stage: {{etapa}}",
+    "backAria": "Back to Deliveries",
+    "sendCount": "Send to client ({{count}})",
+    "viewAria": "Workflow view",
+    "views": {
+      "posts": "Posts",
+      "grid": "Grid",
+      "calendar": "Calendar",
+      "history": "History"
+    },
+    "approvedOf": "{{approved}} of {{total}} approved by the client",
+    "postsCount_zero": "{{count}} posts",
+    "postsCount_one": "{{count}} post",
+    "postsCount_other": "{{count}} posts",
+    "selectAll": "Select all",
+    "done": "Done",
+    "select": "Select",
+    "newPost": "New post",
+    "batchScheduleTitle": "Schedule all approved posts that still have a valid date at once.",
+    "awaitingAutoSchedule": "{{count}} awaiting auto-scheduling",
+    "reorderHint": "Drag by the handle to change the order of the posts.",
+    "selectedCount_zero": "{{count}} selected",
+    "selectedCount_one": "{{count}} selected",
+    "selectedCount_other": "{{count}} selected",
+    "sendToClient": "Send to client",
+    "detach": "Detach",
+    "dateTbd": "TBD",
+    "copyHubLink": "Copy Hub post link",
+    "detachFromFluxo": "Detach from workflow",
+    "removePost": "Remove post",
+    "selectAria": "Select {{title}}",
+    "dragAria": "Drag {{title}}",
+    "saving": "Saving…",
+    "pendingSuggestion": "Pending suggestion",
+    "referencesTitle": "References sent by the client in the Hub",
+    "references_one": "{{count}} reference",
+    "references_other": "{{count}} references",
+    "mediaAttached": "Media attached",
+    "postActionsAria": "Actions for post {{title}}"
+  },
+  "cards": {
+    "discussaoUnread_one": "{{count}} new message in the discussion",
+    "discussaoUnread_other": "{{count}} new messages in the discussion",
+    "posts_zero": "{{count}} posts",
+    "posts_one": "{{count}} post",
+    "posts_other": "{{count}} posts",
+    "workflowAria": "{{title}}, {{cliente}}",
+    "noClienteLower": "no client",
+    "recurring": "Recurring",
+    "createdByAgent": "Created by an AI agent",
+    "ai": "AI",
+    "fluxoProgress": "Workflow progress: {{etapa}}",
+    "postAria": "{{title}}, individual post",
+    "individualProcess": "Individual process",
+    "noDeadline": "No deadline",
+    "processProgress": "Process progress: {{etapa}}"
+  },
+  "filters": {
+    "noName": "No name",
+    "removeChip": "Remove filter {{group}}: {{label}}",
+    "groups": {
+      "status": "Status",
+      "prazo": "Deadline",
+      "cliente": "Client",
+      "postStatus": "Post status",
+      "responsavel": "Assignee",
+      "postResponsavel": "Post assignee",
+      "etapa": "Stage",
+      "template": "Template",
+      "tipo": "Type"
+    },
+    "rangeFrom": "from {{date}}",
+    "rangeTo": "to {{date}}",
+    "allMasc": "All",
+    "allFem": "All",
+    "situacao": "Status",
+    "custom": "Custom",
+    "from": "From",
+    "to": "To",
+    "descriptionPosts": "Filter posts",
+    "descriptionFluxos": "Filter workflows"
+  },
+  "board": {
+    "dragToReorder": "Drag to reorder",
+    "fluxos_one": "{{count}} workflow",
+    "fluxos_other": "{{count}} workflows",
+    "templateAria": "Template: {{template}}. Change template",
+    "ok": "OK",
+    "sortColumnAria": "Sort column {{column}}: {{sort}}",
+    "reorderHint": "Drag by the handle to change the order in this stage.",
+    "empty": "No deliveries",
+    "templatesMessage": "Choose which template's board to view.",
+    "createTemplateLimit": "Create template (plan limit reached)",
+    "createTemplate": "Create template",
+    "sortColumn": "Sort column {{column}}",
+    "newIn": "New in {{row}}",
+    "fluxo": "Workflow"
+  },
+  "list": {
+    "more": "More",
+    "advance": "Advance",
+    "openPost": "Open post",
+    "openFluxo": "Open workflow",
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all"
+  },
+  "statusBoard": {
+    "current": "Current",
+    "locked": "Status locked",
+    "dragToMove": "Drag to move",
+    "dropReorder": "Drop to change the order in this column",
+    "dropMove": "Drop to move to {{status}}",
+    "dragToStatus": "Drag onto a status",
+    "reorderHint": "Drag by the handle onto another status, or within the column to change the order.",
+    "empty": "No posts",
+    "open": "Open",
+    "moveToEllipsis": "Move to…",
+    "moveTo": "Move to",
+    "automatic": "{{status}} (automatic)"
+  },
+  "menus": {
+    "changeResponsavel": "Change assignee",
+    "assignResponsavel": "Set assignee",
+    "openPosts": "Open posts",
+    "duplicateFluxo": "Duplicate workflow",
+    "openClienteHub": "Open client's Hub",
+    "openCliente": "Open client",
+    "fluxoHistory": "Workflow history",
+    "responsavelUpdated": "Assignee updated!",
+    "updateError": "Couldn't update",
+    "responsavelFor": "Assignee for stage {{etapa}}",
+    "etapaHeader": "Stage {{etapa}}",
+    "endProcess": "End process",
+    "deletePost": "Delete post"
+  }
+}

@@ -1,5 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { CheckCircle2 } from 'lucide-react';
+import { Trans, useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { cn } from '@/lib/utils';
 import { getInitials } from '@/lib/initials';
 import type { ChartTheme } from '@/lib/chartTheme';
@@ -123,18 +125,16 @@ function Section({
   );
 }
 
-const STATUS_COUNT_WORD: Record<DeadlineStatus, [string, string]> = {
-  atrasado: ['atrasada', 'atrasadas'],
-  urgente: ['urgente', 'urgentes'],
-  em_dia: ['em dia', 'em dia'],
+/** Plural keys under `chart.statusCount`, one per status. */
+const STATUS_COUNT_KEY: Record<DeadlineStatus, string> = {
+  atrasado: 'chart.statusCount.atrasado',
+  urgente: 'chart.statusCount.urgente',
+  em_dia: 'chart.statusCount.emDia',
 };
 
-function countsText(row: StackedRow): string {
+function countsText(row: StackedRow, t: TFunction<'entregasPhone'>): string {
   return STATUS_TEXT_ORDER.filter((s) => row.counts[s] > 0)
-    .map((s) => {
-      const n = row.counts[s];
-      return `${n} ${STATUS_COUNT_WORD[s][n === 1 ? 0 : 1]}`;
-    })
+    .map((s) => t(STATUS_COUNT_KEY[s], { count: row.counts[s] }))
     .join(' · ');
 }
 
@@ -148,11 +148,12 @@ function BarRow({
   theme: ChartTheme;
   onClick?: () => void;
 }) {
+  const { t } = useTranslation('entregasPhone');
   const body = (
     <span className="phone-cell__body phone-ent-v-bar-row">
       <span className="phone-ent-v-bar-row__top">
         <span className="phone-ent-v-bar-row__label">{row.label}</span>
-        <span className="phone-ent-v-bar-row__counts">{countsText(row)}</span>
+        <span className="phone-ent-v-bar-row__counts">{countsText(row, t)}</span>
       </span>
       <span className="phone-ent-v-bar" aria-hidden="true">
         {DEADLINE_STATUS_ORDER.map((s) =>
@@ -200,13 +201,16 @@ function Legend({ theme }: { theme: ChartTheme }) {
 }
 
 function SomenteFluxos({ onGoToKanban }: { onGoToKanban?: () => void }) {
+  const { t } = useTranslation('entregasPhone');
   return (
     <p className="phone-ent-v-note phone-ent-v-note--inline">
-      Somente fluxos. Posts individuais aparecem no{' '}
-      <button type="button" className="phone-ent-v-link" onClick={onGoToKanban}>
-        quadro
-      </button>
-      .
+      <Trans
+        t={t}
+        i18nKey="shared.somenteFluxos"
+        components={{
+          btn: <button type="button" className="phone-ent-v-link" onClick={onGoToKanban} />,
+        }}
+      />
     </p>
   );
 }
@@ -221,6 +225,7 @@ type SegmentTarget = { kind: 'cliente' | 'responsavel'; row: StackedRow };
  * choice per non-empty status instead.
  */
 export function ChartViewPhone(p: ChartViewPhoneProps) {
+  const { t } = useTranslation('entregasPhone');
   const [segmentTarget, setSegmentTarget] = useState<SegmentTarget | null>(null);
 
   if (p.empty) {
@@ -232,7 +237,7 @@ export function ChartViewPhone(p: ChartViewPhoneProps) {
     );
   }
 
-  const activeTab = p.upcomingTabs.find((t) => t.value === p.upcomingTab) ?? p.upcomingTabs[0];
+  const activeTab = p.upcomingTabs.find((tab) => tab.value === p.upcomingTab) ?? p.upcomingTabs[0];
   const target = segmentTarget;
 
   return (
@@ -241,34 +246,34 @@ export function ChartViewPhone(p: ChartViewPhoneProps) {
 
       <div className="phone-ent-v-tiles">
         <Tile
-          label="Atrasadas"
+          label={t('chart.tiles.atrasadas')}
           value={p.stats.atrasado}
           tone="red"
           active={p.statusActive('atrasado')}
           onClick={() => p.onToggleStatus('atrasado')}
         />
         <Tile
-          label="Urgentes (24h)"
+          label={t('chart.tiles.urgentes')}
           value={p.stats.urgente}
           tone="amber"
           active={p.statusActive('urgente')}
           onClick={() => p.onToggleStatus('urgente')}
         />
         <Tile
-          label="Vencem hoje"
+          label={t('chart.tiles.vencemHoje')}
           value={p.vencemHoje}
           active={p.hojeActive}
           onClick={p.onToggleVencemHoje}
         />
         <Tile
-          label="Aguardando cliente"
+          label={t('chart.tiles.aguardandoCliente')}
           value={p.aguardandoTotal}
           tone="blue"
           active={p.aguardandoActive}
           onClick={p.aguardandoClickable ? p.onToggleAguardando : undefined}
         />
         <Tile
-          label="Em dia"
+          label={t('chart.tiles.emDia')}
           value={p.stats.em_dia}
           tone="green"
           wide
@@ -277,15 +282,15 @@ export function ChartViewPhone(p: ChartViewPhoneProps) {
         />
       </div>
 
-      <Section title="Próximos vencimentos" caption="toque num fluxo para abri-lo">
+      <Section title={t('chart.upcoming.title')} caption={t('chart.upcoming.caption')}>
         <SegmentedControl
-          aria-label="Período dos vencimentos"
+          aria-label={t('chart.upcoming.periodAria')}
           semantics="tablist"
           className="phone-ent-v-segmented"
-          options={p.upcomingTabs.map((t) => ({
-            value: t.value,
-            label: t.label,
-            id: `vencimentos-phone-tab-${t.value}`,
+          options={p.upcomingTabs.map((tab) => ({
+            value: tab.value,
+            label: tab.label,
+            id: `vencimentos-phone-tab-${tab.value}`,
             controls: 'vencimentos-phone-panel',
           }))}
           value={p.upcomingTab}
@@ -299,7 +304,7 @@ export function ChartViewPhone(p: ChartViewPhoneProps) {
           {p.upcomingShown.length === 0 ? (
             <p className="phone-ent-v-empty">{activeTab.empty}</p>
           ) : (
-            <GroupedList aria-label="Próximos vencimentos" className="phone-ent-v-group">
+            <GroupedList aria-label={t('chart.upcoming.title')} className="phone-ent-v-group">
               {p.upcomingShown.map((card) => {
                 const prazo = formatEtapaPrazo(card.deadline);
                 return (
@@ -321,7 +326,10 @@ export function ChartViewPhone(p: ChartViewPhoneProps) {
                       />
                     }
                     label={card.workflow.titulo}
-                    subtitle={`${card.cliente?.nome ?? 'Sem cliente'} · etapa: ${card.etapa.nome}`}
+                    subtitle={t('chart.upcoming.subtitle', {
+                      cliente: card.cliente?.nome ?? t('shared.noCliente'),
+                      etapa: card.etapa.nome,
+                    })}
                     value={<span style={{ color: prazo.color }}>{prazo.label}</span>}
                     onClick={() => p.onCardClick(card)}
                   />
@@ -329,7 +337,7 @@ export function ChartViewPhone(p: ChartViewPhoneProps) {
               })}
               {p.upcomingExtra > 0 && (
                 <Cell
-                  label={`+${p.upcomingExtra} · ver na lista`}
+                  label={t('chart.upcoming.seeInList', { count: p.upcomingExtra })}
                   chevron
                   onClick={p.onVerNaLista}
                 />
@@ -340,11 +348,11 @@ export function ChartViewPhone(p: ChartViewPhoneProps) {
       </Section>
 
       <Section
-        title="Situação por cliente"
-        caption="toque num cliente para filtrar por cliente e status"
-        footer={p.clienteRows.length === ROW_CAP ? 'mostrando os 10 clientes de maior risco' : null}
+        title={t('chart.byCliente.title')}
+        caption={t('chart.byCliente.caption')}
+        footer={p.clienteRows.length === ROW_CAP ? t('chart.byCliente.footer') : null}
       >
-        <GroupedList aria-label="Situação por cliente" className="phone-ent-v-group">
+        <GroupedList aria-label={t('chart.byCliente.title')} className="phone-ent-v-group">
           {p.clienteRows.map((row) => (
             <BarRow
               key={row.key || 'sem'}
@@ -358,15 +366,11 @@ export function ChartViewPhone(p: ChartViewPhoneProps) {
       </Section>
 
       <Section
-        title="Carga por responsável"
-        caption="quem está afogado e quem tem folga. Toque para filtrar"
-        footer={
-          p.responsavelRows.length === ROW_CAP
-            ? 'mostrando os 10 responsáveis de maior risco'
-            : null
-        }
+        title={t('chart.byResponsavel.title')}
+        caption={t('chart.byResponsavel.caption')}
+        footer={p.responsavelRows.length === ROW_CAP ? t('chart.byResponsavel.footer') : null}
       >
-        <GroupedList aria-label="Carga por responsável" className="phone-ent-v-group">
+        <GroupedList aria-label={t('chart.byResponsavel.title')} className="phone-ent-v-group">
           {p.responsavelRows.map((row) => (
             <BarRow
               key={row.key || 'sem'}
@@ -382,11 +386,11 @@ export function ChartViewPhone(p: ChartViewPhoneProps) {
       </Section>
 
       <Section
-        title="Fluxos por etapa"
-        caption="onde o trabalho está acumulado agora"
-        footer={p.etapaRows.length === ROW_CAP ? 'mostrando as 10 etapas com mais fluxos' : null}
+        title={t('chart.byEtapa.title')}
+        caption={t('chart.byEtapa.caption')}
+        footer={p.etapaRows.length === ROW_CAP ? t('chart.byEtapa.footer') : null}
       >
-        <GroupedList aria-label="Fluxos por etapa" className="phone-ent-v-group">
+        <GroupedList aria-label={t('chart.byEtapa.title')} className="phone-ent-v-group">
           {p.etapaRows.map((row) => (
             <BarRow
               key={row.key || 'sem'}
@@ -399,21 +403,26 @@ export function ChartViewPhone(p: ChartViewPhoneProps) {
       </Section>
 
       <Section
-        title="Idade dos atrasos"
+        title={t('chart.aging.title')}
         caption={p.idadeCaption}
-        footer={p.stats.atrasado > 0 ? 'toque numa faixa para filtrar por atrasado e prazo' : null}
+        footer={p.stats.atrasado > 0 ? t('chart.aging.footer') : null}
       >
         {p.stats.atrasado === 0 ? (
           <p className="phone-ent-v-empty phone-ent-v-empty--ok">
             <CheckCircle2 aria-hidden="true" />
-            Nenhuma entrega atrasada
+            {t('chart.aging.none')}
           </p>
         ) : (
-          <GroupedList aria-label="Idade dos atrasos" className="phone-ent-v-group">
+          <GroupedList aria-label={t('chart.aging.title')} className="phone-ent-v-group">
             {p.agingBuckets.map((bucket) => (
               <Cell
                 key={bucket.label}
-                label={bucket.label === '1 dia' ? '1 dia' : `${bucket.label} dias`}
+                // The single-day bucket's label already says "1 dia"; ranges get the unit.
+                label={
+                  bucket.fromDaysAgo === 1
+                    ? bucket.label
+                    : t('chart.aging.rangeDays', { range: bucket.label })
+                }
                 value={
                   <span className={bucket.count > 0 ? 'phone-ent-v-tone--red' : undefined}>
                     {bucket.count}
@@ -435,8 +444,8 @@ export function ChartViewPhone(p: ChartViewPhoneProps) {
         title={target?.row.label ?? ''}
         message={
           target?.kind === 'responsavel'
-            ? 'Filtrar as entregas deste responsável por situação'
-            : 'Filtrar as entregas deste cliente por situação'
+            ? t('chart.segment.responsavelMessage')
+            : t('chart.segment.clienteMessage')
         }
         actions={
           target

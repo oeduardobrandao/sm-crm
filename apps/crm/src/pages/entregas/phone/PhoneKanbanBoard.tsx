@@ -11,6 +11,7 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { ArrowUpDown, ChevronDown, Plus } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { ActionSheet } from '@/components/mobile/ActionSheet';
 import { Chip, ChipRow } from '@/components/mobile/ChipRow';
 import type { Membro } from '../../../store';
@@ -44,7 +45,7 @@ export interface PhoneKanbanWorkflowActions {
 export interface PhoneKanbanPostActions {
   open?: (entity: PostEntity) => void;
   forward: (entity: PostEntity) => void;
-  forwardLabel: (entity: PostEntity) => 'Avançar etapa' | 'Concluir processo';
+  forwardLabel: (entity: PostEntity) => string;
   canRevert: (entity: PostEntity) => boolean;
   revert: (entity: PostEntity) => void;
   removeProcess: (entity: PostEntity) => void;
@@ -97,6 +98,7 @@ function PhoneSortableItem({
   reorder: boolean;
   children: (handle: ReactNode | undefined) => ReactNode;
 }) {
+  const { t } = useTranslation('entregasPhone');
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
     disabled: !reorder,
@@ -113,7 +115,7 @@ function PhoneSortableItem({
       {...(reorder ? attributes : {})}
     >
       {children(
-        reorder ? <PhoneDragHandle label="Arrastar para reordenar" {...listeners} /> : undefined,
+        reorder ? <PhoneDragHandle label={t('board.dragToReorder')} {...listeners} /> : undefined,
       )}
     </li>
   );
@@ -151,6 +153,7 @@ export function PhoneKanbanBoard({
   createTemplateDisabled,
   postProcessesEnabled,
 }: PhoneKanbanBoardProps) {
+  const { t } = useTranslation('entregasPhone');
   const row = rows.find((r) => r.key === activeRowKey) ?? rows[0];
   const [ordemByRow, setOrdemByRow] = useState<Record<string, number>>({});
   const [reorder, setReorder] = useState(false);
@@ -180,7 +183,7 @@ export function PhoneKanbanBoard({
   const posts = column.posts.length;
   const countLabel =
     fluxos > 0 && posts > 0
-      ? `${fluxos} ${fluxos === 1 ? 'fluxo' : 'fluxos'} · ${posts} ${posts === 1 ? 'post' : 'posts'}`
+      ? `${t('board.fluxos', { count: fluxos })} · ${t('cards.posts', { count: posts })}`
       : String(fluxos + posts);
   const panelId = `phone-ent-col-${row.key.replace(/[^a-z0-9]/gi, '-')}`;
 
@@ -264,14 +267,18 @@ export function PhoneKanbanBoard({
           ref={templateButtonRef}
           type="button"
           className="phone-ent-board__template"
-          aria-label={`Template: ${row.label}. Trocar template`}
+          aria-label={t('board.templateAria', { template: row.label })}
           aria-haspopup="dialog"
           onClick={() => setTemplateSheet(true)}
         >
           <span>{row.label}</span>
           <ChevronDown aria-hidden="true" />
         </button>
-        <ChipRow aria-label="Etapas" semantics="tablist" className="phone-ent-board__chips">
+        <ChipRow
+          aria-label={t('header.modeEtapas')}
+          semantics="tablist"
+          className="phone-ent-board__chips"
+        >
           {row.columns.map((c) => (
             <Chip
               key={c.ordem}
@@ -303,7 +310,7 @@ export function PhoneKanbanBoard({
                 className="phone-ent-text-btn phone-ent-text-btn--strong"
                 onClick={() => setReorder(false)}
               >
-                OK
+                {t('board.ok')}
               </button>
             ) : (
               <>
@@ -313,13 +320,16 @@ export function PhoneKanbanBoard({
                     className="phone-ent-text-btn"
                     onClick={() => setReorder(true)}
                   >
-                    Reordenar
+                    {t('shared.reorder')}
                   </button>
                 )}
                 <button
                   type="button"
                   className="phone-ent-text-btn"
-                  aria-label={`Ordenar coluna ${column.nome}: ${FLUXOS_COLUMN_SORT_LABELS[sortMode]}`}
+                  aria-label={t('board.sortColumnAria', {
+                    column: column.nome,
+                    sort: FLUXOS_COLUMN_SORT_LABELS[sortMode],
+                  })}
                   onClick={() => setSortSheet(true)}
                 >
                   <ArrowUpDown aria-hidden="true" />
@@ -331,7 +341,7 @@ export function PhoneKanbanBoard({
         </div>
         {reorder && (
           <p className="phone-ent-board__hint" role="status">
-            Arraste pela alça para mudar a ordem desta etapa.
+            {t('board.reorderHint')}
           </p>
         )}
 
@@ -344,7 +354,7 @@ export function PhoneKanbanBoard({
             }
           >
             <Plus aria-hidden="true" />
-            {offersPostIndividual ? 'Novo' : 'Novo fluxo'}
+            {offersPostIndividual ? t('header.new') : t('shared.newFluxo')}
           </button>
         )}
 
@@ -357,7 +367,7 @@ export function PhoneKanbanBoard({
         >
           <SortableContext items={mixed.map(sortableIdOf)} strategy={verticalListSortingStrategy}>
             {mixed.length === 0 ? (
-              <p className="phone-ent-board__empty">Nenhuma entrega</p>
+              <p className="phone-ent-board__empty">{t('board.empty')}</p>
             ) : (
               <ul className="phone-ent-board__list">
                 {mixed.map((entity) => (
@@ -395,8 +405,8 @@ export function PhoneKanbanBoard({
       <ActionSheet
         open={templateSheet}
         onOpenChange={setTemplateSheet}
-        title="Templates"
-        message="Escolha o quadro de qual template ver."
+        title={t('header.templates')}
+        message={t('board.templatesMessage')}
         returnFocusRef={templateButtonRef}
         actions={[
           ...rows.map((r) => ({
@@ -410,8 +420,8 @@ export function PhoneKanbanBoard({
             ? [
                 {
                   label: createTemplateDisabled
-                    ? 'Criar template (limite do plano atingido)'
-                    : 'Criar template',
+                    ? t('board.createTemplateLimit')
+                    : t('board.createTemplate'),
                   icon: <Plus aria-hidden="true" />,
                   disabled: createTemplateDisabled,
                   onSelect: onCreateTemplate,
@@ -423,7 +433,7 @@ export function PhoneKanbanBoard({
       <ActionSheet
         open={sortSheet}
         onOpenChange={setSortSheet}
-        title={`Ordenar coluna ${column.nome}`}
+        title={t('board.sortColumn', { column: column.nome })}
         actions={FLUXOS_COLUMN_SORTS.map((mode) => ({
           label: `${sortMode === mode ? '✓ ' : ''}${FLUXOS_COLUMN_SORT_LABELS[mode]}`,
           onSelect: () => setColumnSort(colKey, mode),
@@ -433,11 +443,11 @@ export function PhoneKanbanBoard({
         <ActionSheet
           open={newSheet}
           onOpenChange={setNewSheet}
-          title={`Novo em ${row.label}`}
+          title={t('board.newIn', { row: row.label })}
           actions={[
-            { label: 'Fluxo', onSelect: () => onAddWorkflow(row.templateId) },
+            { label: t('board.fluxo'), onSelect: () => onAddWorkflow(row.templateId) },
             {
-              label: 'Post individual',
+              label: t('shared.individualPost'),
               onSelect: () => onAddPostIndividual!(row.templateId as number),
             },
           ]}

@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import { Check, FileText, GripVertical, MessageSquare, MoreHorizontal } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import type { ContextMenuTriggerProps } from '@/components/mobile/ContextMenu';
 import { MediaUnavailable } from '@/components/MediaUnavailable';
 import { getInitials } from '@/lib/initials';
@@ -31,7 +33,7 @@ export interface WorkflowCardCounts {
 }
 
 function discussaoLabel(n: number): string {
-  return `${n} ${n === 1 ? 'mensagem nova' : 'mensagens novas'} na discussão`;
+  return i18n.t('entregasPhone:cards.discussaoUnread', { count: n });
 }
 
 function ClienteAvatar({
@@ -106,11 +108,12 @@ export function PhoneWorkflowCard({
   dragHandle,
   preview,
 }: PhoneWorkflowCardProps) {
+  const { t } = useTranslation('entregasPhone');
   const tone = deadlineTone(card.deadline);
   const status = workflowStatusLine(card, counts);
   const meta = [
-    card.membro?.nome ?? 'Sem responsável',
-    `${counts.postsCount} post${counts.postsCount === 1 ? '' : 's'}`,
+    card.membro?.nome ?? t('shared.noResponsavel'),
+    t('cards.posts', { count: counts.postsCount }),
     counts.approvedPostsCount ? `${counts.approvedPostsCount} ✓` : null,
   ]
     .filter(Boolean)
@@ -120,7 +123,14 @@ export function PhoneWorkflowCard({
     <article
       className="phone-ent-card"
       data-tone={tone}
-      aria-label={preview ? undefined : `${title}, ${card.cliente?.nome ?? 'sem cliente'}`}
+      aria-label={
+        preview
+          ? undefined
+          : t('cards.workflowAria', {
+              title,
+              cliente: card.cliente?.nome ?? t('cards.noClienteLower'),
+            })
+      }
       data-testid={preview ? undefined : 'phone-workflow-card'}
     >
       <button
@@ -143,16 +153,20 @@ export function PhoneWorkflowCard({
                 <span className="phone-ent-card__client-name">{card.cliente.nome}</span>
               </>
             ) : (
-              <span className="phone-ent-card__client-name">Sem cliente</span>
+              <span className="phone-ent-card__client-name">{t('shared.noCliente')}</span>
             )}
             {card.workflow.recorrente && (
-              <span className="phone-ent-card__badge" aria-label="Recorrente" title="Recorrente">
+              <span
+                className="phone-ent-card__badge"
+                aria-label={t('cards.recurring')}
+                title={t('cards.recurring')}
+              >
                 ↻
               </span>
             )}
             {card.workflow.created_via === 'agent' && (
-              <span className="phone-ent-card__badge" title="Criado por agente de IA">
-                IA
+              <span className="phone-ent-card__badge" title={t('cards.createdByAgent')}>
+                {t('cards.ai')}
               </span>
             )}
             {!!counts.discussaoNaoLidas && counts.discussaoNaoLidas > 0 && (
@@ -180,7 +194,7 @@ export function PhoneWorkflowCard({
           <Progress
             idx={card.etapaIdx}
             total={card.totalEtapas}
-            label={`Progresso do fluxo: ${card.etapa.nome}`}
+            label={t('cards.fluxoProgress', { etapa: card.etapa.nome })}
           />
         </span>
         {dragHandle ? (
@@ -191,7 +205,7 @@ export function PhoneWorkflowCard({
               <button
                 {...triggerProps}
                 className="phone-ent-card__icon-btn"
-                aria-label={`Mais ações de ${title}`}
+                aria-label={t('shared.moreActions', { title })}
               >
                 <MoreHorizontal aria-hidden="true" />
               </button>
@@ -217,7 +231,7 @@ export interface PhonePostProcessCardProps {
   entity: PostEntity;
   onOpen?: () => void;
   onForward?: () => void;
-  forwardLabel?: 'Avançar etapa' | 'Concluir processo';
+  forwardLabel?: string;
   triggerProps?: ContextMenuTriggerProps;
   dragHandle?: ReactNode;
   preview?: boolean;
@@ -240,6 +254,7 @@ export function PhonePostProcessCard({
   showPublishDate,
   discussaoNaoLidas,
 }: PhonePostProcessCardProps) {
+  const { t } = useTranslation('entregasPhone');
   const registry = useStatusRegistry();
   const post = entity.process.post;
   const hasDeadline = entity.prazoEfetivo != null;
@@ -247,13 +262,13 @@ export function PhonePostProcessCard({
   const tone = publicacao || !hasDeadline ? 'ok' : deadlineTone(entity.deadline);
   const TipoIcon = TIPO_ICONS[post.tipo];
   const etapaIdx = entity.steps.findIndex((s) => s.ordem === entity.etapaOrdem);
-  const title = entity.titulo || 'Post sem título';
-  const clienteNome = entity.cliente?.nome ?? post.cliente_nome ?? 'Sem cliente';
+  const title = entity.titulo || t('shared.untitledPost');
+  const clienteNome = entity.cliente?.nome ?? post.cliente_nome ?? t('shared.noCliente');
   return (
     <article
       className="phone-ent-card phone-ent-card--post"
       data-tone={tone}
-      aria-label={preview ? undefined : `${title}, post individual`}
+      aria-label={preview ? undefined : t('cards.postAria', { title })}
       data-testid={preview ? undefined : 'phone-post-process-card'}
     >
       <button
@@ -291,8 +306,8 @@ export function PhonePostProcessCard({
             <span
               className="phone-ent-card__badge"
               role="img"
-              aria-label="Processo individual"
-              title="Processo individual"
+              aria-label={t('cards.individualProcess')}
+              title={t('cards.individualProcess')}
             >
               <FileText size={11} aria-hidden="true" />
             </span>
@@ -303,7 +318,7 @@ export function PhonePostProcessCard({
             ) : hasDeadline ? (
               relativeDeadline(entity.deadline)
             ) : (
-              'Sem prazo'
+              t('cards.noDeadline')
             )}
           </span>
         </span>
@@ -315,12 +330,12 @@ export function PhonePostProcessCard({
       <div className="phone-ent-card__foot">
         <span className="phone-ent-card__meta">
           <span className="phone-ent-card__meta-text">
-            {entity.responsavel?.nome ?? 'Sem responsável'} · {entity.etapaNome}
+            {entity.responsavel?.nome ?? t('shared.noResponsavel')} · {entity.etapaNome}
           </span>
           <Progress
             idx={etapaIdx}
             total={entity.steps.length}
-            label={`Progresso do processo: ${entity.etapaNome}`}
+            label={t('cards.processProgress', { etapa: entity.etapaNome })}
           />
         </span>
         {dragHandle ? (
@@ -331,7 +346,7 @@ export function PhonePostProcessCard({
               <button
                 {...triggerProps}
                 className="phone-ent-card__icon-btn"
-                aria-label={`Mais ações de ${title}`}
+                aria-label={t('shared.moreActions', { title })}
               >
                 <MoreHorizontal aria-hidden="true" />
               </button>
@@ -340,7 +355,7 @@ export function PhonePostProcessCard({
               <button
                 type="button"
                 className="phone-ent-card__icon-btn phone-ent-card__forward"
-                aria-label={forwardLabel ?? 'Avançar etapa'}
+                aria-label={forwardLabel ?? t('shared.advanceEtapa')}
                 onClick={onForward}
               >
                 <Check aria-hidden="true" />

@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import { ChevronRight, FileText, GitFork, RotateCcw, Search } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import type {
   Cliente,
   ConcludedWorkflowSummary,
@@ -46,13 +48,10 @@ export interface ConcludedViewPhoneProps {
   formatDateShort: (iso: string) => string;
 }
 
-function clientStats(g: ConcludedClientGroup): string {
-  const w = g.workflows.length;
+function clientStats(g: ConcludedClientGroup, t: TFunction<'entregasPhone'>): string {
   const p = g.processes.length;
-  const fluxos = `${w} fluxo${w !== 1 ? 's' : ''} concluído${w !== 1 ? 's' : ''}`;
-  return p > 0
-    ? `${fluxos} · ${p} post${p !== 1 ? 's' : ''} individua${p !== 1 ? 'is' : 'l'}`
-    : fluxos;
+  const fluxos = t('concluded.fluxosConcluded', { count: g.workflows.length });
+  return p > 0 ? `${fluxos} · ${t('concluded.individualPosts', { count: p })}` : fluxos;
 }
 
 function SearchField({
@@ -149,17 +148,22 @@ function ClientSheetBody({
 > & { group: ConcludedClientGroup }) {
   // Opening a workflow or a post replaces this sheet: close it first so its history
   // entry is gone before the next layer pushes its own.
+  const { t } = useTranslation('entregasPhone');
   const { closeThen } = useSheetActions();
   const empty = visibleWorkflows.length === 0 && visibleProcesses.length === 0;
   return (
     <div className="phone-ent-v-sheet-body">
-      <SearchField value={fluxoSearch} onChange={onFluxoSearchChange} label="Buscar fluxo..." />
+      <SearchField
+        value={fluxoSearch}
+        onChange={onFluxoSearchChange}
+        label={t('concluded.searchFluxo')}
+      />
       {empty ? (
-        <p className="phone-ent-v-empty">Nenhum fluxo encontrado para "{fluxoSearch}".</p>
+        <p className="phone-ent-v-empty">{t('concluded.noFluxoFound', { search: fluxoSearch })}</p>
       ) : (
         <GroupedList
-          aria-label={`Concluídos de ${group.cliente.nome}`}
-          footer="Deslize uma linha para a esquerda para reabrir."
+          aria-label={t('concluded.groupAria', { cliente: group.cliente.nome })}
+          footer={t('concluded.swipeFooter')}
         >
           {visibleWorkflows.map((s) => (
             <ReopenableRow
@@ -167,13 +171,15 @@ function ClientSheetBody({
               icon={<GitFork />}
               title={s.workflow.titulo}
               meta={[
-                `${s.postCount} post${s.postCount !== 1 ? 's' : ''}`,
-                s.totalDays !== null ? `${s.totalDays} dia${s.totalDays !== 1 ? 's' : ''}` : null,
-                s.completedAt ? `Concluído ${formatDateShort(s.completedAt)}` : null,
+                t('concluded.posts', { count: s.postCount }),
+                s.totalDays !== null ? t('concluded.days', { count: s.totalDays }) : null,
+                s.completedAt
+                  ? t('concluded.concludedOn', { date: formatDateShort(s.completedAt) })
+                  : null,
               ]
                 .filter(Boolean)
                 .join(' · ')}
-              reopenLabel="Reabrir"
+              reopenLabel={t('concluded.reopen')}
               onOpen={() => closeThen(() => onOpenWorkflow(s.workflow, group.cliente.nome))}
               onReopen={() => onReopenWorkflow({ id: s.workflow.id!, titulo: s.workflow.titulo })}
             />
@@ -182,15 +188,17 @@ function ClientSheetBody({
             <ReopenableRow
               key={`proc-${proc.id}`}
               icon={<FileText />}
-              title={proc.post.titulo || 'Post sem título'}
+              title={proc.post.titulo || t('shared.untitledPost')}
               meta={[
-                'Post individual',
-                proc.template_nome ?? 'Etapas personalizadas',
-                proc.concluido_em ? `Concluído ${formatDateShort(proc.concluido_em)}` : null,
+                t('shared.individualPost'),
+                proc.template_nome ?? t('concluded.customEtapas'),
+                proc.concluido_em
+                  ? t('concluded.concludedOn', { date: formatDateShort(proc.concluido_em) })
+                  : null,
               ]
                 .filter(Boolean)
                 .join(' · ')}
-              reopenLabel="Reabrir"
+              reopenLabel={t('concluded.reopen')}
               onOpen={() => closeThen(() => onOpenPost?.(proc.post_id))}
               onReopen={() => onReopenProcess(proc)}
             />
@@ -208,6 +216,7 @@ function ClientSheetBody({
  * post. Reabrir keeps its confirmation, as an action sheet.
  */
 export function ConcludedViewPhone(p: ConcludedViewPhoneProps) {
+  const { t } = useTranslation('entregasPhone');
   useOverlayHistoryEntry(p.workflowOpen, p.onCloseWorkflow);
   const group = p.selectedGroup;
 
@@ -217,14 +226,16 @@ export function ConcludedViewPhone(p: ConcludedViewPhoneProps) {
         <SearchField
           value={p.clientSearch}
           onChange={p.onClientSearchChange}
-          label="Buscar cliente"
+          label={t('concluded.searchCliente')}
         />
       )}
 
       {p.visibleGroups.length === 0 ? (
-        <p className="phone-ent-v-empty">Nenhum cliente encontrado para "{p.clientSearch}".</p>
+        <p className="phone-ent-v-empty">
+          {t('concluded.noClienteFound', { search: p.clientSearch })}
+        </p>
       ) : (
-        <GroupedList aria-label="Clientes com entregas concluídas" className="phone-ent-v-group">
+        <GroupedList aria-label={t('concluded.clientsAria')} className="phone-ent-v-group">
           {p.visibleGroups.map((g) => (
             <Cell
               key={g.cliente.id}
@@ -236,7 +247,7 @@ export function ConcludedViewPhone(p: ConcludedViewPhoneProps) {
                 />
               }
               label={g.cliente.nome}
-              subtitle={clientStats(g)}
+              subtitle={clientStats(g, t)}
               chevron
               onClick={() => {
                 p.onFluxoSearchChange('');
@@ -253,7 +264,9 @@ export function ConcludedViewPhone(p: ConcludedViewPhoneProps) {
           if (!open) p.onSelectCliente(null);
         }}
         title={group?.cliente.nome ?? ''}
-        description={group ? `Fluxos e posts concluídos de ${group.cliente.nome}` : undefined}
+        description={
+          group ? t('concluded.sheetDescription', { cliente: group.cliente.nome }) : undefined
+        }
         detents={['large']}
       >
         {group && (
@@ -274,9 +287,9 @@ export function ConcludedViewPhone(p: ConcludedViewPhoneProps) {
 
       <PhoneConfirmSheet
         open={p.reopenTarget !== null}
-        title="Reabrir fluxo?"
-        message={`O fluxo "${p.reopenTarget?.titulo ?? ''}" será reaberto e voltará para a última etapa no Kanban.`}
-        actions={[{ label: 'Reabrir', onSelect: p.onReopenConfirm }]}
+        title={t('concluded.reopenTitle')}
+        message={t('concluded.reopenMessage', { titulo: p.reopenTarget?.titulo ?? '' })}
+        actions={[{ label: t('concluded.reopen'), onSelect: p.onReopenConfirm }]}
         onCancel={p.onReopenCancel}
       />
     </div>

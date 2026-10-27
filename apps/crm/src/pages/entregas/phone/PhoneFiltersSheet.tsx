@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import {
   PhoneFiltersSheet as FiltersSheetShell,
   type FilterList,
@@ -49,68 +51,77 @@ export function activeFilterChips(
 ): FilterChip[] {
   const chips: FilterChip[] = [];
   const nameOf = <T extends { id?: number; nome: string }>(list: T[], id: number) =>
-    list.find((x) => x.id === id)?.nome ?? 'Sem nome';
+    list.find((x) => x.id === id)?.nome ?? i18n.t('entregasPhone:filters.noName');
+  /** `group` is a stable id: the chip key uses it, the remove label its translation. */
   const push = (group: string, key: string, label: string, next: FilterState) =>
     chips.push({
       key: `${group}:${key}`,
       label,
-      removeLabel: `Remover filtro ${group}: ${label}`,
+      removeLabel: i18n.t('entregasPhone:filters.removeChip', {
+        group: i18n.t(`entregasPhone:filters.groups.${group}`),
+        label,
+      }),
       next,
     });
 
   if (mode === 'entregas')
     for (const s of filters.filterStatus) {
       const label = STATUS_OPTIONS.find((o) => o.value === s)?.label ?? s;
-      push('Status', s, label, { ...filters, filterStatus: without(filters.filterStatus, s) });
+      push('status', s, label, { ...filters, filterStatus: without(filters.filterStatus, s) });
     }
   for (const p of filters.filterPrazo)
-    push('Prazo', p, PRAZO_PRESET_LABELS[p], {
+    push('prazo', p, PRAZO_PRESET_LABELS[p], {
       ...filters,
       filterPrazo: without(filters.filterPrazo, p),
     });
   if (filters.filterPrazoFrom || filters.filterPrazoTo) {
     const fmt = (d: string) => d.split('-').reverse().slice(0, 2).join('/');
     const label = [
-      filters.filterPrazoFrom && `de ${fmt(filters.filterPrazoFrom)}`,
-      filters.filterPrazoTo && `até ${fmt(filters.filterPrazoTo)}`,
+      filters.filterPrazoFrom &&
+        i18n.t('entregasPhone:filters.rangeFrom', { date: fmt(filters.filterPrazoFrom) }),
+      filters.filterPrazoTo &&
+        i18n.t('entregasPhone:filters.rangeTo', { date: fmt(filters.filterPrazoTo) }),
     ]
       .filter(Boolean)
       .join(' ');
-    push('Prazo', 'range', label, { ...filters, filterPrazoFrom: '', filterPrazoTo: '' });
+    push('prazo', 'range', label, { ...filters, filterPrazoFrom: '', filterPrazoTo: '' });
   }
   for (const id of filters.filterClientes)
-    push('Cliente', String(id), nameOf(clientes, id), {
+    push('cliente', String(id), nameOf(clientes, id), {
       ...filters,
       filterClientes: without(filters.filterClientes, id),
     });
   if (mode === 'posts')
     for (const k of filters.filterPostStatus)
-      push('Status do post', k, registry.byKey.get(k)?.label ?? k, {
+      push('postStatus', k, registry.byKey.get(k)?.label ?? k, {
         ...filters,
         filterPostStatus: without(filters.filterPostStatus, k),
       });
   for (const id of filters.filterMembros)
-    push('Responsável', String(id), nameOf(membros, id), {
+    push('responsavel', String(id), nameOf(membros, id), {
       ...filters,
       filterMembros: without(filters.filterMembros, id),
     });
   if (mode === 'entregas')
     for (const id of filters.filterPostResponsaveis)
-      push('Responsável do post', String(id), nameOf(membros, id), {
+      push('postResponsavel', String(id), nameOf(membros, id), {
         ...filters,
         filterPostResponsaveis: without(filters.filterPostResponsaveis, id),
       });
   for (const e of filters.filterEtapas)
-    push('Etapa', e, e, { ...filters, filterEtapas: without(filters.filterEtapas, e) });
+    push('etapa', e, e, { ...filters, filterEtapas: without(filters.filterEtapas, e) });
   if (mode === 'entregas')
     for (const id of filters.filterTemplates)
-      push('Template', String(id), nameOf(templates, id), {
+      push('template', String(id), nameOf(templates, id), {
         ...filters,
         filterTemplates: without(filters.filterTemplates, id),
       });
   if (mode === 'posts')
-    for (const t of filters.filterTipos)
-      push('Tipo', t, TIPO_LABELS[t], { ...filters, filterTipos: without(filters.filterTipos, t) });
+    for (const tipo of filters.filterTipos)
+      push('tipo', tipo, TIPO_LABELS[tipo], {
+        ...filters,
+        filterTipos: without(filters.filterTipos, tipo),
+      });
   return chips;
 }
 
@@ -149,6 +160,7 @@ export function PhoneFiltersSheet({
   etapaNames,
   returnFocusRef,
 }: PhoneFiltersSheetProps) {
+  const { t } = useTranslation('entregasPhone');
   const registry = useStatusRegistry();
   const hasRange = !!filters.filterPrazoFrom || !!filters.filterPrazoTo;
   // "Personalizado" is open while the sheet is, starting from whether a range is set
@@ -175,32 +187,32 @@ export function PhoneFiltersSheet({
   const lists = {
     clientes: {
       key: 'clientes',
-      title: 'Cliente',
-      allLabel: 'Todos',
+      title: t('filters.groups.cliente'),
+      allLabel: t('filters.allMasc'),
       options: clienteOptions,
       selected: filters.filterClientes,
       onChange: (v) => onChange({ ...filters, filterClientes: v as number[] }),
     },
     membros: {
       key: 'membros',
-      title: 'Responsável',
-      allLabel: 'Todos',
+      title: t('filters.groups.responsavel'),
+      allLabel: t('filters.allMasc'),
       options: membroOptions,
       selected: filters.filterMembros,
       onChange: (v) => onChange({ ...filters, filterMembros: v as number[] }),
     },
     postResponsaveis: {
       key: 'postResponsaveis',
-      title: 'Responsável do post',
-      allLabel: 'Todos',
+      title: t('filters.groups.postResponsavel'),
+      allLabel: t('filters.allMasc'),
       options: membroOptions,
       selected: filters.filterPostResponsaveis,
       onChange: (v) => onChange({ ...filters, filterPostResponsaveis: v as number[] }),
     },
     etapas: {
       key: 'etapas',
-      title: 'Etapa',
-      allLabel: 'Todas',
+      title: t('filters.groups.etapa'),
+      allLabel: t('filters.allFem'),
       options: [...etapaNames]
         .sort((a, b) => a.localeCompare(b))
         .map((n) => ({ value: n, label: n })),
@@ -209,19 +221,19 @@ export function PhoneFiltersSheet({
     },
     templates: {
       key: 'templates',
-      title: 'Template',
-      allLabel: 'Todos',
+      title: t('filters.groups.template'),
+      allLabel: t('filters.allMasc'),
       options: [...templates]
-        .filter((t) => t.id != null)
+        .filter((tpl) => tpl.id != null)
         .sort((a, b) => a.nome.localeCompare(b.nome))
-        .map((t) => ({ value: t.id!, label: t.nome })),
+        .map((tpl) => ({ value: tpl.id!, label: tpl.nome })),
       selected: filters.filterTemplates,
       onChange: (v) => onChange({ ...filters, filterTemplates: v as number[] }),
     },
     postStatus: {
       key: 'postStatus',
-      title: 'Status do post',
-      allLabel: 'Todos',
+      title: t('filters.groups.postStatus'),
+      allLabel: t('filters.allMasc'),
       options: registry.options.map((o) => ({ value: o.key, label: o.label })),
       selected: filters.filterPostStatus,
       onChange: (v) =>
@@ -234,7 +246,7 @@ export function PhoneFiltersSheet({
     sections.push({
       type: 'chips',
       key: 'situacao',
-      label: 'Situação',
+      label: t('filters.situacao'),
       chips: STATUS_OPTIONS.map((o) => ({
         key: o.value,
         label: o.label,
@@ -246,7 +258,7 @@ export function PhoneFiltersSheet({
   sections.push({
     type: 'chips',
     key: 'prazo',
-    label: 'Prazo da etapa',
+    label: t('shared.stageDeadline'),
     chips: [
       ...PRAZO_PRESET_ORDER.map((p) => ({
         key: p,
@@ -256,7 +268,7 @@ export function PhoneFiltersSheet({
       })),
       {
         key: 'personalizado',
-        label: 'Personalizado',
+        label: t('filters.custom'),
         selected: customRange,
         onToggle: () => {
           if (customRange) onChange({ ...filters, filterPrazoFrom: '', filterPrazoTo: '' });
@@ -267,7 +279,7 @@ export function PhoneFiltersSheet({
     after: customRange && (
       <div className="phone-ent-filters__range">
         <label>
-          De
+          {t('filters.from')}
           <input
             type="date"
             value={filters.filterPrazoFrom}
@@ -275,7 +287,7 @@ export function PhoneFiltersSheet({
           />
         </label>
         <label>
-          Até
+          {t('filters.to')}
           <input
             type="date"
             value={filters.filterPrazoTo}
@@ -289,12 +301,12 @@ export function PhoneFiltersSheet({
     sections.push({
       type: 'chips',
       key: 'tipo',
-      label: 'Tipo',
-      chips: TIPO_ORDER.map((t) => ({
-        key: t,
-        label: TIPO_LABELS[t],
-        selected: filters.filterTipos.includes(t),
-        onToggle: () => onChange({ ...filters, filterTipos: toggle(filters.filterTipos, t) }),
+      label: t('filters.groups.tipo'),
+      chips: TIPO_ORDER.map((tipo) => ({
+        key: tipo,
+        label: TIPO_LABELS[tipo],
+        selected: filters.filterTipos.includes(tipo),
+        onToggle: () => onChange({ ...filters, filterTipos: toggle(filters.filterTipos, tipo) }),
       })),
     });
   sections.push({
@@ -309,8 +321,8 @@ export function PhoneFiltersSheet({
     <FiltersSheetShell
       open={open}
       onOpenChange={onOpenChange}
-      title="Filtros"
-      description={isPosts ? 'Filtre os posts' : 'Filtre os fluxos'}
+      title={t('header.filters')}
+      description={isPosts ? t('filters.descriptionPosts') : t('filters.descriptionFluxos')}
       sections={sections}
       activeCount={countActiveFilters(filters, mode)}
       onClear={() => onChange(clearedFilters(filters))}

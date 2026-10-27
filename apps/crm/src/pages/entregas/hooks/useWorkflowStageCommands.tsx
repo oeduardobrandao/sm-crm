@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import type { JSX } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { i18n } from '@mesaas/i18n';
 import {
   advanceWorkflowFromApproval,
   completeEtapa,
@@ -86,10 +87,11 @@ const EXIT_CHOICE: Record<
   voltar_rascunho: 'voltar_rascunho',
 };
 
+/** Chaves (namespace entregasPhone) resolvidas na hora do toast. */
 const EXIT_SUCCESS: Record<WorkflowApprovalExitChoice, string> = {
-  manter: 'Etapa concluída. Status dos posts mantidos.',
-  aprovar_todos: 'Posts aprovados e etapa concluída.',
-  voltar_rascunho: 'Etapa concluída. Posts voltaram para rascunho.',
+  manter: 'workflowStage.exitSuccess.manter',
+  aprovar_todos: 'workflowStage.exitSuccess.aprovarTodos',
+  voltar_rascunho: 'workflowStage.exitSuccess.voltarRascunho',
 };
 
 /**
@@ -193,12 +195,16 @@ export function useWorkflowStageCommands<Ctx = unknown>(
       const ctx = onBeforeMove?.(card, nextEtapaOf(card));
       try {
         const result = await completeEtapa(card.workflow.id!, card.etapa.id!);
-        handleRecurringOrToast(card, result.workflow.status === 'concluido', 'Etapa concluída!');
+        handleRecurringOrToast(
+          card,
+          result.workflow.status === 'concluido',
+          i18n.t('entregasPhone:workflowStage.etapaCompleted'),
+        );
         await onMoveSucceeded?.(card, ctx);
         onRefresh();
       } catch (err: unknown) {
         onMoveFailed?.(card, ctx);
-        toast.error((err as Error).message || 'Erro ao avançar etapa');
+        toast.error((err as Error).message || i18n.t('entregasPhone:workflowStage.advanceError'));
       }
     },
     [onRefresh, onBeforeMove, onMoveSucceeded, onMoveFailed, handleRecurringOrToast],
@@ -217,10 +223,10 @@ export function useWorkflowStageCommands<Ctx = unknown>(
     onAbandon?.();
     try {
       await sendPostsToCliente(card.workflow.id!);
-      toast.success('Posts enviados ao portal do cliente!');
+      toast.success(i18n.t('entregasPhone:workflowStage.sentToPortal'));
       onRefresh();
     } catch (err: unknown) {
-      toast.error(getPostProcessErrorToast(err, 'Erro ao enviar ao portal'));
+      toast.error(getPostProcessErrorToast(err, i18n.t('entregasPhone:shared.sendToPortalError')));
     }
   };
 
@@ -257,13 +263,19 @@ export function useWorkflowStageCommands<Ctx = unknown>(
       ) {
         setBatchSchedule({ workflowId: wfId, isFinalApprovalCycle: true });
       }
-      handleRecurringOrToast(card, result.workflowStatus === 'concluido', EXIT_SUCCESS[choice]);
+      handleRecurringOrToast(
+        card,
+        result.workflowStatus === 'concluido',
+        i18n.t(`entregasPhone:${EXIT_SUCCESS[choice]}`),
+      );
       await onMoveSucceeded?.(card, ctx);
       onRefresh();
     } catch (err: unknown) {
       onMoveFailed?.(card, ctx);
       const code = getErrorIdentifier(err);
-      toast.error(getPostProcessErrorToast(err, 'Erro ao avançar etapa'));
+      toast.error(
+        getPostProcessErrorToast(err, i18n.t('entregasPhone:workflowStage.advanceError')),
+      );
       if (code === 'posts_changed') {
         // Stays open with the fresh numbers; the user confirms again.
         refreshCounts();
@@ -285,12 +297,12 @@ export function useWorkflowStageCommands<Ctx = unknown>(
     const ctx = onBeforeMove?.(card ?? revertTarget, card ? prevEtapa : undefined);
     try {
       await revertEtapa(wfId);
-      toast.success('Etapa revertida!');
+      toast.success(i18n.t('entregasPhone:workflowStage.reverted'));
       await onMoveSucceeded?.(card ?? revertTarget, ctx);
       onRefresh();
     } catch (err: unknown) {
       onMoveFailed?.(card ?? revertTarget, ctx);
-      toast.error((err as Error).message || 'Erro ao reverter etapa');
+      toast.error((err as Error).message || i18n.t('entregasPhone:workflowStage.revertError'));
     }
     setRevertTarget(null);
   };
