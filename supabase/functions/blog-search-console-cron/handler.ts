@@ -5,7 +5,9 @@
  *   2. backfill: até 4 janelas de 30 dias para trás, um cursor em blog_search_state;
  *   3. inspeção: URL Inspection de até 150 posts, gravada em blog_index_status.
  * Falha de token ou do refresh derruba a execução; falha de uma janela de backfill ou de uma
- * URL é logada e pulada. Nunca logamos nem devolvemos token, chave ou corpo de resposta do
+ * URL é logada e pulada. Se TODAS as URLs tentadas falharem (API desligada, sem permissão, cota),
+ * a execução fecha ok (os números do Search Analytics foram atualizados) mas chama
+ * reportFailure e grava o motivo em `error`, porque isso é uma pane e não um tropeço de uma URL. Nunca logamos nem devolvemos token, chave ou corpo de resposta do
  * Google: só a etapa e o status HTTP.
  *
  * Spec: docs/superpowers/specs/2026-10-27-blog-metrics-design.md (seção 4, "Cron")
@@ -163,7 +165,9 @@ export function createBlogSearchConsoleHandler(deps: BlogSearchConsoleDeps) {
   }
 
   /** Never throws: a failed candidate load only skips inspection, the data above is already saved. */
-  async function inspectAll(token: string): Promise<{ inspected: number; stopped: boolean }> {
+  async function inspectAll(
+    token: string,
+  ): Promise<{ inspected: number; attempted: number; stopped: boolean }> {
     let targets: string[];
     try {
       // PostgREST caps a plain select at 1000 rows by default; fine for this blog's size.
@@ -177,10 +181,11 @@ export function createBlogSearchConsoleHandler(deps: BlogSearchConsoleDeps) {
       targets = pickInspectionTargets(live, checked, deps.now());
     } catch (e) {
       console.error(`${CRON_NAME}: inspection candidates unavailable, skipping inspection:`, e instanceof Error ? e.message : "unknown");
-      return { inspected: 0, stopped: false };
+      return { inspected: 0, attempted: 0, stopped: false };
     }
 
     let inspected = 0;
+    let attempted = 0;
     let stopped = false;
     for (const [i, slug] of targets.entries()) {
       if (overDeadline()) {
@@ -188,6 +193,7 @@ export function createBlogSearchConsoleHandler(deps: BlogSearchConsoleDeps) {
         console.log(`${CRON_NAME}: deadline reached, inspection skipped ${targets.length - i} URL(s)`);
         break;
       }
+      attempted++;
       try {
         const body = await googlePost(token, "url inspection", `${GOOGLE_API}/v1/urlInspection/index:inspect`, {
           inspectionUrl: `${CANONICAL_BASE}/${slug}`,
@@ -213,7 +219,7 @@ export function createBlogSearchConsoleHandler(deps: BlogSearchConsoleDeps) {
         console.error(`${CRON_NAME}: inspection skipped for ${slug}:`, e instanceof Error ? e.message : "unknown");
       }
     }
-    return { inspected, stopped };
+    return { inspected, attempted, stopped };
   }
 
   return async function handler(req: Request): Promise<Response> {
@@ -237,12 +243,21 @@ export function createBlogSearchConsoleHandler(deps: BlogSearchConsoleDeps) {
       const refreshed = await replaceWindow(token, window.from, window.to);
       const backfilled = await backfill(token, window.from);
       const inspection = await inspectAll(token);
+      const inspectionOutage = inspection.attempted > 0 && inspection.inspected === 0
+        ? `url inspection failed for every target (${inspection.attempted})`
+        : null;
 
       const { error: finishError } = await db
         .from("blog_search_runs")
-        .update({ ok: true, finished_at: deps.now().toISOString() })
+        .update({ ok: true, finished_at: deps.now().toISOString(), error: inspectionOutage })
         .eq("id", runId);
       if (finishError) console.error(`${CRON_NAME}: could not close run ${runId}`);
+      if (inspectionOutage) {
+        console.error(`${CRON_NAME}: ${inspectionOutage}`);
+        await reportFailure(inspectionOutage).catch(() =>
+          console.error(`${CRON_NAME}: could not report the inspection outage`)
+        );
+      }
       return json({
         success: true,
         refreshed,

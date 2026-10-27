@@ -310,12 +310,33 @@ t("a failing backfill chunk keeps earlier chunks, leaves the cursor and the run 
 t("an inspection 429 for one slug does not stop the others", async () => {
   const d = fakeDb();
   const f = fakeFetch([inspectionFor("post-a", () => new Response(GOOGLE_ERROR_TEXT, { status: 429 }))]);
-  const { handler } = build(d.db, f);
+  const { handler, failures } = build(d.db, f);
   const res = await call(handler);
   assertEquals(res.status, 200);
   assert(!d.upserts.some((u) => u.row.slug === "post-a"));
   assert(d.upserts.some((u) => u.row.slug === "post-b"));
   assertEquals(d.updates.find((u) => u.table === "blog_search_runs")?.values.ok, true);
+  // One URL failing is the normal skip, not an outage: no alert.
+  assertEquals(failures.length, 0);
+});
+
+t("every inspection failing alerts once, keeps the run ok and never leaks Google's text", async () => {
+  const d = fakeDb();
+  const f = fakeFetch([(req) => req.url === INSPECT_URL ? new Response(GOOGLE_ERROR_TEXT, { status: 403 }) : undefined]);
+  const { handler, failures } = build(d.db, f);
+  const res = await call(handler);
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.inspected, 0);
+  assert(f.requests.filter((r) => r.url === INSPECT_URL).length > 1);
+  assertEquals(d.upserts.length, 0);
+  assertEquals(failures.length, 1);
+  assert(failures[0].includes("url inspection"), failures[0]);
+  assert(!failures[0].includes(GOOGLE_ERROR_TEXT));
+  // The Search Analytics data did refresh, so the run still closes ok (with the reason noted).
+  const close = d.updates.find((u) => u.table === "blog_search_runs");
+  assertEquals(close?.values.ok, true);
+  assertEquals(close?.values.error, failures[0]);
 });
 
 t("an inspection link outside search.google.com is stored as null", async () => {
