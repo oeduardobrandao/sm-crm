@@ -41,6 +41,11 @@ export interface HubBootstrap {
    * feature_agenda: absent = classic look.
    */
   feature_hub_pauta?: boolean;
+  /**
+   * Linha editorial (feature_linha_editorial). Optional for the same reason as
+   * feature_agenda: absent = off.
+   */
+  feature_linha_editorial?: boolean;
   /** Absent on a stale/pre-migration bootstrap response — treat as neutral (no customization). */
   hub_theme?: HubThemeInfo;
 }

@@ -40,6 +40,7 @@ const FEATURE_LABELS: Record<string, string> = {
   feature_agenda: 'Agenda',
   feature_multiplatform: 'Plataformas por fluxo',
   feature_financeiro_v2: 'Financeiro v2 (rentabilidade)',
+  feature_linha_editorial: 'Linha editorial',
 };
 
 /** Normalizes a DB-raised message or an edge-function JSON error into an EntitlementError, or null. */
