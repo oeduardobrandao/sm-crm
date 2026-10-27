@@ -214,7 +214,8 @@
     "nameLabel": "Template name",
     "deleteTitle": "Delete the template?",
     "deleteMessage": "{{name}}. Reports already generated with it won't change.",
-    "deleteConfirm": "Delete template"
+    "deleteConfirm": "Delete template",
+    "systemName": "System default"
   },
   "templatesPhone": {
     "footerEmpty": "Layouts used when generating reports. The default one comes preselected. Create a template to reuse the same structure across all your reports.",

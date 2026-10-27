@@ -42,7 +42,6 @@ import {
   deleteReportTemplate,
   listReportTemplates,
   setDefaultReportTemplate,
-  SYSTEM_TEMPLATE_NAME,
   updateReportTemplate,
   type ReportTemplateRow,
 } from '../../../services/reportTemplates';
@@ -137,7 +136,7 @@ export function ReportTemplatesCard() {
       <ReportTemplatesPhone
         templates={templates}
         isLoading={isLoading}
-        systemName={SYSTEM_TEMPLATE_NAME}
+        systemName={t('templates.systemName')}
         busy={busy}
         onCreate={() =>
           create.mutate({ name: t('templates.newTemplate'), layout: buildSystemDefaultLayout() })
@@ -145,7 +144,7 @@ export function ReportTemplatesCard() {
         onViewSystem={() => navigate('/relatorios/modelos/padrao')}
         onDuplicateSystem={() =>
           create.mutate({
-            name: t('templates.systemCopyName', { name: SYSTEM_TEMPLATE_NAME }),
+            name: t('templates.systemCopyName', { name: t('templates.systemName') }),
             layout: buildSystemDefaultLayout(),
           })
         }
@@ -219,7 +218,7 @@ export function ReportTemplatesCard() {
               aria-hidden="true"
               style={{ color: 'var(--text-muted)', marginRight: '0.5rem' }}
             />
-            <span>{SYSTEM_TEMPLATE_NAME}</span>
+            <span>{t('templates.systemName')}</span>
             <span style={META_STYLE}>{t('templates.builtIn')}</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -236,7 +235,7 @@ export function ReportTemplatesCard() {
               disabled={busy}
               onClick={() =>
                 create.mutate({
-                  name: t('templates.systemCopyName', { name: SYSTEM_TEMPLATE_NAME }),
+                  name: t('templates.systemCopyName', { name: t('templates.systemName') }),
                   layout: buildSystemDefaultLayout(),
                 })
               }

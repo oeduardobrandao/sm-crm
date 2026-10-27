@@ -214,7 +214,8 @@
     "nameLabel": "Nome do modelo",
     "deleteTitle": "Excluir o modelo?",
     "deleteMessage": "{{name}}. Relatórios já gerados com ele não mudam.",
-    "deleteConfirm": "Excluir modelo"
+    "deleteConfirm": "Excluir modelo",
+    "systemName": "Padrão do sistema"
   },
   "templatesPhone": {
     "footerEmpty": "Layouts usados ao gerar relatórios. O padrão vem pré-selecionado. Crie um modelo para reaproveitar a mesma estrutura em todos os relatórios.",
