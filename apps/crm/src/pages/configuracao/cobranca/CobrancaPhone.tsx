@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CreditCard, Settings, Tag, Undo2, XCircle } from 'lucide-react';
 import { ConfigPhoneScreen } from '../phone/ConfigPhoneScreen';
 import { GroupedList, Cell } from '@/components/mobile/GroupedList';
@@ -7,17 +8,14 @@ import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
 import type { BillingInterval } from '@/services/billing';
 import './cobrancaPhone.css';
 
-const TITLE = 'Plano & Cobrança';
-
 /** Non-owners: the same notice the desktop shows, on the phone screen. */
 export function CobrancaPhoneLocked() {
+  const { t } = useTranslation('billing');
   return (
-    <ConfigPhoneScreen title={TITLE}>
-      <GroupedList aria-label="Assinatura">
+    <ConfigPhoneScreen title={t('cobrancaPhone.title')}>
+      <GroupedList aria-label={t('cobrancaPhone.subscriptionAria')}>
         <li className="phone-cell">
-          <p className="phone-config-block phone-cobranca-muted">
-            Apenas o proprietário da conta pode gerenciar a assinatura.
-          </p>
+          <p className="phone-config-block phone-cobranca-muted">{t('shared.ownerOnly')}</p>
         </li>
       </GroupedList>
     </ConfigPhoneScreen>
@@ -92,17 +90,18 @@ export function CobrancaPhone({
   plans,
   checkout,
 }: CobrancaPhoneProps) {
+  const { t } = useTranslation('billing');
   return (
-    <ConfigPhoneScreen title={TITLE} className="phone-cobranca">
+    <ConfigPhoneScreen title={t('cobrancaPhone.title')} className="phone-cobranca">
       {showCurrent && (
         <>
           <GroupedList
-            header="Seu plano"
+            header={t('shared.yourPlan')}
             footer={warning ? <span className="phone-cobranca-warning">{warning}</span> : undefined}
           >
-            <Cell label="Plano" value={planName} />
+            <Cell label={t('cobrancaPhone.plan')} value={planName} />
             <Cell
-              label="Status"
+              label={t('cobrancaPhone.status')}
               value={
                 <span
                   className={`phone-cobranca-badge${statusWarning ? ' phone-cobranca-badge--warning' : ''}`}
@@ -114,18 +113,18 @@ export function CobrancaPhone({
             {periodLabel && <Cell label={periodLabel} value={periodDate} />}
           </GroupedList>
 
-          <GroupedList aria-label="Ações da assinatura">
+          <GroupedList aria-label={t('cobrancaPhone.actionsAria')}>
             {showPagarmeManage ? (
               <>
                 <Cell
-                  label="Atualizar cartão"
+                  label={t('shared.updateCard')}
                   icon={<CreditCard />}
                   iconColor="var(--phone-neutral-action)"
                   chevron
                   onClick={onUpdateCard}
                 />
                 <Cell
-                  label={switchWindow ? 'Desfazer a troca' : 'Cancelar assinatura'}
+                  label={switchWindow ? t('shared.undoSwitch') : t('shared.cancelSubscription')}
                   icon={switchWindow ? <Undo2 /> : <XCircle />}
                   iconColor="var(--phone-destructive)"
                   destructive
@@ -135,7 +134,7 @@ export function CobrancaPhone({
               </>
             ) : (
               <Cell
-                label={portalBusy ? 'Aguarde…' : 'Gerenciar assinatura'}
+                label={portalBusy ? t('shared.wait') : t('shared.manageSubscription')}
                 icon={<Settings />}
                 iconColor="var(--phone-neutral-action)"
                 chevron
@@ -151,11 +150,11 @@ export function CobrancaPhone({
 
       <div className="phone-cobranca-interval">
         <SegmentedControl<BillingInterval>
-          aria-label="Período de cobrança"
+          aria-label={t('shared.billingPeriod')}
           className="phone-cobranca-segmented"
           options={[
-            { value: 'month', label: 'Mensal' },
-            { value: 'year', label: 'Anual' },
+            { value: 'month', label: t('shared.monthly') },
+            { value: 'year', label: t('shared.annual') },
           ]}
           value={interval}
           onChange={onIntervalChange}
@@ -165,13 +164,13 @@ export function CobrancaPhone({
             {annualSavingsPct > 0 && (
               <li>
                 <Tag aria-hidden="true" />
-                Economize até {annualSavingsPct}% no anual
+                {t('shared.annualSavings', { pct: annualSavingsPct })}
               </li>
             )}
             {firstTime && (
               <li>
                 <Tag aria-hidden="true" />
-                Seus primeiros 30 dias são grátis
+                {t('shared.firstDaysFree')}
               </li>
             )}
           </ul>
@@ -186,13 +185,13 @@ export function CobrancaPhone({
 
       <PhoneConfirmSheet
         open={cancelOpen}
-        title="Cancelar assinatura"
+        title={t('shared.cancelSubscription')}
         message={cancelDescription}
-        cancelLabel="Manter assinatura"
+        cancelLabel={t('shared.keepSubscription')}
         onCancel={onCancelDismiss}
         actions={[
           {
-            label: cancelling ? 'Cancelando…' : 'Sim, cancelar assinatura',
+            label: cancelling ? t('shared.cancelling') : t('shared.confirmCancel'),
             destructive: true,
             disabled: cancelling,
             onSelect: onCancelConfirm,
