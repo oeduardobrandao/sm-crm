@@ -7,6 +7,8 @@ const DB_TIMEOUT_MS = 10_000;
 
 /**
  * Effective-plan write, guarded so admin comps (plan_source='manual') are never overridden.
+ * A demo (plan_source='demo') is ended by a "subscribed" write but kept by a "fallback" write
+ * (default plan written because a subscription ended or its price is unknown).
  * Read and write errors THROW (they were silently discarded before): in stripe-webhook a
  * throw becomes a 5xx → Stripe redelivery → retried write (the Fase 2 "a failed write must
  * not ack" rule); in pagarme-checkout the caller decides (post-bind failures log CRITICAL
@@ -17,6 +19,9 @@ export async function writeWorkspacePlan(
   workspaceId: string,
   planId: string,
   planSource: "stripe" | "pagarme",
+  // "subscribed": a real paid plan write (ends a demo). "fallback": the default/free plan
+  // written because a subscription ended or its price is unknown (never ends a demo).
+  kind: "subscribed" | "fallback" = "subscribed",
 ) {
   const { data: ws, error: readErr } = await svc
     .from("workspaces").select("plan_source").eq("id", workspaceId)
@@ -25,6 +30,7 @@ export async function writeWorkspacePlan(
     throw new Error(`workspace read failed for ${workspaceId}: ${readErr.message}`);
   }
   if (ws?.plan_source === "manual") return;
+  if (ws?.plan_source === "demo" && kind === "fallback") return;
   const { error: writeErr } = await svc.from("workspaces")
     .update({ plan_id: planId, plan_source: planSource }).eq("id", workspaceId)
     .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));

@@ -7,6 +7,7 @@ import {
   listActivePlans,
   getWorkspaceSubscription,
   getEffectivePlanWithSource,
+  hasUsedTrial,
   startCheckout,
   openBillingPortal,
   cancelPagarmeSubscription,
@@ -138,8 +139,8 @@ export default function CobrancaPage() {
   // Source of truth for the workspace's plan, incl. comp overrides (e.g. Lifetime)
   // that have no Stripe subscription and would otherwise read as Free. planSource is
   // used below to hide the switch CTA from comped (plan_source='manual') workspaces —
-  // a distinct query key from the ['billing', 'effective-plan'] TrialNudgeCard/ComecarPage
-  // share, since its queryFn returns a different shape.
+  // the same query key TrialNudgeCard/ComecarPage share, so one cache entry feeds all three
+  // (wasDemo also drives the trial gate via hasUsedTrial).
   const { data: effectivePlan, refetch: refetchEffectivePlan } = useQuery({
     queryKey: ['billing', 'effective-plan-with-source'],
     queryFn: getEffectivePlanWithSource,
@@ -147,6 +148,7 @@ export default function CobrancaPage() {
   });
   const effectivePlanId = effectivePlan?.planId;
   const planSource = effectivePlan?.planSource;
+  const isDemo = planSource === 'demo';
 
   // Refetches the subscription + effective-plan queries every 2s, up to 5 tries, so the
   // UI catches up once the backend (Stripe webhook or the synchronous Pagar.me checkout)
@@ -233,7 +235,10 @@ export default function CobrancaPage() {
   // write) is the real enforcement. A comped workspace (plan_source='manual') never sees the
   // CTA, since the backend would 409 it after a full card entry.
   const canSwitch =
-    switchEligible(subscription) && !isInternalPlan(currentPlanId) && planSource !== 'manual';
+    switchEligible(subscription) &&
+    !isInternalPlan(currentPlanId) &&
+    planSource !== 'manual' &&
+    planSource !== 'demo';
   const switchWindow =
     subscription?.provider === 'pagarme' &&
     subscription?.status === 'trialing' &&
@@ -339,10 +344,12 @@ export default function CobrancaPage() {
         </>
       );
     }
-    if (p.id === currentPlanId) {
+    // A demo has no subscription: its own plan is a first checkout, so it gets a CTA (below)
+    // instead of the static label.
+    if (p.id === currentPlanId && !isDemo) {
       return <span className="plan-cta__static">Plano atual</span>;
     }
-    const upgradable = canUpgradeTo(p.id, currentPlanId, hasActiveSub);
+    const upgradable = canUpgradeTo(p.id, currentPlanId, hasActiveSub, planSource);
     // Suppress a CTA the backend would 409 on: this only fires for the past_due /
     // canceled-but-paid-through cases hasActiveSub doesn't cover — hasActiveSub already
     // makes `upgradable` false for active/trialing, so that path never reaches here.
@@ -354,7 +361,9 @@ export default function CobrancaPage() {
       );
     }
     if (upgradable) {
-      const firstTime = !subscription?.hasEverSubscribed;
+      // A demo always has wasDemo, so firstTime is false for it: the 'Assinar' label below
+      // relies on that (the trial label would win otherwise).
+      const firstTime = !hasUsedTrial(subscription, effectivePlan);
       // The à vista escape hatch only makes sense next to the 12x path itself: month plans and
       // non-gated year plans already charge price_brl_annual (or price_brl) directly via
       // startStripeUpgrade above, so this second CTA would just be a duplicate of the primary one.
@@ -366,7 +375,13 @@ export default function CobrancaPage() {
             onClick={() => handleUpgrade(p.id)}
             disabled={busy === p.id}
           >
-            {busy === p.id ? 'Aguarde…' : firstTime ? 'Começar teste de 30 dias' : 'Fazer upgrade'}
+            {busy === p.id
+              ? 'Aguarde…'
+              : firstTime
+                ? 'Começar teste de 30 dias'
+                : isDemo && p.id === currentPlanId
+                  ? 'Assinar'
+                  : 'Fazer upgrade'}
           </button>
           {showUpfront && (
             <button
@@ -400,6 +415,13 @@ export default function CobrancaPage() {
           : subscription?.current_period_end && isFormattableDate(subscription.current_period_end)
             ? `Seu acesso continua até ${formatUtcDateBR(subscription.current_period_end)}. Depois disso, o workspace volta ao plano gratuito.`
             : 'Sua assinatura será cancelada.';
+
+  const demoNote = isDemo ? (
+    <p className="billing-demo-note text-sm text-muted-foreground">
+      Conta demo: você está usando o plano {currentPlan?.name ?? currentPlanId} sem custo. Para
+      continuar depois, é só assinar um plano.
+    </p>
+  ) : null;
 
   const planGrid = (
     <div className="plan-grid">
@@ -507,7 +529,7 @@ export default function CobrancaPage() {
           : null
       }
       source="billing"
-      trialEligible={!subscription?.hasEverSubscribed}
+      trialEligible={!hasUsedTrial(subscription, effectivePlan)}
       firstChargeAt={switchPreviewDate}
       switchChangesPlan={pagarmeDialog?.plan ? pagarmeDialog.plan.id !== currentPlanId : false}
       onPayUpfront={
@@ -583,7 +605,8 @@ export default function CobrancaPage() {
         interval={interval}
         onIntervalChange={setInterval}
         annualSavingsPct={annualSavingsPct}
-        firstTime={!subscription?.hasEverSubscribed}
+        firstTime={!hasUsedTrial(subscription, effectivePlan)}
+        demoNote={demoNote}
         plans={planGrid}
         checkout={checkoutDialog}
       />
@@ -679,13 +702,15 @@ export default function CobrancaPage() {
             Economize até {annualSavingsPct}% no anual
           </span>
         )}
-        {!subscription?.hasEverSubscribed && (
+        {!hasUsedTrial(subscription, effectivePlan) && (
           <span className="billing-save-hint">
             <i className="ph ph-tag" aria-hidden="true" />
             Seus primeiros 30 dias são grátis
           </span>
         )}
       </div>
+
+      {demoNote}
 
       {planGrid}
 

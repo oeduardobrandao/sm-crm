@@ -10,6 +10,7 @@ import {
   type PagarmeDetailGateway,
   type PagarmeLive,
 } from "./pagarme-detail.ts";
+import { loadWorkspaceAffiliate } from "./workspace-affiliate.ts";
 
 type PlanRow = Record<string, unknown>;
 
@@ -53,7 +54,7 @@ export async function handleGetWorkspace(
 
   const { data: ws, error } = await svc
     .from("workspaces")
-    .select("id, name, logo_url, created_at, plan_id, plan_source, storage_used_bytes")
+    .select("id, name, logo_url, created_at, plan_id, plan_source, demo_created_at, storage_used_bytes")
     .eq("id", workspace_id)
     .single();
   if (error || !ws) {
@@ -133,8 +134,10 @@ export async function handleGetWorkspace(
   }
 
   const subscription = await buildSubscriptionDetail(svc, workspace_id, opts);
+  const affiliate = await loadWorkspaceAffiliate(svc, workspace_id);
 
-  const { storage_used_bytes: storageUsed, ...workspace } = ws;
+  const { storage_used_bytes: storageUsed, ...rest } = ws;
+  const workspace = { ...rest, demo_created_at: (rest as { demo_created_at?: string | null }).demo_created_at ?? null };
 
   return new Response(JSON.stringify({
     workspace,
@@ -149,6 +152,7 @@ export async function handleGetWorkspace(
     resolved_limits: resolvedLimits,
     resolved_features: resolvedFeatures,
     subscription,
+    affiliate,
     usage: {
       client_count: clientCount || 0,
       member_count: enrichedMembers.length,

@@ -220,3 +220,49 @@ Deno.test("handleGetWorkspace: usage carries Instagram counts (total + active) a
     "Instagram accounts must be scoped to the workspace through clientes.conta_id",
   );
 });
+
+Deno.test("handleGetWorkspace: carries demo_created_at and the workspace's affiliate", async () => {
+  const { handleGetWorkspace } = await import("../platform-admin/workspace-detail.ts");
+  const { db, calls } = makeFakeDb({
+    workspaces: [{
+      data: {
+        id: "w1", name: "X", logo_url: null, created_at: "t", plan_id: null, plan_source: "demo",
+        demo_created_at: "2026-10-26T12:00:00Z", storage_used_bytes: 0,
+      },
+      error: null,
+    }],
+    workspace_members: [{ data: [], error: null }],
+    affiliate_referrals: [{
+      data: { affiliate_id: "aff-1", affiliates: { id: "aff-1", nome: "Bia", code: "bia123" } },
+      error: null,
+    }],
+    workspace_subscriptions: [{ data: null, error: null }],
+  });
+  const res = await handleGetWorkspace(db as never, { workspace_id: "w1" }, {}, { readOnly: true });
+  const body = await res.json();
+  assertEquals(body.workspace.demo_created_at, "2026-10-26T12:00:00Z");
+  assertEquals(body.affiliate, { id: "aff-1", name: "Bia", code: "bia123" });
+  const sel = calls.find((c) => c.table === "workspaces" && c.method === "select");
+  assert(String(sel?.args[0]).includes("demo_created_at"), "demo_created_at must be selected");
+  assert(
+    calls.some((c) => c.table === "affiliate_referrals" && c.method === "eq" &&
+      JSON.stringify(c.args) === JSON.stringify(["workspace_id", "w1"])),
+    "the referral lookup must be scoped to the workspace",
+  );
+});
+
+Deno.test("handleGetWorkspace: affiliate is null without a referral, demo_created_at null when unset", async () => {
+  const { handleGetWorkspace } = await import("../platform-admin/workspace-detail.ts");
+  const { db } = makeFakeDb({
+    workspaces: [{
+      data: { id: "w1", name: "X", logo_url: null, created_at: "t", plan_id: null, plan_source: null, storage_used_bytes: 0 },
+      error: null,
+    }],
+    workspace_members: [{ data: [], error: null }],
+    workspace_subscriptions: [{ data: null, error: null }],
+  });
+  const res = await handleGetWorkspace(db as never, { workspace_id: "w1" }, {}, { readOnly: true });
+  const body = await res.json();
+  assertEquals(body.affiliate, null);
+  assertEquals(body.workspace.demo_created_at, null);
+});

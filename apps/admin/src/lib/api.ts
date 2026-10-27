@@ -17,6 +17,8 @@ export interface WorkspaceSummary {
   member_count: number;
   client_count: number;
   plan_name: string | null;
+  /** 'manual' (comp) and 'demo' get a badge in the plan cell. */
+  plan_source: string | null;
   has_overrides: boolean;
   subscription: SubscriptionSummary | null;
 }
@@ -28,7 +30,10 @@ export interface WorkspaceDetail {
     logo_url: string | null;
     created_at: string;
     plan_source?: string;
+    /** Set when the Admin created the workspace as a demo account. */
+    demo_created_at?: string | null;
   };
+  affiliate?: { id: string; name: string; code: string } | null;
   owner: MemberInfo | null;
   members: MemberInfo[];
   plan: { id: string; name: string } | null;
@@ -571,6 +576,30 @@ export function unsetWorkspacePlan(workspace_id: string) {
   return adminApi<{ message: string; plan_source: string }>('unset-workspace-plan', {
     workspace_id,
   });
+}
+
+export function createDemoWorkspace(p: {
+  email: string;
+  plan_id: string;
+  nome?: string;
+  empresa?: string;
+  ref_code?: string;
+}) {
+  return adminApi<{ workspace_id: string; email: string; email_sent: boolean }>(
+    'create-demo-workspace',
+    p,
+  );
+}
+
+export function resendDemoAccess(workspaceId: string) {
+  return adminApi<{ message: string }>('resend-demo-access', { workspace_id: workspaceId });
+}
+
+export function setWorkspaceAffiliate(workspaceId: string, refCode: string | null) {
+  return adminApi<{ affiliate: { id: string; name: string; code: string } | null }>(
+    'set-workspace-affiliate',
+    { workspace_id: workspaceId, ref_code: refCode },
+  );
 }
 
 export function setWorkspaceOverrides(params: {

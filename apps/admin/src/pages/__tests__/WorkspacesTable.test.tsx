@@ -188,3 +188,21 @@ describe('WorkspacesTable', () => {
     expect(screen.queryByText('Pagar.me')).toBeNull();
   });
 });
+
+describe('WorkspacesTable plan source badge', () => {
+  it('shows a Demo badge for plan_source demo and Comp for manual', () => {
+    renderTable({
+      workspaces: [
+        ws({ id: 'a', name: 'Alfa', plan_source: 'demo' }),
+        ws({ id: 'b', name: 'Beta', plan_source: 'manual' }),
+        ws({ id: 'c', name: 'Gama', plan_source: 'subscription' }),
+      ],
+      visible: ['name', 'plan'],
+    });
+    const rows = screen.getAllByRole('row');
+    expect(within(rows[1]).getByText('Demo')).toBeInTheDocument();
+    expect(within(rows[2]).getByText('Comp')).toBeInTheDocument();
+    expect(within(rows[3]).queryByText('Demo')).toBeNull();
+    expect(within(rows[3]).queryByText('Comp')).toBeNull();
+  });
+});

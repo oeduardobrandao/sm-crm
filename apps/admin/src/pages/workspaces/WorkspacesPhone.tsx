@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Search,
   SlidersHorizontal,
+  UserPlus,
 } from 'lucide-react';
 import {
   ActionSheet,
@@ -42,9 +43,10 @@ import {
   countSheetFilters,
   type WorkspacesListParams,
 } from '../workspaces-params';
+import { CreateDemoDialog } from './CreateDemoDialog';
 import { filterChipsFor } from './WorkspacesFilterChips';
 import { WorkspacesListState } from './WorkspacesListState';
-import { PlanBadge } from './WorkspacesTable';
+import { PlanCell } from './WorkspacesTable';
 import { useDebouncedSearch } from './WorkspacesToolbar';
 import type { WorkspacesViewProps } from './view-props';
 
@@ -124,9 +126,9 @@ function WorkspaceCell({ ws, now }: { ws: WorkspaceSummary; now: Date }) {
           {/* The meta line wraps to a second line at word breaks instead of ellipsizing
               "há 4 …" mid-word. */}
           <span className="mt-0.5 flex min-w-0 items-start gap-1.5">
-            {ws.plan_name ? (
+            {ws.plan_name || ws.plan_source === 'demo' || ws.plan_source === 'manual' ? (
               <span className="shrink-0 whitespace-nowrap">
-                <PlanBadge name={ws.plan_name} />
+                <PlanCell ws={ws} />
               </span>
             ) : null}
             <span className="line-clamp-2 min-w-0 whitespace-normal">
@@ -176,6 +178,7 @@ export function WorkspacesPhone({
 }: WorkspacesViewProps) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
+  const [demoOpen, setDemoOpen] = useState(false);
   const filterButtonRef = useRef<HTMLButtonElement>(null);
   const sortButtonRef = useRef<HTMLButtonElement>(null);
   const { text, setText } = useDebouncedSearch(params.q, set);
@@ -364,17 +367,22 @@ export function WorkspacesPhone({
         title="Workspaces"
         description={description}
         phoneActions={
-          <PhoneIconButton
-            ref={filterButtonRef}
-            label={
-              activeCount > 0 ? `Filtros, ${plural(activeCount, 'ativo', 'ativos')}` : 'Filtros'
-            }
-            badge={activeCount}
-            aria-haspopup="dialog"
-            onClick={() => setFiltersOpen(true)}
-          >
-            <SlidersHorizontal aria-hidden="true" />
-          </PhoneIconButton>
+          <>
+            <PhoneIconButton label="Criar conta demo" onClick={() => setDemoOpen(true)}>
+              <UserPlus aria-hidden="true" />
+            </PhoneIconButton>
+            <PhoneIconButton
+              ref={filterButtonRef}
+              label={
+                activeCount > 0 ? `Filtros, ${plural(activeCount, 'ativo', 'ativos')}` : 'Filtros'
+              }
+              badge={activeCount}
+              aria-haspopup="dialog"
+              onClick={() => setFiltersOpen(true)}
+            >
+              <SlidersHorizontal aria-hidden="true" />
+            </PhoneIconButton>
+          </>
         }
       >
         <label className="phone-kit mt-1 flex h-[38px] items-center gap-2 rounded-[10px] bg-[var(--phone-fill)] px-2.5 text-muted-foreground">
@@ -412,6 +420,7 @@ export function WorkspacesPhone({
 
       {body}
 
+      <CreateDemoDialog plans={plans} open={demoOpen} onOpenChange={setDemoOpen} />
       <PhoneFiltersSheet
         open={filtersOpen}
         onOpenChange={setFiltersOpen}

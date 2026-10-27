@@ -347,7 +347,7 @@ async function handleUndoSwitch(
   // ── (4) Plano-fonte de volta (plan-writer respeita comp manual). ──
   if (sourcePlanId) {
     try {
-      await writeWorkspacePlan(db, ctx.workspaceId, sourcePlanId, "stripe");
+      await writeWorkspacePlan(db, ctx.workspaceId, sourcePlanId, "stripe", "subscribed");
     } catch (e) {
       console.error(
         `[pagarme-subscription] CRITICAL: undo plan re-grant failed for workspace ${ctx.workspaceId}:`,

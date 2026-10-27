@@ -4,15 +4,25 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('@/context/AuthContext', () => ({ useAuth: vi.fn() }));
-vi.mock('@/services/billing', () => ({
-  getWorkspaceSubscription: vi.fn(),
-  getEffectivePlanId: vi.fn(),
-}));
+vi.mock('@/services/billing', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/services/billing')>();
+  return {
+    ...actual,
+    getWorkspaceSubscription: vi.fn(),
+    getEffectivePlanWithSource: vi.fn(),
+  };
+});
 vi.mock('@/lib/analytics', () => ({ captureEvent: vi.fn() }));
 
 import { useAuth } from '@/context/AuthContext';
-import { getEffectivePlanId, getWorkspaceSubscription } from '@/services/billing';
+import { getEffectivePlanWithSource, getWorkspaceSubscription } from '@/services/billing';
 import { TrialNudgeCard } from '../TrialNudgeCard';
+
+const plan = (planId: string | null, wasDemo = false) => ({
+  planId,
+  planSource: 'system',
+  wasDemo,
+});
 
 const NEVER_SUBSCRIBED = { hasEverSubscribed: false } as never;
 
@@ -22,14 +32,14 @@ beforeEach(() => {
   // stops the fetches from ever being issued.
   vi.clearAllMocks();
   vi.mocked(useAuth).mockReturnValue({ role: 'owner', profile: { conta_id: 'ws-1' } } as never);
-  vi.mocked(getEffectivePlanId).mockResolvedValue('free');
+  vi.mocked(getEffectivePlanWithSource).mockResolvedValue(plan('free'));
   vi.mocked(getWorkspaceSubscription).mockResolvedValue(NEVER_SUBSCRIBED);
 });
 
 function renderCard(seedCache?: { planId: string | null; hasEverSubscribed: boolean }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   if (seedCache) {
-    client.setQueryData(['billing', 'effective-plan'], seedCache.planId);
+    client.setQueryData(['billing', 'effective-plan-with-source'], plan(seedCache.planId));
     client.setQueryData(['billing', 'subscription'], {
       hasEverSubscribed: seedCache.hasEverSubscribed,
     });
@@ -55,7 +65,7 @@ function renderCard(seedCache?: { planId: string | null; hasEverSubscribed: bool
  */
 async function waitForBillingQueriesToSettle(client: QueryClient) {
   await waitFor(() => {
-    expect(client.getQueryState(['billing', 'effective-plan'])?.status).toBe('success');
+    expect(client.getQueryState(['billing', 'effective-plan-with-source'])?.status).toBe('success');
     expect(client.getQueryState(['billing', 'subscription'])?.status).toBe('success');
   });
 }
@@ -74,15 +84,15 @@ describe('TrialNudgeCard', () => {
     vi.mocked(useAuth).mockReturnValue({ role: 'agent', profile: { conta_id: 'ws-1' } } as never);
     renderCard({ planId: 'free', hasEverSubscribed: false });
     expect(screen.queryByText(TITLE)).not.toBeInTheDocument();
-    expect(getEffectivePlanId).not.toHaveBeenCalled();
+    expect(getEffectivePlanWithSource).not.toHaveBeenCalled();
     expect(getWorkspaceSubscription).not.toHaveBeenCalled();
   });
 
   it('hides on a paid plan', async () => {
-    vi.mocked(getEffectivePlanId).mockResolvedValue('pro');
+    vi.mocked(getEffectivePlanWithSource).mockResolvedValue(plan('pro'));
     const { client } = renderCard();
     await waitForBillingQueriesToSettle(client);
-    expect(client.getQueryData(['billing', 'effective-plan'])).toBe('pro');
+    expect(client.getQueryData(['billing', 'effective-plan-with-source'])).toEqual(plan('pro'));
     expect(screen.queryByText(TITLE)).not.toBeInTheDocument();
   });
 
@@ -91,6 +101,13 @@ describe('TrialNudgeCard', () => {
     const { client } = renderCard();
     await waitForBillingQueriesToSettle(client);
     expect(client.getQueryData(['billing', 'subscription'])).toEqual({ hasEverSubscribed: true });
+    expect(screen.queryByText(TITLE)).not.toBeInTheDocument();
+  });
+
+  it('hides for an ex-demo on Free that has no subscription row', async () => {
+    vi.mocked(getEffectivePlanWithSource).mockResolvedValue(plan('free', true));
+    const { client } = renderCard();
+    await waitForBillingQueriesToSettle(client);
     expect(screen.queryByText(TITLE)).not.toBeInTheDocument();
   });
 
@@ -103,10 +120,10 @@ describe('TrialNudgeCard', () => {
     const twoDaysAgo = new Date(Date.now() - 2 * 86_400_000).toISOString();
     localStorage.setItem('trial_nudge_dismissed_ws-1', twoDaysAgo);
     const { client } = renderCard({ planId: 'free', hasEverSubscribed: false });
-    expect(client.getQueryData(['billing', 'effective-plan'])).toBe('free');
+    expect(client.getQueryData(['billing', 'effective-plan-with-source'])).toEqual(plan('free'));
     expect(screen.queryByText(TITLE)).not.toBeInTheDocument();
     // The gate must also stop the fetches, not merely hide their result.
-    expect(getEffectivePlanId).not.toHaveBeenCalled();
+    expect(getEffectivePlanWithSource).not.toHaveBeenCalled();
     expect(getWorkspaceSubscription).not.toHaveBeenCalled();
   });
 
@@ -127,7 +144,7 @@ describe('TrialNudgeCard', () => {
     // handle_new_user never sets workspaces.plan_id and there's no DB default, so a
     // never-touched-billing workspace has plan_id = NULL. That must resolve to
     // 'free', not be compared against it directly.
-    vi.mocked(getEffectivePlanId).mockResolvedValue(null);
+    vi.mocked(getEffectivePlanWithSource).mockResolvedValue(plan(null));
     renderCard();
     expect(await screen.findByText(TITLE)).toBeInTheDocument();
   });

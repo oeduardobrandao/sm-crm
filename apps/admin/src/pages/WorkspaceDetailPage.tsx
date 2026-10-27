@@ -7,6 +7,7 @@ import {
   listPlans,
   setWorkspacePlan,
   unsetWorkspacePlan,
+  resendDemoAccess,
   setWorkspaceOverrides,
   clearWorkspaceOverrides,
   listWorkspaceMcpKeys,
@@ -190,8 +191,18 @@ export default function WorkspaceDetailPage() {
     mutationFn: () => unsetWorkspacePlan(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id] });
-      toast.success('Comp removido. Workspace volta à cobrança normal');
+      toast.success(
+        data?.workspace.plan_source === 'demo'
+          ? 'Demo encerrada. Workspace volta à cobrança normal'
+          : 'Comp removido. Workspace volta à cobrança normal',
+      );
     },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const resendMutation = useMutation({
+    mutationFn: () => resendDemoAccess(id!),
+    onSuccess: () => toast.success('Acesso reenviado'),
     onError: (err: Error) => toast.error(err.message),
   });
 
@@ -251,6 +262,8 @@ export default function WorkspaceDetailPage() {
     },
     onUnsetComp: () => unsetMutation.mutate(),
     unsetPending: unsetMutation.isPending,
+    onResendAccess: () => resendMutation.mutate(),
+    resendPending: resendMutation.isPending,
     notes,
     onNotesChange: setNotes,
     onSaveNotes: () => saveNotesMutation.mutate(),

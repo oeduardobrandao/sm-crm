@@ -124,7 +124,11 @@ beforeEach(() => {
   // so these tests exercise the resolved owner path, not the fallback.
   vi.mocked(useAuth).mockReturnValue({ role: 'owner', workspaceRole: 'owner' } as never);
   vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN]);
-  vi.mocked(getEffectivePlanWithSource).mockResolvedValue({ planId: 'free', planSource: 'system' });
+  vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+    planId: 'free',
+    planSource: 'system',
+    wasDemo: false,
+  });
   vi.mocked(startCheckout).mockResolvedValue('https://checkout.stripe.com/abc');
   // UsagePanel is covered by its own test suite; keep it a no-op here (isUnlimited: true).
   vi.mocked(useWorkspaceLimits).mockReturnValue({
@@ -168,6 +172,83 @@ describe('CobrancaPage', () => {
     const cta = await screen.findByRole('button', { name: 'Começar teste de 30 dias' });
     expect(cta).toBeInTheDocument();
     expect(screen.getByText(HINT)).toBeInTheDocument();
+  });
+
+  describe('demo workspace', () => {
+    const NOTE =
+      'Conta demo: você está usando o plano Pro sem custo. Para continuar depois, é só assinar um plano.';
+
+    function asDemo() {
+      vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+        planId: 'pro',
+        planSource: 'demo',
+        wasDemo: true,
+      });
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(subscription({}));
+    }
+
+    it('shows "Assinar" on the current plan card and no trial copy', async () => {
+      asDemo();
+      renderPage();
+
+      expect(await screen.findByRole('button', { name: 'Assinar' })).toBeInTheDocument();
+      expect(screen.queryByText('Plano atual', { selector: '.plan-cta__static' })).toBeNull();
+      expect(screen.queryByText(HINT)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /teste de 30 dias/i })).toBeNull();
+    });
+
+    it('yearly 12x "Assinar" opens the Pagar.me dialog without the trial', async () => {
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN_PAGARME]);
+      asDemo();
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Assinar' }));
+
+      expect(await screen.findByText('Assinar o plano Pro')).toBeInTheDocument();
+      expect(startCheckout).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: 'Confirmar assinatura' })).toBeInTheDocument();
+      expect(screen.queryByText(/30 dias grátis/)).toBeNull();
+    });
+
+    it('starts a no-trial checkout for the current plan from "Assinar"', async () => {
+      asDemo();
+      renderPage();
+      fireEvent.click(await screen.findByRole('button', { name: 'Assinar' }));
+      await waitFor(() => expect(startCheckout).toHaveBeenCalled());
+      expect(vi.mocked(startCheckout).mock.calls[0]?.[0]).toBe('pro');
+    });
+
+    it('shows the discreet demo note', async () => {
+      asDemo();
+      renderPage();
+      expect(await screen.findByText(NOTE)).toBeInTheDocument();
+    });
+
+    it.each(['manual', 'stripe'])('does not show the note for plan_source %s', async (src) => {
+      vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+        planId: 'pro',
+        planSource: src,
+        wasDemo: false,
+      });
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(subscription({}));
+      renderPage();
+      await screen.findAllByText('Plano atual');
+      expect(screen.queryByText(/Conta demo/)).toBeNull();
+    });
+
+    it('an ex-demo on Free sees no trial copy even without a subscription row', async () => {
+      vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+        planId: 'free',
+        planSource: 'system',
+        wasDemo: true,
+      });
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(subscription({}));
+      renderPage();
+      expect(await screen.findByRole('button', { name: 'Fazer upgrade' })).toBeInTheDocument();
+      expect(screen.queryByText(HINT)).not.toBeInTheDocument();
+    });
   });
 
   it('shows "Fazer upgrade" and hides the first-time hint for a workspace that subscribed before', async () => {
@@ -693,6 +774,7 @@ describe('CobrancaPage', () => {
       vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
         planId: 'pro',
         planSource: 'stripe',
+        wasDemo: false,
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
       renderPage();
@@ -715,6 +797,7 @@ describe('CobrancaPage', () => {
       vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
         planId: 'start',
         planSource: 'stripe',
+        wasDemo: false,
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
       renderPage();
@@ -735,6 +818,7 @@ describe('CobrancaPage', () => {
       vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
         planId: 'pro',
         planSource: 'stripe',
+        wasDemo: false,
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
       renderPage();
@@ -758,6 +842,7 @@ describe('CobrancaPage', () => {
       vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
         planId: 'pro',
         planSource: 'manual',
+        wasDemo: false,
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
       renderPage();
@@ -777,6 +862,7 @@ describe('CobrancaPage', () => {
       vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
         planId: 'pro',
         planSource: 'stripe',
+        wasDemo: false,
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
       renderPage();
@@ -794,6 +880,7 @@ describe('CobrancaPage', () => {
       vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
         planId: 'pro',
         planSource: 'stripe',
+        wasDemo: false,
       });
 
       // 1) Já está no anual: billingInterval 'year' desqualifica o switch.

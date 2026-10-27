@@ -132,8 +132,21 @@ export async function listPublicPricingPlans(): Promise<PublicPricingPlan[]> {
 
 export interface EffectivePlan {
   planId: string | null;
-  /** 'system' | 'stripe' | 'manual' | 'pagarme' | null. 'manual' = admin comp override. */
+  /** 'system' | 'stripe' | 'manual' | 'pagarme' | 'demo' | null. 'manual' = admin comp override. */
   planSource: string | null;
+  /** `workspaces.demo_created_at` is set: the workspace started as an Admin-made demo. */
+  wasDemo: boolean;
+}
+
+/**
+ * Whether the trial is already spent. A demo has no `workspace_subscriptions` row, so the
+ * workspace marker counts too (even after an admin moves an ex-demo to Free or a comp).
+ */
+export function hasUsedTrial(
+  sub: WorkspaceSubscription | null | undefined,
+  plan: Pick<EffectivePlan, 'wasDemo'> | null | undefined,
+): boolean {
+  return Boolean(sub?.hasEverSubscribed || plan?.wasDemo);
 }
 
 /**
@@ -145,22 +158,23 @@ async function fetchEffectivePlan(): Promise<EffectivePlan> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { planId: null, planSource: null };
+  if (!user) return { planId: null, planSource: null, wasDemo: false };
   const { data: profile } = await supabase
     .from('profiles')
     .select('conta_id')
     .eq('id', user.id)
     .single();
-  if (!profile?.conta_id) return { planId: null, planSource: null };
+  if (!profile?.conta_id) return { planId: null, planSource: null, wasDemo: false };
   const { data, error } = await supabase
     .from('workspaces')
-    .select('plan_id, plan_source')
+    .select('plan_id, plan_source, demo_created_at')
     .eq('id', profile.conta_id)
     .maybeSingle();
   if (error) throw new Error(error.message);
   return {
     planId: (data?.plan_id as string | null) ?? null,
     planSource: (data?.plan_source as string | null) ?? null,
+    wasDemo: Boolean(data?.demo_created_at),
   };
 }
 
