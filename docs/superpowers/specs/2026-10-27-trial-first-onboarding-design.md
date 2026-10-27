@@ -86,9 +86,11 @@ the login path.
   link, signup without confirmation, a later login on another device), and never again.
   Skip, checkout start and plain navigation away all count as "seen". After that,
   `TrialNudgeCard` remains the way back.
-- **Existing Free workspaces** that never saw the screen (20 of the last 60 days' signups)
-  get it once on their next visit. *(Flagged for review: the alternative is to backfill the
-  marker for every workspace created before the deploy.)*
+- **Existing Free workspaces** that never trialed get the screen once on their next visit
+  (product owner's decision). No backfill of the marker. That is about 50 workspaces, most
+  of them dormant.
+- Workspaces an admin set to Free by hand (`plan_source = 'manual'`, 3 today) are **not**
+  eligible: treat them like comp plans.
 - Plan intent from the landing page (`?plan=…&interval=…`) keeps auto-starting checkout,
   unchanged. A page load with intent also sets the marker.
 - The marker must be readable and writable by the owner under RLS, and must not trip the
@@ -236,9 +238,20 @@ The `/comecar` copy promising the reminder must not reach production before the 
 scheduled. **Rollback:** unschedule the cron first, then undeploy the function. Keep the
 ledger.
 
-**Pagar.me amount mirror:** the `amount_cents` comment describes Stripe. The builder checks
-whether the Pagar.me webhook writes it (the 12x installment value) and, if not, adds that
-write as part of this work.
+**Pagar.me rows (builder's call, flagged):**
+- A Stripe-monthly → Pagar.me 12x **switch** is stored as `trialing`
+  (`switched_from_stripe_subscription_id` set), but it is not a trial: the customer is
+  already paying. Skip those rows. One exception: if the Stripe subscription it replaced was
+  itself still `trialing` at the switch, the customer is in a real trial and gets the
+  reminder.
+- For a 12x trial the first charge is the first installment. The email states "12x de
+  {parcela}" from the existing `installment_amount_cents` mirror, and the annual total from
+  `amount_cents` for context.
+- `amount_cents` keeps meaning the annual total. The Admin's MRR reads it, so don't change
+  it.
+- Cancelling a Pagar.me trial is an immediate delete through `pagarme-subscription`, not the
+  Stripe portal. The email's cancel link must work for both providers.
+- Stripe rows with `cancel_at_period_end = true` are skipped: they won't be charged.
 
 ## Part 4: wrongly advertised plan features
 
@@ -259,9 +272,9 @@ copy honest.
   `listActivePlans`).
 - Static surfaces (prerendered pages, `.seo.ts`, help articles, blog posts) do not state
   numbers or features an Admin plan edit can change. Where a static page truly needs a
-  figure, it is fetched at build time from the `plans` table, the way `blog:sync` works,
-  and a plan edit is followed by a frontend redeploy (document that next to the Admin plan
-  editor).
+  figure, it is fetched at build time from the `plans` table, the way `blog:sync` works.
+  A plan edit then needs a frontend redeploy. Document that in CLAUDE.md only; no Admin UI
+  change and no automatic deploy hook this round, since Admin is out of scope.
 
 The builder picks per surface, and the audit list says which applies.
 
@@ -299,7 +312,7 @@ once per workspace, card required, charged at the end unless cancelled.
 | A3 | `pages/landing/PlanComparison.tsx:39` | "Relatórios e analytics" ✓ for Free | Drive the row from `rate_report_generations_per_month` ("—" / "5/mês" / …), like the "Portais do cliente" row already does |
 | A4 | `pages/landing/LandingPage.tsx:516-517` (final CTA) | "Sem cartão de crédito, sem compromisso." next to "Começar teste grátis" | "30 dias grátis nos planos pagos. Cancele quando quiser." Don't claim no card next to a trial CTA |
 | A5 | `content/landing.content.ts:48` (hero note) | "30 dias grátis em qualquer plano." | "30 dias grátis em qualquer plano pago." |
-| A6 | `pages/termos-de-uso/TermosPage.tsx:130-133` | "Durante o período beta, todas as funcionalidades estão disponíveis gratuitamente." / "Quando os planos pagos entrarem em vigor:" | Paid plans are in force. Describe the trial: 30 days, once per workspace, card required, automatic charge at the end unless cancelled, reminder 7 days before. **Legal text: the product owner signs off on the final wording** |
+| A6 | `pages/termos-de-uso/TermosPage.tsx:130-133` | "Durante o período beta, todas as funcionalidades estão disponíveis gratuitamente." / "Quando os planos pagos entrarem em vigor:" | Paid plans are in force. Describe the trial: 30 days, once per workspace, card required, automatic charge at the end unless cancelled, reminder 7 days before. **Legal text: ships in this release; the frontend merge waits for the product owner to approve the final wording** |
 
 **B. Misleading claims (fix)**
 
