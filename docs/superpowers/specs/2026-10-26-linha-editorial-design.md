@@ -179,7 +179,9 @@ no matching column. This needs no exception to the freeze trigger.
 
 A BEFORE INSERT/UPDATE trigger enforces:
 
-- `data` is null or falls inside the parent's month.
+- `data` is free: it may fall outside the parent's month, so a post planned for the first
+  days of the next month stays in this month's plan. (The first version refused dates
+  outside the month; migration `20261031000004` dropped that check on user request.)
 - `conta_id` equals the parent's.
 - A linha has at most 100 items. A month is 8 to 40 in practice; the cap bounds the Hub
   payload (§8.1).
@@ -362,11 +364,13 @@ Grant all three to `service_role` only, per `20260925000001_lockdown_definer_fun
     colors in `pages/entregas/postLabels.ts`; there is no `PostTipoBadge` component in the
     CRM, it only exists in the design-system mockups. Extract a small shared format pill if
     useful.
-  - Data is a date picker limited to the month. Select cells use the existing
+  - Data is a date picker with no month bounds. It saves only a full date with a plausible
+    year (typing a year passes through 0002, 0020...) and reverts anything else on blur.
+    Select cells use the existing
     `PropertyValue` editors where they fit.
 - **Rows:** "Nova linha" appends a row; its date defaults to the day after the last dated row
-  **(my call)**, or null ("sem data") when that would fall past the month's end, so the
-  date-in-month trigger never rejects the optimistic insert. Rows are reordered by drag and sorted by date on demand ("Ordenar por data").
+  **(my call)**, or null ("sem data") when that would fall past the month's end: a new row
+  stays in the month by default, and the person can still pick a date outside it. Rows are reordered by drag and sorted by date on demand ("Ordenar por data").
   Delete is in the row menu, with a confirm only for converted rows.
 - **Converted rows** are read-only (§4.3). They show a `PostStatusChip` and a link to the post
   or fluxo in Produção, and their row menu offers "Abrir post".
@@ -584,7 +588,10 @@ only when they were mapped (fluxo posts). Otherwise they are in Roteiro e briefi
     {data}", format pills, and the line "Este é o plano do mês: temas, formatos e datas. Os
     posts prontos chegam depois, para você aprovar um a um."
   - Rows are grouped by week ("Semana de 2 a 8 de novembro"), with the items without a date
-    in a last group, "Sem data".
+    in a last group, "Sem data". A week whose rows all fall in the linha's month is clipped
+    to it ("Semana de 29 a 30 de novembro"); a week holding a row from another month keeps
+    its real days ("Semana de 29 de novembro a 5 de dezembro", "Semana de 6 a 12 de
+    dezembro").
   - Each row shows the date block, a format pill, the visible extra columns as small text,
     the title, the direction and a "Comentar" action, which opens an inline textarea.
 - **Sticky bar:** "{n} comentários" · "Pedir ajustes" (secondary) · "Aprovar linha editorial"
@@ -667,7 +674,7 @@ meanwhile.
   - RLS isolation for all four tables;
   - the flag trigger blocks inserts when off;
   - the freeze trigger after conversion;
-  - the date-in-month trigger;
+  - dates outside the month are accepted on insert and update;
   - status not writable through PostgREST;
   - writes blocked on all four tables with the flag off, reads still allowed;
   - the Hub RPCs refuse a linha of another client in the same conta;

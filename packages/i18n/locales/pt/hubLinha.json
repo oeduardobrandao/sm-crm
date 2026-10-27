@@ -15,6 +15,7 @@
   },
   "intro": "Este é o plano do mês: temas, formatos e datas. Os posts prontos chegam depois, para você aprovar um a um.",
   "semana": "Semana de {{inicio}} a {{fim}} de {{mes}}",
+  "semanaEntreMeses": "Semana de {{inicio}} de {{mesInicio}} a {{fim}} de {{mes}}",
   "semData": "Sem data",
   "semTitulo": "Sem título",
   "formato": {

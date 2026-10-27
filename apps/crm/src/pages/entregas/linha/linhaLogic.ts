@@ -84,7 +84,7 @@ export function nomeFluxoPadrao(itens: ItemTipo[], periodo: string): string {
  * User copy for the raises of `linha_item_guard` (migration 20261031000001) that the person
  * can act on; null for anything else (the caller keeps its own fallback).
  */
-export function mensagemGuardItem(err: unknown, periodo: string): string | null {
+export function mensagemGuardItem(err: unknown): string | null {
   const msg =
     err && typeof err === 'object' && typeof (err as { message?: unknown }).message === 'string'
       ? (err as { message: string }).message
@@ -92,7 +92,6 @@ export function mensagemGuardItem(err: unknown, periodo: string): string | null 
   if (msg.includes('linha_item_limite')) {
     return 'A linha chegou ao limite de 100 posts. Exclua uma linha para criar outra.';
   }
-  if (msg.includes('linha_item_data_fora_do_mes')) return `Escolha um dia de ${mesLabel(periodo)}.`;
   if (msg.includes('linha_item_convertido')) return 'Esta linha já virou post. Atualize a página.';
   return null;
 }

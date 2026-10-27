@@ -75,7 +75,7 @@ import {
   formatDia,
   type CellNav,
 } from './LinhaCell';
-import { defaultNovaData, mensagemGuardItem, mesLabel } from './linhaLogic';
+import { defaultNovaData, mensagemGuardItem } from './linhaLogic';
 import { linhaItensKey, linhasKey } from './useLinhaQueries';
 
 export interface LinhaTableProps {
@@ -95,10 +95,10 @@ export interface LinhaTableProps {
 const MSG_SALVAR = 'Não foi possível salvar a alteração. Tente de novo.';
 
 /** Plan limits first, then the row guard's raises, then the caller's fallback. */
-function erroDe(err: unknown, periodo: string, fallback: string): string {
+function erroDe(err: unknown, fallback: string): string {
   const ent = mapEntitlementError(err);
   if (ent) return entitlementMessage(ent);
-  return mensagemGuardItem(err, periodo) ?? fallback;
+  return mensagemGuardItem(err) ?? fallback;
 }
 
 const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
@@ -134,7 +134,7 @@ function useItemWrites(linha: LinhaEditorial, itens: LinhaItem[]) {
   const falhou = (fallback: string) => (err: unknown) => {
     rollbacks.current++;
     void qc.invalidateQueries({ queryKey: key }).finally(() => rollbacks.current--);
-    toast.error(erroDe(err, linha.periodo, fallback));
+    toast.error(erroDe(err, fallback));
   };
   const contarNoRail = () => void qc.invalidateQueries({ queryKey: linhasKey(linha.periodo) });
 
@@ -245,7 +245,6 @@ function moverFoco(e: KeyboardEvent<HTMLTableElement>) {
 interface RowProps {
   item: LinhaItem;
   index: number;
-  linha: LinhaEditorial;
   extras: LinhaColuna[];
   direcaoOculta: boolean;
   temProducao: boolean;
@@ -265,7 +264,6 @@ interface RowProps {
 function LinhaRow({
   item,
   index,
-  linha,
   extras,
   direcaoOculta,
   temProducao,
@@ -328,11 +326,9 @@ function LinhaRow({
         ) : (
           <DateCell
             value={item.data}
-            periodo={linha.periodo}
             label="Data"
             nav={nav('data')}
             onSave={(data) => writes.patch(item.id, { data })}
-            onForaDoMes={() => toast.error(`Escolha um dia de ${mesLabel(linha.periodo)}.`)}
           />
         )}
       </td>
@@ -636,7 +632,6 @@ export function LinhaTable({
                     key={item.id}
                     item={item}
                     index={index}
-                    linha={linha}
                     extras={extras}
                     direcaoOculta={direcaoOculta}
                     temProducao={temProducao}

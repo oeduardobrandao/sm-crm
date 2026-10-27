@@ -233,10 +233,13 @@ export function LinhaCard({ linha, token, agencia, floatingBar }: LinhaCardProps
   const itemNotes = (id: string) =>
     respostas.filter((r) => r.item_id === id && !!r.comentario?.trim());
 
-  const formatWeek = (w: LinhaWeek) =>
-    w.semData
-      ? t('semData')
-      : t('semana', { inicio: w.inicio, fim: w.fim, mes: monthName(w.mes, lang) });
+  const formatWeek = (w: LinhaWeek) => {
+    if (w.semData) return t('semData');
+    const mes = monthName(w.mes, lang);
+    if (w.mesInicio === w.mes) return t('semana', { inicio: w.inicio, fim: w.fim, mes });
+    const mesInicio = monthName(w.mesInicio, lang);
+    return t('semanaEntreMeses', { inicio: w.inicio, mesInicio, fim: w.fim, mes });
+  };
   const weeks = groupByWeek(linha.itens, linha.periodo, formatWeek);
 
   const total = linha.itens.length;

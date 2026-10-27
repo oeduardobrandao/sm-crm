@@ -168,16 +168,17 @@ begin
   assert v_e like '23505:%', 'second linha for the same client and month refused: ' || coalesce(v_e, 'null');
   raise notice 'PASS periodo_first_day';
 
-  -- ---------- date_in_month ----------
+  -- ---------- date_free (20261031000004: rows may fall outside the linha month) ----------
   v_e := pg_temp.erro(u_a, format(v_ins_item, v_linha, v_a, '2026-12-01', 'Dezembro', 3));
-  assert v_e like '%linha_item_data_fora_do_mes%', 'item dated outside the month refused: ' || coalesce(v_e, 'null');
+  assert v_e is null, 'item dated the month after accepted: ' || coalesce(v_e, 'null');
   v_e := pg_temp.erro(u_a, format(v_ins_item, v_linha, v_a, '2026-10-31', 'Outubro', 3));
-  assert v_e like '%linha_item_data_fora_do_mes%', 'item dated the month before refused: ' || coalesce(v_e, 'null');
-  v_e := pg_temp.erro(u_a, format('update public.linha_editorial_itens set data = ''2026-12-01'' where id = %L', v_item));
-  assert v_e like '%linha_item_data_fora_do_mes%', 'moving an item out of the month refused: ' || coalesce(v_e, 'null');
+  assert v_e is null, 'item dated the month before accepted: ' || coalesce(v_e, 'null');
+  assert pg_temp.afetadas(u_a, format('update public.linha_editorial_itens set data = ''2026-12-01'' where id = %L', v_item)) = 1,
+    'moving an item out of the month accepted';
   assert pg_temp.afetadas(u_a, format('update public.linha_editorial_itens set data = ''2026-11-30'' where id = %L', v_item)) = 1,
-    'moving an item inside the month accepted';
-  raise notice 'PASS date_in_month';
+    'moving an item back inside the month accepted';
+  delete from public.linha_editorial_itens where linha_id = v_linha and titulo in ('Dezembro', 'Outubro');
+  raise notice 'PASS date_free';
 
   -- ---------- nome_norm_unique ----------
   v_e := pg_temp.erro(u_a, format('insert into public.linha_editorial_colunas (conta_id, nome, tipo, ordem) values (%L, ''pílar '', ''text'', 1)', v_a));

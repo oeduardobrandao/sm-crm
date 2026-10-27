@@ -162,31 +162,24 @@ export function TextCell({
   );
 }
 
-/** Last day (`YYYY-MM-DD`) of the month of a `YYYY-MM-01` period. */
-export function fimDoMes(periodo: string): string {
-  const [y, m] = periodo.split('-').map(Number);
-  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
-}
-
 interface DateCellProps {
   value: string | null;
-  /** Bounds the picker to the linha's month; null for an extra date column (any day). */
-  periodo: string | null;
   label: string;
   nav: CellNav;
   onSave: (v: string | null) => void;
-  onForaDoMes?: () => void;
 }
 
+/** A full date with a plausible year: typing a year passes through 0002, 0020, 0202... */
+const DATA_PLAUSIVEL = /^(19|20|21)\d{2}-\d{2}-\d{2}$/;
+
 /**
- * Native date input, bounded to the month for the Data column. Typing a year fires `change`
- * with intermediate values (0002, 0020...), so the save is debounced and an out-of-month value
- * is never written: on blur it reverts and `onForaDoMes` explains why.
+ * Native date input. Any day is allowed, including outside the linha's month (a post planned
+ * for the start of the next month stays in this plan). Typing a year fires `change` with
+ * intermediate values (0002, 0020...), so the save is debounced and only a full date with a
+ * plausible year (or an empty field) is written; anything else reverts on blur.
  */
-export function DateCell({ value, periodo, label, nav, onSave, onForaDoMes }: DateCellProps) {
-  const min = periodo ?? undefined;
-  const max = periodo ? fimDoMes(periodo) : undefined;
-  const valido = (v: string) => v === '' || ((!min || v >= min) && (!max || v <= max));
+export function DateCell({ value, label, nav, onSave }: DateCellProps) {
+  const valido = (v: string) => v === '' || DATA_PLAUSIVEL.test(v);
   const { local, change, flush } = useDebouncedField(value ?? '', (v) => {
     if (valido(v) && v !== (value ?? '')) onSave(v || null);
   });
@@ -195,17 +188,14 @@ export function DateCell({ value, periodo, label, nav, onSave, onForaDoMes }: Da
       className="linha-input linha-input--date"
       type="date"
       aria-label={label}
-      min={min}
-      max={max}
       value={local}
       onChange={(e) => change(e.target.value)}
       onBlur={() => {
-        const foraDoMes = !valido(local);
+        const invalido = !valido(local);
         flush();
-        if (foraDoMes) {
+        if (invalido) {
           change(value ?? '');
           flush();
-          onForaDoMes?.();
         }
       }}
       {...navProps(nav)}
@@ -341,7 +331,6 @@ export function ValorCell({
       return (
         <DateCell
           value={typeof value === 'string' ? value : null}
-          periodo={null}
           label={label}
           nav={nav}
           onSave={onSave}

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
@@ -428,13 +428,24 @@ describe('LinhaTable write failures and ordering', () => {
     );
   });
 
-  it('an out-of-month date names the month', async () => {
-    const user = userEvent.setup();
-    m.updateItem.mockRejectedValue({ message: 'linha_item_data_fora_do_mes', code: 'P0001' });
+  it('the Data input accepts a date outside the linha month', async () => {
     renderView();
-    const [titulo] = await screen.findAllByLabelText('Título');
-    await user.type(titulo, ' x');
-    await waitFor(() => expect(m.toastError).toHaveBeenCalledWith('Escolha um dia de novembro.'));
+    const [data] = await screen.findAllByLabelText('Data');
+    expect(data).not.toHaveAttribute('min');
+    expect(data).not.toHaveAttribute('max');
+    fireEvent.change(data, { target: { value: '2026-12-03' } });
+    fireEvent.blur(data);
+    await waitFor(() => expect(m.updateItem).toHaveBeenCalledWith('i1', { data: '2026-12-03' }));
+    expect(m.toastError).not.toHaveBeenCalled();
+  });
+
+  it('a half-typed year is never saved', async () => {
+    renderView();
+    const [data] = await screen.findAllByLabelText('Data');
+    fireEvent.change(data, { target: { value: '0002-11-03' } });
+    fireEvent.blur(data);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(m.updateItem).not.toHaveBeenCalled();
   });
 
   it('deleting a row whose insert is in flight waits for the insert', async () => {

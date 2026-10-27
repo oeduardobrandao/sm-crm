@@ -85,26 +85,24 @@ describe('mensagemGuardItem', () => {
   const pg = (message: string) => ({ message, code: 'P0001' });
 
   it('maps the 100-row cap', () => {
-    expect(mensagemGuardItem(pg('linha_item_limite'), '2026-11-01')).toBe(
+    expect(mensagemGuardItem(pg('linha_item_limite'))).toBe(
       'A linha chegou ao limite de 100 posts. Exclua uma linha para criar outra.',
     );
   });
 
-  it('names the month for an out-of-month date', () => {
-    expect(mensagemGuardItem(pg('linha_item_data_fora_do_mes'), '2026-11-01')).toBe(
-      'Escolha um dia de novembro.',
-    );
+  it('has no copy for the retired out-of-month raise (dates are free)', () => {
+    expect(mensagemGuardItem(pg('linha_item_data_fora_do_mes'))).toBeNull();
   });
 
   it('maps a converted row', () => {
-    expect(mensagemGuardItem(pg('linha_item_convertido'), '2026-11-01')).toBe(
+    expect(mensagemGuardItem(pg('linha_item_convertido'))).toBe(
       'Esta linha já virou post. Atualize a página.',
     );
   });
 
   it('returns null for anything else', () => {
-    expect(mensagemGuardItem(pg('boom'), '2026-11-01')).toBeNull();
-    expect(mensagemGuardItem(new Error('linha_nao_encontrada'), '2026-11-01')).toBeNull();
-    expect(mensagemGuardItem(null, '2026-11-01')).toBeNull();
+    expect(mensagemGuardItem(pg('boom'))).toBeNull();
+    expect(mensagemGuardItem(new Error('linha_nao_encontrada'))).toBeNull();
+    expect(mensagemGuardItem(null)).toBeNull();
   });
 });

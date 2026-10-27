@@ -15,6 +15,7 @@
   },
   "intro": "This is the plan for the month: themes, formats and dates. The finished posts come later, for you to approve one by one.",
   "semana": "Week of {{mes}} {{inicio}} to {{fim}}",
+  "semanaEntreMeses": "Week of {{mesInicio}} {{inicio}} to {{mes}} {{fim}}",
   "semData": "No date",
   "semTitulo": "Untitled",
   "formato": {

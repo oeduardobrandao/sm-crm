@@ -41,6 +41,33 @@ describe('groupByWeek', () => {
     ]);
   });
 
+  it('labels weeks with dates outside the linha month by their real days', () => {
+    // Nov linha with rows that spill into Oct and Dec. A week is clipped to the month only
+    // when every row in it falls inside the month.
+    const groups = groupByWeek(
+      [
+        item('o', '2026-10-30'),
+        item('n', '2026-11-30'),
+        item('d', '2026-12-02'),
+        item('z', '2026-12-09'),
+      ],
+      '2026-11-01',
+    );
+    expect(groups.map((g) => g.label)).toEqual([
+      'Semana de 25 a 31 de outubro',
+      'Semana de 29 de novembro a 5 de dezembro',
+      'Semana de 6 a 12 de dezembro',
+    ]);
+    expect(groups.map((g) => g.itens.map((i) => i.id))).toEqual([['o'], ['n', 'd'], ['z']]);
+  });
+
+  it('passes both months to the caller for a week that crosses months', () => {
+    const [g] = groupByWeek([item('d', '2026-12-02')], '2026-11-01', (w) =>
+      w.semData ? 'none' : `${w.inicio}/${w.mesInicio}-${w.fim}/${w.mes}`,
+    );
+    expect(g.label).toBe('29/10-5/11');
+  });
+
   it('keeps the input order inside a week and omits Sem data when every item is dated', () => {
     const groups = groupByWeek([item('b', '2026-11-04'), item('a', '2026-11-03')], '2026-11-01');
     expect(groups).toHaveLength(1);
