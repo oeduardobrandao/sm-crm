@@ -23,6 +23,9 @@ const LAZY_LOCALES: Record<string, Record<string, () => LocaleModule>> = {
     workflows: () => import('../../../../packages/i18n/locales/pt/workflows.json'),
     postEditor: () => import('../../../../packages/i18n/locales/pt/postEditor.json'),
     linha: () => import('../../../../packages/i18n/locales/pt/linha.json'),
+    entregasViews: () => import('../../../../packages/i18n/locales/pt/entregasViews.json'),
+    entregasPhone: () => import('../../../../packages/i18n/locales/pt/entregasPhone.json'),
+    postPanels: () => import('../../../../packages/i18n/locales/pt/postPanels.json'),
   },
   en: {
     dashboard: () => import('../../../../packages/i18n/locales/en/dashboard.json'),
@@ -36,6 +39,9 @@ const LAZY_LOCALES: Record<string, Record<string, () => LocaleModule>> = {
     workflows: () => import('../../../../packages/i18n/locales/en/workflows.json'),
     postEditor: () => import('../../../../packages/i18n/locales/en/postEditor.json'),
     linha: () => import('../../../../packages/i18n/locales/en/linha.json'),
+    entregasViews: () => import('../../../../packages/i18n/locales/en/entregasViews.json'),
+    entregasPhone: () => import('../../../../packages/i18n/locales/en/entregasPhone.json'),
+    postPanels: () => import('../../../../packages/i18n/locales/en/postPanels.json'),
   },
 };
 

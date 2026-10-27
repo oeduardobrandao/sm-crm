@@ -56,6 +56,12 @@ import ptPostEditor from '../packages/i18n/locales/pt/postEditor.json';
 import enPostEditor from '../packages/i18n/locales/en/postEditor.json';
 import ptLinha from '../packages/i18n/locales/pt/linha.json';
 import enLinha from '../packages/i18n/locales/en/linha.json';
+import ptEntregasViews from '../packages/i18n/locales/pt/entregasViews.json';
+import enEntregasViews from '../packages/i18n/locales/en/entregasViews.json';
+import ptEntregasPhone from '../packages/i18n/locales/pt/entregasPhone.json';
+import enEntregasPhone from '../packages/i18n/locales/en/entregasPhone.json';
+import ptPostPanels from '../packages/i18n/locales/pt/postPanels.json';
+import enPostPanels from '../packages/i18n/locales/en/postPanels.json';
 
 initI18n({
   pt: {
@@ -70,6 +76,9 @@ initI18n({
     workflows: ptWorkflows,
     postEditor: ptPostEditor,
     linha: ptLinha,
+    entregasViews: ptEntregasViews,
+    entregasPhone: ptEntregasPhone,
+    postPanels: ptPostPanels,
     hubHome: ptHubHome,
     hubPostCard: ptHubPostCard,
     hubPosts: ptHubPosts,
@@ -94,6 +103,9 @@ initI18n({
     workflows: enWorkflows,
     postEditor: enPostEditor,
     linha: enLinha,
+    entregasViews: enEntregasViews,
+    entregasPhone: enEntregasPhone,
+    postPanels: enPostPanels,
     hubHome: enHubHome,
     hubPostCard: enHubPostCard,
     hubPosts: enHubPosts,
