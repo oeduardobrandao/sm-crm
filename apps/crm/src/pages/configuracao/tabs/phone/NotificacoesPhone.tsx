@@ -5,7 +5,7 @@ import { i18n } from '@mesaas/i18n';
 import { GroupedList, Cell } from '@/components/mobile/GroupedList';
 import { SegmentedControl } from '@/components/mobile/SegmentedControl';
 import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
-import { CATEGORY_LABELS, isEmailEligibleType } from '@/lib/notification-catalog';
+import { categoryLabel, isEmailEligibleType } from '@/lib/notification-catalog';
 import { MASTER_PAUSE_TYPE } from '@/store/notificationPrefs';
 import type { Cliente } from '@/store';
 import { ConfigPhoneScreen, ConfigPhoneSkeleton } from '../../phone/ConfigPhoneScreen';
@@ -118,7 +118,7 @@ export function NotificacoesPhone({ canViewConfig }: NotificacoesPhoneProps) {
           </GroupedList>
 
           {suas.categories.map(({ category, rows }) => (
-            <GroupedList key={category} header={CATEGORY_LABELS[category]}>
+            <GroupedList key={category} header={categoryLabel(category)}>
               {rows.map((row) => {
                 const subtitle = whenWho(row.when, row.recipients);
                 if (!isEmail) {

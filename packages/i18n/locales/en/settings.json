@@ -341,5 +341,192 @@
     },
     "adminSummary": "Edits everything · Finances per each admin's access",
     "adminFinanceOverride": "Per each admin's finance access"
+  },
+  "catalog": {
+    "category": {
+      "aprovacoes_hub": "Approvals and Hub",
+      "entregas_fluxo": "Deliveries and workflow",
+      "equipe": "Team",
+      "agenda": "Events",
+      "integracoes": "Integrations",
+      "sistema": "System"
+    },
+    "types": {
+      "post_approved": {
+        "label": "Post approved by the client",
+        "when": "the client approves a post in the Hub",
+        "recipients": "person responsible + owners and admins"
+      },
+      "post_correction": {
+        "label": "Changes requested",
+        "when": "the client requests changes to a post",
+        "recipients": "person responsible + owners and admins"
+      },
+      "post_message": {
+        "label": "Message on a post",
+        "when": "the client comments on a specific post",
+        "recipients": "person responsible + owners and admins"
+      },
+      "post_edit_suggestion": {
+        "label": "Edit suggestion",
+        "when": "the client suggests or updates a text or caption change in the Hub",
+        "recipients": "person responsible + owners and admins"
+      },
+      "post_client_reference": {
+        "label": "Client references",
+        "when": "the client attaches photos, videos, PDFs or links to a post in the Hub",
+        "recipients": "person responsible + owners and admins"
+      },
+      "idea_submitted": {
+        "label": "Idea submitted",
+        "when": "the client submits an idea or request",
+        "recipients": "owners and admins"
+      },
+      "briefing_answered": {
+        "label": "Briefing answered",
+        "when": "the client answers a briefing question",
+        "recipients": "owners and admins"
+      },
+      "client_message": {
+        "label": "Client message",
+        "when": "the client writes in the message feed",
+        "recipients": "owners and admins"
+      },
+      "linha_editorial_aprovada": {
+        "label": "Editorial plan approved",
+        "when": "the client approves the month's editorial plan in the Hub",
+        "recipients": "person responsible + owners and admins"
+      },
+      "linha_editorial_ajustes": {
+        "label": "Editorial plan changes",
+        "when": "the client requests changes to the month's editorial plan in the Hub",
+        "recipients": "person responsible + owners and admins"
+      },
+      "step_activated": {
+        "label": "Stage activated",
+        "when": "a workflow stage becomes active",
+        "recipients": "person responsible + owners and admins"
+      },
+      "step_completed": {
+        "label": "Stage completed",
+        "when": "a workflow stage is completed",
+        "recipients": "owners and admins"
+      },
+      "post_assigned": {
+        "label": "Post assigned to you",
+        "when": "a post is assigned to you",
+        "recipients": "only the assignee"
+      },
+      "task_assigned": {
+        "label": "Task assigned to you",
+        "when": "a task is created for you or reassigned to you",
+        "recipients": "only the assignee"
+      },
+      "workflow_completed": {
+        "label": "Workflow completed",
+        "when": "an entire workflow is completed",
+        "recipients": "owners and admins"
+      },
+      "deadline_approaching": {
+        "label": "Deadline approaching",
+        "when": "an active stage is due tomorrow",
+        "recipients": "person responsible + owners and admins"
+      },
+      "post_status_automation": {
+        "label": "Status automation",
+        "when": "one of your status rules triggers a notification",
+        "recipients": "as set in the rule"
+      },
+      "invite_accepted": {
+        "label": "Invite accepted",
+        "when": "someone joins the workspace",
+        "recipients": "owners and admins"
+      },
+      "member_role_changed": {
+        "label": "Role changed",
+        "when": "a member's role changes",
+        "recipients": "owners and admins"
+      },
+      "member_removed": {
+        "label": "Member removed",
+        "when": "a member is removed from the workspace",
+        "recipients": "owners and admins"
+      },
+      "mention": {
+        "label": "Mentions",
+        "when": "someone mentions you with @",
+        "recipients": "only the person mentioned"
+      },
+      "event_invited": {
+        "label": "Event invitations",
+        "when": "someone adds you to an event",
+        "recipients": "Event participants"
+      },
+      "event_updated": {
+        "label": "Event changes",
+        "when": "the time, location or recurrence of one of your events changes",
+        "recipients": "Event participants"
+      },
+      "event_cancelled": {
+        "label": "Cancelled events",
+        "when": "one of your events is cancelled or you are removed from it",
+        "recipients": "Event participants"
+      },
+      "event_rsvp": {
+        "label": "Replies to your invitations",
+        "when": "a participant replies to an event you organized",
+        "recipients": "Event organizer"
+      },
+      "event_client_rsvp": {
+        "label": "Client replied to an event",
+        "when": "the client accepts or declines an event shared with them",
+        "recipients": "Event organizer (or owners and admins)"
+      },
+      "event_guest_rsvp": {
+        "label": "External guest replied to an event",
+        "when": "an external guest accepts or declines one of your events",
+        "recipients": "Event organizer (or owners and admins)"
+      },
+      "event_reschedule_requested": {
+        "label": "Client asked to reschedule",
+        "when": "the client asks to reschedule an event shared with them",
+        "recipients": "Event organizer (or owners and admins)"
+      },
+      "event_reminder": {
+        "label": "Event reminders",
+        "when": "at the reminder times you set",
+        "recipients": "Event participants"
+      },
+      "team_message": {
+        "label": "Team chat message",
+        "when": "someone sends a message in a team chat conversation you are part of",
+        "recipients": "conversation participants, except the sender"
+      },
+      "post_discussion": {
+        "label": "Message in a post discussion",
+        "when": "someone writes in the discussion of a post you follow",
+        "recipients": "anyone who wrote in, was mentioned in or is responsible for the post and follows the discussion"
+      },
+      "instagram_connected_by_client": {
+        "label": "Instagram connected",
+        "when": "the client finishes connecting through the link you sent",
+        "recipients": "whoever created the link"
+      },
+      "post_publish_failed": {
+        "label": "Publishing failed",
+        "when": "a scheduled post fails to publish",
+        "recipients": "person responsible + owners and admins"
+      },
+      "instagram_automation_failed": {
+        "label": "Instagram automation issue",
+        "when": "a comment-to-DM automation stops working",
+        "recipients": "owners and admins"
+      },
+      "storage_autoclean_report": {
+        "label": "Storage cleanup",
+        "when": "the nightly cleanup removes old files",
+        "recipients": "owners and admins"
+      }
+    }
   }
 }

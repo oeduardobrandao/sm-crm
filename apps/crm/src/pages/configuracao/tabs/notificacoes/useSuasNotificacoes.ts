@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { i18n } from '@mesaas/i18n';
-import { NOTIFICATION_CATALOG, CATEGORY_ORDER } from '@/lib/notification-catalog';
+import { NOTIFICATION_CATALOG, CATEGORY_ORDER, catalogText } from '@/lib/notification-catalog';
 import {
   getNotificationEmailPrefs,
   setNotificationEmailPref,
@@ -115,12 +115,13 @@ export function useSuasNotificacoes() {
   });
 
   /** Categories in display order, each with its visible rows; empty ones dropped (no
-   * "Agenda" header when every row of the category is hidden). */
+   * "Agenda" header when every row of the category is hidden). Row copy (label, when,
+   * recipients) is resolved here, at render, in the current UI language. */
   const categories = CATEGORY_ORDER.map((category) => ({
     category,
     rows: CATALOG_ROWS.filter(
       (row) => row.category === category && (agendaAtiva || row.category !== 'agenda'),
-    ),
+    ).map((row) => ({ ...row, ...catalogText(row.type) })),
   })).filter((group) => group.rows.length > 0);
 
   return {

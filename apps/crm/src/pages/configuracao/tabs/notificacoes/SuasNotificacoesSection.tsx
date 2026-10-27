@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SkeletonStatus } from '@/components/ui/skeletons';
-import { CATEGORY_LABELS, isEmailEligibleType } from '@/lib/notification-catalog';
+import { categoryLabel, isEmailEligibleType } from '@/lib/notification-catalog';
 import { MASTER_PAUSE_TYPE } from '@/store/notificationPrefs';
 import { enabledOf, useSuasNotificacoes } from './useSuasNotificacoes';
 
@@ -88,7 +88,7 @@ export default function SuasNotificacoesSection() {
       {categories.map(({ category, rows }) => (
         <div key={category} className="mt-4">
           <h3 className="mb-2 text-sm font-semibold text-[color:var(--text-main)]">
-            {CATEGORY_LABELS[category]}
+            {categoryLabel(category)}
           </h3>
           <div className="divide-y divide-[color:var(--border-color)]">
             {rows.map((row) => {
