@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 import { Clock, MoreHorizontal, Plus } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { GroupedList, Cell } from '@/components/mobile/GroupedList';
 import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
 import { BottomSheet } from '@/components/mobile/BottomSheet';
@@ -77,6 +78,7 @@ function MemberAvatar({ member, large }: { member: Row; large?: boolean }) {
  * State, permissions and handlers all come from MembrosTab.
  */
 export function MembrosPhone(props: MembrosPhoneProps) {
+  const { t } = useTranslation('settings');
   const { currentUserId, loading, members, invites, canManageTeam, isOwner, canActOnMember } =
     props;
   const sub = useConfigSubScreen<string>();
@@ -100,11 +102,11 @@ export function MembrosPhone(props: MembrosPhoneProps) {
 
   return (
     <ConfigPhoneScreen
-      title="Membros"
+      title={t('tabs.membros')}
       trailing={
         canManageTeam ? (
           <PhoneIconButton
-            label="Convidar"
+            label={t('membros.invite')}
             variant="ink"
             aria-haspopup="dialog"
             onClick={() => props.onInviteOpenChange(true)}
@@ -118,26 +120,26 @@ export function MembrosPhone(props: MembrosPhoneProps) {
         <ConfigPhoneSkeleton groups={1} rows={4} />
       ) : (
         <GroupedList
-          header="Membros do workspace"
+          header={t('membros.phone.header')}
           footer={
             members.some((m) => canManageMember(m) || showFinancial(m))
-              ? 'Toque em um membro para mudar a função, ligar o acesso ao financeiro ou remover.'
+              ? t('membros.phone.footerManage')
               : members.some(isTappable)
-                ? 'Toque em um membro para ver o e-mail.'
+                ? t('membros.phone.footerEmail')
                 : undefined
           }
         >
           {members.map((m) => {
             const self = m.id === currentUserId;
-            const financial =
-              m.role === 'admin' && Boolean(m.can_see_financials) ? ' · vê o financeiro' : '';
+            const role = memberRoleLabel(m);
+            const seesFinancial = m.role === 'admin' && Boolean(m.can_see_financials);
             return (
               <Cell
                 key={m.id}
                 className="phone-membros-cell"
                 icon={<MemberAvatar member={m} />}
-                label={self ? `${m.nome} (você)` : m.nome}
-                subtitle={`${memberRoleLabel(m)}${financial}`}
+                label={self ? t('membros.phone.self', { name: m.nome }) : m.nome}
+                subtitle={seesFinancial ? t('membros.phone.roleWithFinancial', { role }) : role}
                 chevron={isTappable(m)}
                 onClick={isTappable(m) ? () => sub.open(m.id) : undefined}
               />
@@ -148,8 +150,8 @@ export function MembrosPhone(props: MembrosPhoneProps) {
 
       {invites.length > 0 && (
         <GroupedList
-          header="Convites"
-          footer={canManageTeam ? 'Deslize um convite para reenviar ou cancelar.' : undefined}
+          header={t('membros.invites')}
+          footer={canManageTeam ? t('membros.phone.invitesFooter') : undefined}
         >
           {invites.map((inv) => (
             <InviteRow key={inv.id} {...props} invite={inv} />
@@ -161,9 +163,11 @@ export function MembrosPhone(props: MembrosPhoneProps) {
 
       <PhoneConfirmSheet
         open={props.cancelInviteId !== null}
-        title="Cancelar convite?"
-        actions={[{ label: 'Sim', destructive: true, onSelect: props.onConfirmCancelInvite }]}
-        cancelLabel="Não"
+        title={t('membros.cancelInviteTitle')}
+        actions={[
+          { label: t('actions.yes'), destructive: true, onSelect: props.onConfirmCancelInvite },
+        ]}
+        cancelLabel={t('actions.no')}
         onCancel={() => props.onRequestCancelInvite(null)}
       />
     </ConfigPhoneScreen>
@@ -187,14 +191,15 @@ function MemberScreen({
   onRequestRemove,
   onConfirmRemove,
 }: MembrosPhoneProps & { member: Row; onBack: () => void }) {
+  const { t } = useTranslation('settings');
   const canManage = canManageTeam && canActOnMember(member);
   const canEditRole = canManage && canAssignRoles;
   const showFinancial = isOwner && member.role === 'admin';
   const currentRole = memberRoleValue(member);
   // Same options as the desktop "Editar função" dialog.
   const roleOptions: CheckListOption<string>[] = [
-    { value: 'admin', label: 'Admin' },
-    { value: 'agent', label: 'Agente' },
+    { value: 'admin', label: t('invite.roles.admin') },
+    { value: 'agent', label: t('invite.roles.agent') },
     ...workspaceRoles.map((r) => ({ value: `custom:${r.id}`, label: r.nome })),
   ];
 
@@ -204,10 +209,10 @@ function MemberScreen({
         <MemberAvatar member={member} large />
       </div>
 
-      <GroupedList aria-label="Função">
+      <GroupedList aria-label={t('membros.role')}>
         {canEditRole ? (
           <PickerCell<string>
-            label="Função"
+            label={t('membros.role')}
             options={roleOptions}
             value={currentRole}
             placeholder={memberRoleLabel(member)}
@@ -217,22 +222,22 @@ function MemberScreen({
             }}
           />
         ) : (
-          <Cell label="Função" value={memberRoleLabel(member)} />
+          <Cell label={t('membros.role')} value={memberRoleLabel(member)} />
         )}
       </GroupedList>
 
       {member.email && (
         // Header instead of a value cell: the trailing value is capped at half
         // the row, which would cut most addresses.
-        <GroupedList header="E-mail">
+        <GroupedList header={t('shared.email')}>
           <Cell className="phone-membros-email" label={member.email} />
         </GroupedList>
       )}
 
       {showFinancial && (
-        <GroupedList aria-label="Acesso financeiro">
+        <GroupedList aria-label={t('membros.phone.financialAccess')}>
           <Cell
-            label="Ver financeiro"
+            label={t('membros.financialLabel')}
             disabled={financialAccessLoadingId === member.id}
             switch={{
               checked: Boolean(member.can_see_financials),
@@ -243,9 +248,9 @@ function MemberScreen({
       )}
 
       {canManage && (
-        <GroupedList aria-label="Remover">
+        <GroupedList aria-label={t('shared.remove')}>
           <Cell
-            label="Remover do workspace"
+            label={t('membros.phone.removeFromWorkspace')}
             destructive
             aria-haspopup="dialog"
             onClick={() => onRequestRemove(member.id)}
@@ -255,8 +260,8 @@ function MemberScreen({
 
       <PhoneConfirmSheet
         open={removeUserId !== null}
-        title="Remover membro?"
-        actions={[{ label: 'Remover', destructive: true, onSelect: onConfirmRemove }]}
+        title={t('membros.removeTitle')}
+        actions={[{ label: t('shared.remove'), destructive: true, onSelect: onConfirmRemove }]}
         onCancel={() => onRequestRemove(null)}
       />
     </ConfigPhoneScreen>
@@ -270,6 +275,7 @@ function InviteRow({
   onResendInvite,
   onRequestCancelInvite,
 }: MembrosPhoneProps & { invite: Row }) {
+  const { t } = useTranslation('settings');
   const timeLeft = inviteTimeLeftLabel(invite.expires_at, invite.status);
   const canResend = invite.status === 'expired' || invite.status === 'pending';
 
@@ -299,23 +305,26 @@ function InviteRow({
   const resend = () => onResendInvite(invite);
   const cancel = () => onRequestCancelInvite(invite.id);
   const swipeActions: SwipeAction[] = [
-    ...(canResend ? [{ label: 'Reenviar', tone: 'ink' as const, onAction: resend }] : []),
-    { label: 'Cancelar', tone: 'destructive', onAction: cancel },
+    ...(canResend ? [{ label: t('membros.resend'), tone: 'ink' as const, onAction: resend }] : []),
+    { label: t('actions.cancel'), tone: 'destructive', onAction: cancel },
   ];
   const menuActions: ContextMenuAction[] = [
-    ...(canResend ? [{ label: 'Reenviar', onSelect: resend }] : []),
-    { label: 'Cancelar convite', destructive: true, onSelect: cancel },
+    ...(canResend ? [{ label: t('membros.resend'), onSelect: resend }] : []),
+    { label: t('membros.phone.cancelInvite'), destructive: true, onSelect: cancel },
   ];
 
   return (
     <SwipeRow as="li" className="phone-cell" trailingActions={swipeActions}>
-      <ContextMenu label={`Ações do convite para ${invite.email}`} sections={[menuActions]}>
+      <ContextMenu
+        label={t('membros.phone.inviteActions', { email: invite.email })}
+        sections={[menuActions]}
+      >
         {({ triggerProps }) =>
           body(
             <button
               {...triggerProps}
               className="phone-membros-more"
-              aria-label={`Mais ações do convite para ${invite.email}`}
+              aria-label={t('membros.phone.moreInviteActions', { email: invite.email })}
             >
               <MoreHorizontal aria-hidden="true" />
             </button>,
@@ -339,11 +348,12 @@ function InviteSheet({
   canAssignRoles,
   workspaceRoles,
 }: MembrosPhoneProps) {
+  const { t } = useTranslation('settings');
   // Same options as the desktop invite Select: only a chassis owner/admin sees Admin
   // and the custom papéis (invite-user refuses both for anyone else).
   const roleOptions: CheckListOption<string>[] = [
-    ...(canAssignRoles ? [{ value: 'admin', label: 'Admin' }] : []),
-    { value: 'agent', label: 'Agente' },
+    ...(canAssignRoles ? [{ value: 'admin', label: t('invite.roles.admin') }] : []),
+    { value: 'agent', label: t('invite.roles.agent') },
     ...(canAssignRoles
       ? workspaceRoles.map((r) => ({ value: `custom:${r.id}`, label: r.nome }))
       : []),
@@ -352,29 +362,27 @@ function InviteSheet({
     <BottomSheet
       open={inviteOpen}
       onOpenChange={onInviteOpenChange}
-      title="Convidar Membro"
+      title={t('membros.inviteTitle')}
       detents={['large']}
     >
       <GroupedList
-        aria-label="Convite"
-        footer={
-          canAssignRoles ? undefined : 'Apenas donos e admins convidam com função elevada ou papel.'
-        }
+        aria-label={t('membros.phone.inviteAria')}
+        footer={canAssignRoles ? undefined : t('membros.onlyOwnersAdmins')}
       >
         <FormRow
-          label="Email"
+          label={t('membros.phone.email')}
           input={{
             type: 'email',
             inputMode: 'email',
             autoComplete: 'email',
             autoCapitalize: 'none',
-            placeholder: 'nome@empresa.com',
+            placeholder: t('membros.phone.emailPlaceholder'),
             value: inviteEmail,
             onChange: (e) => onInviteEmailChange(e.target.value),
           }}
         />
         <PickerCell<string>
-          label="Função"
+          label={t('membros.role')}
           options={roleOptions}
           value={inviteRole}
           onChange={(value) => {
@@ -390,7 +398,7 @@ function InviteSheet({
           aria-busy={inviteLoading || undefined}
           onClick={onInvite}
         >
-          Enviar Convite
+          {t('membros.sendInvite')}
         </button>
       </div>
     </BottomSheet>

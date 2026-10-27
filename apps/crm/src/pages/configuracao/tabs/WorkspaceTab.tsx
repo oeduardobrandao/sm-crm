@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { holdUnsavedWork } from '@mesaas/app-lifecycle';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +26,7 @@ import { WorkspacePhone } from './phone/WorkspacePhone';
 
 /** Workspace identity (name + logo) and the Instagram auto-sync switch. */
 export default function WorkspaceTab() {
+  const { t } = useTranslation('settings');
   const { profile, can } = useAuth();
   const isPhone = !useIsDesktop(768);
   const queryClient = useQueryClient();
@@ -65,7 +67,7 @@ export default function WorkspaceTab() {
   const handleLogoUpload = async (file: File) => {
     if (!workspace) return;
     if (file.size > 2 * 1024 * 1024) {
-      toast.error('Arquivo deve ser menor que 2MB.');
+      toast.error(t('workspace.fileTooLarge'));
       return;
     }
     setWsLogoLoading(true);
@@ -93,9 +95,9 @@ export default function WorkspaceTab() {
       await updateWorkspace(workspace.id, { logo_url: publicUrl });
       setWsLogoUrl(publicUrl);
       refetchWorkspace();
-      toast.success('Logo atualizada!');
+      toast.success(t('workspace.logoUpdated'));
     } catch (err: unknown) {
-      toast.error('Erro ao enviar logo: ' + (err as Error).message);
+      toast.error(t('workspace.logoUploadError', { message: (err as Error).message }));
     } finally {
       release();
       setWsLogoLoading(false);
@@ -109,9 +111,9 @@ export default function WorkspaceTab() {
       await updateWorkspace(workspace.id, { logo_url: null });
       setWsLogoUrl(null);
       refetchWorkspace();
-      toast.success('Logo removida.');
+      toast.success(t('workspace.logoRemoved'));
     } catch (err: unknown) {
-      toast.error('Erro: ' + (err as Error).message);
+      toast.error(t('shared.error', { message: (err as Error).message }));
     } finally {
       setWsLogoLoading(false);
       setRemoveLogoOpen(false);
@@ -123,9 +125,9 @@ export default function WorkspaceTab() {
     try {
       await updateWorkspace(workspace.id, { name: wsName });
       refetchWorkspace();
-      toast.success('Workspace atualizado!');
+      toast.success(t('workspace.updated'));
     } catch (err: unknown) {
-      toast.error('Erro: ' + (err as Error).message);
+      toast.error(t('shared.error', { message: (err as Error).message }));
     }
   };
 
@@ -157,9 +159,9 @@ export default function WorkspaceTab() {
         .in('id', ids);
       if (error) throw error;
       queryClient.invalidateQueries({ queryKey: ['igAccountsForSync'] });
-      toast.success(checked ? 'Auto-sync ativado.' : 'Auto-sync desativado.');
+      toast.success(checked ? t('workspace.autoSyncOn') : t('workspace.autoSyncOff'));
     } catch (err: unknown) {
-      toast.error('Erro: ' + (err as Error).message);
+      toast.error(t('shared.error', { message: (err as Error).message }));
     }
   };
 
@@ -206,19 +208,19 @@ export default function WorkspaceTab() {
     <>
       {workspace && (
         <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-          <h3 className="config-title">Workspace</h3>
+          <h3 className="config-title">{t('tabs.workspace')}</h3>
           {!canEditConfig && (
             <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '0.75rem' }}>
-              Somente leitura
+              {t('shared.readOnly')}
             </p>
           )}
           <div style={{ marginBottom: '1rem' }}>
-            <Label style={{ display: 'block', marginBottom: 8 }}>Logo</Label>
+            <Label style={{ display: 'block', marginBottom: 8 }}>{t('workspace.logo')}</Label>
             {wsLogoUrl && (
               <div style={{ marginBottom: 12 }}>
                 <img
                   src={wsLogoUrl}
-                  alt="Logo"
+                  alt={t('workspace.logo')}
                   style={{
                     maxHeight: 80,
                     borderRadius: 8,
@@ -233,7 +235,8 @@ export default function WorkspaceTab() {
                 disabled={wsLogoLoading || !canEditConfig}
                 onClick={() => logoInputRef.current?.click()}
               >
-                {wsLogoLoading && <Spinner size="sm" />} {wsLogoUrl ? 'Trocar Logo' : 'Enviar Logo'}
+                {wsLogoLoading && <Spinner size="sm" />}{' '}
+                {wsLogoUrl ? t('workspace.changeLogo') : t('workspace.uploadLogo')}
               </Button>
               {wsLogoUrl && (
                 <Button
@@ -242,18 +245,20 @@ export default function WorkspaceTab() {
                   disabled={wsLogoLoading || !canEditConfig}
                   onClick={() => setRemoveLogoOpen(true)}
                 >
-                  Remover
+                  {t('shared.remove')}
                 </Button>
               )}
             </div>
             {logoInput}
             <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 6 }}>
-              PNG, JPG ou WebP. Máx 2MB. Será redimensionado para 512px.
+              {t('workspace.logoHint')}
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginTop: 12 }}>
             <div style={{ flex: 1 }}>
-              <Label style={{ display: 'block', marginBottom: 6 }}>Nome do Workspace</Label>
+              <Label style={{ display: 'block', marginBottom: 6 }}>
+                {t('workspace.workspaceName')}
+              </Label>
               <Input
                 value={wsName}
                 disabled={!canEditConfig}
@@ -261,7 +266,7 @@ export default function WorkspaceTab() {
               />
             </div>
             <Button className="mb-0" disabled={!canEditConfig} onClick={handleWsSave}>
-              Salvar
+              {t('actions.save')}
             </Button>
           </div>
         </div>
@@ -270,38 +275,36 @@ export default function WorkspaceTab() {
       {/* Instagram Auto-Sync */}
       {(igAccounts ?? []).length > 0 && (
         <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-          <h3 className="config-title">Auto-Sync Instagram</h3>
+          <h3 className="config-title">{t('workspace.autoSyncTitle')}</h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <Switch
-              aria-label="Auto-sync do Instagram"
+              aria-label={t('workspace.autoSyncAria')}
               checked={autoSyncEnabled}
               disabled={!canEditConfig}
               onCheckedChange={handleAutoSyncToggle}
             />
             <span>
-              {autoSyncEnabled
-                ? 'Sincronização automática ativada'
-                : 'Sincronização automática desativada'}
+              {autoSyncEnabled ? t('workspace.autoSyncEnabled') : t('workspace.autoSyncDisabled')}
             </span>
           </div>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: 8 }}>
-            Quando ativada, os dados do Instagram são sincronizados automaticamente uma vez por dia.
+            {t('workspace.autoSyncHint')}
           </p>
         </div>
       )}
 
       {/* Import Wizard */}
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-        <h3 className="config-title">Importar dados</h3>
+        <h3 className="config-title">{t('workspace.importTitle')}</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>
-          Traga clientes, posts, entregas e ideias de Notion, Trello, ClickUp ou planilhas.
+          {t('workspace.importBody')}
         </p>
         {/* Button + asChild rather than `className="btn-secondary"` on the Link:
             btn-secondary is the legacy style.css class, which renders a bare
             bordered box that matches nothing else on this screen. Every other
             action in this tab uses <Button>, so this one does too. */}
         <Button asChild>
-          <Link to="/importar">Abrir assistente de importação</Link>
+          <Link to="/importar">{t('workspace.importOpen')}</Link>
         </Button>
       </div>
 
@@ -309,11 +312,11 @@ export default function WorkspaceTab() {
       <AlertDialog open={removeLogoOpen} onOpenChange={setRemoveLogoOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover logo?</AlertDialogTitle>
+            <AlertDialogTitle>{t('workspace.removeLogoTitle')}</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRemoveLogo}>Remover</AlertDialogAction>
+            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRemoveLogo}>{t('shared.remove')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -1,1 +1,345 @@
-{}
+{
+  "shared": {
+    "readOnly": "Read only",
+    "error": "Error: {{message}}",
+    "remove": "Remove",
+    "name": "Name",
+    "email": "Email"
+  },
+  "tabs": {
+    "perfil": "Profile",
+    "notificacoes": "Notifications",
+    "workspace": "Workspace",
+    "membros": "Team members",
+    "papeis": "Roles",
+    "relatorios": "Reports",
+    "status": "Post statuses",
+    "hub": "Hub",
+    "armazenamento": "Storage",
+    "mcp": "Agents (MCP)",
+    "cobranca": "Plan & Billing",
+    "groups": {
+      "conta": "Account",
+      "workspace": "Workspace",
+      "avancado": "Advanced"
+    }
+  },
+  "layout": {
+    "removedTitle": "No access to this workspace",
+    "removedBody": "You no longer have access to this workspace. Contact the owner if you think this is a mistake.",
+    "errorTitle": "We couldn't confirm your access",
+    "errorBody": "Something went wrong while checking your access to this workspace. This is usually temporary. Please try again.",
+    "retry": "Try again",
+    "navAria": "Settings sections"
+  },
+  "index": {
+    "profileAria": "Profile: {{name}}"
+  },
+  "phoneScreen": {
+    "backToSettings": "Back to Settings"
+  },
+  "invite": {
+    "roles": {
+      "owner": "Owner",
+      "admin": "Admin",
+      "agent": "Agent"
+    },
+    "rolesLower": {
+      "owner": "owner",
+      "admin": "admin",
+      "agent": "agent"
+    },
+    "status": {
+      "pending": "Pending",
+      "expired": "Expired",
+      "accepted": "Accepted"
+    },
+    "sent": "Invite sent!",
+    "timeLeftDays": "{{days}}d {{hours}}h left",
+    "timeLeftHours": "{{hours}}h left"
+  },
+  "notifications": {
+    "saveError": "Couldn't save. Please try again.",
+    "transactional": {
+      "invite": {
+        "label": "Team invite",
+        "when": "you invite someone to the workspace",
+        "recipients": "the invitee"
+      },
+      "billing": {
+        "label": "Billing and payment",
+        "when": "a payment fails (retry and cancellation notices)",
+        "recipients": "workspace owner"
+      },
+      "instagram": {
+        "label": "Instagram connected",
+        "when": "the client finishes connecting through the link you sent",
+        "recipients": "whoever created the link"
+      }
+    },
+    "marketingLabel": "Mesaas news and tips",
+    "marketingWhen": "occasional marketing",
+    "marketingRecipients": "you (opt-in)",
+    "when": "When: {{when}}",
+    "recipients": "Recipients: {{recipients}}",
+    "whenWho": "When: {{when}} · Recipients: {{recipients}}",
+    "always": "always",
+    "inApp": "In app",
+    "pauseAll": "Pause all",
+    "pauseAllInApp": "Pause all (in app)",
+    "pauseAllEmail": "Pause all (email)",
+    "rowInApp": "{{label}} (in app)",
+    "rowEmail": "{{label}} (email)",
+    "noEmailType": "This type isn't sent by email",
+    "noEmailTypeAria": "{{label}}: this type isn't sent by email",
+    "noEmailShort": "No email",
+    "emails": {
+      "title": "Automatic emails",
+      "description": "Emails your account sends on its own, listed for transparency. The first 3 are always sent; only the last one is up to you.",
+      "sameControl": "Same setting as in your Profile.",
+      "alwaysSent": "Always sent",
+      "dependsOnYou": "Up to you"
+    },
+    "suas": {
+      "title": "Your notifications",
+      "description": "What shows up in the bell and what reaches your email. Personal preference: it only applies to you."
+    },
+    "clientes": {
+      "title": "Your clients",
+      "description": "Each client's monthly report and Hub reminders, one by one. The master switches turn everyone on or off at once.",
+      "monthlyReport": "Monthly report",
+      "monthlyReportHint": "on the 1st of every month, with a PDF and a monthly summary",
+      "hubPending": "Hub reminders",
+      "hubPendingHint": "posts awaiting approval and unread messages · max. 1 email every 4h",
+      "allClients": "All clients",
+      "reportAllAria": "Monthly report for all clients",
+      "pendingAllAria": "Hub reminders for all clients",
+      "searchPlaceholder": "Search client…",
+      "searchAria": "Search client",
+      "empty": "No clients found.",
+      "identifiedName": "{{name}} (client {{id}})",
+      "statusTag": {
+        "pausado": "(paused)",
+        "encerrado": "(closed)"
+      },
+      "noEmail": "no email on file",
+      "noEmailTitle": "No email on file",
+      "reportAria": "Monthly report for {{name}} ({{email}})",
+      "pendingAria": "Hub reminders for {{name}} ({{email}})",
+      "noEmailReportAria": "{{name}}: no email on file (monthly report)",
+      "noEmailPendingAria": "{{name}}: no email on file (Hub reminders)",
+      "unsubbed": "turned off by the client",
+      "emailUnsubbed": "{{email}} · turned off by the client",
+      "footer": "Clients with no email on file receive nothing. Add the email on the client's profile.",
+      "reactivateTitle": "Turn Hub reminders back on?",
+      "reactivateTitleFor": "Turn Hub reminders back on for {{name}}?",
+      "reactivateBody": "The client asked not to receive these emails. Turn them back on anyway?",
+      "reactivate": "Turn back on",
+      "clientSwitchAria": "Email controlled by the client switches",
+      "header": "Clients"
+    },
+    "phone": {
+      "subtitle": "What shows up in the bell and what reaches your email. Only applies to you.",
+      "channelAria": "Channel controlled by the switches",
+      "channelNote": "The switches below turn the {{channel}} channel on and off.",
+      "pauseAllAria": "Pause all ({{channel}})",
+      "pausedFooter": "{{channel}} channel paused: the types below stay locked until you unpause.",
+      "otherEmails": "Other emails",
+      "emailsSubtitle": "Invite, billing, Instagram and news",
+      "clientesSubtitle": "Monthly report and Hub reminders"
+    }
+  },
+  "perfil": {
+    "photoDescription": "Visible to your team across the CRM: Deliveries, Tasks, Events and Messages. Clients don't see it.",
+    "nameRequired": "Name is required.",
+    "updated": "Profile updated!",
+    "saveError": "Error saving: {{message}}",
+    "passwordMin": "At least 8 characters.",
+    "passwordMismatch": "Passwords don't match.",
+    "passwordUpdated": "Password updated!",
+    "passwordError": "Error updating password: {{message}}",
+    "activeAccount": "Active account",
+    "yourPhoto": "Your photo",
+    "nameLabel": "Name *",
+    "company": "Company",
+    "phone": "Phone",
+    "whatsapp": "WhatsApp",
+    "marketing": "Marketing communications",
+    "marketingOn": "You'll receive news and marketing communications by SMS and WhatsApp.",
+    "marketingOff": "You won't receive marketing communications. Messages about your account are still sent.",
+    "saveProfile": "Save profile",
+    "changePassword": "Change password",
+    "newPassword": "New password",
+    "confirmNewPassword": "Confirm new password",
+    "updatePassword": "Update password",
+    "restrictionTitle": "Workspace settings",
+    "restrictionBody": "Workspace settings, Instagram sync and team member management are only available to owners and admins.",
+    "account": "Account",
+    "userId": "User ID",
+    "createdAt": "Created on",
+    "lastAccess": "Last sign-in",
+    "provider": "Provider",
+    "privacyBody": "Choose which optional tools (usage analytics and support chat) may use your browser's storage.",
+    "cookies": "Cookie preferences",
+    "session": "Session",
+    "signOut": "Sign out",
+    "phoneScreen": {
+      "changePassword": "Change password",
+      "passwordAria": "Password",
+      "passwordFooter": "At least 8 characters.",
+      "newPassword": "New password",
+      "updatePassword": "Update password",
+      "hidePassword": "Hide password",
+      "showPassword": "Show password",
+      "saveProfileAria": "Save profile",
+      "profileData": "Profile details",
+      "communications": "Communications",
+      "security": "Security",
+      "ownersAndAdmins": "Available to owners and admins",
+      "userId": "User ID",
+      "signOut": "Sign out"
+    }
+  },
+  "workspace": {
+    "fileTooLarge": "File must be smaller than 2MB.",
+    "logoUpdated": "Logo updated!",
+    "logoUploadError": "Error uploading logo: {{message}}",
+    "logoRemoved": "Logo removed.",
+    "updated": "Workspace updated!",
+    "autoSyncOn": "Auto-sync on.",
+    "autoSyncOff": "Auto-sync off.",
+    "logo": "Logo",
+    "changeLogo": "Change logo",
+    "uploadLogo": "Upload logo",
+    "logoHint": "PNG, JPG or WebP. Max 2MB. Resized to 512px.",
+    "workspaceName": "Workspace name",
+    "autoSyncTitle": "Instagram Auto-Sync",
+    "autoSyncAria": "Instagram auto-sync",
+    "autoSyncEnabled": "Automatic sync on",
+    "autoSyncDisabled": "Automatic sync off",
+    "autoSyncHint": "When on, Instagram data syncs automatically once a day.",
+    "importTitle": "Import data",
+    "importBody": "Bring in clients, posts, deliveries and ideas from Notion, Trello, ClickUp or spreadsheets.",
+    "importOpen": "Open import wizard",
+    "removeLogoTitle": "Remove logo?",
+    "phone": {
+      "changeLogo": "Change logo",
+      "uploadLogo": "Upload logo",
+      "saveNameAria": "Save workspace name",
+      "identity": "Identity",
+      "uploading": "Uploading…",
+      "noLogo": "No logo",
+      "autoSync": "Automatic sync",
+      "logoMenuTitle": "Workspace logo"
+    }
+  },
+  "membros": {
+    "roleUpdated": "Role updated!",
+    "memberRemoved": "Team member removed.",
+    "financialOn": "Finance access granted.",
+    "financialOff": "Finance access restricted.",
+    "financialError": "Couldn't update access.",
+    "emailRequired": "Email is required.",
+    "httpError": "Error {{status}}",
+    "inviteError": "Error sending invite: {{message}}",
+    "inviteCanceled": "Invite canceled.",
+    "inviteResent": "Invite resent!",
+    "title": "Workspace team members",
+    "invite": "Invite",
+    "financialLabel": "See finances",
+    "financialAria": "Finance access for {{name}}",
+    "role": "Role",
+    "invites": "Invites",
+    "resend": "Resend",
+    "editRoleTitle": "Edit role: {{name}}",
+    "inviteTitle": "Invite team member",
+    "emailLabel": "Email *",
+    "onlyOwnersAdmins": "Only owners and admins can invite with an elevated or custom role.",
+    "sendInvite": "Send invite",
+    "removeTitle": "Remove team member?",
+    "cancelInviteTitle": "Cancel invite?",
+    "phone": {
+      "header": "Workspace team members",
+      "footerManage": "Tap a team member to change their role, turn on finance access or remove them.",
+      "footerEmail": "Tap a team member to see their email.",
+      "roleWithFinancial": "{{role}} · sees finances",
+      "self": "{{name}} (you)",
+      "invitesFooter": "Swipe an invite to resend or cancel it.",
+      "financialAccess": "Finance access",
+      "removeFromWorkspace": "Remove from workspace",
+      "cancelInvite": "Cancel invite",
+      "inviteActions": "Actions for the invite to {{email}}",
+      "moreInviteActions": "More actions for the invite to {{email}}",
+      "inviteAria": "Invite",
+      "email": "Email",
+      "emailPlaceholder": "name@company.com"
+    }
+  },
+  "papeis": {
+    "errors": {
+      "notOwner": "You don't have permission to manage roles.",
+      "invalidName": "Enter a name for the role.",
+      "invalidPermissions": "Invalid permissions.",
+      "duplicateName": "A role with this name already exists.",
+      "roleInUse": "Reassign the team members before deleting this role.",
+      "roleNotFound": "This role no longer exists.",
+      "generic": "Something went wrong. Please try again."
+    },
+    "created": "Role created!",
+    "updated": "Role updated!",
+    "deleted": "Role deleted.",
+    "systemDefault": "System default",
+    "members_zero": "{{count}} members",
+    "members_one": "{{count}} member",
+    "members_other": "{{count}} members",
+    "delete": "Delete",
+    "server": "server",
+    "levelAria": "Access level for {{module}}",
+    "newRole": "New role",
+    "editRole": "Edit role",
+    "createRole": "Create role",
+    "startFrom": "Start from",
+    "changesApply_one": "Changes apply right away to the 1 team member with this role.",
+    "changesApply_other": "Changes apply right away to the {{count}} team members with this role.",
+    "serverNote": "Modules tagged \"server\" are enforced in the database. The rest are enforced in the CRM interface.",
+    "saveChanges": "Save changes",
+    "deleteTitle": "Delete role \"{{name}}\"?",
+    "deleteBody": "This action can't be undone.",
+    "emptyFooter": "Tap + to create a custom role.",
+    "customSubtitle": "Custom role · {{members}}",
+    "rowSubtitle": "{{members}} · {{summary}}",
+    "deleteRole": "Delete role",
+    "roleAria": "Role",
+    "namePlaceholder": "Role name",
+    "modules": {
+      "analytics": "Analytics and Reports",
+      "configuracoes": "Workspace settings"
+    },
+    "levels": {
+      "none": "No access",
+      "ver": "Can view",
+      "editar": "Can edit"
+    },
+    "segments": {
+      "none": "No access",
+      "ver": "View",
+      "editar": "Edit"
+    },
+    "presets": {
+      "agente": "Agent",
+      "administrador": "Administrator",
+      "em_branco": "Blank"
+    },
+    "groups": {
+      "trabalho": "Work",
+      "clientes": "Clients and analytics"
+    },
+    "summary": {
+      "editar": "{{n}} edit",
+      "ver": "{{n}} view",
+      "none": "{{n}} no access"
+    },
+    "adminSummary": "Edits everything · Finances per each admin's access",
+    "adminFinanceOverride": "Per each admin's finance access"
+  }
+}

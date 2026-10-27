@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { i18n } from '@mesaas/i18n';
 import { useAuth } from '@/context/AuthContext';
 import {
   getClientes,
@@ -13,12 +14,13 @@ import {
 const CLIENTES_QUERY_KEY = ['seus-clientes-report'];
 const BRANDING_QUERY_KEY = ['seus-clientes-branding'];
 
-const SAVE_ERROR_MESSAGE = 'Não foi possível salvar. Tente novamente.';
-
-export const STATUS_TAG: Record<Exclude<Cliente['status'], 'ativo'>, string> = {
-  pausado: '(pausado)',
-  encerrado: '(encerrado)',
-};
+/** "(pausado)" / "(encerrado)" next to a non-active client's name; null when active. */
+export function statusTag(status: Cliente['status'] | null | undefined): string | null {
+  if (status === 'pausado' || status === 'encerrado') {
+    return i18n.t(`settings:notifications.clientes.statusTag.${status}`);
+  }
+  return null;
+}
 
 /**
  * State and saves of "Seus clientes" (see SeusClientesSection for the rules). Shared
@@ -62,7 +64,7 @@ export function useSeusClientes() {
     },
     onError: (_e, _v, ctx) => {
       if (ctx?.prev) qc.setQueryData(BRANDING_QUERY_KEY, ctx.prev);
-      toast.error(SAVE_ERROR_MESSAGE);
+      toast.error(i18n.t('settings:notifications.saveError'));
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: BRANDING_QUERY_KEY });
@@ -87,7 +89,7 @@ export function useSeusClientes() {
     },
     onError: (_e, _v, ctx) => {
       if (ctx?.prev) qc.setQueryData(BRANDING_QUERY_KEY, ctx.prev);
-      toast.error(SAVE_ERROR_MESSAGE);
+      toast.error(i18n.t('settings:notifications.saveError'));
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: BRANDING_QUERY_KEY });
@@ -108,7 +110,7 @@ export function useSeusClientes() {
     },
     onError: (_e, _v, ctx) => {
       if (ctx?.prev) qc.setQueryData(CLIENTES_QUERY_KEY, ctx.prev);
-      toast.error(SAVE_ERROR_MESSAGE);
+      toast.error(i18n.t('settings:notifications.saveError'));
     },
     onSettled: (_data, _error, v) => {
       qc.invalidateQueries({ queryKey: CLIENTES_QUERY_KEY });
@@ -136,7 +138,7 @@ export function useSeusClientes() {
     },
     onError: (_e, _v, ctx) => {
       if (ctx?.prev) qc.setQueryData(CLIENTES_QUERY_KEY, ctx.prev);
-      toast.error(SAVE_ERROR_MESSAGE);
+      toast.error(i18n.t('settings:notifications.saveError'));
     },
     onSettled: (_data, _error, v) => {
       qc.invalidateQueries({ queryKey: CLIENTES_QUERY_KEY });

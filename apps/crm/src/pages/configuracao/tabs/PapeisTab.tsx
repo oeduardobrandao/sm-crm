@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,16 +44,18 @@ import {
   type WorkspaceRole,
 } from '../../../store';
 import {
-  ADMIN_PERMISSION_OVERRIDES,
+  adminPermissionOverrides,
   ADMIN_PERMISSIONS,
-  ADMIN_SUMMARY,
-  LEVEL_LABELS,
+  adminSummary,
+  levelLabel,
   LEVEL_ORDER,
-  LEVEL_SEGMENT_LABELS,
+  levelSegmentLabel,
+  memberCountLabel,
   MODULE_GROUPS,
-  MODULE_LABELS,
+  moduleGroupLabel,
+  moduleLabel,
   normalizePermissions,
-  PRESET_LABELS,
+  presetLabel,
   PRESET_ORDER,
   presetPermissions,
   SERVER_ENFORCED_MODULES,
@@ -74,19 +78,19 @@ function roleErrorMessage(err: unknown): string {
   const code = err instanceof Error ? err.message : '';
   switch (code) {
     case 'not_owner':
-      return 'Você não tem permissão para gerenciar papéis.';
+      return i18n.t('settings:papeis.errors.notOwner');
     case 'invalid_name':
-      return 'Informe um nome para o papel.';
+      return i18n.t('settings:papeis.errors.invalidName');
     case 'invalid_permissions':
-      return 'Permissões inválidas.';
+      return i18n.t('settings:papeis.errors.invalidPermissions');
     case 'duplicate_name':
-      return 'Já existe um papel com este nome.';
+      return i18n.t('settings:papeis.errors.duplicateName');
     case 'role_in_use':
-      return 'Reatribua os membros antes de excluir este papel.';
+      return i18n.t('settings:papeis.errors.roleInUse');
     case 'role_not_found':
-      return 'Este papel não existe mais.';
+      return i18n.t('settings:papeis.errors.roleNotFound');
     default:
-      return 'Algo deu errado. Tente novamente.';
+      return i18n.t('settings:papeis.errors.generic');
   }
 }
 
@@ -198,7 +202,7 @@ function PermissionChipGroups({
                 paddingTop: 3,
               }}
             >
-              {LEVEL_LABELS[level]}
+              {levelLabel(level)}
             </span>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
               {entries.map((entry) =>
@@ -208,7 +212,7 @@ function PermissionChipGroups({
                   </PermissionChip>
                 ) : (
                   <PermissionChip key={entry.mod} variant={level}>
-                    {MODULE_LABELS[entry.mod]}
+                    {moduleLabel(entry.mod)}
                   </PermissionChip>
                 ),
               )}
@@ -239,6 +243,7 @@ function RoleRow({
   onEdit?: () => void;
   onDelete?: () => void;
 }) {
+  const { t } = useTranslation('settings');
   const [expanded, setExpanded] = useState(false);
   return (
     <div
@@ -295,11 +300,11 @@ function RoleRow({
               <span style={{ fontWeight: 500 }}>{nome}</span>
               {isSystem ? (
                 <Badge variant="neutral" size="sm">
-                  Padrão do sistema
+                  {t('papeis.systemDefault')}
                 </Badge>
               ) : (
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  {memberCount === 1 ? '1 membro' : `${memberCount} membros`}
+                  {memberCountLabel(memberCount)}
                 </span>
               )}
             </div>
@@ -309,10 +314,10 @@ function RoleRow({
         {!isSystem && (
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
             <Button size="sm" variant="outline" onClick={onEdit}>
-              Editar
+              {t('actions.edit')}
             </Button>
             <Button size="sm" variant="ghost" className="text-destructive" onClick={onDelete}>
-              Excluir
+              {t('papeis.delete')}
             </Button>
           </div>
         )}
@@ -325,7 +330,8 @@ function RoleRow({
 }
 
 function ServerTag() {
-  return <span className="papeis-server-tag">servidor</span>;
+  const { t } = useTranslation('settings');
+  return <span className="papeis-server-tag">{t('papeis.server')}</span>;
 }
 
 /** 3-state segmented control (Sem acesso / Ver / Editar) replacing the old
@@ -343,6 +349,7 @@ function LevelSegmented({
   value: PermissionLevel;
   onChange: (level: PermissionLevel) => void;
 }) {
+  const { t } = useTranslation('settings');
   const handleChange = (next: string) => {
     if (!next || next === value) return;
     onChange(next as PermissionLevel);
@@ -352,12 +359,12 @@ function LevelSegmented({
       type="single"
       value={value}
       onValueChange={handleChange}
-      aria-label={`Nível de acesso para ${MODULE_LABELS[mod]}`}
+      aria-label={t('papeis.levelAria', { module: moduleLabel(mod) })}
       className="agenda-segmented papeis-seg"
     >
       {LEVEL_ORDER.map((level) => (
         <ToggleGroupItem key={level} value={level} className="agenda-segmented__item">
-          {LEVEL_SEGMENT_LABELS[level]}
+          {levelSegmentLabel(level)}
         </ToggleGroupItem>
       ))}
     </ToggleGroup>
@@ -366,6 +373,7 @@ function LevelSegmented({
 
 /** Owner-only "Papéis" tab: system presets (read-only) + CRUD of custom papéis. */
 export default function PapeisTab() {
+  const { t } = useTranslation('settings');
   const { workspaceRole } = useAuth();
   const isOwner = workspaceRole === 'owner';
   const queryClient = useQueryClient();
@@ -398,7 +406,7 @@ export default function PapeisTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspace-roles'] });
       closeDialog();
-      toast.success('Papel criado!');
+      toast.success(i18n.t('settings:papeis.created'));
     },
     onError: (err: unknown) => toast.error(roleErrorMessage(err)),
   });
@@ -409,7 +417,7 @@ export default function PapeisTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspace-roles'] });
       closeDialog();
-      toast.success('Papel atualizado!');
+      toast.success(i18n.t('settings:papeis.updated'));
     },
     onError: (err: unknown) => toast.error(roleErrorMessage(err)),
   });
@@ -419,7 +427,7 @@ export default function PapeisTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspace-roles'] });
       setDeleteTarget(null);
-      toast.success('Papel excluído.');
+      toast.success(i18n.t('settings:papeis.deleted'));
     },
     onError: (err: unknown) => {
       toast.error(roleErrorMessage(err));
@@ -464,7 +472,7 @@ export default function PapeisTab() {
     if (!form) return;
     const nome = form.nome.trim();
     if (!nome) {
-      toast.error('Informe um nome para o papel.');
+      toast.error(t('papeis.errors.invalidName'));
       return;
     }
     if (form.roleId) {
@@ -513,22 +521,22 @@ export default function PapeisTab() {
             marginBottom: '1rem',
           }}
         >
-          <h3 className="config-title">Papéis</h3>
+          <h3 className="config-title">{t('tabs.papeis')}</h3>
           <Button onClick={openCreateDialog}>
-            <Plus className="h-4 w-4" /> Novo papel
+            <Plus className="h-4 w-4" /> {t('papeis.newRole')}
           </Button>
         </div>
 
         <RoleRow
-          nome="Administrador"
+          nome={t('papeis.presets.administrador')}
           isSystem
           memberCount={0}
           permissions={ADMIN_PERMISSIONS}
-          summary={ADMIN_SUMMARY}
-          permissionOverrides={ADMIN_PERMISSION_OVERRIDES}
+          summary={adminSummary()}
+          permissionOverrides={adminPermissionOverrides()}
         />
         <RoleRow
-          nome="Agente"
+          nome={t('papeis.presets.agente')}
           isSystem
           memberCount={0}
           permissions={AGENT_ROLE_PRESET}
@@ -558,12 +566,14 @@ export default function PapeisTab() {
       >
         <DialogContent style={{ maxWidth: 680 }}>
           <DialogHeader>
-            <DialogTitle>{form?.roleId ? 'Editar papel' : 'Criar papel'}</DialogTitle>
+            <DialogTitle>
+              {form?.roleId ? t('papeis.editRole') : t('papeis.createRole')}
+            </DialogTitle>
           </DialogHeader>
           {form && (
             <div className="space-y-3">
               <div className="space-y-1">
-                <Label htmlFor="papeis-nome">Nome</Label>
+                <Label htmlFor="papeis-nome">{t('shared.name')}</Label>
                 <Input
                   id="papeis-nome"
                   value={form.nome}
@@ -573,7 +583,7 @@ export default function PapeisTab() {
 
               {!form.roleId && (
                 <div className="space-y-1">
-                  <Label>Começar de</Label>
+                  <Label>{t('papeis.startFrom')}</Label>
                   <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
                     {PRESET_ORDER.map((preset) => {
                       const selected = form.preset === preset;
@@ -594,7 +604,7 @@ export default function PapeisTab() {
                             color: selected ? 'var(--card-bg)' : 'var(--text-muted)',
                           }}
                         >
-                          {PRESET_LABELS[preset]}
+                          {presetLabel(preset)}
                         </button>
                       );
                     })}
@@ -604,21 +614,19 @@ export default function PapeisTab() {
 
               {form.roleId && editingMemberCount > 0 && (
                 <p role="alert" style={{ fontSize: '0.8rem', color: 'var(--warning)', margin: 0 }}>
-                  As mudanças valem na hora para{' '}
-                  {editingMemberCount === 1 ? 'o 1 membro' : `os ${editingMemberCount} membros`} com
-                  este papel.
+                  {t('papeis.changesApply', { count: editingMemberCount })}
                 </p>
               )}
 
               <div>
                 {MODULE_GROUPS.map((group) => (
-                  <section key={group.label} className="papeis-form-group">
-                    <div className="papeis-form-group-label">{group.label}</div>
+                  <section key={group.key} className="papeis-form-group">
+                    <div className="papeis-form-group-label">{moduleGroupLabel(group.key)}</div>
                     <div className="papeis-form-panel">
                       {group.modules.map((mod) => (
                         <div key={mod} className="papeis-form-row">
                           <Label className="papeis-form-row__label">
-                            {MODULE_LABELS[mod]}
+                            {moduleLabel(mod)}
                             {SERVER_ENFORCED_MODULES.has(mod) && <ServerTag />}
                           </Label>
                           <LevelSegmented
@@ -633,18 +641,16 @@ export default function PapeisTab() {
                 ))}
               </div>
 
-              <p className="papeis-form-note">
-                Módulos com selo &quot;servidor&quot; são aplicados no banco. Os demais são
-                aplicados na interface do CRM.
-              </p>
+              <p className="papeis-form-note">{t('papeis.serverNote')}</p>
             </div>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={closeDialog}>
-              Cancelar
+              {t('actions.cancel')}
             </Button>
             <Button onClick={handleSave} disabled={saving}>
-              {saving && <Spinner size="sm" />} {form?.roleId ? 'Salvar alterações' : 'Criar papel'}
+              {saving && <Spinner size="sm" />}{' '}
+              {form?.roleId ? t('papeis.saveChanges') : t('papeis.createRole')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -658,15 +664,17 @@ export default function PapeisTab() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir papel &quot;{deleteTarget?.nome}&quot;?</AlertDialogTitle>
-            <AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription>
+            <AlertDialogTitle>
+              {t('papeis.deleteTitle', { name: deleteTarget?.nome ?? '' })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>{t('papeis.deleteBody')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
             >
-              Excluir
+              {t('papeis.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
