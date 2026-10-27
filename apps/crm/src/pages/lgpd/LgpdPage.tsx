@@ -124,7 +124,11 @@ export default function LgpdPage() {
                   </li>
                   <li>
                     <strong>Dados financeiros:</strong> informações de faturamento e pagamento
-                    (quando aplicável).
+                    (quando aplicável);
+                  </li>
+                  <li>
+                    Contagem anônima de leituras do blog: sem cookies, sem guardar IP; um código
+                    diário descartado no fim do dia evita contar a mesma leitura duas vezes.
                   </li>
                 </ul>
               </>
