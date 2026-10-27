@@ -137,8 +137,10 @@ export function LinhaEditorialView({
     queryKey: ['workspace-slug'],
     queryFn: getWorkspaceSlug,
   });
+  // Own key: StandalonePostDrawer caches a plain token string under ['hub-token', id], and both
+  // mount together when a converted post is opened from here.
   const { data: hubToken } = useQuery({
-    queryKey: ['hub-token', selectedId],
+    queryKey: ['linha-hub-token', selectedId],
     queryFn: () => getHubToken(selectedId!),
     enabled: selectedId != null && linha?.status === 'enviada',
   });
@@ -270,7 +272,8 @@ export function LinhaEditorialView({
         mes={mes}
         selectedId={selectedId}
         criandoId={criandoId}
-        carregando={base.linhas.isLoading}
+        // An errored month shows no "Criar": the main pane carries the retry.
+        carregando={base.linhas.isLoading || base.linhas.isError}
         onSelect={(id) => onChange({ clientes: [id] })}
         onCriar={(id) => criar.mutate(id)}
         onMesChange={(m) => onChange({ mes: m })}

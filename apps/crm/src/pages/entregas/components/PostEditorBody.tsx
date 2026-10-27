@@ -952,7 +952,7 @@ export function PostEditorBody({
     const detalhesPane = (
       <>
         {statusAutomationHint && <p className="phone-editor-notice">{statusAutomationHint}</p>}
-        <PostOrigemLinha postId={post.id!} />
+        <PostOrigemLinha postId={post.id} />
         <GroupedList aria-label="Detalhes do post">
           <li className="phone-cell phone-field">
             <label className="phone-field__label" htmlFor={`phone-titulo-${post.id}`}>
@@ -1343,7 +1343,7 @@ export function PostEditorBody({
 
   return (
     <div className="drawer-post-content">
-      <PostOrigemLinha postId={post.id!} />
+      <PostOrigemLinha postId={post.id} />
       <div className="drawer-post-meta-row">
         <div className="drawer-post-field">
           <label>Título</label>

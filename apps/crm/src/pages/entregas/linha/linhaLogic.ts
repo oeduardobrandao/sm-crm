@@ -31,7 +31,11 @@ const TIPO_PLURAL: Record<ContentFormat, string> = {
 
 /** Case- and accent-insensitive key for matching column names to property definitions. */
 export function normalizeNome(s: string): string {
-  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  return s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
 }
 
 /** `YYYY-MM` of a `YYYY-MM-DD` / `YYYY-MM-01` string. */
@@ -74,4 +78,21 @@ export function nomeFluxoPadrao(itens: ItemTipo[], periodo: string): string {
   const tipos = new Set(itens.map((i) => i.tipo));
   if (tipos.size === 1) return `${TIPO_PLURAL[[...tipos][0]]} de ${mes}`;
   return `Linha de ${mes}`;
+}
+
+/**
+ * User copy for the raises of `linha_item_guard` (migration 20261031000001) that the person
+ * can act on; null for anything else (the caller keeps its own fallback).
+ */
+export function mensagemGuardItem(err: unknown, periodo: string): string | null {
+  const msg =
+    err && typeof err === 'object' && typeof (err as { message?: unknown }).message === 'string'
+      ? (err as { message: string }).message
+      : '';
+  if (msg.includes('linha_item_limite')) {
+    return 'A linha chegou ao limite de 100 posts. Exclua uma linha para criar outra.';
+  }
+  if (msg.includes('linha_item_data_fora_do_mes')) return `Escolha um dia de ${mesLabel(periodo)}.`;
+  if (msg.includes('linha_item_convertido')) return 'Esta linha já virou post. Atualize a página.';
+  return null;
 }

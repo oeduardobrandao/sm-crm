@@ -75,7 +75,7 @@ import {
   formatDia,
   type CellNav,
 } from './LinhaCell';
-import { defaultNovaData, mesLabel } from './linhaLogic';
+import { defaultNovaData, mensagemGuardItem, mesLabel } from './linhaLogic';
 import { linhaItensKey, linhasKey } from './useLinhaQueries';
 
 export interface LinhaTableProps {
@@ -94,9 +94,11 @@ export interface LinhaTableProps {
 
 const MSG_SALVAR = 'Não foi possível salvar a alteração. Tente de novo.';
 
-function erroDe(err: unknown, fallback: string): string {
+/** Plan limits first, then the row guard's raises, then the caller's fallback. */
+function erroDe(err: unknown, periodo: string, fallback: string): string {
   const ent = mapEntitlementError(err);
-  return ent ? entitlementMessage(ent) : fallback;
+  if (ent) return entitlementMessage(ent);
+  return mensagemGuardItem(err, periodo) ?? fallback;
 }
 
 const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
@@ -109,28 +111,45 @@ const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um :
 function useItemWrites(linha: LinhaEditorial, itens: LinhaItem[]) {
   const qc = useQueryClient();
   const key = linhaItensKey(linha.id);
-  /** Rows whose insert is still in flight: a patch on them waits for the insert. */
+  /** Rows whose insert is still in flight: a patch or delete on them waits for the insert. */
   const inserting = useRef(new Map<string, Promise<unknown>>());
+  /** Rollback refetches (after a failed write) still in flight. */
+  const rollbacks = useRef(0);
 
   const atuais = () => qc.getQueryData<LinhaItem[]>(key) ?? itens;
-  const setItens = (fn: (l: LinhaItem[]) => LinhaItem[]) => {
-    void qc.cancelQueries({ queryKey: key });
+  /**
+   * Applies an optimistic change. A plain refetch in flight is cancelled so it can't overwrite
+   * the change; a rollback refetch is left alone (cancelling it would keep the failed write on
+   * screen), and the write reports `true` so it resyncs once it lands.
+   */
+  const setItens = (fn: (l: LinhaItem[]) => LinhaItem[]): boolean => {
+    const duranteRollback = rollbacks.current > 0;
+    if (!duranteRollback) void qc.cancelQueries({ queryKey: key });
     qc.setQueryData<LinhaItem[]>(key, (old) => fn(old ?? itens));
+    return duranteRollback;
+  };
+  const ressincronizar = (duranteRollback: boolean) => () => {
+    if (duranteRollback) void qc.invalidateQueries({ queryKey: key });
   };
   const falhou = (fallback: string) => (err: unknown) => {
-    void qc.invalidateQueries({ queryKey: key });
-    toast.error(erroDe(err, fallback));
+    rollbacks.current++;
+    void qc.invalidateQueries({ queryKey: key }).finally(() => rollbacks.current--);
+    toast.error(erroDe(err, linha.periodo, fallback));
   };
   const contarNoRail = () => void qc.invalidateQueries({ queryKey: linhasKey(linha.periodo) });
 
-  const patch = (id: string, p: LinhaItemPatch) => {
-    setItens((l) => l.map((i) => (i.id === id ? { ...i, ...p } : i)));
+  /** Runs `run` now, or after the row's in-flight insert; a failed insert skips it. */
+  const depoisDoInsert = <T,>(id: string, run: () => Promise<T>) => {
     const antes = inserting.current.get(id);
-    const run = () => updateItem(id, p);
-    // A failed insert already toasted and refetched: the row is gone, nothing to update.
-    void trackUnsavedWork(antes ? antes.then(run, () => undefined) : run()).catch(
-      falhou(MSG_SALVAR),
-    );
+    // A failed insert already toasted and refetched: the row is gone, nothing to write.
+    return trackUnsavedWork(antes ? antes.then(run, () => undefined) : run());
+  };
+
+  const patch = (id: string, p: LinhaItemPatch) => {
+    const durante = setItens((l) => l.map((i) => (i.id === id ? { ...i, ...p } : i)));
+    void depoisDoInsert(id, () => updateItem(id, p))
+      .then(ressincronizar(durante))
+      .catch(falhou(MSG_SALVAR));
   };
 
   /** Writes one extra column's value; the whole `valores` object travels (JSONB column). */
@@ -158,33 +177,39 @@ function useItemWrites(linha: LinhaEditorial, itens: LinhaItem[]) {
       ordem,
       post_id: null,
     };
-    setItens((l) => [...l, novo]);
+    const durante = setItens((l) => [...l, novo]);
     const insert = trackUnsavedWork(addItem(linha.id, { id, data, tipo: 'feed', ordem }));
     inserting.current.set(id, insert);
     void insert
-      .then(contarNoRail, falhou('Não foi possível criar a linha. Tente de novo.'))
+      .then(() => {
+        contarNoRail();
+        ressincronizar(durante)();
+      }, falhou('Não foi possível criar a linha. Tente de novo.'))
       .finally(() => inserting.current.delete(id));
     return id;
   };
 
   const remove = (id: string) => {
-    setItens((l) => l.filter((i) => i.id !== id));
-    void trackUnsavedWork(deleteItem(id))
-      .then(contarNoRail)
+    const durante = setItens((l) => l.filter((i) => i.id !== id));
+    void depoisDoInsert(id, () => deleteItem(id))
+      .then(() => {
+        contarNoRail();
+        ressincronizar(durante)();
+      })
       .catch(falhou('Não foi possível excluir a linha. Tente de novo.'));
   };
 
   const reorder = (ids: string[]) => {
-    setItens((l) => {
+    const durante = setItens((l) => {
       const byId = new Map(l.map((i) => [i.id, i]));
       return ids.flatMap((id, ordem) => {
         const i = byId.get(id);
         return i ? [{ ...i, ordem }] : [];
       });
     });
-    void trackUnsavedWork(reorderItens(ids)).catch(
-      falhou('Não foi possível reordenar. Tente de novo.'),
-    );
+    void trackUnsavedWork(reorderItens(ids))
+      .then(ressincronizar(durante))
+      .catch(falhou('Não foi possível reordenar. Tente de novo.'));
   };
 
   return { patch, patchValor, add, remove, reorder };

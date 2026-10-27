@@ -265,6 +265,16 @@ describe('CriarPostsDialog', () => {
     expect(m.applyPostProcess).not.toHaveBeenCalled();
   });
 
+  it('no "Ver posts" when feature_post_processes is off (no Lista posts entity)', async () => {
+    m.features = { feature_post_processes: false };
+    renderDialog([item(1), item(2)]);
+    await userEvent.click(screen.getByRole('button', { name: 'Criar 2 posts' }));
+    await waitFor(() => expect(m.toastSuccess).toHaveBeenCalled());
+    const [msg, opts] = m.toastSuccess.mock.calls[0];
+    expect(msg).toBe('2 posts criados');
+    expect(opts.action).toBeUndefined();
+  });
+
   it('plan limit error toast uses mapEntitlementError', async () => {
     m.converterItens.mockRejectedValue({ message: 'plan_limit_exceeded:max_posts_per_workflow' });
     const { onDone, onOpenChange } = renderDialog([item(1)]);

@@ -11,14 +11,14 @@ import { mesLabel } from './linhaLogic';
  * Where a post came from: the chip back to its linha editorial plus the client's comments on
  * that row (read live, never copied). Renders nothing without the flag or without an origin.
  */
-export function PostOrigemLinha({ postId }: { postId: number }) {
+export function PostOrigemLinha({ postId }: { postId: number | undefined }) {
   const { features } = useWorkspaceLimits();
   const enabled = features?.feature_linha_editorial === true;
 
   const { data: origem } = useQuery({
     queryKey: ['linha-origem', postId],
-    queryFn: () => getOrigemDoPost(postId),
-    enabled,
+    queryFn: () => getOrigemDoPost(postId as number),
+    enabled: enabled && postId != null,
     staleTime: 60_000,
   });
   const linhaId = origem?.linha.id;
@@ -30,7 +30,7 @@ export function PostOrigemLinha({ postId }: { postId: number }) {
     staleTime: 60_000,
   });
 
-  if (!enabled || !origem) return null;
+  if (!enabled || postId == null || !origem) return null;
 
   const { linha } = origem;
   const comentarios = (respostas ?? []).filter(

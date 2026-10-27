@@ -1,8 +1,8 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Cliente } from '@/store';
+import type { Cliente, Membro, WorkflowTemplate } from '@/store';
 import type { LinhaEditorial, LinhaItem } from '@/store/linhaEditorial';
 import { MemoryRouter } from 'react-router-dom';
 import { buildStatusRegistry } from '../../statusRegistry';
@@ -18,9 +18,16 @@ const m = vi.hoisted(() => ({
   converterItens: vi.fn(),
   getHubToken: vi.fn(),
   getWorkspaceSlug: vi.fn(),
+  getMembros: vi.fn(),
+  getWorkflowTemplates: vi.fn(),
+  createWorkflowFromWizard: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
+  toastWarning: vi.fn(),
 }));
+
+// The wizard's steps scroll into view; jsdom has no layout.
+(Element.prototype as unknown as { scrollIntoView: () => void }).scrollIntoView = () => {};
 
 vi.mock('@/store/linhaEditorial', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/store/linhaEditorial')>()),
@@ -44,7 +51,29 @@ vi.mock('@/hooks/useClienteAvatars', () => ({
 vi.mock('@/hooks/useStatusRegistry', () => ({
   useStatusRegistry: () => buildStatusRegistry([]),
 }));
-vi.mock('sonner', () => ({ toast: { success: m.toastSuccess, error: m.toastError } }));
+vi.mock('sonner', () => ({
+  toast: { success: m.toastSuccess, error: m.toastError, warning: m.toastWarning },
+}));
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({
+    features: { feature_linha_editorial: true, feature_post_processes: true },
+    limits: null,
+    isLoading: false,
+  }),
+}));
+vi.mock('@/store/team', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/store/team')>()),
+  getMembros: m.getMembros,
+}));
+vi.mock('@/store/workflows', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/store/workflows')>()),
+  getWorkflowTemplates: m.getWorkflowTemplates,
+}));
+vi.mock('../../wizard/createWorkflow', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../wizard/createWorkflow')>()),
+  createWorkflowFromWizard: m.createWorkflowFromWizard,
+}));
+vi.mock('@/lib/analytics', () => ({ captureEvent: vi.fn() }));
 
 import { LinhaEditorialView } from '../LinhaEditorialView';
 
@@ -115,6 +144,26 @@ beforeEach(() => {
   m.recolherLinha.mockResolvedValue(undefined);
   m.getHubToken.mockResolvedValue(null);
   m.getWorkspaceSlug.mockResolvedValue('acme');
+  m.getMembros.mockResolvedValue([{ id: 9, nome: 'Ana' }] as Membro[]);
+  m.getWorkflowTemplates.mockResolvedValue([
+    {
+      id: 12,
+      nome: 'Fluxo Padrão de Post',
+      modo_prazo: 'padrao',
+      etapas: [
+        {
+          nome: 'Briefing',
+          prazo_dias: 2,
+          tipo_prazo: 'corridos',
+          responsavel_id: 9,
+          tipo: 'padrao',
+        },
+      ],
+    },
+  ] as WorkflowTemplate[]);
+  m.createWorkflowFromWizard.mockResolvedValue({
+    workflow: { id: 77, titulo: 'Reels de novembro', template_id: null },
+  });
 });
 
 describe('LinhaEditorialView rail', () => {
@@ -304,5 +353,60 @@ describe('LinhaEditorialView selection', () => {
     expect(msg).toBe('1 post criado');
     opts.action.onClick();
     expect(onVerPosts).toHaveBeenCalledWith(1);
+  });
+});
+
+describe('LinhaEditorialView rail errors', () => {
+  it('an errored month offers no Criar in the rail', async () => {
+    m.listLinhasDoMes.mockRejectedValue(new Error('rede'));
+    renderView();
+    const main = await screen.findByTestId('linha-main');
+    await within(main).findByRole('button', { name: /tentar/i });
+    const rail = within(screen.getByTestId('linha-rail'));
+    expect(rail.queryByRole('button', { name: 'Criar' })).toBeNull();
+    expect(screen.queryByText('Sem linha neste mês')).toBeNull();
+  });
+});
+
+describe('LinhaEditorialView Criar fluxo', () => {
+  it('selected rows open the seeded wizard and convert into the new fluxo', async () => {
+    const user = userEvent.setup();
+    m.listLinhasDoMes.mockResolvedValue([
+      linha({ cliente_id: 1, status: 'enviada', itens_total: 3 }),
+    ]);
+    m.listItens.mockResolvedValue([item(1), item(2), item(3)]);
+    m.converterItens.mockResolvedValue([
+      { item_id: 'i1', post_id: 501 },
+      { item_id: 'i3', post_id: 502 },
+    ]);
+    renderView({ filterClientes: [1] });
+    await user.click(await screen.findByRole('checkbox', { name: 'Selecionar Post 1' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Selecionar Post 3' }));
+    const bar = await screen.findByTestId('linha-selection-bar');
+    await user.click(within(bar).getByRole('button', { name: 'Criar fluxo' }));
+    // Not approved yet: asks first.
+    await user.click(await screen.findByRole('button', { name: 'Criar mesmo assim' }));
+    expect(
+      await screen.findByText('2 posts vêm da linha editorial de novembro.'),
+    ).toBeInTheDocument();
+
+    // Template → O básico → Etapas → Prazos → Revisar.
+    fireEvent.click(await screen.findByText('Fluxo Padrão de Post'));
+    fireEvent.click(screen.getByText('Continuar →'));
+    fireEvent.click(screen.getByText('Continuar →'));
+    fireEvent.click(screen.getByText('Continuar →'));
+    fireEvent.click(await screen.findByText('Criar fluxo com 2 posts'));
+
+    await waitFor(() => expect(m.converterItens).toHaveBeenCalledTimes(1));
+    expect(m.createWorkflowFromWizard).toHaveBeenCalledWith(
+      expect.objectContaining({ clienteId: 1, titulo: 'Reels de novembro' }),
+    );
+    const [linhaId, workflowId, payload] = m.converterItens.mock.calls[0];
+    expect(linhaId).toBe('l-1');
+    expect(workflowId).toBe(77);
+    expect((payload as { item_id: string }[]).map((p) => p.item_id).sort()).toEqual(['i1', 'i3']);
+    await waitFor(() =>
+      expect(screen.queryByTestId('linha-selection-bar')).not.toBeInTheDocument(),
+    );
   });
 });

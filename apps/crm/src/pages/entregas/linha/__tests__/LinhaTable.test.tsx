@@ -403,3 +403,89 @@ describe('LinhaTable columns', () => {
     );
   });
 });
+
+function deferred<T>() {
+  let resolve!: (v: T) => void;
+  let reject!: (e: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+describe('LinhaTable write failures and ordering', () => {
+  it('a guard raise reaches the user as actionable copy', async () => {
+    const user = userEvent.setup();
+    m.addItem.mockRejectedValue({ message: 'linha_item_limite', code: 'P0001' });
+    renderView();
+    await screen.findAllByLabelText('Título');
+    await user.click(screen.getByRole('button', { name: 'Nova linha' }));
+    await waitFor(() =>
+      expect(m.toastError).toHaveBeenCalledWith(
+        'A linha chegou ao limite de 100 posts. Exclua uma linha para criar outra.',
+      ),
+    );
+  });
+
+  it('an out-of-month date names the month', async () => {
+    const user = userEvent.setup();
+    m.updateItem.mockRejectedValue({ message: 'linha_item_data_fora_do_mes', code: 'P0001' });
+    renderView();
+    const [titulo] = await screen.findAllByLabelText('Título');
+    await user.type(titulo, ' x');
+    await waitFor(() => expect(m.toastError).toHaveBeenCalledWith('Escolha um dia de novembro.'));
+  });
+
+  it('deleting a row whose insert is in flight waits for the insert', async () => {
+    const user = userEvent.setup();
+    const insert = deferred<LinhaItem>();
+    m.addItem.mockReturnValue(insert.promise);
+    renderView();
+    await screen.findAllByLabelText('Título');
+    await user.click(screen.getByRole('button', { name: 'Nova linha' }));
+    await waitFor(() => expect(m.addItem).toHaveBeenCalled());
+    const novoId = (m.addItem.mock.calls[0][1] as { id: string }).id;
+    await user.click(await screen.findByRole('button', { name: 'Ações da linha sem título' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Excluir linha' }));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(m.deleteItem).not.toHaveBeenCalled();
+    insert.resolve(item(3, { id: novoId }));
+    await waitFor(() => expect(m.deleteItem).toHaveBeenCalledWith(novoId));
+  });
+
+  it('a delete after a failed insert is skipped', async () => {
+    const user = userEvent.setup();
+    const insert = deferred<LinhaItem>();
+    m.addItem.mockReturnValue(insert.promise);
+    renderView();
+    await screen.findAllByLabelText('Título');
+    await user.click(screen.getByRole('button', { name: 'Nova linha' }));
+    await user.click(await screen.findByRole('button', { name: 'Ações da linha sem título' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Excluir linha' }));
+    insert.reject(new Error('rede'));
+    await waitFor(() => expect(m.toastError).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(m.deleteItem).not.toHaveBeenCalled();
+  });
+
+  it('an optimistic write does not cancel a pending rollback refetch', async () => {
+    const user = userEvent.setup();
+    const { qc } = renderView();
+    const [titulo] = await screen.findAllByLabelText('Título');
+    // The rollback refetch hangs until the end of the test.
+    const refetch = deferred<LinhaItem[]>();
+    m.listItens.mockReturnValueOnce(refetch.promise);
+    m.updateItem.mockRejectedValueOnce(new Error('rede'));
+    await user.type(titulo, ' a');
+    await waitFor(() => expect(m.toastError).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(m.listItens).toHaveBeenCalledTimes(2));
+    const cancel = vi.spyOn(qc, 'cancelQueries');
+    await user.type(screen.getAllByLabelText('Título')[1], ' b');
+    await waitFor(() => expect(m.updateItem).toHaveBeenCalledTimes(2));
+    expect(cancel).not.toHaveBeenCalled();
+    // The write landed while the rollback was in flight: it resyncs once it succeeds.
+    await waitFor(() => expect(m.listItens).toHaveBeenCalledTimes(3));
+    refetch.resolve([item(1), item(2)]);
+  });
+});

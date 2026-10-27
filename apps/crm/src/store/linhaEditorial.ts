@@ -13,7 +13,14 @@ import type { SelectOption, WorkflowPost } from './posts';
 export type LinhaStatus = 'rascunho' | 'enviada' | 'ajustes' | 'aprovada';
 
 export type LinhaColunaTipo =
-  'text' | 'number' | 'select' | 'multiselect' | 'date' | 'person' | 'checkbox' | 'url';
+  | 'text'
+  | 'number'
+  | 'select'
+  | 'multiselect'
+  | 'date'
+  | 'person'
+  | 'checkbox'
+  | 'url';
 
 export type LinhaRespostaAcao = 'comentario' | 'aprovado' | 'ajustes';
 

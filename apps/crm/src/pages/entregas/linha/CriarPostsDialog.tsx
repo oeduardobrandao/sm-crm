@@ -165,9 +165,11 @@ export function CriarPostsDialog({
         void qc.invalidateQueries({ queryKey: key });
     }
 
-    const action = onVerPosts
-      ? { label: 'Ver posts', onClick: () => onVerPosts(linha.cliente_id) }
-      : undefined;
+    // "Ver posts" opens the Lista's posts entity, which only exists with feature_post_processes.
+    const action =
+      onVerPosts && processosOn
+        ? { label: 'Ver posts', onClick: () => onVerPosts(linha.cliente_id) }
+        : undefined;
     if (falhas > 0) {
       toast.warning(`${criados(feitos.length)}. ${falhas} sem processo: aplique pelo post.`, {
         action,

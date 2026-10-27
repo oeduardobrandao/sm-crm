@@ -40,12 +40,12 @@ function resposta(over: Partial<LinhaResposta>): LinhaResposta {
   };
 }
 
-function renderIt() {
+function renderIt({ postId }: { postId: number | undefined } = { postId: 7 }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
-        <PostOrigemLinha postId={7} />
+        <PostOrigemLinha postId={postId} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -57,6 +57,13 @@ describe('PostOrigemLinha', () => {
     limitsMock.features = { feature_linha_editorial: true };
   });
   afterEach(cleanup);
+
+  it('a post without id yet asks nothing and renders nothing', async () => {
+    const { container } = renderIt({ postId: undefined });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(storeMock.getOrigemDoPost).not.toHaveBeenCalled();
+    expect(container).toBeEmptyDOMElement();
+  });
 
   it('renders nothing without origin', async () => {
     storeMock.getOrigemDoPost.mockResolvedValue(null);
