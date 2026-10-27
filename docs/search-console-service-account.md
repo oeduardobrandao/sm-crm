@@ -87,7 +87,7 @@ configurado" no lugar dos números do Google (as views continuam aparecendo).
 ## 5. Conferir depois do deploy
 
 - O cron roda todo dia às 07:38 UTC (04:38 em São Paulo), agendado pela migration
-  `20261031000004_blog_search_console_cron.sql`.
+  `20261101000003_blog_search_console_cron.sql`.
 - A última execução fica em `blog_search_runs` (`ok`, `finished_at`); os números por dia em
   `blog_search_daily` e o status de indexação em `blog_index_status`.
 - Cada execução faz o backfill de até quatro janelas de 30 dias, então os 16 meses de histórico

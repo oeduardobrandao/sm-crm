@@ -42,7 +42,7 @@ insert into blog_search_state (id) values (1) on conflict (id) do nothing;
 
 -- RLS ligada e sem policies. O Supabase hospedado concede ALL em tabela nova a
 -- anon/authenticated por ACL padrao, dai o REVOKE explicito (ver 20260925130001_metrics_snapshots.sql
--- e 20261031000001_blog_page_views.sql).
+-- e 20261101000001_blog_page_views.sql).
 alter table blog_search_daily enable row level security;
 alter table blog_index_status enable row level security;
 alter table blog_search_runs enable row level security;

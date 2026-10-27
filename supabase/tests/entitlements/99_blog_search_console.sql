@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Search Console do blog (migration 20261031000003).
+-- Search Console do blog (migration 20261101000002).
 -- (a) grants: tabelas e sequence fechadas para anon/authenticated; funcoes so service_role.
 -- (b) blog_search_replace: troca a janela inteira (apaga e insere), linhas fora da janela
 --     existente ficam, linha com dia fora da janela levanta 22023.

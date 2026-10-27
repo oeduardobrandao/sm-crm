@@ -16,7 +16,7 @@
 - "Live" = `status in ('publicado','publicando')` or a `BLOG_FILE_POSTS` slug.
 - Portuguese copy, no em-dashes in user-facing strings. Icons `lucide-react`. Toasts `sonner`.
 - Every new table: RLS on, no policies, `revoke all ... from public, anon, authenticated`, `grant ... to service_role`. Every new function: `revoke all ... from public, anon, authenticated` (+ `service_role` where it must not call), then explicit grants. Each role named.
-- Migration prefixes must be unique and above main's tail at PR time (main's tail today: `20261030000002`). Planned: `20261101000001` … `20261031000004`.
+- Migration prefixes must be unique and above main's tail at PR time (main's tail today: `20261030000002`). Planned: `20261031000001` … `20261031000004`; renumbered in the final fix wave to `20261101000001` (views), `20261101000002` (Search Console schema) and `20261101000003` (cron schedule), because open PR #748 (linha editorial) owns `20261031000001`-`20261031000003`.
 - New public/cron functions deploy with `--no-verify-jwt`. Edge errors: log internally, return generic bodies.
 - No module-level `window`/`document`/`localStorage` in CRM code reachable from the blog page (single-file SSR prerender).
 - Admin cannot import `apps/crm`; shared shapes are declared in `apps/admin/src/pages/blog/blog-view.ts`.
@@ -232,7 +232,7 @@ interface BlogPostMetricsResponse { views: Array<{ day: string; views: number }>
 ### Task 10: Search Console schema
 
 **Files:**
-- Create: `supabase/migrations/20261031000003_blog_search_console.sql`
+- Create: `supabase/migrations/20261101000002_blog_search_console.sql`
 - Test: `supabase/tests/entitlements/99_blog_search_console.sql`
 
 **Interfaces:**
@@ -265,7 +265,7 @@ interface BlogPostMetricsResponse { views: Array<{ day: string; views: number }>
 
 **Files:**
 - Create: `supabase/functions/blog-search-console-cron/handler.ts`, `index.ts`
-- Create: `supabase/migrations/20261031000004_blog_search_console_cron.sql` (schedule; vault-secret pattern from `20260925130001_metrics_snapshots.sql`; daily at a free minute ~06:00-08:00 UTC per the stagger migration; header comment "deploy the function BEFORE applying")
+- Create: `supabase/migrations/20261101000003_blog_search_console_cron.sql` (schedule; vault-secret pattern from `20260925130001_metrics_snapshots.sql`; daily at a free minute ~06:00-08:00 UTC per the stagger migration; header comment "deploy the function BEFORE applying")
 - Test: `supabase/functions/__tests__/blog-search-console-cron_test.ts`
 
 **Interfaces:**
