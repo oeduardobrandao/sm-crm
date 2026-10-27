@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Ban, Pause, Play, Plus, Repeat, Trash2, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { useIntlLocale } from '@mesaas/i18n';
 import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
 import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
@@ -61,6 +63,7 @@ export interface TarefaDetailPhoneProps {
  */
 export function TarefaDetailPhone(p: TarefaDetailPhoneProps) {
   const { open, onClose } = p;
+  const { t } = useTranslation('tasksPhone');
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const close = useCallback(() => onCloseRef.current(), []);
@@ -86,7 +89,7 @@ export function TarefaDetailPhone(p: TarefaDetailPhoneProps) {
     <div
       ref={rootRef}
       role="region"
-      aria-label={`Tarefa: ${p.tarefa.titulo}`}
+      aria-label={t('detail.regionLabel', { title: p.tarefa.titulo })}
       tabIndex={-1}
       className="phone-kit phone-tar-screen"
       data-testid="tarefa-detail-phone"
@@ -117,6 +120,8 @@ function DetailBody({
   onEdit,
   onRefresh,
 }: TarefaDetailPhoneProps) {
+  const { t } = useTranslation('tasksPhone');
+  const intlLocale = useIntlLocale();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmEncerrar, setConfirmEncerrar] = useState(false);
   const [prazoOpen, setPrazoOpen] = useState(false);
@@ -132,19 +137,19 @@ function DetailBody({
     <>
       <div className="phone-tar-screen__bar">
         <PhoneNavBar
-          backLabel="Voltar para Tarefas"
+          backLabel={t('detail.back')}
           onBack={onClose}
           trailing={
             <>
               <PhoneIconButton
-                label="Excluir"
+                label={t('shared.delete')}
                 className="phone-tar-detail__delete"
                 onClick={() => setConfirmDelete(true)}
               >
                 <Trash2 aria-hidden="true" />
               </PhoneIconButton>
               <button type="button" className="phone-tar-detail__edit" onClick={onEdit}>
-                Editar
+                {t('detail.edit')}
               </button>
             </>
           }
@@ -162,56 +167,59 @@ function DetailBody({
         )}
 
         <SegmentedControl
-          aria-label="Status da tarefa"
+          aria-label={t('detail.statusLabel')}
           className="phone-tar-detail__status"
           value={tarefa.status}
           onChange={onStatusChange}
           options={STATUS_ORDER.map((s) => ({ value: s, label: STATUS_LABELS[s] }))}
         />
 
-        <GroupedList aria-label="Detalhes da tarefa">
+        <GroupedList aria-label={t('detail.detailsLabel')}>
           <PickerCell<number>
-            label="Responsável"
+            label={t('shared.assignee')}
             icon={<MembroAvatar membro={membro} />}
             options={sortedMembros.map((m) => ({
               value: m.id!,
               label: m.nome,
               icon: <MembroAvatar membro={m} large />,
             }))}
-            emptyOption={{ label: 'Sem responsável' }}
+            emptyOption={{ label: t('shared.noAssignee') }}
             searchable={sortedMembros.length > 8}
             value={tarefa.responsavel_id ?? null}
             onChange={(id) => onAssign(id)}
           />
           <Cell
-            label="Prazo"
+            label={t('shared.dueDate')}
             value={
               tarefa.data_limite
-                ? parseDateOnly(tarefa.data_limite).toLocaleDateString('pt-BR')
-                : 'Sem prazo'
+                ? parseDateOnly(tarefa.data_limite).toLocaleDateString(intlLocale)
+                : t('detail.noDueDate')
             }
             accessory={<DueChip tarefa={tarefa} now={now} />}
             chevron
             aria-haspopup="dialog"
             onClick={() => setPrazoOpen(true)}
           />
-          {tarefa.cliente_nome && <Cell label="Cliente" value={tarefa.cliente_nome} />}
+          {tarefa.cliente_nome && <Cell label={t('detail.client')} value={tarefa.cliente_nome} />}
         </GroupedList>
 
         {serie && estado && (
-          <GroupedList header="Repetição">
+          <GroupedList header={t('detail.repetition')}>
             <li className="phone-cell">
               <div className="phone-tar-detail__repeat">
                 <Repeat aria-hidden="true" />
                 <span>
-                  Repete: {describeRecorrencia(serie)} · {modoLabel(serie.modo)}
+                  {t('detail.repeats', {
+                    description: describeRecorrencia(serie),
+                    mode: modoLabel(serie.modo),
+                  })}
                   {estadoLabel && <span className="phone-tar-detail__estado">{estadoLabel}</span>}
                 </span>
               </div>
             </li>
             {estado === 'ativa' && (
               <Cell
-                label="Pausar série"
+                label={t('detail.pauseSeries')}
                 icon={<Pause aria-hidden="true" />}
                 disabled={serieBusy}
                 onClick={() => onSerieEstado('pausar')}
@@ -219,7 +227,7 @@ function DetailBody({
             )}
             {estado === 'pausada' && (
               <Cell
-                label="Retomar série"
+                label={t('detail.resumeSeries')}
                 icon={<Play aria-hidden="true" />}
                 disabled={serieBusy}
                 onClick={() => onSerieEstado('retomar')}
@@ -227,7 +235,7 @@ function DetailBody({
             )}
             {(estado === 'ativa' || estado === 'pausada') && (
               <Cell
-                label="Encerrar série"
+                label={t('detail.endSeries')}
                 icon={<Ban aria-hidden="true" />}
                 disabled={serieBusy}
                 onClick={() => setConfirmEncerrar(true)}
@@ -238,7 +246,7 @@ function DetailBody({
 
         {hasDescription && (
           <>
-            <h2 className="phone-tar-detail__desc-head">Descrição</h2>
+            <h2 className="phone-tar-detail__desc-head">{t('detail.description')}</h2>
             <div className="phone-tar-detail__desc">
               <TarefaDescriptionContent
                 richContent={tarefa.descricao_rich}
@@ -249,7 +257,8 @@ function DetailBody({
         )}
 
         <h2 className="phone-tar-detail__desc-head">
-          Subtarefas{subtarefas.length > 0 && ` · ${doneCount}/${subtarefas.length}`}
+          {t('detail.subtasks')}
+          {subtarefas.length > 0 && ` · ${doneCount}/${subtarefas.length}`}
         </h2>
         <ul className="phone-tar-list">
           {subtarefas.map((s) => (
@@ -257,14 +266,18 @@ function DetailBody({
               <TarefaCheck
                 small
                 checked={s.concluida}
-                label={s.concluida ? `Desmarcar ${s.titulo}` : `Marcar ${s.titulo}`}
+                label={
+                  s.concluida
+                    ? t('detail.uncheck', { title: s.titulo })
+                    : t('detail.check', { title: s.titulo })
+                }
                 onToggle={() => onToggleSubtarefa(s.id!, !s.concluida)}
               />
               <span className="phone-tar-sub__title">{s.titulo}</span>
               <button
                 type="button"
                 className="phone-tar-sub__remove"
-                aria-label={`Remover subtarefa ${s.titulo}`}
+                aria-label={t('detail.removeSubtask', { title: s.titulo })}
                 onClick={() => onDeleteSubtarefa(s.id!)}
               >
                 <X aria-hidden="true" />
@@ -274,8 +287,8 @@ function DetailBody({
           <li className="phone-tar-sub">
             <input
               type="text"
-              aria-label="Nova subtarefa"
-              placeholder="Nova subtarefa..."
+              aria-label={t('detail.newSubtask')}
+              placeholder={t('detail.newSubtaskPlaceholder')}
               enterKeyHint="done"
               value={newSubtarefa}
               onChange={(e) => onNewSubtarefaChange(e.target.value)}
@@ -289,7 +302,7 @@ function DetailBody({
             <button
               type="button"
               className="phone-tar-sub__add"
-              aria-label="Adicionar subtarefa"
+              aria-label={t('detail.addSubtask')}
               disabled={!newSubtarefa.trim()}
               onClick={onAddSubtarefa}
             >
@@ -297,12 +310,7 @@ function DetailBody({
             </button>
           </li>
         </ul>
-        {serie && (
-          <p className="phone-tar-footnote">
-            As próximas ocorrências usam a lista da série. Para mudar, edite a tarefa e escolha Esta
-            e as próximas.
-          </p>
-        )}
+        {serie && <p className="phone-tar-footnote">{t('detail.seriesFootnote')}</p>}
       </div>
 
       <TarefaDeleteConfirm
@@ -315,11 +323,11 @@ function DetailBody({
       <PhoneConfirmSheet
         open={confirmEncerrar}
         onCancel={() => setConfirmEncerrar(false)}
-        title="Encerrar série?"
-        message="As ocorrências já criadas continuam como estão. Nenhuma nova será criada."
+        title={t('detail.endSeriesTitle')}
+        message={t('detail.endSeriesMessage')}
         actions={[
           {
-            label: 'Encerrar',
+            label: t('detail.endSeriesConfirm'),
             destructive: true,
             disabled: serieBusy,
             onSelect: () => {

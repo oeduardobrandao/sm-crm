@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Calendar as CalendarIcon, CheckSquare, Repeat, User2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,6 +35,7 @@ export function TarefaCard({
   onRefresh,
   hideAssignee,
 }: TarefaCardProps) {
+  const { t } = useTranslation('tasks');
   const badge = dueBadge(tarefa, now);
   const [assignOpen, setAssignOpen] = useState(false);
   const [localMembro, setLocalMembro] = useState<Membro | null | undefined>(undefined);
@@ -93,7 +95,7 @@ export function TarefaCard({
           {tarefa.serie && (
             <span
               role="img"
-              aria-label="Tarefa recorrente"
+              aria-label={t('shared.recurringTask')}
               title={describeRecorrencia(tarefa.serie)}
               style={{
                 display: 'inline-flex',
@@ -137,7 +139,7 @@ export function TarefaCard({
                   />
                 ) : (
                   <span
-                    title="Sem responsável"
+                    title={t('shared.noAssignee')}
                     style={{
                       width: 20,
                       height: 20,
@@ -165,11 +167,11 @@ export function TarefaCard({
                       setLocalMembro(m);
                       try {
                         await updateTarefa(tarefa.id!, { responsavel_id: m.id ?? null });
-                        toast.success('Responsável atualizado!');
+                        toast.success(t('commands.assigneeUpdated'));
                         onRefresh();
                       } catch {
                         setLocalMembro(undefined);
-                        toast.error('Erro ao atualizar responsável');
+                        toast.error(t('commands.assigneeError'));
                       }
                     }}
                     style={{

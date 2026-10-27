@@ -1,4 +1,5 @@
 import { useId, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { BottomSheet } from '@/components/mobile/BottomSheet';
 import { useSheetActions } from '@/components/mobile/sheetActions';
 import type { TarefaWithRelations } from '../../../store';
@@ -18,12 +19,13 @@ export interface PrazoSheetProps {
  * Series occurrences can't lose their date, so "Remover prazo" is off for them.
  */
 export function PrazoSheet({ tarefa, open, onOpenChange, onSave }: PrazoSheetProps) {
+  const { t } = useTranslation('tasksPhone');
   return (
     <BottomSheet
       open={open}
       onOpenChange={onOpenChange}
-      title="Prazo"
-      description={`Prazo de ${tarefa.titulo}`}
+      title={t('shared.dueDate')}
+      description={t('prazoSheet.description', { title: tarefa.titulo })}
       detents={['fit']}
     >
       <PrazoBody tarefa={tarefa} onSave={onSave} />
@@ -32,6 +34,7 @@ export function PrazoSheet({ tarefa, open, onOpenChange, onSave }: PrazoSheetPro
 }
 
 function PrazoBody({ tarefa, onSave }: Pick<PrazoSheetProps, 'tarefa' | 'onSave'>) {
+  const { t } = useTranslation('tasksPhone');
   const inputId = useId();
   // Mounted with the open sheet, so it starts from the current date every time.
   const [value, setValue] = useState(tarefa.data_limite ?? '');
@@ -43,12 +46,10 @@ function PrazoBody({ tarefa, onSave }: Pick<PrazoSheetProps, 'tarefa' | 'onSave'
   return (
     <div className="phone-tar-prazo">
       <label htmlFor={inputId} className="sr-only">
-        Prazo
+        {t('shared.dueDate')}
       </label>
       <input id={inputId} type="date" value={value} onChange={(e) => setValue(e.target.value)} />
-      {tarefa.serie && (
-        <p className="phone-tar-prazo__note">Tarefas de uma série precisam de prazo.</p>
-      )}
+      {tarefa.serie && <p className="phone-tar-prazo__note">{t('prazoSheet.seriesNote')}</p>}
       <div className="phone-tar-prazo__actions">
         <button
           type="button"
@@ -56,7 +57,7 @@ function PrazoBody({ tarefa, onSave }: Pick<PrazoSheetProps, 'tarefa' | 'onSave'
           disabled={!!tarefa.serie || !tarefa.data_limite}
           onClick={() => finish(null)}
         >
-          Remover prazo
+          {t('prazoSheet.remove')}
         </button>
         <button
           type="button"
@@ -64,7 +65,7 @@ function PrazoBody({ tarefa, onSave }: Pick<PrazoSheetProps, 'tarefa' | 'onSave'
           disabled={!value || value === tarefa.data_limite}
           onClick={() => finish(value)}
         >
-          Salvar
+          {t('actions.save')}
         </button>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   DndContext,
   DragOverlay,
@@ -153,6 +154,7 @@ export function TarefaBoard({
   onRefresh,
   phoneChipsLabel,
 }: TarefaBoardProps) {
+  const { t: tr } = useTranslation('tasks');
   const isDesktop = useIsDesktop(768);
   const [activeTarefa, setActiveTarefa] = useState<TarefaWithRelations | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -235,11 +237,11 @@ export function TarefaBoard({
               <DroppableColumnBody id={col.dropId} droppable={col.droppable}>
                 {col.onAddClick && (
                   <button type="button" className="board-add-card" onClick={col.onAddClick}>
-                    <Plus className="h-3.5 w-3.5" /> Adicionar tarefa
+                    <Plus className="h-3.5 w-3.5" /> {tr('views.addTask')}
                   </button>
                 )}
                 {col.tarefas.length === 0 ? (
-                  <div className="board-empty">Nenhuma tarefa</div>
+                  <div className="board-empty">{tr('views.noTasks')}</div>
                 ) : (
                   col.tarefas.map((t) => (
                     <DraggableTarefaCard

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { Check, ChevronDown, Plus, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -66,12 +67,13 @@ export function TagPicker({
   onTagCreated,
   layout = 'default',
 }: TagPickerProps) {
+  const { t } = useTranslation('tasksForm');
   const [sheetOpen, setSheetOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState(TAG_PRESET_COLORS[5]);
   const [creating, setCreating] = useState(false);
 
-  const selectedTags = tags.filter((t) => t.id != null && selectedIds.includes(t.id));
+  const selectedTags = tags.filter((tag) => tag.id != null && selectedIds.includes(tag.id));
 
   const toggle = (id: number) => {
     onSelectedChange(
@@ -89,7 +91,7 @@ export function TagPicker({
       setNewName('');
       onTagCreated?.();
     } catch {
-      toast.error('Erro ao criar tag. Talvez o nome já exista.');
+      toast.error(t('tagPicker.createError'));
     } finally {
       setCreating(false);
     }
@@ -98,37 +100,45 @@ export function TagPicker({
   if (layout === 'phone') {
     const summary =
       selectedTags.length === 0
-        ? 'Nenhuma'
+        ? t('tagPicker.none')
         : selectedTags.length === 1
           ? selectedTags[0].nome
-          : `${selectedTags[0].nome} +${selectedTags.length - 1}`;
+          : t('tagPicker.summaryMore', {
+              name: selectedTags[0].nome,
+              more: selectedTags.length - 1,
+            });
     return (
       <>
         <Cell
-          label="Tags"
+          label={t('tagPicker.tags')}
           icon={<Tag aria-hidden="true" />}
           value={summary}
           chevron
           aria-haspopup="dialog"
           onClick={() => setSheetOpen(true)}
         />
-        <BottomSheet open={sheetOpen} onOpenChange={setSheetOpen} title="Tags" detents={['large']}>
+        <BottomSheet
+          open={sheetOpen}
+          onOpenChange={setSheetOpen}
+          title={t('tagPicker.tags')}
+          detents={['large']}
+        >
           <div className="phone-tar-sheet-body">
             {tags.length === 0 ? (
-              <p className="phone-tar-footnote">Nenhuma tag ainda. Crie a primeira abaixo.</p>
+              <p className="phone-tar-footnote">{t('tagPicker.empty')}</p>
             ) : (
               <CheckList<number>
                 multiple
-                aria-label="Tags"
+                aria-label={t('tagPicker.tags')}
                 options={tags
-                  .filter((t) => t.id != null)
-                  .map((t) => ({
-                    value: t.id!,
-                    label: t.nome,
+                  .filter((tag) => tag.id != null)
+                  .map((tag) => ({
+                    value: tag.id!,
+                    label: tag.nome,
                     icon: (
                       <span
                         className="phone-tar-card__dot"
-                        style={{ background: t.cor }}
+                        style={{ background: tag.cor }}
                         aria-hidden="true"
                       />
                     ),
@@ -137,12 +147,12 @@ export function TagPicker({
                 onChange={onSelectedChange}
               />
             )}
-            <GroupedList header="Nova tag">
+            <GroupedList header={t('tagPicker.newTag')}>
               <li className="phone-cell">
                 <div className="phone-tar-form__tag-create">
                   <input
-                    aria-label="Nova tag"
-                    placeholder="Nova tag..."
+                    aria-label={t('tagPicker.newTag')}
+                    placeholder={t('tagPicker.newTagPlaceholder')}
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     onKeyDown={(e) => {
@@ -152,12 +162,16 @@ export function TagPicker({
                       }
                     }}
                   />
-                  <div className="phone-tar-form__colors" role="group" aria-label="Cor da tag">
+                  <div
+                    className="phone-tar-form__colors"
+                    role="group"
+                    aria-label={t('tagPicker.tagColor')}
+                  >
                     {TAG_PRESET_COLORS.map((c) => (
                       <button
                         key={c}
                         type="button"
-                        aria-label={`Cor ${c}`}
+                        aria-label={t('tagPicker.colorOption', { color: c })}
                         aria-pressed={newColor === c}
                         className="phone-tar-form__color"
                         style={{ background: c }}
@@ -171,7 +185,7 @@ export function TagPicker({
                     disabled={!newName.trim() || creating}
                     onClick={handleCreate}
                   >
-                    <Plus aria-hidden="true" /> Criar
+                    <Plus aria-hidden="true" /> {t('tagPicker.create')}
                   </button>
                 </div>
               </li>
@@ -193,11 +207,11 @@ export function TagPicker({
           <span className="flex items-center gap-1.5 truncate">
             <Tag className="h-3.5 w-3.5 opacity-60 shrink-0" />
             {selectedTags.length === 0 ? (
-              <span className="text-muted-foreground">Selecionar tags</span>
+              <span className="text-muted-foreground">{t('tagPicker.select')}</span>
             ) : (
               <span className="flex items-center gap-1 overflow-hidden">
-                {selectedTags.slice(0, 3).map((t) => (
-                  <TagPill key={t.id} tag={t} small />
+                {selectedTags.slice(0, 3).map((tag) => (
+                  <TagPill key={tag.id} tag={tag} small />
                 ))}
                 {selectedTags.length > 3 && (
                   <span className="text-muted-foreground">+{selectedTags.length - 3}</span>
@@ -211,20 +225,20 @@ export function TagPicker({
       <DropdownMenuContent align="start" className="min-w-[240px]">
         {tags.length === 0 && (
           <DropdownMenuItem disabled className="text-xs">
-            Nenhuma tag ainda. Crie a primeira abaixo.
+            {t('tagPicker.empty')}
           </DropdownMenuItem>
         )}
-        {tags.map((t) => {
-          const isChecked = t.id != null && selectedIds.includes(t.id);
+        {tags.map((tag) => {
+          const isChecked = tag.id != null && selectedIds.includes(tag.id);
           return (
             <DropdownMenuItem
-              key={t.id}
+              key={tag.id}
               role="menuitemcheckbox"
               aria-checked={isChecked}
               className="gap-2 text-xs"
               onSelect={(e) => {
                 e.preventDefault();
-                if (t.id != null) toggle(t.id);
+                if (tag.id != null) toggle(tag.id);
               }}
             >
               <span
@@ -237,14 +251,14 @@ export function TagPicker({
               >
                 {isChecked && <Check className="h-3 w-3 text-black" strokeWidth={3} />}
               </span>
-              <TagPill tag={t} small />
+              <TagPill tag={tag} small />
             </DropdownMenuItem>
           );
         })}
         <DropdownMenuSeparator />
         <div className="px-2 py-2 flex flex-col gap-2" onKeyDown={(e) => e.stopPropagation()}>
           <Input
-            placeholder="Nova tag..."
+            placeholder={t('tagPicker.newTagPlaceholder')}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
@@ -260,7 +274,7 @@ export function TagPicker({
               <button
                 key={c}
                 type="button"
-                aria-label={`Cor ${c}`}
+                aria-label={t('tagPicker.colorOption', { color: c })}
                 onClick={() => setNewColor(c)}
                 style={{
                   width: 16,
@@ -280,7 +294,7 @@ export function TagPicker({
               disabled={!newName.trim() || creating}
               onClick={handleCreate}
             >
-              <Plus className="h-3 w-3" /> Criar
+              <Plus className="h-3 w-3" /> {t('tagPicker.create')}
             </Button>
           </div>
         </div>

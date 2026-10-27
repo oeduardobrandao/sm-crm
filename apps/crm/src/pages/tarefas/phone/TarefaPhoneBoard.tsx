@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { MoreHorizontal, Plus } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Chip, ChipRow } from '@/components/mobile/ChipRow';
 import type { ContextMenuTriggerProps } from '@/components/mobile/ContextMenu';
 import type { Membro, TarefaWithRelations } from '../../../store';
@@ -30,6 +31,7 @@ export function TarefaPhoneCard({
   hideAssignee,
   preview,
 }: TarefaPhoneCardProps) {
+  const { t } = useTranslation('tasksPhone');
   const done = tarefa.status === 'concluida';
   const body = (
     <>
@@ -53,7 +55,9 @@ export function TarefaPhoneCard({
         <SubtasksCount tarefa={tarefa} />
         {!hideAssignee && (
           <span className="phone-tar-card__who">
-            <span className="phone-tar-card__who-name">{membro?.nome ?? 'Sem responsável'}</span>
+            <span className="phone-tar-card__who-name">
+              {membro?.nome ?? t('shared.noAssignee')}
+            </span>
             <MembroAvatar membro={membro} />
           </span>
         )}
@@ -83,7 +87,7 @@ export function TarefaPhoneCard({
         <button
           {...triggerProps}
           className="phone-tar-card__more"
-          aria-label={`Mais ações de ${tarefa.titulo}`}
+          aria-label={t('board.moreActions', { title: tarefa.titulo })}
         >
           <MoreHorizontal aria-hidden="true" />
         </button>
@@ -117,8 +121,10 @@ export function TarefaPhoneBoard({
   onCardClick,
   onDropCard,
   onRefresh,
-  chipsLabel = 'Colunas',
+  chipsLabel: chipsLabelProp,
 }: TarefaPhoneBoardProps) {
+  const { t } = useTranslation('tasksPhone');
+  const chipsLabel = chipsLabelProp ?? t('board.columns');
   const [chosen, setChosen] = useState<string | null>(null);
   const column =
     columns.find((c) => c.dropId === chosen) ??
@@ -150,7 +156,10 @@ export function TarefaPhoneBoard({
       <section
         id={panelId}
         role="tabpanel"
-        aria-label={`${column.title}, ${count} ${count === 1 ? 'tarefa' : 'tarefas'}`}
+        aria-label={t('board.panelLabel', {
+          column: column.title,
+          tasks: t('shared.taskCount', { count }),
+        })}
         className="phone-tar-board"
       >
         <div className="phone-tar-board__head">
@@ -161,18 +170,18 @@ export function TarefaPhoneBoard({
             {column.title} <span>{count}</span>
           </h2>
           {count > 0 && targets.length > 0 && (
-            <span className="phone-tar-board__hint">Segure um cartão para mover</span>
+            <span className="phone-tar-board__hint">{t('board.holdToMove')}</span>
           )}
         </div>
 
         {column.onAddClick && (
           <button type="button" className="phone-tar-board__add" onClick={column.onAddClick}>
-            <Plus aria-hidden="true" /> Adicionar tarefa
+            <Plus aria-hidden="true" /> {t('board.addTask')}
           </button>
         )}
 
         {count === 0 ? (
-          <p className="phone-tar-board__empty">Nenhuma tarefa</p>
+          <p className="phone-tar-board__empty">{t('board.empty')}</p>
         ) : (
           <ul className="phone-tar-board__list">
             {column.tarefas.map((t) => {

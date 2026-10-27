@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import type { Membro, TarefaWithRelations } from '../../../store';
 import { buildDropId, groupByBoardColumn, parseDropId } from '../tarefasLogic';
 import { useOptimisticTarefas } from '../hooks/useOptimisticTarefas';
@@ -34,6 +35,7 @@ export function BoardView({
   onRefresh,
   onCreateTask,
 }: BoardViewProps) {
+  const { t } = useTranslation('tasks');
   const { merged, applyOverride, clearOverride } = useOptimisticTarefas(tarefas);
   const now = new Date();
 
@@ -64,7 +66,7 @@ export function BoardView({
       onCardClick={onTarefaClick}
       onDropCard={handleDrop}
       onRefresh={onRefresh}
-      phoneChipsLabel="Prazos"
+      phoneChipsLabel={t('views.chipsDueDates')}
     />
   );
 }

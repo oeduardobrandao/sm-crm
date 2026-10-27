@@ -76,6 +76,12 @@ import ptBilling from '../packages/i18n/locales/pt/billing.json';
 import enBilling from '../packages/i18n/locales/en/billing.json';
 import ptMcp from '../packages/i18n/locales/pt/mcp.json';
 import enMcp from '../packages/i18n/locales/en/mcp.json';
+import ptTasks from '../packages/i18n/locales/pt/tasks.json';
+import enTasks from '../packages/i18n/locales/en/tasks.json';
+import ptTasksForm from '../packages/i18n/locales/pt/tasksForm.json';
+import enTasksForm from '../packages/i18n/locales/en/tasksForm.json';
+import ptTasksPhone from '../packages/i18n/locales/pt/tasksPhone.json';
+import enTasksPhone from '../packages/i18n/locales/en/tasksPhone.json';
 
 initI18n({
   pt: {
@@ -100,6 +106,9 @@ initI18n({
     settingsHub: ptSettingsHub,
     billing: ptBilling,
     mcp: ptMcp,
+    tasks: ptTasks,
+    tasksForm: ptTasksForm,
+    tasksPhone: ptTasksPhone,
     hubHome: ptHubHome,
     hubPostCard: ptHubPostCard,
     hubPosts: ptHubPosts,
@@ -134,6 +143,9 @@ initI18n({
     settingsHub: enSettingsHub,
     billing: enBilling,
     mcp: enMcp,
+    tasks: enTasks,
+    tasksForm: enTasksForm,
+    tasksPhone: enTasksPhone,
     hubHome: enHubHome,
     hubPostCard: enHubPostCard,
     hubPosts: enHubPosts,

@@ -1,0 +1,193 @@
+{
+  "shared": {
+    "status": {
+      "pendente": "A fazer",
+      "em_andamento": "Em andamento",
+      "concluida": "Concluída"
+    },
+    "dueBuckets": {
+      "atrasadas": "Atrasadas",
+      "hoje": "Hoje",
+      "estaSemana": "Esta semana",
+      "depois": "Depois",
+      "semData": "Sem data"
+    },
+    "board": {
+      "atrasado": "Em atraso",
+      "hoje": "Hoje",
+      "amanha": "Amanhã",
+      "depois": "Mais tarde",
+      "semData": "Sem data"
+    },
+    "weekdayLong": {
+      "0": "Domingo",
+      "1": "Segunda",
+      "2": "Terça",
+      "3": "Quarta",
+      "4": "Quinta",
+      "5": "Sexta",
+      "6": "Sábado"
+    },
+    "dueBadge": {
+      "overdue_one": "{{count}} dia de atraso",
+      "overdue_other": "{{count}} dias de atraso",
+      "today": "Hoje",
+      "tomorrow": "Amanhã",
+      "inDays": "{{days}} dias"
+    },
+    "repetir": {
+      "never": "Não repete",
+      "daily": "Diariamente",
+      "weekly": "Semanalmente",
+      "monthly": "Mensalmente",
+      "yearly": "Anualmente"
+    },
+    "weekdayChip": {
+      "0": "D",
+      "1": "S",
+      "2": "T",
+      "3": "Q",
+      "4": "Q",
+      "5": "S",
+      "6": "S"
+    },
+    "weekdayName": {
+      "0": "domingo",
+      "1": "segunda",
+      "2": "terça",
+      "3": "quarta",
+      "4": "quinta",
+      "5": "sexta",
+      "6": "sábado"
+    },
+    "unit": {
+      "daily": {
+        "singular": "dia",
+        "plural": "dias"
+      },
+      "weekly": {
+        "singular": "semana",
+        "plural": "semanas"
+      },
+      "monthly": {
+        "singular": "mês",
+        "plural": "meses"
+      },
+      "yearly": {
+        "singular": "ano",
+        "plural": "anos"
+      }
+    },
+    "dateNumeric": "dd/MM/yyyy",
+    "recorrencia": {
+      "joinLast": "{{rest}} e {{last}}",
+      "day": "dia {{day}}",
+      "dayOrLast": "dia {{day}} (ou último dia)",
+      "daily": "Todo dia",
+      "dailyN": "A cada {{n}} dias",
+      "weeklyMasc": "Todo {{days}}",
+      "weeklyFem": "Toda {{days}}",
+      "weeklyNMasc": "A cada {{n}} semanas, no {{days}}",
+      "weeklyNFem": "A cada {{n}} semanas, na {{days}}",
+      "monthly": "Todo {{day}}",
+      "monthlyN": "A cada {{n}} meses, no {{day}}",
+      "yearlyDate": "{{dd}}/{{mm}}",
+      "yearly": "Todo ano em {{date}}",
+      "yearlyN": "A cada {{n}} anos, em {{date}}",
+      "until": "{{base}} até {{date}}"
+    },
+    "modo": {
+      "aoConcluir": "cria a próxima ao concluir",
+      "calendario": "cria em toda data da regra"
+    },
+    "serieEstado": {
+      "encerrada": "Encerrada",
+      "pausada": "Pausada",
+      "concluida": "Concluída",
+      "terminaEm": "Termina em {{date}}"
+    },
+    "recurringTask": "Tarefa recorrente",
+    "noAssignee": "Sem responsável"
+  },
+  "commands": {
+    "serieNeedsDueDate": "Tarefas de uma série precisam de prazo.",
+    "dueDateUpdated": "Prazo atualizado!",
+    "dueDateRemoved": "Prazo removido!",
+    "serieDateConflict": "Já existe uma ocorrência desta série nesse dia.",
+    "dueDateError": "Erro ao atualizar prazo",
+    "taskCompleted": "Tarefa concluída!",
+    "statusUpdated": "Status atualizado!",
+    "statusError": "Erro ao atualizar status",
+    "taskReopened": "Tarefa reaberta!",
+    "taskError": "Erro ao atualizar tarefa",
+    "assigneeUpdated": "Responsável atualizado!",
+    "assigneeError": "Erro ao atualizar responsável"
+  },
+  "tarefasPage": {
+    "title": "Tarefas",
+    "newTask": "Nova tarefa",
+    "empty": "Nenhuma tarefa ainda. Crie a primeira tarefa da equipe.",
+    "views": {
+      "lista": "Lista",
+      "membros": "Por membro",
+      "kanban": "Kanban",
+      "calendario": "Calendário"
+    },
+    "escopo": {
+      "minhas": "Minhas tarefas",
+      "todas": "Todas as tarefas"
+    },
+    "subtitle": {
+      "open_zero": "{{count}} abertas",
+      "open_one": "{{count}} aberta",
+      "open_other": "{{count}} abertas",
+      "overdue_zero": "{{count}} atrasadas",
+      "overdue_one": "{{count}} atrasada",
+      "overdue_other": "{{count}} atrasadas",
+      "dueToday_zero": "{{count}} vencem hoje",
+      "dueToday_one": "{{count}} vence hoje",
+      "dueToday_other": "{{count}} vencem hoje"
+    }
+  },
+  "statsHeader": {
+    "abertas": "Abertas",
+    "vencemHoje": "Vencem hoje",
+    "atrasadas": "Atrasadas",
+    "concluidasHoje": "Concluídas hoje"
+  },
+  "tarefasFilters": {
+    "noOptions": "Nenhuma opção",
+    "clearSelection": "Limpar seleção",
+    "status": "Status",
+    "allMembers": "Todos os membros",
+    "allClients": "Todos os clientes",
+    "allTags": "Todas as tags",
+    "searchPlaceholder": "Buscar tarefa...",
+    "clearFilters": "Limpar filtros",
+    "filters": "Filtros",
+    "sheetDescription": "Filtre as tarefas"
+  },
+  "views": {
+    "chipsDueDates": "Prazos",
+    "chipsMembers": "Membros",
+    "chipsStatus": "Status",
+    "addTask": "Adicionar tarefa",
+    "noTasks": "Nenhuma tarefa"
+  },
+  "listView": {
+    "reopenTask": "Reabrir tarefa",
+    "completeTask": "Concluir tarefa",
+    "emptyOpen": "Nenhuma tarefa aberta. Crie uma nova ou ajuste os filtros.",
+    "concluidas": "Concluídas"
+  },
+  "calendarView": {
+    "semData": "Sem data · {{n}}",
+    "semDataHint": "Arraste uma tarefa para cá para remover o prazo.",
+    "modoLabel": "Modo do calendário",
+    "modo": {
+      "board": "Board",
+      "mes": "Mês"
+    },
+    "more": "+{{n}} mais"
+  }
+}

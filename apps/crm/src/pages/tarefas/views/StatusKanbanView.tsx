@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import type { Membro, TarefaWithRelations } from '../../../store';
 import {
   buildDropId,
@@ -25,6 +26,7 @@ export function StatusKanbanView({
   onTarefaClick,
   onRefresh,
 }: StatusKanbanViewProps) {
+  const { t: tr } = useTranslation('tasks');
   const { merged, applyOverride, clearOverride } = useOptimisticTarefas(tarefas);
   const now = new Date();
 
@@ -51,7 +53,7 @@ export function StatusKanbanView({
       onCardClick={onTarefaClick}
       onDropCard={handleDrop}
       onRefresh={onRefresh}
-      phoneChipsLabel="Status"
+      phoneChipsLabel={tr('views.chipsStatus')}
     />
   );
 }

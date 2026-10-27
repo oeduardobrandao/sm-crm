@@ -10,6 +10,8 @@ import {
   Users,
   X,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import { ActionSheet } from '@/components/mobile/ActionSheet';
 import { Chip, ChipRow } from '@/components/mobile/ChipRow';
 import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
@@ -29,11 +31,22 @@ import './tarefasPhone.css';
 
 export type TarefasView = 'lista' | 'membros' | 'kanban' | 'calendario';
 
+function phoneView(id: TarefasView, icon: ReactNode) {
+  return {
+    id,
+    // Resolved on read, so the label follows the current language.
+    get label() {
+      return i18n.t(`tasksPhone:header.views.${id}`);
+    },
+    icon,
+  };
+}
+
 export const PHONE_TAREFA_VIEWS: { id: TarefasView; label: string; icon: ReactNode }[] = [
-  { id: 'lista', label: 'Lista', icon: <List aria-hidden="true" /> },
-  { id: 'membros', label: 'Por membro', icon: <Users aria-hidden="true" /> },
-  { id: 'kanban', label: 'Kanban', icon: <Columns aria-hidden="true" /> },
-  { id: 'calendario', label: 'Calendário', icon: <Calendar aria-hidden="true" /> },
+  phoneView('lista', <List aria-hidden="true" />),
+  phoneView('membros', <Users aria-hidden="true" />),
+  phoneView('kanban', <Columns aria-hidden="true" />),
+  phoneView('calendario', <Calendar aria-hidden="true" />),
 ];
 
 export interface TarefasPhoneHeaderProps {
@@ -59,8 +72,6 @@ function countActive(f: TarefaFilterState): number {
   ).length;
 }
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
 /**
  * Tarefas header on phones (FTarefas / FTarefasKanban): one row with search, Filtros
  * (badge) and the ink "+", the large title with the counts, the view picker and
@@ -81,6 +92,7 @@ export function TarefasPhoneHeader({
   resultCount,
   onNew,
 }: TarefasPhoneHeaderProps) {
+  const { t } = useTranslation('tasksPhone');
   const [searchOpen, setSearchOpen] = useState(filters.filterSearch !== '');
   const [viewsOpen, setViewsOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -113,7 +125,7 @@ export function TarefasPhoneHeader({
     {
       type: 'chips',
       key: 'status',
-      label: 'Status',
+      label: t('header.status'),
       chips: STATUS_ORDER.map((s) => ({
         key: s,
         label: STATUS_LABELS[s],
@@ -127,24 +139,24 @@ export function TarefasPhoneHeader({
       lists: [
         {
           key: 'membros',
-          title: 'Membros',
-          allLabel: 'Todos',
+          title: t('header.members'),
+          allLabel: t('header.allMasc'),
           options: sortedMembros.map((m) => ({ value: m.id!, label: m.nome })),
           selected: filters.filterMembros,
           onChange: (next) => set({ filterMembros: next as number[] }),
         },
         {
           key: 'clientes',
-          title: 'Clientes',
-          allLabel: 'Todos',
+          title: t('header.clients'),
+          allLabel: t('header.allMasc'),
           options: activeClientes.map((c) => ({ value: c.id!, label: c.nome })),
           selected: filters.filterClientes,
           onChange: (next) => set({ filterClientes: next as number[] }),
         },
         {
           key: 'tags',
-          title: 'Tags',
-          allLabel: 'Todas',
+          title: t('header.tags'),
+          allLabel: t('header.allFem'),
           options: sortedTags.map((t) => ({ value: t.id!, label: t.nome })),
           selected: filters.filterTags,
           onChange: (next) => set({ filterTags: next as number[] }),
@@ -158,48 +170,48 @@ export function TarefasPhoneHeader({
     ...filters.filterStatus.map((s) => ({
       key: `s-${s}`,
       label: STATUS_LABELS[s],
-      group: 'Status',
+      group: t('header.status'),
       remove: () => toggleStatus(s),
     })),
     ...filters.filterMembros.map((id) => ({
       key: `m-${id}`,
-      label: membros.find((m) => m.id === id)?.nome ?? 'Membro',
-      group: 'Membro',
+      label: membros.find((m) => m.id === id)?.nome ?? t('header.member'),
+      group: t('header.member'),
       remove: () => set({ filterMembros: filters.filterMembros.filter((v) => v !== id) }),
     })),
     ...filters.filterClientes.map((id) => ({
       key: `c-${id}`,
-      label: clientes.find((c) => c.id === id)?.nome ?? 'Cliente',
-      group: 'Cliente',
+      label: clientes.find((c) => c.id === id)?.nome ?? t('header.client'),
+      group: t('header.client'),
       remove: () => set({ filterClientes: filters.filterClientes.filter((v) => v !== id) }),
     })),
     ...filters.filterTags.map((id) => ({
       key: `t-${id}`,
-      label: tags.find((t) => t.id === id)?.nome ?? 'Tag',
-      group: 'Tag',
+      label: tags.find((t) => t.id === id)?.nome ?? t('header.tag'),
+      group: t('header.tag'),
       remove: () => set({ filterTags: filters.filterTags.filter((v) => v !== id) }),
     })),
   ];
 
   const subtitle = (
     <>
-      {plural(stats.abertas, 'aberta', 'abertas')}
+      {t('header.open', { count: stats.abertas })}
       {stats.atrasadas > 0 && (
         <span className="phone-tar-subtitle__overdue">
           {' · '}
-          {plural(stats.atrasadas, 'atrasada', 'atrasadas')}
+          {t('header.overdue', { count: stats.atrasadas })}
         </span>
       )}
       {stats.vencemHoje > 0 && (
         <span className="phone-tar-subtitle__today">
           {' · '}
-          {stats.vencemHoje} vence{stats.vencemHoje === 1 ? '' : 'm'} hoje
+          {t('header.dueToday', { count: stats.vencemHoje })}
         </span>
       )}
       {stats.concluidasHoje > 0 && (
         <>
           {' · '}
-          {plural(stats.concluidasHoje, 'concluída hoje', 'concluídas hoje')}
+          {t('header.doneToday', { count: stats.concluidasHoje })}
         </>
       )}
     </>
@@ -208,12 +220,12 @@ export function TarefasPhoneHeader({
   return (
     <>
       <PhonePageHeader
-        title="Tarefas"
+        title={t('header.title')}
         subtitle={subtitle}
         actions={
           <>
             <PhoneIconButton
-              label={searchOpen ? 'Fechar busca' : 'Buscar'}
+              label={searchOpen ? t('header.closeSearch') : t('header.search')}
               aria-expanded={searchOpen}
               onClick={() => {
                 if (searchOpen) {
@@ -231,15 +243,15 @@ export function TarefasPhoneHeader({
               ref={filtersRef}
               label={
                 activeCount > 0
-                  ? `Filtros, ${activeCount} ${activeCount === 1 ? 'ativo' : 'ativos'}`
-                  : 'Filtros'
+                  ? t('header.filtersActive', { count: activeCount })
+                  : t('header.filters')
               }
               badge={activeCount}
               onClick={() => setFiltersOpen(true)}
             >
               <SlidersHorizontal aria-hidden="true" />
             </PhoneIconButton>
-            <PhoneIconButton label="Nova tarefa" variant="ink" onClick={onNew}>
+            <PhoneIconButton label={t('header.newTask')} variant="ink" onClick={onNew}>
               <Plus aria-hidden="true" />
             </PhoneIconButton>
           </>
@@ -252,8 +264,8 @@ export function TarefasPhoneHeader({
               ref={searchRef}
               type="search"
               enterKeyHint="search"
-              aria-label="Buscar tarefa"
-              placeholder="Buscar tarefa..."
+              aria-label={t('header.searchTask')}
+              placeholder={t('header.searchPlaceholder')}
               value={filters.filterSearch}
               onChange={(e) => set({ filterSearch: e.target.value })}
             />
@@ -265,7 +277,7 @@ export function TarefasPhoneHeader({
             type="button"
             className="phone-tar-view"
             aria-haspopup="dialog"
-            aria-label={`Visualização: ${current.label}. Trocar visualização`}
+            aria-label={t('header.viewLabel', { view: current.label })}
             onClick={() => setViewsOpen(true)}
           >
             {current.icon}
@@ -274,29 +286,29 @@ export function TarefasPhoneHeader({
           </button>
           {escopo && (
             <SegmentedControl
-              aria-label="Escopo"
+              aria-label={t('header.scope')}
               className="phone-tar-escopo"
               value={escopo}
               onChange={onEscopoChange}
               options={[
-                { value: 'minhas', label: 'Minhas' },
-                { value: 'todas', label: 'Todas' },
+                { value: 'minhas', label: t('header.mine') },
+                { value: 'todas', label: t('header.all') },
               ]}
             />
           )}
         </div>
         {chips.length > 0 && (
-          <ChipRow aria-label="Filtros ativos" className="phone-tar-chips">
+          <ChipRow aria-label={t('header.activeFilters')} className="phone-tar-chips">
             {chips.map((c) => (
               <Chip
                 key={c.key}
                 label={c.label}
-                removeLabel={`Remover filtro ${c.group}: ${c.label}`}
+                removeLabel={t('header.removeFilter', { group: c.group, label: c.label })}
                 onRemove={c.remove}
               />
             ))}
             <button type="button" className="phone-tar-text-btn" onClick={clear}>
-              Limpar filtros
+              {t('header.clearFilters')}
             </button>
           </ChipRow>
         )}
@@ -305,7 +317,7 @@ export function TarefasPhoneHeader({
       <ActionSheet
         open={viewsOpen}
         onOpenChange={setViewsOpen}
-        title="Visualização"
+        title={t('header.viewTitle')}
         returnFocusRef={viewRef}
         actions={PHONE_TAREFA_VIEWS.map((v) => ({
           label: v.id === view ? `✓ ${v.label}` : v.label,
@@ -316,7 +328,7 @@ export function TarefasPhoneHeader({
       <PhoneFiltersSheet
         open={filtersOpen}
         onOpenChange={setFiltersOpen}
-        description="Filtre as tarefas"
+        description={t('header.filtersDescription')}
         sections={sections}
         activeCount={activeCount}
         onClear={clear}
