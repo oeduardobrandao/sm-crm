@@ -402,12 +402,14 @@ const INDEX_TONES: Record<string, ChipTone> = {
 };
 
 /** Index badge of a post. Tone comes from Google's verdict alone; the label translates the
- * known `coverage_state` strings and shows an unknown one as Google wrote it (spec §4). */
+ * known `coverage_state` strings and shows an unknown one as Google wrote it (spec §4). With no
+ * coverage state the label is "Ainda não verificada" and the tone neutral, whatever the verdict. */
 export function indexStatusView(index: IndexStatus | null): { label: string; tone: ChipTone } {
-  if (!index) return { label: 'Ainda não verificada', tone: 'neutral' };
-  const state = index.coverage_state;
+  const state = index?.coverage_state;
+  // No coverage state to show: a colored tone would contradict "Ainda não verificada".
+  if (!index || !state) return { label: 'Ainda não verificada', tone: 'neutral' };
   return {
-    label: (state && INDEX_LABELS[state]) || state || 'Ainda não verificada',
+    label: INDEX_LABELS[state] || state,
     tone: (index.verdict && INDEX_TONES[index.verdict]) || 'neutral',
   };
 }

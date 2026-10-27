@@ -428,6 +428,17 @@ describe('indexStatusView', () => {
     });
   });
 
+  it('stays neutral whenever the label falls back to "Ainda não verificada"', () => {
+    // A verdict with no coverage state must not paint "Ainda não verificada" green or red.
+    for (const verdict of ['PASS', 'PARTIAL', 'FAIL', null]) {
+      expect(indexStatusView(idx(verdict, null))).toEqual({
+        label: 'Ainda não verificada',
+        tone: 'neutral',
+      });
+    }
+    expect(indexStatusView(null)).toEqual({ label: 'Ainda não verificada', tone: 'neutral' });
+  });
+
   it('covers every row of the coverage table, PARTIAL as warning', () => {
     const table: Array<[string, string]> = [
       ['Indexed, not submitted in sitemap', 'Indexada (fora do sitemap)'],

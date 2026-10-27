@@ -306,7 +306,9 @@ day by pg_cron with the vault-secret pattern, at a minute the stagger migration
    re-checked at least every few days up to several hundred posts. A post published in the last
    3 days is always included regardless of the cap ordering.
 3. Records the run in `blog_search_runs`. A failure in step 2 for one URL is logged and skipped;
-   a token or step-1 failure fails the run (`reportCronFailure`).
+   a token or step-1 failure fails the run (`reportCronFailure`). If every URL attempted in step 2
+   fails, the run still closes `ok` (step 1 refreshed the data) but calls `reportCronFailure` and
+   records the reason in `error`.
 
 ### Index status: tone and label
 
@@ -325,13 +327,15 @@ danger, anything else or no row → neutral. The label maps known `coverage_stat
 | Excluded by 'noindex' tag | Bloqueada por noindex |
 | Not found (404) | Não encontrada (404) |
 
-An unmapped string is shown as Google wrote it. No row yet: "Ainda não verificada".
+An unmapped string is shown as Google wrote it. No row yet, or a row with no `coverage_state`:
+"Ainda não verificada", always with the neutral tone (whatever the verdict).
 
 ### Admin "Ver no Search Console"
 
 Uses the stored `inspection_link` (Google builds it, so it is correct for a domain property).
-Before the first inspection of a post there is no link; the UI says "Ainda não verificado pelo
-Google".
+Before the first inspection of a post (no row, or a row with no verdict) there is no link; the UI
+says "Ainda não verificado pelo Google". A checked row that came back without a link shows
+nothing there.
 
 ## 5. Admin UI
 

@@ -159,6 +159,19 @@ describe('BlogPerformance', () => {
       expect(screen.queryByRole('link', { name: /Ver no Search Console/ })).not.toBeInTheDocument();
     });
 
+    it('with a checked row but no link, shows neither the link nor "Ainda não verificado"', () => {
+      const noLink = { ...gscMetrics, index: { ...gscMetrics.index!, inspection_link: null } };
+      wrap(<BlogPerformance slug="post" metrics={noLink} gscUpdatedAt={GSC_AT} />);
+      expect(screen.getByText('Indexada')).toBeInTheDocument();
+      expect(screen.queryByText('Ainda não verificado pelo Google')).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /Ver no Search Console/ })).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(
+          'Para pedir indexação, clique em Solicitar indexação na página do Google.',
+        ),
+      ).not.toBeInTheDocument();
+    });
+
     it('shows the footer with the sync time in São Paulo', () => {
       wrap(<BlogPerformance slug="post" metrics={gscMetrics} gscUpdatedAt={GSC_AT} />);
       expect(

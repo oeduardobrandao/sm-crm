@@ -143,11 +143,11 @@ export function BlogPerformance({ slug, metrics, gscUpdatedAt }: BlogPerformance
                   Para pedir indexação, clique em Solicitar indexação na página do Google.
                 </p>
               </>
-            ) : (
+            ) : index === null || index.verdict === null ? (
               <p className="mt-1.5 text-xs text-muted-foreground">
                 Ainda não verificado pelo Google
               </p>
-            )}
+            ) : null}
           </div>
 
           <p className="mt-4 text-xs text-muted-foreground">
