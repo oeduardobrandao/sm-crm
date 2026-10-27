@@ -26,7 +26,10 @@ alter table blog_page_views enable row level security;
 alter table blog_view_salts enable row level security;
 revoke all on blog_page_views from public, anon, authenticated;
 revoke all on blog_view_salts from public, anon, authenticated;
+-- A sequence da identidade tambem herda ACL padrao para anon/authenticated no hospedado.
+revoke all on sequence blog_page_views_id_seq from public, anon, authenticated;
 grant select, insert, delete on blog_page_views to service_role;
+grant usage, select on sequence blog_page_views_id_seq to service_role;
 grant select, insert, delete on blog_view_salts to service_role;
 
 -- Grava uma view, salvo se o mesmo (slug, visitor_hash) ja tem linha nos ultimos 30 min (mesma

@@ -2,11 +2,27 @@
 \i supabase/tests/entitlements/_helpers.sql
 
 -- Contagem anonima de views do blog (migration 20261101000001).
--- (a) grants: tabelas fechadas para anon/authenticated; as cinco funcoes so service_role.
+-- (a) grants: tabelas e sequence fechadas para anon/authenticated; as cinco funcoes so service_role.
 -- (b) record_blog_view deduplica por (slug, hash) em 30 min. (c) blog_view_salt_today devolve o
 --     mesmo sal de 64 hex no dia e apaga sais de dias anteriores; blog_view_prune_salts tambem.
 -- (d) blog_view_stats / blog_view_daily: janelas 7d/30d/total, so dias com views.
 begin;
+-- A sequence da identidade vem antes da parity: o helper concede ALL em TODAS as sequences do
+-- schema (nao so nas tabelas excluidas), entao depois dele a ACL real da migration some.
+do $$
+declare v_seq text;
+begin
+  v_seq := pg_get_serial_sequence('public.blog_page_views', 'id');
+  assert v_seq is not null, 'blog_page_views.id sem sequence de identidade';
+  assert not has_sequence_privilege('anon', v_seq, 'USAGE'), 'anon tem USAGE na sequence de views';
+  assert not has_sequence_privilege('anon', v_seq, 'SELECT'), 'anon tem SELECT na sequence de views';
+  assert not has_sequence_privilege('authenticated', v_seq, 'USAGE'),
+    'authenticated tem USAGE na sequence de views';
+  assert not has_sequence_privilege('authenticated', v_seq, 'SELECT'),
+    'authenticated tem SELECT na sequence de views';
+  assert has_sequence_privilege('service_role', v_seq, 'USAGE'),
+    'service_role precisa de USAGE na sequence de views';
+end $$;
 -- As duas tabelas sao excluidas: a parity grant concederia ALL e desfaria o REVOKE sob teste.
 select et_grant_hosted_parity(array['blog_page_views', 'blog_view_salts']);
 do $$
