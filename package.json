@@ -117,6 +117,7 @@
     "jszip": "^3.10.1",
     "lucide-react": "^0.577.0",
     "marked": "15.0.12",
+    "mediabunny": "1.61.4",
     "posthog-js": "1.402.3",
     "react": "^19.2.4",
     "react-chartjs-2": "^5.3.1",

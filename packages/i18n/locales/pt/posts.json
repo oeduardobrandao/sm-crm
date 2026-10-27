@@ -115,7 +115,32 @@
     "reelCoverAction": "Usar como capa do Reel",
     "reelCoverMoving": "Movendo capa…",
     "reelCoverMoved": "Capa do Reel atualizada",
-    "reelCoverFetchError": "Não foi possível carregar a imagem da capa. Tente novamente."
+    "reelCoverFetchError": "Não foi possível carregar a imagem da capa. Tente novamente.",
+    "downscale": {
+      "reasonWidth": "Largura acima de 1920 px (ex.: 4K). O Instagram não aceita.",
+      "reasonSize": "Acima de 300 MB (100 MB nos Stories).",
+      "offerTitle_one": "Vídeo acima do limite do Instagram",
+      "offerTitle_other": "{{count}} vídeos acima do limite do Instagram",
+      "offerReduce": "Reduzir e enviar",
+      "offerOriginal": "Enviar original",
+      "slowEngine": "Neste navegador a conversão é mais lenta.",
+      "unsupported": "Este navegador não consegue reduzir um vídeo desse tamanho. Exporte em 1080p no celular ou use o Chrome.",
+      "overClientCap": "Arquivo acima de 2 GB: só pode ser enviado reduzido.",
+      "hdr": "Vídeo em HDR: as cores podem mudar um pouco.",
+      "converting": "Convertendo… {{pct}}%",
+      "convertFailed": "{{name}}: não foi possível reduzir o vídeo. Enviamos o original.",
+      "convertFailedNoFallback": "{{name}}: não foi possível reduzir o vídeo.",
+      "action": "Reduzir resolução",
+      "actionOf": "Reduzir resolução de {{name}}",
+      "dialogTitle": "Reduzindo resolução",
+      "stageDownload": "Baixando…",
+      "stageConvert": "Convertendo…",
+      "stageSave": "Salvando…",
+      "done": "Vídeo reduzido para {{w}}×{{h}}.",
+      "replaceOrphan": "Não foi possível substituir a mídia. A versão reduzida ficou em Arquivos.",
+      "cancel": "Cancelar",
+      "tooLong": "Vídeo longo demais para caber no limite."
+    }
   },
   "thumbnailEditor": {
     "title": "Miniatura do vídeo",

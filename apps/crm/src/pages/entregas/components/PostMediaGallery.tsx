@@ -16,6 +16,7 @@ import {
   Star,
   Move,
   MessageSquare,
+  Minimize2,
 } from 'lucide-react';
 import { sanitizeUrl } from '@/utils/security';
 import { fetchWithRetry } from '@/utils/fetchWithRetry';
@@ -52,6 +53,9 @@ import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import { extractVideoFrame } from '@mesaas/ui/video/frame';
 import { encodeImageAsJpeg } from '../../../utils/imageJpeg';
 import { MediaAdjustmentDialog } from './MediaAdjustmentDialog';
+import { DownscaleMediaDialog } from './DownscaleMediaDialog';
+import { useDownscaleOffer, type UploadItem, type UploadOutcome } from './useDownscaleOffer';
+import { oversizeOnly } from '../media-editor/oversize';
 import { IMAGE_AR_MIN, validateMedia } from '../instagramLimits';
 import { ThumbnailPickerDialog } from './ThumbnailPickerDialog';
 import { useTranslation } from 'react-i18next';
@@ -212,10 +216,14 @@ export function PostMediaGallery({
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [pendingVideos, setPendingVideos] = useState<{ file: File; sortOrder: number }[]>([]);
   const [adjustingMedia, setAdjustingMedia] = useState<PostMedia | null>(null);
+  const [downscalingMedia, setDownscalingMedia] = useState<PostMedia | null>(null);
   const [editingMedia, setEditingMedia] = useState<PostMedia | null>(null);
   const [showFilePicker, setShowFilePicker] = useState(false);
   const [uploadQueue, setUploadQueue] = useState<
-    Map<string, { name: string; pct: number; status: 'uploading' | 'done' | 'error' }>
+    Map<
+      string,
+      { name: string; pct: number; status: 'converting' | 'uploading' | 'done' | 'error' }
+    >
   >(new Map());
   const [dragOver, setDragOver] = useState(false);
 
@@ -363,6 +371,68 @@ export function PostMediaGallery({
     : [];
   const atLimit = maxFiles != null && media.length >= maxFiles;
 
+  function setQueueRow(uid: string, row: Parameters<typeof uploadQueue.set>[1] | null) {
+    setUploadQueue((prev) => {
+      const next = new Map(prev);
+      if (row) next.set(uid, row);
+      else next.delete(uid);
+      return next;
+    });
+  }
+
+  /** One picked file: thumbnail (or the manual-thumbnail queue), then the upload. */
+  async function uploadOne({ file, uid, sortOrder }: UploadItem): Promise<UploadOutcome> {
+    try {
+      let thumbnail: File | undefined;
+      if (detectKind(file) === 'video') {
+        try {
+          thumbnail = await extractVideoFrame(file);
+        } catch (err) {
+          // Browser can't decode this video — fall back to asking for a
+          // manual thumbnail (finalize rejects videos without one).
+          console.warn(`[thumbnail] auto-extraction failed for ${file.name}:`, err);
+          setPendingVideos((prev) => [...prev, { file, sortOrder }]);
+          setQueueRow(uid, null);
+          return 'deferred';
+        }
+      }
+      setQueueRow(uid, { name: file.name, pct: 0, status: 'uploading' });
+      const uploaded = await uploadPostMedia({
+        postId,
+        file,
+        thumbnail,
+        sortOrder,
+        onProgress: (p) =>
+          setQueueRow(uid, {
+            name: file.name,
+            pct: Math.round((p.loaded / p.total) * 100),
+            status: 'uploading',
+          }),
+      });
+      setQueueRow(uid, { name: file.name, pct: 100, status: 'done' });
+      if (uploaded.kind === 'video') {
+        toast.success(t('mediaGallery.videoUploaded'), {
+          action: {
+            label: t('mediaGallery.adjustThumbnail'),
+            onClick: () => setEditingMedia(uploaded),
+          },
+        });
+      }
+      return 'ok';
+    } catch (e) {
+      toast.error(`${file.name}: ${(e as Error).message}`);
+      setQueueRow(uid, { name: file.name, pct: 0, status: 'error' });
+      return 'error';
+    }
+  }
+
+  const downscaleOffer = useDownscaleOffer({
+    forStories,
+    upload: uploadOne,
+    setConverting: ({ file, uid }, pct) =>
+      setQueueRow(uid, pct === null ? null : { name: file.name, pct, status: 'converting' }),
+  });
+
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
     const fileArr = Array.from(files);
@@ -373,11 +443,17 @@ export function PostMediaGallery({
     // position in the selection. Without this, concurrent uploads land in
     // finalize-completion order (effectively random) instead of picked order.
     const base = media.length;
-    const items = fileArr.map((file, i) => ({
+    const all = fileArr.map((file, i) => ({
       file,
       uid: `upload-${stamp}-${i}`,
       sortOrder: base + i,
     }));
+    // Oversize-only videos wait for the downscale offer; everything else uploads now.
+    const { immediate: items, held } = targetsInstagram
+      ? // Probing takes up to 10 s before any upload row exists; track it so a
+        // silent deploy swap can't drop the pick in that window.
+        await trackUnsavedWork(downscaleOffer.split(all, base - (reelCover ? 1 : 0)))
+      : { immediate: all, held: [] };
     setUploadQueue((prev) => {
       const next = new Map(prev);
       items.forEach(({ file, uid }) =>
@@ -388,68 +464,20 @@ export function PostMediaGallery({
 
     let hasError = false;
     let deferredCount = 0;
-    await uploadMany(items, async ({ file, uid, sortOrder }) => {
-      try {
-        let thumbnail: File | undefined;
-        if (detectKind(file) === 'video') {
-          try {
-            thumbnail = await extractVideoFrame(file);
-          } catch (err) {
-            // Browser can't decode this video — fall back to asking for a
-            // manual thumbnail (finalize rejects videos without one).
-            console.warn(`[thumbnail] auto-extraction failed for ${file.name}:`, err);
-            deferredCount++;
-            setPendingVideos((prev) => [...prev, { file, sortOrder }]);
-            setUploadQueue((prev) => {
-              const next = new Map(prev);
-              next.delete(uid);
-              return next;
-            });
-            return;
-          }
-        }
-        const uploaded = await uploadPostMedia({
-          postId,
-          file,
-          thumbnail,
-          sortOrder,
-          onProgress: (p) =>
-            setUploadQueue((prev) => {
-              const next = new Map(prev);
-              next.set(uid, {
-                name: file.name,
-                pct: Math.round((p.loaded / p.total) * 100),
-                status: 'uploading',
-              });
-              return next;
-            }),
-        });
-        setUploadQueue((prev) => {
-          const next = new Map(prev);
-          next.set(uid, { name: file.name, pct: 100, status: 'done' });
-          return next;
-        });
-        if (uploaded.kind === 'video') {
-          toast.success(t('mediaGallery.videoUploaded'), {
-            action: {
-              label: t('mediaGallery.adjustThumbnail'),
-              onClick: () => setEditingMedia(uploaded),
-            },
-          });
-        }
-      } catch (e) {
-        hasError = true;
-        toast.error(`${file.name}: ${(e as Error).message}`);
-        setUploadQueue((prev) => {
-          const next = new Map(prev);
-          next.set(uid, { name: file.name, pct: 0, status: 'error' });
-          return next;
-        });
-      }
-    });
+    const [, heldStats] = await Promise.all([
+      uploadMany(items, async (item) => {
+        const outcome = await uploadOne(item);
+        if (outcome === 'deferred') deferredCount++;
+        if (outcome === 'error') hasError = true;
+      }),
+      downscaleOffer.resolveHeld(held),
+    ]);
+    const attempted = items.length + heldStats.attempted;
+    deferredCount += heldStats.deferred;
+    hasError ||= heldStats.hasError;
 
     refreshWithCovers();
-    if (!hasError && deferredCount < items.length) toast.success(t('mediaGallery.uploadDone'));
+    if (!hasError && deferredCount < attempted) toast.success(t('mediaGallery.uploadDone'));
     setUploading(false);
     scheduleQueueSweep();
   }
@@ -730,27 +758,51 @@ export function PostMediaGallery({
               ? '1 arquivo precisa de ajuste'
               : `${invalidMedia.length} arquivos precisam de ajuste`}
           </p>
-          {invalidMedia.map((m) => (
-            <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
-              <div className="min-w-0 flex-1">
-                <p className="break-all font-semibold">{m.original_filename}</p>
-                {validateMedia([m], validationOpts).map((issue) => (
-                  <p key={issue.message}>{issue.message}</p>
-                ))}
+          {invalidMedia.map((m) => {
+            const oversize = oversizeOnly(m, validationOpts);
+            return (
+              <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="min-w-0 flex-1">
+                  <p className="break-all font-semibold">{m.original_filename}</p>
+                  {oversize.eligible
+                    ? oversize.reasons.map((reason) => (
+                        <p key={reason}>
+                          {t(
+                            reason === 'width'
+                              ? 'mediaGallery.downscale.reasonWidth'
+                              : 'mediaGallery.downscale.reasonSize',
+                          )}
+                        </p>
+                      ))
+                    : validateMedia([m], validationOpts).map((issue) => (
+                        <p key={issue.message}>{issue.message}</p>
+                      ))}
+                </div>
+                {canAdjust && oversize.eligible && (
+                  <button
+                    type="button"
+                    aria-label={t('mediaGallery.downscale.actionOf', { name: m.original_filename })}
+                    onClick={() => setDownscalingMedia(m)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#12151a] px-3 py-2 text-xs font-semibold text-white hover:bg-black"
+                  >
+                    <Minimize2 size={14} />
+                    {t('mediaGallery.downscale.action')}
+                  </button>
+                )}
+                {canAdjust && !oversize.eligible && (
+                  <button
+                    type="button"
+                    aria-label={`Ajustar proporção de ${m.original_filename}`}
+                    onClick={() => startAdjust(m)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#12151a] px-3 py-2 text-xs font-semibold text-white hover:bg-black"
+                  >
+                    <Crop size={14} />
+                    Ajustar proporção
+                  </button>
+                )}
               </div>
-              {canAdjust && (
-                <button
-                  type="button"
-                  aria-label={`Ajustar proporção de ${m.original_filename}`}
-                  onClick={() => startAdjust(m)}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#12151a] px-3 py-2 text-xs font-semibold text-white hover:bg-black"
-                >
-                  <Crop size={14} />
-                  Ajustar proporção
-                </button>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
       {canAdjust && portraitSuggestions.length > 0 && (
@@ -826,6 +878,17 @@ export function PostMediaGallery({
                   onSelect: () => setEditingMedia(m),
                   icon: <ImageIcon />,
                 });
+              if (
+                canAdjust &&
+                !m.media_lost_at &&
+                targetsInstagram &&
+                oversizeOnly(m, validationOpts).eligible
+              )
+                edit.push({
+                  label: t('mediaGallery.downscale.action'),
+                  onSelect: () => setDownscalingMedia(m),
+                  icon: <Minimize2 />,
+                });
               if (canAdjust && !m.media_lost_at)
                 edit.push({
                   label: 'Ajustar proporção',
@@ -882,6 +945,15 @@ export function PostMediaGallery({
                     onOpen={() => setLightboxIndex(i)}
                     openNotes={openNoteCounts.get(m.id) ?? 0}
                     onAdjust={canAdjust && !m.media_lost_at ? () => startAdjust(m) : undefined}
+                    onDownscale={
+                      canAdjust &&
+                      !m.media_lost_at &&
+                      targetsInstagram &&
+                      oversizeOnly(m, validationOpts).eligible
+                        ? () => setDownscalingMedia(m)
+                        : undefined
+                    }
+                    downscaleLabel={t('mediaGallery.downscale.action')}
                     needsAdjustment={invalidMedia.includes(m)}
                     onDelete={() => handleDelete(m.id)}
                     onEditThumbnail={
@@ -961,7 +1033,9 @@ export function PostMediaGallery({
                     ? '✓'
                     : item.status === 'error'
                       ? t('mediaGallery.error')
-                      : `${item.pct}%`}
+                      : item.status === 'converting'
+                        ? t('mediaGallery.downscale.converting', { pct: item.pct })
+                        : `${item.pct}%`}
                 </span>
               </div>
               <div className="h-1.5 rounded-full bg-stone-200 overflow-hidden">
@@ -1056,6 +1130,17 @@ export function PostMediaGallery({
           }}
         />
       )}
+
+      <DownscaleMediaDialog
+        media={downscalingMedia}
+        forStories={forStories}
+        onOpenChange={(open) => {
+          if (!open) setDownscalingMedia(null);
+        }}
+        onDone={refreshWithCovers}
+      />
+
+      {downscaleOffer.dialog}
 
       <ThumbnailPickerDialog
         media={editingMedia ? (media.find((m) => m.id === editingMedia.id) ?? editingMedia) : null}
@@ -1286,6 +1371,9 @@ interface SortableMediaTileProps {
   onDelete: () => void;
   onEditThumbnail?: () => void;
   onAdjust?: () => void;
+  /** Oversize-only video: "Reduzir resolução" beside "Ajustar proporção". */
+  onDownscale?: () => void;
+  downscaleLabel?: string;
   needsAdjustment?: boolean;
 }
 
@@ -1297,6 +1385,8 @@ function SortableMediaTile({
   onDelete,
   onEditThumbnail,
   onAdjust,
+  onDownscale,
+  downscaleLabel,
   needsAdjustment,
 }: SortableMediaTileProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -1360,6 +1450,17 @@ function SortableMediaTile({
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
+            {onDownscale && (
+              <button
+                type="button"
+                onClick={onDownscale}
+                title={downscaleLabel}
+                aria-label={downscaleLabel}
+                className="flex h-6 w-6 items-center justify-center rounded-full bg-[#12151a] text-white hover:bg-black"
+              >
+                <Minimize2 className="h-3 w-3" />
+              </button>
+            )}
             {onAdjust && (
               <button
                 type="button"
