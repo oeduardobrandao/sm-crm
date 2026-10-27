@@ -29,3 +29,4 @@ export * from './mentions';
 export * from './agenda';
 export * from './postTargets';
 export * from './equipeChat';
+export * from './linhaEditorial';
