@@ -206,7 +206,9 @@
       "message": "Você tem alterações não salvas. Deseja fechar mesmo assim?",
       "keepEditing": "Continuar editando",
       "discard": "Fechar mesmo assim"
-    }
+    },
+    "showPassword": "Mostrar senha",
+    "hidePassword": "Ocultar senha"
   },
   "dateFormat": {
     "monthYear": "MMMM 'de' yyyy",
@@ -253,5 +255,28 @@
     "notIncluded": "Não incluído no plano",
     "unlimited": "Ilimitado",
     "upgrade": "Fazer upgrade"
+  },
+  "paywall": {
+    "notAvailable": "{{label}} não está disponível no seu plano.",
+    "thisFeature": "Este recurso"
+  },
+  "photo": {
+    "add": "Adicionar foto",
+    "change": "Alterar foto",
+    "addFor": "Adicionar foto de {{nome}}",
+    "changeFor": "Alterar foto de {{nome}}",
+    "gallery": "Escolher da galeria",
+    "camera": "Tirar foto",
+    "remove": "Remover foto",
+    "removeConfirm": "Remover",
+    "sheetTitle": "Foto de perfil",
+    "removeTitle": "Remover a foto?",
+    "removeDescription": "Volta a aparecer as iniciais.",
+    "help": "JPG, PNG ou HEIC até 10 MB. A foto é recortada em quadrado.",
+    "tooLarge": "A foto deve ter até 10 MB.",
+    "updated": "Foto atualizada.",
+    "uploadError": "Erro ao enviar a foto.",
+    "removed": "Foto removida.",
+    "removeError": "Erro ao remover a foto."
   }
 }
