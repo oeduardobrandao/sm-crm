@@ -11,6 +11,7 @@ import {
   chipsFor,
   formatDateTime,
   formatDay,
+  indexStatusView,
   isLiveItem,
   itemKey,
   itemPath,
@@ -20,6 +21,7 @@ import {
   type BlogMetricsResponse,
   type BlogSort,
   type BlogTab,
+  type IndexStatus,
 } from './blog-view';
 import { LiveRowLink } from './LiveLinkButtons';
 
@@ -31,6 +33,15 @@ const EMPTY: Record<BlogTab, { title: string; description: string }> = {
   publicados: { title: 'Nenhum post publicado', description: 'Os posts aprovados ficam aqui.' },
   rejeitados: { title: 'Nenhum post rejeitado', description: 'Os posts rejeitados ficam aqui.' },
 };
+
+function IndexBadge({ index }: { index: IndexStatus | null }) {
+  const { label, tone } = indexStatusView(index);
+  return (
+    <Badge variant={tone} size="sm">
+      {label}
+    </Badge>
+  );
+}
 
 export interface BlogListProps {
   items: BlogListItem[];
@@ -139,9 +150,14 @@ export function BlogList({
                 {r.title}
               </RowLink>
               {metrics && isLiveItem(item) && (
-                <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
-                  {metricLine(metrics.posts[r.slug], metrics.gsc_updated_at !== null)}
-                </p>
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <p className="text-xs tabular-nums text-muted-foreground">
+                    {metricLine(metrics.posts[r.slug], metrics.gsc_updated_at !== null)}
+                  </p>
+                  {metrics.gsc_updated_at !== null && (
+                    <IndexBadge index={metrics.posts[r.slug]?.index ?? null} />
+                  )}
+                </div>
               )}
               {(item.kind === 'arquivo' || chips.length > 0) && (
                 <div className="mt-1.5 flex flex-wrap gap-1">

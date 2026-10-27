@@ -96,7 +96,7 @@ export interface SearchTotals {
   position: number | null;
 }
 
-/** One post in `blog-metrics`. Slugs with no views are absent from the map. */
+/** One post in `blog-metrics`. A slug with no views, search data or index row is absent. */
 export interface PostMetrics {
   views_7d: number;
   views_30d: number;
@@ -381,6 +381,39 @@ const nf1 = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFr
 export const formatInt = (n: number): string => nf.format(n);
 export const formatPosition = (n: number): string => nf1.format(n);
 
+const INDEX_LABELS: Record<string, string> = {
+  'Submitted and indexed': 'Indexada',
+  'Indexed, not submitted in sitemap': 'Indexada (fora do sitemap)',
+  'Discovered - currently not indexed': 'Descoberta, ainda não indexada',
+  'Crawled - currently not indexed': 'Rastreada, não indexada',
+  'URL is unknown to Google': 'Desconhecida pelo Google',
+  'Duplicate, Google chose different canonical than user':
+    'Duplicada (Google escolheu outra canônica)',
+  'Page with redirect': 'Página com redirecionamento',
+  "Excluded by 'noindex' tag": 'Bloqueada por noindex',
+  'Not found (404)': 'Não encontrada (404)',
+};
+
+const INDEX_TONES: Record<string, ChipTone> = {
+  PASS: 'success',
+  PARTIAL: 'warning',
+  NEUTRAL: 'warning',
+  FAIL: 'danger',
+};
+
+/** Index badge of a post. Tone comes from Google's verdict alone; the label translates the
+ * known `coverage_state` strings and shows an unknown one as Google wrote it (spec §4). With no
+ * coverage state the label is "Ainda não verificada" and the tone neutral, whatever the verdict. */
+export function indexStatusView(index: IndexStatus | null): { label: string; tone: ChipTone } {
+  const state = index?.coverage_state;
+  // No coverage state to show: a colored tone would contradict "Ainda não verificada".
+  if (!index || !state) return { label: 'Ainda não verificada', tone: 'neutral' };
+  return {
+    label: INDEX_LABELS[state] || state,
+    tone: (index.verdict && INDEX_TONES[index.verdict]) || 'neutral',
+  };
+}
+
 /** Publicados sort. `recentes` keeps the incoming order (already by date); the others are a
  * stable descending sort, so ties keep date order. A slug with no metrics counts as zero. */
 export function sortItems(
@@ -466,6 +499,31 @@ export function formatDateTime(iso: string | null): string {
     timeZone: 'America/Sao_Paulo',
   });
 }
+
+/** "27/10/2026 15:04" in São Paulo time. */
+export function formatDateTimeFull(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+      timeZone: 'America/Sao_Paulo',
+    })
+      .formatToParts(d)
+      .map((p) => [p.type, p.value]),
+  );
+  return `${parts.day}/${parts.month}/${parts.year} ${parts.hour}:${parts.minute}`;
+}
+
+/** 0.0423 to "4,2%". */
+export const formatPercent = (ratio: number): string =>
+  `${new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(ratio * 100)}%`;
 
 export function formatDay(iso: string | null): string {
   if (!iso) return '';

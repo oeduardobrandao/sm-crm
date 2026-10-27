@@ -155,7 +155,7 @@ named explicitly.
   cap under concurrency are acceptable.
 - `blog_view_salt_today() returns text` (service_role only): returns today's salt (São Paulo
   day), inserting one with `gen_random_bytes` on conflict-do-nothing if absent, and deletes every
-  salt with `day < today` in the same call. A pg_cron job at 00:05 São Paulo runs the same delete,
+  salt with `day < today` in the same call. A pg_cron job (`blog-view-salt-prune`, `23 3 * * *` UTC = 00:23 São Paulo) runs the same delete,
   so a salt never outlives its day by more than a few minutes even on a day with no views.
 - `blog_view_stats() returns table (slug text, views_7d bigint, views_30d bigint, views_total
   bigint)` and `blog_view_daily(p_slug text, p_days int) returns table (day date, views bigint)`
@@ -306,7 +306,9 @@ day by pg_cron with the vault-secret pattern, at a minute the stagger migration
    re-checked at least every few days up to several hundred posts. A post published in the last
    3 days is always included regardless of the cap ordering.
 3. Records the run in `blog_search_runs`. A failure in step 2 for one URL is logged and skipped;
-   a token or step-1 failure fails the run (`reportCronFailure`).
+   a token or step-1 failure fails the run (`reportCronFailure`). If every URL attempted in step 2
+   fails, the run still closes `ok` (step 1 refreshed the data) but calls `reportCronFailure` and
+   records the reason in `error`.
 
 ### Index status: tone and label
 
@@ -325,20 +327,26 @@ danger, anything else or no row → neutral. The label maps known `coverage_stat
 | Excluded by 'noindex' tag | Bloqueada por noindex |
 | Not found (404) | Não encontrada (404) |
 
-An unmapped string is shown as Google wrote it. No row yet: "Ainda não verificada".
+An unmapped string is shown as Google wrote it. No row yet, or a row with no `coverage_state`:
+"Ainda não verificada", always with the neutral tone (whatever the verdict).
 
 ### Admin "Ver no Search Console"
 
 Uses the stored `inspection_link` (Google builds it, so it is correct for a domain property).
-Before the first inspection of a post there is no link; the UI says "Ainda não verificado pelo
-Google".
+Before the first inspection of a post (no row, or a row with no verdict) there is no link; the UI
+says "Ainda não verificado pelo Google". A checked row that came back without a link shows
+nothing there.
 
 ## 5. Admin UI
 
-New `platform-admin` actions (authorized as today; generic 500 on error):
+New `platform-admin` actions (authorized as today; generic 500 when the views read fails; a
+Search Console read failure is logged by step name and only empties the Google part:
+`gsc_updated_at`/`search`/`index` null in `blog-metrics`, `search: []` in `blog-post-metrics`):
 
 - `blog-metrics` → `{ gsc_updated_at: string | null (null = no successful sync yet: "Search Console não configurado"), posts: Record<slug,
-  { views_7d, views_30d, views_total, clicks_28d, impressions_28d, ctr_28d, position_28d,
+  { views_7d, views_30d, views_total,
+  search: { clicks, impressions, ctr, position } | null (28d window; position is null when
+  Google reported none),
   index: { verdict, coverage_state, last_crawl_time, inspection_link, checked_at } | null }> }`.
   Fetched by `BlogPage` alongside the list on Publicados and Aguardando (for live rows there). Missing slug = zeros.
 - `blog-post-metrics { slug, days: 90 }` → two separate zero-filled series, never joined on

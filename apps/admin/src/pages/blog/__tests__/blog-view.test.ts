@@ -3,7 +3,10 @@ import {
   actionsFor,
   chipsFor,
   failingChecks,
+  formatDateTimeFull,
   formatDay,
+  formatPercent,
+  indexStatusView,
   isLiveItem,
   isStale,
   itemPath,
@@ -19,6 +22,7 @@ import {
   withSort,
   type BlogListItem,
   type BlogPostRow,
+  type IndexStatus,
   type PostMetrics,
   type FilePostRow,
 } from '../blog-view';
@@ -397,5 +401,90 @@ describe('formatDay', () => {
 
   it('returns an empty string for null', () => {
     expect(formatDay(null)).toBe('');
+  });
+});
+
+describe('indexStatusView', () => {
+  const idx = (verdict: string | null, coverage_state: string | null): IndexStatus => ({
+    verdict,
+    coverage_state,
+    last_crawl_time: null,
+    inspection_link: null,
+    checked_at: '2026-10-27T03:00:00Z',
+  });
+
+  it('maps the coverage state to Portuguese and the verdict to a tone', () => {
+    expect(indexStatusView(idx('PASS', 'Submitted and indexed'))).toEqual({
+      label: 'Indexada',
+      tone: 'success',
+    });
+    expect(indexStatusView(idx('NEUTRAL', 'Discovered - currently not indexed'))).toEqual({
+      label: 'Descoberta, ainda não indexada',
+      tone: 'warning',
+    });
+    expect(indexStatusView(idx('FAIL', 'Not found (404)'))).toEqual({
+      label: 'Não encontrada (404)',
+      tone: 'danger',
+    });
+  });
+
+  it('stays neutral whenever the label falls back to "Ainda não verificada"', () => {
+    // A verdict with no coverage state must not paint "Ainda não verificada" green or red.
+    for (const verdict of ['PASS', 'PARTIAL', 'FAIL', null]) {
+      expect(indexStatusView(idx(verdict, null))).toEqual({
+        label: 'Ainda não verificada',
+        tone: 'neutral',
+      });
+    }
+    expect(indexStatusView(null)).toEqual({ label: 'Ainda não verificada', tone: 'neutral' });
+  });
+
+  it('covers every row of the coverage table, PARTIAL as warning', () => {
+    const table: Array<[string, string]> = [
+      ['Indexed, not submitted in sitemap', 'Indexada (fora do sitemap)'],
+      ['Crawled - currently not indexed', 'Rastreada, não indexada'],
+      ['URL is unknown to Google', 'Desconhecida pelo Google'],
+      [
+        'Duplicate, Google chose different canonical than user',
+        'Duplicada (Google escolheu outra canônica)',
+      ],
+      ['Page with redirect', 'Página com redirecionamento'],
+      ["Excluded by 'noindex' tag", 'Bloqueada por noindex'],
+    ];
+    for (const [state, label] of table) {
+      expect(indexStatusView(idx('PARTIAL', state))).toEqual({ label, tone: 'warning' });
+    }
+  });
+
+  it('shows an unmapped coverage state as Google wrote it', () => {
+    expect(indexStatusView(idx('PASS', 'Something new'))).toEqual({
+      label: 'Something new',
+      tone: 'success',
+    });
+  });
+
+  it('is neutral for an unknown verdict, and "Ainda não verificada" with no row or state', () => {
+    expect(indexStatusView(idx('VERDICT_UNSPECIFIED', 'Submitted and indexed')).tone).toBe(
+      'neutral',
+    );
+    expect(indexStatusView(idx(null, null))).toEqual({
+      label: 'Ainda não verificada',
+      tone: 'neutral',
+    });
+    expect(indexStatusView(null)).toEqual({ label: 'Ainda não verificada', tone: 'neutral' });
+  });
+});
+
+describe('formatDateTimeFull / formatPercent', () => {
+  it('formats dd/MM/yyyy HH:mm in São Paulo time', () => {
+    expect(formatDateTimeFull('2026-10-27T18:04:00Z')).toBe('27/10/2026 15:04');
+    expect(formatDateTimeFull('2026-10-28T02:30:00Z')).toBe('27/10/2026 23:30');
+    expect(formatDateTimeFull(null)).toBe('');
+    expect(formatDateTimeFull('nope')).toBe('');
+  });
+
+  it('formats a ratio as a Brazilian percentage', () => {
+    expect(formatPercent(0.0423)).toBe('4,2%');
+    expect(formatPercent(0)).toBe('0,0%');
   });
 });

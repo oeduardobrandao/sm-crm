@@ -662,6 +662,10 @@ describe('BlogPage metrics', () => {
       await screen.findByText('10 views (30d) · 90 cliques · posição 12,4'),
     ).toBeInTheDocument();
     expect(order()).toEqual(['Post que está no ar', 'Post escrito à mão']);
+    expect(screen.getByRole('radio', { name: 'Mais cliques' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
   });
 
   it('falls back to recentes for ?ordem=cliques while Search Console is not configured', async () => {
