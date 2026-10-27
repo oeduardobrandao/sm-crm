@@ -24,7 +24,6 @@ import {
   cannotPostMessage,
   computeTikTokReadiness,
   disclosureLabel,
-  DISCLOSURE_INCOMPLETE_MSG,
   isAppAudited,
   isPublicAccountInTestMode,
   longestVideoSeconds,
@@ -613,7 +612,7 @@ export function TikTokSettingsPanel({
                   className="mt-px h-3.5 w-3.5 shrink-0"
                   style={{ color: 'var(--warning)' }}
                 />
-                <span>{DISCLOSURE_INCOMPLETE_MSG}</span>
+                <span>{t('entregas:tiktokRules.disclosureIncomplete')}</span>
               </p>
             )}
           </>
