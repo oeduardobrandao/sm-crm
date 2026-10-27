@@ -14,12 +14,10 @@ function renderPage() {
 describe('TermosPage: planos e teste grátis', () => {
   it('descreve o plano Free, os planos pagos e o teste grátis', () => {
     renderPage();
-    expect(screen.getByText(/O Mesaas oferece um plano gratuito \(Free\)/)).toBeInTheDocument();
-    expect(screen.getByText(/Teste grátis: cada workspace pode testar/)).toBeInTheDocument();
-    expect(
-      screen.getByText(/Enviamos um e-mail 7 dias antes da primeira cobrança/),
-    ).toBeInTheDocument();
-    expect(screen.getByText('Nos planos pagos:')).toBeInTheDocument();
+    expect(screen.getByText(/O Mesaas oferece um plano gratuito \(Free\)/)).toBeTruthy();
+    expect(screen.getByText(/Teste grátis: cada workspace pode testar/)).toBeTruthy();
+    expect(screen.getByText(/Enviamos um e-mail 7 dias antes da primeira cobrança/)).toBeTruthy();
+    expect(screen.getByText('Nos planos pagos:')).toBeTruthy();
   });
 
   it('não fala mais em período beta nem em planos pagos que ainda vão entrar em vigor', () => {
