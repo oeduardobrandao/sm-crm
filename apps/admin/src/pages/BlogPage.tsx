@@ -30,14 +30,15 @@ import {
   DialogTitle,
 } from '../components/ui/dialog';
 import { BlogList } from './blog/BlogList';
+import { FilePostDetail } from './blog/FilePostDetail';
 import { BlogDetail, type BlogCommand, type RunResult } from './blog/BlogDetail';
 import {
   BLOG_TABS,
   formatDay,
   isLive,
+  itemsFor,
   noRecentDraft,
   parseTab,
-  sortQueue,
   type BlogPostDetail,
   type BlogTab,
 } from './blog/blog-view';
@@ -82,9 +83,10 @@ export default function BlogPage() {
   const isPhone = useIsPhone();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { id } = useParams<{ id: string }>();
+  const { id, slug } = useParams<{ id: string; slug: string }>();
   const [params] = useSearchParams();
-  const tab = parseTab(params.get('tab'));
+  // A hand-written post only exists on Publicados, whatever the query string says.
+  const tab = slug ? 'publicados' : parseTab(params.get('tab'));
 
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -126,7 +128,11 @@ export default function BlogPage() {
     refetchOnReconnect: !editing,
   });
 
-  const rows = useMemo(() => sortQueue(list.data?.posts ?? [], now), [list.data, now]);
+  const items = useMemo(
+    () => itemsFor(tab, list.data?.posts ?? [], list.data?.file_posts ?? [], now),
+    [tab, list.data, now],
+  );
+  const filePost = slug ? list.data?.file_posts?.find((f) => f.slug === slug) : undefined;
   const lastDraftAt = list.data?.last_draft_at ?? null;
   const post = detail.data?.post;
 
@@ -301,9 +307,9 @@ export default function BlogPage() {
 
   const listView = (
     <BlogList
-      rows={rows}
+      items={items}
       tab={tab}
-      selectedId={id ?? null}
+      selectedKey={slug ? `arquivo:${slug}` : (id ?? null)}
       now={now}
       isLoading={list.isLoading}
       isError={list.isError}
@@ -312,13 +318,16 @@ export default function BlogPage() {
     />
   );
 
-  const detailView = (
+  const detailView = filePost ? (
+    <FilePostDetail post={filePost} />
+  ) : (
     <BlogDetail
-      key={id ?? 'none'}
+      key={id ?? slug ?? 'none'}
       post={id ? post : undefined}
-      isLoading={!!id && detail.isLoading}
-      isError={!!id && detail.isError}
-      onRetryLoad={() => void detail.refetch()}
+      // A file post is read from the list: loading and "not found" are the list's.
+      isLoading={(!!id && detail.isLoading) || (!!slug && list.isLoading)}
+      isError={(!!id && detail.isError) || (!!slug && !list.isLoading)}
+      onRetryLoad={() => void (slug ? list.refetch() : detail.refetch())}
       now={now}
       pending={mutation.isPending}
       editing={editing}
@@ -342,7 +351,7 @@ export default function BlogPage() {
   const description = 'Posts escritos pela rotina. Nada vai ao ar sem sua aprovação.';
 
   if (isPhone) {
-    if (id) {
+    if (id || slug) {
       return (
         <div>
           <PageHeader

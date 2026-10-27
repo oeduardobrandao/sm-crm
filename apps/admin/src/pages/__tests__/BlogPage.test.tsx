@@ -95,6 +95,7 @@ function renderAt(path: string) {
       <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/admin/blog" element={<BlogPage />} />
+          <Route path="/admin/blog/arquivo/:slug" element={<BlogPage />} />
           <Route path="/admin/blog/:id" element={<BlogPage />} />
         </Routes>
       </MemoryRouter>
@@ -469,5 +470,74 @@ describe('BlogPage', () => {
       expect(toast.error).toHaveBeenCalledWith('Aguarde a ação em andamento terminar.'),
     );
     expect(retryBlogPublish).toHaveBeenCalledTimes(1);
+  });
+
+  describe('hand-written posts', () => {
+    const file = {
+      kind: 'arquivo' as const,
+      slug: 'post-a-mao',
+      title: 'Post escrito à mão',
+      description: 'Descrição do post de arquivo.',
+      category: 'guia',
+      date: '2026-10-25',
+    };
+    beforeEach(() => {
+      vi.mocked(listBlogPosts).mockImplementation(async (tab) => ({
+        posts:
+          tab === 'publicados'
+            ? [
+                row({
+                  id: ID2,
+                  status: 'publicado',
+                  title: 'Post que está no ar',
+                  date: '2026-10-20',
+                }),
+              ]
+            : [],
+        last_draft_at: ago(2 * HOUR),
+        file_posts: tab === 'publicados' ? [file] : [],
+      }));
+    });
+
+    it('lists file posts on Publicados beside the DB posts', async () => {
+      renderAt('/admin/blog?tab=publicados');
+      expect(await screen.findByRole('link', { name: 'Post escrito à mão' })).toHaveAttribute(
+        'href',
+        '/admin/blog/arquivo/post-a-mao?tab=publicados',
+      );
+      expect(screen.getByText('Post que está no ar')).toBeInTheDocument();
+    });
+
+    it('opens the read-only detail for a file post without fetching a DB post', async () => {
+      renderAt('/admin/blog/arquivo/post-a-mao?tab=publicados');
+      expect(await screen.findByText('Descrição do post de arquivo.')).toBeInTheDocument();
+      expect(screen.getByText(/Este post vive no código/)).toBeInTheDocument();
+      expect(listBlogPosts).toHaveBeenCalledWith('publicados');
+      expect(getBlogPost).not.toHaveBeenCalled();
+      expect(screen.queryByRole('button', { name: 'Despublicar' })).not.toBeInTheDocument();
+    });
+
+    it('forces the Publicados tab even without ?tab', async () => {
+      renderAt('/admin/blog/arquivo/post-a-mao');
+      expect(await screen.findByText('Descrição do post de arquivo.')).toBeInTheDocument();
+      expect(listBlogPosts).toHaveBeenCalledWith('publicados');
+      expect(listBlogPosts).not.toHaveBeenCalledWith('aguardando');
+    });
+
+    it('shows the load error when the slug is not in the list', async () => {
+      renderAt('/admin/blog/arquivo/nao-existe?tab=publicados');
+      expect(await screen.findByText('Não foi possível carregar o post.')).toBeInTheDocument();
+    });
+
+    it('works on the phone layout', async () => {
+      const restore = mockPhone();
+      try {
+        renderAt('/admin/blog/arquivo/post-a-mao?tab=publicados');
+        expect(await screen.findByText('Descrição do post de arquivo.')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Voltar para Blog' })).toBeInTheDocument();
+      } finally {
+        restore();
+      }
+    });
   });
 });

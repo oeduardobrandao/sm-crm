@@ -67,6 +67,10 @@ export const router = createBrowserRouter([
         lazy: async () => ({ Component: (await import('./pages/BlogPage')).default }),
       },
       {
+        path: 'blog/arquivo/:slug',
+        lazy: async () => ({ Component: (await import('./pages/BlogPage')).default }),
+      },
+      {
         path: 'blog/:id',
         lazy: async () => ({ Component: (await import('./pages/BlogPage')).default }),
       },
