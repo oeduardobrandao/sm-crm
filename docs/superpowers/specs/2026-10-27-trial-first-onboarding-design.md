@@ -189,9 +189,10 @@ trial, keyed by subscription and first-charge date.
 
 **When:** the first-charge date is the row's `current_period_end`: the trial end for Stripe
 trials, and `start_at` for Pagar.me (the builder verifies both writers).
-- **Target window:** 7 to 8 days before the charge. The cron runs daily, so the first run
-  that sees a trial in this window sends. That is ≥7 days ahead (Visa) and as close to 7
-  as a daily cron allows (Mastercard's 3 to 7 days).
+- **Target window:** 7 days to 7 days + 1 hour before the charge. The sweep runs every 15
+  minutes inside `lifecycle-email-cron` (see "As built" below), so the first run that sees a
+  trial in this window sends. That is ≥7 days ahead (Visa) and within Mastercard's 3 to 7
+  days.
 - **Catch-up:** if a run was missed, still send while the charge is 3 or more days away.
   A late reminder beats none, and it still meets Mastercard. Log a warning with the
   number of days left.
@@ -221,9 +222,8 @@ teste do Mesaas {plano} termina em 7 dias". The body states:
 - the plan;
 - the amount of the first charge, from the subscription's own mirror
   (`workspace_subscriptions.amount_cents`, net of coupons, written by the webhooks), never
-  the current catalog row. If `amount_cents` is null, fetch it live from the provider. If
-  that fails, leave the exact figure out ("o valor do seu plano") rather than guess, and
-  log it;
+  the current catalog row. If `amount_cents` is null, leave the exact figure out ("o valor
+  do seu plano") rather than guess, and log it;
 - the exact charge date;
 - a button to keep the plan (no action needed) and a clearly visible link to cancel or
   change it at `/configuracao/cobranca`, where the Stripe Billing Portal already handles
@@ -245,13 +245,37 @@ ledger.
   itself still `trialing` at the switch, the customer is in a real trial and gets the
   reminder.
 - For a 12x trial the first charge is the first installment. The email states "12x de
-  {parcela}" from the existing `installment_amount_cents` mirror, and the annual total from
-  `amount_cents` for context.
+  {parcela}" with the installment computed as `amount_cents / 12`, and the annual total
+  from `amount_cents` for context.
 - `amount_cents` keeps meaning the annual total. The Admin's MRR reads it, so don't change
   it.
 - Cancelling a Pagar.me trial is an immediate delete through `pagarme-subscription`, not the
   Stripe portal. The email's cancel link must work for both providers.
 - Stripe rows with `cancel_at_period_end = true` are skipped: they won't be charged.
+
+**As built (corrections to the text above):**
+- The reminder is a third sweep in the existing `lifecycle-email-cron` (every 15 minutes,
+  already registered with `cron-health-cron`), not a new daily function. No new pg_cron
+  schedule, so the deploy order is just: migration `20261102000001` → `lifecycle-email-cron`
+  + `pagarme-checkout` → frontend merge. Rollback: frontend first, then the functions. Keep
+  the `lifecycle_emails` rows.
+- Candidates come from `get_trial_reminder_candidates()` (service_role only). The ledger is
+  the existing `lifecycle_emails` table, one row per (`email_type = 'trial_reminder'`,
+  workspace), with `ref_at` = the first-charge date it announced and `meta` =
+  `{to, amount_cents, amount_interval, provider, first_charge_at}`. A changed `ref_at`
+  re-arms the reminder. Known gap, accepted: a date that moves T1 → T2 → T1 inside the
+  window (a 12x switch and its undo) sends a third email for T1. Each one carries the
+  then-current date, and the path is rare.
+- There is no `installment_amount_cents` subscription column. The 12x installment is
+  `amount_cents / 12` (rounded); `amount_cents` stays the annual total.
+- A null `amount_cents` omits the figure ("o valor do seu plano"). No live provider fetch:
+  both webhooks write it.
+- `plan_name` is `coalesce(plans.name, plan_id)` and can still be null; the email then
+  drops the plan name from the subject and body.
+- New column `workspace_subscriptions.switched_from_trialing`, written by
+  `pagarme-checkout` at the switch. It is how the RPC knows a switched row is a real trial.
+  Undo and leg D do not clear it; it is only read while
+  `switched_from_stripe_subscription_id` is set.
 
 ## Part 4: wrongly advertised plan features
 
