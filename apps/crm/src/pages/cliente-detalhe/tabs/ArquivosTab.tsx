@@ -88,7 +88,7 @@ export default function ArquivosTab() {
       } else {
         getFileDownloadUrl(file.id)
           .then((url) => openExternalUrl(url))
-          .catch(() => toast.error('Erro ao abrir arquivo'));
+          .catch(() => toast.error(t('detail.fileOpenError')));
       }
     };
     return (

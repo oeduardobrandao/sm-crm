@@ -196,7 +196,9 @@ export function ClienteEnderecosSection({ clienteId }: ClienteEnderecosSectionPr
           subtitle={`${addr.bairro} · ${addr.cidade}/${addr.estado}`}
           meta={`${addr.tipo === 'residencial' ? t('detail.residential') : t('detail.commercial')} · CEP ${addr.cep}`}
           onOpen={() => handleOpenAddrModal(addr)}
-          menuLabel={`Ações do endereço ${addr.logradouro}, ${addr.numero}`}
+          menuLabel={t('detail.addressMenuLabel', {
+            address: `${addr.logradouro}, ${addr.numero}`,
+          })}
           actions={editRemoveActions(
             () => handleOpenAddrModal(addr),
             () => setAddrDeleteId(addr.id!),
@@ -324,7 +326,9 @@ export function ClienteEnderecosSection({ clienteId }: ClienteEnderecosSectionPr
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                     {addr.bairro} · {addr.cidade}/{addr.estado}
                   </p>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>CEP: {addr.cep}</p>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    {t('detail.addrCepValue', { cep: addr.cep })}
+                  </p>
                 </div>
               ))}
             </ResponsiveCardRail>

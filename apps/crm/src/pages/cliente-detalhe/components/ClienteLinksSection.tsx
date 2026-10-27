@@ -157,7 +157,7 @@ export function ClienteLinksSection({ clienteId }: ClienteLinksSectionProps) {
           title={l.titulo}
           subtitle={[l.descricao, linkDomain(l.url)].filter(Boolean).join(' · ')}
           href={l.url}
-          menuLabel={`Ações do link ${l.titulo}`}
+          menuLabel={t('detail.linkMenuLabel', { title: l.titulo })}
           actions={editRemoveActions(
             () => openDialog(l),
             () => setDeleteId(l.id!),

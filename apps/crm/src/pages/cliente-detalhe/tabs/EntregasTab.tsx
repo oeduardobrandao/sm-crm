@@ -99,6 +99,7 @@ function targetOf(p: PostEntity): ProcessTarget {
  * (scrollLeft === 0) there's nothing to go "back" to yet.
  */
 function RailScrollArrows({ railRef }: { railRef: React.RefObject<HTMLDivElement | null> }) {
+  const { t } = useTranslation('clients');
   const [canLeft, setCanLeft] = useState(false);
   const [canRight, setCanRight] = useState(false);
 
@@ -125,7 +126,7 @@ function RailScrollArrows({ railRef }: { railRef: React.RefObject<HTMLDivElement
         <button
           type="button"
           className="cliente-rail-arrow cliente-rail-arrow--left"
-          aria-label="Ver anteriores"
+          aria-label={t('detail.railPrevious')}
           onClick={() => railRef.current?.scrollBy({ left: -300, behavior: 'smooth' })}
         >
           <ChevronLeft className="h-4 w-4" />
@@ -135,7 +136,7 @@ function RailScrollArrows({ railRef }: { railRef: React.RefObject<HTMLDivElement
         <button
           type="button"
           className="cliente-rail-arrow cliente-rail-arrow--right"
-          aria-label="Ver mais"
+          aria-label={t('detail.railNext')}
           onClick={() => railRef.current?.scrollBy({ left: 300, behavior: 'smooth' })}
         >
           <ChevronRight className="h-4 w-4" />

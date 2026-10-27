@@ -29,7 +29,7 @@ export default function VisaoGeralTab() {
   })();
 
   if (isPhone) {
-    const EMPTY = 'Não informado';
+    const EMPTY = t('detail.notInformed');
     // FClienteVisaoGeral: the info card as value rows, then Links / Datas / Endereços as
     // grouped lists with a "+" header and swipe / long-press Editar and Remover.
     return (

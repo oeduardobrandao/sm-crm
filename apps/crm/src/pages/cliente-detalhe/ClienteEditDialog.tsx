@@ -197,7 +197,7 @@ export function ClienteEditDialog({ cliente, open, onOpenChange }: ClienteEditDi
                 className="underline"
                 onClick={() => onOpenChange(false)}
               >
-                A mensalidade e o status agora ficam na aba Financeiro.
+                {t('form.statusNoFinanceiro')}
               </Link>
             </p>
           )}
@@ -238,7 +238,7 @@ export function ClienteEditDialog({ cliente, open, onOpenChange }: ClienteEditDi
           </div>
           {showPlataformas && (
             <div className="space-y-1">
-              <Label>Plataformas dos posts avulsos</Label>
+              <Label>{t('editDialog.standalonePlatforms')}</Label>
               <PlatformChips value={fPlataformas} onChange={setFPlataformas} />
             </div>
           )}

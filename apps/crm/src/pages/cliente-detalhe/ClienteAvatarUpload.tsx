@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Camera, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { holdUnsavedWork } from '@mesaas/app-lifecycle';
 import {
   AlertDialog,
@@ -34,6 +35,7 @@ interface ClienteAvatarUploadProps {
  * input and call `pick()` from a user gesture (iOS only opens the picker inside one).
  */
 export function useClienteFoto(clienteId: number) {
+  const { t } = useTranslation('clients');
   const qc = useQueryClient();
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -45,7 +47,7 @@ export function useClienteFoto(clienteId: number) {
 
   async function handleUpload(file: File): Promise<boolean> {
     if (file.size > MAX_PHOTO_BYTES) {
-      toast.error('Arquivo deve ser menor que 2MB.');
+      toast.error(t('avatar.tooLarge'));
       return false;
     }
     setUploading(true);
@@ -63,10 +65,10 @@ export function useClienteFoto(clienteId: number) {
       const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
       await updateCliente(clienteId, { foto_url: urlData.publicUrl });
       invalidate();
-      toast.success('Foto atualizada!');
+      toast.success(t('avatar.updated'));
       return true;
     } catch {
-      toast.error('Erro ao enviar foto.');
+      toast.error(t('avatar.uploadError'));
       return false;
     } finally {
       release();
@@ -79,9 +81,9 @@ export function useClienteFoto(clienteId: number) {
     try {
       await updateCliente(clienteId, { foto_url: null });
       invalidate();
-      toast.success('Foto removida.');
+      toast.success(t('avatar.removed'));
     } catch {
-      toast.error('Erro ao remover foto.');
+      toast.error(t('avatar.removeError'));
     } finally {
       setUploading(false);
     }
@@ -114,6 +116,7 @@ export function ClienteAvatarUpload({
   imageUrl,
   canEdit,
 }: ClienteAvatarUploadProps) {
+  const { t } = useTranslation('clients');
   const foto = useClienteFoto(clienteId);
   const uploading = foto.uploading;
   const [removeOpen, setRemoveOpen] = useState(false);
@@ -153,7 +156,7 @@ export function ClienteAvatarUpload({
       <button
         type="button"
         className="cliente-avatar-upload__trigger"
-        aria-label="Alterar foto do cliente"
+        aria-label={t('avatar.changeAria')}
         disabled={uploading}
         onClick={foto.pick}
       >
@@ -179,7 +182,7 @@ export function ClienteAvatarUpload({
           <button
             type="button"
             className="cliente-avatar-upload__remove"
-            aria-label="Remover foto do cliente"
+            aria-label={t('avatar.removeAria')}
             disabled={uploading}
             onClick={() => setRemoveOpen(true)}
           >
@@ -188,14 +191,12 @@ export function ClienteAvatarUpload({
           <AlertDialog open={removeOpen} onOpenChange={setRemoveOpen}>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Remover a foto do cliente?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  O Hub volta a mostrar o avatar do Instagram (se houver) ou as iniciais do cliente.
-                </AlertDialogDescription>
+                <AlertDialogTitle>{t('avatar.removeTitle')}</AlertDialogTitle>
+                <AlertDialogDescription>{t('avatar.removeDescription')}</AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <AlertDialogAction onClick={handleRemove}>Remover</AlertDialogAction>
+                <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
+                <AlertDialogAction onClick={handleRemove}>{t('actions.delete')}</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>

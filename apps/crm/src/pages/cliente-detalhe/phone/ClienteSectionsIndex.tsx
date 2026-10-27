@@ -57,10 +57,16 @@ export function ClienteSectionsIndex({
 
   const facts = [
     cliente.data_pagamento
-      ? { label: 'Pagamento', value: t('detail.dayN', { day: cliente.data_pagamento }) }
+      ? {
+          label: t('sectionsIndex.payment'),
+          value: t('detail.dayN', { day: cliente.data_pagamento }),
+        }
       : null,
     cliente.dia_entrega
-      ? { label: 'Entrega', value: t('detail.dayN', { day: cliente.dia_entrega }) }
+      ? {
+          label: t('sectionsIndex.delivery'),
+          value: t('detail.dayN', { day: cliente.dia_entrega }),
+        }
       : null,
     cliente.especialidade ? { label: t('detail.specialty'), value: cliente.especialidade } : null,
   ].filter((f): f is { label: string; value: string } => f !== null);
@@ -68,10 +74,10 @@ export function ClienteSectionsIndex({
   const menuActions: ActionSheetAction[] = [];
   if (onEdit) menuActions.push({ label: t('detail.nav.editar'), onSelect: onEdit });
   // `immediate`: the file picker only opens inside the tap on iOS Safari.
-  menuActions.push({ label: 'Alterar foto', onSelect: foto.pick, immediate: true });
+  menuActions.push({ label: tc('photo.change'), onSelect: foto.pick, immediate: true });
   if (cliente.foto_url)
     menuActions.push({
-      label: 'Remover foto',
+      label: tc('photo.remove'),
       destructive: true,
       onSelect: () => setRemoveOpen(true),
     });
@@ -103,7 +109,7 @@ export function ClienteSectionsIndex({
         trailing={
           canEdit ? (
             <PhoneIconButton
-              label="Mais ações do cliente"
+              label={t('sectionsIndex.moreActions')}
               aria-haspopup="dialog"
               onClick={() => setMenuOpen(true)}
             >
@@ -118,7 +124,7 @@ export function ClienteSectionsIndex({
           <button
             type="button"
             className="phone-cli-hero__photo"
-            aria-label="Alterar foto do cliente"
+            aria-label={t('avatar.changeAria')}
             disabled={foto.uploading}
             onClick={foto.pick}
           >
@@ -143,7 +149,7 @@ export function ClienteSectionsIndex({
       </div>
 
       {facts.length > 0 && (
-        <div className="phone-cli-facts" role="group" aria-label="Resumo do cliente">
+        <div className="phone-cli-facts" role="group" aria-label={t('sectionsIndex.summary')}>
           {facts.map((f) => (
             <div key={f.label} className="phone-cli-facts__item">
               <span className="phone-cli-facts__label">{f.label}</span>
@@ -189,11 +195,11 @@ export function ClienteSectionsIndex({
       />
       <PhoneConfirmSheet
         open={removeOpen}
-        title="Remover a foto do cliente?"
-        message="O Hub volta a mostrar o avatar do Instagram (se houver) ou as iniciais do cliente."
+        title={t('avatar.removeTitle')}
+        message={t('avatar.removeDescription')}
         actions={[
           {
-            label: 'Remover',
+            label: tc('actions.delete'),
             destructive: true,
             onSelect: () => {
               setRemoveOpen(false);

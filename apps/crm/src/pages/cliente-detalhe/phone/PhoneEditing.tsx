@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { GripVertical } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/lib/utils';
@@ -17,7 +18,7 @@ export function PhoneInlineEdit({
   onCancel,
   label,
   placeholder,
-  saveLabel = 'Salvar',
+  saveLabel,
   saving,
   autoFocus = true,
   as: Root = 'li',
@@ -35,6 +36,7 @@ export function PhoneInlineEdit({
   autoFocus?: boolean;
   as?: 'li' | 'div';
 }) {
+  const { t } = useTranslation('clients');
   return (
     <Root className="phone-cli-edit">
       <input
@@ -53,7 +55,7 @@ export function PhoneInlineEdit({
       <span className="phone-cli-edit__actions">
         {onCancel && (
           <button type="button" className="phone-cli-link-button" onClick={onCancel}>
-            Cancelar
+            {t('actions.cancel')}
           </button>
         )}
         <button
@@ -62,7 +64,7 @@ export function PhoneInlineEdit({
           disabled={saving || !value.trim()}
           onClick={onSave}
         >
-          {saveLabel}
+          {saveLabel ?? t('actions.save')}
         </button>
       </span>
     </Root>
