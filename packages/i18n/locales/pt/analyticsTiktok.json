@@ -198,7 +198,10 @@
     "unavailable": "A análise com IA está indisponível no momento.",
     "rateLimited": "Você atingiu o limite de análises por hora. Tente novamente mais tarde.",
     "error": "Não foi possível gerar a análise.",
-    "portfolioEmpty": "Toque para obter uma análise estratégica das contas com IA."
+    "portfolioEmpty": "Toque para obter uma análise estratégica das contas com IA.",
+    "topVideo": "Melhor vídeo",
+    "worstVideo": "Pior vídeo",
+    "titleDiagnostic": "Diagnóstico de títulos"
   },
   "drawer": {
     "titleBest": "Todos os vídeos",

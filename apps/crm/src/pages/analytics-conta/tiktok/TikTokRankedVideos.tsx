@@ -23,12 +23,12 @@ import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import { sanitizeUrl } from '../../../utils/security';
 import type { TikTokVideoAnalytics } from '../../../services/tiktokAnalytics';
 import {
-  formatCount,
-  formatRate,
-  formatVideoDate,
-  MATURE_AFTER_MS,
-  SP_OFFSET,
-} from './tiktokTabFormat';
+  filterByPostedRange,
+  postedMs,
+  rankByViews,
+  sortNullsLast,
+} from '../../analytics-tiktok/videoRanking';
+import { formatCount, formatRate, formatVideoDate } from './tiktokTabFormat';
 
 type Mode = 'best' | 'worst';
 type OrderBy = 'views' | 'likes' | 'comments' | 'shares' | 'engagement' | 'date';
@@ -42,28 +42,13 @@ const ORDERS: { value: OrderBy; key: string }[] = [
 ];
 
 const STRIP_SIZE = 5;
-const time = (v: TikTokVideoAnalytics) => (v.posted_at ? new Date(v.posted_at).getTime() : 0);
-
-/**
- * `best`: every video of the window, most viewed first. `worst`: the ones posted more than
- * 48h ago, fewest views first (Instagram parity).
- */
-export function rankTikTokVideos(videos: TikTokVideoAnalytics[], now: number = Date.now()) {
-  const cutoff = now - MATURE_AFTER_MS;
-  return {
-    best: [...videos].sort((a, b) => (b.views ?? 0) - (a.views ?? 0)),
-    worst: videos
-      .filter((v) => v.posted_at !== null && time(v) < cutoff)
-      .sort((a, b) => (a.views ?? 0) - (b.views ?? 0)),
-  };
-}
 
 function orderValue(v: TikTokVideoAnalytics, orderBy: OrderBy): number | null {
   switch (orderBy) {
     case 'engagement':
       return v.engagement_rate;
     case 'date':
-      return v.posted_at ? time(v) : null;
+      return v.posted_at ? postedMs(v) : null;
     default:
       return v[orderBy];
   }
@@ -78,7 +63,8 @@ export function TikTokRankedVideos({
   period: string;
 }) {
   const { t, i18n } = useTranslation('analyticsTiktok');
-  const { best, worst } = useMemo(() => rankTikTokVideos(videos), [videos]);
+  // best: every video by views; worst: older than 48h, fewest views first.
+  const { best, worst } = useMemo(() => rankByViews(videos), [videos]);
   const [mode, setMode] = useState<Mode | null>(null);
   const [orderBy, setOrderBy] = useState<OrderBy>('views');
   const [asc, setAsc] = useState(false);
@@ -97,26 +83,15 @@ export function TikTokRankedVideos({
   };
 
   const source = mode === 'worst' ? worst : best;
-  const listed = useMemo(() => {
-    let list = [...source];
-    if (dateFrom) {
-      const from = new Date(`${dateFrom}T00:00:00${SP_OFFSET}`).getTime();
-      list = list.filter((v) => time(v) >= from);
-    }
-    if (dateTo) {
-      const to = new Date(`${dateTo}T23:59:59.999${SP_OFFSET}`).getTime();
-      list = list.filter((v) => time(v) <= to);
-    }
-    const dir = asc ? 1 : -1;
-    return list.sort((a, b) => {
-      const va = orderValue(a, orderBy);
-      const vb = orderValue(b, orderBy);
-      if (va === null && vb === null) return 0;
-      if (va === null) return 1; // nulls last whichever way it sorts
-      if (vb === null) return -1;
-      return (va - vb) * dir;
-    });
-  }, [source, dateFrom, dateTo, asc, orderBy]);
+  const listed = useMemo(
+    () =>
+      sortNullsLast(
+        filterByPostedRange(source, dateFrom, dateTo),
+        (v) => orderValue(v, orderBy),
+        asc,
+      ),
+    [source, dateFrom, dateTo, asc, orderBy],
+  );
 
   return (
     <>

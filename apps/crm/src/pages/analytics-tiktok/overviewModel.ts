@@ -9,6 +9,7 @@ import type {
   TikTokPortfolioRow,
   TikTokPortfolioVideo,
 } from '../../services/tiktokAnalytics';
+import { filterByPostedRange, postedMs, rankByViews, sortNullsLast } from './videoRanking';
 
 export type TFn = TFunction<'analyticsTiktok'>;
 
@@ -26,10 +27,6 @@ export function syncSummary(t: TFn, r: SyncResult): string {
 }
 
 const DAY_MS = 86_400_000;
-/** Videos younger than this have not had time to collect views: "Precisam de atenção" skips them. */
-const MATURE_AFTER_MS = 48 * 60 * 60 * 1000;
-/** São Paulo has no DST (since 2019), so a fixed offset gives the SP day boundaries. */
-const SP_OFFSET = '-03:00';
 
 export const formatNumber = (n: number | null | undefined): string =>
   (n ?? 0).toLocaleString('pt-BR');
@@ -191,15 +188,10 @@ export function rankVideos(portfolio: TikTokPortfolio): {
   best: TikTokPortfolioVideo[];
   worst: TikTokPortfolioVideo[];
 } {
-  const cutoff = Date.now() - MATURE_AFTER_MS;
-  const all = portfolio.videos;
   return {
     top: portfolio.topVideos,
     bottom: portfolio.bottomVideos,
-    best: [...all].sort((a, b) => (b.views ?? 0) - (a.views ?? 0)),
-    worst: all
-      .filter((v) => v.posted_at !== null && new Date(v.posted_at).getTime() < cutoff)
-      .sort((a, b) => (a.views ?? 0) - (b.views ?? 0)),
+    ...rankByViews(portfolio.videos),
   };
 }
 
@@ -250,18 +242,8 @@ export function useVideoDrawer(
   }, [best]);
 
   const videos = useMemo(() => {
-    let list = [...source];
-    if (client !== 'all') list = list.filter((v) => String(v.client_id) === client);
-    const time = (v: TikTokPortfolioVideo) => (v.posted_at ? new Date(v.posted_at).getTime() : 0);
-    if (dateFrom) {
-      const from = new Date(`${dateFrom}T00:00:00${SP_OFFSET}`).getTime();
-      list = list.filter((v) => time(v) >= from);
-    }
-    if (dateTo) {
-      const to = new Date(`${dateTo}T23:59:59.999${SP_OFFSET}`).getTime();
-      list = list.filter((v) => time(v) <= to);
-    }
-    const dir = asc ? 1 : -1;
+    const byClient =
+      client === 'all' ? source : source.filter((v) => String(v.client_id) === client);
     const key = (v: TikTokPortfolioVideo): number | null => {
       switch (orderBy) {
         case 'likes':
@@ -269,20 +251,12 @@ export function useVideoDrawer(
         case 'engagement':
           return v.engagement_rate;
         case 'date':
-          return time(v);
+          return postedMs(v);
         default:
           return v.views;
       }
     };
-    list.sort((a, b) => {
-      const va = key(a);
-      const vb = key(b);
-      if (va === null && vb === null) return 0;
-      if (va === null) return 1; // nulls last whichever way it sorts
-      if (vb === null) return -1;
-      return (va - vb) * dir;
-    });
-    return list;
+    return sortNullsLast(filterByPostedRange(byClient, dateFrom, dateTo), key, asc);
   }, [source, client, dateFrom, dateTo, asc, orderBy]);
 
   const open = useCallback((next: 'best' | 'worst') => {

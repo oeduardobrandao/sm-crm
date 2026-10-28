@@ -1,5 +1,5 @@
 // The TikTok tab's queries, shared by the desktop tab and its phone variant.
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import {
   getTikTokBestTimes,
@@ -12,9 +12,20 @@ import {
   type TikTokPostSort,
 } from '../../../services/tiktokAnalytics';
 
-/** Not connected and plan-gated answers are final: retrying them only delays the state. */
-const retry = (count: number, err: unknown) =>
-  !(err instanceof TikTokNotConnectedError) && !isTikTokFeatureDisabled(err) && count < 2;
+type RetryOption = boolean | number | ((count: number, err: unknown) => boolean);
+
+/**
+ * Not connected and plan-gated answers are final: retrying them only delays the state. Any
+ * other failure follows the QueryClient's own retry setting (TanStack's default is 3).
+ */
+function retryUnlessFinal(fallback: RetryOption = 3) {
+  return (count: number, err: unknown): boolean => {
+    if (err instanceof TikTokNotConnectedError || isTikTokFeatureDisabled(err)) return false;
+    if (typeof fallback === 'function') return fallback(count, err);
+    if (typeof fallback === 'number') return count < fallback;
+    return fallback;
+  };
+}
 
 /** Keeps the last period's numbers on screen while a new period loads, never another client's. */
 const samePlaceholder =
@@ -24,6 +35,9 @@ const samePlaceholder =
 
 export function useTikTokTabData(clientId: number, range: AnalyticsRange, sort: TikTokPostSort) {
   const keepSameClient = samePlaceholder(clientId);
+  const retry = retryUnlessFinal(
+    useQueryClient().getDefaultOptions().queries?.retry as RetryOption | undefined,
+  );
   const { features } = useWorkspaceLimits();
   // Fail open like the rest of the app: an unlimited workspace has no features object.
   const bestTimesLocked = features?.feature_best_times === false;

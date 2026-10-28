@@ -4,6 +4,7 @@ import { ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { sanitizeUrl } from '../../../utils/security';
 import type { TikTokPostSort, TikTokVideoAnalytics } from '../../../services/tiktokAnalytics';
+import { sortNullsLast } from '../../analytics-tiktok/videoRanking';
 import { formatCount, formatDuration, formatRate, formatVideoDate } from './tiktokTabFormat';
 
 export interface VideoTableSort {
@@ -20,17 +21,8 @@ const sortValue = (v: TikTokVideoAnalytics, col: TikTokPostSort): number | null 
  * Sorted here as well as on the server: the server sorts descending only (and caps the list),
  * so the direction is applied client-side, with nulls last both ways.
  */
-export function sortVideos(videos: TikTokVideoAnalytics[], sort: VideoTableSort) {
-  const dir = sort.dir === 'asc' ? 1 : -1;
-  return [...videos].sort((a, b) => {
-    const va = sortValue(a, sort.col);
-    const vb = sortValue(b, sort.col);
-    if (va === null && vb === null) return 0;
-    if (va === null) return 1;
-    if (vb === null) return -1;
-    return (va - vb) * dir;
-  });
-}
+export const sortVideos = (videos: TikTokVideoAnalytics[], sort: VideoTableSort) =>
+  sortNullsLast(videos, (v) => sortValue(v, sort.col), sort.dir === 'asc');
 
 /** "Desempenho dos vídeos": every video of the window, sortable by its metric columns. */
 export function TikTokVideosTable({

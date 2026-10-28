@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -33,6 +33,12 @@ const TIKTOK_COLOR = '#FE2C55';
 const BILLING_PATH = '/configuracao/cobranca';
 /** Same floor the Instagram heatmap uses before it ranks time slots. */
 const MIN_BEST_TIME_VIDEOS = 5;
+
+/** Last period's numbers stay on screen, dimmed, while the new period loads. */
+const dimmed = (stale: boolean): CSSProperties => ({
+  opacity: stale ? 0.55 : 1,
+  transition: 'opacity 150ms ease',
+});
 
 /** `/analytics/:id/tiktok`: the client's TikTok numbers, one period control for the whole tab. */
 export function TikTokAnalyticsTab({ clientId }: { clientId: number }) {
@@ -77,15 +83,19 @@ export function TikTokAnalyticsTab({ clientId }: { clientId: number }) {
         />
       );
     }
+    // The period may be what failed (a long custom window), so it stays changeable.
     return (
-      <StateCard
-        title={t('states.error')}
-        action={
-          <Button variant="outline" onClick={() => overview.refetch()}>
-            {t('states.retry')}
-          </Button>
-        }
-      />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <TikTokPeriodBar range={range} onChange={setRange} />
+        <StateCard
+          title={t('states.error')}
+          action={
+            <Button variant="outline" onClick={() => overview.refetch()}>
+              {t('states.retry')}
+            </Button>
+          }
+        />
+      </div>
     );
   }
 
@@ -104,11 +114,10 @@ export function TikTokAnalyticsTab({ clientId }: { clientId: number }) {
         qc.invalidateQueries({ queryKey: ['ttSummary', clientId] }),
       ]);
     } catch (e) {
-      toast.error(
-        e instanceof Error && e.message === 'TOKEN_EXPIRED'
-          ? t('states.expiredBody')
-          : t('states.syncError'),
-      );
+      const expired = e instanceof Error && e.message === 'TOKEN_EXPIRED';
+      toast.error(expired ? t('states.expiredBody') : t('states.syncError'));
+      // The overview carries authorization_status: refetch it so the expired banner shows.
+      if (expired) await qc.invalidateQueries({ queryKey: ['tt-overview', clientId] });
     } finally {
       setSyncing(false);
     }
@@ -142,6 +151,8 @@ export function TikTokAnalyticsTab({ clientId }: { clientId: number }) {
   const avatar = account.avatar_url?.startsWith('https://') ? account.avatar_url : null;
   const handle = account.username ?? account.display_name ?? '';
   const videos = posts.data ?? [];
+  // A failed read is not an empty one: it says so and offers a retry.
+  const postsFailed = posts.isError && !posts.data;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -207,9 +218,25 @@ export function TikTokAnalyticsTab({ clientId }: { clientId: number }) {
 
       <TikTokPeriodBar range={range} onChange={setRange} />
 
-      <TikTokKpiGrid kpis={data.kpis} period={period} />
+      <div style={dimmed(overview.isPlaceholderData)} aria-busy={overview.isPlaceholderData}>
+        <TikTokKpiGrid kpis={data.kpis} period={period} />
+      </div>
 
-      {posts.isPending ? <LoadingCard /> : <TikTokRankedVideos videos={videos} period={period} />}
+      {posts.isPending ? (
+        <LoadingCard />
+      ) : postsFailed ? null : (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1.5rem',
+            ...dimmed(posts.isPlaceholderData),
+          }}
+          aria-busy={posts.isPlaceholderData}
+        >
+          <TikTokRankedVideos videos={videos} period={period} />
+        </div>
+      )}
 
       <div className="card animate-up">
         <div className="dashboard-hub-card-header">
@@ -217,6 +244,8 @@ export function TikTokAnalyticsTab({ clientId }: { clientId: number }) {
         </div>
         {history.isPending ? (
           <LoadingBody />
+        ) : history.isError && !history.data ? (
+          <ErrorBody onRetry={() => history.refetch()} />
         ) : (
           <FollowerChart
             history={history.data ?? []}
@@ -229,6 +258,13 @@ export function TikTokAnalyticsTab({ clientId }: { clientId: number }) {
 
       {posts.isPending ? (
         <LoadingCard />
+      ) : postsFailed ? (
+        <div className="card animate-up">
+          <div className="dashboard-hub-card-header">
+            <h3>{t('clientTab.tableTitle')}</h3>
+          </div>
+          <ErrorBody onRetry={() => posts.refetch()} />
+        </div>
       ) : (
         <TikTokVideosTable videos={videos} sort={sort} onSort={setSort} />
       )}
@@ -237,12 +273,23 @@ export function TikTokAnalyticsTab({ clientId }: { clientId: number }) {
         locked={bestTimesLocked}
         loading={bestTimes.isPending && !bestTimesLocked}
         data={bestTimes.data ?? null}
+        onRetry={bestTimes.isError && !bestTimes.data ? () => bestTimes.refetch() : null}
       />
 
       {aiLocked ? (
         <LockedCard title={t('ai.title')} body={t('ai.locked')} />
       ) : (
-        <AISection clientId={clientId} days={aiDays(range)} load={loadAI} title={t('ai.title')} />
+        <AISection
+          clientId={clientId}
+          days={aiDays(range)}
+          load={loadAI}
+          title={t('ai.title')}
+          labels={{
+            topPerformer: t('ai.topVideo'),
+            worstPerformer: t('ai.worstVideo'),
+            captionDiagnostic: t('ai.titleDiagnostic'),
+          }}
+        />
       )}
     </div>
   );
@@ -265,6 +312,27 @@ function LoadingBody() {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem 0' }}>
       <Spinner />
+    </div>
+  );
+}
+
+/** Inline "couldn't load" with a retry, inside a section card. */
+function ErrorBody({ onRetry }: { onRetry: () => void }) {
+  const { t } = useTranslation('analyticsTiktok');
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.75rem',
+        flexWrap: 'wrap',
+        marginTop: '1rem',
+      }}
+    >
+      <p style={{ color: 'var(--text-muted)', margin: 0 }}>{t('states.error')}</p>
+      <Button size="sm" variant="outline" onClick={onRetry}>
+        {t('states.retry')}
+      </Button>
     </div>
   );
 }
@@ -308,10 +376,13 @@ function BestTimesCard({
   locked,
   loading,
   data,
+  onRetry,
 }: {
   locked: boolean;
   loading: boolean;
   data: BestPostingTimes | null;
+  /** Set when the read failed (not a plan lock). */
+  onRetry: (() => void) | null;
 }) {
   const { t } = useTranslation('analyticsTiktok');
   if (locked) return <LockedCard title={t('bestTimes.title')} body={t('bestTimes.locked')} />;
@@ -342,6 +413,8 @@ function BestTimesCard({
       )}
       {loading ? (
         <LoadingBody />
+      ) : onRetry ? (
+        <ErrorBody onRetry={onRetry} />
       ) : !enough ? (
         <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>{t('bestTimes.empty')}</p>
       ) : (

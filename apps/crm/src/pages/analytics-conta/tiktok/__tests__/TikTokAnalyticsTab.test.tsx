@@ -360,4 +360,97 @@ describe('TikTokAnalyticsTab', () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Gerar Análise IA/ })).toBeNull();
   });
+  it('posts that fail to load show an error with a retry, not the empty copy', async () => {
+    vi.mocked(getTikTokPostsAnalytics).mockRejectedValueOnce(new Error('Error 500'));
+    renderTab();
+    const card = (await screen.findByText('Desempenho dos vídeos')).closest('.card') as HTMLElement;
+    expect(
+      within(card).getByText('Não foi possível carregar os dados do TikTok.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Nenhum vídeo publicado neste período.')).toBeNull();
+    expect(screen.queryByRole('table')).toBeNull();
+    fireEvent.click(within(card).getByRole('button', { name: 'Tentar novamente' }));
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+    expect(getTikTokPostsAnalytics).toHaveBeenCalledTimes(2);
+  });
+
+  it('follower history and best times that fail to load show a retry', async () => {
+    vi.mocked(getTikTokFollowerHistory).mockRejectedValueOnce(new Error('Error 500'));
+    vi.mocked(getTikTokBestTimes).mockRejectedValueOnce(new Error('Error 500'));
+    renderTab();
+    const followers = (await screen.findByText('Crescimento de seguidores')).closest(
+      '.card',
+    ) as HTMLElement;
+    await within(followers).findByRole('button', { name: 'Tentar novamente' });
+    expect(within(followers).queryByText(/Ainda não há histórico/)).toBeNull();
+    const best = screen.getByText('Melhor horário para postar').closest('.card') as HTMLElement;
+    fireEvent.click(await within(best).findByRole('button', { name: 'Tentar novamente' }));
+    await waitFor(() => expect(getTikTokBestTimes).toHaveBeenCalledTimes(2));
+    expect(
+      await within(best).findByText('Publique mais vídeos para ver os melhores horários.'),
+    ).toBeInTheDocument();
+  });
+
+  it('an overview error keeps the period bar so another period can be tried', async () => {
+    vi.mocked(getTikTokOverview).mockRejectedValueOnce(new Error('Error 500'));
+    renderTab();
+    expect(
+      await screen.findByText('Não foi possível carregar os dados do TikTok.'),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: '7 dias' }));
+    await waitFor(() => expect(getTikTokOverview).toHaveBeenLastCalledWith(12, { days: 7 }));
+    expect(await screen.findByText('Seguidores')).toBeInTheDocument();
+  });
+
+  it('dims the KPI grid while the next period loads', async () => {
+    renderTab();
+    await screen.findByText('Seguidores');
+    vi.mocked(getTikTokOverview).mockReturnValue(new Promise<never>(() => {}));
+    fireEvent.click(screen.getByRole('tab', { name: '7 dias' }));
+    await waitFor(() =>
+      expect(screen.getByText('Seguidores').closest('[aria-busy]')).toHaveAttribute(
+        'aria-busy',
+        'true',
+      ),
+    );
+  });
+
+  it('sync with an expired token refetches the overview for the banner', async () => {
+    vi.mocked(syncTikTokData).mockRejectedValue(new Error('TOKEN_EXPIRED'));
+    renderTab();
+    await screen.findByText('Seguidores');
+    vi.mocked(getTikTokOverview).mockResolvedValue(overview({}, 'expired'));
+    fireEvent.click(screen.getByRole('button', { name: 'Sincronizar' }));
+    expect(await screen.findByText('Conexão expirada')).toBeInTheDocument();
+    expect(getTikTokOverview).toHaveBeenCalledTimes(2);
+  });
+
+  it('missing per-video counts read "—", not 0', async () => {
+    vi.mocked(getTikTokPostsAnalytics).mockResolvedValue([
+      vid('x', 500, { likes: null, comments: null, shares: null }),
+    ]);
+    renderTab();
+    const table = await screen.findByRole('table');
+    const row = within(table).getByText('Vídeo x').closest('tr') as HTMLElement;
+    expect(within(row).getAllByText('—')).toHaveLength(3);
+    expect(within(row).queryByText('0')).toBeNull();
+  });
+
+  it('AI analysis names videos and titles, not posts and captions', async () => {
+    vi.mocked(getTikTokAIAnalysis).mockResolvedValue({
+      analysis: {
+        healthScore: { score: 70, summary: 'Boa' },
+        performanceMap: { topPerformer: 'a', worstPerformer: 'b', contentMix: 'c' },
+        captionDiagnostic: 'd',
+      },
+      generatedAt: '2026-10-28T12:00:00Z',
+    });
+    renderTab();
+    await screen.findByText('Seguidores');
+    fireEvent.click(screen.getByRole('button', { name: /Gerar Análise IA/ }));
+    expect(await screen.findByText('Melhor vídeo')).toBeInTheDocument();
+    expect(screen.getByText('Pior vídeo')).toBeInTheDocument();
+    expect(screen.getByText('Diagnóstico de títulos')).toBeInTheDocument();
+    expect(screen.queryByText('Melhor Post')).toBeNull();
+  });
 });

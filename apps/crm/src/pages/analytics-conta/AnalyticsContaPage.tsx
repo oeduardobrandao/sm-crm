@@ -694,6 +694,19 @@ export interface AIAnalysisResult {
   generatedAt: string;
 }
 
+/** The headings that name the content unit; TikTok says "vídeo" and "títulos". */
+export interface AISectionLabels {
+  topPerformer: string;
+  worstPerformer: string;
+  captionDiagnostic: string;
+}
+
+const AI_SECTION_LABELS: AISectionLabels = {
+  topPerformer: 'Melhor Post',
+  worstPerformer: 'Pior Post',
+  captionDiagnostic: 'Diagnóstico de Legendas',
+};
+
 // Also drawn by the TikTok tab: `load` fetches its analysis (same output shape) and throws an
 // Error whose message is the copy to show.
 export function AISection({
@@ -701,11 +714,13 @@ export function AISection({
   days,
   load,
   title = 'Análise Inteligente',
+  labels = AI_SECTION_LABELS,
 }: {
   clientId: number;
   days: number;
   load?: (days: number) => Promise<AIAnalysisResult>;
   title?: string;
+  labels?: AISectionLabels;
 }) {
   const [loading, setLoading] = useState(false);
   const [analysis, setAnalysis] = useState<any>(null);
@@ -823,7 +838,7 @@ export function AISection({
                 <h4
                   style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}
                 >
-                  Melhor Post
+                  {labels.topPerformer}
                 </h4>
                 <BulletText text={analysis.performanceMap.topPerformer} />
               </div>
@@ -831,7 +846,7 @@ export function AISection({
                 <h4
                   style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}
                 >
-                  Pior Post
+                  {labels.worstPerformer}
                 </h4>
                 <BulletText text={analysis.performanceMap.worstPerformer} />
               </div>
@@ -861,7 +876,7 @@ export function AISection({
                 <h4
                   style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}
                 >
-                  Diagnóstico de Legendas
+                  {labels.captionDiagnostic}
                 </h4>
                 <BulletText text={analysis.captionDiagnostic} />
               </div>

@@ -198,7 +198,10 @@
     "unavailable": "AI analysis is unavailable right now.",
     "rateLimited": "You reached the hourly limit of analyses. Try again later.",
     "error": "Could not generate the analysis.",
-    "portfolioEmpty": "Tap for an AI strategic analysis of the accounts."
+    "portfolioEmpty": "Tap for an AI strategic analysis of the accounts.",
+    "topVideo": "Best video",
+    "worstVideo": "Worst video",
+    "titleDiagnostic": "Title diagnostics"
   },
   "drawer": {
     "titleBest": "All videos",
