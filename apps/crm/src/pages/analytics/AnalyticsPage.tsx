@@ -2055,7 +2055,10 @@ export default function AnalyticsPage() {
                           {formatRate(
                             post.rates[
                               drawerOrderBy as
-                                'share_rate' | 'like_rate' | 'save_rate' | 'comment_rate'
+                                | 'share_rate'
+                                | 'like_rate'
+                                | 'save_rate'
+                                | 'comment_rate'
                             ],
                           )}
                         </strong>

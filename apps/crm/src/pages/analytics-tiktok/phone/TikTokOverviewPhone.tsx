@@ -22,6 +22,7 @@ import {
   formatNumber,
   formatPct,
   initialsOf,
+  isSilent,
   syncSummary,
   type AccountSortCol,
   type SpecialtyStat,
@@ -63,8 +64,12 @@ export interface TikTokOverviewPhoneProps {
   silentAccounts: TikTokPortfolioRow[];
   /** The page's KPI grid; `StatCardGrid` renders it as the phone tile strip. */
   kpis: ReactNode;
+  /** The strips (top 5, bottom 5). */
   bestVideos: TikTokPortfolioVideo[];
   worstVideos: TikTokPortfolioVideo[];
+  /** Videos behind each "Ver todos" sheet. */
+  bestTotal: number;
+  worstTotal: number;
   sortColumn: AccountSortCol;
   sortDirection: 'asc' | 'desc';
   onSortColumn: (c: AccountSortCol) => void;
@@ -124,6 +129,8 @@ export function TikTokOverviewPhone(props: TikTokOverviewPhoneProps) {
     kpis,
     bestVideos,
     worstVideos,
+    bestTotal,
+    worstTotal,
     sortColumn,
     sortDirection,
     onSortColumn,
@@ -285,7 +292,7 @@ export function TikTokOverviewPhone(props: TikTokOverviewPhoneProps) {
         typeLabel={t('drawer.badge')}
         openLabel={t('drawer.openLabel')}
         seeMoreLabel={t('overview.seeAll')}
-        onSeeMore={bestVideos.length > 5 ? () => drawer.open('best') : undefined}
+        onSeeMore={bestTotal > 5 ? () => drawer.open('best') : undefined}
       />
       <RankedPostStrip
         title={t('overview.bottomVideos')}
@@ -296,7 +303,7 @@ export function TikTokOverviewPhone(props: TikTokOverviewPhoneProps) {
         typeLabel={t('drawer.badge')}
         openLabel={t('drawer.openLabel')}
         seeMoreLabel={t('overview.seeAll')}
-        onSeeMore={worstVideos.length > 5 ? () => drawer.open('worst') : undefined}
+        onSeeMore={worstTotal > 5 ? () => drawer.open('worst') : undefined}
       />
 
       <SectionHead
@@ -330,7 +337,7 @@ export function TikTokOverviewPhone(props: TikTokOverviewPhoneProps) {
         <GroupedList aria-label={t('overview.allAccounts')}>
           {sortedAccounts.map((a) => {
             const d = daysSince(a.last_posted_at);
-            const silent = d === null || d > 7;
+            const silent = isSilent(a);
             const gained = a.followers_gained ?? 0;
             return (
               <Cell

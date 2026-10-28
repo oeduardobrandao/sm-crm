@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -10,6 +10,7 @@ import {
   Eye,
   Film,
   Heart,
+  Link2,
   RefreshCw,
   SlidersHorizontal,
   TrendingUp,
@@ -149,7 +150,10 @@ function TikTokOverviewContent() {
     queryFn: () => getTikTokPortfolio(days),
   });
 
-  const ranked = data ? rankVideos(data) : { best: [], worst: [] };
+  const ranked = useMemo(
+    () => (data ? rankVideos(data) : { top: [], bottom: [], best: [], worst: [] }),
+    [data],
+  );
   const drawer = useVideoDrawer(ranked.best, ranked.worst);
 
   const accounts = data?.accounts ?? [];
@@ -312,7 +316,7 @@ function TikTokOverviewContent() {
     >
       <StatCard
         label={t('overview.kpiAccounts')}
-        icon={Film}
+        icon={Link2}
         tone="pink"
         value={totals.accounts}
         sub={
@@ -391,8 +395,10 @@ function TikTokOverviewContent() {
         syncResult={syncResult}
         silentAccounts={silentAccounts}
         kpis={kpiGrid}
-        bestVideos={ranked.best}
-        worstVideos={ranked.worst}
+        bestVideos={ranked.top}
+        worstVideos={ranked.bottom}
+        bestTotal={ranked.best.length}
+        worstTotal={ranked.worst.length}
         sortColumn={sortColumn}
         sortDirection={sortDirection}
         onSortColumn={(col) => {
@@ -506,7 +512,8 @@ function TikTokOverviewContent() {
         icon={<Trophy className="h-5 w-5" style={{ color: 'var(--success)' }} />}
         title={t('overview.topVideos')}
         help={t('overview.topVideosHint')}
-        videos={ranked.best}
+        videos={ranked.top}
+        total={ranked.best.length}
         tone="best"
         onSeeAll={() => drawer.open('best')}
       />
@@ -514,7 +521,8 @@ function TikTokOverviewContent() {
         icon={<AlertTriangle className="h-5 w-5" style={{ color: 'var(--warning)' }} />}
         title={t('overview.bottomVideos')}
         help={t('overview.bottomVideosHint')}
-        videos={ranked.worst}
+        videos={ranked.bottom}
+        total={ranked.worst.length}
         tone="worst"
         onSeeAll={() => drawer.open('worst')}
       />
@@ -542,7 +550,7 @@ function TikTokOverviewContent() {
               <TableBody>
                 {sortedAccounts.map((a) => {
                   const d = daysSince(a.last_posted_at);
-                  const silent = d === null || d > 7;
+                  const silent = isSilent(a);
                   const gained = a.followers_gained ?? 0;
                   return (
                     <TableRow key={a.client_id}>
@@ -669,7 +677,7 @@ function TikTokOverviewContent() {
         ) : (
           sortedAccounts.map((a) => {
             const d = daysSince(a.last_posted_at);
-            const silent = d === null || d > 7;
+            const silent = isSilent(a);
             const gained = a.followers_gained ?? 0;
             return (
               <Link
@@ -1000,6 +1008,7 @@ function VideoStrip({
   title,
   help,
   videos,
+  total,
   tone,
   onSeeAll,
 }: {
@@ -1007,6 +1016,8 @@ function VideoStrip({
   title: string;
   help: string;
   videos: TikTokPortfolioVideo[];
+  /** Videos behind the "Ver todos" sheet. */
+  total: number;
   tone: 'best' | 'worst';
   onSeeAll: () => void;
 }) {
@@ -1020,7 +1031,7 @@ function VideoStrip({
           {title}
           <HelpTooltip content={help} />
         </h3>
-        {videos.length > 5 && (
+        {total > 5 && (
           <Button
             variant="ghost"
             size="sm"

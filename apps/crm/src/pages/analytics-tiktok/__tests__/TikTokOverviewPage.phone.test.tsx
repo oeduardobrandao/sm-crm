@@ -88,7 +88,7 @@ describe('TikTokOverviewPage (phone)', () => {
       'href',
       '/analytics/3/tiktok',
     );
-    expect(within(callout).getByText('12d sem postar')).toBeInTheDocument();
+    expect(within(callout).getByText('60d sem postar')).toBeInTheDocument();
   });
 
   it('changes the period through a picker sheet and refetches', async () => {
@@ -102,7 +102,7 @@ describe('TikTokOverviewPage (phone)', () => {
     renderPage();
     fireEvent.click((await screen.findAllByRole('button', { name: 'Ver todos' }))[0]);
     const sheet = await screen.findByRole('dialog', { name: 'Todos os vídeos' });
-    expect(within(sheet).getAllByRole('link')).toHaveLength(10);
+    expect(within(sheet).getAllByRole('link')).toHaveLength(18);
 
     fireEvent.click(within(sheet).getByRole('button', { name: 'Filtros' }));
     const filters = await screen.findByRole('dialog', { name: 'Filtros' });

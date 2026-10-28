@@ -149,10 +149,12 @@ describe('TikTokOverviewPage', () => {
     expect(within(table).getByText('Alpha Studio')).toBeInTheDocument();
     expect(within(table).getByText('@alphastudio')).toBeInTheDocument();
     expect(within(table).getByText('12.000')).toBeInTheDocument();
-    // No views yet: the rate and the views read "—", never 0%.
+    // No videos in the window: the rate reads "—", never 0%. The real last video (60 days
+    // ago, outside the window) still shows.
     const zeta = within(table).getByText('Zeta Labs').closest('tr') as HTMLElement;
-    expect(within(zeta).getAllByText('—')).toHaveLength(2);
+    expect(within(zeta).getAllByText('—')).toHaveLength(1);
     expect(within(zeta).queryByText('0,00%')).toBeNull();
+    expect(within(zeta).getByText('60d atrás')).toBeInTheDocument();
     expect(getTikTokPortfolio).toHaveBeenCalledWith(28);
   });
 
@@ -201,7 +203,7 @@ describe('TikTokOverviewPage', () => {
     expect(within(callout).getByText('1 conta silenciosa')).toBeInTheDocument();
     const chip = within(callout).getByRole('link', { name: /Zeta Labs/ });
     expect(chip).toHaveAttribute('href', '/analytics/3/tiktok');
-    expect(within(callout).getByText('12d sem postar')).toBeInTheDocument();
+    expect(within(callout).getByText('60d sem postar')).toBeInTheDocument();
     // Bravo posted 5 days ago and Alpha 2: neither is silent.
     expect(within(callout).queryByText(/Bravo/)).toBeNull();
   });
@@ -263,15 +265,65 @@ describe('TikTokOverviewPage', () => {
     fireEvent.click(within(best).getByRole('button', { name: /Ver todos/ }));
     const sheet = await screen.findByRole('heading', { name: 'Todos os vídeos' });
     const panel = sheet.closest('[role="dialog"]') as HTMLElement;
-    // 5 top + b1..b4 + b5 (young, but "best" ranks every video) = 10 unique.
-    expect(within(panel).getByText('10 de 10 vídeos')).toBeInTheDocument();
+    // Every video of the window, not just the strips' top and bottom 5.
+    expect(within(panel).getByText('18 de 18 vídeos')).toBeInTheDocument();
+    expect(within(panel).getAllByRole('link')).toHaveLength(18);
     // There is no format filter: no video/photo type is stored.
     expect(within(panel).queryByRole('combobox', { name: 'Formato' })).toBeNull();
 
     fireEvent.change(within(panel).getByRole('combobox', { name: 'Cliente' }), {
       target: { value: '3' },
     });
-    expect(within(panel).getByText('1 de 10 vídeos')).toBeInTheDocument();
+    expect(within(panel).getByText('1 de 18 vídeos')).toBeInTheDocument();
+  });
+
+  it('the attention sheet lists mature videos fewest views first, never a top performer up front', async () => {
+    renderPage();
+    const worst = (await screen.findByRole('heading', { name: /Precisam de atenção/ })).closest(
+      '.card',
+    ) as HTMLElement;
+    fireEvent.click(within(worst).getByRole('button', { name: /Ver todos/ }));
+    const panel = (
+      await screen.findByRole('heading', { name: 'Vídeos que precisam de atenção' })
+    ).closest('[role="dialog"]') as HTMLElement;
+    // 18 videos, one of them younger than 48h: 17 matured ones.
+    expect(within(panel).getByText('17 de 17 vídeos')).toBeInTheDocument();
+    const hrefs = within(panel)
+      .getAllByRole('link')
+      .map((a) => a.getAttribute('href')?.split('/').pop());
+    expect(hrefs).not.toContain('b5');
+    // Ascending by views: the weak ones first, the five top performers last.
+    expect(hrefs.slice(0, 5)).toEqual(['b1', 'b2', 'b3', 'b4', 'm1']);
+    expect(hrefs.slice(-5)).toEqual(['t5', 't4', 't3', 't2', 't1']);
+  });
+
+  it('an account with no stored video reads "Sem vídeos" and counts as silent', async () => {
+    vi.mocked(getTikTokPortfolio).mockResolvedValue(
+      portfolio([row(1, 'Alpha Studio'), row(4, 'Novo Cliente', { last_posted_at: null })]),
+    );
+    renderPage();
+    const table = await screen.findByRole('table');
+    const novo = within(table).getByText('Novo Cliente').closest('tr') as HTMLElement;
+    expect(within(novo).getByText('Sem vídeos')).toBeInTheDocument();
+    const callout = screen.getByRole('status');
+    expect(within(callout).getByRole('link', { name: /Novo Cliente/ })).toBeInTheDocument();
+    expect(within(callout).getByText('Sem vídeos')).toBeInTheDocument();
+  });
+
+  it('silent means more than 7 days, fractional', async () => {
+    // 7.5 days floors to 7, which a floored `> 7` check would call active.
+    const day = 86_400_000;
+    vi.mocked(getTikTokPortfolio).mockResolvedValue(
+      portfolio([
+        row(1, 'Alpha Studio', { last_posted_at: new Date(Date.now() - 6.9 * day).toISOString() }),
+        row(2, 'Bravo Health', { last_posted_at: new Date(Date.now() - 7.5 * day).toISOString() }),
+      ]),
+    );
+    renderPage();
+    await screen.findByRole('table');
+    const callout = screen.getByRole('status');
+    expect(within(callout).getByRole('link', { name: /Bravo Health/ })).toBeInTheDocument();
+    expect(within(callout).queryByRole('link', { name: /Alpha Studio/ })).toBeNull();
   });
 
   it('shows the paywall without feature_tiktok and never fetches', () => {

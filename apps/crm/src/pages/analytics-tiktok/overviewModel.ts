@@ -59,10 +59,10 @@ export function daysSince(iso: string | null): number | null {
   return iso ? Math.floor((Date.now() - new Date(iso).getTime()) / DAY_MS) : null;
 }
 
-/** No video for more than 7 days, or never. */
+/** No video for more than 7 days (fractional, like Instagram), or never (`null`). */
 export function isSilent(row: TikTokPortfolioRow): boolean {
-  const d = daysSince(row.last_posted_at);
-  return d === null || d > 7;
+  if (!row.last_posted_at) return true;
+  return (Date.now() - new Date(row.last_posted_at).getTime()) / DAY_MS > 7;
 }
 
 export function engagementVariant(rate: number | null): 'success' | 'warning' | 'neutral' {
@@ -180,21 +180,22 @@ export function leaderOf<T>(rows: T[], score: (r: T) => number | null): T | unde
 
 // ─── Videos ─────────────────────────────────────────────────────────────
 
-/** The server sends a top-5 and a bottom-5; the drawer ranks the union. */
+/**
+ * `top` / `bottom` are the server's strips (5 most viewed, 5 fewest among videos older than
+ * 48h). `best` / `worst` are what the "Ver todos" sheets list: every video of the window by
+ * views, and the ones posted more than 48h ago, fewest views first.
+ */
 export function rankVideos(portfolio: TikTokPortfolio): {
+  top: TikTokPortfolioVideo[];
+  bottom: TikTokPortfolioVideo[];
   best: TikTokPortfolioVideo[];
   worst: TikTokPortfolioVideo[];
 } {
-  const seen = new Set<string>();
-  const all: TikTokPortfolioVideo[] = [];
-  for (const v of [...portfolio.topVideos, ...portfolio.bottomVideos]) {
-    const key = `${v.client_id}:${v.tiktok_video_id}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    all.push(v);
-  }
   const cutoff = Date.now() - MATURE_AFTER_MS;
+  const all = portfolio.videos;
   return {
+    top: portfolio.topVideos,
+    bottom: portfolio.bottomVideos,
     best: [...all].sort((a, b) => (b.views ?? 0) - (a.views ?? 0)),
     worst: all
       .filter((v) => v.posted_at !== null && new Date(v.posted_at).getTime() < cutoff)

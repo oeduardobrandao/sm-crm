@@ -59,6 +59,24 @@ const alpha = { id: 1, name: 'Alpha Studio' };
 const bravo = { id: 2, name: 'Bravo Health' };
 const zeta = { id: 3, name: 'Zeta Labs' };
 
+/**
+ * 18 videos of the window, most viewed first: 5 top performers, 8 mid ones (m1-m8), 4 weak
+ * ones older than 48h (b1-b4) and b5, which is too young to be judged.
+ */
+const videos: TikTokPortfolioVideo[] = [
+  video('t1', alpha, 9000),
+  video('t2', bravo, 8000),
+  video('t3', alpha, 7000),
+  video('t4', bravo, 6000),
+  video('t5', alpha, 5000),
+  ...[8, 7, 6, 5, 4, 3, 2, 1].map((n) => video(`m${n}`, n % 2 ? alpha : bravo, 1000 + n * 100)),
+  video('b4', bravo, 40),
+  video('b3', alpha, 30),
+  video('b2', bravo, 20),
+  video('b1', zeta, 10),
+  video('b5', alpha, 5, { posted_at: ago(0.5) }),
+];
+
 export function portfolio(rows?: TikTokPortfolioRow[]): TikTokPortfolio {
   const accounts = rows ?? [
     row(1, 'Alpha Studio', {
@@ -77,14 +95,16 @@ export function portfolio(rows?: TikTokPortfolioRow[]): TikTokPortfolio {
       posts_count: 3,
       last_posted_at: ago(5),
     }),
+    // Last video 60 days ago: outside the 28-day window, so no views or rate in it, but the
+    // account still has a real last post date.
     row(3, 'Zeta Labs', {
       especialidade: 'Design',
       follower_count: 3000,
       followers_gained: null,
-      views: null,
+      views: 0,
       engagement_rate: null,
       posts_count: 0,
-      last_posted_at: ago(12),
+      last_posted_at: ago(60),
     }),
   ];
   return {
@@ -98,22 +118,15 @@ export function portfolio(rows?: TikTokPortfolioRow[]): TikTokPortfolio {
       ? { accounts: 3, followers: 23000, views: 70000, engagement_rate: 3.8, posts_count: 9 }
       : { accounts: 0, followers: null, views: null, engagement_rate: null, posts_count: 0 },
     accounts,
-    topVideos: [
-      video('t1', alpha, 9000),
-      video('t2', bravo, 8000),
-      video('t3', alpha, 7000),
-      video('t4', bravo, 6000),
-      video('t5', alpha, 5000),
-    ],
+    topVideos: videos.slice(0, 5),
+    // The server's bottom 5: fewest views among videos older than 48h (b5 is too young).
     bottomVideos: [
-      video('b1', zeta, 10),
-      video('b2', bravo, 20),
-      video('b3', alpha, 30),
-      video('b4', bravo, 40),
-      // Younger than 48h: never a "needs attention" video.
-      video('b5', alpha, 5, { posted_at: ago(0.5) }),
-      // Also in the top list: the union is de-duplicated.
-      video('t5', alpha, 5000),
+      videos.find((v) => v.tiktok_video_id === 'b1')!,
+      videos.find((v) => v.tiktok_video_id === 'b2')!,
+      videos.find((v) => v.tiktok_video_id === 'b3')!,
+      videos.find((v) => v.tiktok_video_id === 'b4')!,
+      videos.find((v) => v.tiktok_video_id === 'm1')!,
     ],
+    videos,
   };
 }
