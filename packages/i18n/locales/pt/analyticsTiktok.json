@@ -1,0 +1,150 @@
+{
+  "tab": {
+    "instagram": "Instagram",
+    "tiktok": "TikTok",
+    "reports": "Relatórios"
+  },
+  "overview": {
+    "title": "Analytics do TikTok",
+    "subtitle": "Desempenho das contas de TikTok dos seus clientes",
+    "clientFilter": "Cliente",
+    "allClients": "Todos os clientes",
+    "period": "Período",
+    "periodDays": "{{count}} dias",
+    "lastMonth": "Último mês",
+    "customDays": "Personalizado",
+    "customDaysLabel": "Dias (1 a 730)",
+    "sync": "Sincronizar",
+    "syncing": "Sincronizando...",
+    "lastSynced": "Última sincronização: {{date}}",
+    "neverSynced": "Ainda não sincronizado",
+    "kpiAccounts": "Contas conectadas",
+    "kpiFollowers": "Seguidores totais",
+    "kpiViews": "Visualizações (vídeos do período)",
+    "kpiEngagement": "Engajamento médio por visualização",
+    "kpiPosts": "Vídeos publicados",
+    "leaders": "Destaques",
+    "silentAccounts": "Contas sem vídeo há mais de 7 dias",
+    "topVideos": "Melhores vídeos",
+    "bottomVideos": "Precisam de atenção",
+    "bottomVideosHint": "Vídeos com mais de 48 horas e poucas visualizações",
+    "seeAllVideos": "Ver todos os vídeos",
+    "allAccounts": "Todas as contas",
+    "benchmark": "Engajamento por visualização",
+    "bySpecialty": "Por especialidade",
+    "emptyTitle": "Nenhum cliente com TikTok conectado",
+    "emptyBody": "Conecte o TikTok de um cliente em Clientes, na aba Redes sociais, para ver os números aqui.",
+    "emptyAction": "Ir para clientes"
+  },
+  "kpi": {
+    "followers_total": {
+      "label": "Seguidores",
+      "sub": "Total atual da conta"
+    },
+    "followers_gained": {
+      "label": "Novos seguidores",
+      "sub": "Ganho no período"
+    },
+    "views": {
+      "label": "Visualizações",
+      "sub": "Vídeos publicados no período",
+      "tooltip": "Total atual dos vídeos publicados no período, não as visualizações recebidas no período."
+    },
+    "engagement_rate": {
+      "label": "Engajamento",
+      "sub": "Interações por visualização"
+    },
+    "likes": {
+      "label": "Curtidas",
+      "sub": "Vídeos publicados no período"
+    },
+    "comments": {
+      "label": "Comentários",
+      "sub": "Vídeos publicados no período"
+    },
+    "shares": {
+      "label": "Compartilhamentos",
+      "sub": "Vídeos publicados no período"
+    },
+    "posts_count": {
+      "label": "Vídeos publicados",
+      "sub": "No período"
+    },
+    "likes_total": {
+      "label": "Curtidas totais do perfil",
+      "sub": "Acumulado da conta"
+    },
+    "countsTooltip": "Total atual dos vídeos publicados no período. Não comparamos com o período anterior porque vídeos mais antigos tiveram mais tempo para acumular números.",
+    "engagementTooltip": "Curtidas, comentários e compartilhamentos divididos pelas visualizações dos vídeos publicados no período. O TikTok não informa alcance, então não é comparável à taxa do Instagram."
+  },
+  "states": {
+    "loading": "Carregando dados do TikTok...",
+    "error": "Não foi possível carregar os dados do TikTok.",
+    "retry": "Tentar novamente",
+    "noData": "sem dados",
+    "noComparison": "sem comparação",
+    "notConnectedTitle": "TikTok não conectado",
+    "notConnectedBody": "Conecte a conta de TikTok deste cliente para ver as métricas.",
+    "expiredTitle": "Conexão expirada",
+    "expiredBody": "A autorização do TikTok expirou. Reconecte a conta para voltar a sincronizar.",
+    "connectAction": "Ir para Redes sociais",
+    "locked": "O Analytics do TikTok não está disponível no seu plano.",
+    "lockedAction": "Ver planos",
+    "noVideos": "Nenhum vídeo publicado neste período.",
+    "syncError": "Não foi possível sincronizar o TikTok.",
+    "syncSuccess": "TikTok sincronizado."
+  },
+  "table": {
+    "title": "Vídeos",
+    "date": "Data",
+    "cover": "Capa",
+    "video": "Vídeo",
+    "views": "Visualizações",
+    "likes": "Curtidas",
+    "comments": "Comentários",
+    "shares": "Compartilhamentos",
+    "engagement": "Engajamento por visualização",
+    "duration": "Duração",
+    "link": "Abrir no TikTok",
+    "untitled": "Sem título",
+    "account": "Conta",
+    "followers": "Seguidores",
+    "newFollowers": "Novos seguidores",
+    "posts": "Vídeos",
+    "lastPost": "Último vídeo",
+    "sortBy": "Ordenar por",
+    "empty": "Nenhuma conta para exibir."
+  },
+  "followers": {
+    "title": "Crescimento de seguidores",
+    "empty": "Ainda não há histórico de seguidores para este período."
+  },
+  "bestTimes": {
+    "title": "Melhor horário para postar",
+    "subtitle": "Engajamento médio por visualização, por dia da semana e horário",
+    "empty": "Publique mais vídeos para ver os melhores horários.",
+    "locked": "Melhores horários não está disponível no seu plano.",
+    "topSlot": "{{day}}, {{hour}}",
+    "postCount_one": "{{count}} vídeo",
+    "postCount_other": "{{count}} vídeos",
+    "timezone": "Horário de Brasília"
+  },
+  "ai": {
+    "title": "Análise com IA",
+    "generate": "Gerar análise",
+    "regenerate": "Gerar novamente",
+    "generating": "Analisando...",
+    "generatedAt": "Gerada em {{date}}",
+    "contentInsights": "Conteúdo",
+    "growthForecast": "Crescimento",
+    "topRecommendations": "Recomendações",
+    "portfolioSummary": "Resumo da carteira",
+    "crossAccountInsights": "Comparação entre contas",
+    "priorityActions": "Ações prioritárias",
+    "healthScore": "Saúde da conta",
+    "locked": "A análise com IA não está disponível no seu plano.",
+    "unavailable": "A análise com IA está indisponível no momento.",
+    "rateLimited": "Você atingiu o limite de análises por hora. Tente novamente mais tarde.",
+    "error": "Não foi possível gerar a análise."
+  }
+}
