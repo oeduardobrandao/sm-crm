@@ -2,7 +2,8 @@ import { supabase, getCurrentProfile } from './core';
 import { extractMentionsFromText } from '@/components/mentions/mentionTokens';
 import { syncMentions } from './mentions';
 
-function membroMentionIds(text: string): number[] {
+/** Membro ids mentioned in a plain-text body (`@[Label](membro:id)` tokens). */
+export function membroMentionIds(text: string): number[] {
   return extractMentionsFromText(text)
     .filter((ref) => ref.entityType === 'membro')
     .map((ref) => ref.id);

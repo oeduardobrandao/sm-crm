@@ -26,6 +26,7 @@ function tarefa(over: Partial<TarefaWithRelations>): TarefaWithRelations {
     tags: [],
     subtarefas_total: 0,
     subtarefas_concluidas: 0,
+    comentarios_total: 0,
     cliente_nome: 'Cliente X',
     serie: null,
     ...over,

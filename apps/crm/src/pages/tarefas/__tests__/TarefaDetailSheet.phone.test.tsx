@@ -80,6 +80,7 @@ function makeTarefa(overrides: Partial<TarefaWithRelations> = {}): TarefaWithRel
     tags: [],
     subtarefas_total: 0,
     subtarefas_concluidas: 0,
+    comentarios_total: 0,
     cliente_nome: 'Pet Feliz',
     cliente_cor: '#22c55e',
     serie: null,

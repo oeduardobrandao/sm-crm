@@ -20,6 +20,7 @@ export * from './ideias';
 export * from './notifications';
 export * from './notificationPrefs';
 export * from './tarefas';
+export * from './tarefaComentarios';
 export * from './mensagens';
 export * from './banners';
 export * from './popups';
