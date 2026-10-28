@@ -1,1 +1,114 @@
-{}
+{
+  "shared": {
+    "title": "Financeiro",
+    "description": "Visão das finanças, receitas projetadas e despesas.",
+    "searchPlaceholder": "Buscar por descrição ou categoria...",
+    "income": "Entrada",
+    "expense": "Saída",
+    "recurring": "Recorrentes",
+    "month": "Mês",
+    "repeatMonthly": "Repetir todo mês",
+    "repeatMonthlyHint": "Aparece todo mês como agendado, no mesmo dia, para você confirmar.",
+    "kpis": {
+      "received": "Recebido",
+      "toReceive": "A receber",
+      "toPay": "A pagar",
+      "currentBalance": "Saldo atual",
+      "projectedBalance": "Saldo projetado"
+    },
+    "filters": {
+      "all": "Todas",
+      "income": "Entradas",
+      "expenses": "Saídas"
+    },
+    "csvHelp": "Colunas CSV: descricao*, valor*, data* (AAAA-MM-DD), tipo (entrada|saida), categoria, detalhe. Categorias válidas: Mensalidade, Produção, Tráfego, Salário, Imposto, Ferramenta, Outro."
+  },
+  "form": {
+    "groupLabel": "Transação",
+    "description": "Descrição",
+    "amount": "Valor (R$)",
+    "date": "Data",
+    "category": "Categoria",
+    "selectPlaceholder": "Selecione...",
+    "errors": {
+      "descriptionRequired": "Descrição obrigatória",
+      "amountRequired": "Valor obrigatório",
+      "amountPositive": "Valor deve ser positivo",
+      "dateRequired": "Data obrigatória",
+      "categoryRequired": "Categoria obrigatória"
+    }
+  },
+  "page": {
+    "editTitle": "Editar Transação",
+    "addIncomeTitle": "Registrar Entrada",
+    "addExpenseTitle": "Registrar Saída",
+    "confirmPaymentTitle": "Confirmar pagamento?",
+    "bulkConfirmTitle_zero": "Confirmar {{count}} pagamentos?",
+    "bulkConfirmTitle_one": "Confirmar {{count}} pagamento?",
+    "bulkConfirmTitle_other": "Confirmar {{count}} pagamentos?",
+    "deleteTitle": "Remover esta transação?",
+    "csvHelpColumns": "<b>Colunas CSV:</b> descricao*, valor*, data* (AAAA-MM-DD), tipo (entrada|saida), categoria, detalhe",
+    "csvHelpCategories": "<b>Categorias válidas:</b> Mensalidade, Produção, Tráfego, Salário, Imposto, Ferramenta, Outro",
+    "confirmSelected": "Confirmar selecionadas ({{n}})",
+    "selectAllScheduled": "Selecionar todas as agendadas",
+    "selectTransaction": "Selecionar transação",
+    "columns": {
+      "amount": "Valor",
+      "actions": "Ações"
+    },
+    "toasts": {
+      "updated": "Transação atualizada",
+      "createdRecurring": "Transação registrada. Ela se repete todo mês.",
+      "created": "Transação registrada",
+      "paymentConfirmed": "Pagamento confirmado",
+      "confirmError": "Erro ao confirmar pagamento",
+      "bulkConfirmed_one": "{{count}} pagamento confirmado",
+      "bulkConfirmed_other": "{{count}} pagamentos confirmados",
+      "bulkFailed_one": "{{count}} não pôde ser confirmado",
+      "bulkFailed_other": "{{count}} não puderam ser confirmados",
+      "removed": "Transação removida",
+      "imported_zero": "{{count}} transações importadas com sucesso!",
+      "imported_one": "{{count}} transação importada com sucesso!",
+      "imported_other": "{{count}} transações importadas com sucesso!"
+    }
+  },
+  "phone": {
+    "summaryAria": "Resumo do mês",
+    "select": "Selecionar",
+    "selected_one": "{{count}} selecionada",
+    "selected_other": "{{count}} selecionadas",
+    "selectAll": "Selecionar todas",
+    "deselectAll": "Desmarcar todas",
+    "confirmPayment": "Confirmar pagamento",
+    "typeAria": "Tipo de transação",
+    "addMenuWithRecurring": "Adicionar: Entrada, Saída, Importar CSV ou Recorrentes",
+    "addMenu": "Adicionar: Entrada, Saída ou Importar CSV",
+    "periodAria": "Período",
+    "empty": "Nenhuma transação encontrada.",
+    "rowActions": "Ações de {{descricao}}",
+    "selectRow": "Selecionar {{descricao}}",
+    "confirmN": "Confirmar {{n}}",
+    "dayHeaderWithYear": "EEEE, d 'de' MMMM 'de' yyyy"
+  },
+  "monthSheet": {
+    "monthsOf": "Meses de {{year}}",
+    "allMonths": "Todos os meses"
+  },
+  "recorrentes": {
+    "title": "Lançamentos recorrentes",
+    "description": "Aparecem todo mês como agendados, no dia escolhido, para você confirmar.",
+    "empty": "Nenhum lançamento recorrente. Ao registrar uma entrada ou saída, marque \"Repetir todo mês\".",
+    "dayOfMonth": "Dia do mês",
+    "everyDay": "Todo dia {{dia}}",
+    "edit": "Editar {{descricao}}",
+    "end": "Encerrar",
+    "endAria": "Encerrar {{descricao}}",
+    "endTitle": "Encerrar \"{{descricao}}\"?",
+    "endHint": "Ele deixa de aparecer a partir deste mês. Os lançamentos já confirmados continuam.",
+    "toasts": {
+      "updated": "Lançamento recorrente atualizado",
+      "ended": "Lançamento recorrente encerrado",
+      "endError": "Erro ao encerrar"
+    }
+  }
+}

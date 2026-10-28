@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { format, type Locale } from 'date-fns';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -70,25 +72,17 @@ export interface FinanceiroPhoneProps {
   onBulkConfirm: () => void;
 }
 
-/** Same copy as the desktop CSV HelpTooltip. */
-export const FINANCEIRO_CSV_HELP =
-  'Colunas CSV: descricao*, valor*, data* (AAAA-MM-DD), tipo (entrada|saida), categoria, detalhe. Categorias válidas: Mensalidade, Produção, Tráfego, Salário, Imposto, Ferramenta, Outro.';
-
-const FILTER_OPTIONS = [
-  { value: 'todas' as const, label: 'Todas' },
-  { value: 'entradas' as const, label: 'Entradas' },
-  { value: 'saidas' as const, label: 'Saídas' },
-];
-
-function dayHeader(iso: string): string {
+function dayHeader(iso: string, t: TFunction, locale: Locale): string {
   const [y, m, d] = iso.split('-').map(Number);
   if (!y || !m || !d) return iso;
   const date = new Date(y, m - 1, d);
   const sameYear = y === new Date().getFullYear();
   // "sábado, 10 de outubro" (the header is uppercased by CSS); weekdays drop "-feira".
-  return format(date, sameYear ? "EEEE, d 'de' MMMM" : "EEEE, d 'de' MMMM 'de' yyyy", {
-    locale: ptBR,
-  }).replace('-feira', '');
+  return format(
+    date,
+    sameYear ? t('common:dateFormat.weekdayDayMonth') : t('phone.dayHeaderWithYear'),
+    { locale },
+  ).replace('-feira', '');
 }
 
 function groupByDay(list: Transacao[]): { day: string; items: Transacao[] }[] {
@@ -102,15 +96,16 @@ function groupByDay(list: Transacao[]): { day: string; items: Transacao[] }[] {
 }
 
 function Summary({ kpis, access }: { kpis: FinanceiroKpis; access: FinancialAccess }) {
+  const { t } = useTranslation('finance');
   const money = (v: number) => formatFinancialBRL(v, access);
   const tone = (v: number) => (access === true ? (v >= 0 ? 'in' : 'out') : undefined);
   return (
-    <section className="phone-kit phone-fin-summary" aria-label="Resumo do mês">
+    <section className="phone-kit phone-fin-summary" aria-label={t('phone.summaryAria')}>
       <div className="phone-fin-summary__main">
         {(
           [
-            ['Saldo atual', kpis.saldoAtual],
-            ['Saldo projetado', kpis.saldoProjetado],
+            [t('shared.kpis.currentBalance'), kpis.saldoAtual],
+            [t('shared.kpis.projectedBalance'), kpis.saldoProjetado],
           ] as const
         ).map(([label, value]) => (
           <div key={label} className="phone-fin-summary__cell">
@@ -129,9 +124,9 @@ function Summary({ kpis, access }: { kpis: FinanceiroKpis; access: FinancialAcce
       <div className="phone-fin-summary__minor">
         {(
           [
-            ['Recebido', kpis.recebido, 'in'],
-            ['A receber', kpis.aReceber, 'pending'],
-            ['A pagar', kpis.aPagar, 'out'],
+            [t('shared.kpis.received'), kpis.recebido, 'in'],
+            [t('shared.kpis.toReceive'), kpis.aReceber, 'pending'],
+            [t('shared.kpis.toPay'), kpis.aPagar, 'out'],
           ] as const
         ).map(([label, value, dot]) => (
           <div key={label} className="phone-fin-summary__cell">
@@ -164,14 +159,15 @@ function SelectionBar({
   onCancel: () => void;
   onToggleAll: () => void;
 }) {
+  const { t } = useTranslation('finance');
   usePhoneChrome({ pageHeader: true, tabBar: false });
   return (
     <header className="phone-kit phone-crud-select-bar">
       <button type="button" className="phone-text-button" onClick={onCancel}>
-        Cancelar
+        {t('actions.cancel')}
       </button>
       <h1 className="phone-crud-select-bar__title">
-        {count === 0 ? 'Selecionar' : count === 1 ? '1 selecionada' : `${count} selecionadas`}
+        {count === 0 ? t('phone.select') : t('phone.selected', { count })}
       </h1>
       <button
         type="button"
@@ -179,7 +175,7 @@ function SelectionBar({
         disabled={!canSelectAll}
         onClick={onToggleAll}
       >
-        {allSelected ? 'Desmarcar todas' : 'Selecionar todas'}
+        {allSelected ? t('phone.deselectAll') : t('phone.selectAll')}
       </button>
     </header>
   );
@@ -221,63 +217,76 @@ export function FinanceiroPhone(props: FinanceiroPhoneProps) {
     selectedCount,
     onBulkConfirm,
   } = props;
+  const { t } = useTranslation('finance');
+  const dateLocale = useDateFnsLocale();
+  const filterOptions = [
+    { value: 'todas' as const, label: t('shared.filters.all') },
+    { value: 'entradas' as const, label: t('shared.filters.income') },
+    { value: 'saidas' as const, label: t('shared.filters.expenses') },
+  ];
   const [addOpen, setAddOpen] = useState(false);
   const [monthOpen, setMonthOpen] = useState(false);
   const searchToggle = usePhoneSearch(search, onSearchChange);
   const groups = useMemo(() => groupByDay(transacoes), [transacoes]);
   const hasScheduled = transacoes.some((t) => t.status === 'agendado');
 
-  const amount = (t: Transacao) => {
-    const sign = t.tipo === 'entrada' ? '+' : '-';
+  const amount = (tr: Transacao) => {
+    const sign = tr.tipo === 'entrada' ? '+' : '-';
     // Paid rows carry the in/out colour; scheduled ones stay neutral until confirmed.
-    const tone = t.status === 'pago' ? (t.tipo === 'entrada' ? 'in' : 'out') : null;
+    const tone = tr.status === 'pago' ? (tr.tipo === 'entrada' ? 'in' : 'out') : null;
     return (
       <span className={cn('phone-crud-amount', tone && `phone-crud-amount--${tone}`)}>
         {sign}
-        {formatFinancialBRL(t.valor, canSeeFinancials)}
+        {formatFinancialBRL(tr.valor, canSeeFinancials)}
       </span>
     );
   };
 
-  const rowActions = (t: Transacao): { swipe: SwipeAction[]; menu: ContextMenuAction[][] } => {
-    if (t.status === 'agendado') {
+  const rowActions = (tr: Transacao): { swipe: SwipeAction[]; menu: ContextMenuAction[][] } => {
+    if (tr.status === 'agendado') {
       return {
         swipe: [
           {
-            label: 'Confirmar',
+            label: t('actions.confirm'),
             icon: <Check aria-hidden="true" />,
             tone: 'success',
-            onAction: () => onConfirm(t),
+            onAction: () => onConfirm(tr),
           },
         ],
         menu: [
           [
             {
-              label: 'Confirmar pagamento',
+              label: t('phone.confirmPayment'),
               icon: <Check aria-hidden="true" />,
-              onSelect: () => onConfirm(t),
+              onSelect: () => onConfirm(tr),
             },
           ],
         ],
       };
     }
     const swipe: SwipeAction[] = [
-      { label: 'Editar', icon: <Edit2 aria-hidden="true" />, onAction: () => onEdit(t) },
+      { label: t('actions.edit'), icon: <Edit2 aria-hidden="true" />, onAction: () => onEdit(tr) },
     ];
     const menu: ContextMenuAction[][] = [
-      [{ label: 'Editar', icon: <Edit2 aria-hidden="true" />, onSelect: () => onEdit(t) }],
+      [
+        {
+          label: t('actions.edit'),
+          icon: <Edit2 aria-hidden="true" />,
+          onSelect: () => onEdit(tr),
+        },
+      ],
     ];
-    if (t.id) {
-      const id = t.id;
+    if (tr.id) {
+      const id = tr.id;
       swipe.push({
-        label: 'Remover',
+        label: t('actions.delete'),
         icon: <Trash2 aria-hidden="true" />,
         tone: 'destructive',
         onAction: () => onDelete(id),
       });
       menu.push([
         {
-          label: 'Remover',
+          label: t('actions.delete'),
           icon: <Trash2 aria-hidden="true" />,
           destructive: true,
           onSelect: () => onDelete(id),
@@ -289,8 +298,8 @@ export function FinanceiroPhone(props: FinanceiroPhoneProps) {
 
   const segmented = (
     <SegmentedControl
-      aria-label="Tipo de transação"
-      options={FILTER_OPTIONS}
+      aria-label={t('phone.typeAria')}
+      options={filterOptions}
       value={filter}
       onChange={onFilterChange}
       className="phone-crud-block"
@@ -309,8 +318,8 @@ export function FinanceiroPhone(props: FinanceiroPhoneProps) {
         />
       ) : (
         <PhonePageHeader
-          title="Financeiro"
-          subtitle="Visão das finanças, receitas projetadas e despesas."
+          title={t('shared.title')}
+          subtitle={t('shared.description')}
           actions={
             <>
               {searchToggle.button}
@@ -319,14 +328,10 @@ export function FinanceiroPhone(props: FinanceiroPhoneProps) {
                 className="phone-crud-pill-button"
                 onClick={() => onSelectingChange(true)}
               >
-                Selecionar
+                {t('phone.select')}
               </button>
               <PhoneIconButton
-                label={
-                  onRecorrentes
-                    ? 'Adicionar: Entrada, Saída, Importar CSV ou Recorrentes'
-                    : 'Adicionar: Entrada, Saída ou Importar CSV'
-                }
+                label={onRecorrentes ? t('phone.addMenuWithRecurring') : t('phone.addMenu')}
                 variant="ink"
                 aria-haspopup="dialog"
                 onClick={() => setAddOpen(true)}
@@ -341,7 +346,7 @@ export function FinanceiroPhone(props: FinanceiroPhoneProps) {
               inputRef={searchToggle.inputRef}
               value={search}
               onChange={onSearchChange}
-              placeholder="Buscar por descrição ou categoria..."
+              placeholder={t('shared.searchPlaceholder')}
             />
           )}
         </PhonePageHeader>
@@ -350,10 +355,10 @@ export function FinanceiroPhone(props: FinanceiroPhoneProps) {
       {!selecting && <Summary kpis={kpis} access={canSeeFinancials} />}
       {segmented}
       {!selecting && (
-        <GroupedList aria-label="Período">
+        <GroupedList aria-label={t('phone.periodAria')}>
           <Cell
             icon={<CalendarDays aria-hidden="true" />}
-            label="Mês"
+            label={t('shared.month')}
             value={monthLabel(monthFilter)}
             chevron
             aria-haspopup="dialog"
@@ -365,46 +370,46 @@ export function FinanceiroPhone(props: FinanceiroPhoneProps) {
       {isLoading ? (
         <CardListSkeleton />
       ) : groups.length === 0 ? (
-        <p className="phone-crud-empty">Nenhuma transação encontrada.</p>
+        <p className="phone-crud-empty">{t('phone.empty')}</p>
       ) : (
         groups.map(({ day, items }) => (
-          <GroupedList key={day} header={dayHeader(day)}>
-            {items.map((t) => {
-              const { swipe, menu } = rowActions(t);
-              const scheduled = t.status === 'agendado';
+          <GroupedList key={day} header={dayHeader(day, t, dateLocale)}>
+            {items.map((tr) => {
+              const { swipe, menu } = rowActions(tr);
+              const scheduled = tr.status === 'agendado';
               return (
                 <PhoneCrudRow
-                  key={rowKey(t)}
+                  key={rowKey(tr)}
                   leading={
                     <span
                       role="img"
-                      aria-label={t.tipo === 'entrada' ? 'Entrada' : 'Saída'}
-                      className={`phone-crud-tile phone-crud-tile--${t.tipo === 'entrada' ? 'in' : 'out'}`}
+                      aria-label={tr.tipo === 'entrada' ? t('shared.income') : t('shared.expense')}
+                      className={`phone-crud-tile phone-crud-tile--${tr.tipo === 'entrada' ? 'in' : 'out'}`}
                     >
-                      {t.tipo === 'entrada' ? <ArrowDownLeft /> : <ArrowUpRight />}
+                      {tr.tipo === 'entrada' ? <ArrowDownLeft /> : <ArrowUpRight />}
                     </span>
                   }
-                  title={t.descricao}
-                  subtitle={[t.categoria, t.detalhe].filter(Boolean).join(' · ') || undefined}
+                  title={tr.descricao}
+                  subtitle={[tr.categoria, tr.detalhe].filter(Boolean).join(' · ') || undefined}
                   aside={
                     <>
-                      {amount(t)}
+                      {amount(tr)}
                       <PhoneStatusPill tone={scheduled ? 'neutral' : 'success'}>
-                        {scheduled ? 'Agendado' : 'Pago'}
+                        {scheduled ? t('status.agendado') : t('status.pago')}
                       </PhoneStatusPill>
                     </>
                   }
-                  onOpen={scheduled ? () => onConfirm(t) : () => onEdit(t)}
+                  onOpen={scheduled ? () => onConfirm(tr) : () => onEdit(tr)}
                   swipeActions={swipe}
-                  menuLabel={`Ações de ${t.descricao}`}
+                  menuLabel={t('phone.rowActions', { descricao: tr.descricao })}
                   menuSections={menu}
                   selection={
                     selecting
                       ? {
                           selectable: scheduled,
-                          selected: selectedKeys.has(rowKey(t)),
-                          onToggle: () => onToggle(t),
-                          label: `Selecionar ${t.descricao}`,
+                          selected: selectedKeys.has(rowKey(tr)),
+                          onToggle: () => onToggle(tr),
+                          label: t('phone.selectRow', { descricao: tr.descricao }),
                         }
                       : undefined
                   }
@@ -423,7 +428,7 @@ export function FinanceiroPhone(props: FinanceiroPhoneProps) {
             disabled={selectedCount === 0}
             onClick={onBulkConfirm}
           >
-            {selectedCount === 0 ? 'Confirmar' : `Confirmar ${selectedCount}`}
+            {selectedCount === 0 ? t('actions.confirm') : t('phone.confirmN', { n: selectedCount })}
           </button>
         </BottomActionBar>
       )}
@@ -431,21 +436,21 @@ export function FinanceiroPhone(props: FinanceiroPhoneProps) {
       <ActionSheet
         open={addOpen}
         onOpenChange={setAddOpen}
-        title="Adicionar"
-        message={FINANCEIRO_CSV_HELP}
+        title={t('actions.add')}
+        message={t('shared.csvHelp')}
         actions={[
           {
-            label: 'Entrada',
+            label: t('shared.income'),
             icon: <ArrowDownLeft aria-hidden="true" />,
             onSelect: () => onAdd('entrada'),
           },
           {
-            label: 'Saída',
+            label: t('shared.expense'),
             icon: <ArrowUpRight aria-hidden="true" />,
             onSelect: () => onAdd('saida'),
           },
           {
-            label: 'Importar CSV',
+            label: t('actions.importCsv'),
             icon: <Upload aria-hidden="true" />,
             // The file picker needs the tap itself (iOS Safari blocks a deferred click).
             immediate: true,
@@ -454,7 +459,7 @@ export function FinanceiroPhone(props: FinanceiroPhoneProps) {
           ...(onRecorrentes
             ? [
                 {
-                  label: 'Recorrentes',
+                  label: t('shared.recurring'),
                   icon: <Repeat aria-hidden="true" />,
                   onSelect: onRecorrentes,
                 },
