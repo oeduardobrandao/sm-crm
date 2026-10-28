@@ -7,10 +7,10 @@ import { Minus, Plus } from 'lucide-react';
 import { ColorPicker } from '@/components/shared/ColorPicker';
 import { CoverAvatar, type CoverConfig } from '@mesaas/report-blocks/blocks/CoverBlock';
 import { pickAccentFg } from '@mesaas/report-blocks/theme';
+import { coverDefaults, type ReportPlatform } from '@mesaas/report-blocks/platform';
 import type { ReportBlock, ReportDocSnapshot } from '@mesaas/report-blocks/types';
 import { normalizeCoverColorPatch, stepCoverLogoSize } from './layoutOps';
 
-const KICKER_DEFAULT = 'Relatório mensal · Instagram';
 const LOGO_SIZE_DEFAULT = 36;
 const COVER_INK_FALLBACK = '#171717';
 
@@ -18,19 +18,27 @@ export interface CoverEditorProps {
   block: ReportBlock;
   snapshot: ReportDocSnapshot;
   onConfigChange: (id: string, patch: Record<string, unknown>) => void;
+  /** Plataformas do layout: kicker e handle padrão iguais aos do CoverBlock. */
+  layoutPlatforms?: ReportPlatform[];
 }
 
-export function CoverEditor({ block, snapshot, onConfigChange }: CoverEditorProps) {
+export function CoverEditor({
+  block,
+  snapshot,
+  onConfigChange,
+  layoutPlatforms,
+}: CoverEditorProps) {
   const b = snapshot.branding;
   const config = (block.config ?? {}) as CoverConfig;
-  const kicker = typeof config.kicker === 'string' ? config.kicker : KICKER_DEFAULT;
+  const defaults = coverDefaults(snapshot, layoutPlatforms);
+  const kicker = typeof config.kicker === 'string' ? config.kicker : defaults.kicker;
   const title = typeof config.title === 'string' ? config.title : snapshot.period.label;
   const subtitle =
     typeof config.subtitle === 'string'
       ? config.subtitle
-      : `@${snapshot.account.handle}${snapshot.account.specialty ? ` · ${snapshot.account.specialty}` : ''}`;
+      : `@${defaults.handle}${snapshot.account.specialty ? ` · ${snapshot.account.specialty}` : ''}`;
   const logoSize = config.logoSize ?? LOGO_SIZE_DEFAULT;
-  const clientName = snapshot.account.client_name ?? snapshot.account.handle;
+  const clientName = snapshot.account.client_name ?? defaults.handle;
   const accentColor = snapshot.branding.accent_color;
 
   const colorStyle =
@@ -59,11 +67,7 @@ export function CoverEditor({ block, snapshot, onConfigChange }: CoverEditorProp
             style={{ height: logoSize, borderRadius: 8, background: '#fff', padding: 4 }}
           />
         ) : null}
-        <CoverAvatar
-          name={clientName}
-          photoUrl={snapshot.account.profile_picture_url ?? null}
-          size={logoSize}
-        />
+        <CoverAvatar name={clientName} photoUrl={defaults.avatarUrl} size={logoSize} />
         <span style={{ fontWeight: 600 }}>{b.workspace_name}</span>
         <div style={{ display: 'flex', gap: '0.25rem', marginLeft: 'auto' }}>
           <button

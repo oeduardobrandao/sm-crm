@@ -7,6 +7,7 @@ import type {
   AudienceData, BestTimeSlot, FollowerTrendPoint, TagPerformance,
 } from "../report-template/types.ts";
 import { isEphemeralInstagramUrl } from "../instagram-thumbnail-cache.ts";
+import type { TikTokKpiId } from "../tiktok-analytics/kpis.ts";
 import { computeKpis, type KpiEntry, type KpiSources, type ReportKpiId } from "./kpis.ts";
 import { monthWindow } from "./month-window.ts";
 
@@ -56,6 +57,29 @@ export type SnapshotContentBreakdown = {
   images?: SnapshotFormatStats;
 };
 
+/** Vídeo em destaque do snapshot TikTok. Sem reach/saves: a Display API não os dá. */
+export interface TikTokSnapshotTopPost {
+  video_id: string;
+  views: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  caption_preview: string;
+  date: string | null;
+  permalink: string | null;
+  thumbnail_url: string | null;
+}
+
+/** Seção TikTok do snapshot (spec 2026-10-28 §B2): nasce só em relatórios que
+ * incluem a plataforma. Mesmas formas de kpis/trend/best_times do Instagram. */
+export interface TikTokReportSnapshot {
+  account: { handle: string; display_name: string | null; avatar_url: string | null };
+  kpis: Record<TikTokKpiId, KpiEntry>;
+  follower_trend: FollowerTrendPoint[];
+  best_times: BestTimeSlot[];
+  top_posts: TikTokSnapshotTopPost[];
+}
+
 export interface ReportDocSnapshot {
   version: 1;
   period: {
@@ -96,6 +120,11 @@ export interface ReportDocSnapshot {
   audience: AudienceData | null;
   best_times: BestTimeSlot[];
   tags_performance: TagPerformance[];
+  /** Ausente = true (snapshots antigos são todos Instagram). false = relatório
+   * só TikTok: os blocos Instagram não renderizam. `version: 1` não muda. */
+  instagram_connected?: boolean;
+  /** Ausente/null = relatório sem TikTok ou conta TikTok sem dados. */
+  tiktok?: TikTokReportSnapshot | null;
 }
 
 export interface SnapshotPostRow {
@@ -154,7 +183,8 @@ export interface SnapshotInput {
 }
 
 export const MAX_SNAPSHOT_POSTS = 12;
-const CAPTION_PREVIEW_MAX = 140;
+/** Corte da legenda nos top posts; a seção TikTok (report-docs/tiktok-section.ts) usa o mesmo. */
+export const CAPTION_PREVIEW_MAX = 140;
 
 // Mesmo mapeamento do gerador v2 (index.ts §7 typeMapping): REEL/VIDEO viram
 // reels, CAROUSEL_ALBUM carousels, resto images. Confirme contra
@@ -285,5 +315,40 @@ export function assembleSnapshot(input: SnapshotInput): ReportDocSnapshot {
     audience: input.audience,
     best_times: input.bestTimes,
     tags_performance: input.tagsPerformance,
+  };
+}
+
+/** Campos Instagram da raiz: `emptyInstagramSection` os zera e o refresh-data os carrega do
+ * snapshot congelado quando o Instagram saiu (o @ de `account` vai junto, à parte). */
+export const INSTAGRAM_SECTION_KEYS = [
+  "comparison", "kpis", "follower_trend", "content_breakdown", "top_posts", "audience",
+  "best_times", "tags_performance", "instagram_connected",
+] as const;
+export type InstagramSnapshotSection = Pick<ReportDocSnapshot, (typeof INSTAGRAM_SECTION_KEYS)[number]>;
+
+/** Fontes de KPI de uma conta sem nenhum dado (cliente sem Instagram). */
+export const EMPTY_KPI_SOURCES: KpiSources = {
+  accountMonth: null, accountPrevMonth: null, followersClose: null, followersPrevClose: null,
+  followerHistory: [], allPosts: [], prevMonthPostsCount: null,
+};
+
+/** Metade Instagram de um relatório de cliente sem Instagram (spec 2026-10-28 §B3): todo KPI
+ * null (inclusive `posts_count`, que sobre zero posts daria 0), toda lista vazia e
+ * `instagram_connected: false`, para os blocos Instagram caírem no placeholder "sem dados". O
+ * chamador espalha isto por cima de um `assembleSnapshot` montado com entradas vazias. */
+export function emptyInstagramSection(): InstagramSnapshotSection {
+  const kpis = Object.fromEntries(
+    Object.entries(computeKpis(EMPTY_KPI_SOURCES)).map(([id, e]) => [id, { ...e, value: null, prev: null }]),
+  ) as Record<ReportKpiId, KpiEntry>;
+  return {
+    comparison: null,
+    kpis,
+    follower_trend: [],
+    content_breakdown: {},
+    top_posts: [],
+    audience: null,
+    best_times: [],
+    tags_performance: [],
+    instagram_connected: false,
   };
 }

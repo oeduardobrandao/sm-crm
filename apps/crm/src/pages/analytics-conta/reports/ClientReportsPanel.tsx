@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { FileText, Plus, Trash2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import {
@@ -19,7 +20,10 @@ import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import { ActionSheet, type ActionSheetAction } from '@/components/mobile/ActionSheet';
 import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { getClientes } from '../../../store';
+import { getInstagramSummary } from '../../../services/instagram';
+import { getTikTokSummary } from '../../../services/tiktok';
 import {
   getClientReports,
   getReportDownloadUrl,
@@ -30,10 +34,27 @@ import {
   deleteReportDoc,
   listReportDocs,
   type ReportDocListItem,
+  type ReportPlatform,
 } from '../../../services/reportDocs';
+import { PLATFORM_NAMES } from '@mesaas/report-blocks/platform';
 import { openExternalUrl } from '../../../utils/security';
 import { formatReportMonth } from '../contaFormat';
 import { NewReportDialog } from './NewReportDialog';
+
+// Mesmo corte do servidor (report-docs/tiktok-section.ts): revogada ou desconectada não entra.
+const TIKTOK_NOT_CONNECTED = ['revoked', 'disconnected'];
+
+function PlatformBadges({ platforms }: { platforms: ReportPlatform[] }) {
+  return (
+    <>
+      {platforms.map((p) => (
+        <Badge key={p} variant="neutral" size="sm">
+          {PLATFORM_NAMES[p]}
+        </Badge>
+      ))}
+    </>
+  );
+}
 
 function reportStatusText(r: AnalyticsReport): { text: string; tone?: string } {
   switch (r.status) {
@@ -95,6 +116,37 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
     queryKey: ['report-docs', clientId],
     queryFn: () => listReportDocs(clientId),
   });
+
+  // Redes conectadas, para o "Plataformas" do dialog. Mesmas chaves do shell (compartilham o
+  // cache). Desconhecido (carregando, ou erro que não é "não conectado") = undefined: o dialog
+  // não manda `platforms` e o servidor usa todas as conectadas.
+  const { features } = useWorkspaceLimits();
+  const tiktokEnabled = features?.feature_tiktok === true;
+  const igQuery = useQuery({
+    queryKey: ['ig-summary', clientId],
+    queryFn: () => getInstagramSummary(clientId),
+  });
+  const ttQuery = useQuery({
+    // Same key and queryFn as the shell and TikTokSection, so the cache is shared.
+    queryKey: ['ttSummary', clientId],
+    queryFn: () => getTikTokSummary(clientId).catch(() => null),
+    enabled: tiktokEnabled,
+    retry: false,
+  });
+  const igTokenExpired =
+    igQuery.error instanceof Error && igQuery.error.message === 'TOKEN_EXPIRED';
+  const igKnown = !igQuery.isLoading && (!igQuery.isError || igTokenExpired);
+  const connected: ReportPlatform[] | undefined =
+    igKnown && !(tiktokEnabled && ttQuery.isLoading)
+      ? [
+          ...(igQuery.data || igTokenExpired ? (['instagram'] as const) : []),
+          ...(tiktokEnabled &&
+          ttQuery.data &&
+          !TIKTOK_NOT_CONNECTED.includes(ttQuery.data.account?.authorization_status)
+            ? (['tiktok'] as const)
+            : []),
+        ]
+      : undefined;
 
   const handleConfirmSendEmail = async () => {
     if (!emailReportTarget) return;
@@ -208,7 +260,12 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
   );
 
   const newReportDialog = (
-    <NewReportDialog open={newReportOpen} onOpenChange={setNewReportOpen} clientId={clientId} />
+    <NewReportDialog
+      open={newReportOpen}
+      onOpenChange={setNewReportOpen}
+      clientId={clientId}
+      connected={connected}
+    />
   );
 
   if (isPhone) {
@@ -243,7 +300,12 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
               key={doc.id}
               icon={<FileText />}
               label={doc.title}
-              subtitle={new Date(doc.created_at).toLocaleDateString('pt-BR')}
+              subtitle={
+                <span className="phone-an-cell-sub phone-an-cell-sub--wrap">
+                  {new Date(doc.created_at).toLocaleDateString('pt-BR')}
+                  {doc.platforms.map((p) => ` · ${PLATFORM_NAMES[p]}`).join('')}
+                </span>
+              }
               chevron
               aria-haspopup="dialog"
               onClick={() => setDocTarget(doc)}
@@ -348,6 +410,7 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
           {reportDocs.map((doc) => (
             <div
               key={doc.id}
+              data-testid="report-doc-row"
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -362,6 +425,9 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
                   style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}
                 >
                   {new Date(doc.created_at).toLocaleDateString('pt-BR')}
+                </span>
+                <span style={{ display: 'inline-flex', gap: '0.25rem', marginLeft: '0.5rem' }}>
+                  <PlatformBadges platforms={doc.platforms} />
                 </span>
               </div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>

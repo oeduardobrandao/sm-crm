@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { ArrowLeft, Copy, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { BlockRenderer } from '@mesaas/report-blocks/BlockRenderer';
+import { sectionizeLayout } from '@mesaas/report-blocks/types';
 import '@mesaas/report-blocks/styles.css';
 import {
   buildSystemDefaultLayout,
@@ -27,7 +28,9 @@ export default function ModeloPadraoPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const snapshot = useSampleSnapshot();
-  const layout = useMemo(() => buildSystemDefaultLayout(), []);
+  // Seccionado como nos editores: "Duplicar para editar" grava um layout
+  // canônico (o embutido já sai assim; legado = convertido).
+  const layout = useMemo(() => sectionizeLayout(buildSystemDefaultLayout()), []);
   const previewLayout = useMemo(() => withAiSampleText(layout), [layout]);
 
   const duplicate = useMutation({

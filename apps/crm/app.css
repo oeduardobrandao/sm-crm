@@ -14578,27 +14578,6 @@ a.hub-fill__row-inner:hover {
   border-color: var(--text-light);
 }
 
-.rb-layers-add-end {
-  margin-top: 0.6rem;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.3rem;
-  border: 1px dashed var(--border-color);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 0.78rem;
-  padding: 0.4rem;
-  cursor: pointer;
-}
-
-.rb-layers-add-end:hover {
-  color: var(--text-main);
-  border-color: var(--text-light);
-}
-
 .rb-layers-size {
   font-size: 0.65rem;
   color: var(--text-muted);
@@ -14606,6 +14585,238 @@ a.hub-fill__row-inner:hover {
   border-radius: 6px;
   padding: 0.05rem 0.3rem;
   flex-shrink: 0;
+}
+
+/* ── Editor de relatório: um frame por seção (spec 2026-10-28-report-platform-sections) ──
+   O tema do relatório (classe + variáveis) fica no .rb-edit-doc; cada frame tem o próprio
+   .rb-grid. Sem overflow:hidden no frame: a toolbar das células sobe 14px acima delas. */
+
+.rb-edit-doc {
+  max-width: 880px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.rb-section-frame {
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--card-bg);
+}
+
+.rb-section-frame-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+  border-radius: 12px 12px 0 0;
+  background: var(--surface-1);
+  color: var(--text-main);
+}
+
+.rb-section-frame-grip {
+  display: flex;
+  border: none;
+  background: transparent;
+  padding: 0.15rem;
+  color: var(--text-light);
+}
+
+.rb-section-frame-icon {
+  flex-shrink: 0;
+  color: var(--text-main);
+}
+
+.rb-section-frame-title {
+  flex: 1 1 8rem;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  padding: 0.15rem 0.25rem;
+  border-radius: 6px;
+  font-family: var(--font-heading, inherit);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.rb-section-frame-title::placeholder {
+  color: var(--text-main);
+  opacity: 1;
+}
+
+.rb-section-frame-title:focus-visible {
+  box-shadow: 0 0 0 2px var(--primary-color);
+}
+
+.rb-section-frame-handle,
+.rb-section-frame-note {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.rb-section-frame-menu {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+.rb-section-frame-menu:hover {
+  background: var(--surface-hover);
+}
+
+/* Fundo do tema do relatório no miolo (o cabeçalho é chrome do editor). O
+   padding de cima abre espaço para a toolbar das células. */
+
+.rb-section-frame-body {
+  padding: 1.25rem 1rem 1rem;
+  border-radius: 0 0 12px 12px;
+  background: var(--rb-bg, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.rb-section-frame-body > .rb-grid {
+  width: 100%;
+}
+
+.rb-section-frame-add {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 32px;
+  padding: 0 0.75rem;
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-main);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.rb-section-frame-add:hover {
+  border-color: var(--text-light);
+  background: var(--surface-hover);
+}
+
+.rb-section-overlay {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--card-bg);
+  color: var(--text-main);
+  font-weight: 600;
+  box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.35);
+}
+
+/* "Adicionar seção": linha fina com o botão em pílula no meio. */
+
+.rb-add-section {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.rb-add-section::before,
+.rb-add-section::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+}
+
+.rb-add-section-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 30px;
+  padding: 0 0.85rem;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--card-bg);
+  color: var(--text-main);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.rb-add-section-trigger:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.rb-add-section-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rb-add-section-full {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.rb-add-section-item {
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.rb-add-section-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.rb-add-section-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rb-add-section-label {
+  font-weight: 600;
+}
+
+.rb-add-section-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: normal;
+}
+
+/* Camadas: a seção é um nó da árvore e os blocos ficam recuados sob ela. */
+
+.rb-layers-section {
+  min-width: 0;
+}
+
+.rb-layers-section-row {
+  background: var(--surface-1);
+  font-weight: 600;
+}
+
+.rb-layers-sublist {
+  list-style: none;
+  margin: 0.3rem 0 0;
+  padding: 0 0 0 0.9rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.3rem;
 }
 
 /* ── Editor de relatório: cabeçalho de seção editável e placeholder sem dados ── */

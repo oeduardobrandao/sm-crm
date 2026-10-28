@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ReportLayout } from '@mesaas/report-blocks/types';
+import { validateLayout, type ReportLayout } from '@mesaas/report-blocks/types';
 import {
   applyTemplateLayout,
   layoutHasFilledImage,
@@ -47,6 +47,10 @@ describe('sanitizeLayoutForTemplate', () => {
   });
 });
 
+// Blocos de conteúdo (sem os marcadores de seção que o apply acrescenta).
+const contentIds = (l: ReportLayout) =>
+  l.blocks.filter((b) => b.type !== 'section').map((b) => b.id);
+
 describe('applyTemplateLayout', () => {
   const current: ReportLayout = {
     version: 1,
@@ -67,9 +71,10 @@ describe('applyTemplateLayout', () => {
     };
     const out = applyTemplateLayout(template, current);
     expect(out.accent).toBe('#123456');
-    expect(out.blocks.map((b) => b.id)).toEqual(['tc', 'ts']);
-    expect(out.blocks[1].text).toEqual(doc('resumo atual'));
-    expect(out.blocks[1].size).toBe('half');
+    expect(contentIds(out)).toEqual(['tc', 'ts']);
+    const ts = out.blocks.find((b) => b.id === 'ts')!;
+    expect(ts.text).toEqual(doc('resumo atual'));
+    expect(ts.size).toBe('half');
   });
 
   it('bloco de IA sem correspondente com texto no atual é removido', () => {
@@ -81,8 +86,8 @@ describe('applyTemplateLayout', () => {
       ],
     };
     const out = applyTemplateLayout(template, current);
-    expect(out.blocks.map((b) => b.id)).toEqual(['tg']);
-    expect(out.blocks[0].text).toEqual(doc('metas atuais'));
+    expect(contentIds(out)).toEqual(['tg']);
+    expect(out.blocks.find((b) => b.id === 'tg')!.text).toEqual(doc('metas atuais'));
   });
 
   it('template sem accent remove o accent atual (substituição completa)', () => {
@@ -104,6 +109,60 @@ describe('applyTemplateLayout', () => {
     const out = applyTemplateLayout(template, current);
     expect(out.theme).toBe('editorial');
     expect(out.fonts).toBe('fraunces');
+  });
+
+  it('modelo legado sai seccionado e válido', () => {
+    const template: ReportLayout = {
+      version: 1,
+      blocks: [
+        { id: 'tc', type: 'cover', size: 'full' },
+        { id: 'tr', type: 'kpi_reach', size: 'third' },
+        { id: 'ts', type: 'ai_summary', size: 'full' },
+      ],
+    };
+    const out = applyTemplateLayout(template, current);
+    expect(out.blocks[0].type).toBe('section');
+    // Sem section_header no topo, a capa antes do primeiro bloco do Instagram vira Geral; o resto
+    // é uma seção Instagram de título oculto (spec §Reading).
+    expect(out.blocks.map((b) => b.type)).toEqual([
+      'section',
+      'cover',
+      'section',
+      'kpi_reach',
+      'ai_summary',
+    ]);
+    expect(out.blocks[0].config).toBeUndefined();
+    expect(out.blocks[2].config).toEqual({ platform: 'instagram', hideHeader: true });
+    expect(validateLayout(out)).toMatchObject({ ok: true });
+  });
+
+  it('modelo seccionado mantém as seções como estão, inclusive a de TikTok', () => {
+    const template: ReportLayout = {
+      version: 1,
+      blocks: [
+        { id: 'g', type: 'section', size: 'full' },
+        { id: 'tg', type: 'ai_goals', size: 'full' },
+        { id: 'tt', type: 'section', size: 'full', config: { platform: 'tiktok' } },
+        { id: 'tk', type: 'tiktok_kpi_views', size: 'third' },
+      ],
+    };
+    const out = applyTemplateLayout(template, current);
+    expect(out.blocks.map((b) => b.id)).toEqual(['g', 'tg', 'tt', 'tk']);
+    expect(out.blocks[0]).toBe(template.blocks[0]);
+    expect(validateLayout(out)).toMatchObject({ ok: true });
+  });
+
+  it('IA sem correspondente sai sem quebrar a seção (seção vazia continua)', () => {
+    const template: ReportLayout = {
+      version: 1,
+      blocks: [
+        { id: 'g', type: 'section', size: 'full' },
+        { id: 'tr', type: 'ai_recommendations', size: 'full' },
+      ],
+    };
+    const out = applyTemplateLayout(template, current);
+    expect(out.blocks.map((b) => b.id)).toEqual(['g']);
+    expect(validateLayout(out)).toMatchObject({ ok: true });
   });
 });
 

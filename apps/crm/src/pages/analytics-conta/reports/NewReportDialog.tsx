@@ -1,6 +1,7 @@
-// Cria um relatório interativo: mês (default = mês anterior), template
-// opcional e geração síncrona.
+// Cria um relatório interativo: mês (default = mês anterior), plataformas,
+// template opcional e geração síncrona.
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -14,6 +15,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { MonthPicker } from '@/components/ui/month-picker';
@@ -24,7 +26,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { generateReportDoc } from '../../../services/reportDocs';
+import { PLATFORM_NAMES } from '@mesaas/report-blocks/platform';
+import { generateReportDoc, type ReportPlatform } from '../../../services/reportDocs';
 import { listReportTemplates } from '../../../services/reportTemplates';
 import { captureEvent } from '@/lib/analytics';
 import { useAuth } from '../../../context/AuthContext';
@@ -42,15 +45,35 @@ export interface NewReportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   clientId: number;
+  /**
+   * Redes conectadas do cliente. Com duas, o dialog pede quais entram no layout; com uma, essa
+   * vai sem perguntar; omitido (chamador que não conhece as redes), nada é enviado e o servidor
+   * usa todas as conectadas.
+   */
+  connected?: ReportPlatform[];
 }
 
-export function NewReportDialog({ open, onOpenChange, clientId }: NewReportDialogProps) {
+export function NewReportDialog({ open, onOpenChange, clientId, connected }: NewReportDialogProps) {
+  const { t } = useTranslation('analyticsTiktok');
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { can } = useAuth();
   const [month, setMonth] = useState(previousMonth);
   const [templateId, setTemplateId] = useState(SYSTEM_TEMPLATE);
   const [generating, setGenerating] = useState(false);
+  // Marcadas por padrão: guarda só o que o usuário desmarcou, assim uma rede que termina de
+  // carregar com o dialog aberto já entra marcada.
+  const [unchecked, setUnchecked] = useState<ReportPlatform[]>([]);
+
+  const askPlatforms = (connected?.length ?? 0) > 1;
+  // O que está marcado entre as redes mostradas no fieldset.
+  const checked = askPlatforms ? connected!.filter((p) => !unchecked.includes(p)) : [];
+  // `platforms` só vai quando o usuário estreitou a escolha (desmarcou alguma). Padrão (tudo
+  // marcado), uma rede só e desconhecido/carregando omitem: o servidor usa todas as conectadas.
+  // Assim um resumo de rede que falhou ao carregar nunca vira "só Instagram" em silêncio.
+  const narrowed = askPlatforms && checked.length < connected!.length;
+  const platforms: ReportPlatform[] | undefined = narrowed ? checked : undefined;
+  const noneChecked = askPlatforms && checked.length === 0;
 
   // Só quem abre a aba (configTabs.ts: configuracoes:ver) vê o link.
   const canSeeTemplates = can('configuracoes', 'ver') === true;
@@ -75,6 +98,7 @@ export function NewReportDialog({ open, onOpenChange, clientId }: NewReportDialo
   useEffect(() => {
     if (!open) {
       appliedDefaultRef.current = false;
+      setUnchecked([]);
       return;
     }
     if (appliedDefaultRef.current || templatesLoading) return;
@@ -97,7 +121,7 @@ export function NewReportDialog({ open, onOpenChange, clientId }: NewReportDialo
   }, [open, templatesLoading, templates, templateId]);
 
   const handleGenerate = async () => {
-    if (generating || !month) return;
+    if (generating || !month || noneChecked) return;
     setGenerating(true);
     try {
       // "system" é a sentinela explícita do "Padrão do sistema": tem que ir
@@ -109,6 +133,7 @@ export function NewReportDialog({ open, onOpenChange, clientId }: NewReportDialo
         clientId,
         month,
         templateId === SYSTEM_TEMPLATE ? 'system' : templateId,
+        platforms,
       );
       toast.success('Relatório gerado.');
       captureEvent('report_generated');
@@ -149,6 +174,29 @@ export function NewReportDialog({ open, onOpenChange, clientId }: NewReportDialo
               className="w-full"
             />
           </div>
+          {askPlatforms && (
+            <fieldset className="flex flex-col gap-2" disabled={generating}>
+              <legend className="mb-1.5 text-sm font-medium leading-none">
+                {t('reports.platforms', 'Plataformas')}
+              </legend>
+              {connected?.map((p) => (
+                <div key={p} className="flex items-center gap-2">
+                  <Checkbox
+                    id={`new-report-platform-${p}`}
+                    checked={!unchecked.includes(p)}
+                    onCheckedChange={(checked) =>
+                      setUnchecked((prev) =>
+                        checked === true ? prev.filter((x) => x !== p) : [...prev, p],
+                      )
+                    }
+                  />
+                  <Label htmlFor={`new-report-platform-${p}`} className="font-normal">
+                    {PLATFORM_NAMES[p]}
+                  </Label>
+                </div>
+              ))}
+            </fieldset>
+          )}
           <div className="flex flex-col gap-1.5">
             <div className="flex items-baseline justify-between gap-2">
               <Label htmlFor="new-report-template">Modelo</Label>
@@ -177,13 +225,19 @@ export function NewReportDialog({ open, onOpenChange, clientId }: NewReportDialo
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">
+              {t(
+                'reports.templateHelp',
+                'No padrão do sistema, cada plataforma marcada ganha sua seção. Num modelo seu, os blocos do modelo valem.',
+              )}
+            </p>
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" disabled={generating} onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button disabled={generating || !month} onClick={handleGenerate}>
+          <Button disabled={generating || !month || noneChecked} onClick={handleGenerate}>
             {generating ? <Spinner size="sm" /> : null}{' '}
             {generating ? 'Gerando…' : 'Gerar relatório'}
           </Button>

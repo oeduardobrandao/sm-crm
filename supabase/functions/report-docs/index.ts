@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
       }
       const parsed = parseGenerateBody(body);
       if (parsed === null) return json({ error: "invalid_body" }, 400);
-      const { clientId, month, templateId } = parsed;
+      const { clientId, month, templateId, platforms } = parsed;
 
       const result = await generateReportDocument(
         serviceClient,
@@ -79,6 +79,7 @@ Deno.serve(async (req) => {
         clientId,
         month,
         templateId,
+        platforms,
       );
       return json(result, 201);
     }
@@ -137,6 +138,7 @@ Deno.serve(async (req) => {
       if (err.code === "bad_month") return json({ error: "invalid_month" }, 400);
       if (err.code === "feature_disabled") return json({ error: "feature_disabled" }, 403);
       if (err.code === "invalid_template") return json({ error: "invalid_template" }, 400);
+      if (err.code === "invalid_platforms") return json({ error: "invalid_platforms" }, 400);
       return json({ error: "not_found" }, 404);
     }
     if (err instanceof DocActionError) {

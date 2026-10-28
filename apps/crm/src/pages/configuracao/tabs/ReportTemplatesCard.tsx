@@ -35,7 +35,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import type { ReportLayout } from '@mesaas/report-blocks/types';
+import { contentBlockCount, type ReportLayout } from '@mesaas/report-blocks/types';
 import {
   buildSystemDefaultLayout,
   createReportTemplate,
@@ -254,7 +254,7 @@ export function ReportTemplatesCard() {
                   {t('templates.defaultBadge')}
                 </span>
               )}
-              <span style={META_STYLE}>{blockCount(tpl.layout.blocks.length)}</span>
+              <span style={META_STYLE}>{blockCount(contentBlockCount(tpl.layout))}</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Button

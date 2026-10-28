@@ -8,7 +8,12 @@ import { ArrowLeft, Info, Plus, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DocSkeleton } from '@/components/ui/skeletons';
 import type { ReportBlock } from '@mesaas/report-blocks/types';
+import { sectionizeLayout, toSections } from '@mesaas/report-blocks/types';
 import '@mesaas/report-blocks/styles.css';
+import {
+  platformSectionBlocks,
+  type PlatformSectionOpts,
+} from '../../../../../supabase/functions/_shared/report-docs/default-layout.ts';
 import { getReportTemplate, type ReportTemplateRow } from '../../services/reportTemplates';
 import { useLayoutAutosave } from './useLayoutAutosave';
 import { TEMPLATE_AUTOSAVE_TARGET } from './templateAutosave';
@@ -23,13 +28,30 @@ import { TextBlockEditor } from './TextBlockEditor';
 import { AddWidgetDrawer } from './AddWidgetDrawer';
 import { LayersPanel } from './LayersPanel';
 import { AppearancePopover } from './AppearancePopover';
-import { moveBlock, normalizeCoverSize, updateBlockConfig, updateBlockText } from './layoutOps';
+import {
+  normalizeCoverSize,
+  resolveDragEnd,
+  updateBlockConfig,
+  updateBlockText,
+  updateSectionConfig,
+} from './layoutOps';
 import { withAiSampleText } from './templateOps';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
 import { ReportPhoneView } from './phone/ReportPhoneView';
 
 const SETTINGS_PATH = '/configuracao/relatorios';
+// Modelo vale para qualquer cliente: "Adicionar seção" oferece as duas
+// plataformas (dados de exemplo), mas TikTok só com feature_tiktok (fail closed
+// enquanto o plano não respondeu). A seção nova sai completa, como no "Padrão
+// do sistema" (buildSystemDefaultLayout): o generate corta o que faltar.
+const TEMPLATE_SECTION_OPTS: PlatformSectionOpts = {
+  hasAudience: true,
+  hasBestTimes: true,
+  hasTags: true,
+  hasTikTokBestTimes: true,
+};
 const SAMPLE_NOTE = 'Dados de exemplo. Os números reais entram quando o relatório é gerado.';
 
 function AiPlaceholder() {
@@ -54,10 +76,17 @@ function AiPlaceholder() {
 
 function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
   const snapshot = useSampleSnapshot();
+  const { features } = useWorkspaceLimits();
+  const tiktokEnabled = features?.feature_tiktok === true;
 
+  // Seccionado ao abrir (como o relatório): canônico = mesma ref, nada a gravar.
+  const initialLayout = useMemo(
+    () => sectionizeLayout(normalizeCoverSize(template.layout)),
+    [template.layout],
+  );
   const { layout, applyLayout, title, setTitle, saving } = useLayoutAutosave(
     template.id,
-    { layout: normalizeCoverSize(template.layout), title: template.name },
+    { layout: initialLayout, title: template.name },
     TEMPLATE_AUTOSAVE_TARGET,
   );
   // F1 (revisão final): templateAutosave pula a gravação no banco quando o
@@ -76,10 +105,16 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
     setDrawerOpen,
     highlightId,
     highlightAndScroll,
+    insertTarget,
     openWidgetDrawer,
     handleInsert,
     handleRemoveBlock,
-  } = useBlockEditing(layoutRef, commit);
+    handleRemoveSection,
+    handleAddSection,
+  } = useBlockEditing(layoutRef, commit, { tiktokEnabled });
+  const drawerSection = insertTarget
+    ? (toSections(layout).find((s) => s.marker.id === insertTarget.sectionId) ?? null)
+    : null;
   // Celular (D27): o modelo só é visto, não editado. Todos os hooks acima seguem
   // montados para a ordem não mudar quando a largura cruza 768px.
   const isPhone = !useIsDesktop(768);
@@ -186,6 +221,20 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
         }
         highlightId={highlightId}
         imageContext={{ mode: 'template' }}
+        tiktokEnabled={tiktokEnabled}
+        availablePlatforms="all"
+        onAddWidget={openWidgetDrawer}
+        onAddSection={(kind, afterId) =>
+          handleAddSection(
+            kind,
+            afterId,
+            kind === 'general' ? [] : platformSectionBlocks(kind, TEMPLATE_SECTION_OPTS),
+          )
+        }
+        onRemoveSection={handleRemoveSection}
+        onSectionConfigChange={(id, patch) =>
+          commit(updateSectionConfig(layoutRef.current, id, patch), configCoalesceKey(id, patch))
+        }
         renderTextBlock={(block: ReportBlock) =>
           block.type === 'text' ? (
             <TextBlockEditor
@@ -204,13 +253,21 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
       <LayersPanel
         layout={layout}
         highlightId={highlightId}
-        onReorder={(activeId, overId) => commit(moveBlock(layoutRef.current, activeId, overId))}
+        tiktokEnabled={tiktokEnabled}
+        onReorder={(activeId, overId) =>
+          commit(resolveDragEnd(layoutRef.current, activeId, overId))
+        }
         onLocate={highlightAndScroll}
         onAddAt={openWidgetDrawer}
-        onAddEnd={() => openWidgetDrawer(null)}
       />
 
-      <AddWidgetDrawer open={drawerOpen} onOpenChange={setDrawerOpen} onInsert={handleInsert} />
+      <AddWidgetDrawer
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        onInsert={handleInsert}
+        section={drawerSection}
+        hasCover={layout.blocks.some((b) => b.type === 'cover')}
+      />
     </div>
   );
 }

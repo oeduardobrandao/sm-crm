@@ -222,10 +222,12 @@ describe('updateReportTemplate', () => {
 });
 
 describe('buildSystemDefaultLayout', () => {
-  it('é um layout válido, começa pela capa e não carrega texto de IA', () => {
+  it('é um layout válido, abre com a seção Geral e a capa e não carrega texto de IA', () => {
     const layout = buildSystemDefaultLayout();
     expect(validateLayout(layout).ok).toBe(true);
-    expect(layout.blocks[0].type).toBe('cover');
+    expect(layout.blocks[0]).toMatchObject({ type: 'section', size: 'full' });
+    expect(layout.blocks[0].config).toBeUndefined();
+    expect(layout.blocks[1].type).toBe('cover');
     expect(layout.blocks.some((b) => b.type === 'ai_summary')).toBe(true);
     expect(layout.blocks.every((b) => b.text === undefined)).toBe(true);
   });

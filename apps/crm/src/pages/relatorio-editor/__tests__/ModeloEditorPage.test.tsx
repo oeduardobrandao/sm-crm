@@ -1,9 +1,9 @@
-import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ReportLayout } from '@mesaas/report-blocks/types';
+import { validateLayout, type ReportLayout } from '@mesaas/report-blocks/types';
+import { platformSectionBlocks } from '../../../../../../supabase/functions/_shared/report-docs/default-layout.ts';
 
 const { getReportTemplateMock, updateReportTemplateMock } = vi.hoisted(() => ({
   getReportTemplateMock: vi.fn(),
@@ -28,13 +28,25 @@ vi.mock('../../../store', () => ({
   }),
 }));
 const { toastMock } = vi.hoisted(() => ({
-  toastMock: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), loading: vi.fn() }),
+  toastMock: Object.assign(vi.fn(), {
+    success: vi.fn(),
+    error: vi.fn(),
+    loading: vi.fn(),
+    info: vi.fn(),
+  }),
 }));
+vi.mock('@/components/ui/dropdown-menu', () => import('./dropdownMenuMock'));
 vi.mock('sonner', () => ({ toast: toastMock }));
 
 // Esta suíte cobre o layout de desktop; o do celular (abaixo de 768px) tem a sua
 // própria em *.phone.test.tsx. jsdom responde false a todo matchMedia.
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
+// Objeto mutável, não vi.fn(): o vi.restoreAllMocks() do setup global não o zera.
+const limits = vi.hoisted(() => ({
+  value: { features: null as Record<string, boolean> | null },
+}));
+vi.mock('@/hooks/useWorkspaceLimits', () => ({ useWorkspaceLimits: () => limits.value }));
 
 import ModeloEditorPage from '../ModeloEditorPage';
 
@@ -61,6 +73,7 @@ function renderAt(id = 'tpl-1') {
 }
 
 beforeEach(() => {
+  limits.value = { features: null };
   getReportTemplateMock.mockReset();
   updateReportTemplateMock.mockReset();
   updateReportTemplateMock.mockResolvedValue(undefined);
@@ -82,6 +95,140 @@ function dropOnDocument(types: string[]) {
 }
 
 describe('ModeloEditorPage', () => {
+  const region = (name: string) => screen.getByRole('region', { name: `Seção ${name}` });
+  const cellIdsIn = (el: HTMLElement) =>
+    [...el.querySelectorAll('[data-block-id]')].map((c) => c.getAttribute('data-block-id'));
+  const withTikTok: ReportLayout = {
+    version: 1,
+    blocks: [
+      { id: 'g', type: 'section', size: 'full' },
+      { id: 'c', type: 'cover', size: 'full' },
+      { id: 'tt', type: 'section', size: 'full', config: { platform: 'tiktok' } },
+      { id: 'tv', type: 'tiktok_kpi_views', size: 'third' },
+    ],
+  };
+
+  it('modelo legado abre seccionado: capa e resumo numa seção Geral', async () => {
+    renderAt();
+    await screen.findByDisplayValue('Mensal completo');
+    expect(cellIdsIn(region('Geral'))).toEqual(['c', 'ai']);
+    expect(updateReportTemplateMock).not.toHaveBeenCalled();
+  });
+
+  // O 1º autosave de um modelo legado grava a forma seccionada (o editor
+  // trabalha sobre sectionizeLayout): o payload tem marcadores e é válido.
+  it('modelo legado: o 1º autosave depois de uma edição grava o layout seccionado e válido', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderAt();
+      await screen.findByDisplayValue('Mensal completo');
+      fireEvent.click(screen.getByRole('button', { name: 'Adicionar widget' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Divisor de página' }));
+      await act(async () => {
+        vi.advanceTimersByTime(1600);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      const call = updateReportTemplateMock.mock.calls.find((c) => c[1]?.layout);
+      expect(call?.[0]).toBe('tpl-1');
+      const saved = call![1].layout as ReportLayout;
+      expect(saved.blocks[0]).toMatchObject({ type: 'section' });
+      expect(saved.blocks.map((b) => b.id).slice(1, 3)).toEqual(['c', 'ai']);
+      expect(saved.blocks.at(-1)?.type).toBe('divider');
+      expect(validateLayout(saved)).toMatchObject({ ok: true });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // TikTok só existe com feature_tiktok: sem a flag (ou com o plano ainda sem
+  // resposta) "Adicionar seção" não oferece TikTok.
+  it.each([
+    ['sem feature_tiktok', { feature_tiktok: false }],
+    ['plano sem resposta', null],
+  ])('%s: "Adicionar seção" não oferece TikTok', async (_label, features) => {
+    limits.value = { features };
+    renderAt();
+    await screen.findByDisplayValue('Mensal completo');
+    expect(screen.getAllByRole('button', { name: /^Instagram/ }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /^TikTok/ })).not.toBeInTheDocument();
+  });
+
+  it('com feature_tiktok: adicionar TikTok no modelo insere os blocos padrão da plataforma', async () => {
+    limits.value = { features: { feature_tiktok: true } };
+    renderAt();
+    await screen.findByDisplayValue('Mensal completo');
+    // No modelo as duas plataformas valem (dados de exemplo): nada desabilitado.
+    const items = screen.getAllByRole('button', { name: /^TikTok/ });
+    for (const el of items) expect(el).toBeEnabled();
+    fireEvent.click(items[items.length - 1]);
+    const tt = await screen.findByRole('region', { name: 'Seção TikTok' });
+    const expected = platformSectionBlocks('tiktok', {
+      hasAudience: true,
+      hasBestTimes: true,
+      hasTags: true,
+      hasTikTokBestTimes: true,
+    });
+    expect(cellIdsIn(tt)).toHaveLength(expected.length);
+  });
+
+  it('modelo com seção TikTok sem feature_tiktok: a seção aparece e sai, mas sem "Adicionar widget"', async () => {
+    limits.value = { features: { feature_tiktok: false } };
+    getReportTemplateMock.mockResolvedValue({
+      id: 'tpl-1',
+      name: 'Mensal completo',
+      layout: withTikTok,
+      is_default: true,
+      created_at: '2026-09-01',
+    });
+    renderAt();
+    await screen.findByDisplayValue('Mensal completo');
+    const tt = region('TikTok');
+    expect(cellIdsIn(tt)).toEqual(['tv']);
+    expect(within(tt).queryByRole('button', { name: /Adicionar widget/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Adicionar widget em TikTok/ })).toBeNull();
+    fireEvent.click(within(tt).getByRole('button', { name: 'Remover seção' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Remover' }));
+    expect(screen.queryByRole('region', { name: 'Seção TikTok' })).not.toBeInTheDocument();
+  });
+
+  it('"Adicionar widget" do cabeçalho, última seção TikTok sem a flag: o widget entra na Geral antes dela', async () => {
+    limits.value = { features: { feature_tiktok: false } };
+    getReportTemplateMock.mockResolvedValue({
+      id: 'tpl-1',
+      name: 'Mensal completo',
+      layout: withTikTok,
+      is_default: true,
+      created_at: '2026-09-01',
+    });
+    renderAt();
+    await screen.findByDisplayValue('Mensal completo');
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar widget' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Divisor de página' }));
+    await waitFor(() => expect(cellIdsIn(region('Geral'))).toHaveLength(2));
+    expect(cellIdsIn(region('TikTok'))).toEqual(['tv']);
+  });
+
+  it('o drawer da seção TikTok lista os widgets do TikTok', async () => {
+    limits.value = { features: { feature_tiktok: true } };
+    getReportTemplateMock.mockResolvedValue({
+      id: 'tpl-1',
+      name: 'Mensal completo',
+      layout: withTikTok,
+      is_default: true,
+      created_at: '2026-09-01',
+    });
+    renderAt();
+    await screen.findByDisplayValue('Mensal completo');
+    fireEvent.click(
+      within(region('TikTok')).getByRole('button', { name: 'Adicionar widget na seção TikTok' }),
+    );
+    expect(await screen.findByText('Na seção TikTok')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Lista de vídeos' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Alcance' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+  });
+
   it('arquivo solto fora das áreas não descarrega o editor; arrasto de texto passa', async () => {
     const { unmount } = renderAt();
     await screen.findByDisplayValue('Mensal completo');

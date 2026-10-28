@@ -281,6 +281,7 @@ describe('AnalyticsClientShell: tabs', () => {
         period_start: '2026-07-01',
         status: 'ready',
         created_at: '2026-08-01T00:00:00Z',
+        platforms: ['instagram'],
       } as never,
     ]);
     vi.mocked(getClientReports).mockResolvedValue([
@@ -367,6 +368,7 @@ describe('AnalyticsClientShell (phone)', () => {
         period_start: '2026-09-01',
         status: 'ready',
         created_at: '2026-10-02T10:00:00Z',
+        platforms: ['instagram'],
       } as never,
     ]);
     renderShell('/analytics/12/relatorios');

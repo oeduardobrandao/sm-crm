@@ -50,6 +50,30 @@ describe('generateReportDoc', () => {
     expect(JSON.parse(init.body)).toEqual({ clientId: 42, month: '2026-07', templateId: 'tpl-1' });
   });
 
+  it('com platforms, inclui a chave no body; sem, omite', async () => {
+    fetchMock.mockImplementation(
+      async () => new Response(JSON.stringify({ id: 'doc-1' }), { status: 201 }),
+    );
+    await generateReportDoc(42, '2026-07', 'system', ['instagram', 'tiktok']);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      clientId: 42,
+      month: '2026-07',
+      templateId: 'system',
+      platforms: ['instagram', 'tiktok'],
+    });
+    await generateReportDoc(42, '2026-07', 'system');
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).not.toHaveProperty('platforms');
+  });
+
+  it('400 invalid_platforms vira mensagem legível, sem texto cru do servidor', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: 'invalid_platforms' }), { status: 400 }),
+    );
+    await expect(generateReportDoc(42, '2026-07', 'system', ['tiktok'])).rejects.toThrow(
+      'Uma das plataformas escolhidas não está mais conectada. Atualize a página e tente de novo.',
+    );
+  });
+
   // Sentinela explícita do "Padrão do sistema" (achado de review externo, PR
   // #379): tem que ir verbatim no body, nunca ser omitida -- omitir é o bug
   // original, porque o servidor lê ausente como "usa o default do workspace".
@@ -151,7 +175,34 @@ describe('listReportDocs', () => {
     fromMock.mockReturnValue({ select });
     const rows = await listReportDocs(42);
     expect(fromMock).toHaveBeenCalledWith('report_documents');
-    expect(rows).toEqual([{ id: 'd1' }]);
+    expect(rows).toEqual([{ id: 'd1', platforms: [] }]);
+  });
+
+  it('seleciona só os blocos do layout e deriva as plataformas por bloco', async () => {
+    const order = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'd1',
+          title: 'Misto',
+          blocks: [
+            { id: 'a', type: 'kpi_reach' },
+            { id: 'b', type: 'text' },
+            { id: 'c', type: 'tiktok_kpi_views' },
+          ],
+        },
+        { id: 'd2', title: 'TikTok', blocks: [{ id: 'a', type: 'tiktok_top_posts' }] },
+        { id: 'd3', title: 'Sem layout', blocks: null },
+      ],
+      error: null,
+    });
+    const eq = vi.fn().mockReturnValue({ order });
+    const select = vi.fn().mockReturnValue({ eq });
+    fromMock.mockReturnValue({ select });
+    const rows = await listReportDocs(42);
+    expect(select.mock.calls[0][0]).toContain('blocks:layout->blocks');
+    expect(select.mock.calls[0][0]).not.toMatch(/(^|[ ,])layout([ ,]|$)/);
+    expect(rows.map((r) => r.platforms)).toEqual([['instagram', 'tiktok'], ['tiktok'], []]);
+    expect(rows[0]).not.toHaveProperty('blocks');
   });
 });
 

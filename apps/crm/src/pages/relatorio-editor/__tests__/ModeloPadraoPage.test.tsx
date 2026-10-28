@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ReportLayout } from '@mesaas/report-blocks/types';
+import { validateLayout, type ReportLayout } from '@mesaas/report-blocks/types';
 
 const layout: ReportLayout = {
   version: 1,
@@ -91,6 +91,16 @@ describe('ModeloPadraoPage', () => {
     const [name, saved] = createReportTemplateMock.mock.calls[0];
     expect(name).toBe('Padrão do sistema (cópia)');
     expect((saved as ReportLayout).blocks.every((b) => b.text === undefined)).toBe(true);
+  });
+
+  it('o layout é seccionado ao abrir: a cópia sai com o marcador da seção Geral', async () => {
+    createReportTemplateMock.mockResolvedValue({ id: 'new-1' });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: /Duplicar para editar/ }));
+    await waitFor(() => expect(createReportTemplateMock).toHaveBeenCalled());
+    const saved = createReportTemplateMock.mock.calls[0][1] as ReportLayout;
+    expect(saved.blocks.map((b) => b.type)).toEqual(['section', 'cover', 'ai_summary']);
+    expect(validateLayout(saved)).toMatchObject({ ok: true });
   });
 
   it('falha ao duplicar mostra toast genérico', async () => {

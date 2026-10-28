@@ -288,4 +288,108 @@ describe('NewReportDialog', () => {
     );
     expect(templatesQuery?.refetchOnWindowFocus).toBe('always');
   });
+
+  describe('Plataformas', () => {
+    it('com as duas conectadas: dois checkboxes marcados; desmarcar o TikTok envia ["instagram"]', async () => {
+      generateMock.mockResolvedValue({ id: 'doc-9' });
+      render(
+        <NewReportDialog
+          open
+          onOpenChange={() => {}}
+          clientId={42}
+          connected={['instagram', 'tiktok']}
+        />,
+      );
+      const ig = screen.getByRole('checkbox', { name: 'Instagram' });
+      const tt = screen.getByRole('checkbox', { name: 'TikTok' });
+      expect(ig).toBeChecked();
+      expect(tt).toBeChecked();
+      fireEvent.click(tt);
+      expect(tt).not.toBeChecked();
+      fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+      await waitFor(() => expect(generateMock).toHaveBeenCalled());
+      expect(generateMock.mock.calls[0][3]).toEqual(['instagram']);
+    });
+
+    it('com as duas conectadas e nada mudado, não envia platforms (o servidor usa todas)', async () => {
+      generateMock.mockResolvedValue({ id: 'doc-9' });
+      render(
+        <NewReportDialog
+          open
+          onOpenChange={() => {}}
+          clientId={42}
+          connected={['instagram', 'tiktok']}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+      await waitFor(() => expect(generateMock).toHaveBeenCalled());
+      expect(generateMock.mock.calls[0][3]).toBeUndefined();
+    });
+
+    it('nenhuma marcada desabilita o Gerar', () => {
+      render(
+        <NewReportDialog
+          open
+          onOpenChange={() => {}}
+          clientId={42}
+          connected={['instagram', 'tiktok']}
+        />,
+      );
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Instagram' }));
+      fireEvent.click(screen.getByRole('checkbox', { name: 'TikTok' }));
+      expect(screen.getByRole('button', { name: 'Gerar relatório' })).toBeDisabled();
+    });
+
+    it('uma plataforma só esconde o fieldset e não envia platforms', async () => {
+      generateMock.mockResolvedValue({ id: 'doc-9' });
+      render(<NewReportDialog open onOpenChange={() => {}} clientId={42} connected={['tiktok']} />);
+      expect(screen.queryByRole('group', { name: 'Plataformas' })).toBeNull();
+      expect(screen.queryByRole('checkbox')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+      await waitFor(() => expect(generateMock).toHaveBeenCalled());
+      expect(generateMock.mock.calls[0][3]).toBeUndefined();
+    });
+
+    it('desmarcar e marcar de volta não conta como estreitar: não envia platforms', async () => {
+      generateMock.mockResolvedValue({ id: 'doc-9' });
+      render(
+        <NewReportDialog
+          open
+          onOpenChange={() => {}}
+          clientId={42}
+          connected={['instagram', 'tiktok']}
+        />,
+      );
+      fireEvent.click(screen.getByRole('checkbox', { name: 'TikTok' }));
+      fireEvent.click(screen.getByRole('checkbox', { name: 'TikTok' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+      await waitFor(() => expect(generateMock).toHaveBeenCalled());
+      expect(generateMock.mock.calls[0][3]).toBeUndefined();
+    });
+
+    it('sem a prop connected (chamador sem resumo das redes) não envia platforms', async () => {
+      generateMock.mockResolvedValue({ id: 'doc-9' });
+      render(<NewReportDialog open onOpenChange={() => {}} clientId={42} />);
+      expect(screen.queryByRole('checkbox')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+      await waitFor(() => expect(generateMock).toHaveBeenCalled());
+      expect(generateMock.mock.calls[0][3]).toBeUndefined();
+    });
+
+    it('mostra o texto de ajuda sob Modelo', () => {
+      render(
+        <NewReportDialog
+          open
+          onOpenChange={() => {}}
+          clientId={42}
+          connected={['instagram', 'tiktok']}
+        />,
+      );
+      expect(
+        screen.getByText(
+          'No padrão do sistema, cada plataforma marcada ganha sua seção. Num modelo seu, os blocos do modelo valem.',
+        ),
+      ).toBeInTheDocument();
+    });
+  });
 });

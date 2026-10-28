@@ -1,4 +1,3 @@
-import React from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -47,44 +46,27 @@ vi.mock('../../../store/hub', () => ({
 // toast.success/.error (os já usados no resto da página) precisam do MESMO
 // mock: sonner exporta toast como uma função com métodos anexados.
 const { toastMock } = vi.hoisted(() => ({
-  toastMock: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), loading: vi.fn() }),
+  toastMock: Object.assign(vi.fn(), {
+    success: vi.fn(),
+    error: vi.fn(),
+    loading: vi.fn(),
+    info: vi.fn(),
+  }),
 }));
 vi.mock('sonner', () => ({ toast: toastMock }));
 
 // Mock do DropdownMenu (padrão da casa, ver ClientesPage.test.tsx): o Radix
-// real não abre com fireEvent puro no jsdom (precisa de pointer events
-// reais, e este repo não tem @testing-library/user-event instalado). Os
-// dois dialogs (Salvar/Aplicar template) continuam testados diretamente em
-// SaveTemplateDialog.test.tsx e ApplyTemplateDialog.test.tsx; este mock só
-// existe para exercitar "Atualizar dados" e "Ver como cliente", que são
-// itens de ação inline (sem dialog próprio).
-vi.mock('@/components/ui/dropdown-menu', () => {
-  function DropdownMenu({ children }: { children: React.ReactNode }) {
-    return <div>{children}</div>;
-  }
-  function DropdownMenuTrigger({ children }: { children: React.ReactNode }) {
-    return <>{children}</>;
-  }
-  function DropdownMenuContent({ children }: { children: React.ReactNode }) {
-    return <div>{children}</div>;
-  }
-  function DropdownMenuItem({
-    children,
-    onSelect,
-    disabled,
-  }: {
-    children: React.ReactNode;
-    onSelect?: () => void;
-    disabled?: boolean;
-  }) {
-    return (
-      <button type="button" disabled={disabled} onClick={() => onSelect?.()}>
-        {children}
-      </button>
-    );
-  }
-  return { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem };
-});
+// real não abre com fireEvent puro no jsdom. Os dois dialogs (Salvar/Aplicar
+// template) continuam testados diretamente em SaveTemplateDialog.test.tsx e
+// ApplyTemplateDialog.test.tsx; com o mock, os menus de seção e "Adicionar
+// seção" ficam sempre abertos.
+vi.mock('@/components/ui/dropdown-menu', () => import('./dropdownMenuMock'));
+
+// Objeto mutável, não vi.fn(): o vi.restoreAllMocks() do setup global não o zera.
+const limits = vi.hoisted(() => ({
+  value: { features: null as Record<string, boolean> | null },
+}));
+vi.mock('@/hooks/useWorkspaceLimits', () => ({ useWorkspaceLimits: () => limits.value }));
 
 // Esta suíte cobre o layout de desktop; o do celular (abaixo de 768px) tem a sua
 // própria em *.phone.test.tsx. jsdom responde false a todo matchMedia.
@@ -97,6 +79,7 @@ import RelatorioEditorPage from '../RelatorioEditorPage';
 // mockResolvedValue aplicado no vi.hoisted acima. Rearmar aqui é o mesmo
 // padrão de useLayoutAutosave.test.ts:21.
 beforeEach(() => {
+  limits.value = { features: null };
   updateReportDocMock.mockResolvedValue(undefined);
   refreshReportDocMock.mockResolvedValue(undefined);
   getHubTokenMock.mockResolvedValue(null);
@@ -196,8 +179,16 @@ describe('RelatorioEditorPage (editor)', () => {
     await waitFor(
       () =>
         expect(updateReportDocMock).toHaveBeenCalledWith('doc-1', {
+          // Aberto seccionado: Geral [a] e a seção do Instagram, agora vazia.
           layout: expect.objectContaining({
-            blocks: [expect.objectContaining({ id: 'a' })],
+            blocks: [
+              expect.objectContaining({ type: 'section' }),
+              expect.objectContaining({ id: 'a' }),
+              expect.objectContaining({
+                type: 'section',
+                config: { platform: 'instagram', hideHeader: true },
+              }),
+            ],
           }),
         }),
       { timeout: 4000 },
@@ -508,8 +499,12 @@ describe('RelatorioEditorPage (editor)', () => {
     await waitFor(
       () =>
         expect(updateReportDocMock).toHaveBeenCalledWith('doc-1', {
+          // applyTemplateLayout entrega o modelo seccionado: marcador Geral + a capa.
           layout: expect.objectContaining({
-            blocks: [expect.objectContaining({ id: 'c', size: 'full' })],
+            blocks: [
+              expect.objectContaining({ type: 'section' }),
+              expect.objectContaining({ id: 'c', size: 'full' }),
+            ],
           }),
         }),
       { timeout: 4000 },
@@ -536,11 +531,179 @@ describe('RelatorioEditorPage (editor)', () => {
       () =>
         expect(updateReportDocMock).toHaveBeenCalledWith('doc-1', {
           layout: expect.objectContaining({
-            blocks: [expect.objectContaining({ id: 'c', size: 'full' })],
+            blocks: [
+              expect.objectContaining({ type: 'section' }),
+              expect.objectContaining({ id: 'c', size: 'full' }),
+              expect.objectContaining({ type: 'section' }),
+            ],
           }),
         }),
       { timeout: 4000 },
     );
     vi.useRealTimers();
+  });
+});
+
+// ── Seções (spec 2026-10-28-report-platform-sections §Editor) ──
+
+const region = (name: string) => screen.getByRole('region', { name: `Seção ${name}` });
+const cellIdsIn = (el: HTMLElement) =>
+  [...el.querySelectorAll('[data-block-id]')].map((c) => c.getAttribute('data-block-id'));
+const sectionIds = () =>
+  [...document.querySelectorAll('.rb-section-frame[data-section-id]')].map((el) =>
+    el.getAttribute('data-section-id'),
+  );
+
+describe('RelatorioEditorPage: seções', () => {
+  it('documento legado abre seccionado e o primeiro autosave leva os marcadores e passa no validateLayout', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      getReportDocMock.mockResolvedValue(doc());
+      renderPage();
+      await screen.findByLabelText('Título do relatório');
+      expect(cellIdsIn(region('Geral'))).toEqual(['a']);
+      expect(cellIdsIn(region('Instagram'))).toEqual(['b']);
+      // Nada é gravado só por abrir.
+      expect(updateReportDocMock).not.toHaveBeenCalled();
+
+      fireEvent.change(
+        within(region('Instagram')).getByRole('textbox', { name: 'Título da seção Instagram' }),
+        { target: { value: 'Números' } },
+      );
+      await waitFor(() => expect(updateReportDocMock).toHaveBeenCalled(), { timeout: 4000 });
+      const payload = updateReportDocMock.mock.calls[0][1].layout;
+      expect(validateLayout(payload)).toMatchObject({ ok: true });
+      expect(payload.blocks.map((b: { type: string }) => b.type)).toEqual([
+        'section',
+        'divider',
+        'section',
+        'kpi_reach',
+      ]);
+      expect(payload.blocks[2].config).toEqual({
+        platform: 'instagram',
+        title: 'Números',
+        hideHeader: true,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('"Adicionar widget" da seção abre o drawer dela e o widget entra nela', async () => {
+    getReportDocMock.mockResolvedValue(doc());
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    fireEvent.click(
+      within(region('Geral')).getByRole('button', { name: 'Adicionar widget na seção Geral' }),
+    );
+    expect(await screen.findByText('Na seção Geral')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Alcance' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Texto livre' }));
+    await waitFor(() => expect(cellIdsIn(region('Geral'))).toHaveLength(2));
+    expect(cellIdsIn(region('Instagram'))).toEqual(['b']);
+  });
+
+  it('o "+" das camadas insere na seção e na posição escolhidas', async () => {
+    getReportDocMock.mockResolvedValue({
+      ...doc(),
+      layout: {
+        version: 1,
+        blocks: [
+          { id: 'g', type: 'section', size: 'full' },
+          { id: 'a', type: 'divider', size: 'full' },
+          { id: 'ig', type: 'section', size: 'full', config: { platform: 'instagram' } },
+          { id: 'b1', type: 'kpi_reach', size: 'third' },
+          { id: 'b2', type: 'kpi_saves', size: 'third' },
+        ],
+      },
+    });
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Adicionar widget em Instagram, posição 2' }),
+    );
+    expect(await screen.findByText('Na seção Instagram')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Seguidores totais' }));
+    await waitFor(() => expect(cellIdsIn(region('Instagram'))).toHaveLength(3));
+    const ids = cellIdsIn(region('Instagram'));
+    expect(ids[0]).toBe('b1');
+    expect(ids[2]).toBe('b2');
+  });
+
+  it('remover a seção do Instagram e desfazer devolve a seção no lugar, com os blocos', async () => {
+    getReportDocMock.mockResolvedValue({
+      ...doc(),
+      layout: {
+        version: 1,
+        blocks: [
+          { id: 'g', type: 'section', size: 'full' },
+          { id: 'a', type: 'divider', size: 'full' },
+          { id: 'ig', type: 'section', size: 'full', config: { platform: 'instagram' } },
+          { id: 'b', type: 'kpi_reach', size: 'third' },
+          { id: 'g2', type: 'section', size: 'full', config: { title: 'Próximos passos' } },
+          { id: 't', type: 'divider', size: 'full' },
+        ],
+      },
+    });
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    expect(sectionIds()).toEqual(['g', 'ig', 'g2']);
+    fireEvent.click(within(region('Instagram')).getByRole('button', { name: 'Remover seção' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Remover' }));
+    await waitFor(() => expect(sectionIds()).toEqual(['g', 'g2']));
+    expect(document.querySelector('[data-block-id="b"]')).toBeNull();
+
+    expect(toastMock).toHaveBeenCalledWith(
+      'Seção removida.',
+      expect.objectContaining({
+        action: expect.objectContaining({ label: 'Desfazer', onClick: expect.any(Function) }),
+      }),
+    );
+    const lastCall = toastMock.mock.calls.at(-1)!;
+    const { onClick } = (lastCall[1] as { action: { onClick: () => void } }).action;
+    act(() => onClick());
+    await waitFor(() => expect(sectionIds()).toEqual(['g', 'ig', 'g2']));
+    expect(cellIdsIn(region('Instagram'))).toEqual(['b']);
+  });
+
+  it('sem feature_tiktok: "Adicionar seção" não oferece TikTok', async () => {
+    getReportDocMock.mockResolvedValue(doc());
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    expect(
+      screen.getAllByRole('button', { name: /^Instagram\s*Já existe/ }).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /^TikTok/ })).not.toBeInTheDocument();
+  });
+
+  it('documento sem dados do TikTok: TikTok desabilitado com a dica de atualizar dados', async () => {
+    limits.value = { features: { feature_tiktok: true } };
+    getReportDocMock.mockResolvedValue({
+      ...doc(),
+      data_snapshot: makeSnapshotFixture({ tiktok: null }),
+    });
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    const items = screen.getAllByRole('button', { name: /^TikTok/ });
+    expect(items.length).toBeGreaterThan(0);
+    for (const el of items) {
+      expect(el).toBeDisabled();
+      expect(el).toHaveTextContent(
+        'Sem dados do TikTok neste relatório. Atualize os dados depois de conectar a conta.',
+      );
+    }
+  });
+
+  it('documento com TikTok: adicionar a seção TikTok traz os blocos padrão dela', async () => {
+    limits.value = { features: { feature_tiktok: true } };
+    getReportDocMock.mockResolvedValue(doc());
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    const items = screen.getAllByRole('button', { name: /^TikTok/ });
+    fireEvent.click(items[items.length - 1]);
+    const tt = await screen.findByRole('region', { name: 'Seção TikTok' });
+    // Os blocos padrão da seção TikTok (platformSectionBlocks): seis números,
+    // o gráfico de seguidores e os vídeos em destaque, no mínimo.
+    expect(cellIdsIn(tt).length).toBeGreaterThanOrEqual(8);
   });
 });

@@ -1,6 +1,24 @@
 import { assert, assertEquals, assertExists } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { FakeTime } from "https://deno.land/std@0.208.0/testing/time.ts";
-import { GenerateError, generateReportDocument } from "./generate.ts";
+import { GenerateError, generateReportDocument, metricPriorityGuidance } from "./generate.ts";
+import { buildDefaultLayout, NEXT_STEPS_TITLE } from "../_shared/report-docs/default-layout.ts";
+import { type ReportLayout, sanitizeLayoutForTemplate, validateLayout } from "../_shared/report-docs/layout.ts";
+import { sectionizeLayout, toSections } from "../_shared/report-docs/sections.ts";
+
+// Todo layout que a geração grava é canônico (spec 2026-10-28-report-platform-sections
+// §Generation): valida e já está na forma que sectionizeLayout devolveria. O fake db confere
+// isso em todo insert, então cada teste de geração abaixo também cobre a regra.
+function assertCanonical(layout: unknown): void {
+  const v = validateLayout(layout);
+  assert(v.ok, v.ok ? "" : `layout gerado inválido: ${v.error}`);
+  assert(sectionizeLayout(v.layout) === v.layout, "layout gerado fora da forma canônica");
+  // Só um modelo vazio gera um layout vazio; qualquer outro sai seccionado.
+  const blocks = (layout as ReportLayout).blocks;
+  assert(blocks.length === 0 || blocks[0].type === "section", "layout gerado sem seções");
+}
+const kindsOf = (layout: unknown) => toSections(layout as ReportLayout).map((s) => s.kind);
+const contentIds = (blocks: { id: string; type: string }[]) =>
+  blocks.filter((b) => b.type !== "section").map((b) => b.id);
 
 // Fake db: responde por tabela; grava inserts e chamadas de rpc para asserção.
 // `errors` deixa uma tabela específica resolver { data: null, error } em vez
@@ -15,11 +33,12 @@ function makeDb(
   } = {},
 ) {
   const inserts: Record<string, unknown>[] = [];
+  const tables: string[] = [];
   const rpcCalls: { name: string; args: Record<string, unknown> }[] = [];
   // deno-lint-ignore no-explicit-any
   const chain = (result: any, error: { message: string } | null = null): any => {
     const c: Record<string, unknown> = {};
-    for (const m of ["select", "eq", "gte", "lt", "order", "limit"]) {
+    for (const m of ["select", "eq", "gte", "lt", "lte", "order", "limit", "range"]) {
       c[m] = () => chain(result, error);
     }
     c.maybeSingle = () => Promise.resolve({ data: error ? null : result, error });
@@ -30,11 +49,14 @@ function makeDb(
   };
   return {
     inserts,
+    tables,
     rpcCalls,
     from: (table: string) => {
+      tables.push(table);
       if (table === "report_documents") {
         return {
           insert: (row: Record<string, unknown>) => {
+            assertCanonical(row.layout);
             inserts.push(row);
             return chain({ id: "doc-1" });
           },
@@ -200,6 +222,54 @@ Deno.test("Gemini trava além do teto de 45s: race resolve com fallback e aborta
     !row.layout.blocks.some((b) => b.config?.title === "Próximos passos"),
     "sem resposta a tempo, o layout deve cair no fallback sem seção órfã de IA",
   );
+  // A seção Geral "Próximos passos" sai inteira (marcador e título): nenhuma Geral vazia sobra.
+  assertEquals(kindsOf(row.layout), ["general", "instagram"]);
+  for (const sec of toSections(row.layout as ReportLayout)) {
+    if (sec.kind === "general") assert(sec.blocks.length > 0, "seção Geral vazia no layout gerado");
+  }
+});
+
+Deno.test("workspace template with AI failure keeps its sections as saved, even an empty Próximos passos", async () => {
+  // Gemini responde lixo: a IA falha e fillAiBlocks tira os blocos de IA. Num modelo do
+  // workspace a seção fica como o usuário salvou (ele apaga no editor, se quiser).
+  const tplLayout = {
+    version: 1,
+    blocks: [
+      { id: "g", type: "section", size: "full" },
+      { id: "c1", type: "cover", size: "full" },
+      { id: "s1", type: "ai_summary", size: "full" },
+      { id: "ig", type: "section", size: "full", config: { platform: "instagram" } },
+      { id: "k1", type: "kpi_reach", size: "third" },
+      { id: "nx", type: "section", size: "full", config: { title: "Próximos passos" } },
+      { id: "r1", type: "ai_recommendations", size: "full" },
+      { id: "g1", type: "ai_goals", size: "full" },
+    ],
+  };
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: true },
+    instagram_accounts: { id: "ig-1", username: "x" },
+    report_templates: { id: "t1", conta_id: "c", layout: tplLayout },
+    workspaces: { name: "W", logo_url: null, brand_color: "#111111", report_splash_url: null },
+    instagram_posts: [],
+    instagram_follower_history: [],
+  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((input: unknown, init?: RequestInit) => {
+    if (typeof input === "string" && input.includes("generativelanguage.googleapis.com")) {
+      return Promise.resolve(new Response("not json", { status: 500 }));
+    }
+    return originalFetch(input as Parameters<typeof fetch>[0], init);
+  }) as typeof fetch;
+  try {
+    await generateReportDocument(
+      db, { ...deps, geminiKey: "fake-key" }, "c", 1, "2026-07", "b3b2a6a0-1111-4222-8333-444455556666",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  const row = db.inserts[0] as LayoutRow;
+  assertEquals(row.layout.blocks.map((b) => b.id), ["g", "c1", "s1", "ig", "k1", "nx"]);
+  assertEquals(row.layout.blocks.at(-1)?.config, { title: "Próximos passos" });
 });
 
 Deno.test("erro na query obrigatória de posts do mês: rejeita e não insere nada", async () => {
@@ -639,4 +709,525 @@ Deno.test("templateId com bloco image: conteúdo da imagem é removido, ratio fi
   };
   const image = inserted.layout.blocks.find((b) => b.id === "i1");
   assertEquals(image?.config, { ratio: "4:5" });
+});
+
+// ─── TikTok (spec 2026-10-28 §B3) ────────────────────────────────────────────────────
+
+const TT_ACCOUNT = {
+  id: "tt-1", client_id: 1, username: "dra.tt", display_name: "Dra TT", avatar_url: null,
+  follower_count: 500, likes_count: 9000, video_count: 3, authorization_status: "active",
+  last_synced_at: null,
+};
+const TT_VIDEO = {
+  tiktok_video_id: "v1", posted_at: "2026-07-10T15:00:00Z", views: 1000, likes: 50, comments: 5,
+  shares: 2, title: "Vídeo", video_description: null, duration: 20,
+  share_url: "https://www.tiktok.com/@dra.tt/video/v1", cover_image_url: "https://s.example/v1.jpg",
+};
+const WORKSPACE = { name: "DK", logo_url: null, brand_color: "#123456", report_splash_url: null };
+
+type InsertedRow = {
+  instagram_account_id: string | null;
+  tiktok_account_id: string | null;
+  data_snapshot: {
+    instagram_connected?: boolean;
+    account: { handle: string; client_name?: string };
+    branding: { workspace_name: string };
+    kpis: Record<string, { value: number | null }>;
+    top_posts: unknown[];
+    tiktok?: { account: { handle: string }; top_posts: { video_id: string }[] } | null;
+  };
+};
+
+Deno.test("generate with only TikTok connected succeeds and sets instagram_connected false", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "Cliente TT", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: null,
+    tiktok_accounts: TT_ACCOUNT,
+    tiktok_posts: [TT_VIDEO],
+    tiktok_follower_history: [],
+    tiktok_account_metrics_daily: [],
+    workspaces: WORKSPACE,
+  });
+  const { id } = await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  assertEquals(id, "doc-1");
+  const row = db.inserts[0] as InsertedRow;
+  assertEquals(row.instagram_account_id, null);
+  assertEquals(row.tiktok_account_id, "tt-1");
+  assertEquals(row.data_snapshot.instagram_connected, false);
+  // Instagram vazio: todo KPI null (inclusive posts_count) e nenhuma lista.
+  for (const [kpi, entry] of Object.entries(row.data_snapshot.kpis)) assertEquals(entry.value, null, kpi);
+  assertEquals(row.data_snapshot.top_posts, []);
+  // Capa ainda tem branding e nome do cliente.
+  assertEquals(row.data_snapshot.branding.workspace_name, "DK");
+  assertEquals(row.data_snapshot.account.client_name, "Cliente TT");
+  assertEquals(row.data_snapshot.tiktok?.account.handle, "dra.tt");
+  assertEquals(row.data_snapshot.tiktok?.top_posts.map((p) => p.video_id), ["v1"]);
+});
+
+Deno.test("generate with neither connected -> not_found", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: null,
+    tiktok_accounts: null,
+    workspaces: WORKSPACE,
+  });
+  let err: unknown;
+  try {
+    await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  } catch (e) { err = e; }
+  assert(err instanceof GenerateError && err.code === "not_found");
+  assertEquals(db.inserts.length, 0);
+});
+
+Deno.test("generate: TikTok account disconnected counts as not connected", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: null,
+    tiktok_accounts: { ...TT_ACCOUNT, authorization_status: "disconnected" },
+    workspaces: WORKSPACE,
+  });
+  let err: unknown;
+  try {
+    await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  } catch (e) { err = e; }
+  assert(err instanceof GenerateError && err.code === "not_found");
+});
+
+Deno.test("generate without feature_tiktok leaves snapshot.tiktok null even when connected", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: { id: "ig-1", username: "dra.x" },
+    instagram_posts: [],
+    tiktok_accounts: TT_ACCOUNT,
+    tiktok_posts: [TT_VIDEO],
+    workspaces: WORKSPACE,
+  }, { featureByKey: { feature_tiktok: false } });
+  await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  const row = db.inserts[0] as InsertedRow;
+  assertEquals(row.data_snapshot.tiktok, null);
+  assertEquals(row.tiktok_account_id, null);
+  assertEquals(row.instagram_account_id, "ig-1");
+  assertEquals(row.data_snapshot.instagram_connected, true);
+});
+
+Deno.test("generate without feature_tiktok and only TikTok connected -> not_found", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: null,
+    tiktok_accounts: TT_ACCOUNT,
+    workspaces: WORKSPACE,
+  }, { featureByKey: { feature_tiktok: false } });
+  let err: unknown;
+  try {
+    await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  } catch (e) { err = e; }
+  assert(err instanceof GenerateError && err.code === "not_found");
+});
+
+Deno.test("generate with both connected records both accounts and the TikTok section", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: { id: "ig-1", username: "dra.x" },
+    instagram_posts: [],
+    tiktok_accounts: TT_ACCOUNT,
+    tiktok_posts: [TT_VIDEO],
+    workspaces: WORKSPACE,
+  });
+  await generateReportDocument(db, deps, "c", 1, "2026-07", null, ["instagram", "tiktok"]);
+  const row = db.inserts[0] as InsertedRow;
+  assertEquals(row.instagram_account_id, "ig-1");
+  assertEquals(row.tiktok_account_id, "tt-1");
+  assertEquals(row.data_snapshot.account.handle, "dra.x");
+  assertEquals(row.data_snapshot.tiktok?.account.handle, "dra.tt");
+});
+
+Deno.test("platforms ['tiktok'] for a client without TikTok -> invalid_platforms", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: { id: "ig-1", username: "dra.x" },
+    instagram_posts: [],
+    tiktok_accounts: null,
+    workspaces: WORKSPACE,
+  });
+  let err: unknown;
+  try {
+    await generateReportDocument(db, deps, "c", 1, "2026-07", null, ["tiktok"]);
+  } catch (e) { err = e; }
+  assert(err instanceof GenerateError && err.code === "invalid_platforms");
+  assertEquals(db.inserts.length, 0);
+  // Validado só com as linhas de conta, antes do snapshot completo.
+  assert(!db.tables.includes("instagram_posts"), "não deveria carregar o snapshot Instagram");
+  assert(!db.tables.includes("workspaces"), "não deveria carregar o workspace");
+});
+
+Deno.test("platforms ['instagram'] for a TikTok-only client -> invalid_platforms", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: null,
+    tiktok_accounts: TT_ACCOUNT,
+    tiktok_posts: [],
+    workspaces: WORKSPACE,
+  });
+  let err: unknown;
+  try {
+    await generateReportDocument(db, deps, "c", 1, "2026-07", null, ["instagram"]);
+  } catch (e) { err = e; }
+  assert(err instanceof GenerateError && err.code === "invalid_platforms");
+});
+
+Deno.test("mês futuro pelo relógio de SP: 22:00 de 31/07 em SP não pede agosto", async () => {
+  // 2026-08-01T01:00Z ainda é 31/07 22:00 em São Paulo: agosto é futuro.
+  const time = new FakeTime(new Date("2026-08-01T01:00:00Z"));
+  try {
+    const db = makeDb({
+      clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+      instagram_accounts: { id: "ig-1", username: "dra.x" },
+      instagram_posts: [],
+      workspaces: WORKSPACE,
+    });
+    let err: unknown;
+    try {
+      await generateReportDocument(db, deps, "c", 1, "2026-08", null);
+    } catch (e) { err = e; }
+    assert(err instanceof GenerateError && err.code === "bad_month");
+  } finally {
+    time.restore();
+  }
+});
+
+Deno.test("erro na leitura de instagram_accounts: rejeita (500) em vez de virar relatório só TikTok", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    tiktok_accounts: TT_ACCOUNT,
+    tiktok_posts: [TT_VIDEO],
+    workspaces: WORKSPACE,
+  }, { errors: { instagram_accounts: { message: "boom" } } });
+  let err: unknown;
+  try {
+    await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  } catch (e) { err = e; }
+  assert(err instanceof Error && !(err instanceof GenerateError));
+  assertEquals(db.inserts.length, 0);
+});
+
+// ─── Plataformas no layout e na IA (spec 2026-10-28 §B1/§B3, Task B3) ─────────────────
+
+type LayoutRow = {
+  layout: { blocks: { id: string; type: string; config?: Record<string, unknown>; text?: unknown }[] };
+};
+const textOf = (doc: unknown): string => JSON.stringify(doc);
+const BOTH_ROWS = {
+  clientes: { id: 1, conta_id: "c", nome: "X", especialidade: "Derma", include_ai_analysis: false },
+  instagram_accounts: { id: "ig-1", username: "dra.x" },
+  instagram_posts: [],
+  tiktok_accounts: TT_ACCOUNT,
+  tiktok_posts: [TT_VIDEO],
+  workspaces: WORKSPACE,
+};
+
+Deno.test("generate TikTok-only: default layout is the TikTok section and the summary speaks of TikTok", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "Cliente TT", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: null,
+    tiktok_accounts: TT_ACCOUNT,
+    tiktok_posts: [TT_VIDEO],
+    workspaces: WORKSPACE,
+  });
+  await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  const row = db.inserts[0] as LayoutRow;
+  const types = row.layout.blocks.map((b) => b.type);
+  assertEquals(types.slice(0, 4), ["section", "cover", "ai_summary", "section"]);
+  assertEquals(row.layout.blocks[3].config, { platform: "tiktok" });
+  assertEquals(kindsOf(row.layout), ["general", "tiktok"]);
+  // O título da seção diz "TikTok": nada de section_header repetindo.
+  assert(!row.layout.blocks.some((b) => b.type === "section_header" && b.config?.title === "TikTok"));
+  assert(types.includes("tiktok_top_posts"));
+  assert(!types.some((t) => t.startsWith("kpi_") || t === "top_posts" || t === "chart_followers"));
+  const summary = textOf(row.layout.blocks.find((b) => b.type === "ai_summary")?.text);
+  assert(summary.includes("no TikTok: 1 vídeo publicado, 1.000 visualizações"), summary);
+  assert(!summary.includes("null"));
+});
+
+Deno.test("generate both connected, platforms omitted: Instagram then TikTok sections", async () => {
+  const db = makeDb(BOTH_ROWS);
+  await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  const row = db.inserts[0] as LayoutRow;
+  const titles = row.layout.blocks.filter((b) => b.type === "section_header").map((b) => b.config?.title);
+  assertEquals(titles[0], "Métricas principais");
+  assertEquals(kindsOf(row.layout), ["general", "instagram", "tiktok"]);
+  // Padrão do sistema: títulos de plataforma visíveis.
+  assert(!row.layout.blocks.some((b) => b.config?.hideHeader !== undefined));
+  const summary = textOf(row.layout.blocks.find((b) => b.type === "ai_summary")?.text);
+  assert(summary.includes("No TikTok:"), summary);
+});
+
+Deno.test("generate both connected, platforms ['instagram']: no TikTok blocks but the data is still loaded", async () => {
+  const db = makeDb(BOTH_ROWS);
+  await generateReportDocument(db, deps, "c", 1, "2026-07", null, ["instagram"]);
+  const row = db.inserts[0] as LayoutRow & InsertedRow;
+  assert(!row.layout.blocks.some((b) => b.type.startsWith("tiktok_")));
+  assert(!row.layout.blocks.some((b) => b.config?.title === "TikTok"));
+  assertEquals(kindsOf(row.layout), ["general", "instagram"]);
+  // A escolha molda só o layout (e a narrativa): o snapshot tem o TikTok.
+  assertEquals(row.data_snapshot.tiktok?.account.handle, "dra.tt");
+  assertEquals(row.tiktok_account_id, "tt-1");
+  const summary = textOf(row.layout.blocks.find((b) => b.type === "ai_summary")?.text);
+  assert(!summary.includes("TikTok"), summary);
+});
+
+Deno.test("generate with a workspace template drops the sections of unselected platforms whole", async () => {
+  const tplLayout = {
+    version: 1,
+    accent: "#9f1239",
+    blocks: [
+      { id: "c1", type: "cover", size: "full" },
+      { id: "h1", type: "section_header", size: "full", config: { title: "Números" } },
+      { id: "k1", type: "kpi_reach", size: "third" },
+      { id: "t1", type: "tiktok_kpi_views", size: "third" },
+      { id: "t2", type: "tiktok_top_posts", size: "full", config: { count: 3 } },
+    ],
+  };
+  const db = makeDb({ ...BOTH_ROWS, report_templates: { id: "t1", conta_id: "c", layout: tplLayout } });
+  await generateReportDocument(db, deps, "c", 1, "2026-07", "b3b2a6a0-1111-4222-8333-444455556666", ["tiktok"]);
+  const row = db.inserts[0] as LayoutRow & { layout: { accent?: string } };
+  // Legado: "Números" abre o trecho que vira a seção Instagram (a seção TikTok começa no
+  // primeiro bloco TikTok), então sai junto com ela.
+  assertEquals(kindsOf(row.layout), ["general", "tiktok"]);
+  assertEquals(contentIds(row.layout.blocks), ["c1", "t1", "t2"]);
+  assertEquals(row.layout.accent, "#9f1239");
+  assertEquals(row.layout.blocks.find((b) => b.id === "t2")?.config, { count: 3 });
+});
+
+const VALID_AI = {
+  executive_summary: "No TikTok o mês teve um vídeo publicado com mil visualizações e boa conversa nos comentários.",
+  detailed_analysis: "x".repeat(200),
+  recommendations: [
+    { title: "a", description: "a", priority: "high", based_on_metric: "tiktok_views" },
+    { title: "b", description: "b", priority: "medium" },
+    { title: "c", description: "c", priority: "low" },
+  ],
+  suggested_goals: [
+    { metric: "tiktok_views", target: "2000", rationale: "r" },
+    // Sem prefixo: num relatório só TikTok o gerador põe o tiktok_ antes do rótulo.
+    { metric: "engagement_rate", target: "6%", rationale: "r" },
+  ],
+};
+
+async function generateCapturingPrompt(
+  rows: Record<string, unknown>,
+  platforms: ("instagram" | "tiktok")[] | null,
+  templateId: string | null = null,
+): Promise<{ user: string; system: string; row: LayoutRow }> {
+  const db = makeDb(rows);
+  const originalFetch = globalThis.fetch;
+  let body: { contents: { parts: { text: string }[] }[]; systemInstruction: { parts: { text: string }[] } } | undefined;
+  globalThis.fetch = ((input: unknown, init?: RequestInit) => {
+    if (typeof input === "string" && input.includes("generativelanguage.googleapis.com")) {
+      body = JSON.parse(String(init?.body));
+      return Promise.resolve(
+        new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(VALID_AI) }] } }] })),
+      );
+    }
+    return originalFetch(input as Parameters<typeof fetch>[0], init);
+  }) as typeof fetch;
+  try {
+    await generateReportDocument(db, { ...deps, geminiKey: "fake-key" }, "c", 1, "2026-07", templateId, platforms);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assertExists(body, "Gemini deveria ter sido chamado");
+  return {
+    user: body.contents[0].parts[0].text,
+    system: body.systemInstruction.parts[0].text,
+    row: db.inserts[0] as LayoutRow,
+  };
+}
+
+Deno.test("generate TikTok-only with AI: the prompt is the TikTok one, never the empty Instagram root", async () => {
+  const { user, system, row } = await generateCapturingPrompt({
+    clientes: { id: 1, conta_id: "c", nome: "Cliente TT", especialidade: "Derma", include_ai_analysis: true },
+    instagram_accounts: null,
+    tiktok_accounts: TT_ACCOUNT,
+    tiktok_posts: [TT_VIDEO],
+    workspaces: WORKSPACE,
+  }, null);
+  assert(user.startsWith("Analyze the following TikTok account data for @dra.tt (Derma)"), user.slice(0, 120));
+  assert(!user.includes("Instagram"));
+  assert(!user.includes('"reach"'));
+  assert(system.includes("only TikTok"));
+  // Sem Instagram, a prioridade de views do Instagram não entra.
+  assert(!system.includes("METRIC PRIORITY"));
+  const goals = textOf(row.layout.blocks.find((b) => b.type === "ai_goals")?.text);
+  assert(goals.includes("Visualizações no TikTok: 2.000"), goals);
+  assert(goals.includes("Engajamento por visualização no TikTok: 6%"), goals);
+});
+
+Deno.test("generate both connected with AI: one prompt with the Instagram and TikTok blocks", async () => {
+  const { user, system } = await generateCapturingPrompt(
+    { ...BOTH_ROWS, clientes: { ...BOTH_ROWS.clientes, include_ai_analysis: true } },
+    null,
+  );
+  assert(user.startsWith("Analyze the following Instagram account data for dra.x"));
+  assert(user.includes("TikTok account data for @dra.tt, same period"));
+  assert(system.includes("ONE narrative covering Instagram and TikTok"));
+});
+
+Deno.test("generate both connected, platforms ['instagram'] with AI: the prompt has no TikTok", async () => {
+  const { user, system } = await generateCapturingPrompt(
+    { ...BOTH_ROWS, clientes: { ...BOTH_ROWS.clientes, include_ai_analysis: true } },
+    ["instagram"],
+  );
+  assert(!user.includes("TikTok"));
+  assert(!system.includes("TikTok"));
+});
+
+// ─── Fix round 1: modelos ganham a seção que falta, narrativa segue o layout ──────────
+
+// Modelo padrão do workspace como o CRM semeia agora (buildSystemDefaultLayout): seccionado,
+// só Instagram.
+const SEEDED_TEMPLATE = sanitizeLayoutForTemplate(
+  buildDefaultLayout({ hasAi: true, hasAudience: true, hasBestTimes: true, hasTags: true }),
+);
+// O mesmo modelo como os workspaces o têm salvo hoje (legado, sem seções).
+const LEGACY_SEEDED_TEMPLATE: ReportLayout = (JSON.parse(
+  await Deno.readTextFile(new URL("../../tests/fixtures/report_section_layouts.json", import.meta.url)),
+) as { name: string; layout: ReportLayout }[]).find((f) => f.name === "legacy: default Instagram layout")!.layout;
+const IG_HEADERS = ["Métricas principais", "Crescimento e formatos", "Publicações", "Audiência"];
+const headerTitles = (row: LayoutRow) =>
+  row.layout.blocks.filter((b) => b.type === "section_header").map((b) => b.config?.title);
+
+for (const [label, template] of [["seeded", SEEDED_TEMPLATE], ["legacy seeded", LEGACY_SEEDED_TEMPLATE]] as const) {
+  Deno.test(`${label} Instagram default template + TikTok-only client: TikTok section in the Instagram slot, no orphan Instagram headers`, async () => {
+    const db = makeDb({
+      clientes: { id: 1, conta_id: "c", nome: "Cliente TT", especialidade: null, include_ai_analysis: false },
+      instagram_accounts: null,
+      tiktok_accounts: TT_ACCOUNT,
+      tiktok_posts: [TT_VIDEO],
+      workspaces: WORKSPACE,
+      report_templates: { id: "tpl", conta_id: "c", layout: template },
+    });
+    await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+    const row = db.inserts[0] as LayoutRow;
+    const titles = headerTitles(row);
+    for (const t of IG_HEADERS) assert(!titles.includes(t), t);
+    // Modelo do workspace: "Próximos passos" fica como salvo (aqui, sem IA, só o título).
+    assertEquals(kindsOf(row.layout), ["general", "tiktok", "general"]);
+    assert(row.layout.blocks.some((b) => b.type === "tiktok_top_posts"));
+    assert(!row.layout.blocks.some((b) => b.type.startsWith("kpi_") || b.type === "top_posts"));
+  });
+
+  Deno.test(`${label} Instagram template + both platforms: Instagram kept, TikTok before Próximos passos, both headings shown`, async () => {
+    const { row } = await generateCapturingPrompt(
+      {
+        ...BOTH_ROWS,
+        clientes: { ...BOTH_ROWS.clientes, include_ai_analysis: true },
+        report_templates: { id: "tpl", conta_id: "c", layout: template },
+      },
+      ["instagram", "tiktok"],
+    );
+    const titles = headerTitles(row);
+    for (const t of IG_HEADERS) assert(titles.includes(t), t);
+    assertEquals(titles.at(-1), "Próximos passos");
+    const sections = toSections(row.layout as ReportLayout);
+    assertEquals(sections.map((x) => x.kind), ["general", "instagram", "tiktok", "general"]);
+    assertEquals(sections[3].marker.config?.title ?? sections[3].blocks[0].config?.title, NEXT_STEPS_TITLE);
+    // Duas plataformas: os dois títulos aparecem (o legado convertido tinha hideHeader).
+    assertEquals(sections[1].marker.config, { platform: "instagram" });
+    assertEquals(sections[2].marker.config, { platform: "tiktok" });
+    // Os blocos Instagram do modelo ficam com os ids do modelo.
+    for (const b of template.blocks.filter((x) => x.type.startsWith("kpi_"))) {
+      assert(row.layout.blocks.some((r) => r.id === b.id), b.id);
+    }
+  });
+}
+
+Deno.test("narrative follows the final layout: a full template that cannot take the TikTok section keeps TikTok out of the prompt", async () => {
+  // 200 blocos (o teto): a seção TikTok não cabe, então o layout final é só Instagram e a IA,
+  // mesmo com as duas redes escolhidas, fala só do Instagram.
+  const full = {
+    version: 1,
+    blocks: [
+      { id: "c", type: "cover", size: "full" },
+      { id: "s", type: "ai_summary", size: "full" },
+      ...Array.from({ length: 198 }, (_, i) => ({ id: `k${i}`, type: "kpi_reach", size: "third" })),
+    ],
+  };
+  const { user, system, row } = await generateCapturingPrompt(
+    {
+      ...BOTH_ROWS,
+      clientes: { ...BOTH_ROWS.clientes, include_ai_analysis: true },
+      report_templates: { id: "tpl", conta_id: "c", layout: full },
+    },
+    ["instagram", "tiktok"],
+  );
+  assert(!row.layout.blocks.some((b) => b.type.startsWith("tiktok_")));
+  assert(!user.includes("TikTok"));
+  assert(!system.includes("TikTok"));
+});
+
+Deno.test("metricPriorityGuidance: Instagram-only text unchanged; with TikTok it is scoped to Instagram; none without views", () => {
+  const igOnly = metricPriorityGuidance({ instagram: true, tiktok: false, instagramHasViews: true });
+  assertEquals(
+    igOnly,
+    "METRIC PRIORITY: 'views' (visualizações) is the primary performance metric for " +
+      "this report. Lead the executive summary, analysis, recommendations and " +
+      "suggested_goals with views wherever the data provides them; treat reach as " +
+      "secondary context.",
+  );
+  const both = metricPriorityGuidance({ instagram: true, tiktok: true, instagramHasViews: true }) ?? "";
+  assert(both.includes("Instagram"), both);
+  assert(!both.includes("for this report"), both);
+  assertEquals(metricPriorityGuidance({ instagram: true, tiktok: true, instagramHasViews: false }), undefined);
+  assertEquals(metricPriorityGuidance({ instagram: false, tiktok: true, instagramHasViews: true }), undefined);
+});
+
+// ─── Fix round 2: só modelo com bloco de plataforma ganha seção ───────────────────────
+
+Deno.test("neutral workspace template + Instagram-only client: layout is the template, no section appended", async () => {
+  const neutral = {
+    version: 1,
+    accent: "#9f1239",
+    blocks: [
+      { id: "c1", type: "cover", size: "full" },
+      { id: "s1", type: "ai_summary", size: "full" },
+      { id: "x1", type: "text", size: "full" },
+      { id: "i1", type: "image", size: "half", config: { ratio: "4:5" } },
+    ],
+  };
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: { id: "ig-1", username: "dra.x" },
+    instagram_posts: [],
+    workspaces: WORKSPACE,
+    report_templates: { id: "tpl", conta_id: "c", layout: neutral },
+  });
+  await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  const row = db.inserts[0] as LayoutRow & { layout: { accent?: string } };
+  // Só seccionado: uma Geral com os blocos do modelo, nenhuma seção de plataforma.
+  assertEquals(kindsOf(row.layout), ["general"]);
+  assertEquals(contentIds(row.layout.blocks), ["c1", "s1", "x1", "i1"]);
+  assertEquals(row.layout.accent, "#9f1239");
+});
+
+Deno.test("template with no room for the TikTok section warns with the template id and platform", async () => {
+  const full = {
+    version: 1,
+    blocks: [
+      { id: "c", type: "cover", size: "full" },
+      ...Array.from({ length: 199 }, (_, i) => ({ id: `k${i}`, type: "kpi_reach", size: "third" })),
+    ],
+  };
+  const warnings: string[] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(" ")); };
+  try {
+    const db = makeDb({ ...BOTH_ROWS, report_templates: { id: "tpl-42", conta_id: "c", layout: full } });
+    await generateReportDocument(db, deps, "c", 1, "2026-07", null, ["instagram", "tiktok"]);
+  } finally {
+    console.warn = originalWarn;
+  }
+  const capWarn = warnings.find((w) => w.includes("tpl-42"));
+  assert(capWarn, warnings.join("\n"));
+  assert(capWarn.includes("tiktok"));
+  assert(!capWarn.includes("dra."), "sem @ ou dado do cliente no log");
 });
