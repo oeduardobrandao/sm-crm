@@ -25,6 +25,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { WIDGET_CATALOG } from '@mesaas/report-blocks/catalog';
 import type { BlockSize, ReportBlock, ReportLayout } from '@mesaas/report-blocks/types';
 import { FALLBACK_WIDGET_ICON, WIDGET_ICONS } from './widgetIcons';
+import { PlatformBadge } from './PlatformBadge';
 
 const SIZE_LABEL: Record<BlockSize, string> = { third: '1/3', half: '1/2', full: '1/1' };
 
@@ -75,6 +76,7 @@ function LayerRow({ block, active, onLocate }: LayerRowProps) {
       <button type="button" className="rb-layers-label" onClick={() => onLocate(block.id)}>
         <TypeIcon className="rb-layers-icon h-3.5 w-3.5" aria-hidden />
         <span className="rb-layers-label-text">{layerLabel(block)}</span>
+        <PlatformBadge type={block.type} />
       </button>
       <span className="rb-layers-size">{SIZE_LABEL[block.size] ?? block.size}</span>
     </div>

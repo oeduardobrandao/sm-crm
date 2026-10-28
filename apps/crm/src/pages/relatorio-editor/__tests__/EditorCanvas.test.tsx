@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 import { EditorCanvas } from '../EditorCanvas';
@@ -12,6 +12,31 @@ const layout = (): ReportLayout => ({
     { id: 'a', type: 'cover', size: 'full' },
     { id: 'b', type: 'kpi_reach', size: 'third' },
   ],
+});
+
+describe('EditorCanvas: selo de plataforma', () => {
+  const mixed = (): ReportLayout => ({
+    version: 1,
+    blocks: [
+      { id: 'ig', type: 'kpi_reach', size: 'third' },
+      { id: 'tt', type: 'tiktok_kpi_followers_gained', size: 'third' },
+    ],
+  });
+
+  it('o bloco TikTok mostra o selo "TikTok"; o do Instagram não', () => {
+    const { container } = render(
+      <EditorCanvas layout={mixed()} snapshot={makeSnapshotFixture()} onChange={() => {}} />,
+    );
+    const tt = container.querySelector('[data-block-id="tt"]') as HTMLElement;
+    const ig = container.querySelector('[data-block-id="ig"]') as HTMLElement;
+    expect(within(tt).getByText('TikTok')).toBeInTheDocument();
+    expect(within(ig).queryByText('TikTok')).not.toBeInTheDocument();
+  });
+
+  it('layout só Instagram: nenhum selo', () => {
+    render(<EditorCanvas layout={layout()} snapshot={makeSnapshotFixture()} onChange={() => {}} />);
+    expect(screen.queryByText('TikTok')).not.toBeInTheDocument();
+  });
 });
 
 describe('EditorCanvas', () => {

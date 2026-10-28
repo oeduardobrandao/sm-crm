@@ -21,6 +21,7 @@ import { useSampleSnapshot } from './useSampleSnapshot';
 import { EditorCanvas } from './EditorCanvas';
 import { TextBlockEditor } from './TextBlockEditor';
 import { AddWidgetDrawer } from './AddWidgetDrawer';
+import type { ReportPlatform } from '@mesaas/report-blocks/platform';
 import { LayersPanel } from './LayersPanel';
 import { AppearancePopover } from './AppearancePopover';
 import { moveBlock, normalizeCoverSize, updateBlockConfig, updateBlockText } from './layoutOps';
@@ -30,6 +31,8 @@ import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
 import { ReportPhoneView } from './phone/ReportPhoneView';
 
 const SETTINGS_PATH = '/configuracao/relatorios';
+// Modelo vale para qualquer cliente: o drawer oferece as duas plataformas.
+const TEMPLATE_PLATFORMS: ReportPlatform[] = ['instagram', 'tiktok'];
 const SAMPLE_NOTE = 'Dados de exemplo. Os números reais entram quando o relatório é gerado.';
 
 function AiPlaceholder() {
@@ -210,7 +213,12 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
         onAddEnd={() => openWidgetDrawer(null)}
       />
 
-      <AddWidgetDrawer open={drawerOpen} onOpenChange={setDrawerOpen} onInsert={handleInsert} />
+      <AddWidgetDrawer
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        onInsert={handleInsert}
+        platforms={TEMPLATE_PLATFORMS}
+      />
     </div>
   );
 }

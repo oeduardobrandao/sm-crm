@@ -31,7 +31,7 @@ import { UndoRedoButtons } from './UndoRedoButtons';
 import { useStuckHeader } from './useStuckHeader';
 import { EditorCanvas } from './EditorCanvas';
 import { TextBlockEditor } from './TextBlockEditor';
-import { AddWidgetDrawer } from './AddWidgetDrawer';
+import { AddWidgetDrawer, documentPlatforms } from './AddWidgetDrawer';
 import { LayersPanel } from './LayersPanel';
 import { SaveTemplateDialog } from './SaveTemplateDialog';
 import { ApplyTemplateDialog } from './ApplyTemplateDialog';
@@ -327,7 +327,12 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
         onAddEnd={() => openWidgetDrawer(null)}
       />
 
-      <AddWidgetDrawer open={drawerOpen} onOpenChange={setDrawerOpen} onInsert={handleInsert} />
+      <AddWidgetDrawer
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        onInsert={handleInsert}
+        platforms={documentPlatforms(snapshot)}
+      />
       <SaveTemplateDialog
         open={saveTplOpen}
         onOpenChange={setSaveTplOpen}

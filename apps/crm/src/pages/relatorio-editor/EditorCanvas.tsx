@@ -38,6 +38,7 @@ import type {
 import { TEXT_BLOCK_TYPES } from '@mesaas/report-blocks/types';
 import { moveBlock, removeBlock, resizeBlock, setBlockSize } from './layoutOps';
 import { CoverEditor } from './CoverEditor';
+import { PlatformBadge } from './PlatformBadge';
 import { SectionHeaderEditor } from './SectionHeaderEditor';
 import {
   IMAGE_SETTINGS_TOGGLE_ATTR,
@@ -144,6 +145,7 @@ function SortableCell({
       data-block-id={block.id}
       className={`${block.type === 'cover' ? 'rb-full' : (SIZE_CLASS[block.size] ?? 'rb-full')} rb-edit-cell${highlighted ? ' rb-edit-highlight' : ''}`}
     >
+      <PlatformBadge type={block.type} floating />
       <div className="rb-edit-toolbar">
         <button
           type="button"

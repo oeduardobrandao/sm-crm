@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ReportLayout } from '@mesaas/report-blocks/types';
 import { WIDGET_CATALOG } from '@mesaas/report-blocks/catalog';
@@ -86,6 +86,36 @@ describe('LayersPanel', () => {
     const props = renderPanel();
     fireEvent.click(screen.getByRole('button', { name: 'Adicionar widget no fim do relatório' }));
     expect(props.onAddEnd).toHaveBeenCalled();
+  });
+});
+
+describe('LayersPanel: plataforma', () => {
+  const mixed: ReportLayout = {
+    version: 1,
+    blocks: [
+      { id: 'b-ig', type: 'kpi_reach', size: 'third' },
+      { id: 'b-tt', type: 'tiktok_kpi_followers_gained', size: 'third' },
+      { id: 'b-txt', type: 'text', size: 'full' },
+    ],
+  };
+
+  it('a camada TikTok leva o selo "TikTok"; Instagram e neutras não', () => {
+    renderPanel({ layout: mixed });
+    const rows = screen.getAllByRole('listitem');
+    expect(within(rows[1]).getByText('TikTok')).toBeInTheDocument();
+    expect(within(rows[0]).queryByText('TikTok')).not.toBeInTheDocument();
+    expect(within(rows[2]).queryByText('TikTok')).not.toBeInTheDocument();
+    expect(screen.getAllByText('TikTok')).toHaveLength(1);
+  });
+
+  it('o selo faz parte do nome acessível do botão da camada', () => {
+    renderPanel({ layout: mixed });
+    expect(screen.getByRole('button', { name: /Novos seguidores\s*TikTok/ })).toBeInTheDocument();
+  });
+
+  it('layout só Instagram: nenhum selo (visual de hoje)', () => {
+    renderPanel();
+    expect(screen.queryByText('TikTok')).not.toBeInTheDocument();
   });
 });
 

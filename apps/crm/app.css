@@ -14608,6 +14608,29 @@ a.hub-fill__row-inner:hover {
   flex-shrink: 0;
 }
 
+/* Selo "TikTok" das camadas e do canvas do editor de relatório. */
+
+.rb-platform-badge {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 0.1rem 0.3rem;
+  flex-shrink: 0;
+}
+
+.rb-platform-badge--floating {
+  position: absolute;
+  top: -9px;
+  left: 10px;
+  z-index: 4;
+  background: var(--card-bg);
+  pointer-events: none;
+}
+
 /* ── Editor de relatório: cabeçalho de seção editável e placeholder sem dados ── */
 
 .rb-section-input {
