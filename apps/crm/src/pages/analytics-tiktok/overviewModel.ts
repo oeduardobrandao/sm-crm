@@ -70,7 +70,12 @@ export function engagementVariant(rate: number | null): 'success' | 'warning' | 
 // ─── Accounts ───────────────────────────────────────────────────────────
 
 export type AccountSortCol =
-  'client_name' | 'follower_count' | 'engagement_rate' | 'views' | 'posts_count' | 'last_posted_at';
+  | 'client_name'
+  | 'follower_count'
+  | 'engagement_rate'
+  | 'views'
+  | 'posts_count'
+  | 'last_posted_at';
 
 export const ACCOUNT_SORT_COLS: AccountSortCol[] = [
   'client_name',

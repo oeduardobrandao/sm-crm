@@ -51,7 +51,12 @@ export interface TikTokFollowerPoint {
 }
 
 export type TikTokPostSort =
-  'posted_at' | 'views' | 'likes' | 'comments' | 'shares' | 'engagement_rate';
+  | 'posted_at'
+  | 'views'
+  | 'likes'
+  | 'comments'
+  | 'shares'
+  | 'engagement_rate';
 
 export interface TikTokVideoAnalytics {
   tiktok_video_id: string;
