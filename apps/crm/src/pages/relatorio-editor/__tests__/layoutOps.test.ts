@@ -58,6 +58,10 @@ describe('moveBlock', () => {
 });
 
 describe('resizeBlock', () => {
+  it('capa é sempre full: MESMA referência', () => {
+    const l = layout();
+    expect(resizeBlock(l, 'a', -1)).toBe(l);
+  });
   it('third +1 vira half; half +1 vira full; full satura', () => {
     let l = resizeBlock(layout(), 'b', 1);
     expect(l.blocks[1].size).toBe('half');
@@ -77,6 +81,23 @@ describe('removeBlock', () => {
 });
 
 describe('restoreBlock', () => {
+  it('com MAX_BLOCKS de conteúdo já no layout: MESMA referência', () => {
+    const full: ReportLayout = {
+      version: 1,
+      blocks: [
+        { id: 'g', type: 'section', size: 'full' },
+        ...Array.from({ length: MAX_BLOCKS }, (_, i) => ({
+          id: `d${i}`,
+          type: 'divider' as const,
+          size: 'full' as const,
+        })),
+      ],
+    };
+    expect(restoreBlock(full, { id: 'x', type: 'text', size: 'full' }, 1)).toBe(full);
+    const legacy: ReportLayout = { version: 1, blocks: full.blocks.slice(1) };
+    expect(restoreBlock(legacy, { id: 'x', type: 'text', size: 'full' }, 0)).toBe(legacy);
+  });
+
   it('restaura o bloco na posição de origem', () => {
     const l = removeBlock(layout(), 'b');
     const restored = restoreBlock(l, { id: 'b', type: 'kpi_reach', size: 'third' }, 1);

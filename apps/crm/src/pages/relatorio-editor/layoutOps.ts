@@ -86,7 +86,8 @@ export function moveBlock(layout: ReportLayout, activeId: string, overId: string
 
 export function resizeBlock(layout: ReportLayout, id: string, delta: 1 | -1): ReportLayout {
   const idx = contentIndex(layout, id);
-  if (idx < 0) return layout;
+  // Capa é sempre full (como em setBlockSize).
+  if (idx < 0 || layout.blocks[idx].type === 'cover') return layout;
   const current = SIZE_ORDER.indexOf(layout.blocks[idx].size);
   const next = Math.min(Math.max(current + delta, 0), SIZE_ORDER.length - 1);
   if (next === current) return layout;
@@ -119,13 +120,15 @@ export function removeBlock(layout: ReportLayout, id: string): ReportLayout {
  * Id já presente = no-op com a MESMA referência (contrato do autosave). Em
  * layout seccionado, uma posição que poria o bloco antes da primeira seção ou
  * numa seção de outra plataforma (o layout mudou entre excluir e desfazer)
- * também é no-op. */
+ * também é no-op, assim como MAX_BLOCKS já atingido. */
 export function restoreBlock(
   layout: ReportLayout,
   block: ReportBlock,
   index: number,
 ): ReportLayout {
   if (isSectionMarker(block) || layout.blocks.some((b) => b.id === block.id)) return layout;
+  // Excluir no limite, inserir outro e desfazer daria MAX_BLOCKS + 1 (o autosave recusa).
+  if (contentBlockCount(layout) >= MAX_BLOCKS) return layout;
   const at = Math.min(Math.max(index, 0), layout.blocks.length);
   if (isSectioned(layout)) {
     const owner = ownerMarkerIndex(layout.blocks, at);
