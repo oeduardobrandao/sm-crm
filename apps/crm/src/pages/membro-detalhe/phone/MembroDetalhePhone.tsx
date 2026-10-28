@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Camera, MoreHorizontal } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { ActionSheet, type ActionSheetAction } from '@/components/mobile/ActionSheet';
 import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
 import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
@@ -14,12 +15,6 @@ import { useFotoPessoa } from '@/hooks/useFotoPessoa';
 import { formatFinancialBRL, type FinancialAccess } from '@/lib/financialAccess';
 import { formatDate, type Membro, type Transacao } from '../../../store';
 import './membroDetalhePhone.css';
-
-const TIPO_LABEL: Record<string, string> = {
-  clt: 'CLT',
-  freelancer_mensal: 'Freelancer Mensal',
-  freelancer_demanda: 'Freelancer Demanda',
-};
 
 export interface MembroDetalhePhoneProps {
   membro: Membro | undefined;
@@ -56,6 +51,7 @@ export function MembroDetalhePhone({
   onEdit,
   financeiro,
 }: MembroDetalhePhoneProps) {
+  const { t } = useTranslation('member');
   // A member without an id (never persisted) has no photo target; the hook still needs
   // one, and the editing UI below is only offered when the id exists.
   const membroId = membro?.id;
@@ -65,16 +61,20 @@ export function MembroDetalhePhone({
   const [removeOpen, setRemoveOpen] = useState(false);
   const temFoto = !!membro?.avatar_url;
 
-  const menuActions: ActionSheetAction[] = [{ label: 'Editar', onSelect: onEdit }];
+  const menuActions: ActionSheetAction[] = [{ label: t('actions.edit'), onSelect: onEdit }];
   if (canEditFoto) {
     // `immediate`: the file picker only opens inside the tap on iOS Safari.
     menuActions.push(
-      { label: temFoto ? 'Alterar foto' : 'Adicionar foto', onSelect: foto.pick, immediate: true },
-      { label: 'Tirar foto', onSelect: foto.pickCamera, immediate: true },
+      {
+        label: temFoto ? t('common:photo.change') : t('common:photo.add'),
+        onSelect: foto.pick,
+        immediate: true,
+      },
+      { label: t('common:photo.camera'), onSelect: foto.pickCamera, immediate: true },
     );
     if (temFoto)
       menuActions.push({
-        label: 'Remover foto',
+        label: t('common:photo.remove'),
         destructive: true,
         onSelect: () => setRemoveOpen(true),
       });
@@ -82,12 +82,12 @@ export function MembroDetalhePhone({
 
   const navBar = (
     <PhoneNavBar
-      backLabel="Voltar para Equipe"
+      backLabel={t('membroDetalhePhone.voltarEquipe')}
       fallbackTo="/equipe"
       trailing={
         canEditTeam && membro ? (
           <PhoneIconButton
-            label="Mais ações do membro"
+            label={t('membroDetalhePhone.maisAcoes')}
             aria-haspopup="dialog"
             onClick={() => setMenuOpen(true)}
           >
@@ -114,16 +114,16 @@ export function MembroDetalhePhone({
             <Skeleton className="h-28 w-full rounded-2xl" />
           </SkeletonStatus>
         ) : (
-          <p className="phone-crud-empty">Membro não encontrado.</p>
+          <p className="phone-crud-empty">{t('shared.membroNaoEncontrado')}</p>
         )}
       </div>
     );
   }
 
   const kpis = [
-    { label: 'Custo mensal', value: membro.custo_mensal, dot: 'cost' },
-    { label: 'Total pago', value: totalPago, dot: 'paid' },
-    { label: 'Pendente', value: pendente, dot: 'pending' },
+    { label: t('shared.custoMensal'), value: membro.custo_mensal, dot: 'cost' },
+    { label: t('shared.totalPago'), value: totalPago, dot: 'paid' },
+    { label: t('shared.pendente'), value: pendente, dot: 'pending' },
   ] as const;
 
   const avatar = (
@@ -143,7 +143,11 @@ export function MembroDetalhePhone({
           <button
             type="button"
             className="relative shrink-0 rounded-full p-0 disabled:opacity-60"
-            aria-label={`${temFoto ? 'Alterar' : 'Adicionar'} foto de ${membro.nome}`}
+            aria-label={
+              temFoto
+                ? t('common:photo.changeFor', { nome: membro.nome })
+                : t('common:photo.addFor', { nome: membro.nome })
+            }
             disabled={foto.uploading}
             onClick={foto.pick}
           >
@@ -168,7 +172,7 @@ export function MembroDetalhePhone({
       {canEditTeam && (
         <div className="phone-kit phone-membro-kpis">
           {kpis.map((k) => (
-            <div key={k.label} className="phone-membro-kpis__cell">
+            <div key={k.dot} className="phone-membro-kpis__cell">
               <span className="phone-membro-kpis__label">
                 <span
                   className={`phone-membro-kpis__dot phone-membro-kpis__dot--${k.dot}`}
@@ -184,13 +188,22 @@ export function MembroDetalhePhone({
         </div>
       )}
 
-      <GroupedList header="Informações">
-        <Cell label="Cargo" value={membro.cargo || '—'} />
-        <Cell label="Tipo" value={TIPO_LABEL[membro.tipo]} />
-        {canEditTeam && <Cell label="Dia de pagamento" value={membro.data_pagamento ?? '—'} />}
+      <GroupedList header={t('shared.informacoes')}>
+        <Cell label={t('shared.cargo')} value={membro.cargo || '—'} />
+        <Cell
+          label={t('shared.tipo')}
+          value={
+            membro.tipo
+              ? t(`shared.tipos.${membro.tipo}`, { defaultValue: '' }) || undefined
+              : undefined
+          }
+        />
+        {canEditTeam && (
+          <Cell label={t('shared.diaPagamento')} value={membro.data_pagamento ?? '—'} />
+        )}
         {canEditTeam && (
           <Cell
-            label="Custo mensal"
+            label={t('shared.custoMensal')}
             value={formatFinancialBRL(membro.custo_mensal, canSeeFinancials)}
           />
         )}
@@ -203,23 +216,23 @@ export function MembroDetalhePhone({
           loadingTransacoes ? (
             <CardListSkeleton />
           ) : transacoes.length === 0 ? (
-            <GroupedList header="Transações">
-              <Cell label="Nenhuma transação" />
+            <GroupedList header={t('shared.transacoes')}>
+              <Cell label={t('membroDetalhePhone.nenhumaTransacao')} />
             </GroupedList>
           ) : (
-            <GroupedList header="Transações">
-              {transacoes.map((t, i) => (
+            <GroupedList header={t('shared.transacoes')}>
+              {transacoes.map((tx, i) => (
                 <PhoneCrudRow
-                  key={t.id ?? `tx-${i}`}
-                  title={t.descricao}
-                  subtitle={[formatDate(t.data), t.categoria].filter(Boolean).join(' · ')}
+                  key={tx.id ?? `tx-${i}`}
+                  title={tx.descricao}
+                  subtitle={[formatDate(tx.data), tx.categoria].filter(Boolean).join(' · ')}
                   aside={
                     <>
                       <span className="phone-crud-amount">
-                        {formatFinancialBRL(t.valor, canSeeFinancials)}
+                        {formatFinancialBRL(tx.valor, canSeeFinancials)}
                       </span>
-                      <PhoneStatusPill tone={t.status === 'pago' ? 'success' : 'neutral'}>
-                        {t.status === 'pago' ? 'Pago' : 'Agendado'}
+                      <PhoneStatusPill tone={tx.status === 'pago' ? 'success' : 'neutral'}>
+                        {tx.status === 'pago' ? t('status.pago') : t('status.agendado')}
                       </PhoneStatusPill>
                     </>
                   }
@@ -232,8 +245,8 @@ export function MembroDetalhePhone({
           // "no transactions". Say why it's hidden instead (same as desktop).
           <div className="phone-crud-notice">
             <RoleRestrictionNotice
-              title="Transações"
-              description="A visualização de transações financeiras está disponível apenas para quem tem acesso financeiro liberado."
+              title={t('shared.transacoes')}
+              description={t('shared.transacoesRestritas')}
             />
           </div>
         ))}
@@ -256,11 +269,11 @@ export function MembroDetalhePhone({
       {canEditFoto && (
         <PhoneConfirmSheet
           open={removeOpen}
-          title="Remover a foto?"
-          message="Volta a aparecer as iniciais."
+          title={t('common:photo.removeTitle')}
+          message={t('common:photo.removeDescription')}
           actions={[
             {
-              label: 'Remover',
+              label: t('common:photo.removeConfirm'),
               destructive: true,
               onSelect: () => {
                 setRemoveOpen(false);

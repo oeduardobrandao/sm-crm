@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { Trans, useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
   Plus,
@@ -71,12 +72,13 @@ import { supabase } from '../../lib/supabase';
 import { MembroFormDialog } from './MembroFormDialog';
 import {
   EquipePhone,
-  TIPO_LABEL,
+  tipoLabel,
   type EquipeFilter as FilterTipo,
   type EquipeSort as SortKey,
 } from './phone/EquipePhone';
 
 export default function EquipePage() {
+  const { t } = useTranslation('team');
   const qc = useQueryClient();
   const isDesktop = useIsDesktop();
   const navigate = useNavigate();
@@ -156,10 +158,10 @@ export default function EquipePage() {
     if (deleteId == null) return;
     try {
       await removeMembro(deleteId);
-      toast.success('Membro removido');
+      toast.success(t('equipePage.removed'));
       qc.invalidateQueries({ queryKey: ['membros'] });
     } catch {
-      toast.error('Erro ao remover');
+      toast.error(t('equipePage.removeError'));
     }
     setDeleteId(null);
   };
@@ -200,9 +202,7 @@ export default function EquipePage() {
             /* skip row */
           }
         }
-        toast.success(
-          `${count} membro${count !== 1 ? 's' : ''} importado${count !== 1 ? 's' : ''} com sucesso!`,
-        );
+        toast.success(t('equipePage.imported', { count }));
         qc.invalidateQueries({ queryKey: ['membros'] });
       },
       (err) => toast.error(err.message),
@@ -226,11 +226,11 @@ export default function EquipePage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover este membro?</AlertDialogTitle>
+            <AlertDialogTitle>{t('equipePage.deleteTitle')}</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Não</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>Sim</AlertDialogAction>
+            <AlertDialogCancel>{t('actions.no')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>{t('actions.yes')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -242,17 +242,12 @@ export default function EquipePage() {
       content={
         <div className="space-y-2">
           <p>
-            <strong>Membros</strong> = pessoas da equipe (designers, redatores, etc). Servem para
-            custos e atribuição de tarefas em fluxos.
+            <Trans t={t} i18nKey="equipePage.helpMembers" components={{ b: <strong /> }} />
           </p>
           <p>
-            <strong>Usuários do workspace</strong> = contas com acesso ao CRM. Gerencie em
-            Configurações → Workspace.
+            <Trans t={t} i18nKey="equipePage.helpUsers" components={{ b: <strong /> }} />
           </p>
-          <p>
-            Para que um membro acesse o CRM, vincule-o a um usuário do workspace no formulário de
-            edição.
-          </p>
+          <p>{t('equipePage.helpLink')}</p>
         </div>
       }
     >
@@ -263,7 +258,7 @@ export default function EquipePage() {
   );
   const headerActions = canEditTeam ? (
     <>
-      <HelpTooltip content="Colunas CSV: nome*, cargo*, tipo (clt|freelancer_mensal|freelancer_demanda), custo_mensal, data_pagamento">
+      <HelpTooltip content={t('shared.csvHelp')}>
         <span style={{ display: 'flex' }}>
           <HelpCircle
             className="h-4 w-4"
@@ -280,18 +275,18 @@ export default function EquipePage() {
         <Upload className="h-4 w-4" />
       </Button>
       <Button variant="outline" onClick={handleCSVImport} className="header-actions-full-only">
-        <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Importar CSV
+        <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('shared.importCsv')}
       </Button>
     </>
   ) : null;
   const primaryAction = canEditTeam ? (
     <Button onClick={openAdd}>
-      <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Adicionar Membro
+      <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('shared.addMember')}
     </Button>
   ) : null;
 
   const inToolbar = usePageToolbar({
-    title: 'Equipe',
+    title: t('shared.title'),
     titleAccessory: infoTooltip,
     actions: headerActions,
     primary: primaryAction,
@@ -336,7 +331,7 @@ export default function EquipePage() {
             className="header-title"
             style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
           >
-            <h1>Equipe</h1>
+            <h1>{t('shared.title')}</h1>
             {infoTooltip}
           </div>
           <div className="header-actions">
@@ -349,17 +344,22 @@ export default function EquipePage() {
       {!canEditTeam && (
         <div style={{ marginBottom: '1rem' }}>
           <RoleRestrictionNotice
-            title="Visualização limitada"
-            description="Apenas administradores e proprietários podem adicionar, editar ou remover membros da equipe."
+            title={t('shared.restrictedTitle')}
+            description={t('shared.restrictedDescription')}
           />
         </div>
       )}
 
       <StatCardGrid style={{ marginBottom: '1.5rem' }}>
-        <StatCard label="Total de membros" value={membros.length} icon={UsersRound} tone="blue" />
+        <StatCard
+          label={t('shared.totalMembers')}
+          value={membros.length}
+          icon={UsersRound}
+          tone="blue"
+        />
         {canSeeFinancials === true && (
           <StatCard
-            label="Custo mensal total"
+            label={t('shared.totalCost')}
             value={formatFinancialBRL(totalCost, canSeeFinancials)}
             icon={Wallet}
             tone="violet"
@@ -382,9 +382,7 @@ export default function EquipePage() {
             }}
           />
           <Input
-            placeholder={
-              canEditTeam ? 'Buscar por nome, cargo ou e-mail...' : 'Buscar por nome ou cargo...'
-            }
+            placeholder={canEditTeam ? t('shared.searchEditor') : t('shared.searchViewer')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ paddingLeft: '2rem' }}
@@ -397,7 +395,7 @@ export default function EquipePage() {
                 variant="outline"
                 className="h-9 rounded-full px-4 text-xs gap-1.5 font-normal shadow-sm mb-0"
               >
-                {filter === 'todos' ? 'Tipo' : TIPO_LABEL[filter]}
+                {filter === 'todos' ? t('shared.filterType') : tipoLabel(filter)}
                 <ChevronDown className="h-3.5 w-3.5 opacity-60" />
               </Button>
             </DropdownMenuTrigger>
@@ -409,7 +407,7 @@ export default function EquipePage() {
                 {(['todos', 'clt', 'freelancer_mensal', 'freelancer_demanda'] as FilterTipo[]).map(
                   (f) => (
                     <DropdownMenuRadioItem key={f} value={f}>
-                      {f === 'todos' ? 'Todos' : TIPO_LABEL[f]}
+                      {f === 'todos' ? t('shared.filterAll') : tipoLabel(f)}
                     </DropdownMenuRadioItem>
                   ),
                 )}
@@ -421,11 +419,11 @@ export default function EquipePage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="nome">Nome</SelectItem>
+              <SelectItem value="nome">{t('shared.sortName')}</SelectItem>
               {canSeeFinancials === true && (
                 <>
-                  <SelectItem value="custo_maior">Custo (maior)</SelectItem>
-                  <SelectItem value="custo_menor">Custo (menor)</SelectItem>
+                  <SelectItem value="custo_maior">{t('shared.sortCostDesc')}</SelectItem>
+                  <SelectItem value="custo_menor">{t('shared.sortCostAsc')}</SelectItem>
                 </>
               )}
             </SelectContent>
@@ -440,10 +438,10 @@ export default function EquipePage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead style={{ paddingLeft: '1rem' }}>Membro</TableHead>
-                <TableHead>Cargo</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Vínculo</TableHead>
+                <TableHead style={{ paddingLeft: '1rem' }}>{t('equipePage.colMember')}</TableHead>
+                <TableHead>{t('equipePage.colRole')}</TableHead>
+                <TableHead>{t('equipePage.colType')}</TableHead>
+                <TableHead>{t('equipePage.colLink')}</TableHead>
                 {canEditTeam && <TableHead style={{ width: 88 }} />}
               </TableRow>
             </TableHeader>
@@ -479,7 +477,7 @@ export default function EquipePage() {
                     <TableCell>{m.cargo || '—'}</TableCell>
                     <TableCell>
                       <Badge variant="neutral" size="sm" style={{ pointerEvents: 'none' }}>
-                        {TIPO_LABEL[m.tipo]}
+                        {tipoLabel(m.tipo)}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -500,11 +498,11 @@ export default function EquipePage() {
                         <span style={{ color: 'var(--text-muted)' }}>—</span>
                       ) : pendingByMembroId.has(m.id!) ? (
                         <Badge variant="warning" size="sm">
-                          convite pendente
+                          {t('shared.pendingInvite')}
                         </Badge>
                       ) : (
                         <Badge variant="outline" size="sm">
-                          sem conta vinculada
+                          {t('shared.noLinkedAccount')}
                         </Badge>
                       )}
                     </TableCell>
@@ -544,7 +542,7 @@ export default function EquipePage() {
                     colSpan={!canEditTeam ? 4 : 5}
                     style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}
                   >
-                    Nenhum membro encontrado.
+                    {t('shared.noMembers')}
                   </TableCell>
                 </TableRow>
               )}

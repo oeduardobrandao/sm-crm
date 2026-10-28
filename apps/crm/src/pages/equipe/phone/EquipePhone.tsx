@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import {
   Edit2,
   Plus,
@@ -30,19 +32,10 @@ import { type Membro } from '../../../store';
 export type EquipeFilter = 'todos' | 'clt' | 'freelancer_mensal' | 'freelancer_demanda';
 export type EquipeSort = 'nome' | 'custo_maior' | 'custo_menor';
 
-export const TIPO_LABEL: Record<string, string> = {
-  clt: 'CLT',
-  freelancer_mensal: 'Freelancer Mensal',
-  freelancer_demanda: 'Freelancer Demanda',
-};
-
-/** Same copy as the desktop CSV tooltip. */
-export const EQUIPE_CSV_HELP =
-  'Colunas CSV: nome*, cargo*, tipo (clt|freelancer_mensal|freelancer_demanda), custo_mensal, data_pagamento';
-
-/** The desktop "Membros vs Usuários" tooltip, as visible footnote text (D29). */
-export const EQUIPE_HELP =
-  'Membros são as pessoas da equipe (designers, redatores, etc.): servem para custos e atribuição de tarefas em fluxos. Usuários do workspace são contas com acesso ao CRM, geridas em Configurações → Workspace. Para que um membro acesse o CRM, vincule-o a um usuário do workspace no formulário de edição.';
+/** Display label of a membro tipo, resolved at call time in the current UI language. */
+export function tipoLabel(tipo: string): string {
+  return i18n.t(`team:shared.tipo.${tipo}`, { defaultValue: tipo });
+}
 
 export interface EquipePhoneProps {
   isLoading: boolean;
@@ -91,6 +84,7 @@ export function EquipePhone({
   onEdit,
   onDelete,
 }: EquipePhoneProps) {
+  const { t } = useTranslation('team');
   const [addOpen, setAddOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filtersRef = useRef<HTMLButtonElement>(null);
@@ -98,39 +92,42 @@ export function EquipePhone({
   const activeFilters = (filter !== 'todos' ? 1 : 0) + (sort !== 'nome' ? 1 : 0);
 
   const sortOptions: { value: EquipeSort; label: string }[] = [
-    { value: 'nome', label: 'Nome' },
+    { value: 'nome', label: t('shared.sortName') },
     ...(canSeeFinancials === true
       ? [
-          { value: 'custo_maior' as const, label: 'Custo (maior)' },
-          { value: 'custo_menor' as const, label: 'Custo (menor)' },
+          { value: 'custo_maior' as const, label: t('shared.sortCostDesc') },
+          { value: 'custo_menor' as const, label: t('shared.sortCostAsc') },
         ]
       : []),
   ];
 
   const actionsFor = (m: Membro): { swipe?: SwipeAction[]; menu: ContextMenuAction[][] } => {
     const open: ContextMenuAction = {
-      label: 'Ver membro',
+      label: t('equipePhone.viewMember'),
       icon: <UserRound aria-hidden="true" />,
       onSelect: () => onOpen(m),
     };
     if (!canEditTeam) return { menu: [[open]] };
     const swipe: SwipeAction[] = [
-      { label: 'Editar', icon: <Edit2 aria-hidden="true" />, onAction: () => onEdit(m) },
+      { label: t('actions.edit'), icon: <Edit2 aria-hidden="true" />, onAction: () => onEdit(m) },
     ];
     const menu: ContextMenuAction[][] = [
-      [open, { label: 'Editar', icon: <Edit2 aria-hidden="true" />, onSelect: () => onEdit(m) }],
+      [
+        open,
+        { label: t('actions.edit'), icon: <Edit2 aria-hidden="true" />, onSelect: () => onEdit(m) },
+      ],
     ];
     if (m.id) {
       const id = m.id;
       swipe.push({
-        label: 'Remover',
+        label: t('actions.delete'),
         icon: <Trash2 aria-hidden="true" />,
         tone: 'destructive',
         onAction: () => onDelete(id),
       });
       menu.push([
         {
-          label: 'Remover',
+          label: t('actions.delete'),
           icon: <Trash2 aria-hidden="true" />,
           destructive: true,
           onSelect: () => onDelete(id),
@@ -143,7 +140,7 @@ export function EquipePhone({
   return (
     <div className="phone-crud-page">
       <PhonePageHeader
-        title="Equipe"
+        title={t('shared.title')}
         actions={
           <>
             {searchToggle.button}
@@ -151,8 +148,8 @@ export function EquipePhone({
               ref={filtersRef}
               label={
                 activeFilters > 0
-                  ? `Filtros: Tipo e Ordenar por, ${activeFilters} ativos`
-                  : 'Filtros: Tipo e Ordenar por'
+                  ? t('equipePhone.filtersLabelActive', { n: activeFilters })
+                  : t('equipePhone.filtersLabel')
               }
               badge={activeFilters}
               aria-haspopup="dialog"
@@ -162,7 +159,7 @@ export function EquipePhone({
             </PhoneIconButton>
             {canEditTeam && (
               <PhoneIconButton
-                label="Adicionar: Adicionar Membro ou Importar CSV"
+                label={t('equipePhone.addLabel')}
                 variant="ink"
                 aria-haspopup="dialog"
                 onClick={() => setAddOpen(true)}
@@ -178,9 +175,7 @@ export function EquipePhone({
             inputRef={searchToggle.inputRef}
             value={search}
             onChange={onSearchChange}
-            placeholder={
-              canEditTeam ? 'Buscar por nome, cargo ou e-mail...' : 'Buscar por nome ou cargo...'
-            }
+            placeholder={canEditTeam ? t('shared.searchEditor') : t('shared.searchViewer')}
           />
         )}
       </PhonePageHeader>
@@ -188,17 +183,22 @@ export function EquipePhone({
       {!canEditTeam && (
         <div className="phone-crud-notice">
           <RoleRestrictionNotice
-            title="Visualização limitada"
-            description="Apenas administradores e proprietários podem adicionar, editar ou remover membros da equipe."
+            title={t('shared.restrictedTitle')}
+            description={t('shared.restrictedDescription')}
           />
         </div>
       )}
 
       <StatCardGrid>
-        <StatCard label="Total de membros" value={totalMembros} icon={UsersRound} tone="blue" />
+        <StatCard
+          label={t('shared.totalMembers')}
+          value={totalMembros}
+          icon={UsersRound}
+          tone="blue"
+        />
         {canSeeFinancials === true && (
           <StatCard
-            label="Custo mensal total"
+            label={t('shared.totalCost')}
             value={formatFinancialBRL(totalCost, canSeeFinancials)}
             icon={Wallet}
             tone="violet"
@@ -211,19 +211,19 @@ export function EquipePhone({
         <CardListSkeleton />
       ) : membros.length === 0 ? (
         <>
-          <p className="phone-crud-empty">Nenhum membro encontrado.</p>
-          <p className="phone-crud-help">{EQUIPE_HELP}</p>
+          <p className="phone-crud-empty">{t('shared.noMembers')}</p>
+          <p className="phone-crud-help">{t('equipePhone.help')}</p>
         </>
       ) : (
-        <GroupedList aria-label="Membros" footer={EQUIPE_HELP}>
+        <GroupedList aria-label={t('equipePhone.membersAria')} footer={t('equipePhone.help')}>
           {membros.map((m) => {
             const { swipe, menu } = actionsFor(m);
             const badge =
               canEditTeam && !m.crm_user_id ? (
                 m.id != null && pendingInviteIds.has(m.id) ? (
-                  <PhoneStatusPill tone="warning">convite pendente</PhoneStatusPill>
+                  <PhoneStatusPill tone="warning">{t('shared.pendingInvite')}</PhoneStatusPill>
                 ) : (
-                  <PhoneStatusPill tone="outline">sem conta vinculada</PhoneStatusPill>
+                  <PhoneStatusPill tone="outline">{t('shared.noLinkedAccount')}</PhoneStatusPill>
                 )
               ) : null;
             return (
@@ -238,12 +238,12 @@ export function EquipePhone({
                   />
                 }
                 title={m.nome}
-                subtitle={[m.cargo, TIPO_LABEL[m.tipo]].filter(Boolean).join(' · ')}
+                subtitle={[m.cargo, tipoLabel(m.tipo)].filter(Boolean).join(' · ')}
                 aside={badge}
                 chevron
                 onOpen={m.id ? () => onOpen(m) : undefined}
                 swipeActions={swipe}
-                menuLabel={`Ações de ${m.nome}`}
+                menuLabel={t('equipePhone.rowActions', { name: m.nome })}
                 menuSections={menu}
               />
             );
@@ -254,7 +254,7 @@ export function EquipePhone({
       <PhoneFiltersSheet
         open={filtersOpen}
         onOpenChange={setFiltersOpen}
-        description="Filtre e ordene a equipe"
+        description={t('equipePhone.filtersDescription')}
         returnFocusRef={filtersRef}
         activeCount={activeFilters}
         resultCount={membros.length}
@@ -266,11 +266,11 @@ export function EquipePhone({
           {
             type: 'chips',
             key: 'tipo',
-            label: 'Tipo',
+            label: t('shared.filterType'),
             chips: (['todos', 'clt', 'freelancer_mensal', 'freelancer_demanda'] as const).map(
               (f) => ({
                 key: f,
-                label: f === 'todos' ? 'Todos' : TIPO_LABEL[f],
+                label: f === 'todos' ? t('shared.filterAll') : tipoLabel(f),
                 selected: filter === f,
                 onToggle: () => onFilterChange(f),
               }),
@@ -279,7 +279,7 @@ export function EquipePhone({
           {
             type: 'chips',
             key: 'ordenar',
-            label: 'Ordenar por',
+            label: t('equipePhone.sortBy'),
             chips: sortOptions.map((o) => ({
               key: o.value,
               label: o.label,
@@ -294,16 +294,16 @@ export function EquipePhone({
         <ActionSheet
           open={addOpen}
           onOpenChange={setAddOpen}
-          title="Adicionar"
-          message={EQUIPE_CSV_HELP}
+          title={t('equipePhone.addTitle')}
+          message={t('shared.csvHelp')}
           actions={[
             {
-              label: 'Adicionar Membro',
+              label: t('shared.addMember'),
               icon: <UserPlus aria-hidden="true" />,
               onSelect: onAdd,
             },
             {
-              label: 'Importar CSV',
+              label: t('shared.importCsv'),
               icon: <Upload aria-hidden="true" />,
               // The file picker needs the tap itself (iOS Safari blocks a deferred click).
               immediate: true,

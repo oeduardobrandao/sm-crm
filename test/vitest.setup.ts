@@ -98,6 +98,10 @@ import ptFinance from '../packages/i18n/locales/pt/finance.json';
 import enFinance from '../packages/i18n/locales/en/finance.json';
 import ptFinanceV2 from '../packages/i18n/locales/pt/financeV2.json';
 import enFinanceV2 from '../packages/i18n/locales/en/financeV2.json';
+import ptTeam from '../packages/i18n/locales/pt/team.json';
+import enTeam from '../packages/i18n/locales/en/team.json';
+import ptMember from '../packages/i18n/locales/pt/member.json';
+import enMember from '../packages/i18n/locales/en/member.json';
 
 initI18n({
   pt: {
@@ -133,6 +137,8 @@ initI18n({
     filesPhone: ptFilesPhone,
     finance: ptFinance,
     financeV2: ptFinanceV2,
+    team: ptTeam,
+    member: ptMember,
     hubHome: ptHubHome,
     hubPostCard: ptHubPostCard,
     hubPosts: ptHubPosts,
@@ -178,6 +184,8 @@ initI18n({
     filesPhone: enFilesPhone,
     finance: enFinance,
     financeV2: enFinanceV2,
+    team: enTeam,
+    member: enMember,
     hubHome: enHubHome,
     hubPostCard: enHubPostCard,
     hubPosts: enHubPosts,

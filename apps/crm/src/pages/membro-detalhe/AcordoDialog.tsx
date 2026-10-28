@@ -3,7 +3,9 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Upload } from 'lucide-react';
 import { useForm, useWatch } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { i18n } from '@mesaas/i18n';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import {
@@ -51,9 +53,10 @@ import { PeriodoSelect } from '../financeiro/v2/PeriodoSelect';
 import {
   contratoRotulo,
   metaPorMes,
-  MODELO_DESCRICAO,
-  MODELO_LABEL,
-  PERIODO_OPCOES,
+  modeloDescricao,
+  modeloLabel,
+  periodoLabel,
+  PERIODOS,
   UNIDADES,
 } from './acordoHelpers';
 import { avisarErroFinanceiro } from '../financeiro/v2/erros';
@@ -76,31 +79,37 @@ const acordoSchema = z
     limite: z.string(),
     vigIni: z.string(),
     vigFim: z.string(),
-    valeDesde: z.string().min(1, 'Escolha o período.'),
+    valeDesde: z.string(),
     // Object path of the signed contract in the private bucket; '' = none.
     arquivoPath: z.string(),
   })
   .superRefine((v, ctx) => {
-    const issue = (path: string, message: string) =>
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+    // Messages are resolved at validation time, so they follow the current UI language.
+    const issue = (path: string, key: string) =>
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [path],
+        message: i18n.t(`member:acordoDialog.${key}`),
+      });
+    if (v.valeDesde.length < 1) issue('valeDesde', 'erroPeriodo');
     const valor = v.valor.trim() === '' ? NaN : Number(v.valor);
     if (!Number.isFinite(valor) || valor < 0) {
-      issue('valor', 'Informe um valor maior ou igual a zero.');
+      issue('valor', 'erroValor');
     }
     if (
       v.diaPag !== '' &&
       !(/^\d+$/.test(v.diaPag) && Number(v.diaPag) >= 1 && Number(v.diaPag) <= 31)
     ) {
-      issue('diaPag', 'Dia deve ser entre 1 e 31');
+      issue('diaPag', 'erroDia');
     }
     if (v.modelo === 'mensal_meta' && !inteiroPositivo(v.metaQtd)) {
-      issue('metaQtd', 'Informe uma meta maior que zero.');
+      issue('metaQtd', 'erroMeta');
     }
     if (v.modelo === 'mensal_limite' && !inteiroPositivo(v.limite)) {
-      issue('limite', 'Informe um limite maior que zero.');
+      issue('limite', 'erroLimite');
     }
     if (v.vigIni && v.vigFim && v.vigFim < v.vigIni) {
-      issue('vigFim', 'O fim não pode ser antes do início.');
+      issue('vigFim', 'erroVigencia');
     }
   });
 
@@ -154,6 +163,7 @@ interface AcordoDialogProps {
 
 /** Creates a new version of the member's acordo ("Vale a partir de" a chosen period). */
 export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialogProps) {
+  const { t } = useTranslation('member');
   const qc = useQueryClient();
   const { profile } = useAuth();
   const [saving, setSaving] = useState(false);
@@ -217,7 +227,7 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
     } catch (err) {
       // The previous path stays in the form.
       if (!handleEntitlementMutationError(err, profile?.conta_id ?? null)) {
-        toast.error('Não foi possível enviar o arquivo. Tente novamente.');
+        toast.error(t('acordoDialog.erroEnviarArquivo'));
       }
     } finally {
       setUploading(false);
@@ -244,11 +254,11 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
       await salvarAcordo(membro.id as number, v.valeDesde, input);
       await qc.invalidateQueries({ queryKey: ['financeiro-v2'] });
       await qc.invalidateQueries({ queryKey: ['membros'] });
-      toast.success('Acordo salvo.');
+      toast.success(t('acordoDialog.salvo'));
       onOpenChange(false);
     } catch (e) {
       if (!handleEntitlementMutationError(e, profile?.conta_id ?? null)) {
-        avisarErroFinanceiro(e, 'Erro ao salvar o acordo', qc);
+        avisarErroFinanceiro(e, t('acordoDialog.erroSalvar'), qc);
       }
     } finally {
       setSaving(false);
@@ -259,16 +269,16 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent confirmClose={isDirty} onConfirmClose={() => onOpenChange(false)}>
         <DialogHeader>
-          <DialogTitle>{atual ? 'Editar acordo' : 'Cadastrar acordo'}</DialogTitle>
-          <DialogDescription>
-            Defina como essa pessoa é paga e a partir de quando isso vale.
-          </DialogDescription>
+          <DialogTitle>
+            {atual ? t('shared.editarAcordo') : t('shared.cadastrarAcordo')}
+          </DialogTitle>
+          <DialogDescription>{t('acordoDialog.descricao')}</DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="space-y-4">
             <div role="group" aria-labelledby="acordo-modelo-titulo" className="space-y-2">
               <p id="acordo-modelo-titulo" className="text-sm font-medium">
-                Como essa pessoa é paga?
+                {t('acordoDialog.comoPago')}
               </p>
               <div className="grid gap-2 sm:grid-cols-3">
                 {MODELOS.map((m) => {
@@ -286,8 +296,8 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
                           : 'border-border hover:bg-muted',
                       )}
                     >
-                      <span className="text-sm font-semibold">{MODELO_LABEL[m]}</span>
-                      <span className="text-xs text-muted-foreground">{MODELO_DESCRICAO[m]}</span>
+                      <span className="text-sm font-semibold">{modeloLabel(m)}</span>
+                      <span className="text-xs text-muted-foreground">{modeloDescricao(m)}</span>
                     </button>
                   );
                 })}
@@ -299,7 +309,7 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
               name="funcaoId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Função</FormLabel>
+                  <FormLabel>{t('shared.funcao')}</FormLabel>
                   <Select value={field.value} onValueChange={field.onChange}>
                     <FormControl>
                       <SelectTrigger>
@@ -307,7 +317,7 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value={SEM_FUNCAO}>Sem função</SelectItem>
+                      <SelectItem value={SEM_FUNCAO}>{t('shared.semFuncao')}</SelectItem>
                       {(funcoes.data ?? []).map((f) => (
                         <SelectItem key={f.id} value={String(f.id)}>
                           {f.nome}
@@ -327,7 +337,9 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>
-                      {modelo === 'por_entrega' ? 'Valor por entrega' : 'Valor mensal'}
+                      {modelo === 'por_entrega'
+                        ? t('shared.valorPorEntrega')
+                        : t('acordoDialog.valorMensal')}
                     </FormLabel>
                     <FormControl>
                       <Input type="number" inputMode="decimal" min={0} step={0.01} {...field} />
@@ -341,7 +353,7 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
                 name="diaPag"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Dia de pagamento</FormLabel>
+                    <FormLabel>{t('shared.diaPagamento')}</FormLabel>
                     <FormControl>
                       <Input type="number" inputMode="numeric" min={1} max={31} {...field} />
                     </FormControl>
@@ -359,7 +371,7 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
                     name="metaQtd"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Quantidade da meta</FormLabel>
+                        <FormLabel>{t('acordoDialog.quantidadeMeta')}</FormLabel>
                         <FormControl>
                           <Input type="number" inputMode="numeric" min={1} step={1} {...field} />
                         </FormControl>
@@ -371,7 +383,7 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
                     name="unidade"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Unidade</FormLabel>
+                        <FormLabel>{t('acordoDialog.unidade')}</FormLabel>
                         <Select value={field.value} onValueChange={field.onChange}>
                           <FormControl>
                             <SelectTrigger>
@@ -394,7 +406,7 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
                     name="metaPeriodo"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Período da meta</FormLabel>
+                        <FormLabel>{t('acordoDialog.periodoMeta')}</FormLabel>
                         <Select value={field.value} onValueChange={field.onChange}>
                           <FormControl>
                             <SelectTrigger>
@@ -402,9 +414,9 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {PERIODO_OPCOES.map((p) => (
-                              <SelectItem key={p.value} value={p.value}>
-                                {p.label}
+                            {PERIODOS.map((p) => (
+                              <SelectItem key={p} value={p}>
+                                {periodoLabel(p)}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -419,7 +431,9 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
                   </p>
                 )}
                 {metaMensal !== null && (
-                  <p className="text-xs text-muted-foreground">Cerca de {metaMensal} por mês</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t('acordoDialog.cercaPorMes', { mensal: metaMensal })}
+                  </p>
                 )}
               </div>
             )}
@@ -430,7 +444,7 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
                 name="limite"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Limite de clientes</FormLabel>
+                    <FormLabel>{t('acordoDialog.limiteClientes')}</FormLabel>
                     <FormControl>
                       <Input type="number" inputMode="numeric" min={1} step={1} {...field} />
                     </FormControl>
@@ -446,7 +460,7 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
                 name="vigIni"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Início da vigência</FormLabel>
+                    <FormLabel>{t('acordoDialog.inicioVigencia')}</FormLabel>
                     <FormControl>
                       <Input type="date" {...field} />
                     </FormControl>
@@ -459,7 +473,7 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
                 name="vigFim"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Fim da vigência</FormLabel>
+                    <FormLabel>{t('acordoDialog.fimVigencia')}</FormLabel>
                     <FormControl>
                       <Input type="date" {...field} />
                     </FormControl>
@@ -471,7 +485,7 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
 
             <div className="space-y-2">
               <p id="acordo-contrato-titulo" className="text-sm font-medium">
-                Contrato assinado
+                {t('acordoDialog.contratoAssinado')}
               </p>
               <div
                 role="group"
@@ -481,7 +495,7 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
                 <span className="flex min-w-0 items-center gap-2 text-sm">
                   <FileText className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                   <span className={arquivoPath ? 'font-medium' : 'text-muted-foreground'}>
-                    {arquivoPath ? contratoRotulo(arquivoPath) : 'Nenhum arquivo'}
+                    {arquivoPath ? contratoRotulo(arquivoPath) : t('shared.nenhumArquivo')}
                   </span>
                 </span>
                 <Button
@@ -496,20 +510,20 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
                   ) : (
                     <Upload className="h-4 w-4" aria-hidden="true" />
                   )}
-                  {arquivoPath ? 'Trocar arquivo' : 'Enviar arquivo'}
+                  {arquivoPath ? t('acordoDialog.trocarArquivo') : t('acordoDialog.enviarArquivo')}
                 </Button>
                 <input
                   ref={inputArquivo}
                   type="file"
                   hidden
-                  aria-label="Arquivo do contrato"
+                  aria-label={t('acordoDialog.arquivoContrato')}
                   accept="application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg"
                   onChange={escolherArquivo}
                 />
               </div>
               {uploading && (
                 <p role="status" className="text-xs text-muted-foreground">
-                  Enviando arquivo...
+                  {t('acordoDialog.enviando')}
                 </p>
               )}
               {erroArquivo && (
@@ -517,7 +531,7 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
                   {erroArquivo}
                 </p>
               )}
-              <p className="text-xs text-muted-foreground">PDF, PNG ou JPG de até 10 MB.</p>
+              <p className="text-xs text-muted-foreground">{t('acordoDialog.formatos')}</p>
             </div>
 
             <FormField
@@ -525,7 +539,7 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
               name="valeDesde"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Vale a partir de</FormLabel>
+                  <FormLabel>{t('acordoDialog.valeAPartirDe')}</FormLabel>
                   {/* Mounted once the periods and the default are in: a Select cannot go from unset to controlled. */}
                   {periodos.length > 0 && field.value ? (
                     <FormControl>
@@ -540,9 +554,7 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
                   ) : (
                     <Skeleton className="h-9 w-full" />
                   )}
-                  <FormDescription>
-                    O acordo vale desde o início do período escolhido.
-                  </FormDescription>
+                  <FormDescription>{t('acordoDialog.valeAPartirDeAjuda')}</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -550,10 +562,10 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Cancelar
+                {t('actions.cancel')}
               </Button>
               <Button type="submit" disabled={saving || uploading}>
-                {saving && <Spinner size="sm" />} Salvar
+                {saving && <Spinner size="sm" />} {t('actions.save')}
               </Button>
             </DialogFooter>
           </form>

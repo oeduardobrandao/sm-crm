@@ -1,0 +1,113 @@
+{
+  "shared": {
+    "title": "Equipe",
+    "tipo": {
+      "clt": "CLT",
+      "freelancer_mensal": "Freelancer Mensal",
+      "freelancer_demanda": "Freelancer Demanda"
+    },
+    "role": {
+      "owner": "dono",
+      "admin": "admin",
+      "agent": "agente"
+    },
+    "roleOption": {
+      "admin": "Admin",
+      "agent": "Agente"
+    },
+    "workspaceRole": "Função no workspace",
+    "searchEditor": "Buscar por nome, cargo ou e-mail...",
+    "searchViewer": "Buscar por nome ou cargo...",
+    "restrictedTitle": "Visualização limitada",
+    "restrictedDescription": "Apenas administradores e proprietários podem adicionar, editar ou remover membros da equipe.",
+    "totalMembers": "Total de membros",
+    "totalCost": "Custo mensal total",
+    "csvHelp": "Colunas CSV: nome*, cargo*, tipo (clt|freelancer_mensal|freelancer_demanda), custo_mensal, data_pagamento",
+    "addMember": "Adicionar Membro",
+    "importCsv": "Importar CSV",
+    "filterType": "Tipo",
+    "filterAll": "Todos",
+    "sortName": "Nome",
+    "sortCostDesc": "Custo (maior)",
+    "sortCostAsc": "Custo (menor)",
+    "pendingInvite": "convite pendente",
+    "noLinkedAccount": "sem conta vinculada",
+    "noMembers": "Nenhum membro encontrado."
+  },
+  "equipePage": {
+    "removed": "Membro removido",
+    "removeError": "Erro ao remover",
+    "imported_zero": "{{count}} membros importados com sucesso!",
+    "imported_one": "{{count}} membro importado com sucesso!",
+    "imported_other": "{{count}} membros importados com sucesso!",
+    "deleteTitle": "Remover este membro?",
+    "helpMembers": "<b>Membros</b> = pessoas da equipe (designers, redatores, etc). Servem para custos e atribuição de tarefas em fluxos.",
+    "helpUsers": "<b>Usuários do workspace</b> = contas com acesso ao CRM. Gerencie em Configurações → Workspace.",
+    "helpLink": "Para que um membro acesse o CRM, vincule-o a um usuário do workspace no formulário de edição.",
+    "colMember": "Membro",
+    "colRole": "Cargo",
+    "colType": "Tipo",
+    "colLink": "Vínculo"
+  },
+  "equipePhone": {
+    "help": "Membros são as pessoas da equipe (designers, redatores, etc.): servem para custos e atribuição de tarefas em fluxos. Usuários do workspace são contas com acesso ao CRM, geridas em Configurações → Workspace. Para que um membro acesse o CRM, vincule-o a um usuário do workspace no formulário de edição.",
+    "viewMember": "Ver membro",
+    "filtersLabel": "Filtros: Tipo e Ordenar por",
+    "filtersLabelActive": "Filtros: Tipo e Ordenar por, {{n}} ativos",
+    "addLabel": "Adicionar: Adicionar Membro ou Importar CSV",
+    "membersAria": "Membros",
+    "rowActions": "Ações de {{name}}",
+    "filtersDescription": "Filtre e ordene a equipe",
+    "sortBy": "Ordenar por",
+    "addTitle": "Adicionar"
+  },
+  "inviteSection": {
+    "title": "Acesso ao CRM",
+    "loadingSeats": "Carregando vagas do plano...",
+    "seatsUsed": "{{used}} de {{limit}} vagas do plano usadas",
+    "seatsAfterInvite": "{{used}} de {{limit}} vagas após este convite",
+    "remaining_zero": "{{count}} restantes",
+    "remaining_one": "{{count}} restante",
+    "remaining_other": "{{count}} restantes",
+    "pendingNotice": "Convite pendente para <b>{{email}}</b> ({{role}})<time></time>. Reenviar ou cancelar em Configurações → Workspace.",
+    "pendingFooter": "<time></time>. Reenviar ou cancelar em Configurações → Workspace.",
+    "pendingCell": "Convite pendente",
+    "inviteLabel": "Convidar para o workspace",
+    "inviteOn": "A pessoa receberá um convite por e-mail e ocupará 1 vaga do plano. Quando aceitar, a conta será vinculada a este membro automaticamente.",
+    "inviteOff": "Sem convite, o membro serve para custos e atribuições, mas não faz login no CRM. Você pode convidar depois.",
+    "email": "Email *",
+    "rolesRestricted": "Apenas donos e admins convidam com função elevada ou papel.",
+    "seatsFull": "Todas as vagas do plano estão em uso. O membro pode ser salvo normalmente; para convidá-lo ao CRM, faça upgrade do plano ou remova um usuário."
+  },
+  "inviteSupport": {
+    "unknownError": "erro desconhecido",
+    "inviteFailed": "Membro salvo, mas o convite falhou: {{detail}}"
+  },
+  "membroForm": {
+    "nameRequired": "Nome obrigatório",
+    "roleRequired": "Cargo obrigatório",
+    "dayRange": "Dia deve ser entre 1 e 31",
+    "emailInvalid": "Email inválido"
+  },
+  "membroFormDialog": {
+    "editTitle": "Editar Membro",
+    "membroAria": "Membro",
+    "name": "Nome *",
+    "role": "Cargo *",
+    "type": "Tipo",
+    "cost": "Custo Mensal (R$)",
+    "costPlaceholder": "0,00",
+    "payDay": "Dia de Pagamento (1-31)",
+    "crmAccount": "Conta CRM",
+    "notLinked": "Não vinculado",
+    "linkHelp": "Vincular um membro a um usuário do workspace permite que ele acesse o CRM e veja suas atribuições.",
+    "costInAgreement": "O custo agora fica no acordo da pessoa.",
+    "openAgreement": "Abrir o acordo",
+    "saveAndInvite": "Salvar e convidar",
+    "roleFailed": "Membro salvo, mas não foi possível alterar a função: {{message}}",
+    "updated": "Membro atualizado",
+    "added": "Membro adicionado",
+    "alreadyLinked": "Esta conta CRM já está vinculada a outro membro deste workspace",
+    "saveError": "Erro ao salvar"
+  }
+}
