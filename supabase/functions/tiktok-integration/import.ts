@@ -211,7 +211,9 @@ export async function refreshStoredPostMetrics(
     .from("tiktok_posts")
     .select("tiktok_video_id")
     .eq("tiktok_account_id", accountId)
-    .gte("posted_at", recentWindowStart(now, METRICS_RECENT_DAYS));
+    .gte("posted_at", recentWindowStart(now, METRICS_RECENT_DAYS))
+    .order("posted_at", { ascending: false })
+    .limit(1000);
   if (windowErr) {
     console.error(
       "[tiktok-integration] refreshStoredPostMetrics: 90-day select failed:",
