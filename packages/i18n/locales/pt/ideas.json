@@ -1,1 +1,81 @@
-{}
+{
+  "status": {
+    "nova": "Nova",
+    "em_analise": "Em análise",
+    "aprovada": "Aprovada",
+    "descartada": "Descartada",
+    "convertida": "Virou tarefa",
+    "concluida": "Concluída"
+  },
+  "tipo": {
+    "ideia": "Ideia",
+    "solicitacao": "Solicitação"
+  },
+  "origem": {
+    "cliente": "Cliente",
+    "agencia": "Agência"
+  },
+  "shared": {
+    "title": "Ideias",
+    "helpText": "Ideias enviadas pelos clientes no portal ou criadas pela equipe.",
+    "newIdea": "Nova ideia",
+    "hiddenFromHub": "Oculta do Hub",
+    "searchPlaceholder": "Buscar por título ou cliente...",
+    "allClients": "Todos os clientes",
+    "status": "Status",
+    "filters": "Filtros",
+    "filtersDescription": "Filtre as ideias",
+    "empty": "Nenhuma ideia encontrada."
+  },
+  "page": {
+    "typePlaceholder": "Tipo",
+    "allTypes": "Todos os tipos",
+    "statusCount": "Status ({{count}})",
+    "clearFilters": "Limpar filtros",
+    "columns": {
+      "client": "Cliente",
+      "type": "Tipo",
+      "source": "Origem",
+      "title": "Título",
+      "status": "Status",
+      "reactions": "Reações",
+      "reply": "Resposta",
+      "date": "Data"
+    }
+  },
+  "phone": {
+    "client": "Cliente",
+    "type": "Tipo",
+    "period": "Período",
+    "anyDate": "Qualquer data",
+    "oneMonth": "Um mês",
+    "range": "Intervalo",
+    "month": "Mês",
+    "from": "De",
+    "to": "Até",
+    "dateShort": "dd/MM/yyyy",
+    "dayMonth": "dd/MM",
+    "periodRange": "{{from}} a {{to}}",
+    "periodFrom": "A partir de {{date}}",
+    "periodTo": "Até {{date}}",
+    "statusChip": "Status: {{labels}}",
+    "closeSearch": "Fechar busca",
+    "search": "Buscar",
+    "searchAria": "Buscar por título ou cliente",
+    "filtersActive_one": "Filtros, {{count}} ativo",
+    "filtersActive_other": "Filtros, {{count}} ativos",
+    "activeFilters": "Filtros ativos",
+    "removeStatusFilter": "Remover filtro de status",
+    "removeClientFilter": "Remover filtro de cliente",
+    "removeTypeFilter": "Remover filtro de tipo",
+    "removePeriodFilter": "Remover filtro de período",
+    "count_zero": "{{count}} ideias",
+    "count_one": "{{count}} ideia",
+    "count_other": "{{count}} ideias",
+    "loading": "Carregando ideias…",
+    "noReactions": "Sem reações",
+    "reactions_one": "{{count}} reação",
+    "reactions_other": "{{count}} reações",
+    "replied": "Respondida"
+  }
+}

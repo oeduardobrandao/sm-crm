@@ -1,1 +1,81 @@
-{}
+{
+  "status": {
+    "nova": "New",
+    "em_analise": "Under review",
+    "aprovada": "Approved",
+    "descartada": "Discarded",
+    "convertida": "Became a task",
+    "concluida": "Done"
+  },
+  "tipo": {
+    "ideia": "Idea",
+    "solicitacao": "Request"
+  },
+  "origem": {
+    "cliente": "Client",
+    "agencia": "Agency"
+  },
+  "shared": {
+    "title": "Ideas",
+    "helpText": "Ideas sent by clients through the client portal or created by the team.",
+    "newIdea": "New idea",
+    "hiddenFromHub": "Hidden from the Hub",
+    "searchPlaceholder": "Search by title or client...",
+    "allClients": "All clients",
+    "status": "Status",
+    "filters": "Filters",
+    "filtersDescription": "Filter the ideas",
+    "empty": "No ideas found."
+  },
+  "page": {
+    "typePlaceholder": "Type",
+    "allTypes": "All types",
+    "statusCount": "Status ({{count}})",
+    "clearFilters": "Clear filters",
+    "columns": {
+      "client": "Client",
+      "type": "Type",
+      "source": "Source",
+      "title": "Title",
+      "status": "Status",
+      "reactions": "Reactions",
+      "reply": "Reply",
+      "date": "Date"
+    }
+  },
+  "phone": {
+    "client": "Client",
+    "type": "Type",
+    "period": "Period",
+    "anyDate": "Any date",
+    "oneMonth": "One month",
+    "range": "Range",
+    "month": "Month",
+    "from": "From",
+    "to": "To",
+    "dateShort": "MM/dd/yyyy",
+    "dayMonth": "MM/dd",
+    "periodRange": "{{from}} to {{to}}",
+    "periodFrom": "From {{date}}",
+    "periodTo": "Until {{date}}",
+    "statusChip": "Status: {{labels}}",
+    "closeSearch": "Close search",
+    "search": "Search",
+    "searchAria": "Search by title or client",
+    "filtersActive_one": "Filters, {{count}} active",
+    "filtersActive_other": "Filters, {{count}} active",
+    "activeFilters": "Active filters",
+    "removeStatusFilter": "Remove status filter",
+    "removeClientFilter": "Remove client filter",
+    "removeTypeFilter": "Remove type filter",
+    "removePeriodFilter": "Remove period filter",
+    "count_zero": "{{count}} ideas",
+    "count_one": "{{count}} idea",
+    "count_other": "{{count}} ideas",
+    "loading": "Loading ideas…",
+    "noReactions": "No reactions",
+    "reactions_one": "{{count}} reaction",
+    "reactions_other": "{{count}} reactions",
+    "replied": "Replied"
+  }
+}
