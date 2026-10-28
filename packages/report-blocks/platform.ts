@@ -2,7 +2,7 @@
 // os componentes do Instagram por uma "visão" do snapshot montada a partir de
 // snapshot.tiktok. Só importa de ./types: BlockRenderer, data-presence e os
 // blocos importam este módulo, então nada de importar blocos aqui (ciclo).
-import { TIKTOK_BLOCK_PREFIX, blockPlatform } from './types';
+import { TIKTOK_BLOCK_PREFIX, blockPlatform, isSectioned, sectionPlatforms } from './types';
 import type {
   BlockType,
   ReportBlock,
@@ -108,8 +108,11 @@ export function instagramAbsent(type: string, snapshot: ReportDocSnapshot): bool
   return snapshot.instagram_connected === false && blockPlatform(type) === 'instagram';
 }
 
-/** Plataformas presentes no layout, na ordem da primeira ocorrência. */
+/** Plataformas do layout, na ordem do relatório. Seccionado: as seções de plataforma (uma
+ * seção vazia conta). Legado: a varredura de tipos de sempre (primeira ocorrência), que dá o
+ * mesmo resultado que as seções inferidas. */
 export function layoutPlatforms(layout: ReportLayout): ReportPlatform[] {
+  if (isSectioned(layout)) return sectionPlatforms(layout);
   const out: ReportPlatform[] = [];
   for (const b of layout.blocks) {
     const p = blockPlatform(b.type);

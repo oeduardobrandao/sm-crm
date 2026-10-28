@@ -182,6 +182,7 @@ export const WIDGET_CATALOG: readonly WidgetCatalogEntry[] = [
   { type: 'ai_goals', label: 'Metas', category: 'Texto', platform: null },
   { type: 'image', label: 'Imagem', category: 'Mídia', platform: null },
   { type: 'cover', label: 'Capa', category: 'Estrutura', platform: null },
-  { type: 'section_header', label: 'Cabeçalho de seção', category: 'Estrutura', platform: null },
+  // "Subtítulo": a seção (por plataforma) é o capítulo; o section_header fica dentro dela.
+  { type: 'section_header', label: 'Subtítulo', category: 'Estrutura', platform: null },
   { type: 'divider', label: 'Divisor de página', category: 'Estrutura', platform: null },
 ];

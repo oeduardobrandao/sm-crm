@@ -2,8 +2,8 @@
 // EDIÇÃO do CRM mostrar um placeholder explicativo em vez de uma célula vazia
 // e muda (a razão de "Cliques no link" parecer inutilizável). View, Hub e
 // print seguem omitindo o bloco — contrato do KpiEntry e dos widgets.
-import type { ReportBlock, ReportDocSnapshot, ReportKpiId } from './types';
-import { TIKTOK_BLOCK_PREFIX } from './types';
+import type { ReportBlock, ReportDocSnapshot, ReportKpiId, ReportSection } from './types';
+import { BLOCK_TYPES, TIKTOK_BLOCK_PREFIX, blockPlatform } from './types';
 import { instagramAbsent, tiktokBlockView } from './platform';
 
 export function blockHasData(block: ReportBlock, snapshot: ReportDocSnapshot): boolean {
@@ -49,4 +49,21 @@ export function blockHasData(block: ReportBlock, snapshot: ReportDocSnapshot): b
       // próprio no modo edição, não placeholder).
       return true;
   }
+}
+
+/** View e print (spec 2026-10-28 seções §Rendering): uma seção de plataforma com título
+ * visível some inteira (título, subtítulos e texto) quando nenhum widget de plataforma dela
+ * tem dado; neutros (section_header, text, divider...) não contam, então uma seção vazia
+ * também some. Geral e seções com hideHeader (todo legado convertido) sempre aparecem e
+ * seguem a regra por bloco de hoje. */
+export function sectionVisibleInView(section: ReportSection, snapshot: ReportDocSnapshot): boolean {
+  if (section.kind === 'general') return true;
+  if (section.marker.config?.hideHeader === true) return true;
+  // Tipo desconhecido (bloco de um bundle mais novo) não conta: este renderer não o desenha.
+  return section.blocks.some(
+    (b) =>
+      (BLOCK_TYPES as readonly string[]).includes(b.type) &&
+      blockPlatform(b.type) !== null &&
+      blockHasData(b, snapshot),
+  );
 }

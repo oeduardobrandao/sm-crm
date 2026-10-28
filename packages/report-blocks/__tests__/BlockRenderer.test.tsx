@@ -398,6 +398,13 @@ describe('BlockRenderer: seções de plataforma', () => {
     expect(container.querySelector('.rb-platform-heading h2')?.textContent).toBe('Nosso Instagram');
   });
 
+  it('styles.css: título ocupa a linha toda e não fica sozinho no pé da página impressa', () => {
+    const css = readFileSync(join(__dirname, '../styles.css'), 'utf-8');
+    expect(css).toMatch(/\.rb-platform-heading \{[^}]*grid-column: 1 \/ -1;/);
+    const print = css.slice(css.indexOf('@media print'));
+    expect(print).toMatch(/\.rb-platform-heading \{[^}]*break-after: avoid;/);
+  });
+
   it('hideHeader esconde o título', () => {
     const { container } = render(
       <BlockRenderer

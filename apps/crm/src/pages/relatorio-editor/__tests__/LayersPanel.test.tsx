@@ -32,7 +32,7 @@ function renderPanel(overrides: Partial<Parameters<typeof LayersPanel>[0]> = {})
 describe('layerLabel', () => {
   it('usa o label do catálogo e anexa o título do cabeçalho de seção', () => {
     expect(layerLabel(layout.blocks[2])).toBe('Alcance');
-    expect(layerLabel(layout.blocks[1])).toBe('Cabeçalho de seção · Crescimento');
+    expect(layerLabel(layout.blocks[1])).toBe('Subtítulo · Crescimento');
   });
 
   it('tipo desconhecido cai no próprio type (tolerante)', () => {
@@ -46,7 +46,7 @@ describe('LayersPanel', () => {
     expect(screen.getByRole('complementary', { name: 'Camadas do relatório' })).toBeTruthy();
     const rows = screen.getAllByRole('listitem');
     expect(rows).toHaveLength(3);
-    expect(rows[1].textContent).toContain('Cabeçalho de seção · Crescimento');
+    expect(rows[1].textContent).toContain('Subtítulo · Crescimento');
     expect(rows[2].textContent).toContain('Alcance');
     expect(rows[2].textContent).toContain('1/3');
   });

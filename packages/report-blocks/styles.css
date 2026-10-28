@@ -44,6 +44,47 @@
     grid-column: span 6;
   }
 }
+/* Título de seção de plataforma (spec 2026-10-28 seções §Rendering): item de grid em
+   largura cheia, irmão dos blocos (sem wrapper de seção). É o capítulo: um nível acima do
+   section_header (1.15rem, traço de 48px), que dentro da seção vira subtítulo. Tudo por
+   tokens do tema com fallback herdado; sem data-block-id, as regras de célula acima
+   (colapso :empty, flex) não o pegam. */
+.rb-platform-heading {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 2px solid var(--rb-ink, currentColor);
+  color: var(--rb-section-title, var(--rb-ink, inherit));
+}
+.rb-grid > .rb-platform-heading:first-child {
+  margin-top: 0;
+}
+.rb-platform-heading-icon {
+  flex-shrink: 0;
+}
+.rb-platform-heading-title {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--rb-font-display, inherit);
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -1px;
+}
+.rb-platform-heading-handle {
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  color: var(--rb-ink-soft, inherit);
+  opacity: 0.85;
+}
+/* Bold: o traço do capítulo leva a cor de marca, como o cabeçalho de seção. */
+.rb-theme-bold .rb-platform-heading {
+  border-bottom-color: var(--rb-accent-line, var(--rb-accent));
+}
 /* Chrome de cartão centralizado: tokens com fallback IGUAL ao valor inline
    que os widgets tinham — modo herdado renderiza byte-idêntico. Estilo
    inline de chrome nos widgets é PROIBIDO daqui em diante (inline vence CSS
@@ -148,6 +189,11 @@
 @media print {
   .rb-page-break {
     break-after: page;
+  }
+  /* O título nunca fica sozinho no pé da página, separado do primeiro bloco da seção. */
+  .rb-platform-heading {
+    break-after: avoid;
+    break-inside: avoid;
   }
   /* O PDF é a cópia do relatório na tela: o grid mantém os 880px da tela e
      encolhe com zoom para os 190mm úteis do A4 (210mm menos as margens de
