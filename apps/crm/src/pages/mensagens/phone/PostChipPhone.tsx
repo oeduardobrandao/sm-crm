@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowUpRight, FileText, MessageSquare, Reply } from 'lucide-react';
 import { ContextMenu, type ContextMenuAction } from '@/components/mobile/ContextMenu';
@@ -32,6 +33,7 @@ export function PostChipPhone({
   onReply,
   comDiscussao = false,
 }: Props) {
+  const { t } = useTranslation('messagesPhone');
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const preview = usePostPreview(postId, open, comDiscussao);
@@ -39,7 +41,7 @@ export function PostChipPhone({
 
   const actions: ContextMenuAction[] = [
     {
-      label: 'Abrir post',
+      label: t('postChip.open'),
       icon: <ArrowUpRight aria-hidden="true" />,
       onSelect: () => navigate(href),
     },
@@ -47,14 +49,14 @@ export function PostChipPhone({
   if (comDiscussao) {
     const discussaoHref = postDiscussaoHref(postId, workflowId);
     actions.push({
-      label: 'Abrir na discussão do post',
+      label: t('postChip.openDiscussion'),
       icon: <MessageSquare aria-hidden="true" />,
       onSelect: () => navigate(discussaoHref),
     });
   }
   if (onReply) {
     actions.push({
-      label: 'Responder sobre este post',
+      label: t('postChip.reply'),
       icon: <Reply aria-hidden="true" />,
       onSelect: onReply,
     });
@@ -62,7 +64,7 @@ export function PostChipPhone({
 
   return (
     <ContextMenu
-      label={`Ações do post ${titulo ?? ''}`.trim()}
+      label={t('postChip.actionsLabel', { titulo: titulo ?? '' }).trim()}
       open={open}
       onOpenChange={setOpen}
       className="phone-msg-chip-hold"
@@ -75,7 +77,7 @@ export function PostChipPhone({
     >
       <Link to={href} className="phone-msg-chip">
         <FileText aria-hidden="true" className="phone-msg-chip__icon" />
-        <span className="phone-msg-chip__title">{titulo ?? 'Ver post'}</span>
+        <span className="phone-msg-chip__title">{titulo ?? t('postChip.viewPost')}</span>
         <ArrowUpRight aria-hidden="true" className="phone-msg-chip__arrow" />
       </Link>
     </ContextMenu>

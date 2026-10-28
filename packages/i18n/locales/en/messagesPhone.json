@@ -1,1 +1,63 @@
-{}
+{
+  "shared": {
+    "title": "Messages",
+    "closeSearch": "Close search",
+    "sortBy": "Sort: {{label}}",
+    "sortTitle": "Sort conversations",
+    "sortRecentes": "Most recent",
+    "sortAntigas": "Oldest",
+    "loadError": "Couldn't load conversations.",
+    "unreadBadge": "{{n}} unread",
+    "loadingOlder": "Loading…",
+    "loadOlder": "Load earlier messages",
+    "threadError": "Couldn't load messages.",
+    "retry": "Try again",
+    "threadEmpty": "No messages in this conversation yet.",
+    "sendMessage": "Send message"
+  },
+  "mensagensList": {
+    "info": "All communication with clients, grouped by conversation. Each item links to its source post.",
+    "searchClient": "Search clients",
+    "searchPlaceholder": "Search clients...",
+    "noResults": "No clients found.",
+    "empty": "No conversations yet. Client messages show up here.",
+    "listLabel": "Conversations"
+  },
+  "equipeList": {
+    "info": "Groups and direct messages with your team.",
+    "searchConversation": "Search conversations",
+    "searchPlaceholder": "Search conversations...",
+    "newConversation": "New conversation",
+    "noResults": "No conversations found.",
+    "empty": "No conversations yet. Start one to talk with your team.",
+    "listLabel": "Team conversations"
+  },
+  "conversationThread": {
+    "typeFilter": "Message type",
+    "teamAuthor": "Team",
+    "requestedCorrection": "Requested changes",
+    "postFallback": "Post",
+    "replyingAbout": "Replying about: <b>{{titulo}}</b>",
+    "cancelReply": "Cancel reply",
+    "replyPlaceholder": "Reply about the post…",
+    "replyLabel": "Reply about the post",
+    "messagePlaceholder": "Send a message…",
+    "messageLabel": "Message"
+  },
+  "equipeThread": {
+    "details": "View conversation details",
+    "removeAttachment": "Remove {{name}}",
+    "attachFile": "Attach file",
+    "composerPlaceholder": "Message the team…"
+  },
+  "postChip": {
+    "open": "Open post",
+    "openDiscussion": "Open in the post discussion",
+    "reply": "Reply about this post",
+    "actionsLabel": "Post actions {{titulo}}",
+    "viewPost": "View post"
+  },
+  "threadShell": {
+    "back": "Back to conversations"
+  }
+}

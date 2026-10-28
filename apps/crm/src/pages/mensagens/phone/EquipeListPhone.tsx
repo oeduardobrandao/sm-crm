@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ArrowDownUp, Check, Plus, Search, X } from 'lucide-react';
 import type { EquipeChatMember, EquipeConversa } from '@/store';
 import { ListSkeleton } from '@/components/ui/skeletons';
@@ -16,12 +17,9 @@ import {
 } from '../equipeChatLogic';
 import './mensagensPhone.css';
 
-/** Header subtitle of the Equipe tab (the Clientes tab shows its own). */
-export const EQUIPE_INFO = 'Grupos e mensagens diretas com a sua equipe.';
-
-const SORT_LABEL: Record<EquipeConversasSort, string> = {
-  recentes: 'Mais recentes',
-  antigas: 'Mais antigas',
+const SORT_LABEL_KEY: Record<EquipeConversasSort, 'shared.sortRecentes' | 'shared.sortAntigas'> = {
+  recentes: 'shared.sortRecentes',
+  antigas: 'shared.sortAntigas',
 };
 
 interface Props {
@@ -58,6 +56,7 @@ export function EquipeListPhone({
   onNovaConversa,
   headerExtra,
 }: Props) {
+  const { t } = useTranslation('messagesPhone');
   const [sort, setSort] = useState<EquipeConversasSort>('recentes');
   const [busca, setBusca] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -75,12 +74,13 @@ export function EquipeListPhone({
   return (
     <div className="phone-msg">
       <PhonePageHeader
-        title="Mensagens"
-        subtitle={EQUIPE_INFO}
+        title={t('shared.title')}
+        // Header subtitle of the Equipe tab (the Clientes tab shows its own).
+        subtitle={t('equipeList.info')}
         actions={
           <>
             <PhoneIconButton
-              label={searchOpen ? 'Fechar busca' : 'Buscar conversa'}
+              label={searchOpen ? t('shared.closeSearch') : t('equipeList.searchConversation')}
               aria-expanded={searchOpen}
               onClick={() => {
                 if (searchOpen) {
@@ -95,14 +95,14 @@ export function EquipeListPhone({
               {searchOpen ? <X aria-hidden="true" /> : <Search aria-hidden="true" />}
             </PhoneIconButton>
             <PhoneIconButton
-              label={`Ordenar: ${SORT_LABEL[sort]}`}
+              label={t('shared.sortBy', { label: t(SORT_LABEL_KEY[sort]) })}
               aria-haspopup="dialog"
               onClick={() => setSortOpen(true)}
             >
               <ArrowDownUp aria-hidden="true" />
             </PhoneIconButton>
             <PhoneIconButton
-              label="Nova conversa"
+              label={t('equipeList.newConversation')}
               aria-haspopup="dialog"
               data-testid="nova-conversa-btn"
               onClick={onNovaConversa}
@@ -122,8 +122,8 @@ export function EquipeListPhone({
               enterKeyHint="search"
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar conversa..."
-              aria-label="Buscar conversa"
+              placeholder={t('equipeList.searchPlaceholder')}
+              aria-label={t('equipeList.searchConversation')}
             />
           </div>
         )}
@@ -134,16 +134,14 @@ export function EquipeListPhone({
           <ListSkeleton rows={6} avatar className="px-4 py-3" />
         </div>
       )}
-      {isError && <p className="phone-msg-note">Não foi possível carregar as conversas.</p>}
+      {isError && <p className="phone-msg-note">{t('shared.loadError')}</p>}
       {!isLoading && !isError && visiveis.length === 0 && (
         <p className="phone-msg-note">
-          {busca.trim()
-            ? 'Nenhuma conversa encontrada.'
-            : 'Nenhuma conversa ainda. Crie uma para falar com a equipe.'}
+          {busca.trim() ? t('equipeList.noResults') : t('equipeList.empty')}
         </p>
       )}
       {visiveis.length > 0 && (
-        <ul className="phone-kit phone-msg-group" aria-label="Conversas da equipe">
+        <ul className="phone-kit phone-msg-group" aria-label={t('equipeList.listLabel')}>
           {visiveis.map((item) => {
             if (item.kind === 'colega') {
               const m = item.colega;
@@ -198,7 +196,7 @@ export function EquipeListPhone({
                       {c.unread_count > 0 && (
                         <span
                           className="phone-msg-row__badge"
-                          aria-label={`${c.unread_count} não lidas`}
+                          aria-label={t('shared.unreadBadge', { n: c.unread_count })}
                         >
                           {c.unread_count > 99 ? '99+' : c.unread_count}
                         </span>
@@ -215,9 +213,9 @@ export function EquipeListPhone({
       <ActionSheet
         open={sortOpen}
         onOpenChange={setSortOpen}
-        title="Ordenar conversas"
+        title={t('shared.sortTitle')}
         actions={(['recentes', 'antigas'] as const).map((s) => ({
-          label: SORT_LABEL[s],
+          label: t(SORT_LABEL_KEY[s]),
           icon: sort === s ? <Check aria-hidden="true" /> : undefined,
           onSelect: () => setSort(s),
         }))}

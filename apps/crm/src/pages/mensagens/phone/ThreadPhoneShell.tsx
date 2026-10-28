@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
 import { usePhoneChrome } from '@/components/layout/PhoneLayoutContext';
 import './mensagensPhone.css';
@@ -18,6 +19,7 @@ export function ThreadPhoneShell({
   trailing?: ReactNode;
   children: ReactNode;
 }) {
+  const { t } = useTranslation('messagesPhone');
   usePhoneChrome({ pageHeader: true, tabBar: false });
   return (
     <div className="page-full-bleed phone-msg-thread">
@@ -25,7 +27,7 @@ export function ThreadPhoneShell({
         className="phone-msg-thread__bar"
         title={title}
         titleAlign="leading"
-        backLabel="Voltar para as conversas"
+        backLabel={t('threadShell.back')}
         fallbackTo="/mensagens"
         trailing={trailing}
       />

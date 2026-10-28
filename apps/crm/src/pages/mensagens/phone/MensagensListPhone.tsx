@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ArrowDownUp, Check, Search, X } from 'lucide-react';
 import type { Cliente, MensagemConversa } from '@/store';
 import { ListSkeleton } from '@/components/ui/skeletons';
@@ -9,13 +10,9 @@ import { ClienteAvatar } from '../components/Avatars';
 import { conversaPreview, formatTime, sortConversas, type ConversasSort } from '../mensagensLogic';
 import './mensagensPhone.css';
 
-/** The desktop list's Info tooltip text, visible here as the header subtitle. */
-export const MENSAGENS_INFO =
-  'Toda a comunicação com os clientes, agrupada por conversa. Cada item leva ao post de origem.';
-
-const SORT_LABEL: Record<ConversasSort, string> = {
-  recentes: 'Mais recentes',
-  antigas: 'Mais antigas',
+const SORT_LABEL_KEY: Record<ConversasSort, 'shared.sortRecentes' | 'shared.sortAntigas'> = {
+  recentes: 'shared.sortRecentes',
+  antigas: 'shared.sortAntigas',
 };
 
 interface Props {
@@ -41,6 +38,7 @@ export function MensagensListPhone({
   onSelect,
   headerExtra,
 }: Props) {
+  const { t } = useTranslation('messagesPhone');
   const [sort, setSort] = useState<ConversasSort>('recentes');
   const [busca, setBusca] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -56,12 +54,13 @@ export function MensagensListPhone({
   return (
     <div className="phone-msg">
       <PhonePageHeader
-        title="Mensagens"
-        subtitle={MENSAGENS_INFO}
+        title={t('shared.title')}
+        // The desktop list's Info tooltip text, visible here as the header subtitle.
+        subtitle={t('mensagensList.info')}
         actions={
           <>
             <PhoneIconButton
-              label={searchOpen ? 'Fechar busca' : 'Buscar cliente'}
+              label={searchOpen ? t('shared.closeSearch') : t('mensagensList.searchClient')}
               aria-expanded={searchOpen}
               onClick={() => {
                 if (searchOpen) {
@@ -76,7 +75,7 @@ export function MensagensListPhone({
               {searchOpen ? <X aria-hidden="true" /> : <Search aria-hidden="true" />}
             </PhoneIconButton>
             <PhoneIconButton
-              label={`Ordenar: ${SORT_LABEL[sort]}`}
+              label={t('shared.sortBy', { label: t(SORT_LABEL_KEY[sort]) })}
               aria-haspopup="dialog"
               onClick={() => setSortOpen(true)}
             >
@@ -95,8 +94,8 @@ export function MensagensListPhone({
               enterKeyHint="search"
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar cliente..."
-              aria-label="Buscar cliente"
+              placeholder={t('mensagensList.searchPlaceholder')}
+              aria-label={t('mensagensList.searchClient')}
             />
           </div>
         )}
@@ -107,16 +106,14 @@ export function MensagensListPhone({
           <ListSkeleton rows={6} avatar className="px-4 py-3" />
         </div>
       )}
-      {isError && <p className="phone-msg-note">Não foi possível carregar as conversas.</p>}
+      {isError && <p className="phone-msg-note">{t('shared.loadError')}</p>}
       {!isLoading && !isError && visiveis.length === 0 && (
         <p className="phone-msg-note">
-          {busca.trim()
-            ? 'Nenhum cliente encontrado.'
-            : 'Nenhuma conversa ainda. As mensagens dos clientes aparecem aqui.'}
+          {busca.trim() ? t('mensagensList.noResults') : t('mensagensList.empty')}
         </p>
       )}
       {visiveis.length > 0 && (
-        <ul className="phone-kit phone-msg-group" aria-label="Conversas">
+        <ul className="phone-kit phone-msg-group" aria-label={t('mensagensList.listLabel')}>
           {visiveis.map((c) => (
             <li key={c.cliente_id} className="phone-msg-row">
               <button
@@ -143,7 +140,7 @@ export function MensagensListPhone({
                     {c.unread_count > 0 && (
                       <span
                         className="phone-msg-row__badge"
-                        aria-label={`${c.unread_count} não lidas`}
+                        aria-label={t('shared.unreadBadge', { n: c.unread_count })}
                       >
                         {c.unread_count > 99 ? '99+' : c.unread_count}
                       </span>
@@ -159,9 +156,9 @@ export function MensagensListPhone({
       <ActionSheet
         open={sortOpen}
         onOpenChange={setSortOpen}
-        title="Ordenar conversas"
+        title={t('shared.sortTitle')}
         actions={(['recentes', 'antigas'] as const).map((s) => ({
-          label: SORT_LABEL[s],
+          label: t(SORT_LABEL_KEY[s]),
           icon: sort === s ? <Check aria-hidden="true" /> : undefined,
           onSelect: () => setSort(s),
         }))}

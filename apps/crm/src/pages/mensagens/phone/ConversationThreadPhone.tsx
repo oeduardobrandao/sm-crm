@@ -1,3 +1,4 @@
+import { Trans, useTranslation } from 'react-i18next';
 import { CheckCircle2, FilePen, Reply, Send, X } from 'lucide-react';
 import type { Cliente, MensagemConversa } from '@/store';
 import { SegmentedControl } from '@/components/mobile/SegmentedControl';
@@ -41,6 +42,7 @@ export function ConversationThreadPhone({
   replyToPost,
   clientesById,
 }: Props) {
+  const { t } = useTranslation('messagesPhone');
   const { tipo, setTipo, draft, setDraft, replyTo, setReplyTo, itens, scrollRef, sending, enviar } =
     useConversationThread({ conversa, feed, sendGeneral, replyToPost });
   const cliente = clientesById.get(conversa.cliente_id);
@@ -60,7 +62,7 @@ export function ConversationThreadPhone({
     >
       <div className="phone-msg-thread__filters">
         <SegmentedControl<MensagensTipoFilter>
-          aria-label="Tipo de mensagem"
+          aria-label={t('conversationThread.typeFilter')}
           options={TIPO_FILTERS.map((f) => ({ value: f.id, label: f.label }))}
           value={tipo}
           onChange={setTipo}
@@ -75,24 +77,24 @@ export function ConversationThreadPhone({
             disabled={feed.isFetchingNextPage}
             className="phone-msg-thread__older"
           >
-            {feed.isFetchingNextPage ? 'Carregando…' : 'Carregar mensagens anteriores'}
+            {feed.isFetchingNextPage ? t('shared.loadingOlder') : t('shared.loadOlder')}
           </button>
         )}
         {feed.isError && (
           <div className="phone-msg-thread__state">
-            <p>Não foi possível carregar as mensagens.</p>
+            <p>{t('shared.threadError')}</p>
             <button
               type="button"
               className="phone-msg-thread__retry"
               onClick={() => feed.refetch()}
             >
-              Tentar novamente
+              {t('shared.retry')}
             </button>
           </div>
         )}
         {!feed.isError && feed.isLoading && <ThreadSkeleton />}
         {!feed.isError && !feed.isLoading && itens.length === 0 && (
-          <p className="phone-msg-thread__state">Nenhuma mensagem nesta conversa ainda.</p>
+          <p className="phone-msg-thread__state">{t('shared.threadEmpty')}</p>
         )}
         {itens.map((m) => {
           if (isEventRow(m)) {
@@ -132,11 +134,15 @@ export function ConversationThreadPhone({
               <div className="phone-msg-bubble-col">
                 <div className="phone-msg-bubble">
                   {daEquipe && (
-                    <div className="phone-msg-bubble__author">{m.author_name ?? 'Equipe'}</div>
+                    <div className="phone-msg-bubble__author">
+                      {m.author_name ?? t('conversationThread.teamAuthor')}
+                    </div>
                   )}
                   {notaLabel && <div className="phone-msg-bubble__action">{notaLabel}</div>}
                   {m.action === 'correcao' && (
-                    <div className="phone-msg-bubble__action">Pediu correção</div>
+                    <div className="phone-msg-bubble__action">
+                      {t('conversationThread.requestedCorrection')}
+                    </div>
                   )}
                   {m.content && <p className="phone-msg-bubble__text">{m.content}</p>}
                   {m.post_id != null && (
@@ -149,7 +155,7 @@ export function ConversationThreadPhone({
                           setReplyTo({
                             postId: m.post_id!,
                             workflowId: m.workflow_id,
-                            titulo: m.post_titulo ?? 'Post',
+                            titulo: m.post_titulo ?? t('conversationThread.postFallback'),
                           })
                         }
                       />
@@ -168,13 +174,18 @@ export function ConversationThreadPhone({
           <div className="phone-msg-composer__reply">
             <Reply aria-hidden="true" />
             <span className="phone-msg-composer__reply-text">
-              Respondendo sobre: <strong>{replyTo.titulo}</strong>
+              <Trans
+                t={t}
+                i18nKey="conversationThread.replyingAbout"
+                values={{ titulo: replyTo.titulo }}
+                components={{ b: <strong /> }}
+              />
             </span>
             <button
               type="button"
               className="phone-msg-composer__cancel"
               onClick={() => setReplyTo(null)}
-              aria-label="Cancelar resposta"
+              aria-label={t('conversationThread.cancelReply')}
             >
               <X aria-hidden="true" />
             </button>
@@ -188,15 +199,21 @@ export function ConversationThreadPhone({
               if (e.key === 'Enter') enviar();
             }}
             enterKeyHint="send"
-            placeholder={replyTo ? 'Responder sobre o post…' : 'Enviar mensagem…'}
-            aria-label={replyTo ? 'Responder sobre o post' : 'Mensagem'}
+            placeholder={
+              replyTo
+                ? t('conversationThread.replyPlaceholder')
+                : t('conversationThread.messagePlaceholder')
+            }
+            aria-label={
+              replyTo ? t('conversationThread.replyLabel') : t('conversationThread.messageLabel')
+            }
             className="phone-msg-composer__input"
           />
           <button
             type="button"
             onClick={enviar}
             disabled={sending || !draft.trim()}
-            aria-label="Enviar mensagem"
+            aria-label={t('shared.sendMessage')}
             className="phone-msg-composer__send"
           >
             <Send aria-hidden="true" />

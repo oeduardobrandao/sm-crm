@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Paperclip, Send, Users, X } from 'lucide-react';
 import { MentionEditor } from '@/components/mentions/MentionEditor';
 import { MentionText } from '@/components/mentions/MentionText';
@@ -45,6 +46,7 @@ export function EquipeThreadPhone({
   onOpenDetalhes,
   children,
 }: Props) {
+  const { t } = useTranslation('messagesPhone');
   const {
     meuId,
     draft,
@@ -71,7 +73,7 @@ export function EquipeThreadPhone({
         </>
       }
       trailing={
-        <PhoneIconButton label="Ver detalhes da conversa" onClick={onOpenDetalhes}>
+        <PhoneIconButton label={t('equipeThread.details')} onClick={onOpenDetalhes}>
           <Users aria-hidden="true" />
         </PhoneIconButton>
       }
@@ -84,24 +86,24 @@ export function EquipeThreadPhone({
             disabled={mensagens.isFetchingNextPage}
             className="phone-msg-thread__older"
           >
-            {mensagens.isFetchingNextPage ? 'Carregando…' : 'Carregar mensagens anteriores'}
+            {mensagens.isFetchingNextPage ? t('shared.loadingOlder') : t('shared.loadOlder')}
           </button>
         )}
         {mensagens.isError && (
           <div className="phone-msg-thread__state">
-            <p>Não foi possível carregar as mensagens.</p>
+            <p>{t('shared.threadError')}</p>
             <button
               type="button"
               className="phone-msg-thread__retry"
               onClick={() => mensagens.refetch()}
             >
-              Tentar novamente
+              {t('shared.retry')}
             </button>
           </div>
         )}
         {!mensagens.isError && mensagens.isLoading && <ThreadSkeleton />}
         {!mensagens.isError && !mensagens.isLoading && itens.length === 0 && (
-          <p className="phone-msg-thread__state">Nenhuma mensagem nesta conversa ainda.</p>
+          <p className="phone-msg-thread__state">{t('shared.threadEmpty')}</p>
         )}
         {rows.map((row) => {
           if (row.kind === 'dia') {
@@ -176,7 +178,7 @@ export function EquipeThreadPhone({
                   type="button"
                   className="phone-msg-composer__cancel"
                   onClick={() => removerAnexo(a.id)}
-                  aria-label={`Remover ${a.file_name}`}
+                  aria-label={t('equipeThread.removeAttachment', { name: a.file_name })}
                 >
                   <X aria-hidden="true" />
                 </button>
@@ -201,7 +203,7 @@ export function EquipeThreadPhone({
             className="phone-msg-composer__attach"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            aria-label="Anexar arquivo"
+            aria-label={t('equipeThread.attachFile')}
           >
             <Paperclip aria-hidden="true" />
           </button>
@@ -209,7 +211,7 @@ export function EquipeThreadPhone({
             value={draft}
             onValueChange={setDraft}
             onKeyDown={onComposerKeyDown}
-            placeholder="Mensagem para a equipe…"
+            placeholder={t('equipeThread.composerPlaceholder')}
             rootClassName="phone-msg-composer__field"
             className="phone-msg-composer__input phone-msg-composer__input--area"
           />
@@ -217,7 +219,7 @@ export function EquipeThreadPhone({
             type="button"
             onClick={() => void enviar()}
             disabled={!podeEnviar}
-            aria-label="Enviar mensagem"
+            aria-label={t('shared.sendMessage')}
             className="phone-msg-composer__send"
           >
             <Send aria-hidden="true" />
