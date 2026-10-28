@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeSnapshotFixture } from '../fixtures';
-import { blockHasData } from '../data-presence';
+import { blockHasData, sectionVisibleInView } from '../data-presence';
 import {
   TIKTOK_KPI_LABELS_PT,
   TIKTOK_KPI_TOOLTIPS_PT,
@@ -10,7 +10,13 @@ import {
 } from '../platform';
 import { TIKTOK_KPI_IDS } from '../types';
 import ptTiktok from '../../i18n/locales/pt/analyticsTiktok.json';
-import type { ReportBlock, ReportDocSnapshot, ReportLayout } from '../types';
+import type {
+  ReportBlock,
+  ReportDocSnapshot,
+  ReportLayout,
+  ReportSection,
+  SectionKind,
+} from '../types';
 
 const PT_KPI = ptTiktok.kpi;
 
@@ -113,6 +119,91 @@ describe('layoutPlatforms', () => {
       layoutPlatforms(l(['cover', 'tiktok_kpi_views', 'kpi_reach', 'tiktok_top_posts'])),
     ).toEqual(['tiktok', 'instagram']);
     expect(layoutPlatforms(l(['cover', 'text']))).toEqual([]);
+  });
+
+  it('layout seccionado: plataformas das seções, na ordem do relatório (seção vazia conta)', () => {
+    const tiktokOnly: ReportLayout = {
+      version: 1,
+      blocks: [
+        { id: 'g', type: 'section', size: 'full' },
+        { id: 'c', type: 'cover', size: 'full' },
+        { id: 'tt', type: 'section', size: 'full', config: { platform: 'tiktok' } },
+      ],
+    };
+    expect(layoutPlatforms(tiktokOnly)).toEqual(['tiktok']);
+    const both: ReportLayout = {
+      version: 1,
+      blocks: [
+        { id: 'tt', type: 'section', size: 'full', config: { platform: 'tiktok' } },
+        { id: 'v', type: 'tiktok_kpi_views', size: 'third' },
+        { id: 'ig', type: 'section', size: 'full', config: { platform: 'instagram' } },
+      ],
+    };
+    expect(layoutPlatforms(both)).toEqual(['tiktok', 'instagram']);
+  });
+
+  it('legado: igual à varredura de tipos de hoje', () => {
+    expect(layoutPlatforms(l(['kpi_reach', 'tiktok_kpi_views', 'kpi_saves']))).toEqual([
+      'instagram',
+      'tiktok',
+    ]);
+    expect(layoutPlatforms(l([]))).toEqual([]);
+  });
+});
+
+describe('sectionVisibleInView', () => {
+  const section = (
+    kind: SectionKind,
+    types: string[],
+    config?: Record<string, unknown>,
+  ): ReportSection => ({
+    marker: {
+      id: 's',
+      type: 'section',
+      size: 'full',
+      ...(config ? { config } : kind === 'general' ? {} : { config: { platform: kind } }),
+    } as ReportBlock,
+    kind,
+    blocks: types.map((t, i) => ({ id: `b${i}`, type: t, size: 'full' }) as ReportBlock),
+    synthesized: false,
+  });
+
+  it('Geral sempre aparece, mesmo vazia', () => {
+    expect(sectionVisibleInView(section('general', []), makeSnapshotFixture())).toBe(true);
+    expect(sectionVisibleInView(section('general', ['text']), makeSnapshotFixture())).toBe(true);
+  });
+
+  it('plataforma com título: aparece se algum widget da plataforma tem dado', () => {
+    const snap = makeSnapshotFixture();
+    expect(sectionVisibleInView(section('instagram', ['section_header', 'kpi_reach']), snap)).toBe(
+      true,
+    );
+    expect(sectionVisibleInView(section('tiktok', ['tiktok_kpi_views']), snap)).toBe(true);
+  });
+
+  it('plataforma com título e nenhum widget com dado: some (neutros não contam)', () => {
+    const noTikTok = makeSnapshotFixture({ tiktok: null });
+    expect(
+      sectionVisibleInView(
+        section('tiktok', ['section_header', 'text', 'divider', 'tiktok_kpi_views']),
+        noTikTok,
+      ),
+    ).toBe(false);
+    expect(sectionVisibleInView(section('instagram', ['kpi_reach']), tiktokOnlySnapshot())).toBe(
+      false,
+    );
+    // Vazia ou só com neutros: nenhum widget de plataforma com dado.
+    expect(sectionVisibleInView(section('instagram', []), makeSnapshotFixture())).toBe(false);
+    expect(sectionVisibleInView(section('tiktok', ['text']), makeSnapshotFixture())).toBe(false);
+  });
+
+  it('hideHeader segue a regra por bloco: a seção sempre aparece', () => {
+    expect(
+      sectionVisibleInView(
+        section('tiktok', ['tiktok_kpi_views'], { platform: 'tiktok', hideHeader: true }),
+        makeSnapshotFixture({ tiktok: null }),
+      ),
+    ).toBe(true);
   });
 });
 

@@ -41,6 +41,11 @@ describe('WIDGET_CATALOG', () => {
     expect(label('tiktok_post_list')).toBe('Lista de vídeos');
   });
 
+  it('section_header é o "Subtítulo"; seção não é widget do drawer', () => {
+    expect(WIDGET_CATALOG.find((w) => w.type === 'section_header')?.label).toBe('Subtítulo');
+    expect(WIDGET_CATALOG.some((w) => w.type === 'section')).toBe(false);
+  });
+
   it('a ordem de categorias começa em Números e termina em Estrutura', () => {
     expect(WIDGET_CATEGORIES[0]).toBe('Números');
     expect(WIDGET_CATEGORIES[WIDGET_CATEGORIES.length - 1]).toBe('Estrutura');
