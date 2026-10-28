@@ -247,8 +247,6 @@ async function handleAiAnalysis(req: Request, ctx: RouteContext, clientId: numbe
   // No key, no model call and no budget spent.
   const key = ctx.deps.geminiKey;
   if (!key) return aiUnavailable(ctx);
-  const limited = await spendAiBudget(ctx);
-  if (limited) return limited;
 
   const { data: client, error } = await ctx.db.from("clientes").select("nome, especialidade").eq("id", clientId)
     .eq("conta_id", ctx.contaId).maybeSingle();
@@ -259,6 +257,10 @@ async function handleAiAnalysis(req: Request, ctx: RouteContext, clientId: numbe
     loadVideosInWindow(ctx.db, account.id, w.start, w.end),
     loadFollowerHistory(ctx.db, account.id, w.start, w.end),
   ]);
+  // Nothing to analyse: no model call and no budget spent.
+  if (videos.length === 0) return ctx.json({ analysis: { error: true, raw: "Nenhum vídeo no período" } });
+  const limited = await spendAiBudget(ctx);
+  if (limited) return limited;
   const prompts = buildAccountPrompts({
     username: account.username ?? account.display_name ?? "",
     clientName: client.nome ?? "",

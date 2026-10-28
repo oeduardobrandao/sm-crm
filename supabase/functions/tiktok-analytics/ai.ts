@@ -30,7 +30,21 @@ const pct = (value: number | null): string => (value === null ? "sem dados" : `$
 const spDay = (iso: string | null): string | null => (iso ? saoPauloDate(new Date(iso)) : null);
 
 const MIX_DATA_NOTE =
-  "Os únicos dados disponíveis por vídeo são: visualizações, curtidas, comentários, compartilhamentos, duração, título e data de publicação. Baseie TODA a análise nesses dados e não invente nenhum outro número.";
+  "Os únicos dados disponíveis por vídeo são: visualizações, curtidas, comentários, compartilhamentos, duração, título e data de publicação. Baseie TODA a análise nesses dados e não invente nenhum outro número. Tudo que não vier dos dados deve ser tratado como hipótese, não como fato.";
+
+const COMPARISON_REFERENCE = `REFERÊNCIA DE COMPARAÇÃO:
+- Não existe benchmark oficial de mercado para engajamento por visualização no TikTok. NUNCA cite faixas de mercado nem afirme que um valor é "bom" ou "ruim" em termos absolutos.
+- Compare sempre contra a mediana da própria conta no período (informada nos dados) e, no portfólio, contra a mediana das contas.
+- A nota de engajamento deve refletir a posição relativa dos vídeos frente a essa mediana. A de crescimento só pode usar o histórico de seguidores fornecido.`;
+
+const WORST_VIDEOS = 5;
+
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
 
 export function buildAccountPrompts(input: {
   username: string;
@@ -43,19 +57,25 @@ export function buildAccountPrompts(input: {
 }): Prompts {
   const { username, clientName, specialty, days, followers, history, videos } = input;
 
-  const ranked = [...videos]
-    .sort((a, b) => (b.views || 0) - (a.views || 0))
-    .slice(0, MAX_PROMPT_VIDEOS)
-    .map((v) => ({
-      titulo: (v.title || "").slice(0, 120),
-      duracaoSegundos: v.duration,
-      visualizacoes: v.views,
-      curtidas: v.likes,
-      comentarios: v.comments,
-      compartilhamentos: v.shares,
-      data: spDay(v.posted_at),
-      engajamentoPorVisualizacao: pct(videoEngagementRate(v)),
-    }));
+  const toPromptVideo = (v: AiVideo) => ({
+    titulo: (v.title || "").slice(0, 120),
+    duracaoSegundos: v.duration,
+    visualizacoes: v.views,
+    curtidas: v.likes,
+    comentarios: v.comments,
+    compartilhamentos: v.shares,
+    data: spDay(v.posted_at),
+    engajamentoPorVisualizacao: pct(videoEngagementRate(v)),
+  });
+  const byViewsDesc = [...videos].sort((a, b) => (b.views || 0) - (a.views || 0));
+  const ranked = byViewsDesc.slice(0, MAX_PROMPT_VIDEOS).map(toPromptVideo);
+  // Past the cap the weakest videos would never reach the model, so worstPerformer would be
+  // picked from the top of the list; send the lowest few separately.
+  const lowest = videos.length > MAX_PROMPT_VIDEOS
+    ? byViewsDesc.slice(-WORST_VIDEOS).reverse().map(toPromptVideo)
+    : null;
+  const rates = videos.map(videoEngagementRate).filter((r): r is number => r !== null);
+  const meanRate = rates.length ? rates.reduce((acc, r) => acc + r, 0) / rates.length : null;
 
   const sum = (key: "views" | "likes" | "comments" | "shares") => videos.reduce((acc, v) => acc + (v[key] || 0), 0);
   const totalViews = sum("views");
@@ -74,7 +94,7 @@ ${MIX_DATA_NOTE}
 
 REGRAS DE ANÁLISE:
 1. Nunca diga "poste mais vídeos" ou "seja consistente" — isso é óbvio. Toda recomendação deve ser uma AÇÃO ESPECÍFICA com tema, duração e timing.
-2. Quando identificar um vídeo de alto desempenho, explique o MECANISMO por trás (ex: "o hook nos 3 primeiros segundos gerou retenção" ou "a pergunta no título puxou comentários porque..."), não apenas "esse vídeo foi bem".
+2. Quando identificar um vídeo de alto desempenho, explique o MECANISMO por trás (ex: "a pergunta no título puxou comentários porque..."), não apenas "esse vídeo foi bem".
 3. Compare métricas entre si, não isoladamente. O engajamento aqui é POR VISUALIZAÇÃO (curtidas + comentários + compartilhamentos, divididos pelas visualizações) e só faz sentido relativo ao número de seguidores e à duração do vídeo.
 4. Para a área de saúde, considere: restrições do CFM/CRO sobre publicidade, sazonalidade (Janeiro Branco, Outubro Rosa, etc.), e que o objetivo final quase sempre é agendamento de consulta, não viralizar.
 
@@ -83,18 +103,15 @@ FORMATO DE ESCRITA:
 - Cada bullet deve ter no máximo 1-2 frases.
 - CRÍTICO: Cada bullet point DEVE começar em uma NOVA LINHA com "• ". NUNCA junte múltiplos bullets na mesma linha separados por vírgula ou ponto.
 - Priorize dados e ações concretas, elimine preâmbulos e explicações redundantes.
-- Exemplo BOM:
-"• Vídeos de 15s com hook de pergunta: 12% de engajamento por visualização vs 5% média → replicar formato
-• Vídeos educativos geram 2x mais comentários que bastidores
-• Melhor horário: terça e quinta entre 18h-20h"
-- Exemplo RUIM: "• Vídeos de 15s com hook de pergunta: 12% de engajamento por visualização vs 5% média → replicar formato,• Vídeos educativos geram 2x mais comentários,• Melhor horário: terça e quinta"
+- Exemplo BOM (formato, sem números reais):
+"• Vídeos curtos com pergunta no título: engajamento por visualização acima da mediana da conta → replicar formato
+• Vídeos educativos geram mais comentários que bastidores
+• Melhor horário: dias e faixas com mais visualizações nos dados"
+- Exemplo RUIM: "• Vídeos curtos com pergunta no título: engajamento acima da mediana → replicar formato,• Vídeos educativos geram mais comentários,• Melhor horário: dias com mais visualizações"
 - NUNCA use ",•" ou ".," para separar bullets. Sempre use quebra de linha ("\\n") antes de cada "•".
 
-BENCHMARKS DE REFERÊNCIA (contas de saúde 5k-50k seguidores, valores aproximados):
-- Engajamento por visualização saudável: 4-10%
-- Crescimento orgânico bom: 2-5% ao mês
+${COMPARISON_REFERENCE}
 - Visualizações é a métrica principal de distribuição. Compare os vídeos entre si, identifique quais tiveram distribuição acima ou abaixo da média do perfil.
-Ajuste esses benchmarks proporcionalmente se a conta estiver fora dessa faixa de seguidores.
 
 DADOS INCOMPLETOS:
 Nem sempre haverá histórico de seguidores. Quando o histórico estiver marcado como INDISPONÍVEL:
@@ -111,12 +128,14 @@ Seguidores atuais: ${followers ?? "desconhecido"}
 Total de vídeos no período: ${videos.length}
 Visualizações no período: ${totalViews}
 Engajamento por visualização no período: ${periodEngagement}
+Mediana do engajamento por visualização dos vídeos da conta no período (referência de comparação): ${pct(median(rates))}
+Média do engajamento por visualização dos vídeos da conta no período: ${pct(meanRate)}
 
 ${followerHistoryBlock}
 
-Vídeos do período (ordenados por visualizações):
+Vídeos do período (ordenados por visualizações${lowest ? `, os ${MAX_PROMPT_VIDEOS} com mais visualizações` : ""}):
 ${JSON.stringify(ranked)}
-
+${lowest ? `\nOs ${WORST_VIDEOS} vídeos com MENOS visualizações do período (use estes para o worstPerformer):\n${JSON.stringify(lowest)}\n` : ""}
 ---
 
 Responda APENAS com um JSON válido, sem markdown, sem comentários, sem texto fora do JSON. Não use aspas simples nem aspas duplas dentro dos valores de texto — use apenas apóstrofos se necessário.
@@ -127,15 +146,15 @@ Responda APENAS com um JSON válido, sem markdown, sem comentários, sem texto f
     "worstPerformer": "em 3-4 bullets curtos: qual vídeo, o problema principal (duração errada? título fraco? horário?), e como o mesmo tema performaria melhor com outra abordagem",
     "contentMix": "em 2-3 bullets: distribuição atual de durações e temas dos vídeos, o que está sobrando e o que está faltando"
   },
-  "captionDiagnostic": "em 3-4 bullets: padrão estrutural dos 3 melhores títulos e descrições (ex: hook + promessa + CTA) e um template prático de título no final",
+  "captionDiagnostic": "em 3-4 bullets: padrão estrutural dos 3 melhores títulos (ex: hook + promessa + CTA) e um template prático de título no final",
   "growthAnalysis": {
-    "trajectory": "em 2-3 bullets: taxa de crescimento real vs benchmark, classificação (acelerando/estável/desacelerando/queda). Se histórico INDISPONÍVEL, usar sinais indiretos e deixar explícito",
+    "trajectory": "em 2-3 bullets: taxa de crescimento real no histórico fornecido, classificação (acelerando/estável/desacelerando/queda). Se histórico INDISPONÍVEL, usar sinais indiretos e deixar explícito",
     "projection": "em 2-3 bullets: projeção 30d e 90d, e se o ritmo for ruim, qual taxa precisa atingir. Se histórico INDISPONÍVEL, estimativa qualitativa"
   },
   "healthScore": {
     "score": 0,
     "breakdown": {
-      "engajamento": "nota 0-100 com justificativa de 1 frase comparando o engajamento por visualização com o benchmark",
+      "engajamento": "nota 0-100 com justificativa de 1 frase comparando o engajamento por visualização dos vídeos com a mediana da própria conta",
       "crescimento": "nota 0-100 com justificativa de 1 frase OU null se histórico indisponível",
       "consistencia": "nota 0-100 baseada em frequência e regularidade de vídeos",
       "mixDeConteudo": "nota 0-100 baseada na diversidade de durações e temas"
@@ -159,6 +178,7 @@ O campo actionPlan deve ter entre 3 e 5 ações. Pelo menos 1 deve ser uma açã
 export function buildPortfolioPrompts(input: { days: number; accounts: PortfolioRow[] }): Prompts {
   const { days, accounts } = input;
 
+  const accountMedian = median(accounts.map((a) => a.engagement_rate).filter((r): r is number => r !== null));
   const summaries = accounts.map((a) => ({
     name: a.client_name,
     specialty: a.especialidade,
@@ -188,17 +208,16 @@ FORMATO DE ESCRITA:
 - Cada bullet deve ter no máximo 1-2 frases.
 - Priorize dados e ações concretas, elimine preâmbulos e explicações redundantes.
 
-BENCHMARKS DE REFERÊNCIA (contas de saúde 5k-50k seguidores, valores aproximados):
-- Engajamento por visualização saudável: 4-10%
-- Crescimento orgânico bom: 2-5% ao mês
+${COMPARISON_REFERENCE}
 - Visualizações é a métrica principal de distribuição. Compare as contas entre si e identifique quais tiveram distribuição acima ou abaixo da média do portfólio.
-Ajuste proporcionalmente para contas fora dessa faixa.
 
 DADOS INCOMPLETOS:
 - Se followerDelta for null, não há pontos de histórico suficientes — não assuma estagnação sem outros sinais.
 - NUNCA invente números. Se um dado não existe, diga explicitamente.`;
 
   const user = `Analise o portfólio de ${accounts.length} contas TikTok nos últimos ${days} dias:
+
+Mediana do engajamento por visualização entre as contas (referência de comparação): ${pct(accountMedian)}
 
 ${JSON.stringify(summaries, null, 1)}
 

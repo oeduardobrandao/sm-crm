@@ -834,7 +834,7 @@ Deno.test("tiktok-analytics: callGemini falls back like Instagram on unparseable
   assertEquals(empty, { error: true, raw: "Empty AI response" });
 });
 
-const FORBIDDEN_METRICS = [/alcance/i, /salvamento/i, /reach/i, /\bsaves?\b/i, /salvos?\b/i, /demogr/i, /impress/i];
+const FORBIDDEN_METRICS = [/alcance/i, /salvamento/i, /reach/i, /\bsaves?\b/i, /salvos?\b/i, /demogr/i, /impress/i, /retenção/i, /tempo de exibição/i, /descrições/i];
 
 Deno.test("tiktok-analytics: account prompt mentions vídeos and never 'alcance' or 'salvamentos'", () => {
   const { system, user } = buildAccountPrompts({
@@ -980,4 +980,117 @@ Deno.test("tiktok-analytics: ai routes are POST-only", async () => {
   signedIn(db);
   const res = await makeHandler(db, { geminiKey: "k" })(get("/ai-analysis/42"));
   assertEquals(res.status, 404);
+});
+
+const MARKET_RANGE = /\d+(?:[.,]\d+)?\s*-\s*\d+(?:[.,]\d+)?\s*%/;
+
+Deno.test("tiktok-analytics: system prompts carry no market benchmark, only the own-baseline rule", () => {
+  const account = buildAccountPrompts({
+    username: "u", clientName: "C", specialty: null, days: 30, followers: 1, history: [],
+    videos: [{ ...video("a", 100, 5, 0, 0), title: "t", duration: 10 }],
+  });
+  const portfolio = buildPortfolioPrompts({ days: 28, accounts: [] });
+  for (const { system } of [account, portfolio]) {
+    assert(!MARKET_RANGE.test(system), "no percentage range in the system prompt");
+    assert(!/\bmédia\b.*\d+%/.test(system), "no invented example averages");
+    assert(system.includes("REFERÊNCIA DE COMPARAÇÃO:"));
+    assert(system.includes("Não existe benchmark oficial de mercado"));
+    assert(system.includes("hipótese, não como fato"));
+  }
+});
+
+Deno.test("tiktok-analytics: account prompt passes the median and mean engagement per view", () => {
+  const { user } = buildAccountPrompts({
+    username: "u", clientName: "C", specialty: null, days: 30, followers: 1, history: [],
+    videos: [
+      { ...video("a", 100, 10, 0, 0), title: "a", duration: 10 }, // 10%
+      { ...video("b", 100, 20, 0, 0), title: "b", duration: 10 }, // 20%
+      { ...video("c", 100, 60, 0, 0), title: "c", duration: 10 }, // 60%
+      { ...video("d", 0, 0, 0, 0), title: "d", duration: 10 }, // no views: left out
+    ],
+  });
+  assert(user.includes("Mediana do engajamento por visualização dos vídeos da conta no período (referência de comparação): 20.00%"));
+  assert(user.includes("Média do engajamento por visualização dos vídeos da conta no período: 30.00%"));
+});
+
+Deno.test("tiktok-analytics: portfolio prompt passes the cross-account median", () => {
+  const row = (name: string, rate: number | null) => ({
+    client_id: 1, client_name: name, especialidade: null, username: name, avatar_url: null,
+    authorization_status: "active", follower_count: 1, followers_gained: null, views: 1, engagement_rate: rate,
+    posts_count: 1, last_posted_at: null,
+  });
+  const { user } = buildPortfolioPrompts({ days: 28, accounts: [row("a", 2), row("b", 10), row("c", null), row("d", 4)] });
+  assert(user.includes("Mediana do engajamento por visualização entre as contas (referência de comparação): 4.00%"));
+});
+
+Deno.test("tiktok-analytics: over 50 videos the prompt also lists the 5 lowest by views", () => {
+  const videos = Array.from({ length: 60 }, (_, i) => ({ ...video(`v${i}`, 1000 + i, 1, 0, 0), title: `titulo-${i}`, duration: 10 }));
+  const { user } = buildAccountPrompts({ username: "u", clientName: "C", specialty: null, days: 30, followers: 1, history: [], videos });
+  const [top, lowest] = user.split("MENOS visualizações do período");
+  assert(lowest !== undefined, "lowest block present");
+  for (let i = 0; i < 5; i++) assert(lowest.includes(`titulo-${i}"`), `lowest has titulo-${i}`);
+  assert(!lowest.includes('titulo-5"'));
+  assert(!top.includes('titulo-0"'), "the weakest are not in the top-50 list");
+
+  const small = buildAccountPrompts({ username: "u", clientName: "C", specialty: null, days: 30, followers: 1, history: [], videos: videos.slice(0, 10) });
+  assert(!small.user.includes("MENOS visualizações do período"));
+});
+
+Deno.test("tiktok-analytics: ai-analysis without GEMINI key debits no ig-ai budget", async () => {
+  const db = createSupabaseQueryMock();
+  queueAccountAi(db);
+  const rateKeys: string[] = [];
+  const res = await makeHandler(db, {
+    geminiKey: "",
+    checkRateLimit: (_db: unknown, key: string) => {
+      rateKeys.push(key);
+      return Promise.resolve(true);
+    },
+  })(post("/ai-analysis/42", {}));
+  assertEquals((await res.json()).analysis, { error: true, raw: "ai_unavailable" });
+  assert(!rateKeys.some((k) => k.startsWith("ig-ai:")));
+});
+
+Deno.test("tiktok-analytics: ai-analysis with zero videos in the window debits no budget and calls no model", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  ownedClient(db);
+  db.queueRpc("effective_plan_feature", { data: true }, { data: true }, { data: true });
+  db.queue("tiktok_accounts", "select", { data: ACCOUNT });
+  db.queue("clientes", "select", { data: { nome: "Dra. Ana", especialidade: null } });
+  db.queue("tiktok_posts", "select", { data: [] });
+  db.queue("tiktok_follower_history", "select", { data: [] });
+  const gemini = fakeGemini(() => geminiOk("{}"));
+  const rateKeys: string[] = [];
+  const res = await makeHandler(db, {
+    fetch: gemini.impl,
+    geminiKey: "k",
+    checkRateLimit: (_db: unknown, key: string) => {
+      rateKeys.push(key);
+      return Promise.resolve(true);
+    },
+  })(post("/ai-analysis/42", {}));
+  assertEquals(res.status, 200);
+  assertEquals((await res.json()).analysis, { error: true, raw: "Nenhum vídeo no período" });
+  assertEquals(gemini.calls.length, 0);
+  assert(!rateKeys.some((k) => k.startsWith("ig-ai:")));
+});
+
+Deno.test("tiktok-analytics: AI routes answer 403 when feature_tiktok is off", async () => {
+  const account = createSupabaseQueryMock();
+  signedIn(account);
+  ownedClient(account);
+  account.queueRpc("effective_plan_feature", { data: false });
+  const gemini = fakeGemini(() => geminiOk("{}"));
+  const a = await makeHandler(account, { fetch: gemini.impl, geminiKey: "k" })(post("/ai-analysis/42", {}));
+  assertEquals(a.status, 403);
+  assertEquals(await a.json(), { error: "feature_disabled", feature: "feature_tiktok" });
+
+  const portfolio = createSupabaseQueryMock();
+  signedIn(portfolio);
+  portfolio.queueRpc("effective_plan_feature", { data: false });
+  const p = await makeHandler(portfolio, { fetch: gemini.impl, geminiKey: "k" })(post("/ai-analysis-portfolio", {}));
+  assertEquals(p.status, 403);
+  assertEquals(await p.json(), { error: "feature_disabled", feature: "feature_tiktok" });
+  assertEquals(gemini.calls.length, 0);
 });
