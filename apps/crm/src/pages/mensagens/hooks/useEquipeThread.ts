@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { trackUnsavedWork, useUnsavedWork } from '@mesaas/app-lifecycle';
 import { useAuth } from '@/context/AuthContext';
@@ -22,6 +23,7 @@ interface Options {
  * scroll-to-newest ref, the seen high-water mark, `anexar` and `enviar`.
  */
 export function useEquipeThread({ conversa, mensagens, send, markSeen }: Options) {
+  const { t, i18n } = useTranslation('messages');
   const { user } = useAuth();
   const meuId = user?.id ?? null;
   const [draft, setDraft] = useState('');
@@ -44,8 +46,11 @@ export function useEquipeThread({ conversa, mensagens, send, markSeen }: Options
     return [...all].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id - b.id);
   }, [mensagens.data]);
 
-  // Day dividers and stacked runs (same author, a few minutes apart).
-  const rows = useMemo(() => agruparEquipeMensagens(itens), [itens]);
+  // Day dividers and stacked runs (same author, a few minutes apart). The language is a
+  // dependency so the day labels ("Hoje", "Ontem", dates) follow a UI language switch.
+  const lang = i18n.language;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const rows = useMemo(() => agruparEquipeMensagens(itens), [itens, lang]);
 
   useEffect(() => {
     if (!scrollPending.current || mensagens.isLoading) return;
@@ -75,7 +80,7 @@ export function useEquipeThread({ conversa, mensagens, send, markSeen }: Options
       const anexo = await trackUnsavedWork(uploadEquipeChatAnexo(conversa.conversa_id, file));
       setAnexosPendentes((prev) => [...prev, anexo]);
     } catch {
-      toast.error('Não foi possível enviar o arquivo.');
+      toast.error(t('equipeThread.uploadError'));
     } finally {
       setUploading(false);
     }
@@ -100,7 +105,7 @@ export function useEquipeThread({ conversa, mensagens, send, markSeen }: Options
       setAnexosPendentes([]);
       scrollPending.current = true;
     } catch {
-      toast.error('Não foi possível enviar a mensagem.');
+      toast.error(t('shared.sendError'));
     }
   }
 

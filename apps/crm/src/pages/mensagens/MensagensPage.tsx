@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import type { Cliente } from '@/store';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
@@ -40,28 +41,29 @@ function TabPills({
   activeTab: MensagensTab;
   onSelect: (tab: MensagensTab) => void;
 }) {
+  const { t } = useTranslation('messages');
   return (
     <div className="flex gap-1 border-b border-[var(--border-color)] px-4 py-2">
       {(
         [
-          { id: 'clientes', label: 'Clientes' },
-          { id: 'equipe', label: 'Equipe' },
+          { id: 'clientes', label: t('page.tabs.clientes') },
+          { id: 'equipe', label: t('page.tabs.equipe') },
         ] as const
-      ).map((t) => (
+      ).map((tab) => (
         <button
-          key={t.id}
-          onClick={() => onSelect(t.id)}
-          data-testid={`mensagens-tab-${t.id}`}
+          key={tab.id}
+          onClick={() => onSelect(tab.id)}
+          data-testid={`mensagens-tab-${tab.id}`}
           className="rounded-full px-3 py-1.5 text-xs whitespace-nowrap"
           style={{
             border: 'none',
             cursor: 'pointer',
-            background: activeTab === t.id ? 'var(--text-main)' : 'transparent',
-            color: activeTab === t.id ? 'var(--card-bg)' : 'var(--text-muted)',
-            fontWeight: activeTab === t.id ? 600 : 400,
+            background: activeTab === tab.id ? 'var(--text-main)' : 'transparent',
+            color: activeTab === tab.id ? 'var(--card-bg)' : 'var(--text-muted)',
+            fontWeight: activeTab === tab.id ? 600 : 400,
           }}
         >
-          {t.label}
+          {tab.label}
         </button>
       ))}
     </div>
@@ -78,22 +80,23 @@ function PhoneTabs({
   activeTab: MensagensTab;
   onSelect: (tab: MensagensTab) => void;
 }) {
+  const { t } = useTranslation('messages');
   return (
     <SegmentedControl
-      aria-label="Seção de mensagens"
+      aria-label={t('page.sectionLabel')}
       className="mt-2"
       value={activeTab}
       onChange={onSelect}
       options={[
         {
           value: 'clientes',
-          label: <span data-testid="mensagens-tab-clientes">Clientes</span>,
-          ariaLabel: 'Clientes',
+          label: <span data-testid="mensagens-tab-clientes">{t('page.tabs.clientes')}</span>,
+          ariaLabel: t('page.tabs.clientes'),
         },
         {
           value: 'equipe',
-          label: <span data-testid="mensagens-tab-equipe">Equipe</span>,
-          ariaLabel: 'Equipe',
+          label: <span data-testid="mensagens-tab-equipe">{t('page.tabs.equipe')}</span>,
+          ariaLabel: t('page.tabs.equipe'),
         },
       ]}
     />
@@ -136,6 +139,7 @@ function EquipePane({
   onCloseDetalhes,
   onLeftGrupo,
 }: EquipePaneProps) {
+  const { t } = useTranslation('messages');
   const { user } = useAuth();
   const equipe = useEquipeChatData(conversaId);
   useEquipeChatRealtime(conversaId);
@@ -159,7 +163,7 @@ function EquipePane({
     if (equipe.abrirDm.isPending) return;
     equipe.abrirDm.mutate(userId, {
       onSuccess: onSelect,
-      onError: () => toast.error('Não foi possível abrir a conversa.'),
+      onError: () => toast.error(t('shared.openConversationError')),
     });
   }
 
@@ -210,7 +214,7 @@ function EquipePane({
       );
     }
     if (!conversaAtual || equipe.conversas.isLoading) {
-      return <ThreadPhoneShell title="Mensagens">{renderThreadStatus()}</ThreadPhoneShell>;
+      return <ThreadPhoneShell title={t('shared.title')}>{renderThreadStatus()}</ThreadPhoneShell>;
     }
     return (
       <EquipeThreadPhone
@@ -252,6 +256,7 @@ function EquipePane({
 }
 
 export default function MensagensPage() {
+  const { t } = useTranslation('messages');
   const { clienteId: clienteIdParam, conversaId: conversaIdParam } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -334,7 +339,7 @@ export default function MensagensPage() {
     clientesOn && activeTab === 'clientes',
   );
   const inToolbar = usePageToolbar({
-    title: 'Mensagens',
+    title: t('shared.title'),
     titleAccessory: <MensagensInfoTooltip />,
   });
 
@@ -463,7 +468,7 @@ export default function MensagensPage() {
       );
     }
     return (
-      <ThreadPhoneShell title="Mensagens">
+      <ThreadPhoneShell title={t('shared.title')}>
         {invalidId ? (
           <ThreadNotFound />
         ) : conversas.isLoading ? (

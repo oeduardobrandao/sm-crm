@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { FileText, Users } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { signEquipeChatAnexoView } from '@/services/equipeChatMedia';
 import type { EquipeConversa, EquipeMensagemAnexo } from '@/store';
@@ -25,6 +26,7 @@ export function AnexoImagem({
   anexo: EquipeMensagemAnexo;
   className?: string;
 }) {
+  const { t } = useTranslation('messages');
   const { data: url, isError } = useQuery({
     queryKey: ['equipe-anexo-url', anexo.id],
     queryFn: () => signEquipeChatAnexoView(anexo.id),
@@ -45,7 +47,7 @@ export function AnexoImagem({
         // Mirrors AnexoChip's error handling: same toast when the signed URL
         // is unavailable because signing failed. Still-loading is a silent
         // no-op, same as before.
-        if (isError) toast.error('Não foi possível abrir o arquivo.');
+        if (isError) toast.error(t('shared.openFileError'));
       }}
     />
   );
@@ -61,12 +63,13 @@ export function AnexoChip({
   className?: string;
   style?: CSSProperties;
 }) {
+  const { t } = useTranslation('messages');
   async function abrir() {
     try {
       const url = await signEquipeChatAnexoView(anexo.id);
       window.open(url, '_blank', 'noopener,noreferrer');
     } catch {
-      toast.error('Não foi possível abrir o arquivo.');
+      toast.error(t('shared.openFileError'));
     }
   }
   return (

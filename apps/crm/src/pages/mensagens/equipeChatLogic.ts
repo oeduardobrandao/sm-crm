@@ -1,5 +1,5 @@
 import { format, isSameDay, isSameYear, subDays } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { getDateFnsLocale, i18n } from '@mesaas/i18n';
 import type { EquipeChatMember, EquipeConversa, EquipeMensagem } from '@/store';
 import { stripMentionTokens } from '@/components/mentions/mentionTokens';
 
@@ -46,8 +46,11 @@ export function sortEquipeLista(
   return [...(sort === 'antigas' ? ativas : ativas.reverse()), ...vazias];
 }
 
-/** Preview of a row with no messages yet: an empty conversation, or a colleague with no DM. */
-export const EQUIPE_SEM_MENSAGENS = 'Sem mensagens ainda. Comece a conversa!';
+/** Preview of a row with no messages yet: an empty conversation, or a colleague
+ * with no DM. Resolved at call time so it follows the UI language. */
+export function equipeSemMensagens(): string {
+  return i18n.t('messages:shared.noMessagesYet');
+}
 
 /** One-line preview for a conversation row: "Autor: texto", "Autor: Anexo",
  * just the author, or the empty-conversation copy. The current user's own
@@ -56,20 +59,27 @@ export function equipeConversaPreview(
   c: EquipeConversa,
   currentUserId: string | null = null,
 ): string {
-  if (c.last_created_at == null) return EQUIPE_SEM_MENSAGENS;
+  if (c.last_created_at == null) return equipeSemMensagens();
   const minha = currentUserId != null && c.last_author_id === currentUserId;
-  const autor = minha ? 'Você' : (c.last_author_name ?? 'Equipe');
+  const autor = minha
+    ? i18n.t('messages:shared.you')
+    : (c.last_author_name ?? i18n.t('messages:shared.team'));
   // last_content may carry raw @[Label](tipo:id) mention tokens: this is a
   // plain-text preview row, not a rendered chip, so strip them before showing.
   const texto = stripMentionTokens(c.last_content?.trim() ?? '');
-  if (texto) return `${autor}: ${texto}`;
-  if (c.last_has_anexo) return `${autor}: Anexo`;
+  if (texto) return i18n.t('messages:preview.authored', { author: autor, text: texto });
+  if (c.last_has_anexo) {
+    return i18n.t('messages:preview.authored', {
+      author: autor,
+      text: i18n.t('messages:preview.attachment'),
+    });
+  }
   return autor;
 }
 
-/** Time of a message ("11:57"); its day is in the divider above it. */
+/** Time of a message ("11:57", or "11:57 AM" in English); its day is in the divider above it. */
 export function horaMensagem(iso: string): string {
-  return format(new Date(iso), 'HH:mm');
+  return format(new Date(iso), i18n.t('messages:shared.timeFormat'));
 }
 
 /** Longest pause between two messages of one author that still stacks them. */
@@ -90,11 +100,12 @@ export type EquipeThreadRow =
 export function rotuloDia(d: Date, now: Date = new Date()): string {
   // Relative to `now`, not the clock (isToday/isYesterday read the clock), so a
   // caller's `now` decides both labels the same way it decides the year.
-  if (isSameDay(d, now)) return 'Hoje';
-  if (isSameDay(d, subDays(now, 1))) return 'Ontem';
+  if (isSameDay(d, now)) return i18n.t('messages:shared.today');
+  if (isSameDay(d, subDays(now, 1))) return i18n.t('messages:shared.yesterday');
+  const locale = getDateFnsLocale();
   const texto = isSameYear(d, now)
-    ? format(d, "EEEE, d 'de' MMMM", { locale: ptBR })
-    : format(d, "d 'de' MMMM 'de' yyyy", { locale: ptBR });
+    ? format(d, i18n.t('common:dateFormat.weekdayDayMonth'), { locale })
+    : format(d, i18n.t('messages:shared.dayMonthYearFormat'), { locale });
   return texto.charAt(0).toUpperCase() + texto.slice(1);
 }
 

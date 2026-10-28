@@ -9,7 +9,7 @@ import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
 import { EquipeConversaAvatar } from '../components/EquipeShared';
 import { formatTime } from '../mensagensLogic';
 import {
-  EQUIPE_SEM_MENSAGENS,
+  equipeSemMensagens,
   equipeConversaPreview,
   equipeListaItemNome,
   sortEquipeLista,
@@ -165,7 +165,7 @@ export function EquipeListPhone({
                         <span className="phone-msg-row__name">{m.nome}</span>
                       </span>
                       <span className="phone-msg-row__line">
-                        <span className="phone-msg-row__preview">{EQUIPE_SEM_MENSAGENS}</span>
+                        <span className="phone-msg-row__preview">{equipeSemMensagens()}</span>
                       </span>
                     </span>
                   </button>

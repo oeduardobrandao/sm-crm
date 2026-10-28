@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Search, Users } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -24,6 +25,7 @@ interface NovaConversaDialogProps {
 /** Nova conversa (DM ou grupo). Modo 'lista': busca + colegas (clique abre
  * DM direto). Modo 'grupo' (so owner/admin): nome + multi-select + Criar. */
 export function NovaConversaDialog({ open, onOpenChange, onCreated }: NovaConversaDialogProps) {
+  const { t } = useTranslation('messages');
   const { user, workspaceRole } = useAuth();
   const qc = useQueryClient();
   // workspaceRole (workspace_members for the ACTIVE workspace), not the
@@ -65,7 +67,7 @@ export function NovaConversaDialog({ open, onOpenChange, onCreated }: NovaConver
       const id = await createEquipeConversa('dm', null, [userId]);
       await abrirCriada(id);
     } catch {
-      toast.error('Não foi possível abrir a conversa.');
+      toast.error(t('shared.openConversationError'));
     } finally {
       setEnviando(false);
     }
@@ -94,7 +96,7 @@ export function NovaConversaDialog({ open, onOpenChange, onCreated }: NovaConver
       const id = await createEquipeConversa('grupo', n, selecionados);
       await abrirCriada(id);
     } catch {
-      toast.error('Não foi possível criar o grupo.');
+      toast.error(t('novaConversa.createGroupError'));
     } finally {
       setEnviando(false);
     }
@@ -104,10 +106,10 @@ export function NovaConversaDialog({ open, onOpenChange, onCreated }: NovaConver
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{modo === 'lista' ? 'Nova conversa' : 'Criar grupo'}</DialogTitle>
-          <DialogDescription className="sr-only">
-            Escolha um colega para abrir uma conversa direta ou crie um grupo.
-          </DialogDescription>
+          <DialogTitle>
+            {modo === 'lista' ? t('shared.newConversation') : t('novaConversa.createGroup')}
+          </DialogTitle>
+          <DialogDescription className="sr-only">{t('novaConversa.description')}</DialogDescription>
         </DialogHeader>
 
         {modo === 'lista' ? (
@@ -127,18 +129,18 @@ export function NovaConversaDialog({ open, onOpenChange, onCreated }: NovaConver
               <Input
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
-                placeholder="Buscar colega..."
-                aria-label="Buscar colega"
+                placeholder={t('novaConversa.searchPlaceholder')}
+                aria-label={t('novaConversa.searchLabel')}
                 style={{ paddingLeft: '2rem' }}
               />
             </div>
             <div className="flex max-h-72 flex-col gap-1 overflow-y-auto">
               {members.isLoading && (
-                <p className="py-6 text-center text-sm text-[var(--text-muted)]">Carregando…</p>
+                <p className="py-6 text-center text-sm text-[var(--text-muted)]">{t('loading')}</p>
               )}
               {!members.isLoading && visiveis.length === 0 && (
                 <p className="py-6 text-center text-sm text-[var(--text-muted)]">
-                  Nenhum colega encontrado.
+                  {t('novaConversa.noColleagueFound')}
                 </p>
               )}
               {visiveis.map((m) => (
@@ -164,7 +166,7 @@ export function NovaConversaDialog({ open, onOpenChange, onCreated }: NovaConver
             </div>
             {podeCriarGrupo && (
               <Button type="button" variant="outline" onClick={() => setModo('grupo')}>
-                <Users className="h-3.5 w-3.5 mr-1.5" /> Criar grupo
+                <Users className="h-3.5 w-3.5 mr-1.5" /> {t('novaConversa.createGroup')}
               </Button>
             )}
           </div>
@@ -173,8 +175,8 @@ export function NovaConversaDialog({ open, onOpenChange, onCreated }: NovaConver
             <Input
               value={nome}
               onChange={(e) => setNome(e.target.value)}
-              placeholder="Nome do grupo"
-              aria-label="Nome do grupo"
+              placeholder={t('equipeDetalhes.groupName')}
+              aria-label={t('equipeDetalhes.groupName')}
             />
             <div className="flex max-h-64 flex-col gap-1 overflow-y-auto">
               {colegas.map((m) => {
@@ -217,14 +219,14 @@ export function NovaConversaDialog({ open, onOpenChange, onCreated }: NovaConver
             </div>
             <div className="flex items-center justify-between gap-2 pt-1">
               <Button type="button" variant="ghost" onClick={() => setModo('lista')}>
-                Voltar
+                {t('actions.back')}
               </Button>
               <Button
                 type="button"
                 onClick={() => void criarGrupo()}
                 disabled={!nome.trim() || selecionados.length === 0 || enviando}
               >
-                Criar
+                {t('novaConversa.create')}
               </Button>
             </div>
           </div>

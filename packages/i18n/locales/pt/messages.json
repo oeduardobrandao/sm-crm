@@ -1,1 +1,121 @@
-{}
+{
+  "shared": {
+    "title": "Mensagens",
+    "team": "Equipe",
+    "you": "Você",
+    "noMessagesYet": "Sem mensagens ainda. Comece a conversa!",
+    "timeFormat": "HH:mm",
+    "today": "Hoje",
+    "yesterday": "Ontem",
+    "dayMonthYearFormat": "d 'de' MMMM 'de' yyyy",
+    "sortNewest": "Mais recentes",
+    "sortOldest": "Mais antigas",
+    "loadConversationsError": "Não foi possível carregar as conversas.",
+    "loadMessagesError": "Não foi possível carregar as mensagens.",
+    "retry": "Tentar novamente",
+    "loadOlder": "Carregar mensagens anteriores",
+    "backToConversations": "Voltar para as conversas",
+    "sendMessage": "Enviar mensagem",
+    "newConversation": "Nova conversa",
+    "openFileError": "Não foi possível abrir o arquivo.",
+    "openConversationError": "Não foi possível abrir a conversa.",
+    "sendError": "Não foi possível enviar a mensagem."
+  },
+  "tipoFilters": {
+    "todas": "Todas",
+    "mensagens": "Mensagens",
+    "aprovacoes": "Aprovações",
+    "sugestoes": "Sugestões"
+  },
+  "events": {
+    "approved": "Aprovou o post",
+    "correction": "Pediu correção",
+    "mediaNote": "Comentário na mídia",
+    "mediaNoteReply": "Resposta a um comentário na mídia",
+    "suggestion": {
+      "pending": "Sugestão de edição enviada",
+      "accepted": "Sugestão de edição aceita",
+      "rejected": "Sugestão de edição rejeitada",
+      "generic": "Sugestão de edição"
+    }
+  },
+  "preview": {
+    "mediaNote": "Comentário na mídia: {{text}}",
+    "authored": "{{author}}: {{text}}",
+    "attachment": "Anexo"
+  },
+  "page": {
+    "tabs": {
+      "clientes": "Clientes",
+      "equipe": "Equipe"
+    },
+    "sectionLabel": "Seção de mensagens"
+  },
+  "conversationList": {
+    "infoTooltip": "Toda a comunicação com os clientes, agrupada por conversa. Cada item leva ao post de origem.",
+    "searchPlaceholder": "Buscar cliente...",
+    "searchLabel": "Buscar cliente",
+    "noClientFound": "Nenhum cliente encontrado.",
+    "empty": "Nenhuma conversa ainda. As mensagens dos clientes aparecem aqui."
+  },
+  "conversationThread": {
+    "empty": "Nenhuma mensagem nesta conversa ainda.",
+    "reply": "Responder",
+    "replyingTo": "Respondendo sobre: <b>{{title}}</b>",
+    "cancelReply": "Cancelar resposta",
+    "replyPlaceholder": "Responder sobre o post…",
+    "messagePlaceholder": "Enviar mensagem…"
+  },
+  "equipeConversationList": {
+    "searchPlaceholder": "Buscar conversa...",
+    "searchLabel": "Buscar conversa",
+    "noConversationFound": "Nenhuma conversa encontrada.",
+    "empty": "Nenhuma conversa ainda. Crie uma para falar com a equipe."
+  },
+  "equipeDetalhes": {
+    "colleagueFallback": "Colega",
+    "description": "Detalhes da conversa",
+    "groupName": "Nome do grupo",
+    "rename": "Renomear",
+    "renameError": "Não foi possível renomear o grupo.",
+    "addError": "Não foi possível adicionar o participante.",
+    "removeError": "Não foi possível remover o participante.",
+    "leaveError": "Não foi possível sair do grupo.",
+    "roles": {
+      "owner": "Dono",
+      "admin": "Admin",
+      "agent": "Agente"
+    },
+    "removeParticipant": "Remover {{name}}",
+    "addParticipant": "Adicionar participante",
+    "addParticipantPlaceholder": "Adicionar participante…",
+    "leaveGroup": "Sair do grupo"
+  },
+  "equipeThread": {
+    "openDetails": "Ver detalhes da conversa",
+    "removeAttachment": "Remover {{name}}",
+    "attachFile": "Anexar arquivo",
+    "placeholder": "Mensagem para a equipe…",
+    "uploadError": "Não foi possível enviar o arquivo."
+  },
+  "novaConversa": {
+    "createGroup": "Criar grupo",
+    "create": "Criar",
+    "createGroupError": "Não foi possível criar o grupo.",
+    "description": "Escolha um colega para abrir uma conversa direta ou crie um grupo.",
+    "searchPlaceholder": "Buscar colega...",
+    "searchLabel": "Buscar colega",
+    "noColleagueFound": "Nenhum colega encontrado."
+  },
+  "postChip": {
+    "postFallback": "Post",
+    "viewPost": "Ver post",
+    "openDiscussion": "Abrir na discussão do post",
+    "discussionMessages_one": "{{count}} mensagem na discussão",
+    "discussionMessages_other": "{{count}} mensagens na discussão"
+  },
+  "threadStatus": {
+    "selectConversation": "Selecione uma conversa",
+    "notFound": "Conversa não encontrada."
+  }
+}

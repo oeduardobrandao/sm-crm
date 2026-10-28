@@ -1,13 +1,20 @@
+import { getIntlLocale, i18n } from '@mesaas/i18n';
 import type { MensagemConversa, MensagemFeedItem, MensagensUnreadRow } from '@/store';
 
 export type MensagensTipoFilter = 'todas' | 'mensagens' | 'aprovacoes' | 'sugestoes';
 
-export const TIPO_FILTERS: { id: MensagensTipoFilter; label: string }[] = [
-  { id: 'todas', label: 'Todas' },
-  { id: 'mensagens', label: 'Mensagens' },
-  { id: 'aprovacoes', label: 'Aprovações' },
-  { id: 'sugestoes', label: 'Sugestões' },
-];
+const TIPO_FILTER_IDS: MensagensTipoFilter[] = ['todas', 'mensagens', 'aprovacoes', 'sugestoes'];
+
+/** Thread type filters. `label` is a getter so it follows the UI language at
+ * render time instead of freezing at module load. */
+export const TIPO_FILTERS: { id: MensagensTipoFilter; label: string }[] = TIPO_FILTER_IDS.map(
+  (id) => ({
+    id,
+    get label() {
+      return i18n.t(`messages:tipoFilters.${id}`);
+    },
+  }),
+);
 
 export function feedItemKey(i: MensagemFeedItem): string {
   return `${i.source}-${i.item_id}`;
@@ -47,37 +54,44 @@ export function sortConversas(rows: MensagemConversa[], sort: ConversasSort): Me
   return [...(sort === 'antigas' ? sorted : sorted.reverse()), ...vazias];
 }
 
-const SUGGESTION_PREVIEW: Record<string, string> = {
-  pending: 'Sugestão de edição enviada',
-  accepted: 'Sugestão de edição aceita',
-  rejected: 'Sugestão de edição rejeitada',
-};
+const SUGGESTION_ACTIONS = new Set(['pending', 'accepted', 'rejected']);
+
+function suggestionLabel(action: string | null | undefined): string {
+  const a = action ?? 'pending';
+  return SUGGESTION_ACTIONS.has(a)
+    ? i18n.t(`messages:events.suggestion.${a}`)
+    : i18n.t('messages:events.suggestion.generic');
+}
 
 /** One-line preview for a conversation row, WhatsApp style: agency messages
  * are prefixed with the author, client events get their action label. */
 export function conversaPreview(c: MensagemConversa): string {
-  if (c.last_source == null) return 'Sem mensagens ainda. Comece a conversa!';
-  if (c.last_source === 'edit_suggestion') {
-    return SUGGESTION_PREVIEW[c.last_action ?? 'pending'] ?? 'Sugestão de edição';
-  }
+  if (c.last_source == null) return i18n.t('messages:shared.noMessagesYet');
+  if (c.last_source === 'edit_suggestion') return suggestionLabel(c.last_action);
   if (c.last_source === 'post_feedback' && c.last_action !== 'mensagem') {
-    if (c.last_action === 'aprovado') return c.last_content?.trim() || 'Aprovou o post';
-    if (c.last_action === 'correcao') return c.last_content?.trim() || 'Pediu correção';
+    if (c.last_action === 'aprovado') {
+      return c.last_content?.trim() || i18n.t('messages:events.approved');
+    }
+    if (c.last_action === 'correcao') {
+      return c.last_content?.trim() || i18n.t('messages:events.correction');
+    }
   }
   const text = c.last_content?.trim() ?? '';
-  if (c.last_source === 'media_note') return `Comentário na mídia: ${text}`;
-  if (c.last_is_workspace_user) return `${c.last_author_name ?? 'Equipe'}: ${text}`;
+  if (c.last_source === 'media_note') return i18n.t('messages:preview.mediaNote', { text });
+  if (c.last_is_workspace_user) {
+    return i18n.t('messages:preview.authored', {
+      author: c.last_author_name ?? i18n.t('messages:shared.team'),
+      text,
+    });
+  }
   return text;
 }
-
-const MEDIA_NOTE_LABEL = 'Comentário na mídia';
-const MEDIA_NOTE_REPLY_LABEL = 'Resposta a um comentário na mídia';
 
 /** Label shown above a media-note bubble (client note pinned to a post's media,
  * or a team reply to one); null for every other feed source. */
 export function mediaNoteLabel(i: MensagemFeedItem): string | null {
-  if (i.source === 'media_note') return MEDIA_NOTE_LABEL;
-  if (i.source === 'media_note_reply') return MEDIA_NOTE_REPLY_LABEL;
+  if (i.source === 'media_note') return i18n.t('messages:events.mediaNote');
+  if (i.source === 'media_note_reply') return i18n.t('messages:events.mediaNoteReply');
   return null;
 }
 
@@ -89,16 +103,17 @@ export function isEventRow(i: MensagemFeedItem): boolean {
 }
 
 export function eventLabel(i: MensagemFeedItem): string {
-  if (i.source === 'edit_suggestion') {
-    return SUGGESTION_PREVIEW[i.action ?? 'pending'] ?? 'Sugestão de edição';
-  }
-  return i.action === 'aprovado' ? 'Aprovou o post' : 'Pediu correção';
+  if (i.source === 'edit_suggestion') return suggestionLabel(i.action);
+  return i.action === 'aprovado'
+    ? i18n.t('messages:events.approved')
+    : i18n.t('messages:events.correction');
 }
 
-/** "10 de ago., 17:35" — pt-BR day + abbreviated month + time, used by both
- * the conversation list row and the thread's message timestamps. */
+/** "10 de ago., 17:35" (pt-BR) / "Aug 10, 5:35 PM" (en): day + abbreviated
+ * month + time in the UI locale, used by both the conversation list row and
+ * the thread's message timestamps. */
 export function formatTime(iso: string): string {
-  return new Date(iso).toLocaleString('pt-BR', {
+  return new Date(iso).toLocaleString(getIntlLocale(), {
     day: '2-digit',
     month: 'short',
     hour: '2-digit',

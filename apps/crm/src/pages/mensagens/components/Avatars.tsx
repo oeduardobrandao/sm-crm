@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import type { Cliente, MensagemFeedItem } from '@/store';
 import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { useFotoFallback } from '@/components/ClienteFoto';
@@ -69,10 +70,11 @@ export function AutorAvatar({
   cliente?: Pick<Cliente, 'sigla' | 'cor'> & Partial<Pick<Cliente, 'foto_url'>>;
   clienteFotoUrl?: string | null;
 }) {
+  const { t } = useTranslation('messages');
   if (item.is_workspace_user) {
     return (
       <PessoaAvatar
-        nome={item.author_name ?? 'Equipe'}
+        nome={item.author_name ?? t('shared.team')}
         fotoUrl={item.author_avatar_url}
         seed={item.author_user_id}
         size={28}
