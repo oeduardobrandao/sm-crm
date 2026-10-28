@@ -127,6 +127,19 @@ export class TikTokNotConnectedError extends Error {
   }
 }
 
+/** 429: the per-workspace read limit or the shared `ig-ai` AI budget is spent. */
+export class TikTokRateLimitedError extends Error {
+  readonly status = 429;
+  constructor() {
+    super('Error 429');
+    this.name = 'TikTokRateLimitedError';
+  }
+}
+
+/** 403 `feature_disabled`: the workspace plan lacks a flag the route needs. */
+export const isTikTokFeatureDisabled = (err: unknown): boolean =>
+  err instanceof Error && err.message === 'feature_disabled';
+
 // ─── Fetch helper ───────────────────────────────────────────────────────
 
 async function getAuthHeaders() {
@@ -149,6 +162,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (res.status === 403 && body?.error === 'feature_disabled') {
       throw new Error('feature_disabled');
     }
+    if (res.status === 429) throw new TikTokRateLimitedError();
     // Never surface the server body: it is not user copy.
     throw new Error(`Error ${res.status}`);
   }

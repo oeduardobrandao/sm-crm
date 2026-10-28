@@ -2,7 +2,8 @@
   "tab": {
     "instagram": "Instagram",
     "tiktok": "TikTok",
-    "reports": "Relatórios"
+    "reports": "Relatórios",
+    "ariaLabel": "Analytics"
   },
   "overview": {
     "title": "Analytics do TikTok",
@@ -212,6 +213,25 @@
     "sortDate": "Data",
     "videoLabel": "Vídeo de {{client}}, {{views}} visualizações, abrir no TikTok",
     "openLabel": "abrir no TikTok",
-    "badge": "Vídeo"
+    "badge": "Vídeo",
+    "sortComments": "Comentários",
+    "sortShares": "Compartilhamentos"
+  },
+  "clientTab": {
+    "syncedAgo": "Sincronizado há {{time}}",
+    "customDaysPlaceholder": "Dias...",
+    "customDaysAria": "Período personalizado em dias",
+    "customDaysInvalid": "Insira um valor entre 1 e 730 dias",
+    "periodOr": "ou",
+    "vsPrevious": "vs período anterior",
+    "previous": "Anterior: {{value}}",
+    "topVideosHint": "Os vídeos com mais visualizações no período ({{period}}).",
+    "tableTitle": "Desempenho dos vídeos",
+    "showAll": "Ver todos ({{count}})",
+    "showLess": "Mostrar menos",
+    "bestSlot": "{{day}} às {{hour}} é o melhor horário",
+    "bestSlotSub": "{{rate}} de engajamento médio por visualização, {{videos}} nos últimos 90 dias",
+    "recommendedSlots": "Horários recomendados",
+    "slotWhen": "{{day}} às {{hour}}"
   }
 }

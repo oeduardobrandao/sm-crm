@@ -2,7 +2,8 @@
   "tab": {
     "instagram": "Instagram",
     "tiktok": "TikTok",
-    "reports": "Reports"
+    "reports": "Reports",
+    "ariaLabel": "Analytics"
   },
   "overview": {
     "title": "TikTok analytics",
@@ -212,6 +213,25 @@
     "sortDate": "Date",
     "videoLabel": "Video from {{client}}, {{views}} views, open on TikTok",
     "openLabel": "open on TikTok",
-    "badge": "Video"
+    "badge": "Video",
+    "sortComments": "Comments",
+    "sortShares": "Shares"
+  },
+  "clientTab": {
+    "syncedAgo": "Synced {{time}} ago",
+    "customDaysPlaceholder": "Days...",
+    "customDaysAria": "Custom period in days",
+    "customDaysInvalid": "Enter a value between 1 and 730 days",
+    "periodOr": "or",
+    "vsPrevious": "vs previous period",
+    "previous": "Previous: {{value}}",
+    "topVideosHint": "The most viewed videos in the period ({{period}}).",
+    "tableTitle": "Video performance",
+    "showAll": "See all ({{count}})",
+    "showLess": "Show less",
+    "bestSlot": "{{day}} at {{hour}} is the best time",
+    "bestSlotSub": "{{rate}} average engagement per view, {{videos}} in the last 90 days",
+    "recommendedSlots": "Recommended times",
+    "slotWhen": "{{day}} at {{hour}}"
   }
 }

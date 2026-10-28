@@ -453,7 +453,18 @@ function KpiCard({
 }
 
 // ---- Follower Chart ----
-function FollowerChart({ history, postDates }: { history: any[]; postDates: any[] }) {
+// Also drawn by the TikTok tab, which passes its own line colour and empty copy.
+export function FollowerChart({
+  history,
+  postDates,
+  color = '#E1306C',
+  emptyText = 'Dados insuficientes. O histórico é construído diariamente.',
+}: {
+  history: any[];
+  postDates: any[];
+  color?: string;
+  emptyText?: string;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     if (!canvasRef.current || history.length < 2) return;
@@ -471,17 +482,17 @@ function FollowerChart({ history, postDates }: { history: any[]; postDates: any[
           {
             label: 'Seguidores',
             data: history.map((h) => h.follower_count),
-            borderColor: '#E1306C',
-            backgroundColor: 'rgba(225, 48, 108, 0.1)',
+            borderColor: color,
+            backgroundColor: `${color}1a`,
             borderWidth: 2,
             fill: true,
             tension: 0.4,
             pointRadius: 3,
             pointStyle: 'circle',
-            pointBackgroundColor: '#E1306C',
+            pointBackgroundColor: color,
             pointBorderColor: '#fff',
             pointHoverBackgroundColor: '#fff',
-            pointHoverBorderColor: '#E1306C',
+            pointHoverBorderColor: color,
           },
         ],
       },
@@ -518,13 +529,9 @@ function FollowerChart({ history, postDates }: { history: any[]; postDates: any[
       },
     });
     return () => chart.destroy();
-  }, [history, postDates]);
+  }, [history, postDates, color]);
   if (history.length < 2)
-    return (
-      <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>
-        Dados insuficientes. O histórico é construído diariamente.
-      </p>
-    );
+    return <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>{emptyText}</p>;
   return (
     <div style={{ position: 'relative', height: 280, marginTop: '1rem' }}>
       <canvas ref={canvasRef} />
@@ -631,7 +638,14 @@ function AgeChart({ demographics }: { demographics: AudienceDemographics }) {
 
 // ---- Best Times Heatmap ----
 // Cells are 3h buckets weighted by post count (see bucketBestTimes).
-function BestTimesHeatmap({ data }: { data: BestPostingTimes }) {
+// Also drawn by the TikTok tab, which counts videos instead of posts.
+export function BestTimesHeatmap({
+  data,
+  countLabel = (n: number) => `${n} post${n !== 1 ? 's' : ''}`,
+}: {
+  data: BestPostingTimes;
+  countLabel?: (count: number) => string;
+}) {
   const bucketStarts = BEST_TIME_BUCKET_STARTS;
   const { buckets, bucketSize, max, topCell } = bucketBestTimes(data);
   return (
@@ -656,7 +670,7 @@ function BestTimesHeatmap({ data }: { data: BestPostingTimes }) {
                   style={{ background: `var(--an-heat-${Math.min(step, 8)})` }}
                   title={
                     cell.count > 0
-                      ? `${day} ${bucketStarts[b]}h–${bucketStarts[b] + bucketSize - 1}h: ${formatPct(cell.value)}% eng. (${cell.count} post${cell.count !== 1 ? 's' : ''})`
+                      ? `${day} ${bucketStarts[b]}h–${bucketStarts[b] + bucketSize - 1}h: ${formatPct(cell.value)}% eng. (${countLabel(cell.count)})`
                       : `${day} ${bucketStarts[b]}h: sem posts`
                   }
                 />
@@ -675,7 +689,24 @@ function BestTimesHeatmap({ data }: { data: BestPostingTimes }) {
 }
 
 // ---- AI Section ----
-function AISection({ clientId, days }: { clientId: number; days: number }) {
+export interface AIAnalysisResult {
+  analysis: any;
+  generatedAt: string;
+}
+
+// Also drawn by the TikTok tab: `load` fetches its analysis (same output shape) and throws an
+// Error whose message is the copy to show.
+export function AISection({
+  clientId,
+  days,
+  load,
+  title = 'Análise Inteligente',
+}: {
+  clientId: number;
+  days: number;
+  load?: (days: number) => Promise<AIAnalysisResult>;
+  title?: string;
+}) {
   const [loading, setLoading] = useState(false);
   const [analysis, setAnalysis] = useState<any>(null);
   const [error, setError] = useState('');
@@ -684,7 +715,7 @@ function AISection({ clientId, days }: { clientId: number; days: number }) {
     setLoading(true);
     setError('');
     try {
-      const result = await getAccountAIAnalysis(clientId, days);
+      const result = await (load ? load(days) : getAccountAIAnalysis(clientId, days));
       if (result.analysis.error) {
         setError('Não foi possível gerar a análise.');
         return;
@@ -711,7 +742,7 @@ function AISection({ clientId, days }: { clientId: number; days: number }) {
   return (
     <div className="card animate-up">
       <div className="dashboard-hub-card-header" style={{ marginBottom: '1rem' }}>
-        <h3>Análise Inteligente</h3>
+        <h3>{title}</h3>
         <Button size="sm" variant="outline" disabled={loading} onClick={handleGenerate}>
           {loading ? <Spinner size="sm" /> : <Zap className="h-3 w-3" />} Gerar Análise IA
         </Button>

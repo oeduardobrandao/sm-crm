@@ -5,6 +5,7 @@ vi.mock('../../lib/supabase');
 import * as supabaseModule from '../../lib/supabase';
 import {
   TikTokNotConnectedError,
+  TikTokRateLimitedError,
   getTikTokAIAnalysis,
   getTikTokBestTimes,
   getTikTokFollowerHistory,
@@ -64,6 +65,16 @@ describe('tiktokAnalytics service', () => {
     await expect(getTikTokOverview(7, { days: 7 })).rejects.toMatchObject({
       message: 'feature_disabled',
     });
+  });
+
+  it('throws TikTokRateLimitedError (status 429) when rate limited', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({ error: 'Rate limit exceeded' }, 429),
+    );
+    const err = await getTikTokAIAnalysis(7, 30).catch((e) => e);
+    expect(err).toBeInstanceOf(TikTokRateLimitedError);
+    expect(err.status).toBe(429);
+    expect(err.message).not.toContain('Rate limit exceeded');
   });
 
   it('throws a generic error on other failures without leaking the body', async () => {

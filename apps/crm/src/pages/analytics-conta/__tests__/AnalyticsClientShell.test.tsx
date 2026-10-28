@@ -50,6 +50,12 @@ vi.mock('../../../services/reportDocs', () => ({
   listReportDocs: vi.fn(),
   deleteReportDoc: vi.fn(),
 }));
+// The TikTok tab has its own suite; here it only has to mount with the client id.
+vi.mock('../tiktok/TikTokAnalyticsTab', () => ({
+  TikTokAnalyticsTab: ({ clientId }: { clientId: number }) => (
+    <div data-testid="tiktok-tab" data-client={clientId} />
+  ),
+}));
 vi.mock('../reports/NewReportDialog', () => ({
   NewReportDialog: ({ open }: { open: boolean }) =>
     open ? <div role="dialog" aria-label="Novo relatório" /> : null,
@@ -162,6 +168,20 @@ describe('AnalyticsClientShell: default tab', () => {
     await waitFor(() => expect(path()).toBe('/analytics/12/tiktok'));
   });
 
+  it('does not wait on the TikTok summary when Instagram is connected', async () => {
+    vi.mocked(getTikTokSummary).mockReturnValue(new Promise<never>(() => {}));
+    renderShell('/analytics/12');
+    await waitFor(() => expect(path()).toBe('/analytics/12/instagram'));
+  });
+
+  it('waits on the TikTok summary when Instagram is not connected', async () => {
+    vi.mocked(getInstagramSummary).mockResolvedValue(null as never);
+    vi.mocked(getTikTokSummary).mockReturnValue(new Promise<never>(() => {}));
+    renderShell('/analytics/12');
+    await waitFor(() => expect(getTikTokSummary).toHaveBeenCalled());
+    expect(path()).toBe('/analytics/12');
+  });
+
   it('waits for the plan before choosing a default', async () => {
     setFeatures(null, true);
     vi.mocked(getInstagramSummary).mockResolvedValue(null as never);
@@ -217,9 +237,9 @@ describe('AnalyticsClientShell: tabs', () => {
     expect(path()).toBe('/analytics/12/tiktok');
   });
 
-  it('renders the TikTok tab placeholder', async () => {
+  it('renders the TikTok tab', async () => {
     renderShell('/analytics/12/tiktok');
-    expect(await screen.findByTestId('tiktok-tab-pending')).toBeInTheDocument();
+    expect(await screen.findByTestId('tiktok-tab')).toHaveAttribute('data-client', '12');
   });
 
   it('Instagram not connected shows the message inside the shell with tabs visible', async () => {

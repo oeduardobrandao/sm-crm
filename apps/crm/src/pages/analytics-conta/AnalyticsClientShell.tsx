@@ -17,6 +17,7 @@ import { Avatar } from '../analytics/phone/shared';
 import { InstagramAnalyticsTab } from './AnalyticsContaPage';
 import { ContaPhoneMessage } from './phone/ContaPhone';
 import { ClientReportsPanel } from './reports/ClientReportsPanel';
+import { TikTokAnalyticsTab } from './tiktok/TikTokAnalyticsTab';
 
 const ANALYTICS_TABS = ['instagram', 'tiktok', 'relatorios'] as const;
 export type AnalyticsTab = (typeof ANALYTICS_TABS)[number];
@@ -73,10 +74,11 @@ export default function AnalyticsClientShell() {
     queryFn: () => getInstagramSummary(clientId),
     enabled: validId && !!cliente,
   });
-  // An error (404 included) means "not connected". No retries: the default tab waits on it.
+  // Same key and queryFn as TikTokSection (client detail), so its connect/disconnect
+  // invalidation reaches this page. A failure (404 included) reads as null: "not connected".
   const ttQuery = useQuery({
-    queryKey: ['tt-summary', clientId],
-    queryFn: () => getTikTokSummary(clientId),
+    queryKey: ['ttSummary', clientId],
+    queryFn: () => getTikTokSummary(clientId).catch(() => null),
     enabled: validId && !!cliente && tiktokEnabled,
     retry: false,
   });
@@ -148,12 +150,16 @@ export default function AnalyticsClientShell() {
   }
 
   if (!isAnalyticsTab(tab)) {
-    // Choose only once every input is settled, or a slow summary flips the choice later.
-    const settled = !loadingLimits && !igQuery.isLoading && !(tiktokEnabled && ttQuery.isLoading);
-    if (!settled) return <DetailSkeleton />;
     const igConnected =
       !!igQuery.data ||
       (igQuery.error instanceof Error && igQuery.error.message === 'TOKEN_EXPIRED');
+    // Choose only once every input is settled, or a slow summary flips the choice later. A
+    // connected Instagram decides on its own: the TikTok summary cannot change the answer.
+    const settled =
+      !loadingLimits &&
+      !igQuery.isLoading &&
+      (igConnected || !(tiktokEnabled && ttQuery.isLoading));
+    if (!settled) return <DetailSkeleton />;
     const target = defaultAnalyticsTab({
       igConnected,
       ttConnected: !!ttQuery.data,
@@ -169,12 +175,13 @@ export default function AnalyticsClientShell() {
       : k === 'tiktok'
         ? t('tab.tiktok', 'TikTok')
         : t('tab.reports', 'Relatórios');
+  const tabsLabel = t('tab.ariaLabel', 'Analytics');
 
   if (isPhone) {
     const tabsControl = (
       <SegmentedControl
         semantics="tablist"
-        aria-label="Analytics"
+        aria-label={tabsLabel}
         className="analytics-phone-tabs"
         options={visibleTabs.map((k) => ({ value: k, label: tabLabel(k) }))}
         value={tab}
@@ -195,7 +202,11 @@ export default function AnalyticsClientShell() {
           </div>
         </div>
         {tabsControl}
-        {tab === 'tiktok' ? <TikTokTabPending /> : <ClientReportsPanel clientId={clientId} />}
+        {tab === 'tiktok' ? (
+          <TikTokAnalyticsTab clientId={clientId} />
+        ) : (
+          <ClientReportsPanel clientId={clientId} />
+        )}
       </div>
     );
   }
@@ -203,7 +214,7 @@ export default function AnalyticsClientShell() {
   let content: ReactNode;
   if (tab === 'instagram')
     content = <InstagramAnalyticsTab clientId={clientId} cliente={cliente} />;
-  else if (tab === 'tiktok') content = <TikTokTabPending />;
+  else if (tab === 'tiktok') content = <TikTokAnalyticsTab clientId={clientId} />;
   else content = <ClientReportsPanel clientId={clientId} />;
 
   return (
@@ -223,7 +234,7 @@ export default function AnalyticsClientShell() {
         </header>
       )}
 
-      <nav className="analytics-tabs animate-up" aria-label="Analytics">
+      <nav className="analytics-tabs animate-up" aria-label={tabsLabel}>
         {visibleTabs.map((k) => (
           <NavLink key={k} to={`/analytics/${clientId}/${k}`} className="analytics-tab" end>
             {tabLabel(k)}
@@ -234,9 +245,4 @@ export default function AnalyticsClientShell() {
       {content}
     </div>
   );
-}
-
-/** Placeholder until the TikTok tab lands (Task A8). */
-function TikTokTabPending() {
-  return <div data-testid="tiktok-tab-pending" />;
 }
