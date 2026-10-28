@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - User-facing copy pt-BR (plus en mirror in `packages/i18n/locales/en/`), sentence case, **no em dashes**.
-- Migrations: `supabase/migrations/20261103000001_tarefa_comentarios.sql`, `supabase/migrations/20261103000002_tarefa_eventos.sql`. Before opening the PR, renumber above `origin/main`'s highest prefix if it moved.
+- Migrations: `supabase/migrations/20261104000001_tarefa_comentarios.sql`, `supabase/migrations/20261104000002_tarefa_eventos.sql`. Before opening the PR, renumber above `origin/main`'s highest prefix if it moved.
 - Every new table: `conta_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE`, composite FK `(tarefa_id, conta_id) → tarefas(id, conta_id) ON DELETE CASCADE`, `REVOKE ALL ... FROM PUBLIC, anon, authenticated` then explicit grants, `service_role` bypass policy.
 - Every new function: `SECURITY DEFINER`, `SET search_path = public`, `REVOKE ALL ON FUNCTION ... FROM PUBLIC, anon` (and `authenticated` unless it is the RPC).
 - Comment cap 4000 chars (`DISCUSSAO_MAX_CHARS`). Mention regexp `'\]\(membro:([0-9]+)\)'`.
@@ -37,7 +37,7 @@
 ### Task 1: Migration `tarefa_comentarios` (table, RPC, mentions, notifications)
 
 **Files:**
-- Create: `supabase/migrations/20261103000001_tarefa_comentarios.sql`
+- Create: `supabase/migrations/20261104000001_tarefa_comentarios.sql`
 - Test: `supabase/tests/entitlements/99_tarefa_comentarios.sql` (model on `99_post_discussao.sql`; call `et_grant_hosted_parity()` before raw selects as `authenticated`)
 
 **Interfaces:**
@@ -81,7 +81,7 @@
 ### Task 2: Migration `tarefa_eventos` (table, triggers, backfill)
 
 **Files:**
-- Create: `supabase/migrations/20261103000002_tarefa_eventos.sql`
+- Create: `supabase/migrations/20261104000002_tarefa_eventos.sql`
 - Test: `supabase/tests/entitlements/99_tarefa_eventos.sql`
 
 **Interfaces:**

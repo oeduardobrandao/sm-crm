@@ -365,7 +365,7 @@ BEGIN
       END;
 
     ELSIF NEW.host_type = 'tarefa_comentario' THEN
-      -- Comentário de tarefa (20261103000001). Both the comment and its task are read with
+      -- Comentário de tarefa (20261104000001). Both the comment and its task are read with
       -- conta_id = NEW.conta_id, so this definer trigger never copies another workspace's
       -- title or text into a notification.
       SELECT t.titulo, t.id, left(tc.conteudo, 140)

@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Suite for the task history (20261103000002_tarefa_eventos.sql): events written only by
+-- Suite for the task history (20261104000002_tarefa_eventos.sql): events written only by
 -- the AFTER triggers on tarefas / subtarefas / tarefa_tag_links, tenant-scoped snapshots,
 -- triggers that never block a task write, the task cascade, and the one-off backfill.
 -- Spec: docs/superpowers/specs/2026-10-28-tarefas-kpis-comentarios-historico-design.md (section 3).

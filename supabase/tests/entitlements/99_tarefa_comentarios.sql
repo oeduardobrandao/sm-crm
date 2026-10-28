@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Suite for the task comment thread (20261103000001_tarefa_comentarios.sql):
+-- Suite for the task comment thread (20261104000001_tarefa_comentarios.sql):
 -- tenant isolation, the RPC-only write path, author-only edit/delete, the
 -- 'tarefa_comentario' mention host type and the deduped task_comment notification.
 -- Spec: docs/superpowers/specs/2026-10-28-tarefas-kpis-comentarios-historico-design.md (section 2).
