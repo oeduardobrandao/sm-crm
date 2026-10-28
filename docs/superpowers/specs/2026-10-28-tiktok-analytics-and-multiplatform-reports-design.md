@@ -174,6 +174,8 @@ Replaces the "Relatórios Gerados" card. Lists that client's block reports (newe
 
 ### B2. Block platform
 
+> Superseded in part by `docs/superpowers/specs/2026-10-28-report-platform-sections-design.md`: the editor no longer mixes platforms freely (widgets live in their platform's section), and that spec's deploy order (migration → merge → `report-docs` + `instagram-report-generator-v2`) replaces Part B's below.
+
 - **TikTok blocks are their own block types**, prefixed `tiktok_`: `tiktok_kpi_<id>`, `tiktok_chart_followers`, `tiktok_chart_best_times`, `tiktok_top_posts`, `tiktok_post_list`. The platform is the prefix; existing types stay Instagram, so every existing layout, template and document is valid with no data migration.
 - Why types and not a `config.platform` flag: a CRM or Hub bundle already open in a browser keeps running after a deploy (silent updates). Today's `BlockRenderer` and `EditorCanvas` render `null` for an unknown type (`hasOwnProperty` guard) and `layerLabel` falls back to the type string, so an old bundle shows a TikTok block as nothing. With a config flag the same old bundle would render Instagram numbers inside a TikTok block.
 - The new types reuse the existing block components through a platform prop (`KpiCardBlock`, `FollowerChartBlock`, `BestTimesBlock`, `TopPostsBlock`, `PostListBlock` read `snapshot.tiktok` for `tiktok_*` types). Structure, text, AI, cover and image blocks are platform-neutral.
