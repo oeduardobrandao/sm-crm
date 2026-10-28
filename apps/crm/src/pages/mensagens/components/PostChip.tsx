@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowUpRight, FileText, GitBranch, MessageSquare } from 'lucide-react';
 import { getDiscussaoNaoLidas, getPostChipPreview, type WorkflowPost } from '@/store';
@@ -100,15 +101,16 @@ export function PostPreviewBody({
   /** Shows "Abrir na discussão do post" (desktop card only; the phone uses a menu action). */
   discussaoHref?: string;
 }) {
+  const { t } = useTranslation('messages');
   const { thumb, tipo, status } = data;
   return (
     <>
       {thumb && <img src={thumb} alt="" className="h-36 w-full object-cover" loading="lazy" />}
       <div className="flex flex-col gap-2 p-3">
         <div className="text-sm font-semibold text-[var(--text-main)]">
-          {data.titulo ?? fallbackTitulo ?? 'Post'}
+          {data.titulo ?? fallbackTitulo ?? t('postChip.postFallback')}
         </div>
-        {data.isLoading && <div className="text-xs text-[var(--text-muted)]">Carregando…</div>}
+        {data.isLoading && <div className="text-xs text-[var(--text-muted)]">{t('loading')}</div>}
         {(tipo || status) && (
           <div className="flex flex-wrap items-center gap-1.5">
             {tipo && (
@@ -132,11 +134,7 @@ export function PostPreviewBody({
         {data.discussaoTotal > 0 && (
           <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
             <MessageSquare size={12} className="shrink-0" />
-            <span>
-              {data.discussaoTotal === 1
-                ? '1 mensagem na discussão'
-                : `${data.discussaoTotal} mensagens na discussão`}
-            </span>
+            <span>{t('postChip.discussionMessages', { count: data.discussaoTotal })}</span>
           </div>
         )}
         {discussaoHref && (
@@ -144,7 +142,7 @@ export function PostPreviewBody({
             to={discussaoHref}
             className="flex w-fit items-center gap-1 text-xs font-semibold text-[var(--text-main)] underline-offset-2 hover:underline"
           >
-            Abrir na discussão do post
+            {t('postChip.openDiscussion')}
             <ArrowUpRight size={12} className="shrink-0" />
           </Link>
         )}
@@ -162,6 +160,7 @@ export function PostChip({
   comDiscussao = false,
   align = 'start',
 }: Props) {
+  const { t } = useTranslation('messages');
   const [open, setOpen] = useState(false);
   const [placement, setPlacement] = useState<'above' | 'below'>('above');
   const wrapperRef = useRef<HTMLSpanElement | null>(null);
@@ -199,7 +198,7 @@ export function PostChip({
         style={{ background: 'var(--bg-color)' }}
       >
         <FileText size={14} className="shrink-0 text-[var(--text-muted)]" />
-        <span className="min-w-0 [overflow-wrap:anywhere]">{titulo ?? 'Ver post'}</span>
+        <span className="min-w-0 [overflow-wrap:anywhere]">{titulo ?? t('postChip.viewPost')}</span>
         <ArrowUpRight size={12} className="shrink-0 text-[var(--text-light)]" />
       </Link>
       {open && (

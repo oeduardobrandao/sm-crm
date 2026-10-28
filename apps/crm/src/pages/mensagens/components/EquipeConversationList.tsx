@@ -1,11 +1,12 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ArrowDownUp, Plus, Search } from 'lucide-react';
 import type { EquipeChatMember, EquipeConversa } from '@/store';
 import { EquipeConversaAvatar } from './EquipeShared';
 import { formatTime } from '../mensagensLogic';
 import {
-  EQUIPE_SEM_MENSAGENS,
   equipeConversaPreview,
+  equipeSemMensagens,
   equipeListaItemNome,
   sortEquipeLista,
   type EquipeConversasSort,
@@ -42,6 +43,7 @@ export function EquipeConversationList({
   onNovaConversa,
   className = '',
 }: EquipeConversationListProps) {
+  const { t } = useTranslation('messages');
   const [sort, setSort] = useState<EquipeConversasSort>('recentes');
   const [busca, setBusca] = useState('');
 
@@ -71,15 +73,15 @@ export function EquipeConversationList({
             <input
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar conversa..."
-              aria-label="Buscar conversa"
+              placeholder={t('equipeConversationList.searchPlaceholder')}
+              aria-label={t('equipeConversationList.searchLabel')}
               className="w-full rounded-md border border-[var(--border-color)] bg-[var(--card-bg)] py-2 pr-3 text-sm outline-none"
               style={{ paddingLeft: '2rem' }}
             />
           </div>
           <button
             onClick={onNovaConversa}
-            aria-label="Nova conversa"
+            aria-label={t('shared.newConversation')}
             data-testid="nova-conversa-btn"
             className="flex items-center justify-center rounded-md border border-[var(--border-color)] p-2 text-[var(--text-muted)] hover:text-[var(--text-main)]"
             style={{ background: 'var(--card-bg)', cursor: 'pointer' }}
@@ -93,24 +95,24 @@ export function EquipeConversationList({
           style={{ background: 'var(--card-bg)', cursor: 'pointer' }}
         >
           <ArrowDownUp size={13} />
-          {sort === 'recentes' ? 'Mais recentes' : 'Mais antigas'}
+          {sort === 'recentes' ? t('shared.sortNewest') : t('shared.sortOldest')}
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto mensagens-list-scroll">
         {isLoading && (
-          <p className="py-10 text-center text-sm text-[var(--text-muted)]">Carregando…</p>
+          <p className="py-10 text-center text-sm text-[var(--text-muted)]">{t('loading')}</p>
         )}
         {isError && (
           <p className="py-10 text-center text-sm text-[var(--text-muted)]">
-            Não foi possível carregar as conversas.
+            {t('shared.loadConversationsError')}
           </p>
         )}
         {!isLoading && !isError && visiveis.length === 0 && (
           <p className="py-10 text-center text-sm text-[var(--text-muted)]">
             {busca.trim()
-              ? 'Nenhuma conversa encontrada.'
-              : 'Nenhuma conversa ainda. Crie uma para falar com a equipe.'}
+              ? t('equipeConversationList.noConversationFound')
+              : t('equipeConversationList.empty')}
           </p>
         )}
         {visiveis.map((item) => {
@@ -127,7 +129,7 @@ export function EquipeConversationList({
                   />
                 }
                 nome={m.nome}
-                preview={EQUIPE_SEM_MENSAGENS}
+                preview={equipeSemMensagens()}
                 disabled={abrindoColegaId != null}
                 pending={abrindoColegaId === m.user_id}
                 onClick={() => onSelectColega(m.user_id)}

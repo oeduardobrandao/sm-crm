@@ -1,0 +1,121 @@
+{
+  "shared": {
+    "title": "Messages",
+    "team": "Team",
+    "you": "You",
+    "noMessagesYet": "No messages yet. Start the conversation!",
+    "timeFormat": "h:mm a",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "dayMonthYearFormat": "MMMM d, yyyy",
+    "sortNewest": "Newest first",
+    "sortOldest": "Oldest first",
+    "loadConversationsError": "Couldn't load the conversations.",
+    "loadMessagesError": "Couldn't load the messages.",
+    "retry": "Try again",
+    "loadOlder": "Load earlier messages",
+    "backToConversations": "Back to conversations",
+    "sendMessage": "Send message",
+    "newConversation": "New conversation",
+    "openFileError": "Couldn't open the file.",
+    "openConversationError": "Couldn't open the conversation.",
+    "sendError": "Couldn't send the message."
+  },
+  "tipoFilters": {
+    "todas": "All",
+    "mensagens": "Messages",
+    "aprovacoes": "Approvals",
+    "sugestoes": "Suggestions"
+  },
+  "events": {
+    "approved": "Approved the post",
+    "correction": "Requested changes",
+    "mediaNote": "Comment on media",
+    "mediaNoteReply": "Reply to a media comment",
+    "suggestion": {
+      "pending": "Edit suggestion sent",
+      "accepted": "Edit suggestion accepted",
+      "rejected": "Edit suggestion rejected",
+      "generic": "Edit suggestion"
+    }
+  },
+  "preview": {
+    "mediaNote": "Comment on media: {{text}}",
+    "authored": "{{author}}: {{text}}",
+    "attachment": "Attachment"
+  },
+  "page": {
+    "tabs": {
+      "clientes": "Clients",
+      "equipe": "Team"
+    },
+    "sectionLabel": "Messages section"
+  },
+  "conversationList": {
+    "infoTooltip": "All client communication, grouped by conversation. Each item links to its source post.",
+    "searchPlaceholder": "Search clients...",
+    "searchLabel": "Search clients",
+    "noClientFound": "No clients found.",
+    "empty": "No conversations yet. Client messages show up here."
+  },
+  "conversationThread": {
+    "empty": "No messages in this conversation yet.",
+    "reply": "Reply",
+    "replyingTo": "Replying about: <b>{{title}}</b>",
+    "cancelReply": "Cancel reply",
+    "replyPlaceholder": "Reply about the post…",
+    "messagePlaceholder": "Send a message…"
+  },
+  "equipeConversationList": {
+    "searchPlaceholder": "Search conversations...",
+    "searchLabel": "Search conversations",
+    "noConversationFound": "No conversations found.",
+    "empty": "No conversations yet. Start one to talk with your team."
+  },
+  "equipeDetalhes": {
+    "colleagueFallback": "Colleague",
+    "description": "Conversation details",
+    "groupName": "Group name",
+    "rename": "Rename",
+    "renameError": "Couldn't rename the group.",
+    "addError": "Couldn't add the participant.",
+    "removeError": "Couldn't remove the participant.",
+    "leaveError": "Couldn't leave the group.",
+    "roles": {
+      "owner": "Owner",
+      "admin": "Admin",
+      "agent": "Agent"
+    },
+    "removeParticipant": "Remove {{name}}",
+    "addParticipant": "Add participant",
+    "addParticipantPlaceholder": "Add participant…",
+    "leaveGroup": "Leave group"
+  },
+  "equipeThread": {
+    "openDetails": "View conversation details",
+    "removeAttachment": "Remove {{name}}",
+    "attachFile": "Attach file",
+    "placeholder": "Message the team…",
+    "uploadError": "Couldn't upload the file."
+  },
+  "novaConversa": {
+    "createGroup": "Create group",
+    "create": "Create",
+    "createGroupError": "Couldn't create the group.",
+    "description": "Pick a colleague to start a direct conversation, or create a group.",
+    "searchPlaceholder": "Search colleagues...",
+    "searchLabel": "Search colleagues",
+    "noColleagueFound": "No colleagues found."
+  },
+  "postChip": {
+    "postFallback": "Post",
+    "viewPost": "View post",
+    "openDiscussion": "Open in the post discussion",
+    "discussionMessages_one": "{{count}} message in the discussion",
+    "discussionMessages_other": "{{count}} messages in the discussion"
+  },
+  "threadStatus": {
+    "selectConversation": "Select a conversation",
+    "notFound": "Conversation not found."
+  }
+}

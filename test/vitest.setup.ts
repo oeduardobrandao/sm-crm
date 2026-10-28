@@ -86,6 +86,10 @@ import ptClientHub from '../packages/i18n/locales/pt/clientHub.json';
 import enClientHub from '../packages/i18n/locales/en/clientHub.json';
 import ptClientBriefing from '../packages/i18n/locales/pt/clientBriefing.json';
 import enClientBriefing from '../packages/i18n/locales/en/clientBriefing.json';
+import ptMessages from '../packages/i18n/locales/pt/messages.json';
+import enMessages from '../packages/i18n/locales/en/messages.json';
+import ptMessagesPhone from '../packages/i18n/locales/pt/messagesPhone.json';
+import enMessagesPhone from '../packages/i18n/locales/en/messagesPhone.json';
 
 initI18n({
   pt: {
@@ -115,6 +119,8 @@ initI18n({
     tasksPhone: ptTasksPhone,
     clientHub: ptClientHub,
     clientBriefing: ptClientBriefing,
+    messages: ptMessages,
+    messagesPhone: ptMessagesPhone,
     hubHome: ptHubHome,
     hubPostCard: ptHubPostCard,
     hubPosts: ptHubPosts,
@@ -154,6 +160,8 @@ initI18n({
     tasksPhone: enTasksPhone,
     clientHub: enClientHub,
     clientBriefing: enClientBriefing,
+    messages: enMessages,
+    messagesPhone: enMessagesPhone,
     hubHome: enHubHome,
     hubPostCard: enHubPostCard,
     hubPosts: enHubPosts,

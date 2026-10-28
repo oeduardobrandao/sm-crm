@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { ArrowLeft, CheckCircle2, FilePen, Send, X } from 'lucide-react';
 import type { Cliente, MensagemConversa } from '@/store';
 import { useVidroShell } from '@/components/layout/PageToolbarContext';
@@ -38,6 +39,7 @@ export function ConversationThread({
   clientesById,
   onBack,
 }: ConversationThreadProps) {
+  const { t } = useTranslation('messages');
   const { tipo, setTipo, draft, setDraft, replyTo, setReplyTo, itens, scrollRef, enviar } =
     useConversationThread({ conversa, feed, sendGeneral, replyToPost });
   const vidroShell = useVidroShell();
@@ -51,7 +53,7 @@ export function ConversationThread({
         {onBack && (
           <button
             onClick={onBack}
-            aria-label="Voltar para as conversas"
+            aria-label={t('shared.backToConversations')}
             className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-main)]"
             style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
           >
@@ -97,27 +99,25 @@ export function ConversationThread({
             className="self-center text-xs font-semibold text-[var(--text-muted)]"
             style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
           >
-            {feed.isFetchingNextPage ? 'Carregando…' : 'Carregar mensagens anteriores'}
+            {feed.isFetchingNextPage ? t('loading') : t('shared.loadOlder')}
           </button>
         )}
         {feed.isError && (
           <div className="flex flex-col items-center gap-2 self-center py-8 text-center">
-            <p className="text-sm text-[var(--text-muted)]">
-              Não foi possível carregar as mensagens.
-            </p>
+            <p className="text-sm text-[var(--text-muted)]">{t('shared.loadMessagesError')}</p>
             <button
               onClick={() => feed.refetch()}
               className="text-sm font-semibold text-[var(--text-main)] hover:underline"
               style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
             >
-              Tentar novamente
+              {t('shared.retry')}
             </button>
           </div>
         )}
         {!feed.isError && feed.isLoading && <ThreadSkeleton />}
         {!feed.isError && !feed.isLoading && itens.length === 0 && (
           <p className="self-center py-8 text-sm text-[var(--text-muted)]">
-            Nenhuma mensagem nesta conversa ainda.
+            {t('conversationThread.empty')}
           </p>
         )}
         {itens.map((m) => {
@@ -170,7 +170,7 @@ export function ConversationThread({
                 >
                   {daEquipe && (
                     <div className="vidro-bubble__meta mb-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
-                      {m.author_name ?? 'Equipe'}
+                      {m.author_name ?? t('shared.team')}
                     </div>
                   )}
                   {notaLabel && (
@@ -180,7 +180,7 @@ export function ConversationThread({
                   )}
                   {m.action === 'correcao' && (
                     <div className="vidro-bubble__meta mb-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
-                      Pediu correção
+                      {t('events.correction')}
                     </div>
                   )}
                   {m.content && (
@@ -210,7 +210,7 @@ export function ConversationThread({
                       className="font-semibold text-[var(--text-muted)] hover:text-[var(--text-main)]"
                       style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
                     >
-                      Responder
+                      {t('conversationThread.reply')}
                     </button>
                   )}
                 </div>
@@ -227,11 +227,16 @@ export function ConversationThread({
         {replyTo && (
           <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
             <span className="min-w-0 truncate">
-              Respondendo sobre: <strong>{replyTo.titulo}</strong>
+              <Trans
+                t={t}
+                i18nKey="conversationThread.replyingTo"
+                values={{ title: replyTo.titulo }}
+                components={{ b: <strong /> }}
+              />
             </span>
             <button
               onClick={() => setReplyTo(null)}
-              aria-label="Cancelar resposta"
+              aria-label={t('conversationThread.cancelReply')}
               style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
             >
               <X size={13} />
@@ -246,13 +251,17 @@ export function ConversationThread({
             onKeyDown={(e) => {
               if (e.key === 'Enter') enviar();
             }}
-            placeholder={replyTo ? 'Responder sobre o post…' : 'Enviar mensagem…'}
+            placeholder={
+              replyTo
+                ? t('conversationThread.replyPlaceholder')
+                : t('conversationThread.messagePlaceholder')
+            }
             className="min-w-0 flex-1 rounded-full border border-[var(--border-color)] bg-[var(--card-bg)] px-4 py-2.5 text-sm outline-none"
           />
           <button
             onClick={enviar}
             disabled={sendGeneral.isPending || replyToPost.isPending || !draft.trim()}
-            aria-label="Enviar mensagem"
+            aria-label={t('shared.sendMessage')}
             className="rounded-full px-4 py-2.5 text-sm font-semibold disabled:opacity-50 bg-[var(--primary-color)]"
             style={{ border: 'none', cursor: 'pointer' }}
           >

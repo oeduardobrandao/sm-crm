@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import type { MensagemConversa } from '@/store';
 import type { useMensagensData } from './useMensagensData';
@@ -27,6 +28,7 @@ interface Options {
  * order, the scroll-to-newest ref and `enviar`.
  */
 export function useConversationThread({ conversa, feed, sendGeneral, replyToPost }: Options) {
+  const { t } = useTranslation('messages');
   const [tipo, setTipo] = useState<MensagensTipoFilter>('todas');
   const [draft, setDraft] = useState('');
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
@@ -74,7 +76,7 @@ export function useConversationThread({ conversa, feed, sendGeneral, replyToPost
       setReplyTo(null);
       scrollPending.current = true;
     } catch {
-      toast.error('Não foi possível enviar a mensagem.');
+      toast.error(t('shared.sendError'));
     }
   }
 

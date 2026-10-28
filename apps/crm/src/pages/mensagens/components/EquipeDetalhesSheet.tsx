@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { LogOut, Pencil, X } from 'lucide-react';
 import {
@@ -26,12 +27,13 @@ interface EquipeDetalhesSheetProps {
   onLeft: () => void;
 }
 
-const PAPEL_LABELS: Record<string, string> = { owner: 'Dono', admin: 'Admin', agent: 'Agente' };
+const PAPEIS = new Set(['owner', 'admin', 'agent']);
 
 /** Detalhes de uma conversa de equipe. Grupo: nome + participantes (com
  * papel) + gestao (owner/admin: renomear/adicionar/remover; qualquer
  * participante: sair). DM: so mostra o colega, sem controles de gestao. */
 export function EquipeDetalhesSheet({ conversa, onClose, onLeft }: EquipeDetalhesSheetProps) {
+  const { t } = useTranslation('messages');
   const { user, workspaceRole } = useAuth();
   const queryClient = useQueryClient();
   // workspaceRole (workspace_members for the ACTIVE workspace), not the
@@ -69,13 +71,13 @@ export function EquipeDetalhesSheet({ conversa, onClose, onLeft }: EquipeDetalhe
           const m = membersById.get(userId);
           return {
             user_id: userId,
-            nome: m?.nome ?? 'Colega',
+            nome: m?.nome ?? t('equipeDetalhes.colleagueFallback'),
             avatar_url: m?.avatar_url ?? null,
             role: m?.role ?? null,
           };
         })
         .filter((p) => isGrupo || p.user_id !== user?.id),
-    [participanteIds, membersById, isGrupo, user?.id],
+    [participanteIds, membersById, isGrupo, user?.id, t],
   );
 
   const foraDoGrupo = (members.data ?? []).filter(
@@ -94,7 +96,7 @@ export function EquipeDetalhesSheet({ conversa, onClose, onLeft }: EquipeDetalhe
       invalidar();
       setRenomeando(false);
     },
-    onError: () => toast.error('Não foi possível renomear o grupo.'),
+    onError: () => toast.error(t('equipeDetalhes.renameError')),
   });
 
   const addMutation = useMutation({
@@ -103,14 +105,14 @@ export function EquipeDetalhesSheet({ conversa, onClose, onLeft }: EquipeDetalhe
       invalidar();
       setAddUserId('');
     },
-    onError: () => toast.error('Não foi possível adicionar o participante.'),
+    onError: () => toast.error(t('equipeDetalhes.addError')),
   });
 
   const removeMutation = useMutation({
     mutationFn: (userId: string) =>
       manageEquipeConversa(conversa.conversa_id, 'remove', { userId }),
     onSuccess: invalidar,
-    onError: () => toast.error('Não foi possível remover o participante.'),
+    onError: () => toast.error(t('equipeDetalhes.removeError')),
   });
 
   const leaveMutation = useMutation({
@@ -119,7 +121,7 @@ export function EquipeDetalhesSheet({ conversa, onClose, onLeft }: EquipeDetalhe
       invalidar();
       onLeft();
     },
-    onError: () => toast.error('Não foi possível sair do grupo.'),
+    onError: () => toast.error(t('equipeDetalhes.leaveError')),
   });
 
   return (
@@ -127,7 +129,7 @@ export function EquipeDetalhesSheet({ conversa, onClose, onLeft }: EquipeDetalhe
       <SheetContent className="w-full sm:max-w-[440px] overflow-y-auto">
         <SheetHeader className="mb-4 pr-8">
           <SheetTitle className="text-left leading-snug">{conversa.display_nome}</SheetTitle>
-          <SheetDescription className="sr-only">Detalhes da conversa</SheetDescription>
+          <SheetDescription className="sr-only">{t('equipeDetalhes.description')}</SheetDescription>
         </SheetHeader>
 
         {isGrupo && podeGerenciar && (
@@ -137,7 +139,7 @@ export function EquipeDetalhesSheet({ conversa, onClose, onLeft }: EquipeDetalhe
                 <Input
                   value={nomeEdit}
                   onChange={(e) => setNomeEdit(e.target.value)}
-                  aria-label="Nome do grupo"
+                  aria-label={t('equipeDetalhes.groupName')}
                   className="h-8 flex-1 text-sm"
                 />
                 <Button
@@ -146,7 +148,7 @@ export function EquipeDetalhesSheet({ conversa, onClose, onLeft }: EquipeDetalhe
                   disabled={!nomeEdit.trim() || renameMutation.isPending}
                   onClick={() => renameMutation.mutate(nomeEdit.trim())}
                 >
-                  Salvar
+                  {t('actions.save')}
                 </Button>
                 <Button
                   type="button"
@@ -154,7 +156,7 @@ export function EquipeDetalhesSheet({ conversa, onClose, onLeft }: EquipeDetalhe
                   size="sm"
                   onClick={() => setRenomeando(false)}
                 >
-                  Cancelar
+                  {t('actions.cancel')}
                 </Button>
               </>
             ) : (
@@ -167,7 +169,7 @@ export function EquipeDetalhesSheet({ conversa, onClose, onLeft }: EquipeDetalhe
                   setRenomeando(true);
                 }}
               >
-                <Pencil className="h-3.5 w-3.5 mr-1.5" /> Renomear
+                <Pencil className="h-3.5 w-3.5 mr-1.5" /> {t('equipeDetalhes.rename')}
               </Button>
             )}
           </div>
@@ -190,13 +192,13 @@ export function EquipeDetalhesSheet({ conversa, onClose, onLeft }: EquipeDetalhe
               <span className="flex-1 text-sm font-medium">{p.nome}</span>
               {p.role && (
                 <span className="text-xs text-[var(--text-muted)]">
-                  {PAPEL_LABELS[p.role] ?? p.role}
+                  {PAPEIS.has(p.role) ? t(`equipeDetalhes.roles.${p.role}`) : p.role}
                 </span>
               )}
               {isGrupo && podeGerenciar && (
                 <button
                   type="button"
-                  aria-label={`Remover ${p.nome}`}
+                  aria-label={t('equipeDetalhes.removeParticipant', { name: p.nome })}
                   onClick={() => removeMutation.mutate(p.user_id)}
                   disabled={removeMutation.isPending}
                   style={{
@@ -218,10 +220,10 @@ export function EquipeDetalhesSheet({ conversa, onClose, onLeft }: EquipeDetalhe
             <select
               value={addUserId}
               onChange={(e) => setAddUserId(e.target.value)}
-              aria-label="Adicionar participante"
+              aria-label={t('equipeDetalhes.addParticipant')}
               className="h-8 flex-1 rounded-md border border-[var(--border-color)] bg-[var(--card-bg)] px-2 text-sm"
             >
-              <option value="">Adicionar participante…</option>
+              <option value="">{t('equipeDetalhes.addParticipantPlaceholder')}</option>
               {foraDoGrupo.map((m) => (
                 <option key={m.user_id} value={m.user_id}>
                   {m.nome}
@@ -234,7 +236,7 @@ export function EquipeDetalhesSheet({ conversa, onClose, onLeft }: EquipeDetalhe
               disabled={!addUserId || addMutation.isPending}
               onClick={() => addMutation.mutate(addUserId)}
             >
-              Adicionar
+              {t('actions.add')}
             </Button>
           </div>
         )}
@@ -249,7 +251,7 @@ export function EquipeDetalhesSheet({ conversa, onClose, onLeft }: EquipeDetalhe
               onClick={() => leaveMutation.mutate()}
               disabled={leaveMutation.isPending}
             >
-              <LogOut className="h-3.5 w-3.5 mr-1.5" /> Sair do grupo
+              <LogOut className="h-3.5 w-3.5 mr-1.5" /> {t('equipeDetalhes.leaveGroup')}
             </Button>
           </div>
         )}

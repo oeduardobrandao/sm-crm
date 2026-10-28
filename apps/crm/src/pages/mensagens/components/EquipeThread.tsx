@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Paperclip, Send, Users, X } from 'lucide-react';
 import { MentionEditor } from '@/components/mentions/MentionEditor';
 import { MentionText } from '@/components/mentions/MentionText';
@@ -38,6 +39,7 @@ export function EquipeThread({
   onBack,
   onOpenDetalhes,
 }: EquipeThreadProps) {
+  const { t } = useTranslation('messages');
   const {
     meuId,
     draft,
@@ -64,7 +66,7 @@ export function EquipeThread({
         {onBack && (
           <button
             onClick={onBack}
-            aria-label="Voltar para as conversas"
+            aria-label={t('shared.backToConversations')}
             className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-main)]"
             style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
           >
@@ -76,7 +78,7 @@ export function EquipeThread({
         {onOpenDetalhes && (
           <button
             onClick={onOpenDetalhes}
-            aria-label="Ver detalhes da conversa"
+            aria-label={t('equipeThread.openDetails')}
             className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-main)]"
             style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
           >
@@ -98,29 +100,27 @@ export function EquipeThread({
             className="self-center text-xs font-semibold text-[var(--text-muted)]"
             style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
           >
-            {mensagens.isFetchingNextPage ? 'Carregando…' : 'Carregar mensagens anteriores'}
+            {mensagens.isFetchingNextPage ? t('loading') : t('shared.loadOlder')}
           </button>
         )}
         {mensagens.isError && (
           <div className="flex flex-col items-center gap-2 self-center py-8 text-center">
-            <p className="text-sm text-[var(--text-muted)]">
-              Não foi possível carregar as mensagens.
-            </p>
+            <p className="text-sm text-[var(--text-muted)]">{t('shared.loadMessagesError')}</p>
             <button
               onClick={() => mensagens.refetch()}
               className="text-sm font-semibold text-[var(--text-main)] hover:underline"
               style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
             >
-              Tentar novamente
+              {t('shared.retry')}
             </button>
           </div>
         )}
         {!mensagens.isError && mensagens.isLoading && (
-          <p className="self-center py-8 text-sm text-[var(--text-muted)]">Carregando…</p>
+          <p className="self-center py-8 text-sm text-[var(--text-muted)]">{t('loading')}</p>
         )}
         {!mensagens.isError && !mensagens.isLoading && itens.length === 0 && (
           <p className="self-center py-8 text-sm text-[var(--text-muted)]">
-            Nenhuma mensagem nesta conversa ainda.
+            {t('conversationThread.empty')}
           </p>
         )}
         {rows.map((row) => {
@@ -212,7 +212,7 @@ export function EquipeThread({
                 <span className="max-w-[160px] truncate">{a.file_name}</span>
                 <button
                   onClick={() => removerAnexo(a.id)}
-                  aria-label={`Remover ${a.file_name}`}
+                  aria-label={t('equipeThread.removeAttachment', { name: a.file_name })}
                   style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
                 >
                   <X size={12} />
@@ -236,7 +236,7 @@ export function EquipeThread({
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            aria-label="Anexar arquivo"
+            aria-label={t('equipeThread.attachFile')}
             className="rounded-full border border-[var(--border-color)] p-2.5 text-[var(--text-muted)] disabled:opacity-50"
             style={{ background: 'var(--card-bg)', cursor: 'pointer' }}
           >
@@ -246,14 +246,14 @@ export function EquipeThread({
             value={draft}
             onValueChange={setDraft}
             onKeyDown={onComposerKeyDown}
-            placeholder="Mensagem para a equipe…"
+            placeholder={t('equipeThread.placeholder')}
             rootClassName="min-w-0 flex-1"
             className="rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] px-4 py-2.5 text-sm outline-none"
           />
           <button
             onClick={() => void enviar()}
             disabled={!podeEnviar}
-            aria-label="Enviar mensagem"
+            aria-label={t('shared.sendMessage')}
             className="rounded-full px-4 py-2.5 text-sm font-semibold text-[var(--dark)] disabled:opacity-50 bg-[var(--primary-color)]"
             style={{ border: 'none', cursor: 'pointer' }}
           >

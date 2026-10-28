@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ArrowDownUp, Info, Search } from 'lucide-react';
 import type { Cliente, MensagemConversa } from '@/store';
 import { ListSkeleton } from '@/components/ui/skeletons';
@@ -19,9 +20,10 @@ interface ConversationListProps {
 
 /** The info icon next to the "Mensagens" title, in the list header or the Vidro toolbar. */
 export function MensagensInfoTooltip() {
+  const { t } = useTranslation('messages');
   return (
     <span
-      data-tooltip="Toda a comunicação com os clientes, agrupada por conversa. Cada item leva ao post de origem."
+      data-tooltip={t('conversationList.infoTooltip')}
       data-tooltip-dir="right"
       style={{ display: 'flex' }}
     >
@@ -40,6 +42,7 @@ export function ConversationList({
   className = '',
   hideTitle = false,
 }: ConversationListProps) {
+  const { t } = useTranslation('messages');
   const [sort, setSort] = useState<ConversasSort>('recentes');
   const [busca, setBusca] = useState('');
 
@@ -56,7 +59,7 @@ export function ConversationList({
       <div className="border-b border-[var(--border-color)] px-4 pt-4 pb-3">
         {!hideTitle && (
           <div className="flex items-center gap-2">
-            <h1 className="text-lg font-bold text-[var(--text-main)]">Mensagens</h1>
+            <h1 className="text-lg font-bold text-[var(--text-main)]">{t('shared.title')}</h1>
             <MensagensInfoTooltip />
           </div>
         )}
@@ -75,8 +78,8 @@ export function ConversationList({
           <input
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar cliente..."
-            aria-label="Buscar cliente"
+            placeholder={t('conversationList.searchPlaceholder')}
+            aria-label={t('conversationList.searchLabel')}
             className="w-full rounded-md border border-[var(--border-color)] bg-[var(--card-bg)] py-2 pr-3 text-sm outline-none"
             style={{ paddingLeft: '2rem' }}
           />
@@ -87,7 +90,7 @@ export function ConversationList({
           style={{ background: 'var(--card-bg)', cursor: 'pointer' }}
         >
           <ArrowDownUp size={13} />
-          {sort === 'recentes' ? 'Mais recentes' : 'Mais antigas'}
+          {sort === 'recentes' ? t('shared.sortNewest') : t('shared.sortOldest')}
         </button>
       </div>
 
@@ -95,14 +98,12 @@ export function ConversationList({
         {isLoading && <ListSkeleton rows={6} avatar className="px-4 py-3" />}
         {isError && (
           <p className="py-10 text-center text-sm text-[var(--text-muted)]">
-            Não foi possível carregar as conversas.
+            {t('shared.loadConversationsError')}
           </p>
         )}
         {!isLoading && !isError && conversasVisiveis.length === 0 && (
           <p className="py-10 text-center text-sm text-[var(--text-muted)]">
-            {busca.trim()
-              ? 'Nenhum cliente encontrado.'
-              : 'Nenhuma conversa ainda. As mensagens dos clientes aparecem aqui.'}
+            {busca.trim() ? t('conversationList.noClientFound') : t('conversationList.empty')}
           </p>
         )}
         {conversasVisiveis.map((c) => {
