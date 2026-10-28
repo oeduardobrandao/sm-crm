@@ -127,8 +127,9 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
     queryFn: () => getInstagramSummary(clientId),
   });
   const ttQuery = useQuery({
-    queryKey: ['tt-summary', clientId],
-    queryFn: () => getTikTokSummary(clientId),
+    // Same key and queryFn as the shell and TikTokSection, so the cache is shared.
+    queryKey: ['ttSummary', clientId],
+    queryFn: () => getTikTokSummary(clientId).catch(() => null),
     enabled: tiktokEnabled,
     retry: false,
   });
