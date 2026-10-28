@@ -22,6 +22,10 @@ type Db = any;
 
 /** Mesmo corte do portfólio (queries.ts): conta desconectada ou revogada não entra. */
 const NOT_CONNECTED = new Set(["disconnected", "revoked"]);
+
+export function isTikTokConnected(account: { authorization_status: string } | null): boolean {
+  return !!account && !NOT_CONNECTED.has(account.authorization_status);
+}
 const BEST_TIMES_DAYS = 90;
 const DAY_MS = 86_400_000;
 
@@ -62,7 +66,7 @@ export async function loadTikTokReportSection(
   now: Date,
 ): Promise<{ section: TikTokReportSnapshot; accountId: string } | null> {
   const account = await loadTikTokAccount(db, clientId);
-  if (!account || NOT_CONNECTED.has(account.authorization_status)) return null;
+  if (!account || !isTikTokConnected(account)) return null;
 
   const today = saoPauloDate(now);
   const start = monthWindow(month).startDate;

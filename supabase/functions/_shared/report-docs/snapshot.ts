@@ -318,12 +318,13 @@ export function assembleSnapshot(input: SnapshotInput): ReportDocSnapshot {
   };
 }
 
-/** Campos Instagram da raiz que `emptyInstagramSection` zera. */
-export type InstagramSnapshotSection = Pick<
-  ReportDocSnapshot,
-  | "comparison" | "kpis" | "follower_trend" | "content_breakdown" | "top_posts" | "audience"
-  | "best_times" | "tags_performance" | "instagram_connected"
->;
+/** Campos Instagram da raiz: `emptyInstagramSection` os zera e o refresh-data os carrega do
+ * snapshot congelado quando o Instagram saiu (o @ de `account` vai junto, à parte). */
+export const INSTAGRAM_SECTION_KEYS = [
+  "comparison", "kpis", "follower_trend", "content_breakdown", "top_posts", "audience",
+  "best_times", "tags_performance", "instagram_connected",
+] as const;
+export type InstagramSnapshotSection = Pick<ReportDocSnapshot, (typeof INSTAGRAM_SECTION_KEYS)[number]>;
 
 /** Fontes de KPI de uma conta sem nenhum dado (cliente sem Instagram). */
 export const EMPTY_KPI_SOURCES: KpiSources = {

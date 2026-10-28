@@ -15,6 +15,7 @@ function makeDb(
   } = {},
 ) {
   const inserts: Record<string, unknown>[] = [];
+  const tables: string[] = [];
   const rpcCalls: { name: string; args: Record<string, unknown> }[] = [];
   // deno-lint-ignore no-explicit-any
   const chain = (result: any, error: { message: string } | null = null): any => {
@@ -30,8 +31,10 @@ function makeDb(
   };
   return {
     inserts,
+    tables,
     rpcCalls,
     from: (table: string) => {
+      tables.push(table);
       if (table === "report_documents") {
         return {
           insert: (row: Record<string, unknown>) => {
@@ -785,6 +788,9 @@ Deno.test("platforms ['tiktok'] for a client without TikTok -> invalid_platforms
   } catch (e) { err = e; }
   assert(err instanceof GenerateError && err.code === "invalid_platforms");
   assertEquals(db.inserts.length, 0);
+  // Validado só com as linhas de conta, antes do snapshot completo.
+  assert(!db.tables.includes("instagram_posts"), "não deveria carregar o snapshot Instagram");
+  assert(!db.tables.includes("workspaces"), "não deveria carregar o workspace");
 });
 
 Deno.test("platforms ['instagram'] for a TikTok-only client -> invalid_platforms", async () => {
@@ -800,4 +806,39 @@ Deno.test("platforms ['instagram'] for a TikTok-only client -> invalid_platforms
     await generateReportDocument(db, deps, "c", 1, "2026-07", null, ["instagram"]);
   } catch (e) { err = e; }
   assert(err instanceof GenerateError && err.code === "invalid_platforms");
+});
+
+Deno.test("mês futuro pelo relógio de SP: 22:00 de 31/07 em SP não pede agosto", async () => {
+  // 2026-08-01T01:00Z ainda é 31/07 22:00 em São Paulo: agosto é futuro.
+  const time = new FakeTime(new Date("2026-08-01T01:00:00Z"));
+  try {
+    const db = makeDb({
+      clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+      instagram_accounts: { id: "ig-1", username: "dra.x" },
+      instagram_posts: [],
+      workspaces: WORKSPACE,
+    });
+    let err: unknown;
+    try {
+      await generateReportDocument(db, deps, "c", 1, "2026-08", null);
+    } catch (e) { err = e; }
+    assert(err instanceof GenerateError && err.code === "bad_month");
+  } finally {
+    time.restore();
+  }
+});
+
+Deno.test("erro na leitura de instagram_accounts: rejeita (500) em vez de virar relatório só TikTok", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    tiktok_accounts: TT_ACCOUNT,
+    tiktok_posts: [TT_VIDEO],
+    workspaces: WORKSPACE,
+  }, { errors: { instagram_accounts: { message: "boom" } } });
+  let err: unknown;
+  try {
+    await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  } catch (e) { err = e; }
+  assert(err instanceof Error && !(err instanceof GenerateError));
+  assertEquals(db.inserts.length, 0);
 });

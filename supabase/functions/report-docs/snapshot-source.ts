@@ -23,7 +23,9 @@ import {
 import type { TagPerformance } from "../_shared/report-template/types.ts";
 import { GenerateError } from "./errors.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
-import { loadTikTokReportSection } from "./tiktok-section.ts";
+import { isTikTokConnected, loadTikTokReportSection } from "./tiktok-section.ts";
+import { loadTikTokAccount } from "../_shared/tiktok-analytics/queries.ts";
+import type { ReportPlatform } from "./client-id.ts";
 
 // As 7 métricas de conta que a cadeia (Graph ao vivo -> linha mensal -> soma
 // diária das aditivas) resolve por janela de mês -- spec §4.1/§4.3.
@@ -95,12 +97,15 @@ export async function loadClientSnapshot(
   // 20260301:171-188): o ownership do workspace já foi provado pelo chamador
   // via clientes.conta_id, e client_id é UNIQUE na tabela — buscar só por ele.
   // A conta TikTok segue a mesma regra (tiktok_accounts.client_id também é UNIQUE).
-  const [{ data: account }, tiktok] = await Promise.all([
+  const [{ data: account, error: igError }, tiktok] = await Promise.all([
     db.from("instagram_accounts").select("*").eq("client_id", cliente.id).maybeSingle(),
     opts.tiktokEnabled
       ? loadTikTokReportSection(db, cliente.id, month, new Date())
       : Promise.resolve(null),
   ]);
+  // Erro de leitura não é "sem Instagram": tratado como ausente, viraria um relatório só
+  // TikTok (generate) ou apagaria a metade Instagram congelada (refresh). Falha a geração.
+  if (igError) throw new Error(`instagram account query failed: ${igError.message ?? igError}`);
   if (!account && !tiktok) throw new GenerateError("not_found", "Nenhuma rede conectada");
 
   const snapshot = account
@@ -111,6 +116,24 @@ export async function loadClientSnapshot(
     igAccountId: account?.id ?? null,
     tiktokAccountId: tiktok?.accountId ?? null,
   };
+}
+
+/** Redes conectadas do cliente só pelas linhas de conta (sem carregar dado nenhum): o generate
+ * valida `platforms` com isto antes do snapshot. TikTok conta só com `tiktokEnabled`. */
+export async function connectedPlatforms(
+  db: Db,
+  clientId: number,
+  tiktokEnabled: boolean,
+): Promise<ReportPlatform[]> {
+  const [igRes, tiktokAccount] = await Promise.all([
+    db.from("instagram_accounts").select("id").eq("client_id", clientId).maybeSingle(),
+    tiktokEnabled ? loadTikTokAccount(db, clientId) : Promise.resolve(null),
+  ]);
+  if (igRes.error) throw new Error(`instagram account query failed: ${igRes.error.message ?? igRes.error}`);
+  const out: ReportPlatform[] = [];
+  if (igRes.data) out.push("instagram");
+  if (isTikTokConnected(tiktokAccount)) out.push("tiktok");
+  return out;
 }
 
 /** Workspace do relatório: fonte OBRIGATÓRIA (erro aqui é geração inválida). */
