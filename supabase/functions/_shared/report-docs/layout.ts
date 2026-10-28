@@ -8,8 +8,9 @@ export const BLOCK_SIZES = ["third", "half", "full"] as const;
 export type BlockSize = (typeof BLOCK_SIZES)[number];
 
 export const BLOCK_TYPES = [
-  // Estrutura
-  "cover", "section_header", "divider",
+  // Estrutura. `section` abre uma seção (Geral, Instagram ou TikTok): spec
+  // 2026-10-28-report-platform-sections. Quem lê seções usa ./sections.ts, nunca o array cru.
+  "cover", "section_header", "divider", "section",
   // Texto & IA (todos renderizam `text` TipTap JSON)
   "text", "ai_summary", "ai_recommendations", "ai_goals",
   // Números
@@ -39,7 +40,7 @@ export const TIKTOK_BLOCK_PREFIX = "tiktok_";
 /** Tipos que não pertencem a nenhuma plataforma (estrutura, texto/IA, mídia). */
 const PLATFORM_NEUTRAL_TYPES: readonly string[] = [
   "cover", "section_header", "divider", "text", "ai_summary", "ai_recommendations",
-  "ai_goals", "image",
+  "ai_goals", "image", "section",
 ];
 
 /** Plataforma de um bloco: o prefixo decide. null = neutro (aparece em qualquer
@@ -59,7 +60,14 @@ export const TEXT_BLOCK_TYPES: readonly BlockType[] = [
   "text", "ai_summary", "ai_recommendations", "ai_goals",
 ];
 
+/** Teto de blocos de CONTEÚDO: marcadores `section` não contam (eles têm MAX_SECTIONS). */
 export const MAX_BLOCKS = 200;
+export const MAX_SECTIONS = 12;
+/** Título de seção: 1..80 caracteres depois do trim, contados em code points (como o
+ * char_length do Postgres), não em unidades UTF-16. */
+export const SECTION_TITLE_MAX = 80;
+export const SECTION_PLATFORMS = ["instagram", "tiktok"] as const;
+const SECTION_CONFIG_KEYS: readonly string[] = ["platform", "title", "hideHeader"];
 export const TOP_POSTS_MIN = 1;
 export const TOP_POSTS_MAX = 12;
 
@@ -77,6 +85,81 @@ const IMAGE_DIM_MAX = 999_999;
  * (decisão 1 do spec 2026-10-02). Espelhado em report_image_config_ok() no SQL. */
 export const IMAGE_TEMPLATE_STRIP_KEYS = ["file_id", "width", "height", "caption", "alt"] as const;
 const AI_TEXT_TYPES: readonly BlockType[] = ["ai_summary", "ai_recommendations", "ai_goals"];
+
+/** Comprimento em code points (espelha char_length no SQL). */
+export function codePointLength(s: string): number {
+  let n = 0;
+  for (const _ of s) n++;
+  return n;
+}
+
+/** Título de seção aceito: string cujo trim tem de 1 a SECTION_TITLE_MAX code points. */
+export function isValidSectionTitle(v: unknown): v is string {
+  if (typeof v !== "string") return false;
+  const len = codePointLength(v.trim());
+  return len >= 1 && len <= SECTION_TITLE_MAX;
+}
+
+/** Forma exata do marcador `section` (regra 4 do spec). null = ok. */
+function sectionMarkerError(b: Record<string, unknown>): string | null {
+  if (b.size !== "full") return "section must be full width";
+  if (b.text !== undefined) return "section must not carry text";
+  if (b.config === undefined) return null;
+  if (!isRecord(b.config)) return "config must be an object";
+  const cfg = b.config;
+  for (const k of Object.keys(cfg)) {
+    if (!SECTION_CONFIG_KEYS.includes(k)) return "unknown section config key";
+  }
+  if (
+    cfg.platform !== undefined &&
+    !(SECTION_PLATFORMS as readonly unknown[]).includes(cfg.platform)
+  ) return "invalid section platform";
+  if (cfg.title !== undefined && !isValidSectionTitle(cfg.title)) {
+    return "invalid section title";
+  }
+  if (cfg.hideHeader !== undefined) {
+    if (cfg.hideHeader !== true) return "section hideHeader must be true";
+    if (cfg.platform === undefined) return "section hideHeader needs a platform";
+  }
+  return null;
+}
+
+/** Regras estruturais das seções (spec 2026-10-28 §Rules) sobre um array de blocos cujo
+ * formato individual já é válido: forma do marcador, regras 1 a 3 e os dois tetos. Layout
+ * sem nenhum `section` é legado e só passa pelo teto de conteúdo. null = ok.
+ * Espelhado no trigger validate_report_layout() (migration 20261103000003). */
+export function sectionStructureError(blocks: readonly unknown[]): string | null {
+  let content = 0;
+  let sections = 0;
+  let current: string | null | undefined = undefined; // undefined = antes do 1º marcador
+  const platformsSeen = new Set<string>();
+  const sectioned = blocks.some((b) => isRecord(b) && b.type === "section");
+  for (const b of blocks) {
+    if (!isRecord(b)) return "block must be an object";
+    if (b.type === "section") {
+      const err = sectionMarkerError(b);
+      if (err) return err;
+      sections++;
+      if (sections > MAX_SECTIONS) return "too many sections";
+      const p = (b.config as Record<string, unknown> | undefined)?.platform;
+      current = typeof p === "string" ? p : null;
+      if (current !== null) {
+        if (platformsSeen.has(current)) return "duplicate platform section";
+        platformsSeen.add(current);
+      }
+      continue;
+    }
+    content++;
+    if (content > MAX_BLOCKS) return "too many blocks";
+    if (!sectioned) continue;
+    if (current === undefined) return "first block must be a section";
+    const platform = blockPlatform(String(b.type));
+    if (platform !== null && platform !== current) {
+      return "platform block outside its platform section";
+    }
+  }
+  return null;
+}
 
 function isPosInt(v: unknown, max: number): boolean {
   return typeof v === "number" && Number.isInteger(v) && v > 0 && v <= max;
@@ -159,7 +242,10 @@ export function validateLayout(raw: unknown): ValidateLayoutResult {
     return { ok: false, error: `unsupported layout version` };
   }
   if (!Array.isArray(raw.blocks)) return { ok: false, error: "blocks must be an array" };
-  if (raw.blocks.length > MAX_BLOCKS) return { ok: false, error: "too many blocks" };
+  // Guarda barata antes do loop; os tetos exatos (conteúdo e seções) vêm depois.
+  if (raw.blocks.length > MAX_BLOCKS + MAX_SECTIONS) {
+    return { ok: false, error: "too many blocks" };
+  }
   if (
     raw.accent !== undefined &&
     (typeof raw.accent !== "string" || !/^#[0-9a-fA-F]{6}$/.test(raw.accent))
@@ -247,6 +333,8 @@ export function validateLayout(raw: unknown): ValidateLayoutResult {
       if (err) return { ok: false, error: err };
     }
   }
+  const structureErr = sectionStructureError(raw.blocks);
+  if (structureErr) return { ok: false, error: structureErr };
   return { ok: true, layout: raw as unknown as ReportLayout };
 }
 

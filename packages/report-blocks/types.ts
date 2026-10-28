@@ -26,7 +26,29 @@ export {
   IMAGE_CAPTION_MAX,
   IMAGE_ALT_MAX,
   sanitizeLayoutForTemplate,
+  MAX_BLOCKS,
+  MAX_SECTIONS,
+  SECTION_TITLE_MAX,
+  SECTION_PLATFORMS,
+  isValidSectionTitle,
 } from '../../supabase/functions/_shared/report-docs/layout';
+export type {
+  ReportSection,
+  SectionKind,
+  SectionPlatform,
+} from '../../supabase/functions/_shared/report-docs/sections';
+export {
+  contentBlockCount,
+  fromSections,
+  isSectioned,
+  isSectionMarker,
+  makeSectionMarker,
+  sectionizeLayout,
+  sectionKindOf,
+  sectionOfBlock,
+  sectionPlatforms,
+  toSections,
+} from '../../supabase/functions/_shared/report-docs/sections';
 export type {
   ReportDocSnapshot,
   SnapshotBranding,

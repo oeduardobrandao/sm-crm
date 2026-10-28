@@ -3,9 +3,12 @@ import {
   BLOCK_TYPES,
   blockPlatform,
   LAYOUT_VERSION,
+  MAX_BLOCKS,
+  MAX_SECTIONS,
   normalizeCoverSize,
   type ReportLayout,
   sanitizeLayoutForTemplate,
+  SECTION_TITLE_MAX,
   validateLayout,
 } from "./layout.ts";
 import { TIKTOK_KPI_IDS } from "../tiktok-analytics/kpis.ts";
@@ -48,8 +51,9 @@ Deno.test("validateLayout rejeita mais de 200 blocos e ids duplicados", () => {
   assert(!validateLayout(layout([block({ id: "x" }), block({ id: "x" })])).ok);
 });
 
-Deno.test("catálogo tem os 41 tipos (28 + 13 tiktok_* de 2026-10-28)", () => {
-  assertEquals(BLOCK_TYPES.length, 41);
+Deno.test("catálogo tem os 42 tipos (28 + 13 tiktok_* + section, de 2026-10-28)", () => {
+  assertEquals(BLOCK_TYPES.length, 42);
+  assert((BLOCK_TYPES as readonly string[]).includes("section"));
   assert((BLOCK_TYPES as readonly string[]).includes("image"));
   assert((BLOCK_TYPES as readonly string[]).includes("kpi_follows"));
 });
@@ -199,7 +203,7 @@ Deno.test("blockPlatform: prefixo tiktok_ = tiktok, métricas = instagram, neutr
   assertEquals(blockPlatform("top_posts"), "instagram");
   assertEquals(blockPlatform("audience_gender"), "instagram");
   for (const t of ["cover", "section_header", "divider", "text", "ai_summary",
-    "ai_recommendations", "ai_goals", "image"]) {
+    "ai_recommendations", "ai_goals", "image", "section"]) {
     assertEquals(blockPlatform(t), null, t);
   }
 });
@@ -218,7 +222,7 @@ Deno.test("blockPlatform: partição de BLOCK_TYPES fixada por nome", () => {
   ];
   const NEUTRAL = [
     "cover", "section_header", "divider", "text", "ai_summary", "ai_recommendations",
-    "ai_goals", "image",
+    "ai_goals", "image", "section",
   ];
   const by = { instagram: [] as string[], tiktok: [] as string[], neutral: [] as string[] };
   for (const t of BLOCK_TYPES) {
@@ -235,4 +239,47 @@ Deno.test("BLOCK_TYPES: tiktok_kpi_* espelha TIKTOK_KPI_IDS nos dois sentidos", 
   const fromTypes = BLOCK_TYPES.filter((t) => t.startsWith("tiktok_kpi_")).sort();
   const fromIds = TIKTOK_KPI_IDS.map((id) => "tiktok_kpi_" + id).sort();
   assertEquals(fromTypes, fromIds);
+});
+
+// Spec 2026-10-28 (seções por plataforma). O mesmo arquivo alimenta a suíte SQL do trigger
+// validate_report_layout(): os dois lados precisam concordar fixture a fixture.
+interface SectionFixture {
+  name: string;
+  valid: boolean;
+  layout: unknown;
+}
+const SECTION_FIXTURES: SectionFixture[] = JSON.parse(
+  await Deno.readTextFile(
+    new URL("../../../tests/fixtures/report_section_layouts.json", import.meta.url),
+  ),
+);
+
+Deno.test("seções: constantes do modelo", () => {
+  assertEquals(MAX_BLOCKS, 200);
+  assertEquals(MAX_SECTIONS, 12);
+  assertEquals(SECTION_TITLE_MAX, 80);
+});
+
+Deno.test("seções: validateLayout concorda com `valid` em todo fixture", () => {
+  assert(SECTION_FIXTURES.length >= 30);
+  for (const f of SECTION_FIXTURES) {
+    const r = validateLayout(f.layout);
+    assertEquals(r.ok, f.valid, `${f.name}: ${r.ok ? "accepted" : r.error}`);
+  }
+});
+
+Deno.test("seções: layout sem section continua legado (mistura livre aceita)", () => {
+  const r = validateLayout(layout([
+    block({ id: "a", type: "kpi_reach", size: "third" }),
+    block({ id: "b", type: "tiktok_kpi_views", size: "third" }),
+  ]));
+  assert(r.ok);
+});
+
+Deno.test("seções: o teto de 200 conta só blocos de conteúdo", () => {
+  const blocks: unknown[] = [{ id: "s", type: "section", size: "full" }];
+  for (let i = 0; i < 200; i++) blocks.push(block({ id: `b${i}` }));
+  assert(validateLayout(layout(blocks)).ok);
+  blocks.push(block({ id: "extra" }));
+  assert(!validateLayout(layout(blocks)).ok);
 });

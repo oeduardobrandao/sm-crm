@@ -22,6 +22,7 @@ import {
   MapPin,
   MessageCircle,
   MousePointerClick,
+  PanelTop,
   Play,
   SeparatorHorizontal,
   Shapes,
@@ -44,6 +45,7 @@ import type { BlockType } from '@mesaas/report-blocks/types';
 export const WIDGET_ICONS: Record<BlockType, LucideIcon> = {
   cover: Image,
   section_header: Heading,
+  section: PanelTop,
   divider: SeparatorHorizontal,
   text: Type,
   ai_summary: Sparkles,

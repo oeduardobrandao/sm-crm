@@ -6,7 +6,9 @@ describe('WIDGET_CATALOG', () => {
   it('cobre todos os tipos de bloco, sem duplicatas', () => {
     const types = WIDGET_CATALOG.map((w) => w.type);
     expect(new Set(types).size).toBe(types.length);
-    expect([...types].sort()).toEqual([...BLOCK_TYPES].sort());
+    // `section` não é widget: seções vêm do menu de seção, não do drawer.
+    const widgetTypes = BLOCK_TYPES.filter((t) => t !== 'section');
+    expect([...types].sort()).toEqual([...widgetTypes].sort());
   });
 
   it('toda entrada tem label pt-BR não vazio e categoria válida', () => {
