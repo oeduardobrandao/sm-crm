@@ -77,17 +77,10 @@ export interface TarefaComentariosProps {
   membros: Membro[];
   /** Deep link (`&comentarios=1`): scroll the section into view and focus the composer. */
   autoFocus?: boolean;
-  /** Fires after this user sends or deletes a comment (the count changed). */
-  onCountChange?: () => void;
 }
 
 /** "Comentários (n)" on a task: flat team thread, @mentions, author-only edit/delete. */
-export function TarefaComentarios({
-  tarefaId,
-  membros,
-  autoFocus,
-  onCountChange,
-}: TarefaComentariosProps) {
+export function TarefaComentarios({ tarefaId, membros, autoFocus }: TarefaComentariosProps) {
   const { t } = useTranslation('tasksForm');
   const dateLocale = useDateFnsLocale();
   const titleId = useId();
@@ -102,18 +95,9 @@ export function TarefaComentarios({
     queryFn: getWorkspaceUsers,
   });
 
-  const onCountChangeRef = useRef(onCountChange);
-  onCountChangeRef.current = onCountChange;
-
   const { send: sendComentario, sending } = thread;
   const composerTarget = useMemo(
-    () => ({
-      send: async (conteudo: string) => {
-        await sendComentario(conteudo);
-        onCountChangeRef.current?.();
-      },
-      sending,
-    }),
+    () => ({ send: sendComentario, sending }),
     [sendComentario, sending],
   );
   const { draft, setDraft, editorRef, tooLong, canSend, handleSend, handleKeyDown } =
@@ -146,11 +130,6 @@ export function TarefaComentarios({
     }
     return out;
   }, [thread.comentarios, now, t, dateLocale]);
-
-  const handleDelete = async (id: number) => {
-    await thread.remove(id);
-    onCountChangeRef.current?.();
-  };
 
   return (
     <section
@@ -194,7 +173,7 @@ export function TarefaComentarios({
                 isOwn={!!currentUserId && item.comentario.author_id === currentUserId}
                 now={now}
                 onSave={thread.update}
-                onDelete={handleDelete}
+                onDelete={thread.remove}
               />
             ),
           )}

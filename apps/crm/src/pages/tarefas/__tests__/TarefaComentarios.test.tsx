@@ -158,8 +158,7 @@ describe('TarefaComentarios', () => {
   });
 
   it('send calls enviarTarefaComentario and clears the editor', async () => {
-    const onCountChange = vi.fn();
-    renderComentarios({ onCountChange });
+    renderComentarios();
     await screen.findByText('Nenhum comentário ainda. Use @ para mencionar alguém.');
 
     setEditorText(composer(), 'Pode revisar @[Ana Membro](membro:5)?');
@@ -173,7 +172,6 @@ describe('TarefaComentarios', () => {
       ),
     );
     await waitFor(() => expect(composer().textContent).toBe(''));
-    expect(onCountChange).toHaveBeenCalled();
     // The list refetches after the send.
     await waitFor(() => expect(store.getTarefaComentarios).toHaveBeenCalledTimes(2));
   });
@@ -230,9 +228,8 @@ describe('TarefaComentarios', () => {
   });
 
   it('delete asks for confirmation', async () => {
-    const onCountChange = vi.fn();
     store.getTarefaComentarios.mockResolvedValue([comentario({ id: 2, conteudo: 'Apagar' })]);
-    renderComentarios({ onCountChange });
+    renderComentarios();
     await screen.findByText('Apagar');
 
     fireEvent.click(screen.getByRole('button', { name: 'Excluir' }));
@@ -242,7 +239,8 @@ describe('TarefaComentarios', () => {
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Excluir' }));
     await waitFor(() => expect(store.deleteTarefaComentario).toHaveBeenCalledWith(2));
-    await waitFor(() => expect(onCountChange).toHaveBeenCalled());
+    // The thread refetches after the delete.
+    await waitFor(() => expect(store.getTarefaComentarios).toHaveBeenCalledTimes(2));
   });
 
   it('empty state copy', async () => {
