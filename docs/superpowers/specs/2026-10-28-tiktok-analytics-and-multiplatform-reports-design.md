@@ -46,7 +46,7 @@ From the Developers API, scopes `user.info.basic,user.info.profile,user.info.sta
 - Per account (`tiktok_accounts`, current values): `follower_count`, `following_count`, `likes_count` (lifetime likes), `video_count`.
 - Per account per day: `tiktok_follower_history` (`date` real date, `source` api/manual), `tiktok_account_metrics_daily` (followers, following, likes, videos; written only by `tiktok-sync-cron`; service-role only).
 - Per video (`tiktok_posts`): `views`, `likes`, `comments`, `shares`, `posted_at`, `title`, `video_description`, `duration`, `width`, `height`, `share_url`, `embed_link`, `cover_image_url` (re-hosted). **Overwritten in place**, no history.
-- Refresh coverage today: `/sync` refreshes the 200 most recent stored videos via `/video/query/`; the daily cron re-lists only the first 40 videos. Older videos keep stale counts.
+- Refresh coverage today: `importTikTokVideos` upserts counts straight from `/video/list/` (100 videos on connect and `/sync`, 40 in the daily cron), then `refreshStoredPostMetrics` re-queries the 200 most recent stored videos via `/video/query/` (both `/sync` and the cron call it). Older videos keep stale counts.
 - No reach, impressions, saves, watch time, demographics, profile views, link clicks, stories.
 - No read API for analytics: only `tiktok-integration` `GET /summary/:clientId` and `GET /posts/:clientId?page=`.
 - Disconnect deletes the account's `tiktok_posts`; follower history and daily snapshots survive.
@@ -55,13 +55,16 @@ From the Developers API, scopes `user.info.basic,user.info.profile,user.info.sta
 
 ### A1. Data collection changes
 
-- **New table `tiktok_post_metrics_daily`** `(tiktok_post_id uuid FK tiktok_posts ON DELETE CASCADE, snapshot_date date, views bigint, likes int, comments int, shares int, PRIMARY KEY (tiktok_post_id, snapshot_date))`. Service-role only (RLS on, no policies, explicit `REVOKE ALL ... FROM PUBLIC, anon, authenticated`). Written by `tiktok-sync-cron` and `/sync` every time they refresh a video's counts (upsert on the day). Nothing in v1 reads it; it exists so a later version can show views gained in a window. *(my call)*
-- **Cron refresh coverage**: `tiktok-sync-cron` refreshes counts of every stored video posted in the last 90 days via `/video/query/` (batches of 20), in addition to its 40-video re-list. Older videos keep their last counts. *(my call; 90 days = the longest period preset on the pages)*
+- **New table `tiktok_post_metrics_daily`** `(tiktok_account_id uuid FK tiktok_accounts ON DELETE CASCADE, tiktok_video_id text, snapshot_date date, views bigint, likes int, comments int, shares int, PRIMARY KEY (tiktok_account_id, tiktok_video_id, snapshot_date))`. Keyed by the TikTok video id, **not** an FK to `tiktok_posts`: disconnect deletes the account's `tiktok_posts`, and the history must survive a disconnect/reconnect, like follower history does. Service-role only: RLS on, no policies, `REVOKE ALL ... FROM PUBLIC, anon, authenticated`, then an explicit `GRANT SELECT, INSERT, UPDATE, DELETE ... TO service_role` (defensive; hosted grants service_role explicitly, local stacks may not). Nothing in v1 reads it; it exists so a later version can show views gained in a window. *(my call)*
+- **One write path for video counts**: a single helper "persist current counts + upsert today's daily snapshot" replaces the two direct writes (`importTikTokVideos`' upsert from `/video/list/` and `refreshStoredPostMetrics`' update), so every count write also lands a snapshot row.
+- **Refresh coverage**: `refreshStoredPostMetrics` selects the union of the 200 most recent stored videos and every stored video posted in the last 90 days, queried via `/video/query/` in batches of 20. Applies to `/sync` and the cron alike. *(my call; 90 days = the longest period preset on the pages)*
 - `tiktok_account_metrics_daily` also gets written by `/sync` (today only the cron writes it), so a manual sync produces a data point the same day. *(my call)*
 
 ### A2. `tiktok-analytics` edge function (new)
 
-Mirror of `instagram-analytics`'s route shape. JWT-verified (default deploy, not `--no-verify-jwt`). Every route checks the caller's workspace owns the client (`clientes.conta_id`), and gates on `feature_tiktok` **and** `feature_analytics_reports` via `effectivePlanFeature`. No new plan column (avoids the entitlements enumerator redeploys).
+Mirror of `instagram-analytics`'s route shape. JWT-verified (default deploy, not `--no-verify-jwt`).
+
+Tenant identity follows `report-docs/index.ts`, **not** `instagram-analytics` or `tiktok-integration` (both still read legacy `profiles.conta_id`, which is wrong after a workspace switch): workspace = `profiles.active_workspace_id`, confirmed by an existing `workspace_members` row for the caller, then `clientes.conta_id` must equal it. Every account and video query is scoped through that owned client (`tiktok_accounts.client_id = clientId`). Every route also gates on `feature_tiktok` **and** `feature_analytics_reports` via `effectivePlanFeature`. No new plan column (avoids the entitlements enumerator redeploys).
 
 | Route | Returns |
 |---|---|
@@ -91,6 +94,13 @@ AI: reuse the Instagram prompt structure with a TikTok variant (input = the KPIs
 | Compartilhamentos | sum of shares of videos posted in the window | vs previous window |
 | Vídeos publicados | count of videos posted in the window | vs previous window |
 | Curtidas totais do perfil | lifetime `likes_count` | none |
+
+Rules that make these deterministic:
+
+- **One date boundary**: every window, `posted_at` bucket, follower-history date and snapshot date is evaluated in `America/Sao_Paulo`. A window `[start, end]` is inclusive whole days in that zone.
+- **Follower KPIs read only observed points.** "Seguidores" comparison uses the first follower-history point on or after the window start; "Novos seguidores" = last point in the window minus first point in the window. Fewer than two points in the window (connected mid-window, syncs failed) → the value shows "sem dados" and no comparison; never zero, never extrapolated.
+- **Previous-window comparisons** are null ("sem comparação") when the previous window has no data of that kind: no follower points for follower KPIs, no videos posted for video KPIs. A previous window with videos but zero views compares normally.
+- Rates with a zero denominator are null, not 0%.
 
 Engagement uses views as denominator because TikTok gives us no reach. Where a TikTok rate sits next to an Instagram rate (benchmarks, reports) it is labeled "por visualização", never compared as the same number.
 
@@ -156,16 +166,17 @@ New UI copy goes through `react-i18next` with a new namespace (`analyticsTiktok`
 
 Replaces the "Relatórios Gerados" card. Lists that client's block reports (newest first: title, period, platforms badge, updated, Abrir, delete) and below them the legacy "Formato anterior" list exactly as today (download, e-mail, pending polling).
 
-"Gerar relatório" lives here (and stays as a header shortcut on the page, *my call*). The dialog (`NewReportDialog`, moved out of `analytics-conta/components` to a shared reports folder) gains a **Plataformas** choice: checkboxes for each platform the client has connected, all checked by default. It decides which platforms' sections the system default layout includes. A workspace template decides its own blocks; the checkboxes then only control which platform data is loaded (unchecked platform = its blocks render as "sem dados").
+"Gerar relatório" lives here (and stays as a header shortcut on the page, *my call*). The dialog (`NewReportDialog`, moved out of `analytics-conta/components` to a shared reports folder) gains a **Plataformas** choice: checkboxes for each platform the client has connected, all checked by default, at least one required. The choice shapes the **layout only**, at generation time: the system default layout includes a section per checked platform, and with a workspace template the blocks of unchecked platforms are dropped from the generated layout. Data is always loaded for every platform the client has connected (generate and `refresh-data` alike), so the user can add a TikTok block to an Instagram-only report later and it has numbers. Nothing about the choice is stored; the platforms badge in the list is derived from the block types in the layout. `/generate` gains an optional `platforms: ('instagram'|'tiktok')[]` (validated against the client's connected platforms; omitted = all connected, which keeps automations and older callers working).
 
 ### B2. Block platform
 
-- `ReportBlock.config.platform?: 'instagram' | 'tiktok'`. **Absent = instagram**, so every existing layout, template and document stays valid with no data migration.
-- Data blocks carry a platform; structure, text, AI and image blocks don't.
-- TikTok supports these block types: `kpi_*` for its KPI ids, `chart_followers`, `chart_best_times`, `top_posts`, `post_list`, `cover`. Not supported for TikTok: `chart_formats`, `audience_*`, `tags_table`.
-- New KPI ids `likes`, `comments`, `shares`, `likes_total` (TikTok only in v1). Existing ids reused where the meaning matches the TikTok definition in §A3 (`followers_total`, `followers_gained`, `views`, `engagement_rate`, `posts_count`); the KPI card label and tooltip come from a per-platform table so TikTok's "Visualizações" carries its tooltip.
-- `validateLayout` accepts `config.platform` and rejects TikTok on unsupported types.
-- The platform is fixed when the block is added; the layers panel and block chrome show a small platform badge. *(my call)*
+- **TikTok blocks are their own block types**, prefixed `tiktok_`: `tiktok_kpi_<id>`, `tiktok_chart_followers`, `tiktok_chart_best_times`, `tiktok_top_posts`, `tiktok_post_list`. The platform is the prefix; existing types stay Instagram, so every existing layout, template and document is valid with no data migration.
+- Why types and not a `config.platform` flag: a CRM or Hub bundle already open in a browser keeps running after a deploy (silent updates). Today's `BlockRenderer` and `EditorCanvas` render `null` for an unknown type (`hasOwnProperty` guard) and `layerLabel` falls back to the type string, so an old bundle shows a TikTok block as nothing. With a config flag the same old bundle would render Instagram numbers inside a TikTok block.
+- The new types reuse the existing block components through a platform prop (`KpiCardBlock`, `FollowerChartBlock`, `BestTimesBlock`, `TopPostsBlock`, `PostListBlock` read `snapshot.tiktok` for `tiktok_*` types). Structure, text, AI, cover and image blocks are platform-neutral.
+- No TikTok equivalent for `chart_formats`, `audience_*`, `tags_table`.
+- TikTok KPI ids: `followers_total`, `followers_gained`, `views`, `engagement_rate`, `likes`, `shares`, `comments`, `posts_count`, `likes_total`, with meanings from §A3 and labels/tooltips from a TikTok table (TikTok's "Visualizações" carries its tooltip).
+- `validateLayout` (`_shared/report-docs/layout.ts` `BLOCK_TYPES`) and the catalog/registry gain the new types. The DB trigger only checks shape, so no migration for that.
+- The layers panel and block chrome show a small platform badge on platform blocks. *(my call)*
 - `AddWidgetDrawer` gets a platform switch at the top when the client has both platforms connected (only one connected: no switch, that platform). Only blocks valid for the selected platform are listed. Template editor: both platforms always available.
 - Cover: kicker derived from the platforms present in the layout ("Relatório mensal · Instagram", "· TikTok", "· Instagram e TikTok"); handle from the first platform in the layout. Other hardcoded Instagram copy (`KpiCardBlock` reach tooltip, `TopPostsBlock`/`FormatCardsBlock` labels) becomes platform-aware.
 
@@ -175,8 +186,8 @@ Replaces the "Relatórios Gerados" card. Lists that client's block reports (newe
   `{ account: {handle, display_name, avatar_url}, kpis: Record<TikTokKpiId, KpiEntry>, follower_trend, best_times, top_posts }` (top posts with views, likes, comments, shares, title preview, date, share_url, cover URL from the `tiktok-posts` bucket).
 - When the client has no Instagram account, the root Instagram fields hold an empty snapshot (null KPIs, empty arrays) and an `instagram_connected: false` flag, so Instagram blocks show their existing "sem dados" placeholder. *(my call; keeps one snapshot type instead of a union)*
 - `snapshot-source.ts` loads TikTok via the `_shared/tiktok-analytics/` queries for the report month.
-- `blockHasData` and every block component read from `snapshot.tiktok` when `config.platform === 'tiktok'`. Same contract as today: placeholder in edit mode, omitted in view, Hub and PDF.
-- `report_documents`: `instagram_account_id` becomes nullable, new nullable `tiktok_account_id uuid FK tiktok_accounts ON DELETE SET NULL`. Generation fails with a clear error only when the client has neither platform connected.
+- `blockHasData` and the block components read from `snapshot.tiktok` for `tiktok_*` types (absent `tiktok` = no data). Same contract as today: placeholder in edit mode, omitted in view, Hub and PDF.
+- `report_documents`: `instagram_account_id` is already nullable (`ON DELETE SET NULL`, `20260820000010`); the change there is in code (`loadClientSnapshot` and `generate.ts` assume an Instagram account id always exists). New nullable `tiktok_account_id uuid REFERENCES tiktok_accounts ON DELETE SET NULL`. Generation fails with a clear error only when the client has neither platform connected.
 - `refresh-data` reloads both.
 - Template sample data: `makeSnapshotFixture` gains a TikTok section (handle `seucliente`, tiktok.com links).
 - AI narrative in reports: input includes the TikTok section when present; prompt asks for one narrative covering the platforms in the report. When only TikTok is present, the TikTok variant from §A2.
@@ -188,19 +199,24 @@ Back link and `fallbackTo` go to `/analytics/:clientId/relatorios`. Nothing else
 
 ## Deploy order
 
-The renderer (`packages/report-blocks`) ships in the CRM editor, the Hub `RelatorioDocPage` and the Hub print page used by Gotenberg. An old renderer ignores `config.platform` and would render Instagram numbers inside a TikTok block. So no TikTok block may exist before the new frontend is live:
+The renderer (`packages/report-blocks`) ships in the CRM editor, the Hub `RelatorioDocPage` and the Hub print page used by Gotenberg. Because TikTok blocks are new types (§B2), an old bundle renders them as nothing rather than as wrong numbers, so the usual order is safe: everything server-side before the merge.
 
-1. Migrations (new table, `report_documents` columns).
-2. `tiktok-analytics` (new), `tiktok-sync-cron`, `tiktok-integration` (A1 writes).
+Part A (its own PR):
+1. Migration: `tiktok_post_metrics_daily`.
+2. Deploy `tiktok-analytics` (new), `tiktok-sync-cron`, `tiktok-integration`.
+3. Merge.
+
+Part B (second PR):
+1. Migration: `report_documents.tiktok_account_id`.
+2. Deploy `report-docs` (its `validateLayout` must accept the `tiktok_*` types before any frontend can add one; a TikTok section it generates before the merge is invisible to the old bundle, not wrong).
 3. Merge → Vercel builds CRM + Hub together.
-4. `report-docs` (snapshot + default layout with TikTok). Only after 3.
 
-Part A ships and deploys first as its own PR; Part B is a second PR. `feature_tiktok` is off on all plans (overrides only), which bounds exposure.
+`feature_tiktok` is off on all plans (overrides only), which bounds exposure.
 
 ## Testing
 
 - Vitest: TikTok pages, tab shell and redirects, nav item presence under the flag, AddWidgetDrawer filtering, block rendering from `snapshot.tiktok`, `blockHasData` per platform, fixtures.
-- Deno: `tiktok-analytics` routes (ownership, flags, KPI math including empty windows and previous-window comparison), cron refresh coverage + daily snapshot writes, `validateLayout` platform rules, snapshot loader for IG-only / TikTok-only / both / neither.
+- Deno: `tiktok-analytics` routes (ownership, flags, KPI math including empty windows and previous-window comparison), cron refresh coverage + daily snapshot writes, `validateLayout` accepting the `tiktok_*` types, old-bundle safety (unknown type renders nothing), snapshot loader for IG-only / TikTok-only / both / neither.
 - Browser check of both pages and the editor with a TikTok-connected client, desktop and phone width.
 
 ## Left to the builder
