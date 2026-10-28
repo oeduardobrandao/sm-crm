@@ -1,6 +1,9 @@
 # Report sections per platform
 
-Status: draft, awaiting Eduardo's approval (2026-10-28). Reviewed by Codex and a builder check; their points are folded in. Mockups: https://claude.ai/artifact/P63h7q7MXazMNSUfakEs1y Ships inside PR #766 (Part B of
+Status: draft, awaiting Eduardo's approval (2026-10-28). Reviewed by Codex and a builder check; their points are folded in.
+Mockups: https://claude.ai/artifact/P63h7q7MXazMNSUfakEs1y
+
+Ships inside PR #766 (Part B of
 `2026-10-28-tiktok-analytics-and-multiplatform-reports-design.md`), before it merges. Replaces
 §B2's "free mix" editor model and the generate-time block filtering of §B1.
 
