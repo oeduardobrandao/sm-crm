@@ -36,7 +36,6 @@
     "emptyTitle": "No client has TikTok connected",
     "emptyBody": "Connect a client's TikTok under Clients, in the Social networks tab, to see the numbers here.",
     "emptyAction": "Go to clients",
-    "lockedLabel": "TikTok Analytics",
     "noSpecialty": "No specialty",
     "seeAll": "See all",
     "topVideosHint": "The 5 videos with the most views in the selected period.",

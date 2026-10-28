@@ -9,9 +9,6 @@ import { portfolio, registerTikTokI18n, row } from './fixtures';
 vi.mock('../../../hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: () => ({ features: { feature_tiktok: true }, isLoading: false }),
 }));
-vi.mock('@/components/paywall/UpgradeLockedScreen', () => ({
-  UpgradeLockedScreen: () => <div data-testid="locked" />,
-}));
 vi.mock('chart.js', () => ({
   Chart: class {
     static register = vi.fn();

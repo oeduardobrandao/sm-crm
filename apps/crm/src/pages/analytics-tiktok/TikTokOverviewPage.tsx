@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   AlertTriangle,
@@ -56,7 +56,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { UpgradeLockedScreen } from '@/components/paywall/UpgradeLockedScreen';
 import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
@@ -121,16 +120,12 @@ const ORDER_KEY = {
 
 /** `/analytics/tiktok`: the TikTok twin of the Instagram portfolio page. */
 export default function TikTokOverviewPage() {
-  const { t } = useTranslation('analyticsTiktok');
   const { features, isLoading } = useWorkspaceLimits();
-  // Same screen ProtectedRoute shows a gated route (it already covers feature_analytics_reports
-  // for every /analytics path). Fails closed: an unresolved plan never reaches the fetch.
+  // TikTok ships dark behind feature_tiktok: without it the page does not exist, so no
+  // paywall naming it (ProtectedRoute already gates feature_analytics_reports on /analytics).
+  // Fails closed: an unresolved plan never reaches the fetch.
   if (isLoading) return <PageSkeleton body="report" />;
-  if (features?.feature_tiktok !== true) {
-    return (
-      <UpgradeLockedScreen featureLabel={t('overview.lockedLabel')} feature="feature_tiktok" />
-    );
-  }
+  if (features?.feature_tiktok !== true) return <Navigate to="/analytics" replace />;
   return <TikTokOverviewContent />;
 }
 

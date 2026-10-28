@@ -1,7 +1,7 @@
 import { Children, isValidElement, type ReactNode } from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { portfolio, registerTikTokI18n, row } from './fixtures';
 
@@ -14,15 +14,6 @@ const limits = vi.hoisted(() => ({
 
 vi.mock('../../../hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: () => limits.value,
-}));
-
-// The route guard renders the shared paywall; its own suite covers it.
-vi.mock('@/components/paywall/UpgradeLockedScreen', () => ({
-  UpgradeLockedScreen: ({ featureLabel, feature }: { featureLabel: string; feature?: string }) => (
-    <div data-testid="locked" data-feature={feature}>
-      {featureLabel}
-    </div>
-  ),
 }));
 
 // These cases cover the desktop layout; TikTokOverviewPage.phone.test.tsx covers the phone one.
@@ -113,7 +104,10 @@ function renderPage() {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/analytics/tiktok']}>
-        <TikTokOverviewPage />
+        <Routes>
+          <Route path="/analytics/tiktok" element={<TikTokOverviewPage />} />
+          <Route path="/analytics" element={<div data-testid="analytics-home" />} />
+        </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -326,12 +320,18 @@ describe('TikTokOverviewPage', () => {
     expect(within(callout).queryByRole('link', { name: /Alpha Studio/ })).toBeNull();
   });
 
-  it('shows the paywall without feature_tiktok and never fetches', () => {
+  it('redirects to /analytics without feature_tiktok and never fetches', () => {
     limits.value = { features: { feature_tiktok: false }, isLoading: false };
     renderPage();
-    const locked = screen.getByTestId('locked');
-    expect(locked).toHaveTextContent('Analytics do TikTok');
-    expect(locked).toHaveAttribute('data-feature', 'feature_tiktok');
+    expect(screen.getByTestId('analytics-home')).toBeInTheDocument();
+    expect(screen.queryByText('Analytics do TikTok')).toBeNull();
+    expect(getTikTokPortfolio).not.toHaveBeenCalled();
+  });
+
+  it('redirects while the plan has no features (fail closed)', () => {
+    limits.value = { features: null, isLoading: false };
+    renderPage();
+    expect(screen.getByTestId('analytics-home')).toBeInTheDocument();
     expect(getTikTokPortfolio).not.toHaveBeenCalled();
   });
 
