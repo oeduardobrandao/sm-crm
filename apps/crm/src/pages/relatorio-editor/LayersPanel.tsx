@@ -141,50 +141,52 @@ function SectionLayer({
     <li
       ref={setNodeRef}
       className="rb-layers-section"
-      aria-label={`Seção ${name}`}
       style={{
         transform: CSS.Translate.toString(transform),
         transition,
         opacity: isDragging ? 0.5 : 1,
       }}
     >
-      <div
-        className={`rb-layers-row rb-layers-section-row${marker.id === highlightId ? ' rb-layers-row-active' : ''}`}
-      >
-        <button
-          type="button"
-          className="rb-layers-handle cursor-grab touch-none"
-          aria-label="Reordenar seção"
-          {...attributes}
-          {...listeners}
+      {/* aria-label num <li> não é anunciado; o grupo rotulado é. */}
+      <div role="group" aria-label={`Seção ${name}`}>
+        <div
+          className={`rb-layers-row rb-layers-section-row${marker.id === highlightId ? ' rb-layers-row-active' : ''}`}
         >
-          <GripVertical className="h-3.5 w-3.5" />
-        </button>
-        <button type="button" className="rb-layers-label" onClick={() => onLocate(marker.id)}>
-          {kind === 'general' ? (
-            <PanelTop className="rb-layers-icon h-3.5 w-3.5" aria-hidden />
-          ) : (
-            <PlatformIcon platform={kind} size={14} className="rb-layers-icon" />
-          )}
-          <span className="rb-layers-label-text">{name}</span>
-        </button>
+          <button
+            type="button"
+            className="rb-layers-handle cursor-grab touch-none"
+            aria-label="Reordenar seção"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" className="rb-layers-label" onClick={() => onLocate(marker.id)}>
+            {kind === 'general' ? (
+              <PanelTop className="rb-layers-icon h-3.5 w-3.5" aria-hidden />
+            ) : (
+              <PlatformIcon platform={kind} size={14} className="rb-layers-icon" />
+            )}
+            <span className="rb-layers-label-text">{name}</span>
+          </button>
+        </div>
+        {canAdd && <AddGap name={name} position={0} onAdd={add(0)} />}
+        <SortableContext items={blocks.map((b) => b.id)} strategy={verticalListSortingStrategy}>
+          <ol className="rb-layers-sublist">
+            {blocks.map((block, i) => (
+              <li key={block.id} className="rb-layers-item">
+                <LayerRow
+                  block={block}
+                  active={block.id === highlightId}
+                  droppable={blocksDroppable}
+                  onLocate={onLocate}
+                />
+                {canAdd && <AddGap name={name} position={i + 1} onAdd={add(i + 1)} />}
+              </li>
+            ))}
+          </ol>
+        </SortableContext>
       </div>
-      {canAdd && <AddGap name={name} position={0} onAdd={add(0)} />}
-      <SortableContext items={blocks.map((b) => b.id)} strategy={verticalListSortingStrategy}>
-        <ol className="rb-layers-sublist">
-          {blocks.map((block, i) => (
-            <li key={block.id} className="rb-layers-item">
-              <LayerRow
-                block={block}
-                active={block.id === highlightId}
-                droppable={blocksDroppable}
-                onLocate={onLocate}
-              />
-              {canAdd && <AddGap name={name} position={i + 1} onAdd={add(i + 1)} />}
-            </li>
-          ))}
-        </ol>
-      </SortableContext>
     </li>
   );
 }

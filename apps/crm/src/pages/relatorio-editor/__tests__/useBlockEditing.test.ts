@@ -20,12 +20,12 @@ const sectioned = (): ReportLayout => ({
   ],
 });
 
-function setup(initial: ReportLayout) {
+function setup(initial: ReportLayout, opts: { tiktokEnabled?: boolean } = {}) {
   const layoutRef = { current: initial };
   const applyLayout = vi.fn((next: ReportLayout) => {
     layoutRef.current = next;
   });
-  const hook = renderHook(() => useBlockEditing(layoutRef, applyLayout));
+  const hook = renderHook(() => useBlockEditing(layoutRef, applyLayout, opts));
   return { ...hook, layoutRef, applyLayout };
 }
 
@@ -162,5 +162,76 @@ describe('useBlockEditing: layout vazio', () => {
     act(() => result.current.handleInsert('text'));
     expect(layoutRef.current.blocks.map((b) => b.type)).toEqual(['section', 'text']);
     expect(validateLayout(layoutRef.current)).toMatchObject({ ok: true });
+  });
+});
+
+describe('useBlockEditing: "Adicionar widget" sem alvo', () => {
+  it('última seção é TikTok sem a flag: o widget entra na seção antes dela', () => {
+    const { result, layoutRef } = setup(sectioned());
+    act(() => result.current.openWidgetDrawer(null));
+    act(() => result.current.handleInsert('text'));
+    expect(layoutRef.current.blocks.map((b) => b.id).slice(0, 3)).toEqual(['g', 'ig', 'r']);
+    expect(layoutRef.current.blocks[3].type).toBe('text');
+    expect(layoutRef.current.blocks.slice(4).map((b) => b.id)).toEqual(['tt', 'tv']);
+  });
+
+  it('com feature_tiktok a última seção (TikTok) recebe o widget', () => {
+    const { result, layoutRef } = setup(sectioned(), { tiktokEnabled: true });
+    act(() => result.current.openWidgetDrawer(null));
+    act(() => result.current.handleInsert('text'));
+    expect(layoutRef.current.blocks.at(-1)?.type).toBe('text');
+    expect(layoutRef.current.blocks.at(-2)?.id).toBe('tv');
+  });
+
+  it('só uma seção TikTok, sem a flag: uma Geral nova entra no fim e recebe o widget', () => {
+    const { result, layoutRef } = setup({
+      version: 1,
+      blocks: [
+        { id: 'tt', type: 'section', size: 'full', config: { platform: 'tiktok' } },
+        { id: 'tv', type: 'tiktok_kpi_views', size: 'third' },
+      ],
+    });
+    act(() => result.current.openWidgetDrawer(null));
+    act(() => result.current.handleInsert('text'));
+    expect(layoutRef.current.blocks.map((b) => b.type)).toEqual([
+      'section',
+      'tiktok_kpi_views',
+      'section',
+      'text',
+    ]);
+    expect(layoutRef.current.blocks[2].config).toBeUndefined();
+    expect(validateLayout(layoutRef.current)).toMatchObject({ ok: true });
+  });
+});
+
+describe('useBlockEditing: alvo cuja seção saiu', () => {
+  it('remover a seção do alvo limpa o alvo', () => {
+    const { result } = setup(sectioned());
+    act(() => result.current.openWidgetDrawer({ sectionId: 'tt' }));
+    act(() => result.current.setDrawerOpen(false));
+    act(() => result.current.handleRemoveSection('tt'));
+    expect(result.current.insertTarget).toBeNull();
+  });
+
+  it('remover outra seção mantém o alvo', () => {
+    const { result } = setup(sectioned());
+    act(() => result.current.openWidgetDrawer({ sectionId: 'tt' }));
+    act(() => result.current.handleRemoveSection('ig'));
+    expect(result.current.insertTarget).toEqual({ sectionId: 'tt' });
+  });
+
+  it('a seção sumiu por fora (desfazer): avisa, não aplica nada e limpa o alvo', () => {
+    const { result, layoutRef, applyLayout } = setup(sectioned());
+    act(() => result.current.openWidgetDrawer({ sectionId: 'tt' }));
+    layoutRef.current = {
+      ...layoutRef.current,
+      blocks: layoutRef.current.blocks.filter((b) => b.id !== 'tt' && b.id !== 'tv'),
+    };
+    act(() => result.current.handleInsert('text'));
+    expect(applyLayout).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(
+      'Essa seção não existe mais. Escolha de novo onde inserir o widget.',
+    );
+    expect(result.current.insertTarget).toBeNull();
   });
 });

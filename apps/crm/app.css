@@ -14767,6 +14767,12 @@ a.hub-fill__row-inner:hover {
   cursor: not-allowed;
 }
 
+.rb-add-section-full {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
 .rb-add-section-item {
   align-items: flex-start;
   gap: 0.6rem;

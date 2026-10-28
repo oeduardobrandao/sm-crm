@@ -2,6 +2,7 @@
 // seções e depois da última. Plataforma já presente fica desabilitada; TikTok só com
 // feature_tiktok (fora do menu sem a flag); num relatório, a plataforma precisa ter dados
 // no snapshot (num modelo, as duas valem: dados de exemplo).
+import { useId } from 'react';
 import { PanelTop, Plus } from 'lucide-react';
 import {
   DropdownMenu,
@@ -43,6 +44,7 @@ export function AddSectionMenu({
 }: AddSectionMenuProps) {
   const platforms: ReportPlatform[] = tiktokEnabled ? ['instagram', 'tiktok'] : ['instagram'];
   const full = existing.length >= MAX_SECTIONS;
+  const fullHintId = useId();
   return (
     <div className="rb-add-section">
       <DropdownMenu>
@@ -51,7 +53,7 @@ export function AddSectionMenu({
             type="button"
             className="rb-add-section-trigger"
             disabled={full}
-            title={full ? `Limite de ${MAX_SECTIONS} seções por relatório` : undefined}
+            aria-describedby={full ? fullHintId : undefined}
           >
             <Plus className="h-3.5 w-3.5" aria-hidden /> Adicionar seção
           </button>
@@ -83,6 +85,11 @@ export function AddSectionMenu({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      {full && (
+        <span id={fullHintId} className="rb-add-section-full">
+          Limite de {MAX_SECTIONS} seções por relatório
+        </span>
+      )}
     </div>
   );
 }

@@ -10,11 +10,10 @@ import type {
   ReportLayout,
   SectionKind,
 } from '@mesaas/report-blocks/types';
-import { toSections } from '@mesaas/report-blocks/types';
+import { isSectionMarker, toSections } from '@mesaas/report-blocks/types';
 import { PLATFORM_NAMES } from '@mesaas/report-blocks/platform';
 import {
   addSection,
-  insertBlock,
   insertBlockInSection,
   removeBlock,
   removeSection,
@@ -32,11 +31,13 @@ export interface InsertTarget {
 export function useBlockEditing(
   layoutRef: { current: ReportLayout },
   applyLayout: (next: ReportLayout) => void,
+  /** feature_tiktok: sem ela, o "Adicionar widget" sem alvo nunca cai na seção TikTok. */
+  { tiktokEnabled = false }: { tiktokEnabled?: boolean } = {},
 ) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   // Alvo do próximo widget, setado pelo ponto de inserção antes de abrir o
   // drawer (que lista só o que a seção aceita). null = fim do relatório: fim
-  // da última seção que aceita o tipo (insertBlock).
+  // da última seção que pode receber o tipo (ver handleInsert).
   const [insertTarget, setInsertTarget] = useState<InsertTarget | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -96,32 +97,52 @@ export function useBlockEditing(
   function handleInsert(type: BlockType) {
     const current = layoutRef.current;
     const newId = crypto.randomUUID();
-    // Layout vazio sem alvo: a seção Geral entra primeiro, senão o bloco
-    // ficaria fora de qualquer seção (layout legado).
-    if (!insertTarget && current.blocks.length === 0) {
-      const withGeneral = addSection(current, 'general', null);
-      const target = toSections(withGeneral)[0]?.marker.id;
-      const next = target
-        ? insertBlockInSection(withGeneral, target, type, undefined, () => newId)
-        : current;
-      if (next === withGeneral || next === current) return;
+    const makeId = () => newId;
+    const done = (next: ReportLayout) => {
       applyLayout(next);
       highlightAndScroll(newId);
+    };
+
+    if (insertTarget) {
+      // A seção do alvo pode ter saído com o drawer fechado (desfazer, por
+      // exemplo): avisa em vez de não inserir em silêncio.
+      if (!current.blocks.some((b) => b.id === insertTarget.sectionId && isSectionMarker(b))) {
+        setInsertTarget(null);
+        toast.error('Essa seção não existe mais. Escolha de novo onde inserir o widget.');
+        return;
+      }
+      const next = insertBlockInSection(
+        current,
+        insertTarget.sectionId,
+        type,
+        insertTarget.position,
+        makeId,
+      );
+      // Mesma referência = a seção não aceita o tipo: nada a aplicar.
+      if (next !== current) done(next);
       return;
     }
-    const next = insertTarget
-      ? insertBlockInSection(
-          current,
-          insertTarget.sectionId,
-          type,
-          insertTarget.position,
-          () => newId,
-        )
-      : insertBlock(current, type, () => newId).layout;
-    // Mesma referência = a seção não aceita o tipo (ou sumiu): nada a aplicar.
-    if (next === current) return;
-    applyLayout(next);
-    highlightAndScroll(newId);
+
+    // Sem alvo ("Adicionar widget" do cabeçalho): fim da última seção que pode
+    // receber widget (TikTok só com feature_tiktok) e aceita o tipo.
+    const sections = toSections(current);
+    for (let i = sections.length - 1; i >= 0; i--) {
+      if (sections[i].kind === 'tiktok' && !tiktokEnabled) continue;
+      const next = insertBlockInSection(current, sections[i].marker.id, type, undefined, makeId);
+      if (next !== current) {
+        done(next);
+        return;
+      }
+    }
+    // Nenhuma serve (layout vazio, ou só TikTok sem a flag): Geral nova no fim.
+    const markerId = crypto.randomUUID();
+    const withGeneral = addSection(current, 'general', null, [], () => markerId);
+    if (withGeneral === current) {
+      toast.error('Não deu para adicionar o widget. O relatório já está no limite de seções.');
+      return;
+    }
+    const next = insertBlockInSection(withGeneral, markerId, type, undefined, makeId);
+    if (next !== withGeneral) done(next);
   }
 
   // Remover seção com desfazer: a seção e o índice são guardados ANTES de
@@ -134,6 +155,8 @@ export function useBlockEditing(
     const section = sections[index];
     const next = removeSection(current, id);
     if (next === current) return;
+    // O drawer não pode seguir apontando para a seção que saiu.
+    if (insertTarget?.sectionId === id) setInsertTarget(null);
     applyLayout(next);
     toast('Seção removida.', {
       action: {

@@ -53,8 +53,9 @@ const sectioned: ReportLayout = {
   ],
 };
 
+// O nome da seção é anunciado pelo grupo rotulado dentro do <li>.
 const sectionItem = (name: string) =>
-  screen.getByRole('listitem', { name: `Seção ${name}` }) as HTMLElement;
+  screen.getByRole('group', { name: `Seção ${name}` }) as HTMLElement;
 
 describe('LayersPanel: árvore de seções', () => {
   it('é uma seção permanente: aside com as seções e os blocos recuados dentro de cada uma', () => {

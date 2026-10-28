@@ -78,6 +78,16 @@ describe('AddSectionMenu', () => {
 
   it('no limite de seções o gatilho fica desabilitado', () => {
     renderMenu({ existing: Array.from({ length: MAX_SECTIONS }, () => 'general' as const) });
-    expect(screen.getByRole('button', { name: 'Adicionar seção' })).toBeDisabled();
+    const trigger = screen.getByRole('button', { name: 'Adicionar seção' });
+    expect(trigger).toBeDisabled();
+    // O motivo fica visível e ligado ao botão (não só num title).
+    expect(screen.getByText('Limite de 12 seções por relatório')).toBeVisible();
+    expect(trigger).toHaveAccessibleDescription('Limite de 12 seções por relatório');
+    expect(trigger).not.toHaveAttribute('title');
+  });
+
+  it('abaixo do limite, sem a dica de limite', () => {
+    renderMenu({ existing: ['general'] });
+    expect(screen.queryByText(/Limite de/)).not.toBeInTheDocument();
   });
 });

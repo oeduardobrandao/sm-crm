@@ -107,7 +107,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
     handleRemoveBlock,
     handleRemoveSection,
     handleAddSection,
-  } = useBlockEditing(layoutRef, commit);
+  } = useBlockEditing(layoutRef, commit, { tiktokEnabled });
   const drawerSection = insertTarget
     ? (toSections(layout).find((s) => s.marker.id === insertTarget.sectionId) ?? null)
     : null;

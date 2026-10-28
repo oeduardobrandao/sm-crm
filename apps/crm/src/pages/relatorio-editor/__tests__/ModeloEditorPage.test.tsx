@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -164,6 +164,23 @@ describe('ModeloEditorPage', () => {
     fireEvent.click(within(tt).getByRole('button', { name: 'Remover seção' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Remover' }));
     expect(screen.queryByRole('region', { name: 'Seção TikTok' })).not.toBeInTheDocument();
+  });
+
+  it('"Adicionar widget" do cabeçalho, última seção TikTok sem a flag: o widget entra na Geral antes dela', async () => {
+    limits.value = { features: { feature_tiktok: false } };
+    getReportTemplateMock.mockResolvedValue({
+      id: 'tpl-1',
+      name: 'Mensal completo',
+      layout: withTikTok,
+      is_default: true,
+      created_at: '2026-09-01',
+    });
+    renderAt();
+    await screen.findByDisplayValue('Mensal completo');
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar widget' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Divisor de página' }));
+    await waitFor(() => expect(cellIdsIn(region('Geral'))).toHaveLength(2));
+    expect(cellIdsIn(region('TikTok'))).toEqual(['tv']);
   });
 
   it('o drawer da seção TikTok lista os widgets do TikTok', async () => {
