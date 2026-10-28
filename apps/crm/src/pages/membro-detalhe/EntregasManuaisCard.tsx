@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { Badge } from '@/components/ui/badge';
@@ -25,10 +26,10 @@ import { periodoPadrao } from '../financeiro/v2/periodos';
 
 /** '' is an empty entry (null); anything else must be a whole number from 0 up. */
 function parseQuantidade(texto: string): number | null | 'invalida' {
-  const t = texto.trim();
-  if (t === '') return null;
-  if (!/^\d+$/.test(t)) return 'invalida';
-  return Number(t);
+  const limpo = texto.trim();
+  if (limpo === '') return null;
+  if (!/^\d+$/.test(limpo)) return 'invalida';
+  return Number(limpo);
 }
 
 /**
@@ -36,6 +37,7 @@ function parseQuantidade(texto: string): number | null | 'invalida' {
  * the member's cost in the rentabilidade of the chosen period.
  */
 export function EntregasManuaisCard({ membroId }: { membroId: number }) {
+  const { t } = useTranslation('member');
   const qc = useQueryClient();
   const { canSeeFinancials, profile } = useAuth();
   const { atual } = useAcordoAtual(membroId);
@@ -100,10 +102,10 @@ export function EntregasManuaisCard({ membroId }: { membroId: number }) {
       await salvarEntregas(inicio, membroId, itens);
       await qc.invalidateQueries({ queryKey: ['financeiro-v2'] });
       setEdicoes({});
-      toast.success('Entregas salvas.');
+      toast.success(t('entregasManuais.salvas'));
     } catch (e) {
       if (!handleEntitlementMutationError(e, profile?.conta_id ?? null)) {
-        avisarErroFinanceiro(e, 'Erro ao salvar as entregas', qc);
+        avisarErroFinanceiro(e, t('entregasManuais.erroSalvar'), qc);
       }
     } finally {
       setBusy(false);
@@ -114,14 +116,18 @@ export function EntregasManuaisCard({ membroId }: { membroId: number }) {
   const erro = editaveis.isError || rent.isError || salvas.isError;
 
   return (
-    <section className="card" style={{ marginBottom: '1.5rem' }} aria-label="Entregas do período">
-      <h3 style={{ marginBottom: 4 }}>Entregas do período</h3>
+    <section
+      className="card"
+      style={{ marginBottom: '1.5rem' }}
+      aria-label={t('entregasManuais.titulo')}
+    >
+      <h3 style={{ marginBottom: 4 }}>{t('entregasManuais.titulo')}</h3>
       <p className="text-sm text-muted-foreground" style={{ marginBottom: 12 }}>
-        Informe quantas entregas cada cliente recebeu neste período.
+        {t('entregasManuais.descricao')}
       </p>
 
       <div className="flex flex-col gap-2" style={{ marginBottom: 12 }}>
-        <Label htmlFor="entregas-periodo">Período</Label>
+        <Label htmlFor="entregas-periodo">{t('entregasManuais.periodo')}</Label>
         {inicio ? (
           <PeriodoSelect
             id="entregas-periodo"
@@ -140,10 +146,10 @@ export function EntregasManuaisCard({ membroId }: { membroId: number }) {
         <Skeleton className="h-24 w-full" />
       ) : erro ? (
         <p role="alert" className="text-sm text-destructive">
-          Não foi possível carregar as entregas deste período.
+          {t('entregasManuais.erroCarregar')}
         </p>
       ) : linhas.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Nenhum cliente atribuído neste período.</p>
+        <p className="text-sm text-muted-foreground">{t('shared.nenhumClienteAtribuido')}</p>
       ) : (
         <>
           <ul className="flex flex-col gap-2">
@@ -159,7 +165,7 @@ export function EntregasManuaisCard({ membroId }: { membroId: number }) {
                     <span className="truncate text-sm">{cliente.nome}</span>
                     {pausado && (
                       <Badge variant="neutral" size="sm">
-                        Pausado
+                        {t('status.pausado')}
                       </Badge>
                     )}
                   </span>
@@ -169,7 +175,7 @@ export function EntregasManuaisCard({ membroId }: { membroId: number }) {
                     min={0}
                     step={1}
                     className="w-24"
-                    aria-label={`Entregas de ${cliente.nome}`}
+                    aria-label={t('entregasManuais.entregasDe', { nome: cliente.nome })}
                     aria-invalid={q === 'invalida' ? true : undefined}
                     value={texto}
                     onChange={(e) =>
@@ -182,7 +188,7 @@ export function EntregasManuaisCard({ membroId }: { membroId: number }) {
                       ? formatFinancialBRL(q * unitario, canSeeFinancials)
                       : pausado
                         ? '-'
-                        : 'A informar'}
+                        : t('entregasManuais.aInformar')}
                   </span>
                 </li>
               );
@@ -190,7 +196,7 @@ export function EntregasManuaisCard({ membroId }: { membroId: number }) {
           </ul>
           <div style={{ marginTop: 12 }}>
             <Button onClick={salvar} disabled={busy || !dirty || temInvalida}>
-              {busy && <Spinner size="sm" />} Salvar entregas
+              {busy && <Spinner size="sm" />} {t('entregasManuais.salvar')}
             </Button>
           </div>
         </>

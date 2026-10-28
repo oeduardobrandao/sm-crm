@@ -1,1 +1,130 @@
-{}
+{
+  "shared": {
+    "editarAcordo": "Editar acordo",
+    "cadastrarAcordo": "Cadastrar acordo",
+    "semFuncao": "Sem função",
+    "nenhumArquivo": "Nenhum arquivo",
+    "nenhumClienteAtribuido": "Nenhum cliente atribuído neste período.",
+    "funcao": "Função",
+    "valorPorEntrega": "Valor por entrega",
+    "diaPagamento": "Dia de pagamento",
+    "membroNaoEncontrado": "Membro não encontrado.",
+    "informacoes": "Informações",
+    "transacoes": "Transações",
+    "transacoesRestritas": "A visualização de transações financeiras está disponível apenas para quem tem acesso financeiro liberado.",
+    "custoMensal": "Custo mensal",
+    "totalPago": "Total pago",
+    "pendente": "Pendente",
+    "cargo": "Cargo",
+    "tipo": "Tipo",
+    "tipos": {
+      "clt": "CLT",
+      "freelancer_mensal": "Freelancer Mensal",
+      "freelancer_demanda": "Freelancer Demanda"
+    }
+  },
+  "acordoHelpers": {
+    "periodo": {
+      "dia_util": "dia útil",
+      "semana": "semana",
+      "mes": "mês"
+    },
+    "modelo": {
+      "mensal_meta": "Mensal com meta",
+      "mensal_limite": "Mensal com limite",
+      "por_entrega": "Por entrega"
+    },
+    "modeloDescricao": {
+      "mensal_meta": "Valor fixo por mês e uma meta de entregas.",
+      "mensal_limite": "Valor fixo por mês para atender até um número de clientes.",
+      "por_entrega": "Recebe por cada entrega feita."
+    },
+    "contrato": "Contrato",
+    "contratoComExtensao": "Contrato.{{ext}}"
+  },
+  "acordoCard": {
+    "entrega_one": "entrega",
+    "entrega_other": "entregas",
+    "metaMensal": "{{quantidade}} {{unidade}} por mês",
+    "metaPeriodo": "{{quantidade}} {{unidade}} por {{periodo}}, cerca de {{mensal}} por mês",
+    "vigenciaIntervalo": "{{inicio}} a {{fim}}",
+    "vigenciaDesde": "Desde {{data}}",
+    "vigenciaAte": "Até {{data}}",
+    "semPrazo": "Sem prazo definido",
+    "popupBloqueado": "Seu navegador bloqueou a nova aba. Libere pop-ups para abrir o contrato.",
+    "erroAbrirContrato": "Não foi possível abrir o contrato.",
+    "ariaLabel": "Acordo de trabalho",
+    "titulo": "Acordo",
+    "erroCarregar": "Não foi possível carregar o acordo.",
+    "semAcordo": "Sem acordo cadastrado.",
+    "modelo": "Modelo",
+    "valor": "Valor",
+    "porMes": " por mês",
+    "naoDefinido": "Não definido",
+    "meta": "Meta",
+    "limite": "Limite",
+    "limiteClientes_one": "até {{count}} clientes",
+    "limiteClientes_other": "até {{count}} clientes",
+    "vigencia": "Vigência",
+    "contrato": "Contrato",
+    "abrir": "Abrir",
+    "clientesAtendidos": "Clientes atendidos",
+    "historico": "Histórico"
+  },
+  "acordoDialog": {
+    "erroPeriodo": "Escolha o período.",
+    "erroValor": "Informe um valor maior ou igual a zero.",
+    "erroDia": "Dia deve ser entre 1 e 31",
+    "erroMeta": "Informe uma meta maior que zero.",
+    "erroLimite": "Informe um limite maior que zero.",
+    "erroVigencia": "O fim não pode ser antes do início.",
+    "erroEnviarArquivo": "Não foi possível enviar o arquivo. Tente novamente.",
+    "salvo": "Acordo salvo.",
+    "erroSalvar": "Erro ao salvar o acordo",
+    "descricao": "Defina como essa pessoa é paga e a partir de quando isso vale.",
+    "comoPago": "Como essa pessoa é paga?",
+    "valorMensal": "Valor mensal",
+    "quantidadeMeta": "Quantidade da meta",
+    "unidade": "Unidade",
+    "periodoMeta": "Período da meta",
+    "cercaPorMes": "Cerca de {{mensal}} por mês",
+    "limiteClientes": "Limite de clientes",
+    "inicioVigencia": "Início da vigência",
+    "fimVigencia": "Fim da vigência",
+    "contratoAssinado": "Contrato assinado",
+    "trocarArquivo": "Trocar arquivo",
+    "enviarArquivo": "Enviar arquivo",
+    "arquivoContrato": "Arquivo do contrato",
+    "enviando": "Enviando arquivo...",
+    "formatos": "PDF, PNG ou JPG de até 10 MB.",
+    "valeAPartirDe": "Vale a partir de",
+    "valeAPartirDeAjuda": "O acordo vale desde o início do período escolhido."
+  },
+  "entregasManuais": {
+    "salvas": "Entregas salvas.",
+    "erroSalvar": "Erro ao salvar as entregas",
+    "titulo": "Entregas do período",
+    "descricao": "Informe quantas entregas cada cliente recebeu neste período.",
+    "periodo": "Período",
+    "erroCarregar": "Não foi possível carregar as entregas deste período.",
+    "entregasDe": "Entregas de {{nome}}",
+    "aInformar": "A informar",
+    "salvar": "Salvar entregas"
+  },
+  "membroDetalhe": {
+    "diaPagamento": "Dia de Pagamento:",
+    "custoMensal": "Custo Mensal:",
+    "cargo": "Cargo:",
+    "tipo": "Tipo:",
+    "data": "Data",
+    "descricao": "Descrição",
+    "categoria": "Categoria",
+    "valor": "Valor",
+    "status": "Status"
+  },
+  "membroDetalhePhone": {
+    "voltarEquipe": "Voltar para Equipe",
+    "maisAcoes": "Mais ações do membro",
+    "nenhumaTransacao": "Nenhuma transação"
+  }
+}

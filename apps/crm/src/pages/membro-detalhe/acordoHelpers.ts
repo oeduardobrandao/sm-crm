@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { getIntlLocale, i18n } from '@mesaas/i18n';
 import {
   getAcordoVersoes,
   getRentabilidade,
@@ -10,23 +11,18 @@ import {
 
 export const UNIDADES = ['arte', 'vídeo', 'gravação', 'post'] as const;
 
-export const PERIODO_OPCOES: { value: MetaPeriodo; label: string }[] = [
-  { value: 'dia_util', label: 'dia útil' },
-  { value: 'semana', label: 'semana' },
-  { value: 'mes', label: 'mês' },
-];
+/** Meta periods in the order the select lists them. */
+export const PERIODOS: MetaPeriodo[] = ['dia_util', 'semana', 'mes'];
 
-export const MODELO_LABEL: Record<ModeloAcordo, string> = {
-  mensal_meta: 'Mensal com meta',
-  mensal_limite: 'Mensal com limite',
-  por_entrega: 'Por entrega',
-};
+/** Display label of an agreement model, resolved in the current UI language. */
+export function modeloLabel(modelo: ModeloAcordo): string {
+  return i18n.t(`member:acordoHelpers.modelo.${modelo}`);
+}
 
-export const MODELO_DESCRICAO: Record<ModeloAcordo, string> = {
-  mensal_meta: 'Valor fixo por mês e uma meta de entregas.',
-  mensal_limite: 'Valor fixo por mês para atender até um número de clientes.',
-  por_entrega: 'Recebe por cada entrega feita.',
-};
+/** One-line explanation of an agreement model, resolved in the current UI language. */
+export function modeloDescricao(modelo: ModeloAcordo): string {
+  return i18n.t(`member:acordoHelpers.modeloDescricao.${modelo}`);
+}
 
 const DIAS_UTEIS_NO_MES = 22;
 const SEMANAS_NO_MES = 4.3;
@@ -42,23 +38,45 @@ export function metaPorMes(quantidade: number, periodo: MetaPeriodo): number {
 export { unidadeComNumero } from '../financeiro/v2/format';
 
 export function periodoLabel(periodo: MetaPeriodo): string {
-  return PERIODO_OPCOES.find((p) => p.value === periodo)?.label ?? periodo;
+  return PERIODOS.includes(periodo) ? i18n.t(`member:acordoHelpers.periodo.${periodo}`) : periodo;
 }
 
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+const MONTHS_EN = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
 
-/** '2026-10-01' -> 'out 2026'; a start that is not the 1st keeps its day: '15 out 2026'. */
+/**
+ * '2026-10-01' -> 'out 2026' ('Oct 2026' in en); a start that is not the 1st keeps its
+ * day: '15 out 2026' ('Oct 15, 2026' in en).
+ */
 export function rotuloValeDesde(iso: string): string {
   const [ano, mes, dia] = iso.split('-').map((p) => parseInt(p, 10));
   if (!ano || !mes || !dia) return iso;
-  const base = `${MESES[mes - 1] ?? ''} ${ano}`;
-  return dia === 1 ? base : `${dia} ${base}`;
+  if (getIntlLocale() === 'pt-BR') {
+    const base = `${MESES[mes - 1] ?? ''} ${ano}`;
+    return dia === 1 ? base : `${dia} ${base}`;
+  }
+  const mesEn = MONTHS_EN[mes - 1] ?? '';
+  return dia === 1 ? `${mesEn} ${ano}` : `${mesEn} ${dia}, ${ano}`;
 }
 
-/** '2026-10-05' -> '05/10/2026'. */
+/** '2026-10-05' -> '05/10/2026' ('10/05/2026' in en). */
 export function dataCurta(iso: string): string {
   const [ano, mes, dia] = iso.split('-');
-  return ano && mes && dia ? `${dia}/${mes}/${ano}` : iso;
+  if (!(ano && mes && dia)) return iso;
+  return getIntlLocale() === 'pt-BR' ? `${dia}/${mes}/${ano}` : `${mes}/${dia}/${ano}`;
 }
 
 /** The version in force at `inicio`: the greatest `vale_desde` not after it. */
@@ -99,5 +117,7 @@ export function useAcordoAtual(membroId: number) {
 /** Readable name for a stored contract path (the object name is a uuid). */
 export function contratoRotulo(path: string): string {
   const ext = /\.([a-z0-9]{2,4})$/i.exec(path)?.[1]?.toLowerCase();
-  return ext ? `Contrato.${ext}` : 'Contrato';
+  return ext
+    ? i18n.t('member:acordoHelpers.contratoComExtensao', { ext })
+    : i18n.t('member:acordoHelpers.contrato');
 }
