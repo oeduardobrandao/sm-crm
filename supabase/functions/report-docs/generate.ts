@@ -6,15 +6,16 @@ import { type ThumbnailStorage } from "../_shared/instagram-thumbnail-cache.ts";
 import { monthWindow } from "../_shared/report-docs/month-window.ts";
 import { buildDefaultLayout, NEXT_STEPS_TITLE } from "../_shared/report-docs/default-layout.ts";
 import {
-  addMissingPlatformSections, dropUnselectedPlatformBlocks, narrativePlatforms,
+  narrativePlatforms, selectPlatformSections, showAllPlatformHeadings,
 } from "../_shared/report-docs/platform-filter.ts";
+import { fromSections, toSections } from "../_shared/report-docs/sections.ts";
 import {
   aiGoalsDoc, aiRecommendationsDoc, aiSummaryDoc, fallbackSummaryParagraphs,
   fillAiBlocks, textDoc,
 } from "../_shared/report-docs/tiptap-doc.ts";
 import { prefixTikTokGoalMetrics, snapshotToReportData } from "../_shared/report-docs/ai-input.ts";
 import {
-  blockPlatform, normalizeCoverSize, sanitizeLayoutForTemplate, validateLayout, type ReportLayout,
+  normalizeCoverSize, sanitizeLayoutForTemplate, validateLayout, type ReportLayout,
 } from "../_shared/report-docs/layout.ts";
 import type { ReportPlatform } from "./client-id.ts";
 import { GenerateError } from "./errors.ts";
@@ -152,48 +153,39 @@ export async function generateReportDocument(
   const connected: ReportPlatform[] = [];
   if (igAccountId) connected.push("instagram");
   if (tiktokAccountId) connected.push("tiktok");
-  // A escolha molda o layout (seção por plataforma no padrão; no template, filtro + seção das
-  // plataformas que ele não cobre); os dados de toda rede conectada já estão no snapshot.
+  // A escolha molda o layout (seção por plataforma no padrão; no template, as seções escolhidas
+  // + a seção das plataformas que ele não cobre); os dados de toda rede conectada já estão no
+  // snapshot.
   const selectedPlatforms: ReportPlatform[] = platforms ?? connected;
   const wantsAi = cliente.include_ai_analysis !== false;
 
   // Layout montado ANTES da IA: a narrativa cobre as plataformas que o layout final mostra. No
   // padrão do sistema, "Próximos passos" nasce quando a IA vai rodar e sai abaixo se ela não
-  // entregar conteúdo (sem título órfão).
+  // entregar conteúdo (sem seção vazia). Os dois caminhos gravam o layout canônico (seções).
   const aiWillRun = wantsAi && !!deps.geminiKey;
-  // Só modelo com algum bloco de plataforma ganha a seção que falta: um modelo neutro (capa,
-  // resumo, texto, imagem) segue exatamente como antes do TikTok.
-  const templateHasPlatformBlocks = !!templateLayout?.blocks.some((b) => blockPlatform(b.type) !== null);
-  const filteredTemplate = templateLayout
-    ? dropUnselectedPlatformBlocks(templateLayout, selectedPlatforms)
-    : null;
-  const baseLayout = filteredTemplate
-    ? templateHasPlatformBlocks
-      ? addMissingPlatformSections(
-        filteredTemplate,
-        selectedPlatforms,
-        { instagram: snapshot.instagram_connected !== false, tiktok: !!snapshot.tiktok },
-        {
-          hasAudience: snapshot.audience !== null,
-          hasBestTimes: snapshot.best_times.length > 0,
-          hasTags: snapshot.tags_performance.length > 0,
-          hasTikTokBestTimes: (snapshot.tiktok?.best_times.length ?? 0) > 0,
-        },
-        {
-          onCapSkip: (platform) =>
-            console.warn(
-              `[report-docs] template ${templateRowId} sem espaço para a seção ${platform}; seção não acrescentada`,
-            ),
-        },
-      )
-      : filteredTemplate
+  const sectionOpts = {
+    hasAudience: snapshot.audience !== null,
+    hasBestTimes: snapshot.best_times.length > 0,
+    hasTags: snapshot.tags_performance.length > 0,
+    hasTikTokBestTimes: (snapshot.tiktok?.best_times.length ?? 0) > 0,
+  };
+  // Modelo do workspace (spec 2026-10-28-report-platform-sections §Generation): seções das
+  // plataformas desmarcadas (ou sem dados) saem inteiras; só um modelo com alguma seção de
+  // plataforma ganha a seção padrão da que falta. Um modelo neutro (capa, resumo, texto,
+  // imagem) só é seccionado. Com duas seções de plataforma, os dois títulos aparecem.
+  const baseLayout = templateLayout
+    ? showAllPlatformHeadings(selectPlatformSections(templateLayout, selectedPlatforms, {
+      hasData: (p) => p === "instagram" ? snapshot.instagram_connected !== false : !!snapshot.tiktok,
+      sectionOpts,
+      onCapSkip: (platform) =>
+        console.warn(
+          `[report-docs] template ${templateRowId} sem espaço para a seção ${platform}; seção não acrescentada`,
+        ),
+    }))
     : buildDefaultLayout({
       hasAi: aiWillRun,
-      hasAudience: snapshot.audience !== null,
-      hasBestTimes: snapshot.best_times.length > 0,
-      hasTags: snapshot.tags_performance.length > 0,
+      ...sectionOpts,
       platforms: selectedPlatforms,
-      hasTikTokBestTimes: (snapshot.tiktok?.best_times.length ?? 0) > 0,
     });
   const narrative = narrativePlatforms(baseLayout, selectedPlatforms);
   const narrativeInstagram = narrative.includes("instagram") && snapshot.instagram_connected !== false;
@@ -265,15 +257,15 @@ export async function generateReportDocument(
   }
 
   // Sem conteúdo de IA (falha, timeout ou IA desligada), fillAiBlocks remove os blocos de IA; no
-  // padrão do sistema o título "Próximos passos" sai junto, para não sobrar órfão. Modelo do
-  // workspace mantém os títulos como o usuário salvou.
+  // padrão do sistema a seção Geral "Próximos passos" sai inteira (marcador e título), para não
+  // sobrar seção vazia. Modelo do workspace mantém as seções como o usuário salvou.
   const finalBase = !templateLayout && recsDoc === null
-    ? {
-      ...baseLayout,
-      blocks: baseLayout.blocks.filter(
-        (b) => !(b.type === "section_header" && b.config?.title === NEXT_STEPS_TITLE),
+    ? fromSections(
+      toSections(baseLayout).filter(
+        (sec) => !(sec.kind === "general" && sec.marker.config?.title === NEXT_STEPS_TITLE),
       ),
-    }
+      baseLayout,
+    )
     : baseLayout;
   const layout = fillAiBlocks(finalBase, {
     summary: summaryDoc, recommendations: recsDoc, goals: goalsDoc,

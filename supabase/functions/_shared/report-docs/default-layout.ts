@@ -1,9 +1,12 @@
 // Layout padrão do sistema: reproduz a ordem do relatório A4 atual (spec §7).
 // Quem não editar nada recebe um relatório equivalente ao de hoje.
-// Plataformas (spec 2026-10-28 §B3): uma seção por plataforma escolhida, o Instagram na ordem
-// de sempre e o TikTok depois dele, antes de "Próximos passos".
+// Seções (spec 2026-10-28-report-platform-sections §Generation): Geral com capa e resumo, uma
+// seção por plataforma escolhida (Instagram, depois TikTok) com o título da plataforma visível,
+// e a Geral "Próximos passos" quando há IA. Sai sempre na forma canônica.
+// TS PURO: importado pela edge function (Deno) e pelo CRM (Vite/tsc).
 import type { BlockSize, BlockType, ReportBlock, ReportLayout } from "./layout.ts";
 import { LAYOUT_VERSION } from "./layout.ts";
+import { makeSectionMarker } from "./sections.ts";
 
 export type DefaultLayoutPlatform = "instagram" | "tiktok";
 
@@ -33,8 +36,9 @@ function blockAdder(blocks: ReportBlock[], makeId: () => string): AddBlock {
   };
 }
 
-/** Blocos da seção padrão de uma plataforma, com o título dela: os mesmos que o layout padrão
- * põe. O generate os acrescenta a um modelo do workspace que não cobre a plataforma. */
+/** Blocos de conteúdo da seção padrão de uma plataforma (sem o marcador `section`): os mesmos
+ * que o layout padrão põe sob o marcador. O generate os acrescenta a um modelo do workspace que
+ * não cobre a plataforma; o editor os usa em "Adicionar seção". */
 export function platformSectionBlocks(
   platform: DefaultLayoutPlatform,
   opts: PlatformSectionOpts,
@@ -53,14 +57,25 @@ export function buildDefaultLayout(opts: DefaultLayoutOpts): ReportLayout {
   const add = blockAdder(blocks, makeId);
 
   const platforms = opts.platforms ?? ["instagram"];
+  // Marcador antes do conteúdo, ids do mesmo makeId na ordem do documento.
+  const section = (kind: "general" | DefaultLayoutPlatform, title?: string) =>
+    blocks.push(makeSectionMarker(kind, title === undefined ? { id: makeId() } : { id: makeId(), title }));
 
+  section("general");
   add("cover", "full");
   add("ai_summary", "full");
 
-  if (platforms.includes("instagram")) addInstagramSection(add, opts);
-  if (platforms.includes("tiktok")) addTikTokSection(add, opts);
+  if (platforms.includes("instagram")) {
+    section("instagram");
+    addInstagramSection(add, opts);
+  }
+  if (platforms.includes("tiktok")) {
+    section("tiktok");
+    addTikTokSection(add, opts);
+  }
 
   if (opts.hasAi) {
+    section("general", NEXT_STEPS_TITLE);
     add("section_header", "full", { title: NEXT_STEPS_TITLE });
     add("ai_recommendations", "full");
     add("ai_goals", "full");
@@ -71,8 +86,8 @@ export function buildDefaultLayout(opts: DefaultLayoutOpts): ReportLayout {
 
 type AddBlock = (type: BlockType, size: BlockSize, config?: Record<string, unknown>) => void;
 
+// Sem section_header "TikTok": o título da seção já diz (senão o PDF imprime "TikTok" duas vezes).
 function addTikTokSection(add: AddBlock, opts: PlatformSectionOpts): void {
-  add("section_header", "full", { title: "TikTok" });
   add("tiktok_kpi_followers_gained", "third");
   add("tiktok_kpi_followers_total", "third");
   add("tiktok_kpi_engagement_rate", "third");

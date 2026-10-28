@@ -1,8 +1,24 @@
 import { assert, assertEquals, assertExists } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { FakeTime } from "https://deno.land/std@0.208.0/testing/time.ts";
 import { GenerateError, generateReportDocument, metricPriorityGuidance } from "./generate.ts";
-import { buildDefaultLayout } from "../_shared/report-docs/default-layout.ts";
-import { sanitizeLayoutForTemplate } from "../_shared/report-docs/layout.ts";
+import { buildDefaultLayout, NEXT_STEPS_TITLE } from "../_shared/report-docs/default-layout.ts";
+import { type ReportLayout, sanitizeLayoutForTemplate, validateLayout } from "../_shared/report-docs/layout.ts";
+import { sectionizeLayout, toSections } from "../_shared/report-docs/sections.ts";
+
+// Todo layout que a geração grava é canônico (spec 2026-10-28-report-platform-sections
+// §Generation): valida e já está na forma que sectionizeLayout devolveria. O fake db confere
+// isso em todo insert, então cada teste de geração abaixo também cobre a regra.
+function assertCanonical(layout: unknown): void {
+  const v = validateLayout(layout);
+  assert(v.ok, v.ok ? "" : `layout gerado inválido: ${v.error}`);
+  assert(sectionizeLayout(v.layout) === v.layout, "layout gerado fora da forma canônica");
+  // Só um modelo vazio gera um layout vazio; qualquer outro sai seccionado.
+  const blocks = (layout as ReportLayout).blocks;
+  assert(blocks.length === 0 || blocks[0].type === "section", "layout gerado sem seções");
+}
+const kindsOf = (layout: unknown) => toSections(layout as ReportLayout).map((s) => s.kind);
+const contentIds = (blocks: { id: string; type: string }[]) =>
+  blocks.filter((b) => b.type !== "section").map((b) => b.id);
 
 // Fake db: responde por tabela; grava inserts e chamadas de rpc para asserção.
 // `errors` deixa uma tabela específica resolver { data: null, error } em vez
@@ -40,6 +56,7 @@ function makeDb(
       if (table === "report_documents") {
         return {
           insert: (row: Record<string, unknown>) => {
+            assertCanonical(row.layout);
             inserts.push(row);
             return chain({ id: "doc-1" });
           },
@@ -205,6 +222,54 @@ Deno.test("Gemini trava além do teto de 45s: race resolve com fallback e aborta
     !row.layout.blocks.some((b) => b.config?.title === "Próximos passos"),
     "sem resposta a tempo, o layout deve cair no fallback sem seção órfã de IA",
   );
+  // A seção Geral "Próximos passos" sai inteira (marcador e título): nenhuma Geral vazia sobra.
+  assertEquals(kindsOf(row.layout), ["general", "instagram"]);
+  for (const sec of toSections(row.layout as ReportLayout)) {
+    if (sec.kind === "general") assert(sec.blocks.length > 0, "seção Geral vazia no layout gerado");
+  }
+});
+
+Deno.test("workspace template with AI failure keeps its sections as saved, even an empty Próximos passos", async () => {
+  // Gemini responde lixo: a IA falha e fillAiBlocks tira os blocos de IA. Num modelo do
+  // workspace a seção fica como o usuário salvou (ele apaga no editor, se quiser).
+  const tplLayout = {
+    version: 1,
+    blocks: [
+      { id: "g", type: "section", size: "full" },
+      { id: "c1", type: "cover", size: "full" },
+      { id: "s1", type: "ai_summary", size: "full" },
+      { id: "ig", type: "section", size: "full", config: { platform: "instagram" } },
+      { id: "k1", type: "kpi_reach", size: "third" },
+      { id: "nx", type: "section", size: "full", config: { title: "Próximos passos" } },
+      { id: "r1", type: "ai_recommendations", size: "full" },
+      { id: "g1", type: "ai_goals", size: "full" },
+    ],
+  };
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: true },
+    instagram_accounts: { id: "ig-1", username: "x" },
+    report_templates: { id: "t1", conta_id: "c", layout: tplLayout },
+    workspaces: { name: "W", logo_url: null, brand_color: "#111111", report_splash_url: null },
+    instagram_posts: [],
+    instagram_follower_history: [],
+  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((input: unknown, init?: RequestInit) => {
+    if (typeof input === "string" && input.includes("generativelanguage.googleapis.com")) {
+      return Promise.resolve(new Response("not json", { status: 500 }));
+    }
+    return originalFetch(input as Parameters<typeof fetch>[0], init);
+  }) as typeof fetch;
+  try {
+    await generateReportDocument(
+      db, { ...deps, geminiKey: "fake-key" }, "c", 1, "2026-07", "b3b2a6a0-1111-4222-8333-444455556666",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  const row = db.inserts[0] as LayoutRow;
+  assertEquals(row.layout.blocks.map((b) => b.id), ["g", "c1", "s1", "ig", "k1", "nx"]);
+  assertEquals(row.layout.blocks.at(-1)?.config, { title: "Próximos passos" });
 });
 
 Deno.test("erro na query obrigatória de posts do mês: rejeita e não insere nada", async () => {
@@ -871,8 +936,11 @@ Deno.test("generate TikTok-only: default layout is the TikTok section and the su
   await generateReportDocument(db, deps, "c", 1, "2026-07", null);
   const row = db.inserts[0] as LayoutRow;
   const types = row.layout.blocks.map((b) => b.type);
-  assertEquals(types.slice(0, 3), ["cover", "ai_summary", "section_header"]);
-  assertEquals(row.layout.blocks[2].config?.title, "TikTok");
+  assertEquals(types.slice(0, 4), ["section", "cover", "ai_summary", "section"]);
+  assertEquals(row.layout.blocks[3].config, { platform: "tiktok" });
+  assertEquals(kindsOf(row.layout), ["general", "tiktok"]);
+  // O título da seção diz "TikTok": nada de section_header repetindo.
+  assert(!row.layout.blocks.some((b) => b.type === "section_header" && b.config?.title === "TikTok"));
   assert(types.includes("tiktok_top_posts"));
   assert(!types.some((t) => t.startsWith("kpi_") || t === "top_posts" || t === "chart_followers"));
   const summary = textOf(row.layout.blocks.find((b) => b.type === "ai_summary")?.text);
@@ -886,7 +954,9 @@ Deno.test("generate both connected, platforms omitted: Instagram then TikTok sec
   const row = db.inserts[0] as LayoutRow;
   const titles = row.layout.blocks.filter((b) => b.type === "section_header").map((b) => b.config?.title);
   assertEquals(titles[0], "Métricas principais");
-  assertEquals(titles.at(-1), "TikTok");
+  assertEquals(kindsOf(row.layout), ["general", "instagram", "tiktok"]);
+  // Padrão do sistema: títulos de plataforma visíveis.
+  assert(!row.layout.blocks.some((b) => b.config?.hideHeader !== undefined));
   const summary = textOf(row.layout.blocks.find((b) => b.type === "ai_summary")?.text);
   assert(summary.includes("No TikTok:"), summary);
 });
@@ -897,6 +967,7 @@ Deno.test("generate both connected, platforms ['instagram']: no TikTok blocks bu
   const row = db.inserts[0] as LayoutRow & InsertedRow;
   assert(!row.layout.blocks.some((b) => b.type.startsWith("tiktok_")));
   assert(!row.layout.blocks.some((b) => b.config?.title === "TikTok"));
+  assertEquals(kindsOf(row.layout), ["general", "instagram"]);
   // A escolha molda só o layout (e a narrativa): o snapshot tem o TikTok.
   assertEquals(row.data_snapshot.tiktok?.account.handle, "dra.tt");
   assertEquals(row.tiktok_account_id, "tt-1");
@@ -904,7 +975,7 @@ Deno.test("generate both connected, platforms ['instagram']: no TikTok blocks bu
   assert(!summary.includes("TikTok"), summary);
 });
 
-Deno.test("generate with a workspace template drops the blocks of unselected platforms only", async () => {
+Deno.test("generate with a workspace template drops the sections of unselected platforms whole", async () => {
   const tplLayout = {
     version: 1,
     accent: "#9f1239",
@@ -919,7 +990,10 @@ Deno.test("generate with a workspace template drops the blocks of unselected pla
   const db = makeDb({ ...BOTH_ROWS, report_templates: { id: "t1", conta_id: "c", layout: tplLayout } });
   await generateReportDocument(db, deps, "c", 1, "2026-07", "b3b2a6a0-1111-4222-8333-444455556666", ["tiktok"]);
   const row = db.inserts[0] as LayoutRow & { layout: { accent?: string } };
-  assertEquals(row.layout.blocks.map((b) => b.id), ["c1", "h1", "t1", "t2"]);
+  // Legado: "Números" abre o trecho que vira a seção Instagram (a seção TikTok começa no
+  // primeiro bloco TikTok), então sai junto com ela.
+  assertEquals(kindsOf(row.layout), ["general", "tiktok"]);
+  assertEquals(contentIds(row.layout.blocks), ["c1", "t1", "t2"]);
   assertEquals(row.layout.accent, "#9f1239");
   assertEquals(row.layout.blocks.find((b) => b.id === "t2")?.config, { count: 3 });
 });
@@ -1009,51 +1083,63 @@ Deno.test("generate both connected, platforms ['instagram'] with AI: the prompt 
 
 // ─── Fix round 1: modelos ganham a seção que falta, narrativa segue o layout ──────────
 
-// Modelo padrão do workspace como o CRM semeia (buildSystemDefaultLayout): só Instagram.
+// Modelo padrão do workspace como o CRM semeia agora (buildSystemDefaultLayout): seccionado,
+// só Instagram.
 const SEEDED_TEMPLATE = sanitizeLayoutForTemplate(
   buildDefaultLayout({ hasAi: true, hasAudience: true, hasBestTimes: true, hasTags: true }),
 );
+// O mesmo modelo como os workspaces o têm salvo hoje (legado, sem seções).
+const LEGACY_SEEDED_TEMPLATE: ReportLayout = (JSON.parse(
+  await Deno.readTextFile(new URL("../../tests/fixtures/report_section_layouts.json", import.meta.url)),
+) as { name: string; layout: ReportLayout }[]).find((f) => f.name === "legacy: default Instagram layout")!.layout;
 const IG_HEADERS = ["Métricas principais", "Crescimento e formatos", "Publicações", "Audiência"];
 const headerTitles = (row: LayoutRow) =>
   row.layout.blocks.filter((b) => b.type === "section_header").map((b) => b.config?.title);
 
-Deno.test("seeded Instagram default template + TikTok-only client: TikTok section, no orphan Instagram headers", async () => {
-  const db = makeDb({
-    clientes: { id: 1, conta_id: "c", nome: "Cliente TT", especialidade: null, include_ai_analysis: false },
-    instagram_accounts: null,
-    tiktok_accounts: TT_ACCOUNT,
-    tiktok_posts: [TT_VIDEO],
-    workspaces: WORKSPACE,
-    report_templates: { id: "tpl", conta_id: "c", layout: SEEDED_TEMPLATE },
+for (const [label, template] of [["seeded", SEEDED_TEMPLATE], ["legacy seeded", LEGACY_SEEDED_TEMPLATE]] as const) {
+  Deno.test(`${label} Instagram default template + TikTok-only client: TikTok section in the Instagram slot, no orphan Instagram headers`, async () => {
+    const db = makeDb({
+      clientes: { id: 1, conta_id: "c", nome: "Cliente TT", especialidade: null, include_ai_analysis: false },
+      instagram_accounts: null,
+      tiktok_accounts: TT_ACCOUNT,
+      tiktok_posts: [TT_VIDEO],
+      workspaces: WORKSPACE,
+      report_templates: { id: "tpl", conta_id: "c", layout: template },
+    });
+    await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+    const row = db.inserts[0] as LayoutRow;
+    const titles = headerTitles(row);
+    for (const t of IG_HEADERS) assert(!titles.includes(t), t);
+    // Modelo do workspace: "Próximos passos" fica como salvo (aqui, sem IA, só o título).
+    assertEquals(kindsOf(row.layout), ["general", "tiktok", "general"]);
+    assert(row.layout.blocks.some((b) => b.type === "tiktok_top_posts"));
+    assert(!row.layout.blocks.some((b) => b.type.startsWith("kpi_") || b.type === "top_posts"));
   });
-  await generateReportDocument(db, deps, "c", 1, "2026-07", null);
-  const row = db.inserts[0] as LayoutRow;
-  const titles = headerTitles(row);
-  assert(titles.includes("TikTok"), String(titles));
-  for (const t of IG_HEADERS) assert(!titles.includes(t), t);
-  assert(row.layout.blocks.some((b) => b.type === "tiktok_top_posts"));
-  assert(!row.layout.blocks.some((b) => b.type.startsWith("kpi_") || b.type === "top_posts"));
-});
 
-Deno.test("seeded Instagram template + both platforms: Instagram kept, TikTok before Próximos passos", async () => {
-  const { row } = await generateCapturingPrompt(
-    {
-      ...BOTH_ROWS,
-      clientes: { ...BOTH_ROWS.clientes, include_ai_analysis: true },
-      report_templates: { id: "tpl", conta_id: "c", layout: SEEDED_TEMPLATE },
-    },
-    ["instagram", "tiktok"],
-  );
-  const titles = headerTitles(row);
-  for (const t of IG_HEADERS) assert(titles.includes(t), t);
-  assert(titles.indexOf("TikTok") > titles.indexOf("Audiência"));
-  assertEquals(titles.at(-1), "Próximos passos");
-  assertEquals(titles.at(-2), "TikTok");
-  // Os blocos Instagram do modelo ficam com os ids do modelo.
-  for (const b of SEEDED_TEMPLATE.blocks.filter((x) => x.type.startsWith("kpi_"))) {
-    assert(row.layout.blocks.some((r) => r.id === b.id), b.id);
-  }
-});
+  Deno.test(`${label} Instagram template + both platforms: Instagram kept, TikTok before Próximos passos, both headings shown`, async () => {
+    const { row } = await generateCapturingPrompt(
+      {
+        ...BOTH_ROWS,
+        clientes: { ...BOTH_ROWS.clientes, include_ai_analysis: true },
+        report_templates: { id: "tpl", conta_id: "c", layout: template },
+      },
+      ["instagram", "tiktok"],
+    );
+    const titles = headerTitles(row);
+    for (const t of IG_HEADERS) assert(titles.includes(t), t);
+    assertEquals(titles.at(-1), "Próximos passos");
+    const sections = toSections(row.layout as ReportLayout);
+    assertEquals(sections.map((x) => x.kind), ["general", "instagram", "tiktok", "general"]);
+    assertEquals(sections[3].marker.config?.title ?? sections[3].blocks[0].config?.title, NEXT_STEPS_TITLE);
+    // Duas plataformas: os dois títulos aparecem (o legado convertido tinha hideHeader).
+    assertEquals(sections[1].marker.config, { platform: "instagram" });
+    assertEquals(sections[2].marker.config, { platform: "tiktok" });
+    // Os blocos Instagram do modelo ficam com os ids do modelo.
+    for (const b of template.blocks.filter((x) => x.type.startsWith("kpi_"))) {
+      assert(row.layout.blocks.some((r) => r.id === b.id), b.id);
+    }
+  });
+}
 
 Deno.test("narrative follows the final layout: a full template that cannot take the TikTok section keeps TikTok out of the prompt", async () => {
   // 200 blocos (o teto): a seção TikTok não cabe, então o layout final é só Instagram e a IA,
@@ -1117,7 +1203,9 @@ Deno.test("neutral workspace template + Instagram-only client: layout is the tem
   });
   await generateReportDocument(db, deps, "c", 1, "2026-07", null);
   const row = db.inserts[0] as LayoutRow & { layout: { accent?: string } };
-  assertEquals(row.layout.blocks.map((b) => b.id), ["c1", "s1", "x1", "i1"]);
+  // Só seccionado: uma Geral com os blocos do modelo, nenhuma seção de plataforma.
+  assertEquals(kindsOf(row.layout), ["general"]);
+  assertEquals(contentIds(row.layout.blocks), ["c1", "s1", "x1", "i1"]);
   assertEquals(row.layout.accent, "#9f1239");
 });
 
