@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { WIDGET_CATALOG, WIDGET_CATEGORIES } from '@mesaas/report-blocks/catalog';
-import type { ReportPlatform } from '@mesaas/report-blocks/platform';
+import { PLATFORM_NAMES, type ReportPlatform } from '@mesaas/report-blocks/platform';
 import type { BlockType, ReportDocSnapshot } from '@mesaas/report-blocks/types';
 import { FALLBACK_WIDGET_ICON, WIDGET_ICONS } from './widgetIcons';
 
 const PLATFORM_ORDER: readonly ReportPlatform[] = ['instagram', 'tiktok'];
-const PLATFORM_NAME: Record<ReportPlatform, string> = { instagram: 'Instagram', tiktok: 'TikTok' };
 
 /** Plataformas que o documento tem para oferecer no drawer: Instagram enquanto
  * não estiver desconectado, TikTok quando o snapshot traz a seção. Nenhuma com
@@ -67,7 +66,7 @@ function PlatformSwitch({
             className="block cursor-pointer rounded-lg px-3 py-1.5 text-center text-sm font-medium transition-colors peer-checked:bg-[var(--card-bg)] peer-checked:text-[var(--text-main)] peer-checked:shadow-sm peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--primary-color)]"
             style={{ color: 'var(--text-muted)' }}
           >
-            {PLATFORM_NAME[p]}
+            {PLATFORM_NAMES[p]}
           </span>
         </label>
       ))}

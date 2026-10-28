@@ -13,6 +13,7 @@ import {
   CAPTION_PREVIEW_MAX, MAX_SNAPSHOT_POSTS, type TikTokReportSnapshot, type TikTokSnapshotTopPost,
 } from "../_shared/report-docs/snapshot.ts";
 import { computeTikTokKpis } from "../_shared/tiktok-analytics/kpis.ts";
+import { isCachedTikTokUrl } from "../_shared/tiktok-thumbnail-cache.ts";
 import {
   loadFollowerHistory, loadTikTokAccount, loadVideosInWindow, type TikTokVideoDetailRow,
 } from "../_shared/tiktok-analytics/queries.ts";
@@ -54,8 +55,10 @@ function toTopPost(v: TikTokVideoDetailRow): TikTokSnapshotTopPost {
     caption_preview: (v.title || v.video_description || "").slice(0, CAPTION_PREVIEW_MAX),
     date: v.posted_at,
     permalink: v.share_url,
-    // cover_image_url já é a cópia re-hospedada no bucket tiktok-posts (nunca a CDN do TikTok).
-    thumbnail_url: v.cover_image_url,
+    // O snapshot é congelado: só a cópia no bucket tiktok-posts serve. Quando o cache falhou na
+    // importação, cover_image_url guarda a URL da CDN do TikTok, que expira; aí vai null
+    // (placeholder), como o Instagram faz, em vez de uma imagem quebrada para sempre.
+    thumbnail_url: isCachedTikTokUrl(v.cover_image_url) ? v.cover_image_url : null,
   };
 }
 

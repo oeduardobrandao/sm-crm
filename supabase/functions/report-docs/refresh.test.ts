@@ -142,7 +142,7 @@ Deno.test("refresh reloads tiktok section", async () => {
   assert(patch.instagram_account_id === null);
 });
 
-Deno.test("refresh without feature_tiktok drops the TikTok section", async () => {
+Deno.test("refresh without feature_tiktok and no stored TikTok section writes none", async () => {
   const db = makeDb({
     report_documents: { id: "d1", conta_id: "c", client_id: 1, period_start: "2026-07-01" },
     clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
@@ -155,6 +155,25 @@ Deno.test("refresh without feature_tiktok drops the TikTok section", async () =>
   const patch = db.updates[0] as RefreshPatch;
   assert(patch.data_snapshot.tiktok === null);
   assert(patch.tiktok_account_id === null);
+  assert(patch.instagram_account_id === "ig-1");
+});
+
+Deno.test("refresh without feature_tiktok keeps a frozen TikTok section", async () => {
+  const db = makeDb({
+    report_documents: {
+      id: "d1", conta_id: "c", client_id: 1, period_start: "2026-07-01",
+      data_snapshot: FROZEN, instagram_account_id: "ig-1", tiktok_account_id: "tt-old",
+    },
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: { id: "ig-1", username: "dra.nova" },
+    instagram_posts: [],
+    tiktok_accounts: TT_ACCOUNT,
+    workspaces: { name: "W", logo_url: null, brand_color: "#123456", report_splash_url: null },
+  }, { featureByKey: { feature_tiktok: false } });
+  await refreshReportDocument(db, deps, "c", "d1");
+  const patch = db.updates[0] as CarryPatch;
+  assert(patch.data_snapshot.tiktok?.account.handle === "old.tt");
+  assert(patch.tiktok_account_id === "tt-old");
   assert(patch.instagram_account_id === "ig-1");
 });
 

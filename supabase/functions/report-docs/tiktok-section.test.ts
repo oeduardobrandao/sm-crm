@@ -110,6 +110,20 @@ Deno.test("tiktok-section top_posts sorted by views, max 12", async () => {
   assertEquals(res.section.kpis.posts_count.value, 15);
 });
 
+Deno.test("tiktok-section: a cover still on the TikTok CDN is not frozen into the snapshot", async () => {
+  const db = makeDb({
+    tiktok_accounts: [account()],
+    tiktok_posts: [
+      video("a", "2026-09-10T15:00:00Z", 10, {
+        cover_image_url: "https://p16-sign.tiktokcdn.com/obj/a.jpeg?x-expires=1",
+      }),
+    ],
+  });
+  const res = await loadTikTokReportSection(db, 1, "2026-09", NOW);
+  assert(res);
+  assertEquals(res.section.top_posts[0].thumbnail_url, null);
+});
+
 Deno.test("tiktok-section: caption falls back to the description and is truncated to 140", async () => {
   const db = makeDb({
     tiktok_accounts: [account()],
