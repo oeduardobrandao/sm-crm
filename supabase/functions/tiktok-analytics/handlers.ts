@@ -13,6 +13,7 @@ import { createJsonResponder, internalServerError, type JsonResponder } from "..
 import { bestTimesFromPosts, tiktokRate } from "../_shared/best-times.ts";
 import { type AnalyticsWindow, windowFromDays, windowFromRange } from "../_shared/tiktok-analytics/window.ts";
 import { videoEngagementRate } from "../_shared/tiktok-analytics/kpis.ts";
+import { AI_UNAVAILABLE, buildAccountPrompts, buildPortfolioPrompts, callGemini } from "./ai.ts";
 import {
   buildOverview,
   buildPortfolio,
@@ -62,6 +63,10 @@ const BASE_FEATURES = ["feature_tiktok", "feature_analytics_reports"] as const;
 const RATE_LIMIT = { max: 120, windowSeconds: 60 };
 const ACCOUNT_DAYS = { max: 730, fallback: 30 };
 const PORTFOLIO_DAYS = { max: 365, fallback: 28 };
+const AI_ACCOUNT_DAYS = { max: 365, fallback: 30 };
+const AI_PORTFOLIO_DAYS = { max: 365, fallback: PORTFOLIO_DAYS.fallback };
+// Shared with instagram-analytics: one AI allowance per workspace across both platforms.
+const AI_RATE_LIMIT = { max: 10, windowSeconds: 3600 };
 const BEST_TIMES_DAYS = 90;
 const POSTS_CAP = 500;
 const POST_SORTS = ["views", "likes", "comments", "shares", "engagement_rate", "posted_at"] as const;
@@ -206,6 +211,90 @@ async function handlePortfolio(ctx: RouteContext): Promise<Response> {
   return ctx.json(await buildPortfolio(ctx.db, ctx.contaId, w, ctx.now));
 }
 
+// ─── AI routes ─────────────────────────────────────────────────────────────────────
+
+/** `days` from the JSON body, validated by the same rules as the `?days=` query (integer in
+ * 1..max, absent means the fallback). A missing or malformed body counts as empty, like Instagram. */
+async function parseAiWindow(
+  req: Request,
+  ctx: RouteContext,
+  limits: { max: number; fallback: number },
+): Promise<AnalyticsWindow | null> {
+  const body = await req.json().catch(() => ({})) as { days?: unknown } | null;
+  const url = new URL(ctx.url);
+  url.search = "";
+  if (body && body.days !== undefined && body.days !== null) url.searchParams.set("days", String(body.days));
+  return parseWindow(url, ctx.now, limits, false);
+}
+
+/** Inclusive length of a window in SP days. */
+const windowDays = (w: AnalyticsWindow): number => Math.round((Date.parse(w.end) - Date.parse(w.start)) / 86400000) + 1;
+
+const aiUnavailable = (ctx: RouteContext) => ctx.json({ analysis: { error: true, raw: AI_UNAVAILABLE } });
+
+/** Debits the shared ig-ai budget; a Response when it is spent. */
+async function spendAiBudget(ctx: RouteContext): Promise<Response | null> {
+  const limit: RateLimitCheck = ctx.deps.checkRateLimit ?? realCheckRateLimit;
+  if (await limit(ctx.db, `ig-ai:${ctx.contaId}`, AI_RATE_LIMIT.max, AI_RATE_LIMIT.windowSeconds)) return null;
+  return ctx.json({ error: "Rate limit exceeded" }, 429);
+}
+
+async function handleAiAnalysis(req: Request, ctx: RouteContext, clientId: number): Promise<Response> {
+  const w = await parseAiWindow(req, ctx, AI_ACCOUNT_DAYS);
+  if (!w) return badRequest(ctx, "invalid_window");
+  const account = await requireAccount(ctx, clientId);
+  if (account instanceof Response) return account;
+  // No key, no model call and no budget spent.
+  const key = ctx.deps.geminiKey;
+  if (!key) return aiUnavailable(ctx);
+  const limited = await spendAiBudget(ctx);
+  if (limited) return limited;
+
+  const { data: client, error } = await ctx.db.from("clientes").select("nome, especialidade").eq("id", clientId)
+    .eq("conta_id", ctx.contaId).maybeSingle();
+  if (error) throw error;
+  if (!client) return ctx.json({ error: "Unauthorized" }, 403);
+
+  const [videos, history] = await Promise.all([
+    loadVideosInWindow(ctx.db, account.id, w.start, w.end),
+    loadFollowerHistory(ctx.db, account.id, w.start, w.end),
+  ]);
+  const prompts = buildAccountPrompts({
+    username: account.username ?? account.display_name ?? "",
+    clientName: client.nome ?? "",
+    specialty: client.especialidade ?? null,
+    days: windowDays(w),
+    followers: account.follower_count,
+    history,
+    videos,
+  });
+  const analysis = await callGemini(ctx.deps.fetch ?? fetch, key, prompts);
+  return ctx.json({ analysis, generatedAt: ctx.now.toISOString() });
+}
+
+async function handleAiPortfolio(req: Request, ctx: RouteContext): Promise<Response> {
+  const w = await parseAiWindow(req, ctx, AI_PORTFOLIO_DAYS);
+  if (!w) return badRequest(ctx, "invalid_window");
+  const denied = await requireFeatures(ctx);
+  if (denied) return denied;
+  const key = ctx.deps.geminiKey;
+  if (!key) return aiUnavailable(ctx);
+
+  const portfolio = await buildPortfolio(ctx.db, ctx.contaId, w, ctx.now);
+  if (portfolio.accounts.length === 0) {
+    return ctx.json({ analysis: { error: true, raw: "Nenhuma conta TikTok conectada" } });
+  }
+  const limited = await spendAiBudget(ctx);
+  if (limited) return limited;
+
+  const analysis = await callGemini(
+    ctx.deps.fetch ?? fetch,
+    key,
+    buildPortfolioPrompts({ days: windowDays(w), accounts: portfolio.accounts }),
+  );
+  return ctx.json({ analysis, generatedAt: ctx.now.toISOString() });
+}
+
 type ClientRoute = (ctx: RouteContext, clientId: number) => Promise<Response>;
 const CLIENT_GET_ROUTES: Record<string, ClientRoute> = {
   "overview": handleOverview,
@@ -216,6 +305,14 @@ const CLIENT_GET_ROUTES: Record<string, ClientRoute> = {
 
 async function route(req: Request, ctx: RouteContext): Promise<Response> {
   if (req.method === "GET" && ctx.path === "/portfolio") return await handlePortfolio(ctx);
+
+  if (req.method === "POST" && ctx.path === "/ai-analysis-portfolio") return await handleAiPortfolio(req, ctx);
+  const aiMatch = req.method === "POST" ? ctx.path.match(/^\/ai-analysis\/([^/]+)$/) : null;
+  if (aiMatch) {
+    const clientId = parseClientId(aiMatch[1]);
+    if (clientId === null) return badRequest(ctx, "invalid_client_id");
+    return await handleAiAnalysis(req, ctx, clientId);
+  }
 
   const match = ctx.path.match(/^\/([a-z-]+)\/([^/]+)$/);
   const handler = match && req.method === "GET" ? CLIENT_GET_ROUTES[match[1]] : undefined;

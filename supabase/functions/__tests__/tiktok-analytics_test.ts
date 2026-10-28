@@ -5,6 +5,7 @@ import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock, type QueryCall } from "../../../test/shared/supabaseMock.ts";
 import { createTikTokAnalyticsHandler } from "../tiktok-analytics/handlers.ts";
 import { loadVideosInWindow } from "../_shared/tiktok-analytics/queries.ts";
+import { buildAccountPrompts, buildPortfolioPrompts, callGemini } from "../tiktok-analytics/ai.ts";
 
 type Mock = ReturnType<typeof createSupabaseQueryMock>;
 
@@ -632,5 +633,351 @@ Deno.test("tiktok-analytics: unknown route is a 404", async () => {
   const db = createSupabaseQueryMock();
   signedIn(db);
   const res = await makeHandler(db)(get("/nope"));
+  assertEquals(res.status, 404);
+});
+
+// ── AI routes (Task A5) ───────────────────────────────────────────────────────
+
+function post(path: string, body: unknown = {}, token: string | null = "tok") {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return new Request(`https://proj.supabase.co/functions/v1/tiktok-analytics${path}`, {
+    method: "POST",
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
+type FetchCall = { url: string; init: RequestInit };
+
+function fakeGemini(responder: () => Response) {
+  const calls: FetchCall[] = [];
+  const impl = ((input: string | URL | Request, init?: RequestInit) => {
+    calls.push({ url: String(input), init: init ?? {} });
+    return Promise.resolve(responder());
+  }) as typeof fetch;
+  return { impl, calls };
+}
+
+const geminiOk = (text: string) =>
+  new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] }), { status: 200 });
+
+const ANALYSIS = { healthScore: { score: 70 }, actionPlan: [] };
+
+/** Everything an account AI call reads, queued in call order. */
+function queueAccountAi(db: Mock) {
+  signedIn(db);
+  ownedClient(db);
+  db.queueRpc("effective_plan_feature", { data: true }, { data: true }, { data: true });
+  db.queue("tiktok_accounts", "select", { data: ACCOUNT });
+  db.queue("clientes", "select", { data: { nome: "Dra. Ana", especialidade: "Dermatologia" } });
+  db.queue("tiktok_posts", "select", { data: [video("a", 200, 10, 5, 5), video("b", 50, 1, 0, 0)] });
+  db.queue("tiktok_follower_history", "select", {
+    data: [{ date: "2026-10-01", follower_count: 1000, source: "api" }, { date: "2026-10-28", follower_count: 1250, source: "api" }],
+  });
+}
+
+Deno.test("tiktok-analytics: ai-analysis requires feature_instagram_ai", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  ownedClient(db);
+  db.queueRpc("effective_plan_feature", { data: true }, { data: true }, { data: false });
+  const gemini = fakeGemini(() => geminiOk("{}"));
+  const res = await makeHandler(db, { fetch: gemini.impl, geminiKey: "k" })(post("/ai-analysis/42", { days: 30 }));
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: "feature_disabled", feature: "feature_instagram_ai" });
+  assertEquals(featureCalls(db), ["feature_tiktok", "feature_analytics_reports", "feature_instagram_ai"]);
+  assertEquals(gemini.calls.length, 0);
+});
+
+Deno.test("tiktok-analytics: ai-analysis-portfolio requires feature_instagram_ai", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  db.queueRpc("effective_plan_feature", { data: true }, { data: true }, { data: false });
+  const res = await makeHandler(db, { geminiKey: "k" })(post("/ai-analysis-portfolio", {}));
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: "feature_disabled", feature: "feature_instagram_ai" });
+});
+
+Deno.test("tiktok-analytics: ai-analysis shares the ig-ai rate key", async () => {
+  const db = createSupabaseQueryMock();
+  queueAccountAi(db);
+  const gemini = fakeGemini(() => geminiOk(JSON.stringify(ANALYSIS)));
+  const rateCalls: unknown[] = [];
+  const res = await makeHandler(db, {
+    fetch: gemini.impl,
+    geminiKey: "k",
+    checkRateLimit: (_db: unknown, key: string, max: number, win: number) => {
+      rateCalls.push([key, max, win]);
+      return Promise.resolve(true);
+    },
+  })(post("/ai-analysis/42", { days: 30 }));
+  assertEquals(res.status, 200);
+  assert(rateCalls.some((c) => JSON.stringify(c) === JSON.stringify(["ig-ai:ws-B", 10, 3600])));
+});
+
+Deno.test("tiktok-analytics: ai-analysis answers 429 with the rate-limit body when the ig-ai budget is spent", async () => {
+  const db = createSupabaseQueryMock();
+  queueAccountAi(db);
+  const gemini = fakeGemini(() => geminiOk("{}"));
+  const res = await makeHandler(db, {
+    fetch: gemini.impl,
+    geminiKey: "k",
+    checkRateLimit: (_db: unknown, key: string) => Promise.resolve(!key.startsWith("ig-ai:")),
+  })(post("/ai-analysis/42", { days: 30 }));
+  assertEquals(res.status, 429);
+  assertEquals(await res.json(), { error: "Rate limit exceeded" });
+  assertEquals(gemini.calls.length, 0);
+});
+
+Deno.test("tiktok-analytics: ai-analysis without GEMINI key returns error analysis, no fetch", async () => {
+  const db = createSupabaseQueryMock();
+  queueAccountAi(db);
+  const gemini = fakeGemini(() => geminiOk("{}"));
+  const res = await makeHandler(db, { fetch: gemini.impl, geminiKey: "" })(post("/ai-analysis/42", { days: 30 }));
+  assertEquals(res.status, 200);
+  assertEquals((await res.json()).analysis, { error: true, raw: "ai_unavailable" });
+  assertEquals(gemini.calls.length, 0);
+});
+
+Deno.test("tiktok-analytics: ai-analysis sends the prompt to Gemini and returns the parsed analysis", async () => {
+  const db = createSupabaseQueryMock();
+  queueAccountAi(db);
+  const gemini = fakeGemini(() => geminiOk("```json\n" + JSON.stringify(ANALYSIS) + "\n```"));
+  const res = await makeHandler(db, { fetch: gemini.impl, geminiKey: "secret-key" })(post("/ai-analysis/42", { days: 14 }));
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.analysis, ANALYSIS);
+  assert(typeof body.generatedAt === "string" && !isNaN(Date.parse(body.generatedAt)));
+
+  assertEquals(gemini.calls.length, 1);
+  const [{ url, init }] = gemini.calls;
+  assert(url.includes("gemini-2.5-flash:generateContent"));
+  assert(!url.includes("secret-key"));
+  assertEquals((init.headers as Record<string, string>)["x-goog-api-key"], "secret-key");
+  const sent = JSON.parse(init.body as string);
+  assertEquals(sent.generationConfig, { temperature: 0.3, maxOutputTokens: 8192, responseMimeType: "application/json" });
+  assert(sent.contents[0].parts[0].text.includes("@dra.ana"));
+  assert(sent.contents[0].parts[0].text.includes("ÚLTIMOS 14 DIAS"));
+  // Window is the 14 SP days ending today.
+  const [posts] = callsTo(db, "tiktok_posts");
+  assertEquals(mods(posts, "gte"), [["posted_at", "2026-10-15T03:00:00.000Z"]]);
+});
+
+Deno.test("tiktok-analytics: ai-analysis defaults to 30 days and rejects an invalid days with 400", async () => {
+  const db = createSupabaseQueryMock();
+  queueAccountAi(db);
+  const gemini = fakeGemini(() => geminiOk(JSON.stringify(ANALYSIS)));
+  const res = await makeHandler(db, { fetch: gemini.impl, geminiKey: "k" })(post("/ai-analysis/42", {}));
+  assertEquals(res.status, 200);
+  assert(JSON.parse(gemini.calls[0].init.body as string).contents[0].parts[0].text.includes("ÚLTIMOS 30 DIAS"));
+
+  for (const days of [0, 366, 1.5, "abc", -3]) {
+    const bad = createSupabaseQueryMock();
+    signedIn(bad);
+    const r = await makeHandler(bad, { fetch: gemini.impl, geminiKey: "k" })(post("/ai-analysis/42", { days }));
+    assertEquals(r.status, 400, `days=${days}`);
+    assertEquals(callsTo(bad, "clientes").length, 0);
+  }
+});
+
+Deno.test("tiktok-analytics: ai-analysis keeps another workspace's client out", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  ownedClient(db, "ws-A");
+  const gemini = fakeGemini(() => geminiOk("{}"));
+  const res = await makeHandler(db, { fetch: gemini.impl, geminiKey: "k" })(post("/ai-analysis/42", {}));
+  assertEquals(res.status, 403);
+  assertEquals(gemini.calls.length, 0);
+});
+
+Deno.test("tiktok-analytics: ai-analysis is 404 for a client without a connected account", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  ownedClient(db);
+  db.queueRpc("effective_plan_feature", { data: true }, { data: true }, { data: true });
+  db.queue("tiktok_accounts", "select", { data: { ...ACCOUNT, authorization_status: "revoked" } });
+  const res = await makeHandler(db, { geminiKey: "k" })(post("/ai-analysis/42", {}));
+  assertEquals(res.status, 404);
+  assertEquals(await res.json(), { error: "not_connected" });
+});
+
+Deno.test("tiktok-analytics: gemini non-200 does not leak the upstream message", async () => {
+  const db = createSupabaseQueryMock();
+  queueAccountAi(db);
+  const gemini = fakeGemini(() =>
+    new Response(JSON.stringify({ error: { message: "API key not valid: AIza-UPSTREAM-SECRET" } }), { status: 400 })
+  );
+  const res = await makeHandler(db, { fetch: gemini.impl, geminiKey: "k" })(post("/ai-analysis/42", {}));
+  assertEquals(res.status, 200);
+  const text = await res.text();
+  assert(!text.includes("UPSTREAM"));
+  assert(!text.includes("API key"));
+  assertEquals(JSON.parse(text).analysis, { error: true, raw: "ai_failed" });
+});
+
+Deno.test("tiktok-analytics: a Gemini network failure does not leak either", async () => {
+  const out = await callGemini(
+    (() => Promise.reject(new Error("connect ECONNREFUSED 10.0.0.1"))) as typeof fetch,
+    "k",
+    { system: "s", user: "u" },
+  );
+  assertEquals(out, { error: true, raw: "ai_failed" });
+});
+
+Deno.test("tiktok-analytics: callGemini falls back like Instagram on unparseable output", async () => {
+  const wrapped = await callGemini(fakeGemini(() => geminiOk('Aqui está: {"a": 1} fim')).impl, "k", { system: "s", user: "u" });
+  assertEquals(wrapped, { a: 1 });
+  const junk = await callGemini(fakeGemini(() => geminiOk("not json")).impl, "k", { system: "s", user: "u" });
+  assertEquals(junk, { error: true, raw: "not json" });
+  const empty = await callGemini(fakeGemini(() => geminiOk("")).impl, "k", { system: "s", user: "u" });
+  assertEquals(empty, { error: true, raw: "Empty AI response" });
+});
+
+const FORBIDDEN_METRICS = [/alcance/i, /salvamento/i, /reach/i, /\bsaves?\b/i, /salvos?\b/i, /demogr/i, /impress/i];
+
+Deno.test("tiktok-analytics: account prompt mentions vídeos and never 'alcance' or 'salvamentos'", () => {
+  const { system, user } = buildAccountPrompts({
+    username: "dra.ana",
+    clientName: "Dra. Ana",
+    specialty: null,
+    days: 30,
+    followers: 1250,
+    history: [],
+    videos: [
+      { ...video("a", 200, 10, 5, 5), title: "Título A", duration: 20 },
+      { ...video("b", 0, 0, 0, 0), title: null, duration: null },
+    ],
+  });
+  const all = `${system}\n${user}`;
+  assert(all.includes("vídeos"));
+  assert(all.includes("por visualização"));
+  for (const re of FORBIDDEN_METRICS) assert(!re.test(all), `prompt mentions ${re}`);
+  assert(user.includes("Histórico de seguidores: INDISPONÍVEL"), "no history: flagged unavailable");
+  assert(user.includes("especialidade não informada"));
+  assert(user.includes('"engajamentoPorVisualizacao":"10.00%"'));
+  assert(user.includes('"engajamentoPorVisualizacao":"sem dados"'));
+});
+
+Deno.test("tiktok-analytics: account prompt caps the video list at 50 by views and lists history oldest first", () => {
+  const videos = Array.from({ length: 60 }, (_, i) => ({ ...video(`v${i}`, i, 0, 0, 0), title: `t${i}`, duration: 10 }));
+  const { user } = buildAccountPrompts({
+    username: "u",
+    clientName: "C",
+    specialty: "Derma",
+    days: 7,
+    followers: 10,
+    history: [{ date: "2026-10-02", follower_count: 12 }, { date: "2026-10-01", follower_count: 10 }],
+    videos,
+  });
+  assert(user.includes('"visualizacoes":59'));
+  assert(!user.includes('"visualizacoes":9,'));
+  assert(user.indexOf("2026-10-01") < user.indexOf("2026-10-02"));
+  assert(!user.includes("Histórico de seguidores: INDISPONÍVEL"));
+});
+
+Deno.test("tiktok-analytics: portfolio prompt speaks of engagement per view and drops unavailable metrics", () => {
+  const { system, user } = buildPortfolioPrompts({
+    days: 28,
+    accounts: [{
+      client_id: 42,
+      client_name: "Ana",
+      especialidade: "Derma",
+      username: "dra.ana",
+      avatar_url: null,
+      authorization_status: "active",
+      follower_count: 1250,
+      followers_gained: null,
+      views: 1005,
+      engagement_rate: 9.95,
+      posts_count: 2,
+      last_posted_at: "2026-10-27T15:00:00.000Z",
+    }],
+  });
+  const all = `${system}\n${user}`;
+  assert(all.includes("por visualização"));
+  for (const re of FORBIDDEN_METRICS) assert(!re.test(all), `prompt mentions ${re}`);
+  assert(user.includes('"lastVideo": "2026-10-27"'));
+  assert(user.includes('"followerDelta": null'));
+  assert(user.includes('"engagementPerView": "9.95%"'));
+  assert(user.includes("1 contas TikTok") || user.includes("1 contas"));
+});
+
+Deno.test("tiktok-analytics: ai-analysis-portfolio returns the analysis for the workspace's connected accounts", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  db.queueRpc("effective_plan_feature", { data: true }, { data: true }, { data: true });
+  queuePortfolio(db);
+  const gemini = fakeGemini(() => geminiOk(JSON.stringify({ portfolioHealth: { score: 60 } })));
+  const rateCalls: unknown[] = [];
+  const res = await makeHandler(db, {
+    fetch: gemini.impl,
+    geminiKey: "k",
+    checkRateLimit: (_db: unknown, key: string, max: number, win: number) => {
+      rateCalls.push([key, max, win]);
+      return Promise.resolve(true);
+    },
+  })(post("/ai-analysis-portfolio", { days: 28 }));
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.analysis, { portfolioHealth: { score: 60 } });
+  assert(typeof body.generatedAt === "string");
+  assert(rateCalls.some((c) => JSON.stringify(c) === JSON.stringify(["ig-ai:ws-B", 10, 3600])));
+  assertEquals(featureCalls(db), ["feature_tiktok", "feature_analytics_reports", "feature_instagram_ai"]);
+  const prompt = JSON.parse(gemini.calls[0].init.body as string).contents[0].parts[0].text as string;
+  assert(prompt.includes("dra.ana"));
+  assert(prompt.includes("2 contas TikTok"));
+  assert(!prompt.includes('"username": "caio"'), "disconnected accounts stay out");
+});
+
+Deno.test("tiktok-analytics: ai-analysis-portfolio without a body defaults to 28 days", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  db.queueRpc("effective_plan_feature", { data: true }, { data: true }, { data: true });
+  queuePortfolio(db);
+  const gemini = fakeGemini(() => geminiOk(JSON.stringify({ portfolioHealth: { score: 1 } })));
+  const res = await makeHandler(db, { fetch: gemini.impl, geminiKey: "k" })(post("/ai-analysis-portfolio", undefined));
+  assertEquals(res.status, 200);
+  const [posts] = callsTo(db, "tiktok_posts");
+  assertEquals(mods(posts, "gte"), [["posted_at", "2026-10-01T03:00:00.000Z"]]);
+});
+
+Deno.test("tiktok-analytics: ai-analysis-portfolio with no connected account spends no budget and calls no model", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  db.queueRpc("effective_plan_feature", { data: true }, { data: true }, { data: true });
+  db.queue("clientes", "select", { data: [{ id: 42, nome: "Ana", especialidade: null }] });
+  db.queue("tiktok_accounts", "select", { data: [] });
+  const gemini = fakeGemini(() => geminiOk("{}"));
+  const rateKeys: string[] = [];
+  const res = await makeHandler(db, {
+    fetch: gemini.impl,
+    geminiKey: "k",
+    checkRateLimit: (_db: unknown, key: string) => {
+      rateKeys.push(key);
+      return Promise.resolve(true);
+    },
+  })(post("/ai-analysis-portfolio", {}));
+  assertEquals(res.status, 200);
+  assertEquals((await res.json()).analysis, { error: true, raw: "Nenhuma conta TikTok conectada" });
+  assertEquals(gemini.calls.length, 0);
+  assert(!rateKeys.some((k) => k.startsWith("ig-ai:")));
+});
+
+Deno.test("tiktok-analytics: ai-analysis-portfolio without GEMINI key returns error analysis, no fetch", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  db.queueRpc("effective_plan_feature", { data: true }, { data: true }, { data: true });
+  const gemini = fakeGemini(() => geminiOk("{}"));
+  const res = await makeHandler(db, { fetch: gemini.impl })(post("/ai-analysis-portfolio", {}));
+  assertEquals(res.status, 200);
+  assertEquals((await res.json()).analysis, { error: true, raw: "ai_unavailable" });
+  assertEquals(gemini.calls.length, 0);
+});
+
+Deno.test("tiktok-analytics: ai routes are POST-only", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  const res = await makeHandler(db, { geminiKey: "k" })(get("/ai-analysis/42"));
   assertEquals(res.status, 404);
 });
