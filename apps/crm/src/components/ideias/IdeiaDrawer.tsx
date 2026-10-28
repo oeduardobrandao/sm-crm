@@ -13,7 +13,9 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
+import { useIntlLocale } from '@mesaas/i18n';
 import {
   listIdeiaImages,
   uploadIdeiaImage,
@@ -91,12 +93,7 @@ import './ideiaPhone.css';
 
 const ALLOWED_EMOJI = ['👍', '❤️', '🔥', '💡', '🎯'] as const;
 
-const STATUS_OPTIONS: { value: Ideia['status']; label: string }[] = [
-  { value: 'nova', label: 'Nova' },
-  { value: 'em_analise', label: 'Em análise' },
-  { value: 'aprovada', label: 'Aprovada' },
-  { value: 'descartada', label: 'Descartada' },
-];
+const STATUS_VALUES: Ideia['status'][] = ['nova', 'em_analise', 'aprovada', 'descartada'];
 
 const CONVERSIBLE_STATUSES: Ideia['status'][] = ['nova', 'em_analise', 'aprovada'];
 
@@ -118,6 +115,12 @@ interface IdeiaDrawerProps {
 
 export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }: IdeiaDrawerProps) {
   const qc = useQueryClient();
+  const { t } = useTranslation('ideaDrawer');
+  const intlLocale = useIntlLocale();
+  // Read at render time so the labels follow the current language.
+  const STATUS_OPTIONS: { value: Ideia['status']; label: string }[] = STATUS_VALUES.map(
+    (value) => ({ value, label: IDEIA_STATUS_LABELS[value] }),
+  );
   const { can } = useAuth();
   // IdeiasPage/IdeiaDrawer had NO role check at all before Task 14 -- any
   // authenticated member could add or remove an idea's reference images.
@@ -180,11 +183,8 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
     }
     qc.invalidateQueries({ queryKey });
     qc.invalidateQueries({ queryKey: ['tarefas'] });
-    if (tagsOk) toast.success('Solicitação convertida em tarefa!');
-    else
-      toast.warning(
-        'Tarefa criada, mas as tags não foram aplicadas. Edite a tarefa para adicioná-las.',
-      );
+    if (tagsOk) toast.success(t('ideiaDrawer.toastConverted'));
+    else toast.warning(t('ideiaDrawer.toastConvertedNoTags'));
   }
 
   const MAX_IMAGES = 10;
@@ -207,9 +207,9 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
       }
       qc.invalidateQueries({ queryKey: ['ideia-images', ideia.id] });
       qc.invalidateQueries({ queryKey });
-      toast.success('Imagem adicionada.');
+      toast.success(t('ideiaDrawer.toastImageAdded'));
     } catch (e: any) {
-      toast.error(e.message ?? 'Erro ao enviar imagem.');
+      toast.error(e.message ?? t('ideiaDrawer.errorImageUpload'));
     } finally {
       setImgBusy(false);
       if (inputRef.current) inputRef.current.value = '';
@@ -223,7 +223,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
       qc.invalidateQueries({ queryKey: ['ideia-images', ideia.id] });
       qc.invalidateQueries({ queryKey });
     } catch (e: any) {
-      toast.error(e.message ?? 'Erro ao remover imagem.');
+      toast.error(e.message ?? t('ideiaDrawer.errorImageRemove'));
     } finally {
       setImgBusy(false);
     }
@@ -282,7 +282,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
   }, []);
 
   function formatDate(iso: string) {
-    return new Date(iso).toLocaleDateString('pt-BR', {
+    return new Date(iso).toLocaleDateString(intlLocale, {
       day: '2-digit',
       month: 'short',
       year: 'numeric',
@@ -294,9 +294,9 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
     try {
       await updateIdeiaStatus(ideia.id, newStatus);
       qc.invalidateQueries({ queryKey });
-      toast.success('Status atualizado.');
+      toast.success(t('ideiaDrawer.toastStatusUpdated'));
     } catch (e: any) {
-      toast.error(e.message ?? 'Erro ao atualizar status.');
+      toast.error(e.message ?? t('ideiaDrawer.errorStatusUpdate'));
     } finally {
       setStatusSaving(false);
     }
@@ -307,9 +307,11 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
     try {
       await updateIdeiaVisibilidade(ideia.id, next);
       qc.invalidateQueries({ queryKey });
-      toast.success(next ? 'Ideia visível no Hub.' : 'Ideia oculta do Hub.');
+      toast.success(
+        next ? t('ideiaDrawer.toastVisibleInHub') : t('ideiaDrawer.toastHiddenFromHub'),
+      );
     } catch (e: any) {
-      toast.error(e.message ?? 'Erro ao atualizar visibilidade.');
+      toast.error(e.message ?? t('ideiaDrawer.errorVisibilityUpdate'));
     } finally {
       setVisSaving(false);
     }
@@ -320,11 +322,11 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
     try {
       await deleteIdeia(ideia.id);
       qc.invalidateQueries({ queryKey });
-      toast.success('Ideia excluída.');
+      toast.success(t('ideiaDrawer.toastDeleted'));
       setConfirmDelete(false);
       requestClose();
     } catch (e: any) {
-      toast.error(e.message ?? 'Erro ao excluir ideia.');
+      toast.error(e.message ?? t('ideiaDrawer.errorDelete'));
     } finally {
       setDeleting(false);
     }
@@ -336,9 +338,9 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
     try {
       await upsertIdeiaComentario(ideia.id, comentario, membroId);
       qc.invalidateQueries({ queryKey });
-      toast.success('Comentário salvo.');
+      toast.success(t('ideiaDrawer.toastCommentSaved'));
     } catch (e: any) {
-      toast.error(e.message ?? 'Erro ao salvar comentário.');
+      toast.error(e.message ?? t('ideiaDrawer.errorCommentSave'));
     } finally {
       setComentarioSaving(false);
     }
@@ -351,7 +353,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
       await toggleIdeiaReaction(ideia.id, membroId, emoji);
       qc.invalidateQueries({ queryKey });
     } catch (e: any) {
-      toast.error(e.message ?? 'Erro.');
+      toast.error(e.message ?? t('ideiaDrawer.errorGeneric'));
     } finally {
       setReactionLoading(null);
     }
@@ -391,14 +393,14 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
     const menuActions: ActionSheetAction[] = [];
     if (canEditThis) {
       menuActions.push({
-        label: 'Editar',
+        label: t('actions.edit'),
         icon: <Pencil aria-hidden="true" />,
         onSelect: () => requestClose(() => onEdit?.()),
       });
     }
     if (canEditIdeias) {
       menuActions.push({
-        label: 'Excluir',
+        label: t('ideiaDrawer.delete'),
         icon: <Trash2 aria-hidden="true" />,
         destructive: true,
         onSelect: () => setConfirmDelete(true),
@@ -416,19 +418,19 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
         <PhoneEditorScreen
           open={screenOpen}
           onClose={handleScreenClose}
-          label={`Ideia: ${ideia.titulo}`}
+          label={t('ideiaDrawer.screenLabel', { title: ideia.titulo })}
           apiRef={screenApiRef}
           className="phone-ideia"
         >
           <div className="phone-ideia__bar">
             <PhoneNavBar
-              backLabel="Voltar"
+              backLabel={t('actions.back')}
               onBack={() => requestClose()}
               trailing={
                 menuActions.length > 0 ? (
                   <PhoneIconButton
                     ref={menuButtonRef}
-                    label="Mais ações da ideia"
+                    label={t('ideiaDrawer.moreActions')}
                     aria-haspopup="dialog"
                     onClick={() => setMenuOpen(true)}
                   >
@@ -443,7 +445,9 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
               <h2 className="phone-ideia__title">{ideia.titulo}</h2>
               <p className="phone-ideia__meta">
                 {ideia.clientes.nome} · {formatDate(ideia.created_at)}
-                {isAgency && ideia.autor ? ` · por ${ideia.autor.nome}` : ''}
+                {isAgency && ideia.autor
+                  ? t('ideiaDrawer.byAuthor', { name: ideia.autor.nome })
+                  : ''}
               </p>
               <div className="phone-ideia__chips">
                 {statusLocked ? (
@@ -452,7 +456,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
                   <button
                     type="button"
                     className={`phone-ideia-pill phone-ideia-pill--${ideia.status} phone-ideia__status`}
-                    aria-label={`Status: ${statusLabel}. Trocar status`}
+                    aria-label={t('ideiaDrawer.statusTriggerLabel', { status: statusLabel })}
                     aria-haspopup="dialog"
                     disabled={statusSaving}
                     onClick={() => setStatusPickerOpen(true)}
@@ -462,20 +466,22 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
                   </button>
                 )}
                 <span className="phone-ideia__tag">
-                  {ideia.tipo === 'solicitacao' ? 'Solicitação' : 'Ideia'}
+                  {ideia.tipo === 'solicitacao'
+                    ? t('ideiaDrawer.tipoSolicitacao')
+                    : t('ideiaDrawer.tipoIdeia')}
                 </span>
                 <span className="phone-ideia__tag">
                   {hiddenFromHub && <EyeOff aria-hidden="true" />}
-                  {isAgency ? 'Agência' : 'Cliente'}
-                  {hiddenFromHub ? ' · Oculta do Hub' : ''}
+                  {isAgency ? t('ideiaDrawer.origemAgencia') : t('ideiaDrawer.origemCliente')}
+                  {hiddenFromHub ? t('ideiaDrawer.hiddenFromHubSuffix') : ''}
                 </span>
               </div>
             </header>
 
             {statusLocked && (
-              <GroupedList aria-label="Tarefa">
+              <GroupedList aria-label={t('ideiaDrawer.taskGroup')}>
                 <Cell
-                  label="Ver tarefa"
+                  label={t('ideiaDrawer.viewTask')}
                   icon={<ListChecks aria-hidden="true" />}
                   chevron
                   onClick={() =>
@@ -490,11 +496,11 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
 
             {isAgency && canEditIdeias && (
               <GroupedList
-                footer="O cliente vê e reage, mas não edita."
-                aria-label="Hub do cliente"
+                footer={t('ideiaDrawer.hubFooter')}
+                aria-label={t('ideiaDrawer.clientHub')}
               >
                 <Cell
-                  label="Visível no Hub do cliente"
+                  label={t('shared.clientHubVisible')}
                   disabled={visSaving}
                   switch={{ checked: ideia.visivel_no_hub, onCheckedChange: handleVisibilidade }}
                 />
@@ -502,7 +508,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
             )}
 
             {ideia.descricao && (
-              <GroupedList header="Descrição">
+              <GroupedList header={t('shared.description')}>
                 <li className="phone-cell">
                   <p className="phone-ideia__text">{ideia.descricao}</p>
                 </li>
@@ -518,7 +524,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
             </div>
 
             {ideia.links.length > 0 && (
-              <GroupedList header="Links de referência">
+              <GroupedList header={t('shared.referenceLinks')}>
                 {ideia.links.map((link, i) => (
                   <li key={i} className="phone-cell">
                     <a
@@ -536,7 +542,9 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
             )}
 
             {(images.length > 0 || canEditIdeias) && (
-              <GroupedList header={`Imagens · ${images.length} de ${MAX_IMAGES}`}>
+              <GroupedList
+                header={t('ideiaDrawer.imagesCount', { count: images.length, max: MAX_IMAGES })}
+              >
                 <li className="phone-cell">
                   <div className="phone-ideia__images">
                     {images.map((img: CrmIdeiaImage) => (
@@ -545,7 +553,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
                           href={sanitizeExternalUrl(img.url)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          aria-label="Abrir imagem"
+                          aria-label={t('ideiaDrawer.openImage')}
                         >
                           <img src={img.thumbnail_url ?? img.url} alt="" />
                         </a>
@@ -555,7 +563,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
                             className="phone-ideia__remove"
                             onClick={() => handleRemoveImage(img.file_id)}
                             disabled={imgBusy}
-                            aria-label="Remover imagem"
+                            aria-label={t('ideiaDrawer.removeImage')}
                           >
                             <X aria-hidden="true" />
                           </button>
@@ -568,14 +576,14 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
                         className="phone-ideia__add"
                         disabled={imgBusy}
                         onClick={() => inputRef.current?.click()}
-                        aria-label="Adicionar imagem"
+                        aria-label={t('ideiaDrawer.addImage')}
                       >
                         {imgBusy ? (
                           <Loader2 aria-hidden="true" className="animate-spin" />
                         ) : (
                           <Plus aria-hidden="true" />
                         )}
-                        Adicionar
+                        {t('actions.add')}
                       </button>
                     )}
                   </div>
@@ -592,7 +600,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
             />
 
             <section className="phone-kit phone-group">
-              <h2 className="phone-group__header">Reações</h2>
+              <h2 className="phone-group__header">{t('ideiaDrawer.reactions')}</h2>
               <div className="phone-ideia__reactions">
                 {ALLOWED_EMOJI.map((emoji) => {
                   const entry = reactionMap.get(emoji);
@@ -606,7 +614,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
                       aria-label={
                         entry
                           ? `${emoji} ${entry.count}: ${entry.names.join(', ')}`
-                          : `Reagir com ${emoji}`
+                          : t('ideiaDrawer.reactWith', { emoji })
                       }
                       onClick={() => handleReaction(emoji)}
                       disabled={reactionLoading === emoji}
@@ -629,7 +637,9 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
 
             <section className="phone-kit phone-group">
               <h2 className="phone-group__header">
-                <label htmlFor={`ideia-comentario-${ideia.id}`}>Resposta da agência</label>
+                <label htmlFor={`ideia-comentario-${ideia.id}`}>
+                  {t('ideiaDrawer.agencyResponse')}
+                </label>
               </h2>
               <div className="phone-ideia__card">
                 <textarea
@@ -637,14 +647,15 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
                   ref={comentarioRef}
                   value={comentario}
                   onChange={(e) => setComentario(e.target.value)}
-                  placeholder="Escreva uma resposta para o cliente..."
+                  placeholder={t('ideiaDrawer.responsePlaceholder')}
                   className="phone-ideia__comment"
                 />
                 <div className="phone-ideia__comment-foot">
                   {ideia.comentario_at && (
                     <span className="phone-ideia__edited">
-                      Editado em {formatDate(ideia.comentario_at)}
-                      {ideia.comentario_autor && ` por ${ideia.comentario_autor.nome}`}
+                      {t('ideiaDrawer.editedAtPhone', { date: formatDate(ideia.comentario_at) })}
+                      {ideia.comentario_autor &&
+                        t('ideiaDrawer.editedBy', { name: ideia.comentario_autor.nome })}
                     </span>
                   )}
                   <button
@@ -658,7 +669,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
                     ) : (
                       <Save aria-hidden="true" />
                     )}
-                    Salvar comentário
+                    {t('ideiaDrawer.saveComment')}
                   </button>
                 </div>
               </div>
@@ -672,7 +683,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
                   onClick={() => setConvertOpen(true)}
                 >
                   <ListChecks aria-hidden="true" />
-                  Converter em tarefa
+                  {t('ideiaDrawer.convertToTask')}
                 </button>
               </BottomActionBar>
             )}
@@ -682,7 +693,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
         <PickerSheet<Ideia['status']>
           open={statusPickerOpen}
           onOpenChange={setStatusPickerOpen}
-          title="Status"
+          title={t('ideiaDrawer.status')}
           options={STATUS_OPTIONS}
           value={statusValue}
           onChange={(next) => {
@@ -693,7 +704,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
         <ActionSheet
           open={menuOpen}
           onOpenChange={setMenuOpen}
-          title="Ações da ideia"
+          title={t('ideiaDrawer.actionsTitle')}
           hideTitle
           actions={menuActions}
           returnFocusRef={menuButtonRef}
@@ -701,12 +712,12 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
 
         <PhoneConfirmSheet
           open={confirmDelete}
-          title="Excluir ideia?"
-          message={`A ideia "${ideia.titulo}" será excluída, junto com seu áudio, imagens e reações. Essa ação não pode ser desfeita.`}
+          title={t('ideiaDrawer.deleteTitle')}
+          message={t('ideiaDrawer.deleteMessage', { title: ideia.titulo })}
           onCancel={() => setConfirmDelete(false)}
           actions={[
             {
-              label: 'Excluir ideia',
+              label: t('ideiaDrawer.deleteConfirm'),
               destructive: true,
               disabled: deleting,
               onSelect: () => {
@@ -750,7 +761,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
           <SheetTitle className="text-base leading-snug">{ideia.titulo}</SheetTitle>
           <SheetDescription className="text-xs">
             {ideia.clientes.nome} · {formatDate(ideia.created_at)}
-            {isAgency && ideia.autor ? ` · por ${ideia.autor.nome}` : ''}
+            {isAgency && ideia.autor ? t('ideiaDrawer.byAuthor', { name: ideia.autor.nome }) : ''}
           </SheetDescription>
         </SheetHeader>
 
@@ -764,23 +775,23 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
             {isAgency && canEditIdeias && (
               <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
                 <div>
-                  <p className="text-sm font-medium">Visível no Hub do cliente</p>
-                  <p className="text-xs text-muted-foreground">
-                    O cliente vê e reage, mas não edita.
-                  </p>
+                  <p className="text-sm font-medium">{t('shared.clientHubVisible')}</p>
+                  <p className="text-xs text-muted-foreground">{t('ideiaDrawer.hubFooter')}</p>
                 </div>
                 <Switch
                   checked={ideia.visivel_no_hub}
                   onCheckedChange={handleVisibilidade}
                   disabled={visSaving}
-                  aria-label="Visível no Hub do cliente"
+                  aria-label={t('shared.clientHubVisible')}
                 />
               </div>
             )}
 
             {ideia.descricao && (
               <div>
-                <p className="text-xs font-medium text-muted-foreground mb-1.5">Descrição</p>
+                <p className="text-xs font-medium text-muted-foreground mb-1.5">
+                  {t('shared.description')}
+                </p>
                 <p className="text-sm whitespace-pre-wrap">{ideia.descricao}</p>
               </div>
             )}
@@ -794,7 +805,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
             {ideia.links.length > 0 && (
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-1.5">
-                  Links de referência
+                  {t('shared.referenceLinks')}
                 </p>
                 <div className="space-y-1">
                   {ideia.links.map((link, i) => (
@@ -814,7 +825,9 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
             )}
 
             <div>
-              <p className="text-xs font-medium text-muted-foreground mb-2">Imagens</p>
+              <p className="text-xs font-medium text-muted-foreground mb-2">
+                {t('ideiaDrawer.images')}
+              </p>
               {images.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-2">
                   {images.map((img: CrmIdeiaImage) => (
@@ -834,7 +847,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
                         <button
                           onClick={() => handleRemoveImage(img.file_id)}
                           disabled={imgBusy}
-                          aria-label="Remover imagem"
+                          aria-label={t('ideiaDrawer.removeImage')}
                           className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-foreground text-background opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity disabled:opacity-50"
                         >
                           <X size={12} />
@@ -857,7 +870,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
                   ) : (
                     <ImagePlus size={13} className="mr-1.5" />
                   )}
-                  Adicionar imagem
+                  {t('ideiaDrawer.addImage')}
                 </Button>
               )}
               <input
@@ -871,7 +884,9 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
             </div>
 
             <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1.5">Status</p>
+              <p className="text-xs font-medium text-muted-foreground mb-1.5">
+                {t('ideiaDrawer.status')}
+              </p>
               {statusLocked ? (
                 <div className="flex items-center gap-3">
                   <IdeiaStatusBadge status={ideia.status} />
@@ -880,7 +895,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
                     className="inline-flex items-center gap-1.5 text-sm underline underline-offset-2 text-muted-foreground hover:text-foreground transition-colors"
                   >
                     <ListChecks size={14} />
-                    Ver tarefa
+                    {t('ideiaDrawer.viewTask')}
                   </Link>
                 </div>
               ) : (
@@ -894,7 +909,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
                   disabled={statusSaving}
                 >
                   <SelectTrigger className="w-48">
-                    <SelectValue placeholder="Selecionar status..." />
+                    <SelectValue placeholder={t('ideiaDrawer.selectStatus')} />
                   </SelectTrigger>
                   <SelectContent>
                     {STATUS_OPTIONS.map((o) => (
@@ -908,13 +923,15 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
               {canConvert && (
                 <Button size="sm" className="mt-3" onClick={() => setConvertOpen(true)}>
                   <ListChecks size={13} className="mr-1.5" />
-                  Converter em tarefa
+                  {t('ideiaDrawer.convertToTask')}
                 </Button>
               )}
             </div>
 
             <div>
-              <p className="text-xs font-medium text-muted-foreground mb-2">Reações</p>
+              <p className="text-xs font-medium text-muted-foreground mb-2">
+                {t('ideiaDrawer.reactions')}
+              </p>
               <div className="flex flex-wrap gap-2">
                 {ALLOWED_EMOJI.map((emoji) => {
                   const entry = reactionMap.get(emoji);
@@ -944,11 +961,12 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
 
             <div>
               <p className="text-xs font-medium text-muted-foreground mb-1.5">
-                Resposta da agência
+                {t('ideiaDrawer.agencyResponse')}
                 {ideia.comentario_at && (
                   <span className="ml-1.5 normal-case tracking-normal text-muted-foreground/70 font-normal">
-                    — editado em {formatDate(ideia.comentario_at)}
-                    {ideia.comentario_autor && ` por ${ideia.comentario_autor.nome}`}
+                    {t('ideiaDrawer.editedAt', { date: formatDate(ideia.comentario_at) })}
+                    {ideia.comentario_autor &&
+                      t('ideiaDrawer.editedBy', { name: ideia.comentario_autor.nome })}
                   </span>
                 )}
               </p>
@@ -956,7 +974,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
                 ref={comentarioRef}
                 value={comentario}
                 onChange={(e) => setComentario(e.target.value)}
-                placeholder="Escreva uma resposta para o cliente..."
+                placeholder={t('ideiaDrawer.responsePlaceholder')}
                 className="min-h-[90px] resize-none rounded-[8px]"
               />
               <Button
@@ -968,14 +986,14 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
               >
                 {comentarioSaving && <Loader2 size={13} className="animate-spin mr-1.5" />}
                 <Save size={13} className="mr-1.5" />
-                Salvar comentário
+                {t('ideiaDrawer.saveComment')}
               </Button>
             </div>
 
             <div className="flex items-center justify-between pt-2 border-t border-border">
               {isAgency && canEditIdeias && onEdit ? (
                 <Button type="button" variant="ink" size="sm" onClick={onEdit}>
-                  <Pencil size={13} className="mr-1.5" /> Editar
+                  <Pencil size={13} className="mr-1.5" /> {t('actions.edit')}
                 </Button>
               ) : (
                 <span />
@@ -988,7 +1006,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
                   className="text-[var(--danger-text)]"
                   onClick={() => setConfirmDelete(true)}
                 >
-                  <Trash2 size={13} className="mr-1.5" /> Excluir
+                  <Trash2 size={13} className="mr-1.5" /> {t('ideiaDrawer.delete')}
                 </Button>
               )}
             </div>
@@ -1000,14 +1018,13 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir ideia?</AlertDialogTitle>
+            <AlertDialogTitle>{t('ideiaDrawer.deleteTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              A ideia &quot;{ideia.titulo}&quot; será excluída, junto com seu áudio, imagens e
-              reações. Essa ação não pode ser desfeita.
+              {t('ideiaDrawer.deleteMessage', { title: ideia.titulo })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{t('actions.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
               disabled={deleting}
@@ -1017,7 +1034,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
               }}
             >
               {deleting && <Loader2 size={13} className="animate-spin mr-1.5" />}
-              Excluir ideia
+              {t('ideiaDrawer.deleteConfirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Mic, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { AudioPlayer } from '@mesaas/ui/AudioPlayer';
 import { AudioRecorder, isRecordingSupported, type RecorderPhase } from '@mesaas/ui/AudioRecorder';
 import { describeAudioError } from '@mesaas/ui/audio/validation';
@@ -27,10 +28,11 @@ import {
 } from '@/services/ideiaAudio';
 import type { Ideia } from '@/store';
 
-const STATUS: Record<string, { label: string; variant: 'success' | 'warning' | 'danger' }> = {
-  done: { label: 'Transcrito', variant: 'success' },
-  pending: { label: 'Transcrição pendente', variant: 'warning' },
-  failed: { label: 'Falha na transcrição', variant: 'danger' },
+// Label keys resolve at render time (ideaDrawer namespace).
+const STATUS: Record<string, { labelKey: string; variant: 'success' | 'warning' | 'danger' }> = {
+  done: { labelKey: 'ideiaAudioSection.statusDone', variant: 'success' },
+  pending: { labelKey: 'ideiaAudioSection.statusPending', variant: 'warning' },
+  failed: { labelKey: 'ideiaAudioSection.statusFailed', variant: 'danger' },
 };
 
 export function IdeiaAudioSection({
@@ -43,6 +45,7 @@ export function IdeiaAudioSection({
   queryKey: unknown[];
 }) {
   const qc = useQueryClient();
+  const { t } = useTranslation('ideaDrawer');
   const { features } = useWorkspaceLimits();
   const audioAllowed = features?.feature_briefing_audio === true;
   const showRecorder = canWrite && audioAllowed && isRecordingSupported();
@@ -82,9 +85,9 @@ export function IdeiaAudioSection({
       });
       setRecording(false);
       refresh();
-      toast.success('Áudio salvo.');
+      toast.success(t('ideiaAudioSection.toastSaved'));
     } catch (e) {
-      toast.error(describeAudioError(e, 'O envio do áudio falhou. Tente de novo.'));
+      toast.error(describeAudioError(e, t('ideiaAudioSection.errorUpload')));
       throw e;
     } finally {
       setPhase('idle');
@@ -97,7 +100,7 @@ export function IdeiaAudioSection({
       await retryIdeiaTranscription(ideia.id);
       refresh();
     } catch (e) {
-      toast.error(describeAudioError(e, 'Não foi possível transcrever agora.'));
+      toast.error(describeAudioError(e, t('ideiaAudioSection.errorTranscribe')));
     } finally {
       setBusy(false);
     }
@@ -109,9 +112,9 @@ export function IdeiaAudioSection({
       await deleteIdeiaAudio(ideia.id);
       refresh();
       setConfirmRemove(false);
-      toast.success('Áudio removido.');
+      toast.success(t('ideiaAudioSection.toastRemoved'));
     } catch (e) {
-      toast.error(describeAudioError(e, 'Não foi possível remover o áudio.'));
+      toast.error(describeAudioError(e, t('ideiaAudioSection.errorRemove')));
     } finally {
       setBusy(false);
     }
@@ -127,10 +130,10 @@ export function IdeiaAudioSection({
   return (
     <div style={CRM_AUDIO_VARS}>
       <div className="flex items-center justify-between mb-2">
-        <p className="text-xs font-medium text-muted-foreground">Áudio</p>
+        <p className="text-xs font-medium text-muted-foreground">{t('ideiaAudioSection.audio')}</p>
         {hasAudio && status && (
           <Badge variant={status.variant} size="sm">
-            {status.label}
+            {t(status.labelKey)}
           </Badge>
         )}
       </div>
@@ -140,20 +143,20 @@ export function IdeiaAudioSection({
             <AudioPlayer
               src={data.audio.url}
               durationSeconds={ideia.audio_duration_seconds}
-              label="Áudio da ideia"
+              label={t('ideiaAudioSection.playerLabel')}
               className="w-full max-w-[380px] text-foreground"
             />
           ) : isError ? (
             <span className="text-xs text-muted-foreground">
-              Não foi possível carregar o áudio.
+              {t('ideiaAudioSection.loadError')}
             </span>
           ) : (
-            <span className="text-xs text-muted-foreground">Carregando áudio…</span>
+            <span className="text-xs text-muted-foreground">{t('ideiaAudioSection.loading')}</span>
           )}
           {transcript && (
             <div className="rounded-lg bg-muted/60 px-3 py-2">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">
-                Transcrição
+                {t('ideiaAudioSection.transcript')}
               </p>
               <p className="text-sm whitespace-pre-wrap">{transcript}</p>
             </div>
@@ -171,7 +174,7 @@ export function IdeiaAudioSection({
               ) : (
                 <RotateCcw size={13} className="mr-1.5" />
               )}
-              Tentar novamente
+              {t('ideiaAudioSection.retry')}
             </Button>
           )}
           {showRecorder && hasAudio && !recording && (
@@ -182,7 +185,7 @@ export function IdeiaAudioSection({
               onClick={() => setRecording(true)}
               disabled={busy}
             >
-              <Mic size={13} className="mr-1.5" /> Gravar novamente
+              <Mic size={13} className="mr-1.5" /> {t('shared.recordAgain')}
             </Button>
           )}
           {canRemoveAudio && (
@@ -194,7 +197,7 @@ export function IdeiaAudioSection({
               onClick={() => setConfirmRemove(true)}
               disabled={busy}
             >
-              Remover áudio
+              {t('ideiaAudioSection.removeAudio')}
             </Button>
           )}
         </div>
@@ -205,7 +208,7 @@ export function IdeiaAudioSection({
             phase={phase}
             disabled={busy}
             onRecorded={handleRecorded}
-            hint="Até 5:00."
+            hint={t('ideiaAudioSection.recorderHint')}
           />
         </div>
       )}
@@ -213,13 +216,11 @@ export function IdeiaAudioSection({
       <AlertDialog open={confirmRemove} onOpenChange={setConfirmRemove}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover o áudio?</AlertDialogTitle>
-            <AlertDialogDescription>
-              A gravação e a transcrição serão apagadas. Isso não pode ser desfeito.
-            </AlertDialogDescription>
+            <AlertDialogTitle>{t('ideiaAudioSection.removeTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('ideiaAudioSection.removeMessage')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={busy}>{t('actions.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault();
@@ -227,7 +228,7 @@ export function IdeiaAudioSection({
               }}
               disabled={busy}
             >
-              Remover
+              {t('actions.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

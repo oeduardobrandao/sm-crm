@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -34,8 +36,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-const LINK_MSG = 'Informe um link completo, começando com https://';
-
 function isAbsoluteHttp(value: string): boolean {
   try {
     const u = new URL(value);
@@ -45,24 +45,31 @@ function isAbsoluteHttp(value: string): boolean {
   }
 }
 
-const schema = z.object({
-  cliente_id: z.string().min(1, 'Selecione um cliente'),
-  titulo: z.string().trim().min(1, 'Título obrigatório').max(200, 'Máximo de 200 caracteres'),
-  // Optional: the idea can be conveyed entirely through the audio recording instead.
-  // onSubmit below still requires at least one of descricao/pendingAudio -- that check
-  // needs the recorder's local state, which zod's schema can't see.
-  descricao: z.string().trim(),
-  links: z.array(
-    z.object({
-      value: z
-        .string()
-        .trim()
-        .refine((v) => v === '' || isAbsoluteHttp(v), LINK_MSG),
-    }),
-  ),
-  visivel_no_hub: z.boolean(),
-});
-type FormValues = z.infer<typeof schema>;
+// Built per render language: zod messages are resolved when the schema is created.
+function buildSchema(t: TFunction) {
+  return z.object({
+    cliente_id: z.string().min(1, t('novaIdeiaDialog.clientRequired')),
+    titulo: z
+      .string()
+      .trim()
+      .min(1, t('novaIdeiaDialog.titleRequired'))
+      .max(200, t('novaIdeiaDialog.titleMax')),
+    // Optional: the idea can be conveyed entirely through the audio recording instead.
+    // onSubmit below still requires at least one of descricao/pendingAudio -- that check
+    // needs the recorder's local state, which zod's schema can't see.
+    descricao: z.string().trim(),
+    links: z.array(
+      z.object({
+        value: z
+          .string()
+          .trim()
+          .refine((v) => v === '' || isAbsoluteHttp(v), t('novaIdeiaDialog.linkInvalid')),
+      }),
+    ),
+    visivel_no_hub: z.boolean(),
+  });
+}
+type FormValues = z.infer<ReturnType<typeof buildSchema>>;
 
 interface PendingAudio {
   blob: Blob;
@@ -81,6 +88,8 @@ interface Props {
 
 export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Props) {
   const qc = useQueryClient();
+  const { t } = useTranslation('ideaDrawer');
+  const schema = useMemo(() => buildSchema(t), [t]);
   const { membro } = useCurrentMembro();
   const { features } = useWorkspaceLimits();
   const audioAllowed = features?.feature_briefing_audio === true && isRecordingSupported();
@@ -161,8 +170,8 @@ export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Prop
     if (!values.descricao.trim() && !audioToUpload && !hasExistingAudio) {
       form.setError('descricao', {
         message: audioAllowed
-          ? 'Adicione uma descrição ou grave um áudio.'
-          : 'Descrição obrigatória',
+          ? t('novaIdeiaDialog.descriptionOrAudio')
+          : t('novaIdeiaDialog.descriptionRequired'),
       });
       return;
     }
@@ -180,7 +189,7 @@ export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Prop
         });
         qc.invalidateQueries({ queryKey: ['hub-ideias-all'] });
         qc.invalidateQueries({ queryKey: ['ideias'] });
-        toast.success('Ideia atualizada.');
+        toast.success(t('novaIdeiaDialog.toastUpdated'));
         form.reset();
         onSaved(editing.id);
         return;
@@ -216,8 +225,8 @@ export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Prop
             describeAudioError(
               e,
               values.descricao.trim()
-                ? 'Ideia criada, mas o áudio falhou. Abra a ideia para tentar de novo.'
-                : 'Ideia criada sem conteúdo: o áudio falhou e não há descrição. Abra a ideia para gravar de novo ou escrever uma descrição.',
+                ? t('novaIdeiaDialog.audioFailed')
+                : t('novaIdeiaDialog.audioFailedNoContent'),
             ),
           );
         } finally {
@@ -226,24 +235,26 @@ export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Prop
       }
       qc.invalidateQueries({ queryKey: ['hub-ideias-all'] });
       qc.invalidateQueries({ queryKey: ['ideias'] });
-      if (audioOk) toast.success('Ideia criada.');
+      if (audioOk) toast.success(t('novaIdeiaDialog.toastCreated'));
       form.reset();
       discardAudio();
       onSaved(id);
     } catch (e: any) {
-      toast.error(e.message ?? (editing ? 'Erro ao salvar ideia.' : 'Erro ao criar ideia.'));
+      toast.error(
+        e.message ?? (editing ? t('novaIdeiaDialog.errorSave') : t('novaIdeiaDialog.errorCreate')),
+      );
     } finally {
       setSubmitting(false);
     }
   }
 
   const submitLabel = editing
-    ? 'Salvar alterações'
+    ? t('novaIdeiaDialog.saveChanges')
     : audioPhase === 'uploading'
-      ? 'Enviando áudio…'
+      ? t('novaIdeiaDialog.uploadingAudio')
       : audioPhase === 'transcribing'
-        ? 'Transcrevendo…'
-        : 'Criar ideia';
+        ? t('novaIdeiaDialog.transcribing')
+        : t('novaIdeiaDialog.create');
 
   return (
     <Dialog
@@ -254,25 +265,25 @@ export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Prop
     >
       <DialogContent className="sm:max-w-[560px]">
         <DialogHeader>
-          <DialogTitle>{editing ? 'Editar ideia' : 'Nova ideia'}</DialogTitle>
+          <DialogTitle>
+            {editing ? t('novaIdeiaDialog.editTitle') : t('novaIdeiaDialog.newTitle')}
+          </DialogTitle>
           <DialogDescription>
-            {editing
-              ? 'Atualize os detalhes desta ideia.'
-              : 'Registre uma ideia de conteúdo para um cliente.'}
+            {editing ? t('novaIdeiaDialog.editDescription') : t('novaIdeiaDialog.newDescription')}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3" noValidate>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label htmlFor="nova-ideia-cliente">Cliente</Label>
+              <Label htmlFor="nova-ideia-cliente">{t('novaIdeiaDialog.client')}</Label>
               <Controller
                 control={form.control}
                 name="cliente_id"
                 render={({ field }) => (
                   <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger id="nova-ideia-cliente" aria-label="Cliente">
-                      <SelectValue placeholder="Selecione o cliente" />
+                    <SelectTrigger id="nova-ideia-cliente" aria-label={t('novaIdeiaDialog.client')}>
+                      <SelectValue placeholder={t('novaIdeiaDialog.selectClient')} />
                     </SelectTrigger>
                     <SelectContent>
                       {sortedClientes.map((c: any) => (
@@ -292,11 +303,11 @@ export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Prop
             </div>
 
             <div className="space-y-1">
-              <Label htmlFor="nova-ideia-titulo">Título</Label>
+              <Label htmlFor="nova-ideia-titulo">{t('novaIdeiaDialog.title')}</Label>
               <Input
                 id="nova-ideia-titulo"
                 {...form.register('titulo')}
-                placeholder="Ex: Bastidores da nova sala"
+                placeholder={t('novaIdeiaDialog.titlePlaceholder')}
               />
               {form.formState.errors.titulo && (
                 <p className="text-xs text-[var(--danger-text)]">
@@ -308,11 +319,11 @@ export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Prop
 
           <div className="space-y-1">
             <Label htmlFor="nova-ideia-descricao">
-              Descrição
+              {t('shared.description')}
               {audioAllowed && !editing && (
                 <span className="font-normal text-muted-foreground">
                   {' '}
-                  (ou grave um áudio abaixo)
+                  {t('novaIdeiaDialog.orRecordAudio')}
                 </span>
               )}
             </Label>
@@ -320,7 +331,7 @@ export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Prop
               id="nova-ideia-descricao"
               {...form.register('descricao')}
               className="min-h-[64px]"
-              placeholder="O que é a ideia e por que vale a pena"
+              placeholder={t('novaIdeiaDialog.descriptionPlaceholder')}
             />
             {form.formState.errors.descricao && (
               <p className="text-xs text-[var(--danger-text)]">
@@ -332,9 +343,9 @@ export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Prop
           {audioAllowed && !editing && (
             <div className="space-y-1.5" style={CRM_AUDIO_VARS}>
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Áudio{' '}
+                {t('novaIdeiaDialog.audio')}{' '}
                 <span className="ml-1 normal-case font-normal tracking-normal">
-                  (ou escreva a descrição acima)
+                  {t('novaIdeiaDialog.orWriteDescription')}
                 </span>
               </p>
               {pendingAudio && !rerecord ? (
@@ -342,7 +353,7 @@ export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Prop
                   <AudioPlayer
                     src={pendingAudio.url}
                     durationSeconds={pendingAudio.durationSeconds}
-                    label="Prévia"
+                    label={t('novaIdeiaDialog.preview')}
                     className="w-full max-w-[360px] text-foreground"
                   />
                   <div className="flex gap-2">
@@ -352,10 +363,10 @@ export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Prop
                       size="sm"
                       onClick={() => setRerecord(true)}
                     >
-                      <Mic size={13} className="mr-1.5" /> Gravar novamente
+                      <Mic size={13} className="mr-1.5" /> {t('shared.recordAgain')}
                     </Button>
                     <Button type="button" variant="ghost" size="sm" onClick={discardAudio}>
-                      Descartar
+                      {t('novaIdeiaDialog.discard')}
                     </Button>
                   </div>
                 </div>
@@ -363,8 +374,8 @@ export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Prop
                 <AudioRecorder
                   phase={audioPhase}
                   disabled={submitting}
-                  sendLabel="Usar este áudio"
-                  hint="Até 5:00. A transcrição aparece na ideia depois de salvar."
+                  sendLabel={t('novaIdeiaDialog.useThisAudio')}
+                  hint={t('novaIdeiaDialog.recorderHint')}
                   onRecorded={async (blob, mime, durationSeconds) => {
                     if (pendingAudio) URL.revokeObjectURL(pendingAudio.url);
                     setPendingAudio({
@@ -381,7 +392,7 @@ export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Prop
           )}
 
           <div className="space-y-1">
-            <Label>Links de referência</Label>
+            <Label>{t('shared.referenceLinks')}</Label>
             {fields.map((f, i) => (
               <div key={f.id} className="space-y-1">
                 <div className="flex gap-2">
@@ -391,7 +402,7 @@ export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Prop
                       type="button"
                       variant="ghost"
                       size="icon"
-                      aria-label="Remover link"
+                      aria-label={t('novaIdeiaDialog.removeLink')}
                       onClick={() => remove(i)}
                     >
                       <X size={14} />
@@ -406,16 +417,14 @@ export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Prop
               </div>
             ))}
             <Button type="button" variant="ghost" size="sm" onClick={() => append({ value: '' })}>
-              <Plus size={13} className="mr-1" /> Adicionar outro link
+              <Plus size={13} className="mr-1" /> {t('novaIdeiaDialog.addLink')}
             </Button>
           </div>
 
           <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/40 px-3 py-2">
             <div>
-              <p className="text-sm font-medium">Visível no Hub do cliente</p>
-              <p className="text-xs text-muted-foreground">
-                Desligado: só a equipe vê. Ligado: aparece na página Ideias do cliente, sem edição.
-              </p>
+              <p className="text-sm font-medium">{t('shared.clientHubVisible')}</p>
+              <p className="text-xs text-muted-foreground">{t('novaIdeiaDialog.hubHint')}</p>
             </div>
             <Controller
               control={form.control}
@@ -424,7 +433,7 @@ export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Prop
                 <Switch
                   checked={field.value}
                   onCheckedChange={field.onChange}
-                  aria-label="Visível no Hub do cliente"
+                  aria-label={t('shared.clientHubVisible')}
                 />
               )}
             />
@@ -432,7 +441,7 @@ export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Prop
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
-              Cancelar
+              {t('actions.cancel')}
             </Button>
             <Button type="submit" disabled={submitting}>
               {submitting && <Loader2 size={13} className="animate-spin mr-1.5" />}
