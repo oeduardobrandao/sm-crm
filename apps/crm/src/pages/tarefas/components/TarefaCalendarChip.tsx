@@ -13,6 +13,15 @@ import { TagPill } from './TagPicker';
 
 const NEUTRAL_BAR = 'var(--border-color)';
 
+function isFocusVisible(el: Element): boolean {
+  try {
+    return el.matches(':focus-visible');
+  } catch {
+    // An engine without :focus-visible: keep the keyboard path working.
+    return true;
+  }
+}
+
 /**
  * One line of the desktop month grid: the client's colour as the left bar (the
  * at-a-glance client identifier), the title, and the assignee's avatar at the right.
@@ -229,6 +238,13 @@ export function DraggableTarefaChip({
           {...dragAttributes}
           {...listeners}
           onClick={onClick}
+          // Focus opens the card only for keyboard users. Closing the task sheet hands
+          // focus back to the chip that opened it; after a mouse click that focus is not
+          // :focus-visible, and without this the card would pop open over the grid.
+          // Default-prevented, Radix's composed onFocus skips opening.
+          onFocus={(e) => {
+            if (!isFocusVisible(e.currentTarget)) e.preventDefault();
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();

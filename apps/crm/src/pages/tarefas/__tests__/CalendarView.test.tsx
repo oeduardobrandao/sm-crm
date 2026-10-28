@@ -131,6 +131,8 @@ describe('CalendarView date-drop guards', () => {
 });
 
 describe('CalendarView month chips', () => {
+  // Real focus (activeElement), as a Tab would give: the card opens on :focus-visible only.
+  const focusChip = () => act(() => screen.getByRole('button', { name: 'Editar vídeo' }).focus());
   const ANA = { id: 7, nome: 'Ana Souza', avatar_url: null } as unknown as Membro;
   const TAGS = [
     { id: 1, nome: 'Urgente', cor: '#f55a42' },
@@ -182,7 +184,7 @@ describe('CalendarView month chips', () => {
       }),
       { membros: [ANA] },
     );
-    fireEvent.focus(screen.getByRole('button', { name: 'Editar vídeo' }));
+    focusChip();
     const card = await screen.findByRole('tooltip');
     expect(within(card).getByText('Clínica Sol')).toBeInTheDocument();
     expect(within(card).getByText('Ana Souza')).toBeInTheDocument();
@@ -195,9 +197,17 @@ describe('CalendarView month chips', () => {
 
   it('says "Sem responsável" in the card for an unassigned task', async () => {
     renderMonth(makeTarefa({ data_limite: today() }));
-    fireEvent.focus(screen.getByRole('button', { name: 'Editar vídeo' }));
+    focusChip();
     const card = await screen.findByRole('tooltip');
     expect(within(card).getByText('Sem responsável')).toBeInTheDocument();
+  });
+
+  it('a focus that is not :focus-visible (focus handed back after a click) keeps the card closed', async () => {
+    renderMonth(makeTarefa({ data_limite: today() }));
+    // A focus event on an element that is not the focused one never matches :focus-visible.
+    fireEvent.focus(screen.getByRole('button', { name: 'Editar vídeo' }));
+    await act(async () => {});
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
   });
 
   it('opens the task on click and on Enter/Space', () => {
