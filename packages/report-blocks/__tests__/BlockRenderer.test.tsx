@@ -320,6 +320,25 @@ describe('BlockRenderer: paridade de DOM do legado', () => {
     }
   }
 
+  it('legado IG-TT-IG: a segunda sequência do Instagram vai para a seção do Instagram (reordenação documentada)', () => {
+    // Não é regressão: spec 2026-10-28-report-platform-sections §Reading. toSections junta
+    // trechos da mesma plataforma numa seção só, então kpi_saves sobe para antes do TikTok.
+    // Nenhum dado de prod tem esse formato (só o editor do #766, não mergeado, escreveria).
+    const { container } = render(
+      <BlockRenderer
+        layout={fixtureLayout('legacy: Instagram and TikTok mixed freely')}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    const ids = [...container.querySelectorAll('.rb-grid > [data-block-id]')].map(
+      (el) => (el as HTMLElement).dataset.blockId,
+    );
+    expect(ids).toEqual(['a', 'c', 'b']);
+    // Seções inferidas do legado escondem o título.
+    expect(container.querySelector('.rb-platform-heading')).toBeNull();
+  });
+
   it('legado com Instagram desconectado: sub-cabeçalhos seguem como hoje (sem título de plataforma)', () => {
     const { container } = render(
       <BlockRenderer
@@ -486,6 +505,30 @@ describe('BlockRenderer: seção sem dados omitida na visualização', () => {
       />,
     );
     expect(container.querySelector('.rb-platform-heading')).toBeNull();
+
+    // Só neutros (subtítulo, texto, divisor): neutros não contam como dado, então a seção
+    // some inteira, sem célula nenhuma; a Geral segue.
+    const { container: neutralOnly } = render(
+      <BlockRenderer
+        layout={{
+          version: 1,
+          blocks: [
+            { id: 'g', type: 'section', size: 'full' },
+            { id: 'c', type: 'cover', size: 'full' },
+            { id: 'ig', type: 'section', size: 'full', config: { platform: 'instagram' } },
+            { id: 'n_h', type: 'section_header', size: 'full', config: { title: 'Só texto' } },
+            { id: 'n_t', type: 'text', size: 'full', text: doc('Comentário solto') },
+            { id: 'n_d', type: 'divider', size: 'full' },
+          ],
+        }}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    expect(neutralOnly.querySelector('.rb-platform-heading')).toBeNull();
+    for (const id of ['n_h', 'n_t', 'n_d'])
+      expect(neutralOnly.querySelector(`[data-block-id="${id}"]`)).toBeNull();
+    expect(neutralOnly.querySelector('[data-block-id="c"]')).not.toBeNull();
   });
 
   it('Instagram desconectado: seção do Instagram com título some', () => {
