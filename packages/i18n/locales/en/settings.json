@@ -422,6 +422,11 @@
         "when": "a task is created for you or reassigned to you",
         "recipients": "only the assignee"
       },
+      "task_comment": {
+        "label": "Comment on a task",
+        "when": "someone comments on a task you take part in",
+        "recipients": "assignee, creator and earlier commenters, except the author and anyone mentioned"
+      },
       "workflow_completed": {
         "label": "Workflow completed",
         "when": "an entire workflow is completed",
