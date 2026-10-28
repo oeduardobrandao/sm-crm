@@ -1,9 +1,5 @@
+import { useTranslation } from 'react-i18next';
 import type { Ideia } from '@/store';
-
-const LABELS: Record<Ideia['tipo'], string> = {
-  ideia: 'Ideia',
-  solicitacao: 'Solicitação',
-};
 
 const CLASSES: Record<Ideia['tipo'], string> = {
   ideia: 'bg-stone-100 text-stone-500',
@@ -11,11 +7,12 @@ const CLASSES: Record<Ideia['tipo'], string> = {
 };
 
 export function IdeiaTipoBadge({ tipo }: { tipo: Ideia['tipo'] }) {
+  const { t } = useTranslation('ideas');
   return (
     <span
       className={`inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full ${CLASSES[tipo]}`}
     >
-      {LABELS[tipo]}
+      {t(`tipo.${tipo}`)}
     </span>
   );
 }

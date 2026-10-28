@@ -1,5 +1,6 @@
 // Prévia compacta do post no Instagram (Post Express). Mesma marcação no desktop,
 // dentro da etapa Envio, e no celular, dentro da folha "Preview".
+import { useTranslation } from 'react-i18next';
 import type { PostMedia } from '../../store';
 
 export interface ExpressPreviewProps {
@@ -21,6 +22,7 @@ export function ExpressPreview({
   emptyLabel,
   fill,
 }: ExpressPreviewProps) {
+  const { t } = useTranslation('posts');
   return (
     <div
       className="rounded-lg overflow-hidden"
@@ -41,7 +43,7 @@ export function ExpressPreview({
           />
         )}
         <span className="text-xs font-semibold" style={{ color: '#e8eaf0' }}>
-          @{igAccount.username ?? 'conta'}
+          @{igAccount.username ?? t('labels.accountFallback')}
         </span>
       </div>
       <div
@@ -122,7 +124,9 @@ export function ExpressPreview({
       </div>
       {!isStory && caption && (
         <p className="mt-2 text-xs leading-relaxed" style={{ color: '#9ca3af' }}>
-          <strong style={{ color: '#e8eaf0' }}>@{igAccount.username ?? 'conta'}</strong>{' '}
+          <strong style={{ color: '#e8eaf0' }}>
+            @{igAccount.username ?? t('labels.accountFallback')}
+          </strong>{' '}
           {caption.length > 100 ? caption.slice(0, 100) + '...' : caption}
         </p>
       )}

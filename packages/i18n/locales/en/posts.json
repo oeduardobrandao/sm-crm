@@ -5,7 +5,8 @@
     "client": "Client",
     "media": "Media",
     "caption": "Instagram Caption",
-    "preview": "Preview"
+    "preview": "Preview",
+    "accountFallback": "account"
   },
   "select": {
     "client": "Select client..."
@@ -14,7 +15,11 @@
     "noClientsWithIg": "No clients with Instagram connected.",
     "connectAccount": "Connect account",
     "preparingDraft": "Preparing draft...",
-    "mediaPlaceholder": "Media appears here"
+    "mediaPlaceholder": "Media appears here",
+    "connectDescription": "Connect an Instagram account to a client to start publishing.",
+    "noneConfiguredTitle": "No client with Instagram set up",
+    "noneConfiguredDescription": "To use Post Express, connect an Instagram account to at least one client.",
+    "goToClients": "Go to Clients →"
   },
   "publish": {
     "button": "Publish now",
@@ -83,7 +88,8 @@
   "warnings": {
     "revoked": "Instagram token has been revoked. Reconnect the account in the client settings.",
     "expired": "Instagram token has expired. Reconnect the account in the client settings.",
-    "missingPermission": "Publish permission not granted. Reconnect the account with the required permissions."
+    "missingPermission": "Publish permission not granted. Reconnect the account with the required permissions.",
+    "reconnect": "Reconnect"
   },
   "mediaGallery": {
     "dropHere": "Drop here",

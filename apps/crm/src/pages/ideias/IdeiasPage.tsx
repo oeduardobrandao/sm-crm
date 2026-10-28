@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { useIntlLocale } from '@mesaas/i18n';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { DateRange } from 'react-day-picker';
 import { getIdeias, getClientes, type Ideia } from '@/store';
@@ -70,6 +72,8 @@ function endOfDayIso(d: Date): string {
 }
 
 export default function IdeiasPage() {
+  const { t } = useTranslation('ideas');
+  const intlLocale = useIntlLocale();
   const { can } = useAuth();
   const isPhone = !useIsDesktop(768);
   const qc = useQueryClient();
@@ -183,11 +187,7 @@ export default function IdeiasPage() {
   );
 
   const infoTooltip = (
-    <span
-      data-tooltip="Ideias enviadas pelos clientes no portal ou criadas pela equipe."
-      data-tooltip-dir="right"
-      style={{ display: 'flex' }}
-    >
+    <span data-tooltip={t('shared.helpText')} data-tooltip-dir="right" style={{ display: 'flex' }}>
       <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
     </span>
   );
@@ -199,11 +199,11 @@ export default function IdeiasPage() {
       }}
     >
       <Plus size={15} className="mr-1.5" />
-      Nova ideia
+      {t('shared.newIdea')}
     </Button>
   ) : null;
   const inToolbar = usePageToolbar({
-    title: 'Ideias',
+    title: t('shared.title'),
     titleAccessory: infoTooltip,
     primary: primaryAction,
   });
@@ -251,7 +251,7 @@ export default function IdeiasPage() {
             className="header-title"
             style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
           >
-            <h1>Ideias</h1>
+            <h1>{t('shared.title')}</h1>
             {infoTooltip}
           </div>
           {primaryAction}
@@ -276,7 +276,7 @@ export default function IdeiasPage() {
             }}
           />
           <Input
-            placeholder="Buscar por título ou cliente..."
+            placeholder={t('shared.searchPlaceholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ paddingLeft: '2rem' }}
@@ -286,10 +286,10 @@ export default function IdeiasPage() {
         <div className="hidden min-[901px]:contents">
           <Select value={clienteFilter} onValueChange={setClienteFilter}>
             <SelectTrigger className="!rounded-full !text-xs h-9 px-4 w-auto min-w-[160px] mb-0">
-              <SelectValue placeholder="Todos os clientes" />
+              <SelectValue placeholder={t('shared.allClients')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos os clientes</SelectItem>
+              <SelectItem value="all">{t('shared.allClients')}</SelectItem>
               {[...clientes]
                 .sort((a: any, b: any) => a.nome.localeCompare(b.nome, 'pt-BR'))
                 .map((c: any) => (
@@ -302,12 +302,12 @@ export default function IdeiasPage() {
 
           <Select value={tipoFilter} onValueChange={setTipoFilter}>
             <SelectTrigger className="!rounded-full !text-xs h-9 px-4 w-auto min-w-[130px] mb-0">
-              <SelectValue placeholder="Tipo" />
+              <SelectValue placeholder={t('page.typePlaceholder')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos os tipos</SelectItem>
-              <SelectItem value="ideia">Ideia</SelectItem>
-              <SelectItem value="solicitacao">Solicitação</SelectItem>
+              <SelectItem value="all">{t('page.allTypes')}</SelectItem>
+              <SelectItem value="ideia">{t('tipo.ideia')}</SelectItem>
+              <SelectItem value="solicitacao">{t('tipo.solicitacao')}</SelectItem>
             </SelectContent>
           </Select>
 
@@ -318,10 +318,10 @@ export default function IdeiasPage() {
                 className="h-9 rounded-full px-4 text-xs gap-1.5 font-normal shadow-sm mb-0"
               >
                 {statusFilters.length === 0
-                  ? 'Status'
+                  ? t('shared.status')
                   : statusFilters.length === 1
                     ? STATUS_LABELS[statusFilters[0]]
-                    : `Status (${statusFilters.length})`}
+                    : t('page.statusCount', { count: statusFilters.length })}
                 <ChevronDown className="h-3.5 w-3.5 opacity-60" />
               </Button>
             </DropdownMenuTrigger>
@@ -356,7 +356,7 @@ export default function IdeiasPage() {
           onClick={() => setFilterSheetOpen(true)}
         >
           <SlidersHorizontal className="h-3.5 w-3.5" />
-          Filtros
+          {t('shared.filters')}
           {ideiasActiveFilterCount > 0 && (
             <span
               className="inline-flex items-center justify-center rounded-full text-[0.6rem] font-semibold leading-none"
@@ -376,16 +376,18 @@ export default function IdeiasPage() {
       <Sheet open={filterSheetOpen} onOpenChange={setFilterSheetOpen}>
         <SheetContent side="bottom" className="rounded-t-[24px] max-h-[85vh] overflow-y-auto pb-24">
           <SheetHeader className="mb-4">
-            <SheetTitle className="text-base">Filtros</SheetTitle>
-            <SheetDescription className="sr-only">Filtre as ideias</SheetDescription>
+            <SheetTitle className="text-base">{t('shared.filters')}</SheetTitle>
+            <SheetDescription className="sr-only">
+              {t('shared.filtersDescription')}
+            </SheetDescription>
           </SheetHeader>
           <div className="flex flex-col gap-3">
             <Select value={clienteFilter} onValueChange={setClienteFilter}>
               <SelectTrigger className="!text-xs h-9 w-full mb-0">
-                <SelectValue placeholder="Todos os clientes" />
+                <SelectValue placeholder={t('shared.allClients')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos os clientes</SelectItem>
+                <SelectItem value="all">{t('shared.allClients')}</SelectItem>
                 {[...clientes]
                   .sort((a: any, b: any) => a.nome.localeCompare(b.nome, 'pt-BR'))
                   .map((c: any) => (
@@ -398,12 +400,12 @@ export default function IdeiasPage() {
 
             <Select value={tipoFilter} onValueChange={setTipoFilter}>
               <SelectTrigger className="!text-xs h-9 w-full mb-0">
-                <SelectValue placeholder="Tipo" />
+                <SelectValue placeholder={t('page.typePlaceholder')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos os tipos</SelectItem>
-                <SelectItem value="ideia">Ideia</SelectItem>
-                <SelectItem value="solicitacao">Solicitação</SelectItem>
+                <SelectItem value="all">{t('page.allTypes')}</SelectItem>
+                <SelectItem value="ideia">{t('tipo.ideia')}</SelectItem>
+                <SelectItem value="solicitacao">{t('tipo.solicitacao')}</SelectItem>
               </SelectContent>
             </Select>
 
@@ -414,10 +416,10 @@ export default function IdeiasPage() {
                   className="h-9 w-full justify-between text-xs font-normal"
                 >
                   {statusFilters.length === 0
-                    ? 'Status'
+                    ? t('shared.status')
                     : statusFilters.length === 1
                       ? STATUS_LABELS[statusFilters[0]]
-                      : `Status (${statusFilters.length})`}
+                      : t('page.statusCount', { count: statusFilters.length })}
                   <ChevronDown className="h-3.5 w-3.5 opacity-60" />
                 </Button>
               </DropdownMenuTrigger>
@@ -443,7 +445,7 @@ export default function IdeiasPage() {
           </div>
           {ideiasActiveFilterCount > 0 && (
             <Button variant="ghost" className="w-full mt-4 text-xs" onClick={clearFilters}>
-              Limpar filtros
+              {t('page.clearFilters')}
             </Button>
           )}
         </SheetContent>
@@ -458,7 +460,7 @@ export default function IdeiasPage() {
             style={{ margin: '0 auto 0.5rem', color: 'var(--text-light)' }}
           />
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            Nenhuma ideia encontrada.
+            {t('shared.empty')}
           </p>
         </div>
       ) : (
@@ -466,14 +468,14 @@ export default function IdeiasPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Origem</TableHead>
-                <TableHead>Título</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Reações</TableHead>
-                <TableHead>Resposta</TableHead>
-                <TableHead>Data</TableHead>
+                <TableHead>{t('page.columns.client')}</TableHead>
+                <TableHead>{t('page.columns.type')}</TableHead>
+                <TableHead>{t('page.columns.source')}</TableHead>
+                <TableHead>{t('page.columns.title')}</TableHead>
+                <TableHead>{t('page.columns.status')}</TableHead>
+                <TableHead>{t('page.columns.reactions')}</TableHead>
+                <TableHead>{t('page.columns.reply')}</TableHead>
+                <TableHead>{t('page.columns.date')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -506,7 +508,7 @@ export default function IdeiasPage() {
                     {ideia.comentario_agencia ? '✓' : '—'}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {new Date(ideia.created_at).toLocaleDateString('pt-BR')}
+                    {new Date(ideia.created_at).toLocaleDateString(intlLocale)}
                   </TableCell>
                 </TableRow>
               ))}

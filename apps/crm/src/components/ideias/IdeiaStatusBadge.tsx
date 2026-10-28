@@ -1,13 +1,5 @@
+import { useTranslation } from 'react-i18next';
 import type { Ideia } from '@/store';
-
-const LABELS: Record<Ideia['status'], string> = {
-  nova: 'Nova',
-  em_analise: 'Em análise',
-  aprovada: 'Aprovada',
-  descartada: 'Descartada',
-  convertida: 'Virou tarefa',
-  concluida: 'Concluída',
-};
 
 const CLASSES: Record<Ideia['status'], string> = {
   nova: 'bg-stone-100 text-stone-600',
@@ -19,11 +11,12 @@ const CLASSES: Record<Ideia['status'], string> = {
 };
 
 export function IdeiaStatusBadge({ status }: { status: Ideia['status'] }) {
+  const { t } = useTranslation('ideas');
   return (
     <span
       className={`inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full ${CLASSES[status]}`}
     >
-      {LABELS[status]}
+      {t(`status.${status}`)}
     </span>
   );
 }

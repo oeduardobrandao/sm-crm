@@ -5,7 +5,8 @@
     "client": "Cliente",
     "media": "Mídia",
     "caption": "Legenda do Instagram",
-    "preview": "Preview"
+    "preview": "Preview",
+    "accountFallback": "conta"
   },
   "select": {
     "client": "Selecionar cliente..."
@@ -14,7 +15,11 @@
     "noClientsWithIg": "Nenhum cliente com Instagram conectado.",
     "connectAccount": "Conectar conta",
     "preparingDraft": "Preparando rascunho...",
-    "mediaPlaceholder": "Mídia aparece aqui"
+    "mediaPlaceholder": "Mídia aparece aqui",
+    "connectDescription": "Conecte uma conta Instagram em um cliente para começar a publicar.",
+    "noneConfiguredTitle": "Nenhum cliente com Instagram configurado",
+    "noneConfiguredDescription": "Para usar o Post Express, conecte uma conta Instagram em pelo menos um cliente.",
+    "goToClients": "Ir para Clientes →"
   },
   "publish": {
     "button": "Publicar agora",
@@ -83,7 +88,8 @@
   "warnings": {
     "revoked": "Token do Instagram foi revogado. Reconecte a conta nas configurações do cliente.",
     "expired": "Token do Instagram expirou. Reconecte a conta nas configurações do cliente.",
-    "missingPermission": "Permissão de publicação não concedida. Reconecte a conta com as permissões necessárias."
+    "missingPermission": "Permissão de publicação não concedida. Reconecte a conta com as permissões necessárias.",
+    "reconnect": "Reconectar"
   },
   "mediaGallery": {
     "dropHere": "Soltar aqui",

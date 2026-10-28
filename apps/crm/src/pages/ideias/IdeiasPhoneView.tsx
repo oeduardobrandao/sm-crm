@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react';
 import type { DateRange } from 'react-day-picker';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { format, type Locale } from 'date-fns';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import { Lightbulb, Plus, Search, SlidersHorizontal, X } from 'lucide-react';
 import type { Ideia } from '@/store';
 import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
@@ -13,11 +15,6 @@ import { FormRow } from '@/components/mobile/FormRow';
 import { IdeiaStatusPill } from '@/components/ideias/IdeiaStatusPill';
 import { IDEIA_STATUS_LABELS } from './ideiaLabels';
 import './ideiasPhone.css';
-
-const HELP_TEXT = 'Ideias enviadas pelos clientes no portal ou criadas pela equipe.';
-
-const TIPO_LABELS: Record<Ideia['tipo'], string> = { ideia: 'Ideia', solicitacao: 'Solicitação' };
-const ORIGEM_LABELS: Record<Ideia['origem'], string> = { cliente: 'Cliente', agencia: 'Agência' };
 
 type PeriodMode = 'todos' | 'mes' | 'intervalo';
 
@@ -57,17 +54,17 @@ function modeOf(range: DateRange | undefined): PeriodMode {
   if (isWholeMonth(range)) return 'mes';
   return range?.from || range?.to ? 'intervalo' : 'todos';
 }
-function periodLabel(range: DateRange | undefined): string | null {
+function periodLabel(range: DateRange | undefined, t: TFunction, locale: Locale): string | null {
   const { from, to } = range ?? {};
   if (!from && !to) return null;
   if (isWholeMonth(range) && from) {
-    const label = format(from, "MMMM 'de' yyyy", { locale: ptBR });
+    const label = format(from, t('common:dateFormat.monthYear'), { locale });
     return label.charAt(0).toUpperCase() + label.slice(1);
   }
-  const short = (d: Date) => format(d, 'dd/MM/yyyy');
-  if (from && to) return `${short(from)} a ${short(to)}`;
-  if (from) return `A partir de ${short(from)}`;
-  return `Até ${short(to as Date)}`;
+  const short = (d: Date) => format(d, t('ideas:phone.dateShort'));
+  if (from && to) return t('ideas:phone.periodRange', { from: short(from), to: short(to) });
+  if (from) return t('ideas:phone.periodFrom', { date: short(from) });
+  return t('ideas:phone.periodTo', { date: short(to as Date) });
 }
 
 export interface IdeiasPhoneViewProps {
@@ -121,6 +118,8 @@ export function IdeiasPhoneView(props: IdeiasPhoneViewProps) {
     activeFilterCount,
     onClearFilters,
   } = props;
+  const { t } = useTranslation('ideas');
+  const dateLocale = useDateFnsLocale();
   const [searchOpen, setSearchOpen] = useState(() => search !== '');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [periodMode, setPeriodMode] = useState<PeriodMode>(() => modeOf(dateRange));
@@ -129,7 +128,7 @@ export function IdeiasPhoneView(props: IdeiasPhoneViewProps) {
 
   const sortedClientes = [...clientes].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   const clienteName = sortedClientes.find((c) => String(c.id) === clienteFilter)?.nome;
-  const period = periodLabel(dateRange);
+  const period = periodLabel(dateRange, t, dateLocale);
 
   const choosePeriodMode = (mode: PeriodMode) => {
     setPeriodMode(mode);
@@ -148,8 +147,8 @@ export function IdeiasPhoneView(props: IdeiasPhoneViewProps) {
       lists: [
         {
           key: 'cliente',
-          title: 'Cliente',
-          allLabel: 'Todos os clientes',
+          title: t('phone.client'),
+          allLabel: t('shared.allClients'),
           options: sortedClientes.map((c) => ({ value: String(c.id), label: c.nome })),
           selected: clienteFilter === 'all' ? [] : [clienteFilter],
           // One cliente at a time, as on desktop: a second pick replaces the first.
@@ -163,10 +162,10 @@ export function IdeiasPhoneView(props: IdeiasPhoneViewProps) {
     {
       type: 'chips',
       key: 'tipo',
-      label: 'Tipo',
+      label: t('phone.type'),
       chips: (['ideia', 'solicitacao'] as const).map((tipo) => ({
         key: tipo,
-        label: TIPO_LABELS[tipo],
+        label: t(`tipo.${tipo}`),
         selected: tipoFilter === tipo,
         onToggle: () => onTipoFilterChange(tipoFilter === tipo ? 'all' : tipo),
       })),
@@ -174,7 +173,7 @@ export function IdeiasPhoneView(props: IdeiasPhoneViewProps) {
     {
       type: 'chips',
       key: 'status',
-      label: 'Status',
+      label: t('shared.status'),
       chips: statuses.map((s) => ({
         key: s,
         label: IDEIA_STATUS_LABELS[s],
@@ -190,11 +189,11 @@ export function IdeiasPhoneView(props: IdeiasPhoneViewProps) {
     {
       type: 'chips',
       key: 'periodo',
-      label: 'Período',
+      label: t('phone.period'),
       chips: [
-        { key: 'todos', label: 'Qualquer data' },
-        { key: 'mes', label: 'Um mês' },
-        { key: 'intervalo', label: 'Intervalo' },
+        { key: 'todos', label: t('phone.anyDate') },
+        { key: 'mes', label: t('phone.oneMonth') },
+        { key: 'intervalo', label: t('phone.range') },
       ].map((c) => ({
         key: c.key,
         label: c.label,
@@ -204,10 +203,10 @@ export function IdeiasPhoneView(props: IdeiasPhoneViewProps) {
       after:
         periodMode === 'todos' ? undefined : (
           <div className="phone-ideias__period">
-            <GroupedList aria-label="Período">
+            <GroupedList aria-label={t('phone.period')}>
               {periodMode === 'mes' ? (
                 <FormRow
-                  label="Mês"
+                  label={t('phone.month')}
                   input={{
                     type: 'month',
                     value: dateRange?.from
@@ -219,7 +218,7 @@ export function IdeiasPhoneView(props: IdeiasPhoneViewProps) {
               ) : (
                 <>
                   <FormRow
-                    label="De"
+                    label={t('phone.from')}
                     input={{
                       type: 'date',
                       value: toInputDate(dateRange?.from),
@@ -232,7 +231,7 @@ export function IdeiasPhoneView(props: IdeiasPhoneViewProps) {
                     }}
                   />
                   <FormRow
-                    label="Até"
+                    label={t('phone.to')}
                     input={{
                       type: 'date',
                       value: toInputDate(dateRange?.to),
@@ -254,18 +253,20 @@ export function IdeiasPhoneView(props: IdeiasPhoneViewProps) {
 
   const statusChipLabel =
     statusFilters.length > 0
-      ? `Status: ${statusFilters.map((s) => IDEIA_STATUS_LABELS[s] ?? s).join(', ')}`
+      ? t('phone.statusChip', {
+          labels: statusFilters.map((s) => IDEIA_STATUS_LABELS[s] ?? s).join(', '),
+        })
       : null;
 
   return (
     <div className="phone-ideias">
       <PhonePageHeader
-        title="Ideias"
-        subtitle={HELP_TEXT}
+        title={t('shared.title')}
+        subtitle={t('shared.helpText')}
         actions={
           <>
             <PhoneIconButton
-              label={searchOpen ? 'Fechar busca' : 'Buscar'}
+              label={searchOpen ? t('phone.closeSearch') : t('phone.search')}
               aria-expanded={searchOpen}
               onClick={() => {
                 if (searchOpen) {
@@ -283,8 +284,8 @@ export function IdeiasPhoneView(props: IdeiasPhoneViewProps) {
               ref={filtersRef}
               label={
                 activeFilterCount > 0
-                  ? `Filtros, ${activeFilterCount} ${activeFilterCount === 1 ? 'ativo' : 'ativos'}`
-                  : 'Filtros'
+                  ? t('phone.filtersActive', { count: activeFilterCount })
+                  : t('shared.filters')
               }
               badge={activeFilterCount}
               aria-haspopup="dialog"
@@ -293,7 +294,7 @@ export function IdeiasPhoneView(props: IdeiasPhoneViewProps) {
               <SlidersHorizontal aria-hidden="true" />
             </PhoneIconButton>
             {canEdit && (
-              <PhoneIconButton label="Nova ideia" variant="ink" onClick={onNew}>
+              <PhoneIconButton label={t('shared.newIdea')} variant="ink" onClick={onNew}>
                 <Plus aria-hidden="true" />
               </PhoneIconButton>
             )}
@@ -307,8 +308,8 @@ export function IdeiasPhoneView(props: IdeiasPhoneViewProps) {
               ref={searchRef}
               type="search"
               enterKeyHint="search"
-              aria-label="Buscar por título ou cliente"
-              placeholder="Buscar por título ou cliente..."
+              aria-label={t('phone.searchAria')}
+              placeholder={t('shared.searchPlaceholder')}
               value={search}
               onChange={(e) => onSearchChange(e.target.value)}
             />
@@ -319,32 +320,32 @@ export function IdeiasPhoneView(props: IdeiasPhoneViewProps) {
       {!isLoading && (
         <div className="phone-ideias__summary">
           {activeFilterCount > 0 && (
-            <ChipRow aria-label="Filtros ativos">
+            <ChipRow aria-label={t('phone.activeFilters')}>
               {statusChipLabel && (
                 <Chip
                   label={statusChipLabel}
-                  removeLabel="Remover filtro de status"
+                  removeLabel={t('phone.removeStatusFilter')}
                   onRemove={() => onStatusFiltersChange([])}
                 />
               )}
               {clienteName && (
                 <Chip
                   label={clienteName}
-                  removeLabel="Remover filtro de cliente"
+                  removeLabel={t('phone.removeClientFilter')}
                   onRemove={() => onClienteFilterChange('all')}
                 />
               )}
               {tipoFilter !== 'all' && (
                 <Chip
-                  label={TIPO_LABELS[tipoFilter as Ideia['tipo']] ?? tipoFilter}
-                  removeLabel="Remover filtro de tipo"
+                  label={t(`tipo.${tipoFilter}`, { defaultValue: tipoFilter })}
+                  removeLabel={t('phone.removeTypeFilter')}
                   onRemove={() => onTipoFilterChange('all')}
                 />
               )}
               {period && (
                 <Chip
                   label={period}
-                  removeLabel="Remover filtro de período"
+                  removeLabel={t('phone.removePeriodFilter')}
                   onRemove={() => {
                     setPeriodMode('todos');
                     onDateRangeChange(undefined);
@@ -354,30 +355,30 @@ export function IdeiasPhoneView(props: IdeiasPhoneViewProps) {
             </ChipRow>
           )}
           <span className="phone-ideias__count" aria-live="polite">
-            {ideias.length} {ideias.length === 1 ? 'ideia' : 'ideias'}
+            {t('phone.count', { count: ideias.length })}
           </span>
         </div>
       )}
 
       {isLoading ? (
         <div className="phone-ideias__empty" role="status">
-          Carregando ideias…
+          {t('phone.loading')}
         </div>
       ) : ideias.length === 0 ? (
         <div className="phone-ideias__empty">
           <Lightbulb aria-hidden="true" />
-          Nenhuma ideia encontrada.
+          {t('shared.empty')}
         </div>
       ) : (
-        <ul className="phone-kit phone-ideias__list" aria-label="Ideias">
+        <ul className="phone-kit phone-ideias__list" aria-label={t('shared.title')}>
           {ideias.map((ideia) => {
             const reactions = ideia.ideia_reactions.length;
             const meta = [
-              reactions === 0
-                ? 'Sem reações'
-                : `${reactions} ${reactions === 1 ? 'reação' : 'reações'}`,
-              ideia.comentario_agencia ? 'Respondida' : null,
-              ideia.origem === 'agencia' && !ideia.visivel_no_hub ? 'Oculta do Hub' : null,
+              reactions === 0 ? t('phone.noReactions') : t('phone.reactions', { count: reactions }),
+              ideia.comentario_agencia ? t('phone.replied') : null,
+              ideia.origem === 'agencia' && !ideia.visivel_no_hub
+                ? t('shared.hiddenFromHub')
+                : null,
             ]
               .filter(Boolean)
               .join(' · ');
@@ -391,15 +392,15 @@ export function IdeiasPhoneView(props: IdeiasPhoneViewProps) {
                   <span className="phone-ideias__text">
                     <strong className="phone-ideias__title">{ideia.titulo}</strong>
                     <span className="phone-ideias__line">
-                      {ideia.clientes.nome} · {TIPO_LABELS[ideia.tipo]} ·{' '}
-                      {ORIGEM_LABELS[ideia.origem]}
+                      {ideia.clientes.nome} · {t(`tipo.${ideia.tipo}`)} ·{' '}
+                      {t(`origem.${ideia.origem}`)}
                     </span>
                     <span className="phone-ideias__line">{meta}</span>
                   </span>
                   <span className="phone-ideias__aside">
                     <IdeiaStatusPill status={ideia.status} />
                     <span className="phone-ideias__date">
-                      {format(new Date(ideia.created_at), 'dd/MM')}
+                      {format(new Date(ideia.created_at), t('phone.dayMonth'))}
                     </span>
                   </span>
                 </button>
@@ -412,7 +413,7 @@ export function IdeiasPhoneView(props: IdeiasPhoneViewProps) {
       <PhoneFiltersSheet
         open={filtersOpen}
         onOpenChange={setFiltersOpen}
-        description="Filtre as ideias"
+        description={t('shared.filtersDescription')}
         sections={sections}
         activeCount={activeFilterCount}
         onClear={() => {
