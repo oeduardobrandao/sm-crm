@@ -1,8 +1,11 @@
+import { useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -33,28 +36,29 @@ import {
 import { PeriodoSelect } from '../../financeiro/v2/PeriodoSelect';
 import { avisarErroFinanceiro } from '../../financeiro/v2/erros';
 
-const VALOR_ERRO = 'Informe um valor igual ou maior que zero.';
-const DIA_ERRO = 'Informe um dia de 1 a 31.';
+function buildSchema(t: TFunction) {
+  return z.object({
+    valor: z
+      .string()
+      .trim()
+      .refine(
+        (v) => v !== '' && Number.isFinite(Number(v)) && Number(v) >= 0,
+        t('mensalidadeDialog.valueError'),
+      ),
+    dia: z
+      .string()
+      .trim()
+      .refine(
+        (v) => v === '' || (/^\d+$/.test(v) && Number(v) >= 1 && Number(v) <= 31),
+        t('mensalidadeDialog.dayError'),
+      ),
+    status: z.enum(['ativo', 'pausado', 'encerrado']),
+    valeDesde: z.string().min(1, t('mensalidadeDialog.periodRequired')),
+  });
+}
+type FormValues = z.infer<ReturnType<typeof buildSchema>>;
 
-const schema = z.object({
-  valor: z
-    .string()
-    .trim()
-    .refine((v) => v !== '' && Number.isFinite(Number(v)) && Number(v) >= 0, VALOR_ERRO),
-  dia: z
-    .string()
-    .trim()
-    .refine((v) => v === '' || (/^\d+$/.test(v) && Number(v) >= 1 && Number(v) <= 31), DIA_ERRO),
-  status: z.enum(['ativo', 'pausado', 'encerrado']),
-  valeDesde: z.string().min(1, 'Escolha o período.'),
-});
-type FormValues = z.infer<typeof schema>;
-
-const STATUS_LABEL: Record<StatusClienteFinanceiro, string> = {
-  ativo: 'Ativo',
-  pausado: 'Pausado',
-  encerrado: 'Encerrado',
-};
+const STATUS_OPTIONS: StatusClienteFinanceiro[] = ['ativo', 'pausado', 'encerrado'];
 
 export interface MensalidadeInicial {
   valor_mensal: number;
@@ -80,6 +84,7 @@ export function ClienteMensalidadeDialog({
   open,
   onOpenChange,
 }: ClienteMensalidadeDialogProps) {
+  const { t } = useTranslation('clients');
   const editaveis = useQuery({
     queryKey: ['financeiro-v2', 'editaveis'],
     queryFn: getPeriodosEditaveis,
@@ -101,12 +106,12 @@ export function ClienteMensalidadeDialog({
       ) : (
         <DialogContent style={{ maxWidth: 480 }}>
           <DialogHeader>
-            <DialogTitle>Mensalidade</DialogTitle>
-            <DialogDescription>Vale do período escolhido em diante.</DialogDescription>
+            <DialogTitle>{t('mensalidadeDialog.title')}</DialogTitle>
+            <DialogDescription>{t('mensalidadeDialog.description')}</DialogDescription>
           </DialogHeader>
           {editaveis.isError ? (
             <p role="alert" className="text-sm text-destructive">
-              Não foi possível carregar os períodos.
+              {t('mensalidadeDialog.periodsLoadError')}
             </p>
           ) : (
             <Spinner className="mx-auto" />
@@ -128,8 +133,11 @@ function MensalidadeForm({
   periodos: PeriodoFinanceiro[];
   onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useTranslation('clients');
+  const { t: tc } = useTranslation();
   const qc = useQueryClient();
   const { profile } = useAuth();
+  const schema = useMemo(() => buildSchema(t), [t]);
 
   const {
     control,
@@ -160,11 +168,11 @@ function MensalidadeForm({
         qc.invalidateQueries({ queryKey: ['clientes'] }),
         qc.invalidateQueries({ queryKey: ['cliente', clienteId] }),
       ]);
-      toast.success('Mensalidade salva.');
+      toast.success(t('mensalidadeDialog.saved'));
       onOpenChange(false);
     } catch (e) {
       if (!handleEntitlementMutationError(e, profile?.conta_id ?? null)) {
-        avisarErroFinanceiro(e, 'Erro ao salvar a mensalidade.', qc);
+        avisarErroFinanceiro(e, t('mensalidadeDialog.saveError'), qc);
       }
     }
   });
@@ -178,12 +186,12 @@ function MensalidadeForm({
       onConfirmClose={() => onOpenChange(false)}
     >
       <DialogHeader>
-        <DialogTitle>Mensalidade</DialogTitle>
-        <DialogDescription>Vale do período escolhido em diante.</DialogDescription>
+        <DialogTitle>{t('mensalidadeDialog.title')}</DialogTitle>
+        <DialogDescription>{t('mensalidadeDialog.description')}</DialogDescription>
       </DialogHeader>
       <form onSubmit={onSubmit} className="space-y-3" noValidate>
         <div className="space-y-1">
-          <Label htmlFor="mensalidade-valor">Valor mensal</Label>
+          <Label htmlFor="mensalidade-valor">{t('mensalidadeDialog.valueLabel')}</Label>
           <Input
             id="mensalidade-valor"
             type="number"
@@ -196,7 +204,7 @@ function MensalidadeForm({
           {errors.valor && <p className="text-xs text-destructive">{errors.valor.message}</p>}
         </div>
         <div className="space-y-1">
-          <Label htmlFor="mensalidade-dia">Dia de pagamento</Label>
+          <Label htmlFor="mensalidade-dia">{t('mensalidadeDialog.dayLabel')}</Label>
           <Input
             id="mensalidade-dia"
             type="number"
@@ -210,7 +218,7 @@ function MensalidadeForm({
           {errors.dia && <p className="text-xs text-destructive">{errors.dia.message}</p>}
         </div>
         <div className="space-y-1">
-          <Label htmlFor="mensalidade-status">Status</Label>
+          <Label htmlFor="mensalidade-status">{t('mensalidadeDialog.statusLabel')}</Label>
           <Controller
             control={control}
             name="status"
@@ -220,9 +228,9 @@ function MensalidadeForm({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {(Object.keys(STATUS_LABEL) as StatusClienteFinanceiro[]).map((s) => (
+                  {STATUS_OPTIONS.map((s) => (
                     <SelectItem key={s} value={s}>
-                      {STATUS_LABEL[s]}
+                      {tc(`status.${s}`)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -230,13 +238,11 @@ function MensalidadeForm({
             )}
           />
           {statusAtual === 'encerrado' && (
-            <p className="text-xs text-muted-foreground">
-              As atribuições da equipe terminam neste período.
-            </p>
+            <p className="text-xs text-muted-foreground">{t('mensalidadeDialog.closedHint')}</p>
           )}
         </div>
         <div className="space-y-1">
-          <Label htmlFor="mensalidade-vale">Vale a partir de</Label>
+          <Label htmlFor="mensalidade-vale">{t('mensalidadeDialog.validFrom')}</Label>
           <Controller
             control={control}
             name="valeDesde"
@@ -257,10 +263,10 @@ function MensalidadeForm({
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
+            {t('actions.cancel')}
           </Button>
           <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting && <Spinner size="sm" />} Salvar
+            {isSubmitting && <Spinner size="sm" />} {t('actions.save')}
           </Button>
         </DialogFooter>
       </form>

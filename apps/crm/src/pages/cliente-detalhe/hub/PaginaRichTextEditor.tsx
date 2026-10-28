@@ -15,6 +15,7 @@ import { useEditor, useEditorState, EditorContent } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import type { Editor } from '@tiptap/core';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import {
   Bold,
   Italic,
@@ -36,12 +37,10 @@ import {
 import { PhoneTextScreen } from '@/pages/entregas/components/postEditorPhone/PhoneTextScreen';
 import { TEXT_COLORS, HIGHLIGHT_COLORS } from '@/pages/entregas/components/PostEditor';
 
-// Mensagem mostrada quando o usuário tenta aplicar um link que a política recusa
-// (@mesaas/link-policy) -- sem isso o popover simplesmente fechava e a marca nunca
-// era aplicada, sem qualquer explicação (ver PostEditor.tsx para a mesma checagem no
-// editor de legendas de post).
-const LINK_REJECTED_MESSAGE =
-  'Não foi possível aplicar o link. Use um endereço válido (http, https, e-mail ou telefone).';
+// `pageEditor.linkRejected`: mensagem mostrada quando o usuário tenta aplicar um link
+// que a política recusa (@mesaas/link-policy) -- sem isso o popover simplesmente fechava
+// e a marca nunca era aplicada, sem qualquer explicação (ver PostEditor.tsx para a mesma
+// checagem no editor de legendas de post).
 
 interface ToolbarButtonProps {
   label: string;
@@ -78,6 +77,7 @@ function ToolbarButton({ label, active, onRun, children }: ToolbarButtonProps) {
 // compartilhado), então abrir o link na barra e no menu flutuante ao mesmo
 // tempo não conflita.
 function LinkButton({ editor, active, label }: { editor: Editor; active: boolean; label: string }) {
+  const { t } = useTranslation('clientHub');
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -117,12 +117,12 @@ function LinkButton({ editor, active, label }: { editor: Editor; active: boolean
     // open with an explanation instead of silently closing.
     const normalized = normalizeRichTextLinkUrl(url);
     if (!normalized) {
-      toast.error(LINK_REJECTED_MESSAGE);
+      toast.error(t('pageEditor.linkRejected'));
       return;
     }
     editor.chain().focus().setLink({ href: normalized }).run();
     setOpen(false);
-  }, [editor, value]);
+  }, [editor, value, t]);
 
   const remove = useCallback(() => {
     editor.chain().focus().unsetLink().run();
@@ -145,7 +145,7 @@ function LinkButton({ editor, active, label }: { editor: Editor; active: boolean
             className="post-editor-link-input"
             type="url"
             placeholder="https://..."
-            aria-label="Endereço do link"
+            aria-label={t('pageEditor.linkAddress')}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => {
@@ -157,11 +157,11 @@ function LinkButton({ editor, active, label }: { editor: Editor; active: boolean
             }}
           />
           <button type="button" className="post-editor-link-apply" onClick={apply}>
-            OK
+            {t('pageEditor.ok')}
           </button>
           {active && (
             <button type="button" className="post-editor-link-remove" onClick={remove}>
-              Remover
+              {t('actions.delete')}
             </button>
           )}
         </div>
@@ -194,25 +194,26 @@ function useFormattingState(editor: Editor) {
 // link e destaque -- exatamente os controles do plano. Sem botão de imagem.
 function Toolbar({ editor }: { editor: Editor }) {
   const st = useFormattingState(editor);
+  const { t } = useTranslation('clientHub');
 
   return (
-    <div className="post-editor-toolbar" role="toolbar" aria-label="Formatação do texto">
+    <div className="post-editor-toolbar" role="toolbar" aria-label={t('pageEditor.toolbarAria')}>
       <ToolbarButton
-        label="Negrito"
+        label={t('pageEditor.bold')}
         active={st.bold}
         onRun={() => editor.chain().focus().toggleBold().run()}
       >
         <Bold className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
-        label="Itálico"
+        label={t('pageEditor.italic')}
         active={st.italic}
         onRun={() => editor.chain().focus().toggleItalic().run()}
       >
         <Italic className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
-        label="Sublinhado"
+        label={t('pageEditor.underline')}
         active={st.underline}
         onRun={() => editor.chain().focus().toggleUnderline().run()}
       >
@@ -220,14 +221,14 @@ function Toolbar({ editor }: { editor: Editor }) {
       </ToolbarButton>
       <div className="post-editor-divider" />
       <ToolbarButton
-        label="Título 2"
+        label={t('pageEditor.heading2')}
         active={st.h2}
         onRun={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
       >
         <Heading2 className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
-        label="Título 3"
+        label={t('pageEditor.heading3')}
         active={st.h3}
         onRun={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
       >
@@ -235,30 +236,30 @@ function Toolbar({ editor }: { editor: Editor }) {
       </ToolbarButton>
       <div className="post-editor-divider" />
       <ToolbarButton
-        label="Lista com marcadores"
+        label={t('pageEditor.bulletList')}
         active={st.bulletList}
         onRun={() => editor.chain().focus().toggleBulletList().run()}
       >
         <List className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
-        label="Lista numerada"
+        label={t('pageEditor.orderedList')}
         active={st.orderedList}
         onRun={() => editor.chain().focus().toggleOrderedList().run()}
       >
         <ListOrdered className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
-        label="Citação"
+        label={t('pageEditor.quote')}
         active={st.blockquote}
         onRun={() => editor.chain().focus().toggleBlockquote().run()}
       >
         <Quote className="h-3.5 w-3.5" />
       </ToolbarButton>
       <div className="post-editor-divider" />
-      <LinkButton editor={editor} active={st.link} label="Link" />
+      <LinkButton editor={editor} active={st.link} label={t('pageEditor.link')} />
       <ToolbarButton
-        label="Destacar"
+        label={t('pageEditor.highlight')}
         active={st.highlight}
         onRun={() => editor.chain().focus().toggleHighlight({ color: 'yellow' }).run()}
       >
@@ -277,34 +278,35 @@ function Toolbar({ editor }: { editor: Editor }) {
 // dois botões "Negrito" agem sobre a mesma seleção do mesmo editor.
 function SelectionMenu({ editor }: { editor: Editor }) {
   const st = useFormattingState(editor);
+  const { t } = useTranslation('clientHub');
 
   return (
     <BubbleMenu editor={editor} className="bubble-menu">
       <ToolbarButton
-        label="Negrito"
+        label={t('pageEditor.bold')}
         active={st.bold}
         onRun={() => editor.chain().focus().toggleBold().run()}
       >
         <Bold className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
-        label="Itálico"
+        label={t('pageEditor.italic')}
         active={st.italic}
         onRun={() => editor.chain().focus().toggleItalic().run()}
       >
         <Italic className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
-        label="Sublinhado"
+        label={t('pageEditor.underline')}
         active={st.underline}
         onRun={() => editor.chain().focus().toggleUnderline().run()}
       >
         <UnderlineIcon className="h-3.5 w-3.5" />
       </ToolbarButton>
       <div className="post-editor-divider" />
-      <LinkButton editor={editor} active={st.link} label="Link" />
+      <LinkButton editor={editor} active={st.link} label={t('pageEditor.link')} />
       <ToolbarButton
-        label="Destacar"
+        label={t('pageEditor.highlight')}
         active={st.highlight}
         onRun={() => editor.chain().focus().toggleHighlight({ color: 'yellow' }).run()}
       >
@@ -329,6 +331,7 @@ export interface PaginaRichTextEditorProps {
  *  and the link row with the same URL policy as the desktop popover. */
 function PhoneToolbar({ editor }: { editor: Editor }) {
   const st = useFormattingState(editor);
+  const { t } = useTranslation('clientHub');
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkValue, setLinkValue] = useState('');
 
@@ -345,7 +348,7 @@ function PhoneToolbar({ editor }: { editor: Editor }) {
     }
     const normalized = normalizeRichTextLinkUrl(url);
     if (!normalized) {
-      toast.error(LINK_REJECTED_MESSAGE);
+      toast.error(t('pageEditor.linkRejected'));
       return;
     }
     editor.chain().focus().setLink({ href: normalized }).run();
@@ -371,21 +374,21 @@ function PhoneToolbar({ editor }: { editor: Editor }) {
       extraButtons={
         <>
           <PhoneFormatBarButton
-            label="Título 2"
+            label={t('pageEditor.heading2')}
             active={st.h2}
             onPress={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
           >
             <Heading2 aria-hidden="true" />
           </PhoneFormatBarButton>
           <PhoneFormatBarButton
-            label="Título 3"
+            label={t('pageEditor.heading3')}
             active={st.h3}
             onPress={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
           >
             <Heading3 aria-hidden="true" />
           </PhoneFormatBarButton>
           <PhoneFormatBarButton
-            label="Citação"
+            label={t('pageEditor.quote')}
             active={st.blockquote}
             onPress={() => editor.chain().focus().toggleBlockquote().run()}
           >
@@ -401,7 +404,7 @@ function PhoneToolbar({ editor }: { editor: Editor }) {
               type="url"
               inputMode="url"
               placeholder="https://..."
-              aria-label="Endereço do link"
+              aria-label={t('pageEditor.linkAddress')}
               autoFocus
               value={linkValue}
               onChange={(e) => setLinkValue(e.target.value)}
@@ -421,14 +424,14 @@ function PhoneToolbar({ editor }: { editor: Editor }) {
                   setLinkOpen(false);
                 }}
               >
-                Remover
+                {t('actions.delete')}
               </button>
             )}
             <button type="button" onClick={() => setLinkOpen(false)}>
-              Cancelar
+              {t('actions.cancel')}
             </button>
             <button type="button" className="phone-format-bar__link-ok" onClick={applyLink}>
-              OK
+              {t('pageEditor.ok')}
             </button>
           </div>
         ) : undefined
@@ -442,6 +445,7 @@ export function PaginaRichTextEditor({
   onChange,
   variant = 'desktop',
 }: PaginaRichTextEditorProps) {
+  const { t } = useTranslation('clientHub');
   const [screenOpen, setScreenOpen] = useState(false);
   // onChange por ref: extensões/conteúdo ficam congelados no 1º render
   // (useEditor sem deps, padrão da casa -- PostEditor.tsx), então uma
@@ -476,7 +480,11 @@ export function PaginaRichTextEditor({
 
   if (variant === 'phone') {
     return (
-      <PhoneTextScreen open={screenOpen} onOpenChange={setScreenOpen} title="Conteúdo da página">
+      <PhoneTextScreen
+        open={screenOpen}
+        onOpenChange={setScreenOpen}
+        title={t('pageEditor.phoneTitle')}
+      >
         <div className="post-editor post-editor--pagina phone-cli-pagina__editor">
           {editor && <PhoneToolbar editor={editor} />}
           <EditorContent editor={editor} className="post-editor-content" />

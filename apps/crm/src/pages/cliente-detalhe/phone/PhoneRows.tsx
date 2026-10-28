@@ -1,5 +1,7 @@
 import { useId, type ReactNode } from 'react';
 import { ChevronRight, ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import { cn } from '@/lib/utils';
 import { SwipeRow, type SwipeAction } from '@/components/mobile/SwipeRow';
 import { ContextMenu, type ContextMenuAction } from '@/components/mobile/ContextMenu';
@@ -83,9 +85,9 @@ export interface PhoneRowAction {
 /** Editar + Remover, the menu of every editable row in these screens. */
 export function editRemoveActions(onEdit: () => void, onRemove: () => void): PhoneRowAction[] {
   return [
-    { label: 'Editar', icon: <Pencil aria-hidden="true" />, onSelect: onEdit },
+    { label: i18n.t('common:actions.edit'), icon: <Pencil aria-hidden="true" />, onSelect: onEdit },
     {
-      label: 'Remover',
+      label: i18n.t('common:actions.delete'),
       icon: <Trash2 aria-hidden="true" />,
       onSelect: onRemove,
       destructive: true,
@@ -124,6 +126,7 @@ export function PhoneRow({
   actions?: PhoneRowAction[];
   className?: string;
 }) {
+  const { t } = useTranslation('clients');
   const body = (
     <>
       {leading && (
@@ -183,7 +186,7 @@ export function PhoneRow({
 
   return (
     <SwipeRow as="li" className={cn('phone-cli-row', className)} trailingActions={swipe}>
-      <ContextMenu label={menuLabel ?? 'Ações'} sections={[menu]}>
+      <ContextMenu label={menuLabel ?? t('phoneRows.actions')} sections={[menu]}>
         {main}
       </ContextMenu>
     </SwipeRow>

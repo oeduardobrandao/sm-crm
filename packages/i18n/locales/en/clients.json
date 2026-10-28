@@ -275,8 +275,10 @@
     "posted": "Posted",
     "scheduled": "Scheduled",
     "deliveryHistory": "Delivery History",
+    "postCount_zero": "{{count}} posts",
     "postCount_one": "{{count}} post",
     "postCount_other": "{{count}} posts",
+    "dayCount_zero": "{{count}} days",
     "dayCount_one": "{{count}} day",
     "dayCount_other": "{{count}} days",
     "concluded": "Completed",
@@ -412,7 +414,25 @@
       "revisao_interna": "In review",
       "enviado_cliente": "Sent",
       "correcao_cliente": "Correction"
-    }
+    },
+    "access": {
+      "noAccessTitle": "No access to this workspace",
+      "noAccessText": "You no longer have access to this workspace. Contact the owner if you think this is a mistake.",
+      "checkFailedTitle": "We couldn't confirm your access",
+      "checkFailedText": "There was a problem checking your access to this workspace. This is usually temporary, so please try again.",
+      "retry": "Try again"
+    },
+    "addrCepValue": "ZIP Code: {{cep}}",
+    "addressMenuLabel": "Actions for address {{address}}",
+    "dateMenuLabel": "Actions for date {{title}}",
+    "linkMenuLabel": "Actions for link {{title}}",
+    "contractRange": "{{start}} to {{end}}",
+    "railPrevious": "See previous",
+    "railNext": "See more",
+    "calendarDayWithPosts_one": "{{month}} {{day}}, {{count}} post",
+    "calendarDayWithPosts_other": "{{month}} {{day}}, {{count}} posts",
+    "notInformed": "Not provided",
+    "fileOpenError": "Error opening file"
   },
   "connect": {
     "title": "Connect Instagram",
@@ -464,5 +484,75 @@
   "filters": {
     "title": "Filters",
     "description": "Filter and sort clients"
+  },
+  "avatar": {
+    "tooLarge": "File must be smaller than 2MB.",
+    "updated": "Photo updated!",
+    "uploadError": "Error uploading photo.",
+    "removed": "Photo removed.",
+    "removeError": "Error removing photo.",
+    "changeAria": "Change client photo",
+    "removeAria": "Remove client photo",
+    "removeTitle": "Remove the client photo?",
+    "removeDescription": "The Hub goes back to showing the Instagram avatar (if any) or the client's initials."
+  },
+  "editDialog": {
+    "standalonePlatforms": "Platforms for standalone posts"
+  },
+  "mensalidadeDialog": {
+    "title": "Monthly fee",
+    "description": "Applies from the chosen period onward.",
+    "periodsLoadError": "Couldn't load the periods.",
+    "valueError": "Enter a value of zero or more.",
+    "dayError": "Enter a day from 1 to 31.",
+    "periodRequired": "Choose the period.",
+    "saved": "Monthly fee saved.",
+    "saveError": "Error saving the monthly fee.",
+    "valueLabel": "Monthly amount",
+    "dayLabel": "Payment day",
+    "statusLabel": "Status",
+    "closedHint": "Team assignments end in this period.",
+    "validFrom": "Applies from"
+  },
+  "equipeCard": {
+    "saved": "Team updated.",
+    "saveError": "Error saving the team.",
+    "title": "Team on this client",
+    "totalCost": "Total cost",
+    "pausedHint": "Client paused: the team is kept and counts again when the client is reactivated.",
+    "exclusive": "This client only",
+    "swapAria": "Replace {{name}}",
+    "swap": "Replace",
+    "pickAria": "Choose a person for {{role}}",
+    "pick": "+ Choose person",
+    "empty": "No one in this role."
+  },
+  "financeiroV2": {
+    "loadError": "Couldn't load this client's finances.",
+    "monthlyFee": "Monthly fee",
+    "dueDay": "Due every month on day {{day}}",
+    "editMonthlyFee": "Edit monthly fee",
+    "teamCost": "Team cost",
+    "peopleServing_zero": "{{count}} people assigned",
+    "peopleServing_one": "{{count}} person assigned",
+    "peopleServing_other": "{{count}} people assigned",
+    "monthlyProfit": "Monthly profit",
+    "annualProfit": "Annual net profit {{value}}",
+    "margin": "Margin",
+    "agencyTarget": "Agency target: {{value}}%",
+    "closedInPeriod": "Client closed in this period.",
+    "notInPeriod": "This client isn't part of the current period."
+  },
+  "sectionsIndex": {
+    "payment": "Payment",
+    "delivery": "Delivery",
+    "moreActions": "More client actions",
+    "summary": "Client summary"
+  },
+  "phoneRows": {
+    "actions": "Actions"
+  },
+  "phoneChrome": {
+    "backToClient": "Back to {{name}}"
   }
 }

@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
 import './clienteDetalhePhone.css';
@@ -120,6 +121,8 @@ export function ClientePhoneSectionShell({
   backToClient: boolean;
   children: ReactNode;
 }) {
+  const { t } = useTranslation('clients');
+  const { t: tc } = useTranslation();
   const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null);
   const [header, setHeaderState] = useState<{
     id: string;
@@ -141,7 +144,11 @@ export function ClientePhoneSectionShell({
       <div className="phone-cli-section">
         {!options.hideNavBar && (
           <PhoneNavBar
-            backLabel={backToClient ? `Voltar para ${clienteNome}` : 'Voltar'}
+            backLabel={
+              backToClient
+                ? t('phoneChrome.backToClient', { name: clienteNome })
+                : tc('actions.back')
+            }
             onBack={onBack}
             trailing={<span ref={setActionsSlot} className="phone-cli-nav-actions" />}
           />

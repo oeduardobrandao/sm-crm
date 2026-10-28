@@ -113,10 +113,9 @@ export default function ClienteDetalhePage() {
       <div className="page-content">
         <div className="card" style={{ maxWidth: 480, margin: '3rem auto', textAlign: 'center' }}>
           <UserX size={40} style={{ color: 'var(--text-muted)', marginBottom: '1rem' }} />
-          <h3 style={{ marginBottom: '0.75rem' }}>Sem acesso a este workspace</h3>
+          <h3 style={{ marginBottom: '0.75rem' }}>{t('detail.access.noAccessTitle')}</h3>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            Você não tem mais acesso a este workspace. Fale com o proprietário se acha que isso é um
-            engano.
+            {t('detail.access.noAccessText')}
           </p>
         </div>
       </div>
@@ -128,13 +127,12 @@ export default function ClienteDetalhePage() {
       <div className="page-content">
         <div className="card" style={{ maxWidth: 480, margin: '3rem auto', textAlign: 'center' }}>
           <AlertTriangle size={40} style={{ color: 'var(--warning)', marginBottom: '1rem' }} />
-          <h3 style={{ marginBottom: '0.75rem' }}>Não foi possível confirmar seu acesso</h3>
+          <h3 style={{ marginBottom: '0.75rem' }}>{t('detail.access.checkFailedTitle')}</h3>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>
-            Houve um problema ao verificar seu acesso a este workspace. Isso costuma ser temporário
-            — tente novamente.
+            {t('detail.access.checkFailedText')}
           </p>
           <button className="btn-secondary" onClick={() => window.location.reload()}>
-            Tentar novamente
+            {t('detail.access.retry')}
           </button>
         </div>
       </div>

@@ -275,8 +275,10 @@
     "posted": "Postado",
     "scheduled": "Agendado",
     "deliveryHistory": "Histórico de Entregas",
+    "postCount_zero": "{{count}} posts",
     "postCount_one": "{{count}} post",
     "postCount_other": "{{count}} posts",
+    "dayCount_zero": "{{count}} dias",
     "dayCount_one": "{{count}} dia",
     "dayCount_other": "{{count}} dias",
     "concluded": "Concluído",
@@ -412,7 +414,25 @@
       "revisao_interna": "Em revisão",
       "enviado_cliente": "Enviado",
       "correcao_cliente": "Correção"
-    }
+    },
+    "access": {
+      "noAccessTitle": "Sem acesso a este workspace",
+      "noAccessText": "Você não tem mais acesso a este workspace. Fale com o proprietário se acha que isso é um engano.",
+      "checkFailedTitle": "Não foi possível confirmar seu acesso",
+      "checkFailedText": "Houve um problema ao verificar seu acesso a este workspace. Isso costuma ser temporário — tente novamente.",
+      "retry": "Tentar novamente"
+    },
+    "addrCepValue": "CEP: {{cep}}",
+    "addressMenuLabel": "Ações do endereço {{address}}",
+    "dateMenuLabel": "Ações da data {{title}}",
+    "linkMenuLabel": "Ações do link {{title}}",
+    "contractRange": "{{start}} a {{end}}",
+    "railPrevious": "Ver anteriores",
+    "railNext": "Ver mais",
+    "calendarDayWithPosts_one": "{{day}} de {{month}}, {{count}} post",
+    "calendarDayWithPosts_other": "{{day}} de {{month}}, {{count}} posts",
+    "notInformed": "Não informado",
+    "fileOpenError": "Erro ao abrir arquivo"
   },
   "connect": {
     "title": "Conectar Instagram",
@@ -464,5 +484,75 @@
   "filters": {
     "title": "Filtros",
     "description": "Filtre e ordene os clientes"
+  },
+  "avatar": {
+    "tooLarge": "Arquivo deve ser menor que 2MB.",
+    "updated": "Foto atualizada!",
+    "uploadError": "Erro ao enviar foto.",
+    "removed": "Foto removida.",
+    "removeError": "Erro ao remover foto.",
+    "changeAria": "Alterar foto do cliente",
+    "removeAria": "Remover foto do cliente",
+    "removeTitle": "Remover a foto do cliente?",
+    "removeDescription": "O Hub volta a mostrar o avatar do Instagram (se houver) ou as iniciais do cliente."
+  },
+  "editDialog": {
+    "standalonePlatforms": "Plataformas dos posts avulsos"
+  },
+  "mensalidadeDialog": {
+    "title": "Mensalidade",
+    "description": "Vale do período escolhido em diante.",
+    "periodsLoadError": "Não foi possível carregar os períodos.",
+    "valueError": "Informe um valor igual ou maior que zero.",
+    "dayError": "Informe um dia de 1 a 31.",
+    "periodRequired": "Escolha o período.",
+    "saved": "Mensalidade salva.",
+    "saveError": "Erro ao salvar a mensalidade.",
+    "valueLabel": "Valor mensal",
+    "dayLabel": "Dia de pagamento",
+    "statusLabel": "Status",
+    "closedHint": "As atribuições da equipe terminam neste período.",
+    "validFrom": "Vale a partir de"
+  },
+  "equipeCard": {
+    "saved": "Equipe atualizada.",
+    "saveError": "Erro ao salvar a equipe.",
+    "title": "Equipe neste cliente",
+    "totalCost": "Custo total",
+    "pausedHint": "Cliente pausado: a equipe fica guardada e volta a contar quando ele for reativado.",
+    "exclusive": "Só este cliente",
+    "swapAria": "Trocar {{name}}",
+    "swap": "Trocar",
+    "pickAria": "Escolher pessoa em {{role}}",
+    "pick": "+ Escolher pessoa",
+    "empty": "Ninguém nesta função."
+  },
+  "financeiroV2": {
+    "loadError": "Não foi possível carregar o financeiro deste cliente.",
+    "monthlyFee": "Mensalidade",
+    "dueDay": "Vence todo dia {{day}}",
+    "editMonthlyFee": "Editar mensalidade",
+    "teamCost": "Custo da equipe",
+    "peopleServing_zero": "{{count}} pessoas atendem",
+    "peopleServing_one": "{{count}} pessoa atende",
+    "peopleServing_other": "{{count}} pessoas atendem",
+    "monthlyProfit": "Lucro mensal",
+    "annualProfit": "LL anual {{value}}",
+    "margin": "Margem",
+    "agencyTarget": "Meta da agência: {{value}}%",
+    "closedInPeriod": "Cliente encerrado neste período.",
+    "notInPeriod": "Este cliente não entra no período atual."
+  },
+  "sectionsIndex": {
+    "payment": "Pagamento",
+    "delivery": "Entrega",
+    "moreActions": "Mais ações do cliente",
+    "summary": "Resumo do cliente"
+  },
+  "phoneRows": {
+    "actions": "Ações"
+  },
+  "phoneChrome": {
+    "backToClient": "Voltar para {{name}}"
   }
 }

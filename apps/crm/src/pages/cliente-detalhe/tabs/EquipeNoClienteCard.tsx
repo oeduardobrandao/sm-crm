@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -45,6 +46,7 @@ export function EquipeNoClienteCard({
   membros,
   periodoInicio,
 }: EquipeNoClienteCardProps) {
+  const { t } = useTranslation('clients');
   const { canSeeFinancials, can, profile } = useAuth();
   const qc = useQueryClient();
   // A paused client keeps its people (they come back when it resumes) but is not edited
@@ -65,10 +67,10 @@ export function EquipeNoClienteCard({
     try {
       await salvarAtribuicoes(valeDesde, mudancas);
       await qc.invalidateQueries({ queryKey: ['financeiro-v2'] });
-      toast.success('Equipe atualizada.');
+      toast.success(t('equipeCard.saved'));
     } catch (e) {
       if (!handleEntitlementMutationError(e, profile?.conta_id ?? null)) {
-        avisarErroFinanceiro(e, 'Erro ao salvar a equipe.', qc);
+        avisarErroFinanceiro(e, t('equipeCard.saveError'), qc);
       }
     } finally {
       setBusy(false);
@@ -80,18 +82,18 @@ export function EquipeNoClienteCard({
   return (
     <section className="card animate-up" style={{ marginBottom: '1.5rem' }}>
       <div className="mb-4 flex items-baseline justify-between gap-3">
-        <h3 className="text-xl font-bold tracking-tight text-foreground">Equipe neste cliente</h3>
+        <h3 className="text-xl font-bold tracking-tight text-foreground">
+          {t('equipeCard.title')}
+        </h3>
         <p className="text-sm text-muted-foreground">
-          Custo total{' '}
+          {t('equipeCard.totalCost')}{' '}
           <strong className="text-foreground">
             {formatFinancialBRL(cliente.custo, canSeeFinancials)}
           </strong>
         </p>
       </div>
       {pausado && (
-        <p className="mb-4 text-sm text-muted-foreground">
-          Cliente pausado: a equipe fica guardada e volta a contar quando ele for reativado.
-        </p>
+        <p className="mb-4 text-sm text-muted-foreground">{t('equipeCard.pausedHint')}</p>
       )}
       <div className="flex flex-col gap-4">
         {funcoes.map((funcao) => {
@@ -123,7 +125,7 @@ export function EquipeNoClienteCard({
                       <span className="font-medium text-foreground">{pessoa.nome}</span>
                       {pessoa.regra === 'exclusivo' && !pausado && (
                         <Badge variant="info" size="sm">
-                          Só este cliente
+                          {t('equipeCard.exclusive')}
                         </Badge>
                       )}
                     </div>
@@ -149,8 +151,11 @@ export function EquipeNoClienteCard({
                       }
                       disabled={busy || candidatos.length === 0}
                     >
-                      <SelectTrigger className="w-32" aria-label={`Trocar ${pessoa.nome}`}>
-                        <SelectValue placeholder="Trocar" />
+                      <SelectTrigger
+                        className="w-32"
+                        aria-label={t('equipeCard.swapAria', { name: pessoa.nome })}
+                      >
+                        <SelectValue placeholder={t('equipeCard.swap')} />
                       </SelectTrigger>
                       <SelectContent>
                         {candidatos.map((m) => (
@@ -176,9 +181,9 @@ export function EquipeNoClienteCard({
                   >
                     <SelectTrigger
                       className="w-full sm:w-56"
-                      aria-label={`Escolher pessoa em ${funcao.nome}`}
+                      aria-label={t('equipeCard.pickAria', { role: funcao.nome })}
                     >
-                      <SelectValue placeholder="+ Escolher pessoa" />
+                      <SelectValue placeholder={t('equipeCard.pick')} />
                     </SelectTrigger>
                     <SelectContent>
                       {candidatos.map((m) => (
@@ -189,7 +194,7 @@ export function EquipeNoClienteCard({
                     </SelectContent>
                   </Select>
                 ) : (
-                  <p className="text-sm text-muted-foreground">Ninguém nesta função.</p>
+                  <p className="text-sm text-muted-foreground">{t('equipeCard.empty')}</p>
                 ))}
             </div>
           );

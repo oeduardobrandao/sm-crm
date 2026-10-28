@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { MessageSquare, ListChecks } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { useIntlLocale } from '@mesaas/i18n';
 import { getIdeias, type Ideia } from '@/store';
 import { IdeiaDrawer } from '@/components/ideias/IdeiaDrawer';
 import { IdeiaStatusBadge } from '@/components/ideias/IdeiaStatusBadge';
@@ -15,7 +17,8 @@ import { useClientePhoneHeader } from '../phone/ClientePhoneChrome';
 export default function IdeiasPage() {
   const { clienteId } = useOutletContext<ClienteDetalheOutletContext>();
   const isPhone = !useIsDesktop(768);
-  useClientePhoneHeader({ subtitle: 'Ideias enviadas pelo cliente pelo portal.' });
+  const { t } = useTranslation('clientHub');
+  useClientePhoneHeader({ subtitle: t('ideias.subtitle') });
 
   if (isPhone) {
     return (
@@ -29,8 +32,8 @@ export default function IdeiasPage() {
     <div className="hub-page">
       <header className="hub-page__head">
         <div>
-          <h2 className="hub-page__title">Ideias</h2>
-          <p className="hub-page__sub">Ideias enviadas pelo cliente pelo portal.</p>
+          <h2 className="hub-page__title">{t('ideias.title')}</h2>
+          <p className="hub-page__sub">{t('ideias.subtitle')}</p>
         </div>
       </header>
       <HubRoleGate>
@@ -51,15 +54,6 @@ const STATUS_ORDER: Ideia['status'][] = [
   'concluida',
 ];
 
-const STATUS_LABELS: Record<Ideia['status'], string> = {
-  nova: 'Nova',
-  em_analise: 'Em análise',
-  aprovada: 'Aprovada',
-  descartada: 'Descartada',
-  convertida: 'Virou tarefa',
-  concluida: 'Concluída',
-};
-
 // Espelha o predicado de conversão do IdeiaDrawer (CONVERSIBLE_STATUSES + tipo ===
 // 'solicitacao') só para decidir se o atalho "Virar tarefa" aparece no card -- a
 // conversão em si continua acontecendo dentro do drawer, não aqui.
@@ -69,6 +63,9 @@ function canShowConvertShortcut(ideia: Ideia): boolean {
 }
 
 function IdeiasTab({ clienteId, isPhone = false }: { clienteId: number; isPhone?: boolean }) {
+  const { t } = useTranslation('clientHub');
+  const intlLocale = useIntlLocale();
+  const statusLabel = (status: Ideia['status']) => t(`ideias.status.${status}`);
   const queryKey = ['hub-ideias-crm', clienteId];
   const { data: ideias = [], isLoading } = useQuery({
     queryKey,
@@ -141,9 +138,9 @@ function IdeiasTab({ clienteId, isPhone = false }: { clienteId: number; isPhone?
   if (isPhone) {
     return (
       <>
-        <ChipRow aria-label="Filtrar por status" className="phone-cli-chips">
+        <ChipRow aria-label={t('ideias.filterAria')} className="phone-cli-chips">
           <Chip
-            label="Todas"
+            label={t('ideias.all')}
             count={ideias.length}
             selected={statusFilter === 'all'}
             onClick={() => setStatusFilter('all')}
@@ -151,7 +148,7 @@ function IdeiasTab({ clienteId, isPhone = false }: { clienteId: number; isPhone?
           {STATUS_ORDER.filter((status) => (statusCounts.get(status) ?? 0) > 0).map((status) => (
             <Chip
               key={status}
-              label={STATUS_LABELS[status]}
+              label={statusLabel(status)}
               count={statusCounts.get(status)}
               selected={statusFilter === status}
               onClick={() => setStatusFilter(status)}
@@ -159,38 +156,40 @@ function IdeiasTab({ clienteId, isPhone = false }: { clienteId: number; isPhone?
           ))}
         </ChipRow>
         <PhoneSectionList
-          title="Ideias do cliente"
-          empty={<PhoneEmptyCard title="Nenhuma ideia encontrada." />}
+          title={t('ideias.listTitle')}
+          empty={<PhoneEmptyCard title={t('ideias.empty')} />}
         >
           {filtered.map((ideia) => {
             const extras = [
               ideia.ideia_reactions.length > 0
-                ? `${ideia.ideia_reactions.length} reação(ões)`
+                ? t('ideias.reactions', { count: ideia.ideia_reactions.length })
                 : null,
-              ideia.comentario_agencia ? 'com resposta' : null,
+              ideia.comentario_agencia ? t('ideias.withReply') : null,
             ].filter(Boolean);
             return (
               <PhoneRow
                 key={ideia.id}
                 title={ideia.titulo}
                 subtitle={[
-                  STATUS_LABELS[ideia.status],
-                  new Date(ideia.created_at).toLocaleDateString('pt-BR'),
+                  statusLabel(ideia.status),
+                  new Date(ideia.created_at).toLocaleDateString(intlLocale),
                   ...extras,
                 ].join(' · ')}
-                meta={ideia.descricao || (ideia.audio_r2_key ? 'Áudio gravado' : undefined)}
+                meta={
+                  ideia.descricao || (ideia.audio_r2_key ? t('ideias.audioRecorded') : undefined)
+                }
                 onOpen={() => openDrawer(ideia)}
-                menuLabel={`Ações da ideia ${ideia.titulo}`}
+                menuLabel={t('ideias.actionsMenu', { title: ideia.titulo })}
                 actions={[
                   {
-                    label: 'Responder',
+                    label: t('ideias.reply'),
                     icon: <MessageSquare aria-hidden="true" />,
                     onSelect: () => openDrawer(ideia, 'responder'),
                   },
                   ...(canShowConvertShortcut(ideia)
                     ? [
                         {
-                          label: 'Virar tarefa',
+                          label: t('ideias.convert'),
                           icon: <ListChecks aria-hidden="true" />,
                           onSelect: () => openDrawer(ideia, 'converter'),
                         },
@@ -209,10 +208,10 @@ function IdeiasTab({ clienteId, isPhone = false }: { clienteId: number; isPhone?
   return (
     <section>
       <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold">Ideias do cliente</h3>
+        <h3 className="font-semibold">{t('ideias.listTitle')}</h3>
       </div>
 
-      <div className="hub-filter-chips mb-4" role="group" aria-label="Filtrar por status">
+      <div className="hub-filter-chips mb-4" role="group" aria-label={t('ideias.filterAria')}>
         <button
           type="button"
           data-testid="chip-todas"
@@ -220,7 +219,7 @@ function IdeiasTab({ clienteId, isPhone = false }: { clienteId: number; isPhone?
           className="hub-filter-chip"
           onClick={() => setStatusFilter('all')}
         >
-          Todas <span className="hub-filter-chip__count">{ideias.length}</span>
+          {t('ideias.all')} <span className="hub-filter-chip__count">{ideias.length}</span>
         </button>
         {STATUS_ORDER.filter((status) => (statusCounts.get(status) ?? 0) > 0).map((status) => (
           <button
@@ -231,14 +230,14 @@ function IdeiasTab({ clienteId, isPhone = false }: { clienteId: number; isPhone?
             className="hub-filter-chip"
             onClick={() => setStatusFilter(status)}
           >
-            {STATUS_LABELS[status]}{' '}
+            {statusLabel(status)}{' '}
             <span className="hub-filter-chip__count">{statusCounts.get(status)}</span>
           </button>
         ))}
       </div>
 
       {filtered.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-4">Nenhuma ideia encontrada.</p>
+        <p className="text-sm text-muted-foreground py-4">{t('ideias.empty')}</p>
       ) : (
         <div className="hub-ideias__grid">
           {filtered.map((ideia) => (
@@ -254,20 +253,22 @@ function IdeiasTab({ clienteId, isPhone = false }: { clienteId: number; isPhone?
                       <IdeiaStatusBadge status={ideia.status} />
                       {ideia.ideia_reactions.length > 0 && (
                         <span className="text-xs text-muted-foreground">
-                          {ideia.ideia_reactions.length} reação(ões)
+                          {t('ideias.reactions', { count: ideia.ideia_reactions.length })}
                         </span>
                       )}
                       {ideia.comentario_agencia && (
-                        <span className="text-xs text-muted-foreground">com resposta</span>
+                        <span className="text-xs text-muted-foreground">
+                          {t('ideias.withReply')}
+                        </span>
                       )}
                     </div>
                     <p className="text-sm font-medium text-foreground truncate">{ideia.titulo}</p>
                     <p className="text-xs text-muted-foreground line-clamp-3 mt-0.5">
-                      {ideia.descricao || (ideia.audio_r2_key ? 'Áudio gravado' : '')}
+                      {ideia.descricao || (ideia.audio_r2_key ? t('ideias.audioRecorded') : '')}
                     </p>
                   </div>
                   <span className="text-xs text-muted-foreground shrink-0">
-                    {new Date(ideia.created_at).toLocaleDateString('pt-BR')}
+                    {new Date(ideia.created_at).toLocaleDateString(intlLocale)}
                   </span>
                 </div>
               </button>
@@ -279,20 +280,20 @@ function IdeiasTab({ clienteId, isPhone = false }: { clienteId: number; isPhone?
                   type="button"
                   className="hub-ideia-card__action"
                   onClick={() => openDrawer(ideia, 'responder')}
-                  aria-label={`Responder a ${ideia.titulo}`}
+                  aria-label={t('ideias.replyAria', { title: ideia.titulo })}
                 >
                   <MessageSquare size={13} />
-                  Responder
+                  {t('ideias.reply')}
                 </button>
                 {canShowConvertShortcut(ideia) && (
                   <button
                     type="button"
                     className="hub-ideia-card__action hub-ideia-card__action--primary"
                     onClick={() => openDrawer(ideia, 'converter')}
-                    aria-label={`Virar tarefa: ${ideia.titulo}`}
+                    aria-label={t('ideias.convertAria', { title: ideia.titulo })}
                   >
                     <ListChecks size={13} />
-                    Virar tarefa
+                    {t('ideias.convert')}
                   </button>
                 )}
               </div>

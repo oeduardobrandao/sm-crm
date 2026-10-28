@@ -137,7 +137,7 @@ export function ClienteDatasSection({ clienteId }: ClienteDatasSectionProps) {
           title={d.titulo}
           subtitle={formatDate(d.data)}
           onOpen={() => handleOpenDateModal(d)}
-          menuLabel={`Ações da data ${d.titulo}`}
+          menuLabel={t('detail.dateMenuLabel', { title: d.titulo })}
           actions={editRemoveActions(
             () => handleOpenDateModal(d),
             () => setDateDeleteId(d.id!),

@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { useIntlLocale } from '@mesaas/i18n';
 import {
   FileText,
   ReceiptText,
@@ -101,6 +102,9 @@ function versaoEfetiva(versoes: ClienteVersao[], inicio: string): ClienteVersao 
  */
 function FinanceiroV2Section({ cliente, legacy }: { cliente: Cliente; legacy: ReactNode }) {
   const clienteId = cliente.id!;
+  const { t } = useTranslation('clients');
+  const { t: tc } = useTranslation();
+  const intlLocale = useIntlLocale();
   const { canSeeFinancials, can } = useAuth();
   const canEdit = can('financeiro', 'editar') === true;
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -117,7 +121,7 @@ function FinanceiroV2Section({ cliente, legacy }: { cliente: Cliente; legacy: Re
   if (rent.isError || versoes.isError) {
     return (
       <p role="alert" className="mb-6 text-sm text-destructive">
-        Não foi possível carregar o financeiro deste cliente.
+        {t('financeiroV2.loadError')}
       </p>
     );
   }
@@ -136,7 +140,7 @@ function FinanceiroV2Section({ cliente, legacy }: { cliente: Cliente; legacy: Re
       }
     : { valor_mensal: cliente.valor_mensal ?? 0, dia_pagamento: dia, status: 'ativo' };
 
-  const metaTexto = meta_margem.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+  const metaTexto = meta_margem.toLocaleString(intlLocale, { maximumFractionDigits: 1 });
   const money = (v: number) => formatFinancialBRL(v, canSeeFinancials);
   const pausado = entry?.status === 'pausado';
   const pessoas = new Set(entry?.pessoas.map((p) => p.membro_id)).size;
@@ -149,9 +153,9 @@ function FinanceiroV2Section({ cliente, legacy }: { cliente: Cliente; legacy: Re
         style={{ marginBottom: '1.5rem' }}
       >
         <StatCard
-          label="Mensalidade"
+          label={t('financeiroV2.monthlyFee')}
           value={entry ? money(entry.receita) : '-'}
-          sub={dia ? `Vence todo dia ${dia}` : undefined}
+          sub={dia ? t('financeiroV2.dueDay', { day: dia }) : undefined}
           footNote={
             canEdit ? (
               <Button
@@ -159,9 +163,9 @@ function FinanceiroV2Section({ cliente, legacy }: { cliente: Cliente; legacy: Re
                 variant="outline"
                 size="sm"
                 onClick={() => setDialogOpen(true)}
-                aria-label="Editar mensalidade"
+                aria-label={t('financeiroV2.editMonthlyFee')}
               >
-                Editar
+                {tc('actions.edit')}
               </Button>
             ) : undefined
           }
@@ -170,25 +174,25 @@ function FinanceiroV2Section({ cliente, legacy }: { cliente: Cliente; legacy: Re
           compactValue
         />
         <StatCard
-          label="Custo da equipe"
+          label={t('financeiroV2.teamCost')}
           value={entry ? money(entry.custo) : '-'}
-          sub={
-            entry ? `${pessoas} ${pessoas === 1 ? 'pessoa atende' : 'pessoas atendem'}` : undefined
-          }
+          sub={entry ? t('financeiroV2.peopleServing', { count: pessoas }) : undefined}
           icon={Users}
           tone="violet"
           compactValue
         />
         <StatCard
-          label="Lucro mensal"
+          label={t('financeiroV2.monthlyProfit')}
           value={entry ? money(entry.lucro) : '-'}
-          sub={entry ? `LL anual ${money(entry.lucro * 12)}` : undefined}
+          sub={
+            entry ? t('financeiroV2.annualProfit', { value: money(entry.lucro * 12) }) : undefined
+          }
           icon={TrendingUp}
           tone="green"
           compactValue
         />
         <StatCard
-          label="Margem"
+          label={t('financeiroV2.margin')}
           value={entry && !pausado ? formatMargem(entry.margem) : '-'}
           valueColor={
             entry && !pausado && abaixoDaMeta(entry.margem, meta_margem)
@@ -198,10 +202,10 @@ function FinanceiroV2Section({ cliente, legacy }: { cliente: Cliente; legacy: Re
           sub={
             entry ? (
               <>
-                Meta da agência: {metaTexto}%{' '}
+                {t('financeiroV2.agencyTarget', { value: metaTexto })}{' '}
                 {pausado && (
                   <Badge variant="warning" size="sm">
-                    Pausado
+                    {tc('status.pausado')}
                   </Badge>
                 )}
               </>
@@ -215,8 +219,8 @@ function FinanceiroV2Section({ cliente, legacy }: { cliente: Cliente; legacy: Re
       {!entry && (
         <p className="mb-6 text-sm text-muted-foreground">
           {versao?.status === 'encerrado'
-            ? 'Cliente encerrado neste período.'
-            : 'Este cliente não entra no período atual.'}
+            ? t('financeiroV2.closedInPeriod')
+            : t('financeiroV2.notInPeriod')}
         </p>
       )}
       {entry && (
@@ -371,7 +375,7 @@ export default function FinanceiroTab() {
               <Cell
                 key={r.id ?? `${r.titulo}-${r.data_inicio}`}
                 label={r.titulo}
-                subtitle={`${formatDate(r.data_inicio)} a ${formatDate(r.data_fim)} · ${formatFinancialBRL(r.valor_total, canSeeFinancials)}`}
+                subtitle={`${t('detail.contractRange', { start: formatDate(r.data_inicio), end: formatDate(r.data_fim) })} · ${formatFinancialBRL(r.valor_total, canSeeFinancials)}`}
                 accessory={<PhoneStatusChip status={r.status} />}
               />
             ))}

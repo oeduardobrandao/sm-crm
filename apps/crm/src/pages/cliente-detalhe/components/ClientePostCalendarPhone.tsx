@@ -7,6 +7,7 @@ import {
   isSameDay,
   startOfMonth,
   subMonths,
+  type Locale,
 } from 'date-fns';
 import { useDateFnsLocale } from '@mesaas/i18n';
 import { useTranslation } from 'react-i18next';
@@ -18,15 +19,11 @@ import type { ClientePostCalendarProps } from './ClientePostCalendar';
 import '@/pages/entregas/phone/viewsPhone.css';
 import '../phone/clienteDetalhePhone.css';
 
-const WEEK_DAYS = [
-  { short: 'S', long: 'segunda' },
-  { short: 'T', long: 'terça' },
-  { short: 'Q', long: 'quarta' },
-  { short: 'Q', long: 'quinta' },
-  { short: 'S', long: 'sexta' },
-  { short: 'S', long: 'sábado' },
-  { short: 'D', long: 'domingo' },
-];
+/** Monday-first narrow weekday initials in the active locale (S T Q Q S S D in pt). */
+function weekDayInitials(locale: Locale): string[] {
+  // 2024-01-01 is a Monday.
+  return Array.from({ length: 7 }, (_, i) => format(new Date(2024, 0, 1 + i), 'EEEEE', { locale }));
+}
 
 /** Same colours as the desktop calendar's pills, one per content format. */
 const TIPO_COLORS: Record<string, string> = {
@@ -62,6 +59,7 @@ export function ClientePostCalendarPhone({
   onOpenPost,
 }: ClientePostCalendarProps) {
   const { t } = useTranslation('clients');
+  const { t: tc } = useTranslation();
   const dateLocale = useDateFnsLocale();
 
   if (events.length === 0) return null;
@@ -91,7 +89,7 @@ export function ClientePostCalendarPhone({
             <button
               type="button"
               className="phone-ent-v-round-btn"
-              aria-label="Mês anterior"
+              aria-label={tc('ui.previousMonth')}
               onClick={() => onMonthChange(subMonths(calendarMonth, 1))}
             >
               <ChevronLeft aria-hidden="true" />
@@ -99,7 +97,7 @@ export function ClientePostCalendarPhone({
             <button
               type="button"
               className="phone-ent-v-round-btn"
-              aria-label="Próximo mês"
+              aria-label={tc('ui.nextMonth')}
               onClick={() => onMonthChange(addMonths(calendarMonth, 1))}
             >
               <ChevronRight aria-hidden="true" />
@@ -107,8 +105,8 @@ export function ClientePostCalendarPhone({
           </span>
         </div>
         <div className="phone-ent-v-cal__weekdays" aria-hidden="true">
-          {WEEK_DAYS.map((d) => (
-            <span key={d.long}>{d.short}</span>
+          {weekDayInitials(dateLocale).map((initial, i) => (
+            <span key={i}>{initial}</span>
           ))}
         </div>
         <div className="phone-ent-v-cal__grid">
@@ -119,8 +117,12 @@ export function ClientePostCalendarPhone({
             const selected = selectedPostDay === d;
             const label =
               dayEvents.length > 0
-                ? `, ${dayEvents.length} ${dayEvents.length === 1 ? 'post' : 'posts'}`
-                : '';
+                ? t('detail.calendarDayWithPosts', {
+                    day: d,
+                    month: monthName,
+                    count: dayEvents.length,
+                  })
+                : t('detail.dayOf', { day: d, month: monthName });
             return (
               <button
                 key={d}
@@ -131,7 +133,7 @@ export function ClientePostCalendarPhone({
                   selected && 'phone-ent-v-cal__day--selected',
                 )}
                 aria-pressed={selected}
-                aria-label={`${d} de ${monthName}${label}`}
+                aria-label={label}
                 onClick={() => onSelectDay(d)}
               >
                 {d}

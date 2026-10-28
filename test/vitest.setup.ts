@@ -82,6 +82,10 @@ import ptTasksForm from '../packages/i18n/locales/pt/tasksForm.json';
 import enTasksForm from '../packages/i18n/locales/en/tasksForm.json';
 import ptTasksPhone from '../packages/i18n/locales/pt/tasksPhone.json';
 import enTasksPhone from '../packages/i18n/locales/en/tasksPhone.json';
+import ptClientHub from '../packages/i18n/locales/pt/clientHub.json';
+import enClientHub from '../packages/i18n/locales/en/clientHub.json';
+import ptClientBriefing from '../packages/i18n/locales/pt/clientBriefing.json';
+import enClientBriefing from '../packages/i18n/locales/en/clientBriefing.json';
 
 initI18n({
   pt: {
@@ -109,6 +113,8 @@ initI18n({
     tasks: ptTasks,
     tasksForm: ptTasksForm,
     tasksPhone: ptTasksPhone,
+    clientHub: ptClientHub,
+    clientBriefing: ptClientBriefing,
     hubHome: ptHubHome,
     hubPostCard: ptHubPostCard,
     hubPosts: ptHubPosts,
@@ -146,6 +152,8 @@ initI18n({
     tasks: enTasks,
     tasksForm: enTasksForm,
     tasksPhone: enTasksPhone,
+    clientHub: enClientHub,
+    clientBriefing: enClientBriefing,
     hubHome: enHubHome,
     hubPostCard: enHubPostCard,
     hubPosts: enHubPosts,
