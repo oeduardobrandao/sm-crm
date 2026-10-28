@@ -6,6 +6,7 @@ import { FormRow } from '@/components/mobile/FormRow';
 import { BottomSheet } from '@/components/mobile/BottomSheet';
 import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
 import { ContextMenu, type ContextMenuAction } from '@/components/mobile/ContextMenu';
+import { contentBlockCount } from '@mesaas/report-blocks/types';
 import type { ReportTemplateRow } from '../../../../services/reportTemplates';
 import { ConfigNavTextButton } from '../../phone/ConfigPhoneScreen';
 import './relatoriosPhone.css';
@@ -162,7 +163,7 @@ export function ReportTemplatesPhone({
             key={tpl.id}
             testId={tpl.id}
             label={tpl.name}
-            subtitle={blockCount(tpl.layout.blocks.length)}
+            subtitle={blockCount(contentBlockCount(tpl.layout))}
             accessory={
               tpl.is_default ? (
                 <span className="phone-reltpl-badge">{t('templates.defaultBadge')}</span>

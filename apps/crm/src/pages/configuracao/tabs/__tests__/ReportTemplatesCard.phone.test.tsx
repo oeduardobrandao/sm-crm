@@ -33,7 +33,14 @@ const rows = [
   {
     id: 't1',
     name: 'Mensal completo',
-    layout: { version: 1, blocks: [{ id: 'a', type: 'cover', size: 'full' }] },
+    // Seccionado: a contagem é de blocos de conteúdo, o marcador `section` não conta.
+    layout: {
+      version: 1,
+      blocks: [
+        { id: 's', type: 'section', size: 'full' },
+        { id: 'a', type: 'cover', size: 'full' },
+      ],
+    },
     is_default: true,
     created_at: '2026-09-01',
   },

@@ -323,7 +323,9 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
         highlightId={highlightId}
         onReorder={(activeId, overId) => commit(moveBlock(layoutRef.current, activeId, overId))}
         onLocate={highlightAndScroll}
-        onAddAt={openWidgetDrawer}
+        // Ponto de inserção por índice plano: até o painel virar árvore de seções
+        // (Task 6) o widget entra no fim, na última seção que aceita o tipo.
+        onAddAt={() => openWidgetDrawer(null)}
         onAddEnd={() => openWidgetDrawer(null)}
       />
 

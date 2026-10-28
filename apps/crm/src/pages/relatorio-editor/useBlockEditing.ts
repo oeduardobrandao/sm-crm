@@ -1,19 +1,27 @@
 // Interações de bloco compartilhadas pelo editor de relatório e pelo de
-// modelo: inserir na posição escolhida, excluir com desfazer, destacar e
-// rolar até um bloco.
+// modelo: inserir na seção e posição escolhidas, excluir com desfazer,
+// destacar e rolar até um bloco.
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { BlockType, ReportLayout } from '@mesaas/report-blocks/types';
-import { insertBlockAt, removeBlock, restoreBlock } from './layoutOps';
+import { insertBlock, insertBlockInSection, removeBlock, restoreBlock } from './layoutOps';
+
+/** Onde o próximo widget entra: na seção `sectionId` (id do marcador), no
+ * índice `position` entre os blocos dela (ausente = fim da seção). */
+export interface InsertTarget {
+  sectionId: string;
+  position?: number;
+}
 
 export function useBlockEditing(
   layoutRef: { current: ReportLayout },
   applyLayout: (next: ReportLayout) => void,
 ) {
   const [drawerOpen, setDrawerOpen] = useState(false);
-  // Posição de inserção do próximo widget: null = fim do documento. Setada
-  // pelos pontos de inserção do painel de camadas antes de abrir o drawer.
-  const [insertAt, setInsertAt] = useState<number | null>(null);
+  // Alvo do próximo widget, setado pelo ponto de inserção antes de abrir o
+  // drawer (que lista só o que a seção aceita). null = fim do relatório: fim
+  // da última seção que aceita o tipo (insertBlock).
+  const [insertTarget, setInsertTarget] = useState<InsertTarget | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -36,7 +44,10 @@ export function useBlockEditing(
     const idx = layoutRef.current.blocks.findIndex((b) => b.id === id);
     const block = layoutRef.current.blocks[idx];
     if (!block) return;
-    applyLayout(removeBlock(layoutRef.current, id));
+    const next = removeBlock(layoutRef.current, id);
+    // Marcador de seção: removeBlock recusa (só removeSection o tira).
+    if (next === layoutRef.current) return;
+    applyLayout(next);
     toast('Bloco excluído.', {
       action: {
         label: 'Desfazer',
@@ -60,17 +71,25 @@ export function useBlockEditing(
     }, 50);
   }
 
-  function openWidgetDrawer(at: number | null) {
-    setInsertAt(at);
+  function openWidgetDrawer(target: InsertTarget | null) {
+    setInsertTarget(target);
     setDrawerOpen(true);
   }
 
   function handleInsert(type: BlockType) {
-    const { layout: next, newId } = insertBlockAt(
-      layoutRef.current,
-      type,
-      insertAt ?? layoutRef.current.blocks.length,
-    );
+    const current = layoutRef.current;
+    const newId = crypto.randomUUID();
+    const next = insertTarget
+      ? insertBlockInSection(
+          current,
+          insertTarget.sectionId,
+          type,
+          insertTarget.position,
+          () => newId,
+        )
+      : insertBlock(current, type, () => newId).layout;
+    // Mesma referência = a seção não aceita o tipo (ou sumiu): nada a aplicar.
+    if (next === current) return;
     applyLayout(next);
     highlightAndScroll(newId);
   }
@@ -80,6 +99,7 @@ export function useBlockEditing(
     setDrawerOpen,
     highlightId,
     highlightAndScroll,
+    insertTarget,
     openWidgetDrawer,
     handleInsert,
     handleRemoveBlock,

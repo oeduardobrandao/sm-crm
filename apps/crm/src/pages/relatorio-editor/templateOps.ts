@@ -2,6 +2,7 @@
 // conteúdo do autor; blocos ai_* são regenerados por relatório, então o texto
 // deles NUNCA viaja no template. Puras e imutáveis, como layoutOps.
 import type { BlockType, ReportBlock, ReportLayout } from '@mesaas/report-blocks/types';
+import { sectionizeLayout } from '@mesaas/report-blocks/types';
 
 const AI_TYPES: ReadonlySet<BlockType> = new Set(['ai_summary', 'ai_recommendations', 'ai_goals']);
 
@@ -14,12 +15,16 @@ export function layoutHasFilledImage(layout: ReportLayout): boolean {
 }
 
 /** Aplica um template a um relatório existente: substituição completa do
- * layout. Blocos ai_* do template herdam o texto do PRIMEIRO bloco do mesmo
- * tipo com texto no layout atual; sem correspondente, o bloco sai (não há
- * conteúdo para mostrar e a IA não roda de novo aqui). */
+ * layout, já na forma canônica (sectionizeLayout: modelo legado ganha as
+ * seções inferidas; as seções de um modelo seccionado vêm como estão, inclusive
+ * uma de plataforma sem dados no relatório). Blocos ai_* do template herdam o
+ * texto do PRIMEIRO bloco do mesmo tipo com texto no layout atual; sem
+ * correspondente, o bloco sai (não há conteúdo para mostrar e a IA não roda de
+ * novo aqui). IA é neutra, então tirá-la nunca quebra uma seção. */
 export function applyTemplateLayout(template: ReportLayout, current: ReportLayout): ReportLayout {
+  const sectioned = sectionizeLayout(template);
   const blocks: ReportBlock[] = [];
-  for (const b of template.blocks) {
+  for (const b of sectioned.blocks) {
     if (!AI_TYPES.has(b.type)) {
       blocks.push(b);
       continue;
@@ -28,7 +33,7 @@ export function applyTemplateLayout(template: ReportLayout, current: ReportLayou
     if (!source) continue;
     blocks.push({ ...b, text: source.text });
   }
-  return { ...template, blocks };
+  return { ...sectioned, blocks };
 }
 
 const AI_SAMPLE_TEXT = {

@@ -2,15 +2,38 @@
 // inexistente devolve a MESMA referência (o autosave usa igualdade referencial
 // para saber se algo mudou). Todo output é válido por construção; o gate
 // validateLayout roda no save (useLayoutAutosave), não aqui.
+//
+// Seções (spec 2026-10-28-report-platform-sections §Editor): as ops supõem o
+// layout canônico (o editor trabalha sobre sectionizeLayout do salvo) e nunca
+// produzem um que quebre as regras: o que quebraria (plataforma errada na
+// seção, plataforma repetida, MAX_SECTIONS, MAX_BLOCKS, marcador tratado como
+// bloco) devolve a MESMA referência. Um marcador `section` só muda pelas ops de
+// seção; as de bloco o ignoram.
 import type {
   BlockSize,
   BlockType,
   ReportBlock,
   ReportFontId,
   ReportLayout,
+  ReportSection,
   ReportThemeId,
+  SectionKind,
 } from '@mesaas/report-blocks/types';
-import { TEXT_BLOCK_TYPES } from '@mesaas/report-blocks/types';
+import {
+  BLOCK_TYPES,
+  blockPlatform,
+  contentBlockCount,
+  fromSections,
+  isSectioned,
+  isSectionMarker,
+  isValidSectionTitle,
+  makeSectionMarker,
+  MAX_BLOCKS,
+  MAX_SECTIONS,
+  sectionKindOf,
+  TEXT_BLOCK_TYPES,
+  toSections,
+} from '@mesaas/report-blocks/types';
 
 export const SIZE_ORDER: readonly BlockSize[] = ['third', 'half', 'full'];
 
@@ -30,13 +53,31 @@ const DEFAULT_SIZE: Partial<Record<BlockType, BlockSize>> = {
   audience_cities: 'half',
   audience_countries: 'half',
 };
+// KPIs do TikTok entram como third, igual ao layout padrão da geração.
+for (const t of BLOCK_TYPES) if (t.startsWith('tiktok_kpi_')) DEFAULT_SIZE[t] = 'third';
 
 const EMPTY_TEXT_DOC = { type: 'doc', content: [{ type: 'paragraph', content: [] }] };
 
+/** Índice do marcador `section` que abre a seção do bloco em `idx` (o mais
+ * próximo antes dele); -1 = nenhum (layout legado, ou antes do primeiro). */
+function ownerMarkerIndex(blocks: readonly ReportBlock[], idx: number): number {
+  for (let i = idx - 1; i >= 0; i--) if (isSectionMarker(blocks[i])) return i;
+  return -1;
+}
+
+/** Índice do bloco `id` desde que NÃO seja um marcador de seção; -1 senão. */
+function contentIndex(layout: ReportLayout, id: string): number {
+  const idx = layout.blocks.findIndex((b) => b.id === id);
+  return idx >= 0 && !isSectionMarker(layout.blocks[idx]) ? idx : -1;
+}
+
+/** Reordena dentro da seção. Alvo em outra seção, ou marcador de qualquer lado
+ * = MESMA referência (seções se movem com moveSection/reorderSections). */
 export function moveBlock(layout: ReportLayout, activeId: string, overId: string): ReportLayout {
-  const from = layout.blocks.findIndex((b) => b.id === activeId);
-  const to = layout.blocks.findIndex((b) => b.id === overId);
+  const from = contentIndex(layout, activeId);
+  const to = contentIndex(layout, overId);
   if (from < 0 || to < 0 || from === to) return layout;
+  if (ownerMarkerIndex(layout.blocks, from) !== ownerMarkerIndex(layout.blocks, to)) return layout;
   const blocks = [...layout.blocks];
   const [moved] = blocks.splice(from, 1);
   blocks.splice(to, 0, moved);
@@ -44,7 +85,7 @@ export function moveBlock(layout: ReportLayout, activeId: string, overId: string
 }
 
 export function resizeBlock(layout: ReportLayout, id: string, delta: 1 | -1): ReportLayout {
-  const idx = layout.blocks.findIndex((b) => b.id === id);
+  const idx = contentIndex(layout, id);
   if (idx < 0) return layout;
   const current = SIZE_ORDER.indexOf(layout.blocks[idx].size);
   const next = Math.min(Math.max(current + delta, 0), SIZE_ORDER.length - 1);
@@ -57,7 +98,7 @@ export function resizeBlock(layout: ReportLayout, id: string, delta: 1 | -1): Re
 /** Largura direta (o "Usar meia largura" do bloco de imagem). Capa é sempre
  * full; mesmo valor, id inexistente ou capa = MESMA referência. */
 export function setBlockSize(layout: ReportLayout, id: string, size: BlockSize): ReportLayout {
-  const idx = layout.blocks.findIndex((b) => b.id === id);
+  const idx = contentIndex(layout, id);
   if (idx < 0) return layout;
   const b = layout.blocks[idx];
   if (b.type === 'cover' || b.size === size) return layout;
@@ -66,60 +107,257 @@ export function setBlockSize(layout: ReportLayout, id: string, size: BlockSize):
   return { ...layout, blocks };
 }
 
+/** Exclui um bloco de conteúdo. Marcador de seção = MESMA referência (só
+ * removeSection o tira, junto com os blocos dele). */
 export function removeBlock(layout: ReportLayout, id: string): ReportLayout {
-  const blocks = layout.blocks.filter((b) => b.id !== id);
-  if (blocks.length === layout.blocks.length) return layout;
-  return { ...layout, blocks };
+  const idx = contentIndex(layout, id);
+  if (idx < 0) return layout;
+  return { ...layout, blocks: layout.blocks.filter((_, i) => i !== idx) };
 }
 
 /** Desfaz uma exclusão: reinsere o bloco na posição de origem (clampada).
- * Id já presente = no-op com a MESMA referência (contrato do autosave). */
+ * Id já presente = no-op com a MESMA referência (contrato do autosave). Em
+ * layout seccionado, uma posição que poria o bloco antes da primeira seção ou
+ * numa seção de outra plataforma (o layout mudou entre excluir e desfazer)
+ * também é no-op. */
 export function restoreBlock(
   layout: ReportLayout,
   block: ReportBlock,
   index: number,
 ): ReportLayout {
-  if (layout.blocks.some((b) => b.id === block.id)) return layout;
+  if (isSectionMarker(block) || layout.blocks.some((b) => b.id === block.id)) return layout;
+  const at = Math.min(Math.max(index, 0), layout.blocks.length);
+  if (isSectioned(layout)) {
+    const owner = ownerMarkerIndex(layout.blocks, at);
+    if (owner < 0 || !accepts(sectionKindOf(layout.blocks[owner]), block.type)) return layout;
+  }
   const blocks = [...layout.blocks];
-  blocks.splice(Math.min(Math.max(index, 0), blocks.length), 0, block);
+  blocks.splice(at, 0, block);
   return { ...layout, blocks };
 }
 
-/** Insere um bloco novo na POSIÇÃO dada (clampada ao array). Usado pelos
- * pontos de inserção do painel de camadas; insertBlock delega para cá. */
-export function insertBlockAt(
-  layout: ReportLayout,
-  type: BlockType,
-  index: number,
-  makeId: () => string = () => crypto.randomUUID(),
-): { layout: ReportLayout; newId: string } {
-  const newId = makeId();
-  const block: ReportBlock = { id: newId, type, size: DEFAULT_SIZE[type] ?? 'full' };
+/** Seção do tipo `kind` aceita o bloco: neutro em qualquer uma, de plataforma
+ * só na da mesma plataforma; marcador nunca é conteúdo. */
+function accepts(kind: SectionKind, type: BlockType): boolean {
+  if (type === 'section') return false;
+  const p = blockPlatform(type);
+  return p === null || p === kind;
+}
+
+function newBlock(type: BlockType, id: string): ReportBlock {
+  const block: ReportBlock = { id, type, size: DEFAULT_SIZE[type] ?? 'full' };
   if (type === 'top_posts') block.config = { count: 6 };
   if (type === 'post_list') block.config = { count: 12 };
   if (type === 'section_header') block.config = { title: 'Nova seção' };
   if (TEXT_BLOCK_TYPES.includes(type)) block.text = structuredClone(EMPTY_TEXT_DOC);
-  const blocks = [...layout.blocks];
-  blocks.splice(Math.min(Math.max(index, 0), blocks.length), 0, block);
-  return { layout: { ...layout, blocks }, newId };
+  return block;
 }
 
+function findSection(sections: ReportSection[], sectionId: string): number {
+  return sections.findIndex((s) => s.marker.id === sectionId);
+}
+
+/** Insere um bloco novo na seção `sectionId`, na posição `position` entre os
+ * blocos dela (clampada; ausente = fim). Seção inexistente, tipo que a seção
+ * não aceita, `section` ou MAX_BLOCKS atingido = MESMA referência. */
+export function insertBlockInSection(
+  layout: ReportLayout,
+  sectionId: string,
+  type: BlockType,
+  position?: number,
+  makeId: () => string = () => crypto.randomUUID(),
+): ReportLayout {
+  if (contentBlockCount(layout) >= MAX_BLOCKS) return layout;
+  const sections = toSections(layout);
+  const si = findSection(sections, sectionId);
+  if (si < 0 || !accepts(sections[si].kind, type)) return layout;
+  const blocks = [...sections[si].blocks];
+  const at =
+    position === undefined ? blocks.length : Math.min(Math.max(position, 0), blocks.length);
+  blocks.splice(at, 0, newBlock(type, makeId()));
+  const next = [...sections];
+  next[si] = { ...sections[si], blocks };
+  return fromSections(next, layout);
+}
+
+/** Insere no fim do relatório. Legado: fim do array. Seccionado: fim da última
+ * seção que aceita o tipo; nenhuma aceita (ou MAX_BLOCKS) = MESMA referência. */
 export function insertBlock(
   layout: ReportLayout,
   type: BlockType,
   makeId: () => string = () => crypto.randomUUID(),
 ): { layout: ReportLayout; newId: string } {
-  return insertBlockAt(layout, type, layout.blocks.length, makeId);
+  const newId = makeId();
+  if (!isSectioned(layout)) {
+    if (type === 'section' || contentBlockCount(layout) >= MAX_BLOCKS) return { layout, newId };
+    return { layout: { ...layout, blocks: [...layout.blocks, newBlock(type, newId)] }, newId };
+  }
+  const target = [...toSections(layout)].reverse().find((s) => accepts(s.kind, type));
+  if (!target) return { layout, newId };
+  return {
+    layout: insertBlockInSection(layout, target.marker.id, type, undefined, () => newId),
+    newId,
+  };
+}
+
+/** Adiciona uma seção depois de `afterSectionId` (null = depois da última),
+ * com marcador de título visível e os `blocks` dados (os padrões da plataforma,
+ * ou nenhum para Geral). Plataforma já presente, âncora inexistente,
+ * MAX_SECTIONS, MAX_BLOCKS, ou bloco que a seção não aceita / id repetido =
+ * MESMA referência. */
+export function addSection(
+  layout: ReportLayout,
+  kind: SectionKind,
+  afterSectionId: string | null,
+  blocks: ReportBlock[] = [],
+  makeId: () => string = () => crypto.randomUUID(),
+): ReportLayout {
+  const sections = toSections(layout);
+  if (kind !== 'general' && sections.some((s) => s.kind === kind)) return layout;
+  if (sections.length >= MAX_SECTIONS) return layout;
+  if (!fitsBlocks(layout, kind, blocks)) return layout;
+  const after =
+    afterSectionId === null ? sections.length - 1 : findSection(sections, afterSectionId);
+  if (afterSectionId !== null && after < 0) return layout;
+  const section: ReportSection = {
+    marker: makeSectionMarker(kind, { id: makeId() }),
+    kind,
+    blocks: [...blocks],
+    synthesized: false,
+  };
+  const next = [...sections];
+  next.splice(after + 1, 0, section);
+  return fromSections(next, layout);
+}
+
+/** Os blocos cabem numa seção `kind` deste layout: todos aceitos, ids únicos e
+ * ausentes do layout, e MAX_BLOCKS não estoura. */
+function fitsBlocks(layout: ReportLayout, kind: SectionKind, blocks: ReportBlock[]): boolean {
+  if (contentBlockCount(layout) + blocks.length > MAX_BLOCKS) return false;
+  const used = new Set(layout.blocks.map((b) => b.id));
+  for (const b of blocks) {
+    if (!accepts(kind, b.type) || used.has(b.id)) return false;
+    used.add(b.id);
+  }
+  return true;
+}
+
+/** Remove a seção inteira (marcador + blocos). Para desfazer, o chamador guarda
+ * antes `toSections(layout)[i]` e o índice `i` e chama restoreSection. Id
+ * inexistente = MESMA referência. */
+export function removeSection(layout: ReportLayout, sectionId: string): ReportLayout {
+  const sections = toSections(layout);
+  const si = findSection(sections, sectionId);
+  if (si < 0) return layout;
+  return fromSections(
+    sections.filter((_, i) => i !== si),
+    layout,
+  );
+}
+
+/** Desfaz removeSection: reinsere a seção (mesmo marcador, mesmos blocos) no
+ * índice de seção `index` (clampado). Algum id já presente, plataforma já
+ * presente ou limite estourado = MESMA referência. */
+export function restoreSection(
+  layout: ReportLayout,
+  section: ReportSection,
+  index: number,
+): ReportLayout {
+  if (!isSectionMarker(section.marker)) return layout;
+  const sections = toSections(layout);
+  const kind = sectionKindOf(section.marker);
+  if (kind !== 'general' && sections.some((s) => s.kind === kind)) return layout;
+  if (sections.length >= MAX_SECTIONS) return layout;
+  if (layout.blocks.some((b) => b.id === section.marker.id)) return layout;
+  if (!fitsBlocks(layout, kind, section.blocks)) return layout;
+  const next = [...sections];
+  next.splice(Math.min(Math.max(index, 0), next.length), 0, {
+    ...section,
+    kind,
+    synthesized: false,
+  });
+  return fromSections(next, layout);
+}
+
+/** Troca a seção com a vizinha (menu Mover para cima/baixo). Borda ou id
+ * inexistente = MESMA referência. */
+export function moveSection(layout: ReportLayout, sectionId: string, delta: 1 | -1): ReportLayout {
+  const sections = toSections(layout);
+  const from = findSection(sections, sectionId);
+  const to = from + delta;
+  if (from < 0 || to < 0 || to >= sections.length) return layout;
+  const next = [...sections];
+  [next[from], next[to]] = [next[to], next[from]];
+  return fromSections(next, layout);
+}
+
+/** Arrastar a seção `activeSectionId` para a posição de `overSectionId`
+ * (semântica do arrayMove do dnd-kit, como moveBlock). Mesma seção ou id
+ * inexistente = MESMA referência. */
+export function reorderSections(
+  layout: ReportLayout,
+  activeSectionId: string,
+  overSectionId: string,
+): ReportLayout {
+  const sections = toSections(layout);
+  const from = findSection(sections, activeSectionId);
+  const to = findSection(sections, overSectionId);
+  if (from < 0 || to < 0 || from === to) return layout;
+  const next = [...sections];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return fromSections(next, layout);
+}
+
+/** Título e "Ocultar título" da seção. `title`: trim; `""`/`null` remove a
+ * chave; acima de SECTION_TITLE_MAX = rejeitado (MESMA referência).
+ * `hideHeader`: true só em seção de plataforma (Geral = rejeitado), false
+ * remove a chave. Chave ausente no patch = mantém. Nada muda = MESMA
+ * referência. */
+export function updateSectionConfig(
+  layout: ReportLayout,
+  sectionId: string,
+  patch: { title?: string | null; hideHeader?: boolean },
+): ReportLayout {
+  const idx = layout.blocks.findIndex((b) => b.id === sectionId);
+  const marker = layout.blocks[idx];
+  if (!marker || !isSectionMarker(marker)) return layout;
+  const kind = sectionKindOf(marker);
+  const curTitle = typeof marker.config?.title === 'string' ? marker.config.title : undefined;
+  const curHide = marker.config?.hideHeader === true;
+
+  let title = curTitle;
+  if (patch.title !== undefined) {
+    const trimmed = (patch.title ?? '').trim();
+    if (trimmed === '') title = undefined;
+    else if (!isValidSectionTitle(trimmed)) return layout;
+    else title = trimmed;
+  }
+  let hide = curHide;
+  if (patch.hideHeader !== undefined) {
+    if (patch.hideHeader && kind === 'general') return layout;
+    hide = patch.hideHeader;
+  }
+  if (title === curTitle && hide === curHide) return layout;
+
+  const blocks = [...layout.blocks];
+  blocks[idx] = makeSectionMarker(kind, {
+    id: marker.id,
+    ...(title !== undefined ? { title } : {}),
+    ...(hide ? { hideHeader: true as const } : {}),
+  });
+  return { ...layout, blocks };
 }
 
 /** Merge raso no config do bloco (título/subtítulo do cabeçalho de seção,
- * count dos widgets de posts). Id inexistente = MESMA referência. */
+ * count dos widgets de posts). Id inexistente ou marcador de seção = MESMA
+ * referência (o marcador muda por updateSectionConfig). */
 export function updateBlockConfig(
   layout: ReportLayout,
   id: string,
   patch: Record<string, unknown>,
 ): ReportLayout {
-  const idx = layout.blocks.findIndex((b) => b.id === id);
+  const idx = contentIndex(layout, id);
   if (idx < 0) return layout;
   const blocks = [...layout.blocks];
   blocks[idx] = { ...blocks[idx], config: { ...blocks[idx].config, ...patch } };
@@ -127,7 +365,7 @@ export function updateBlockConfig(
 }
 
 export function updateBlockText(layout: ReportLayout, id: string, text: unknown): ReportLayout {
-  const idx = layout.blocks.findIndex((b) => b.id === id);
+  const idx = contentIndex(layout, id);
   if (idx < 0) return layout;
   const blocks = [...layout.blocks];
   blocks[idx] = { ...blocks[idx], text };

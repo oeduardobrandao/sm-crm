@@ -508,8 +508,12 @@ describe('RelatorioEditorPage (editor)', () => {
     await waitFor(
       () =>
         expect(updateReportDocMock).toHaveBeenCalledWith('doc-1', {
+          // applyTemplateLayout entrega o modelo seccionado: marcador Geral + a capa.
           layout: expect.objectContaining({
-            blocks: [expect.objectContaining({ id: 'c', size: 'full' })],
+            blocks: [
+              expect.objectContaining({ type: 'section' }),
+              expect.objectContaining({ id: 'c', size: 'full' }),
+            ],
           }),
         }),
       { timeout: 4000 },

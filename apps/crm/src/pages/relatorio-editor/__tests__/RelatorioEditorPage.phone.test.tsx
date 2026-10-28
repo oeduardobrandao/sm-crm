@@ -183,7 +183,13 @@ describe('RelatorioEditorPage no celular', () => {
     await waitFor(
       () =>
         expect(updateReportDocMock).toHaveBeenCalledWith('doc-1', {
-          layout: expect.objectContaining({ blocks: [expect.objectContaining({ id: 'c' })] }),
+          // applyTemplateLayout entrega o modelo seccionado: marcador Geral + o bloco.
+          layout: expect.objectContaining({
+            blocks: [
+              expect.objectContaining({ type: 'section' }),
+              expect.objectContaining({ id: 'c' }),
+            ],
+          }),
         }),
       { timeout: 4000 },
     );
