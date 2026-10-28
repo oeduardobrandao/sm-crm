@@ -18,10 +18,12 @@ import {
   Lightbulb,
   List,
   MapPin,
+  MessageCircle,
   MousePointerClick,
   Play,
   SeparatorHorizontal,
   Shapes,
+  Share2,
   Sparkles,
   Tags,
   Target,
@@ -65,6 +67,20 @@ export const WIDGET_ICONS: Record<BlockType, LucideIcon> = {
   post_list: List,
   tags_table: Tags,
   image: FileImage,
+  // TikTok: mesmos ícones dos equivalentes do Instagram (B4 refina o catálogo).
+  tiktok_kpi_followers_total: Users,
+  tiktok_kpi_followers_gained: UserPlus,
+  tiktok_kpi_views: Play,
+  tiktok_kpi_engagement_rate: Heart,
+  tiktok_kpi_likes: Heart,
+  tiktok_kpi_comments: MessageCircle,
+  tiktok_kpi_shares: Share2,
+  tiktok_kpi_posts_count: Images,
+  tiktok_kpi_likes_total: Heart,
+  tiktok_chart_followers: ChartLine,
+  tiktok_chart_best_times: Clock,
+  tiktok_top_posts: Trophy,
+  tiktok_post_list: List,
 };
 
 export const FALLBACK_WIDGET_ICON: LucideIcon = Shapes;

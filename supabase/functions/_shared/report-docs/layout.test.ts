@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import {
   BLOCK_TYPES,
+  blockPlatform,
   LAYOUT_VERSION,
   normalizeCoverSize,
   type ReportLayout,
@@ -46,8 +47,8 @@ Deno.test("validateLayout rejeita mais de 200 blocos e ids duplicados", () => {
   assert(!validateLayout(layout([block({ id: "x" }), block({ id: "x" })])).ok);
 });
 
-Deno.test("catálogo tem os 28 tipos (26 + image e kpi_follows de 2026-10)", () => {
-  assertEquals(BLOCK_TYPES.length, 28);
+Deno.test("catálogo tem os 41 tipos (28 + 13 tiktok_* de 2026-10-28)", () => {
+  assertEquals(BLOCK_TYPES.length, 41);
   assert((BLOCK_TYPES as readonly string[]).includes("image"));
   assert((BLOCK_TYPES as readonly string[]).includes("kpi_follows"));
 });
@@ -162,4 +163,42 @@ Deno.test("sanitizeLayoutForTemplate: tira texto de IA e o conteúdo da imagem",
     config: { ratio: "4:5", fit: "contain", focal: { x: 0, y: 1 } },
   });
   assert(validateLayout(out).ok);
+});
+
+const TIKTOK_TYPES = [
+  "tiktok_kpi_followers_total", "tiktok_kpi_followers_gained", "tiktok_kpi_views",
+  "tiktok_kpi_engagement_rate", "tiktok_kpi_likes", "tiktok_kpi_comments",
+  "tiktok_kpi_shares", "tiktok_kpi_posts_count", "tiktok_kpi_likes_total",
+  "tiktok_chart_followers", "tiktok_chart_best_times", "tiktok_top_posts",
+  "tiktok_post_list",
+];
+
+Deno.test("validateLayout aceita todos os tipos tiktok_*", () => {
+  for (const type of TIKTOK_TYPES) {
+    assert(validateLayout(layout([block({ type })])).ok, type);
+  }
+  assertEquals(
+    TIKTOK_TYPES.every((t) => (BLOCK_TYPES as readonly string[]).includes(t)),
+    true,
+  );
+});
+
+Deno.test("tiktok_top_posts/tiktok_post_list: count fora de 1..12 é rejeitado", () => {
+  for (const type of ["tiktok_top_posts", "tiktok_post_list"]) {
+    assert(validateLayout(layout([block({ type, config: { count: 6 } })])).ok);
+    assert(!validateLayout(layout([block({ type, config: { count: 0 } })])).ok);
+    assert(!validateLayout(layout([block({ type, config: { count: 13 } })])).ok);
+  }
+});
+
+Deno.test("blockPlatform: prefixo tiktok_ = tiktok, métricas = instagram, neutros = null", () => {
+  assertEquals(blockPlatform("tiktok_kpi_views"), "tiktok");
+  assertEquals(blockPlatform("tiktok_top_posts"), "tiktok");
+  assertEquals(blockPlatform("kpi_views"), "instagram");
+  assertEquals(blockPlatform("top_posts"), "instagram");
+  assertEquals(blockPlatform("audience_gender"), "instagram");
+  for (const t of ["cover", "section_header", "divider", "text", "ai_summary",
+    "ai_recommendations", "ai_goals", "image"]) {
+    assertEquals(blockPlatform(t), null, t);
+  }
 });

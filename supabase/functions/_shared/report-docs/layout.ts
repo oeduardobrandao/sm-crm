@@ -24,8 +24,31 @@ export const BLOCK_TYPES = [
   "top_posts", "post_list", "tags_table",
   // Mídia
   "image",
+  // TikTok (spec 2026-10-28 §B): tipos próprios, nunca um config.platform. Um
+  // bundle antigo do frontend renderiza tipo desconhecido como null, então um
+  // relatório com blocos TikTok não quebra nele. IDs de KPI espelham TIKTOK_KPI_IDS.
+  "tiktok_kpi_followers_total", "tiktok_kpi_followers_gained", "tiktok_kpi_views",
+  "tiktok_kpi_engagement_rate", "tiktok_kpi_likes", "tiktok_kpi_comments",
+  "tiktok_kpi_shares", "tiktok_kpi_posts_count", "tiktok_kpi_likes_total",
+  "tiktok_chart_followers", "tiktok_chart_best_times", "tiktok_top_posts",
+  "tiktok_post_list",
 ] as const;
 export type BlockType = (typeof BLOCK_TYPES)[number];
+
+export const TIKTOK_BLOCK_PREFIX = "tiktok_";
+/** Tipos que não pertencem a nenhuma plataforma (estrutura, texto/IA, mídia). */
+const PLATFORM_NEUTRAL_TYPES: readonly string[] = [
+  "cover", "section_header", "divider", "text", "ai_summary", "ai_recommendations",
+  "ai_goals", "image",
+];
+
+/** Plataforma de um bloco: o prefixo decide. null = neutro (aparece em qualquer
+ * relatório); os demais tipos legados são Instagram. */
+export function blockPlatform(type: string): "instagram" | "tiktok" | null {
+  if (type.startsWith(TIKTOK_BLOCK_PREFIX)) return "tiktok";
+  if (PLATFORM_NEUTRAL_TYPES.includes(type)) return null;
+  return "instagram";
+}
 
 export const REPORT_THEME_IDS = ["clean", "editorial", "bold", "hub"] as const;
 export type ReportThemeId = (typeof REPORT_THEME_IDS)[number];
@@ -179,7 +202,10 @@ export function validateLayout(raw: unknown): ValidateLayoutResult {
     ) {
       return { ok: false, error: "text is only allowed on text blocks" };
     }
-    if (b.type === "top_posts" || b.type === "post_list") {
+    if (
+      b.type === "top_posts" || b.type === "post_list" ||
+      b.type === "tiktok_top_posts" || b.type === "tiktok_post_list"
+    ) {
       const count = (b.config as Record<string, unknown> | undefined)?.count;
       if (count !== undefined) {
         if (

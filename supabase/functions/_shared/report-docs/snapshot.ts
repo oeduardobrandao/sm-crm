@@ -7,6 +7,7 @@ import type {
   AudienceData, BestTimeSlot, FollowerTrendPoint, TagPerformance,
 } from "../report-template/types.ts";
 import { isEphemeralInstagramUrl } from "../instagram-thumbnail-cache.ts";
+import type { TikTokKpiId } from "../tiktok-analytics/kpis.ts";
 import { computeKpis, type KpiEntry, type KpiSources, type ReportKpiId } from "./kpis.ts";
 import { monthWindow } from "./month-window.ts";
 
@@ -56,6 +57,29 @@ export type SnapshotContentBreakdown = {
   images?: SnapshotFormatStats;
 };
 
+/** Vídeo em destaque do snapshot TikTok. Sem reach/saves: a Display API não os dá. */
+export interface TikTokSnapshotTopPost {
+  video_id: string;
+  views: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  caption_preview: string;
+  date: string | null;
+  permalink: string | null;
+  thumbnail_url: string | null;
+}
+
+/** Seção TikTok do snapshot (spec 2026-10-28 §B2): nasce só em relatórios que
+ * incluem a plataforma. Mesmas formas de kpis/trend/best_times do Instagram. */
+export interface TikTokReportSnapshot {
+  account: { handle: string; display_name: string | null; avatar_url: string | null };
+  kpis: Record<TikTokKpiId, KpiEntry>;
+  follower_trend: FollowerTrendPoint[];
+  best_times: BestTimeSlot[];
+  top_posts: TikTokSnapshotTopPost[];
+}
+
 export interface ReportDocSnapshot {
   version: 1;
   period: {
@@ -96,6 +120,11 @@ export interface ReportDocSnapshot {
   audience: AudienceData | null;
   best_times: BestTimeSlot[];
   tags_performance: TagPerformance[];
+  /** Ausente = true (snapshots antigos são todos Instagram). false = relatório
+   * só TikTok: os blocos Instagram não renderizam. `version: 1` não muda. */
+  instagram_connected?: boolean;
+  /** Ausente/null = relatório sem TikTok ou conta TikTok sem dados. */
+  tiktok?: TikTokReportSnapshot | null;
 }
 
 export interface SnapshotPostRow {

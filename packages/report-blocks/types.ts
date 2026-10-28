@@ -14,6 +14,8 @@ export type {
 export {
   BLOCK_TYPES,
   TEXT_BLOCK_TYPES,
+  TIKTOK_BLOCK_PREFIX,
+  blockPlatform,
   validateLayout,
   normalizeCoverSize,
   REPORT_THEME_IDS,
@@ -32,6 +34,8 @@ export type {
   SnapshotFormatStats,
   SnapshotHubTheme,
   SnapshotTopPost,
+  TikTokReportSnapshot,
+  TikTokSnapshotTopPost,
 } from '../../supabase/functions/_shared/report-docs/snapshot';
 export type { KpiEntry, ReportKpiId } from '../../supabase/functions/_shared/report-docs/kpis';
 export { KPI_LABELS_PT } from '../../supabase/functions/_shared/report-docs/kpis';

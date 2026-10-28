@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { WIDGET_CATALOG, WIDGET_CATEGORIES } from '../catalog';
-import { BLOCK_TYPES } from '../types';
+import { BLOCK_TYPES, TIKTOK_BLOCK_PREFIX } from '../types';
 
 describe('WIDGET_CATALOG', () => {
   it('cobre todos os tipos de bloco, sem duplicatas', () => {
     const types = WIDGET_CATALOG.map((w) => w.type);
     expect(new Set(types).size).toBe(types.length);
-    expect([...types].sort()).toEqual([...BLOCK_TYPES].sort());
+    // tiktok_* ganham entrada no catálogo junto com os renderers (Part B, task B4).
+    const instagramAndNeutral = BLOCK_TYPES.filter((t) => !t.startsWith(TIKTOK_BLOCK_PREFIX));
+    expect([...types].sort()).toEqual([...instagramAndNeutral].sort());
   });
 
   it('toda entrada tem label pt-BR não vazio e categoria válida', () => {
