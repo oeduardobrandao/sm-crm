@@ -189,6 +189,14 @@
       "board": "Board",
       "mes": "Mês"
     },
-    "more": "+{{n}} mais"
+    "more": "+{{n}} mais",
+    "card": {
+      "client": "Cliente",
+      "assignee": "Responsável",
+      "due": "Prazo",
+      "noDue": "Sem prazo",
+      "status": "Status",
+      "subtasks": "{{done}}/{{total}} subtarefas"
+    }
   }
 }
