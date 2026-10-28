@@ -120,7 +120,11 @@
     "descricao": "Description",
     "categoria": "Category",
     "valor": "Amount",
-    "status": "Status"
+    "status": "Status",
+    "txStatus": {
+      "pago": "paid",
+      "agendado": "scheduled"
+    }
   },
   "membroDetalhePhone": {
     "voltarEquipe": "Back to Team",

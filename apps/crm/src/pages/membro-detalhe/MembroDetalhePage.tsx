@@ -317,7 +317,9 @@ export default function MembroDetalhePage() {
                           <TableCell data-label={t('membroDetalhe.valor')}>
                             {formatFinancialBRL(tx.valor, canSeeFinancials)}
                           </TableCell>
-                          <TableCell data-label={t('membroDetalhe.status')}>{tx.status}</TableCell>
+                          <TableCell data-label={t('membroDetalhe.status')}>
+                            {t(`membroDetalhe.txStatus.${tx.status}`, { defaultValue: tx.status })}
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

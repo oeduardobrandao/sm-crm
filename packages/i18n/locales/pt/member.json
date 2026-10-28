@@ -120,7 +120,11 @@
     "descricao": "Descrição",
     "categoria": "Categoria",
     "valor": "Valor",
-    "status": "Status"
+    "status": "Status",
+    "txStatus": {
+      "pago": "pago",
+      "agendado": "agendado"
+    }
   },
   "membroDetalhePhone": {
     "voltarEquipe": "Voltar para Equipe",
