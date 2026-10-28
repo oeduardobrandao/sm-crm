@@ -165,7 +165,8 @@
     "searchPlaceholder": "Buscar tarefa...",
     "clearFilters": "Limpar filtros",
     "filters": "Filtros",
-    "sheetDescription": "Filtre as tarefas"
+    "sheetDescription": "Filtre as tarefas",
+    "removeKpi": "Remover filtro {{label}}"
   },
   "views": {
     "chipsDueDates": "Prazos",
@@ -188,6 +189,14 @@
       "board": "Board",
       "mes": "Mês"
     },
-    "more": "+{{n}} mais"
+    "more": "+{{n}} mais",
+    "card": {
+      "client": "Cliente",
+      "assignee": "Responsável",
+      "due": "Prazo",
+      "noDue": "Sem prazo",
+      "status": "Status",
+      "subtasks": "{{done}}/{{total}} subtarefas"
+    }
   }
 }

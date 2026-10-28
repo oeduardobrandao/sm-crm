@@ -6,13 +6,12 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  useDraggable,
   useDroppable,
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import { CSS } from '@dnd-kit/utilities';
 import { MonthGrid } from '@/components/ui/month-grid';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { SegmentedControl } from '@/components/mobile/SegmentedControl';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import type { TarefaWithRelations } from '../../../store';
@@ -24,6 +23,7 @@ import { loadTarefasCalendarioModo, persistTarefasCalendarioModo } from '../tare
 import { BoardView } from './BoardView';
 import { rescheduleTarefa } from '../tarefaCommands';
 import { TarefasPhoneCalendar } from '../phone/TarefasPhoneCalendar';
+import { DraggableTarefaChip, TarefaChip } from '../components/TarefaCalendarChip';
 
 interface CalendarViewProps {
   tarefas: TarefaWithRelations[];
@@ -35,60 +35,11 @@ interface CalendarViewProps {
 
 const MAX_CHIPS_PER_DAY = 3;
 
-function TarefaChip({
-  tarefa,
-  onClick,
-  overlay,
-}: {
-  tarefa: TarefaWithRelations;
-  onClick?: () => void;
-  overlay?: boolean;
-}) {
-  const accent = tarefa.tags[0]?.cor ?? 'var(--primary-color)';
-  const done = tarefa.status === 'concluida';
-  return (
-    <div
-      onClick={onClick}
-      title={tarefa.titulo}
-      style={{
-        fontSize: '0.62rem',
-        fontWeight: 600,
-        lineHeight: 1.3,
-        padding: '0.15rem 0.35rem',
-        borderRadius: '5px',
-        borderLeft: `3px solid ${accent}`,
-        background: 'var(--surface-2)',
-        color: done ? 'var(--text-muted)' : 'var(--text-main)',
-        textDecoration: done ? 'line-through' : undefined,
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
-        cursor: overlay ? 'grabbing' : 'pointer',
-      }}
-    >
-      {tarefa.titulo}
-    </div>
-  );
-}
-
-function DraggableChip({ tarefa, onClick }: { tarefa: TarefaWithRelations; onClick: () => void }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: String(tarefa.id),
-  });
-  return (
-    <div
-      ref={setNodeRef}
-      {...attributes}
-      {...listeners}
-      style={{
-        transform: CSS.Translate.toString(transform),
-        opacity: isDragging ? 0.4 : 1,
-        touchAction: 'none',
-      }}
-    >
-      <TarefaChip tarefa={tarefa} onClick={onClick} />
-    </div>
-  );
+/** What every chip of the month grid needs besides its task. */
+interface ChipContext {
+  membroOf: (t: TarefaWithRelations) => Membro | null;
+  /** A chip is being dragged: every hover card stays closed. */
+  dragging: boolean;
 }
 
 function DayCell({
@@ -97,12 +48,14 @@ function DayCell({
   isToday,
   tarefas,
   onTarefaClick,
+  chip,
 }: {
   date: Date;
   isCurrentMonth: boolean;
   isToday: boolean;
   tarefas: TarefaWithRelations[];
   onTarefaClick: (t: TarefaWithRelations) => void;
+  chip: ChipContext;
 }) {
   const { t: tr } = useTranslation('tasks');
   const { setNodeRef, isOver } = useDroppable({
@@ -140,7 +93,13 @@ function DayCell({
         {date.getDate()}
       </span>
       {visible.map((t) => (
-        <DraggableChip key={t.id} tarefa={t} onClick={() => onTarefaClick(t)} />
+        <DraggableTarefaChip
+          key={t.id}
+          tarefa={t}
+          membro={chip.membroOf(t)}
+          dragging={chip.dragging}
+          onClick={() => onTarefaClick(t)}
+        />
       ))}
       {hidden > 0 && (
         <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>
@@ -154,9 +113,11 @@ function DayCell({
 function SemDataRail({
   tarefas,
   onTarefaClick,
+  chip,
 }: {
   tarefas: TarefaWithRelations[];
   onTarefaClick: (t: TarefaWithRelations) => void;
+  chip: ChipContext;
 }) {
   const { t: tr } = useTranslation('tasks');
   const { setNodeRef, isOver } = useDroppable({ id: buildDropId({ kind: 'day', date: null }) });
@@ -192,7 +153,13 @@ function SemDataRail({
         </span>
       )}
       {tarefas.map((t) => (
-        <DraggableChip key={t.id} tarefa={t} onClick={() => onTarefaClick(t)} />
+        <DraggableTarefaChip
+          key={t.id}
+          tarefa={t}
+          membro={chip.membroOf(t)}
+          dragging={chip.dragging}
+          onClick={() => onTarefaClick(t)}
+        />
       ))}
     </div>
   );
@@ -236,6 +203,12 @@ export function CalendarView({
   }
   for (const list of byDay.values()) list.sort(sortTarefas);
   semData.sort(sortTarefas);
+
+  const membroById = new Map(membros.filter((m) => m.id != null).map((m) => [m.id!, m]));
+  const chip: ChipContext = {
+    membroOf: (t) => (t.responsavel_id != null ? (membroById.get(t.responsavel_id) ?? null) : null),
+    dragging: activeTarefa != null,
+  };
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveTarefa(merged.find((t) => String(t.id) === String(event.active.id)) ?? null);
@@ -345,34 +318,49 @@ export function CalendarView({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       {toggle}
-      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <div
-          className="animate-up"
-          style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}
-        >
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={() => setActiveTarefa(null)}
+      >
+        {/* One provider for the grid: hover cards open after ~400ms, then move
+            instantly between neighbouring chips. */}
+        <TooltipProvider delayDuration={400}>
           <div
-            className="card"
-            style={{ flex: '1 1 560px', borderRadius: '12px', padding: '1rem' }}
+            className="animate-up"
+            style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}
           >
-            <MonthGrid
-              currentMonth={currentMonth}
-              onMonthChange={setCurrentMonth}
-              renderCell={(date, isCurrentMonth) => (
-                <DayCell
-                  date={date}
-                  isCurrentMonth={isCurrentMonth}
-                  isToday={toDateOnlyString(date) === todayStr}
-                  tarefas={byDay.get(toDateOnlyString(date)) ?? []}
-                  onTarefaClick={onTarefaClick}
-                />
-              )}
-            />
+            <div
+              className="card"
+              style={{ flex: '1 1 560px', borderRadius: '12px', padding: '1rem' }}
+            >
+              <MonthGrid
+                currentMonth={currentMonth}
+                onMonthChange={setCurrentMonth}
+                renderCell={(date, isCurrentMonth) => (
+                  <DayCell
+                    date={date}
+                    isCurrentMonth={isCurrentMonth}
+                    isToday={toDateOnlyString(date) === todayStr}
+                    tarefas={byDay.get(toDateOnlyString(date)) ?? []}
+                    onTarefaClick={onTarefaClick}
+                    chip={chip}
+                  />
+                )}
+              />
+            </div>
+            <div style={{ flex: '0 1 240px', minWidth: 200 }}>
+              <SemDataRail tarefas={semData} onTarefaClick={onTarefaClick} chip={chip} />
+            </div>
           </div>
-          <div style={{ flex: '0 1 240px', minWidth: 200 }}>
-            <SemDataRail tarefas={semData} onTarefaClick={onTarefaClick} />
-          </div>
-        </div>
-        <DragOverlay>{activeTarefa && <TarefaChip tarefa={activeTarefa} overlay />}</DragOverlay>
+        </TooltipProvider>
+        {/* The overlay chip carries the new visuals but never a hover card. */}
+        <DragOverlay>
+          {activeTarefa && (
+            <TarefaChip tarefa={activeTarefa} membro={chip.membroOf(activeTarefa)} overlay />
+          )}
+        </DragOverlay>
       </DndContext>
     </div>
   );

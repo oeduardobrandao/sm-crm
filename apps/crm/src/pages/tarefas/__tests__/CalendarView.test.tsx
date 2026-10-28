@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { DragEndEvent } from '@dnd-kit/core';
-import type { TarefaWithRelations } from '../../../store';
+import type { Membro, TarefaWithRelations } from '../../../store';
 import { buildDropId } from '../tarefasLogic';
 
 const { updateTarefaMock, toastErrorMock, toastSuccessMock, useAuthMock } = vi.hoisted(() => ({
@@ -79,12 +79,18 @@ function makeTarefa(overrides: Partial<TarefaWithRelations> = {}): TarefaWithRel
   };
 }
 
-function renderMonth(tarefa: TarefaWithRelations) {
+function renderMonth(
+  tarefa: TarefaWithRelations,
+  {
+    membros = [],
+    onTarefaClick = vi.fn(),
+  }: { membros?: Membro[]; onTarefaClick?: () => void } = {},
+) {
   render(
     <CalendarView
       tarefas={[tarefa]}
-      membros={[]}
-      onTarefaClick={vi.fn()}
+      membros={membros}
+      onTarefaClick={onTarefaClick}
       onRefresh={vi.fn()}
       onCreateTask={vi.fn()}
     />,
@@ -121,5 +127,96 @@ describe('CalendarView date-drop guards', () => {
     renderMonth(makeTarefa({ serie: SERIE }));
     await dragEnd(42, buildDropId({ kind: 'day', date: '2026-07-31' }));
     expect(toastErrorMock).toHaveBeenCalledWith('Já existe uma ocorrência desta série nesse dia.');
+  });
+});
+
+describe('CalendarView month chips', () => {
+  // Real focus (activeElement), as a Tab would give: the card opens on :focus-visible only.
+  const focusChip = () => act(() => screen.getByRole('button', { name: 'Editar vídeo' }).focus());
+  const ANA = { id: 7, nome: 'Ana Souza', avatar_url: null } as unknown as Membro;
+  const TAGS = [
+    { id: 1, nome: 'Urgente', cor: '#f55a42' },
+    { id: 2, nome: 'Design', cor: '#42c8f5' },
+  ];
+  // Today, so the chip lands in the month the grid opens on.
+  const today = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  it('shows the client colour as the left bar and the assignee avatar', () => {
+    renderMonth(
+      makeTarefa({
+        data_limite: today(),
+        responsavel_id: 7,
+        cliente_nome: 'Clínica Sol',
+        cliente_cor: '#123456',
+        tags: TAGS,
+      }),
+      { membros: [ANA] },
+    );
+    const chip = screen.getByTestId('tarefa-chip');
+    expect(chip.style.borderLeft).toContain('rgb(18, 52, 86)');
+    expect(within(chip).getByText('AS')).toBeInTheDocument();
+    // Tags moved to the hover card; no native title tooltip either.
+    expect(within(chip).queryByText('Urgente')).not.toBeInTheDocument();
+    expect(chip.closest('[title]')).toBeNull();
+  });
+
+  it('falls back to a neutral bar and no avatar without client or assignee', () => {
+    renderMonth(makeTarefa({ data_limite: today() }), { membros: [ANA] });
+    const chip = screen.getByTestId('tarefa-chip');
+    expect(chip.style.borderLeft).toContain('var(--border-color)');
+    expect(chip.querySelector('.avatar')).toBeNull();
+  });
+
+  it('the hover card shows client, assignee, tags, subtasks and the recurrence', async () => {
+    renderMonth(
+      makeTarefa({
+        data_limite: today(),
+        responsavel_id: 7,
+        cliente_nome: 'Clínica Sol',
+        cliente_cor: '#123456',
+        tags: TAGS,
+        subtarefas_total: 3,
+        subtarefas_concluidas: 1,
+        serie: SERIE,
+      }),
+      { membros: [ANA] },
+    );
+    focusChip();
+    const card = await screen.findByRole('tooltip');
+    expect(within(card).getByText('Clínica Sol')).toBeInTheDocument();
+    expect(within(card).getByText('Ana Souza')).toBeInTheDocument();
+    expect(within(card).getByText('Urgente')).toBeInTheDocument();
+    expect(within(card).getByText('Design')).toBeInTheDocument();
+    expect(within(card).getByText('1/3 subtarefas')).toBeInTheDocument();
+    expect(within(card).getByText('Todo dia')).toBeInTheDocument();
+    expect(within(card).getByText('Hoje')).toBeInTheDocument();
+  });
+
+  it('says "Sem responsável" in the card for an unassigned task', async () => {
+    renderMonth(makeTarefa({ data_limite: today() }));
+    focusChip();
+    const card = await screen.findByRole('tooltip');
+    expect(within(card).getByText('Sem responsável')).toBeInTheDocument();
+  });
+
+  it('a focus that is not :focus-visible (focus handed back after a click) keeps the card closed', async () => {
+    renderMonth(makeTarefa({ data_limite: today() }));
+    // A focus event on an element that is not the focused one never matches :focus-visible.
+    fireEvent.focus(screen.getByRole('button', { name: 'Editar vídeo' }));
+    await act(async () => {});
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+  });
+
+  it('opens the task on click and on Enter/Space', () => {
+    const onTarefaClick = vi.fn();
+    renderMonth(makeTarefa({ data_limite: today() }), { onTarefaClick });
+    const chip = screen.getByRole('button', { name: 'Editar vídeo' });
+    fireEvent.click(chip);
+    fireEvent.keyDown(chip, { key: 'Enter' });
+    fireEvent.keyDown(chip, { key: ' ' });
+    expect(onTarefaClick).toHaveBeenCalledTimes(3);
   });
 });
