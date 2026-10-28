@@ -311,7 +311,7 @@ describe('NewReportDialog', () => {
       expect(generateMock.mock.calls[0][3]).toEqual(['instagram']);
     });
 
-    it('com as duas marcadas envia as duas', async () => {
+    it('com as duas conectadas e nada mudado, não envia platforms (o servidor usa todas)', async () => {
       generateMock.mockResolvedValue({ id: 'doc-9' });
       render(
         <NewReportDialog
@@ -323,7 +323,7 @@ describe('NewReportDialog', () => {
       );
       fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
       await waitFor(() => expect(generateMock).toHaveBeenCalled());
-      expect(generateMock.mock.calls[0][3]).toEqual(['instagram', 'tiktok']);
+      expect(generateMock.mock.calls[0][3]).toBeUndefined();
     });
 
     it('nenhuma marcada desabilita o Gerar', () => {
@@ -340,14 +340,31 @@ describe('NewReportDialog', () => {
       expect(screen.getByRole('button', { name: 'Gerar relatório' })).toBeDisabled();
     });
 
-    it('uma plataforma só esconde o fieldset e envia essa plataforma', async () => {
+    it('uma plataforma só esconde o fieldset e não envia platforms', async () => {
       generateMock.mockResolvedValue({ id: 'doc-9' });
       render(<NewReportDialog open onOpenChange={() => {}} clientId={42} connected={['tiktok']} />);
       expect(screen.queryByRole('group', { name: 'Plataformas' })).toBeNull();
       expect(screen.queryByRole('checkbox')).toBeNull();
       fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
       await waitFor(() => expect(generateMock).toHaveBeenCalled());
-      expect(generateMock.mock.calls[0][3]).toEqual(['tiktok']);
+      expect(generateMock.mock.calls[0][3]).toBeUndefined();
+    });
+
+    it('desmarcar e marcar de volta não conta como estreitar: não envia platforms', async () => {
+      generateMock.mockResolvedValue({ id: 'doc-9' });
+      render(
+        <NewReportDialog
+          open
+          onOpenChange={() => {}}
+          clientId={42}
+          connected={['instagram', 'tiktok']}
+        />,
+      );
+      fireEvent.click(screen.getByRole('checkbox', { name: 'TikTok' }));
+      fireEvent.click(screen.getByRole('checkbox', { name: 'TikTok' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+      await waitFor(() => expect(generateMock).toHaveBeenCalled());
+      expect(generateMock.mock.calls[0][3]).toBeUndefined();
     });
 
     it('sem a prop connected (chamador sem resumo das redes) não envia platforms', async () => {

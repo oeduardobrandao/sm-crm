@@ -129,7 +129,10 @@ export function layoutPlatforms(layout: ReportLayout): ReportPlatform[] {
   return out;
 }
 
-const PLATFORM_NAMES: Record<ReportPlatform, string> = { instagram: 'Instagram', tiktok: 'TikTok' };
+export const PLATFORM_NAMES: Record<ReportPlatform, string> = {
+  instagram: 'Instagram',
+  tiktok: 'TikTok',
+};
 
 /** Kicker, handle e foto padrão da capa. Plataformas do layout sem dado no
  * snapshot (instagram_connected false, sem seção TikTok) saem antes: um layout

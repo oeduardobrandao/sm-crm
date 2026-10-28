@@ -26,17 +26,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { PLATFORM_NAMES } from '@mesaas/report-blocks/platform';
 import { generateReportDoc, type ReportPlatform } from '../../../services/reportDocs';
 import { listReportTemplates } from '../../../services/reportTemplates';
 import { captureEvent } from '@/lib/analytics';
 import { useAuth } from '../../../context/AuthContext';
 
 const SYSTEM_TEMPLATE = '__system';
-
-const PLATFORM_LABELS: Record<ReportPlatform, string> = {
-  instagram: 'Instagram',
-  tiktok: 'TikTok',
-};
 
 function previousMonth(): string {
   const now = new Date();
@@ -70,11 +66,14 @@ export function NewReportDialog({ open, onOpenChange, clientId, connected }: New
   const [unchecked, setUnchecked] = useState<ReportPlatform[]>([]);
 
   const askPlatforms = (connected?.length ?? 0) > 1;
-  const platforms: ReportPlatform[] | undefined = !connected?.length
-    ? undefined
-    : askPlatforms
-      ? connected.filter((p) => !unchecked.includes(p))
-      : connected;
+  // O que está marcado entre as redes mostradas no fieldset.
+  const checked = askPlatforms ? connected!.filter((p) => !unchecked.includes(p)) : [];
+  // `platforms` só vai quando o usuário estreitou a escolha (desmarcou alguma). Padrão (tudo
+  // marcado), uma rede só e desconhecido/carregando omitem: o servidor usa todas as conectadas.
+  // Assim um resumo de rede que falhou ao carregar nunca vira "só Instagram" em silêncio.
+  const narrowed = askPlatforms && checked.length < connected!.length;
+  const platforms: ReportPlatform[] | undefined = narrowed ? checked : undefined;
+  const noneChecked = askPlatforms && checked.length === 0;
 
   // Só quem abre a aba (configTabs.ts: configuracoes:ver) vê o link.
   const canSeeTemplates = can('configuracoes', 'ver') === true;
@@ -122,7 +121,7 @@ export function NewReportDialog({ open, onOpenChange, clientId, connected }: New
   }, [open, templatesLoading, templates, templateId]);
 
   const handleGenerate = async () => {
-    if (generating || !month || platforms?.length === 0) return;
+    if (generating || !month || noneChecked) return;
     setGenerating(true);
     try {
       // "system" é a sentinela explícita do "Padrão do sistema": tem que ir
@@ -192,7 +191,7 @@ export function NewReportDialog({ open, onOpenChange, clientId, connected }: New
                     }
                   />
                   <Label htmlFor={`new-report-platform-${p}`} className="font-normal">
-                    {PLATFORM_LABELS[p]}
+                    {PLATFORM_NAMES[p]}
                   </Label>
                 </div>
               ))}
@@ -238,10 +237,7 @@ export function NewReportDialog({ open, onOpenChange, clientId, connected }: New
           <Button variant="outline" disabled={generating} onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button
-            disabled={generating || !month || platforms?.length === 0}
-            onClick={handleGenerate}
-          >
+          <Button disabled={generating || !month || noneChecked} onClick={handleGenerate}>
             {generating ? <Spinner size="sm" /> : null}{' '}
             {generating ? 'Gerando…' : 'Gerar relatório'}
           </Button>

@@ -250,4 +250,26 @@ describe('ClientReportsPanel (moved from the Instagram page)', () => {
       ),
     );
   });
+
+  it('resumo do TikTok com erro: o dialog recebe só o Instagram como conectado (o dialog então não envia platforms)', async () => {
+    vi.mocked(getTikTokSummary).mockRejectedValue(new Error('boom'));
+    renderPanel();
+    fireEvent.click(await screen.findByRole('button', { name: 'Gerar' }));
+    await waitFor(() =>
+      expect(screen.getByRole('dialog', { name: 'Novo relatório' })).toHaveAttribute(
+        'data-connected',
+        'instagram',
+      ),
+    );
+  });
+
+  it('redes ainda carregando: o dialog recebe connected desconhecido', async () => {
+    vi.mocked(getInstagramSummary).mockReturnValue(new Promise(() => {}));
+    renderPanel();
+    fireEvent.click(await screen.findByRole('button', { name: 'Gerar' }));
+    expect(screen.getByRole('dialog', { name: 'Novo relatório' })).toHaveAttribute(
+      'data-connected',
+      'unknown',
+    );
+  });
 });

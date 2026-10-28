@@ -36,14 +36,10 @@ import {
   type ReportDocListItem,
   type ReportPlatform,
 } from '../../../services/reportDocs';
+import { PLATFORM_NAMES } from '@mesaas/report-blocks/platform';
 import { openExternalUrl } from '../../../utils/security';
 import { formatReportMonth } from '../contaFormat';
 import { NewReportDialog } from './NewReportDialog';
-
-const PLATFORM_LABELS: Record<ReportPlatform, string> = {
-  instagram: 'Instagram',
-  tiktok: 'TikTok',
-};
 
 // Mesmo corte do servidor (report-docs/tiktok-section.ts): revogada ou desconectada não entra.
 const TIKTOK_NOT_CONNECTED = ['revoked', 'disconnected'];
@@ -53,7 +49,7 @@ function PlatformBadges({ platforms }: { platforms: ReportPlatform[] }) {
     <>
       {platforms.map((p) => (
         <Badge key={p} variant="neutral" size="sm">
-          {PLATFORM_LABELS[p]}
+          {PLATFORM_NAMES[p]}
         </Badge>
       ))}
     </>
@@ -306,7 +302,7 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
               subtitle={
                 <span className="phone-an-cell-sub phone-an-cell-sub--wrap">
                   {new Date(doc.created_at).toLocaleDateString('pt-BR')}
-                  {doc.platforms.map((p) => ` · ${PLATFORM_LABELS[p]}`).join('')}
+                  {doc.platforms.map((p) => ` · ${PLATFORM_NAMES[p]}`).join('')}
                 </span>
               }
               chevron
