@@ -44,6 +44,8 @@ const LAZY_LOCALES: Record<string, Record<string, () => LocaleModule>> = {
     filesPhone: () => import('../../../../packages/i18n/locales/pt/filesPhone.json'),
     finance: () => import('../../../../packages/i18n/locales/pt/finance.json'),
     financeV2: () => import('../../../../packages/i18n/locales/pt/financeV2.json'),
+    team: () => import('../../../../packages/i18n/locales/pt/team.json'),
+    member: () => import('../../../../packages/i18n/locales/pt/member.json'),
   },
   en: {
     dashboard: () => import('../../../../packages/i18n/locales/en/dashboard.json'),
@@ -78,6 +80,8 @@ const LAZY_LOCALES: Record<string, Record<string, () => LocaleModule>> = {
     filesPhone: () => import('../../../../packages/i18n/locales/en/filesPhone.json'),
     finance: () => import('../../../../packages/i18n/locales/en/finance.json'),
     financeV2: () => import('../../../../packages/i18n/locales/en/financeV2.json'),
+    team: () => import('../../../../packages/i18n/locales/en/team.json'),
+    member: () => import('../../../../packages/i18n/locales/en/member.json'),
   },
 };
 
