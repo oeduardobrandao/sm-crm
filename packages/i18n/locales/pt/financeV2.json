@@ -1,1 +1,225 @@
-{}
+{
+  "shared": {
+    "pausado": "Pausado",
+    "aInformar": "A informar",
+    "fechado": "Fechado",
+    "reaberto": "Reaberto",
+    "periodo": "Período",
+    "tentarNovamente": "Tentar novamente",
+    "voltarAtual": "Voltar ao período atual",
+    "cliente": "Cliente",
+    "clientes": "Clientes",
+    "porCliente": "Por cliente",
+    "semFuncao": "Sem função",
+    "entregasAInformar": "Entregas a informar",
+    "nDeLimite": "{{n}} de {{limite}}",
+    "porMes": "{{valor}} por mês",
+    "custo": "Custo",
+    "margem": "Margem",
+    "lucro": "Lucro",
+    "lucroAnual": "LL anual",
+    "mensalidade": "Mensalidade",
+    "mrr": "MRR",
+    "arr": "ARR",
+    "semCliente": "Sem cliente",
+    "custoEquipe": "Custo da equipe"
+  },
+  "regra": {
+    "exclusivo": "Só este cliente: {{valor}} por mês",
+    "entrega_zero": "entregas",
+    "entrega_one": "entrega",
+    "entrega_other": "entregas",
+    "porEntrega": "{{quantidade}} {{unidade}} × {{valor}}",
+    "rateio": "{{valor}} ÷ {{clientes}}",
+    "clientes_zero": "{{count}} clientes",
+    "clientes_one": "{{count}} cliente",
+    "clientes_other": "{{count}} clientes"
+  },
+  "erros": {
+    "periodo_fechado": "Este período está fechado. Escolha outro em Vale a partir de.",
+    "cliente_encerrado": "Este cliente está encerrado neste período.",
+    "sem_atribuicao": "Atribua a pessoa ao cliente antes de informar entregas.",
+    "nao_configurado": "O financeiro ainda não foi montado.",
+    "periodo_invalido": "Esse período não existe mais. Escolha outro.",
+    "not_found": "Não encontramos esse registro. Atualize a página.",
+    "financial_access_denied": "Você não tem permissão para alterar o financeiro.",
+    "funcao_duplicada": "Já existe uma função com esse nome."
+  },
+  "periodo": {
+    "formatoMes": "MMM yyyy",
+    "formatoDia": "d MMM",
+    "formatoDiaAno": "d MMM yyyy",
+    "intervalo": "{{inicio}} a {{fim}}"
+  },
+  "periodoSelect": {
+    "placeholder": "Período"
+  },
+  "csv": {
+    "cliente": "Cliente",
+    "mrr": "MRR",
+    "arr": "ARR",
+    "custo": "Custo",
+    "custoAnual": "Custo anual",
+    "lucro": "Lucro",
+    "lucroAnual": "LL anual",
+    "margem": "Margem"
+  },
+  "layout": {
+    "title": "Financeiro",
+    "navLabel": "Seções do financeiro",
+    "configurar": "Configurar",
+    "tabs": {
+      "rentabilidade": "Rentabilidade",
+      "atribuicao": "Equipe por cliente",
+      "equipe": "Custos da equipe",
+      "lancamentos": "Lançamentos"
+    }
+  },
+  "toggle": {
+    "groupLabel": "Valores da tabela",
+    "mensal": "Mensal",
+    "anual": "Anual"
+  },
+  "onboarding": {
+    "sucesso": "Financeiro montado. Agora marque quem atende cada cliente.",
+    "erro": "Erro ao montar o financeiro",
+    "title": "Montar o financeiro a partir dos dados atuais",
+    "descricao": "Vamos usar a mensalidade de cada cliente e o custo de cada pessoa da equipe. Nada é apagado.",
+    "diaLabel": "O período financeiro começa no dia",
+    "montar": "Montar a partir dos dados atuais",
+    "semPermissao": "Peça a quem administra o workspace para montar o financeiro."
+  },
+  "config": {
+    "title": "Configurar o financeiro",
+    "description": "Período, meta de margem e funções da equipe.",
+    "loadError": "Não foi possível carregar as configurações.",
+    "metaErro": "Informe um número inteiro de 0 a 100.",
+    "erroSalvar": "Erro ao salvar",
+    "salvo": "Configuração salva.",
+    "periodoMetaLabel": "Período e meta",
+    "diaLabel": "O período começa no dia",
+    "diaHint": "Vale a partir do próximo período.",
+    "metaLabel": "Meta de margem (%)",
+    "funcoes": {
+      "title": "Funções",
+      "nova": "Nova função",
+      "erroAdicionar": "Erro ao adicionar a função",
+      "erroReordenar": "Erro ao reordenar",
+      "erroRenomear": "Erro ao renomear",
+      "erroExcluir": "Erro ao excluir a função",
+      "excluirTitle": "Excluir função?",
+      "excluirBody": "As pessoas com a função {{nome}} passam a ficar como \"Sem função\".",
+      "excluir": "Excluir",
+      "nomeLabel": "Nome da função {{nome}}",
+      "subir": "Subir {{nome}}",
+      "descer": "Descer {{nome}}",
+      "excluirNome": "Excluir {{nome}}"
+    }
+  },
+  "custos": {
+    "loadError": "Não foi possível carregar os custos da equipe. Tente novamente em instantes.",
+    "carregando": "Carregando...",
+    "colPessoa": "Pessoa",
+    "colFuncao": "Função",
+    "colModelo": "Modelo",
+    "colCusto": "Custo no período",
+    "total": "Total",
+    "semCliente": "Sem cliente: {{valor}}",
+    "modelo": {
+      "mensal_meta": "Mensal com meta",
+      "mensal_limite": "Mensal com limite",
+      "por_entrega": "Por entrega"
+    }
+  },
+  "atribuicao": {
+    "loadError": "Não foi possível carregar a equipe por cliente.",
+    "semPeriodo": "Nenhum período aberto para alterações.",
+    "descricao": "Marque quem atende cada cliente. O custo mensal de cada pessoa é dividido igualmente entre os clientes marcados.",
+    "valeDesde": "Alterações valem a partir de",
+    "reabertoHint": "Os períodos seguintes já fechados não mudam",
+    "refetchFalhou": "Não foi possível atualizar os dados. Os valores podem estar desatualizados.",
+    "erroSalvar": "Não foi possível salvar",
+    "semFuncao_one": "{{count}} pessoa sem função não entra no rateio",
+    "semFuncao_other": "{{count}} pessoas sem função não entram no rateio",
+    "definaFuncao": ". Defina a função no acordo:",
+    "marcarTodos": "Marcar todos",
+    "marcarTodosPara": "Marcar todos para {{nome}}",
+    "atende": "{{membro}} atende {{cliente}}",
+    "progressoLabel": "{{rotulo}} clientes",
+    "acimaDoLimite": "Acima do limite"
+  },
+  "rentabilidade": {
+    "meta": "Meta: {{meta}}%",
+    "acao": {
+      "reabrir": {
+        "title": "Reabrir período?",
+        "body": "Os números deste período voltam a ser calculados até você fechar de novo.",
+        "confirm": "Reabrir",
+        "ok": "Período reaberto.",
+        "erro": "Erro ao reabrir o período"
+      },
+      "fechar": {
+        "title": "Fechar período?",
+        "body": "Os números deste período ficam guardados como estão até alguém reabrir.",
+        "confirm": "Fechar",
+        "ok": "Período fechado.",
+        "erro": "Erro ao fechar o período"
+      }
+    },
+    "reabrirPeriodo": "Reabrir período",
+    "fecharPeriodo": "Fechar período",
+    "loadError": "Não foi possível carregar a rentabilidade.",
+    "semAtribuicao": {
+      "label": "Equipe sem atribuição",
+      "texto": "<b>Ninguém foi atribuído a um cliente ainda.</b> Marque quem atende cada cliente para ver o custo e a margem."
+    },
+    "atribuirEquipe": "Atribuir equipe",
+    "verEquipe": "Ver equipe por cliente",
+    "incompleto": {
+      "texto": "Há entregas a informar neste período.",
+      "reabra": "Reabra o período para informar.",
+      "informar": "Informar entregas"
+    },
+    "kpi": {
+      "receita": "Receita recorrente",
+      "receitaSub_zero": "{{count}} clientes · ARR {{arr}}",
+      "receitaSub_one": "{{count}} cliente · ARR {{arr}}",
+      "receitaSub_other": "{{count}} clientes · ARR {{arr}}",
+      "custoSub_zero": "{{count}} pessoas · {{pct}} da receita",
+      "custoSub_one": "{{count}} pessoa · {{pct}} da receita",
+      "custoSub_other": "{{count}} pessoas · {{pct}} da receita",
+      "lucro": "Lucro recorrente",
+      "lucroSub": "LL anual {{valor}}",
+      "margem": "Margem média",
+      "semClienteSub": "Pessoas sem cliente ou sem função"
+    },
+    "dica": "Clique no nome de uma coluna para ordenar e num cliente para ver de onde vem o custo.",
+    "expandir": "Expandir tabela",
+    "exportar": "Exportar CSV",
+    "custoSemCliente": "Custo sem cliente: {{valor}}",
+    "custoSemClienteAnual": "Custo sem cliente (anual): {{valor}}",
+    "detalheLabel": "Detalhe do cliente",
+    "expandidoTitle": "Rentabilidade por cliente",
+    "expandidoDescricao": "{{periodo}} · Clique no nome de uma coluna para ordenar."
+  },
+  "detalhe": {
+    "vazio": "Selecione um cliente para ver de onde vem o custo.",
+    "selecionado": "Cliente selecionado",
+    "deMargem": "{{margem}} de margem",
+    "paraOnde": "Para onde vai a mensalidade",
+    "semMensalidade": "Sem mensalidade neste período.",
+    "quemAtende": "Quem atende este cliente",
+    "ninguemEm": "Ninguém atribuído em {{funcoes}}"
+  },
+  "phone": {
+    "sheetDescription": "Mensalidade, custo e quem atende este cliente."
+  },
+  "tabela": {
+    "aInformarMinusculo": "a informar",
+    "custoPorFuncao": "Custo por função",
+    "custoAnual": "Custo anual",
+    "custoMensal": "Custo mensal",
+    "abaixoDaMeta": "Abaixo da meta",
+    "total": "Total dos clientes"
+  }
+}

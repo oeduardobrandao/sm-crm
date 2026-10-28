@@ -1,3 +1,4 @@
+import { i18n } from '@mesaas/i18n';
 import { CSV_BOM, CSV_EOL, csvField } from '@/lib/csvExport';
 import type {
   ClienteRentabilidade,
@@ -156,8 +157,19 @@ export function montarCsv(
 ): string {
   const sep = ';';
   // Same labels as the table headers: the values in `linhas` are already annual when Anual is on.
-  const dinheiro = anual ? ['ARR', 'Custo anual', 'LL anual'] : ['MRR', 'Custo', 'Lucro'];
-  const header = ['Cliente', ...dinheiro, 'Margem', ...funcoes.map((f) => f.nome)]
+  const dinheiro = anual
+    ? [
+        i18n.t('financeV2:csv.arr'),
+        i18n.t('financeV2:csv.custoAnual'),
+        i18n.t('financeV2:csv.lucroAnual'),
+      ]
+    : [i18n.t('financeV2:csv.mrr'), i18n.t('financeV2:csv.custo'), i18n.t('financeV2:csv.lucro')];
+  const header = [
+    i18n.t('financeV2:csv.cliente'),
+    ...dinheiro,
+    i18n.t('financeV2:csv.margem'),
+    ...funcoes.map((f) => f.nome),
+  ]
     .map((h) => csvField(h, sep))
     .join(sep);
   const rows = linhas.map((l) =>

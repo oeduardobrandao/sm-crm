@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -38,8 +39,6 @@ import {
 import { DiaInicioSelect } from './DiaInicioSelect';
 import { avisarErroFinanceiro } from './erros';
 
-const META_ERRO = 'Informe um número inteiro de 0 a 100.';
-
 /** Runs one write: invalidates the financeiro v2 queries on success, toasts on failure. */
 function useEscrita() {
   const qc = useQueryClient();
@@ -66,6 +65,7 @@ export default function ConfigSheet({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useTranslation('financeV2');
   const config = useQuery({
     queryKey: ['financeiro-v2', 'config'],
     queryFn: getFinanceiroConfig,
@@ -82,8 +82,8 @@ export default function ConfigSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex w-full flex-col gap-6 overflow-y-auto sm:max-w-md">
         <SheetHeader>
-          <SheetTitle>Configurar o financeiro</SheetTitle>
-          <SheetDescription>Período, meta de margem e funções da equipe.</SheetDescription>
+          <SheetTitle>{t('config.title')}</SheetTitle>
+          <SheetDescription>{t('config.description')}</SheetDescription>
         </SheetHeader>
         {ready ? (
           <>
@@ -92,7 +92,7 @@ export default function ConfigSheet({
           </>
         ) : config.isError || funcoes.isError ? (
           <p role="alert" className="text-sm text-destructive">
-            Não foi possível carregar as configurações.
+            {t('config.loadError')}
           </p>
         ) : (
           <Spinner className="mx-auto" />
@@ -103,6 +103,7 @@ export default function ConfigSheet({
 }
 
 function PeriodoMetaForm({ config }: { config: FinanceiroConfig | null }) {
+  const { t } = useTranslation('financeV2');
   const escrever = useEscrita();
   const diaInicial = config?.periodo_dia ?? 1;
   const metaInicial = String(Math.round(config?.meta_margem ?? 55));
@@ -117,24 +118,24 @@ function PeriodoMetaForm({ config }: { config: FinanceiroConfig | null }) {
   const salvar = async () => {
     const valor = meta.trim() === '' ? NaN : Number(meta);
     if (!Number.isInteger(valor) || valor < 0 || valor > 100) {
-      setErro(META_ERRO);
+      setErro(t('config.metaErro'));
       return;
     }
     setErro(null);
     setBusy(true);
-    await escrever(() => salvarConfig(dia, valor), 'Erro ao salvar', 'Configuração salva.');
+    await escrever(() => salvarConfig(dia, valor), t('config.erroSalvar'), t('config.salvo'));
     setBusy(false);
   };
 
   return (
-    <section className="flex flex-col gap-4" aria-label="Período e meta">
+    <section className="flex flex-col gap-4" aria-label={t('config.periodoMetaLabel')}>
       <div className="flex flex-col gap-2">
-        <Label htmlFor="financeiro-config-dia">O período começa no dia</Label>
+        <Label htmlFor="financeiro-config-dia">{t('config.diaLabel')}</Label>
         <DiaInicioSelect id="financeiro-config-dia" value={dia} onChange={setDia} disabled={busy} />
-        <p className="text-xs text-muted-foreground">Vale a partir do próximo período.</p>
+        <p className="text-xs text-muted-foreground">{t('config.diaHint')}</p>
       </div>
       <div className="flex flex-col gap-2">
-        <Label htmlFor="financeiro-config-meta">Meta de margem (%)</Label>
+        <Label htmlFor="financeiro-config-meta">{t('config.metaLabel')}</Label>
         <Input
           id="financeiro-config-meta"
           type="number"
@@ -157,7 +158,7 @@ function PeriodoMetaForm({ config }: { config: FinanceiroConfig | null }) {
       </div>
       <div>
         <Button onClick={salvar} disabled={busy || !dirty}>
-          Salvar
+          {t('actions.save')}
         </Button>
       </div>
     </section>
@@ -165,6 +166,7 @@ function PeriodoMetaForm({ config }: { config: FinanceiroConfig | null }) {
 }
 
 function FuncoesSection({ funcoes }: { funcoes: FuncaoFinanceira[] }) {
+  const { t } = useTranslation('financeV2');
   const escrever = useEscrita();
   const [nova, setNova] = useState('');
   const [excluir, setExcluir] = useState<FuncaoFinanceira | null>(null);
@@ -183,7 +185,8 @@ function FuncoesSection({ funcoes }: { funcoes: FuncaoFinanceira[] }) {
     const nome = nova.trim();
     if (!nome) return;
     const ordem = lista.reduce((max, f) => Math.max(max, f.ordem), 0) + 1;
-    if (await run(() => salvarFuncao(null, nome, ordem), 'Erro ao adicionar a função')) setNova('');
+    if (await run(() => salvarFuncao(null, nome, ordem), t('config.funcoes.erroAdicionar')))
+      setNova('');
   };
 
   // Moves the row at `i` one slot by swapping `ordem` with its neighbour.
@@ -192,13 +195,13 @@ function FuncoesSection({ funcoes }: { funcoes: FuncaoFinanceira[] }) {
     const b = lista[i + delta];
     return run(
       () => Promise.all([salvarFuncao(a.id, a.nome, b.ordem), salvarFuncao(b.id, b.nome, a.ordem)]),
-      'Erro ao reordenar',
+      t('config.funcoes.erroReordenar'),
     );
   };
 
   return (
-    <section className="flex flex-col gap-3" aria-label="Funções">
-      <h3 className="text-sm font-semibold">Funções</h3>
+    <section className="flex flex-col gap-3" aria-label={t('config.funcoes.title')}>
+      <h3 className="text-sm font-semibold">{t('config.funcoes.title')}</h3>
       <ul className="flex flex-col gap-2">
         {lista.map((f, i) => (
           <FuncaoRow
@@ -207,7 +210,9 @@ function FuncoesSection({ funcoes }: { funcoes: FuncaoFinanceira[] }) {
             busy={busy}
             primeira={i === 0}
             ultima={i === lista.length - 1}
-            onRename={(nome) => run(() => salvarFuncao(f.id, nome, f.ordem), 'Erro ao renomear')}
+            onRename={(nome) =>
+              run(() => salvarFuncao(f.id, nome, f.ordem), t('config.funcoes.erroRenomear'))
+            }
             onMove={(delta) => mover(i, delta)}
             onDelete={() => setExcluir(f)}
           />
@@ -215,8 +220,8 @@ function FuncoesSection({ funcoes }: { funcoes: FuncaoFinanceira[] }) {
       </ul>
       <div className="flex items-center gap-2">
         <Input
-          aria-label="Nova função"
-          placeholder="Nova função"
+          aria-label={t('config.funcoes.nova')}
+          placeholder={t('config.funcoes.nova')}
           maxLength={60}
           value={nova}
           onChange={(e) => setNova(e.target.value)}
@@ -232,29 +237,28 @@ function FuncoesSection({ funcoes }: { funcoes: FuncaoFinanceira[] }) {
           disabled={busy || !nova.trim()}
         >
           <Plus aria-hidden="true" />
-          Adicionar
+          {t('actions.add')}
         </Button>
       </div>
 
       <AlertDialog open={excluir !== null} onOpenChange={(o) => !o && setExcluir(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir função?</AlertDialogTitle>
+            <AlertDialogTitle>{t('config.funcoes.excluirTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              As pessoas com a função {excluir ? `"${excluir.nome}"` : ''} passam a ficar como "Sem
-              função".
+              {t('config.funcoes.excluirBody', { nome: excluir ? `"${excluir.nome}"` : '' })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 const alvo = excluir;
                 setExcluir(null);
-                if (alvo) void run(() => excluirFuncao(alvo.id), 'Erro ao excluir a função');
+                if (alvo) void run(() => excluirFuncao(alvo.id), t('config.funcoes.erroExcluir'));
               }}
             >
-              Excluir
+              {t('config.funcoes.excluir')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -280,6 +284,7 @@ function FuncaoRow({
   onMove: (delta: -1 | 1) => void;
   onDelete: () => void;
 }) {
+  const { t } = useTranslation('financeV2');
   const [nome, setNome] = useState(funcao.nome);
 
   // Rename on blur; an empty or unchanged name is dropped.
@@ -295,7 +300,7 @@ function FuncaoRow({
   return (
     <li className="flex items-center gap-1">
       <Input
-        aria-label={`Nome da função ${funcao.nome}`}
+        aria-label={t('config.funcoes.nomeLabel', { nome: funcao.nome })}
         maxLength={60}
         value={nome}
         onChange={(e) => setNome(e.target.value)}
@@ -309,7 +314,7 @@ function FuncaoRow({
         variant="ghost"
         size="icon"
         className="mb-0 shrink-0"
-        aria-label={`Subir ${funcao.nome}`}
+        aria-label={t('config.funcoes.subir', { nome: funcao.nome })}
         disabled={busy || primeira}
         onClick={() => onMove(-1)}
       >
@@ -319,7 +324,7 @@ function FuncaoRow({
         variant="ghost"
         size="icon"
         className="mb-0 shrink-0"
-        aria-label={`Descer ${funcao.nome}`}
+        aria-label={t('config.funcoes.descer', { nome: funcao.nome })}
         disabled={busy || ultima}
         onClick={() => onMove(1)}
       >
@@ -329,7 +334,7 @@ function FuncaoRow({
         variant="ghost"
         size="icon"
         className="mb-0 shrink-0"
-        aria-label={`Excluir ${funcao.nome}`}
+        aria-label={t('config.funcoes.excluirNome', { nome: funcao.nome })}
         disabled={busy}
         onClick={onDelete}
       >

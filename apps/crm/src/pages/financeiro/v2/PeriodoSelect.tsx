@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import {
   Select,
@@ -9,6 +10,7 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import type { PeriodoFinanceiro } from '@/store/financeiroV2';
+import { rotuloPeriodo } from './periodos';
 
 interface PeriodoSelectProps {
   /** `inicio` (ISO date) of the selected period. */
@@ -28,7 +30,7 @@ interface PeriodoSelectProps {
 
 /**
  * Period picker shared by the Financeiro v2 screens (Rentabilidade, Custos da equipe,
- * Acordo "Vale a partir de"). Options are the `rotulo` of each period.
+ * Acordo "Vale a partir de"). Options are the label of each period (`rotuloPeriodo`).
  */
 export function PeriodoSelect({
   value,
@@ -37,10 +39,12 @@ export function PeriodoSelect({
   ordem = 'recente',
   id,
   'aria-label': ariaLabel,
-  placeholder = 'Período',
+  placeholder,
   disabled,
   className,
 }: PeriodoSelectProps) {
+  // useTranslation re-renders on a language switch, so the labels below follow it.
+  const { t } = useTranslation('financeV2');
   // The RPCs disagree on order (editáveis oldest first, listar newest first): never rely on it.
   const ordenados = useMemo(() => {
     const lista = [...periodos].sort((a, b) => a.inicio.localeCompare(b.inicio));
@@ -49,21 +53,21 @@ export function PeriodoSelect({
   return (
     <Select value={value} onValueChange={onChange} disabled={disabled}>
       <SelectTrigger id={id} aria-label={ariaLabel} className={cn('w-full sm:w-56', className)}>
-        <SelectValue placeholder={placeholder} />
+        <SelectValue placeholder={placeholder ?? t('periodoSelect.placeholder')} />
       </SelectTrigger>
       <SelectContent>
         {ordenados.map((p) => (
           <SelectItem key={p.inicio} value={p.inicio}>
             <span className="flex items-center gap-2">
-              {p.rotulo}
+              {rotuloPeriodo(p)}
               {p.status === 'fechado' && (
                 <Badge variant="neutral" size="sm">
-                  Fechado
+                  {t('shared.fechado')}
                 </Badge>
               )}
               {p.status === 'reaberto' && (
                 <Badge variant="warning" size="sm">
-                  Reaberto
+                  {t('shared.reaberto')}
                 </Badge>
               )}
             </span>
