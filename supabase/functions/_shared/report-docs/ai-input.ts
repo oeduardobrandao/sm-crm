@@ -1,9 +1,9 @@
 // Adapter snapshot -> ReportData, o shape que buildAIPrompt já valida e usa.
 // KPIs null ficam FORA (o prompt proíbe inventar números; 0 falso seria pior).
 import type {
-  KpiValue, ReportData, ReportDataComparison, ReportDataTikTok,
+  AIOutput, KpiValue, ReportData, ReportDataComparison, ReportDataTikTok,
 } from "../report-template/types.ts";
-import type { TikTokKpiId } from "../tiktok-analytics/kpis.ts";
+import { TIKTOK_KPI_IDS, type TikTokKpiId } from "../tiktok-analytics/kpis.ts";
 import type { ReportDocSnapshot, TikTokReportSnapshot } from "./snapshot.ts";
 
 // Instrução curta em pt-BR, embutida no payload de DADOS que vai pro modelo
@@ -26,13 +26,19 @@ function buildComparison(
   return { prev_outlier, prev_top_share, note: comparisonNote(pct) };
 }
 
+/** KPIs TikTok que a IA pode comparar com o mês anterior (spec §A3). As somas dos vídeos
+ * (visualizações, curtidas, comentários, compartilhamentos, curtidas totais) nunca entram, mesmo
+ * que um snapshot traga prev para elas. */
+const TIKTOK_COMPARABLE: readonly TikTokKpiId[] = [
+  "followers_total", "followers_gained", "engagement_rate", "posts_count",
+];
+
 function tiktokToReportData(tt: TikTokReportSnapshot): ReportDataTikTok {
   const kpis = {} as Record<TikTokKpiId, number | null>;
   const prev: Partial<Record<TikTokKpiId, number>> = {};
   for (const [id, entry] of Object.entries(tt.kpis) as [TikTokKpiId, TikTokReportSnapshot["kpis"][TikTokKpiId]][]) {
     kpis[id] = entry.value;
-    // As somas já chegam com prev null (§A3): só sobra comparação onde ela vale.
-    if (entry.value !== null && entry.prev !== null) prev[id] = entry.prev;
+    if (TIKTOK_COMPARABLE.includes(id) && entry.value !== null && entry.prev !== null) prev[id] = entry.prev;
   }
   return {
     handle: tt.account.handle,
@@ -93,4 +99,16 @@ export function snapshotToReportData(
   if (!instagram) data.instagram_connected = false;
   if (tiktok) data.tiktok = tiktokToReportData(tiktok);
   return data;
+}
+
+/** Narrativa só TikTok: meta com id TikTok sem o prefixo ("views") ganha "tiktok_", para o
+ * rótulo do bloco de metas sair o do TikTok e não o do Instagram de mesmo id. */
+export function prefixTikTokGoalMetrics(output: AIOutput): AIOutput {
+  const ids: readonly string[] = TIKTOK_KPI_IDS;
+  return {
+    ...output,
+    suggested_goals: output.suggested_goals.map((g) =>
+      ids.includes(g.metric) ? { ...g, metric: `tiktok_${g.metric}` } : g
+    ),
+  };
 }

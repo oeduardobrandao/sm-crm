@@ -1,6 +1,8 @@
 import { assert, assertEquals, assertExists } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { FakeTime } from "https://deno.land/std@0.208.0/testing/time.ts";
-import { GenerateError, generateReportDocument } from "./generate.ts";
+import { GenerateError, generateReportDocument, metricPriorityGuidance } from "./generate.ts";
+import { buildDefaultLayout } from "../_shared/report-docs/default-layout.ts";
+import { sanitizeLayoutForTemplate } from "../_shared/report-docs/layout.ts";
 
 // Fake db: responde por tabela; grava inserts e chamadas de rpc para asserção.
 // `errors` deixa uma tabela específica resolver { data: null, error } em vez
@@ -932,13 +934,15 @@ const VALID_AI = {
   ],
   suggested_goals: [
     { metric: "tiktok_views", target: "2000", rationale: "r" },
-    { metric: "tiktok_engagement_rate", target: "6%", rationale: "r" },
+    // Sem prefixo: num relatório só TikTok o gerador põe o tiktok_ antes do rótulo.
+    { metric: "engagement_rate", target: "6%", rationale: "r" },
   ],
 };
 
 async function generateCapturingPrompt(
   rows: Record<string, unknown>,
   platforms: ("instagram" | "tiktok")[] | null,
+  templateId: string | null = null,
 ): Promise<{ user: string; system: string; row: LayoutRow }> {
   const db = makeDb(rows);
   const originalFetch = globalThis.fetch;
@@ -953,7 +957,7 @@ async function generateCapturingPrompt(
     return originalFetch(input as Parameters<typeof fetch>[0], init);
   }) as typeof fetch;
   try {
-    await generateReportDocument(db, { ...deps, geminiKey: "fake-key" }, "c", 1, "2026-07", null, platforms);
+    await generateReportDocument(db, { ...deps, geminiKey: "fake-key" }, "c", 1, "2026-07", templateId, platforms);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -981,6 +985,7 @@ Deno.test("generate TikTok-only with AI: the prompt is the TikTok one, never the
   assert(!system.includes("METRIC PRIORITY"));
   const goals = textOf(row.layout.blocks.find((b) => b.type === "ai_goals")?.text);
   assert(goals.includes("Visualizações no TikTok: 2.000"), goals);
+  assert(goals.includes("Engajamento por visualização no TikTok: 6%"), goals);
 });
 
 Deno.test("generate both connected with AI: one prompt with the Instagram and TikTok blocks", async () => {
@@ -1000,4 +1005,92 @@ Deno.test("generate both connected, platforms ['instagram'] with AI: the prompt 
   );
   assert(!user.includes("TikTok"));
   assert(!system.includes("TikTok"));
+});
+
+// ─── Fix round 1: modelos ganham a seção que falta, narrativa segue o layout ──────────
+
+// Modelo padrão do workspace como o CRM semeia (buildSystemDefaultLayout): só Instagram.
+const SEEDED_TEMPLATE = sanitizeLayoutForTemplate(
+  buildDefaultLayout({ hasAi: true, hasAudience: true, hasBestTimes: true, hasTags: true }),
+);
+const IG_HEADERS = ["Métricas principais", "Crescimento e formatos", "Publicações", "Audiência"];
+const headerTitles = (row: LayoutRow) =>
+  row.layout.blocks.filter((b) => b.type === "section_header").map((b) => b.config?.title);
+
+Deno.test("seeded Instagram default template + TikTok-only client: TikTok section, no orphan Instagram headers", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "Cliente TT", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: null,
+    tiktok_accounts: TT_ACCOUNT,
+    tiktok_posts: [TT_VIDEO],
+    workspaces: WORKSPACE,
+    report_templates: { id: "tpl", conta_id: "c", layout: SEEDED_TEMPLATE },
+  });
+  await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  const row = db.inserts[0] as LayoutRow;
+  const titles = headerTitles(row);
+  assert(titles.includes("TikTok"), String(titles));
+  for (const t of IG_HEADERS) assert(!titles.includes(t), t);
+  assert(row.layout.blocks.some((b) => b.type === "tiktok_top_posts"));
+  assert(!row.layout.blocks.some((b) => b.type.startsWith("kpi_") || b.type === "top_posts"));
+});
+
+Deno.test("seeded Instagram template + both platforms: Instagram kept, TikTok before Próximos passos", async () => {
+  const { row } = await generateCapturingPrompt(
+    {
+      ...BOTH_ROWS,
+      clientes: { ...BOTH_ROWS.clientes, include_ai_analysis: true },
+      report_templates: { id: "tpl", conta_id: "c", layout: SEEDED_TEMPLATE },
+    },
+    ["instagram", "tiktok"],
+  );
+  const titles = headerTitles(row);
+  for (const t of IG_HEADERS) assert(titles.includes(t), t);
+  assert(titles.indexOf("TikTok") > titles.indexOf("Audiência"));
+  assertEquals(titles.at(-1), "Próximos passos");
+  assertEquals(titles.at(-2), "TikTok");
+  // Os blocos Instagram do modelo ficam com os ids do modelo.
+  for (const b of SEEDED_TEMPLATE.blocks.filter((x) => x.type.startsWith("kpi_"))) {
+    assert(row.layout.blocks.some((r) => r.id === b.id), b.id);
+  }
+});
+
+Deno.test("narrative follows the final layout: a full template that cannot take the TikTok section keeps TikTok out of the prompt", async () => {
+  // 200 blocos (o teto): a seção TikTok não cabe, então o layout final é só Instagram e a IA,
+  // mesmo com as duas redes escolhidas, fala só do Instagram.
+  const full = {
+    version: 1,
+    blocks: [
+      { id: "c", type: "cover", size: "full" },
+      { id: "s", type: "ai_summary", size: "full" },
+      ...Array.from({ length: 198 }, (_, i) => ({ id: `k${i}`, type: "kpi_reach", size: "third" })),
+    ],
+  };
+  const { user, system, row } = await generateCapturingPrompt(
+    {
+      ...BOTH_ROWS,
+      clientes: { ...BOTH_ROWS.clientes, include_ai_analysis: true },
+      report_templates: { id: "tpl", conta_id: "c", layout: full },
+    },
+    ["instagram", "tiktok"],
+  );
+  assert(!row.layout.blocks.some((b) => b.type.startsWith("tiktok_")));
+  assert(!user.includes("TikTok"));
+  assert(!system.includes("TikTok"));
+});
+
+Deno.test("metricPriorityGuidance: Instagram-only text unchanged; with TikTok it is scoped to Instagram; none without views", () => {
+  const igOnly = metricPriorityGuidance({ instagram: true, tiktok: false, instagramHasViews: true });
+  assertEquals(
+    igOnly,
+    "METRIC PRIORITY: 'views' (visualizações) is the primary performance metric for " +
+      "this report. Lead the executive summary, analysis, recommendations and " +
+      "suggested_goals with views wherever the data provides them; treat reach as " +
+      "secondary context.",
+  );
+  const both = metricPriorityGuidance({ instagram: true, tiktok: true, instagramHasViews: true }) ?? "";
+  assert(both.includes("Instagram"), both);
+  assert(!both.includes("for this report"), both);
+  assertEquals(metricPriorityGuidance({ instagram: true, tiktok: true, instagramHasViews: false }), undefined);
+  assertEquals(metricPriorityGuidance({ instagram: false, tiktok: true, instagramHasViews: true }), undefined);
 });

@@ -105,7 +105,8 @@ Provide exactly 3-5 recommendations and 2-3 suggested_goals.${platformRules}${
       report_month: data.report_month,
       tiktok,
     };
-    const userPrompt = `Analyze the following TikTok account data for ${atHandle(tiktok.handle)} (${data.specialty}), period ${data.period}:
+    const specialty = data.specialty ? ` (${data.specialty})` : "";
+    const userPrompt = `Analyze the following TikTok account data for ${atHandle(tiktok.handle)}${specialty}, period ${data.period}:
 
 ${JSON.stringify(tiktokData, null, 2)}`;
     return { systemPrompt, userPrompt };

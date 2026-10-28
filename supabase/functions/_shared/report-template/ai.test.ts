@@ -211,3 +211,12 @@ Deno.test("prompt TikTok: extraGuidance continua no fim do system prompt", () =>
   const { systemPrompt } = buildAIPrompt({ ...fixture, tiktok: tiktokData }, { extraGuidance: "X-GUIDE" });
   assert(systemPrompt.endsWith("X-GUIDE"));
 });
+
+Deno.test("prompt TikTok-only: specialty vazia ou null não vira parênteses vazios", () => {
+  for (const specialty of ["", null as unknown as string]) {
+    const { userPrompt } = buildAIPrompt({ ...fixture, specialty, instagram_connected: false, tiktok: tiktokData });
+    assert(userPrompt.startsWith("Analyze the following TikTok account data for @dra.tt, period Maio 2026:"), userPrompt.slice(0, 90));
+    assert(!userPrompt.includes("(null)"));
+    assert(!userPrompt.includes("()"));
+  }
+});

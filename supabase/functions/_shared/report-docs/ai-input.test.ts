@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { snapshotToReportData } from "./ai-input.ts";
+import { prefixTikTokGoalMetrics, snapshotToReportData } from "./ai-input.ts";
 import type { ReportDocSnapshot } from "./snapshot.ts";
 
 const snap: ReportDocSnapshot = {
@@ -137,4 +137,27 @@ Deno.test("snapshotToReportData: platforms restringe a narrativa às plataformas
   const tt = snapshotToReportData(both, ["tiktok"]);
   assertEquals(tt.instagram_connected, false);
   assertEquals(tt.tiktok?.handle, "dra.tt");
+});
+
+Deno.test("snapshotToReportData: comparação TikTok só para os KPIs da lista comparável", () => {
+  // Uma soma com prev (snapshot malformado ou regra futura) nunca vira comparação para a IA.
+  const rd = snapshotToReportData({
+    ...snap,
+    tiktok: { ...tiktok, kpis: { ...tiktok.kpis, views: { value: 1000, unit: "count", prev: 900 } } },
+  });
+  assert(!("views" in (rd.tiktok?.kpis_previous_month ?? {})));
+  assertEquals(rd.tiktok?.kpis_previous_month.engagement_rate, 4.1);
+});
+
+Deno.test("prefixTikTokGoalMetrics: id TikTok sem prefixo ganha tiktok_; o resto passa igual", () => {
+  const out = prefixTikTokGoalMetrics({
+    executive_summary: "s", detailed_analysis: "d", recommendations: [],
+    suggested_goals: [
+      { metric: "views", target: "1", rationale: "r" },
+      { metric: "likes_total", target: "1", rationale: "r" },
+      { metric: "tiktok_shares", target: "1", rationale: "r" },
+      { metric: "texto livre", target: "1", rationale: "r" },
+    ],
+  });
+  assertEquals(out.suggested_goals.map((g) => g.metric), ["tiktok_views", "tiktok_likes_total", "tiktok_shares", "texto livre"]);
 });
