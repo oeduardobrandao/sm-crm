@@ -55,17 +55,12 @@ export function orderValue(v: TikTokVideoAnalytics, orderBy: VideoOrderBy): numb
   }
 }
 
-/** "Melhores vídeos" / "Precisam de atenção" strips and their "Ver mais" side sheet. */
-export function TikTokRankedVideos({
-  videos,
-  period,
-}: {
-  videos: TikTokVideoAnalytics[];
-  period: string;
-}) {
-  const { t, i18n } = useTranslation('analyticsTiktok');
-  // best: every video by views; worst: older than 48h, fewest views first.
-  const { best, worst } = useMemo(() => rankByViews(videos), [videos]);
+/**
+ * The "Ver todos" sheet's state, shared by the desktop side sheet and the phone bottom sheet:
+ * which list is open, its sort and its date filter. Opening "Precisam de atenção" starts
+ * ascending (fewest views first); closing clears the dates.
+ */
+export function useVideoDrawer(best: TikTokVideoAnalytics[], worst: TikTokVideoAnalytics[]) {
   const [mode, setMode] = useState<Mode | null>(null);
   const [orderBy, setOrderBy] = useState<VideoOrderBy>('views');
   const [asc, setAsc] = useState(false);
@@ -94,6 +89,38 @@ export function TikTokRankedVideos({
     [source, dateFrom, dateTo, asc, orderBy],
   );
 
+  return {
+    mode,
+    open,
+    close,
+    /** Every video of the open list, before the date filter. */
+    source,
+    /** The open list, filtered and sorted. */
+    listed,
+    orderBy,
+    setOrderBy,
+    asc,
+    setAsc,
+    dateFrom,
+    setDateFrom,
+    dateTo,
+    setDateTo,
+  };
+}
+
+/** "Melhores vídeos" / "Precisam de atenção" strips and their "Ver mais" side sheet. */
+export function TikTokRankedVideos({
+  videos,
+  period,
+}: {
+  videos: TikTokVideoAnalytics[];
+  period: string;
+}) {
+  const { t, i18n } = useTranslation('analyticsTiktok');
+  // best: every video by views; worst: older than 48h, fewest views first.
+  const { best, worst } = useMemo(() => rankByViews(videos), [videos]);
+  const drawer = useVideoDrawer(best, worst);
+
   return (
     <>
       <Strip
@@ -102,7 +129,7 @@ export function TikTokRankedVideos({
         icon={<Trophy className="h-5 w-5" style={{ color: 'var(--success)' }} />}
         videos={best}
         tone="best"
-        onSeeMore={() => open('best')}
+        onSeeMore={() => drawer.open('best')}
       />
       <Strip
         title={t('overview.bottomVideos')}
@@ -110,21 +137,21 @@ export function TikTokRankedVideos({
         icon={<AlertTriangle className="h-5 w-5" style={{ color: 'var(--warning)' }} />}
         videos={worst}
         tone="worst"
-        onSeeMore={() => open('worst')}
+        onSeeMore={() => drawer.open('worst')}
       />
       <VideosSheet
-        mode={mode}
-        onClose={close}
-        videos={listed}
-        total={source.length}
-        orderBy={orderBy}
-        setOrderBy={setOrderBy}
-        asc={asc}
-        setAsc={setAsc}
-        dateFrom={dateFrom}
-        setDateFrom={setDateFrom}
-        dateTo={dateTo}
-        setDateTo={setDateTo}
+        mode={drawer.mode}
+        onClose={drawer.close}
+        videos={drawer.listed}
+        total={drawer.source.length}
+        orderBy={drawer.orderBy}
+        setOrderBy={drawer.setOrderBy}
+        asc={drawer.asc}
+        setAsc={drawer.setAsc}
+        dateFrom={drawer.dateFrom}
+        setDateFrom={drawer.setDateFrom}
+        dateTo={drawer.dateTo}
+        setDateTo={drawer.setDateTo}
         language={i18n.language}
       />
     </>

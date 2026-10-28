@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -27,20 +27,18 @@ import { TikTokPeriodBar } from './TikTokPeriodBar';
 import { TikTokRankedVideos } from './TikTokRankedVideos';
 import { TikTokVideosTable, type VideoTableSort } from './TikTokVideosTable';
 import { TikTokAnalyticsTabPhone, type TikTokPhoneFrame } from './TikTokAnalyticsTabPhone';
-import { aiDays, formatRate, periodTag } from './tiktokTabFormat';
+import {
+  aiDays,
+  BILLING_PATH,
+  dimmed,
+  formatRate,
+  MIN_BEST_TIME_VIDEOS,
+  periodTag,
+} from './tiktokTabFormat';
 import { isTikTokTabQuery, useTikTokTabData } from './useTikTokTabData';
 
 /** TikTok's brand pink, for the follower line. */
 const TIKTOK_COLOR = '#FE2C55';
-const BILLING_PATH = '/configuracao/cobranca';
-/** Same floor the Instagram heatmap uses before it ranks time slots. */
-const MIN_BEST_TIME_VIDEOS = 5;
-
-/** Last period's numbers stay on screen, dimmed, while the new period loads. */
-const dimmed = (stale: boolean): CSSProperties => ({
-  opacity: stale ? 0.55 : 1,
-  transition: 'opacity 150ms ease',
-});
 
 /**
  * `/analytics/:id/tiktok`: the client's TikTok numbers, one period control for the whole tab.
@@ -110,7 +108,8 @@ export function TikTokAnalyticsTab({
     }
   };
 
-  if (isPhone) {
+  // The shell always passes the frame on phones; without one there is no identity to head the page.
+  if (isPhone && phoneFrame) {
     return (
       <TikTokAnalyticsTabPhone
         clientId={clientId}

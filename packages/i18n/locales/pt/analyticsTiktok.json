@@ -179,7 +179,15 @@
     "topSlot": "{{day}}, {{hour}}",
     "postCount_one": "{{count}} vídeo",
     "postCount_other": "{{count}} vídeos",
-    "timezone": "Horário de Brasília"
+    "timezone": "Horário de Brasília",
+    "heatmapHeader": "Engajamento por visualização, por dia e horário",
+    "heatmapFooter": "Média por faixa de {{hours}}h, horário de Brasília. Mais escuro, mais engajamento.",
+    "heatmapAria": "Mapa de calor de horários",
+    "tapHint": "Toque num horário para ver o engajamento.",
+    "slotEmpty": "{{day}} {{hour}}h: sem vídeos",
+    "cellAria": "{{day}} {{hour}}h: {{rate}} de engajamento por visualização, {{videos}}",
+    "cellReadout": "{{day}} {{from}}h a {{to}}h: {{rate}} eng. por visualização ({{videos}})",
+    "slotValue": "{{rate}} eng. por visualização · {{videos}}"
   },
   "ai": {
     "title": "Análise com IA",

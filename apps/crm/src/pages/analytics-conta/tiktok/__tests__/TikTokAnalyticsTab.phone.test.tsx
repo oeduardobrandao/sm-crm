@@ -352,4 +352,77 @@ describe('TikTokAnalyticsTab (phone)', () => {
     expect(getTikTokBestTimes).not.toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: 'Gerar Análise IA' })).toBeNull();
   });
+
+  it('follower history that fails to load shows a retry', async () => {
+    vi.mocked(getTikTokFollowerHistory).mockRejectedValueOnce(new Error('boom'));
+    renderTab();
+    const card = await screen.findByRole('region', { name: 'Crescimento de seguidores' });
+    fireEvent.click(await within(card).findByRole('button', { name: 'Tentar novamente' }));
+    expect(
+      await screen.findByText('Ainda não há histórico de seguidores para este período.'),
+    ).toBeInTheDocument();
+    expect(getTikTokFollowerHistory).toHaveBeenCalledTimes(2);
+  });
+
+  it('best times that fail to load show a retry', async () => {
+    vi.mocked(getTikTokBestTimes).mockRejectedValueOnce(new Error('boom'));
+    renderTab();
+    const section = await screen.findByRole('region', { name: 'Melhor horário para postar' });
+    fireEvent.click(await within(section).findByRole('button', { name: 'Tentar novamente' }));
+    expect(
+      await within(section).findByText('Publique mais vídeos para ver os melhores horários.'),
+    ).toBeInTheDocument();
+    expect(getTikTokBestTimes).toHaveBeenCalledTimes(2);
+  });
+
+  it('best times render the phone heatmap and slots in TikTok wording', async () => {
+    const grid = () => Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0));
+    const heatmap = grid();
+    const counts = grid();
+    heatmap[0][18] = 6.5;
+    counts[0][18] = 3;
+    heatmap[2][9] = 2;
+    counts[2][9] = 3;
+    vi.mocked(getTikTokBestTimes).mockResolvedValue({
+      heatmap,
+      counts,
+      topSlots: [{ day: 0, hour: 18, value: 6.5, postCount: 3 }],
+      totalPosts: 6,
+      labels_days: ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'],
+      labels_hours: Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}h`),
+    });
+    renderTab();
+    const section = await screen.findByRole('region', { name: 'Melhor horário para postar' });
+    const heat = await within(section).findByRole('group', { name: 'Mapa de calor de horários' });
+    // The top slot is read out first, per view and in videos.
+    expect(
+      within(section).getByText('Segunda 18h a 20h: 6,5% eng. por visualização (3 vídeos)'),
+    ).toBeInTheDocument();
+    expect(
+      within(heat).getByRole('button', {
+        name: 'Qua 9h: 2,0% de engajamento por visualização, 3 vídeos',
+      }),
+    ).toBeInTheDocument();
+    fireEvent.click(within(heat).getByRole('button', { name: 'Ter 0h: sem vídeos' }));
+    expect(within(section).getByText('Terça 0h: sem vídeos')).toBeInTheDocument();
+    expect(within(section).getByText('Segunda às 18h')).toBeInTheDocument();
+    expect(within(section).getByText('6,5% eng. por visualização · 3 vídeos')).toBeInTheDocument();
+    expect(within(section).queryByText(/posts?\b/)).toBeNull();
+  });
+
+  it('Ver todos opens the videos sheet from a strip', async () => {
+    vi.mocked(getTikTokPostsAnalytics).mockResolvedValue(
+      ['a', 'b', 'c', 'd', 'e', 'f'].map((id, i) => vid(id, 1000 - i * 100)),
+    );
+    renderTab();
+    const heading = await screen.findByRole('heading', { level: 2, name: 'Melhores vídeos' });
+    const strip = heading.closest('section') as HTMLElement;
+    fireEvent.click(within(strip).getByRole('button', { name: 'Ver todos' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Todos os vídeos' });
+    expect(within(sheet).getAllByText(/6 de 6 vídeos/).length).toBeGreaterThan(0);
+    expect(within(sheet).getByRole('link', { name: /Vídeo f/ })).toHaveAttribute(
+      'href',
+      'https://www.tiktok.com/@clinica.tt/video/f',
+    );
+  });
 });

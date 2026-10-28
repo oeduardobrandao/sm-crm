@@ -179,7 +179,15 @@
     "topSlot": "{{day}}, {{hour}}",
     "postCount_one": "{{count}} video",
     "postCount_other": "{{count}} videos",
-    "timezone": "Brasília time"
+    "timezone": "Brasília time",
+    "heatmapHeader": "Engagement per view by day and time",
+    "heatmapFooter": "Average per {{hours}}h slot, Brasília time. Darker means more engagement.",
+    "heatmapAria": "Best times heatmap",
+    "tapHint": "Tap a time slot to see its engagement.",
+    "slotEmpty": "{{day}} {{hour}}h: no videos",
+    "cellAria": "{{day}} {{hour}}h: {{rate}} engagement per view, {{videos}}",
+    "cellReadout": "{{day}} {{from}}h to {{to}}h: {{rate}} eng. per view ({{videos}})",
+    "slotValue": "{{rate}} eng. per view · {{videos}}"
   },
   "ai": {
     "title": "AI analysis",

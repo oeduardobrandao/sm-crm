@@ -204,34 +204,71 @@ export function DemographicsSection({ data }: { data: AudienceDemographics | nul
 
 /* ---------------- Best times ---------------- */
 
-export function BestTimesSection({ data }: { data: BestPostingTimes | null }) {
+/** Wording of the best-times section; a platform with other units (TikTok) overrides it. */
+export interface BestTimesLabels {
+  /** Fewer than 5 posts/videos. */
+  empty: string;
+  /** Readout before a cell is picked. */
+  tapHint: string;
+  header: string;
+  footer: (bucketHours: number) => string;
+  heatmapAria: string;
+  /** A slot with nothing posted. `day` is short in the cell label, full in the readout. */
+  emptySlot: (day: string, hour: number) => string;
+  cellAria: (day: string, hour: number, value: number, count: number) => string;
+  readout: (day: string, from: number, to: number, value: number, count: number) => string;
+  recommended: string;
+  slotLabel: (day: string, hour: string) => string;
+  slotValue: (value: number, count: number) => string;
+}
+
+const posts = (n: number) => `${n} post${n !== 1 ? 's' : ''}`;
+
+const INSTAGRAM_BEST_TIMES: BestTimesLabels = {
+  empty:
+    'Dados insuficientes. São necessários pelo menos 5 posts nos últimos 90 dias para análise.',
+  tapHint: 'Toque num horário para ver o engajamento.',
+  header: 'Engajamento por dia e horário',
+  footer: (h) =>
+    `Média de engajamento por faixa de ${h}h, horário de Brasília. Mais escuro, mais engajamento.`,
+  heatmapAria: 'Mapa de calor de horários',
+  emptySlot: (day, hour) => `${day} ${hour}h: sem posts`,
+  cellAria: (day, hour, value, count) =>
+    `${day} ${hour}h: ${formatPct(value)}% de engajamento, ${posts(count)}`,
+  readout: (day, from, to, value, count) =>
+    `${day} ${from}h a ${to}h: ${formatPct(value)}% eng. (${posts(count)})`,
+  recommended: 'Horários recomendados',
+  slotLabel: (day, hour) => `${day} às ${hour}`,
+  slotValue: (value, count) => `${formatPct(value)}% eng. · ${count} post${count > 1 ? 's' : ''}`,
+};
+
+export function BestTimesSection({
+  data,
+  labels = INSTAGRAM_BEST_TIMES,
+}: {
+  data: BestPostingTimes | null;
+  labels?: BestTimesLabels;
+}) {
   const [picked, setPicked] = useState<{ d: number; b: number } | null>(null);
   if (!data || data.totalPosts < 5) {
-    return (
-      <p className="phone-an-empty">
-        Dados insuficientes. São necessários pelo menos 5 posts nos últimos 90 dias para análise.
-      </p>
-    );
+    return <p className="phone-an-empty">{labels.empty}</p>;
   }
   const { buckets, bucketSize, max, topCell } = bucketBestTimes(data);
   const readout = (() => {
     const cell = picked ?? (topCell ? { d: topCell.day, b: topCell.bucket } : null);
-    if (!cell) return 'Toque num horário para ver o engajamento.';
+    if (!cell) return labels.tapHint;
     const c = buckets[cell.d]?.[cell.b];
     const day = data.labels_days[cell.d];
     const start = BEST_TIME_BUCKET_STARTS[cell.b];
-    if (!c || c.count === 0) return `${DAY_FULL[day] ?? day} ${start}h: sem posts`;
-    return `${DAY_FULL[day] ?? day} ${start}h a ${start + bucketSize - 1}h: ${formatPct(c.value)}% eng. (${c.count} post${c.count !== 1 ? 's' : ''})`;
+    if (!c || c.count === 0) return labels.emptySlot(DAY_FULL[day] ?? day, start);
+    return labels.readout(DAY_FULL[day] ?? day, start, start + bucketSize - 1, c.value, c.count);
   })();
 
   return (
     <>
-      <GroupedList
-        header="Engajamento por dia e horário"
-        footer={`Média de engajamento por faixa de ${bucketSize}h, horário de Brasília. Mais escuro, mais engajamento.`}
-      >
+      <GroupedList header={labels.header} footer={labels.footer(bucketSize)}>
         <li className="phone-cell">
-          <div className="phone-an-hm" role="group" aria-label="Mapa de calor de horários">
+          <div className="phone-an-hm" role="group" aria-label={labels.heatmapAria}>
             <span />
             {BEST_TIME_BUCKET_STARTS.map((h) => (
               <span key={h} className="phone-an-hm__label">
@@ -257,8 +294,8 @@ export function BestTimesSection({ data }: { data: BestPostingTimes | null }) {
                       aria-pressed={isPicked}
                       aria-label={
                         cell.count > 0
-                          ? `${day} ${BEST_TIME_BUCKET_STARTS[b]}h: ${formatPct(cell.value)}% de engajamento, ${cell.count} post${cell.count !== 1 ? 's' : ''}`
-                          : `${day} ${BEST_TIME_BUCKET_STARTS[b]}h: sem posts`
+                          ? labels.cellAria(day, BEST_TIME_BUCKET_STARTS[b], cell.value, cell.count)
+                          : labels.emptySlot(day, BEST_TIME_BUCKET_STARTS[b])
                       }
                       onClick={() => setPicked(isPicked ? null : { d, b })}
                     />
@@ -273,13 +310,16 @@ export function BestTimesSection({ data }: { data: BestPostingTimes | null }) {
         </li>
       </GroupedList>
       {data.topSlots.length > 0 && (
-        <GroupedList header="Horários recomendados">
+        <GroupedList header={labels.recommended}>
           {data.topSlots.map((s, i) => (
             <Cell
               key={i}
               icon={<span className="phone-an-rank">{i + 1}</span>}
-              label={`${DAY_FULL[data.labels_days[s.day]] ?? data.labels_days[s.day]} às ${data.labels_hours[s.hour]}`}
-              value={`${formatPct(s.value)}% eng. · ${s.postCount} post${s.postCount > 1 ? 's' : ''}`}
+              label={labels.slotLabel(
+                DAY_FULL[data.labels_days[s.day]] ?? data.labels_days[s.day],
+                data.labels_hours[s.hour],
+              )}
+              value={labels.slotValue(s.value, s.postCount)}
             />
           ))}
         </GroupedList>

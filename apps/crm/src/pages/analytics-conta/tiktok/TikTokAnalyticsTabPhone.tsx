@@ -19,22 +19,26 @@ import {
   type TikTokPostSort,
   type TikTokVideoAnalytics,
 } from '../../../services/tiktokAnalytics';
+import type { BestPostingTimes } from '../../../services/analytics';
 import { sanitizeUrl } from '../../../utils/security';
 import { Avatar, PostThumb, SectionHead } from '../../analytics/phone/shared';
 import { RankedPostStrip } from '../../analytics/phone/RankedPostStrip';
 import { AllPostsSheet, type AllPostsRow } from '../../analytics/phone/AllPostsSheet';
 import { AIAnalysisPhone, useAIAnalysis } from '../../analytics/phone/AIAnalysisPhone';
 import { PeriodSegmented } from '../../analytics/phone/PeriodControl';
-import { FollowerGrowthCard, contaAIView } from '../phone/ContaSections';
 import {
-  filterByPostedRange,
-  rankByViews,
-  sortNullsLast,
-} from '../../analytics-tiktok/videoRanking';
+  BestTimesSection,
+  FollowerGrowthCard,
+  contaAIView,
+  type BestTimesLabels,
+} from '../phone/ContaSections';
+import { rankByViews } from '../../analytics-tiktok/videoRanking';
 import { TikTokKpiGrid } from './TikTokKpiGrid';
-import { VIDEO_ORDERS, orderValue, type VideoOrderBy } from './TikTokRankedVideos';
+import { VIDEO_ORDERS, useVideoDrawer, type VideoOrderBy } from './TikTokRankedVideos';
 import { sortVideos, type VideoTableSort } from './TikTokVideosTable';
 import {
+  BILLING_PATH,
+  dimmed,
   formatCount,
   formatRate,
   formatVideoDate,
@@ -43,11 +47,8 @@ import {
 } from './tiktokTabFormat';
 import type { useTikTokTabData } from './useTikTokTabData';
 
-const BILLING_PATH = '/configuracao/cobranca';
 const PRESET_DAYS = [7, 30, 90];
 const MAX_CUSTOM_DAYS = 730;
-/** Same floor the desktop card uses before it ranks time slots. */
-const MIN_BEST_TIME_VIDEOS = 5;
 const STRIP_SIZE = 5;
 const COLLAPSED_ROWS = 5;
 
@@ -71,7 +72,7 @@ export interface TikTokPhoneFrame {
 
 export interface TikTokAnalyticsTabPhoneProps {
   clientId: number;
-  frame?: TikTokPhoneFrame;
+  frame: TikTokPhoneFrame;
   /** The desktop tab's queries: one data layer for both variants. */
   data: ReturnType<typeof useTikTokTabData>;
   range: AnalyticsRange;
@@ -169,7 +170,7 @@ function Frame({
   onSync,
   children,
 }: {
-  frame?: TikTokPhoneFrame;
+  frame: TikTokPhoneFrame;
   account?: TikTokOverview['account'];
   syncing?: boolean;
   onSync?: () => void;
@@ -178,7 +179,7 @@ function Frame({
   const { t, i18n } = useTranslation('analyticsTiktok');
   const dateLocale = i18n.language.startsWith('en') ? enUS : ptBR;
   const handle = account?.username ?? account?.display_name ?? '';
-  const name = frame?.nome || handle;
+  const name = frame.nome;
   return (
     <div className="phone-kit phone-an">
       <PhoneNavBar
@@ -200,9 +201,9 @@ function Frame({
 
       <div className="phone-an-identity">
         <Avatar
-          src={[...(frame?.photo ?? []), account?.avatar_url]}
+          src={[...frame.photo, account?.avatar_url]}
           initials={name.slice(0, 2).toUpperCase()}
-          color={frame?.cor}
+          color={frame.cor}
           large
         />
         <div className="phone-an-identity__text">
@@ -237,7 +238,7 @@ function Frame({
         </div>
       </div>
 
-      {frame?.tabs}
+      {frame.tabs}
       {children}
     </div>
   );
@@ -294,12 +295,6 @@ function PhonePeriod({
   );
 }
 
-/** Last period's numbers stay on screen, dimmed, while the new period loads. */
-const dimmed = (stale: boolean) => ({
-  opacity: stale ? 0.55 : 1,
-  transition: 'opacity 150ms ease',
-});
-
 /** The ranked strip wants a post-shaped card; a TikTok video maps onto it. */
 const asRanked = (v: TikTokVideoAnalytics, untitled: string) => ({
   id: v.tiktok_video_id,
@@ -339,32 +334,8 @@ function PhoneBody({
 
   // Ranked strips and their "Ver todos" sheet (same rules as desktop).
   const { best, worst } = useMemo(() => rankByViews(videos), [videos]);
-  const [mode, setMode] = useState<'best' | 'worst' | null>(null);
-  const [orderBy, setOrderBy] = useState<VideoOrderBy>('views');
-  const [asc, setAsc] = useState(false);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const openDrawer = (next: 'best' | 'worst') => {
-    setMode(next);
-    setOrderBy('views');
-    setAsc(next === 'worst');
-  };
-  const closeDrawer = () => {
-    setMode(null);
-    setDateFrom('');
-    setDateTo('');
-  };
-  const drawerSource = mode === 'worst' ? worst : best;
-  const drawerVideos = useMemo(
-    () =>
-      sortNullsLast(
-        filterByPostedRange(drawerSource, dateFrom, dateTo),
-        (v) => orderValue(v, orderBy),
-        asc,
-      ),
-    [drawerSource, dateFrom, dateTo, orderBy, asc],
-  );
-  const drawerRows: AllPostsRow[] = drawerVideos.map((v) => ({
+  const drawer = useVideoDrawer(best, worst);
+  const drawerRows: AllPostsRow[] = drawer.listed.map((v) => ({
     key: v.tiktok_video_id,
     href: v.share_url ?? '',
     thumbnailUrl: v.cover_image_url,
@@ -428,7 +399,7 @@ function PhoneBody({
             typeLabel={t('drawer.badge')}
             openLabel={t('drawer.openLabel')}
             seeMoreLabel={t('overview.seeAll')}
-            onSeeMore={best.length > STRIP_SIZE ? () => openDrawer('best') : undefined}
+            onSeeMore={best.length > STRIP_SIZE ? () => drawer.open('best') : undefined}
           />
           <RankedPostStrip
             title={t('overview.bottomVideos')}
@@ -439,7 +410,7 @@ function PhoneBody({
             typeLabel={t('drawer.badge')}
             openLabel={t('drawer.openLabel')}
             seeMoreLabel={t('overview.seeAll')}
-            onSeeMore={worst.length > STRIP_SIZE ? () => openDrawer('worst') : undefined}
+            onSeeMore={worst.length > STRIP_SIZE ? () => drawer.open('worst') : undefined}
           />
         </div>
       )}
@@ -548,24 +519,27 @@ function PhoneBody({
       />
 
       <AllPostsSheet
-        open={mode !== null}
+        open={drawer.mode !== null}
         onOpenChange={(open) => {
-          if (!open) closeDrawer();
+          if (!open) drawer.close();
         }}
-        title={mode === 'worst' ? t('drawer.titleWorst') : t('drawer.titleBest')}
-        countLabel={t('drawer.count', { shown: drawerVideos.length, total: drawerSource.length })}
+        title={drawer.mode === 'worst' ? t('drawer.titleWorst') : t('drawer.titleBest')}
+        countLabel={t('drawer.count', {
+          shown: drawer.listed.length,
+          total: drawer.source.length,
+        })}
         rows={drawerRows}
         emptyText={t('drawer.empty')}
         filters={{
           orderOptions: VIDEO_ORDERS.map((o) => ({ value: o.value, label: t(o.key) })),
-          orderBy,
-          onOrderBy: (v) => setOrderBy(v as VideoOrderBy),
-          asc,
-          onAsc: setAsc,
-          dateFrom,
-          dateTo,
-          onDateFrom: setDateFrom,
-          onDateTo: setDateTo,
+          orderBy: drawer.orderBy,
+          onOrderBy: (v) => drawer.setOrderBy(v as VideoOrderBy),
+          asc: drawer.asc,
+          onAsc: drawer.setAsc,
+          dateFrom: drawer.dateFrom,
+          dateTo: drawer.dateTo,
+          onDateFrom: drawer.setDateFrom,
+          onDateTo: drawer.setDateTo,
         }}
       />
     </>
@@ -672,7 +646,7 @@ function RetryLine({ onRetry }: { onRetry: () => void }) {
   );
 }
 
-/** Melhor horário para postar: the recommended slots (the heatmap stays on desktop). */
+/** Melhor horário para postar: the Instagram phone heatmap and slots, in TikTok wording. */
 function BestTimesPhone({
   locked,
   loading,
@@ -681,54 +655,52 @@ function BestTimesPhone({
 }: {
   locked: boolean;
   loading: boolean;
-  data: ReturnType<typeof useTikTokTabData>['bestTimes']['data'] | null;
+  data: BestPostingTimes | null;
   /** Set when the read failed (not a plan lock). */
   onRetry: (() => void) | null;
 }) {
   const { t } = useTranslation('analyticsTiktok');
+  const labels = useMemo<BestTimesLabels>(() => {
+    const videos = (count: number) => t('bestTimes.postCount', { count });
+    return {
+      empty: t('bestTimes.empty'),
+      tapHint: t('bestTimes.tapHint'),
+      header: t('bestTimes.heatmapHeader'),
+      footer: (hours) => t('bestTimes.heatmapFooter', { hours }),
+      heatmapAria: t('bestTimes.heatmapAria'),
+      emptySlot: (day, hour) => t('bestTimes.slotEmpty', { day, hour }),
+      cellAria: (day, hour, value, count) =>
+        t('bestTimes.cellAria', { day, hour, rate: formatRate(value), videos: videos(count) }),
+      readout: (day, from, to, value, count) =>
+        t('bestTimes.cellReadout', {
+          day,
+          from,
+          to,
+          rate: formatRate(value),
+          videos: videos(count),
+        }),
+      recommended: t('clientTab.recommendedSlots'),
+      slotLabel: (day, hour) => t('clientTab.slotWhen', { day, hour }),
+      slotValue: (value, count) =>
+        t('bestTimes.slotValue', { rate: formatRate(value), videos: videos(count) }),
+    };
+  }, [t]);
+
   const title = t('bestTimes.title');
-  if (locked) {
-    return (
-      <GroupedList header={title} footer={t('bestTimes.locked')}>
-        <Cell icon={<Lock />} label={t('states.lockedAction')} to={BILLING_PATH} />
-      </GroupedList>
-    );
-  }
-  if (loading) {
-    return (
-      <GroupedList header={title}>
-        <Cell label={t('states.loading')} />
-      </GroupedList>
-    );
-  }
-  if (onRetry) {
-    return (
-      <GroupedList header={title} footer={t('states.error')}>
-        <Cell icon={<RefreshCw />} label={t('states.retry')} onClick={onRetry} />
-      </GroupedList>
-    );
-  }
-  const enough = !!data && data.totalPosts >= MIN_BEST_TIME_VIDEOS && data.topSlots.length > 0;
-  if (!enough) {
-    return (
-      <GroupedList header={title}>
-        <Cell label={t('bestTimes.empty')} />
-      </GroupedList>
-    );
-  }
   return (
-    <GroupedList header={title} footer={`${t('bestTimes.subtitle')} (${t('bestTimes.timezone')})`}>
-      {data.topSlots.map((s, i) => (
-        <Cell
-          key={i}
-          icon={<span className="phone-an-rank">{i + 1}</span>}
-          label={t('clientTab.slotWhen', {
-            day: data.labels_days[s.day],
-            hour: data.labels_hours[s.hour],
-          })}
-          value={`${formatRate(s.value)} · ${t('bestTimes.postCount', { count: s.postCount })}`}
-        />
-      ))}
-    </GroupedList>
+    <section aria-label={title}>
+      <SectionHead large title={title} />
+      {locked ? (
+        <GroupedList aria-label={title} footer={t('bestTimes.locked')}>
+          <Cell icon={<Lock />} label={t('states.lockedAction')} to={BILLING_PATH} />
+        </GroupedList>
+      ) : loading ? (
+        <LoadingBlock />
+      ) : onRetry ? (
+        <RetryLine onRetry={onRetry} />
+      ) : (
+        <BestTimesSection data={data} labels={labels} />
+      )}
+    </section>
   );
 }

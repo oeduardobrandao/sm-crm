@@ -1,8 +1,21 @@
 // Formatting and period helpers for the client TikTok tab (desktop now, phone in A9).
+import type { CSSProperties } from 'react';
 import { format } from 'date-fns';
 import { enUS, ptBR } from 'date-fns/locale';
 import type { AnalyticsRange, KpiEntry } from '../../../services/tiktokAnalytics';
 import { spDayStartMs } from '../../analytics-tiktok/videoRanking';
+
+/** Where a plan-locked section sends the user. */
+export const BILLING_PATH = '/configuracao/cobranca';
+
+/** Same floor the Instagram heatmap uses before it ranks time slots. */
+export const MIN_BEST_TIME_VIDEOS = 5;
+
+/** Last period's numbers stay on screen, dimmed, while the new period loads. */
+export const dimmed = (stale: boolean): CSSProperties => ({
+  opacity: stale ? 0.55 : 1,
+  transition: 'opacity 150ms ease',
+});
 
 /** The account AI route accepts `days` in 1..365 only. */
 const AI_MAX_DAYS = 365;
