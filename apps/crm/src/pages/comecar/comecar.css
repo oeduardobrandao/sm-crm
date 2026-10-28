@@ -179,3 +179,156 @@
 .comecar-link--inline {
   display: inline;
 }
+.comecar-back {
+  display: inline-block;
+  margin-bottom: 1rem;
+}
+
+/* Trial plan picker (default view): questions and the Free exit left, recommendation
+   right. Stacks under 860px as questions, recommendation, then Free, so the trial
+   comes first on a phone. The second row takes the slack so the Free exit sits right
+   under the questions however tall the card is. */
+.comecar-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    'intro reco'
+    'free reco';
+  column-gap: 2rem;
+  align-items: start;
+  margin-bottom: 1.75rem;
+}
+.comecar-picker__intro {
+  grid-area: intro;
+  min-width: 0;
+}
+.comecar-reco {
+  grid-area: reco;
+  min-width: 0;
+}
+@media (max-width: 860px) {
+  .comecar-picker {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    grid-template-areas:
+      'intro'
+      'reco'
+      'free';
+    row-gap: 0.5rem;
+  }
+}
+.comecar-picker__intro h1 {
+  font-family: var(--font-heading);
+  font-size: 1.6rem;
+  margin: 0.75rem 0 0.5rem;
+  color: var(--text-main);
+}
+.comecar-picker__lead {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  margin: 0 0 1.5rem;
+}
+.comecar-question {
+  border: none;
+  padding: 0;
+  margin: 0 0 1.25rem;
+  min-width: 0;
+}
+.comecar-question legend {
+  padding: 0;
+  margin-bottom: 0.6rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-main);
+}
+.comecar-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.comecar-chip {
+  border: 1px solid var(--border-color);
+  background: var(--surface-main);
+  color: var(--text-muted);
+  padding: 0.45rem 1rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.comecar-chip:hover {
+  background: var(--surface-hover);
+}
+.comecar-chip[aria-pressed='true'] {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: var(--dark);
+  font-weight: 600;
+}
+.comecar-chip:focus-visible,
+.comecar-link:focus-visible,
+.comecar-cta:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+.comecar-picker__free {
+  grid-area: free;
+  margin-top: 1.5rem;
+}
+.comecar-picker__free p {
+  color: var(--text-muted);
+  font-size: 0.83rem;
+  margin: 0.3rem 0 0;
+}
+.comecar-reco {
+  background: var(--card-bg);
+  border: 1px solid var(--primary-color);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+.comecar-reco__label {
+  align-self: flex-start;
+  background: var(--primary-color);
+  color: var(--dark);
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+}
+.comecar-reco__name {
+  font-family: var(--font-heading);
+  font-size: 1.4rem;
+  margin: 0.6rem 0 0.25rem;
+  color: var(--text-main);
+}
+.comecar-reco__reason {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  margin: 0 0 0.75rem;
+}
+.comecar-reco__limits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.25rem 0 1rem;
+}
+.comecar-reco__note {
+  color: var(--text-light);
+  font-size: 0.8rem;
+  margin: 0 0 1rem;
+}
+.comecar-reco .comecar-cta {
+  margin-top: 0.25rem;
+}
+.comecar-reco__fine {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  margin: 0.6rem 0 0.9rem;
+}
+.comecar-reco > .comecar-link {
+  align-self: center;
+}

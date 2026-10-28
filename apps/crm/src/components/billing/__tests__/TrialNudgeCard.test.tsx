@@ -18,9 +18,9 @@ import { useAuth } from '@/context/AuthContext';
 import { getEffectivePlanWithSource, getWorkspaceSubscription } from '@/services/billing';
 import { TrialNudgeCard } from '../TrialNudgeCard';
 
-const plan = (planId: string | null, wasDemo = false) => ({
+const plan = (planId: string | null, wasDemo = false, planSource = 'system') => ({
   planId,
-  planSource: 'system',
+  planSource,
   wasDemo,
 });
 
@@ -76,6 +76,23 @@ describe('TrialNudgeCard', () => {
   it('shows for a never-subscribed Free owner', async () => {
     renderCard();
     expect(await screen.findByText(TITLE)).toBeInTheDocument();
+  });
+
+  it('names what the trial really unlocks, without scheduling or em dashes', async () => {
+    renderCard();
+    const text = await screen.findByText(/Teste um plano pago por 30 dias/);
+    expect(text).toHaveTextContent(
+      'Você está no plano Free. Teste um plano pago por 30 dias e libere o portal de aprovação, os relatórios, as métricas automáticas, o financeiro e a sua equipe.',
+    );
+    expect(text.textContent).not.toMatch(/agendamento/i);
+    expect(text.textContent).not.toContain('—');
+  });
+
+  it('hides for a comped (manual) plan source', async () => {
+    vi.mocked(getEffectivePlanWithSource).mockResolvedValue(plan('free', false, 'manual'));
+    const { client } = renderCard();
+    await waitForBillingQueriesToSettle(client);
+    expect(screen.queryByText(TITLE)).not.toBeInTheDocument();
   });
 
   it('hides for a non-owner', async () => {

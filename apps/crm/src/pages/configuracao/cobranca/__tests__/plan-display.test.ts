@@ -1,4 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+vi.mock('@/lib/supabase', () => ({ supabase: {} }));
+
 import {
   isInternalPlan,
   resolveCurrentPlanId,
@@ -8,6 +11,9 @@ import {
   checkoutBlocked,
   switchEligible,
   ceilPeriodEndToUtcDate,
+  planHasPortal,
+  planHasReports,
+  isTrialOfferEligible,
 } from '../plan-display';
 
 describe('plan-display', () => {
@@ -240,6 +246,56 @@ describe('plan-display', () => {
     });
     it('iso inválido -> null', () => {
       expect(ceilPeriodEndToUtcDate('not-a-date')).toBeNull();
+    });
+  });
+
+  describe('planHasPortal / planHasReports', () => {
+    it('is false at zero (Free)', () => {
+      expect(planHasPortal({ max_hub_tokens: 0 })).toBe(false);
+      expect(planHasReports({ rate_report_generations_per_month: 0 })).toBe(false);
+    });
+    it('is true when unlimited (null)', () => {
+      expect(planHasPortal({ max_hub_tokens: null })).toBe(true);
+      expect(planHasReports({ rate_report_generations_per_month: null })).toBe(true);
+    });
+    it('is true for a positive cap', () => {
+      expect(planHasPortal({ max_hub_tokens: 5 })).toBe(true);
+      expect(planHasReports({ rate_report_generations_per_month: 5 })).toBe(true);
+    });
+  });
+
+  describe('isTrialOfferEligible', () => {
+    const free = { planId: null, planSource: 'system', wasDemo: false, hasWorkspace: true };
+    it('is true for a Free workspace that never subscribed (sub = null)', () => {
+      expect(isTrialOfferEligible(free, null)).toBe(true);
+    });
+    it('is false for a comped (manual) workspace', () => {
+      expect(isTrialOfferEligible({ ...free, planSource: 'manual' }, null)).toBe(false);
+    });
+    it('is false once the workspace has ever subscribed', () => {
+      expect(isTrialOfferEligible(free, { hasEverSubscribed: true } as never)).toBe(false);
+    });
+    it('is false for an ex-demo workspace', () => {
+      expect(isTrialOfferEligible({ ...free, wasDemo: true }, null)).toBe(false);
+    });
+    it('is false on a paid plan', () => {
+      expect(isTrialOfferEligible({ ...free, planId: 'pro' }, null)).toBe(false);
+    });
+    it('is false while either input is still loading (undefined)', () => {
+      expect(isTrialOfferEligible(free, undefined)).toBe(false);
+      expect(isTrialOfferEligible(undefined, null)).toBe(false);
+    });
+    it('is false when no workspace row was read (NULL conta_id or missing row)', () => {
+      const noWorkspace = { planId: null, planSource: null, wasDemo: false, hasWorkspace: false };
+      expect(isTrialOfferEligible(noWorkspace, null)).toBe(false);
+    });
+    it('keeps a plan without the hasWorkspace field eligible (only an explicit false gates)', () => {
+      expect(
+        isTrialOfferEligible({ planId: null, planSource: 'system', wasDemo: false }, null),
+      ).toBe(true);
+    });
+    it('treats a null plan as Free (eligible)', () => {
+      expect(isTrialOfferEligible(null, null)).toBe(true);
     });
   });
 });

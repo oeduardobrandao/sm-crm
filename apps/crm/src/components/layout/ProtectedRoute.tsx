@@ -9,6 +9,7 @@ import { PageSkeleton } from '@/components/ui/skeletons';
 import { UpgradeLockedScreen } from '@/components/paywall/UpgradeLockedScreen';
 import { resolveRouteGate } from './routePermissions';
 import { isLayoutGuardedPath } from './AppLayout';
+import { useTrialOfferRedirect } from './useTrialOfferRedirect';
 
 const FEATURE_GATED: Record<string, { flag: string; label: string }> = {
   '/analytics': { flag: 'feature_analytics_reports', label: 'Relatórios e Analytics' },
@@ -25,6 +26,8 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, profile, role, can, loading } = useAuth();
   const location = useLocation();
   const { features, isLoading: limitsLoading, isUnlimited } = useWorkspaceLimits();
+  // Hook order: this must stay above every early return below.
+  const trialOffer = useTrialOfferRedirect(location.pathname.toLowerCase());
 
   if (loading || limitsLoading) {
     // The shell (sidebar, top bar) is not mounted yet and the page is unknown, so this is a
@@ -118,6 +121,18 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
   if (needsSetup) {
     return <Navigate to="/workspace-setup" replace />;
   }
+
+  if (trialOffer.pending) {
+    return (
+      <PageSkeleton
+        style={{
+          minHeight: '100vh',
+          padding: 'clamp(1.25rem, 3vw, 2.5rem) clamp(1rem, 3vw, 3rem)',
+        }}
+      />
+    );
+  }
+  if (trialOffer.redirect) return <Navigate to="/comecar" replace />;
 
   return <>{children}</>;
 }

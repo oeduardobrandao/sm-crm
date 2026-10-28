@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useLandingUser } from './LandingChrome';
-import { listPublicPricingPlans, type PublicPricingPlan } from '@/services/billing';
+import {
+  getEffectivePlanWithSource,
+  getWorkspaceSubscription,
+  hasUsedTrial,
+  listPublicPricingPlans,
+  type PublicPricingPlan,
+} from '@/services/billing';
 import { buildPlanIntentQuery } from '@/pages/comecar/plan-intent';
 import { isPagarme12xEnabled } from '@/lib/pagarme-gate';
 import PlanComparison from './PlanComparison';
@@ -15,7 +21,7 @@ function formatPrice(centavos: number): string {
 const PLAN_MARKETING: Record<string, { description: string; cta: string; highlight?: boolean }> = {
   free: {
     description: 'Para conhecer a plataforma.',
-    cta: 'Começar grátis',
+    cta: 'Usar o Free',
   },
   start: {
     description: 'Para freelancers montando a carteira.',
@@ -100,6 +106,25 @@ export function PricingSection() {
     staleTime: 5 * 60_000,
   });
 
+  // Signed-in visitors only: the trial copy must not promise 30 days to a workspace that
+  // already spent it. Until both answers arrive the offer is unknown, and an unknown offer
+  // renders the neutral "Assinar" label rather than a promise that might get withdrawn.
+  const { data: effectivePlan } = useQuery({
+    queryKey: ['billing', 'effective-plan-with-source'],
+    queryFn: () => getEffectivePlanWithSource(),
+    enabled: Boolean(user),
+  });
+  const { data: subscription } = useQuery({
+    queryKey: ['billing', 'subscription'],
+    queryFn: () => getWorkspaceSubscription(),
+    enabled: Boolean(user),
+  });
+  const trialOffered = user
+    ? effectivePlan !== undefined &&
+      subscription !== undefined &&
+      !hasUsedTrial(subscription, effectivePlan)
+    : true;
+
   const savingsPct = annualSavingsPct(plans);
 
   const isYear = period === 'year';
@@ -113,6 +138,12 @@ export function PricingSection() {
     return `/login?tab=register&${buildPlanIntentQuery(id, period)}`;
   };
 
+  // Paid plans read "Assinar" once the trial is spent (or not known to be on offer).
+  const ctaLabel = (plan: PublicPricingPlan, trialCta: string) => {
+    if (plan.id === 'free') return user ? 'Acessar painel' : trialCta;
+    return trialOffered ? trialCta : `Assinar ${plan.name}`;
+  };
+
   const planAction = (plan: PublicPricingPlan) => {
     const marketing = PLAN_MARKETING[plan.id] ?? {
       description: `Conheça o plano ${plan.name}.`,
@@ -120,7 +151,7 @@ export function PricingSection() {
     };
     return {
       href: planHref(plan.id),
-      label: plan.id === 'free' && user ? 'Acessar painel' : marketing.cta,
+      label: ctaLabel(plan, marketing.cta),
       primary: marketing.highlight,
     };
   };
@@ -131,8 +162,8 @@ export function PricingSection() {
         <div className="section-head reveal">
           <h2>Comece pequeno e cresça sem trocar de ferramenta.</h2>
           <p>
-            Comece no plano Free e suba quando fizer sentido. Sem fidelidade, cancele a qualquer
-            momento.
+            Teste qualquer plano pago por 30 dias e só pague se continuar. Sem fidelidade, cancele
+            quando quiser.
           </p>
           <div className="pricing-promo-note">
             30 dias grátis em qualquer plano pago. Sem cupom. Cancele quando quiser.
@@ -230,7 +261,9 @@ export function PricingSection() {
                         : `cobrado anualmente (${formatPrice(plan.price_brl_annual!)}/ano)`
                       : ' '}
                   </div>
-                  {!isFree && <div className="plan-trial-note">30 dias grátis para começar</div>}
+                  {!isFree && trialOffered && (
+                    <div className="plan-trial-note">30 dias grátis para começar</div>
+                  )}
                   <div className="plan-tag">{marketing.description}</div>
                   <div className="plan-limits-line">
                     {limitPhrase(plan.max_clients, 'cliente', 'clientes')} ·{' '}
@@ -241,7 +274,7 @@ export function PricingSection() {
                       href={planHref(plan.id)}
                       className={`lp-btn ${marketing.highlight ? 'lp-btn-primary' : 'lp-btn-outline'}`}
                     >
-                      {plan.id === 'free' && user ? 'Acessar painel' : marketing.cta}
+                      {ctaLabel(plan, marketing.cta)}
                     </a>
                   </div>
                 </div>

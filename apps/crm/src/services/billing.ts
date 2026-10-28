@@ -14,6 +14,20 @@ export interface BillingPlan {
   feature_hub_portal: boolean;
   feature_analytics_reports: boolean;
   feature_brand_customization: boolean;
+  /** Client portal (Hub) links. 0 = none, null = unlimited. */
+  max_hub_tokens: number | null;
+  /** Report generations per month. 0 = none, null = unlimited. */
+  rate_report_generations_per_month: number | null;
+  feature_instagram_ai: boolean;
+  feature_auto_sync_cron: boolean;
+  feature_leads: boolean;
+  feature_financial: boolean;
+  feature_contracts: boolean;
+  feature_agenda: boolean;
+  feature_mensagens: boolean;
+  feature_team_chat: boolean;
+  feature_instagram_automation: boolean;
+  feature_briefing_audio: boolean;
   pagarme_12x_enabled: boolean;
   /** Per-installment price of the 12x annual, in centavos. Null = plan has no 12x configured. */
   pagarme_installment_cents: number | null;
@@ -30,6 +44,7 @@ export interface PublicPricingPlan {
   max_workflow_templates: number | null;
   max_instagram_accounts: number | null;
   max_hub_tokens: number | null;
+  rate_report_generations_per_month: number | null;
   storage_quota_bytes: number | null;
   feature_analytics_reports: boolean;
   feature_post_scheduling: boolean;
@@ -105,7 +120,7 @@ export async function listActivePlans(): Promise<BillingPlan[]> {
   const { data, error } = await supabase
     .from('plans')
     .select(
-      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, storage_quota_bytes, feature_hub_portal, feature_analytics_reports, feature_brand_customization, pagarme_12x_enabled, pagarme_installment_cents',
+      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, storage_quota_bytes, feature_hub_portal, feature_analytics_reports, feature_brand_customization, max_hub_tokens, rate_report_generations_per_month, feature_instagram_ai, feature_auto_sync_cron, feature_leads, feature_financial, feature_contracts, feature_agenda, feature_mensagens, feature_team_chat, feature_instagram_automation, feature_briefing_audio, pagarme_12x_enabled, pagarme_installment_cents',
     )
     .eq('is_active', true)
     .order('sort_order', { ascending: true });
@@ -120,7 +135,7 @@ export async function listPublicPricingPlans(): Promise<PublicPricingPlan[]> {
   const { data, error } = await supabase
     .from('plans')
     .select(
-      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, max_workflow_templates, max_instagram_accounts, max_hub_tokens, storage_quota_bytes, feature_analytics_reports, feature_post_scheduling, feature_leads, feature_financial, feature_contracts, feature_brand_customization, feature_mcp, feature_instagram_automation, feature_briefing_audio, pagarme_12x_enabled, pagarme_installment_cents',
+      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, max_workflow_templates, max_instagram_accounts, max_hub_tokens, rate_report_generations_per_month, storage_quota_bytes, feature_analytics_reports, feature_post_scheduling, feature_leads, feature_financial, feature_contracts, feature_brand_customization, feature_mcp, feature_instagram_automation, feature_briefing_audio, pagarme_12x_enabled, pagarme_installment_cents',
     )
     .eq('is_active', true)
     .order('sort_order', { ascending: true });
@@ -136,7 +151,27 @@ export interface EffectivePlan {
   planSource: string | null;
   /** `workspaces.demo_created_at` is set: the workspace started as an Admin-made demo. */
   wasDemo: boolean;
+  /**
+   * `workspaces.trial_offer_seen_at`: when the owner was first shown the trial offer on
+   * /comecar. Null = not yet shown. Set only by `markTrialOfferSeen`.
+   */
+  trialOfferSeenAt: string | null;
+  /**
+   * A workspace row was actually read for the signed-in user. False when signed out, when
+   * `profiles.conta_id` is NULL (prod has such rows) or when the `workspaces` read returns
+   * nothing. The other fields are then defaults, not facts: such a user is never offered the
+   * trial, because `mark_trial_offer_seen()` would match no row and the offer would repeat.
+   */
+  hasWorkspace: boolean;
 }
+
+const NO_WORKSPACE: EffectivePlan = {
+  planId: null,
+  planSource: null,
+  wasDemo: false,
+  trialOfferSeenAt: null,
+  hasWorkspace: false,
+};
 
 /**
  * Whether the trial is already spent. A demo has no `workspace_subscriptions` row, so the
@@ -158,24 +193,36 @@ async function fetchEffectivePlan(): Promise<EffectivePlan> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { planId: null, planSource: null, wasDemo: false };
+  if (!user) return { ...NO_WORKSPACE };
   const { data: profile } = await supabase
     .from('profiles')
     .select('conta_id')
     .eq('id', user.id)
     .single();
-  if (!profile?.conta_id) return { planId: null, planSource: null, wasDemo: false };
+  if (!profile?.conta_id) return { ...NO_WORKSPACE };
   const { data, error } = await supabase
     .from('workspaces')
-    .select('plan_id, plan_source, demo_created_at')
+    .select('plan_id, plan_source, demo_created_at, trial_offer_seen_at')
     .eq('id', profile.conta_id)
     .maybeSingle();
   if (error) throw new Error(error.message);
+  if (!data) return { ...NO_WORKSPACE };
   return {
-    planId: (data?.plan_id as string | null) ?? null,
-    planSource: (data?.plan_source as string | null) ?? null,
-    wasDemo: Boolean(data?.demo_created_at),
+    planId: (data.plan_id as string | null) ?? null,
+    planSource: (data.plan_source as string | null) ?? null,
+    wasDemo: Boolean(data.demo_created_at),
+    trialOfferSeenAt: (data.trial_offer_seen_at as string | null) ?? null,
+    hasWorkspace: true,
   };
+}
+
+/**
+ * Stamps `workspaces.trial_offer_seen_at` for the active workspace (owner only, first call
+ * wins; the RPC is idempotent). Throws on error so callers can decide whether to swallow it.
+ */
+export async function markTrialOfferSeen(): Promise<void> {
+  const { error } = await supabase.rpc('mark_trial_offer_seen');
+  if (error) throw new Error(error.message);
 }
 
 /**

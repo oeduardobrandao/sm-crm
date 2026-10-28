@@ -127,10 +127,17 @@ export default function TermosPage() {
             content: (
               <>
                 <p>
-                  O Mesaas oferece planos de assinatura com diferentes funcionalidades e limites.
-                  Durante o período beta, todas as funcionalidades estão disponíveis gratuitamente.
+                  O Mesaas oferece um plano gratuito (Free), com limites de uso, e planos pagos de
+                  assinatura com mais recursos e limites maiores, descritos na página de preços.
                 </p>
-                <p>Quando os planos pagos entrarem em vigor:</p>
+                <p>
+                  Teste grátis: cada workspace pode testar um plano pago uma única vez, por 30 dias.
+                  Para iniciar o teste pedimos um cartão de crédito. Nada é cobrado durante o teste.
+                  Enviamos um e-mail 7 dias antes da primeira cobrança, com o valor e a data. Se
+                  você não cancelar até o fim do teste, a assinatura começa e a primeira cobrança é
+                  feita automaticamente.
+                </p>
+                <p>Nos planos pagos:</p>
                 <ul>
                   <li>
                     As assinaturas serão renovadas automaticamente ao final de cada ciclo, salvo
@@ -298,7 +305,7 @@ export default function TermosPage() {
           fontSize: '0.9rem',
         }}
       >
-        Última atualização: abril de 2025
+        Última atualização: outubro de 2026
         <br />
         Mesaas — EBS IT SOLUTIONS · CNPJ 63.758.902/0001-01
       </p>

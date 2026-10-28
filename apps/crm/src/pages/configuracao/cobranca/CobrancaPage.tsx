@@ -25,6 +25,8 @@ import {
   checkoutBlocked,
   ceilPeriodEndToUtcDate,
   switchEligible,
+  planHasPortal,
+  planHasReports,
 } from './plan-display';
 import { captureCheckoutStarted } from '@/lib/checkout-analytics';
 import { isPagarme12xEnabled } from '@/lib/pagarme-gate';
@@ -100,8 +102,8 @@ function planFeatures(p: BillingPlan, t: TFunction): string[] {
   );
   if (p.storage_quota_bytes != null)
     out.push(t('cobrancaPage.features.storage', { size: formatStorage(p.storage_quota_bytes) }));
-  if (p.feature_hub_portal) out.push(t('cobrancaPage.features.hubPortal'));
-  if (p.feature_analytics_reports) out.push(t('cobrancaPage.features.analyticsReports'));
+  if (planHasPortal(p)) out.push(t('cobrancaPage.features.hubPortal'));
+  if (planHasReports(p)) out.push(t('cobrancaPage.features.analyticsReports'));
   if (p.feature_brand_customization) out.push(t('cobrancaPage.features.brandCustomization'));
   return out;
 }

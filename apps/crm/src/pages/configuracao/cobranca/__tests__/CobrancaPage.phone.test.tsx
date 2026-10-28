@@ -56,6 +56,8 @@ const PRO_PLAN: BillingPlan = {
   feature_hub_portal: true,
   feature_analytics_reports: true,
   feature_brand_customization: true,
+  max_hub_tokens: null,
+  rate_report_generations_per_month: null,
   pagarme_12x_enabled: false,
   pagarme_installment_cents: null,
 };

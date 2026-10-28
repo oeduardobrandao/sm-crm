@@ -60,6 +60,8 @@ const PRO_PLAN: BillingPlan = {
   feature_hub_portal: true,
   feature_analytics_reports: true,
   feature_brand_customization: true,
+  max_hub_tokens: null,
+  rate_report_generations_per_month: null,
   pagarme_12x_enabled: false,
   pagarme_installment_cents: null,
 };
@@ -160,7 +162,46 @@ function renderPage() {
 
 const HINT = /Seus primeiros 30 dias são grátis/i;
 
+// The real Free row: scheduling is included, but 0 portal links and 0 reports a month.
+// feature_hub_portal / feature_analytics_reports stay true on it, which is exactly why the
+// card must read the limits and not the flags.
+const FREE_PLAN: BillingPlan = {
+  ...PRO_PLAN,
+  id: 'free',
+  name: 'Free',
+  price_brl: 0,
+  price_brl_annual: 0,
+  sort_order: 0,
+  max_clients: 2,
+  max_team_members: 1,
+  max_hub_tokens: 0,
+  rate_report_generations_per_month: 0,
+};
+
+const START_PLAN: BillingPlan = {
+  ...PRO_PLAN,
+  id: 'start',
+  name: 'Start',
+  sort_order: 1,
+  max_clients: 10,
+  max_team_members: 3,
+  max_hub_tokens: 5,
+  rate_report_generations_per_month: 5,
+};
+
 describe('CobrancaPage', () => {
+  it('lists portal and reports only on cards whose plan limits include them', async () => {
+    vi.mocked(listActivePlans).mockResolvedValue([FREE_PLAN, START_PLAN]);
+    vi.mocked(getWorkspaceSubscription).mockResolvedValue(subscription({}));
+    renderPage();
+
+    await screen.findByText('Free');
+    await screen.findByText('Start');
+    // Only the paid card shows either line; the Free card shows neither.
+    expect(screen.getAllByText('Portal de aprovação do cliente')).toHaveLength(1);
+    expect(screen.getAllByText('Relatórios de desempenho')).toHaveLength(1);
+  });
+
   it('shows "Começar teste de 30 dias" and the first-time hint for a workspace that never subscribed', async () => {
     // No active Stripe subscription and no subscription history at all: canUpgradeTo('pro',
     // 'free', hasActiveSub=false) is true, so the CTA renders and must read as a trial start.

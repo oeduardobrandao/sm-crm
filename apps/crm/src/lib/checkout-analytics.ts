@@ -11,10 +11,12 @@ export function captureCheckoutStarted(
   interval: BillingInterval,
   source: CheckoutSource,
   provider: 'stripe' | 'pagarme' = 'stripe',
+  /** Picker context from /comecar, merged into the event props. */
+  extra?: { recommended_plan_id?: string; accepted_recommendation?: boolean },
 ): void {
   captureEvent(
     'checkout_started',
-    { plan_id: planId, billing_interval: interval, source, provider },
+    { plan_id: planId, billing_interval: interval, source, provider, ...extra },
     { sendInstantly: true },
   );
 }

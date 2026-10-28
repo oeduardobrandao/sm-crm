@@ -5,7 +5,13 @@ import {
   saveGuideProgress,
   type GuideProgress,
 } from './guideStorage';
-import { allPages, filterTrails, requiredSignals, type GuideTrail } from './guideContent';
+import {
+  allPages,
+  filterTrails,
+  requiredSignals,
+  type GuideLimits,
+  type GuideTrail,
+} from './guideContent';
 import type { GuideSignals } from './useGuideSignals';
 
 export interface GuideView {
@@ -27,6 +33,7 @@ export function useGuideProgress(
   contaId: string | null,
   signals: GuideSignals,
   hasFeature: (flag: string) => boolean,
+  limits?: GuideLimits | null,
 ): GuideView {
   const [progress, setProgress] = useState<GuideProgress>(() =>
     contaId ? loadGuideProgress(contaId) : emptyProgress(),
@@ -54,7 +61,7 @@ export function useGuideProgress(
     [contaId],
   );
 
-  const trails = useMemo(() => filterTrails(hasFeature), [hasFeature]);
+  const trails = useMemo(() => filterTrails(hasFeature, limits), [hasFeature, limits]);
   const pages = useMemo(() => allPages(trails), [trails]);
 
   const doneIds = useMemo(() => {

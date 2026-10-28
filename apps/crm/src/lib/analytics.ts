@@ -71,6 +71,7 @@ export type AnalyticsEvent =
   | 'checkout_started'
   | 'trial_step_viewed'
   | 'trial_skipped'
+  | 'trial_plan_recommended'
   | 'trial_nudge_clicked'
   | 'whatsapp_support_clicked'
   | 'card_form_submitted'

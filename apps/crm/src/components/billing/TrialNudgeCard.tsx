@@ -4,13 +4,9 @@ import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Timer, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import {
-  getEffectivePlanWithSource,
-  getWorkspaceSubscription,
-  hasUsedTrial,
-} from '@/services/billing';
+import { getEffectivePlanWithSource, getWorkspaceSubscription } from '@/services/billing';
 import { captureEvent } from '@/lib/analytics';
-import { resolveCurrentPlanId } from '@/pages/configuracao/cobranca/plan-display';
+import { isTrialOfferEligible } from '@/pages/configuracao/cobranca/plan-display';
 
 const DISMISS_DAYS = 7;
 
@@ -53,13 +49,9 @@ export function TrialNudgeCard() {
   // Wait for both answers before deciding: rendering on partial data would flash
   // the card at a paying customer.
   if (effectivePlan === undefined || subscription === undefined) return null;
-  // A brand-new workspace has workspaces.plan_id = NULL (handle_new_user never
-  // sets it and there's no DB default), so the raw effective plan id must not be
-  // compared directly against 'free' — that would hide the card from its entire
-  // audience. Resolve it the same way CobrancaPage does.
-  const currentPlanId = resolveCurrentPlanId(effectivePlan.planId, subscription?.plan_id);
-  if (currentPlanId !== 'free') return null;
-  if (hasUsedTrial(subscription, effectivePlan)) return null;
+  // Free (resolved: a brand-new workspace has plan_id = NULL), not a comped `manual` plan and
+  // never trialed. Shared with /comecar so the two surfaces agree on who is offered the trial.
+  if (!isTrialOfferEligible(effectivePlan, subscription)) return null;
 
   function handleDismiss() {
     localStorage.setItem(storageKey, new Date().toISOString());

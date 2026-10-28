@@ -165,7 +165,10 @@ const ZERO_FILL: PortalFill = {
 };
 
 // Fail-open by default (matches useEntitlements while the plan is still loading).
-let mockEntitlements: { hasFeature: (flag: string) => boolean } = { hasFeature: () => true };
+let mockEntitlements: {
+  hasFeature: (flag: string) => boolean;
+  limits?: { max_hub_tokens: number | null } | null;
+} = { hasFeature: () => true };
 
 const DAY = 86_400_000;
 const token = (expiresInDays: number) => ({
@@ -283,6 +286,30 @@ describe('AcessoPage', () => {
     renderPage();
     await waitFor(() => expect(screen.getByText('Nenhum link gerado ainda.')).toBeInTheDocument());
     expect(screen.getByRole('button', { name: /Gerar link/ })).toBeInTheDocument();
+  });
+
+  it('prompts for an upgrade when the plan has zero portal links, even with the flag on', async () => {
+    mockEntitlements = { hasFeature: () => true, limits: { max_hub_tokens: 0 } };
+    vi.mocked(hubStore.getHubToken).mockResolvedValue(null);
+    renderPage();
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('O Portal do Cliente faz parte dos planos pagos.'),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('button', { name: /Gerar link/ })).not.toBeInTheDocument();
+  });
+
+  it('offers to generate the link when the plan allows portal links', async () => {
+    mockEntitlements = { hasFeature: () => true, limits: { max_hub_tokens: 5 } };
+    vi.mocked(hubStore.getHubToken).mockResolvedValue(null);
+    renderPage();
+
+    expect(await screen.findByRole('button', { name: /Gerar link/ })).toBeInTheDocument();
+    expect(
+      screen.queryByText('O Portal do Cliente faz parte dos planos pagos.'),
+    ).not.toBeInTheDocument();
   });
 
   it('prompts for an upgrade instead of generating when feature_hub_portal is off', async () => {

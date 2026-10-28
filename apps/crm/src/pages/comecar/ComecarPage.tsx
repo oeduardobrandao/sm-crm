@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Check, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -9,13 +9,16 @@ import {
   hasUsedTrial,
   getWorkspaceSubscription,
   listActivePlans,
+  markTrialOfferSeen,
   startCheckout,
   type BillingInterval,
   type BillingPlan,
+  type EffectivePlan,
 } from '@/services/billing';
 import {
   isSelectableTrialPlan,
-  resolveCurrentPlanId,
+  isTrialOfferEligible,
+  planHasPortal,
 } from '@/pages/configuracao/cobranca/plan-display';
 import { captureEvent } from '@/lib/analytics';
 import { captureCheckoutStarted } from '@/lib/checkout-analytics';
@@ -24,9 +27,14 @@ import { isWhatsAppSupportEnabled } from '@/lib/whatsapp';
 import { WhatsAppSupportButton } from '@/components/support/WhatsAppSupportButton';
 import { PagarmeCheckoutDialog } from '@/components/billing/PagarmeCheckoutDialog';
 import { parsePlanIntent } from './plan-intent';
+import { trialCandidates } from './recommend';
+import { TrialPlanPicker } from './TrialPlanPicker';
 import './comecar.css';
 
 const RECOMMENDED_ID = 'pro';
+const EFFECTIVE_PLAN_KEY = ['billing', 'effective-plan-with-source'] as const;
+
+type CheckoutExtra = { recommended_plan_id: string; accepted_recommendation: boolean };
 
 /** plans.price_brl is stored in centavos (e.g. 9990 = R$ 99,90). */
 function formatBRL(centavos: number): string {
@@ -37,7 +45,7 @@ function planHighlights(p: BillingPlan): string[] {
   const out: string[] = [];
   out.push(p.max_clients == null ? 'Clientes ilimitados' : `${p.max_clients} clientes`);
   out.push(p.max_team_members == null ? 'Usuários ilimitados' : `${p.max_team_members} usuários`);
-  if (p.feature_hub_portal) out.push('Portal de aprovação do cliente');
+  if (planHasPortal(p)) out.push('Portal de aprovação do cliente');
   return out;
 }
 
@@ -47,10 +55,17 @@ function planHighlights(p: BillingPlan): string[] {
  * paths cannot drift. Returns whether it succeeded; the caller resets its
  * own local state (the intent or the busy flag) on failure.
  */
-async function startAndRedirect(planId: string, interval: BillingInterval): Promise<boolean> {
+async function startAndRedirect(
+  planId: string,
+  interval: BillingInterval,
+  extra?: CheckoutExtra,
+): Promise<boolean> {
   try {
     const url = await startCheckout(planId, interval, 'onboarding');
-    captureCheckoutStarted(planId, interval, 'onboarding');
+    // The grid and intent paths keep their exact three-argument call; only the picker
+    // adds the recommendation context.
+    if (extra) captureCheckoutStarted(planId, interval, 'onboarding', 'stripe', extra);
+    else captureCheckoutStarted(planId, interval, 'onboarding');
     window.location.assign(url);
     return true;
   } catch (err) {
@@ -63,6 +78,9 @@ export default function ComecarPage() {
   const { role, workspaceRole, loading: authLoading } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [view, setView] = useState<'picker' | 'grid'>('picker');
+  const [now] = useState(() => new Date());
   const [interval, setInterval] = useState<BillingInterval>('month');
   const [busy, setBusy] = useState<string | null>(null);
   const [intent, setIntent] = useState(() => parsePlanIntent(location.search));
@@ -71,6 +89,9 @@ export default function ComecarPage() {
   // double-invoke in development would otherwise open two Stripe sessions.
   const autoStarted = useRef(false);
   const viewLogged = useRef(false);
+  // One mark_trial_offer_seen call per mount, shared by the view effect, checkout and
+  // the Free link, so none of them can race ahead of it.
+  const seenPromise = useRef<Promise<void> | null>(null);
 
   // Follow the ACTIVE workspace role, not the stale profile-level role — a user
   // can be owner in one workspace and agent in another, and switch_workspace
@@ -118,16 +139,42 @@ export default function ComecarPage() {
   // readiness themselves. `ready` is what keeps them from firing against
   // undefined data mid-load.
   const ready = !authLoading && isOwner && !subLoading && !plansLoading && !planLoading;
-  const hasError = subError || plansError || planError;
-  // `free` is the only state that may start a trial. A NULL workspaces.plan_id
-  // is a brand-new workspace and resolves to 'free'; anything else (paid, or a
-  // comp/internal plan like Lifetime) is already provisioned.
-  const currentPlanId = resolveCurrentPlanId(effectivePlan?.planId, subscription?.plan_id);
+  // Only a query that never produced data gates the screen. A failed background
+  // refetch (window focus, a later invalidation) keeps the last good value, so it must
+  // never replace the picker or unmount an open Pagar.me dialog.
+  const hasError =
+    (subError && subscription === undefined) ||
+    (plansError && plans === undefined) ||
+    (planError && effectivePlan === undefined);
+  // Only a Free workspace (a NULL workspaces.plan_id resolves to 'free') that was not
+  // put there by an admin (`manual`) and has never trialed may start a trial. Paid and
+  // comp/internal plans like Lifetime are already provisioned.
   // A failed subscription query must never read as "never subscribed" - that
   // would let a workspace that already subscribed reopen a trial checkout.
   // `eligible` stays false while any query has errored.
-  const eligible =
-    ready && !hasError && !hasUsedTrial(subscription, effectivePlan) && currentPlanId === 'free';
+  const eligible = ready && !hasError && isTrialOfferEligible(effectivePlan, subscription);
+
+  /** Stamps the cached effective plan as seen, without a refetch that could fail. */
+  const markSeenInCache = () => {
+    queryClient.setQueryData<EffectivePlan>(EFFECTIVE_PLAN_KEY, (old) =>
+      old ? { ...old, trialOfferSeenAt: old.trialOfferSeenAt ?? new Date().toISOString() } : old,
+    );
+  };
+
+  /** Records that the offer was shown. Failures are logged and swallowed: the screen must still work. */
+  const ensureTrialOfferSeen = (): Promise<void> => {
+    if (!seenPromise.current) {
+      seenPromise.current = markTrialOfferSeen().then(
+        () => {
+          markSeenInCache();
+        },
+        (err: unknown) => {
+          console.warn('[comecar] mark_trial_offer_seen failed', err);
+        },
+      );
+    }
+    return seenPromise.current;
+  };
 
   /**
    * Dispatches to the Pagar.me 12x dialog for a gated annual plan, or falls back to the
@@ -143,7 +190,14 @@ export default function ComecarPage() {
    * standby screen). Neither touches the Stripe/startAndRedirect branch, so that path
    * stays byte-identical to today.
    */
-  const beginCheckout = async (planId: string, interval: BillingInterval): Promise<boolean> => {
+  const beginCheckout = async (
+    planId: string,
+    interval: BillingInterval,
+    extra?: CheckoutExtra,
+  ): Promise<boolean> => {
+    // Wait for the seen marker before leaving for Stripe (or opening Pagar.me), so a
+    // lagging webhook can never bounce someone who just entered a card back here.
+    await ensureTrialOfferSeen();
     const plan = plans?.find((p) => p.id === planId);
     if (interval === 'year' && plan && isPagarme12xEnabled(plan)) {
       captureCheckoutStarted(planId, 'year', 'onboarding', 'pagarme');
@@ -152,8 +206,14 @@ export default function ComecarPage() {
       setIntent(null);
       return true;
     }
-    return startAndRedirect(planId, interval);
+    return startAndRedirect(planId, interval, extra);
   };
+
+  useEffect(() => {
+    if (!eligible) return;
+    void ensureTrialOfferSeen();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eligible]);
 
   useEffect(() => {
     if (!eligible || viewLogged.current) return;
@@ -205,12 +265,13 @@ export default function ComecarPage() {
     );
   }
 
-  if (hasUsedTrial(subscription, effectivePlan)) return <Navigate to="/dashboard" replace />;
-  // Already on a paid or comp/internal plan. /comecar is a typeable URL that
-  // WorkspaceSetupPage links to unconditionally, so this has to be enforced
-  // here and not only by hiding the entry point. Mirrors the invariant
-  // canUpgradeTo already holds on Plano e Cobrança.
-  if (currentPlanId !== 'free') return <Navigate to="/dashboard" replace />;
+  // Already trialed, on a paid or comp/internal plan, or put on Free by an admin.
+  // /comecar is a typeable URL that WorkspaceSetupPage links to unconditionally, so
+  // this has to be enforced here and not only by hiding the entry point. Mirrors the
+  // invariant canUpgradeTo already holds on Plano e Cobrança.
+  if (!isTrialOfferEligible(effectivePlan, subscription)) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   const intentPlan = intent ? plans?.find((p) => p.id === intent.planId) : undefined;
   if (intent) {
@@ -219,7 +280,7 @@ export default function ComecarPage() {
         <div className="comecar-standby">
           <Loader2 className="comecar-spin" size={24} aria-hidden="true" />
           <h1>Preparando seu teste do plano {intentPlan?.name ?? intent.planId}</h1>
-          <p>Levamos você ao pagamento seguro do Stripe. Nada é cobrado nos próximos 30 dias.</p>
+          <p>Levamos você ao pagamento seguro. Nada é cobrado nos próximos 30 dias.</p>
           <button type="button" className="comecar-link" onClick={() => setIntent(null)}>
             Escolher outro plano
           </button>
@@ -229,6 +290,9 @@ export default function ComecarPage() {
   }
 
   const selectable = (plans ?? []).filter(isSelectableTrialPlan);
+  // No monthly-priced candidate means a misconfigured catalog: fall back to the grid.
+  const hasPicker = trialCandidates(plans ?? []).length > 0;
+  const showPicker = hasPicker && view === 'picker';
 
   async function handleStart(planId: string) {
     setBusy(planId);
@@ -236,101 +300,152 @@ export default function ComecarPage() {
     if (!ok) setBusy(null);
   }
 
-  function handleSkip() {
+  async function handlePickerStart(planId: string, recommendedPlanId: string) {
+    setBusy(planId);
+    const ok = await beginCheckout(planId, 'month', {
+      recommended_plan_id: recommendedPlanId,
+      accepted_recommendation: planId === recommendedPlanId,
+    });
+    if (!ok) setBusy(null);
+  }
+
+  async function handleSkip() {
     captureEvent('trial_skipped');
+    // The dashboard redirect reads the cached effective plan: mark it seen (and the
+    // cache with it) first, or a fast click bounces straight back to /comecar.
+    await ensureTrialOfferSeen();
+    // Unconditional: also covers a failed RPC, so the click never bounces back here.
+    markSeenInCache();
     navigate('/dashboard', { replace: true });
   }
 
+  const footerHelp = isWhatsAppSupportEnabled() && (
+    <p className="comecar-foot__help">
+      Prefere falar com uma pessoa?{' '}
+      <WhatsAppSupportButton
+        context="onboarding"
+        label="Fale com a gente no WhatsApp"
+        className="comecar-link comecar-link--inline"
+      />
+    </p>
+  );
+
   return (
     <div className="comecar-shell">
-      <div className="comecar-inner">
-        <header className="comecar-head">
-          <h1>Comece com 30 dias grátis</h1>
-          <p>
-            Escolha o plano do seu teste. Você só é cobrado depois de 30 dias e pode cancelar quando
-            quiser.
-          </p>
-        </header>
-
-        <div className="comecar-toggle" role="group" aria-label="Período de cobrança">
-          <button aria-pressed={interval === 'month'} onClick={() => setInterval('month')}>
-            Mensal
-          </button>
-          <button aria-pressed={interval === 'year'} onClick={() => setInterval('year')}>
-            Anual
-          </button>
+      {showPicker ? (
+        <div className="comecar-inner">
+          <TrialPlanPicker
+            plans={plans ?? []}
+            busyPlanId={busy}
+            now={now}
+            onStart={(planId, recommendedPlanId) =>
+              void handlePickerStart(planId, recommendedPlanId)
+            }
+            onSkip={() => void handleSkip()}
+            onShowAllPlans={() => setView('grid')}
+            onRecommended={({ clients, team, planId }) =>
+              captureEvent('trial_plan_recommended', {
+                clients_bucket: clients,
+                team_bucket: team,
+                plan_id: planId,
+              })
+            }
+          />
+          <footer className="comecar-foot">
+            <p>Pedimos o cartão agora, mas nada é cobrado nos primeiros 30 dias.</p>
+            {footerHelp}
+          </footer>
         </div>
-
-        <div className="comecar-grid">
-          {selectable.map((p) => {
-            const isYear = interval === 'year';
-            // No price for the SELECTED interval means no Stripe price id for
-            // it either, so checkout would 400 with "Plan price not
-            // configured". Show the "Sob consulta" card, but never an
-            // actionable CTA behind it. Falling back to the monthly figure
-            // under the Anual toggle would price the card wrong on top of
-            // offering something unbuyable. Matches PricingSection.
-            const amount = isYear ? p.price_brl_annual : p.price_brl;
-            const unpriced = amount == null || amount <= 0;
-            const monthly = unpriced ? null : isYear ? amount / 12 : amount;
-            const gated = isYear && isPagarme12xEnabled(p);
-            return (
-              <div
-                key={p.id}
-                className={`comecar-card${p.id === RECOMMENDED_ID ? ' is-recommended' : ''}`}
-              >
-                <div className="comecar-card__top">
-                  <span className="comecar-card__name">{p.name}</span>
-                  {p.id === RECOMMENDED_ID && <span className="comecar-tag">Recomendado</span>}
-                </div>
-                <p className="comecar-card__trial">30 dias grátis</p>
-                <p className="comecar-card__price">
-                  depois{' '}
-                  {monthly == null
-                    ? 'Sob consulta'
-                    : gated
-                      ? // PRIMARY AMOUNT RULE: the 12x's own parcela, never price_brl_annual / 12.
-                        `12x de ${formatBRL(p.pagarme_installment_cents ?? 0)} no cartão ou ${formatBRL(amount ?? 0)} à vista`
-                      : `${formatBRL(monthly)}/mês`}
-                </p>
-                <ul className="comecar-card__features">
-                  {planHighlights(p).map((f) => (
-                    <li key={f}>
-                      <Check size={14} aria-hidden="true" />
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  type="button"
-                  className="comecar-cta"
-                  onClick={() => handleStart(p.id)}
-                  disabled={busy !== null || unpriced}
-                >
-                  {busy === p.id ? 'Aguarde…' : 'Começar teste'}
-                </button>
-              </div>
-            );
-          })}
-        </div>
-
-        <footer className="comecar-foot">
-          <p>Pedimos o cartão agora, mas nada é cobrado nos primeiros 30 dias.</p>
-          <button type="button" className="comecar-link" onClick={handleSkip}>
-            Prefiro continuar no plano Free por enquanto
-          </button>
-          {isWhatsAppSupportEnabled() && (
-            <p className="comecar-foot__help">
-              Prefere falar com uma pessoa?{' '}
-              <WhatsAppSupportButton
-                context="onboarding"
-                label="Fale com a gente no WhatsApp"
-                className="comecar-link comecar-link--inline"
-              />
-            </p>
+      ) : (
+        <div className="comecar-inner">
+          {hasPicker && (
+            <button
+              type="button"
+              className="comecar-link comecar-back"
+              onClick={() => setView('picker')}
+            >
+              Voltar
+            </button>
           )}
-        </footer>
-      </div>
+          <header className="comecar-head">
+            <h1>Comece com 30 dias grátis</h1>
+            <p>
+              Escolha o plano do seu teste. Você só é cobrado depois de 30 dias e pode cancelar
+              quando quiser.
+            </p>
+          </header>
+
+          <div className="comecar-toggle" role="group" aria-label="Período de cobrança">
+            <button aria-pressed={interval === 'month'} onClick={() => setInterval('month')}>
+              Mensal
+            </button>
+            <button aria-pressed={interval === 'year'} onClick={() => setInterval('year')}>
+              Anual
+            </button>
+          </div>
+
+          <div className="comecar-grid">
+            {selectable.map((p) => {
+              const isYear = interval === 'year';
+              // No price for the SELECTED interval means no Stripe price id for
+              // it either, so checkout would 400 with "Plan price not
+              // configured". Show the "Sob consulta" card, but never an
+              // actionable CTA behind it. Falling back to the monthly figure
+              // under the Anual toggle would price the card wrong on top of
+              // offering something unbuyable. Matches PricingSection.
+              const amount = isYear ? p.price_brl_annual : p.price_brl;
+              const unpriced = amount == null || amount <= 0;
+              const monthly = unpriced ? null : isYear ? amount / 12 : amount;
+              const gated = isYear && isPagarme12xEnabled(p);
+              return (
+                <div
+                  key={p.id}
+                  className={`comecar-card${p.id === RECOMMENDED_ID ? ' is-recommended' : ''}`}
+                >
+                  <div className="comecar-card__top">
+                    <span className="comecar-card__name">{p.name}</span>
+                    {p.id === RECOMMENDED_ID && <span className="comecar-tag">Recomendado</span>}
+                  </div>
+                  <p className="comecar-card__trial">30 dias grátis</p>
+                  <p className="comecar-card__price">
+                    depois{' '}
+                    {monthly == null
+                      ? 'Sob consulta'
+                      : gated
+                        ? // PRIMARY AMOUNT RULE: the 12x's own parcela, never price_brl_annual / 12.
+                          `12x de ${formatBRL(p.pagarme_installment_cents ?? 0)} no cartão ou ${formatBRL(amount ?? 0)} à vista`
+                        : `${formatBRL(monthly)}/mês`}
+                  </p>
+                  <ul className="comecar-card__features">
+                    {planHighlights(p).map((f) => (
+                      <li key={f}>
+                        <Check size={14} aria-hidden="true" />
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    type="button"
+                    className="comecar-cta"
+                    onClick={() => handleStart(p.id)}
+                    disabled={busy !== null || unpriced}
+                  >
+                    {busy === p.id ? 'Aguarde…' : 'Começar teste'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          <footer className="comecar-foot">
+            <p>Pedimos o cartão agora, mas nada é cobrado nos primeiros 30 dias.</p>
+            <button type="button" className="comecar-link" onClick={() => void handleSkip()}>
+              Prefiro continuar no plano Free por enquanto
+            </button>
+            {footerHelp}
+          </footer>
+        </div>
+      )}
 
       <PagarmeCheckoutDialog
         open={!!pagarmeDialog}

@@ -67,8 +67,11 @@ export default function AcessoPage() {
   // The DB gates client_hub_tokens inserts on feature_hub_portal. Reading the flag up
   // front turns what used to be a raw "feature_disabled:…" error into an upgrade nudge.
   // hasFeature is true while entitlements load, so the paywall never flashes.
-  const { hasFeature } = useEntitlements();
-  const hubPortalEnabled = hasFeature('feature_hub_portal');
+  // feature_hub_portal is true on Free too, so the portal-link cap (0 on Free) is what
+  // really decides: `limits` is null while loading, which keeps the optimistic `true`.
+  const { hasFeature, limits } = useEntitlements();
+  const hubPortalEnabled =
+    hasFeature('feature_hub_portal') && !(limits && limits.max_hub_tokens === 0);
 
   // Tri-state: só `can('configuracoes','editar') === true` libera a busca. Enquanto a
   // membership não resolve ('unknown') as queries ficam desligadas — o viewer ainda pode

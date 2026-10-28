@@ -513,8 +513,8 @@ function CtaFinal() {
                 Pronto para sair <em>das planilhas?</em>
               </h2>
               <p>
-                Crie sua conta grátis e organize seus clientes ainda hoje. Sem cartão de crédito,
-                sem compromisso.
+                Teste qualquer plano pago por 30 dias e organize seus clientes ainda hoje. Cancele
+                quando quiser.
               </p>
             </>
           )}

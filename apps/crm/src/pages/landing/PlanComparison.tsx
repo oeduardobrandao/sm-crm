@@ -4,10 +4,10 @@ type CapacityKey =
   | 'max_instagram_accounts'
   | 'storage_quota_bytes'
   | 'max_workflow_templates'
-  | 'max_hub_tokens';
+  | 'max_hub_tokens'
+  | 'rate_report_generations_per_month';
 
 type FeatureKey =
-  | 'feature_analytics_reports'
   | 'feature_post_scheduling'
   | 'feature_leads'
   | 'feature_financial'
@@ -33,10 +33,16 @@ const CAPACITY_ROWS: ReadonlyArray<{ key: CapacityKey; label: string }> = [
   { key: 'storage_quota_bytes', label: 'Armazenamento' },
   { key: 'max_workflow_templates', label: 'Templates de fluxo' },
   { key: 'max_hub_tokens', label: 'Portais do cliente' },
+  { key: 'rate_report_generations_per_month', label: 'Relatórios por mês' },
 ];
 
+/** Limits where 0 means "not part of the plan" (rendered as a dash, not a literal 0). */
+const ZERO_IS_NOT_INCLUDED: ReadonlySet<CapacityKey> = new Set([
+  'max_hub_tokens',
+  'rate_report_generations_per_month',
+]);
+
 const FEATURE_ROWS: ReadonlyArray<{ key: FeatureKey; label: string }> = [
-  { key: 'feature_analytics_reports', label: 'Relatórios e analytics' },
   { key: 'feature_post_scheduling', label: 'Agendamento de posts' },
   { key: 'feature_leads', label: 'Leads' },
   { key: 'feature_financial', label: 'Financeiro' },
@@ -62,6 +68,7 @@ function formatStorage(bytes: number | null): string {
 
 function formatCapacity(plan: PublicPricingPlan, key: CapacityKey): string {
   if (key === 'storage_quota_bytes') return formatStorage(plan[key]);
+  if (plan[key] === 0 && ZERO_IS_NOT_INCLUDED.has(key)) return '—';
   return plan[key] == null ? 'Ilimitado' : String(plan[key]);
 }
 
