@@ -1,0 +1,84 @@
+{
+  "shared": {
+    "filesTitle": "Arquivos",
+    "folderFallback": "Pasta",
+    "filters": {
+      "todos": "Todos",
+      "imagens": "Imagens",
+      "videos": "Vídeos",
+      "docs": "Documentos"
+    },
+    "fileCount_zero": "{{count}} arquivos",
+    "fileCount_one": "{{count}} arquivo",
+    "fileCount_other": "{{count}} arquivos",
+    "folderCount_zero": "{{count}} pastas",
+    "folderCount_one": "{{count}} pasta",
+    "folderCount_other": "{{count}} pastas",
+    "selectedCount_zero": "{{count}} selecionados",
+    "selectedCount_one": "{{count}} selecionado",
+    "selectedCount_other": "{{count}} selecionados",
+    "used": "{{size}} usados",
+    "percentUsed": "{{pct}}% usado",
+    "move": "Mover",
+    "copy": "Copiar",
+    "delete": "Excluir",
+    "zip": "ZIP",
+    "storage": "Armazenamento",
+    "folders": "Pastas"
+  },
+  "mobileView": {
+    "folderFileCount_zero": "{{count}} arquivos",
+    "folderFileCount_one": "{{count}} arquivo",
+    "folderFileCount_other": "{{count}} arquivos",
+    "headerFileCount_zero": "<b>{{count}}</b> arquivos",
+    "headerFileCount_one": "<b>{{count}}</b> arquivo",
+    "headerFileCount_other": "<b>{{count}}</b> arquivos",
+    "currentPlan": "Plano atual",
+    "usage": "Uso",
+    "totalFiles": "{{total}} arquivos no total",
+    "totalFilesWithPct": "{{total}} arquivos no total · {{pct}}% usado",
+    "allClients": "Todos os clientes",
+    "recent": "Recentes",
+    "byClient": "Por cliente",
+    "noFiles": "Nenhum arquivo"
+  },
+  "phoneView": {
+    "sort": {
+      "name": "Nome",
+      "size": "Tamanho",
+      "date": "Data"
+    },
+    "selectItem": "Selecionar {{name}}",
+    "itemActions": "Ações de {{name}}",
+    "tapToSelect": "Toque nos itens para selecionar",
+    "select": "Selecionar",
+    "sortAndView": "Ordenar e visualizar",
+    "add": "Adicionar",
+    "fileType": "Tipo de arquivo",
+    "uploadFile": "Enviar arquivo",
+    "newFolder": "Nova pasta",
+    "sortBy": "Ordenar por {{field}}",
+    "viewGrid": "Ver em grade",
+    "viewList": "Ver em lista",
+    "backTo": "Voltar para {{name}}",
+    "loadingFiles": "Carregando arquivos…",
+    "emptyFolder": "Esta pasta está vazia",
+    "emptyFolderHint": "Toque em + para enviar arquivos ou criar uma pasta.",
+    "sortedBy": "Ordenado por {{field}}. Trocar",
+    "noFilesOfType": "Nenhum arquivo deste tipo aqui.",
+    "bulkActions_zero": "Ações para {{count}} itens",
+    "bulkActions_one": "Ações para {{count}} item",
+    "bulkActions_other": "Ações para {{count}} itens"
+  },
+  "folderPicker": {
+    "destination": "{{action}} para <b>{{place}}</b>",
+    "cannotPickCurrent": "Não é possível escolher esta pasta. Escolha outra.",
+    "cannotPickSource": "Não é possível escolher uma pasta que está sendo movida.",
+    "loadingFolders": "Carregando pastas…",
+    "noSubfolders": "Nenhuma subpasta.",
+    "systemFolder": "Pasta do sistema"
+  },
+  "nameSheet": {
+    "defaultLabel": "Nome"
+  }
+}

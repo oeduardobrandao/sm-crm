@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { BottomSheet } from '@/components/mobile/BottomSheet';
 import { FormRow } from '@/components/mobile/FormRow';
 import { GroupedList } from '@/components/mobile/GroupedList';
@@ -28,7 +29,7 @@ export function PhoneNameSheet({
   open,
   onOpenChange,
   title,
-  label = 'Nome',
+  label,
   initialValue = '',
   placeholder,
   confirmLabel,
@@ -36,6 +37,7 @@ export function PhoneNameSheet({
   busy = false,
   onConfirm,
 }: PhoneNameSheetProps) {
+  const { t } = useTranslation('filesPhone');
   const [value, setValue] = useState(initialValue);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -66,7 +68,7 @@ export function PhoneNameSheet({
       detents={['fit']}
       headerLeading={
         <button type="button" className="phone-text-button" onClick={() => onOpenChange(false)}>
-          Cancelar
+          {t('actions.cancel')}
         </button>
       }
       headerTrailing={
@@ -89,7 +91,7 @@ export function PhoneNameSheet({
       >
         <GroupedList aria-label={title}>
           <FormRow
-            label={label}
+            label={label ?? t('nameSheet.defaultLabel')}
             layout="stacked"
             input={{
               ref: inputRef,

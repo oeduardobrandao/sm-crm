@@ -1,0 +1,205 @@
+{
+  "shared": {
+    "autoBadge": "AUTO",
+    "dragGhost_zero": "Mover {{count}} itens",
+    "dragGhost_one": "Mover {{count}} item",
+    "dragGhost_other": "Mover {{count}} itens",
+    "kind": {
+      "image": "Imagem",
+      "video": "Vídeo",
+      "document": "Documento"
+    },
+    "allFiles": "Todos os Arquivos",
+    "dateTimeFormat": "dd 'de' MMM 'de' yyyy, HH:mm"
+  },
+  "fileGrid": {
+    "renameError": "Erro ao renomear",
+    "renameSuccess": "Nome atualizado",
+    "emptyFolder": "Nenhum arquivo nesta pasta",
+    "columns": {
+      "name": "Nome",
+      "type": "Tipo",
+      "size": "Tamanho",
+      "date": "Data",
+      "inUse": "Em uso"
+    },
+    "folderType": "Pasta",
+    "fileCount_zero": "{{count}} arquivos",
+    "fileCount_one": "{{count}} arquivo",
+    "fileCount_other": "{{count}} arquivos",
+    "inUseTitle": "Em uso em posts ou relatórios"
+  },
+  "fileInUse": {
+    "join": "{{head}} e {{last}}",
+    "untitled": "sem título",
+    "inPosts_one": "em {{count}} post",
+    "inPosts_other": "em {{count}} posts",
+    "inReport": "no relatório {{title}}",
+    "inReports": "nos relatórios {{titles}}",
+    "generic": "Este arquivo está em uso e não pode ser excluído.",
+    "withPlaces": "Este arquivo está em uso {{places}}. Remova de lá primeiro.",
+    "partsSeparator": " e "
+  },
+  "bulkActionBar": {
+    "move": "Mover",
+    "copy": "Copiar",
+    "zip": "ZIP",
+    "delete": "Excluir",
+    "clearSelection": "Limpar seleção"
+  },
+  "createFolderModal": {
+    "title": "Nova pasta",
+    "namePlaceholder": "Nome da pasta",
+    "create": "Criar"
+  },
+  "filterPopover": {
+    "trigger": "Filtros",
+    "typeHeading": "Tipo",
+    "types": {
+      "image": "Imagens",
+      "video": "Vídeos",
+      "document": "Documentos"
+    }
+  },
+  "folderInfoModal": {
+    "title": "Informações",
+    "source": {
+      "client": "Cliente",
+      "workflow": "Workflow",
+      "post": "Postagem"
+    },
+    "linkedTo": "Vinculado a: {{source}}",
+    "createdAt": "Criada em",
+    "totalSize": "Tamanho total",
+    "totalFiles": "Arquivos (total)",
+    "directSubfolders": "Subpastas diretas",
+    "directFiles": "Arquivos diretos",
+    "type": "Tipo",
+    "mime": "MIME",
+    "size": "Tamanho",
+    "dimensions": "Dimensões",
+    "duration": "Duração",
+    "uploadedAt": "Enviado em",
+    "inUse": "Em uso"
+  },
+  "folderPickerModal": {
+    "root": "Raiz (Todos os Arquivos)",
+    "moving": "Movendo…"
+  },
+  "folderTree": {
+    "collapse": "Recolher",
+    "expand": "Expandir",
+    "newSubfolder": "Nova subpasta",
+    "empty": "Nenhuma pasta",
+    "newFolder": "Nova pasta"
+  },
+  "fileUploader": {
+    "uploadSuccess": "\"{{name}}\" enviado com sucesso",
+    "uploadError": "Erro ao enviar \"{{name}}\"",
+    "dropHere": "Solte os arquivos aqui",
+    "status": {
+      "uploading": "Enviando...",
+      "complete": "Concluído",
+      "error": "Erro no envio"
+    }
+  },
+  "fileContextMenu": {
+    "renameSuccess": "Nome atualizado",
+    "renameError": "Erro ao renomear",
+    "folderDeleted": "Pasta excluída",
+    "fileDeleted": "Arquivo excluído",
+    "deleteError": "Erro ao excluir",
+    "renameFolderTitle": "Renomear pasta",
+    "renameFileTitle": "Renomear arquivo",
+    "deleteFolderTitle": "Excluir pasta?",
+    "deleteFileTitle": "Excluir arquivo?",
+    "folderNamePlaceholder": "Nome da pasta",
+    "fileNamePlaceholder": "Nome do arquivo",
+    "deleteFolderMessage": "A pasta \"{{name}}\" e todos os seus arquivos serão excluídos permanentemente. Esta ação não pode ser desfeita.",
+    "deleteFileMessage": "O arquivo \"{{name}}\" será excluído permanentemente. Esta ação não pode ser desfeita.",
+    "rename": "Renomear",
+    "info": "Informações",
+    "download": "Download",
+    "moveTo": "Mover para…",
+    "copyTo": "Copiar para…",
+    "systemFolderPhone": "Pasta do sistema: não pode ser excluída",
+    "systemFolder": "Pasta do sistema — não pode ser excluída",
+    "actionsLabel": "Ações de {{name}}",
+    "save": "Salvar",
+    "saving": "Salvando…",
+    "delete": "Excluir",
+    "deleting": "Excluindo…",
+    "renameDescription": "Informe o novo nome e salve para concluir."
+  },
+  "filePickerModal": {
+    "titleSingle": "Escolher imagem",
+    "titleMultiple": "Selecionar arquivos",
+    "descriptionSingle": "Escolha uma imagem.",
+    "descriptionMultiple": "Escolha um ou mais arquivos para vincular.",
+    "searchPlaceholder": "Buscar...",
+    "empty": "Nenhum arquivo encontrado",
+    "noImageSelected": "Nenhuma imagem selecionada",
+    "oneImageSelected": "1 imagem selecionada",
+    "noFileSelected": "Nenhum arquivo selecionado",
+    "filesSelected_one": "{{count}} arquivo selecionado",
+    "filesSelected_other": "{{count}} arquivos selecionados",
+    "useImage": "Usar imagem",
+    "link": "Vincular"
+  },
+  "page": {
+    "title": "Arquivos",
+    "createFolderError": "Erro ao criar pasta",
+    "createFolderSuccess": "Pasta criada",
+    "moveSuccess": "Itens movidos com sucesso",
+    "moveError": "Erro ao mover itens",
+    "deleteSuccess_zero": "{{count}} itens excluídos",
+    "deleteSuccess_one": "{{count}} item excluído",
+    "deleteSuccess_other": "{{count}} itens excluídos",
+    "deleteError": "Erro ao excluir itens",
+    "copyFileSuccess": "Arquivo copiado",
+    "copyQuotaExceeded": "Cópia excederia o armazenamento. Libere espaço ou faça upgrade.",
+    "copyFileError": "Erro ao copiar arquivo",
+    "copyPartial": "{{copied}} de {{total}} arquivos copiados",
+    "copyFolderSuccess_zero": "{{count}} arquivos copiados",
+    "copyFolderSuccess_one": "{{count}} arquivo copiado",
+    "copyFolderSuccess_other": "{{count}} arquivos copiados",
+    "copyLimitExceeded": "Pasta muito grande para copiar (máximo 200 arquivos).",
+    "copyFolderError": "Erro ao copiar pasta",
+    "zipLimitExceeded": "Pasta muito grande para download ZIP. Selecione menos arquivos.",
+    "zipError": "Erro ao preparar download",
+    "openFileError": "Erro ao abrir arquivo",
+    "deleteTitle": "Excluir itens?",
+    "deletePartialTitle": "Alguns itens não podem ser excluídos",
+    "deleteBlocked_zero": "{{count}} itens estão em uso e não podem ser excluídos.",
+    "deleteBlocked_one": "{{count}} item está em uso e não pode ser excluído.",
+    "deleteBlocked_other": "{{count}} itens estão em uso e não podem ser excluídos.",
+    "deleteOthers": "Deseja excluir os outros {{count}}?",
+    "deleteNoneAllowed": "Nenhum item pode ser excluído.",
+    "deleteConfirm_zero": "Tem certeza que deseja excluir {{count}} itens? Esta ação não pode ser desfeita.",
+    "deleteConfirm_one": "Tem certeza que deseja excluir {{count}} item? Esta ação não pode ser desfeita.",
+    "deleteConfirm_other": "Tem certeza que deseja excluir {{count}} itens? Esta ação não pode ser desfeita.",
+    "moveTitle_zero": "Mover {{count}} itens",
+    "moveTitle_one": "Mover {{count}} item",
+    "moveTitle_other": "Mover {{count}} itens",
+    "copyTitle_zero": "Copiar {{count}} itens",
+    "copyTitle_one": "Copiar {{count}} item",
+    "copyTitle_other": "Copiar {{count}} itens",
+    "move": "Mover",
+    "copy": "Copiar",
+    "delete": "Excluir",
+    "storage": "Armazenamento",
+    "storageUsed": "{{percent}}% usado",
+    "upload": "Enviar arquivo",
+    "newFolder": "Nova pasta",
+    "sortBy": "Ordenar por",
+    "sortOptions": {
+      "name": "Nome",
+      "size": "Tamanho",
+      "date": "Data"
+    },
+    "viewGrid": "Grade",
+    "viewList": "Lista",
+    "filterEmpty": "Nenhum arquivo corresponde ao filtro",
+    "clearFilters": "Limpar filtros"
+  }
+}

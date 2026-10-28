@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import {
   Folder,
   FileText,
@@ -46,9 +48,9 @@ function FileIcon({ kind, className }: { kind: FileRecord['kind']; className?: s
 }
 
 function kindLabel(kind: FileRecord['kind']): string {
-  if (kind === 'image') return 'Imagem';
-  if (kind === 'video') return 'Vídeo';
-  return 'Documento';
+  if (kind === 'image') return i18n.t('files:shared.kind.image');
+  if (kind === 'video') return i18n.t('files:shared.kind.video');
+  return i18n.t('files:shared.kind.document');
 }
 
 export function FilePickerModal({
@@ -61,6 +63,7 @@ export function FilePickerModal({
   selectionMode = 'multiple',
   initialFolderId = null,
 }: FilePickerModalProps) {
+  const { t } = useTranslation('files');
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
   // Keep the records themselves: the selection must survive folder navigation.
   const [selectedFiles, setSelectedFiles] = useState<Map<number, FileRecord>>(new Map());
@@ -143,12 +146,14 @@ export function FilePickerModal({
       >
         <DialogHeader className="px-5 pt-5 pb-3 border-b border-[var(--border-color)] flex-shrink-0">
           <DialogTitle className="text-base font-semibold text-[var(--text-main)]">
-            {selectionMode === 'single' ? 'Escolher imagem' : 'Selecionar arquivos'}
+            {selectionMode === 'single'
+              ? t('filePickerModal.titleSingle')
+              : t('filePickerModal.titleMultiple')}
           </DialogTitle>
           <DialogDescription className="sr-only">
             {selectionMode === 'single'
-              ? 'Escolha uma imagem.'
-              : 'Escolha um ou mais arquivos para vincular.'}
+              ? t('filePickerModal.descriptionSingle')
+              : t('filePickerModal.descriptionMultiple')}
           </DialogDescription>
         </DialogHeader>
 
@@ -160,7 +165,7 @@ export function FilePickerModal({
               onClick={() => setCurrentFolderId(null)}
               className="text-[var(--text-muted)] hover:text-[var(--primary-color)] transition-colors duration-150 font-medium whitespace-nowrap flex-shrink-0"
             >
-              Todos os Arquivos
+              {t('shared.allFiles')}
             </button>
             {breadcrumbs.map((crumb, index) => {
               const isLast = index === breadcrumbs.length - 1;
@@ -188,7 +193,7 @@ export function FilePickerModal({
           <div className="relative flex-shrink-0">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--text-muted)]" />
             <Input
-              placeholder="Buscar..."
+              placeholder={t('filePickerModal.searchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="h-7 pl-7 text-xs w-44"
@@ -220,7 +225,7 @@ export function FilePickerModal({
           ) : filteredFolders.length === 0 && files.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-[var(--text-muted)]">
               <Folder className="h-10 w-10 mb-2 opacity-30" />
-              <p className="text-sm">Nenhum arquivo encontrado</p>
+              <p className="text-sm">{t('filePickerModal.empty')}</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -239,7 +244,7 @@ export function FilePickerModal({
                       </span>
                       {folder.source === 'system' && (
                         <span className="text-[0.6rem] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-muted)] group-hover:bg-[var(--card-bg)]">
-                          AUTO
+                          {t('shared.autoBadge')}
                         </span>
                       )}
                       <ChevronRight className="h-3.5 w-3.5 text-[var(--text-muted)] opacity-50 flex-shrink-0" />
@@ -333,15 +338,15 @@ export function FilePickerModal({
           <span className="text-sm text-[var(--text-muted)]">
             {selectionMode === 'single'
               ? selectedCount === 0
-                ? 'Nenhuma imagem selecionada'
-                : '1 imagem selecionada'
+                ? t('filePickerModal.noImageSelected')
+                : t('filePickerModal.oneImageSelected')
               : selectedCount === 0
-                ? 'Nenhum arquivo selecionado'
-                : `${selectedCount} arquivo${selectedCount !== 1 ? 's' : ''} selecionado${selectedCount !== 1 ? 's' : ''}`}
+                ? t('filePickerModal.noFileSelected')
+                : t('filePickerModal.filesSelected', { count: selectedCount })}
           </span>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={onClose}>
-              Cancelar
+              {t('actions.cancel')}
             </Button>
             <Button
               size="sm"
@@ -349,7 +354,9 @@ export function FilePickerModal({
               onClick={handleVincular}
               className="bg-[var(--primary-color)] text-[#12151a] hover:opacity-90"
             >
-              {selectionMode === 'single' ? 'Usar imagem' : 'Vincular'}
+              {selectionMode === 'single'
+                ? t('filePickerModal.useImage')
+                : t('filePickerModal.link')}
             </Button>
           </div>
         </DialogFooter>

@@ -1,0 +1,84 @@
+{
+  "shared": {
+    "filesTitle": "Files",
+    "folderFallback": "Folder",
+    "filters": {
+      "todos": "All",
+      "imagens": "Images",
+      "videos": "Videos",
+      "docs": "Documents"
+    },
+    "fileCount_zero": "{{count}} files",
+    "fileCount_one": "{{count}} file",
+    "fileCount_other": "{{count}} files",
+    "folderCount_zero": "{{count}} folders",
+    "folderCount_one": "{{count}} folder",
+    "folderCount_other": "{{count}} folders",
+    "selectedCount_zero": "{{count}} selected",
+    "selectedCount_one": "{{count}} selected",
+    "selectedCount_other": "{{count}} selected",
+    "used": "{{size}} used",
+    "percentUsed": "{{pct}}% used",
+    "move": "Move",
+    "copy": "Copy",
+    "delete": "Delete",
+    "zip": "ZIP",
+    "storage": "Storage",
+    "folders": "Folders"
+  },
+  "mobileView": {
+    "folderFileCount_zero": "{{count}} files",
+    "folderFileCount_one": "{{count}} file",
+    "folderFileCount_other": "{{count}} files",
+    "headerFileCount_zero": "<b>{{count}}</b> files",
+    "headerFileCount_one": "<b>{{count}}</b> file",
+    "headerFileCount_other": "<b>{{count}}</b> files",
+    "currentPlan": "Current plan",
+    "usage": "Usage",
+    "totalFiles": "{{total}} files in total",
+    "totalFilesWithPct": "{{total}} files in total · {{pct}}% used",
+    "allClients": "All clients",
+    "recent": "Recent",
+    "byClient": "By client",
+    "noFiles": "No files"
+  },
+  "phoneView": {
+    "sort": {
+      "name": "Name",
+      "size": "Size",
+      "date": "Date"
+    },
+    "selectItem": "Select {{name}}",
+    "itemActions": "Actions for {{name}}",
+    "tapToSelect": "Tap items to select them",
+    "select": "Select",
+    "sortAndView": "Sort and view",
+    "add": "Add",
+    "fileType": "File type",
+    "uploadFile": "Upload file",
+    "newFolder": "New folder",
+    "sortBy": "Sort by {{field}}",
+    "viewGrid": "View as grid",
+    "viewList": "View as list",
+    "backTo": "Back to {{name}}",
+    "loadingFiles": "Loading files…",
+    "emptyFolder": "This folder is empty",
+    "emptyFolderHint": "Tap + to upload files or create a folder.",
+    "sortedBy": "Sorted by {{field}}. Change",
+    "noFilesOfType": "No files of this type here.",
+    "bulkActions_zero": "Actions for {{count}} items",
+    "bulkActions_one": "Actions for {{count}} item",
+    "bulkActions_other": "Actions for {{count}} items"
+  },
+  "folderPicker": {
+    "destination": "{{action}} to <b>{{place}}</b>",
+    "cannotPickCurrent": "You can't choose this folder. Pick another one.",
+    "cannotPickSource": "You can't choose a folder that is being moved.",
+    "loadingFolders": "Loading folders…",
+    "noSubfolders": "No subfolders.",
+    "systemFolder": "System folder"
+  },
+  "nameSheet": {
+    "defaultLabel": "Name"
+  }
+}

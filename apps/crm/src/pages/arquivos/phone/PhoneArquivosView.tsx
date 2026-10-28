@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import {
   ArrowRight,
   ArrowUpDown,
@@ -35,18 +37,19 @@ import './arquivosPhone.css';
 
 type TypeFilter = 'todos' | 'imagens' | 'videos' | 'docs';
 
-const TYPE_FILTERS: { id: TypeFilter; label: string; kind?: FileRecord['kind'] }[] = [
-  { id: 'todos', label: 'Todos' },
-  { id: 'imagens', label: 'Imagens', kind: 'image' },
-  { id: 'videos', label: 'Vídeos', kind: 'video' },
-  { id: 'docs', label: 'Documentos', kind: 'document' },
+const TYPE_FILTERS: { id: TypeFilter; kind?: FileRecord['kind'] }[] = [
+  { id: 'todos' },
+  { id: 'imagens', kind: 'image' },
+  { id: 'videos', kind: 'video' },
+  { id: 'docs', kind: 'document' },
 ];
 
-export const PHONE_SORT_LABELS: Record<SortBy, string> = {
-  name: 'Nome',
-  size: 'Tamanho',
-  date: 'Data',
-};
+const PHONE_SORT_KEYS: SortBy[] = ['name', 'size', 'date'];
+
+/** Sort field label ("Nome", "Tamanho", "Data"), resolved in the current language. */
+export function phoneSortLabel(sortBy: SortBy): string {
+  return i18n.t(`filesPhone:phoneView.sort.${sortBy}`);
+}
 
 function mimeExt(mime: string): string {
   const ext = mime.split('/').pop()?.toUpperCase() ?? '';
@@ -56,10 +59,6 @@ function mimeExt(mime: string): string {
   if (ext === 'VND.OPENXMLFORMATS-OFFICEDOCUMENT.SPREADSHEETML.SHEET') return 'XLSX';
   if (ext === 'VND.OPENXMLFORMATS-OFFICEDOCUMENT.WORDPROCESSINGML.DOCUMENT') return 'DOCX';
   return ext.slice(0, 4);
-}
-
-function plural(n: number, one: string, many: string) {
-  return `${n} ${n === 1 ? one : many}`;
 }
 
 function FileKindIcon({ kind }: { kind: FileRecord['kind'] }) {
@@ -78,7 +77,7 @@ function fileMeta(file: FileRecord) {
 }
 
 function folderMeta(folder: FolderType) {
-  return plural(folder.file_count ?? 0, 'arquivo', 'arquivos');
+  return i18n.t('filesPhone:shared.fileCount', { count: folder.file_count ?? 0 });
 }
 
 function SelectCheck({ checked }: { checked: boolean }) {
@@ -140,13 +139,14 @@ function RowBody({
   onActivate: () => void;
   triggerProps?: ContextMenuTriggerProps;
 }) {
+  const { t } = useTranslation('filesPhone');
   return (
     <div className="phone-arq-row__inner">
       <button
         type="button"
         className="phone-arq-row__main"
         aria-pressed={selecting ? selected : undefined}
-        aria-label={selecting ? `Selecionar ${name}` : undefined}
+        aria-label={selecting ? t('phoneView.selectItem', { name }) : undefined}
         onClick={onActivate}
       >
         {selecting && <SelectCheck checked={selected} />}
@@ -160,7 +160,11 @@ function RowBody({
         )}
       </button>
       {triggerProps && !selecting && (
-        <button {...triggerProps} className="phone-arq-row__more" aria-label={`Ações de ${name}`}>
+        <button
+          {...triggerProps}
+          className="phone-arq-row__more"
+          aria-label={t('phoneView.itemActions', { name })}
+        >
           <MoreHorizontal aria-hidden="true" />
         </button>
       )}
@@ -240,6 +244,7 @@ export function PhoneArquivosView({
   canEdit,
   isOwner,
 }: PhoneArquivosViewProps) {
+  const { t } = useTranslation('filesPhone');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('todos');
   const [selecting, setSelecting] = useState(false);
@@ -251,10 +256,10 @@ export function PhoneArquivosView({
 
   const inFolder = currentFolderId !== null;
   const currentName = inFolder
-    ? (breadcrumbs[breadcrumbs.length - 1]?.name ?? 'Pasta')
-    : 'Arquivos';
+    ? (breadcrumbs[breadcrumbs.length - 1]?.name ?? t('shared.folderFallback'))
+    : t('shared.filesTitle');
   const parentName =
-    breadcrumbs.length >= 2 ? breadcrumbs[breadcrumbs.length - 2].name : 'Arquivos';
+    breadcrumbs.length >= 2 ? breadcrumbs[breadcrumbs.length - 2].name : t('shared.filesTitle');
 
   // Leaving a folder ends selection (the page clears the selected ids there too).
   useEffect(() => {
@@ -303,17 +308,17 @@ export function PhoneArquivosView({
   };
 
   const countsLine = [
-    subfolders.length > 0 ? plural(subfolders.length, 'pasta', 'pastas') : null,
-    plural(files.length, 'arquivo', 'arquivos'),
-    storage ? `${formatStorageBytes(storage.used_bytes)} usados` : null,
+    subfolders.length > 0 ? t('shared.folderCount', { count: subfolders.length }) : null,
+    t('shared.fileCount', { count: files.length }),
+    storage ? t('shared.used', { size: formatStorageBytes(storage.used_bytes) }) : null,
   ]
     .filter(Boolean)
     .join(' · ');
   const subtitle = selecting ? (
     <strong aria-live="polite">
       {selectionCount > 0
-        ? plural(selectionCount, 'selecionado', 'selecionados')
-        : 'Toque nos itens para selecionar'}
+        ? t('shared.selectedCount', { count: selectionCount })
+        : t('phoneView.tapToSelect')}
     </strong>
   ) : isLoading ? null : (
     countsLine
@@ -321,18 +326,18 @@ export function PhoneArquivosView({
 
   const actions = selecting ? (
     <button type="button" className="phone-arq-pill phone-arq-pill--ink" onClick={stopSelecting}>
-      Cancelar
+      {t('actions.cancel')}
     </button>
   ) : (
     <>
       {!isEmpty && !isLoading && (
         <button type="button" className="phone-arq-pill" onClick={startSelecting}>
-          Selecionar
+          {t('phoneView.select')}
         </button>
       )}
       <PhoneIconButton
         ref={sortRef}
-        label="Ordenar e visualizar"
+        label={t('phoneView.sortAndView')}
         aria-haspopup="dialog"
         onClick={() => setSortOpen(true)}
       >
@@ -341,7 +346,7 @@ export function PhoneArquivosView({
       {canEdit && (
         <PhoneIconButton
           ref={addRef}
-          label="Adicionar"
+          label={t('phoneView.add')}
           variant="ink"
           aria-haspopup="dialog"
           onClick={() => setAddOpen(true)}
@@ -354,14 +359,18 @@ export function PhoneArquivosView({
 
   const chips =
     files.length > 0 && !isLoading ? (
-      <ChipRow aria-label="Tipo de arquivo" semantics="tablist" className="phone-arq__chips">
-        {TYPE_FILTERS.map((t) => (
+      <ChipRow
+        aria-label={t('phoneView.fileType')}
+        semantics="tablist"
+        className="phone-arq__chips"
+      >
+        {TYPE_FILTERS.map((filter) => (
           <Chip
-            key={t.id}
-            label={t.label}
-            count={counts[t.id]}
-            selected={typeFilter === t.id}
-            onClick={() => setTypeFilter(t.id)}
+            key={filter.id}
+            label={t(`shared.filters.${filter.id}`)}
+            count={counts[filter.id]}
+            selected={typeFilter === filter.id}
+            onClick={() => setTypeFilter(filter.id)}
           />
         ))}
       </ChipRow>
@@ -470,7 +479,7 @@ export function PhoneArquivosView({
             type="button"
             className="phone-arq-tile__main"
             aria-pressed={selecting ? selected : undefined}
-            aria-label={selecting ? `Selecionar ${file.name}` : file.name}
+            aria-label={selecting ? t('phoneView.selectItem', { name: file.name }) : file.name}
             onClick={() => (selecting ? onToggleSelect(file.id) : onFileAction('open', file))}
           >
             <span className="phone-arq-tile__thumb">
@@ -492,29 +501,33 @@ export function PhoneArquivosView({
 
   const addActions: ActionSheetAction[] = [
     {
-      label: 'Enviar arquivo',
+      label: t('phoneView.uploadFile'),
       icon: <Upload aria-hidden="true" />,
       // The file picker only opens from inside the tap on iOS.
       immediate: true,
       onSelect: onUploadClick,
     },
-    { label: 'Nova pasta', icon: <FolderPlus aria-hidden="true" />, onSelect: onCreateFolder },
+    {
+      label: t('phoneView.newFolder'),
+      icon: <FolderPlus aria-hidden="true" />,
+      onSelect: onCreateFolder,
+    },
   ];
   const check = <Check aria-hidden="true" />;
   const sortActions: ActionSheetAction[] = [
-    ...(Object.keys(PHONE_SORT_LABELS) as SortBy[]).map((key) => ({
-      label: `Ordenar por ${PHONE_SORT_LABELS[key].toLowerCase()}`,
+    ...PHONE_SORT_KEYS.map((key) => ({
+      label: t('phoneView.sortBy', { field: phoneSortLabel(key).toLowerCase() }),
       icon: sortBy === key ? check : <ArrowUpDown aria-hidden="true" />,
       onSelect: () => onSortChange(key),
     })),
     viewMode === 'list'
       ? {
-          label: 'Ver em grade',
+          label: t('phoneView.viewGrid'),
           icon: <LayoutGrid aria-hidden="true" />,
           onSelect: () => setViewMode('grid'),
         }
       : {
-          label: 'Ver em lista',
+          label: t('phoneView.viewList'),
           icon: <List aria-hidden="true" />,
           onSelect: () => setViewMode('list'),
         },
@@ -524,26 +537,30 @@ export function PhoneArquivosView({
     <div className="phone-arq">
       {inFolder ? (
         <>
-          <PhoneNavBar backLabel={`Voltar para ${parentName}`} onBack={onBack} trailing={actions} />
+          <PhoneNavBar
+            backLabel={t('phoneView.backTo', { name: parentName })}
+            onBack={onBack}
+            trailing={actions}
+          />
           <LargeTitleHeader title={currentName} subtitle={subtitle}>
             {chips}
           </LargeTitleHeader>
         </>
       ) : (
-        <PhonePageHeader title="Arquivos" subtitle={subtitle} actions={actions}>
+        <PhonePageHeader title={t('shared.filesTitle')} subtitle={subtitle} actions={actions}>
           {chips}
         </PhonePageHeader>
       )}
 
       {isLoading ? (
         <div className="phone-arq-empty" role="status">
-          Carregando arquivos…
+          {t('phoneView.loadingFiles')}
         </div>
       ) : isEmpty ? (
         <div className="phone-arq-empty">
           <FolderOpen aria-hidden="true" />
-          <strong>Esta pasta está vazia</strong>
-          {canEdit && <span>Toque em + para enviar arquivos ou criar uma pasta.</span>}
+          <strong>{t('phoneView.emptyFolder')}</strong>
+          {canEdit && <span>{t('phoneView.emptyFolderHint')}</span>}
         </div>
       ) : (
         <>
@@ -551,7 +568,7 @@ export function PhoneArquivosView({
             <section className="phone-arq-section" aria-labelledby="phone-arq-pastas">
               <div className="phone-arq-section__head">
                 <h2 id="phone-arq-pastas" className="phone-arq-section__title">
-                  Pastas
+                  {t('shared.folders')}
                 </h2>
               </div>
               <ul className="phone-kit phone-arq-list">{sortedFolders.map(folderRow)}</ul>
@@ -561,20 +578,22 @@ export function PhoneArquivosView({
             <section className="phone-arq-section" aria-labelledby="phone-arq-arquivos">
               <div className="phone-arq-section__head">
                 <h2 id="phone-arq-arquivos" className="phone-arq-section__title">
-                  Arquivos
+                  {t('shared.filesTitle')}
                 </h2>
                 <button
                   type="button"
                   className="phone-arq-sort"
-                  aria-label={`Ordenado por ${PHONE_SORT_LABELS[sortBy].toLowerCase()}. Trocar`}
+                  aria-label={t('phoneView.sortedBy', {
+                    field: phoneSortLabel(sortBy).toLowerCase(),
+                  })}
                   onClick={() => setSortOpen(true)}
                 >
                   <ArrowUpDown aria-hidden="true" />
-                  {PHONE_SORT_LABELS[sortBy]}
+                  {phoneSortLabel(sortBy)}
                 </button>
               </div>
               {sortedFiles.length === 0 ? (
-                <div className="phone-arq-empty">Nenhum arquivo deste tipo aqui.</div>
+                <div className="phone-arq-empty">{t('phoneView.noFilesOfType')}</div>
               ) : viewMode === 'list' ? (
                 <ul className="phone-kit phone-arq-list">{sortedFiles.map(fileRow)}</ul>
               ) : (
@@ -588,7 +607,7 @@ export function PhoneArquivosView({
       {storage && !selecting && (
         <div className="phone-arq-storage">
           <UsageMeter
-            label="Armazenamento"
+            label={t('shared.storage')}
             used={storage.used_bytes}
             limit={storage.quota_bytes > 0 ? storage.quota_bytes : null}
             format={formatStorageBytes}
@@ -596,7 +615,12 @@ export function PhoneArquivosView({
             showUpgradeCta={isOwner}
             subText={
               storage.quota_bytes > 0
-                ? `${Math.min(100, Math.round((storage.used_bytes / storage.quota_bytes) * 100))}% usado`
+                ? t('shared.percentUsed', {
+                    pct: Math.min(
+                      100,
+                      Math.round((storage.used_bytes / storage.quota_bytes) * 100),
+                    ),
+                  })
                 : undefined
             }
           />
@@ -608,7 +632,7 @@ export function PhoneArquivosView({
           <div
             className="phone-arq-bulk__group"
             role="toolbar"
-            aria-label={`Ações para ${plural(selectionCount, 'item', 'itens')}`}
+            aria-label={t('phoneView.bulkActions', { count: selectionCount })}
           >
             {canEdit && (
               <button
@@ -618,7 +642,7 @@ export function PhoneArquivosView({
                 onClick={runBulk(onBulkMove)}
               >
                 <ArrowRight aria-hidden="true" />
-                Mover
+                {t('shared.move')}
               </button>
             )}
             {canEdit && (
@@ -629,7 +653,7 @@ export function PhoneArquivosView({
                 onClick={runBulk(onBulkCopy)}
               >
                 <Copy aria-hidden="true" />
-                Copiar
+                {t('shared.copy')}
               </button>
             )}
             <button
@@ -639,7 +663,7 @@ export function PhoneArquivosView({
               onClick={onBulkZip}
             >
               <Download aria-hidden="true" />
-              ZIP
+              {t('shared.zip')}
             </button>
             {canEdit && (
               <button
@@ -649,7 +673,7 @@ export function PhoneArquivosView({
                 onClick={runBulk(onBulkDelete)}
               >
                 <Trash2 aria-hidden="true" />
-                Excluir
+                {t('shared.delete')}
               </button>
             )}
           </div>
@@ -659,7 +683,7 @@ export function PhoneArquivosView({
       <ActionSheet
         open={addOpen}
         onOpenChange={setAddOpen}
-        title="Adicionar"
+        title={t('phoneView.add')}
         hideTitle
         actions={addActions}
         returnFocusRef={addRef}
@@ -667,7 +691,7 @@ export function PhoneArquivosView({
       <ActionSheet
         open={sortOpen}
         onOpenChange={setSortOpen}
-        title="Ordenar e visualizar"
+        title={t('phoneView.sortAndView')}
         actions={sortActions}
         returnFocusRef={sortRef}
       />

@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import {
   ChevronRight,
   ChevronLeft,
@@ -90,6 +91,7 @@ function FolderCards({
   onToggleSelect: (id: number) => void;
   longPressTimer: { current: ReturnType<typeof setTimeout> | null };
 }) {
+  const { t } = useTranslation('filesPhone');
   return (
     <div className="grid grid-cols-2 gap-2.5 px-3">
       {folders.map((f) => {
@@ -151,7 +153,7 @@ function FolderCards({
                 {f.name}
               </p>
               <p className="font-mono text-[10px] text-[var(--text-muted)] mt-0.5 font-semibold tracking-wide">
-                {f.file_count ?? 0} arquivos
+                {t('mobileView.folderFileCount', { count: f.file_count ?? 0 })}
               </p>
             </div>
           </button>
@@ -176,6 +178,7 @@ function FolderList({
   onToggleSelect: (id: number) => void;
   longPressTimer: { current: ReturnType<typeof setTimeout> | null };
 }) {
+  const { t } = useTranslation('filesPhone');
   return (
     <div
       className="mx-3 rounded-lg bg-[var(--card-bg)] border border-[var(--border-color)] overflow-hidden"
@@ -235,7 +238,7 @@ function FolderList({
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-[var(--text-main)] truncate">{f.name}</p>
               <p className="font-mono text-[11px] text-[var(--text-light)] mt-0.5">
-                {f.file_count ?? 0} arquivos
+                {t('mobileView.folderFileCount', { count: f.file_count ?? 0 })}
               </p>
             </div>
             <ChevronRight className="h-4 w-4 text-[var(--text-muted)] flex-shrink-0" />
@@ -247,6 +250,7 @@ function FolderList({
 }
 
 function StorageCard({ storage }: { storage: { used_bytes: number; quota_bytes: number } }) {
+  const { t } = useTranslation('filesPhone');
   const totalFiles = '--';
   const pct =
     storage.quota_bytes > 0 ? Math.round((storage.used_bytes / storage.quota_bytes) * 100) : 0;
@@ -254,7 +258,7 @@ function StorageCard({ storage }: { storage: { used_bytes: number; quota_bytes: 
   return (
     <div className="mx-3 mt-4">
       <p className="font-mono text-[11px] tracking-[.12em] text-[var(--text-muted)] font-semibold mb-2 px-1">
-        Armazenamento
+        {t('shared.storage')}
       </p>
       <div
         className="p-3.5 rounded-lg bg-[var(--card-bg)] border border-[var(--border-color)]"
@@ -262,7 +266,7 @@ function StorageCard({ storage }: { storage: { used_bytes: number; quota_bytes: 
       >
         <div className="flex justify-between items-baseline mb-2">
           <span className="text-sm font-semibold text-[var(--text-main)]">
-            {storage.quota_bytes > 0 ? 'Plano atual' : 'Uso'}
+            {storage.quota_bytes > 0 ? t('mobileView.currentPlan') : t('mobileView.usage')}
           </span>
           <span className="font-mono text-xs text-[var(--text-light)] font-semibold">
             {formatBytes(storage.used_bytes)}
@@ -273,7 +277,9 @@ function StorageCard({ storage }: { storage: { used_bytes: number; quota_bytes: 
           <MeterBar used={storage.used_bytes} limit={storage.quota_bytes} height={6} />
         )}
         <p className="text-xs text-[var(--text-muted)] mt-1.5">
-          {totalFiles} arquivos no total{storage.quota_bytes > 0 ? ` · ${pct}% usado` : ''}
+          {storage.quota_bytes > 0
+            ? t('mobileView.totalFilesWithPct', { total: totalFiles, pct })
+            : t('mobileView.totalFiles', { total: totalFiles })}
         </p>
       </div>
     </div>
@@ -486,12 +492,7 @@ function MobileFileList({
   );
 }
 
-const FILTER_OPTIONS: { id: FileFilter; label: string }[] = [
-  { id: 'todos', label: 'Todos' },
-  { id: 'imagens', label: 'Imagens' },
-  { id: 'videos', label: 'Vídeos' },
-  { id: 'docs', label: 'Documentos' },
-];
+const FILTER_OPTIONS: FileFilter[] = ['todos', 'imagens', 'videos', 'docs'];
 
 export function MobileArquivosView({
   breadcrumbs,
@@ -516,6 +517,7 @@ export function MobileArquivosView({
   isBusy,
   canEdit,
 }: MobileArquivosViewProps) {
+  const { t } = useTranslation('filesPhone');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [filter, setFilter] = useState<FileFilter>('todos');
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -524,7 +526,7 @@ export function MobileArquivosView({
   const isInsideFolder = currentFolderId !== null;
   const parentId = breadcrumbs.length >= 2 ? breadcrumbs[breadcrumbs.length - 2].id : null;
   const currentName =
-    breadcrumbs.length > 0 ? breadcrumbs[breadcrumbs.length - 1].name : 'Arquivos';
+    breadcrumbs.length > 0 ? breadcrumbs[breadcrumbs.length - 1].name : t('shared.filesTitle');
 
   const filteredFiles = useMemo(() => filterFiles(files, filter), [files, filter]);
 
@@ -557,7 +559,7 @@ export function MobileArquivosView({
                   onClick={() => onNavigate(null)}
                   className="text-[var(--text-light)] font-medium truncate"
                 >
-                  Arquivos
+                  {t('shared.filesTitle')}
                 </button>
                 <ChevronRight className="h-3 w-3 text-[var(--text-muted)] opacity-50 flex-shrink-0" />
                 <span className="text-[var(--text-main)] font-semibold truncate">
@@ -565,7 +567,9 @@ export function MobileArquivosView({
                 </span>
               </>
             ) : (
-              <span className="text-[var(--text-light)] font-medium pl-1">Todos os clientes</span>
+              <span className="text-[var(--text-light)] font-medium pl-1">
+                {t('mobileView.allClients')}
+              </span>
             )}
           </div>
           <div className="flex gap-1.5">
@@ -588,18 +592,21 @@ export function MobileArquivosView({
             className="text-[28px] font-extrabold text-[var(--text-main)] leading-tight tracking-tight"
             style={{ fontFamily: 'var(--font-heading, "Playfair Display", serif)' }}
           >
-            {isInsideFolder ? currentName : 'Arquivos'}
+            {isInsideFolder ? currentName : t('shared.filesTitle')}
           </h1>
           <div className="flex gap-3 text-xs text-[var(--text-light)] mt-1">
             <span>
-              <strong className="text-[var(--text-main)] font-mono">
-                {isInsideFolder ? files.length : totalFileCount}
-              </strong>{' '}
-              arquivos
+              <Trans
+                t={t}
+                i18nKey="mobileView.headerFileCount"
+                count={isInsideFolder ? files.length : totalFileCount}
+                values={{ count: isInsideFolder ? files.length : totalFileCount }}
+                components={{ b: <strong className="text-[var(--text-main)] font-mono" /> }}
+              />
             </span>
             <span className="text-[var(--text-muted)]">·</span>
             <span className="font-mono">
-              {storage ? formatBytes(storage.used_bytes) : '—'} usados
+              {t('shared.used', { size: storage ? formatBytes(storage.used_bytes) : '—' })}
             </span>
           </div>
         </div>
@@ -607,20 +614,20 @@ export function MobileArquivosView({
         {isInsideFolder && files.length > 0 && (
           <div className="flex gap-1.5 px-3.5 pt-2 pb-1 overflow-x-auto no-scrollbar">
             {FILTER_OPTIONS.map((opt) => {
-              const active = filter === opt.id;
+              const active = filter === opt;
               return (
                 <button
-                  key={opt.id}
-                  onClick={() => setFilter(opt.id)}
+                  key={opt}
+                  onClick={() => setFilter(opt)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap border transition-colors ${
                     active
                       ? 'bg-[var(--primary-color)] text-[#12151a] border-[var(--primary-color)] font-bold'
                       : 'bg-transparent text-[var(--text-light)] border-[var(--border-color)]'
                   }`}
                 >
-                  {opt.label}
+                  {t(`shared.filters.${opt}`)}
                   <span className="font-mono text-[10px] opacity-70 font-semibold">
-                    {fileCounts[opt.id]}
+                    {fileCounts[opt]}
                   </span>
                 </button>
               );
@@ -631,7 +638,7 @@ export function MobileArquivosView({
         {isInsideFolder && (
           <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border-color)]">
             <span className="font-mono text-[10px] tracking-[.12em] text-[var(--text-muted)] font-semibold">
-              Recentes
+              {t('mobileView.recent')}
             </span>
             <div className="flex gap-1">
               <button
@@ -655,7 +662,7 @@ export function MobileArquivosView({
         {isInSelectionMode && (
           <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--primary-color)] bg-[var(--surface-main)]">
             <span className="text-sm font-bold text-[var(--primary-color)]">
-              {selectionCount} selecionado{selectionCount !== 1 ? 's' : ''}
+              {t('shared.selectedCount', { count: selectionCount })}
             </span>
             <button onClick={onClearSelection} className="ml-auto text-[var(--text-muted)]">
               <X className="h-4 w-4" />
@@ -686,7 +693,7 @@ export function MobileArquivosView({
         ) : !isInsideFolder ? (
           <>
             <p className="font-mono text-[11px] tracking-[.12em] text-[var(--text-muted)] font-semibold mb-2 px-4">
-              Por cliente
+              {t('mobileView.byClient')}
             </p>
             <FolderCards
               folders={subfolders}
@@ -701,14 +708,14 @@ export function MobileArquivosView({
         ) : filteredFiles.length === 0 && subfolders.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-[var(--text-muted)]">
             <Folder className="h-10 w-10 mb-2 opacity-30" />
-            <p className="text-sm">Nenhum arquivo</p>
+            <p className="text-sm">{t('mobileView.noFiles')}</p>
           </div>
         ) : (
           <>
             {subfolders.length > 0 && (
               <div className="mb-3">
                 <p className="font-mono text-[11px] tracking-[.12em] text-[var(--text-muted)] font-semibold mb-2 px-4">
-                  Pastas
+                  {t('shared.folders')}
                 </p>
                 {viewMode === 'grid' ? (
                   <FolderCards
@@ -768,7 +775,7 @@ export function MobileArquivosView({
               disabled={isBusy}
               className="text-xs px-2.5 py-1 rounded-full bg-[var(--surface-hover)] disabled:opacity-50"
             >
-              Mover
+              {t('shared.move')}
             </button>
           )}
           <button
@@ -776,7 +783,7 @@ export function MobileArquivosView({
             disabled={isBusy}
             className="text-xs px-2.5 py-1 rounded-full bg-[var(--surface-hover)] disabled:opacity-50"
           >
-            ZIP
+            {t('shared.zip')}
           </button>
           {canEdit && (
             <button
@@ -784,7 +791,7 @@ export function MobileArquivosView({
               disabled={isBusy}
               className="text-xs px-2.5 py-1 rounded-full bg-[var(--surface-hover)] disabled:opacity-50"
             >
-              Copiar
+              {t('shared.copy')}
             </button>
           )}
           {canEdit && (
@@ -793,7 +800,7 @@ export function MobileArquivosView({
               disabled={isBusy}
               className="text-xs px-2.5 py-1 rounded-full bg-[rgba(245,90,66,0.15)] text-[var(--danger)] disabled:opacity-50"
             >
-              Excluir
+              {t('shared.delete')}
             </button>
           )}
           <button onClick={onClearSelection} className="text-[var(--text-muted)]">

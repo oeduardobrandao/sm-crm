@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Trans, useTranslation } from 'react-i18next';
 import { ChevronLeft, Folder, Home } from 'lucide-react';
 import { BottomSheet } from '@/components/mobile/BottomSheet';
 import { Cell, GroupedList } from '@/components/mobile/GroupedList';
@@ -26,7 +27,8 @@ interface Crumb {
   name: string;
 }
 
-const ROOT: Crumb = { id: null, name: 'Arquivos' };
+/** The root's name is resolved at render (crumbNameOf), so a language switch reaches it. */
+const ROOT: Crumb = { id: null, name: '' };
 
 /**
  * Phone face of FolderPickerModal (same rules, same callbacks): a sheet that drills into
@@ -44,6 +46,8 @@ export function PhoneFolderPickerSheet({
   sourceFolderIds,
   currentFolderId,
 }: PhoneFolderPickerSheetProps) {
+  const { t } = useTranslation('filesPhone');
+  const crumbNameOf = (crumb: Crumb) => (crumb.id === null ? t('shared.filesTitle') : crumb.name);
   const [path, setPath] = useState<Crumb[]>([ROOT]);
   useEffect(() => {
     if (open) setPath([ROOT]);
@@ -74,11 +78,11 @@ export function PhoneFolderPickerSheet({
             onClick={() => setPath((p) => p.slice(0, -1))}
           >
             <ChevronLeft aria-hidden="true" />
-            {parent.name}
+            {crumbNameOf(parent)}
           </button>
         ) : (
           <button type="button" className="phone-text-button" onClick={() => onOpenChange(false)}>
-            Cancelar
+            {t('actions.cancel')}
           </button>
         )
       }
@@ -97,31 +101,36 @@ export function PhoneFolderPickerSheet({
         <p className="phone-arq-picker__where" aria-live="polite">
           {location.id === null ? <Home aria-hidden="true" /> : <Folder aria-hidden="true" />}
           <span>
-            {confirmLabel} para <strong>{location.name}</strong>
+            <Trans
+              t={t}
+              i18nKey="folderPicker.destination"
+              values={{ action: confirmLabel, place: crumbNameOf(location) }}
+              components={{ b: <strong /> }}
+            />
           </span>
         </p>
         {!canPickHere && (
           <p className="phone-arq-picker__hint">
             {location.id === currentFolderId
-              ? 'Não é possível escolher esta pasta. Escolha outra.'
-              : 'Não é possível escolher uma pasta que está sendo movida.'}
+              ? t('folderPicker.cannotPickCurrent')
+              : t('folderPicker.cannotPickSource')}
           </p>
         )}
         {loadingChildren ? (
           <p className="phone-arq-picker__hint" role="status">
-            Carregando pastas…
+            {t('folderPicker.loadingFolders')}
           </p>
         ) : (children as FolderType[]).length === 0 ? (
-          <p className="phone-arq-picker__hint">Nenhuma subpasta.</p>
+          <p className="phone-arq-picker__hint">{t('folderPicker.noSubfolders')}</p>
         ) : (
-          <GroupedList header="Pastas">
+          <GroupedList header={t('shared.folders')}>
             {(children as FolderType[]).map((folder) => {
               const isSource = sourceFolderIds.includes(folder.id);
               return (
                 <Cell
                   key={folder.id}
                   label={folder.name}
-                  subtitle={folder.source === 'system' ? 'Pasta do sistema' : undefined}
+                  subtitle={folder.source === 'system' ? t('folderPicker.systemFolder') : undefined}
                   icon={<Folder aria-hidden="true" />}
                   chevron={!isSource}
                   disabled={isSource}
