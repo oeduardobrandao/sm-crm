@@ -1,6 +1,7 @@
 import type { BlockProps } from '../BlockRenderer';
-import type { KpiEntry, ReportKpiId } from '../types';
+import type { KpiEntry, ReportKpiId, TikTokKpiId } from '../types';
 import { KPI_LABELS_PT } from '../types';
+import { TIKTOK_KPI_LABELS_PT, TIKTOK_KPI_TOOLTIPS_PT } from '../platform';
 import { deltaPct, fmtCount, fmtPct, fmtPeriodStamp } from '../format';
 
 // Fonte única em _shared/report-docs/kpis.ts (o bloco de metas da IA usa o
@@ -26,15 +27,20 @@ function fmtValue(entry: KpiEntry): string {
   return entry.unit === 'pct' ? fmtPct(entry.value as number) : fmtCount(entry.value as number);
 }
 
-export function KpiCardBlock({ block, snapshot }: BlockProps) {
+export function KpiCardBlock({ block, snapshot, platform }: BlockProps) {
   const id = kpiIdFromBlockType(block.type);
   const entry = snapshot.kpis[id];
   if (!entry || entry.value === null) return null;
+  // Visão TikTok (tiktokBlockView): kpis é o registro TikTok, o id é um TikTokKpiId.
+  const label =
+    platform === 'tiktok' ? TIKTOK_KPI_LABELS_PT[id as unknown as TikTokKpiId] : KPI_LABELS[id];
+  const tooltip =
+    platform === 'tiktok' ? TIKTOK_KPI_TOOLTIPS_PT[id as unknown as TikTokKpiId] : KPI_TOOLTIPS[id];
 
   const delta = entry.prev !== null ? deltaPct(entry.value, entry.prev) : null;
   const periodStamp = fmtPeriodStamp(snapshot.period);
   return (
-    <div className="rb-kpi rb-card rb-card--pad" title={KPI_TOOLTIPS[id]}>
+    <div className="rb-kpi rb-card rb-card--pad" title={tooltip}>
       {periodStamp !== null ? (
         <p
           className="rb-kpi-period"
@@ -43,7 +49,7 @@ export function KpiCardBlock({ block, snapshot }: BlockProps) {
           {periodStamp}
         </p>
       ) : null}
-      <p style={{ margin: 0, fontSize: '0.78rem', opacity: 0.7 }}>{KPI_LABELS[id]}</p>
+      <p style={{ margin: 0, fontSize: '0.78rem', opacity: 0.7 }}>{label}</p>
       <p style={{ margin: '0.2rem 0 0', fontSize: '1.5rem', fontWeight: 700 }}>{fmtValue(entry)}</p>
       {delta !== null ? (
         <p

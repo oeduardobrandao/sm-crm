@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { BlockRenderer, SIZE_CLASS } from '../BlockRenderer';
+import { BLOCK_COMPONENTS, BlockRenderer, SIZE_CLASS } from '../BlockRenderer';
+import { BLOCK_TYPES } from '../types';
 import { makeSnapshotFixture } from '../fixtures';
 import type { ReportLayout } from '../types';
 
@@ -173,5 +174,88 @@ describe('BlockRenderer', () => {
     );
     const wrapper = container.querySelector('[data-block-id="c"]') as HTMLElement;
     expect(wrapper.className).toBe('rb-full');
+  });
+});
+
+describe('BlockRenderer: tipos TikTok', () => {
+  it("unknown type 'tiktok_future' renders nothing", () => {
+    const { container } = render(
+      <BlockRenderer
+        layout={{
+          version: 1,
+          blocks: [
+            { id: 'a', type: 'divider', size: 'full' },
+            { id: 'f', type: 'tiktok_future' as never, size: 'full' },
+          ],
+        }}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    expect(container.querySelector('[data-block-id="f"]')).toBeNull();
+    expect(container.querySelectorAll('[data-block-id]').length).toBe(1);
+  });
+
+  it('todo tipo tiktok_* do BLOCK_TYPES tem componente', () => {
+    for (const t of BLOCK_TYPES.filter((x) => x.startsWith('tiktok_'))) {
+      expect(BLOCK_COMPONENTS[t], t).toBeDefined();
+    }
+  });
+
+  it("cover kicker 'Instagram e TikTok' when layout mixes", () => {
+    render(
+      <BlockRenderer
+        layout={{
+          version: 1,
+          blocks: [
+            { id: 'c', type: 'cover', size: 'full' },
+            { id: 'k1', type: 'kpi_reach', size: 'third' },
+            { id: 't1', type: 'tiktok_kpi_views', size: 'third' },
+          ],
+        }}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    expect(screen.getByText('Relatório mensal · Instagram e TikTok')).toBeInTheDocument();
+    // Handle da primeira plataforma do layout (Instagram aqui).
+    expect(screen.getByText('@dra.exemplo · Dermatologia · São Paulo')).toBeInTheDocument();
+  });
+
+  it('cover de relatório só TikTok: kicker TikTok e handle do TikTok', () => {
+    render(
+      <BlockRenderer
+        layout={{
+          version: 1,
+          blocks: [
+            { id: 'c', type: 'cover', size: 'full' },
+            { id: 't1', type: 'tiktok_kpi_views', size: 'third' },
+          ],
+        }}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    expect(screen.getByText('Relatório mensal · TikTok')).toBeInTheDocument();
+    expect(screen.getByText('@seucliente · Dermatologia · São Paulo')).toBeInTheDocument();
+  });
+
+  it('relatório só TikTok (instagram_connected false): bloco Instagram omitido, TikTok renderiza', () => {
+    const { container } = render(
+      <BlockRenderer
+        layout={{
+          version: 1,
+          blocks: [
+            { id: 'k1', type: 'kpi_views', size: 'third' },
+            { id: 't1', type: 'tiktok_kpi_views', size: 'third' },
+          ],
+        }}
+        snapshot={makeSnapshotFixture({ instagram_connected: false })}
+        mode="view"
+      />,
+    );
+    expect((container.querySelector('[data-block-id="k1"]') as HTMLElement).innerHTML).toBe('');
+    expect(screen.queryByText('88.400')).not.toBeInTheDocument();
+    expect(screen.getByText('152.300')).toBeInTheDocument();
   });
 });

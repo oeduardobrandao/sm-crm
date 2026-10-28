@@ -27,6 +27,7 @@ import { ReportFonts } from '@mesaas/report-blocks/ReportFonts';
 import { resolveReportTheme } from '@mesaas/report-blocks/theme';
 import { WIDGET_CATALOG } from '@mesaas/report-blocks/catalog';
 import { blockHasData } from '@mesaas/report-blocks/data-presence';
+import { layoutPlatforms, type ReportPlatform } from '@mesaas/report-blocks/platform';
 import type {
   BlockSize,
   BlockType,
@@ -70,11 +71,14 @@ interface SortableCellProps {
   onConfigChange?: (id: string, patch: Record<string, unknown>) => void;
   imageContext?: ImageEditorContext;
   onSizeChange: (size: BlockSize) => void;
+  /** Plataformas do layout (capa: kicker e handle), calculadas uma vez no canvas. */
+  platforms: ReportPlatform[];
 }
 
 function SortableCell({
   block,
   snapshot,
+  platforms,
   highlighted,
   onResize,
   onRemove,
@@ -109,7 +113,12 @@ function SortableCell({
     isText && renderTextBlock ? (
       renderTextBlock(block)
     ) : block.type === 'cover' && onConfigChange ? (
-      <CoverEditor block={block} snapshot={snapshot} onConfigChange={onConfigChange} />
+      <CoverEditor
+        block={block}
+        snapshot={snapshot}
+        onConfigChange={onConfigChange}
+        layoutPlatforms={platforms}
+      />
     ) : imageEditing ? (
       <ImageBlockEditor
         block={block}
@@ -125,7 +134,7 @@ function SortableCell({
     ) : Component && !blockHasData(block, snapshot) ? (
       <NoDataPlaceholder type={block.type} />
     ) : Component ? (
-      <Component block={block} snapshot={snapshot} />
+      <Component block={block} snapshot={snapshot} layoutPlatforms={platforms} />
     ) : null;
 
   return (
@@ -222,6 +231,7 @@ export function EditorCanvas({
   );
   const [activeId, setActiveId] = useState<string | null>(null);
   const theme = resolveReportTheme(layout, snapshot);
+  const platforms = layoutPlatforms(layout);
 
   function handleDragStart(event: DragStartEvent) {
     setActiveId(String(event.active.id));
@@ -259,6 +269,7 @@ export function EditorCanvas({
               key={block.id}
               block={block}
               snapshot={snapshot}
+              platforms={platforms}
               highlighted={block.id === highlightId}
               onResize={(delta) => {
                 const next = resizeBlock(layout, block.id, delta);
@@ -281,7 +292,7 @@ export function EditorCanvas({
       <DragOverlay>
         {activeBlock && ActiveComponent && (
           <div className="rb-edit-overlay">
-            <ActiveComponent block={activeBlock} snapshot={snapshot} />
+            <ActiveComponent block={activeBlock} snapshot={snapshot} layoutPlatforms={platforms} />
           </div>
         )}
       </DragOverlay>

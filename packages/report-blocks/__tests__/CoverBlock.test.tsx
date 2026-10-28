@@ -150,4 +150,38 @@ describe('CoverBlock', () => {
     const { container } = render(<CoverBlock block={coverBlock()} snapshot={snap} />);
     expect(container.querySelector('img.rb-cover-splash')).toBeInTheDocument();
   });
+
+  it('layoutPlatforms: kicker e handle seguem as plataformas do layout', () => {
+    const { unmount } = render(
+      <CoverBlock
+        block={coverBlock()}
+        snapshot={makeSnapshotFixture()}
+        layoutPlatforms={['tiktok']}
+      />,
+    );
+    expect(screen.getByText('Relatório mensal · TikTok')).toBeInTheDocument();
+    expect(screen.getByText('@seucliente · Dermatologia · São Paulo')).toBeInTheDocument();
+    unmount();
+    render(
+      <CoverBlock
+        block={coverBlock()}
+        snapshot={makeSnapshotFixture()}
+        layoutPlatforms={['instagram', 'tiktok']}
+      />,
+    );
+    expect(screen.getByText('Relatório mensal · Instagram e TikTok')).toBeInTheDocument();
+    expect(screen.getByText('@dra.exemplo · Dermatologia · São Paulo')).toBeInTheDocument();
+  });
+
+  it('config.kicker explícito vence o derivado das plataformas', () => {
+    render(
+      <CoverBlock
+        block={coverBlock({ kicker: 'Relatório especial' })}
+        snapshot={makeSnapshotFixture()}
+        layoutPlatforms={['instagram', 'tiktok']}
+      />,
+    );
+    expect(screen.getByText('Relatório especial')).toBeInTheDocument();
+    expect(screen.queryByText(/Instagram e TikTok/)).not.toBeInTheDocument();
+  });
 });

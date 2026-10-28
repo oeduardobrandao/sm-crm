@@ -174,6 +174,40 @@ describe('EditorCanvas', () => {
     expect(screen.queryByLabelText('Aumentar largura')).not.toBeInTheDocument();
   });
 
+  it('layout com bloco TikTok: capa deriva o kicker e o bloco TikTok lê snapshot.tiktok', () => {
+    const l: ReportLayout = {
+      version: 1,
+      blocks: [
+        { id: 'c', type: 'cover', size: 'full' },
+        { id: 't', type: 'tiktok_kpi_views', size: 'third' },
+      ],
+    };
+    render(
+      <EditorCanvas
+        layout={l}
+        snapshot={makeSnapshotFixture()}
+        onChange={() => {}}
+        onConfigChange={() => {}}
+      />,
+    );
+    expect(screen.getByRole('textbox', { name: 'Texto de destaque da capa' })).toHaveValue(
+      'Relatório mensal · TikTok',
+    );
+    expect(screen.getByText('152.300')).toBeInTheDocument();
+  });
+
+  it('bloco TikTok sem seção TikTok no snapshot: placeholder de sem dados', () => {
+    const { container } = render(
+      <EditorCanvas
+        layout={{ version: 1, blocks: [{ id: 't', type: 'tiktok_kpi_views', size: 'third' }] }}
+        snapshot={makeSnapshotFixture({ tiktok: null })}
+        onChange={() => {}}
+      />,
+    );
+    expect(container.querySelector('.rb-kpi')).toBeNull();
+    expect(container.querySelector('[data-block-id="t"]')).toHaveTextContent(/sem dados/i);
+  });
+
   it('bloco image: botão Ajustes da imagem na toolbar e área de soltar no corpo', () => {
     render(
       <QueryClientProvider client={new QueryClient()}>

@@ -86,6 +86,56 @@ export function makeSnapshotFixture(over: Partial<ReportDocSnapshot> = {}): Repo
       { day: 'Qua', hour: 19, avg_engagement: 260 },
     ],
     tags_performance: [{ tag: 'Educativo', avg_engagement: 4.2, avg_reach: 5100, count: 6 }],
+    // Seção TikTok (spec 2026-10-28 §B3). Contagens somadas (views, likes,
+    // comments, shares, likes_total) sempre com prev null (spec §A3).
+    tiktok: {
+      account: { handle: 'seucliente', display_name: 'Seu Cliente', avatar_url: null },
+      kpis: {
+        followers_total: { value: 8120, unit: 'count', prev: 7840 },
+        followers_gained: { value: 280, unit: 'count', prev: 190 },
+        views: { value: 152300, unit: 'count', prev: null },
+        engagement_rate: { value: 6.8, unit: 'pct', prev: 6.0 },
+        likes: { value: 9340, unit: 'count', prev: null },
+        comments: { value: 418, unit: 'count', prev: null },
+        shares: { value: 597, unit: 'count', prev: null },
+        posts_count: { value: 9, unit: 'count', prev: 7 },
+        likes_total: { value: 48900, unit: 'count', prev: null },
+      },
+      follower_trend: [
+        { date: '2026-07-01', count: 7840 },
+        { date: '2026-07-10', count: 7920 },
+        { date: '2026-07-20', count: 8030 },
+        { date: '2026-07-31', count: 8120 },
+      ],
+      best_times: [
+        { day: 'Ter', hour: 18, avg_engagement: 5.9 },
+        { day: 'Sex', hour: 20, avg_engagement: 7.4 },
+      ],
+      top_posts: [
+        {
+          video_id: '7391000000000000001',
+          views: 61200,
+          likes: 4870,
+          comments: 212,
+          shares: 388,
+          caption_preview: 'Rotina de skincare em 30 segundos',
+          date: '2026-07-15T21:00:00Z',
+          permalink: 'https://www.tiktok.com/@seucliente/video/7391000000000000001',
+          thumbnail_url: null,
+        },
+        {
+          video_id: '7391000000000000002',
+          views: 33800,
+          likes: 2410,
+          comments: 97,
+          shares: 141,
+          caption_preview: 'O que ninguém conta sobre o retinol',
+          date: '2026-07-08T19:00:00Z',
+          permalink: 'https://www.tiktok.com/@seucliente/video/7391000000000000002',
+          thumbnail_url: null,
+        },
+      ],
+    },
     ...over,
   };
 }

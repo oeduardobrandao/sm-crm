@@ -319,3 +319,139 @@ describe('FormatCardsBlock', () => {
     expect(screen.getByText(/alcance médio 9\.000/)).toBeInTheDocument();
   });
 });
+
+describe('blocos TikTok (snapshot.tiktok)', () => {
+  it('tiktok_kpi_views renders TikTok label and tooltip from snapshot.tiktok', () => {
+    const snap = makeSnapshotFixture();
+    const { container } = render(
+      <BlockRenderer
+        layout={l([{ id: 't1', type: 'tiktok_kpi_views', size: 'third' }])}
+        snapshot={snap}
+        mode="view"
+      />,
+    );
+    expect(screen.getByText('Visualizações')).toBeInTheDocument();
+    // Valor do TikTok, não o kpis.views do Instagram (88.400).
+    expect(screen.getByText('152.300')).toBeInTheDocument();
+    expect(screen.queryByText('88.400')).not.toBeInTheDocument();
+    const card = container.querySelector('.rb-kpi') as HTMLElement;
+    expect(card.title).toBe(
+      'Total atual dos vídeos publicados no mês, não as visualizações recebidas no mês.',
+    );
+    // Contagem somada: prev null, nada de delta nem "Anterior" (nunca "0%").
+    expect(container.querySelector('.rb-kpi-delta')).toBeNull();
+    expect(container.querySelector('.rb-kpi-prev')).toBeNull();
+    expect(screen.queryByText(/%$/)).not.toBeInTheDocument();
+  });
+
+  it('tiktok_kpi_engagement_rate: rótulo "por visualização" e delta contra o mês anterior', () => {
+    render(
+      <BlockRenderer
+        layout={l([{ id: 't1', type: 'tiktok_kpi_engagement_rate', size: 'third' }])}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    expect(screen.getByText('Engajamento por visualização')).toBeInTheDocument();
+    expect(screen.getByText('6,8%')).toBeInTheDocument();
+    expect(screen.getByText('+13,3%')).toBeInTheDocument(); // (6.8-6)/6
+  });
+
+  it('tiktok_kpi_likes_total: id só do TikTok renderiza do registro TikTok', () => {
+    render(
+      <BlockRenderer
+        layout={l([{ id: 't1', type: 'tiktok_kpi_likes_total', size: 'third' }])}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    expect(screen.getByText('Curtidas totais do perfil')).toBeInTheDocument();
+    expect(screen.getByText('48.900')).toBeInTheDocument();
+  });
+
+  it('tiktok_kpi_views renders nothing when snapshot.tiktok is absent', () => {
+    for (const tiktok of [undefined, null]) {
+      const { container, unmount } = render(
+        <BlockRenderer
+          layout={l([{ id: 't1', type: 'tiktok_kpi_views', size: 'third' }])}
+          snapshot={makeSnapshotFixture({ tiktok })}
+          mode="view"
+        />,
+      );
+      expect(container.querySelector('.rb-kpi')).toBeNull();
+      expect((container.querySelector('[data-block-id="t1"]') as HTMLElement).innerHTML).toBe('');
+      unmount();
+    }
+  });
+
+  it('kpi_views still reads the Instagram root', () => {
+    render(
+      <BlockRenderer
+        layout={l([{ id: 'k1', type: 'kpi_views', size: 'third' }])}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    expect(screen.getByText('88.400')).toBeInTheDocument();
+    expect(screen.queryByText('152.300')).not.toBeInTheDocument();
+  });
+
+  it('tiktok_chart_followers e tiktok_chart_best_times leem a seção TikTok', () => {
+    render(
+      <BlockRenderer
+        layout={l([
+          { id: 'c1', type: 'tiktok_chart_followers', size: 'full' },
+          { id: 'c2', type: 'tiktok_chart_best_times', size: 'full' },
+        ])}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    expect(screen.getByText('8.120')).toBeInTheDocument(); // último ponto TikTok
+    expect(screen.queryByText('12.450')).not.toBeInTheDocument(); // Instagram
+    expect(screen.getByText('1º Sex · 20h')).toBeInTheDocument();
+  });
+});
+
+describe('vídeos TikTok', () => {
+  it('tiktok_top_posts shows Comp. not Salv.', () => {
+    render(
+      <BlockRenderer
+        layout={l([{ id: 'p1', type: 'tiktok_top_posts', size: 'full', config: { count: 1 } }])}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    expect(screen.getByText('Vis. 61.200 · ♥ 4.870 · Com. 212 · Comp. 388')).toBeInTheDocument();
+    expect(screen.queryByText(/Salv\./)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Alc\./)).not.toBeInTheDocument();
+    expect(screen.getByText('1º · Vídeo')).toBeInTheDocument();
+    expect(screen.queryByText(/Reel/)).not.toBeInTheDocument();
+    expect(screen.getByText('Rotina de skincare em 30 segundos')).toBeInTheDocument();
+  });
+
+  it('top_posts do Instagram continua com Salv.', () => {
+    render(
+      <BlockRenderer
+        layout={l([{ id: 'p1', type: 'top_posts', size: 'full', config: { count: 1 } }])}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    expect(screen.getByText(/Salv\. 88/)).toBeInTheDocument();
+    expect(screen.getByText('1º · Reel')).toBeInTheDocument();
+  });
+
+  it('tiktok_post_list lista os vídeos com visualizações', () => {
+    render(
+      <BlockRenderer
+        layout={l([{ id: 'p1', type: 'tiktok_post_list', size: 'full' }])}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    expect(screen.getByText('Rotina de skincare em 30 segundos')).toBeInTheDocument();
+    expect(screen.getByText('61.200')).toBeInTheDocument();
+    expect(screen.queryByText('Mitos sobre protetor solar')).not.toBeInTheDocument();
+  });
+});

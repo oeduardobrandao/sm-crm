@@ -3,9 +3,18 @@
 // e muda (a razão de "Cliques no link" parecer inutilizável). View, Hub e
 // print seguem omitindo o bloco — contrato do KpiEntry e dos widgets.
 import type { ReportBlock, ReportDocSnapshot, ReportKpiId } from './types';
+import { TIKTOK_BLOCK_PREFIX } from './types';
+import { instagramAbsent, tiktokBlockView } from './platform';
 
 export function blockHasData(block: ReportBlock, snapshot: ReportDocSnapshot): boolean {
   const t = block.type;
+  if (t.startsWith(TIKTOK_BLOCK_PREFIX)) {
+    // tiktok_*: sem seção TikTok = sem dado; com ela, a mesma checagem do tipo
+    // base contra a visão (tiktok_kpi_likes -> kpis.likes da seção TikTok).
+    const view = tiktokBlockView(block, snapshot);
+    return view ? blockHasData(view.block, view.snapshot) : false;
+  }
+  if (instagramAbsent(t, snapshot)) return false;
   if (t.startsWith('kpi_')) {
     // Snapshot antigo pode nem ter a chave (ex.: views pré-2026-08).
     const entry = snapshot.kpis[t.replace(/^kpi_/, '') as ReportKpiId];

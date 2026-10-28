@@ -9,8 +9,11 @@ describe('AddWidgetDrawer', () => {
     for (const cat of WIDGET_CATEGORIES) {
       expect(screen.getByRole('heading', { name: cat })).toBeInTheDocument();
     }
+    // Rótulos se repetem entre plataformas ("Novos seguidores" do Instagram e
+    // do TikTok): cada rótulo aparece tantas vezes quantas entradas o usam.
     for (const w of WIDGET_CATALOG) {
-      expect(screen.getByRole('button', { name: w.label })).toBeInTheDocument();
+      const sameLabel = WIDGET_CATALOG.filter((x) => x.label === w.label).length;
+      expect(screen.getAllByRole('button', { name: w.label })).toHaveLength(sameLabel);
     }
   });
 

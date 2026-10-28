@@ -21,11 +21,31 @@ import { TopPostsBlock } from './blocks/TopPostsBlock';
 import { PostListBlock } from './blocks/PostListBlock';
 import { TagsTableBlock } from './blocks/TagsTableBlock';
 import { ImageBlock } from './blocks/ImageBlock';
+import { instagramAbsent, layoutPlatforms, tiktokBlockView, type ReportPlatform } from './platform';
 
 export interface BlockProps {
   block: ReportBlock;
   snapshot: ReportDocSnapshot;
+  /** 'tiktok' quando o bloco é um tiktok_* renderizado pela visão de
+   * snapshot.tiktok (ver withTikTok). Ausente = Instagram/neutro. */
+  platform?: ReportPlatform;
+  /** Plataformas do layout (layoutPlatforms), calculadas uma vez pelo
+   * renderer; a capa deriva kicker e handle delas. Ausente = Instagram. */
+  layoutPlatforms?: ReportPlatform[];
 }
+
+// Bloco TikTok = componente Instagram + visão do snapshot montada de
+// snapshot.tiktok. Criados no escopo do módulo para a identidade do componente
+// ser estável (EditorCanvas também os renderiza no DragOverlay).
+function withTikTok(Base: FC<BlockProps>): FC<BlockProps> {
+  function TikTokBlock(props: BlockProps) {
+    const v = tiktokBlockView(props.block, props.snapshot);
+    return v ? <Base {...props} block={v.block} snapshot={v.snapshot} platform="tiktok" /> : null;
+  }
+  TikTokBlock.displayName = `TikTok(${Base.displayName ?? Base.name})`;
+  return TikTokBlock;
+}
+const TikTokKpiCard = withTikTok(KpiCardBlock);
 
 export const BLOCK_COMPONENTS: Partial<Record<BlockType, FC<BlockProps>>> = {
   cover: CoverBlock,
@@ -56,6 +76,19 @@ export const BLOCK_COMPONENTS: Partial<Record<BlockType, FC<BlockProps>>> = {
   post_list: PostListBlock,
   tags_table: TagsTableBlock,
   image: ImageBlock,
+  tiktok_kpi_followers_total: TikTokKpiCard,
+  tiktok_kpi_followers_gained: TikTokKpiCard,
+  tiktok_kpi_views: TikTokKpiCard,
+  tiktok_kpi_engagement_rate: TikTokKpiCard,
+  tiktok_kpi_likes: TikTokKpiCard,
+  tiktok_kpi_comments: TikTokKpiCard,
+  tiktok_kpi_shares: TikTokKpiCard,
+  tiktok_kpi_posts_count: TikTokKpiCard,
+  tiktok_kpi_likes_total: TikTokKpiCard,
+  tiktok_chart_followers: withTikTok(FollowerChartBlock),
+  tiktok_chart_best_times: withTikTok(BestTimesBlock),
+  tiktok_top_posts: withTikTok(TopPostsBlock),
+  tiktok_post_list: withTikTok(PostListBlock),
 };
 
 export const SIZE_CLASS = { third: 'rb-third', half: 'rb-half', full: 'rb-full' } as const;
@@ -70,6 +103,7 @@ export function BlockRenderer({ layout, snapshot, mode }: BlockRendererProps) {
   // Tema/fontes/accent do documento: fonte única, compartilhada com o editor
   // (EditorCanvas) e o print. Modo herdado emite só accent (byte-idêntico).
   const theme = resolveReportTheme(layout, snapshot);
+  const platforms = layoutPlatforms(layout);
   return (
     <>
       <ReportFonts layout={layout} snapshot={snapshot} />
@@ -95,7 +129,9 @@ export function BlockRenderer({ layout, snapshot, mode }: BlockRendererProps) {
               data-block-id={block.id}
               className={block.type === 'cover' ? 'rb-full' : (SIZE_CLASS[block.size] ?? 'rb-full')}
             >
-              <Component block={block} snapshot={snapshot} />
+              {instagramAbsent(block.type, snapshot) ? null : (
+                <Component block={block} snapshot={snapshot} layoutPlatforms={platforms} />
+              )}
             </div>
           );
         })}
