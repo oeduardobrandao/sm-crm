@@ -113,7 +113,13 @@ function formatNumber(n: number) {
   return n.toLocaleString('pt-BR');
 }
 
-function BenchmarkChart({ accounts }: { accounts: PortfolioAccount[] }) {
+/** Plain data on purpose: the TikTok overview feeds it the same two fields. */
+export interface BenchmarkEntry {
+  client_name: string;
+  engagement_rate_avg: number;
+}
+
+export function BenchmarkChart({ accounts }: { accounts: BenchmarkEntry[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -176,7 +182,17 @@ function BenchmarkChart({ accounts }: { accounts: PortfolioAccount[] }) {
   );
 }
 
-function AIPortfolioSection({ accounts }: { accounts: PortfolioAccount[] }) {
+/** What a portfolio AI loader resolves to; the TikTok overview passes its own. */
+export type PortfolioAILoader = () => Promise<{ analysis: any; generatedAt: string } | null>;
+
+export function AIPortfolioSection({
+  accounts,
+  loader = getPortfolioAIAnalysis,
+}: {
+  accounts: readonly unknown[];
+  /** Defaults to the Instagram portfolio analysis. */
+  loader?: PortfolioAILoader;
+}) {
   const [loading, setLoading] = useState(false);
   const [analysis, setAnalysis] = useState<any>(null);
   const [error, setError] = useState('');
@@ -185,7 +201,7 @@ function AIPortfolioSection({ accounts }: { accounts: PortfolioAccount[] }) {
     setLoading(true);
     setError('');
     try {
-      const result = await getPortfolioAIAnalysis();
+      const result = await loader();
       if (!result || result.analysis.error) {
         setError('Não foi possível gerar a análise. Tente novamente.');
         return;
@@ -2039,10 +2055,7 @@ export default function AnalyticsPage() {
                           {formatRate(
                             post.rates[
                               drawerOrderBy as
-                                | 'share_rate'
-                                | 'like_rate'
-                                | 'save_rate'
-                                | 'comment_rate'
+                                'share_rate' | 'like_rate' | 'save_rate' | 'comment_rate'
                             ],
                           )}
                         </strong>
@@ -2077,7 +2090,7 @@ export default function AnalyticsPage() {
   );
 }
 
-interface AnalyticsHighlight {
+export interface AnalyticsHighlight {
   key: string;
   label: string;
   icon: LucideIcon;
@@ -2090,11 +2103,17 @@ interface AnalyticsHighlight {
 }
 
 /** Vidro: the leader cards folded into one KPI cell, one row per leader. */
-function AnalyticsHighlights({ items }: { items: AnalyticsHighlight[] }) {
+export function AnalyticsHighlights({
+  items,
+  title = 'Destaques',
+}: {
+  items: AnalyticsHighlight[];
+  title?: string;
+}) {
   return (
     <div className="kpi-card analytics-highlights">
       <div className="kpi-card-head">
-        <span className="kpi-label">Destaques</span>
+        <span className="kpi-label">{title}</span>
       </div>
       <ul className="analytics-highlights__list">
         {items.map(({ key, label, icon: Icon, tone, name, short }) => (

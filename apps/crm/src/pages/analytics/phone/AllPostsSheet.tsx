@@ -32,10 +32,11 @@ export interface AllPostsFilters {
   onOrderBy: (value: string) => void;
   asc: boolean;
   onAsc: (asc: boolean) => void;
-  formatOptions: Option[];
+  /** Omit (with `format`/`onFormat`) for a platform with no format to filter by. */
+  formatOptions?: Option[];
   /** 'all' = every format. */
-  format: string;
-  onFormat: (value: string) => void;
+  format?: string;
+  onFormat?: (value: string) => void;
   /** Portfolio only: one client or 'all'. */
   clientOptions?: Option[];
   client?: string;
@@ -81,7 +82,7 @@ export function AllPostsSheet({
   const orderLabel =
     filters.orderOptions.find((o) => o.value === filters.orderBy)?.label ?? filters.orderBy;
   const active =
-    (filters.format !== 'all' ? 1 : 0) +
+    (filters.formatOptions && filters.format && filters.format !== 'all' ? 1 : 0) +
     (filters.client && filters.client !== 'all' ? 1 : 0) +
     (filters.dateFrom || filters.dateTo ? 1 : 0);
 
@@ -190,7 +191,7 @@ function PostsFiltersSheet({
       : (options.find((o) => o.value === value)?.label ?? value);
 
   const clear = () => {
-    filters.onFormat('all');
+    filters.onFormat?.('all');
     filters.onClient?.('all');
     filters.onDateFrom('');
     filters.onDateTo('');
@@ -207,14 +208,15 @@ function PostsFiltersSheet({
         onPicked={() => setPage('main')}
       />
     );
-  } else if (page === 'format') {
+  } else if (page === 'format' && filters.formatOptions && filters.onFormat) {
+    const onFormat = filters.onFormat;
     body = (
       <CheckList<string>
         header="Formato"
         emptyOption={{ label: 'Todos os formatos' }}
         options={filters.formatOptions}
-        value={filters.format === 'all' ? null : filters.format}
-        onChange={(v) => filters.onFormat(v ?? 'all')}
+        value={!filters.format || filters.format === 'all' ? null : filters.format}
+        onChange={(v) => onFormat(v ?? 'all')}
         onPicked={() => setPage('main')}
       />
     );
@@ -256,12 +258,14 @@ function PostsFiltersSheet({
           </li>
         </GroupedList>
         <GroupedList header="Filtros">
-          <Cell
-            label="Formato"
-            value={labelOf(filters.formatOptions, filters.format, 'Todos')}
-            chevron
-            onClick={() => setPage('format')}
-          />
+          {filters.formatOptions && (
+            <Cell
+              label="Formato"
+              value={labelOf(filters.formatOptions, filters.format, 'Todos')}
+              chevron
+              onClick={() => setPage('format')}
+            />
+          )}
           {filters.clientOptions && filters.onClient && (
             <Cell
               label="Cliente"

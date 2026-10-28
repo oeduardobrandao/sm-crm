@@ -12,24 +12,31 @@ export interface RankedPostLike {
   media_type: string;
   posted_at: string;
   views: number;
-  engagement_rate: number;
+  /** Percent; null where the platform has no rate to show. */
+  engagement_rate: number | null;
 }
 
-const formatEng = (v: number) => `${v.toFixed(1).replace('.', ',')}%`;
+const formatEng = (v: number | null) => (v === null ? '—' : `${v.toFixed(1).replace('.', ',')}%`);
 
 /** One post of a "Melhores posts" / "Precisam de atenção" strip (FAnalytics mockup). */
 export function RankedPostCard({
   post,
   title,
   tone,
+  typeLabel,
+  openLabel = 'abrir no Instagram',
 }: {
   post: RankedPostLike;
   /** First line: the client (portfolio) or the caption (one account). */
   title: string;
   tone: 'best' | 'worst';
+  /** Chip over the cover; defaults to the Instagram format of `media_type`. */
+  typeLabel?: string;
+  /** Tail of the link's accessible name. */
+  openLabel?: string;
 }) {
   const [failed, setFailed] = useState(false);
-  const type = mediaTypeLabel(post.media_type);
+  const type = typeLabel ?? mediaTypeLabel(post.media_type);
   const date = format(new Date(post.posted_at), "d 'de' MMM", { locale: ptBR });
   return (
     <a
@@ -37,7 +44,7 @@ export function RankedPostCard({
       target="_blank"
       rel="noopener noreferrer"
       className="phone-an-post-card"
-      aria-label={`${type} de ${title}, ${fmtNumber(post.views)} visualizações, abrir no Instagram`}
+      aria-label={`${type} de ${title}, ${fmtNumber(post.views)} visualizações, ${openLabel}`}
     >
       <span className="phone-an-post-card__media">
         {post.thumbnail_url && !failed && (
@@ -76,6 +83,9 @@ export function RankedPostStrip<P extends RankedPostLike>({
   tone,
   titleOf,
   onSeeMore,
+  seeMoreLabel = 'Ver mais',
+  typeLabel,
+  openLabel,
 }: {
   title: string;
   help: string;
@@ -84,6 +94,9 @@ export function RankedPostStrip<P extends RankedPostLike>({
   titleOf: (post: P) => string;
   /** Omit when everything already fits in the strip. */
   onSeeMore?: () => void;
+  seeMoreLabel?: string;
+  typeLabel?: string;
+  openLabel?: string;
 }) {
   const headingId = useId();
   if (posts.length === 0) return null;
@@ -96,14 +109,21 @@ export function RankedPostStrip<P extends RankedPostLike>({
         trailing={
           onSeeMore ? (
             <button type="button" className="phone-an-link-button" onClick={onSeeMore}>
-              Ver mais
+              {seeMoreLabel}
             </button>
           ) : undefined
         }
       />
       <div className="phone-an-strip">
         {posts.map((post) => (
-          <RankedPostCard key={post.id} post={post} title={titleOf(post)} tone={tone} />
+          <RankedPostCard
+            key={post.id}
+            post={post}
+            title={titleOf(post)}
+            tone={tone}
+            typeLabel={typeLabel}
+            openLabel={openLabel}
+          />
         ))}
       </div>
       <p className="phone-an-footnote">{help}</p>
