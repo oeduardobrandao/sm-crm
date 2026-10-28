@@ -206,7 +206,7 @@ export function TarefaBoard({
           {columns.map((col) => (
             <div key={col.dropId} className="board-column">
               <div
-                className="board-column-header"
+                className={`board-column-header${col.accent ? ' board-column-header--accent' : ''}`}
                 style={
                   col.accent
                     ? { background: col.accent.bg, borderBottom: `1px solid ${col.accent.border}` }

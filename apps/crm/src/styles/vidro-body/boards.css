@@ -38,6 +38,13 @@
     align-items: center;
   }
 
+  /* Tarefas board's tinted headers (Em atraso, Hoje) paint an inline wash, so the header reads
+     as a pill: even padding, and a gap so it doesn't sit on the column body (padding 0 here). */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column-header--accent {
+    padding: 8px 10px;
+    margin-bottom: 8px;
+  }
+
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column-title {
     font-size: 13px;
     font-weight: 600;
