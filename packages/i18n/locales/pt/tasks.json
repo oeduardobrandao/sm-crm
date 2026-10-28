@@ -165,7 +165,8 @@
     "searchPlaceholder": "Buscar tarefa...",
     "clearFilters": "Limpar filtros",
     "filters": "Filtros",
-    "sheetDescription": "Filtre as tarefas"
+    "sheetDescription": "Filtre as tarefas",
+    "removeKpi": "Remover filtro {{label}}"
   },
   "views": {
     "chipsDueDates": "Prazos",

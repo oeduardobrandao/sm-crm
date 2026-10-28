@@ -165,7 +165,8 @@
     "searchPlaceholder": "Search tasks...",
     "clearFilters": "Clear filters",
     "filters": "Filters",
-    "sheetDescription": "Filter the tasks"
+    "sheetDescription": "Filter the tasks",
+    "removeKpi": "Remove {{label}} filter"
   },
   "views": {
     "chipsDueDates": "Due dates",

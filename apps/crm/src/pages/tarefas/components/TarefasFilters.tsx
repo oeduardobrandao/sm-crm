@@ -16,12 +16,13 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet';
-import { Check, ChevronDown, Search, SlidersHorizontal } from 'lucide-react';
+import { Check, ChevronDown, Search, SlidersHorizontal, X } from 'lucide-react';
 import type { Cliente, Membro, TarefaTag, TarefaStatus } from '../../../store';
 import {
   STATUS_LABELS,
   STATUS_ORDER,
   type TarefaFilterState,
+  type TarefaKpi,
   EMPTY_TAREFA_FILTERS,
 } from '../tarefasLogic';
 
@@ -31,6 +32,9 @@ interface TarefasFiltersProps {
   clientes: Cliente[];
   membros: Membro[];
   tags: TarefaTag[];
+  /** The KPI card currently filtering the views (null = none). Shown as a removable chip. */
+  kpi?: TarefaKpi | null;
+  onClearKpi?: () => void;
 }
 
 const STATUS_COLORS: Record<TarefaStatus, string> = {
@@ -159,6 +163,25 @@ function MultiSelectFilter<T extends string | number>({
   );
 }
 
+/** "Atrasadas ×": the active KPI card's filter, removable from the filters row. */
+function KpiChip({ kpi, onClear }: { kpi: TarefaKpi; onClear: () => void }) {
+  const { t } = useTranslation('tasks');
+  const label = t(`statsHeader.${kpi}`);
+  return (
+    <span className="inline-flex h-9 items-center gap-1 rounded-full border border-[var(--primary-color)] pl-3 pr-1 text-xs shadow-sm shrink-0">
+      <span className="truncate">{label}</span>
+      <button
+        type="button"
+        onClick={onClear}
+        aria-label={t('tarefasFilters.removeKpi', { label })}
+        className="inline-flex h-6 w-6 items-center justify-center rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--surface-hover)]"
+      >
+        <X className="h-3.5 w-3.5" aria-hidden="true" />
+      </button>
+    </span>
+  );
+}
+
 function FilterControls({
   filters,
   onChange,
@@ -226,6 +249,8 @@ export function TarefasFilters({
   clientes,
   membros,
   tags,
+  kpi = null,
+  onClearKpi,
 }: TarefasFiltersProps) {
   const { t } = useTranslation('tasks');
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -235,6 +260,13 @@ export function TarefasFilters({
   const sortedMembros = [...membros].sort((a, b) => a.nome.localeCompare(b.nome));
   const sortedTags = [...tags].sort((a, b) => a.nome.localeCompare(b.nome));
   const activeCount = countActiveFilters(filters);
+  const showClear = activeCount > 0 || kpi != null;
+  // Resets the dropdowns (search stays, as before) and the KPI card filter.
+  const clearAll = () => {
+    onChange({ ...EMPTY_TAREFA_FILTERS, filterSearch: filters.filterSearch });
+    onClearKpi?.();
+  };
+  const kpiChip = kpi != null && onClearKpi ? <KpiChip kpi={kpi} onClear={onClearKpi} /> : null;
 
   const sharedProps = { filters, onChange, activeClientes, sortedMembros, sortedTags };
 
@@ -253,14 +285,9 @@ export function TarefasFilters({
         </div>
         <div className="w-px h-6 bg-border shrink-0" />
         <FilterControls layout="inline" {...sharedProps} />
-        {activeCount > 0 && (
-          <Button
-            variant="ghost"
-            className="h-9 px-3 text-xs font-normal mb-0"
-            onClick={() =>
-              onChange({ ...EMPTY_TAREFA_FILTERS, filterSearch: filters.filterSearch })
-            }
-          >
+        {kpiChip}
+        {showClear && (
+          <Button variant="ghost" className="h-9 px-3 text-xs font-normal mb-0" onClick={clearAll}>
             {t('tarefasFilters.clearFilters')}
           </Button>
         )}
@@ -298,6 +325,7 @@ export function TarefasFilters({
             </span>
           )}
         </Button>
+        {kpiChip}
       </div>
 
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
@@ -309,14 +337,8 @@ export function TarefasFilters({
             </SheetDescription>
           </SheetHeader>
           <FilterControls layout="stacked" {...sharedProps} />
-          {activeCount > 0 && (
-            <Button
-              variant="ghost"
-              className="w-full mt-4 text-xs"
-              onClick={() =>
-                onChange({ ...EMPTY_TAREFA_FILTERS, filterSearch: filters.filterSearch })
-              }
-            >
+          {showClear && (
+            <Button variant="ghost" className="w-full mt-4 text-xs" onClick={clearAll}>
               {t('tarefasFilters.clearFilters')}
             </Button>
           )}

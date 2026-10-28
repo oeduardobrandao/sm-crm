@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { TarefaWithRelations } from '../../../store';
 import {
   applyTarefaFilters,
+  applyTarefaKpi,
   buildDropId,
   computeHeaderStats,
   dueBadge,
@@ -11,6 +12,8 @@ import {
   parseDateOnly,
   parseDropId,
   sortTarefas,
+  TAREFA_KPIS,
+  tarefaMatchesKpi,
   toDateOnlyString,
 } from '../tarefasLogic';
 
@@ -102,6 +105,52 @@ describe('computeHeaderStats', () => {
     const early = makeTarefa({ status: 'concluida', concluida_em: '2026-07-29T00:30:00' });
     const lateYesterday = makeTarefa({ status: 'concluida', concluida_em: '2026-07-28T23:30:00' });
     expect(computeHeaderStats([early, lateYesterday], now).concluidasHoje).toBe(1);
+  });
+});
+
+describe('KPI filters', () => {
+  // One task per interesting case, around NOW (Wed 2026-07-29 15:00 local).
+  const fixture = () => [
+    makeTarefa({ data_limite: '2026-07-27' }), // atrasada
+    makeTarefa({ data_limite: '2026-07-28', status: 'em_andamento' }), // atrasada
+    makeTarefa({ data_limite: '2026-07-29' }), // vence hoje
+    makeTarefa({ data_limite: '2026-07-30' }), // aberta, amanhã
+    makeTarefa({ data_limite: null }), // aberta sem prazo
+    makeTarefa({
+      status: 'concluida',
+      data_limite: '2026-07-20',
+      concluida_em: '2026-07-29T00:10:00',
+    }),
+    makeTarefa({
+      status: 'concluida',
+      data_limite: '2026-07-29',
+      concluida_em: '2026-07-29T14:00:00',
+    }),
+    makeTarefa({ status: 'concluida', concluida_em: '2026-07-28T23:50:00' }), // ontem
+    makeTarefa({ status: 'concluida', concluida_em: null }),
+  ];
+
+  it('every card shows exactly as many tasks as its number', () => {
+    const tarefas = fixture();
+    const stats = computeHeaderStats(tarefas, NOW);
+    for (const kpi of TAREFA_KPIS) {
+      expect(applyTarefaKpi(tarefas, kpi, NOW)).toHaveLength(stats[kpi]);
+      expect(tarefas.filter((t) => tarefaMatchesKpi(t, kpi, NOW))).toHaveLength(stats[kpi]);
+    }
+    expect(stats).toEqual({ abertas: 5, vencemHoje: 1, atrasadas: 2, concluidasHoje: 2 });
+  });
+
+  it('picks the right tasks per bucket', () => {
+    const [late1, late2, today, , , doneEarly, doneToday] = fixture();
+    const all = [late1, late2, today, doneEarly, doneToday];
+    expect(applyTarefaKpi(all, 'atrasadas', NOW)).toEqual([late1, late2]);
+    expect(applyTarefaKpi(all, 'vencemHoje', NOW)).toEqual([today]);
+    expect(applyTarefaKpi(all, 'concluidasHoje', NOW)).toEqual([doneEarly, doneToday]);
+  });
+
+  it('a null KPI leaves the list untouched', () => {
+    const tarefas = fixture();
+    expect(applyTarefaKpi(tarefas, null, NOW)).toBe(tarefas);
   });
 });
 

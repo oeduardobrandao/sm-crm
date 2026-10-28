@@ -38,6 +38,7 @@ vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 import TarefasPage from '../TarefasPage';
 import type { TarefaWithRelations } from '../../../store';
+import { toDateOnlyString } from '../tarefasLogic';
 
 let seq = 0;
 function makeTarefa(overrides: Partial<TarefaWithRelations> = {}): TarefaWithRelations {
@@ -230,5 +231,111 @@ describe('TarefasPage', () => {
 
     expect(screen.getByText('Bruno')).toBeInTheDocument();
     expect(screen.getByText('Carla')).toBeInTheDocument();
+  });
+  describe('KPI cards as filters', () => {
+    const today = () => toDateOnlyString(new Date());
+    const yesterday = () => {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      return toDateOnlyString(d);
+    };
+    const card = (name: RegExp) => screen.getByRole('button', { name });
+
+    it('a card click narrows the list, marks the card and shows a removable chip', async () => {
+      const ue = userEvent.setup();
+      getTarefasMock.mockResolvedValue([
+        makeTarefa({ titulo: 'Atrasada', data_limite: yesterday() }),
+        makeTarefa({ titulo: 'Para hoje', data_limite: today() }),
+        makeTarefa({ titulo: 'Sem prazo' }),
+      ]);
+      renderPage();
+      await screen.findByText('Atrasada');
+      expect(card(/^Atrasadas/)).toHaveAttribute('aria-pressed', 'false');
+
+      await ue.click(card(/^Atrasadas/));
+
+      expect(card(/^Atrasadas/)).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByText('Atrasada')).toBeInTheDocument();
+      expect(screen.queryByText('Para hoje')).not.toBeInTheDocument();
+      expect(screen.queryByText('Sem prazo')).not.toBeInTheDocument();
+      // The cards keep counting the unfiltered set.
+      expect(card(/^Abertas/)).toHaveTextContent('3');
+      // jsdom renders both the desktop and the 768-900px filter rows.
+      expect(
+        screen.getAllByRole('button', { name: 'Remover filtro Atrasadas' }).length,
+      ).toBeGreaterThan(0);
+
+      // Same card again: off.
+      await ue.click(card(/^Atrasadas/));
+      expect(card(/^Atrasadas/)).toHaveAttribute('aria-pressed', 'false');
+      expect(screen.getByText('Para hoje')).toBeInTheDocument();
+      expect(screen.getByText('Sem prazo')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Remover filtro Atrasadas' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('switches between cards, one at a time', async () => {
+      const ue = userEvent.setup();
+      getTarefasMock.mockResolvedValue([
+        makeTarefa({ titulo: 'Atrasada', data_limite: yesterday() }),
+        makeTarefa({ titulo: 'Para hoje', data_limite: today() }),
+      ]);
+      renderPage();
+      await screen.findByText('Atrasada');
+
+      await ue.click(card(/^Atrasadas/));
+      await ue.click(card(/^Vencem hoje/));
+
+      expect(card(/^Atrasadas/)).toHaveAttribute('aria-pressed', 'false');
+      expect(card(/^Vencem hoje/)).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByText('Para hoje')).toBeInTheDocument();
+      expect(screen.queryByText('Atrasada')).not.toBeInTheDocument();
+    });
+
+    it('the chip and "Limpar filtros" both clear the KPI', async () => {
+      const ue = userEvent.setup();
+      getTarefasMock.mockResolvedValue([
+        makeTarefa({ titulo: 'Atrasada', data_limite: yesterday() }),
+        makeTarefa({ titulo: 'Para hoje', data_limite: today() }),
+      ]);
+      renderPage();
+      await screen.findByText('Atrasada');
+
+      await ue.click(card(/^Atrasadas/));
+      await ue.click(screen.getAllByRole('button', { name: 'Remover filtro Atrasadas' })[0]);
+      expect(card(/^Atrasadas/)).toHaveAttribute('aria-pressed', 'false');
+      expect(screen.getByText('Para hoje')).toBeInTheDocument();
+
+      await ue.click(card(/^Atrasadas/));
+      await ue.click(screen.getByRole('button', { name: 'Limpar filtros' }));
+      expect(card(/^Atrasadas/)).toHaveAttribute('aria-pressed', 'false');
+      expect(screen.getByText('Para hoje')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Limpar filtros' })).not.toBeInTheDocument();
+    });
+
+    it('"Concluídas hoje" opens the Concluídas group', async () => {
+      const ue = userEvent.setup();
+      getTarefasMock.mockResolvedValue([
+        makeTarefa({ titulo: 'Aberta' }),
+        makeTarefa({
+          titulo: 'Feita hoje',
+          status: 'concluida',
+          concluida_em: new Date().toISOString(),
+        }),
+      ]);
+      renderPage();
+      await screen.findByText('Aberta');
+      // Collapsed by default.
+      expect(screen.queryByText('Feita hoje')).not.toBeInTheDocument();
+
+      await ue.click(card(/^Concluídas hoje/));
+
+      expect(screen.getByText('Feita hoje')).toBeInTheDocument();
+      expect(screen.queryByText('Aberta')).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('Nenhuma tarefa aberta. Crie uma nova ou ajuste os filtros.'),
+      ).not.toBeInTheDocument();
+    });
   });
 });

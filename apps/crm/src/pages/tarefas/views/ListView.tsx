@@ -15,6 +15,9 @@ interface ListViewProps {
   membros: Membro[];
   onTarefaClick: (tarefa: TarefaWithRelations) => void;
   onRefresh: () => void;
+  /** Opens the "Concluídas" group (the "Concluídas hoje" KPI filter would otherwise
+   * leave the list looking empty). It still collapses on click. */
+  expandConcluidas?: boolean;
 }
 
 function TarefaRow({
@@ -138,10 +141,22 @@ function TarefaRow({
 }
 
 /** List grouped by due date buckets, with a collapsed "Concluídas" section. */
-export function ListView({ tarefas, membros, onTarefaClick, onRefresh }: ListViewProps) {
+export function ListView({
+  tarefas,
+  membros,
+  onTarefaClick,
+  onRefresh,
+  expandConcluidas = false,
+}: ListViewProps) {
   const { t: tr } = useTranslation('tasks');
   const isDesktop = useIsDesktop(768);
-  const [showConcluidas, setShowConcluidas] = useState(false);
+  const [showConcluidas, setShowConcluidas] = useState(expandConcluidas);
+  // Re-open when the prop turns on while mounted (adjust-state-during-render pattern).
+  const [prevExpand, setPrevExpand] = useState(expandConcluidas);
+  if (expandConcluidas !== prevExpand) {
+    setPrevExpand(expandConcluidas);
+    if (expandConcluidas) setShowConcluidas(true);
+  }
   if (!isDesktop) {
     return (
       <TarefasPhoneList
@@ -171,7 +186,7 @@ export function ListView({ tarefas, membros, onTarefaClick, onRefresh }: ListVie
 
   return (
     <div className="animate-up" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      {totalOpen === 0 && (
+      {totalOpen === 0 && !(expandConcluidas && concluidas.length > 0) && (
         <div
           className="card"
           style={{

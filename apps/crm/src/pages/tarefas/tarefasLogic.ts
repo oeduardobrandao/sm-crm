@@ -220,25 +220,56 @@ export interface TarefasHeaderStats {
   concluidasHoje: number;
 }
 
-export function computeHeaderStats(tarefas: TarefaWithRelations[], now: Date): TarefasHeaderStats {
-  const today = startOfLocalDay(now);
-  let abertas = 0;
-  let vencemHoje = 0;
-  let atrasadas = 0;
-  let concluidasHoje = 0;
-  for (const t of tarefas) {
-    if (t.status === 'concluida') {
-      if (t.concluida_em && isSameLocalDay(new Date(t.concluida_em), now)) concluidasHoje++;
-      continue;
-    }
-    abertas++;
-    if (t.data_limite) {
-      const due = parseDateOnly(t.data_limite);
-      if (due < today) atrasadas++;
-      else if (isSameLocalDay(due, today)) vencemHoje++;
-    }
+/** A header KPI card; doubles as the page's one-at-a-time KPI filter. */
+export type TarefaKpi = keyof TarefasHeaderStats;
+
+export const TAREFA_KPIS: TarefaKpi[] = ['abertas', 'vencemHoje', 'atrasadas', 'concluidasHoje'];
+
+/**
+ * Which KPI buckets a task falls in. The single source for both the card counts
+ * (`computeHeaderStats`) and the card filters (`applyTarefaKpi`), so a card's number
+ * always equals the number of tasks it shows.
+ */
+function kpiFlags(t: TarefaWithRelations, now: Date): Record<TarefaKpi, boolean> {
+  if (t.status === 'concluida') {
+    return {
+      abertas: false,
+      vencemHoje: false,
+      atrasadas: false,
+      concluidasHoje: !!t.concluida_em && isSameLocalDay(new Date(t.concluida_em), now),
+    };
   }
-  return { abertas, vencemHoje, atrasadas, concluidasHoje };
+  const today = startOfLocalDay(now);
+  const due = t.data_limite ? parseDateOnly(t.data_limite) : null;
+  return {
+    abertas: true,
+    vencemHoje: due != null && isSameLocalDay(due, today),
+    atrasadas: due != null && due < today,
+    concluidasHoje: false,
+  };
+}
+
+export function tarefaMatchesKpi(t: TarefaWithRelations, kpi: TarefaKpi, now: Date): boolean {
+  return kpiFlags(t, now)[kpi];
+}
+
+/** Narrows to one KPI bucket; `null` returns the list untouched. */
+export function applyTarefaKpi(
+  tarefas: TarefaWithRelations[],
+  kpi: TarefaKpi | null,
+  now: Date,
+): TarefaWithRelations[] {
+  if (kpi == null) return tarefas;
+  return tarefas.filter((t) => tarefaMatchesKpi(t, kpi, now));
+}
+
+export function computeHeaderStats(tarefas: TarefaWithRelations[], now: Date): TarefasHeaderStats {
+  const stats: TarefasHeaderStats = { abertas: 0, vencemHoje: 0, atrasadas: 0, concluidasHoje: 0 };
+  for (const t of tarefas) {
+    const flags = kpiFlags(t, now);
+    for (const kpi of TAREFA_KPIS) if (flags[kpi]) stats[kpi]++;
+  }
+  return stats;
 }
 
 // ---- Filters -----------------------------------------------------------------

@@ -12,9 +12,11 @@ import type { TarefaWithRelations } from '../../store';
 import { useTarefasData } from './hooks/useTarefasData';
 import {
   applyTarefaFilters,
+  applyTarefaKpi,
   computeHeaderStats,
   EMPTY_TAREFA_FILTERS,
   type TarefaFilterState,
+  type TarefaKpi,
 } from './tarefasLogic';
 import { loadTarefasEscopo, persistTarefasEscopo, type TarefasEscopo } from './tarefasPrefs';
 import { TarefasStatsHeader } from './components/TarefasStatsHeader';
@@ -43,6 +45,11 @@ export default function TarefasPage() {
   const isDesktop = useIsDesktop(768);
   const [activeView, setActiveView] = useState<ActiveView>('lista');
   const [filters, setFilters] = useState<TarefaFilterState>(EMPTY_TAREFA_FILTERS);
+  // KPI card filter, kept apart from `filters` so the cards keep counting the unfiltered
+  // scoped set. Desktop only: the phone header shows the stats as text, not cards.
+  const [kpi, setKpi] = useState<TarefaKpi | null>(null);
+  const activeKpi = isDesktop ? kpi : null;
+  const toggleKpi = (next: TarefaKpi) => setKpi((cur) => (cur === next ? null : next));
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<TarefaWithRelations | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -95,8 +102,8 @@ export default function TarefasPage() {
   }, [tarefas]);
 
   const filteredTarefas = useMemo(
-    () => applyTarefaFilters(scopedTarefas, filters),
-    [scopedTarefas, filters],
+    () => applyTarefaKpi(applyTarefaFilters(scopedTarefas, filters), activeKpi, new Date()),
+    [scopedTarefas, filters, activeKpi],
   );
   const stats = useMemo(() => computeHeaderStats(scopedTarefas, new Date()), [scopedTarefas]);
   const selected = selectedId != null ? (tarefas.find((t) => t.id === selectedId) ?? null) : null;
@@ -236,6 +243,7 @@ export default function TarefasPage() {
           membros={membros}
           onTarefaClick={(t) => setSelectedId(t.id!)}
           onRefresh={refresh}
+          expandConcluidas={activeKpi === 'concluidasHoje'}
         />
       )}
       {activeView === 'membros' && (
@@ -339,7 +347,7 @@ export default function TarefasPage() {
         </header>
       )}
 
-      <TarefasStatsHeader stats={stats} />
+      <TarefasStatsHeader stats={stats} activeKpi={activeKpi} onKpiClick={toggleKpi} />
 
       <div
         style={{
@@ -412,6 +420,8 @@ export default function TarefasPage() {
         clientes={clientes}
         membros={membros}
         tags={tags}
+        kpi={activeKpi}
+        onClearKpi={() => setKpi(null)}
       />
 
       {tarefas.length === 0 && activeView === 'lista' ? (
