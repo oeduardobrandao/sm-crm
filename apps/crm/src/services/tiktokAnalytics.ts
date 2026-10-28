@@ -109,6 +109,8 @@ export interface TikTokPortfolio {
   accounts: TikTokPortfolioRow[];
   topVideos: TikTokPortfolioVideo[];
   bottomVideos: TikTokPortfolioVideo[];
+  /** Every video of the window, most viewed first, capped at 200 ("Ver todos"). */
+  videos: TikTokPortfolioVideo[];
 }
 
 /** The AI payload has the same shape as the Instagram account / portfolio analyses. */

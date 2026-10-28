@@ -179,9 +179,12 @@ export interface TikTokPortfolio {
   accounts: PortfolioRow[];
   topVideos: PortfolioVideo[];
   bottomVideos: PortfolioVideo[];
+  /** Every window video, most viewed first, capped like Instagram's ranked list ("Ver todos"). */
+  videos: PortfolioVideo[];
 }
 
 const RANKED_VIDEOS = 5;
+const ALL_VIDEOS_CAP = 200;
 /** "Precisam de atenção" skips videos that have not had two days to collect views. */
 const MIN_AGE_FOR_BOTTOM_MS = 48 * 3600 * 1000;
 const NOT_CONNECTED = new Set(["disconnected", "revoked"]);
@@ -219,6 +222,7 @@ export async function buildPortfolio(db: Db, contaId: string, w: AnalyticsWindow
     accounts: [],
     topVideos: [],
     bottomVideos: [],
+    videos: [],
   };
 
   const { data: clients, error: clientsError } = await db.from("clientes").select("id, nome, especialidade")
@@ -328,5 +332,6 @@ export async function buildPortfolio(db: Db, contaId: string, w: AnalyticsWindow
     accounts: rows,
     topVideos: byViewsDesc.slice(0, RANKED_VIDEOS).map(toPortfolioVideo),
     bottomVideos: byViewsAsc.slice(0, RANKED_VIDEOS).map(toPortfolioVideo),
+    videos: byViewsDesc.slice(0, ALL_VIDEOS_CAP).map(toPortfolioVideo),
   };
 }

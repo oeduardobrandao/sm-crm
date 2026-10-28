@@ -528,6 +528,15 @@ Deno.test("tiktok-analytics: portfolio bottomVideos excludes videos younger than
   assertEquals(body.bottomVideos.map((v: { tiktok_video_id: string }) => v.tiktok_video_id), ["old-b", "old-a"]);
 });
 
+Deno.test("tiktok-analytics: portfolio videos lists every window video, most viewed first", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  queuePortfolio(db);
+  const body = await (await makeHandler(db)(get("/portfolio"))).json();
+  // Unlike bottomVideos, the full list keeps videos younger than 48h.
+  assertEquals(body.videos.map((v: { tiktok_video_id: string }) => v.tiktok_video_id), ["old-a", "old-b", "fresh"]);
+});
+
 Deno.test("tiktok-analytics: portfolio with no connected accounts is empty, not an error", async () => {
   const db = createSupabaseQueryMock();
   signedIn(db);
