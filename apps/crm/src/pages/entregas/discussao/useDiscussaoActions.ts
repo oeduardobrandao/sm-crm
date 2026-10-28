@@ -36,14 +36,17 @@ export function useShowChatBridge(): boolean {
   return isUnlimited || features?.feature_team_chat === true;
 }
 
+/** What the composer needs from its host: the post discussion or a task's comments. */
+export type DiscussaoComposerTarget = Pick<UseDiscussaoResult, 'send' | 'sending'>;
+
 /**
- * The discussion composer's behaviour, shared by the desktop section and the phone tab
- * (they differ only in markup): trimmed 1..4000 chars, Enter sends, Shift+Enter and IME
- * composition do not, a failed send keeps the text, and the unsaved-work guard holds while
- * a draft exists or a send is in flight.
+ * The discussion composer's behaviour, shared by the post's desktop section and phone tab and
+ * by the task comments (they differ only in markup): trimmed 1..4000 chars, Enter sends,
+ * Shift+Enter and IME composition do not, a failed send keeps the text and toasts
+ * `sendErrorMessage`, and the unsaved-work guard holds while a draft exists or a send is in
+ * flight.
  */
-export function useDiscussaoComposer(discussao: UseDiscussaoResult) {
-  const { t } = useTranslation('postPanels');
+export function useDiscussaoComposer(discussao: DiscussaoComposerTarget, sendErrorMessage: string) {
   const [draft, setDraft] = useState('');
   const editorRef = useRef<MentionEditorHandle>(null);
   const trimmed = draft.trim();
@@ -72,7 +75,7 @@ export function useDiscussaoComposer(discussao: UseDiscussaoResult) {
         if (!active || active === document.body) editorRef.current?.focus();
       }
     } catch {
-      toast.error(t('discussao.sendError'));
+      toast.error(sendErrorMessage);
     }
   };
 

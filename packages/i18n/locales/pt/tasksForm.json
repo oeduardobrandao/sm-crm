@@ -168,5 +168,32 @@
     "subtarefa_removida": "{{actor}} removeu a subtarefa “{{titulo}}”",
     "tag_adicionada": "{{actor}} adicionou a tag {{nome}}",
     "tag_removida": "{{actor}} removeu a tag {{nome}}"
+  },
+  "comentarios": {
+    "title": "Comentários",
+    "empty": "Nenhum comentário ainda. Use @ para mencionar alguém.",
+    "placeholder": "Escreva um comentário. Use @ para mencionar.",
+    "hint": "Enter envia, Shift+Enter quebra a linha.",
+    "send": "Enviar comentário",
+    "actions": "Ações do comentário",
+    "edit": "Editar",
+    "editPlaceholder": "Editar comentário",
+    "delete": "Excluir",
+    "save": "Salvar",
+    "cancel": "Cancelar",
+    "edited": "(editado)",
+    "removedUser": "Usuário removido",
+    "deleteTitle": "Excluir comentário?",
+    "deleteDescription": "O comentário será removido para toda a equipe. Essa ação não pode ser desfeita.",
+    "deleteConfirm": "Excluir",
+    "sendError": "Não foi possível enviar o comentário. Tente novamente.",
+    "saveError": "Não foi possível salvar o comentário. Tente novamente.",
+    "deleteError": "Não foi possível excluir o comentário. Tente novamente.",
+    "tooLong": "Comentário muito longo. O limite é de {{max}} caracteres.",
+    "today": "Hoje",
+    "yesterday": "Ontem",
+    "dayFormat": "d 'de' MMMM",
+    "fullDateFormat": "d 'de' MMMM 'às' HH:mm",
+    "justNow": "agora"
   }
 }

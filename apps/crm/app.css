@@ -9458,6 +9458,56 @@ a.mention-chip:hover {
   outline-offset: 2px;
 }
 
+/* ── Comentários da tarefa (TarefaComentarios). Rows and composer reuse the discussao-*
+   classes above; these only cover what the post discussion has no equivalent for. ── */
+
+.tarefa-comentarios {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  /* Deep link scrollIntoView: keep the heading clear of the sheet's top edge. */
+  scroll-margin-top: 1rem;
+}
+
+.tarefa-comentarios-title {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.tarefa-comentarios-count {
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.tarefa-comentarios-empty {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.tarefa-comentarios-footer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.tarefa-comentarios-counter {
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.tarefa-comentarios-counter--over {
+  color: var(--danger-text);
+}
+
 /* Section relabel: "Conversa com o cliente" (post_approvals) */
 
 .drawer-client-thread-header {

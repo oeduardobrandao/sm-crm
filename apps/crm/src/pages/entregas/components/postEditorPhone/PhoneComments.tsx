@@ -130,6 +130,7 @@ export function PhoneComments({
   focusRequest,
 }: PhoneCommentsProps) {
   const { t } = useTranslation('postEditor');
+  const { t: tPanels } = useTranslation('postPanels');
   const naoLidasEquipe = discussao.naoLidas;
   const clientNotes = useMemo(() => notes.filter((n) => n.visibility === 'client'), [notes]);
   const openClientNotes = clientNotes.filter((n) => n.status === 'open').length;
@@ -172,7 +173,7 @@ export function PhoneComments({
   const { handleEditMessage, handleDeleteMessage } = useDiscussaoMessageActions();
   const seguir = useSeguirToggle(discussao);
   const { draft, setDraft, editorRef, tooLong, canSend, handleSend, handleKeyDown } =
-    useDiscussaoComposer(discussao);
+    useDiscussaoComposer(discussao, tPanels('discussao.sendError'));
 
   const novasLabel =
     naoLidasEquipe > 0 ? ` · ${t('phoneComments.newCount', { count: naoLidasEquipe })}` : '';

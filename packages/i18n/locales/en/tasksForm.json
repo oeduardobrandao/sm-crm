@@ -168,5 +168,32 @@
     "subtarefa_removida": "{{actor}} removed the subtask “{{titulo}}”",
     "tag_adicionada": "{{actor}} added the tag {{nome}}",
     "tag_removida": "{{actor}} removed the tag {{nome}}"
+  },
+  "comentarios": {
+    "title": "Comments",
+    "empty": "No comments yet. Use @ to mention someone.",
+    "placeholder": "Write a comment. Use @ to mention.",
+    "hint": "Enter sends, Shift+Enter adds a line break.",
+    "send": "Send comment",
+    "actions": "Comment actions",
+    "edit": "Edit",
+    "editPlaceholder": "Edit comment",
+    "delete": "Delete",
+    "save": "Save",
+    "cancel": "Cancel",
+    "edited": "(edited)",
+    "removedUser": "Removed user",
+    "deleteTitle": "Delete comment?",
+    "deleteDescription": "The comment will be removed for the whole team. This cannot be undone.",
+    "deleteConfirm": "Delete",
+    "sendError": "Couldn't send the comment. Please try again.",
+    "saveError": "Couldn't save the comment. Please try again.",
+    "deleteError": "Couldn't delete the comment. Please try again.",
+    "tooLong": "Comment too long. The limit is {{max}} characters.",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "dayFormat": "MMMM d",
+    "fullDateFormat": "MMMM d 'at' HH:mm",
+    "justNow": "just now"
   }
 }
