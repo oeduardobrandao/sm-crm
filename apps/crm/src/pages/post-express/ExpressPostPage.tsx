@@ -507,7 +507,7 @@ export default function ExpressPostPage() {
         className="ml-auto underline font-medium whitespace-nowrap"
         style={{ color: '#f55a42' }}
       >
-        Reconectar →
+        {t('warnings.reconnect')} →
       </a>
     </div>
   );
@@ -541,9 +541,9 @@ export default function ExpressPostPage() {
   const prerequisiteNotice = eligibleClients.length === 0 && (
     <div className="mb-4">
       <PrerequisiteAlert
-        title="Nenhum cliente com Instagram configurado"
-        description="Para usar o Post Express, conecte uma conta Instagram em pelo menos um cliente."
-        actionLabel="Ir para Clientes →"
+        title={t('empty.noneConfiguredTitle')}
+        description={t('empty.noneConfiguredDescription')}
+        actionLabel={t('empty.goToClients')}
         actionHref="/clientes"
       />
     </div>
@@ -722,7 +722,7 @@ export default function ExpressPostPage() {
                 <EmptyStateGuide
                   icon="📸"
                   title={t('empty.noClientsWithIg')}
-                  description="Conecte uma conta Instagram em um cliente para começar a publicar."
+                  description={t('empty.connectDescription')}
                   actionLabel={t('empty.connectAccount')}
                   actionHref="/clientes"
                 />
@@ -932,7 +932,7 @@ export default function ExpressPostPage() {
                 <EmptyStateGuide
                   icon="📸"
                   title={t('empty.noClientsWithIg')}
-                  description="Conecte uma conta Instagram em um cliente para começar a publicar."
+                  description={t('empty.connectDescription')}
                   actionLabel={t('empty.connectAccount')}
                   actionHref="/clientes"
                 />

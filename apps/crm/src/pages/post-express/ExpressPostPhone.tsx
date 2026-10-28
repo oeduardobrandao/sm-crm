@@ -121,11 +121,11 @@ export function ExpressPostPhone(props: ExpressPostPhoneProps) {
         <AlertCircle aria-hidden="true" />
         <span>
           {warningMessage}{' '}
-          <Link to={`/clientes/${selectedClientId}/redes-sociais`}>Reconectar</Link>
+          <Link to={`/clientes/${selectedClientId}/redes-sociais`}>{t('warnings.reconnect')}</Link>
         </span>
       </span>
     ) : clients.length === 0 ? (
-      `${t('empty.noClientsWithIg')} Conecte uma conta Instagram em um cliente para começar a publicar.`
+      `${t('empty.noClientsWithIg')} ${t('empty.connectDescription')}`
     ) : undefined;
 
   return (
@@ -152,7 +152,7 @@ export function ExpressPostPhone(props: ExpressPostPhoneProps) {
           placeholder={t('select.client')}
           searchable={clients.length > SEARCHABLE_FROM}
           disabled={loading || creatingDraft || clients.length === 0}
-          subtitle={igAccount ? `@${igAccount.username ?? 'conta'}` : undefined}
+          subtitle={igAccount ? `@${igAccount.username ?? t('labels.accountFallback')}` : undefined}
           data-testid="express-client"
         />
         {clients.length === 0 && <Cell label={t('empty.connectAccount')} to="/clientes" />}
