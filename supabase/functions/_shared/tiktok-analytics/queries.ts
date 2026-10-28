@@ -54,6 +54,7 @@ export interface TikTokOverview {
 }
 
 /** PostgREST caps a response at 1000 rows; long windows and multi-account reads go past it. */
+// Assumes the project's PostgREST max_rows = 1000: a page shorter than PAGE_SIZE ends paging.
 const PAGE_SIZE = 1000;
 
 // deno-lint-ignore no-explicit-any
@@ -188,6 +189,17 @@ const NOT_CONNECTED = new Set(["disconnected", "revoked"]);
 type PortfolioVideoRow = TikTokVideoDetailRow & { tiktok_account_id: string };
 type PortfolioHistoryRow = { tiktok_account_id: string; date: string; follower_count: number };
 
+/** posted_at of the account's newest stored video, any date; null when it has none. */
+async function loadLastPostedAt(db: Db, accountId: string): Promise<string | null> {
+  const { data, error } = await db.from("tiktok_posts").select("posted_at")
+    .eq("tiktok_account_id", accountId)
+    .not("posted_at", "is", null)
+    .order("posted_at", { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  return ((data ?? []) as { posted_at: string | null }[])[0]?.posted_at ?? null;
+}
+
 const sumOf = (rows: TikTokVideoRow[], key: "views" | "likes" | "comments" | "shares") =>
   rows.reduce((acc, v) => acc + (v[key] || 0), 0);
 
@@ -222,7 +234,9 @@ export async function buildPortfolio(db: Db, contaId: string, w: AnalyticsWindow
   if (accounts.length === 0) return empty;
 
   const accountIds = accounts.map((a) => a.id);
-  const [videos, history] = await Promise.all([
+  // Fixed order (window videos, history, then one last-post read per account in account order):
+  // the handler tests queue mock rows in it.
+  const [videos, history, ...lastPosts] = await Promise.all([
     selectAllPages<PortfolioVideoRow>((from, to) =>
       db.from("tiktok_posts").select(`tiktok_account_id, ${VIDEO_COLUMNS}`)
         .in("tiktok_account_id", accountIds)
@@ -241,7 +255,9 @@ export async function buildPortfolio(db: Db, contaId: string, w: AnalyticsWindow
         .order("date", { ascending: true })
         .range(from, to)
     ),
+    ...accounts.map((a) => loadLastPostedAt(db, a.id)),
   ]);
+  const lastPostedByAccount = new Map(accounts.map((a, i) => [a.id, lastPosts[i] as string | null]));
 
   const clientById = new Map(clientList.map((c) => [c.id, c]));
   const videosByAccount = new Map<string, PortfolioVideoRow[]>();
@@ -260,10 +276,6 @@ export async function buildPortfolio(db: Db, contaId: string, w: AnalyticsWindow
   const rows: PortfolioRow[] = accounts.map((a) => {
     const own = videosByAccount.get(a.id) ?? [];
     const points = [...(historyByAccount.get(a.id) ?? [])].sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : 0));
-    const lastPosted = own.reduce<string | null>(
-      (latest, v) => (v.posted_at && (!latest || v.posted_at > latest) ? v.posted_at : latest),
-      null,
-    );
     return {
       client_id: a.client_id,
       client_name: clientById.get(a.client_id)?.nome ?? "",
@@ -277,7 +289,8 @@ export async function buildPortfolio(db: Db, contaId: string, w: AnalyticsWindow
       views: sumOf(own, "views"),
       engagement_rate: ratioOfSums(own),
       posts_count: own.length,
-      last_posted_at: lastPosted,
+      // The account's newest stored video, whatever the window ("sem vídeo há mais de 7 dias").
+      last_posted_at: lastPostedByAccount.get(a.id) ?? null,
     };
   });
 

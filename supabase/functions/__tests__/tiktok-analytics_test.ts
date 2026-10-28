@@ -465,7 +465,7 @@ function queuePortfolio(db: Mock) {
       { ...video("fresh", 5, 0, 0, 0, "2026-10-27T15:00:00.000Z"), tiktok_account_id: "acc-1" }, // 24h old
       { ...video("old-b", 50, 5, 0, 0, "2026-10-05T15:00:00.000Z"), tiktok_account_id: "acc-2" },
     ],
-  });
+  }, { data: [{ posted_at: "2026-10-27T15:00:00.000Z" }] }, { data: [{ posted_at: "2026-10-05T15:00:00.000Z" }] });
   db.queue("tiktok_follower_history", "select", {
     data: [
       { tiktok_account_id: "acc-1", date: "2026-10-01", follower_count: 1000 },
@@ -538,6 +538,69 @@ Deno.test("tiktok-analytics: portfolio with no connected accounts is empty, not 
   assertEquals(body.accounts, []);
   assertEquals(body.totals, { accounts: 0, followers: 0, views: 0, engagement_rate: null, posts_count: 0 });
   assertEquals(callsTo(db, "tiktok_accounts").length, 0);
+});
+
+Deno.test("tiktok-analytics: portfolio last_posted_at is the newest stored video, even outside the window", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  db.queue("clientes", "select", { data: [{ id: 42, nome: "Ana", especialidade: "Derma" }, { id: 43, nome: "Bia", especialidade: null }] });
+  db.queue("tiktok_accounts", "select", { data: [ACCOUNT, { ...ACCOUNT, id: "acc-2", client_id: 43 }] });
+  db.queue(
+    "tiktok_posts",
+    "select",
+    { data: [] }, // nothing posted in the 7-day window
+    { data: [{ posted_at: "2026-08-02T15:00:00.000Z" }] }, // acc-1: older video
+    { data: [] }, // acc-2: no stored video at all
+  );
+  const body = await (await makeHandler(db)(get("/portfolio?days=7"))).json();
+  assertEquals(body.accounts.map((a: { last_posted_at: string | null }) => a.last_posted_at), ["2026-08-02T15:00:00.000Z", null]);
+  assertEquals(body.accounts[0].posts_count, 0);
+  const lastPostReads = callsTo(db, "tiktok_posts").filter((c) => mods(c, "limit").length > 0);
+  assertEquals(lastPostReads.length, 2);
+  assertEquals(mods(lastPostReads[0], "eq"), [["tiktok_account_id", "acc-1"]]);
+  assertEquals(mods(lastPostReads[0], "order"), [["posted_at", { ascending: false }]]);
+  assertEquals(mods(lastPostReads[0], "limit"), [[1]]);
+  assertEquals(mods(lastPostReads[0], "gte").length, 0); // not clipped to the window
+});
+
+Deno.test("tiktok-analytics: portfolio rejects start/end with 400", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  const res = await makeHandler(db)(get("/portfolio?start=2026-10-01&end=2026-10-28"));
+  assertEquals(res.status, 400);
+  assertEquals(callsTo(db, "clientes").length, 0);
+});
+
+// ── error paths ───────────────────────────────────────────────────────────────
+
+Deno.test("tiktok-analytics: a failed read is a generic 500 with no detail", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  ownedClient(db);
+  db.queue("tiktok_accounts", "select", { data: ACCOUNT });
+  db.queue("tiktok_posts", "select", { data: null, error: { message: "relation tiktok_posts secret detail", code: "42P01" } });
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    const res = await makeHandler(db)(get("/posts-analytics/42"));
+    assertEquals(res.status, 500);
+    const text = await res.text();
+    assertEquals(JSON.parse(text), { error: "Internal server error" });
+    assert(!text.includes("secret") && !text.includes("42P01"), text);
+  } finally {
+    console.error = originalError;
+  }
+});
+
+Deno.test("tiktok-analytics: a foreign client is 403 before any plan flag is read", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  ownedClient(db, "ws-other");
+  db.queueRpc("effective_plan_feature", { data: false });
+  const res = await makeHandler(db)(get("/overview/42"));
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: "Unauthorized" });
+  assertEquals(featureCalls(db), []);
 });
 
 // ── queries ───────────────────────────────────────────────────────────────────
