@@ -11,6 +11,7 @@ import {
 } from "../_shared/report-docs/tiptap-doc.ts";
 import { snapshotToReportData } from "../_shared/report-docs/ai-input.ts";
 import { normalizeCoverSize, sanitizeLayoutForTemplate, validateLayout, type ReportLayout } from "../_shared/report-docs/layout.ts";
+import type { ReportPlatform } from "./client-id.ts";
 import { GenerateError } from "./errors.ts";
 import { loadClientSnapshot } from "./snapshot-source.ts";
 
@@ -33,6 +34,8 @@ export async function generateReportDocument(
   clientId: number,
   month: string,
   templateId: string | null,
+  /** Plataformas pedidas no dialog; null = todas as conectadas (automações e chamadores antigos). */
+  platforms: ReportPlatform[] | null = null,
 ): Promise<{ id: string }> {
   // Mês válido e não futuro.
   const now = new Date();
@@ -54,6 +57,10 @@ export async function generateReportDocument(
   if (!(await effectivePlanFeature(db, contaId, "feature_analytics_reports"))) {
     throw new GenerateError("feature_disabled");
   }
+  // TikTok no relatório só com feature_tiktok (lido uma vez aqui). Desligada, a conta TikTok
+  // conta como não conectada: snapshot.tiktok null e tiktok_account_id null. Erro na RPC
+  // derruba a geração, como o feature_analytics_reports acima.
+  const tiktokEnabled = await effectivePlanFeature(db, contaId, "feature_tiktok");
 
   // Layout base: template explícito > default do workspace > padrão do sistema
   // (spec §5 passo 3). Template explícito inválido é erro do request; default
@@ -93,11 +100,24 @@ export async function generateReportDocument(
     }
   }
 
-  const { snapshot, igAccountId } = await loadClientSnapshot(
+  const { snapshot, igAccountId, tiktokAccountId } = await loadClientSnapshot(
     db, deps, contaId,
     { id: cliente.id, especialidade: cliente.especialidade, nome: cliente.nome, foto_url: cliente.foto_url },
     month,
+    { tiktokEnabled },
   );
+
+  // Plataformas do layout (spec 2026-10-28 §B1): só as conectadas podem ser pedidas. A escolha
+  // molda apenas o layout; os dados de toda rede conectada entram no snapshot de qualquer jeito.
+  const connected: ReportPlatform[] = [];
+  if (igAccountId) connected.push("instagram");
+  if (tiktokAccountId) connected.push("tiktok");
+  if (platforms && platforms.some((p) => !connected.includes(p))) {
+    throw new GenerateError("invalid_platforms");
+  }
+  // Consumido pelo passo de layout (default por plataforma e filtro de template, Task B3).
+  // deno-lint-ignore no-unused-vars
+  const selectedPlatforms: ReportPlatform[] = platforms ?? connected;
 
   // IA: nunca derruba a geração (padrão do v2, index.ts:987-1017).
   let aiContent: unknown = null;
@@ -183,6 +203,7 @@ export async function generateReportDocument(
       conta_id: contaId,
       client_id: clientId,
       instagram_account_id: igAccountId,
+      tiktok_account_id: tiktokAccountId,
       title: `Relatório de ${w.label}`,
       period_start: w.startDate,
       period_end: w.endDateExclusive,

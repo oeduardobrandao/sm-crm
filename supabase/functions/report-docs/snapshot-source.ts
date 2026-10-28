@@ -17,12 +17,13 @@ import {
 } from "./account-window.ts";
 import { monthWindow, prevMonthOf, type MonthWindow } from "../_shared/report-docs/month-window.ts";
 import {
-  assembleSnapshot, MAX_SNAPSHOT_POSTS, type ReportDocSnapshot, type SnapshotHubTheme,
-  type SnapshotPostRow,
+  assembleSnapshot, EMPTY_KPI_SOURCES, emptyInstagramSection, MAX_SNAPSHOT_POSTS,
+  type ReportDocSnapshot, type SnapshotBranding, type SnapshotHubTheme, type SnapshotPostRow,
 } from "../_shared/report-docs/snapshot.ts";
 import type { TagPerformance } from "../_shared/report-template/types.ts";
 import { GenerateError } from "./errors.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
+import { loadTikTokReportSection } from "./tiktok-section.ts";
 
 // As 7 métricas de conta que a cadeia (Graph ao vivo -> linha mensal -> soma
 // diária das aditivas) resolve por janela de mês -- spec §4.1/§4.3.
@@ -68,23 +69,139 @@ async function decryptIgToken(encrypted: string, secret: string): Promise<string
   }
 }
 
+type SnapshotCliente = {
+  id: number;
+  especialidade: string | null;
+  nome: string;
+  foto_url: string | null;
+};
+
+const WORKSPACE_COLUMNS = "name, logo_url, brand_color, report_splash_url, hub_surface_theme, " +
+  "hub_font_display, hub_font_body, hub_radius, hub_card_style";
+
+/** Snapshot do mês para as redes conectadas do cliente (spec 2026-10-28 §B3). A raiz continua
+ * sendo o Instagram; sem Instagram ela sai vazia com `instagram_connected: false`. `tiktok` só
+ * existe com `opts.tiktokEnabled` (feature_tiktok) e uma conta TikTok conectada. Sem nenhuma das
+ * duas, a geração falha. */
 export async function loadClientSnapshot(
   db: Db,
   deps: SnapshotDeps,
   contaId: string,
-  cliente: { id: number; especialidade: string | null; nome: string; foto_url: string | null },
+  cliente: SnapshotCliente,
   month: string,
-): Promise<{ snapshot: ReportDocSnapshot; igAccountId: string }> {
-  const w = monthWindow(month);
-
+  opts: { tiktokEnabled: boolean },
+): Promise<{ snapshot: ReportDocSnapshot; igAccountId: string | null; tiktokAccountId: string | null }> {
   // Conta IG do cliente. instagram_accounts NÃO tem conta_id (baseline
   // 20260301:171-188): o ownership do workspace já foi provado pelo chamador
   // via clientes.conta_id, e client_id é UNIQUE na tabela — buscar só por ele.
-  const { data: account } = await db.from("instagram_accounts")
-    .select("*")
-    .eq("client_id", cliente.id).maybeSingle();
-  if (!account) throw new GenerateError("not_found", "Conta Instagram não conectada");
+  // A conta TikTok segue a mesma regra (tiktok_accounts.client_id também é UNIQUE).
+  const [{ data: account }, tiktok] = await Promise.all([
+    db.from("instagram_accounts").select("*").eq("client_id", cliente.id).maybeSingle(),
+    opts.tiktokEnabled
+      ? loadTikTokReportSection(db, cliente.id, month, new Date())
+      : Promise.resolve(null),
+  ]);
+  if (!account && !tiktok) throw new GenerateError("not_found", "Nenhuma rede conectada");
 
+  const snapshot = account
+    ? await loadInstagramSnapshot(db, deps, contaId, cliente, month, account)
+    : await loadSnapshotWithoutInstagram(db, contaId, cliente, month);
+  return {
+    snapshot: { ...snapshot, instagram_connected: !!account, tiktok: tiktok?.section ?? null },
+    igAccountId: account?.id ?? null,
+    tiktokAccountId: tiktok?.accountId ?? null,
+  };
+}
+
+/** Workspace do relatório: fonte OBRIGATÓRIA (erro aqui é geração inválida). */
+async function loadWorkspace(db: Db, contaId: string) {
+  const res = await db.from("workspaces").select(WORKSPACE_COLUMNS).eq("id", contaId).single();
+  return checkWorkspace(res);
+}
+
+// deno-lint-ignore no-explicit-any
+function checkWorkspace(res: { data: any; error: { message?: string } | null }) {
+  if (res.error || !res.data) {
+    throw new Error(`workspace query failed: ${res.error?.message ?? "no row"}`);
+  }
+  return res.data;
+}
+
+// deno-lint-ignore no-explicit-any
+async function brandingOf(db: Db, contaId: string, ws: any): Promise<SnapshotBranding> {
+  // Fail closed, mesmo padrão de defesa em profundidade de
+  // hub-bootstrap/handler.ts:94-101: uma soluco na RPC de entitlements nunca
+  // pode fazer a geracao do relatorio falhar -- so degrada o visual para o
+  // neutro.
+  let hubBrandCustomization = false;
+  try {
+    hubBrandCustomization = await effectivePlanFeature(db, contaId, "feature_brand_customization");
+  } catch {
+    // fail closed
+  }
+  const hubTheme: SnapshotHubTheme = hubBrandCustomization
+    ? {
+      surface: ws?.hub_surface_theme ?? "neutral",
+      font_display: ws?.hub_font_display ?? "fraunces",
+      font_body: ws?.hub_font_body ?? "instrument-sans",
+      radius: ws?.hub_radius ?? "soft",
+      card_style: ws?.hub_card_style ?? "filled",
+    }
+    : {
+      surface: "neutral", font_display: "fraunces", font_body: "instrument-sans",
+      radius: "soft", card_style: "filled",
+    };
+  return {
+    workspace_name: ws?.name ?? "Mesaas",
+    logo_url: ws?.logo_url ?? null,
+    splash_url: ws?.report_splash_url ?? null,
+    accent_color: ws?.brand_color ?? "#171717",
+    hub_theme: hubTheme,
+  };
+}
+
+/** Cliente sem Instagram (só TikTok): período, capa e branding normais, metade Instagram vazia. */
+async function loadSnapshotWithoutInstagram(
+  db: Db,
+  contaId: string,
+  cliente: SnapshotCliente,
+  month: string,
+): Promise<ReportDocSnapshot> {
+  const ws = await loadWorkspace(db, contaId);
+  const base = assembleSnapshot({
+    month,
+    nowIso: new Date().toISOString(),
+    prevMonthPosts: null,
+    account: {
+      // O @ da raiz é o do Instagram; sem Instagram a capa usa o da seção TikTok.
+      handle: "",
+      specialty: [cliente.especialidade].filter(Boolean).join(" · "),
+      // clientes.foto_url já é estável (upload direto pro storage): nada a cachear.
+      profile_picture_url: cliente.foto_url || null,
+      client_name: cliente.nome,
+    },
+    branding: await brandingOf(db, contaId, ws),
+    kpiSources: EMPTY_KPI_SOURCES,
+    followerTrend: [],
+    posts: [],
+    stableThumbnails: new Map(),
+    audience: null,
+    bestTimes: [],
+    tagsPerformance: [],
+  });
+  return { ...base, ...emptyInstagramSection() };
+}
+
+async function loadInstagramSnapshot(
+  db: Db,
+  deps: SnapshotDeps,
+  contaId: string,
+  cliente: SnapshotCliente,
+  month: string,
+  // deno-lint-ignore no-explicit-any
+  account: any,
+): Promise<ReportDocSnapshot> {
+  const w = monthWindow(month);
   const igAccountId = account.id;
   const prevW = monthWindow(prevMonthOf(month));
 
@@ -215,10 +332,7 @@ export async function loadClientSnapshot(
       // instagram-report-generator-v2/index.ts's own endInclusive derivation).
       p_month_end: new Date(Date.parse(w.endExclusive) - 1).toISOString(),
     })).then((r: TagPerfResult) => r).catch((): TagPerfResult => ({ data: null })),
-    db.from("workspaces").select(
-      "name, logo_url, brand_color, report_splash_url, hub_surface_theme, " +
-        "hub_font_display, hub_font_body, hub_radius, hub_card_style",
-    ).eq("id", contaId).single(),
+    db.from("workspaces").select(WORKSPACE_COLUMNS).eq("id", contaId).single(),
     monthlyRowOf(w),
     monthlyRowOf(prevW),
     dailyRowsOf(w),
@@ -231,9 +345,7 @@ export async function loadClientSnapshot(
   // Fontes OBRIGATÓRIAS: erro aqui não é "sem dados", é geração inválida.
   // As demais fontes degradam com log, como no gerador v2.
   if (postsRes.error) throw new Error(`posts query failed: ${postsRes.error.message}`);
-  if (workspaceRes.error || !workspaceRes.data) {
-    throw new Error(`workspace query failed: ${workspaceRes.error?.message ?? "no row"}`);
-  }
+  const ws = checkWorkspace(workspaceRes);
 
   // Fontes opcionais: erro degrada o relatório (essa parte fica de fora), não
   // invalida a geração inteira. Log interno só -- nunca surfaced ao cliente
@@ -261,30 +373,7 @@ export async function loadClientSnapshot(
   warnQueryError("prev-month posts", prevMonthPostsRes.error);
 
   const posts: SnapshotPostRow[] = postsRes.data ?? [];
-  const ws = workspaceRes.data;
-
-  // Fail closed, mesmo padrão de defesa em profundidade de
-  // hub-bootstrap/handler.ts:94-101: uma soluco na RPC de entitlements nunca
-  // pode fazer a geracao do relatorio falhar -- so degrada o visual para o
-  // neutro.
-  let hubBrandCustomization = false;
-  try {
-    hubBrandCustomization = await effectivePlanFeature(db, contaId, "feature_brand_customization");
-  } catch {
-    // fail closed
-  }
-  const hubTheme: SnapshotHubTheme = hubBrandCustomization
-    ? {
-      surface: ws?.hub_surface_theme ?? "neutral",
-      font_display: ws?.hub_font_display ?? "fraunces",
-      font_body: ws?.hub_font_body ?? "instrument-sans",
-      radius: ws?.hub_radius ?? "soft",
-      card_style: ws?.hub_card_style ?? "filled",
-    }
-    : {
-      surface: "neutral", font_display: "fraunces", font_body: "instrument-sans",
-      radius: "soft", card_style: "filled",
-    };
+  const branding = await brandingOf(db, contaId, ws);
 
   // Thumbnails: só dos candidatos a top post; URL efêmera cacheia ou vira null.
   // Concorrente: pior caso ~15s (timeout por download), nunca 12x15 serial.
@@ -364,13 +453,7 @@ export async function loadClientSnapshot(
       profile_picture_url: avatarUrl,
       client_name: cliente.nome,
     },
-    branding: {
-      workspace_name: ws?.name ?? "Mesaas",
-      logo_url: ws?.logo_url ?? null,
-      splash_url: ws?.report_splash_url ?? null,
-      accent_color: ws?.brand_color ?? "#171717",
-      hub_theme: hubTheme,
-    },
+    branding,
     kpiSources: {
       accountMonth,
       accountPrevMonth,
@@ -390,5 +473,5 @@ export async function loadClientSnapshot(
     tagsPerformance: (tagPerformanceRes.data as TagPerformance[] | null) ?? [],
   });
 
-  return { snapshot, igAccountId };
+  return snapshot;
 }

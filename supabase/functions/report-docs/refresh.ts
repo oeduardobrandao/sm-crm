@@ -1,6 +1,7 @@
 // POST /:id/refresh-data (spec §5): re-snapshot de dados + branding mantendo o
 // layout. ai_content e blocos de texto NÃO são tocados; o updated_at bumpa via
 // trigger (data_snapshot muda), o que corretamente invalida o cache do PDF.
+import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { DocActionError, GenerateError } from "./errors.ts";
 import { loadClientSnapshot, type SnapshotDeps } from "./snapshot-source.ts";
 // deno-lint-ignore no-explicit-any
@@ -23,22 +24,31 @@ export async function refreshReportDocument(
   if (!cliente || cliente.conta_id !== contaId) throw new DocActionError("not_found");
 
   const month = String(doc.period_start).slice(0, 7);
-  let snapshot;
+  // Recarrega as duas redes (spec 2026-10-28 §B3), TikTok só com feature_tiktok, como no generate.
+  const tiktokEnabled = await effectivePlanFeature(db, contaId, "feature_tiktok");
+  let loaded;
   try {
-    ({ snapshot } = await loadClientSnapshot(
+    loaded = await loadClientSnapshot(
       db, deps, contaId,
       {
         id: cliente.id, especialidade: cliente.especialidade, nome: cliente.nome,
         foto_url: cliente.foto_url,
       },
       month,
-    ));
+      { tiktokEnabled },
+    );
   } catch (err) {
     if (err instanceof GenerateError) throw new DocActionError("not_found", err.message);
     throw err;
   }
 
+  // As contas vão junto com o snapshot: uma rede conectada (ou trocada) depois da geração fica
+  // registrada no documento, e uma desconectada deixa de ficar.
   const { error } = await db.from("report_documents")
-    .update({ data_snapshot: snapshot }).eq("id", docId);
+    .update({
+      data_snapshot: loaded.snapshot,
+      instagram_account_id: loaded.igAccountId,
+      tiktok_account_id: loaded.tiktokAccountId,
+    }).eq("id", docId);
   if (error) throw new Error(`refresh update failed: ${error.message}`);
 }

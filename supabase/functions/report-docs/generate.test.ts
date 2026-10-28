@@ -19,7 +19,7 @@ function makeDb(
   // deno-lint-ignore no-explicit-any
   const chain = (result: any, error: { message: string } | null = null): any => {
     const c: Record<string, unknown> = {};
-    for (const m of ["select", "eq", "gte", "lt", "order", "limit"]) {
+    for (const m of ["select", "eq", "gte", "lt", "lte", "order", "limit", "range"]) {
       c[m] = () => chain(result, error);
     }
     c.maybeSingle = () => Promise.resolve({ data: error ? null : result, error });
@@ -639,4 +639,165 @@ Deno.test("templateId com bloco image: conteúdo da imagem é removido, ratio fi
   };
   const image = inserted.layout.blocks.find((b) => b.id === "i1");
   assertEquals(image?.config, { ratio: "4:5" });
+});
+
+// ─── TikTok (spec 2026-10-28 §B3) ────────────────────────────────────────────────────
+
+const TT_ACCOUNT = {
+  id: "tt-1", client_id: 1, username: "dra.tt", display_name: "Dra TT", avatar_url: null,
+  follower_count: 500, likes_count: 9000, video_count: 3, authorization_status: "active",
+  last_synced_at: null,
+};
+const TT_VIDEO = {
+  tiktok_video_id: "v1", posted_at: "2026-07-10T15:00:00Z", views: 1000, likes: 50, comments: 5,
+  shares: 2, title: "Vídeo", video_description: null, duration: 20,
+  share_url: "https://www.tiktok.com/@dra.tt/video/v1", cover_image_url: "https://s.example/v1.jpg",
+};
+const WORKSPACE = { name: "DK", logo_url: null, brand_color: "#123456", report_splash_url: null };
+
+type InsertedRow = {
+  instagram_account_id: string | null;
+  tiktok_account_id: string | null;
+  data_snapshot: {
+    instagram_connected?: boolean;
+    account: { handle: string; client_name?: string };
+    branding: { workspace_name: string };
+    kpis: Record<string, { value: number | null }>;
+    top_posts: unknown[];
+    tiktok?: { account: { handle: string }; top_posts: { video_id: string }[] } | null;
+  };
+};
+
+Deno.test("generate with only TikTok connected succeeds and sets instagram_connected false", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "Cliente TT", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: null,
+    tiktok_accounts: TT_ACCOUNT,
+    tiktok_posts: [TT_VIDEO],
+    tiktok_follower_history: [],
+    tiktok_account_metrics_daily: [],
+    workspaces: WORKSPACE,
+  });
+  const { id } = await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  assertEquals(id, "doc-1");
+  const row = db.inserts[0] as InsertedRow;
+  assertEquals(row.instagram_account_id, null);
+  assertEquals(row.tiktok_account_id, "tt-1");
+  assertEquals(row.data_snapshot.instagram_connected, false);
+  // Instagram vazio: todo KPI null (inclusive posts_count) e nenhuma lista.
+  for (const [kpi, entry] of Object.entries(row.data_snapshot.kpis)) assertEquals(entry.value, null, kpi);
+  assertEquals(row.data_snapshot.top_posts, []);
+  // Capa ainda tem branding e nome do cliente.
+  assertEquals(row.data_snapshot.branding.workspace_name, "DK");
+  assertEquals(row.data_snapshot.account.client_name, "Cliente TT");
+  assertEquals(row.data_snapshot.tiktok?.account.handle, "dra.tt");
+  assertEquals(row.data_snapshot.tiktok?.top_posts.map((p) => p.video_id), ["v1"]);
+});
+
+Deno.test("generate with neither connected -> not_found", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: null,
+    tiktok_accounts: null,
+    workspaces: WORKSPACE,
+  });
+  let err: unknown;
+  try {
+    await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  } catch (e) { err = e; }
+  assert(err instanceof GenerateError && err.code === "not_found");
+  assertEquals(db.inserts.length, 0);
+});
+
+Deno.test("generate: TikTok account disconnected counts as not connected", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: null,
+    tiktok_accounts: { ...TT_ACCOUNT, authorization_status: "disconnected" },
+    workspaces: WORKSPACE,
+  });
+  let err: unknown;
+  try {
+    await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  } catch (e) { err = e; }
+  assert(err instanceof GenerateError && err.code === "not_found");
+});
+
+Deno.test("generate without feature_tiktok leaves snapshot.tiktok null even when connected", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: { id: "ig-1", username: "dra.x" },
+    instagram_posts: [],
+    tiktok_accounts: TT_ACCOUNT,
+    tiktok_posts: [TT_VIDEO],
+    workspaces: WORKSPACE,
+  }, { featureByKey: { feature_tiktok: false } });
+  await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  const row = db.inserts[0] as InsertedRow;
+  assertEquals(row.data_snapshot.tiktok, null);
+  assertEquals(row.tiktok_account_id, null);
+  assertEquals(row.instagram_account_id, "ig-1");
+  assertEquals(row.data_snapshot.instagram_connected, true);
+});
+
+Deno.test("generate without feature_tiktok and only TikTok connected -> not_found", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: null,
+    tiktok_accounts: TT_ACCOUNT,
+    workspaces: WORKSPACE,
+  }, { featureByKey: { feature_tiktok: false } });
+  let err: unknown;
+  try {
+    await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  } catch (e) { err = e; }
+  assert(err instanceof GenerateError && err.code === "not_found");
+});
+
+Deno.test("generate with both connected records both accounts and the TikTok section", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: { id: "ig-1", username: "dra.x" },
+    instagram_posts: [],
+    tiktok_accounts: TT_ACCOUNT,
+    tiktok_posts: [TT_VIDEO],
+    workspaces: WORKSPACE,
+  });
+  await generateReportDocument(db, deps, "c", 1, "2026-07", null, ["instagram", "tiktok"]);
+  const row = db.inserts[0] as InsertedRow;
+  assertEquals(row.instagram_account_id, "ig-1");
+  assertEquals(row.tiktok_account_id, "tt-1");
+  assertEquals(row.data_snapshot.account.handle, "dra.x");
+  assertEquals(row.data_snapshot.tiktok?.account.handle, "dra.tt");
+});
+
+Deno.test("platforms ['tiktok'] for a client without TikTok -> invalid_platforms", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: { id: "ig-1", username: "dra.x" },
+    instagram_posts: [],
+    tiktok_accounts: null,
+    workspaces: WORKSPACE,
+  });
+  let err: unknown;
+  try {
+    await generateReportDocument(db, deps, "c", 1, "2026-07", null, ["tiktok"]);
+  } catch (e) { err = e; }
+  assert(err instanceof GenerateError && err.code === "invalid_platforms");
+  assertEquals(db.inserts.length, 0);
+});
+
+Deno.test("platforms ['instagram'] for a TikTok-only client -> invalid_platforms", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: null,
+    tiktok_accounts: TT_ACCOUNT,
+    tiktok_posts: [],
+    workspaces: WORKSPACE,
+  });
+  let err: unknown;
+  try {
+    await generateReportDocument(db, deps, "c", 1, "2026-07", null, ["instagram"]);
+  } catch (e) { err = e; }
+  assert(err instanceof GenerateError && err.code === "invalid_platforms");
 });

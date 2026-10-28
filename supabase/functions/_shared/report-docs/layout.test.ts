@@ -8,6 +8,7 @@ import {
   sanitizeLayoutForTemplate,
   validateLayout,
 } from "./layout.ts";
+import { TIKTOK_KPI_IDS } from "../tiktok-analytics/kpis.ts";
 
 const block = (over: Record<string, unknown> = {}) => ({
   id: "b1", type: "text", size: "full", ...over,
@@ -201,4 +202,37 @@ Deno.test("blockPlatform: prefixo tiktok_ = tiktok, métricas = instagram, neutr
     "ai_recommendations", "ai_goals", "image"]) {
     assertEquals(blockPlatform(t), null, t);
   }
+});
+
+// Pin da partição: todo tipo de BLOCK_TYPES cai em exatamente uma plataforma, e o conjunto
+// Instagram está escrito por nome. Um tipo novo sem prefixo tiktok_ e fora dos neutros vira
+// Instagram em silêncio; este teste força a decisão explícita.
+Deno.test("blockPlatform: partição de BLOCK_TYPES fixada por nome", () => {
+  const INSTAGRAM = [
+    "kpi_followers_gained", "kpi_followers_total", "kpi_reach", "kpi_views",
+    "kpi_engagement_rate", "kpi_saves", "kpi_posts_count", "kpi_profile_views",
+    "kpi_website_clicks", "kpi_follows",
+    "chart_followers", "chart_formats", "chart_best_times",
+    "audience_gender", "audience_age", "audience_cities", "audience_countries",
+    "top_posts", "post_list", "tags_table",
+  ];
+  const NEUTRAL = [
+    "cover", "section_header", "divider", "text", "ai_summary", "ai_recommendations",
+    "ai_goals", "image",
+  ];
+  const by = { instagram: [] as string[], tiktok: [] as string[], neutral: [] as string[] };
+  for (const t of BLOCK_TYPES) {
+    const p = blockPlatform(t);
+    (p === null ? by.neutral : by[p]).push(t);
+  }
+  assertEquals([...by.instagram].sort(), [...INSTAGRAM].sort());
+  assertEquals([...by.neutral].sort(), [...NEUTRAL].sort());
+  assertEquals([...by.tiktok].sort(), [...TIKTOK_TYPES].sort());
+  assertEquals(by.instagram.length + by.tiktok.length + by.neutral.length, BLOCK_TYPES.length);
+});
+
+Deno.test("BLOCK_TYPES: tiktok_kpi_* espelha TIKTOK_KPI_IDS nos dois sentidos", () => {
+  const fromTypes = BLOCK_TYPES.filter((t) => t.startsWith("tiktok_kpi_")).sort();
+  const fromIds = TIKTOK_KPI_IDS.map((id) => "tiktok_kpi_" + id).sort();
+  assertEquals(fromTypes, fromIds);
 });

@@ -183,7 +183,8 @@ export interface SnapshotInput {
 }
 
 export const MAX_SNAPSHOT_POSTS = 12;
-const CAPTION_PREVIEW_MAX = 140;
+/** Corte da legenda nos top posts; a seção TikTok (report-docs/tiktok-section.ts) usa o mesmo. */
+export const CAPTION_PREVIEW_MAX = 140;
 
 // Mesmo mapeamento do gerador v2 (index.ts §7 typeMapping): REEL/VIDEO viram
 // reels, CAROUSEL_ALBUM carousels, resto images. Confirme contra
@@ -314,5 +315,39 @@ export function assembleSnapshot(input: SnapshotInput): ReportDocSnapshot {
     audience: input.audience,
     best_times: input.bestTimes,
     tags_performance: input.tagsPerformance,
+  };
+}
+
+/** Campos Instagram da raiz que `emptyInstagramSection` zera. */
+export type InstagramSnapshotSection = Pick<
+  ReportDocSnapshot,
+  | "comparison" | "kpis" | "follower_trend" | "content_breakdown" | "top_posts" | "audience"
+  | "best_times" | "tags_performance" | "instagram_connected"
+>;
+
+/** Fontes de KPI de uma conta sem nenhum dado (cliente sem Instagram). */
+export const EMPTY_KPI_SOURCES: KpiSources = {
+  accountMonth: null, accountPrevMonth: null, followersClose: null, followersPrevClose: null,
+  followerHistory: [], allPosts: [], prevMonthPostsCount: null,
+};
+
+/** Metade Instagram de um relatório de cliente sem Instagram (spec 2026-10-28 §B3): todo KPI
+ * null (inclusive `posts_count`, que sobre zero posts daria 0), toda lista vazia e
+ * `instagram_connected: false`, para os blocos Instagram caírem no placeholder "sem dados". O
+ * chamador espalha isto por cima de um `assembleSnapshot` montado com entradas vazias. */
+export function emptyInstagramSection(): InstagramSnapshotSection {
+  const kpis = Object.fromEntries(
+    Object.entries(computeKpis(EMPTY_KPI_SOURCES)).map(([id, e]) => [id, { ...e, value: null, prev: null }]),
+  ) as Record<ReportKpiId, KpiEntry>;
+  return {
+    comparison: null,
+    kpis,
+    follower_trend: [],
+    content_breakdown: {},
+    top_posts: [],
+    audience: null,
+    best_times: [],
+    tags_performance: [],
+    instagram_connected: false,
   };
 }

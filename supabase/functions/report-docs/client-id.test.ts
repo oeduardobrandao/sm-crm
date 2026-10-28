@@ -49,13 +49,19 @@ Deno.test("parseGenerateBody aceita objeto com clientId válido e normaliza mont
     clientId: 5,
     month: "2026-08",
     templateId: null,
+    platforms: null,
   });
-  assertEquals(parseGenerateBody({ clientId: 5 }), { clientId: 5, month: "", templateId: null });
+  assertEquals(parseGenerateBody({ clientId: 5 }), {
+    clientId: 5,
+    month: "",
+    templateId: null,
+    platforms: null,
+  });
 });
 
 Deno.test("parseGenerateBody: templateId ausente vira null", () => {
   const r = parseGenerateBody({ clientId: 1, month: "2026-07" });
-  assertEquals(r, { clientId: 1, month: "2026-07", templateId: null });
+  assertEquals(r, { clientId: 1, month: "2026-07", templateId: null, platforms: null });
 });
 
 Deno.test("parseGenerateBody: templateId uuid válido passa", () => {
@@ -85,7 +91,7 @@ Deno.test("parseGenerateBody: templateId não-uuid rejeita o corpo", () => {
 // não-uuid continuam rejeitando o corpo, igual a outros templateId inválidos.
 Deno.test('parseGenerateBody: templateId "system" é aceito como sentinela distinta de ausente', () => {
   const r = parseGenerateBody({ clientId: 1, month: "2026-07", templateId: "system" });
-  assertEquals(r, { clientId: 1, month: "2026-07", templateId: "system" });
+  assertEquals(r, { clientId: 1, month: "2026-07", templateId: "system", platforms: null });
 });
 
 Deno.test('parseGenerateBody: variações de "system" (caixa ou outra string não-uuid) continuam rejeitando', () => {
@@ -100,5 +106,29 @@ Deno.test('parseGenerateBody: variações de "system" (caixa ou outra string nã
   assertEquals(
     parseGenerateBody({ clientId: 1, month: "2026-07", templateId: "system-default" }),
     null,
+  );
+});
+
+// platforms (spec 2026-10-28 §B1): ausente/null = todas as redes conectadas (automações e
+// chamadores antigos seguem funcionando); qualquer valor presente precisa ser uma lista não
+// vazia só com as duas plataformas conhecidas, senão o corpo inteiro é inválido (400).
+Deno.test("parseGenerateBody without platforms -> null (all connected)", () => {
+  assertEquals(parseGenerateBody({ clientId: 1, month: "2026-07" })?.platforms, null);
+  assertEquals(parseGenerateBody({ clientId: 1, month: "2026-07", platforms: null })?.platforms, null);
+});
+
+Deno.test("parseGenerateBody rejects platforms ['x'] and []", () => {
+  assertEquals(parseGenerateBody({ clientId: 1, month: "2026-07", platforms: ["x"] }), null);
+  assertEquals(parseGenerateBody({ clientId: 1, month: "2026-07", platforms: [] }), null);
+  assertEquals(parseGenerateBody({ clientId: 1, month: "2026-07", platforms: ["tiktok", "x"] }), null);
+  assertEquals(parseGenerateBody({ clientId: 1, month: "2026-07", platforms: "tiktok" }), null);
+  assertEquals(parseGenerateBody({ clientId: 1, month: "2026-07", platforms: [1] }), null);
+});
+
+Deno.test("parseGenerateBody accepts known platforms, keeps order and drops repeats", () => {
+  assertEquals(parseGenerateBody({ clientId: 1, month: "2026-07", platforms: ["tiktok"] })?.platforms, ["tiktok"]);
+  assertEquals(
+    parseGenerateBody({ clientId: 1, month: "2026-07", platforms: ["tiktok", "instagram", "tiktok"] })?.platforms,
+    ["tiktok", "instagram"],
   );
 });

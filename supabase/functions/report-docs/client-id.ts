@@ -20,14 +20,38 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // outra string não-uuid rejeita o corpo, igual antes.
 const SYSTEM_SENTINEL = "system";
 
+export const REPORT_PLATFORMS = ["instagram", "tiktok"] as const;
+export type ReportPlatform = (typeof REPORT_PLATFORMS)[number];
+
+// `platforms` (spec 2026-10-28 §B1): ausente/null = todas as redes conectadas, o que mantém
+// automações e chamadores antigos funcionando. Presente, precisa ser uma lista não vazia só com
+// plataformas conhecidas; qualquer outra coisa invalida o corpo inteiro (400), como templateId.
+// Repetições caem e a ordem do pedido fica (a capa usa a primeira plataforma do layout).
+function parsePlatforms(value: unknown): ReportPlatform[] | null | undefined {
+  if (value === undefined || value === null) return null;
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+  const out: ReportPlatform[] = [];
+  for (const p of value) {
+    if (!(REPORT_PLATFORMS as readonly unknown[]).includes(p)) return undefined;
+    if (!out.includes(p as ReportPlatform)) out.push(p as ReportPlatform);
+  }
+  return out;
+}
+
 export function parseGenerateBody(
   raw: unknown,
-): { clientId: number; month: string; templateId: string | null } | null {
+): {
+  clientId: number;
+  month: string;
+  templateId: string | null;
+  platforms: ReportPlatform[] | null;
+} | null {
   if (typeof raw !== "object" || raw === null) return null;
-  const { clientId, month, templateId } = raw as {
+  const { clientId, month, templateId, platforms } = raw as {
     clientId?: unknown;
     month?: unknown;
     templateId?: unknown;
+    platforms?: unknown;
   };
   const parsedClientId = parseClientId(clientId);
   if (parsedClientId === null) return null;
@@ -42,5 +66,12 @@ export function parseGenerateBody(
       return null;
     }
   }
-  return { clientId: parsedClientId, month: String(month ?? ""), templateId: parsedTemplate };
+  const parsedPlatforms = parsePlatforms(platforms);
+  if (parsedPlatforms === undefined) return null;
+  return {
+    clientId: parsedClientId,
+    month: String(month ?? ""),
+    templateId: parsedTemplate,
+    platforms: parsedPlatforms,
+  };
 }
