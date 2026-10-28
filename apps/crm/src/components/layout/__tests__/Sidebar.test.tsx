@@ -324,13 +324,52 @@ describe('Sidebar', () => {
     expect(screen.getByText('Equipe')).toBeInTheDocument();
   });
 
-  it('does not render the TikTok analytics placeholder (spec B4)', () => {
+  it('hides the TikTok analytics item while the plan has not loaded (features null)', () => {
     setAuth();
 
     renderSidebar('/dashboard', { isDrawer: true, isOpen: true, onClose: vi.fn() });
 
     expect(screen.getByText('Instagram')).toBeInTheDocument();
     expect(screen.queryByText('TikTok')).not.toBeInTheDocument();
+  });
+
+  it('renders the TikTok analytics item under feature_tiktok + feature_analytics_reports', () => {
+    setAuth();
+    setLimits({ features: { feature_tiktok: true, feature_analytics_reports: true } });
+
+    renderSidebar('/dashboard', { isDrawer: true, isOpen: true, onClose: vi.fn() });
+
+    expect(screen.getByText('TikTok').closest('a')).toHaveAttribute(
+      'href',
+      expect.stringContaining('/analytics/tiktok'),
+    );
+  });
+
+  it('lights TikTok, not Instagram, on the TikTok overview and a client TikTok tab', () => {
+    setAuth();
+    setLimits({ features: { feature_tiktok: true, feature_analytics_reports: true } });
+
+    const { unmount } = renderSidebar('/analytics/tiktok', {
+      isDrawer: true,
+      isOpen: true,
+      onClose: vi.fn(),
+    });
+    expect(screen.getByText('TikTok').closest('a')).toHaveClass('active');
+    expect(screen.getByText('Instagram').closest('a')).not.toHaveClass('active');
+    unmount();
+
+    renderSidebar('/analytics/12/tiktok', { isDrawer: true, isOpen: true, onClose: vi.fn() });
+    expect(screen.getByText('TikTok').closest('a')).toHaveClass('active');
+    expect(screen.getByText('Instagram').closest('a')).not.toHaveClass('active');
+  });
+
+  it('lights Instagram on the client Relatórios tab', () => {
+    setAuth();
+    setLimits({ features: { feature_tiktok: true, feature_analytics_reports: true } });
+
+    renderSidebar('/analytics/12/relatorios', { isDrawer: true, isOpen: true, onClose: vi.fn() });
+    expect(screen.getByText('Instagram').closest('a')).toHaveClass('active');
+    expect(screen.getByText('TikTok').closest('a')).not.toHaveClass('active');
   });
 
   it('shows feature-gated nav items when their feature flag is true', () => {

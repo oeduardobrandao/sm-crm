@@ -25,6 +25,9 @@ verify_jwt = false
 [functions.tiktok-sync-cron]
 verify_jwt = false
 
+[functions.tiktok-analytics]
+verify_jwt = false
+
 [functions.post-media-cleanup-cron]
 verify_jwt = false
 

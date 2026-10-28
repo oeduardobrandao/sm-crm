@@ -638,6 +638,52 @@ html[data-standalone] .app-container {
   }
 }
 
+/*
+ * Client analytics page (/analytics/:id/:tab): the Instagram | TikTok | Relatórios
+ * tabs. Text links with a 2px underline on the active one; they scroll sideways
+ * instead of wrapping when the row is too narrow.
+ */
+
+.analytics-tabs {
+  display: flex;
+  gap: 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.analytics-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.analytics-tab {
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: -1px;
+  padding: 0.6rem 0.1rem;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: var(--transition);
+}
+
+.analytics-tab:hover {
+  color: var(--text-main);
+}
+
+.analytics-tabs .analytics-tab.active {
+  border-bottom-color: var(--primary-color);
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.analytics-phone-tabs {
+  margin: 0.25rem 0 0.75rem;
+}
+
 .header-actions {
   display: flex;
   align-items: center;

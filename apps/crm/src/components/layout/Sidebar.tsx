@@ -212,7 +212,7 @@ export default function Sidebar({
 
   const renderGroup = (group: NavGroup) => {
     const groupHasActiveItem = group.items.some((item) =>
-      isNavRouteActive(activeRoute, item.route),
+      isNavRouteActive(activeRoute, item.route, item.id),
     );
     const isCollapsed = collapsedGroups.has(group.id) && !groupHasActiveItem;
     return (
@@ -233,7 +233,7 @@ export default function Sidebar({
         >
           <ul className="sidebar-sub-nav" inert={isCollapsed || undefined}>
             {group.items.map((item) => {
-              const isActiveItem = isNavRouteActive(activeRoute, item.route);
+              const isActiveItem = isNavRouteActive(activeRoute, item.route, item.id);
               const ItemIcon = isActiveItem ? `ph-fill ${item.icon}` : `ph ${item.icon}`;
               return (
                 <li key={item.id} className="sidebar-sub-item">

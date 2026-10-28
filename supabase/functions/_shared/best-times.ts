@@ -12,10 +12,26 @@ export interface BestTimesPost {
   posted_at: string;
   likes: number | null;
   comments: number | null;
-  saved: number | null;
+  saved?: number | null;
   shares: number | null;
-  reach: number | null;
+  reach?: number | null;
+  /** TikTok only: the denominator of `tiktokRate`. */
+  views?: number | null;
 }
+
+/** Score of one post, in percent; null counts the post but adds 0. */
+export type BestTimesRate = (p: BestTimesPost) => number | null;
+
+/** Instagram: (likes + comments + saved + shares) / reach * 100. */
+const instagramRate: BestTimesRate = (p) => {
+  const interactions = (p.likes || 0) + (p.comments || 0) + (p.saved || 0) + (p.shares || 0);
+  const reach = p.reach || 0;
+  return reach > 0 ? (interactions / reach) * 100 : null;
+};
+
+/** TikTok has no reach: (likes + comments + shares) / views * 100. */
+export const tiktokRate: BestTimesRate = (p) =>
+  p.views ? ((p.likes || 0) + (p.comments || 0) + (p.shares || 0)) / p.views * 100 : null;
 
 export interface BestTimesPayload {
   heatmap: number[][];
@@ -35,17 +51,15 @@ export function isCurrentBestTimes(data: unknown): data is BestTimesPayload {
 }
 
 /** 7x24 grid (Monday = 0) of average engagement rate per São Paulo weekday/hour, plus the top 3
- * slots that actually had posts. */
-export function bestTimesFromPosts(posts: BestTimesPost[]): BestTimesPayload {
+ * slots that actually had posts. `rate` defaults to the Instagram formula. */
+export function bestTimesFromPosts(posts: BestTimesPost[], rate: BestTimesRate = instagramRate): BestTimesPayload {
   const heatmap: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
   const counts: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
 
   for (const p of posts) {
     // São Paulo wall clock: the runtime is UTC, and the CRM schedules in local time.
     const { day, hour } = saoPauloWeekdayHour(new Date(p.posted_at));
-    const interactions = (p.likes || 0) + (p.comments || 0) + (p.saved || 0) + (p.shares || 0);
-    const reach = p.reach || 0;
-    heatmap[day][hour] += reach > 0 ? (interactions / reach) * 100 : 0;
+    heatmap[day][hour] += rate(p) ?? 0;
     counts[day][hour] += 1;
   }
 

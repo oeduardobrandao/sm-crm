@@ -79,14 +79,18 @@ export default function MobileNav() {
     agendaEnabled,
   });
 
+  // A tab on the bar wins over a Mais item that is one of its child routes: the single
+  // Analytics tab stays active on every /analytics* path, the TikTok item in Mais
+  // included. No item id on purpose (see isNavRouteActive).
+  const matchedTab =
+    tabs.find((tab) => isNavRouteActive(location.pathname, tab.route))?.navId ?? null;
   const isMoreRouteActive =
-    shortcuts.some((item) => isNavRouteActive(location.pathname, item.route)) ||
-    moreGroups.some((group) =>
-      group.items.some((item) => isNavRouteActive(location.pathname, item.route)),
-    );
-  const activeTab = isMoreRouteActive
-    ? null
-    : (tabs.find((tab) => isNavRouteActive(location.pathname, tab.route))?.navId ?? null);
+    matchedTab === null &&
+    (shortcuts.some((item) => isNavRouteActive(location.pathname, item.route)) ||
+      moreGroups.some((group) =>
+        group.items.some((item) => isNavRouteActive(location.pathname, item.route)),
+      ));
+  const activeTab = matchedTab;
   // Column the selection pill sits on: the active tab, or Mais (the last column) while
   // its sheet is open or one of its routes is showing. -1 hides the pill.
   const selectedIndex =
@@ -308,7 +312,7 @@ function MoreSheetContent({ shortcuts, moreGroups, onSearch }: MoreSheetContentP
         key={item.id}
         label={label}
         icon={icon}
-        current={isNavRouteActive(location.pathname, item.route)}
+        current={isNavRouteActive(location.pathname, item.route, item.id)}
         chevron
         onClick={() => go(item.route)}
       />

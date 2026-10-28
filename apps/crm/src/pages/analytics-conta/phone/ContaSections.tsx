@@ -44,15 +44,22 @@ export const DAY_FULL: Record<string, string> = {
 export function FollowerGrowthCard({
   history,
   onManual,
+  title = 'Crescimento de seguidores',
+  emptyText = 'Dados insuficientes. O histórico é construído diariamente.',
 }: {
   history: { date: string; follower_count: number; source: string }[];
-  onManual: () => void;
+  /** Omit where the platform takes no manual count (TikTok). */
+  onManual?: () => void;
+  title?: string;
+  emptyText?: string;
 }) {
   const [picked, setPicked] = useState<number | null>(null);
-  const manualButton = (
+  const manualButton = onManual ? (
     <button type="button" className="phone-text-button" onClick={onManual}>
       Inserir manualmente
     </button>
+  ) : (
+    <span />
   );
 
   if (history.length < 2) {
@@ -60,16 +67,16 @@ export function FollowerGrowthCard({
       <section className="phone-an-card" aria-labelledby="conta-followers-title">
         <div className="phone-an-card__top">
           <h2 id="conta-followers-title" className="phone-group__header">
-            Crescimento de seguidores
+            {title}
           </h2>
         </div>
-        <p className="phone-an-card__readout">
-          Dados insuficientes. O histórico é construído diariamente.
-        </p>
-        <div className="phone-an-card__bottom">
-          <span />
-          {manualButton}
-        </div>
+        <p className="phone-an-card__readout">{emptyText}</p>
+        {onManual && (
+          <div className="phone-an-card__bottom">
+            <span />
+            {manualButton}
+          </div>
+        )}
       </section>
     );
   }
@@ -87,7 +94,7 @@ export function FollowerGrowthCard({
     <section className="phone-an-card" aria-labelledby="conta-followers-title">
       <div className="phone-an-card__top">
         <h2 id="conta-followers-title" className="phone-group__header">
-          Crescimento de seguidores
+          {title}
         </h2>
       </div>
       <div className="phone-an-card__top">
@@ -197,34 +204,71 @@ export function DemographicsSection({ data }: { data: AudienceDemographics | nul
 
 /* ---------------- Best times ---------------- */
 
-export function BestTimesSection({ data }: { data: BestPostingTimes | null }) {
+/** Wording of the best-times section; a platform with other units (TikTok) overrides it. */
+export interface BestTimesLabels {
+  /** Fewer than 5 posts/videos. */
+  empty: string;
+  /** Readout before a cell is picked. */
+  tapHint: string;
+  header: string;
+  footer: (bucketHours: number) => string;
+  heatmapAria: string;
+  /** A slot with nothing posted. `day` is short in the cell label, full in the readout. */
+  emptySlot: (day: string, hour: number) => string;
+  cellAria: (day: string, hour: number, value: number, count: number) => string;
+  readout: (day: string, from: number, to: number, value: number, count: number) => string;
+  recommended: string;
+  slotLabel: (day: string, hour: string) => string;
+  slotValue: (value: number, count: number) => string;
+}
+
+const posts = (n: number) => `${n} post${n !== 1 ? 's' : ''}`;
+
+const INSTAGRAM_BEST_TIMES: BestTimesLabels = {
+  empty:
+    'Dados insuficientes. São necessários pelo menos 5 posts nos últimos 90 dias para análise.',
+  tapHint: 'Toque num horário para ver o engajamento.',
+  header: 'Engajamento por dia e horário',
+  footer: (h) =>
+    `Média de engajamento por faixa de ${h}h, horário de Brasília. Mais escuro, mais engajamento.`,
+  heatmapAria: 'Mapa de calor de horários',
+  emptySlot: (day, hour) => `${day} ${hour}h: sem posts`,
+  cellAria: (day, hour, value, count) =>
+    `${day} ${hour}h: ${formatPct(value)}% de engajamento, ${posts(count)}`,
+  readout: (day, from, to, value, count) =>
+    `${day} ${from}h a ${to}h: ${formatPct(value)}% eng. (${posts(count)})`,
+  recommended: 'Horários recomendados',
+  slotLabel: (day, hour) => `${day} às ${hour}`,
+  slotValue: (value, count) => `${formatPct(value)}% eng. · ${count} post${count > 1 ? 's' : ''}`,
+};
+
+export function BestTimesSection({
+  data,
+  labels = INSTAGRAM_BEST_TIMES,
+}: {
+  data: BestPostingTimes | null;
+  labels?: BestTimesLabels;
+}) {
   const [picked, setPicked] = useState<{ d: number; b: number } | null>(null);
   if (!data || data.totalPosts < 5) {
-    return (
-      <p className="phone-an-empty">
-        Dados insuficientes. São necessários pelo menos 5 posts nos últimos 90 dias para análise.
-      </p>
-    );
+    return <p className="phone-an-empty">{labels.empty}</p>;
   }
   const { buckets, bucketSize, max, topCell } = bucketBestTimes(data);
   const readout = (() => {
     const cell = picked ?? (topCell ? { d: topCell.day, b: topCell.bucket } : null);
-    if (!cell) return 'Toque num horário para ver o engajamento.';
+    if (!cell) return labels.tapHint;
     const c = buckets[cell.d]?.[cell.b];
     const day = data.labels_days[cell.d];
     const start = BEST_TIME_BUCKET_STARTS[cell.b];
-    if (!c || c.count === 0) return `${DAY_FULL[day] ?? day} ${start}h: sem posts`;
-    return `${DAY_FULL[day] ?? day} ${start}h a ${start + bucketSize - 1}h: ${formatPct(c.value)}% eng. (${c.count} post${c.count !== 1 ? 's' : ''})`;
+    if (!c || c.count === 0) return labels.emptySlot(DAY_FULL[day] ?? day, start);
+    return labels.readout(DAY_FULL[day] ?? day, start, start + bucketSize - 1, c.value, c.count);
   })();
 
   return (
     <>
-      <GroupedList
-        header="Engajamento por dia e horário"
-        footer={`Média de engajamento por faixa de ${bucketSize}h, horário de Brasília. Mais escuro, mais engajamento.`}
-      >
+      <GroupedList header={labels.header} footer={labels.footer(bucketSize)}>
         <li className="phone-cell">
-          <div className="phone-an-hm" role="group" aria-label="Mapa de calor de horários">
+          <div className="phone-an-hm" role="group" aria-label={labels.heatmapAria}>
             <span />
             {BEST_TIME_BUCKET_STARTS.map((h) => (
               <span key={h} className="phone-an-hm__label">
@@ -250,8 +294,8 @@ export function BestTimesSection({ data }: { data: BestPostingTimes | null }) {
                       aria-pressed={isPicked}
                       aria-label={
                         cell.count > 0
-                          ? `${day} ${BEST_TIME_BUCKET_STARTS[b]}h: ${formatPct(cell.value)}% de engajamento, ${cell.count} post${cell.count !== 1 ? 's' : ''}`
-                          : `${day} ${BEST_TIME_BUCKET_STARTS[b]}h: sem posts`
+                          ? labels.cellAria(day, BEST_TIME_BUCKET_STARTS[b], cell.value, cell.count)
+                          : labels.emptySlot(day, BEST_TIME_BUCKET_STARTS[b])
                       }
                       onClick={() => setPicked(isPicked ? null : { d, b })}
                     />
@@ -266,13 +310,16 @@ export function BestTimesSection({ data }: { data: BestPostingTimes | null }) {
         </li>
       </GroupedList>
       {data.topSlots.length > 0 && (
-        <GroupedList header="Horários recomendados">
+        <GroupedList header={labels.recommended}>
           {data.topSlots.map((s, i) => (
             <Cell
               key={i}
               icon={<span className="phone-an-rank">{i + 1}</span>}
-              label={`${DAY_FULL[data.labels_days[s.day]] ?? data.labels_days[s.day]} às ${data.labels_hours[s.hour]}`}
-              value={`${formatPct(s.value)}% eng. · ${s.postCount} post${s.postCount > 1 ? 's' : ''}`}
+              label={labels.slotLabel(
+                DAY_FULL[data.labels_days[s.day]] ?? data.labels_days[s.day],
+                data.labels_hours[s.hour],
+              )}
+              value={labels.slotValue(s.value, s.postCount)}
             />
           ))}
         </GroupedList>
@@ -533,8 +580,24 @@ const titleCase = (key: string) => {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 };
 
+/** Section titles a platform renames (TikTok: "Melhor vídeo", "Diagnóstico de títulos"). */
+export interface ContaAILabels {
+  topPerformer: string;
+  worstPerformer: string;
+  captionDiagnostic: string;
+}
+
+const CONTA_AI_LABELS: ContaAILabels = {
+  topPerformer: 'Melhor post',
+  worstPerformer: 'Pior post',
+  captionDiagnostic: 'Diagnóstico de legendas',
+};
+
 /** The account analysis payload (untyped JSON) in the shared phone shape. */
-export function contaAIView(a: any): AIAnalysisView | null {
+export function contaAIView(
+  a: any,
+  labels: ContaAILabels = CONTA_AI_LABELS,
+): AIAnalysisView | null {
   if (!a) return null;
   return {
     score: a.healthScore
@@ -551,10 +614,10 @@ export function contaAIView(a: any): AIAnalysisView | null {
         }))
       : undefined,
     sections: [
-      { title: 'Melhor post', text: a.performanceMap?.topPerformer },
-      { title: 'Pior post', text: a.performanceMap?.worstPerformer },
+      { title: labels.topPerformer, text: a.performanceMap?.topPerformer },
+      { title: labels.worstPerformer, text: a.performanceMap?.worstPerformer },
       { title: 'Mix de conteúdo', text: a.performanceMap?.contentMix },
-      { title: 'Diagnóstico de legendas', text: a.captionDiagnostic },
+      { title: labels.captionDiagnostic, text: a.captionDiagnostic },
       { title: 'Trajetória de crescimento', text: a.growthAnalysis?.trajectory },
       { title: 'Projeção', text: a.growthAnalysis?.projection },
     ],

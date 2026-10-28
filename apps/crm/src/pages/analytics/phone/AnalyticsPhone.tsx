@@ -538,7 +538,7 @@ const STATUS_TONE: Record<string, AITone> = {
 };
 
 // The AI payload is untyped JSON.
-function portfolioAIView(a: any): AIAnalysisView | null {
+export function portfolioAIView(a: any): AIAnalysisView | null {
   if (!a) return null;
   return {
     score: a.portfolioHealth

@@ -182,11 +182,11 @@ describe('RelatoriosTab', () => {
     expect(invalidateSpy).not.toHaveBeenCalled();
   });
 
-  it('renders a shortcut to Analytics that navigates to /analytics/:id', () => {
+  it('renders a shortcut to Analytics that navigates to /analytics/:id/relatorios', () => {
     renderTab();
     const btn = screen.getByRole('button', { name: 'Ver Analytics Completo →' });
     fireEvent.click(btn);
-    expect(navigateMock).toHaveBeenCalledWith('/analytics/42');
+    expect(navigateMock).toHaveBeenCalledWith('/analytics/42/relatorios');
   });
 
   it('fires no Entregas/Hub/Financeiro/Instagram queries — this tab has none of its own data fetches', async () => {
@@ -389,6 +389,6 @@ describe('RelatoriosTab no celular', () => {
   it('offers the Analytics shortcut as a row', () => {
     renderTab();
     fireEvent.click(screen.getByRole('button', { name: 'Ver Analytics Completo →' }));
-    expect(navigateMock).toHaveBeenCalledWith('/analytics/42');
+    expect(navigateMock).toHaveBeenCalledWith('/analytics/42/relatorios');
   });
 });
