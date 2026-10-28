@@ -9,6 +9,7 @@
 import { insertAuditLog } from "../_shared/audit.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
+import { saoPauloDate } from "../_shared/sao-paulo-date.ts";
 import {
   TIKTOK_AUTH_URL,
   TIKTOK_API_BASE,
@@ -37,6 +38,8 @@ type DbClient = {
 export interface TikTokIntegrationDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createServiceDb: () => DbClient;
+  /** Clock override for tests; defaults to the real time. */
+  now?: () => Date;
 }
 
 const PROFILE_FIELDS =
@@ -238,7 +241,7 @@ async function handleCallback(svc: DbClient, url: URL, req: Request): Promise<Re
   // Follower snapshot + initial import are best-effort: connecting the account must succeed
   // even if these secondary calls fail (mirrors instagram-integration's callback).
   try {
-    const today = new Date().toISOString().split("T")[0];
+    const today = saoPauloDate(new Date());
     const { data: existingEntry } = await svc
       .from("tiktok_follower_history")
       .select("source")
@@ -269,6 +272,7 @@ async function handleSync(
   path: string,
   user: { id: string },
   cors: Record<string, string>,
+  now: () => Date,
 ): Promise<Response> {
   const clientId = path.split("/")[2];
   if (!isValidClientId(clientId)) return json(cors, { error: true, message: "Invalid client ID" }, 400);
@@ -310,7 +314,7 @@ async function handleSync(
 
   const cachedAvatar = await cacheTikTokAvatar(fetch, svc.storage, clientId, (profile.avatar_url as string) ?? null);
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = saoPauloDate(now());
   const { data: existingEntry } = await svc
     .from("tiktok_follower_history")
     .select("source")
@@ -345,11 +349,26 @@ async function handleSync(
     }
   }
 
+  // Daily account snapshot, so a manual sync produces a data point the same day (the cron
+  // writes the same row). Best-effort like the other /sync writes.
+  const { error: snapshotErr } = await svc.from("tiktok_account_metrics_daily").upsert({
+    tiktok_account_id: account.id,
+    snapshot_date: today,
+    follower_count: profile.follower_count ?? account.follower_count ?? null,
+    following_count: profile.following_count ?? account.following_count ?? null,
+    likes_count: profile.likes_count ?? account.likes_count ?? null,
+    video_count: profile.video_count ?? account.video_count ?? null,
+  }, { onConflict: "tiktok_account_id,snapshot_date" });
+  if (snapshotErr) {
+    console.error("[tiktok-integration] sync: account metrics snapshot failed:", (snapshotErr as { message?: string }).message);
+  }
+
   const syncedPosts = await importTikTokVideos({ fetch, storage: svc.storage }, svc, account.id, accessToken, {
     maxVideos: 100,
+    now,
   });
 
-  const refreshedPosts = await refreshStoredPostMetrics({ svc }, account.id, accessToken);
+  const refreshedPosts = await refreshStoredPostMetrics({ svc, now }, account.id, accessToken);
 
   return json(cors, { ok: true, synced_posts: syncedPosts, refreshed_posts: refreshedPosts });
 }
@@ -584,7 +603,7 @@ export function createTikTokIntegrationHandler(deps: TikTokIntegrationDeps) {
         return await handleCallback(svc, url, req);
       }
       if (req.method === "POST" && path.startsWith("/sync/")) {
-        return await handleSync(svc, path, user!, cors);
+        return await handleSync(svc, path, user!, cors, deps.now ?? (() => new Date()));
       }
       if (req.method === "POST" && path.startsWith("/refresh/")) {
         return await handleRefresh(svc, path, user!, cors);

@@ -37,6 +37,7 @@
 // doc: "Unprocessed rows... are swept by the next tiktok-publish-cron run").
 
 import type { CronFailureDetail } from "../_shared/notify.ts";
+import { saoPauloDate } from "../_shared/sao-paulo-date.ts";
 import { errorMessage } from "../_shared/tiktok-publish-utils.ts";
 import type { CacheThumbnailDeps } from "../_shared/tiktok-thumbnail-cache.ts";
 import {
@@ -109,10 +110,6 @@ function contaIdOf(account: TikTokAccountRow): string {
   return Array.isArray(clientes) ? clientes[0]?.conta_id : clientes.conta_id;
 }
 
-function toDateString(date: Date): string {
-  return date.toISOString().split("T")[0];
-}
-
 /** Syncs a single TikTok account: fresh token -> profile stats -> video import -> stored-post
  * metric refresh -> daily snapshot + follower-history rows. Throws on any failure so the
  * caller's per-account try/catch (inside the pool callback) can isolate it from the rest of
@@ -123,7 +120,8 @@ async function processAccount(deps: TikTokSyncCronDeps, account: TikTokAccountRo
   const refreshMetrics = deps.refreshStoredPostMetrics ?? realRefreshStoredPostMetrics;
   const fetchImpl = deps.fetchImpl ?? fetch;
   const now = deps.now?.() ?? new Date();
-  const today = toDateString(now);
+  // São Paulo calendar day, the same bucket the analytics windows and follower history use.
+  const today = saoPauloDate(now);
 
   const { accessToken } = await getFreshTikTokToken(svc, account.id);
 
@@ -241,15 +239,19 @@ export async function runTikTokSyncCron(deps: TikTokSyncCronDeps): Promise<Respo
 
     if (rows.length > 0) {
       // Keep only accounts whose workspace has feature_auto_sync_cron (same gate as
-      // instagram-sync-cron, one RPC call per distinct workspace, not per account)
-      // and is not flagged is_internal.
+      // instagram-sync-cron) AND feature_tiktok, one RPC pair per distinct workspace, not per
+      // account, and is not flagged is_internal.
       const wsIds = [...new Set(rows.map(contaIdOf))];
       const allowed = new Set<string>();
       const internalLookup = deps.fetchInternalWorkspaceIds ?? realFetchInternalWorkspaceIds;
       const [internal] = await Promise.all([
         internalLookup(svc),
         Promise.all(wsIds.map(async (wsId) => {
-          if (await deps.effectivePlanFeature(svc, wsId, "feature_auto_sync_cron")) allowed.add(wsId);
+          const [autoSync, tiktok] = await Promise.all([
+            deps.effectivePlanFeature(svc, wsId, "feature_auto_sync_cron"),
+            deps.effectivePlanFeature(svc, wsId, "feature_tiktok"),
+          ]);
+          if (autoSync && tiktok) allowed.add(wsId);
         })),
       ]);
       const eligible = rows.filter((a) => {
