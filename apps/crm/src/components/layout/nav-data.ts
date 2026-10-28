@@ -177,6 +177,13 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         labelKey: 'nav.instagram',
         icon: 'ph-instagram-logo',
       },
+      {
+        id: 'analytics-tiktok',
+        route: '/analytics/tiktok',
+        label: 'TikTok',
+        labelKey: 'nav.tiktok',
+        icon: 'ph-tiktok-logo',
+      },
     ],
   },
   {
@@ -244,9 +251,20 @@ const NAV_FEATURE: Record<string, string | string[]> = {
   ideias: 'feature_ideas',
   mensagens: ['feature_mensagens', 'feature_team_chat'],
   analytics: 'feature_analytics_reports',
+  'analytics-tiktok': 'feature_analytics_reports',
   'analytics-fluxos': 'feature_analytics_reports',
   'post-express': 'feature_post_scheduling',
   automacoes: 'feature_instagram_automation',
+};
+
+/**
+ * Maps nav item id -> a flag that must be explicitly `true` for the item to show.
+ * Unlike NAV_FEATURE this is fail-closed and applies even while `features` is
+ * null (plan loading, or the unlimited path): the item stays hidden until the
+ * plan says yes. Checked on top of NAV_FEATURE, never instead of it.
+ */
+const NAV_FEATURE_REQUIRED_TRUE: Record<string, string> = {
+  'analytics-tiktok': 'feature_tiktok',
 };
 
 /**
@@ -280,6 +298,7 @@ export const NAV_MODULE: Partial<Record<string, [PermissionModule, PermissionAct
   contratos: ['contratos', 'ver'],
   equipe: ['equipe', 'ver'],
   analytics: ['analytics', 'ver'],
+  'analytics-tiktok': ['analytics', 'ver'],
   'analytics-fluxos': ['analytics', 'ver'],
   automacoes: ['automacoes', 'ver'],
   importar: ['clientes', 'editar'],
@@ -319,6 +338,17 @@ export function getNavGroups(
     }))
     .filter((g) => g.items.length > 0);
 
+  // Fail-closed flags: hidden unless explicitly true, null features included.
+  groups = groups
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((i) => {
+        const required = NAV_FEATURE_REQUIRED_TRUE[i.id];
+        return !required || features?.[required] === true;
+      }),
+    }))
+    .filter((g) => g.items.length > 0);
+
   // Hide feature-gated nav items when the flag is explicitly false, unless
   // the item opts into staying visible-but-locked.
   if (features) {
@@ -353,9 +383,20 @@ export function getNavGroups(
  * -- plain `pathname.startsWith(route)` marks '/analytics-fluxos' active for
  * the '/analytics' (Instagram) item too, since the string '/analytics-fluxos'
  * starts with '/analytics'. Requiring the boundary '/' after `route` rules
- * that out while still matching real sub-routes like '/analytics/tiktok'.
+ * that out while still matching real sub-routes like '/analytics/12'.
+ *
+ * TikTok paths are the one exception, and only when `itemId` is passed (the
+ * sidebar): '/analytics/tiktok' and a client's '/analytics/<id>/tiktok' tab
+ * belong to the `analytics-tiktok` item, so the `analytics` (Instagram) item
+ * is NOT active there even though they are children of '/analytics'. Without
+ * an item id (the phone tab bar's single Analytics tab) every '/analytics*'
+ * child path still matches '/analytics', TikTok included.
  */
-export function isNavRouteActive(pathname: string, route: string): boolean {
+const TIKTOK_ANALYTICS_PATH = /^\/analytics\/(?:tiktok|[^/]+\/tiktok)\/?$/;
+
+export function isNavRouteActive(pathname: string, route: string, itemId?: string): boolean {
+  if (itemId === 'analytics-tiktok') return TIKTOK_ANALYTICS_PATH.test(pathname);
+  if (itemId === 'analytics' && TIKTOK_ANALYTICS_PATH.test(pathname)) return false;
   return pathname === route || pathname.startsWith(`${route}/`);
 }
 

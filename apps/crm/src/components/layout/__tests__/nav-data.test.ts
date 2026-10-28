@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getNavGroups, getMoreSheetGroups, getPhoneNav } from '../nav-data';
+import { getNavGroups, getMoreSheetGroups, getPhoneNav, isNavRouteActive } from '../nav-data';
 import { deriveFinancialAccess } from '@/lib/financialAccess';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 import type { MyMembership } from '@/store/workspace';
@@ -154,11 +154,96 @@ describe('getNavGroups legacy-agent positive parity', () => {
   });
 });
 
-describe('TikTok analytics placeholder', () => {
-  it('is gone for every role (spec B4)', () => {
+describe('TikTok analytics nav item', () => {
+  const ON = { feature_tiktok: true, feature_analytics_reports: true };
+
+  it('TikTok item shows under feature_tiktok + feature_analytics_reports', () => {
+    const got = ids(getNavGroups(ON, 'owner', ownerCan));
+    expect(got).toContain('analytics-tiktok');
+    // Right after Instagram, in the Analytics group.
+    expect(got.indexOf('analytics-tiktok')).toBe(got.indexOf('analytics') + 1);
+    const group = getNavGroups(ON, 'owner', ownerCan).find((g) => g.id === 'analytics-group');
+    expect(group?.items.find((i) => i.id === 'analytics-tiktok')).toMatchObject({
+      route: '/analytics/tiktok',
+      label: 'TikTok',
+      labelKey: 'nav.tiktok',
+      icon: 'ph-tiktok-logo',
+    });
+  });
+
+  it('TikTok item hidden when features null', () => {
     expect(ids(getNavGroups(null, 'owner', ownerCan))).not.toContain('analytics-tiktok');
     expect(ids(getNavGroups(null, 'agent', agentCan))).not.toContain('analytics-tiktok');
     expect(ids(getMoreSheetGroups(null, 'owner', ownerCan))).not.toContain('analytics-tiktok');
+  });
+
+  it('TikTok item hidden when feature_tiktok false', () => {
+    const got = ids(getNavGroups({ ...ON, feature_tiktok: false }, 'owner', ownerCan));
+    expect(got).not.toContain('analytics-tiktok');
+    expect(got).toContain('analytics');
+  });
+
+  it('TikTok item hidden when feature_tiktok is missing (fail-closed)', () => {
+    expect(ids(getNavGroups({ feature_analytics_reports: true }, 'owner', ownerCan))).not.toContain(
+      'analytics-tiktok',
+    );
+  });
+
+  it('TikTok item hidden when feature_analytics_reports false', () => {
+    expect(
+      ids(getNavGroups({ ...ON, feature_analytics_reports: false }, 'owner', ownerCan)),
+    ).not.toContain('analytics-tiktok');
+  });
+
+  it('TikTok item needs analytics.ver', () => {
+    const can = makeCan(
+      fakeMembership({
+        role: 'agent',
+        role_id: 'role-1',
+        permissions: { analytics: 'none', clientes: 'ver' } as never,
+      }),
+    );
+    expect(ids(getNavGroups(ON, 'agent', can))).not.toContain('analytics-tiktok');
+  });
+});
+
+describe('isNavRouteActive', () => {
+  it('does not light Instagram on the TikTok overview', () => {
+    expect(isNavRouteActive('/analytics/tiktok', '/analytics', 'analytics')).toBe(false);
+  });
+
+  it('does not light Instagram on a client TikTok tab', () => {
+    expect(isNavRouteActive('/analytics/12/tiktok', '/analytics', 'analytics')).toBe(false);
+  });
+
+  it('lights TikTok on the overview and on a client TikTok tab', () => {
+    expect(isNavRouteActive('/analytics/tiktok', '/analytics/tiktok', 'analytics-tiktok')).toBe(
+      true,
+    );
+    expect(isNavRouteActive('/analytics/12/tiktok', '/analytics/tiktok', 'analytics-tiktok')).toBe(
+      true,
+    );
+  });
+
+  it('lights Instagram on the client Instagram and Relatórios tabs, not TikTok', () => {
+    expect(isNavRouteActive('/analytics/12/instagram', '/analytics', 'analytics')).toBe(true);
+    expect(isNavRouteActive('/analytics/12/relatorios', '/analytics', 'analytics')).toBe(true);
+    expect(isNavRouteActive('/analytics/12', '/analytics', 'analytics')).toBe(true);
+    expect(isNavRouteActive('/analytics', '/analytics', 'analytics')).toBe(true);
+    expect(
+      isNavRouteActive('/analytics/12/instagram', '/analytics/tiktok', 'analytics-tiktok'),
+    ).toBe(false);
+    expect(isNavRouteActive('/analytics', '/analytics/tiktok', 'analytics-tiktok')).toBe(false);
+  });
+
+  it('keeps the prefix boundary: /analytics-fluxos is not /analytics', () => {
+    expect(isNavRouteActive('/analytics-fluxos', '/analytics', 'analytics')).toBe(false);
+    expect(isNavRouteActive('/analytics-fluxos', '/analytics')).toBe(false);
+  });
+
+  it('without an item id, every /analytics* child path matches /analytics (phone tab)', () => {
+    expect(isNavRouteActive('/analytics/tiktok', '/analytics')).toBe(true);
+    expect(isNavRouteActive('/analytics/12/tiktok', '/analytics')).toBe(true);
   });
 });
 

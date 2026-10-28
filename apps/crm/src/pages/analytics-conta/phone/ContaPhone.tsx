@@ -11,26 +11,23 @@ import {
   Film,
   Gauge,
   PieChart,
-  Plus,
   RefreshCw,
   Users,
 } from 'lucide-react';
 import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
 import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
 import { Cell, GroupedList } from '@/components/mobile/GroupedList';
-import { ActionSheet, type ActionSheetAction } from '@/components/mobile/ActionSheet';
+import { ActionSheet } from '@/components/mobile/ActionSheet';
 import { BottomSheet } from '@/components/mobile/BottomSheet';
 import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
 import {
   getAccountAIAnalysis,
-  type AnalyticsReport,
   type AudienceDemographics,
   type BestPostingTimes,
   type PostAnalytics,
   type PostTag,
   type StoriesAnalyticsResponse,
 } from '../../../services/analytics';
-import type { ReportDocListItem } from '../../../services/reportDocs';
 import type { Baseline } from '../../../lib/ig-rates';
 import { sanitizeUrl } from '../../../utils/security';
 import {
@@ -44,7 +41,6 @@ import { RankedPostStrip } from '../../analytics/phone/RankedPostStrip';
 import { AllPostsSheet, type AllPostsRow } from '../../analytics/phone/AllPostsSheet';
 import { AIAnalysisPhone, useAIAnalysis } from '../../analytics/phone/AIAnalysisPhone';
 import { PeriodSegmented } from '../../analytics/phone/PeriodControl';
-import { formatReportMonth } from '../contaFormat';
 import { NewTagSheet, PostDetailSheet } from './PostDetailSheet';
 import {
   BaselineSection,
@@ -196,34 +192,8 @@ export interface ContaPhoneProps {
   bestTimes: BestPostingTimes | null;
   stories: StoriesAnalyticsResponse | null;
   baseline: Baseline | null;
-  reportDocs: ReportDocListItem[];
-  reports: AnalyticsReport[];
-  onOpenDoc: (id: string) => void;
-  onDeleteDoc: (id: string) => void;
-  downloadingReportId: number | null;
-  onDownloadReport: (id: number) => void;
-  onEmailReport: (report: AnalyticsReport) => void;
-}
-
-function reportStatusText(r: AnalyticsReport): { text: string; tone?: string } {
-  switch (r.status) {
-    case 'pending':
-      return { text: 'Pendente', tone: 'phone-an-tone--warn' };
-    case 'generating':
-      return { text: 'Gerando…', tone: 'phone-an-tone--muted' };
-    case 'failed':
-      return {
-        text: `Falha: ${r.generation_error || 'Erro desconhecido'}`,
-        tone: 'phone-an-tone--down',
-      };
-    case 'skipped':
-      return {
-        text: 'Fora do plano: o plano do workspace não incluía relatórios de analytics no momento da geração.',
-        tone: 'phone-an-tone--muted',
-      };
-    default:
-      return { text: 'Pronto', tone: 'phone-an-tone--up' };
-  }
+  /** The client analytics shell's tab control, rendered under the identity. */
+  tabs?: ReactNode;
 }
 
 /** /analytics/:id below 768px (FAnalyticsConta + FAnalyticsPost mockups). */
@@ -267,13 +237,7 @@ export function ContaPhone(props: ContaPhoneProps) {
     bestTimes,
     stories,
     baseline,
-    reportDocs,
-    reports,
-    onOpenDoc,
-    onDeleteDoc,
-    downloadingReportId,
-    onDownloadReport,
-    onEmailReport,
+    tabs,
   } = props;
 
   const [sortOpen, setSortOpen] = useState(false);
@@ -283,9 +247,6 @@ export function ContaPhone(props: ContaPhoneProps) {
   const [tagToRemove, setTagToRemove] = useState<PostTag | null>(null);
   const [section, setSection] = useState<SectionKey | null>(null);
   const [shownSection, setShownSection] = useState<SectionKey | null>(null);
-  const [docTarget, setDocTarget] = useState<ReportDocListItem | null>(null);
-  const [docToDelete, setDocToDelete] = useState<ReportDocListItem | null>(null);
-  const [reportTarget, setReportTarget] = useState<AnalyticsReport | null>(null);
 
   useEffect(() => {
     if (section) setShownSection(section);
@@ -390,21 +351,6 @@ export function ContaPhone(props: ContaPhoneProps) {
     },
   ];
 
-  const reportActions: ActionSheetAction[] = reportTarget
-    ? [
-        ...(reportTarget.storage_path
-          ? [
-              {
-                label: downloadingReportId === reportTarget.id ? 'Baixando…' : 'Baixar PDF',
-                disabled: downloadingReportId !== null,
-                onSelect: () => onDownloadReport(reportTarget.id),
-              },
-            ]
-          : []),
-        { label: 'Enviar por e-mail', onSelect: () => onEmailReport(reportTarget) },
-      ]
-    : [];
-
   return (
     <div className="phone-kit phone-an">
       <PhoneNavBar
@@ -454,6 +400,8 @@ export function ContaPhone(props: ContaPhoneProps) {
           </p>
         </div>
       </div>
+
+      {tabs}
 
       <PeriodSegmented
         presets={PERIOD_PRESETS}
@@ -559,51 +507,6 @@ export function ContaPhone(props: ContaPhoneProps) {
         onGenerate={ai.generate}
       />
 
-      <GroupedList
-        header="Relatórios gerados"
-        footer={
-          reportDocs.length === 0 && reports.length === 0
-            ? 'Nenhum relatório gerado ainda.'
-            : undefined
-        }
-      >
-        <Cell icon={<Plus />} label="Gerar relatório" onClick={onNewReport} />
-        {reportDocs.map((doc) => (
-          <Cell
-            key={doc.id}
-            icon={<FileText />}
-            label={doc.title}
-            subtitle={new Date(doc.created_at).toLocaleDateString('pt-BR')}
-            chevron
-            aria-haspopup="dialog"
-            onClick={() => setDocTarget(doc)}
-          />
-        ))}
-      </GroupedList>
-      {reports.length > 0 && (
-        <GroupedList header="Formato anterior">
-          {reports.map((r) => {
-            const status = reportStatusText(r);
-            const ready = r.status === 'ready';
-            return (
-              <Cell
-                key={r.id}
-                label={`${formatReportMonth(r.report_month)}${r.include_ai ? ' · IA' : ''}`}
-                subtitle={
-                  <span className="phone-an-cell-sub phone-an-cell-sub--wrap">
-                    <span className={status.tone}>{status.text}</span>
-                    {r.generated_at && ` · ${new Date(r.generated_at).toLocaleDateString('pt-BR')}`}
-                  </span>
-                }
-                chevron={ready}
-                aria-haspopup={ready ? 'dialog' : undefined}
-                onClick={ready ? () => setReportTarget(r) : undefined}
-              />
-            );
-          })}
-        </GroupedList>
-      )}
-
       {/* ---- Sheets ---- */}
 
       <ActionSheet
@@ -682,52 +585,6 @@ export function ContaPhone(props: ContaPhoneProps) {
         onCancel={() => setTagToRemove(null)}
       />
 
-      <ActionSheet
-        open={docTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setDocTarget(null);
-        }}
-        title={docTarget?.title ?? 'Relatório'}
-        actions={
-          docTarget
-            ? [
-                { label: 'Abrir', onSelect: () => onOpenDoc(docTarget.id) },
-                {
-                  label: 'Excluir',
-                  destructive: true,
-                  onSelect: () => setDocToDelete(docTarget),
-                },
-              ]
-            : []
-        }
-      />
-
-      <PhoneConfirmSheet
-        open={docToDelete !== null}
-        title="Excluir este relatório?"
-        message="O PDF exportado também é removido."
-        actions={[
-          {
-            label: 'Excluir',
-            destructive: true,
-            onSelect: () => {
-              if (docToDelete) onDeleteDoc(docToDelete.id);
-              setDocToDelete(null);
-            },
-          },
-        ]}
-        onCancel={() => setDocToDelete(null)}
-      />
-
-      <ActionSheet
-        open={reportTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setReportTarget(null);
-        }}
-        title={reportTarget ? `Relatório de ${formatReportMonth(reportTarget.report_month)}` : ''}
-        actions={reportActions}
-      />
-
       <AllPostsSheet
         open={drawer.mode !== null}
         onOpenChange={(open) => {
@@ -761,14 +618,18 @@ export function ContaPhoneMessage({
   title,
   message,
   action,
+  tabs,
 }: {
   title: string;
   message?: string;
   action?: { label: string; to: string };
+  /** The client analytics shell's tab control, kept above the message. */
+  tabs?: ReactNode;
 }) {
   return (
     <div className="phone-kit phone-an">
       <PhoneNavBar fallbackTo="/analytics" backLabel="Voltar" />
+      {tabs}
       <h1 className="phone-an-identity__name">{title}</h1>
       {message && <p className="phone-an-sheet__summary">{message}</p>}
       {action && (

@@ -66,12 +66,27 @@ vi.mock('../../../services/reportDocs', () => ({
   deleteReportDoc: vi.fn(),
 }));
 
-vi.mock('../components/NewReportDialog', () => ({
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({
+    limits: null,
+    features: { feature_tiktok: true, feature_analytics_reports: true },
+    planName: null,
+    isLoading: false,
+    isSuccess: true,
+    isUnlimited: false,
+  }),
+}));
+
+vi.mock('../../../services/tiktok', () => ({
+  getTikTokSummary: vi.fn(() => Promise.resolve(null)),
+}));
+
+vi.mock('../reports/NewReportDialog', () => ({
   NewReportDialog: ({ open }: { open: boolean }) =>
     open ? <div role="dialog" aria-label="Novo relatório" /> : null,
 }));
 
-import AnalyticsContaPage from '../AnalyticsContaPage';
+import AnalyticsClientShell from '../AnalyticsClientShell';
 import { getClientes } from '../../../store';
 import { getInstagramSummary } from '../../../services/instagram';
 import {
@@ -134,13 +149,14 @@ function post(overrides: Partial<PostAnalytics>): PostAnalytics {
 
 const TAG = { id: 9, tag_name: 'Educativo', color: '#3ecf8e' };
 
-function renderPage() {
+/** The client analytics shell, on the Instagram tab unless told otherwise. */
+function renderPage(tab: 'instagram' | 'relatorios' = 'instagram') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={['/analytics/42']}>
+      <MemoryRouter initialEntries={[`/analytics/42/${tab}`]}>
         <Routes>
-          <Route path="/analytics/:id" element={<AnalyticsContaPage />} />
+          <Route path="/analytics/:id/:tab?" element={<AnalyticsClientShell />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -233,9 +249,22 @@ describe('AnalyticsContaPage (phone)', () => {
     );
     expect(screen.getByText(/Dados de/)).toBeInTheDocument();
     expect(container.querySelector('.phone-stat-grid--scroll')).not.toBeNull();
-    // The nav bar's round button and the row in Relatórios gerados.
-    expect(screen.getAllByRole('button', { name: 'Gerar relatório' })).toHaveLength(2);
+    // The nav bar's round button; the report lists live in the Relatórios tab now.
+    expect(screen.getAllByRole('button', { name: 'Gerar relatório' })).toHaveLength(1);
+    expect(screen.queryByText('Relatórios gerados')).toBeNull();
     expect(screen.getByText('+40 no período')).toBeInTheDocument();
+  });
+
+  it('shows the shell tab control under the identity, Instagram selected', async () => {
+    renderPage();
+    const heading = await ready();
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    const tabs = screen.getByRole('tablist', { name: 'Analytics' });
+    expect(within(tabs).getByRole('tab', { name: 'Instagram' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(heading.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('opens the report dialog from the nav bar', async () => {
@@ -309,7 +338,7 @@ describe('AnalyticsContaPage (phone)', () => {
 
   it('deletes a report through a confirm sheet instead of window.confirm', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm');
-    renderPage();
+    renderPage('relatorios');
     await ready();
     fireEvent.click(await screen.findByRole('button', { name: /Relatório de setembro/ }));
     fireEvent.click(await screen.findByRole('button', { name: 'Excluir' }));
@@ -323,7 +352,7 @@ describe('AnalyticsContaPage (phone)', () => {
   });
 
   it('shows why a legacy report failed as text', async () => {
-    renderPage();
+    renderPage('relatorios');
     await ready();
     expect(await screen.findByText('Falha: Conta sem permissão de insights')).toBeInTheDocument();
   });
@@ -342,7 +371,7 @@ describe('AnalyticsContaPage (phone)', () => {
       } as never,
     ]);
     vi.mocked(getReportDownloadUrl).mockResolvedValue('https://files.example.com/6.pdf');
-    renderPage();
+    renderPage('relatorios');
     await ready();
     fireEvent.click(await screen.findByRole('button', { name: /Jul 2026/ }));
     fireEvent.click(await screen.findByRole('button', { name: 'Baixar PDF' }));

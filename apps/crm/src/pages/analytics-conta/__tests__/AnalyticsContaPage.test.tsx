@@ -111,7 +111,7 @@ vi.mock('../../../services/analytics', () => ({
 }));
 
 // The dialog has its own suite; here we only care whether the page opens it.
-vi.mock('../components/NewReportDialog', () => ({
+vi.mock('../reports/NewReportDialog', () => ({
   NewReportDialog: ({ open }: { open: boolean }) =>
     open ? <div role="dialog" aria-label="Novo relatório" /> : null,
 }));
@@ -247,7 +247,7 @@ vi.mock('@/components/ui/sheet', async () => {
   };
 });
 
-import AnalyticsContaPage from '../AnalyticsContaPage';
+import { InstagramAnalyticsTab } from '../AnalyticsContaPage';
 import {
   getAccountAIAnalysis,
   getAccountMetrics,
@@ -281,6 +281,16 @@ const mockedGetClientRateBaseline = vi.mocked(getClientRateBaseline);
 
 function resetQueryState() {
   for (const key of Object.keys(queryState)) delete queryState[key];
+}
+
+/**
+ * The Instagram tab as the client shell mounts it (AnalyticsClientShell owns the client
+ * lookup, header and tabs; its own suite covers them).
+ */
+function AnalyticsContaPage() {
+  const clientes = (queryState.clientes?.data as Array<{ id: number }> | undefined) ?? [];
+  const cliente = clientes.find((c) => c.id === 42) ?? { id: 42, nome: 'Clinica Aurora' };
+  return <InstagramAnalyticsTab clientId={42} cliente={cliente} />;
 }
 
 function seedCommonAnalyticsData() {
@@ -502,7 +512,7 @@ beforeEach(() => {
 
 describe('AnalyticsContaPage', () => {
   it('shows a loading skeleton while the initial queries are pending', () => {
-    queryState.clientes = { isLoading: true };
+    queryState['ig-summary'] = { isLoading: true };
 
     render(<AnalyticsContaPage />);
 
@@ -562,7 +572,7 @@ describe('AnalyticsContaPage', () => {
 
     expect(screen.getByText('Token do Instagram expirado')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /Reconectar Conta/i }));
-    expect(navigateMock).toHaveBeenCalledWith('/cliente/42');
+    expect(navigateMock).toHaveBeenCalledWith('/clientes/42/redes-sociais');
   });
 
   it('shows the disconnected state when the Instagram summary is missing', () => {
@@ -573,7 +583,7 @@ describe('AnalyticsContaPage', () => {
 
     expect(screen.getByText('Instagram não conectado')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /Ir para o perfil do cliente/i }));
-    expect(navigateMock).toHaveBeenCalledWith('/cliente/42');
+    expect(navigateMock).toHaveBeenCalledWith('/clientes/42/redes-sociais');
   });
 
   it('renders the main summaries and generates the AI analysis on demand', async () => {
@@ -611,7 +621,8 @@ describe('AnalyticsContaPage', () => {
 
     render(<AnalyticsContaPage />);
 
-    expect(screen.getByText(client.nome)).toBeTruthy();
+    // The client name is the shell's header now; the tab shows the Instagram handle.
+    expect(screen.queryByText(client.nome)).toBeNull();
     expect(screen.getByText(`@${account.username}`)).toBeTruthy();
     expect(screen.getByText('Seguidores')).toBeTruthy();
     expect(screen.getByText('1.234')).toBeTruthy();
@@ -631,8 +642,8 @@ describe('AnalyticsContaPage', () => {
         .map((item) => item.textContent),
     ).toEqual(['Post em reels com alta performance', 'Conteúdo institucional']);
     expect(screen.getByText(/Top posts por visualizações/i)).toBeTruthy();
-    expect(screen.getByText('Relatórios Gerados')).toBeTruthy();
-    expect(screen.getByText('Abr 2026')).toBeTruthy();
+    // The reports card moved to the Relatórios tab (ClientReportsPanel).
+    expect(screen.queryByText('Relatórios Gerados')).toBeNull();
     await waitFor(() => {
       expect(chartCalls.length).toBeGreaterThan(0);
     });
@@ -646,25 +657,6 @@ describe('AnalyticsContaPage', () => {
     expect(await screen.findByText('82')).toBeTruthy();
     expect(screen.getByText('Conta saudável e consistente.')).toBeTruthy();
     expect(screen.getByText('Publicar mais reels')).toBeTruthy();
-  });
-
-  it('mostra o badge "Fora do plano" para relatório com status skipped', () => {
-    seedCommonAnalyticsData();
-    queryState['analytics-reports'] = {
-      data: [
-        {
-          id: 11,
-          report_month: '2026-05',
-          generated_at: null,
-          status: 'skipped',
-          report_url: null,
-        },
-      ],
-    };
-
-    render(<AnalyticsContaPage />);
-
-    expect(screen.getByText('Fora do plano')).toBeTruthy();
   });
 
   it('renders the Baseline Instagram card and an ig_score badge', () => {
@@ -932,123 +924,6 @@ describe('AnalyticsContaPage', () => {
     expect(screen.getByRole('dialog', { name: 'Novo relatório' })).toBeTruthy();
   });
 
-  it('Gerar (Relatórios Gerados card) opens the interactive report dialog', () => {
-    seedCommonAnalyticsData();
-    render(<AnalyticsContaPage />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Gerar' }));
-    expect(screen.getByRole('dialog', { name: 'Novo relatório' })).toBeTruthy();
-  });
-
-  it('Relatórios Gerados lists interactive docs and keeps old-format reports below them', () => {
-    seedCommonAnalyticsData();
-    queryState['report-docs'] = {
-      data: [
-        {
-          id: 'doc-1',
-          title: 'Relatório de Julho',
-          period_start: '2026-07-01',
-          status: 'ready',
-          created_at: '2026-08-01T00:00:00Z',
-        },
-      ],
-    };
-
-    render(<AnalyticsContaPage />);
-
-    expect(screen.queryByText('Relatórios Interativos')).toBeNull();
-    expect(screen.queryByText('Incluir IA')).toBeNull();
-    const doc = screen.getByText('Relatório de Julho');
-    const legacyHeading = screen.getByText('Formato anterior');
-    const legacyRow = screen.getByText('Abr 2026');
-    expect(
-      doc.compareDocumentPosition(legacyHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      legacyHeading.compareDocumentPosition(legacyRow) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-  });
-
-  it('Relatórios Gerados (interativo): excluir pede confirmação e, confirmado, chama deleteReportDoc, invalida a lista e mostra toast', async () => {
-    seedCommonAnalyticsData();
-    queryState['report-docs'] = {
-      data: [
-        {
-          id: 'doc-1',
-          title: 'Relatório de Julho',
-          period_start: '2026-07-01',
-          status: 'ready',
-          created_at: '2026-08-01T00:00:00Z',
-        },
-      ],
-    };
-    deleteReportDocMock.mockResolvedValue(undefined);
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-
-    render(<AnalyticsContaPage />);
-    fireEvent.click(screen.getByLabelText('Excluir relatório'));
-
-    expect(confirmSpy).toHaveBeenCalledWith(
-      'Excluir este relatório? O PDF exportado também é removido.',
-    );
-    await waitFor(() => expect(deleteReportDocMock).toHaveBeenCalledWith('doc-1'));
-    expect(queryClientMock.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['report-docs', 42],
-    });
-    expect(toastSuccessMock).toHaveBeenCalledWith('Relatório excluído.');
-  });
-
-  it('Relatórios Gerados (interativo): cancelar no confirm não exclui', async () => {
-    seedCommonAnalyticsData();
-    queryState['report-docs'] = {
-      data: [
-        {
-          id: 'doc-1',
-          title: 'Relatório de Julho',
-          period_start: '2026-07-01',
-          status: 'ready',
-          created_at: '2026-08-01T00:00:00Z',
-        },
-      ],
-    };
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
-
-    render(<AnalyticsContaPage />);
-    fireEvent.click(screen.getByLabelText('Excluir relatório'));
-
-    expect(deleteReportDocMock).not.toHaveBeenCalled();
-    expect(queryClientMock.invalidateQueries).not.toHaveBeenCalledWith({
-      queryKey: ['report-docs', 42],
-    });
-  });
-
-  it('Relatórios Gerados (interativo): erro ao excluir mostra toast e não invalida a lista', async () => {
-    seedCommonAnalyticsData();
-    queryState['report-docs'] = {
-      data: [
-        {
-          id: 'doc-1',
-          title: 'Relatório de Julho',
-          period_start: '2026-07-01',
-          status: 'ready',
-          created_at: '2026-08-01T00:00:00Z',
-        },
-      ],
-    };
-    deleteReportDocMock.mockRejectedValue(new Error('Erro ao excluir relatório (500)'));
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-
-    render(<AnalyticsContaPage />);
-    fireEvent.click(screen.getByLabelText('Excluir relatório'));
-
-    await waitFor(() =>
-      expect(toastErrorMock).toHaveBeenCalledWith('Erro ao excluir relatório (500)'),
-    );
-    expect(queryClientMock.invalidateQueries).not.toHaveBeenCalledWith({
-      queryKey: ['report-docs', 42],
-    });
-  });
-
   it('Sincronizar Dados: after a successful sync, bypasses the account-metrics cache via fetchQuery({refresh:true})', async () => {
     seedCommonAnalyticsData();
     mockedGetAccountMetrics.mockResolvedValue({
@@ -1142,8 +1017,11 @@ describe('AnalyticsContaPage', () => {
 });
 
 describe('AnalyticsContaPage in the Vidro toolbar', () => {
-  it('puts the identity, handle and actions in the toolbar and renders them once', () => {
+  // The shell registers the toolbar (client photo, name, back link); the tab never does, so
+  // its Instagram-only actions and the handle stay in the page, once.
+  it('never registers the toolbar and keeps the handle and actions in the tab, once', () => {
     seedCommonAnalyticsData();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { container } = render(
       <VidroToolbarHarness>
@@ -1151,23 +1029,23 @@ describe('AnalyticsContaPage in the Vidro toolbar', () => {
       </VidroToolbarHarness>,
     );
 
-    const h1s = screen.getAllByRole('heading', { level: 1 });
-    expect(h1s).toHaveLength(1);
-    expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
-    expect(h1s[0]).toHaveTextContent('Clinica Aurora');
-    const toolbar = container.querySelector('.vidro-toolbar') as HTMLElement;
-    expect(within(toolbar).getByRole('link', { name: '@clinicaaurora' })).toBeTruthy();
-    expect(toolbar.querySelector('img.conta-identity__avatar')).not.toBeNull();
+    const toolbar = container.querySelector('.vidro-toolbar');
+    expect(toolbar?.textContent ?? '').not.toContain('Clinica Aurora');
+    expect(screen.queryAllByRole('heading', { level: 1 })).toHaveLength(0);
+    const handle = screen.getByRole('link', { name: '@clinicaaurora' });
+    expect(handle.closest('.vidro-toolbar')).toBeNull();
     expect(screen.getAllByRole('button', { name: 'Gerar Relatório' })).toHaveLength(1);
-    expect(screen.getAllByRole('button', { name: /Voltar/ })).toHaveLength(1);
     expect(screen.getAllByTitle('Sincronizar Dados')).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: /Voltar/ })).toBeNull();
     expect(container.querySelector('.conta-identity')).toBeNull();
     // The period tabs stay in the page content.
     const tabs = screen.getByRole('tab', { name: '7 dias' });
     expect(tabs.closest('.vidro-toolbar')).toBeNull();
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 
-  it('keeps the in-page header when the Vidro shell is off', () => {
+  it('keeps the same in-tab actions when the Vidro shell is off', () => {
     seedCommonAnalyticsData();
 
     const { container } = render(
@@ -1176,14 +1054,13 @@ describe('AnalyticsContaPage in the Vidro toolbar', () => {
       </VidroToolbarHarness>,
     );
 
-    const h1s = screen.getAllByRole('heading', { level: 1 });
-    expect(h1s).toHaveLength(1);
-    expect(h1s[0].closest('.conta-identity')).not.toBeNull();
+    expect(screen.queryAllByRole('heading', { level: 1 })).toHaveLength(0);
     expect(container.querySelector('.vidro-toolbar')).toBeNull();
     expect(screen.getAllByRole('button', { name: 'Gerar Relatório' })).toHaveLength(1);
+    expect(screen.getByRole('link', { name: '@clinicaaurora' })).toBeTruthy();
   });
 
-  it('registers the not-connected toolbar from its own child, exactly once', () => {
+  it('renders the not-connected state without a header of its own', () => {
     queryState.clientes = { data: [{ id: 42, nome: 'Clinica Aurora' }] };
     queryState['ig-summary'] = { data: null };
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -1195,31 +1072,11 @@ describe('AnalyticsContaPage in the Vidro toolbar', () => {
     );
 
     expect(screen.getByText('Instagram não conectado')).toBeTruthy();
-    const h1s = screen.getAllByRole('heading', { level: 1 });
-    expect(h1s).toHaveLength(1);
-    expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
-    expect(h1s[0]).toHaveTextContent('Analytics');
-    expect(screen.getAllByRole('button', { name: /Voltar/ })).toHaveLength(1);
+    expect(screen.queryAllByRole('heading', { level: 1 })).toHaveLength(0);
     expect(container.querySelector('.header')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Voltar/ })).toBeNull();
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
-  });
-
-  it('keeps the not-connected in-page header when the Vidro shell is off', () => {
-    queryState.clientes = { data: [{ id: 42, nome: 'Clinica Aurora' }] };
-    queryState['ig-summary'] = { data: null };
-
-    const { container } = render(
-      <VidroToolbarHarness vidroShell={false}>
-        <AnalyticsContaPage />
-      </VidroToolbarHarness>,
-    );
-
-    const h1s = screen.getAllByRole('heading', { level: 1 });
-    expect(h1s).toHaveLength(1);
-    expect(h1s[0].closest('.header')).not.toBeNull();
-    expect(container.querySelector('.vidro-toolbar')).toBeNull();
-    expect(screen.getAllByRole('button', { name: /Voltar/ })).toHaveLength(1);
   });
 });
 

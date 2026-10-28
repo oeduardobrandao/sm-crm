@@ -134,7 +134,7 @@ const TarefasPage = lazy(() => import('./pages/tarefas/TarefasPage'));
 const ExpressPostPage = lazy(() => import('./pages/post-express/ExpressPostPage'));
 const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage'));
 const TikTokOverviewPage = lazy(() => import('./pages/analytics-tiktok/TikTokOverviewPage'));
-const AnalyticsContaPage = lazy(() => import('./pages/analytics-conta/AnalyticsContaPage'));
+const AnalyticsClientShell = lazy(() => import('./pages/analytics-conta/AnalyticsClientShell'));
 const AnalyticsFluxosPage = lazy(() => import('./pages/analytics-fluxos/AnalyticsFluxosPage'));
 const RelatorioEditorPage = lazy(() => import('./pages/relatorio-editor/RelatorioEditorPage'));
 const ModeloEditorPage = lazy(() => import('./pages/relatorio-editor/ModeloEditorPage'));
@@ -326,7 +326,7 @@ export default function App() {
                 <Route path="/arquivos" element={<ArquivosPage />} />
                 <Route path="/analytics" element={<AnalyticsPage />} />
                 <Route path="/analytics/tiktok" element={<TikTokOverviewPage />} />
-                <Route path="/analytics/:id" element={<AnalyticsContaPage />} />
+                <Route path="/analytics/:id/:tab?" element={<AnalyticsClientShell />} />
                 <Route path="/relatorios/modelos/padrao" element={<ModeloPadraoPage />} />
                 <Route path="/relatorios/modelos/:id" element={<ModeloEditorPage />} />
                 <Route path="/relatorios/:id" element={<RelatorioEditorPage />} />

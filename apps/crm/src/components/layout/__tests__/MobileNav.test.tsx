@@ -359,7 +359,7 @@ describe('MobileNav', () => {
     expect(rows).not.toContain('Mensagens');
   });
 
-  it('does not render the TikTok analytics placeholder (spec B4)', () => {
+  it('does not list TikTok analytics in Mais while the plan has not loaded', () => {
     setAuth();
     renderMobileNav('/dashboard');
     openMore();
@@ -367,6 +367,52 @@ describe('MobileNav', () => {
     const rows = moreRows();
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.some((label) => label.includes('TikTok'))).toBe(false);
+  });
+
+  it('lists TikTok analytics in Mais under feature_tiktok', () => {
+    setAuth();
+    setLimits({ features: { feature_tiktok: true, feature_analytics_reports: true } });
+    renderMobileNav('/dashboard');
+    openMore();
+
+    expect(moreRows()).toContain('TikTok');
+  });
+
+  it('phone analytics tab is active on /analytics/tiktok', () => {
+    setAuth();
+    setLimits({
+      features: {
+        feature_agenda: false,
+        feature_mensagens: false,
+        feature_tiktok: true,
+        feature_analytics_reports: true,
+      },
+    });
+    renderMobileNav('/analytics/tiktok');
+
+    expect(screen.getByRole('button', { name: 'Analytics' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    expect(screen.getByRole('button', { name: 'Mais' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('phone analytics tab is active on a client TikTok tab', () => {
+    setAuth();
+    setLimits({
+      features: {
+        feature_agenda: false,
+        feature_mensagens: false,
+        feature_tiktok: true,
+        feature_analytics_reports: true,
+      },
+    });
+    renderMobileNav('/analytics/12/tiktok');
+
+    expect(screen.getByRole('button', { name: 'Analytics' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
   });
 
   it('toggles theme and signs out', async () => {

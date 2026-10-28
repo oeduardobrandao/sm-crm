@@ -186,7 +186,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
         <ReportPhoneView
           title={title}
           subtitle={clientName ? `${clientName} · ${snapshot.period.label}` : snapshot.period.label}
-          fallbackTo={`/analytics/${doc.client_id}`}
+          fallbackTo={`/analytics/${doc.client_id}/relatorios`}
           layout={layout}
           snapshot={snapshot}
           actions={[
