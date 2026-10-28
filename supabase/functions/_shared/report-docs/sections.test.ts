@@ -128,6 +128,28 @@ Deno.test("toSections: Instagram, TikTok, Instagram funde a segunda Instagram na
   assert(validateLayout(fromSections(sections, layout)).ok);
 });
 
+Deno.test("toSections: prefixo neutro sem section_header não entra na seção de plataforma", () => {
+  const layout = L([
+    B("c", "cover", "full"), B("s", "ai_summary", "full"), B("r", "kpi_reach"),
+    B("f", "chart_followers", "full"),
+  ]);
+  const sections = toSections(layout, counter());
+  assertEquals(sections.map((x) => x.kind), ["general", "instagram"]);
+  assertEquals(sections.map((x) => ids(x.blocks)), [["c", "s"], ["r", "f"]]);
+  assertEquals(sections[1].marker.config, { platform: "instagram", hideHeader: true });
+
+  const tt = toSections(L([T("t"), B("v", "tiktok_kpi_views")]), counter());
+  assertEquals(tt.map((x) => x.kind), ["general", "tiktok"]);
+  assertEquals(tt.map((x) => ids(x.blocks)), [["t"], ["v"]]);
+});
+
+Deno.test("toSections: trecho com section_header mantém título e prefixo neutro na plataforma", () => {
+  const layout = L([H("h"), T("t"), B("r", "kpi_reach"), H("h2"), T("t2"), B("v", "tiktok_kpi_views")]);
+  const sections = toSections(layout, counter());
+  assertEquals(sections.map((x) => x.kind), ["instagram", "tiktok"]);
+  assertEquals(sections.map((x) => ids(x.blocks)), [["h", "t", "r"], ["h2", "t2", "v"]]);
+});
+
 Deno.test("toSections: layout legado vazio não ganha seção", () => {
   const empty = L([]);
   assertEquals(toSections(empty, counter()), []);

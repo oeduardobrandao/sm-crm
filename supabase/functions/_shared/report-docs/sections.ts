@@ -101,7 +101,12 @@ interface Group {
 /** Legado (sem `section`), spec §Reading: corta em cada section_header, classifica cada trecho
  * pelos seus blocos de plataforma (trecho misto quebra onde a plataforma muda; os neutros entre
  * as duas ficam com a anterior), um trecho neutro entre dois da mesma plataforma entra nela, os
- * demais neutros viram Geral, e trechos vizinhos do mesmo tipo se juntam. */
+ * demais neutros viram Geral, e trechos vizinhos do mesmo tipo se juntam.
+ * Trecho que NÃO começa com section_header (só o inicial) separa o prefixo neutro (os neutros
+ * antes do primeiro bloco de plataforma) num trecho neutro próprio: capa e resumo de um modelo
+ * que perdeu o "Métricas principais" não podem cair dentro da seção Instagram (sairiam junto
+ * com ela numa geração só TikTok). Trecho com section_header mantém o título e o prefixo com o
+ * conteúdo de plataforma, porque o título é o cabeçalho desse conteúdo. */
 function inferLegacy(blocks: readonly ReportBlock[]): Group[] {
   const segments: ReportBlock[][] = [];
   for (const b of blocks) {
@@ -110,7 +115,15 @@ function inferLegacy(blocks: readonly ReportBlock[]): Group[] {
   }
 
   const pieces: { platform: SectionPlatform | null; blocks: ReportBlock[] }[] = [];
-  for (const seg of segments) {
+  for (const segment of segments) {
+    let seg = segment;
+    if (seg[0].type !== "section_header") {
+      const firstPlatform = seg.findIndex((b) => blockPlatform(b.type) !== null);
+      if (firstPlatform > 0) {
+        pieces.push({ platform: null, blocks: seg.slice(0, firstPlatform) });
+        seg = seg.slice(firstPlatform);
+      }
+    }
     let cur: { platform: SectionPlatform | null; blocks: ReportBlock[] } = {
       platform: null,
       blocks: [],
