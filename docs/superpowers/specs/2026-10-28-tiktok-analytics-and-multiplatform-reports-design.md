@@ -57,14 +57,15 @@ From the Developers API, scopes `user.info.basic,user.info.profile,user.info.sta
 
 - **New table `tiktok_post_metrics_daily`** `(tiktok_account_id uuid FK tiktok_accounts ON DELETE CASCADE, tiktok_video_id text, snapshot_date date, views bigint, likes int, comments int, shares int, PRIMARY KEY (tiktok_account_id, tiktok_video_id, snapshot_date))`. Keyed by the TikTok video id, **not** an FK to `tiktok_posts`: disconnect deletes the account's `tiktok_posts`, and the history must survive a disconnect/reconnect, like follower history does. Service-role only: RLS on, no policies, `REVOKE ALL ... FROM PUBLIC, anon, authenticated`, then an explicit `GRANT SELECT, INSERT, UPDATE, DELETE ... TO service_role` (defensive; hosted grants service_role explicitly, local stacks may not). Nothing in v1 reads it; it exists so a later version can show views gained in a window. *(my call)*
 - **One write path for video counts**: a single helper "persist current counts + upsert today's daily snapshot" replaces the two direct writes (`importTikTokVideos`' upsert from `/video/list/` and `refreshStoredPostMetrics`' update), so every count write also lands a snapshot row.
-- **Refresh coverage**: `refreshStoredPostMetrics` selects the union of the 200 most recent stored videos and every stored video posted in the last 90 days, queried via `/video/query/` in batches of 20. Applies to `/sync` and the cron alike. *(my call; 90 days = the longest period preset on the pages)*
+- **Refresh coverage**: `refreshStoredPostMetrics` selects the union of the 200 most recent stored videos and every stored video posted in the last 90 days, queried via `/video/query/` in batches of 20. Applies to `/sync` and the cron alike. The real gap today is an account with more than 200 videos posted recently; this closes it for the presets (7/30/90 days). Custom windows longer than 90 days can include older videos whose counts are stale; acceptable. *(my call)*
 - `tiktok_account_metrics_daily` also gets written by `/sync` (today only the cron writes it), so a manual sync produces a data point the same day. *(my call)*
+- **Who gets daily collection**: same rule as Instagram. `tiktok-sync-cron` keeps its `feature_auto_sync_cron` + `auto_sync_enabled` selection (the same plan flag gates `instagram-sync-cron`) and adds a `feature_tiktok` check. Workspaces without auto-sync build history only when someone clicks Sincronizar, so their follower KPIs often show "sem dados". *(my call, parity with Instagram; flagged for review)*
 
 ### A2. `tiktok-analytics` edge function (new)
 
 Mirror of `instagram-analytics`'s route shape. JWT-verified (default deploy, not `--no-verify-jwt`).
 
-Tenant identity follows `report-docs/index.ts`, **not** `instagram-analytics` or `tiktok-integration` (both still read legacy `profiles.conta_id`, which is wrong after a workspace switch): workspace = `profiles.active_workspace_id`, confirmed by an existing `workspace_members` row for the caller, then `clientes.conta_id` must equal it. Every account and video query is scoped through that owned client (`tiktok_accounts.client_id = clientId`). Every route also gates on `feature_tiktok` **and** `feature_analytics_reports` via `effectivePlanFeature`. No new plan column (avoids the entitlements enumerator redeploys).
+Tenant identity follows `report-docs/index.ts`, **not** `instagram-analytics` or `tiktok-integration` (both still read legacy `profiles.conta_id`, which is wrong after a workspace switch): workspace = `profiles.active_workspace_id`, confirmed by an existing `workspace_members` row for the caller, then `clientes.conta_id` must equal it. Every account and video query is scoped through that owned client (`tiktok_accounts.client_id = clientId`). Every route also gates on `feature_tiktok` **and** `feature_analytics_reports` via `effectivePlanFeature`. Beyond that, mirror Instagram's guard map (`_shared/feature-guard.ts`): `/best-times` also needs `feature_best_times`; the AI routes also need `feature_instagram_ai` (the AI flag despite its name) and share the `ig-ai:${contaId}` rate budget (10/hour), so TikTok doesn't double a workspace's AI allowance. The TikTok tab shows the same locked states as the Instagram tab for those. `report-docs` generate and `refresh-data` re-check `feature_tiktok` before loading the TikTok section; without it the section is null. No new plan column (avoids the entitlements enumerator redeploys).
 
 | Route | Returns |
 |---|---|
@@ -88,12 +89,15 @@ AI: reuse the Instagram prompt structure with a TikTok variant (input = the KPIs
 |---|---|---|
 | Seguidores | current `follower_count` | vs the value at window start (from follower history) |
 | Novos seguidores | follower delta over the window (history) | vs previous window |
-| Visualizações | sum of current views of **videos posted in the window**. Tooltip: "Total atual dos vídeos publicados no período, não as visualizações recebidas no período." | vs same measure for previous window |
+| Visualizações | sum of current views of **videos posted in the window**. Tooltip: "Total atual dos vídeos publicados no período, não as visualizações recebidas no período." | **none** |
 | Engajamento | (likes + comments + shares) / views over videos posted in the window | vs previous window |
-| Curtidas | sum of likes of videos posted in the window | vs previous window |
-| Compartilhamentos | sum of shares of videos posted in the window | vs previous window |
+| Curtidas | sum of likes of videos posted in the window | **none** |
+| Comentários | sum of comments of videos posted in the window | **none** |
+| Compartilhamentos | sum of shares of videos posted in the window | **none** |
 | Vídeos publicados | count of videos posted in the window | vs previous window |
 | Curtidas totais do perfil | lifetime `likes_count` | none |
+
+Why no comparison on the summed counts: they are lifetime totals, so the previous window's videos have had longer to collect views and likes, and the comparison would show a drop when nothing got worse. Engagement is a ratio of those same counts and holds up better, so it keeps its comparison. Once `tiktok_post_metrics_daily` has history, a later version can compare counts at equal video age. *(my call)* In reports the same rule applies: these KPI entries carry `prev: null`.
 
 Rules that make these deterministic:
 
@@ -119,7 +123,7 @@ Engagement uses views as denominator because TikTok gives us no reach. Where a T
 - `vercel.json` already rewrites `/analytics(/.*)?` and `/relatorios(/.*)?` to `app.html`; no rewrite change. Verify.
 - `routePermissions.ts` already gates `/analytics*` on `analytics:ver`.
 - Every existing link to `/analytics/${clientId}` keeps working through the redirect; links whose intent is reports (`cliente-detalhe` RelatoriosTab "Ver Analytics", the report editor's `fallbackTo` and back link) point straight at `/analytics/:id/relatorios`.
-- Sidebar Analytics group: **Instagram** (`/analytics`), **TikTok** (`/analytics/tiktok`, shown when `feature_tiktok`). `isNavRouteActive` must not light Instagram on `/analytics/tiktok`. On a client page, the item matching the active tab is lit (Relatórios tab lights Instagram). *(my call)* The tests asserting the TikTok nav item is absent (`nav-data.test.ts:157-163`, `Sidebar.test.tsx:327-334`) flip to assert it is present under the flag.
+- Sidebar Analytics group: **Instagram** (`/analytics`), **TikTok** (`/analytics/tiktok`, shown when `feature_tiktok`). `isNavRouteActive` itself changes: its doc comment says it deliberately treats `/analytics/tiktok` as a child of `/analytics`, so today it lights Instagram there. It must not. On a client page, the item matching the active tab is lit (Relatórios tab lights Instagram). *(my call)* The tests asserting the TikTok nav item is absent (`nav-data.test.ts:157-163`, `Sidebar.test.tsx:327-334`) flip to assert it is present under the flag.
 - Phone tab bar: `/analytics/tiktok` maps to the same analytics tab as `/analytics`.
 
 ### A5. TikTok overview page (`/analytics/tiktok`)
@@ -140,10 +144,10 @@ Reuse Instagram components where they are presentational (period control, ranked
 
 ### A6. Client analytics page with tabs
 
-`AnalyticsContaPage` becomes a shell: client header, tab bar (Instagram | TikTok | Relatórios), period bar shared by the two platform tabs (period kept in the URL query so switching tabs keeps it, *my call*), and the active tab below.
+`AnalyticsContaPage` becomes a shell: client header, tab bar (Instagram | TikTok | Relatórios), and the active tab below. Each platform tab keeps its own period controls. The Instagram tab keeps today's two period states (`days` for the post list, `overviewDays` for the KPIs, plus Último mês and custom days) exactly as they are. The TikTok tab gets one period control with 7 / 30 / 90 dias, Último mês and custom days (1–730), driving everything on the tab. *(my call: sharing one period across tabs would rewrite the Instagram tab's behavior)*
 
 - **TikTok tab hidden** when the workspace lacks `feature_tiktok`. Shown otherwise, with a "TikTok não conectado" / "Conexão expirada" state linking to the client's Redes sociais tab, like the Instagram states today.
-- **Instagram tab**: today's page content (`AnalyticsContent`) minus the "Relatórios Gerados" card. Header actions that belong to Instagram (sync, manual followers) move into the tab.
+- **Instagram tab**: today's page content (`AnalyticsContent`) minus the "Relatórios Gerados" card. Header actions that belong to Instagram (sync, manual followers) move into the tab. One fix rides along: the "Token expirado" / "Instagram não conectado" buttons navigate to `/cliente/${clientId}` (singular, broken); they go to `/clientes/${clientId}`.
 - **TikTok tab**, mirroring the Instagram tab:
   - Sync button (existing `syncTikTokData`).
   - KPI cards per §A3.
@@ -153,7 +157,7 @@ Reuse Instagram components where they are presentational (period control, ranked
   - Best time to post heatmap.
   - AI analysis section.
   - Omitted (no data): reach, saves, link clicks, profile views, stories, demographics, format and topic breakdowns, baseline card.
-- **Relatórios tab**: see §B1.
+- **Relatórios tab**: Part A moves the existing "Relatórios Gerados" card into this tab as-is (lists, Gerar relatório, Abrir, delete, legacy list). Part B adds the Plataformas choice and the platforms badge (§B1).
 - Phone variant: the existing `ContaPhone` gains the same three-tab structure; TikTok sections get phone versions in the style of `ContaSections.tsx`.
 
 ### A7. Copy
@@ -178,7 +182,7 @@ Replaces the "Relatórios Gerados" card. Lists that client's block reports (newe
 - `validateLayout` (`_shared/report-docs/layout.ts` `BLOCK_TYPES`) and the catalog/registry gain the new types. The DB trigger only checks shape, so no migration for that.
 - The layers panel and block chrome show a small platform badge on platform blocks. *(my call)*
 - `AddWidgetDrawer` gets a platform switch at the top when the client has both platforms connected (only one connected: no switch, that platform). Only blocks valid for the selected platform are listed. Template editor: both platforms always available.
-- Cover: kicker derived from the platforms present in the layout ("Relatório mensal · Instagram", "· TikTok", "· Instagram e TikTok"); handle from the first platform in the layout. Other hardcoded Instagram copy (`KpiCardBlock` reach tooltip, `TopPostsBlock`/`FormatCardsBlock` labels) becomes platform-aware.
+- Cover: kicker derived from the platforms present in the layout ("Relatório mensal · Instagram", "· TikTok", "· Instagram e TikTok"); handle from the first platform in the layout. Other hardcoded Instagram copy (`KpiCardBlock` reach tooltip, `TopPostsBlock` format labels) becomes platform-aware; `FormatCardsBlock` stays Instagram-only.
 
 ### B3. Snapshot
 
