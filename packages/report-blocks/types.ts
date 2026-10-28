@@ -31,6 +31,7 @@ export {
   SECTION_TITLE_MAX,
   SECTION_PLATFORMS,
   isValidSectionTitle,
+  trimSectionTitle,
 } from '../../supabase/functions/_shared/report-docs/layout';
 export type {
   ReportSection,

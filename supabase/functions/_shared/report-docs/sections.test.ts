@@ -1,4 +1,9 @@
-import { assert, assertEquals, assertStrictEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+  assertStrictEquals,
+  assertThrows,
+} from "https://deno.land/std@0.208.0/assert/mod.ts";
 import {
   BLOCK_SIZES,
   BLOCK_TYPES,
@@ -249,6 +254,25 @@ Deno.test("sectionizeLayout de legado é canônico, determinístico e estável",
   assertEquals(contentIds(a), ids(LEGACY_DEFAULT.blocks));
 });
 
+Deno.test("toSections: makeId que só devolve ids existentes lança erro", () => {
+  assertThrows(() => toSections(LEGACY_DEFAULT, () => "cover"), Error, "makeId");
+});
+
+Deno.test("sectionizeLayout: seccionado acima do teto de conteúdo volta como a mesma referência", () => {
+  const blocks: ReportBlock[] = [S("g")];
+  for (let i = 0; i < 201; i++) blocks.push(T(`t${i}`));
+  const over = L(blocks);
+  assert(!validateLayout(over).ok);
+  assertStrictEquals(sectionizeLayout(over, counter()), over);
+});
+
+Deno.test("sectionOfBlock e sectionPlatforms repassam makeId", () => {
+  assertEquals(sectionOfBlock(LEGACY_DEFAULT, "ig_reach", counter("k"))?.marker.id, "k2");
+  let calls = 0;
+  assertEquals(sectionPlatforms(LEGACY_DEFAULT, () => `p${++calls}`), ["instagram"]);
+  assertEquals(calls, 3);
+});
+
 Deno.test("toSections: id sintetizado que colide com um id existente é descartado", () => {
   const ids_ = ["cover", "ai_summary", "fresh1", "fresh2", "fresh3"];
   let i = 0;
@@ -293,6 +317,13 @@ Deno.test("makeSectionMarker: chaves ausentes são omitidas; hideHeader só em p
     config: { platform: "instagram", title: "Meu IG", hideHeader: true },
   });
   assertEquals(makeSectionMarker("tiktok", { id: "c", title: "   " }).config, { platform: "tiktok" });
+  // trim só ASCII: \t e \n saem, U+00A0 fica (o validador conta igual)
+  assertEquals(makeSectionMarker("general", { id: "d", title: "\t Resumo \n" }).config, { title: "Resumo" });
+  assertEquals(makeSectionMarker("general", { id: "e", title: "\u00a0Resumo\u00a0" }).config, {
+    title: "\u00a0Resumo\u00a0",
+  });
+  const nbsp = makeSectionMarker("general", { id: "f", title: "\u00a0" + "x".repeat(90) });
+  assert(validateLayout(L([nbsp])).ok);
   assert(typeof makeSectionMarker("general").id === "string");
   assert(validateLayout(L([makeSectionMarker("tiktok", { title: "x".repeat(200) })])).ok);
 });

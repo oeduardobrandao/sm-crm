@@ -1127,5 +1127,61 @@
     "layout": { "version": 1, "blocks": [
       { "id": "g", "type": "section", "size": "full", "config": {"hideHeader": true} }
     ] }
+  },
+  {
+    "name": "invalid: section config null",
+    "valid": false,
+    "layout": { "version": 1, "blocks": [
+      { "id": "g", "type": "section", "size": "full", "config": null }
+    ] }
+  },
+  {
+    "name": "invalid: section platform null",
+    "valid": false,
+    "layout": { "version": 1, "blocks": [
+      { "id": "g", "type": "section", "size": "full", "config": {"platform": null} }
+    ] }
+  },
+  {
+    "name": "invalid: section title null",
+    "valid": false,
+    "layout": { "version": 1, "blocks": [
+      { "id": "g", "type": "section", "size": "full", "config": {"title": null} }
+    ] }
+  },
+  {
+    "name": "invalid: section hideHeader null",
+    "valid": false,
+    "layout": { "version": 1, "blocks": [
+      { "id": "ig", "type": "section", "size": "full", "config": {"platform": "instagram", "hideHeader": null} }
+    ] }
+  },
+  {
+    "name": "invalid: section text null",
+    "valid": false,
+    "layout": { "version": 1, "blocks": [
+      { "id": "g", "type": "section", "size": "full", "text": null }
+    ] }
+  },
+  {
+    "name": "canonical: title of 80 code points padded with spaces and tabs",
+    "valid": true,
+    "layout": { "version": 1, "blocks": [
+      { "id": "g", "type": "section", "size": "full", "config": {"title": " \t cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\t \n\r"} }
+    ] }
+  },
+  {
+    "name": "invalid: section title only spaces and tabs",
+    "valid": false,
+    "layout": { "version": 1, "blocks": [
+      { "id": "g", "type": "section", "size": "full", "config": {"title": " \t \t"} }
+    ] }
+  },
+  {
+    "name": "invalid: section title of 80 padded with U+00A0 (82 after ASCII trim)",
+    "valid": false,
+    "layout": { "version": 1, "blocks": [
+      { "id": "g", "type": "section", "size": "full", "config": {"title": "\u00a0dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\u00a0"} }
+    ] }
   }
 ]

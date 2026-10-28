@@ -13,6 +13,7 @@ import {
   type ReportLayout,
   SECTION_TITLE_MAX,
   sectionStructureError,
+  trimSectionTitle,
 } from "./layout.ts";
 
 export type SectionKind = "general" | "instagram" | "tiktok";
@@ -39,16 +40,17 @@ export function sectionKindOf(marker: ReportBlock): SectionKind {
   return p === "instagram" || p === "tiktok" ? p : "general";
 }
 
-/** Trim + corte em SECTION_TITLE_MAX code points; vazio = sem título. */
+/** Trim ASCII (o mesmo do validador) + corte em SECTION_TITLE_MAX code points; vazio = sem
+ * título. */
 function cleanTitle(title: string): string | undefined {
-  const trimmed = title.trim();
+  const trimmed = trimSectionTitle(title);
   if (trimmed.length === 0) return undefined;
   if (codePointLength(trimmed) <= SECTION_TITLE_MAX) return trimmed;
-  return [...trimmed].slice(0, SECTION_TITLE_MAX).join("").trim();
+  return trimSectionTitle([...trimmed].slice(0, SECTION_TITLE_MAX).join(""));
 }
 
 /** Marcador no formato exato que o validador aceita: chaves ausentes são omitidas (nada de
- * `false` ou `""`), `hideHeader` só em seção de plataforma, título com trim e cortado. */
+ * `false` ou `""`), `hideHeader` só em seção de plataforma, título com trim ASCII e cortado. */
 export function makeSectionMarker(
   kind: SectionKind,
   opts: { id?: string; title?: string; hideHeader?: true } = {},
@@ -170,7 +172,9 @@ function readSectioned(blocks: readonly ReportBlock[]): Group[] {
 /** Reparos (spec §Reading): bloco de plataforma fora da sua seção vai para o fim dela (criada
  * logo depois da última seção de plataforma, ou no fim, se faltar); segunda seção da mesma
  * plataforma funde na primeira; Geral sintetizada vazia some; Gerais sintetizadas vizinhas se
- * juntam; acima de MAX_SECTIONS, Gerais vizinhas fundem (a de trás na da frente). */
+ * juntam; acima de MAX_SECTIONS, Gerais vizinhas fundem (a de trás na da frente). Nessa fusão
+ * fica o marcador da primeira (id e título dela; o da de trás some, a menos que a primeira
+ * seja sintetizada, aí herda o marcador salvo da de trás). */
 function repairGroups(input: Group[]): Group[] {
   const moved: Record<SectionPlatform, ReportBlock[]> = { instagram: [], tiktok: [] };
   for (const g of input) {
@@ -235,18 +239,22 @@ function repairGroups(input: Group[]): Group[] {
 
 /** Layout -> seções. Legado é inferido, seccionado inválido é reparado (spec §Reading); todo
  * bloco de conteúdo sobrevive. `makeId` é a única fonte de ids sintetizados (um contador dá
- * saída determinística); um id já usado no layout é descartado e pedido de novo. Layout vazio
- * dá []. */
+ * saída determinística); um id já usado no layout é descartado e pedido de novo, e 100
+ * colisões seguidas lançam erro (nunca devolve um id repetido). Layout vazio dá []. */
 export function toSections(
   layout: ReportLayout,
   makeId: () => string = () => crypto.randomUUID(),
 ): ReportSection[] {
   const used = new Set(layout.blocks.map((b) => b.id));
   const freshId = (): string => {
-    let id = makeId();
-    for (let tries = 0; used.has(id) && tries < 100; tries++) id = makeId();
-    used.add(id);
-    return id;
+    for (let tries = 0; tries <= 100; tries++) {
+      const id = makeId();
+      if (!used.has(id)) {
+        used.add(id);
+        return id;
+      }
+    }
+    throw new Error("toSections: makeId keeps returning ids already in the layout");
   };
   const groups = repairGroups(
     isSectioned(layout) ? readSectioned(layout.blocks) : inferLegacy(layout.blocks),
@@ -266,27 +274,36 @@ export function fromSections(sections: ReportSection[], base: ReportLayout): Rep
 }
 
 /** Forma canônica. Devolve a MESMA referência quando o layout já é canônico (o autosave do
- * editor compara com ===) e para o layout legado vazio. */
+ * editor compara com ===) e para o layout legado vazio. "Canônico" aqui olha só o que o reparo
+ * conserta (forma do marcador, regras 1 a 3, teto de seções): um layout seccionado acima do
+ * teto de conteúdo volta igual, porque seccionar de novo não o deixaria válido. */
 export function sectionizeLayout(
   layout: ReportLayout,
   makeId?: () => string,
 ): ReportLayout {
   if (isSectioned(layout)) {
-    if (sectionStructureError(layout.blocks) === null) return layout;
+    if (sectionStructureError(layout.blocks, { contentCap: false }) === null) return layout;
   } else if (layout.blocks.length === 0) return layout;
   return fromSections(toSections(layout, makeId), layout);
 }
 
 /** Seção que contém o bloco (ou cujo marcador tem esse id). */
-export function sectionOfBlock(layout: ReportLayout, blockId: string): ReportSection | undefined {
-  return toSections(layout).find(
+export function sectionOfBlock(
+  layout: ReportLayout,
+  blockId: string,
+  makeId?: () => string,
+): ReportSection | undefined {
+  return toSections(layout, makeId).find(
     (s) => s.marker.id === blockId || s.blocks.some((b) => b.id === blockId),
   );
 }
 
 /** Plataformas com seção, na ordem do relatório (legado via toSections). */
-export function sectionPlatforms(layout: ReportLayout): SectionPlatform[] {
+export function sectionPlatforms(
+  layout: ReportLayout,
+  makeId?: () => string,
+): SectionPlatform[] {
   const out: SectionPlatform[] = [];
-  for (const s of toSections(layout)) if (s.kind !== "general") out.push(s.kind);
+  for (const s of toSections(layout, makeId)) if (s.kind !== "general") out.push(s.kind);
   return out;
 }

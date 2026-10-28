@@ -93,14 +93,22 @@ export function codePointLength(s: string): number {
   return n;
 }
 
-/** Título de seção aceito: string cujo trim tem de 1 a SECTION_TITLE_MAX code points. */
+/** Trim do título de seção: só espaço ASCII (espaço, \t, \n, \r), igual ao
+ * btrim(t, E' \t\n\r') do trigger SQL. String.trim() tiraria também U+00A0 e afins, e os
+ * dois lados discordariam. */
+export function trimSectionTitle(s: string): string {
+  return s.replace(/^[ \t\n\r]+|[ \t\n\r]+$/g, "");
+}
+
+/** Título de seção aceito: string cujo trim ASCII tem de 1 a SECTION_TITLE_MAX code points. */
 export function isValidSectionTitle(v: unknown): v is string {
   if (typeof v !== "string") return false;
-  const len = codePointLength(v.trim());
+  const len = codePointLength(trimSectionTitle(v));
   return len >= 1 && len <= SECTION_TITLE_MAX;
 }
 
-/** Forma exata do marcador `section` (regra 4 do spec). null = ok. */
+/** Forma exata do marcador `section` (regra 4 do spec). null = ok. JSON null conta como
+ * presente (config, platform, title, hideHeader, text): nunca vale como ausente. */
 function sectionMarkerError(b: Record<string, unknown>): string | null {
   if (b.size !== "full") return "section must be full width";
   if (b.text !== undefined) return "section must not carry text";
@@ -127,8 +135,14 @@ function sectionMarkerError(b: Record<string, unknown>): string | null {
 /** Regras estruturais das seções (spec 2026-10-28 §Rules) sobre um array de blocos cujo
  * formato individual já é válido: forma do marcador, regras 1 a 3 e os dois tetos. Layout
  * sem nenhum `section` é legado e só passa pelo teto de conteúdo. null = ok.
+ * `contentCap: false` pula o teto de conteúdo (o que o reparo de seções não conserta; usado
+ * por sectionizeLayout para decidir se o layout já é canônico).
  * Espelhado no trigger validate_report_layout() (migration 20261103000003). */
-export function sectionStructureError(blocks: readonly unknown[]): string | null {
+export function sectionStructureError(
+  blocks: readonly unknown[],
+  opts: { contentCap?: boolean } = {},
+): string | null {
+  const contentCap = opts.contentCap ?? true;
   let content = 0;
   let sections = 0;
   let current: string | null | undefined = undefined; // undefined = antes do 1º marcador
@@ -150,7 +164,7 @@ export function sectionStructureError(blocks: readonly unknown[]): string | null
       continue;
     }
     content++;
-    if (content > MAX_BLOCKS) return "too many blocks";
+    if (contentCap && content > MAX_BLOCKS) return "too many blocks";
     if (!sectioned) continue;
     if (current === undefined) return "first block must be a section";
     const platform = blockPlatform(String(b.type));
