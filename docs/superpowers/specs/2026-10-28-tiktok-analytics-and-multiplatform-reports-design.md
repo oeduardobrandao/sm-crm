@@ -63,7 +63,7 @@ From the Developers API, scopes `user.info.basic,user.info.profile,user.info.sta
 
 ### A2. `tiktok-analytics` edge function (new)
 
-Mirror of `instagram-analytics`'s route shape. JWT-verified (default deploy, not `--no-verify-jwt`).
+Mirror of `instagram-analytics`'s route shape. Verifies the user JWT itself (service-role `getUser(token)`), deployed with `--no-verify-jwt` like `instagram-analytics`.
 
 Tenant identity follows `report-docs/index.ts`, **not** `instagram-analytics` or `tiktok-integration` (both still read legacy `profiles.conta_id`, which is wrong after a workspace switch): workspace = `profiles.active_workspace_id`, confirmed by an existing `workspace_members` row for the caller, then `clientes.conta_id` must equal it. Every account and video query is scoped through that owned client (`tiktok_accounts.client_id = clientId`). Every route also gates on `feature_tiktok` **and** `feature_analytics_reports` via `effectivePlanFeature`. Beyond that, mirror Instagram's guard map (`_shared/feature-guard.ts`): `/best-times` also needs `feature_best_times`; the AI routes also need `feature_instagram_ai` (the AI flag despite its name) and share the `ig-ai:${contaId}` rate budget (10/hour), so TikTok doesn't double a workspace's AI allowance. The TikTok tab shows the same locked states as the Instagram tab for those. `report-docs` generate and `refresh-data` re-check `feature_tiktok` before loading the TikTok section; without it the section is null. No new plan column (avoids the entitlements enumerator redeploys).
 
