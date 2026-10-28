@@ -122,9 +122,17 @@ describe('applyTemplateLayout', () => {
     };
     const out = applyTemplateLayout(template, current);
     expect(out.blocks[0].type).toBe('section');
-    // Um trecho só, com bloco do Instagram: uma seção Instagram de título oculto (spec §Reading).
-    expect(out.blocks.map((b) => b.type)).toEqual(['section', 'cover', 'kpi_reach', 'ai_summary']);
-    expect(out.blocks[0].config).toEqual({ platform: 'instagram', hideHeader: true });
+    // Sem section_header no topo, a capa antes do primeiro bloco do Instagram vira Geral; o resto
+    // é uma seção Instagram de título oculto (spec §Reading).
+    expect(out.blocks.map((b) => b.type)).toEqual([
+      'section',
+      'cover',
+      'section',
+      'kpi_reach',
+      'ai_summary',
+    ]);
+    expect(out.blocks[0].config).toBeUndefined();
+    expect(out.blocks[2].config).toEqual({ platform: 'instagram', hideHeader: true });
     expect(validateLayout(out)).toMatchObject({ ok: true });
   });
 
