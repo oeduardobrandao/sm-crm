@@ -16,7 +16,9 @@ const {
   toggleSubtarefaMock,
   updateTarefaMock,
   toastSuccessMock,
+  getTarefaEventosMock,
 } = vi.hoisted(() => ({
+  getTarefaEventosMock: vi.fn(),
   deleteTarefaMock: vi.fn(),
   deleteSerieMock: vi.fn(),
   definirEstadoMock: vi.fn(),
@@ -39,9 +41,34 @@ vi.mock('../../../store', async (importOriginal) => {
     toggleSubtarefa: toggleSubtarefaMock,
     deleteSubtarefa: vi.fn(),
     updateTarefa: updateTarefaMock,
+    getTarefaEventos: getTarefaEventosMock,
+    // The comments section (TarefaComentarios.test.tsx covers it): an empty thread, so no
+    // own-comment "Editar"/"Excluir" buttons collide with the nav bar's.
+    getTarefaComentarios: vi.fn(async () => []),
+    getWorkspaceUsers: vi.fn(async () => []),
+    getMembros: vi.fn(async () => []),
+    getClientes: vi.fn(async () => []),
+    getTarefas: vi.fn(async () => []),
   };
 });
 vi.mock('sonner', () => ({ toast: { success: toastSuccessMock, error: vi.fn() } }));
+vi.mock('@/lib/supabase');
+vi.mock('@mesaas/app-lifecycle', () => ({
+  useUnsavedWork: vi.fn(),
+  trackUnsavedWork: vi.fn((p: Promise<unknown>) => p),
+}));
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({
+    features: null,
+    isUnlimited: false,
+    limits: null,
+    isLoading: false,
+  }),
+}));
+vi.mock('@/context/AuthContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/context/AuthContext')>()),
+  useAuth: () => ({ user: { id: 'user-me' }, profile: { conta_id: 'conta-1' } }),
+}));
 
 import { TarefaDetailSheet } from '../components/TarefaDetailSheet';
 
@@ -61,8 +88,8 @@ const SERIE = {
 };
 
 const MEMBROS = [
-  { id: 1, nome: 'Ana' },
-  { id: 2, nome: 'Bruno' },
+  { id: 1, nome: 'Ana', crm_user_id: 'user-ana' },
+  { id: 2, nome: 'Bruno', crm_user_id: 'user-bruno' },
 ] as never[];
 
 function makeTarefa(overrides: Partial<TarefaWithRelations> = {}): TarefaWithRelations {
@@ -124,6 +151,19 @@ beforeEach(() => {
   addSubtarefaMock.mockResolvedValue(undefined);
   toggleSubtarefaMock.mockResolvedValue(undefined);
   updateTarefaMock.mockResolvedValue(undefined);
+  getTarefaEventosMock.mockResolvedValue([
+    {
+      id: 1,
+      tarefa_id: 42,
+      tipo: 'status',
+      actor_user_id: 'user-ana',
+      actor_nome: 'Ana',
+      de: 'pendente',
+      para: 'em_andamento',
+      txid: 1,
+      created_at: '2026-10-28T12:00:00Z',
+    },
+  ]);
 });
 
 describe('TarefaDetailSheet on phones (pushed screen)', () => {
@@ -239,5 +279,51 @@ describe('TarefaDetailSheet on phones (pushed screen)', () => {
     const sheet = await screen.findByRole('dialog', { name: 'Excluir tarefa?' });
     await user.click(within(sheet).getByRole('button', { name: 'Excluir tarefa' }));
     await waitFor(() => expect(deleteTarefaMock).toHaveBeenCalledWith(42));
+  });
+
+  it('nav bar has a Histórico icon button next to Excluir and Editar', () => {
+    renderScreen(makeTarefa());
+    const region = screen.getByRole('region', { name: 'Tarefa: Responder DMs da semana' });
+    const bar = within(region).getAllByRole('banner')[0];
+    expect(within(bar).getByRole('button', { name: 'Histórico' })).toBeVisible();
+    expect(within(bar).getByRole('button', { name: 'Excluir' })).toBeVisible();
+    expect(within(bar).getByRole('button', { name: 'Editar' })).toBeVisible();
+  });
+
+  it('Histórico pushes the history screen and back returns to the task', async () => {
+    const user = userEvent.setup();
+    const { onClose } = renderScreen(makeTarefa());
+    expect(getTarefaEventosMock).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Histórico' }));
+
+    expect(screen.getByRole('heading', { name: 'Histórico' })).toBeVisible();
+    expect(
+      await screen.findByText('Ana mudou o status de A fazer para Em andamento'),
+    ).toBeVisible();
+    expect(getTarefaEventosMock).toHaveBeenCalledWith(42);
+    expect(screen.queryByRole('radiogroup', { name: 'Status da tarefa' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Voltar para a tarefa' }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('radiogroup', { name: 'Status da tarefa' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Voltar para Tarefas' })).toBeVisible();
+    expect(
+      screen.queryByText('Ana mudou o status de A fazer para Em andamento'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('comments section at the bottom, after the subtarefas', async () => {
+    renderScreen(makeTarefa());
+    expect(
+      await screen.findByText('Nenhum comentário ainda. Use @ para mencionar alguém.'),
+    ).toBeInTheDocument();
+    const section = document.getElementById('tarefa-comentarios');
+    expect(section).not.toBeNull();
+    expect(section!.parentElement!.lastElementChild).toBe(section);
+    expect(
+      screen.getByLabelText('Nova subtarefa').compareDocumentPosition(section!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });

@@ -50,6 +50,8 @@
     "regionLabel": "Tarefa: {{title}}",
     "back": "Voltar para Tarefas",
     "edit": "Editar",
+    "history": "Histórico",
+    "historyBack": "Voltar para a tarefa",
     "statusLabel": "Status da tarefa",
     "detailsLabel": "Detalhes da tarefa",
     "noDueDate": "Sem prazo",

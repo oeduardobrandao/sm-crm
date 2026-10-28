@@ -50,6 +50,8 @@
     "regionLabel": "Task: {{title}}",
     "back": "Back to Tasks",
     "edit": "Edit",
+    "history": "History",
+    "historyBack": "Back to task",
     "statusLabel": "Task status",
     "detailsLabel": "Task details",
     "noDueDate": "No due date",
