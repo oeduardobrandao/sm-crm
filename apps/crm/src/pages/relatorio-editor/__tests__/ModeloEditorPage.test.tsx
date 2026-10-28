@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -36,6 +36,12 @@ vi.mock('sonner', () => ({ toast: toastMock }));
 // própria em *.phone.test.tsx. jsdom responde false a todo matchMedia.
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
+// Objeto mutável, não vi.fn(): o vi.restoreAllMocks() do setup global não o zera.
+const limits = vi.hoisted(() => ({
+  value: { features: null as Record<string, boolean> | null },
+}));
+vi.mock('@/hooks/useWorkspaceLimits', () => ({ useWorkspaceLimits: () => limits.value }));
+
 import ModeloEditorPage from '../ModeloEditorPage';
 
 const layout: ReportLayout = {
@@ -61,6 +67,7 @@ function renderAt(id = 'tpl-1') {
 }
 
 beforeEach(() => {
+  limits.value = { features: null };
   getReportTemplateMock.mockReset();
   updateReportTemplateMock.mockReset();
   updateReportTemplateMock.mockResolvedValue(undefined);
@@ -82,6 +89,28 @@ function dropOnDocument(types: string[]) {
 }
 
 describe('ModeloEditorPage', () => {
+  // TikTok só existe com feature_tiktok: sem a flag (ou com o plano ainda sem
+  // resposta) o drawer oferece só Instagram, sem seletor de plataforma.
+  it.each([
+    ['sem feature_tiktok', { feature_tiktok: false }],
+    ['plano sem resposta', null],
+  ])('%s: o drawer não oferece TikTok', async (_label, features) => {
+    limits.value = { features };
+    renderAt();
+    fireEvent.click((await screen.findAllByRole('button', { name: /Adicionar widget/ }))[0]);
+    expect(screen.queryByRole('radiogroup', { name: 'Plataforma' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'TikTok' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Lista de vídeos' })).not.toBeInTheDocument();
+  });
+
+  it('com feature_tiktok: o drawer oferece Instagram | TikTok', async () => {
+    limits.value = { features: { feature_tiktok: true } };
+    renderAt();
+    fireEvent.click((await screen.findAllByRole('button', { name: /Adicionar widget/ }))[0]);
+    const group = screen.getByRole('radiogroup', { name: 'Plataforma' });
+    expect(within(group).getByRole('radio', { name: 'TikTok' })).toBeInTheDocument();
+  });
+
   it('arquivo solto fora das áreas não descarrega o editor; arrasto de texto passa', async () => {
     const { unmount } = renderAt();
     await screen.findByDisplayValue('Mensal completo');

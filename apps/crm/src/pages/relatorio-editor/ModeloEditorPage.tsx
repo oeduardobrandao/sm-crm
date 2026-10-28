@@ -27,12 +27,15 @@ import { AppearancePopover } from './AppearancePopover';
 import { moveBlock, normalizeCoverSize, updateBlockConfig, updateBlockText } from './layoutOps';
 import { withAiSampleText } from './templateOps';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
 import { ReportPhoneView } from './phone/ReportPhoneView';
 
 const SETTINGS_PATH = '/configuracao/relatorios';
-// Modelo vale para qualquer cliente: o drawer oferece as duas plataformas.
-const TEMPLATE_PLATFORMS: ReportPlatform[] = ['instagram', 'tiktok'];
+// Modelo vale para qualquer cliente: o drawer oferece as duas plataformas, mas
+// TikTok só com feature_tiktok (fail closed enquanto o plano não respondeu).
+const ALL_TEMPLATE_PLATFORMS: ReportPlatform[] = ['instagram', 'tiktok'];
+const INSTAGRAM_ONLY: ReportPlatform[] = ['instagram'];
 const SAMPLE_NOTE = 'Dados de exemplo. Os números reais entram quando o relatório é gerado.';
 
 function AiPlaceholder() {
@@ -57,6 +60,9 @@ function AiPlaceholder() {
 
 function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
   const snapshot = useSampleSnapshot();
+  const { features } = useWorkspaceLimits();
+  const templatePlatforms =
+    features?.feature_tiktok === true ? ALL_TEMPLATE_PLATFORMS : INSTAGRAM_ONLY;
 
   const { layout, applyLayout, title, setTitle, saving } = useLayoutAutosave(
     template.id,
@@ -217,7 +223,7 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
         onInsert={handleInsert}
-        platforms={TEMPLATE_PLATFORMS}
+        platforms={templatePlatforms}
       />
     </div>
   );
