@@ -360,9 +360,9 @@ GRANT EXECUTE ON FUNCTION public.tarefa_tag_links_evento_fn() TO service_role;
 -- (actor = the creator while they still exist in auth.users; actor_nome from their membro
 -- in the task's workspace, else their profile name if they belong to it, either way), and
 -- for concluded tasks one status event (de null, para "concluida") at concluida_em with no
--- actor. The timeline marks the start with "Histórico registrado a partir de 28/10/2026".
--- Idempotent: a task that already has the event is skipped. A function (not inline SQL) so
--- the psql suite can exercise it.
+-- actor. The timeline footnote says older changes were not recorded (no date: the deploy
+-- date is not known here). Idempotent: a task that already has the event is skipped. A
+-- function (not inline SQL) so the psql suite can exercise it.
 CREATE OR REPLACE FUNCTION public._tarefa_eventos_backfill()
 RETURNS void
 LANGUAGE plpgsql

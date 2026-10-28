@@ -2,9 +2,6 @@ import { getIntlLocale, i18n } from '@mesaas/i18n';
 import type { Membro, TarefaEvento, TarefaEventoTipo, TarefaStatus } from '../../store';
 import { STATUS_LABELS, parseDateOnly } from './tarefasLogic';
 
-/** The day migration `tarefa_eventos` started recording; nothing older is in the history. */
-export const HISTORICO_DESDE = '28/10/2026';
-
 export type TarefaTimelineTone = 'neutral' | 'success' | 'warning' | 'info' | 'primary';
 
 export interface TarefaTimelineNode {

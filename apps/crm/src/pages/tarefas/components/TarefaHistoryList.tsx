@@ -18,11 +18,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useIntlLocale } from '@mesaas/i18n';
 import type { TarefaEventoTipo } from '../../../store';
-import {
-  HISTORICO_DESDE,
-  type TarefaTimelineNode,
-  type TarefaTimelineTone,
-} from '../tarefaTimeline';
+import type { TarefaTimelineNode, TarefaTimelineTone } from '../tarefaTimeline';
 
 /** Onto the existing `.history-step-icon--*` / `.history-step-line--*` classes (app.css). */
 const TONE_CLASS: Record<TarefaTimelineTone, string> = {
@@ -106,9 +102,7 @@ export function TarefaHistoryList({ nodes }: { nodes: TarefaTimelineNode[] }) {
           })}
         </ol>
       )}
-      <p className="mt-1 text-xs text-muted-foreground">
-        {t('historico.footnote', { date: HISTORICO_DESDE })}
-      </p>
+      <p className="mt-1 text-xs text-muted-foreground">{t('historico.footnote')}</p>
     </div>
   );
 }

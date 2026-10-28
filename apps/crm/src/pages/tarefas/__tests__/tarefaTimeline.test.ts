@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Membro, TarefaEvento } from '../../../store';
-import { buildTarefaTimeline, HISTORICO_DESDE } from '../tarefaTimeline';
+import { buildTarefaTimeline } from '../tarefaTimeline';
 
 const ANA_UID = 'user-ana';
 const BRUNO_UID = 'user-bruno';
@@ -33,10 +33,6 @@ function ev(overrides: Partial<TarefaEvento>): TarefaEvento {
 const at = (sec: number) => new Date(Date.UTC(2026, 9, 28, 12, 0, sec)).toISOString();
 
 describe('buildTarefaTimeline', () => {
-  it('exposes the history start date', () => {
-    expect(HISTORICO_DESDE).toBe('28/10/2026');
-  });
-
   it('status sentence', () => {
     const nodes = buildTarefaTimeline(
       [ev({ tipo: 'status', de: 'pendente', para: 'em_andamento' })],

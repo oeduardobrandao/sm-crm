@@ -140,7 +140,7 @@
     "loadError": "Não foi possível carregar o histórico.",
     "retry": "Tentar novamente",
     "empty": "Sem histórico.",
-    "footnote": "Histórico registrado a partir de {{date}}.",
+    "footnote": "Alterações feitas antes da ativação do histórico não foram registradas.",
     "automation": "Automação",
     "removedUser": "Usuário removido",
     "recurrence": "Recorrência",

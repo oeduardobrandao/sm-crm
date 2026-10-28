@@ -140,7 +140,7 @@
     "loadError": "Could not load the history.",
     "retry": "Try again",
     "empty": "No history.",
-    "footnote": "History recorded since October 28, 2026.",
+    "footnote": "Changes made before the history was enabled were not recorded.",
     "automation": "Automation",
     "removedUser": "Removed user",
     "recurrence": "Recurrence",

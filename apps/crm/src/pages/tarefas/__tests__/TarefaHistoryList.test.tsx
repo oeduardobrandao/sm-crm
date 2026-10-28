@@ -28,7 +28,9 @@ describe('TarefaHistoryList', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
     expect(screen.getByText('Ana mudou o status de A fazer para Concluída')).toBeInTheDocument();
     expect(screen.getByText('Ana criou a tarefa')).toBeInTheDocument();
-    expect(screen.getByText('Histórico registrado a partir de 28/10/2026.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Alterações feitas antes da ativação do histórico não foram registradas.'),
+    ).toBeInTheDocument();
     // Tones map onto the existing history-step classes (app.css), never new ones.
     expect(container.querySelector('.history-step-icon--ok')).not.toBeNull();
     expect(container.querySelector('.history-step-icon--approved')).not.toBeNull();
@@ -46,6 +48,8 @@ describe('TarefaHistoryList', () => {
   it('renders an empty line and still the footnote with no nodes', () => {
     render(<TarefaHistoryList nodes={[]} />);
     expect(screen.getByText('Sem histórico.')).toBeInTheDocument();
-    expect(screen.getByText('Histórico registrado a partir de 28/10/2026.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Alterações feitas antes da ativação do histórico não foram registradas.'),
+    ).toBeInTheDocument();
   });
 });
