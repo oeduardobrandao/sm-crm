@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -113,6 +114,7 @@ export function RentabilidadeTabela({
   onOrdenar,
   fixarCabecalho = false,
 }: RentabilidadeTabelaProps) {
+  const { t } = useTranslation('financeV2');
   const brl = (v: number) => formatFinancialBRL(v, access);
   // A função nobody is assigned to adds an empty column; the side panel still lists it.
   const visiveis = funcoes.filter(
@@ -126,7 +128,7 @@ export function RentabilidadeTabela({
   const celulaFuncao = (c: CelulaFuncao) => {
     if (c.valor === 0) {
       return c.aInformar ? (
-        <span className="text-amber-600 dark:text-amber-400">A informar</span>
+        <span className="text-amber-600 dark:text-amber-400">{t('shared.aInformar')}</span>
       ) : (
         '-'
       );
@@ -135,7 +137,9 @@ export function RentabilidadeTabela({
     return (
       <span className="inline-flex items-center gap-1.5">
         {brl(c.valor)}
-        <span className="text-[11px] text-amber-600 dark:text-amber-400">a informar</span>
+        <span className="text-[11px] text-amber-600 dark:text-amber-400">
+          {t('tabela.aInformarMinusculo')}
+        </span>
       </span>
     );
   };
@@ -152,25 +156,25 @@ export function RentabilidadeTabela({
                 'h-7 !py-1 border-l border-border text-center text-[11px] uppercase tracking-wide',
               )}
             >
-              Custo por função
+              {t('tabela.custoPorFuncao')}
             </TableHead>
           </TableRow>
         )}
         <TableRow>
           <CabecalhoOrdenavel coluna="cliente" numero={false} {...sort}>
-            Cliente
+            {t('shared.cliente')}
           </CabecalhoOrdenavel>
           <CabecalhoOrdenavel coluna="receita" {...sort}>
-            {anual ? 'ARR' : 'MRR'}
+            {anual ? t('shared.arr') : t('shared.mrr')}
           </CabecalhoOrdenavel>
           <CabecalhoOrdenavel coluna="custo" {...sort}>
-            {anual ? 'Custo anual' : 'Custo mensal'}
+            {anual ? t('tabela.custoAnual') : t('tabela.custoMensal')}
           </CabecalhoOrdenavel>
           <CabecalhoOrdenavel coluna="lucro" {...sort}>
-            {anual ? 'LL anual' : 'Lucro'}
+            {anual ? t('shared.lucroAnual') : t('shared.lucro')}
           </CabecalhoOrdenavel>
           <CabecalhoOrdenavel coluna="margem" {...sort}>
-            Margem
+            {t('shared.margem')}
           </CabecalhoOrdenavel>
           {visiveis.map((f, i) => (
             <CabecalhoOrdenavel
@@ -210,7 +214,7 @@ export function RentabilidadeTabela({
                   )}
                   {pausado && (
                     <Badge variant="neutral" size="sm">
-                      Pausado
+                      {t('shared.pausado')}
                     </Badge>
                   )}
                 </span>
@@ -222,7 +226,7 @@ export function RentabilidadeTabela({
                 <span className="inline-flex items-center gap-2">
                   {l.abaixo && (
                     <Badge variant="warning" size="sm">
-                      Abaixo da meta
+                      {t('tabela.abaixoDaMeta')}
                     </Badge>
                   )}
                   <span className="font-semibold">{formatMargem(l.margem)}</span>
@@ -248,7 +252,7 @@ export function RentabilidadeTabela({
       </TableBody>
       <TableFooter>
         <TableRow className="font-bold">
-          <TableCell className={CLIENTE}>Total dos clientes</TableCell>
+          <TableCell className={CLIENTE}>{t('tabela.total')}</TableCell>
           <TableCell className={NUM}>{brl(total.receita)}</TableCell>
           <TableCell className={NUM}>{brl(total.custo)}</TableCell>
           <TableCell className={NUM}>{brl(total.lucro)}</TableCell>

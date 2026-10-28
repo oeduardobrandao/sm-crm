@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Settings } from 'lucide-react';
@@ -11,10 +12,10 @@ import ConfigSheet from './ConfigSheet';
 import OnboardingCard from './OnboardingCard';
 
 const TABS = [
-  { to: '/financeiro/rentabilidade', label: 'Rentabilidade' },
-  { to: '/financeiro/atribuicao', label: 'Equipe por cliente' },
-  { to: '/financeiro/equipe', label: 'Custos da equipe' },
-  { to: '/financeiro/lancamentos', label: 'Lançamentos' },
+  { to: '/financeiro/rentabilidade', key: 'rentabilidade' },
+  { to: '/financeiro/atribuicao', key: 'atribuicao' },
+  { to: '/financeiro/equipe', key: 'equipe' },
+  { to: '/financeiro/lancamentos', key: 'lancamentos' },
 ] as const;
 
 /**
@@ -23,12 +24,13 @@ const TABS = [
  * and two registrations at once make the last one win with a dev warning.
  */
 function V2Header() {
-  const inToolbar = usePageToolbar({ title: 'Financeiro' });
+  const { t } = useTranslation('financeV2');
+  const inToolbar = usePageToolbar({ title: t('layout.title') });
   if (inToolbar) return null;
   return (
     <div className="header">
       <div className="header-title">
-        <h1>Financeiro</h1>
+        <h1>{t('layout.title')}</h1>
       </div>
     </div>
   );
@@ -43,6 +45,7 @@ function V2Header() {
  * so the layout only draws the tab bar above it.
  */
 export default function FinanceiroV2Layout() {
+  const { t } = useTranslation('financeV2');
   const { can } = useAuth();
   const { pathname } = useLocation();
   const [configOpen, setConfigOpen] = useState(false);
@@ -57,7 +60,7 @@ export default function FinanceiroV2Layout() {
 
   const tabBar = (
     <div className="mb-4 flex items-center gap-2 border-b border-border pb-2">
-      <nav aria-label="Seções do financeiro" className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
+      <nav aria-label={t('layout.navLabel')} className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
         {TABS.map((tab) => (
           <NavLink
             key={tab.to}
@@ -71,7 +74,7 @@ export default function FinanceiroV2Layout() {
               )
             }
           >
-            {tab.label}
+            {t(`layout.tabs.${tab.key}`)}
           </NavLink>
         ))}
       </nav>
@@ -83,7 +86,7 @@ export default function FinanceiroV2Layout() {
           onClick={() => setConfigOpen(true)}
         >
           <Settings aria-hidden="true" />
-          Configurar
+          {t('layout.configurar')}
         </Button>
       )}
     </div>

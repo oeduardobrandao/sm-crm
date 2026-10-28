@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 
 interface MensalAnualToggleProps {
@@ -7,23 +8,24 @@ interface MensalAnualToggleProps {
 }
 
 const OPCOES = [
-  { anual: false, label: 'Mensal' },
-  { anual: true, label: 'Anual' },
+  { anual: false, key: 'mensal' },
+  { anual: true, key: 'anual' },
 ] as const;
 
 /** Segmented "Mensal | Anual" switch of the Rentabilidade table: two toggle buttons. */
 export function MensalAnualToggle({ anual, onChange, className }: MensalAnualToggleProps) {
+  const { t } = useTranslation('financeV2');
   return (
     <div
       role="group"
-      aria-label="Valores da tabela"
+      aria-label={t('toggle.groupLabel')}
       className={cn('inline-flex gap-0.5 rounded-[10px] bg-muted p-[3px]', className)}
     >
       {OPCOES.map((o) => {
         const ativo = o.anual === anual;
         return (
           <button
-            key={o.label}
+            key={o.key}
             type="button"
             aria-pressed={ativo}
             onClick={() => onChange(o.anual)}
@@ -34,7 +36,7 @@ export function MensalAnualToggle({ anual, onChange, className }: MensalAnualTog
                 : 'font-medium text-muted-foreground hover:text-foreground',
             )}
           >
-            {o.label}
+            {t(`toggle.${o.key}`)}
           </button>
         );
       })}

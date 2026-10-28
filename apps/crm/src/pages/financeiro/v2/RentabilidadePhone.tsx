@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import {
   Sheet,
@@ -35,6 +36,7 @@ export function RentabilidadePhone({
   onAnualChange,
   access,
 }: RentabilidadePhoneProps) {
+  const { t } = useTranslation('financeV2');
   const [abertoId, setAbertoId] = useState<number | null>(null);
   const brl = (v: number) => formatFinancialBRL(v, access);
   const aberto = data.clientes.find((c) => c.cliente_id === abertoId) ?? null;
@@ -42,12 +44,12 @@ export function RentabilidadePhone({
   // Lucro counts the whole team cost, so the cost outside the clients (which the rows
   // below do not show) gets its own cell when there is any.
   const resumo: Array<readonly [string, string]> = [
-    [anual ? 'ARR' : 'MRR', brl(anualizar(data.totais.receita, anual))],
-    [anual ? 'LL anual' : 'Lucro', brl(anualizar(data.totais.lucro, anual))],
-    ['Margem', formatMargem(data.totais.margem)],
+    [anual ? t('shared.arr') : t('shared.mrr'), brl(anualizar(data.totais.receita, anual))],
+    [anual ? t('shared.lucroAnual') : t('shared.lucro'), brl(anualizar(data.totais.lucro, anual))],
+    [t('shared.margem'), formatMargem(data.totais.margem)],
   ];
   if (data.totais.custo_sem_cliente > 0) {
-    resumo.push(['Sem cliente', brl(anualizar(data.totais.custo_sem_cliente, anual))]);
+    resumo.push([t('shared.semCliente'), brl(anualizar(data.totais.custo_sem_cliente, anual))]);
   }
 
   return (
@@ -70,10 +72,10 @@ export function RentabilidadePhone({
 
       <div className="overflow-hidden rounded-xl border border-border bg-card">
         <div className="flex justify-between px-3.5 py-2.5 text-xs text-muted-foreground">
-          <span>Cliente</span>
-          <span>{anual ? 'LL anual' : 'Lucro'}</span>
+          <span>{t('shared.cliente')}</span>
+          <span>{anual ? t('shared.lucroAnual') : t('shared.lucro')}</span>
         </div>
-        <ul role="list" aria-label="Clientes" className="m-0 list-none p-0">
+        <ul role="list" aria-label={t('shared.clientes')} className="m-0 list-none p-0">
           {linhas.map((l) => {
             const base = Math.max(l.receita, l.custo);
             const largura = (v: number) => (base > 0 ? `${(Math.max(v, 0) / base) * 100}%` : '0%');
@@ -89,7 +91,7 @@ export function RentabilidadePhone({
                       <span className="truncate text-sm font-semibold">{l.cliente.nome}</span>
                       {l.cliente.status === 'pausado' ? (
                         <Badge variant="neutral" size="sm">
-                          Pausado
+                          {t('shared.pausado')}
                         </Badge>
                       ) : (
                         <Badge variant={l.abaixo ? 'warning' : 'neutral'} size="sm">
@@ -115,19 +117,19 @@ export function RentabilidadePhone({
       <div className="flex gap-3.5 text-[11px] text-muted-foreground" aria-hidden="true">
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-sm bg-amber-500" />
-          Custo da equipe
+          {t('shared.custoEquipe')}
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-sm bg-green-600" />
-          Lucro
+          {t('shared.lucro')}
         </span>
       </div>
 
       <Sheet open={aberto !== null} onOpenChange={(open) => !open && setAbertoId(null)}>
         <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto rounded-t-2xl">
           <SheetHeader>
-            <SheetTitle>{aberto?.nome ?? 'Cliente'}</SheetTitle>
-            <SheetDescription>Mensalidade, custo e quem atende este cliente.</SheetDescription>
+            <SheetTitle>{aberto?.nome ?? t('shared.cliente')}</SheetTitle>
+            <SheetDescription>{t('phone.sheetDescription')}</SheetDescription>
           </SheetHeader>
           <div className="mt-4">
             <RentabilidadeDetalhe

@@ -1,0 +1,225 @@
+{
+  "shared": {
+    "pausado": "Paused",
+    "aInformar": "To be entered",
+    "fechado": "Closed",
+    "reaberto": "Reopened",
+    "periodo": "Period",
+    "tentarNovamente": "Try again",
+    "voltarAtual": "Back to the current period",
+    "cliente": "Client",
+    "clientes": "Clients",
+    "porCliente": "Per client",
+    "semFuncao": "No role",
+    "entregasAInformar": "Deliverables to enter",
+    "nDeLimite": "{{n}} of {{limite}}",
+    "porMes": "{{valor}} per month",
+    "custo": "Cost",
+    "margem": "Margin",
+    "lucro": "Profit",
+    "lucroAnual": "Annual profit",
+    "mensalidade": "Monthly fee",
+    "mrr": "MRR",
+    "arr": "ARR",
+    "semCliente": "No client",
+    "custoEquipe": "Team cost"
+  },
+  "regra": {
+    "exclusivo": "This client only: {{valor}} per month",
+    "entrega_zero": "deliverables",
+    "entrega_one": "deliverable",
+    "entrega_other": "deliverables",
+    "porEntrega": "{{quantidade}} {{unidade}} × {{valor}}",
+    "rateio": "{{valor}} ÷ {{clientes}}",
+    "clientes_zero": "{{count}} clients",
+    "clientes_one": "{{count}} client",
+    "clientes_other": "{{count}} clients"
+  },
+  "erros": {
+    "periodo_fechado": "This period is closed. Pick another one in Applies from.",
+    "cliente_encerrado": "This client is closed in this period.",
+    "sem_atribuicao": "Assign the person to the client before entering deliverables.",
+    "nao_configurado": "Finance has not been set up yet.",
+    "periodo_invalido": "This period no longer exists. Pick another one.",
+    "not_found": "We couldn't find this record. Refresh the page.",
+    "financial_access_denied": "You don't have permission to change finance.",
+    "funcao_duplicada": "A role with this name already exists."
+  },
+  "periodo": {
+    "formatoMes": "MMM yyyy",
+    "formatoDia": "MMM d",
+    "formatoDiaAno": "MMM d, yyyy",
+    "intervalo": "{{inicio}} to {{fim}}"
+  },
+  "periodoSelect": {
+    "placeholder": "Period"
+  },
+  "csv": {
+    "cliente": "Client",
+    "mrr": "MRR",
+    "arr": "ARR",
+    "custo": "Cost",
+    "custoAnual": "Annual cost",
+    "lucro": "Profit",
+    "lucroAnual": "Annual profit",
+    "margem": "Margin"
+  },
+  "layout": {
+    "title": "Finance",
+    "navLabel": "Finance sections",
+    "configurar": "Settings",
+    "tabs": {
+      "rentabilidade": "Profitability",
+      "atribuicao": "Team by client",
+      "equipe": "Team costs",
+      "lancamentos": "Transactions"
+    }
+  },
+  "toggle": {
+    "groupLabel": "Table values",
+    "mensal": "Monthly",
+    "anual": "Annual"
+  },
+  "onboarding": {
+    "sucesso": "Finance is set up. Now mark who works on each client.",
+    "erro": "Error setting up finance",
+    "title": "Set up finance from your current data",
+    "descricao": "We'll use each client's monthly fee and each team member's cost. Nothing is deleted.",
+    "diaLabel": "The financial period starts on day",
+    "montar": "Set up from current data",
+    "semPermissao": "Ask a workspace admin to set up finance."
+  },
+  "config": {
+    "title": "Finance settings",
+    "description": "Period, margin target and team roles.",
+    "loadError": "Couldn't load the settings.",
+    "metaErro": "Enter a whole number from 0 to 100.",
+    "erroSalvar": "Error saving",
+    "salvo": "Settings saved.",
+    "periodoMetaLabel": "Period and target",
+    "diaLabel": "The period starts on day",
+    "diaHint": "Applies from the next period.",
+    "metaLabel": "Margin target (%)",
+    "funcoes": {
+      "title": "Roles",
+      "nova": "New role",
+      "erroAdicionar": "Error adding the role",
+      "erroReordenar": "Error reordering",
+      "erroRenomear": "Error renaming",
+      "erroExcluir": "Error deleting the role",
+      "excluirTitle": "Delete role?",
+      "excluirBody": "People with the role {{nome}} will be listed as \"No role\".",
+      "excluir": "Delete",
+      "nomeLabel": "Name of role {{nome}}",
+      "subir": "Move {{nome}} up",
+      "descer": "Move {{nome}} down",
+      "excluirNome": "Delete {{nome}}"
+    }
+  },
+  "custos": {
+    "loadError": "Couldn't load team costs. Try again in a moment.",
+    "carregando": "Loading...",
+    "colPessoa": "Person",
+    "colFuncao": "Role",
+    "colModelo": "Model",
+    "colCusto": "Cost in period",
+    "total": "Total",
+    "semCliente": "No client: {{valor}}",
+    "modelo": {
+      "mensal_meta": "Monthly with target",
+      "mensal_limite": "Monthly with limit",
+      "por_entrega": "Per deliverable"
+    }
+  },
+  "atribuicao": {
+    "loadError": "Couldn't load the team by client.",
+    "semPeriodo": "No period open for changes.",
+    "descricao": "Mark who works on each client. Each person's monthly cost is split evenly across the marked clients.",
+    "valeDesde": "Changes apply from",
+    "reabertoHint": "Later periods that are already closed don't change",
+    "refetchFalhou": "Couldn't refresh the data. Values may be out of date.",
+    "erroSalvar": "Couldn't save",
+    "semFuncao_one": "{{count}} person without a role is left out of the allocation",
+    "semFuncao_other": "{{count}} people without a role are left out of the allocation",
+    "definaFuncao": ". Set the role in their agreement:",
+    "marcarTodos": "Mark all",
+    "marcarTodosPara": "Mark all for {{nome}}",
+    "atende": "{{membro}} works on {{cliente}}",
+    "progressoLabel": "{{rotulo}} clients",
+    "acimaDoLimite": "Over the limit"
+  },
+  "rentabilidade": {
+    "meta": "Target: {{meta}}%",
+    "acao": {
+      "reabrir": {
+        "title": "Reopen period?",
+        "body": "This period's numbers will be recalculated until you close it again.",
+        "confirm": "Reopen",
+        "ok": "Period reopened.",
+        "erro": "Error reopening the period"
+      },
+      "fechar": {
+        "title": "Close period?",
+        "body": "This period's numbers are kept as they are until someone reopens it.",
+        "confirm": "Close",
+        "ok": "Period closed.",
+        "erro": "Error closing the period"
+      }
+    },
+    "reabrirPeriodo": "Reopen period",
+    "fecharPeriodo": "Close period",
+    "loadError": "Couldn't load profitability.",
+    "semAtribuicao": {
+      "label": "Team not assigned",
+      "texto": "<b>Nobody has been assigned to a client yet.</b> Mark who works on each client to see cost and margin."
+    },
+    "atribuirEquipe": "Assign team",
+    "verEquipe": "View team by client",
+    "incompleto": {
+      "texto": "There are deliverables to enter in this period.",
+      "reabra": "Reopen the period to enter them.",
+      "informar": "Enter deliverables"
+    },
+    "kpi": {
+      "receita": "Recurring revenue",
+      "receitaSub_zero": "{{count}} clients · ARR {{arr}}",
+      "receitaSub_one": "{{count}} client · ARR {{arr}}",
+      "receitaSub_other": "{{count}} clients · ARR {{arr}}",
+      "custoSub_zero": "{{count}} people · {{pct}} of revenue",
+      "custoSub_one": "{{count}} person · {{pct}} of revenue",
+      "custoSub_other": "{{count}} people · {{pct}} of revenue",
+      "lucro": "Recurring profit",
+      "lucroSub": "Annual profit {{valor}}",
+      "margem": "Average margin",
+      "semClienteSub": "People without a client or a role"
+    },
+    "dica": "Click a column name to sort and a client to see where the cost comes from.",
+    "expandir": "Expand table",
+    "exportar": "Export CSV",
+    "custoSemCliente": "Cost without a client: {{valor}}",
+    "custoSemClienteAnual": "Cost without a client (annual): {{valor}}",
+    "detalheLabel": "Client detail",
+    "expandidoTitle": "Profitability by client",
+    "expandidoDescricao": "{{periodo}} · Click a column name to sort."
+  },
+  "detalhe": {
+    "vazio": "Select a client to see where the cost comes from.",
+    "selecionado": "Selected client",
+    "deMargem": "{{margem}} margin",
+    "paraOnde": "Where the monthly fee goes",
+    "semMensalidade": "No monthly fee in this period.",
+    "quemAtende": "Who works on this client",
+    "ninguemEm": "Nobody assigned in {{funcoes}}"
+  },
+  "phone": {
+    "sheetDescription": "Monthly fee, cost and who works on this client."
+  },
+  "tabela": {
+    "aInformarMinusculo": "to be entered",
+    "custoPorFuncao": "Cost by role",
+    "custoAnual": "Annual cost",
+    "custoMensal": "Monthly cost",
+    "abaixoDaMeta": "Below target",
+    "total": "Clients total"
+  }
+}

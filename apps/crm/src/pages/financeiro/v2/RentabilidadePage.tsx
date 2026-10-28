@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -42,9 +43,10 @@ import { handleEntitlementMutationError } from '@/lib/entitlement-toast';
 import { formatFinancialBRL } from '@/lib/financialAccess';
 import { fecharPeriodo, getPeriodos, getRentabilidade, reabrirPeriodo } from '@/store';
 import type { PeriodoFinanceiro, RentabilidadeSeeded } from '@/store/financeiroV2';
-import { anualizar, formatMargem } from './format';
+import { anualizar, formatMargem, separadorDecimal } from './format';
 import { MensalAnualToggle } from './MensalAnualToggle';
 import { PeriodoSelect } from './PeriodoSelect';
+import { rotuloPeriodo } from './periodos';
 import {
   direcaoInicial,
   montarCsv,
@@ -61,30 +63,8 @@ import { RentabilidadePhone } from './RentabilidadePhone';
 import { RentabilidadeTabela } from './RentabilidadeTabela';
 import { avisarErroFinanceiro } from './erros';
 
+// Copy of the period actions lives under `rentabilidade.acao.<reabrir|fechar>.*`.
 type AcaoPeriodo = 'reabrir' | 'fechar';
-
-const ACAO_COPY: Record<
-  AcaoPeriodo,
-  { title: string; body: string; confirm: string; ok: string; erro: string }
-> = {
-  reabrir: {
-    title: 'Reabrir período?',
-    body: 'Os números deste período voltam a ser calculados até você fechar de novo.',
-    confirm: 'Reabrir',
-    ok: 'Período reaberto.',
-    erro: 'Erro ao reabrir o período',
-  },
-  fechar: {
-    title: 'Fechar período?',
-    body: 'Os números deste período ficam guardados como estão até alguém reabrir.',
-    confirm: 'Fechar',
-    ok: 'Período fechado.',
-    erro: 'Erro ao fechar o período',
-  },
-};
-
-/** "Meta: 55%" with a pt-BR comma when the goal has decimals. */
-const metaTexto = (meta: number) => `Meta: ${String(meta).replace('.', ',')}%`;
 
 /**
  * Financeiro › Rentabilidade: KPIs, the per-client profitability table (A-Z by default,
@@ -93,6 +73,10 @@ const metaTexto = (meta: number) => `Meta: ${String(meta).replace('.', ',')}%`;
  * which owns the title, the tab bar and the not-seeded onboarding.
  */
 export default function RentabilidadePage() {
+  const { t } = useTranslation('financeV2');
+  /** "Meta: 55%" with the UI language's decimal mark when the goal has decimals. */
+  const metaTexto = (meta: number) =>
+    t('rentabilidade.meta', { meta: String(meta).replace('.', separadorDecimal()) });
   const { canSeeFinancials, can, workspaceRole, profile } = useAuth();
   const isDesktop = useIsDesktop(768);
   const qc = useQueryClient();
@@ -159,10 +143,10 @@ export default function RentabilidadePage() {
       if (qual === 'reabrir') await reabrirPeriodo(inicioExibido);
       else await fecharPeriodo(inicioExibido);
       await qc.invalidateQueries({ queryKey: ['financeiro-v2'] });
-      toast.success(ACAO_COPY[qual].ok);
+      toast.success(t(`rentabilidade.acao.${qual}.ok`));
     } catch (e) {
       if (!handleEntitlementMutationError(e, profile?.conta_id ?? null))
-        avisarErroFinanceiro(e, ACAO_COPY[qual].erro, qc);
+        avisarErroFinanceiro(e, t(`rentabilidade.acao.${qual}.erro`), qc);
     } finally {
       setBusy(false);
     }
@@ -170,18 +154,21 @@ export default function RentabilidadePage() {
 
   const exportar = () => {
     if (!data) return;
-    downloadCsv(montarCsv(linhas, data.funcoes, anual), nomeArquivoCsv(data.periodo.rotulo, anual));
+    downloadCsv(
+      montarCsv(linhas, data.funcoes, anual),
+      nomeArquivoCsv(rotuloPeriodo(data.periodo), anual),
+    );
   };
 
   const barraPeriodo = (
     <div className="flex flex-wrap items-center gap-2">
       <PeriodoSelect
-        aria-label="Período"
+        aria-label={t('shared.periodo')}
         value={inicio ?? inicioExibido}
         onChange={escolherPeriodo}
         periodos={periodos}
       />
-      {data && status === 'fechado' && <Badge variant="neutral">Fechado</Badge>}
+      {data && status === 'fechado' && <Badge variant="neutral">{t('shared.fechado')}</Badge>}
       {data && podeGerirPeriodo && status === 'fechado' && (
         <Button
           variant="outline"
@@ -190,7 +177,7 @@ export default function RentabilidadePage() {
           disabled={busy}
           onClick={() => setAcao('reabrir')}
         >
-          Reabrir período
+          {t('rentabilidade.reabrirPeriodo')}
         </Button>
       )}
       {data && podeGerirPeriodo && status === 'reaberto' && (
@@ -201,7 +188,7 @@ export default function RentabilidadePage() {
           disabled={busy}
           onClick={() => setAcao('fechar')}
         >
-          Fechar período
+          {t('rentabilidade.fecharPeriodo')}
         </Button>
       )}
     </div>
@@ -216,16 +203,14 @@ export default function RentabilidadePage() {
       <div className="flex flex-col gap-4">
         {barraPeriodo}
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-sm text-muted-foreground">
-            Não foi possível carregar a rentabilidade.
-          </p>
+          <p className="text-sm text-muted-foreground">{t('rentabilidade.loadError')}</p>
           <Button
             variant="outline"
             size="sm"
             className="mb-0"
             onClick={() => void rentabilidade.refetch()}
           >
-            Tentar novamente
+            {t('shared.tentarNovamente')}
           </Button>
           {inicio && (
             <Button
@@ -234,7 +219,7 @@ export default function RentabilidadePage() {
               className="mb-0"
               onClick={() => escolherPeriodo(undefined)}
             >
-              Voltar ao período atual
+              {t('shared.voltarAtual')}
             </Button>
           )}
         </div>
@@ -261,17 +246,22 @@ export default function RentabilidadePage() {
   const avisoAtribuir = semAtribuicao && (
     <div
       role="status"
-      aria-label="Equipe sem atribuição"
+      aria-label={t('rentabilidade.semAtribuicao.label')}
       className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-muted/40 px-3 py-2.5 text-sm"
     >
       <UserPlus className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       <span className="min-w-0 flex-1">
-        <span className="font-semibold">Ninguém foi atribuído a um cliente ainda.</span> Marque quem
-        atende cada cliente para ver o custo e a margem.
+        <Trans
+          t={t}
+          i18nKey="rentabilidade.semAtribuicao.texto"
+          components={{ b: <span className="font-semibold" /> }}
+        />
       </span>
       <Button asChild size="sm" className="mb-0">
         <Link to="/financeiro/atribuicao">
-          {can('financeiro', 'editar') === true ? 'Atribuir equipe' : 'Ver equipe por cliente'}
+          {can('financeiro', 'editar') === true
+            ? t('rentabilidade.atribuirEquipe')
+            : t('rentabilidade.verEquipe')}
         </Link>
       </Button>
     </div>
@@ -280,12 +270,12 @@ export default function RentabilidadePage() {
   const aviso = data.incompleto && (
     <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
       <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-      <span>Há entregas a informar neste período.</span>
+      <span>{t('rentabilidade.incompleto.texto')}</span>
       {status === 'fechado' ? (
-        <span className="font-semibold">Reabra o período para informar.</span>
+        <span className="font-semibold">{t('rentabilidade.incompleto.reabra')}</span>
       ) : (
         <Link to="/financeiro/equipe" className="font-semibold underline">
-          Informar entregas
+          {t('rentabilidade.incompleto.informar')}
         </Link>
       )}
     </p>
@@ -297,13 +287,15 @@ export default function RentabilidadePage() {
         {acao && (
           <>
             <AlertDialogHeader>
-              <AlertDialogTitle>{ACAO_COPY[acao].title}</AlertDialogTitle>
-              <AlertDialogDescription>{ACAO_COPY[acao].body}</AlertDialogDescription>
+              <AlertDialogTitle>{t(`rentabilidade.acao.${acao}.title`)}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {t(`rentabilidade.acao.${acao}.body`)}
+              </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
               <AlertDialogAction disabled={busy} onClick={() => void executarAcao(acao)}>
-                {ACAO_COPY[acao].confirm}
+                {t(`rentabilidade.acao.${acao}.confirm`)}
               </AlertDialogAction>
             </AlertDialogFooter>
           </>
@@ -336,31 +328,34 @@ export default function RentabilidadePage() {
 
       <StatCardGrid>
         <StatCard
-          label="Receita recorrente"
+          label={t('rentabilidade.kpi.receita')}
           value={brl(totais.receita)}
-          sub={`${ativos} ${ativos === 1 ? 'cliente' : 'clientes'} · ARR ${brl(totais.receita * 12)}`}
+          sub={t('rentabilidade.kpi.receitaSub', {
+            count: ativos,
+            arr: brl(totais.receita * 12),
+          })}
           icon={Users}
           tone="green"
           compactValue
         />
         <StatCard
-          label="Custo da equipe"
+          label={t('shared.custoEquipe')}
           value={brl(totais.custo_total)}
-          sub={`${data.membros.length} ${data.membros.length === 1 ? 'pessoa' : 'pessoas'} · ${pctCusto} da receita`}
+          sub={t('rentabilidade.kpi.custoSub', { count: data.membros.length, pct: pctCusto })}
           icon={Wallet}
           tone="amber"
           compactValue
         />
         <StatCard
-          label="Lucro recorrente"
+          label={t('rentabilidade.kpi.lucro')}
           value={brl(totais.lucro)}
-          sub={`LL anual ${brl(totais.lucro * 12)}`}
+          sub={t('rentabilidade.kpi.lucroSub', { valor: brl(totais.lucro * 12) })}
           icon={ChartColumn}
           tone="violet"
           compactValue
         />
         <StatCard
-          label="Margem média"
+          label={t('rentabilidade.kpi.margem')}
           value={formatMargem(totais.margem)}
           sub={metaTexto(data.meta_margem)}
           icon={Percent}
@@ -368,9 +363,9 @@ export default function RentabilidadePage() {
         />
         {totais.custo_sem_cliente > 0 && (
           <StatCard
-            label="Sem cliente"
+            label={t('shared.semCliente')}
             value={brl(totais.custo_sem_cliente)}
-            sub="Pessoas sem cliente ou sem função"
+            sub={t('rentabilidade.kpi.semClienteSub')}
             icon={UserX}
             tone="red"
             compactValue
@@ -384,22 +379,20 @@ export default function RentabilidadePage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
           <MensalAnualToggle anual={anual} onChange={setAnual} />
-          <span className="text-[13px] text-muted-foreground">
-            Clique no nome de uma coluna para ordenar e num cliente para ver de onde vem o custo.
-          </span>
+          <span className="text-[13px] text-muted-foreground">{t('rentabilidade.dica')}</span>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" className="mb-0" onClick={() => setExpandido(true)}>
             <Maximize2 aria-hidden="true" />
-            Expandir tabela
+            {t('rentabilidade.expandir')}
           </Button>
           <Button asChild variant="outline" size="sm" className="mb-0">
-            <Link to="/financeiro/atribuicao">Atribuir equipe</Link>
+            <Link to="/financeiro/atribuicao">{t('rentabilidade.atribuirEquipe')}</Link>
           </Button>
           {canSeeFinancials === true && (
             <Button variant="ghost" size="sm" className="mb-0" onClick={exportar}>
               <Download aria-hidden="true" />
-              Exportar CSV
+              {t('rentabilidade.exportar')}
             </Button>
           )}
         </div>
@@ -421,13 +414,14 @@ export default function RentabilidadePage() {
           {/* The footer sums the clients: the KPIs also count the cost outside them. */}
           {totais.custo_sem_cliente > 0 && (
             <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
-              Custo sem cliente{anual ? ' (anual)' : ''}:{' '}
-              {brl(anualizar(totais.custo_sem_cliente, anual))}
+              {t(anual ? 'rentabilidade.custoSemClienteAnual' : 'rentabilidade.custoSemCliente', {
+                valor: brl(anualizar(totais.custo_sem_cliente, anual)),
+              })}
             </p>
           )}
         </div>
         <aside
-          aria-label="Detalhe do cliente"
+          aria-label={t('rentabilidade.detalheLabel')}
           className="min-w-0 flex-[1_1_340px] rounded-xl border border-border bg-card p-5"
         >
           <RentabilidadeDetalhe
@@ -443,16 +437,16 @@ export default function RentabilidadePage() {
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-5 py-3">
             <div className="min-w-0 flex-1">
               <DialogTitle className="text-base font-semibold">
-                Rentabilidade por cliente
+                {t('rentabilidade.expandidoTitle')}
               </DialogTitle>
               <DialogDescription className="text-[13px] text-muted-foreground">
-                {data.periodo.rotulo} · Clique no nome de uma coluna para ordenar.
+                {t('rentabilidade.expandidoDescricao', { periodo: rotuloPeriodo(data.periodo) })}
               </DialogDescription>
             </div>
             <MensalAnualToggle anual={anual} onChange={setAnual} />
             <DialogClose asChild>
               <Button variant="outline" size="sm" className="mb-0">
-                Fechar
+                {t('actions.close')}
               </Button>
             </DialogClose>
           </div>

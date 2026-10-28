@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { Edit2, Repeat } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -65,6 +66,7 @@ export function RecorrentesDialog({
   access,
   onChanged,
 }: RecorrentesDialogProps) {
+  const { t } = useTranslation('finance');
   const [edicao, setEdicao] = useState<Edicao | null>(null);
   const [encerrar, setEncerrar] = useState<TransacaoRecorrente | null>(null);
   const [salvando, setSalvando] = useState(false);
@@ -91,11 +93,11 @@ export function RecorrentesDialog({
         dia: diaEdicao,
         categoria: edicao.categoria,
       });
-      toast.success('Lançamento recorrente atualizado');
+      toast.success(t('recorrentes.toasts.updated'));
       setEdicao(null);
       onChanged();
     } catch {
-      toast.error('Erro ao salvar');
+      toast.error(t('toast.saveError'));
     } finally {
       setSalvando(false);
     }
@@ -109,10 +111,10 @@ export function RecorrentesDialog({
       // entries already confirmed are plain lançamentos and stay either way.
       if (encerrar.inicio > mesPassado) await removeRecorrente(encerrar.id);
       else await updateRecorrente(encerrar.id, { fim: mesPassado });
-      toast.success('Lançamento recorrente encerrado');
+      toast.success(t('recorrentes.toasts.ended'));
       onChanged();
     } catch {
-      toast.error('Erro ao encerrar');
+      toast.error(t('recorrentes.toasts.endError'));
     }
     setEncerrar(null);
   };
@@ -130,24 +132,19 @@ export function RecorrentesDialog({
     >
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Lançamentos recorrentes</DialogTitle>
-          <DialogDescription>
-            Aparecem todo mês como agendados, no dia escolhido, para você confirmar.
-          </DialogDescription>
+          <DialogTitle>{t('recorrentes.title')}</DialogTitle>
+          <DialogDescription>{t('recorrentes.description')}</DialogDescription>
         </DialogHeader>
 
         {ativas.length === 0 ? (
-          <p className="py-4 text-sm text-muted-foreground">
-            Nenhum lançamento recorrente. Ao registrar uma entrada ou saída, marque &quot;Repetir
-            todo mês&quot;.
-          </p>
+          <p className="py-4 text-sm text-muted-foreground">{t('recorrentes.empty')}</p>
         ) : (
           <ul className="m-0 flex list-none flex-col divide-y divide-border p-0">
             {ativas.map((r) =>
               edicao && edicao.id === r.id ? (
                 <li key={r.id} className="flex flex-col gap-3 py-3">
                   <div className="flex flex-col gap-1.5">
-                    <Label htmlFor={`rec-desc-${r.id}`}>Descrição</Label>
+                    <Label htmlFor={`rec-desc-${r.id}`}>{t('form.description')}</Label>
                     <Input
                       id={`rec-desc-${r.id}`}
                       value={edicao.descricao}
@@ -156,7 +153,7 @@ export function RecorrentesDialog({
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="flex flex-col gap-1.5">
-                      <Label htmlFor={`rec-valor-${r.id}`}>Valor (R$)</Label>
+                      <Label htmlFor={`rec-valor-${r.id}`}>{t('form.amount')}</Label>
                       <Input
                         id={`rec-valor-${r.id}`}
                         type="number"
@@ -168,7 +165,7 @@ export function RecorrentesDialog({
                       />
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <Label htmlFor={`rec-dia-${r.id}`}>Dia do mês</Label>
+                      <Label htmlFor={`rec-dia-${r.id}`}>{t('recorrentes.dayOfMonth')}</Label>
                       <Input
                         id={`rec-dia-${r.id}`}
                         type="number"
@@ -181,13 +178,13 @@ export function RecorrentesDialog({
                     </div>
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <Label>Categoria</Label>
+                    <Label>{t('form.category')}</Label>
                     <Select
                       value={edicao.categoria}
                       onValueChange={(v) => editar({ categoria: v })}
                     >
-                      <SelectTrigger aria-label="Categoria">
-                        <SelectValue placeholder="Selecione..." />
+                      <SelectTrigger aria-label={t('form.category')}>
+                        <SelectValue placeholder={t('form.selectPlaceholder')} />
                       </SelectTrigger>
                       <SelectContent>
                         {categorias.map((c) => (
@@ -200,11 +197,11 @@ export function RecorrentesDialog({
                   </div>
                   <div className="flex justify-end gap-2">
                     <Button variant="outline" onClick={() => setEdicao(null)}>
-                      Cancelar
+                      {t('actions.cancel')}
                     </Button>
                     <Button onClick={salvarEdicao} disabled={!edicaoValida || salvando}>
                       {salvando && <Spinner size="sm" />}
-                      Salvar
+                      {t('actions.save')}
                     </Button>
                   </div>
                 </li>
@@ -213,20 +210,19 @@ export function RecorrentesDialog({
                 <li
                   key={r.id}
                   role="group"
-                  aria-label={`Encerrar ${r.descricao}`}
+                  aria-label={t('recorrentes.endAria', { descricao: r.descricao })}
                   className="flex flex-col gap-2 py-3"
                 >
-                  <span className="text-sm font-semibold">Encerrar &quot;{r.descricao}&quot;?</span>
-                  <span className="text-xs text-muted-foreground">
-                    Ele deixa de aparecer a partir deste mês. Os lançamentos já confirmados
-                    continuam.
+                  <span className="text-sm font-semibold">
+                    {t('recorrentes.endTitle', { descricao: r.descricao })}
                   </span>
+                  <span className="text-xs text-muted-foreground">{t('recorrentes.endHint')}</span>
                   <div className="flex justify-end gap-2">
                     <Button size="sm" variant="outline" onClick={() => setEncerrar(null)}>
-                      Não
+                      {t('actions.no')}
                     </Button>
                     <Button size="sm" variant="destructive" onClick={confirmarEncerrar}>
-                      Encerrar
+                      {t('recorrentes.end')}
                     </Button>
                   </div>
                 </li>
@@ -236,7 +232,7 @@ export function RecorrentesDialog({
                   <div className="flex min-w-0 flex-1 flex-col">
                     <span className="break-words text-sm font-semibold">{r.descricao}</span>
                     <span className="text-xs text-muted-foreground">
-                      Todo dia {r.dia}
+                      {t('recorrentes.everyDay', { dia: r.dia })}
                       {r.categoria ? ` · ${r.categoria}` : ''}
                     </span>
                   </div>
@@ -250,7 +246,7 @@ export function RecorrentesDialog({
                   <Button
                     size="icon"
                     variant="ghost"
-                    aria-label={`Editar ${r.descricao}`}
+                    aria-label={t('recorrentes.edit', { descricao: r.descricao })}
                     onClick={() =>
                       setEdicao({
                         id: r.id!,
@@ -264,7 +260,7 @@ export function RecorrentesDialog({
                     <Edit2 className="h-4 w-4" />
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => setEncerrar(r)}>
-                    Encerrar
+                    {t('recorrentes.end')}
                   </Button>
                 </li>
               ),

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { formatFinancialBRL, type FinancialAccess } from '@/lib/financialAccess';
 import { cn } from '@/lib/utils';
@@ -41,12 +42,9 @@ export function RentabilidadeDetalhe({
   metaMargem,
   access,
 }: RentabilidadeDetalheProps) {
+  const { t } = useTranslation('financeV2');
   if (!cliente) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        Selecione um cliente para ver de onde vem o custo.
-      </p>
-    );
+    return <p className="text-sm text-muted-foreground">{t('detalhe.vazio')}</p>;
   }
 
   const brl = (v: number) => formatFinancialBRL(v, access);
@@ -61,7 +59,12 @@ export function RentabilidadeDetalhe({
     }))
     .filter((s) => s.valor > 0);
   if (cliente.lucro > 0) {
-    segmentos.push({ key: 'lucro', label: 'Lucro', valor: cliente.lucro, cor: COR_LUCRO });
+    segmentos.push({
+      key: 'lucro',
+      label: t('shared.lucro'),
+      valor: cliente.lucro,
+      cor: COR_LUCRO,
+    });
   }
   // Percentages are of the fee; widths of the bar's whole, which a loss makes exceed the fee.
   const base = Math.max(
@@ -78,14 +81,14 @@ export function RentabilidadeDetalhe({
     <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="text-xs text-muted-foreground">Cliente selecionado</span>
+          <span className="text-xs text-muted-foreground">{t('detalhe.selecionado')}</span>
           <span className="break-words text-lg font-bold leading-snug">{cliente.nome}</span>
         </div>
         {cliente.status === 'pausado' ? (
-          <Badge variant="neutral">Pausado</Badge>
+          <Badge variant="neutral">{t('shared.pausado')}</Badge>
         ) : (
           <Badge variant={abaixo ? 'warning' : 'success'}>
-            {formatMargem(cliente.margem)} de margem
+            {t('detalhe.deMargem', { margem: formatMargem(cliente.margem) })}
           </Badge>
         )}
       </div>
@@ -94,12 +97,12 @@ export function RentabilidadeDetalhe({
       <dl className="m-0 flex flex-col divide-y divide-border rounded-lg border border-border">
         {(
           [
-            ['Mensalidade', cliente.receita],
-            ['Custo', cliente.custo],
-            ['Lucro', cliente.lucro],
+            ['mensalidade', t('shared.mensalidade'), cliente.receita],
+            ['custo', t('shared.custo'), cliente.custo],
+            ['lucro', t('shared.lucro'), cliente.lucro],
           ] as const
-        ).map(([label, valor]) => (
-          <div key={label} className="flex items-baseline justify-between gap-3 px-3 py-2">
+        ).map(([key, label, valor]) => (
+          <div key={key} className="flex items-baseline justify-between gap-3 px-3 py-2">
             <dt className="text-xs text-muted-foreground">{label}</dt>
             <dd className="m-0 whitespace-nowrap text-[15px] font-bold tabular-nums">
               {brl(valor)}
@@ -109,7 +112,7 @@ export function RentabilidadeDetalhe({
       </dl>
 
       <section className="flex flex-col gap-2">
-        <h3 className="text-[13px] font-semibold">Para onde vai a mensalidade</h3>
+        <h3 className="text-[13px] font-semibold">{t('detalhe.paraOnde')}</h3>
         {cliente.receita > 0 && segmentos.length > 0 ? (
           <>
             <div
@@ -135,12 +138,12 @@ export function RentabilidadeDetalhe({
             </ul>
           </>
         ) : (
-          <p className="text-xs text-muted-foreground">Sem mensalidade neste período.</p>
+          <p className="text-xs text-muted-foreground">{t('detalhe.semMensalidade')}</p>
         )}
       </section>
 
       <section className="flex flex-col">
-        <h3 className="mb-1 text-[13px] font-semibold">Quem atende este cliente</h3>
+        <h3 className="mb-1 text-[13px] font-semibold">{t('detalhe.quemAtende')}</h3>
         <ul className="m-0 list-none p-0">
           {cliente.pessoas.map((p) => {
             const funcao = nomeFuncao(p.funcao_id);
@@ -166,7 +169,7 @@ export function RentabilidadeDetalhe({
           })}
           {semNinguem.length > 0 && (
             <li className="border-t border-border py-2 text-xs text-muted-foreground">
-              Ninguém atribuído em {semNinguem.map((f) => f.nome).join(', ')}
+              {t('detalhe.ninguemEm', { funcoes: semNinguem.map((f) => f.nome).join(', ') })}
             </li>
           )}
         </ul>

@@ -1,19 +1,23 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { i18n } from '@mesaas/i18n';
 
 // Copy for the errors the Financeiro v2 RPCs raise on purpose. Postgres puts the RAISE
 // text in `message` (PostgREST relays it as-is), so the match is on the token inside it
 // (as a whole word), the same way lib/entitlement-errors.ts reads `plan_limit_exceeded:...`.
-const COPY: ReadonlyArray<readonly [token: string, copy: string]> = [
-  ['periodo_fechado', 'Este período está fechado. Escolha outro em Vale a partir de.'],
-  ['cliente_encerrado', 'Este cliente está encerrado neste período.'],
-  ['sem_atribuicao', 'Atribua a pessoa ao cliente antes de informar entregas.'],
-  ['nao_configurado', 'O financeiro ainda não foi montado.'],
-  ['periodo_invalido', 'Esse período não existe mais. Escolha outro.'],
-  ['not_found', 'Não encontramos esse registro. Atualize a página.'],
-  ['financial_access_denied', 'Você não tem permissão para alterar o financeiro.'],
-  ['funcao_duplicada', 'Já existe uma função com esse nome.'],
-];
+// The copy lives under `financeV2:erros.<token>` and is resolved when the error is read.
+const TOKENS = [
+  'periodo_fechado',
+  'cliente_encerrado',
+  'sem_atribuicao',
+  'nao_configurado',
+  'periodo_invalido',
+  'not_found',
+  'financial_access_denied',
+  'funcao_duplicada',
+] as const;
+
+const copia = (token: (typeof TOKENS)[number]) => i18n.t(`financeV2:erros.${token}`);
 
 /** The token as a whole word: `x_not_found` or `not_found_y` must not read as `not_found`. */
 const temToken = (message: string, token: string) => new RegExp(`\\b${token}\\b`).test(message);
@@ -27,14 +31,14 @@ function leitura(e: unknown): { message: string; code: string } {
   };
 }
 
-/** pt-BR copy for a Financeiro v2 RPC error, or null so the caller keeps its generic copy. */
+/** Copy for a Financeiro v2 RPC error in the UI language, or null so the caller keeps its generic copy. */
 export function mensagemErroFinanceiro(e: unknown): string | null {
   const { message, code } = leitura(e);
-  for (const [token, copy] of COPY) {
-    if (temToken(message, token)) return copy;
+  for (const token of TOKENS) {
+    if (temToken(message, token)) return copia(token);
   }
   // P0002 is no_data_found: the RPCs raise it for `not_found`.
-  if (code === 'P0002') return COPY.find(([t]) => t === 'not_found')![1];
+  if (code === 'P0002') return copia('not_found');
   return null;
 }
 

@@ -94,6 +94,10 @@ import ptFiles from '../packages/i18n/locales/pt/files.json';
 import enFiles from '../packages/i18n/locales/en/files.json';
 import ptFilesPhone from '../packages/i18n/locales/pt/filesPhone.json';
 import enFilesPhone from '../packages/i18n/locales/en/filesPhone.json';
+import ptFinance from '../packages/i18n/locales/pt/finance.json';
+import enFinance from '../packages/i18n/locales/en/finance.json';
+import ptFinanceV2 from '../packages/i18n/locales/pt/financeV2.json';
+import enFinanceV2 from '../packages/i18n/locales/en/financeV2.json';
 
 initI18n({
   pt: {
@@ -127,6 +131,8 @@ initI18n({
     messagesPhone: ptMessagesPhone,
     files: ptFiles,
     filesPhone: ptFilesPhone,
+    finance: ptFinance,
+    financeV2: ptFinanceV2,
     hubHome: ptHubHome,
     hubPostCard: ptHubPostCard,
     hubPosts: ptHubPosts,
@@ -170,6 +176,8 @@ initI18n({
     messagesPhone: enMessagesPhone,
     files: enFiles,
     filesPhone: enFilesPhone,
+    finance: enFinance,
+    financeV2: enFinanceV2,
     hubHome: enHubHome,
     hubPostCard: enHubPostCard,
     hubPosts: enHubPosts,

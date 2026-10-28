@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
@@ -37,6 +38,7 @@ const PRIMEIRA_COLUNA = 'sticky left-0 z-[1] bg-card text-left';
  * period becomes.
  */
 export default function AtribuicaoPage() {
+  const { t } = useTranslation('financeV2');
   const { can, canSeeFinancials } = useAuth();
   const podeEditar = can('financeiro', 'editar') === true;
   const [escolhido, setEscolhido] = useState<string>();
@@ -74,7 +76,7 @@ export default function AtribuicaoPage() {
     // The period select above stays rendered, so a failed pick is never a dead end.
     corpo = (
       <div className="flex flex-wrap items-center gap-2">
-        <Aviso>Não foi possível carregar a equipe por cliente.</Aviso>
+        <Aviso>{t('atribuicao.loadError')}</Aviso>
         <Button
           type="button"
           variant="outline"
@@ -82,7 +84,7 @@ export default function AtribuicaoPage() {
           className="mb-0"
           onClick={tentarNovamente}
         >
-          Tentar novamente
+          {t('shared.tentarNovamente')}
         </Button>
         {valeDesde !== padrao && (
           <Button
@@ -92,17 +94,17 @@ export default function AtribuicaoPage() {
             className="mb-0"
             onClick={() => setEscolhido(undefined)}
           >
-            Voltar ao período atual
+            {t('shared.voltarAtual')}
           </Button>
         )}
       </div>
     );
   } else if (editaveis.isLoading || (valeDesde && rentabilidade.isLoading)) {
-    corpo = <Aviso>Carregando…</Aviso>;
+    corpo = <Aviso>{t('loading')}</Aviso>;
   } else if (!valeDesde) {
-    corpo = <Aviso>Nenhum período aberto para alterações.</Aviso>;
+    corpo = <Aviso>{t('atribuicao.semPeriodo')}</Aviso>;
   } else if (!rentabilidade.data?.seeded) {
-    corpo = <Aviso>O financeiro ainda não foi montado.</Aviso>;
+    corpo = <Aviso>{t('erros.nao_configurado')}</Aviso>;
   } else {
     corpo = (
       <Matriz
@@ -121,14 +123,11 @@ export default function AtribuicaoPage() {
     <section className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex max-w-2xl flex-col gap-1">
-          <h2 className="m-0 text-xl font-semibold">Equipe por cliente</h2>
-          <p className="m-0 text-sm text-muted-foreground">
-            Marque quem atende cada cliente. O custo mensal de cada pessoa é dividido igualmente
-            entre os clientes marcados.
-          </p>
+          <h2 className="m-0 text-xl font-semibold">{t('layout.tabs.atribuicao')}</h2>
+          <p className="m-0 text-sm text-muted-foreground">{t('atribuicao.descricao')}</p>
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="atribuicao-vale-desde">Alterações valem a partir de</Label>
+          <Label htmlFor="atribuicao-vale-desde">{t('atribuicao.valeDesde')}</Label>
           <PeriodoSelect
             id="atribuicao-vale-desde"
             // '' (not undefined) while loading keeps the Radix Select controlled throughout.
@@ -139,15 +138,13 @@ export default function AtribuicaoPage() {
             disabled={periodos.length === 0}
           />
           {periodo?.status === 'reaberto' && (
-            <p className="m-0 text-xs text-muted-foreground">
-              Os períodos seguintes já fechados não mudam
-            </p>
+            <p className="m-0 text-xs text-muted-foreground">{t('atribuicao.reabertoHint')}</p>
           )}
         </div>
       </div>
       {refetchFalhou && (
         <div role="status" className="flex flex-wrap items-center gap-2">
-          <Aviso>Não foi possível atualizar os dados. Os valores podem estar desatualizados.</Aviso>
+          <Aviso>{t('atribuicao.refetchFalhou')}</Aviso>
           <Button
             type="button"
             variant="outline"
@@ -155,7 +152,7 @@ export default function AtribuicaoPage() {
             className="mb-0"
             onClick={tentarNovamente}
           >
-            Tentar novamente
+            {t('shared.tentarNovamente')}
           </Button>
         </div>
       )}
@@ -178,6 +175,7 @@ interface MatrizProps {
 }
 
 function Matriz({ data, dataUpdatedAt, valeDesde, podeEditar, access }: MatrizProps) {
+  const { t } = useTranslation('financeV2');
   const qc = useQueryClient();
   const { profile } = useAuth();
   // Optimistic checked state per `membro:cliente`, shown until the refetch lands.
@@ -273,7 +271,7 @@ function Matriz({ data, dataUpdatedAt, valeDesde, podeEditar, access }: MatrizPr
       // handleEntitlementMutationError shows the upgrade toast itself; only fall back to
       // the generic one when the error is not an entitlement denial.
       if (!handleEntitlementMutationError(e, profile?.conta_id ?? null)) {
-        avisarErroFinanceiro(e, 'Não foi possível salvar', qc);
+        avisarErroFinanceiro(e, t('atribuicao.erroSalvar'), qc);
       }
       return;
     }
@@ -314,10 +312,7 @@ function Matriz({ data, dataUpdatedAt, valeDesde, podeEditar, access }: MatrizPr
   }
 
   const n = semFuncao.length;
-  const semFuncaoTexto =
-    n === 1
-      ? '1 pessoa sem função não entra no rateio'
-      : `${n} pessoas sem função não entram no rateio`;
+  const semFuncaoTexto = t('atribuicao.semFuncao', { count: n });
 
   return (
     <div className="flex flex-col gap-3">
@@ -326,8 +321,8 @@ function Matriz({ data, dataUpdatedAt, valeDesde, podeEditar, access }: MatrizPr
           role="status"
           className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
         >
-          <span className="font-medium text-foreground">{semFuncaoTexto}</span>. Defina a função no
-          acordo:{' '}
+          <span className="font-medium text-foreground">{semFuncaoTexto}</span>
+          {t('atribuicao.definaFuncao')}{' '}
           {semFuncao.map((m, i) => (
             <span key={m.membro_id}>
               {i > 0 && ', '}
@@ -365,7 +360,7 @@ function Matriz({ data, dataUpdatedAt, valeDesde, podeEditar, access }: MatrizPr
                     'px-3 py-2 text-xs font-medium text-muted-foreground',
                   )}
                 >
-                  Cliente
+                  {t('shared.cliente')}
                 </th>
                 {colunas.map((m, i) => {
                   const alvos = podeEditar ? alvosDeMarcarTodos(m) : [];
@@ -384,7 +379,7 @@ function Matriz({ data, dataUpdatedAt, valeDesde, podeEditar, access }: MatrizPr
                           {m.nome}
                         </span>
                         <span className="whitespace-nowrap text-[11px] text-muted-foreground">
-                          {formatFinancialBRL(m.custo, access)} por mês
+                          {t('shared.porMes', { valor: formatFinancialBRL(m.custo, access) })}
                         </span>
                         {podeEditar && (
                           <Button
@@ -392,11 +387,11 @@ function Matriz({ data, dataUpdatedAt, valeDesde, podeEditar, access }: MatrizPr
                             variant="outline"
                             size="sm"
                             className="mb-0 h-7 px-2 text-[11px]"
-                            aria-label={`Marcar todos para ${m.nome}`}
+                            aria-label={t('atribuicao.marcarTodosPara', { nome: m.nome })}
                             disabled={alvos.length === 0}
                             onClick={() => marcarTodos(m)}
                           >
-                            Marcar todos
+                            {t('atribuicao.marcarTodos')}
                           </Button>
                         )}
                       </div>
@@ -407,13 +402,13 @@ function Matriz({ data, dataUpdatedAt, valeDesde, podeEditar, access }: MatrizPr
                   scope="col"
                   className="whitespace-nowrap border-l border-border px-3 py-2 text-right text-xs font-medium text-muted-foreground"
                 >
-                  Custo
+                  {t('shared.custo')}
                 </th>
                 <th
                   scope="col"
                   className="whitespace-nowrap px-3 py-2 text-right text-xs font-medium text-muted-foreground"
                 >
-                  Margem
+                  {t('shared.margem')}
                 </th>
               </tr>
             </thead>
@@ -427,7 +422,7 @@ function Matriz({ data, dataUpdatedAt, valeDesde, podeEditar, access }: MatrizPr
                         {c.nome}
                         {pausado && (
                           <Badge variant="neutral" size="sm">
-                            Pausado
+                            {t('shared.pausado')}
                           </Badge>
                         )}
                       </span>
@@ -454,7 +449,10 @@ function Matriz({ data, dataUpdatedAt, valeDesde, podeEditar, access }: MatrizPr
                             <input
                               type="checkbox"
                               className="m-0 size-[18px] cursor-[inherit] accent-primary"
-                              aria-label={`${m.nome} atende ${c.nome}`}
+                              aria-label={t('atribuicao.atende', {
+                                membro: m.nome,
+                                cliente: c.nome,
+                              })}
                               checked={marcado(m, c)}
                               disabled={desabilitado}
                               onChange={(e) =>
@@ -490,7 +488,7 @@ function Matriz({ data, dataUpdatedAt, valeDesde, podeEditar, access }: MatrizPr
                     'bg-muted px-3 py-2 font-semibold text-foreground',
                   )}
                 >
-                  Clientes
+                  {t('shared.clientes')}
                 </th>
                 {colunas.map((m, i) => (
                   <td
@@ -513,7 +511,7 @@ function Matriz({ data, dataUpdatedAt, valeDesde, podeEditar, access }: MatrizPr
                     'bg-muted px-3 py-2 font-semibold text-foreground',
                   )}
                 >
-                  Por cliente
+                  {t('shared.porCliente')}
                 </th>
                 {colunas.map((m, i) => (
                   <td
@@ -544,20 +542,25 @@ function inicioDeGrupo(colunas: MembroRentabilidade[], i: number) {
 }
 
 function ContagemClientes({ membro: m }: { membro: MembroRentabilidade }) {
+  const { t } = useTranslation('financeV2');
   if (m.modelo !== 'mensal_limite' || m.limite_clientes === null) {
     return <span className="font-semibold text-foreground">{m.n_clientes}</span>;
   }
   const limite = m.limite_clientes;
-  const rotulo = `${m.n_clientes} de ${limite}`;
+  const rotulo = t('shared.nDeLimite', { n: m.n_clientes, limite });
   // Radix Progress rejects a value above max, so an over-limit column caps the bar at 100.
   const uso = limite > 0 ? Math.min(100, Math.round((m.n_clientes / limite) * 100)) : 100;
   return (
     <div className="flex min-w-24 flex-col items-center gap-1">
       <span className="font-semibold text-foreground">{rotulo}</span>
-      <Progress value={uso} aria-label={`${rotulo} clientes`} className="h-1.5 w-24" />
+      <Progress
+        value={uso}
+        aria-label={t('atribuicao.progressoLabel', { rotulo })}
+        className="h-1.5 w-24"
+      />
       {m.n_clientes > limite && (
         <Badge variant="warning" size="sm">
-          Acima do limite
+          {t('atribuicao.acimaDoLimite')}
         </Badge>
       )}
     </div>
