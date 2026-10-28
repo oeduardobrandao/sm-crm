@@ -77,9 +77,12 @@ export default function TarefasPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const pendingTarefaId = useRef<number | null>(null);
   const pendingFocusComments = useRef(false);
-  // The task whose comments the sheet focuses: set when a link opens it, dropped on close,
-  // so reopening the same task by hand opens it plainly.
+  // The task whose comments the sheet focuses: set when a link opens it, dropped on close or
+  // as soon as another task is selected, so reopening that task by hand opens it plainly.
   const [focusCommentsId, setFocusCommentsId] = useState<number | null>(null);
+  // Adjusted during render (not in an effect) so the sheet never sees a stale focus for a
+  // frame. openFromLink sets both ids in one batch, so the link's own open survives this.
+  if (focusCommentsId !== null && selectedId !== focusCommentsId) setFocusCommentsId(null);
   const tarefaParam = searchParams.get('tarefa');
   const comentariosParam = searchParams.get('comentarios');
   const openFromLink = useCallback((id: number) => {

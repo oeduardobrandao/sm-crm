@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, MemoryRouter, RouterProvider } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -413,6 +413,26 @@ describe('TarefasPage', () => {
       await ue.click(screen.getByText('Revisar legenda'));
       expect(await screen.findByRole('dialog', { name: 'Revisar legenda' })).toBeInTheDocument();
       expect(commentFocusRequests).toEqual([tarefa.id]);
+    });
+
+    it('switching to another task drops the deep-link focus, so coming back does not refocus', async () => {
+      const a = makeTarefa({ titulo: 'Tarefa do link' });
+      const b = makeTarefa({ titulo: 'Outra tarefa' });
+      getTarefasMock.mockResolvedValue([a, b]);
+      const { router } = renderRouted();
+      await screen.findByText('Outra tarefa');
+
+      await act(() => router.navigate(`/tarefas?tarefa=${a.id}&comentarios=1`));
+      expect(await screen.findByRole('dialog', { name: 'Tarefa do link' })).toBeInTheDocument();
+      await waitFor(() => expect(commentFocusRequests).toEqual([a.id]));
+
+      // Another task opens in the same mounted sheet (a card click behind it), then the
+      // linked one again: the link's focus was spent on the first open.
+      fireEvent.click(screen.getByText('Outra tarefa'));
+      expect(await screen.findByRole('dialog', { name: 'Outra tarefa' })).toBeInTheDocument();
+      fireEvent.click(screen.getAllByText('Tarefa do link')[0]);
+      expect(await screen.findByRole('dialog', { name: 'Tarefa do link' })).toBeInTheDocument();
+      expect(commentFocusRequests).toEqual([a.id]);
     });
 
     it('deep link without comentarios opens without focus', async () => {
