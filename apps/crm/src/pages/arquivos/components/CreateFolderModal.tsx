@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogContent,
@@ -16,6 +17,7 @@ interface CreateFolderModalProps {
 }
 
 export function CreateFolderModal({ open, onOpenChange, onConfirm }: CreateFolderModalProps) {
+  const { t } = useTranslation('files');
   const [name, setName] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -38,22 +40,22 @@ export function CreateFolderModal({ open, onOpenChange, onConfirm }: CreateFolde
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Nova pasta</DialogTitle>
+          <DialogTitle>{t('createFolderModal.title')}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <Input
             ref={inputRef}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Nome da pasta"
+            placeholder={t('createFolderModal.namePlaceholder')}
             autoComplete="off"
           />
           <DialogFooter className="mt-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancelar
+              {t('actions.cancel')}
             </Button>
             <Button type="submit" disabled={!name.trim()}>
-              Criar
+              {t('createFolderModal.create')}
             </Button>
           </DialogFooter>
         </form>

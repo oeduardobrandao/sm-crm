@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Folder, FolderOpen, ChevronRight, ChevronDown, Plus } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -23,6 +24,7 @@ function FolderNode({
   depth,
   onDrop,
 }: FolderNodeProps) {
+  const { t } = useTranslation('files');
   const [expanded, setExpanded] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const expandTimerRef = useRef<number | undefined>(undefined);
@@ -96,7 +98,7 @@ function FolderNode({
               setExpanded((v) => !v);
             }}
             className="flex-shrink-0 w-4 flex items-center justify-center opacity-60 hover:opacity-100"
-            aria-label={expanded ? 'Recolher' : 'Expandir'}
+            aria-label={expanded ? t('folderTree.collapse') : t('folderTree.expand')}
           >
             {expanded ? (
               <ChevronDown className="h-3.5 w-3.5" />
@@ -126,7 +128,7 @@ function FolderNode({
                   : 'bg-[var(--surface-hover)] text-[var(--text-muted)]'
               }`}
             >
-              AUTO
+              {t('shared.autoBadge')}
             </span>
           )}
         </button>
@@ -138,7 +140,7 @@ function FolderNode({
               onRequestCreateFolder(folder.id);
             }}
             className="flex-shrink-0 opacity-0 group-hover:opacity-60 hover:!opacity-100 p-0.5 rounded transition-opacity"
-            aria-label="Nova subpasta"
+            aria-label={t('folderTree.newSubfolder')}
           >
             <Plus className="h-3.5 w-3.5" />
           </button>
@@ -177,6 +179,7 @@ export function FolderTree({
   onRequestCreateFolder,
   onDrop,
 }: FolderTreeProps) {
+  const { t } = useTranslation('files');
   const { data: rootFolders = [], isLoading } = useQuery({
     queryKey: ['folder-tree', null],
     queryFn: () => getTreeChildren(null),
@@ -210,7 +213,7 @@ export function FolderTree({
 
         {!isLoading && rootFolders.length === 0 && (
           <div className="px-3 py-4 text-sm text-[var(--text-muted)] text-center">
-            Nenhuma pasta
+            {t('folderTree.empty')}
           </div>
         )}
       </div>
@@ -221,7 +224,7 @@ export function FolderTree({
           className="flex items-center gap-2 w-full px-3 py-2 rounded-sm text-sm text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors duration-150"
         >
           <Plus className="h-4 w-4" />
-          Nova pasta
+          {t('folderTree.newFolder')}
         </button>
       </div>
     </div>

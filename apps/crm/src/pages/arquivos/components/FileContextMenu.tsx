@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { createPortal } from 'react-dom';
 import { Pencil, Trash2, Download, Info, ArrowRight, Copy } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogContent,
@@ -96,6 +97,7 @@ export function FileContextMenu({
   preview,
   disabled,
 }: FileContextMenuProps) {
+  const { t } = useTranslation('files');
   const [menuPos, setMenuPos] = useState<MenuPosition | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -182,11 +184,11 @@ export function FileContextMenu({
       } else {
         await renameFile(item.id, trimmed);
       }
-      toast.success('Nome atualizado');
+      toast.success(t('fileContextMenu.renameSuccess'));
       onActionComplete();
       setRenameOpen(false);
     } catch {
-      toast.error('Erro ao renomear');
+      toast.error(t('fileContextMenu.renameError'));
     } finally {
       setIsSaving(false);
     }
@@ -197,10 +199,10 @@ export function FileContextMenu({
     try {
       if (isFolder) {
         await deleteFolder(item.id);
-        toast.success('Pasta excluída');
+        toast.success(t('fileContextMenu.folderDeleted'));
       } else {
         await deleteFile(item.id);
-        toast.success('Arquivo excluído');
+        toast.success(t('fileContextMenu.fileDeleted'));
       }
       onActionComplete();
       setDeleteOpen(false);
@@ -208,7 +210,7 @@ export function FileContextMenu({
       if (err instanceof FileApiError && err.body.error === 'file_in_use') {
         toast.error(fileInUseMessage(err.body));
       } else {
-        toast.error('Erro ao excluir');
+        toast.error(t('fileContextMenu.deleteError'));
       }
     } finally {
       setIsDeleting(false);
@@ -216,17 +218,36 @@ export function FileContextMenu({
   }
 
   const isSystemFolder = isFolder && folder?.source === 'system';
+  const renameTitle = isFolder
+    ? t('fileContextMenu.renameFolderTitle')
+    : t('fileContextMenu.renameFileTitle');
+  const deleteTitle = isFolder
+    ? t('fileContextMenu.deleteFolderTitle')
+    : t('fileContextMenu.deleteFileTitle');
+  const namePlaceholder = isFolder
+    ? t('fileContextMenu.folderNamePlaceholder')
+    : t('fileContextMenu.fileNamePlaceholder');
+  const deleteMessage = isFolder
+    ? t('fileContextMenu.deleteFolderMessage', { name: truncateName(item.name) })
+    : t('fileContextMenu.deleteFileMessage', { name: truncateName(item.name) });
 
   if (variant === 'phone') {
-    const kindLabel = isFolder ? 'pasta' : 'arquivo';
     const first: ContextMenuAction[] = [];
     if (canEdit)
-      first.push({ label: 'Renomear', icon: <Pencil aria-hidden="true" />, onSelect: openRename });
-    first.push({ label: 'Informações', icon: <Info aria-hidden="true" />, onSelect: openInfo });
+      first.push({
+        label: t('fileContextMenu.rename'),
+        icon: <Pencil aria-hidden="true" />,
+        onSelect: openRename,
+      });
+    first.push({
+      label: t('fileContextMenu.info'),
+      icon: <Info aria-hidden="true" />,
+      onSelect: openInfo,
+    });
     if (!isFolder && file?.url) {
       const url = file.url;
       first.push({
-        label: 'Download',
+        label: t('fileContextMenu.download'),
         icon: <Download aria-hidden="true" />,
         // Inside the tap: a new tab opened after the menu's history pop is popup-blocked.
         immediate: true,
@@ -239,12 +260,12 @@ export function FileContextMenu({
     if (canEdit) {
       sections.push([
         {
-          label: 'Mover para…',
+          label: t('fileContextMenu.moveTo'),
           icon: <ArrowRight aria-hidden="true" />,
           onSelect: () => onRequestMove?.(),
         },
         {
-          label: 'Copiar para…',
+          label: t('fileContextMenu.copyTo'),
           icon: <Copy aria-hidden="true" />,
           onSelect: () => onRequestCopy?.(),
         },
@@ -253,7 +274,7 @@ export function FileContextMenu({
     if (isSystemFolder) {
       sections.push([
         {
-          label: 'Pasta do sistema: não pode ser excluída',
+          label: t('fileContextMenu.systemFolderPhone'),
           icon: <Trash2 aria-hidden="true" />,
           disabled: true,
           onSelect: () => {},
@@ -262,7 +283,7 @@ export function FileContextMenu({
     } else if (canEdit) {
       sections.push([
         {
-          label: 'Excluir',
+          label: t('fileContextMenu.delete'),
           icon: <Trash2 aria-hidden="true" />,
           destructive: true,
           onSelect: openDelete,
@@ -273,7 +294,7 @@ export function FileContextMenu({
     return (
       <>
         <ContextMenu
-          label={`Ações de ${item.name}`}
+          label={t('fileContextMenu.actionsLabel', { name: item.name })}
           sections={sections}
           preview={preview}
           disabled={disabled}
@@ -283,26 +304,22 @@ export function FileContextMenu({
         <PhoneNameSheet
           open={renameOpen}
           onOpenChange={setRenameOpen}
-          title={`Renomear ${kindLabel}`}
+          title={renameTitle}
           initialValue={item.name}
-          placeholder={isFolder ? 'Nome da pasta' : 'Nome do arquivo'}
-          confirmLabel="Salvar"
-          busyLabel="Salvando…"
+          placeholder={namePlaceholder}
+          confirmLabel={t('fileContextMenu.save')}
+          busyLabel={t('fileContextMenu.saving')}
           busy={isSaving}
           onConfirm={(name) => void renameTo(name)}
         />
         <PhoneConfirmSheet
           open={deleteOpen}
-          title={`Excluir ${kindLabel}?`}
-          message={
-            isFolder
-              ? `A pasta "${truncateName(item.name)}" e todos os seus arquivos serão excluídos permanentemente. Esta ação não pode ser desfeita.`
-              : `O arquivo "${truncateName(item.name)}" será excluído permanentemente. Esta ação não pode ser desfeita.`
-          }
+          title={deleteTitle}
+          message={deleteMessage}
           onCancel={() => setDeleteOpen(false)}
           actions={[
             {
-              label: 'Excluir',
+              label: t('fileContextMenu.delete'),
               destructive: true,
               onSelect: () => {
                 // Closed before the request, so a failure leaves the confirm reopenable.
@@ -338,7 +355,7 @@ export function FileContextMenu({
                 className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
               >
                 <Pencil className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-                Renomear
+                {t('fileContextMenu.rename')}
               </button>
             )}
 
@@ -349,7 +366,7 @@ export function FileContextMenu({
               className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
             >
               <Info className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-              Informações
+              {t('fileContextMenu.info')}
             </button>
 
             {/* Download — files only */}
@@ -363,7 +380,7 @@ export function FileContextMenu({
                 className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
               >
                 <Download className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-                Download
+                {t('fileContextMenu.download')}
               </a>
             )}
 
@@ -378,7 +395,7 @@ export function FileContextMenu({
                 className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
               >
                 <ArrowRight className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-                Mover para…
+                {t('fileContextMenu.moveTo')}
               </button>
             )}
 
@@ -393,7 +410,7 @@ export function FileContextMenu({
                 className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
               >
                 <Copy className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-                Copiar para…
+                {t('fileContextMenu.copyTo')}
               </button>
             )}
 
@@ -404,7 +421,7 @@ export function FileContextMenu({
             {isSystemFolder ? (
               <div className="flex items-center gap-2.5 px-3 py-2 text-[var(--text-muted)] cursor-not-allowed text-xs italic">
                 <Trash2 className="h-3.5 w-3.5 opacity-40" />
-                Pasta do sistema — não pode ser excluída
+                {t('fileContextMenu.systemFolder')}
               </div>
             ) : (
               canEdit && (
@@ -414,7 +431,7 @@ export function FileContextMenu({
                   className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--danger)] hover:bg-[var(--surface-hover)] transition-colors"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
-                  Excluir
+                  {t('fileContextMenu.delete')}
                 </button>
               )
             )}
@@ -426,9 +443,9 @@ export function FileContextMenu({
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Renomear {isFolder ? 'pasta' : 'arquivo'}</DialogTitle>
+            <DialogTitle>{renameTitle}</DialogTitle>
             <DialogDescription className="sr-only">
-              Informe o novo nome e salve para concluir.
+              {t('fileContextMenu.renameDescription')}
             </DialogDescription>
           </DialogHeader>
           <div className="py-2">
@@ -439,17 +456,17 @@ export function FileContextMenu({
                 if (e.key === 'Enter') handleRename();
               }}
               autoFocus
-              placeholder={isFolder ? 'Nome da pasta' : 'Nome do arquivo'}
+              placeholder={namePlaceholder}
             />
           </div>
           <DialogFooter>
             <DialogClose asChild>
               <Button variant="outline" size="sm">
-                Cancelar
+                {t('actions.cancel')}
               </Button>
             </DialogClose>
             <Button size="sm" onClick={handleRename} disabled={isSaving}>
-              {isSaving ? 'Salvando…' : 'Salvar'}
+              {isSaving ? t('fileContextMenu.saving') : t('fileContextMenu.save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -459,21 +476,17 @@ export function FileContextMenu({
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir {isFolder ? 'pasta' : 'arquivo'}?</AlertDialogTitle>
-            <AlertDialogDescription className="break-all">
-              {isFolder
-                ? `A pasta "${truncateName(item.name)}" e todos os seus arquivos serão excluídos permanentemente. Esta ação não pode ser desfeita.`
-                : `O arquivo "${truncateName(item.name)}" será excluído permanentemente. Esta ação não pode ser desfeita.`}
-            </AlertDialogDescription>
+            <AlertDialogTitle>{deleteTitle}</AlertDialogTitle>
+            <AlertDialogDescription className="break-all">{deleteMessage}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               disabled={isDeleting}
               className="bg-[var(--danger)] hover:bg-[var(--danger)] hover:opacity-90 text-white"
             >
-              {isDeleting ? 'Excluindo…' : 'Excluir'}
+              {isDeleting ? t('fileContextMenu.deleting') : t('fileContextMenu.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

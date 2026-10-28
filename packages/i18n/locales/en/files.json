@@ -1,1 +1,205 @@
-{}
+{
+  "shared": {
+    "autoBadge": "AUTO",
+    "dragGhost_zero": "Move {{count}} items",
+    "dragGhost_one": "Move {{count}} item",
+    "dragGhost_other": "Move {{count}} items",
+    "kind": {
+      "image": "Image",
+      "video": "Video",
+      "document": "Document"
+    },
+    "allFiles": "All Files",
+    "dateTimeFormat": "MMM dd, yyyy, HH:mm"
+  },
+  "fileGrid": {
+    "renameError": "Couldn't rename",
+    "renameSuccess": "Name updated",
+    "emptyFolder": "No files in this folder",
+    "columns": {
+      "name": "Name",
+      "type": "Type",
+      "size": "Size",
+      "date": "Date",
+      "inUse": "In use"
+    },
+    "folderType": "Folder",
+    "fileCount_zero": "{{count}} files",
+    "fileCount_one": "{{count}} file",
+    "fileCount_other": "{{count}} files",
+    "inUseTitle": "In use in posts or reports"
+  },
+  "fileInUse": {
+    "join": "{{head}} and {{last}}",
+    "untitled": "untitled",
+    "inPosts_one": "in {{count}} post",
+    "inPosts_other": "in {{count}} posts",
+    "inReport": "in the report {{title}}",
+    "inReports": "in the reports {{titles}}",
+    "generic": "This file is in use and can't be deleted.",
+    "withPlaces": "This file is in use {{places}}. Remove it from there first.",
+    "partsSeparator": " and "
+  },
+  "bulkActionBar": {
+    "move": "Move",
+    "copy": "Copy",
+    "zip": "ZIP",
+    "delete": "Delete",
+    "clearSelection": "Clear selection"
+  },
+  "createFolderModal": {
+    "title": "New folder",
+    "namePlaceholder": "Folder name",
+    "create": "Create"
+  },
+  "filterPopover": {
+    "trigger": "Filters",
+    "typeHeading": "Type",
+    "types": {
+      "image": "Images",
+      "video": "Videos",
+      "document": "Documents"
+    }
+  },
+  "folderInfoModal": {
+    "title": "Info",
+    "source": {
+      "client": "Client",
+      "workflow": "Workflow",
+      "post": "Post"
+    },
+    "linkedTo": "Linked to: {{source}}",
+    "createdAt": "Created",
+    "totalSize": "Total size",
+    "totalFiles": "Files (total)",
+    "directSubfolders": "Direct subfolders",
+    "directFiles": "Direct files",
+    "type": "Type",
+    "mime": "MIME",
+    "size": "Size",
+    "dimensions": "Dimensions",
+    "duration": "Duration",
+    "uploadedAt": "Uploaded",
+    "inUse": "In use"
+  },
+  "folderPickerModal": {
+    "root": "Root (All Files)",
+    "moving": "Moving…"
+  },
+  "folderTree": {
+    "collapse": "Collapse",
+    "expand": "Expand",
+    "newSubfolder": "New subfolder",
+    "empty": "No folders",
+    "newFolder": "New folder"
+  },
+  "fileUploader": {
+    "uploadSuccess": "\"{{name}}\" uploaded",
+    "uploadError": "Couldn't upload \"{{name}}\"",
+    "dropHere": "Drop files here",
+    "status": {
+      "uploading": "Uploading...",
+      "complete": "Done",
+      "error": "Upload failed"
+    }
+  },
+  "fileContextMenu": {
+    "renameSuccess": "Name updated",
+    "renameError": "Couldn't rename",
+    "folderDeleted": "Folder deleted",
+    "fileDeleted": "File deleted",
+    "deleteError": "Couldn't delete",
+    "renameFolderTitle": "Rename folder",
+    "renameFileTitle": "Rename file",
+    "deleteFolderTitle": "Delete folder?",
+    "deleteFileTitle": "Delete file?",
+    "folderNamePlaceholder": "Folder name",
+    "fileNamePlaceholder": "File name",
+    "deleteFolderMessage": "The folder \"{{name}}\" and all of its files will be permanently deleted. This can't be undone.",
+    "deleteFileMessage": "The file \"{{name}}\" will be permanently deleted. This can't be undone.",
+    "rename": "Rename",
+    "info": "Info",
+    "download": "Download",
+    "moveTo": "Move to…",
+    "copyTo": "Copy to…",
+    "systemFolderPhone": "System folder: can't be deleted",
+    "systemFolder": "System folder: can't be deleted",
+    "actionsLabel": "Actions for {{name}}",
+    "save": "Save",
+    "saving": "Saving…",
+    "delete": "Delete",
+    "deleting": "Deleting…",
+    "renameDescription": "Enter the new name and save to finish."
+  },
+  "filePickerModal": {
+    "titleSingle": "Choose image",
+    "titleMultiple": "Select files",
+    "descriptionSingle": "Choose an image.",
+    "descriptionMultiple": "Choose one or more files to link.",
+    "searchPlaceholder": "Search...",
+    "empty": "No files found",
+    "noImageSelected": "No image selected",
+    "oneImageSelected": "1 image selected",
+    "noFileSelected": "No files selected",
+    "filesSelected_one": "{{count}} file selected",
+    "filesSelected_other": "{{count}} files selected",
+    "useImage": "Use image",
+    "link": "Link"
+  },
+  "page": {
+    "title": "Files",
+    "createFolderError": "Couldn't create folder",
+    "createFolderSuccess": "Folder created",
+    "moveSuccess": "Items moved",
+    "moveError": "Couldn't move items",
+    "deleteSuccess_zero": "{{count}} items deleted",
+    "deleteSuccess_one": "{{count}} item deleted",
+    "deleteSuccess_other": "{{count}} items deleted",
+    "deleteError": "Couldn't delete items",
+    "copyFileSuccess": "File copied",
+    "copyQuotaExceeded": "This copy would exceed your storage. Free up space or upgrade.",
+    "copyFileError": "Couldn't copy file",
+    "copyPartial": "{{copied}} of {{total}} files copied",
+    "copyFolderSuccess_zero": "{{count}} files copied",
+    "copyFolderSuccess_one": "{{count}} file copied",
+    "copyFolderSuccess_other": "{{count}} files copied",
+    "copyLimitExceeded": "Folder too large to copy (200 files max).",
+    "copyFolderError": "Couldn't copy folder",
+    "zipLimitExceeded": "Folder too large for a ZIP download. Select fewer files.",
+    "zipError": "Couldn't prepare the download",
+    "openFileError": "Couldn't open file",
+    "deleteTitle": "Delete items?",
+    "deletePartialTitle": "Some items can't be deleted",
+    "deleteBlocked_zero": "{{count}} items are in use and can't be deleted.",
+    "deleteBlocked_one": "{{count}} item is in use and can't be deleted.",
+    "deleteBlocked_other": "{{count}} items are in use and can't be deleted.",
+    "deleteOthers": "Delete the other {{count}}?",
+    "deleteNoneAllowed": "No items can be deleted.",
+    "deleteConfirm_zero": "Are you sure you want to delete {{count}} items? This can't be undone.",
+    "deleteConfirm_one": "Are you sure you want to delete {{count}} item? This can't be undone.",
+    "deleteConfirm_other": "Are you sure you want to delete {{count}} items? This can't be undone.",
+    "moveTitle_zero": "Move {{count}} items",
+    "moveTitle_one": "Move {{count}} item",
+    "moveTitle_other": "Move {{count}} items",
+    "copyTitle_zero": "Copy {{count}} items",
+    "copyTitle_one": "Copy {{count}} item",
+    "copyTitle_other": "Copy {{count}} items",
+    "move": "Move",
+    "copy": "Copy",
+    "delete": "Delete",
+    "storage": "Storage",
+    "storageUsed": "{{percent}}% used",
+    "upload": "Upload file",
+    "newFolder": "New folder",
+    "sortBy": "Sort by",
+    "sortOptions": {
+      "name": "Name",
+      "size": "Size",
+      "date": "Date"
+    },
+    "viewGrid": "Grid",
+    "viewList": "List",
+    "filterEmpty": "No files match the filter",
+    "clearFilters": "Clear filters"
+  }
+}

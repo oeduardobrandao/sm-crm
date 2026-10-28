@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { LayoutGrid, List, Upload, FolderPlus, ArrowUpDown } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import {
   getFolderContents,
   createFolder,
@@ -61,11 +62,7 @@ function parseFolderParam(value: string | null): number | null {
 /** History state marking a folder entry pushed from inside Arquivos (Back pops it). */
 const FOLDER_PUSH_STATE = { arquivosFolderPush: true } as const;
 
-const SORT_OPTIONS: { value: SortBy; label: string }[] = [
-  { value: 'name', label: 'Nome' },
-  { value: 'size', label: 'Tamanho' },
-  { value: 'date', label: 'Data' },
-];
+const SORT_OPTIONS: SortBy[] = ['name', 'size', 'date'];
 
 export default function ArquivosPage() {
   // Phone (< 768): the kit view, folders in the URL. Tablet (768-900): the earlier
@@ -74,7 +71,8 @@ export default function ArquivosPage() {
   const isDesktop = useIsDesktop(901);
   const isPhone = !isAbovePhone;
   const isMobile = isAbovePhone && !isDesktop;
-  const inToolbar = usePageToolbar({ title: 'Arquivos' });
+  const { t } = useTranslation('files');
+  const inToolbar = usePageToolbar({ title: t('page.title') });
   const isOwner = useIsWorkspaceOwner();
   const { can } = useAuth();
   // No role check existed here before Task 14 -- any authenticated member
@@ -243,7 +241,7 @@ export default function ArquivosPage() {
     onError: (_err, _vars, context) => {
       if (context)
         queryClient.setQueryData(['folder-contents', context.parentId], context.previous);
-      toast.error('Erro ao criar pasta');
+      toast.error(t('page.createFolderError'));
     },
     onSettled: (_data, _err, _vars, context) => {
       if (context) {
@@ -251,7 +249,7 @@ export default function ArquivosPage() {
         queryClient.invalidateQueries({ queryKey: ['folder-tree'] });
       }
     },
-    onSuccess: () => toast.success('Pasta criada'),
+    onSuccess: () => toast.success(t('page.createFolderSuccess')),
   });
 
   const bulkMoveMutation = useMutation({
@@ -265,12 +263,12 @@ export default function ArquivosPage() {
       destinationId: number | null;
     }) => bulkMove(fileIds, folderIds, destinationId),
     onSuccess: () => {
-      toast.success('Itens movidos com sucesso');
+      toast.success(t('page.moveSuccess'));
       selection.clear();
       queryClient.invalidateQueries({ queryKey: ['folder-contents'] });
       queryClient.invalidateQueries({ queryKey: ['folder-tree'] });
     },
-    onError: () => toast.error('Erro ao mover itens'),
+    onError: () => toast.error(t('page.moveError')),
   });
 
   const bulkDeleteMutation = useMutation({
@@ -286,7 +284,9 @@ export default function ArquivosPage() {
         });
       } else {
         toast.success(
-          `${(result.files_deleted ?? 0) + (result.folders_deleted ?? 0)} itens excluídos`,
+          t('page.deleteSuccess', {
+            count: (result.files_deleted ?? 0) + (result.folders_deleted ?? 0),
+          }),
         );
         selection.clear();
         setDeleteConfirm(null);
@@ -294,21 +294,21 @@ export default function ArquivosPage() {
         queryClient.invalidateQueries({ queryKey: ['folder-tree'] });
       }
     },
-    onError: () => toast.error('Erro ao excluir itens'),
+    onError: () => toast.error(t('page.deleteError')),
   });
 
   const copyFileMutation = useMutation({
     mutationFn: ({ fileId, destinationId }: { fileId: number; destinationId: number | null }) =>
       copyFile(fileId, destinationId),
     onSuccess: () => {
-      toast.success('Arquivo copiado');
+      toast.success(t('page.copyFileSuccess'));
       queryClient.invalidateQueries({ queryKey: ['folder-contents'] });
     },
     onError: (err) => {
       if (err.message.includes('quota_exceeded')) {
-        toast.error('Cópia excederia o armazenamento. Libere espaço ou faça upgrade.');
+        toast.error(t('page.copyQuotaExceeded'));
       } else {
-        toast.error('Erro ao copiar arquivo');
+        toast.error(t('page.copyFileError'));
       }
     },
   });
@@ -318,22 +318,25 @@ export default function ArquivosPage() {
       copyFolder(folderId, destinationId),
     onSuccess: (result) => {
       if (result.failed > 0) {
-        toast.warning(`${result.copied} de ${result.copied + result.failed} arquivos copiados`);
-      } else {
-        toast.success(
-          `${result.copied} arquivo${result.copied !== 1 ? 's' : ''} copiado${result.copied !== 1 ? 's' : ''}`,
+        toast.warning(
+          t('page.copyPartial', {
+            copied: result.copied,
+            total: result.copied + result.failed,
+          }),
         );
+      } else {
+        toast.success(t('page.copyFolderSuccess', { count: result.copied }));
       }
       queryClient.invalidateQueries({ queryKey: ['folder-contents'] });
       queryClient.invalidateQueries({ queryKey: ['folder-tree'] });
     },
     onError: (err) => {
       if (err.message.includes('quota_exceeded')) {
-        toast.error('Cópia excederia o armazenamento. Libere espaço ou faça upgrade.');
+        toast.error(t('page.copyQuotaExceeded'));
       } else if (err.message.includes('copy_limit_exceeded')) {
-        toast.error('Pasta muito grande para copiar (máximo 200 arquivos).');
+        toast.error(t('page.copyLimitExceeded'));
       } else {
-        toast.error('Erro ao copiar pasta');
+        toast.error(t('page.copyFolderError'));
       }
     },
   });
@@ -353,9 +356,9 @@ export default function ArquivosPage() {
     retry: 1,
     onError: (err) => {
       if (err.message.includes('zip_limit_exceeded')) {
-        toast.error('Pasta muito grande para download ZIP. Selecione menos arquivos.');
+        toast.error(t('page.zipLimitExceeded'));
       } else {
-        toast.error('Erro ao preparar download');
+        toast.error(t('page.zipError'));
       }
     },
   });
@@ -394,7 +397,7 @@ export default function ArquivosPage() {
       } else {
         getFileDownloadUrl(file.id)
           .then((url) => openExternalUrl(url))
-          .catch(() => toast.error('Erro ao abrir arquivo'));
+          .catch(() => toast.error(t('page.openFileError')));
       }
     }
   }
@@ -406,6 +409,21 @@ export default function ArquivosPage() {
     );
     return { fileIds, folderIds };
   };
+
+  const deleteTotal = (deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0);
+  const blockedCount = deleteConfirm?.blocked?.length ?? 0;
+  const deleteTitle =
+    deleteConfirm?.stage === 'partial' ? t('page.deletePartialTitle') : t('page.deleteTitle');
+  const deleteMessage =
+    deleteConfirm?.stage === 'partial'
+      ? `${t('page.deleteBlocked', { count: blockedCount })} ${
+          deleteTotal > 0
+            ? t('page.deleteOthers', { count: deleteTotal })
+            : t('page.deleteNoneAllowed')
+        }`
+      : t('page.deleteConfirm', { count: deleteTotal });
+  const moveTitle = t('page.moveTitle', { count: selection.count });
+  const copyTitle = t('page.copyTitle', { count: selection.count });
 
   if (isPhone) {
     const openFolder = (id: number) =>
@@ -432,22 +450,6 @@ export default function ArquivosPage() {
         { replace: true },
       );
     };
-    const deleteTotal =
-      (deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0);
-    const blockedCount = deleteConfirm?.blocked?.length ?? 0;
-    const deleteMessage =
-      deleteConfirm?.stage === 'partial'
-        ? `${blockedCount} ${blockedCount === 1 ? 'item está' : 'itens estão'} em uso e ${
-            blockedCount === 1 ? 'não pode' : 'não podem'
-          } ser ${blockedCount === 1 ? 'excluído' : 'excluídos'}.${
-            deleteTotal > 0
-              ? ` Deseja excluir os outros ${deleteTotal}?`
-              : ' Nenhum item pode ser excluído.'
-          }`
-        : `Tem certeza que deseja excluir ${deleteTotal} ${
-            deleteTotal === 1 ? 'item' : 'itens'
-          }? Esta ação não pode ser desfeita.`;
-
     return (
       <div className="flex flex-col">
         <FileUploader
@@ -527,9 +529,9 @@ export default function ArquivosPage() {
           onOpenChange={(open) => {
             if (!open) setCreateFolderParent(undefined);
           }}
-          title="Nova pasta"
-          placeholder="Nome da pasta"
-          confirmLabel="Criar"
+          title={t('createFolderModal.title')}
+          placeholder={t('createFolderModal.namePlaceholder')}
+          confirmLabel={t('createFolderModal.create')}
           onConfirm={(name) => {
             createFolderMutation.mutate({ name, parentId: createFolderParent ?? null });
             setCreateFolderParent(undefined);
@@ -540,8 +542,8 @@ export default function ArquivosPage() {
           onOpenChange={(open) => {
             if (!open) setPickerMode(null);
           }}
-          title={`Mover ${selection.count} ${selection.count === 1 ? 'item' : 'itens'}`}
-          confirmLabel="Mover"
+          title={moveTitle}
+          confirmLabel={t('page.move')}
           isLoading={bulkMoveMutation.isPending}
           sourceFolderIds={selectedSplit().folderIds}
           currentFolderId={currentFolderId}
@@ -556,8 +558,8 @@ export default function ArquivosPage() {
           onOpenChange={(open) => {
             if (!open) setPickerMode(null);
           }}
-          title={`Copiar ${selection.count} ${selection.count === 1 ? 'item' : 'itens'}`}
-          confirmLabel="Copiar"
+          title={copyTitle}
+          confirmLabel={t('page.copy')}
           isLoading={copyFileMutation.isPending || copyFolderMutation.isPending}
           sourceFolderIds={[]}
           currentFolderId={null}
@@ -575,18 +577,14 @@ export default function ArquivosPage() {
         />
         <PhoneConfirmSheet
           open={deleteConfirm !== null}
-          title={
-            deleteConfirm?.stage === 'partial'
-              ? 'Alguns itens não podem ser excluídos'
-              : 'Excluir itens?'
-          }
+          title={deleteTitle}
           message={deleteMessage}
           onCancel={() => setDeleteConfirm(null)}
           actions={
             deleteTotal > 0
               ? [
                   {
-                    label: 'Excluir',
+                    label: t('page.delete'),
                     destructive: true,
                     onSelect: () => {
                       const target = deleteConfirm;
@@ -694,8 +692,8 @@ export default function ArquivosPage() {
           onOpenChange={(open) => {
             if (!open) setPickerMode(null);
           }}
-          title={`Mover ${selection.count} ${selection.count === 1 ? 'item' : 'itens'}`}
-          confirmLabel="Mover"
+          title={moveTitle}
+          confirmLabel={t('page.move')}
           isLoading={bulkMoveMutation.isPending}
           sourceFolderIds={[...selection.selectedIds].filter((id) =>
             data?.subfolders.some((f) => f.id === id),
@@ -717,8 +715,8 @@ export default function ArquivosPage() {
           onOpenChange={(open) => {
             if (!open) setPickerMode(null);
           }}
-          title={`Copiar ${selection.count} ${selection.count === 1 ? 'item' : 'itens'}`}
-          confirmLabel="Copiar"
+          title={copyTitle}
+          confirmLabel={t('page.copy')}
           isLoading={copyFileMutation.isPending || copyFolderMutation.isPending}
           sourceFolderIds={[]}
           currentFolderId={null}
@@ -747,37 +745,11 @@ export default function ArquivosPage() {
         >
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>
-                {deleteConfirm?.stage === 'partial'
-                  ? 'Alguns itens não podem ser excluídos'
-                  : 'Excluir itens?'}
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {deleteConfirm?.stage === 'partial' ? (
-                  <>
-                    {deleteConfirm.blocked?.length}{' '}
-                    {deleteConfirm.blocked?.length === 1 ? 'item está' : 'itens estão'} em uso e{' '}
-                    {deleteConfirm.blocked?.length === 1 ? 'não pode' : 'não podem'} ser{' '}
-                    {deleteConfirm.blocked?.length === 1 ? 'excluído' : 'excluídos'}.
-                    {deleteConfirm.fileIds.length + deleteConfirm.folderIds.length > 0
-                      ? ` Deseja excluir os outros ${deleteConfirm.fileIds.length + deleteConfirm.folderIds.length}?`
-                      : ' Nenhum item pode ser excluído.'}
-                  </>
-                ) : (
-                  `Tem certeza que deseja excluir ${
-                    (deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0)
-                  } ${
-                    (deleteConfirm?.fileIds.length ?? 0) +
-                      (deleteConfirm?.folderIds.length ?? 0) ===
-                    1
-                      ? 'item'
-                      : 'itens'
-                  }? Esta ação não pode ser desfeita.`
-                )}
-              </AlertDialogDescription>
+              <AlertDialogTitle>{deleteTitle}</AlertDialogTitle>
+              <AlertDialogDescription>{deleteMessage}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
               {(deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0) >
                 0 && (
                 <AlertDialogAction
@@ -791,7 +763,7 @@ export default function ArquivosPage() {
                   }}
                   className="bg-[var(--danger)] hover:bg-[var(--danger)] text-white"
                 >
-                  Excluir
+                  {t('page.delete')}
                 </AlertDialogAction>
               )}
             </AlertDialogFooter>
@@ -815,7 +787,7 @@ export default function ArquivosPage() {
               className="text-xl font-bold text-[var(--text-main)] leading-tight"
               style={{ fontFamily: 'var(--font-heading, "Playfair Display", serif)' }}
             >
-              Arquivos
+              {t('page.title')}
             </h1>
           </div>
         )}
@@ -830,7 +802,7 @@ export default function ArquivosPage() {
         {storage && (
           <div className="px-4 py-3 border-t border-[var(--border-color)]">
             <UsageMeter
-              label="Armazenamento"
+              label={t('page.storage')}
               used={storage.used_bytes}
               limit={storage.quota_bytes > 0 ? storage.quota_bytes : null}
               format={formatStorageBytes}
@@ -838,7 +810,12 @@ export default function ArquivosPage() {
               showUpgradeCta={isOwner}
               subText={
                 storage.quota_bytes > 0
-                  ? `${Math.min(100, Math.round((storage.used_bytes / storage.quota_bytes) * 100))}% usado`
+                  ? t('page.storageUsed', {
+                      percent: Math.min(
+                        100,
+                        Math.round((storage.used_bytes / storage.quota_bytes) * 100),
+                      ),
+                    })
                   : undefined
               }
             />
@@ -864,7 +841,7 @@ export default function ArquivosPage() {
                 onClick={() => uploaderRef.current?.openFilePicker()}
               >
                 <Upload className="h-4 w-4" />
-                Enviar arquivo
+                {t('page.upload')}
               </button>
             )}
 
@@ -875,7 +852,7 @@ export default function ArquivosPage() {
                 className="flex items-center gap-2 px-3 py-1.5 rounded-sm text-sm font-medium border border-[var(--border-color)] text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
               >
                 <FolderPlus className="h-4 w-4" />
-                Nova pasta
+                {t('page.newFolder')}
               </button>
             )}
 
@@ -889,11 +866,11 @@ export default function ArquivosPage() {
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as SortBy)}
                 className="text-sm bg-transparent text-[var(--text-main)] outline-none cursor-pointer appearance-none pr-1"
-                aria-label="Ordenar por"
+                aria-label={t('page.sortBy')}
               >
                 {SORT_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
+                  <option key={opt} value={opt}>
+                    {t(`page.sortOptions.${opt}`)}
                   </option>
                 ))}
               </select>
@@ -908,7 +885,7 @@ export default function ArquivosPage() {
                     ? 'bg-[var(--surface-hover)] text-[var(--text-main)]'
                     : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
                 }`}
-                aria-label="Grade"
+                aria-label={t('page.viewGrid')}
               >
                 <LayoutGrid className="h-4 w-4" />
               </button>
@@ -919,7 +896,7 @@ export default function ArquivosPage() {
                     ? 'bg-[var(--surface-hover)] text-[var(--text-main)]'
                     : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
                 }`}
-                aria-label="Lista"
+                aria-label={t('page.viewList')}
               >
                 <List className="h-4 w-4" />
               </button>
@@ -971,14 +948,12 @@ export default function ArquivosPage() {
             />
             {isFilterActive(filter) && filteredFiles.length === 0 && files.length > 0 && (
               <div className="text-center py-4">
-                <p className="text-sm text-[var(--text-muted)] mb-2">
-                  Nenhum arquivo corresponde ao filtro
-                </p>
+                <p className="text-sm text-[var(--text-muted)] mb-2">{t('page.filterEmpty')}</p>
                 <button
                   onClick={() => setFilter(EMPTY_FILTER)}
                   className="text-sm text-[var(--primary-color)] hover:underline"
                 >
-                  Limpar filtros
+                  {t('page.clearFilters')}
                 </button>
               </div>
             )}
@@ -1041,8 +1016,8 @@ export default function ArquivosPage() {
         onOpenChange={(open) => {
           if (!open) setPickerMode(null);
         }}
-        title={`Mover ${selection.count} ${selection.count === 1 ? 'item' : 'itens'}`}
-        confirmLabel="Mover"
+        title={moveTitle}
+        confirmLabel={t('page.move')}
         isLoading={bulkMoveMutation.isPending}
         sourceFolderIds={[...selection.selectedIds].filter((id) =>
           data?.subfolders.some((f) => f.id === id),
@@ -1064,8 +1039,8 @@ export default function ArquivosPage() {
         onOpenChange={(open) => {
           if (!open) setPickerMode(null);
         }}
-        title={`Copiar ${selection.count} ${selection.count === 1 ? 'item' : 'itens'}`}
-        confirmLabel="Copiar"
+        title={copyTitle}
+        confirmLabel={t('page.copy')}
         isLoading={copyFileMutation.isPending || copyFolderMutation.isPending}
         sourceFolderIds={[]}
         currentFolderId={null}
@@ -1094,36 +1069,11 @@ export default function ArquivosPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {deleteConfirm?.stage === 'partial'
-                ? 'Alguns itens não podem ser excluídos'
-                : 'Excluir itens?'}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {deleteConfirm?.stage === 'partial' ? (
-                <>
-                  {deleteConfirm.blocked?.length}{' '}
-                  {deleteConfirm.blocked?.length === 1 ? 'item está' : 'itens estão'} em uso e{' '}
-                  {deleteConfirm.blocked?.length === 1 ? 'não pode' : 'não podem'} ser{' '}
-                  {deleteConfirm.blocked?.length === 1 ? 'excluído' : 'excluídos'}.
-                  {deleteConfirm.fileIds.length + deleteConfirm.folderIds.length > 0
-                    ? ` Deseja excluir os outros ${deleteConfirm.fileIds.length + deleteConfirm.folderIds.length}?`
-                    : ' Nenhum item pode ser excluído.'}
-                </>
-              ) : (
-                `Tem certeza que deseja excluir ${
-                  (deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0)
-                } ${
-                  (deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0) ===
-                  1
-                    ? 'item'
-                    : 'itens'
-                }? Esta ação não pode ser desfeita.`
-              )}
-            </AlertDialogDescription>
+            <AlertDialogTitle>{deleteTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{deleteMessage}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
             {(deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0) > 0 && (
               <AlertDialogAction
                 onClick={() => {
@@ -1136,7 +1086,7 @@ export default function ArquivosPage() {
                 }}
                 className="bg-[var(--danger)] hover:bg-[var(--danger)] text-white"
               >
-                Excluir
+                {t('page.delete')}
               </AlertDialogAction>
             )}
           </AlertDialogFooter>

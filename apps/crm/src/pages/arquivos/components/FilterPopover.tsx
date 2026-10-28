@@ -1,4 +1,5 @@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useTranslation } from 'react-i18next';
 import { SlidersHorizontal } from 'lucide-react';
 
 export type FileKind = 'image' | 'video' | 'document';
@@ -22,13 +23,14 @@ interface FilterPopoverProps {
   onChange: (filter: FilterState) => void;
 }
 
-const TYPE_OPTIONS: { value: FileKind; label: string; icon: string }[] = [
-  { value: 'image', label: 'Imagens', icon: '🖼' },
-  { value: 'video', label: 'Vídeos', icon: '🎥' },
-  { value: 'document', label: 'Documentos', icon: '📄' },
+const TYPE_OPTIONS: { value: FileKind; icon: string }[] = [
+  { value: 'image', icon: '🖼' },
+  { value: 'video', icon: '🎥' },
+  { value: 'document', icon: '📄' },
 ];
 
 export function FilterPopover({ filter, onChange }: FilterPopoverProps) {
+  const { t } = useTranslation('files');
   const count = activeFilterCount(filter);
 
   function toggleType(type: FileKind) {
@@ -50,7 +52,7 @@ export function FilterPopover({ filter, onChange }: FilterPopoverProps) {
       <PopoverTrigger asChild>
         <button className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md border border-[var(--border-color)] bg-[var(--surface-main)] text-[var(--text-muted)] hover:bg-[var(--surface-hover)] transition-colors">
           <SlidersHorizontal className="h-3.5 w-3.5" />
-          <span>Filtros</span>
+          <span>{t('filterPopover.trigger')}</span>
           {count > 0 && (
             <span className="min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-[var(--primary-color)] text-[#12151a] text-[0.6rem] font-bold">
               {count}
@@ -62,14 +64,14 @@ export function FilterPopover({ filter, onChange }: FilterPopoverProps) {
         <div className="px-3 py-2 border-b border-[var(--border-color)]">
           <div className="flex items-center justify-between">
             <span className="text-[0.65rem] uppercase tracking-wide font-semibold text-[var(--text-muted)]">
-              Tipo
+              {t('filterPopover.typeHeading')}
             </span>
             {count > 0 && (
               <button
                 onClick={clearAll}
                 className="text-[0.65rem] text-[var(--primary-color)] hover:underline"
               >
-                Limpar
+                {t('ui.clear')}
               </button>
             )}
           </div>
@@ -91,7 +93,9 @@ export function FilterPopover({ filter, onChange }: FilterPopoverProps) {
                 {filter.types.has(opt.value) && '✓'}
               </div>
               <span className="text-xs">{opt.icon}</span>
-              <span className="text-xs text-[var(--text-main)]">{opt.label}</span>
+              <span className="text-xs text-[var(--text-main)]">
+                {t(`filterPopover.types.${opt.value}`)}
+              </span>
             </button>
           ))}
         </div>
