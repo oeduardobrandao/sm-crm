@@ -16,7 +16,7 @@ describe('task_comment notification', () => {
     expect(d.icon).toBe(MessageCircle);
     expect(d.tone).toBe('teal');
     expect(d.title).toBe('Novo comentário em Relatório mensal');
-    expect(d.body).toBe('Pode revisar hoje?');
+    expect(d.body).toBe('Carla Mendes: Pode revisar hoje?');
   });
 
   test('count 3 renders plural', () => {
@@ -28,7 +28,8 @@ describe('task_comment notification', () => {
       preview: 'Fechado',
     });
     expect(d.title).toBe('3 novos comentários em Relatório mensal');
-    expect(d.body).toBe('Fechado');
+    // The latest author, as the RPC overwrites author_name on every upsert.
+    expect(d.body).toBe('Carla Mendes: Fechado');
   });
 
   test('strips raw mention tokens from the preview', () => {
@@ -38,7 +39,14 @@ describe('task_comment notification', () => {
       count: 1,
       preview: 'oi @[Bruno](membro:6), vê isso?',
     });
-    expect(d.body).toBe('oi @Bruno, vê isso?');
+    expect(d.body).toBe('Ana: oi @Bruno, vê isso?');
+  });
+
+  test('body is the preview alone without an author, and the author alone without a preview', () => {
+    expect(getNotificationDisplay('task_comment', { preview: 'Só o texto' }).body).toBe(
+      'Só o texto',
+    );
+    expect(getNotificationDisplay('task_comment', { author_name: 'Ana' }).body).toBe('Ana');
   });
 
   test('missing metadata falls back without throwing', () => {

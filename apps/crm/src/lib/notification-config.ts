@@ -105,11 +105,14 @@ function postDiscussionDisplay(m: Record<string, unknown>): NotificationDisplay 
 function taskCommentDisplay(m: Record<string, unknown>): NotificationDisplay {
   const count = typeof m.count === 'number' && Number.isFinite(m.count) ? m.count : 1;
   const task = s(m.task_title, 'uma tarefa');
+  // The title names the task, so the body names who wrote (the RPC keeps the latest author).
+  const author = s(m.author_name, '');
+  const preview = stripMentionTokens(s(m.preview, ''));
   return {
     icon: MessageCircle,
     tone: 'teal',
     title: count > 1 ? `${count} novos comentários em ${task}` : `Novo comentário em ${task}`,
-    body: stripMentionTokens(s(m.preview, '')),
+    body: author && preview ? `${author}: ${preview}` : author || preview,
   };
 }
 
