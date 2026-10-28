@@ -150,7 +150,12 @@ function TarefaChipCard({
             <>
               <span>{parseDateOnly(tarefa.data_limite).toLocaleDateString(getIntlLocale())}</span>
               {badge && (
-                <span className={`board-card-deadline ${badge.className}`}>{badge.label}</span>
+                <span
+                  className={`board-card-deadline ${badge.className}`}
+                  style={{ whiteSpace: 'nowrap' }}
+                >
+                  {badge.label}
+                </span>
               )}
             </>
           ) : (
