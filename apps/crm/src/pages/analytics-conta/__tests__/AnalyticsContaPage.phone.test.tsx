@@ -223,6 +223,7 @@ describe('AnalyticsContaPage (phone)', () => {
         period_start: '2026-09-01',
         status: 'ready',
         created_at: '2026-10-02T10:00:00Z',
+        platforms: ['instagram'],
       } as never,
     ]);
     vi.mocked(getAudienceDemographics).mockResolvedValue({

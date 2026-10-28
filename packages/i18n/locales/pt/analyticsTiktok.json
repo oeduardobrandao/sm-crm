@@ -244,5 +244,9 @@
     "bestSlotSub": "{{rate}} de engajamento médio por visualização, {{videos}} nos últimos 90 dias",
     "recommendedSlots": "Horários recomendados",
     "slotWhen": "{{day}} às {{hour}}"
+  },
+  "reports": {
+    "platforms": "Plataformas",
+    "templateHelp": "No padrão do sistema, cada plataforma marcada ganha sua seção. Num modelo seu, os blocos do modelo valem."
   }
 }

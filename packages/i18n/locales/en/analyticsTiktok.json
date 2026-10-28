@@ -244,5 +244,9 @@
     "bestSlotSub": "{{rate}} average engagement per view, {{videos}} in the last 90 days",
     "recommendedSlots": "Recommended times",
     "slotWhen": "{{day}} at {{hour}}"
+  },
+  "reports": {
+    "platforms": "Platforms",
+    "templateHelp": "With the system default, each checked platform gets its own section. With your own template, the template's blocks apply."
   }
 }

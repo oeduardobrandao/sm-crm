@@ -24,14 +24,30 @@ vi.mock('../../../../services/reportDocs', () => ({
   listReportDocs: vi.fn(),
   deleteReportDoc: vi.fn(),
 }));
+vi.mock('../../../../services/instagram', () => ({ getInstagramSummary: vi.fn() }));
+vi.mock('../../../../services/tiktok', () => ({ getTikTokSummary: vi.fn() }));
+const { featuresRef } = vi.hoisted(() => ({
+  featuresRef: { current: { feature_tiktok: true } as Record<string, boolean> },
+}));
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({ features: featuresRef.current, isLoading: false }),
+}));
 vi.mock('../NewReportDialog', () => ({
-  NewReportDialog: ({ open }: { open: boolean }) =>
-    open ? <div role="dialog" aria-label="Novo relatório" /> : null,
+  NewReportDialog: ({ open, connected }: { open: boolean; connected?: string[] }) =>
+    open ? (
+      <div
+        role="dialog"
+        aria-label="Novo relatório"
+        data-connected={connected ? connected.join(',') : 'unknown'}
+      />
+    ) : null,
 }));
 
 import { ClientReportsPanel } from '../ClientReportsPanel';
 import { getClientes } from '../../../../store';
 import { getClientReports } from '../../../../services/analytics';
+import { getInstagramSummary } from '../../../../services/instagram';
+import { getTikTokSummary } from '../../../../services/tiktok';
 import { deleteReportDoc, listReportDocs } from '../../../../services/reportDocs';
 
 const DOC = {
@@ -40,6 +56,7 @@ const DOC = {
   period_start: '2026-07-01',
   status: 'ready',
   created_at: '2026-08-01T00:00:00Z',
+  platforms: ['instagram'],
 };
 
 let client: QueryClient;
@@ -60,6 +77,11 @@ beforeEach(() => {
   vi.mocked(getClientes).mockResolvedValue([{ id: 42, nome: 'Clinica Aurora' } as never]);
   vi.mocked(getClientReports).mockResolvedValue([]);
   vi.mocked(listReportDocs).mockResolvedValue([]);
+  featuresRef.current = { feature_tiktok: true };
+  vi.mocked(getInstagramSummary).mockResolvedValue({ account: { id: 'ig' } });
+  vi.mocked(getTikTokSummary).mockResolvedValue({
+    account: { authorization_status: 'active' },
+  } as never);
 });
 
 describe('ClientReportsPanel (moved from the Instagram page)', () => {
@@ -143,5 +165,89 @@ describe('ClientReportsPanel (moved from the Instagram page)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Enviar' }));
     expect(await screen.findByText('Enviar relatório por e-mail')).toBeInTheDocument();
     expect(await screen.findByText('Clinica Aurora')).toBeInTheDocument();
+  });
+
+  it('mostra um badge por plataforma do documento', async () => {
+    vi.mocked(listReportDocs).mockResolvedValue([
+      { ...DOC, platforms: ['instagram', 'tiktok'] } as never,
+      { ...DOC, id: 'doc-2', title: 'Só TikTok', platforms: ['tiktok'] } as never,
+      { ...DOC, id: 'doc-3', title: 'Neutro', platforms: [] } as never,
+    ]);
+    renderPanel();
+    await screen.findByText('Relatório de Julho');
+    const row = (title: string) =>
+      screen.getByText(title).closest('[data-testid="report-doc-row"]');
+    const within1 = row('Relatório de Julho') as HTMLElement;
+    expect(within1.textContent).toContain('Instagram');
+    expect(within1.textContent).toContain('TikTok');
+    const within2 = row('Só TikTok') as HTMLElement;
+    expect(within2.textContent).toContain('TikTok');
+    expect(within2.textContent).not.toContain('Instagram');
+    const within3 = row('Neutro') as HTMLElement;
+    expect(within3.textContent).not.toContain('TikTok');
+    expect(within3.textContent).not.toContain('Instagram');
+  });
+
+  it('passa ao dialog as plataformas conectadas (Instagram e TikTok com o plano)', async () => {
+    renderPanel();
+    fireEvent.click(await screen.findByRole('button', { name: 'Gerar' }));
+    await waitFor(() =>
+      expect(screen.getByRole('dialog', { name: 'Novo relatório' })).toHaveAttribute(
+        'data-connected',
+        'instagram,tiktok',
+      ),
+    );
+  });
+
+  it('sem feature_tiktok, o TikTok não conta como conectado e nem é consultado', async () => {
+    featuresRef.current = { feature_tiktok: false };
+    renderPanel();
+    fireEvent.click(await screen.findByRole('button', { name: 'Gerar' }));
+    await waitFor(() =>
+      expect(screen.getByRole('dialog', { name: 'Novo relatório' })).toHaveAttribute(
+        'data-connected',
+        'instagram',
+      ),
+    );
+    expect(getTikTokSummary).not.toHaveBeenCalled();
+  });
+
+  it('sem Instagram conectado, só o TikTok', async () => {
+    vi.mocked(getInstagramSummary).mockResolvedValue(null);
+    renderPanel();
+    fireEvent.click(await screen.findByRole('button', { name: 'Gerar' }));
+    await waitFor(() =>
+      expect(screen.getByRole('dialog', { name: 'Novo relatório' })).toHaveAttribute(
+        'data-connected',
+        'tiktok',
+      ),
+    );
+  });
+
+  it.each(['revoked', 'disconnected'])('TikTok %s não conta como conectado', async (status) => {
+    vi.mocked(getTikTokSummary).mockResolvedValue({
+      account: { authorization_status: status },
+    } as never);
+    renderPanel();
+    fireEvent.click(await screen.findByRole('button', { name: 'Gerar' }));
+    await waitFor(() =>
+      expect(screen.getByRole('dialog', { name: 'Novo relatório' })).toHaveAttribute(
+        'data-connected',
+        'instagram',
+      ),
+    );
+  });
+
+  it('token do Instagram expirado ainda conta como conectado', async () => {
+    vi.mocked(getInstagramSummary).mockRejectedValue(new Error('TOKEN_EXPIRED'));
+    vi.mocked(getTikTokSummary).mockRejectedValue(new Error('404'));
+    renderPanel();
+    fireEvent.click(await screen.findByRole('button', { name: 'Gerar' }));
+    await waitFor(() =>
+      expect(screen.getByRole('dialog', { name: 'Novo relatório' })).toHaveAttribute(
+        'data-connected',
+        'instagram',
+      ),
+    );
   });
 });
