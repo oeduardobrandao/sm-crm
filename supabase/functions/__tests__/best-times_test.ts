@@ -4,6 +4,7 @@ import {
   type BestTimesPost,
   isCurrentBestTimes,
   resolveBestTimes,
+  tiktokRate,
 } from "../_shared/best-times.ts";
 
 function post(posted_at: string, likes: number, reach: number): BestTimesPost {
@@ -94,4 +95,33 @@ Deno.test("resolveBestTimes degrades to null on a query error", async () => {
   const { db, calls } = fakeDb({ postsError: { message: "boom" } });
   assertEquals(await resolveBestTimes(db, 7, undefined, "[t]"), null);
   assertEquals(calls.upserts.length, 0);
+});
+
+function ttPost(posted_at: string, views: number | null, likes: number, comments: number, shares: number): BestTimesPost {
+  return { posted_at, views, likes, comments, shares };
+}
+
+Deno.test("bestTimesFromPosts with tiktokRate scores by (likes+comments+shares)/views", () => {
+  const grid = bestTimesFromPosts([
+    ttPost("2026-09-30T21:00:00Z", 1000, 50, 10, 40), // Wed 18h: 10%
+    ttPost("2026-10-07T21:00:00Z", 200, 20, 10, 10), // Wed 18h: 20% -> avg 15
+    ttPost("2026-10-01T15:00:00Z", null, 5, 5, 5), // Thu 12h: no views -> counted, adds 0
+  ], tiktokRate);
+  assertEquals(grid.totalPosts, 3);
+  assertEquals(grid.heatmap[2][18], 15);
+  assertEquals(grid.counts[3][12], 1);
+  assertEquals(grid.heatmap[3][12], 0);
+  assertEquals(grid.topSlots[0], { day: 2, hour: 18, value: 15, postCount: 2 });
+});
+
+Deno.test("tiktokRate is null without views", () => {
+  assertEquals(tiktokRate(ttPost("2026-09-30T21:00:00Z", 0, 1, 1, 1)), null);
+  assertEquals(tiktokRate(ttPost("2026-09-30T21:00:00Z", 100, 1, 1, 1)), 3);
+});
+
+Deno.test("bestTimesFromPosts without a rate keeps the Instagram formula (saved counts, views ignored)", () => {
+  const grid = bestTimesFromPosts([
+    { posted_at: "2026-09-30T21:00:00Z", likes: 5, comments: 0, saved: 5, shares: 0, reach: 100, views: 1 },
+  ]);
+  assertEquals(grid.heatmap[2][18], 10);
 });
