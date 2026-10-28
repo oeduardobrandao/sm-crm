@@ -31,8 +31,9 @@ import {
 import { formatCount, formatRate, formatVideoDate } from './tiktokTabFormat';
 
 type Mode = 'best' | 'worst';
-type OrderBy = 'views' | 'likes' | 'comments' | 'shares' | 'engagement' | 'date';
-const ORDERS: { value: OrderBy; key: string }[] = [
+export type VideoOrderBy = 'views' | 'likes' | 'comments' | 'shares' | 'engagement' | 'date';
+/** The "Ver todos" sheet's sort options (desktop and phone). */
+export const VIDEO_ORDERS: { value: VideoOrderBy; key: string }[] = [
   { value: 'views', key: 'drawer.sortViews' },
   { value: 'likes', key: 'drawer.sortLikes' },
   { value: 'comments', key: 'drawer.sortComments' },
@@ -43,7 +44,7 @@ const ORDERS: { value: OrderBy; key: string }[] = [
 
 const STRIP_SIZE = 5;
 
-function orderValue(v: TikTokVideoAnalytics, orderBy: OrderBy): number | null {
+export function orderValue(v: TikTokVideoAnalytics, orderBy: VideoOrderBy): number | null {
   switch (orderBy) {
     case 'engagement':
       return v.engagement_rate;
@@ -66,7 +67,7 @@ export function TikTokRankedVideos({
   // best: every video by views; worst: older than 48h, fewest views first.
   const { best, worst } = useMemo(() => rankByViews(videos), [videos]);
   const [mode, setMode] = useState<Mode | null>(null);
-  const [orderBy, setOrderBy] = useState<OrderBy>('views');
+  const [orderBy, setOrderBy] = useState<VideoOrderBy>('views');
   const [asc, setAsc] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -295,8 +296,8 @@ function VideosSheet(props: {
   onClose: () => void;
   videos: TikTokVideoAnalytics[];
   total: number;
-  orderBy: OrderBy;
-  setOrderBy: (v: OrderBy) => void;
+  orderBy: VideoOrderBy;
+  setOrderBy: (v: VideoOrderBy) => void;
   asc: boolean;
   setAsc: (v: boolean) => void;
   dateFrom: string;
@@ -343,12 +344,12 @@ function VideosSheet(props: {
           <div className="grid grid-cols-[minmax(0,1fr)_2.25rem] items-center gap-2">
             <select
               value={props.orderBy}
-              onChange={(e) => props.setOrderBy(e.target.value as OrderBy)}
+              onChange={(e) => props.setOrderBy(e.target.value as VideoOrderBy)}
               aria-label={t('table.sortBy')}
               className="drawer-select"
               style={selectStyle}
             >
-              {ORDERS.map((o) => (
+              {VIDEO_ORDERS.map((o) => (
                 <option key={o.value} value={o.value}>
                   {t(o.key)}
                 </option>

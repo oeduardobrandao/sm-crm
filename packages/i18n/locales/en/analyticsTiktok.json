@@ -201,7 +201,8 @@
     "portfolioEmpty": "Tap for an AI strategic analysis of the accounts.",
     "topVideo": "Best video",
     "worstVideo": "Worst video",
-    "titleDiagnostic": "Title diagnostics"
+    "titleDiagnostic": "Title diagnostics",
+    "accountEmpty": "Tap to get an AI analysis of this account."
   },
   "drawer": {
     "titleBest": "All videos",

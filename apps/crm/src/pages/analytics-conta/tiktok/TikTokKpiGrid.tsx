@@ -53,7 +53,7 @@ export function TikTokKpiGrid({
   const { t } = useTranslation('analyticsTiktok');
 
   return (
-    <StatCardGrid className="animate-up" maxCols={4} phoneLayout="scroll">
+    <StatCardGrid className="animate-up" maxCols={4} phoneLayout="grid">
       {KPI_ORDER.map(({ id, icon, tone }) => {
         const entry = kpis[id];
         if (!entry) return null;

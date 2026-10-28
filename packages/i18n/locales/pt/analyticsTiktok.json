@@ -201,7 +201,8 @@
     "portfolioEmpty": "Toque para obter uma análise estratégica das contas com IA.",
     "topVideo": "Melhor vídeo",
     "worstVideo": "Pior vídeo",
-    "titleDiagnostic": "Diagnóstico de títulos"
+    "titleDiagnostic": "Diagnóstico de títulos",
+    "accountEmpty": "Toque para obter uma análise da conta com IA."
   },
   "drawer": {
     "titleBest": "Todos os vídeos",

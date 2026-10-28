@@ -44,15 +44,22 @@ export const DAY_FULL: Record<string, string> = {
 export function FollowerGrowthCard({
   history,
   onManual,
+  title = 'Crescimento de seguidores',
+  emptyText = 'Dados insuficientes. O histórico é construído diariamente.',
 }: {
   history: { date: string; follower_count: number; source: string }[];
-  onManual: () => void;
+  /** Omit where the platform takes no manual count (TikTok). */
+  onManual?: () => void;
+  title?: string;
+  emptyText?: string;
 }) {
   const [picked, setPicked] = useState<number | null>(null);
-  const manualButton = (
+  const manualButton = onManual ? (
     <button type="button" className="phone-text-button" onClick={onManual}>
       Inserir manualmente
     </button>
+  ) : (
+    <span />
   );
 
   if (history.length < 2) {
@@ -60,16 +67,16 @@ export function FollowerGrowthCard({
       <section className="phone-an-card" aria-labelledby="conta-followers-title">
         <div className="phone-an-card__top">
           <h2 id="conta-followers-title" className="phone-group__header">
-            Crescimento de seguidores
+            {title}
           </h2>
         </div>
-        <p className="phone-an-card__readout">
-          Dados insuficientes. O histórico é construído diariamente.
-        </p>
-        <div className="phone-an-card__bottom">
-          <span />
-          {manualButton}
-        </div>
+        <p className="phone-an-card__readout">{emptyText}</p>
+        {onManual && (
+          <div className="phone-an-card__bottom">
+            <span />
+            {manualButton}
+          </div>
+        )}
       </section>
     );
   }
@@ -87,7 +94,7 @@ export function FollowerGrowthCard({
     <section className="phone-an-card" aria-labelledby="conta-followers-title">
       <div className="phone-an-card__top">
         <h2 id="conta-followers-title" className="phone-group__header">
-          Crescimento de seguidores
+          {title}
         </h2>
       </div>
       <div className="phone-an-card__top">
@@ -533,8 +540,24 @@ const titleCase = (key: string) => {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 };
 
+/** Section titles a platform renames (TikTok: "Melhor vídeo", "Diagnóstico de títulos"). */
+export interface ContaAILabels {
+  topPerformer: string;
+  worstPerformer: string;
+  captionDiagnostic: string;
+}
+
+const CONTA_AI_LABELS: ContaAILabels = {
+  topPerformer: 'Melhor post',
+  worstPerformer: 'Pior post',
+  captionDiagnostic: 'Diagnóstico de legendas',
+};
+
 /** The account analysis payload (untyped JSON) in the shared phone shape. */
-export function contaAIView(a: any): AIAnalysisView | null {
+export function contaAIView(
+  a: any,
+  labels: ContaAILabels = CONTA_AI_LABELS,
+): AIAnalysisView | null {
   if (!a) return null;
   return {
     score: a.healthScore
@@ -551,10 +574,10 @@ export function contaAIView(a: any): AIAnalysisView | null {
         }))
       : undefined,
     sections: [
-      { title: 'Melhor post', text: a.performanceMap?.topPerformer },
-      { title: 'Pior post', text: a.performanceMap?.worstPerformer },
+      { title: labels.topPerformer, text: a.performanceMap?.topPerformer },
+      { title: labels.worstPerformer, text: a.performanceMap?.worstPerformer },
       { title: 'Mix de conteúdo', text: a.performanceMap?.contentMix },
-      { title: 'Diagnóstico de legendas', text: a.captionDiagnostic },
+      { title: labels.captionDiagnostic, text: a.captionDiagnostic },
       { title: 'Trajetória de crescimento', text: a.growthAnalysis?.trajectory },
       { title: 'Projeção', text: a.growthAnalysis?.projection },
     ],

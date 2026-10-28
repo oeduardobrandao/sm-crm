@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ReactNode } from 'react';
 
 // Desktop layout; the phone frame has its own cases below.
 const { isDesktop } = vi.hoisted(() => ({ isDesktop: { value: true } }));
@@ -52,8 +53,16 @@ vi.mock('../../../services/reportDocs', () => ({
 }));
 // The TikTok tab has its own suite; here it only has to mount with the client id.
 vi.mock('../tiktok/TikTokAnalyticsTab', () => ({
-  TikTokAnalyticsTab: ({ clientId }: { clientId: number }) => (
-    <div data-testid="tiktok-tab" data-client={clientId} />
+  TikTokAnalyticsTab: ({
+    clientId,
+    phoneFrame,
+  }: {
+    clientId: number;
+    phoneFrame?: { nome: string; tabs: ReactNode };
+  }) => (
+    <div data-testid="tiktok-tab" data-client={clientId} data-nome={phoneFrame?.nome}>
+      {phoneFrame?.tabs}
+    </div>
   ),
 }));
 vi.mock('../reports/NewReportDialog', () => ({
@@ -380,6 +389,21 @@ describe('AnalyticsClientShell (phone)', () => {
     const tabs = await screen.findByRole('tablist', { name: 'Analytics' });
     fireEvent.click(within(tabs).getByRole('tab', { name: 'TikTok' }));
     await waitFor(() => expect(path()).toBe('/analytics/12/tiktok'));
+  });
+
+  it('TikTok tab owns its phone frame: the shell hands it the client and the tab control', async () => {
+    renderShell('/analytics/12/tiktok');
+    const tab = await screen.findByTestId('tiktok-tab');
+    expect(tab).toHaveAttribute('data-client', '12');
+    expect(tab).toHaveAttribute('data-nome', 'Clínica Aurora');
+    // No shell frame around it: the tab renders the nav bar and the one h1 itself.
+    expect(document.querySelector('.phone-an-identity')).toBeNull();
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+    const tabs = within(tab).getByRole('tablist', { name: 'Analytics' });
+    expect(within(tabs).getByRole('tab', { name: 'TikTok' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
   });
 
   it('Instagram not connected keeps the tab control above the message', async () => {

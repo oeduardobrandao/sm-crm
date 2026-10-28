@@ -7,16 +7,20 @@ import { SectionHead, fmtNumber, mediaTypeLabel } from './shared';
 /** What a ranked-post card needs; both analytics pages' post types fit it. */
 export interface RankedPostLike {
   id: string | number;
+  /** Empty when the platform gave no link: the card then shows its numbers without one. */
   permalink: string;
   thumbnail_url?: string | null;
   media_type: string;
-  posted_at: string;
-  views: number;
+  /** Null where the platform has no date: the card leaves it out. */
+  posted_at: string | null;
+  /** Null where the platform has no count: the card reads "—", never 0. */
+  views: number | null;
   /** Percent; null where the platform has no rate to show. */
   engagement_rate: number | null;
 }
 
 const formatEng = (v: number | null) => (v === null ? '—' : `${v.toFixed(1).replace('.', ',')}%`);
+const formatViews = (v: number | null) => (v === null ? '—' : fmtNumber(v));
 
 /** One post of a "Melhores posts" / "Precisam de atenção" strip (FAnalytics mockup). */
 export function RankedPostCard({
@@ -37,15 +41,11 @@ export function RankedPostCard({
 }) {
   const [failed, setFailed] = useState(false);
   const type = typeLabel ?? mediaTypeLabel(post.media_type);
-  const date = format(new Date(post.posted_at), "d 'de' MMM", { locale: ptBR });
-  return (
-    <a
-      href={sanitizeUrl(post.permalink)}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="phone-an-post-card"
-      aria-label={`${type} de ${title}, ${fmtNumber(post.views)} visualizações, ${openLabel}`}
-    >
+  const date = post.posted_at
+    ? format(new Date(post.posted_at), "d 'de' MMM", { locale: ptBR })
+    : null;
+  const body = (
+    <>
       <span className="phone-an-post-card__media">
         {post.thumbnail_url && !failed && (
           <img
@@ -59,15 +59,28 @@ export function RankedPostCard({
       </span>
       <span className="phone-an-post-card__body">
         <span className="phone-an-post-card__meta">
-          {title} · {date}
+          {title}
+          {date && ` · ${date}`}
         </span>
         <span className="phone-an-post-card__nums">
           <strong className={tone === 'best' ? 'phone-an-tone--up' : 'phone-an-tone--down'}>
-            {fmtNumber(post.views)}
+            {formatViews(post.views)}
           </strong>
           <span>{formatEng(post.engagement_rate)}</span>
         </span>
       </span>
+    </>
+  );
+  if (!post.permalink) return <div className="phone-an-post-card">{body}</div>;
+  return (
+    <a
+      href={sanitizeUrl(post.permalink)}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="phone-an-post-card"
+      aria-label={`${type} de ${title}, ${formatViews(post.views)} visualizações, ${openLabel}`}
+    >
+      {body}
     </a>
   );
 }

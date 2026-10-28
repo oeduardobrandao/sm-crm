@@ -191,6 +191,15 @@ export default function AnalyticsClientShell() {
     if (tab === 'instagram') {
       return <InstagramAnalyticsTab clientId={clientId} cliente={cliente} tabs={tabsControl} />;
     }
+    // The TikTok tab owns its phone frame too: the sync button sits in its nav bar.
+    if (tab === 'tiktok') {
+      return (
+        <TikTokAnalyticsTab
+          clientId={clientId}
+          phoneFrame={{ nome: cliente.nome, cor: cliente.cor, photo: photoSrcs, tabs: tabsControl }}
+        />
+      );
+    }
     return (
       <div className="phone-kit phone-an">
         <PhoneNavBar fallbackTo="/analytics" backLabel="Voltar" />
@@ -202,11 +211,7 @@ export default function AnalyticsClientShell() {
           </div>
         </div>
         {tabsControl}
-        {tab === 'tiktok' ? (
-          <TikTokAnalyticsTab clientId={clientId} />
-        ) : (
-          <ClientReportsPanel clientId={clientId} />
-        )}
+        <ClientReportsPanel clientId={clientId} />
       </div>
     );
   }

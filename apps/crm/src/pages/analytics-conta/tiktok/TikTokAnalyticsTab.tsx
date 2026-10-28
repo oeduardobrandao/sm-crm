@@ -1,4 +1,5 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -25,6 +26,7 @@ import { TikTokKpiGrid } from './TikTokKpiGrid';
 import { TikTokPeriodBar } from './TikTokPeriodBar';
 import { TikTokRankedVideos } from './TikTokRankedVideos';
 import { TikTokVideosTable, type VideoTableSort } from './TikTokVideosTable';
+import { TikTokAnalyticsTabPhone, type TikTokPhoneFrame } from './TikTokAnalyticsTabPhone';
 import { aiDays, formatRate, periodTag } from './tiktokTabFormat';
 import { isTikTokTabQuery, useTikTokTabData } from './useTikTokTabData';
 
@@ -40,19 +42,90 @@ const dimmed = (stale: boolean): CSSProperties => ({
   transition: 'opacity 150ms ease',
 });
 
-/** `/analytics/:id/tiktok`: the client's TikTok numbers, one period control for the whole tab. */
-export function TikTokAnalyticsTab({ clientId }: { clientId: number }) {
+/**
+ * `/analytics/:id/tiktok`: the client's TikTok numbers, one period control for the whole tab.
+ * Below 768px it renders `TikTokAnalyticsTabPhone`, which owns the phone frame (nav bar,
+ * identity heading, the shell's tab control from `phoneFrame`) and shares this tab's state,
+ * queries, sync and AI loader.
+ */
+export function TikTokAnalyticsTab({
+  clientId,
+  phoneFrame,
+}: {
+  clientId: number;
+  /** Phone only: who the page is about and the shell's tab control. */
+  phoneFrame?: TikTokPhoneFrame;
+}) {
   const { t, i18n } = useTranslation('analyticsTiktok');
   const qc = useQueryClient();
+  const isPhone = !useIsDesktop(768);
   const [range, setRange] = useState<AnalyticsRange>({ days: 30 });
   const [sort, setSort] = useState<VideoTableSort>({ col: 'posted_at', dir: 'desc' });
   const [syncing, setSyncing] = useState(false);
-  const { overview, history, posts, bestTimes, bestTimesLocked, aiLocked } = useTikTokTabData(
-    clientId,
-    range,
-    sort.col as TikTokPostSort,
-  );
+  const data = useTikTokTabData(clientId, range, sort.col as TikTokPostSort);
+  const { overview, history, posts, bestTimes, bestTimesLocked, aiLocked } = data;
   const redesSociais = `/clientes/${clientId}/redes-sociais`;
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      await syncTikTokData(clientId);
+      toast.success(t('states.syncSuccess'));
+      await Promise.all([
+        qc.invalidateQueries({ predicate: isTikTokTabQuery(clientId) }),
+        qc.invalidateQueries({ queryKey: ['ttSummary', clientId] }),
+      ]);
+    } catch (e) {
+      const expired = e instanceof Error && e.message === 'TOKEN_EXPIRED';
+      toast.error(expired ? t('states.expiredBody') : t('states.syncError'));
+      // The overview carries authorization_status: refetch it so the expired banner shows.
+      if (expired) await qc.invalidateQueries({ queryKey: ['tt-overview', clientId] });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // AISection shows a thrown error's message, so every failure leaves here as copy. The AI
+  // route takes `days` only (1-365): a longer custom window is capped.
+  const loadAI = async () => {
+    try {
+      const result = await getTikTokAIAnalysis(clientId, aiDays(range));
+      // `{error: true, raw}`: a fixed marker, or unparseable model output (never shown).
+      if (result.analysis?.error) {
+        const raw = result.analysis.raw;
+        throw new AIMessage(
+          raw === 'ai_unavailable'
+            ? t('ai.unavailable')
+            : raw === 'Nenhum vídeo no período'
+              ? t('states.noVideos')
+              : t('ai.error'),
+        );
+      }
+      return result;
+    } catch (e) {
+      if (e instanceof AIMessage) throw e;
+      if (e instanceof TikTokRateLimitedError) throw new AIMessage(t('ai.rateLimited'));
+      if (isTikTokFeatureDisabled(e)) throw new AIMessage(t('ai.locked'));
+      throw new AIMessage(t('ai.error'));
+    }
+  };
+
+  if (isPhone) {
+    return (
+      <TikTokAnalyticsTabPhone
+        clientId={clientId}
+        frame={phoneFrame}
+        data={data}
+        range={range}
+        onRange={setRange}
+        sort={sort}
+        onSort={setSort}
+        syncing={syncing}
+        onSync={handleSync}
+        loadAI={loadAI}
+      />
+    );
+  }
 
   if (overview.isPending) return <PageSkeleton body="report" header={false} />;
 
@@ -99,54 +172,9 @@ export function TikTokAnalyticsTab({ clientId }: { clientId: number }) {
     );
   }
 
-  const data = overview.data!;
-  const account = data.account;
+  const account = overview.data!.account;
   const period = periodTag(range, i18n.language);
   const dateLocale = i18n.language.startsWith('en') ? enUS : ptBR;
-
-  const handleSync = async () => {
-    setSyncing(true);
-    try {
-      await syncTikTokData(clientId);
-      toast.success(t('states.syncSuccess'));
-      await Promise.all([
-        qc.invalidateQueries({ predicate: isTikTokTabQuery(clientId) }),
-        qc.invalidateQueries({ queryKey: ['ttSummary', clientId] }),
-      ]);
-    } catch (e) {
-      const expired = e instanceof Error && e.message === 'TOKEN_EXPIRED';
-      toast.error(expired ? t('states.expiredBody') : t('states.syncError'));
-      // The overview carries authorization_status: refetch it so the expired banner shows.
-      if (expired) await qc.invalidateQueries({ queryKey: ['tt-overview', clientId] });
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  // AISection shows a thrown error's message, so every failure leaves here as copy. The AI
-  // route takes `days` only (1-365): a longer custom window is capped.
-  const loadAI = async () => {
-    try {
-      const result = await getTikTokAIAnalysis(clientId, aiDays(range));
-      // `{error: true, raw}`: a fixed marker, or unparseable model output (never shown).
-      if (result.analysis?.error) {
-        const raw = result.analysis.raw;
-        throw new AIMessage(
-          raw === 'ai_unavailable'
-            ? t('ai.unavailable')
-            : raw === 'Nenhum vídeo no período'
-              ? t('states.noVideos')
-              : t('ai.error'),
-        );
-      }
-      return result;
-    } catch (e) {
-      if (e instanceof AIMessage) throw e;
-      if (e instanceof TikTokRateLimitedError) throw new AIMessage(t('ai.rateLimited'));
-      if (isTikTokFeatureDisabled(e)) throw new AIMessage(t('ai.locked'));
-      throw new AIMessage(t('ai.error'));
-    }
-  };
 
   const avatar = account.avatar_url?.startsWith('https://') ? account.avatar_url : null;
   const handle = account.username ?? account.display_name ?? '';
@@ -219,7 +247,7 @@ export function TikTokAnalyticsTab({ clientId }: { clientId: number }) {
       <TikTokPeriodBar range={range} onChange={setRange} />
 
       <div style={dimmed(overview.isPlaceholderData)} aria-busy={overview.isPlaceholderData}>
-        <TikTokKpiGrid kpis={data.kpis} period={period} />
+        <TikTokKpiGrid kpis={overview.data!.kpis} period={period} />
       </div>
 
       {posts.isPending ? (
