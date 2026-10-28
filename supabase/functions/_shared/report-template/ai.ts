@@ -28,7 +28,30 @@ export interface AIPromptOpts {
   extraGuidance?: string;
 }
 
+// Regras do TikTok (spec 2026-10-28 §A2/§A3), só quando o relatório tem a seção TikTok. Mesma
+// honestidade da IA da aba TikTok: a Display API não dá alcance, salvamentos nem audiência, o
+// engajamento é por visualização e as somas dos vídeos não têm comparação com o mês anterior.
+const TIKTOK_RULES = `TIKTOK DATA RULES (the "tiktok" data):
+- TikTok gives only followers, follower change, views, likes, comments, shares, videos posted and lifetime profile likes. There is no reach, impressions, saves, watch time, profile views or audience demographics for TikTok: never mention, estimate or compare them.
+- tiktok engagement_rate is a percentage of engagement per view: (likes + comments + shares) / views. Always call it "engajamento por visualização" and never compare it with the Instagram engagement rate as if they were the same number.
+- tiktok views, likes, comments and shares are the current totals of the videos posted in the period, not what the account received in the period. They have no previous-period comparison: never describe them as growing or falling against the previous month. Only kpis_previous_month may be compared.
+- A null tiktok value means there is no data: say the data is missing instead of estimating it.
+- There is no market benchmark for TikTok: never cite market ranges, never call a TikTok value good or bad in absolute terms, and never invent example numbers.
+- When a recommendation or goal is about a TikTok metric, write its metric id with the "tiktok_" prefix (for example tiktok_views, tiktok_engagement_rate).`;
+
+const BOTH_PLATFORMS_SCOPE = `REPORT SCOPE: This report covers Instagram and TikTok. Write ONE narrative covering Instagram and TikTok together, naming the platform whenever you cite a number.`;
+
+const TIKTOK_ONLY_SCOPE = `REPORT SCOPE: This report covers only TikTok. There is no Instagram data: base the whole narrative on the TikTok data.`;
+
+const atHandle = (handle: string) => (handle.startsWith("@") ? handle : `@${handle}`);
+
 export function buildAIPrompt(data: ReportData, opts?: AIPromptOpts): AIPrompt {
+  const tiktok = data.tiktok;
+  // Instagram ausente só conta com TikTok presente: sem nenhuma das duas, o prompt de hoje.
+  const tiktokOnly = !!tiktok && data.instagram_connected === false;
+  const platformRules = tiktok
+    ? `\n\n${tiktokOnly ? TIKTOK_ONLY_SCOPE : BOTH_PLATFORMS_SCOPE}\n\n${TIKTOK_RULES}`
+    : "";
   const systemPrompt = `You are a social media analytics specialist writing a monthly performance report for a client of a Brazilian social media agency.
 
 LANGUAGE: Write entirely in Brazilian Portuguese (pt-BR). All text, including labels and section headers, must be in pt-BR.
@@ -64,7 +87,7 @@ OUTPUT FORMAT: Respond with ONLY valid JSON matching this exact structure:
   ]
 }
 
-Provide exactly 3-5 recommendations and 2-3 suggested_goals.${
+Provide exactly 3-5 recommendations and 2-3 suggested_goals.${platformRules}${
     opts?.extraGuidance ? `\n\n${opts.extraGuidance}` : ""
   }`;
 
@@ -73,16 +96,40 @@ Provide exactly 3-5 recommendations and 2-3 suggested_goals.${
   // enough on media-heavy months to blow past Gemini's input-token limit
   // (seen in prod: 400 INVALID_ARGUMENT, "input token count exceeds the
   // maximum" → the report silently shipped without AI).
+  if (tiktok && tiktokOnly) {
+    // Sem Instagram: nada da raiz Instagram (vazia) entra no prompt. O @ vem da seção TikTok:
+    // a raiz de um cliente só TikTok tem handle "".
+    const tiktokData = {
+      specialty: data.specialty,
+      period: data.period,
+      report_month: data.report_month,
+      tiktok,
+    };
+    const userPrompt = `Analyze the following TikTok account data for ${atHandle(tiktok.handle)} (${data.specialty}), period ${data.period}:
+
+${JSON.stringify(tiktokData, null, 2)}`;
+    return { systemPrompt, userPrompt };
+  }
+
+  const { tiktok: _tiktok, instagram_connected: _connected, ...instagramData } = data;
   const promptData = {
-    ...data,
+    ...instagramData,
     top_posts: data.top_posts.map(
       ({ thumbnail_base64: _thumbnail, ...post }) => post,
     ),
   };
 
-  const userPrompt = `Analyze the following Instagram account data for ${data.handle} (${data.specialty}), period ${data.period}:
+  const instagramPrompt = `Analyze the following Instagram account data for ${data.handle} (${data.specialty}), period ${data.period}:
 
 ${JSON.stringify(promptData, null, 2)}`;
+
+  const userPrompt = tiktok
+    ? `${instagramPrompt}
+
+TikTok account data for ${atHandle(tiktok.handle)}, same period:
+
+${JSON.stringify({ tiktok }, null, 2)}`
+    : instagramPrompt;
 
   return { systemPrompt, userPrompt };
 }

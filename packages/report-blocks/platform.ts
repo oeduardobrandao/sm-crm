@@ -14,21 +14,10 @@ import type {
 
 export type ReportPlatform = NonNullable<ReturnType<typeof blockPlatform>>;
 
-// Rótulos e tooltips iguais aos da aba Analytics do TikTok (spec §A3,
-// packages/i18n/locales/pt/analyticsTiktok.json `kpi.*`; platform.test.ts
-// confere a paridade). Exceção: no relatório a taxa leva "por visualização",
-// porque fica ao lado da taxa do Instagram (spec §A3).
-export const TIKTOK_KPI_LABELS_PT: Record<TikTokKpiId, string> = {
-  followers_total: 'Seguidores',
-  followers_gained: 'Novos seguidores',
-  views: 'Visualizações',
-  engagement_rate: 'Engajamento por visualização',
-  likes: 'Curtidas',
-  comments: 'Comentários',
-  shares: 'Compartilhamentos',
-  posts_count: 'Vídeos publicados',
-  likes_total: 'Curtidas totais do perfil',
-};
+// Rótulos: fonte única em supabase/functions/_shared/report-docs/tiktok-kpi-labels.ts (as metas
+// da IA no servidor usam os mesmos). Tooltips iguais aos da aba Analytics do TikTok (spec §A3,
+// packages/i18n/locales/pt/analyticsTiktok.json `kpi.*`; platform.test.ts confere a paridade).
+export { TIKTOK_KPI_LABELS_PT } from '../../supabase/functions/_shared/report-docs/tiktok-kpi-labels';
 
 const COUNTS_TOOLTIP =
   'Total atual dos vídeos publicados no período. Não comparamos com o período anterior porque vídeos mais antigos tiveram mais tempo para acumular números.';

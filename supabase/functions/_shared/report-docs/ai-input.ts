@@ -1,7 +1,10 @@
 // Adapter snapshot -> ReportData, o shape que buildAIPrompt já valida e usa.
 // KPIs null ficam FORA (o prompt proíbe inventar números; 0 falso seria pior).
-import type { KpiValue, ReportData, ReportDataComparison } from "../report-template/types.ts";
-import type { ReportDocSnapshot } from "./snapshot.ts";
+import type {
+  KpiValue, ReportData, ReportDataComparison, ReportDataTikTok,
+} from "../report-template/types.ts";
+import type { TikTokKpiId } from "../tiktok-analytics/kpis.ts";
+import type { ReportDocSnapshot, TikTokReportSnapshot } from "./snapshot.ts";
 
 // Instrução curta em pt-BR, embutida no payload de DADOS que vai pro modelo
 // (buildAIPrompt serializa `promptData` inteiro como JSON no userPrompt) --
@@ -23,13 +26,43 @@ function buildComparison(
   return { prev_outlier, prev_top_share, note: comparisonNote(pct) };
 }
 
-export function snapshotToReportData(snap: ReportDocSnapshot): ReportData {
+function tiktokToReportData(tt: TikTokReportSnapshot): ReportDataTikTok {
+  const kpis = {} as Record<TikTokKpiId, number | null>;
+  const prev: Partial<Record<TikTokKpiId, number>> = {};
+  for (const [id, entry] of Object.entries(tt.kpis) as [TikTokKpiId, TikTokReportSnapshot["kpis"][TikTokKpiId]][]) {
+    kpis[id] = entry.value;
+    // As somas já chegam com prev null (§A3): só sobra comparação onde ela vale.
+    if (entry.value !== null && entry.prev !== null) prev[id] = entry.prev;
+  }
+  return {
+    handle: tt.account.handle,
+    kpis,
+    kpis_previous_month: prev,
+    top_videos: tt.top_posts.map((v) => ({
+      caption: v.caption_preview,
+      views: v.views,
+      likes: v.likes,
+      comments: v.comments,
+      shares: v.shares,
+      date: v.date,
+    })),
+  };
+}
+
+/** `platforms` = plataformas do relatório (a escolha do dialog): a narrativa cobre só essas,
+ * mesmo com dados carregados das outras. Ausente = todas as presentes no snapshot. As chaves
+ * `tiktok` e `instagram_connected` só existem quando mudam algo: o caminho só Instagram
+ * produz o mesmo objeto (e o mesmo prompt) de antes do TikTok. */
+export function snapshotToReportData(
+  snap: ReportDocSnapshot,
+  platforms?: readonly ("instagram" | "tiktok")[],
+): ReportData {
   const kpis: Record<string, KpiValue> = {};
   for (const [id, entry] of Object.entries(snap.kpis)) {
     if (entry.value === null) continue;
     kpis[id] = { id, value: entry.value, unit: entry.unit, prev: entry.prev };
   }
-  return {
+  const data: ReportData = {
     handle: snap.account.handle,
     specialty: snap.account.specialty,
     period: snap.period.label,
@@ -55,4 +88,9 @@ export function snapshotToReportData(snap: ReportDocSnapshot): ReportData {
     tags_performance: snap.tags_performance,
     follower_trend: snap.follower_trend,
   };
+  const instagram = snap.instagram_connected !== false && (!platforms || platforms.includes("instagram"));
+  const tiktok = snap.tiktok && (!platforms || platforms.includes("tiktok")) ? snap.tiktok : null;
+  if (!instagram) data.instagram_connected = false;
+  if (tiktok) data.tiktok = tiktokToReportData(tiktok);
+  return data;
 }

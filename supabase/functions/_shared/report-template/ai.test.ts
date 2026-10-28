@@ -1,4 +1,4 @@
-import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { buildAIPrompt, generateAINarrative, validateAIOutput } from "./ai.ts";
 import type { ReportData } from "./types.ts";
 
@@ -137,4 +137,77 @@ Deno.test("validateAIOutput rejects too-short executive_summary", () => {
   };
   const result = validateAIOutput(invalid);
   assertEquals(result.valid, false);
+});
+
+// ─── TikTok (spec 2026-10-28 §B3) ────────────────────────────────────────────────────
+
+// Prompt de hoje, congelado à mão a partir de buildAIPrompt antes do TikTok: o gerador
+// legado (instagram-report-generator-v2) e o relatório só Instagram não podem mudar.
+const LEGACY_USER_PREFIX =
+  "Analyze the following Instagram account data for @drajuliana (Dermatologia), period Maio 2026:\n\n";
+// SHA-256 do system prompt de buildAIPrompt sem opts, medido no código anterior ao TikTok.
+const LEGACY_SYSTEM_SHA256 = "bb1e6aba68cc3998df07e8a488364700df21a58f5f8ad9f24c1af64f1026f40e";
+
+const tiktokData: NonNullable<ReportData["tiktok"]> = {
+  handle: "dra.tt",
+  kpis: {
+    followers_total: 500, followers_gained: 20, views: 1000, engagement_rate: 5.7, likes: 50,
+    comments: 5, shares: 2, posts_count: 1, likes_total: null,
+  },
+  kpis_previous_month: { engagement_rate: 4.1 },
+  top_videos: [{ caption: "Vídeo sobre pele", views: 1000, likes: 50, comments: 5, shares: 2, date: null }],
+};
+
+Deno.test("legacy prompt is byte-identical without tiktok", async () => {
+  const { systemPrompt, userPrompt } = buildAIPrompt(fixture);
+  assertEquals(userPrompt, LEGACY_USER_PREFIX + JSON.stringify(fixture, null, 2));
+  const digest = Array.from(
+    new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(systemPrompt))),
+  ).map((b) => b.toString(16).padStart(2, "0")).join("");
+  assertEquals(digest, LEGACY_SYSTEM_SHA256);
+  // instagram_connected: true explícito também é o caminho de hoje.
+  // (snapshotToReportData nunca emite a chave; isto cobre um chamador que emita.)
+  const withTrue = buildAIPrompt({ ...fixture, instagram_connected: true });
+  assertEquals(withTrue.systemPrompt, systemPrompt);
+});
+
+Deno.test("prompt includes TikTok block when present", () => {
+  const { systemPrompt, userPrompt } = buildAIPrompt({ ...fixture, tiktok: tiktokData });
+  // O bloco Instagram continua, igual ao de hoje, e o TikTok vem depois dele.
+  assert(userPrompt.startsWith(LEGACY_USER_PREFIX + JSON.stringify(fixture, null, 2)));
+  assert(userPrompt.includes("TikTok account data for @dra.tt"));
+  assert(userPrompt.includes('"engagement_rate": 5.7'));
+  assert(userPrompt.includes("Vídeo sobre pele"));
+  // Uma narrativa só, cobrindo as duas redes, e as regras de honestidade do TikTok.
+  assert(systemPrompt.includes("ONE narrative covering Instagram and TikTok"));
+  assert(systemPrompt.includes("engajamento por visualização"));
+  assert(systemPrompt.includes("no reach"));
+  assert(systemPrompt.includes("no previous-period comparison"));
+  assert(systemPrompt.includes("tiktok_"));
+  assert(systemPrompt.includes("benchmark"));
+});
+
+Deno.test("prompt omits Instagram block when instagram_connected false", () => {
+  const { systemPrompt, userPrompt } = buildAIPrompt({
+    ...fixture,
+    handle: "",
+    kpis: {},
+    top_posts: [],
+    content_breakdown: {},
+    instagram_connected: false,
+    tiktok: tiktokData,
+  });
+  assert(!userPrompt.includes("Instagram"));
+  assert(!userPrompt.includes('"content_breakdown"'));
+  assert(!userPrompt.includes('"kpi_deltas"'));
+  // O @ vem da seção TikTok (a raiz de um cliente só TikTok tem handle vazio).
+  assert(userPrompt.includes("TikTok account data for @dra.tt (Dermatologia), period Maio 2026"));
+  assert(userPrompt.includes('"report_month": "2026-05"'));
+  assert(systemPrompt.includes("only TikTok"));
+  assert(!systemPrompt.includes("ONE narrative covering Instagram and TikTok"));
+});
+
+Deno.test("prompt TikTok: extraGuidance continua no fim do system prompt", () => {
+  const { systemPrompt } = buildAIPrompt({ ...fixture, tiktok: tiktokData }, { extraGuidance: "X-GUIDE" });
+  assert(systemPrompt.endsWith("X-GUIDE"));
 });

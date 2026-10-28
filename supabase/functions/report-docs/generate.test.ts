@@ -842,3 +842,162 @@ Deno.test("erro na leitura de instagram_accounts: rejeita (500) em vez de virar 
   assert(err instanceof Error && !(err instanceof GenerateError));
   assertEquals(db.inserts.length, 0);
 });
+
+// ─── Plataformas no layout e na IA (spec 2026-10-28 §B1/§B3, Task B3) ─────────────────
+
+type LayoutRow = {
+  layout: { blocks: { id: string; type: string; config?: Record<string, unknown>; text?: unknown }[] };
+};
+const textOf = (doc: unknown): string => JSON.stringify(doc);
+const BOTH_ROWS = {
+  clientes: { id: 1, conta_id: "c", nome: "X", especialidade: "Derma", include_ai_analysis: false },
+  instagram_accounts: { id: "ig-1", username: "dra.x" },
+  instagram_posts: [],
+  tiktok_accounts: TT_ACCOUNT,
+  tiktok_posts: [TT_VIDEO],
+  workspaces: WORKSPACE,
+};
+
+Deno.test("generate TikTok-only: default layout is the TikTok section and the summary speaks of TikTok", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "Cliente TT", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: null,
+    tiktok_accounts: TT_ACCOUNT,
+    tiktok_posts: [TT_VIDEO],
+    workspaces: WORKSPACE,
+  });
+  await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  const row = db.inserts[0] as LayoutRow;
+  const types = row.layout.blocks.map((b) => b.type);
+  assertEquals(types.slice(0, 3), ["cover", "ai_summary", "section_header"]);
+  assertEquals(row.layout.blocks[2].config?.title, "TikTok");
+  assert(types.includes("tiktok_top_posts"));
+  assert(!types.some((t) => t.startsWith("kpi_") || t === "top_posts" || t === "chart_followers"));
+  const summary = textOf(row.layout.blocks.find((b) => b.type === "ai_summary")?.text);
+  assert(summary.includes("no TikTok: 1 vídeo publicado, 1.000 visualizações"), summary);
+  assert(!summary.includes("null"));
+});
+
+Deno.test("generate both connected, platforms omitted: Instagram then TikTok sections", async () => {
+  const db = makeDb(BOTH_ROWS);
+  await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  const row = db.inserts[0] as LayoutRow;
+  const titles = row.layout.blocks.filter((b) => b.type === "section_header").map((b) => b.config?.title);
+  assertEquals(titles[0], "Métricas principais");
+  assertEquals(titles.at(-1), "TikTok");
+  const summary = textOf(row.layout.blocks.find((b) => b.type === "ai_summary")?.text);
+  assert(summary.includes("No TikTok:"), summary);
+});
+
+Deno.test("generate both connected, platforms ['instagram']: no TikTok blocks but the data is still loaded", async () => {
+  const db = makeDb(BOTH_ROWS);
+  await generateReportDocument(db, deps, "c", 1, "2026-07", null, ["instagram"]);
+  const row = db.inserts[0] as LayoutRow & InsertedRow;
+  assert(!row.layout.blocks.some((b) => b.type.startsWith("tiktok_")));
+  assert(!row.layout.blocks.some((b) => b.config?.title === "TikTok"));
+  // A escolha molda só o layout (e a narrativa): o snapshot tem o TikTok.
+  assertEquals(row.data_snapshot.tiktok?.account.handle, "dra.tt");
+  assertEquals(row.tiktok_account_id, "tt-1");
+  const summary = textOf(row.layout.blocks.find((b) => b.type === "ai_summary")?.text);
+  assert(!summary.includes("TikTok"), summary);
+});
+
+Deno.test("generate with a workspace template drops the blocks of unselected platforms only", async () => {
+  const tplLayout = {
+    version: 1,
+    accent: "#9f1239",
+    blocks: [
+      { id: "c1", type: "cover", size: "full" },
+      { id: "h1", type: "section_header", size: "full", config: { title: "Números" } },
+      { id: "k1", type: "kpi_reach", size: "third" },
+      { id: "t1", type: "tiktok_kpi_views", size: "third" },
+      { id: "t2", type: "tiktok_top_posts", size: "full", config: { count: 3 } },
+    ],
+  };
+  const db = makeDb({ ...BOTH_ROWS, report_templates: { id: "t1", conta_id: "c", layout: tplLayout } });
+  await generateReportDocument(db, deps, "c", 1, "2026-07", "b3b2a6a0-1111-4222-8333-444455556666", ["tiktok"]);
+  const row = db.inserts[0] as LayoutRow & { layout: { accent?: string } };
+  assertEquals(row.layout.blocks.map((b) => b.id), ["c1", "h1", "t1", "t2"]);
+  assertEquals(row.layout.accent, "#9f1239");
+  assertEquals(row.layout.blocks.find((b) => b.id === "t2")?.config, { count: 3 });
+});
+
+const VALID_AI = {
+  executive_summary: "No TikTok o mês teve um vídeo publicado com mil visualizações e boa conversa nos comentários.",
+  detailed_analysis: "x".repeat(200),
+  recommendations: [
+    { title: "a", description: "a", priority: "high", based_on_metric: "tiktok_views" },
+    { title: "b", description: "b", priority: "medium" },
+    { title: "c", description: "c", priority: "low" },
+  ],
+  suggested_goals: [
+    { metric: "tiktok_views", target: "2000", rationale: "r" },
+    { metric: "tiktok_engagement_rate", target: "6%", rationale: "r" },
+  ],
+};
+
+async function generateCapturingPrompt(
+  rows: Record<string, unknown>,
+  platforms: ("instagram" | "tiktok")[] | null,
+): Promise<{ user: string; system: string; row: LayoutRow }> {
+  const db = makeDb(rows);
+  const originalFetch = globalThis.fetch;
+  let body: { contents: { parts: { text: string }[] }[]; systemInstruction: { parts: { text: string }[] } } | undefined;
+  globalThis.fetch = ((input: unknown, init?: RequestInit) => {
+    if (typeof input === "string" && input.includes("generativelanguage.googleapis.com")) {
+      body = JSON.parse(String(init?.body));
+      return Promise.resolve(
+        new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(VALID_AI) }] } }] })),
+      );
+    }
+    return originalFetch(input as Parameters<typeof fetch>[0], init);
+  }) as typeof fetch;
+  try {
+    await generateReportDocument(db, { ...deps, geminiKey: "fake-key" }, "c", 1, "2026-07", null, platforms);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assertExists(body, "Gemini deveria ter sido chamado");
+  return {
+    user: body.contents[0].parts[0].text,
+    system: body.systemInstruction.parts[0].text,
+    row: db.inserts[0] as LayoutRow,
+  };
+}
+
+Deno.test("generate TikTok-only with AI: the prompt is the TikTok one, never the empty Instagram root", async () => {
+  const { user, system, row } = await generateCapturingPrompt({
+    clientes: { id: 1, conta_id: "c", nome: "Cliente TT", especialidade: "Derma", include_ai_analysis: true },
+    instagram_accounts: null,
+    tiktok_accounts: TT_ACCOUNT,
+    tiktok_posts: [TT_VIDEO],
+    workspaces: WORKSPACE,
+  }, null);
+  assert(user.startsWith("Analyze the following TikTok account data for @dra.tt (Derma)"), user.slice(0, 120));
+  assert(!user.includes("Instagram"));
+  assert(!user.includes('"reach"'));
+  assert(system.includes("only TikTok"));
+  // Sem Instagram, a prioridade de views do Instagram não entra.
+  assert(!system.includes("METRIC PRIORITY"));
+  const goals = textOf(row.layout.blocks.find((b) => b.type === "ai_goals")?.text);
+  assert(goals.includes("Visualizações no TikTok: 2.000"), goals);
+});
+
+Deno.test("generate both connected with AI: one prompt with the Instagram and TikTok blocks", async () => {
+  const { user, system } = await generateCapturingPrompt(
+    { ...BOTH_ROWS, clientes: { ...BOTH_ROWS.clientes, include_ai_analysis: true } },
+    null,
+  );
+  assert(user.startsWith("Analyze the following Instagram account data for dra.x"));
+  assert(user.includes("TikTok account data for @dra.tt, same period"));
+  assert(system.includes("ONE narrative covering Instagram and TikTok"));
+});
+
+Deno.test("generate both connected, platforms ['instagram'] with AI: the prompt has no TikTok", async () => {
+  const { user, system } = await generateCapturingPrompt(
+    { ...BOTH_ROWS, clientes: { ...BOTH_ROWS.clientes, include_ai_analysis: true } },
+    ["instagram"],
+  );
+  assert(!user.includes("TikTok"));
+  assert(!system.includes("TikTok"));
+});

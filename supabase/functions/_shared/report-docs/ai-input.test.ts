@@ -69,3 +69,72 @@ Deno.test("snapshotToReportData: outlier true -> comparison ganha instrução pt
   // Regra da casa: nunca em-dash em texto de usuário.
   assert(!rd.comparison?.note?.includes("—"));
 });
+
+// ─── TikTok (spec 2026-10-28 §B3) ────────────────────────────────────────────────────
+
+const tiktok: NonNullable<ReportDocSnapshot["tiktok"]> = {
+  account: { handle: "dra.tt", display_name: "Dra TT", avatar_url: null },
+  kpis: {
+    followers_total: { value: 500, unit: "count", prev: 480 },
+    followers_gained: { value: 20, unit: "count", prev: 10 },
+    views: { value: 1000, unit: "count", prev: null },
+    engagement_rate: { value: 5.7, unit: "pct", prev: 4.1 },
+    likes: { value: 50, unit: "count", prev: null },
+    comments: { value: 5, unit: "count", prev: null },
+    shares: { value: 2, unit: "count", prev: null },
+    posts_count: { value: 1, unit: "count", prev: 3 },
+    likes_total: { value: null, unit: "count", prev: null },
+  },
+  follower_trend: [{ date: "2026-07-01", count: 480 }],
+  best_times: [],
+  top_posts: [{
+    video_id: "v1", views: 1000, likes: 50, comments: 5, shares: 2, caption_preview: "Vídeo",
+    date: "2026-07-10T15:00:00Z", permalink: "https://www.tiktok.com/@dra.tt/video/v1",
+    thumbnail_url: "https://s.example/v1.jpg",
+  }],
+};
+
+Deno.test("snapshotToReportData: snapshot só Instagram não ganha chave tiktok nem marcador de ausência", () => {
+  // buildAIPrompt serializa o objeto inteiro: uma chave a mais mudaria o prompt de hoje.
+  for (const s of [snap, { ...snap, instagram_connected: true }, { ...snap, tiktok: null }]) {
+    const rd = snapshotToReportData(s);
+    assert(!("tiktok" in rd));
+    assert(!("instagram_connected" in rd));
+  }
+});
+
+Deno.test("snapshotToReportData: seção TikTok vira tiktok com kpis numéricos e vídeos sem mídia", () => {
+  const rd = snapshotToReportData({ ...snap, tiktok });
+  assertEquals(rd.tiktok?.handle, "dra.tt");
+  assertEquals(rd.tiktok?.kpis.views, 1000);
+  assertEquals(rd.tiktok?.kpis.engagement_rate, 5.7);
+  // KPI sem dado fica null explícito (o prompt explica que null = sem dados).
+  assertEquals(rd.tiktok?.kpis.likes_total, null);
+  // Comparação só onde o snapshot tem prev: somas (views, curtidas...) nunca têm.
+  assertEquals(rd.tiktok?.kpis_previous_month, {
+    followers_total: 480, followers_gained: 10, engagement_rate: 4.1, posts_count: 3,
+  });
+  assertEquals(rd.tiktok?.top_videos, [
+    { caption: "Vídeo", views: 1000, likes: 50, comments: 5, shares: 2, date: "2026-07-10T15:00:00Z" },
+  ]);
+  assert(!JSON.stringify(rd.tiktok).includes("s.example"));
+  assert(!("instagram_connected" in rd));
+});
+
+Deno.test("snapshotToReportData: instagram_connected false marca o Instagram ausente", () => {
+  const rd = snapshotToReportData({ ...snap, instagram_connected: false, tiktok });
+  assertEquals(rd.instagram_connected, false);
+  assertEquals(rd.tiktok?.handle, "dra.tt");
+});
+
+Deno.test("snapshotToReportData: platforms restringe a narrativa às plataformas escolhidas", () => {
+  const both = { ...snap, tiktok };
+  // Só Instagram escolhido: o TikTok carregado fica fora da IA.
+  const ig = snapshotToReportData(both, ["instagram"]);
+  assert(!("tiktok" in ig));
+  assert(!("instagram_connected" in ig));
+  // Só TikTok escolhido com as duas conectadas: Instagram ausente para a IA.
+  const tt = snapshotToReportData(both, ["tiktok"]);
+  assertEquals(tt.instagram_connected, false);
+  assertEquals(tt.tiktok?.handle, "dra.tt");
+});

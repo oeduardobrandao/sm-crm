@@ -1,3 +1,5 @@
+import type { TikTokKpiId } from "../tiktok-analytics/kpis.ts";
+
 export interface KpiValue {
   id: string;
   value: number;
@@ -89,6 +91,29 @@ export interface ReportData {
    * gerador legado nunca seta e segue byte-idêntico. null = mês anterior
    * sem outlier detectável (sem posts, ou nenhum post dominante). */
   comparison?: ReportDataComparison | null;
+  /** Opcional e aditivo (spec 2026-10-28 §B3): só o pipeline de blocos seta, e só com
+   * `false` (relatório sem Instagram). Ausente = Instagram presente, o prompt de hoje. */
+  instagram_connected?: boolean;
+  /** Opcional e aditivo: seção TikTok do relatório de blocos. Ausente = sem TikTok. */
+  tiktok?: ReportDataTikTok;
+}
+
+/** Dados TikTok para a IA. Só o que a Display API dá: sem alcance, salvamentos nem audiência. */
+export interface ReportDataTikTok {
+  handle: string;
+  /** null = sem dados. engagement_rate é % por visualização. */
+  kpis: Record<TikTokKpiId, number | null>;
+  /** Valor do mês anterior, só dos KPIs que têm comparação. As somas (visualizações, curtidas,
+   * comentários, compartilhamentos) nunca aparecem aqui. */
+  kpis_previous_month: Partial<Record<TikTokKpiId, number>>;
+  top_videos: {
+    caption: string;
+    views: number;
+    likes: number;
+    comments: number;
+    shares: number;
+    date: string | null;
+  }[];
 }
 
 export interface Recommendation {

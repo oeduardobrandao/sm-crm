@@ -5,6 +5,7 @@ import { generateAINarrative, type GenerateResult } from "../_shared/report-temp
 import { type ThumbnailStorage } from "../_shared/instagram-thumbnail-cache.ts";
 import { monthWindow } from "../_shared/report-docs/month-window.ts";
 import { buildDefaultLayout } from "../_shared/report-docs/default-layout.ts";
+import { dropUnselectedPlatformBlocks } from "../_shared/report-docs/platform-filter.ts";
 import {
   aiGoalsDoc, aiRecommendationsDoc, aiSummaryDoc, fallbackSummaryParagraphs,
   fillAiBlocks, textDoc,
@@ -119,13 +120,20 @@ export async function generateReportDocument(
   const connected: ReportPlatform[] = [];
   if (igAccountId) connected.push("instagram");
   if (tiktokAccountId) connected.push("tiktok");
-  // Consumido pelo passo de layout (default por plataforma e filtro de template, Task B3).
-  // deno-lint-ignore no-unused-vars
+  // A escolha molda o layout (seção por plataforma no padrão, filtro no template) e o escopo da
+  // narrativa da IA; os dados de toda rede conectada já estão no snapshot.
   const selectedPlatforms: ReportPlatform[] = platforms ?? connected;
+  const narrativeInstagram = selectedPlatforms.includes("instagram") && snapshot.instagram_connected !== false;
+  const narrativeTiktok = selectedPlatforms.includes("tiktok") ? snapshot.tiktok?.kpis ?? null : null;
 
   // IA: nunca derruba a geração (padrão do v2, index.ts:987-1017).
   let aiContent: unknown = null;
-  let summaryDoc = textDoc(fallbackSummaryParagraphs(snapshot.kpis, snapshot.period.label));
+  // Sem Instagram no relatório o resumo de fallback fala do TikTok, nunca da raiz Instagram vazia.
+  let summaryDoc = textDoc(fallbackSummaryParagraphs(
+    snapshot.kpis,
+    snapshot.period.label,
+    narrativeTiktok ? { instagram: narrativeInstagram, tiktok: narrativeTiktok } : undefined,
+  ));
   let recsDoc: unknown | null = null;
   let goalsDoc: unknown | null = null;
   const wantsAi = cliente.include_ai_analysis !== false;
@@ -153,7 +161,7 @@ export async function generateReportDocument(
       // Visualizações são a métrica-guia do relatório de blocos (pedido
       // 2026-08). O direcionamento só entra quando o dado existe — empurrar a
       // IA para uma métrica ausente convida invenção que a DATA RULE proíbe.
-      const hasViews = snapshot.kpis.views?.value != null;
+      const hasViews = narrativeInstagram && snapshot.kpis.views?.value != null;
       const promptOpts = hasViews
         ? {
           extraGuidance:
@@ -165,7 +173,7 @@ export async function generateReportDocument(
         : undefined;
       const ai = await Promise.race([
         generateAINarrative(
-          snapshotToReportData(snapshot),
+          snapshotToReportData(snapshot, selectedPlatforms),
           deps.geminiKey,
           controller.signal,
           promptOpts,
@@ -192,12 +200,18 @@ export async function generateReportDocument(
   // um "Próximos passos" órfão, sem nenhum bloco de conteúdo embaixo.
   // Só entra no fallback do padrão do sistema quando não há template
   // (explícito ou default) válido.
-  const baseLayout = templateLayout ?? buildDefaultLayout({
-    hasAi: recsDoc !== null,
-    hasAudience: snapshot.audience !== null,
-    hasBestTimes: snapshot.best_times.length > 0,
-    hasTags: snapshot.tags_performance.length > 0,
-  });
+  // Template do workspace: só saem os blocos das plataformas desmarcadas (spec §B1); o resto do
+  // modelo fica como o usuário salvou.
+  const baseLayout = templateLayout
+    ? dropUnselectedPlatformBlocks(templateLayout, selectedPlatforms)
+    : buildDefaultLayout({
+      hasAi: recsDoc !== null,
+      hasAudience: snapshot.audience !== null,
+      hasBestTimes: snapshot.best_times.length > 0,
+      hasTags: snapshot.tags_performance.length > 0,
+      platforms: selectedPlatforms,
+      hasTikTokBestTimes: (snapshot.tiktok?.best_times.length ?? 0) > 0,
+    });
   const layout = fillAiBlocks(baseLayout, {
     summary: summaryDoc, recommendations: recsDoc, goals: goalsDoc,
   });
