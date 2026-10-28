@@ -69,6 +69,7 @@
     "removeSubtask": "Remove subtask",
     "newSubtaskPlaceholder": "New subtask...",
     "delete": "Delete",
+    "actionsLabel": "Task actions",
     "deleteRecurringTitle": "Delete recurring task?",
     "deleteRecurringDescription": "The task \"{{title}}\" is part of a series.",
     "onlyThis": "This task only",

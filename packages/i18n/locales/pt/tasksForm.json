@@ -69,6 +69,7 @@
     "removeSubtask": "Remover subtarefa",
     "newSubtaskPlaceholder": "Nova subtarefa...",
     "delete": "Excluir",
+    "actionsLabel": "Ações da tarefa",
     "deleteRecurringTitle": "Excluir tarefa recorrente?",
     "deleteRecurringDescription": "A tarefa \"{{title}}\" faz parte de uma série.",
     "onlyThis": "Somente esta",

@@ -35,6 +35,10 @@ vi.mock('@/context/AuthContext', async (importOriginal) => {
 
 // Desktop layout (the phone branch has its own suite); jsdom's matchMedia reports false.
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+// The comments section has its own suite (TarefaComentarios.test.tsx).
+vi.mock('../components/TarefaComentarios', () => ({
+  TarefaComentarios: () => <section id="tarefa-comentarios" />,
+}));
 
 import TarefasPage from '../TarefasPage';
 import { VidroToolbarHarness } from '@/test/vidroToolbar';
