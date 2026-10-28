@@ -164,11 +164,16 @@ CREATE POLICY mencoes_tenant_all ON mencoes
             AND pct.conta_id = mencoes.conta_id
         )
         -- tarefa_comentarios carries its own conta_id, pinned to its task's by the
-        -- composite FK.
+        -- composite FK. Only the comment's author may write its mentions: without this,
+        -- any member of the workspace could insert a mencoes row (and so a mention
+        -- notification) on someone else's comment. This CASE is WITH CHECK only; USING
+        -- stays conta-only, so reads and deletes by the workspace are unchanged and
+        -- sync_mentions' own author check guards its deletes.
         WHEN 'tarefa_comentario' THEN EXISTS (
           SELECT 1 FROM public.tarefa_comentarios tc
           WHERE tc.id = mencoes.host_id
             AND tc.conta_id = mencoes.conta_id
+            AND tc.author_id = auth.uid()
         )
         ELSE false
       END

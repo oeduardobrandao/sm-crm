@@ -574,3 +574,46 @@ begin
   raise notice 'PASS tarefa_comentarios.author_cannot_update_author_id';
 end $$;
 rollback;
+
+-- =====================================================================
+-- non_author_direct_mencoes_insert_denied
+-- =====================================================================
+-- mencoes_tenant_all's 'tarefa_comentario' arm requires the comment's author in WITH CHECK,
+-- so another member of the same workspace cannot plant a mention (and its notification) on
+-- someone else's comment by inserting into mencoes directly. The author can.
+begin;
+select et_grant_hosted_parity(array['tarefa_comentarios']);
+do $$
+declare
+  s jsonb := pg_temp.tc_seed();
+  v_ws_a uuid := s->>'ws_a'; v_a uuid := s->>'a'; v_o uuid := s->>'o';
+  v_t1 bigint := s->>'t1'; v_m_resp bigint := s->>'m_resp';
+  v_id bigint; v_state text; v_n int;
+begin
+  perform pg_temp.tc_as(v_a);
+  select id into v_id from tarefa_comentario_enviar(v_t1, 'meu comentario');
+
+  perform pg_temp.tc_as(v_o);
+  v_state := null;
+  begin
+    insert into mencoes (conta_id, host_type, host_id, mentioned_membro_id)
+      values (v_ws_a, 'tarefa_comentario', v_id, v_m_resp);
+  exception when insufficient_privilege then v_state := sqlstate;
+  end;
+  assert v_state = '42501', format('non-author mencoes INSERT must fail RLS (42501), got %s', v_state);
+  reset role;
+
+  select count(*) into v_n from mencoes where host_type = 'tarefa_comentario' and host_id = v_id;
+  assert v_n = 0, format('the rejected insert must write nothing, got %s', v_n);
+
+  -- positive control: the author passes the same WITH CHECK
+  perform pg_temp.tc_as(v_a);
+  insert into mencoes (conta_id, host_type, host_id, mentioned_membro_id)
+    values (v_ws_a, 'tarefa_comentario', v_id, v_m_resp);
+  reset role;
+  select count(*) into v_n from mencoes where host_type = 'tarefa_comentario' and host_id = v_id;
+  assert v_n = 1, format('the author''s direct insert must pass, got %s', v_n);
+
+  raise notice 'PASS tarefa_comentarios.non_author_direct_mencoes_insert_denied';
+end $$;
+rollback;
