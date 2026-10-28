@@ -3,15 +3,16 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getTarefaEventos, type Membro } from '../../../store';
-import { buildTarefaTimeline, formatTimelinePrazo } from '../tarefaTimeline';
+import { getTarefaEventos, getWorkspaceUsers, type Membro } from '../../../store';
+import { buildTarefaTimeline, formatTimelinePrazo, type TimelineUser } from '../tarefaTimeline';
 import { TarefaHistoryList } from './TarefaHistoryList';
 
 export const tarefaEventosKey = (tarefaId: number) => ['tarefa-eventos', tarefaId] as const;
 
 /**
  * A task's history: loads `tarefa_eventos` when mounted (the sheets mount it only in their
- * history view), then the timeline, a skeleton while loading and an error line with retry.
+ * history view) plus the workspace users that name actors without a membro row, then the
+ * timeline, a skeleton while loading and an error line with retry.
  * No realtime: it is only on screen while the user looks at it. `staleTime: 0` so reopening
  * the view after an edit made elsewhere (the form dialog) refetches.
  */
@@ -22,9 +23,17 @@ export function TarefaHistoryPanel({ tarefaId, membros }: { tarefaId: number; me
     queryFn: () => getTarefaEventos(tarefaId),
     staleTime: 0,
   });
+  // Names actors with no membro row; same key and fetcher as TarefaComentarios.
+  const { data: workspaceUsers = [] } = useQuery<TimelineUser[]>({
+    queryKey: ['workspace-users'],
+    queryFn: getWorkspaceUsers,
+  });
   const nodes = useMemo(
-    () => (query.data ? buildTarefaTimeline(query.data, membros, formatTimelinePrazo) : []),
-    [query.data, membros],
+    () =>
+      query.data
+        ? buildTarefaTimeline(query.data, membros, formatTimelinePrazo, workspaceUsers)
+        : [],
+    [query.data, membros, workspaceUsers],
   );
 
   if (query.isPending) {

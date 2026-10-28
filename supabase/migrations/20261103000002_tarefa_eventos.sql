@@ -25,9 +25,9 @@
 -- txid lets the reader net out the tag delete + reinsert pairs that the series RPC
 -- (20260925000030) writes in one transaction.
 --
--- Actor: auth.uid(), and the name of that user's membro in the task's workspace. NULL actor
--- = system (the recurrence pg_cron, the MCP edge function's service-role client); the UI
--- renders it as "Automação". criada falls back to tarefas.user_id so MCP-created tasks
+-- Actor: auth.uid(), and the name of that user's membro in the task's workspace (else their
+-- profile name). NULL actor = system (the recurrence pg_cron, the MCP edge function's
+-- service-role client); the UI renders it as "Automação". criada falls back to tarefas.user_id so MCP-created tasks
 -- credit their creator.
 
 -- ---------------------------------------------------------------------
@@ -78,7 +78,9 @@ GRANT ALL ON SEQUENCE public.tarefa_eventos_id_seq TO service_role;
 -- ---------------------------------------------------------------------
 -- 2. Private helper: one event row
 -- ---------------------------------------------------------------------
--- Actor = COALESCE(p_actor, auth.uid()); actor_nome from that user's membro in p_conta.
+-- Actor = COALESCE(p_actor, auth.uid()); actor_nome from that user's membro in p_conta, else
+-- their profiles.nome while they are a workspace_members row of p_conta (NULL otherwise; the UI
+-- then says "Usuário removido").
 -- p_actor exists only for criada's creator fallback; every other caller omits it.
 CREATE OR REPLACE FUNCTION public._tarefa_evento_registrar(
   p_conta  uuid,
@@ -98,12 +100,23 @@ DECLARE
   v_nome  text;
 BEGIN
   IF v_actor IS NOT NULL THEN
-    SELECT m.nome INTO v_nome
-      FROM membros m
-     WHERE m.crm_user_id = v_actor
-       AND m.conta_id = p_conta
-     ORDER BY m.id
-     LIMIT 1;
+    -- A user with no membro row in this workspace (an owner who never added themselves to
+    -- the team) falls back to their profile name, like tarefa_comentario_enviar, but only
+    -- while they belong to this workspace: p_actor can be tarefas.user_id, which the client
+    -- supplies and RLS does not check, so an outsider's id must not leak their name here.
+    v_nome := COALESCE(
+      (SELECT m.nome
+         FROM membros m
+        WHERE m.crm_user_id = v_actor
+          AND m.conta_id = p_conta
+        ORDER BY m.id
+        LIMIT 1),
+      (SELECT p.nome
+         FROM profiles p
+        WHERE p.id = v_actor
+          AND EXISTS (SELECT 1 FROM workspace_members wm
+                       WHERE wm.user_id = p.id AND wm.workspace_id = p_conta))
+    );
   END IF;
 
   INSERT INTO tarefa_eventos (conta_id, tarefa_id, tipo, actor_user_id, actor_nome, de, para)
@@ -345,10 +358,11 @@ GRANT EXECUTE ON FUNCTION public.tarefa_tag_links_evento_fn() TO service_role;
 -- ---------------------------------------------------------------------
 -- Nothing before this migration is inferable except: one criada per task at created_at
 -- (actor = the creator while they still exist in auth.users; actor_nome from their membro
--- in the task's workspace either way), and for concluded tasks one status event
--- (de null, para "concluida") at concluida_em with no actor. The timeline marks the start
--- with "Histórico registrado a partir de 28/10/2026". Idempotent: a task that already has
--- the event is skipped. A function (not inline SQL) so the psql suite can exercise it.
+-- in the task's workspace, else their profile name if they belong to it, either way), and
+-- for concluded tasks one status event (de null, para "concluida") at concluida_em with no
+-- actor. The timeline marks the start with "Histórico registrado a partir de 28/10/2026".
+-- Idempotent: a task that already has the event is skipped. A function (not inline SQL) so
+-- the psql suite can exercise it.
 CREATE OR REPLACE FUNCTION public._tarefa_eventos_backfill()
 RETURNS void
 LANGUAGE plpgsql
@@ -358,9 +372,16 @@ AS $$
 BEGIN
   INSERT INTO tarefa_eventos (conta_id, tarefa_id, tipo, actor_user_id, actor_nome, de, para, created_at)
   SELECT t.conta_id, t.id, 'criada', u.id,
-         (SELECT m.nome FROM membros m
-           WHERE m.crm_user_id = t.user_id AND m.conta_id = t.conta_id
-           ORDER BY m.id LIMIT 1),
+         COALESCE(
+           (SELECT m.nome FROM membros m
+             WHERE m.crm_user_id = t.user_id AND m.conta_id = t.conta_id
+             ORDER BY m.id LIMIT 1),
+           -- tenant-scoped like _tarefa_evento_registrar: tarefas.user_id is client-supplied
+           (SELECT p.nome FROM profiles p
+             WHERE p.id = t.user_id
+               AND EXISTS (SELECT 1 FROM workspace_members wm
+                            WHERE wm.user_id = p.id AND wm.workspace_id = t.conta_id))
+         ),
          NULL,
          jsonb_build_object('serie', t.serie_id IS NOT NULL),
          t.created_at

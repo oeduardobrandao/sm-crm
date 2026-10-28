@@ -142,6 +142,7 @@
     "empty": "Sem histórico.",
     "footnote": "Histórico registrado a partir de {{date}}.",
     "automation": "Automação",
+    "removedUser": "Usuário removido",
     "recurrence": "Recorrência",
     "unknownMember": "membro removido",
     "unknownClient": "cliente removido",

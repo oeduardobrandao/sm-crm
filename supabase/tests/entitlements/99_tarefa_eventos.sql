@@ -446,6 +446,99 @@ end $$;
 rollback;
 
 -- =====================================================================
+-- actor_without_membro_row
+--   A workspace user with no membros row (an owner who never added themselves to the team)
+--   is named from profiles.nome, live and in the backfill. One with no name anywhere keeps
+--   actor_user_id with a NULL actor_nome (the UI says "Usuário removido", not "Automação").
+-- =====================================================================
+begin;
+select et_grant_hosted_parity(array['tarefa_eventos']);
+do $$
+declare
+  s jsonb := pg_temp.te_seed();
+  v_ws_a uuid := s->>'ws_a';
+  v_c uuid := gen_random_uuid(); v_x uuid := gen_random_uuid();
+  v_t bigint; v_t2 bigint; v_ev tarefa_eventos;
+begin
+  insert into auth.users (id) values (v_c), (v_x);
+  insert into workspace_members (user_id, workspace_id, role) values
+    (v_c, v_ws_a, 'admin'), (v_x, v_ws_a, 'admin');
+  update profiles set conta_id = v_ws_a, active_workspace_id = v_ws_a, nome = 'Carla' where id = v_c;
+  update profiles set conta_id = v_ws_a, active_workspace_id = v_ws_a, nome = null where id = v_x;
+  assert not exists (select 1 from membros where crm_user_id in (v_c, v_x)),
+    'precondition: neither user has a membros row';
+
+  perform pg_temp.te_as(v_c);
+  insert into tarefas (conta_id, user_id, titulo) values (v_ws_a, v_c, 'Da Carla') returning id into v_t;
+  update tarefas set titulo = 'Da Carla 2' where id = v_t;
+  reset role;
+
+  select * into v_ev from tarefa_eventos where tarefa_id = v_t and tipo = 'criada';
+  assert v_ev.actor_user_id = v_c and v_ev.actor_nome = 'Carla',
+    format('criada by a user without membro must use profiles.nome, got %s / %s', v_ev.actor_user_id, v_ev.actor_nome);
+  select * into v_ev from tarefa_eventos where tarefa_id = v_t and tipo = 'titulo';
+  assert v_ev.actor_user_id = v_c and v_ev.actor_nome = 'Carla',
+    format('field event by a user without membro must use profiles.nome, got %s / %s', v_ev.actor_user_id, v_ev.actor_nome);
+
+  perform pg_temp.te_as(v_x);
+  insert into tarefas (conta_id, user_id, titulo) values (v_ws_a, v_x, 'Sem nome') returning id into v_t2;
+  reset role;
+  select * into v_ev from tarefa_eventos where tarefa_id = v_t2 and tipo = 'criada';
+  assert v_ev.actor_user_id = v_x and v_ev.actor_nome is null,
+    format('a user with no name anywhere keeps the actor id and a NULL name, got %s / %s', v_ev.actor_user_id, v_ev.actor_nome);
+
+  -- the backfill resolves the same way
+  delete from tarefa_eventos where tarefa_id in (v_t, v_t2);
+  perform _tarefa_eventos_backfill();
+  select * into v_ev from tarefa_eventos where tarefa_id = v_t and tipo = 'criada';
+  assert v_ev.actor_user_id = v_c and v_ev.actor_nome = 'Carla',
+    format('backfilled criada must use profiles.nome, got %s / %s', v_ev.actor_user_id, v_ev.actor_nome);
+  select * into v_ev from tarefa_eventos where tarefa_id = v_t2 and tipo = 'criada';
+  assert v_ev.actor_user_id = v_x and v_ev.actor_nome is null,
+    format('backfilled criada with no name anywhere, got %s / %s', v_ev.actor_user_id, v_ev.actor_nome);
+
+  raise notice 'PASS tarefa_eventos.actor_without_membro_row';
+end $$;
+rollback;
+
+-- =====================================================================
+-- profile_fallback_is_tenant_scoped
+--   tarefas.user_id is client-supplied and unchecked by RLS. A task in ws A naming a user of
+--   ws B (no membro, no workspace_members row in A) must not copy that user's profile name
+--   into A's history, live or backfilled.
+-- =====================================================================
+begin;
+select et_grant_hosted_parity(array['tarefa_eventos']);
+do $$
+declare
+  s jsonb := pg_temp.te_seed();
+  v_ws_a uuid := s->>'ws_a'; v_bu uuid := s->>'bu';
+  v_t bigint; v_ev tarefa_eventos;
+begin
+  update profiles set nome = 'Beto Perfil' where id = v_bu;
+  assert not exists (select 1 from workspace_members where user_id = v_bu and workspace_id = v_ws_a),
+    'precondition: bu is not a member of ws A';
+
+  -- no JWT subject: criada falls back to tarefas.user_id
+  perform set_config('request.jwt.claims', '', true);
+  insert into tarefas (conta_id, user_id, titulo) values (v_ws_a, v_bu, 'Alheia') returning id into v_t;
+
+  select * into v_ev from tarefa_eventos where tarefa_id = v_t and tipo = 'criada';
+  assert v_ev.actor_nome is null,
+    format('a live criada must not take an outsider''s profile name, got %s', v_ev.actor_nome);
+
+  delete from tarefa_eventos where tarefa_id = v_t;
+  perform _tarefa_eventos_backfill();
+  select * into v_ev from tarefa_eventos where tarefa_id = v_t and tipo = 'criada';
+  assert v_ev.id is not null, 'the task is still backfilled';
+  assert v_ev.actor_nome is null,
+    format('a backfilled criada must not take an outsider''s profile name, got %s', v_ev.actor_nome);
+
+  raise notice 'PASS tarefa_eventos.profile_fallback_is_tenant_scoped';
+end $$;
+rollback;
+
+-- =====================================================================
 -- backfill_shape
 -- =====================================================================
 begin;

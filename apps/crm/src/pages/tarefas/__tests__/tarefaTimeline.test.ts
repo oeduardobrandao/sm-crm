@@ -134,6 +134,73 @@ describe('buildTarefaTimeline', () => {
     expect(nodes[1].text).toBe('Carla editou a descrição');
   });
 
+  describe('actor without a membro row', () => {
+    const OWNER_UID = 'user-owner';
+    const workspaceUsers = [{ id: OWNER_UID, nome: 'Dona Owner' }];
+
+    it('names the actor from the workspace users when no membro matches', () => {
+      const [node] = buildTarefaTimeline(
+        [ev({ tipo: 'descricao', actor_user_id: OWNER_UID, actor_nome: 'Nome Antigo' })],
+        membros,
+        ddmm,
+        workspaceUsers,
+      );
+      expect(node.actorLabel).toBe('Dona Owner');
+      expect(node.text).toBe('Dona Owner editou a descrição');
+    });
+
+    it('prefers the membro over the workspace user', () => {
+      const [node] = buildTarefaTimeline(
+        [ev({ tipo: 'descricao', actor_user_id: ANA_UID, actor_nome: null })],
+        membros,
+        ddmm,
+        [{ id: ANA_UID, nome: 'Ana do Perfil' }],
+      );
+      expect(node.actorLabel).toBe('Ana');
+    });
+
+    it('falls back to the snapshot when the user resolves nowhere', () => {
+      const [node] = buildTarefaTimeline(
+        [ev({ tipo: 'descricao', actor_user_id: 'user-gone', actor_nome: 'Carla' })],
+        membros,
+        ddmm,
+        workspaceUsers,
+      );
+      expect(node.actorLabel).toBe('Carla');
+    });
+
+    it('a known actor with no name anywhere is a removed user, never Automação', () => {
+      const [node] = buildTarefaTimeline(
+        [ev({ tipo: 'descricao', actor_user_id: 'user-gone', actor_nome: null })],
+        membros,
+        ddmm,
+        workspaceUsers,
+      );
+      expect(node.actorLabel).toBe('Usuário removido');
+      expect(node.text).toBe('Usuário removido editou a descrição');
+    });
+
+    it('a workspace user with a null name falls through to the snapshot', () => {
+      const [node] = buildTarefaTimeline(
+        [ev({ tipo: 'descricao', actor_user_id: OWNER_UID, actor_nome: 'Snapshot' })],
+        membros,
+        ddmm,
+        [{ id: OWNER_UID, nome: null }],
+      );
+      expect(node.actorLabel).toBe('Snapshot');
+    });
+
+    it('a NULL actor with a snapshot name keeps that name', () => {
+      const [node] = buildTarefaTimeline(
+        [ev({ tipo: 'descricao', actor_user_id: null, actor_nome: 'Ex-membro' })],
+        membros,
+        ddmm,
+        workspaceUsers,
+      );
+      expect(node.actorLabel).toBe('Ex-membro');
+    });
+  });
+
   it('current membro name wins over the snapshot', () => {
     const [node] = buildTarefaTimeline(
       [ev({ tipo: 'descricao', actor_user_id: ANA_UID, actor_nome: 'Ana Antiga' })],

@@ -142,6 +142,7 @@
     "empty": "No history.",
     "footnote": "History recorded since October 28, 2026.",
     "automation": "Automation",
+    "removedUser": "Removed user",
     "recurrence": "Recurrence",
     "unknownMember": "removed member",
     "unknownClient": "removed client",

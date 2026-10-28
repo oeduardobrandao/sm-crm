@@ -60,12 +60,21 @@ function actorKey(e: TarefaEvento): string {
   return 'system';
 }
 
-function actorLabelOf(e: TarefaEvento, membros: Membro[]): string {
-  if (e.actor_user_id) {
-    const membro = membros.find((m) => m.crm_user_id === e.actor_user_id);
-    if (membro?.nome) return membro.nome;
-  }
-  return str(e.actor_nome) ?? t('historico.automation');
+/** A workspace user (`getWorkspaceUsers`, query key ['workspace-users']): the fallback for an
+ *  actor with no membro row, e.g. an owner who never added themselves to the team. */
+export interface TimelineUser {
+  id: string;
+  nome: string | null;
+}
+
+/** membro -> workspace user -> the stored snapshot. Only a NULL actor is "Automação" (the
+ *  recurrence cron, the MCP); a known actor that no longer resolves is a removed user. */
+function actorLabelOf(e: TarefaEvento, membros: Membro[], workspaceUsers: TimelineUser[]): string {
+  if (!e.actor_user_id) return str(e.actor_nome) ?? t('historico.automation');
+  const membro = membros.find((m) => m.crm_user_id === e.actor_user_id);
+  if (membro?.nome) return membro.nome;
+  const wsUser = workspaceUsers.find((u) => u.id === e.actor_user_id);
+  return str(wsUser?.nome) ?? str(e.actor_nome) ?? t('historico.removedUser');
 }
 
 function timeOf(e: TarefaEvento): number {
@@ -239,13 +248,16 @@ export function buildTarefaTimeline(
   eventos: TarefaEvento[],
   membros: Membro[],
   formatDate: (isoDate: string) => string,
+  workspaceUsers: TimelineUser[] = [],
 ): TarefaTimelineNode[] {
   const sorted = [...eventos].sort((a, b) => timeOf(a) - timeOf(b) || a.id - b.id);
   const runs = collapseRuns(netTagPairs(sorted));
   return runs
     .map(({ first, last }) => {
       const recurrenceCreated = first.tipo === 'criada' && obj(first.para)?.serie === true;
-      const actor = recurrenceCreated ? t('historico.recurrence') : actorLabelOf(first, membros);
+      const actor = recurrenceCreated
+        ? t('historico.recurrence')
+        : actorLabelOf(first, membros, workspaceUsers);
       return {
         key: first === last ? String(first.id) : `${first.id}-${last.id}`,
         tipo: first.tipo,
