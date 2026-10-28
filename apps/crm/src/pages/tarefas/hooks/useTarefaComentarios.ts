@@ -7,6 +7,7 @@ import {
   getTarefaComentarios,
   updateTarefaComentario,
   type TarefaComentario,
+  type TarefaWithRelations,
 } from '@/store';
 
 /** Realtime topic suffix, unique across every mount (see useDiscussao.ts: realtime-js hands a
@@ -31,6 +32,10 @@ export interface UseTarefaComentariosResult {
  * the tasks list, whose cards show the count), a realtime subscription for the open task and a
  * refetch on window focus. DELETEs by others carry no `tarefa_id` under the default replica
  * identity, so they only show up through that focus refetch.
+ *
+ * Realtime events and the focus refetch reload only the thread: whenever it loads, its length
+ * is written into this task's `comentarios_total` in the cached ['tarefas'] list, instead of
+ * refetching every task of the workspace on each comment someone else posts.
  */
 export function useTarefaComentarios(tarefaId: number): UseTarefaComentariosResult {
   const qc = useQueryClient();
@@ -41,10 +46,38 @@ export function useTarefaComentarios(tarefaId: number): UseTarefaComentariosResu
     queryFn: () => getTarefaComentarios(tarefaId),
   });
 
+  /** Local mutations: the thread and the whole list, as before. */
   const refresh = useCallback(() => {
     void qc.invalidateQueries({ queryKey: tarefaComentariosKey(tarefaId) });
     void qc.invalidateQueries({ queryKey: TAREFAS_KEY });
   }, [qc, tarefaId]);
+
+  /** Realtime: the thread only; the effect below carries its count to the list. */
+  const refreshThread = useCallback(() => {
+    void qc.invalidateQueries({ queryKey: tarefaComentariosKey(tarefaId) });
+  }, [qc, tarefaId]);
+
+  // Patch the card count from the loaded thread. Never creates the list entry, returns the
+  // same array when the count already matches, and keeps the list's dataUpdatedAt so the
+  // patch does not make a stale list look fresh.
+  const total = query.data?.length;
+  useEffect(() => {
+    if (total === undefined) return;
+    const state = qc.getQueryState<TarefaWithRelations[]>(TAREFAS_KEY);
+    if (!state?.data) return;
+    qc.setQueryData<TarefaWithRelations[]>(
+      TAREFAS_KEY,
+      (old) => {
+        if (!old) return old;
+        const i = old.findIndex((t) => t.id === tarefaId);
+        if (i === -1 || old[i].comentarios_total === total) return old;
+        const next = [...old];
+        next[i] = { ...old[i], comentarios_total: total };
+        return next;
+      },
+      { updatedAt: state.dataUpdatedAt },
+    );
+  }, [qc, tarefaId, total]);
 
   useEffect(() => {
     channelSeq += 1;
@@ -56,13 +89,13 @@ export function useTarefaComentarios(tarefaId: number): UseTarefaComentariosResu
         table: 'tarefa_comentarios',
         filter: `tarefa_id=eq.${tarefaId}`,
       },
-      refresh,
+      refreshThread,
     );
     channel.subscribe();
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [tarefaId, refresh]);
+  }, [tarefaId, refreshThread]);
 
   // The global staleTime (30 s) keeps refetchOnWindowFocus from refetching, so invalidate.
   useEffect(() => {
