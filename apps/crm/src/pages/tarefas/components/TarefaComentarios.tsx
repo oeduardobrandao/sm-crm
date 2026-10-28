@@ -1,5 +1,4 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { format, formatDistanceStrict, isSameDay, subDays } from 'date-fns';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -26,17 +25,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  getWorkspaceUsers,
-  TAREFA_COMENTARIO_MAX_CHARS,
-  type Membro,
-  type TarefaComentario,
-} from '@/store';
+import { TAREFA_COMENTARIO_MAX_CHARS, type Membro, type TarefaComentario } from '@/store';
 import {
   useDiscussaoComposer,
   useMinuteClock,
 } from '@/pages/entregas/discussao/useDiscussaoActions';
 import { useTarefaComentarios } from '../hooks/useTarefaComentarios';
+import { useWorkspaceUsersWithSelf } from '../hooks/useWorkspaceUsersWithSelf';
 
 /** The counter shows from this many characters on, so the cap is never a surprise. */
 const COUNTER_FROM = Math.floor(TAREFA_COMENTARIO_MAX_CHARS * 0.9);
@@ -90,10 +85,7 @@ export function TarefaComentarios({ tarefaId, membros, autoFocus }: TarefaComent
   const now = useMinuteClock();
 
   const thread = useTarefaComentarios(tarefaId);
-  const { data: workspaceUsers = [] } = useQuery<WorkspaceUser[]>({
-    queryKey: ['workspace-users'],
-    queryFn: getWorkspaceUsers,
-  });
+  const workspaceUsers: WorkspaceUser[] = useWorkspaceUsersWithSelf();
 
   const { send: sendComentario, sending } = thread;
   const composerTarget = useMemo(

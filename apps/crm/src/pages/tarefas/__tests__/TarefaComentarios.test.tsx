@@ -269,6 +269,20 @@ describe('TarefaComentarios', () => {
     expect(await screen.findByText('Ana Membro')).toBeInTheDocument();
   });
 
+  it('names the viewer from their own profile when the roster query fails', async () => {
+    store.getWorkspaceUsers.mockRejectedValue(new Error('schema cache'));
+    useAuthMock.mockReturnValue({
+      user: { id: ME },
+      profile: { conta_id: 'conta-1', nome: 'Seed Dono', avatar_url: null },
+    });
+    store.getTarefaComentarios.mockResolvedValue([
+      comentario({ id: 1, author_id: ME, conteudo: 'Meu comentário' }),
+    ]);
+    renderComentarios();
+    expect(await screen.findByText('Seed Dono')).toBeInTheDocument();
+    expect(screen.queryByText('Usuário removido')).not.toBeInTheDocument();
+  });
+
   it('realtime channel removed on unmount', async () => {
     const { unmount } = renderComentarios();
     await screen.findByText('Nenhum comentário ainda. Use @ para mencionar alguém.');

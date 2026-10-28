@@ -3,8 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getTarefaEventos, getWorkspaceUsers, type Membro } from '../../../store';
+import { getTarefaEventos, type Membro } from '../../../store';
 import { buildTarefaTimeline, formatTimelinePrazo, type TimelineUser } from '../tarefaTimeline';
+import { useWorkspaceUsersWithSelf } from '../hooks/useWorkspaceUsersWithSelf';
 import { TarefaHistoryList } from './TarefaHistoryList';
 
 export const tarefaEventosKey = (tarefaId: number) => ['tarefa-eventos', tarefaId] as const;
@@ -23,11 +24,8 @@ export function TarefaHistoryPanel({ tarefaId, membros }: { tarefaId: number; me
     queryFn: () => getTarefaEventos(tarefaId),
     staleTime: 0,
   });
-  // Names actors with no membro row; same key and fetcher as TarefaComentarios.
-  const { data: workspaceUsers = [] } = useQuery<TimelineUser[]>({
-    queryKey: ['workspace-users'],
-    queryFn: getWorkspaceUsers,
-  });
+  // Names actors with no membro row; same source as TarefaComentarios.
+  const workspaceUsers: TimelineUser[] = useWorkspaceUsersWithSelf();
   const nodes = useMemo(
     () =>
       query.data
