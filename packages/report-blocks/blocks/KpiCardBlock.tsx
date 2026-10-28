@@ -1,7 +1,7 @@
 import type { BlockProps } from '../BlockRenderer';
-import type { KpiEntry, ReportKpiId, TikTokKpiId } from '../types';
+import type { KpiEntry, ReportKpiId } from '../types';
 import { KPI_LABELS_PT } from '../types';
-import { TIKTOK_KPI_LABELS_PT, TIKTOK_KPI_TOOLTIPS_PT } from '../platform';
+import { TIKTOK_KPI_LABELS_PT, TIKTOK_KPI_TOOLTIPS_PT, tiktokKpiId } from '../platform';
 import { deltaPct, fmtCount, fmtPct, fmtPeriodStamp } from '../format';
 
 // Fonte única em _shared/report-docs/kpis.ts (o bloco de metas da IA usa o
@@ -32,10 +32,9 @@ export function KpiCardBlock({ block, snapshot, platform }: BlockProps) {
   const entry = snapshot.kpis[id];
   if (!entry || entry.value === null) return null;
   // Visão TikTok (tiktokBlockView): kpis é o registro TikTok, o id é um TikTokKpiId.
-  const label =
-    platform === 'tiktok' ? TIKTOK_KPI_LABELS_PT[id as unknown as TikTokKpiId] : KPI_LABELS[id];
-  const tooltip =
-    platform === 'tiktok' ? TIKTOK_KPI_TOOLTIPS_PT[id as unknown as TikTokKpiId] : KPI_TOOLTIPS[id];
+  const tiktok = platform === 'tiktok';
+  const label = tiktok ? TIKTOK_KPI_LABELS_PT[tiktokKpiId(block.type)] : KPI_LABELS[id];
+  const tooltip = tiktok ? TIKTOK_KPI_TOOLTIPS_PT[tiktokKpiId(block.type)] : KPI_TOOLTIPS[id];
 
   const delta = entry.prev !== null ? deltaPct(entry.value, entry.prev) : null;
   const periodStamp = fmtPeriodStamp(snapshot.period);

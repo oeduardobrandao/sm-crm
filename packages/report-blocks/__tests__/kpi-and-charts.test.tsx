@@ -336,7 +336,7 @@ describe('blocos TikTok (snapshot.tiktok)', () => {
     expect(screen.queryByText('88.400')).not.toBeInTheDocument();
     const card = container.querySelector('.rb-kpi') as HTMLElement;
     expect(card.title).toBe(
-      'Total atual dos vídeos publicados no mês, não as visualizações recebidas no mês.',
+      'Total atual dos vídeos publicados no período, não as visualizações recebidas no período.',
     );
     // Contagem somada: prev null, nada de delta nem "Anterior" (nunca "0%").
     expect(container.querySelector('.rb-kpi-delta')).toBeNull();

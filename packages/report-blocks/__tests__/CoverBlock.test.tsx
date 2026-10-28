@@ -184,4 +184,27 @@ describe('CoverBlock', () => {
     expect(screen.getByText('Relatório especial')).toBeInTheDocument();
     expect(screen.queryByText(/Instagram e TikTok/)).not.toBeInTheDocument();
   });
+
+  it('avatar segue a plataforma escolhida: TikTok usa a foto do TikTok', () => {
+    const snap = makeSnapshotFixture();
+    snap.account.profile_picture_url = 'https://x/ig.jpg';
+    snap.tiktok!.account.avatar_url = 'https://x/tt.jpg';
+    const { container } = render(
+      <CoverBlock block={coverBlock()} snapshot={snap} layoutPlatforms={['tiktok', 'instagram']} />,
+    );
+    expect(container.querySelector('img[src="https://x/tt.jpg"]')).toBeInTheDocument();
+    expect(container.querySelector('img[src="https://x/ig.jpg"]')).toBeNull();
+  });
+
+  it('Instagram desconectado num layout misto: kicker e handle só do TikTok', () => {
+    render(
+      <CoverBlock
+        block={coverBlock()}
+        snapshot={makeSnapshotFixture({ instagram_connected: false })}
+        layoutPlatforms={['instagram', 'tiktok']}
+      />,
+    );
+    expect(screen.getByText('Relatório mensal · TikTok')).toBeInTheDocument();
+    expect(screen.getByText('@seucliente · Dermatologia · São Paulo')).toBeInTheDocument();
+  });
 });

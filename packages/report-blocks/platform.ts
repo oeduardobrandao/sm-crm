@@ -14,12 +14,14 @@ import type {
 
 export type ReportPlatform = NonNullable<ReturnType<typeof blockPlatform>>;
 
+// Rótulos e tooltips iguais aos da aba Analytics do TikTok (spec §A3,
+// packages/i18n/locales/pt/analyticsTiktok.json `kpi.*`; platform.test.ts
+// confere a paridade). Exceção: no relatório a taxa leva "por visualização",
+// porque fica ao lado da taxa do Instagram (spec §A3).
 export const TIKTOK_KPI_LABELS_PT: Record<TikTokKpiId, string> = {
-  followers_total: 'Seguidores totais',
+  followers_total: 'Seguidores',
   followers_gained: 'Novos seguidores',
   views: 'Visualizações',
-  // TikTok não dá alcance: a taxa é sobre visualizações e nunca se compara
-  // como o mesmo número da taxa do Instagram (spec §A3).
   engagement_rate: 'Engajamento por visualização',
   likes: 'Curtidas',
   comments: 'Comentários',
@@ -28,9 +30,35 @@ export const TIKTOK_KPI_LABELS_PT: Record<TikTokKpiId, string> = {
   likes_total: 'Curtidas totais do perfil',
 };
 
+const COUNTS_TOOLTIP =
+  'Total atual dos vídeos publicados no período. Não comparamos com o período anterior porque vídeos mais antigos tiveram mais tempo para acumular números.';
+
 export const TIKTOK_KPI_TOOLTIPS_PT: Partial<Record<TikTokKpiId, string>> = {
-  views: 'Total atual dos vídeos publicados no mês, não as visualizações recebidas no mês.',
+  views: 'Total atual dos vídeos publicados no período, não as visualizações recebidas no período.',
+  engagement_rate:
+    'Curtidas, comentários e compartilhamentos divididos pelas visualizações dos vídeos publicados no período. O TikTok não informa alcance, então não é comparável à taxa do Instagram.',
+  likes: COUNTS_TOOLTIP,
+  comments: COUNTS_TOOLTIP,
+  shares: COUNTS_TOOLTIP,
 };
+
+/** Id do KPI de um bloco renderizado pela visão TikTok (tipo base "kpi_<id>"). */
+export function tiktokKpiId(blockType: string): TikTokKpiId {
+  return blockType.replace(/^kpi_/, '') as TikTokKpiId;
+}
+
+/** Conta da visão TikTok: handle e foto do TikTok sobre a conta da raiz
+ * (specialty e client_name são do cliente, não da plataforma). */
+function tiktokAccount(
+  snapshot: ReportDocSnapshot,
+  tiktok: NonNullable<ReportDocSnapshot['tiktok']>,
+): ReportDocSnapshot['account'] {
+  return {
+    ...snapshot.account,
+    handle: tiktok.account.handle,
+    profile_picture_url: tiktok.account.avatar_url,
+  };
+}
 
 /** For a tiktok_* block: the equivalent Instagram block type and a
  * ReportDocSnapshot-shaped view built from snapshot.tiktok. null when the
@@ -65,11 +93,7 @@ export function tiktokBlockView(
     block: { ...block, type: baseType },
     snapshot: {
       ...snapshot,
-      account: {
-        ...snapshot.account,
-        handle: tiktok.account.handle,
-        profile_picture_url: tiktok.account.avatar_url,
-      },
+      account: tiktokAccount(snapshot, tiktok),
       // Record<TikTokKpiId, KpiEntry> no lugar de Record<ReportKpiId, KpiEntry>:
       // mesmo formato de entrada, chaves diferentes. Só KpiCardBlock e
       // blockHasData leem kpis, ambos pelo id do tipo do bloco.
@@ -107,20 +131,28 @@ export function layoutPlatforms(layout: ReportLayout): ReportPlatform[] {
 
 const PLATFORM_NAMES: Record<ReportPlatform, string> = { instagram: 'Instagram', tiktok: 'TikTok' };
 
-/** Kicker e handle padrão da capa. Sem plataformas (ou vazio) = Instagram, o
- * comportamento de antes. O handle vem da primeira plataforma do layout, com
- * o @ do Instagram como reserva. */
+/** Kicker, handle e foto padrão da capa. Plataformas do layout sem dado no
+ * snapshot (instagram_connected false, sem seção TikTok) saem antes: um layout
+ * misto atualizado depois de desconectar o Instagram vira "· TikTok". Handle e
+ * foto vêm da primeira plataforma restante. Nenhuma com dado (ou layout sem
+ * plataforma) = Instagram, o comportamento de antes. */
 export function coverDefaults(
   snapshot: ReportDocSnapshot,
   platforms: readonly ReportPlatform[] | undefined,
-): { kicker: string; handle: string } {
-  const list: readonly ReportPlatform[] = platforms && platforms.length ? platforms : ['instagram'];
+): { kicker: string; handle: string; avatarUrl: string | null } {
+  const tiktok = snapshot.tiktok;
+  const withData = (platforms ?? []).filter((p) =>
+    p === 'tiktok' ? Boolean(tiktok) : snapshot.instagram_connected !== false,
+  );
+  const list: readonly ReportPlatform[] = withData.length ? withData : ['instagram'];
   const names = (['instagram', 'tiktok'] as const)
     .filter((p) => list.includes(p))
     .map((p) => PLATFORM_NAMES[p]);
-  const handle =
-    list[0] === 'tiktok' && snapshot.tiktok?.account.handle
-      ? snapshot.tiktok.account.handle
-      : snapshot.account.handle;
-  return { kicker: `Relatório mensal · ${names.join(' e ')}`, handle };
+  const account =
+    list[0] === 'tiktok' && tiktok ? tiktokAccount(snapshot, tiktok) : snapshot.account;
+  return {
+    kicker: `Relatório mensal · ${names.join(' e ')}`,
+    handle: account.handle,
+    avatarUrl: account.profile_picture_url ?? null,
+  };
 }

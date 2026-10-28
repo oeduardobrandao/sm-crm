@@ -9,7 +9,10 @@ import {
   tiktokBlockView,
 } from '../platform';
 import { TIKTOK_KPI_IDS } from '../types';
+import ptTiktok from '../../i18n/locales/pt/analyticsTiktok.json';
 import type { ReportBlock, ReportDocSnapshot, ReportLayout } from '../types';
+
+const PT_KPI = ptTiktok.kpi;
 
 const blk = (type: string, config?: Record<string, unknown>): ReportBlock =>
   ({ id: 'x', type, size: 'full', ...(config ? { config } : {}) }) as ReportBlock;
@@ -39,7 +42,7 @@ function tiktokOnlySnapshot(): ReportDocSnapshot {
 describe('TIKTOK_KPI_LABELS_PT', () => {
   it('rótulos exatos de cada KPI TikTok', () => {
     expect(TIKTOK_KPI_LABELS_PT).toEqual({
-      followers_total: 'Seguidores totais',
+      followers_total: 'Seguidores',
       followers_gained: 'Novos seguidores',
       views: 'Visualizações',
       engagement_rate: 'Engajamento por visualização',
@@ -49,9 +52,15 @@ describe('TIKTOK_KPI_LABELS_PT', () => {
       posts_count: 'Vídeos publicados',
       likes_total: 'Curtidas totais do perfil',
     });
-    expect(TIKTOK_KPI_TOOLTIPS_PT.views).toBe(
-      'Total atual dos vídeos publicados no mês, não as visualizações recebidas no mês.',
+    // Mesmo texto da aba Analytics (Part A), fonte packages/i18n.
+    expect(PT_KPI.views.tooltip).toBe(
+      'Total atual dos vídeos publicados no período, não as visualizações recebidas no período.',
     );
+    expect(TIKTOK_KPI_TOOLTIPS_PT.likes).toBe(PT_KPI.countsTooltip);
+    expect(TIKTOK_KPI_TOOLTIPS_PT.comments).toBe(PT_KPI.countsTooltip);
+    expect(TIKTOK_KPI_TOOLTIPS_PT.shares).toBe(PT_KPI.countsTooltip);
+    expect(TIKTOK_KPI_TOOLTIPS_PT.engagement_rate).toBe(PT_KPI.engagementTooltip);
+    expect(TIKTOK_KPI_TOOLTIPS_PT.views).toBe(PT_KPI.views.tooltip);
   });
 });
 
@@ -108,35 +117,65 @@ describe('layoutPlatforms', () => {
 });
 
 describe('coverDefaults', () => {
-  it('sem plataformas: kicker e handle do Instagram (hoje)', () => {
-    const snap = makeSnapshotFixture();
+  /** Fixture com foto nas duas contas, para distinguir o avatar escolhido. */
+  function withAvatars(over: Partial<ReportDocSnapshot> = {}): ReportDocSnapshot {
+    const snap = makeSnapshotFixture(over);
+    snap.account.profile_picture_url = 'https://x/ig.jpg';
+    if (snap.tiktok) snap.tiktok.account.avatar_url = 'https://x/tt.jpg';
+    return snap;
+  }
+  const IG = { handle: 'dra.exemplo', avatarUrl: 'https://x/ig.jpg' };
+  const TT = { handle: 'seucliente', avatarUrl: 'https://x/tt.jpg' };
+
+  it('sem plataformas: kicker, handle e avatar do Instagram (hoje)', () => {
+    const snap = withAvatars();
     expect(coverDefaults(snap, undefined)).toEqual({
       kicker: 'Relatório mensal · Instagram',
-      handle: 'dra.exemplo',
+      ...IG,
     });
-    expect(coverDefaults(snap, [])).toEqual({
-      kicker: 'Relatório mensal · Instagram',
-      handle: 'dra.exemplo',
-    });
+    expect(coverDefaults(snap, [])).toEqual({ kicker: 'Relatório mensal · Instagram', ...IG });
   });
 
-  it('TikTok primeiro: handle do TikTok; misto: Instagram e TikTok', () => {
-    const snap = makeSnapshotFixture();
-    expect(coverDefaults(snap, ['tiktok'])).toEqual({
-      kicker: 'Relatório mensal · TikTok',
-      handle: 'seucliente',
-    });
+  it('TikTok primeiro: handle e avatar do TikTok; misto: Instagram e TikTok', () => {
+    const snap = withAvatars();
+    expect(coverDefaults(snap, ['tiktok'])).toEqual({ kicker: 'Relatório mensal · TikTok', ...TT });
     expect(coverDefaults(snap, ['tiktok', 'instagram'])).toEqual({
       kicker: 'Relatório mensal · Instagram e TikTok',
-      handle: 'seucliente',
+      ...TT,
     });
-    expect(coverDefaults(snap, ['instagram', 'tiktok']).handle).toBe('dra.exemplo');
+    expect(coverDefaults(snap, ['instagram', 'tiktok'])).toEqual({
+      kicker: 'Relatório mensal · Instagram e TikTok',
+      ...IG,
+    });
   });
 
-  it('TikTok primeiro sem seção TikTok: cai no handle do Instagram', () => {
-    expect(coverDefaults(makeSnapshotFixture({ tiktok: null }), ['tiktok']).handle).toBe(
-      'dra.exemplo',
-    );
+  it('layout misto atualizado depois de desconectar o Instagram: só TikTok', () => {
+    const snap = withAvatars({ instagram_connected: false });
+    expect(coverDefaults(snap, ['instagram', 'tiktok'])).toEqual({
+      kicker: 'Relatório mensal · TikTok',
+      ...TT,
+    });
+  });
+
+  it('layout misto sem seção TikTok: só Instagram', () => {
+    const snap = withAvatars({ tiktok: null });
+    expect(coverDefaults(snap, ['tiktok', 'instagram'])).toEqual({
+      kicker: 'Relatório mensal · Instagram',
+      ...IG,
+    });
+  });
+
+  it('nenhuma plataforma com dado: mantém o padrão de hoje (Instagram)', () => {
+    const snap = withAvatars({ tiktok: null, instagram_connected: false });
+    expect(coverDefaults(snap, ['tiktok'])).toEqual({
+      kicker: 'Relatório mensal · Instagram',
+      ...IG,
+    });
+  });
+
+  it('sem foto: avatarUrl null', () => {
+    expect(coverDefaults(makeSnapshotFixture(), ['tiktok']).avatarUrl).toBe(null);
+    expect(coverDefaults(makeSnapshotFixture(), ['instagram']).avatarUrl).toBe(null);
   });
 });
 

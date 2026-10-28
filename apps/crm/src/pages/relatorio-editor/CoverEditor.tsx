@@ -38,7 +38,7 @@ export function CoverEditor({
       ? config.subtitle
       : `@${defaults.handle}${snapshot.account.specialty ? ` · ${snapshot.account.specialty}` : ''}`;
   const logoSize = config.logoSize ?? LOGO_SIZE_DEFAULT;
-  const clientName = snapshot.account.client_name ?? snapshot.account.handle;
+  const clientName = snapshot.account.client_name ?? defaults.handle;
   const accentColor = snapshot.branding.accent_color;
 
   const colorStyle =
@@ -67,11 +67,7 @@ export function CoverEditor({
             style={{ height: logoSize, borderRadius: 8, background: '#fff', padding: 4 }}
           />
         ) : null}
-        <CoverAvatar
-          name={clientName}
-          photoUrl={snapshot.account.profile_picture_url ?? null}
-          size={logoSize}
-        />
+        <CoverAvatar name={clientName} photoUrl={defaults.avatarUrl} size={logoSize} />
         <span style={{ fontWeight: 600 }}>{b.workspace_name}</span>
         <div style={{ display: 'flex', gap: '0.25rem', marginLeft: 'auto' }}>
           <button
