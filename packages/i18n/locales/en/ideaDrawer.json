@@ -3,7 +3,22 @@
     "clientHubVisible": "Visible in the client portal (Hub)",
     "referenceLinks": "Reference links",
     "description": "Description",
-    "recordAgain": "Record again"
+    "recordAgain": "Record again",
+    "recorder": {
+      "send": "Send",
+      "record": "Record audio",
+      "uploading": "Uploading audio…",
+      "transcribing": "Transcribing…",
+      "micPermissionDenied": "Allow microphone access in your browser to record.",
+      "micUnavailable": "Could not access the microphone.",
+      "stop": "Stop",
+      "stopAria": "Stop recording",
+      "progressAria": "Recording time",
+      "remainingWarning": "{{remaining}} left. Recording stops on its own at the limit.",
+      "previewLabel": "Preview",
+      "sending": "Sending…",
+      "discard": "Discard"
+    }
   },
   "ideiaDrawer": {
     "toastConverted": "Request converted to a task!",

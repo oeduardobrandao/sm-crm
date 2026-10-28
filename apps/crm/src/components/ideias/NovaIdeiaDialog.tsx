@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Mic, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { AudioPlayer } from '@mesaas/ui/AudioPlayer';
+import { recorderLabels } from './recorderLabels';
 import { AudioRecorder, isRecordingSupported, type RecorderPhase } from '@mesaas/ui/AudioRecorder';
 import { describeAudioError } from '@mesaas/ui/audio/validation';
 import { createIdeia, updateIdeia, getClientes, type Ideia } from '@/store';
@@ -376,6 +377,7 @@ export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Prop
                   disabled={submitting}
                   sendLabel={t('novaIdeiaDialog.useThisAudio')}
                   hint={t('novaIdeiaDialog.recorderHint')}
+                  labels={recorderLabels(t)}
                   onRecorded={async (blob, mime, durationSeconds) => {
                     if (pendingAudio) URL.revokeObjectURL(pendingAudio.url);
                     setPendingAudio({

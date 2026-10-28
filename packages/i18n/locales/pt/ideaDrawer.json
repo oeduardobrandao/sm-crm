@@ -3,7 +3,22 @@
     "clientHubVisible": "Visível no Hub do cliente",
     "referenceLinks": "Links de referência",
     "description": "Descrição",
-    "recordAgain": "Gravar novamente"
+    "recordAgain": "Gravar novamente",
+    "recorder": {
+      "send": "Enviar",
+      "record": "Gravar áudio",
+      "uploading": "Enviando áudio…",
+      "transcribing": "Transcrevendo…",
+      "micPermissionDenied": "Permita o acesso ao microfone no navegador para gravar.",
+      "micUnavailable": "Não foi possível acessar o microfone.",
+      "stop": "Parar",
+      "stopAria": "Parar gravação",
+      "progressAria": "Tempo de gravação",
+      "remainingWarning": "Restam {{remaining}}. A gravação para sozinha no limite.",
+      "previewLabel": "Prévia",
+      "sending": "Enviando…",
+      "discard": "Descartar"
+    }
   },
   "ideiaDrawer": {
     "toastConverted": "Solicitação convertida em tarefa!",

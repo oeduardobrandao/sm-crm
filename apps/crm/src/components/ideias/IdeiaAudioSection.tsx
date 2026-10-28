@@ -4,6 +4,7 @@ import { Loader2, Mic, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { AudioPlayer } from '@mesaas/ui/AudioPlayer';
+import { recorderLabels } from './recorderLabels';
 import { AudioRecorder, isRecordingSupported, type RecorderPhase } from '@mesaas/ui/AudioRecorder';
 import { describeAudioError } from '@mesaas/ui/audio/validation';
 import { Badge } from '@/components/ui/badge';
@@ -209,6 +210,8 @@ export function IdeiaAudioSection({
             disabled={busy}
             onRecorded={handleRecorded}
             hint={t('ideiaAudioSection.recorderHint')}
+            sendLabel={t('shared.recorder.send')}
+            labels={recorderLabels(t)}
           />
         </div>
       )}
