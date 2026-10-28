@@ -246,6 +246,17 @@ describe('TarefasPage', () => {
     expect(screen.getByText('Bruno')).toBeInTheDocument();
     expect(screen.getByText('Carla')).toBeInTheDocument();
   });
+  it('list rows show the comment count only when there are comments', async () => {
+    getTarefasMock.mockResolvedValue([
+      makeTarefa({ titulo: 'Com conversa', comentarios_total: 2 }),
+      makeTarefa({ titulo: 'Sem conversa', comentarios_total: 0 }),
+    ]);
+    renderPage();
+    await screen.findByText('Com conversa');
+    expect(screen.getAllByRole('img', { name: /comentário/ })).toHaveLength(1);
+    expect(screen.getByRole('img', { name: '2 comentários' })).toHaveTextContent('2');
+  });
+
   describe('KPI cards as filters', () => {
     const today = () => toDateOnlyString(new Date());
     const yesterday = () => {

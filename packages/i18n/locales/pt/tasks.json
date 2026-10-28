@@ -107,7 +107,9 @@
       "terminaEm": "Termina em {{date}}"
     },
     "recurringTask": "Tarefa recorrente",
-    "noAssignee": "Sem responsável"
+    "noAssignee": "Sem responsável",
+    "commentCount_one": "{{count}} comentário",
+    "commentCount_other": "{{count}} comentários"
   },
   "commands": {
     "serieNeedsDueDate": "Tarefas de uma série precisam de prazo.",

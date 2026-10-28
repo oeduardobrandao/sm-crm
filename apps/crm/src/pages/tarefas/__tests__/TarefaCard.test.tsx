@@ -290,4 +290,49 @@ describe('TarefaCard', () => {
     expect(avatar).toHaveTextContent('BC');
     expect(avatar.style.width).toBe('20px');
   });
+
+  it('shows MessageCircle count when comentarios_total > 0', () => {
+    render(
+      <TarefaCard
+        tarefa={makeTarefa({ comentarios_total: 3, subtarefas_total: 2, subtarefas_concluidas: 1 })}
+        membro={null}
+        now={NOW}
+        onClick={() => {}}
+        membros={[]}
+        onRefresh={() => {}}
+      />,
+    );
+    const count = screen.getByRole('img', { name: '3 comentários' });
+    expect(count).toHaveTextContent('3');
+    // Next to the subtask counter.
+    expect(screen.getByText('1/2').parentElement).toBe(count.parentElement);
+  });
+
+  it('says "1 comentário" in the singular', () => {
+    render(
+      <TarefaCard
+        tarefa={makeTarefa({ comentarios_total: 1 })}
+        membro={null}
+        now={NOW}
+        onClick={() => {}}
+        membros={[]}
+        onRefresh={() => {}}
+      />,
+    );
+    expect(screen.getByRole('img', { name: '1 comentário' })).toBeInTheDocument();
+  });
+
+  it('hides the comment count at 0', () => {
+    render(
+      <TarefaCard
+        tarefa={makeTarefa({ comentarios_total: 0 })}
+        membro={null}
+        now={NOW}
+        onClick={() => {}}
+        membros={[]}
+        onRefresh={() => {}}
+      />,
+    );
+    expect(screen.queryByRole('img', { name: /comentário/ })).not.toBeInTheDocument();
+  });
 });

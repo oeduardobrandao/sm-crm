@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Calendar as CalendarIcon, CheckSquare, Repeat, User2 } from 'lucide-react';
+import { Calendar as CalendarIcon, CheckSquare, MessageCircle, Repeat, User2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import {
@@ -13,6 +13,30 @@ import { updateTarefa, type Membro, type TarefaWithRelations } from '../../../st
 import { dueBadge } from '../tarefasLogic';
 import { describeRecorrencia } from '../recorrenciaLogic';
 import { TagPill } from './TagPicker';
+
+/** "MessageCircle n" next to the subtask counter on board cards and list rows; nothing at 0. */
+export function TarefaComentariosCount({ total }: { total: number }) {
+  const { t } = useTranslation('tasks');
+  if (total <= 0) return null;
+  const label = t('shared.commentCount', { count: total });
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      title={label}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.25rem',
+        fontSize: '0.68rem',
+        color: 'var(--text-muted)',
+      }}
+    >
+      <MessageCircle className="h-3 w-3" aria-hidden="true" />
+      {total}
+    </span>
+  );
+}
 
 interface TarefaCardProps {
   tarefa: TarefaWithRelations;
@@ -232,6 +256,7 @@ export function TarefaCard({
             {tarefa.subtarefas_concluidas}/{tarefa.subtarefas_total}
           </span>
         )}
+        <TarefaComentariosCount total={tarefa.comentarios_total} />
       </div>
       {tarefa.cliente_nome && (
         <div
