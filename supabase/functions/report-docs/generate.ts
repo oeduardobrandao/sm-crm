@@ -13,7 +13,9 @@ import {
   fillAiBlocks, textDoc,
 } from "../_shared/report-docs/tiptap-doc.ts";
 import { prefixTikTokGoalMetrics, snapshotToReportData } from "../_shared/report-docs/ai-input.ts";
-import { normalizeCoverSize, sanitizeLayoutForTemplate, validateLayout, type ReportLayout } from "../_shared/report-docs/layout.ts";
+import {
+  blockPlatform, normalizeCoverSize, sanitizeLayoutForTemplate, validateLayout, type ReportLayout,
+} from "../_shared/report-docs/layout.ts";
 import type { ReportPlatform } from "./client-id.ts";
 import { GenerateError } from "./errors.ts";
 import { connectedPlatforms, loadClientSnapshot } from "./snapshot-source.ts";
@@ -109,6 +111,8 @@ export async function generateReportDocument(
   // is_default -- outros clientes (ex.: automações) dependem desse
   // comportamento omitido.
   let templateLayout: ReportLayout | null = null;
+  // Só para log (aviso de teto ao acrescentar seção): nunca dado do cliente.
+  let templateRowId: string | null = null;
   if (templateId === "system") {
     // Nada a buscar: templateLayout permanece null e o layout nasce de
     // buildDefaultLayout() abaixo, ignorando o is_default do workspace.
@@ -121,6 +125,7 @@ export async function generateReportDocument(
     // Defesa no servidor (spec 2026-10-02): modelo nunca carrega imagem; a
     // invariante já vale no banco, isto cobre layout legado/escrito por fora.
     templateLayout = sanitizeLayoutForTemplate(check.layout);
+    templateRowId = tpl.id;
   } else {
     const { data: tpl } = await db.from("report_templates")
       .select("id, conta_id, layout").eq("conta_id", contaId)
@@ -131,6 +136,7 @@ export async function generateReportDocument(
         // Defesa no servidor (spec 2026-10-02): modelo nunca carrega imagem; a
         // invariante já vale no banco, isto cobre layout legado/escrito por fora.
         templateLayout = sanitizeLayoutForTemplate(check.layout);
+        templateRowId = tpl.id;
       }
       else console.warn("[report-docs] template default com layout inválido; usando o padrão do sistema");
     }
@@ -155,18 +161,32 @@ export async function generateReportDocument(
   // padrão do sistema, "Próximos passos" nasce quando a IA vai rodar e sai abaixo se ela não
   // entregar conteúdo (sem título órfão).
   const aiWillRun = wantsAi && !!deps.geminiKey;
-  const baseLayout = templateLayout
-    ? addMissingPlatformSections(
-      dropUnselectedPlatformBlocks(templateLayout, selectedPlatforms),
-      selectedPlatforms,
-      { instagram: snapshot.instagram_connected !== false, tiktok: !!snapshot.tiktok },
-      {
-        hasAudience: snapshot.audience !== null,
-        hasBestTimes: snapshot.best_times.length > 0,
-        hasTags: snapshot.tags_performance.length > 0,
-        hasTikTokBestTimes: (snapshot.tiktok?.best_times.length ?? 0) > 0,
-      },
-    )
+  // Só modelo com algum bloco de plataforma ganha a seção que falta: um modelo neutro (capa,
+  // resumo, texto, imagem) segue exatamente como antes do TikTok.
+  const templateHasPlatformBlocks = !!templateLayout?.blocks.some((b) => blockPlatform(b.type) !== null);
+  const filteredTemplate = templateLayout
+    ? dropUnselectedPlatformBlocks(templateLayout, selectedPlatforms)
+    : null;
+  const baseLayout = filteredTemplate
+    ? templateHasPlatformBlocks
+      ? addMissingPlatformSections(
+        filteredTemplate,
+        selectedPlatforms,
+        { instagram: snapshot.instagram_connected !== false, tiktok: !!snapshot.tiktok },
+        {
+          hasAudience: snapshot.audience !== null,
+          hasBestTimes: snapshot.best_times.length > 0,
+          hasTags: snapshot.tags_performance.length > 0,
+          hasTikTokBestTimes: (snapshot.tiktok?.best_times.length ?? 0) > 0,
+        },
+        {
+          onCapSkip: (platform) =>
+            console.warn(
+              `[report-docs] template ${templateRowId} sem espaço para a seção ${platform}; seção não acrescentada`,
+            ),
+        },
+      )
+      : filteredTemplate
     : buildDefaultLayout({
       hasAi: aiWillRun,
       hasAudience: snapshot.audience !== null,

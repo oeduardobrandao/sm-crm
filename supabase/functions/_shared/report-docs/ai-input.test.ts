@@ -151,7 +151,12 @@ Deno.test("snapshotToReportData: comparação TikTok só para os KPIs da lista c
 
 Deno.test("prefixTikTokGoalMetrics: id TikTok sem prefixo ganha tiktok_; o resto passa igual", () => {
   const out = prefixTikTokGoalMetrics({
-    executive_summary: "s", detailed_analysis: "d", recommendations: [],
+    executive_summary: "s", detailed_analysis: "d",
+    recommendations: [
+      { title: "a", description: "a", priority: "high", based_on_metric: "views" },
+      { title: "b", description: "b", priority: "low", based_on_metric: "tiktok_likes" },
+      { title: "c", description: "c", priority: "low" },
+    ],
     suggested_goals: [
       { metric: "views", target: "1", rationale: "r" },
       { metric: "likes_total", target: "1", rationale: "r" },
@@ -160,4 +165,6 @@ Deno.test("prefixTikTokGoalMetrics: id TikTok sem prefixo ganha tiktok_; o resto
     ],
   });
   assertEquals(out.suggested_goals.map((g) => g.metric), ["tiktok_views", "tiktok_likes_total", "tiktok_shares", "texto livre"]);
+  assertEquals(out.recommendations.map((r) => r.based_on_metric), ["tiktok_views", "tiktok_likes", undefined]);
+  assert(!("based_on_metric" in out.recommendations[2]));
 });

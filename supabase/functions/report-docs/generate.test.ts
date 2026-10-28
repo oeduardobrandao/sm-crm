@@ -1094,3 +1094,52 @@ Deno.test("metricPriorityGuidance: Instagram-only text unchanged; with TikTok it
   assertEquals(metricPriorityGuidance({ instagram: true, tiktok: true, instagramHasViews: false }), undefined);
   assertEquals(metricPriorityGuidance({ instagram: false, tiktok: true, instagramHasViews: true }), undefined);
 });
+
+// ─── Fix round 2: só modelo com bloco de plataforma ganha seção ───────────────────────
+
+Deno.test("neutral workspace template + Instagram-only client: layout is the template, no section appended", async () => {
+  const neutral = {
+    version: 1,
+    accent: "#9f1239",
+    blocks: [
+      { id: "c1", type: "cover", size: "full" },
+      { id: "s1", type: "ai_summary", size: "full" },
+      { id: "x1", type: "text", size: "full" },
+      { id: "i1", type: "image", size: "half", config: { ratio: "4:5" } },
+    ],
+  };
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: { id: "ig-1", username: "dra.x" },
+    instagram_posts: [],
+    workspaces: WORKSPACE,
+    report_templates: { id: "tpl", conta_id: "c", layout: neutral },
+  });
+  await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  const row = db.inserts[0] as LayoutRow & { layout: { accent?: string } };
+  assertEquals(row.layout.blocks.map((b) => b.id), ["c1", "s1", "x1", "i1"]);
+  assertEquals(row.layout.accent, "#9f1239");
+});
+
+Deno.test("template with no room for the TikTok section warns with the template id and platform", async () => {
+  const full = {
+    version: 1,
+    blocks: [
+      { id: "c", type: "cover", size: "full" },
+      ...Array.from({ length: 199 }, (_, i) => ({ id: `k${i}`, type: "kpi_reach", size: "third" })),
+    ],
+  };
+  const warnings: string[] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(" ")); };
+  try {
+    const db = makeDb({ ...BOTH_ROWS, report_templates: { id: "tpl-42", conta_id: "c", layout: full } });
+    await generateReportDocument(db, deps, "c", 1, "2026-07", null, ["instagram", "tiktok"]);
+  } finally {
+    console.warn = originalWarn;
+  }
+  const capWarn = warnings.find((w) => w.includes("tpl-42"));
+  assert(capWarn, warnings.join("\n"));
+  assert(capWarn.includes("tiktok"));
+  assert(!capWarn.includes("dra."), "sem @ ou dado do cliente no log");
+});

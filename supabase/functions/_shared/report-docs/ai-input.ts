@@ -101,12 +101,17 @@ export function snapshotToReportData(
   return data;
 }
 
-/** Narrativa só TikTok: meta com id TikTok sem o prefixo ("views") ganha "tiktok_", para o
- * rótulo do bloco de metas sair o do TikTok e não o do Instagram de mesmo id. */
+/** Narrativa só TikTok: id TikTok sem o prefixo ("views") em meta ou recomendação ganha
+ * "tiktok_", para o rótulo sair o do TikTok e não o do Instagram de mesmo id. */
 export function prefixTikTokGoalMetrics(output: AIOutput): AIOutput {
   const ids: readonly string[] = TIKTOK_KPI_IDS;
   return {
     ...output,
+    recommendations: output.recommendations.map((r) =>
+      r.based_on_metric !== undefined && ids.includes(r.based_on_metric)
+        ? { ...r, based_on_metric: `tiktok_${r.based_on_metric}` }
+        : r
+    ),
     suggested_goals: output.suggested_goals.map((g) =>
       ids.includes(g.metric) ? { ...g, metric: `tiktok_${g.metric}` } : g
     ),

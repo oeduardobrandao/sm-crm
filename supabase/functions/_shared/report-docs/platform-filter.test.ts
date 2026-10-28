@@ -34,7 +34,7 @@ Deno.test("dropUnselectedPlatformBlocks keeps neutral blocks and drops headers l
   assertEquals(ids(dropUnselectedPlatformBlocks(layout, ["instagram"])), ["c", "s", "h1", "k1", "h3", "d", "i", "x", "p", "h4"]);
 });
 
-Deno.test("dropUnselectedPlatformBlocks: a header whose span keeps only a divider is dropped", () => {
+Deno.test("dropUnselectedPlatformBlocks: a dropped header takes the dividers left under it", () => {
   const l = {
     version: 1,
     blocks: [
@@ -45,7 +45,9 @@ Deno.test("dropUnselectedPlatformBlocks: a header whose span keeps only a divide
       { id: "t", type: "tiktok_kpi_views", size: "third" },
     ],
   } as ReportLayout;
-  assertEquals(ids(dropUnselectedPlatformBlocks(l, ["tiktok"])), ["d", "h2", "t"]);
+  assertEquals(ids(dropUnselectedPlatformBlocks(l, ["tiktok"])), ["h2", "t"]);
+  // Divisor sob um título que fica (ou que o filtro não tirou) não é tocado.
+  assertEquals(ids(dropUnselectedPlatformBlocks(l, ["instagram"])), ["h", "k", "d"]);
 });
 
 Deno.test("dropUnselectedPlatformBlocks with every platform returns the same blocks", () => {
@@ -116,6 +118,39 @@ Deno.test("addMissingPlatformSections: never pushes a template past MAX_BLOCKS",
     blocks: Array.from({ length: MAX_BLOCKS - 3 }, (_, i) => ({ id: `k${i}`, type: "kpi_reach", size: "third" })),
   } as ReportLayout;
   assertEquals(addMissingPlatformSections(tpl, ["instagram", "tiktok"], { instagram: true, tiktok: true }, SECTION_OPTS), tpl);
+});
+
+const neutralTemplate = (n: number) =>
+  ({
+    version: 1,
+    blocks: Array.from({ length: n }, (_, i) => ({ id: `x${i}`, type: "text", size: "full" })),
+  }) as ReportLayout;
+const IG_SECTION_LEN = 22;
+const TT_SECTION_LEN = 10;
+
+Deno.test("addMissingPlatformSections: the cap is decided per section, Instagram first", () => {
+  const skipped: string[] = [];
+  const onCapSkip = (p: string) => skipped.push(p);
+  // Cabe o Instagram (22), não cabe mais o TikTok (10).
+  const a = addMissingPlatformSections(
+    neutralTemplate(MAX_BLOCKS - IG_SECTION_LEN - 3), ["instagram", "tiktok"], { instagram: true, tiktok: true },
+    SECTION_OPTS, { onCapSkip },
+  );
+  assertEquals(a.blocks.length, MAX_BLOCKS - 3);
+  assert(a.blocks.some((b) => blockPlatform(b.type) === "instagram"));
+  assert(!a.blocks.some((b) => blockPlatform(b.type) === "tiktok"));
+  assertEquals(skipped, ["tiktok"]);
+  // Não cabe o Instagram, mas o TikTok cabe: entra só o TikTok.
+  skipped.length = 0;
+  const b = addMissingPlatformSections(
+    neutralTemplate(MAX_BLOCKS - TT_SECTION_LEN - 5), ["instagram", "tiktok"], { instagram: true, tiktok: true },
+    SECTION_OPTS, { onCapSkip },
+  );
+  assertEquals(b.blocks.length, MAX_BLOCKS - 5);
+  assert(!b.blocks.some((x) => blockPlatform(x.type) === "instagram"));
+  assert(b.blocks.some((x) => blockPlatform(x.type) === "tiktok"));
+  assertEquals(skipped, ["instagram"]);
+  assert(validateLayout(b).ok);
 });
 
 Deno.test("narrativePlatforms: the final layout's platforms within the selection", () => {
