@@ -8,6 +8,7 @@ import { type Membro, type TarefaWithRelations } from '../../../store';
 import { DUE_BUCKETS, dueBadge, groupByDueBucket } from '../tarefasLogic';
 import { toggleTarefaConcluida } from '../tarefaCommands';
 import { TagPill } from '../components/TagPicker';
+import { TarefaComentariosCount } from '../components/TarefaCard';
 import { TarefasPhoneList } from '../phone/TarefasPhoneList';
 
 interface ListViewProps {
@@ -120,6 +121,7 @@ function TarefaRow({
             {tarefa.subtarefas_concluidas}/{tarefa.subtarefas_total}
           </span>
         )}
+        <TarefaComentariosCount total={tarefa.comentarios_total} />
         {badge && <span className={`board-card-deadline ${badge.className}`}>{badge.label}</span>}
         {membro ? (
           // `contents` keeps the hover name without adding a box to the row's layout.

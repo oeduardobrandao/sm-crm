@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { CheckSquare, Repeat } from 'lucide-react';
+import { CheckSquare, MessageCircle, Repeat } from 'lucide-react';
 import { getIntlLocale } from '@mesaas/i18n';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { PessoaAvatar } from '@/components/PessoaAvatar';
@@ -171,7 +171,7 @@ function TarefaChipCard({
           ))}
         </div>
       )}
-      {(tarefa.subtarefas_total > 0 || tarefa.serie) && (
+      {(tarefa.subtarefas_total > 0 || tarefa.comentarios_total > 0 || tarefa.serie) && (
         <div
           style={{
             display: 'flex',
@@ -187,6 +187,12 @@ function TarefaChipCard({
                 done: tarefa.subtarefas_concluidas,
                 total: tarefa.subtarefas_total,
               })}
+            </span>
+          )}
+          {tarefa.comentarios_total > 0 && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+              <MessageCircle className="h-3 w-3 shrink-0" aria-hidden="true" />
+              {t('shared.commentCount', { count: tarefa.comentarios_total })}
             </span>
           )}
           {tarefa.serie && (

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Ban, Pause, Play, Plus, Repeat, Trash2, X } from 'lucide-react';
+import { Ban, History, Pause, Play, Plus, Repeat, Trash2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useIntlLocale } from '@mesaas/i18n';
 import { Cell, GroupedList } from '@/components/mobile/GroupedList';
@@ -21,6 +21,8 @@ import { parseDateOnly, STATUS_LABELS, STATUS_ORDER } from '../tarefasLogic';
 import { describeRecorrencia, modoLabel, type SerieEstado } from '../recorrenciaLogic';
 import { rescheduleTarefa } from '../tarefaCommands';
 import { TarefaDescriptionContent } from '../components/TarefaDescriptionContent';
+import { TarefaComentarios } from '../components/TarefaComentarios';
+import { TarefaHistoryPanel } from '../components/TarefaHistoryPanel';
 import { DueChip, MembroAvatar, TagChip, TarefaCheck } from './parts';
 import { PrazoSheet } from './PrazoSheet';
 import { TarefaDeleteConfirm } from './TarefaDeleteConfirm';
@@ -52,9 +54,10 @@ export interface TarefaDetailPhoneProps {
 
 /**
  * TarefaDetailSheet's phone face (FTarefaDetalhe): a pushed screen with a nav bar
- * (Voltar, Excluir, Editar), the status as a segmented control, responsável as a picker
- * row, prazo, cliente, the series controls, the description and the subtarefas. Every
- * write is the sheet's own handler; confirms are action sheets.
+ * (Voltar, Histórico, Excluir, Editar), the status as a segmented control, responsável as a
+ * picker row, prazo, cliente, the series controls, the description, the subtarefas and the
+ * comments. Histórico swaps in the history as its own screen. Every write is the sheet's own
+ * handler; confirms are action sheets.
  *
  * Portaled full-screen region, not a dialog: the screen can stay open for a while and
  * `isDocumentBusy` (silent deploy swaps) treats any open dialog as unsaved work. It sits
@@ -94,7 +97,8 @@ export function TarefaDetailPhone(p: TarefaDetailPhoneProps) {
       className="phone-kit phone-tar-screen"
       data-testid="tarefa-detail-phone"
     >
-      <DetailBody {...p} />
+      {/* Keyed so the history view never carries over to another task. */}
+      <DetailBody key={p.tarefa.id} {...p} />
     </div>,
     document.body,
   );
@@ -125,6 +129,7 @@ function DetailBody({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmEncerrar, setConfirmEncerrar] = useState(false);
   const [prazoOpen, setPrazoOpen] = useState(false);
+  const [view, setView] = useState<'detalhe' | 'historico'>('detalhe');
   const now = new Date();
   const membro = membros.find((m) => m.id === tarefa.responsavel_id) ?? null;
   const sortedMembros = membros
@@ -132,6 +137,23 @@ function DetailBody({
     .sort((a, b) => a.nome.localeCompare(b.nome));
   const doneCount = subtarefas.filter((s) => s.concluida).length;
   const hasDescription = !!(tarefa.descricao_rich || tarefa.descricao);
+
+  if (view === 'historico') {
+    return (
+      <>
+        <div className="phone-tar-screen__bar">
+          <PhoneNavBar
+            title={t('detail.history')}
+            backLabel={t('detail.historyBack')}
+            onBack={() => setView('detalhe')}
+          />
+        </div>
+        <div className="phone-tar-screen__body">
+          <TarefaHistoryPanel tarefaId={tarefa.id!} membros={membros} />
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -141,6 +163,9 @@ function DetailBody({
           onBack={onClose}
           trailing={
             <>
+              <PhoneIconButton label={t('detail.history')} onClick={() => setView('historico')}>
+                <History aria-hidden="true" />
+              </PhoneIconButton>
               <PhoneIconButton
                 label={t('shared.delete')}
                 className="phone-tar-detail__delete"
@@ -311,6 +336,8 @@ function DetailBody({
           </li>
         </ul>
         {serie && <p className="phone-tar-footnote">{t('detail.seriesFootnote')}</p>}
+
+        <TarefaComentarios tarefaId={tarefa.id!} membros={membros} />
       </div>
 
       <TarefaDeleteConfirm

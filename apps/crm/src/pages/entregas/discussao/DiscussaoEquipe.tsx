@@ -479,7 +479,7 @@ export function DiscussaoEquipe({
   );
 
   const { draft, setDraft, editorRef, tooLong, canSend, handleSend, handleKeyDown } =
-    useDiscussaoComposer(discussao);
+    useDiscussaoComposer(discussao, t('discussao.sendError'));
   const seguir = useSeguirToggle(discussao);
   const { handleEditMessage, handleDeleteMessage } = useDiscussaoMessageActions();
   const following = seguir.following;

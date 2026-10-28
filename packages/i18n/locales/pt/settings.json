@@ -422,6 +422,11 @@
         "when": "uma tarefa é criada para você ou reatribuída",
         "recipients": "somente quem foi atribuído"
       },
+      "task_comment": {
+        "label": "Comentário em uma tarefa",
+        "when": "alguém comenta em uma tarefa da qual você participa",
+        "recipients": "responsável, quem criou e quem já comentou, exceto quem escreveu e quem foi mencionado"
+      },
       "workflow_completed": {
         "label": "Fluxo concluído",
         "when": "um fluxo inteiro é concluído",

@@ -42,6 +42,10 @@ vi.mock('../../../store', () => ({
   getInitials: (nome: string) => nome.slice(0, 2).toUpperCase(),
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+// The comments section has its own suite (TarefaComentarios.test.tsx).
+vi.mock('../components/TarefaComentarios', () => ({
+  TarefaComentarios: () => <section id="tarefa-comentarios" />,
+}));
 // The shell's bell and help links need the KB query and notifications; their suites cover them.
 vi.mock('@/components/layout/PhoneShellHeader', () => ({
   PhoneShellActions: () => <button type="button" aria-label="Notificações" />,
@@ -76,6 +80,7 @@ function makeTarefa(overrides: Partial<TarefaWithRelations> = {}): TarefaWithRel
     tags: [],
     subtarefas_total: 0,
     subtarefas_concluidas: 0,
+    comentarios_total: 0,
     cliente_nome: null,
     cliente_cor: null,
     serie: null,

@@ -35,6 +35,10 @@ vi.mock('@/context/AuthContext', async (importOriginal) => {
 
 // Desktop layout (the phone branch has its own suite); jsdom's matchMedia reports false.
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+// The comments section has its own suite (TarefaComentarios.test.tsx).
+vi.mock('../components/TarefaComentarios', () => ({
+  TarefaComentarios: () => <section id="tarefa-comentarios" />,
+}));
 
 import TarefasPage from '../TarefasPage';
 import { VidroToolbarHarness } from '@/test/vidroToolbar';
@@ -56,6 +60,7 @@ function makeTarefa(overrides: Partial<TarefaWithRelations> = {}): TarefaWithRel
     tags: [],
     subtarefas_total: 0,
     subtarefas_concluidas: 0,
+    comentarios_total: 0,
     cliente_nome: null,
     cliente_cor: null,
     serie: null,

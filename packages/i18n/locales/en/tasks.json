@@ -107,7 +107,9 @@
       "terminaEm": "Ends on {{date}}"
     },
     "recurringTask": "Recurring task",
-    "noAssignee": "No assignee"
+    "noAssignee": "No assignee",
+    "commentCount_one": "{{count}} comment",
+    "commentCount_other": "{{count}} comments"
   },
   "commands": {
     "serieNeedsDueDate": "Tasks in a series need a due date.",

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Calendar, Columns, List, ListChecks, Plus, Users } from 'lucide-react';
@@ -72,34 +72,50 @@ export default function TarefasPage() {
     return tarefas.filter((t) => t.responsavel_id === currentMembroId);
   }, [tarefas, escopo, currentMembroId]);
 
-  // Deep link: /tarefas?tarefa=<id> opens the detail sheet (EntregasPage ?drawer= pattern).
+  // Deep link: /tarefas?tarefa=<id> opens the detail sheet (EntregasPage ?drawer= pattern);
+  // `&comentarios=1` (task_comment notifications) also focuses its comments, once.
   const [searchParams, setSearchParams] = useSearchParams();
   const pendingTarefaId = useRef<number | null>(null);
+  const pendingFocusComments = useRef(false);
+  // The task whose comments the sheet focuses: set when a link opens it, dropped on close or
+  // as soon as another task is selected, so reopening that task by hand opens it plainly.
+  const [focusCommentsId, setFocusCommentsId] = useState<number | null>(null);
+  // Adjusted during render (not in an effect) so the sheet never sees a stale focus for a
+  // frame. openFromLink sets both ids in one batch, so the link's own open survives this.
+  if (focusCommentsId !== null && selectedId !== focusCommentsId) setFocusCommentsId(null);
   const tarefaParam = searchParams.get('tarefa');
+  const comentariosParam = searchParams.get('comentarios');
+  const openFromLink = useCallback((id: number) => {
+    pendingTarefaId.current = null;
+    setFocusCommentsId(pendingFocusComments.current ? id : null);
+    pendingFocusComments.current = false;
+    setSelectedId(id);
+  }, []);
   useEffect(() => {
     if (!tarefaParam) return;
     const parsed = parseInt(tarefaParam, 10);
     if (!isNaN(parsed)) {
       pendingTarefaId.current = parsed;
+      // Read before the params are cleared below: this tick is the only one that sees it.
+      pendingFocusComments.current = comentariosParam === '1';
       setSearchParams({}, { replace: true });
       // Resolve immediately when the list is already loaded (deep link fired
-      // while the page is mounted, e.g. a notification click on /tarefas —
+      // while the page is mounted, e.g. a notification click on /tarefas:
       // the tarefas-keyed effect below would never re-run in that case).
-      if (tarefas.some((t) => t.id === parsed)) {
-        pendingTarefaId.current = null;
-        setSelectedId(parsed);
-      }
+      if (tarefas.some((t) => t.id === parsed)) openFromLink(parsed);
     }
-  }, [tarefaParam, setSearchParams, tarefas]);
+  }, [tarefaParam, comentariosParam, setSearchParams, tarefas, openFromLink]);
 
   useEffect(() => {
     if (pendingTarefaId.current === null || tarefas.length === 0) return;
     const match = tarefas.find((t) => t.id === pendingTarefaId.current);
-    if (match) {
-      pendingTarefaId.current = null;
-      setSelectedId(match.id!);
-    }
-  }, [tarefas]);
+    if (match) openFromLink(match.id!);
+  }, [tarefas, openFromLink]);
+
+  const closeDetail = () => {
+    setSelectedId(null);
+    setFocusCommentsId(null);
+  };
 
   const filteredTarefas = useMemo(
     () => applyTarefaKpi(applyTarefaFilters(scopedTarefas, filters), activeKpi, new Date()),
@@ -325,7 +341,7 @@ export default function TarefasPage() {
             open={selected != null}
             tarefa={detailTarefa}
             membros={membros}
-            onClose={() => setSelectedId(null)}
+            onClose={closeDetail}
             // The form opens over the detail screen, which stays put underneath.
             onEdit={() => openForm(detailTarefa)}
             onRefresh={refresh}
@@ -451,12 +467,13 @@ export default function TarefasPage() {
         <TarefaDetailSheet
           tarefa={selected}
           membros={membros}
-          onClose={() => setSelectedId(null)}
+          onClose={closeDetail}
           onEdit={() => {
-            setSelectedId(null);
+            closeDetail();
             openForm(selected);
           }}
           onRefresh={refresh}
+          focusComments={focusCommentsId === selected.id}
         />
       )}
     </div>

@@ -1,7 +1,7 @@
-import React from 'react';
-import { render, screen } from '@testing-library/react';
+import React, { useEffect } from 'react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { createMemoryRouter, MemoryRouter, RouterProvider } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -24,7 +24,20 @@ vi.mock('../../../store', () => ({
   toggleSubtarefa: vi.fn(),
   deleteSubtarefa: vi.fn(),
   addTarefaTag: vi.fn(),
+  getTarefaEventos: vi.fn().mockResolvedValue([]),
   getInitials: (nome: string) => nome.slice(0, 2).toUpperCase(),
+}));
+
+// The comments section has its own suite (TarefaComentarios.test.tsx). This stub records what
+// the real one acts on: a focus request each time `autoFocus` becomes true.
+const { commentFocusRequests } = vi.hoisted(() => ({ commentFocusRequests: [] as number[] }));
+vi.mock('../components/TarefaComentarios', () => ({
+  TarefaComentarios: ({ tarefaId, autoFocus }: { tarefaId: number; autoFocus?: boolean }) => {
+    useEffect(() => {
+      if (autoFocus) commentFocusRequests.push(tarefaId);
+    }, [autoFocus, tarefaId]);
+    return <section id="tarefa-comentarios" />;
+  },
 }));
 
 const { useAuthMock } = vi.hoisted(() => ({ useAuthMock: vi.fn() }));
@@ -55,6 +68,7 @@ function makeTarefa(overrides: Partial<TarefaWithRelations> = {}): TarefaWithRel
     tags: [],
     subtarefas_total: 0,
     subtarefas_concluidas: 0,
+    comentarios_total: 0,
     cliente_nome: null,
     cliente_cor: null,
     serie: null,
@@ -232,6 +246,17 @@ describe('TarefasPage', () => {
     expect(screen.getByText('Bruno')).toBeInTheDocument();
     expect(screen.getByText('Carla')).toBeInTheDocument();
   });
+  it('list rows show the comment count only when there are comments', async () => {
+    getTarefasMock.mockResolvedValue([
+      makeTarefa({ titulo: 'Com conversa', comentarios_total: 2 }),
+      makeTarefa({ titulo: 'Sem conversa', comentarios_total: 0 }),
+    ]);
+    renderPage();
+    await screen.findByText('Com conversa');
+    expect(screen.getAllByRole('img', { name: /comentário/ })).toHaveLength(1);
+    expect(screen.getByRole('img', { name: '2 comentários' })).toHaveTextContent('2');
+  });
+
   describe('KPI cards as filters', () => {
     const today = () => toDateOnlyString(new Date());
     const yesterday = () => {
@@ -336,6 +361,117 @@ describe('TarefasPage', () => {
       expect(
         screen.queryByText('Nenhuma tarefa aberta. Crie uma nova ou ajuste os filtros.'),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  describe('deep link', () => {
+    function renderRouted() {
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const router = createMemoryRouter(
+        [
+          {
+            path: '/tarefas',
+            element: (
+              <QueryClientProvider client={queryClient}>
+                <TarefasPage />
+              </QueryClientProvider>
+            ),
+          },
+        ],
+        { initialEntries: ['/tarefas'] },
+      );
+      const utils = render(<RouterProvider router={router} />);
+      return { ...utils, router, queryClient };
+    }
+
+    beforeEach(() => {
+      commentFocusRequests.length = 0;
+    });
+
+    it('deep_link_focuses_comments_once', async () => {
+      const ue = userEvent.setup();
+      const tarefa = makeTarefa({ titulo: 'Revisar legenda' });
+      getTarefasMock.mockResolvedValue([tarefa]);
+      const { router, queryClient } = renderRouted();
+      await screen.findByText('Revisar legenda');
+
+      // The page is already mounted (a notification click on /tarefas).
+      await act(() => router.navigate(`/tarefas?tarefa=${tarefa.id}&comentarios=1`));
+
+      expect(await screen.findByRole('dialog', { name: 'Revisar legenda' })).toBeInTheDocument();
+      await waitFor(() => expect(commentFocusRequests).toEqual([tarefa.id]));
+      await waitFor(() => expect(router.state.location.search).toBe(''));
+
+      // Later renders (a list refetch) do not ask again.
+      await act(() => queryClient.invalidateQueries({ queryKey: ['tarefas'] }));
+      await waitFor(() => expect(getTarefasMock).toHaveBeenCalledTimes(2));
+      expect(commentFocusRequests).toEqual([tarefa.id]);
+
+      // Closing and reopening the same task by hand opens it without the focus.
+      await ue.keyboard('{Escape}');
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      await ue.click(screen.getByText('Revisar legenda'));
+      expect(await screen.findByRole('dialog', { name: 'Revisar legenda' })).toBeInTheDocument();
+      expect(commentFocusRequests).toEqual([tarefa.id]);
+    });
+
+    it('switching to another task drops the deep-link focus, so coming back does not refocus', async () => {
+      const a = makeTarefa({ titulo: 'Tarefa do link' });
+      const b = makeTarefa({ titulo: 'Outra tarefa' });
+      getTarefasMock.mockResolvedValue([a, b]);
+      const { router } = renderRouted();
+      await screen.findByText('Outra tarefa');
+
+      await act(() => router.navigate(`/tarefas?tarefa=${a.id}&comentarios=1`));
+      expect(await screen.findByRole('dialog', { name: 'Tarefa do link' })).toBeInTheDocument();
+      await waitFor(() => expect(commentFocusRequests).toEqual([a.id]));
+
+      // Another task opens in the same mounted sheet (a card click behind it), then the
+      // linked one again: the link's focus was spent on the first open.
+      fireEvent.click(screen.getByText('Outra tarefa'));
+      expect(await screen.findByRole('dialog', { name: 'Outra tarefa' })).toBeInTheDocument();
+      fireEvent.click(screen.getAllByText('Tarefa do link')[0]);
+      expect(await screen.findByRole('dialog', { name: 'Tarefa do link' })).toBeInTheDocument();
+      expect(commentFocusRequests).toEqual([a.id]);
+    });
+
+    it('deep link without comentarios opens without focus', async () => {
+      const tarefa = makeTarefa({ titulo: 'Gravar reels' });
+      getTarefasMock.mockResolvedValue([tarefa]);
+      const { router } = renderRouted();
+      await screen.findByText('Gravar reels');
+
+      await act(() => router.navigate(`/tarefas?tarefa=${tarefa.id}`));
+
+      expect(await screen.findByRole('dialog', { name: 'Gravar reels' })).toBeInTheDocument();
+      await waitFor(() => expect(router.state.location.search).toBe(''));
+      expect(document.getElementById('tarefa-comentarios')).not.toBeNull();
+      expect(commentFocusRequests).toEqual([]);
+    });
+
+    it('a deep link opened before the list loads still focuses the comments', async () => {
+      let resolve!: (v: TarefaWithRelations[]) => void;
+      const tarefa = makeTarefa({ titulo: 'Aprovar arte' });
+      getTarefasMock.mockReturnValue(new Promise((r) => (resolve = r)));
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const router = createMemoryRouter(
+        [
+          {
+            path: '/tarefas',
+            element: (
+              <QueryClientProvider client={queryClient}>
+                <TarefasPage />
+              </QueryClientProvider>
+            ),
+          },
+        ],
+        { initialEntries: [`/tarefas?tarefa=${tarefa.id}&comentarios=1`] },
+      );
+      render(<RouterProvider router={router} />);
+      await act(async () => resolve([tarefa]));
+
+      expect(await screen.findByRole('dialog', { name: 'Aprovar arte' })).toBeInTheDocument();
+      await waitFor(() => expect(commentFocusRequests).toEqual([tarefa.id]));
     });
   });
 });

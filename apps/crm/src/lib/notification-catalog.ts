@@ -139,6 +139,14 @@ export const NOTIFICATION_CATALOG = {
     recipients: 'somente quem foi atribuído',
     emailEligible: true,
   },
+  task_comment: {
+    category: 'entregas_fluxo',
+    label: 'Comentário em uma tarefa',
+    when: 'alguém comenta em uma tarefa da qual você participa',
+    recipients:
+      'responsável, quem criou e quem já comentou, exceto quem escreveu e quem foi mencionado',
+    emailEligible: false,
+  },
   workflow_completed: {
     category: 'entregas_fluxo',
     label: 'Fluxo concluído',

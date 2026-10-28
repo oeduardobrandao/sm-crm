@@ -79,6 +79,7 @@ describe('AgentPendingSection', () => {
         tags: [],
         subtarefas_total: 0,
         subtarefas_concluidas: 0,
+        comentarios_total: 0,
         serie: null,
       },
       {
@@ -91,6 +92,7 @@ describe('AgentPendingSection', () => {
         tags: [],
         subtarefas_total: 0,
         subtarefas_concluidas: 0,
+        comentarios_total: 0,
         serie: null,
       },
     ]);

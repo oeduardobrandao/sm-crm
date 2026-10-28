@@ -72,6 +72,7 @@ function makeTarefa(overrides: Partial<TarefaWithRelations> = {}): TarefaWithRel
     tags: [],
     subtarefas_total: 0,
     subtarefas_concluidas: 0,
+    comentarios_total: 0,
     cliente_nome: null,
     cliente_cor: null,
     serie: null,
@@ -180,12 +181,14 @@ describe('CalendarView month chips', () => {
         tags: TAGS,
         subtarefas_total: 3,
         subtarefas_concluidas: 1,
+        comentarios_total: 3,
         serie: SERIE,
       }),
       { membros: [ANA] },
     );
     focusChip();
     const card = await screen.findByRole('tooltip');
+    expect(within(card).getByText('3 comentários')).toBeInTheDocument();
     expect(within(card).getByText('Clínica Sol')).toBeInTheDocument();
     expect(within(card).getByText('Ana Souza')).toBeInTheDocument();
     expect(within(card).getByText('Urgente')).toBeInTheDocument();
