@@ -18,6 +18,12 @@ declare
   v_cli bigint;
   v_doc uuid;
   v_tpl uuid;
+  v_content_201_s11 jsonb;
+  v_content_199_s13 jsonb;
+  f_geral bigint;
+  f_ig bigint;
+  v_links int;
+  v_rc int;
   v_fixtures jsonb;
   v_case jsonb;
   v_table text;
@@ -61,7 +67,24 @@ begin
   assert jsonb_array_length(v_with_markers) = 212, 'gerador: esperava 212 blocos';
   assert v_with_markers -> 0 ->> 'type' = 'section', 'gerador: primeiro bloco tem de ser seção';
 
+  -- Tetos exatos ALÉM do guarda de 212 entradas: os dois casos abaixo têm 212 entradas,
+  -- então só o FILTER de conteúdo (201 > 200) ou o de marcadores (13 > 12) os barra.
+  select jsonb_agg(e order by o) || '[{"id":"extra","type":"divider","size":"full"}]'::jsonb
+    into v_content_201_s11
+    from jsonb_array_elements(v_with_markers) with ordinality as t(e, o)
+   where e ->> 'id' <> 's11';
+  select jsonb_agg(e order by o) || '[{"id":"s12","type":"section","size":"full"}]'::jsonb
+    into v_content_199_s13
+    from jsonb_array_elements(v_with_markers) with ordinality as t(e, o)
+   where e ->> 'id' <> 'c199';
+  assert jsonb_array_length(v_content_201_s11) = 212, 'gerador: 201+11 tem de ter 212 entradas';
+  assert jsonb_array_length(v_content_199_s13) = 212, 'gerador: 199+13 tem de ter 212 entradas';
+
   v_generated := jsonb_build_array(
+    jsonb_build_object('name', 'generated: 201 content blocks + 11 markers (212 entries)',
+      'valid', false, 'layout', jsonb_build_object('version', 1, 'blocks', v_content_201_s11)),
+    jsonb_build_object('name', 'generated: 199 content blocks + 13 markers (212 entries)',
+      'valid', false, 'layout', jsonb_build_object('version', 1, 'blocks', v_content_199_s13)),
     jsonb_build_object('name', 'generated: legacy 200 content blocks', 'valid', true,
       'layout', jsonb_build_object('version', 1, 'blocks', v_content)),
     jsonb_build_object('name', 'generated: 200 content blocks + 12 Geral markers', 'valid', true,
@@ -103,6 +126,36 @@ begin
       v_n := v_n + 1;
     end loop;
   end loop;
+
+  -- Imagem preenchida dentro de seções (Geral e Instagram): o layout seccionado é aceito e
+  -- report_document_files_sync vincula os dois arquivos (mesmo setup de
+  -- 99_report_image_files.sql: PNG do próprio workspace, file_id + width + height).
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  insert into files (conta_id, r2_key, name, kind, mime_type, size_bytes, width, height)
+    values (v_ws, 'contas/'||v_ws||'/files/geral.png', 'geral.png', 'image', 'image/png', 100, 10, 10)
+    returning id into f_geral;
+  insert into files (conta_id, r2_key, name, kind, mime_type, size_bytes, width, height)
+    values (v_ws, 'contas/'||v_ws||'/files/ig.png', 'ig.png', 'image', 'image/png', 100, 10, 10)
+    returning id into f_ig;
+  update report_documents set layout = jsonb_build_object('version', 1, 'blocks', jsonb_build_array(
+      jsonb_build_object('id', 's_geral', 'type', 'section', 'size', 'full'),
+      jsonb_build_object('id', 'img_geral', 'type', 'image', 'size', 'full', 'config',
+        jsonb_build_object('file_id', f_geral, 'width', 10, 'height', 10)),
+      jsonb_build_object('id', 's_ig', 'type', 'section', 'size', 'full',
+        'config', '{"platform":"instagram"}'::jsonb),
+      jsonb_build_object('id', 'ig_reach', 'type', 'kpi_reach', 'size', 'third'),
+      jsonb_build_object('id', 'img_ig', 'type', 'image', 'size', 'half', 'config',
+        jsonb_build_object('file_id', f_ig, 'width', 10, 'height', 10))))
+   where id = v_doc;
+  get diagnostics v_rows = row_count;
+  assert v_rows = 1, 'layout seccionado com imagens deveria ser aceito';
+  select count(*) into v_links from report_document_files
+   where report_id = v_doc and file_id in (f_geral, f_ig);
+  assert v_links = 2, format('imagens em seções deveriam vincular 2 arquivos, got %s', v_links);
+  select reference_count into v_rc from files where id = f_geral;
+  assert v_rc = 1, format('reference_count da imagem na seção Geral deveria ser 1, got %s', v_rc);
+  select reference_count into v_rc from files where id = f_ig;
+  assert v_rc = 1, format('reference_count da imagem na seção Instagram deveria ser 1, got %s', v_rc);
 
   raise notice 'PASS 99_report_layout_sections (% casos)', v_n;
 end $$;
