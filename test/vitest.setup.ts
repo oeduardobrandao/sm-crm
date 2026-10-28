@@ -101,7 +101,11 @@ import enFinanceV2 from '../packages/i18n/locales/en/financeV2.json';
 import ptTeam from '../packages/i18n/locales/pt/team.json';
 import enTeam from '../packages/i18n/locales/en/team.json';
 import ptMember from '../packages/i18n/locales/pt/member.json';
+import ptIdeas from '../packages/i18n/locales/pt/ideas.json';
+import ptIdeaDrawer from '../packages/i18n/locales/pt/ideaDrawer.json';
 import enMember from '../packages/i18n/locales/en/member.json';
+import enIdeas from '../packages/i18n/locales/en/ideas.json';
+import enIdeaDrawer from '../packages/i18n/locales/en/ideaDrawer.json';
 
 initI18n({
   pt: {
@@ -139,6 +143,8 @@ initI18n({
     financeV2: ptFinanceV2,
     team: ptTeam,
     member: ptMember,
+    ideas: ptIdeas,
+    ideaDrawer: ptIdeaDrawer,
     hubHome: ptHubHome,
     hubPostCard: ptHubPostCard,
     hubPosts: ptHubPosts,
@@ -186,6 +192,8 @@ initI18n({
     financeV2: enFinanceV2,
     team: enTeam,
     member: enMember,
+    ideas: enIdeas,
+    ideaDrawer: enIdeaDrawer,
     hubHome: enHubHome,
     hubPostCard: enHubPostCard,
     hubPosts: enHubPosts,
