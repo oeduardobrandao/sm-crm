@@ -120,15 +120,34 @@ export function removeBlock(layout: ReportLayout, id: string): ReportLayout {
  * Id já presente = no-op com a MESMA referência (contrato do autosave). Em
  * layout seccionado, uma posição que poria o bloco antes da primeira seção ou
  * numa seção de outra plataforma (o layout mudou entre excluir e desfazer)
- * também é no-op, assim como MAX_BLOCKS já atingido. */
+ * também é no-op, assim como MAX_BLOCKS já atingido. Layout vazio (o bloco era
+ * o último e a seção dele saiu depois): o bloco volta numa seção nova, Geral se
+ * neutro, da plataforma dele se de plataforma, para o resultado seguir
+ * canônico. Legado não vazio mantém o splice puro (o editor nunca o produz: o
+ * layout chega por sectionizeLayout). */
 export function restoreBlock(
   layout: ReportLayout,
   block: ReportBlock,
   index: number,
+  makeId: () => string = () => crypto.randomUUID(),
 ): ReportLayout {
   if (isSectionMarker(block) || layout.blocks.some((b) => b.id === block.id)) return layout;
   // Excluir no limite, inserir outro e desfazer daria MAX_BLOCKS + 1 (o autosave recusa).
   if (contentBlockCount(layout) >= MAX_BLOCKS) return layout;
+  if (layout.blocks.length === 0) {
+    const kind: SectionKind = blockPlatform(block.type) ?? 'general';
+    return fromSections(
+      [
+        {
+          marker: makeSectionMarker(kind, { id: makeId() }),
+          kind,
+          blocks: [block],
+          synthesized: false,
+        },
+      ],
+      layout,
+    );
+  }
   const at = Math.min(Math.max(index, 0), layout.blocks.length);
   if (isSectioned(layout)) {
     const owner = ownerMarkerIndex(layout.blocks, at);
@@ -151,7 +170,7 @@ function newBlock(type: BlockType, id: string): ReportBlock {
   const block: ReportBlock = { id, type, size: DEFAULT_SIZE[type] ?? 'full' };
   if (type === 'top_posts') block.config = { count: 6 };
   if (type === 'post_list') block.config = { count: 12 };
-  if (type === 'section_header') block.config = { title: 'Nova seção' };
+  if (type === 'section_header') block.config = { title: 'Novo subtítulo' };
   if (TEXT_BLOCK_TYPES.includes(type)) block.text = structuredClone(EMPTY_TEXT_DOC);
   return block;
 }

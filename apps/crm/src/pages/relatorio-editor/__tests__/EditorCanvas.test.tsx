@@ -331,9 +331,10 @@ describe('EditorCanvas: seções', () => {
 
   it('nenhum selo de plataforma por bloco (a seção já diz)', () => {
     const { container } = renderSectioned();
-    expect(container.querySelector('.rb-platform-badge')).toBeNull();
     const tv = container.querySelector('[data-block-id="tv"]') as HTMLElement;
     expect(within(tv).queryByText('TikTok')).not.toBeInTheDocument();
+    const r = container.querySelector('[data-block-id="r"]') as HTMLElement;
+    expect(within(r).queryByText('Instagram')).not.toBeInTheDocument();
   });
 
   it('"Adicionar widget" do rodapé abre o drawer com o alvo da seção', () => {

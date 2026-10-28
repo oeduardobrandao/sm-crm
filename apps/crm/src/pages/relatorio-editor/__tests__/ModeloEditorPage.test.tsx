@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ReportLayout } from '@mesaas/report-blocks/types';
+import { validateLayout, type ReportLayout } from '@mesaas/report-blocks/types';
 import { platformSectionBlocks } from '../../../../../../supabase/functions/_shared/report-docs/default-layout.ts';
 
 const { getReportTemplateMock, updateReportTemplateMock } = vi.hoisted(() => ({
@@ -113,6 +113,32 @@ describe('ModeloEditorPage', () => {
     await screen.findByDisplayValue('Mensal completo');
     expect(cellIdsIn(region('Geral'))).toEqual(['c', 'ai']);
     expect(updateReportTemplateMock).not.toHaveBeenCalled();
+  });
+
+  // O 1º autosave de um modelo legado grava a forma seccionada (o editor
+  // trabalha sobre sectionizeLayout): o payload tem marcadores e é válido.
+  it('modelo legado: o 1º autosave depois de uma edição grava o layout seccionado e válido', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderAt();
+      await screen.findByDisplayValue('Mensal completo');
+      fireEvent.click(screen.getByRole('button', { name: 'Adicionar widget' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Divisor de página' }));
+      await act(async () => {
+        vi.advanceTimersByTime(1600);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      const call = updateReportTemplateMock.mock.calls.find((c) => c[1]?.layout);
+      expect(call?.[0]).toBe('tpl-1');
+      const saved = call![1].layout as ReportLayout;
+      expect(saved.blocks[0]).toMatchObject({ type: 'section' });
+      expect(saved.blocks.map((b) => b.id).slice(1, 3)).toEqual(['c', 'ai']);
+      expect(saved.blocks.at(-1)?.type).toBe('divider');
+      expect(validateLayout(saved)).toMatchObject({ ok: true });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // TikTok só existe com feature_tiktok: sem a flag (ou com o plano ainda sem

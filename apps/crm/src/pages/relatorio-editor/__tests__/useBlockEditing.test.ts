@@ -1,8 +1,8 @@
 import { act, renderHook } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { validateLayout, type ReportLayout } from '@mesaas/report-blocks/types';
-import { addSection } from '../layoutOps';
+import { addSection, removeSection } from '../layoutOps';
 import { useBlockEditing } from '../useBlockEditing';
 
 vi.mock('sonner', () => ({
@@ -96,6 +96,45 @@ const lastToastAction = () => {
   const calls = vi.mocked(toast).mock.calls;
   return (calls[calls.length - 1][1] as unknown as ToastAction).action;
 };
+
+describe('useBlockEditing: desfazer exclusão de bloco', () => {
+  beforeEach(() => vi.mocked(toast.info).mockClear());
+
+  it('"Desfazer" devolve o bloco no mesmo lugar', () => {
+    const original = sectioned();
+    const { result, layoutRef } = setup(original);
+    act(() => result.current.handleRemoveBlock('r'));
+    act(() => lastToastAction().onClick());
+    expect(layoutRef.current).toEqual(original);
+    expect(toast.info).not.toHaveBeenCalled();
+  });
+
+  it('posição que agora é de outra seção: avisa em vez de não fazer nada', () => {
+    const { result, layoutRef, applyLayout } = setup(sectioned());
+    act(() => result.current.handleRemoveBlock('r'));
+    const undo = lastToastAction();
+    // A seção do Instagram sai antes do desfazer: o índice cai na do TikTok.
+    layoutRef.current = removeSection(layoutRef.current, 'ig');
+    applyLayout.mockClear();
+    act(() => undo.onClick());
+    expect(applyLayout).not.toHaveBeenCalled();
+    expect(toast.info).toHaveBeenCalledWith(
+      'Não deu para desfazer: o widget não cabe mais nessa posição.',
+    );
+  });
+
+  it('bloco já de volta (Ctrl+Z antes do toast): nada aplicado, sem aviso', () => {
+    const original = sectioned();
+    const { result, layoutRef, applyLayout } = setup(original);
+    act(() => result.current.handleRemoveBlock('r'));
+    const undo = lastToastAction();
+    layoutRef.current = original;
+    applyLayout.mockClear();
+    act(() => undo.onClick());
+    expect(applyLayout).not.toHaveBeenCalled();
+    expect(toast.info).not.toHaveBeenCalled();
+  });
+});
 
 describe('useBlockEditing: remover seção com desfazer', () => {
   it('remove a seção e os blocos; "Desfazer" devolve no mesmo lugar (deep-equal)', () => {

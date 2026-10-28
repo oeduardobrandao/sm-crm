@@ -2,8 +2,9 @@
 // Na geração o modelo é lido em seções (o legado é convertido): a seção de uma plataforma
 // desmarcada (ou sem dados) sai inteira, com subtítulos e textos; e, só se o modelo tem alguma
 // seção de plataforma, cada plataforma escolhida (com dados) que ele não cobre ganha a seção
-// padrão dela logo depois da última seção de plataforma do modelo. Os modelos são semeados só
-// com Instagram, então sem isso um relatório só TikTok a partir do modelo padrão sairia vazio.
+// padrão dela logo depois da última seção de plataforma do modelo. Um modelo do workspace
+// costuma nascer do "Duplicar para editar" do padrão do sistema (buildSystemDefaultLayout), que
+// só tem Instagram, então sem isso um relatório só TikTok a partir dele sairia vazio.
 // O que o modelo já cobre nunca é reescrito. TS PURO (Deno e Vite).
 import { platformSectionBlocks, type PlatformSectionOpts } from "./default-layout.ts";
 import { MAX_BLOCKS, MAX_SECTIONS, type ReportLayout } from "./layout.ts";

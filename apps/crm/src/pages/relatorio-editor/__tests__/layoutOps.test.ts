@@ -27,6 +27,7 @@ import {
 import {
   MAX_BLOCKS,
   MAX_SECTIONS,
+  sectionizeLayout,
   toSections,
   validateLayout,
   type ReportBlock,
@@ -134,7 +135,7 @@ describe('insertBlock', () => {
   });
   it('section_header entra com config.title vazio editável', () => {
     const sh = insertBlock(layout(), 'section_header', () => 's').layout.blocks.at(-1)!;
-    expect(sh.config).toEqual({ title: 'Nova seção' });
+    expect(sh.config).toEqual({ title: 'Novo subtítulo' });
   });
   it('todo insert produz layout que passa no validateLayout', () => {
     const { layout: next } = insertBlock(layout(), 'audience_gender');
@@ -364,7 +365,7 @@ describe('insertBlockInSection', () => {
       id: 's',
       type: 'section_header',
       size: 'full',
-      config: { title: 'Nova seção' },
+      config: { title: 'Novo subtítulo' },
     });
     expectValid(next);
     expectValid(sh);
@@ -676,6 +677,39 @@ describe('ops de bloco em layout seccionado', () => {
     expect(restoreBlock(removed, r, 1)).toBe(removed); // dentro da Geral
     expect(restoreBlock(removed, r, 99)).toBe(removed); // fim = seção TikTok
     expect(restoreBlock(removed, { id: 'z', type: 'section', size: 'full' }, 2)).toBe(removed);
+  });
+
+  // Excluir o último bloco, remover a seção que ficou vazia e então "Desfazer"
+  // no toast do bloco: o layout está vazio e o bloco volta numa seção nova,
+  // canônica (sem isso entrava sem marcador e o editor caía em legado).
+  it.each([
+    ['de plataforma (Instagram)', 'instagram', { id: 'r', type: 'kpi_reach', size: 'third' }],
+    ['de plataforma (TikTok)', 'tiktok', { id: 'r', type: 'tiktok_kpi_views', size: 'third' }],
+    ['neutro', 'general', { id: 'r', type: 'cover', size: 'full' }],
+  ] as const)('restoreBlock em layout vazio: bloco %s volta numa seção nova', (_l, kind, b) => {
+    const block: ReportBlock = { ...b };
+    const start: ReportLayout = {
+      version: 1,
+      accent: '#0f766e',
+      blocks: [
+        kind === 'general'
+          ? { id: 's', type: 'section', size: 'full' }
+          : { id: 's', type: 'section', size: 'full', config: { platform: kind } },
+        block,
+      ],
+    };
+    const empty = removeSection(removeBlock(start, 'r'), 's');
+    expect(empty.blocks).toEqual([]);
+    const back = restoreBlock(empty, block, 1, counter('m'));
+    expect(back.blocks).toEqual([
+      kind === 'general'
+        ? { id: 'm1', type: 'section', size: 'full' }
+        : { id: 'm1', type: 'section', size: 'full', config: { platform: kind } },
+      block,
+    ]);
+    expect(back.accent).toBe('#0f766e');
+    expect(sectionizeLayout(back)).toBe(back);
+    expectValid(back);
   });
 });
 

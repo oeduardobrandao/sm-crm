@@ -68,7 +68,18 @@ export function useBlockEditing(
     toast('Bloco excluído.', {
       action: {
         label: 'Desfazer',
-        onClick: () => applyLayout(restoreBlock(layoutRef.current, block, idx)),
+        onClick: () => {
+          const now = layoutRef.current;
+          // Já voltou (Ctrl+Z antes do toast): nada a fazer nem a avisar.
+          if (now.blocks.some((b) => b.id === block.id)) return;
+          const restored = restoreBlock(now, block, idx);
+          if (restored !== now) {
+            applyLayout(restored);
+            return;
+          }
+          // Limite de widgets, ou a posição agora é de outra seção.
+          toast.info('Não deu para desfazer: o widget não cabe mais nessa posição.');
+        },
       },
     });
   }
