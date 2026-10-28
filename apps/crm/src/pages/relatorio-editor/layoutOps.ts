@@ -312,6 +312,26 @@ export function reorderSections(
   return fromSections(next, layout);
 }
 
+/** Fim de um arraste no canvas ou nas camadas. Marcador ativo = seção: o alvo
+ * vira a seção dona dele (o closestCenter costuma cair num bloco dentro do
+ * frame, não no frame), e as seções reordenam. Bloco ativo = moveBlock, que já
+ * recusa outra seção e marcador. Nada a fazer = MESMA referência. */
+export function resolveDragEnd(
+  layout: ReportLayout,
+  activeId: string,
+  overId: string,
+): ReportLayout {
+  if (activeId === overId) return layout;
+  const active = layout.blocks.find((b) => b.id === activeId);
+  if (!active) return layout;
+  if (!isSectionMarker(active)) return moveBlock(layout, activeId, overId);
+  const idx = layout.blocks.findIndex((b) => b.id === overId);
+  if (idx < 0) return layout;
+  const owner = isSectionMarker(layout.blocks[idx]) ? idx : ownerMarkerIndex(layout.blocks, idx);
+  if (owner < 0) return layout;
+  return reorderSections(layout, activeId, layout.blocks[owner].id);
+}
+
 /** Título e "Ocultar título" da seção. `title`: trim; `""`/`null` remove a
  * chave; acima de SECTION_TITLE_MAX = rejeitado (MESMA referência).
  * `hideHeader`: true só em seção de plataforma (Geral = rejeitado), false

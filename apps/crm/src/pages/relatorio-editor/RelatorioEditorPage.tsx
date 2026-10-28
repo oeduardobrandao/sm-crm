@@ -1,6 +1,6 @@
 // PR 2: o editor do relatório de blocos. Canvas dnd + drawer + TipTap +
 // autosave. View/print continuam no BlockRenderer do pacote (Hub, PR 3).
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, MoreHorizontal, Plus } from 'lucide-react';
@@ -14,8 +14,13 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Spinner } from '@/components/ui/spinner';
 import { DocSkeleton } from '@/components/ui/skeletons';
-import type { ReportBlock } from '@mesaas/report-blocks/types';
+import type { ReportBlock, ReportDocSnapshot } from '@mesaas/report-blocks/types';
+import { sectionizeLayout, toSections } from '@mesaas/report-blocks/types';
 import '@mesaas/report-blocks/styles.css';
+import {
+  platformSectionBlocks,
+  type PlatformSectionOpts,
+} from '../../../../../supabase/functions/_shared/report-docs/default-layout.ts';
 import {
   exportReportPdf,
   getReportDoc,
@@ -36,23 +41,51 @@ import { LayersPanel } from './LayersPanel';
 import { SaveTemplateDialog } from './SaveTemplateDialog';
 import { ApplyTemplateDialog } from './ApplyTemplateDialog';
 import { AppearancePopover } from './AppearancePopover';
-import { moveBlock, normalizeCoverSize, updateBlockConfig, updateBlockText } from './layoutOps';
+import {
+  normalizeCoverSize,
+  resolveDragEnd,
+  updateBlockConfig,
+  updateBlockText,
+  updateSectionConfig,
+} from './layoutOps';
 import { applyTemplateLayout, layoutHasFilledImage } from './templateOps';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
 import { ReportExportBar, ReportPhoneView } from './phone/ReportPhoneView';
 import { compactHubToken } from '@/lib/hubLinks';
 
+/** Opções da seção padrão de uma plataforma a partir do snapshot, as mesmas
+ * do generate (report-docs/generate.ts). */
+function snapshotSectionOpts(snapshot: ReportDocSnapshot): PlatformSectionOpts {
+  return {
+    hasAudience: snapshot.audience !== null,
+    hasBestTimes: snapshot.best_times.length > 0,
+    hasTags: snapshot.tags_performance.length > 0,
+    hasTikTokBestTimes: (snapshot.tiktok?.best_times.length ?? 0) > 0,
+  };
+}
+
 function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   const qc = useQueryClient();
   const snapshot = doc.data_snapshot!;
+  const { features } = useWorkspaceLimits();
+  // TikTok só com a flag (fail closed enquanto o plano não respondeu).
+  const tiktokEnabled = features?.feature_tiktok === true;
+  // Defesa contra um layout persistido com um cover de size != full (achado de
+  // review externo 2026-08-25): corrige em memória ANTES do estado inicial do
+  // autosave existir. Sem isso, a primeira edição seguinte (de QUALQUER bloco)
+  // trava o autosave pra sempre -- validateLayout rejeita o layout inteiro e
+  // não há retry para esse caso. Pelo mesmo motivo o layout entra seccionado
+  // (spec 2026-10-28-report-platform-sections): um documento legado abre com as
+  // seções e a primeira gravação já leva os marcadores. Canônico = mesma ref,
+  // então abrir não grava nada.
+  const initialLayout = useMemo(
+    () => sectionizeLayout(normalizeCoverSize(doc.layout)),
+    [doc.layout],
+  );
   const { layout, applyLayout, title, setTitle, saving } = useLayoutAutosave(doc.id, {
-    // Defesa contra um layout persistido com um cover de size != full (achado de
-    // review externo 2026-08-25): corrige em memória ANTES do estado inicial do
-    // autosave existir. Sem isso, a primeira edição seguinte (de QUALQUER bloco)
-    // trava o autosave pra sempre -- validateLayout rejeita o layout inteiro e
-    // não há retry para esse caso.
-    layout: normalizeCoverSize(doc.layout),
+    layout: initialLayout,
     title: doc.title,
   });
   // renderTextBlock/insert leem o layout por ref: o closure do canvas pode ser
@@ -68,10 +101,16 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
     setDrawerOpen,
     highlightId,
     highlightAndScroll,
+    insertTarget,
     openWidgetDrawer,
     handleInsert,
     handleRemoveBlock,
+    handleRemoveSection,
+    handleAddSection,
   } = useBlockEditing(layoutRef, commit);
+  const drawerSection = insertTarget
+    ? (toSections(layout).find((s) => s.marker.id === insertTarget.sectionId) ?? null)
+    : null;
 
   const [saveTplOpen, setSaveTplOpen] = useState(false);
   const [applyTplOpen, setApplyTplOpen] = useState(false);
@@ -307,6 +346,20 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
         }
         highlightId={highlightId}
         imageContext={{ mode: 'report', clientId: doc.client_id }}
+        tiktokEnabled={tiktokEnabled}
+        availablePlatforms={documentPlatforms(snapshot)}
+        onAddWidget={openWidgetDrawer}
+        onAddSection={(kind, afterId) =>
+          handleAddSection(
+            kind,
+            afterId,
+            kind === 'general' ? [] : platformSectionBlocks(kind, snapshotSectionOpts(snapshot)),
+          )
+        }
+        onRemoveSection={handleRemoveSection}
+        onSectionConfigChange={(id, patch) =>
+          commit(updateSectionConfig(layoutRef.current, id, patch), configCoalesceKey(id, patch))
+        }
         renderTextBlock={(block: ReportBlock) => (
           <TextBlockEditor
             key={block.id}
@@ -321,19 +374,20 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
       <LayersPanel
         layout={layout}
         highlightId={highlightId}
-        onReorder={(activeId, overId) => commit(moveBlock(layoutRef.current, activeId, overId))}
+        tiktokEnabled={tiktokEnabled}
+        onReorder={(activeId, overId) =>
+          commit(resolveDragEnd(layoutRef.current, activeId, overId))
+        }
         onLocate={highlightAndScroll}
-        // Ponto de inserção por índice plano: até o painel virar árvore de seções
-        // (Task 6) o widget entra no fim, na última seção que aceita o tipo.
-        onAddAt={() => openWidgetDrawer(null)}
-        onAddEnd={() => openWidgetDrawer(null)}
+        onAddAt={openWidgetDrawer}
       />
 
       <AddWidgetDrawer
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
         onInsert={handleInsert}
-        platforms={documentPlatforms(snapshot)}
+        section={drawerSection}
+        hasCover={layout.blocks.some((b) => b.type === 'cover')}
       />
       <SaveTemplateDialog
         open={saveTplOpen}

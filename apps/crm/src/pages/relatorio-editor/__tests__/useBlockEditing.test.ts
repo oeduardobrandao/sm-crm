@@ -1,9 +1,13 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { validateLayout, type ReportLayout } from '@mesaas/report-blocks/types';
+import { addSection } from '../layoutOps';
 import { useBlockEditing } from '../useBlockEditing';
 
-vi.mock('sonner', () => ({ toast: vi.fn() }));
+vi.mock('sonner', () => ({
+  toast: Object.assign(vi.fn(), { info: vi.fn(), error: vi.fn(), success: vi.fn() }),
+}));
 
 const sectioned = (): ReportLayout => ({
   version: 1,
@@ -83,6 +87,80 @@ describe('useBlockEditing: excluir', () => {
     const { result, layoutRef } = setup(sectioned());
     act(() => result.current.handleRemoveBlock('r'));
     expect(layoutRef.current.blocks.map((b) => b.id)).toEqual(['g', 'ig', 'tt', 'tv']);
+    expect(validateLayout(layoutRef.current)).toMatchObject({ ok: true });
+  });
+});
+
+type ToastAction = { action: { label: string; onClick: () => void } };
+const lastToastAction = () => {
+  const calls = vi.mocked(toast).mock.calls;
+  return (calls[calls.length - 1][1] as unknown as ToastAction).action;
+};
+
+describe('useBlockEditing: remover seção com desfazer', () => {
+  it('remove a seção e os blocos; "Desfazer" devolve no mesmo lugar (deep-equal)', () => {
+    const original = sectioned();
+    const { result, layoutRef } = setup(original);
+    act(() => result.current.handleRemoveSection('ig'));
+    expect(layoutRef.current.blocks.map((b) => b.id)).toEqual(['g', 'tt', 'tv']);
+    expect(validateLayout(layoutRef.current)).toMatchObject({ ok: true });
+    expect(toast).toHaveBeenCalledWith(
+      'Seção removida.',
+      expect.objectContaining({ action: expect.objectContaining({ label: 'Desfazer' }) }),
+    );
+    act(() => lastToastAction().onClick());
+    expect(layoutRef.current).toEqual(original);
+  });
+
+  it('desfazer depois de recriar a mesma plataforma: avisa em vez de não fazer nada', () => {
+    const { result, layoutRef, applyLayout } = setup(sectioned());
+    act(() => result.current.handleRemoveSection('tt'));
+    const undo = lastToastAction();
+    // Outra seção do TikTok entra antes do desfazer.
+    layoutRef.current = addSection(layoutRef.current, 'tiktok', null);
+    applyLayout.mockClear();
+    act(() => undo.onClick());
+    expect(applyLayout).not.toHaveBeenCalled();
+    expect(toast.info).toHaveBeenCalledWith(
+      'Não deu para desfazer: já existe uma seção do TikTok.',
+    );
+  });
+
+  it('id desconhecido ou de bloco: nada acontece', () => {
+    const { result, applyLayout } = setup(sectioned());
+    act(() => result.current.handleRemoveSection('r'));
+    act(() => result.current.handleRemoveSection('nope'));
+    expect(applyLayout).not.toHaveBeenCalled();
+  });
+});
+
+describe('useBlockEditing: adicionar seção', () => {
+  it('entra depois da âncora com os blocos dados e o cabeçalho é destacado', () => {
+    const { result, layoutRef } = setup(sectioned());
+    act(() =>
+      result.current.handleAddSection('general', 'g', [{ id: 'tx', type: 'text', size: 'full' }]),
+    );
+    const blocks = layoutRef.current.blocks;
+    expect(blocks[1].type).toBe('section');
+    expect(blocks[2].id).toBe('tx');
+    expect(result.current.highlightId).toBe(blocks[1].id);
+    expect(validateLayout(layoutRef.current)).toMatchObject({ ok: true });
+  });
+
+  it('recusada (plataforma repetida): nada aplicado e um aviso', () => {
+    const { result, applyLayout } = setup(sectioned());
+    act(() => result.current.handleAddSection('tiktok', null, []));
+    expect(applyLayout).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalled();
+  });
+});
+
+describe('useBlockEditing: layout vazio', () => {
+  it('inserir sem alvo num layout vazio cria a seção Geral primeiro', () => {
+    const { result, layoutRef } = setup({ version: 1, blocks: [] });
+    act(() => result.current.openWidgetDrawer(null));
+    act(() => result.current.handleInsert('text'));
+    expect(layoutRef.current.blocks.map((b) => b.type)).toEqual(['section', 'text']);
     expect(validateLayout(layoutRef.current)).toMatchObject({ ok: true });
   });
 });

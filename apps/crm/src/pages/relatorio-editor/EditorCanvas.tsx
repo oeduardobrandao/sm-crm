@@ -1,9 +1,10 @@
-// Canvas de edição do relatório de blocos: o MESMO grid/widgets do pacote, com
-// células sortable (dnd-kit) e toolbar de chrome por bloco. O BlockRenderer do
-// pacote fica para view/print; aqui as células nunca colapsam (rb-mode-edit).
+// Canvas de edição do relatório de blocos, por seção (spec 2026-10-28-report-platform-sections
+// §Editor): um frame por seção (SectionFrame), cada um com o próprio grid do pacote e células
+// sortable (dnd-kit). Uma lista sortable de seções por fora (arraste pela barra da seção) e
+// uma por seção por dentro; o fim do arraste passa por resolveDragEnd, que só reordena
+// blocos dentro da seção e seções entre si. O BlockRenderer do pacote fica para view/print.
 import type { CSSProperties, ReactNode } from 'react';
-import { useState } from 'react';
-import { GripVertical, Minus, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { Fragment, useMemo, useState } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -17,192 +18,39 @@ import {
 } from '@dnd-kit/core';
 import {
   SortableContext,
-  rectSortingStrategy,
   sortableKeyboardCoordinates,
-  useSortable,
+  verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import { BLOCK_COMPONENTS, SIZE_CLASS } from '@mesaas/report-blocks/BlockRenderer';
+import { PanelTop } from 'lucide-react';
+import { BLOCK_COMPONENTS } from '@mesaas/report-blocks/BlockRenderer';
+import { PlatformIcon } from '@mesaas/report-blocks/PlatformIcon';
 import { ReportFonts } from '@mesaas/report-blocks/ReportFonts';
 import { resolveReportTheme } from '@mesaas/report-blocks/theme';
-import { WIDGET_CATALOG } from '@mesaas/report-blocks/catalog';
-import { blockHasData } from '@mesaas/report-blocks/data-presence';
 import { layoutPlatforms, type ReportPlatform } from '@mesaas/report-blocks/platform';
 import type {
-  BlockSize,
-  BlockType,
   ReportBlock,
   ReportDocSnapshot,
   ReportLayout,
+  SectionKind,
 } from '@mesaas/report-blocks/types';
-import { TEXT_BLOCK_TYPES } from '@mesaas/report-blocks/types';
-import { moveBlock, removeBlock, resizeBlock, setBlockSize } from './layoutOps';
-import { CoverEditor } from './CoverEditor';
-import { PlatformBadge } from './PlatformBadge';
-import { SectionHeaderEditor } from './SectionHeaderEditor';
+import { isSectionMarker, toSections } from '@mesaas/report-blocks/types';
 import {
-  IMAGE_SETTINGS_TOGGLE_ATTR,
-  ImageBlockEditor,
-  type ImageEditorContext,
-} from './ImageBlockEditor';
-
-// Placeholder do modo edição para widget sem dado no snapshot: a view/print
-// omite o bloco (guard de cada widget), mas no editor uma célula vazia parece
-// bug e esconde o próprio widget que o usuário acabou de adicionar.
-function NoDataPlaceholder({ type }: { type: BlockType }) {
-  const label = WIDGET_CATALOG.find((w) => w.type === type)?.label ?? type;
-  return (
-    <div className="rb-edit-nodata">
-      <p className="rb-edit-nodata-title">{label}</p>
-      <p className="rb-edit-nodata-hint">
-        Sem dados neste período. Este widget não aparece na visão do cliente; use Atualizar dados se
-        a conta tiver sincronizado depois da geração.
-      </p>
-    </div>
-  );
-}
-
-interface SortableCellProps {
-  block: ReportBlock;
-  snapshot: ReportDocSnapshot;
-  highlighted: boolean;
-  onResize: (delta: 1 | -1) => void;
-  onRemove: () => void;
-  renderTextBlock?: (block: ReportBlock) => ReactNode;
-  onConfigChange?: (id: string, patch: Record<string, unknown>) => void;
-  imageContext?: ImageEditorContext;
-  onSizeChange: (size: BlockSize) => void;
-  /** Plataformas do layout (capa: kicker e handle), calculadas uma vez no canvas. */
-  platforms: ReportPlatform[];
-}
-
-function SortableCell({
-  block,
-  snapshot,
-  platforms,
-  highlighted,
-  onResize,
-  onRemove,
-  renderTextBlock,
-  onConfigChange,
-  imageContext,
-  onSizeChange,
-}: SortableCellProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: block.id,
-  });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
-  // hasOwnProperty (não Object.hasOwn: fora do lib target ES2021 do
-  // tsconfig) evita que um block.type tipo "__proto__" ou "constructor"
-  // resolva para um valor herdado de Object.prototype (truthy, mas não um
-  // componente) e derrube o React ao renderizar.
-  const Component = Object.prototype.hasOwnProperty.call(BLOCK_COMPONENTS, block.type)
-    ? BLOCK_COMPONENTS[block.type]
-    : undefined;
-  const isText = TEXT_BLOCK_TYPES.includes(block.type);
-  const [imgSettingsOpen, setImgSettingsOpen] = useState(false);
-  // Sem contexto (ou sem onConfigChange) o bloco Imagem renderiza como na view.
-  const imageEditing =
-    block.type === 'image' && onConfigChange && imageContext
-      ? { onConfigChange, context: imageContext }
-      : null;
-  const body =
-    isText && renderTextBlock ? (
-      renderTextBlock(block)
-    ) : block.type === 'cover' && onConfigChange ? (
-      <CoverEditor
-        block={block}
-        snapshot={snapshot}
-        onConfigChange={onConfigChange}
-        layoutPlatforms={platforms}
-      />
-    ) : imageEditing ? (
-      <ImageBlockEditor
-        block={block}
-        snapshot={snapshot}
-        context={imageEditing.context}
-        onConfigChange={imageEditing.onConfigChange}
-        onSizeChange={onSizeChange}
-        settingsOpen={imgSettingsOpen}
-        onSettingsOpenChange={setImgSettingsOpen}
-      />
-    ) : block.type === 'section_header' && onConfigChange ? (
-      <SectionHeaderEditor block={block} onConfigChange={onConfigChange} />
-    ) : Component && !blockHasData(block, snapshot) ? (
-      <NoDataPlaceholder type={block.type} />
-    ) : Component ? (
-      <Component block={block} snapshot={snapshot} layoutPlatforms={platforms} />
-    ) : null;
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      data-block-id={block.id}
-      className={`${block.type === 'cover' ? 'rb-full' : (SIZE_CLASS[block.size] ?? 'rb-full')} rb-edit-cell${highlighted ? ' rb-edit-highlight' : ''}`}
-    >
-      <PlatformBadge type={block.type} floating />
-      <div className="rb-edit-toolbar">
-        <button
-          type="button"
-          className="rb-edit-btn cursor-grab touch-none"
-          aria-label="Reordenar bloco"
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="h-3.5 w-3.5" />
-        </button>
-        {block.type !== 'cover' && (
-          <>
-            <button
-              type="button"
-              className="rb-edit-btn"
-              aria-label="Diminuir largura"
-              onClick={() => onResize(-1)}
-            >
-              <Minus className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              className="rb-edit-btn"
-              aria-label="Aumentar largura"
-              onClick={() => onResize(1)}
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </button>
-            {imageEditing && (
-              <button
-                type="button"
-                className="rb-edit-btn"
-                aria-label="Ajustes da imagem"
-                aria-pressed={imgSettingsOpen}
-                {...{ [IMAGE_SETTINGS_TOGGLE_ATTR]: block.id }}
-                onClick={() => setImgSettingsOpen((v) => !v)}
-              >
-                <SlidersHorizontal className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </>
-        )}
-        <button
-          type="button"
-          className="rb-edit-btn rb-edit-btn-danger"
-          aria-label="Excluir bloco"
-          onClick={onRemove}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
-      </div>
-      <div className="rb-edit-body">{body}</div>
-    </div>
-  );
-}
+  moveSection,
+  removeBlock,
+  removeSection,
+  resizeBlock,
+  resolveDragEnd,
+  setBlockSize,
+  updateSectionConfig,
+} from './layoutOps';
+import type { ImageEditorContext } from './ImageBlockEditor';
+import type { InsertTarget } from './useBlockEditing';
+import { AddSectionMenu } from './AddSectionMenu';
+import { SECTIONS_GROUP, SectionFrame, type CellEditing } from './SectionFrame';
+import { sectionDisplayName } from './SectionFrameHeader';
 
 export interface EditorCanvasProps {
+  /** Layout canônico (as páginas rodam sectionizeLayout ao abrir). */
   layout: ReportLayout;
   snapshot: ReportDocSnapshot;
   onChange: (next: ReportLayout) => void;
@@ -215,6 +63,19 @@ export interface EditorCanvasProps {
   onConfigChange?: (id: string, patch: Record<string, unknown>) => void;
   /** Habilita o editor do bloco Imagem; ausente = bloco renderiza como na view. */
   imageContext?: ImageEditorContext;
+  /** feature_tiktok do workspace: sem ela, nada de TikTok entra (a seção que
+   * já existe renderiza e sai, mas sem "Adicionar widget"). Fail closed. */
+  tiktokEnabled?: boolean;
+  /** Plataformas com dados: "all" no modelo; relatório = documentPlatforms(snapshot). */
+  availablePlatforms?: ReportPlatform[] | 'all';
+  /** "Adicionar widget" no rodapé da seção; ausente = sem o botão. */
+  onAddWidget?: (target: InsertTarget) => void;
+  /** "Adicionar seção" depois de `afterSectionId` (null = layout vazio); ausente = sem menu. */
+  onAddSection?: (kind: SectionKind, afterSectionId: string | null) => void;
+  /** Ausente = onChange com a seção removida. Presente = o chamador assume (desfazer). */
+  onRemoveSection?: (id: string) => void;
+  /** Título da seção (o chamador agrupa a digitação no histórico). Ausente = onChange. */
+  onSectionConfigChange?: (id: string, patch: { title: string }) => void;
 }
 
 export function EditorCanvas({
@@ -226,6 +87,12 @@ export function EditorCanvas({
   onRemoveBlock,
   onConfigChange,
   imageContext,
+  tiktokEnabled = false,
+  availablePlatforms = 'all',
+  onAddWidget,
+  onAddSection,
+  onRemoveSection,
+  onSectionConfigChange,
 }: EditorCanvasProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -234,6 +101,22 @@ export function EditorCanvas({
   const [activeId, setActiveId] = useState<string | null>(null);
   const theme = resolveReportTheme(layout, snapshot);
   const platforms = layoutPlatforms(layout);
+  // Memo por layout: num layout legado (só testes; as páginas seccionam ao
+  // abrir) os marcadores sintetizados ganham ids novos a cada toSections.
+  const sections = useMemo(() => toSections(layout), [layout]);
+  const kinds = sections.map((s) => s.kind);
+
+  const activeBlock = activeId ? layout.blocks.find((b) => b.id === activeId) : undefined;
+  // Grupo do arraste: seções entre si, ou blocos da mesma seção.
+  const dragGroup = !activeBlock
+    ? null
+    : isSectionMarker(activeBlock)
+      ? SECTIONS_GROUP
+      : (sections.find((s) => s.blocks.some((b) => b.id === activeBlock.id))?.marker.id ?? null);
+
+  function apply(next: ReportLayout) {
+    if (next !== layout) onChange(next);
+  }
 
   function handleDragStart(event: DragStartEvent) {
     setActiveId(String(event.active.id));
@@ -241,16 +124,44 @@ export function EditorCanvas({
   function handleDragEnd(event: DragEndEvent) {
     setActiveId(null);
     const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const next = moveBlock(layout, String(active.id), String(over.id));
-    if (next !== layout) onChange(next);
+    if (!over) return;
+    apply(resolveDragEnd(layout, String(active.id), String(over.id)));
   }
 
-  const activeBlock = activeId ? layout.blocks.find((b) => b.id === activeId) : null;
-  const ActiveComponent =
-    activeBlock && Object.prototype.hasOwnProperty.call(BLOCK_COMPONENTS, activeBlock.type)
-      ? BLOCK_COMPONENTS[activeBlock.type]
+  const editing: CellEditing = {
+    snapshot,
+    platforms,
+    highlightId,
+    onResize: (id, delta) => apply(resizeBlock(layout, id, delta)),
+    onRemove: (id) => (onRemoveBlock ? onRemoveBlock(id) : apply(removeBlock(layout, id))),
+    onSizeChange: (id, size) => apply(setBlockSize(layout, id, size)),
+    renderTextBlock,
+    onConfigChange,
+    imageContext,
+  };
+
+  const overlayBlock = activeBlock && !isSectionMarker(activeBlock) ? activeBlock : null;
+  // Arrastando uma seção: o frame fica no lugar (e desliza para a vaga nova) e
+  // uma etiqueta compacta (ícone + nome) segue o ponteiro; um frame alto inteiro
+  // sob o cursor tapa as vagas.
+  const overlaySection =
+    activeBlock && isSectionMarker(activeBlock)
+      ? sections.find((s) => s.marker.id === activeBlock.id)
+      : undefined;
+  const OverlayComponent =
+    overlayBlock && Object.prototype.hasOwnProperty.call(BLOCK_COMPONENTS, overlayBlock.type)
+      ? BLOCK_COMPONENTS[overlayBlock.type]
       : null;
+
+  const addSectionMenu = (afterSectionId: string | null) =>
+    onAddSection ? (
+      <AddSectionMenu
+        existing={kinds}
+        tiktokEnabled={tiktokEnabled}
+        availablePlatforms={availablePlatforms}
+        onAdd={(kind) => onAddSection(kind, afterSectionId)}
+      />
+    ) : null;
 
   return (
     <DndContext
@@ -261,40 +172,73 @@ export function EditorCanvas({
       onDragEnd={handleDragEnd}
     >
       <ReportFonts layout={layout} snapshot={snapshot} />
-      <SortableContext items={layout.blocks.map((b) => b.id)} strategy={rectSortingStrategy}>
-        <div
-          className={`rb-grid rb-mode-edit${theme.themeClass ? ` ${theme.themeClass}` : ''}`}
-          style={theme.vars as CSSProperties}
+      <div
+        className={`rb-edit-doc${theme.themeClass ? ` ${theme.themeClass}` : ''}`}
+        style={theme.vars as CSSProperties}
+      >
+        <SortableContext
+          items={sections.map((s) => s.marker.id)}
+          strategy={verticalListSortingStrategy}
         >
-          {layout.blocks.map((block) => (
-            <SortableCell
-              key={block.id}
-              block={block}
-              snapshot={snapshot}
-              platforms={platforms}
-              highlighted={block.id === highlightId}
-              onResize={(delta) => {
-                const next = resizeBlock(layout, block.id, delta);
-                if (next !== layout) onChange(next);
-              }}
-              onRemove={() =>
-                onRemoveBlock ? onRemoveBlock(block.id) : onChange(removeBlock(layout, block.id))
-              }
-              renderTextBlock={renderTextBlock}
-              onConfigChange={onConfigChange}
-              imageContext={imageContext}
-              onSizeChange={(size) => {
-                const next = setBlockSize(layout, block.id, size);
-                if (next !== layout) onChange(next);
-              }}
-            />
+          {sections.map((section, i) => (
+            <Fragment key={section.marker.id}>
+              <SectionFrame
+                section={section}
+                index={i}
+                count={sections.length}
+                editing={editing}
+                dragGroup={dragGroup}
+                onAddWidget={
+                  onAddWidget && (section.kind !== 'tiktok' || tiktokEnabled)
+                    ? () => onAddWidget({ sectionId: section.marker.id })
+                    : undefined
+                }
+                onTitleChange={(title) =>
+                  onSectionConfigChange
+                    ? onSectionConfigChange(section.marker.id, { title })
+                    : apply(updateSectionConfig(layout, section.marker.id, { title }))
+                }
+                onMove={(delta) => apply(moveSection(layout, section.marker.id, delta))}
+                onToggleHideHeader={() =>
+                  apply(
+                    updateSectionConfig(layout, section.marker.id, {
+                      hideHeader: section.marker.config?.hideHeader !== true,
+                    }),
+                  )
+                }
+                onRemove={() =>
+                  onRemoveSection
+                    ? onRemoveSection(section.marker.id)
+                    : apply(removeSection(layout, section.marker.id))
+                }
+              />
+              {addSectionMenu(section.marker.id)}
+            </Fragment>
           ))}
-        </div>
-      </SortableContext>
+        </SortableContext>
+        {sections.length === 0 && addSectionMenu(null)}
+      </div>
       <DragOverlay>
-        {activeBlock && ActiveComponent && (
-          <div className="rb-edit-overlay">
-            <ActiveComponent block={activeBlock} snapshot={snapshot} layoutPlatforms={platforms} />
+        {overlayBlock && OverlayComponent && (
+          <div className="rb-edit-overlay" data-drag-overlay={overlayBlock.id}>
+            <OverlayComponent
+              block={overlayBlock}
+              snapshot={snapshot}
+              layoutPlatforms={platforms}
+            />
+          </div>
+        )}
+        {overlaySection && (
+          <div
+            className="rb-edit-overlay rb-section-overlay"
+            data-drag-overlay={overlaySection.marker.id}
+          >
+            {overlaySection.kind === 'general' ? (
+              <PanelTop className="h-4 w-4" aria-hidden />
+            ) : (
+              <PlatformIcon platform={overlaySection.kind} size={18} />
+            )}
+            <span>{sectionDisplayName(overlaySection)}</span>
           </div>
         )}
       </DragOverlay>

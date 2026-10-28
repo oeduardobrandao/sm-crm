@@ -11,6 +11,7 @@ import {
   removeSection,
   reorderSections,
   resizeBlock,
+  resolveDragEnd,
   setBlockSize,
   restoreBlock,
   restoreSection,
@@ -696,5 +697,44 @@ describe('DEFAULT_SIZE do TikTok', () => {
     }
     const list = insertBlockInSection(sectioned(), 'tt', 'tiktok_post_list', undefined, counter());
     expect(list.blocks.at(-1)?.size).toBe('full');
+  });
+});
+
+describe('resolveDragEnd (canvas e camadas)', () => {
+  it('marcador sobre outro marcador: reordena as seções', () => {
+    const l = sectioned();
+    const next = resolveDragEnd(l, 'tt', 'ig');
+    expect(ids(next)).toEqual(['g', 'cv', 'tt', 'tv', 'ig', 'r', 'v']);
+    expectValid(next);
+  });
+
+  it('marcador sobre um bloco de outra seção: usa a seção dono do bloco', () => {
+    const l = sectioned();
+    const next = resolveDragEnd(l, 'ig', 'tv');
+    expect(ids(next)).toEqual(['g', 'cv', 'tt', 'tv', 'ig', 'r', 'v']);
+  });
+
+  it('marcador sobre um bloco da própria seção: MESMA referência', () => {
+    const l = sectioned();
+    expect(resolveDragEnd(l, 'ig', 'r')).toBe(l);
+  });
+
+  it('bloco sobre bloco da mesma seção: move', () => {
+    const l = sectioned();
+    expect(ids(resolveDragEnd(l, 'v', 'r'))).toEqual(['g', 'cv', 'ig', 'v', 'r', 'tt', 'tv']);
+  });
+
+  it('bloco sobre bloco de outra seção ou sobre um marcador: MESMA referência', () => {
+    const l = sectioned();
+    expect(resolveDragEnd(l, 'r', 'tv')).toBe(l);
+    expect(resolveDragEnd(l, 'cv', 'r')).toBe(l);
+    expect(resolveDragEnd(l, 'r', 'tt')).toBe(l);
+  });
+
+  it('mesmo id ou id desconhecido: MESMA referência', () => {
+    const l = sectioned();
+    expect(resolveDragEnd(l, 'ig', 'ig')).toBe(l);
+    expect(resolveDragEnd(l, 'nope', 'ig')).toBe(l);
+    expect(resolveDragEnd(l, 'ig', 'nope')).toBe(l);
   });
 });

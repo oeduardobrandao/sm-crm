@@ -1,23 +1,31 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { AddWidgetDrawer, documentPlatforms } from '../AddWidgetDrawer';
+import { AddWidgetDrawer, documentPlatforms, drawerWidgets } from '../AddWidgetDrawer';
 import { WIDGET_CATALOG, WIDGET_CATEGORIES } from '@mesaas/report-blocks/catalog';
 import { makeSnapshotFixture } from '@mesaas/report-blocks/fixtures';
+import type { SectionKind } from '@mesaas/report-blocks/types';
 
-type Platforms = Parameters<typeof AddWidgetDrawer>[0]['platforms'];
-
-function renderDrawer(platforms: Platforms, onInsert = vi.fn(), onOpenChange = vi.fn()) {
+function renderDrawer(
+  section: { kind: SectionKind } | null,
+  { hasCover = true, onInsert = vi.fn(), onOpenChange = vi.fn() } = {},
+) {
   render(
-    <AddWidgetDrawer open onOpenChange={onOpenChange} onInsert={onInsert} platforms={platforms} />,
+    <AddWidgetDrawer
+      open
+      onOpenChange={onOpenChange}
+      onInsert={onInsert}
+      section={section}
+      hasCover={hasCover}
+    />,
   );
   return { onInsert, onOpenChange };
 }
 
 const instagramOnly = WIDGET_CATALOG.filter((w) => w.platform === 'instagram');
 const tiktokOnly = WIDGET_CATALOG.filter((w) => w.platform === 'tiktok');
-const neutral = WIDGET_CATALOG.filter((w) => w.platform === null);
+const neutralNoCover = WIDGET_CATALOG.filter((w) => w.platform === null && w.type !== 'cover');
 
-// Rótulos se repetem entre plataformas ("Novos seguidores" do Instagram e do
+// Rótulos se repetem entre plataformas ("Visualizações" do Instagram e do
 // TikTok): conta quantos botões o drawer deve mostrar por rótulo.
 function expectListed(entries: typeof WIDGET_CATALOG) {
   for (const w of entries) {
@@ -26,86 +34,72 @@ function expectListed(entries: typeof WIDGET_CATALOG) {
   }
 }
 
-function expectAbsent(entries: typeof WIDGET_CATALOG, shown: typeof WIDGET_CATALOG) {
-  const shownLabels = new Set(shown.map((w) => w.label));
-  for (const w of entries) {
-    if (!shownLabels.has(w.label)) {
+describe('AddWidgetDrawer: escopo da seção', () => {
+  it('seção TikTok: widgets do TikTok e neutros, nada do Instagram, sem seletor', () => {
+    renderDrawer({ kind: 'tiktok' });
+    expect(screen.getByText('Na seção TikTok')).toBeInTheDocument();
+    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Visualizações' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Lista de vídeos' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Alcance' })).not.toBeInTheDocument();
+    expectListed([...tiktokOnly, ...neutralNoCover]);
+  });
+
+  it('seção Instagram: widgets do Instagram e neutros, nada do TikTok', () => {
+    renderDrawer({ kind: 'instagram' });
+    expect(screen.getByText('Na seção Instagram')).toBeInTheDocument();
+    expectListed([...instagramOnly, ...neutralNoCover]);
+    expect(screen.queryByRole('button', { name: 'Lista de vídeos' })).not.toBeInTheDocument();
+  });
+
+  it('seção Geral: só neutros, nenhum widget de plataforma', () => {
+    renderDrawer({ kind: 'general' });
+    expect(screen.getByText('Na seção Geral')).toBeInTheDocument();
+    for (const w of [...instagramOnly, ...tiktokOnly]) {
       expect(screen.queryByRole('button', { name: w.label })).not.toBeInTheDocument();
     }
-  }
-}
-
-describe('AddWidgetDrawer', () => {
-  it('um doc só Instagram: sem seletor, widgets do Instagram e neutros, nada de TikTok', () => {
-    renderDrawer(['instagram']);
-    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
-    expectListed([...instagramOnly, ...neutral]);
-    expectAbsent(tiktokOnly, [...instagramOnly, ...neutral]);
-    expect(screen.queryByRole('button', { name: 'Lista de vídeos' })).not.toBeInTheDocument();
+    expectListed(neutralNoCover);
   });
 
-  it('um doc só TikTok: sem seletor, widgets do TikTok e neutros, nada do Instagram', () => {
-    renderDrawer(['tiktok']);
-    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
-    expectListed([...tiktokOnly, ...neutral]);
-    expectAbsent(instagramOnly, [...tiktokOnly, ...neutral]);
+  it('capa só na Geral e só enquanto o layout não tem capa', () => {
+    expect(drawerWidgets('general', false).some((w) => w.type === 'cover')).toBe(true);
+    expect(drawerWidgets('general', true).some((w) => w.type === 'cover')).toBe(false);
+    expect(drawerWidgets('instagram', false).some((w) => w.type === 'cover')).toBe(false);
+    expect(drawerWidgets('tiktok', false).some((w) => w.type === 'cover')).toBe(false);
+  });
+
+  it('nunca lista um tipo que a seção recusa', () => {
+    for (const kind of ['general', 'instagram', 'tiktok'] as const) {
+      for (const w of drawerWidgets(kind, false)) {
+        expect(w.platform === null || w.platform === kind).toBe(true);
+      }
+    }
+  });
+
+  it('sem seção (fim do relatório): só neutros', () => {
+    renderDrawer(null, { hasCover: false });
+    expect(screen.queryByText(/Na seção/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Alcance' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Lista de vídeos' })).toBeInTheDocument();
-  });
-
-  it('as duas plataformas: seletor Instagram | TikTok; só ao escolher TikTok aparecem os widgets dele', () => {
-    renderDrawer(['instagram', 'tiktok']);
-    const group = screen.getByRole('radiogroup', { name: 'Plataforma' });
-    const instagram = within(group).getByRole('radio', { name: 'Instagram' });
-    const tiktok = within(group).getByRole('radio', { name: 'TikTok' });
-    expect(instagram).toBeChecked();
-    expect(tiktok).not.toBeChecked();
-    // Instagram selecionado: nada do TikTok.
     expect(screen.queryByRole('button', { name: 'Lista de vídeos' })).not.toBeInTheDocument();
-    expectListed([...instagramOnly, ...neutral]);
-
-    fireEvent.click(tiktok);
-    expect(tiktok).toBeChecked();
-    expect(screen.getByRole('button', { name: 'Lista de vídeos' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Alcance' })).not.toBeInTheDocument();
-    expectListed([...tiktokOnly, ...neutral]);
-    expectAbsent(instagramOnly, [...tiktokOnly, ...neutral]);
+    expect(screen.getByRole('button', { name: 'Texto livre' })).toBeInTheDocument();
+    // A capa entraria na última seção, talvez de plataforma: só pela Geral.
+    expect(screen.queryByRole('button', { name: 'Capa' })).not.toBeInTheDocument();
   });
 
-  it('o seletor é navegável por teclado: rádios nativos do mesmo grupo', () => {
-    renderDrawer(['instagram', 'tiktok']);
-    const radios = screen.getAllByRole('radio');
-    expect(radios).toHaveLength(2);
-    expect(radios[0]).toHaveAttribute('name', radios[1].getAttribute('name'));
-  });
-
-  it('categorias neutras (Texto, Mídia, Estrutura) aparecem para qualquer plataforma', () => {
-    renderDrawer(['instagram', 'tiktok']);
-    fireEvent.click(screen.getByRole('radio', { name: 'TikTok' }));
+  it('categoria sem widgets para a seção não mostra título vazio', () => {
+    renderDrawer({ kind: 'tiktok' });
+    expect(WIDGET_CATEGORIES).toContain('Audiência');
+    expect(screen.queryByRole('heading', { name: 'Audiência' })).not.toBeInTheDocument();
     for (const cat of ['Texto', 'Mídia', 'Estrutura']) {
       expect(screen.getByRole('heading', { name: cat })).toBeInTheDocument();
     }
   });
 
-  it('categoria sem widgets para a plataforma escolhida não mostra título vazio', () => {
-    renderDrawer(['tiktok']);
-    // Audiência é só do Instagram.
-    expect(WIDGET_CATEGORIES).toContain('Audiência');
-    expect(screen.queryByRole('heading', { name: 'Audiência' })).not.toBeInTheDocument();
-  });
-
   it('clicar num widget chama onInsert com o tipo e fecha o drawer', () => {
-    const { onInsert, onOpenChange } = renderDrawer(['instagram']);
-    fireEvent.click(screen.getByRole('button', { name: 'Top publicações' }));
-    expect(onInsert).toHaveBeenCalledWith('top_posts');
-    expect(onOpenChange).toHaveBeenCalledWith(false);
-  });
-
-  it('inserir o widget TikTok escolhido envia o tipo tiktok_*', () => {
-    const { onInsert } = renderDrawer(['instagram', 'tiktok']);
-    fireEvent.click(screen.getByRole('radio', { name: 'TikTok' }));
+    const { onInsert, onOpenChange } = renderDrawer({ kind: 'tiktok' });
     fireEvent.click(screen.getByRole('button', { name: 'Lista de vídeos' }));
     expect(onInsert).toHaveBeenCalledWith('tiktok_post_list');
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
   it('fechado, nada renderizado', () => {
@@ -114,7 +108,8 @@ describe('AddWidgetDrawer', () => {
         open={false}
         onOpenChange={() => {}}
         onInsert={() => {}}
-        platforms={['instagram']}
+        section={{ kind: 'instagram' }}
+        hasCover
       />,
     );
     expect(screen.queryByText('Adicionar widget')).not.toBeInTheDocument();

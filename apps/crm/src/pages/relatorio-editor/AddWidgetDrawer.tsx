@@ -1,15 +1,27 @@
-import { useState } from 'react';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { WIDGET_CATALOG, WIDGET_CATEGORIES } from '@mesaas/report-blocks/catalog';
+// Drawer "Adicionar widget" escopado na seção (spec 2026-10-28-report-platform-sections
+// §Editor): a seção de uma plataforma lista os widgets dela e os neutros; a Geral só os
+// neutros. A capa só aparece na Geral e só enquanto o layout não tem capa. Nunca lista
+// um tipo que insertBlockInSection recusaria na seção.
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import {
+  WIDGET_CATALOG,
+  WIDGET_CATEGORIES,
+  type WidgetCatalogEntry,
+} from '@mesaas/report-blocks/catalog';
 import { PLATFORM_NAMES, type ReportPlatform } from '@mesaas/report-blocks/platform';
-import type { BlockType, ReportDocSnapshot } from '@mesaas/report-blocks/types';
+import type { BlockType, ReportDocSnapshot, SectionKind } from '@mesaas/report-blocks/types';
 import { FALLBACK_WIDGET_ICON, WIDGET_ICONS } from './widgetIcons';
 
-const PLATFORM_ORDER: readonly ReportPlatform[] = ['instagram', 'tiktok'];
-
-/** Plataformas que o documento tem para oferecer no drawer: Instagram enquanto
- * não estiver desconectado, TikTok quando o snapshot traz a seção. Nenhuma com
- * dado cai no Instagram, como a capa (coverDefaults). */
+/** Plataformas com dados no documento: Instagram enquanto não estiver
+ * desconectado, TikTok quando o snapshot traz a seção. Nenhuma com dado cai no
+ * Instagram, como a capa (coverDefaults). "Adicionar seção" do relatório só
+ * oferece estas. */
 export function documentPlatforms(snapshot: ReportDocSnapshot): ReportPlatform[] {
   const out: ReportPlatform[] = [];
   if (snapshot.instagram_connected !== false) out.push('instagram');
@@ -17,78 +29,48 @@ export function documentPlatforms(snapshot: ReportDocSnapshot): ReportPlatform[]
   return out.length ? out : ['instagram'];
 }
 
+/** Widgets que a seção aceita, na ordem do catálogo. */
+export function drawerWidgets(kind: SectionKind, hasCover: boolean): WidgetCatalogEntry[] {
+  return WIDGET_CATALOG.filter((w) => {
+    if (w.type === 'cover') return kind === 'general' && !hasCover;
+    return w.platform === null || w.platform === kind;
+  });
+}
+
+const SECTION_NAMES: Record<SectionKind, string> = { general: 'Geral', ...PLATFORM_NAMES };
+
 export interface AddWidgetDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onInsert: (type: BlockType) => void;
-  /** Plataformas oferecidas. Com duas, aparece o seletor; com uma, só os
-   * widgets dela (mais os neutros: Texto, Mídia, Estrutura). */
-  platforms: ReportPlatform[];
+  /** Seção que recebe o widget. null = fim do relatório (só neutros, que
+   * qualquer seção aceita; sem capa). */
+  section: { kind: SectionKind } | null;
+  /** O layout já tem uma capa (a capa só é oferecida enquanto não tem). */
+  hasCover: boolean;
 }
 
-function PlatformSwitch({
-  platforms,
-  value,
-  onChange,
-}: {
-  platforms: ReportPlatform[];
-  value: ReportPlatform;
-  onChange: (p: ReportPlatform) => void;
-}) {
-  // Rádios nativos de mesmo name: o navegador cuida de setas, Tab e do papel
-  // radio; o rótulo estilizado vira o segmento.
-  return (
-    <div
-      role="radiogroup"
-      aria-label="Plataforma"
-      style={{
-        display: 'grid',
-        gridTemplateColumns: `repeat(${platforms.length}, 1fr)`,
-        gap: 2,
-        marginTop: '1rem',
-        padding: 2,
-        border: '1px solid var(--border-color)',
-        borderRadius: 10,
-        background: 'var(--surface-1)',
-      }}
-    >
-      {platforms.map((p) => (
-        <label key={p} style={{ position: 'relative', display: 'block' }}>
-          <input
-            type="radio"
-            name="add-widget-platform"
-            value={p}
-            checked={value === p}
-            onChange={() => onChange(p)}
-            className="peer sr-only"
-          />
-          <span
-            className="block cursor-pointer rounded-lg px-3 py-1.5 text-center text-sm font-medium transition-colors peer-checked:bg-[var(--card-bg)] peer-checked:text-[var(--text-main)] peer-checked:shadow-sm peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--primary-color)]"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            {PLATFORM_NAMES[p]}
-          </span>
-        </label>
-      ))}
-    </div>
-  );
-}
-
-export function AddWidgetDrawer({ open, onOpenChange, onInsert, platforms }: AddWidgetDrawerProps) {
-  const offered = PLATFORM_ORDER.filter((p) => platforms.includes(p));
-  const [chosen, setChosen] = useState<ReportPlatform>('instagram');
-  // A escolha vale enquanto a plataforma existir no documento; senão, a primeira.
-  const selected = offered.includes(chosen) ? chosen : offered[0];
-  const widgets = WIDGET_CATALOG.filter((w) => w.platform === null || w.platform === selected);
+export function AddWidgetDrawer({
+  open,
+  onOpenChange,
+  onInsert,
+  section,
+  hasCover,
+}: AddWidgetDrawerProps) {
+  // Sem seção (fim do relatório), a capa nunca: insertBlock a poria na última
+  // seção que a aceita, que pode ser a de uma plataforma.
+  const widgets = section ? drawerWidgets(section.kind, hasCover) : drawerWidgets('general', true);
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="overflow-y-auto">
         <SheetHeader>
           <SheetTitle>Adicionar widget</SheetTitle>
+          {section ? (
+            <SheetDescription>Na seção {SECTION_NAMES[section.kind]}</SheetDescription>
+          ) : (
+            <SheetDescription className="sr-only">No fim do relatório</SheetDescription>
+          )}
         </SheetHeader>
-        {offered.length > 1 && (
-          <PlatformSwitch platforms={offered} value={selected} onChange={setChosen} />
-        )}
         {WIDGET_CATEGORIES.filter((cat) => widgets.some((w) => w.category === cat)).map((cat) => (
           <div key={cat} style={{ marginTop: '1rem' }}>
             <h4

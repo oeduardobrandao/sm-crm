@@ -44,6 +44,8 @@ const { toastMock } = vi.hoisted(() => ({
   toastMock: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), loading: vi.fn() }),
 }));
 vi.mock('sonner', () => ({ toast: toastMock }));
+// O editor lê a flag do TikTok; aqui o plano não importa (fail closed).
+vi.mock('@/hooks/useWorkspaceLimits', () => ({ useWorkspaceLimits: () => ({ features: null }) }));
 
 import RelatorioEditorPage from '../RelatorioEditorPage';
 
