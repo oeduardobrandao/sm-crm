@@ -4,13 +4,7 @@ import type { BlockType } from './types';
 import { TIKTOK_KPI_LABELS_PT, type ReportPlatform } from './platform';
 
 export type WidgetCategory =
-  | 'Números'
-  | 'Gráficos'
-  | 'Audiência'
-  | 'Conteúdo'
-  | 'Texto'
-  | 'Mídia'
-  | 'Estrutura';
+  'Números' | 'Gráficos' | 'Audiência' | 'Conteúdo' | 'Texto' | 'Mídia' | 'Estrutura';
 
 export const WIDGET_CATEGORIES: readonly WidgetCategory[] = [
   'Números',
