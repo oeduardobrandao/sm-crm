@@ -16,6 +16,9 @@ export type LayoutPlatform = SectionPlatform;
 
 // Ordem fixa das seções acrescentadas (Instagram antes do TikTok), como no layout padrão.
 const PLATFORM_ORDER: readonly LayoutPlatform[] = ["instagram", "tiktok"];
+// Nome que o título da seção mostra (sem `title` próprio): um section_header com este texto no
+// topo da seção ficaria repetido quando o título aparece.
+const PLATFORM_NAMES: Record<LayoutPlatform, string> = { instagram: "Instagram", tiktok: "TikTok" };
 
 export interface SelectPlatformSectionsOpts {
   /** A plataforma tem dados no snapshot. Sem dados, a seção dela sai e nenhuma é acrescentada. */
@@ -49,6 +52,16 @@ export function selectPlatformSections(
 
   const kept = sections.filter(keep);
   const added: ReportSection[] = [];
+  // Ids novos nunca repetem um que o layout (ou a conversão do legado) já usa: o mesmo
+  // descarte com nova tentativa de toSections, para um makeId determinístico.
+  const used = new Set(sections.flatMap((s) => [s.marker.id, ...s.blocks.map((b) => b.id)]));
+  const baseId = opts.makeId ?? (() => crypto.randomUUID());
+  const freshId = (): string => {
+    let id = baseId();
+    for (let tries = 0; used.has(id) && tries < 100; tries++) id = baseId();
+    used.add(id);
+    return id;
+  };
   if (lastPlatform !== -1) {
     let contentCount = kept.reduce((n, s) => n + s.blocks.length, 0);
     let sectionCount = kept.length;
@@ -58,12 +71,14 @@ export function selectPlatformSections(
         opts.onCapSkip?.(p);
         continue;
       }
-      const marker = makeSectionMarker(p, opts.makeId ? { id: opts.makeId() } : {});
-      const blocks = platformSectionBlocks(p, opts.sectionOpts, opts.makeId);
-      if (contentCount + blocks.length > MAX_BLOCKS) {
+      // Tamanho medido sem gastar ids: makeId só roda para a seção que de fato entra.
+      const size = platformSectionBlocks(p, opts.sectionOpts, () => "").length;
+      if (contentCount + size > MAX_BLOCKS) {
         opts.onCapSkip?.(p);
         continue;
       }
+      const marker = makeSectionMarker(p, { id: freshId() });
+      const blocks = platformSectionBlocks(p, opts.sectionOpts, freshId);
       added.push({ marker, kind: p, blocks, synthesized: true });
       contentCount += blocks.length;
       sectionCount += 1;
@@ -80,7 +95,9 @@ export function selectPlatformSections(
 
 /** Documento com duas ou mais seções de plataforma mostra todos os títulos de plataforma (tira
  * `hideHeader`): um modelo legado convertido que ganhou a seção TikTok não fica com um TikTok
- * rotulado ao lado de um Instagram sem rótulo. Com uma só, vale o que o modelo diz. Devolve a
+ * rotulado ao lado de um Instagram sem rótulo. Com uma só, vale o que o modelo diz. Na seção
+ * que passa a mostrar o título, um section_header logo no topo com o nome da plataforma
+ * ("Instagram"/"TikTok", sem diferenciar caixa) sai: o título da seção o substitui. Devolve a
  * mesma referência quando não há nada a mudar. */
 export function showAllPlatformHeadings(layout: ReportLayout): ReportLayout {
   const sections = toSections(layout);
@@ -91,7 +108,11 @@ export function showAllPlatformHeadings(layout: ReportLayout): ReportLayout {
       if (s.kind === "general" || s.marker.config?.hideHeader !== true) return s;
       const title = s.marker.config?.title;
       const marker = makeSectionMarker(s.kind, typeof title === "string" ? { id: s.marker.id, title } : { id: s.marker.id });
-      return { ...s, marker };
+      const first = s.blocks[0];
+      const firstTitle = first?.type === "section_header" ? first.config?.title : undefined;
+      const repeatsName = typeof firstTitle === "string" &&
+        firstTitle.trim().toLowerCase() === PLATFORM_NAMES[s.kind].toLowerCase();
+      return { ...s, marker, blocks: repeatsName ? s.blocks.slice(1) : s.blocks };
     }),
     layout,
   );

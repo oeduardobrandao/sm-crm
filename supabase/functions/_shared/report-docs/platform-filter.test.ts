@@ -287,3 +287,84 @@ Deno.test("sanitized seeded system template (sectioned) + TikTok only: TikTok ta
   assertEquals(kinds(out), ["general", "tiktok", "general"]);
   assertEquals(toSections(out)[2].marker.config, { title: NEXT_STEPS_TITLE });
 });
+
+// ─── Fix round 1 ─────────────────────────────────────────────────────────────────────
+
+Deno.test("showAllPlatformHeadings: a leading section_header naming the platform goes (the heading replaces it)", () => {
+  const l = L([
+    S("g"), B("c", "cover", "full"),
+    S("ig", { platform: "instagram", hideHeader: true }), H("hi", "  instagram "), B("k", "kpi_reach"),
+    S("tt", { platform: "tiktok", hideHeader: true }), H("ht", "TIKTOK"), B("t", "tiktok_kpi_views"),
+  ]);
+  const out = showAllPlatformHeadings(l);
+  assertEquals(ids(out), ["g", "c", "ig", "k", "tt", "t"]);
+  assert(validateLayout(out).ok);
+});
+
+Deno.test("showAllPlatformHeadings: other titles, a later platform-named header, or a visible section keep their headers", () => {
+  const l = L([
+    S("ig", { platform: "instagram", hideHeader: true }), H("h1", "Métricas principais"), H("h2", "Instagram"),
+    B("k", "kpi_reach"),
+    S("tt", { platform: "tiktok", hideHeader: true }), H("h3", "TikTok Ads"), B("t", "tiktok_kpi_views"),
+  ]);
+  assertEquals(ids(showAllPlatformHeadings(l)), ["ig", "h1", "h2", "k", "tt", "h3", "t"]);
+  // Seção que já mostrava o título não é tocada, nem o section_header dela.
+  const shown = L([
+    S("ig", { platform: "instagram" }), H("h1", "Instagram"), B("k", "kpi_reach"),
+    S("tt", { platform: "tiktok", hideHeader: true }), B("t", "tiktok_kpi_views"),
+  ]);
+  assertEquals(ids(showAllPlatformHeadings(shown)), ["ig", "h1", "k", "tt", "t"]);
+});
+
+Deno.test("legacy mixed template + both: no duplicate platform heading after generation helpers", () => {
+  const tpl = L([
+    B("c", "cover", "full"),
+    H("h1", "Instagram"), B("k1", "kpi_reach"),
+    H("h2", "TikTok"), B("t1", "tiktok_kpi_views"),
+  ]);
+  const out = showAllPlatformHeadings(select(tpl, ["instagram", "tiktok"]));
+  assert(!out.blocks.some((b) => b.type === "section_header"));
+  assertEquals(out.blocks.filter((b) => b.type !== "section").map((b) => b.id), ["c", "k1", "t1"]);
+  assert(validateLayout(out).ok);
+});
+
+Deno.test("selectPlatformSections: appended ids never collide with ids already in the layout", () => {
+  // Contador determinístico que reemite ids do modelo (n1, n2, ...).
+  const tpl = L([
+    S("n1"), B("n2", "cover", "full"), B("n4", "text", "full"),
+    S("n5", { platform: "tiktok" }), B("n7", "tiktok_kpi_views"),
+  ]);
+  const out = selectPlatformSections(tpl, ["instagram", "tiktok"], {
+    hasData: ALL_DATA, sectionOpts: SECTION_OPTS, makeId: counter("n"),
+  });
+  const all = ids(out);
+  assertEquals(new Set(all).size, all.length);
+  assertEquals(all.slice(0, 5), ["n1", "n2", "n4", "n5", "n7"]);
+  assertEquals(kinds(out), ["general", "tiktok", "instagram"]);
+  // Legado: os marcadores sintetizados pela conversão também entram na conta.
+  const legacy = L([B("n1", "cover", "full"), B("n3", "kpi_reach")]);
+  const out2 = selectPlatformSections(legacy, ["instagram", "tiktok"], {
+    hasData: ALL_DATA, sectionOpts: SECTION_OPTS, makeId: counter("n"),
+  });
+  const all2 = ids(out2);
+  assertEquals(new Set(all2).size, all2.length);
+  assert(validateLayout(out2).ok);
+});
+
+Deno.test("selectPlatformSections: makeId is not called for a section the cap skips", () => {
+  let calls = 0;
+  const makeId = () => `id${++calls}`;
+  const tpl = tiktokTemplateWith(MAX_BLOCKS - IG_SECTION_LEN + 1);
+  const skipped: LayoutPlatform[] = [];
+  const out = selectPlatformSections(tpl, ["instagram", "tiktok"], {
+    hasData: ALL_DATA, sectionOpts: SECTION_OPTS, makeId, onCapSkip: (p) => skipped.push(p),
+  });
+  assertEquals(skipped, ["instagram"]);
+  assertEquals(calls, 0);
+  assertEquals(out, tpl);
+  // MAX_SECTIONS também.
+  const full = L([...Array.from({ length: MAX_SECTIONS - 1 }, (_, i) => S(`g${i}`, { title: `G${i}` })),
+    S("tt", { platform: "tiktok" })]);
+  selectPlatformSections(full, ["instagram", "tiktok"], { hasData: ALL_DATA, sectionOpts: SECTION_OPTS, makeId });
+  assertEquals(calls, 0);
+});
