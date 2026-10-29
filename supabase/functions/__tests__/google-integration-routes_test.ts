@@ -4,7 +4,7 @@
 import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createGoogleIntegrationHandler } from "../google-integration/handlers.ts";
-import { listEligibleLocations } from "../google-integration/locations.ts";
+import { listEligibleLocations, listGbpLocations } from "../google-integration/locations.ts";
 import { encryptGoogleToken } from "../_shared/google.ts";
 
 Deno.env.set("TOKEN_ENCRYPTION_KEY", "test-google-routes-key-32chars!!");
@@ -64,6 +64,10 @@ function req(method: string, path: string, body?: unknown): Request {
     headers: { Authorization: "Bearer jwt-1", "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+}
+
+function gbpWrites(db: Mock) {
+  return db.calls.filter((c) => c.table === "gbp_locations" && c.operation !== "select");
 }
 
 function rpcCalls(db: Mock, name: string) {
@@ -254,6 +258,7 @@ Deno.test("locations_eligibility: voice-of-merchant and other-client links decid
       { location_name: "locations/c", client_id: 7, connection_id: CONN_1, status: "active" },
       { location_name: "locations/a", client_id: CLIENT, connection_id: CONN_1, status: "active" },
       { location_name: "locations/d", client_id: CLIENT, connection_id: CONN_1, status: "active" },
+      { location_name: "locations/not-listed", client_id: 9, connection_id: CONN_2, status: "active" },
     ],
   });
   db.queue("clientes", "select", { data: [{ id: 7, nome: "Clínica X" }, { id: CLIENT, nome: "Cliente A" }] });
@@ -282,6 +287,14 @@ Deno.test("locations_eligibility: voice-of-merchant and other-client links decid
       [true, CLIENT],
       "R7: a unit already linked here stays selectable without voice of merchant",
     );
+    assertEquals(options.some((o: Record<string, unknown>) => o.locationName === "locations/not-listed"), false);
+    const linkedQuery = db.calls.filter((c) => c.table === "gbp_locations")[0];
+    assert(!linkedQuery.modifiers.some((m) => m.args[0] === "location_name"), "no listed names in the URL");
+    assert(linkedQuery.modifiers.some((m) => m.method === "eq" && m.args[0] === "conta_id" && m.args[1] === CONTA));
+    assert(linkedQuery.modifiers.some((m) => m.method === "in" && m.args[0] === "status"));
+    const clientLookup = db.calls.filter((c) => c.table === "clientes")[1];
+    const ids = clientLookup.modifiers.find((m) => m.method === "in")!.args[1] as number[];
+    assertEquals([...ids].sort(), [7, CLIENT].sort(), "only clients of listed units are named");
     const rl = rpcCalls(db, "check_rate_limit")[0].payload as Record<string, unknown>;
     assertEquals([rl.p_key, rl.p_max_requests, rl.p_window_seconds], [`google-locations:${CONTA}`, 20, 60]);
     const auth = f.calls.find((c) => c.url.startsWith(ACCOUNTS_URL))!;
@@ -368,7 +381,7 @@ function linkStub() {
   });
 }
 
-Deno.test("link_rejects_tampered_name: a name Google did not return -> 409 location_unavailable, no upsert", async () => {
+Deno.test("link_rejects_tampered_name: a name Google did not return -> 409 location_unavailable, no write", async () => {
   const db = routeDb();
   await queueConnection(db);
   db.queue("gbp_locations", "select", { data: [] }, { data: [] });
@@ -379,7 +392,7 @@ Deno.test("link_rejects_tampered_name: a name Google did not return -> 409 locat
     );
     assertEquals(res.status, 409);
     assertEquals(await res.json(), { error: "location_unavailable", locationName: "locations/evil" });
-    assertEquals(db.calls.filter((c) => c.operation === "upsert").length, 0);
+    assertEquals(gbpWrites(db).length, 0);
     assertEquals(rpcCalls(db, "google_unlink_gbp_location").length, 0);
   } finally {
     f.restore();
@@ -411,7 +424,7 @@ Deno.test("link_rejects_ineligible_and_taken: no voice of merchant, or linked to
     const res = await makeHandler(taken)(req("POST", `/locations/${CLIENT}`, { connectionId: CONN_1, locationNames: ["locations/b"] }));
     assertEquals(res.status, 409);
     assertEquals(await res.json(), { error: "location_unavailable", locationName: "locations/b" });
-    assertEquals(taken.calls.filter((c) => c.operation === "upsert").length, 0);
+    assertEquals(gbpWrites(taken).length, 0);
   } finally {
     f2.restore();
   }
@@ -449,7 +462,7 @@ Deno.test("link_keeps_already_linked_ineligible (R7): this client's active row o
   }
 });
 
-Deno.test("link_unlinks_removed: client had A,B; post [A, C] -> C upserted, unlink called for B after the upsert", async () => {
+Deno.test("link_unlinks_removed: client had A,B; post [A, C] -> A updated, C inserted, then B unlinked", async () => {
   const db = routeDb();
   await queueConnection(db);
   db.queue(
@@ -472,9 +485,11 @@ Deno.test("link_unlinks_removed: client had A,B; post [A, C] -> C upserted, unli
     assertEquals(res.status, 200);
     assertEquals(await res.json(), { linked: 2 });
 
-    const upsert = db.calls.find((c) => c.table === "gbp_locations" && c.operation === "upsert")!;
-    const rows = upsert.payload as Array<Record<string, unknown>>;
-    const c = rows.find((r) => r.location_name === "locations/c")!;
+    const insert = db.calls.find((c) => c.table === "gbp_locations" && c.operation === "insert")!;
+    const rows = insert.payload as Array<Record<string, unknown>>;
+    assertEquals(rows.map((r) => r.location_name), ["locations/c"], "only names this client did not have are inserted");
+    const c = rows[0];
+    assert(!("id" in c), "a fresh row, never a reused id");
     assertEquals(c.client_id, CLIENT);
     assertEquals(c.connection_id, CONN_1);
     assertEquals(c.conta_id, CONTA);
@@ -482,15 +497,21 @@ Deno.test("link_unlinks_removed: client had A,B; post [A, C] -> C upserted, unli
     assertEquals(c.title, "C", "title comes from Google, never from the request");
     assertEquals(c.address_line, "Rua c, 10, São Paulo");
     assertEquals([c.status, c.disconnected_at, c.has_voice_of_merchant], ["active", null, true]);
-    assertEquals((upsert.options as Record<string, unknown>).onConflict, "conta_id,location_name");
+    assertEquals(insert.options, undefined, "plain insert, no onConflict");
+    const update = db.calls.find((x) => x.table === "gbp_locations" && x.operation === "update")!;
+    const uFilters = update.modifiers.map((m) => `${m.method}:${m.args[0]}:${m.args[1]}`);
+    assert(uFilters.includes("eq:id:row-a") && uFilters.includes(`eq:client_id:${CLIENT}`), uFilters.join(","));
+    const uPayload = update.payload as Record<string, unknown>;
+    assertEquals([uPayload.connection_id, uPayload.status, uPayload.title], [CONN_1, "active", "A"]);
 
     const unlinks = rpcCalls(db, "google_unlink_gbp_location");
     assertEquals(unlinks.length, 1);
     assertEquals(unlinks[0].payload, { p_conta_id: CONTA, p_location_id: "row-b" });
     const order = db.calls.map((x) => `${x.table}:${x.operation}`);
     assert(
-      order.indexOf("gbp_locations:upsert") < order.indexOf("rpc:google_unlink_gbp_location:rpc"),
-      `upsert must precede unlink: ${order}`,
+      order.indexOf("gbp_locations:insert") < order.indexOf("rpc:google_unlink_gbp_location:rpc") &&
+        order.indexOf("gbp_locations:update") < order.indexOf("rpc:google_unlink_gbp_location:rpc"),
+      `writes must precede unlink: ${order}`,
     );
     const mine = db.calls.filter((x) => x.table === "gbp_locations" && x.operation === "select")[1];
     const filters = mine.modifiers.map((m) => `${m.method}:${m.args[0]}:${m.args[1]}`);
@@ -513,7 +534,9 @@ Deno.test("link_other_connection_untouched: A,B on connection 1; post C via conn
   try {
     const res = await makeHandler(db)(req("POST", `/locations/${CLIENT}`, { connectionId: CONN_2, locationNames: ["locations/c"] }));
     assertEquals(await res.json(), { linked: 1 });
-    const rows = db.calls.find((c) => c.operation === "upsert")!.payload as Array<Record<string, unknown>>;
+    const rows = db.calls.find((c) => c.operation === "insert" && c.table === "gbp_locations")!.payload as Array<
+      Record<string, unknown>
+    >;
     assertEquals(rows.map((r) => [r.location_name, r.connection_id]), [["locations/c", CONN_2]]);
     assertEquals(rpcCalls(db, "google_unlink_gbp_location").length, 0);
   } finally {
@@ -622,7 +645,7 @@ Deno.test("link_empty_set_unlinks_all: [] unlinks every unit of this client on t
   try {
     const res = await makeHandler(db)(req("POST", `/locations/${CLIENT}`, { connectionId: CONN_1, locationNames: [] }));
     assertEquals(await res.json(), { linked: 0 });
-    assertEquals(db.calls.filter((c) => c.operation === "upsert").length, 0);
+    assertEquals(gbpWrites(db).length, 0);
     assertEquals(
       rpcCalls(db, "google_unlink_gbp_location").map((c) => (c.payload as Record<string, unknown>).p_location_id),
       ["row-a", "row-b"],
@@ -631,5 +654,151 @@ Deno.test("link_empty_set_unlinks_all: [] unlinks every unit of this client on t
     assertEquals(db.calls.filter((c) => c.table === "google_revocations" && c.operation === "delete").length, 1);
   } finally {
     f.restore();
+  }
+});
+
+// ─── Fix round: R11, bounded walk, POST guards, summary email ───────────────────
+
+Deno.test("link_replaces_foreign_disconnected_row (R11): old row deleted, a new row inserted for this client", async () => {
+  const db = routeDb();
+  await queueConnection(db);
+  db.queue(
+    "gbp_locations",
+    "select",
+    { data: [{ id: "old-row", location_name: "locations/c", client_id: 7, connection_id: CONN_2, status: "disconnected" }] },
+    { data: [] },
+  );
+  const f = linkStub();
+  try {
+    const res = await makeHandler(db)(req("POST", `/locations/${CLIENT}`, { connectionId: CONN_1, locationNames: ["locations/c"] }));
+    assertEquals(await res.json(), { linked: 1 });
+    const del = db.calls.find((c) => c.table === "gbp_locations" && c.operation === "delete")!;
+    const dFilters = del.modifiers.map((m) => `${m.method}:${m.args[0]}:${m.args[1]}`);
+    assert(
+      dFilters.includes("eq:id:old-row") && dFilters.includes("eq:client_id:7") && dFilters.includes("eq:status:disconnected"),
+      dFilters.join(","),
+    );
+    const ins = db.calls.find((c) => c.table === "gbp_locations" && c.operation === "insert")!;
+    const row = (ins.payload as Array<Record<string, unknown>>)[0];
+    assertEquals([row.location_name, row.client_id, row.connection_id], ["locations/c", CLIENT, CONN_1]);
+    assert(!("id" in row), "the new row gets its own id");
+    assertEquals(db.calls.filter((c) => c.table === "gbp_locations" && c.operation === "update").length, 0);
+    const order = gbpWrites(db).map((c) => c.operation);
+    assertEquals(order, ["delete", "insert"]);
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("link_insert_conflict: 23505 on the insert -> 409 location_unavailable, no unlink runs", async () => {
+  const db = routeDb();
+  await queueConnection(db);
+  db.queue(
+    "gbp_locations",
+    "select",
+    { data: [] },
+    { data: [{ id: "row-b", location_name: "locations/b" }] }, // B would be unlinked on success
+    { data: [{ location_name: "locations/c", client_id: 7 }] }, // who took it
+  );
+  db.queue("gbp_locations", "insert", { data: null, error: { code: "23505", message: "duplicate key" } });
+  const f = linkStub();
+  try {
+    const res = await makeHandler(db)(req("POST", `/locations/${CLIENT}`, { connectionId: CONN_1, locationNames: ["locations/c"] }));
+    assertEquals(res.status, 409);
+    assertEquals(await res.json(), { error: "location_unavailable", locationName: "locations/c" });
+    assertEquals(rpcCalls(db, "google_unlink_gbp_location").length, 0);
+    assertEquals(db.calls.filter((c) => c.table === "audit_log").length, 0);
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("link_foreign_connection_404: POST with another workspace's connection -> 404, zero fetches", async () => {
+  const db = routeDb();
+  db.queue("google_connections", "select", { data: null });
+  const f = stubGoogle();
+  try {
+    const res = await makeHandler(db)(req("POST", `/locations/${CLIENT}`, { connectionId: CONN_2, locationNames: ["locations/a"] }));
+    assertEquals(res.status, 404);
+    assertEquals(f.calls.length, 0);
+    assertEquals(gbpWrites(db).length, 0);
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("link_rate_limited: POST denied -> 429 rate_limited, zero fetches", async () => {
+  const db = routeDb();
+  db.queue("google_connections", "select", { data: { id: CONN_1, status: "active" } });
+  db.queueRpc("check_rate_limit", { data: false });
+  const f = stubGoogle();
+  try {
+    const res = await makeHandler(db)(req("POST", `/locations/${CLIENT}`, { connectionId: CONN_1, locationNames: ["locations/a"] }));
+    assertEquals(res.status, 429);
+    assertEquals(await res.json(), { error: "rate_limited" });
+    assertEquals(f.calls.length, 0);
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("locations_truncated_account_cap: 30 accounts -> 25 walked, truncated: true", async () => {
+  const db = routeDb();
+  await queueConnection(db);
+  const accounts = Array.from({ length: 30 }, (_, i) => ({ name: `accounts/${i + 1}` }));
+  const f = stubGoogle({ accounts, locations: { "accounts/1": [loc("a", "A")] } });
+  try {
+    const res = await makeHandler(db)(req("GET", `/locations/${CLIENT}?connection=${CONN_1}`));
+    const body = await res.json();
+    assertEquals(body.truncated, true);
+    assertEquals(body.options.length, 1);
+    assertEquals(f.count(BI_BASE), 25);
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("listGbpLocations: stops at the time budget and reports truncated", async () => {
+  const original = globalThis.fetch;
+  let clock = 0;
+  const biCalls: string[] = [];
+  globalThis.fetch = ((input: string | URL) => {
+    const url = String(input);
+    const ok = (b: unknown) => Promise.resolve(new Response(JSON.stringify(b), { status: 200 }));
+    if (url === ACCOUNTS_URL) return ok({ accounts: [{ name: "accounts/1" }, { name: "accounts/2" }, { name: "accounts/3" }] });
+    biCalls.push(url);
+    clock += 15_000; // each account walk takes 15 s
+    return ok({ locations: [loc(String(biCalls.length), `L${biCalls.length}`)] });
+  }) as typeof fetch;
+  try {
+    const out = await listGbpLocations("tok", { now: () => clock });
+    assertEquals(out.truncated, true);
+    assertEquals(biCalls.length, 2, "the third account starts after the 20 s budget and is skipped");
+    assertEquals(out.options.length, 2);
+    const full = await listGbpLocations("tok", { now: () => 0 });
+    assertEquals(full.truncated, false);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+Deno.test("summary_connection_email_error: logged, email null, summary still 200", async () => {
+  const db = routeDb();
+  db.queueRpc("effective_plan_feature", { data: true }, { data: false });
+  db.queue("youtube_channels", "select", {
+    data: { channel_id: "UC1", title: "Canal", authorization_status: "active", connection_id: CONN_1 },
+  });
+  db.queue("google_connections", "select", { data: null, error: { message: "timeout" } });
+  const original = console.error;
+  const logged: string[] = [];
+  console.error = (...args: unknown[]) => logged.push(args.map(String).join(" "));
+  try {
+    const res = await makeHandler(db)(req("GET", `/summary/${CLIENT}`));
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.youtube.connectionEmail, null);
+    assert(logged.some((l) => l.includes("connection email")), `expected a log line, got ${logged}`);
+  } finally {
+    console.error = original;
   }
 });

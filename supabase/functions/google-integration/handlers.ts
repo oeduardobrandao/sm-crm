@@ -25,7 +25,7 @@ import {
   hasRequiredScopes,
   revokeGoogleToken,
 } from "../_shared/google.ts";
-import { type GbpLocationOption, listEligibleLocations } from "./locations.ts";
+import { type GbpLocationOption, listGbpLocations } from "./locations.ts";
 import { createGoogleState, verifyGoogleState, type VerifiedGoogleState } from "./oauth-state.ts";
 import { type DbClient, loadClientInTenant, resolveTenant } from "./tenant.ts";
 
@@ -425,12 +425,16 @@ async function handleSummary(svc: DbClient, req: Request, rawClientId: string, c
       .maybeSingle();
     if (error) throw new Error(`youtube_channels read failed: ${error.message}`);
     if (ch) {
-      const { data: conn } = await svc
+      const { data: conn, error: connError } = await svc
         .from("google_connections")
         .select("email")
         .eq("id", ch.connection_id)
         .eq("conta_id", ctx.contaId)
         .maybeSingle();
+      if (connError) {
+        // Non-fatal: the summary still renders, without the account email.
+        console.error(`[google-integration] summary connection email read failed: ${connError.message}`);
+      }
       youtube = {
         channelId: ch.channel_id,
         title: ch.title ?? null,
@@ -506,18 +510,23 @@ async function handleListLocations(
   if (await locationsRateLimited(svc, ctx.contaId)) return json(cors, { error: "rate_limited" }, 429);
 
   const token = await getFreshGoogleToken(svc, connectionId);
-  const options = await listEligibleLocations(token);
-  if (options.length === 0) return json(cors, { options: [] });
+  const { options, truncated } = await listGbpLocations(token);
+  // `truncated` (account cap or time budget hit) is extra; the CRM ignores unknown fields.
+  const extra = truncated ? { truncated: true } : {};
+  if (options.length === 0) return json(cors, { options: [], ...extra });
 
-  // Units of this workspace that already belong to a client (active or awaiting reconnect).
+  // Units of this workspace that already belong to a client (active or awaiting reconnect),
+  // matched in memory: the listed names can be hundreds, too many for a URL filter.
   const { data: linked, error } = await svc
     .from("gbp_locations")
     .select("location_name, client_id, connection_id, status")
     .eq("conta_id", ctx.contaId)
-    .in("location_name", options.map((o) => o.locationName))
     .in("status", ["active", "revoked"]);
   if (error) throw new Error(`gbp_locations read failed: ${error.message}`);
-  const linkedBy = new Map<string, LinkedRow>(((linked ?? []) as LinkedRow[]).map((r) => [r.location_name, r]));
+  const listedNames = new Set(options.map((o) => o.locationName));
+  const linkedBy = new Map<string, LinkedRow>(
+    ((linked ?? []) as LinkedRow[]).filter((r) => listedNames.has(r.location_name)).map((r) => [r.location_name, r]),
+  );
 
   const clientIds = [...new Set([...linkedBy.values()].map((r) => r.client_id))];
   const names = new Map<number, string>();
@@ -532,6 +541,7 @@ async function handleListLocations(
   }
 
   return json(cors, {
+    ...extra,
     options: options.map((o) => {
       const row = linkedBy.get(o.locationName);
       const linkedClientId = row ? row.client_id : null;
@@ -581,7 +591,8 @@ async function handleLinkLocations(svc: DbClient, req: Request, rawClientId: str
   if (await locationsRateLimited(svc, ctx.contaId)) return json(cors, { error: "rate_limited" }, 429);
 
   const token = await getFreshGoogleToken(svc, connectionId);
-  const fromGoogle = new Map((await listEligibleLocations(token)).map((o) => [o.locationName, o]));
+  // A truncated listing only means fewer names are accepted (409), never a wrong link.
+  const fromGoogle = new Map((await listGbpLocations(token)).options.map((o) => [o.locationName, o]));
 
   let requestedRows: LinkedRow[] = [];
   if (locationNames.length) {
@@ -619,28 +630,73 @@ async function handleLinkLocations(svc: DbClient, req: Request, rawClientId: str
     }
   }
 
-  // Upsert BEFORE unlink: the unlink's revoke branch can delete the connection this upsert
-  // references. Titles and addresses always come from Google, never from the request. A kept
-  // unit Google no longer lists is left as is.
-  const upserts = locationNames
+  // Writes BEFORE unlink: the unlink's revoke branch can delete the connection these rows
+  // reference. Titles and addresses always come from Google, never from the request; a kept
+  // unit Google no longer lists is left as is. R11: a row never moves between clients. This
+  // client's own rows are updated in place; another client's `disconnected` row for a name is
+  // deleted and a fresh row inserted, so the old client's history never follows the unit.
+  const listedRows = locationNames
     .map((name) => fromGoogle.get(name))
     .filter((o): o is GbpLocationOption => !!o)
     .map((o) => ({
-      conta_id: ctx.contaId,
-      client_id: ctx.clientId,
-      connection_id: connectionId,
       account_name: o.accountName,
       location_name: o.locationName,
       title: o.title,
       address_line: o.addressLine,
       website: o.website,
       has_voice_of_merchant: o.hasVoiceOfMerchant,
-      status: "active",
-      disconnected_at: null,
     }));
-  if (upserts.length) {
-    const { error } = await svc.from("gbp_locations").upsert(upserts, { onConflict: "conta_id,location_name" });
-    if (error) throw new Error(`gbp_locations upsert failed: ${error.message}`);
+  const ownRows: Array<{ id: string; fields: (typeof listedRows)[number] }> = [];
+  const newRows: Array<(typeof listedRows)[number]> = [];
+  const foreignDisconnected: LinkedRow[] = [];
+  for (const fields of listedRows) {
+    const existing = requestedBy.get(fields.location_name);
+    if (existing && existing.client_id === ctx.clientId && existing.id) {
+      ownRows.push({ id: existing.id, fields });
+      continue;
+    }
+    if (existing) foreignDisconnected.push(existing); // validated above: disconnected only
+    newRows.push(fields);
+  }
+
+  for (const row of foreignDisconnected) {
+    const { error } = await svc
+      .from("gbp_locations")
+      .delete()
+      .eq("id", row.id)
+      .eq("client_id", row.client_id)
+      .eq("status", "disconnected");
+    if (error) throw new Error(`gbp_locations delete failed: ${error.message}`);
+  }
+
+  if (newRows.length) {
+    const { error } = await svc.from("gbp_locations").insert(
+      newRows.map((fields) => ({
+        ...fields,
+        conta_id: ctx.contaId,
+        client_id: ctx.clientId,
+        connection_id: connectionId,
+        status: "active",
+        disconnected_at: null,
+      })),
+    );
+    if (error) {
+      if (error.code !== "23505") throw new Error(`gbp_locations insert failed: ${error.message}`);
+      // Another save linked one of these units first (unique conta_id + location_name). The
+      // single INSERT is atomic, so nothing of this batch landed; nothing is unlinked.
+      const taken = await findTakenName(svc, ctx.contaId, ctx.clientId, newRows.map((r) => r.location_name));
+      return json(cors, { error: "location_unavailable", locationName: taken }, 409);
+    }
+  }
+
+  for (const { id, fields } of ownRows) {
+    const { error } = await svc
+      .from("gbp_locations")
+      .update({ ...fields, connection_id: connectionId, status: "active", disconnected_at: null })
+      .eq("id", id)
+      .eq("client_id", ctx.clientId)
+      .eq("conta_id", ctx.contaId);
+    if (error) throw new Error(`gbp_locations update failed: ${error.message}`);
   }
 
   const wanted = new Set(locationNames);
@@ -671,6 +727,17 @@ async function handleLinkLocations(svc: DbClient, req: Request, rawClientId: str
   });
 
   return json(cors, { linked: locationNames.length });
+}
+
+/** After a 23505 on the link insert, names the unit another client now holds. */
+async function findTakenName(svc: DbClient, contaId: string, clientId: number, names: string[]): Promise<string> {
+  const { data } = await svc
+    .from("gbp_locations")
+    .select("location_name, client_id")
+    .eq("conta_id", contaId)
+    .in("location_name", names);
+  const hit = ((data ?? []) as LinkedRow[]).find((r) => r.client_id !== clientId);
+  return hit?.location_name ?? names[0];
 }
 
 // ─── POST /disconnect/youtube/:clientId ───────────────────────────────────────────────
