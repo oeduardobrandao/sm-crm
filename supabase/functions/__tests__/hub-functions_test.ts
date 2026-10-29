@@ -3655,6 +3655,199 @@ Deno.test("hub-edit-suggestion still returns a generic 500 for other RPC errors"
   assertEquals((await readJson(response)).error, "Erro ao salvar sugestão.");
 });
 
+function inlineImageDoc(r2Key: string, src?: string) {
+  return {
+    type: "doc",
+    content: [
+      { type: "paragraph", content: [{ type: "text", text: "Oi" }] },
+      { type: "inlineImage", attrs: src ? { r2Key, src } : { r2Key } },
+    ],
+  };
+}
+
+function touchedFieldsRequest(extra: Record<string, unknown>) {
+  return new Request("https://example.test/hub-edit-suggestion", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, ...extra }),
+  });
+}
+
+function upsertCall(db: ReturnType<typeof createSupabaseQueryMock>) {
+  return db.calls.find((c: { table: string }) => c.table === "rpc:upsert_edit_suggestion");
+}
+
+Deno.test("hub-edit-suggestion forwards touched_fields and bases to the RPC", async () => {
+  const db = hubEditSuggestionDb();
+  db.queueRpc("upsert_edit_suggestion", {
+    data: { action: "upserted", is_new: true, suggestion: { id: 5, post_id: 99 } },
+    error: null,
+  });
+  const bases = { conteudo: null, conteudo_plain: "Base", ig_caption: "Legenda base" };
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_conteudo_plain: "Novo corpo",
+    touched_fields: ["texto"],
+    bases,
+  }));
+  assertEquals(response.status, 200);
+  const call = upsertCall(db);
+  assert(call);
+  assertEquals(call.payload.p_touched_fields, ["texto"]);
+  assertEquals(call.payload.p_bases, bases);
+});
+
+Deno.test("hub-edit-suggestion omits p_touched_fields and p_bases when the body has none (old Hub)", async () => {
+  const db = hubEditSuggestionDb();
+  db.queueRpc("upsert_edit_suggestion", {
+    data: { action: "upserted", is_new: true, suggestion: { id: 5, post_id: 99 } },
+    error: null,
+  });
+  const response = await hubEditSuggestionHandlerFor(db)(editSuggestionRequest());
+  assertEquals(response.status, 200);
+  const call = upsertCall(db);
+  assert(call);
+  assertEquals("p_touched_fields" in call.payload, false);
+  assertEquals("p_bases" in call.payload, false);
+});
+
+Deno.test("hub-edit-suggestion rejects a touched_fields value outside texto/legenda with 400", async () => {
+  const db = hubEditSuggestionDb();
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_conteudo_plain: "Corpo",
+    touched_fields: ["outro"],
+    bases: { conteudo_plain: "Base" },
+  }));
+  assertEquals(response.status, 400);
+  assertEquals((await readJson(response)).error, "Campos inválidos.");
+  assertEquals(upsertCall(db), undefined);
+});
+
+Deno.test("hub-edit-suggestion rejects a touched_fields that is not an array with 400", async () => {
+  const db = hubEditSuggestionDb();
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_conteudo_plain: "Corpo",
+    touched_fields: "texto",
+  }));
+  assertEquals(response.status, 400);
+  assertEquals((await readJson(response)).error, "Campos inválidos.");
+  assertEquals(upsertCall(db), undefined);
+});
+
+Deno.test("hub-edit-suggestion skips the new-image check for a legenda-only save", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  // The team removed the image from the live conteudo after the Hub loaded it.
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: 7, status: "enviado_cliente", conteudo: null, conta_id: "conta-1", cliente_id: 14 },
+    error: null,
+  });
+  db.queueRpc("upsert_edit_suggestion", {
+    data: { action: "upserted", is_new: true, suggestion: { id: 5, post_id: 99 } },
+    error: null,
+  });
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_conteudo: inlineImageDoc("contas/conta-1/img.png"),
+    suggested_conteudo_plain: "Corpo",
+    suggested_ig_caption: "Legenda nova",
+    touched_fields: ["legenda"],
+    bases: { ig_caption: "Legenda base" },
+  }));
+  assertEquals(response.status, 200);
+  const call = upsertCall(db);
+  assert(call);
+  assertEquals(call.payload.p_touched_fields, ["legenda"]);
+});
+
+Deno.test("hub-edit-suggestion still rejects new inline images when texto is touched", async () => {
+  const db = hubEditSuggestionDb();
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_conteudo: inlineImageDoc("contas/conta-1/img.png"),
+    suggested_conteudo_plain: "Corpo",
+    touched_fields: ["texto"],
+    bases: { conteudo: null, conteudo_plain: "Base" },
+  }));
+  assertEquals(response.status, 400);
+  assertEquals((await readJson(response)).error, "Não é permitido adicionar imagens.");
+  assertEquals(upsertCall(db), undefined);
+});
+
+Deno.test("hub-edit-suggestion still checks the conta prefix of suggested_conteudo on a legenda-only save", async () => {
+  const db = hubEditSuggestionDb();
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_conteudo: inlineImageDoc("contas/outra-conta/img.png"),
+    suggested_ig_caption: "Legenda nova",
+    touched_fields: ["legenda"],
+    bases: { ig_caption: "Legenda base" },
+  }));
+  assertEquals(response.status, 400);
+  assertEquals((await readJson(response)).error, "Referência de mídia inválida.");
+  assertEquals(upsertCall(db), undefined);
+});
+
+Deno.test("hub-edit-suggestion strips signed src from bases.conteudo before forwarding", async () => {
+  const db = hubEditSuggestionDb();
+  db.queueRpc("upsert_edit_suggestion", {
+    data: { action: "upserted", is_new: true, suggestion: { id: 5, post_id: 99 } },
+    error: null,
+  });
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_conteudo_plain: "Corpo",
+    touched_fields: ["texto"],
+    bases: {
+      conteudo: inlineImageDoc("contas/conta-1/img.png", "https://signed.example/img.png?sig=abc"),
+      conteudo_plain: "Base",
+    },
+  }));
+  // The suggestion itself carries no image, so nothing new is added; the base has one.
+  assertEquals(response.status, 200);
+  const call = upsertCall(db);
+  assert(call);
+  assertEquals(call.payload.p_bases.conteudo, inlineImageDoc("contas/conta-1/img.png"));
+  assertEquals(call.payload.p_bases.conteudo_plain, "Base");
+});
+
+Deno.test("hub-edit-suggestion rejects a bases.conteudo image from another conta with 400", async () => {
+  const db = hubEditSuggestionDb();
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_conteudo_plain: "Corpo",
+    touched_fields: ["texto"],
+    bases: { conteudo: inlineImageDoc("contas/outra-conta/img.png") },
+  }));
+  assertEquals(response.status, 400);
+  assertEquals((await readJson(response)).error, "Referência de mídia inválida.");
+  assertEquals(upsertCall(db), undefined);
+});
+
+Deno.test("hub-edit-suggestion rejects a bases that is not an object with 400", async () => {
+  const db = hubEditSuggestionDb();
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_conteudo_plain: "Corpo",
+    touched_fields: ["texto"],
+    bases: "base",
+  }));
+  assertEquals(response.status, 400);
+  assertEquals((await readJson(response)).error, "Campos inválidos.");
+  assertEquals(upsertCall(db), undefined);
+});
+
+Deno.test("hub-edit-suggestion maps base_required from the RPC to 400 and does not notify", async () => {
+  const db = hubEditSuggestionDb();
+  db.queueRpc("upsert_edit_suggestion", { data: null, error: { message: "base_required" } });
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_conteudo_plain: "Corpo",
+    touched_fields: ["texto"],
+    bases: {},
+  }));
+  assertEquals(response.status, 400);
+  assertEquals((await readJson(response)).error, "Erro ao salvar sugestão.");
+  assertEquals(
+    db.calls.some((c: { table: string }) => c.table === "rpc:create_edit_suggestion_notification"),
+    false,
+  );
+});
+
 Deno.test("hub-approve aprovado uses record_client_approval_with_notes with the token's conta and cliente", async () => {
   const db = hubApproveDbForPost();
   db.queue("workflow_posts", "update", { data: null, error: null });
