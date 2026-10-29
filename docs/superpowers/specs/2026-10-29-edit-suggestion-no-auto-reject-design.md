@@ -1,7 +1,8 @@
 # Client edit suggestions survive team edits (no more auto-reject)
 
-Status: DRAFT v1 (pending Fable review)
+Status: DRAFT v2 (Codex review folded in; pending Fable review)
 Date: 2026-10-29
+Mockups: https://claude.ai/artifact/MEBmjJBNoriqTfTu9bDqyo
 
 ## Context
 
@@ -192,12 +193,17 @@ Consequences to keep in mind:
 Review card (`PostEditorBody.tsx:1564-1620`, phone `PhoneSuggestionSheet`):
 
 - Non-conflict field: as today (diff live → suggested; live = original here).
+- When the team changed a field the client did NOT change since the suggestion was sent, a quiet
+  footer line says what accept will and will not touch, e.g. "Aceitar aplica só o texto do post.
+  A legenda que a equipe editou em 29 out fica como está." (needs the field's last team edit
+  time: the builder may read it from `post_content_versions` or drop the date).
 - Conflict field: amber line "A equipe editou {o texto | a legenda} depois desta sugestão." The
   diff shows what accepting would do (live → suggested), with a toggle "Ver só o que o cliente
   mudou" (original → suggested).
-- **Aceitar** with no conflict: one call, `p_fields` = all changed. With conflicts: a confirm
-  dialog listing each conflicting field with two choices, "Usar a versão do cliente" / "Manter a
-  versão da equipe" (default: keep the team's); non-conflict fields are applied automatically.
+- **Aceitar** with no conflict: one call, `p_fields` = all changed. With conflicts the button
+  reads "Aceitar…" and opens a dialog "Aceitar a sugestão?" listing each conflicting field with
+  two choices, "Manter a versão da equipe" (default) / "Usar a versão do cliente"; non-conflict
+  fields are listed as applied. Buttons "Cancelar" / "Aceitar sugestão".
   If the resulting set of fields to apply is empty, the confirm button is disabled; the user
   closes the dialog or rejects explicitly.
 - Error handling: `suggestion_conflict` (the stale-tab case) refetches suggestions and the post,
