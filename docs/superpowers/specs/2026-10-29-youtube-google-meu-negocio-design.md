@@ -27,7 +27,7 @@ By the user (2026-10-28/29):
 3. **GMN reviews: rating + read-only list** of recent reviews ("Abrir no Google" to reply).
 4. **YouTube publishing launches with the platform-wide daily upload cap** until Google's
    audit. Overflow queues to the next quota day and the UI says so.
-5. The six mockup screens are approved as the UI, amended by §4.6 (YouTube data-policy limits).
+5. The six mockup screens are approved as the UI, minus AI analysis of YouTube data (§4.6).
 
 Stated defaults the user did not object to:
 6. **Two separate connect buttons** ("Conectar YouTube", "Conectar Google Meu Negócio"). A
@@ -44,16 +44,16 @@ Non-goals (v1): replying to reviews, posting to GMN (updates/offers/photos), GMN
 down 2025-11), YouTube long-video publishing, captions/subtitles upload (needs the broader
 `youtube.force-ssl` scope), custom thumbnails, playlists, YouTube comments, portfolio-level
 pages like `/analytics/tiktok` for the two new platforms, Hub analytics tabs, MCP tools,
-**AI analysis of YouTube data** and **computed YouTube metrics** until Google approves derived
-metrics (§4.6).
+**AI analysis of YouTube data** and YouTube metrics beyond simple arithmetic until Google
+approves derived metrics (§4.6).
 
 Anti-goals (would be a failure even if it "works"):
 - A connection that silently dies after 7 days or after the 100th client (§4.2).
 - Numbers labelled as something they are not. YouTube data is 2-3 days late and GMN counts
   unique users per day per surface; every KPI says exactly what it is.
 - A Short that is published as a regular video without warning.
-- Anything that fails Google's YouTube audit (§4.6): computed YouTube metrics, YouTube data
-  kept after a disconnect.
+- Anything that fails Google's YouTube audit (§4.6): YouTube numbers mixed into cross-platform
+  totals, AI or scores on YouTube data, YouTube data kept after a disconnect.
 - One workspace reading, overwriting or deleting another workspace's data for the same
   channel or location (§6).
 
@@ -71,8 +71,10 @@ Anti-goals (would be a failure even if it "works"):
 
 | Flow | Scopes |
 |---|---|
-| Conectar YouTube | `youtube.upload`, `youtube.readonly`, `yt-analytics.readonly` (+ `openid email`) |
-| Conectar Google Meu Negócio | `business.manage` (+ `openid email`) |
+| Conectar YouTube | `youtube.upload`, `youtube.readonly`, `yt-analytics.readonly` (+ `openid email profile`) |
+| Conectar Google Meu Negócio | `business.manage` (+ `openid email profile`) |
+
+  The display name is optional on the connection (falls back to the email).
 
 - Auth URL: `access_type=offline`, `include_granted_scopes=true`, `prompt=select_account`. The
   callback checks the granted `scope` string; a missing required scope fails with "Marque todas
@@ -111,10 +113,19 @@ Google account, so a token-per-client design breaks at the 101st client. Therefo
   (`oauth2.googleapis.com/revoke`) only when **no `google_connections` row in any workspace**
   has that `sub` and still has a linked product: revoking kills the whole grant between that
   Google account and the OAuth client, including other workspaces' connections. Otherwise the
-  workspace's connection row is deleted locally.
+  workspace's connection row is deleted locally. The check, the unlink and the decision run in
+  one SECURITY DEFINER RPC under `pg_advisory_xact_lock(hashtext('google-sub:' || sub))`, so two
+  concurrent last disconnects cannot each see the other and skip the revoke. A "revoke" decision
+  writes a `google_revocations` row (encrypted token, attempts) in the same transaction; the
+  function calls Google after commit and deletes the row on success, and the daily sync retries
+  leftovers.
 
 Tenant resolution in all new functions: `profiles.active_workspace_id` + `workspace_members`
-check (the `report-docs` pattern), not the legacy `profiles.conta_id`.
+check (the `report-docs` pattern), not the legacy `profiles.conta_id`. **Every route that takes
+a `clientId`, `connectionId`, location id or target id loads that row with
+`conta_id = <caller's active workspace>` before any other work** (service-role clients bypass
+RLS, so this check is the isolation). A `gbp_pick=<connectionId>` from another workspace returns
+404.
 
 `oauth_states.provider` CHECK (`oauth_states_provider_check`) widens to
 `('instagram','tiktok','google')`. Product (`youtube | gbp`), `clientId`, `userId`, `contaId`
@@ -127,8 +138,8 @@ as in `tiktok-integration/oauth-state.ts`); `oauth_states` gets no new column.
 `conta_id`, `connection_id`, `channel_id`, title, handle, avatar (cached to storage like
 TikTok's), uploads playlist id, cached counts (subscribers as returned, i.e. rounded by
 YouTube; views; videos; shorts; long), `authorization_status`, `last_synced_at`,
-`data_through` (§6.1). One `channel_id` per client per workspace (reject with "Este canal já
-está vinculado ao cliente X").
+`data_through` (§5.1). `UNIQUE (conta_id, channel_id)` in the database (one channel, one client
+per workspace); the callback maps the violation to "Este canal já está vinculado ao cliente X".
 
 The channel is what `channels.list?mine=true` returns for the identity that logged in;
 Google's account chooser lists Brand Accounts as separate identities. If `mine=true` returns no
@@ -137,8 +148,12 @@ account that owns two Brand Account channels, confirm the chooser selects the ch
 does not, v1 supports only the channel of the chosen identity and the connect card says so;
 no channel picker is built.
 
-Unlink = delete the `youtube_channels` row and enqueue the §4.6 purge (YouTube data is not
-kept for a re-link; a re-link backfills from the API).
+Unlink = one transaction (inside the §4.2 RPC): every YouTube target of that client in
+`processando` or `agendado` is marked `falha` with `youtube_not_connected`, its `youtube_uploads`
+rows are deleted (an open resumable session is never resumed), the `youtube_channels` row is
+deleted and the §4.6 purge is enqueued. YouTube data is not kept for a re-link; a re-link
+backfills from the API. A chunk PUT already in flight when the row disappears finds no row on
+its next persist and stops.
 
 ### 4.4 GMN: many locations per client
 
@@ -181,22 +196,20 @@ sections = flag on and platform connected.
 ### 4.6 YouTube API policy constraints (audit-critical)
 
 From the YouTube API Services Developer Policies (checked 2026-10-29):
-- **No derived metrics** (III.E.4.h): Mesaas must not compute new metrics from YouTube API Data
-  or replace API data with its own calculations. Derived metrics need explicit approval,
-  requested in the quota-extension/audit form (Additional policies for derived metrics, from
-  2026-06-01). Until approved, v1 YouTube surfaces show **only values returned by the API**:
-  - KPI totals for a window come from an Analytics API query for that exact window (and
-    content type), not from summing stored days; average view duration and average % watched
-    are the API's own range values.
-  - Comparison shows the previous window's API value ("28 dias anteriores: 148,9 mil"), not a
-    computed % change or arrow.
-  - The "Shorts x vídeos longos" card shows each type's API value side by side (bars allowed),
-    no computed percentage.
-  - No AI analysis of YouTube data in the tab or in the report AI (the report AI ignores the
-    YouTube section).
-  - Mockups 3 and 6 are amended accordingly (§8, §9).
-  - Once Google approves derived metrics, percentages, deltas and AI can be added in a later
-    change.
+- **Derived metrics** (III.E.4.h and the policies guide): allowed without approval are metrics
+  that "use only YouTube API data and combine them via simple mathematical calculations
+  (addition, subtraction, averages, multiplication, division)", e.g. totals over a period,
+  subscribers gained or lost, averages. Prohibited: combining YouTube data with other sources
+  (no cross-platform totals or "engajamento geral" that includes YouTube), custom scores, and
+  metrics that replace ones the API offers. Anything beyond simple arithmetic needs the
+  derived-metrics approval, requested with the audit. So v1:
+  - KPI totals sum stored daily rows; averages are view-weighted; % change vs the previous
+    window and the Shorts share are plain division. All allowed.
+  - YouTube numbers never enter a cross-platform sum, chart or score (the report's Geral
+    section and any multi-platform total exclude YouTube).
+  - **No AI analysis of YouTube data** (tab and report AI) until Google approves it: a model's
+    output is not "simple arithmetic" and could read as derived insight. The report AI ignores
+    the YouTube section.
 - **Storage**: analytics/statistics may be stored beyond 30 days while authorization is
   re-verified at least every 30 days (the daily sync does it). Other API data (video titles,
   descriptions, thumbnails) must be refreshed or deleted within 30 days: the sync refreshes every
@@ -205,17 +218,20 @@ From the YouTube API Services Developer Policies (checked 2026-10-29):
 - **Deletion**: in-app disconnect is a revocation through the API client → delete within 7
   calendar days; revocation detected via `invalid_grant` (user revoked at Google) → 30 days by
   the policy, Mesaas uses 7 for both. The purge job (daily, in `youtube-sync-cron`) deletes, for
-  the disconnected `(conta_id, channel_id)`: every `youtube_*` history row, `youtube_uploads`,
-  the `youtube` sub-object of every `report_documents.snapshot` of that client, and any stored
-  rendering (PDF) of those reports (regenerated on demand without YouTube). It also deletes the
-  connection row when nothing references it. Each purge writes an `insertAuditLog` entry
-  (`youtube-data-purged`) for audit evidence.
+  the disconnected `(conta_id, channel_id)`: every `youtube_*` history row and, in that client's
+  `report_documents`, the `youtube` key of `data_snapshot`, every `youtube_*` block and YouTube
+  section marker from `layout` (so a regenerated PDF has no empty YouTube widgets),
+  `youtube_channel_id`, and the stored PDF at `pdf_storage_path` (path cleared; regenerated on
+  demand). `refresh.ts`'s carry-over of a disconnected platform's frozen section does not apply
+  to YouTube. Each purge writes an `insertAuditLog` entry (`youtube-data-purged`).
 - **Aggregation**: YouTube data is never combined across channels of different owners (no
   portfolio page in v1) and is shown only inside the client it belongs to.
 - **Attribution**: YouTube UI blocks say the data comes from YouTube and link videos to
   YouTube; YouTube logos unaltered.
 
-GMN data is not under these rules; it follows §4.4 (30-day soft-delete purge).
+GMN data is not under these rules. Its history follows §4.4 (30-day soft-delete purge); GMN
+numbers already frozen into reports stay there as the agency's delivered documents (TikTok's
+carry-over rule), and the privacy policy says so (§9).
 
 ## 5. Data and sync
 
@@ -230,10 +246,10 @@ share rows. No FK to the link tables (GMN history must outlive an unlink for 30 
 Tables (all keyed `(conta_id, channel_id, …)`):
 - `youtube_channel_daily` (`day`, `content_type` ∈ `all|shorts|long|live`): views,
   engaged_views, estimated_minutes_watched, likes, comments, shares, subscribers_gained,
-  subscribers_lost; for charts only. `all` from the channel report without the dimension; the
+  subscribers_lost. `all` from the channel report without the dimension; the
   split rows from the same report grouped by `creatorContentType` (spike S2); metrics Google
   does not split are null on split rows.
-- `youtube_traffic_daily` (`day`, `source_type`): views; for charts.
+- `youtube_traffic_daily` (`day`, `source_type`): views.
 - `youtube_demographics` (`window_end`, `age_group`, `gender`, `viewer_pct`): API 28-day
   snapshot refreshed daily; the "Público" card says "últimos 28 dias" whatever the period.
 - `youtube_videos` (`video_id`): title, published_at, duration_s, `is_short`, thumbnail url,
@@ -241,12 +257,12 @@ Tables (all keyed `(conta_id, channel_id, …)`):
 - `youtube_video_daily` (`video_id`, `day`): views, likes, comments, shares,
   subscribers_gained, average_view_duration_s, average_view_percentage from the Analytics API
   (`dimensions=day`, `filters=video==…`; backfillable, so no lifetime snapshots are needed).
-- `youtube_range_cache` (`content_type`, `start_day`, `end_day`, `fetched_at`, `payload jsonb`):
-  window totals from the Analytics API for the KPI grid and the reports, cached 6 h.
-
-Watermark: `data_through` = the **minimum** of the last day returned by the channel report,
-the content-type report and the traffic report in the last sync. Windows end there; the tab
-prints "Dados até {{data}}". Analytics API days are Pacific days, stored as returned.
+Watermark: `data_through` = the last day returned by the `all` channel report. The
+content-type, traffic and per-video queries for the same window count as complete when the
+call succeeded, even if they returned no rows (a channel with no Shorts or no long videos is
+valid: its split cards show zero, not "sem dados"). A failed split query leaves its own
+`*_through` column behind and only that card shows "Dados até {{data}}" for its own date.
+Analytics API days are Pacific days, stored as returned.
 
 Sync (`youtube-sync-cron`, daily, scheduled right after the quota reset at 00:00 Pacific so
 sync runs before uploads draw on the shared Data API quota; manual `POST /sync/:clientId` on
@@ -326,10 +342,13 @@ persisted before the next network call, so a killed invocation resumes cleanly o
   `clientes_plataformas_padrao_valid`, `post_targets_platform_check`.
   `workflow_posts.platform` stays derived from instagram/tiktok only (instagram+youtube →
   `instagram`, youtube-only → `other`).
-- **Only `reels` posts get a YouTube target.** `post_targets_seed` skips youtube when
-  `tipo <> 'reels'`, and a z7-style trigger deletes a non-published youtube target when the post's
-  `tipo` changes away from `reels` (the seed currently inserts every board platform without a
-  `tipo` check).
+- **Only `reels` posts get a YouTube target, on every creation path.** Targets are created by
+  `post_seed_targets` (pre-insert trigger z4b), `post_targets_seed` (z6), the legacy
+  platform-to-targets trigger (a2) and the board-move seed (z8); none checks `tipo`. Instead of
+  patching each, a `BEFORE INSERT` trigger on `post_targets` skips (returns NULL) a `youtube`
+  row whose post is not `reels`, and a z7-style trigger on `workflow_posts` deletes the
+  non-published youtube target when `tipo` changes away from `reels`. A Stories post on a
+  YouTube-only board ends with no target, like a Stories post on a TikTok-only board today.
 - **Persistence contract.** YouTube text lives only in `post_targets`: `title`, `caption`
   (description), `settings` jsonb `{ privacy, made_for_kids, synthetic_media, tags }`.
   `store/postTargets.ts` gains a `youtube` branch in seeding and `savePostCaption` (today any
@@ -433,7 +452,10 @@ not connected).
 
 ### 6.7 Manual actions and other surfaces
 
-`youtube-publish` function: `schedule`, `publish-now`, `cancel`, `retry`, gated per §4.5.
+`youtube-publish` function: `schedule`, `publish-now`, `cancel`, `retry`. Only `schedule` and
+`publish-now` are gated (§4.5); `cancel` and `retry` stay ungated so a workspace that loses the
+plan can still unstick committed posts (the `tiktok-publish` rule); ownership checks always
+apply.
 `cancel` before a `video_id` deletes the `youtube_uploads` row and returns the target to
 `pendente`; after, it is refused ("Já enviado ao YouTube. Exclua pelo YouTube Studio"). The
 composer (`ScheduleButton`, `PublicacoesPanel`, `DestinationToggles`, `PlatformSelector`,
@@ -453,20 +475,19 @@ not-connected/expired states reuse its `StateCard`. New i18n namespaces `analyti
 Read functions (tenant check, flags, 120/min per workspace), shared query modules in
 `_shared/youtube-analytics/` and `_shared/gbp-analytics/` (reused by `report-docs`):
 - `youtube-analytics`: `GET /overview/:clientId?days|from,to&type=all|shorts|long` (window
-  totals + previous window, both from `youtube_range_cache`/the Analytics API), `/daily`,
-  `/traffic`, `/demographics`, `/videos?sort=`, `/top-shorts`. No AI route.
+  totals + previous window from the daily tables), `/daily`, `/traffic`, `/demographics`,
+  `/videos?sort=`, `/top-shorts`. No AI route.
 - `gbp-analytics`: `GET /overview/:clientId?location=all|<uuid>&…`, `/daily`, `/surfaces`,
   `/keywords?month=`, `/reviews?filter=all|unanswered|low`, `/rating-distribution`, `/units`.
 
-YouTube KPIs (mockup 3 amended per §4.6: no % deltas, previous-window value as the sub line,
-"Shorts x vídeos longos" shows values, AI card removed):
+YouTube KPIs (mockup 3, with the AI card removed per §4.6):
 
 | KPI | Source |
 |---|---|
-| Inscritos | `channels.list` current count (rounded by YouTube; "total atual"), no comparison |
-| Novos inscritos | API window `subscribersGained − subscribersLost`, both shown |
-| Visualizações, Visualizações engajadas, Tempo assistido, Curtidas, Compartilhamentos | API window totals for the content type |
-| Duração média | API `averageViewDuration` for the window |
+| Inscritos | `channels.list` current count (rounded by YouTube; "total atual"); delta = net subscribers over the window |
+| Novos inscritos | Σ gained − Σ lost (both shown in the sub line) |
+| Visualizações, Visualizações engajadas, Tempo assistido, Curtidas, Compartilhamentos | Σ daily rows of the selected content type |
+| Duração média | view-weighted mean of the daily `averageViewDuration` |
 
 GMN KPIs (mockup 4 as approved; GMN is not under the derived-metrics rule):
 
@@ -506,8 +527,7 @@ Structural changes (all currently hardcode instagram/tiktok):
 - CRM: `NewReportDialog`, `AddSectionMenu`, `AddWidgetDrawer`, `widgetIcons`, `LayersPanel`.
 - `_shared/report-template/ai.ts`: GMN rules only.
 
-Widgets (mockup 6, amended per §4.6): YouTube KPIs (no % deltas, no "% das visualizações
-vieram de Shorts" tile), daily views Shorts × long, top Shorts, video list, traffic + audience;
+Widgets (mockup 6): YouTube KPIs, daily views Shorts × long, top Shorts, video list, traffic + audience;
 GMN KPIs, where people saw the profile, daily actions, search terms, rating + distribution,
 highlighted review (most recent 5★ with text, else 4★), units comparison. The report AI text
 covers Instagram, TikTok and GMN; it never cites YouTube numbers.
@@ -515,8 +535,9 @@ covers Instagram, TikTok and GMN; it never cites YouTube numbers.
 ## 9. Privacy policy (Phase 1)
 
 `/politica-de-privacidade` gains a section: what Mesaas reads from YouTube and Google Business
-Profile and what it publishes; retention (YouTube data deleted within 7 days of a disconnect;
-GMN data 30 days); that Mesaas uses YouTube API Services, with links to the YouTube Terms of
+Profile and what it publishes; retention (YouTube data, including in saved reports, deleted within 7
+days of a disconnect; GMN history 30 days, while GMN numbers in reports already generated stay in
+those reports); that Mesaas uses YouTube API Services, with links to the YouTube Terms of
 Service and the Google Privacy Policy; how to revoke at `myaccount.google.com/permissions`;
 reviewer names stored from Google reviews. Terms of use updated if they list integrations.
 
