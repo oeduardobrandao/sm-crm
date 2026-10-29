@@ -32,7 +32,7 @@
   - `conta_id` is the first primary-key column, with no FK to the link tables.
   - `REVOKE ALL … FROM PUBLIC, anon, authenticated` plus `GRANT ALL … TO service_role`.
   - Every read, write and purge filters by `conta_id`.
-- **Migrations:** versions `20261106000010`..`20261106000021`, leaving headroom above Phase 1's `…03`. Before `gh pr create`, re-check main's tail **and open PRs' migrations** (the #771 lesson) and renumber if anything collides.
+- **Migrations:** versions `20261107000010`..`20261107000021`, leaving headroom above Phase 1's `…03`. Before `gh pr create`, re-check main's tail **and open PRs' migrations** (the #771 lesson) and renumber if anything collides.
 - **Crons:**
   - Each cron has a `handler.ts` (`x-cron-secret` via `timingSafeEqual`, 401 before any DB access), a `core.ts` and an `index.ts`, as in `tiktok-sync-cron`.
   - `supabase/config.toml` `verify_jwt = false`.
@@ -96,7 +96,7 @@
 ### Task 1: YouTube history tables
 
 **Files:**
-- Create: `supabase/migrations/20261106000010_youtube_history.sql`
+- Create: `supabase/migrations/20261107000010_youtube_history.sql`
 - Test: `supabase/tests/entitlements/99_youtube_history.sql`
 
 **Interfaces:**
@@ -125,7 +125,7 @@
 ### Task 2: GMN history tables
 
 **Files:**
-- Create: `supabase/migrations/20261106000011_gbp_history.sql`
+- Create: `supabase/migrations/20261107000011_gbp_history.sql`
 - Test: `supabase/tests/entitlements/99_gbp_history.sql`
 
 **Interfaces:**
@@ -149,11 +149,11 @@
 ### Task 3: Purge, expiry and release RPCs
 
 **Files:**
-- Create: `supabase/migrations/20261106000012_google_purge_rpcs.sql`
+- Create: `supabase/migrations/20261107000012_google_purge_rpcs.sql`
 - Test: `supabase/tests/entitlements/99_google_purge_rpcs.sql`
 
 **Interfaces:**
-- Consumes: Tasks 1-2 tables; the Phase 1 functions `_google_revoke_if_unused(text)`, `google_unlink_youtube(uuid, bigint)` and `google_mark_revoked(uuid)` (`20261106000003`).
+- Consumes: Tasks 1-2 tables; the Phase 1 functions `_google_revoke_if_unused(text)`, `google_unlink_youtube(uuid, bigint)` and `google_mark_revoked(uuid)` (`20261107000003`).
 - Produces (all SECURITY DEFINER, `SET search_path = public, pg_temp`, EXECUTE for `service_role` only):
   - `youtube_purge_channel(p_conta_id uuid, p_channel_id text, p_client_id bigint) RETURNS int`. It returns the count of PDF paths queued and deletes:
     - every `youtube_*` history row for `(conta_id, channel_id)`;
@@ -271,7 +271,7 @@
 **Files:**
 - Create: `supabase/functions/_shared/youtube-sync.ts`
 - Create: `supabase/functions/youtube-sync-cron/{index,handler,core}.ts`
-- Create: `supabase/migrations/20261106000020_youtube_sync_cron_schedule.sql` (`youtube-sync-cron`, `35 * * * *`)
+- Create: `supabase/migrations/20261107000020_youtube_sync_cron_schedule.sql` (`youtube-sync-cron`, `35 * * * *`)
 - Modify: `supabase/config.toml` (`[functions.youtube-sync-cron] verify_jwt = false`)
 - Test: `supabase/functions/__tests__/youtube-sync_test.ts`, `supabase/functions/__tests__/youtube-sync-cron_test.ts`
 
@@ -345,7 +345,7 @@ The cron core works as follows:
 **Files:**
 - Create: `supabase/functions/_shared/gbp-sync.ts`
 - Create: `supabase/functions/gbp-sync-cron/{index,handler,core}.ts`
-- Create: `supabase/migrations/20261106000021_gbp_sync_cron_schedule.sql` (`gbp-sync-cron`, `40 * * * *`)
+- Create: `supabase/migrations/20261107000021_gbp_sync_cron_schedule.sql` (`gbp-sync-cron`, `40 * * * *`)
 - Modify: `supabase/config.toml` (`[functions.gbp-sync-cron] verify_jwt = false`)
 - Test: `supabase/functions/__tests__/gbp-sync_test.ts`, `supabase/functions/__tests__/gbp-sync-cron_test.ts`
 
