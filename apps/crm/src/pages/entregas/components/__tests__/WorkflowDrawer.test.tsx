@@ -504,7 +504,7 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
     fireEvent.click(acceptButton);
 
     await waitFor(() =>
-      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z'),
+      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z', ['texto']),
     );
     await waitFor(() => expect(mockSyncMentions).toHaveBeenCalledWith('workflow_post', 1, [7]));
   });
@@ -520,7 +520,9 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
     fireEvent.click(acceptButton);
 
     await waitFor(() =>
-      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z'),
+      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z', [
+        'legenda',
+      ]),
     );
     expect(mockSyncMentions).not.toHaveBeenCalled();
   });
@@ -542,7 +544,10 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
     fireEvent.click(acceptButton);
 
     await waitFor(() =>
-      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z'),
+      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z', [
+        'texto',
+        'legenda',
+      ]),
     );
     expect(mockSyncMentions).not.toHaveBeenCalled();
   });
@@ -600,7 +605,7 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
     fireEvent.click(acceptButton);
 
     await waitFor(() =>
-      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z'),
+      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z', ['texto']),
     );
 
     // While the posts refetch that handleAcceptSuggestion explicitly awaits is still
@@ -681,7 +686,7 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
     fireEvent.click(acceptButton);
 
     await waitFor(() =>
-      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z'),
+      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z', ['texto']),
     );
 
     // The diff card clears once posts + suggestions settle, but the signed-URL fetch is

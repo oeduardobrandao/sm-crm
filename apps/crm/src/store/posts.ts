@@ -1514,14 +1514,24 @@ export async function replyToPostApproval(
 // POST EDIT SUGGESTIONS
 // =============================================
 
+/**
+ * The two logical fields of an edit suggestion: `texto` is `conteudo` + `conteudo_plain`
+ * (always together), `legenda` is `ig_caption`. `changed_fields` keeps storing the column names.
+ */
+export type SuggestionField = 'texto' | 'legenda';
+
 export interface PostEditSuggestion {
   id: number;
   post_id: number;
   suggested_conteudo: Record<string, unknown> | null;
   suggested_conteudo_plain: string;
   suggested_ig_caption: string | null;
+  /** Per-field base: what the client started from. NULL on rows created before the base was kept. */
+  original_conteudo: Record<string, unknown> | null;
+  original_conteudo_plain: string | null;
+  original_ig_caption: string | null;
   changed_fields: string[];
-  status: 'pending' | 'accepted' | 'rejected';
+  status: 'pending' | 'accepted' | 'rejected' | 'superseded';
   updated_at: string;
 }
 
@@ -1530,7 +1540,7 @@ export async function getPostEditSuggestions(postIds: number[]): Promise<PostEdi
   const { data, error } = await supabase
     .from('post_edit_suggestions')
     .select(
-      'id, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption, changed_fields, status, updated_at',
+      'id, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption, original_conteudo, original_conteudo_plain, original_ig_caption, changed_fields, status, updated_at',
     )
     .in('post_id', postIds)
     .eq('status', 'pending');
@@ -1542,11 +1552,19 @@ export async function getPostEditSuggestions(postIds: number[]): Promise<PostEdi
  * `expectedUpdatedAt` is the `updated_at` of the version the team reviewed. The client can
  * keep editing a pending suggestion, so the RPC refuses with `suggestion_changed` when the
  * row moved on since then instead of applying a version nobody on the team has seen.
+ * `fields` is what to apply: a field left out keeps the live value. The RPC raises
+ * `suggestion_conflict` when it is NULL and a changed field was also edited by the team, so the
+ * CRM always passes it.
  */
-export async function acceptEditSuggestion(id: number, expectedUpdatedAt?: string): Promise<void> {
+export async function acceptEditSuggestion(
+  id: number,
+  expectedUpdatedAt: string | undefined,
+  fields: SuggestionField[],
+): Promise<void> {
   const { error } = await supabase.rpc('accept_edit_suggestion', {
     p_suggestion_id: id,
     p_expected_updated_at: expectedUpdatedAt ?? null,
+    p_fields: fields,
   });
   if (error) throw error;
 }

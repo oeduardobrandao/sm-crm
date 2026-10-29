@@ -122,6 +122,7 @@ import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { shouldAutoCompleteApproval } from './autoComplete';
 import { fluxoRascunhoBanner } from '../approvalExit';
+import { suggestionFieldStates } from '../editSuggestionFields';
 import { getErrorIdentifier, getPostProcessErrorToast } from '../postProcessErrors';
 import { RascunhoBanner } from './RascunhoBanner';
 import { PostTimelinePopover } from './PostTimelinePopover';
@@ -946,7 +947,15 @@ export function WorkflowDrawer({
     async (suggestion: PostEditSuggestion) => {
       try {
         // The version on screen: the client may have saved a newer one since.
-        await acceptEditSuggestion(suggestion.id, suggestion.updated_at);
+        // Interim: every field the client changed. Task 7 replaces this with the reviewer's choice.
+        const livePost = posts.find((p) => p.id === suggestion.post_id);
+        const fields = suggestionFieldStates(
+          livePost ?? { conteudo: null, conteudo_plain: '', ig_caption: null },
+          suggestion,
+        )
+          .filter((st) => st.changed)
+          .map((st) => st.field);
+        await acceptEditSuggestion(suggestion.id, suggestion.updated_at, fields);
         // accept_edit_suggestion writes workflow_posts.conteudo server-side,
         // bypassing updateWorkflowPost -- sync mentions here so @-mentions in
         // an accepted client suggestion still land in the mencoes ledger.
@@ -993,7 +1002,7 @@ export function WorkflowDrawer({
         toast.error(t('workflowDrawer.suggestionAcceptError'));
       }
     },
-    [refresh, onRefresh, qc, workflowId, t],
+    [refresh, onRefresh, qc, workflowId, t, posts],
   );
 
   const handleRejectSuggestion = useCallback((id: number) => {

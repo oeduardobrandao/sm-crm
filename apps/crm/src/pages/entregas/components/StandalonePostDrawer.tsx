@@ -93,6 +93,7 @@ import { ApplyProcessDialog } from './ApplyProcessDialog';
 import { DuplicateDialog, type DuplicateTarget } from './DuplicateDialog';
 import { usePostProcessCommands } from '../hooks/usePostProcessCommands';
 import { postRascunhoBanner } from '../approvalExit';
+import { suggestionFieldStates } from '../editSuggestionFields';
 import { RascunhoBanner } from './RascunhoBanner';
 import { getPostProcessErrorToast, isStaleStateError } from '../postProcessErrors';
 import {
@@ -529,7 +530,14 @@ export function StandalonePostDrawer({
     async (suggestion: PostEditSuggestion) => {
       try {
         // The version on screen: the client may have saved a newer one since.
-        await acceptEditSuggestion(suggestion.id, suggestion.updated_at);
+        // Interim: every field the client changed. Task 7 replaces this with the reviewer's choice.
+        const fields = suggestionFieldStates(
+          post ?? { conteudo: null, conteudo_plain: '', ig_caption: null },
+          suggestion,
+        )
+          .filter((st) => st.changed)
+          .map((st) => st.field);
+        await acceptEditSuggestion(suggestion.id, suggestion.updated_at, fields);
         if (
           suggestion.changed_fields.includes('conteudo') &&
           suggestion.suggested_conteudo != null
@@ -561,7 +569,7 @@ export function StandalonePostDrawer({
         toast.error(t('standalonePostDrawer.acceptSuggestionError'));
       }
     },
-    [refresh, onRefresh, qc, postId, t],
+    [refresh, onRefresh, qc, postId, t, post],
   );
 
   const [pendingRejectSuggestionId, setPendingRejectSuggestionId] = useState<number | null>(null);
