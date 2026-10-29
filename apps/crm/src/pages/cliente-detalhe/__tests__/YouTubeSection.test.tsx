@@ -53,7 +53,10 @@ function renderSection(clienteId = 7) {
   return { ...utils, invalidate };
 }
 
+const originalLocation = window.location;
+
 afterEach(() => {
+  Object.defineProperty(window, 'location', { configurable: true, value: originalLocation });
   cleanup();
   vi.clearAllMocks();
   mockFeatures = { feature_youtube: false };
@@ -77,11 +80,10 @@ describe('YouTubeSection', () => {
     mockFeatures = { feature_youtube: true };
     getGoogleSummaryMock.mockResolvedValue({ youtube: null, gmn: null });
     const assign = vi.fn();
-    const original = window.location;
     Object.defineProperty(window, 'location', {
       configurable: true,
       value: {
-        ...original,
+        ...originalLocation,
         set href(v: string) {
           assign(v);
         },
@@ -98,7 +100,17 @@ describe('YouTubeSection', () => {
     await waitFor(() =>
       expect(assign).toHaveBeenCalledWith('https://accounts.google.com/o/oauth2/v2/auth?x=1'),
     );
-    Object.defineProperty(window, 'location', { configurable: true, value: original });
+  });
+
+  it('shows the load error, not the connect card, when the summary fails', async () => {
+    mockFeatures = { feature_youtube: true };
+    getGoogleSummaryMock.mockRejectedValue(new Error('boom'));
+    renderSection();
+
+    expect(
+      await screen.findByText('Não foi possível carregar o YouTube deste cliente.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Conectar YouTube')).toBeNull();
   });
 
   it('connected_card_counts', async () => {
@@ -129,6 +141,8 @@ describe('YouTubeSection', () => {
     renderSection();
 
     const alert = await screen.findByRole('alert');
+    expect(alert).toHaveClass('badge-warning');
+    expect(alert.getAttribute('style')).not.toMatch(/badge-warning-/);
     expect(
       within(alert).getByText(
         'A autorização do Google expirou. Reconecte a conta para voltar a sincronizar.',

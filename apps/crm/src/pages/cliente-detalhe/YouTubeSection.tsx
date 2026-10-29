@@ -52,7 +52,11 @@ export function YouTubeSection({ clienteId }: { clienteId: number }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [redirecting, setRedirecting] = useState(false);
 
-  const { data: summary, isLoading } = useQuery({
+  const {
+    data: summary,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ['googleSummary', clienteId],
     queryFn: () => getGoogleSummary(clienteId),
     enabled: enabled && validId,
@@ -111,7 +115,13 @@ export function YouTubeSection({ clienteId }: { clienteId: number }) {
     >
       {isLoading && <ReportSkeleton />}
 
-      {!isLoading && !channel && (
+      {!isLoading && isError && (
+        <p role="alert" style={{ margin: 0, fontSize: '0.875rem', color: 'var(--danger-text)' }}>
+          {t('youtube.loadError')}
+        </p>
+      )}
+
+      {!isLoading && !isError && !channel && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Youtube size={24} color="#dc2626" aria-hidden="true" />
@@ -138,7 +148,7 @@ export function YouTubeSection({ clienteId }: { clienteId: number }) {
         </div>
       )}
 
-      {!isLoading && channel && (
+      {!isLoading && !isError && channel && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Youtube size={24} color="#dc2626" aria-hidden="true" />
@@ -163,19 +173,22 @@ export function YouTubeSection({ clienteId }: { clienteId: number }) {
           {revoked && (
             <div
               role="alert"
+              // `.badge-warning` (app.css) defines --badge-bg/fg/border for light and dark.
+              className="badge-warning"
               style={{
                 display: 'flex',
+                flexWrap: 'wrap',
                 gap: 12,
                 alignItems: 'flex-start',
                 padding: '14px 16px',
                 borderRadius: 12,
-                background: 'var(--badge-warning-bg)',
-                border: '1px solid var(--badge-warning-border)',
-                color: 'var(--badge-warning-fg)',
+                background: 'var(--badge-bg)',
+                border: '1px solid var(--badge-border)',
+                color: 'var(--badge-fg)',
               }}
             >
               <AlertTriangle size={18} aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }} />
-              <div style={{ flex: 1, fontSize: '0.875rem', lineHeight: 1.5 }}>
+              <div style={{ flex: '1 1 200px', fontSize: '0.875rem', lineHeight: 1.5 }}>
                 {t('youtube.revokedBanner')}
               </div>
               {connectButton(t('youtube.reconnect'), 'outline')}
