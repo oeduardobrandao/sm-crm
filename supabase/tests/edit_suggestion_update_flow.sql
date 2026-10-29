@@ -195,11 +195,11 @@ rollback;
 -- E.9
 do $$
 begin
-  assert has_function_privilege('anon', 'public.accept_edit_suggestion(bigint, timestamptz)', 'EXECUTE') = false,
+  assert has_function_privilege('anon', 'public.accept_edit_suggestion(bigint, timestamptz, text[])', 'EXECUTE') = false,
     'anon must NOT execute accept_edit_suggestion';
-  assert has_function_privilege('authenticated', 'public.accept_edit_suggestion(bigint, timestamptz)', 'EXECUTE'),
+  assert has_function_privilege('authenticated', 'public.accept_edit_suggestion(bigint, timestamptz, text[])', 'EXECUTE'),
     'authenticated must execute accept_edit_suggestion (the CRM calls it)';
-  assert has_function_privilege('service_role', 'public.accept_edit_suggestion(bigint, timestamptz)', 'EXECUTE'),
+  assert has_function_privilege('service_role', 'public.accept_edit_suggestion(bigint, timestamptz, text[])', 'EXECUTE'),
     'service_role must keep execute on accept_edit_suggestion';
   assert has_function_privilege('anon', 'public.reject_edit_suggestion(bigint)', 'EXECUTE') = false,
     'anon must NOT execute reject_edit_suggestion';
@@ -207,5 +207,7 @@ begin
     'authenticated must execute reject_edit_suggestion (the CRM calls it)';
   assert to_regprocedure('public.accept_edit_suggestion(bigint)') is null,
     'the one-argument overload must be gone (calls would be ambiguous)';
+  assert to_regprocedure('public.accept_edit_suggestion(bigint, timestamptz)') is null,
+    'the two-argument overload must be gone (20261106000003 added p_fields; calls would be ambiguous)';
   raise notice 'PASS E.9 accept/reject_edit_suggestion grants';
 end $$;
