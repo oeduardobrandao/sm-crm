@@ -213,8 +213,8 @@ Instagram de boa agência (o tom d'O Novo Mercado é a referência de ritmo e de
 copiar frases), seguindo o funil AIDA em duas ou três frases curtas:
 
 1. **Atenção:** abra com uma ideia contra-intuitiva ou um fato incômodo que o leitor de agência
-   reconhece, algo que contradiz o que ele acha que sabe. Ex.: o problema não é o que ele
-   imagina.
+   reconhece, algo que contradiz o que ele acha que sabe. Afirme a ideia direto, sem montar a
+   frase como contraste (ver "Sem antítese" abaixo).
 2. **Interesse:** dê a razão por trás da surpresa, com um dado, um exemplo concreto ou uma
    consequência prática. O leitor passa de "como assim?" para "faz sentido".
 3. **Desejo:** mostre o que ele ganha ao entender isso (tempo, menos retrabalho, cliente mais
@@ -229,13 +229,20 @@ Regras do lede:
   gancho depende de um dado, ele está em `sources` e aparece no corpo.
 - Copywriting sem apelação: sem maiúsculas gritadas, sem pontos de exclamação, sem "você não
   vai acreditar", sem medo fabricado. A surpresa vem da ideia, não do volume.
+- **Sem antítese.** Nunca monte a frase como "não é X, é Y", "o problema não é A, é B", "X
+  quase nunca é o motivo. É Y" ou "mais do que X, Y". Vale para o lede e para todo o texto do
+  post (título, h1, description, corpo): afirme o que é verdade, direto, sem negar uma ideia
+  que ninguém defendeu para então corrigi-la. Uma negação só entra quando for um fato (ex.:
+  "não tem força de lei"), nunca como recurso de ritmo. Releia o texto antes de enviar e
+  reescreva toda frase com esse formato.
 - Não repete o `description` nem o primeiro parágrafo do corpo: o lede provoca, o primeiro
   parágrafo responde.
 - Até 300 caracteres, sem travessão, e as demais regras de texto valem aqui também.
 
-Exemplo de forma (ilustrativo, não reutilize): "Mais criativo não é o que falta no seu post de
-Black Friday. Falta preço que o cliente possa provar. É isso que a fiscalização olha primeiro, e
-é fácil de corrigir antes de publicar. Veja o cronograma, semana a semana."
+Exemplo de forma (ilustrativo, não reutilize): "Um "50% off" sem preço de origem pode virar
+reclamação antes de virar venda. Na fiscalização de 2025, a falha mais comum foi informação de
+preço ausente ou inadequada. Alinhe isso com o cliente agora e a campanha corre sem retrabalho.
+Veja o cronograma semana a semana."
 
 ### Estrutura (resposta primeiro)
 
