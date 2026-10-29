@@ -56,23 +56,11 @@ export function suggestionFieldStates(
  * Fields the client did not change but the team did since the suggestion was sent: accept leaves
  * them alone, and the card footer says so. For a field the client did not change, `original_*` is
  * kept equal to the live value at the last save, so a difference means a later team edit. A NULL
- * base (legacy row) is unknown, not empty, so it is skipped here rather than blamed on the team.
+ * base reads as empty (a post with no caption stores NULL), same as for conflicts.
  */
 export function teamOnlyChangedFields(post: LivePost, s: PostEditSuggestion): SuggestionField[] {
   const out: SuggestionField[] = [];
-  if (
-    !changedByClient(s, 'texto') &&
-    s.original_conteudo_plain != null &&
-    textoDiffersFromBase(post, s)
-  ) {
-    out.push('texto');
-  }
-  if (
-    !changedByClient(s, 'legenda') &&
-    s.original_ig_caption != null &&
-    legendaDiffersFromBase(post, s)
-  ) {
-    out.push('legenda');
-  }
+  if (!changedByClient(s, 'texto') && textoDiffersFromBase(post, s)) out.push('texto');
+  if (!changedByClient(s, 'legenda') && legendaDiffersFromBase(post, s)) out.push('legenda');
   return out;
 }

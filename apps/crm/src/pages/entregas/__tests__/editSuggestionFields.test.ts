@@ -88,6 +88,34 @@ describe('suggestionFieldStates', () => {
     expect(states[0]).toEqual({ field: 'texto', changed: true, conflict: true });
   });
 
+  it('flags a texto conflict when the team removed an inline image', () => {
+    const withImg = doc(para('texto original'), img('conta/a.png'));
+    const states = suggestionFieldStates(
+      post({ conteudo: doc(para('texto original')) }),
+      suggestion({ original_conteudo: withImg }),
+    );
+    expect(states[0]).toEqual({ field: 'texto', changed: true, conflict: true });
+  });
+
+  it('flags a texto conflict when live conteudo is NULL against a base with images', () => {
+    const withImg = doc(para('texto original'), img('conta/a.png'));
+    const states = suggestionFieldStates(
+      post({ conteudo: null }),
+      suggestion({ original_conteudo: withImg }),
+    );
+    expect(states[0].conflict).toBe(true);
+  });
+
+  it('no legenda conflict when the base is NULL and the live caption is empty or NULL', () => {
+    const s = suggestion({
+      changed_fields: ['ig_caption'],
+      suggested_ig_caption: 'nova',
+      original_ig_caption: null,
+    });
+    expect(suggestionFieldStates(post({ ig_caption: null }), s)[1].conflict).toBe(false);
+    expect(suggestionFieldStates(post({ ig_caption: '' }), s)[1].conflict).toBe(false);
+  });
+
   it('ignores image order and duplicates (set comparison)', () => {
     const base = doc(para('texto original'), img('a'), img('b'));
     const live = doc(para('texto original'), img('b'), img('a'), img('a'));
@@ -160,11 +188,34 @@ describe('teamOnlyChangedFields', () => {
     expect(teamOnlyChangedFields(live, s)).toEqual(['texto']);
   });
 
-  it('skips a not-changed field whose base is unknown (legacy NULL originals)', () => {
+  it('reads a NULL base as empty: a caption the team wrote on a caption-less post is listed', () => {
     const s = suggestion({
       changed_fields: ['conteudo', 'conteudo_plain'],
       original_ig_caption: null,
     });
-    expect(teamOnlyChangedFields(post({ ig_caption: 'qualquer' }), s)).toEqual([]);
+    expect(teamOnlyChangedFields(post({ ig_caption: 'legenda nova da equipe' }), s)).toEqual([
+      'legenda',
+    ]);
+  });
+
+  it('does not list legenda when the base is NULL and the live caption is empty or NULL', () => {
+    const s = suggestion({
+      changed_fields: ['conteudo', 'conteudo_plain'],
+      original_ig_caption: null,
+    });
+    expect(teamOnlyChangedFields(post({ ig_caption: null }), s)).toEqual([]);
+    expect(teamOnlyChangedFields(post({ ig_caption: '' }), s)).toEqual([]);
+  });
+
+  it('lists texto when the team removed an inline image the client did not touch', () => {
+    const withImg = doc(para('texto original'), img('conta/a.png'));
+    const s = suggestion({
+      changed_fields: ['ig_caption'],
+      suggested_ig_caption: 'cliente',
+      original_conteudo: withImg,
+    });
+    expect(teamOnlyChangedFields(post({ conteudo: doc(para('texto original')) }), s)).toEqual([
+      'texto',
+    ]);
   });
 });
