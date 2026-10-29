@@ -105,7 +105,11 @@ jobs:
         run: grep -q 'data-ssr="landing"' dist/index.html && grep -q 'lp2-hero' dist/index.html
 
   e2e:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest became Ubuntu 26.04 (runner image 20261025), and the
+    # installed @playwright/test 1.59 has no chromium build for it ("Playwright
+    # does not support chromium on ubuntu26.04-x64" at browser install).
+    # Playwright 1.64 adds ubuntu26.04; unpin when bumping it.
+    runs-on: ubuntu-24.04
     needs: [lint-and-typecheck, coverage-threshold]
     timeout-minutes: 15
     env:
