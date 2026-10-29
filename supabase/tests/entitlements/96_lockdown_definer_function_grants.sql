@@ -14,6 +14,9 @@
 -- financeiro_rolar_periodos (20261027000006_financeiro_v2_periodos_job.sql) is the hourly
 -- pg_cron period close job: it runs across every workspace, never called by a user.
 --
+-- close_suggestion_on_publish (20261106000001) is the trigger function that closes a pending
+-- edit suggestion as 'superseded' when its post is published.
+--
 -- Locally there is no hosted pg_default_acl granting anon/authenticated EXECUTE
 -- at function-creation time (see _helpers.sql), so `anon`/`authenticated` already
 -- read false here even without the fix -- this suite can't reproduce the hosted-only
@@ -92,7 +95,8 @@ declare
     'public._financeiro_normalizar(text)',
     'public._financeiro_encerrar_atribuicoes(uuid, bigint, date)',
     'public._financeiro_v2_legado_trigger()',
-    'public.financeiro_rolar_periodos(date)'
+    'public.financeiro_rolar_periodos(date)',
+    'public.close_suggestion_on_publish()'
   ];
   -- check_resource_limit and rls_auto_enable are deliberately excluded: they have
   -- no CREATE FUNCTION in any migration in this repo (prod-only drift, locked down
