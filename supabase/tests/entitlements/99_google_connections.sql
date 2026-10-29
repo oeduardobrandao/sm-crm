@@ -87,9 +87,10 @@ begin
       format('%s should have RLS enabled', v_t);
     assert not exists (select 1 from pg_policies where schemaname = 'public' and tablename = v_t),
       format('%s should have no policies', v_t);
-    -- TRUNCATE/REFERENCES/TRIGGER matter on a fresh local replay: the CLI image's default
-    -- ACL already withholds arwd from anon/authenticated, so only Dxt (granted by that
-    -- default ACL, and by hosted's GRANT ALL) proves the migration's REVOKE ran.
+    -- All seven privileges, so a missing REVOKE fails on either local image: CLI 2.122's
+    -- default ACL grants anon/authenticated arwdDxtm on new tables (like hosted's GRANT ALL),
+    -- while older images grant only Dxtm, where TRUNCATE/REFERENCES/TRIGGER are the only
+    -- privileges that prove the migration's REVOKE ran.
     foreach v_role in array array['authenticated','anon'] loop
       foreach v_priv in array array['select','insert','update','delete',
                                     'truncate','references','trigger'] loop
