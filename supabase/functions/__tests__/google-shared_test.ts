@@ -362,6 +362,14 @@ Deno.test("google-shared: fetchGoogleUserInfo reads sub/email/name from the OIDC
   } finally {
     noName.restore();
   }
+  // Email unticked on granular consent: sub alone still identifies the grant (the callback
+  // treats it as missing_scope and decides the revoke by sub).
+  const noEmail = stubFetch(() => jsonResponse({ sub: "sub-1", name: "Ana" }));
+  try {
+    assertEquals(await fetchGoogleUserInfo("tok"), { sub: "sub-1", email: null, name: "Ana" });
+  } finally {
+    noEmail.restore();
+  }
   const noSub = stubFetch(() => jsonResponse({ email: "a@b.com" }));
   try {
     await assertRejects(() => fetchGoogleUserInfo("tok"), GoogleApiError);

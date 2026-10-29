@@ -46,6 +46,7 @@ const CHANNEL = {
 interface StubOpts {
   token?: Record<string, unknown>;
   channels?: unknown;
+  userinfo?: Record<string, unknown>;
 }
 
 function stubGoogle(opts: StubOpts = {}) {
@@ -59,7 +60,7 @@ function stubGoogle(opts: StubOpts = {}) {
       return ok(opts.token ?? { access_token: "at-1", refresh_token: "rt-1", expires_in: 3599, scope: YT_SCOPE_STRING });
     }
     if (url === "https://openidconnect.googleapis.com/v1/userinfo") {
-      return ok({ sub: "sub-1", email: "agencia@example.com", name: "Agência" });
+      return ok(opts.userinfo ?? { sub: "sub-1", email: "agencia@example.com", name: "Agência" });
     }
     if (url === "https://oauth2.googleapis.com/revoke") return Promise.resolve(new Response("", { status: 200 }));
     if (url.startsWith("https://www.googleapis.com/youtube/v3/channels")) {
@@ -253,6 +254,44 @@ Deno.test("callback_missing_scope_lookup_error: a failed connection lookup skips
     assertEquals(f.count("https://oauth2.googleapis.com/revoke"), 0);
   } finally {
     f.restore();
+  }
+});
+
+Deno.test("callback_no_email: userinfo without email (unticked on consent) -> missing_scope, unused grant revoked", async () => {
+  const state = await mintState("youtube");
+  const db = callbackDb();
+  db.queue("google_connections", "select", { data: [] });
+  const f = stubGoogle({ userinfo: { sub: "sub-1", name: "Agência" } });
+  try {
+    const res = await makeHandler(db)(callbackRequest(state));
+    assertEquals(res.status, 302);
+    assertEquals(res.headers.get("Location"), `${TARGET}?yt_error=missing_scope`);
+    assertEquals(f.count("https://oauth2.googleapis.com/revoke"), 1);
+    const revoke = f.calls.find((c) => c.url === "https://oauth2.googleapis.com/revoke")!;
+    assertEquals(new URLSearchParams(String(revoke.init?.body)).get("token"), "rt-1");
+    assertEquals(f.count("https://www.googleapis.com/youtube/v3/channels"), 0, "no product call");
+    assertEquals(rpcCalls(db, "google_connection_upsert").length, 0);
+    const lookup = db.calls.find((c) => c.table === "google_connections")!;
+    assert(lookup.modifiers.some((m) => m.method === "eq" && m.args[0] === "google_sub" && m.args[1] === "sub-1"));
+  } finally {
+    f.restore();
+  }
+
+  // The same Google account already backs a connection: R9a keeps the grant.
+  const state2 = await mintState("gbp");
+  const used = callbackDb();
+  used.queue("google_connections", "select", { data: [{ id: "other-conn" }] });
+  const f2 = stubGoogle({
+    token: { access_token: "at-1", refresh_token: "rt-1", expires_in: 3599, scope: GBP_SCOPE_STRING },
+    userinfo: { sub: "sub-1" },
+  });
+  try {
+    const res = await makeHandler(used)(callbackRequest(state2));
+    assertEquals(res.headers.get("Location"), `${TARGET}?gmn_error=missing_scope`);
+    assertEquals(f2.count("https://oauth2.googleapis.com/revoke"), 0);
+    assertEquals(rpcCalls(used, "google_connection_upsert").length, 0);
+  } finally {
+    f2.restore();
   }
 });
 

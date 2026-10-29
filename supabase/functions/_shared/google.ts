@@ -10,7 +10,9 @@
 //     project" / "API has not been enabled" -> API_DISABLED; other 403 -> FORBIDDEN;
 //     404 -> NOT_FOUND; 5xx -> UPSTREAM (retryable); any other non-2xx -> UPSTREAM
 //     (non-retryable, status kept).
-//   exchangeGoogleCode / fetchGoogleUserInfo malformed or failed response -> UPSTREAM.
+//   exchangeGoogleCode / fetchGoogleUserInfo malformed or failed response -> UPSTREAM. A userinfo
+//     body with a sub but no email (email unticked on granular consent) is not an error: it
+//     returns `email: null` and the caller decides.
 //   Body-read failure (timeout/connection drop mid-body) -> UPSTREAM status 0 (retryable).
 //   getFreshGoogleToken: row read error -> UPSTREAM (retryable); row missing -> NOT_FOUND;
 //     connection already revoked or refresh hits invalid_grant -> REVOKED; no refresh token on
@@ -186,14 +188,18 @@ export async function exchangeGoogleCode(
 
 export async function fetchGoogleUserInfo(
   accessToken: string,
-): Promise<{ sub: string; email: string; name: string | null }> {
+): Promise<{ sub: string; email: string | null; name: string | null }> {
   const info = (await googleFetch(GOOGLE_USERINFO_URL, accessToken)) as
     | { sub?: unknown; email?: unknown; name?: unknown }
     | null;
-  if (!info || typeof info.sub !== "string" || !info.sub || typeof info.email !== "string" || !info.email) {
-    throw new GoogleApiError("UPSTREAM", 200, "Google userinfo response is missing sub or email", false);
+  if (!info || typeof info.sub !== "string" || !info.sub) {
+    throw new GoogleApiError("UPSTREAM", 200, "Google userinfo response is missing sub", false);
   }
-  return { sub: info.sub, email: info.email, name: typeof info.name === "string" && info.name ? info.name : null };
+  return {
+    sub: info.sub,
+    email: typeof info.email === "string" && info.email ? info.email : null,
+    name: typeof info.name === "string" && info.name ? info.name : null,
+  };
 }
 
 /** Checks the product scopes only: Google echoes the base scopes back as userinfo.* URLs. */

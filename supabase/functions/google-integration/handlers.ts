@@ -152,15 +152,17 @@ async function runCallback(
   if (!code) return fail("unknown");
 
   const grant = await exchangeGoogleCode(code);
-  const user = await fetchGoogleUserInfo(grant.accessToken);
+  const userInfo = await fetchGoogleUserInfo(grant.accessToken);
   const grantToken = grant.refreshToken ?? grant.accessToken;
 
-  if (!hasRequiredScopes(state.product, grant.scopes)) {
+  // An email unticked on granular consent is a missing scope too: the connection needs it.
+  if (!hasRequiredScopes(state.product, grant.scopes) || userInfo.email === null) {
     // A just-minted partial grant still counts toward Google's per-account token cap, but
     // with include_granted_scopes it is the same grant any existing connection uses.
-    await revokeIfUnused(svc, user.sub, grantToken);
+    await revokeIfUnused(svc, userInfo.sub, grantToken);
     return fail("missing_scope");
   }
+  const user = { ...userInfo, email: userInfo.email };
 
   // YouTube product checks run BEFORE anything is written, with the fresh access token, so a
   // failure never leaves a connection row (or an orphan grant) behind. They also run before
