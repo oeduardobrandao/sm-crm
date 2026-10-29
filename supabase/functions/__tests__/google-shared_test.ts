@@ -592,3 +592,74 @@ Deno.test("getFreshGoogleToken: losing the claim polls the row instead of refres
     f.restore();
   }
 });
+
+// ── Hardening: every helper failure stays inside GoogleApiError ────────────────
+
+function brokenBodyResponse(status: number): Promise<Response> {
+  const body = new ReadableStream({
+    start(controller) {
+      controller.error(new Error("connection dropped mid-body"));
+    },
+  });
+  return Promise.resolve(new Response(body, { status }));
+}
+
+Deno.test("google-shared: a body-read failure becomes retryable UPSTREAM status 0 (googleFetch, exchange, refresh)", async () => {
+  const f1 = stubFetch(() => brokenBodyResponse(200));
+  try {
+    const e = (await assertRejects(() => googleFetch("https://api.example/x", "tok"), GoogleApiError)) as GoogleApiError;
+    assertEquals([e.code, e.status, e.retryable], ["UPSTREAM", 0, true]);
+  } finally {
+    f1.restore();
+  }
+  const f2 = stubFetch(() => brokenBodyResponse(200));
+  try {
+    const e = (await assertRejects(() => exchangeGoogleCode("c"), GoogleApiError)) as GoogleApiError;
+    assertEquals([e.code, e.status, e.retryable], ["UPSTREAM", 0, true]);
+  } finally {
+    f2.restore();
+  }
+  const db = createSupabaseQueryMock();
+  db.queue("google_connections", "select", {
+    data: { id: CONNECTION_ID, status: "active", encrypted_access_token: "old", access_token_expires_at: isoInMinutes(1) },
+  });
+  db.queue("google_connections", "update", {
+    data: { id: CONNECTION_ID, encrypted_refresh_token: await encryptGoogleToken("r", "refresh") },
+  });
+  db.queue("google_connections", "update", { data: null }); // lock release
+  const f3 = stubFetch(() => brokenBodyResponse(200));
+  try {
+    const e = (await assertRejects(() => getFreshGoogleToken(db as never, CONNECTION_ID), GoogleApiError)) as GoogleApiError;
+    assertEquals([e.code, e.status, e.retryable], ["UPSTREAM", 0, true]);
+    assertEquals(db.calls.filter((c) => c.operation === "update").length, 2, "claim + guarded release");
+  } finally {
+    f3.restore();
+  }
+  const f4 = stubFetch(() => brokenBodyResponse(400));
+  try {
+    assertEquals(await revokeGoogleToken("t"), false, "revoke still never throws");
+  } finally {
+    f4.restore();
+  }
+});
+
+Deno.test("getFreshGoogleToken: a select error is retryable UPSTREAM, not NOT_FOUND (initial read and poll)", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("google_connections", "select", { data: null, error: { message: "connection reset" } });
+  const e = (await assertRejects(() => getFreshGoogleToken(db as never, CONNECTION_ID), GoogleApiError)) as GoogleApiError;
+  assertEquals([e.code, e.retryable], ["UPSTREAM", true]);
+
+  const polled = createSupabaseQueryMock();
+  polled.queue(
+    "google_connections",
+    "select",
+    { data: { id: CONNECTION_ID, status: "active", encrypted_access_token: "old", access_token_expires_at: isoInMinutes(1) } },
+    { data: null, error: { message: "connection reset" } },
+  );
+  polled.queue("google_connections", "update", { data: null }); // claim lost
+  const pe = (await assertRejects(
+    () => getFreshGoogleToken(polled as never, CONNECTION_ID, { sleep: () => Promise.resolve() }),
+    GoogleApiError,
+  )) as GoogleApiError;
+  assertEquals([pe.code, pe.retryable], ["UPSTREAM", true]);
+});

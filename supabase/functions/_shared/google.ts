@@ -11,9 +11,10 @@
 //     404 -> NOT_FOUND; 5xx -> UPSTREAM (retryable); any other non-2xx -> UPSTREAM
 //     (non-retryable, status kept).
 //   exchangeGoogleCode / fetchGoogleUserInfo malformed or failed response -> UPSTREAM.
-//   getFreshGoogleToken: row missing -> NOT_FOUND; connection already revoked or refresh hits
-//     invalid_grant -> REVOKED; no refresh token on file -> TOKEN_INVALID (re-auth needed, the
-//     connection is NOT marked revoked); claim/persist failure or poll timeout -> UPSTREAM
+//   Body-read failure (timeout/connection drop mid-body) -> UPSTREAM status 0 (retryable).
+//   getFreshGoogleToken: row read error -> UPSTREAM (retryable); row missing -> NOT_FOUND;
+//     connection already revoked or refresh hits invalid_grant -> REVOKED; no refresh token on
+//     file -> TOKEN_INVALID (re-auth needed, the connection is NOT marked revoked); claim/persist failure or poll timeout -> UPSTREAM
 //     (retryable); other token-endpoint error -> UPSTREAM (retryable only for 5xx/network).
 
 import { SupabaseClient } from "npm:@supabase/supabase-js@2";
@@ -123,8 +124,15 @@ interface GoogleTokenErrorBody {
   error_description?: string;
 }
 
+/** Reads a JSON body; a body-read failure (timeout or dropped connection mid-body) becomes a
+ * retryable UPSTREAM GoogleApiError so nothing escapes the error contract. Non-JSON -> null. */
 async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
+  let text: string;
+  try {
+    text = await response.text();
+  } catch (err) {
+    throw new GoogleApiError("UPSTREAM", 0, `Failed to read Google response body: ${(err as Error).message}`, true);
+  }
   if (!text) return null;
   try {
     return JSON.parse(text);
@@ -396,12 +404,15 @@ export async function getFreshGoogleToken(
 ): Promise<string> {
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
 
-  const { data: row } = await svc
+  const { data: row, error: readError } = await svc
     .from("google_connections")
     .select(FRESHNESS_SELECT)
     .eq("id", connectionId)
     .maybeSingle();
 
+  if (readError) {
+    throw new GoogleApiError("UPSTREAM", 500, `Failed to read Google connection: ${readError.message}`, true);
+  }
   if (!row) {
     throw new GoogleApiError("NOT_FOUND", 404, "Google connection not found", false);
   }
@@ -537,11 +548,14 @@ async function pollForRefreshedToken(
 ): Promise<string> {
   for (let attempt = 0; attempt < REFRESH_LOCK_POLL_ATTEMPTS; attempt++) {
     await sleep(REFRESH_LOCK_POLL_INTERVAL_MS);
-    const { data: row } = await svc
+    const { data: row, error: readError } = await svc
       .from("google_connections")
       .select(FRESHNESS_SELECT)
       .eq("id", connectionId)
       .maybeSingle();
+    if (readError) {
+      throw new GoogleApiError("UPSTREAM", 500, `Failed to read Google connection: ${readError.message}`, true);
+    }
     if (!row) {
       throw new GoogleApiError("NOT_FOUND", 404, "Google connection not found", false);
     }
