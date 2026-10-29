@@ -51,7 +51,7 @@ declare
     'public.ideia_audio_release(uuid, uuid, text)',
     'public.ideia_audio_apply_transcript(uuid, uuid, text, text, int)',
     'public.ideia_file_insert_with_quota(jsonb)',
-    'public.upsert_edit_suggestion(bigint, uuid, text, jsonb, text, text)',
+    'public.upsert_edit_suggestion(bigint, uuid, text, jsonb, text, text, text[], jsonb)',
     'public.create_edit_suggestion_notification(bigint)',
     'public.create_post_approval_notification(bigint, text, text)',
     'public.insert_notification_batch(uuid, uuid[], text, text, jsonb, uuid)',
