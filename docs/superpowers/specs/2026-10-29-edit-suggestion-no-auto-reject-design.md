@@ -159,12 +159,12 @@ Replace `trg_auto_reject_pending_suggestion`:
   what goes out.
 - Keep the `app.accepting_edit_suggestion` bypass.
 - Rename to `trg_close_suggestion_on_publish` (drop the old trigger and function), and make it
-  **`AFTER UPDATE OF status, custom_status_id`**, testing `NEW.status = 'postado' AND
-  OLD.status IS DISTINCT FROM 'postado'`. A BEFORE trigger with that name fires before
-  `workflow_posts_z1_reconcile_custom_status` (`20260805000001_post_status_definitions.sql:205-211`,
-  name-ordered), which is what turns a CRM move to a custom status (the CRM sends only
-  `custom_status_id`, `useUpdatePostStatus.ts`) into `status := behaves_as`; a BEFORE trigger
-  would never see a custom status that behaves as `postado`.
+  **`AFTER UPDATE OF status`**, testing `NEW.status = 'postado' AND OLD.status IS DISTINCT FROM
+  'postado'`. AFTER so it reads `NEW.status` after `workflow_posts_z1_reconcile_custom_status`
+  (`20260805000001_post_status_definitions.sql:205-211`, name-ordered BEFORE triggers). A custom
+  status can never behave as `postado` (its CHECK allows only the six non-machine statuses,
+  `:21-24`), so `custom_status_id` is not needed in the OF list. (Plan review, 2026-10-29:
+  the earlier "custom status behaving as postado" case cannot exist.)
 - Multi-destination posts: Instagram can be published while the post stays `agendado` /
   `falha_publicacao` until the TikTok leg lands (`tiktok-publish/handler.ts:269`), so a
   suggestion can stay pending after part of the text is out. Accepted: the team still sees it.
@@ -338,7 +338,7 @@ não revisada" view is a separate small feature.
 - Regression for the stale-panel case (Fable blocker): text-only suggestion pending, team edits
   caption, client edits caption from a base fetched before the team edit: accept reports a
   caption conflict.
-- Trigger: a move to a custom status whose `behaves_as` is `postado` supersedes.
+- Trigger: publishing a post that carries a `custom_status_id` supersedes (z1 clears the pointer).
 - Tests that change with this spec: `apps/crm/src/__tests__/store.editSuggestions.test.ts:87,99`
   (payload gains `p_fields`), `apps/hub/src/__tests__/api.test.ts:261` (body gains
   `touched_fields` / `bases`), `CorrectionPanel.test.tsx:162,293,435,592,609` (`saveSuggestion`
