@@ -1,9 +1,11 @@
 -- RPCs over the Google connection tables of 20261105000002
 -- (spec docs/superpowers/specs/2026-10-29-youtube-google-meu-negocio-design.md, section 4.2).
 --
--- google_connection_upsert: token merge from the OAuth callback. Scopes become the sorted
---   distinct union, a NULL refresh token keeps the stored one, and units that google_mark_revoked
---   flipped to 'revoked' come back to 'active' (disconnected units stay disconnected).
+-- google_connection_upsert: token merge from the OAuth callback. A new refresh token is a fresh
+--   grant, whose scopes (sorted, distinct) replace the stored ones, so a scope unticked on
+--   reconnect is no longer claimed; a NULL refresh token keeps the stored one and the scopes become
+--   the sorted distinct union. Units that google_mark_revoked flipped to 'revoked' come back to
+--   'active' (disconnected units stay disconnected).
 -- google_connection_refresh_covers: whether the callback may trust the stored refresh token for
 --   the scopes it needs (an active connection with a refresh token whose scopes contain them).
 -- google_unlink_youtube / google_unlink_gbp_location: unlink one unit, then revoke the Google grant
@@ -72,8 +74,12 @@ BEGIN
     encrypted_access_token = EXCLUDED.encrypted_access_token,
     encrypted_refresh_token = COALESCE(EXCLUDED.encrypted_refresh_token, gc.encrypted_refresh_token),
     access_token_expires_at = EXCLUDED.access_token_expires_at,
-    scopes = COALESCE(
-      (SELECT array_agg(DISTINCT s ORDER BY s) FROM unnest(gc.scopes || EXCLUDED.scopes) s), '{}'),
+    -- EXCLUDED.scopes is already sorted, distinct and non-null (the VALUES expression above).
+    scopes = CASE
+      WHEN EXCLUDED.encrypted_refresh_token IS NOT NULL THEN EXCLUDED.scopes
+      ELSE COALESCE(
+        (SELECT array_agg(DISTINCT s ORDER BY s) FROM unnest(gc.scopes || EXCLUDED.scopes) s), '{}')
+    END,
     status = 'active',
     authorized_at = now()
   RETURNING gc.id INTO v_id;

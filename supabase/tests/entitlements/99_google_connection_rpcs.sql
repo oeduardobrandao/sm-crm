@@ -145,7 +145,41 @@ begin
     'every upsert stamps authorized_at';
   assert (select encrypted_refresh_token from google_connections where id = v_id) = 'R2',
     'a new refresh token replaces the stored one';
+  assert (select scopes from google_connections where id = v_id)
+         = array(select distinct x from unnest(pg_temp.gr_yt()) x order by x),
+    format('a fresh grant replaces the stored scopes, got %s',
+           (select scopes from google_connections where id = v_id));
   raise notice 'PASS google_rpcs.upsert_keeps_refresh';
+end $$;
+rollback;
+
+-- =====================================================================
+-- upsert_fresh_grant_replaces_scopes: a new refresh token is a new grant, so its scopes are
+-- the whole truth (a scope unticked on reconnect is gone); a NULL refresh token keeps the union
+-- =====================================================================
+begin;
+do $$
+declare
+  s jsonb := pg_temp.gr_seed();
+  v_ws uuid := (s->>'ws_a')::uuid;
+  v_id uuid;
+begin
+  v_id := pg_temp.gr_upsert(v_ws, 'sub-1', 'R1', pg_temp.gr_yt() || pg_temp.gr_gbp());
+  perform pg_temp.gr_upsert(v_ws, 'sub-1', 'R2',
+                            pg_temp.gr_gbp() || pg_temp.gr_gbp() || (pg_temp.gr_yt())[2:2]);
+  assert (select scopes from google_connections where id = v_id)
+         = array(select distinct x from unnest(pg_temp.gr_gbp() || (pg_temp.gr_yt())[2:2]) x order by x),
+    format('fresh grant: sorted distinct p_scopes only, got %s',
+           (select scopes from google_connections where id = v_id));
+
+  perform pg_temp.gr_upsert(v_ws, 'sub-1', null, (pg_temp.gr_yt())[1:1]);
+  assert (select scopes from google_connections where id = v_id)
+         = array(select distinct x from unnest(pg_temp.gr_gbp() || (pg_temp.gr_yt())[1:2]) x order by x),
+    format('null refresh: stored scopes unioned with p_scopes, got %s',
+           (select scopes from google_connections where id = v_id));
+  assert pg_temp.gr_covers(v_ws, 'sub-1', pg_temp.gr_yt()) = false,
+    'the dropped yt-analytics scope is no longer claimed';
+  raise notice 'PASS google_rpcs.upsert_fresh_grant_replaces_scopes';
 end $$;
 rollback;
 
