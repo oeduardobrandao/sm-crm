@@ -125,17 +125,27 @@ Index `(conta_id, created_at)`. Cost: use the provider-reported cost when the re
 ### `ai_turns` and `ai_pending_actions` (server-side guards, not history)
 The browser holds the conversation (§6.5), so the server keeps only what it must trust:
 - `ai_turns`: `id uuid pk`, `conta_id`, `user_id`, `steps int default 0`, `created_at`. One row per
-  user message. Every `/step` increments it atomically
-  (`UPDATE ... SET steps = steps + 1 WHERE id = $1 AND user_id = $2 AND conta_id = $3 AND steps < 8
-  RETURNING steps`); no row back = refuse. The client cannot reset the cap.
-- `ai_pending_actions`: `id uuid pk`, `turn_id`, `conta_id`, `user_id`, `tool`, `args jsonb`
-  (normalized, post-parse), `status` (`pendente` \| `executada` \| `recusada` \| `expirada`),
-  `expires_at` (now + 30 min), `result jsonb null`, `created_at`. Written when a step returns
-  `needs_confirm`. A confirm claims it with
-  `UPDATE ... SET status = 'executada' WHERE id = $1 AND user_id = $2 AND status = 'pendente'
-  AND expires_at > now() RETURNING *`; no row back = already used or expired, so a replayed
-  confirm runs nothing. A second confirm of an executed action returns the stored `result`
-  (idempotent), never a second write.
+  user message. Every `/step` calls the SQL function `ai_turn_step(p_turn_id, p_user_id, p_conta_id)`
+  (EXECUTE to `service_role` only; PostgREST cannot express `steps = steps + 1 ... RETURNING`), which
+  does `UPDATE ... SET steps = steps + 1 WHERE id = p_turn_id AND user_id = p_user_id AND conta_id =
+  p_conta_id AND steps < 8 RETURNING steps`; no row back = refuse. The client cannot reset the cap.
+- `ai_pending_actions`: `id uuid pk`, `turn_id`, `conta_id`, `user_id`, `tool_call_id text`, `tool`,
+  `args jsonb` (normalized, post-parse; for compound actions an ordered list of steps), `status`
+  (`pendente` \| `executando` \| `executada` \| `falhou` \| `recusada` \| `expirada`), `expires_at`
+  (now + 30 min), `result jsonb null`, `created_at`. Written when a step returns `needs_confirm`.
+  A confirm **claims** it: `.update({status:'executando'}).eq('id').eq('user_id').eq('conta_id')
+  .eq('turn_id').eq('status','pendente').gt('expires_at', now).select()`; no row back = already
+  used or expired, so a replayed confirm runs nothing. The tool context is built from the row's
+  `conta_id`, with membership re-checked. Success writes `executada` + `result`; an `isError`
+  envelope from `register()` (`mcp/register.ts:96-101`) or a throw writes `falhou` and the tool
+  result carries the generic error, so the model can tell the user. A second confirm of an
+  `executada` action returns the stored `result` (idempotent), never a second write. A row stuck in
+  `executando` (edge kill) is reported as `falhou` once `expires_at` passes. The appended tool result
+  always carries the row's `tool_call_id`.
+- Args stored here carry captions and bodies, so they stay in this table only (7-day retention below)
+  and never reach `audit_log`: before the in-process path runs a tool, confirm each allowlisted write
+  has an `auditArgs` that logs ids and lengths only (`create_post`, `update_post`, `create_task`,
+  `update_task` do; check `set_post_property` and add one if missing).
 - Retention: rows older than 7 days are deleted by the existing hourly cleanup path or a small
   addition to `notification-cleanup-cron` (builder's call).
 
@@ -149,9 +159,11 @@ The browser holds the conversation (§6.5), so the server keeps only what it mus
 
 ## 5. Connections (edge function `ai-connections`)
 
-Standard JWT function; verifies the user token itself with the service-role client + `getUser`
-(repo convention for ES256 tokens). Every action checks the flag and that the caller is a member
-of `conta_id`.
+Verifies the user token itself with the service-role client + `getUser` (repo convention for this
+project's ES256 tokens), so like the other self-verifying functions it ships with
+`verify_jwt = false` in `supabase/config.toml` and deploys with `--no-verify-jwt`; the gateway would
+otherwise 401 every call. Same for `assistente-ia`. Add both to the CLAUDE.md `--no-verify-jwt` list.
+Every action checks the flag and that the caller is a member of the active workspace (§6.1).
 
 | action | who | what |
 |---|---|---|
@@ -166,7 +178,8 @@ of `conta_id`.
 - Anthropic: must start with `sk-ant-api`. Anything else (notably `sk-ant-oat`, OAuth/setup tokens)
   is refused: "Use uma chave de API do Console da Anthropic. Tokens da assinatura do Claude não são aceitos."
 - Verify calls (no tokens spent): Anthropic `GET /v1/models`; OpenAI `GET /v1/models`; Gemini
-  `GET /v1beta/models?key=`; OpenRouter `GET /api/v1/key`. All with `AbortSignal` (10 s).
+  `GET /v1beta/models` with the key in the `x-goog-api-key` header (never `?key=` in a URL, here or in
+  any Gemini call, since URLs end up in logs); OpenRouter `GET /api/v1/key`. All with `AbortSignal` (10 s).
 - Provider error bodies are logged internally and never returned; the client gets
   "Chave recusada pelo provedor" or "Não foi possível verificar agora".
 - Rate limit `ai-connections:<user_id>` 20/600 s (`_shared/rate-limit.ts`).
@@ -198,6 +211,23 @@ POST /step { turn_id?, conversation: Message[], context, model?, confirm? }
 
 A new user message omits `turn_id`; the server creates the `ai_turns` row and returns its id. Every
 later step of that message sends it back, and the server's atomic counter enforces the cap (§4).
+
+**Conversation integrity.** The client sends the whole `conversation` so the model has its history,
+but the server executes **only** tool calls from the model response it just received in this
+request, never ones present in the client payload. A confirm runs the stored tool and args (or the
+re-parsed "Ajustar" args); any `tool` or `args` the client sends otherwise are ignored. A forged
+assistant message in `conversation` can at most mislead the model, which then proposes a write that
+still needs a confirm card.
+
+**Several tool calls in one response.** Parallel tool use is disabled at the provider layer where the
+API allows it (Anthropic `disable_parallel_tool_use`, OpenAI `parallel_tool_calls: false`). When a
+response still carries several calls, the server runs the reads, stops at the first write (that one
+becomes the pending action), and answers every other call with a tool result "não executado: uma ação
+por vez", so every `tool_call_id` has a result and the provider accepts the next request.
+
+**Workspace.** `conta_id` is the caller's active workspace (`profiles.conta_id` of the JWT user),
+checked against `workspace_members`; never a body field. `profiles.conta_id` can be NULL in prod:
+then the function answers 400 "Selecione um workspace" and the panel shows it.
 
 - `continue`: the model called read tools; the server ran them and appended the results. The client
   calls `/step` again. Progress lines like "Li a estratégia de conteúdo" come from these steps.
@@ -252,8 +282,14 @@ use_brand: boolean}`. It costs money, so in the panel it is a **write** (confirm
   provider adapter requests PNG or JPEG output explicitly (OpenAI `output_format`; Gemini returns
   inline PNG; via OpenRouter, the adapter checks the returned mime). Anything else, or over 8 MB, is
   discarded with "O modelo devolveu um formato que o Mesaas não aceita. Tente outro modelo." No
-  transcoding in the isolate. URL results are fetched with an `AbortSignal` and a byte cap. The
-  adapter records the real byte length and reads width/height from the PNG/JPEG header.
+  transcoding in the isolate. URL results go **only** through `fetchImageSafely`
+  (`_shared/safe-image-fetch.ts:274`: https only, no credentials or port, DNS resolution with
+  private-IP block, `redirect: manual`, capped body), and the real mime comes from `sniffImageBytes`
+  (line 168), never the provider's header. "Outro modelo" on OpenRouter can route to any model, so a
+  result URL is untrusted. The adapter records the real byte length and reads width/height from the
+  PNG/JPEG header.
+- **Time budget.** The `n` images of one request are generated in parallel, each under its own 60 s
+  `AbortSignal`, so the request stays inside the 150 s response limit.
 - **Staging.** Each accepted image is uploaded (presigned PUT + plain `fetch` + `AbortSignal`, never
   the aws-sdk client in an isolate) to `contas/<conta_id>/files/ai/<uuid>.<ext>` and recorded in
   `ai_generated_images`. Previews are signed GET URLs. No `files` row yet, so no quota charge.
@@ -267,20 +303,35 @@ use_brand: boolean}`. It costs money, so in the panel it is a **write** (confirm
 - **Attachment never replaces or deletes existing media, and never changes the post's status.**
   `set_post_media` is a full replacement (its RPC `post_media_set_from_uploads` unlinks every current
   item, garbage-collects them and can move `correcao_cliente` back to `revisao_interna`), so the
-  assistant does **not** use it. "Usar a opção N" is a confirmed write that **appends** through the
-  same path the editor's own uploads use (`post-media-finalize` → `post_media_insert_with_quota`),
-  which charges quota at that moment, and then, when the image was generated for lâmina N, moves it to
-  position N with the editor's existing reorder mechanism. "Lâmina N" in the mockup is the Nth item of
-  the post's media order, not a new slot model; empty slides are just positions without media yet.
-  The staging key prefix is whatever that finalize path requires (the builder adapts `contas/<conta>/…`
-  in the Staging bullet and the scanner ref accordingly).
+  assistant does **not** use it. "Usar a opção N" is a confirmed write (`anexar_imagem`) that
+  **appends** the way the editor's own uploads do (`apps/crm/src/services/postMedia.ts:246-279` →
+  `file-upload-finalize/handler.ts:112,138-152`): `assistente-ia` calls the `file_insert_with_quota`
+  RPC with the service role (quota is charged here) and inserts the `post_file_links` row
+  `{post_id, file_id, conta_id, sort_order}` in-process, with `sort_order` placing it at lâmina N.
+  Not `post-media-finalize`, which is the legacy `post_media` path and requires keys under
+  `contas/<conta>/posts/<post_id>/`. The staging prefix `contas/<conta>/files/ai/` already satisfies
+  the `files` path. "Lâmina N" in the mockup is the Nth item of the post's media order, not a new slot
+  model; empty slides are positions without media yet.
+- **Eligibility, server-side** (the editor's finalize only checks ownership, `handler.ts:45-46`):
+  mirror `set_post_media` (`mcp/media.ts:33-40`; `EDITABLE_STATUSES` in `mcp/queries.ts`). Refuse
+  `tipo` outside feed/carrossel and statuses outside `EDITABLE_STATUSES`; the `ai_generated_images`
+  row must match `conta_id` and `user_id` and must not be attached already. Hiding the button on reels
+  and stories is not the gate.
 - Feed posts that already have an image: the card says "Substituir a imagem atual?" and the action
   removes the old item through the editor's normal delete path before appending. Reels and stories:
   "Gerar imagem" is not shown.
-- After attaching, the staging row gets `attached_post_id`/`attached_at` and is kept (not expired),
-  so the object stays referenced until the row is deleted with the post.
-- "Gerar imagens antes" in the create-post card: images are generated and staged first, then one
-  confirmed action "Criar rascunho com imagens" runs `create_post` followed by the attachments.
+- After attaching, the staging row gets `attached_post_id`/`attached_at` and is kept (not expired).
+  `attached_post_id` is `REFERENCES workflow_posts(id) ON DELETE CASCADE`. The `files` row then also
+  references the object. Removing the image from the post later uses the editor's normal unlink
+  (`post-media-manage` DELETE), which leaves the file in Arquivos, the editor's usual semantics.
+- "Gerar imagens antes" in the create-post card: images are generated and staged first (a
+  `gerar_imagem` confirm), then one **compound** pending action "Criar rascunho com imagens" stores
+  both steps (`create_post` args + the staged image ids) and runs them in order on one confirm.
+- **Editor popover** uses a dedicated route `POST /gerar-imagem {post_id, lamina, prompt, aspect, n,
+  use_brand}` on `assistente-ia`: no model loop, same flag, membership and rate limits. The "Gerar"
+  click is the user's consent to spend; "Usar a opção N" then calls `POST /anexar-imagem` with the
+  staged id, which runs the same server-side checks as `anexar_imagem`. There is never a client flag
+  that auto-approves a pending action.
 - Memory: 4 images at 2K stay well under the 256 MB isolate ceiling; never decode or re-encode in the isolate.
 
 ### 6.5 Conversation state (my call)
@@ -297,7 +348,8 @@ Reuse `supabase/functions/mcp/` tools in-process, the way the tests already do w
 the three things the MCP transport normally does:
 1. **Context**: synthesize `McpKeyContext` `{conta_id, created_by: user.id, key_id: 'assistente:<user_id>',
    role, can_write_financials: false, scopes}` with
-   `scopes = permittedMcpScopes(db, user.id, conta_id) ∩ ASSISTANT_SCOPES`. Audit rows then read
+   `scopes = permittedMcpScopes(db, user.id, conta_id, ASSISTANT_SCOPES)` (its 4th argument is the
+   scope filter, `_shared/mcp-oauth.ts:125-130`). Audit rows then read
    `mcp.<tool>` with `metadata.key_id = 'assistente:…'`, which tells them apart from MCP keys.
 2. **Validation**: `z.object(shape).strict().parse(args)` before `run`.
 3. **Rate limit**: §6.1.
@@ -316,7 +368,8 @@ Excluded in v1: every `financeiro:*` tool, `membros:*` (incl. `create_member`), 
 check scope and role but not every area flag (e.g. `list_ideas` ignores `feature_ideas`). So the
 assistant wrapper keeps a `TOOL_FEATURES` map checked with `effectivePlanFeature` before each tool
 runs, and hides gated tools from the model's tool list: `list_ideas` → `feature_ideas`;
-`get_performance_baseline` → `feature_instagram`; `set_post_property` → `feature_custom_properties`.
+`get_performance_baseline` → `feature_analytics_reports` (how the CRM gates `/analytics`,
+`ProtectedRoute.tsx:15-17`); `set_post_property` → `feature_custom_properties`.
 The builder confirms each mapping against how the CRM gates the same area, and adds any tool whose
 CRM screen is behind a flag.
 
@@ -367,8 +420,15 @@ slide count, "Sem data. Não agenda nem publica.") and rendered as React text, n
 - One SECURITY DEFINER RPC `ai_usage_record(...)` (EXECUTE granted to `service_role` only) inserts the
   log row, sums the month, and when the sum crosses `monthly_alert_usd` does
   `INSERT INTO ai_usage_alerts (conta_id, month) VALUES (...) ON CONFLICT DO NOTHING RETURNING`; only
-  the caller that got a row back inserts the notifications for owners/admins in the existing Central
-  de Notificações, inside the same transaction. Concurrent calls cannot double-notify.
+  the caller that got a row back inserts the notifications for owners/admins (from
+  `workspace_members`) in the existing Central de Notificações, inside the same transaction.
+  Concurrent calls cannot double-notify.
+- `notifications.type` has a CHECK constraint (`20260430000001_notifications.sql:25-29`; recreate it
+  from its latest definition in the migrations) and its columns are `workspace_id`, `user_id`, `type`,
+  `metadata`, `link`. The migration adds `ai_usage_alert` to the CHECK, the RPC writes those columns
+  (`metadata = {month, threshold_usd, estimated_usd}`, `link = '/configuracao/ia'`), and the CRM
+  notification center gets a render entry for the type. Without the CHECK change the insert raises
+  and rolls back the usage log on every later call.
   (`alert_notified_month` in `ai_workspace_settings` is dropped in favour of this table.)
   No blocking; the hard cap belongs on the provider side (OpenRouter key limit).
   Copy: "O gasto estimado com IA passou de US$ 30 neste mês."
@@ -392,7 +452,11 @@ slide count, "Sem data. Não agenda nem publica.") and rendered as React text, n
   replayed or expired confirm runs nothing; the step counter refuses step 9 whatever the client
   sends; strict parse refuses extra args; area-flag-off hides and refuses the mapped tool; flag off →
   403 on both functions; personal-then-workspace connection lookup; non-PNG/JPEG or >8 MB image
-  discarded; orphan scan treats `ai_generated_images.r2_key` as live.
+  discarded; orphan scan treats `ai_generated_images.r2_key` as live; a tool call present only in the
+  client's `conversation` never runs; a failed write leaves the action `falhou`, not consumed with no
+  result; several tool calls in one response yield one pending action and a result for every call id;
+  `anexar_imagem` refuses reels/stories, non-editable statuses, another user's or an attached staging
+  row; image URLs only via `fetchImageSafely` (private IP refused); Gemini key never in a URL.
 - SQL: two concurrent `ai_usage_record` calls crossing the threshold create one alert and one set
   of notifications.
 - Vitest: panel states (empty, member without permission, steps, confirm, error), caption
@@ -408,11 +472,13 @@ slide count, "Sem data. Não agenda nem publica.") and rendered as React text, n
    `paywall-report`, `automation-media`, `data-import`, `equipe-chat-media`, `mcp-keys`,
    `mcp-oauth-consent`.
 3. Deploy `post-media-cleanup-cron` with the `ai_generated_images` ref (§6.4), then
-   `ai-connections` and `assistente-ia` (standard JWT verification). The cron must go first, or
+   `ai-connections` and `assistente-ia` (both `--no-verify-jwt`, §5). The cron must go first, or
    staged previews older than 24 h get reaped.
 4. Merge (Vercel deploys the CRM and Admin).
 5. Turn on the override for the founder's workspace and test end to end on prod.
-6. Later: the launch migration for `start/pro/max/lifetime`.
+6. Later: the launch migration for `start/pro/max/lifetime`, only after step 2's `workspace-limits`
+   redeploy is live (otherwise the CRM's fail-closed gate keeps the feature hidden while the server
+   already accepts requests).
 
 Rollback: frontend first, then functions. Tables can stay.
 
