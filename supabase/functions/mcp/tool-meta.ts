@@ -69,15 +69,22 @@ const BASE_TOOL_META: Record<string, ToolMeta> = {
 // Os módulos de cards importam o `register`, que importa este arquivo: juntar os `X_TOOL_META` na
 // avaliação do módulo daria um ciclo (TDZ quando um módulo de cards é o primeiro a carregar).
 // Por isso a junção é preguiçosa, feita no primeiro acesso a `TOOL_META`.
+/** Merges the base map with the card maps; a key present twice is a bug (parallel lanes can pick
+ * the same tool name), so it throws instead of letting the last spread win. */
+export function mergeToolMeta(base: Record<string, ToolMeta>, ...cardMaps: Record<string, ToolMeta>[]) {
+  const out: Record<string, ToolMeta> = { ...base };
+  for (const map of cardMaps) {
+    for (const [name, meta] of Object.entries(map)) {
+      if (name in out) throw new Error(`duplicate TOOL_META for ${name}`);
+      out[name] = meta;
+    }
+  }
+  return out;
+}
+
 let merged: Record<string, ToolMeta> | undefined;
 function allToolMeta(): Record<string, ToolMeta> {
-  return merged ??= {
-    ...BASE_TOOL_META,
-    ...CARDS_TOOL_META,
-    ...CALENDAR_TOOL_META,
-    ...SEND_TOOL_META,
-    ...ATTACH_TOOL_META,
-  };
+  return merged ??= mergeToolMeta(BASE_TOOL_META, CARDS_TOOL_META, CALENDAR_TOOL_META, SEND_TOOL_META, ATTACH_TOOL_META);
 }
 
 export const TOOL_META: Record<string, ToolMeta> = new Proxy({}, {

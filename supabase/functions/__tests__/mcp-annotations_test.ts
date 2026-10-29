@@ -4,7 +4,7 @@ import { makeDeps, makeFakeDb } from "./mcp-financeiro-helpers.ts";
 import { MCP_ALLOWED_SCOPES } from "../_shared/mcp-token.ts";
 import { registerTools } from "../mcp/tools.ts";
 import { register } from "../mcp/register.ts";
-import { TOOL_META } from "../mcp/tool-meta.ts";
+import { mergeToolMeta, TOOL_META } from "../mcp/tool-meta.ts";
 
 type Recorded = { config: any; cb: (args: any) => Promise<any> };
 
@@ -16,6 +16,7 @@ function recordingServer() {
     registerTool(name: string, config: any, cb: any) {
       tools[name] = { config, cb };
     },
+    registerResource() {},
   };
 }
 
@@ -47,8 +48,59 @@ Deno.test("mcp-annotations: every tool has a title and annotations", () => {
   assertEquals(server.tools["create_post"].config.annotations.readOnlyHint, false);
   assertEquals(server.tools["create_post"].config.annotations.destructiveHint, false);
   assertEquals(server.tools["create_post"].config.title, "Criar post em rascunho");
-  // Every TOOL_META entry maps to a registered tool (no stale entries).
-  assertEquals(Object.keys(TOOL_META).sort(), [...names].sort());
+});
+
+Deno.test("mcp-annotations: every TOOL_META entry maps to a tool that can register (no stale entries)", () => {
+  const server = recordingServer();
+  registerTools(server, { ...allScopesDeps(), apps: { enabled: true, oauth: true, r2Origin: null } });
+  assertEquals(Object.keys(TOOL_META).sort(), Object.keys(server.tools).sort());
+});
+
+Deno.test("mcp-annotations: a card tool returns structuredContent, summary text and non-empty resultMeta", async () => {
+  const { db, calls } = makeFakeDb({});
+  const deps = makeDeps(db, { scopes: [...MCP_ALLOWED_SCOPES], role: "owner" });
+  const server = recordingServer();
+  register(
+    server, deps, "list_clients", "clientes:read", "d", {},
+    async () => ({ summary: "Prévia pronta.", data: { card: "x", v: 1, post_id: 7 } }),
+    (_a, r) => ({ post_id: r.post_id }),
+    { card: true, resultMeta: async () => ({ "mesaas/n": "t" }) },
+  );
+  const res = await server.tools["list_clients"].cb({});
+  assertEquals(res.content, [{ type: "text", text: "Prévia pronta." }]);
+  assertEquals(res.structuredContent, { card: "x", v: 1, post_id: 7 });
+  assertEquals(res._meta, { "mesaas/n": "t" });
+  const audit = calls.find((c) => c.table === "audit_log" && c.method === "insert")!.args[0] as any;
+  assertEquals(audit.action, "mcp.list_clients");
+  assertEquals(audit.metadata.args, { post_id: 7 });
+});
+
+Deno.test("mcp-annotations: a card tool with empty or no resultMeta has no _meta; errors stay generic", async () => {
+  for (const rm of [undefined, async () => ({}), async () => undefined]) {
+    const server = recordingServer();
+    register(
+      server, allScopesDeps(), "list_clients", "clientes:read", "d", {},
+      async () => ({ summary: "ok", data: { card: "x" } }), undefined, { card: true, resultMeta: rm as any },
+    );
+    const res = await server.tools["list_clients"].cb({});
+    assertEquals(res.structuredContent, { card: "x" });
+    assert(!("_meta" in res));
+  }
+  const server = recordingServer();
+  register(server, allScopesDeps(), "list_clients", "clientes:read", "d", {}, async () => { throw new Error("boom"); }, undefined, { card: true });
+  const res = await server.tools["list_clients"].cb({});
+  assertEquals(res.isError, true);
+});
+
+Deno.test("mcp-annotations: mergeToolMeta throws on a duplicate name", () => {
+  const m = { title: "T", readOnly: true };
+  assertEquals(Object.keys(mergeToolMeta({ a: m }, { b: m }, { c: m })).sort(), ["a", "b", "c"]);
+  let msg = "";
+  try { mergeToolMeta({ a: m }, { a: m }); } catch (e) { msg = (e as Error).message; }
+  assertEquals(msg, "duplicate TOOL_META for a");
+  msg = "";
+  try { mergeToolMeta({ a: m }, { b: m }, { b: m }); } catch (e) { msg = (e as Error).message; }
+  assertEquals(msg, "duplicate TOOL_META for b");
 });
 
 Deno.test("mcp-annotations: register passes the zod shape and description through", () => {

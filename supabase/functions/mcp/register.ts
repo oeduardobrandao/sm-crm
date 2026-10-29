@@ -62,7 +62,16 @@ export async function audit(deps: Deps, name: string, args: Record<string, unkno
 
 export type FinanceiroFeature = "feature_financial" | "feature_financeiro_v2";
 
+/** What `run` returns for a card tool (`opts.card`): the model-facing summary and the widget payload. */
+export interface CardRun {
+  summary: string;
+  data: Record<string, unknown>;
+}
+
 export interface RegisterOpts {
+  /** Card tool: `run` returns a {@link CardRun} and the result is a `cardResult` (summary text +
+   * `structuredContent`) instead of JSON text. `auditArgs` and `resultMeta` receive `data`. */
+  card?: true;
   /** Only the workspace owner (ctx.role === 'owner') may call the tool; also requires feature_financial. */
   ownerOnly?: boolean;
   /** Extra plan feature required before `run` (with `ownerOnly`). */
@@ -122,12 +131,16 @@ export function register(
           }
         }
       }
-      const data = await run(args ?? {});
+      const ran = await run(args ?? {});
+      const data = opts?.card ? (ran as CardRun).data : ran;
       // Owner-only tools never audit raw args (they carry valores/nomes); without an explicit
       // auditArgs the metadata is empty.
       const defaultAudit = opts?.ownerOnly ? () => ({}) : (a: any) => a;
       await audit(deps, name, (auditArgs ?? defaultAudit)(args ?? {}, data));
       const resultMeta = opts?.resultMeta ? await opts.resultMeta(args ?? {}, data) : undefined;
+      if (opts?.card) {
+        return cardResult((ran as CardRun).summary, data as Record<string, unknown>, resultMeta && Object.keys(resultMeta).length > 0 ? resultMeta : undefined);
+      }
       return jsonResult(data, resultMeta);
     } catch (e) {
       return errorResult(e);
