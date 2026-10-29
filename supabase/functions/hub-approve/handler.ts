@@ -249,8 +249,9 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
       if (approvalErr) {
         // record_client_approval (called inside the _with_notes wrapper) refuses a client
         // approval/correction while an edit suggestion is pending (migration 20260928150001):
-        // the status change would make the auto-reject trigger silently discard it. The
-        // wrapper re-checks the status under its row lock and raises post_not_pending.
+        // the status change would otherwise leave the pending suggestion stranded on a post
+        // that is no longer awaiting approval. The wrapper re-checks the status under its
+        // row lock and raises post_not_pending.
         const message = (approvalErr as { message?: unknown }).message;
         if (typeof message === "string") {
           if (message.includes("pending_suggestion")) {

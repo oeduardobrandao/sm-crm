@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -116,6 +116,9 @@ vi.mock('@/store', () => ({
 }));
 
 vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn(async () => []) }));
+
+// The suggestion move guard reads this by path (not through the '@/store' barrel).
+vi.mock('@/store/posts', () => ({ hasPendingEditSuggestion: vi.fn(async () => false) }));
 // PostEditorBody and WorkflowDrawer read client references from this module by path.
 vi.mock('@/store/postReferences', () => ({
   getPostReferences: vi.fn(async () => []),
@@ -241,13 +244,18 @@ import {
   getPostCommentThreads,
   deleteCommentThread,
   deletePostComment,
+  getPostEditSuggestions,
+  acceptEditSuggestion,
+  syncMentions,
 } from '@/store';
+import { hasPendingEditSuggestion } from '@/store/posts';
 import { toast } from 'sonner';
 
 const mockGetStandalonePost = vi.mocked(getStandalonePost);
 const mockGetVigentePostProcess = vi.mocked(getVigentePostProcess);
 const mockGetPostStatusEvents = vi.mocked(getPostStatusEvents);
 const mockUpdate = vi.mocked(updateWorkflowPost);
+const mockHasPending = vi.mocked(hasPendingEditSuggestion);
 const mockRemove = vi.mocked(removeWorkflowPost);
 const mockTransition = vi.mocked(transitionPostProcess);
 const mockResolveBanner = vi.mocked(resolvePostProcessRascunhoBanner);
@@ -351,6 +359,7 @@ describe('StandalonePostDrawer', () => {
     mockGetStandalonePost.mockResolvedValue(basePost() as never);
     mockUpdate.mockResolvedValue({} as never);
     mockRemove.mockResolvedValue(undefined as never);
+    mockHasPending.mockResolvedValue(false);
   });
 
   it('renders the post editor without a PropertyPanel (posts avulsos have no template)', async () => {
@@ -598,6 +607,66 @@ describe('StandalonePostDrawer', () => {
       }),
     );
     expect(screen.queryByText('Post aprovado')).not.toBeInTheDocument();
+  });
+
+  describe('suggestion move guard', () => {
+    const statusSelectOf = (container: HTMLElement) =>
+      Array.from(container.querySelectorAll('select')).find((s) =>
+        s.querySelector('option[value="rascunho"]'),
+      ) as HTMLSelectElement;
+
+    beforeEach(() => {
+      mockHasPending.mockResolvedValue(false);
+    });
+
+    it('asks before moving to agendado with a pending suggestion, and writes only after "Mover mesmo assim"', async () => {
+      mockHasPending.mockResolvedValue(true);
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const { container } = renderDrawer(qc);
+      await screen.findByTestId('post-editor-stub');
+
+      fireEvent.change(statusSelectOf(container), { target: { value: 'agendado' } });
+
+      expect(await screen.findByText('Mover para Agendado?')).toBeInTheDocument();
+      expect(mockHasPending).toHaveBeenCalledWith(5);
+      expect(mockUpdate).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Mover mesmo assim' }));
+      await waitFor(() =>
+        expect(mockUpdate).toHaveBeenCalledWith(5, { status: 'agendado', custom_status_id: null }),
+      );
+    });
+
+    it('Cancelar does not write', async () => {
+      mockHasPending.mockResolvedValue(true);
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const { container } = renderDrawer(qc);
+      await screen.findByTestId('post-editor-stub');
+
+      fireEvent.change(statusSelectOf(container), { target: { value: 'postado' } });
+      await screen.findByText('Mover para Postado?');
+      fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+      await waitFor(() =>
+        expect(screen.queryByText('Mover para Postado?')).not.toBeInTheDocument(),
+      );
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('runs after the "post aprovado" confirm, not instead of it', async () => {
+      mockGetStandalonePost.mockResolvedValue(basePost({ status: 'aprovado_cliente' }) as never);
+      mockHasPending.mockResolvedValue(true);
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const { container } = renderDrawer(qc);
+      await screen.findByTestId('post-editor-stub');
+
+      fireEvent.change(statusSelectOf(container), { target: { value: 'agendado' } });
+      fireEvent.click(await screen.findByRole('button', { name: 'Confirmar' }));
+      expect(await screen.findByText('Mover para Agendado?')).toBeInTheDocument();
+      expect(mockUpdate).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Mover mesmo assim' }));
+      await waitFor(() =>
+        expect(mockUpdate).toHaveBeenCalledWith(5, { status: 'agendado', custom_status_id: null }),
+      );
+    });
   });
 
   it('flag desligada sem processo: tag "Avulso" (consulta o processo, que vem nulo)', async () => {
@@ -923,5 +992,134 @@ describe('StandalonePostDrawer', () => {
       expect(await screen.findByText('Este post continua aprovado.')).toBeInTheDocument();
       expect(onRefresh).toHaveBeenCalled();
     });
+  });
+});
+
+describe('StandalonePostDrawer edit suggestions', () => {
+  const mentionDoc = {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'mention', attrs: { entityType: 'membro', id: 7, label: 'Ana', parentId: null } },
+        ],
+      },
+    ],
+  };
+  const suggestion = {
+    id: 300,
+    post_id: 5,
+    suggested_conteudo: mentionDoc,
+    suggested_conteudo_plain: '@Ana confere',
+    suggested_ig_caption: 'Legenda do cliente',
+    original_conteudo: null,
+    original_conteudo_plain: '',
+    original_ig_caption: 'Legenda base',
+    changed_fields: ['conteudo', 'ig_caption'],
+    status: 'pending' as const,
+    updated_at: '2026-08-01T00:00:00Z',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetStandalonePost.mockResolvedValue(basePost({ ig_caption: 'Legenda da equipe' }) as never);
+    vi.mocked(getPostEditSuggestions).mockResolvedValue([suggestion] as never);
+    vi.mocked(acceptEditSuggestion).mockResolvedValue(undefined as never);
+  });
+
+  it('shows the conflict line and the "Aceitar…" button when the team edited the caption', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    expect(await screen.findByRole('button', { name: 'Aceitar…' })).toBeInTheDocument();
+    expect(
+      screen.getByText('A equipe editou a legenda depois desta sugestão.'),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the team caption by default: applies texto only and syncs its mentions', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar…' }));
+    expect(vi.mocked(acceptEditSuggestion)).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole('dialog', { name: 'Aceitar a sugestão?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
+
+    await waitFor(() =>
+      expect(vi.mocked(acceptEditSuggestion)).toHaveBeenCalledWith(
+        300,
+        '2026-08-01T00:00:00Z',
+        ['texto'],
+        [],
+      ),
+    );
+    await waitFor(() =>
+      expect(vi.mocked(syncMentions)).toHaveBeenCalledWith('workflow_post', 5, [7]),
+    );
+  });
+
+  it('a caption-only accept leaves the team mentions alone', async () => {
+    vi.mocked(getPostEditSuggestions).mockResolvedValue([
+      { ...suggestion, original_ig_caption: 'Legenda da equipe', changed_fields: ['ig_caption'] },
+    ] as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar' }));
+
+    await waitFor(() =>
+      expect(vi.mocked(acceptEditSuggestion)).toHaveBeenCalledWith(
+        300,
+        '2026-08-01T00:00:00Z',
+        ['legenda'],
+        [],
+      ),
+    );
+    expect(vi.mocked(syncMentions)).not.toHaveBeenCalled();
+  });
+
+  it('a no-conflict accept that the server rejects as suggestion_conflict shows the review-again toast and refetches', async () => {
+    // Stale drawer: the team caption changed after it opened, so the card sent no acknowledgement.
+    mockGetStandalonePost.mockResolvedValue(basePost({ ig_caption: 'Legenda base' }) as never);
+    vi.mocked(acceptEditSuggestion).mockRejectedValue({ message: 'suggestion_conflict' });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    renderDrawer(qc);
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar' }));
+
+    await waitFor(() =>
+      expect(vi.mocked(acceptEditSuggestion)).toHaveBeenCalledWith(
+        300,
+        '2026-08-01T00:00:00Z',
+        ['texto', 'legenda'],
+        [],
+      ),
+    );
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'O post mudou desde que você abriu. Revise a sugestão de novo.',
+      ),
+    );
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['standalone-post', 5] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['post-edit-suggestions'] });
+    expect(vi.mocked(syncMentions)).not.toHaveBeenCalled();
+  });
+
+  it('suggestion_conflict shows the review-again toast and refetches the post and suggestion', async () => {
+    vi.mocked(acceptEditSuggestion).mockRejectedValue({ message: 'suggestion_conflict' });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    renderDrawer(qc);
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Aceitar a sugestão?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'O post mudou desde que você abriu. Revise a sugestão de novo.',
+      ),
+    );
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['standalone-post', 5] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['post-edit-suggestions'] });
+    expect(vi.mocked(syncMentions)).not.toHaveBeenCalled();
   });
 });

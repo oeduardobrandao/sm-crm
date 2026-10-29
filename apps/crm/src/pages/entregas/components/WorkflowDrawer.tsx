@@ -118,10 +118,11 @@ import { shouldOfferAutoSchedule, isEligibleToScheduleNow } from '../autoSchedul
 import { AutoSchedulePromptDialog, type AutoSchedulePromptPost } from './AutoSchedulePromptDialog';
 import { AutoScheduleBadge } from './AutoScheduleBadge';
 import { AutoScheduleBatchDialog } from './AutoScheduleBatchDialog';
-import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { shouldAutoCompleteApproval } from './autoComplete';
 import { fluxoRascunhoBanner } from '../approvalExit';
+import type { SuggestionField } from '../editSuggestionFields';
+import { classifyAcceptError, mentionIdsToSyncAfterAccept } from '../editSuggestionAccept';
 import { getErrorIdentifier, getPostProcessErrorToast } from '../postProcessErrors';
 import { RascunhoBanner } from './RascunhoBanner';
 import { PostTimelinePopover } from './PostTimelinePopover';
@@ -142,7 +143,13 @@ import {
   VISIBILITY_BADGE_LABEL,
 } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
-import { statusChangeNeedsConfirm, statusKeyToPatch, type StatusKey } from '../statusRegistry';
+import {
+  canonicalOfStatusKey,
+  statusChangeNeedsConfirm,
+  statusKeyToPatch,
+  type StatusKey,
+} from '../statusRegistry';
+import { useSuggestionMoveGuard } from '../hooks/useSuggestionMoveGuard';
 import { PostStatusChip } from './PostStatusChip';
 import { formatPostDate, formatPostDateFull } from '@/utils/postDate';
 import { PostEditorBody } from './PostEditorBody';
@@ -293,6 +300,7 @@ export function WorkflowDrawer({
   const [pendingRejectSuggestionId, setPendingRejectSuggestionId] = useState<number | null>(null);
   const [editorVersions, setEditorVersions] = useState<Record<number, number>>({});
   const statusRegistry = useStatusRegistry();
+  const { confirmMove, dialog: moveGuardDialog } = useSuggestionMoveGuard();
   const [drawerView, setDrawerView] = useState<'posts' | 'calendar' | 'grid' | 'history'>('posts');
   // A `&discussao=1` link to the post this drawer already shows (no remount, so the typed
   // drafts survive): back to the Posts view (the request would otherwise stay armed behind
@@ -633,6 +641,14 @@ export function WorkflowDrawer({
     }
   };
 
+  /** The suggestion guard for a status pick, run after the "post aprovado" confirm. A custom
+   *  status is judged by the canonical status it behaves as. */
+  const confirmStatusKeyMove = (id: number, key: StatusKey) => {
+    const canonical = canonicalOfStatusKey(key, statusRegistry);
+    const current = posts.find((p) => p.id === id)?.status;
+    return canonical ? confirmMove(id, canonical, current) : Promise.resolve(true);
+  };
+
   const handleFieldChange = async (
     id: number,
     field: keyof WorkflowPost | 'status',
@@ -646,6 +662,7 @@ export function WorkflowDrawer({
         setPendingStatusChange({ id, newStatusKey: key });
         return;
       }
+      if (!(await confirmStatusKeyMove(id, key))) return;
       try {
         const updated = await updateWorkflowPost(id, statusKeyToPatch(key));
         refresh();
@@ -669,6 +686,7 @@ export function WorkflowDrawer({
     if (!pendingStatusChange) return;
     const { id, newStatusKey } = pendingStatusChange;
     setPendingStatusChange(null);
+    if (!(await confirmStatusKeyMove(id, newStatusKey))) return;
     try {
       const updated = await updateWorkflowPost(id, statusKeyToPatch(newStatusKey));
       refresh();
@@ -943,31 +961,20 @@ export function WorkflowDrawer({
   // ── Edit suggestion handlers ──────────────────────────────────────────────
 
   const handleAcceptSuggestion = useCallback(
-    async (suggestion: PostEditSuggestion) => {
+    async (
+      suggestion: PostEditSuggestion,
+      fields: SuggestionField[],
+      acknowledged: SuggestionField[],
+    ) => {
       try {
-        // The version on screen: the client may have saved a newer one since.
-        await acceptEditSuggestion(suggestion.id, suggestion.updated_at);
-        // accept_edit_suggestion writes workflow_posts.conteudo server-side,
-        // bypassing updateWorkflowPost -- sync mentions here so @-mentions in
-        // an accepted client suggestion still land in the mencoes ledger.
-        // suggested_conteudo != null is required in addition to the
-        // changed_fields check: caption-only Story suggestions (see
-        // StoryPostCard) submit suggested_conteudo: null, and
-        // upsert_edit_suggestion's IS DISTINCT FROM comparison still puts
-        // 'conteudo' in changed_fields for that null-vs-existing-doc diff.
-        // accept_edit_suggestion COALESCEs and keeps the stored conteudo
-        // unchanged in that case, so syncing from the null doc here would
-        // wrongly wipe every mention in the ledger for a post whose content
-        // never actually changed.
-        if (
-          suggestion.changed_fields.includes('conteudo') &&
-          suggestion.suggested_conteudo != null
-        ) {
-          const membroIds = extractMentionsFromDoc(suggestion.suggested_conteudo)
-            .filter((ref) => ref.entityType === 'membro')
-            .map((ref) => ref.id);
-          await syncMentions('workflow_post', suggestion.post_id, membroIds);
-        }
+        // `fields` is what the reviewer chose to apply (the card, or its conflict dialog).
+        // `suggestion.updated_at` is the version on screen: the client may have saved a newer one.
+        await acceptEditSuggestion(suggestion.id, suggestion.updated_at, fields, acknowledged);
+        // accept_edit_suggestion writes workflow_posts.conteudo server-side, bypassing
+        // updateWorkflowPost -- sync mentions here so @-mentions in an accepted client
+        // suggestion still land in the mencoes ledger (when exactly: see the helper).
+        const mentionIds = mentionIdsToSyncAfterAccept(suggestion, fields);
+        if (mentionIds) await syncMentions('workflow_post', suggestion.post_id, mentionIds);
         // Wait for the posts query to actually land the accepted content before
         // bumping editorVersions (which remounts <PostEditor> via its key prop).
         // PostEditor's TipTap instance is only ever hydrated once, at mount --
@@ -985,8 +992,17 @@ export function WorkflowDrawer({
         onRefresh();
       } catch (err) {
         // PostgrestError is a plain object, not an Error instance.
-        if (String((err as { message?: unknown })?.message ?? '').includes('suggestion_changed')) {
-          toast.error(t('workflowDrawer.suggestionChanged'));
+        const kind = classifyAcceptError(err);
+        if (kind !== 'other') {
+          // changed: the client saved a newer version. conflict: the post moved since the card
+          // was loaded. refresh() refetches both, so the next Aceitar is judged against fresh data.
+          toast.error(
+            t(
+              kind === 'changed'
+                ? 'workflowDrawer.suggestionChanged'
+                : 'workflowDrawer.suggestionConflict',
+            ),
+          );
           refresh();
           return;
         }
@@ -1674,6 +1690,8 @@ export function WorkflowDrawer({
         </AlertDialogContent>
       </AlertDialog>
 
+      {moveGuardDialog}
+
       <AutoSchedulePromptDialog
         post={nudgePost}
         onClose={() => setNudgePost(null)}
@@ -1852,7 +1870,11 @@ interface SortablePostItemProps {
   onEditComment: (commentId: number, content: string) => Promise<void>;
   onDeleteComment: (commentId: number, threadId: number) => Promise<void>;
   editorVersion: number;
-  onAcceptSuggestion: (suggestion: PostEditSuggestion) => void;
+  onAcceptSuggestion: (
+    suggestion: PostEditSuggestion,
+    fields: SuggestionField[],
+    acknowledged: SuggestionField[],
+  ) => void;
   onRejectSuggestion: (id: number) => void;
   /** True quando este post passou os gates do aviso de agendamento
    *  automático (spec peça 3). Calculado pelo drawer, não pela linha. */

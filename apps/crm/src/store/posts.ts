@@ -1514,14 +1514,24 @@ export async function replyToPostApproval(
 // POST EDIT SUGGESTIONS
 // =============================================
 
+/**
+ * The two logical fields of an edit suggestion: `texto` is `conteudo` + `conteudo_plain`
+ * (always together), `legenda` is `ig_caption`. `changed_fields` keeps storing the column names.
+ */
+export type SuggestionField = 'texto' | 'legenda';
+
 export interface PostEditSuggestion {
   id: number;
   post_id: number;
   suggested_conteudo: Record<string, unknown> | null;
   suggested_conteudo_plain: string;
   suggested_ig_caption: string | null;
+  /** Per-field base: what the client started from. NULL on rows created before the base was kept. */
+  original_conteudo: Record<string, unknown> | null;
+  original_conteudo_plain: string | null;
+  original_ig_caption: string | null;
   changed_fields: string[];
-  status: 'pending' | 'accepted' | 'rejected';
+  status: 'pending' | 'accepted' | 'rejected' | 'superseded';
   updated_at: string;
 }
 
@@ -1530,7 +1540,7 @@ export async function getPostEditSuggestions(postIds: number[]): Promise<PostEdi
   const { data, error } = await supabase
     .from('post_edit_suggestions')
     .select(
-      'id, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption, changed_fields, status, updated_at',
+      'id, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption, original_conteudo, original_conteudo_plain, original_ig_caption, changed_fields, status, updated_at',
     )
     .in('post_id', postIds)
     .eq('status', 'pending');
@@ -1539,14 +1549,84 @@ export async function getPostEditSuggestions(postIds: number[]): Promise<PostEdi
 }
 
 /**
+ * Whether the post has a client edit suggestion nobody reviewed yet. Head count, so no row
+ * travels. Only `pending` counts: `accepted`, `rejected` and `superseded` are closed.
+ */
+export async function hasPendingEditSuggestion(postId: number): Promise<boolean> {
+  const { count, error } = await supabase
+    .from('post_edit_suggestions')
+    .select('id', { count: 'exact', head: true })
+    .eq('post_id', postId)
+    .eq('status', 'pending');
+  if (error) throw error;
+  return (count ?? 0) > 0;
+}
+
+/**
+ * Posts the "aprovar todos" of `advance_workflow_from_approval` moves to `aprovado_cliente`:
+ * every post of the fluxo outside these statuses (the RPC's own NOT IN list,
+ * 20261023000001). Keep both lists together.
+ */
+const APPROVE_ALL_SKIPPED_STATUSES = [
+  'aprovado_cliente',
+  'agendado',
+  'postado',
+  'falha_publicacao',
+];
+
+/**
+ * How many posts the bulk approval is about to move that still carry a pending client
+ * suggestion, for the count line in the approval-exit dialog.
+ */
+export async function countPendingEditSuggestionsInWorkflow(workflowId: number): Promise<number> {
+  const { count, error } = await supabase
+    .from('post_edit_suggestions')
+    .select('id, workflow_posts!inner(workflow_id, status)', { count: 'exact', head: true })
+    .eq('status', 'pending')
+    .eq('workflow_posts.workflow_id', workflowId)
+    .not('workflow_posts.status', 'in', `(${APPROVE_ALL_SKIPPED_STATUSES.join(',')})`);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/**
+ * How many of `postIds` still carry a pending client suggestion, for the count line in the
+ * batch-schedule dialog (moving a post to `agendado` closes the suggestion as superseded).
+ */
+export async function countPendingEditSuggestionsForPosts(postIds: number[]): Promise<number> {
+  if (postIds.length === 0) return 0;
+  const { count, error } = await supabase
+    .from('post_edit_suggestions')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pending')
+    .in('post_id', postIds);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/**
  * `expectedUpdatedAt` is the `updated_at` of the version the team reviewed. The client can
  * keep editing a pending suggestion, so the RPC refuses with `suggestion_changed` when the
  * row moved on since then instead of applying a version nobody on the team has seen.
+ * `fields` is what to apply: a field left out keeps the live value. The RPC raises
+ * `suggestion_conflict` when it is NULL and a changed field was also edited by the team, so the
+ * CRM always passes it. `acknowledged` is the subset of `fields` the team saw in conflict and
+ * chose to take from the client ("Usar a versão do cliente"); the RPC re-checks conflicts on the
+ * live post and raises `suggestion_conflict` for any field in `fields` that conflicts there and
+ * is not acknowledged, so a stale drawer can never overwrite a team edit. No conflict on screen:
+ * pass `[]`.
  */
-export async function acceptEditSuggestion(id: number, expectedUpdatedAt?: string): Promise<void> {
+export async function acceptEditSuggestion(
+  id: number,
+  expectedUpdatedAt: string | undefined,
+  fields: SuggestionField[],
+  acknowledged: SuggestionField[],
+): Promise<void> {
   const { error } = await supabase.rpc('accept_edit_suggestion', {
     p_suggestion_id: id,
     p_expected_updated_at: expectedUpdatedAt ?? null,
+    p_fields: fields,
+    p_acknowledged: acknowledged,
   });
   if (error) throw error;
 }

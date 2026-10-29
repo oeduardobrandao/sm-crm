@@ -7,6 +7,7 @@ import {
 } from '../useEditSuggestion';
 import { submitEditSuggestion } from '../../api';
 import type { HubPost, PendingEditSuggestion } from '../../types';
+import type { SuggestionTouch } from '../useEditSuggestion';
 
 vi.mock('../../api', () => ({
   submitEditSuggestion: vi.fn(),
@@ -21,6 +22,13 @@ vi.mock('@mesaas/app-lifecycle', () => ({
 }));
 
 const mockedSubmit = vi.mocked(submitEditSuggestion);
+
+// What the panel passes as the 4th saveSuggestion argument; the bases are the raw fetched values.
+const TEXTO: SuggestionTouch = {
+  fields: ['texto'],
+  bases: { conteudo: { type: 'doc', content: [] }, conteudo_plain: 'original' },
+};
+const LEGENDA: SuggestionTouch = { fields: ['legenda'], bases: { ig_caption: 'legenda original' } };
 
 function makePost(overrides: Partial<HubPost> = {}): HubPost {
   return {
@@ -171,7 +179,7 @@ describe('useEditSuggestion', () => {
     // (a fresh hook instance) and saves again.
     const a = renderHook(() => useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }));
     act(() => {
-      a.result.current.saveSuggestion(null, 'primeira', null);
+      a.result.current.saveSuggestion(null, 'primeira', null, TEXTO);
     });
     act(() => {
       vi.advanceTimersByTime(1500);
@@ -181,7 +189,7 @@ describe('useEditSuggestion', () => {
 
     const b = renderHook(() => useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }));
     act(() => {
-      b.result.current.saveSuggestion(null, 'segunda', null);
+      b.result.current.saveSuggestion(null, 'segunda', null, TEXTO);
     });
     await act(async () => {
       vi.advanceTimersByTime(1500);
@@ -194,6 +202,128 @@ describe('useEditSuggestion', () => {
     });
     expect(mockedSubmit).toHaveBeenCalledTimes(2);
     expect(mockedSubmit.mock.calls[1][3]).toBe('segunda');
+  });
+
+  it('coalesces touched fields (union) and keeps the first base per key within one debounce', async () => {
+    mockedSubmit.mockResolvedValue({ ok: true, pending_suggestion: null });
+    const post = makePost();
+    const { result } = renderHook(() =>
+      useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }),
+    );
+    act(() => {
+      result.current.saveSuggestion(null, 'texto 1', 'L', {
+        fields: ['texto'],
+        bases: { conteudo_plain: 'A' },
+      });
+    });
+    act(() => {
+      result.current.saveSuggestion(null, 'texto 2', 'L2', {
+        fields: ['legenda'],
+        bases: { ig_caption: 'L', conteudo_plain: 'B' },
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1600);
+    });
+    expect(mockedSubmit).toHaveBeenCalledTimes(1);
+    const call = mockedSubmit.mock.calls[0];
+    expect(call[4]).toBe('L2');
+    expect(call[5]).toEqual(['texto', 'legenda']);
+    expect(call[6]).toEqual({ conteudo_plain: 'A', ig_caption: 'L' });
+  });
+
+  it('keeps a null base as an explicit key when coalescing', async () => {
+    mockedSubmit.mockResolvedValue({ ok: true, pending_suggestion: null });
+    const post = makePost();
+    const { result } = renderHook(() =>
+      useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }),
+    );
+    act(() => {
+      result.current.saveSuggestion(null, 'x', 'novo', {
+        fields: ['legenda'],
+        bases: { ig_caption: null },
+      });
+    });
+    act(() => {
+      result.current.saveSuggestion(null, 'x', 'novo 2', {
+        fields: ['legenda'],
+        bases: { ig_caption: 'meio' },
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1600);
+    });
+    const bases = mockedSubmit.mock.calls[0][6];
+    expect(bases).toHaveProperty('ig_caption', null);
+  });
+
+  it('does not coalesce onto an entry that is already in flight', async () => {
+    const first = deferred<{ ok: boolean; pending_suggestion: null }>();
+    mockedSubmit
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce({ ok: true, pending_suggestion: null });
+    const post = makePost();
+    const { result } = renderHook(() =>
+      useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }),
+    );
+    act(() => {
+      result.current.saveSuggestion(null, 'x', 'um', TEXTO);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1600);
+    });
+    act(() => {
+      result.current.saveSuggestion(null, 'x', 'dois', LEGENDA);
+    });
+    await act(async () => {
+      first.resolve({ ok: true, pending_suggestion: null });
+      await vi.advanceTimersByTimeAsync(1600);
+    });
+    expect(mockedSubmit).toHaveBeenCalledTimes(2);
+    expect(mockedSubmit.mock.calls[0][5]).toEqual(['texto']);
+    expect(mockedSubmit.mock.calls[1][5]).toEqual(['legenda']);
+  });
+
+  it('seeds the caption from the live post when the pending suggestion did not change it', () => {
+    const post = makePost({
+      ig_caption: 'new',
+      pending_suggestion: {
+        ...SAVED,
+        suggested_conteudo_plain: 'texto sugerido',
+        suggested_ig_caption: 'old',
+        changed_fields: ['conteudo_plain'],
+      },
+    });
+    const { result } = renderHook(() =>
+      useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }),
+    );
+    expect(result.current.draftIgCaption).toBe('new');
+    expect(result.current.draftConteudoPlain).toBe('texto sugerido');
+  });
+
+  it('seeds the body from the live post when the pending suggestion only changed the caption', () => {
+    const doc = {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'ao vivo' }] }],
+    };
+    const post = makePost({
+      conteudo: doc,
+      conteudo_plain: 'ao vivo',
+      ig_caption: 'live',
+      pending_suggestion: {
+        ...SAVED,
+        suggested_conteudo: { type: 'doc', content: [] },
+        suggested_conteudo_plain: 'corpo antigo',
+        suggested_ig_caption: 'sugerida',
+        changed_fields: ['ig_caption'],
+      },
+    });
+    const { result } = renderHook(() =>
+      useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }),
+    );
+    expect(result.current.draftConteudo).toBe(doc);
+    expect(result.current.draftConteudoPlain).toBe('ao vivo');
+    expect(result.current.draftIgCaption).toBe('sugerida');
   });
 
   it("bases the draft text on the document, as the editor's getText() writes it", () => {
@@ -231,7 +361,7 @@ describe('useEditSuggestion', () => {
       ({ post }) => useEditSuggestion({ token: 't', post, onSaved: () => undefined }),
       { initialProps: { post: initial } },
     );
-    act(() => result.current.saveSuggestion(null, 'original', 'legenda sugerida'));
+    act(() => result.current.saveSuggestion(null, 'original', 'legenda sugerida', LEGENDA));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1600);
     });
@@ -251,7 +381,7 @@ describe('useEditSuggestion', () => {
       ({ post }) => useEditSuggestion({ token: 't', post, onSaved: () => undefined }),
       { initialProps: { post: makePost({ pending_suggestion: SAVED }) } },
     );
-    act(() => result.current.saveSuggestion(null, 'original', 'legenda original'));
+    act(() => result.current.saveSuggestion(null, 'original', 'legenda original', LEGENDA));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1600);
     });
@@ -275,7 +405,12 @@ describe('useEditSuggestion', () => {
 
     // First edit (e.g. mid-restructure of the roteiro): debounce fires, request #1 sent.
     act(() => {
-      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-1-intermediate', null);
+      result.current.saveSuggestion(
+        { type: 'doc', content: [] },
+        'edit-1-intermediate',
+        null,
+        TEXTO,
+      );
     });
     act(() => {
       vi.advanceTimersByTime(1500);
@@ -286,7 +421,7 @@ describe('useEditSuggestion', () => {
     // fires and sends request #2 -- but useEditSuggestion must NOT send it while #1 is
     // still in flight; it should queue and send it only once #1 settles.
     act(() => {
-      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-2-final', null);
+      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-2-final', null, TEXTO);
     });
     act(() => {
       vi.advanceTimersByTime(1500);
@@ -308,6 +443,8 @@ describe('useEditSuggestion', () => {
       { type: 'doc', content: [] },
       'edit-2-final',
       null,
+      TEXTO.fields,
+      TEXTO.bases,
     );
 
     await act(async () => {
@@ -322,6 +459,8 @@ describe('useEditSuggestion', () => {
       { type: 'doc', content: [] },
       'edit-2-final',
       null,
+      TEXTO.fields,
+      TEXTO.bases,
     );
   });
 
@@ -342,7 +481,7 @@ describe('useEditSuggestion', () => {
 
     // Edit post A (5103): debounce fires, its save goes in flight and stays there.
     act(() => {
-      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-a', null);
+      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-a', null, TEXTO);
     });
     act(() => {
       vi.advanceTimersByTime(1500);
@@ -355,13 +494,15 @@ describe('useEditSuggestion', () => {
       { type: 'doc', content: [] },
       'edit-for-post-a',
       null,
+      TEXTO.fields,
+      TEXTO.bases,
     );
 
     // Navigate to a different post (5104) -- same hook instance, new `post` prop --
     // and edit it before post A's save has resolved.
     rerender({ post: makePost({ id: 5104 }) });
     act(() => {
-      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-b', null);
+      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-b', null, TEXTO);
     });
     act(() => {
       vi.advanceTimersByTime(1500);
@@ -384,6 +525,8 @@ describe('useEditSuggestion', () => {
       { type: 'doc', content: [] },
       'edit-for-post-b',
       null,
+      TEXTO.fields,
+      TEXTO.bases,
     );
   });
 
@@ -405,7 +548,7 @@ describe('useEditSuggestion', () => {
 
     // Edit post A (5103): its save goes in flight and stays there.
     act(() => {
-      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-a', null);
+      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-a', null, TEXTO);
     });
     act(() => {
       vi.advanceTimersByTime(1500);
@@ -415,7 +558,7 @@ describe('useEditSuggestion', () => {
     // Navigate to post B (5104) and edit it -- queued, post A is still in flight.
     rerender({ post: makePost({ id: 5104 }) });
     act(() => {
-      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-b', null);
+      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-b', null, TEXTO);
     });
     act(() => {
       vi.advanceTimersByTime(1500);
@@ -425,7 +568,7 @@ describe('useEditSuggestion', () => {
     // Navigate to post C (5105) and edit it too, before post A's save resolves.
     rerender({ post: makePost({ id: 5105 }) });
     act(() => {
-      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-c', null);
+      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-c', null, TEXTO);
     });
     act(() => {
       vi.advanceTimersByTime(1500);
@@ -466,7 +609,7 @@ describe('useEditSuggestion', () => {
     const lastActive = () => useUnsavedWorkMock.mock.calls.at(-1)?.[0];
 
     act(() => {
-      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-1', null);
+      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-1', null, TEXTO);
     });
     act(() => {
       vi.advanceTimersByTime(1500);
@@ -478,7 +621,7 @@ describe('useEditSuggestion', () => {
     // the already-running flush's while loop will pick this up on its own, no need
     // to wait out another debounce.
     act(() => {
-      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-2', null);
+      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-2', null, TEXTO);
     });
 
     // The first (now-stale) request resolves successfully.
@@ -522,7 +665,7 @@ describe('useEditSuggestion', () => {
     const lastActive = () => useUnsavedWorkMock.mock.calls.at(-1)?.[0];
 
     act(() => {
-      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-a', null);
+      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-a', null, TEXTO);
     });
     act(() => {
       vi.advanceTimersByTime(1500);
@@ -571,7 +714,7 @@ describe('useEditSuggestion', () => {
 
     // Edit post A (5103): debounce fires, its save is dequeued and in flight.
     act(() => {
-      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-a', null);
+      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-a', null, TEXTO);
     });
     act(() => {
       vi.advanceTimersByTime(1500);
@@ -620,7 +763,7 @@ describe('useEditSuggestion', () => {
 
     // Edit post A (5103): debounce fires, its save is dequeued and in flight.
     act(() => {
-      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-a', null);
+      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-a', null, TEXTO);
     });
     act(() => {
       vi.advanceTimersByTime(1500);
@@ -667,7 +810,7 @@ describe('useEditSuggestion', () => {
     );
 
     act(() => {
-      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-a', null);
+      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-a', null, TEXTO);
     });
     act(() => {
       vi.advanceTimersByTime(1500);
@@ -719,7 +862,7 @@ describe('useEditSuggestion', () => {
       useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }),
     );
     act(() => {
-      result1.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-attempt-a', null);
+      result1.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-attempt-a', null, TEXTO);
     });
     act(() => {
       vi.advanceTimersByTime(1500);
@@ -732,7 +875,7 @@ describe('useEditSuggestion', () => {
       useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }),
     );
     act(() => {
-      result2.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-attempt-b', null);
+      result2.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-attempt-b', null, TEXTO);
     });
     act(() => {
       vi.advanceTimersByTime(1500);
@@ -776,7 +919,7 @@ describe('useEditSuggestion', () => {
       const lastActive = () => useUnsavedWorkMock.mock.calls.at(-1)?.[0];
 
       act(() => {
-        result.current.saveSuggestion(null, 'x', 'nova');
+        result.current.saveSuggestion(null, 'x', 'nova', LEGENDA);
       });
       // Debounce window: dirty, but not a failure.
       expect(result.current.dirty).toBe(true);
@@ -808,7 +951,7 @@ describe('useEditSuggestion', () => {
       const lastActive = () => useUnsavedWorkMock.mock.calls.at(-1)?.[0];
 
       act(() => {
-        result.current.saveSuggestion(null, 'x', 'nova');
+        result.current.saveSuggestion(null, 'x', 'nova', LEGENDA);
       });
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1500);
@@ -816,7 +959,7 @@ describe('useEditSuggestion', () => {
       expect(result.current.saveFailed).toBe(true);
 
       act(() => {
-        result.current.saveSuggestion(null, 'x', 'nova');
+        result.current.saveSuggestion(null, 'x', 'nova', LEGENDA);
       });
       // Retrying hides the banner right away; dirty stays true until it lands.
       expect(result.current.saveFailed).toBe(false);
@@ -839,7 +982,7 @@ describe('useEditSuggestion', () => {
       );
       for (let i = 0; i < 2; i++) {
         act(() => {
-          result.current.saveSuggestion(null, 'x', 'nova');
+          result.current.saveSuggestion(null, 'x', 'nova', LEGENDA);
         });
         await act(async () => {
           await vi.advanceTimersByTimeAsync(1500);
@@ -858,7 +1001,7 @@ describe('useEditSuggestion', () => {
       const lastActive = () => useUnsavedWorkMock.mock.calls.at(-1)?.[0];
 
       act(() => {
-        result.current.saveSuggestion(null, 'x', 'nova');
+        result.current.saveSuggestion(null, 'x', 'nova', LEGENDA);
       });
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1500);
@@ -884,7 +1027,7 @@ describe('useEditSuggestion', () => {
       const post = makePost();
       const first = renderHook(() => useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }));
       act(() => {
-        first.result.current.saveSuggestion(null, 'x', 'nova');
+        first.result.current.saveSuggestion(null, 'x', 'nova', LEGENDA);
       });
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1500);
@@ -904,7 +1047,7 @@ describe('useEditSuggestion', () => {
       );
 
       act(() => {
-        result.current.saveSuggestion(null, 'x', 'nova');
+        result.current.saveSuggestion(null, 'x', 'nova', LEGENDA);
       });
       act(() => {
         result.current.discardFailedSave();

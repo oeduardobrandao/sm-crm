@@ -68,12 +68,17 @@ import {
 import { isGeralThread } from '@/store/comments';
 import { supabase } from '@/lib/supabase';
 import { buildUsableTokenMap } from '@/lib/hubTokenMap';
-import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import { useAuth } from '@/context/AuthContext';
 import { useClienteSocialAccounts } from '@/hooks/useClienteSocialAccounts';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
-import { statusChangeNeedsConfirm, statusKeyToPatch, type StatusKey } from '../statusRegistry';
+import {
+  canonicalOfStatusKey,
+  statusChangeNeedsConfirm,
+  statusKeyToPatch,
+  type StatusKey,
+} from '../statusRegistry';
+import { useSuggestionMoveGuard } from '../hooks/useSuggestionMoveGuard';
 import { CopyPostLinkButton } from '@/components/CopyPostLinkButton';
 import { CopyLinkButton } from '@/components/CopyLinkButton';
 import { PostEditorBody } from './PostEditorBody';
@@ -93,6 +98,8 @@ import { ApplyProcessDialog } from './ApplyProcessDialog';
 import { DuplicateDialog, type DuplicateTarget } from './DuplicateDialog';
 import { usePostProcessCommands } from '../hooks/usePostProcessCommands';
 import { postRascunhoBanner } from '../approvalExit';
+import type { SuggestionField } from '../editSuggestionFields';
+import { classifyAcceptError, mentionIdsToSyncAfterAccept } from '../editSuggestionAccept';
 import { RascunhoBanner } from './RascunhoBanner';
 import { getPostProcessErrorToast, isStaleStateError } from '../postProcessErrors';
 import {
@@ -413,6 +420,14 @@ export function StandalonePostDrawer({
   // ── Field change / status confirm ────────────────────────────────────────────
 
   const [pendingStatusChange, setPendingStatusChange] = useState<StatusKey | null>(null);
+  const { confirmMove, dialog: moveGuardDialog } = useSuggestionMoveGuard();
+
+  /** The suggestion guard for a status pick, run after the "post aprovado" confirm. A custom
+   *  status is judged by the canonical status it behaves as. */
+  const confirmStatusKeyMove = (key: StatusKey) => {
+    const canonical = canonicalOfStatusKey(key, statusRegistry);
+    return canonical ? confirmMove(postId, canonical, post?.status) : Promise.resolve(true);
+  };
 
   const handleFieldChange = async (field: keyof WorkflowPost, value: unknown) => {
     if (field === 'status') {
@@ -421,6 +436,7 @@ export function StandalonePostDrawer({
         setPendingStatusChange(key);
         return;
       }
+      if (!(await confirmStatusKeyMove(key))) return;
       try {
         await updateWorkflowPost(postId, statusKeyToPatch(key));
         refresh();
@@ -443,6 +459,7 @@ export function StandalonePostDrawer({
     if (!pendingStatusChange) return;
     const key = pendingStatusChange;
     setPendingStatusChange(null);
+    if (!(await confirmStatusKeyMove(key))) return;
     try {
       await updateWorkflowPost(postId, statusKeyToPatch(key));
       refresh();
@@ -526,19 +543,18 @@ export function StandalonePostDrawer({
   const [editorVersion, setEditorVersion] = useState(0);
 
   const handleAcceptSuggestion = useCallback(
-    async (suggestion: PostEditSuggestion) => {
+    async (
+      suggestion: PostEditSuggestion,
+      fields: SuggestionField[],
+      acknowledged: SuggestionField[],
+    ) => {
       try {
-        // The version on screen: the client may have saved a newer one since.
-        await acceptEditSuggestion(suggestion.id, suggestion.updated_at);
-        if (
-          suggestion.changed_fields.includes('conteudo') &&
-          suggestion.suggested_conteudo != null
-        ) {
-          const membroIds = extractMentionsFromDoc(suggestion.suggested_conteudo)
-            .filter((ref) => ref.entityType === 'membro')
-            .map((ref) => ref.id);
-          await syncMentions('workflow_post', suggestion.post_id, membroIds);
-        }
+        // `fields` is what the reviewer chose to apply (the card, or its conflict dialog).
+        // `suggestion.updated_at` is the version on screen: the client may have saved a newer one.
+        await acceptEditSuggestion(suggestion.id, suggestion.updated_at, fields, acknowledged);
+        // Server-side write bypasses updateWorkflowPost: re-sync mentions (when: see the helper).
+        const mentionIds = mentionIdsToSyncAfterAccept(suggestion, fields);
+        if (mentionIds) await syncMentions('workflow_post', suggestion.post_id, mentionIds);
         // Wait for the post query to actually land the accepted content before
         // bumping editorVersion (which remounts <PostEditor> via its key prop).
         // PostEditor's TipTap instance is only ever hydrated once, at mount --
@@ -553,8 +569,17 @@ export function StandalonePostDrawer({
         onRefresh();
       } catch (err) {
         // PostgrestError is a plain object, not an Error instance.
-        if (String((err as { message?: unknown })?.message ?? '').includes('suggestion_changed')) {
-          toast.error(t('standalonePostDrawer.suggestionChanged'));
+        const kind = classifyAcceptError(err);
+        if (kind !== 'other') {
+          // changed: the client saved a newer version. conflict: the post moved since the card
+          // was loaded. refresh() refetches both, so the next Aceitar is judged against fresh data.
+          toast.error(
+            t(
+              kind === 'changed'
+                ? 'standalonePostDrawer.suggestionChanged'
+                : 'standalonePostDrawer.suggestionConflict',
+            ),
+          );
           refresh();
           return;
         }
@@ -815,6 +840,8 @@ export function StandalonePostDrawer({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {moveGuardDialog}
 
       <AlertDialog
         open={!!pendingRejectSuggestionId}

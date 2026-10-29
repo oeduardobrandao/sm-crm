@@ -120,6 +120,7 @@ describe('CorrectionPanel: formatting-only edits', () => {
       { type: 'doc', bold: true },
       'Corpo do post',
       'Legenda original',
+      { fields: ['texto'], bases: { conteudo: DRAFT_DOC, conteudo_plain: 'Corpo do post' } },
     );
   });
 });

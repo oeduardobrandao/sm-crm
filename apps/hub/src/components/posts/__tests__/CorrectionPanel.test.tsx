@@ -159,7 +159,10 @@ describe('CorrectionPanel', () => {
     expect(save).toBeEnabled();
     expect(screen.getByRole('button', { name: /Enviar correção/ })).toBeDisabled();
     fireEvent.click(save);
-    expect(edit.saveSuggestion).toHaveBeenCalledWith(null, 'Corpo do post', 'Legenda editada');
+    expect(edit.saveSuggestion).toHaveBeenCalledWith(null, 'Corpo do post', 'Legenda editada', {
+      fields: ['legenda'],
+      bases: { ig_caption: 'Legenda original' },
+    });
   });
 
   it('seeds the caption from conteudo_plain LEGENDA when there is no ig_caption', () => {
@@ -290,7 +293,10 @@ describe('CorrectionPanel', () => {
         target: { value: 'Legenda editada' },
       });
       fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
-      expect(edit.saveSuggestion).toHaveBeenCalledWith(null, 'Corpo do post', 'Legenda editada');
+      expect(edit.saveSuggestion).toHaveBeenCalledWith(null, 'Corpo do post', 'Legenda editada', {
+        fields: ['legenda'],
+        bases: { ig_caption: 'Legenda original' },
+      });
       // No failure flash between the click and saveState leaving idle.
       expect(screen.queryByText(FAILED)).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Tentar novamente' })).not.toBeInTheDocument();
@@ -432,7 +438,10 @@ describe('CorrectionPanel', () => {
       target: { value: 'Corpo editado' },
     });
     fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
-    expect(edit.saveSuggestion).toHaveBeenCalledWith(null, 'Corpo editado', '');
+    expect(edit.saveSuggestion).toHaveBeenCalledWith(null, 'Corpo editado', '', {
+      fields: ['texto'],
+      bases: { conteudo: null, conteudo_plain: bodyText },
+    });
   });
 
   it('remounts the rich-text editor to a refetched body instead of showing stale content', async () => {
@@ -589,7 +598,15 @@ describe('CorrectionPanel', () => {
       target: { value: 'Legenda nova' },
     });
     fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
-    expect(edit.saveSuggestion).toHaveBeenCalledWith(doc, 'Linha um.\nLinha dois.', 'Legenda nova');
+    expect(edit.saveSuggestion).toHaveBeenCalledWith(
+      doc,
+      'Linha um.\nLinha dois.',
+      'Legenda nova',
+      {
+        fields: ['legenda'],
+        bases: { ig_caption: 'Legenda original' },
+      },
+    );
   });
 
   it('keeps text typed while the save was in flight, and does not report a clean save', () => {
@@ -606,7 +623,10 @@ describe('CorrectionPanel', () => {
     const caption = screen.getByRole('textbox', { name: 'Legenda do post' });
     fireEvent.change(caption, { target: { value: 'Legenda enviada' } });
     fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
-    expect(edit.saveSuggestion).toHaveBeenCalledWith(null, 'Corpo do post', 'Legenda enviada');
+    expect(edit.saveSuggestion).toHaveBeenCalledWith(null, 'Corpo do post', 'Legenda enviada', {
+      fields: ['legenda'],
+      bases: { ig_caption: 'Legenda original' },
+    });
     // Still typing while the request is in flight.
     fireEvent.change(caption, { target: { value: 'Legenda enviada e mais' } });
 
@@ -670,5 +690,219 @@ describe('CorrectionPanel', () => {
       />,
     );
     expect(screen.getByText(/rejeitada pela equipe/)).toBeInTheDocument();
+  });
+  describe('touched fields and bases', () => {
+    const STALE = {
+      id: 9,
+      suggested_conteudo: null,
+      suggested_conteudo_plain: 'Corpo antigo',
+      suggested_ig_caption: 'Legenda antiga',
+      changed_fields: ['conteudo_plain'],
+      updated_at: '2026-09-28T10:00:00.000Z',
+    };
+
+    it('does not reveal a caption field from a stored caption the suggestion did not change', () => {
+      render(
+        <CorrectionPanel
+          post={post({
+            media: [],
+            ig_caption: null,
+            conteudo: null,
+            conteudo_plain: 'Corpo do post',
+            pending_suggestion: STALE,
+          })}
+          edit={makeEdit({
+            hasPendingSuggestion: true,
+            draftConteudo: null,
+            draftConteudoPlain: 'Corpo antigo',
+            draftIgCaption: null,
+            suggestion: STALE,
+          })}
+          submitting={false}
+          onSubmitCorrection={onSubmitCorrection}
+          onDirtyChange={onDirtyChange}
+        />,
+      );
+      expect(screen.queryByRole('textbox', { name: 'Legenda do post' })).not.toBeInTheDocument();
+    });
+
+    it("sends the live post's plain text for an unedited body when the suggestion did not change the text", () => {
+      const pending = { ...STALE, changed_fields: ['ig_caption'], suggested_ig_caption: 'Legenda' };
+      const edit = makeEdit({
+        hasPendingSuggestion: true,
+        draftConteudo: null,
+        // The hook seeds the body from the live post when texto is not pending.
+        draftConteudoPlain: 'Corpo vivo',
+        draftIgCaption: 'Legenda',
+        suggestion: pending,
+      });
+      render(
+        <CorrectionPanel
+          post={post({
+            media: [],
+            ig_caption: 'Legenda',
+            conteudo: null,
+            conteudo_plain: 'Corpo vivo',
+            pending_suggestion: pending,
+          })}
+          edit={edit}
+          submitting={false}
+          onSubmitCorrection={onSubmitCorrection}
+          onDirtyChange={onDirtyChange}
+        />,
+      );
+      fireEvent.change(screen.getByRole('textbox', { name: 'Legenda do post' }), {
+        target: { value: 'Legenda nova' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
+      const call = vi.mocked(edit.saveSuggestion).mock.calls[0];
+      // Not the stale 'Corpo antigo' stored in the suggestion.
+      expect(call[1]).toBe('Corpo vivo');
+      expect(call[3].fields).toEqual(['legenda']);
+    });
+    it('sends a null caption base for a media post whose caption is derived from LEGENDA', () => {
+      const edit = makeEdit({ draftIgCaption: null });
+      render(
+        <CorrectionPanel
+          post={post({ ig_caption: null, conteudo_plain: 'Roteiro\nLEGENDA: texto da legenda' })}
+          edit={edit}
+          submitting={false}
+          onSubmitCorrection={onSubmitCorrection}
+          onDirtyChange={onDirtyChange}
+        />,
+      );
+      fireEvent.change(screen.getByDisplayValue('texto da legenda'), {
+        target: { value: 'legenda nova' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
+      const call = vi.mocked(edit.saveSuggestion).mock.calls[0];
+      expect(call[3].fields).toEqual(['legenda']);
+      // The raw fetched value (null), never the derived display text; the key is present.
+      expect(call[3].bases).toHaveProperty('ig_caption', null);
+      expect(Object.keys(call[3].bases)).toEqual(['ig_caption']);
+    });
+
+    it('sends only the body fields, from the post as fetched, on a body-only edit', () => {
+      const edit = makeEdit({ draftConteudo: null, draftConteudoPlain: 'Corpo do post' });
+      render(
+        <CorrectionPanel
+          post={post({ media: [], conteudo: null, conteudo_plain: 'Corpo do post' })}
+          edit={edit}
+          submitting={false}
+          onSubmitCorrection={onSubmitCorrection}
+          onDirtyChange={onDirtyChange}
+        />,
+      );
+      fireEvent.change(screen.getByDisplayValue('Corpo do post'), {
+        target: { value: 'Corpo editado' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
+      const call = vi.mocked(edit.saveSuggestion).mock.calls[0];
+      expect(call[3].fields).toEqual(['texto']);
+      // The caption was not touched: its base must not be sent.
+      expect(call[3].bases).toEqual({ conteudo: null, conteudo_plain: 'Corpo do post' });
+      expect(call[3].bases).toHaveProperty('conteudo', null);
+    });
+
+    it('re-seeds the caption base from the refetched post when the panel resyncs to it', () => {
+      const refetchedEdit = makeEdit({ draftIgCaption: 'Legenda da equipe' });
+      const props = {
+        submitting: false,
+        onSubmitCorrection,
+        onDirtyChange,
+      };
+      const { rerender } = render(<CorrectionPanel {...props} edit={makeEdit()} post={post()} />);
+      // The team edits the caption while the tab is open; a background refetch lands and the
+      // untouched caption field now shows the team's caption.
+      rerender(
+        <CorrectionPanel
+          {...props}
+          edit={refetchedEdit}
+          post={post({ ig_caption: 'Legenda da equipe' })}
+        />,
+      );
+      fireEvent.change(screen.getByDisplayValue('Legenda da equipe'), {
+        target: { value: 'Legenda do cliente' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
+      const call = vi.mocked(refetchedEdit.saveSuggestion).mock.calls[0];
+      expect(call[2]).toBe('Legenda do cliente');
+      // The client edited on top of the caption they saw: the base is that one, not the
+      // caption from when the panel opened (which would flag a conflict nobody caused).
+      expect(call[3]).toEqual({ fields: ['legenda'], bases: { ig_caption: 'Legenda da equipe' } });
+    });
+
+    it('keeps the opening base when the caption was already edited locally before the refetch', () => {
+      const edit = makeEdit();
+      const props = { submitting: false, onSubmitCorrection, onDirtyChange };
+      const { rerender } = render(<CorrectionPanel {...props} edit={edit} post={post()} />);
+      fireEvent.change(screen.getByDisplayValue('Legenda original'), {
+        target: { value: 'Legenda do cliente' },
+      });
+      // A team edit lands under the local edit: the panel does not resync over it.
+      rerender(
+        <CorrectionPanel {...props} edit={edit} post={post({ ig_caption: 'Legenda da equipe' })} />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
+      const call = vi.mocked(edit.saveSuggestion).mock.calls[0];
+      expect(call[2]).toBe('Legenda do cliente');
+      // Not 'Legenda da equipe': the server compares this with the live caption and conflicts.
+      expect(call[3]).toEqual({ fields: ['legenda'], bases: { ig_caption: 'Legenda original' } });
+    });
+
+    it('re-seeds the body base from the refetched post when the panel resyncs to it', () => {
+      const props = { submitting: false, onSubmitCorrection, onDirtyChange };
+      const bodyPost = (plain: string) =>
+        post({ media: [], conteudo: null, conteudo_plain: plain, ig_caption: null });
+      const { rerender } = render(
+        <CorrectionPanel
+          {...props}
+          post={bodyPost('Corpo do post')}
+          edit={makeEdit({ draftConteudoPlain: 'Corpo do post', draftIgCaption: null })}
+        />,
+      );
+      const refetchedEdit = makeEdit({
+        draftConteudoPlain: 'Corpo da equipe',
+        draftIgCaption: null,
+      });
+      rerender(
+        <CorrectionPanel {...props} post={bodyPost('Corpo da equipe')} edit={refetchedEdit} />,
+      );
+      fireEvent.change(screen.getByDisplayValue('Corpo da equipe'), {
+        target: { value: 'Corpo do cliente' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
+      const call = vi.mocked(refetchedEdit.saveSuggestion).mock.calls[0];
+      expect(call[3]).toEqual({
+        fields: ['texto'],
+        bases: { conteudo: null, conteudo_plain: 'Corpo da equipe' },
+      });
+    });
+
+    it('keeps a field touched for the whole session once it was edited', () => {
+      const edit = makeEdit();
+      render(
+        <CorrectionPanel
+          post={post()}
+          edit={edit}
+          submitting={false}
+          onSubmitCorrection={onSubmitCorrection}
+          onDirtyChange={onDirtyChange}
+        />,
+      );
+      const caption = screen.getByDisplayValue('Legenda original');
+      fireEvent.change(caption, { target: { value: 'Legenda 1' } });
+      fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
+      // Edited back to the baseline: nothing differs now, but the field was touched already.
+      fireEvent.change(caption, { target: { value: 'Legenda original' } });
+      fireEvent.change(caption, { target: { value: 'Legenda 2' } });
+      fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
+      const calls = vi.mocked(edit.saveSuggestion).mock.calls;
+      expect(calls).toHaveLength(2);
+      expect(calls[1][3]).toEqual({
+        fields: ['legenda'],
+        bases: { ig_caption: 'Legenda original' },
+      });
+    });
   });
 });

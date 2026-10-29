@@ -95,6 +95,7 @@
     "invalidateApprovalError": "Couldn't invalidate the approval. The content was not saved.",
     "suggestionAccepted": "Suggestion accepted!",
     "suggestionChanged": "The client updated the suggestion. Review the new version.",
+    "suggestionConflict": "The post changed since you opened it. Review the suggestion again.",
     "acceptSuggestionError": "Couldn't accept the suggestion",
     "suggestionRejected": "Suggestion rejected",
     "rejectSuggestionError": "Couldn't reject the suggestion",
@@ -276,6 +277,37 @@
     "publicar": "Publish",
     "comentarios": "Comments",
     "sections": "Post sections"
+  },
+  "suggestionReview": {
+    "postText": "Post text",
+    "conflictTexto": "The team edited the text after this suggestion.",
+    "conflictLegenda": "The team edited the caption after this suggestion.",
+    "diffApply": "What changes on accept",
+    "diffClientOnly": "Only what the client changed",
+    "compareAria": "Comparison: {{field}}",
+    "footerOnlyTexto": "Accepting applies only the post text. The caption the team edited stays as it is.",
+    "footerOnlyLegenda": "Accepting applies only the caption. The text the team edited stays as it is.",
+    "acceptReview": "Accept…",
+    "captionNote": "The client suggested a new caption. Review the suggestion before editing.",
+    "viewSuggestion": "View suggestion",
+    "moveGuard": {
+      "title": "Move to {{status}}?",
+      "body": "There is a client suggestion nobody has reviewed on this post.",
+      "cancel": "Cancel",
+      "confirm": "Move anyway"
+    },
+    "dialog": {
+      "title": "Accept the suggestion?",
+      "body": "The team edited {{fields}} after the client sent the suggestion. Choose which version stays.",
+      "fieldTexto": "the text",
+      "fieldLegenda": "the caption",
+      "and": " and ",
+      "keepTeam": "Keep the team version",
+      "useClient": "Use the client version",
+      "applied": "Only the client changed this. It will be applied.",
+      "cancel": "Cancel",
+      "confirm": "Accept suggestion"
+    }
   },
   "phoneSuggestionSheet": {
     "out": "Removed",

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { AlertCircle, Loader2, Save, X } from 'lucide-react';
-import type { CorrectionReason, HubPost } from '../../types';
+import type { CorrectionReason, HubPost, SuggestionBases, SuggestionField } from '../../types';
 import type { useEditSuggestion } from '../../hooks/useEditSuggestion';
 import type { PostReferencesState } from '../../hooks/usePostReferences';
 import type { ReferenceItem } from '../../types/postReferences';
@@ -194,6 +194,19 @@ export function CorrectionPanel({
   const onSavedCleanRef = useRef(onSavedClean);
   onSavedCleanRef.current = onSavedClean;
 
+  // What the client started from: the RAW post as it was when the panel opened (never the
+  // derived or suggestion-aware text, and not updated by a later refetch). The server
+  // compares these with the live post, so a team edit made while the panel stayed open reads
+  // as a conflict instead of being silently overwritten.
+  const seedBasesRef = useRef({
+    conteudo: post.conteudo ?? null,
+    conteudo_plain: post.conteudo_plain ?? null,
+    ig_caption: post.ig_caption ?? null,
+  });
+  // Fields edited at any point in this session. Sticky: once a save has recorded a field in
+  // the suggestion, the next save (after the draft re-seeds from it) still sends it.
+  const touchedRef = useRef<Set<SuggestionField>>(new Set());
+
   // Baseline: the caption the client actually sees. A pending suggestion's own caption wins
   // even when '' (see suggestionAwareCaption); otherwise the LEGENDA fallback applies.
   const captionBaseline = suggestionAwareCaption(post, suggestion);
@@ -252,6 +265,14 @@ export function CorrectionPanel({
   if (captionBaseline !== lastSyncedCaptionRef.current) {
     if (stagedCaption === lastSyncedCaptionRef.current) {
       setStagedCaption(captionBaseline);
+      // The client now SEES the refetched caption, so an edit on top of it starts from that
+      // caption, not from the one the panel opened with: re-seed the base from the raw post.
+      // Once a save recorded the field (touched), its base is the one the server already holds;
+      // and a caption the client had already typed over never gets here (it is not resynced), so
+      // a team edit under a local edit still reads as a conflict at accept.
+      if (!touchedRef.current.has('legenda')) {
+        seedBasesRef.current.ig_caption = post.ig_caption ?? null;
+      }
     }
     lastSyncedCaptionRef.current = captionBaseline;
   }
@@ -272,6 +293,11 @@ export function CorrectionPanel({
     ) {
       setStagedConteudo(draftConteudo);
       setStagedConteudoPlain(draftConteudoPlain);
+      // Same as the caption above: the body shown is now the refetched one.
+      if (!touchedRef.current.has('texto')) {
+        seedBasesRef.current.conteudo = post.conteudo ?? null;
+        seedBasesRef.current.conteudo_plain = post.conteudo_plain ?? null;
+      }
       // Force RichTextContent to remount with the resynced body as its new
       // initial value -- see contentVersion's declaration above.
       setContentVersion((v) => v + 1);
@@ -302,13 +328,31 @@ export function CorrectionPanel({
     // of the document, which can differ from the stored text in line breaks alone, and the
     // RPC would then record a body change that accepting applies (see docPlainText).
     const bodyEdited = stagedConteudoPlain !== draftConteudoPlain || stagedDocKey !== draftDocKey;
+    // The suggestion's stored text counts only while it changed the body: otherwise the
+    // editor was seeded from the live post and the plain text must pair with it.
+    const suggestionHasText =
+      !!suggestion?.changed_fields?.includes('conteudo') ||
+      !!suggestion?.changed_fields?.includes('conteudo_plain');
     const textPlain = bodyEdited
       ? stagedConteudoPlain
-      : (suggestion?.suggested_conteudo_plain ?? post.conteudo_plain ?? '');
+      : ((suggestionHasText ? suggestion?.suggested_conteudo_plain : null) ??
+        post.conteudo_plain ??
+        '');
+    if (isText && bodyEdited) touchedRef.current.add('texto');
+    if (showCaptionField && stagedCaption !== captionBaseline) touchedRef.current.add('legenda');
+    // Bases only for touched fields: the server checks the ones it receives.
+    const seed = seedBasesRef.current;
+    const bases: SuggestionBases = {};
+    if (touchedRef.current.has('texto')) {
+      bases.conteudo = seed.conteudo;
+      bases.conteudo_plain = seed.conteudo_plain;
+    }
+    if (touchedRef.current.has('legenda')) bases.ig_caption = seed.ig_caption;
     saveSuggestion(
       isText ? stagedConteudo : draftConteudo,
       isText ? textPlain : (post.conteudo_plain ?? ''),
       showCaptionField ? stagedCaption : '',
+      { fields: [...touchedRef.current], bases },
     );
   }
 
@@ -330,7 +374,12 @@ export function CorrectionPanel({
   // fallback (deriveCaption), but the client never saw or edited that text as a
   // caption, so it must not be submitted as one. A text post's suggestion stores
   // '' when it had no caption field, which must not reveal one.
-  const showCaptionField = !isText || post.ig_caption != null || !!suggestion?.suggested_ig_caption;
+  // A suggestion's stored caption counts only while it changed the caption (see
+  // suggestionAwareCaption): otherwise it is a stale copy of what the client saw.
+  const showCaptionField =
+    !isText ||
+    post.ig_caption != null ||
+    (!!suggestion?.changed_fields?.includes('ig_caption') && !!suggestion.suggested_ig_caption);
 
   // A formatting-only edit (bold, an inline image) leaves the plain text untouched, so the
   // document is compared too, canonically (see canonicalDoc).
@@ -396,6 +445,11 @@ export function CorrectionPanel({
     if (saveState === 'saved' && !editedSinceSend) {
       setStagedConteudo(draftConteudo);
       setStagedConteudoPlain(draftConteudoPlain);
+      // Same as the caption above: the body shown is now the refetched one.
+      if (!touchedRef.current.has('texto')) {
+        seedBasesRef.current.conteudo = post.conteudo ?? null;
+        seedBasesRef.current.conteudo_plain = post.conteudo_plain ?? null;
+      }
       setStagedCaption(captionBaseline);
       if (enteredSaved && comentario.trim() === '' && motivo === null) onSavedCleanRef.current?.();
     }

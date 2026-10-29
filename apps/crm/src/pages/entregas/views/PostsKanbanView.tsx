@@ -86,6 +86,7 @@ import {
   type BoardColumnSort,
 } from '../postsBoardOrder';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
+import { canonicalOfStatusKey } from '../statusRegistry';
 import type { StatusKey, StatusOption, StatusRegistry } from '../statusRegistry';
 import {
   COL_PREFIX,
@@ -97,6 +98,7 @@ import {
 } from '../postsKanbanDrop';
 import { getCustomStatusIcon } from '../statusIcons';
 import { ACTIVE_POSTS_KEY, useUpdatePostStatus } from '../hooks/useUpdatePostStatus';
+import { useSuggestionMoveGuard } from '../hooks/useSuggestionMoveGuard';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { PhoneStatusBoard } from '../phone/PhoneStatusBoard';
 import { PhoneConfirmSheet } from '../phone/PhoneConfirmSheet';
@@ -696,6 +698,7 @@ export function PostsKanbanView({
   const { t } = useTranslation('entregasViews');
   const registry = useStatusRegistry();
   const updateStatus = useUpdatePostStatus();
+  const { confirmMove, dialog: moveGuardDialog } = useSuggestionMoveGuard();
   const qc = useQueryClient();
   // Discussion badges: ONE batched RPC for every card on the board. The map handed to the
   // memoized columns only changes identity when the unread data does.
@@ -894,6 +897,15 @@ export function PostsKanbanView({
     place?.();
   };
 
+  /** `applyStatusChange` behind the suggestion guard: a move into `aprovado_cliente` with an
+   *  unreviewed client suggestion asks first. Runs after the "post aprovado" confirm. The
+   *  Desfazer write skips it on purpose (it restores where the post already was). */
+  const guardedApplyStatusChange = async (post: ActivePost, key: StatusKey, place?: () => void) => {
+    const canonical = canonicalOfStatusKey(key, registry);
+    if (canonical && !(await confirmMove(post.id, canonical, post.status))) return;
+    applyStatusChange(post, key, place);
+  };
+
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(Number(event.active.id));
     setDragHeight(event.active.rect.current?.initial?.height ?? 120);
@@ -1023,7 +1035,7 @@ export function PostsKanbanView({
         setPendingConfirm({ post: dragged, key: result.key, place: placeAfter });
         return;
       case 'write':
-        applyStatusChange(dragged, result.key, placeAfter);
+        void guardedApplyStatusChange(dragged, result.key, placeAfter);
         return;
     }
   };
@@ -1032,7 +1044,7 @@ export function PostsKanbanView({
     if (!pendingConfirm) return;
     const { post, key, place } = pendingConfirm;
     setPendingConfirm(null);
-    applyStatusChange(post, key, place);
+    void guardedApplyStatusChange(post, key, place);
   };
 
   if (isLoading) {
@@ -1126,6 +1138,7 @@ export function PostsKanbanView({
           actions={[{ label: t('actions.confirm'), onSelect: handleConfirmStatusChange }]}
           onCancel={() => setPendingConfirm(null)}
         />
+        {moveGuardDialog}
         {nudgeDialog}
       </>
     );
@@ -1213,6 +1226,7 @@ export function PostsKanbanView({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {moveGuardDialog}
       {nudgeDialog}
     </>
   );

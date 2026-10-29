@@ -21,6 +21,9 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
+// The suggestion move guard asks the store whether the post has a pending client suggestion.
+vi.mock('../../../../store/posts', () => ({ hasPendingEditSuggestion: vi.fn(async () => false) }));
+
 import { ScheduleButton } from '../ScheduleButton';
 import {
   scheduleInstagramPost,
@@ -35,6 +38,7 @@ import {
   retryTikTokPublish,
 } from '../../../../services/tiktok';
 import { toast } from 'sonner';
+import { hasPendingEditSuggestion } from '../../../../store/posts';
 
 // Exact string from supabase/functions/_shared/tiktok-publish-utils.ts's audited-mode gate
 // (validateForTikTokScheduling) — the 422 `details` array item ScheduleButton pattern-matches
@@ -240,6 +244,88 @@ describe('ScheduleButton', () => {
       });
 
       expect(toast.error).toHaveBeenCalledWith('Data de publicação não definida.');
+    });
+  });
+
+  // ─── Pending client suggestion: ask before agendado / postado ──
+
+  describe('suggestion move guard', () => {
+    beforeEach(() => {
+      vi.mocked(hasPendingEditSuggestion).mockResolvedValue(true);
+    });
+    afterEach(() => {
+      vi.mocked(hasPendingEditSuggestion).mockResolvedValue(false);
+    });
+
+    it('asks before scheduling and calls the schedule service only after "Mover mesmo assim"', async () => {
+      vi.mocked(scheduleInstagramPost).mockResolvedValueOnce({ ok: true, status: 'agendado' });
+      render(<ScheduleButton post={makePost()} {...defaultProps} />);
+
+      await act(async () => {
+        fireEvent.click(screen.getByText('Agendar publicação'));
+      });
+
+      expect(hasPendingEditSuggestion).toHaveBeenCalledWith(1);
+      expect(screen.getByText('Mover para Agendado?')).toBeTruthy();
+      expect(scheduleInstagramPost).not.toHaveBeenCalled();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Mover mesmo assim' }));
+      });
+      await waitFor(() => expect(scheduleInstagramPost).toHaveBeenCalledWith(1));
+    });
+
+    it('Cancelar never calls the schedule service', async () => {
+      render(<ScheduleButton post={makePost()} {...defaultProps} />);
+
+      await act(async () => {
+        fireEvent.click(screen.getByText('Agendar publicação'));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+      });
+
+      expect(scheduleInstagramPost).not.toHaveBeenCalled();
+      expect(screen.queryByText('Mover para Agendado?')).toBeNull();
+    });
+
+    it('asks again, as Postado, when confirming Publicar agora, and publishes only after "Mover mesmo assim"', async () => {
+      vi.mocked(publishInstagramPostNow).mockResolvedValueOnce({
+        ok: true,
+        status: 'postado',
+        instagram_permalink: 'https://instagram.com/p/abc',
+      });
+      render(<ScheduleButton post={makePost()} {...defaultProps} />);
+      fireEvent.click(screen.getByText('Publicar agora'));
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Publicar' }));
+      });
+
+      expect(screen.getByText('Mover para Postado?')).toBeTruthy();
+      expect(publishInstagramPostNow).not.toHaveBeenCalled();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Mover mesmo assim' }));
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      await waitFor(() => expect(publishInstagramPostNow).toHaveBeenCalledWith(1));
+    });
+
+    it('Cancelar on the Postado question leaves the post unpublished', async () => {
+      render(<ScheduleButton post={makePost()} {...defaultProps} />);
+      fireEvent.click(screen.getByText('Publicar agora'));
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Publicar' }));
+      });
+
+      const cancel = screen.getAllByRole('button', { name: 'Cancelar' });
+      await act(async () => {
+        fireEvent.click(cancel[cancel.length - 1]);
+      });
+
+      expect(publishInstagramPostNow).not.toHaveBeenCalled();
+      expect(screen.queryByText('Mover para Postado?')).toBeNull();
     });
   });
 

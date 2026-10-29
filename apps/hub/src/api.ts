@@ -21,6 +21,8 @@ import type {
   HubPostsResponse,
   HubDashboardResponse,
   PendingEditSuggestion,
+  SuggestionBases,
+  SuggestionField,
   HubMensagensResponse,
   MensagensCursor,
   HubAgendaCursor,
@@ -189,10 +191,20 @@ export function submitEditSuggestion(
   suggested_conteudo: Record<string, unknown> | null,
   suggested_conteudo_plain: string,
   suggested_ig_caption: string | null,
+  touched_fields: SuggestionField[],
+  bases: SuggestionBases | null,
 ) {
   return post<{ ok: boolean; pending_suggestion: PendingEditSuggestion | null }>(
     'hub-edit-suggestion',
-    { token, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption },
+    {
+      token,
+      post_id,
+      suggested_conteudo,
+      suggested_conteudo_plain,
+      suggested_ig_caption,
+      touched_fields,
+      bases,
+    },
   );
 }
 

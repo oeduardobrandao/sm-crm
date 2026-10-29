@@ -152,6 +152,8 @@ begin
   select * into f from pg_temp.esf_fixture();
   perform upsert_edit_suggestion(f.post, f.ws, 'tok', null, 'texto v1', 'legenda v2');
   select id into v_id from post_edit_suggestions where post_id = f.post and status = 'pending';
+  -- accept requires a caller in the suggestion's workspace (20261105000003).
+  perform set_config('request.jwt.claims', json_build_object('sub', f.usr)::text, true);
   perform accept_edit_suggestion(v_id);
   assert (select ig_caption from workflow_posts where id = f.post) = 'legenda v2';
   assert (select status from post_edit_suggestions where id = v_id) = 'accepted';
@@ -168,6 +170,7 @@ begin
   perform upsert_edit_suggestion(f.post, f.ws, 'tok', null, 'texto v1', 'legenda v2');
   select id, to_jsonb(updated_at) #>> '{}' into v_id, v_txt
     from post_edit_suggestions where post_id = f.post and status = 'pending';
+  perform set_config('request.jwt.claims', json_build_object('sub', f.usr)::text, true);
 
   -- The team opened an older version: the client has saved since.
   begin
@@ -192,11 +195,11 @@ rollback;
 -- E.9
 do $$
 begin
-  assert has_function_privilege('anon', 'public.accept_edit_suggestion(bigint, timestamptz)', 'EXECUTE') = false,
+  assert has_function_privilege('anon', 'public.accept_edit_suggestion(bigint, timestamptz, text[], text[])', 'EXECUTE') = false,
     'anon must NOT execute accept_edit_suggestion';
-  assert has_function_privilege('authenticated', 'public.accept_edit_suggestion(bigint, timestamptz)', 'EXECUTE'),
+  assert has_function_privilege('authenticated', 'public.accept_edit_suggestion(bigint, timestamptz, text[], text[])', 'EXECUTE'),
     'authenticated must execute accept_edit_suggestion (the CRM calls it)';
-  assert has_function_privilege('service_role', 'public.accept_edit_suggestion(bigint, timestamptz)', 'EXECUTE'),
+  assert has_function_privilege('service_role', 'public.accept_edit_suggestion(bigint, timestamptz, text[], text[])', 'EXECUTE'),
     'service_role must keep execute on accept_edit_suggestion';
   assert has_function_privilege('anon', 'public.reject_edit_suggestion(bigint)', 'EXECUTE') = false,
     'anon must NOT execute reject_edit_suggestion';
@@ -204,5 +207,11 @@ begin
     'authenticated must execute reject_edit_suggestion (the CRM calls it)';
   assert to_regprocedure('public.accept_edit_suggestion(bigint)') is null,
     'the one-argument overload must be gone (calls would be ambiguous)';
+  assert to_regprocedure('public.accept_edit_suggestion(bigint, timestamptz)') is null,
+    'the two-argument overload must be gone (20261106000003 added p_fields; calls would be ambiguous)';
+  assert to_regprocedure('public.accept_edit_suggestion(bigint, timestamptz, text[])') is null,
+    'the three-argument overload must be gone (20261106000003 added p_acknowledged; calls would be ambiguous)';
+  assert to_regprocedure('public.accept_edit_suggestion(bigint, timestamptz, text[], text[])') is not null,
+    'the four-argument signature must exist';
   raise notice 'PASS E.9 accept/reject_edit_suggestion grants';
 end $$;

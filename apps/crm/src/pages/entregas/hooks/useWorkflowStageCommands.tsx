@@ -6,6 +6,7 @@ import { i18n } from '@mesaas/i18n';
 import {
   advanceWorkflowFromApproval,
   completeEtapa,
+  countPendingEditSuggestionsInWorkflow,
   getWorkflowPostStatusCounts,
   hasLaterApprovalEtapa,
   revertEtapa,
@@ -153,10 +154,22 @@ export function useWorkflowStageCommands<Ctx = unknown>(
       : null;
   const countsError =
     approvalWfId != null && countsQuery.isError && !countsQuery.isFetching && !countsRefreshing;
+  // Posts the bulk approval would move that still carry an unreviewed client suggestion.
+  // Informational only: it never gates the confirm, and a failed lookup just hides the line.
+  const suggestionsQuery = useQuery({
+    queryKey: ['workflow-pending-suggestions', approvalWfId],
+    queryFn: () => countPendingEditSuggestionsInWorkflow(approvalWfId!),
+    enabled: approvalWfId != null,
+    refetchOnWindowFocus: false,
+  });
+  const pendingSuggestionCount =
+    approvalWfId != null && !suggestionsQuery.isFetching ? (suggestionsQuery.data ?? 0) : 0;
   const refetchCounts = countsQuery.refetch;
+  const refetchSuggestions = suggestionsQuery.refetch;
   const refreshCounts = () => {
     setCountsRefreshing(true);
     setApprovalSession((n) => n + 1);
+    void refetchSuggestions();
     void refetchCounts().finally(() => setCountsRefreshing(false));
   };
 
@@ -341,6 +354,7 @@ export function useWorkflowStageCommands<Ctx = unknown>(
           alteraveisRascunho: exit.alteraveisRascunho,
           aprovadoInterno: exit.aprovadoInterno,
         }}
+        pendingSuggestionCount={pendingSuggestionCount}
         busy={approvalBusy}
         countsError={countsError}
         onRetry={refreshCounts}

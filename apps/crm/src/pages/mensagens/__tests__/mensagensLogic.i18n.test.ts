@@ -57,6 +57,12 @@ describe('mensagensLogic i18n', () => {
     expect(eventLabel({ ...item, source: 'post_feedback', action: 'correcao' })).toBe(
       'Pediu correção',
     );
+    expect(eventLabel({ ...item, source: 'edit_suggestion', action: 'superseded' })).toBe(
+      'Sugestão de edição não revisada',
+    );
+    expect(
+      conversaPreview({ ...conversa, last_source: 'edit_suggestion', last_action: 'superseded' }),
+    ).toBe('Sugestão de edição não revisada');
     expect(formatTime('2026-08-10T17:35:00')).toBe('10 de ago., 17:35');
   });
 
@@ -95,6 +101,12 @@ describe('mensagensLogic i18n', () => {
     expect(eventLabel({ ...item, source: 'edit_suggestion', action: 'weird' })).toBe(
       'Edit suggestion',
     );
+    expect(eventLabel({ ...item, source: 'edit_suggestion', action: 'superseded' })).toBe(
+      'Edit suggestion not reviewed',
+    );
+    expect(
+      conversaPreview({ ...conversa, last_source: 'edit_suggestion', last_action: 'superseded' }),
+    ).toBe('Edit suggestion not reviewed');
     expect(mediaNoteLabel({ ...item, source: 'media_note' })).toBe('Comment on media');
     expect(mediaNoteLabel({ ...item, source: 'media_note_reply' })).toBe(
       'Reply to a media comment',

@@ -8,15 +8,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // would have run, throwing a TDZ ReferenceError. `vi.hoisted` runs before the
 // import graph resolves, avoiding it (same pattern as the sibling
 // AutoSchedulePromptDialog.test.tsx).
-const { toastSuccess, toastError, getWorkflowPosts, scheduleApprovedPost } = vi.hoisted(() => ({
+const {
+  toastSuccess,
+  toastError,
+  getWorkflowPosts,
+  countPendingEditSuggestionsForPosts,
+  scheduleApprovedPost,
+} = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
   getWorkflowPosts: vi.fn(),
+  countPendingEditSuggestionsForPosts: vi.fn(),
   scheduleApprovedPost: vi.fn(),
 }));
 
 vi.mock('sonner', () => ({ toast: { success: toastSuccess, error: toastError, info: vi.fn() } }));
-vi.mock('@/store', () => ({ getWorkflowPosts }));
+vi.mock('@/store', () => ({ getWorkflowPosts, countPendingEditSuggestionsForPosts }));
 vi.mock('../../scheduleApprovedPost', () => ({
   scheduleApprovedPost,
   scheduleSuccessMessage: () => 'Post agendado para publicação no Instagram',
@@ -35,6 +42,8 @@ const wrap = (ui: React.ReactElement) => {
 describe('AutoScheduleBatchDialog', () => {
   beforeEach(() => {
     getWorkflowPosts.mockReset();
+    countPendingEditSuggestionsForPosts.mockReset();
+    countPendingEditSuggestionsForPosts.mockResolvedValue(0);
     scheduleApprovedPost.mockReset();
     toastSuccess.mockReset();
     toastError.mockReset();
@@ -91,6 +100,46 @@ describe('AutoScheduleBatchDialog', () => {
     // The two that cannot go are listed by name.
     expect(screen.getByText(/B/)).toBeInTheDocument();
     expect(screen.getByText(/C/)).toBeInTheDocument();
+  });
+
+  it('shows the unreviewed-suggestion line for the posts it will schedule, and only when there are any', async () => {
+    const posts = [
+      {
+        id: 1,
+        titulo: 'A',
+        status: 'aprovado_cliente',
+        platform: 'instagram',
+        scheduled_at: future(3),
+      },
+      {
+        id: 2,
+        titulo: 'B',
+        status: 'aprovado_cliente',
+        platform: 'instagram',
+        scheduled_at: future(4),
+      },
+      // No date: not scheduled by this dialog, so its suggestion is not counted.
+      { id: 3, titulo: 'C', status: 'aprovado_cliente', platform: 'instagram', scheduled_at: null },
+    ];
+    getWorkflowPosts.mockResolvedValue(posts);
+    countPendingEditSuggestionsForPosts.mockResolvedValue(2);
+    const props = {
+      workflowId: 7,
+      tiktokFeatureEnabled: true,
+      isFinalApprovalCycle: true,
+      onClose: vi.fn(),
+      onScheduled: vi.fn(),
+    };
+    const first = wrap(<AutoScheduleBatchDialog {...props} />);
+    expect(await screen.findByText('2 posts com sugestão do cliente não revisada.')).toBeVisible();
+    expect(countPendingEditSuggestionsForPosts).toHaveBeenCalledWith([1, 2]);
+    first.unmount();
+
+    countPendingEditSuggestionsForPosts.mockResolvedValue(0);
+    wrap(<AutoScheduleBatchDialog {...props} />);
+    await screen.findByRole('button', { name: /Agendar 2 posts/ });
+    await waitFor(() => expect(countPendingEditSuggestionsForPosts).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText(/com sugestão do cliente não revisada/)).toBeNull();
   });
 
   it('schedules every eligible post and reports the counts', async () => {

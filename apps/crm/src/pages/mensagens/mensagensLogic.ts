@@ -54,7 +54,7 @@ export function sortConversas(rows: MensagemConversa[], sort: ConversasSort): Me
   return [...(sort === 'antigas' ? sorted : sorted.reverse()), ...vazias];
 }
 
-const SUGGESTION_ACTIONS = new Set(['pending', 'accepted', 'rejected']);
+const SUGGESTION_ACTIONS = new Set(['pending', 'accepted', 'rejected', 'superseded']);
 
 function suggestionLabel(action: string | null | undefined): string {
   const a = action ?? 'pending';

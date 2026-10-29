@@ -14,6 +14,9 @@ vi.mock('sonner', () => ({ toast: { error: toastError, success: toastSuccess, in
 
 vi.mock('@/store', () => ({ updateWorkflowPost }));
 
+// The suggestion move guard reads this by path.
+vi.mock('@/store/posts', () => ({ hasPendingEditSuggestion: vi.fn(async () => false) }));
+
 vi.mock('../../scheduleApprovedPost', () => ({
   scheduleApprovedPost,
   scheduleSuccessMessage: () => 'Post agendado para publicação no Instagram',
@@ -39,6 +42,7 @@ vi.mock('@/components/ui/date-time-picker', () => ({
 }));
 
 import { AutoSchedulePromptDialog } from '../AutoSchedulePromptDialog';
+import { hasPendingEditSuggestion } from '@/store/posts';
 
 const FUTURE = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
 const PAST = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
@@ -50,6 +54,8 @@ describe('AutoSchedulePromptDialog', () => {
     toastError.mockReset();
     toastSuccess.mockReset();
     scheduleApprovedPost.mockResolvedValue({ ok: true, status: 'agendado' });
+    vi.mocked(hasPendingEditSuggestion).mockReset();
+    vi.mocked(hasPendingEditSuggestion).mockResolvedValue(false);
   });
 
   it('renders nothing when post is null', () => {
@@ -77,6 +83,61 @@ describe('AutoSchedulePromptDialog', () => {
     expect(updateWorkflowPost).not.toHaveBeenCalled();
     expect(onScheduled).toHaveBeenCalled();
     expect(toastSuccess).toHaveBeenCalled();
+  });
+
+  describe('suggestion move guard', () => {
+    const renderEligible = (onScheduled = vi.fn()) =>
+      render(
+        <AutoSchedulePromptDialog
+          post={{ id: 11, titulo: 'Post A', platform: 'instagram', scheduled_at: FUTURE }}
+          onClose={vi.fn()}
+          onScheduled={onScheduled}
+        />,
+      );
+
+    it('asks before scheduling a post with a pending client suggestion, and schedules after "Mover mesmo assim"', async () => {
+      vi.mocked(hasPendingEditSuggestion).mockResolvedValue(true);
+      renderEligible();
+
+      fireEvent.click(screen.getByRole('button', { name: /^Agendar$/ }));
+
+      expect(await screen.findByText('Mover para Agendado?')).toBeInTheDocument();
+      expect(hasPendingEditSuggestion).toHaveBeenCalledWith(11);
+      expect(scheduleApprovedPost).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Mover mesmo assim' }));
+      await waitFor(() => expect(scheduleApprovedPost).toHaveBeenCalledTimes(1));
+    });
+
+    it('Cancelar never schedules', async () => {
+      vi.mocked(hasPendingEditSuggestion).mockResolvedValue(true);
+      renderEligible();
+
+      fireEvent.click(screen.getByRole('button', { name: /^Agendar$/ }));
+      await screen.findByText('Mover para Agendado?');
+      const cancels = screen.getAllByRole('button', { name: 'Cancelar' });
+      fireEvent.click(cancels[cancels.length - 1]);
+
+      await waitFor(() => expect(screen.queryByText('Mover para Agendado?')).toBeNull());
+      expect(scheduleApprovedPost).not.toHaveBeenCalled();
+    });
+
+    it('date branch asks before writing the new date', async () => {
+      vi.mocked(hasPendingEditSuggestion).mockResolvedValue(true);
+      render(
+        <AutoSchedulePromptDialog
+          post={{ id: 12, titulo: 'Post B', platform: 'instagram', scheduled_at: PAST }}
+          onClose={vi.fn()}
+          onScheduled={vi.fn()}
+        />,
+      );
+
+      fireEvent.click(screen.getByText('escolher data'));
+      fireEvent.click(screen.getByRole('button', { name: /Definir e agendar/ }));
+
+      expect(await screen.findByText('Mover para Agendado?')).toBeInTheDocument();
+      expect(updateWorkflowPost).not.toHaveBeenCalled();
+    });
   });
 
   it('date branch: offers the picker pre-filled with the stale date', () => {

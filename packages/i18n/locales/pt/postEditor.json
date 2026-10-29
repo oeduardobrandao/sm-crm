@@ -95,6 +95,7 @@
     "invalidateApprovalError": "Não foi possível invalidar a aprovação. O conteúdo não foi salvo.",
     "suggestionAccepted": "Sugestão aceita!",
     "suggestionChanged": "A sugestão foi atualizada pelo cliente. Revise a nova versão.",
+    "suggestionConflict": "O post mudou desde que você abriu. Revise a sugestão de novo.",
     "acceptSuggestionError": "Erro ao aceitar sugestão",
     "suggestionRejected": "Sugestão rejeitada",
     "rejectSuggestionError": "Erro ao rejeitar sugestão",
@@ -276,6 +277,37 @@
     "publicar": "Publicar",
     "comentarios": "Comentários",
     "sections": "Seções do post"
+  },
+  "suggestionReview": {
+    "postText": "Texto do post",
+    "conflictTexto": "A equipe editou o texto depois desta sugestão.",
+    "conflictLegenda": "A equipe editou a legenda depois desta sugestão.",
+    "diffApply": "O que muda ao aceitar",
+    "diffClientOnly": "Só o que o cliente mudou",
+    "compareAria": "Comparação: {{field}}",
+    "footerOnlyTexto": "Aceitar aplica só o texto do post. A legenda que a equipe editou fica como está.",
+    "footerOnlyLegenda": "Aceitar aplica só a legenda. O texto que a equipe editou fica como está.",
+    "acceptReview": "Aceitar…",
+    "captionNote": "O cliente sugeriu uma nova legenda. Revise a sugestão antes de editar.",
+    "viewSuggestion": "Ver sugestão",
+    "moveGuard": {
+      "title": "Mover para {{status}}?",
+      "body": "Há uma sugestão do cliente não revisada neste post.",
+      "cancel": "Cancelar",
+      "confirm": "Mover mesmo assim"
+    },
+    "dialog": {
+      "title": "Aceitar a sugestão?",
+      "body": "A equipe editou {{fields}} depois que o cliente enviou a sugestão. Escolha qual versão fica.",
+      "fieldTexto": "o texto",
+      "fieldLegenda": "a legenda",
+      "and": " e ",
+      "keepTeam": "Manter a versão da equipe",
+      "useClient": "Usar a versão do cliente",
+      "applied": "Só o cliente mudou. Será aplicado.",
+      "cancel": "Cancelar",
+      "confirm": "Aceitar sugestão"
+    }
   },
   "phoneSuggestionSheet": {
     "out": "Sai",

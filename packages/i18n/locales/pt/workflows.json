@@ -122,6 +122,7 @@
     "detached_other": "{{count}} posts desmembrados",
     "suggestionAccepted": "Sugestão aceita!",
     "suggestionChanged": "A sugestão foi atualizada pelo cliente. Revise a nova versão.",
+    "suggestionConflict": "O post mudou desde que você abriu. Revise a sugestão de novo.",
     "suggestionAcceptError": "Erro ao aceitar sugestão",
     "suggestionRejected": "Sugestão rejeitada",
     "suggestionRejectError": "Erro ao rejeitar sugestão",
@@ -611,7 +612,10 @@
     "retry": "Tentar de novo",
     "recommendedSuffix": "{{title}} (Recomendado)",
     "recommended": "Recomendado",
-    "whatHappens": "O que acontece"
+    "whatHappens": "O que acontece",
+    "pendingSuggestions_zero": "{{count}} posts com sugestão do cliente não revisada.",
+    "pendingSuggestions_one": "{{count}} post com sugestão do cliente não revisada.",
+    "pendingSuggestions_other": "{{count}} posts com sugestão do cliente não revisada."
   },
   "historyDrawer": {
     "concludedOn": "Concluído em {{date}}",

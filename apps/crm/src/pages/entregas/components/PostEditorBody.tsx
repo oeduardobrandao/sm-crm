@@ -61,10 +61,18 @@ import { PublishErrorBlock } from './PublishErrorBlock';
 import { shouldShowPublishErrorBlock } from './publishErrorBlockVisibility';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
 import { SuggestTimeButton } from './SuggestTimeButton';
-import { DiffView } from './DiffView';
-import { ReadOnlyTipTap } from './ReadOnlyTipTap';
-import { computeWordDiff } from '@/utils/textDiff';
-import { computeTipTapDiff } from '@/utils/tiptapDiff';
+import { useAcceptSuggestionFlow } from './AcceptSuggestionDialog';
+import {
+  CaptionSuggestionNote,
+  SuggestionFieldDiff,
+  TeamOnlyFooter,
+  visibleSuggestionStates,
+} from './SuggestionReview';
+import {
+  suggestionFieldStates,
+  teamOnlyChangedFields,
+  type SuggestionField,
+} from '../editSuggestionFields';
 import {
   getStatusAutomationHint,
   isVisibleToClient,
@@ -191,7 +199,11 @@ export interface PostEditorBodyProps {
   onEditComment: (commentId: number, content: string) => Promise<void>;
   onDeleteComment: (commentId: number, threadId: number) => Promise<void>;
   editorVersion: number;
-  onAcceptSuggestion: (suggestion: PostEditSuggestion) => void;
+  onAcceptSuggestion: (
+    suggestion: PostEditSuggestion,
+    fields: SuggestionField[],
+    acknowledged: SuggestionField[],
+  ) => void;
   onRejectSuggestion: (id: number) => void;
   /** Avançar etapa do processo individual, para a dica da seção de produção. */
   onProcessAvancar?: () => void;
@@ -531,6 +543,23 @@ export function PostEditorBody({
   const [captionScreenOpen, setCaptionScreenOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
   const [suggestionOpen, setSuggestionOpen] = useState(false);
+  // The desktop review card, the target of the caption note's "Ver sugestão".
+  const suggestionCardRef = useRef<HTMLDivElement>(null);
+  const viewSuggestion = () => {
+    if (isPhone) {
+      // The caption can be open full screen: leave it so the sheet is not hidden behind.
+      setCaptionScreenOpen(false);
+      setSuggestionOpen(true);
+      return;
+    }
+    const card = suggestionCardRef.current;
+    if (!card) return;
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.focus({ preventScroll: true });
+  };
+  const acceptFlow = useAcceptSuggestionFlow(post, onAcceptSuggestion);
+  const suggestionStates = editSuggestion ? suggestionFieldStates(post, editSuggestion) : [];
+  const teamOnlyFields = editSuggestion ? teamOnlyChangedFields(post, editSuggestion) : [];
   const [referencesOpen, setReferencesOpen] = useState(false);
   const [statusSheetOpen, setStatusSheetOpen] = useState(false);
   // One schedule/publish state per phone editor, shared by the bottom bar and the
@@ -685,33 +714,37 @@ export function PostEditorBody({
       {t('postEditorBody.storiesNote')}
     </p>
   );
+  const captionSuggested = editSuggestion?.changed_fields.includes('ig_caption') === true;
   const instagramCaptionField = (frameless: boolean) => (
-    <InstagramCaptionField
-      key={post.id}
-      frameless={frameless}
-      ref={captionRef}
-      value={post.ig_caption ?? ''}
-      threads={commentThreads}
-      disabled={isScheduleLocked}
-      lockedMessage={t('shared.cancelScheduleToEdit')}
-      onSave={(text, anchors) => onSaveCaption(post.id!, text, anchors)}
-      comments={
-        currentUserId
-          ? {
-              membros,
-              workspaceUsers,
-              currentUserId,
-              onCreateThread: (quotedText, comment, anchor) =>
-                onCreateComment(post.id!, quotedText, comment, anchor),
-              onReply: onReplyToComment,
-              onResolve: onResolveThread,
-              onReopen: onReopenThread,
-              onEditComment,
-              onDeleteComment,
-            }
-          : undefined
-      }
-    />
+    <>
+      {captionSuggested && <CaptionSuggestionNote onViewSuggestion={viewSuggestion} />}
+      <InstagramCaptionField
+        key={post.id}
+        frameless={frameless}
+        ref={captionRef}
+        value={post.ig_caption ?? ''}
+        threads={commentThreads}
+        disabled={isScheduleLocked}
+        lockedMessage={t('shared.cancelScheduleToEdit')}
+        onSave={(text, anchors) => onSaveCaption(post.id!, text, anchors)}
+        comments={
+          currentUserId
+            ? {
+                membros,
+                workspaceUsers,
+                currentUserId,
+                onCreateThread: (quotedText, comment, anchor) =>
+                  onCreateComment(post.id!, quotedText, comment, anchor),
+                onReply: onReplyToComment,
+                onResolve: onResolveThread,
+                onReopen: onReopenThread,
+                onEditComment,
+                onDeleteComment,
+              }
+            : undefined
+        }
+      />
+    </>
   );
   const tiktokSettingsPanel = (hideCaption: boolean) => (
     <TikTokSettingsPanel
@@ -1562,7 +1595,11 @@ export function PostEditorBody({
       )}
 
       {editSuggestion ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50/50 overflow-hidden">
+        <div
+          ref={suggestionCardRef}
+          tabIndex={-1}
+          className="rounded-lg border border-amber-200 bg-amber-50/50 overflow-hidden outline-none"
+        >
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-amber-200/60 bg-amber-50">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-amber-400" />
@@ -1586,33 +1623,51 @@ export function PostEditorBody({
                 {t('shared.reject')}
               </button>
               <button
-                onClick={() => onAcceptSuggestion(editSuggestion)}
-                className="px-3 py-1 text-[12px] font-medium rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                onClick={() => acceptFlow.request(editSuggestion)}
+                // A legacy row can list changed_fields with nothing the CRM can apply (a NULL doc):
+                // there is nothing to accept, only to reject.
+                disabled={!suggestionStates.some((st) => st.changed)}
+                className="px-3 py-1 text-[12px] font-medium rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-emerald-600"
               >
-                {t('shared.accept')}
+                {suggestionStates.some((st) => st.conflict)
+                  ? t('suggestionReview.acceptReview')
+                  : t('shared.accept')}
               </button>
             </div>
           </div>
           <div className="px-4 py-3 space-y-3">
-            {editSuggestion.changed_fields.includes('conteudo') &&
-              resolvedContent &&
-              resolvedSuggestion && (
-                <ReadOnlyTipTap content={computeTipTapDiff(resolvedContent, resolvedSuggestion)} />
-              )}
-            {editSuggestion.changed_fields.includes('ig_caption') && (
-              <div className="border-t border-amber-200/60 pt-3">
-                <p className="text-[11px] font-medium text-stone-500 mb-1.5">
-                  {t('shared.igCaption')}
-                </p>
-                <DiffView
-                  segments={computeWordDiff(
-                    post.ig_caption ?? '',
-                    editSuggestion.suggested_ig_caption ?? '',
-                  )}
-                />
-              </div>
+            {visibleSuggestionStates(suggestionStates, resolvedContent, resolvedSuggestion).map(
+              (st, i) => (
+                <div
+                  key={st.field}
+                  className={i > 0 ? 'border-t border-amber-200/60 pt-3' : undefined}
+                >
+                  <SuggestionFieldDiff
+                    field={st.field}
+                    state={st}
+                    post={post}
+                    suggestion={editSuggestion}
+                    resolvedContent={resolvedContent}
+                    resolvedSuggestion={resolvedSuggestion}
+                    label={
+                      <p className="text-[11px] font-medium text-stone-500">
+                        {st.field === 'texto'
+                          ? t('suggestionReview.postText')
+                          : t('shared.igCaption')}
+                      </p>
+                    }
+                  />
+                </div>
+              ),
             )}
           </div>
+          {teamOnlyFields.length > 0 && (
+            <TeamOnlyFooter
+              teamOnly={teamOnlyFields}
+              className="rounded-none border-t border-amber-200/60 bg-amber-50 px-4 py-2.5"
+            />
+          )}
+          {acceptFlow.dialog}
         </div>
       ) : !canMountEditor ? (
         <div

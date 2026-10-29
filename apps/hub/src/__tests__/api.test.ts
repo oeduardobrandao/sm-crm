@@ -250,6 +250,8 @@ describe('hub api client', () => {
       },
       'Texto editado',
       null,
+      ['texto'],
+      { conteudo: null, conteudo_plain: 'Texto original' },
     );
 
     expect(result.ok).toBe(true);
@@ -263,7 +265,11 @@ describe('hub api client', () => {
       post_id: 42,
       suggested_conteudo_plain: 'Texto editado',
       suggested_ig_caption: null,
+      touched_fields: ['texto'],
+      // A null base must survive JSON: the RPC tests key presence, not value.
+      bases: { conteudo: null, conteudo_plain: 'Texto original' },
     });
+    expect(body.bases).toHaveProperty('conteudo', null);
   });
 
   it('throws on edit suggestion error', async () => {
@@ -273,9 +279,9 @@ describe('hub api client', () => {
       json: { error: 'Post não está em revisão' },
     });
 
-    await expect(submitEditSuggestion('token-hub', 99, null, 'texto', null)).rejects.toThrow(
-      'Post não está em revisão',
-    );
+    await expect(
+      submitEditSuggestion('token-hub', 99, null, 'texto', null, ['legenda'], null),
+    ).rejects.toThrow('Post não está em revisão');
   });
 
   it('presigns and finalizes briefing audio on the nested hub-briefing routes', async () => {

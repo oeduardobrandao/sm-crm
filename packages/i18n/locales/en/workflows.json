@@ -122,6 +122,7 @@
     "detached_other": "{{count}} posts detached",
     "suggestionAccepted": "Suggestion accepted!",
     "suggestionChanged": "The client updated the suggestion. Review the new version.",
+    "suggestionConflict": "The post changed since you opened it. Review the suggestion again.",
     "suggestionAcceptError": "Failed to accept suggestion",
     "suggestionRejected": "Suggestion rejected",
     "suggestionRejectError": "Failed to reject suggestion",
@@ -611,7 +612,10 @@
     "retry": "Try again",
     "recommendedSuffix": "{{title}} (Recommended)",
     "recommended": "Recommended",
-    "whatHappens": "What happens"
+    "whatHappens": "What happens",
+    "pendingSuggestions_zero": "{{count}} posts with a client suggestion nobody has reviewed.",
+    "pendingSuggestions_one": "{{count}} post with a client suggestion nobody has reviewed.",
+    "pendingSuggestions_other": "{{count}} posts with a client suggestion nobody has reviewed."
   },
   "historyDrawer": {
     "concludedOn": "Completed on {{date}}",

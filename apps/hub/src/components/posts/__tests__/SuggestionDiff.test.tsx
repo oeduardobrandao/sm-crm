@@ -280,7 +280,9 @@ describe('SuggestionDiff', () => {
 describe('suggestionAwareCaption', () => {
   it("keeps a suggestion's empty caption instead of falling back to body text", () => {
     const p = post({ ig_caption: null, conteudo_plain: 'Roteiro LEGENDA: derivada' });
-    expect(suggestionAwareCaption(p, sugg({ suggested_ig_caption: '' }))).toBe('');
+    expect(
+      suggestionAwareCaption(p, sugg({ suggested_ig_caption: '', changed_fields: ['ig_caption'] })),
+    ).toBe('');
   });
   it('falls back to deriveCaption without a suggestion', () => {
     const p = post({ ig_caption: null, conteudo_plain: 'Roteiro LEGENDA: derivada' });

@@ -9,10 +9,13 @@ import type {
   PostStatusEvent,
   WorkflowPost,
 } from '../../../../store';
-import { computeWordDiff } from '@/utils/textDiff';
-import { computeTipTapDiff } from '@/utils/tiptapDiff';
-import { DiffView } from '../DiffView';
-import { ReadOnlyTipTap } from '../ReadOnlyTipTap';
+import { useAcceptSuggestionFlow } from '../AcceptSuggestionDialog';
+import { SuggestionFieldDiff, TeamOnlyFooter, visibleSuggestionStates } from '../SuggestionReview';
+import {
+  suggestionFieldStates,
+  teamOnlyChangedFields,
+  type SuggestionField,
+} from '../../editSuggestionFields';
 import { PostTimelineList } from '../PostTimelinePopover';
 import { buildPostTimeline } from '../postTimeline';
 
@@ -40,29 +43,39 @@ export function PhoneSuggestionSheet({
   clientName?: string | null;
   resolvedContent: Record<string, unknown> | null;
   resolvedSuggestion: Record<string, unknown> | null;
-  onAccept: (s: PostEditSuggestion) => void;
+  onAccept: (
+    s: PostEditSuggestion,
+    fields: SuggestionField[],
+    acknowledged: SuggestionField[],
+  ) => void;
   onReject: (id: number) => void;
 }) {
   const { t } = useTranslation('postEditor');
+  // The conflict dialog lives out here, not in the sheet body: the body unmounts with the sheet,
+  // and the dialog has to open after the sheet closed.
+  const acceptFlow = useAcceptSuggestionFlow(post, onAccept);
   return (
-    <BottomSheet
-      open={open && !!suggestion}
-      onOpenChange={onOpenChange}
-      title={t('shared.clientSuggestion')}
-      detents={['large']}
-    >
-      {suggestion && (
-        <SuggestionBody
-          suggestion={suggestion}
-          post={post}
-          clientName={clientName}
-          resolvedContent={resolvedContent}
-          resolvedSuggestion={resolvedSuggestion}
-          onAccept={onAccept}
-          onReject={onReject}
-        />
-      )}
-    </BottomSheet>
+    <>
+      <BottomSheet
+        open={open && !!suggestion}
+        onOpenChange={onOpenChange}
+        title={t('shared.clientSuggestion')}
+        detents={['large']}
+      >
+        {suggestion && (
+          <SuggestionBody
+            suggestion={suggestion}
+            post={post}
+            clientName={clientName}
+            resolvedContent={resolvedContent}
+            resolvedSuggestion={resolvedSuggestion}
+            onAccept={acceptFlow.request}
+            onReject={onReject}
+          />
+        )}
+      </BottomSheet>
+      {acceptFlow.dialog}
+    </>
   );
 }
 
@@ -85,6 +98,8 @@ function SuggestionBody({
 }) {
   const { t } = useTranslation('postEditor');
   const { closeThen } = useSheetActions();
+  const states = suggestionFieldStates(post, suggestion);
+  const teamOnly = teamOnlyChangedFields(post, suggestion);
   return (
     <div className="phone-suggestion">
       <p className="phone-suggestion__meta">
@@ -96,27 +111,24 @@ function SuggestionBody({
           minute: '2-digit',
         })}
       </p>
-      {suggestion.changed_fields.includes('conteudo') && resolvedContent && resolvedSuggestion && (
-        <section className="phone-suggestion__block">
-          <h3 className="phone-group__header">{t('shared.scriptAndBrief')}</h3>
+      {visibleSuggestionStates(states, resolvedContent, resolvedSuggestion).map((st) => (
+        <section key={st.field} className="phone-suggestion__block">
+          <h3 className="phone-group__header">
+            {st.field === 'texto' ? t('shared.scriptAndBrief') : t('shared.igCaption')}
+          </h3>
           <div className="phone-suggestion__card">
-            <ReadOnlyTipTap content={computeTipTapDiff(resolvedContent, resolvedSuggestion)} />
-          </div>
-        </section>
-      )}
-      {suggestion.changed_fields.includes('ig_caption') && (
-        <section className="phone-suggestion__block">
-          <h3 className="phone-group__header">{t('shared.igCaption')}</h3>
-          <div className="phone-suggestion__card">
-            <DiffView
-              segments={computeWordDiff(
-                post.ig_caption ?? '',
-                suggestion.suggested_ig_caption ?? '',
-              )}
+            <SuggestionFieldDiff
+              field={st.field}
+              state={st}
+              post={post}
+              suggestion={suggestion}
+              resolvedContent={resolvedContent}
+              resolvedSuggestion={resolvedSuggestion}
             />
           </div>
         </section>
-      )}
+      ))}
+      <TeamOnlyFooter teamOnly={teamOnly} className="mx-1 mb-4" />
       <p className="phone-suggestion__legend">
         <span className="phone-suggestion__legend-out">{t('phoneSuggestionSheet.out')}</span>
         <span className="phone-suggestion__legend-in">{t('phoneSuggestionSheet.in')}</span>
@@ -133,8 +145,11 @@ function SuggestionBody({
           type="button"
           className="phone-editor-bar__primary phone-editor-bar__primary--success"
           onClick={() => closeThen(() => onAccept(suggestion))}
+          disabled={!states.some((st) => st.changed)}
         >
-          {t('shared.accept')}
+          {states.some((st) => st.conflict)
+            ? t('suggestionReview.acceptReview')
+            : t('shared.accept')}
         </button>
       </div>
     </div>
