@@ -16,17 +16,17 @@ Things stated below that come from the spec and were not re-verified against the
 
 ## 1. Shared prerequisites
 
-| #   | Item                                                                                                                                                                                                                                                    | Owner                                          | Status |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | ------ |
-| S1  | Reviewer account: a populated demo workspace (reuse the Admin's "Conta demo" flow), no MFA, with at least 2 clients that have briefing and brand profile, 1 draft carousel post, 1 post in `enviado_cliente`, 1 client with 3+ weeks of scheduled posts | builder prepares, founder approves             |        |
-| S2  | Reviewer credentials delivered through each directory's secure field. Never in this repo, a PR or chat                                                                                                                                                  | founder                                        |        |
-| S3  | KB articles live: `limites-e-seguranca-do-agente` and `o-que-o-agente-pode-fazer` updated, "Cartões no Claude e no ChatGPT" published (drafts in the rollout runbook, step 4), with screenshots                                                         | builder drafts via Admin MCP, founder approves |        |
-| S4  | `https://www.mesaas.com.br/politica-de-privacidade` and `/termos-de-uso` exist and mention the connector and the data it reads (clients, briefings, posts, calendar, media the user attaches)                                                           | founder                                        |        |
-| S5  | Allowed link URIs for `ui/open-link`: `https://www.mesaas.com.br` and the CRM app origin if it differs. Confirm the card's `open_url` (`https://www.mesaas.com.br/entregas?view=calendar&clientes=<id>`) is inside this list                            | builder                                        |        |
-| S6  | Support URL and support contact (WhatsApp support number or e-mail), same one in both listings                                                                                                                                                          | founder                                        |        |
-| S7  | Production OAuth works end to end from both hosts (staging's OAuth server is off): connect, consent screen with scopes, tool call, disconnect                                                                                                           | builder verifies                               |        |
-| S8  | Pilot sign-off done (rollout runbook, checks A to D) and `MCP_APPS=on`                                                                                                                                                                                  | builder                                        |        |
-| S9  | Listing and in-card copy has no em dashes, is pt-BR sentence case, and makes no claim of endorsement by Anthropic, OpenAI or Meta                                                                                                                       | builder                                        |        |
+| #   | Item                                                                                                                                                                                                                                                                                                                                                           | Owner                                          | Status |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | ------ |
+| S1  | Reviewer account: a populated demo workspace (reuse the Admin's "Conta demo" flow), no MFA, with at least 2 clients that have briefing and brand profile, 3 untouched draft carousel posts (A, B, C; see section 4), 1 client with 3+ weeks of scheduled posts. **Re-seed S1 before every submission run**: P5 and N2 move posts to `enviado_cliente` for good | builder prepares, founder approves             |        |
+| S2  | Reviewer credentials delivered through each directory's secure field. Never in this repo, a PR or chat                                                                                                                                                                                                                                                         | founder                                        |        |
+| S3  | KB articles live: `limites-e-seguranca-do-agente` and `o-que-o-agente-pode-fazer` updated, "Cartões no Claude e no ChatGPT" published (drafts in the rollout runbook, step 4), with screenshots                                                                                                                                                                | builder drafts via Admin MCP, founder approves |        |
+| S4  | `https://www.mesaas.com.br/politica-de-privacidade` and `/termos-de-uso` exist and mention the connector and the data it reads (clients, briefings, posts, calendar, media the user attaches)                                                                                                                                                                  | founder                                        |        |
+| S5  | Allowed link URIs for `ui/open-link`: `https://www.mesaas.com.br` and the CRM app origin if it differs. Confirm the card's `open_url` (`https://www.mesaas.com.br/entregas?view=calendar&clientes=<id>`) is inside this list                                                                                                                                   | builder                                        |        |
+| S6  | Support URL and support contact (WhatsApp support number or e-mail), same one in both listings                                                                                                                                                                                                                                                                 | founder                                        |        |
+| S7  | Production OAuth works end to end from both hosts (staging's OAuth server is off): connect, consent screen with scopes, tool call, disconnect                                                                                                                                                                                                                  | builder verifies                               |        |
+| S8  | Pilot sign-off done (rollout runbook, checks A to D) and `MCP_APPS=on`                                                                                                                                                                                                                                                                                         | builder                                        |        |
+| S9  | Listing and in-card copy has no em dashes, is pt-BR sentence case, and makes no claim of endorsement by Anthropic, OpenAI or Meta                                                                                                                                                                                                                              | builder                                        |        |
 
 ## 2. Claude connector directory
 
@@ -62,6 +62,18 @@ Things stated below that come from the spec and were not re-verified against the
 Run each against the S1 demo workspace in ChatGPT with the Mesaas app installed. `Clínica Demo` stands
 for the demo client name and `Skincare no inverno` for the demo draft title: replace both with the real
 seed names before filing. Prompts are what a Brazilian agency user would type.
+
+The cases are not independent, because sending and attaching change the post. Seed three untouched
+draft carousels under Clínica Demo and keep each case on its own post:
+
+| Seeded post                 | Used by                                                         | State afterwards                |
+| --------------------------- | --------------------------------------------------------------- | ------------------------------- |
+| P1 creates its own new post | P1                                                              | a new draft (not seeded)        |
+| A: `Skincare no inverno`    | P2, P4, N3 (run in this order or any order; none of them sends) | still a draft; P4 adds an image |
+| B: `Dicas de hidratação`    | P5                                                              | `enviado_cliente`               |
+| C: `Rotina noturna`         | N2                                                              | `enviado_cliente`               |
+
+P3 and N1 use no post. Re-seed S1 (restore A, B, C to untouched drafts) before each submission run.
 
 ### Positive
 
@@ -106,7 +118,7 @@ seed names before filing. Prompts are what a Brazilian agency user would type.
 
 **P5. Send for approval only after confirmation**
 
-- Prompt: `Mostre o cartão do rascunho "Skincare no inverno" da Clínica Demo.` Then
+- Prompt: `Mostre o cartão do rascunho "Dicas de hidratação" da Clínica Demo.` Then
   click **Enviar para aprovação**, then **Enviar ao cliente**. As a side check, also type: `Pode enviar
 esse post para o cliente agora.`
 - Expected tool calls: `list_posts` (or `get_post`) to resolve the title, then `preview_post` with `post_id`
@@ -128,16 +140,20 @@ esse post para o cliente agora.`
 
 **N2. Send on an already-sent post**
 
-- Setup: send the post from P5 once. Then in a new message: `Mostre o post "Skincare no inverno" de novo.`
-  and click **Enviar para aprovação** then **Enviar ao cliente** on the card.
-- Expected tool calls: `list_posts` (or `get_post`), `preview_post` with `post_id`, then
-  `send_post_to_client` (if the card still offers the button; the card may instead
-  already show the post as sent).
-- Expected result: "Este post já está com o cliente." The post stays `enviado_cliente`; no second
-  status-history entry and no second client notification is produced.
+- Setup (post C, `Rotina noturna`, untouched draft): in message 1 ask `Mostre o cartão do rascunho
+"Rotina noturna" da Clínica Demo.` (card A). In message 2 ask the same again (card B). On card B click
+  **Enviar para aprovação** then **Enviar ao cliente**: the post is sent. Then go back to card A and click
+  **Enviar para aprovação** then **Enviar ao cliente**. Card A still holds the draft status it was drawn
+  with, which is how a second, stale click happens.
+- Expected tool calls: `list_posts` (or `get_post`) and `preview_post` with `post_id` for each card, then
+  `send_post_to_client` twice: once from card B (sent) and once from card A (refused).
+- Expected result: card B shows "Post enviado ao cliente para aprovação."; card A shows "Este post já está
+  com o cliente." The post stays `enviado_cliente`, with one status-history entry for the send and one
+  client notification, not two.
 
 **N3. WebP image**
 
+- Uses post A (`Skincare no inverno`), still a draft.
 - Prompt (after uploading a `.webp` image): `Anexe esta imagem ao post "Skincare no inverno" da Clínica Demo.`
 - Expected tool calls: `show_attach_image`, then `attach_image_to_post` after the click.
 - Expected result: "Formato não aceito. Use JPG ou PNG." The post's media is unchanged and no file

@@ -289,8 +289,10 @@ do Mesaas que você já usa, sem nada novo para instalar.
 
 - O conector do Mesaas precisa estar conectado por login (veja "Como conectar o Claude").
 - Escrever no Mesaas exige o escopo **Posts (escrita)**. O calendário e as prévias só precisam de leitura.
-- No ChatGPT, os botões que gravam no Mesaas exigem o app do Mesaas instalado a partir do diretório do
-  ChatGPT. O cartão de anexar imagem existe só no ChatGPT.
+- O cartão de anexar imagem existe só no ChatGPT.
+- No ChatGPT, se os botões que gravam no Mesaas (salvar, enviar, anexar) funcionam depende de como o seu plano
+  do ChatGPT permite conectores personalizados. Se um botão de gravação não responder, confira essa
+  configuração no ChatGPT; a prévia, as legendas e o calendário só leem e não dependem disso.
 
 ## Prévia do post e salvar como rascunho
 
@@ -329,6 +331,9 @@ capa. Nesses casos, resolva no Mesaas e peça o cartão de novo.
 2. O cartão mostra as imagens atuais do post. Escolha a lâmina. Se ela já tiver imagem, o cartão pergunta
    "Substituir a imagem da lâmina N?".
 3. Clique em **Anexar**.
+
+Este cartão grava no Mesaas, então vale o aviso do ChatGPT acima sobre o seu plano e os conectores
+personalizados.
 
 Limites: posts em rascunho, revisão interna ou correção do cliente; tipos feed e carrossel; imagens JPG ou
 PNG de até 8 MB; no máximo 10 mídias por post. A imagem entra em Arquivos como qualquer outra.
