@@ -5,6 +5,9 @@
 import type { Deps, RegisteredTool } from "../mcp/queries.ts";
 import type { McpKeyContext } from "../_shared/mcp-token.ts";
 
+// registerTools with cards on + OAuth signs send nonces and throws at registration without the key.
+if (!Deno.env.get("TOKEN_ENCRYPTION_KEY")) Deno.env.set("TOKEN_ENCRYPTION_KEY", "test-secret-key-for-mcp-tests-32chars!");
+
 export type Resp = { data: unknown; error: unknown };
 export type Call = { table: string; method: string; args: unknown[] };
 
