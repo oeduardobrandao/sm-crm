@@ -804,7 +804,7 @@ describe('CorrectionPanel', () => {
       expect(call[3].bases).toHaveProperty('conteudo', null);
     });
 
-    it('keeps the base from when the panel opened after a refetch brings a team caption edit', () => {
+    it('re-seeds the caption base from the refetched post when the panel resyncs to it', () => {
       const refetchedEdit = makeEdit({ draftIgCaption: 'Legenda da equipe' });
       const props = {
         submitting: false,
@@ -812,7 +812,8 @@ describe('CorrectionPanel', () => {
         onDirtyChange,
       };
       const { rerender } = render(<CorrectionPanel {...props} edit={makeEdit()} post={post()} />);
-      // The team edits the caption while the tab is open; a background refetch lands.
+      // The team edits the caption while the tab is open; a background refetch lands and the
+      // untouched caption field now shows the team's caption.
       rerender(
         <CorrectionPanel
           {...props}
@@ -826,8 +827,56 @@ describe('CorrectionPanel', () => {
       fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
       const call = vi.mocked(refetchedEdit.saveSuggestion).mock.calls[0];
       expect(call[2]).toBe('Legenda do cliente');
+      // The client edited on top of the caption they saw: the base is that one, not the
+      // caption from when the panel opened (which would flag a conflict nobody caused).
+      expect(call[3]).toEqual({ fields: ['legenda'], bases: { ig_caption: 'Legenda da equipe' } });
+    });
+
+    it('keeps the opening base when the caption was already edited locally before the refetch', () => {
+      const edit = makeEdit();
+      const props = { submitting: false, onSubmitCorrection, onDirtyChange };
+      const { rerender } = render(<CorrectionPanel {...props} edit={edit} post={post()} />);
+      fireEvent.change(screen.getByDisplayValue('Legenda original'), {
+        target: { value: 'Legenda do cliente' },
+      });
+      // A team edit lands under the local edit: the panel does not resync over it.
+      rerender(
+        <CorrectionPanel {...props} edit={edit} post={post({ ig_caption: 'Legenda da equipe' })} />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
+      const call = vi.mocked(edit.saveSuggestion).mock.calls[0];
+      expect(call[2]).toBe('Legenda do cliente');
       // Not 'Legenda da equipe': the server compares this with the live caption and conflicts.
       expect(call[3]).toEqual({ fields: ['legenda'], bases: { ig_caption: 'Legenda original' } });
+    });
+
+    it('re-seeds the body base from the refetched post when the panel resyncs to it', () => {
+      const props = { submitting: false, onSubmitCorrection, onDirtyChange };
+      const bodyPost = (plain: string) =>
+        post({ media: [], conteudo: null, conteudo_plain: plain, ig_caption: null });
+      const { rerender } = render(
+        <CorrectionPanel
+          {...props}
+          post={bodyPost('Corpo do post')}
+          edit={makeEdit({ draftConteudoPlain: 'Corpo do post', draftIgCaption: null })}
+        />,
+      );
+      const refetchedEdit = makeEdit({
+        draftConteudoPlain: 'Corpo da equipe',
+        draftIgCaption: null,
+      });
+      rerender(
+        <CorrectionPanel {...props} post={bodyPost('Corpo da equipe')} edit={refetchedEdit} />,
+      );
+      fireEvent.change(screen.getByDisplayValue('Corpo da equipe'), {
+        target: { value: 'Corpo do cliente' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
+      const call = vi.mocked(refetchedEdit.saveSuggestion).mock.calls[0];
+      expect(call[3]).toEqual({
+        fields: ['texto'],
+        bases: { conteudo: null, conteudo_plain: 'Corpo da equipe' },
+      });
     });
 
     it('keeps a field touched for the whole session once it was edited', () => {

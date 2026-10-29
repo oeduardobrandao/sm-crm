@@ -265,6 +265,14 @@ export function CorrectionPanel({
   if (captionBaseline !== lastSyncedCaptionRef.current) {
     if (stagedCaption === lastSyncedCaptionRef.current) {
       setStagedCaption(captionBaseline);
+      // The client now SEES the refetched caption, so an edit on top of it starts from that
+      // caption, not from the one the panel opened with: re-seed the base from the raw post.
+      // Once a save recorded the field (touched), its base is the one the server already holds;
+      // and a caption the client had already typed over never gets here (it is not resynced), so
+      // a team edit under a local edit still reads as a conflict at accept.
+      if (!touchedRef.current.has('legenda')) {
+        seedBasesRef.current.ig_caption = post.ig_caption ?? null;
+      }
     }
     lastSyncedCaptionRef.current = captionBaseline;
   }
@@ -285,6 +293,11 @@ export function CorrectionPanel({
     ) {
       setStagedConteudo(draftConteudo);
       setStagedConteudoPlain(draftConteudoPlain);
+      // Same as the caption above: the body shown is now the refetched one.
+      if (!touchedRef.current.has('texto')) {
+        seedBasesRef.current.conteudo = post.conteudo ?? null;
+        seedBasesRef.current.conteudo_plain = post.conteudo_plain ?? null;
+      }
       // Force RichTextContent to remount with the resynced body as its new
       // initial value -- see contentVersion's declaration above.
       setContentVersion((v) => v + 1);
@@ -432,6 +445,11 @@ export function CorrectionPanel({
     if (saveState === 'saved' && !editedSinceSend) {
       setStagedConteudo(draftConteudo);
       setStagedConteudoPlain(draftConteudoPlain);
+      // Same as the caption above: the body shown is now the refetched one.
+      if (!touchedRef.current.has('texto')) {
+        seedBasesRef.current.conteudo = post.conteudo ?? null;
+        seedBasesRef.current.conteudo_plain = post.conteudo_plain ?? null;
+      }
       setStagedCaption(captionBaseline);
       if (enteredSaved && comentario.trim() === '' && motivo === null) onSavedCleanRef.current?.();
     }
