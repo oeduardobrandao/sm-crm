@@ -935,6 +935,8 @@ describe('EntregasTab', () => {
       // counts (useWorkflowStageCommands), registered disabled until it opens.
       // `workflow-pending-suggestions` is the same dialog's count of posts with an
       // unreviewed client suggestion (a post_edit_suggestions read), same lifecycle.
+      // `auto-schedule-batch-suggestions` is the batch auto-schedule dialog's count of
+      // the same thing over the posts it would schedule, registered disabled with it.
       const { queryClient } = renderTab();
       await screen.findByText('Posts Agosto');
 
@@ -958,6 +960,7 @@ describe('EntregasTab', () => {
             'workspace-slug',
             'hub-token',
             'auto-schedule-batch-posts',
+            'auto-schedule-batch-suggestions',
             'post-processes-cliente',
             'post-covers-cliente',
             'clientePosts',
