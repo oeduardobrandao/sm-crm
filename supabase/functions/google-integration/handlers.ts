@@ -10,17 +10,22 @@
 
 import { insertAuditLog } from "../_shared/audit.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
+import { checkRateLimit } from "../_shared/rate-limit.ts";
 import {
   buildGoogleAuthUrl,
+  decryptGoogleToken,
   encryptGoogleToken,
   exchangeGoogleCode,
   fetchGoogleUserInfo,
+  getFreshGoogleToken,
   GOOGLE_PRODUCT_SCOPES,
+  GoogleApiError,
   googleFetch,
   type GoogleProduct,
   hasRequiredScopes,
   revokeGoogleToken,
 } from "../_shared/google.ts";
+import { type GbpLocationOption, listEligibleLocations } from "./locations.ts";
 import { createGoogleState, verifyGoogleState, type VerifiedGoogleState } from "./oauth-state.ts";
 import { type DbClient, loadClientInTenant, resolveTenant } from "./tenant.ts";
 
@@ -340,6 +345,409 @@ async function linkYouTubeChannel(
   return { kind: "in_use", otherName: otherClient?.nome ?? null };
 }
 
+// ─── Shared route guards ─────────────────────────────────────────────────────────────
+
+const GBP_SCOPE = GOOGLE_PRODUCT_SCOPES.gbp[0];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const LOCATION_NAME_RE = /^locations\/[^/\s]+$/;
+const MAX_LOCATIONS_PER_SAVE = 200;
+
+/** Tenant + `:clientId` (path segment 2 or 3) loaded inside the tenant. */
+async function requireClient(
+  svc: DbClient,
+  req: Request,
+  rawClientId: string,
+  cors: Record<string, string>,
+): Promise<{ userId: string; contaId: string; clientId: number } | Response> {
+  const tenant = await resolveTenant(req, svc, cors);
+  if (tenant instanceof Response) return tenant;
+  if (!/^\d+$/.test(rawClientId)) return json(cors, { error: "invalid_client" }, 400);
+  const clientId = parseInt(rawClientId, 10);
+  if (!(await loadClientInTenant(svc, clientId, tenant.contaId))) return json(cors, { error: "not_found" }, 404);
+  return { ...tenant, clientId };
+}
+
+async function requireGbpFeature(svc: DbClient, contaId: string, cors: Record<string, string>): Promise<Response | null> {
+  // deno-lint-ignore no-explicit-any
+  if (await effectivePlanFeature(svc as any, contaId, PRODUCT_FEATURE.gbp)) return null;
+  return json(cors, { error: "feature_disabled", feature: PRODUCT_FEATURE.gbp }, 403);
+}
+
+/** The connection must belong to the tenant; checked before any Google call. */
+async function connectionInTenant(svc: DbClient, connectionId: string, contaId: string): Promise<boolean> {
+  if (!UUID_RE.test(connectionId)) return false;
+  const { data, error } = await svc
+    .from("google_connections")
+    .select("id, status")
+    .eq("id", connectionId)
+    .eq("conta_id", contaId)
+    .maybeSingle();
+  if (error) throw new Error(`connection lookup failed: ${error.message}`);
+  return !!data;
+}
+
+/** Each listing walks every GBP account of the connection, so it is rate-limited per workspace. */
+async function locationsRateLimited(svc: DbClient, contaId: string): Promise<boolean> {
+  // deno-lint-ignore no-explicit-any
+  return !(await checkRateLimit(svc as any, `google-locations:${contaId}`, 20, 60));
+}
+
+/** R2: NOT_APPROVED / REVOKED have their own codes; every other Google failure is 502 unknown. */
+function googleErrorResponse(err: GoogleApiError, cors: Record<string, string>): Response {
+  if (err.code === "NOT_APPROVED") return json(cors, { error: "gmn_not_approved" }, 409);
+  if (err.code === "REVOKED") return json(cors, { error: "reconnect" }, 409);
+  if (err.code === "API_DISABLED") {
+    console.error("[google-integration] Google API disabled in the Cloud project:", err.message);
+  }
+  return json(cors, { error: "unknown" }, 502);
+}
+
+// ─── GET /summary/:clientId ──────────────────────────────────────────────────────────
+
+async function handleSummary(svc: DbClient, req: Request, rawClientId: string, cors: Record<string, string>) {
+  const ctx = await requireClient(svc, req, rawClientId, cors);
+  if (ctx instanceof Response) return ctx;
+
+  // deno-lint-ignore no-explicit-any
+  const ytOn = await effectivePlanFeature(svc as any, ctx.contaId, PRODUCT_FEATURE.youtube);
+  // deno-lint-ignore no-explicit-any
+  const gbpOn = await effectivePlanFeature(svc as any, ctx.contaId, PRODUCT_FEATURE.gbp);
+
+  let youtube: Record<string, unknown> | null = null;
+  if (ytOn) {
+    const { data: ch, error } = await svc
+      .from("youtube_channels")
+      .select(
+        "channel_id, title, handle, avatar_url, subscriber_count, view_count, video_count, authorization_status, last_synced_at, connection_id",
+      )
+      .eq("client_id", ctx.clientId)
+      .eq("conta_id", ctx.contaId)
+      .maybeSingle();
+    if (error) throw new Error(`youtube_channels read failed: ${error.message}`);
+    if (ch) {
+      const { data: conn } = await svc
+        .from("google_connections")
+        .select("email")
+        .eq("id", ch.connection_id)
+        .eq("conta_id", ctx.contaId)
+        .maybeSingle();
+      youtube = {
+        channelId: ch.channel_id,
+        title: ch.title ?? null,
+        handle: ch.handle ?? null,
+        avatarUrl: ch.avatar_url ?? null,
+        subscriberCount: ch.subscriber_count ?? null,
+        viewCount: ch.view_count ?? null,
+        videoCount: ch.video_count ?? null,
+        authorizationStatus: ch.authorization_status,
+        connectionEmail: conn?.email ?? null,
+        lastSyncedAt: ch.last_synced_at ?? null,
+      };
+    }
+  }
+
+  let gmn: Record<string, unknown> | null = null;
+  if (gbpOn) {
+    const { data: locs, error: locError } = await svc
+      .from("gbp_locations")
+      .select("id, title, address_line, average_rating, total_review_count, status")
+      .eq("client_id", ctx.clientId)
+      .eq("conta_id", ctx.contaId)
+      .in("status", ["active", "revoked"])
+      .order("title", { ascending: true });
+    if (locError) throw new Error(`gbp_locations read failed: ${locError.message}`);
+    const { data: conns, error: connError } = await svc
+      .from("google_connections")
+      .select("id, email, status")
+      .eq("conta_id", ctx.contaId)
+      .contains("scopes", [GBP_SCOPE])
+      .order("email", { ascending: true });
+    if (connError) throw new Error(`google_connections read failed: ${connError.message}`);
+    gmn = {
+      locations: (locs ?? []).map((l: Record<string, unknown>) => ({
+        id: l.id,
+        title: l.title ?? null,
+        addressLine: l.address_line ?? null,
+        averageRating: l.average_rating === null || l.average_rating === undefined ? null : Number(l.average_rating),
+        totalReviewCount: l.total_review_count ?? null,
+        status: l.status,
+      })),
+      connections: (conns ?? []).map((c: Record<string, unknown>) => ({ id: c.id, email: c.email, status: c.status })),
+    };
+  }
+
+  return json(cors, { youtube, gmn });
+}
+
+// ─── GET /locations/:clientId?connection=<uuid> ──────────────────────────────────────
+
+interface LinkedRow {
+  id?: string;
+  location_name: string;
+  client_id: number;
+  connection_id?: string | null;
+  status: string;
+}
+
+async function handleListLocations(
+  svc: DbClient,
+  req: Request,
+  rawClientId: string,
+  url: URL,
+  cors: Record<string, string>,
+) {
+  const ctx = await requireClient(svc, req, rawClientId, cors);
+  if (ctx instanceof Response) return ctx;
+  const gate = await requireGbpFeature(svc, ctx.contaId, cors);
+  if (gate) return gate;
+
+  const connectionId = url.searchParams.get("connection") ?? "";
+  if (!(await connectionInTenant(svc, connectionId, ctx.contaId))) return json(cors, { error: "not_found" }, 404);
+  if (await locationsRateLimited(svc, ctx.contaId)) return json(cors, { error: "rate_limited" }, 429);
+
+  const token = await getFreshGoogleToken(svc, connectionId);
+  const options = await listEligibleLocations(token);
+  if (options.length === 0) return json(cors, { options: [] });
+
+  // Units of this workspace that already belong to a client (active or awaiting reconnect).
+  const { data: linked, error } = await svc
+    .from("gbp_locations")
+    .select("location_name, client_id, connection_id, status")
+    .eq("conta_id", ctx.contaId)
+    .in("location_name", options.map((o) => o.locationName))
+    .in("status", ["active", "revoked"]);
+  if (error) throw new Error(`gbp_locations read failed: ${error.message}`);
+  const linkedBy = new Map<string, LinkedRow>(((linked ?? []) as LinkedRow[]).map((r) => [r.location_name, r]));
+
+  const clientIds = [...new Set([...linkedBy.values()].map((r) => r.client_id))];
+  const names = new Map<number, string>();
+  if (clientIds.length) {
+    const { data: clients, error: clientError } = await svc
+      .from("clientes")
+      .select("id, nome")
+      .eq("conta_id", ctx.contaId)
+      .in("id", clientIds);
+    if (clientError) throw new Error(`clientes read failed: ${clientError.message}`);
+    for (const c of (clients ?? []) as Array<{ id: number; nome: string }>) names.set(c.id, c.nome);
+  }
+
+  return json(cors, {
+    options: options.map((o) => {
+      const row = linkedBy.get(o.locationName);
+      const linkedClientId = row ? row.client_id : null;
+      const takenByOther = linkedClientId !== null && linkedClientId !== ctx.clientId;
+      // R7 mirror: a unit this client already has on this connection stays selectable even if
+      // Google stopped reporting it verified, so the picker never forces an unlink.
+      const keptHere = !!row && row.client_id === ctx.clientId && row.connection_id === connectionId &&
+        row.status === "active";
+      return {
+        ...o,
+        linkedClientId,
+        linkedClientName: linkedClientId !== null ? names.get(linkedClientId) ?? null : null,
+        eligible: keptHere || (o.hasVoiceOfMerchant && !takenByOther),
+      };
+    }),
+  });
+}
+
+// ─── POST /locations/:clientId { connectionId, locationNames } ───────────────────────
+
+function parseLinkBody(body: unknown): { connectionId: string; locationNames: string[] } | null {
+  if (!body || typeof body !== "object") return null;
+  const { connectionId, locationNames } = body as Record<string, unknown>;
+  if (typeof connectionId !== "string" || !UUID_RE.test(connectionId)) return null;
+  if (!Array.isArray(locationNames) || locationNames.length > MAX_LOCATIONS_PER_SAVE) return null;
+  if (!locationNames.every((n) => typeof n === "string" && LOCATION_NAME_RE.test(n))) return null;
+  return { connectionId, locationNames: [...new Set(locationNames as string[])] };
+}
+
+async function handleLinkLocations(svc: DbClient, req: Request, rawClientId: string, cors: Record<string, string>) {
+  const ctx = await requireClient(svc, req, rawClientId, cors);
+  if (ctx instanceof Response) return ctx;
+  const gate = await requireGbpFeature(svc, ctx.contaId, cors);
+  if (gate) return gate;
+
+  let parsed: ReturnType<typeof parseLinkBody>;
+  try {
+    parsed = parseLinkBody(await req.json());
+  } catch {
+    parsed = null;
+  }
+  if (!parsed) return json(cors, { error: "invalid_body" }, 400);
+  const { connectionId, locationNames } = parsed;
+
+  if (!(await connectionInTenant(svc, connectionId, ctx.contaId))) return json(cors, { error: "not_found" }, 404);
+  // The save re-lists every account too, so it shares the listing budget.
+  if (await locationsRateLimited(svc, ctx.contaId)) return json(cors, { error: "rate_limited" }, 429);
+
+  const token = await getFreshGoogleToken(svc, connectionId);
+  const fromGoogle = new Map((await listEligibleLocations(token)).map((o) => [o.locationName, o]));
+
+  let requestedRows: LinkedRow[] = [];
+  if (locationNames.length) {
+    const { data, error } = await svc
+      .from("gbp_locations")
+      .select("id, location_name, client_id, connection_id, status")
+      .eq("conta_id", ctx.contaId)
+      .in("location_name", locationNames);
+    if (error) throw new Error(`gbp_locations read failed: ${error.message}`);
+    requestedRows = (data ?? []) as LinkedRow[];
+  }
+  const requestedBy = new Map(requestedRows.map((r) => [r.location_name, r]));
+
+  // This client's units on THIS connection: the only ones this save may unlink.
+  const { data: mineData, error: mineError } = await svc
+    .from("gbp_locations")
+    .select("id, location_name")
+    .eq("conta_id", ctx.contaId)
+    .eq("client_id", ctx.clientId)
+    .eq("connection_id", connectionId)
+    .eq("status", "active");
+  if (mineError) throw new Error(`gbp_locations read failed: ${mineError.message}`);
+  const mine = (mineData ?? []) as Array<{ id: string; location_name: string }>;
+  const keptHere = new Set(mine.map((r) => r.location_name));
+
+  // Validate everything before writing anything. R7: a unit already linked to this client on
+  // this connection stays accepted even if Google no longer reports it eligible.
+  for (const name of locationNames) {
+    if (keptHere.has(name)) continue;
+    const option = fromGoogle.get(name);
+    const row = requestedBy.get(name);
+    const takenByOther = !!row && row.client_id !== ctx.clientId && row.status !== "disconnected";
+    if (!option || !option.hasVoiceOfMerchant || takenByOther) {
+      return json(cors, { error: "location_unavailable", locationName: name }, 409);
+    }
+  }
+
+  // Upsert BEFORE unlink: the unlink's revoke branch can delete the connection this upsert
+  // references. Titles and addresses always come from Google, never from the request. A kept
+  // unit Google no longer lists is left as is.
+  const upserts = locationNames
+    .map((name) => fromGoogle.get(name))
+    .filter((o): o is GbpLocationOption => !!o)
+    .map((o) => ({
+      conta_id: ctx.contaId,
+      client_id: ctx.clientId,
+      connection_id: connectionId,
+      account_name: o.accountName,
+      location_name: o.locationName,
+      title: o.title,
+      address_line: o.addressLine,
+      website: o.website,
+      has_voice_of_merchant: o.hasVoiceOfMerchant,
+      status: "active",
+      disconnected_at: null,
+    }));
+  if (upserts.length) {
+    const { error } = await svc.from("gbp_locations").upsert(upserts, { onConflict: "conta_id,location_name" });
+    if (error) throw new Error(`gbp_locations upsert failed: ${error.message}`);
+  }
+
+  const wanted = new Set(locationNames);
+  const removed = mine.filter((r) => !wanted.has(r.location_name));
+  for (const row of removed) {
+    const { data, error } = await svc.rpc("google_unlink_gbp_location", {
+      p_conta_id: ctx.contaId,
+      p_location_id: row.id,
+    });
+    if (error) {
+      if (error.code === "P0002") continue; // removed concurrently
+      throw new Error(`google_unlink_gbp_location failed: ${error.message}`);
+    }
+    await processUnlinkDecision(svc, data);
+  }
+
+  await insertAuditLog(svc, {
+    conta_id: ctx.contaId,
+    actor_user_id: ctx.userId,
+    action: "gmn-link",
+    resource_type: "gbp_location",
+    metadata: {
+      client_id: ctx.clientId,
+      connection_id: connectionId,
+      linked: locationNames,
+      unlinked: removed.map((r) => r.location_name),
+    },
+  });
+
+  return json(cors, { linked: locationNames.length });
+}
+
+// ─── POST /disconnect/youtube/:clientId ───────────────────────────────────────────────
+
+async function handleDisconnectYouTube(svc: DbClient, req: Request, rawClientId: string, cors: Record<string, string>) {
+  const ctx = await requireClient(svc, req, rawClientId, cors);
+  if (ctx instanceof Response) return ctx;
+
+  const { data, error } = await svc.rpc("google_unlink_youtube", {
+    p_conta_id: ctx.contaId,
+    p_client_id: ctx.clientId,
+  });
+  if (error) {
+    if (error.code === "P0002") return json(cors, { error: "not_found" }, 404);
+    throw new Error(`google_unlink_youtube failed: ${error.message}`);
+  }
+  await processUnlinkDecision(svc, data);
+
+  await insertAuditLog(svc, {
+    conta_id: ctx.contaId,
+    actor_user_id: ctx.userId,
+    action: "youtube-unlink",
+    resource_type: "youtube_channel",
+    metadata: { client_id: ctx.clientId },
+  });
+  return json(cors, { ok: true });
+}
+
+// ─── Revocation after a committed unlink ─────────────────────────────────────────────
+
+/**
+ * Runs after the unlink RPC committed. When it decided to revoke, revokes the queued token at
+ * Google: success deletes the `google_revocations` row, failure bumps `attempts` and records
+ * `last_error` for Phase 2's gbp-sync-cron to retry. Never throws: the unlink already happened.
+ */
+async function processUnlinkDecision(svc: DbClient, data: unknown): Promise<void> {
+  const decision = (Array.isArray(data) ? data[0] : data) as
+    | { should_revoke?: boolean; revocation_id?: string | null }
+    | null
+    | undefined;
+  if (!decision?.should_revoke || !decision.revocation_id) return;
+  const revocationId = decision.revocation_id;
+
+  try {
+    const { data: row, error } = await svc
+      .from("google_revocations")
+      .select("id, encrypted_token, token_kind, attempts")
+      .eq("id", revocationId)
+      .maybeSingle();
+    if (error || !row) {
+      console.error(`[google-integration] revocation ${revocationId} not readable: ${error?.message ?? "missing"}`);
+      return;
+    }
+
+    let lastError: string | null = null;
+    try {
+      const token = await decryptGoogleToken(row.encrypted_token, row.token_kind === "access" ? "access" : "refresh");
+      if (!(await revokeGoogleToken(token))) lastError = "revoke_failed";
+    } catch {
+      lastError = "decrypt_failed";
+    }
+
+    if (lastError === null) {
+      const { error: delError } = await svc.from("google_revocations").delete().eq("id", revocationId);
+      if (delError) console.error(`[google-integration] revocation ${revocationId} delete failed: ${delError.message}`);
+      return;
+    }
+    const { error: updError } = await svc
+      .from("google_revocations")
+      .update({ attempts: (Number(row.attempts) || 0) + 1, last_error: lastError })
+      .eq("id", revocationId);
+    if (updError) console.error(`[google-integration] revocation ${revocationId} update failed: ${updError.message}`);
+  } catch (err) {
+    console.error(`[google-integration] revocation ${revocationId} failed:`, (err as Error).message);
+  }
+}
+
 // ─── Dispatch ──────────────────────────────────────────────────────────────────────────
 
 export function createGoogleIntegrationHandler(deps: GoogleIntegrationDeps) {
@@ -361,8 +769,23 @@ export function createGoogleIntegrationHandler(deps: GoogleIntegrationDeps) {
       if (req.method === "GET" && /^\/auth\/[^/]+$/.test(path)) {
         return await handleAuth(svc, req, path, url, cors);
       }
+      const segs = path.split("/"); // ["", route, ...]
+      if (req.method === "GET" && segs.length === 3 && segs[1] === "summary") {
+        return await handleSummary(svc, req, segs[2], cors);
+      }
+      if (segs.length === 3 && segs[1] === "locations") {
+        if (req.method === "GET") return await handleListLocations(svc, req, segs[2], url, cors);
+        if (req.method === "POST") return await handleLinkLocations(svc, req, segs[2], cors);
+      }
+      if (req.method === "POST" && segs.length === 4 && segs[1] === "disconnect" && segs[2] === "youtube") {
+        return await handleDisconnectYouTube(svc, req, segs[3], cors);
+      }
       return json(cors, { error: "not_found" }, 404);
     } catch (err) {
+      if (err instanceof GoogleApiError) {
+        console.error(`[google-integration] Google error ${err.code} (${err.status}): ${err.message}`);
+        return googleErrorResponse(err, cors);
+      }
       console.error("[google-integration] error:", err instanceof Error ? err.message : String(err));
       return json(cors, { error: "unknown" }, 500);
     }
