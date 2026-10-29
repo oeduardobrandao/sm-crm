@@ -153,7 +153,7 @@
 - Test: `supabase/tests/entitlements/99_google_purge_rpcs.sql`
 
 **Interfaces:**
-- Consumes: Tasks 1-2 tables; the Phase 1 functions `_google_revoke_if_unused(text)`, `google_unlink_youtube(uuid, bigint)` and `google_mark_revoked(uuid)` (`20261107000006`).
+- Consumes: Tasks 1-2 tables; the Phase 1 functions `_google_revoke_if_unused(text)`, `google_unlink_youtube(uuid, bigint)` and `google_mark_revoked(uuid)` (`20261108000003`).
 - Produces (all SECURITY DEFINER, `SET search_path = public, pg_temp`, EXECUTE for `service_role` only):
   - `youtube_purge_channel(p_conta_id uuid, p_channel_id text, p_client_id bigint) RETURNS int`. It returns the count of PDF paths queued and deletes:
     - every `youtube_*` history row for `(conta_id, channel_id)`;
