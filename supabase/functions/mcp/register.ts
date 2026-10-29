@@ -11,9 +11,13 @@ import {
 } from "../_shared/mcp-token.ts";
 import type { Deps } from "./queries.ts";
 import { FINANCEIRO_ERROS } from "./financeiro-errors.ts";
+import { TOOL_META } from "./tool-meta.ts";
 
-export function jsonResult(data: unknown) {
-  return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
+export function jsonResult(data: unknown, meta?: Record<string, unknown>) {
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(data) }],
+    ...(meta && Object.keys(meta).length > 0 ? { _meta: meta } : {}),
+  };
 }
 
 export function errorResult(e: unknown) {
@@ -53,6 +57,10 @@ export interface RegisterOpts {
   ownerOnly?: boolean;
   /** Extra plan feature required before `run` (with `ownerOnly`). */
   feature?: FinanceiroFeature;
+  /** Tool `_meta` (descriptor level), e.g. `ui` hints. Omitted from the registration when unset. */
+  meta?: Record<string, unknown>;
+  /** Awaited after `run` and the audit; a non-empty object is attached as the result's `_meta`. */
+  resultMeta?: (args: any, data: any) => Promise<Record<string, unknown> | undefined>;
 }
 
 const FEATURE_OFF_MESSAGE: Record<FinanceiroFeature, string> = {
@@ -75,8 +83,22 @@ export function register(
   opts?: RegisterOpts,
 ) {
   // Per-deps and opt-in (never a module global): the structural test reads it, production skips it.
+  const meta = TOOL_META[name];
+  if (!meta) throw new Error(`missing TOOL_META for ${name}`);
   deps.registry?.push({ name, scope, ownerOnly: opts?.ownerOnly === true });
-  server.tool(name, description, shape, async (args: any) => {
+  const config: Record<string, unknown> = {
+    title: meta.title,
+    description,
+    inputSchema: shape,
+    annotations: {
+      title: meta.title,
+      readOnlyHint: meta.readOnly,
+      destructiveHint: meta.destructive ?? false,
+      openWorldHint: meta.openWorld ?? false,
+    },
+  };
+  if (opts?.meta !== undefined) config._meta = opts.meta;
+  server.registerTool(name, config, async (args: any) => {
     try {
       requireScope(deps.ctx, scope);
       if (opts?.ownerOnly) {
@@ -95,7 +117,8 @@ export function register(
       // auditArgs the metadata is empty.
       const defaultAudit = opts?.ownerOnly ? () => ({}) : (a: any) => a;
       await audit(deps, name, (auditArgs ?? defaultAudit)(args ?? {}, data));
-      return jsonResult(data);
+      const resultMeta = opts?.resultMeta ? await opts.resultMeta(args ?? {}, data) : undefined;
+      return jsonResult(data, resultMeta);
     } catch (e) {
       return errorResult(e);
     }

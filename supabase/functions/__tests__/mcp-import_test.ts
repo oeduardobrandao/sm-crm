@@ -275,7 +275,7 @@ function makeFakeServer() {
   return {
     handlers: {} as Record<string, (a: unknown) => Promise<{ content: { type: string; text: string }[]; isError?: boolean }>>,
     // deno-lint-ignore no-explicit-any
-    tool(name: string, _d: any, _s: any, h: any) { this.handlers[name] = h; },
+    registerTool(name: string, _c: any, h: any) { this.handlers[name] = h; },
   };
 }
 

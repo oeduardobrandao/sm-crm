@@ -188,7 +188,7 @@ Deno.test("mcp-tarefas: list_tasks tool denies a ctx missing tarefas:read", asyn
   const server = {
     handlers: {} as Record<string, (a: unknown) => Promise<{ content: { type: string; text: string }[]; isError?: boolean }>>,
     // deno-lint-ignore no-explicit-any
-    tool(name: string, _d: any, _s: any, h: any) { this.handlers[name] = h; },
+    registerTool(name: string, _c: any, h: any) { this.handlers[name] = h; },
   };
   // deno-lint-ignore no-explicit-any
   registerTools(server as any, deps);
@@ -207,7 +207,7 @@ Deno.test("mcp-tarefas: create_task audit row carries task_id via the extended e
   const server = {
     handlers: {} as Record<string, (a: unknown) => Promise<unknown>>,
     // deno-lint-ignore no-explicit-any
-    tool(name: string, _d: any, _s: any, h: any) { this.handlers[name] = h; },
+    registerTool(name: string, _c: any, h: any) { this.handlers[name] = h; },
   };
   // deno-lint-ignore no-explicit-any
   registerTools(server as any, deps);

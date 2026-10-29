@@ -35,11 +35,11 @@ Deno.test("mcp-financeiro-gate: owner passes, admin and agent refused", async ()
     const { db } = makeFakeDb({});
     const server = fakeServer();
     let ran = 0;
-    register(server, makeDeps(db, { role }), "financeiro_x", "financeiro:read", "d", {}, async () => {
+    register(server, makeDeps(db, { role }), "list_lancamentos", "financeiro:read", "d", {}, async () => {
       ran++;
       return { ok: true };
     }, undefined, { ownerOnly: true });
-    const res = await server.handlers["financeiro_x"]({});
+    const res = await server.handlers["list_lancamentos"]({});
     if (allowed) {
       assertEquals(ran, 1, `role ${role} runs`);
       assert(!res.isError, "owner not an error");
@@ -58,16 +58,16 @@ Deno.test("mcp-financeiro-gate: owner passes, admin and agent refused", async ()
 Deno.test("mcp-financeiro-gate: scope is checked before the owner gate", async () => {
   const { db } = makeFakeDb({});
   const server = fakeServer();
-  register(server, makeDeps(db, { role: "agent", scopes: [] }), "financeiro_x", "financeiro:read", "d", {}, async () => ({}), undefined, { ownerOnly: true });
-  const res = await server.handlers["financeiro_x"]({});
+  register(server, makeDeps(db, { role: "agent", scopes: [] }), "list_lancamentos", "financeiro:read", "d", {}, async () => ({}), undefined, { ownerOnly: true });
+  const res = await server.handlers["list_lancamentos"]({});
   assert(errorText(res).includes("financeiro:read"), "names the missing scope");
 });
 
 Deno.test("mcp-financeiro-gate: a refused non-owner never reaches the plan check or the db", async () => {
   const { db, calls } = makeFakeDb({});
   const server = fakeServer();
-  register(server, makeDeps(db, { role: "admin" }), "financeiro_x", "financeiro:read", "d", {}, async () => ({}), undefined, { ownerOnly: true });
-  await server.handlers["financeiro_x"]({});
+  register(server, makeDeps(db, { role: "admin" }), "list_lancamentos", "financeiro:read", "d", {}, async () => ({}), undefined, { ownerOnly: true });
+  await server.handlers["list_lancamentos"]({});
   assertEquals(calls.length, 0, "no db call before the owner gate");
 });
 
@@ -75,11 +75,11 @@ Deno.test("mcp-financeiro-gate: feature_financial off refuses before run", async
   const { db, calls } = makeFakeDb({}, { effective_plan_feature: [{ data: false, error: null }] });
   const server = fakeServer();
   let ran = 0;
-  register(server, makeDeps(db), "financeiro_x", "financeiro:read", "d", {}, async () => {
+  register(server, makeDeps(db), "list_lancamentos", "financeiro:read", "d", {}, async () => {
     ran++;
     return {};
   }, undefined, { ownerOnly: true });
-  const res = await server.handlers["financeiro_x"]({});
+  const res = await server.handlers["list_lancamentos"]({});
   assertEquals(ran, 0);
   assert(res.isError === true);
   assertEquals(errorText(res), "O plano deste workspace não inclui o Financeiro.");
@@ -93,8 +93,8 @@ Deno.test("mcp-financeiro-gate: feature_financeiro_v2 is checked only when asked
   {
     const { db, calls } = makeFakeDb({});
     const server = fakeServer();
-    register(server, makeDeps(db), "t", "financeiro:read", "d", {}, async () => ({ ok: 1 }), undefined, { ownerOnly: true });
-    const res = await server.handlers["t"]({});
+    register(server, makeDeps(db), "get_rentabilidade", "financeiro:read", "d", {}, async () => ({ ok: 1 }), undefined, { ownerOnly: true });
+    const res = await server.handlers["get_rentabilidade"]({});
     assert(!res.isError);
     assertEquals(calls.filter((c) => c.table === "rpc:effective_plan_feature").length, 1);
   }
@@ -105,11 +105,11 @@ Deno.test("mcp-financeiro-gate: feature_financeiro_v2 is checked only when asked
     });
     const server = fakeServer();
     let ran = 0;
-    register(server, makeDeps(db), "t", "financeiro:read", "d", {}, async () => {
+    register(server, makeDeps(db), "get_rentabilidade", "financeiro:read", "d", {}, async () => {
       ran++;
       return {};
     }, undefined, { ownerOnly: true, feature: "feature_financeiro_v2" });
-    const res = await server.handlers["t"]({});
+    const res = await server.handlers["get_rentabilidade"]({});
     assertEquals(ran, 0);
     assertEquals(errorText(res), "O Financeiro v2 não está ativo neste workspace.");
     assertEquals(calls[1].args[0], { ws_id: "workspace-A", feature_key: "feature_financeiro_v2" });
@@ -118,22 +118,22 @@ Deno.test("mcp-financeiro-gate: feature_financeiro_v2 is checked only when asked
   {
     const { db } = makeFakeDb({});
     const server = fakeServer();
-    register(server, makeDeps(db), "t", "financeiro:read", "d", {}, async () => ({ ok: 1 }), undefined, { ownerOnly: true, feature: "feature_financeiro_v2" });
-    assert(!(await server.handlers["t"]({})).isError);
+    register(server, makeDeps(db), "get_rentabilidade", "financeiro:read", "d", {}, async () => ({ ok: 1 }), undefined, { ownerOnly: true, feature: "feature_financeiro_v2" });
+    assert(!(await server.handlers["get_rentabilidade"]({})).isError);
   }
 });
 
 Deno.test("mcp-financeiro-gate: non-ownerOnly tools never run the owner or plan gates", async () => {
   const { db, calls } = makeFakeDb({});
   const server = fakeServer();
-  register(server, makeDeps(db, { role: "agent" }), "plain", "clientes:read", "d", {}, async () => ({ ok: 1 }));
+  register(server, makeDeps(db, { role: "agent" }), "list_clients", "clientes:read", "d", {}, async () => ({ ok: 1 }));
   // scopes in OWNER_CTX do not include clientes:read
-  const res = await server.handlers["plain"]({});
+  const res = await server.handlers["list_clients"]({});
   assert(errorText(res).includes("clientes:read"));
   const { db: db2, calls: calls2 } = makeFakeDb({});
   const server2 = fakeServer();
-  register(server2, makeDeps(db2, { role: "agent", scopes: ["clientes:read"] }), "plain", "clientes:read", "d", {}, async () => ({ ok: 1 }));
-  assert(!(await server2.handlers["plain"]({})).isError);
+  register(server2, makeDeps(db2, { role: "agent", scopes: ["clientes:read"] }), "list_clients", "clientes:read", "d", {}, async () => ({ ok: 1 }));
+  assert(!(await server2.handlers["list_clients"]({})).isError);
   assert(!calls2.some((c) => c.table === "rpc:effective_plan_feature"), "no plan rpc");
   assertEquals(calls.length, 0);
 });
@@ -143,11 +143,11 @@ Deno.test("mcp-financeiro-gate: the opt-in registry records name, scope and owne
   const server = fakeServer();
   const registry: RegisteredTool[] = [];
   const deps = makeDeps(db, {}, registry);
-  register(server, deps, "a", "financeiro:read", "d", {}, async () => ({}), undefined, { ownerOnly: true });
-  register(server, deps, "b", "clientes:read", "d", { x: z.string().optional() }, async () => ({}));
+  register(server, deps, "list_lancamentos", "financeiro:read", "d", {}, async () => ({}), undefined, { ownerOnly: true });
+  register(server, deps, "list_clients", "clientes:read", "d", { x: z.string().optional() }, async () => ({}));
   assertEquals(registry, [
-    { name: "a", scope: "financeiro:read", ownerOnly: true },
-    { name: "b", scope: "clientes:read", ownerOnly: false },
+    { name: "list_lancamentos", scope: "financeiro:read", ownerOnly: true },
+    { name: "list_clients", scope: "clientes:read", ownerOnly: false },
   ]);
 });
 
@@ -155,9 +155,9 @@ Deno.test("mcp-financeiro-gate: without a registry (production) register touches
   const { db } = makeFakeDb({});
   const server = fakeServer();
   const deps = makeDeps(db);
-  register(server, deps, "a", "financeiro:read", "d", {}, async () => ({ ok: true }), undefined, { ownerOnly: true });
+  register(server, deps, "list_lancamentos", "financeiro:read", "d", {}, async () => ({ ok: true }), undefined, { ownerOnly: true });
   assert(!("registry" in deps), "no collector is created on the deps");
-  assert(!(await server.handlers["a"]({})).isError, "the tool still runs");
+  assert(!(await server.handlers["list_lancamentos"]({})).isError, "the tool still runs");
   // The module no longer exports a shared, per-isolate collector.
   const mod = await import("../mcp/register.ts");
   assert(!("REGISTERED" in mod), "no module-global REGISTERED");
@@ -400,22 +400,22 @@ Deno.test("mcp-financeiro-gate: audit resource_id from lancamento_id/recorrente_
   for (const [args, expected] of cases) {
     const { db, calls } = makeFakeDb({});
     const server = fakeServer();
-    register(server, makeDeps(db), "financeiro_x", "financeiro:write", "d", {}, async () => ({}), () => args, { ownerOnly: true });
-    const res = await server.handlers["financeiro_x"]({});
+    register(server, makeDeps(db), "list_lancamentos", "financeiro:write", "d", {}, async () => ({}), () => args, { ownerOnly: true });
+    const res = await server.handlers["list_lancamentos"]({});
     assert(!res.isError);
     const row = insertPayload(calls, "audit_log") as Record<string, any>;
     assertEquals(row.resource_id, expected, JSON.stringify(args));
-    assertEquals(row.action, "mcp.financeiro_x");
+    assertEquals(row.action, "mcp.list_lancamentos");
   }
 });
 
 Deno.test("mcp-financeiro-gate: an ownerOnly tool without auditArgs audits empty args", async () => {
   const { db, calls } = makeFakeDb({});
   const server = fakeServer();
-  register(server, makeDeps(db), "financeiro_x", "financeiro:read", "d", {}, async () => ({ ok: true }), undefined, {
+  register(server, makeDeps(db), "list_lancamentos", "financeiro:read", "d", {}, async () => ({ ok: true }), undefined, {
     ownerOnly: true,
   });
-  await server.handlers["financeiro_x"]({ valor: 1234, descricao: "segredo" });
+  await server.handlers["list_lancamentos"]({ valor: 1234, descricao: "segredo" });
   const ins = calls.find((c) => c.table === "audit_log" && c.method === "insert");
   assert(ins, "audit insert");
   assertEquals((ins!.args[0] as any).metadata.args, {});

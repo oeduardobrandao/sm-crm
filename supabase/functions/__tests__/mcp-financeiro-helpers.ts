@@ -60,7 +60,7 @@ export function makeFakeDb(responses: Record<string, Resp[]>, rpc: Record<string
   return { db, calls };
 }
 
-/** Records `server.tool(name, description, shape, handler)` registrations, like the MCP SDK server. */
+/** Records `server.registerTool(name, config, handler)` registrations, like the MCP SDK server. */
 export function fakeServer() {
   const handlers: Record<string, (a: unknown) => Promise<{ content: { type: string; text: string }[]; isError?: boolean }>> = {};
   const descriptions: Record<string, string> = {};
@@ -70,10 +70,10 @@ export function fakeServer() {
     descriptions,
     shapes,
     // deno-lint-ignore no-explicit-any
-    tool(name: string, description: string, shape: any, handler: any) {
+    registerTool(name: string, config: any, handler: any) {
       handlers[name] = handler;
-      descriptions[name] = description;
-      shapes[name] = shape;
+      descriptions[name] = config.description;
+      shapes[name] = config.inputSchema;
     },
   };
 }
