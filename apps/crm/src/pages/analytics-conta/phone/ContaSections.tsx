@@ -467,30 +467,32 @@ export function StoriesSectionPhone({ data }: { data: StoriesAnalyticsResponse }
       </StatCardGrid>
       {data.stories.length > 0 && (
         <GroupedList header="Detalhamento por story" footer="Valor à direita: taxa de retenção.">
-          {data.stories.map((s) => {
-            const tone = s.retention_rate > 0.7 ? 'up' : s.retention_rate > 0.5 ? 'warn' : 'down';
-            return (
-              <Cell
-                key={s.instagram_media_id}
-                label={new Date(s.posted_at).toLocaleDateString('pt-BR', {
-                  day: '2-digit',
-                  month: 'short',
-                })}
-                subtitle={
-                  <span className="phone-an-cell-sub phone-an-cell-sub--wrap">
-                    Alcance {fmtNumber(s.reach)} · Impressões {fmtNumber(s.impressions)} · Avançaram{' '}
-                    {s.taps_forward} · Voltaram {s.taps_back} · Saídas {s.exits} · Respostas{' '}
-                    {s.replies}
-                  </span>
-                }
-                value={
-                  <span className={`phone-an-badge phone-an-badge--${tone}`}>
-                    {(s.retention_rate * 100).toFixed(1)}%
-                  </span>
-                }
-              />
-            );
-          })}
+          {[...data.stories]
+            .sort((a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime())
+            .map((s) => {
+              const tone = s.retention_rate > 0.7 ? 'up' : s.retention_rate > 0.5 ? 'warn' : 'down';
+              return (
+                <Cell
+                  key={s.instagram_media_id}
+                  label={new Date(s.posted_at).toLocaleDateString('pt-BR', {
+                    day: '2-digit',
+                    month: 'short',
+                  })}
+                  subtitle={
+                    <span className="phone-an-cell-sub phone-an-cell-sub--wrap">
+                      Alcance {fmtNumber(s.reach)} · Impressões {fmtNumber(s.impressions)} ·
+                      Avançaram {s.taps_forward} · Voltaram {s.taps_back} · Saídas {s.exits} ·
+                      Respostas {s.replies}
+                    </span>
+                  }
+                  value={
+                    <span className={`phone-an-badge phone-an-badge--${tone}`}>
+                      {(s.retention_rate * 100).toFixed(1)}%
+                    </span>
+                  }
+                />
+              );
+            })}
         </GroupedList>
       )}
     </>

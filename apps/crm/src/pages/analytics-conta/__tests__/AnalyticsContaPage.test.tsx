@@ -1014,6 +1014,62 @@ describe('AnalyticsContaPage', () => {
     expect(queryClientMock.cancelQueries).not.toHaveBeenCalled();
     expect(queryClientMock.fetchQuery).not.toHaveBeenCalled();
   });
+
+  it('orders the stories table by most recent first and sorts by a clicked column', () => {
+    seedCommonAnalyticsData();
+    const story = (id: string, posted_at: string, reach: number) => ({
+      instagram_media_id: id,
+      media_type: 'IMAGE',
+      thumbnail_url: null,
+      posted_at,
+      reach,
+      impressions: reach + 100,
+      replies: 0,
+      taps_forward: 0,
+      taps_back: 0,
+      exits: 0,
+      shares: 0,
+      retention_rate: 0.9,
+      skip_rate: 0,
+      back_rate: 0,
+    });
+    const kpis = {
+      stories_count: 3,
+      total_reach: 0,
+      avg_retention_rate: 0.9,
+      total_replies: 0,
+    };
+    // The API returns stories ranked by reach.
+    queryState['stories-analytics'] = {
+      data: {
+        stories: [
+          story('a', '2026-10-07T12:00:00Z', 732),
+          story('b', '2026-10-28T12:00:00Z', 640),
+          story('c', '2026-10-16T12:00:00Z', 600),
+        ],
+        kpis: { current: kpis, previous: null },
+      },
+    };
+
+    render(<AnalyticsContaPage />);
+
+    const table = screen.getByText('Detalhamento por story').parentElement!.querySelector('table')!;
+    const reachColumn = () =>
+      Array.from(table.querySelectorAll('tbody tr')).map((tr) => tr.children[1].textContent);
+
+    expect(reachColumn()).toEqual(['640', '600', '732']);
+    const dateHeader = within(table).getByRole('button', { name: /Data/ });
+    expect(dateHeader.textContent).toBe('Data ↓');
+
+    const reachHeader = within(table).getByRole('button', { name: /Alcance/ });
+    fireEvent.click(reachHeader);
+    expect(reachColumn()).toEqual(['732', '640', '600']);
+    expect(reachHeader.closest('th')!.getAttribute('aria-sort')).toBe('descending');
+
+    fireEvent.click(reachHeader);
+    expect(reachColumn()).toEqual(['600', '640', '732']);
+    expect(reachHeader.textContent).toBe('Alcance ↑');
+  });
 });
 
 describe('AnalyticsContaPage in the Vidro toolbar', () => {

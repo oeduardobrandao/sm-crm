@@ -69,6 +69,7 @@ import {
   type AudienceDemographics,
   type BestPostingTimes,
   type StoriesAnalyticsResponse,
+  type StoryInsight,
 } from '../../services/analytics';
 import { getInstagramSummary, syncInstagramData } from '../../services/instagram';
 import { sanitizeUrl } from '../../utils/security';
@@ -2695,8 +2696,44 @@ function AnalyticsContent({
 }
 
 // ---- Stories Section ----
+type StorySortCol =
+  | 'posted_at'
+  | 'reach'
+  | 'impressions'
+  | 'retention_rate'
+  | 'taps_forward'
+  | 'taps_back'
+  | 'exits'
+  | 'replies';
+
+const STORY_COLUMNS: { col: StorySortCol; label: string }[] = [
+  { col: 'posted_at', label: 'Data' },
+  { col: 'reach', label: 'Alcance' },
+  { col: 'impressions', label: 'Impressões' },
+  { col: 'retention_rate', label: 'Retenção' },
+  { col: 'taps_forward', label: 'Avançaram' },
+  { col: 'taps_back', label: 'Voltaram' },
+  { col: 'exits', label: 'Saídas' },
+  { col: 'replies', label: 'Respostas' },
+];
+
 function StoriesSection({ data }: { data: StoriesAnalyticsResponse }) {
   const { current, previous } = data.kpis;
+  const [sort, setSort] = useState<{ col: StorySortCol; dir: 'asc' | 'desc' }>({
+    col: 'posted_at',
+    dir: 'desc',
+  });
+
+  const sortedStories = useMemo(() => {
+    const value = (s: StoryInsight) =>
+      sort.col === 'posted_at' ? new Date(s.posted_at).getTime() : s[sort.col];
+    const sign = sort.dir === 'asc' ? 1 : -1;
+    return [...data.stories].sort((a, b) => (value(a) - value(b)) * sign);
+  }, [data.stories, sort]);
+
+  const handleSort = (col: StorySortCol) => {
+    setSort((s) => ({ col, dir: s.col === col ? (s.dir === 'asc' ? 'desc' : 'asc') : 'desc' }));
+  };
 
   return (
     <section className="animate-up" style={{ animationDelay: '0.4s' }}>
@@ -2747,58 +2784,34 @@ function StoriesSection({ data }: { data: StoriesAnalyticsResponse }) {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                  <th
-                    className="text-left py-2 px-2 font-medium"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    Data
-                  </th>
-                  <th
-                    className="text-right py-2 px-2 font-medium"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    Alcance
-                  </th>
-                  <th
-                    className="text-right py-2 px-2 font-medium"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    Impressões
-                  </th>
-                  <th
-                    className="text-right py-2 px-2 font-medium"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    Retenção
-                  </th>
-                  <th
-                    className="text-right py-2 px-2 font-medium"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    Avançaram
-                  </th>
-                  <th
-                    className="text-right py-2 px-2 font-medium"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    Voltaram
-                  </th>
-                  <th
-                    className="text-right py-2 px-2 font-medium"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    Saídas
-                  </th>
-                  <th
-                    className="text-right py-2 px-2 font-medium"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    Respostas
-                  </th>
+                  {STORY_COLUMNS.map(({ col, label }) => (
+                    <th
+                      key={col}
+                      className={`${col === 'posted_at' ? 'text-left' : 'text-right'} py-2 px-2 font-medium`}
+                      style={{ color: 'var(--text-muted)' }}
+                      aria-sort={
+                        sort.col === col
+                          ? sort.dir === 'asc'
+                            ? 'ascending'
+                            : 'descending'
+                          : 'none'
+                      }
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleSort(col)}
+                        className="font-medium"
+                        style={{ cursor: 'pointer', color: 'inherit' }}
+                      >
+                        {label}
+                        {sort.col === col && (sort.dir === 'asc' ? ' ↑' : ' ↓')}
+                      </button>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {data.stories.map((story) => {
+                {sortedStories.map((story) => {
                   const retPct = (story.retention_rate * 100).toFixed(1);
                   // --danger fails AA as text on a light card (see
                   // DESIGN_SYSTEM.md); keep it for the fill and swap in
