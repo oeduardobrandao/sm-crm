@@ -118,11 +118,11 @@ import { shouldOfferAutoSchedule, isEligibleToScheduleNow } from '../autoSchedul
 import { AutoSchedulePromptDialog, type AutoSchedulePromptPost } from './AutoSchedulePromptDialog';
 import { AutoScheduleBadge } from './AutoScheduleBadge';
 import { AutoScheduleBatchDialog } from './AutoScheduleBatchDialog';
-import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { shouldAutoCompleteApproval } from './autoComplete';
 import { fluxoRascunhoBanner } from '../approvalExit';
 import type { SuggestionField } from '../editSuggestionFields';
+import { classifyAcceptError, mentionIdsToSyncAfterAccept } from '../editSuggestionAccept';
 import { getErrorIdentifier, getPostProcessErrorToast } from '../postProcessErrors';
 import { RascunhoBanner } from './RascunhoBanner';
 import { PostTimelinePopover } from './PostTimelinePopover';
@@ -949,30 +949,11 @@ export function WorkflowDrawer({
         // `fields` is what the reviewer chose to apply (the card, or its conflict dialog).
         // `suggestion.updated_at` is the version on screen: the client may have saved a newer one.
         await acceptEditSuggestion(suggestion.id, suggestion.updated_at, fields);
-        // accept_edit_suggestion writes workflow_posts.conteudo server-side,
-        // bypassing updateWorkflowPost -- sync mentions here so @-mentions in
-        // an accepted client suggestion still land in the mencoes ledger.
-        // suggested_conteudo != null is required in addition to the
-        // changed_fields check: caption-only Story suggestions (see
-        // StoryPostCard) submit suggested_conteudo: null, and
-        // upsert_edit_suggestion's IS DISTINCT FROM comparison still puts
-        // 'conteudo' in changed_fields for that null-vs-existing-doc diff.
-        // accept_edit_suggestion COALESCEs and keeps the stored conteudo
-        // unchanged in that case, so syncing from the null doc here would
-        // wrongly wipe every mention in the ledger for a post whose content
-        // never actually changed.
-        // Only when texto was applied: keeping the team's texto keeps its live mentions, and
-        // syncing from the suggestion's doc then would wipe them.
-        if (
-          fields.includes('texto') &&
-          suggestion.changed_fields.includes('conteudo') &&
-          suggestion.suggested_conteudo != null
-        ) {
-          const membroIds = extractMentionsFromDoc(suggestion.suggested_conteudo)
-            .filter((ref) => ref.entityType === 'membro')
-            .map((ref) => ref.id);
-          await syncMentions('workflow_post', suggestion.post_id, membroIds);
-        }
+        // accept_edit_suggestion writes workflow_posts.conteudo server-side, bypassing
+        // updateWorkflowPost -- sync mentions here so @-mentions in an accepted client
+        // suggestion still land in the mencoes ledger (when exactly: see the helper).
+        const mentionIds = mentionIdsToSyncAfterAccept(suggestion, fields);
+        if (mentionIds) await syncMentions('workflow_post', suggestion.post_id, mentionIds);
         // Wait for the posts query to actually land the accepted content before
         // bumping editorVersions (which remounts <PostEditor> via its key prop).
         // PostEditor's TipTap instance is only ever hydrated once, at mount --
@@ -990,16 +971,17 @@ export function WorkflowDrawer({
         onRefresh();
       } catch (err) {
         // PostgrestError is a plain object, not an Error instance.
-        const message = String((err as { message?: unknown })?.message ?? '');
-        if (message.includes('suggestion_changed')) {
-          toast.error(t('workflowDrawer.suggestionChanged'));
-          refresh();
-          return;
-        }
-        // The post moved since the card was loaded: refresh() refetches the post and the
-        // suggestion, so the next Aceitar is judged against what the team has now.
-        if (message.includes('suggestion_conflict')) {
-          toast.error(t('workflowDrawer.suggestionConflict'));
+        const kind = classifyAcceptError(err);
+        if (kind !== 'other') {
+          // changed: the client saved a newer version. conflict: the post moved since the card
+          // was loaded. refresh() refetches both, so the next Aceitar is judged against fresh data.
+          toast.error(
+            t(
+              kind === 'changed'
+                ? 'workflowDrawer.suggestionChanged'
+                : 'workflowDrawer.suggestionConflict',
+            ),
+          );
           refresh();
           return;
         }

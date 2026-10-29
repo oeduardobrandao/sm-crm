@@ -219,3 +219,39 @@ describe('teamOnlyChangedFields', () => {
     ]);
   });
 });
+
+describe('caption-only Story suggestion (NULL suggested doc, `conteudo` still listed)', () => {
+  const storyCaption = () =>
+    suggestion({
+      suggested_conteudo: null,
+      suggested_conteudo_plain: '',
+      suggested_ig_caption: 'legenda do cliente',
+      changed_fields: ['conteudo', 'ig_caption'],
+    });
+
+  it('does not count texto as changed by the client', () => {
+    const states = suggestionFieldStates(post(), storyCaption());
+    expect(states[0]).toEqual({ field: 'texto', changed: false, conflict: false });
+    expect(states[1]).toEqual({ field: 'legenda', changed: true, conflict: false });
+  });
+
+  it('a team texto edit is not a texto conflict: texto becomes a team-only change', () => {
+    const live = post({ conteudo_plain: 'texto reescrito pela equipe' });
+    const states = suggestionFieldStates(live, storyCaption());
+    expect(states[0]).toEqual({ field: 'texto', changed: false, conflict: false });
+    expect(teamOnlyChangedFields(live, storyCaption())).toEqual(['texto']);
+  });
+
+  it('still counts texto when `conteudo_plain` changed, even with a NULL doc', () => {
+    const s = suggestion({
+      suggested_conteudo: null,
+      changed_fields: ['conteudo', 'conteudo_plain'],
+    });
+    expect(suggestionFieldStates(post(), s)[0].changed).toBe(true);
+  });
+
+  it('still counts a `conteudo` change that carries a real doc', () => {
+    const s = suggestion({ changed_fields: ['conteudo'] });
+    expect(suggestionFieldStates(post(), s)[0].changed).toBe(true);
+  });
+});

@@ -549,8 +549,8 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
     fireEvent.click(acceptButton);
 
     await waitFor(() =>
+      // `conteudo` with a NULL doc is not a texto change: only the legenda is offered.
       expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z', [
-        'texto',
         'legenda',
       ]),
     );

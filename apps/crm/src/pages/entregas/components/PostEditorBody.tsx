@@ -1630,7 +1630,7 @@ export function PostEditorBody({
           {teamOnlyFields.length > 0 && (
             <TeamOnlyFooter
               teamOnly={teamOnlyFields}
-              className="border-t border-amber-200/60 bg-amber-50 px-4 py-2.5"
+              className="rounded-none border-t border-amber-200/60 bg-amber-50 px-4 py-2.5"
             />
           )}
           {acceptFlow.dialog}

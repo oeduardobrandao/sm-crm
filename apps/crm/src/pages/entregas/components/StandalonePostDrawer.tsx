@@ -68,7 +68,6 @@ import {
 import { isGeralThread } from '@/store/comments';
 import { supabase } from '@/lib/supabase';
 import { buildUsableTokenMap } from '@/lib/hubTokenMap';
-import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import { useAuth } from '@/context/AuthContext';
 import { useClienteSocialAccounts } from '@/hooks/useClienteSocialAccounts';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
@@ -94,6 +93,7 @@ import { DuplicateDialog, type DuplicateTarget } from './DuplicateDialog';
 import { usePostProcessCommands } from '../hooks/usePostProcessCommands';
 import { postRascunhoBanner } from '../approvalExit';
 import type { SuggestionField } from '../editSuggestionFields';
+import { classifyAcceptError, mentionIdsToSyncAfterAccept } from '../editSuggestionAccept';
 import { RascunhoBanner } from './RascunhoBanner';
 import { getPostProcessErrorToast, isStaleStateError } from '../postProcessErrors';
 import {
@@ -532,17 +532,9 @@ export function StandalonePostDrawer({
         // `fields` is what the reviewer chose to apply (the card, or its conflict dialog).
         // `suggestion.updated_at` is the version on screen: the client may have saved a newer one.
         await acceptEditSuggestion(suggestion.id, suggestion.updated_at, fields);
-        // Only when texto was applied: keeping the team's texto keeps its live mentions.
-        if (
-          fields.includes('texto') &&
-          suggestion.changed_fields.includes('conteudo') &&
-          suggestion.suggested_conteudo != null
-        ) {
-          const membroIds = extractMentionsFromDoc(suggestion.suggested_conteudo)
-            .filter((ref) => ref.entityType === 'membro')
-            .map((ref) => ref.id);
-          await syncMentions('workflow_post', suggestion.post_id, membroIds);
-        }
+        // Server-side write bypasses updateWorkflowPost: re-sync mentions (when: see the helper).
+        const mentionIds = mentionIdsToSyncAfterAccept(suggestion, fields);
+        if (mentionIds) await syncMentions('workflow_post', suggestion.post_id, mentionIds);
         // Wait for the post query to actually land the accepted content before
         // bumping editorVersion (which remounts <PostEditor> via its key prop).
         // PostEditor's TipTap instance is only ever hydrated once, at mount --
@@ -557,16 +549,17 @@ export function StandalonePostDrawer({
         onRefresh();
       } catch (err) {
         // PostgrestError is a plain object, not an Error instance.
-        const message = String((err as { message?: unknown })?.message ?? '');
-        if (message.includes('suggestion_changed')) {
-          toast.error(t('standalonePostDrawer.suggestionChanged'));
-          refresh();
-          return;
-        }
-        // The post moved since the card was loaded: refresh() refetches the post and the
-        // suggestion, so the next Aceitar is judged against what the team has now.
-        if (message.includes('suggestion_conflict')) {
-          toast.error(t('standalonePostDrawer.suggestionConflict'));
+        const kind = classifyAcceptError(err);
+        if (kind !== 'other') {
+          // changed: the client saved a newer version. conflict: the post moved since the card
+          // was loaded. refresh() refetches both, so the next Aceitar is judged against fresh data.
+          toast.error(
+            t(
+              kind === 'changed'
+                ? 'standalonePostDrawer.suggestionChanged'
+                : 'standalonePostDrawer.suggestionConflict',
+            ),
+          );
           refresh();
           return;
         }

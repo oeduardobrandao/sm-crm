@@ -34,9 +34,14 @@ function legendaDiffersFromBase(post: LivePost, s: PostEditSuggestion): boolean 
 }
 
 function changedByClient(s: PostEditSuggestion, field: SuggestionField): boolean {
-  return field === 'texto'
-    ? s.changed_fields.includes('conteudo') || s.changed_fields.includes('conteudo_plain')
-    : s.changed_fields.includes('ig_caption');
+  if (field === 'legenda') return s.changed_fields.includes('ig_caption');
+  // A `conteudo` entry with a NULL suggested doc is the legacy ::text-compare artefact of a
+  // caption-only Story suggestion (null vs the existing doc): there is nothing to apply, so the
+  // CRM does not offer texto. A changed `conteudo_plain` is a real text change on its own.
+  return (
+    s.changed_fields.includes('conteudo_plain') ||
+    (s.changed_fields.includes('conteudo') && s.suggested_conteudo != null)
+  );
 }
 
 /** Always two entries, texto first. Mirrors accept_edit_suggestion's rules. */

@@ -177,12 +177,16 @@ export function useAcceptSuggestionFlow(
   post: Pick<WorkflowPost, 'conteudo' | 'conteudo_plain' | 'ig_caption'>,
   onAccept: (suggestion: PostEditSuggestion, fields: SuggestionField[]) => void,
 ) {
-  const [pending, setPending] = useState<PostEditSuggestion | null>(null);
+  // `open` is separate from `suggestion` on purpose: closing keeps the last suggestion so the
+  // dialog keeps rendering its fields through Radix's exit animation instead of emptying out.
+  const [state, setState] = useState<{ suggestion: PostEditSuggestion; open: boolean } | null>(
+    null,
+  );
 
   const request = (suggestion: PostEditSuggestion) => {
     const states = suggestionFieldStates(post, suggestion);
     if (states.some((st) => st.conflict)) {
-      setPending(suggestion);
+      setState({ suggestion, open: true });
       return;
     }
     onAccept(
@@ -191,18 +195,21 @@ export function useAcceptSuggestionFlow(
     );
   };
 
-  const states = pending ? suggestionFieldStates(post, pending) : [];
+  const close = () => setState((prev) => prev && { ...prev, open: false });
+
+  const states = state ? suggestionFieldStates(post, state.suggestion) : [];
   const dialog = (
     <AcceptSuggestionDialog
-      open={pending !== null}
+      open={state?.open ?? false}
       conflicts={states.filter((st) => st.conflict).map((st) => st.field)}
       applied={states.filter((st) => st.changed && !st.conflict).map((st) => st.field)}
       onConfirm={(fields) => {
-        if (pending) onAccept(pending, fields);
-        setPending(null);
+        // The dialog stays mounted while it fades out: a second click must not accept twice.
+        if (state?.open) onAccept(state.suggestion, fields);
+        close();
       }}
       onOpenChange={(open) => {
-        if (!open) setPending(null);
+        if (!open) close();
       }}
     />
   );

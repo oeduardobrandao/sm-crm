@@ -177,7 +177,12 @@ export function TeamOnlyFooter({
   const { t } = useTranslation('postEditor');
   if (teamOnly.length !== 1) return null;
   return (
-    <p className={cn('flex items-center gap-2 text-[12px] text-amber-900', className)}>
+    <p
+      className={cn(
+        'flex items-center gap-2 rounded-lg bg-amber-100 px-2.5 py-2 text-[12px] text-amber-900',
+        className,
+      )}
+    >
       <Info className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       <span>
         {t(
