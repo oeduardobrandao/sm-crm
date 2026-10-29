@@ -46,6 +46,7 @@ function setup(opts: {
   ip?: string;
   oauth?: boolean;
   putStatus?: number;
+  putThrows?: boolean;
   quota?: number | null;
 } = {}) {
   const { db, calls } = makeFakeDb(opts.tables ?? {}, opts.rpc ?? {});
@@ -58,7 +59,7 @@ function setup(opts: {
     signUrl: (k: string) => Promise.resolve(`signed:${k}`),
     signPutUrl: (k: string, mime: string, size: number) => {
       signed.push(`${k}|${mime}|${size}`);
-      return Promise.resolve(`https://r2.example/put/${k}`);
+      return Promise.resolve(`https://r2.example/put/${k}?X-Amz-Signature=sig123&X-Amz-Credential=cred`);
     },
     storageQuota: () => Promise.resolve(opts.quota === undefined ? null : opts.quota),
     resolveDns: (host: string, type: "A" | "AAAA") => {
@@ -67,7 +68,11 @@ function setup(opts: {
     },
     fetchUrl: (url: string, init: RequestInit) => {
       net.fetches.push({ url, init });
-      if (init.method === "PUT") return Promise.resolve(new Response(null, { status: opts.putStatus ?? 200 }));
+      if (init.method === "PUT") {
+        // Deno's fetch errors embed the full request URL, signature included.
+        if (opts.putThrows) return Promise.reject(new TypeError(`error sending request for url (${url})`));
+        return Promise.resolve(new Response(null, { status: opts.putStatus ?? 200 }));
+      }
       return Promise.resolve(
         new Response(opts.body ?? PNG_3x2, { headers: { "content-type": opts.contentType ?? "image/png" } }),
       );
@@ -209,6 +214,7 @@ Deno.test("attach: ineligible post refused before any fetch", withHosts(HOST, as
     [post(), links(10), { position: 3 }, "Este post já tem 10 mídias. Substitua uma lâmina."],
     [post(), links(2), { position: 5 }, "Esta lâmina não existe neste post. Escolha uma lâmina de 1 a 3."],
     [post(), links(2), { position: 3, replace: true }, "Esta lâmina não existe neste post. Escolha uma lâmina de 1 a 2."],
+    [post(), links(0), { position: 1, replace: true }, "Este post ainda não tem lâminas. Adicione a imagem como nova lâmina."],
   ];
   for (const [p, l, over, msg] of cases) {
     const { server, net, calls } = setup({ tables: { workflow_posts: [p], post_file_links: [l] } });
@@ -232,7 +238,7 @@ Deno.test("attach: success uploads to contas/<conta>/files/<uuid>.png and calls 
   assertEquals(signed, [`${key}|image/png|${PNG_3x2.byteLength}`]);
   assertEquals(puts(net).length, 1);
   const put = puts(net)[0];
-  assertEquals(put.url, `https://r2.example/put/${key}`);
+  assertEquals(put.url, `https://r2.example/put/${key}?X-Amz-Signature=sig123&X-Amz-Credential=cred`);
   assertEquals((put.init.headers as Record<string, string>)["Content-Type"], "image/png");
   assert(put.init.signal instanceof AbortSignal);
   assertEquals(rpcArgs(calls, "mcp_attach_post_file"), {
@@ -268,7 +274,56 @@ Deno.test("attach: PUT failure → generic message, no RPC, nothing queued", wit
   assertEquals(insertPayload(calls, "file_deletions"), undefined);
 }));
 
-Deno.test("attach: every RPC error queues the uploaded key and maps to pt-BR, never the raw error", withHosts(HOST, async () => {
+Deno.test("attach: PUT that throws logs neither the presigned URL nor its signature", withHosts(HOST, async () => {
+  const logged: string[] = [];
+  const original = console.error;
+  console.error = (...a: unknown[]) => {
+    logged.push(a.map((x) => (x instanceof Error ? `${x.name}: ${x.message}` : String(x))).join(" "));
+  };
+  try {
+    const { server, calls } = setup({ putThrows: true, tables: { workflow_posts: [post()], post_file_links: [links(1)] } });
+    const res = await server.tools.attach_image_to_post.call(attachArgs());
+    assertEquals(errorText(res), "Não foi possível salvar a imagem no post. Tente de novo.");
+    assert(!rpcCalled(calls));
+    assertEquals(insertPayload(calls, "file_deletions"), undefined);
+  } finally {
+    console.error = original;
+  }
+  assert(logged.length > 0, "the failure is logged");
+  for (const line of logged) {
+    assert(!line.includes("X-Amz"), line);
+    assert(!line.includes("r2.example"), line);
+    assert(!line.includes("https://"), line);
+  }
+}));
+
+Deno.test("attach: an RPC error that is not one of its raises (transport, 5xx) is never queued", withHosts(HOST, async () => {
+  for (
+    const raw of [
+      'duplicate key value violates unique constraint "post_file_links_one_cover"',
+      "FetchError: error sending request",
+      "upstream connect error 502",
+      "",
+    ]
+  ) {
+    const { server, calls } = setup({
+      tables: { workflow_posts: [post()], post_file_links: [links(1)] },
+      rpc: { mcp_attach_post_file: [{ data: null, error: { message: raw } }] },
+    });
+    const res = await server.tools.attach_image_to_post.call(attachArgs());
+    assertEquals(errorText(res), "Não foi possível salvar a imagem no post. Tente de novo.", raw);
+    assertEquals(insertPayload(calls, "file_deletions"), undefined, raw);
+  }
+}));
+
+Deno.test("attach and show read media in (sort_order, id) order", withHosts(HOST, async () => {
+  const { server, calls } = setup({ tables: { workflow_posts: [post()], post_file_links: [links(1)], clientes: [client] } });
+  await server.tools.show_attach_image.call({ post_id: 10, image: { download_url: URL_OK, file_id: "f" } });
+  const orders = calls.filter((c) => c.table === "post_file_links" && c.method === "order").map((c) => c.args[0]);
+  assertEquals(orders, ["sort_order", "id"]);
+}));
+
+Deno.test("attach: every RPC raise queues the uploaded key and maps to pt-BR, never the raw error", withHosts(HOST, async () => {
   const key = "contas/workspace-A/files/uuid-1.png";
   const cases: Array<[string, string]> = [
     ["media_full", "Este post já tem 10 mídias. Substitua uma lâmina."],
@@ -282,7 +337,6 @@ Deno.test("attach: every RPC error queues the uploaded key and maps to pt-BR, ne
     ["quota_exceeded", "Cota de armazenamento excedida. Libere espaço em Arquivos."],
     ["workspace_unavailable", "Você não tem mais acesso a este workspace no Mesaas."],
     ["invalid_file", "Não foi possível salvar a imagem no post. Tente de novo."],
-    ['duplicate key value violates unique constraint "post_file_links_one_cover"', "Não foi possível salvar a imagem no post. Tente de novo."],
   ];
   for (const [raw, msg] of cases) {
     const { server, calls } = setup({

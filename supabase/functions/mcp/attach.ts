@@ -47,7 +47,9 @@ const tipoMessage = (tipo: string) =>
   tipo === "reels" || tipo === "stories" ? `Posts do tipo ${tipo} não recebem imagens.` : MSG.tipoOther;
 const statusMessage = (status: string) => (CLIENT_STATUSES.includes(status) ? MSG.withClient : MSG.notEditable);
 const slideRangeMessage = (max: number) =>
-  `Esta lâmina não existe neste post. Escolha uma lâmina de 1 a ${max}.`;
+  max === 0
+    ? "Este post ainda não tem lâminas. Adicione a imagem como nova lâmina."
+    : `Esta lâmina não existe neste post. Escolha uma lâmina de 1 a ${max}.`;
 
 /** `MCP_IMAGE_HOSTS`: exact hostnames (comma-separated, trimmed, any case). Empty refuses every
  * image. A refusal logs only the hostname, so the pilot can read ChatGPT's file host from the log. */
@@ -84,7 +86,8 @@ async function loadMedia(d: Deps, postId: number): Promise<Array<{ r2_key: strin
     .select("sort_order, files!inner(r2_key)")
     .eq("conta_id", d.ctx.conta_id)
     .eq("post_id", postId)
-    .order("sort_order");
+    .order("sort_order")
+    .order("id"); // same (sort_order, id) order the RPC normalizes by
   return ((data ?? []) as any[]).map((l) => ({ r2_key: l.files.r2_key }));
 }
 
@@ -97,6 +100,18 @@ function ineligibleReason(p: any): string | null {
   if (!EDITABLE_STATUSES.includes(p.status)) return statusMessage(p.status);
   if (!IMAGE_TIPOS.includes(p.tipo)) return tipoMessage(p.tipo);
   return null;
+}
+
+const RPC_RAISES = [
+  "media_full", "post_not_found", "post_published", "invalid_position", "invalid_file", "quota_exceeded",
+  "workspace_unavailable",
+];
+
+/** True only for the RPC's own raises, which roll the transaction back. A transport failure or a
+ * gateway 5xx also comes back as `{error}` and may follow a commit, so its key is never queued. */
+function isRpcRaise(message: string): boolean {
+  return RPC_RAISES.includes(message) || message.startsWith("post_not_editable:") ||
+    message.startsWith("tipo_not_image:");
 }
 
 function mapAttachError(message: string): string {
@@ -248,7 +263,8 @@ export function registerAttachTools(server: any, deps: Deps): void {
         });
         await put.body?.cancel().catch(() => undefined);
       } catch (e) {
-        console.error("[mcp] attach image upload failed:", e);
+        // Never log `e` itself: fetch errors embed the presigned URL (a live write credential).
+        console.error(`[mcp] attach image upload failed: ${e instanceof Error ? e.name : "unknown"}`);
         throw new McpInputError(MSG.saveFailed);
       }
       if (!put.ok) {
@@ -276,6 +292,11 @@ export function registerAttachTools(server: any, deps: Deps): void {
       if (error) {
         const raw = (error as { message?: string }).message ?? "";
         console.error("[mcp] mcp_attach_post_file failed:", raw);
+        if (!isRpcRaise(raw)) {
+          // Outcome unknown: the link may have committed. Leave the object; the orphan scan reaps it
+          // only when no `files` row references it.
+          throw new McpInputError(MSG.saveFailed);
+        }
         const { error: queueError } = await deps.db.from("file_deletions").insert({ r2_key: upload.r2_key });
         if (queueError) console.error("[mcp] file_deletions enqueue failed:", queueError);
         throw new McpInputError(mapAttachError(raw));
