@@ -266,7 +266,7 @@ begin
   update gbp_locations set status = 'disconnected', disconnected_at = now() where id = v_loc_d;
 
   perform pg_temp.gr_mark_revoked(v_conn);
-  assert pg_temp.gr_upsert(v_ws, 'sub-1', 'R2', pg_temp.gr_yt()) = v_conn, 'same connection';
+  assert pg_temp.gr_upsert(v_ws, 'sub-1', 'R2', pg_temp.gr_yt() || pg_temp.gr_gbp()) = v_conn, 'same connection';
   assert (select status from google_connections where id = v_conn) = 'active', 'connection active';
   assert (select authorization_status from youtube_channels where id = v_ch) = 'active', 'channel active';
   assert (select revoked_at from youtube_channels where id = v_ch) is null, 'channel revoked_at cleared';
@@ -274,6 +274,53 @@ begin
   assert (select disconnected_at from gbp_locations where id = v_loc) is null, 'location disconnected_at cleared';
   assert (select status from gbp_locations where id = v_loc_d) = 'disconnected', 'disconnected location stays';
   raise notice 'PASS google_rpcs.upsert_reactivates';
+end $$;
+rollback;
+
+-- =====================================================================
+-- upsert_reactivates_only_covered (R14): a fresh grant replaces the scopes, so a reconnect for one
+-- product must not bring back the other product's revoked units on a token that cannot serve them
+-- =====================================================================
+begin;
+do $$
+declare
+  s jsonb := pg_temp.gr_seed();
+  v_ws uuid := (s->>'ws_a')::uuid;
+  v_conn uuid; v_ch uuid; v_loc uuid;
+begin
+  -- YouTube reconnect after a Google-side revoke: the channel comes back, GMN units stay revoked.
+  v_conn := pg_temp.gr_upsert(v_ws, 'sub-1', 'R1', pg_temp.gr_yt() || pg_temp.gr_gbp());
+  v_ch := pg_temp.gr_channel(v_ws, (s->>'cli_a1')::bigint, v_conn, 'UC-1');
+  v_loc := pg_temp.gr_location(v_ws, (s->>'cli_a2')::bigint, v_conn, 'locations/1');
+  perform pg_temp.gr_mark_revoked(v_conn);
+  perform pg_temp.gr_upsert(v_ws, 'sub-1', 'R2', pg_temp.gr_yt());
+  assert (select authorization_status from youtube_channels where id = v_ch) = 'active',
+    'yt grant reactivates the channel';
+  assert (select status from gbp_locations where id = v_loc) = 'revoked',
+    'yt-only grant leaves the GMN unit revoked';
+
+  -- GMN reconnect: the unit comes back, the channel stays revoked.
+  perform pg_temp.gr_mark_revoked(v_conn);
+  perform pg_temp.gr_upsert(v_ws, 'sub-1', 'R3', pg_temp.gr_gbp());
+  assert (select status from gbp_locations where id = v_loc) = 'active',
+    'gbp grant reactivates the GMN unit';
+  assert (select authorization_status from youtube_channels where id = v_ch) = 'revoked',
+    'gbp-only grant leaves the channel revoked';
+
+  -- A partial YouTube set does not cover the channel either.
+  perform pg_temp.gr_mark_revoked(v_conn);
+  perform pg_temp.gr_upsert(v_ws, 'sub-1', 'R4', (pg_temp.gr_yt())[1:2]);
+  assert (select authorization_status from youtube_channels where id = v_ch) = 'revoked',
+    'all three YouTube scopes are required to reactivate the channel';
+
+  -- A NULL refresh token keeps the union: both stored product scopes still cover.
+  perform pg_temp.gr_upsert(v_ws, 'sub-1', 'R5', pg_temp.gr_yt() || pg_temp.gr_gbp());
+  perform pg_temp.gr_mark_revoked(v_conn);
+  perform pg_temp.gr_upsert(v_ws, 'sub-1', null, pg_temp.gr_gbp());
+  assert (select authorization_status from youtube_channels where id = v_ch) = 'active',
+    'unioned scopes still cover YouTube';
+  assert (select status from gbp_locations where id = v_loc) = 'active', 'and GMN';
+  raise notice 'PASS google_rpcs.upsert_reactivates_only_covered';
 end $$;
 rollback;
 

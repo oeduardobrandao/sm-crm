@@ -5,7 +5,10 @@
 --   grant, whose scopes (sorted, distinct) replace the stored ones, so a scope unticked on
 --   reconnect is no longer claimed; a NULL refresh token keeps the stored one and the scopes become
 --   the sorted distinct union. Units that google_mark_revoked flipped to 'revoked' come back to
---   'active' (disconnected units stay disconnected).
+--   'active' only when the resulting scopes cover their product (R14: GMN needs business.manage,
+--   YouTube all three YouTube scopes); a reconnect for one product leaves the other product's
+--   units revoked, so the CRM keeps showing their reconnect banner. Disconnected units stay
+--   disconnected.
 -- google_connection_refresh_covers: whether the callback may trust the stored refresh token for
 --   the scopes it needs (an active connection with a refresh token whose scopes contain them).
 -- google_unlink_youtube / google_unlink_gbp_location: unlink one unit, then revoke the Google grant
@@ -56,6 +59,7 @@ SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_id uuid;
+  v_scopes text[];
 BEGIN
   PERFORM pg_advisory_xact_lock(hashtext('google-sub:' || p_sub));
 
@@ -82,14 +86,20 @@ BEGIN
     END,
     status = 'active',
     authorized_at = now()
-  RETURNING gc.id INTO v_id;
+  RETURNING gc.id, gc.scopes INTO v_id, v_scopes;
 
-  UPDATE public.gbp_locations
-     SET status = 'active', disconnected_at = NULL
-   WHERE connection_id = v_id AND status = 'revoked';
-  UPDATE public.youtube_channels
-     SET authorization_status = 'active', revoked_at = NULL
-   WHERE connection_id = v_id AND authorization_status = 'revoked';
+  IF v_scopes @> ARRAY['https://www.googleapis.com/auth/business.manage'] THEN
+    UPDATE public.gbp_locations
+       SET status = 'active', disconnected_at = NULL
+     WHERE connection_id = v_id AND status = 'revoked';
+  END IF;
+  IF v_scopes @> ARRAY['https://www.googleapis.com/auth/youtube.upload',
+                       'https://www.googleapis.com/auth/youtube.readonly',
+                       'https://www.googleapis.com/auth/yt-analytics.readonly'] THEN
+    UPDATE public.youtube_channels
+       SET authorization_status = 'active', revoked_at = NULL
+     WHERE connection_id = v_id AND authorization_status = 'revoked';
+  END IF;
 
   RETURN v_id;
 END;
