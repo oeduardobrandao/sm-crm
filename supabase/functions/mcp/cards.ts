@@ -89,10 +89,24 @@ async function assertPostOfClient(d: Deps, postId: number, clientId: number): Pr
   if ((data as any).cliente_id !== clientId) throw new McpInputError("Este post pertence a outro cliente.");
 }
 
+/** create_post's and update_post's `body` cap (zod `.max(10000)` in tools.ts, which imports this
+ * module, so the constant is mirrored here). 10 slides of 2000 characters pass preview_post's own
+ * limits but would build a body the save then refuses with an English zod error. */
+const POST_BODY_MAX = 10000;
+const BODY_TOO_LONG = "O conteúdo passa de 10.000 caracteres. Encurte as lâminas.";
+
+/** The body the card saves: reels and a post without slides use the roteiro (a stories or feed
+ * post written as a roteiro would otherwise save an empty body); otherwise one paragraph per slide. */
+function bodyOf(tipo: ContentFormat, slides: Slide[], roteiro: string | undefined): string {
+  return tipo === "reels" || slides.length === 0 ? (roteiro ?? "") : slidesToBody(slides);
+}
+
 export async function previewPost(d: Deps, a: PreviewArgs): Promise<PreviewData> {
+  const slides = (a.slides ?? []).map((s) => ({ texto: s.texto }));
+  const body = bodyOf(a.tipo, slides, a.roteiro);
+  if (body.length > POST_BODY_MAX) throw new McpInputError(BODY_TOO_LONG);
   const client = await clientOf(d, a.client_id);
   if (a.post_id !== undefined) await assertPostOfClient(d, a.post_id, a.client_id);
-  const slides = (a.slides ?? []).map((s) => ({ texto: s.texto }));
   return {
     card: "post_preview",
     v: 1,
@@ -106,7 +120,7 @@ export async function previewPost(d: Deps, a: PreviewArgs): Promise<PreviewData>
     caption_len: a.ig_caption.length,
     caption_max: captionMaxFor("instagram", a.tipo) ?? IG_CAPTION_MAX,
     ...(a.post_id !== undefined ? { post_id: a.post_id } : {}),
-    body: a.tipo === "reels" ? (a.roteiro ?? "") : slidesToBody(slides),
+    body,
   };
 }
 

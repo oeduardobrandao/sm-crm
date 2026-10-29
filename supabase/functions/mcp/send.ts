@@ -1,8 +1,9 @@
 // deno-lint-ignore-file no-explicit-any
 // Sending a post to the client from the card (spec 2026-10-29-mcp-apps-cards-design.md §4.4, §5).
 // `send_post_to_client` is widget-only: registered only with cards on AND an OAuth grant, and it
-// sends only with a send nonce, which create_post/update_post/preview_post put in their result
-// `_meta` (delivered to the card, not to the model). The model alone never sends.
+// sends only with a send nonce, which create_post and update_post put in their result `_meta`
+// (delivered to the card, not to the model). preview_post mints none: the card sends only after a
+// save made in the same card. The model alone never sends.
 import { z } from "npm:zod@3";
 import { McpInputError } from "../_shared/mcp-token.ts";
 import { signSendNonce, verifySendNonce } from "../_shared/mcp-send-nonce.ts";
@@ -25,7 +26,7 @@ const OUTCOME_MESSAGES: Record<SendOutcome, string> = {
   stale: "O post mudou no Mesaas. Atualize o cartão.",
 };
 
-const EXPIRED_CARD = "Este cartão expirou. Peça ao agente para mostrar o post de novo.";
+const EXPIRED_CARD = "Este cartão expirou. Peça ao agente para mostrar o post de novo e salve de novo.";
 const VIDEO_WITHOUT_COVER = "Este vídeo está sem capa. Adicione a capa no Mesaas antes de enviar.";
 // RPC errors (`workspace_unavailable` included) and anything unexpected: never the raw error.
 const SEND_FAILED = "Não foi possível enviar o post ao cliente agora. Tente de novo ou envie pelo Mesaas.";
@@ -37,8 +38,8 @@ function requireNonceSecret(): string {
   return secret;
 }
 
-/** `resultMeta` factory for the tools whose result carries a send nonce (create_post, update_post,
- * preview_post). `undefined` unless widget-only tools are on (cards + OAuth). Called once per
+/** `resultMeta` factory for the tools whose result carries a send nonce (create_post and
+ * update_post only). `undefined` unless widget-only tools are on (cards + OAuth). Called once per
  * registration, so a missing secret throws there, before any write; the returned function never
  * throws, because `register` runs it AFTER the write and the audit (a throw would report a write
  * that already happened as failed, and the model could retry it). */
@@ -78,7 +79,11 @@ export async function sendPostToClient(
   secret: string,
 ): Promise<{ card: "send_result"; v: 1; post_id: number; outcome: SendOutcome }> {
   const ok = await verifySendNonce(secret, a.nonce, { conta_id: d.ctx.conta_id, user_id: d.ctx.created_by, post_id: a.post_id });
-  if (!ok) throw new McpInputError(EXPIRED_CARD);
+  if (!ok) {
+    // The post id only: never the nonce, its payload or the secret.
+    console.warn("[mcp] send nonce rejected", { post_id: a.post_id });
+    throw new McpInputError(EXPIRED_CARD);
+  }
   if (await hasVideoWithoutCover(d, a.post_id)) throw new McpInputError(VIDEO_WITHOUT_COVER);
 
   const { data, error } = await d.db.rpc("mcp_send_post_to_client", {

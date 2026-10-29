@@ -29,6 +29,9 @@ export const OUTCOME_MESSAGE: Record<SendOutcome, string> = {
   stale: 'O post mudou no Mesaas. Atualize o cartão.',
 };
 
+/** Start of send_post_to_client's expired-nonce sentence (send.ts EXPIRED_CARD). */
+const EXPIRED_CARD = /^Este cartão expirou\./;
+
 const OUTCOME_STATUS: Partial<Record<SendOutcome, string>> = {
   sent: 'enviado_cliente',
   already_sent: 'enviado_cliente',
@@ -92,8 +95,11 @@ export function SendFlow({
       });
       const sc = r.structuredContent as { card?: string; outcome?: SendOutcome } | undefined;
       if (r.isError || !sc?.outcome || !(sc.outcome in OUTCOME_MESSAGE)) {
-        setPhase('done');
-        setMessage({ tone: 'error', text: errorMessage(r) });
+        const text = errorMessage(r);
+        // An expired card cannot send again (the nonce is dead until a new save); any other
+        // refusal (a video without cover, a failed call) keeps the button for a retry.
+        setPhase(EXPIRED_CARD.test(text) ? 'done' : 'saved');
+        setMessage({ tone: 'error', text });
         return;
       }
       const next = OUTCOME_STATUS[sc.outcome];

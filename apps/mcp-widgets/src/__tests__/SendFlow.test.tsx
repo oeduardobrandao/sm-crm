@@ -91,7 +91,8 @@ describe('SendFlow', () => {
             {
               type: 'text',
               text: JSON.stringify({
-                error: 'Este cartão expirou. Peça ao agente para mostrar o post de novo.',
+                error:
+                  'Este cartão expirou. Peça ao agente para mostrar o post de novo e salve de novo.',
               }),
             },
           ],
@@ -103,8 +104,42 @@ describe('SendFlow', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Enviar para aprovação' }));
     await userEvent.click(screen.getByRole('button', { name: 'Enviar ao cliente' }));
     expect(
-      await screen.findByText('Este cartão expirou. Peça ao agente para mostrar o post de novo.'),
+      await screen.findByText(
+        'Este cartão expirou. Peça ao agente para mostrar o post de novo e salve de novo.',
+      ),
     ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Enviar para aprovação' })).toBeNull();
+  });
+
+  it('any other refused send keeps "Enviar para aprovação" for a retry', async () => {
+    const host = fakeHost(preview, {
+      results: {
+        create_post: textResult(saved, { 'mesaas/sendNonce': 'n' }),
+        send_post_to_client: {
+          isError: true,
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                error: 'Este vídeo está sem capa. Adicione a capa no Mesaas antes de enviar.',
+              }),
+            },
+          ],
+        },
+      },
+    });
+    render(<App host={host} />);
+    await saveDraft();
+    await userEvent.click(await screen.findByRole('button', { name: 'Enviar para aprovação' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Enviar ao cliente' }));
+    expect(
+      await screen.findByText(
+        'Este vídeo está sem capa. Adicione a capa no Mesaas antes de enviar.',
+      ),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Enviar para aprovação' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Enviar ao cliente' }));
+    expect(host.callTool).toHaveBeenCalledTimes(3);
   });
 
   it('without a nonce in the save result _meta hides "Enviar para aprovação" and offers "Abrir no Mesaas"', async () => {

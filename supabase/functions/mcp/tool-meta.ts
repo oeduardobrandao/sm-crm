@@ -1,8 +1,9 @@
 // Título (pt-BR) e anotações MCP de cada ferramenta do workspace. O `register` exige uma entrada
 // por ferramenta: uma ferramenta nova sem entrada aqui falha no registro, não em produção.
 // `destructive` marca remoções e ações que congelam ou descongelam o estado (fechar/reabrir
-// período, encerrar modelo recorrente); nenhuma ferramenta fala com o mundo fora do Mesaas
-// (`openWorld` fica falso para todas).
+// período, encerrar modelo recorrente). `openWorld` fica falso para quase todas, que só leem e
+// gravam dados do Mesaas; a exceção é `send_post_to_client` (send.ts), que torna o post visível ao
+// cliente no Hub e por e-mail.
 import { ATTACH_TOOL_META } from "./attach.ts";
 import { CALENDAR_TOOL_META } from "./calendar.ts";
 import { CARDS_TOOL_META } from "./cards.ts";

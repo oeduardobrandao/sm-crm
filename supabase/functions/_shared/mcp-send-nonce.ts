@@ -1,8 +1,8 @@
 // supabase/functions/_shared/mcp-send-nonce.ts
 //
 // Send nonce of the MCP Apps cards (spec 2026-10-29-mcp-apps-cards-design.md §4.4): the only thing
-// that lets `send_post_to_client` send. It rides in the result `_meta` of create_post, update_post
-// and preview_post, which the host hands to the card, not to the model.
+// that lets `send_post_to_client` send. It rides in the result `_meta` of create_post and
+// update_post only (never preview_post), which the host hands to the card, not to the model.
 //
 // Shape: base64url(JSON{conta_id, user_id, post_id, exp}) + "." + base64url(HMAC-SHA256 over the
 // payload base64url STRING), both without padding; `exp` is milliseconds since epoch. The HMAC key

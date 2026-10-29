@@ -63,7 +63,7 @@ const errorText = (res: any) => JSON.parse(res.content[0].text).error;
 const auditRow = (calls: Call[]) => calls.find((c) => c.table === "audit_log" && c.method === "insert")?.args[0] as any;
 const NO_MEDIA = { data: [], error: null };
 
-const EXPIRED = "Este cartão expirou. Peça ao agente para mostrar o post de novo.";
+const EXPIRED = "Este cartão expirou. Peça ao agente para mostrar o post de novo e salve de novo.";
 
 Deno.test("SEND_TOOL_META", () => {
   assertEquals(SEND_TOOL_META, { send_post_to_client: { title: "Enviar post ao cliente", readOnly: false, openWorld: true } });
@@ -110,6 +110,27 @@ Deno.test("send_post_to_client: bad nonce -> expired-card message, no media read
     assert(!calls.some((c) => c.table === "post_file_links"), `${label}: no media read`);
     assert(!auditRow(calls), `${label}: refused call is not audited as a send`);
   }
+});
+
+Deno.test("send_post_to_client: a rejected nonce logs the post id only, never the nonce or the secret", async () => {
+  const nonce = await nonceFor(7, { user_id: "user-2" });
+  const warned: unknown[][] = [];
+  const original = console.warn;
+  console.warn = (...args: unknown[]) => void warned.push(args);
+  try {
+    const { server } = setup();
+    const res = await server.tools.send_post_to_client.cb({ post_id: 7, expected_status: "rascunho", nonce });
+    assertEquals(errorText(res), EXPIRED);
+  } finally {
+    console.warn = original;
+  }
+  const line = warned.find((args) => args[0] === "[mcp] send nonce rejected");
+  assert(line, "rejection logged");
+  assertEquals(line, ["[mcp] send nonce rejected", { post_id: 7 }]);
+  const all = JSON.stringify(warned);
+  assert(!all.includes(nonce), "no nonce in the log");
+  assert(!all.includes(nonce.split(".")[0]), "no nonce payload in the log");
+  assert(!all.includes(SECRET), "no secret in the log");
 });
 
 Deno.test("send_post_to_client: each RPC outcome maps to its message and send_result card", async () => {

@@ -137,7 +137,10 @@ Deno.serve(async (req) => {
     headObject: (key: string) => headObject(key),
     storageQuota: (contaId: string) => effectivePlanLimit(db as never, contaId, "storage_quota_bytes"),
     apps: {
-      enabled: appsEnabledFor(ctx.conta_id, Deno.env.toObject()),
+      enabled: appsEnabledFor(ctx.conta_id, {
+        MCP_APPS: Deno.env.get("MCP_APPS"),
+        MCP_APPS_PILOT_CONTAS: Deno.env.get("MCP_APPS_PILOT_CONTAS"),
+      }),
       oauth: ctx.key_id.startsWith("oauth:"),
       r2Origin: r2OriginFrom(Deno.env.get("R2_ACCOUNT_ID")),
     },

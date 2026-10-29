@@ -117,6 +117,37 @@ Deno.test("preview_post: zod limits (11 slides, empty/oversized slide, bad tipo,
   assert(!(await server.tools.preview_post.cb({ ...base, slides: ten })).isError);
 });
 
+Deno.test("preview_post: a body over create_post's 10000 cap is refused before any read", async () => {
+  const { server, calls } = setup({ clientes: [CLIENT_OK] });
+  const slides = Array.from({ length: 6 }, () => ({ texto: "x".repeat(2000) }));
+  const res = await server.tools.preview_post.cb({ client_id: 5, titulo: "T", tipo: "carrossel", ig_caption: "x", slides });
+  assertEquals(res.isError, true);
+  assertEquals(JSON.parse(res.content[0].text).error, "O conteúdo passa de 10.000 caracteres. Encurte as lâminas.");
+  assert(!calls.some((c) => c.table === "clientes"), "no client read for a refused body");
+
+  // 5 x 2000 + 4 separators = 10008 is over; 4 x 2000 + 3 separators = 8006 is fine.
+  const five = Array.from({ length: 5 }, () => ({ texto: "x".repeat(2000) }));
+  assertEquals((await server.tools.preview_post.cb({ client_id: 5, titulo: "T", tipo: "carrossel", ig_caption: "x", slides: five })).isError, true);
+  const four = Array.from({ length: 4 }, () => ({ texto: "x".repeat(2000) }));
+  const ok = await server.tools.preview_post.cb({ client_id: 5, titulo: "T", tipo: "carrossel", ig_caption: "x", slides: four });
+  assert(!ok.isError);
+  assertEquals(ok.structuredContent.body.length, 8006);
+});
+
+Deno.test("preview_post: stories or feed without slides saves the roteiro as body", async () => {
+  const { server } = setup({ clientes: [CLIENT_OK, CLIENT_OK, CLIENT_OK] });
+  const stories = await server.tools.preview_post.cb({ client_id: 5, titulo: "S", tipo: "stories", roteiro: "Tela 1\nTela 2", ig_caption: "x" });
+  assert(!stories.isError);
+  assertEquals(stories.structuredContent.body, "Tela 1\nTela 2");
+  const feed = await server.tools.preview_post.cb({ client_id: 5, titulo: "F", tipo: "feed", roteiro: "Texto do post", ig_caption: "x" });
+  assertEquals(feed.structuredContent.body, "Texto do post");
+  // Slides win over a roteiro outside reels; neither gives an empty body.
+  const both = await server.tools.preview_post.cb({
+    client_id: 5, titulo: "C", tipo: "carrossel", slides: [{ texto: "Um" }], roteiro: "ignorado", ig_caption: "x",
+  });
+  assertEquals(both.structuredContent.body, "Um");
+});
+
 Deno.test("show_caption_options: 1 or 4 options rejected; per-option limits; len reported", async () => {
   const { server } = setup({ clientes: [CLIENT_OK, CLIENT_OK] });
   const opt = (label: string, text: string) => ({ label, text });

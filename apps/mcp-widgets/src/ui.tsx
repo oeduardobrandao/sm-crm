@@ -44,11 +44,17 @@ const GENERIC_ERROR = 'Não deu certo agora. Tente de novo em instantes.';
 const PERMISSION_ERROR =
   'Sua conexão com o Mesaas não tem permissão para isso. Reconecte o Mesaas marcando a permissão de posts.';
 
+/** The SDK's own refusals, in English: an argument outside a tool's zod limits arrives as
+ *  "MCP error -32602: Input validation error: ...", and an unknown or disabled tool as
+ *  "MCP error -32602: Tool ... not found". */
+const SDK_ERROR = /^(MCP error -?\d+: |Input validation error)/;
+
 /** User-facing sentence for a failed tool call. Server messages are already safe pt-BR,
- *  except the generic English fallbacks of errorResult, which are swapped here. */
+ *  except the generic English fallbacks of errorResult and the SDK's own errors, which are
+ *  swapped here. */
 export function errorMessage(r: ToolCallResult | undefined): string {
   const text = resultText(r?.content);
-  if (!text || /^Internal error/i.test(text)) return GENERIC_ERROR;
+  if (!text || /^Internal error/i.test(text) || SDK_ERROR.test(text)) return GENERIC_ERROR;
   if (/^Permission denied/i.test(text)) return PERMISSION_ERROR;
   return text;
 }
