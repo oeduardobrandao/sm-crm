@@ -41,23 +41,31 @@
 - **Spikes S2 and S3** need the user's Google project and are not tasks here. This plan builds these defaults:
   - **S2:** `is_short` = `creatorContentType = SHORTS` when the per-video report has it, else `duration_s <= 180`. If S2 shows the dimension is reliable, the fallback stays as dead code. If it shows the dimension is absent, the content-type split rows are simply never written, and the cards show "Dados até" per spec.
   - **S3:** GMN backfill tries 548, then 365, then 180 days and keeps the first window the API accepts. If S3 confirms 18 months, nothing changes.
+- **Shared sync semantics** (Tasks 7-11 and 13 all rely on these; read them as part of every such task):
+  - **Clocks:** YouTube "today"/"yesterday" are `America/Los_Angeles` dates (the Analytics API's Pacific days, stored as returned). GMN days and `gbp_rating_daily.day` are São Paulo dates (`saoPauloDate(now)`).
+  - **Watermarks:** `data_through` = the last day the `all` channel report returned (YouTube) or per Task 8 step 1 (GMN), and it never moves backwards (`GREATEST(stored, computed)`). `content_type_through`, `traffic_through` and `videos_through` = `min(window end, data_through as set in this run)`, written only when that query succeeded (zero rows count as success). A card "lags" when its watermark `< data_through`.
+  - **Windows:** `?days=N` → `[data_through - N + 1, data_through]`, previous = the N days before it. `?start&end` → `end` clipped to `data_through`; the previous window has the clipped length. `data_through` null → no KPIs (first-sync state).
+  - **Write guard:** every per-unit write in a sync (history upserts, watermark and cache updates) first runs `UPDATE <unit> SET … WHERE id = ? AND <status> = 'active'` (or sits behind one in the same step). Zero rows updated means the unit was revoked or unlinked mid-run: stop with outcome `revoked` and write nothing else. This closes the race with `google_mark_revoked`'s purge (review C2).
+  - **Outcomes, not failures:** `getFreshGoogleToken` `REVOKED` → `revoked`; `TOKEN_INVALID` or `NOT_FOUND` → `skipped` (one `console.error`, no `reportCronFailure`; the batch stamp rotates it to the back); `QUOTA_EXCEEDED` → `quota_skipped`; GMN `NOT_APPROVED` → `not_approved`. Only other thrown errors count as `failed` and reach `reportCronFailure`.
+  - **Every history read, write and delete carries the unit's `conta_id`** (tests capture it via `createSupabaseQueryMock` `modifiers`).
 - **Out of scope here:**
   - **Callback confirm step:** binding the callback to the initiating user (the session-confirm step raised by the push security review on #772) is pending the user's decision.
   - **Later phases:** Phase 3 (publishing) and Phase 4 (reports, including the layout edits to `youtube_purge_channel`).
 
 ## Rulings made while planning (each: decision, why, cost if wrong)
 
-- **P1. Hourly crons, not one daily run.** YouTube runs at `35 * * * *` and GMN at `40 * * * *`. Both minutes are outside the stagger list (`20260925110001`; minutes ≡1,2 mod 5 are taken every 5 min). Each run claims rows with `last_synced_at` NULL or older than 20 h, ordered by `last_sync_attempt_at NULLS FIRST`, and stamps the whole batch before any work.
+- **P1. Hourly crons, not one daily run.** YouTube runs at `35 * * * *` and GMN at `40 * * * *`. Both minutes are outside the stagger list (`20260925110001`; minutes ≡1,2 mod 5 are taken every 5 min). Each run claims rows with `last_synced_at` NULL or older than 20 h, ordered by `last_sync_attempt_at NULLS FIRST, id` (never by `data_through`, which would let never-syncable units starve the queue, as `instagram-sync-cron/select.ts` documents), pages until the batch fills with eligible units (the `collectSyncCandidates` shape), and stamps `last_sync_attempt_at` on **every candidate it looked at**, eligible or not, before any work.
   - **Why:** spec §5.1 asks for "daily, right after the Pacific reset", but one daily run of an unbounded batch cannot finish inside an edge invocation at scale. With a 20 h window, the order of syncs converges on the hours right after the reset anyway. Capacity is `24 × GOOGLE_SYNC_BATCH_LIMIT` units/day.
-  - **If wrong:** two schedule strings to change.
+  - **If wrong:** two schedule strings to change. Known cost: once Phase 3 uploads share the Data API quota, a unit synced late in a quota day may end in `quota_skipped` and retry next hour.
 - **P2. The Phase 2 purge omits report layout edits.** `youtube_purge_channel` deletes history rows, removes the `youtube` key from `report_documents.data_snapshot`, and clears and queues `pdf_storage_path` when that key was present. It filters by `(conta_id, client_id)`.
   - **Why:** layout block removal and `youtube_channel_id = NULL` are added in Phase 4, which re-creates the function. Before Phase 4 no layout can hold `youtube_*` blocks (`validate_report_layout()` rejects them) and the column does not exist.
   - **If wrong:** Phase 4 must not forget it, so Task 16 adds a CLAUDE.md line to that effect.
-- **P3. What happens to a revoked channel row.** At purge the row's cached stats and avatar are nulled, and its watermarks (`data_through`, `content_type_through`, `traffic_through`, `videos_through`) are reset to NULL so a reconnect re-backfills. `title` and `handle` stay so the "Reconectar" card can name the channel. `google_expire_units()` deletes the row 30 days after `revoked_at`.
+- **P3. What happens to a revoked channel row.** At purge the row's cached stats and avatar are nulled, and its watermarks (`data_through`, `content_type_through`, `traffic_through`, `videos_through`) are reset to NULL so a reconnect re-backfills. `title` and `handle` stay so the "Reconectar" card can name the channel. `google_expire_units()` calls `youtube_purge_channel` again (a backstop for anything written after the first purge) and then deletes the row, 30 days after `revoked_at`.
   - **Why:** spec §4.6 says non-analytics API data is refreshed or deleted within 30 days, and a revoked row cannot be refreshed.
   - **If wrong:** the agency sees "Conectar" instead of "Reconectar" after 30 days.
 - **P4. Orphan sweep, one sub per call.** The sweep is `google_orphan_subs(p_limit)` (list only) plus `google_release_sub(p_sub)` (lock, then `_google_revoke_if_unused`). The cron loops subs one transaction each, so it never takes two sub locks in one transaction (final review minor 9).
-  - **If wrong:** none known.
+  - **Deviation recorded:** spec §4.2 says a connection with no linked product "is kept with its tokens"; the sweep revokes a unit-less identity one hour after authorization when no workspace uses it (spec §4.2's own revoke rule, and the 100-token cap). Consequence: a GMN picker left open over an hour saves into `NOT_FOUND` and the user reconnects.
+  - **If wrong:** raise the grace in `_google_revoke_if_unused` (one interval).
 - **P5. Revocation retry.** Revocation processing is extracted from `google-integration/handlers.ts` (`processUnlinkDecision`) into `_shared/google-revocations.ts`, not copied. Retries stop after 10 attempts, logging an error and keeping the row for manual follow-up.
   - **If wrong:** a dead token never retried loses nothing; it is already invalid at Google or still counts toward the cap.
 - **P6. New error code `QUOTA_EXCEEDED`.** It is added to `GoogleApiError` for 403 `reason` `quotaExceeded`/`dailyLimitExceeded` (YouTube Data API). A quota-0 403 stays `NOT_APPROVED`. Sync treats both as "skip that step today", never as a revoke or a cron failure.
@@ -70,6 +78,10 @@
   - **If wrong:** visual tweaks.
 - **P10. Wording of the YouTube footer.** It is kept for attribution (§4.6): "Dados do YouTube, como o YouTube informa." The AI sentence is dropped: spec §3 makes no AI a non-goal, so the page should not advertise its absence.
   - **If wrong:** one string.
+- **P11. Relinking a client to a different YouTube channel is an unlink first.** When the callback finds the client already linked to another `channel_id`, it calls `google_unlink_youtube` (purge, revoke decision, row delete) before inserting the new channel, so no history is orphaned and the new channel backfills from NULL watermarks. Same `channel_id` on a new connection keeps history and only releases the old sub.
+  - **Why:** review C1: the Phase 1 upsert on `client_id` would orphan the old channel's history (a retention breach) and hand its watermarks to the new channel.
+  - **If wrong:** none; this is the policy reading.
+- **P12. Phase 1 ruling R12 stands.** A GMN unit never moves between connections through the picker (it filters units held through another connection), so only the YouTube relink releases an old sub.
 
 ## Review Focus
 
@@ -90,6 +102,7 @@
 **Interfaces:**
 - Produces:
   - Tables `youtube_channel_daily`, `youtube_traffic_daily`, `youtube_demographics`, `youtube_videos`, `youtube_video_daily` and `youtube_pdf_purges`, with the columns of spec §5.1, plus `youtube_video_daily.engaged_views bigint` (P8) and `youtube_videos.daily_through date`.
+  - Column names shared by Tasks 7 and 10: `youtube_channel_daily` metrics `views, engaged_views, estimated_minutes_watched, likes, comments, shares, subscribers_gained, subscribers_lost, average_view_duration_s`, all **nullable** (Google leaves some unsplit on split rows); `youtube_videos` `title, published_at, duration_s, is_short, thumbnail_url, view_count, like_count, comment_count, metadata_refreshed_at, daily_through`; `youtube_video_daily` `views, engaged_views, likes, comments, shares, subscribers_gained, average_view_duration_s, average_view_percentage`; `youtube_traffic_daily.views`; `youtube_demographics.viewer_pct numeric`.
   - `youtube_pdf_purges(id uuid PK, conta_id, client_id bigint, storage_path text NOT NULL, attempts int DEFAULT 0, created_at)`.
   - New columns `last_sync_attempt_at timestamptz` on `youtube_channels` and on `gbp_locations`.
   - Primary keys:
@@ -119,8 +132,8 @@
 - Produces:
   - `gbp_metrics_daily (conta_id, location_name, day)` with the ten metric columns of spec §5.2 as `int NOT NULL DEFAULT 0`, named in lower snake case (`business_impressions_desktop_maps`, …, `business_food_menu_clicks`).
   - `gbp_search_keywords_monthly (conta_id, location_name, month date, keyword)` with `value int` and `threshold int`, plus a CHECK that exactly one of the two is non-null.
-  - `gbp_reviews (conta_id, location_name, review_id)` with `reviewer_name`, `star_rating smallint CHECK 1..5`, `comment`, `create_time`, `update_time` and `has_reply`.
-  - `gbp_rating_daily (conta_id, location_name, day)` with `average_rating numeric(2,1)` and `total_review_count int`.
+  - `gbp_reviews (conta_id, location_name, review_id)` with `reviewer_name` (nullable: anonymous reviewers), `star_rating smallint CHECK 1..5`, `comment`, `create_time`, `update_time` and `has_reply`.
+  - `gbp_rating_daily (conta_id, location_name, day)` with `average_rating numeric(2,1)` and `total_review_count int`; `day` is the São Paulo date of the sync.
   - New column `gbp_locations.maps_uri text`, from Business Information `metadata.mapsUri`. Every "Abrir no Google" link points there.
 
 - [ ] **Step 1: Write the failing SQL test.** It covers:
@@ -146,11 +159,13 @@
     - every `youtube_*` history row for `(conta_id, channel_id)`;
     - in `report_documents` for `(conta_id, client_id)`: `data_snapshot - 'youtube'`. Where that key was present and `pdf_storage_path` is set, it queues a `youtube_pdf_purges` row and nulls `pdf_storage_path` and `pdf_generated_at` (P2).
     - It also writes an `audit_log` row (`action 'youtube-data-purged'`, `resource_type 'youtube_channel'`).
-  - `google_unlink_youtube` is re-created with the same signature and return, and calls `youtube_purge_channel` before its `DELETE`.
+  - `google_unlink_youtube` is re-created with the same signature and return. It purges with the values its locked `DELETE … RETURNING connection_id, channel_id` returned (never values read before the lock, per the Phase 1 stale-relink comment).
+  - Every purge delete is bounded by a PK prefix `(conta_id, channel_id, …)`, so it stays fast inside `google_mark_revoked`, which runs while `getFreshGoogleToken` holds `refresh_lock_at`.
   - `google_mark_revoked` is re-created with the same signature. It purges every channel of that connection that it flips to `revoked`, then nulls their cached stats, avatar and watermarks (P3). It still never touches `refresh_lock_at` and stays idempotent: a second call purges nothing new.
   - `google_expire_units() RETURNS TABLE(gbp_locations_deleted int, youtube_channels_deleted int)`.
     - **GMN:** for `gbp_locations` with `status IN ('disconnected','revoked') AND disconnected_at < now() - interval '30 days'`, it deletes that location's history in all four GMN tables (keyed by its own `conta_id`), then the row.
-    - **YouTube:** it deletes `youtube_channels` with `authorization_status = 'revoked' AND revoked_at < now() - interval '30 days'`.
+    - **YouTube:** for `youtube_channels` with `authorization_status = 'revoked' AND revoked_at < now() - interval '30 days'`, it calls `youtube_purge_channel` (backstop, P3) and then deletes the row.
+    - It runs without the sub lock on purpose: a missed revoke is repaired by the next orphan sweep, and a reconnect racing an expiry re-inserts the channel in the callback (review M1).
   - `google_orphan_subs(p_limit int) RETURNS SETOF text`. It lists distinct subs that are not in use, using the in-use test of `_google_revoke_if_unused` (no grace connection, no channel, no active or revoked unit), limited to `p_limit` and read-only.
   - `google_release_sub(p_sub text) RETURNS TABLE(should_revoke boolean, revocation_id uuid)`. It takes the `google-sub:` advisory lock, then returns `_google_revoke_if_unused(p_sub)`.
 
@@ -159,7 +174,10 @@
   - `purge_strips_snapshot_and_queues_pdf`: a report with `data_snapshot` holding a `youtube` key and a PDF path. After purge the key is gone, the path is null, and one `youtube_pdf_purges` row exists. A report without the key keeps its PDF.
   - `unlink_youtube_purges`: the channel history is gone after `google_unlink_youtube`.
   - `mark_revoked_purges_and_resets`: history is gone, stats, avatar and watermarks are null, title is kept, and `refresh_lock_at` is unchanged. A second call is a no-op.
-  - `expire_units_30_days`: a unit disconnected 31 days ago is deleted with its history. One disconnected 29 days ago stays. A YouTube channel revoked 31 days ago is deleted.
+  - `expire_units_30_days`: a unit disconnected 31 days ago is deleted with its history. One disconnected 29 days ago stays. A YouTube channel revoked 31 days ago that still has history rows (written after the first purge) is deleted **with** them.
+  - `expire_units_cross_workspace`: workspace B links the same `location_name` and `channel_id` and keeps all its rows when A's expire.
+  - `mark_revoked_whole_connection`: two channels and one GMN unit on one connection. Both channels are purged; the unit becomes `revoked` with its `gbp_*` history intact.
+  - `reconnect_within_30_days_keeps_gmn_history`: after `google_mark_revoked` then `google_connection_upsert` with `business.manage`, the unit is `active` and its history rows remain.
   - `orphan_subs_respects_grace_and_units`: a sub authorized 2 h ago with no units is listed. One authorized 10 min ago is not. One with an active unit is not.
   - `release_sub_revokes_once`: calling `google_release_sub` twice yields `(true, id)` then `(false, NULL)`, with exactly one `google_revocations` row.
 - [ ] **Step 2: Run it.** Expected: FAIL, function does not exist.
@@ -170,7 +188,7 @@
 ### Task 4: Shared Google plumbing (quota code, revocations, PDF purges)
 
 **Files:**
-- Modify: `supabase/functions/_shared/google.ts` (add `QUOTA_EXCEEDED` to `GoogleApiErrorCode` and map 403 `errors[].reason` `quotaExceeded` or `dailyLimitExceeded` to it, retryable `false`, before the `FORBIDDEN` fallback; quota-zero stays `NOT_APPROVED`)
+- Modify: `supabase/functions/_shared/google.ts` (add `QUOTA_EXCEEDED` to `GoogleApiErrorCode` and map to it, retryable `false`, a 403 whose `errors[].reason` is `quotaExceeded` or `dailyLimitExceeded`, or a 403/429 whose `error.status` is `RESOURCE_EXHAUSTED` or whose `details[].reason` is `QUOTA_EXCEEDED` (the Analytics API's google.rpc shape); checked after quota-zero, which stays `NOT_APPROVED`, and before `RATE_LIMITED`/`FORBIDDEN`)
 - Create: `supabase/functions/_shared/google-revocations.ts`
 - Create: `supabase/functions/_shared/youtube-pdf-purges.ts`
 - Modify: `supabase/functions/google-integration/handlers.ts` (`processUnlinkDecision` becomes a call to `processRevocation`)
@@ -181,7 +199,7 @@
   - `processRevocation(svc: DbClient, revocationId: string, deps?: { revoke?: typeof revokeGoogleToken }): Promise<"revoked" | "failed" | "missing">`. This is today's `processUnlinkDecision` body.
   - `retryPendingRevocations(svc, opts: { limit: number; maxAttempts: number; revoke? }): Promise<{ revoked: number; failed: number; gaveUp: number }>`. It selects rows ordered by `created_at` with `attempts < maxAttempts`, and logs `console.error` once per row reaching `maxAttempts`.
   - `processUnlinkDecisionData(svc, rpcData: unknown): Promise<void>`. It reads `(should_revoke, revocation_id)` from the RPC data and calls `processRevocation`.
-  - `drainYoutubePdfPurges(svc, opts: { storage: StorageLike; contaId?: string; limit: number }): Promise<{ removed: number; failed: number }>`. It removes from bucket `analytics-reports` (`PDF_BUCKET`, `report-docs/errors.ts`), deletes the row on success, and increments `attempts` on failure.
+  - `drainYoutubePdfPurges(svc, opts: { storage: StorageLike; contaId?: string; limit: number; maxAttempts: number }): Promise<{ removed: number; failed: number; gaveUp: number }>`. It removes from bucket `analytics-reports` (`PDF_BUCKET`, `report-docs/errors.ts`), deletes the row on success (an already-missing object counts as success), and increments `attempts` on failure; rows at `maxAttempts` (10) are skipped and logged once, like revocations.
 
 - [ ] **Step 1: Write failing tests.** They cover:
   - `mapGoogleError` mapping a 403 `quotaExceeded` body to `QUOTA_EXCEEDED`, and a quota-zero 403 still mapping to `NOT_APPROVED`;
@@ -203,20 +221,21 @@
 - Consumes: `googleFetch(url, token, init)` from `_shared/google.ts`.
 - Produces (each takes an injected `fetchJson = googleFetch` for tests; bases `https://www.googleapis.com/youtube/v3` and `https://youtubeanalytics.googleapis.com/v2/reports`):
   - `getMyChannel(token): Promise<YtChannel | null>`, where `YtChannel = { id, title, handle, avatarUrl, uploadsPlaylistId, subscriberCount, viewCount, videoCount }`.
-  - `listUploads(token, playlistId, opts: { pageToken?: string }): Promise<{ videoIds: string[]; nextPageToken: string | null }>`. It makes 50 calls per page.
+  - `listUploads(token, playlistId, opts: { pageToken?: string }): Promise<{ videoIds: string[]; nextPageToken: string | null }>`. Each page requests `maxResults=50`.
   - `getVideos(token, ids: string[]): Promise<YtVideo[]>`. It takes at most 50 ids, with parts `snippet,contentDetails,statistics`. `durationS` is parsed from ISO 8601, and `YtVideo.isShortByDuration = durationS <= 180`.
   - `channelDaily(token, range: { start: string; end: string }, byContentType: boolean): Promise<YtChannelDailyRow[]>`. It uses `ids=channel==MINE` and `dimensions=day` or `day,creatorContentType`, and requests `views,engagedViews,estimatedMinutesWatched,likes,comments,shares,subscribersGained,subscribersLost,averageViewDuration`. `creatorContentType` maps to `shorts`, `long` or `live` (`SHORTS`, `VIDEO_ON_DEMAND`, `LIVE_STREAM`); unknown values are dropped.
   - `trafficDaily(token, range)`, using `dimensions=day,insightTrafficSourceType` and `metrics=views`.
   - `demographics(token, range)`, using `dimensions=ageGroup,gender` and `metrics=viewerPercentage`.
   - `videoDaily(token, videoId, range)`, using `filters=video==<id>`, `dimensions=day` and `metrics=views,engagedViews,likes,comments,shares,subscribersGained,averageViewDuration,averageViewPercentage`.
-  - `videoContentTypes(token, ids)`, using `dimensions=video,creatorContentType`. It is best-effort: `null` on a 400, which is the S2 default.
+  - `videoContentTypes(token, range)`: the Top videos report, `dimensions=video,creatorContentType&metrics=views&sort=-views&maxResults=200` over `range` (`startDate` 2019-01-01 or the channel's first upload, `endDate` yesterday), **no `video==` filter** (that report does not accept one). Returns `Map<videoId, 'shorts' | 'long' | 'live'>`; it only classifies the top 200 videos by views, and ids absent from it fall back to duration. Best-effort: `null` on a 400 (the S2 default).
   - Analytics rows are parsed by `columnHeaders` name, never by position.
 
 - [ ] **Step 1: Write failing tests** with a fake `fetchJson` asserting URLs and parsing:
   - a `columnHeaders`-order shuffle still parses correctly;
   - `PT1M5S` parses to 65;
   - an unknown content type is dropped;
-  - `getMyChannel` returns `null` on empty `items`.
+  - `getMyChannel` returns `null` on empty `items`;
+  - the `videoContentTypes` URL carries `sort=-views` and `maxResults=200` and no `filters`.
 - [ ] **Step 2: Run them.** Expected: FAIL.
 - [ ] **Step 3: Implement it.**
 - [ ] **Step 4: Run them, plus `npm run check:functions`.** Expected: PASS.
@@ -231,7 +250,9 @@
 **Interfaces:**
 - Produces (same injected `fetchJson`):
   - `fetchDailyMetrics(token, locationName, range: { start: string; end: string }): Promise<Map<string, GbpDayMetrics>>`. It calls `GET https://businessprofileperformance.googleapis.com/v1/{location}:fetchMultiDailyMetricsTimeSeries` with every `dailyMetrics` from spec §5.2 and `dailyRange.*`, keyed by ISO day. Missing values become 0.
-  - `fetchMonthlyKeywords(token, locationName, months: { start: string; end: string })`, calling `…/{location}/searchkeywords/impressions/monthly` and following `pageToken`. It returns `{ keyword, value | threshold }`, where `insightsValue.value` maps to `value` and `insightsValue.threshold` to `threshold`.
+  - `fetchMonthlyKeywords(token, locationName, month: string)` (`YYYY-MM`), calling `…/{location}/searchkeywords/impressions/monthly` with `monthlyRange.start_month` = `monthlyRange.end_month` = that month and `pageSize=100`, following `pageToken`. **One call per month**: over a multi-month range Google sums the months into one number. Returns `{ month, keyword, value | threshold }[]`, where `insightsValue.value` maps to `value` and `insightsValue.threshold` to `threshold` (int64 strings parsed to numbers).
+  - Query-string ranges use snake_case (`dailyRange.start_date.year` etc.).
+  - Field names not re-verified against a live response (`TimeSeries.datedValues[].{date:{year,month,day},value}` with `value` absent for zero; review `reviewId`, `reviewer.displayName`, `starRating`, `comment`, `createTime`, `updateTime`, `reviewReply`): build the test fixtures from the documented resources and treat a mismatch found in staging as a fixture fix.
   - `listReviews(token, accountName, locationName, opts: { pageToken?: string })`, calling `https://mybusiness.googleapis.com/v4/{account}/{location}/reviews?orderBy=updateTime desc&pageSize=50`. It returns `{ reviews: GbpReview[]; averageRating: number | null; totalReviewCount: number | null; nextPageToken }`, mapping `starRating` `ONE`..`FIVE` to 1..5 and setting `hasReply = !!reviewReply`.
   - `getLocation(token, locationName)`, calling `https://mybusinessbusinessinformation.googleapis.com/v1/{location}?readMask=title,metadata`. It returns `{ title, hasVoiceOfMerchant, mapsUri }`, where `mapsUri` comes from `metadata.mapsUri`.
 
@@ -265,36 +286,37 @@
 - Produces:
   - `syncYouTubeChannel(deps: YoutubeSyncDeps, channel: YoutubeChannelRow, opts: { now: Date; maxVideoReports: number }): Promise<YoutubeSyncOutcome>`.
     - `YoutubeChannelRow` holds the `youtube_channels` columns without tokens.
-    - `YoutubeSyncOutcome` is `{ status: "synced" | "revoked" | "quota_skipped"; backfill: boolean }`.
+    - `YoutubeSyncOutcome` is `{ status: "synced" | "revoked" | "quota_skipped" | "skipped" | "mismatch"; backfill: boolean }`.
+    - `YoutubeSyncDeps = { svc; api: typeof import('./youtube-api.ts'); getFreshGoogleToken; now: () => Date }` (Task 9 builds one).
   - `runYouTubeSyncCron(deps): Promise<Response>`.
   - `createYouTubeSyncCronHandler({ cronSecret, run, timingSafeEqual })`.
 
 The per-channel steps run in order, each persisting before the next call:
 
 1. **Token.** Call `getFreshGoogleToken`. On `REVOKED` (the RPC already purged), return `revoked`.
-2. **Channel counts.** Call `getMyChannel` and update the cached counts and title. If the returned id differs from `channel_id`, log it and treat the channel as revoked for this run (no writes).
+2. **Channel counts.** Call `getMyChannel` and update the cached counts, `title`, `handle` and `avatar_url` (§4.6 30-day refresh). If the returned id differs from `channel_id`, log it and return outcome `mismatch` (counted as skipped; it does **not** mark the connection seen-revoked, so sibling channels still sync).
 3. **Videos.**
    - Page through the uploads playlist until a known `video_id` is seen. A backfill stops at 1,000 ids.
    - Call `getVideos` for new ids, plus every stored video published in the last 90 days, the 200 most recent, and the rotating batch whose `metadata_refreshed_at` is older than 25 days. Upsert these.
-   - Delete stored videos that a full `getVideos` pass no longer returns, along with their `youtube_video_daily` rows.
-   - `is_short` comes from `videoContentTypes`, falling back to duration.
+   - Delete only ids **requested in this run** that `getVideos` did not return, with their `youtube_video_daily` rows.
+   - `is_short` comes from `videoContentTypes` (refreshed at most once a day per channel), falling back to duration.
 4. **Analytics.**
    - The window is `[data_through - 7, yesterday]`, or `[today - 365, yesterday]` when `data_through` is null; Pacific dates are stored as returned.
    - Fetch `channelDaily` (all) and set `data_through` to the last returned day. A window with no rows keeps the previous value.
    - Fetch `channelDaily` by content type and set `content_type_through` on a successful call, even with zero rows. Do the same for `trafficDaily` and `traffic_through`.
-   - Fetch `demographics` for the last 28 days, upserting with `window_end`.
+   - Fetch `demographics` for the last 28 days and **replace** the channel's snapshot (delete its rows, insert the new `window_end`), so the table holds one snapshot per channel.
    - Fetch `videoDaily` for videos published in the last 90 days whose `daily_through` lags, up to `maxVideoReports` (P7), advancing each `daily_through`. Set `videos_through` when none lag.
 5. **Finish.** Set `last_synced_at = now`.
 6. **Quota.** `QUOTA_EXCEEDED` in steps 2-3 skips to step 4. In step 4 it stops the remaining Analytics calls. Either way return `quota_skipped`, without `last_synced_at`, so the next hour retries.
 
 The cron core works as follows:
-- **Candidates:** select `youtube_channels` with `authorization_status = 'active'` and `last_synced_at` null or older than 20 h, ordered by `data_through NULLS FIRST, last_sync_attempt_at NULLS FIRST`, limited to `GOOGLE_SYNC_BATCH_LIMIT` (default 25).
-- **Eligibility:** filter by workspace flags. Every workspace needs `feature_youtube` AND `feature_auto_sync_cron` and must not be internal.
-- **Stamp:** stamp `last_sync_attempt_at` for the batch before any work; a failed stamp is logged.
+- **Candidates (P1):** `youtube_channels` with `authorization_status = 'active'` and `last_synced_at` null or older than 20 h, ordered `last_sync_attempt_at NULLS FIRST, id`, paged (200 per page, at most 10 pages) until `GOOGLE_SYNC_BATCH_LIMIT` (default 25) eligible units are found.
+- **Eligibility:** every workspace needs `feature_youtube` AND `feature_auto_sync_cron` and must not be internal (one flag lookup per workspace).
+- **Stamp:** stamp `last_sync_attempt_at` on every candidate examined (eligible or not) before any work; a failed stamp is logged.
 - **Pool:** run `runPool(GOOGLE_SYNC_CONCURRENCY` (default 4)`)`. The callback swallows its own errors, and a channel on a connection already seen `revoked` in this run is skipped.
-- **Failures:** call `reportCronFailure` only for thrown errors, never for `revoked` or `quota_skipped`.
+- **Failures:** per the shared outcome rules in Global Constraints; only `failed` reaches `reportCronFailure`.
 - **Then:** `drainYoutubePdfPurges({ limit: 50 })`.
-- **Response:** `{ success, synced, revoked, quotaSkipped, failed, total }`.
+- **Response:** `{ success, synced, revoked, quotaSkipped, skipped, failed, total }`.
 
 - [ ] **Step 1: Write failing tests** with `createSupabaseQueryMock` and fake API deps, where every unused dependency throws "must not be called":
   - **Handler:** a missing or bad secret returns 401 with zero DB calls.
@@ -306,6 +328,12 @@ The cron core works as follows:
   - **Revoked (Review Focus 2):** `REVOKED` on channel 1 of a connection causes channel 2 on the same connection to be skipped without a token call, with no failure report.
   - **Cleanup:** a video missing from `getVideos` is deleted together with its daily rows.
   - **Video cap:** with 41 lagging videos, 40 reports run and one waits.
+  - **Mid-run revoke (C2):** the channel's status flips to `revoked` after the token fetch; the guarded update returns 0 rows, no history row is written, the outcome is `revoked`.
+  - **Starvation (I1):** 26 ineligible candidates ahead of one eligible channel; the eligible one still syncs and all 27 are stamped.
+  - **Token without refresh (I2):** `TOKEN_INVALID` gives `skipped`, no `reportCronFailure`.
+  - **Mismatch:** a channel-id mismatch on channel 1 does not skip channel 2 on the same connection.
+  - **Quota mid-analytics (Review Focus 1):** `QUOTA_EXCEEDED` after a successful `channelDaily` keeps the advanced `data_through`, leaves `traffic_through` untouched and returns `quota_skipped` without `last_synced_at`.
+  - **Tenant keys (Review Focus 3):** every history upsert and delete carries the channel's `conta_id`.
 - [ ] **Step 2: Run them.** Expected: FAIL.
 - [ ] **Step 3: Implement** `_shared/youtube-sync.ts`, then the cron trio. `index.ts` throws if `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` or `CRON_SECRET` is missing.
 - [ ] **Step 4: Run them, plus `npm run check:functions`.** Expected: PASS.
@@ -328,7 +356,8 @@ The cron core works as follows:
   - from Task 4, `retryPendingRevocations` and `processUnlinkDecisionData`;
   - `getFreshGoogleToken`, `runPool`, the flag helpers and `reportCronFailure`.
 - Produces:
-  - `syncGbpLocation(deps, location: GbpLocationRow, opts: { now: Date }): Promise<{ status: "synced" | "revoked" | "not_approved"; backfill: boolean }>`.
+  - `syncGbpLocation(deps: GbpSyncDeps, location: GbpLocationRow, opts: { now: Date }): Promise<{ status: "synced" | "revoked" | "not_approved" | "skipped"; backfill: boolean }>`, with `GbpSyncDeps = { svc; api: typeof import('./gbp-api.ts'); getFreshGoogleToken; now: () => Date; sleep: (ms: number) => Promise<void> }`.
+  - The write guard and outcome rules of Global Constraints apply (status `active` on `gbp_locations`).
   - `runGbpSyncCron(deps): Promise<Response>`.
   - `createGbpSyncCronHandler(...)`.
 
@@ -337,9 +366,9 @@ The per-location steps follow spec §5.2:
 1. **Daily metrics.**
    - The window is `[data_through - 7, yesterday]`.
    - A backfill tries 548, then 365, then 180 days (S3 default). It treats a 400 `UPSTREAM` as "range not allowed" and tries the next length.
-   - `data_through` is the latest day with any metric, minus 2 days.
-   - Write every day up to `data_through` (0 for days the API omitted). Never write a day after it.
-2. **Keywords.** Fetch the last 2 closed months (backfill: 18 closed months) and upsert.
+   - `computed` = the latest day with any metric, minus 2 days; if the call succeeded with no dated values (a dormant location), `computed` = yesterday − 2. `data_through = GREATEST(stored, computed)`; it never regresses (review I4).
+   - Write every day of the window up to `data_through` (0 for days the API omitted). Never write a day after it.
+2. **Keywords.** One `fetchMonthlyKeywords` call per closed month: the last 2 (backfill: 18), upserting each month's rows.
 3. **Reviews.**
    - Page newest first until a known `review_id` with an unchanged `update_time` appears, or 200 rows are reached.
    - Upsert the reviews and prune rows beyond the newest 200.
@@ -351,7 +380,7 @@ The per-location steps follow spec §5.2:
    - `RATE_LIMITED` retries 3 times with backoff of 1 s, 2 s and 4 s, using the injected `sleep`, then throws.
 
 The cron core does two things.
-- **Sync batch:** the same claim, stamp and flag pattern as Task 7, with `feature_google_business` and `GOOGLE_SYNC_BATCH_LIMIT`. Locations have `status = 'active'`, a non-null `connection_id`, and `last_synced_at` null or older than 20 h. `GOOGLE_SYNC_CONCURRENCY` is capped at 4, because 4 locations × ~4 calls stays far under 300 QPM.
+- **Sync batch:** the same claim, page-until-full, stamp-every-candidate and flag pattern as Task 7, with `feature_google_business` and `GOOGLE_SYNC_BATCH_LIMIT`. Locations have `status = 'active'`, a non-null `connection_id`, and `last_synced_at` null or older than 20 h. `GOOGLE_SYNC_CONCURRENCY` is capped at 4, because 4 locations × ~4 calls stays far under 300 QPM.
 - **Deletion duties:** these run after the batch, each in its own try/catch, and **regardless of flags** (privacy duties):
   - `google_expire_units()`;
   - `retryPendingRevocations({ limit: 50, maxAttempts: 10 })`;
@@ -367,6 +396,10 @@ The cron core does two things.
   - **Duties without flags:** with every flag off, the deletion duties still run.
   - **Orphans:** two subs yield two separate `google_release_sub` calls, one per sub.
   - **Isolation:** a duty failure does not stop the other duties.
+  - **Dormant location (I4):** an empty successful response keeps or advances `data_through`, never moves it back.
+  - **Keywords per month (I9):** a 2-month refresh makes two calls with `start_month = end_month`.
+  - **Starvation and `TOKEN_INVALID`:** as in Task 7.
+  - **Tenant keys (Review Focus 3):** every `gbp_*` write carries the location's `conta_id`.
 - [ ] **Step 2: Run them.** Expected: FAIL.
 - [ ] **Step 3: Implement it.**
 - [ ] **Step 4: Run them, plus `npm run check:functions`.** Expected: PASS.
@@ -387,13 +420,18 @@ The cron core does two things.
     - A missing unit returns 404 `not_connected`; a revoked unit returns 409 `revoked`.
     - The unit sync runs with `maxVideoReports: 40`. GMN syncs only that client's active locations, sequentially.
   - **Disconnect:** `POST /disconnect/youtube/:clientId` also calls `drainYoutubePdfPurges({ contaId })` after the RPC commits.
-  - **Unit-picker save** (`handleLinkLocations`): the unlink set includes this client's `revoked` rows as well as `active` ones. This fixes the Phase 1 gap where a revoked unit could never be removed.
-  - **Re-linking to another Google account:** when a YouTube channel (callback relink) or a GMN unit (picker save with another `connectionId`) moves to a different connection, the handler captures the old connection's `google_sub` before the write. After commit it calls `google_release_sub(oldSub)` and then `processUnlinkDecisionData`.
+  - **Unit-picker save** (`handleLinkLocations`): the unlink set includes this client's `revoked` rows as well as `active` ones. When `getFreshGoogleToken` throws `REVOKED` (the connection itself is dead) and the save's `locationNames` is empty, skip the Google listing and run only the unlink loop over this client's `active` + `revoked` rows on that connection, instead of answering 409 (review I3). The save also stores `maps_uri` from the listing's `metadata` (Phase 1 `locations.ts` already reads it), so "Abrir no Google" works before the first sync.
+  - **YouTube relink (P11):** in the callback, before `linkYouTubeChannel`:
+    - stored row with a **different `channel_id`**: call `google_unlink_youtube(conta, client)`, then `processUnlinkDecisionData` and `drainYoutubePdfPurges({ contaId })`, then insert the new channel (NULL watermarks, so it backfills);
+    - same `channel_id` on a **different connection**: capture the old connection's `google_sub` before the write; after it, `google_release_sub(oldSub)` then `processUnlinkDecisionData`.
+  - GMN units never move between connections through the picker (P12).
 
 - [ ] **Step 1: Write failing tests:**
   - **Sync order:** sync on a foreign client returns 403 before any flag read; flag off returns 403 `feature_disabled`; the sixth call returns 429; a revoked unit returns 409.
   - **Revoked unlink:** saving with a revoked unit unchecked unlinks it.
-  - **Release:** relinking a channel to sub B calls `google_release_sub` with sub A exactly once; relinking to the same sub does not call it.
+  - **Different channel (C1):** relinking client X from channel `UCa` to `UCb` calls `google_unlink_youtube` once (purge + one revoke decision for sub A) before the insert, and the new row has NULL watermarks.
+  - **Same channel, new account:** relinking `UCa` under sub B calls `google_release_sub` with sub A exactly once; relinking under the same sub does not call it.
+  - **Dead connection unlink (I3):** a revoked connection with an empty save unlinks the client's revoked units without calling Google.
   - **PDF drain:** disconnect drains PDF purges for the tenant only.
 - [ ] **Step 2: Run them.** Expected: FAIL.
 - [ ] **Step 3: Implement it.**
@@ -411,7 +449,7 @@ The cron core does two things.
 **Interfaces:**
 - Consumes: Task 1 tables; `google-integration/tenant.ts`; `checkRateLimit`; `effectivePlanFeature`.
 - Produces: `createYouTubeAnalyticsHandler(deps)`, with routes `GET /overview/:clientId`, `/daily/:clientId`, `/traffic/:clientId`, `/demographics/:clientId`, `/videos/:clientId?sort=` and `/top-shorts/:clientId`.
-  - **Window:** `?days=7|28|90` or `?start&end` (at most 365 days). The window ends at `min(end, data_through)` and the previous window has the same length (spec §7). `?type=all|shorts|long` selects the content type.
+  - **Window:** `?days=7|28|90` or `?start&end` (at most 365 days), per the window rule in Global Constraints. `?type=all|shorts|long` selects the content type.
   - **Response shapes (exported types):**
     - `YtOverview = { channel: { title, handle, avatarUrl, subscriberCount, authorizationStatus, lastSyncedAt, dataThrough, contentTypeThrough, trafficThrough }, window: { start, end, prevStart, prevEnd }, kpis: Record<YtKpiId, { value: number | null; prev: number | null }>, split: { views, minutes, likes } each { shorts: number; long: number } }`.
     - `YtKpiId` = `subscribers | net_subscribers | views | engaged_views | watch_minutes | avg_view_duration_s | likes | shares | comments`.
@@ -427,7 +465,8 @@ The cron core does two things.
 
 - [ ] **Step 1: Write failing tests**, copying the `tiktok-analytics_test.ts` cases list:
   - 401s, `active_workspace_id` use, non-member 403, foreign client 403 before flags, 429, `feature_disabled` per flag, invalid id/window/sort 400, `not_connected`, a generic 500 with no detail, unknown route 404, and no token columns.
-  - **KPI tests:** the weighted mean, net subscribers, the window ending at `data_through`, and a channel with no Shorts giving `split.views.shorts = 0` (Review Focus 4).
+  - **KPI tests:** the weighted mean, net subscribers, `?days=28` with `data_through` three days back giving a full 28-day window and a 28-day previous window, and a channel with no Shorts giving `split.views.shorts = 0` (Review Focus 4).
+  - **Revoked:** a revoked, purged channel returns 200 with `authorizationStatus: 'revoked'` and null KPIs.
 - [ ] **Step 2: Run them.** Expected: FAIL.
 - [ ] **Step 3: Implement it.**
 - [ ] **Step 4: Run them, plus `npm run check:functions`.** Expected: PASS.
@@ -444,15 +483,15 @@ The cron core does two things.
 **Interfaces:**
 - Produces: `createGbpAnalyticsHandler(deps)`, with routes `GET /overview/:clientId?location=all|<uuid>&days|start,end`, `/daily`, `/surfaces`, `/keywords?month=YYYY-MM`, `/reviews?filter=all|unanswered|low`, `/rating-distribution` and `/units`.
   - **Units:** only the client's `active` and `revoked` units count. A `location` uuid outside the client returns 404.
-  - **Window:** days are 7, 30 or 90, ending at the minimum `data_through` across the selected units.
+  - **Window:** `?days=7|30|90` or `?start&end`, per the window rule in Global Constraints, where `data_through` is the **minimum** across the selected units.
   - **KPIs (spec §7):**
 
     | KPI id | Value |
     |---|---|
     | `profile_views` | Σ of the four impression metrics |
     | `calls`, `directions`, `website_clicks`, `messages`, `bookings` | Σ of the metric |
-    | `avg_rating` | latest `gbp_rating_daily`, weighted by review count across units, with prev = the value at the window start |
-    | `new_reviews` | Δ of `total_review_count` |
+    | `avg_rating` | per unit, the latest `gbp_rating_daily` row on or before the window end (else null), weighted by review count across units; prev = the same rule at the window start |
+    | `new_reviews` | Δ of `total_review_count` between those two rows (null when either is missing) |
 
   - **Routes:**
     - `/surfaces` returns the four impression sums with percentages.
@@ -466,6 +505,8 @@ The cron core does two things.
   - `profile_views` summing the four surfaces;
   - `partial` true when only 200 of 440 reviews are stored;
   - a foreign location uuid returning 404;
+  - two units with `data_through` 10-25 and 10-27: "Todas as unidades" ends its window on 10-25;
+  - `avg_rating` with no rating row before the window start gives prev null;
   - a revoked unit's data still returned.
 - [ ] **Step 2: Run them.** Expected: FAIL.
 - [ ] **Step 3: Implement it.**
@@ -517,7 +558,7 @@ The cron core does two things.
     - **KPI grid:** eight cards in the mockup order. Delta caption "vs. {{n}} dias anteriores".
     - **Cards:** "Visualizações por dia" (stacked Shorts/long bars), "Shorts x vídeos longos", "De onde vêm as visualizações", "Público" (sub "Idade e gênero dos espectadores · últimos 28 dias", per spec §5.1), "Shorts em destaque" and "Vídeos" (table with "Abrir no YouTube" links via `sanitizeUrl`).
     - **Footer:** "Dados do YouTube, como o YouTube informa." (P10).
-  - **Traffic labels:** `insightTrafficSourceType` values map to the mockup labels ("Feed de Shorts", "Pesquisa", "Sugestões", "Links externos", "Página do canal"). Other values go under "Outras origens".
+  - **Traffic labels:** `SHORTS` → "Feed de Shorts", `YT_SEARCH` → "Pesquisa", `RELATED_VIDEO` → "Sugestões", `EXT_URL` → "Links externos", `YT_CHANNEL` → "Página do canal"; every other value (`SUBSCRIBER`, `NOTIFICATION`, `PLAYLIST`, `END_SCREEN`, `HASHTAGS`, `NO_LINK_OTHER`, …) sums into "Outras origens".
   - **Watermarks:** a card whose own watermark (`contentTypeThrough`, `trafficThrough`) lags `dataThrough` shows "Dados até {{data}}" with its own date.
   - **States:** the TikTok order, using `AnalyticsStateCards`.
     - Pending shows the skeleton.
@@ -604,8 +645,8 @@ The cron core does two things.
   - **Env vars:** add `GOOGLE_SYNC_BATCH_LIMIT` (default 25) and `GOOGLE_SYNC_CONCURRENCY` (default 4) under the edge-function variables, with the capacity line `24 × GOOGLE_SYNC_BATCH_LIMIT unit-syncs per product per day`.
   - **`--no-verify-jwt` list:** add `youtube-sync-cron`, `gbp-sync-cron`, `youtube-analytics` and `gbp-analytics`.
   - **Google gotcha:**
-    - the Phase 2 deploy order: migrations `…10`-`…12`, then `google-integration`, `youtube-sync-cron`, `gbp-sync-cron`, `youtube-analytics` and `gbp-analytics`, then schedule migrations `…20`-`…21`, then merge;
-    - the P2 note that Phase 4 must re-create `youtube_purge_channel` with the layout and `youtube_channel_id` edits;
+    - the Phase 2 deploy order: deploy the five functions first (`google-integration`, `youtube-sync-cron`, `gbp-sync-cron`, `youtube-analytics`, `gbp-analytics`; harmless before their tables exist, since nothing calls them yet), then one `supabase db push --linked` for all five migrations (`…10`-`…12`, `…20`-`…21`; `db push` applies every pending file at once, so the schedules cannot be held back), then merge;
+    - the P2 note that Phase 4 must re-create `youtube_purge_channel` with the layout and `youtube_channel_id` edits, and that Phase 3, which re-creates `google_unlink_youtube` with the target/upload steps, must keep its purge call;
     - that `gbp-sync-cron` carries the privacy deletion duties, so unscheduling it breaks the policy's 30-day promise.
 - Test: the full gate below.
 
