@@ -51,6 +51,51 @@ describe('AttachImage', () => {
     expect(host.callTool).toHaveBeenCalledTimes(1);
   });
 
+  it('after a success shows the attached image in its slot and next to the confirmation', async () => {
+    const url = 'https://media.example/attached.png';
+    const host = fakeHost(attach, {
+      results: { attach_image_to_post: textResult({ ok: true, position: 4, url }) },
+    });
+    render(<App host={host} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Anexar na lâmina escolhida' }));
+    expect(await screen.findByText('Imagem anexada na lâmina 4 no Mesaas.')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Imagem anexada na lâmina 4' })).toHaveAttribute(
+      'src',
+      url,
+    );
+    const slot = screen.getByRole('button', { name: 'Lâmina 4, já tem imagem' });
+    expect(slot).toHaveClass('mw-slot-fresh');
+    expect(slot.querySelector('img')).toHaveAttribute('src', url);
+    expect(slot).toHaveTextContent('Anexada agora');
+    expect(screen.queryByText(/já tem imagem: o cartão pergunta/)).toBeNull();
+  });
+
+  it('a replace puts the new image in the same slot, without adding one', async () => {
+    const url = 'https://media.example/replaced.png';
+    const host = fakeHost(attach, {
+      results: { attach_image_to_post: textResult({ ok: true, position: 2, url }) },
+    });
+    render(<App host={host} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Lâmina 2, já tem imagem' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Anexar na lâmina escolhida' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Substituir' }));
+    expect(
+      await screen.findByText('Imagem da lâmina 2 substituída no Mesaas.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Lâmina 2, já tem imagem' }).querySelector('img'),
+    ).toHaveAttribute('src', url);
+    expect(screen.getAllByRole('button', { name: /^Lâmina \d/ })).toHaveLength(4);
+  });
+
+  it('a success without a url still confirms, with no broken image', async () => {
+    const host = fakeHost(attach, { results: { attach_image_to_post: textResult({ ok: true }) } });
+    render(<App host={host} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Anexar na lâmina escolhida' }));
+    expect(await screen.findByText('Imagem anexada na lâmina 4 no Mesaas.')).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: /Imagem anexada/ })).toBeNull();
+  });
+
   it('an ineligible post shows the reason and no attach button', () => {
     render(<App host={fakeHost(ineligible)} />);
     expect(screen.getByText(ineligible.reason)).toBeInTheDocument();
