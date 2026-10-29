@@ -48,8 +48,11 @@ function isLinkedElsewhere(option: GbpLocationOptionView, clienteId: number): bo
   return option.linkedClientId != null && option.linkedClientId !== clienteId;
 }
 
+// A unit linked to this client stays toggleable even when Google now reports it unverified,
+// so the user can uncheck it to unlink; unverified units not linked to this client cannot be added.
 function isSelectable(option: GbpLocationOptionView, clienteId: number): boolean {
-  return option.eligible && !isLinkedElsewhere(option, clienteId);
+  if (isLinkedElsewhere(option, clienteId)) return false;
+  return option.eligible || option.linkedClientId === clienteId;
 }
 
 // Unit picker for Google Meu Negócio. The server re-lists from Google on save and rejects
@@ -312,7 +315,7 @@ export function GbpUnitsDialog({
                   <span style={{ display: 'block', fontWeight: 600, fontSize: '0.9375rem' }}>
                     {option.title}
                   </span>
-                  {selectable && option.addressLine && (
+                  {selectable && option.eligible && option.addressLine && (
                     <span
                       style={{
                         display: 'block',
@@ -324,7 +327,7 @@ export function GbpUnitsDialog({
                       {option.addressLine}
                     </span>
                   )}
-                  {!selectable && (
+                  {(!selectable || !option.eligible) && (
                     <span
                       style={{
                         display: 'block',
@@ -339,7 +342,7 @@ export function GbpUnitsDialog({
                     </span>
                   )}
                 </Label>
-                {!selectable && (
+                {(!selectable || !option.eligible) && (
                   <Badge variant={elsewhere ? 'neutral' : 'warning'}>
                     {elsewhere ? t('gmn.dialog.inUse') : t('gmn.dialog.unverified')}
                   </Badge>

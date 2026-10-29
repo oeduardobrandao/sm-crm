@@ -345,7 +345,7 @@ describe('GbpUnitsDialog', () => {
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 
-  it('keeps a linked unit that Google now reports unverified checked, disabled and in the save set', async () => {
+  it('keeps a linked unit that Google now reports unverified checked and enabled, and lets it be unlinked', async () => {
     const stale = option({
       locationName: 'locations/s',
       title: 'Sorriso Pleno Tatuapé',
@@ -355,15 +355,21 @@ describe('GbpUnitsDialog', () => {
       hasVoiceOfMerchant: false,
     });
     listOptionsMock.mockResolvedValue([optA, stale, optC]);
-    linkMock.mockResolvedValue(3);
+    linkMock.mockResolvedValue(2);
     renderDialog();
 
     const box = await screen.findByRole('checkbox', { name: /Sorriso Pleno Tatuapé/ });
     expect(box).toBeChecked();
-    expect(box).toBeDisabled();
+    expect(box).toBeEnabled();
     expect(screen.getByText('Não verificado')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Perfil ainda não verificado pelo Google, que não libera métricas para ele.',
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByText('Em uso')).toBeNull();
 
+    // Left checked, it stays in the save set (R7).
     await userEvent.click(screen.getByRole('checkbox', { name: /Sorriso Pleno Santo André/ }));
     await userEvent.click(screen.getByRole('button', { name: 'Vincular 3 unidades' }));
     await waitFor(() =>
@@ -373,5 +379,24 @@ describe('GbpUnitsDialog', () => {
         'locations/c',
       ]),
     );
+  });
+
+  it('removes an unverified linked unit from the save set when it is unchecked', async () => {
+    const stale = option({
+      locationName: 'locations/s',
+      title: 'Sorriso Pleno Tatuapé',
+      linkedClientId: 7,
+      linkedClientName: 'Clínica Sorriso Pleno',
+      eligible: false,
+      hasVoiceOfMerchant: false,
+    });
+    listOptionsMock.mockResolvedValue([optA, stale]);
+    linkMock.mockResolvedValue(1);
+    renderDialog();
+
+    await userEvent.click(await screen.findByRole('checkbox', { name: /Sorriso Pleno Tatuapé/ }));
+    expect(screen.getByRole('checkbox', { name: /Sorriso Pleno Tatuapé/ })).not.toBeChecked();
+    await userEvent.click(screen.getByRole('button', { name: 'Vincular 1 unidade' }));
+    await waitFor(() => expect(linkMock).toHaveBeenCalledWith(7, 'conn-1', ['locations/a']));
   });
 });
