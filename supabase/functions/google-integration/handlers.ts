@@ -493,6 +493,14 @@ interface LinkedRow {
   status: string;
 }
 
+interface StoredLocationRow extends LinkedRow {
+  account_name?: string | null;
+  title?: string | null;
+  address_line?: string | null;
+  website?: string | null;
+  has_voice_of_merchant?: boolean | null;
+}
+
 async function handleListLocations(
   svc: DbClient,
   req: Request,
@@ -513,22 +521,31 @@ async function handleListLocations(
   const { options, truncated } = await listGbpLocations(token);
   // `truncated` (account cap or time budget hit) is extra; the CRM ignores unknown fields.
   const extra = truncated ? { truncated: true } : {};
-  if (options.length === 0) return json(cors, { options: [], ...extra });
 
   // Units of this workspace that already belong to a client (active or awaiting reconnect),
   // matched in memory: the listed names can be hundreds, too many for a URL filter.
   const { data: linked, error } = await svc
     .from("gbp_locations")
-    .select("location_name, client_id, connection_id, status")
+    .select(
+      "location_name, client_id, connection_id, status, account_name, title, address_line, website, has_voice_of_merchant",
+    )
     .eq("conta_id", ctx.contaId)
     .in("status", ["active", "revoked"]);
   if (error) throw new Error(`gbp_locations read failed: ${error.message}`);
+  const linkedRows = (linked ?? []) as StoredLocationRow[];
   const listedNames = new Set(options.map((o) => o.locationName));
   const linkedBy = new Map<string, LinkedRow>(
-    ((linked ?? []) as LinkedRow[]).filter((r) => listedNames.has(r.location_name)).map((r) => [r.location_name, r]),
+    linkedRows.filter((r) => listedNames.has(r.location_name)).map((r) => [r.location_name, r]),
+  );
+  // This client's units on THIS connection that the listing did not return (an account past
+  // the walk's bounds, or Google stopped listing it). The picker seeds its checked set from
+  // these options, so leaving them out would make the next save unlink them.
+  const unlistedMine = linkedRows.filter((r) =>
+    r.client_id === ctx.clientId && r.connection_id === connectionId && !listedNames.has(r.location_name)
   );
 
   const clientIds = [...new Set([...linkedBy.values()].map((r) => r.client_id))];
+  if (unlistedMine.length && !clientIds.includes(ctx.clientId)) clientIds.push(ctx.clientId);
   const names = new Map<number, string>();
   if (clientIds.length) {
     const { data: clients, error: clientError } = await svc
@@ -556,7 +573,19 @@ async function handleListLocations(
         linkedClientName: linkedClientId !== null ? names.get(linkedClientId) ?? null : null,
         eligible: keptHere || (o.hasVoiceOfMerchant && !takenByOther),
       };
-    }),
+    }).concat(
+      unlistedMine.map((r) => ({
+        locationName: r.location_name,
+        accountName: r.account_name ?? "",
+        title: r.title ?? r.location_name,
+        addressLine: r.address_line ?? null,
+        website: r.website ?? null,
+        hasVoiceOfMerchant: r.has_voice_of_merchant === true,
+        linkedClientId: ctx.clientId,
+        linkedClientName: names.get(ctx.clientId) ?? null,
+        eligible: true, // R7: already linked here
+      })),
+    ),
   });
 }
 
@@ -592,7 +621,8 @@ async function handleLinkLocations(svc: DbClient, req: Request, rawClientId: str
 
   const token = await getFreshGoogleToken(svc, connectionId);
   // A truncated listing only means fewer names are accepted (409), never a wrong link.
-  const fromGoogle = new Map((await listGbpLocations(token)).options.map((o) => [o.locationName, o]));
+  const listing = await listGbpLocations(token);
+  const fromGoogle = new Map(listing.options.map((o) => [o.locationName, o]));
 
   let requestedRows: LinkedRow[] = [];
   if (locationNames.length) {
@@ -664,6 +694,7 @@ async function handleLinkLocations(svc: DbClient, req: Request, rawClientId: str
       .from("gbp_locations")
       .delete()
       .eq("id", row.id)
+      .eq("conta_id", ctx.contaId)
       .eq("client_id", row.client_id)
       .eq("status", "disconnected");
     if (error) throw new Error(`gbp_locations delete failed: ${error.message}`);
@@ -700,7 +731,12 @@ async function handleLinkLocations(svc: DbClient, req: Request, rawClientId: str
   }
 
   const wanted = new Set(locationNames);
-  const removed = mine.filter((r) => !wanted.has(r.location_name));
+  // A truncated listing may not have shown some of this client's units; the picker could not
+  // offer them, so their absence from the set is not a decision. Unlink only what Google
+  // actually listed this time. A complete listing keeps the plain set difference.
+  const removed = mine.filter((r) =>
+    !wanted.has(r.location_name) && (!listing.truncated || fromGoogle.has(r.location_name))
+  );
   for (const row of removed) {
     const { data, error } = await svc.rpc("google_unlink_gbp_location", {
       p_conta_id: ctx.contaId,

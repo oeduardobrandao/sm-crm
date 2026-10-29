@@ -675,7 +675,8 @@ Deno.test("link_replaces_foreign_disconnected_row (R11): old row deleted, a new 
     const del = db.calls.find((c) => c.table === "gbp_locations" && c.operation === "delete")!;
     const dFilters = del.modifiers.map((m) => `${m.method}:${m.args[0]}:${m.args[1]}`);
     assert(
-      dFilters.includes("eq:id:old-row") && dFilters.includes("eq:client_id:7") && dFilters.includes("eq:status:disconnected"),
+      dFilters.includes("eq:id:old-row") && dFilters.includes("eq:client_id:7") &&
+        dFilters.includes("eq:status:disconnected") && dFilters.includes(`eq:conta_id:${CONTA}`),
       dFilters.join(","),
     );
     const ins = db.calls.find((c) => c.table === "gbp_locations" && c.operation === "insert")!;
@@ -800,5 +801,97 @@ Deno.test("summary_connection_email_error: logged, email null, summary still 200
     assert(logged.some((l) => l.includes("connection email")), `expected a log line, got ${logged}`);
   } finally {
     console.error = original;
+  }
+});
+
+// ─── Fix round 2: truncated listings never cost a client its units ──────────────
+
+const THIRTY_ACCOUNTS = Array.from({ length: 30 }, (_, i) => ({ name: `accounts/${i + 1}` }));
+
+Deno.test("locations_truncated_keeps_unlisted_linked: this client's unlisted unit on this connection is appended", async () => {
+  const db = routeDb();
+  await queueConnection(db);
+  db.queue("gbp_locations", "select", {
+    data: [
+      {
+        location_name: "locations/z",
+        client_id: CLIENT,
+        connection_id: CONN_1,
+        status: "active",
+        account_name: "accounts/30",
+        title: "Z stored",
+        address_line: "Rua Z, 1",
+        website: null,
+        has_voice_of_merchant: false,
+      },
+      { location_name: "locations/other-client", client_id: 7, connection_id: CONN_1, status: "active" },
+      { location_name: "locations/other-conn", client_id: CLIENT, connection_id: CONN_2, status: "active" },
+    ],
+  });
+  db.queue("clientes", "select", { data: [{ id: CLIENT, nome: "Cliente A" }] });
+  const f = stubGoogle({ accounts: THIRTY_ACCOUNTS, locations: { "accounts/1": [loc("a", "A")] } });
+  try {
+    const res = await makeHandler(db)(req("GET", `/locations/${CLIENT}?connection=${CONN_1}`));
+    const body = await res.json();
+    assertEquals(body.truncated, true);
+    assertEquals(body.options.map((o: Record<string, unknown>) => o.locationName), ["locations/a", "locations/z"]);
+    assertEquals(body.options[1], {
+      locationName: "locations/z",
+      accountName: "accounts/30",
+      title: "Z stored",
+      addressLine: "Rua Z, 1",
+      website: null,
+      hasVoiceOfMerchant: false,
+      linkedClientId: CLIENT,
+      linkedClientName: "Cliente A",
+      eligible: true,
+    });
+  } finally {
+    f.restore();
+  }
+});
+
+function unlinkScenarioDb() {
+  const db = routeDb();
+  return (async () => {
+    await queueConnection(db);
+    db.queue("gbp_locations", "select", {
+      data: [
+        { id: "row-a", location_name: "locations/a" },
+        { id: "row-z", location_name: "locations/z" },
+      ],
+    });
+    db.queueRpc(
+      "google_unlink_gbp_location",
+      { data: [{ should_revoke: false, revocation_id: null }] },
+      { data: [{ should_revoke: false, revocation_id: null }] },
+    );
+    return db;
+  })();
+}
+
+Deno.test("link_truncated_never_unlinks_unlisted: a unit Google did not show is kept; listed ones still unlink", async () => {
+  const db = await unlinkScenarioDb();
+  const f = stubGoogle({ accounts: THIRTY_ACCOUNTS, locations: { "accounts/1": [loc("a", "A")] } });
+  try {
+    const res = await makeHandler(db)(req("POST", `/locations/${CLIENT}`, { connectionId: CONN_1, locationNames: [] }));
+    assertEquals(await res.json(), { linked: 0 });
+    const unlinked = rpcCalls(db, "google_unlink_gbp_location").map((c) => (c.payload as Record<string, unknown>).p_location_id);
+    assertEquals(unlinked, ["row-a"], "row-z lives in an unwalked account and must not be unlinked");
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("link_complete_listing_unlinks_unlisted: without truncation the set difference is unchanged", async () => {
+  const db = await unlinkScenarioDb();
+  const f = stubGoogle({ accounts: [{ name: "accounts/1" }], locations: { "accounts/1": [loc("a", "A")] } });
+  try {
+    const res = await makeHandler(db)(req("POST", `/locations/${CLIENT}`, { connectionId: CONN_1, locationNames: [] }));
+    assertEquals(await res.json(), { linked: 0 });
+    const unlinked = rpcCalls(db, "google_unlink_gbp_location").map((c) => (c.payload as Record<string, unknown>).p_location_id);
+    assertEquals(unlinked, ["row-a", "row-z"]);
+  } finally {
+    f.restore();
   }
 });
