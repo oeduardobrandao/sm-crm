@@ -204,6 +204,8 @@
     "account": "Google account: {{email}}",
     "reviewsCount_one": "{{count}} review",
     "reviewsCount_other": "{{count}} reviews",
+    "noUnits": "No locations linked to this client yet.",
+    "chooseUnits": "Choose locations",
     "noReviews": "No reviews",
     "manageUnits": "Manage locations",
     "useOtherAccount": "Use another Google account",

@@ -110,7 +110,7 @@ export function YouTubeSection({ clienteId }: { clienteId: number }) {
     <section
       className="card"
       data-testid="youtube-section"
-      aria-labelledby="youtube-card-title"
+      aria-label={t('youtube.title')}
       style={{ padding: '1.25rem', marginBottom: '1.5rem' }}
     >
       {isLoading && <ReportSkeleton />}

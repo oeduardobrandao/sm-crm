@@ -204,6 +204,8 @@
     "account": "Conta Google: {{email}}",
     "reviewsCount_one": "{{count}} avaliação",
     "reviewsCount_other": "{{count}} avaliações",
+    "noUnits": "Nenhuma unidade vinculada a este cliente ainda.",
+    "chooseUnits": "Escolher unidades",
     "noReviews": "Sem avaliações",
     "manageUnits": "Gerenciar unidades",
     "useOtherAccount": "Usar outra conta Google",

@@ -178,4 +178,29 @@ describe('GoogleBusinessSection', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText('Conectar Google Meu Negócio')).toBeNull();
   });
+
+  it('offers Escolher unidades, not the connect card, when a connection has no units yet', async () => {
+    mockFeatures = { feature_google_business: true };
+    getGoogleSummaryMock.mockResolvedValue({
+      youtube: null,
+      gmn: { locations: [], connections: summary.gmn.connections },
+    });
+    listOptionsMock.mockResolvedValue([]);
+    renderSection();
+
+    expect(
+      await screen.findByText('Nenhuma unidade vinculada a este cliente ainda.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Conectar Google Meu Negócio')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Escolher unidades' }));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    await waitFor(() => expect(listOptionsMock).toHaveBeenCalledWith(7, 'conn-1'));
+  });
+
+  it('labels the section in every state', async () => {
+    mockFeatures = { feature_google_business: true };
+    getGoogleSummaryMock.mockRejectedValue(new Error('boom'));
+    renderSection();
+    expect(await screen.findByRole('region', { name: 'Google Meu Negócio' })).toBeInTheDocument();
+  });
 });

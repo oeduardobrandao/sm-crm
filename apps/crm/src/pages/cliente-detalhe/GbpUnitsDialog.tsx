@@ -78,6 +78,10 @@ export function GbpUnitsDialog({
     if (!open) return;
     setConnectionId(initialConnectionId ?? connections[0]?.id ?? null);
     setActionError(null);
+    // The dialog component stays mounted while closed, so discarded edits would otherwise
+    // reappear: go back to the loaded baseline. (A refetch that returns different units
+    // re-seeds both sets in the effect below.)
+    setSelected(baseline);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on open / requested connection
   }, [open, initialConnectionId]);
 
@@ -97,15 +101,16 @@ export function GbpUnitsDialog({
     staleTime: 0,
     gcTime: 0,
     retry: false,
+    refetchOnWindowFocus: false,
   });
 
-  // This client's active units start checked; that set is also the "unchanged" baseline.
+  // This client's linked units start checked; that set is also the "unchanged" baseline. A
+  // linked unit Google now reports as unverified stays in it (checked, disabled) so a save
+  // never unlinks it silently; the backend accepts names already linked to this client.
   useEffect(() => {
     if (!options) return;
     const initial = new Set(
-      options
-        .filter((o) => o.linkedClientId === clienteId && o.eligible)
-        .map((o) => o.locationName),
+      options.filter((o) => o.linkedClientId === clienteId).map((o) => o.locationName),
     );
     setSelected(initial);
     setBaseline(initial);
@@ -300,7 +305,7 @@ export function GbpUnitsDialog({
                   id={id}
                   className="mt-0.5"
                   disabled={!selectable || save.isPending}
-                  checked={selectable && selected.has(option.locationName)}
+                  checked={selected.has(option.locationName)}
                   onCheckedChange={(v) => toggle(option.locationName, v === true)}
                 />
                 <Label htmlFor={id} className="block min-w-0 flex-1 cursor-pointer font-normal">

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -38,6 +39,11 @@ function option(over: Record<string, unknown>) {
     ...over,
   };
 }
+
+// Radix Select needs these pointer/scroll APIs, which jsdom lacks.
+Element.prototype.hasPointerCapture ??= () => false;
+Element.prototype.releasePointerCapture ??= () => {};
+Element.prototype.scrollIntoView ??= () => {};
 
 const optA = option({
   locationName: 'locations/a',
@@ -90,6 +96,26 @@ function renderDialog(
     </QueryClientProvider>,
   );
   return { invalidate, onOpenChange };
+}
+
+function ReopenHarness() {
+  const [open, setOpen] = useState(true);
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return (
+    <QueryClientProvider client={qc}>
+      <button type="button" onClick={() => setOpen(true)}>
+        reabrir
+      </button>
+      <GbpUnitsDialog
+        clienteId={7}
+        clienteNome="Clínica Sorriso Pleno"
+        connections={[connection]}
+        initialConnectionId="conn-1"
+        open={open}
+        onOpenChange={setOpen}
+      />
+    </QueryClientProvider>
+  );
 }
 
 afterEach(() => {
@@ -234,5 +260,118 @@ describe('GbpUnitsDialog', () => {
       await screen.findByText('Muitas tentativas. Tente de novo em instantes.'),
     ).toBeInTheDocument();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  it('resets discarded edits when the dialog is reopened', async () => {
+    listOptionsMock.mockResolvedValue([optA, optC]);
+    render(<ReopenHarness />);
+
+    await screen.findByRole('button', { name: 'Vincular 1 unidade' });
+    await userEvent.click(screen.getByRole('checkbox', { name: /Sorriso Pleno Santo André/ }));
+    expect(screen.getByRole('button', { name: 'Vincular 2 unidades' })).toBeInTheDocument();
+
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(await screen.findByRole('button', { name: 'Fechar mesmo assim' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    await userEvent.click(screen.getByRole('button', { name: 'reabrir' }));
+    expect(await screen.findByRole('button', { name: 'Vincular 1 unidade' })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /Sorriso Pleno Santo André/ })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /Sorriso Pleno Moema/ })).toBeChecked();
+  });
+
+  it('offers Desvincular todas when every linked unit is unchecked', async () => {
+    listOptionsMock.mockResolvedValue([optA, optB, optC]);
+    linkMock.mockResolvedValue(0);
+    renderDialog();
+
+    await screen.findByRole('button', { name: 'Vincular 2 unidades' });
+    await userEvent.click(screen.getByRole('checkbox', { name: /Sorriso Pleno Moema/ }));
+    await userEvent.click(screen.getByRole('checkbox', { name: /Sorriso Pleno Pinheiros/ }));
+    const button = screen.getByRole('button', { name: 'Desvincular todas' });
+    expect(button).toBeEnabled();
+
+    await userEvent.click(button);
+    await waitFor(() => expect(linkMock).toHaveBeenCalledWith(7, 'conn-1', []));
+  });
+
+  it('disables submit when nothing is linked and nothing is checked', async () => {
+    listOptionsMock.mockResolvedValue([optC]);
+    renderDialog();
+
+    await screen.findByRole('checkbox', { name: /Sorriso Pleno Santo André/ });
+    expect(screen.getByRole('button', { name: /^Vincular/ })).toBeDisabled();
+    await userEvent.click(screen.getByRole('checkbox', { name: /Sorriso Pleno Santo André/ }));
+    expect(screen.getByRole('button', { name: 'Vincular 1 unidade' })).toBeEnabled();
+  });
+
+  it('sends only names from the second connection after switching accounts', async () => {
+    const second = { id: 'conn-2', email: 'outra@conta.com', status: 'active' as const };
+    const optF = option({ locationName: 'locations/f', title: 'Filial Centro' });
+    listOptionsMock.mockImplementation((_c: number, conn: string) =>
+      Promise.resolve(conn === 'conn-2' ? [optF] : [optA, optC]),
+    );
+    linkMock.mockResolvedValue(1);
+    renderDialog({ connections: [connection, second] });
+
+    await screen.findByRole('checkbox', { name: /Sorriso Pleno Moema/ });
+    await userEvent.click(screen.getByRole('combobox'));
+    await userEvent.click(await screen.findByRole('option', { name: 'outra@conta.com' }));
+
+    await userEvent.click(await screen.findByRole('checkbox', { name: /Filial Centro/ }));
+    expect(screen.queryByRole('checkbox', { name: /Sorriso Pleno Moema/ })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Vincular 1 unidade' }));
+
+    await waitFor(() => expect(linkMock).toHaveBeenCalledWith(7, 'conn-2', ['locations/f']));
+  });
+
+  it('refetches the list and shows the message on location_unavailable', async () => {
+    listOptionsMock.mockResolvedValue([optA, optC]);
+    linkMock.mockRejectedValue(new GoogleServiceError('location_unavailable'));
+    const { onOpenChange } = renderDialog();
+
+    await userEvent.click(
+      await screen.findByRole('checkbox', { name: /Sorriso Pleno Santo André/ }),
+    );
+    expect(listOptionsMock).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole('button', { name: 'Vincular 2 unidades' }));
+
+    expect(
+      await screen.findByText(
+        'Uma das unidades marcadas não está mais disponível. A lista foi atualizada, confira a seleção.',
+      ),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(listOptionsMock).toHaveBeenCalledTimes(2));
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  it('keeps a linked unit that Google now reports unverified checked, disabled and in the save set', async () => {
+    const stale = option({
+      locationName: 'locations/s',
+      title: 'Sorriso Pleno Tatuapé',
+      linkedClientId: 7,
+      linkedClientName: 'Clínica Sorriso Pleno',
+      eligible: false,
+      hasVoiceOfMerchant: false,
+    });
+    listOptionsMock.mockResolvedValue([optA, stale, optC]);
+    linkMock.mockResolvedValue(3);
+    renderDialog();
+
+    const box = await screen.findByRole('checkbox', { name: /Sorriso Pleno Tatuapé/ });
+    expect(box).toBeChecked();
+    expect(box).toBeDisabled();
+    expect(screen.getByText('Não verificado')).toBeInTheDocument();
+    expect(screen.queryByText('Em uso')).toBeNull();
+
+    await userEvent.click(screen.getByRole('checkbox', { name: /Sorriso Pleno Santo André/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Vincular 3 unidades' }));
+    await waitFor(() =>
+      expect(linkMock).toHaveBeenCalledWith(7, 'conn-1', [
+        'locations/a',
+        'locations/s',
+        'locations/c',
+      ]),
+    );
   });
 });

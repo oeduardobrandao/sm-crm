@@ -63,6 +63,11 @@ export function GoogleBusinessSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one shot per pick + summary load
   }, [enabled, pickConnectionId, summary]);
 
+  function openPicker() {
+    setDialogConnectionId(activeConnections[0]?.id ?? null);
+    setDialogOpen(true);
+  }
+
   async function handleConnect() {
     setRedirecting(true);
     try {
@@ -98,7 +103,7 @@ export function GoogleBusinessSection({
     <section
       className="card"
       data-testid="gmn-section"
-      aria-labelledby="gmn-card-title"
+      aria-label={t('gmn.title')}
       style={{ padding: '1.25rem', marginBottom: '1.5rem' }}
     >
       {isLoading && <ReportSkeleton />}
@@ -109,7 +114,28 @@ export function GoogleBusinessSection({
         </p>
       )}
 
-      {!isLoading && !isError && units.length === 0 && (
+      {!isLoading && !isError && units.length === 0 && activeConnections.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Store size={24} color="#2563eb" aria-hidden="true" />
+            <h3 id="gmn-card-title" style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>
+              {t('gmn.title')}
+            </h3>
+          </div>
+          <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--text-light)' }}>
+            {t('gmn.account', { email: activeConnections.map((c) => c.email).join(', ') })}
+          </p>
+          <p style={{ margin: 0, fontSize: '0.875rem', lineHeight: 1.5 }}>{t('gmn.noUnits')}</p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Button type="button" onClick={() => openPicker()}>
+              {t('gmn.chooseUnits')}
+            </Button>
+            {connectButton(t('gmn.useOtherAccount'), 'ghost')}
+          </div>
+        </div>
+      )}
+
+      {!isLoading && !isError && units.length === 0 && activeConnections.length === 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Store size={24} color="#2563eb" aria-hidden="true" />
@@ -221,15 +247,7 @@ export function GoogleBusinessSection({
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {activeConnections.length > 0 && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setDialogConnectionId(activeConnections[0].id);
-                  setDialogOpen(true);
-                }}
-              >
+              <Button type="button" variant="outline" size="sm" onClick={() => openPicker()}>
                 {t('gmn.manageUnits')}
               </Button>
             )}
