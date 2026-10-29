@@ -98,7 +98,10 @@ export function NewReportDialog({ open, onOpenChange, clientId, connected }: New
   useEffect(() => {
     if (!open) {
       appliedDefaultRef.current = false;
-      setUnchecked([]);
+      // Mantém a mesma referência quando já está vazio. Fechado, a query fica desligada e
+      // `templates` é um `[]` novo a cada render, então o efeito roda a cada render: um `[]`
+      // novo aqui virava um loop infinito de renders que travava a navegação da página.
+      setUnchecked((prev) => (prev.length === 0 ? prev : []));
       return;
     }
     if (appliedDefaultRef.current || templatesLoading) return;

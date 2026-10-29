@@ -1,4 +1,5 @@
 import React from 'react';
+import { createRoot } from 'react-dom/client';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -104,6 +105,27 @@ beforeEach(() => {
 });
 
 describe('NewReportDialog', () => {
+  it('fechado e sem templates carregados, não entra em loop de renders', async () => {
+    // Fora do act(): dentro dele o React esvazia os efeitos de forma síncrona e um loop
+    // travaria o teste em vez de falhar. Assim o loop cede ao scheduler e dá para contar.
+    const g = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+    const prevActEnv = g.IS_REACT_ACT_ENVIRONMENT;
+    g.IS_REACT_ACT_ENVIRONMENT = false;
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    try {
+      root.render(<NewReportDialog open={false} onOpenChange={() => {}} clientId={42} />);
+      await new Promise((r) => setTimeout(r, 100));
+      // A query dos modelos é chamada uma vez por render: o loop a chamava milhares de vezes.
+      expect(useQueryCalls.length).toBeLessThan(5);
+    } finally {
+      root.unmount();
+      errorSpy.mockRestore();
+      g.IS_REACT_ACT_ENVIRONMENT = prevActEnv;
+    }
+  });
+
   it('gera com o mês selecionado, invalida a lista e navega para o documento', async () => {
     generateMock.mockResolvedValue({ id: 'doc-9' });
     render(<NewReportDialog open onOpenChange={() => {}} clientId={42} />);
