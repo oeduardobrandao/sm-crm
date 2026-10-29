@@ -1,6 +1,6 @@
 # Client edit suggestions survive team edits (no more auto-reject)
 
-Status: DRAFT v3 (Codex + Fable reviews folded in; owner questions open)
+Status: APPROVED v3 (Codex + Fable reviews folded in; owner decisions below)
 Date: 2026-10-29
 Mockups: https://claude.ai/artifact/MEBmjJBNoriqTfTu9bDqyo
 
@@ -356,12 +356,12 @@ supersede only when the team changes a field that IS in `changed_fields`. It fix
 close the client's suggestion without a person deciding, which is the behavior the owner called
 wrong on 2026-10-29. If the owner prefers less surface over that, this is the fallback design.
 
-## Owner questions
+## Owner decisions (2026-10-29)
 
-1. Same-field clash: the team chooses per field in the CRM (this spec), or the suggestion closes
-   as "não revisada" (alternative above)? Recommended: the team chooses.
-2. Manual `aprovado_cliente` moves and the bulk approve: guarded as in §7? Recommended: yes.
-3. Re-open past auto-rejects such as 4719: recommended no (section above).
+1. Same-field clash: **the team chooses per field in the CRM** (decided by the owner).
+2. Manual `aprovado_cliente` moves and the bulk approve: guarded as in §7 (recommendation, not
+   contested).
+3. Re-open past auto-rejects such as 4719: **no** (recommendation, not contested).
 
 ## Known, out of scope
 
