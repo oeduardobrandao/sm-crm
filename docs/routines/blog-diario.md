@@ -131,7 +131,9 @@ fóruns e posts de opinião como fonte de fato.
 - Citação direta só quando a fonte traz a frase, entre aspas e com o nome de quem disse.
 - Não copie trechos longos de outros textos. Resuma com suas palavras e cite.
 
-**6. Imagens.** Uma capa boa ajuda, uma imagem de licença duvidosa é um problema. Use só:
+**6. Imagens.** Todo post tem imagem de capa (`cover_image` obrigatório, nunca `null`) e, se
+ajudar o texto, imagens ao longo do corpo (opcionais, até 20). Uma imagem de licença duvidosa é
+um problema, então a capa vem só de fontes seguras. Use só:
 
 - Wikimedia Commons, com a licença declarada na página do arquivo (CC0, CC BY, CC BY-SA,
   domínio público). O crédito segue o que a página pede.
@@ -140,8 +142,12 @@ fóruns e posts de opinião como fonte de fato.
   empresa). Licença: "uso editorial, kit de imprensa da <empresa>".
 
 Nunca use foto de site de notícia, de banco pago, de rede social ou de busca de imagens. Nunca
-gere imagem. Sem imagem segura, o post sai sem capa (`cover_image: null`): isso é aceito e
-melhor que arriscar.
+gere imagem. A capa não precisa mostrar o assunto literal: uma foto genérica e bem
+enquadrada do tema (trabalho em equipe, tela de celular, calendário, mesa de escritório)
+do Unsplash ou do Pexels serve. Se a primeira busca não achar nada seguro, tente outros
+termos e outras fontes da lista (Commons, kit de imprensa) até achar. Só pare sem capa se
+`upload_blog_image` falhar em todas as tentativas; nesse caso crie o rascunho com
+`cover_image: null` e diga no relatório final o que foi tentado.
 
 Como subir:
 
@@ -186,7 +192,8 @@ Os checks não bloqueiam o rascunho, mas aparecem em vermelho para o Eduardo. Co
 - `copy.em_dash` ou `copy.meta_endorsement` verdadeiros: corrija sempre.
 - `similar_titles` com algum título: reescreva o título; se o tema for o mesmo, você errou no
   passo 3, então explique no relatório.
-- `cover: false` quando não havia imagem segura é aceito.
+- `cover: false` é falha: busque uma capa segura e envie com `update_blog_draft`. Só deixe
+  sem capa se todas as tentativas de upload falharem, e explique no relatório.
 
 **10. Relatório final.** Termine a execução com um resumo curto: id e slug do rascunho criado,
 categoria, se é post de recurso (e qual), posts reescritos, checks que ficaram falhando e por
@@ -269,7 +276,8 @@ Assistentes de IA e buscadores citam quem responde direto. Por isso:
 - `lede`: a linha fina abaixo do H1, 1 a 300 caracteres. É o gancho comercial do post, não um
   resumo: siga "O lede (gancho AIDA)" abaixo.
 - `body_md`: o corpo em Markdown, até 50000 caracteres.
-- `cover_image`: `{url, alt, credit, license, source_url}` ou `null`.
+- `cover_image`: obrigatório, `{url, alt, credit, license, source_url}` (vindo de
+  `upload_blog_image`). `null` só no caso de falha total de upload descrito no passo 6.
 - `images`: imagens do corpo, até 20, cada uma `{key, url, alt, credit, license, source_url}`.
   `key` tem de 1 a 40 caracteres entre a-z, 0-9 e hífen, única no post.
 - `sources`: de 1 a 20 fontes, cada uma `{title, publisher, url, published_at?}`. `title` até
