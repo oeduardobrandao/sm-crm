@@ -1,4 +1,4 @@
--- RPCs over the Google connection tables of 20261107000002
+-- RPCs over the Google connection tables of 20261107000005
 -- (spec docs/superpowers/specs/2026-10-29-youtube-google-meu-negocio-design.md, section 4.2).
 --
 -- google_connection_upsert: token merge from the OAuth callback. A new refresh token is a fresh

@@ -39,7 +39,7 @@
 ### Task 1: Plan flags end to end
 
 **Files:**
-- Create: `supabase/migrations/20261107000001_google_feature_flags.sql`
+- Create: `supabase/migrations/20261107000004_google_feature_flags.sql`
 - Modify: `supabase/functions/_shared/entitlements.ts:13-24` (append `"feature_youtube", "feature_google_business"` to `FEATURE_COLUMNS`)
 - Modify: `apps/crm/src/hooks/useWorkspaceLimits.ts:44` (two optional `?: boolean` fields, read as `=== true`, per the file's convention), `apps/crm/src/lib/entitlement-errors.ts:36` (`feature_youtube: 'YouTube'`, `feature_google_business: 'Google Meu Negócio'`)
 - Modify: `apps/admin/src/lib/api.ts:119,272,306` (type, list, label, same values)
@@ -57,7 +57,7 @@
 ### Task 2: Connection and link tables
 
 **Files:**
-- Create: `supabase/migrations/20261107000002_google_connections.sql`
+- Create: `supabase/migrations/20261107000005_google_connections.sql`
 - Test: `supabase/tests/entitlements/99_google_connections.sql`
 
 **Interfaces:**
@@ -79,7 +79,7 @@
 ### Task 3: Token merge and unlink/revoke RPCs
 
 **Files:**
-- Create: `supabase/migrations/20261107000003_google_connection_rpcs.sql`
+- Create: `supabase/migrations/20261107000006_google_connection_rpcs.sql`
 - Test: `supabase/tests/entitlements/99_google_connection_rpcs.sql`
 
 **Interfaces:**

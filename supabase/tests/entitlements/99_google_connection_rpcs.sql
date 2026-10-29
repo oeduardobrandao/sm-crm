@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Suite for the Google connection RPCs (20261107000003_google_connection_rpcs.sql):
+-- Suite for the Google connection RPCs (20261107000006_google_connection_rpcs.sql):
 -- google_connection_upsert (token merge), google_connection_refresh_covers,
 -- google_unlink_youtube / google_unlink_gbp_location (advisory-locked unlink + revoke when the
 -- Google account is no longer used anywhere) and google_mark_revoked (invalid_grant).

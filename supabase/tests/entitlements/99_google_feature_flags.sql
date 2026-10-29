@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Suite for the Google plan flags (20261107000001_google_feature_flags.sql): plans gain
+-- Suite for the Google plan flags (20261107000004_google_feature_flags.sql): plans gain
 -- feature_youtube and feature_google_business, boolean NOT NULL DEFAULT false, born off on
 -- every plan and turned on per workspace through workspace_plan_overrides.feature_overrides.
 -- Spec: docs/superpowers/specs/2026-10-29-youtube-google-meu-negocio-design.md (section 4.5).
