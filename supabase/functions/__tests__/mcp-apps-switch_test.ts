@@ -128,12 +128,10 @@ Deno.test("on with no R2 account: resourceDomains is empty", () => {
   assertEquals(server.resources[0].config._meta.ui.csp.resourceDomains, []);
 });
 
-// attach.ts registers attach_image_to_post; Task 6 adds "send_post_to_client" back to this list
-// when send.ts stops being a stub.
 Deno.test({
   name: "widget-only tools need oauth",
   fn() {
-    const WIDGET_ONLY = ["attach_image_to_post"];
+    const WIDGET_ONLY = ["send_post_to_client", "attach_image_to_post"];
     const plain = recordingServer();
     registerTools(plain, depsWith({ enabled: true, oauth: false, r2Origin: R2 }));
     for (const n of WIDGET_ONLY) assert(!(n in plain.tools), `${n} must not register without oauth`);

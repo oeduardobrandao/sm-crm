@@ -258,31 +258,19 @@ Deno.test("update_post: _meta sendNonce for post_id only with apps on + OAuth", 
   assert(!("_meta" in off));
 });
 
-Deno.test("preview_post: _meta sendNonce only with post_id and apps on + OAuth", async () => {
+Deno.test("preview_post: never returns a send nonce, even with post_id and apps on + OAuth", async () => {
   const CLIENT = { data: { id: 5, nome: "Clínica Aurora" }, error: null };
   const base = { client_id: 5, titulo: "T", tipo: "feed", ig_caption: "x" };
-  {
-    const { server } = setup({ clientes: [CLIENT], workflow_posts: [{ data: { id: 12, cliente_id: 5 }, error: null }] });
-    const res = await server.tools.preview_post.cb({ ...base, post_id: 12 });
-    assert(!res.isError);
-    assertEquals(await verifySendNonce(SECRET, res._meta["mesaas/sendNonce"], { conta_id: CONTA, user_id: USER, post_id: 12 }), true);
-    assert(!JSON.stringify(res.structuredContent).includes(res._meta["mesaas/sendNonce"]), "nonce not in structuredContent");
-  }
-  {
-    const { server } = setup({ clientes: [CLIENT] });
-    const res = await server.tools.preview_post.cb(base);
-    assert(!res.isError);
-    assert(!("_meta" in res), "no post_id -> no nonce");
-  }
-  {
-    // Apps on without OAuth: the card renders but there is no send tool, so no nonce.
-    const { server } = setup({ clientes: [CLIENT], workflow_posts: [{ data: { id: 12, cliente_id: 5 }, error: null }] }, {}, {
-      apps: { enabled: true, oauth: false, r2Origin: null }, key_id: "mesaas_sk_abc",
-    });
-    const res = await server.tools.preview_post.cb({ ...base, post_id: 12 });
-    assert(!res.isError);
-    assert(!("_meta" in res));
-  }
+  const withPost = setup({ clientes: [CLIENT], workflow_posts: [{ data: { id: 12, cliente_id: 5 }, error: null }] });
+  const res = await withPost.server.tools.preview_post.cb({ ...base, post_id: 12 });
+  assert(!res.isError);
+  assertEquals(res.structuredContent.post_id, 12);
+  assert(!("_meta" in res) || !("mesaas/sendNonce" in (res._meta ?? {})), "no sendNonce in _meta");
+  assert(!JSON.stringify(res).includes("mesaas/sendNonce"), "key nowhere in the result");
+  const noPost = setup({ clientes: [CLIENT] });
+  const res2 = await noPost.server.tools.preview_post.cb(base);
+  assert(!res2.isError);
+  assert(!JSON.stringify(res2).includes("mesaas/sendNonce"));
 });
 
 Deno.test("missing TOKEN_ENCRYPTION_KEY: registration throws with apps on + OAuth (before any write), not otherwise", () => {

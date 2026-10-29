@@ -8,7 +8,6 @@ import type { ContentFormat } from "../_shared/platform-registry.ts";
 import { cardToolMeta } from "./apps.ts";
 import type { Deps } from "./queries.ts";
 import { register } from "./register.ts";
-import { sendNonceMeta } from "./send.ts";
 import type { ToolMeta } from "./tool-meta.ts";
 
 export type Slide = { texto: string };
@@ -125,8 +124,8 @@ export async function captionOptions(d: Deps, a: CaptionOptionsArgs): Promise<Ca
 }
 
 export function registerCardsTools(server: any, deps: Deps): void {
-  // With a post_id the preview can lead to a send, so (widget-only tools on) it carries a nonce.
-  const nonceMeta = sendNonceMeta(deps);
+  // No send nonce here: the card sends only after a save in the same card, with the nonce from that
+  // create_post/update_post result, and a read-scoped tool should not mint one.
   register(
     server, deps, "preview_post", "posts:read",
     "Mostra ao usuário a prévia de um post antes de salvar. Use sempre que propuser um post novo ou reescrever um existente.",
@@ -145,11 +144,7 @@ export function registerCardsTools(server: any, deps: Deps): void {
       return { summary: `Prévia de "${data.titulo}" para ${data.client.nome} mostrada ao usuário.`, data };
     },
     (a, data) => ({ client_id: a.client_id, post_id: a.post_id, tipo: a.tipo, slides: a.slides?.length ?? 0, caption_len: data.caption_len }),
-    {
-      card: true,
-      meta: cardToolMeta(),
-      ...(nonceMeta ? { resultMeta: (_a: PreviewArgs, data: PreviewData) => nonceMeta(data.post_id) } : {}),
-    },
+    { card: true, meta: cardToolMeta() },
   );
 
   register(
