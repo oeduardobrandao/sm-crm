@@ -29,7 +29,7 @@ CREATE OR REPLACE FUNCTION public.mcp_send_post_to_client(
   p_expected_status text,
   p_actor uuid
 ) RETURNS text
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
   v_status text;
 BEGIN

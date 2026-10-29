@@ -68,6 +68,7 @@ declare
   v_old_cover bigint; v_cover_link bigint; v_old_file bigint;
   v_files_before int;
   v_f jsonb;
+  v_pub bigint; v_links_before jsonb; v_folder bigint; v_marker text;
   v_fn regprocedure := 'public.mcp_attach_post_file(uuid,bigint,uuid,jsonb,integer,boolean)'::regprocedure;
 begin
   -- (0) EXECUTE: service_role only
@@ -182,13 +183,29 @@ begin
   perform pg_temp.expect_attach_error(v_ws, v_car, v_u, pg_temp.img(v_ws), 1, true,
     'P0001', 'post_not_editable:enviado_cliente');
 
-  -- (8) correcao_cliente → revisao_interna, on append and on replace
+  -- (8) correcao_cliente → revisao_interna, on append and on replace, recorded as a
+  -- workspace_user change by p_actor. The settings are cleared before each call, since
+  -- an earlier attach in this same transaction already set them.
   update workflow_posts set status = 'correcao_cliente' where id = v_car;
+  perform set_config('app.actor_id', '', true);
+  perform set_config('app.event_source', '', true);
+  delete from post_status_events where post_id = v_car;
   perform mcp_attach_post_file(v_ws, v_car, v_u, pg_temp.img(v_ws), 2, false);
   assert (select status from workflow_posts where id = v_car) = 'revisao_interna', 'append: correcao → revisao';
+  assert exists (select 1 from post_status_events
+    where post_id = v_car and from_status = 'correcao_cliente' and to_status = 'revisao_interna'
+      and source = 'workspace_user' and actor_user_id = v_u), 'append: flip event by the actor';
   update workflow_posts set status = 'correcao_cliente' where id = v_car;
+  perform set_config('app.actor_id', '', true);
+  perform set_config('app.event_source', '', true);
+  delete from post_status_events where post_id = v_car;
   perform mcp_attach_post_file(v_ws, v_car, v_u, pg_temp.img(v_ws), 2, true);
   assert (select status from workflow_posts where id = v_car) = 'revisao_interna', 'replace: correcao → revisao';
+  assert exists (select 1 from post_status_events
+    where post_id = v_car and from_status = 'correcao_cliente' and to_status = 'revisao_interna'
+      and source = 'workspace_user' and actor_user_id = v_u), 'replace: flip event by the actor';
+  assert not exists (select 1 from post_status_events where post_id = v_car and source = 'system'),
+    'no system-sourced flip';
 
   -- (9) non-contiguous sort_order (deletes never compact, PATCH writes any value):
   -- positions follow the visible order, and the post ends contiguous
@@ -205,19 +222,49 @@ begin
   assert (v_res->>'sort_order')::int = 3, 'gap replace@4 sort 3';
   perform pg_temp.assert_orders(v_gap, 4, 'gap replace');
 
-  -- (10) p_file cannot pick another workspace or uploader
-  v_f := pg_temp.img(v_ws) || jsonb_build_object('conta_id', v_other_ws, 'uploaded_by', v_outsider, 'kind', 'video');
+  -- (10) p_file cannot pick another workspace, uploader, kind, folder or thumbnail
+  insert into folders (conta_id, name) values (v_ws, 'pasta') returning id into v_folder;
+  v_f := pg_temp.img(v_ws) || jsonb_build_object('conta_id', v_other_ws, 'uploaded_by', v_outsider,
+    'kind', 'video', 'folder_id', v_folder, 'thumbnail_r2_key', 'contas/' || v_ws || '/files/t.jpg');
   v_res := mcp_attach_post_file(v_ws, v_gap, v_u, v_f, 5, false);
   assert (select conta_id from files where id = (v_res->>'file_id')::bigint) = v_ws, 'file lands in p_conta_id';
   assert (select uploaded_by from files where id = (v_res->>'file_id')::bigint) = v_u, 'uploader is p_actor';
   assert (select kind from files where id = (v_res->>'file_id')::bigint) = 'image', 'kind forced to image';
+  assert (select folder_id from files where id = (v_res->>'file_id')::bigint) is null, 'folder_id forced NULL';
+  assert (select thumbnail_r2_key from files where id = (v_res->>'file_id')::bigint) is null,
+    'thumbnail_r2_key forced NULL';
+
+  -- (10b) invalid_file: key outside contas/<p_conta_id>/files/, or a mime other than JPEG/PNG
+  select count(*) into v_files_before from files;
+  perform pg_temp.expect_attach_error(v_ws, v_gap, v_u,
+    pg_temp.img(v_ws) || jsonb_build_object('r2_key', 'contas/' || v_other_ws || '/files/x.png'),
+    1, false, 'P0001', 'invalid_file');
+  perform pg_temp.expect_attach_error(v_ws, v_gap, v_u,
+    pg_temp.img(v_ws) || jsonb_build_object('r2_key', 'contas/' || v_ws || '/briefing-audio/x.png'),
+    1, true, 'P0001', 'invalid_file');
+  perform pg_temp.expect_attach_error(v_ws, v_gap, v_u, pg_temp.img(v_ws) - 'r2_key',
+    1, false, 'P0001', 'invalid_file');
+  perform pg_temp.expect_attach_error(v_ws, v_gap, v_u,
+    pg_temp.img(v_ws) || jsonb_build_object('mime_type', 'video/mp4'),
+    1, false, 'P0001', 'invalid_file');
+  perform pg_temp.expect_attach_error(v_ws, v_gap, v_u,
+    pg_temp.img(v_ws) || jsonb_build_object('mime_type', 'image/webp'),
+    1, true, 'P0001', 'invalid_file');
+  perform pg_temp.expect_attach_error(v_ws, v_gap, v_u, pg_temp.img(v_ws) - 'mime_type',
+    1, false, 'P0001', 'invalid_file');
+  perform pg_temp.expect_attach_error(v_ws, v_gap, v_u, null, 1, false, 'P0001', 'invalid_file');
+  assert (select count(*) from files) = v_files_before, 'invalid_file creates no files row';
+  -- JPEG is accepted too
+  perform mcp_attach_post_file(v_ws, v_gap, v_u,
+    pg_temp.img(v_ws) || jsonb_build_object('mime_type', 'image/jpeg'), 6, false);
+  perform pg_temp.expect_attach_error(v_ws, v_gap, v_u, pg_temp.img(v_ws), 8, false, 'P0001', 'invalid_position');
 
   -- (11) quota_exceeded comes from file_insert_with_quota, nothing linked
   select count(*) into v_files_before from files where conta_id = v_ws;
   perform pg_temp.expect_attach_error(v_ws, v_gap, v_u, pg_temp.img(v_ws, 20000000000), 1, false,
     'P0001', 'quota_exceeded');
   assert (select count(*) from files where conta_id = v_ws) = v_files_before, 'quota: no files row';
-  perform pg_temp.assert_orders(v_gap, 5, 'quota refusal leaves links');
+  perform pg_temp.assert_orders(v_gap, 6, 'quota refusal leaves links');
 
   -- (12) another workspace's post → post_not_found; unknown id → post_not_found
   insert into clientes (conta_id, user_id, nome, sigla, cor)
@@ -235,6 +282,48 @@ begin
     'P0403', 'workspace_unavailable');
   perform pg_temp.expect_attach_error(v_other_ws, v_foreign, v_u, pg_temp.img(v_other_ws), 1, false,
     'P0403', 'workspace_unavailable');
+
+  -- (14) a published post moved back to revisao_interna by a plain UPDATE keeps its
+  -- publish markers and is refused (post_published) for append and replace, nothing changed
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo, status)
+    values (v_wf, v_ws, 'pub', 'carrossel', 'rascunho') returning id into v_pub;
+  perform pg_temp.seed_links(v_ws, v_pub, 2);
+  update workflow_posts set status = 'postado', instagram_media_id = 'ig-1' where id = v_pub;
+  update workflow_posts set status = 'revisao_interna' where id = v_pub;
+  assert (select published_at from workflow_posts where id = v_pub) is not null, 'fixture: published_at kept';
+  select jsonb_agg(jsonb_build_array(id, file_id, sort_order, is_cover) order by id) into v_links_before
+    from post_file_links where post_id = v_pub;
+  select count(*) into v_files_before from files;
+  perform pg_temp.expect_attach_error(v_ws, v_pub, v_u, pg_temp.img(v_ws), 1, false, 'P0001', 'post_published');
+  perform pg_temp.expect_attach_error(v_ws, v_pub, v_u, pg_temp.img(v_ws), 3, false, 'P0001', 'post_published');
+  perform pg_temp.expect_attach_error(v_ws, v_pub, v_u, pg_temp.img(v_ws), 1, true, 'P0001', 'post_published');
+  assert (select count(*) from files) = v_files_before, 'post_published creates no files row';
+  assert (select jsonb_agg(jsonb_build_array(id, file_id, sort_order, is_cover) order by id)
+            from post_file_links where post_id = v_pub) = v_links_before, 'post_published leaves links';
+  assert (select status from workflow_posts where id = v_pub) = 'revisao_interna', 'post_published leaves status';
+  -- each marker alone refuses (same predicate as post_file_link_replace)
+  foreach v_marker in array array['published_at', 'instagram_media_id', 'instagram_container_id',
+      'publish_processing_at', 'tiktok_publish_processing_at', 'tiktok_initiated', 'tiktok_processing',
+      'tiktok_published', 'story_segments'] loop
+    update workflow_posts set published_at = null, instagram_media_id = null, instagram_container_id = null,
+      publish_processing_at = null, tiktok_publish_processing_at = null, tiktok_publish_status = null,
+      story_segments = null, status = 'rascunho'
+     where id = v_pub;
+    update workflow_posts set
+      published_at = case when v_marker = 'published_at' then now() end,
+      instagram_media_id = case when v_marker = 'instagram_media_id' then 'ig-2' end,
+      instagram_container_id = case when v_marker = 'instagram_container_id' then 'c-1' end,
+      publish_processing_at = case when v_marker = 'publish_processing_at' then now() end,
+      tiktok_publish_processing_at = case when v_marker = 'tiktok_publish_processing_at' then now() end,
+      tiktok_publish_status = case v_marker when 'tiktok_initiated' then 'initiated'
+        when 'tiktok_processing' then 'processing' when 'tiktok_published' then 'published' end,
+      story_segments = case when v_marker = 'story_segments' then '[]'::jsonb end
+     where id = v_pub;
+    perform pg_temp.expect_attach_error(v_ws, v_pub, v_u, pg_temp.img(v_ws), 1, true, 'P0001', 'post_published');
+  end loop;
+  -- markers cleared (and a failed TikTok attempt) → editable again
+  update workflow_posts set story_segments = null, tiktok_publish_status = 'failed' where id = v_pub;
+  perform mcp_attach_post_file(v_ws, v_pub, v_u, pg_temp.img(v_ws), 1, true);
 
   raise notice 'mcp_attach_post_file: all cases passed';
 end $$;

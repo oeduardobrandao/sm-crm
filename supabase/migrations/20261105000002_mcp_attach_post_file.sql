@@ -7,8 +7,23 @@
 --
 -- Membership is workspace_members ONLY (the MCP conta_id comes from the grant,
 -- not profiles.active_workspace_id). The post row is locked FOR UPDATE, the
--- same lock post_file_link_replace and the publishers take, so two clicks and a
--- publish serialize.
+-- same row lock post_file_link_replace takes and the publishers take when they
+-- claim a post: two clicks serialize with each other and with a publisher's
+-- claim. It does not wait for a publish already in flight (the claim has
+-- committed and released the lock), which is why a post with any publish marker
+-- set is refused below, whatever its status says.
+--
+-- Eligibility mirrors post_file_link_replace (20260916000001): status in the
+-- editable list, tipo feed or carrossel, and no publish marker (published_at,
+-- instagram_media_id, instagram_container_id, publish_processing_at,
+-- tiktok_publish_processing_at, tiktok_publish_status initiated/processing/
+-- published, story_segments). A published post moved back to revisao_interna by
+-- a plain status UPDATE keeps those markers and stays refused (post_published).
+--
+-- p_file is checked as defense in depth even though the caller built it: the key
+-- must live under contas/<p_conta_id>/files/ and the mime must be JPEG or PNG
+-- (invalid_file). conta_id, uploaded_by and kind come from the RPC; folder_id
+-- and thumbnail_r2_key are forced to NULL.
 --
 -- Positions are 1-based; post_file_links.sort_order is 0-based. sort_order is
 -- not guaranteed contiguous (link deletes never compact it and post-media-manage
@@ -28,11 +43,13 @@
 --   in Arquivos.
 -- Afterwards a feed with more than one item becomes carrossel and a post in
 -- correcao_cliente moves to revisao_interna, as post_media_set_from_uploads does.
+-- That move is recorded in post_status_events as a workspace_user change by
+-- p_actor (same transaction-local settings as mcp_send_post_to_client).
 --
 -- Errors (P0001, mapped to pt-BR in the mcp function): invalid_position,
 -- post_not_found, post_not_editable:<status>, tipo_not_image:<tipo>,
--- media_full, and quota_exceeded from file_insert_with_quota. A non-member
--- actor raises P0403 workspace_unavailable.
+-- post_published, media_full, invalid_file, and quota_exceeded from
+-- file_insert_with_quota. A non-member actor raises P0403 workspace_unavailable.
 CREATE OR REPLACE FUNCTION public.mcp_attach_post_file(
   p_conta_id uuid,
   p_post_id bigint,
@@ -41,7 +58,7 @@ CREATE OR REPLACE FUNCTION public.mcp_attach_post_file(
   p_position int,
   p_replace boolean
 ) RETURNS jsonb
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
   v_post public.workflow_posts%ROWTYPE;
   v_n int;
@@ -68,6 +85,13 @@ BEGIN
   IF v_post.tipo NOT IN ('feed', 'carrossel') THEN
     RAISE EXCEPTION 'tipo_not_image:%', v_post.tipo USING ERRCODE = 'P0001';
   END IF;
+  IF v_post.published_at IS NOT NULL OR v_post.instagram_media_id IS NOT NULL OR
+     v_post.publish_processing_at IS NOT NULL OR
+     v_post.tiktok_publish_processing_at IS NOT NULL OR
+     v_post.tiktok_publish_status IN ('initiated', 'processing', 'published') OR
+     v_post.instagram_container_id IS NOT NULL OR v_post.story_segments IS NOT NULL THEN
+    RAISE EXCEPTION 'post_published' USING ERRCODE = 'P0001';
+  END IF;
 
   UPDATE public.post_file_links l
      SET sort_order = o.pos
@@ -88,9 +112,15 @@ BEGIN
     END IF;
   END IF;
 
-  -- The workspace, uploader and kind come from the RPC, never from the payload.
-  v_file := public.file_insert_with_quota(COALESCE(p_file, '{}'::jsonb) || jsonb_build_object(
-    'conta_id', p_conta_id, 'uploaded_by', p_actor, 'kind', 'image'));  -- raises 'quota_exceeded'
+  IF (p_file->>'r2_key' LIKE 'contas/' || p_conta_id::text || '/files/%') IS NOT TRUE OR
+     (p_file->>'mime_type' IN ('image/jpeg', 'image/png')) IS NOT TRUE THEN
+    RAISE EXCEPTION 'invalid_file' USING ERRCODE = 'P0001';
+  END IF;
+
+  -- Workspace, uploader, kind, folder and thumbnail come from the RPC, never the payload.
+  v_file := public.file_insert_with_quota(p_file || jsonb_build_object(
+    'conta_id', p_conta_id, 'uploaded_by', p_actor, 'kind', 'image',
+    'folder_id', NULL, 'thumbnail_r2_key', NULL));  -- raises 'quota_exceeded'
 
   IF v_replace THEN
     UPDATE public.post_file_links SET file_id = v_file.id
@@ -113,6 +143,8 @@ BEGIN
   END;
   v_status := CASE WHEN v_post.status = 'correcao_cliente' THEN 'revisao_interna' ELSE v_post.status END;
   IF v_tipo IS DISTINCT FROM v_post.tipo OR v_status IS DISTINCT FROM v_post.status THEN
+    PERFORM set_config('app.actor_id', p_actor::text, true);
+    PERFORM set_config('app.event_source', 'workspace_user', true);
     UPDATE public.workflow_posts SET tipo = v_tipo, status = v_status WHERE id = p_post_id;
   END IF;
 
