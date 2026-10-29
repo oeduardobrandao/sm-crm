@@ -187,7 +187,7 @@ Deno.test("create_post tool redacts body/ig_caption from the audit log", async (
   const server = {
     handlers: {} as Record<string, (a: unknown) => Promise<unknown>>,
     // deno-lint-ignore no-explicit-any
-    tool(name: string, _d: any, _s: any, h: any) { this.handlers[name] = h; },
+    registerTool(name: string, _c: any, h: any) { this.handlers[name] = h; },
   };
   // deno-lint-ignore no-explicit-any
   registerTools(server as any, deps);
@@ -359,7 +359,7 @@ Deno.test("update_post tool redacts body/ig_caption from the audit log", async (
   const server = {
     handlers: {} as Record<string, (a: unknown) => Promise<unknown>>,
     // deno-lint-ignore no-explicit-any
-    tool(name: string, _d: any, _s: any, h: any) { this.handlers[name] = h; },
+    registerTool(name: string, _c: any, h: any) { this.handlers[name] = h; },
   };
   // deno-lint-ignore no-explicit-any
   registerTools(server as any, deps);
@@ -517,7 +517,7 @@ Deno.test("set_post_property tool redacts the raw value from the audit log", asy
   const server = {
     handlers: {} as Record<string, (a: unknown) => Promise<unknown>>,
     // deno-lint-ignore no-explicit-any
-    tool(name: string, _d: any, _s: any, h: any) { this.handlers[name] = h; },
+    registerTool(name: string, _c: any, h: any) { this.handlers[name] = h; },
   };
   // deno-lint-ignore no-explicit-any
   registerTools(server as any, deps);
@@ -699,7 +699,7 @@ Deno.test("create_workflow_template tool redacts etapa/option detail from the au
   const server = {
     handlers: {} as Record<string, (a: unknown) => Promise<unknown>>,
     // deno-lint-ignore no-explicit-any
-    tool(name: string, _d: any, _s: any, h: any) { this.handlers[name] = h; },
+    registerTool(name: string, _c: any, h: any) { this.handlers[name] = h; },
   };
   // deno-lint-ignore no-explicit-any
   registerTools(server as any, deps);

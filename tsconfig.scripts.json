@@ -23,6 +23,7 @@
     "scripts/seo/**/*.ts",
     "scripts/seo/**/*.tsx",
     "scripts/convert-hub-pages-richtext.ts",
+    "scripts/build-mcp-widgets.ts",
     "scripts/__tests__/convert-hub-pages-richtext.test.ts",
     "scripts/__tests__/convert-hub-pages-richtext.db.test.ts",
     "scripts/__tests__/convert-hub-pages-richtext.fallback.test.ts",

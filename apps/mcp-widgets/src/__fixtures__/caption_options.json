@@ -1,0 +1,27 @@
+{
+  "card": "caption_options",
+  "v": 1,
+  "client": {
+    "id": 42,
+    "nome": "Dra. Marina Arrais"
+  },
+  "post_id": 777,
+  "options": [
+    {
+      "label": "Didática",
+      "text": "Você passa protetor só quando vai à praia? Então este carrossel é para você. Separei os 5 mitos que mais escuto no consultório, e o que a ciência diz sobre cada um.\n\nSalve para lembrar e mande para quem ainda acha que dia nublado não queima. #dermatologia #protetorsolar",
+      "len": 270
+    },
+    {
+      "label": "Pergunta direta",
+      "text": "Qual desses mitos você já repetiu? Arrasta para o lado e descobre. Spoiler: o do dia nublado é o campeão aqui no consultório. #protetorsolar",
+      "len": 140
+    },
+    {
+      "label": "Curta",
+      "text": "5 mitos sobre protetor solar que ainda enganam muita gente. Salva este post e confere o 2. #dermatologia",
+      "len": 104
+    }
+  ],
+  "caption_max": 2200
+}

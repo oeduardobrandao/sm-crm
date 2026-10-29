@@ -30,6 +30,11 @@ import {
 import { createMediaUpload, setPostMedia } from "./media.ts";
 import { DATE_ONLY, registerFinanceiroTools } from "./financeiro-tools.ts";
 import { register } from "./register.ts";
+import { registerCardsResource } from "./apps.ts";
+import { registerCardsTools } from "./cards.ts";
+import { registerCalendarTools } from "./calendar.ts";
+import { registerSendTools, sendNonceMeta } from "./send.ts";
+import { registerAttachTools } from "./attach.ts";
 
 const STATUS_CLIENTE = z.enum(["ativo", "pausado", "encerrado"]);
 const FORMATO = z.enum(CONTENT_FORMATS);
@@ -44,6 +49,10 @@ const TASK_STATUS = z.enum(["pendente", "em_andamento", "concluida"]);
 const TIPO_MEMBRO = z.enum(["clt", "freelancer_mensal", "freelancer_demanda"]);
 
 export function registerTools(server: any, deps: Deps): void {
+  // Send nonce for the card (widget-only tools on): read once here, so a missing secret fails the
+  // registration before any write, never after one.
+  const nonceMeta = sendNonceMeta(deps);
+
   register(server, deps, "list_clients", "clientes:read",
     "Lista os clientes do workspace (campos não sensíveis).",
     { status: STATUS_CLIENTE.optional() },
@@ -127,7 +136,7 @@ export function registerTools(server: any, deps: Deps): void {
     (a) => ({ client_id: a.client_id, titulo: a.titulo, template_id: a.template_id }));
 
   register(server, deps, "create_post", "posts:write",
-    "Cria um post em rascunho: dentro de um fluxo ativo (workflow_id) ou avulso, preso direto a um cliente (cliente_id). Informe exatamente um dos dois. O agente nunca publica nem envia ao cliente.",
+    "Cria um post em rascunho: dentro de um fluxo ativo (workflow_id) ou avulso, preso direto a um cliente (cliente_id). Informe exatamente um dos dois. O agente nunca publica. O agente não envia sozinho ao cliente; um clique do usuário no cartão envia.",
     {
       workflow_id: z.number().int().positive().optional(),
       cliente_id: z.number().int().positive().optional(),
@@ -141,10 +150,11 @@ export function registerTools(server: any, deps: Deps): void {
       workflow_id: a.workflow_id, cliente_id: a.cliente_id, tipo: a.tipo, titulo: a.titulo,
       has_body: !!a.body, body_len: a.body?.length ?? 0,
       has_ig_caption: !!a.ig_caption, ig_caption_len: a.ig_caption?.length ?? 0,
-    }));
+    }),
+    nonceMeta ? { resultMeta: (_a, r) => nonceMeta((r as { id?: unknown })?.id) } : undefined);
 
   register(server, deps, "update_post", "posts:write",
-    "Edita um post existente (título, formato, corpo, legenda) e pode avançar o status apenas para rascunho ou revisão interna. O agente nunca envia ao cliente nem publica.",
+    "Edita um post existente (título, formato, corpo, legenda) e pode avançar o status apenas para rascunho ou revisão interna. O agente nunca publica. O agente não envia sozinho ao cliente; um clique do usuário no cartão envia.",
     {
       post_id: z.number().int().positive(),
       titulo: z.string().trim().min(1).max(200).optional(),
@@ -163,7 +173,8 @@ export function registerTools(server: any, deps: Deps): void {
       body_len: a.body?.length ?? 0,
       has_ig_caption: Object.hasOwn(a, "ig_caption"),
       ig_caption_len: a.ig_caption?.length ?? 0,
-    }));
+    }),
+    nonceMeta ? { resultMeta: (_a, r) => nonceMeta((r as { id?: unknown })?.id) } : undefined);
 
   register(server, deps, "set_post_property", "posts:write",
     "Define o valor de uma propriedade personalizada de um post (ex.: modo, anotação). A propriedade deve pertencer ao modelo do fluxo do post; status, mídia e publicação não são afetados.",
@@ -332,4 +343,12 @@ export function registerTools(server: any, deps: Deps): void {
     }));
 
   registerFinanceiroTools(server, deps);
+
+  if (deps.apps?.enabled) {
+    registerCardsResource(server, deps.apps.r2Origin);
+    registerCardsTools(server, deps);
+    registerCalendarTools(server, deps);
+    registerSendTools(server, deps);
+    registerAttachTools(server, deps);
+  }
 }
