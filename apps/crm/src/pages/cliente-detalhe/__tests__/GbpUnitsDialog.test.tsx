@@ -35,9 +35,14 @@ function option(over: Record<string, unknown>) {
     hasVoiceOfMerchant: true,
     linkedClientId: null,
     linkedClientName: null,
+    linkedConnectionId: null,
     eligible: true,
     ...over,
   };
+}
+
+function page(options: ReturnType<typeof option>[], truncated = false) {
+  return { options, truncated };
 }
 
 // Radix Select needs these pointer/scroll APIs, which jsdom lacks.
@@ -50,12 +55,14 @@ const optA = option({
   title: 'Sorriso Pleno Moema',
   linkedClientId: 7,
   linkedClientName: 'Clínica Sorriso Pleno',
+  linkedConnectionId: 'conn-1',
 });
 const optB = option({
   locationName: 'locations/b',
   title: 'Sorriso Pleno Pinheiros',
   linkedClientId: 7,
   linkedClientName: 'Clínica Sorriso Pleno',
+  linkedConnectionId: 'conn-1',
 });
 const optC = option({ locationName: 'locations/c', title: 'Sorriso Pleno Santo André' });
 const optUsed = option({
@@ -63,6 +70,7 @@ const optUsed = option({
   title: 'Instituto Dental Vila Mariana',
   linkedClientId: 99,
   linkedClientName: 'Instituto Dental',
+  linkedConnectionId: 'conn-1',
 });
 const optUnverified = option({
   locationName: 'locations/e',
@@ -125,7 +133,7 @@ afterEach(() => {
 
 describe('GbpUnitsDialog', () => {
   it('shows title, intro and the note once the units load', async () => {
-    listOptionsMock.mockResolvedValue([optA, optB, optC, optUsed, optUnverified]);
+    listOptionsMock.mockResolvedValue(page([optA, optB, optC, optUsed, optUnverified]));
     renderDialog();
 
     expect(
@@ -145,7 +153,7 @@ describe('GbpUnitsDialog', () => {
   });
 
   it('disables_linked_and_unverified', async () => {
-    listOptionsMock.mockResolvedValue([optA, optC, optUsed, optUnverified]);
+    listOptionsMock.mockResolvedValue(page([optA, optC, optUsed, optUnverified]));
     renderDialog();
 
     const used = await screen.findByRole('checkbox', { name: /Instituto Dental Vila Mariana/ });
@@ -171,7 +179,7 @@ describe('GbpUnitsDialog', () => {
   });
 
   it('starts with this client units checked and counts them in the button', async () => {
-    listOptionsMock.mockResolvedValue([optA, optB, optC]);
+    listOptionsMock.mockResolvedValue(page([optA, optB, optC]));
     renderDialog();
 
     expect(await screen.findByRole('button', { name: 'Vincular 2 unidades' })).toBeInTheDocument();
@@ -180,7 +188,7 @@ describe('GbpUnitsDialog', () => {
   });
 
   it('button_label_counts', async () => {
-    listOptionsMock.mockResolvedValue([optA, optB, optC]);
+    listOptionsMock.mockResolvedValue(page([optA, optB, optC]));
     renderDialog();
 
     await screen.findByRole('button', { name: 'Vincular 2 unidades' });
@@ -191,7 +199,7 @@ describe('GbpUnitsDialog', () => {
   });
 
   it('submit_sends_checked_names', async () => {
-    listOptionsMock.mockResolvedValue([optA, optB, optC]);
+    listOptionsMock.mockResolvedValue(page([optA, optB, optC]));
     linkMock.mockResolvedValue(2);
     const { invalidate, onOpenChange } = renderDialog();
 
@@ -210,7 +218,7 @@ describe('GbpUnitsDialog', () => {
   });
 
   it('asks before closing once the selection changed, not before', async () => {
-    listOptionsMock.mockResolvedValue([optA, optC]);
+    listOptionsMock.mockResolvedValue(page([optA, optC]));
     const { onOpenChange } = renderDialog();
 
     await screen.findByRole('button', { name: 'Vincular 1 unidade' });
@@ -247,7 +255,7 @@ describe('GbpUnitsDialog', () => {
   });
 
   it('maps a save-time rate limit to its message and keeps the dialog open', async () => {
-    listOptionsMock.mockResolvedValue([optA, optC]);
+    listOptionsMock.mockResolvedValue(page([optA, optC]));
     linkMock.mockRejectedValue(new GoogleServiceError('rate_limited'));
     const { onOpenChange } = renderDialog();
 
@@ -263,7 +271,7 @@ describe('GbpUnitsDialog', () => {
   });
 
   it('resets discarded edits when the dialog is reopened', async () => {
-    listOptionsMock.mockResolvedValue([optA, optC]);
+    listOptionsMock.mockResolvedValue(page([optA, optC]));
     render(<ReopenHarness />);
 
     await screen.findByRole('button', { name: 'Vincular 1 unidade' });
@@ -281,7 +289,7 @@ describe('GbpUnitsDialog', () => {
   });
 
   it('offers Desvincular todas when every linked unit is unchecked', async () => {
-    listOptionsMock.mockResolvedValue([optA, optB, optC]);
+    listOptionsMock.mockResolvedValue(page([optA, optB, optC]));
     linkMock.mockResolvedValue(0);
     renderDialog();
 
@@ -296,7 +304,7 @@ describe('GbpUnitsDialog', () => {
   });
 
   it('disables submit when nothing is linked and nothing is checked', async () => {
-    listOptionsMock.mockResolvedValue([optC]);
+    listOptionsMock.mockResolvedValue(page([optC]));
     renderDialog();
 
     await screen.findByRole('checkbox', { name: /Sorriso Pleno Santo André/ });
@@ -309,7 +317,7 @@ describe('GbpUnitsDialog', () => {
     const second = { id: 'conn-2', email: 'outra@conta.com', status: 'active' as const };
     const optF = option({ locationName: 'locations/f', title: 'Filial Centro' });
     listOptionsMock.mockImplementation((_c: number, conn: string) =>
-      Promise.resolve(conn === 'conn-2' ? [optF] : [optA, optC]),
+      Promise.resolve(page(conn === 'conn-2' ? [optF] : [optA, optC])),
     );
     linkMock.mockResolvedValue(1);
     renderDialog({ connections: [connection, second] });
@@ -326,7 +334,7 @@ describe('GbpUnitsDialog', () => {
   });
 
   it('refetches the list and shows the message on location_unavailable', async () => {
-    listOptionsMock.mockResolvedValue([optA, optC]);
+    listOptionsMock.mockResolvedValue(page([optA, optC]));
     linkMock.mockRejectedValue(new GoogleServiceError('location_unavailable'));
     const { onOpenChange } = renderDialog();
 
@@ -351,10 +359,11 @@ describe('GbpUnitsDialog', () => {
       title: 'Sorriso Pleno Tatuapé',
       linkedClientId: 7,
       linkedClientName: 'Clínica Sorriso Pleno',
+      linkedConnectionId: 'conn-1',
       eligible: false,
       hasVoiceOfMerchant: false,
     });
-    listOptionsMock.mockResolvedValue([optA, stale, optC]);
+    listOptionsMock.mockResolvedValue(page([optA, stale, optC]));
     linkMock.mockResolvedValue(2);
     renderDialog();
 
@@ -387,10 +396,11 @@ describe('GbpUnitsDialog', () => {
       title: 'Sorriso Pleno Tatuapé',
       linkedClientId: 7,
       linkedClientName: 'Clínica Sorriso Pleno',
+      linkedConnectionId: 'conn-1',
       eligible: false,
       hasVoiceOfMerchant: false,
     });
-    listOptionsMock.mockResolvedValue([optA, stale]);
+    listOptionsMock.mockResolvedValue(page([optA, stale]));
     linkMock.mockResolvedValue(1);
     renderDialog();
 
@@ -398,5 +408,79 @@ describe('GbpUnitsDialog', () => {
     expect(screen.getByRole('checkbox', { name: /Sorriso Pleno Tatuapé/ })).not.toBeChecked();
     await userEvent.click(screen.getByRole('button', { name: 'Vincular 1 unidade' }));
     await waitFor(() => expect(linkMock).toHaveBeenCalledWith(7, 'conn-1', ['locations/a']));
+  });
+
+  it('locks a unit linked to this client through another Google account and never sends it', async () => {
+    const viaOther = option({
+      locationName: 'locations/o',
+      title: 'Sorriso Pleno Mooca',
+      linkedClientId: 7,
+      linkedClientName: 'Clínica Sorriso Pleno',
+      linkedConnectionId: 'conn-2',
+    });
+    listOptionsMock.mockResolvedValue(page([optA, viaOther, optC]));
+    linkMock.mockResolvedValue(2);
+    renderDialog();
+
+    const box = await screen.findByRole('checkbox', { name: /Sorriso Pleno Mooca/ });
+    expect(box).toBeChecked();
+    expect(box).toBeDisabled();
+    expect(
+      screen.getByText('Vinculada por outra conta Google. Gerencie pela conta que a vinculou.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Em uso')).toBeNull();
+    expect(screen.queryByText('Não verificado')).toBeNull();
+
+    // Only this connection's unit counts; the locked one is outside the save set.
+    expect(screen.getByRole('button', { name: 'Vincular 1 unidade' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('checkbox', { name: /Sorriso Pleno Santo André/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Vincular 2 unidades' }));
+    await waitFor(() =>
+      expect(linkMock).toHaveBeenCalledWith(7, 'conn-1', ['locations/a', 'locations/c']),
+    );
+  });
+
+  it('does not offer to unlink when the only linked unit belongs to another account', async () => {
+    const viaOther = option({
+      locationName: 'locations/o',
+      title: 'Sorriso Pleno Mooca',
+      linkedClientId: 7,
+      linkedConnectionId: 'conn-2',
+    });
+    listOptionsMock.mockResolvedValue(page([viaOther, optC]));
+    renderDialog();
+
+    await screen.findByRole('checkbox', { name: /Sorriso Pleno Mooca/ });
+    expect(screen.queryByRole('button', { name: 'Desvincular todas' })).toBeNull();
+    expect(screen.getByRole('button', { name: /^Vincular/ })).toBeDisabled();
+  });
+
+  it('notes a truncated listing', async () => {
+    listOptionsMock.mockResolvedValue(page([optA, optC], true));
+    renderDialog();
+
+    expect(
+      await screen.findByText(
+        'Mostramos só parte das unidades desta conta Google. As unidades já vinculadas a este cliente aparecem sempre.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('shows no truncation note on a complete listing', async () => {
+    listOptionsMock.mockResolvedValue(page([optA, optC]));
+    renderDialog();
+
+    await screen.findByRole('checkbox', { name: /Sorriso Pleno Moema/ });
+    expect(screen.queryByText(/Mostramos só parte das unidades/)).toBeNull();
+  });
+
+  it('feature_disabled_message', async () => {
+    listOptionsMock.mockRejectedValue(new GoogleServiceError('feature_disabled'));
+    renderDialog();
+
+    expect(
+      await screen.findByText('O Google Meu Negócio não está disponível no seu plano.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Tentar de novo' })).toBeNull();
   });
 });

@@ -48,10 +48,29 @@ function isLinkedElsewhere(option: GbpLocationOptionView, clienteId: number): bo
   return option.linkedClientId != null && option.linkedClientId !== clienteId;
 }
 
+// Linked to this client, but through another Google connection: only that connection's picker
+// manages it, so here it shows checked and locked, outside the save set (the server ignores it).
+function isLinkedViaOtherAccount(
+  option: GbpLocationOptionView,
+  clienteId: number,
+  connectionId: string | null,
+): boolean {
+  return (
+    option.linkedClientId === clienteId &&
+    option.linkedConnectionId != null &&
+    option.linkedConnectionId !== connectionId
+  );
+}
+
 // A unit linked to this client stays toggleable even when Google now reports it unverified,
 // so the user can uncheck it to unlink; unverified units not linked to this client cannot be added.
-function isSelectable(option: GbpLocationOptionView, clienteId: number): boolean {
+function isSelectable(
+  option: GbpLocationOptionView,
+  clienteId: number,
+  connectionId: string | null,
+): boolean {
   if (isLinkedElsewhere(option, clienteId)) return false;
+  if (isLinkedViaOtherAccount(option, clienteId, connectionId)) return false;
   return option.eligible || option.linkedClientId === clienteId;
 }
 
@@ -91,7 +110,7 @@ export function GbpUnitsDialog({
   const connection = connections.find((c) => c.id === connectionId) ?? null;
 
   const {
-    data: options,
+    data: page,
     isLoading,
     isFetching,
     error: loadError,
@@ -107,17 +126,25 @@ export function GbpUnitsDialog({
     refetchOnWindowFocus: false,
   });
 
-  // This client's linked units start checked; that set is also the "unchanged" baseline. A
-  // linked unit Google now reports as unverified stays in it (checked, disabled) so a save
-  // never unlinks it silently; the backend accepts names already linked to this client.
+  const options = page?.options;
+
+  // This client's linked units on this connection start checked; that set is also the
+  // "unchanged" baseline. A linked unit Google now reports as unverified stays in it so a save
+  // never unlinks it silently; the backend accepts names already linked to this client. Units
+  // linked through another connection stay out of both sets (shown checked and locked).
   useEffect(() => {
     if (!options) return;
     const initial = new Set(
-      options.filter((o) => o.linkedClientId === clienteId).map((o) => o.locationName),
+      options
+        .filter(
+          (o) =>
+            o.linkedClientId === clienteId && !isLinkedViaOtherAccount(o, clienteId, connectionId),
+        )
+        .map((o) => o.locationName),
     );
     setSelected(initial);
     setBaseline(initial);
-  }, [options, clienteId]);
+  }, [options, clienteId, connectionId]);
 
   const dirty = useMemo(() => {
     if (selected.size !== baseline.size) return true;
@@ -255,11 +282,14 @@ export function GbpUnitsDialog({
               }}
             >
               <span>{t(`gmn.dialog.errors.${shownError}`)}</span>
-              {loadError && !actionError && shownError !== 'gmn_not_approved' && (
-                <Button type="button" variant="outline" size="sm" onClick={() => refetch()}>
-                  {t('gmn.dialog.retry')}
-                </Button>
-              )}
+              {loadError &&
+                !actionError &&
+                shownError !== 'gmn_not_approved' &&
+                shownError !== 'feature_disabled' && (
+                  <Button type="button" variant="outline" size="sm" onClick={() => refetch()}>
+                    {t('gmn.dialog.retry')}
+                  </Button>
+                )}
             </div>
           )
         )}
@@ -280,6 +310,11 @@ export function GbpUnitsDialog({
               {t('gmn.dialog.loading')}
             </p>
           )}
+          {page?.truncated && (
+            <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--text-light)' }}>
+              {t('gmn.dialog.truncatedNote')}
+            </p>
+          )}
           {options && list.length === 0 && (
             <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-light)' }}>
               {t('gmn.dialog.empty')}
@@ -287,7 +322,8 @@ export function GbpUnitsDialog({
           )}
           {list.map((option) => {
             const elsewhere = isLinkedElsewhere(option, clienteId);
-            const selectable = isSelectable(option, clienteId);
+            const otherAccount = isLinkedViaOtherAccount(option, clienteId, connectionId);
+            const selectable = isSelectable(option, clienteId, connectionId);
             const id = `gbp-unit-${option.locationName}`;
             return (
               <div
@@ -308,7 +344,7 @@ export function GbpUnitsDialog({
                   id={id}
                   className="mt-0.5"
                   disabled={!selectable || save.isPending}
-                  checked={selected.has(option.locationName)}
+                  checked={otherAccount || selected.has(option.locationName)}
                   onCheckedChange={(v) => toggle(option.locationName, v === true)}
                 />
                 <Label htmlFor={id} className="block min-w-0 flex-1 cursor-pointer font-normal">
@@ -336,13 +372,15 @@ export function GbpUnitsDialog({
                         color: 'var(--text-light)',
                       }}
                     >
-                      {elsewhere
-                        ? t('gmn.dialog.inUseHint', { nome: option.linkedClientName ?? '' })
-                        : t('gmn.dialog.unverifiedHint')}
+                      {otherAccount
+                        ? t('gmn.dialog.otherAccountHint')
+                        : elsewhere
+                          ? t('gmn.dialog.inUseHint', { nome: option.linkedClientName ?? '' })
+                          : t('gmn.dialog.unverifiedHint')}
                     </span>
                   )}
                 </Label>
-                {(!selectable || !option.eligible) && (
+                {!otherAccount && (!selectable || !option.eligible) && (
                   <Badge variant={elsewhere ? 'neutral' : 'warning'}>
                     {elsewhere ? t('gmn.dialog.inUse') : t('gmn.dialog.unverified')}
                   </Badge>

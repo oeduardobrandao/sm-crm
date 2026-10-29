@@ -57,26 +57,29 @@ export interface GbpLocationOptionView {
   hasVoiceOfMerchant: boolean;
   linkedClientId: number | null;
   linkedClientName: string | null;
+  /** The connection the link goes through; another connection's unit is read-only here. */
+  linkedConnectionId: string | null;
   eligible: boolean;
+}
+
+export interface GbpLocationOptionsPage {
+  options: GbpLocationOptionView[];
+  /** Google listed only part of the account; this client's linked units are always included. */
+  truncated: boolean;
 }
 
 // ─── Errors ───────────────────────────────────────────────────────────
 
-export type GoogleServiceErrorCode =
-  | 'feature_disabled'
-  | 'gmn_not_approved'
-  | 'reconnect'
-  | 'location_unavailable'
-  | 'rate_limited'
-  | 'unknown';
-
-const KNOWN_CODES: readonly GoogleServiceErrorCode[] = [
+export const GOOGLE_SERVICE_ERROR_CODES = [
   'feature_disabled',
   'gmn_not_approved',
   'reconnect',
   'location_unavailable',
   'rate_limited',
-];
+  'unknown',
+] as const;
+
+export type GoogleServiceErrorCode = (typeof GOOGLE_SERVICE_ERROR_CODES)[number];
 
 export class GoogleServiceError extends Error {
   code: GoogleServiceErrorCode;
@@ -91,7 +94,7 @@ export class GoogleServiceError extends Error {
 async function toServiceError(res: Response): Promise<GoogleServiceError> {
   const body = await res.json().catch(() => null);
   const raw = body && typeof body === 'object' ? (body as { error?: unknown }).error : undefined;
-  const code = KNOWN_CODES.find((c) => c === raw) ?? 'unknown';
+  const code = GOOGLE_SERVICE_ERROR_CODES.find((c) => c === raw) ?? 'unknown';
   return new GoogleServiceError(code);
 }
 
@@ -129,11 +132,11 @@ export async function getGoogleSummary(clientId: number): Promise<GoogleSummary>
 export async function listGbpLocationOptions(
   clientId: number,
   connectionId: string,
-): Promise<GbpLocationOptionView[]> {
-  const data = await request<{ options: GbpLocationOptionView[] }>(
+): Promise<GbpLocationOptionsPage> {
+  const data = await request<{ options: GbpLocationOptionView[]; truncated?: boolean }>(
     `/locations/${clientId}?connection=${encodeURIComponent(connectionId)}`,
   );
-  return data.options;
+  return { options: data.options, truncated: data.truncated === true };
 }
 
 export async function linkGbpLocations(

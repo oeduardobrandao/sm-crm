@@ -223,7 +223,9 @@
       "inUseHint": "Already linked to client {{nome}}. A location belongs to one client only.",
       "unverified": "Not verified",
       "unverifiedHint": "Profile not yet verified by Google, which does not release metrics for it.",
+      "otherAccountHint": "Linked through another Google account. Manage it from that account.",
       "note": "We pull the last 18 months of each checked location. It may take a few minutes the first time.",
+      "truncatedNote": "We're showing only part of this Google account's locations. Locations already linked to this client always appear.",
       "cancel": "Cancel",
       "submit_one": "Link {{count}} location",
       "submit_other": "Link {{count}} locations",
@@ -233,6 +235,7 @@
       "saved_other": "{{count}} locations linked.",
       "savedNone": "Locations unlinked.",
       "errors": {
+        "feature_disabled": "Google Business Profile isn't available on your plan.",
         "gmn_not_approved": "Google has not yet granted Mesaas access to Google Business Profile.",
         "reconnect": "Google authorization expired. Reconnect the account to continue.",
         "location_unavailable": "One of the checked locations is no longer available. The list was refreshed, review the selection.",

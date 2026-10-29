@@ -3,10 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../../lib/supabase');
 
 import * as supabaseModule from '../../lib/supabase';
+import pt from '../../../../../packages/i18n/locales/pt/clients.json';
+import en from '../../../../../packages/i18n/locales/en/clients.json';
 import {
   disconnectYouTube,
   getGoogleAuthUrl,
   getGoogleSummary,
+  GOOGLE_SERVICE_ERROR_CODES,
   GoogleServiceError,
   linkGbpLocations,
   listGbpLocationOptions,
@@ -70,14 +73,27 @@ describe('google service', () => {
     expect(fetchSpy.mock.calls[0][0] as string).toContain('/google-integration/summary/5');
   });
 
-  it('GETs /locations/:clientId with the connection and unwraps options', async () => {
-    const options = [{ locationName: 'locations/1', eligible: true }];
+  it('GETs /locations/:clientId with the connection and returns options + truncated', async () => {
+    const options = [{ locationName: 'locations/1', eligible: true, linkedConnectionId: null }];
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse({ options }));
 
-    await expect(listGbpLocationOptions(5, 'conn-1')).resolves.toEqual(options);
+    await expect(listGbpLocationOptions(5, 'conn-1')).resolves.toEqual({
+      options,
+      truncated: false,
+    });
     expect(fetchSpy.mock.calls[0][0] as string).toContain(
       '/google-integration/locations/5?connection=conn-1',
     );
+  });
+
+  it('passes the truncated flag through', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({ options: [], truncated: true }),
+    );
+    await expect(listGbpLocationOptions(5, 'conn-1')).resolves.toEqual({
+      options: [],
+      truncated: true,
+    });
   });
 
   it('POSTs the selection to /locations/:clientId and returns the linked count', async () => {
@@ -127,6 +143,11 @@ describe('google service', () => {
       expect(err.code).toBe(code);
     },
   );
+
+  it.each([...GOOGLE_SERVICE_ERROR_CODES])('has pt and en dialog copy for the %s code', (code) => {
+    expect(pt.gmn.dialog.errors).toHaveProperty(code);
+    expect(en.gmn.dialog.errors).toHaveProperty(code);
+  });
 
   it('maps an unrecognised body error to unknown', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(

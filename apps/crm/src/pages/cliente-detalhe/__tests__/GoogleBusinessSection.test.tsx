@@ -142,7 +142,7 @@ describe('GoogleBusinessSection', () => {
       youtube: null,
       gmn: { locations: [], connections: summary.gmn.connections },
     });
-    listOptionsMock.mockResolvedValue([]);
+    listOptionsMock.mockResolvedValue({ options: [], truncated: false });
     const onPickHandled = vi.fn();
     renderSection({ pick: 'conn-1', onPickHandled });
 
@@ -185,7 +185,7 @@ describe('GoogleBusinessSection', () => {
       youtube: null,
       gmn: { locations: [], connections: summary.gmn.connections },
     });
-    listOptionsMock.mockResolvedValue([]);
+    listOptionsMock.mockResolvedValue({ options: [], truncated: false });
     renderSection();
 
     expect(

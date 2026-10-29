@@ -223,7 +223,9 @@
       "inUseHint": "Já vinculada ao cliente {{nome}}. Uma unidade pertence a um cliente só.",
       "unverified": "Não verificado",
       "unverifiedHint": "Perfil ainda não verificado pelo Google, que não libera métricas para ele.",
+      "otherAccountHint": "Vinculada por outra conta Google. Gerencie pela conta que a vinculou.",
       "note": "Puxamos os últimos 18 meses de cada unidade marcada. Pode levar alguns minutos na primeira vez.",
+      "truncatedNote": "Mostramos só parte das unidades desta conta Google. As unidades já vinculadas a este cliente aparecem sempre.",
       "cancel": "Cancelar",
       "submit_one": "Vincular {{count}} unidade",
       "submit_other": "Vincular {{count}} unidades",
@@ -233,6 +235,7 @@
       "saved_other": "{{count}} unidades vinculadas.",
       "savedNone": "Unidades desvinculadas.",
       "errors": {
+        "feature_disabled": "O Google Meu Negócio não está disponível no seu plano.",
         "gmn_not_approved": "O Google ainda não liberou o acesso ao Google Meu Negócio para o Mesaas.",
         "reconnect": "A autorização do Google expirou. Reconecte a conta para continuar.",
         "location_unavailable": "Uma das unidades marcadas não está mais disponível. A lista foi atualizada, confira a seleção.",
