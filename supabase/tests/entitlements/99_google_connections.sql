@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Suite for the Google connection tables (20261107000002_google_connections.sql):
+-- Suite for the Google connection tables (20261108000002_google_connections.sql):
 -- google_connections, google_revocations, youtube_channels and gbp_locations are service-role
 -- only (RLS on, no policies, REVOKE ALL from PUBLIC/anon/authenticated), with the uniqueness,
 -- cascade and CHECK rules the connect flow relies on, plus oauth_states accepting 'google'.
