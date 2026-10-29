@@ -79,9 +79,12 @@ no `_meta.ui`, so it behaves exactly as today. Changing the secret needs no depl
   (`readOnlyHint: true` on reads; writes `readOnlyHint: false`, `destructiveHint` true only for
   deletes and `fechar_periodo`-style irreversible actions; `openWorldHint: true` on
   `send_post_to_client`). A structural test fails if any registered tool lacks them.
-- New helper `cardResult(summary, data)` returning `{content: [{type: "text", text: summary}],
-  structuredContent: data}` (today `jsonResult` sends only text JSON, `register.ts:15`). The summary is
-  short pt-BR text for the model; the widget renders `structuredContent`.
+- New helper `cardResult(summary, data, meta?)` returning `{content: [{type: "text", text: summary}],
+  structuredContent: data, _meta: meta}` (today `jsonResult` sends only text JSON, `register.ts:15`).
+  The summary is short pt-BR text for the model; the widget renders `structuredContent`. ChatGPT shows
+  `structuredContent` to the model too, so keep it lean (ids, short texts, signed thumbnail URLs; no
+  full post bodies beyond what the card shows). Anything only the card needs goes in `_meta`.
+- Argument naming: card tools use `client_id`, like the existing read tools.
 - No `@modelcontextprotocol/ext-apps` dependency on the server (my call): the `_meta` keys are plain
   objects, which avoids an SDK bump. The widget bundle uses ext-apps' client `App` class (independent
   of the server SDK; pin the latest 1.x that builds with Vite).
@@ -94,9 +97,10 @@ no `_meta.ui`, so it behaves exactly as today. Changing the secret needs no depl
   - `csp.resourceDomains`: the origin `signGetUrl` returns (`https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`,
     `_shared/r2.ts:20-25`), computed from env at request time. If the media-proxy worker becomes the
     signing path, its origin instead. `connectDomains`: none (the widget only talks to the host).
-  - `domain`: the Claude rule (sha256 of the MCP URL `SUPABASE_URL + "/functions/v1/mcp"`, first 32 hex,
-    `.claudemcpcontent.com`). ChatGPT's equivalent (`openai/widgetDomain` or its MCP Apps alias) set
-    per its docs; the builder confirms both against current docs before the first host test.
+  - No `_meta.ui.domain`. The two hosts need incompatible values (Claude: a hash of the exact URL the
+    user typed, where a trailing slash changes it, and optional unless the widget runs its own OAuth;
+    ChatGPT: an origin, required for a listed plugin with UI), and the stateless server cannot tell
+    the hosts apart. Set only `_meta["openai/widgetDomain"] = "https://www.mesaas.com.br"`.
   - `prefersBorder: false` (the card draws its own border).
 - The HTML is a generated TS module (`mcp/ui/generated/cards-v1.ts`, `export const CARDS_V1_HTML`),
   pattern of `scripts/build-report-fonts.ts` → `_shared/report-template/fonts.ts`. See §6.
@@ -108,9 +112,9 @@ against `ctx.conta_id` like the existing queries.
 
 | Tool | Scope | Args | Card |
 |---|---|---|---|
-| `preview_post` | `posts:read` | `cliente_id`, `titulo`, `tipo`, `slides[{texto}]` (≤10, carousel), `roteiro?` (reels), `ig_caption`, `post_id?` (when revising a saved post) | Prévia do post. Read-only: renders the proposal, writes nothing. Returns client name, pillar label if given, caption length vs `captionMaxFor()` |
-| `show_caption_options` | `posts:read` | `cliente_id`, `post_id?`, `options[{label, text}]` (2–3) | Opções de legenda |
-| `show_client_calendar` | `posts:read` | `cliente_id`, `from?` (default today, São Paulo), `weeks` (1–6, default 3) | Calendário do cliente |
+| `preview_post` | `posts:read` | `client_id`, `titulo`, `tipo`, `slides[{texto}]` (≤10, carousel), `roteiro?` (reels), `ig_caption`, `post_id?` (when revising a saved post) | Prévia do post. Read-only: renders the proposal, writes nothing. Returns client name, pillar label if given, caption length vs `captionMaxFor()` |
+| `show_caption_options` | `posts:read` | `client_id`, `post_id?`, `options[{label, text}]` (2–3) | Opções de legenda |
+| `show_client_calendar` | `posts:read` | `client_id`, `from?` (default today, São Paulo), `weeks` (1–6, default 3) | Calendário do cliente |
 | `show_attach_image` | `posts:read` | `post_id`, `image` (`openai/fileParams`), `position?` | Anexar imagem (ChatGPT). Returns the post's current media order (signed thumbnails), tipo, status, eligibility |
 
 Descriptions tell the model when to use each (pt-BR), e.g. `preview_post`: "Mostra a prévia de um
@@ -137,12 +141,26 @@ format in the MCP contract, and `slide_1_text` is the first line of `conteudo_pl
 saved post, it splits `conteudo_plain` on blank lines. A Deno test pins the round trip and
 `slide_1_text`.
 
-**Visibility is enforced by the host.** A user calling tools directly with their own OAuth token is
-the user acting, within their role. The server-side guarantees are §5's checks; the "model never
-sends" guarantee is that the model cannot see or call `["app"]` tools.
+**Visibility is enforced by the host, so it is not enough on its own.** A host without MCP Apps
+ignores `_meta.ui` and lists `send_post_to_client` to its model: Claude Code, Codex, Cursor, scheduled
+routines, any `mesaas_sk_` key consumer. The stateless server cannot see the client's capabilities
+(they travel only in `initialize`). So "the model never sends" rests on two server-side checks:
+1. **OAuth only.** `send_post_to_client` and `attach_image_to_post` are registered only when
+   `ctx.key_id` starts with `oauth:` (`_shared/mcp-oauth.ts:207`); static `mesaas_sk_` keys never
+   see them. (Static keys are also why `ctx.created_by` would be the key's creator, not the clicker.)
+2. **A per-post send nonce delivered to the card, not the model.** Results of `create_post`,
+   `update_post` and `preview_post` (when `post_id` is set) carry `_meta["mesaas/sendNonce"]`: an HMAC
+   (key derived with HKDF from `TOKEN_ENCRYPTION_KEY`, purpose `mcp-send-nonce`) over
+   `{conta_id, user_id, post_id, exp: now + 30 min}`. `send_post_to_client` requires it and checks
+   every field. Result `_meta` is delivered to the widget and hidden from the model on ChatGPT
+   (documented); on Claude this must be confirmed in the pilot (§9 step 3). If Claude shows result
+   `_meta` to the model, the nonce moves into a widget-only `resources/read` the card calls, and the
+   pilot does not go to `on` until that holds.
+   Residual: an OAuth client without MCP Apps whose model can read result `_meta` could still send.
+   It is the same user, within `posts:write`, and the status guard in §5 limits it to one send.
 
 ### 4.5 Calendar data
-- New query `listClientCalendar(cliente_id, from, weeks)`. `from` is a date `YYYY-MM-DD` in
+- New query `listClientCalendar(client_id, from, weeks)`. `from` is a date `YYYY-MM-DD` in
   `America/Sao_Paulo`, snapped back to that week's Monday; the range is `[from 00:00, from + 7·weeks
   days 00:00)` in São Paulo, converted to UTC with a real time-zone conversion (no fixed offset).
 - One row per post. Canonical date = `published_at` when published, else `scheduled_at`
@@ -159,11 +177,21 @@ sends" guarantee is that the model cannot see or call `["app"]` tools.
 
 ### 4.6 Attaching a chat image
 - `fetchImageSafely(deps, image.download_url, {maxBytes: 8 MB, timeoutMs: 20 s})`
-  (`_shared/safe-image-fetch.ts:274`); mime from `sniffImageBytes`, JPEG/PNG only (WebP/GIF refused:
-  "Formato não aceito. Use JPG ou PNG."). Read width/height from the header.
+  (`_shared/safe-image-fetch.ts:274`), with `resolveDns`/`fetchUrl` wired from `Deno.resolveDns` and
+  `fetch` the way `mcp-admin/index.ts` does (the MCP `Deps` has neither today). Mime from
+  `sniffImageBytes`, JPEG/PNG only (WebP/GIF refused: "Formato não aceito. Use JPG ou PNG.").
+- **Host allowlist:** on Claude the model can pass any public URL as `image.download_url`, so the tool
+  only accepts the OpenAI file host(s) observed in the first real ChatGPT test, kept in one constant.
+  `download_url` never reaches `audit_log` (`auditArgs` logs `post_id`, `position`, `replace` only).
+- **Redirects:** `fetchImageSafely` refuses any 3xx (`redirect: "manual"`, `:300-305`). The first test
+  records whether ChatGPT's `download_url` redirects. If it does, add a bounded redirect option
+  (at most 3 hops, each re-validated against https, DNS/private-IP rules and the allowlist) to
+  `fetchImageSafely`, never a plain `redirect: "follow"`.
+- Width/height: a small `_shared/image-dimensions.ts` reads PNG IHDR and JPEG SOF; unknown → NULL
+  (both nullable in `file_insert_with_quota`).
 - Order of operations:
-  1. Fetch and sniff (above); cheap eligibility pre-check (below) so most refusals happen before any
-     upload.
+  1. Fetch and sniff (above); cheap eligibility pre-check (below) and a quota precheck (as
+     `mcp/media.ts:13-20` does) so most refusals happen before any upload.
   2. Presigned PUT + plain `fetch` + `AbortSignal` to `contas/<conta>/files/<uuid>.<ext>`.
   3. **One** SECURITY DEFINER RPC `mcp_attach_post_file(p_conta_id, p_post_id, p_actor, p_file jsonb,
      p_position, p_replace)`, EXECUTE to `service_role` only, in a single transaction: re-check
@@ -172,16 +200,23 @@ sends" guarantee is that the model cannot see or call `["app"]` tools.
      takes), re-check eligibility, then create the `files` row through `file_insert_with_quota`'s
      logic (quota charged in the same transaction) and either
      - **append/insert** (`p_replace = false`): refuse when the post already has 10 items, before
-       creating anything; shift `sort_order` of links at `>= p_position` by one and insert the new link;
+       creating anything; shift `sort_order` of links at `>= p_position` by one and insert the new link
+       with `origin = 'manual'`. Cover: `post_file_links_one_cover` is a non-deferrable partial unique
+       index (`20260425000001:83`; the repo has hit its duplicate-key error before). At position 1,
+       demote the current cover (`is_cover = false`) in one statement, then insert the new link with
+       `is_cover = true`; elsewhere insert with `is_cover = false`. An empty post gets its cover from
+       the existing `post_file_link_auto_cover` trigger;
      - **replace** (`p_replace = true`): swap `file_id` on the existing link at that position, keeping
        the link row, its `sort_order` and `is_cover` (same identity-preserving approach as
        `post_file_link_replace`). Deleting and re-inserting would fire `post_file_link_reassign_cover`
        (`20260425000002_file_system_triggers.sql:176`) and move the cover to the next slide. The old
        file stays in Arquivos. Allowed at 10 items.
-  4. If the RPC fails (race lost, quota, limit), the function deletes the uploaded object
-     (best-effort, `AbortSignal`) and returns the RPC's pt-BR error. Anything a kill leaves behind is an
-     unreferenced object under `contas/`, which the existing orphan scan reaps after 24 h. Retrying is
-     safe: each attempt uploads a new key.
+     - Like `post_media_set_from_uploads`, a post in `correcao_cliente` moves to `revisao_interna`
+       when its media changes (consistent with the connector's existing media write).
+  4. If the RPC fails (race lost, quota, limit), the function enqueues the uploaded key in
+     `file_deletions` (the existing deletion queue) and returns the RPC's pt-BR error. Anything a kill
+     leaves behind is an unreferenced object under `contas/`, which the existing orphan scan reaps
+     after 24 h. Retrying is safe: each attempt uploads a new key.
 - `replace` is decided by the card: picking a slide that already has an image asks "Substituir a
   imagem da lâmina N?".
 - Eligibility: post in the workspace, `status` in `EDITABLE_STATUSES` (`rascunho`, `revisao_interna`,
@@ -210,9 +245,16 @@ service role, so it needs its own guarded write:
   workspace user acting; the MCP origin is already in `audit_log` (`mcp.send_post_to_client`). Then
   `UPDATE workflow_posts SET status = 'enviado_cliente', custom_status_id = NULL WHERE id = p_post_id
   AND conta_id = p_conta_id AND status = p_expected_status AND status NOT IN (<SELECTION_SEND_SKIPPED_STATUSES>)`.
-  Zero rows → `stale` (the card says "O post mudou no Mesaas. Atualize o cartão.").
+  Zero rows → the RPC re-reads the post and returns a distinct code: `already_sent`
+  (`enviado_cliente`: "Este post já está com o cliente."), `approved` (`aprovado_cliente`, `agendado`,
+  `postado`: "O cliente já aprovou este post."), `stale` (anything else: "O post mudou no Mesaas.
+  Atualize o cartão.").
+- The RPC also verifies the send nonce's fields match its arguments (§4.4) before updating.
+- `run_post_status_automations` passes `auth.uid()` as the notification actor
+  (`20260805000002:246`), which is NULL under the service role: automations still run, the
+  notification just has no actor name. Accepted for v1.
 - Preconditions mirrored from the CRM: a video without a thumbnail is refused (`hasVideoMissingThumbnail`,
-  `WorkflowDrawer.tsx:763`). Scope `posts:write` (= `entregas:editar`).
+  `PostMediaGallery.tsx:1554`, used at `WorkflowDrawer.tsx:763`). Scope `posts:write` (= `entregas:editar`).
 - The card's two-step flow (mockup board 2) is the only caller: "Enviar para aprovação" opens the
   inline confirmation, "Enviar ao cliente" calls the tool.
 - Docs that say the agent never sends must change to "o agente não envia sozinho; um clique seu no
@@ -228,9 +270,14 @@ service role, so it needs its own guarded write:
 - One app, four cards, switched on `structuredContent.card`; unknown `card` or `v` renders a small
   "Atualize o conector" fallback.
 - `npm run build:mcp-widgets` writes `supabase/functions/mcp/ui/generated/cards-v1.ts` (header
-  "GENERATED, do not edit"), committed. CI: a step in `edge-function-tests` rebuilds and runs
-  `git diff --exit-code` on that file, so a stale bundle cannot merge. Size budget 300 KB raw; the
-  builder reports the real size.
+  "GENERATED, do not edit"), committed. CI: a step in `lint-and-typecheck` (the job that has Node and
+  `npm ci`; `edge-function-tests` only sets up Deno) rebuilds and runs `git diff --exit-code` on that
+  file, so a stale bundle cannot merge. The same job gets a fifth `tsc` for `apps/mcp-widgets`, and
+  CLAUDE.md/README's "four projects" lines are updated. Size budget 500 KB raw (React 19 + lucide +
+  ext-apps `App` with its zod); if it lands far above, switch the bundle to Preact. The builder
+  reports the real size.
+- ext-apps version for the widget: the widget is its own npm workspace, so it can use the latest 1.x
+  (1.7.5 at writing) regardless of the server's SDK pin.
 - Dev harness: a local page that mounts the widget with fixture `structuredContent` through ext-apps'
   `app-bridge`, for Vitest and for manual checks without a host.
 - Accessibility: real buttons, focus states, 44 px targets on phone widths, text contrast 4.5:1 in
@@ -265,7 +312,11 @@ verifies before submitting].
   video without thumbnail, other workspace) and the `post_status_events` row exists with the actor
   and source `workspace_user`; `attach_image_to_post` eligibility, JPEG/PNG only, 8 MB cap,
   private-IP URL refused, position shift, append refused at 10, replace at 10 allowed, replace of
-  slide 1 keeps it as cover, a failed RPC deletes the uploaded object; slides↔body round trip;
+  slide 1 keeps it as cover, insert at position 1 becomes cover without a duplicate-key error, a
+  failed RPC enqueues the uploaded key in `file_deletions`, non-allowlisted image host refused,
+  `download_url` absent from the audit row; widget-only tools absent for `mesaas_sk_` keys; send
+  refused without a nonce, with an expired one, or one for another post/user/workspace; distinct
+  `already_sent`/`approved`/`stale` codes; slides↔body round trip;
   calendar range boundaries in São Paulo, no duplicate published post, gap heuristic.
 - SQL: both RPCs EXECUTE only by `service_role`.
 - Vitest (apps/mcp-widgets): each card renders from fixtures in light and dark, unknown `card`
@@ -278,7 +329,11 @@ verifies before submitting].
 1. Migration (`mcp_send_post_to_client`, `mcp_attach_post_file`).
 2. Deploy `mcp` (`--no-verify-jwt --use-api`, as today) with `MCP_APPS=off`: tool list unchanged except
    the new titles/annotations.
-3. `MCP_APPS=pilot` + `MCP_APPS_PILOT_CONTAS=<founder's conta>`; manual host matrix (§8).
+3. `MCP_APPS=pilot` + `MCP_APPS_PILOT_CONTAS=<founder's conta>`; manual host matrix (§8). The pilot
+   must also confirm, before step 4: Claude does not show result `_meta` (the send nonce) to the
+   model (§4.4); ChatGPT's `download_url` host and redirect behaviour (§4.6); whether a
+   ChatGPT-generated image arrives as a file param; that the card renders in Claude without
+   `_meta.ui.domain`.
 4. KB and tool-description updates; then `MCP_APPS=on`.
 5. Directory submissions (§7).
 6. Merge (no CRM change in v1 besides docs, so order relative to the merge is free).
@@ -299,7 +354,8 @@ harmless.
 - No ext-apps on the server; plain `_meta` on SDK 1.25.3 (§4.1).
 - One versioned resource for all cards (§4.2).
 - `send_post_to_client` under the existing `posts:write` scope, no new scope (users keep their current
-  authorizations) (§4.4).
+  authorizations), registered for OAuth connections only and guarded by a card-only nonce (§4.4).
+- No `_meta.ui.domain`; only `openai/widgetDomain` (§4.2).
 - "Dias de costume" = 4 of the last 8 weeks (§4.5).
 - ChatGPT listing targets Brazil (§7).
 - v1 edits `ig_caption` only (§2).
