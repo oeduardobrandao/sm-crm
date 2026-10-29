@@ -46,7 +46,11 @@ const clash: PostEditSuggestion = {
   updated_at: '2026-10-28T20:33:00Z',
 };
 
-function Harness({ onAccept }: { onAccept: (s: PostEditSuggestion, f: string[]) => void }) {
+function Harness({
+  onAccept,
+}: {
+  onAccept: (s: PostEditSuggestion, f: string[], ack: string[]) => void;
+}) {
   const flow = useAcceptSuggestionFlow(post, onAccept);
   return (
     <>
@@ -82,8 +86,15 @@ describe('useAcceptSuggestionFlow, dialog while it closes', () => {
   it('keeps the field name, fieldsets and confirm button after Aceitar sugestão', async () => {
     const { user, onAccept } = await openDialog();
     await user.click(screen.getByRole('button', { name: 'Aceitar sugestão' }));
-    expect(onAccept).toHaveBeenCalledWith(clash, ['texto']);
+    expect(onAccept).toHaveBeenCalledWith(clash, ['texto'], []);
     expectContentIntact();
+  });
+
+  it('acknowledges the conflicts the reviewer takes from the client', async () => {
+    const { user, onAccept } = await openDialog();
+    await user.click(screen.getByRole('radio', { name: 'Usar a versão do cliente' }));
+    await user.click(screen.getByRole('button', { name: 'Aceitar sugestão' }));
+    expect(onAccept).toHaveBeenCalledWith(clash, ['texto', 'legenda'], ['legenda']);
   });
 
   it('keeps them after Cancelar too, and does not accept', async () => {

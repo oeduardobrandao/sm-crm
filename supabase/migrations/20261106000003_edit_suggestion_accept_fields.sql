@@ -20,17 +20,27 @@
 -- conflito levanta suggestion_conflict (um CRM antigo, de 2 args, não sobrescreve
 -- uma edição da equipe). Interseção vazia levanta no_fields.
 --
+-- p_fields explícito NÃO dispensa a checagem: o CRM calcula os campos a partir do post
+-- que a gaveta tem na tela, que pode estar velho (outro membro editou a legenda depois
+-- de a gaveta abrir). Por isso, para cada campo de p_fields ∩ mudados que está em
+-- conflito AGORA no servidor e não vem em p_acknowledged (os campos que a equipe
+-- marcou, na tela, como "Usar a versão do cliente"), a função levanta
+-- suggestion_conflict e não muda nada. Campo fora de p_fields nunca conta.
+--
 -- Corpo de 20261105000003 (checagem de workspace, ordem de locks post -> sugestão,
 -- suggestion_changed, app.*) mantido. A assinatura muda: DROP + CREATE, grants
 -- reafirmados.
 -- =====================================================================
 
 drop function if exists public.accept_edit_suggestion(bigint, timestamptz);
+-- A de 3 args (esta migration, antes desta revisão) nunca foi aplicada fora de dev local.
+drop function if exists public.accept_edit_suggestion(bigint, timestamptz, text[]);
 
 create function public.accept_edit_suggestion(
   p_suggestion_id       bigint,
   p_expected_updated_at timestamptz default null,
-  p_fields              text[]      default null
+  p_fields              text[]      default null,
+  p_acknowledged        text[]      default null
 )
 returns void
 language plpgsql
@@ -104,6 +114,11 @@ begin
   else
     v_do_texto   := v_texto_chg   and 'texto'   = any (p_fields);
     v_do_legenda := v_legenda_chg and 'legenda' = any (p_fields);
+    -- a tela pode estar velha: o conflito é reavaliado aqui, e só passa o que a equipe reconheceu
+    if (v_do_texto   and v_texto_conf   and not ('texto'   = any (coalesce(p_acknowledged, '{}'))))
+       or (v_do_legenda and v_legenda_conf and not ('legenda' = any (coalesce(p_acknowledged, '{}')))) then
+      raise exception 'suggestion_conflict' using errcode = 'P0001';
+    end if;
   end if;
 
   if not (v_do_texto or v_do_legenda) then
@@ -145,5 +160,5 @@ begin
 end;
 $$;
 
-revoke all on function public.accept_edit_suggestion(bigint, timestamptz, text[]) from public, anon;
-grant execute on function public.accept_edit_suggestion(bigint, timestamptz, text[]) to authenticated, service_role;
+revoke all on function public.accept_edit_suggestion(bigint, timestamptz, text[], text[]) from public, anon;
+grant execute on function public.accept_edit_suggestion(bigint, timestamptz, text[], text[]) to authenticated, service_role;

@@ -3,20 +3,22 @@
 -- et_grant_hosted_parity() runs inside each begin/rollback block: at top level its GRANT ALL
 -- would commit and leak to every later suite on CI's shared database.
 
--- accept_edit_suggestion(p_suggestion_id, p_expected_updated_at, p_fields) (migration
+-- accept_edit_suggestion(p_suggestion_id, p_expected_updated_at, p_fields, p_acknowledged) (migration
 -- 20261106000003, spec docs/superpowers/specs/2026-10-29-edit-suggestion-no-auto-reject-design.md §5).
 -- Cobre:
 -- 104.1 sem conflito e p_fields NULL: aplica só o que o cliente mudou (caso 11807, a legenda da equipe fica)
 -- 104.2 conflito na legenda, p_fields = {texto}: texto aplicado, legenda da equipe mantida, sugestão accepted
 -- 104.3 conflito e p_fields NULL (CRM antigo, 2 args): suggestion_conflict e nada muda
--- 104.4 conflito, p_fields = {texto, legenda}: a legenda do cliente vence
+-- 104.4 conflito, p_fields = {texto, legenda} com p_acknowledged = {legenda}: a legenda do cliente vence
+-- 104.4b p_fields = {legenda} com conflito de legenda no servidor e sem reconhecimento: suggestion_conflict, nada muda
+-- 104.4c p_fields = {texto} com conflito só na legenda e sem reconhecimento: aplica o texto (legenda fora do conjunto)
 -- 104.5 p_fields sem interseção com o que mudou (ou vazio): no_fields
 -- 104.6 suggested_conteudo NULL com texto escolhido: conteudo fica, conteudo_plain aplicado
 -- 104.7 texto: imagem inline nova da equipe é conflito; só formatação não é; original_conteudo NULL lê '{}'
 -- 104.8 outra conta: Suggestion not found, nada muda
 -- 104.9 suggestion_changed continua valendo
 -- 104.10 conflito só conta em campo que o cliente mudou; NULL em original_* lê ''
--- 104.11 grants e assinatura (a de 2 args não existe mais)
+-- 104.11 grants e assinatura de 4 args (as de 2 e 3 args não existem mais)
 
 create or replace function pg_temp.et_af_doc(txt text) returns jsonb
 language sql as $$
@@ -135,12 +137,67 @@ begin
   select * into e from pg_temp.et_af_env(array['conteudo_plain','conteudo','ig_caption'], pg_temp.et_af_doc('T1'), 'T1', 'L-cliente');
   update workflow_posts set ig_caption = 'L-team' where id = e.post;
   perform pg_temp.et_af_as(e.usr);
-  perform accept_edit_suggestion(e.sug, null, array['texto','legenda']);
+  perform accept_edit_suggestion(e.sug, null, array['texto','legenda'], array['legenda']);
   execute 'reset role';
   assert (select conteudo_plain from workflow_posts where id = e.post) = 'T1', 'texto aplicado';
   assert (select ig_caption from workflow_posts where id = e.post) = 'L-cliente', 'a legenda do cliente vence quando escolhida';
   assert (select status from post_edit_suggestions where id = e.sug) = 'accepted', 'accepted';
   raise notice 'PASS 104.4 escolher os dois campos aplica os dois';
+end $$;
+rollback;
+
+-- 104.4b: a tela estava velha (nenhum conflito visto), mas o servidor vê o conflito da legenda
+begin;
+select et_grant_hosted_parity();
+do $$
+declare e record; v_raised int := 0;
+begin
+  select * into e from pg_temp.et_af_env(array['conteudo_plain','conteudo','ig_caption'], pg_temp.et_af_doc('T1'), 'T1', 'L-cliente');
+  update workflow_posts set ig_caption = 'L-team' where id = e.post;
+  perform pg_temp.et_af_as(e.usr);
+  begin
+    perform accept_edit_suggestion(e.sug, null, array['legenda'], '{}'::text[]);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'suggestion_conflict', format('wrong msg: %s', sqlerrm);
+    v_raised := v_raised + 1;
+  end;
+  begin
+    perform accept_edit_suggestion(e.sug, null, array['legenda'], null);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'suggestion_conflict', format('wrong msg: %s', sqlerrm);
+    v_raised := v_raised + 1;
+  end;
+  begin
+    -- reconhecer outro campo não vale para a legenda
+    perform accept_edit_suggestion(e.sug, null, array['texto','legenda'], array['texto']);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'suggestion_conflict', format('wrong msg: %s', sqlerrm);
+    v_raised := v_raised + 1;
+  end;
+  execute 'reset role';
+  assert v_raised = 3, 'sem reconhecer a legenda, o conflito do servidor levanta';
+  assert (select conteudo_plain from workflow_posts where id = e.post) = 'T0', 'post intocado (texto)';
+  assert (select ig_caption from workflow_posts where id = e.post) = 'L-team', 'post intocado (legenda)';
+  assert (select status from post_edit_suggestions where id = e.sug) = 'pending', 'sugestão segue pendente';
+  raise notice 'PASS 104.4b conflito do servidor com p_fields explícito';
+end $$;
+rollback;
+
+-- 104.4c: o conflito é da legenda e o conjunto aplicado é só o texto
+begin;
+select et_grant_hosted_parity();
+do $$
+declare e record;
+begin
+  select * into e from pg_temp.et_af_env(array['conteudo_plain','conteudo','ig_caption'], pg_temp.et_af_doc('T1'), 'T1', 'L-cliente');
+  update workflow_posts set ig_caption = 'L-team' where id = e.post;
+  perform pg_temp.et_af_as(e.usr);
+  perform accept_edit_suggestion(e.sug, null, array['texto'], '{}'::text[]);
+  execute 'reset role';
+  assert (select conteudo_plain from workflow_posts where id = e.post) = 'T1', 'texto aplicado';
+  assert (select ig_caption from workflow_posts where id = e.post) = 'L-team', 'legenda da equipe mantida';
+  assert (select status from post_edit_suggestions where id = e.sug) = 'accepted', 'accepted';
+  raise notice 'PASS 104.4c conflito fora do conjunto aplicado não bloqueia';
 end $$;
 rollback;
 
@@ -276,7 +333,7 @@ begin
   end;
   execute 'reset role';
   perform pg_temp.et_af_as(e.usr);
-  perform accept_edit_suggestion(e.sug, null, array['texto']);
+  perform accept_edit_suggestion(e.sug, null, array['texto'], array['texto']);
   execute 'reset role';
   assert (select conteudo_plain from workflow_posts where id = e.post) = 'T1', 'escolher o texto do cliente resolve';
   raise notice 'PASS 104.7e plain da equipe diferente é conflito';
@@ -371,12 +428,16 @@ do $$
 begin
   assert to_regprocedure('public.accept_edit_suggestion(bigint, timestamptz)') is null,
     'a assinatura de 2 args tem que sumir (chamada com 2 args resolveria ambígua)';
+  assert to_regprocedure('public.accept_edit_suggestion(bigint, timestamptz, text[])') is null,
+    'a assinatura de 3 args tem que sumir (chamada com 3 args resolveria ambígua)';
+  assert to_regprocedure('public.accept_edit_suggestion(bigint, timestamptz, text[], text[])') is not null,
+    'a assinatura de 4 args existe';
   assert to_regprocedure('public.accept_edit_suggestion(bigint)') is null, 'a de 1 arg continua fora';
-  assert has_function_privilege('anon', 'public.accept_edit_suggestion(bigint, timestamptz, text[])', 'EXECUTE') = false,
+  assert has_function_privilege('anon', 'public.accept_edit_suggestion(bigint, timestamptz, text[], text[])', 'EXECUTE') = false,
     'anon não executa accept_edit_suggestion';
-  assert has_function_privilege('authenticated', 'public.accept_edit_suggestion(bigint, timestamptz, text[])', 'EXECUTE'),
+  assert has_function_privilege('authenticated', 'public.accept_edit_suggestion(bigint, timestamptz, text[], text[])', 'EXECUTE'),
     'authenticated executa (o CRM chama)';
-  assert has_function_privilege('service_role', 'public.accept_edit_suggestion(bigint, timestamptz, text[])', 'EXECUTE'),
+  assert has_function_privilege('service_role', 'public.accept_edit_suggestion(bigint, timestamptz, text[], text[])', 'EXECUTE'),
     'service_role mantém execute';
   raise notice 'PASS 104.11 grants e assinatura';
 end $$;

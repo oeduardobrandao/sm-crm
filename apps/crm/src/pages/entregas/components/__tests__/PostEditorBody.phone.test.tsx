@@ -711,7 +711,7 @@ describe('PostEditorBody, client suggestion card (desktop)', () => {
     expect(screen.getByTestId('texto-diff-stub')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Aceitar' }));
-    expect(onAcceptSuggestion).toHaveBeenCalledWith(teamEditedCaptionOnly, ['texto']);
+    expect(onAcceptSuggestion).toHaveBeenCalledWith(teamEditedCaptionOnly, ['texto'], []);
   });
 
   it('caption clash: amber line, "Aceitar…", diff defaults to live then flips to the client base', async () => {
@@ -746,7 +746,7 @@ describe('PostEditorBody, client suggestion card (desktop)', () => {
     expect(within(dialog).getByRole('button', { name: 'Aceitar sugestão' })).toBeDisabled();
     await user.click(within(dialog).getByRole('radio', { name: 'Usar a versão do cliente' }));
     await user.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
-    expect(onAcceptSuggestion).toHaveBeenCalledWith(captionClash, ['legenda']);
+    expect(onAcceptSuggestion).toHaveBeenCalledWith(captionClash, ['legenda'], ['legenda']);
   });
 });
 
@@ -818,7 +818,7 @@ describe('PostEditorBody, client suggestion sheet (phone)', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Aceitar a sugestão?' });
     await user.click(within(dialog).getByRole('radio', { name: 'Usar a versão do cliente' }));
     await user.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
-    expect(onAcceptSuggestion).toHaveBeenCalledWith(captionClash, ['legenda']);
+    expect(onAcceptSuggestion).toHaveBeenCalledWith(captionClash, ['legenda'], ['legenda']);
   });
 
   it('team-only caption edit: footer in the sheet, plain Aceitar sends the changed field', async () => {
@@ -835,7 +835,7 @@ describe('PostEditorBody, client suggestion sheet (phone)', () => {
     ).toBeInTheDocument();
     await user.click(within(sheet).getByRole('button', { name: 'Aceitar' }));
     await waitFor(() =>
-      expect(onAcceptSuggestion).toHaveBeenCalledWith(teamEditedCaptionOnly, ['texto']),
+      expect(onAcceptSuggestion).toHaveBeenCalledWith(teamEditedCaptionOnly, ['texto'], []),
     );
   });
 });

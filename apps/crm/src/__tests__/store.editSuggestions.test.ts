@@ -98,13 +98,14 @@ describe('store edit suggestions', () => {
       error: null,
     });
 
-    await store.acceptEditSuggestion(42, undefined, ['texto']);
+    await store.acceptEditSuggestion(42, undefined, ['texto'], []);
 
     const call = getCalls('rpc:accept_edit_suggestion', 'rpc').at(-1)!;
     expect(call.payload).toEqual({
       p_suggestion_id: 42,
       p_expected_updated_at: null,
       p_fields: ['texto'],
+      p_acknowledged: [],
     });
   });
 
@@ -114,13 +115,19 @@ describe('store edit suggestions', () => {
       error: null,
     });
 
-    await store.acceptEditSuggestion(42, '2026-09-28T12:00:00.123456+00:00', ['texto', 'legenda']);
+    await store.acceptEditSuggestion(
+      42,
+      '2026-09-28T12:00:00.123456+00:00',
+      ['texto', 'legenda'],
+      ['legenda'],
+    );
 
     const call = getCalls('rpc:accept_edit_suggestion', 'rpc').at(-1)!;
     expect(call.payload).toEqual({
       p_suggestion_id: 42,
       p_expected_updated_at: '2026-09-28T12:00:00.123456+00:00',
       p_fields: ['texto', 'legenda'],
+      p_acknowledged: ['legenda'],
     });
   });
 
@@ -142,7 +149,7 @@ describe('store edit suggestions', () => {
       error: { message: 'Suggestion not found' },
     });
 
-    await expect(store.acceptEditSuggestion(999, undefined, ['texto'])).rejects.toThrow();
+    await expect(store.acceptEditSuggestion(999, undefined, ['texto'], [])).rejects.toThrow();
   });
 
   it('rejectEditSuggestion throws on error', async () => {

@@ -1046,9 +1046,12 @@ describe('StandalonePostDrawer edit suggestions', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
 
     await waitFor(() =>
-      expect(vi.mocked(acceptEditSuggestion)).toHaveBeenCalledWith(300, '2026-08-01T00:00:00Z', [
-        'texto',
-      ]),
+      expect(vi.mocked(acceptEditSuggestion)).toHaveBeenCalledWith(
+        300,
+        '2026-08-01T00:00:00Z',
+        ['texto'],
+        [],
+      ),
     );
     await waitFor(() =>
       expect(vi.mocked(syncMentions)).toHaveBeenCalledWith('workflow_post', 5, [7]),
@@ -1064,10 +1067,40 @@ describe('StandalonePostDrawer edit suggestions', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Aceitar' }));
 
     await waitFor(() =>
-      expect(vi.mocked(acceptEditSuggestion)).toHaveBeenCalledWith(300, '2026-08-01T00:00:00Z', [
-        'legenda',
-      ]),
+      expect(vi.mocked(acceptEditSuggestion)).toHaveBeenCalledWith(
+        300,
+        '2026-08-01T00:00:00Z',
+        ['legenda'],
+        [],
+      ),
     );
+    expect(vi.mocked(syncMentions)).not.toHaveBeenCalled();
+  });
+
+  it('a no-conflict accept that the server rejects as suggestion_conflict shows the review-again toast and refetches', async () => {
+    // Stale drawer: the team caption changed after it opened, so the card sent no acknowledgement.
+    mockGetStandalonePost.mockResolvedValue(basePost({ ig_caption: 'Legenda base' }) as never);
+    vi.mocked(acceptEditSuggestion).mockRejectedValue({ message: 'suggestion_conflict' });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    renderDrawer(qc);
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar' }));
+
+    await waitFor(() =>
+      expect(vi.mocked(acceptEditSuggestion)).toHaveBeenCalledWith(
+        300,
+        '2026-08-01T00:00:00Z',
+        ['texto', 'legenda'],
+        [],
+      ),
+    );
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'O post mudou desde que você abriu. Revise a sugestão de novo.',
+      ),
+    );
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['standalone-post', 5] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['post-edit-suggestions'] });
     expect(vi.mocked(syncMentions)).not.toHaveBeenCalled();
   });
 

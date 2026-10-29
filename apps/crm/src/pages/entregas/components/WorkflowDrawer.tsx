@@ -961,11 +961,15 @@ export function WorkflowDrawer({
   // ── Edit suggestion handlers ──────────────────────────────────────────────
 
   const handleAcceptSuggestion = useCallback(
-    async (suggestion: PostEditSuggestion, fields: SuggestionField[]) => {
+    async (
+      suggestion: PostEditSuggestion,
+      fields: SuggestionField[],
+      acknowledged: SuggestionField[],
+    ) => {
       try {
         // `fields` is what the reviewer chose to apply (the card, or its conflict dialog).
         // `suggestion.updated_at` is the version on screen: the client may have saved a newer one.
-        await acceptEditSuggestion(suggestion.id, suggestion.updated_at, fields);
+        await acceptEditSuggestion(suggestion.id, suggestion.updated_at, fields, acknowledged);
         // accept_edit_suggestion writes workflow_posts.conteudo server-side, bypassing
         // updateWorkflowPost -- sync mentions here so @-mentions in an accepted client
         // suggestion still land in the mencoes ledger (when exactly: see the helper).
@@ -1866,7 +1870,11 @@ interface SortablePostItemProps {
   onEditComment: (commentId: number, content: string) => Promise<void>;
   onDeleteComment: (commentId: number, threadId: number) => Promise<void>;
   editorVersion: number;
-  onAcceptSuggestion: (suggestion: PostEditSuggestion, fields: SuggestionField[]) => void;
+  onAcceptSuggestion: (
+    suggestion: PostEditSuggestion,
+    fields: SuggestionField[],
+    acknowledged: SuggestionField[],
+  ) => void;
   onRejectSuggestion: (id: number) => void;
   /** True quando este post passou os gates do aviso de agendamento
    *  automático (spec peça 3). Calculado pelo drawer, não pela linha. */

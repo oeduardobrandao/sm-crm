@@ -543,11 +543,15 @@ export function StandalonePostDrawer({
   const [editorVersion, setEditorVersion] = useState(0);
 
   const handleAcceptSuggestion = useCallback(
-    async (suggestion: PostEditSuggestion, fields: SuggestionField[]) => {
+    async (
+      suggestion: PostEditSuggestion,
+      fields: SuggestionField[],
+      acknowledged: SuggestionField[],
+    ) => {
       try {
         // `fields` is what the reviewer chose to apply (the card, or its conflict dialog).
         // `suggestion.updated_at` is the version on screen: the client may have saved a newer one.
-        await acceptEditSuggestion(suggestion.id, suggestion.updated_at, fields);
+        await acceptEditSuggestion(suggestion.id, suggestion.updated_at, fields, acknowledged);
         // Server-side write bypasses updateWorkflowPost: re-sync mentions (when: see the helper).
         const mentionIds = mentionIdsToSyncAfterAccept(suggestion, fields);
         if (mentionIds) await syncMentions('workflow_post', suggestion.post_id, mentionIds);

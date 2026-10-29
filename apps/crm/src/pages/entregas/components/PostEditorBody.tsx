@@ -199,7 +199,11 @@ export interface PostEditorBodyProps {
   onEditComment: (commentId: number, content: string) => Promise<void>;
   onDeleteComment: (commentId: number, threadId: number) => Promise<void>;
   editorVersion: number;
-  onAcceptSuggestion: (suggestion: PostEditSuggestion, fields: SuggestionField[]) => void;
+  onAcceptSuggestion: (
+    suggestion: PostEditSuggestion,
+    fields: SuggestionField[],
+    acknowledged: SuggestionField[],
+  ) => void;
   onRejectSuggestion: (id: number) => void;
   /** Avançar etapa do processo individual, para a dica da seção de produção. */
   onProcessAvancar?: () => void;

@@ -43,7 +43,11 @@ export function PhoneSuggestionSheet({
   clientName?: string | null;
   resolvedContent: Record<string, unknown> | null;
   resolvedSuggestion: Record<string, unknown> | null;
-  onAccept: (s: PostEditSuggestion, fields: SuggestionField[]) => void;
+  onAccept: (
+    s: PostEditSuggestion,
+    fields: SuggestionField[],
+    acknowledged: SuggestionField[],
+  ) => void;
   onReject: (id: number) => void;
 }) {
   const { t } = useTranslation('postEditor');

@@ -515,7 +515,12 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
     fireEvent.click(acceptButton);
 
     await waitFor(() =>
-      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z', ['texto']),
+      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(
+        200,
+        '2026-08-01T00:00:00Z',
+        ['texto'],
+        [],
+      ),
     );
     await waitFor(() => expect(mockSyncMentions).toHaveBeenCalledWith('workflow_post', 1, [7]));
   });
@@ -531,9 +536,12 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
     fireEvent.click(acceptButton);
 
     await waitFor(() =>
-      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z', [
-        'legenda',
-      ]),
+      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(
+        200,
+        '2026-08-01T00:00:00Z',
+        ['legenda'],
+        [],
+      ),
     );
     expect(mockSyncMentions).not.toHaveBeenCalled();
   });
@@ -556,9 +564,12 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
 
     await waitFor(() =>
       // `conteudo` with a NULL doc is not a texto change: only the legenda is offered.
-      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z', [
-        'legenda',
-      ]),
+      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(
+        200,
+        '2026-08-01T00:00:00Z',
+        ['legenda'],
+        [],
+      ),
     );
     expect(mockSyncMentions).not.toHaveBeenCalled();
   });
@@ -571,6 +582,35 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
 
     await waitFor(() => expect(mockAcceptEditSuggestion).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole('dialog', { name: 'Aceitar a sugestão?' })).toBeNull();
+  });
+
+  it('a no-conflict accept that the server rejects as suggestion_conflict shows the review-again toast and refetches', async () => {
+    // The drawer's post prop was stale: another member edited the caption after it opened, so the
+    // card showed no conflict and sent no acknowledgement. The server re-checks and refuses.
+    const { toast } = await import('sonner');
+    mockAcceptEditSuggestion.mockRejectedValue({ message: 'suggestion_conflict' });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+    renderDrawer(qc);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar' }));
+
+    await waitFor(() =>
+      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(
+        200,
+        '2026-08-01T00:00:00Z',
+        ['texto'],
+        [],
+      ),
+    );
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'O post mudou desde que você abriu. Revise a sugestão de novo.',
+      ),
+    );
+    expect(toast.error).not.toHaveBeenCalledWith('Erro ao aceitar sugestão');
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['post-edit-suggestions'] });
+    expect(mockSyncMentions).not.toHaveBeenCalled();
   });
 
   describe('when the team edited a field the client also changed', () => {
@@ -615,9 +655,12 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
 
       fireEvent.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
       await waitFor(() =>
-        expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z', [
-          'texto',
-        ]),
+        expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(
+          200,
+          '2026-08-01T00:00:00Z',
+          ['texto'],
+          [],
+        ),
       );
       // texto was applied, so the mention from the client's doc is synced.
       await waitFor(() => expect(mockSyncMentions).toHaveBeenCalledWith('workflow_post', 1, [7]));
@@ -635,10 +678,12 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
 
       await waitFor(() =>
-        expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z', [
-          'texto',
-          'legenda',
-        ]),
+        expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(
+          200,
+          '2026-08-01T00:00:00Z',
+          ['texto', 'legenda'],
+          ['legenda'],
+        ),
       );
     });
 
@@ -661,9 +706,12 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
 
       await waitFor(() =>
-        expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z', [
-          'legenda',
-        ]),
+        expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(
+          200,
+          '2026-08-01T00:00:00Z',
+          ['legenda'],
+          ['legenda'],
+        ),
       );
       expect(mockSyncMentions).not.toHaveBeenCalled();
     });
@@ -748,7 +796,12 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
     fireEvent.click(acceptButton);
 
     await waitFor(() =>
-      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z', ['texto']),
+      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(
+        200,
+        '2026-08-01T00:00:00Z',
+        ['texto'],
+        [],
+      ),
     );
 
     // While the posts refetch that handleAcceptSuggestion explicitly awaits is still
@@ -829,7 +882,12 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
     fireEvent.click(acceptButton);
 
     await waitFor(() =>
-      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z', ['texto']),
+      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(
+        200,
+        '2026-08-01T00:00:00Z',
+        ['texto'],
+        [],
+      ),
     );
 
     // The diff card clears once posts + suggestions settle, but the signed-URL fetch is

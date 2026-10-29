@@ -171,11 +171,17 @@ function RadioRow({
 /**
  * "Aceitar" flow shared by the desktop card and the phone sheet. No conflict: accept the
  * fields the client changed straight away. Any conflict: open the dialog first and send what
- * the reviewer picked. `onAccept` is the drawer's handler, so it always gets explicit fields.
+ * the reviewer picked. `onAccept` is the drawer's handler, so it always gets explicit fields,
+ * plus the ones the reviewer acknowledged as conflicts to take from the client (the server
+ * re-checks conflicts and refuses an unacknowledged one).
  */
 export function useAcceptSuggestionFlow(
   post: Pick<WorkflowPost, 'conteudo' | 'conteudo_plain' | 'ig_caption'>,
-  onAccept: (suggestion: PostEditSuggestion, fields: SuggestionField[]) => void,
+  onAccept: (
+    suggestion: PostEditSuggestion,
+    fields: SuggestionField[],
+    acknowledged: SuggestionField[],
+  ) => void,
 ) {
   // `open` is separate from `suggestion` on purpose: closing keeps the last suggestion so the
   // dialog keeps rendering its fields through Radix's exit animation instead of emptying out.
@@ -192,20 +198,29 @@ export function useAcceptSuggestionFlow(
     onAccept(
       suggestion,
       states.filter((st) => st.changed).map((st) => st.field),
+      [],
     );
   };
 
   const close = () => setState((prev) => prev && { ...prev, open: false });
 
   const states = state ? suggestionFieldStates(post, state.suggestion) : [];
+  const conflictsNow = states.filter((st) => st.conflict).map((st) => st.field);
   const dialog = (
     <AcceptSuggestionDialog
       open={state?.open ?? false}
-      conflicts={states.filter((st) => st.conflict).map((st) => st.field)}
+      conflicts={conflictsNow}
       applied={states.filter((st) => st.changed && !st.conflict).map((st) => st.field)}
       onConfirm={(fields) => {
         // The dialog stays mounted while it fades out: a second click must not accept twice.
-        if (state?.open) onAccept(state.suggestion, fields);
+        if (state?.open) {
+          // Every conflict field in `fields` is one the reviewer picked "Usar a versão do cliente" for.
+          onAccept(
+            state.suggestion,
+            fields,
+            fields.filter((f) => conflictsNow.includes(f)),
+          );
+        }
         close();
       }}
       onOpenChange={(open) => {

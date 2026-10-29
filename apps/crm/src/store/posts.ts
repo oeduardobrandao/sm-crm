@@ -1595,17 +1595,23 @@ export async function countPendingEditSuggestionsInWorkflow(workflowId: number):
  * row moved on since then instead of applying a version nobody on the team has seen.
  * `fields` is what to apply: a field left out keeps the live value. The RPC raises
  * `suggestion_conflict` when it is NULL and a changed field was also edited by the team, so the
- * CRM always passes it.
+ * CRM always passes it. `acknowledged` is the subset of `fields` the team saw in conflict and
+ * chose to take from the client ("Usar a versão do cliente"); the RPC re-checks conflicts on the
+ * live post and raises `suggestion_conflict` for any field in `fields` that conflicts there and
+ * is not acknowledged, so a stale drawer can never overwrite a team edit. No conflict on screen:
+ * pass `[]`.
  */
 export async function acceptEditSuggestion(
   id: number,
   expectedUpdatedAt: string | undefined,
   fields: SuggestionField[],
+  acknowledged: SuggestionField[],
 ): Promise<void> {
   const { error } = await supabase.rpc('accept_edit_suggestion', {
     p_suggestion_id: id,
     p_expected_updated_at: expectedUpdatedAt ?? null,
     p_fields: fields,
+    p_acknowledged: acknowledged,
   });
   if (error) throw error;
 }
