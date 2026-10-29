@@ -140,7 +140,7 @@ export default function RelatoriosTab() {
           <Cell
             label={t('detail.viewFullAnalytics')}
             chevron
-            onClick={() => navigate(`/analytics/${clienteId}/relatorios`)}
+            onClick={() => navigate(`/analytics/${clienteId}`)}
           />
         </GroupedList>
       </>
@@ -222,7 +222,7 @@ export default function RelatoriosTab() {
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'center' }}>
-        <Button onClick={() => navigate(`/analytics/${clienteId}/relatorios`)}>
+        <Button onClick={() => navigate(`/analytics/${clienteId}`)}>
           {t('detail.viewFullAnalytics')}
         </Button>
       </div>
