@@ -1,6 +1,6 @@
 # Client edit suggestions survive team edits (no more auto-reject)
 
-Status: DRAFT v2 (Codex review folded in; pending Fable review)
+Status: DRAFT v3 (Codex + Fable reviews folded in; owner questions open)
 Date: 2026-10-29
 Mockups: https://claude.ai/artifact/MEBmjJBNoriqTfTu9bDqyo
 
@@ -68,9 +68,17 @@ Two logical fields: **texto** (`conteudo` jsonb + `conteudo_plain`, always toget
 `conteudo_plain`, `ig_caption`) for compatibility; every rule below reads "texto changed" as
 `changed_fields && '{conteudo,conteudo_plain}'`.
 
-Equality for texto uses `conteudo_plain` (TipTap round-trips can change the jsonb bytes with
-identical text; see the 2026-09-28 spec's diff guard). Equality for legenda uses
-`COALESCE(x, '')`.
+Equality, per field (Fable review: plain text alone loses formatting-only edits and misses team
+image edits):
+
+- texto **changed** (client side) = `COALESCE(plain,'')` differs OR `conteudo` jsonb differs,
+  compared as `jsonb IS DISTINCT FROM` (not `::text`, so key order does not count). This keeps the
+  2026-09-28 behavior where a formatting-only or image-only client edit is still a suggestion
+  (`CorrectionPanel.tsx:300-309`).
+- texto **conflict** (team side, §1) = `COALESCE(plain,'')` differs OR the set of inline-image
+  keys differs (`extractR2Keys` semantics). Formatting-only drift on the team side is not a
+  conflict, because TipTap round-trips rewrite jsonb bytes; an added or removed image is.
+- legenda: `COALESCE(x, '')` for both.
 
 ### 1. `original_*` becomes a per-field base, and changes are measured against it
 
@@ -79,9 +87,13 @@ is recomputed against the LIVE post on every save. New rules, in `upsert_edit_su
 (which already locks the post, `20260928150001` §3a):
 
 - For each field the save **touched** (see §2):
-  - If the field is not currently in `changed_fields` (or the row is new), first re-base it:
-    `original_X := live X`. The client is starting a change on top of whatever is live now.
-  - Then the field is changed iff `suggested X <> original X`.
+  - If the field is not currently in `changed_fields` (or the row is new), first re-base it to
+    **the base the Hub sent for that field** (`p_bases`, §2): `original_X := base X`. Not live:
+    the client edited starting from what the Hub fetched, and a team edit between that fetch and
+    this save must surface as a conflict (base ≠ live), not be absorbed into the base. (Fable
+    review, blocker: re-basing to live at save time let a stale panel's caption overwrite the
+    team's caption with no conflict.)
+  - Then the field is changed iff `suggested X` differs from `original X` (Fields, above).
 - For each field the save **did not touch**:
   - If it is in `changed_fields`, keep the stored `suggested_X` and `original_X`.
   - Otherwise set `original_X := live X` and `suggested_X := live X` (keeps the snapshot current
@@ -108,7 +120,21 @@ reverts the team's edit.
 - `submitEditSuggestion` and `hub-edit-suggestion` gain `touched_fields: ('texto' | 'legenda')[]`:
   the fields the client actually edited in the panel since it was opened (dirty tracking in
   `useEditSuggestion`, per field, cleared on successful save only for what that save carried).
-- `upsert_edit_suggestion` gains `p_touched_fields text[] DEFAULT NULL`.
+- Per touched field, the Hub also sends the **raw base** it seeded that field from, as fetched:
+  `post.conteudo` + `post.conteudo_plain` for texto and `post.ig_caption` for legenda (never the
+  `deriveCaption` display value: on media posts with `ig_caption` NULL that is text derived from
+  the LEGENDA block, `postView.ts`, and storing it as the base would make every such caption look
+  changed). When the field was seeded from the suggestion itself (already in `changed_fields`),
+  no base is needed and the RPC keeps the stored one.
+- `upsert_edit_suggestion` gains `p_touched_fields text[] DEFAULT NULL` and
+  `p_bases jsonb DEFAULT NULL` (`{"conteudo": …, "conteudo_plain": …, "ig_caption": …}`; a
+  touched field not yet in `changed_fields` without a base raises `base_required`).
+- `hub-edit-suggestion` runs its new-inline-image check (`hasNewInlineImages(sanitizedConteudo,
+  post.conteudo)`) only when texto is touched. Today it compares against live, so after the team
+  removes an image a legenda-only save carrying the untouched texto would 400 "Não é permitido
+  adicionar imagens".
+- `apps/hub/src/components/PostCard.tsx:419` is a second `saveSuggestion` caller: confirm it is
+  dead or give it the same `touched_fields` / bases.
 - **Legacy saves (NULL) keep today's semantics exactly**: `changed_fields` against live, and
   `original_*` never re-based on an existing row. This covers the deployed function during the
   deploy window and Hub tabs left open across the deploy, which keep sending full snapshots.
@@ -132,7 +158,16 @@ Replace `trg_auto_reject_pending_suggestion`:
   `reviewed_by = NULL`. Publication is the one point where the suggestion can no longer change
   what goes out.
 - Keep the `app.accepting_edit_suggestion` bypass.
-- Rename to `trg_close_suggestion_on_publish` (drop the old trigger and function).
+- Rename to `trg_close_suggestion_on_publish` (drop the old trigger and function), and make it
+  **`AFTER UPDATE OF status, custom_status_id`**, testing `NEW.status = 'postado' AND
+  OLD.status IS DISTINCT FROM 'postado'`. A BEFORE trigger with that name fires before
+  `workflow_posts_z1_reconcile_custom_status` (`20260805000001_post_status_definitions.sql:205-211`,
+  name-ordered), which is what turns a CRM move to a custom status (the CRM sends only
+  `custom_status_id`, `useUpdatePostStatus.ts`) into `status := behaves_as`; a BEFORE trigger
+  would never see a custom status that behaves as `postado`.
+- Multi-destination posts: Instagram can be published while the post stays `agendado` /
+  `falha_publicacao` until the TikTok leg lands (`tiktok-publish/handler.ts:269`), so a
+  suggestion can stay pending after part of the text is out. Accepted: the team still sees it.
 
 Consequences to keep in mind:
 
@@ -178,8 +213,13 @@ Consequences to keep in mind:
   explicitly; NULL exists only so a stale CRM tab cannot overwrite a team edit.
 - Applies only the fields in `p_fields ∩ changed`. A field not applied keeps the live value.
   An empty intersection raises `no_fields`.
+- Applying texto keeps today's `COALESCE(suggested_conteudo, conteudo)`: rows with a NULL
+  jsonb exist (test 95.5 inserts one, `95_post_content_versions_coalescing.sql:222-227`).
 - Marks the suggestion `accepted` (partial accepts are still `accepted`; the content-version row
   from `post_content_versions` records what was applied).
+- `original_*` now means "per-field base", not "first-submission snapshot". The baseline backfill
+  in `20260923000004_post_content_versions_baseline.sql:17-19,158` relied on the old meaning; it
+  was a one-time backfill, so nothing breaks at runtime, but its comment is updated.
 - DROP + CREATE, restate grants (`authenticated`, `service_role`; revoke `public`, `anon`),
   update `95_post_content_versions_coalescing.sql` if the call shape changes.
 
@@ -208,6 +248,11 @@ Review card (`PostEditorBody.tsx:1564-1620`, phone `PhoneSuggestionSheet`):
   closes the dialog or rejects explicitly.
 - Error handling: `suggestion_conflict` (the stale-tab case) refetches suggestions and the post,
   and toasts "O post mudou desde que você abriu. Revise a sugestão de novo."
+- **Mentions after a partial accept.** `WorkflowDrawer.tsx:960-969` and
+  `StandalonePostDrawer.tsx:528-561` re-sync mentions from `suggested_conteudo` whenever
+  `changed_fields` has `conteudo`. Sync only when texto is in the applied `p_fields`; otherwise
+  keeping the team's texto would wipe its live mentions.
+- `PostEditSuggestion.status` union (`store/posts.ts:1525`) gains `'superseded'`.
 
 ### 7. CRM warnings before a team edit
 
@@ -222,13 +267,32 @@ Review card (`PostEditorBody.tsx:1564-1620`, phone `PhoneSuggestionSheet`):
   which calls `updateWorkflowPost(postId, { status: newStatus })` directly; the builder greps
   every `updateWorkflowPost` / status write in `apps/crm/src` and routes the manual ones through
   the guard. MCP, the publisher and automations are not prompted.
+- The same guard covers manual moves into `aprovado_cliente` (from there the approval-exit
+  automation can schedule, `20261023000002:187-194`). The bulk "aprovar todos"
+  (`advance_workflow_from_approval`, `20261023000001:148-150`) does not prompt per post; its
+  confirm dialog adds a line with the count when any post in the batch has a pending suggestion:
+  "{n} post(s) com sugestão do cliente não revisada." (my call; see owner questions).
+- **i18n:** every new CRM string in this spec (conflict line, footer line, accept dialog, "Ver só
+  o que o cliente mudou", caption note, status confirm, bulk count, the `superseded` Mensagens
+  label in `packages/i18n/locales/{pt,en}/messages.json:35-40`) ships in pt and en.
 
 ### 8. Hub
 
-- Seeding: a field not in `changed_fields` seeds from live (§1 keeps `suggested_X` equal to live
-  for those anyway, so `useEditSuggestion.ts:173-186` keeps working; verify the caption path
-  through `suggestionAwareCaption`).
-- Dirty tracking + `touched_fields` (§2).
+- **Seeding is gated on `changed_fields`.** Today `useEditSuggestion.ts:172-186` and
+  `suggestionAwareCaption` (`postView.ts:178-184`) seed from `suggested_X` whenever it is
+  non-null. §1 keeps `suggested_X` equal to live only as of the client's last save, so after a
+  later team edit the client would keep seeing the old text. A field not in `changed_fields` seeds
+  from the live post (`post.conteudo` / `post.ig_caption`, through `deriveCaption` for display);
+  only a field in `changed_fields` seeds from `suggested_X`. The base sent on first touch (§2)
+  closes the remaining window between fetch and save.
+- Dirty tracking + `touched_fields` + bases (§2).
+- Until the new Hub ships, the LEGENDA phantom stays: `CorrectionPanel.tsx:306-309` sends
+  `stagedCaption`, seeded from `deriveCaption`, so on media posts with `ig_caption` NULL an
+  untouched caption is recorded as an `ig_caption` change on the legacy path. It shows as a
+  caption change on the CRM card, as today; §2's raw base fixes it.
+- `hub-approve/handler.ts:251-256`: comment cites the auto-reject trigger; update it (the
+  `pending_suggestion` guard itself survives, called through `record_client_approval_with_notes`,
+  `20261026000002:246`).
 - No new copy. The "rejeitada pela equipe" warning now only follows a real rejection.
 
 ## Deploy order
@@ -239,8 +303,14 @@ Review card (`PostEditorBody.tsx:1564-1620`, phone `PhoneSuggestionSheet`):
    (no `touched_fields`) and CRM (two-argument accept) keep working: `p_touched_fields` NULL =
    today's upsert (§2), `p_fields` NULL = all changed fields unless there is a conflict, in which
    case the old CRM gets its generic accept error instead of overwriting a team edit.
-2. `hub-edit-suggestion` (passes `touched_fields` through when present).
+2. `hub-edit-suggestion` (passes `touched_fields` and `bases` through when present).
 3. Merge (CRM + Hub deploy).
+
+During the window the old CRM gets `suggestion_conflict` on its generic accept toast
+(`WorkflowDrawer.tsx:988-993` only matches `suggestion_changed`). Accepted. Both RPCs stay
+resolvable by name from their old callers (6 named args → 8 with defaults; 2 → 3). No migration
+here uses `NOTIFY pgrst`; DROP + CREATE relies on the schema reload the push does, so check both
+old call shapes on staging before deploying the function.
 
 Rollback: frontend first, then the function. The migration does not need to be rolled back; if it
 were, restore the old trigger before the old CRM accept is relied on again (otherwise accept can
@@ -265,3 +335,36 @@ não revisada" view is a separate small feature.
   Hub dirty tracking sends only touched fields; Mensagens `superseded` label.
 - Regression for 11807's shape: content-only suggestion, then team caption edit, then accept:
   the post has the team's caption and the client's text.
+- Regression for the stale-panel case (Fable blocker): text-only suggestion pending, team edits
+  caption, client edits caption from a base fetched before the team edit: accept reports a
+  caption conflict.
+- Trigger: a move to a custom status whose `behaves_as` is `postado` supersedes.
+- Tests that change with this spec: `apps/crm/src/__tests__/store.editSuggestions.test.ts:87,99`
+  (payload gains `p_fields`), `apps/hub/src/__tests__/api.test.ts:261` (body gains
+  `touched_fields` / `bases`), `CorrectionPanel.test.tsx:162,293,435,592,609` (`saveSuggestion`
+  arity), `useEditSuggestion.test.tsx`, `PostEditorBody.phone.test.tsx`, the
+  `WorkflowDrawer*.test.tsx` suites (card markup), `mensagensLogic*.test.ts`, and the
+  `96_lockdown_definer_function_grants.sql:51` pin. There is no Deno test for
+  `hub-edit-suggestion` yet; add one.
+
+## Considered and not chosen
+
+Fable's simpler alternative: keep `touched_fields` and "accept applies only changed fields", drop
+the per-field bases, read-time conflicts and the partial-accept dialog, and narrow the trigger to
+supersede only when the team changes a field that IS in `changed_fields`. It fixes both incidents
+(different-field cases) with less surface. Not chosen because a same-field clash would still
+close the client's suggestion without a person deciding, which is the behavior the owner called
+wrong on 2026-10-29. If the owner prefers less surface over that, this is the fallback design.
+
+## Owner questions
+
+1. Same-field clash: the team chooses per field in the CRM (this spec), or the suggestion closes
+   as "não revisada" (alternative above)? Recommended: the team chooses.
+2. Manual `aprovado_cliente` moves and the bulk approve: guarded as in §7? Recommended: yes.
+3. Re-open past auto-rejects such as 4719: recommended no (section above).
+
+## Known, out of scope
+
+- The Hub "rejeitada" warning picks the newest `rejected` row with no time bound
+  (`hub-posts/handler.ts:486-489,577`), so a months-old real rejection still shows when the post
+  is re-sent. Pre-existing.
