@@ -87,8 +87,12 @@ begin
       format('%s should have RLS enabled', v_t);
     assert not exists (select 1 from pg_policies where schemaname = 'public' and tablename = v_t),
       format('%s should have no policies', v_t);
+    -- TRUNCATE/REFERENCES/TRIGGER matter on a fresh local replay: the CLI image's default
+    -- ACL already withholds arwd from anon/authenticated, so only Dxt (granted by that
+    -- default ACL, and by hosted's GRANT ALL) proves the migration's REVOKE ran.
     foreach v_role in array array['authenticated','anon'] loop
-      foreach v_priv in array array['select','insert','update','delete'] loop
+      foreach v_priv in array array['select','insert','update','delete',
+                                    'truncate','references','trigger'] loop
         assert not has_table_privilege(v_role, 'public.' || v_t, v_priv),
           format('%s should not have %s on %s', v_role, v_priv, v_t);
       end loop;
@@ -253,6 +257,36 @@ begin
     'disconnected location survives the connection';
 
   raise notice 'PASS 99_google_connections checks';
+end $$;
+rollback;
+
+-- =====================================================================
+-- deleting a connection fails closed while a non-disconnected location uses it
+-- (SET NULL would leave an active/revoked unit without a connection; the unlink RPCs
+-- must mark the unit disconnected first)
+-- =====================================================================
+begin;
+do $$
+declare
+  s jsonb := pg_temp.gc_seed();
+  v_ws_a uuid := (s->>'ws_a')::uuid;
+  v_conn uuid; v_loc uuid;
+begin
+  v_conn := pg_temp.gc_conn(v_ws_a, 'sub-1');
+  v_loc := pg_temp.gc_location(v_ws_a, (s->>'cli_a1')::bigint, v_conn, 'locations/10');
+  begin
+    delete from google_connections where id = v_conn;
+    assert false, 'deleting a connection used by an active location should fail';
+  exception when check_violation then null;
+  end;
+  update gbp_locations set status = 'revoked', disconnected_at = now() where id = v_loc;
+  begin
+    delete from google_connections where id = v_conn;
+    assert false, 'deleting a connection used by a revoked location should fail';
+  exception when check_violation then null;
+  end;
+  assert exists (select 1 from google_connections where id = v_conn), 'connection still there';
+  raise notice 'PASS 99_google_connections location keeps connection';
 end $$;
 rollback;
 

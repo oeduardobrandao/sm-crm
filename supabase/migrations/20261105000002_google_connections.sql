@@ -17,6 +17,13 @@
 -- cascades to both google_connections and clientes -> youtube_channels in the same
 -- statement, and RESTRICT would fail mid-cascade where NO ACTION checks at the end.
 --
+-- Workspace deletion depends on gbp_locations keeping its own conta_id -> workspaces
+-- ON DELETE CASCADE: that cascade is queued with the workspace row's other RI actions, so the
+-- units are gone before the nested google_connections delete fires its SET NULL. Without it,
+-- the SET NULL would hit an active unit and gbp_locations_connection_check would abort the
+-- workspace delete. Deleting a connection directly while an active or revoked unit uses it
+-- fails on that CHECK on purpose: mark the unit disconnected first.
+--
 -- oauth_states.provider gains 'google' (one provider for both products; the state payload
 -- carries which product the flow is for).
 
