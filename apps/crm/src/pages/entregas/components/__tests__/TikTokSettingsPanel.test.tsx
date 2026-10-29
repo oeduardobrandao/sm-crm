@@ -821,6 +821,36 @@ describe('notices, preview and duration (spec A4/A5/A6/A7)', () => {
     expect(
       await screen.findByText('Este vídeo tem 750s. O máximo permitido para esta conta é 600s.'),
     ).toBeInTheDocument();
-    expect(screen.getByText('Duração máxima de vídeo nesta conta: 600s')).toBeInTheDocument();
+    const limits = screen.getByRole('region', { name: 'Limites do TikTok' });
+    expect(within(limits).getByText('1 vídeo por post, até 600s nesta conta')).toBeInTheDocument();
+  });
+
+  it('photo post: lists the photo limits and flags PNG and oversized carousels', async () => {
+    mockCreatorInfo({ privacy_level_options: ['SELF_ONLY'] });
+    const images = Array.from({ length: 11 }, (_, i) => ({
+      ...video42[0],
+      id: i + 1,
+      kind: 'image',
+      mime_type: i === 0 ? 'image/png' : 'image/jpeg',
+      size_bytes: 1024,
+      duration_seconds: null,
+    })) as unknown as PostMedia[];
+    const onReadinessChange = vi.fn();
+    renderPanelProps({
+      post: reelsPost({ tipo: 'carrossel', platform: 'both', tiktok_settings: {} }),
+      media: images,
+      onReadinessChange,
+    });
+    const limits = await screen.findByRole('region', { name: 'Limites do TikTok' });
+    expect(within(limits).getByText('Até 10 imagens no carrossel')).toBeInTheDocument();
+    expect(within(limits).getByText('Imagens em JPEG ou WebP, até 20 MB cada')).toBeInTheDocument();
+    const formatMsg = 'Imagens para o TikTok precisam estar em JPEG ou WebP (PNG não é aceito).';
+    expect(screen.getByText(formatMsg)).toBeInTheDocument();
+    expect(
+      screen.getByText('Carrossel no TikTok aceita no máximo 10 imagens (este post tem 11).'),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(onReadinessChange).toHaveBeenLastCalledWith({ complete: false, reason: formatMsg }),
+    );
   });
 });

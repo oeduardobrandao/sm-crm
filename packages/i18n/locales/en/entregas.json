@@ -303,7 +303,24 @@
     "cannotPost": "TikTok is not allowing new posts on this account right now. Try again later.",
     "privacyRequired": "Choose the TikTok post privacy.",
     "promotional": "Promotional content",
-    "paidPartnership": "Paid partnership"
+    "paidPartnership": "Paid partnership",
+    "videoNeedsOne": "A TikTok video post needs exactly one video file.",
+    "photoNoVideo": "TikTok does not accept video in photo posts: image and carousel posts take images only.",
+    "photoFormat": "Images for TikTok must be JPEG or WebP (PNG is not accepted).",
+    "photoSize": "Each image for TikTok can be at most {{mb}} MB.",
+    "carouselMax": "A TikTok carousel accepts at most {{cap}} images (this post has {{count}}).",
+    "feedNeedsOne": "A TikTok image post takes exactly 1 image. For more, use a carousel.",
+    "limits": {
+      "title": "TikTok limits",
+      "video": "1 video per post",
+      "videoWithMax": "1 video per post, up to {{seconds}}s on this account",
+      "captionVideo": "Caption up to {{max}} characters",
+      "photoOne": "1 image per post",
+      "photoCarousel": "Up to {{cap}} images in the carousel",
+      "photoFile": "JPEG or WebP images, up to {{mb}} MB each",
+      "captionPhoto": "Description up to {{max}} characters, title up to {{title}}",
+      "daily": "TikTok limits how many posts each account can publish per day."
+    }
   },
   "calendarGrid": {
     "untitled": "Untitled post",

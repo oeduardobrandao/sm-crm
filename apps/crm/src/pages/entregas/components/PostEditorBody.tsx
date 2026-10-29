@@ -1730,6 +1730,17 @@ export function PostEditorBody({
               <>
                 {instagramCaptionField(true)}
                 {showCollaborators && collaboratorsField(`collab-${post.id}`, 'mt-3')}
+                {/* Reel de teste é do Instagram: mora na aba dele, some com o TikTok aberto. */}
+                {hasInstagramAccount && (
+                  <TrialReelPanel
+                    className="mt-3"
+                    post={post}
+                    media={postMedia ?? []}
+                    disabled={isScheduleLocked}
+                    collaboratorsCount={collaborators.length}
+                    onFieldChange={queueFieldWrite}
+                  />
+                )}
               </>
             )
           }
@@ -1746,7 +1757,7 @@ export function PostEditorBody({
 
       {!multiplatform && showCollaborators && collaboratorsField(`collab-${post.id}`)}
 
-      {hasInstagramAccount && (
+      {!multiplatform && hasInstagramAccount && (
         <TrialReelPanel
           post={post}
           media={postMedia ?? []}

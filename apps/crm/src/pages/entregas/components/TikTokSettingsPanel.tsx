@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { Trans, useTranslation } from 'react-i18next';
 import { i18n } from '@mesaas/i18n';
-import { TIKTOK_MSG } from '@mesaas/tiktok-messages';
+import { TIKTOK_LIMITS, TIKTOK_MSG } from '@mesaas/tiktok-messages';
 import {
   Select,
   SelectContent,
@@ -28,6 +28,8 @@ import {
   isPublicAccountInTestMode,
   longestVideoSeconds,
   privacyOptionState,
+  tiktokLimitLines,
+  tiktokMediaIssues,
   type TikTokReadiness,
 } from '../tiktokComposerRules';
 
@@ -65,9 +67,9 @@ import {
 // component this task doesn't build. `photo_cover_index` defaults to 0 (first
 // image), matching buildPhotoInitPayload's own `s.photo_cover_index ?? 0` fallback.
 
-const CAPTION_MAX_VIDEO = 2200; // UTF-16 code units == TikTok's "runes"; JS .length
-const CAPTION_MAX_PHOTO = 4000; // already counts UTF-16 code units, no extra lib needed.
-const TITLE_MAX = 90;
+const CAPTION_MAX_VIDEO = TIKTOK_LIMITS.captionVideoMax; // UTF-16 code units == TikTok's "runes"
+const CAPTION_MAX_PHOTO = TIKTOK_LIMITS.captionPhotoMax;
+const TITLE_MAX = TIKTOK_LIMITS.titlePhotoMax;
 const CAPTION_DEBOUNCE_MS = 1500;
 
 function formatDuration(s: number): string {
@@ -150,7 +152,8 @@ export interface TikTokSettingsPanelProps {
   post: Pick<
     WorkflowPost,
     'id' | 'tipo' | 'tiktok_settings' | 'tiktok_caption' | 'tiktok_title' | 'ig_caption'
-  >;
+  > &
+    Partial<Pick<WorkflowPost, 'platform'>>;
   /** Same optimistic-write path `tipo`/`platform`/`ig_caption` already use
    * (WorkflowDrawer's onFieldChange -> updateWorkflowPost). */
   onFieldChange: (field: keyof WorkflowPost, value: unknown) => void;
@@ -260,6 +263,7 @@ export function TikTokSettingsPanel({
     loadError,
     creator: creatorInfo,
     tipo: post.tipo,
+    platform: post.platform,
     privacyLevel: draft.privacy_level,
     disclosureOn,
     brandOrganic: draft.brand_organic_toggle,
@@ -268,6 +272,8 @@ export function TikTokSettingsPanel({
       kind: m.kind,
       duration_seconds: m.duration_seconds,
       media_lost_at: m.media_lost_at ?? null,
+      mime_type: m.mime_type,
+      size_bytes: m.size_bytes,
     })),
     mediaError,
   });
@@ -299,6 +305,8 @@ export function TikTokSettingsPanel({
     isVideoTipo && maxDur != null && longest != null && longest > maxDur
       ? TIKTOK_MSG.durationExceeded(longest, maxDur)
       : null;
+  const mediaIssues = tiktokMediaIssues(post.tipo, post.platform, media);
+  const limitLines = tiktokLimitLines(post.tipo, post.platform, maxDur);
 
   const persist = (patch: Partial<TikTokSettingsDraft>) => {
     const next = { ...draft, ...patch };
@@ -388,13 +396,30 @@ export function TikTokSettingsPanel({
                 '—'
               )}
             </span>
-            {isVideoTipo && maxDur != null && (
-              <span className="text-xs" style={{ color: 'var(--text-light)' }}>
-                {t('tiktokSettings.maxDuration', { seconds: maxDur })}
-              </span>
-            )}
           </div>
         </div>
+      )}
+
+      {/* Os limites que o servidor confere ao agendar, à vista antes do clique */}
+      {limitLines.length > 0 && (
+        <section
+          aria-label={t('entregas:tiktokRules.limits.title')}
+          className="flex flex-col gap-1 rounded-md px-2.5 py-2 text-xs"
+          style={{ background: 'var(--surface-main)', border: '1px solid var(--border-color)' }}
+        >
+          <span className="font-semibold" style={{ color: 'var(--text-muted)' }}>
+            {t('entregas:tiktokRules.limits.title')}
+          </span>
+          <ul
+            className="flex list-disc flex-col gap-0.5 pl-4"
+            style={{ color: 'var(--text-light)' }}
+          >
+            {limitLines.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+            <li>{t('entregas:tiktokRules.limits.daily')}</li>
+          </ul>
+        </section>
       )}
 
       {/* Preview (spec A5): what will be sent */}
@@ -450,6 +475,11 @@ export function TikTokSettingsPanel({
             {TIKTOK_MSG.mediaLost}
           </p>
         )}
+        {mediaIssues.map((issue) => (
+          <p key={issue} className="text-xs" style={{ color: 'var(--danger-text)' }}>
+            {issue}
+          </p>
+        ))}
         {durationError && (
           <p className="text-xs" style={{ color: 'var(--danger-text)' }}>
             {durationError}

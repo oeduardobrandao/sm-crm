@@ -303,7 +303,24 @@
     "cannotPost": "O TikTok não permite novas publicações nesta conta agora. Tente novamente mais tarde.",
     "privacyRequired": "Escolha a privacidade do post no TikTok.",
     "promotional": "Conteúdo promocional",
-    "paidPartnership": "Parceria paga"
+    "paidPartnership": "Parceria paga",
+    "videoNeedsOne": "Vídeo para o TikTok precisa ter exatamente um arquivo de vídeo no post.",
+    "photoNoVideo": "O TikTok não aceita vídeo em post de fotos: imagem e carrossel levam só imagens.",
+    "photoFormat": "Imagens para o TikTok precisam estar em JPEG ou WebP (PNG não é aceito).",
+    "photoSize": "Cada imagem para o TikTok pode ter no máximo {{mb}} MB.",
+    "carouselMax": "Carrossel no TikTok aceita no máximo {{cap}} imagens (este post tem {{count}}).",
+    "feedNeedsOne": "Post de imagem no TikTok leva exatamente 1 imagem. Para mais, use carrossel.",
+    "limits": {
+      "title": "Limites do TikTok",
+      "video": "1 vídeo por post",
+      "videoWithMax": "1 vídeo por post, até {{seconds}}s nesta conta",
+      "captionVideo": "Legenda até {{max}} caracteres",
+      "photoOne": "1 imagem por post",
+      "photoCarousel": "Até {{cap}} imagens no carrossel",
+      "photoFile": "Imagens em JPEG ou WebP, até {{mb}} MB cada",
+      "captionPhoto": "Descrição até {{max}} caracteres, título até {{title}}",
+      "daily": "O TikTok limita quantos posts cada conta publica por dia."
+    }
   },
   "calendarGrid": {
     "untitled": "Post sem título",

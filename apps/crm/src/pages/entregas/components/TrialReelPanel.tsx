@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Switch } from '@/components/ui/switch';
+import { cn } from '@/lib/utils';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import type { PostMedia, WorkflowPost } from '../../../store';
 import { targetsInstagram } from '../platformTargets';
@@ -13,6 +14,7 @@ interface TrialReelPanelProps {
   /** Quantos colaboradores o post tem: Reel de teste e colaboradores se excluem. */
   collaboratorsCount: number;
   onFieldChange: (field: keyof WorkflowPost, value: unknown) => void;
+  className?: string;
 }
 
 /**
@@ -26,6 +28,7 @@ export function TrialReelPanel({
   disabled,
   collaboratorsCount,
   onFieldChange,
+  className,
 }: TrialReelPanelProps) {
   const { t } = useTranslation('posts');
   if (post.tipo !== 'reels' || !targetsInstagram(post.platform)) return null;
@@ -44,7 +47,7 @@ export function TrialReelPanel({
       : null;
 
   return (
-    <div className="drawer-post-field drawer-post-field--trial">
+    <div className={cn('drawer-post-field drawer-post-field--trial', className)}>
       <div className="flex items-center justify-between gap-3">
         <label htmlFor="trial-reel-switch">{t('trialReel.label')}</label>
         <Switch

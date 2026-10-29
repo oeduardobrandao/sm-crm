@@ -19,7 +19,7 @@ import {
   STATUS_PUBLISH_COMPLETE,
   STATUS_SEND_TO_USER_INBOX,
 } from "./tiktok.ts";
-import { TIKTOK_MSG } from "./tiktok-messages.ts";
+import { TIKTOK_LIMITS, TIKTOK_MSG } from "./tiktok-messages.ts";
 
 // --- Shared types ---
 
@@ -65,21 +65,20 @@ export interface TikTokValidationResult {
 
 // --- Constants (validation) ---
 
-const CAPTION_VIDEO_MAX = 2200; // UTF-16 code units. JS string.length already counts
-// UTF-16 code units, which is exactly what TikTok calls "runes" in their docs — no
-// separate counting utility needed.
-const CAPTION_PHOTO_MAX = 4000;
-const TITLE_PHOTO_MAX = 90;
+// Valores em TIKTOK_LIMITS (tiktok-messages.ts), compartilhados com o editor do CRM.
+const CAPTION_VIDEO_MAX = TIKTOK_LIMITS.captionVideoMax;
+const CAPTION_PHOTO_MAX = TIKTOK_LIMITS.captionPhotoMax;
+const TITLE_PHOTO_MAX = TIKTOK_LIMITS.titlePhotoMax;
 
-const TIKTOK_CARROSSEL_MAX_TIKTOK_ONLY = 20; // app attachment cap; TikTok's own max is 35
-const TIKTOK_CARROSSEL_MAX_BOTH = 10; // intersected with Instagram's Graph API carousel cap
+const TIKTOK_CARROSSEL_MAX_TIKTOK_ONLY = TIKTOK_LIMITS.carouselMaxTikTokOnly;
+const TIKTOK_CARROSSEL_MAX_BOTH = TIKTOK_LIMITS.carouselMaxWithInstagram;
 
 // TikTok's Content Posting API photo constraints (design doc: "JPEG/WebP, ≤20 MB, ≤1080p").
 // This is narrower than (and additional to) the general image/kind classification mirrored
 // from instagram-publish-utils.ts — that file's ALLOWED_IMAGE_MIMES also allows PNG, which
 // TikTok's photo endpoint does not accept.
-const TIKTOK_PHOTO_MIMES = new Set(["image/jpeg", "image/webp"]);
-const TIKTOK_PHOTO_MAX_BYTES = 20 * 1024 * 1024;
+const TIKTOK_PHOTO_MIMES = new Set(TIKTOK_LIMITS.photoMimes);
+const TIKTOK_PHOTO_MAX_BYTES = TIKTOK_LIMITS.photoMaxBytes;
 
 const VALID_PRIVACY_LEVELS = new Set([
   "PUBLIC_TO_EVERYONE",
