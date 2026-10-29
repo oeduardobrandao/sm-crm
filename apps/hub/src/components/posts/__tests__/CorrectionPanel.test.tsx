@@ -692,6 +692,74 @@ describe('CorrectionPanel', () => {
     expect(screen.getByText(/rejeitada pela equipe/)).toBeInTheDocument();
   });
   describe('touched fields and bases', () => {
+    const STALE = {
+      id: 9,
+      suggested_conteudo: null,
+      suggested_conteudo_plain: 'Corpo antigo',
+      suggested_ig_caption: 'Legenda antiga',
+      changed_fields: ['conteudo_plain'],
+      updated_at: '2026-09-28T10:00:00.000Z',
+    };
+
+    it('does not reveal a caption field from a stored caption the suggestion did not change', () => {
+      render(
+        <CorrectionPanel
+          post={post({
+            media: [],
+            ig_caption: null,
+            conteudo: null,
+            conteudo_plain: 'Corpo do post',
+            pending_suggestion: STALE,
+          })}
+          edit={makeEdit({
+            hasPendingSuggestion: true,
+            draftConteudo: null,
+            draftConteudoPlain: 'Corpo antigo',
+            draftIgCaption: null,
+            suggestion: STALE,
+          })}
+          submitting={false}
+          onSubmitCorrection={onSubmitCorrection}
+          onDirtyChange={onDirtyChange}
+        />,
+      );
+      expect(screen.queryByRole('textbox', { name: 'Legenda do post' })).not.toBeInTheDocument();
+    });
+
+    it("sends the live post's plain text for an unedited body when the suggestion did not change the text", () => {
+      const pending = { ...STALE, changed_fields: ['ig_caption'], suggested_ig_caption: 'Legenda' };
+      const edit = makeEdit({
+        hasPendingSuggestion: true,
+        draftConteudo: null,
+        // The hook seeds the body from the live post when texto is not pending.
+        draftConteudoPlain: 'Corpo vivo',
+        draftIgCaption: 'Legenda',
+        suggestion: pending,
+      });
+      render(
+        <CorrectionPanel
+          post={post({
+            media: [],
+            ig_caption: 'Legenda',
+            conteudo: null,
+            conteudo_plain: 'Corpo vivo',
+            pending_suggestion: pending,
+          })}
+          edit={edit}
+          submitting={false}
+          onSubmitCorrection={onSubmitCorrection}
+          onDirtyChange={onDirtyChange}
+        />,
+      );
+      fireEvent.change(screen.getByRole('textbox', { name: 'Legenda do post' }), {
+        target: { value: 'Legenda nova' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
+      const call = vi.mocked(edit.saveSuggestion).mock.calls[0];
+      // Not the stale 'Corpo antigo' stored in the suggestion.
+      expect(call[1]).toBe('Corpo vivo');
+      expect(call[3].fields).toEqual(['legenda']);
+    });
     it('sends a null caption base for a media post whose caption is derived from LEGENDA', () => {
       const edit = makeEdit({ draftIgCaption: null });
       render(

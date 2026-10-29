@@ -315,9 +315,16 @@ export function CorrectionPanel({
     // of the document, which can differ from the stored text in line breaks alone, and the
     // RPC would then record a body change that accepting applies (see docPlainText).
     const bodyEdited = stagedConteudoPlain !== draftConteudoPlain || stagedDocKey !== draftDocKey;
+    // The suggestion's stored text counts only while it changed the body: otherwise the
+    // editor was seeded from the live post and the plain text must pair with it.
+    const suggestionHasText =
+      !!suggestion?.changed_fields?.includes('conteudo') ||
+      !!suggestion?.changed_fields?.includes('conteudo_plain');
     const textPlain = bodyEdited
       ? stagedConteudoPlain
-      : (suggestion?.suggested_conteudo_plain ?? post.conteudo_plain ?? '');
+      : ((suggestionHasText ? suggestion?.suggested_conteudo_plain : null) ??
+        post.conteudo_plain ??
+        '');
     if (isText && bodyEdited) touchedRef.current.add('texto');
     if (showCaptionField && stagedCaption !== captionBaseline) touchedRef.current.add('legenda');
     // Bases only for touched fields: the server checks the ones it receives.
@@ -354,7 +361,12 @@ export function CorrectionPanel({
   // fallback (deriveCaption), but the client never saw or edited that text as a
   // caption, so it must not be submitted as one. A text post's suggestion stores
   // '' when it had no caption field, which must not reveal one.
-  const showCaptionField = !isText || post.ig_caption != null || !!suggestion?.suggested_ig_caption;
+  // A suggestion's stored caption counts only while it changed the caption (see
+  // suggestionAwareCaption): otherwise it is a stale copy of what the client saw.
+  const showCaptionField =
+    !isText ||
+    post.ig_caption != null ||
+    (!!suggestion?.changed_fields?.includes('ig_caption') && !!suggestion.suggested_ig_caption);
 
   // A formatting-only edit (bold, an inline image) leaves the plain text untouched, so the
   // document is compared too, canonically (see canonicalDoc).
