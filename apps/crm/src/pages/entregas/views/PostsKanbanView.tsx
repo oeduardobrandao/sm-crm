@@ -902,7 +902,7 @@ export function PostsKanbanView({
    *  Desfazer write skips it on purpose (it restores where the post already was). */
   const guardedApplyStatusChange = async (post: ActivePost, key: StatusKey, place?: () => void) => {
     const canonical = canonicalOfStatusKey(key, registry);
-    if (canonical && !(await confirmMove(post.id, canonical))) return;
+    if (canonical && !(await confirmMove(post.id, canonical, post.status))) return;
     applyStatusChange(post, key, place);
   };
 
@@ -1138,6 +1138,7 @@ export function PostsKanbanView({
           actions={[{ label: t('actions.confirm'), onSelect: handleConfirmStatusChange }]}
           onCancel={() => setPendingConfirm(null)}
         />
+        {moveGuardDialog}
         {nudgeDialog}
       </>
     );

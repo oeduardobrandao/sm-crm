@@ -18,6 +18,7 @@ import { updateWorkflowPost } from '@/store';
 import type { PostPlatform, WorkflowPost } from '@/store/posts';
 import { isEligibleToScheduleNow, targetsTikTokService } from '../autoScheduleNudge';
 import { scheduleApprovedPost, scheduleSuccessMessage } from '../scheduleApprovedPost';
+import { useSuggestionMoveGuard } from '../hooks/useSuggestionMoveGuard';
 import { declarationBrandedFlag, TikTokPostingDeclaration } from './TikTokPostingDeclaration';
 
 export interface AutoSchedulePromptPost {
@@ -58,6 +59,9 @@ export function AutoSchedulePromptDialog({
   const dateLocale = useDateFnsLocale();
   const [loading, setLoading] = useState(false);
   const [pickedDate, setPickedDate] = useState<Date | undefined>(undefined);
+  // The badge can offer this days after approval, and a client suggestion may have arrived
+  // since: scheduling moves the post to agendado, so ask first, like ScheduleButton does.
+  const { confirmMove, dialog: moveGuardDialog } = useSuggestionMoveGuard();
 
   // Pré-preenche o picker com a data antiga (decisão 1) a cada post novo, e
   // limpa a escolha anterior para o diálogo não reaproveitar a data de outro post.
@@ -89,6 +93,7 @@ export function AutoSchedulePromptDialog({
   };
 
   const handleScheduleNow = async () => {
+    if (!(await confirmMove(post.id, 'agendado'))) return;
     setLoading(true);
     try {
       await scheduleApprovedPost(post);
@@ -100,6 +105,7 @@ export function AutoSchedulePromptDialog({
 
   const handleSetDateAndSchedule = async () => {
     if (!pickedDate) return;
+    if (!(await confirmMove(post.id, 'agendado'))) return;
     setLoading(true);
     // A linha DEVOLVIDA pela escrita, nunca o `post` capturado antes da
     // escolha: para tiktok/both, scheduleApprovedPost lê scheduled_at do
@@ -131,60 +137,65 @@ export function AutoSchedulePromptDialog({
     : null;
 
   return (
-    <AlertDialog
-      open
-      onOpenChange={(open) => {
-        if (!open && !loading) onClose();
-      }}
-    >
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{t('autoSchedulePrompt.title')}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {eligible
-              ? t('autoSchedulePrompt.descEligible', {
-                  title: post.titulo || t('shared.postUntitled'),
-                  date: formattedDate,
-                })
-              : t('autoSchedulePrompt.descNeedsDate', {
-                  title: post.titulo || t('shared.postUntitled'),
-                })}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
+    <>
+      <AlertDialog
+        open
+        onOpenChange={(open) => {
+          if (!open && !loading) onClose();
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('autoSchedulePrompt.title')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {eligible
+                ? t('autoSchedulePrompt.descEligible', {
+                    title: post.titulo || t('shared.postUntitled'),
+                    date: formattedDate,
+                  })
+                : t('autoSchedulePrompt.descNeedsDate', {
+                    title: post.titulo || t('shared.postUntitled'),
+                  })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
 
-        {!eligible && (
-          <div className="px-1">
-            <DateTimePicker
-              value={pickedDate}
-              onChange={setPickedDate}
-              futureOnly
-              className="w-full"
-            />
-          </div>
-        )}
-
-        {targetsTikTokService(post.platform) && (
-          <TikTokPostingDeclaration brandedContent={declarationBrandedFlag(post.tiktok_settings)} />
-        )}
-
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={loading}>{t('actions.cancel')}</AlertDialogCancel>
-          {eligible ? (
-            <Button onClick={handleScheduleNow} disabled={loading}>
-              {t('shared.schedule')}
-            </Button>
-          ) : (
-            <Button
-              onClick={handleSetDateAndSchedule}
-              disabled={
-                loading || !pickedDate || !isEligibleToScheduleNow(pickedDate.toISOString())
-              }
-            >
-              {t('autoSchedulePrompt.setAndSchedule')}
-            </Button>
+          {!eligible && (
+            <div className="px-1">
+              <DateTimePicker
+                value={pickedDate}
+                onChange={setPickedDate}
+                futureOnly
+                className="w-full"
+              />
+            </div>
           )}
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+
+          {targetsTikTokService(post.platform) && (
+            <TikTokPostingDeclaration
+              brandedContent={declarationBrandedFlag(post.tiktok_settings)}
+            />
+          )}
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={loading}>{t('actions.cancel')}</AlertDialogCancel>
+            {eligible ? (
+              <Button onClick={handleScheduleNow} disabled={loading}>
+                {t('shared.schedule')}
+              </Button>
+            ) : (
+              <Button
+                onClick={handleSetDateAndSchedule}
+                disabled={
+                  loading || !pickedDate || !isEligibleToScheduleNow(pickedDate.toISOString())
+                }
+              >
+                {t('autoSchedulePrompt.setAndSchedule')}
+              </Button>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      {moveGuardDialog}
+    </>
   );
 }

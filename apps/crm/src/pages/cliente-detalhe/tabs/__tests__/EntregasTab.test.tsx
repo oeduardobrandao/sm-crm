@@ -25,7 +25,6 @@ vi.mock('@/store', () => ({
   getWorkflowPosts: vi.fn(),
   getClientePosts: vi.fn(),
   updateWorkflowPost: vi.fn(),
-  hasPendingEditSuggestion: vi.fn(async () => false),
   getClientes: vi.fn(),
   getWorkspaceSlug: vi.fn(),
   getHubToken: vi.fn(),
@@ -59,6 +58,9 @@ vi.mock('@/store', () => ({
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
+
+// The suggestion move guard reads this by path (not through the '@/store' barrel).
+vi.mock('@/store/posts', () => ({ hasPendingEditSuggestion: vi.fn(async () => false) }));
 
 // Mutable so a describe block can flip a feature on for its own tests; every
 // other test keeps the flags off (default null), same mutable-features pattern
@@ -853,12 +855,13 @@ describe('EntregasTab', () => {
 
     describe('suggestion move guard', () => {
       afterEach(async () => {
-        const { hasPendingEditSuggestion } = await import('@/store');
+        const { hasPendingEditSuggestion } = await import('@/store/posts');
         vi.mocked(hasPendingEditSuggestion).mockResolvedValue(false);
       });
 
       it('asks before scheduling a post with a pending client suggestion and writes only after "Mover mesmo assim"', async () => {
-        const { updateWorkflowPost, hasPendingEditSuggestion } = await import('@/store');
+        const { updateWorkflowPost } = await import('@/store');
+        const { hasPendingEditSuggestion } = await import('@/store/posts');
         vi.mocked(updateWorkflowPost).mockResolvedValue(undefined as never);
         vi.mocked(hasPendingEditSuggestion).mockResolvedValue(true);
         mockedGetClientePosts.mockResolvedValue([clientePost()]);
@@ -878,7 +881,8 @@ describe('EntregasTab', () => {
       });
 
       it('Cancelar does not write', async () => {
-        const { updateWorkflowPost, hasPendingEditSuggestion } = await import('@/store');
+        const { updateWorkflowPost } = await import('@/store');
+        const { hasPendingEditSuggestion } = await import('@/store/posts');
         vi.mocked(hasPendingEditSuggestion).mockResolvedValue(true);
         mockedGetClientePosts.mockResolvedValue([clientePost()]);
         renderTab();

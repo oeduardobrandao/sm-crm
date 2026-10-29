@@ -80,7 +80,6 @@ vi.mock('@/store', () => ({
   getPostStatusEvents: vi.fn(async () => []),
   getPostCommentThreads: vi.fn(async () => []),
   getPostEditSuggestions: vi.fn(async () => []),
-  hasPendingEditSuggestion: vi.fn(async () => false),
   getWorkspaceUsers: vi.fn(async () => []),
   getClientePosts: vi.fn(async () => []),
   getWorkspaceSlug: vi.fn(async () => null),
@@ -117,6 +116,9 @@ vi.mock('@/store', () => ({
 }));
 
 vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn(async () => []) }));
+
+// The suggestion move guard reads this by path (not through the '@/store' barrel).
+vi.mock('@/store/posts', () => ({ hasPendingEditSuggestion: vi.fn(async () => false) }));
 // PostEditorBody and WorkflowDrawer read client references from this module by path.
 vi.mock('@/store/postReferences', () => ({
   getPostReferences: vi.fn(async () => []),
@@ -243,10 +245,10 @@ import {
   deleteCommentThread,
   deletePostComment,
   getPostEditSuggestions,
-  hasPendingEditSuggestion,
   acceptEditSuggestion,
   syncMentions,
 } from '@/store';
+import { hasPendingEditSuggestion } from '@/store/posts';
 import { toast } from 'sonner';
 
 const mockGetStandalonePost = vi.mocked(getStandalonePost);

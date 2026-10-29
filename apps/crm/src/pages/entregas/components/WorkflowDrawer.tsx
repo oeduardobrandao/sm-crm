@@ -645,7 +645,8 @@ export function WorkflowDrawer({
    *  status is judged by the canonical status it behaves as. */
   const confirmStatusKeyMove = (id: number, key: StatusKey) => {
     const canonical = canonicalOfStatusKey(key, statusRegistry);
-    return canonical ? confirmMove(id, canonical) : Promise.resolve(true);
+    const current = posts.find((p) => p.id === id)?.status;
+    return canonical ? confirmMove(id, canonical, current) : Promise.resolve(true);
   };
 
   const handleFieldChange = async (

@@ -32,6 +32,8 @@ vi.mock('sonner', () => ({
   toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), info: vi.fn() }),
 }));
 
+vi.mock('@/store/posts', () => ({ hasPendingEditSuggestion: vi.fn(async () => false) }));
+
 vi.mock('@/store', () => ({
   updateWorkflowPost: vi.fn(async () => ({})),
   reorderBoardPosts: vi.fn(async () => undefined),
@@ -92,6 +94,7 @@ vi.mock('@dnd-kit/sortable', () => ({
 
 import { PostsKanbanView } from '../PostsKanbanView';
 import { updateWorkflowPost } from '@/store';
+import { hasPendingEditSuggestion } from '@/store/posts';
 import type { ActivePost } from '@/store';
 
 let nextId = 1;
@@ -159,6 +162,8 @@ beforeEach(() => {
   vi.mocked(updateWorkflowPost).mockClear();
   vi.mocked(toast).mockClear();
   vi.mocked(toast.error).mockClear();
+  vi.mocked(hasPendingEditSuggestion).mockReset();
+  vi.mocked(hasPendingEditSuggestion).mockResolvedValue(false);
 });
 
 describe('PostsKanbanView on phones', () => {
@@ -243,6 +248,52 @@ describe('PostsKanbanView on phones', () => {
     fireEvent.click(within(sheet).getByRole('button', { name: 'Em gravação' }));
     await waitFor(() => expect(updateWorkflowPost).toHaveBeenCalled());
     expect(vi.mocked(updateWorkflowPost).mock.calls[0][0]).toBe(posts[0].id);
+  });
+
+  describe('suggestion move guard (phone)', () => {
+    const openMoveSheet = async () => {
+      const posts = [makePost({ titulo: 'Em revisão A', status: 'revisao_interna' })];
+      renderBoard({ posts });
+      fireEvent.click(
+        within(screen.getByRole('tablist', { name: 'Status' })).getByRole('tab', {
+          name: /Em revisão/,
+        }),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Mais ações de Em revisão A' }));
+      const menu = await screen.findByRole('menu', { name: 'Ações do post' });
+      fireEvent.click(within(menu).getByRole('menuitem', { name: 'Mover para…' }));
+      const sheet = await screen.findByRole('dialog', { name: 'Mover para' });
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Aprovado pelo cliente' }));
+      return posts;
+    };
+
+    it('asks before moving a post with a pending suggestion into Aprovado pelo cliente; Cancelar does not write', async () => {
+      vi.mocked(hasPendingEditSuggestion).mockResolvedValue(true);
+      await openMoveSheet();
+
+      expect(await screen.findByText('Mover para Aprovado pelo cliente?')).toBeInTheDocument();
+      expect(updateWorkflowPost).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+      await waitFor(() =>
+        expect(screen.queryByText('Mover para Aprovado pelo cliente?')).not.toBeInTheDocument(),
+      );
+      expect(updateWorkflowPost).not.toHaveBeenCalled();
+    });
+
+    it('"Mover mesmo assim" writes the status', async () => {
+      vi.mocked(hasPendingEditSuggestion).mockResolvedValue(true);
+      const posts = await openMoveSheet();
+
+      await screen.findByText('Mover para Aprovado pelo cliente?');
+      fireEvent.click(screen.getByRole('button', { name: 'Mover mesmo assim' }));
+
+      await waitFor(() => expect(updateWorkflowPost).toHaveBeenCalled());
+      expect(vi.mocked(updateWorkflowPost).mock.calls[0][0]).toBe(posts[0].id);
+      expect(vi.mocked(updateWorkflowPost).mock.calls[0][1]).toMatchObject({
+        status: 'aprovado_cliente',
+      });
+    });
   });
 
   it('a locked post has no drag handle and its menu explains the lock', async () => {

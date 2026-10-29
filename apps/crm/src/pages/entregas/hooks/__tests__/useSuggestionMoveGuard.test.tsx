@@ -3,17 +3,25 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const store = vi.hoisted(() => ({ hasPendingEditSuggestion: vi.fn() }));
-vi.mock('../../../../store', () => store);
+vi.mock('../../../../store/posts', () => store);
 
 import { useSuggestionMoveGuard } from '../useSuggestionMoveGuard';
 import type { WorkflowPost } from '../../../../store/posts';
 
-function Harness({ target }: { target: WorkflowPost['status'] }) {
+function Harness({
+  target,
+  current,
+}: {
+  target: WorkflowPost['status'];
+  current?: WorkflowPost['status'];
+}) {
   const { confirmMove, dialog } = useSuggestionMoveGuard();
   const [result, setResult] = useState<string>('idle');
   return (
     <>
-      <button onClick={() => void confirmMove(7, target).then((ok) => setResult(String(ok)))}>
+      <button
+        onClick={() => void confirmMove(7, target, current).then((ok) => setResult(String(ok)))}
+      >
         mover
       </button>
       <output data-testid="result">{result}</output>
@@ -72,11 +80,32 @@ describe('useSuggestionMoveGuard', () => {
     expect(await screen.findByText('Mover para Aprovado pelo cliente?')).toBeTruthy();
   });
 
-  it('se a consulta falha, não trava a equipe: libera', async () => {
+  it('libera sem consulta quando o status canônico não muda', async () => {
+    render(<Harness target="aprovado_cliente" current="aprovado_cliente" />);
+    fireEvent.click(screen.getByText('mover'));
+    await waitFor(() => expect(screen.getByTestId('result').textContent).toBe('true'));
+    expect(store.hasPendingEditSuggestion).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
+
+  it('pergunta quando o status atual é outro que o destino', async () => {
+    store.hasPendingEditSuggestion.mockResolvedValue(true);
+    render(<Harness target="agendado" current="aprovado_cliente" />);
+    fireEvent.click(screen.getByText('mover'));
+    expect(await screen.findByText('Mover para Agendado?')).toBeTruthy();
+  });
+
+  it('se a consulta falha, não trava a equipe: libera e avisa no console', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     store.hasPendingEditSuggestion.mockRejectedValue(new Error('offline'));
     render(<Harness target="agendado" />);
     fireEvent.click(screen.getByText('mover'));
     await waitFor(() => expect(screen.getByTestId('result').textContent).toBe('true'));
     expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('pending suggestion lookup failed'),
+      expect.any(Error),
+    );
+    warn.mockRestore();
   });
 });

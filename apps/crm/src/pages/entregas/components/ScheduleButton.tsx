@@ -276,7 +276,7 @@ export function useScheduleActions({
   };
 
   const handlePublishNow = async () => {
-    if (!(await confirmMove(post.id!, 'postado'))) return;
+    if (!(await confirmMove(post.id!, 'postado', post.status))) return;
     setPublishing(true);
     setPublishPct(0);
     setLoading(true);
@@ -356,7 +356,7 @@ export function useScheduleActions({
   };
 
   const handleSchedule = async () => {
-    if (!(await confirmMove(post.id!, 'agendado'))) return;
+    if (!(await confirmMove(post.id!, 'agendado', post.status))) return;
     setLoading(true);
     try {
       await beforeServerAction?.();

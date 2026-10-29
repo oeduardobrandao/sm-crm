@@ -124,7 +124,6 @@ vi.mock('@/store', () => ({
   deleteCommentThread: vi.fn(),
   getWorkspaceUsers: vi.fn(async () => []),
   getPostEditSuggestions: vi.fn(async () => []),
-  hasPendingEditSuggestion: vi.fn(async () => false),
   acceptEditSuggestion: vi.fn(),
   rejectEditSuggestion: vi.fn(),
   getClientePosts: vi.fn(async () => []),
@@ -160,6 +159,9 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
 }));
 
 vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn(async () => []) }));
+
+// The suggestion move guard reads this by path (not through the '@/store' barrel).
+vi.mock('@/store/posts', () => ({ hasPendingEditSuggestion: vi.fn(async () => false) }));
 // PostEditorBody and WorkflowDrawer read client references from this module by path.
 vi.mock('@/store/postReferences', () => ({
   getPostReferences: vi.fn(async () => []),
@@ -294,7 +296,6 @@ import {
   getWorkflowPostsWithProperties,
   updateWorkflowPost,
   getPostEditSuggestions,
-  hasPendingEditSuggestion,
   acceptEditSuggestion,
   syncMentions,
   detachPostsFromWorkflow,
@@ -307,6 +308,7 @@ import {
   deleteCommentThread,
   deletePostComment,
 } from '@/store';
+import { hasPendingEditSuggestion } from '@/store/posts';
 import { resolveInlineImageUrls } from '@/services/inlineImage';
 import { POST_STATUS_DEFINITIONS_QUERY_KEY } from '@/hooks/useStatusRegistry';
 

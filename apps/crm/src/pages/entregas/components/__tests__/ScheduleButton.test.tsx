@@ -22,7 +22,7 @@ vi.mock('sonner', () => ({
 }));
 
 // The suggestion move guard asks the store whether the post has a pending client suggestion.
-vi.mock('../../../../store', () => ({ hasPendingEditSuggestion: vi.fn(async () => false) }));
+vi.mock('../../../../store/posts', () => ({ hasPendingEditSuggestion: vi.fn(async () => false) }));
 
 import { ScheduleButton } from '../ScheduleButton';
 import {
@@ -38,7 +38,7 @@ import {
   retryTikTokPublish,
 } from '../../../../services/tiktok';
 import { toast } from 'sonner';
-import { hasPendingEditSuggestion } from '../../../../store';
+import { hasPendingEditSuggestion } from '../../../../store/posts';
 
 // Exact string from supabase/functions/_shared/tiktok-publish-utils.ts's audited-mode gate
 // (validateForTikTokScheduling) — the 422 `details` array item ScheduleButton pattern-matches

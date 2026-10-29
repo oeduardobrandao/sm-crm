@@ -410,7 +410,8 @@ export default function EntregasTab() {
 
   const handlePostStatusUpdate = async (postId: number, newStatus: 'agendado' | 'postado') => {
     // Asks first when the client's suggestion on this post is still unreviewed.
-    if (!(await confirmMove(postId, newStatus))) return;
+    const current = clientePosts.find((p) => p.id === postId)?.status;
+    if (!(await confirmMove(postId, newStatus, current))) return;
     setPostUpdating(postId);
     try {
       await updateWorkflowPost(postId, { status: newStatus });

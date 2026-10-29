@@ -23,6 +23,9 @@ vi.mock('sonner', () => ({
 // below therefore carries a real `allEtapas` array -- the gate-input object in
 // PostsKanbanView's onSuccess is built (and calls this function) eagerly for any
 // drop that resolves a card, even when the target status isn't aprovado_cliente.
+// The suggestion move guard reads this by path (no pending suggestion here).
+vi.mock('@/store/posts', () => ({ hasPendingEditSuggestion: vi.fn(async () => false) }));
+
 vi.mock('@/store', async () => {
   const { isFinalClientApprovalCycle, cardAutoScheduleGates } = await import('@/store/workflows');
   return {

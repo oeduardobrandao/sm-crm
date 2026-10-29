@@ -426,7 +426,7 @@ export function StandalonePostDrawer({
    *  status is judged by the canonical status it behaves as. */
   const confirmStatusKeyMove = (key: StatusKey) => {
     const canonical = canonicalOfStatusKey(key, statusRegistry);
-    return canonical ? confirmMove(postId, canonical) : Promise.resolve(true);
+    return canonical ? confirmMove(postId, canonical, post?.status) : Promise.resolve(true);
   };
 
   const handleFieldChange = async (field: keyof WorkflowPost, value: unknown) => {

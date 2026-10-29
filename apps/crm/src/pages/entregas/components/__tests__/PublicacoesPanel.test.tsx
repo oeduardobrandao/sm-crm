@@ -30,8 +30,8 @@ vi.mock('sonner', () => ({
 }));
 
 // ScheduleButton's suggestion move guard reads the store before scheduling or publishing.
-vi.mock('../../../../store', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../../../store')>()),
+vi.mock('../../../../store/posts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../store/posts')>()),
   hasPendingEditSuggestion: vi.fn(async () => false),
 }));
 

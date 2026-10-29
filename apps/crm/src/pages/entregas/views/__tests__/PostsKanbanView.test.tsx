@@ -16,11 +16,13 @@ vi.mock('sonner', () => ({
 
 vi.mock('@/store', () => ({
   updateWorkflowPost: vi.fn(),
-  hasPendingEditSuggestion: vi.fn(async () => false),
   reorderBoardPosts: vi.fn(),
   isFinalClientApprovalCycle: vi.fn(() => true),
   cardAutoScheduleGates: vi.fn(() => ({ autoPublishOnApproval: true, isFinalApprovalCycle: true })),
 }));
+
+// The suggestion move guard reads this by path (not through the '@/store' barrel).
+vi.mock('@/store/posts', () => ({ hasPendingEditSuggestion: vi.fn(async () => false) }));
 
 // Mock dnd-kit so tests don't need to simulate real pointer/touch events in
 // jsdom (same approach as WorkflowCalendarView.test.tsx / CalendarGrid.test.tsx):
@@ -110,7 +112,8 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
 
 import { PostsKanbanView } from '../PostsKanbanView';
 import { POST_STATUS_ORDER, STATUS_LABELS } from '../../postLabels';
-import { updateWorkflowPost, reorderBoardPosts, hasPendingEditSuggestion } from '@/store';
+import { updateWorkflowPost, reorderBoardPosts } from '@/store';
+import { hasPendingEditSuggestion } from '@/store/posts';
 import type { ActivePost } from '@/store';
 import type { BoardCard } from '../../hooks/useEntregasData';
 import { ACTIVE_POSTS_KEY } from '../../hooks/useUpdatePostStatus';
