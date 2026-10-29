@@ -3,7 +3,7 @@
 begin;
 
 -- mcp_revoke_oauth_client_access / mcp_oauth_prepare_authorization / the revoke trigger
--- (migration 20261106000001): revoking an MCP grant ends the client's Supabase OAuth consent and
+-- (migration 20261107000001): revoking an MCP grant ends the client's Supabase OAuth consent and
 -- sessions, unless the user still holds an active grant for that client in either grant table;
 -- the consent page clears a stale consent before Supabase can auto-approve it.
 do $$
