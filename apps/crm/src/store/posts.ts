@@ -1590,6 +1590,21 @@ export async function countPendingEditSuggestionsInWorkflow(workflowId: number):
 }
 
 /**
+ * How many of `postIds` still carry a pending client suggestion, for the count line in the
+ * batch-schedule dialog (moving a post to `agendado` closes the suggestion as superseded).
+ */
+export async function countPendingEditSuggestionsForPosts(postIds: number[]): Promise<number> {
+  if (postIds.length === 0) return 0;
+  const { count, error } = await supabase
+    .from('post_edit_suggestions')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pending')
+    .in('post_id', postIds);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/**
  * `expectedUpdatedAt` is the `updated_at` of the version the team reviewed. The client can
  * keep editing a pending suggestion, so the RPC refuses with `suggestion_changed` when the
  * row moved on since then instead of applying a version nobody on the team has seen.

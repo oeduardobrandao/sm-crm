@@ -12,7 +12,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { getWorkflowPosts } from '@/store';
+import { countPendingEditSuggestionsForPosts, getWorkflowPosts } from '@/store';
 import { partitionByScheduleEligibility, targetsTikTokService } from '../autoScheduleNudge';
 import { scheduleApprovedPost } from '../scheduleApprovedPost';
 import { declarationBrandedFlag, TikTokPostingDeclaration } from './TikTokPostingDeclaration';
@@ -117,6 +117,23 @@ export function AutoScheduleBatchDialog({
     (p) => declarationBrandedFlag(p.tiktok_settings) !== false,
   );
 
+  // Posts do lote que ainda carregam uma sugestão do cliente sem revisão: agendar fecha a
+  // sugestão como superseded. Só informativo (uma linha, sem pergunta por post, como no diálogo
+  // de saída de aprovação); uma busca que falha só esconde a linha.
+  const eligibleIds = eligible
+    .map((p) => p.id)
+    .filter((id): id is number => id != null)
+    .sort((a, b) => a - b);
+  const suggestionsQuery = useQuery({
+    queryKey: ['auto-schedule-batch-suggestions', workflowId, eligibleIds],
+    queryFn: () => countPendingEditSuggestionsForPosts(eligibleIds),
+    enabled: workflowId != null && !isFetching && eligibleIds.length > 0,
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+  });
+  const pendingSuggestionCount = suggestionsQuery.isFetching ? 0 : (suggestionsQuery.data ?? 0);
+
   // Nada aprovado (aprovação em lote sem efeito, ou tudo já agendado): não vale
   // um diálogo vazio.
   useEffect(() => {
@@ -196,6 +213,12 @@ export function AutoScheduleBatchDialog({
               ))}
             </ul>
           </div>
+        )}
+
+        {pendingSuggestionCount > 0 && (
+          <p className="px-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+            {t('approvalExit.pendingSuggestions', { count: pendingSuggestionCount })}
+          </p>
         )}
 
         {tiktokEligible.length > 0 && (
