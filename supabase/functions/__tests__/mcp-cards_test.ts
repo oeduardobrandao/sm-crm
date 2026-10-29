@@ -70,7 +70,7 @@ Deno.test("preview_post: post_id of another workspace -> Post não encontrado", 
 });
 
 Deno.test("preview_post: structuredContent has card post_preview, v 1, caption_len, caption_max 2200", async () => {
-  const { server } = setup({ clientes: [CLIENT_OK], workflow_posts: [{ data: { id: 12 }, error: null }] });
+  const { server } = setup({ clientes: [CLIENT_OK], workflow_posts: [{ data: { id: 12, cliente_id: 5 }, error: null }] });
   const res = await server.tools.preview_post.cb({
     client_id: 5, titulo: "Dica de skincare", tipo: "carrossel", pilar: "Autoridade",
     slides: [{ texto: " Um " }, { texto: "Dois" }], ig_caption: "Legenda de teste", post_id: 12,
@@ -199,4 +199,28 @@ Deno.test("tools absent when apps disabled", () => {
     assert(!("preview_post" in server.tools));
     assert(!("show_caption_options" in server.tools));
   }
+});
+
+Deno.test("post of another client of the same workspace is rejected by both card tools", async () => {
+  const foreign = { data: { id: 12, cliente_id: 6 }, error: null };
+  const s1 = setup({ clientes: [CLIENT_OK], workflow_posts: [foreign] });
+  const r1 = await s1.server.tools.preview_post.cb({ client_id: 5, titulo: "T", tipo: "feed", ig_caption: "x", post_id: 12 });
+  assertEquals(r1.isError, true);
+  assertEquals(JSON.parse(r1.content[0].text).error, "Este post pertence a outro cliente.");
+  assert(s1.calls.some((c) => c.table === "workflow_posts" && c.method === "eq" && c.args[0] === "conta_id"), "post lookup filtered by conta_id");
+  assert(s1.calls.some((c) => c.table === "workflow_posts" && c.method === "select" && c.args[0] === "id, cliente_id"));
+
+  const s2 = setup({ clientes: [CLIENT_OK], workflow_posts: [foreign] });
+  const r2 = await s2.server.tools.show_caption_options.cb({
+    client_id: 5, post_id: 12, options: [{ label: "A", text: "a" }, { label: "B", text: "b" }],
+  });
+  assertEquals(JSON.parse(r2.content[0].text).error, "Este post pertence a outro cliente.");
+  assert(s2.calls.some((c) => c.table === "workflow_posts" && c.method === "eq" && c.args[0] === "conta_id"), "post lookup filtered by conta_id");
+
+  const ok = setup({ clientes: [CLIENT_OK], workflow_posts: [{ data: { id: 12, cliente_id: 5 }, error: null }] });
+  const r3 = await ok.server.tools.show_caption_options.cb({
+    client_id: 5, post_id: 12, options: [{ label: "A", text: "a" }, { label: "B", text: "b" }],
+  });
+  assert(!r3.isError);
+  assertEquals(r3.structuredContent.post_id, 12);
 });

@@ -76,19 +76,22 @@ async function clientOf(d: Deps, clientId: number): Promise<{ id: number; nome: 
   return { id: (data as any).id, nome: (data as any).nome };
 }
 
-async function assertPostInWorkspace(d: Deps, postId: number): Promise<void> {
+/** The post must be in this workspace AND belong to the card's client: the card shows the client's
+ * name beside the post and its save/send buttons act on `post_id`. */
+async function assertPostOfClient(d: Deps, postId: number, clientId: number): Promise<void> {
   const { data } = await d.db
     .from("workflow_posts")
-    .select("id")
+    .select("id, cliente_id")
     .eq("conta_id", d.ctx.conta_id)
     .eq("id", postId)
     .maybeSingle();
   if (!data) throw new McpInputError("Post não encontrado neste workspace.");
+  if ((data as any).cliente_id !== clientId) throw new McpInputError("Este post pertence a outro cliente.");
 }
 
 export async function previewPost(d: Deps, a: PreviewArgs): Promise<PreviewData> {
   const client = await clientOf(d, a.client_id);
-  if (a.post_id !== undefined) await assertPostInWorkspace(d, a.post_id);
+  if (a.post_id !== undefined) await assertPostOfClient(d, a.post_id, a.client_id);
   const slides = (a.slides ?? []).map((s) => ({ texto: s.texto }));
   return {
     card: "post_preview",
@@ -109,7 +112,7 @@ export async function previewPost(d: Deps, a: PreviewArgs): Promise<PreviewData>
 
 export async function captionOptions(d: Deps, a: CaptionOptionsArgs): Promise<CaptionOptionsData> {
   const client = await clientOf(d, a.client_id);
-  if (a.post_id !== undefined) await assertPostInWorkspace(d, a.post_id);
+  if (a.post_id !== undefined) await assertPostOfClient(d, a.post_id, a.client_id);
   return {
     card: "caption_options",
     v: 1,
