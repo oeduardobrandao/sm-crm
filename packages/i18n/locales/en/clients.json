@@ -241,6 +241,24 @@
       }
     }
   },
+  "googleOAuth": {
+    "ytConnected": "YouTube connected.",
+    "ytError": {
+      "denied": "Connection cancelled on Google.",
+      "missing_scope": "Check all the permissions Google asks for and try again.",
+      "no_refresh_token": "Google did not grant ongoing access. Try connecting again.",
+      "no_channel": "This Google account has no YouTube channel.",
+      "channel_in_use": "This channel is already linked to client {{nome}}.",
+      "channel_in_use_unnamed": "This channel is already linked to another client in this workspace.",
+      "unknown": "Could not connect YouTube."
+    },
+    "gmnError": {
+      "denied": "Connection cancelled on Google.",
+      "missing_scope": "Check all the permissions Google asks for and try again.",
+      "no_refresh_token": "Google did not grant ongoing access. Try connecting again.",
+      "unknown": "Could not connect Google Business Profile."
+    }
+  },
   "detail": {
     "igNotBusiness": "The Instagram account is not a Business account. Reconnect with a Business or Creator account.",
     "igError": "There was an error connecting the Instagram account. Please try again.",

@@ -241,6 +241,24 @@
       }
     }
   },
+  "googleOAuth": {
+    "ytConnected": "YouTube conectado.",
+    "ytError": {
+      "denied": "Conexão cancelada no Google.",
+      "missing_scope": "Marque todas as permissões pedidas pelo Google e tente de novo.",
+      "no_refresh_token": "O Google não liberou o acesso contínuo. Tente conectar de novo.",
+      "no_channel": "Esta conta Google não tem canal do YouTube.",
+      "channel_in_use": "Este canal já está vinculado ao cliente {{nome}}.",
+      "channel_in_use_unnamed": "Este canal já está vinculado a outro cliente deste workspace.",
+      "unknown": "Não foi possível conectar o YouTube."
+    },
+    "gmnError": {
+      "denied": "Conexão cancelada no Google.",
+      "missing_scope": "Marque todas as permissões pedidas pelo Google e tente de novo.",
+      "no_refresh_token": "O Google não liberou o acesso contínuo. Tente conectar de novo.",
+      "unknown": "Não foi possível conectar o Google Meu Negócio."
+    }
+  },
   "detail": {
     "igNotBusiness": "A conta Instagram não é uma conta Business. Reconecte com uma conta Business ou Creator.",
     "igError": "Ocorreu um erro ao conectar a conta Instagram. Tente novamente.",
