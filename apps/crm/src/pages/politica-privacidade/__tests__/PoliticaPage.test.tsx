@@ -1,7 +1,16 @@
 import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import PoliticaPage from '../PoliticaPage';
+
+const launch = vi.hoisted(() => ({ live: true }));
+vi.mock('../../../lib/googleLegalLaunch', () => ({
+  get GOOGLE_LEGAL_TEXT_LIVE() {
+    return launch.live;
+  },
+  legalNetworkList: () =>
+    launch.live ? 'Instagram, TikTok, YouTube e Google Meu Negócio' : 'Instagram e TikTok',
+}));
 
 function renderPage() {
   return render(
@@ -11,15 +20,18 @@ function renderPage() {
   );
 }
 
-function section3() {
-  const heading = screen.getByRole('heading', {
-    level: 2,
-    name: '3. Contas de redes sociais conectadas (Instagram, TikTok, YouTube e Google Meu Negócio)',
-  });
+function section3(
+  name = '3. Contas de redes sociais conectadas (Instagram, TikTok, YouTube e Google Meu Negócio)',
+) {
+  const heading = screen.getByRole('heading', { level: 2, name });
   return heading.parentElement as HTMLElement;
 }
 
-describe('PoliticaPage', () => {
+describe('PoliticaPage, Google text live', () => {
+  beforeEach(() => {
+    launch.live = true;
+  });
+
   it('retitles section 3 to include YouTube and Google Meu Negócio', () => {
     renderPage();
     expect(section3()).toBeTruthy();
@@ -56,5 +68,20 @@ describe('PoliticaPage', () => {
   it('has no em dashes in the section copy', () => {
     renderPage();
     expect(section3().textContent).not.toContain('—');
+  });
+});
+
+describe('PoliticaPage, Google text not launched', () => {
+  beforeEach(() => {
+    launch.live = false;
+  });
+
+  it('names only Instagram and TikTok and says nothing about Google', () => {
+    const { container } = renderPage();
+    const section = section3('3. Contas de redes sociais conectadas (Instagram e TikTok)');
+    expect(section.textContent).not.toMatch(/YouTube|Google/);
+    expect(container.textContent).not.toMatch(/YouTube|Google Meu Negócio|7 dias/);
+    const hrefs = Array.from(container.querySelectorAll('a')).map((a) => a.getAttribute('href'));
+    expect(hrefs.some((h) => h?.includes('google.com') || h?.includes('youtube.com'))).toBe(false);
   });
 });

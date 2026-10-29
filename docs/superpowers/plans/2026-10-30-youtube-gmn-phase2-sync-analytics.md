@@ -648,9 +648,10 @@ The cron core does two things.
     - the Phase 2 deploy order: deploy the five functions first (`google-integration`, `youtube-sync-cron`, `gbp-sync-cron`, `youtube-analytics`, `gbp-analytics`; harmless before their tables exist, since nothing calls them yet), then one `supabase db push --linked` for all five migrations (`…10`-`…12`, `…20`-`…21`; `db push` applies every pending file at once, so the schedules cannot be held back), then merge;
     - the P2 note that Phase 4 must re-create `youtube_purge_channel` with the layout and `youtube_channel_id` edits, and that Phase 3, which re-creates `google_unlink_youtube` with the target/upload steps, must keep its purge call;
     - that `gbp-sync-cron` carries the privacy deletion duties, so unscheduling it breaks the policy's 30-day promise.
+- Modify: `apps/crm/src/lib/googleLegalLaunch.ts`: set `GOOGLE_LEGAL_TEXT_LIVE = true`, so the privacy policy and terms name YouTube and Google Meu Negócio. This PR is the one that delivers the deletion duties the policy text promises. Drop the CLAUDE.md sentence about the constant being off.
 - Test: the full gate below.
 
-- [ ] **Step 1: Edit CLAUDE.md.**
+- [ ] **Step 1: Edit CLAUDE.md and flip `GOOGLE_LEGAL_TEXT_LIVE`.**
 - [ ] **Step 2: Run the full gate** in a clean worktree with its own `npm ci`, because Deno runs pollute `node_modules`:
   - `npm run lint`, `npm run format:check`, and the four `tsc` commands;
   - `TZ=UTC npx vitest run --coverage --config vitest.coverage.config.ts`;
@@ -658,7 +659,7 @@ The cron core does two things.
   - `bash scripts/test-entitlements.sh` against a fresh local `db reset`.
 
   Expected: every command exits 0.
-- [ ] **Step 3: Commit** `docs: Phase 2 Google deploy order, sync dials and duties`.
+- [ ] **Step 3: Commit** `docs: Phase 2 Google deploy order, sync dials and duties; publish Google legal text`.
 - [ ] **Step 4: Hand off the spikes and the staging run.** These need the user's Google Cloud project:
   - **S2:** check `creatorContentType` coverage on a channel with Shorts and long videos.
   - **S3:** find the GMN metrics range.

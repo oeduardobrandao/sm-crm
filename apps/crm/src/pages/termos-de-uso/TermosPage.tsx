@@ -1,5 +1,6 @@
 import { usePageMeta } from '../../lib/usePageMeta';
 import { CookiePreferencesLink } from '../../components/consent/CookiePreferencesLink';
+import { legalNetworkList } from '../../lib/googleLegalLaunch';
 
 export default function TermosPage() {
   usePageMeta('/termos-de-uso');
@@ -46,10 +47,7 @@ export default function TermosPage() {
                 <ul>
                   <li>Gestão de clientes, leads e contratos;</li>
                   <li>Quadro Kanban para organização de entregas e conteúdos;</li>
-                  <li>
-                    Integração com plataformas de redes sociais (Instagram, TikTok, YouTube e Google
-                    Meu Negócio);
-                  </li>
+                  <li>Integração com plataformas de redes sociais ({legalNetworkList()});</li>
                   <li>Portal do cliente (Hub) para aprovação de conteúdos;</li>
                   <li>Controle financeiro de receitas e despesas;</li>
                   <li>Gestão de equipe (CLT e freelancers);</li>
@@ -83,10 +81,9 @@ export default function TermosPage() {
             content: (
               <>
                 <p>
-                  O Mesaas permite a integração com plataformas de terceiros, como Instagram,
-                  TikTok, YouTube e Google Meu Negócio, por meio de suas APIs oficiais. Ao conectar
-                  sua conta, você autoriza o Mesaas a acessar dados conforme as permissões
-                  solicitadas.
+                  O Mesaas permite a integração com plataformas de terceiros, como{' '}
+                  {legalNetworkList()}, por meio de suas APIs oficiais. Ao conectar sua conta, você
+                  autoriza o Mesaas a acessar dados conforme as permissões solicitadas.
                 </p>
                 <p>O Mesaas não se responsabiliza por:</p>
                 <ul>
