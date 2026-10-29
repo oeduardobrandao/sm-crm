@@ -1,5 +1,5 @@
 -- =====================================================================
--- 20261105000001_edit_suggestion_rpcs_workspace_check.sql
+-- 20261105000003_edit_suggestion_rpcs_workspace_check.sql
 --
 -- accept_edit_suggestion and reject_edit_suggestion are SECURITY DEFINER,
 -- granted to authenticated, and found the suggestion by id alone: RLS is

@@ -4,7 +4,7 @@
 -- would commit and leak to every later suite on CI's shared database.
 
 -- accept_edit_suggestion / reject_edit_suggestion workspace check (migration
--- 20261105000001). Both are SECURITY DEFINER and granted to authenticated, so
+-- 20261105000003). Both are SECURITY DEFINER and granted to authenticated, so
 -- RLS does not apply inside them. Cobre:
 -- 101.0 aceitar sugestão de outra conta falha e não toca post nem sugestão
 -- 101.1 rejeitar sugestão de outra conta falha e não toca a sugestão
