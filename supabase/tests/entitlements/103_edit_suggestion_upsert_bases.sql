@@ -6,7 +6,8 @@
 -- A RPC é service_role-only: os casos a chamam direto como postgres.
 -- 103.1 sugestão nova, texto tocado: changed_fields mede contra a base enviada pelo Hub
 -- 103.2 edição da equipe na legenda entre duas saves de texto não vira mudança do cliente
--- 103.3 campo tocado sem a CHAVE da base levanta base_required; chave com valor null vale
+-- 103.3 campo tocado sem a CHAVE da base (texto: conteudo e conteudo_plain) levanta base_required;
+--       chave com valor null vale, e JSON null sugerido == NULL SQL
 -- 103.4 painel velho (legenda): a base antiga fica em original_*, o conflito aparece depois
 -- 103.5a reverter o texto com a legenda ainda pendente: a linha fica, texto re-baseado no vivo
 -- 103.5b reverter o único campo pendente apaga a linha
@@ -109,6 +110,15 @@ begin
     get stacked diagnostics v_msg = message_text;
     assert v_msg = 'base_required', format('esperava base_required, veio %s', v_msg);
   end;
+  -- texto tocado com a base só do plain (falta a chave conteudo)
+  begin
+    perform upsert_edit_suggestion(e.post, e.ws, 'tok', pg_temp.et_ub_doc('T1'), 'T1', 'L0', array['texto'],
+      jsonb_build_object('conteudo_plain', 'T0'));
+    assert false, 'texto tocado sem a chave conteudo da base devia levantar';
+  exception when others then
+    get stacked diagnostics v_msg = message_text;
+    assert v_msg = 'base_required', format('esperava base_required, veio %s', v_msg);
+  end;
   assert not exists (select 1 from post_edit_suggestions where post_id = e.post), 'nada gravado';
   -- Story: conteudo NULL e legenda NULL no vivo; chave presente com null vale
   update workflow_posts set conteudo = null, conteudo_plain = null, ig_caption = null where id = e.post;
@@ -117,6 +127,14 @@ begin
   s := pg_temp.et_ub_pending(e.post);
   assert s.changed_fields = array['ig_caption'], format('só a legenda mudou: %s', s.changed_fields);
   assert s.original_ig_caption is null and s.suggested_ig_caption = 'L1', 'base null aceita';
+  delete from post_edit_suggestions where post_id = e.post;
+  -- texto tocado, base conteudo/plain null e conteudo sugerido JSON null: null e NULL são iguais
+  perform upsert_edit_suggestion(e.post, e.ws, 'tok', 'null'::jsonb, 'T-novo', 'L1', array['texto'],
+    '{"conteudo": null, "conteudo_plain": null}'::jsonb);
+  s := pg_temp.et_ub_pending(e.post);
+  assert s.changed_fields = array['conteudo_plain'],
+    format('JSON null vs NULL não muda conteudo: %s', s.changed_fields);
+  assert s.suggested_conteudo is null and s.original_conteudo is null, 'conteudo guardado como NULL SQL';
   raise notice 'PASS 103.3 base_required pela presença da chave';
 end $$;
 rollback;

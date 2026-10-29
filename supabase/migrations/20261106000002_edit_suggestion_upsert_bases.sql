@@ -171,13 +171,13 @@ BEGIN
       o_c := v_row.original_conteudo;
       o_p := v_row.original_conteudo_plain;
     ELSE
-      IF NOT COALESCE(p_bases ? 'conteudo_plain', false) THEN
+      IF NOT (COALESCE(p_bases ? 'conteudo_plain', false) AND COALESCE(p_bases ? 'conteudo', false)) THEN
         RAISE EXCEPTION 'base_required' USING ERRCODE = 'P0001';
       END IF;
       o_c := NULLIF(p_bases -> 'conteudo', 'null'::jsonb);
       o_p := p_bases ->> 'conteudo_plain';
     END IF;
-    s_c := p_suggested_conteudo;
+    s_c := NULLIF(p_suggested_conteudo, 'null'::jsonb);
     s_p := p_suggested_conteudo_plain;
     IF COALESCE(s_p, '') IS DISTINCT FROM COALESCE(o_p, '') THEN
       v_texto_chg := array_append(v_texto_chg, 'conteudo_plain');
