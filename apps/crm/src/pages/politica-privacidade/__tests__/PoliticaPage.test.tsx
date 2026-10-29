@@ -22,7 +22,7 @@ function section3() {
 describe('PoliticaPage', () => {
   it('retitles section 3 to include YouTube and Google Meu Negócio', () => {
     renderPage();
-    expect(section3()).toBeInTheDocument();
+    expect(section3()).toBeTruthy();
   });
 
   it('links the YouTube Terms, Google Privacy Policy and Google permissions page', () => {
@@ -35,10 +35,10 @@ describe('PoliticaPage', () => {
     ]) {
       const link = section.getAllByRole('link').find((a) => a.getAttribute('href') === href);
       expect(link, href).toBeDefined();
-      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
-      expect(link).toHaveAttribute('target', '_blank');
+      expect(link?.getAttribute('rel')).toBe('noopener noreferrer');
+      expect(link?.getAttribute('target')).toBe('_blank');
     }
-    expect(section.getByText(/O Mesaas usa os Serviços de API do YouTube/)).toBeInTheDocument();
+    expect(section.getByText(/O Mesaas usa os Serviços de API do YouTube/)).toBeTruthy();
   });
 
   it('states the retention windows', () => {
