@@ -85,7 +85,14 @@ is recomputed against the LIVE post on every save. New rules, in `upsert_edit_su
   - If it is in `changed_fields`, keep the stored `suggested_X` and `original_X`.
   - Otherwise set `original_X := live X` and `suggested_X := live X` (keeps the snapshot current
     so the Hub seeds from live, §8).
+- A field that ends the save **not changed** (touched and equal to its base, or untouched and not
+  in `changed_fields`) is re-based on the spot: `original_X := suggested_X := live X`, even when
+  the row stays pending for the other field. Otherwise a field the client reverted after a team
+  edit would keep a stale `suggested_X`, the Hub would seed from it (§8) and a later save would
+  bring the team's old text back as a client change.
 - If no field is changed, delete the pending row (`action: 'deleted'`), as today.
+- These rules apply only when the save carries `touched_fields` (§2). A legacy save (no
+  `touched_fields`) runs today's upsert unchanged (§2).
 
 Invariant this gives: for every field in `changed_fields`, `original_X` is the text the client
 started from. **Conflict** on a field = field in `changed_fields` AND live X differs from
@@ -100,8 +107,17 @@ reverts the team's edit.
 - `submitEditSuggestion` and `hub-edit-suggestion` gain `touched_fields: ('texto' | 'legenda')[]`:
   the fields the client actually edited in the panel since it was opened (dirty tracking in
   `useEditSuggestion`, per field, cleared on successful save only for what that save carried).
-- `upsert_edit_suggestion` gains `p_touched_fields text[] DEFAULT NULL`. NULL means "all fields"
-  (current behavior), so the deployed Hub keeps working between the migration and the Hub merge.
+- `upsert_edit_suggestion` gains `p_touched_fields text[] DEFAULT NULL`.
+- **Legacy saves (NULL) keep today's semantics exactly**: `changed_fields` against live, and
+  `original_*` never re-based on an existing row. This covers the deployed function during the
+  deploy window and Hub tabs left open across the deploy, which keep sending full snapshots.
+  Those saves cannot be told apart from a real edit, so they are not trusted as field intent; the
+  safety net is accept (§5): a stale tab that sends the old caption back after a team edit gets
+  `ig_caption` into `changed_fields` with `original_ig_caption` (first-save snapshot) different
+  from live, which is a conflict, so the team is asked and nothing is overwritten silently. The
+  cost is an occasional false conflict prompt on legacy rows, never a lost edit. (Codex review,
+  2026-10-29: treating NULL as "all fields touched" with re-basing would have recorded the stale
+  caption as a fresh, conflict-free client change.)
 - Signature change means DROP + CREATE and restating grants (service_role only), plus updating
   the pin in `supabase/tests/entitlements/96_lockdown_definer_function_grants.sql:51`.
 
@@ -136,14 +152,23 @@ Consequences to keep in mind:
 - `hub-posts` keeps filtering `status = 'rejected'` for the warning, so the false "rejeitada pela
   equipe" disappears for every past auto-reject.
 - Mensagens: CRM label `messages:events.suggestion.superseded` = "Sugestão de edição não
-  revisada" (pt) / "Edit suggestion not reviewed" (en). Today an unknown status falls back to
-  `generic` (`mensagensLogic.ts:57-63`). The Hub's Mensagens row already ignores status
-  (`MensagensPage.tsx:44`).
+  revisada" (pt) / "Edit suggestion not reviewed" (en), and `superseded` added to the
+  `SUGGESTION_ACTIONS` allowlist (`mensagensLogic.ts:57`): unlisted values deliberately resolve
+  to `generic`, so the key alone would never show. Test the rendered label. The Hub's Mensagens
+  row already ignores status (`MensagensPage.tsx:44`).
 
 ### 5. Accept applies only changed fields and asks about conflicts
 
 `accept_edit_suggestion(p_suggestion_id, p_expected_updated_at, p_fields text[] DEFAULT NULL)`:
 
+- **Workspace check first.** Today both `accept_edit_suggestion` (`20260928150001` §3d) and
+  `reject_edit_suggestion` (`20260525000001:55-80`) are SECURITY DEFINER, granted to
+  `authenticated`, and look the row up by id alone: any signed-in user of any workspace can
+  accept or reject another workspace's suggestion (ids are a sequential bigserial). Both must
+  raise `Suggestion not found` unless the caller belongs to the suggestion's `conta_id`, using the
+  same predicate as the table's RLS policy (`conta_id IN (SELECT get_my_conta_id())`,
+  `20260521000001:63-69`). This is a live prod issue and ships first as its own hotfix
+  migration, ahead of the rest of this spec; this spec's accept keeps the check.
 - Locks post then suggestion (order from `20260928150001` §3d), keeps the `suggestion_changed`
   check on `updated_at`.
 - Computes changed logical fields from `changed_fields`, and conflicts per §1.
@@ -157,7 +182,7 @@ Consequences to keep in mind:
 - DROP + CREATE, restate grants (`authenticated`, `service_role`; revoke `public`, `anon`),
   update `95_post_content_versions_coalescing.sql` if the call shape changes.
 
-`reject_edit_suggestion` is unchanged.
+`reject_edit_suggestion` changes only by the workspace check above (in the hotfix).
 
 ### 6. CRM review card
 
@@ -183,10 +208,14 @@ Review card (`PostEditorBody.tsx:1564-1620`, phone `PhoneSuggestionSheet`):
 - Caption field (`InstagramCaptionField`): when the pending suggestion changed legenda, an inline
   note above the field: "O cliente sugeriu uma nova legenda. Revise a sugestão antes de editar."
   Not blocking.
-- Manual status moves into `agendado` or `postado` (drawer status control and Kanban) while a
-  suggestion is pending: a confirm "Há uma sugestão do cliente não revisada neste post. Mover
-  mesmo assim?". The builder finds the shared status-change entry point; MCP, the publisher and
-  automations are not prompted.
+- **Every** manual CRM status move into `agendado` or `postado` while a suggestion is pending
+  asks first: dialog "Mover para {Agendado | Postado}?", body "Há uma sugestão do cliente não
+  revisada neste post.", buttons "Cancelar" / "Mover mesmo assim". One shared guarded action,
+  so the same move behaves the same on every screen. Known surfaces today: `WorkflowDrawer`,
+  `StandalonePostDrawer`, the Entregas Kanban, and `cliente-detalhe/tabs/EntregasTab.tsx:412`,
+  which calls `updateWorkflowPost(postId, { status: newStatus })` directly; the builder greps
+  every `updateWorkflowPost` / status write in `apps/crm/src` and routes the manual ones through
+  the guard. MCP, the publisher and automations are not prompted.
 
 ### 8. Hub
 
@@ -198,9 +227,12 @@ Review card (`PostEditorBody.tsx:1564-1620`, phone `PhoneSuggestionSheet`):
 
 ## Deploy order
 
+0. Hotfix, separate PR, first: workspace check in `accept_edit_suggestion` and
+   `reject_edit_suggestion` (§5), signatures unchanged.
 1. Migration (new trigger, CHECK, backfill, new RPC signatures with defaults). The deployed Hub
    (no `touched_fields`) and CRM (two-argument accept) keep working: `p_touched_fields` NULL =
-   full snapshot, `p_fields` NULL = all changed unless conflict.
+   today's upsert (§2), `p_fields` NULL = all changed fields unless there is a conflict, in which
+   case the old CRM gets its generic accept error instead of overwriting a team edit.
 2. `hub-edit-suggestion` (passes `touched_fields` through when present).
 3. Merge (CRM + Hub deploy).
 
