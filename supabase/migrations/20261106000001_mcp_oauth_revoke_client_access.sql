@@ -58,9 +58,13 @@ BEGIN
 END;
 $$;
 
--- Returns 'repaired' when the client behind this user's pending authorization had no active grant
--- (its consent and sessions were cleared), 'ok' when nothing needed clearing, 'not_found' when the
--- authorization is not this user's pending one.
+-- Returns 'repaired' when the client behind this pending authorization had no active grant of the
+-- caller (the caller's consent and sessions for it were cleared), 'ok' when nothing needed
+-- clearing, 'not_found' when there is no such live pending authorization, or it is bound to
+-- another user. Supabase only binds user_id when the consent page fetches the details, which is
+-- exactly the call this runs before, so an unbound authorization is the normal case. That is safe:
+-- the authorization only names the client, and the only thing ever touched is p_user_id's (the
+-- JWT-verified caller's) own consent and sessions for that client.
 CREATE OR REPLACE FUNCTION public.mcp_oauth_prepare_authorization(p_authorization_id text, p_user_id uuid)
 RETURNS text
 LANGUAGE plpgsql
@@ -73,7 +77,7 @@ BEGIN
   SELECT client_id INTO v_client
     FROM auth.oauth_authorizations
    WHERE authorization_id = p_authorization_id
-     AND user_id = p_user_id
+     AND (user_id IS NULL OR user_id = p_user_id)
      AND status = 'pending'
      AND expires_at > now();
   IF v_client IS NULL THEN

@@ -96,14 +96,29 @@ begin
   assert (select revoked_at is null from auth.oauth_consents where user_id = v_u and client_id = v_c),
     'updating an already-revoked grant leaves the consent alone';
 
-  -- (5) prepare: stale consent (no active grant) behind this user's pending authorization -> repaired
+  -- (5) prepare: stale consent (no active grant) behind a pending authorization -> repaired.
+  -- Real flow: the row is not bound to a user yet (Supabase binds user_id only when the consent
+  -- page fetches the details, which prepare runs before).
   insert into auth.oauth_consents (id, user_id, client_id, scopes) values (gen_random_uuid(), v_u, v_c3, 'openid');
+  insert into auth.oauth_authorizations (id, authorization_id, client_id, user_id, redirect_uri, scope)
+    values (gen_random_uuid(), 'az-unbound', v_c3, null, 'https://c.example/cb', 'openid');
+  v_res := mcp_oauth_prepare_authorization('az-unbound', v_u);
+  assert v_res = 'repaired', format('unbound authorization: expected repaired, got %s', v_res);
+  assert (select revoked_at is not null from auth.oauth_consents where user_id = v_u and client_id = v_c3),
+    'prepare revoked the stale consent';
+  -- the same, already bound to the caller
+  update auth.oauth_consents set revoked_at = null where user_id = v_u and client_id = v_c3;
   insert into auth.oauth_authorizations (id, authorization_id, client_id, user_id, redirect_uri, scope)
     values (gen_random_uuid(), 'az-stale', v_c3, v_u, 'https://c.example/cb', 'openid');
   v_res := mcp_oauth_prepare_authorization('az-stale', v_u);
-  assert v_res = 'repaired', format('stale consent: expected repaired, got %s', v_res);
-  assert (select revoked_at is not null from auth.oauth_consents where user_id = v_u and client_id = v_c3),
-    'prepare revoked the stale consent';
+  assert v_res = 'repaired', format('bound authorization: expected repaired, got %s', v_res);
+  -- an unbound authorization only ever touches the CALLER's consent for that client
+  insert into auth.oauth_consents (id, user_id, client_id, scopes) values (gen_random_uuid(), v_other, v_c3, 'openid');
+  update auth.oauth_consents set revoked_at = null where user_id = v_u and client_id = v_c3;
+  v_res := mcp_oauth_prepare_authorization('az-unbound', v_u);
+  assert v_res = 'repaired', format('unbound again: expected repaired, got %s', v_res);
+  assert (select revoked_at is null from auth.oauth_consents where user_id = v_other and client_id = v_c3),
+    'another user consent for the same client is never touched';
   -- no consent left -> ok
   v_res := mcp_oauth_prepare_authorization('az-stale', v_u);
   assert v_res = 'ok', format('no consent: expected ok, got %s', v_res);

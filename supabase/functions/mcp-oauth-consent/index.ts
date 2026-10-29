@@ -93,6 +93,7 @@ Deno.serve(async (req) => {
     // Only ever acts on the caller's own pending authorization (the RPC matches user_id).
     if (action === "prepare-authorization") {
       const outcome = await prepareOAuthAuthorization(svc, body.authorization_id, user.id);
+      if (outcome === "repaired") console.info("[mcp-oauth-consent] cleared a stale OAuth consent");
       return json({ outcome });
     }
 
