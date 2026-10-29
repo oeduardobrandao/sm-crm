@@ -683,6 +683,16 @@ const captionClash: PostEditSuggestion = {
   changed_fields: ['ig_caption'],
 };
 
+/** Legacy phantom row: `conteudo` listed as changed against a NULL doc, nothing the CRM can apply. */
+const nothingToApply: PostEditSuggestion = {
+  ...teamEditedCaptionOnly,
+  id: 13000,
+  suggested_conteudo: null,
+  suggested_conteudo_plain: null,
+  suggested_ig_caption: null,
+  changed_fields: ['conteudo'],
+};
+
 describe('PostEditorBody, client suggestion card (desktop)', () => {
   const renderCard = (suggestion: PostEditSuggestion, onAcceptSuggestion = vi.fn()) =>
     renderPhone({
@@ -712,6 +722,26 @@ describe('PostEditorBody, client suggestion card (desktop)', () => {
 
     await user.click(screen.getByRole('button', { name: 'Aceitar' }));
     expect(onAcceptSuggestion).toHaveBeenCalledWith(teamEditedCaptionOnly, ['texto'], []);
+  });
+
+  it('nothing to apply: Aceitar is disabled and Rejeitar still works', async () => {
+    const user = userEvent.setup();
+    const onAcceptSuggestion = vi.fn();
+    const onRejectSuggestion = vi.fn();
+    renderPhone({
+      layout: 'desktop',
+      post: { ...basePost, conteudo: { type: 'doc', content: [] } },
+      editSuggestion: nothingToApply,
+      onAcceptSuggestion,
+      onRejectSuggestion,
+    });
+
+    const accept = screen.getByRole('button', { name: 'Aceitar' });
+    expect(accept).toBeDisabled();
+    await user.click(accept);
+    expect(onAcceptSuggestion).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Rejeitar' }));
+    expect(onRejectSuggestion).toHaveBeenCalledWith(nothingToApply.id);
   });
 
   it('caption clash: amber line, "Aceitar…", diff defaults to live then flips to the client base', async () => {
@@ -819,6 +849,20 @@ describe('PostEditorBody, client suggestion sheet (phone)', () => {
     await user.click(within(dialog).getByRole('radio', { name: 'Usar a versão do cliente' }));
     await user.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
     expect(onAcceptSuggestion).toHaveBeenCalledWith(captionClash, ['legenda'], ['legenda']);
+  });
+
+  it('nothing to apply: Aceitar is disabled in the sheet and Rejeitar still works', async () => {
+    const user = userEvent.setup();
+    const onAcceptSuggestion = vi.fn();
+    const onRejectSuggestion = vi.fn();
+    renderPhone({ editSuggestion: nothingToApply, onAcceptSuggestion, onRejectSuggestion });
+
+    await user.click(screen.getByRole('button', { name: /Roteiro e briefing/ }));
+    const sheet = await screen.findByRole('dialog', { name: 'Sugestão do cliente' });
+    expect(within(sheet).getByRole('button', { name: 'Aceitar' })).toBeDisabled();
+    await user.click(within(sheet).getByRole('button', { name: 'Rejeitar' }));
+    await waitFor(() => expect(onRejectSuggestion).toHaveBeenCalledWith(nothingToApply.id));
+    expect(onAcceptSuggestion).not.toHaveBeenCalled();
   });
 
   it('team-only caption edit: footer in the sheet, plain Aceitar sends the changed field', async () => {

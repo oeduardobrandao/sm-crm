@@ -1624,7 +1624,10 @@ export function PostEditorBody({
               </button>
               <button
                 onClick={() => acceptFlow.request(editSuggestion)}
-                className="px-3 py-1 text-[12px] font-medium rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                // A legacy row can list changed_fields with nothing the CRM can apply (a NULL doc):
+                // there is nothing to accept, only to reject.
+                disabled={!suggestionStates.some((st) => st.changed)}
+                className="px-3 py-1 text-[12px] font-medium rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-emerald-600"
               >
                 {suggestionStates.some((st) => st.conflict)
                   ? t('suggestionReview.acceptReview')

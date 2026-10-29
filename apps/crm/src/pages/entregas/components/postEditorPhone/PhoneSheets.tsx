@@ -145,6 +145,7 @@ function SuggestionBody({
           type="button"
           className="phone-editor-bar__primary phone-editor-bar__primary--success"
           onClick={() => closeThen(() => onAccept(suggestion))}
+          disabled={!states.some((st) => st.changed)}
         >
           {states.some((st) => st.conflict)
             ? t('suggestionReview.acceptReview')

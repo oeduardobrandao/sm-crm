@@ -66,7 +66,10 @@ security definer
 set search_path = public
 as $$
 begin
-  -- accept_edit_suggestion is applying the suggested content
+  -- accept_edit_suggestion is applying the suggested content. Kept for symmetry only:
+  -- accept never writes workflow_posts.status, so this trigger (which fires on status
+  -- changes) cannot run inside an accept today; the guard protects a future accept that
+  -- would also move the status.
   if nullif(current_setting('app.accepting_edit_suggestion', true), '') is not null then
     return new;
   end if;
