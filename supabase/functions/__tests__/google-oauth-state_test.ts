@@ -107,7 +107,36 @@ Deno.test("google-oauth-state: a state issued 11 minutes ago throws State expire
   } finally {
     Date.now = realNow;
   }
-  await rejectsWith(() => verifyGoogleState(state, consumeDb({ data: {} }) as never), "State expired");
+  const db = consumeDb({ data: {} });
+  await rejectsWith(() => verifyGoogleState(state, db as never), "State expired");
+  assertEquals(db.calls.filter((c) => c.operation === "update").length, 0, "an expired state must not consume its nonce");
+});
+
+/** Signs an arbitrary payload with the module's HMAC scheme (TOKEN_ENCRYPTION_KEY, 32 chars). */
+async function signPayload(payload: Record<string, unknown>): Promise<string> {
+  const json = JSON.stringify(payload);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(Deno.env.get("TOKEN_ENCRYPTION_KEY")!.slice(0, 32).padEnd(32, "0")),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(json));
+  return `${toUrlSafeBase64(btoa(json))}.${toUrlSafeBase64(btoa(String.fromCharCode(...new Uint8Array(sig))))}`;
+}
+
+Deno.test("google-oauth-state: a validly signed state with an unknown product throws Invalid state product", async () => {
+  const state = await signPayload({
+    ...PARAMS,
+    product: "tiktok",
+    provider: "google",
+    nonce: crypto.randomUUID(),
+    iat: Date.now(),
+  });
+  const db = consumeDb({ data: { id: "row" } });
+  await rejectsWith(() => verifyGoogleState(state, db as never), "Invalid state product");
+  assertEquals(db.calls.filter((c) => c.operation === "update").length, 0, "nonce must not be consumed");
 });
 
 Deno.test("google-oauth-state: verifying the same state twice throws state_replayed the second time", async () => {
