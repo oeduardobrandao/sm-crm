@@ -2,12 +2,13 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { getDetails, approve, deny, listWorkspaces, recordGrant } = vi.hoisted(() => ({
+const { getDetails, approve, deny, listWorkspaces, recordGrant, prepare } = vi.hoisted(() => ({
   getDetails: vi.fn(),
   approve: vi.fn(),
   deny: vi.fn(),
   listWorkspaces: vi.fn(),
   recordGrant: vi.fn(),
+  prepare: vi.fn(),
 }));
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -27,6 +28,7 @@ vi.mock('../../../lib/supabase', () => ({
 vi.mock('@/services/mcp-oauth', () => ({
   listEligibleWorkspaces: listWorkspaces,
   recordOAuthGrant: recordGrant,
+  prepareOAuthAuthorization: prepare,
 }));
 
 import ConsentPage from '../ConsentPage';
@@ -72,6 +74,7 @@ beforeEach(() => {
     platform_admin: false,
   });
   recordGrant.mockResolvedValue({ ok: true });
+  prepare.mockResolvedValue('ok');
 });
 
 const ALL_SCOPES = [
@@ -91,6 +94,46 @@ const ALL_SCOPES = [
 ];
 
 describe('ConsentPage', () => {
+  describe('reconnecting after a revoked connection', () => {
+    it('prepares the authorization before asking Supabase for its details', async () => {
+      const order: string[] = [];
+      prepare.mockImplementation(async () => {
+        order.push('prepare');
+        return 'repaired';
+      });
+      getDetails.mockImplementation(async () => {
+        order.push('details');
+        return { data: DETAILS, error: null };
+      });
+      renderPage();
+
+      expect(await screen.findByText(/Conectar Claude/)).toBeInTheDocument();
+      expect(prepare).toHaveBeenCalledWith('auth-1');
+      expect(order).toEqual(['prepare', 'details']);
+    });
+
+    it('still follows an auto-approved redirect when the connection is active', async () => {
+      getDetails.mockResolvedValue({
+        data: { redirect_url: 'https://claude.ai/cb?code=x' },
+        error: null,
+      });
+      renderPage();
+
+      await waitFor(() =>
+        expect(window.location.assign).toHaveBeenCalledWith('https://claude.ai/cb?code=x'),
+      );
+      expect(prepare).toHaveBeenCalledWith('auth-1');
+    });
+
+    it('carries on to the consent screen when prepare fails', async () => {
+      prepare.mockRejectedValue(new Error('Erro 400'));
+      renderPage();
+
+      expect(await screen.findByText(/Conectar Claude/)).toBeInTheDocument();
+      expect(getDetails).toHaveBeenCalledWith('auth-1');
+    });
+  });
+
   it('shows the client + workspace and records the grant on approve', async () => {
     renderPage();
 

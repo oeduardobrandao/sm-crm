@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { supabase } from '../../lib/supabase';
 import {
   listEligibleWorkspaces,
+  prepareOAuthAuthorization,
   recordOAuthGrant,
   type EligibleWorkspace,
 } from '@/services/mcp-oauth';
@@ -60,6 +61,11 @@ export default function ConsentPage() {
       return;
     }
     (async () => {
+      // Must run first: getAuthorizationDetails auto-approves an existing consent, and a consent
+      // left over from a revoked connection would loop the client on a token `mcp` refuses.
+      // Best effort: if it fails, the page behaves exactly as before.
+      await prepareOAuthAuthorization(authorizationId).catch(() => undefined);
+      if (cancelled) return;
       const { data, error } = await supabase.auth.oauth.getAuthorizationDetails(authorizationId);
       if (cancelled) return;
       if (error || !data) {
