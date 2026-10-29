@@ -1,7 +1,9 @@
 // Anexar imagem do chat (board 5, ChatGPT). Picking a slide that already has an image asks
 // before replacing; an empty slot appends. Ineligible posts show the server's reason only.
+// After a success the card shows the attached image (the signed URL the tool returns, on the
+// media origin the resource CSP allows): in its slot and next to the confirmation.
 import { useState } from 'react';
-import { ImagePlus, Images, Replace } from 'lucide-react';
+import { CheckCircle2, ImagePlus, Images, Replace } from 'lucide-react';
 import type { Host, PickedImage } from '../bridge';
 import type { AttachImageData } from '../types';
 import {
@@ -14,12 +16,18 @@ import {
   TIPO_LABEL,
   TipoBadge,
   errorMessage,
+  resultJson,
 } from '../ui';
 
+type Slide = { url?: string; fresh?: boolean };
+
 export function AttachImage({ host, data }: { host: Host; data: AttachImageData }) {
-  const media = (Array.isArray(data.media) ? data.media : [])
-    .slice()
-    .sort((a, b) => a.position - b.position);
+  const [media, setMedia] = useState<Slide[]>(() =>
+    (Array.isArray(data.media) ? data.media : [])
+      .slice()
+      .sort((a, b) => a.position - b.position)
+      .map((m) => ({ url: m.url })),
+  );
   const max = data.max || 10;
   const room = media.length < max;
   const slots = media.length + (room ? 1 : 0);
@@ -36,6 +44,7 @@ export function AttachImage({ host, data }: { host: Host; data: AttachImageData 
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: 'ok' | 'error'; text: string }>();
   const [done, setDone] = useState(false);
+  const [attachedUrl, setAttachedUrl] = useState<string>();
 
   const hasImage = (n: number) => n <= media.length;
   const pickedHas = hasImage(picked);
@@ -53,6 +62,15 @@ export function AttachImage({ host, data }: { host: Host; data: AttachImageData 
       if (r.isError) {
         setMsg({ tone: 'error', text: errorMessage(r) });
       } else {
+        const url = resultJson(r)?.url;
+        const fresh: Slide = { url: typeof url === 'string' ? url : undefined, fresh: true };
+        setMedia((prev) => {
+          const next = prev.map((m): Slide => ({ ...m, fresh: false }));
+          if (replace) next[picked - 1] = fresh;
+          else next.splice(picked - 1, 0, fresh);
+          return next;
+        });
+        setAttachedUrl(fresh.url);
         setDone(true);
         setMsg({
           tone: 'ok',
@@ -84,6 +102,7 @@ export function AttachImage({ host, data }: { host: Host; data: AttachImageData 
       if (next) {
         setImage(next);
         setDone(false);
+        setAttachedUrl(undefined);
         setMsg(undefined);
       }
     } catch {
@@ -166,12 +185,16 @@ export function AttachImage({ host, data }: { host: Host; data: AttachImageData 
         {Array.from({ length: slots }, (_, i) => {
           const n = i + 1;
           const has = hasImage(n);
-          const url = has ? media[i].url : undefined;
+          const slide = has ? media[i] : undefined;
+          const url = slide?.url;
+          const cls = ['mw-slot', has && 'mw-slot-filled', slide?.fresh && 'mw-slot-fresh']
+            .filter(Boolean)
+            .join(' ');
           return (
             <button
               key={n}
               type="button"
-              className={has ? 'mw-slot mw-slot-filled' : 'mw-slot'}
+              className={cls}
               aria-pressed={n === picked}
               aria-label={`Lâmina ${n}${has ? ', já tem imagem' : ', vazia'}`}
               disabled={busy || confirming || done}
@@ -182,17 +205,31 @@ export function AttachImage({ host, data }: { host: Host; data: AttachImageData 
             >
               {url ? <img src={url} alt="" loading="lazy" /> : null}
               <span className="mw-slot-n">{n}</span>
-              <span className="mw-slot-hint">{has ? 'Com imagem' : 'Vazia'}</span>
+              <span className="mw-slot-hint">
+                {slide?.fresh ? 'Anexada agora' : has ? 'Com imagem' : 'Vazia'}
+              </span>
             </button>
           );
         })}
       </div>
       {confirming ? (
         <Notice tone="info">{`Substituir a imagem da lâmina ${picked}?`}</Notice>
-      ) : (
+      ) : done ? null : (
         <span className="mw-hint">{summary}</span>
       )}
-      {msg ? <Notice tone={msg.tone}>{msg.text}</Notice> : null}
+      {msg?.tone === 'ok' ? (
+        <div className="mw-attached" role="status">
+          {attachedUrl ? (
+            <img src={attachedUrl} alt={`Imagem anexada na lâmina ${picked}`} />
+          ) : null}
+          <p className="mw-attached-text">
+            <CheckCircle2 size={16} aria-hidden="true" />
+            {msg.text}
+          </p>
+        </div>
+      ) : msg ? (
+        <Notice tone={msg.tone}>{msg.text}</Notice>
+      ) : null}
     </Card>
   );
 }

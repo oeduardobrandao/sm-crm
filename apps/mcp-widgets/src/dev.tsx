@@ -53,6 +53,18 @@ function devCall(name: string, args: Record<string, unknown>): ToolCallResult {
       structuredContent: { card: 'send_result', v: 1, post_id: args.post_id, outcome: 'sent' },
     };
   }
+  if (name === 'attach_image_to_post') {
+    const url =
+      'data:image/svg+xml,' +
+      encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 5"><rect width="4" height="5" fill="#f4a261"/><circle cx="2" cy="2" r="1" fill="#e76f51"/></svg>',
+      );
+    return {
+      content: [
+        { type: 'text', text: JSON.stringify({ ok: true, ...args, image: undefined, url }) },
+      ],
+    };
+  }
   return { content: [{ type: 'text', text: '{"ok":true}' }] };
 }
 
