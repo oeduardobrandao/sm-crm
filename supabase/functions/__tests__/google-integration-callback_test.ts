@@ -178,6 +178,13 @@ Deno.test("auth_invalid_product: unknown or missing product returns 400 invalid_
   assertEquals(await edge.json(), { error: "invalid_product" });
 });
 
+Deno.test("auth_extra_segments: /auth/:clientId/anything returns 404", async () => {
+  const db = authedDb();
+  const res = await makeHandler(db)(authRequest(`/auth/${CLIENT}/anything?product=youtube`));
+  assertEquals(res.status, 404);
+  assertEquals(db.calls.filter((c) => c.table === "oauth_states").length, 0);
+});
+
 Deno.test("auth_requires_tenant: no JWT or no membership returns 401", async () => {
   const anon = await makeHandler(createSupabaseQueryMock())(new Request(`${FN}/auth/${CLIENT}?product=youtube`));
   assertEquals(anon.status, 401);
@@ -191,9 +198,10 @@ Deno.test("auth_requires_tenant: no JWT or no membership returns 401", async () 
 
 // ─── GET /callback ──────────────────────────────────────────────────────────────
 
-Deno.test("callback_missing_scope: partial grant is revoked and redirects missing_scope", async () => {
+Deno.test("callback_missing_scope: partial grant with no connection for the sub is revoked, redirects missing_scope", async () => {
   const state = await mintState("youtube");
   const db = callbackDb();
+  db.queue("google_connections", "select", { data: [] });
   const f = stubGoogle({
     token: { access_token: "at-1", refresh_token: "rt-1", expires_in: 3599, scope: "openid https://www.googleapis.com/auth/youtube.readonly" },
   });
@@ -205,6 +213,44 @@ Deno.test("callback_missing_scope: partial grant is revoked and redirects missin
     const revoke = f.calls.find((c) => c.url === "https://oauth2.googleapis.com/revoke")!;
     assertEquals(new URLSearchParams(String(revoke.init?.body)).get("token"), "rt-1");
     assertEquals(rpcCalls(db, "google_connection_upsert").length, 0);
+    const lookup = db.calls.find((c) => c.table === "google_connections")!;
+    assert(
+      lookup.modifiers.some((m) => m.method === "eq" && m.args[0] === "google_sub" && m.args[1] === "sub-1"),
+      "lookup must be by google_sub across workspaces",
+    );
+    assert(!lookup.modifiers.some((m) => m.args[0] === "conta_id"), "lookup must not be scoped to one workspace");
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("callback_missing_scope_in_use: a connection row for the sub (any workspace) skips the revoke", async () => {
+  const state = await mintState("youtube");
+  const db = callbackDb();
+  db.queue("google_connections", "select", { data: [{ id: "other-conn" }] });
+  const f = stubGoogle({
+    token: { access_token: "at-1", refresh_token: "rt-1", expires_in: 3599, scope: "openid https://www.googleapis.com/auth/youtube.readonly" },
+  });
+  try {
+    const res = await makeHandler(db)(callbackRequest(state));
+    assertEquals(res.headers.get("Location"), `${TARGET}?yt_error=missing_scope`);
+    assertEquals(f.count("https://oauth2.googleapis.com/revoke"), 0);
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("callback_missing_scope_lookup_error: a failed connection lookup skips the revoke", async () => {
+  const state = await mintState("youtube");
+  const db = callbackDb();
+  db.queue("google_connections", "select", { data: null, error: { message: "timeout" } });
+  const f = stubGoogle({
+    token: { access_token: "at-1", refresh_token: "rt-1", expires_in: 3599, scope: "openid https://www.googleapis.com/auth/youtube.readonly" },
+  });
+  try {
+    const res = await makeHandler(db)(callbackRequest(state));
+    assertEquals(res.headers.get("Location"), `${TARGET}?yt_error=missing_scope`);
+    assertEquals(f.count("https://oauth2.googleapis.com/revoke"), 0);
   } finally {
     f.restore();
   }
@@ -361,33 +407,78 @@ Deno.test("callback_youtube_success: upserts the connection and the channel, aud
   }
 });
 
-Deno.test("callback_no_channel: account without a YouTube channel redirects no_channel", async () => {
+Deno.test("callback_no_channel: no channel redirects no_channel before any write, revokes an unused grant", async () => {
   const state = await mintState("youtube");
   const db = callbackDb();
-  db.queueRpc("google_connection_upsert", { data: CONNECTION_ID });
+  db.queue("google_connections", "select", { data: [] });
   const f = stubGoogle({ channels: { items: [] } });
   try {
     const res = await makeHandler(db)(callbackRequest(state));
     assertEquals(res.headers.get("Location"), `${TARGET}?yt_error=no_channel`);
     assertEquals(db.calls.filter((c) => c.table === "youtube_channels").length, 0);
+    assertEquals(rpcCalls(db, "google_connection_upsert").length, 0, "no connection row for a failed product step");
+    assertEquals(f.count("https://oauth2.googleapis.com/revoke"), 1);
   } finally {
     f.restore();
   }
+
+  const used = callbackDb();
+  used.queue("google_connections", "select", { data: [{ id: "conn-elsewhere" }] });
+  const f2 = stubGoogle({ channels: { items: [] } });
+  try {
+    const res = await makeHandler(used)(callbackRequest(await mintState("youtube")));
+    assertEquals(res.headers.get("Location"), `${TARGET}?yt_error=no_channel`);
+    assertEquals(f2.count("https://oauth2.googleapis.com/revoke"), 0, "grant in use elsewhere is kept");
+  } finally {
+    f2.restore();
+  }
 });
 
-Deno.test("callback_channel_in_use: 23505 on the channel names the other client", async () => {
+Deno.test("callback_channel_in_use: pre-check names the other client before any write, revokes an unused grant", async () => {
   const state = await mintState("youtube");
   const db = callbackDb();
-  db.queueRpc("google_connection_upsert", { data: CONNECTION_ID });
-  db.queue("youtube_channels", "upsert", { data: null, error: { code: "23505", message: "duplicate key" } });
-  db.queue("youtube_channels", "select", { data: { client_id: 7 } });
+  db.queue("youtube_channels", "select", { data: [{ client_id: 7 }] });
   db.queue("clientes", "select", { data: { id: 7, nome: "Clínica X" } });
+  db.queue("google_connections", "select", { data: [] });
   const f = stubGoogle();
   try {
     const res = await makeHandler(db)(callbackRequest(state));
     assertEquals(res.status, 302);
     assertEquals(res.headers.get("Location"), `${TARGET}?yt_error=channel_in_use&yt_other=Cl%C3%ADnica%20X`);
+    assertEquals(rpcCalls(db, "google_connection_upsert").length, 0);
+    assertEquals(db.calls.filter((c) => c.table === "youtube_channels" && c.operation === "upsert").length, 0);
     assertEquals(db.calls.filter((c) => c.table === "audit_log").length, 0);
+    assertEquals(f.count("https://oauth2.googleapis.com/revoke"), 1);
+
+    const lookup = db.calls.find((c) => c.table === "youtube_channels" && c.operation === "select")!;
+    const filters = lookup.modifiers.map((m) => `${m.method}:${m.args[0]}:${m.args[1]}`);
+    assert(filters.includes(`eq:conta_id:${CONTA}`), `collision lookup must be tenant-scoped: ${filters}`);
+    assert(filters.includes("eq:channel_id:UC123"), `channel filter missing: ${filters}`);
+    assert(filters.includes(`neq:client_id:${CLIENT}`), `own client must be excluded: ${filters}`);
+    const nameLookup = db.calls.filter((c) => c.table === "clientes")[1];
+    assert(
+      nameLookup.modifiers.some((m) => m.method === "eq" && m.args[0] === "conta_id" && m.args[1] === CONTA),
+      "other client's name must be read inside the tenant",
+    );
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("callback_channel_in_use_race: 23505 on the channel upsert still names the other client, no revoke", async () => {
+  const state = await mintState("youtube");
+  const db = callbackDb();
+  db.queue("youtube_channels", "select", { data: [] }, { data: { client_id: 7 } });
+  db.queueRpc("google_connection_upsert", { data: CONNECTION_ID });
+  db.queue("youtube_channels", "upsert", { data: null, error: { code: "23505", message: "duplicate key" } });
+  db.queue("clientes", "select", { data: { id: 7, nome: "Clínica X" } });
+  const f = stubGoogle();
+  try {
+    const res = await makeHandler(db)(callbackRequest(state));
+    assertEquals(res.headers.get("Location"), `${TARGET}?yt_error=channel_in_use&yt_other=Cl%C3%ADnica%20X`);
+    assertEquals(f.count("https://oauth2.googleapis.com/revoke"), 0, "the connection row now exists: keep the grant");
+    const backstop = db.calls.filter((c) => c.table === "youtube_channels" && c.operation === "select")[1];
+    assert(backstop.modifiers.some((m) => m.method === "eq" && m.args[0] === "conta_id" && m.args[1] === CONTA));
   } finally {
     f.restore();
   }

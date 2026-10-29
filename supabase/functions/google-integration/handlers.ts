@@ -148,11 +148,30 @@ async function runCallback(
 
   const grant = await exchangeGoogleCode(code);
   const user = await fetchGoogleUserInfo(grant.accessToken);
+  const grantToken = grant.refreshToken ?? grant.accessToken;
 
   if (!hasRequiredScopes(state.product, grant.scopes)) {
-    // A just-minted partial grant still counts toward Google's per-account token cap.
-    await revokeGoogleToken(grant.refreshToken ?? grant.accessToken);
+    // A just-minted partial grant still counts toward Google's per-account token cap, but
+    // with include_granted_scopes it is the same grant any existing connection uses.
+    await revokeIfUnused(svc, user.sub, grantToken);
     return fail("missing_scope");
+  }
+
+  // YouTube product checks run BEFORE anything is written, with the fresh access token, so a
+  // failure never leaves a connection row (or an orphan grant) behind. They also run before
+  // the refresh-token gate, so a doomed flow is not bounced through a consent screen first.
+  let channel: YouTubeChannelItem & { id: string } | null = null;
+  if (state.product === "youtube") {
+    channel = await fetchOwnYouTubeChannel(grant.accessToken);
+    if (!channel) {
+      await revokeIfUnused(svc, user.sub, grantToken);
+      return fail("no_channel");
+    }
+    const owner = await findOtherChannelOwner(svc, state.contaId, channel.id, clientId);
+    if (owner) {
+      await revokeIfUnused(svc, user.sub, grantToken);
+      return fail("channel_in_use", owner.name ? `&yt_other=${encodeURIComponent(owner.name)}` : "");
+    }
   }
 
   if (grant.refreshToken === null) {
@@ -193,10 +212,11 @@ async function runCallback(
   }
 
   let success: string;
-  if (state.product === "youtube") {
-    const result = await linkYouTubeChannel(svc, state.contaId, clientId, connectionId, grant.accessToken);
-    if (result.kind === "no_channel") return fail("no_channel");
+  if (channel) {
+    const result = await linkYouTubeChannel(svc, state.contaId, clientId, connectionId, channel);
     if (result.kind === "in_use") {
+      // Race backstop: another client linked the channel between the pre-check and here. The
+      // connection row now exists, so the grant is in use and is NOT revoked.
       return fail("channel_in_use", result.otherName ? `&yt_other=${encodeURIComponent(result.otherName)}` : "");
     }
     success = `${target}?yt_connected=1`;
@@ -217,6 +237,24 @@ async function runCallback(
   return new CallbackOutcome(success);
 }
 
+/**
+ * Revokes a grant only when no `google_connections` row in ANY workspace uses this Google
+ * identity. With include_granted_scopes every flow for one Google user + our OAuth client is
+ * one combined grant, so revoking it would kill connections already in use elsewhere. A lookup
+ * error skips the revoke (fail safe: an orphan grant beats a killed connection).
+ */
+async function revokeIfUnused(svc: DbClient, sub: string, token: string): Promise<void> {
+  const { data, error } = await svc.from("google_connections").select("id").eq("google_sub", sub).limit(1);
+  if (error) {
+    console.error(`[google-integration] connection lookup failed, revoke skipped: ${error.message}`);
+    return;
+  }
+  if (Array.isArray(data) && data.length > 0) return;
+  if (!(await revokeGoogleToken(token))) {
+    console.error("[google-integration] revoking an unused partial grant failed");
+  }
+}
+
 // ─── YouTube product step ───────────────────────────────────────────────────────────
 
 interface YouTubeChannelItem {
@@ -232,19 +270,42 @@ function toCount(value: string | number | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-type LinkResult = { kind: "linked" } | { kind: "no_channel" } | { kind: "in_use"; otherName: string | null };
+async function fetchOwnYouTubeChannel(accessToken: string): Promise<(YouTubeChannelItem & { id: string }) | null> {
+  const body = (await googleFetch(YOUTUBE_CHANNELS_URL, accessToken)) as { items?: YouTubeChannelItem[] } | null;
+  const channel = body?.items?.[0];
+  return channel?.id ? (channel as YouTubeChannelItem & { id: string }) : null;
+}
+
+/** Another client of the same workspace already holding this channel, if any. */
+async function findOtherChannelOwner(
+  svc: DbClient,
+  contaId: string,
+  channelId: string,
+  clientId: number,
+): Promise<{ name: string | null } | null> {
+  const { data, error } = await svc
+    .from("youtube_channels")
+    .select("client_id")
+    .eq("conta_id", contaId)
+    .eq("channel_id", channelId)
+    .neq("client_id", clientId)
+    .limit(1);
+  if (error) throw new Error(`youtube_channels pre-check failed: ${error.message}`);
+  const row = Array.isArray(data) ? data[0] : null;
+  if (!row) return null;
+  const other = await loadClientInTenant(svc, row.client_id as number, contaId);
+  return { name: other?.nome ?? null };
+}
+
+type LinkResult = { kind: "linked" } | { kind: "in_use"; otherName: string | null };
 
 async function linkYouTubeChannel(
   svc: DbClient,
   contaId: string,
   clientId: number,
   connectionId: string,
-  accessToken: string,
+  channel: YouTubeChannelItem & { id: string },
 ): Promise<LinkResult> {
-  const body = (await googleFetch(YOUTUBE_CHANNELS_URL, accessToken)) as { items?: YouTubeChannelItem[] } | null;
-  const channel = body?.items?.[0];
-  if (!channel?.id) return { kind: "no_channel" };
-
   const stats = channel.statistics ?? {};
   const { error } = await svc.from("youtube_channels").upsert(
     {
@@ -297,7 +358,7 @@ export function createGoogleIntegrationHandler(deps: GoogleIntegrationDeps) {
       if (req.method === "GET" && path === "/callback") {
         return await handleCallback(svc, url);
       }
-      if (req.method === "GET" && path.startsWith("/auth/")) {
+      if (req.method === "GET" && /^\/auth\/[^/]+$/.test(path)) {
         return await handleAuth(svc, req, path, url, cors);
       }
       return json(cors, { error: "not_found" }, 404);
