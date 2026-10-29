@@ -822,6 +822,44 @@ describe('WorkflowDrawer Histórico tab', () => {
   });
 });
 
+describe('WorkflowDrawer posts count', () => {
+  const basePost = {
+    workflow_id: 10,
+    conteudo: null,
+    conteudo_plain: '',
+    tipo: 'feed',
+    status: 'rascunho',
+    responsavel_id: null,
+    scheduled_at: null,
+    ig_caption: null,
+    platform: 'instagram',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('shows how many posts the fluxo has in the section header', async () => {
+    mockGetPosts.mockResolvedValue([
+      { ...basePost, id: 1, titulo: 'Post A', ordem: 0 },
+      { ...basePost, id: 2, titulo: 'Post B', ordem: 1 },
+      { ...basePost, id: 3, titulo: 'Post C', ordem: 2 },
+    ] as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    expect(await screen.findByText('Posts (3)')).toBeInTheDocument();
+  });
+
+  it('shows zero for an empty fluxo', async () => {
+    mockGetPosts.mockResolvedValue([]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    expect(await screen.findByText('Posts (0)')).toBeInTheDocument();
+  });
+});
+
 describe('WorkflowDrawer desmembrar do fluxo (Task 15)', () => {
   // Two posts so partial vs. total selection is actually distinguishable --
   // the archive-empty-flow checkbox in the confirm dialog only shows when the
