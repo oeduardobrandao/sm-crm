@@ -36,6 +36,7 @@
       "pending": "Sugestão de edição enviada",
       "accepted": "Sugestão de edição aceita",
       "rejected": "Sugestão de edição rejeitada",
+      "superseded": "Sugestão de edição não revisada",
       "generic": "Sugestão de edição"
     }
   },
