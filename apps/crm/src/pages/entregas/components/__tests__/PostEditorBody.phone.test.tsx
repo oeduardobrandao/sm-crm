@@ -143,12 +143,15 @@ vi.mock('@/pages/entregas/components/PostVersionHistorySheet', () => ({
     open ? <div data-testid="versions-open" /> : null,
 }));
 vi.mock('@/components/ui/date-time-picker', () => ({ DateTimePicker: () => null }));
+vi.mock('@/pages/entregas/components/ReadOnlyTipTap', () => ({
+  ReadOnlyTipTap: () => <div data-testid="texto-diff-stub" />,
+}));
 
 import { toast } from 'sonner';
 import { PostEditorBody, type PostEditorBodyProps } from '../PostEditorBody';
 import { TIPO_LABELS } from '../../postLabels';
 import type { PhoneEditorChrome } from '../postEditorPhone/types';
-import type { CommentThreadWithComments, WorkflowPost } from '@/store';
+import type { CommentThreadWithComments, PostEditSuggestion, WorkflowPost } from '@/store';
 
 const basePost = {
   id: 42,
@@ -648,5 +651,144 @@ describe('PostEditorBody, phone layout: colaboradores do Instagram', () => {
       ),
     );
     await waitFor(() => expect(screen.getByPlaceholderText('Adicionar @usuário')).toHaveFocus());
+  });
+});
+
+// ── Client edit suggestion: review card per field ───────────────────────────────
+
+/** The client changed the texto; the team has since edited only the legenda (post 11807). */
+const teamEditedCaptionOnly: PostEditSuggestion = {
+  id: 11807,
+  post_id: 42,
+  suggested_conteudo: { type: 'doc', content: [] },
+  suggested_conteudo_plain: 'Texto do cliente',
+  suggested_ig_caption: null,
+  original_conteudo: null,
+  original_conteudo_plain: 'Primeiro parágrafo\nSegundo parágrafo',
+  original_ig_caption: 'Legenda antiga',
+  changed_fields: ['conteudo', 'conteudo_plain'],
+  status: 'pending',
+  updated_at: '2026-10-28T20:33:00Z',
+};
+
+/** The client rewrote the legenda, and the team rewrote it too since. */
+const captionClash: PostEditSuggestion = {
+  ...teamEditedCaptionOnly,
+  id: 12000,
+  suggested_conteudo: null,
+  suggested_conteudo_plain: '',
+  suggested_ig_caption: 'Legenda do cliente',
+  original_conteudo_plain: 'Primeiro parágrafo\nSegundo parágrafo',
+  original_ig_caption: 'Legenda base',
+  changed_fields: ['ig_caption'],
+};
+
+describe('PostEditorBody, client suggestion card (desktop)', () => {
+  const renderCard = (suggestion: PostEditSuggestion, onAcceptSuggestion = vi.fn()) =>
+    renderPhone({
+      layout: 'desktop',
+      post: { ...basePost, conteudo: { type: 'doc', content: [] } },
+      editSuggestion: suggestion,
+      onAcceptSuggestion,
+    });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    limitsMock.features = { feature_tiktok: true };
+  });
+
+  it('team-only caption edit: no conflict, plain Aceitar, footer says what accept leaves alone', async () => {
+    const user = userEvent.setup();
+    const onAcceptSuggestion = vi.fn();
+    renderCard(teamEditedCaptionOnly, onAcceptSuggestion);
+
+    expect(
+      screen.getByText(
+        'Aceitar aplica só o texto do post. A legenda que a equipe editou fica como está.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/depois desta sugestão/)).toBeNull();
+    expect(screen.getByTestId('texto-diff-stub')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Aceitar' }));
+    expect(onAcceptSuggestion).toHaveBeenCalledWith(teamEditedCaptionOnly, ['texto']);
+  });
+
+  it('caption clash: amber line, "Aceitar…", diff defaults to live then flips to the client base', async () => {
+    const user = userEvent.setup();
+    const onAcceptSuggestion = vi.fn();
+    renderCard(captionClash, onAcceptSuggestion);
+
+    expect(
+      screen.getByText('A equipe editou a legenda depois desta sugestão.'),
+    ).toBeInTheDocument();
+    // What accepting would do: the team's current caption is struck out.
+    const card = screen
+      .getByText('A equipe editou a legenda depois desta sugestão.')
+      .closest('div.space-y-2')!;
+    expect(card.textContent).toContain('Legenda IG');
+    expect(card.textContent).not.toContain('Legenda base');
+    expect(screen.getByRole('button', { name: 'O que muda ao aceitar' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Só o que o cliente mudou' }));
+    expect(card.textContent).toContain('Legenda base');
+    expect(card.textContent).not.toContain('Legenda IG');
+
+    // Conflicts never accept in one click: the dialog comes first.
+    await user.click(screen.getByRole('button', { name: 'Aceitar…' }));
+    expect(onAcceptSuggestion).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole('dialog', { name: 'Aceitar a sugestão?' });
+    expect(within(dialog).getByRole('radio', { name: 'Manter a versão da equipe' })).toBeChecked();
+    // Keeping the team caption leaves nothing to apply.
+    expect(within(dialog).getByRole('button', { name: 'Aceitar sugestão' })).toBeDisabled();
+    await user.click(within(dialog).getByRole('radio', { name: 'Usar a versão do cliente' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
+    expect(onAcceptSuggestion).toHaveBeenCalledWith(captionClash, ['legenda']);
+  });
+});
+
+describe('PostEditorBody, client suggestion sheet (phone)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    limitsMock.features = { feature_tiktok: true };
+  });
+
+  it('caption clash: the sheet shows the conflict, and the dialog opens after the sheet closes', async () => {
+    const user = userEvent.setup();
+    const onAcceptSuggestion = vi.fn();
+    renderPhone({ editSuggestion: captionClash, onAcceptSuggestion });
+
+    await user.click(screen.getByRole('button', { name: /Roteiro e briefing/ }));
+    const sheet = await screen.findByRole('dialog', { name: 'Sugestão do cliente' });
+    expect(
+      within(sheet).getByText('A equipe editou a legenda depois desta sugestão.'),
+    ).toBeInTheDocument();
+    await user.click(within(sheet).getByRole('button', { name: 'Aceitar…' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Aceitar a sugestão?' });
+    await user.click(within(dialog).getByRole('radio', { name: 'Usar a versão do cliente' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
+    expect(onAcceptSuggestion).toHaveBeenCalledWith(captionClash, ['legenda']);
+  });
+
+  it('team-only caption edit: footer in the sheet, plain Aceitar sends the changed field', async () => {
+    const user = userEvent.setup();
+    const onAcceptSuggestion = vi.fn();
+    renderPhone({ editSuggestion: teamEditedCaptionOnly, onAcceptSuggestion });
+
+    await user.click(screen.getByRole('button', { name: /Roteiro e briefing/ }));
+    const sheet = await screen.findByRole('dialog', { name: 'Sugestão do cliente' });
+    expect(
+      within(sheet).getByText(
+        'Aceitar aplica só o texto do post. A legenda que a equipe editou fica como está.',
+      ),
+    ).toBeInTheDocument();
+    await user.click(within(sheet).getByRole('button', { name: 'Aceitar' }));
+    await waitFor(() =>
+      expect(onAcceptSuggestion).toHaveBeenCalledWith(teamEditedCaptionOnly, ['texto']),
+    );
   });
 });

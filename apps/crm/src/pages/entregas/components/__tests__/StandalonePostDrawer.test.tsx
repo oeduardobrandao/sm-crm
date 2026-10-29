@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -241,6 +241,9 @@ import {
   getPostCommentThreads,
   deleteCommentThread,
   deletePostComment,
+  getPostEditSuggestions,
+  acceptEditSuggestion,
+  syncMentions,
 } from '@/store';
 import { toast } from 'sonner';
 
@@ -923,5 +926,101 @@ describe('StandalonePostDrawer', () => {
       expect(await screen.findByText('Este post continua aprovado.')).toBeInTheDocument();
       expect(onRefresh).toHaveBeenCalled();
     });
+  });
+});
+
+describe('StandalonePostDrawer edit suggestions', () => {
+  const mentionDoc = {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'mention', attrs: { entityType: 'membro', id: 7, label: 'Ana', parentId: null } },
+        ],
+      },
+    ],
+  };
+  const suggestion = {
+    id: 300,
+    post_id: 5,
+    suggested_conteudo: mentionDoc,
+    suggested_conteudo_plain: '@Ana confere',
+    suggested_ig_caption: 'Legenda do cliente',
+    original_conteudo: null,
+    original_conteudo_plain: '',
+    original_ig_caption: 'Legenda base',
+    changed_fields: ['conteudo', 'ig_caption'],
+    status: 'pending' as const,
+    updated_at: '2026-08-01T00:00:00Z',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetStandalonePost.mockResolvedValue(basePost({ ig_caption: 'Legenda da equipe' }) as never);
+    vi.mocked(getPostEditSuggestions).mockResolvedValue([suggestion] as never);
+    vi.mocked(acceptEditSuggestion).mockResolvedValue(undefined as never);
+  });
+
+  it('shows the conflict line and the "Aceitar…" button when the team edited the caption', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    expect(await screen.findByRole('button', { name: 'Aceitar…' })).toBeInTheDocument();
+    expect(
+      screen.getByText('A equipe editou a legenda depois desta sugestão.'),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the team caption by default: applies texto only and syncs its mentions', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar…' }));
+    expect(vi.mocked(acceptEditSuggestion)).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole('dialog', { name: 'Aceitar a sugestão?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
+
+    await waitFor(() =>
+      expect(vi.mocked(acceptEditSuggestion)).toHaveBeenCalledWith(300, '2026-08-01T00:00:00Z', [
+        'texto',
+      ]),
+    );
+    await waitFor(() =>
+      expect(vi.mocked(syncMentions)).toHaveBeenCalledWith('workflow_post', 5, [7]),
+    );
+  });
+
+  it('a caption-only accept leaves the team mentions alone', async () => {
+    vi.mocked(getPostEditSuggestions).mockResolvedValue([
+      { ...suggestion, original_ig_caption: 'Legenda da equipe', changed_fields: ['ig_caption'] },
+    ] as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar' }));
+
+    await waitFor(() =>
+      expect(vi.mocked(acceptEditSuggestion)).toHaveBeenCalledWith(300, '2026-08-01T00:00:00Z', [
+        'legenda',
+      ]),
+    );
+    expect(vi.mocked(syncMentions)).not.toHaveBeenCalled();
+  });
+
+  it('suggestion_conflict shows the review-again toast and refetches the post and suggestion', async () => {
+    vi.mocked(acceptEditSuggestion).mockRejectedValue({ message: 'suggestion_conflict' });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    renderDrawer(qc);
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Aceitar a sugestão?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'O post mudou desde que você abriu. Revise a sugestão de novo.',
+      ),
+    );
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['standalone-post', 5] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['post-edit-suggestions'] });
+    expect(vi.mocked(syncMentions)).not.toHaveBeenCalled();
   });
 });

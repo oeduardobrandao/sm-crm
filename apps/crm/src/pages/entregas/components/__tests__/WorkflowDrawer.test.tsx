@@ -468,6 +468,11 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
     },
     suggested_conteudo_plain: '@Ana confere',
     suggested_ig_caption: null,
+    // The base the client started from: equal to the live post below, so nothing conflicts
+    // (a NULL base would read as '' and still match here, but state it).
+    original_conteudo: null,
+    original_conteudo_plain: '',
+    original_ig_caption: null,
     changed_fields: ['conteudo'],
     status: 'pending' as const,
     updated_at: '2026-08-01T00:00:00Z',
@@ -550,6 +555,138 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
       ]),
     );
     expect(mockSyncMentions).not.toHaveBeenCalled();
+  });
+
+  it('accepts without a dialog when nothing conflicts', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar' }));
+
+    await waitFor(() => expect(mockAcceptEditSuggestion).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('dialog', { name: 'Aceitar a sugestão?' })).toBeNull();
+  });
+
+  describe('when the team edited a field the client also changed', () => {
+    // texto: the client added a mention; the team edited the legenda since. Aceitar… asks first.
+    const captionClash = {
+      ...suggestion,
+      suggested_ig_caption: 'Legenda do cliente',
+      original_ig_caption: 'Legenda base',
+      changed_fields: ['conteudo', 'ig_caption'],
+    };
+    const teamPost = (over: Record<string, unknown>) =>
+      mockGetPosts.mockResolvedValue([
+        {
+          id: 1,
+          workflow_id: 10,
+          titulo: 'Post A',
+          conteudo: null,
+          conteudo_plain: '',
+          tipo: 'feed',
+          ordem: 0,
+          status: 'rascunho',
+          responsavel_id: null,
+          scheduled_at: null,
+          ig_caption: 'Legenda da equipe',
+          platform: 'instagram',
+          ...over,
+        } as never,
+      ]);
+
+    it('opens the dialog from "Aceitar…" and sends only the non-conflicting field by default', async () => {
+      teamPost({});
+      mockGetEditSuggestions.mockResolvedValue([captionClash] as never);
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      renderDrawer(qc);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Aceitar…' }));
+      expect(mockAcceptEditSuggestion).not.toHaveBeenCalled();
+      const dialog = await screen.findByRole('dialog', { name: 'Aceitar a sugestão?' });
+      expect(
+        within(dialog).getByRole('radio', { name: 'Manter a versão da equipe' }),
+      ).toBeChecked();
+
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
+      await waitFor(() =>
+        expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z', [
+          'texto',
+        ]),
+      );
+      // texto was applied, so the mention from the client's doc is synced.
+      await waitFor(() => expect(mockSyncMentions).toHaveBeenCalledWith('workflow_post', 1, [7]));
+    });
+
+    it('sends the conflicting field too when the reviewer picks the client version', async () => {
+      teamPost({});
+      mockGetEditSuggestions.mockResolvedValue([captionClash] as never);
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      renderDrawer(qc);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Aceitar…' }));
+      const dialog = await screen.findByRole('dialog', { name: 'Aceitar a sugestão?' });
+      fireEvent.click(within(dialog).getByRole('radio', { name: 'Usar a versão do cliente' }));
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
+
+      await waitFor(() =>
+        expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z', [
+          'texto',
+          'legenda',
+        ]),
+      );
+    });
+
+    it('does not sync mentions when the team texto is kept', async () => {
+      // Both fields clash and the reviewer keeps the team's texto: the live doc (and its
+      // mentions) stays, so syncing from the suggestion's doc would wipe them.
+      teamPost({ conteudo_plain: 'Texto da equipe' });
+      mockGetEditSuggestions.mockResolvedValue([
+        { ...captionClash, original_conteudo_plain: 'Texto base' },
+      ] as never);
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      renderDrawer(qc);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Aceitar…' }));
+      const dialog = await screen.findByRole('dialog', { name: 'Aceitar a sugestão?' });
+      // Texto keeps the team version (default); legenda goes to the client.
+      fireEvent.click(
+        within(dialog).getAllByRole('radio', { name: 'Usar a versão do cliente' })[1],
+      );
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
+
+      await waitFor(() =>
+        expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z', [
+          'legenda',
+        ]),
+      );
+      expect(mockSyncMentions).not.toHaveBeenCalled();
+    });
+
+    it('shows the review-again toast and refetches when the server reports suggestion_conflict', async () => {
+      const { toast } = await import('sonner');
+      teamPost({});
+      mockGetEditSuggestions.mockResolvedValue([captionClash] as never);
+      mockAcceptEditSuggestion.mockRejectedValue({ message: 'suggestion_conflict' });
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+      renderDrawer(qc);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Aceitar…' }));
+      const dialog = await screen.findByRole('dialog', { name: 'Aceitar a sugestão?' });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
+
+      await waitFor(() =>
+        expect(toast.error).toHaveBeenCalledWith(
+          'O post mudou desde que você abriu. Revise a sugestão de novo.',
+        ),
+      );
+      expect(toast.error).not.toHaveBeenCalledWith('Erro ao aceitar sugestão');
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['post-edit-suggestions'] });
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ['workflow-posts-with-props', expect.anything()],
+      });
+      expect(mockSyncMentions).not.toHaveBeenCalled();
+    });
   });
 
   it('remounts the editor with the accepted content, not the stale pre-suggestion doc', async () => {

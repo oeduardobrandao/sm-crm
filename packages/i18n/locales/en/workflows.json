@@ -122,6 +122,7 @@
     "detached_other": "{{count}} posts detached",
     "suggestionAccepted": "Suggestion accepted!",
     "suggestionChanged": "The client updated the suggestion. Review the new version.",
+    "suggestionConflict": "The post changed since you opened it. Review the suggestion again.",
     "suggestionAcceptError": "Failed to accept suggestion",
     "suggestionRejected": "Suggestion rejected",
     "suggestionRejectError": "Failed to reject suggestion",

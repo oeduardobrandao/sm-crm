@@ -93,7 +93,7 @@ import { ApplyProcessDialog } from './ApplyProcessDialog';
 import { DuplicateDialog, type DuplicateTarget } from './DuplicateDialog';
 import { usePostProcessCommands } from '../hooks/usePostProcessCommands';
 import { postRascunhoBanner } from '../approvalExit';
-import { suggestionFieldStates } from '../editSuggestionFields';
+import type { SuggestionField } from '../editSuggestionFields';
 import { RascunhoBanner } from './RascunhoBanner';
 import { getPostProcessErrorToast, isStaleStateError } from '../postProcessErrors';
 import {
@@ -527,18 +527,14 @@ export function StandalonePostDrawer({
   const [editorVersion, setEditorVersion] = useState(0);
 
   const handleAcceptSuggestion = useCallback(
-    async (suggestion: PostEditSuggestion) => {
+    async (suggestion: PostEditSuggestion, fields: SuggestionField[]) => {
       try {
-        // The version on screen: the client may have saved a newer one since.
-        // Interim: every field the client changed. Task 7 replaces this with the reviewer's choice.
-        const fields = suggestionFieldStates(
-          post ?? { conteudo: null, conteudo_plain: '', ig_caption: null },
-          suggestion,
-        )
-          .filter((st) => st.changed)
-          .map((st) => st.field);
+        // `fields` is what the reviewer chose to apply (the card, or its conflict dialog).
+        // `suggestion.updated_at` is the version on screen: the client may have saved a newer one.
         await acceptEditSuggestion(suggestion.id, suggestion.updated_at, fields);
+        // Only when texto was applied: keeping the team's texto keeps its live mentions.
         if (
+          fields.includes('texto') &&
           suggestion.changed_fields.includes('conteudo') &&
           suggestion.suggested_conteudo != null
         ) {
@@ -561,15 +557,23 @@ export function StandalonePostDrawer({
         onRefresh();
       } catch (err) {
         // PostgrestError is a plain object, not an Error instance.
-        if (String((err as { message?: unknown })?.message ?? '').includes('suggestion_changed')) {
+        const message = String((err as { message?: unknown })?.message ?? '');
+        if (message.includes('suggestion_changed')) {
           toast.error(t('standalonePostDrawer.suggestionChanged'));
+          refresh();
+          return;
+        }
+        // The post moved since the card was loaded: refresh() refetches the post and the
+        // suggestion, so the next Aceitar is judged against what the team has now.
+        if (message.includes('suggestion_conflict')) {
+          toast.error(t('standalonePostDrawer.suggestionConflict'));
           refresh();
           return;
         }
         toast.error(t('standalonePostDrawer.acceptSuggestionError'));
       }
     },
-    [refresh, onRefresh, qc, postId, t, post],
+    [refresh, onRefresh, qc, postId, t],
   );
 
   const [pendingRejectSuggestionId, setPendingRejectSuggestionId] = useState<number | null>(null);

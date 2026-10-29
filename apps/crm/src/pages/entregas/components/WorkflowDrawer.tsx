@@ -122,7 +122,7 @@ import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { shouldAutoCompleteApproval } from './autoComplete';
 import { fluxoRascunhoBanner } from '../approvalExit';
-import { suggestionFieldStates } from '../editSuggestionFields';
+import type { SuggestionField } from '../editSuggestionFields';
 import { getErrorIdentifier, getPostProcessErrorToast } from '../postProcessErrors';
 import { RascunhoBanner } from './RascunhoBanner';
 import { PostTimelinePopover } from './PostTimelinePopover';
@@ -944,17 +944,10 @@ export function WorkflowDrawer({
   // ── Edit suggestion handlers ──────────────────────────────────────────────
 
   const handleAcceptSuggestion = useCallback(
-    async (suggestion: PostEditSuggestion) => {
+    async (suggestion: PostEditSuggestion, fields: SuggestionField[]) => {
       try {
-        // The version on screen: the client may have saved a newer one since.
-        // Interim: every field the client changed. Task 7 replaces this with the reviewer's choice.
-        const livePost = posts.find((p) => p.id === suggestion.post_id);
-        const fields = suggestionFieldStates(
-          livePost ?? { conteudo: null, conteudo_plain: '', ig_caption: null },
-          suggestion,
-        )
-          .filter((st) => st.changed)
-          .map((st) => st.field);
+        // `fields` is what the reviewer chose to apply (the card, or its conflict dialog).
+        // `suggestion.updated_at` is the version on screen: the client may have saved a newer one.
         await acceptEditSuggestion(suggestion.id, suggestion.updated_at, fields);
         // accept_edit_suggestion writes workflow_posts.conteudo server-side,
         // bypassing updateWorkflowPost -- sync mentions here so @-mentions in
@@ -968,7 +961,10 @@ export function WorkflowDrawer({
         // unchanged in that case, so syncing from the null doc here would
         // wrongly wipe every mention in the ledger for a post whose content
         // never actually changed.
+        // Only when texto was applied: keeping the team's texto keeps its live mentions, and
+        // syncing from the suggestion's doc then would wipe them.
         if (
+          fields.includes('texto') &&
           suggestion.changed_fields.includes('conteudo') &&
           suggestion.suggested_conteudo != null
         ) {
@@ -994,15 +990,23 @@ export function WorkflowDrawer({
         onRefresh();
       } catch (err) {
         // PostgrestError is a plain object, not an Error instance.
-        if (String((err as { message?: unknown })?.message ?? '').includes('suggestion_changed')) {
+        const message = String((err as { message?: unknown })?.message ?? '');
+        if (message.includes('suggestion_changed')) {
           toast.error(t('workflowDrawer.suggestionChanged'));
+          refresh();
+          return;
+        }
+        // The post moved since the card was loaded: refresh() refetches the post and the
+        // suggestion, so the next Aceitar is judged against what the team has now.
+        if (message.includes('suggestion_conflict')) {
+          toast.error(t('workflowDrawer.suggestionConflict'));
           refresh();
           return;
         }
         toast.error(t('workflowDrawer.suggestionAcceptError'));
       }
     },
-    [refresh, onRefresh, qc, workflowId, t, posts],
+    [refresh, onRefresh, qc, workflowId, t],
   );
 
   const handleRejectSuggestion = useCallback((id: number) => {
@@ -1861,7 +1865,7 @@ interface SortablePostItemProps {
   onEditComment: (commentId: number, content: string) => Promise<void>;
   onDeleteComment: (commentId: number, threadId: number) => Promise<void>;
   editorVersion: number;
-  onAcceptSuggestion: (suggestion: PostEditSuggestion) => void;
+  onAcceptSuggestion: (suggestion: PostEditSuggestion, fields: SuggestionField[]) => void;
   onRejectSuggestion: (id: number) => void;
   /** True quando este post passou os gates do aviso de agendamento
    *  automático (spec peça 3). Calculado pelo drawer, não pela linha. */

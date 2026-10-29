@@ -61,10 +61,13 @@ import { PublishErrorBlock } from './PublishErrorBlock';
 import { shouldShowPublishErrorBlock } from './publishErrorBlockVisibility';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
 import { SuggestTimeButton } from './SuggestTimeButton';
-import { DiffView } from './DiffView';
-import { ReadOnlyTipTap } from './ReadOnlyTipTap';
-import { computeWordDiff } from '@/utils/textDiff';
-import { computeTipTapDiff } from '@/utils/tiptapDiff';
+import { useAcceptSuggestionFlow } from './AcceptSuggestionDialog';
+import { SuggestionFieldDiff, TeamOnlyFooter, visibleSuggestionStates } from './SuggestionReview';
+import {
+  suggestionFieldStates,
+  teamOnlyChangedFields,
+  type SuggestionField,
+} from '../editSuggestionFields';
 import {
   getStatusAutomationHint,
   isVisibleToClient,
@@ -191,7 +194,7 @@ export interface PostEditorBodyProps {
   onEditComment: (commentId: number, content: string) => Promise<void>;
   onDeleteComment: (commentId: number, threadId: number) => Promise<void>;
   editorVersion: number;
-  onAcceptSuggestion: (suggestion: PostEditSuggestion) => void;
+  onAcceptSuggestion: (suggestion: PostEditSuggestion, fields: SuggestionField[]) => void;
   onRejectSuggestion: (id: number) => void;
   /** Avançar etapa do processo individual, para a dica da seção de produção. */
   onProcessAvancar?: () => void;
@@ -531,6 +534,9 @@ export function PostEditorBody({
   const [captionScreenOpen, setCaptionScreenOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
   const [suggestionOpen, setSuggestionOpen] = useState(false);
+  const acceptFlow = useAcceptSuggestionFlow(post, onAcceptSuggestion);
+  const suggestionStates = editSuggestion ? suggestionFieldStates(post, editSuggestion) : [];
+  const teamOnlyFields = editSuggestion ? teamOnlyChangedFields(post, editSuggestion) : [];
   const [referencesOpen, setReferencesOpen] = useState(false);
   const [statusSheetOpen, setStatusSheetOpen] = useState(false);
   // One schedule/publish state per phone editor, shared by the bottom bar and the
@@ -1586,33 +1592,48 @@ export function PostEditorBody({
                 {t('shared.reject')}
               </button>
               <button
-                onClick={() => onAcceptSuggestion(editSuggestion)}
+                onClick={() => acceptFlow.request(editSuggestion)}
                 className="px-3 py-1 text-[12px] font-medium rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
               >
-                {t('shared.accept')}
+                {suggestionStates.some((st) => st.conflict)
+                  ? t('suggestionReview.acceptReview')
+                  : t('shared.accept')}
               </button>
             </div>
           </div>
           <div className="px-4 py-3 space-y-3">
-            {editSuggestion.changed_fields.includes('conteudo') &&
-              resolvedContent &&
-              resolvedSuggestion && (
-                <ReadOnlyTipTap content={computeTipTapDiff(resolvedContent, resolvedSuggestion)} />
-              )}
-            {editSuggestion.changed_fields.includes('ig_caption') && (
-              <div className="border-t border-amber-200/60 pt-3">
-                <p className="text-[11px] font-medium text-stone-500 mb-1.5">
-                  {t('shared.igCaption')}
-                </p>
-                <DiffView
-                  segments={computeWordDiff(
-                    post.ig_caption ?? '',
-                    editSuggestion.suggested_ig_caption ?? '',
-                  )}
-                />
-              </div>
+            {visibleSuggestionStates(suggestionStates, resolvedContent, resolvedSuggestion).map(
+              (st, i) => (
+                <div
+                  key={st.field}
+                  className={i > 0 ? 'border-t border-amber-200/60 pt-3' : undefined}
+                >
+                  <SuggestionFieldDiff
+                    field={st.field}
+                    state={st}
+                    post={post}
+                    suggestion={editSuggestion}
+                    resolvedContent={resolvedContent}
+                    resolvedSuggestion={resolvedSuggestion}
+                    label={
+                      <p className="text-[11px] font-medium text-stone-500">
+                        {st.field === 'texto'
+                          ? t('suggestionReview.postText')
+                          : t('shared.igCaption')}
+                      </p>
+                    }
+                  />
+                </div>
+              ),
             )}
           </div>
+          {teamOnlyFields.length > 0 && (
+            <TeamOnlyFooter
+              teamOnly={teamOnlyFields}
+              className="border-t border-amber-200/60 bg-amber-50 px-4 py-2.5"
+            />
+          )}
+          {acceptFlow.dialog}
         </div>
       ) : !canMountEditor ? (
         <div

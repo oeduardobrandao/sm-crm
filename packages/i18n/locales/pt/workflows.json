@@ -122,6 +122,7 @@
     "detached_other": "{{count}} posts desmembrados",
     "suggestionAccepted": "Sugestão aceita!",
     "suggestionChanged": "A sugestão foi atualizada pelo cliente. Revise a nova versão.",
+    "suggestionConflict": "O post mudou desde que você abriu. Revise a sugestão de novo.",
     "suggestionAcceptError": "Erro ao aceitar sugestão",
     "suggestionRejected": "Sugestão rejeitada",
     "suggestionRejectError": "Erro ao rejeitar sugestão",
