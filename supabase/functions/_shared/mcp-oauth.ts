@@ -142,6 +142,43 @@ export async function permittedMcpScopes(
   return known.filter((s) => allowed.has(pairKey(s)));
 }
 
+export type PrepareAuthorizationOutcome = "repaired" | "ok" | "not_found" | "error";
+const PREPARE_OUTCOMES = new Set(["repaired", "ok", "not_found"]);
+const AUTHORIZATION_ID_RE = /^[A-Za-z0-9_-]{1,200}$/;
+
+/**
+ * Runs before the consent page asks Supabase for a pending authorization's details (the call that
+ * auto-approves an existing consent). When the client behind it has no active Mesaas grant for this
+ * user, mcp_oauth_prepare_authorization ends the stale consent + sessions, so a revoked connection
+ * reconnects through the consent screen instead of looping on 401. `userId` must be the
+ * JWT-verified caller. Never throws: any failure is "error" and the page carries on as before.
+ */
+export async function prepareOAuthAuthorization(
+  db: SupabaseClient,
+  authorizationId: unknown,
+  userId: string,
+): Promise<PrepareAuthorizationOutcome> {
+  if (typeof authorizationId !== "string" || !AUTHORIZATION_ID_RE.test(authorizationId)) return "not_found";
+  try {
+    const { data, error } = await db.rpc("mcp_oauth_prepare_authorization", {
+      p_authorization_id: authorizationId,
+      p_user_id: userId,
+    });
+    if (error) {
+      console.error("[mcp-oauth] prepare authorization failed:", error.message);
+      return "error";
+    }
+    if (typeof data !== "string" || !PREPARE_OUTCOMES.has(data)) {
+      console.error("[mcp-oauth] prepare authorization: unexpected outcome");
+      return "error";
+    }
+    return data as PrepareAuthorizationOutcome;
+  } catch (e) {
+    console.error("[mcp-oauth] prepare authorization threw:", e instanceof Error ? e.message : String(e));
+    return "error";
+  }
+}
+
 /** True if the user currently holds a workspace_members row for the workspace. */
 export async function isWorkspaceMember(
   db: SupabaseClient,

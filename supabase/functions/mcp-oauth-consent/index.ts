@@ -15,6 +15,7 @@ import {
   boundGrantScopes,
   mcpScopesFromClaim,
   permittedMcpScopes,
+  prepareOAuthAuthorization,
   validateConsentPayload,
 } from "../_shared/mcp-oauth.ts";
 import { adminScopesFromClaim } from "../_shared/mcp-admin-scopes.ts";
@@ -86,6 +87,14 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const action = body.action as string;
+
+    // Called by the consent page BEFORE it asks Supabase for the authorization details: a consent
+    // whose Mesaas grant was revoked would otherwise be auto-approved into a token `mcp` refuses.
+    // Only ever acts on the caller's own pending authorization (the RPC matches user_id).
+    if (action === "prepare-authorization") {
+      const outcome = await prepareOAuthAuthorization(svc, body.authorization_id, user.id);
+      return json({ outcome });
+    }
 
     // Workspaces the user may connect: any membership whose role allows at least one MCP scope,
     // annotated with whether the plan enables MCP and WHICH scopes the role allows (the consent

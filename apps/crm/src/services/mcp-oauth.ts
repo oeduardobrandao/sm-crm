@@ -44,6 +44,18 @@ export function listEligibleWorkspaces(): Promise<EligibleResult> {
 }
 
 /**
+ * Runs before the consent page asks Supabase for the authorization details: if this client's
+ * Mesaas connection was revoked, the edge function clears Supabase's leftover consent so the
+ * request shows the consent screen again instead of being auto-approved into a refused token.
+ */
+export function prepareOAuthAuthorization(authorizationId: string): Promise<string> {
+  return call<{ outcome: string }>({
+    action: 'prepare-authorization',
+    authorization_id: authorizationId,
+  }).then((d) => d.outcome);
+}
+
+/**
  * Records (or re-points) the consent grant before the browser approves the OAuth authorization.
  * The edge function derives the OAuth client_id server-side from authorization_id — we never send it.
  */
