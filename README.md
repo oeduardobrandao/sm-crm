@@ -24,6 +24,7 @@ Monorepo com npm workspaces (`apps/*`, `packages/*`) — **três aplicações Re
 | Pasta | O que é |
 |---|---|
 | `packages/ui`, `packages/i18n` | Primitivos e traduções compartilhados |
+| `apps/mcp-widgets` | Cards do conector MCP (React + Vite, arquivo único) exibidos no Claude e no ChatGPT; `npm run build:mcp-widgets` gera `supabase/functions/mcp/ui/generated/cards-v1.ts`. Rollout: `docs/mcp-apps-rollout.md` |
 | `supabase/functions/` | 89 edge functions em **Deno** (+ `_shared/` e `__tests__/`) |
 | `supabase/migrations/` | Migrations SQL |
 | `workers/media-proxy/`, `workers/transcribe/` | Cloudflare Workers (deploy manual com `wrangler deploy` dentro da pasta; testes com `npm test` lá) |
@@ -41,7 +42,7 @@ marca, páginas, mensagens e relatórios. Visual whitelabel dirigido pelo `brand
 workspace.
 
 **Integrações** — Instagram (publicação, métricas, relatórios), TikTok, Stripe (assinaturas
-e dunning), Cloudflare R2 (mídia), Resend (e-mail), e um servidor MCP para agentes.
+e dunning), Cloudflare R2 (mídia), Resend (e-mail), e um servidor MCP para agentes, com cards interativos no Claude e no ChatGPT.
 
 ## 🛠 Stack
 
@@ -102,16 +103,18 @@ do frontend: `TOKEN_ENCRYPTION_KEY`, `META_APP_*`, `R2_*`, `STRIPE_*`, `CRON_SEC
 
 Tudo abaixo roda no CI e barra o merge:
 
-**`npm run build` só faz o typecheck do CRM.** O CI checa os três apps e os scripts
+**`npm run build` só faz o typecheck do CRM.** O CI checa os três apps, o `apps/mcp-widgets` e os scripts
 separadamente, então uma mudança no Hub ou no Admin pode passar localmente e quebrar o CI.
-Rode os mesmos quatro que o CI roda:
+Rode os mesmos cinco que o CI roda:
 
 ```bash
 npx tsc -p apps/crm/tsconfig.json   --noEmit
 npx tsc -p apps/hub/tsconfig.json   --noEmit
 npx tsc -p apps/admin/tsconfig.json --noEmit
+npx tsc -p apps/mcp-widgets/tsconfig.json --noEmit
 npx tsc -p tsconfig.scripts.json
 
+npm run build:mcp-widgets && git diff --exit-code supabase/functions/mcp/ui/generated/cards-v1.ts  # bundle dos cards em dia
 npm run test           # Vitest
 npm run check:functions # deno check nas edge functions (test:functions roda com --no-check)
 npm run test:functions # deno test nas edge functions
@@ -123,6 +126,8 @@ Jobs do CI (dez, em `.github/workflows/ci.yml`): `lint-and-typecheck`, `unit-tes
 4 shards), `edge-function-tests`, `entitlement-tests`, `coverage-threshold` (junta os shards e aplica o piso de cobertura), `format-check`,
 `migration-version-guard`, `e2e`, `e2e-secrets-guard` e `landing-prerender-smoke` (build +
 prerender com `VITE_*` de mentira, conferindo que a landing saiu renderizada no servidor).
+O `lint-and-typecheck` também reconstrói o bundle dos cards do MCP (`npm run build:mcp-widgets`) e
+falha se `supabase/functions/mcp/ui/generated/cards-v1.ts` mudar: gerou de novo, commite o arquivo.
 
 Quatro detalhes que costumam enganar:
 

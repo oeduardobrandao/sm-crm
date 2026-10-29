@@ -54,7 +54,7 @@ pushes to `main` and `staging`, with **ten** jobs:
 
 | Job | Runs |
 |---|---|
-| `lint-and-typecheck` | `npm run lint`, then `tsc` for **all four** projects (crm, hub, admin, `tsconfig.scripts.json`) |
+| `lint-and-typecheck` | `npm run lint`, then `tsc` for **all five** projects (crm, hub, admin, `apps/mcp-widgets`, `tsconfig.scripts.json`), then rebuilds the MCP cards bundle (`npm run build:mcp-widgets`) and fails on `git diff --exit-code supabase/functions/mcp/ui/generated/cards-v1.ts` |
 | `unit-tests` (4 shards) | `vitest run --shard=N/4 --coverage --reporter=blob`; each shard uploads its blob |
 | `edge-function-tests` | `npm run check:functions` (`deno check` over every `*/index.ts` and `_shared` module), then `npm run test:functions` (Deno) |
 | `entitlement-tests` | `supabase start` + `bash scripts/test-entitlements.sh` — the psql RLS/entitlement suites |
@@ -68,8 +68,10 @@ pushes to `main` and `staging`, with **ten** jobs:
 Four things this list is here to prevent:
 
 - **`npm run build` is not the typecheck.** It only covers the CRM. CI
-  typechecks four projects separately, so a Hub, Admin or scripts break passes
-  locally and fails in CI. Run the four `tsc` commands, not `build`.
+  typechecks five projects separately, so a Hub, Admin, mcp-widgets or scripts break passes
+  locally and fails in CI. Run the five `tsc` commands, not `build`. Anything under
+  `apps/mcp-widgets/` also needs `npm run build:mcp-widgets` and the regenerated
+  `cards-v1.ts` committed, or the diff check fails.
 - **`supabase/tests/entitlements/*.sql` IS gated by CI.** It is easy to assume
   otherwise because it needs a local database to run by hand. It does not need
   one to be enforced.
@@ -83,7 +85,7 @@ Four things this list is here to prevent:
   runs first in the same job.
 
 Before pushing, run `npm run lint`, `npm run format:check` (`npm run format`
-auto-fixes), the four `tsc` commands, `npm run test`, `npm run check:functions`
+auto-fixes), the five `tsc` commands, `npm run test`, `npm run check:functions`
 and `npm run test:functions`.
 `npm run test:db` needs Docker locally; CI covers it either way.
 
@@ -96,6 +98,7 @@ Monorepo with npm workspaces:
 - `apps/crm/` -- Internal CRM dashboard (React 19, React Router v7, TanStack Query)
 - `apps/hub/` -- Client-facing portal (React 19, createBrowserRouter)
 - `packages/ui/` -- Shared UI primitives
+- `apps/mcp-widgets/` -- Cards do MCP (React + Vite, build em arquivo único); `npm run build:mcp-widgets` gera `supabase/functions/mcp/ui/generated/cards-v1.ts`, que se commita e nunca se edita à mão
 - `supabase/functions/` -- Deno edge functions (backend)
 - `supabase/migrations/` -- SQL migrations
 
@@ -125,6 +128,9 @@ Monorepo with npm workspaces:
 - `_shared/audit.ts` -- `insertAuditLog()` for audit trail
 - `_shared/r2.ts` -- Cloudflare R2 storage client (presigned URLs)
 - `mcp/` -- MCP do workspace (chaves `mcp-keys` e OAuth `mcp-oauth-consent`). Escopos em `_shared/mcp-token.ts` (`MCP_ALLOWED_SCOPES`), espelhados no CRM (`apps/crm/src/lib/mcp-scopes.ts`). Os escopos `financeiro:*` são só do dono (`OWNER_ONLY_SCOPES`): a emissão recusa não-dono (`owner_only_scope`, papel de `workspace_members` do workspace da chave/grant) e a ferramenta confere o papel a cada chamada, então um dono rebaixado perde acesso na chamada seguinte. Mudar escopo = redeploy de `mcp`, `mcp-keys` e `mcp-oauth-consent` + CRM
+  - Cards (MCP Apps, spec `docs/superpowers/specs/2026-10-29-mcp-apps-cards-design.md`, runbook `docs/mcp-apps-rollout.md`, listagens `docs/mcp-apps-directory-submission.md`): ligados por `MCP_APPS` (`off` padrão | `pilot` | `on`, ver Environment variables); desligado, o `mcp` não registra ferramenta de card nem recurso `ui://` e se comporta como antes. Ferramentas de card: `preview_post`, `show_caption_options`, `show_client_calendar`, `show_attach_image` (todas `client_id`, não `cliente_id`, e `structuredContent` com `card` e `v: 1`)
+  - **O agente não envia sozinho.** `send_post_to_client` e `attach_image_to_post` são só do widget (`_meta.ui.visibility: ["app"]`), registradas apenas em conexão OAuth (`key_id` começa com `oauth:`; chave `mesaas_sk_` nunca as vê) e o envio exige o nonce HMAC que o card recebe em `_meta["mesaas/sendNonce"]` do resultado de `create_post`/`update_post`/`preview_post` (30 min, nunca no `audit_log`). O `UPDATE` de status e o anexo passam só pelas RPCs `mcp_send_post_to_client` e `mcp_attach_post_file` (EXECUTE só `service_role`, membership por `workspace_members`). Toda ferramenta nova do `mcp` precisa de entrada em `TOOL_META` (título e annotations; teste estrutural) e de `auditArgs` sem texto de post, legenda, nonce ou `download_url`
+  - **URI versionada:** o recurso é `ui://mesaas/cards-v1.html` e hosts guardam o HTML em cache. Mudança que quebra o formato de um card (`structuredContent`, comportamento do botão) sai como `cards-v2.html`, nunca como edição do v1. Mudou o widget = `npm run build:mcp-widgets`, commit do `cards-v1.ts` e redeploy de `mcp`. Sem `_meta.ui.domain` de propósito (Claude e ChatGPT pedem valores incompatíveis); só `openai/widgetDomain`
 - `mcp-admin/` -- MCP do Admin da plataforma (OAuth-only; `platform_admins` + `admin_mcp_oauth_grants`; banners, popups, artigos da KB em Markdown, leituras de workspaces/planos/dashboard, rascunhos do blog). Escopos em `_shared/mcp-admin-scopes.ts`, bundlados também em `mcp-oauth-consent` e espelhados no CRM (`apps/crm/src/lib/mcp-scopes.ts`) e no Admin (`apps/admin/src/lib/mcp-admin-scopes.ts`): mudar escopo = redeploy dos dois + CRM + Admin
 - Cron functions authenticate via `x-cron-secret` header (not JWT)
 - All other functions verify JWT via `Authorization: Bearer <token>` header
@@ -213,6 +219,14 @@ Monorepo with npm workspaces:
   at most 2880/day, under the free plan's 3000). Hourly because `rate_limit_log` is pruned
   every hour (`rate-limit-cleanup`), so a daily window would never count past one hour.
   Raise it together with the Geoapify plan; changing it needs no deploy
+- `MCP_APPS` -- liga os cards do MCP (`mcp`): `off` (padrão, vale também para qualquer valor desconhecido) |
+  `pilot` (só os `conta_id` de `MCP_APPS_PILOT_CONTAS`) | `on` (todos). Lida a cada requisição, então mudar não
+  precisa de deploy; desligar é o rollback instantâneo. Passo a passo e verificações do piloto em
+  `docs/mcp-apps-rollout.md`
+- `MCP_APPS_PILOT_CONTAS` -- `conta_id`s separados por vírgula, lidos só com `MCP_APPS=pilot`. Opcional, sem default
+- `MCP_IMAGE_HOSTS` -- hostnames (separados por vírgula, igualdade exata) de onde o `attach_image_to_post` aceita
+  baixar a imagem do chat. Opcional, sem default: **vazio recusa toda imagem**, então o card de anexar não funciona
+  até o piloto preencher (o host sai do log `[mcp] image host refused: <host>`). Sem deploy ao mudar
 - `GEMINI_API_KEY` -- Google Gemini key for AI narrative generation in analytics reports (instagram-analytics, instagram-report-generator-v2). Optional, no default -- AI narrative is skipped when unset
 - `GSC_SERVICE_ACCOUNT_JSON` -- chave JSON (uma linha) da conta de serviço do Google com acesso
   **Restrito** à propriedade do Search Console; lida só pelo `blog-search-console-cron`
