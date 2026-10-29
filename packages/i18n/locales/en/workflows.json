@@ -144,6 +144,7 @@
     "copyFlowLink": "Copy workflow link",
     "collapse": "Collapse",
     "expand": "Expand",
+    "postsCount": "Posts ({{n}})",
     "approvedByClient": "{{approved}} of {{total}} approved by the client",
     "batchScheduleTitle": "Schedule all approved posts that still have a valid date at once.",
     "awaitingAutoSchedule": "{{n}} awaiting auto-scheduling",

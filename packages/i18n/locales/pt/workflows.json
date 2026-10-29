@@ -144,6 +144,7 @@
     "copyFlowLink": "Copiar link do fluxo",
     "collapse": "Recolher",
     "expand": "Expandir",
+    "postsCount": "Posts ({{n}})",
     "approvedByClient": "{{approved}} de {{total}} aprovados pelo cliente",
     "batchScheduleTitle": "Agendar de uma vez os posts aprovados que ainda têm data válida.",
     "awaitingAutoSchedule": "{{n}} aguardando agendamento automático",

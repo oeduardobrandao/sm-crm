@@ -1338,7 +1338,9 @@ export function WorkflowDrawer({
               ) : (
                 <div className="drawer-section-header">
                   <span className="drawer-section-title">
-                    {t('shared.posts')}
+                    {isLoading
+                      ? t('shared.posts')
+                      : t('workflowDrawer.postsCount', { n: posts.length })}
                     {clientFacingCount > 0 && (
                       <span className="drawer-post-count">
                         {t('workflowDrawer.approvedByClient', {
