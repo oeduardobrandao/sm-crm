@@ -288,6 +288,14 @@
     "footerOnlyTexto": "Accepting applies only the post text. The caption the team edited stays as it is.",
     "footerOnlyLegenda": "Accepting applies only the caption. The text the team edited stays as it is.",
     "acceptReview": "Accept…",
+    "captionNote": "The client suggested a new caption. Review the suggestion before editing.",
+    "viewSuggestion": "View suggestion",
+    "moveGuard": {
+      "title": "Move to {{status}}?",
+      "body": "There is a client suggestion nobody has reviewed on this post.",
+      "cancel": "Cancel",
+      "confirm": "Move anyway"
+    },
     "dialog": {
       "title": "Accept the suggestion?",
       "body": "The team edited {{fields}} after the client sent the suggestion. Choose which version stays.",

@@ -29,6 +29,12 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
+// ScheduleButton's suggestion move guard reads the store before scheduling or publishing.
+vi.mock('../../../../store', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../store')>()),
+  hasPendingEditSuggestion: vi.fn(async () => false),
+}));
+
 import { PublicacoesPanel } from '../PublicacoesPanel';
 import { scheduleInstagramPost, cancelInstagramSchedule } from '../../../../services/instagram';
 import { scheduleTikTokPost, cancelTikTokSchedule } from '../../../../services/tiktok';

@@ -80,6 +80,7 @@ vi.mock('@/store', () => ({
   getPostStatusEvents: vi.fn(async () => []),
   getPostCommentThreads: vi.fn(async () => []),
   getPostEditSuggestions: vi.fn(async () => []),
+  hasPendingEditSuggestion: vi.fn(async () => false),
   getWorkspaceUsers: vi.fn(async () => []),
   getClientePosts: vi.fn(async () => []),
   getWorkspaceSlug: vi.fn(async () => null),
@@ -242,6 +243,7 @@ import {
   deleteCommentThread,
   deletePostComment,
   getPostEditSuggestions,
+  hasPendingEditSuggestion,
   acceptEditSuggestion,
   syncMentions,
 } from '@/store';
@@ -251,6 +253,7 @@ const mockGetStandalonePost = vi.mocked(getStandalonePost);
 const mockGetVigentePostProcess = vi.mocked(getVigentePostProcess);
 const mockGetPostStatusEvents = vi.mocked(getPostStatusEvents);
 const mockUpdate = vi.mocked(updateWorkflowPost);
+const mockHasPending = vi.mocked(hasPendingEditSuggestion);
 const mockRemove = vi.mocked(removeWorkflowPost);
 const mockTransition = vi.mocked(transitionPostProcess);
 const mockResolveBanner = vi.mocked(resolvePostProcessRascunhoBanner);
@@ -354,6 +357,7 @@ describe('StandalonePostDrawer', () => {
     mockGetStandalonePost.mockResolvedValue(basePost() as never);
     mockUpdate.mockResolvedValue({} as never);
     mockRemove.mockResolvedValue(undefined as never);
+    mockHasPending.mockResolvedValue(false);
   });
 
   it('renders the post editor without a PropertyPanel (posts avulsos have no template)', async () => {
@@ -601,6 +605,66 @@ describe('StandalonePostDrawer', () => {
       }),
     );
     expect(screen.queryByText('Post aprovado')).not.toBeInTheDocument();
+  });
+
+  describe('suggestion move guard', () => {
+    const statusSelectOf = (container: HTMLElement) =>
+      Array.from(container.querySelectorAll('select')).find((s) =>
+        s.querySelector('option[value="rascunho"]'),
+      ) as HTMLSelectElement;
+
+    beforeEach(() => {
+      mockHasPending.mockResolvedValue(false);
+    });
+
+    it('asks before moving to agendado with a pending suggestion, and writes only after "Mover mesmo assim"', async () => {
+      mockHasPending.mockResolvedValue(true);
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const { container } = renderDrawer(qc);
+      await screen.findByTestId('post-editor-stub');
+
+      fireEvent.change(statusSelectOf(container), { target: { value: 'agendado' } });
+
+      expect(await screen.findByText('Mover para Agendado?')).toBeInTheDocument();
+      expect(mockHasPending).toHaveBeenCalledWith(5);
+      expect(mockUpdate).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Mover mesmo assim' }));
+      await waitFor(() =>
+        expect(mockUpdate).toHaveBeenCalledWith(5, { status: 'agendado', custom_status_id: null }),
+      );
+    });
+
+    it('Cancelar does not write', async () => {
+      mockHasPending.mockResolvedValue(true);
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const { container } = renderDrawer(qc);
+      await screen.findByTestId('post-editor-stub');
+
+      fireEvent.change(statusSelectOf(container), { target: { value: 'postado' } });
+      await screen.findByText('Mover para Postado?');
+      fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+      await waitFor(() =>
+        expect(screen.queryByText('Mover para Postado?')).not.toBeInTheDocument(),
+      );
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('runs after the "post aprovado" confirm, not instead of it', async () => {
+      mockGetStandalonePost.mockResolvedValue(basePost({ status: 'aprovado_cliente' }) as never);
+      mockHasPending.mockResolvedValue(true);
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const { container } = renderDrawer(qc);
+      await screen.findByTestId('post-editor-stub');
+
+      fireEvent.change(statusSelectOf(container), { target: { value: 'agendado' } });
+      fireEvent.click(await screen.findByRole('button', { name: 'Confirmar' }));
+      expect(await screen.findByText('Mover para Agendado?')).toBeInTheDocument();
+      expect(mockUpdate).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Mover mesmo assim' }));
+      await waitFor(() =>
+        expect(mockUpdate).toHaveBeenCalledWith(5, { status: 'agendado', custom_status_id: null }),
+      );
+    });
   });
 
   it('flag desligada sem processo: tag "Avulso" (consulta o processo, que vem nulo)', async () => {

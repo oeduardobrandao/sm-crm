@@ -123,6 +123,18 @@ export function statusKeyToPatch(
 }
 
 /**
+ * The canonical status a pick lands on: the key itself for a canonical one, the definition's
+ * `behaves_as` for a custom one, undefined for a custom key the registry no longer holds.
+ * What the suggestion move guard needs to see through a custom status.
+ */
+export function canonicalOfStatusKey(
+  key: StatusKey,
+  registry: StatusRegistry,
+): WorkflowPost['status'] | undefined {
+  return registry.byKey.get(key)?.canonical;
+}
+
+/**
  * Whether picking `key` for `post` needs the "post aprovado" confirm dialog
  * first. Only approved posts (`aprovado_interno`/`aprovado_cliente`) guard at
  * all, and only when the pick actually changes the effective canonical status

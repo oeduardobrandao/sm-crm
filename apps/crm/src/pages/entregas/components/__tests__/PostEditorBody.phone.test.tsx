@@ -750,6 +750,53 @@ describe('PostEditorBody, client suggestion card (desktop)', () => {
   });
 });
 
+describe('PostEditorBody, aviso na legenda quando o cliente sugeriu outra', () => {
+  const NOTE = 'O cliente sugeriu uma nova legenda. Revise a sugestão antes de editar.';
+  const scrollIntoView = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    limitsMock.features = { feature_tiktok: true };
+    Element.prototype.scrollIntoView = scrollIntoView;
+  });
+
+  it('desktop: aparece sobre o campo quando a sugestão mexe na legenda, e "Ver sugestão" leva ao cartão', async () => {
+    const user = userEvent.setup();
+    renderPhone({ layout: 'desktop', editSuggestion: captionClash });
+
+    const note = screen.getByText(NOTE);
+    const field = screen.getByLabelText('Legenda do Instagram');
+    // The note sits above the caption field.
+    expect(note.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: 'Ver sugestão' }));
+    const card = screen.getByText('Sugestão do cliente').closest('div.rounded-lg') as HTMLElement;
+    expect(scrollIntoView).toHaveBeenCalled();
+    expect(scrollIntoView.mock.contexts.at(-1)).toBe(card);
+    expect(card).toHaveFocus();
+  });
+
+  it('desktop: não aparece quando a sugestão só mexe no texto', () => {
+    renderPhone({ layout: 'desktop', editSuggestion: teamEditedCaptionOnly });
+    expect(screen.queryByText(NOTE)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Ver sugestão' })).toBeNull();
+  });
+
+  it('desktop: não aparece sem sugestão pendente', () => {
+    renderPhone({ layout: 'desktop' });
+    expect(screen.queryByText(NOTE)).toBeNull();
+  });
+
+  it('celular: "Ver sugestão" abre a folha da sugestão', async () => {
+    const user = userEvent.setup();
+    renderPhone({ editSuggestion: captionClash });
+
+    expect(screen.getByText(NOTE)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Ver sugestão' }));
+    expect(await screen.findByRole('dialog', { name: 'Sugestão do cliente' })).toBeInTheDocument();
+  });
+});
+
 describe('PostEditorBody, client suggestion sheet (phone)', () => {
   beforeEach(() => {
     vi.clearAllMocks();

@@ -62,7 +62,12 @@ import { shouldShowPublishErrorBlock } from './publishErrorBlockVisibility';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
 import { SuggestTimeButton } from './SuggestTimeButton';
 import { useAcceptSuggestionFlow } from './AcceptSuggestionDialog';
-import { SuggestionFieldDiff, TeamOnlyFooter, visibleSuggestionStates } from './SuggestionReview';
+import {
+  CaptionSuggestionNote,
+  SuggestionFieldDiff,
+  TeamOnlyFooter,
+  visibleSuggestionStates,
+} from './SuggestionReview';
 import {
   suggestionFieldStates,
   teamOnlyChangedFields,
@@ -534,6 +539,20 @@ export function PostEditorBody({
   const [captionScreenOpen, setCaptionScreenOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
   const [suggestionOpen, setSuggestionOpen] = useState(false);
+  // The desktop review card, the target of the caption note's "Ver sugestão".
+  const suggestionCardRef = useRef<HTMLDivElement>(null);
+  const viewSuggestion = () => {
+    if (isPhone) {
+      // The caption can be open full screen: leave it so the sheet is not hidden behind.
+      setCaptionScreenOpen(false);
+      setSuggestionOpen(true);
+      return;
+    }
+    const card = suggestionCardRef.current;
+    if (!card) return;
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.focus({ preventScroll: true });
+  };
   const acceptFlow = useAcceptSuggestionFlow(post, onAcceptSuggestion);
   const suggestionStates = editSuggestion ? suggestionFieldStates(post, editSuggestion) : [];
   const teamOnlyFields = editSuggestion ? teamOnlyChangedFields(post, editSuggestion) : [];
@@ -691,33 +710,37 @@ export function PostEditorBody({
       {t('postEditorBody.storiesNote')}
     </p>
   );
+  const captionSuggested = editSuggestion?.changed_fields.includes('ig_caption') === true;
   const instagramCaptionField = (frameless: boolean) => (
-    <InstagramCaptionField
-      key={post.id}
-      frameless={frameless}
-      ref={captionRef}
-      value={post.ig_caption ?? ''}
-      threads={commentThreads}
-      disabled={isScheduleLocked}
-      lockedMessage={t('shared.cancelScheduleToEdit')}
-      onSave={(text, anchors) => onSaveCaption(post.id!, text, anchors)}
-      comments={
-        currentUserId
-          ? {
-              membros,
-              workspaceUsers,
-              currentUserId,
-              onCreateThread: (quotedText, comment, anchor) =>
-                onCreateComment(post.id!, quotedText, comment, anchor),
-              onReply: onReplyToComment,
-              onResolve: onResolveThread,
-              onReopen: onReopenThread,
-              onEditComment,
-              onDeleteComment,
-            }
-          : undefined
-      }
-    />
+    <>
+      {captionSuggested && <CaptionSuggestionNote onViewSuggestion={viewSuggestion} />}
+      <InstagramCaptionField
+        key={post.id}
+        frameless={frameless}
+        ref={captionRef}
+        value={post.ig_caption ?? ''}
+        threads={commentThreads}
+        disabled={isScheduleLocked}
+        lockedMessage={t('shared.cancelScheduleToEdit')}
+        onSave={(text, anchors) => onSaveCaption(post.id!, text, anchors)}
+        comments={
+          currentUserId
+            ? {
+                membros,
+                workspaceUsers,
+                currentUserId,
+                onCreateThread: (quotedText, comment, anchor) =>
+                  onCreateComment(post.id!, quotedText, comment, anchor),
+                onReply: onReplyToComment,
+                onResolve: onResolveThread,
+                onReopen: onReopenThread,
+                onEditComment,
+                onDeleteComment,
+              }
+            : undefined
+        }
+      />
+    </>
   );
   const tiktokSettingsPanel = (hideCaption: boolean) => (
     <TikTokSettingsPanel
@@ -1568,7 +1591,11 @@ export function PostEditorBody({
       )}
 
       {editSuggestion ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50/50 overflow-hidden">
+        <div
+          ref={suggestionCardRef}
+          tabIndex={-1}
+          className="rounded-lg border border-amber-200 bg-amber-50/50 overflow-hidden outline-none"
+        >
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-amber-200/60 bg-amber-50">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-amber-400" />

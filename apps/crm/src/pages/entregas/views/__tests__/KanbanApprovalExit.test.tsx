@@ -60,6 +60,7 @@ const store = vi.hoisted(() => ({
   completeEtapa: vi.fn(),
   advanceWorkflowFromApproval: vi.fn(),
   getWorkflowPostStatusCounts: vi.fn(),
+  countPendingEditSuggestionsInWorkflow: vi.fn(),
   hasLaterApprovalEtapa: vi.fn(),
   sendPostsToCliente: vi.fn(),
   revertEtapa: vi.fn(),
@@ -259,6 +260,7 @@ describe('KanbanView saída de etapa de aprovação', () => {
       postsChanged: 2,
     });
     store.getWorkflowPostStatusCounts.mockResolvedValue(COUNTS);
+    store.countPendingEditSuggestionsInWorkflow.mockResolvedValue(0);
     store.hasLaterApprovalEtapa.mockReturnValue(true);
     store.sendPostsToCliente.mockResolvedValue(undefined);
     store.updateWorkflowPositions.mockResolvedValue(undefined);
@@ -277,6 +279,32 @@ describe('KanbanView saída de etapa de aprovação', () => {
   it('não busca as contagens enquanto o diálogo está fechado', () => {
     renderBoard();
     expect(store.getWorkflowPostStatusCounts).not.toHaveBeenCalled();
+    expect(store.countPendingEditSuggestionsInWorkflow).not.toHaveBeenCalled();
+  });
+
+  it('avisa quantos posts do lote têm sugestão do cliente não revisada', async () => {
+    store.countPendingEditSuggestionsInWorkflow.mockResolvedValue(2);
+    renderBoard();
+    await openExitDialog();
+    expect(store.countPendingEditSuggestionsInWorkflow).toHaveBeenCalledWith(1);
+    expect(
+      await screen.findByText('2 posts com sugestão do cliente não revisada.'),
+    ).toBeInTheDocument();
+  });
+
+  it('sem sugestão pendente no lote, o diálogo não ganha a linha', async () => {
+    renderBoard();
+    await openExitDialog();
+    await waitFor(() => expect(store.countPendingEditSuggestionsInWorkflow).toHaveBeenCalled());
+    expect(screen.queryByText(/com sugestão do cliente não revisada/)).toBeNull();
+  });
+
+  it('se a contagem das sugestões falha, o diálogo segue sem a linha e confirmável', async () => {
+    store.countPendingEditSuggestionsInWorkflow.mockRejectedValue(new Error('offline'));
+    renderBoard();
+    await openExitDialog();
+    expect(screen.queryByText(/com sugestão do cliente não revisada/)).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('confirmar a recomendada (aprovação adiante) volta para rascunho com as contagens', async () => {

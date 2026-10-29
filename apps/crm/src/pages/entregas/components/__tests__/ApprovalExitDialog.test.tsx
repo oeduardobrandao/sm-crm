@@ -83,6 +83,16 @@ describe('ApprovalExitDialog (desktop)', () => {
     expect(screen.getByText('O status do post não muda.')).toBeTruthy();
     expect(screen.queryByRole('radio')).toBeNull();
   });
+  it('mostra a linha das sugestões não revisadas só quando a contagem passa de zero', () => {
+    const { rerender } = setup();
+    expect(screen.queryByText(/com sugestão do cliente não revisada/)).toBeNull();
+    rerender({ pendingSuggestionCount: 0 });
+    expect(screen.queryByText(/com sugestão do cliente não revisada/)).toBeNull();
+    rerender({ pendingSuggestionCount: 1 });
+    expect(screen.getByText('1 post com sugestão do cliente não revisada.')).toBeTruthy();
+    rerender({ pendingSuggestionCount: 3 });
+    expect(screen.getByText('3 posts com sugestão do cliente não revisada.')).toBeTruthy();
+  });
   it('post mostra só o status atual, sem contagem', () => {
     setup({ entityKind: 'post', counts: { aprovado_cliente: 1 }, options: ['manter'] });
     expect(screen.getByText('Aprovado pelo cliente')).toBeTruthy();
@@ -148,6 +158,13 @@ describe('ApprovalExitDialog (phone)', () => {
     setup();
     expect(screen.getByText('Aprovado pelo cliente: 5')).toBeTruthy();
     expect(screen.getByText('Posts agendados ou publicados nunca são alterados.')).toBeTruthy();
+  });
+  it('mostra a linha das sugestões não revisadas só quando a contagem passa de zero', () => {
+    desktop.value = false;
+    const { rerender } = setup();
+    expect(screen.queryByText(/com sugestão do cliente não revisada/)).toBeNull();
+    rerender({ pendingSuggestionCount: 2 });
+    expect(screen.getByText('2 posts com sugestão do cliente não revisada.')).toBeTruthy();
   });
   it('erro nas contagens oferece "Tentar de novo"', async () => {
     desktop.value = false;

@@ -1549,6 +1549,47 @@ export async function getPostEditSuggestions(postIds: number[]): Promise<PostEdi
 }
 
 /**
+ * Whether the post has a client edit suggestion nobody reviewed yet. Head count, so no row
+ * travels. Only `pending` counts: `accepted`, `rejected` and `superseded` are closed.
+ */
+export async function hasPendingEditSuggestion(postId: number): Promise<boolean> {
+  const { count, error } = await supabase
+    .from('post_edit_suggestions')
+    .select('id', { count: 'exact', head: true })
+    .eq('post_id', postId)
+    .eq('status', 'pending');
+  if (error) throw error;
+  return (count ?? 0) > 0;
+}
+
+/**
+ * Posts the "aprovar todos" of `advance_workflow_from_approval` moves to `aprovado_cliente`:
+ * every post of the fluxo outside these statuses (the RPC's own NOT IN list,
+ * 20261023000001). Keep both lists together.
+ */
+const APPROVE_ALL_SKIPPED_STATUSES = [
+  'aprovado_cliente',
+  'agendado',
+  'postado',
+  'falha_publicacao',
+];
+
+/**
+ * How many posts the bulk approval is about to move that still carry a pending client
+ * suggestion, for the count line in the approval-exit dialog.
+ */
+export async function countPendingEditSuggestionsInWorkflow(workflowId: number): Promise<number> {
+  const { count, error } = await supabase
+    .from('post_edit_suggestions')
+    .select('id, workflow_posts!inner(workflow_id, status)', { count: 'exact', head: true })
+    .eq('status', 'pending')
+    .eq('workflow_posts.workflow_id', workflowId)
+    .not('workflow_posts.status', 'in', `(${APPROVE_ALL_SKIPPED_STATUSES.join(',')})`);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/**
  * `expectedUpdatedAt` is the `updated_at` of the version the team reviewed. The client can
  * keep editing a pending suggestion, so the RPC refuses with `suggestion_changed` when the
  * row moved on since then instead of applying a version nobody on the team has seen.

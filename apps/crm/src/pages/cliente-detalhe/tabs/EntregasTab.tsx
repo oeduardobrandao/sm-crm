@@ -52,6 +52,7 @@ import {
 } from '@/pages/entregas/postProcessCommands';
 import { usePostProcessCommands } from '@/pages/entregas/hooks/usePostProcessCommands';
 import { useWorkflowStageCommands } from '@/pages/entregas/hooks/useWorkflowStageCommands';
+import { useSuggestionMoveGuard } from '@/pages/entregas/hooks/useSuggestionMoveGuard';
 import { getWorkflowCovers, getPostCovers } from '@/services/postMedia';
 import {
   AlertDialog,
@@ -401,12 +402,15 @@ export default function EntregasTab() {
   });
   const [selectedPostDay, setSelectedPostDay] = useState<number | null>(new Date().getDate());
   const [postUpdating, setPostUpdating] = useState<number | null>(null);
+  const { confirmMove, dialog: moveGuardDialog } = useSuggestionMoveGuard();
 
   const refreshPostCalendar = () => {
     queryClient.invalidateQueries({ queryKey: ['clientePosts', clienteId] });
   };
 
   const handlePostStatusUpdate = async (postId: number, newStatus: 'agendado' | 'postado') => {
+    // Asks first when the client's suggestion on this post is still unreviewed.
+    if (!(await confirmMove(postId, newStatus))) return;
     setPostUpdating(postId);
     try {
       await updateWorkflowPost(postId, { status: newStatus });
@@ -516,31 +520,34 @@ export default function EntregasTab() {
   // avulsos without a process has no board cards, and the calendar must still show.
   const PostCalendar = isPhone ? ClientePostCalendarPhone : ClientePostCalendar;
   const postCalendar = (
-    <PostCalendar
-      events={postCalendarEvents}
-      calendarMonth={calendarMonth}
-      onMonthChange={(d) => {
-        setCalendarMonth(d);
-        setSelectedPostDay(null);
-      }}
-      selectedPostDay={selectedPostDay}
-      onSelectDay={(day) => setSelectedPostDay(day)}
-      postUpdating={postUpdating}
-      onPostStatusUpdate={handlePostStatusUpdate}
-      onOpenPost={(postId, workflowId) => {
-        if (workflowId == null) {
-          setDrawerCard(null);
-          setDrawerInitialPostId(undefined);
-          setStandalonePostId(postId);
-          return;
-        }
-        const card = boardCards.find((candidate) => candidate.workflow.id === workflowId);
-        if (!card) return;
-        setStandalonePostId(null);
-        setDrawerInitialPostId(postId);
-        setDrawerCard(card);
-      }}
-    />
+    <>
+      <PostCalendar
+        events={postCalendarEvents}
+        calendarMonth={calendarMonth}
+        onMonthChange={(d) => {
+          setCalendarMonth(d);
+          setSelectedPostDay(null);
+        }}
+        selectedPostDay={selectedPostDay}
+        onSelectDay={(day) => setSelectedPostDay(day)}
+        postUpdating={postUpdating}
+        onPostStatusUpdate={handlePostStatusUpdate}
+        onOpenPost={(postId, workflowId) => {
+          if (workflowId == null) {
+            setDrawerCard(null);
+            setDrawerInitialPostId(undefined);
+            setStandalonePostId(postId);
+            return;
+          }
+          const card = boardCards.find((candidate) => candidate.workflow.id === workflowId);
+          if (!card) return;
+          setStandalonePostId(null);
+          setDrawerInitialPostId(postId);
+          setDrawerCard(card);
+        }}
+      />
+      {moveGuardDialog}
+    </>
   );
 
   const openWorkflow = (card: BoardCard) => {

@@ -612,7 +612,10 @@
     "retry": "Tentar de novo",
     "recommendedSuffix": "{{title}} (Recomendado)",
     "recommended": "Recomendado",
-    "whatHappens": "O que acontece"
+    "whatHappens": "O que acontece",
+    "pendingSuggestions_zero": "{{count}} posts com sugestão do cliente não revisada.",
+    "pendingSuggestions_one": "{{count}} post com sugestão do cliente não revisada.",
+    "pendingSuggestions_other": "{{count}} posts com sugestão do cliente não revisada."
   },
   "historyDrawer": {
     "concludedOn": "Concluído em {{date}}",

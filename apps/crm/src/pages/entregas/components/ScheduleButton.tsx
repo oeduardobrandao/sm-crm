@@ -33,6 +33,7 @@ import {
   retryTikTokPublish,
 } from '../../../services/tiktok';
 import { scheduleApprovedPost, scheduleSuccessMessage } from '../scheduleApprovedPost';
+import { useSuggestionMoveGuard } from '../hooks/useSuggestionMoveGuard';
 
 // =============================================================================
 // Platform-aware publishing button (Task C3, TikTok integration Phase C).
@@ -212,6 +213,9 @@ export function useScheduleActions({
   const [publishing, setPublishing] = useState(false);
   const [publishPct, setPublishPct] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Scheduling and publishing-now move the post to agendado / postado: ask first when the
+  // client's suggestion on it is still unreviewed. Its dialog renders with the publish-now one.
+  const { confirmMove, dialog: moveGuardDialog } = useSuggestionMoveGuard();
 
   const stopProgressTimer = useCallback(() => {
     if (timerRef.current) {
@@ -272,6 +276,7 @@ export function useScheduleActions({
   };
 
   const handlePublishNow = async () => {
+    if (!(await confirmMove(post.id!, 'postado'))) return;
     setPublishing(true);
     setPublishPct(0);
     setLoading(true);
@@ -351,6 +356,7 @@ export function useScheduleActions({
   };
 
   const handleSchedule = async () => {
+    if (!(await confirmMove(post.id!, 'agendado'))) return;
     setLoading(true);
     try {
       await beforeServerAction?.();
@@ -527,6 +533,7 @@ export function useScheduleActions({
     handleSchedule,
     handleCancel,
     handleRetry,
+    moveGuardDialog,
     igFailed,
     ttFailed,
     igTokenBlocked,
@@ -561,70 +568,74 @@ export function PublishNowConfirmDialog({ actions }: { actions: ScheduleActions 
     publishPct,
     canPublishNow,
     handlePublishNow,
+    moveGuardDialog,
   } = actions;
   return (
-    <AlertDialog
-      open={confirmOpen}
-      onOpenChange={(o) => {
-        if (!publishing) setConfirmOpen(o);
-      }}
-    >
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>
-            {publishing ? t('scheduleButton.publishing') : t('scheduleButton.publishNowQuestion')}
-          </AlertDialogTitle>
-          <AlertDialogDescription>
-            {publishing
-              ? t(`scheduleButton.publishingWait.${platformCopyKey(platform)}`)
-              : t(`scheduleButton.publishNowDescription.${platformCopyKey(platform)}`)}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        {publishing && (
-          <div className="px-1">
-            <div className="flex items-center justify-between text-xs text-stone-500 mb-1.5">
-              <span>
-                {publishPct < 100
-                  ? t(`scheduleButton.progress.${platformCopyKey(platform)}`)
-                  : t('scheduleButton.done')}
-              </span>
-              <span className="tabular-nums font-medium text-stone-900">{publishPct}%</span>
+    <>
+      <AlertDialog
+        open={confirmOpen}
+        onOpenChange={(o) => {
+          if (!publishing) setConfirmOpen(o);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {publishing ? t('scheduleButton.publishing') : t('scheduleButton.publishNowQuestion')}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {publishing
+                ? t(`scheduleButton.publishingWait.${platformCopyKey(platform)}`)
+                : t(`scheduleButton.publishNowDescription.${platformCopyKey(platform)}`)}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {publishing && (
+            <div className="px-1">
+              <div className="flex items-center justify-between text-xs text-stone-500 mb-1.5">
+                <span>
+                  {publishPct < 100
+                    ? t(`scheduleButton.progress.${platformCopyKey(platform)}`)
+                    : t('scheduleButton.done')}
+                </span>
+                <span className="tabular-nums font-medium text-stone-900">{publishPct}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-stone-200 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-300 ease-out"
+                  style={{
+                    width: `${publishPct}%`,
+                    background:
+                      publishPct < 100
+                        ? platform === 'instagram'
+                          ? '#E1306C'
+                          : 'var(--text-main)'
+                        : '#3ecf8e',
+                  }}
+                />
+              </div>
             </div>
-            <div className="h-2 rounded-full bg-stone-200 overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-300 ease-out"
-                style={{
-                  width: `${publishPct}%`,
-                  background:
-                    publishPct < 100
-                      ? platform === 'instagram'
-                        ? '#E1306C'
-                        : 'var(--text-main)'
-                      : '#3ecf8e',
-                }}
-              />
-            </div>
-          </div>
-        )}
-        {!publishing && targetsTikTok && tiktokReady && (
-          <TikTokPostingDeclaration brandedContent={tiktokBranded} />
-        )}
-        {!publishing && (
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
-            {/* The TikTok gate can close while the dialog is open (the declaration above
+          )}
+          {!publishing && targetsTikTok && tiktokReady && (
+            <TikTokPostingDeclaration brandedContent={tiktokBranded} />
+          )}
+          {!publishing && (
+            <AlertDialogFooter>
+              <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
+              {/* The TikTok gate can close while the dialog is open (the declaration above
                 disappears with it), so the confirm re-checks it. */}
-            <Button
-              onClick={handlePublishNow}
-              disabled={!canPublishNow}
-              style={canPublishNow ? publishColor : undefined}
-            >
-              {t('scheduleButton.publish')}
-            </Button>
-          </AlertDialogFooter>
-        )}
-      </AlertDialogContent>
-    </AlertDialog>
+              <Button
+                onClick={handlePublishNow}
+                disabled={!canPublishNow}
+                style={canPublishNow ? publishColor : undefined}
+              >
+                {t('scheduleButton.publish')}
+              </Button>
+            </AlertDialogFooter>
+          )}
+        </AlertDialogContent>
+      </AlertDialog>
+      {moveGuardDialog}
+    </>
   );
 }
 

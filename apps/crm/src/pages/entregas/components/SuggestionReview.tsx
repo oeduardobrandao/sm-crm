@@ -194,3 +194,36 @@ export function TeamOnlyFooter({
     </p>
   );
 }
+
+/**
+ * Note above the caption field while the client's pending suggestion rewrote the caption:
+ * editing it now makes the suggestion show a conflict, so the team is pointed at the review
+ * first. Not blocking.
+ */
+export function CaptionSuggestionNote({
+  onViewSuggestion,
+  className,
+}: {
+  onViewSuggestion: () => void;
+  className?: string;
+}) {
+  const { t } = useTranslation('postEditor');
+  return (
+    <p
+      className={cn(
+        'mb-1.5 flex items-center gap-2 rounded-lg bg-amber-100 px-2.5 py-2 text-[12px] text-amber-900',
+        className,
+      )}
+    >
+      <Info className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      <span className="grow">{t('suggestionReview.captionNote')}</span>
+      <button
+        type="button"
+        onClick={onViewSuggestion}
+        className="shrink-0 font-semibold underline underline-offset-2"
+      >
+        {t('suggestionReview.viewSuggestion')}
+      </button>
+    </p>
+  );
+}

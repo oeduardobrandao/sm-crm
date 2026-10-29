@@ -25,6 +25,7 @@ vi.mock('@/store', () => ({
   getWorkflowPosts: vi.fn(),
   getClientePosts: vi.fn(),
   updateWorkflowPost: vi.fn(),
+  hasPendingEditSuggestion: vi.fn(async () => false),
   getClientes: vi.fn(),
   getWorkspaceSlug: vi.fn(),
   getHubToken: vi.fn(),
@@ -850,6 +851,48 @@ describe('EntregasTab', () => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['clientePosts', 42] });
     });
 
+    describe('suggestion move guard', () => {
+      afterEach(async () => {
+        const { hasPendingEditSuggestion } = await import('@/store');
+        vi.mocked(hasPendingEditSuggestion).mockResolvedValue(false);
+      });
+
+      it('asks before scheduling a post with a pending client suggestion and writes only after "Mover mesmo assim"', async () => {
+        const { updateWorkflowPost, hasPendingEditSuggestion } = await import('@/store');
+        vi.mocked(updateWorkflowPost).mockResolvedValue(undefined as never);
+        vi.mocked(hasPendingEditSuggestion).mockResolvedValue(true);
+        mockedGetClientePosts.mockResolvedValue([clientePost()]);
+        renderTab();
+        await screen.findByText('Post avulso de hoje');
+
+        fireEvent.click(screen.getByRole('button', { name: /○ Agendar/ }));
+
+        expect(await screen.findByText('Mover para Agendado?')).toBeInTheDocument();
+        expect(vi.mocked(hasPendingEditSuggestion)).toHaveBeenCalledWith(500);
+        expect(vi.mocked(updateWorkflowPost)).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Mover mesmo assim' }));
+        await waitFor(() =>
+          expect(vi.mocked(updateWorkflowPost)).toHaveBeenCalledWith(500, { status: 'agendado' }),
+        );
+      });
+
+      it('Cancelar does not write', async () => {
+        const { updateWorkflowPost, hasPendingEditSuggestion } = await import('@/store');
+        vi.mocked(hasPendingEditSuggestion).mockResolvedValue(true);
+        mockedGetClientePosts.mockResolvedValue([clientePost()]);
+        renderTab();
+        await screen.findByText('Post avulso de hoje');
+
+        fireEvent.click(screen.getByRole('button', { name: /○ Agendar/ }));
+        await screen.findByText('Mover para Agendado?');
+        fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+        await waitFor(() => expect(screen.queryByText('Mover para Agendado?')).toBeNull());
+        expect(vi.mocked(updateWorkflowPost)).not.toHaveBeenCalled();
+      });
+    });
+
     it('opens a fluxo post in its workflow drawer', async () => {
       mockedGetClientePosts.mockResolvedValue([
         clientePost({
@@ -886,6 +929,8 @@ describe('EntregasTab', () => {
       // shared with WorkflowDrawer / StandalonePostDrawer.
       // `workflow-post-status-counts` is the approval-exit dialog's per-status
       // counts (useWorkflowStageCommands), registered disabled until it opens.
+      // `workflow-pending-suggestions` is the same dialog's count of posts with an
+      // unreviewed client suggestion (a post_edit_suggestions read), same lifecycle.
       const { queryClient } = renderTab();
       await screen.findByText('Posts Agosto');
 
@@ -913,6 +958,7 @@ describe('EntregasTab', () => {
             'post-covers-cliente',
             'clientePosts',
             'workflow-post-status-counts',
+            'workflow-pending-suggestions',
           ]),
         );
       });

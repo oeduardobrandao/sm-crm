@@ -143,7 +143,13 @@ import {
   VISIBILITY_BADGE_LABEL,
 } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
-import { statusChangeNeedsConfirm, statusKeyToPatch, type StatusKey } from '../statusRegistry';
+import {
+  canonicalOfStatusKey,
+  statusChangeNeedsConfirm,
+  statusKeyToPatch,
+  type StatusKey,
+} from '../statusRegistry';
+import { useSuggestionMoveGuard } from '../hooks/useSuggestionMoveGuard';
 import { PostStatusChip } from './PostStatusChip';
 import { formatPostDate, formatPostDateFull } from '@/utils/postDate';
 import { PostEditorBody } from './PostEditorBody';
@@ -294,6 +300,7 @@ export function WorkflowDrawer({
   const [pendingRejectSuggestionId, setPendingRejectSuggestionId] = useState<number | null>(null);
   const [editorVersions, setEditorVersions] = useState<Record<number, number>>({});
   const statusRegistry = useStatusRegistry();
+  const { confirmMove, dialog: moveGuardDialog } = useSuggestionMoveGuard();
   const [drawerView, setDrawerView] = useState<'posts' | 'calendar' | 'grid' | 'history'>('posts');
   // A `&discussao=1` link to the post this drawer already shows (no remount, so the typed
   // drafts survive): back to the Posts view (the request would otherwise stay armed behind
@@ -634,6 +641,13 @@ export function WorkflowDrawer({
     }
   };
 
+  /** The suggestion guard for a status pick, run after the "post aprovado" confirm. A custom
+   *  status is judged by the canonical status it behaves as. */
+  const confirmStatusKeyMove = (id: number, key: StatusKey) => {
+    const canonical = canonicalOfStatusKey(key, statusRegistry);
+    return canonical ? confirmMove(id, canonical) : Promise.resolve(true);
+  };
+
   const handleFieldChange = async (
     id: number,
     field: keyof WorkflowPost | 'status',
@@ -647,6 +661,7 @@ export function WorkflowDrawer({
         setPendingStatusChange({ id, newStatusKey: key });
         return;
       }
+      if (!(await confirmStatusKeyMove(id, key))) return;
       try {
         const updated = await updateWorkflowPost(id, statusKeyToPatch(key));
         refresh();
@@ -670,6 +685,7 @@ export function WorkflowDrawer({
     if (!pendingStatusChange) return;
     const { id, newStatusKey } = pendingStatusChange;
     setPendingStatusChange(null);
+    if (!(await confirmStatusKeyMove(id, newStatusKey))) return;
     try {
       const updated = await updateWorkflowPost(id, statusKeyToPatch(newStatusKey));
       refresh();
@@ -1668,6 +1684,8 @@ export function WorkflowDrawer({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {moveGuardDialog}
 
       <AutoSchedulePromptDialog
         post={nudgePost}

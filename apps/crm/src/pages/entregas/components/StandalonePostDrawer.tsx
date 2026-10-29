@@ -72,7 +72,13 @@ import { useAuth } from '@/context/AuthContext';
 import { useClienteSocialAccounts } from '@/hooks/useClienteSocialAccounts';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
-import { statusChangeNeedsConfirm, statusKeyToPatch, type StatusKey } from '../statusRegistry';
+import {
+  canonicalOfStatusKey,
+  statusChangeNeedsConfirm,
+  statusKeyToPatch,
+  type StatusKey,
+} from '../statusRegistry';
+import { useSuggestionMoveGuard } from '../hooks/useSuggestionMoveGuard';
 import { CopyPostLinkButton } from '@/components/CopyPostLinkButton';
 import { CopyLinkButton } from '@/components/CopyLinkButton';
 import { PostEditorBody } from './PostEditorBody';
@@ -414,6 +420,14 @@ export function StandalonePostDrawer({
   // ── Field change / status confirm ────────────────────────────────────────────
 
   const [pendingStatusChange, setPendingStatusChange] = useState<StatusKey | null>(null);
+  const { confirmMove, dialog: moveGuardDialog } = useSuggestionMoveGuard();
+
+  /** The suggestion guard for a status pick, run after the "post aprovado" confirm. A custom
+   *  status is judged by the canonical status it behaves as. */
+  const confirmStatusKeyMove = (key: StatusKey) => {
+    const canonical = canonicalOfStatusKey(key, statusRegistry);
+    return canonical ? confirmMove(postId, canonical) : Promise.resolve(true);
+  };
 
   const handleFieldChange = async (field: keyof WorkflowPost, value: unknown) => {
     if (field === 'status') {
@@ -422,6 +436,7 @@ export function StandalonePostDrawer({
         setPendingStatusChange(key);
         return;
       }
+      if (!(await confirmStatusKeyMove(key))) return;
       try {
         await updateWorkflowPost(postId, statusKeyToPatch(key));
         refresh();
@@ -444,6 +459,7 @@ export function StandalonePostDrawer({
     if (!pendingStatusChange) return;
     const key = pendingStatusChange;
     setPendingStatusChange(null);
+    if (!(await confirmStatusKeyMove(key))) return;
     try {
       await updateWorkflowPost(postId, statusKeyToPatch(key));
       refresh();
@@ -820,6 +836,8 @@ export function StandalonePostDrawer({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {moveGuardDialog}
 
       <AlertDialog
         open={!!pendingRejectSuggestionId}

@@ -288,6 +288,14 @@
     "footerOnlyTexto": "Aceitar aplica só o texto do post. A legenda que a equipe editou fica como está.",
     "footerOnlyLegenda": "Aceitar aplica só a legenda. O texto que a equipe editou fica como está.",
     "acceptReview": "Aceitar…",
+    "captionNote": "O cliente sugeriu uma nova legenda. Revise a sugestão antes de editar.",
+    "viewSuggestion": "Ver sugestão",
+    "moveGuard": {
+      "title": "Mover para {{status}}?",
+      "body": "Há uma sugestão do cliente não revisada neste post.",
+      "cancel": "Cancelar",
+      "confirm": "Mover mesmo assim"
+    },
     "dialog": {
       "title": "Aceitar a sugestão?",
       "body": "A equipe editou {{fields}} depois que o cliente enviou a sugestão. Escolha qual versão fica.",

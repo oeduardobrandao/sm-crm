@@ -26,6 +26,9 @@ export interface ApprovalExitDialogProps {
   options: ApprovalExitOption[];
   recommended: ApprovalExitOption;
   numbers: { pendentes: number; alteraveisRascunho: number; aprovadoInterno: number };
+  /** Posts that the bulk approval would move and that still carry a client suggestion nobody
+   *  reviewed. The line shows only above zero; absent or 0 keeps the dialog as it was. */
+  pendingSuggestionCount?: number;
   locked?: boolean;
   busy?: boolean;
   /** A busca das contagens falhou: aviso inline com "Tentar de novo". */
@@ -92,6 +95,7 @@ export function ApprovalExitDialog({
   options,
   recommended,
   numbers,
+  pendingSuggestionCount = 0,
   locked,
   busy,
   countsError,
@@ -136,6 +140,10 @@ export function ApprovalExitDialog({
   const countsErrorText = t('approvalExit.countsError');
   const safetyNote = t('approvalExit.safetyNote');
   const disabled = counts === null || !!busy;
+  const suggestionLine =
+    pendingSuggestionCount > 0
+      ? t('approvalExit.pendingSuggestions', { count: pendingSuggestionCount })
+      : null;
 
   const chips = counts
     ? (Object.entries(counts) as [WorkflowPost['status'], number | undefined][])
@@ -160,6 +168,7 @@ export function ApprovalExitDialog({
     ) : (
       <>
         <span className="block">{intro}</span>
+        {suggestionLine && <span className="mt-2 block text-xs font-medium">{suggestionLine}</span>}
         {chips.length > 0 && (
           <span
             className="mt-2 flex flex-wrap justify-center gap-1.5"
@@ -246,6 +255,9 @@ export function ApprovalExitDialog({
         ) : (
           <>
             <p className="text-sm text-muted-foreground">{intro}</p>
+            {suggestionLine && (
+              <p className="text-sm font-medium text-foreground">{suggestionLine}</p>
+            )}
             {chips.length > 0 && (
               <ul className="flex flex-wrap gap-1.5" aria-label={t('approvalExit.currentStatuses')}>
                 {chips.map((c) => (

@@ -16,6 +16,7 @@ vi.mock('sonner', () => ({
 
 vi.mock('@/store', () => ({
   updateWorkflowPost: vi.fn(),
+  hasPendingEditSuggestion: vi.fn(async () => false),
   reorderBoardPosts: vi.fn(),
   isFinalClientApprovalCycle: vi.fn(() => true),
   cardAutoScheduleGates: vi.fn(() => ({ autoPublishOnApproval: true, isFinalApprovalCycle: true })),
@@ -109,7 +110,7 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
 
 import { PostsKanbanView } from '../PostsKanbanView';
 import { POST_STATUS_ORDER, STATUS_LABELS } from '../../postLabels';
-import { updateWorkflowPost, reorderBoardPosts } from '@/store';
+import { updateWorkflowPost, reorderBoardPosts, hasPendingEditSuggestion } from '@/store';
 import type { ActivePost } from '@/store';
 import type { BoardCard } from '../../hooks/useEntregasData';
 import { ACTIVE_POSTS_KEY } from '../../hooks/useUpdatePostStatus';
@@ -119,6 +120,7 @@ import { ACTIVE_POSTS_KEY } from '../../hooks/useUpdatePostStatus';
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 const mockUpdate = vi.mocked(updateWorkflowPost);
+const mockHasPending = vi.mocked(hasPendingEditSuggestion);
 const mockReorder = vi.mocked(reorderBoardPosts);
 
 beforeAll(() => {
@@ -134,6 +136,8 @@ beforeEach(() => {
   dndHandlers.onDragOver = undefined;
   dndHandlers.onDragCancel = undefined;
   mockUpdate.mockReset();
+  mockHasPending.mockReset();
+  mockHasPending.mockResolvedValue(false);
   mockReorder.mockReset();
   mockReorder.mockResolvedValue(undefined);
   vi.mocked(toast).mockClear();
@@ -525,6 +529,75 @@ describe('PostsKanbanView', () => {
           custom_status_id: null,
         }),
       );
+    });
+
+    describe('suggestion move guard', () => {
+      it('a drop into aprovado_cliente with a pending suggestion asks first and writes only after "Mover mesmo assim"', async () => {
+        mockUpdate.mockResolvedValue({} as never);
+        mockHasPending.mockResolvedValue(true);
+        const posts = [makePost({ id: 520, status: 'revisao_interna', titulo: 'Com sugestão' })];
+        renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+        dndHandlers.onDragEnd?.({ active: { id: '520' }, over: { id: 'col:aprovado_cliente' } });
+
+        expect(await screen.findByText('Mover para Aprovado pelo cliente?')).toBeInTheDocument();
+        expect(mockHasPending).toHaveBeenCalledWith(520);
+        expect(mockUpdate).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Mover mesmo assim' }));
+
+        await waitFor(() =>
+          expect(mockUpdate).toHaveBeenCalledWith(520, {
+            status: 'aprovado_cliente',
+            custom_status_id: null,
+          }),
+        );
+      });
+
+      it('Cancelar never writes and shows no "movido" toast', async () => {
+        mockHasPending.mockResolvedValue(true);
+        const posts = [makePost({ id: 521, status: 'revisao_interna', titulo: 'Com sugestão' })];
+        renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+        dndHandlers.onDragEnd?.({ active: { id: '521' }, over: { id: 'col:aprovado_cliente' } });
+
+        await screen.findByText('Mover para Aprovado pelo cliente?');
+        fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+        await waitFor(() =>
+          expect(screen.queryByText('Mover para Aprovado pelo cliente?')).toBeNull(),
+        );
+        expect(mockUpdate).not.toHaveBeenCalled();
+        expect(vi.mocked(toast)).not.toHaveBeenCalled();
+      });
+
+      it('a drop to a status that does not leave the approval flow never asks', async () => {
+        mockUpdate.mockResolvedValue({} as never);
+        mockHasPending.mockResolvedValue(true);
+        const posts = [makePost({ id: 522, status: 'rascunho', titulo: 'Rascunho' })];
+        renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+        dndHandlers.onDragEnd?.({ active: { id: '522' }, over: { id: 'col:revisao_interna' } });
+
+        await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
+        expect(mockHasPending).not.toHaveBeenCalled();
+        expect(screen.queryByText(/Mover para/)).toBeNull();
+      });
+
+      it('runs after the "post aprovado" confirm', async () => {
+        mockUpdate.mockResolvedValue({} as never);
+        mockHasPending.mockResolvedValue(true);
+        const posts = [makePost({ id: 523, status: 'aprovado_interno', titulo: 'Aprovado' })];
+        renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+        dndHandlers.onDragEnd?.({ active: { id: '523' }, over: { id: 'col:aprovado_cliente' } });
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Confirmar' }));
+        expect(await screen.findByText('Mover para Aprovado pelo cliente?')).toBeInTheDocument();
+        expect(mockUpdate).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: 'Mover mesmo assim' }));
+        await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+      });
     });
 
     it('cancelling the confirm dialog never writes', async () => {
