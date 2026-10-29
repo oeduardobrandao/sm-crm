@@ -55,7 +55,7 @@ export type CaptionOptionsData = {
 };
 
 /** One paragraph per slide, slide 1 first: `slide_1_text` is the first line of `conteudo_plain`,
- * so no "Lâmina N" prefix (spec §4.4). */
+ * so no "Slide N" prefix (spec §4.4). */
 export function slidesToBody(slides: Slide[]): string {
   return slides.map((s) => s.texto.trim()).join("\n\n");
 }
@@ -93,7 +93,7 @@ async function assertPostOfClient(d: Deps, postId: number, clientId: number): Pr
  * module, so the constant is mirrored here). 10 slides of 2000 characters pass preview_post's own
  * limits but would build a body the save then refuses with an English zod error. */
 const POST_BODY_MAX = 10000;
-const BODY_TOO_LONG = "O conteúdo passa de 10.000 caracteres. Encurte as lâminas.";
+const BODY_TOO_LONG = "O conteúdo passa de 10.000 caracteres. Encurte os slides.";
 
 /** The body the card saves: reels and a post without slides use the roteiro (a stories or feed
  * post written as a roteiro would otherwise save an empty body); otherwise one paragraph per slide. */

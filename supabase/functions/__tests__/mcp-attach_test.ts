@@ -211,10 +211,10 @@ Deno.test("attach: ineligible post refused before any fetch", withHosts(HOST, as
     [post({ status: "agendado" }), links(1), {}, "Este post não está em edição. Volte para rascunho no Mesaas para mudar as imagens."],
     [post({ instagram_media_id: "17890" }), links(1), {}, "Este post já foi publicado. As imagens não podem mais ser trocadas por aqui."],
     [post({ tipo: "reels" }), links(1), {}, "Posts do tipo reels não recebem imagens."],
-    [post(), links(10), { position: 3 }, "Este post já tem 10 mídias. Substitua uma lâmina."],
-    [post(), links(2), { position: 5 }, "Esta lâmina não existe neste post. Escolha uma lâmina de 1 a 3."],
-    [post(), links(2), { position: 3, replace: true }, "Esta lâmina não existe neste post. Escolha uma lâmina de 1 a 2."],
-    [post(), links(0), { position: 1, replace: true }, "Este post ainda não tem lâminas. Adicione a imagem como nova lâmina."],
+    [post(), links(10), { position: 3 }, "Este post já tem 10 mídias. Substitua um slide."],
+    [post(), links(2), { position: 5 }, "Este slide não existe neste post. Escolha um slide de 1 a 3."],
+    [post(), links(2), { position: 3, replace: true }, "Este slide não existe neste post. Escolha um slide de 1 a 2."],
+    [post(), links(0), { position: 1, replace: true }, "Este post ainda não tem slides. Adicione a imagem como novo slide."],
   ];
   for (const [p, l, over, msg] of cases) {
     const { server, net, calls } = setup({ tables: { workflow_posts: [p], post_file_links: [l] } });
@@ -326,14 +326,14 @@ Deno.test("attach and show read media in (sort_order, id) order", withHosts(HOST
 Deno.test("attach: every RPC raise queues the uploaded key and maps to pt-BR, never the raw error", withHosts(HOST, async () => {
   const key = "contas/workspace-A/files/uuid-1.png";
   const cases: Array<[string, string]> = [
-    ["media_full", "Este post já tem 10 mídias. Substitua uma lâmina."],
+    ["media_full", "Este post já tem 10 mídias. Substitua um slide."],
     ["post_not_found", "Post não encontrado neste workspace."],
     ["post_not_editable:aprovado_cliente", "Este post está com o cliente. Volte para rascunho no Mesaas para mudar as imagens."],
     ["post_not_editable:publish_processing_at", "Este post não está em edição. Volte para rascunho no Mesaas para mudar as imagens."],
     ["post_published", "Este post já foi publicado. As imagens não podem mais ser trocadas por aqui."],
     ["tipo_not_image:reels", "Posts do tipo reels não recebem imagens."],
     ["tipo_not_image:weird", "Este tipo de post não recebe imagens."],
-    ["invalid_position", "A lâmina escolhida não existe mais neste post. Abra o card de novo para ver as lâminas atuais."],
+    ["invalid_position", "O slide escolhido não existe mais neste post. Abra o card de novo para ver os slides atuais."],
     ["quota_exceeded", "Cota de armazenamento excedida. Libere espaço em Arquivos."],
     ["workspace_unavailable", "Você não tem mais acesso a este workspace no Mesaas."],
     ["invalid_file", "Não foi possível salvar a imagem no post. Tente de novo."],

@@ -71,7 +71,7 @@ export function SendFlow({
   const details = [
     client.nome,
     TIPO_LABEL[post.tipo] ?? post.tipo,
-    slideCount && post.tipo === 'carrossel' ? plural(slideCount, 'lâmina', 'lâminas') : null,
+    slideCount && post.tipo === 'carrossel' ? plural(slideCount, 'slide', 'slides') : null,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -119,7 +119,7 @@ export function SendFlow({
   if (phase === 'confirm' || phase === 'sending') {
     const what =
       post.tipo === 'carrossel' && slideCount
-        ? `${plural(slideCount, 'lâmina', 'lâminas')} e a legenda.`
+        ? `${plural(slideCount, 'slide', 'slides')} e a legenda.`
         : 'O post e a legenda.';
     return (
       <Card

@@ -1,6 +1,6 @@
 // deno-lint-ignore-file no-explicit-any
 // Cards (MCP Apps): anexar uma imagem do chat a um post. `show_attach_image` mostra o card com as
-// lâminas do post; `attach_image_to_post` (só o widget chama, só OAuth) baixa a imagem com o fetch
+// slides do post; `attach_image_to_post` (só o widget chama, só OAuth) baixa a imagem com o fetch
 // endurecido, sobe para o R2 e liga ao post pela RPC `mcp_attach_post_file`.
 // Spec: docs/superpowers/specs/2026-10-29-mcp-apps-cards-design.md §4.6.
 import { z } from "npm:zod@3";
@@ -31,12 +31,12 @@ const MSG = {
   download: "Não foi possível baixar esta imagem. Envie de novo pelo chat.",
   format: "Formato não aceito. Use JPG ou PNG.",
   size: "A imagem passa de 8 MB. Gere uma versão menor.",
-  mediaFull: "Este post já tem 10 mídias. Substitua uma lâmina.",
+  mediaFull: "Este post já tem 10 mídias. Substitua um slide.",
   withClient: "Este post está com o cliente. Volte para rascunho no Mesaas para mudar as imagens.",
   notEditable: "Este post não está em edição. Volte para rascunho no Mesaas para mudar as imagens.",
   published: "Este post já foi publicado. As imagens não podem mais ser trocadas por aqui.",
   tipoOther: "Este tipo de post não recebe imagens.",
-  staleSlide: "A lâmina escolhida não existe mais neste post. Abra o card de novo para ver as lâminas atuais.",
+  staleSlide: "O slide escolhido não existe mais neste post. Abra o card de novo para ver os slides atuais.",
   quota: "Cota de armazenamento excedida. Libere espaço em Arquivos.",
   notFound: "Post não encontrado neste workspace.",
   workspace: "Você não tem mais acesso a este workspace no Mesaas.",
@@ -48,8 +48,8 @@ const tipoMessage = (tipo: string) =>
 const statusMessage = (status: string) => (CLIENT_STATUSES.includes(status) ? MSG.withClient : MSG.notEditable);
 const slideRangeMessage = (max: number) =>
   max === 0
-    ? "Este post ainda não tem lâminas. Adicione a imagem como nova lâmina."
-    : `Esta lâmina não existe neste post. Escolha uma lâmina de 1 a ${max}.`;
+    ? "Este post ainda não tem slides. Adicione a imagem como novo slide."
+    : `Este slide não existe neste post. Escolha um slide de 1 a ${max}.`;
 
 /** `MCP_IMAGE_HOSTS`: exact hostnames (comma-separated, trimmed, any case). Empty refuses every
  * image. A refusal logs only the hostname, so the pilot can read ChatGPT's file host from the log. */
@@ -149,9 +149,9 @@ export function registerAttachTools(server: any, deps: Deps): void {
     deps,
     "show_attach_image",
     "posts:read",
-    "Mostra um card com as lâminas do post e onde a imagem do chat entraria. A pessoa escolhe a " +
-      "lâmina e confirma no próprio card; este tool não anexa nada. Use quando a pessoa pedir para " +
-      "colocar uma imagem gerada ou enviada no chat em um post do Mesaas. `position` (1 a 10) sugere a lâmina.",
+    "Mostra um card com os slides do post e onde a imagem do chat entraria. A pessoa escolhe o " +
+      "slide e confirma no próprio card; este tool não anexa nada. Use quando a pessoa pedir para " +
+      "colocar uma imagem gerada ou enviada no chat em um post do Mesaas. `position` (1 a 10) sugere o slide.",
     {
       post_id: z.number().int().positive(),
       image: z.object(imageShape),
@@ -173,7 +173,7 @@ export function registerAttachTools(server: any, deps: Deps): void {
       const summary = reason
         ? `O post "${titulo}" não pode receber a imagem agora: ${reason}`
         : `Card aberto com as ${media.length} mídias do post "${titulo}" (máximo ${MAX_MEDIA}). ` +
-          "A pessoa escolhe a lâmina e confirma no card.";
+          "A pessoa escolhe o slide e confirma no card.";
       return {
         summary,
         data: {
@@ -201,7 +201,7 @@ export function registerAttachTools(server: any, deps: Deps): void {
     deps,
     "attach_image_to_post",
     "posts:write",
-    "Anexa a imagem do chat ao post na lâmina escolhida no card. Só o card chama.",
+    "Anexa a imagem do chat ao post no slide escolhido no card. Só o card chama.",
     {
       post_id: z.number().int().positive(),
       image: z.object(imageShape),

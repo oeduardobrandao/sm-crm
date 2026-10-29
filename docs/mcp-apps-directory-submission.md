@@ -247,7 +247,7 @@ posts.
 
 - Reviewer questions go to the founder's e-mail; the builder prepares the answer and any code fix. A
   review that asks for a tool-description change is a normal deploy of `mcp` (runbook step 2 command).
-- Never edit `ui://mesaas/cards-v1.html` in place after listing: a breaking card change ships as
-  `cards-v2.html` (runbook, "Redeploy triggers").
+- Never change the card HTML under a listed URI: every widget change bumps `CARDS_URI`
+  (`supabase/functions/mcp/apps.ts`, runbook "Redeploy triggers"); the tool listing then changes too.
 - Rollback of the cards without touching the listing: `MCP_APPS=off`. The listing then shows tools without
   cards until `on` again; tell the reviewer if a review is in progress.

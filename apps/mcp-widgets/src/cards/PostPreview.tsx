@@ -141,11 +141,11 @@ export function PostPreview({ host, data }: { host: Host; data: PreviewData }) {
         <div className="mw-slides">
           <div className="mw-slide-main" aria-live="polite">
             <span className="mw-slide-n">
-              Lâmina {current + 1} de {slides.length}
+              Slide {current + 1} de {slides.length}
             </span>
             <strong className="mw-slide-text">{slide?.texto}</strong>
           </div>
-          <ol className="mw-slide-list" aria-label="Lâminas">
+          <ol className="mw-slide-list" aria-label="Slides">
             {slides.map((s, i) => (
               <li key={i}>
                 <button

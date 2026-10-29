@@ -101,11 +101,11 @@ Deno.test("off: tool list identical to baseline", () => {
 Deno.test("on: resource registered with the exact _meta", async () => {
   const server = recordingServer();
   registerTools(server, depsWith({ enabled: true, oauth: false, r2Origin: R2 }));
-  assertEquals(server.resources.length, 1);
+  assertEquals(server.resources.length, 2);
   const r = server.resources[0];
   assertEquals(r.name, "mesaas-cards");
   assertEquals(r.uri, CARDS_URI);
-  assertEquals(r.uri, "ui://mesaas/cards-v1.html");
+  assertEquals(r.uri, "ui://mesaas/cards-v2.html");
   assertEquals(r.config.mimeType, CARDS_MIME);
   assertEquals(r.config.mimeType, "text/html;profile=mcp-app");
   const ui = r.config._meta.ui;
@@ -120,6 +120,18 @@ Deno.test("on: resource registered with the exact _meta", async () => {
   assertEquals(out.contents[0].mimeType, CARDS_MIME);
   assertEquals(typeof out.contents[0].text, "string");
   assertEquals(out.contents[0]._meta, r.config._meta);
+});
+
+Deno.test("on: the previous URI stays registered and serves the current HTML", async () => {
+  const server = recordingServer();
+  registerTools(server, depsWith({ enabled: true, oauth: false, r2Origin: R2 }));
+  const [current, legacy] = server.resources;
+  assertEquals(legacy.name, "mesaas-cards-v1");
+  assertEquals(legacy.uri, "ui://mesaas/cards-v1.html");
+  assertEquals(legacy.config, current.config);
+  const [a, b] = await Promise.all([current.read(), legacy.read()]);
+  assertEquals(b.contents[0].uri, "ui://mesaas/cards-v1.html");
+  assertEquals(b.contents[0].text, a.contents[0].text);
 });
 
 Deno.test("on with no R2 account: resourceDomains is empty", () => {

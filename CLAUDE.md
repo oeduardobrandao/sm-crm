@@ -54,7 +54,7 @@ pushes to `main` and `staging`, with **ten** jobs:
 
 | Job | Runs |
 |---|---|
-| `lint-and-typecheck` | `npm run lint`, then `tsc` for **all five** projects (crm, hub, admin, `apps/mcp-widgets`, `tsconfig.scripts.json`), then rebuilds the MCP cards bundle (`npm run build:mcp-widgets`) and fails on `git diff --exit-code supabase/functions/mcp/ui/generated/cards-v1.ts` |
+| `lint-and-typecheck` | `npm run lint`, then `tsc` for **all five** projects (crm, hub, admin, `apps/mcp-widgets`, `tsconfig.scripts.json`), then rebuilds the MCP cards bundle (`npm run build:mcp-widgets`) and fails on `git diff --exit-code supabase/functions/mcp/ui/generated/cards.ts` |
 | `unit-tests` (4 shards) | `vitest run --shard=N/4 --coverage --reporter=blob`; each shard uploads its blob |
 | `edge-function-tests` | `npm run check:functions` (`deno check` over every `*/index.ts` and `_shared` module), then `npm run test:functions` (Deno) |
 | `entitlement-tests` | `supabase start` + `bash scripts/test-entitlements.sh` — the psql RLS/entitlement suites |
@@ -71,7 +71,7 @@ Four things this list is here to prevent:
   typechecks five projects separately, so a Hub, Admin, mcp-widgets or scripts break passes
   locally and fails in CI. Run the five `tsc` commands, not `build`. Anything under
   `apps/mcp-widgets/` also needs `npm run build:mcp-widgets` and the regenerated
-  `cards-v1.ts` committed, or the diff check fails.
+  `cards.ts` committed, or the diff check fails.
 - **`supabase/tests/entitlements/*.sql` IS gated by CI.** It is easy to assume
   otherwise because it needs a local database to run by hand. It does not need
   one to be enforced.
@@ -98,7 +98,7 @@ Monorepo with npm workspaces:
 - `apps/crm/` -- Internal CRM dashboard (React 19, React Router v7, TanStack Query)
 - `apps/hub/` -- Client-facing portal (React 19, createBrowserRouter)
 - `packages/ui/` -- Shared UI primitives
-- `apps/mcp-widgets/` -- Cards do MCP (React + Vite, build em arquivo único); `npm run build:mcp-widgets` gera `supabase/functions/mcp/ui/generated/cards-v1.ts`, que se commita e nunca se edita à mão
+- `apps/mcp-widgets/` -- Cards do MCP (React + Vite, build em arquivo único); `npm run build:mcp-widgets` gera `supabase/functions/mcp/ui/generated/cards.ts`, que se commita e nunca se edita à mão
 - `supabase/functions/` -- Deno edge functions (backend)
 - `supabase/migrations/` -- SQL migrations
 
@@ -131,7 +131,7 @@ Monorepo with npm workspaces:
   - Cards (MCP Apps, spec `docs/superpowers/specs/2026-10-29-mcp-apps-cards-design.md`, runbook `docs/mcp-apps-rollout.md`, listagens `docs/mcp-apps-directory-submission.md`): ligados por `MCP_APPS` (`off` padrão | `pilot` | `on`, ver Environment variables); desligado, o `mcp` não registra ferramenta de card nem recurso `ui://` e se comporta como antes. Ferramentas de card: `preview_post`, `show_caption_options`, `show_client_calendar`, `show_attach_image` (todas `client_id`, não `cliente_id`, e `structuredContent` com `card` e `v: 1`)
   - **O agente não envia sozinho.** `send_post_to_client` e `attach_image_to_post` são só do widget (`_meta.ui.visibility: ["app"]`), registradas apenas em conexão OAuth (`key_id` começa com `oauth:`; chave `mesaas_sk_` nunca as vê) e o envio exige o nonce HMAC que o card recebe em `_meta["mesaas/sendNonce"]` do resultado de `create_post`/`update_post` (só deles: `preview_post` não emite nonce, então o card só envia depois de salvar nele mesmo, a partir do status que esse save devolveu; 30 min, nunca no `audit_log`). O `UPDATE` de status e o anexo passam só pelas RPCs `mcp_send_post_to_client` e `mcp_attach_post_file` (EXECUTE só `service_role`, membership por `workspace_members`). Toda ferramenta nova do `mcp` precisa de entrada em `TOOL_META` (título e annotations; teste estrutural) e de `auditArgs` sem texto de post, legenda, nonce ou `download_url`
   - **Revogar conexão OAuth encerra também o lado do Supabase.** O trigger `trg_mcp_oauth_grant_revoked` (em `mcp_oauth_grants` e `admin_mcp_oauth_grants`, migration `20261107000001`) chama `mcp_revoke_oauth_client_access` quando `revoked_at` sai de nulo: revoga o `auth.oauth_consents` e apaga as `auth.sessions` daquele cliente, se não sobrar grant ativo dele em nenhuma das duas tabelas. Sem isso o Supabase reaprovava o consentimento velho e o cliente entrava em loop de 401. A `ConsentPage` chama `prepare-authorization` (`mcp-oauth-consent`) antes do `getAuthorizationDetails` pelo mesmo motivo; não inverta essa ordem
-  - **URI versionada:** o recurso é `ui://mesaas/cards-v1.html` e hosts guardam o HTML em cache. Mudança que quebra o formato de um card (`structuredContent`, comportamento do botão) sai como `cards-v2.html`, nunca como edição do v1. Mudou o widget = `npm run build:mcp-widgets`, commit do `cards-v1.ts` e redeploy de `mcp`. Sem `_meta.ui.domain` de propósito (Claude e ChatGPT pedem valores incompatíveis); só `openai/widgetDomain`
+  - **URI versionada:** o recurso é `CARDS_URI` em `mcp/apps.ts` (hoje `ui://mesaas/cards-v2.html`) e hosts guardam o HTML em cache pela URI: o ChatGPT seguiu mostrando o card antigo depois de um redeploy do v1. Toda mudança em `apps/mcp-widgets/` sobe a versão da URI e passa a anterior para `LEGACY_CARDS_URIS` (continua servida, com o HTML atual, para quem guardou a listagem velha). Mudou o widget = `npm run build:mcp-widgets`, commit do `cards.ts`, versão nova em `CARDS_URI` e redeploy de `mcp`; no ChatGPT em modo dev ainda é preciso "Refresh" no app. Sem `_meta.ui.domain` de propósito (Claude e ChatGPT pedem valores incompatíveis); só `openai/widgetDomain`
 - `mcp-admin/` -- MCP do Admin da plataforma (OAuth-only; `platform_admins` + `admin_mcp_oauth_grants`; banners, popups, artigos da KB em Markdown, leituras de workspaces/planos/dashboard, rascunhos do blog). Escopos em `_shared/mcp-admin-scopes.ts`, bundlados também em `mcp-oauth-consent` e espelhados no CRM (`apps/crm/src/lib/mcp-scopes.ts`) e no Admin (`apps/admin/src/lib/mcp-admin-scopes.ts`): mudar escopo = redeploy dos dois + CRM + Admin
 - Cron functions authenticate via `x-cron-secret` header (not JWT)
 - All other functions verify JWT via `Authorization: Bearer <token>` header

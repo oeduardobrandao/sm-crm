@@ -75,8 +75,8 @@ export function AttachImage({ host, data }: { host: Host; data: AttachImageData 
         setMsg({
           tone: 'ok',
           text: replace
-            ? `Imagem da lâmina ${picked} substituída no Mesaas.`
-            : `Imagem anexada na lâmina ${picked} no Mesaas.`,
+            ? `Imagem do slide ${picked} substituída no Mesaas.`
+            : `Imagem anexada no slide ${picked} no Mesaas.`,
         });
       }
     } catch {
@@ -141,8 +141,8 @@ export function AttachImage({ host, data }: { host: Host; data: AttachImageData 
   }
 
   const summary = pickedHas
-    ? `A lâmina ${picked} já tem imagem: o cartão pergunta antes de substituir. As outras ficam como estão.`
-    : `A imagem entra na lâmina ${picked}. As outras ficam como estão e nada é publicado.`;
+    ? `O slide ${picked} já tem imagem: o card pergunta antes de substituir. Os outros ficam como estão.`
+    : `A imagem entra no slide ${picked}. Os outros ficam como estão e nada é publicado.`;
 
   return (
     <Card
@@ -165,7 +165,7 @@ export function AttachImage({ host, data }: { host: Host; data: AttachImageData 
           <>
             <Button busy={busy} disabled={done} onClick={onAttach}>
               <ImagePlus size={14} aria-hidden="true" />
-              Anexar na lâmina escolhida
+              Anexar no slide escolhido
             </Button>
             {host.pickImage ? (
               <Button variant="outline" onClick={chooseOther}>
@@ -180,8 +180,8 @@ export function AttachImage({ host, data }: { host: Host; data: AttachImageData 
         )
       }
     >
-      <strong className="mw-label">Em qual lâmina?</strong>
-      <div className="mw-slots" role="group" aria-label="Lâminas do post">
+      <strong className="mw-label">Em qual slide?</strong>
+      <div className="mw-slots" role="group" aria-label="Slides do post">
         {Array.from({ length: slots }, (_, i) => {
           const n = i + 1;
           const has = hasImage(n);
@@ -196,7 +196,7 @@ export function AttachImage({ host, data }: { host: Host; data: AttachImageData 
               type="button"
               className={cls}
               aria-pressed={n === picked}
-              aria-label={`Lâmina ${n}${has ? ', já tem imagem' : ', vazia'}`}
+              aria-label={`Slide ${n}${has ? ', já tem imagem' : ', vazia'}`}
               disabled={busy || confirming || done}
               onClick={() => {
                 setPicked(n);
@@ -213,15 +213,13 @@ export function AttachImage({ host, data }: { host: Host; data: AttachImageData 
         })}
       </div>
       {confirming ? (
-        <Notice tone="info">{`Substituir a imagem da lâmina ${picked}?`}</Notice>
+        <Notice tone="info">{`Substituir a imagem do slide ${picked}?`}</Notice>
       ) : done ? null : (
         <span className="mw-hint">{summary}</span>
       )}
       {msg?.tone === 'ok' ? (
         <div className="mw-attached" role="status">
-          {attachedUrl ? (
-            <img src={attachedUrl} alt={`Imagem anexada na lâmina ${picked}`} />
-          ) : null}
+          {attachedUrl ? <img src={attachedUrl} alt={`Imagem anexada no slide ${picked}`} /> : null}
           <p className="mw-attached-text">
             <CheckCircle2 size={16} aria-hidden="true" />
             {msg.text}

@@ -7,7 +7,7 @@ import { viteSingleFile } from 'vite-plugin-singlefile';
 // Single-file build: every byte of JS and CSS inlined into index.html, so the card makes no
 // network request of its own (the resource declares connectDomains: []). dev.html is only for
 // `vite` dev serving and is not a build input. scripts/build-mcp-widgets.ts turns the output
-// into supabase/functions/mcp/ui/generated/cards-v1.ts.
+// into supabase/functions/mcp/ui/generated/cards.ts.
 // zod 4 re-exports every locale as a namespace (`export * as locales`), and the sdk's
 // `import * as z` keeps that namespace alive: ~40 unused locales, a third of the bundle.
 // Only `en` is ever applied (classic/external.js calls config(en())), so zod's own

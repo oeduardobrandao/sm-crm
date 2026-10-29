@@ -36,7 +36,7 @@ npx tsc -p apps/admin/tsconfig.json --noEmit
 npx tsc -p apps/mcp-widgets/tsconfig.json --noEmit
 npx tsc -p tsconfig.scripts.json
 
-npm run build:mcp-widgets && git diff --exit-code supabase/functions/mcp/ui/generated/cards-v1.ts  # CI fails on a stale cards bundle
+npm run build:mcp-widgets && git diff --exit-code supabase/functions/mcp/ui/generated/cards.ts  # CI fails on a stale cards bundle
 
 npm run test           # vitest
 npm run test:functions # deno test for edge functions
