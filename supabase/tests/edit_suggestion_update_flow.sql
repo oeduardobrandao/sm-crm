@@ -152,7 +152,7 @@ begin
   select * into f from pg_temp.esf_fixture();
   perform upsert_edit_suggestion(f.post, f.ws, 'tok', null, 'texto v1', 'legenda v2');
   select id into v_id from post_edit_suggestions where post_id = f.post and status = 'pending';
-  -- accept requires a caller in the suggestion's workspace (20261105000001).
+  -- accept requires a caller in the suggestion's workspace (20261105000003).
   perform set_config('request.jwt.claims', json_build_object('sub', f.usr)::text, true);
   perform accept_edit_suggestion(v_id);
   assert (select ig_caption from workflow_posts where id = f.post) = 'legenda v2';

@@ -20,7 +20,7 @@
 -- conflito levanta suggestion_conflict (um CRM antigo, de 2 args, não sobrescreve
 -- uma edição da equipe). Interseção vazia levanta no_fields.
 --
--- Corpo de 20261105000001 (checagem de workspace, ordem de locks post -> sugestão,
+-- Corpo de 20261105000003 (checagem de workspace, ordem de locks post -> sugestão,
 -- suggestion_changed, app.*) mantido. A assinatura muda: DROP + CREATE, grants
 -- reafirmados.
 -- =====================================================================

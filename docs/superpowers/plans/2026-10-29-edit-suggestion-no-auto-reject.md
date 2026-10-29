@@ -16,9 +16,9 @@
 - Logical fields: `texto` = `conteudo` + `conteudo_plain`; `legenda` = `ig_caption`. `changed_fields` keeps storing `conteudo`, `conteudo_plain`, `ig_caption`.
 - texto changed = `COALESCE(plain,'')` differs OR `conteudo` jsonb `IS DISTINCT FROM` (jsonb, never `::text`). texto conflict = `COALESCE(plain,'')` differs OR inline-image key set differs. legenda: `COALESCE(x,'')` both ways.
 - Lock order in every writer: `workflow_posts` row, then `post_edit_suggestions` row.
-- `accept_edit_suggestion` and `reject_edit_suggestion` keep the workspace check from migration `20261105000001` (PR #771): `Suggestion not found` unless `auth.role() = 'service_role'` or `conta_id = get_my_conta_id()`.
+- `accept_edit_suggestion` and `reject_edit_suggestion` keep the workspace check from migration `20261105000003` (PR #771): `Suggestion not found` unless `auth.role() = 'service_role'` or `conta_id = get_my_conta_id()`.
 - Error codes (P0001 messages): `post_not_pending`, `suggestion_changed`, `suggestion_conflict`, `no_fields`, `base_required`.
-- Migration version prefixes unique and above main's tail; the hotfix holds `20261105000001`. Use `20261106000001`..`20261106000003`; renumber before opening the PR if main moved.
+- Migration version prefixes unique and above main's tail; the hotfix holds `20261105000003`. Use `20261106000001`..`20261106000003`; renumber before opening the PR if main moved.
 - Deploy order (spec): migrations → `hub-edit-suggestion` → merge. The three migrations go out in ONE `db push`, never `…0001` alone: without the trigger and before the new accept, the old accept writes `ig_caption` unconditionally. Nothing is applied to staging or prod by the implementer.
 - The legacy path (`p_touched_fields` NULL) keeps today's `::text` jsonb compare on purpose (it must behave exactly as today); the jsonb rule above is for the new path only.
 - Name the field type `SuggestionField = 'texto' | 'legenda'` everywhere (Hub `types.ts`, CRM `store/posts.ts`, Deno handler literal).
@@ -27,8 +27,8 @@
 
 ### Task 0: Base the branch on the hotfix
 
-- [ ] **Step 1:** If PR #771 is merged, rebase this branch onto `origin/main`. If not, cherry-pick its commit (`git log origin/claude/fix-edit-suggestion-rpc-tenant-check -1`) so `supabase/migrations/20261105000001_edit_suggestion_rpcs_workspace_check.sql` and suite `101_edit_suggestion_rpcs_workspace_check.sql` exist here; drop the cherry-pick at rebase time once #771 lands.
-- [ ] **Step 2:** `ls supabase/migrations | tail -3` shows `20261105000001_…` and nothing at or above `20261106000001`; otherwise renumber this plan's migrations above the tail.
+- [ ] **Step 1:** If PR #771 is merged, rebase this branch onto `origin/main`. If not, cherry-pick its commit (`git log origin/claude/fix-edit-suggestion-rpc-tenant-check -1`) so `supabase/migrations/20261105000003_edit_suggestion_rpcs_workspace_check.sql` and suite `101_edit_suggestion_rpcs_workspace_check.sql` exist here; drop the cherry-pick at rebase time once #771 lands.
+- [ ] **Step 2:** `ls supabase/migrations | tail -3` shows `20261105000003_…` and nothing at or above `20261106000001`; otherwise renumber this plan's migrations above the tail.
 - Never use `useBlocker`. Dialogs use the existing shadcn `AlertDialog`/`Dialog` primitives.
 
 ## Review Focus
