@@ -416,7 +416,10 @@ export function PostCard({
               onUpdate={
                 isEditable
                   ? (json, plain) => {
-                      saveSuggestion(json, plain, igCaptionRef.current);
+                      saveSuggestion(json, plain, igCaptionRef.current, {
+                        fields: ['texto'],
+                        bases: { conteudo: post.conteudo, conteudo_plain: post.conteudo_plain },
+                      });
                     }
                   : undefined
               }

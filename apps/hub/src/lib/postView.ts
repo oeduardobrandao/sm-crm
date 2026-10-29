@@ -174,12 +174,20 @@ export function deriveCaption(post: HubPost, igCaption: string | null): string {
  * The caption to show/edit while a suggestion may be pending. A suggestion's own caption wins
  * even when it is '' (the client cleared it): `deriveCaption` treats '' as missing and would
  * fall back to LEGENDA-derived body text, which a re-save would then submit as the caption.
+ *
+ * It wins only when the suggestion actually changed the caption (`ig_caption` in
+ * `changed_fields`). Otherwise its stored caption is just the one the client saw when saving,
+ * possibly stale after a team edit, and the live post is the truth.
  */
 export function suggestionAwareCaption(
   post: HubPost,
   suggestion: PendingEditSuggestion | null,
 ): string {
-  if (suggestion && suggestion.suggested_ig_caption !== null)
+  if (
+    suggestion &&
+    suggestion.suggested_ig_caption !== null &&
+    suggestion.changed_fields?.includes('ig_caption')
+  )
     return suggestion.suggested_ig_caption;
   return deriveCaption(post, post.ig_caption);
 }

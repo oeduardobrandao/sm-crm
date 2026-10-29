@@ -1,10 +1,20 @@
 import { useState, useRef, useCallback, useMemo } from 'react';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { submitEditSuggestion } from '../api';
-import type { HubPost, PendingEditSuggestion } from '../types';
+import type { HubPost, PendingEditSuggestion, SuggestionBases, SuggestionField } from '../types';
 import { docPlainText } from '../lib/richDoc';
 
 export type SaveState = 'idle' | 'saving' | 'saved';
+
+/**
+ * What a save touched and the values the client started from. `bases` carries the keys of the
+ * touched fields only (texto: `conteudo` + `conteudo_plain`; legenda: `ig_caption`), `null`
+ * included: the server tests key presence.
+ */
+export interface SuggestionTouch {
+  fields: SuggestionField[];
+  bases: SuggestionBases;
+}
 
 interface UseEditSuggestionOpts {
   token: string;
@@ -140,6 +150,8 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
     conteudo: Record<string, unknown> | null;
     conteudoPlain: string;
     igCaption: string | null;
+    touchedFields: SuggestionField[];
+    bases: SuggestionBases;
   };
   const pendingRef = useRef<Map<number, Payload>>(new Map());
   const inFlightRef = useRef(false);
@@ -169,21 +181,30 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
   // attempt is queued (retry), succeeds, or is explicitly discarded.
   const [saveFailed, setSaveFailed] = useState(() => failedPostIds.has(post.id));
 
+  // A field the suggestion did not change shows the live post, not the copy the suggestion
+  // stored when it was saved: the team may have edited the post since, and seeding the editor
+  // from the stale copy would make the client's next save overwrite that edit.
+  const changedFields = suggestion?.changed_fields ?? [];
+  const textChanged =
+    changedFields.includes('conteudo') || changedFields.includes('conteudo_plain');
+  const captionChanged = changedFields.includes('ig_caption');
   const draftConteudo = useMemo(
-    () => suggestion?.suggested_conteudo ?? post.conteudo,
-    [suggestion, post.conteudo],
+    () => (textChanged ? suggestion?.suggested_conteudo : null) ?? post.conteudo,
+    [suggestion, textChanged, post.conteudo],
   );
   // Without a suggestion, the post's own text as the editor would write it: stored
   // conteudo_plain can differ in line breaks alone (see docPlainText), which would make an
   // untouched or reverted edit read as a change.
   const draftConteudoPlain = useMemo(
     () =>
-      suggestion?.suggested_conteudo_plain ?? docPlainText(post.conteudo) ?? post.conteudo_plain,
-    [suggestion, post.conteudo, post.conteudo_plain],
+      (textChanged ? suggestion?.suggested_conteudo_plain : null) ??
+      docPlainText(post.conteudo) ??
+      post.conteudo_plain,
+    [suggestion, textChanged, post.conteudo, post.conteudo_plain],
   );
   const draftIgCaption = useMemo(
-    () => suggestion?.suggested_ig_caption ?? post.ig_caption ?? null,
-    [suggestion, post.ig_caption],
+    () => (captionChanged ? suggestion?.suggested_ig_caption : null) ?? post.ig_caption ?? null,
+    [suggestion, captionChanged, post.ig_caption],
   );
 
   // Always holds the id of whichever post this hook is CURRENTLY rendering. `flush`
@@ -254,6 +275,8 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
             payload.conteudo,
             payload.conteudoPlain,
             payload.igCaption,
+            payload.touchedFields,
+            payload.bases,
           );
         const previous = lastRequestByPostId.get(postId);
         // Sent right away when nothing is in flight for this post (the common case).
@@ -331,10 +354,30 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
   }, [token, onSaved]);
 
   const saveSuggestion = useCallback(
-    (conteudo: Record<string, unknown> | null, conteudoPlain: string, igCaption: string | null) => {
+    (
+      conteudo: Record<string, unknown> | null,
+      conteudoPlain: string,
+      igCaption: string | null,
+      touch: SuggestionTouch,
+    ) => {
       setDirty(true);
       setSaveFailed(false);
-      pendingRef.current.set(post.id, { postId: post.id, conteudo, conteudoPlain, igCaption });
+      // Edits to the same post coalesce onto one queued entry: the text is the newest, but
+      // the touched fields accumulate and each base keeps the FIRST value seen. The base is
+      // what the client started from, so a later edit must not replace it with a value the
+      // client already changed.
+      const queued = pendingRef.current.get(post.id);
+      pendingRef.current.set(post.id, {
+        postId: post.id,
+        conteudo,
+        conteudoPlain,
+        igCaption,
+        touchedFields: [
+          ...(queued?.touchedFields ?? []),
+          ...touch.fields.filter((f) => !queued?.touchedFields.includes(f)),
+        ],
+        bases: { ...touch.bases, ...queued?.bases },
+      });
       if (timerRef.current) clearTimeout(timerRef.current);
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
 

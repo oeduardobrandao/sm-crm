@@ -179,6 +179,21 @@ export interface HubSelectOption {
   color: string;
 }
 
+/** The logical fields a client edit suggestion can touch: `texto` = conteudo + conteudo_plain, `legenda` = ig_caption. */
+export type SuggestionField = 'texto' | 'legenda';
+
+/**
+ * The values the client started editing from, per touched field (texto: `conteudo` +
+ * `conteudo_plain`; legenda: `ig_caption`). The server compares them with the live post to
+ * detect a team edit made in between. A touched field's keys are always present, `null`
+ * included: the RPC tests key presence, and JSON.stringify drops `undefined`.
+ */
+export interface SuggestionBases {
+  conteudo?: Record<string, unknown> | null;
+  conteudo_plain?: string | null;
+  ig_caption?: string | null;
+}
+
 export interface PendingEditSuggestion {
   id: number;
   suggested_conteudo: Record<string, unknown> | null;

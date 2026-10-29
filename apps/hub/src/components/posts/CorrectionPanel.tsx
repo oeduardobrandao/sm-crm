@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { AlertCircle, Loader2, Save, X } from 'lucide-react';
-import type { CorrectionReason, HubPost } from '../../types';
+import type { CorrectionReason, HubPost, SuggestionBases, SuggestionField } from '../../types';
 import type { useEditSuggestion } from '../../hooks/useEditSuggestion';
 import type { PostReferencesState } from '../../hooks/usePostReferences';
 import type { ReferenceItem } from '../../types/postReferences';
@@ -194,6 +194,19 @@ export function CorrectionPanel({
   const onSavedCleanRef = useRef(onSavedClean);
   onSavedCleanRef.current = onSavedClean;
 
+  // What the client started from: the RAW post as it was when the panel opened (never the
+  // derived or suggestion-aware text, and not updated by a later refetch). The server
+  // compares these with the live post, so a team edit made while the panel stayed open reads
+  // as a conflict instead of being silently overwritten.
+  const seedBasesRef = useRef({
+    conteudo: post.conteudo ?? null,
+    conteudo_plain: post.conteudo_plain ?? null,
+    ig_caption: post.ig_caption ?? null,
+  });
+  // Fields edited at any point in this session. Sticky: once a save has recorded a field in
+  // the suggestion, the next save (after the draft re-seeds from it) still sends it.
+  const touchedRef = useRef<Set<SuggestionField>>(new Set());
+
   // Baseline: the caption the client actually sees. A pending suggestion's own caption wins
   // even when '' (see suggestionAwareCaption); otherwise the LEGENDA fallback applies.
   const captionBaseline = suggestionAwareCaption(post, suggestion);
@@ -305,10 +318,21 @@ export function CorrectionPanel({
     const textPlain = bodyEdited
       ? stagedConteudoPlain
       : (suggestion?.suggested_conteudo_plain ?? post.conteudo_plain ?? '');
+    if (isText && bodyEdited) touchedRef.current.add('texto');
+    if (showCaptionField && stagedCaption !== captionBaseline) touchedRef.current.add('legenda');
+    // Bases only for touched fields: the server checks the ones it receives.
+    const seed = seedBasesRef.current;
+    const bases: SuggestionBases = {};
+    if (touchedRef.current.has('texto')) {
+      bases.conteudo = seed.conteudo;
+      bases.conteudo_plain = seed.conteudo_plain;
+    }
+    if (touchedRef.current.has('legenda')) bases.ig_caption = seed.ig_caption;
     saveSuggestion(
       isText ? stagedConteudo : draftConteudo,
       isText ? textPlain : (post.conteudo_plain ?? ''),
       showCaptionField ? stagedCaption : '',
+      { fields: [...touchedRef.current], bases },
     );
   }
 

@@ -1145,6 +1145,9 @@ describe('PostDetailDialog', () => {
           null,
           'Corpo',
           'Legenda editada de novo',
+          ['legenda'],
+          // The caption as fetched when the panel opened, not the suggestion's.
+          { ig_caption: 'Legenda um' },
         );
         // Clean save: the panel closes back to the reading view, which already shows the saved
         // suggestion as a diff before any refetch.
