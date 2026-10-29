@@ -195,7 +195,8 @@ quê, ou por que a execução parou.
 ### Voz
 
 - pt-BR, tom calmo e prático, de colega experiente falando com profissional de agência. Sem
-  euforia, sem "revolucionário", sem "neste artigo vamos ver", sem clichê de marketing.
+  euforia, sem "revolucionário", sem "neste artigo vamos ver", sem clichê de marketing. O corpo
+  segue calmo e prático; o tom mais comercial fica no `lede`.
 - Segunda pessoa para o leitor ("você"). Frases curtas e concretas. Exemplo real vale mais que
   adjetivo.
 - Toda seção prática termina em algo que o leitor faz amanhã: um passo, um modelo de mensagem,
@@ -204,12 +205,44 @@ quê, ou por que a execução parou.
 - Os posts antigos do blog (em `file_posts`) mostram o tom, mas usam travessão: copie o tom,
   não a pontuação.
 
+### O lede (gancho AIDA)
+
+O `lede` é a primeira coisa que o leitor lê depois do H1, e decide se ele continua. Não é um
+resumo do que vem a seguir, nem um "neste post você vai ver". Escreva como copy de post de
+Instagram de boa agência (o tom d'O Novo Mercado é a referência de ritmo e de gancho, sem
+copiar frases), seguindo o funil AIDA em duas ou três frases curtas:
+
+1. **Atenção:** abra com uma ideia contra-intuitiva ou um fato incômodo que o leitor de agência
+   reconhece, algo que contradiz o que ele acha que sabe. Ex.: o problema não é o que ele
+   imagina.
+2. **Interesse:** dê a razão por trás da surpresa, com um dado, um exemplo concreto ou uma
+   consequência prática. O leitor passa de "como assim?" para "faz sentido".
+3. **Desejo:** mostre o que ele ganha ao entender isso (tempo, menos retrabalho, cliente mais
+   tranquilo), em termos do dia a dia da agência.
+4. **Ação:** feche com um convite direto a continuar lendo ou ao primeiro passo ("Veja o
+   passo a passo abaixo"). Sem botão, sem "clique aqui".
+
+Regras do lede:
+
+- O contra-intuitivo precisa ser **verdadeiro e embasado** no corpo ou nas fontes. Nada de
+  clickbait, de promessa que o post não cumpre, de urgência falsa ou de número sem fonte. Se o
+  gancho depende de um dado, ele está em `sources` e aparece no corpo.
+- Copywriting sem apelação: sem maiúsculas gritadas, sem pontos de exclamação, sem "você não
+  vai acreditar", sem medo fabricado. A surpresa vem da ideia, não do volume.
+- Não repete o `description` nem o primeiro parágrafo do corpo: o lede provoca, o primeiro
+  parágrafo responde.
+- Até 300 caracteres, sem travessão, e as demais regras de texto valem aqui também.
+
+Exemplo de forma (ilustrativo, não reutilize): "Mais criativo não é o que falta no seu post de
+Black Friday. Falta preço que o cliente possa provar. É isso que a fiscalização olha primeiro, e
+é fácil de corrigir antes de publicar. Veja o cronograma, semana a semana."
+
 ### Estrutura (resposta primeiro)
 
 Assistentes de IA e buscadores citam quem responde direto. Por isso:
 
-- O primeiro parágrafo do corpo responde a pergunta do título em duas ou três frases. Nada de
-  introdução que adia a resposta.
+- O `lede` provoca (AIDA, seção acima); o primeiro parágrafo do corpo responde a pergunta do
+  título em duas ou três frases. Nada de introdução que adia a resposta.
 - As seções começam em `##` (pelo menos duas), com títulos escritos como as perguntas que as
   pessoas fazem: "O que muda no Instagram com X", "Como usar o modelo Y na agência", "Quando vale
   a pena trocar de formato". Use `###` para subseções. Nunca `#` no corpo: o título da página
@@ -226,8 +259,8 @@ Assistentes de IA e buscadores citam quem responde direto. Por isso:
 - `title`: título SEO, **50 a 60 caracteres**. Traz o termo que as pessoas buscam.
 - `h1`: 10 a 120 caracteres; pode ser mais longo e mais natural que o `title`.
 - `description`: meta description, **120 a 160 caracteres**, com a resposta em uma frase.
-- `lede`: a linha fina abaixo do H1, 1 a 300 caracteres. Uma ou duas frases que dizem o que o
-  leitor leva do post.
+- `lede`: a linha fina abaixo do H1, 1 a 300 caracteres. É o gancho comercial do post, não um
+  resumo: siga "O lede (gancho AIDA)" abaixo.
 - `body_md`: o corpo em Markdown, até 50000 caracteres.
 - `cover_image`: `{url, alt, credit, license, source_url}` ou `null`.
 - `images`: imagens do corpo, até 20, cada uma `{key, url, alt, credit, license, source_url}`.
