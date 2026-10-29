@@ -41,6 +41,8 @@ const FEATURE_LABELS: Record<string, string> = {
   feature_multiplatform: 'Plataformas por fluxo',
   feature_financeiro_v2: 'Financeiro v2 (rentabilidade)',
   feature_linha_editorial: 'Linha editorial',
+  feature_youtube: 'YouTube',
+  feature_google_business: 'Google Meu Negócio',
 };
 
 /** Normalizes a DB-raised message or an edge-function JSON error into an EntitlementError, or null. */

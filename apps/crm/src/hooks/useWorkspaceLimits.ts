@@ -70,6 +70,12 @@ export interface FeatureFlags {
    *  `features?.feature_team_chat === true` (fail-closed while workspace-limits
    *  has not been redeployed with the column). */
   feature_team_chat?: boolean;
+  /** YouTube (spec 2026-10-29-youtube-google-meu-negocio). Optional: read it only as
+   *  `features?.feature_youtube === true`, never through hasFeature. */
+  feature_youtube?: boolean;
+  /** Google Meu Negócio (same spec). Optional: read it only as
+   *  `features?.feature_google_business === true`, never through hasFeature. */
+  feature_google_business?: boolean;
 }
 
 interface WorkspaceLimitsResponse {

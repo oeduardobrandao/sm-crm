@@ -19,6 +19,8 @@ import { resolveIgError } from '@/lib/instagram-oauth-errors';
 import { InstagramSection } from '../components/InstagramSection';
 import { AutomationContactsSection } from '../components/AutomationContactsSection';
 import { TikTokSection } from '../TikTokSection';
+import { YouTubeSection } from '../YouTubeSection';
+import { GoogleBusinessSection } from '../GoogleBusinessSection';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
 
 /**
@@ -31,7 +33,8 @@ import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
  * whatever TikTokSection fires internally (`ttSummary`, gated by
  * `feature_tiktok`) — never Entregas/Hub/Financeiro/dates/addresses queries.
  *
- * OAuth params (`ig_connected`, `ig_error`, `tt_error`, `tt_connected`): historically this
+ * OAuth params (`ig_connected`, `ig_error`, `tt_error`, `tt_connected`, and the Google ones
+ * `yt_connected`, `yt_error`, `yt_other`, `gbp_pick`, `gmn_error`): historically this
  * page mixed two mechanisms — `useInstagramActivationEvent` already used
  * React Router's `useSearchParams` for `ig_connected`, while a second,
  * separate effect used raw `window.history.replaceState` for `ig_error`/
@@ -59,11 +62,24 @@ import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
  * which write ends up sticking in the URL, so the activation milestone is
  * never at risk from this race — only the URL cleanup was.
  */
+const YT_ERROR_CODES = [
+  'denied',
+  'missing_scope',
+  'no_refresh_token',
+  'no_channel',
+  'channel_in_use',
+  'unknown',
+] as const;
+const GMN_ERROR_CODES = ['denied', 'missing_scope', 'no_refresh_token', 'unknown'] as const;
+
 export default function RedesSociaisTab() {
   const { clienteId, cliente } = useOutletContext<ClienteDetalheOutletContext>();
   const navigate = useNavigate();
   const { t } = useTranslation('clients');
   const [igOffMetaOpen, setIgOffMetaOpen] = useState(false);
+  // gbp_pick: connection id the OAuth callback wants the unit picker opened on. Kept in state
+  // because the effect below strips the param from the URL.
+  const [gbpPick, setGbpPick] = useState<string | null>(null);
 
   // ig_connected: fires the instagram_connected activation event and strips
   // its own param. Called BEFORE this component's own useSearchParams() below
@@ -78,7 +94,24 @@ export default function RedesSociaisTab() {
     const igError = searchParams.get('ig_error');
     const ttError = searchParams.get('tt_error');
     const ttConnected = searchParams.get('tt_connected');
-    if (!igConnected && !igError && !ttError && !ttConnected) return;
+    const ytConnected = searchParams.get('yt_connected');
+    const ytError = searchParams.get('yt_error');
+    const ytOther = searchParams.get('yt_other');
+    const gbpPickParam = searchParams.get('gbp_pick');
+    const gmnError = searchParams.get('gmn_error');
+    if (
+      !igConnected &&
+      !igError &&
+      !ttError &&
+      !ttConnected &&
+      !ytConnected &&
+      !ytError &&
+      !ytOther &&
+      !gbpPickParam &&
+      !gmnError
+    ) {
+      return;
+    }
     processedOAuthParams.current = true;
 
     const action = resolveIgError(igError);
@@ -96,11 +129,38 @@ export default function RedesSociaisTab() {
       captureEvent('tiktok_connected', { cliente_id: clienteId });
     }
 
+    if (ytConnected === '1') {
+      toast.success(t('googleOAuth.ytConnected'));
+    }
+    if (ytError) {
+      const code = YT_ERROR_CODES.find((c) => c === ytError) ?? 'unknown';
+      const other = ytOther?.trim().slice(0, 120);
+      if (code === 'channel_in_use') {
+        toast.error(
+          other
+            ? t('googleOAuth.ytError.channel_in_use', { nome: other })
+            : t('googleOAuth.ytError.channel_in_use_unnamed'),
+        );
+      } else {
+        toast.error(t(`googleOAuth.ytError.${code}`));
+      }
+    }
+    if (gmnError) {
+      const code = GMN_ERROR_CODES.find((c) => c === gmnError) ?? 'unknown';
+      toast.error(t(`googleOAuth.gmnError.${code}`));
+    }
+    if (gbpPickParam) setGbpPick(gbpPickParam);
+
     const next = new URLSearchParams(searchParams);
     next.delete('ig_connected');
     next.delete('ig_error');
     next.delete('tt_error');
     next.delete('tt_connected');
+    next.delete('yt_connected');
+    next.delete('yt_error');
+    next.delete('yt_other');
+    next.delete('gbp_pick');
+    next.delete('gmn_error');
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams, t, clienteId]);
 
@@ -140,6 +200,16 @@ export default function RedesSociaisTab() {
       <AutomationContactsSection clienteId={clienteId} clienteNome={cliente?.nome ?? ''} />
 
       <TikTokSection key={`tt-${clienteId}`} clienteId={clienteId} />
+
+      <YouTubeSection key={`yt-${clienteId}`} clienteId={clienteId} />
+
+      <GoogleBusinessSection
+        key={`gmn-${clienteId}`}
+        clienteId={clienteId}
+        clienteNome={cliente?.nome ?? ''}
+        pickConnectionId={gbpPick}
+        onPickHandled={() => setGbpPick(null)}
+      />
 
       {/* Instagram off-Meta activity setting blocked the OAuth connection */}
       <AlertDialog open={igOffMetaOpen} onOpenChange={setIgOffMetaOpen}>

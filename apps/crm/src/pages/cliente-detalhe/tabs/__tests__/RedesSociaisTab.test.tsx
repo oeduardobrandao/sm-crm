@@ -164,7 +164,16 @@ describe('RedesSociaisTab', () => {
         .getQueryCache()
         .getAll()
         .map((q) => q.queryKey[0]);
-      expect(new Set(keys)).toEqual(new Set(['igSummary', 'ttSummary']));
+      // googleSummary is only registered by the YouTube / Google Meu Negócio cards; with both
+      // flags off it stays disabled and never fetches (asserted below).
+      expect(new Set(keys)).toEqual(new Set(['igSummary', 'ttSummary', 'googleSummary']));
+      const google = queryClient
+        .getQueryCache()
+        .getAll()
+        .filter((q) => q.queryKey[0] === 'googleSummary');
+      expect(
+        google.every((q) => q.state.fetchStatus === 'idle' && q.state.dataUpdateCount === 0),
+      ).toBe(true);
     });
   });
 
