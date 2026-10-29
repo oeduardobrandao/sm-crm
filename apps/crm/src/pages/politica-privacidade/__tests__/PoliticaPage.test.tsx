@@ -45,9 +45,11 @@ describe('PoliticaPage', () => {
     renderPage();
     const text = section3().textContent ?? '';
     expect(text).toMatch(
-      /dados do YouTube, inclusive os que estão em relatórios já gerados, são apagados em até 7 dias/,
+      /Ao desconectar \(no Mesaas ou no Google\), os dados do YouTube, inclusive os que estão em relatórios já gerados, são apagados em até 7 dias/,
     );
-    expect(text).toMatch(/histórico do Google Meu Negócio é apagado 30 dias após/);
+    expect(text).toMatch(
+      /histórico do Google Meu Negócio é apagado 30 dias após a desconexão, mas os números e as avaliações em destaque que já estão em relatórios gerados permanecem nesses relatórios/,
+    );
     expect(text).toMatch(/nome de exibição de quem avaliou/);
   });
 

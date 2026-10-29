@@ -32,3 +32,15 @@ describe('TermosPage: planos e teste grátis', () => {
     expect(container.textContent).not.toContain('abril de 2025');
   });
 });
+
+describe('TermosPage: integrações', () => {
+  it('nomeia Instagram, TikTok, YouTube e Google Meu Negócio', () => {
+    const { container } = renderPage();
+    const text = container.textContent ?? '';
+    expect(text).toContain('(Instagram, TikTok, YouTube e Google Meu Negócio)');
+    expect(text).toMatch(
+      /como Instagram, TikTok, YouTube e Google Meu Negócio, por meio de suas APIs oficiais/,
+    );
+    expect(text).not.toMatch(/Instagram e Meta|Instagram, Meta/);
+  });
+});

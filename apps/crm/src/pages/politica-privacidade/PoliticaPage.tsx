@@ -127,10 +127,10 @@ export default function PoliticaPage() {
                   <ExternalLink href={GOOGLE_PERMISSIONS_URL}>
                     myaccount.google.com/permissions
                   </ExternalLink>
-                  . Ao desconectar no Mesaas, os dados do YouTube, inclusive os que estão em
-                  relatórios já gerados, são apagados em até 7 dias. O histórico do Google Meu
-                  Negócio é apagado 30 dias após a desconexão, mas os números que já estão em
-                  relatórios gerados permanecem nesses relatórios.
+                  . Ao desconectar (no Mesaas ou no Google), os dados do YouTube, inclusive os que
+                  estão em relatórios já gerados, são apagados em até 7 dias. O histórico do Google
+                  Meu Negócio é apagado 30 dias após a desconexão, mas os números e as avaliações em
+                  destaque que já estão em relatórios gerados permanecem nesses relatórios.
                 </p>
               </>
             ),
