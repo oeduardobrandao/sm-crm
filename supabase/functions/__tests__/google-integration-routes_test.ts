@@ -844,6 +844,7 @@ Deno.test("locations_truncated_keeps_unlisted_linked: this client's unlisted uni
       hasVoiceOfMerchant: false,
       linkedClientId: CLIENT,
       linkedClientName: "Cliente A",
+      linkedConnectionId: CONN_1,
       eligible: true,
     });
   } finally {
@@ -870,14 +871,100 @@ function unlinkScenarioDb() {
   })();
 }
 
-Deno.test("link_truncated_never_unlinks_unlisted: a unit Google did not show is kept; listed ones still unlink", async () => {
+Deno.test("link_truncated_unlinks_unchecked_appended (R13): GET showed every unit of this client, so the set difference holds", async () => {
   const db = await unlinkScenarioDb();
   const f = stubGoogle({ accounts: THIRTY_ACCOUNTS, locations: { "accounts/1": [loc("a", "A")] } });
   try {
     const res = await makeHandler(db)(req("POST", `/locations/${CLIENT}`, { connectionId: CONN_1, locationNames: [] }));
     assertEquals(await res.json(), { linked: 0 });
     const unlinked = rpcCalls(db, "google_unlink_gbp_location").map((c) => (c.payload as Record<string, unknown>).p_location_id);
-    assertEquals(unlinked, ["row-a"], "row-z lives in an unwalked account and must not be unlinked");
+    assertEquals(unlinked, ["row-a", "row-z"], "row-z was appended by GET and unchecked: it is unlinked");
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("link_truncated_keeps_checked_appended: an unlisted unit left checked is kept as is", async () => {
+  const db = routeDb();
+  await queueConnection(db);
+  db.queue(
+    "gbp_locations",
+    "select",
+    { data: [{ id: "row-z", location_name: "locations/z", client_id: CLIENT, connection_id: CONN_1, status: "active" }] },
+    { data: [{ id: "row-z", location_name: "locations/z" }] },
+  );
+  const f = stubGoogle({ accounts: THIRTY_ACCOUNTS, locations: { "accounts/1": [loc("a", "A")] } });
+  try {
+    const res = await makeHandler(db)(
+      req("POST", `/locations/${CLIENT}`, { connectionId: CONN_1, locationNames: ["locations/z"] }),
+    );
+    assertEquals(await res.json(), { linked: 1 });
+    assertEquals(gbpWrites(db).length, 0, "nothing from Google to refresh it with");
+    assertEquals(rpcCalls(db, "google_unlink_gbp_location").length, 0);
+  } finally {
+    f.restore();
+  }
+});
+
+// ─── Final review: units linked to this client through another Google connection ──
+
+Deno.test("locations_cross_connection: each option carries linkedConnectionId", async () => {
+  const db = routeDb();
+  await queueConnection(db);
+  db.queue("gbp_locations", "select", {
+    data: [
+      { location_name: "locations/a", client_id: CLIENT, connection_id: CONN_1, status: "active" },
+      { location_name: "locations/b", client_id: CLIENT, connection_id: CONN_2, status: "active" },
+    ],
+  });
+  db.queue("clientes", "select", { data: [{ id: CLIENT, nome: "Cliente A" }] });
+  const f = stubGoogle({ locations: { "accounts/1": [loc("a", "A"), loc("b", "B"), loc("c", "C")] } });
+  try {
+    const res = await makeHandler(db)(req("GET", `/locations/${CLIENT}?connection=${CONN_1}`));
+    const { options } = await res.json();
+    const byName = Object.fromEntries(options.map((o: Record<string, unknown>) => [o.locationName, o]));
+    assertEquals([byName["locations/a"].linkedClientId, byName["locations/a"].linkedConnectionId], [CLIENT, CONN_1]);
+    assertEquals(
+      [byName["locations/b"].linkedClientId, byName["locations/b"].linkedConnectionId],
+      [CLIENT, CONN_2],
+      "linked to this client through the other Google account",
+    );
+    assertEquals([byName["locations/c"].linkedClientId, byName["locations/c"].linkedConnectionId], [null, null]);
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("link_ignores_cross_connection_names: a unit this client holds via another connection is neither moved, 409'd nor unlinked", async () => {
+  const db = routeDb();
+  await queueConnection(db);
+  db.queue(
+    "gbp_locations",
+    "select",
+    {
+      data: [
+        { id: "row-b", location_name: "locations/b", client_id: CLIENT, connection_id: CONN_2, status: "active" },
+        { id: "row-z", location_name: "locations/z", client_id: CLIENT, connection_id: CONN_2, status: "revoked" },
+      ],
+    },
+    { data: [] }, // nothing of this client on CONN_1
+  );
+  const f = linkStub(); // lists a, b, c, n; z is not listed through CONN_1
+  try {
+    const res = await makeHandler(db)(
+      req("POST", `/locations/${CLIENT}`, {
+        connectionId: CONN_1,
+        locationNames: ["locations/b", "locations/z", "locations/c"],
+      }),
+    );
+    assertEquals(res.status, 200);
+    assertEquals(await res.json(), { linked: 1 });
+    const writes = gbpWrites(db);
+    assertEquals(writes.map((w) => w.operation), ["insert"]);
+    assertEquals((writes[0].payload as Array<Record<string, unknown>>).map((r) => r.location_name), ["locations/c"]);
+    assertEquals(rpcCalls(db, "google_unlink_gbp_location").length, 0);
+    const audit = db.calls.find((x) => x.table === "audit_log")!.payload as Record<string, unknown>;
+    assertEquals((audit.metadata as Record<string, unknown>).linked, ["locations/c"]);
   } finally {
     f.restore();
   }

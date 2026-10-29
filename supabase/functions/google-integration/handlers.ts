@@ -521,7 +521,8 @@ async function handleListLocations(
 
   const token = await getFreshGoogleToken(svc, connectionId);
   const { options, truncated } = await listGbpLocations(token);
-  // `truncated` (account cap or time budget hit) is extra; the CRM ignores unknown fields.
+  // `truncated` (account cap or time budget hit): the picker says only part of the account is
+  // shown. This client's units on this connection are appended below either way.
   const extra = truncated ? { truncated: true } : {};
 
   // Units of this workspace that already belong to a client (active or awaiting reconnect),
@@ -573,6 +574,9 @@ async function handleListLocations(
         ...o,
         linkedClientId,
         linkedClientName: linkedClientId !== null ? names.get(linkedClientId) ?? null : null,
+        // R12: a unit of this client on ANOTHER connection is shown checked and locked by the
+        // picker, and POST ignores it; only the connection that linked it manages it.
+        linkedConnectionId: row?.connection_id ?? null,
         eligible: keptHere || (o.hasVoiceOfMerchant && !takenByOther),
       };
     }).concat(
@@ -585,6 +589,7 @@ async function handleListLocations(
         hasVoiceOfMerchant: r.has_voice_of_merchant === true,
         linkedClientId: ctx.clientId,
         linkedClientName: names.get(ctx.clientId) ?? null,
+        linkedConnectionId: connectionId,
         eligible: true, // R7: already linked here
       })),
     ),
@@ -615,28 +620,37 @@ async function handleLinkLocations(svc: DbClient, req: Request, rawClientId: str
     parsed = null;
   }
   if (!parsed) return json(cors, { error: "invalid_body" }, 400);
-  const { connectionId, locationNames } = parsed;
+  const { connectionId } = parsed;
 
   if (!(await connectionInTenant(svc, connectionId, ctx.contaId))) return json(cors, { error: "not_found" }, 404);
   // The save re-lists every account too, so it shares the listing budget.
   if (await locationsRateLimited(svc, ctx.contaId)) return json(cors, { error: "rate_limited" }, 429);
 
   const token = await getFreshGoogleToken(svc, connectionId);
-  // A truncated listing only means fewer names are accepted (409), never a wrong link.
+  // A truncated listing only means fewer new names are accepted (409), never a wrong link.
   const listing = await listGbpLocations(token);
   const fromGoogle = new Map(listing.options.map((o) => [o.locationName, o]));
 
   let requestedRows: LinkedRow[] = [];
-  if (locationNames.length) {
+  if (parsed.locationNames.length) {
     const { data, error } = await svc
       .from("gbp_locations")
       .select("id, location_name, client_id, connection_id, status")
       .eq("conta_id", ctx.contaId)
-      .in("location_name", locationNames);
+      .in("location_name", parsed.locationNames);
     if (error) throw new Error(`gbp_locations read failed: ${error.message}`);
     requestedRows = (data ?? []) as LinkedRow[];
   }
   const requestedBy = new Map(requestedRows.map((r) => [r.location_name, r]));
+
+  // R12: a unit this client holds through ANOTHER connection belongs to that connection's
+  // picker. Sent here it is ignored: no 409, no update (which would move it to this
+  // connection), and it is outside `mine` below, so it is never unlinked either.
+  const locationNames = parsed.locationNames.filter((name) => {
+    const row = requestedBy.get(name);
+    return !(row && row.client_id === ctx.clientId && row.status !== "disconnected" &&
+      row.connection_id !== connectionId);
+  });
 
   // This client's units on THIS connection: the only ones this save may unlink.
   const { data: mineData, error: mineError } = await svc
@@ -733,12 +747,9 @@ async function handleLinkLocations(svc: DbClient, req: Request, rawClientId: str
   }
 
   const wanted = new Set(locationNames);
-  // A truncated listing may not have shown some of this client's units; the picker could not
-  // offer them, so their absence from the set is not a decision. Unlink only what Google
-  // actually listed this time. A complete listing keeps the plain set difference.
-  const removed = mine.filter((r) =>
-    !wanted.has(r.location_name) && (!listing.truncated || fromGoogle.has(r.location_name))
-  );
+  // R13: GET always shows every `mine` row (unlisted ones are appended), even on a truncated
+  // listing, so a name missing from the set was unchecked on purpose.
+  const removed = mine.filter((r) => !wanted.has(r.location_name));
   for (const row of removed) {
     const { data, error } = await svc.rpc("google_unlink_gbp_location", {
       p_conta_id: ctx.contaId,
