@@ -10,6 +10,7 @@ import { publicOrigin, resolveCtx } from "../_shared/mcp-oauth.ts";
 import { effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { headObject, signPutUrl } from "../_shared/r2.ts";
+import { appsEnabledFor, r2OriginFrom } from "./apps.ts";
 import { registerTools } from "./tools.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -135,6 +136,13 @@ Deno.serve(async (req) => {
     signPutUrl: (key: string, mime: string, size: number) => signPutUrl(key, mime, size),
     headObject: (key: string) => headObject(key),
     storageQuota: (contaId: string) => effectivePlanLimit(db as never, contaId, "storage_quota_bytes"),
+    apps: {
+      enabled: appsEnabledFor(ctx.conta_id, Deno.env.toObject()),
+      oauth: ctx.key_id.startsWith("oauth:"),
+      r2Origin: r2OriginFrom(Deno.env.get("R2_ACCOUNT_ID")),
+    },
+    resolveDns: (hostname, recordType) => Deno.resolveDns(hostname, recordType),
+    fetchUrl: (url, init) => fetch(url, init),
   });
 
   const transport = new WebStandardStreamableHTTPServerTransport();

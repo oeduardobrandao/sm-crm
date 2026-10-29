@@ -30,6 +30,11 @@ import {
 import { createMediaUpload, setPostMedia } from "./media.ts";
 import { DATE_ONLY, registerFinanceiroTools } from "./financeiro-tools.ts";
 import { register } from "./register.ts";
+import { registerCardsResource } from "./apps.ts";
+import { registerCardsTools } from "./cards.ts";
+import { registerCalendarTools } from "./calendar.ts";
+import { registerSendTools } from "./send.ts";
+import { registerAttachTools } from "./attach.ts";
 
 const STATUS_CLIENTE = z.enum(["ativo", "pausado", "encerrado"]);
 const FORMATO = z.enum(CONTENT_FORMATS);
@@ -332,4 +337,12 @@ export function registerTools(server: any, deps: Deps): void {
     }));
 
   registerFinanceiroTools(server, deps);
+
+  if (deps.apps?.enabled) {
+    registerCardsResource(server, deps.apps.r2Origin);
+    registerCardsTools(server, deps);
+    registerCalendarTools(server, deps);
+    registerSendTools(server, deps);
+    registerAttachTools(server, deps);
+  }
 }

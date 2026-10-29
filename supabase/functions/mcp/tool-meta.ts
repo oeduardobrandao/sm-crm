@@ -3,9 +3,14 @@
 // `destructive` marca remoções e ações que congelam ou descongelam o estado (fechar/reabrir
 // período, encerrar modelo recorrente); nenhuma ferramenta fala com o mundo fora do Mesaas
 // (`openWorld` fica falso para todas).
+import { ATTACH_TOOL_META } from "./attach.ts";
+import { CALENDAR_TOOL_META } from "./calendar.ts";
+import { CARDS_TOOL_META } from "./cards.ts";
+import { SEND_TOOL_META } from "./send.ts";
+
 export type ToolMeta = { title: string; readOnly: boolean; destructive?: boolean; openWorld?: boolean };
 
-export const TOOL_META: Record<string, ToolMeta> = {
+const BASE_TOOL_META: Record<string, ToolMeta> = {
   // ---- tools.ts ----
   list_clients: { title: "Listar clientes", readOnly: true },
   get_client: { title: "Ver cliente", readOnly: true },
@@ -60,3 +65,24 @@ export const TOOL_META: Record<string, ToolMeta> = {
   // Reabre um período congelado e invalida o fechamento: mexe no mesmo estado que fechar.
   reabrir_periodo: { title: "Reabrir período", readOnly: false, destructive: true },
 };
+
+// Os módulos de cards importam o `register`, que importa este arquivo: juntar os `X_TOOL_META` na
+// avaliação do módulo daria um ciclo (TDZ quando um módulo de cards é o primeiro a carregar).
+// Por isso a junção é preguiçosa, feita no primeiro acesso a `TOOL_META`.
+let merged: Record<string, ToolMeta> | undefined;
+function allToolMeta(): Record<string, ToolMeta> {
+  return merged ??= {
+    ...BASE_TOOL_META,
+    ...CARDS_TOOL_META,
+    ...CALENDAR_TOOL_META,
+    ...SEND_TOOL_META,
+    ...ATTACH_TOOL_META,
+  };
+}
+
+export const TOOL_META: Record<string, ToolMeta> = new Proxy({}, {
+  get: (_t, key) => Reflect.get(allToolMeta(), key),
+  has: (_t, key) => Reflect.has(allToolMeta(), key),
+  ownKeys: () => Reflect.ownKeys(allToolMeta()),
+  getOwnPropertyDescriptor: (_t, key) => Reflect.getOwnPropertyDescriptor(allToolMeta(), key),
+});

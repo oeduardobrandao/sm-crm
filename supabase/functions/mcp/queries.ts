@@ -75,6 +75,13 @@ export interface Deps {
   /** Opt-in collector: `register` pushes every tool here when set. Only the structural tests pass
    * one; production leaves it unset, so concurrent requests in one isolate share no state. */
   registry?: RegisteredTool[];
+  /** Cards (MCP Apps): `enabled` from MCP_APPS for this workspace, `oauth` when the connection is an
+   * OAuth grant (widget-only tools register only then), `r2Origin` for the resource CSP. */
+  apps?: { enabled: boolean; oauth: boolean; r2Origin: string | null };
+  /** DNS lookup for fetchImageSafely (same shape as mcp-admin/deps.ts). */
+  resolveDns?: (hostname: string, recordType: "A" | "AAAA") => Promise<string[]>;
+  /** Outbound fetch for fetchImageSafely. */
+  fetchUrl?: (url: string, init: RequestInit) => Promise<Response>;
 }
 
 const sign = (d: Deps) => d.signUrl ?? ((key: string) => signGetUrl(key, 3600));

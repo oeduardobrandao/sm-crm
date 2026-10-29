@@ -20,6 +20,16 @@ export function jsonResult(data: unknown, meta?: Record<string, unknown>) {
   };
 }
 
+/** Result of a card tool: a short pt-BR summary for the model plus `structuredContent` for the
+ * widget; `meta` (widget-only data, e.g. a send nonce) rides in `_meta`. */
+export function cardResult(summary: string, data: Record<string, unknown>, meta?: Record<string, unknown>) {
+  return {
+    content: [{ type: "text" as const, text: summary }],
+    structuredContent: data,
+    ...(meta ? { _meta: meta } : {}),
+  };
+}
+
 export function errorResult(e: unknown) {
   const message = e instanceof McpScopeError
     ? `Permission denied: missing scope '${e.scope}'.`
