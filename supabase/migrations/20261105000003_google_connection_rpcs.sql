@@ -19,10 +19,22 @@
 -- (READ COMMITTED, fresh snapshot per statement) sees the first one's unlink and revokes exactly
 -- once. The upsert takes the same lock so a reconnect cannot interleave with a revocation.
 --
+-- Fresh-connection grace (controller ruling R10): a connection authorized in the last hour keeps
+-- its sub "in use" even with no unit yet. That is the window between the callback's upsert and the
+-- channel insert, and the whole GMN unit picker; a last-unlink of the same sub in that window must
+-- not delete the fresh connection and revoke the grant. The grace reads google_connections.
+-- authorized_at, which only the upsert writes. It cannot read updated_at: the BEFORE UPDATE trigger
+-- bumps that on every token refresh and refresh-lock claim (_shared/google.ts) and on
+-- google_mark_revoked, so any connection used in the last hour would never be revoked.
+--
 -- All public RPCs are SECURITY DEFINER for service_role only. _google_revoke_if_unused is an
 -- internal helper executable by its owner alone (the DEFINER callers run as the owner).
 
 SET LOCAL lock_timeout = '5s';
+
+-- ============ (0) authorized_at: last OAuth authorization, written only by the upsert ============
+ALTER TABLE public.google_connections
+  ADD COLUMN IF NOT EXISTS authorized_at timestamptz NOT NULL DEFAULT now();
 
 -- ============ (1) google_connection_upsert ============
 CREATE OR REPLACE FUNCTION public.google_connection_upsert(
@@ -62,7 +74,8 @@ BEGIN
     access_token_expires_at = EXCLUDED.access_token_expires_at,
     scopes = COALESCE(
       (SELECT array_agg(DISTINCT s ORDER BY s) FROM unnest(gc.scopes || EXCLUDED.scopes) s), '{}'),
-    status = 'active'
+    status = 'active',
+    authorized_at = now()
   RETURNING gc.id INTO v_id;
 
   UPDATE public.gbp_locations
@@ -128,6 +141,9 @@ DECLARE
   v_revocation_id uuid;
 BEGIN
   IF EXISTS (
+       SELECT 1 FROM public.google_connections gc
+        WHERE gc.google_sub = p_sub AND gc.authorized_at > now() - interval '1 hour')
+     OR EXISTS (
        SELECT 1 FROM public.youtube_channels yc
          JOIN public.google_connections gc ON gc.id = yc.connection_id
         WHERE gc.google_sub = p_sub)
@@ -177,6 +193,8 @@ AS $$
 #variable_conflict use_column
 DECLARE
   v_sub text;
+  v_conn uuid;
+  v_sub_now text;
 BEGIN
   SELECT gc.google_sub INTO v_sub
     FROM public.youtube_channels yc
@@ -189,12 +207,25 @@ BEGIN
   PERFORM pg_advisory_xact_lock(hashtext('google-sub:' || v_sub));
 
   -- Re-check after the wait: a concurrent unlink may have removed the row meanwhile.
-  DELETE FROM public.youtube_channels WHERE conta_id = p_conta_id AND client_id = p_client_id;
+  DELETE FROM public.youtube_channels WHERE conta_id = p_conta_id AND client_id = p_client_id
+    RETURNING connection_id INTO v_conn;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'youtube channel not found' USING ERRCODE = 'P0002';
   END IF;
 
-  RETURN QUERY SELECT r.should_revoke, r.revocation_id FROM public._google_revoke_if_unused(v_sub) r;
+  -- The sub read before the lock may be stale: the row may have been relinked to another
+  -- connection while this call waited. Xact advisory locks cannot be released, so lock the sub
+  -- actually referenced at delete time as well, and run the in-use check on that one.
+  SELECT google_sub INTO v_sub_now FROM public.google_connections WHERE id = v_conn;
+  IF v_sub_now IS NULL THEN
+    RETURN QUERY SELECT false, NULL::uuid;
+    RETURN;
+  END IF;
+  IF v_sub_now <> v_sub THEN
+    PERFORM pg_advisory_xact_lock(hashtext('google-sub:' || v_sub_now));
+  END IF;
+
+  RETURN QUERY SELECT r.should_revoke, r.revocation_id FROM public._google_revoke_if_unused(v_sub_now) r;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.google_unlink_youtube(uuid, bigint) FROM PUBLIC, anon, authenticated;
@@ -213,6 +244,8 @@ AS $$
 DECLARE
   v_found boolean;
   v_sub text;
+  v_conn uuid;
+  v_sub_now text;
 BEGIN
   SELECT true, gc.google_sub INTO v_found, v_sub
     FROM public.gbp_locations gl
@@ -231,12 +264,23 @@ BEGIN
   UPDATE public.gbp_locations
      SET status = 'disconnected',
          disconnected_at = COALESCE(disconnected_at, now())
-   WHERE id = p_location_id AND conta_id = p_conta_id;
+   WHERE id = p_location_id AND conta_id = p_conta_id
+  RETURNING connection_id INTO v_conn;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'gbp location not found' USING ERRCODE = 'P0002';
   END IF;
 
-  RETURN QUERY SELECT r.should_revoke, r.revocation_id FROM public._google_revoke_if_unused(v_sub) r;
+  -- Same stale-sub guard as google_unlink_youtube: in-use check on the sub referenced now.
+  SELECT google_sub INTO v_sub_now FROM public.google_connections WHERE id = v_conn;
+  IF v_sub_now IS NULL THEN
+    RETURN QUERY SELECT false, NULL::uuid;
+    RETURN;
+  END IF;
+  IF v_sub_now <> v_sub THEN
+    PERFORM pg_advisory_xact_lock(hashtext('google-sub:' || v_sub_now));
+  END IF;
+
+  RETURN QUERY SELECT r.should_revoke, r.revocation_id FROM public._google_revoke_if_unused(v_sub_now) r;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.google_unlink_gbp_location(uuid, uuid) FROM PUBLIC, anon, authenticated;
@@ -249,7 +293,17 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
+DECLARE
+  v_sub text;
 BEGIN
+  -- Same per-sub lock as the unlink/upsert paths, so a revocation cannot interleave with an
+  -- in-use check. Unknown id: nothing to do.
+  SELECT google_sub INTO v_sub FROM public.google_connections WHERE id = p_connection_id;
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+  PERFORM pg_advisory_xact_lock(hashtext('google-sub:' || v_sub));
+
   UPDATE public.google_connections
      SET status = 'revoked'
    WHERE id = p_connection_id AND status <> 'revoked';

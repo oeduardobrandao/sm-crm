@@ -73,6 +73,19 @@ begin
   return v_id;
 end $$;
 
+-- Whether this backend holds pg_advisory_xact_lock(hashtext('google-sub:' || p_sub)).
+create or replace function pg_temp.gr_holds_sub_lock(p_sub text) returns boolean language sql as $$
+  select exists (
+    select 1 from pg_locks
+     where locktype = 'advisory' and pid = pg_backend_pid() and granted and objsubid = 1
+       and ((classid::bigint << 32) | objid::bigint) = hashtext('google-sub:' || p_sub)::bigint);
+$$;
+
+-- Ends the fresh-connection grace (R10): the connection was authorized two hours ago.
+create or replace function pg_temp.gr_backdate(p_conn uuid) returns void language sql as $$
+  update google_connections set authorized_at = now() - interval '2 hours' where id = p_conn;
+$$;
+
 create or replace function pg_temp.gr_unlink_yt(p_ws uuid, p_cli bigint)
 returns table(should_revoke boolean, revocation_id uuid) language plpgsql as $$
 begin
@@ -126,7 +139,10 @@ begin
     format('scopes are the sorted distinct union, got %s', r.scopes);
   assert (select count(*) from google_connections where google_sub = 'sub-1') = 1, 'one row';
 
+  update google_connections set authorized_at = now() - interval '2 hours' where id = v_id;
   perform pg_temp.gr_upsert(v_ws, 'sub-1', 'R2', pg_temp.gr_yt(), 'A3');
+  assert (select authorized_at from google_connections where id = v_id) = now(),
+    'every upsert stamps authorized_at';
   assert (select encrypted_refresh_token from google_connections where id = v_id) = 'R2',
     'a new refresh token replaces the stored one';
   raise notice 'PASS google_rpcs.upsert_keeps_refresh';
@@ -241,6 +257,8 @@ begin
   v_conn_b := pg_temp.gr_upsert(v_ws_b, 'sub-1', 'RB', pg_temp.gr_gbp());
   perform pg_temp.gr_channel(v_ws_a, (s->>'cli_a1')::bigint, v_conn_a, 'UC-1');
   v_loc_b := pg_temp.gr_location(v_ws_b, (s->>'cli_b1')::bigint, v_conn_b, 'locations/1');
+  perform pg_temp.gr_backdate(v_conn_a);
+  perform pg_temp.gr_backdate(v_conn_b);
 
   -- unlink_other_workspace_404
   begin
@@ -316,6 +334,7 @@ begin
   v_loc2 := pg_temp.gr_location(v_ws, (s->>'cli_a2')::bigint, v_conn, 'locations/2');
   perform pg_temp.gr_channel(v_ws, (s->>'cli_a2')::bigint, v_conn, 'UC-1');
   perform pg_temp.gr_mark_revoked(v_conn);
+  perform pg_temp.gr_backdate(v_conn);
 
   select * into r from pg_temp.gr_unlink_loc(v_ws, v_loc1);
   assert r.should_revoke = false, 'revoked location 2 and revoked channel still use the sub';
@@ -342,6 +361,7 @@ declare
 begin
   v_conn := pg_temp.gr_upsert(v_ws, 'sub-1', null, pg_temp.gr_yt(), 'ACCESS-1');
   perform pg_temp.gr_channel(v_ws, (s->>'cli_a1')::bigint, v_conn, 'UC-1');
+  perform pg_temp.gr_backdate(v_conn);
   select * into r from pg_temp.gr_unlink_yt(v_ws, (s->>'cli_a1')::bigint);
   assert r.should_revoke = true, 'last use: revoke';
   assert (select count(*) from google_revocations) = 1, 'one revocation row';
@@ -349,6 +369,68 @@ begin
   assert (select encrypted_token from google_revocations where id = r.revocation_id) = 'ACCESS-1', 'the access token';
   assert not exists (select 1 from google_connections where google_sub = 'sub-1'), 'connection deleted';
   raise notice 'PASS google_rpcs.revoke_falls_back_to_access';
+end $$;
+rollback;
+
+-- =====================================================================
+-- fresh_connection_grace (R10): a connection authorized in the last hour keeps its sub in use
+-- even with no unit (callback upsert -> channel insert / GMN unit picker). Only the upsert
+-- extends the grace: token refreshes, lock claims and mark_revoked do not.
+-- =====================================================================
+begin;
+do $$
+declare
+  s jsonb := pg_temp.gr_seed();
+  v_ws_a uuid := (s->>'ws_a')::uuid; v_ws_b uuid := (s->>'ws_b')::uuid;
+  v_conn_a uuid; v_conn_b uuid; v_loc1 uuid; v_loc2 uuid; r record;
+begin
+  v_conn_b := pg_temp.gr_upsert(v_ws_b, 'sub-1', 'RB', pg_temp.gr_gbp());
+  v_loc1 := pg_temp.gr_location(v_ws_b, (s->>'cli_b1')::bigint, v_conn_b, 'locations/1');
+  perform pg_temp.gr_backdate(v_conn_b);
+  -- A just came back from the callback: connection upserted, no unit linked yet
+  v_conn_a := pg_temp.gr_upsert(v_ws_a, 'sub-1', 'RA', pg_temp.gr_yt());
+
+  select * into r from pg_temp.gr_unlink_loc(v_ws_b, v_loc1);
+  assert r.should_revoke = false and r.revocation_id is null, 'fresh connection keeps the sub in use';
+  assert exists (select 1 from google_connections where id = v_conn_a), 'fresh connection kept';
+  assert exists (select 1 from google_connections where id = v_conn_b), 'B connection kept';
+  assert not exists (select 1 from google_revocations), 'nothing revoked';
+
+  -- grace over; refresh-style writes and mark_revoked must not bring it back
+  v_loc2 := pg_temp.gr_location(v_ws_b, (s->>'cli_b1')::bigint, v_conn_b, 'locations/2');
+  perform pg_temp.gr_backdate(v_conn_a);
+  update google_connections
+     set encrypted_access_token = 'A-refreshed', access_token_expires_at = now() + interval '1 hour',
+         refresh_lock_at = now()
+   where google_sub = 'sub-1';
+  update google_connections set refresh_lock_at = null where google_sub = 'sub-1';
+  perform pg_temp.gr_mark_revoked(v_conn_a);
+  assert (select updated_at from google_connections where id = v_conn_a) = now(), 'updated_at is fresh';
+
+  select * into r from pg_temp.gr_unlink_loc(v_ws_b, v_loc2);
+  assert r.should_revoke = true, 'stale connection: last unlink revokes';
+  assert not exists (select 1 from google_connections where google_sub = 'sub-1'), 'both connections deleted';
+  assert (select count(*) from google_revocations) = 1, 'one revocation row';
+  raise notice 'PASS google_rpcs.fresh_connection_grace';
+end $$;
+rollback;
+
+-- =====================================================================
+-- mark_revoked takes the per-sub advisory lock
+-- =====================================================================
+begin;
+do $$
+declare
+  s jsonb := pg_temp.gr_seed();
+  v_conn uuid;
+begin
+  insert into google_connections (conta_id, google_sub, email, encrypted_access_token, access_token_expires_at)
+    values ((s->>'ws_a')::uuid, 'sub-lock', 'x@example.com', 'A', now() + interval '1 hour')
+    returning id into v_conn;
+  assert not pg_temp.gr_holds_sub_lock('sub-lock'), 'no google-sub lock before the call';
+  perform pg_temp.gr_mark_revoked(v_conn);
+  assert pg_temp.gr_holds_sub_lock('sub-lock'), 'mark_revoked holds the google-sub advisory lock';
+  raise notice 'PASS google_rpcs.mark_revoked_locks';
 end $$;
 rollback;
 
