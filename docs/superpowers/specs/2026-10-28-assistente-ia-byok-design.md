@@ -1,6 +1,10 @@
 # Assistente de IA com o modelo do usuário (BYOK)
 
-Status: design, aguardando aprovação. Mockups aprovados: https://claude.ai/artifact/AZGMm5hDR7aWDJatRcYBTe
+Status: **arquivado em 2026-10-29.** Most customers use a Claude or ChatGPT subscription, not API
+keys, and Anthropic forbids using a Claude subscription inside Mesaas. The founder chose to focus on
+Mesaas inside Claude/ChatGPT (MCP Apps cards) and on applying to "Sign in with ChatGPT". Kept as the
+reference design if API keys (or an approved Sign in with ChatGPT) later make the in-app assistant
+worth building. Reviewed by a builder check, Codex and Fable before archiving. Mockups: https://claude.ai/artifact/AZGMm5hDR7aWDJatRcYBTe
 (6 artboards: Configuração › Inteligência artificial, painel do assistente, editor de post, painel sem
 modelo, celular escuro, widget MCP).
 
