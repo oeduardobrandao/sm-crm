@@ -1,0 +1,32 @@
+{
+  "card": "post_preview",
+  "v": 1,
+  "client": {
+    "id": 42,
+    "nome": "Dra. Marina Arrais"
+  },
+  "titulo": "5 mitos sobre protetor solar",
+  "tipo": "carrossel",
+  "pilar": "Educação",
+  "slides": [
+    {
+      "texto": "5 mitos sobre protetor solar que você ainda acredita"
+    },
+    {
+      "texto": "Dia nublado também queima. Até 80% dos raios UV atravessam as nuvens."
+    },
+    {
+      "texto": "FPS 100 não protege o dobro do FPS 50. A diferença é de cerca de 1%."
+    },
+    {
+      "texto": "Pele negra também precisa de protetor todos os dias."
+    },
+    {
+      "texto": "Salve e compartilhe com quem ainda pensa que protetor é só para a praia."
+    }
+  ],
+  "ig_caption": "Você passa protetor só quando vai à praia? Então este carrossel é para você. Separei os 5 mitos que mais escuto no consultório, e o que a ciência diz sobre cada um.\n\nSalve para lembrar e mande para quem ainda acha que dia nublado não queima. #dermatologia #protetorsolar",
+  "caption_len": 270,
+  "caption_max": 2200,
+  "body": "5 mitos sobre protetor solar que você ainda acredita\n\nDia nublado também queima. Até 80% dos raios UV atravessam as nuvens.\n\nFPS 100 não protege o dobro do FPS 50. A diferença é de cerca de 1%.\n\nPele negra também precisa de protetor todos os dias.\n\nSalve e compartilhe com quem ainda pensa que protetor é só para a praia."
+}

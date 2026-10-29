@@ -1,0 +1,168 @@
+{
+  "card": "client_calendar",
+  "v": 1,
+  "client": {
+    "id": 42,
+    "nome": "Dra. Marina Arrais"
+  },
+  "from": "2026-11-02",
+  "weeks": 3,
+  "days": [
+    {
+      "date": "2026-11-02",
+      "posts": [],
+      "gap": false
+    },
+    {
+      "date": "2026-11-03",
+      "posts": [
+        {
+          "id": 1,
+          "titulo": "Rotina de skincare noturna",
+          "tipo": "reels",
+          "status": "agendado"
+        }
+      ],
+      "gap": false
+    },
+    {
+      "date": "2026-11-04",
+      "posts": [],
+      "gap": false
+    },
+    {
+      "date": "2026-11-05",
+      "posts": [
+        {
+          "id": 2,
+          "titulo": "5 mitos sobre protetor solar",
+          "tipo": "carrossel",
+          "status": "enviado_cliente"
+        }
+      ],
+      "gap": false
+    },
+    {
+      "date": "2026-11-06",
+      "posts": [],
+      "gap": false
+    },
+    {
+      "date": "2026-11-07",
+      "posts": [
+        {
+          "id": 3,
+          "titulo": "Caixinha de perguntas",
+          "tipo": "stories",
+          "status": "aprovado_cliente"
+        }
+      ],
+      "gap": false
+    },
+    {
+      "date": "2026-11-08",
+      "posts": [],
+      "gap": false
+    },
+    {
+      "date": "2026-11-09",
+      "posts": [],
+      "gap": false
+    },
+    {
+      "date": "2026-11-10",
+      "posts": [
+        {
+          "id": 4,
+          "titulo": "Antes e depois: melasma",
+          "tipo": "feed",
+          "status": "enviado_cliente"
+        }
+      ],
+      "gap": false
+    },
+    {
+      "date": "2026-11-11",
+      "posts": [],
+      "gap": true
+    },
+    {
+      "date": "2026-11-12",
+      "posts": [],
+      "gap": false
+    },
+    {
+      "date": "2026-11-13",
+      "posts": [
+        {
+          "id": 5,
+          "titulo": "Ácido ou vitamina C?",
+          "tipo": "reels",
+          "status": "rascunho"
+        }
+      ],
+      "gap": false
+    },
+    {
+      "date": "2026-11-14",
+      "posts": [],
+      "gap": false
+    },
+    {
+      "date": "2026-11-15",
+      "posts": [],
+      "gap": false
+    },
+    {
+      "date": "2026-11-16",
+      "posts": [],
+      "gap": false
+    },
+    {
+      "date": "2026-11-17",
+      "posts": [
+        {
+          "id": 6,
+          "titulo": "Como escolher o protetor",
+          "tipo": "carrossel",
+          "status": "rascunho"
+        }
+      ],
+      "gap": false
+    },
+    {
+      "date": "2026-11-18",
+      "posts": [],
+      "gap": true
+    },
+    {
+      "date": "2026-11-19",
+      "posts": [],
+      "gap": false
+    },
+    {
+      "date": "2026-11-20",
+      "posts": [
+        {
+          "id": 7,
+          "titulo": "Novembro azul na pele",
+          "tipo": "feed",
+          "status": "rascunho"
+        }
+      ],
+      "gap": false
+    },
+    {
+      "date": "2026-11-21",
+      "posts": [],
+      "gap": false
+    },
+    {
+      "date": "2026-11-22",
+      "posts": [],
+      "gap": false
+    }
+  ],
+  "usual_weekdays": [2],
+  "open_url": "https://www.mesaas.com.br/entregas?view=calendar&clientes=42"
+}
