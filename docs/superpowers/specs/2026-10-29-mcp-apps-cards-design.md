@@ -148,8 +148,8 @@ routines, any `mesaas_sk_` key consumer. The stateless server cannot see the cli
 1. **OAuth only.** `send_post_to_client` and `attach_image_to_post` are registered only when
    `ctx.key_id` starts with `oauth:` (`_shared/mcp-oauth.ts:207`); static `mesaas_sk_` keys never
    see them. (Static keys are also why `ctx.created_by` would be the key's creator, not the clicker.)
-2. **A per-post send nonce delivered to the card, not the model.** Results of `create_post`,
-   `update_post` and `preview_post` (when `post_id` is set) carry `_meta["mesaas/sendNonce"]`: an HMAC
+2. **A per-post send nonce delivered to the card, not the model.** Results of `create_post` and
+   `update_post` carry `_meta["mesaas/sendNonce"]` (`preview_post` mints none, see §12): an HMAC
    (key derived with HKDF from `TOKEN_ENCRYPTION_KEY`, purpose `mcp-send-nonce`) over
    `{conta_id, user_id, post_id, exp: now + 30 min}`. `send_post_to_client` requires it and checks
    every field. Result `_meta` is delivered to the widget and hidden from the model on ChatGPT
@@ -181,7 +181,8 @@ routines, any `mesaas_sk_` key consumer. The stateless server cannot see the cli
   `fetch` the way `mcp-admin/index.ts` does (the MCP `Deps` has neither today). Mime from
   `sniffImageBytes`, JPEG/PNG only (WebP/GIF refused: "Formato não aceito. Use JPG ou PNG.").
 - **Host allowlist:** on Claude the model can pass any public URL as `image.download_url`, so the tool
-  only accepts the OpenAI file host(s) observed in the first real ChatGPT test, kept in one constant.
+  only accepts the OpenAI file host(s) observed in the first real ChatGPT test, kept in the
+  `MCP_IMAGE_HOSTS` secret (see §12).
   `download_url` never reaches `audit_log` (`auditArgs` logs `post_id`, `position`, `replace` only).
 - **Redirects:** `fetchImageSafely` refuses any 3xx (`redirect: "manual"`, `:300-305`). The first test
   records whether ChatGPT's `download_url` redirects. If it does, add a bounded redirect option
@@ -249,7 +250,8 @@ service role, so it needs its own guarded write:
   (`enviado_cliente`: "Este post já está com o cliente."), `approved` (`aprovado_cliente`, `agendado`,
   `postado`: "O cliente já aprovou este post."), `stale` (anything else: "O post mudou no Mesaas.
   Atualize o cartão.").
-- The RPC also verifies the send nonce's fields match its arguments (§4.4) before updating.
+- ~~The RPC also verifies the send nonce's fields match its arguments (§4.4) before updating.~~
+  Superseded, see §12: the nonce is verified in TypeScript before the RPC is called.
 - `run_post_status_automations` passes `auth.uid()` as the notification actor
   (`20260805000002:246`), which is NULL under the service role: automations still run, the
   notification just has no actor name. Accepted for v1.
@@ -359,3 +361,21 @@ harmless.
 - "Dias de costume" = 4 of the last 8 weeks (§4.5).
 - ChatGPT listing targets Brazil (§7).
 - v1 edits `ig_caption` only (§2).
+
+## 12. Decisions after approval
+
+Recorded after the design was approved; where they conflict with an earlier section, these win.
+
+- **`preview_post` mints no send nonce.** It is a `posts:read` tool, and a read-scoped tool should not
+  hand out the token that lets a write happen. The card never used it either: the nonce comes only
+  from the `create_post` or `update_post` result of a save made in the same card.
+- **The card sends only from the status its own save returned.** In practice that is `rascunho` or
+  `revisao_interna` (an `update_post` on a `correcao_cliente` post moves it to `revisao_interna`), and
+  that status is the `expected_status` of the send.
+- **Nonce verification lives in TypeScript, not in the RPC** (supersedes §5 "The RPC also verifies
+  the send nonce's fields"). `send_post_to_client` verifies the nonce before calling
+  `mcp_send_post_to_client`, and the RPC is EXECUTE for `service_role` only, so the HKDF secret
+  never enters Postgres.
+- **`MCP_IMAGE_HOSTS` is an edge secret, not a code constant** (supersedes §4.6 "kept in one
+  constant"): comma-separated hostnames, empty refuses every image, and the pilot sets it without a
+  deploy.

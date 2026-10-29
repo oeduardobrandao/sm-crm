@@ -16,17 +16,17 @@ Things stated below that come from the spec and were not re-verified against the
 
 ## 1. Shared prerequisites
 
-| #   | Item                                                                                                                                                                                                                                                                                                                                                           | Owner                                          | Status |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | ------ |
-| S1  | Reviewer account: a populated demo workspace (reuse the Admin's "Conta demo" flow), no MFA, with at least 2 clients that have briefing and brand profile, 3 untouched draft carousel posts (A, B, C; see section 4), 1 client with 3+ weeks of scheduled posts. **Re-seed S1 before every submission run**: P5 and N2 move posts to `enviado_cliente` for good | builder prepares, founder approves             |        |
-| S2  | Reviewer credentials delivered through each directory's secure field. Never in this repo, a PR or chat                                                                                                                                                                                                                                                         | founder                                        |        |
-| S3  | KB articles live: `limites-e-seguranca-do-agente` and `o-que-o-agente-pode-fazer` updated, "Cartões no Claude e no ChatGPT" published (drafts in the rollout runbook, step 4), with screenshots                                                                                                                                                                | builder drafts via Admin MCP, founder approves |        |
-| S4  | `https://www.mesaas.com.br/politica-de-privacidade` and `/termos-de-uso` exist and mention the connector and the data it reads (clients, briefings, posts, calendar, media the user attaches)                                                                                                                                                                  | founder                                        |        |
-| S5  | Allowed link URIs for `ui/open-link`: `https://www.mesaas.com.br` and the CRM app origin if it differs. Confirm the card's `open_url` (`https://www.mesaas.com.br/entregas?view=calendar&clientes=<id>`) is inside this list                                                                                                                                   | builder                                        |        |
-| S6  | Support URL and support contact (WhatsApp support number or e-mail), same one in both listings                                                                                                                                                                                                                                                                 | founder                                        |        |
-| S7  | Production OAuth works end to end from both hosts (staging's OAuth server is off): connect, consent screen with scopes, tool call, disconnect                                                                                                                                                                                                                  | builder verifies                               |        |
-| S8  | Pilot sign-off done (rollout runbook, checks A to D) and `MCP_APPS=on`                                                                                                                                                                                                                                                                                         | builder                                        |        |
-| S9  | Listing and in-card copy has no em dashes, is pt-BR sentence case, and makes no claim of endorsement by Anthropic, OpenAI or Meta                                                                                                                                                                                                                              | builder                                        |        |
+| #   | Item                                                                                                                                                                                                                                                                                                                                                                                                                                    | Owner                                          | Status |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | ------ |
+| S1  | Reviewer account: a populated demo workspace (reuse the Admin's "Conta demo" flow) on a plan with `feature_mcp` (without it the connector does not connect), no MFA, with at least 2 clients that have briefing and brand profile, 3 untouched draft carousel posts (A, B, C; see section 4), 1 client with 3+ weeks of scheduled posts. **Re-seed S1 before every submission run**: P5 and N2 move posts to `enviado_cliente` for good | builder prepares, founder approves             |        |
+| S2  | Reviewer credentials delivered through each directory's secure field. Never in this repo, a PR or chat                                                                                                                                                                                                                                                                                                                                  | founder                                        |        |
+| S3  | KB articles live: `limites-e-seguranca-do-agente` and `o-que-o-agente-pode-fazer` updated, "Cartões no Claude e no ChatGPT" published (drafts in the rollout runbook, step 4), with screenshots                                                                                                                                                                                                                                         | builder drafts via Admin MCP, founder approves |        |
+| S4  | `https://www.mesaas.com.br/politica-de-privacidade` and `/termos-de-uso` exist and mention the connector and the data it reads (clients, briefings, posts, calendar, media the user attaches)                                                                                                                                                                                                                                           | founder                                        |        |
+| S5  | Allowed link URIs for `ui/open-link`: `https://www.mesaas.com.br` and the CRM app origin if it differs. Confirm the card's `open_url` (`https://www.mesaas.com.br/entregas?view=calendar&clientes=<id>`) is inside this list                                                                                                                                                                                                            | builder                                        |        |
+| S6  | Support URL and support contact (WhatsApp support number or e-mail), same one in both listings                                                                                                                                                                                                                                                                                                                                          | founder                                        |        |
+| S7  | Production OAuth works end to end from both hosts (staging's OAuth server is off): connect, consent screen with scopes, tool call, disconnect                                                                                                                                                                                                                                                                                           | builder verifies                               |        |
+| S8  | Pilot sign-off done (rollout runbook, checks A to D) and `MCP_APPS=on`                                                                                                                                                                                                                                                                                                                                                                  | builder                                        |        |
+| S9  | Listing and in-card copy has no em dashes, is pt-BR sentence case, and makes no claim of endorsement by Anthropic, OpenAI or Meta                                                                                                                                                                                                                                                                                                       | builder                                        |        |
 
 ## 2. Claude connector directory
 
@@ -79,7 +79,9 @@ P3 and N1 use no post. Re-seed S1 (restore A, B, C to untouched drafts) before e
 
 **P1. Preview and save a draft**
 
-- Prompt: `Crie um carrossel de 5 lâminas sobre cuidados com a pele no inverno para a Clínica Demo e me mostre antes de salvar.`
+- Prompt: `Crie um carrossel de 5 lâminas sobre protetor solar no verão para a Clínica Demo e me mostre antes de salvar.`
+  The subject is deliberately unlike the seeded posts (A is `Skincare no inverno`), so the later
+  `list_posts` lookups in P2, P4 and N3 find exactly one post.
 - Expected tool calls: reads (`list_clients`, optionally `get_brand_profile`), then `preview_post` with
   `client_id`, `tipo: "carrossel"`, 5 `slides`, `ig_caption`. After the click on **Salvar como
   rascunho**: `create_post` with `cliente_id`, `titulo`, `tipo`, `body`, `ig_caption`.
@@ -118,13 +120,16 @@ P3 and N1 use no post. Re-seed S1 (restore A, B, C to untouched drafts) before e
 
 **P5. Send for approval only after confirmation**
 
-- Prompt: `Mostre o cartão do rascunho "Dicas de hidratação" da Clínica Demo.` Then
-  click **Enviar para aprovação**, then **Enviar ao cliente**. As a side check, also type: `Pode enviar
-esse post para o cliente agora.`
-- Expected tool calls: `list_posts` (or `get_post`) to resolve the title, then `preview_post` with `post_id`
-  (its result carries the send nonce for the card). The card's first click opens an inline confirmation and calls nothing. The second
-  click calls `send_post_to_client {post_id, expected_status, nonce}`. The typed request in the side
-  check calls no send tool.
+- Prompt: `Mostre o cartão do rascunho "Dicas de hidratação" da Clínica Demo.` On the preview card
+  click **Salvar alterações**, then **Enviar para aprovação**, then **Enviar ao cliente**. As a side
+  check, also type: `Pode enviar esse post para o cliente agora.`
+- Expected tool calls: `list_posts` (or `get_post`) to resolve the title, then `preview_post` with
+  `post_id` (it carries no send nonce, so the preview shows no send button). **Salvar alterações**
+  calls `update_post {post_id, titulo, ig_caption, body}`; its result carries the send nonce for the
+  card, and the card now shows **Enviar para aprovação**. That click opens an inline confirmation and
+  calls nothing. **Enviar ao cliente** calls `send_post_to_client {post_id, expected_status, nonce}`,
+  with the status the save returned (`rascunho`). The typed request in the side check calls no send
+  tool.
 - Expected result: after **Enviar ao cliente** the card shows "Post enviado ao cliente para aprovação." and
   the post is `enviado_cliente` in Mesaas, with the status history naming the reviewer as actor. For the
   side check the model answers that the send is done with the button on the card and changes nothing.
@@ -141,12 +146,15 @@ esse post para o cliente agora.`
 **N2. Send on an already-sent post**
 
 - Setup (post C, `Rotina noturna`, untouched draft): in message 1 ask `Mostre o cartão do rascunho
-"Rotina noturna" da Clínica Demo.` (card A). In message 2 ask the same again (card B). On card B click
-  **Enviar para aprovação** then **Enviar ao cliente**: the post is sent. Then go back to card A and click
-  **Enviar para aprovação** then **Enviar ao cliente**. Card A still holds the draft status it was drawn
-  with, which is how a second, stale click happens.
-- Expected tool calls: `list_posts` (or `get_post`) and `preview_post` with `post_id` for each card, then
-  `send_post_to_client` twice: once from card B (sent) and once from card A (refused).
+"Rotina noturna" da Clínica Demo.` (card A). In message 2 ask the same again (card B). On card A click
+  **Salvar alterações**, then on card B click **Salvar alterações**: both cards now show **Enviar para
+  aprovação**, each with its own nonce and the status `rascunho`. On card B click **Enviar para
+  aprovação** then **Enviar ao cliente**: the post is sent. Then go back to card A and click **Enviar
+  para aprovação** then **Enviar ao cliente**. Card A still holds the draft status its save returned,
+  which is how a second, stale click happens (a single card hides the send button once it has sent).
+- Expected tool calls: `list_posts` (or `get_post`) and `preview_post` with `post_id` for each card,
+  `update_post` once from each card (A, then B), then `send_post_to_client` twice: once from card B
+  (sent) and once from card A (refused).
 - Expected result: card B shows "Post enviado ao cliente para aprovação."; card A shows "Este post já está
   com o cliente." The post stays `enviado_cliente`, with one status-history entry for the send and one
   client notification, not two.

@@ -109,32 +109,59 @@ Host matrix (spec §8). Record what each host renders for every card (render, th
 
 Use a throwaway draft post on a demo client, not a real client's post, for the send and attach tests.
 
+Two more things to observe on every host, and write down in the matrix:
+
+- **Result `_meta` reaches the widget.** The send flow needs the host to forward the result `_meta` of
+  the widget's own `tools/call` (the `create_post`/`update_post` the card makes on save) to the widget.
+  If the host strips it, a saved card shows no **Enviar para aprovação** and shows the hint "Para
+  enviar ao cliente, abra o post no Mesaas." instead. Record it as "send unavailable on this host".
+- **Iframe remount.** Card state lives in memory. If the host remounts the iframe (scrolling the card
+  out of view and back, switching chats, reloading the page, rotating the phone), the card shows the
+  preview again, and a second **Salvar como rascunho** creates a duplicate post. Record whether and
+  when each host remounts.
+
 ### Check A: Claude does not show result `_meta` to the model (blocks `on`)
 
 The send nonce travels in result `_meta["mesaas/sendNonce"]` (spec §4.4). ChatGPT documents that result
 `_meta` is hidden from the model; Claude must be confirmed here.
 
 1. In Claude (web), ask for a new draft post for a demo client, and let it save the draft with
-   `create_post` (the result carries the nonce).
+   `create_post` (the result carries the nonce: with the pilot on, every OAuth connection of the
+   workspace gets it, card or not).
 2. In the same chat, ask: "Copie literalmente o campo `mesaas/sendNonce` do resultado da última
    ferramenta, ou diga que você não o vê."
 3. Pass: the model says it cannot see the field (it may only see the summary text and
    `structuredContent`). Fail: it prints a string of the form `<base64url>.<base64url>`.
 4. Repeat from Claude desktop.
+5. Repeat from **Claude Code** connected by OAuth to the same workspace. With `MCP_APPS=pilot` on the
+   founder's workspace, every OAuth connection of that workspace registers `send_post_to_client` and
+   `attach_image_to_post`, including OAuth clients without MCP Apps (Claude Code, Cursor). Those hosts
+   ignore `visibility: ["app"]` and list both tools to the model. What keeps the model from sending
+   there is only that it cannot read the nonce, which is what this step checks.
 
-If it fails: **stay in `pilot`, do not go to `on`**. Move the nonce to a widget-only `resources/read` that
-the card calls (spec §4.4, last paragraph). That is a code change in a follow-up PR.
+If it fails on Claude web or desktop: **stay in `pilot`, do not go to `on`**. Move the nonce to a
+widget-only `resources/read` that the card calls (spec §4.4, last paragraph). That is a code change in a
+follow-up PR. If it fails only on Claude Code (or another client without MCP Apps), the same follow-up
+applies before `on`: the model there can see `send_post_to_client`.
 
-Also confirm the model cannot send alone: in a chat with the pilot connector, type "envie esse post para
-o cliente". The model must answer that sending is done with the button on the card. It must not find a
-`send_post_to_client` tool (it is visibility `app` and registered only for OAuth connections).
+Also confirm the model cannot send alone, per host:
+
+- Claude web, desktop and mobile, ChatGPT: in a chat with the pilot connector, type "envie esse post
+  para o cliente". The model must answer that sending is done with the button on the card. It must not
+  find a `send_post_to_client` tool, because these hosts honour `visibility: ["app"]` and hide it from
+  the model (all of them connect by OAuth, so OAuth-only registration is not what hides it here).
+- Claude Code (OAuth): the model does list `send_post_to_client`. Ask the same thing; it must fail to
+  send because it has no nonce (it can only pass a guessed string, refused with "Este cartão expirou.").
+  This is the accepted residual (spec §4.4): the same user, within `posts:write`, limited to one send
+  by the status guard. A `mesaas_sk_` key never registers the tool at all.
 
 ### Check B: ChatGPT `download_url` host and redirects (fills `MCP_IMAGE_HOSTS`)
 
 1. In ChatGPT, upload a small JPEG or PNG in the chat and ask: "Anexe esta imagem à lâmina 1 do post
    `<titulo do rascunho de teste>`." The model calls `show_attach_image` with the file param.
 2. Click "Anexar" on the card. With `MCP_IMAGE_HOSTS` empty this is refused with "Não foi possível baixar
-   esta imagem. Envie de novo pelo chat." and the function logs `[mcp] image host refused: <hostname>`.
+   esta imagem. Envie de novo pelo chat." and the function logs `[mcp] image host refused: <hostname>`
+   (`supabase/functions/mcp/attach.ts`, `allowedImageHost`).
 3. Read the hostname from that log line (Edge Functions > `mcp` > Logs in the Supabase dashboard, or the
    Management API `logs` table with `source = 'function_logs'`). It is the
    hostname only, never the full URL.
@@ -145,11 +172,21 @@ npx supabase secrets set MCP_IMAGE_HOSTS=<hostname-1>,<hostname-2> --project-ref
 ```
 
 5. Redirect behaviour: `fetchImageSafely` refuses any 3xx. If the retry still fails with the same
-   message but **no** `image host refused` line, the download URL redirected. Do not loosen the fetch by
-   hand. Open a follow-up to add the bounded redirect option (at most 3 hops, each re-validated against
-   https, DNS/private-IP rules and the allowlist; never `redirect: "follow"`) and keep the attach card
-   out of the listing until it ships. The other three cards are unaffected.
-6. Pass: the image appears at position 1 of the draft, as cover, in the CRM (Entregas, the post's media).
+   message and the log shows `[mcp] attach image fetch refused: redirect_rejected`, the download URL
+   redirected. Do not loosen the fetch by hand. Open a follow-up to add the bounded redirect option (at
+   most 3 hops, each re-validated against https, DNS/private-IP rules and the allowlist; never
+   `redirect: "follow"`) and keep the attach card out of the listing until it ships. The other three
+   cards are unaffected.
+6. Content-Type behaviour: `fetchImageSafely` refuses a response whose `Content-Type` is not `image/*`
+   **before** sniffing the bytes (`_shared/safe-image-fetch.ts`, the `not_an_image` return right after
+   the `content-type` check), and the attach maps that reason to "Formato não aceito. Use JPG ou
+   PNG.". The same reason also comes from a failed sniff, but a valid JPEG or PNG always sniffs, so: if
+   a valid JPEG/PNG gets "Formato não aceito" and the log shows
+   `[mcp] attach image fetch refused: not_an_image`, the download host sent a non-image
+   `Content-Type` (likely `application/octet-stream`). The follow-up is sniff-first in
+   `fetchImageSafely` (decide by the bytes, keep JPEG/PNG only), never loosening the gate. Keep the
+   attach card out of the listing until it ships.
+7. Pass: the image appears at position 1 of the draft, as cover, in the CRM (Entregas, the post's media).
 
 Repeat the host entry for every distinct hostname the test shows (the host can differ between web and
 mobile). Keep the list as short as what was observed.
@@ -178,9 +215,17 @@ All of these must be true before step 4:
 
 - Check A pass (otherwise stay in `pilot`, move the nonce, redeploy, repeat A).
 - Check D pass on all three Claude surfaces.
-- Send test: "Enviar para aprovação" then "Enviar ao cliente" moved the throwaway post to
-  `enviado_cliente`; the post's status history shows the founder as actor with source `workspace_user`;
-  a second click shows "Este post já está com o cliente.".
+- Send test: on a preview card, "Salvar alterações" (or "Salvar como rascunho"), then "Enviar para
+  aprovação", then "Enviar ao cliente" moved the throwaway post to `enviado_cliente`; the post's status
+  history shows the founder as actor with source `workspace_user`.
+- Stale send test (the directory's N2, a card hides its send button once it has sent, so a second
+  click needs a second card): show the card of another throwaway draft twice, in two messages (cards A
+  and B). Click "Salvar alterações" on A, then on B. Send from B ("Enviar para aprovação", "Enviar ao
+  cliente"), then from A: card A shows "Este post já está com o cliente.", the post has one
+  status-history entry for the send and the client gets one notification.
+- Check A residual written into the sign-off: on OAuth clients without MCP Apps (Claude Code, Cursor)
+  the model sees `send_post_to_client` and `attach_image_to_post` while the workspace is in the pilot
+  (or everywhere after `on`); it cannot send without the nonce, and Check A step 5 is the evidence.
 - Host matrix filled in, with anything that renders badly written down as a bug.
 
 ## Step 4: KB and tool descriptions, then `on`
@@ -206,13 +251,13 @@ Replace the section "Não envia ao cliente" with:
 
 O agente não move posts para estágios visíveis ao cliente por conta própria. Quando o Claude ou o ChatGPT
 salva um rascunho, ele mostra um cartão com o botão **Enviar para aprovação**. Só o seu clique, seguido da
-confirmação **Enviar ao cliente**, envia o post para o cliente aprovar. Nenhuma instrução dada no chat
-envia um post sem esse clique.
+confirmação **Enviar ao cliente**, envia o post para o cliente aprovar. Pelo chat, o agente não consegue
+enviar sozinho.
 
 - O envio por cartão só funciona em conexões feitas por login (o fluxo "Conectar" com autorização). Chaves
   de API (`mesaas_sk_`) e agentes que rodam sozinhos nunca enviam ao cliente.
-- O cartão só envia posts em rascunho, revisão interna, correção do cliente ou aprovado internamente. Se o
-  cliente já recebeu ou já aprovou o post, o envio é recusado com uma mensagem clara.
+- O cartão só envia o post que você acabou de salvar nele, em rascunho ou revisão interna. Se o cliente
+  já recebeu ou já aprovou o post, o envio é recusado com uma mensagem clara.
 - O envio fica registrado no histórico de status do post, em seu nome, como uma ação sua no Mesaas.
 - Se você editar um post que já está visível ao cliente, o post continua voltando para revisão interna.
 ```
@@ -316,14 +361,14 @@ posts para os dias vazios** para o agente propor pautas, ou **Abrir calendário 
 ## Enviar para aprovação
 
 Depois de salvar um rascunho, clique em **Enviar para aprovação**. O cartão pede uma confirmação:
-**Enviar ao cliente**. Só depois dela o post vai para o cliente aprovar no Hub. O agente não faz esse
-envio sozinho, e mensagens no chat não o disparam.
+**Enviar ao cliente**. Só depois dela o post vai para o cliente aprovar no Hub. Pelo chat, o agente não
+consegue fazer esse envio sozinho.
 
 [IMAGEM: confirmação "Enviar ao cliente" no cartão]
 
 O envio é recusado, com uma mensagem clara, quando o cliente já recebeu ou já aprovou o post, quando o post
 mudou no Mesaas desde que o cartão apareceu, quando a publicação do post falhou ou quando um vídeo está sem
-capa. Nesses casos, resolva no Mesaas e peça o cartão de novo.
+capa. Nesses casos, resolva no Mesaas, peça o cartão de novo e salve antes de enviar.
 
 ## Anexar uma imagem da conversa (ChatGPT)
 
@@ -342,10 +387,12 @@ PNG de até 8 MB; no máximo 10 mídias por post. A imagem entra em Arquivos com
 
 - **O cartão não aparece:** peça de novo ("mostre a prévia"). Se continuar só texto, confira se o conector
   está conectado por login e se a sua conta tem acesso aos cartões.
-- **"Este cartão expirou":** o envio vale por 30 minutos depois que o cartão é criado. Peça ao agente para
-  mostrar o post de novo.
+- **"Este cartão expirou. Peça ao agente para mostrar o post de novo e salve de novo.":** o envio vale
+  por 30 minutos depois que você salva no cartão. Peça ao agente para mostrar o post de novo, salve no
+  cartão novo e envie.
 - **"Formato não aceito":** converta a imagem para JPG ou PNG.
-- **"O post mudou no Mesaas":** alguém editou o post depois do cartão. Peça o cartão de novo.
+- **"O post mudou no Mesaas":** alguém editou o post depois do cartão. Peça o cartão de novo e salve
+  antes de enviar.
 ```
 
 Do not publish any of these from this task. Keep the existing articles' prose style otherwise (these drafts
