@@ -42,6 +42,20 @@ describe('ClientCalendar', () => {
     expect(host.openLink).toHaveBeenCalledWith(calendar.open_url);
   });
 
+  it.each([
+    ['another origin', 'https://evil.example/entregas'],
+    ['a look-alike host', 'https://www.mesaas.com.br.evil.example/x'],
+    ['a script url', 'javascript:alert(1)'],
+  ])('open_url on %s is not opened and shows the link message', async (_n, url) => {
+    const host = fakeHost({ ...calendar, open_url: url });
+    render(<App host={host} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir calendário no Mesaas' }));
+    expect(host.openLink).not.toHaveBeenCalled();
+    expect(
+      screen.getByText('O chat não abriu o link. Abra o Mesaas no navegador.'),
+    ).toBeInTheDocument();
+  });
+
   it('no gaps: no suggest button and no "Sem post"', () => {
     const quiet = {
       ...calendar,

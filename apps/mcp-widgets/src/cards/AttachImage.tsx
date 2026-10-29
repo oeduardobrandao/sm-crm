@@ -69,7 +69,13 @@ export function AttachImage({ host, data }: { host: Host; data: AttachImageData 
     }
   };
 
-  const onAttach = () => (pickedHas ? setConfirming(true) : attach(false));
+  // After a success this image is in the post; another attach needs another image
+  // (the local media list is stale, so a second click would duplicate it).
+  const onAttach = () => {
+    if (done) return;
+    if (pickedHas) setConfirming(true);
+    else void attach(false);
+  };
 
   const chooseOther = async () => {
     if (!host.pickImage) return;
@@ -168,10 +174,9 @@ export function AttachImage({ host, data }: { host: Host; data: AttachImageData 
               className={has ? 'mw-slot mw-slot-filled' : 'mw-slot'}
               aria-pressed={n === picked}
               aria-label={`Lâmina ${n}${has ? ', já tem imagem' : ', vazia'}`}
-              disabled={busy || confirming}
+              disabled={busy || confirming || done}
               onClick={() => {
                 setPicked(n);
-                setDone(false);
                 setMsg(undefined);
               }}
             >

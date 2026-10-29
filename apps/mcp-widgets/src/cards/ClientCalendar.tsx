@@ -8,6 +8,7 @@ import {
   Button,
   Card,
   LINK_FAILED,
+  MESAAS_ORIGIN,
   MESSAGE_FAILED,
   Notice,
   STATUS_LABEL,
@@ -99,7 +100,14 @@ export function ClientCalendar({ host, data }: { host: Host; data: CalendarData 
       )
       .catch(() => setErr(MESSAGE_FAILED));
 
-  const open = () => host.openLink(data.open_url).catch(() => setErr(LINK_FAILED));
+  const open = () => {
+    // Only ever open a Mesaas page, whatever the payload says.
+    if (typeof data.open_url !== 'string' || !data.open_url.startsWith(`${MESAAS_ORIGIN}/`)) {
+      setErr(LINK_FAILED);
+      return;
+    }
+    host.openLink(data.open_url).catch(() => setErr(LINK_FAILED));
+  };
 
   return (
     <Card

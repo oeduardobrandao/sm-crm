@@ -64,12 +64,13 @@ export function PostPreview({ host, data }: { host: Host; data: PreviewData }) {
             body: data.body,
             ig_caption: data.ig_caption,
           })
-        : await host.callTool('update_post', {
+        : // Never `tipo` (an echoed format would change the post) and never an empty
+          // `body`: update_post reads a present "" as "clear the content".
+          await host.callTool('update_post', {
             post_id: data.post_id,
             titulo: data.titulo,
-            tipo: data.tipo,
-            body: data.body,
             ig_caption: data.ig_caption,
+            ...(data.body?.trim() ? { body: data.body } : {}),
           });
       const row = r.isError ? undefined : resultJson(r);
       if (!row || typeof row.id !== 'number') {

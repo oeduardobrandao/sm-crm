@@ -40,6 +40,17 @@ describe('AttachImage', () => {
     });
   });
 
+  it('after a successful attach, picking another slot cannot attach the same image again', async () => {
+    const host = fakeHost(attach, { results: { attach_image_to_post: textResult({ ok: true }) } });
+    render(<App host={host} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Anexar na lâmina escolhida' }));
+    expect(await screen.findByText('Imagem anexada na lâmina 4 no Mesaas.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Lâmina 1, já tem imagem' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Anexar na lâmina escolhida' }));
+    expect(screen.queryByRole('button', { name: 'Substituir' })).toBeNull();
+    expect(host.callTool).toHaveBeenCalledTimes(1);
+  });
+
   it('an ineligible post shows the reason and no attach button', () => {
     render(<App host={fakeHost(ineligible)} />);
     expect(screen.getByText(ineligible.reason)).toBeInTheDocument();

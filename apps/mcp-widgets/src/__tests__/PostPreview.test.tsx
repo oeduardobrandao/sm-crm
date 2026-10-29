@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from '../App';
@@ -56,7 +56,7 @@ describe('PostPreview', () => {
     expect(host.callTool).not.toHaveBeenCalled();
   });
 
-  it('a saved post (post_id) saves with update_post', async () => {
+  it('a saved post (post_id) saves with update_post, never sending tipo', async () => {
     const ok = { ...over, ig_caption: 'Curta.', caption_len: 6 };
     const host = fakeHost(ok, {
       results: {
@@ -73,10 +73,24 @@ describe('PostPreview', () => {
     expect(host.callTool).toHaveBeenCalledWith('update_post', {
       post_id: 901,
       titulo: ok.titulo,
-      tipo: 'feed',
       body: ok.body,
       ig_caption: 'Curta.',
     });
+  });
+
+  it('a caption-only revision (body "") never sends body, so the saved content stays', async () => {
+    const captionOnly = { ...over, ig_caption: 'Curta.', caption_len: 6, body: '' };
+    const host = fakeHost(captionOnly, {
+      results: {
+        update_post: textResult({ id: 901, titulo: 'X', tipo: 'feed', status: 'rascunho' }),
+      },
+    });
+    render(<App host={host} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar alterações' }));
+    const args = vi.mocked(host.callTool).mock.calls[0][1] as Record<string, unknown>;
+    expect(args).toEqual({ post_id: 901, titulo: captionOnly.titulo, ig_caption: 'Curta.' });
+    expect(Object.hasOwn(args, 'body')).toBe(false);
+    expect(Object.hasOwn(args, 'tipo')).toBe(false);
   });
 
   it('a save error shows the server sentence, never the raw English fallback', async () => {
