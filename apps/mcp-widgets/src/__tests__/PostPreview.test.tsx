@@ -10,9 +10,9 @@ import { fakeHost, textResult } from './fakeHost';
 describe('PostPreview', () => {
   it('renders the slides and the caption count against the limit', () => {
     render(<App host={fakeHost(preview)} />);
-    const slides = screen.getByRole('list', { name: 'Lâminas' });
+    const slides = screen.getByRole('list', { name: 'Slides' });
     expect(slides.querySelectorAll('li')).toHaveLength(5);
-    expect(screen.getByText('Lâmina 1 de 5')).toBeInTheDocument();
+    expect(screen.getByText('Slide 1 de 5')).toBeInTheDocument();
     expect(screen.getByText(`${preview.caption_len} de 2.200 caracteres`)).toBeInTheDocument();
     expect(screen.getByText('Dra. Marina Arrais · pilar Educação')).toBeInTheDocument();
   });
@@ -20,7 +20,7 @@ describe('PostPreview', () => {
   it('switches the big slide when a slide is picked', async () => {
     render(<App host={fakeHost(preview)} />);
     await userEvent.click(screen.getByRole('button', { name: /^3 FPS 100/ }));
-    expect(screen.getByText('Lâmina 3 de 5')).toBeInTheDocument();
+    expect(screen.getByText('Slide 3 de 5')).toBeInTheDocument();
   });
 
   it('"Salvar como rascunho" calls create_post with the fixture fields', async () => {

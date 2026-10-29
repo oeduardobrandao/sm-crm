@@ -44,7 +44,7 @@ jobs:
       # The mcp function serves the committed bundle; a widget change without the
       # regenerated file would ship the old cards.
       - name: MCP widgets bundle is up to date
-        run: npm run build:mcp-widgets && git diff --exit-code supabase/functions/mcp/ui/generated/cards-v1.ts
+        run: npm run build:mcp-widgets && git diff --exit-code supabase/functions/mcp/ui/generated/cards.ts
 
   # The Vitest suite is ~1000 files and overhead-bound (jsdom + setupFiles + module
   # collect is ~1.6s per file, more than the tests themselves), so it is split across

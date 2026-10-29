@@ -40,7 +40,7 @@ Related secrets:
   so the attach card is dead until you fill it in step 3.
 
 Rollback at any point: `MCP_APPS=off` (instant, no deploy). Hosts may have cached the resource; the
-versioned URI `ui://mesaas/cards-v1.html` keeps an old cache harmless.
+versioned URI (`CARDS_URI` in `supabase/functions/mcp/apps.ts`) keeps an old cache harmless.
 
 ## Step 1: migrations
 
@@ -409,13 +409,15 @@ country `BR`.
 The change has no CRM runtime effect besides docs, so the order relative to the merge is free. Do the
 database and function steps before merging anyway: merging deploys the Vercel frontend immediately, and
 the CI check that the generated bundle is current (`npm run build:mcp-widgets && git diff --exit-code
-supabase/functions/mcp/ui/generated/cards-v1.ts`) must be green.
+supabase/functions/mcp/ui/generated/cards.ts`) must be green.
 
 ## Redeploy triggers to remember
 
-- A change to `apps/mcp-widgets/` means regenerating `supabase/functions/mcp/ui/generated/cards-v1.ts`
+- A change to `apps/mcp-widgets/` means regenerating `supabase/functions/mcp/ui/generated/cards.ts`
   (`npm run build:mcp-widgets`), committing it and redeploying `mcp` (same command as step 2).
-- A **breaking** card change (a `structuredContent` shape or a widget behaviour old hosts would misread)
-  ships as a new resource, `ui://mesaas/cards-v2.html`, never as an edit of `cards-v1`.
+- Hosts cache the card HTML by URI (ChatGPT kept showing the old attach card after a redeploy of
+  `cards-v1`), so **every** widget change also bumps `CARDS_URI` in `supabase/functions/mcp/apps.ts`
+  (v1 → v2 → v3) and moves the previous URI to `LEGACY_CARDS_URIS`, which still serves the current HTML.
+  In ChatGPT developer mode, press "Refresh" on the app afterwards so it re-reads the tool listing.
 - Changing a scope (adding one for cards) is the usual four-way redeploy: `mcp`, `mcp-keys`,
   `mcp-oauth-consent` and the CRM. v1 adds none.

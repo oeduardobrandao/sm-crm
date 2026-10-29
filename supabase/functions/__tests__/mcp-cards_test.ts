@@ -122,7 +122,7 @@ Deno.test("preview_post: a body over create_post's 10000 cap is refused before a
   const slides = Array.from({ length: 6 }, () => ({ texto: "x".repeat(2000) }));
   const res = await server.tools.preview_post.cb({ client_id: 5, titulo: "T", tipo: "carrossel", ig_caption: "x", slides });
   assertEquals(res.isError, true);
-  assertEquals(JSON.parse(res.content[0].text).error, "O conteúdo passa de 10.000 caracteres. Encurte as lâminas.");
+  assertEquals(JSON.parse(res.content[0].text).error, "O conteúdo passa de 10.000 caracteres. Encurte os slides.");
   assert(!calls.some((c) => c.table === "clientes"), "no client read for a refused body");
 
   // 5 x 2000 + 4 separators = 10008 is over; 4 x 2000 + 3 separators = 8006 is fine.
@@ -206,7 +206,7 @@ Deno.test("audit rows carry no slide, roteiro or caption text", async () => {
 Deno.test("card tools carry the cards _meta and the scope posts:read", () => {
   const { server } = setup();
   for (const name of ["preview_post", "show_caption_options"]) {
-    assertEquals(server.tools[name].config._meta, { ui: { resourceUri: "ui://mesaas/cards-v1.html" } }, name);
+    assertEquals(server.tools[name].config._meta, { ui: { resourceUri: "ui://mesaas/cards-v2.html" } }, name);
     assertEquals(server.tools[name].config.annotations.readOnlyHint, true, name);
   }
 });
