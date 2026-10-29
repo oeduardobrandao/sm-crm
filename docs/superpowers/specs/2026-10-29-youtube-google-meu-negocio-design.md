@@ -55,7 +55,7 @@ Anti-goals (would be a failure even if it "works"):
 - Anything that fails Google's YouTube audit (§4.6): YouTube numbers mixed into cross-platform
   totals, AI or scores on YouTube data, YouTube data kept after a disconnect.
 - One workspace reading, overwriting or deleting another workspace's data for the same
-  channel or location (§6).
+  channel or location (§4.2, §5).
 
 ## 4. Google connection model and policy
 
@@ -99,7 +99,9 @@ Google account, so a token-per-client design breaks at the 101st client. Therefo
   access + refresh tokens (AES-GCM via `_shared/crypto.ts` `encryptText`, purposes
   `google-access-token` / `google-refresh-token`), expiry, granted scopes, status
   (`active | revoked`), `refresh_lock_at`, timestamps. Service-role only; the CRM sees status
-  through `google-integration`'s summary route.
+  through `google-integration`'s summary route. A connection row with no linked product is
+  **kept with its tokens** (it is what lets the next connect skip `prompt=consent`); it is
+  deleted only by the revoke branch below or when it is `revoked`.
 - Reconnecting the same identity in the same workspace updates the row in one statement:
   scopes are the union, the access token is replaced, and the **stored refresh token is kept
   unless the exchange returned a new one**.
@@ -107,18 +109,25 @@ Google account, so a token-per-client design breaks at the 101st client. Therefo
 - `getFreshGoogleToken(svc, connectionId)` is the only token read path (refresh when <5 min
   left, atomic `refresh_lock_at` claim, the `getFreshTikTokToken` pattern). Google refresh
   tokens do not rotate, so no refresh cron; the daily syncs exercise every token.
-- `invalid_grant` on refresh → connection `revoked`, every linked product shows "Reconectar"
-  (mockup 1), and the §4.6 deletion clock starts.
+- `invalid_grant` on refresh → connection `revoked`; its YouTube channels go
+  `authorization_status = 'revoked'` and are purged at once (§4.6); its GMN locations go
+  `status = 'revoked'` with `disconnected_at = now()`. Every linked product shows "Reconectar"
+  (mockup 1). Reconnecting the same identity flips the connection to `active` and its `revoked`
+  locations back to `active` (history kept if within 30 days); YouTube re-backfills.
 - Disconnecting a product unlinks it (§4.3/§4.4). The grant is revoked at Google
   (`oauth2.googleapis.com/revoke`) only when **no `google_connections` row in any workspace**
   has that `sub` and still has a linked product: revoking kills the whole grant between that
-  Google account and the OAuth client, including other workspaces' connections. Otherwise the
-  workspace's connection row is deleted locally. The check, the unlink and the decision run in
-  one SECURITY DEFINER RPC under `pg_advisory_xact_lock(hashtext('google-sub:' || sub))`, so two
-  concurrent last disconnects cannot each see the other and skip the revoke. A "revoke" decision
-  writes a `google_revocations` row (encrypted token, attempts) in the same transaction; the
-  function calls Google after commit and deletes the row on success, and the daily sync retries
-  leftovers.
+  Google account and the OAuth client, including other workspaces' connections and the other
+  product on the same identity. Otherwise the connection row stays, tokens included. The check,
+  the unlink and the decision run in one SECURITY DEFINER RPC under
+  `pg_advisory_xact_lock(hashtext('google-sub:' || sub))`, so two concurrent last disconnects
+  cannot each see the other and skip the revoke. A "revoke" decision deletes the workspace's
+  connection rows for that `sub` and writes a `google_revocations` row (encrypted token,
+  attempts) in the same transaction; the function calls Google after commit and deletes the row
+  on success; `gbp-sync-cron` retries leftovers daily.
+  Policy note: unlinking one client's channel while the agency keeps using the same Google
+  account elsewhere is treated as an unlink, not a consent revocation (III.D.2.3 asks for an
+  immediate token revoke when the user revokes consent); confirm this reading during the audit.
 
 Tenant resolution in all new functions: `profiles.active_workspace_id` + `workspace_members`
 check (the `report-docs` pattern), not the legacy `profiles.conta_id`. **Every route that takes
@@ -137,8 +146,9 @@ as in `tiktok-integration/oauth-state.ts`); `oauth_states` gets no new column.
 `youtube_channels`: `id uuid`, `client_id UNIQUE` (FK `clientes` ON DELETE CASCADE),
 `conta_id`, `connection_id`, `channel_id`, title, handle, avatar (cached to storage like
 TikTok's), uploads playlist id, cached counts (subscribers as returned, i.e. rounded by
-YouTube; views; videos; shorts; long), `authorization_status`, `last_synced_at`,
-`data_through` (§5.1). `UNIQUE (conta_id, channel_id)` in the database (one channel, one client
+YouTube; views; videos; shorts; long), `authorization_status` (`active | revoked`),
+`revoked_at`, `last_synced_at`, watermarks `data_through`, `content_type_through`,
+`traffic_through`, `videos_through` (§5.1). `UNIQUE (conta_id, channel_id)` in the database (one channel, one client
 per workspace); the callback maps the violation to "Este canal já está vinculado ao cliente X".
 
 The channel is what `channels.list?mine=true` returns for the identity that logged in;
@@ -150,10 +160,15 @@ no channel picker is built.
 
 Unlink = one transaction (inside the §4.2 RPC): every YouTube target of that client in
 `processando` or `agendado` is marked `falha` with `youtube_not_connected`, its `youtube_uploads`
-rows are deleted (an open resumable session is never resumed), the `youtube_channels` row is
-deleted and the §4.6 purge is enqueued. YouTube data is not kept for a re-link; a re-link
-backfills from the API. A chunk PUT already in flight when the row disappears finds no row on
-its next persist and stops.
+rows are deleted (an open resumable session is never resumed), the **§4.6 purge runs
+synchronously** (PK-prefix deletes and the `report_documents` edits), and the `youtube_channels`
+row is deleted. Purging inside the unlink means a reconnect minutes later can never have its
+fresh backfill deleted by a delayed job. Only the Storage PDF removal happens after commit
+(§4.6). A re-link backfills from the API. A chunk PUT already in flight when the row disappears
+finds no row on its next persist and stops.
+
+Phase 1 ships this RPC without the target/upload steps (those tables and the YouTube-capable
+writers arrive in Phase 3, which re-creates the RPC with them).
 
 ### 4.4 GMN: many locations per client
 
@@ -173,9 +188,9 @@ that lists it). **Eligible** = `metadata.hasVoiceOfMerchant = true` (Google's si
 profile is verified and manageable); otherwise the row is disabled as "Não verificado". Rows
 already linked to another client of the workspace are disabled with that client's name.
 "Gerenciar unidades" reopens the dialog and can switch to another of the workspace's Google
-connections. Unlink sets `status = 'disconnected'`, `disconnected_at = now()`; re-linking the
-same location within 30 days reactivates the row and its history; after 30 days the purge
-removes both (§4.6).
+connections. Unlink sets `status = 'disconnected'`, `disconnected_at = now()` (revocation sets
+`revoked` and the same timestamp, §4.2); re-linking the same location within 30 days
+reactivates the row and its history; after 30 days `gbp-sync-cron` removes both (§5.2 step 5).
 
 GMN access is a separate Google approval per project (0 QPM until approved). Until then the
 picker shows "O Google ainda não liberou o acesso ao Google Meu Negócio para o Mesaas" on a
@@ -217,19 +232,23 @@ From the YouTube API Services Developer Policies (checked 2026-10-29):
   unit) and deletes videos YouTube no longer returns.
 - **Deletion**: in-app disconnect is a revocation through the API client → delete within 7
   calendar days; revocation detected via `invalid_grant` (user revoked at Google) → 30 days by
-  the policy, Mesaas uses 7 for both. The purge job (daily, in `youtube-sync-cron`) deletes, for
-  the disconnected `(conta_id, channel_id)`: every `youtube_*` history row and, in that client's
-  `report_documents`, the `youtube` key of `data_snapshot`, every `youtube_*` block and YouTube
-  section marker from `layout` (so a regenerated PDF has no empty YouTube widgets),
-  `youtube_channel_id`, and the stored PDF at `pdf_storage_path` (path cleared; regenerated on
-  demand). `refresh.ts`'s carry-over of a disconnected platform's frozen section does not apply
+  the policy. Mesaas purges **immediately in both cases**, in one SQL function
+  `youtube_purge_channel(conta_id, channel_id, client_id)` called by the unlink RPC (§4.3) and
+  by the `invalid_grant` handler. It deletes every `youtube_*` history row for
+  `(conta_id, channel_id)` and, in that client's `report_documents`, removes the `youtube` key
+  of `data_snapshot`, every `youtube_*` block and YouTube section marker from `layout` (so a
+  regenerated PDF has no empty YouTube widgets) and `youtube_channel_id`; reports whose
+  `pdf_storage_path` is set get it cleared and the path written to `youtube_pdf_purges`. The
+  calling function deletes those Storage objects after commit; `youtube-sync-cron` retries
+  leftovers. `refresh.ts`'s carry-over of a disconnected platform's frozen section does not apply
   to YouTube. Each purge writes an `insertAuditLog` entry (`youtube-data-purged`).
 - **Aggregation**: YouTube data is never combined across channels of different owners (no
   portfolio page in v1) and is shown only inside the client it belongs to.
 - **Attribution**: YouTube UI blocks say the data comes from YouTube and link videos to
   YouTube; YouTube logos unaltered.
 
-GMN data is not under these rules. Its history follows §4.4 (30-day soft-delete purge); GMN
+GMN data is not under these rules. Its history follows the 30-day soft-delete purge (§4.4,
+§5.2 step 5); GMN
 numbers already frozen into reports stay there as the agency's delivered documents (TikTok's
 carry-over rule), and the privacy policy says so (§9).
 
@@ -264,9 +283,10 @@ valid: its split cards show zero, not "sem dados"). A failed split query leaves 
 `*_through` column behind and only that card shows "Dados até {{data}}" for its own date.
 Analytics API days are Pacific days, stored as returned.
 
-Sync (`youtube-sync-cron`, daily, scheduled right after the quota reset at 00:00 Pacific so
-sync runs before uploads draw on the shared Data API quota; manual `POST /sync/:clientId` on
-`google-integration`, rate-limited 5 per 300 s per client):
+Sync (`youtube-sync-cron`, daily, scheduled right after the quota reset at 00:00 Pacific, i.e.
+at 08:xx UTC in pg_cron (07:00 or 08:00 UTC depending on DST), so sync runs before uploads draw on
+the shared Data API quota; manual `POST /sync/:clientId` on `google-integration`, rate-limited
+5 per 300 s per client):
 1. `channels.list` → cached counts.
 2. Uploads playlist pages (`playlistItems.list`, 50 per page) for new videos; `videos.list`
    (`snippet,contentDetails,statistics`, 50 ids per call) for the 200 most recent, every video
@@ -274,7 +294,7 @@ sync runs before uploads draw on the shared Data API quota; manual `POST /sync/:
 3. Analytics API: channel daily (all + by content type) and traffic for
    `[data_through - 7 days, yesterday]`; demographics (last 28 days); per-video daily for videos
    published in the last 90 days over the same window.
-4. Purge step (§4.6).
+4. Retry leftover `youtube_pdf_purges` Storage deletions (§4.6).
 
 Backfill on connect (async): 365 days of channel daily/content-type/traffic, 90 days of
 per-video daily, the uploads playlist capped at 1,000 videos.
@@ -286,7 +306,7 @@ tooltip says so).
 Data API quota: sync costs ~5-15 units per channel per day. How `videos.insert` is metered on
 the project (own 100-call bucket at 1 unit, or ~100/1,600 units from the shared 10,000) is
 **confirmed in Phase 1 from the Cloud Console Quotas page** (task S0) and sets
-`YOUTUBE_DAILY_UPLOAD_BUDGET` (§6.4). Sync treats `quotaExceeded` as "skip the Data API steps
+`YOUTUBE_DAILY_UPLOAD_BUDGET` (§6.5). Sync treats `quotaExceeded` as "skip the Data API steps
 today", never as a failure that marks anything revoked.
 
 ### 5.2 Google Meu Negócio
@@ -314,7 +334,9 @@ Sync (`gbp-sync-cron`, daily; manual sync same rate limit):
 3. Reviews via `mybusiness.googleapis.com/v4/{account_name}/{location_name}/reviews`,
    newest first, until a known `review_id` with unchanged `updateTime`, or 200 rows.
 4. Location refresh (title, `hasVoiceOfMerchant`).
-5. Purge: rows of locations `disconnected`/`revoked` for more than 30 days.
+5. Purge: rows of locations `disconnected`/`revoked` with `disconnected_at` older than 30 days
+   (history first, then the location row).
+6. Retry leftover `google_revocations` (§4.2).
 
 Backfill on link (async): 18 months of daily metrics (spike S3 confirms the API's range) and of
 keywords.
@@ -346,9 +368,15 @@ persisted before the next network call, so a killed invocation resumes cleanly o
   `post_seed_targets` (pre-insert trigger z4b), `post_targets_seed` (z6), the legacy
   platform-to-targets trigger (a2) and the board-move seed (z8); none checks `tipo`. Instead of
   patching each, a `BEFORE INSERT` trigger on `post_targets` skips (returns NULL) a `youtube`
-  row whose post is not `reels`, and a z7-style trigger on `workflow_posts` deletes the
-  non-published youtube target when `tipo` changes away from `reels`. A Stories post on a
-  YouTube-only board ends with no target, like a Stories post on a TikTok-only board today.
+  row whose post is not `reels`. Two `AFTER UPDATE OF tipo` triggers on `workflow_posts` keep the
+  invariant when the format changes: away from `reels` → delete the youtube target if it is
+  `pendente`, `agendado` or `falha` (never `processando` or `publicado`: a mid-upload target is
+  left to finish or fail in the cron, whose `init` re-validation already refuses non-reels);
+  to `reels` → insert a `pendente` youtube target when the post's board (`post_board_platforms`)
+  lists youtube and none exists. A Stories post on a YouTube-only board ends with no target, like
+  a Stories post on a TikTok-only board today. When `DestinationToggles` adds YouTube to a
+  non-reels post, the insert returns no row and the editor says "O YouTube só recebe vídeos
+  verticais (Shorts)".
 - **Persistence contract.** YouTube text lives only in `post_targets`: `title`, `caption`
   (description), `settings` jsonb `{ privacy, made_for_kids, synthetic_media, tags }`.
   `store/postTargets.ts` gains a `youtube` branch in seeding and `savePostCaption` (today any
@@ -372,15 +400,22 @@ with the pt-BR reason), because a post can be scheduled through the Instagram si
 The writers in `20261014000002` (`begin_target_publish`, `mark_target_published`,
 `mark_target_failed`, `requeue_target`, `cancel_target_publish`) raise `unsupported_platform`
 for anything but tiktok, and `recompute_post_publish_status` only combines Instagram (legacy
-columns) and TikTok. A Phase 3 migration recreates them platform-generic: they accept any
-platform whose registry entry has `autoPublish` (instagram's legacy path untouched, `geral`
-ignored), and the recompute combines Instagram + every autoPublish target with the existing
-rule: the post is `postado` when all its targets are published, `falha_publicacao` if any failed
-for good, otherwise it stays `agendado`/`publicando`. A YouTube-only post follows the same rule
-as a TikTok-only post. An Instagram + YouTube post whose YouTube side waits in the daily queue
-stays `agendado` until YouTube publishes; the per-destination panel shows Instagram published and
-YouTube "Na fila" (my call: consistency with TikTok over a special case). The `z9` reset trigger
-resets YouTube targets as it does TikTok's.
+columns) and TikTok. A Phase 3 migration recreates, with the platform list hardcoded as
+`IN ('tiktok','youtube')` (plpgsql cannot read `PLATFORM_DEFS`; a TS↔SQL parity test asserts
+the list equals the registry's autoPublish platforms minus instagram, like the report-layout
+parity test):
+- the five writers above;
+- `recompute_post_publish_status` (combines Instagram's legacy state + every tiktok/youtube
+  target with the existing rule: `postado` when all are published, `falha_publicacao` if any
+  failed for good, otherwise unchanged; it only acts on posts in `agendado/falha_publicacao`);
+- `mark_platform_published` (`IN ('instagram','tiktok')` today, `20261014000002:346`);
+- `workflow_posts_reset_tiktok_target` (z9, `platform = 'tiktok'` today), generalized to reset
+  youtube targets too.
+
+A YouTube-only post follows the same rule as a TikTok-only post. An Instagram + YouTube post whose
+YouTube side waits in the daily queue stays `agendado` until YouTube publishes; the
+per-destination panel shows Instagram published and YouTube "Na fila" (my call: consistency with
+TikTok over a special case).
 
 ### 6.4 Upload engine
 
@@ -395,9 +430,11 @@ reading title/caption/settings from `post_targets` and filtering `wp.tipo = 'ree
 | `upload` | `processando`, `youtube_uploads` row present, `video_id` null | 2 min |
 | `status` | `processando` with `publish_ref` (video id) | 10 min |
 | `retry` | `falha`, `retry_count < 3`, post in `agendado/falha_publicacao` | 10 min |
-| `orphan` | due targets whose client has no `active` YouTube channel | n/a |
+| `orphan` | due targets whose client has no `active` YouTube channel (LEFT JOIN, unlike the TikTok claim's INNER JOIN on the active account) | n/a |
 
-Every exit path clears `processing_at`.
+Every exit path clears `processing_at`. `init` is skipped entirely while
+`youtube_upload_budget.exhausted_at` is set for the current quota day, so queued targets are not
+claimed and released every minute.
 
 - **orphan**: `mark_target_failed` with `error_code = 'youtube_not_connected'` ("Conecte o
   YouTube deste cliente para publicar"). After reconnecting, "Tentar novamente" publishes to the
@@ -549,16 +586,21 @@ override to pilot and to record Google's verification video against the **produc
 client (the video must show that client's ID).
 
 1. **Phase 1, connect + privacy**: S0 (read the `videos.insert` quota on the prod project), S4
-   (Brand Account channel choice); migrations for `google_connections`, `youtube_channels`,
-   `gbp_locations`, plan flags, `oauth_states` CHECK; `_shared/google.ts`; `google-integration`
-   (auth, callback, accounts/locations list + link, summary, disconnect with the §4.2 revoke
-   rule); Redes sociais cards + unit picker (mockups 1-2, identity and cached counts only);
-   Admin flag labels; privacy policy (§9).
-2. **Phase 2, sync + analytics**: S2, S3; history tables; `youtube-sync-cron` (with purge),
-   `gbp-sync-cron`; `youtube-analytics`, `gbp-analytics`; tabs (mockups 3-4).
-3. **Phase 3, publishing**: S1, S5; registry + CHECK widening; seed/tipo triggers; generic
-   writers + recompute; claim, `youtube-publish-cron`, `youtube-publish`, budget; composer,
-   Hub link (mockup 5).
+   (Brand Account channel choice), S6 (incremental auth: identity X connects YouTube, then runs
+   the GMN flow; confirm the kept refresh token now covers `business.manage`, else the GMN flow
+   forces `prompt=consent` for an identity whose stored scopes lack it); migrations for
+   `google_connections`, `google_revocations`, `youtube_channels`, `gbp_locations`, plan flags,
+   `oauth_states` CHECK; `_shared/google.ts`; `google-integration` (auth, callback,
+   accounts/locations list + link, summary, unlink RPC with the §4.2 revoke rule, without the
+   Phase 3 target/upload steps); Redes sociais cards + unit picker (mockups 1-2, identity and
+   cached counts only); Admin flag labels; privacy policy (§9).
+2. **Phase 2, sync + analytics**: S2, S3; history tables, `youtube_purge_channel` and
+   `youtube_pdf_purges` (the unlink RPC and the `invalid_grant` handler start calling the purge);
+   `youtube-sync-cron`, `gbp-sync-cron`; `youtube-analytics`, `gbp-analytics`; tabs (mockups 3-4).
+3. **Phase 3, publishing**: S1, S5; registry + CHECK widening; reels-only and tipo-change
+   triggers; generic writers, recompute, `mark_platform_published`, z9; claim,
+   `youtube-publish-cron`, `youtube-publish`, budget; unlink RPC re-created with the
+   target/upload steps (§4.3); composer, Hub link (mockup 5).
 4. **Phase 4, reports**: §8 (mockup 6), following the report-sections deploy order (migration →
    merge → `report-docs` after the Vercel deploy is live).
 
@@ -567,17 +609,25 @@ OAuth verification, and file the YouTube audit/quota extension **including the d
 request** (§4.6). GMN screens can be recorded only after Google approves GMN API access on the
 prod project.
 
-`--no-verify-jwt`: `google-integration` (OAuth callback), `youtube-sync-cron`,
-`gbp-sync-cron`, `youtube-publish-cron` (cron secret). Read and action functions verify the
-user JWT. The `FEATURE_COLUMNS` change redeploys every importer of `_shared/entitlements.ts`.
+JWT handling, per function (`supabase/config.toml` + deploy flags, CLAUDE.md list updated):
+- `google-integration`: `verify_jwt = false` (the OAuth callback has no JWT); its other routes
+  verify the user token themselves, as `tiktok-integration` does.
+- `youtube-sync-cron`, `gbp-sync-cron`, `youtube-publish-cron`: `verify_jwt = false`,
+  `x-cron-secret`.
+- `youtube-analytics`, `gbp-analytics`: `verify_jwt = false` and self-verify the user token,
+  copying `tiktok-analytics` (service-role client + `getUser`, ES256-safe).
+- `youtube-publish`: same as `tiktok-publish`.
+
+The `FEATURE_COLUMNS` change redeploys every importer of `_shared/entitlements.ts`.
 
 Spikes recap: S0 upload quota metering · S1 public uploads before audit · S2 `creatorContentType`
-coverage · S3 GMN history range · S4 Brand Account channel choice · S5 edge streaming limits.
+coverage · S3 GMN history range · S4 Brand Account channel choice · S5 edge streaming limits ·
+S6 incremental auth scope extension.
 
 ## 11. Left to the builder
 
 Naming beyond what is fixed here, indexes, cron minutes (staggered per `20260925110001`;
-YouTube sync after the Pacific reset), chart components (reuse the Instagram/TikTok tab
+YouTube sync at 08:xx UTC, after the Pacific reset in both DST states), chart components (reuse the Instagram/TikTok tab
 patterns, StatCard), copy beyond the mockups, tests (Deno DI handler factories, Vitest beside
 components, SQL suites in `supabase/tests/entitlements/` for grants, RLS and the generic
 writers).
