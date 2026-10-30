@@ -71,6 +71,8 @@ interface FakeDepsOpts {
   sendError?: unknown;
   deleteError?: unknown;
   ownerEmail?: string | null;
+  /** Defaults to true: the owner opened a link at least once. */
+  ownerConfirmed?: boolean;
 }
 
 function makeDeps(db: unknown, events: string[], opts: FakeDepsOpts = {}) {
@@ -87,9 +89,10 @@ function makeDeps(db: unknown, events: string[], opts: FakeDepsOpts = {}) {
       if (isRecheck && opts.existingUserOnRecheck !== undefined) return Promise.resolve(opts.existingUserOnRecheck);
       return Promise.resolve(opts.existingUser ?? null);
     },
-    getUserEmail: (id) => {
-      events.push(`getUserEmail:${id}`);
-      return Promise.resolve(opts.ownerEmail === undefined ? "dono@x.com" : opts.ownerEmail);
+    getOwnerAuth: (id) => {
+      events.push(`getOwnerAuth:${id}`);
+      const email = opts.ownerEmail === undefined ? "dono@x.com" : opts.ownerEmail;
+      return Promise.resolve(email === null ? null : { email, emailConfirmed: opts.ownerConfirmed ?? true });
     },
     createUser: (email, data) => {
       events.push("createUser");
@@ -507,6 +510,19 @@ Deno.test("resendDemoAccess refuses when the owner already has a password (409)"
   assertEquals(res.body.error, "O dono já definiu a senha.");
   assertEquals(t.links.length, 0);
   assertEquals(t.sent.length, 0);
+});
+
+// createUser without a password still stores a random bcrypt hash, so user_has_password is true
+// for every demo owner from birth. Only an owner who opened a link can have chosen a password.
+Deno.test("resendDemoAccess sends to an owner who never confirmed, despite the stored hash", async () => {
+  const t = setup({
+    workspaces: [{ data: DEMO_WS, error: null }],
+    "rpc:user_has_password": [{ data: true, error: null }],
+  }, { ownerConfirmed: false });
+  const res = await resendDemoAccess(t.deps, { workspace_id: "ws-d" }, ACTOR);
+  assertEquals(res.status, 200);
+  assertEquals(t.links[0].type, "recovery");
+  assertEquals(t.sent.length, 1);
 });
 
 Deno.test("resendDemoAccess sends a recovery link otherwise", async () => {

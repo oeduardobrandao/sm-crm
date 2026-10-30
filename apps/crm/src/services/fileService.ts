@@ -9,6 +9,7 @@ import type {
   FolderInfo,
   PostFileLink,
 } from '../pages/arquivos/types';
+import type { ThumbnailSource } from '../store/posts';
 
 export { FileApiError };
 
@@ -188,11 +189,24 @@ async function uploadFileUnguarded(args: {
   file: File;
   folderId: number | null;
   thumbnail?: File;
+  /** Video: the moment (ms) `thumbnail` was captured from (files.thumbnail_frame_ms). */
+  thumbnailFrameMs?: number | null;
+  /** Video: where `thumbnail` came from (files.thumbnail_source). */
+  thumbnailSource?: ThumbnailSource | null;
   onProgress?: (p: UploadProgress) => void;
   postId?: number;
   signal?: AbortSignal;
 }): Promise<FileRecord> {
-  const { file, folderId, thumbnail, onProgress, postId, signal } = args;
+  const {
+    file,
+    folderId,
+    thumbnail,
+    thumbnailFrameMs,
+    thumbnailSource,
+    onProgress,
+    postId,
+    signal,
+  } = args;
   signal?.throwIfAborted();
 
   const kind = file.type.startsWith('image/')
@@ -274,6 +288,10 @@ async function uploadFileUnguarded(args: {
       height,
       duration_seconds,
       post_id: postId,
+      ...(kind === 'video' && thumbnailFrameMs != null
+        ? { thumbnail_frame_ms: thumbnailFrameMs }
+        : {}),
+      ...(kind === 'video' && thumbnailSource ? { thumbnail_source: thumbnailSource } : {}),
     },
     undefined,
     '',

@@ -19,6 +19,21 @@ interface FileUploadFinalizeDeps {
   streamCopy?: (r2Key: string, meta: { file_id: string; conta_id: string }) => Promise<string>;
 }
 
+const THUMBNAIL_SOURCES = new Set(["auto", "frame", "image"]);
+
+/** files.thumbnail_frame_ms / thumbnail_source for a video upload, from the client's claim. */
+export function videoThumbnailOrigin(
+  frame: unknown,
+  source: unknown,
+): { frameMs: number | null; source: "auto" | "frame" | "image" | null } {
+  const frameMs = typeof frame === "number" && Number.isInteger(frame) && frame >= 0 ? frame : null;
+  const claimed = typeof source === "string" && THUMBNAIL_SOURCES.has(source)
+    ? (source as "auto" | "frame" | "image")
+    : null;
+  const resolved = claimed ?? (frameMs !== null ? "auto" : null);
+  return { frameMs: resolved === "image" ? null : frameMs, source: resolved };
+}
+
 export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
   return async (req: Request): Promise<Response> => {
     const cors = deps.buildCorsHeaders(req);
@@ -51,6 +66,10 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
       height?: number;
       duration_seconds?: number;
       blur_data_url?: string;
+      /** Videos: the moment (ms) the thumbnail was captured from. See files.thumbnail_frame_ms. */
+      thumbnail_frame_ms?: number;
+      /** Videos: 'auto' | 'frame' | 'image'. See files.thumbnail_source. */
+      thumbnail_source?: string;
       post_id?: number;
       sort_order?: number;
     };
@@ -136,6 +155,25 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
       await svc.from("files").update({ blur_data_url: body.blur_data_url }).eq("id", (inserted as any).id);
     }
 
+    // Written after the insert, like blur_data_url (file_insert_with_quota takes a fixed field
+    // list). Videos only. A frame that isn't a non-negative integer is dropped (NULL just means
+    // TikTok falls back to its default cover frame); an unknown source is too. A frame without
+    // a source is the auto-generated one, and an image never has a frame.
+    let { frameMs: thumbnailFrameMs, source: thumbnailSource } = body.kind === "video"
+      ? videoThumbnailOrigin(body.thumbnail_frame_ms, body.thumbnail_source)
+      : { frameMs: null, source: null };
+    if (thumbnailFrameMs !== null || thumbnailSource !== null) {
+      const { error: frameErr } = await svc
+        .from("files")
+        .update({ thumbnail_frame_ms: thumbnailFrameMs, thumbnail_source: thumbnailSource })
+        .eq("id", (inserted as any).id);
+      if (frameErr) {
+        console.error("file-upload-finalize:thumbnail-frame", frameErr);
+        thumbnailFrameMs = null;
+        thumbnailSource = null;
+      }
+    }
+
     if (body.post_id) {
       // sort_order is assigned client-side from the upload selection order so
       // concurrent uploads land in the picked order, not finalize-completion
@@ -188,6 +226,13 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
     // to the client — always null at this point in the flow anyway (the ingest below hasn't
     // run yet), but strip them so the keys never leak even if that ever changes.
     const { stream_uid, stream_status, ...pub } = inserted as Record<string, unknown>;
-    return json({ ...pub, url, thumbnail_url, blur_data_url: body.blur_data_url ?? null });
+    return json({
+      ...pub,
+      url,
+      thumbnail_url,
+      blur_data_url: body.blur_data_url ?? null,
+      thumbnail_frame_ms: thumbnailFrameMs,
+      thumbnail_source: thumbnailSource,
+    });
   };
 }

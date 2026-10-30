@@ -17,7 +17,7 @@ declare global {
 /**
  * One owner for the desktop support-chat unread dot. The Crisp listeners used to be pushed by
  * TopBarActions on mount with no cleanup; the Vidro shell can remount it (shell swap, crossing
- * 1101px), so registration is once-guarded here and the flag lives outside React.
+ * 768px), so registration is once-guarded here and the flag lives outside React.
  */
 let registered = false;
 let unread = false;

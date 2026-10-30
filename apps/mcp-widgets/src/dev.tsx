@@ -13,7 +13,21 @@ import options from './__fixtures__/caption_options.json';
 import calendar from './__fixtures__/client_calendar.json';
 import attach from './__fixtures__/attach_image.json';
 import ineligible from './__fixtures__/attach_image_ineligible.json';
+import attachMany from './__fixtures__/attach_images.json';
 import sendResult from './__fixtures__/send_result.json';
+
+// The chat image URLs in the fixtures do not load locally: draw each as a colored block.
+const block = (fill: string) =>
+  'data:image/svg+xml,' +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 5"><rect width="4" height="5" fill="${fill}"/></svg>`,
+  );
+const manyImages = ['#2a2a2a', '#f2c230', '#1b1b1b', '#c4302b', '#9aa5b1', '#ecebe7'].map(
+  (fill, i) => ({
+    download_url: block(fill),
+    file_id: `file-${i}`,
+  }),
+);
 
 const FIXTURES: Record<string, unknown> = {
   'Prévia (carrossel)': preview,
@@ -23,6 +37,7 @@ const FIXTURES: Record<string, unknown> = {
   Calendário: calendar,
   'Anexar imagem': attach,
   'Anexar (não elegível)': ineligible,
+  'Anexar várias imagens': { ...attachMany, images: manyImages, image: manyImages[0] },
   'Resultado do envio': sendResult,
   'Cartão desconhecido': { card: 'agenda', v: 1 },
 };
@@ -54,15 +69,10 @@ function devCall(name: string, args: Record<string, unknown>): ToolCallResult {
     };
   }
   if (name === 'attach_image_to_post') {
-    const url =
-      'data:image/svg+xml,' +
-      encodeURIComponent(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 5"><rect width="4" height="5" fill="#f4a261"/><circle cx="2" cy="2" r="1" fill="#e76f51"/></svg>',
-      );
+    // Echo the chat image back as the stored one, so the final view shows what was attached.
+    const url = (args.image as { download_url: string }).download_url;
     return {
-      content: [
-        { type: 'text', text: JSON.stringify({ ok: true, ...args, image: undefined, url }) },
-      ],
+      content: [{ type: 'text', text: JSON.stringify({ ok: true, position: args.position, url }) }],
     };
   }
   return { content: [{ type: 'text', text: '{"ok":true}' }] };

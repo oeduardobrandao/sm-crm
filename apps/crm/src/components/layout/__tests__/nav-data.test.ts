@@ -140,9 +140,9 @@ describe('getNavGroups legacy-agent positive parity', () => {
       'arquivos',
       'analytics',
       'novidades',
-      'ajuda',
-      'configuracao',
       'politica-de-privacidade',
+      'configuracao',
+      'ajuda',
     ]);
   });
 

@@ -3,7 +3,7 @@
  * Spec: docs/superpowers/specs/2026-10-13-vidro-body-skin-design.md
  * Only selectors for this family (cross-family rules go in compositions.css).
  * Guards: every selector starts with html[data-look='vidro']; everything inside
- * @media (min-width: 1101px); no @layer; no !important. Page-body prefix:
+ * @media screen and (min-width: 768px); no @layer; no !important. Page-body prefix:
  * html[data-look='vidro'] body:has(.app-container) .vidro-panel; overlays drop `.vidro-panel`.
  *
  * Every rule is emitted twice: under .vidro-panel (page body) and under the portaled overlay-content
@@ -13,7 +13,7 @@
  * Selects with a classic chevron background-image (.drawer-select, .form-input, raw select) paint
  * with background-color only: the `background` shorthand would wipe the chevron.
  */
-@media (min-width: 1101px) {
+@media screen and (min-width: 768px) {
   /* Fields: resting */
   html[data-look='vidro']
     body:has(.app-container)
@@ -2174,7 +2174,7 @@
 
 /* Post Express: the form as grouped tiles beside a sticky preview column (ExpressPostPage's Vidro
    branch; classic keeps the numbered stepper). */
-@media (min-width: 1101px) {
+@media screen and (min-width: 768px) {
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .express-vidro__grid {
     /* 560px form + 360px preview at full width; narrower panels shrink both in that ratio. */
     display: grid;

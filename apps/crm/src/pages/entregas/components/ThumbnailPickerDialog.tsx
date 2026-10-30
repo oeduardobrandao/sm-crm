@@ -15,6 +15,7 @@ import { encodeImageAsJpeg } from '../../../utils/imageJpeg';
 import { updateVideoThumbnail } from '../../../services/postMedia';
 import type { PostMedia } from '../../../store';
 import { BottomSheet } from '@/components/mobile';
+import { mediaPreviewAspect, videoCoverDescription, videoCoverState } from '../videoCover';
 
 interface ThumbnailPickerDialogProps {
   /** Video link to edit, or null when closed. Pass the freshest object you
@@ -39,6 +40,9 @@ export function ThumbnailPickerDialog({
   const { t: tc } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [pending, setPending] = useState<File | null>(null);
+  // The moment the pending thumbnail was captured from (TikTok's cover); null for an
+  // uploaded image, which TikTok can't use as a cover.
+  const [pendingFrameMs, setPendingFrameMs] = useState<number | null>(null);
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -51,12 +55,14 @@ export function ThumbnailPickerDialog({
   // Reset choice when the dialog opens for a different video.
   useEffect(() => {
     setPending(null);
+    setPendingFrameMs(null);
     setPendingUrl(null);
     setSaving(false);
   }, [media?.id]);
 
-  function choosePending(file: File) {
+  function choosePending(file: File, frameMs: number | null) {
     setPending(file);
+    setPendingFrameMs(frameMs);
     setPendingUrl(URL.createObjectURL(file));
   }
 
@@ -65,7 +71,8 @@ export function ThumbnailPickerDialog({
     if (!video) return;
     try {
       video.pause();
-      choosePending(await captureFrameFromElement(video));
+      const frameMs = Math.max(0, Math.round(video.currentTime * 1000));
+      choosePending(await captureFrameFromElement(video), frameMs);
     } catch {
       toast.error(t('thumbnailEditor.captureError'));
     }
@@ -75,7 +82,7 @@ export function ThumbnailPickerDialog({
     if (!media || !pending) return;
     setSaving(true);
     try {
-      await updateVideoThumbnail(media.id, pending);
+      await updateVideoThumbnail(media.id, pending, pendingFrameMs);
       toast.success(t('thumbnailEditor.updated'));
       onUpdated();
       onClose();
@@ -86,10 +93,19 @@ export function ThumbnailPickerDialog({
     }
   }
 
+  const aspect = media ? mediaPreviewAspect(media) : 1;
+  const previewAspect = String(aspect);
+  // Portrait previews are sized by height, landscape ones by the column width.
+  const previewSize = aspect < 1 ? 'h-40 w-auto max-w-full' : 'w-full';
   const body = (
     <>
       {media && (
         <div className="space-y-3">
+          <p className="text-xs text-muted-foreground" data-testid="video-cover-current">
+            {t('videoCover.current', {
+              description: videoCoverDescription(videoCoverState(media)),
+            })}
+          </p>
           {media.media_lost_at ? (
             <MediaUnavailable size="full" className="w-full aspect-video rounded-xl" />
           ) : (
@@ -123,7 +139,7 @@ export function ThumbnailPickerDialog({
                   e.target.value = '';
                   if (!f) return;
                   try {
-                    choosePending(await encodeImageAsJpeg(f));
+                    choosePending(await encodeImageAsJpeg(f), null);
                   } catch {
                     toast.error(t('thumbnailEditor.imageError'));
                   }
@@ -137,7 +153,8 @@ export function ThumbnailPickerDialog({
                 <img
                   src={media.thumbnail_url}
                   alt={t('thumbnailEditor.current')}
-                  className="w-full aspect-video object-cover rounded-lg ring-1 ring-stone-200/80"
+                  style={{ aspectRatio: previewAspect }}
+                  className={`${previewSize} object-cover rounded-lg ring-1 ring-stone-200/80`}
                 />
                 <figcaption className="mt-1 text-[11px] text-stone-500">
                   {t('thumbnailEditor.current')}
@@ -149,7 +166,8 @@ export function ThumbnailPickerDialog({
                 <img
                   src={pendingUrl}
                   alt={t('thumbnailEditor.preview')}
-                  className="w-full aspect-video object-cover rounded-lg ring-2 ring-[#eab308]"
+                  style={{ aspectRatio: previewAspect }}
+                  className={`${previewSize} object-cover rounded-lg ring-2 ring-[#eab308]`}
                 />
                 <figcaption className="mt-1 text-[11px] font-semibold text-stone-700">
                   {t('thumbnailEditor.preview')}

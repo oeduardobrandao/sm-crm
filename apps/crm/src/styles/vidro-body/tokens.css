@@ -3,13 +3,13 @@
  * Spec: docs/superpowers/specs/2026-10-13-vidro-body-skin-design.md
  * Only selectors for this family (cross-family rules go in compositions.css).
  * Guards: every selector starts with html[data-look='vidro']; everything inside
- * @media (min-width: 1101px); no @layer; no !important. Page-body prefix:
+ * @media screen and (min-width: 768px); no @layer; no !important. Page-body prefix:
  * html[data-look='vidro'] body:has(.app-container) .vidro-panel; overlays drop `.vidro-panel`.
  *
  * Declared on body:has(.app-container) (not .app-container) so portaled overlays, which render in
  * body, read them too. Routes outside AppLayout have no .app-container and stay classic.
  */
-@media (min-width: 1101px) {
+@media screen and (min-width: 768px) {
   html[data-look='vidro'] body:has(.app-container) {
     --vd-txt2: #4b5563;
     --vd-icon: #4b5563;

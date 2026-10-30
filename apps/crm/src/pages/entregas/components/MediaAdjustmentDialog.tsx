@@ -201,6 +201,7 @@ function MediaAdjustmentDialogBody({
     try {
       let output: File;
       let thumbnail: File | undefined;
+      let thumbnailFrameMs: number | null = null;
       if (video) {
         if (dimensions.duration < 3 || dimensions.duration > (forStories ? 60 : 900)) {
           throw new Error(
@@ -212,6 +213,8 @@ function MediaAdjustmentDialogBody({
           );
         }
         thumbnail = await jpegFromCanvas(canvasRef.current, 'cover.jpg');
+        // The preview canvas shows the paused frame, so that moment is the TikTok cover.
+        thumbnailFrameMs = Math.round((videoRef.current?.currentTime ?? time) * 1000);
         const { exportVideo } = await import('../media-editor/exportVideo');
         controller.signal.throwIfAborted();
         output = await exportVideo(
@@ -262,6 +265,9 @@ function MediaAdjustmentDialogBody({
           if (!controller.signal.aborted) setProgress(Math.round((p.loaded / p.total) * 100));
         },
         controller.signal,
+        thumbnailFrameMs,
+        // Regenerated from the preview, not chosen as a cover: the default kind.
+        thumbnailFrameMs === null ? null : 'auto',
       );
       controller.signal.throwIfAborted();
       toast.success(t('mediaAdjustment.applied'));

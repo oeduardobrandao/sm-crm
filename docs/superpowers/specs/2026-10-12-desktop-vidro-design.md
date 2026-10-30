@@ -1,5 +1,11 @@
 # Desktop "Vidro" (level 3): a glass shell for the CRM, behind a workspace feature flag
 
+> **Update 2026-10-30 (tablet):** Vidro now applies from **768px** (D4's 1101px boundary moved
+> down). At 768-1100px the shell is the same glass panel and rail, with `Sidebar railOnly`: the
+> rail never pins and its toggle opens it over the content (no hover on touch). Opted-out users
+> keep the classic drawer there, and the drawer now offers the look item (D2). All CSS lives in
+> `@media (min-width: 768px)`; `vidroContracts.test.ts` pins the new guard.
+
 Date: 2026-10-12.
 
 Status: the owner chose level 3 from the mockups. This version folds in a Fable review and a Codex review.
@@ -8,6 +14,7 @@ This spec replaces the level 1 spec (`2026-10-12-desktop-visual-novo-l1-design.m
 are marked superseded and will not be built.
 
 Mockups: https://claude.ai/artifact/Bt1KGGC2PLjqyH2QmVKGUo.
+
 - The reference is the board "Início · Nível 3: vidro" plus the section "Nível 3 (vidro) desenhado em
   todas as telas".
 - That section holds the `V3-*` boards: Entregas, Clientes, Cliente, Calendário, Tarefas, Leads, Ideias,
@@ -41,16 +48,16 @@ Success:
 
 ## Decisions
 
-| # | Decision | Why |
-|---|---|---|
-| D1 | A new workspace entitlement, **`feature_crm_vidro`**, gates the look. It is a `plans` column, false on every plan.<br>- Pilot: an Admin override on a chosen workspace.<br>- Launch: turn the column on in the plans.<br>- Kill switch: turn it off.<br>The CRM reads it only as `features?.feature_crm_vidro === true`, never through `hasFeature`, which treats a missing key as on (`useEntitlements.ts:16`). | The owner asked for a feature flag. This is the repo's established dark-launch pattern (`feature_hub_pauta`, `feature_agenda`). |
-| D2 | Inside a flagged workspace each person can step back. The account menu gets **"Visual clássico"** (and, while classic, **"Visual novo"**).<br>The choice is stored per browser and per user as `localStorage['look-optout:<userId>'] = '1'`.<br>The effective look is `flag && !optOut`.<br>The item only renders when the flag is on and the desktop shell is showing; the drawer sidebar at 900-1100px does not offer it. | The pilot will surface rough edges, and nobody should be stuck in the new look. There is no server-side user preference store, and scoping the key to the user stops one account's choice leaking into another's on a shared browser. |
-| D3 | **Pre-paint cache, keyed by user.** `localStorage['look-vidro'] = <userId>` is written only after a *successful* `workspace-limits` response resolves the look on, and removed when one resolves it off.<br>The pre-paint script reads the signed-in user id from the Supabase session in `localStorage` (the `sb-<ref>-auth-token` entry, `user.id`) and sets `<html data-look="vidro">` only when it equals the cache value. No session, an unreadable session or a different user means no pre-paint.<br>The cache is also cleared in `signOut` and immediately before the workspace-switch reload (the workspace is not in the session).<br>A failed `workspace-limits` request keeps whatever state is current and touches neither cache nor attribute. | Entitlements arrive after React mounts. With the cache, every reload of the same account and workspace is correct before paint.<br>Keying by user covers every identity change at once (password sign-in, sign-up, recovery link, another tab signing in, a session that expired while closed) without enumerating auth paths. Every failure mode falls back to classic. The cost is a single classic-to-vidro flash on the first load after a switch, a new user, or a flag change. |
-| D4 | Vidro applies at **≥1101px only**, the static-sidebar desktop shell.<br>- 768-1100px (drawer) and phone keep today's shell and content styling even with the flag on.<br>- All CSS lives in `@media (min-width: 1101px)`. The one exception is the scoped print block (see Print).<br>- The shell branches on one value, `vidroShell = vidroActive && desktopShell`, computed only in `AppLayout`. There `desktopShell` is today's private `!isTablet && !isMobile` (AppLayout.tsx:172).<br>- `AppLayout` publishes `vidroShell` through the toolbar context and passes it to `Sidebar` as a prop. Nothing else computes the breakpoint.<br>- Hub and Admin are untouched. | One clean boundary from one source, so nothing can drift at 1101px. |
-| D5 | The page title moves into a **shell-rendered toolbar** that pages fill through `usePageToolbar()`.<br>- A page that registers hides its in-page header while the toolbar shows it.<br>- A page that does not register keeps its in-page header under a toolbar that holds only the shell capsule. | CSS cannot move a title out of the scrolling `.main-content` into the shell. Pages migrate independently, and unmigrated pages stay correct. |
-| D6 | **View switchers.** These move into the toolbar's `segmented` slot, as in the mockups:<br>- Entregas view tabs (Kanban, Visão geral, Calendário, Lista, Minha fila, Concluídas);<br>- the Tarefas scope switch (minhas/todas);<br>- Calendário (classic) `.calendar-tabs`;<br>- the Analytics de Fluxos period tabs.<br>These stay in the content, restyled as capsules: Entregas vistas, mode toggle, entity toggle and board tabs, the Tarefas view tabs, the Agenda toolbar, the Analytics da conta period tabs and custom days input, and the Cliente vertical section nav. | The four that move are self-contained JSX that calls a setter or holds local state. Those that stay carry saved state, belong to a grid component (`AgendaView.tsx:219`), would overflow the toolbar (Analytics da conta), or have too many items for a toolbar (Cliente has 11 sections).<br>Calendário (Agenda) and Cliente will therefore not match their mockup boards; that is accepted for this phase. |
-| D7 | Content restyling lives in one ordinary stylesheet, `apps/crm/src/styles/vidro.css`. It is imported only from `apps/crm/src/main.tsx`, after `style.css`; the Hub imports `style.css` directly and must never see it.<br>Every selector is prefixed `html[data-look='vidro'] .app-container`. No `@layer`, no `!important`. | One sheet reaches `.card` (132 files), `.kpi-*` and the tab classes. Removing the attribute restores today's look. |
-| D8 | These keep their current look: Dialog, Sheet, Popover, dropdowns, the cmdk search, toasts, the cookie banner and global popups. They portal outside `.app-container`.<br>The non-portalled `.user-menu-popover` (Sidebar.tsx:357) gets an opaque surface so it does not sit on glass. | Scope control. The z-index contract (`sheet.tsx` 9010/9011) is untouched. |
+| #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Why                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| D1  | A new workspace entitlement, **`feature_crm_vidro`**, gates the look. It is a `plans` column, false on every plan.<br>- Pilot: an Admin override on a chosen workspace.<br>- Launch: turn the column on in the plans.<br>- Kill switch: turn it off.<br>The CRM reads it only as `features?.feature_crm_vidro === true`, never through `hasFeature`, which treats a missing key as on (`useEntitlements.ts:16`).                                                                                                                                                                                                                                                                                                                                             | The owner asked for a feature flag. This is the repo's established dark-launch pattern (`feature_hub_pauta`, `feature_agenda`).                                                                                                                                                                                                                                                                                                                                                      |
+| D2  | Inside a flagged workspace each person can step back. The account menu gets **"Visual clássico"** (and, while classic, **"Visual novo"**).<br>The choice is stored per browser and per user as `localStorage['look-optout:<userId>'] = '1'`.<br>The effective look is `flag && !optOut`.<br>The item only renders when the flag is on and the desktop shell is showing; the drawer sidebar at 900-1100px does not offer it.                                                                                                                                                                                                                                                                                                                                  | The pilot will surface rough edges, and nobody should be stuck in the new look. There is no server-side user preference store, and scoping the key to the user stops one account's choice leaking into another's on a shared browser.                                                                                                                                                                                                                                                |
+| D3  | **Pre-paint cache, keyed by user.** `localStorage['look-vidro'] = <userId>` is written only after a _successful_ `workspace-limits` response resolves the look on, and removed when one resolves it off.<br>The pre-paint script reads the signed-in user id from the Supabase session in `localStorage` (the `sb-<ref>-auth-token` entry, `user.id`) and sets `<html data-look="vidro">` only when it equals the cache value. No session, an unreadable session or a different user means no pre-paint.<br>The cache is also cleared in `signOut` and immediately before the workspace-switch reload (the workspace is not in the session).<br>A failed `workspace-limits` request keeps whatever state is current and touches neither cache nor attribute. | Entitlements arrive after React mounts. With the cache, every reload of the same account and workspace is correct before paint.<br>Keying by user covers every identity change at once (password sign-in, sign-up, recovery link, another tab signing in, a session that expired while closed) without enumerating auth paths. Every failure mode falls back to classic. The cost is a single classic-to-vidro flash on the first load after a switch, a new user, or a flag change. |
+| D4  | Vidro applies at **≥1101px only**, the static-sidebar desktop shell.<br>- 768-1100px (drawer) and phone keep today's shell and content styling even with the flag on.<br>- All CSS lives in `@media (min-width: 1101px)`. The one exception is the scoped print block (see Print).<br>- The shell branches on one value, `vidroShell = vidroActive && desktopShell`, computed only in `AppLayout`. There `desktopShell` is today's private `!isTablet && !isMobile` (AppLayout.tsx:172).<br>- `AppLayout` publishes `vidroShell` through the toolbar context and passes it to `Sidebar` as a prop. Nothing else computes the breakpoint.<br>- Hub and Admin are untouched.                                                                                   | One clean boundary from one source, so nothing can drift at 1101px.                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| D5  | The page title moves into a **shell-rendered toolbar** that pages fill through `usePageToolbar()`.<br>- A page that registers hides its in-page header while the toolbar shows it.<br>- A page that does not register keeps its in-page header under a toolbar that holds only the shell capsule.                                                                                                                                                                                                                                                                                                                                                                                                                                                            | CSS cannot move a title out of the scrolling `.main-content` into the shell. Pages migrate independently, and unmigrated pages stay correct.                                                                                                                                                                                                                                                                                                                                         |
+| D6  | **View switchers.** These move into the toolbar's `segmented` slot, as in the mockups:<br>- Entregas view tabs (Kanban, Visão geral, Calendário, Lista, Minha fila, Concluídas);<br>- the Tarefas scope switch (minhas/todas);<br>- Calendário (classic) `.calendar-tabs`;<br>- the Analytics de Fluxos period tabs.<br>These stay in the content, restyled as capsules: Entregas vistas, mode toggle, entity toggle and board tabs, the Tarefas view tabs, the Agenda toolbar, the Analytics da conta period tabs and custom days input, and the Cliente vertical section nav.                                                                                                                                                                              | The four that move are self-contained JSX that calls a setter or holds local state. Those that stay carry saved state, belong to a grid component (`AgendaView.tsx:219`), would overflow the toolbar (Analytics da conta), or have too many items for a toolbar (Cliente has 11 sections).<br>Calendário (Agenda) and Cliente will therefore not match their mockup boards; that is accepted for this phase.                                                                         |
+| D7  | Content restyling lives in one ordinary stylesheet, `apps/crm/src/styles/vidro.css`. It is imported only from `apps/crm/src/main.tsx`, after `style.css`; the Hub imports `style.css` directly and must never see it.<br>Every selector is prefixed `html[data-look='vidro'] .app-container`. No `@layer`, no `!important`.                                                                                                                                                                                                                                                                                                                                                                                                                                  | One sheet reaches `.card` (132 files), `.kpi-*` and the tab classes. Removing the attribute restores today's look.                                                                                                                                                                                                                                                                                                                                                                   |
+| D8  | These keep their current look: Dialog, Sheet, Popover, dropdowns, the cmdk search, toasts, the cookie banner and global popups. They portal outside `.app-container`.<br>The non-portalled `.user-menu-popover` (Sidebar.tsx:357) gets an opaque surface so it does not sit on glass.                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Scope control. The z-index contract (`sheet.tsx` 9010/9011) is untouched.                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 ## The flag
 
@@ -128,6 +135,7 @@ the entry and compare its `user.id` to the cache; set `data-look="vidro"` only o
 That is harmless: every vidro selector is under `.app-container`.
 
 **Cache clearing:**
+
 - `signOut` in `lib/supabase.ts` calls `resetVidroLook()` (attribute and cache);
 - AuthContext's auth listener calls `resetVidroLook()` on an in-place identity change away from a
   signed-in user (another tab signing in or out), which never runs `signOut`. Not on the first session
@@ -246,6 +254,7 @@ When `vidroShell` is on, AppLayout renders the tree below and does not render `T
   cluster drops to a second line (right-aligned) exactly when 240px + gap + its own width exceeds the
   toolbar. The title never truncates below that 240px before the wrap; after it, the toolbar grows.
   Nothing is hidden or moved into a menu, so every action stays one click away.
+
 - **Toolbar buttons:**
   - zero the `mb-2` that `buttonVariants` carries (button.tsx:7);
   - the icon-only and full-only pairs (`.header-actions-icon-only` / `-full-only`) only switch at
@@ -263,6 +272,7 @@ When `vidroShell` is on, AppLayout renders the tree below and does not render `T
   as today.
 
 **Support chat state has one owner.**
+
 - Today `TopBarActions` registers three `$crisp.on` listeners with no cleanup and keeps the unread flag
   in local state (TopBarActions.tsx:24-34). Vidro adds remount paths: a shell swap and crossing 1101px.
 - The registration and the unread flag therefore move to `apps/crm/src/lib/supportChatUnread.ts`:
@@ -307,18 +317,19 @@ No other page gains or loses print rules: they print the frame as they print tod
 
 ```ts
 interface PageToolbarSpec {
-  title: ReactNode;           // rendered inside the toolbar's <h1>
+  title: ReactNode; // rendered inside the toolbar's <h1>
   subtitle?: ReactNode;
-  leading?: ReactNode;        // back button, avatar
+  leading?: ReactNode; // back button, avatar
   titleAccessory?: ReactNode; // info tooltip, help/tour links next to the title
-  segmented?: ReactNode;      // one view switcher (D6)
-  actions?: ReactNode;        // secondary actions
-  primary?: ReactNode;        // the primary action, rendered last
+  segmented?: ReactNode; // one view switcher (D6)
+  actions?: ReactNode; // secondary actions
+  primary?: ReactNode; // the primary action, rendered last
 }
 function usePageToolbar(spec: PageToolbarSpec | null): boolean; // true = the toolbar shows this page's header
 ```
 
 **Store, not state.**
+
 - The context value is a stable, memoised store:
   `{ vidroShell, register(id), unregister(id), set(id, spec), subscribe, getSnapshot }`.
 - A page writes its spec with `set(id, spec)` in a **deps-less `useLayoutEffect`**, so the latest JSX
@@ -328,6 +339,7 @@ function usePageToolbar(spec: PageToolbarSpec | null): boolean; // true = the to
 - The hook registers in a mount `useLayoutEffect` and unregisters in its cleanup.
 
 **Which registration shows.**
+
 - Registrations live in a `Map` in insertion order, and the **last inserted live registration** is
   shown.
 - `set` on an existing id keeps its position, so a re-rendering layout never steals the slot from a
@@ -335,6 +347,7 @@ function usePageToolbar(spec: PageToolbarSpec | null): boolean; // true = the to
 - In development, two live registrations log a warning.
 
 **Call rules.**
+
 - The hook is called **above every early return**, passing `null` while the page has nothing to show.
   This matters for Entregas (EntregasPage.tsx:1311), Tarefas (TarefasPage.tsx:131), Cliente
   (ClienteDetalhePage.tsx:65/146/150) and Analytics da conta (AnalyticsContaPage.tsx:1534).
@@ -343,6 +356,7 @@ function usePageToolbar(spec: PageToolbarSpec | null): boolean; // true = the to
   render their in-page header when it is false.
 
 **Nested routes.** Children of a registering layout must not register.
+
 - Every `/clientes/:id/*` child renders under the Cliente toolbar (client name, badges, Editar).
 - The hub sub-pages (`hub/AcessoPage`, `BriefingPage`, `MarcaPage`, `PaginasPage`, `IdeiasPage`)
   already use `h2` for their desktop titles; their `h1`s are phone-only branches that never render at
@@ -350,6 +364,7 @@ function usePageToolbar(spec: PageToolbarSpec | null): boolean; // true = the to
 - Configurações sub-tabs render under the Configurações toolbar. Their cards already use `h3`.
 
 **Actions keep their identity.**
+
 - Toolbar slots receive the same JSX elements the in-page header renders today. `FeatureGate`
   wrappers, `data-tour` anchors (`novo-fluxo-btn`, `nova-automacao`), dropdowns, permission checks and
   icon-only/full-only pairs come along.
@@ -368,26 +383,26 @@ This is accepted: the toolbar shows only the capsule until the page registers.
 Every page with a page-level header registers. "Header" means its current header JSX, reused rather
 than rewritten.
 
-| Page | Toolbar content |
-|---|---|
-| Dashboard (Início) | New title "Início". Subtitle: today's date (`date-fns`, pt-BR, e.g. "Segunda-feira, 12 de outubro"). No actions. `ClientHealthMonitor`'s `<h1>` becomes `<h2>` (`.header-title h1, .header-title h2` share one rule, style.css:1005-1012, so flag-off is pixel-identical) |
-| Clientes, Leads | Title. Subtitle: the UsageMeter. Accessory: info tooltip. Actions: CSV help and Import. Primary: Novo |
-| Financeiro | Title. Accessory: info. Actions: CSV help, Import and Saída. Primary: Entrada |
-| Contratos, Equipe, Ideias, Automações | Title. Accessory: info. Actions: CSV help/Import where present. Primary: the create button. Automações keeps its `FeatureGate` and `data-tour`; its hint `p` stays in content |
-| MembroDetalhe | Leading: Voltar. Title: the member name (the content `h2` stays). Primary: Editar |
-| Tarefas | Title and counts subtitle. Segmented: the minhas/todas scope switch. Primary: Nova tarefa. The view tabs stay in content |
-| Calendário (classic) | Title and subtitle. Segmented: `.calendar-tabs` |
-| Calendário (Agenda) | Title and subtitle. The `.agenda-toolbar` stays in content (D6) |
-| Entregas | Title and live counts subtitle. Accessory: info, "Como funciona" and "Ver tour novamente" (same conditions as today). Segmented: view tabs. Actions: Templates. Primary: the Novo dropdown with `data-tour`. Vistas, mode and entity toggles and board tabs stay in content |
-| Analytics | Title. Actions: sync status. Primary: Sincronizar |
-| Analytics da conta | Leading: avatar. Title: client name. Subtitle: handle link and cache note (truncating). Actions: Voltar and sync. Primary: Gerar relatório. The period tabs and days input stay in content. The not-connected branch registers title "Analytics" and Voltar |
-| Analytics de Fluxos | Title, plus a subtitle with its tooltip. Segmented: period tabs. Actions: Exportar CSV and Imprimir. The selects stay in content. Print block above |
-| Cliente (detalhe) | Leading: back and avatar upload. Title: client name. Subtitle: plan and status badges. Primary: Editar. The vertical section nav stays in content (D6) |
-| Configurações | Title "Configurações". The vertical config nav stays in content |
-| Post Express, Importar | Title and subtitle. Importar's step list stays in content |
-| Ajuda, Ajuda seção | Title. Seção keeps its back link in content |
-| Mensagens | Title "Mensagens" and the info accessory. While the toolbar is active, the conversation pane does not render its own `h1` row; its search and sort stay |
-| Arquivos | Title "Arquivos". While the toolbar is active, the folder aside does not render its `h1`. The pane toolbar (breadcrumbs, upload, new folder, filters, sort, grid/list) stays in the pane |
+| Page                                  | Toolbar content                                                                                                                                                                                                                                                             |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dashboard (Início)                    | New title "Início". Subtitle: today's date (`date-fns`, pt-BR, e.g. "Segunda-feira, 12 de outubro"). No actions. `ClientHealthMonitor`'s `<h1>` becomes `<h2>` (`.header-title h1, .header-title h2` share one rule, style.css:1005-1012, so flag-off is pixel-identical)   |
+| Clientes, Leads                       | Title. Subtitle: the UsageMeter. Accessory: info tooltip. Actions: CSV help and Import. Primary: Novo                                                                                                                                                                       |
+| Financeiro                            | Title. Accessory: info. Actions: CSV help, Import and Saída. Primary: Entrada                                                                                                                                                                                               |
+| Contratos, Equipe, Ideias, Automações | Title. Accessory: info. Actions: CSV help/Import where present. Primary: the create button. Automações keeps its `FeatureGate` and `data-tour`; its hint `p` stays in content                                                                                               |
+| MembroDetalhe                         | Leading: Voltar. Title: the member name (the content `h2` stays). Primary: Editar                                                                                                                                                                                           |
+| Tarefas                               | Title and counts subtitle. Segmented: the minhas/todas scope switch. Primary: Nova tarefa. The view tabs stay in content                                                                                                                                                    |
+| Calendário (classic)                  | Title and subtitle. Segmented: `.calendar-tabs`                                                                                                                                                                                                                             |
+| Calendário (Agenda)                   | Title and subtitle. The `.agenda-toolbar` stays in content (D6)                                                                                                                                                                                                             |
+| Entregas                              | Title and live counts subtitle. Accessory: info, "Como funciona" and "Ver tour novamente" (same conditions as today). Segmented: view tabs. Actions: Templates. Primary: the Novo dropdown with `data-tour`. Vistas, mode and entity toggles and board tabs stay in content |
+| Analytics                             | Title. Actions: sync status. Primary: Sincronizar                                                                                                                                                                                                                           |
+| Analytics da conta                    | Leading: avatar. Title: client name. Subtitle: handle link and cache note (truncating). Actions: Voltar and sync. Primary: Gerar relatório. The period tabs and days input stay in content. The not-connected branch registers title "Analytics" and Voltar                 |
+| Analytics de Fluxos                   | Title, plus a subtitle with its tooltip. Segmented: period tabs. Actions: Exportar CSV and Imprimir. The selects stay in content. Print block above                                                                                                                         |
+| Cliente (detalhe)                     | Leading: back and avatar upload. Title: client name. Subtitle: plan and status badges. Primary: Editar. The vertical section nav stays in content (D6)                                                                                                                      |
+| Configurações                         | Title "Configurações". The vertical config nav stays in content                                                                                                                                                                                                             |
+| Post Express, Importar                | Title and subtitle. Importar's step list stays in content                                                                                                                                                                                                                   |
+| Ajuda, Ajuda seção                    | Title. Seção keeps its back link in content                                                                                                                                                                                                                                 |
+| Mensagens                             | Title "Mensagens" and the info accessory. While the toolbar is active, the conversation pane does not render its own `h1` row; its search and sort stay                                                                                                                     |
+| Arquivos                              | Title "Arquivos". While the toolbar is active, the folder aside does not render its `h1`. The pane toolbar (breadcrumbs, upload, new folder, filters, sort, grid/list) stays in the pane                                                                                    |
 
 **Not migrated:** the report and template editors (a sticky header with an input title), Ajuda artigo
 and vídeo. They keep their own headers in content under a capsule-only toolbar. NotFound renders
@@ -403,21 +418,21 @@ styles, because inline styles beat the sheet. With the flag off they render exac
 Prefix `P` = `html[data-look='vidro'] .app-container`; in dark,
 `html[data-theme='dark'][data-look='vidro'] .app-container`. Tokens are declared on `P`:
 
-| Token | Light | Dark |
-|---|---|---|
-| `--vd-panel` | `rgba(255,255,255,.94)` | `rgba(15,17,21,.86)` |
-| `--vd-glass` | `rgba(255,255,255,.55)` | `rgba(17,21,28,.5)` |
-| `--vd-glass-bd` | `rgba(255,255,255,.75)` | `rgba(255,255,255,.09)` |
-| `--vd-cap` | `rgba(255,255,255,.82)` | `rgba(30,36,48,.7)` |
-| `--vd-cap-bd` | `rgba(18,21,26,.08)` | `rgba(255,255,255,.08)` |
-| `--vd-tile` | `#f4f4f6` | `rgba(255,255,255,.05)` |
-| `--vd-group` | `#ffffff` | `rgba(255,255,255,.03)` |
-| `--vd-sep` | `rgba(60,60,67,.12)` | `rgba(235,235,245,.09)` |
-| `--vd-fill` | `rgba(118,118,128,.12)` | `rgba(118,118,128,.24)` |
-| `--vd-sel` / `--vd-sel-fg` | `#12151a` / `#fff` | `rgba(255,255,255,.14)` / `#fff` |
-| `--vd-txt3` | `#6b7280` | `#8b93a1` |
-| `--vd-shadow` | `0 20px 50px -20px rgba(18,21,26,.25)` | `0 24px 60px -20px rgba(0,0,0,.7)` |
-| `--vd-solid` (fallback) | `#f7f7f9` | `#12151a` |
+| Token                      | Light                                  | Dark                               |
+| -------------------------- | -------------------------------------- | ---------------------------------- |
+| `--vd-panel`               | `rgba(255,255,255,.94)`                | `rgba(15,17,21,.86)`               |
+| `--vd-glass`               | `rgba(255,255,255,.55)`                | `rgba(17,21,28,.5)`                |
+| `--vd-glass-bd`            | `rgba(255,255,255,.75)`                | `rgba(255,255,255,.09)`            |
+| `--vd-cap`                 | `rgba(255,255,255,.82)`                | `rgba(30,36,48,.7)`                |
+| `--vd-cap-bd`              | `rgba(18,21,26,.08)`                   | `rgba(255,255,255,.08)`            |
+| `--vd-tile`                | `#f4f4f6`                              | `rgba(255,255,255,.05)`            |
+| `--vd-group`               | `#ffffff`                              | `rgba(255,255,255,.03)`            |
+| `--vd-sep`                 | `rgba(60,60,67,.12)`                   | `rgba(235,235,245,.09)`            |
+| `--vd-fill`                | `rgba(118,118,128,.12)`                | `rgba(118,118,128,.24)`            |
+| `--vd-sel` / `--vd-sel-fg` | `#12151a` / `#fff`                     | `rgba(255,255,255,.14)` / `#fff`   |
+| `--vd-txt3`                | `#6b7280`                              | `#8b93a1`                          |
+| `--vd-shadow`              | `0 20px 50px -20px rgba(18,21,26,.25)` | `0 24px 60px -20px rgba(0,0,0,.7)` |
+| `--vd-solid` (fallback)    | `#f7f7f9`                              | `#12151a`                          |
 
 Rules (shared selectors only):
 
@@ -449,21 +464,21 @@ Rules (shared selectors only):
 
 ## Functionality inventory (nothing may be lost)
 
-| Today | Vidro home |
-|---|---|
-| Top bar logo (plain link to /dashboard) | Sidebar header logo (SPA link) |
-| Search trigger and ⌘K/Ctrl+K | Sidebar search capsule (an icon in the rail); listener always mounted |
-| Notification bell, badge and popover | Toolbar shell capsule |
-| Support chat button, unread dot and Crisp listeners | Toolbar shell capsule; listeners in `supportChatUnread.ts` |
-| NavigationProgress | Top edge of the panel |
-| Sidebar nav, gating, locked items, badges, groups, pin/rail/overlay and the pin row | Same, restyled |
-| Account menu: switcher, Novidades, Ajuda, Idioma, theme, Sair | Same, plus the look item |
-| Banners: dunning, incident, global | Same fixed stack, surfaces offset |
-| GuidePill and ContextHelpLinks | Same corner, inside the panel |
-| Page titles, info tooltips, actions and tours | Toolbar (migrated pages) or in-page (others) |
-| View switchers | Four in the toolbar, the rest in content, restyled (D6) |
-| Analytics de Fluxos print | Scoped vidro print block |
-| Workspace name and plan | **New:** sidebar header |
+| Today                                                                               | Vidro home                                                            |
+| ----------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Top bar logo (plain link to /dashboard)                                             | Sidebar header logo (SPA link)                                        |
+| Search trigger and ⌘K/Ctrl+K                                                        | Sidebar search capsule (an icon in the rail); listener always mounted |
+| Notification bell, badge and popover                                                | Toolbar shell capsule                                                 |
+| Support chat button, unread dot and Crisp listeners                                 | Toolbar shell capsule; listeners in `supportChatUnread.ts`            |
+| NavigationProgress                                                                  | Top edge of the panel                                                 |
+| Sidebar nav, gating, locked items, badges, groups, pin/rail/overlay and the pin row | Same, restyled                                                        |
+| Account menu: switcher, Novidades, Ajuda, Idioma, theme, Sair                       | Same, plus the look item                                              |
+| Banners: dunning, incident, global                                                  | Same fixed stack, surfaces offset                                     |
+| GuidePill and ContextHelpLinks                                                      | Same corner, inside the panel                                         |
+| Page titles, info tooltips, actions and tours                                       | Toolbar (migrated pages) or in-page (others)                          |
+| View switchers                                                                      | Four in the toolbar, the rest in content, restyled (D6)               |
+| Analytics de Fluxos print                                                           | Scoped vidro print block                                              |
+| Workspace name and plan                                                             | **New:** sidebar header                                               |
 
 ## Testing
 

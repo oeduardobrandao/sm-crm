@@ -17,10 +17,12 @@ vi.mock('../Sidebar', () => ({
     pinned,
     onTogglePinned,
     vidroShell,
+    railOnly,
   }: {
     isDrawer?: boolean;
     isOpen?: boolean;
     collapsible?: boolean;
+    railOnly?: boolean;
     pinned?: boolean;
     onTogglePinned?: () => void;
     vidroShell?: boolean;
@@ -32,6 +34,7 @@ vi.mock('../Sidebar', () => ({
       data-collapsible={String(Boolean(collapsible))}
       data-pinned={String(Boolean(pinned))}
       data-vidro-shell={String(Boolean(vidroShell))}
+      data-rail-only={String(Boolean(railOnly))}
     >
       Sidebar
       <button type="button" onClick={onTogglePinned}>
@@ -232,9 +235,9 @@ function createMediaQuery(initialMatches: boolean) {
   };
 }
 
-function mockMatchMedia(tabletMatches: boolean) {
+function mockMatchMedia(tabletMatches: boolean, mobileMatches = false) {
   const tabletQuery = createMediaQuery(tabletMatches);
-  const mobileQuery = createMediaQuery(false);
+  const mobileQuery = createMediaQuery(mobileMatches);
 
   vi.stubGlobal(
     'matchMedia',
@@ -602,31 +605,43 @@ describe('AppLayout Vidro shell', () => {
     expect(screen.getByTestId('sidebar')).toHaveAttribute('data-vidro-shell', 'true');
   });
 
-  it('keeps the same <main> mounted when the window crosses 1101px', async () => {
+  it('keeps the panel and the same <main> when the window narrows to tablet', async () => {
     vidroState.active = true;
     vidroState.enabled = true;
+    localStorage.setItem('sidebar-pinned', '1');
     setViewport(1280);
     const tabletQuery = mockMatchMedia(false);
 
-    renderLayout();
+    const { container } = renderLayout();
     await screen.findByTestId('global-banner');
     const main = document.getElementById('app');
     expect(document.querySelector('.vidro-panel')).toContainElement(main);
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-pinned', 'true');
 
     act(() => {
       tabletQuery.dispatch(true);
     });
-    expect(document.querySelector('.vidro-panel')).toBeNull();
-    expect(screen.getByTestId('topbar')).toBeInTheDocument();
+    expect(document.querySelector('.vidro-panel')).toContainElement(main);
+    expect(screen.queryByTestId('topbar')).not.toBeInTheDocument();
     expect(document.getElementById('app')).toBe(main);
-    // The wrapper stays, out of the layout.
-    expect(main?.parentElement).toHaveStyle({ display: 'contents' });
+    // Tablet: the rail, never pinned and never the drawer; the stored pin is kept.
+    const sidebar = screen.getByTestId('sidebar');
+    expect(sidebar).toHaveAttribute('data-rail-only', 'true');
+    expect(sidebar).toHaveAttribute('data-drawer', 'false');
+    expect(sidebar).toHaveAttribute('data-pinned', 'false');
+    expect(container.querySelector('.app-container')).toHaveAttribute(
+      'data-sidebar-collapsed',
+      'true',
+    );
+    expect(localStorage.getItem('sidebar-pinned')).toBe('1');
 
     act(() => {
       tabletQuery.dispatch(false);
     });
     expect(document.querySelector('.vidro-panel')).toContainElement(main);
     expect(document.getElementById('app')).toBe(main);
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-rail-only', 'false');
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-pinned', 'true');
   });
 
   it('keeps the same <main> mounted when the user opts out of the look', async () => {
@@ -716,7 +731,7 @@ describe('AppLayout Vidro shell', () => {
     expect(mounts).toBe(1);
   });
 
-  it('keeps the classic TopBar at tablet width even when vidro is active', async () => {
+  it('uses the glass panel and the rail at tablet width when vidro is active', async () => {
     vidroState.active = true;
     vidroState.enabled = true;
     setViewport(900);
@@ -725,9 +740,29 @@ describe('AppLayout Vidro shell', () => {
     renderLayout();
     await screen.findByTestId('global-banner');
 
+    expect(screen.queryByTestId('topbar')).not.toBeInTheDocument();
+    expect(document.querySelector('.vidro-panel')).toContainElement(document.getElementById('app'));
+    expect(document.querySelector('.tablet-drawer-backdrop')).toBeNull();
+    const sidebar = screen.getByTestId('sidebar');
+    expect(sidebar).toHaveAttribute('data-vidro-shell', 'true');
+    expect(sidebar).toHaveAttribute('data-rail-only', 'true');
+    expect(sidebar).toHaveAttribute('data-drawer', 'false');
+  });
+
+  it('keeps the classic drawer and TopBar at tablet width when the user opted out', async () => {
+    vidroState.active = false;
+    vidroState.enabled = true;
+    vidroState.optedOut = true;
+    setViewport(900);
+    mockMatchMedia(true);
+
+    renderLayout();
+    await screen.findByTestId('global-banner');
+
     expect(screen.getByTestId('topbar')).toBeInTheDocument();
     expect(document.querySelector('.vidro-panel')).toBeNull();
-    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-vidro-shell', 'false');
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-drawer', 'true');
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-rail-only', 'false');
   });
 
   it('keeps the classic TopBar at desktop width when vidro is inactive', async () => {
@@ -758,7 +793,7 @@ describe('Vidro launch intro', () => {
     expect(screen.queryByTestId('popup-host')).not.toBeInTheDocument();
   });
 
-  it('leaves the slot to the popup host once seen, in classic, or below 1101px', async () => {
+  it('leaves the slot to the popup host once seen, in classic, or on phones', async () => {
     vidroOn();
     localStorage.setItem('vidro-intro:u1', '1');
     const first = renderLayout();
@@ -775,8 +810,8 @@ describe('Vidro launch intro', () => {
 
     vidroState.active = true;
     vidroState.optedOut = false;
-    setViewport(1000);
-    mockMatchMedia(true);
+    setViewport(390);
+    mockMatchMedia(false, true);
     renderLayout();
     expect(await screen.findByTestId('popup-host')).toBeInTheDocument();
     expect(screen.queryByTestId('vidro-intro')).not.toBeInTheDocument();

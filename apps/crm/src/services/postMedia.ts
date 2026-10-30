@@ -1,7 +1,7 @@
 // apps/crm/src/services/postMedia.ts
 import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import { supabase } from '../lib/supabase';
-import type { PostMedia } from '../store';
+import type { PostMedia, ThumbnailSource } from '../store';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 
@@ -219,10 +219,15 @@ async function uploadPostMediaUnguarded(args: {
   postId: number;
   file: File;
   thumbnail?: File; // required for video
+  /** Video: the moment (ms) `thumbnail` was captured from; omit for a non-frame image. */
+  thumbnailFrameMs?: number | null;
+  /** Video: 'auto' for the generated frame, 'image' for a picked image (files.thumbnail_source). */
+  thumbnailSource?: ThumbnailSource;
   sortOrder?: number; // position in the carousel; assigned from selection order
   onProgress?: (p: UploadProgress) => void;
 }): Promise<PostMedia> {
-  const { postId, file, thumbnail, sortOrder, onProgress } = args;
+  const { postId, file, thumbnail, thumbnailFrameMs, thumbnailSource, sortOrder, onProgress } =
+    args;
   const kind = detectKind(file);
   validateFile(file, kind);
 
@@ -276,6 +281,10 @@ async function uploadPostMediaUnguarded(args: {
     height,
     duration_seconds,
     blur_data_url,
+    ...(kind === 'video' && thumbnailFrameMs != null
+      ? { thumbnail_frame_ms: thumbnailFrameMs }
+      : {}),
+    ...(kind === 'video' && thumbnailSource ? { thumbnail_source: thumbnailSource } : {}),
   });
 }
 
@@ -290,7 +299,14 @@ export async function reorderPostMedia(id: number, sort_order: number): Promise<
 // Mirrors THUMB_MIME in post-media-manage (gif is valid media but not a poster).
 const VIDEO_THUMB_MIME = ['image/jpeg', 'image/png', 'image/webp'];
 
-export async function updateVideoThumbnail(linkId: number, thumbnail: File): Promise<PostMedia> {
+/** `frameMs`: the moment of the video the new thumbnail was captured from, which TikTok
+ * publishes as the cover. `null` for an uploaded image: TikTok can't use an image, so it
+ * falls back to its default frame. */
+export async function updateVideoThumbnail(
+  linkId: number,
+  thumbnail: File,
+  frameMs: number | null = null,
+): Promise<PostMedia> {
   if (!VIDEO_THUMB_MIME.includes(thumbnail.type)) {
     throw new Error(`Tipo de arquivo não suportado: ${thumbnail.type}`);
   }
@@ -305,7 +321,10 @@ export async function updateVideoThumbnail(linkId: number, thumbnail: File): Pro
   return callFn<PostMedia>(
     'post-media-manage',
     'PATCH',
-    { thumbnail_r2_key: signed.thumbnail_r2_key },
+    {
+      thumbnail_r2_key: signed.thumbnail_r2_key,
+      ...(frameMs != null ? { thumbnail_frame_ms: frameMs } : {}),
+    },
     undefined,
     `/${linkId}`,
   );

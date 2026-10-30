@@ -2,14 +2,14 @@
 
 **React 19 + Tailwind CSS 3.4 + shadcn/ui (Radix).** There is no Ant Design in this repo.
 
-The three apps do *not* share one design system. They share a Tailwind config and the
+The three apps do _not_ share one design system. They share a Tailwind config and the
 shadcn HSL token names; everything else — fonts, palette, component set — differs per app.
 
-| App | Stylesheet | Fonts | Look |
-|---|---|---|---|
-| `apps/crm` | `apps/crm/style.css` (core, ~2.9k lines) + `apps/crm/app.css` (signed-in shell, ~17.6k lines) | SF Pro (system) | Dense internal dashboard |
-| `apps/hub` | inline `<style>` in `apps/hub/index.html` | Fraunces + Instrument Sans | Editorial, whitelabelled per client |
-| `apps/admin` | `apps/admin/src/globals.css` | SF Pro | Platform admin, liquid-glass chrome |
+| App          | Stylesheet                                                                                    | Fonts                      | Look                                |
+| ------------ | --------------------------------------------------------------------------------------------- | -------------------------- | ----------------------------------- |
+| `apps/crm`   | `apps/crm/style.css` (core, ~2.9k lines) + `apps/crm/app.css` (signed-in shell, ~17.6k lines) | SF Pro (system)            | Dense internal dashboard            |
+| `apps/hub`   | inline `<style>` in `apps/hub/index.html`                                                     | Fraunces + Instrument Sans | Editorial, whitelabelled per client |
+| `apps/admin` | `apps/admin/src/globals.css`                                                                  | SF Pro                     | Platform admin, liquid-glass chrome |
 
 ## How it's wired
 
@@ -18,7 +18,7 @@ three apps plus `packages/`. There is no per-app config.
 
 - **Dark mode:** `darkMode: ["class", "[data-theme='dark']"]`. Toggling means setting
   `data-theme="dark"`, not adding a `.dark` class.
-- **Colours** are Tailwind names bound to CSS variables holding *HSL channel triplets*:
+- **Colours** are Tailwind names bound to CSS variables holding _HSL channel triplets_:
   `primary: "hsl(var(--primary))"` where `--primary: 47.9 95.8% 53.1%`. A variable must be
   bare channels — putting `#ffbf30` in one of these breaks the `hsl()` wrapper.
 - **Fonts:** only two families are registered — `font-mono` → `SF Pro Text`, `font-sf` → the
@@ -31,7 +31,7 @@ base colour `neutral`, CSS variables on, `lucide` icons.
 **That config predates the monorepo and its paths no longer resolve.** It points `tailwind.css`
 at `style.css` and aliases `@/components` to `@/components`, which from the repo root means
 `src/components` — and there is no `src/` or `style.css` at the root any more. So
-`npx shadcn@latest add <name>` run from the root does *not* land in
+`npx shadcn@latest add <name>` run from the root does _not_ land in
 `apps/crm/src/components/ui/`. Either fix the paths first, or copy the generated component
 into `apps/crm/src/components/ui/` by hand and correct its imports.
 
@@ -42,10 +42,10 @@ into `apps/crm/src/components/ui/` by hand and correct its imports.
 The hand-written CSS is split in two files. Each starts with a header comment saying what
 belongs there.
 
-| File | Loads | Holds |
-|---|---|---|
-| `apps/crm/style.css` (**core**) | Render-blocking on every page, from `main.tsx` | The `@tailwind` directives, both token systems, global element/reset rules, `.ph-spin`, and every rule a **public** page can render: landing, preços, blog, marketing pages, novidades, legal pages, login/criar conta, configurar-senha, conectar, afiliados, 404, the cookie banner + preferences dialog, toasts and the dialog primitives the entry renders |
-| `apps/crm/app.css` (**app**) | With the ProtectedRoute chunk, via `src/styles/app-shell.ts` | Rules only the signed-in shell renders |
+| File                            | Loads                                                        | Holds                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/crm/style.css` (**core**) | Render-blocking on every page, from `main.tsx`               | The `@tailwind` directives, both token systems, global element/reset rules, `.ph-spin`, and every rule a **public** page can render: landing, preços, blog, marketing pages, novidades, legal pages, login/criar conta, configurar-senha, conectar, afiliados, 404, the cookie banner + preferences dialog, toasts and the dialog primitives the entry renders |
+| `apps/crm/app.css` (**app**)    | With the ProtectedRoute chunk, via `src/styles/app-shell.ts` | Rules only the signed-in shell renders                                                                                                                                                                                                                                                                                                                         |
 
 A rule belongs in `app.css` only if **every** selector names at least one class (outside
 `:is()`/`:not()`/`:has()`/`:where()` arguments) that no public code uses. Element, attribute
@@ -85,22 +85,22 @@ shadcn tokens (`@layer base`, lines 52–99) — light and `[data-theme='dark']`
 
 Legacy hex tokens (unlayered `:root` and `[data-theme='dark']`, lines 110–193):
 
-| Token | Light | Dark |
-|---|---|---|
-| `--primary-color` | `#ffbf30` | same |
-| `--primary-hover` | `#ca8a04` | same |
-| `--success` / `--warning` / `--danger` | `#3ecf8e` / `#f5a342` / `#f55a42` | same |
-| `--danger-text` | `#b91c1c` | `#f55a42` |
-| `--teal` / `--pink` / `--dark` | `#42c8f5` / `#f542c8` / `#12151a` | same |
-| `--bg-color` | `#fdfdfd` | `#0a0c0f` |
-| `--card-bg` | `#ffffff` | `#12151a` |
-| `--surface-main` / `--surface-hover` | `#ffffff` / `#f8fafc` | `#1a1e26` / `#1e2430` |
-| `--surface-1/2/3` (drawer, editor) | `#f5f6f8` / `#eceef2` / `#e2e4e9` | `#1a1e26` / `#1e2430` / `#252b38` |
+| Token                                           | Light                             | Dark                              |
+| ----------------------------------------------- | --------------------------------- | --------------------------------- |
+| `--primary-color`                               | `#ffbf30`                         | same                              |
+| `--primary-hover`                               | `#ca8a04`                         | same                              |
+| `--success` / `--warning` / `--danger`          | `#3ecf8e` / `#f5a342` / `#f55a42` | same                              |
+| `--danger-text`                                 | `#b91c1c`                         | `#f55a42`                         |
+| `--teal` / `--pink` / `--dark`                  | `#42c8f5` / `#f542c8` / `#12151a` | same                              |
+| `--bg-color`                                    | `#fdfdfd`                         | `#0a0c0f`                         |
+| `--card-bg`                                     | `#ffffff`                         | `#12151a`                         |
+| `--surface-main` / `--surface-hover`            | `#ffffff` / `#f8fafc`             | `#1a1e26` / `#1e2430`             |
+| `--surface-1/2/3` (drawer, editor)              | `#f5f6f8` / `#eceef2` / `#e2e4e9` | `#1a1e26` / `#1e2430` / `#252b38` |
 | `--text-main` / `--text-muted` / `--text-light` | `#12151a` / `#374151` / `#4b5563` | `#e8eaf0` / `#9ca3af` / `#94a3b8` |
-| `--border-color` | `rgba(30,36,48,.102)` | `#1e2430` |
+| `--border-color`                                | `rgba(30,36,48,.102)`             | `#1e2430`                         |
 
 **`--danger` is not an accessible text colour.** At 3.27:1 on a white card it fails the 4.5:1
-AA floor, so error *copy* uses `--danger-text`; `--danger` stays a fill/border colour. On dark
+AA floor, so error _copy_ uses `--danger-text`; `--danger` stays a fill/border colour. On dark
 `--danger` clears AA at 5.60:1 and the two converge.
 
 ### Gotcha: `--radius` is defined twice
@@ -127,12 +127,16 @@ and chart configs — leftovers from an older system, not live choices.
 `--sidebar-width: 260px`, `--topbar-height: 52px`, `--banner-height: 0px` (raised when a
 banner shows). `.main-content` offsets itself with `margin-left: var(--sidebar-width)`.
 
-| Viewport | Sidebar |
-|---|---|
-| ≥ 1101px | Static. 64px icon rail by default, expands over the content on hover; pinned open, `.main-content` is inset by 260px |
-| 768–1100px | Off-canvas drawer; `margin-left: 0 !important` |
-| ≤ 900px | Drawer + bottom nav |
-| ≤ 768px | Further compaction |
+Three shells, chosen in `AppLayout` (JS breakpoints `max-width: 767px` and `768–1100px`):
+
+| Viewport   | Vidro look (default)                                                                                                                                  | Classic look (opt-out)                                                  |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| ≥ 1101px   | Static. 64px icon rail by default, expands over the content on hover; pinned open, the panel is inset by 260px                                        | Same sidebar, classic surfaces                                          |
+| 768–1100px | Same Vidro shell, rail only (`Sidebar railOnly`): never pins, the rail's toggle opens it over the content until a navigation, Escape or a tap outside | Off-canvas drawer + top bar with hamburger; `margin-left: 0 !important` |
+| ≤ 767px    | Phone shell (`pages/*/phone`, bottom nav), no Vidro                                                                                                   | same                                                                    |
+
+Some classic page-layout rules still switch at `max-width: 900px` (and a few pages at 1100px):
+they are content layouts, not the shell, and apply under both looks.
 
 The pin toggle sits at the top of the sidebar, aligned with the nav icons. Unpinned, `AppLayout` sets
 `data-sidebar-collapsed` on `.app-container` and CSS overrides `--sidebar-width: 64px` there;
@@ -140,10 +144,11 @@ hovering only widens the sidebar itself (`.sidebar--overlay`), so the content ne
 the user pins (persisted in localStorage `sidebar-pinned`). Anything inset by the sidebar should
 read `var(--sidebar-width)`, never a literal 260px.
 
-**Anything `position: fixed` and anchored to the sidebar must be `display: none` by default
-and only shown inside `@media (min-width: 1101px)`** — below that the sidebar isn't there and
-the content is flush left. jsdom cannot evaluate media queries, so responsive show/hide has
-to be verified in a real browser.
+**Anything `position: fixed` and anchored to the static sidebar must be `display: none` by default
+and only shown inside `@media (min-width: 768px)` and away from the drawer**
+(`body:not(:has(.sidebar--drawer))`, see `.guide-pill`). Below 768px there is no sidebar, and in
+the classic tablet drawer the content is flush left. jsdom cannot evaluate media queries, so
+responsive show/hide has to be verified in a real browser.
 
 Content padding is `clamp(1.25rem, 3vw, 2.5rem)` block / `clamp(1rem, 3vw, 3rem)` inline.
 
@@ -198,7 +203,7 @@ Hub is the app least likely to be re-checked after a CRM styling change.
 - **Fonts:** `--hub-font-display` = Fraunces (serif, optical sizing), `--hub-font-sans` =
   Instrument Sans, with `font-feature-settings: 'ss01','cv11'`. `.font-display` opts into the
   serif.
-- **Whitelabel:** every `--hub-*` value in `index.html` is a *fallback only*.
+- **Whitelabel:** every `--hub-*` value in `index.html` is a _fallback only_.
   [`HubShell`](apps/hub/src/shell/HubShell.tsx#L66) calls `resolveHubTheme(brand_color, isDark)`
   from [`theme.ts`](apps/hub/src/theme.ts#L41) and writes the resolved variables inline before
   paint. The client's `brand_color` drives `--hub-acc`, and `--hub-acc-fg` is derived for
@@ -242,14 +247,14 @@ Phosphor inside the CRM's signed-in shell (see Shell-only CSS above).
 
 ## Changing things
 
-| Change | Where |
-|---|---|
-| Tailwind colour/radius/font token names | `tailwind.config.js` |
-| CRM palette, light + dark | `@layer base` block and unlayered `:root` in `apps/crm/style.css` |
-| CRM component styles | search the class name in `apps/crm/style.css` and `apps/crm/app.css` (which file: see "Two stylesheets" above) |
-| Hub palette / fallbacks | `<style>` in `apps/hub/index.html`; resolved values in `apps/hub/src/theme.ts` |
-| Admin palette | `apps/admin/src/globals.css` |
-| New shadcn primitive | `npx shadcn@latest add <name>` |
+| Change                                  | Where                                                                                                          |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Tailwind colour/radius/font token names | `tailwind.config.js`                                                                                           |
+| CRM palette, light + dark               | `@layer base` block and unlayered `:root` in `apps/crm/style.css`                                              |
+| CRM component styles                    | search the class name in `apps/crm/style.css` and `apps/crm/app.css` (which file: see "Two stylesheets" above) |
+| Hub palette / fallbacks                 | `<style>` in `apps/hub/index.html`; resolved values in `apps/hub/src/theme.ts`                                 |
+| Admin palette                           | `apps/admin/src/globals.css`                                                                                   |
+| New shadcn primitive                    | `npx shadcn@latest add <name>`                                                                                 |
 
 One more trap: `html, body, #root, .app-container` are pinned to `overflow-x: hidden` at the
 top of `style.css`. That silently disables `position: sticky` for descendants in **both** apps,

@@ -409,6 +409,49 @@ Deno.test("post-media-manage: PATCH thumbnail_r2_key replaces old thumbnail", as
   assertEquals(body.thumbnail_url, "https://signed.example.com/contas/conta-1/files/new-thumb.jpg");
 });
 
+function thumbnailPatchCalls(frame: unknown) {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("post_file_links", "select", {
+    data: { ...sampleLink, files: { ...sampleFile, thumbnail_r2_key: "contas/conta-1/files/old-thumb.jpg" } },
+    error: null,
+  });
+  db.queue("file_deletions", "insert", { data: null, error: null });
+  db.queue("files", "update", { data: null, error: null });
+  db.queue("files", "update", { data: null, error: null });
+  db.queue("post_file_links", "select", {
+    data: {
+      ...sampleLink,
+      files: { ...sampleFile, thumbnail_r2_key: "contas/conta-1/files/new-thumb.jpg", thumbnail_frame_ms: frame ?? null },
+    },
+    error: null,
+  });
+  return { db, body: { thumbnail_r2_key: "contas/conta-1/files/new-thumb.jpg", thumbnail_frame_ms: frame } };
+}
+
+Deno.test("post-media-manage: PATCH thumbnail with a frame swaps the thumbnail first, then stores the frame", async () => {
+  const { db, body } = thumbnailPatchCalls(12300);
+  const res = await makeHandler(db)(req("PATCH", "/1", body));
+  assertEquals(res.status, 200);
+  assertEquals((await readJson(res)).thumbnail_frame_ms, 12300);
+  const updates = db.calls.filter((c) => c.table === "files" && c.operation === "update");
+  // Two statements: the swap (which trg_files_thumbnail_frame_reset clears), then the frame.
+  assertEquals(updates.map((u) => u.payload), [
+    { thumbnail_r2_key: "contas/conta-1/files/new-thumb.jpg" },
+    { thumbnail_frame_ms: 12300, thumbnail_source: "frame" },
+  ]);
+});
+
+Deno.test("post-media-manage: PATCH thumbnail without a valid frame (uploaded image) writes only the swap", async () => {
+  for (const frame of [undefined, null, -5, 1.5, "100"]) {
+    const { db, body } = thumbnailPatchCalls(frame);
+    const res = await makeHandler(db)(req("PATCH", "/1", body));
+    assertEquals(res.status, 200);
+    const updates = db.calls.filter((c) => c.table === "files" && c.operation === "update");
+    assertEquals(updates.map((u) => u.payload), [{ thumbnail_r2_key: "contas/conta-1/files/new-thumb.jpg" }]);
+  }
+});
+
 Deno.test("post-media-manage: PATCH on link not found returns 404", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);

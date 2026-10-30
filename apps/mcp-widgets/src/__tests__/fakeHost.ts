@@ -11,6 +11,7 @@ export function fakeHost(
     meta?: Record<string, unknown>;
     results?: Record<string, Responder>;
     pickImage?: Host['pickImage'];
+    refreshImageUrl?: Host['refreshImageUrl'];
   } = {},
 ) {
   const results = opts.results ?? {};
@@ -26,6 +27,7 @@ export function fakeHost(
     sendMessage: vi.fn(async () => {}),
     openLink: vi.fn(async () => {}),
     pickImage: opts.pickImage,
+    refreshImageUrl: opts.refreshImageUrl,
   };
   return host;
 }

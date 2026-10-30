@@ -11,7 +11,7 @@ import '@phosphor-icons/web/fill';
 // App-only rules split out of style.css (core stays in the entry).
 import '../../app.css';
 // Vidro look: every rule is scoped to html[data-look="vidro"], which only signed-in desktop
-// users get. Same order they had in main.tsx; vidroContracts pins it.
+// and tablet users get. Same order they had in main.tsx; vidroContracts pins it.
 import './vidro.css';
 import './vidro-body/tokens.css';
 import './vidro-body/buttons.css';

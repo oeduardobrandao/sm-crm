@@ -35,7 +35,8 @@ export interface TikTokSettings {
   auto_add_music?: boolean;
   photo_cover_index?: number;
   is_aigc?: boolean;
-  video_cover_timestamp_ms?: number;
+  // No video_cover_timestamp_ms: the cover follows the video's thumbnail frame
+  // (files.thumbnail_frame_ms), passed to buildVideoInitPayload by the publishers.
 }
 
 interface TikTokMediaFile {
@@ -46,6 +47,8 @@ interface TikTokMediaFile {
   width: number | null;
   height: number | null;
   duration_seconds: number | null;
+  /** files.thumbnail_frame_ms: the thumbnail's frame, sent as the TikTok cover. */
+  thumbnail_frame_ms: number | null;
   r2_key: string;
   media_lost_at: string | null;
   sort_order: number;
@@ -240,7 +243,7 @@ export async function validateForTikTokScheduling(
 
   const { data: links, error: linksError } = await db
     .from("post_file_links")
-    .select("sort_order, files!inner(id, kind, mime_type, size_bytes, width, height, duration_seconds, r2_key, media_lost_at)")
+    .select("sort_order, files!inner(id, kind, mime_type, size_bytes, width, height, duration_seconds, thumbnail_frame_ms, r2_key, media_lost_at)")
     .eq("post_id", postId)
     .order("sort_order", { ascending: true });
   if (linksError) {
@@ -309,10 +312,30 @@ export interface ClaimedTikTokPost {
   tiktok_settings: TikTokSettings;
 }
 
+/** A cover timestamp TikTok can accept: a non-negative integer that falls inside the video.
+ * `duration_seconds` is stored as whole seconds, so a frame in the last partial second can
+ * read as past the end; dropping it lets TikTok pick its default frame instead of failing the
+ * publish over a cover. */
+export function usableCoverTimestampMs(
+  value: unknown,
+  videoDurationSeconds: number | null | undefined,
+): number | undefined {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) return undefined;
+  if (videoDurationSeconds != null && value >= videoDurationSeconds * 1000) return undefined;
+  return value;
+}
+
 /** Builds the POST /v2/post/publish/video/init/ body. Omits every optional key whose
  * setting is undefined/null entirely — TikTok rejects explicit nulls — and never emits a
- * photo-only field (auto_add_music, photo_cover_index, photo_images, post_mode, media_type). */
-export function buildVideoInitPayload(post: ClaimedTikTokPost, videoUrl: string): object {
+ * photo-only field (auto_add_music, photo_cover_index, photo_images, post_mode, media_type).
+ * The cover is the video's thumbnail frame (`video.thumbnailFrameMs`, from
+ * files.thumbnail_frame_ms), bounded by its duration; see usableCoverTimestampMs. No frame
+ * (an uploaded image as thumbnail, or unknown) omits the key and TikTok uses its default. */
+export function buildVideoInitPayload(
+  post: ClaimedTikTokPost,
+  videoUrl: string,
+  video?: { durationSeconds?: number | null; thumbnailFrameMs?: number | null },
+): object {
   const s = post.tiktok_settings ?? {};
   const postInfo: Record<string, unknown> = {
     title: post.caption,
@@ -338,8 +361,9 @@ export function buildVideoInitPayload(post: ClaimedTikTokPost, videoUrl: string)
   if (s.is_aigc !== undefined && s.is_aigc !== null) {
     postInfo.is_aigc = s.is_aigc;
   }
-  if (s.video_cover_timestamp_ms !== undefined && s.video_cover_timestamp_ms !== null) {
-    postInfo.video_cover_timestamp_ms = s.video_cover_timestamp_ms;
+  const coverMs = usableCoverTimestampMs(video?.thumbnailFrameMs, video?.durationSeconds);
+  if (coverMs !== undefined) {
+    postInfo.video_cover_timestamp_ms = coverMs;
   }
 
   return {

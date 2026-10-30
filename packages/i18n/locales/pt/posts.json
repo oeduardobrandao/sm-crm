@@ -107,7 +107,7 @@
     "chooseThumbnail": "Escolher thumbnail",
     "adjustThumbnail": "Ajustar miniatura",
     "videoThumbnail": "Miniatura do vídeo",
-    "thumbnailHint": "Vídeos ganham uma miniatura automática (um frame do vídeo). Você pode ajustá-la depois pelo ícone de imagem no vídeo.",
+    "thumbnailHint": "Vídeos ganham uma capa automática (um quadro do início do vídeo). Para trocar, clique no selo “Capa” do vídeo: escolha outro quadro ou envie uma imagem.",
     "thumbnailFallback": "Não foi possível gerar a miniatura automaticamente. Selecione uma imagem de capa para",
     "remainingVideos": "{{count}} vídeo(s) aguardando miniatura",
     "carouselLimit": "Carrossel acima do limite do Instagram",
@@ -165,7 +165,7 @@
     "done": "Concluir",
     "reorderHint": "Segure e arraste para mudar a ordem. O primeiro item é a capa.",
     "actionsOf": "Ações de {{name}}",
-    "phoneTileLabel": "{{name}}{{cover}}{{notes}}. Toque para ver, segure para mais ações",
+    "phoneTileLabel": "{{name}}{{cover}}{{videoCover}}{{notes}}. Toque para ver, segure para mais ações",
     "coverSuffix": " (capa)",
     "cover": "Capa",
     "needsAdjustment": "Mídia precisa de ajuste",
@@ -178,7 +178,7 @@
   },
   "thumbnailEditor": {
     "title": "Miniatura do vídeo",
-    "disclaimer": "Esta miniatura será a capa do Reel no Instagram e aparece nas pré-visualizações do CRM e do portal do cliente. (Em carrosséis, o Instagram usa o primeiro item como capa.)",
+    "disclaimer": "Esta miniatura será a capa do Reel no Instagram e aparece nas pré-visualizações do CRM e do portal do cliente. (Em carrosséis, o Instagram usa o primeiro item como capa.) No TikTok, a capa é este quadro do vídeo; uma imagem enviada não vale para o TikTok, que usa o quadro padrão dele.",
     "useFrame": "Usar este frame",
     "uploadImage": "Enviar imagem",
     "current": "Miniatura atual",
@@ -353,6 +353,14 @@
     "titleLabel": "Título do TikTok (opcional)",
     "titlePlaceholder": "Título do post de fotos"
   },
+  "tiktokCover": {
+    "label": "Capa do TikTok",
+    "noFrame": "A miniatura atual não é um quadro do vídeo (imagem enviada ou definida antes desta versão). O TikTok não aceita imagem como capa e vai usar o quadro padrão dele. Para escolher, abra a miniatura e use “Usar este frame”.",
+    "editThumbnail": "Editar miniatura",
+    "followsDefaultFrame": "O TikTok usa o quadro padrão da miniatura ({{time}}).",
+    "followsChosenFrame": "O TikTok usa o quadro escolhido na miniatura ({{time}}).",
+    "imageCover": "A capa é uma imagem. O TikTok não aceita imagem como capa e vai usar o quadro padrão dele. Para escolher, abra a miniatura e use “Usar este frame”."
+  },
   "trialReel": {
     "lockedBySchedule": "Cancelar agendamento para editar",
     "blockedByCollaborators": "Indisponível com colaboradores no post. Remova os colaboradores para publicar como teste.",
@@ -393,5 +401,29 @@
     "replyPlaceholder": "Responder ao cliente…",
     "replyLabel": "Responder ao cliente",
     "sendReply": "Enviar resposta"
+  },
+  "videoCover": {
+    "chip": {
+      "default": "Capa padrão",
+      "frame": "Capa {{time}}",
+      "frameNoTime": "Capa: quadro",
+      "image": "Capa: imagem",
+      "unknown": "Capa"
+    },
+    "short": {
+      "default": "Padrão",
+      "frameNoTime": "Quadro",
+      "image": "Imagem",
+      "unknown": "Capa"
+    },
+    "describe": {
+      "default": "Capa padrão: o quadro automático do início do vídeo.",
+      "frame": "Capa escolhida: o quadro em {{time}}.",
+      "frameNoTime": "Capa escolhida: um quadro do vídeo.",
+      "image": "Capa escolhida: uma imagem.",
+      "unknown": "Capa definida antes desta versão: não dá para saber se é a padrão ou uma escolhida."
+    },
+    "current": "Capa atual. {{description}}",
+    "change": "Trocar capa"
   }
 }

@@ -17,6 +17,7 @@ import {
   Move,
   MessageSquare,
   Minimize2,
+  Video,
 } from 'lucide-react';
 import { sanitizeUrl } from '@/utils/security';
 import { fetchWithRetry } from '@/utils/fetchWithRetry';
@@ -50,7 +51,7 @@ import {
   updateVideoThumbnail,
 } from '../../../services/postMedia';
 import { trackUnsavedWork } from '@mesaas/app-lifecycle';
-import { extractVideoFrame } from '@mesaas/ui/video/frame';
+import { extractVideoFrameWithTime } from '@mesaas/ui/video/frame';
 import { encodeImageAsJpeg } from '../../../utils/imageJpeg';
 import { MediaAdjustmentDialog } from './MediaAdjustmentDialog';
 import { DownscaleMediaDialog } from './DownscaleMediaDialog';
@@ -58,6 +59,14 @@ import { useDownscaleOffer, type UploadItem, type UploadOutcome } from './useDow
 import { oversizeOnly } from '../media-editor/oversize';
 import { IMAGE_AR_MIN, validateMedia } from '../instagramLimits';
 import { ThumbnailPickerDialog } from './ThumbnailPickerDialog';
+import {
+  isCustomVideoCover,
+  mediaPreviewAspect,
+  videoCoverChipLabel,
+  videoCoverChipShortLabel,
+  videoCoverDescription,
+  videoCoverState,
+} from '../videoCover';
 import { useTranslation } from 'react-i18next';
 import { getIntlLocale, i18n } from '@mesaas/i18n';
 import type { PostMedia } from '../../../store';
@@ -349,6 +358,8 @@ export function PostMediaGallery({
   // ratio check. Point the user at the thumbnail instead of "ajustar proporção",
   // and judge the video by Reel rules since that's what it becomes once moved.
   const reelCover = targetsInstagram && !forStories ? findMisplacedReelCover(media) : null;
+  // "Adicionar"/"Escolher" take the first item's shape, so the grid row reads as one strip.
+  const addTileAspect = media[0] ? mediaPreviewAspect(media[0]) : 1;
   const validationOpts = { forStories, isCarousel: isCarousel && !reelCover };
   const invalidMedia = targetsInstagram
     ? media.filter(
@@ -384,9 +395,12 @@ export function PostMediaGallery({
   async function uploadOne({ file, uid, sortOrder }: UploadItem): Promise<UploadOutcome> {
     try {
       let thumbnail: File | undefined;
+      let thumbnailFrameMs: number | undefined;
       if (detectKind(file) === 'video') {
         try {
-          thumbnail = await extractVideoFrame(file);
+          const frame = await extractVideoFrameWithTime(file);
+          thumbnail = frame.file;
+          thumbnailFrameMs = Math.round(frame.timeSeconds * 1000);
         } catch (err) {
           // Browser can't decode this video — fall back to asking for a
           // manual thumbnail (finalize rejects videos without one).
@@ -401,6 +415,8 @@ export function PostMediaGallery({
         postId,
         file,
         thumbnail,
+        thumbnailFrameMs,
+        thumbnailSource: thumbnail ? 'auto' : undefined,
         sortOrder,
         onProgress: (p) =>
           setQueueRow(uid, {
@@ -506,6 +522,8 @@ export function PostMediaGallery({
         postId,
         file: video,
         thumbnail,
+        // The browser couldn't read the video, so the person picked an image as its cover.
+        thumbnailSource: 'image',
         sortOrder: pending.sortOrder,
         onProgress: (p) =>
           setUploadQueue((prev) => {
@@ -941,7 +959,7 @@ export function PostMediaGallery({
             onDragEnd={handleDragEnd}
           >
             <SortableContext items={media.map((m) => m.id)} strategy={rectSortingStrategy}>
-              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+              <div className="grid grid-cols-4 sm:grid-cols-6 items-start gap-2">
                 {media.map((m, i) => (
                   <SortableMediaTile
                     key={m.id}
@@ -971,7 +989,8 @@ export function PostMediaGallery({
                     onDrop={handleDrop}
                     onDragOver={handleDragOverEvent}
                     onDragLeave={handleDragLeave}
-                    className={`flex flex-col items-center justify-center gap-1 aspect-square rounded-xl border border-dashed cursor-pointer transition-colors ${dragOver ? 'ring-2 ring-[#eab308] border-[#eab308] bg-[#eab308]/10 text-[#eab308]' : 'border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-400 dark:hover:border-stone-500 dark:hover:bg-stone-700'}`}
+                    style={{ aspectRatio: String(addTileAspect) }}
+                    className={`flex flex-col items-center justify-center gap-1 rounded-xl border border-dashed cursor-pointer transition-colors ${dragOver ? 'ring-2 ring-[#eab308] border-[#eab308] bg-[#eab308]/10 text-[#eab308]' : 'border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-400 dark:hover:border-stone-500 dark:hover:bg-stone-700'}`}
                   >
                     <Upload className="h-4 w-4" />
                     <span className="text-[11px]">
@@ -997,7 +1016,8 @@ export function PostMediaGallery({
                   <button
                     type="button"
                     onClick={() => setShowFilePicker(true)}
-                    className="flex flex-col items-center justify-center gap-1 aspect-square rounded-xl border border-dashed border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-400 dark:hover:border-stone-500 dark:hover:bg-stone-700 cursor-pointer transition-colors"
+                    style={{ aspectRatio: String(addTileAspect) }}
+                    className="flex flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-400 dark:hover:border-stone-500 dark:hover:bg-stone-700 cursor-pointer transition-colors"
                   >
                     <FolderOpen className="h-4 w-4" />
                     <span className="text-[11px]">{t('mediaGallery.choose')}</span>
@@ -1281,9 +1301,14 @@ function PhoneMediaStrip({
                   <button
                     type="button"
                     className="phone-media__tile"
+                    style={phoneTileStyle(m)}
                     aria-label={t('mediaGallery.phoneTileLabel', {
                       name: m.original_filename,
                       cover: i === 0 ? t('mediaGallery.coverSuffix') : '',
+                      videoCover:
+                        m.kind === 'video' && !m.media_lost_at
+                          ? `, ${videoCoverChipLabel(videoCoverState(m))}`
+                          : '',
                       notes: openNoteLabel(openNoteCounts.get(m.id) ?? 0),
                     })}
                     onClick={() => onOpen(i)}
@@ -1336,20 +1361,46 @@ function PhoneMediaStrip({
   );
 }
 
+/** Phone strip tiles keep the strip's height and take the media's width (see mediaPreviewAspect). */
+const PHONE_TILE_HEIGHT = 92;
+
+function phoneTileStyle(m: PostMedia): React.CSSProperties {
+  return { width: Math.round(PHONE_TILE_HEIGHT * mediaPreviewAspect(m)) };
+}
+
 function PhoneTileVisual({ media: m, large = false }: { media: PostMedia; large?: boolean }) {
   const { t } = useTranslation('posts');
   if (m.media_lost_at) return <MediaUnavailable size="full" />;
   const src = m.kind === 'image' ? m.url : (m.thumbnail_url ?? null);
+  const aspect = mediaPreviewAspect(m);
+  // The long-press preview fits a min(72vw, 300px) box on its longer side.
+  const largeStyle: React.CSSProperties | undefined = large
+    ? aspect >= 1
+      ? { width: 'min(72vw, 300px)', height: 'auto', aspectRatio: String(aspect) }
+      : { height: 'min(72vw, 300px)', width: 'auto', aspectRatio: String(aspect) }
+    : undefined;
+  const cover = m.kind === 'video' ? videoCoverState(m) : null;
   return (
     <span
       className={large ? 'phone-media__visual phone-media__visual--large' : 'phone-media__visual'}
+      style={largeStyle}
     >
       {src ? (
         <img src={src} alt="" crossOrigin="anonymous" draggable={false} />
       ) : (
         <ImageIcon aria-hidden="true" />
       )}
-      {m.kind === 'video' && <span className="phone-media__video">{t('shared.video')}</span>}
+      {cover && (
+        <span
+          className="phone-media__video"
+          data-custom-cover={isCustomVideoCover(cover) || undefined}
+          title={videoCoverDescription(cover)}
+        >
+          <Video aria-hidden="true" />
+          <span className="sr-only">{t('shared.video')}, </span>
+          {large ? videoCoverChipLabel(cover) : videoCoverChipShortLabel(cover)}
+        </span>
+      )}
     </span>
   );
 }
@@ -1363,6 +1414,7 @@ function PhoneSortableTile({ media: m, index }: { media: PostMedia; index: numbe
     <div
       ref={setNodeRef}
       style={{
+        ...phoneTileStyle(m),
         transform: CSS.Transform.toString(transform),
         transition,
         opacity: isDragging ? 0.6 : 1,
@@ -1424,7 +1476,10 @@ function SortableMediaTile({
       onClick={onOpen}
       className="group flex min-w-0 cursor-grab touch-none flex-col gap-1 active:cursor-grabbing"
     >
-      <div className="relative aspect-square overflow-hidden rounded-xl bg-stone-100 ring-1 ring-stone-200/80">
+      <div
+        className="relative overflow-hidden rounded-xl bg-stone-100 ring-1 ring-stone-200/80"
+        style={{ aspectRatio: String(mediaPreviewAspect(m)) }}
+      >
         {m.media_lost_at ? (
           <MediaUnavailable size="full" />
         ) : m.kind === 'image' ? (
@@ -1455,11 +1510,14 @@ function SortableMediaTile({
         />
         {needsAdjustment && (
           <span
-            className="absolute bottom-1.5 left-1.5 rounded-md bg-amber-100 p-1 text-amber-800"
+            className={`absolute bottom-1.5 ${m.kind === 'video' ? 'right-1.5' : 'left-1.5'} rounded-md bg-amber-100 p-1 text-amber-800`}
             title={t('mediaGallery.needsAdjustment')}
           >
             <AlertTriangle size={14} />
           </span>
+        )}
+        {m.kind === 'video' && !m.media_lost_at && (
+          <VideoCoverChip media={m} onEdit={disabled ? undefined : onEditThumbnail} />
         )}
         {!disabled && (
           <div
@@ -1489,16 +1547,6 @@ function SortableMediaTile({
                 <Crop className="h-3 w-3" />
               </button>
             )}
-            {onEditThumbnail && (
-              <button
-                type="button"
-                onClick={onEditThumbnail}
-                title={t('mediaGallery.videoThumbnail')}
-                className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-stone-900"
-              >
-                <ImageIcon className="h-3 w-3" />
-              </button>
-            )}
             <button
               type="button"
               onClick={onDelete}
@@ -1512,6 +1560,48 @@ function SortableMediaTile({
       </div>
       <MediaFilename name={m.original_filename} />
     </div>
+  );
+}
+
+/** Always-visible cover state on a video tile ("Capa padrão", "Capa 0:12.3", "Capa: imagem"),
+ *  so people see whether the video still has its default cover and that they can change it.
+ *  With `onEdit` it is the button that opens the thumbnail editor. */
+function VideoCoverChip({ media, onEdit }: { media: PostMedia; onEdit?: () => void }) {
+  const { t } = useTranslation('posts');
+  const state = videoCoverState(media);
+  const label = videoCoverChipLabel(state);
+  const description = videoCoverDescription(state);
+  const className = `absolute bottom-1.5 left-1.5 flex max-w-[calc(100%-0.75rem)] items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-tight ${
+    isCustomVideoCover(state) ? 'bg-[#eab308] text-stone-900' : 'bg-[#12151a]/80 text-white'
+  }`;
+  const content = (
+    <>
+      <ImageIcon className="h-2.5 w-2.5 shrink-0" aria-hidden="true" />
+      <span className="truncate">{label}</span>
+    </>
+  );
+  if (!onEdit) {
+    return (
+      <span className={className} title={description} data-testid="video-cover-chip">
+        {content}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      data-testid="video-cover-chip"
+      className={`${className} hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#eab308]`}
+      title={`${description} ${t('videoCover.change')}`}
+      aria-label={`${label}. ${t('videoCover.change')}`}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        onEdit();
+      }}
+    >
+      {content}
+    </button>
   );
 }
 

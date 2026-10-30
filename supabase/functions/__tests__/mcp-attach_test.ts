@@ -93,7 +93,7 @@ const post = (over: Record<string, unknown> = {}) => ({
   error: null,
 });
 const links = (n: number) => ({
-  data: Array.from({ length: n }, (_, i) => ({ sort_order: i, files: { r2_key: `contas/workspace-A/files/old-${i}.jpg` } })),
+  data: Array.from({ length: n }, (_, i) => ({ id: 100 + i, sort_order: i, files: { r2_key: `contas/workspace-A/files/old-${i}.jpg` } })),
   error: null,
 });
 const client = { data: { id: 7, nome: "Clínica Sol" }, error: null };
@@ -399,14 +399,14 @@ Deno.test("audit rows of both tools never carry download_url", withHosts(HOST, a
   });
   await a.server.tools.attach_image_to_post.call(attachArgs());
   const attachAudit = insertPayload(a.calls, "audit_log") as any;
-  assertEquals(attachAudit.metadata.args, { post_id: 10, position: 2, replace: false });
+  assertEquals(attachAudit.metadata.args, { post_id: 10, position: 2, replace: false, trim_after: false });
   assert(!JSON.stringify(attachAudit).includes("secret-token"));
   assert(!JSON.stringify(attachAudit).includes("download_url"));
 
   const s = setup({ tables: { workflow_posts: [post()], post_file_links: [links(1)], clientes: [client] } });
   await s.server.tools.show_attach_image.call({ post_id: 10, image: { download_url: URL_OK, file_id: "file-abc" }, position: 1 });
   const showAudit = insertPayload(s.calls, "audit_log") as any;
-  assertEquals(showAudit.metadata.args, { post_id: 10, position: 1 });
+  assertEquals(showAudit.metadata.args, { post_id: 10, position: 1, images: 1 });
   assert(!JSON.stringify(showAudit).includes("secret-token"));
   assert(!JSON.stringify(showAudit).includes("download_url"));
 }));
@@ -416,7 +416,7 @@ Deno.test("audit rows of both tools never carry download_url", withHosts(HOST, a
 Deno.test("show: card meta with openai/fileParams, posts:read, read-only", () => {
   const { server } = setup();
   const t = server.tools.show_attach_image;
-  assertEquals(t.config._meta, { ...cardToolMeta(), "openai/fileParams": ["image"] });
+  assertEquals(t.config._meta, { ...cardToolMeta(), "openai/fileParams": ["images", "image"] });
   assertEquals(t.config.title, "Mostrar onde anexar a imagem");
   assertEquals(t.config.annotations.readOnlyHint, true);
 });
@@ -433,12 +433,13 @@ Deno.test("show: eligible carousel → structuredContent with signed media urls"
     post: { id: 10, titulo: "Skincare", tipo: "carrossel", status: "rascunho" },
     client: { id: 7, nome: "Clínica Sol" },
     media: [
-      { position: 1, url: "signed:contas/workspace-A/files/old-0.jpg" },
-      { position: 2, url: "signed:contas/workspace-A/files/old-1.jpg" },
+      { position: 1, url: "signed:contas/workspace-A/files/old-0.jpg", link_id: 100 },
+      { position: 2, url: "signed:contas/workspace-A/files/old-1.jpg", link_id: 101 },
     ],
     max: 10,
     eligible: true,
-    image: { download_url: URL_OK, file_id: "file-abc" },
+    images: [{ download_url: URL_OK, file_id: "file-abc", mime_type: "image/png", file_name: "x.png" }],
+    image: { download_url: URL_OK, file_id: "file-abc", mime_type: "image/png", file_name: "x.png" },
     position: 2,
   });
   assertEquals(typeof res.content[0].text, "string");
@@ -450,7 +451,7 @@ Deno.test("show: aprovado_cliente → eligible false with reason; media urls sti
   const res = await server.tools.show_attach_image.call({ post_id: 10, image: { download_url: URL_OK, file_id: "f" } });
   assertEquals(res.structuredContent.eligible, false);
   assertEquals(res.structuredContent.reason, "Este post está com o cliente. Volte para rascunho no Mesaas para mudar as imagens.");
-  assertEquals(res.structuredContent.media, [{ position: 1, url: "signed:contas/workspace-A/files/old-0.jpg" }]);
+  assertEquals(res.structuredContent.media, [{ position: 1, url: "signed:contas/workspace-A/files/old-0.jpg", link_id: 100 }]);
   assert(!("position" in res.structuredContent));
 });
 
@@ -494,3 +495,92 @@ Deno.test("show: unknown post → pt-BR error; position 11 rejected by zod", asy
   const bad = await server.tools.show_attach_image.call({ post_id: 10, image: { download_url: URL_OK, file_id: "f" }, position: 11 });
   assert(bad.zod);
 });
+
+// ---- multi-image card (docs/superpowers/specs/2026-10-29-mcp-attach-multi-images-design.md) -----
+
+const img = (id: string) => ({ download_url: `https://${HOST}/${id}?sig=secret-token`, file_id: id });
+const V2_OK = { data: { link_id: 7, file_id: 9, sort_order: 2, is_cover: false, tipo: "carrossel", trimmed: 0 }, error: null };
+
+Deno.test("show: `images` → every image in order, `image` = the first, position ignored, audit counts", async () => {
+  const s = setup({ tables: { workflow_posts: [post()], post_file_links: [links(2)], clientes: [client] } });
+  const res = await s.server.tools.show_attach_image.call({ post_id: 10, images: [img("a"), img("b"), img("c")], position: 2 });
+  assert(!res.isError, JSON.stringify(res));
+  assertEquals(res.structuredContent.images, [img("a"), img("b"), img("c")]);
+  assertEquals(res.structuredContent.image, img("a"));
+  assert(!("position" in res.structuredContent), "position only means something with one image");
+  assert(res.content[0].text.includes("as 3 imagens"), res.content[0].text);
+  assert(!res.content[0].text.includes("secret-token"));
+  const audit = insertPayload(s.calls, "audit_log") as any;
+  assertEquals(audit.metadata.args, { post_id: 10, position: 2, images: 3 });
+  assert(!JSON.stringify(audit).includes("download_url"));
+});
+
+Deno.test("show: `image` and `images` together merge, `image` first, each file once", async () => {
+  const s = setup({ tables: { workflow_posts: [post()], post_file_links: [links(0)], clientes: [client] } });
+  const res = await s.server.tools.show_attach_image.call({ post_id: 10, image: img("a"), images: [img("a"), img("b")] });
+  assertEquals(res.structuredContent.images, [img("a"), img("b")]);
+});
+
+Deno.test("show: no image at all → pt-BR error; more than 10 → refused by the schema", async () => {
+  const s = setup({ tables: { workflow_posts: [post()] } });
+  const none = await s.server.tools.show_attach_image.call({ post_id: 10 });
+  assertEquals(errorText(none), "Envie as imagens em `images` (uma lista, na ordem do chat).");
+  const eleven = await s.server.tools.show_attach_image.call({
+    post_id: 10, images: Array.from({ length: 11 }, (_, i) => img(`f${i}`)),
+  });
+  assert(eleven.isError);
+});
+
+Deno.test("attach: expected_count → v2 RPC with the expectation, no trim", withHosts(HOST, async () => {
+  const { server, calls } = setup({
+    tables: { workflow_posts: [post()], post_file_links: [links(2)] },
+    rpc: { mcp_attach_post_file_v2: [V2_OK] },
+  });
+  const res = await server.tools.attach_image_to_post.call(attachArgs({ position: 3, expected_count: 2 }));
+  assert(!res.isError, JSON.stringify(res));
+  assert(!rpcCalled(calls), "v1 not called");
+  const a = rpcArgs(calls, "mcp_attach_post_file_v2")!;
+  assertEquals([a.p_position, a.p_replace, a.p_expected_count, a.p_expected_link_id, a.p_trim_after], [3, false, 2, null, false]);
+  assertEquals(JSON.parse(res.content[0].text).trimmed, 0);
+}));
+
+Deno.test("attach: replace with expected_link_id + trim_after → v2 with both", withHosts(HOST, async () => {
+  const { server, calls } = setup({
+    tables: { workflow_posts: [post()], post_file_links: [links(5)] },
+    rpc: { mcp_attach_post_file_v2: [{ ...V2_OK, data: { ...V2_OK.data, trimmed: 3 } }] },
+  });
+  const res = await server.tools.attach_image_to_post.call(
+    attachArgs({ position: 2, replace: true, expected_link_id: 101, trim_after: true }),
+  );
+  assert(!res.isError, JSON.stringify(res));
+  const a = rpcArgs(calls, "mcp_attach_post_file_v2")!;
+  assertEquals([a.p_position, a.p_replace, a.p_expected_count, a.p_expected_link_id, a.p_trim_after], [2, true, null, 101, true]);
+  assertEquals(JSON.parse(res.content[0].text).trimmed, 3);
+  const audit = insertPayload(calls, "audit_log") as any;
+  assertEquals(audit.metadata.args, { post_id: 10, position: 2, replace: true, trim_after: true });
+}));
+
+Deno.test("attach: the post already moved → stale message before any download", withHosts(HOST, async () => {
+  const staleMsg = "O post mudou no Mesaas depois que o card abriu. Peça para abrir o card de novo.";
+  const append = setup({ tables: { workflow_posts: [post()], post_file_links: [links(3)] } });
+  const r1 = await append.server.tools.attach_image_to_post.call(attachArgs({ position: 3, expected_count: 2 }));
+  assertEquals(errorText(r1), staleMsg);
+  assertEquals(append.net.fetches.length, 0);
+
+  const replace = setup({ tables: { workflow_posts: [post()], post_file_links: [links(3)] } });
+  const r2 = await replace.server.tools.attach_image_to_post.call(
+    attachArgs({ position: 2, replace: true, expected_link_id: 999 }),
+  );
+  assertEquals(errorText(r2), staleMsg);
+  assertEquals(replace.net.fetches.length, 0);
+}));
+
+Deno.test("attach: v2 raises stale_post under the lock → stale message, uploaded key queued", withHosts(HOST, async () => {
+  const { server, calls } = setup({
+    tables: { workflow_posts: [post()], post_file_links: [links(2)] },
+    rpc: { mcp_attach_post_file_v2: [{ data: null, error: { message: "stale_post" } }] },
+  });
+  const res = await server.tools.attach_image_to_post.call(attachArgs({ position: 3, expected_count: 2 }));
+  assertEquals(errorText(res), "O post mudou no Mesaas depois que o card abriu. Peça para abrir o card de novo.");
+  assertEquals(insertPayload(calls, "file_deletions"), { r2_key: "contas/workspace-A/files/uuid-1.png" });
+}));

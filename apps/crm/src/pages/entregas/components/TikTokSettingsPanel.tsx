@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, ImageIcon } from 'lucide-react';
 import { Trans, useTranslation } from 'react-i18next';
 import { i18n } from '@mesaas/i18n';
 import { TIKTOK_LIMITS, TIKTOK_MSG } from '@mesaas/tiktok-messages';
@@ -32,6 +32,8 @@ import {
   tiktokMediaIssues,
   type TikTokReadiness,
 } from '../tiktokComposerRules';
+import { ThumbnailPickerDialog } from './ThumbnailPickerDialog';
+import { formatCoverTimestamp, videoCoverState } from '../videoCover';
 
 // =============================================================================
 // TikTok settings panel — audit-mandated creator_info compliance UI
@@ -60,12 +62,14 @@ import {
 // `tiktok_settings` is a jsonb column with no partial-update semantics on the
 // client — every write sends the FULL settings object, never a diff.
 //
-// ── Out of scope (noted, not a gap) ────────────────────────────────────────
-// `video_cover_timestamp_ms` and `photo_cover_index` are valid tiktok_settings
-// keys (cron/publish payload builders already read them) but neither gets a UI
-// control here — cover-frame/cover-image picking needs a dedicated media-picker
-// component this task doesn't build. `photo_cover_index` defaults to 0 (first
-// image), matching buildPhotoInitPayload's own `s.photo_cover_index ?? 0` fallback.
+// ── Covers ─────────────────────────────────────────────────────────────────
+// The TikTok video cover follows the video's thumbnail (spec
+// 2026-10-30-tiktok-cover-follows-thumbnail): TikTok only takes a frame offset, so the
+// publishers send files.thumbnail_frame_ms, the moment the thumbnail was captured from.
+// This panel only reports it and opens the same ThumbnailPickerDialog the gallery uses;
+// an uploaded image (or a file from before the column) has no frame, and TikTok falls back
+// to its default frame. `photo_cover_index` still has no UI control and defaults to 0
+// (first image), matching buildPhotoInitPayload's own `s.photo_cover_index ?? 0` fallback.
 
 const CAPTION_MAX_VIDEO = TIKTOK_LIMITS.captionVideoMax; // UTF-16 code units == TikTok's "runes"
 const CAPTION_MAX_PHOTO = TIKTOK_LIMITS.captionPhotoMax;
@@ -168,6 +172,10 @@ export interface TikTokSettingsPanelProps {
   /** Com feature_multiplatform a legenda do TikTok mora na aba do TikTok
    *  (DestinationCaptionTabs); o painel fica só com as configurações. */
   hideCaption?: boolean;
+  /** `phone`: the thumbnail editor opens as a bottom sheet. */
+  layout?: 'default' | 'phone';
+  /** After the thumbnail editor saves: refresh the post's media (the gallery's own keys). */
+  onThumbnailUpdated?: () => void;
 }
 
 export function TikTokSettingsPanel({
@@ -179,8 +187,11 @@ export function TikTokSettingsPanel({
   mediaError = false,
   showTestModeBanner = false,
   hideCaption = false,
+  layout = 'default',
+  onThumbnailUpdated,
 }: TikTokSettingsPanelProps) {
   const { t } = useTranslation('posts');
+  const [thumbnailEditorOpen, setThumbnailEditorOpen] = useState(false);
   const [creatorInfo, setCreatorInfo] = useState<TikTokCreatorInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -313,6 +324,11 @@ export function TikTokSettingsPanel({
     setDraft(next);
     onFieldChange('tiktok_settings', next);
   };
+
+  const coverVideo = isVideoTipo ? media?.find((m) => m.kind === 'video') : undefined;
+  const cover = coverVideo ? videoCoverState(coverVideo) : null;
+  // What the publishers send: the file's frame, whatever its source (see videoCover.ts).
+  const coverFrameMs = coverVideo?.thumbnail_frame_ms ?? null;
 
   const handleCaptionChange = (value: string) => {
     if (value.length > captionMax) return;
@@ -486,6 +502,66 @@ export function TikTokSettingsPanel({
           </p>
         )}
       </section>
+
+      {/* Cover (video only): the thumbnail's frame; TikTok takes a frame offset, not an image */}
+      {coverVideo && (
+        <section aria-label={t('tiktokCover.label')} className="flex items-start gap-3">
+          <div
+            className="relative h-28 w-16 overflow-hidden rounded-md flex-shrink-0"
+            style={{ background: 'var(--surface-3)' }}
+          >
+            {coverVideo.thumbnail_url && !coverVideo.media_lost_at && (
+              <img
+                data-testid="tiktok-cover-thumbnail"
+                src={sanitizeUrl(coverVideo.thumbnail_url)}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            )}
+          </div>
+          <div className="flex flex-col gap-1 min-w-0">
+            <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+              {t('tiktokCover.label')}
+            </span>
+            {coverFrameMs !== null ? (
+              <span className="text-xs" style={{ color: 'var(--text-light)' }}>
+                {t(
+                  cover?.kind === 'frame'
+                    ? 'tiktokCover.followsChosenFrame'
+                    : 'tiktokCover.followsDefaultFrame',
+                  { time: formatCoverTimestamp(coverFrameMs) },
+                )}
+              </span>
+            ) : (
+              <p className="flex items-start gap-1.5 text-xs" style={{ color: 'var(--text-main)' }}>
+                <AlertTriangle
+                  aria-hidden="true"
+                  className="mt-px h-3.5 w-3.5 shrink-0"
+                  style={{ color: 'var(--warning)' }}
+                />
+                <span>
+                  {t(cover?.kind === 'image' ? 'tiktokCover.imageCover' : 'tiktokCover.noFrame')}
+                </span>
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => setThumbnailEditorOpen(true)}
+              disabled={!!coverVideo.media_lost_at}
+              className="inline-flex w-fit items-center gap-1 px-2.5 py-1 rounded-full bg-stone-900 text-white text-[11px] font-semibold hover:bg-stone-700 disabled:opacity-50"
+            >
+              <ImageIcon aria-hidden="true" className="h-3 w-3" />
+              {t('tiktokCover.editThumbnail')}
+            </button>
+          </div>
+          <ThumbnailPickerDialog
+            media={thumbnailEditorOpen ? coverVideo : null}
+            onClose={() => setThumbnailEditorOpen(false)}
+            onUpdated={() => onThumbnailUpdated?.()}
+            layout={layout}
+          />
+        </section>
+      )}
 
       {loadError && (
         <p className="text-xs" style={{ color: 'var(--danger)' }}>

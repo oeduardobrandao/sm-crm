@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { CheckCircle2, ImagePlus, Images, Replace } from 'lucide-react';
 import type { Host, PickedImage } from '../bridge';
 import type { AttachImageData } from '../types';
+import { AttachImages } from './AttachImages';
 import {
   Button,
   CALL_FAILED,
@@ -16,17 +17,25 @@ import {
   TIPO_LABEL,
   TipoBadge,
   errorMessage,
+  freshImage,
   resultJson,
 } from '../ui';
 
-type Slide = { url?: string; fresh?: boolean };
+type Slide = { url?: string; fresh?: boolean; link_id?: number };
 
 export function AttachImage({ host, data }: { host: Host; data: AttachImageData }) {
+  // Two or more chat images: the multi-image card (one confirmation, attached in order).
+  if (Array.isArray(data.images) && data.images.length > 1)
+    return <AttachImages host={host} data={data} />;
+  return <AttachOne host={host} data={data} />;
+}
+
+function AttachOne({ host, data }: { host: Host; data: AttachImageData }) {
   const [media, setMedia] = useState<Slide[]>(() =>
     (Array.isArray(data.media) ? data.media : [])
       .slice()
       .sort((a, b) => a.position - b.position)
-      .map((m) => ({ url: m.url })),
+      .map((m) => ({ url: m.url, link_id: m.link_id })),
   );
   const max = data.max || 10;
   const room = media.length < max;
@@ -52,18 +61,33 @@ export function AttachImage({ host, data }: { host: Host; data: AttachImageData 
   const attach = async (replace: boolean) => {
     setBusy(true);
     setMsg(undefined);
+    // What this card saw, so the server refuses instead of acting on a post that changed since. Only
+    // when the server sent link ids (older servers did not, and then the plain attach runs).
+    const known = media.every((m) => typeof m.link_id === 'number');
+    const expect = !known
+      ? {}
+      : replace
+        ? { expected_link_id: media[picked - 1]?.link_id }
+        : { expected_count: media.length };
     try {
       const r = await host.callTool('attach_image_to_post', {
         post_id: data.post.id,
-        image,
+        image: await freshImage(host, image),
         position: picked,
         replace,
+        ...expect,
       });
       if (r.isError) {
         setMsg({ tone: 'error', text: errorMessage(r) });
       } else {
-        const url = resultJson(r)?.url;
-        const fresh: Slide = { url: typeof url === 'string' ? url : undefined, fresh: true };
+        const res = resultJson(r);
+        const url = res?.url;
+        const linkId = replace ? media[picked - 1]?.link_id : res?.link_id;
+        const fresh: Slide = {
+          url: typeof url === 'string' ? url : undefined,
+          fresh: true,
+          link_id: typeof linkId === 'number' ? linkId : undefined,
+        };
         setMedia((prev) => {
           const next = prev.map((m): Slide => ({ ...m, fresh: false }));
           if (replace) next[picked - 1] = fresh;

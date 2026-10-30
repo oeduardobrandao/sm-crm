@@ -34,6 +34,8 @@ function toLegacy(
     conta_id: link.conta_id,
     r2_key: file.r2_key,
     thumbnail_r2_key: file.thumbnail_r2_key,
+    thumbnail_frame_ms: file.thumbnail_frame_ms ?? null,
+    thumbnail_source: file.thumbnail_source ?? null,
     kind: file.kind,
     mime_type: file.mime_type,
     size_bytes: file.size_bytes,
@@ -276,7 +278,18 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
         if (file.thumbnail_r2_key && file.thumbnail_r2_key !== body.thumbnail_r2_key) {
           await svc.from("file_deletions").insert({ r2_key: file.thumbnail_r2_key });
         }
+        // The swap clears thumbnail_frame_ms and marks the thumbnail an image
+        // (trg_files_thumbnail_frame_reset); a frame the user picked is written by a second
+        // update, which the trigger ignores. An uploaded image sends no frame, so it stays an
+        // image without a frame and TikTok uses its default frame.
         await svc.from("files").update({ thumbnail_r2_key: body.thumbnail_r2_key }).eq("id", file.id);
+        const frameMs = body.thumbnail_frame_ms;
+        if (Number.isInteger(frameMs) && frameMs >= 0) {
+          await svc
+            .from("files")
+            .update({ thumbnail_frame_ms: frameMs, thumbnail_source: "frame" })
+            .eq("id", file.id);
+        }
       }
 
       const { data: updatedLink } = await svc.from("post_file_links").select("*, files(*)").eq("id", linkId).single();

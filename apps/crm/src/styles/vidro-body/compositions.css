@@ -5,10 +5,10 @@
  * card in a dialog). Imported last, but each rule also out-ranks the family rule it adjusts, so the
  * result does not hang on source order alone.
  * Guards: every selector starts with html[data-look='vidro']; everything inside
- * @media (min-width: 1101px); no @layer; no !important. Page-body prefix:
+ * @media screen and (min-width: 768px); no @layer; no !important. Page-body prefix:
  * html[data-look='vidro'] body:has(.app-container) .vidro-panel; overlays drop `.vidro-panel`.
  */
-@media (min-width: 1101px) {
+@media screen and (min-width: 768px) {
   /* A group card that only frames a table: the table's own cell padding does the inset. Only when the
      table is the card's sole content: a card with a heading above its table (cliente Financeiro tab,
      Instagram "Performance de Conteúdo") keeps its padding, or the heading would touch the edge.

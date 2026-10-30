@@ -233,7 +233,7 @@ Deno.test("show_client_calendar: registered as a card tool, zod limits, audit ca
   const tool = server.tools["show_client_calendar"];
   assertEquals(tool.config.title, CALENDAR_TOOL_META.show_client_calendar.title);
   assertEquals(tool.config.annotations.readOnlyHint, true);
-  assertEquals(tool.config._meta.ui.resourceUri, "ui://mesaas/cards-v2.html");
+  assertEquals(tool.config._meta.ui.resourceUri, "ui://mesaas/cards-v3.html");
 
   for (const bad of [{ client_id: 5, weeks: 0 }, { client_id: 5, weeks: 7 }, { client_id: 5, weeks: 1.5 }, { client_id: 5, from: "hoje" }, { client_id: "5" }, {}]) {
     const r = await tool.cb(bad);

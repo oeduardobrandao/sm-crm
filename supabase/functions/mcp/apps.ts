@@ -7,9 +7,9 @@ import { CARDS_HTML } from "./ui/generated/cards.ts";
 /** Hosts (ChatGPT above all) cache the card HTML by this URI, so a widget change only reaches
  * them under a new one: bump the version with every change to apps/mcp-widgets and move the
  * previous URI to LEGACY_CARDS_URIS. */
-export const CARDS_URI = "ui://mesaas/cards-v2.html";
+export const CARDS_URI = "ui://mesaas/cards-v3.html";
 /** Earlier URIs, still served (with the current HTML) for hosts holding an old tool listing. */
-export const LEGACY_CARDS_URIS = ["ui://mesaas/cards-v1.html"];
+export const LEGACY_CARDS_URIS = ["ui://mesaas/cards-v2.html", "ui://mesaas/cards-v1.html"];
 export const CARDS_MIME = "text/html;profile=mcp-app";
 
 /** `MCP_APPS`: `on` = every workspace, `pilot` = only the ids in `MCP_APPS_PILOT_CONTAS`
@@ -27,6 +27,13 @@ export function appsEnabledFor(
 /** Origin `signGetUrl` signs against (_shared/r2.ts), the one host the card may load images from. */
 export function r2OriginFrom(accountId: string | undefined): string | null {
   return accountId ? `https://${accountId}.r2.cloudflarestorage.com` : null;
+}
+
+/** `MCP_IMAGE_HOSTS` (the chat file hosts attach_image_to_post downloads from) as https origins: the
+ * attach card shows the chat images before they reach the Mesaas, so the card's CSP lets it load them. */
+export function imageHostOrigins(list: string | undefined): string[] {
+  return (list ?? "").split(",").map((h) => h.trim().toLowerCase()).filter((h) => /^[a-z0-9.-]+$/.test(h))
+    .map((h) => `https://${h}`);
 }
 
 /** Tools only the card itself calls (`visibility: ["app"]`) need OAuth: API-key connections have no widget host. */
@@ -50,7 +57,10 @@ export function registerCardsResource(server: any, r2Origin: string | null): voi
   const _meta = {
     ui: {
       prefersBorder: false,
-      csp: { resourceDomains: r2Origin ? [r2Origin] : [], connectDomains: [] },
+      csp: {
+        resourceDomains: [...(r2Origin ? [r2Origin] : []), ...imageHostOrigins(Deno.env.get("MCP_IMAGE_HOSTS"))],
+        connectDomains: [],
+      },
     },
     "openai/widgetDomain": "https://www.mesaas.com.br",
   };

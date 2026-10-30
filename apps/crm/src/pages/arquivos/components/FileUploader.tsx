@@ -30,6 +30,8 @@ export interface FileUploaderProps {
 
 // ─── Video thumbnail helper ────────────────────────────────────────
 
+const THUMBNAIL_FRAME_SECONDS = 0.1;
+
 function captureVideoThumbnail(file: File): Promise<File> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
@@ -37,7 +39,7 @@ function captureVideoThumbnail(file: File): Promise<File> {
     video.preload = 'metadata';
     video.muted = true;
     video.onloadeddata = () => {
-      video.currentTime = 0.1;
+      video.currentTime = THUMBNAIL_FRAME_SECONDS;
     };
     video.onseeked = () => {
       const canvas = document.createElement('canvas');
@@ -99,6 +101,9 @@ export function FileUploader({
         file,
         folderId,
         thumbnail,
+        // captureVideoThumbnail grabs the frame at 0.1 s; that is the TikTok cover frame.
+        thumbnailFrameMs: thumbnail ? THUMBNAIL_FRAME_SECONDS * 1000 : null,
+        thumbnailSource: thumbnail ? 'auto' : null,
         onProgress: ({ loaded, total }) => {
           const progress = total > 0 ? Math.round((loaded / total) * 100) : 0;
           setQueue((prev) =>

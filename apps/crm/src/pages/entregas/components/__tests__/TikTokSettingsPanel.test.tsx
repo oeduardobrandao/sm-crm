@@ -854,3 +854,86 @@ describe('notices, preview and duration (spec A4/A5/A6/A7)', () => {
     );
   });
 });
+
+describe('TikTokSettingsPanel — cover follows the thumbnail', () => {
+  function videoWith(overrides: Record<string, unknown>) {
+    return [
+      { ...video42[0], thumbnail_url: 'https://media.test/thumb.jpg', ...overrides },
+    ] as unknown as PostMedia[];
+  }
+
+  it('says TikTok uses the chosen frame when the person picked one', async () => {
+    renderPanel({}, { media: videoWith({ thumbnail_frame_ms: 12300, thumbnail_source: 'frame' }) });
+    await screen.findByText('Dra Marina');
+    const section = screen.getByRole('region', { name: 'Capa do TikTok' });
+    expect(
+      within(section).getByText('O TikTok usa o quadro escolhido na miniatura (0:12.3).'),
+    ).toBeInTheDocument();
+    const thumb = within(section).getByTestId('tiktok-cover-thumbnail') as HTMLImageElement;
+    expect(thumb.getAttribute('src')).toBe('https://media.test/thumb.jpg');
+  });
+
+  it('says TikTok uses the default frame for the auto-generated thumbnail', async () => {
+    renderPanel({}, { media: videoWith({ thumbnail_frame_ms: 500, thumbnail_source: 'auto' }) });
+    await screen.findByText('Dra Marina');
+    expect(
+      screen.getByText('O TikTok usa o quadro padrão da miniatura (0:00.5).'),
+    ).toBeInTheDocument();
+  });
+
+  it('says an image cover cannot be used by TikTok', async () => {
+    renderPanel({}, { media: videoWith({ thumbnail_frame_ms: null, thumbnail_source: 'image' }) });
+    await screen.findByText('Dra Marina');
+    expect(
+      screen.getByText(/A capa é uma imagem\. O TikTok não aceita imagem/),
+    ).toBeInTheDocument();
+  });
+
+  it('warns that TikTok falls back to its default frame when the thumbnail is not a video frame', async () => {
+    for (const frame of [null, undefined]) {
+      const { unmount } = renderPanel({}, { media: videoWith({ thumbnail_frame_ms: frame }) });
+      await screen.findByText('Dra Marina');
+      const section = screen.getByRole('region', { name: 'Capa do TikTok' });
+      expect(within(section).getByText(/O TikTok não aceita imagem como capa/)).toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it('never writes a cover into tiktok_settings (the publishers read the file)', async () => {
+    const { onFieldChange } = renderPanel(
+      { tiktok_settings: { video_cover_timestamp_ms: 3250 } },
+      { media: videoWith({ thumbnail_frame_ms: 500 }) },
+    );
+    await selectPrivacy('Somente eu (privado)');
+    const saved = onFieldChange.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+    expect(saved.privacy_level).toBe('SELF_ONLY');
+    expect('video_cover_timestamp_ms' in saved).toBe(false);
+  });
+
+  it('"Editar miniatura" opens the same thumbnail editor the gallery uses', async () => {
+    renderPanel({}, { media: videoWith({ thumbnail_frame_ms: 500 }) });
+    await screen.findByText('Dra Marina');
+    fireEvent.click(screen.getByRole('button', { name: 'Editar miniatura' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Miniatura do vídeo')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Usar este frame' })).toBeInTheDocument();
+  });
+
+  it('disables the editor button for a lost video', async () => {
+    renderPanel({}, { media: videoWith({ media_lost_at: '2026-08-14T03:00:00.000Z' }) });
+    await screen.findByText('Dra Marina');
+    expect(screen.getByRole('button', { name: 'Editar miniatura' })).toBeDisabled();
+    expect(screen.queryByTestId('tiktok-cover-thumbnail')).not.toBeInTheDocument();
+  });
+
+  it('is not shown for photo posts', async () => {
+    renderPanelProps({
+      post: reelsPost({ tipo: 'feed' }),
+      media: [
+        { id: 2, kind: 'image', media_lost_at: null, url: 'i', sort_order: 0 },
+      ] as unknown as PostMedia[],
+    });
+    await screen.findByText('Dra Marina');
+    expect(screen.queryByRole('region', { name: 'Capa do TikTok' })).not.toBeInTheDocument();
+  });
+});
