@@ -1651,7 +1651,11 @@ describe('WorkflowDrawer scrolls the targeted post into view', () => {
     await screen.findByText('Post 1');
 
     mockGetPosts.mockResolvedValue([makePost(1, 0), makePost(3, 1)]);
-    fireEvent.click(screen.getByRole('button', { name: /Novo Post/ }));
+    // Header button and the full-width one after the last post both create a post; use the latter.
+    const addButtons = screen.getAllByRole('button', { name: /Novo Post/ });
+    expect(addButtons).toHaveLength(2);
+    expect(addButtons[1]).toHaveClass('drawer-add-post-btn--row');
+    fireEvent.click(addButtons[1]);
 
     const body = container.querySelector('.drawer-body')!;
     await waitFor(() => expect(body.scrollTop).toBe(800));

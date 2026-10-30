@@ -1469,6 +1469,15 @@ export function WorkflowDrawer({
                           }
                         />
                       ))}
+                      {!isPhone && (
+                        <button
+                          type="button"
+                          className="drawer-add-post-btn drawer-add-post-btn--row"
+                          onClick={handleAddPost}
+                        >
+                          <Plus className="h-4 w-4" /> {t('workflowDrawer.newPost')}
+                        </button>
+                      )}
                     </div>
                   </SortableContext>
                 </DndContext>

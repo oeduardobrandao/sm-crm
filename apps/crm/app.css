@@ -6236,6 +6236,18 @@ body.role-agent input[name='valor_total'] {
   color: var(--primary-color);
 }
 
+/* Full-width adder after the last post, sized like a collapsed .drawer-post-item. */
+.drawer-add-post-btn--row {
+  justify-content: center;
+  gap: 0.4rem;
+  width: 100%;
+  min-height: 3.075rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
 /* Bulk selection bar (desmembrar do fluxo) */
 
 /* Floating action bar: last child of the scrolling .drawer-body, stuck to its
