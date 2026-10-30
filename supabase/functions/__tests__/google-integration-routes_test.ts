@@ -3,7 +3,7 @@
 // conventions). The SQL RPCs (unlink, rate limit, flags) are mocked by name.
 import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
-import { createGoogleIntegrationHandler } from "../google-integration/handlers.ts";
+import { createGoogleIntegrationHandler, type GoogleIntegrationDeps } from "../google-integration/handlers.ts";
 import { listEligibleLocations, listGbpLocations } from "../google-integration/locations.ts";
 import { encryptGoogleToken } from "../_shared/google.ts";
 
@@ -23,11 +23,12 @@ const BI_BASE = "https://mybusinessbusinessinformation.googleapis.com/v1/";
 
 type Mock = ReturnType<typeof createSupabaseQueryMock>;
 
-function makeHandler(db: Mock) {
+function makeHandler(db: Mock, extra: Partial<GoogleIntegrationDeps> = {}) {
   return createGoogleIntegrationHandler({
     buildCorsHeaders: () => ({}),
     // deno-lint-ignore no-explicit-any
     createServiceDb: () => db as any,
+    ...extra,
   });
 }
 
@@ -516,7 +517,9 @@ Deno.test("link_unlinks_removed: client had A,B; post [A, C] -> A updated, C ins
     const mine = db.calls.filter((x) => x.table === "gbp_locations" && x.operation === "select")[1];
     const filters = mine.modifiers.map((m) => `${m.method}:${m.args[0]}:${m.args[1]}`);
     assert(filters.includes(`eq:connection_id:${CONN_1}`), `removal set must be this connection only: ${filters}`);
-    assert(filters.includes(`eq:client_id:${CLIENT}`) && filters.includes("eq:status:active"), filters.join(","));
+    assert(filters.includes(`eq:client_id:${CLIENT}`), filters.join(","));
+    const statusIn = mine.modifiers.find((m) => m.method === "in" && m.args[0] === "status");
+    assertEquals(statusIn?.args[1], ["active", "revoked"], "revoked units of this client are unlinkable too");
 
     const audit = db.calls.find((x) => x.table === "audit_log")!;
     const entry = audit.payload as Record<string, unknown>;
@@ -823,6 +826,7 @@ Deno.test("locations_truncated_keeps_unlisted_linked: this client's unlisted uni
         address_line: "Rua Z, 1",
         website: null,
         has_voice_of_merchant: false,
+        maps_uri: "https://maps.google.com/?cid=z",
       },
       { location_name: "locations/other-client", client_id: 7, connection_id: CONN_1, status: "active" },
       { location_name: "locations/other-conn", client_id: CLIENT, connection_id: CONN_2, status: "active" },
@@ -842,6 +846,7 @@ Deno.test("locations_truncated_keeps_unlisted_linked: this client's unlisted uni
       addressLine: "Rua Z, 1",
       website: null,
       hasVoiceOfMerchant: false,
+      mapsUri: "https://maps.google.com/?cid=z",
       linkedClientId: CLIENT,
       linkedClientName: "Cliente A",
       linkedConnectionId: CONN_1,
@@ -981,4 +986,355 @@ Deno.test("link_complete_listing_unlinks_unlisted: without truncation the set di
   } finally {
     f.restore();
   }
+});
+
+// ─── Phase 2 Task 9: POST /sync/:product/:clientId ──────────────────────────────
+
+const YT_ROW = {
+  id: "yt-row-1",
+  conta_id: CONTA,
+  client_id: CLIENT,
+  connection_id: CONN_1,
+  channel_id: "UCa",
+  authorization_status: "active",
+  data_through: "2026-10-28",
+};
+
+function gbpRow(id: string, status = "active") {
+  return { id, conta_id: CONTA, client_id: CLIENT, connection_id: CONN_1, location_name: `locations/${id}`, status };
+}
+
+/** Fake unit syncs: record the calls (and any overlap) and answer the queued statuses. */
+function fakeSyncs(opts: { yt?: string[]; gbp?: string[]; throwYt?: Error } = {}) {
+  const ytCalls: Array<{ channel: Record<string, unknown>; opts: Record<string, unknown> }> = [];
+  const gbpCalls: Array<Record<string, unknown>> = [];
+  let inflight = 0;
+  let maxInflight = 0;
+  const yt = [...(opts.yt ?? [])];
+  const gbp = [...(opts.gbp ?? [])];
+  const deps: Partial<GoogleIntegrationDeps> = {
+    // deno-lint-ignore no-explicit-any
+    syncYouTubeChannel: ((_deps: unknown, channel: any, o: any) => {
+      ytCalls.push({ channel, opts: o });
+      if (opts.throwYt) return Promise.reject(opts.throwYt);
+      return Promise.resolve({ status: yt.shift() ?? "synced", backfill: false });
+      // deno-lint-ignore no-explicit-any
+    }) as any,
+    // deno-lint-ignore no-explicit-any
+    syncGbpLocation: (async (_deps: unknown, location: any) => {
+      inflight += 1;
+      maxInflight = Math.max(maxInflight, inflight);
+      gbpCalls.push(location);
+      await new Promise((r) => setTimeout(r, 1));
+      inflight -= 1;
+      return { status: gbp.shift() ?? "synced", backfill: false };
+      // deno-lint-ignore no-explicit-any
+    }) as any,
+  };
+  return { deps, ytCalls, gbpCalls, maxInflight: () => maxInflight };
+}
+
+Deno.test("sync_foreign_client_403: a client outside the tenant -> 403 before any flag read or rate limit", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: USER });
+  db.queue("profiles", "select", { data: { active_workspace_id: CONTA } });
+  db.queue("workspace_members", "select", { data: { user_id: USER } });
+  db.queue("clientes", "select", { data: null });
+  const s = fakeSyncs();
+  const res = await makeHandler(db, s.deps)(req("POST", `/sync/youtube/${CLIENT}`));
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: "forbidden" });
+  assertEquals(rpcCalls(db, "effective_plan_feature").length, 0, "the flag is read only after the tenant check");
+  assertEquals(rpcCalls(db, "check_rate_limit").length, 0);
+  assertEquals(db.calls.filter((c) => c.table === "youtube_channels").length, 0);
+  const lookup = db.calls.find((c) => c.table === "clientes")!;
+  assert(lookup.modifiers.some((m) => m.method === "eq" && m.args[0] === "conta_id" && m.args[1] === CONTA));
+});
+
+Deno.test("sync_flag_off_403: product flag off -> 403 feature_disabled, no rate-limit slot, no unit lookup", async () => {
+  for (const [product, feature] of [["youtube", "feature_youtube"], ["gbp", "feature_google_business"]] as const) {
+    const db = routeDb();
+    db.queueRpc("effective_plan_feature", { data: false });
+    const s = fakeSyncs();
+    const res = await makeHandler(db, s.deps)(req("POST", `/sync/${product}/${CLIENT}`));
+    assertEquals(res.status, 403);
+    assertEquals(await res.json(), { error: "feature_disabled", feature });
+    assertEquals((rpcCalls(db, "effective_plan_feature")[0].payload as Record<string, unknown>).feature_key, feature);
+    assertEquals(rpcCalls(db, "check_rate_limit").length, 0);
+    assertEquals(s.ytCalls.length + s.gbpCalls.length, 0);
+  }
+});
+
+Deno.test("sync_rate_limited: the sixth call in the window -> 429 rate_limited, key google-sync:<conta>:<client>:<product>", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: USER });
+  let used = 0;
+  for (let i = 0; i < 6; i++) {
+    db.queue("profiles", "select", { data: { active_workspace_id: CONTA } });
+    db.queue("workspace_members", "select", { data: { user_id: USER } });
+    db.queue("clientes", "select", { data: { id: CLIENT, nome: "Cliente A" } });
+    db.queue("youtube_channels", "select", { data: YT_ROW });
+    db.queueRpc("check_rate_limit", () => ({ data: ++used <= 5 }));
+  }
+  const s = fakeSyncs();
+  const handler = makeHandler(db, s.deps);
+  for (let i = 0; i < 5; i++) {
+    const res = await handler(req("POST", `/sync/youtube/${CLIENT}`));
+    assertEquals(res.status, 200);
+    assertEquals(await res.json(), { ok: true, status: "synced" });
+  }
+  const sixth = await handler(req("POST", `/sync/youtube/${CLIENT}`));
+  assertEquals(sixth.status, 429);
+  assertEquals(await sixth.json(), { error: "rate_limited" });
+  assertEquals(s.ytCalls.length, 5, "the sixth call never reaches the unit");
+  const rl = rpcCalls(db, "check_rate_limit")[0].payload as Record<string, unknown>;
+  assertEquals([rl.p_key, rl.p_max_requests, rl.p_window_seconds], [`google-sync:${CONTA}:${CLIENT}:youtube`, 5, 300]);
+  assertEquals(s.ytCalls[0].opts.maxVideoReports, 40);
+  assert(s.ytCalls[0].opts.now instanceof Date);
+});
+
+Deno.test("sync_youtube_unit_states: no channel -> 404 not_connected; revoked channel -> 409 revoked; never synced", async () => {
+  const none = routeDb();
+  none.queue("youtube_channels", "select", { data: null });
+  const s = fakeSyncs();
+  const res = await makeHandler(none, s.deps)(req("POST", `/sync/youtube/${CLIENT}`));
+  assertEquals(res.status, 404);
+  assertEquals(await res.json(), { error: "not_connected" });
+  const lookup = none.calls.find((c) => c.table === "youtube_channels")!;
+  const filters = lookup.modifiers.map((m) => `${m.method}:${m.args[0]}:${m.args[1]}`);
+  assert(filters.includes(`eq:conta_id:${CONTA}`) && filters.includes(`eq:client_id:${CLIENT}`), filters.join(","));
+  const columns = String(lookup.selectArgs[0][0]);
+  assert(!/token/.test(columns), `no token column may be selected: ${columns}`);
+  assert(columns.includes("data_through") && columns.includes("connection_id"), columns);
+
+  const revoked = routeDb();
+  revoked.queue("youtube_channels", "select", { data: { ...YT_ROW, authorization_status: "revoked" } });
+  const res2 = await makeHandler(revoked, s.deps)(req("POST", `/sync/youtube/${CLIENT}`));
+  assertEquals(res2.status, 409);
+  assertEquals(await res2.json(), { error: "revoked" });
+  assertEquals(s.ytCalls.length, 0);
+});
+
+Deno.test("sync_youtube_outcomes: quota_skipped / skipped / mismatch / revoked from the run are 200 with that status", async () => {
+  for (const status of ["quota_skipped", "skipped", "mismatch", "revoked"]) {
+    const db = routeDb();
+    db.queue("youtube_channels", "select", { data: YT_ROW });
+    const s = fakeSyncs({ yt: [status] });
+    const res = await makeHandler(db, s.deps)(req("POST", `/sync/youtube/${CLIENT}`));
+    assertEquals(res.status, 200, status);
+    assertEquals(await res.json(), { ok: true, status });
+    assertEquals(s.ytCalls[0].channel.id, "yt-row-1");
+  }
+});
+
+Deno.test("sync_unexpected_error_500: a thrown sync error -> generic 500, no details leaked", async () => {
+  const db = routeDb();
+  db.queue("youtube_channels", "select", { data: YT_ROW });
+  const s = fakeSyncs({ throwYt: new Error("secret upstream detail") });
+  const res = await makeHandler(db, s.deps)(req("POST", `/sync/youtube/${CLIENT}`));
+  assertEquals(res.status, 500);
+  const text = await res.text();
+  assert(!text.includes("secret upstream detail"), text);
+});
+
+Deno.test("sync_gbp: only this client's active locations, sequentially; per-location statuses", async () => {
+  const db = routeDb();
+  db.queue("gbp_locations", "select", { data: [gbpRow("a"), gbpRow("r", "revoked"), gbpRow("c")] });
+  const s = fakeSyncs({ gbp: ["synced", "not_approved"] });
+  const res = await makeHandler(db, s.deps)(req("POST", `/sync/gbp/${CLIENT}`));
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), {
+    ok: true,
+    locations: [{ id: "a", status: "synced" }, { id: "c", status: "not_approved" }],
+  });
+  assertEquals(s.gbpCalls.map((l) => l.id), ["a", "c"], "the revoked unit is not synced");
+  assertEquals(s.maxInflight(), 1, "locations sync one after another");
+  const lookup = db.calls.find((c) => c.table === "gbp_locations")!;
+  const filters = lookup.modifiers.map((m) => `${m.method}:${m.args[0]}:${m.args[1]}`);
+  assert(filters.includes(`eq:conta_id:${CONTA}`) && filters.includes(`eq:client_id:${CLIENT}`), filters.join(","));
+  assert(!/token/.test(String(lookup.selectArgs[0][0])));
+  const rl = rpcCalls(db, "check_rate_limit")[0].payload as Record<string, unknown>;
+  assertEquals(rl.p_key, `google-sync:${CONTA}:${CLIENT}:gbp`);
+});
+
+Deno.test("sync_gbp_unit_states: no unit -> 404 not_connected; only revoked units -> 409 revoked", async () => {
+  const none = routeDb();
+  none.queue("gbp_locations", "select", { data: [] });
+  const s = fakeSyncs();
+  const res = await makeHandler(none, s.deps)(req("POST", `/sync/gbp/${CLIENT}`));
+  assertEquals(res.status, 404);
+  assertEquals(await res.json(), { error: "not_connected" });
+
+  const revoked = routeDb();
+  revoked.queue("gbp_locations", "select", { data: [gbpRow("r", "revoked")] });
+  const res2 = await makeHandler(revoked, s.deps)(req("POST", `/sync/gbp/${CLIENT}`));
+  assertEquals(res2.status, 409);
+  assertEquals(await res2.json(), { error: "revoked" });
+  assertEquals(s.gbpCalls.length, 0);
+});
+
+// ─── Phase 2 Task 9: unit-picker save over revoked units, maps_uri ───────────────
+
+Deno.test("link_unlinks_revoked_unchecked: a revoked unit of this client left unchecked is unlinked", async () => {
+  const db = routeDb();
+  await queueConnection(db);
+  db.queue(
+    "gbp_locations",
+    "select",
+    { data: [{ id: "row-a", location_name: "locations/a", client_id: CLIENT, connection_id: CONN_1, status: "active" }] },
+    {
+      data: [
+        { id: "row-a", location_name: "locations/a", status: "active" },
+        { id: "row-r", location_name: "locations/r", status: "revoked" },
+      ],
+    },
+  );
+  db.queueRpc("google_unlink_gbp_location", { data: [{ should_revoke: false, revocation_id: null }] });
+  const f = linkStub();
+  try {
+    const res = await makeHandler(db)(req("POST", `/locations/${CLIENT}`, { connectionId: CONN_1, locationNames: ["locations/a"] }));
+    assertEquals(res.status, 200);
+    assertEquals(
+      rpcCalls(db, "google_unlink_gbp_location").map((c) => (c.payload as Record<string, unknown>).p_location_id),
+      ["row-r"],
+    );
+    const mine = db.calls.filter((c) => c.table === "gbp_locations" && c.operation === "select")[1];
+    const statusIn = mine.modifiers.find((m) => m.method === "in" && m.args[0] === "status");
+    assertEquals(statusIn?.args[1], ["active", "revoked"]);
+    assert(!mine.modifiers.some((m) => m.method === "eq" && m.args[0] === "status"));
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("link_dead_connection_empty_save (I3): revoked connection + [] unlinks active and revoked units, no Google call", async () => {
+  const db = routeDb();
+  db.queue(
+    "google_connections",
+    "select",
+    { data: { id: CONN_1, status: "revoked" } },
+    { data: { id: CONN_1, status: "revoked", encrypted_access_token: "x", access_token_expires_at: null } },
+  );
+  db.queue("gbp_locations", "select", {
+    data: [
+      { id: "row-r1", location_name: "locations/r1", status: "revoked" },
+      { id: "row-r2", location_name: "locations/r2", status: "revoked" },
+    ],
+  });
+  db.queueRpc(
+    "google_unlink_gbp_location",
+    { data: [{ should_revoke: false, revocation_id: null }] },
+    { data: [{ should_revoke: false, revocation_id: null }] },
+  );
+  const f = stubGoogle();
+  try {
+    const res = await makeHandler(db)(req("POST", `/locations/${CLIENT}`, { connectionId: CONN_1, locationNames: [] }));
+    assertEquals(res.status, 200);
+    assertEquals(await res.json(), { linked: 0 });
+    assertEquals(f.calls.length, 0, "no Google listing on a dead connection");
+    assertEquals(
+      rpcCalls(db, "google_unlink_gbp_location").map((c) => (c.payload as Record<string, unknown>).p_location_id),
+      ["row-r1", "row-r2"],
+    );
+    assertEquals(gbpWrites(db).length, 0);
+    const mine = db.calls.find((c) => c.table === "gbp_locations" && c.operation === "select")!;
+    const filters = mine.modifiers.map((m) => `${m.method}:${m.args[0]}:${m.args[1]}`);
+    assert(filters.includes(`eq:connection_id:${CONN_1}`) && filters.includes(`eq:client_id:${CLIENT}`), filters.join(","));
+    const audit = db.calls.find((c) => c.table === "audit_log")!.payload as Record<string, unknown>;
+    assertEquals([audit.action, audit.actor_user_id], ["gmn-link", USER]);
+    assertEquals((audit.metadata as Record<string, unknown>).unlinked, ["locations/r1", "locations/r2"]);
+  } finally {
+    f.restore();
+  }
+
+  // A non-empty save on a dead connection still needs a reconnect.
+  const nonEmpty = routeDb();
+  nonEmpty.queue(
+    "google_connections",
+    "select",
+    { data: { id: CONN_1, status: "revoked" } },
+    { data: { id: CONN_1, status: "revoked", encrypted_access_token: "x", access_token_expires_at: null } },
+  );
+  const f2 = stubGoogle();
+  try {
+    const res = await makeHandler(nonEmpty)(
+      req("POST", `/locations/${CLIENT}`, { connectionId: CONN_1, locationNames: ["locations/a"] }),
+    );
+    assertEquals(res.status, 409);
+    assertEquals(await res.json(), { error: "reconnect" });
+    assertEquals(rpcCalls(nonEmpty, "google_unlink_gbp_location").length, 0);
+  } finally {
+    f2.restore();
+  }
+});
+
+Deno.test("link_stores_maps_uri: the listing's metadata.mapsUri is saved on insert and update", async () => {
+  const db = routeDb();
+  await queueConnection(db);
+  db.queue(
+    "gbp_locations",
+    "select",
+    { data: [{ id: "row-a", location_name: "locations/a", client_id: CLIENT, connection_id: CONN_1, status: "active" }] },
+    { data: [{ id: "row-a", location_name: "locations/a", status: "active" }] },
+  );
+  const withMaps = (id: string, title: string) => ({
+    ...loc(id, title),
+    metadata: { hasVoiceOfMerchant: true, mapsUri: `https://maps.google.com/?cid=${id}` },
+  });
+  const f = stubGoogle({ locations: { "accounts/1": [withMaps("a", "A"), withMaps("c", "C")] } });
+  try {
+    const res = await makeHandler(db)(
+      req("POST", `/locations/${CLIENT}`, { connectionId: CONN_1, locationNames: ["locations/a", "locations/c"] }),
+    );
+    assertEquals(res.status, 200);
+    const insert = db.calls.find((c) => c.table === "gbp_locations" && c.operation === "insert")!;
+    assertEquals((insert.payload as Array<Record<string, unknown>>)[0].maps_uri, "https://maps.google.com/?cid=c");
+    const update = db.calls.find((c) => c.table === "gbp_locations" && c.operation === "update")!;
+    assertEquals((update.payload as Record<string, unknown>).maps_uri, "https://maps.google.com/?cid=a");
+  } finally {
+    f.restore();
+  }
+});
+
+// ─── Phase 2 Task 9: disconnect drains the tenant's PDF purges ───────────────────
+
+function fakeStorage() {
+  const removed: Array<{ bucket: string; paths: string[] }> = [];
+  return {
+    removed,
+    storage: {
+      from(bucket: string) {
+        return {
+          remove(paths: string[]) {
+            removed.push({ bucket, paths });
+            return Promise.resolve({ error: null });
+          },
+        };
+      },
+    },
+  };
+}
+
+Deno.test("disconnect_drains_pdf_purges: after the unlink commits, only this tenant's queued PDFs are removed", async () => {
+  const db = routeDb();
+  db.queueRpc("google_unlink_youtube", { data: [{ should_revoke: false, revocation_id: null }] });
+  db.queue("youtube_pdf_purges", "select", {
+    data: [{ id: "purge-1", conta_id: CONTA, storage_path: `${CONTA}/report-1.pdf`, attempts: 0 }],
+  });
+  const st = fakeStorage();
+  const res = await makeHandler(db, { storage: st.storage })(req("POST", `/disconnect/youtube/${CLIENT}`));
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { ok: true });
+  const listing = db.calls.find((c) => c.table === "youtube_pdf_purges" && c.operation === "select")!;
+  assert(
+    listing.modifiers.some((m) => m.method === "eq" && m.args[0] === "conta_id" && m.args[1] === CONTA),
+    "the drain is scoped to the tenant",
+  );
+  assertEquals(st.removed.map((r) => r.paths), [[`${CONTA}/report-1.pdf`]]);
+  const del = db.calls.find((c) => c.table === "youtube_pdf_purges" && c.operation === "delete")!;
+  assert(del.modifiers.some((m) => m.method === "eq" && m.args[0] === "id" && m.args[1] === "purge-1"));
+  const order = db.calls.map((c) => `${c.table}:${c.operation}`);
+  assert(order.indexOf("rpc:google_unlink_youtube:rpc") < order.indexOf("youtube_pdf_purges:select"), order.join(","));
+  const audit = db.calls.find((c) => c.table === "audit_log")!.payload as Record<string, unknown>;
+  assertEquals([audit.action, audit.actor_user_id], ["youtube-unlink", USER]);
 });
