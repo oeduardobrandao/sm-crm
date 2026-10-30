@@ -3,7 +3,7 @@
  * Spec: docs/superpowers/specs/2026-10-13-vidro-body-skin-design.md
  * Only selectors for this family (cross-family rules go in compositions.css).
  * Guards: every selector starts with html[data-look='vidro']; everything inside
- * @media (min-width: 1101px); no @layer; no !important. Page-body prefix:
+ * @media screen and (min-width: 768px); no @layer; no !important. Page-body prefix:
  * html[data-look='vidro'] body:has(.app-container) .vidro-panel; overlays drop `.vidro-panel`.
  *
  * Every rule is written twice: once for the page body (.vidro-panel) and once for controls inside
@@ -14,7 +14,7 @@
  * Modifier classes that share an element with a base class of another look are excluded from the
  * base with :not() (which keeps the peak at (0,2,0)).
  */
-@media (min-width: 1101px) {
+@media screen and (min-width: 768px) {
   /* Glass pill (.btn2): outline/secondary Buttons and the hand-written secondary classes. */
   html[data-look='vidro']
     body:has(.app-container)

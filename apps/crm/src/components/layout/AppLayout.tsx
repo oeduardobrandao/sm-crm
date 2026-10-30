@@ -177,10 +177,13 @@ export default function AppLayout() {
   const isTablet = useIsTablet();
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const sidebarCollapsible = !isTablet && !isMobile;
-  // Desktop "Vidro" look: only where the static sidebar exists (>=1101px).
+  // "Vidro" look: desktop and tablet (>=768px). On tablet it keeps the icon rail, opened by its
+  // toggle (railOnly); the classic look keeps the drawer there.
   const vidro = useVidro();
+  const drawerShell = isTablet && !vidro.active;
+  const sidebarCollapsible = !isMobile && !drawerShell;
   const vidroShell = vidro.active && sidebarCollapsible;
+  const railOnly = vidroShell && isTablet;
   // The launch intro takes this session's single modal slot from GlobalPopupHost. Decided once,
   // after the look is final for this load, so a flag refetch or a resize never swaps them.
   const [intro, setIntro] = useState<'pending' | 'show' | 'no'>('pending');
@@ -193,7 +196,10 @@ export default function AppLayout() {
   const [pinPref, choosePinned] = useSidebarPinPref();
   // Unset preference follows the look (spec: Sidebar default open): pinned under Vidro, rail in
   // classic. vidro.active is already seeded from the pre-paint attribute, so no first-paint flash.
-  const sidebarPinned = pinPref === '1' ? true : pinPref === '0' ? false : vidro.active;
+  // Tablet never pins (the content would lose a third of the width); the preference is kept
+  // for when the window widens again.
+  const sidebarPinned =
+    !railOnly && (pinPref === '1' ? true : pinPref === '0' ? false : vidro.active);
   const toggleSidebarPinned = useCallback(
     () => choosePinned(!sidebarPinned),
     [choosePinned, sidebarPinned],
@@ -215,8 +221,8 @@ export default function AppLayout() {
   const deniedScreen = contractOutcome === 'denied' ? 'contratos' : 'financeiro';
 
   useEffect(() => {
-    if (!isTablet) setDrawerOpen(false);
-  }, [isTablet]);
+    if (!drawerShell) setDrawerOpen(false);
+  }, [drawerShell]);
 
   useEffect(() => {
     const main = document.getElementById('app');
@@ -260,7 +266,7 @@ export default function AppLayout() {
               !phoneChrome.chrome.pageHeader && <PhoneShellHeader />
             ) : vidroShell ? null : (
               <TopBar
-                showHamburger={isTablet}
+                showHamburger={drawerShell}
                 isDrawerOpen={drawerOpen}
                 onHamburgerClick={() => setDrawerOpen((v) => !v)}
               />
@@ -274,10 +280,11 @@ export default function AppLayout() {
             </Suspense>
 
             <Sidebar
-              isDrawer={isTablet}
+              isDrawer={drawerShell}
               isOpen={drawerOpen}
               onClose={closeDrawer}
               collapsible={sidebarCollapsible}
+              railOnly={railOnly}
               pinned={sidebarPinned}
               onTogglePinned={toggleSidebarPinned}
               vidroShell={vidroShell}
@@ -288,12 +295,12 @@ export default function AppLayout() {
               }}
             />
 
-            {isTablet && drawerOpen && (
+            {drawerShell && drawerOpen && (
               <div className="tablet-drawer-backdrop visible" onClick={closeDrawer} />
             )}
 
             {/* The wrapper is always mounted (flag on or off, any width, opted out), so <main>
-              keeps its place in the tree: a flag flip on a refetch, crossing 1101px or the opt-out
+              keeps its place in the tree: a flag flip on a refetch, crossing 768px or the opt-out
               toggle never remounts the page. Unless it is the glass panel it is out of the layout
               through an inline display: contents, never a class whose CSS sits outside vidro's
               guards. */}

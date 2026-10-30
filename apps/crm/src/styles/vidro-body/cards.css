@@ -3,10 +3,10 @@
  * Spec: docs/superpowers/specs/2026-10-13-vidro-body-skin-design.md
  * Only selectors for this family (cross-family rules go in compositions.css).
  * Guards: every selector starts with html[data-look='vidro']; everything inside
- * @media (min-width: 1101px); no @layer; no !important. Page-body prefix:
+ * @media screen and (min-width: 768px); no @layer; no !important. Page-body prefix:
  * html[data-look='vidro'] body:has(.app-container) .vidro-panel; overlays drop `.vidro-panel`.
  */
-@media (min-width: 1101px) {
+@media screen and (min-width: 768px) {
   /* Hover shadows for this family, as panel-local variables so the dark mirror at the end of the file
      only swaps the colour. Mirroring the hover rules themselves would add a [data-theme] attribute to
      their specificity and let the dark :hover beat the light .ring-2 / :focus-visible combinations. */
@@ -535,7 +535,7 @@
 }
 
 /* ===== Dark mirrors (the --vd-* tokens flip on their own; only literal colours need restating) ===== */
-@media (min-width: 1101px) {
+@media screen and (min-width: 768px) {
   html[data-theme='dark'][data-look='vidro'] body:has(.app-container) .vidro-panel {
     --vd-cards-shadow-hover: 0 8px 18px -10px rgba(0, 0, 0, 0.6);
     --vd-cards-shadow-lift: 0 8px 20px -8px rgba(0, 0, 0, 0.5);
@@ -544,7 +544,7 @@
 
 /* ---------- Report toolbars: solid when transparency is reduced or backdrop-filter is missing ---------- */
 /* Mirrors overlays.css's fallbacks for the two glass toolbars this file owns (same selector, later). */
-@media (min-width: 1101px) and (prefers-reduced-transparency: reduce) {
+@media screen and (min-width: 768px) and (prefers-reduced-transparency: reduce) {
   html[data-look='vidro']
     body:has(.app-container)
     .vidro-panel
@@ -556,7 +556,7 @@
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  @media (min-width: 1101px) {
+  @media screen and (min-width: 768px) {
     html[data-look='vidro']
       body:has(.app-container)
       .vidro-panel
@@ -569,7 +569,7 @@
 }
 
 /* ===== Início (Vidro): Prazos tiles + grouped list beside Minha fila, health table below ===== */
-@media (min-width: 1101px) {
+@media screen and (min-width: 768px) {
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-vidro {
     display: flex;
     flex-direction: column;

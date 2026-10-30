@@ -125,6 +125,7 @@ function renderSidebar(
     isOpen?: boolean;
     onClose?: () => void;
     collapsible?: boolean;
+    railOnly?: boolean;
     pinned?: boolean;
     onTogglePinned?: () => void;
     vidroShell?: boolean;
@@ -779,11 +780,23 @@ describe('Sidebar', () => {
       expect(screen.queryByText('Visual clássico')).not.toBeInTheDocument();
     });
 
-    it('has no look item in the drawer', () => {
+    it('offers "Visual novo" in the tablet drawer, so an opted-out user can return', () => {
       setAuth();
+      const onToggle = vi.fn();
       renderSidebar('/dashboard', {
         isDrawer: true,
         isOpen: true,
+        look: { enabled: true, optedOut: true, onToggle },
+      });
+
+      fireEvent.click(screen.getByText('Ana Maria'));
+      fireEvent.click(screen.getByText('Visual novo'));
+      expect(onToggle).toHaveBeenCalledTimes(1);
+    });
+
+    it('has no look item without the collapsible sidebar or the drawer (phone)', () => {
+      setAuth();
+      renderSidebar('/dashboard', {
         look: { enabled: true, optedOut: false, onToggle: vi.fn() },
       });
 
@@ -791,6 +804,75 @@ describe('Sidebar', () => {
       expect(screen.getByText('Opções da Conta')).toBeInTheDocument();
       expect(screen.queryByText('Visual clássico')).not.toBeInTheDocument();
       expect(screen.queryByText('Visual novo')).not.toBeInTheDocument();
+    });
+
+    describe('tablet rail (railOnly)', () => {
+      const tablet = { collapsible: true, vidroShell: true, railOnly: true };
+
+      it('opens over the content from its toggle instead of pinning', () => {
+        setAuth();
+        const onTogglePinned = vi.fn();
+        const { container } = renderSidebar('/dashboard', { ...tablet, onTogglePinned });
+        const nav = container.querySelector('nav')!;
+        expect(nav).toHaveClass('sidebar--rail', 'sidebar--rail-only');
+
+        fireEvent.click(screen.getByRole('button', { name: 'Abrir menu lateral' }));
+        expect(nav).toHaveClass('sidebar--overlay');
+        expect(nav).not.toHaveClass('sidebar--rail');
+        expect(onTogglePinned).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Fechar menu lateral' }));
+        expect(nav).toHaveClass('sidebar--rail');
+      });
+
+      it('ignores the mouseenter a finger tap fires, but still hovers with a trackpad', () => {
+        setAuth();
+        vi.useFakeTimers();
+        const hover = { matches: false };
+        vi.stubGlobal(
+          'matchMedia',
+          vi.fn((query: string) => ({
+            matches: query === '(hover: hover)' ? hover.matches : false,
+            media: query,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+          })),
+        );
+        const { container } = renderSidebar('/dashboard', tablet);
+        const nav = container.querySelector('nav')!;
+
+        fireEvent.mouseEnter(nav);
+        act(() => vi.advanceTimersByTime(500));
+        expect(nav).toHaveClass('sidebar--rail');
+
+        hover.matches = true;
+        fireEvent.mouseLeave(nav);
+        fireEvent.mouseEnter(nav);
+        act(() => vi.advanceTimersByTime(500));
+        expect(nav).toHaveClass('sidebar--overlay');
+        vi.unstubAllGlobals();
+      });
+
+      it('closes on a navigation, on Escape and on a tap outside', () => {
+        setAuth();
+        const { container } = renderSidebar('/dashboard', tablet);
+        const nav = container.querySelector('nav')!;
+        const open = () =>
+          fireEvent.click(screen.getByRole('button', { name: 'Abrir menu lateral' }));
+
+        open();
+        fireEvent.click(screen.getByText('Clientes'));
+        expect(screen.getByTestId('current-path')).toHaveTextContent('/clientes');
+        expect(nav).toHaveClass('sidebar--rail');
+
+        open();
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(nav).toHaveClass('sidebar--rail');
+
+        open();
+        fireEvent.pointerDown(document.body);
+        expect(nav).toHaveClass('sidebar--rail');
+      });
     });
 
     it('has no look item when the workspace flag is off', () => {
