@@ -1642,6 +1642,22 @@ describe('WorkflowDrawer scrolls the targeted post into view', () => {
     expect(container.querySelector('.drawer-body')!.scrollTop).toBe(0);
   });
 
+  it('creates the new post after the highest ordem, even with gaps in the list', async () => {
+    // Deletes and moves leave gaps: 2 posts whose ordem is 0 and 5. posts.length (2) would
+    // sort the new post between them.
+    mockGetPosts.mockResolvedValue([makePost(1, 0), makePost(2, 5)]);
+    mockAddPost.mockResolvedValue(makePost(3, 6));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, { initialPostId: undefined });
+    await screen.findByText('Post 2');
+
+    fireEvent.click(screen.getAllByRole('button', { name: /Novo Post/ })[1]);
+
+    await waitFor(() =>
+      expect(mockAddPost).toHaveBeenCalledWith(expect.objectContaining({ ordem: 6 })),
+    );
+  });
+
   it('scrolls to the post "Novo Post" just created once it renders', async () => {
     mockGetPosts.mockResolvedValue([makePost(1, 0)]);
     mockAddPost.mockResolvedValue(makePost(3, 1));
