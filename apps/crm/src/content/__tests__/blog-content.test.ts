@@ -45,12 +45,12 @@ const MESAAS = /mesaas/i;
 const COMPETITOR = /aprova\s*post|mlabs|etus|doo\s*studio|postgrain|robopost/i;
 
 /**
- * A contrast whose *object* is the rival: "Diferente do Aprova Post, aqui você
- * agenda no TikTok" names them and then claims the capability for us. Whatever
+ * A contrast whose *object* is the rival: "Ao contrário do mLabs, aqui você
+ * gera imagens com IA" names them and then claims the capability for us. Whatever
  * follows belongs to our side, so the competitor exemption must not apply.
  *
- * The mirror image stays exempt on purpose — in "Diferente de nós, o Aprova
- * Post já publica no TikTok" the contrast is about us and the claim is theirs,
+ * The mirror image stays exempt on purpose — in "Diferente de nós, o Doo
+ * Studio gera imagens com IA" the contrast is about us and the claim is theirs,
  * which is the honest attribution the exemption exists to permit.
  */
 const CONTRAST_AGAINST_COMPETITOR = new RegExp(
@@ -67,8 +67,8 @@ const CONTRAST_AGAINST_COMPETITOR = new RegExp(
  *
  * "sem" in particular is ordinary marketing register here ("sem login, sem
  * app, sem fricção"), so a line-wide test disables the rules on a large slice
- * of the corpus and waves through "o Mesaas publica no TikTok sem sair do
- * kanban". Scope decides it instead: the negation only counts when it sits in
+ * of the corpus and waves through "o Mesaas gera imagens com IA sem custo
+ * adicional". Scope decides it instead: the negation only counts when it sits in
  * the same clause as the claim *and* before it.
  */
 const NEGATION = /\b(n[ãa]o|nunca|sem|jamais)\b/i;
@@ -88,8 +88,8 @@ const CLAUSE_BREAK = /[,.;:!?]|—|\bmas\b|\bpor[ée]m\b|\bj[áa]\b/i;
  */
 function claimsUnnegated(line: string, re: RegExp): boolean {
   // Every occurrence, not just the first: a denial followed by a claim on the
-  // same line ("não publica no TikTok hoje; a partir de agosto publica no
-  // TikTok") negates only the first one.
+  // same line ("não gera imagens com IA hoje; a partir de agosto gera imagens
+  // com IA") negates only the first one.
   const scan = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
   for (let m = scan.exec(line); m; m = scan.exec(line)) {
     const clause = line.slice(0, m.index).split(CLAUSE_BREAK).pop() ?? '';
@@ -99,7 +99,7 @@ function claimsUnnegated(line: string, re: RegExp): boolean {
 }
 
 /**
- * First-person plural attribution ("publicamos no TikTok", "nosso plano").
+ * First-person plural attribution ("geramos imagens com IA", "nosso plano").
  * These articles write about Mesaas in the first person and address the
  * reader as "você", so "we" never refers to the reader — it is as much a
  * claim about Mesaas as saying the name outright.
@@ -143,9 +143,6 @@ function quotesMesaasPlanPrice(line: string): boolean {
   return MESAAS_PLAN_PRICE.test(line) && !READERS_OWN_PRICING.test(line);
 }
 
-/** Written with or without the space: "TikTok", "Tik Tok". */
-const TIKTOK = /tik\s*tok/i;
-
 // Note the singular: pt-BR is "imagem"/"imagens", so `imagens?` alone silently
 // misses every singular phrasing ("gerar imagem com IA").
 const IMAGE_NOUN = /(?:imagem|imagens|artes?|criativos?)/.source;
@@ -174,7 +171,7 @@ const AI_IMAGE = [
 /**
  * Whether a claim reads as something *we* ship. Competitor-attributed claims
  * pass: refusing to describe a capability a rival genuinely has would make our
- * own comparison dishonest — and their TikTok support is exactly that case.
+ * own comparison dishonest — and their AI image generation is exactly that case.
  * The line's own attribution wins, then the section heading it sits under;
  * an unattributed claim counts as ours, so the rule fails closed.
  */
@@ -182,7 +179,7 @@ function claimIsAboutMesaas(line: string, heading = ''): boolean {
   for (const scope of [line, heading]) {
     if (MESAAS.test(scope) || FIRST_PERSON_MESAAS.test(scope)) return true;
     // A contrast names the rival and then claims something for US — "Diferente
-    // do Aprova Post, aqui você agenda no TikTok". The competitor exemption
+    // do mLabs, aqui você gera imagens com IA". The competitor exemption
     // cannot read that, so a contrastive line fails closed: write the two
     // halves as two sentences and each gets attributed on its own.
     if (COMPETITOR.test(scope)) return CONTRAST_AGAINST_COMPETITOR.test(scope);
@@ -194,7 +191,6 @@ function claimIsAboutMesaas(line: string, heading = ''): boolean {
 function unshippedClaims(line: string, heading = ''): string[] {
   if (!claimIsAboutMesaas(line, heading)) return [];
   const broken: string[] = [];
-  if (claimsUnnegated(line, TIKTOK)) broken.push('TikTok is not launched');
   if (AI_IMAGE.some((re) => claimsUnnegated(line, re)))
     broken.push('there is no AI image generation');
   return broken;
@@ -432,9 +428,6 @@ describe('content lint rules', () => {
   describe('unshipped-feature claims', () => {
     test.each([
       // Named or unattributed — an unattributed claim counts as ours.
-      'O Mesaas publica no TikTok',
-      'Publicamos no Tik Tok também',
-      'agendamento no tiktok direto do kanban',
       'geração de imagem com IA',
       'gerar imagem com IA',
       'criação de imagens com IA',
@@ -445,28 +438,27 @@ describe('content lint rules', () => {
       'geração de imagens por IA',
       'o Mesaas gera as imagens do post usando IA',
       // First-person plural, no product name.
-      '- Também publicamos no TikTok.',
-      '- Publicamos no TikTok e no Instagram.',
-      'Diferente do Aprova Post, já publicamos no TikTok.',
+      '- Também geramos imagens com IA.',
+      '- Criamos imagens com IA e legendas.',
+      'Diferente do Aprova Post, já geramos imagens com IA.',
       'Ao contrário do Aprova Post, geramos imagens com IA.',
       // Trailing or out-of-clause negation: the words of a denial around the
       // substance of a claim. "sem" after the claim qualifies the claim.
-      'O Mesaas publica no TikTok sem sair do kanban.',
       'O Mesaas gera imagens com IA sem custo adicional.',
-      'Não é só o Instagram: o Mesaas também publica no TikTok.',
+      'Não é só legenda: o Mesaas também gera imagens com IA.',
       'A criação de imagens com IA está inclusa e não custa nada a mais.',
       'O Mesaas gera imagens com IA. Nunca foi tão fácil.',
       // Same shape, one clause apart: the denial is spent on the first
       // sentence and cannot cover the second.
       'Não é editor de design. O Mesaas gera imagens com IA.',
-      'Sem multirredes por enquanto — mas o Mesaas publica no TikTok.',
+      'Sem editor de vídeo por enquanto — mas o Mesaas gera imagens com IA.',
       // Leading subordinate clause, separated only by a comma. This shape
       // survived the clause-scoped rule until the comma joined CLAUSE_BREAK,
       // and `embora` left it — a break word before the negation would hand
       // that negation to the claim it was supposed to be shielding us from.
       'Sem editor de design, o Mesaas gera imagens com IA.',
-      'Como não há limite, o Mesaas publica no TikTok.',
-      'Se você não usa Instagram, o Mesaas publica no TikTok também.',
+      'Como não há limite, o Mesaas gera imagens com IA.',
+      'Se você não usa o Canva, o Mesaas gera imagens com IA também.',
       'Embora não seja um editor, o Mesaas gera imagens com IA.',
     ])('rejects %j', (s) => {
       expect(unshippedClaims(s)).not.toEqual([]);
@@ -476,15 +468,18 @@ describe('content lint rules', () => {
       // Honest denials. Drawing the boundary out loud is what the "o que o
       // Mesaas não faz" sections are for, and must stay writable.
       'O Mesaas não gera imagens com IA.',
-      'O Mesaas não publica no TikTok.',
       'Não geramos imagens com IA: o agente escreve o texto e anexa a sua arte.',
-      'O Mesaas é focado no Instagram, sem publicação no TikTok.',
-      'Nunca publicamos no TikTok em seu nome.',
+      'O Mesaas escreve a legenda, sem geração de imagens com IA.',
+      'Nunca geramos imagens com IA em seu nome.',
       // Competitor-attributed capability. Refusing to describe what a rival
       // genuinely ships would make our own comparison dishonest.
-      'O Doo Studio aprova os formatos do TikTok.',
-      'O Aprova Post aprova os formatos do TikTok e do Instagram.',
-      'Diferente de nós, o Aprova Post já publica no TikTok.',
+      'O Doo Studio gera imagens com IA.',
+      'O mLabs cria artes com IA e legendas.',
+      'Diferente de nós, o Doo Studio já gera imagens com IA.',
+      // TikTok publishing shipped on 2026-10-30 (Pro and Max), so saying we
+      // publish there is a true claim, not an unshipped one.
+      'O Mesaas publica no TikTok.',
+      '- Também publicamos no TikTok, em vídeo e carrossel de fotos.',
       // The AI content agent we do ship: it writes text, so no image rule fires.
       'Há um agente de conteúdo com IA que cria o rascunho por MCP.',
     ])('allows %j', (s) => {
@@ -493,15 +488,15 @@ describe('content lint rules', () => {
 
     // Attribution can also come from the section a line sits under, so these
     // carry a heading and cannot ride in the tables above.
-    test('allows a TikTok mention inside a competitor section', () => {
+    test('allows an AI-image mention inside a competitor section', () => {
       expect(
-        unshippedClaims('- Aprovação dos formatos do TikTok.', '## O que o Aprova Post entrega'),
+        unshippedClaims('- Geração de imagens com IA.', '## O que o Doo Studio entrega'),
       ).toEqual([]);
     });
 
     test('still rejects a Mesaas claim made inside a competitor section', () => {
       expect(
-        unshippedClaims('O Mesaas também publica no TikTok.', '## O que o Aprova Post entrega'),
+        unshippedClaims('O Mesaas também gera imagens com IA.', '## O que o Doo Studio entrega'),
       ).not.toEqual([]);
     });
   });
@@ -546,17 +541,17 @@ describe('bypasses found by the whole-branch review', () => {
   test.each([
     // A contrast names the rival and claims for our side. These articles
     // address the reader as "você" constantly, so this is the realistic hole.
-    'Diferente do Aprova Post, aqui você agenda no TikTok sem sair do painel.',
+    'Diferente do Aprova Post, aqui você gera imagens com IA sem sair do painel.',
     'Ao contrário do mLabs, a geração de imagens com IA já vem inclusa.',
     'Enquanto o Doo Studio cobra à parte, aqui a criação de imagens com IA é inclusa.',
     // A denial spends itself on the first occurrence and cannot cover a second.
-    'O Mesaas não publica no TikTok hoje; a partir de agosto o Mesaas publica no TikTok.',
+    'O Mesaas não gera imagens com IA hoje; a partir de agosto o Mesaas gera imagens com IA.',
   ])('rejects %j', (s) => {
     expect(unshippedClaims(s)).not.toEqual([]);
   });
 
   test.each([
-    'O Aprova Post aprova os formatos do TikTok e do Instagram.',
+    'O mLabs cria artes com IA para o Instagram.',
     'O Doo Studio anuncia geração de imagens com IA nos módulos dele.',
   ])('still allows the plainly competitor-attributed %j', (s) => {
     expect(unshippedClaims(s)).toEqual([]);
