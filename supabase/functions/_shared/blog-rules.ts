@@ -52,7 +52,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
  * março" while the sitemap kept an impossible `lastmod`. Round-tripping the
  * parts through Date is what catches a typo the author would never see. */
 export function isRealCalendarDate(value: string): boolean {
-  const [y, m, d] = value.split("-").map(Number);
+  const [y, m, d] = value.split('-').map(Number);
   const parsed = new Date(Date.UTC(y, m - 1, d));
   return (
     parsed.getUTCFullYear() === y && parsed.getUTCMonth() === m - 1 && parsed.getUTCDate() === d
@@ -61,14 +61,14 @@ export function isRealCalendarDate(value: string): boolean {
 
 export const isoDate = z
   .string()
-  .regex(DATE, "must be YYYY-MM-DD")
-  .refine(isRealCalendarDate, "must be a real calendar date");
+  .regex(DATE, 'must be YYYY-MM-DD')
+  .refine(isRealCalendarDate, 'must be a real calendar date');
 
 /** `z.string().url()` alone accepts `ftp:`, `javascript:` and friends. */
 const httpUrl = z
   .string()
   .url()
-  .refine((value) => /^https?:\/\//i.test(value), "must be an http(s) URL");
+  .refine((value) => /^https?:\/\//i.test(value), 'must be an http(s) URL');
 
 export const blogSourceSchema = z
   .object({
@@ -82,7 +82,7 @@ export const blogSourceSchema = z
 /** `key` is what the body references as `![alt](img:<key>)`. */
 export const blogImageSchema = z
   .object({
-    key: z.string().regex(/^[a-z0-9-]{1,40}$/, "must be 1-40 chars of a-z, 0-9 or -"),
+    key: z.string().regex(/^[a-z0-9-]{1,40}$/, 'must be 1-40 chars of a-z, 0-9 or -'),
     url: httpUrl,
     alt: z.string().min(1).max(200),
     credit: z.string().min(1).max(200),
@@ -97,7 +97,7 @@ const fonte = z.number().int().min(0);
 
 const barrasSchema = z
   .object({
-    tipo: z.literal("barras"),
+    tipo: z.literal('barras'),
     titulo,
     fonte,
     itens: z
@@ -117,7 +117,7 @@ const barrasSchema = z
 
 const numerosSchema = z
   .object({
-    tipo: z.literal("numeros"),
+    tipo: z.literal('numeros'),
     titulo,
     fonte,
     itens: z
@@ -136,7 +136,7 @@ const numerosSchema = z
 
 const etapasSchema = z
   .object({
-    tipo: z.literal("etapas"),
+    tipo: z.literal('etapas'),
     titulo,
     itens: z
       .array(z.object({ rotulo: z.string().min(1).max(60) }).strict())
@@ -145,11 +145,195 @@ const etapasSchema = z
   })
   .strict();
 
-export const infograficoSchema = z.discriminatedUnion("tipo", [
+const SVG_MAX_CHARS = 20000;
+const SVG_MAX_NODES = 300;
+const SVG_MAX_DEPTH = 10;
+
+/** Free-form infographic: the author draws an SVG, `parseSvg` keeps only what
+ * is provably inert. `fonte` is optional because a drawing need not carry
+ * data; one that does must cite the source it came from. */
+const svgSchema = z
+  .object({
+    tipo: z.literal('svg'),
+    titulo,
+    alt: z.string().min(1).max(300),
+    fonte: fonte.optional(),
+    svg: z.string().min(1).max(SVG_MAX_CHARS),
+  })
+  .strict();
+
+export const infograficoSchema = z.discriminatedUnion('tipo', [
   barrasSchema,
   numerosSchema,
   etapasSchema,
+  svgSchema,
 ]);
+
+export interface SvgNode {
+  tag: string;
+  attrs: Record<string, string>;
+  children: Array<SvgNode | string>;
+}
+
+const SVG_TAGS = new Set([
+  'svg',
+  'g',
+  'defs',
+  'rect',
+  'circle',
+  'ellipse',
+  'line',
+  'polyline',
+  'polygon',
+  'path',
+  'text',
+  'tspan',
+  'linearGradient',
+  'radialGradient',
+  'stop',
+]);
+const SVG_TEXT_TAGS = new Set(['text', 'tspan']);
+
+const SVG_NUM = /^-?\d+(\.\d+)?(%|px)?$/;
+const SVG_NUMS = /^[-0-9.,\s%]+$/;
+const SVG_PAINT =
+  /^(none|currentColor|#[0-9a-fA-F]{3,8}|var\(--blog-r-[a-z0-9-]+\)|url\(#[A-Za-z][A-Za-z0-9_-]{0,39}\))$/;
+const SVG_PATH = /^[MmLlHhVvCcSsQqTtAaZz0-9\s.,eE+-]+$/;
+const SVG_TRANSFORM = /^(?:(?:translate|rotate|scale)\([-0-9.,\s]+\)\s*)+$/;
+
+/** Allowlist, attribute by attribute: anything else (style, class, href,
+ * on*, font-family...) is refused, never stripped, so a draft that passes
+ * draws exactly what its author wrote. */
+const SVG_ATTRS: Record<string, RegExp> = {
+  viewBox: SVG_NUMS,
+  x: SVG_NUM,
+  y: SVG_NUM,
+  x1: SVG_NUM,
+  y1: SVG_NUM,
+  x2: SVG_NUM,
+  y2: SVG_NUM,
+  cx: SVG_NUM,
+  cy: SVG_NUM,
+  r: SVG_NUM,
+  rx: SVG_NUM,
+  ry: SVG_NUM,
+  width: SVG_NUM,
+  height: SVG_NUM,
+  offset: SVG_NUM,
+  d: SVG_PATH,
+  points: SVG_NUMS,
+  transform: SVG_TRANSFORM,
+  fill: SVG_PAINT,
+  stroke: SVG_PAINT,
+  'stop-color': SVG_PAINT,
+  'stroke-width': SVG_NUM,
+  'stroke-dasharray': SVG_NUMS,
+  'stroke-linecap': /^(butt|round|square)$/,
+  'stroke-linejoin': /^(miter|round|bevel)$/,
+  opacity: SVG_NUM,
+  'fill-opacity': SVG_NUM,
+  'stroke-opacity': SVG_NUM,
+  'font-size': SVG_NUM,
+  'font-weight': /^(normal|bold|[1-9]00)$/,
+  'text-anchor': /^(start|middle|end)$/,
+  'dominant-baseline': /^(auto|middle|central|hanging|alphabetic)$/,
+  id: /^[A-Za-z][A-Za-z0-9_-]{0,39}$/,
+};
+
+const SVG_XMLNS = 'http://www.w3.org/2000/svg';
+const SVG_OPEN = /<([A-Za-z]+)((?:\s+[A-Za-z][A-Za-z0-9:-]*\s*=\s*"[^"<>]*")*)\s*(\/?)>/y;
+const SVG_CLOSE = /<\/([A-Za-z]+)\s*>/y;
+const SVG_ATTR = /([A-Za-z][A-Za-z0-9:-]*)\s*=\s*"([^"<>]*)"/g;
+const SVG_ENTITIES: Record<string, string> = {
+  '&amp;': '&',
+  '&lt;': '<',
+  '&gt;': '>',
+  '&quot;': '"',
+  '&#39;': "'",
+};
+
+/** Strict, fail-closed reader for the one SVG dialect infographics may use:
+ * a single root `<svg viewBox>` of allowlisted shapes and text, double-quoted
+ * attributes, no comments, doctypes, CDATA, scripts, styles or links. The
+ * output is a plain tree, so the renderer builds elements from it and never
+ * injects markup. */
+export function parseSvg(source: string): { node: SvgNode } | { error: string } {
+  const text = source.trim();
+  if (text.length > SVG_MAX_CHARS) return { error: `máximo de ${SVG_MAX_CHARS} caracteres` };
+  if (!text.startsWith('<svg') || !text.endsWith('>')) {
+    return { error: 'deve começar em <svg e terminar em >' };
+  }
+  const stack: SvgNode[] = [];
+  let root: SvgNode | undefined;
+  let nodes = 0;
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === '<') {
+      SVG_CLOSE.lastIndex = i;
+      const close = SVG_CLOSE.exec(text);
+      if (close) {
+        const open = stack.pop();
+        if (!open || open.tag !== close[1]) return { error: `tag </${close[1]}> sem abertura` };
+        i = SVG_CLOSE.lastIndex;
+        continue;
+      }
+      SVG_OPEN.lastIndex = i;
+      const tag = SVG_OPEN.exec(text);
+      if (!tag)
+        return { error: 'marcação inválida (comentário, entidade ou atributo fora do padrão)' };
+      const name = tag[1];
+      if (!SVG_TAGS.has(name)) return { error: `elemento não permitido: ${name}` };
+      const isRoot = stack.length === 0;
+      if (isRoot !== (name === 'svg')) {
+        return { error: isRoot ? 'o elemento raiz deve ser svg' : 'svg só pode ser a raiz' };
+      }
+      if (root && isRoot) return { error: 'só um elemento raiz' };
+      nodes++;
+      if (nodes > SVG_MAX_NODES) return { error: `máximo de ${SVG_MAX_NODES} elementos` };
+      if (stack.length >= SVG_MAX_DEPTH) return { error: `máximo de ${SVG_MAX_DEPTH} níveis` };
+      const attrs: Record<string, string> = {};
+      for (const match of tag[2].matchAll(SVG_ATTR)) {
+        const key = match[1];
+        const value = match[2];
+        if (Object.prototype.hasOwnProperty.call(attrs, key))
+          return { error: `atributo repetido: ${key}` };
+        if (key === 'xmlns') {
+          if (!isRoot || value !== SVG_XMLNS) return { error: 'xmlns inválido' };
+          continue;
+        }
+        const rule = Object.prototype.hasOwnProperty.call(SVG_ATTRS, key)
+          ? SVG_ATTRS[key]
+          : undefined;
+        if (!rule) return { error: `atributo não permitido: ${key}` };
+        if (!rule.test(value)) return { error: `valor inválido em ${key}` };
+        attrs[key] = value;
+      }
+      if (isRoot) {
+        if (!attrs.viewBox) return { error: 'o svg precisa de viewBox' };
+        if (Object.keys(attrs).length > 1) return { error: 'o svg raiz só aceita viewBox' };
+      }
+      const node: SvgNode = { tag: name, attrs, children: [] };
+      if (stack.length > 0) stack[stack.length - 1].children.push(node);
+      else root = node;
+      i = SVG_OPEN.lastIndex;
+      if (!tag[3]) stack.push(node);
+      else if (isRoot) i = text.length;
+      continue;
+    }
+    const next = text.indexOf('<', i);
+    const chunk = text.slice(i, next === -1 ? text.length : next);
+    i = next === -1 ? text.length : next;
+    const parent = stack[stack.length - 1];
+    if (!parent) return { error: 'conteúdo fora do svg' };
+    if (!chunk.trim()) continue;
+    if (!SVG_TEXT_TAGS.has(parent.tag)) return { error: 'texto só dentro de text ou tspan' };
+    if (/&(?!(amp|lt|gt|quot|#39);)/.test(chunk))
+      return { error: 'entidade não permitida no texto' };
+    parent.children.push(chunk.replace(/&(amp|lt|gt|quot|#39);/g, (m) => SVG_ENTITIES[m]));
+  }
+  if (stack.length > 0 || !root) return { error: 'tags não fechadas' };
+  return { node: root };
+}
 
 export type BlogSource = z.infer<typeof blogSourceSchema>;
 export type BlogImage = z.infer<typeof blogImageSchema>;
@@ -161,6 +345,7 @@ const INFOGRAFICO_KINDS: Record<string, z.ZodTypeAny> = {
   barras: barrasSchema,
   numeros: numerosSchema,
   etapas: etapasSchema,
+  svg: svgSchema,
 };
 
 /** Fenced code blocks as CommonMark (and so react-markdown) reads them: up
@@ -193,7 +378,7 @@ export function extractInfograficos(body: string): ExtractedInfografico[] {
     if (!open) continue;
     const marker = open[1];
     const info = open[2];
-    if (marker[0] === "`" && info.includes("`")) continue;
+    if (marker[0] === '`' && info.includes('`')) continue;
     const content: string[] = [];
     while (i < lines.length) {
       const close = FENCE_CLOSE.exec(lines[i]);
@@ -204,15 +389,15 @@ export function extractInfograficos(body: string): ExtractedInfografico[] {
     i++;
     if (!INFOGRAFICO_INFO.test(info)) continue;
     const index = found.length;
-    const text = content.join("\n");
+    const text = content.join('\n');
     if (!text.trim()) {
-      found.push({ index, value: undefined, error: "JSON inválido" });
+      found.push({ index, value: undefined, error: 'JSON inválido' });
       continue;
     }
     try {
       found.push({ index, value: JSON.parse(text) });
     } catch {
-      found.push({ index, value: undefined, error: "JSON inválido" });
+      found.push({ index, value: undefined, error: 'JSON inválido' });
     }
   }
   return found;
@@ -232,39 +417,39 @@ type Issue = {
 };
 
 const TYPE_NAMES: Record<string, string> = {
-  number: "número",
-  int: "número inteiro",
-  integer: "número inteiro",
-  string: "texto",
-  array: "lista",
-  object: "objeto",
+  number: 'número',
+  int: 'número inteiro',
+  integer: 'número inteiro',
+  string: 'texto',
+  array: 'lista',
+  object: 'objeto',
 };
 
 function issuePath(path: PropertyKey[]): string {
-  return path.map((part) => (typeof part === "number" ? `[${part}]` : `.${String(part)}`)).join("");
+  return path.map((part) => (typeof part === 'number' ? `[${part}]` : `.${String(part)}`)).join('');
 }
 
 function issueMessage(issue: Issue): string {
   const kind = issue.origin ?? issue.type;
   switch (issue.code) {
-    case "invalid_type":
+    case 'invalid_type':
       return `deve ser ${TYPE_NAMES[String(issue.expected)] ?? String(issue.expected)}`;
-    case "too_small": {
+    case 'too_small': {
       const min = Number(issue.minimum);
-      if (kind === "string") return `mínimo de ${min} caracteres`;
-      if (kind === "array") return `mínimo de ${min} itens`;
+      if (kind === 'string') return `mínimo de ${min} caracteres`;
+      if (kind === 'array') return `mínimo de ${min} itens`;
       return `deve ser maior ou igual a ${min}`;
     }
-    case "too_big": {
+    case 'too_big': {
       const max = Number(issue.maximum);
-      if (kind === "string") return `máximo de ${max} caracteres`;
-      if (kind === "array") return `máximo de ${max} itens`;
+      if (kind === 'string') return `máximo de ${max} caracteres`;
+      if (kind === 'array') return `máximo de ${max} itens`;
       return `deve ser menor ou igual a ${max}`;
     }
-    case "unrecognized_keys":
-      return `chave desconhecida: ${(issue.keys ?? []).join(", ")}`;
+    case 'unrecognized_keys':
+      return `chave desconhecida: ${(issue.keys ?? []).join(', ')}`;
     default:
-      return "valor inválido";
+      return 'valor inválido';
   }
 }
 
@@ -280,10 +465,10 @@ export function validateInfograficos(body: string, sourcesCount: number): string
       continue;
     }
     const tipo =
-      value && typeof value === "object" ? (value as Record<string, unknown>).tipo : undefined;
-    const schema = typeof tipo === "string" ? INFOGRAFICO_KINDS[tipo] : undefined;
+      value && typeof value === 'object' ? (value as Record<string, unknown>).tipo : undefined;
+    const schema = typeof tipo === 'string' ? INFOGRAFICO_KINDS[tipo] : undefined;
     if (!schema) {
-      messages.push(`${prefix}.tipo: deve ser barras, numeros ou etapas`);
+      messages.push(`${prefix}.tipo: deve ser barras, numeros, etapas ou svg`);
       continue;
     }
     const parsed = schema.safeParse(value);
@@ -294,9 +479,14 @@ export function validateInfograficos(body: string, sourcesCount: number): string
       continue;
     }
     const data = parsed.data as Infografico;
-    if (data.tipo !== "etapas" && data.fonte >= sourcesCount) {
-      const range = sourcesCount > 0 ? `0..${sourcesCount - 1}` : "nenhuma fonte";
-      messages.push(`${prefix}.fonte: índice ${data.fonte} fora de sources (${range})`);
+    const cited = 'fonte' in data ? data.fonte : undefined;
+    if (cited !== undefined && cited >= sourcesCount) {
+      const range = sourcesCount > 0 ? `0..${sourcesCount - 1}` : 'nenhuma fonte';
+      messages.push(`${prefix}.fonte: índice ${cited} fora de sources (${range})`);
+    }
+    if (data.tipo === 'svg') {
+      const drawn = parseSvg(data.svg);
+      if ('error' in drawn) messages.push(`${prefix}.svg: ${drawn.error}`);
     }
   }
   return messages;

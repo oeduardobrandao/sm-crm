@@ -350,7 +350,7 @@ describe('validateInfograficos', () => {
 
   test('flags an unknown tipo', () => {
     expect(validateInfograficos(fence({ ...BARRAS, tipo: 'pizza' }), 2)).toEqual([
-      'infografico[0].tipo: deve ser barras, numeros ou etapas',
+      'infografico[0].tipo: deve ser barras, numeros, etapas ou svg',
     ]);
   });
 
@@ -400,5 +400,66 @@ describe('validateInfograficos', () => {
     expect(validateInfograficos(fence({ ...BARRAS, fonte: 0.5 }), 2)).toEqual([
       'infografico[0].fonte: deve ser número inteiro',
     ]);
+  });
+});
+
+describe('validateInfograficos: svg', () => {
+  const svg = (inner: string, root = '<svg viewBox="0 0 100 50">') => `${root}${inner}</svg>`;
+  const draw = (markup: string, extra: Record<string, unknown> = {}) =>
+    validateInfograficos(
+      fence({ tipo: 'svg', titulo: 'Funil', alt: 'Três barras', svg: markup, ...extra }),
+      1,
+    );
+
+  it('aceita formas e texto na lista permitida, com ou sem fonte', () => {
+    const ok = svg(
+      '<defs><linearGradient id="g1"><stop offset="0" stop-color="#ffbf30"/></linearGradient></defs>' +
+        '<rect x="0" y="0" width="40" height="10" rx="2" fill="url(#g1)"/>' +
+        '<path d="M0 40 L50 20 Q75 5 100 30" stroke="currentColor" fill="none" stroke-width="2"/>' +
+        '<text x="4" y="8" font-size="6" fill="var(--blog-r-ink)">Leads &amp; vendas</text>',
+    );
+    expect(draw(ok)).toEqual([]);
+    expect(draw(ok, { fonte: 0 })).toEqual([]);
+  });
+
+  it('exige que fonte exista em sources quando informada', () => {
+    expect(draw(svg(''), { fonte: 4 })).toEqual([
+      'infografico[0].fonte: índice 4 fora de sources (0..0)',
+    ]);
+  });
+
+  it.each([
+    ['script', svg('<script>alert(1)</script>')],
+    ['foreignObject', svg('<foreignObject><div/></foreignObject>')],
+    ['style', svg('<style>*{}</style>')],
+    ['image', svg('<image href="https://x.example/a.png"/>')],
+    ['use', svg('<use href="#a"/>')],
+    ['a', svg('<a href="javascript:alert(1)"><text>x</text></a>')],
+    ['handler', svg('<rect onload="alert(1)" width="1" height="1"/>')],
+    ['href', svg('<rect href="https://x.example" width="1" height="1"/>')],
+    ['style attr', svg('<rect style="fill:red" width="1" height="1"/>')],
+    ['url externa', svg('<rect fill="url(https://x.example/a.svg#b)" width="1" height="1"/>')],
+    ['javascript', svg('<rect fill="javascript:alert(1)" width="1" height="1"/>')],
+    ['comentário', svg('<!-- x --><rect width="1" height="1"/>')],
+    ['cdata', svg('<text><![CDATA[x]]></text>')],
+    ['doctype', '<!DOCTYPE svg><svg viewBox="0 0 1 1"></svg>'],
+    ['entidade', svg('<text>&copy;</text>')],
+    ['aspas simples', svg("<rect width='1' height='1'/>")],
+    ['sem viewBox', '<svg><rect width="1" height="1"/></svg>'],
+    ['raiz com width', svg('', '<svg viewBox="0 0 1 1" width="500">')],
+    ['dois svg', svg('') + svg('')],
+    ['svg aninhado', svg('<svg viewBox="0 0 1 1"></svg>')],
+    ['texto solto', svg('oi')],
+    ['tag aberta', '<svg viewBox="0 0 1 1"><g></svg>'],
+    ['lixo depois', svg('') + 'x'],
+  ])('recusa %s', (_name, markup) => {
+    const messages = draw(markup);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatch(/^infografico\[0\]\.svg: /);
+  });
+
+  it('recusa SVG acima do limite de caracteres e de elementos', () => {
+    expect(draw(svg(`<g>${'x'.repeat(20000)}</g>`))[0]).toMatch(/máximo de 20000 caracteres/);
+    expect(draw(svg('<g/>'.repeat(301)))[0]).toBe('infografico[0].svg: máximo de 300 elementos');
   });
 });
