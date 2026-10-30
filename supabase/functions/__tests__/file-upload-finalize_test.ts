@@ -327,6 +327,56 @@ Deno.test("file-upload-finalize: video finalize with thumbnail returns both sign
   assertEquals(body.thumbnail_url, `https://signed.example.com/${videoBody.thumbnail_r2_key}`);
 });
 
+const frameVideoBody = {
+  ...baseBody,
+  kind: "video" as const,
+  mime_type: "video/mp4",
+  r2_key: "contas/conta-1/files/vid.mp4",
+  thumbnail_r2_key: "contas/conta-1/files/vid.thumb.jpg",
+};
+
+Deno.test("file-upload-finalize: video with thumbnail_frame_ms stores it after the insert and returns it", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queueRpc("file_insert_with_quota", { data: { id: 21, r2_key: frameVideoBody.r2_key, kind: "video" }, error: null });
+  db.queue("files", "update", { data: null, error: null });
+  const res = await makeHandler(db)(authedRequest({ ...frameVideoBody, thumbnail_frame_ms: 500 }));
+  assertEquals(res.status, 200);
+  assertEquals((await readJson(res)).thumbnail_frame_ms, 500);
+  const update = db.calls.find((c) => c.table === "files" && c.operation === "update");
+  assertEquals(update?.payload, { thumbnail_frame_ms: 500 });
+  assertEquals(update?.modifiers, [{ method: "eq", args: ["id", 21] }]);
+});
+
+Deno.test("file-upload-finalize: invalid or non-video thumbnail_frame_ms is dropped (no update, null)", async () => {
+  const cases: Array<Record<string, unknown>> = [
+    { ...frameVideoBody, thumbnail_frame_ms: -1 },
+    { ...frameVideoBody, thumbnail_frame_ms: 12.5 },
+    { ...frameVideoBody, thumbnail_frame_ms: "500" },
+    { ...frameVideoBody },
+    { ...baseBody, thumbnail_frame_ms: 500 },
+  ];
+  for (const body of cases) {
+    const db = createSupabaseQueryMock();
+    setupAuth(db);
+    db.queueRpc("file_insert_with_quota", { data: { id: 22, r2_key: body.r2_key, kind: body.kind }, error: null });
+    const res = await makeHandler(db)(authedRequest(body));
+    assertEquals(res.status, 200);
+    assertEquals((await readJson(res)).thumbnail_frame_ms, null);
+    assertEquals(db.calls.some((c) => c.table === "files" && c.operation === "update"), false);
+  }
+});
+
+Deno.test("file-upload-finalize: a failed frame update still finalizes, reporting no frame", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queueRpc("file_insert_with_quota", { data: { id: 23, r2_key: frameVideoBody.r2_key, kind: "video" }, error: null });
+  db.queue("files", "update", { data: null, error: { message: "boom" } });
+  const res = await makeHandler(db)(authedRequest({ ...frameVideoBody, thumbnail_frame_ms: 500 }));
+  assertEquals(res.status, 200);
+  assertEquals((await readJson(res)).thumbnail_frame_ms, null);
+});
+
 // ─── Security regression tests ────────────────────────────────
 
 Deno.test("file-upload-finalize: rejects image kind with wrong MIME type", async () => {

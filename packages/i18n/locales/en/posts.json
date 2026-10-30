@@ -178,7 +178,7 @@
   },
   "thumbnailEditor": {
     "title": "Video thumbnail",
-    "disclaimer": "This thumbnail becomes the Reel's cover on Instagram and appears in the CRM and client portal previews. (For carousels, Instagram uses the first item as the cover.)",
+    "disclaimer": "This thumbnail becomes the Reel's cover on Instagram and appears in the CRM and client portal previews. (For carousels, Instagram uses the first item as the cover.) On TikTok, the cover is this frame of the video; an uploaded image doesn't apply to TikTok, which uses its default frame.",
     "useFrame": "Use this frame",
     "uploadImage": "Upload image",
     "current": "Current thumbnail",
@@ -355,14 +355,9 @@
   },
   "tiktokCover": {
     "label": "TikTok cover",
-    "default": "TikTok's default frame",
-    "frameAt": "Frame at {{time}}",
-    "choose": "Choose frame",
-    "title": "TikTok cover",
-    "disclaimer": "TikTok only accepts a frame from the video itself as the cover. Pause on the frame you want and use it. The Instagram thumbnail doesn't change.",
-    "playhead": "Current frame: {{time}}",
-    "useFrame": "Use this frame",
-    "useDefault": "Use TikTok's default"
+    "followsThumbnail": "TikTok uses the same frame as the thumbnail ({{time}}).",
+    "noFrame": "The current thumbnail isn't a frame of the video (an uploaded image, or set before this version). TikTok doesn't accept an image as the cover and will use its default frame. To choose one, open the thumbnail and use “Use this frame”.",
+    "editThumbnail": "Edit thumbnail"
   },
   "trialReel": {
     "lockedBySchedule": "Cancel the schedule to edit",

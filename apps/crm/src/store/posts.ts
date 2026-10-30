@@ -501,6 +501,10 @@ export interface PostMedia {
   conta_id: string;
   r2_key: string;
   thumbnail_r2_key: string | null;
+  /** Video: the moment (ms) the thumbnail was captured from, which TikTok publishes as the
+   * cover; null when the thumbnail is an uploaded image or unknown (files from before the
+   * column). Optional because responses from an older post-media-manage omit it. */
+  thumbnail_frame_ms?: number | null;
   kind: 'image' | 'video';
   mime_type: string;
   size_bytes: number;

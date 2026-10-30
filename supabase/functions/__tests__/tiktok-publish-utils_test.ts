@@ -65,7 +65,6 @@ const VALID_SETTINGS = {
   auto_add_music: false,
   photo_cover_index: 0,
   is_aigc: false,
-  video_cover_timestamp_ms: 0,
 };
 
 interface SeedOpts {
@@ -758,12 +757,14 @@ const FULL_SETTINGS_POST: ClaimedTikTokPost = {
     auto_add_music: true,
     photo_cover_index: 2,
     is_aigc: true,
-    video_cover_timestamp_ms: 1500,
   },
 };
 
 Deno.test("buildVideoInitPayload: video with all settings populated → exact snapshot", () => {
-  const payload = buildVideoInitPayload(FULL_SETTINGS_POST, "https://r2.example.com/video.mp4");
+  const payload = buildVideoInitPayload(FULL_SETTINGS_POST, "https://r2.example.com/video.mp4", {
+    durationSeconds: 30,
+    thumbnailFrameMs: 1500,
+  });
   assertEquals(payload, {
     post_info: {
       title: "Legenda completa do vídeo",
@@ -819,19 +820,41 @@ Deno.test("usableCoverTimestampMs: keeps in-range integers, drops anything TikTo
   assertEquals(usableCoverTimestampMs(null, 10), undefined);
 });
 
-Deno.test("buildVideoInitPayload: cover timestamp past the video's end → key ABSENT, rest of payload intact", () => {
-  const payload = buildVideoInitPayload(FULL_SETTINGS_POST, "https://r2.example.com/video.mp4", 1) as {
+Deno.test("buildVideoInitPayload: thumbnail frame past the video's end → key ABSENT, rest of payload intact", () => {
+  const payload = buildVideoInitPayload(FULL_SETTINGS_POST, "https://r2.example.com/video.mp4", {
+    durationSeconds: 1,
+    thumbnailFrameMs: 1500,
+  }) as {
     post_info: Record<string, unknown>;
   };
   assertEquals(Object.keys(payload.post_info).includes("video_cover_timestamp_ms"), false);
   assertEquals(payload.post_info.privacy_level, "SELF_ONLY");
 });
 
-Deno.test("buildVideoInitPayload: cover timestamp inside the video's duration → sent as-is", () => {
-  const payload = buildVideoInitPayload(FULL_SETTINGS_POST, "https://r2.example.com/video.mp4", 30) as {
+Deno.test("buildVideoInitPayload: no thumbnail frame (uploaded image or unknown) → key ABSENT", () => {
+  for (const thumbnailFrameMs of [null, undefined]) {
+    const payload = buildVideoInitPayload(FULL_SETTINGS_POST, "https://r2.example.com/video.mp4", {
+      durationSeconds: 30,
+      thumbnailFrameMs,
+    }) as { post_info: Record<string, unknown> };
+    assertEquals(Object.keys(payload.post_info).includes("video_cover_timestamp_ms"), false);
+  }
+});
+
+Deno.test("buildVideoInitPayload: a legacy tiktok_settings.video_cover_timestamp_ms is ignored", () => {
+  const legacy = {
+    ...FULL_SETTINGS_POST,
+    tiktok_settings: { ...FULL_SETTINGS_POST.tiktok_settings, video_cover_timestamp_ms: 9000 },
+  } as ClaimedTikTokPost;
+  const withoutFrame = buildVideoInitPayload(legacy, "https://r2.example.com/video.mp4") as {
     post_info: Record<string, unknown>;
   };
-  assertEquals(payload.post_info.video_cover_timestamp_ms, 1500);
+  assertEquals(Object.keys(withoutFrame.post_info).includes("video_cover_timestamp_ms"), false);
+  const withFrame = buildVideoInitPayload(legacy, "https://r2.example.com/video.mp4", {
+    durationSeconds: 30,
+    thumbnailFrameMs: 2500,
+  }) as { post_info: Record<string, unknown> };
+  assertEquals(withFrame.post_info.video_cover_timestamp_ms, 2500);
 });
 
 Deno.test("buildVideoInitPayload: settings lacking privacy_level → key genuinely ABSENT (same guard as other optional fields)", () => {
