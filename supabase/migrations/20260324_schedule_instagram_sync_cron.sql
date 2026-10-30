@@ -13,11 +13,19 @@ create extension if not exists pg_net with schema extensions;
 -- Store project URL and anon key in Vault (safe credential storage)
 -- These are used by pg_net to call edge functions securely.
 -- Uses ON CONFLICT-safe approach: only insert if name doesn't already exist.
+--
+-- project_url defaults to the LOCAL stack, never to prod. This migration runs
+-- on every fresh database (supabase start/db reset, the CI entitlement job,
+-- preview branches), and every pg_cron job builds its URL from this secret:
+-- seeding the prod host here made each of those databases call prod's edge
+-- functions every minute (~11k rejected 401s a day). Prod and staging already
+-- hold their own value, so the IF NOT EXISTS below leaves them untouched; a
+-- new hosted environment must set its own https://<ref>.supabase.co.
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM vault.secrets WHERE name = 'project_url') THEN
     PERFORM vault.create_secret(
-      'https://skjzpekeqefvlojenfsw.supabase.co',
+      'http://127.0.0.1:54321',
       'project_url'
     );
   END IF;

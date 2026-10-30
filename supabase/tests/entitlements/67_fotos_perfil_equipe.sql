@@ -29,7 +29,7 @@
 -- trigger, so seeded avatar_url values survive); each case then impersonates
 -- with request.jwt.claims + SET LOCAL ROLE, never claims alone.
 --
--- Vault: CI's database already carries project_url (seeded with the prod
+-- Vault: CI's database already carries project_url (seeded with the local
 -- host by 20260324_schedule_instagram_sync_cron.sql), so no value is assumed:
 -- it is read once and every expected URL is built from it.
 --
