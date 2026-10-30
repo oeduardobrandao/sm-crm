@@ -3,10 +3,12 @@
 // here; no copy-paste of wire strings, token crypto or error mapping anywhere else.
 // Spec: docs/superpowers/specs/2026-10-29-youtube-google-meu-negocio-design.md §4.2.
 //
-// Error contract: every failure this module raises is a GoogleApiError with one of eight codes,
+// Error contract: every failure this module raises is a GoogleApiError with one of nine codes,
 // so callers switch on `code` only.
 //   googleFetch: 401 -> TOKEN_INVALID; 403/429 carrying quota_limit_value "0" -> NOT_APPROVED;
-//     other 429 -> RATE_LIMITED (retryable); 403 SERVICE_DISABLED / "has not been used in
+//     403/429 quota exhaustion (reason quotaExceeded/dailyLimitExceeded, error.status
+//     RESOURCE_EXHAUSTED or a details reason QUOTA_EXCEEDED) -> QUOTA_EXCEEDED (not retryable:
+//     callers skip that step until the quota resets); other 429 -> RATE_LIMITED (retryable); 403 SERVICE_DISABLED / "has not been used in
 //     project" / "API has not been enabled" -> API_DISABLED; other 403 -> FORBIDDEN;
 //     404 -> NOT_FOUND; 5xx -> UPSTREAM (retryable); any other non-2xx -> UPSTREAM
 //     (non-retryable, status kept).
@@ -55,6 +57,7 @@ export type GoogleApiErrorCode =
   | "REVOKED"
   | "RATE_LIMITED"
   | "NOT_APPROVED"
+  | "QUOTA_EXCEEDED"
   | "API_DISABLED"
   | "FORBIDDEN"
   | "NOT_FOUND"
@@ -278,6 +281,21 @@ function isQuotaZero(body: GoogleErrorBody | null): boolean {
   });
 }
 
+/**
+ * Quota exhaustion, as opposed to quota-zero (which means "API access not approved"): the Data
+ * API's `errors[].reason` quotaExceeded/dailyLimitExceeded, and the google.rpc shape the
+ * Analytics API uses (`error.status` RESOURCE_EXHAUSTED or a `details[].reason` QUOTA_EXCEEDED).
+ */
+function isQuotaExceeded(body: GoogleErrorBody | null): boolean {
+  const err = body?.error;
+  if (!err) return false;
+  if (err.status === "RESOURCE_EXHAUSTED") return true;
+  if (Array.isArray(err.errors) && err.errors.some((e) => e?.reason === "quotaExceeded" || e?.reason === "dailyLimitExceeded")) {
+    return true;
+  }
+  return Array.isArray(err.details) && err.details.some((d) => d?.reason === "QUOTA_EXCEEDED");
+}
+
 function isServiceDisabled(body: GoogleErrorBody | null): boolean {
   const err = body?.error;
   if (!err) return false;
@@ -292,6 +310,9 @@ function mapGoogleError(status: number, body: GoogleErrorBody | null): GoogleApi
   if (status === 401) return new GoogleApiError("TOKEN_INVALID", status, message);
   if ((status === 403 || status === 429) && isQuotaZero(body)) {
     return new GoogleApiError("NOT_APPROVED", status, message);
+  }
+  if ((status === 403 || status === 429) && isQuotaExceeded(body)) {
+    return new GoogleApiError("QUOTA_EXCEEDED", status, message);
   }
   if (status === 429) return new GoogleApiError("RATE_LIMITED", status, message);
   if (status === 403) {

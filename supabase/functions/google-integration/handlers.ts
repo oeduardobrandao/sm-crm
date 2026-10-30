@@ -13,7 +13,6 @@ import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
 import {
   buildGoogleAuthUrl,
-  decryptGoogleToken,
   encryptGoogleToken,
   exchangeGoogleCode,
   fetchGoogleUserInfo,
@@ -25,6 +24,7 @@ import {
   hasRequiredScopes,
   revokeGoogleToken,
 } from "../_shared/google.ts";
+import { processUnlinkDecisionData } from "../_shared/google-revocations.ts";
 import { type GbpLocationOption, listGbpLocations } from "./locations.ts";
 import { createGoogleState, verifyGoogleState, type VerifiedGoogleState } from "./oauth-state.ts";
 import { type DbClient, loadClientInTenant, resolveTenant } from "./tenant.ts";
@@ -759,7 +759,7 @@ async function handleLinkLocations(svc: DbClient, req: Request, rawClientId: str
       if (error.code === "P0002") continue; // removed concurrently
       throw new Error(`google_unlink_gbp_location failed: ${error.message}`);
     }
-    await processUnlinkDecision(svc, data);
+    await processUnlinkDecisionData(svc, data);
   }
 
   await insertAuditLog(svc, {
@@ -803,7 +803,7 @@ async function handleDisconnectYouTube(svc: DbClient, req: Request, rawClientId:
     if (error.code === "P0002") return json(cors, { error: "not_found" }, 404);
     throw new Error(`google_unlink_youtube failed: ${error.message}`);
   }
-  await processUnlinkDecision(svc, data);
+  await processUnlinkDecisionData(svc, data);
 
   await insertAuditLog(svc, {
     conta_id: ctx.contaId,
@@ -813,55 +813,6 @@ async function handleDisconnectYouTube(svc: DbClient, req: Request, rawClientId:
     metadata: { client_id: ctx.clientId },
   });
   return json(cors, { ok: true });
-}
-
-// ─── Revocation after a committed unlink ─────────────────────────────────────────────
-
-/**
- * Runs after the unlink RPC committed. When it decided to revoke, revokes the queued token at
- * Google: success deletes the `google_revocations` row, failure bumps `attempts` and records
- * `last_error` for Phase 2's gbp-sync-cron to retry. Never throws: the unlink already happened.
- */
-async function processUnlinkDecision(svc: DbClient, data: unknown): Promise<void> {
-  const decision = (Array.isArray(data) ? data[0] : data) as
-    | { should_revoke?: boolean; revocation_id?: string | null }
-    | null
-    | undefined;
-  if (!decision?.should_revoke || !decision.revocation_id) return;
-  const revocationId = decision.revocation_id;
-
-  try {
-    const { data: row, error } = await svc
-      .from("google_revocations")
-      .select("id, encrypted_token, token_kind, attempts")
-      .eq("id", revocationId)
-      .maybeSingle();
-    if (error || !row) {
-      console.error(`[google-integration] revocation ${revocationId} not readable: ${error?.message ?? "missing"}`);
-      return;
-    }
-
-    let lastError: string | null = null;
-    try {
-      const token = await decryptGoogleToken(row.encrypted_token, row.token_kind === "access" ? "access" : "refresh");
-      if (!(await revokeGoogleToken(token))) lastError = "revoke_failed";
-    } catch {
-      lastError = "decrypt_failed";
-    }
-
-    if (lastError === null) {
-      const { error: delError } = await svc.from("google_revocations").delete().eq("id", revocationId);
-      if (delError) console.error(`[google-integration] revocation ${revocationId} delete failed: ${delError.message}`);
-      return;
-    }
-    const { error: updError } = await svc
-      .from("google_revocations")
-      .update({ attempts: (Number(row.attempts) || 0) + 1, last_error: lastError })
-      .eq("id", revocationId);
-    if (updError) console.error(`[google-integration] revocation ${revocationId} update failed: ${updError.message}`);
-  } catch (err) {
-    console.error(`[google-integration] revocation ${revocationId} failed:`, (err as Error).message);
-  }
 }
 
 // ─── Dispatch ──────────────────────────────────────────────────────────────────────────
