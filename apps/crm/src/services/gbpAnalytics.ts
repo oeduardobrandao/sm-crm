@@ -33,7 +33,10 @@ export interface GbpKpiEntry {
 }
 
 export interface GbpOverview {
-  /** The earliest `data_through` across the selected units; null before the first sync. */
+  /**
+   * The earliest `data_through` across the selected active units (all selected units when none
+   * is active or synced); null before the first sync.
+   */
   dataThrough: string | null;
   window: { start: string; end: string; prevStart: string; prevEnd: string };
   /** All null before the first sync. */
@@ -92,7 +95,8 @@ export interface GbpRatingDistribution {
 export interface GbpUnitRow {
   id: string;
   title: string | null;
-  status: 'active' | 'disconnected' | 'revoked';
+  /** The server lists only the client's `active` and `revoked` units. */
+  status: 'active' | 'revoked';
   profileViews: number;
   calls: number;
   directions: number;

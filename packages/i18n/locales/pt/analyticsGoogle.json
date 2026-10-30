@@ -1,1 +1,150 @@
-{}
+{
+  "filters": {
+    "unitAria": "Unidade",
+    "allUnits": "Todas as unidades ({{count}})",
+    "untitledUnit": "Unidade sem nome",
+    "periodAria": "Período",
+    "periodDays": "{{count}} dias",
+    "periodShort": "{{count}}d",
+    "custom": "Personalizado",
+    "customDaysPlaceholder": "Dias",
+    "customDaysAria": "Período personalizado em dias",
+    "customDaysInvalid": "Insira um valor entre 1 e 548 dias"
+  },
+  "sync": {
+    "action": "Sincronizar",
+    "success": "Dados do Google Meu Negócio atualizados.",
+    "rateLimited": "Limite da API do Google atingido. Tente de novo em alguns minutos.",
+    "error": "Não foi possível sincronizar o Google Meu Negócio. Tente de novo."
+  },
+  "note": "Dados até {{date}}. O Google conta pessoas diferentes por dia em cada superfície.",
+  "states": {
+    "notConnectedTitle": "Google Meu Negócio não conectado",
+    "notConnectedBody": "Conecte o Google e escolha as unidades deste cliente em Redes sociais para ver os números aqui.",
+    "connectAction": "Ir para Redes sociais",
+    "lockedTitle": "Google Meu Negócio",
+    "locked": "Os números do Google Meu Negócio não estão disponíveis no seu plano.",
+    "lockedAction": "Ver planos",
+    "error": "Não foi possível carregar os dados do Google Meu Negócio.",
+    "retry": "Tentar novamente",
+    "firstSyncTitle": "Primeira sincronização em andamento",
+    "firstSyncBody": "Estamos buscando o histórico das unidades no Google. Pode levar alguns minutos.",
+    "noData": "sem dados",
+    "back": "Voltar"
+  },
+  "revoked": {
+    "title_one": "Unidade com autorização expirada: {{units}}",
+    "title_other": "Unidades com autorização expirada: {{units}}"
+  },
+  "kpi": {
+    "vsPrevious_one": "vs. {{count}} dia anterior",
+    "vsPrevious_other": "vs. {{count}} dias anteriores",
+    "ratingDelta_one": "{{delta}} vs. {{count}} dia anterior",
+    "ratingDelta_other": "{{delta}} vs. {{count}} dias anteriores",
+    "profile_views": {
+      "label": "Visualizações do perfil",
+      "sub": "Pesquisa Google e Maps",
+      "tooltip": "Soma das pessoas diferentes que viram o perfil a cada dia em cada superfície. Quem viu na Pesquisa e no Maps no mesmo dia conta duas vezes."
+    },
+    "calls": {
+      "label": "Ligações",
+      "sub": "Toques em Ligar"
+    },
+    "directions": {
+      "label": "Pedidos de rota",
+      "sub": "Toques em Rotas"
+    },
+    "website_clicks": {
+      "label": "Cliques no site",
+      "sub": "Toques em Site"
+    },
+    "messages": {
+      "label": "Mensagens",
+      "sub": "Toques em Mensagem e WhatsApp"
+    },
+    "bookings": {
+      "label": "Agendamentos",
+      "sub": "Pelo botão Agendar do Google"
+    },
+    "avg_rating": {
+      "label": "Nota média",
+      "sub_one": "{{formattedCount}} avaliação no total",
+      "sub_other": "{{formattedCount}} avaliações no total",
+      "subNoTotal": "Média das avaliações"
+    },
+    "new_reviews": {
+      "label": "Novas avaliações",
+      "sub": "No período"
+    }
+  },
+  "actions": {
+    "title": "Ações por dia",
+    "sub": "O que as pessoas fizeram depois de ver o perfil",
+    "aria": "Gráfico de barras empilhadas: ligações, rotas, cliques no site e mensagens por dia",
+    "calls": "Ligações",
+    "directions": "Rotas",
+    "website": "Site",
+    "messages": "Mensagens",
+    "empty": "Nenhuma ação registrada no período."
+  },
+  "surfaces": {
+    "title": "Onde viram o perfil",
+    "sub_one": "{{views}} visualização no período",
+    "sub_other": "{{views}} visualizações no período",
+    "mobile_search": "Pesquisa Google no celular",
+    "mobile_maps": "Google Maps no celular",
+    "desktop_search": "Pesquisa Google no computador",
+    "desktop_maps": "Google Maps no computador",
+    "footnote": "{{mobile}}% pelo celular. Maps responde por {{maps}}% das visualizações.",
+    "empty": "Nenhuma visualização no período."
+  },
+  "keywords": {
+    "title": "O que buscaram no Google",
+    "sub": "Termos que mostraram o perfil · {{month}}",
+    "subNoMonth": "Termos que mostraram o perfil",
+    "monthAria": "Mês",
+    "colKeyword": "Busca",
+    "colPeople": "Pessoas",
+    "threshold": "menos de {{n}}",
+    "footnote": "O Google só mostra o número exato acima de 15 pessoas por mês. O mês corrente aparece quando fecha.",
+    "empty": "Nenhuma busca registrada neste mês."
+  },
+  "rating": {
+    "title": "Avaliações",
+    "subAll": "Todas as unidades",
+    "count_one": "{{formattedCount}} avaliação",
+    "count_other": "{{formattedCount}} avaliações",
+    "starsAria": "{{n}} de 5 estrelas",
+    "newInPeriod": "+{{n}} no período",
+    "partial": "Últimas 200 avaliações por unidade",
+    "empty": "Nenhuma avaliação ainda."
+  },
+  "reviews": {
+    "title": "Avaliações recentes",
+    "sub": "Somente leitura. Para responder, abra no Google.",
+    "filterAria": "Filtro de avaliações",
+    "filterAll": "Todas",
+    "filterUnanswered": "Sem resposta",
+    "filterLow": "3 estrelas ou menos",
+    "answered": "Respondida",
+    "unanswered": "Sem resposta",
+    "anonymous": "Avaliação anônima",
+    "open": "Abrir no Google",
+    "empty": "Nenhuma avaliação neste filtro."
+  },
+  "units": {
+    "title": "Comparar unidades",
+    "sub_one": "Último dia",
+    "sub_other": "Últimos {{count}} dias",
+    "colUnit": "Unidade",
+    "colViews": "Visualizações",
+    "colCalls": "Ligações",
+    "colDirections": "Rotas",
+    "colWebsite": "Site",
+    "colMessages": "Mensagens",
+    "colRating": "Nota",
+    "rating": "★ {{rating}} ({{reviews}})",
+    "noRating": "sem nota",
+    "revoked": "Autorização expirada"
+  }
+}

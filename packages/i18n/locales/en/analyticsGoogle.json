@@ -1,1 +1,150 @@
-{}
+{
+  "filters": {
+    "unitAria": "Location",
+    "allUnits": "All locations ({{count}})",
+    "untitledUnit": "Untitled location",
+    "periodAria": "Period",
+    "periodDays": "{{count}} days",
+    "periodShort": "{{count}}d",
+    "custom": "Custom",
+    "customDaysPlaceholder": "Days",
+    "customDaysAria": "Custom period in days",
+    "customDaysInvalid": "Enter a value between 1 and 548 days"
+  },
+  "sync": {
+    "action": "Sync",
+    "success": "Google Business Profile data updated.",
+    "rateLimited": "Google API limit reached. Try again in a few minutes.",
+    "error": "Could not sync Google Business Profile. Try again."
+  },
+  "note": "Data through {{date}}. Google counts distinct people per day on each surface.",
+  "states": {
+    "notConnectedTitle": "Google Business Profile not connected",
+    "notConnectedBody": "Connect Google and choose this client's locations in Social accounts to see the numbers here.",
+    "connectAction": "Go to Social accounts",
+    "lockedTitle": "Google Business Profile",
+    "locked": "Google Business Profile numbers are not included in your plan.",
+    "lockedAction": "See plans",
+    "error": "Could not load Google Business Profile data.",
+    "retry": "Try again",
+    "firstSyncTitle": "First sync in progress",
+    "firstSyncBody": "We are fetching the locations' history from Google. This can take a few minutes.",
+    "noData": "no data",
+    "back": "Back"
+  },
+  "revoked": {
+    "title_one": "Location with expired authorization: {{units}}",
+    "title_other": "Locations with expired authorization: {{units}}"
+  },
+  "kpi": {
+    "vsPrevious_one": "vs. previous {{count}} day",
+    "vsPrevious_other": "vs. previous {{count}} days",
+    "ratingDelta_one": "{{delta}} vs. previous {{count}} day",
+    "ratingDelta_other": "{{delta}} vs. previous {{count}} days",
+    "profile_views": {
+      "label": "Profile views",
+      "sub": "Google Search and Maps",
+      "tooltip": "Sum of distinct people who saw the profile each day on each surface. Someone who saw it on Search and Maps on the same day counts twice."
+    },
+    "calls": {
+      "label": "Calls",
+      "sub": "Taps on Call"
+    },
+    "directions": {
+      "label": "Direction requests",
+      "sub": "Taps on Directions"
+    },
+    "website_clicks": {
+      "label": "Website clicks",
+      "sub": "Taps on Website"
+    },
+    "messages": {
+      "label": "Messages",
+      "sub": "Taps on Message and WhatsApp"
+    },
+    "bookings": {
+      "label": "Bookings",
+      "sub": "Through Google's Book button"
+    },
+    "avg_rating": {
+      "label": "Average rating",
+      "sub_one": "{{formattedCount}} review in total",
+      "sub_other": "{{formattedCount}} reviews in total",
+      "subNoTotal": "Average of the reviews"
+    },
+    "new_reviews": {
+      "label": "New reviews",
+      "sub": "In the period"
+    }
+  },
+  "actions": {
+    "title": "Actions per day",
+    "sub": "What people did after seeing the profile",
+    "aria": "Stacked bar chart: calls, directions, website clicks and messages per day",
+    "calls": "Calls",
+    "directions": "Directions",
+    "website": "Website",
+    "messages": "Messages",
+    "empty": "No actions in the period."
+  },
+  "surfaces": {
+    "title": "Where they saw the profile",
+    "sub_one": "{{views}} view in the period",
+    "sub_other": "{{views}} views in the period",
+    "mobile_search": "Google Search on mobile",
+    "mobile_maps": "Google Maps on mobile",
+    "desktop_search": "Google Search on desktop",
+    "desktop_maps": "Google Maps on desktop",
+    "footnote": "{{mobile}}% on mobile. Maps accounts for {{maps}}% of the views.",
+    "empty": "No views in the period."
+  },
+  "keywords": {
+    "title": "What they searched on Google",
+    "sub": "Searches that showed the profile · {{month}}",
+    "subNoMonth": "Searches that showed the profile",
+    "monthAria": "Month",
+    "colKeyword": "Search",
+    "colPeople": "People",
+    "threshold": "fewer than {{n}}",
+    "footnote": "Google only shows the exact number above 15 people per month. The current month appears once it closes.",
+    "empty": "No searches recorded this month."
+  },
+  "rating": {
+    "title": "Reviews",
+    "subAll": "All locations",
+    "count_one": "{{formattedCount}} review",
+    "count_other": "{{formattedCount}} reviews",
+    "starsAria": "{{n}} out of 5 stars",
+    "newInPeriod": "+{{n}} in the period",
+    "partial": "Latest 200 reviews per location",
+    "empty": "No reviews yet."
+  },
+  "reviews": {
+    "title": "Recent reviews",
+    "sub": "Read only. To reply, open it on Google.",
+    "filterAria": "Review filter",
+    "filterAll": "All",
+    "filterUnanswered": "Unanswered",
+    "filterLow": "3 stars or fewer",
+    "answered": "Replied",
+    "unanswered": "Unanswered",
+    "anonymous": "Anonymous review",
+    "open": "Open on Google",
+    "empty": "No reviews in this filter."
+  },
+  "units": {
+    "title": "Compare locations",
+    "sub_one": "Last day",
+    "sub_other": "Last {{count}} days",
+    "colUnit": "Location",
+    "colViews": "Views",
+    "colCalls": "Calls",
+    "colDirections": "Directions",
+    "colWebsite": "Website",
+    "colMessages": "Messages",
+    "colRating": "Rating",
+    "rating": "★ {{rating}} ({{reviews}})",
+    "noRating": "no rating",
+    "revoked": "Authorization expired"
+  }
+}
