@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, ImageIcon } from 'lucide-react';
 import { Trans, useTranslation } from 'react-i18next';
 import { i18n } from '@mesaas/i18n';
 import { TIKTOK_LIMITS, TIKTOK_MSG } from '@mesaas/tiktok-messages';
@@ -32,6 +32,11 @@ import {
   tiktokMediaIssues,
   type TikTokReadiness,
 } from '../tiktokComposerRules';
+import {
+  TIKTOK_DEFAULT_COVER_MS,
+  TikTokCoverFrameDialog,
+  formatCoverTimestamp,
+} from './TikTokCoverFrameDialog';
 
 // =============================================================================
 // TikTok settings panel — audit-mandated creator_info compliance UI
@@ -60,12 +65,12 @@ import {
 // `tiktok_settings` is a jsonb column with no partial-update semantics on the
 // client — every write sends the FULL settings object, never a diff.
 //
-// ── Out of scope (noted, not a gap) ────────────────────────────────────────
-// `video_cover_timestamp_ms` and `photo_cover_index` are valid tiktok_settings
-// keys (cron/publish payload builders already read them) but neither gets a UI
-// control here — cover-frame/cover-image picking needs a dedicated media-picker
-// component this task doesn't build. `photo_cover_index` defaults to 0 (first
-// image), matching buildPhotoInitPayload's own `s.photo_cover_index ?? 0` fallback.
+// ── Covers ─────────────────────────────────────────────────────────────────
+// Video posts pick `video_cover_timestamp_ms` with TikTokCoverFrameDialog (TikTok's
+// API takes a frame offset only, never an image). Unset means TikTok's default frame;
+// the key is then left out of the settings object, and so out of the payload.
+// `photo_cover_index` still has no UI control and defaults to 0 (first image),
+// matching buildPhotoInitPayload's own `s.photo_cover_index ?? 0` fallback.
 
 const CAPTION_MAX_VIDEO = TIKTOK_LIMITS.captionVideoMax; // UTF-16 code units == TikTok's "runes"
 const CAPTION_MAX_PHOTO = TIKTOK_LIMITS.captionPhotoMax;
@@ -94,6 +99,8 @@ interface TikTokSettingsDraft {
   auto_add_music: boolean;
   is_aigc: boolean;
   photo_cover_index: number;
+  /** Absent = TikTok's default frame. Must survive every `persist` (it writes the full object). */
+  video_cover_timestamp_ms?: number;
 }
 
 // Audit-mandated defaults: the comment/duet/stitch UI checkboxes are POSITIVE
@@ -144,6 +151,9 @@ function draftFromSettings(
       typeof s.photo_cover_index === 'number'
         ? s.photo_cover_index
         : DEFAULT_DRAFT.photo_cover_index,
+    ...(Number.isInteger(s.video_cover_timestamp_ms) && (s.video_cover_timestamp_ms as number) >= 0
+      ? { video_cover_timestamp_ms: s.video_cover_timestamp_ms as number }
+      : {}),
   };
 }
 
@@ -168,6 +178,8 @@ export interface TikTokSettingsPanelProps {
   /** Com feature_multiplatform a legenda do TikTok mora na aba do TikTok
    *  (DestinationCaptionTabs); o painel fica só com as configurações. */
   hideCaption?: boolean;
+  /** `phone`: the cover picker opens as a bottom sheet. */
+  layout?: 'default' | 'phone';
 }
 
 export function TikTokSettingsPanel({
@@ -179,8 +191,10 @@ export function TikTokSettingsPanel({
   mediaError = false,
   showTestModeBanner = false,
   hideCaption = false,
+  layout = 'default',
 }: TikTokSettingsPanelProps) {
   const { t } = useTranslation('posts');
+  const [coverPickerOpen, setCoverPickerOpen] = useState(false);
   const [creatorInfo, setCreatorInfo] = useState<TikTokCreatorInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -310,6 +324,18 @@ export function TikTokSettingsPanel({
 
   const persist = (patch: Partial<TikTokSettingsDraft>) => {
     const next = { ...draft, ...patch };
+    setDraft(next);
+    onFieldChange('tiktok_settings', next);
+  };
+
+  const coverVideo = isVideoTipo ? media?.find((m) => m.kind === 'video') : undefined;
+  const coverMs = draft.video_cover_timestamp_ms;
+  const coverPreviewUrl = sanitizeUrl(coverVideo?.url);
+  const saveCover = (ms: number | undefined) => {
+    // Rebuilt rather than spread so "default" drops the key instead of storing undefined/null.
+    const { video_cover_timestamp_ms: _previous, ...rest } = draft;
+    const next: TikTokSettingsDraft =
+      ms === undefined ? rest : { ...rest, video_cover_timestamp_ms: ms };
     setDraft(next);
     onFieldChange('tiktok_settings', next);
   };
@@ -486,6 +512,54 @@ export function TikTokSettingsPanel({
           </p>
         )}
       </section>
+
+      {/* Cover frame (video only): TikTok takes a frame offset, not an image */}
+      {coverVideo && (
+        <section aria-label={t('tiktokCover.label')} className="flex items-center gap-3">
+          <div
+            className="relative h-28 w-16 overflow-hidden rounded-md flex-shrink-0"
+            style={{ background: 'var(--surface-3)' }}
+          >
+            {coverPreviewUrl !== '#' && !coverVideo.media_lost_at && (
+              <video
+                data-testid="tiktok-cover-preview"
+                // Media fragment: the browser paints the frame at that offset without playing.
+                src={`${coverPreviewUrl}#t=${(coverMs ?? TIKTOK_DEFAULT_COVER_MS) / 1000}`}
+                muted
+                playsInline
+                preload="metadata"
+                className="h-full w-full object-cover pointer-events-none"
+              />
+            )}
+          </div>
+          <div className="flex flex-col gap-1 min-w-0">
+            <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+              {t('tiktokCover.label')}
+            </span>
+            <span className="text-xs" style={{ color: 'var(--text-light)' }}>
+              {coverMs === undefined
+                ? t('tiktokCover.default')
+                : t('tiktokCover.frameAt', { time: formatCoverTimestamp(coverMs) })}
+            </span>
+            <button
+              type="button"
+              onClick={() => setCoverPickerOpen(true)}
+              disabled={!!coverVideo.media_lost_at}
+              className="inline-flex w-fit items-center gap-1 px-2.5 py-1 rounded-full bg-stone-900 text-white text-[11px] font-semibold hover:bg-stone-700 disabled:opacity-50"
+            >
+              <ImageIcon aria-hidden="true" className="h-3 w-3" />
+              {t('tiktokCover.choose')}
+            </button>
+          </div>
+          <TikTokCoverFrameDialog
+            media={coverPickerOpen ? coverVideo : null}
+            valueMs={coverMs}
+            onClose={() => setCoverPickerOpen(false)}
+            onSave={saveCover}
+            layout={layout}
+          />
+        </section>
+      )}
 
       {loadError && (
         <p className="text-xs" style={{ color: 'var(--danger)' }}>

@@ -854,3 +854,100 @@ describe('notices, preview and duration (spec A4/A5/A6/A7)', () => {
     );
   });
 });
+
+describe('TikTokSettingsPanel — cover frame', () => {
+  const coverVideo = [{ ...video42[0], url: 'https://media.test/v.mp4' }] as unknown as PostMedia[];
+  /** jsdom media elements have no playback; pin the playhead the dialog reads. */
+  function setPlayhead(video: HTMLVideoElement, seconds: number, duration = 42) {
+    Object.defineProperty(video, 'currentTime', {
+      configurable: true,
+      value: seconds,
+      writable: true,
+    });
+    Object.defineProperty(video, 'duration', { configurable: true, value: duration });
+    video.pause = vi.fn();
+  }
+
+  it("shows TikTok's default frame when no cover is saved", async () => {
+    renderPanel({}, { media: coverVideo });
+    await screen.findByText('Dra Marina');
+    expect(screen.getByRole('region', { name: 'Capa do TikTok' })).toBeInTheDocument();
+    expect(screen.getByText('Quadro padrão do TikTok')).toBeInTheDocument();
+    const preview = screen.getByTestId('tiktok-cover-preview') as HTMLVideoElement;
+    expect(preview.getAttribute('src')).toBe('https://media.test/v.mp4#t=1');
+  });
+
+  it('shows the saved frame and previews that offset', async () => {
+    renderPanel({ tiktok_settings: { video_cover_timestamp_ms: 3250 } }, { media: coverVideo });
+    await screen.findByText('Dra Marina');
+    expect(screen.getByText('Quadro em 0:03.2')).toBeInTheDocument();
+    const preview = screen.getByTestId('tiktok-cover-preview') as HTMLVideoElement;
+    expect(preview.getAttribute('src')).toBe('https://media.test/v.mp4#t=3.25');
+  });
+
+  it('keeps the saved cover when another setting is persisted (full-object writes)', async () => {
+    const { onFieldChange } = renderPanel({
+      tiktok_settings: { video_cover_timestamp_ms: 3250 },
+    });
+    await selectPrivacy('Somente eu (privado)');
+    expect(onFieldChange).toHaveBeenLastCalledWith(
+      'tiktok_settings',
+      expect.objectContaining({ privacy_level: 'SELF_ONLY', video_cover_timestamp_ms: 3250 }),
+    );
+  });
+
+  it('saves the playhead as video_cover_timestamp_ms', async () => {
+    const { onFieldChange } = renderPanel({ tiktok_settings: { privacy_level: 'SELF_ONLY' } });
+    await screen.findByText('Dra Marina');
+    fireEvent.click(screen.getByRole('button', { name: 'Escolher quadro' }));
+    const dialog = await screen.findByRole('dialog');
+    setPlayhead(dialog.querySelector('video') as HTMLVideoElement, 5.2504);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Usar este quadro' }));
+    expect(onFieldChange).toHaveBeenLastCalledWith(
+      'tiktok_settings',
+      expect.objectContaining({ privacy_level: 'SELF_ONLY', video_cover_timestamp_ms: 5250 }),
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByText('Quadro em 0:05.2')).toBeInTheDocument();
+  });
+
+  it("going back to TikTok's default drops the key instead of storing null", async () => {
+    const { onFieldChange } = renderPanel({
+      tiktok_settings: { privacy_level: 'SELF_ONLY', video_cover_timestamp_ms: 3250 },
+    });
+    await screen.findByText('Dra Marina');
+    fireEvent.click(screen.getByRole('button', { name: 'Escolher quadro' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Usar padrão do TikTok' }));
+    const saved = onFieldChange.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+    expect(saved.privacy_level).toBe('SELF_ONLY');
+    expect('video_cover_timestamp_ms' in saved).toBe(false);
+  });
+
+  it('ignores a malformed stored value', async () => {
+    renderPanel({ tiktok_settings: { video_cover_timestamp_ms: -5 } });
+    await screen.findByText('Dra Marina');
+    expect(screen.getByText('Quadro padrão do TikTok')).toBeInTheDocument();
+  });
+
+  it('skips the preview for a URL sanitizeUrl rejects', async () => {
+    renderPanel(
+      {},
+      { media: [{ ...video42[0], url: 'javascript:alert(1)' }] as unknown as PostMedia[] },
+    );
+    await screen.findByText('Dra Marina');
+    expect(screen.getByText('Quadro padrão do TikTok')).toBeInTheDocument();
+    expect(screen.queryByTestId('tiktok-cover-preview')).not.toBeInTheDocument();
+  });
+
+  it('is not offered for photo posts', async () => {
+    renderPanelProps({
+      post: reelsPost({ tipo: 'feed' }),
+      media: [
+        { id: 2, kind: 'image', media_lost_at: null, url: 'i', sort_order: 0 },
+      ] as unknown as PostMedia[],
+    });
+    await screen.findByText('Dra Marina');
+    expect(screen.queryByRole('region', { name: 'Capa do TikTok' })).not.toBeInTheDocument();
+  });
+});

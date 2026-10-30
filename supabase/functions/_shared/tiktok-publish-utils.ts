@@ -309,10 +309,29 @@ export interface ClaimedTikTokPost {
   tiktok_settings: TikTokSettings;
 }
 
+/** A stored cover timestamp TikTok can accept: a non-negative integer that falls inside the
+ * video. The frame was picked in the CRM against the video linked at that time; if the video
+ * was swapped for a shorter one since, the old value would point past the end. Dropping it
+ * lets TikTok pick its default frame instead of failing the publish over a cover. */
+export function usableCoverTimestampMs(
+  value: unknown,
+  videoDurationSeconds: number | null | undefined,
+): number | undefined {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) return undefined;
+  if (videoDurationSeconds != null && value >= videoDurationSeconds * 1000) return undefined;
+  return value;
+}
+
 /** Builds the POST /v2/post/publish/video/init/ body. Omits every optional key whose
  * setting is undefined/null entirely — TikTok rejects explicit nulls — and never emits a
- * photo-only field (auto_add_music, photo_cover_index, photo_images, post_mode, media_type). */
-export function buildVideoInitPayload(post: ClaimedTikTokPost, videoUrl: string): object {
+ * photo-only field (auto_add_music, photo_cover_index, photo_images, post_mode, media_type).
+ * `videoDurationSeconds` (when known) bounds `video_cover_timestamp_ms`; see
+ * usableCoverTimestampMs. */
+export function buildVideoInitPayload(
+  post: ClaimedTikTokPost,
+  videoUrl: string,
+  videoDurationSeconds?: number | null,
+): object {
   const s = post.tiktok_settings ?? {};
   const postInfo: Record<string, unknown> = {
     title: post.caption,
@@ -338,8 +357,9 @@ export function buildVideoInitPayload(post: ClaimedTikTokPost, videoUrl: string)
   if (s.is_aigc !== undefined && s.is_aigc !== null) {
     postInfo.is_aigc = s.is_aigc;
   }
-  if (s.video_cover_timestamp_ms !== undefined && s.video_cover_timestamp_ms !== null) {
-    postInfo.video_cover_timestamp_ms = s.video_cover_timestamp_ms;
+  const coverMs = usableCoverTimestampMs(s.video_cover_timestamp_ms, videoDurationSeconds);
+  if (coverMs !== undefined) {
+    postInfo.video_cover_timestamp_ms = coverMs;
   }
 
   return {
