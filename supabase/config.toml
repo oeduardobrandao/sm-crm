@@ -284,3 +284,6 @@ verify_jwt = false
 
 [functions.youtube-analytics]
 verify_jwt = false
+
+[functions.youtube-sync-cron]
+verify_jwt = false
