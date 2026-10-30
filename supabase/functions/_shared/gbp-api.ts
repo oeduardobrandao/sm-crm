@@ -282,15 +282,15 @@ export async function listReviews(
   const reviews: GbpReview[] = [];
   for (const review of body?.reviews ?? []) {
     const starRating = review?.starRating ? STAR_RATINGS[review.starRating] : undefined;
-    if (!review?.reviewId || !starRating) continue;
+    if (!review?.reviewId || !starRating || !review.createTime) continue;
     const anonymous = review.reviewer?.isAnonymous === true;
     reviews.push({
       reviewId: review.reviewId,
       reviewerName: anonymous ? null : review.reviewer?.displayName || null,
       starRating,
       comment: review.comment || null,
-      createTime: review.createTime ?? "",
-      updateTime: review.updateTime ?? review.createTime ?? "",
+      createTime: review.createTime,
+      updateTime: review.updateTime ?? review.createTime,
       hasReply: !!review.reviewReply,
     });
   }
