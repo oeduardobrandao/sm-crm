@@ -2,11 +2,16 @@
 // and the manual sync route of google-integration (Task 9), so both follow the same steps:
 //
 //   1. Daily metrics for [data_through - 7, yesterday] (a backfill tries 548, then 365, then
-//      180 days, taking a 400 as "range not allowed"). `data_through` = the latest day with any
-//      metric minus 2 (a dormant location: yesterday - 2), and it never moves backwards. Every
-//      day of the window up to it is written (0 for days Google omitted); later days never are.
+//      180 days, taking a 400 as "range not allowed"). `data_through` = the latest day Google
+//      SERVED a dated entry for (value or not, so a location gone quiet keeps advancing) minus
+//      2; a response with no dated entry at all gives yesterday - 2; it never moves backwards.
+//      Every day of the window up to it is written (0 for days Google omitted); later days never
+//      are.
 //   2. Search keywords, one single-month call per closed month (2, or 18 on a backfill: over a
-//      multi-month range Google sums the months into one number).
+//      multi-month range Google sums the months into one number). On a backfill the new
+//      data_through is persisted only after this step completes: the backfill is keyed on
+//      data_through IS NULL, so a run that dies before the 18 months are stored backfills again
+//      next hour (the metric rows already written are idempotent upserts).
 //   3. Reviews, newest first, until a known review with an unchanged update_time or 200 rows;
 //      rows beyond the newest 200 are pruned. Today's gbp_rating_daily and the cached totals on
 //      the location come from the same response.
@@ -29,7 +34,13 @@
 // location_name may be linked in another workspace (Review Focus 3).
 
 import type * as GbpApiModule from "./gbp-api.ts";
-import { GBP_DAILY_METRICS, type GbpDayMetrics, type GbpKeywordRow, type GbpReview } from "./gbp-api.ts";
+import {
+  GBP_DAILY_METRICS,
+  type GbpDailyMetricsResult,
+  type GbpDayMetrics,
+  type GbpKeywordRow,
+  type GbpReview,
+} from "./gbp-api.ts";
 import { type DbClient, GoogleApiError } from "./google.ts";
 import { previousMonth, saoPauloDate } from "./sao-paulo-date.ts";
 
@@ -76,7 +87,7 @@ export interface GbpSyncOutcome {
 /** Spike S3 default: the first window the Performance API accepts wins. */
 const BACKFILL_WINDOWS_DAYS = [548, 365, 180];
 const REWRITE_LOOKBACK_DAYS = 7;
-/** Google back-fills the most recent days, so the watermark trails the latest data by two. */
+/** Google back-fills the most recent days, so the watermark trails the latest served day by two. */
 const WATERMARK_LAG_DAYS = 2;
 const KEYWORD_MONTHS = 2;
 const BACKFILL_KEYWORD_MONTHS = 18;
@@ -105,10 +116,6 @@ function daysBetween(start: string, end: string): string[] {
   const out: string[] = [];
   for (let day = start; day <= end; day = addDays(day, 1)) out.push(day);
   return out;
-}
-
-function hasAnyMetric(day: GbpDayMetrics): boolean {
-  return METRIC_COLUMNS.some((c) => Number(day[c]) > 0);
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -176,8 +183,10 @@ class LocationSync {
   }
 
   async run(token: string): Promise<void> {
-    await this.syncDailyMetrics(token);
+    const through = await this.syncDailyMetrics(token);
     await this.syncKeywords(token);
+    // Backfill: the watermark lands only now that the 18 keyword months are stored.
+    if (this.backfill) await this.guard({ data_through: through });
     await this.syncReviews(token);
     await this.refreshLocation(token);
   }
@@ -186,16 +195,17 @@ class LocationSync {
     return await withRetry(this.deps, () => this.deps.api.fetchDailyMetrics(token, this.loc.location_name, range));
   }
 
-  private async syncDailyMetrics(token: string): Promise<void> {
+  /** Writes the metric rows and returns the new data_through (persisted here unless backfill). */
+  private async syncDailyMetrics(token: string): Promise<string> {
     let range: { start: string; end: string } | null = null;
-    let days: Map<string, GbpDayMetrics> | null = null;
+    let result: GbpDailyMetricsResult | null = null;
 
     if (this.backfill) {
       let rejected: unknown = null;
       for (const length of BACKFILL_WINDOWS_DAYS) {
         const candidate = { start: addDays(this.today, -length), end: this.yesterday };
         try {
-          days = await this.fetchMetrics(token, candidate);
+          result = await this.fetchMetrics(token, candidate);
           range = candidate;
           break;
         } catch (err) {
@@ -203,24 +213,22 @@ class LocationSync {
           rejected = err;
         }
       }
-      if (!days || !range) throw rejected;
+      if (!result || !range) throw rejected;
     } else {
       range = { start: addDays(this.loc.data_through!, -REWRITE_LOOKBACK_DAYS), end: this.yesterday };
-      days = await this.fetchMetrics(token, range);
+      result = await this.fetchMetrics(token, range);
     }
 
-    let latest: string | null = null;
-    for (const [day, metrics] of days) {
-      if (day < range.start || day > range.end || !hasAnyMetric(metrics)) continue;
-      if (latest === null || day > latest) latest = day;
-    }
+    const { days } = result;
+    const served = result.latestServedDay;
+    const latest = served && served >= range.start && served <= range.end ? served : null;
     const computed = addDays(latest ?? this.yesterday, -WATERMARK_LAG_DAYS);
     const stored = this.loc.data_through;
     const through = stored && stored > computed ? stored : computed;
 
     const lastDay = through < range.end ? through : range.end;
     const rows = daysBetween(range.start, lastDay).map((day) => {
-      const metrics = days!.get(day);
+      const metrics = days.get(day);
       const row: Record<string, unknown> = { conta_id: this.loc.conta_id, location_name: this.loc.location_name, day };
       for (const column of METRIC_COLUMNS) row[column] = metrics ? Number(metrics[column]) || 0 : 0;
       return row;
@@ -228,7 +236,8 @@ class LocationSync {
 
     await this.guard({ updated_at: this.nowIso });
     if (rows.length > 0) await this.upsert("gbp_metrics_daily", rows, "conta_id,location_name,day");
-    await this.guard({ data_through: through });
+    if (!this.backfill) await this.guard({ data_through: through });
+    return through;
   }
 
   private async syncKeywords(token: string): Promise<void> {

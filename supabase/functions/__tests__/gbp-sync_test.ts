@@ -5,7 +5,7 @@ import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock, type QueryCall } from "../../../test/shared/supabaseMock.ts";
 import { type GbpLocationRow, type GbpSyncDeps, syncGbpLocation } from "../_shared/gbp-sync.ts";
 import * as realApi from "../_shared/gbp-api.ts";
-import type { GbpDayMetrics, GbpKeywordRow, GbpLocationInfo, GbpReview, GbpReviewsPage } from "../_shared/gbp-api.ts";
+import type { GbpDailyMetricsResult, GbpDayMetrics, GbpKeywordRow, GbpLocationInfo, GbpReview, GbpReviewsPage } from "../_shared/gbp-api.ts";
 import { GoogleApiError } from "../_shared/google.ts";
 
 type Db = ReturnType<typeof createSupabaseQueryMock>;
@@ -49,10 +49,17 @@ function zeroDay(): GbpDayMetrics {
   };
 }
 
-function metricsMap(entries: Record<string, Partial<GbpDayMetrics>>): Map<string, GbpDayMetrics> {
-  const map = new Map<string, GbpDayMetrics>();
-  for (const [day, values] of Object.entries(entries)) map.set(day, { ...zeroDay(), ...values });
-  return map;
+/**
+ * A fetchDailyMetrics result holding only `entries` (the sync must zero-fill the rest itself).
+ * `latestServedDay` defaults to the latest entry: the days Google served a dated value for.
+ */
+function served(
+  entries: Record<string, Partial<GbpDayMetrics>>,
+  latestServedDay: string | null = Object.keys(entries).sort().pop() ?? null,
+): GbpDailyMetricsResult {
+  const days = new Map<string, GbpDayMetrics>();
+  for (const [day, values] of Object.entries(entries)) days.set(day, { ...zeroDay(), ...values });
+  return { days, latestServedDay };
 }
 
 function review(id: string, updateTime: string, overrides: Partial<GbpReview> = {}): GbpReview {
@@ -85,7 +92,7 @@ function fakeApi(overrides: Partial<GbpSyncDeps["api"]> = {}) {
     ...realApi,
     fetchDailyMetrics: async (token, loc, range) => {
       log.daily.push({ token, location: loc, range });
-      return new Map();
+      return served({});
     },
     fetchMonthlyKeywords: async (_token, _loc, month): Promise<GbpKeywordRow[]> => {
       log.keywords.push(month);
@@ -143,7 +150,7 @@ Deno.test("gbp-sync: omitted days are written as zeros and nothing after data_th
     fetchDailyMetrics: async (_t, _l, range) => {
       log.daily.push({ token: _t, location: _l, range });
       // Sparse on purpose: 2026-10-14 is missing entirely; the latest day with data is 10-27.
-      return metricsMap({
+      return served({
         "2026-10-13": { call_clicks: 1 },
         "2026-10-20": { website_clicks: 4 },
         "2026-10-27": { business_impressions_mobile_maps: 9 },
@@ -178,7 +185,7 @@ Deno.test("gbp-sync: the history upsert lands before data_through advances", asy
   const db = createSupabaseQueryMock();
   activeGuards(db);
   const { api } = fakeApi({
-    fetchDailyMetrics: async () => metricsMap({ "2026-10-27": { call_clicks: 2 } }),
+    fetchDailyMetrics: async () => served({ "2026-10-27": { call_clicks: 2 } }),
   });
   await syncGbpLocation(deps(db, api).deps, location(), { now: NOW });
 
@@ -194,7 +201,7 @@ Deno.test("gbp-sync: the history upsert lands before data_through advances", asy
 Deno.test("gbp-sync: a dormant location (no dated values) advances data_through to yesterday - 2 (I4)", async () => {
   const db = createSupabaseQueryMock();
   activeGuards(db);
-  const { api } = fakeApi({ fetchDailyMetrics: async () => new Map() });
+  const { api } = fakeApi({ fetchDailyMetrics: async () => served({}) });
   await syncGbpLocation(deps(db, api).deps, location({ data_through: "2026-10-20" }), { now: NOW });
 
   const rows = upsertsOf(db, "gbp_metrics_daily")[0].payload as Array<Record<string, unknown>>;
@@ -209,7 +216,7 @@ Deno.test("gbp-sync: data_through never moves backwards when the latest data is 
   activeGuards(db);
   const { api } = fakeApi({
     // Latest day with any metric is 10-20 → computed 10-18, below the stored 10-27.
-    fetchDailyMetrics: async () => metricsMap({ "2026-10-20": { call_clicks: 1 } }),
+    fetchDailyMetrics: async () => served({ "2026-10-20": { call_clicks: 1 } }),
   });
   await syncGbpLocation(deps(db, api).deps, location({ data_through: "2026-10-27" }), { now: NOW });
 
@@ -220,6 +227,31 @@ Deno.test("gbp-sync: data_through never moves backwards when the latest data is 
   assertEquals(through, ["2026-10-27"]);
 });
 
+Deno.test("gbp-sync: a location whose metrics go to zero keeps advancing data_through as served days advance", async () => {
+  const throughs: unknown[] = [];
+  // Run 1: a call on 10-15 and nothing since, but Google served (value-less) entries through 10-29.
+  // Run 2, a day later: still all zero, served through 10-30.
+  const runs = [
+    { now: NOW, stored: "2026-10-20", result: served({ "2026-10-15": { call_clicks: 1 } }, "2026-10-29") },
+    { now: new Date("2026-10-31T15:00:00Z"), stored: "2026-10-27", result: served({}, "2026-10-30") },
+  ];
+  for (const run of runs) {
+    const db = createSupabaseQueryMock();
+    activeGuards(db);
+    const { api } = fakeApi({ fetchDailyMetrics: async () => run.result });
+    const { deps: d } = deps(db, api, { now: () => run.now });
+    const out = await syncGbpLocation(d, location({ data_through: run.stored }), { now: run.now });
+    assertEquals(out.status, "synced");
+    throughs.push(
+      ...locationUpdates(db).map((c) => (c.payload as Record<string, unknown>).data_through).filter(Boolean),
+    );
+    const rows = upsertsOf(db, "gbp_metrics_daily")[0].payload as Array<Record<string, unknown>>;
+    assertEquals(rows[rows.length - 1].day, throughs[throughs.length - 1]);
+  }
+  // The latest NON-ZERO day (10-15) would have pinned it at 10-13 forever.
+  assertEquals(throughs, ["2026-10-27", "2026-10-28"]);
+});
+
 Deno.test("gbp-sync: backfill falls back from 548 to 365 days on a 400 'range not allowed'", async () => {
   const db = createSupabaseQueryMock();
   activeGuards(db);
@@ -228,7 +260,7 @@ Deno.test("gbp-sync: backfill falls back from 548 to 365 days on a 400 'range no
     fetchDailyMetrics: async (_t, _l, range) => {
       ranges.push(range);
       if (ranges.length === 1) throw new GoogleApiError("UPSTREAM", 400, "Invalid date range", false);
-      return metricsMap({ "2026-10-27": { call_clicks: 1 } });
+      return served({ "2026-10-27": { call_clicks: 1 } });
     },
   });
   const out = await syncGbpLocation(deps(db, api).deps, location({ data_through: null }), { now: NOW });
@@ -311,7 +343,7 @@ Deno.test("gbp-sync: a backfill stops the keyword months at the first 400 and ke
   activeGuards(db);
   const asked: string[] = [];
   const { api, log } = fakeApi({
-    fetchDailyMetrics: async () => new Map(),
+    fetchDailyMetrics: async () => served({}),
     fetchMonthlyKeywords: async (_t, _l, month) => {
       asked.push(month);
       if (month === "2025-06") throw new GoogleApiError("UPSTREAM", 400, "too old", false);
@@ -325,6 +357,47 @@ Deno.test("gbp-sync: a backfill stops the keyword months at the first 400 and ke
   assertEquals(asked.length, 16);
   assertEquals(upsertsOf(db, "gbp_search_keywords_monthly").length, 15);
   assertEquals(log.location, 1, "the later steps still run");
+  // The backfill watermark lands only after the keyword months are stored.
+  const lastKeyword = db.calls.findLastIndex((c) => c.table === "gbp_search_keywords_monthly");
+  const throughIdx = db.calls.findIndex(
+    (c) => c.table === "gbp_locations" && c.operation === "update" && (c.payload as Record<string, unknown>).data_through,
+  );
+  assert(lastKeyword < throughIdx, "data_through must follow the last keyword write");
+  assertEquals((db.calls[throughIdx].payload as Record<string, unknown>).data_through, "2026-10-27");
+});
+
+Deno.test("gbp-sync: a backfill whose keyword step fails leaves data_through null, so the next run backfills again", async () => {
+  for (const failure of [new Error("boom"), new GoogleApiError("QUOTA_EXCEEDED", 429, "per-minute", false)]) {
+    const db = createSupabaseQueryMock();
+    activeGuards(db);
+    let month = 0;
+    const { api } = fakeApi({
+      fetchDailyMetrics: async () => served({ "2026-10-27": { call_clicks: 1 } }),
+      fetchMonthlyKeywords: async (_t, _l, m) => {
+        if (++month === 3) throw failure;
+        return [{ month: m, keyword: "padaria", value: 1 }];
+      },
+      listReviews: async () => {
+        throw new Error("must not be called");
+      },
+    });
+    let outcome: string;
+    try {
+      outcome = (await syncGbpLocation(deps(db, api).deps, location({ data_through: null }), { now: NOW })).status;
+    } catch (err) {
+      outcome = `threw:${(err as Error).message}`;
+    }
+    assertEquals(outcome, failure instanceof GoogleApiError ? "quota_skipped" : "threw:boom");
+    // Metric rows and the first keyword months are stored (idempotent upserts) ...
+    const metricRows = upsertsOf(db, "gbp_metrics_daily").flatMap((c) => c.payload as Array<Record<string, unknown>>);
+    assertEquals(metricRows[metricRows.length - 1].day, "2026-10-25");
+    assertEquals(upsertsOf(db, "gbp_search_keywords_monthly").length, 2);
+    // ... but the watermark is not, so data_through stays null.
+    assert(
+      !locationUpdates(db).some((c) => "data_through" in (c.payload as Record<string, unknown>)),
+      "data_through must not be written",
+    );
+  }
 });
 
 // ── Step 3: reviews ─────────────────────────────────────────────────────────────
@@ -504,7 +577,7 @@ Deno.test("gbp-sync: QUOTA_EXCEEDED keeps what was written and returns quota_ski
   const db = createSupabaseQueryMock();
   activeGuards(db);
   const { api } = fakeApi({
-    fetchDailyMetrics: async () => metricsMap({ "2026-10-27": { call_clicks: 1 } }),
+    fetchDailyMetrics: async () => served({ "2026-10-27": { call_clicks: 1 } }),
     fetchMonthlyKeywords: async () => {
       throw new GoogleApiError("QUOTA_EXCEEDED", 429, "per-minute", false);
     },
@@ -526,7 +599,7 @@ Deno.test("gbp-sync: RATE_LIMITED retries after 1 s, 2 s and 4 s, then succeeds"
     fetchDailyMetrics: async () => {
       attempts++;
       if (attempts <= 3) throw new GoogleApiError("RATE_LIMITED", 429, "slow down");
-      return new Map();
+      return served({});
     },
   });
   const { deps: d, sleeps } = deps(db, api);
@@ -583,7 +656,7 @@ Deno.test("gbp-sync: a location without a connection is skipped before any token
 Deno.test("gbp-sync: a unit revoked mid-run (guard matches 0 rows) stops with revoked and writes no history (C2)", async () => {
   const db = createSupabaseQueryMock();
   db.queue("gbp_locations", "update", { data: [] });
-  const { api } = fakeApi({ fetchDailyMetrics: async () => metricsMap({ "2026-10-27": { call_clicks: 1 } }) });
+  const { api } = fakeApi({ fetchDailyMetrics: async () => served({ "2026-10-27": { call_clicks: 1 } }) });
   const out = await syncGbpLocation(deps(db, api).deps, location(), { now: NOW });
   assertEquals(out.status, "revoked");
   const historyWrites = writes(db).filter((c) => c.table !== "gbp_locations");
@@ -618,7 +691,7 @@ Deno.test("gbp-sync: every gbp_* history read, write and delete carries the loca
   }));
   db.queue("gbp_reviews", "select", { data: stored });
   const { api } = fakeApi({
-    fetchDailyMetrics: async () => metricsMap({ "2026-10-27": { call_clicks: 1 } }),
+    fetchDailyMetrics: async () => served({ "2026-10-27": { call_clicks: 1 } }),
     fetchMonthlyKeywords: async (_t, _l, month) => [{ month, keyword: "padaria", value: 3 }],
     listReviews: async () => page([review("n-1", "2026-10-28T10:00:00Z")]),
   });

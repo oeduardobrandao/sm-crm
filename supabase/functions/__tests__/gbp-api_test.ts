@@ -81,8 +81,15 @@ Deno.test("fetchDailyMetrics: a day the API omits is 0 for every metric, an abse
       ],
     },
   ]);
-  const days = await fetchDailyMetrics("t", "locations/1", { start: "2026-10-01", end: "2026-10-03" }, fetchJson);
+  const { days, latestServedDay } = await fetchDailyMetrics(
+    "t",
+    "locations/1",
+    { start: "2026-10-01", end: "2026-10-03" },
+    fetchJson,
+  );
 
+  // 10-03 counts as served although its CALL_CLICKS entry has no value.
+  assertEquals(latestServedDay, "2026-10-03");
   assertEquals([...days.keys()], ["2026-10-01", "2026-10-02", "2026-10-03"]);
   assertEquals(days.get("2026-10-01")?.call_clicks, 4);
   assertEquals(days.get("2026-10-01")?.website_clicks, 0);
@@ -114,7 +121,7 @@ Deno.test("fetchDailyMetrics: maps each metric to its lower snake case key, igno
       ],
     },
   ]);
-  const days = await fetchDailyMetrics("t", "locations/1", { start: "2026-10-01", end: "2026-10-01" }, fetchJson);
+  const { days } = await fetchDailyMetrics("t", "locations/1", { start: "2026-10-01", end: "2026-10-01" }, fetchJson);
   assertEquals(days.get("2026-10-01"), {
     business_impressions_desktop_maps: 1,
     business_impressions_desktop_search: 2,
@@ -143,10 +150,41 @@ Deno.test("fetchDailyMetrics: an empty body still yields every requested day at 
     },
   ]);
   const empty = await fetchDailyMetrics("t", "locations/1", { start: "2026-10-30", end: "2026-11-01" }, fetchJson);
-  assertEquals([...empty.keys()], ["2026-10-30", "2026-10-31", "2026-11-01"]);
+  assertEquals([...empty.days.keys()], ["2026-10-30", "2026-10-31", "2026-11-01"]);
+  assertEquals(empty.latestServedDay, null);
   const stray = await fetchDailyMetrics("t", "locations/1", { start: "2026-10-01", end: "2026-10-01" }, fetchJson);
-  assertEquals([...stray.keys()], ["2026-10-01"]);
-  assertEquals(stray.get("2026-10-01")?.call_clicks, 0);
+  assertEquals([...stray.days.keys()], ["2026-10-01"]);
+  assertEquals(stray.days.get("2026-10-01")?.call_clicks, 0);
+  assertEquals(stray.latestServedDay, null, "a day outside the range is not a served day");
+});
+
+Deno.test("fetchDailyMetrics: latestServedDay counts value-less entries and breakdown series, not zero-filled days", async () => {
+  const { fetchJson } = fakeFetch([
+    {
+      multiDailyMetricTimeSeries: [
+        {
+          dailyMetricTimeSeries: [
+            // A quiet location: every served entry has no value (= zero).
+            { dailyMetric: "CALL_CLICKS", timeSeries: { datedValues: [{ date: d(2026, 10, 1) }, { date: d(2026, 10, 2) }] } },
+            {
+              dailyMetric: "WEBSITE_CLICKS",
+              dailySubEntityType: { dayOfWeek: "FRIDAY" },
+              timeSeries: { datedValues: [{ date: d(2026, 10, 3) }] },
+            },
+          ],
+        },
+      ],
+    },
+  ]);
+  const { days, latestServedDay } = await fetchDailyMetrics(
+    "t",
+    "locations/1",
+    { start: "2026-10-01", end: "2026-10-05" },
+    fetchJson,
+  );
+  assertEquals(latestServedDay, "2026-10-03");
+  assertEquals(days.size, 5);
+  for (const metrics of days.values()) assertEquals(metrics.website_clicks, 0);
 });
 
 Deno.test("fetchMonthlyKeywords: one month per call, value and threshold parsed from int64 strings", async () => {

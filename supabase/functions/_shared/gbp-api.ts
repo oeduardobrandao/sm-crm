@@ -152,18 +152,31 @@ interface DailyMetricsResponse {
   }>;
 }
 
+export interface GbpDailyMetricsResult {
+  /** Every day of the requested range, keyed by ISO day, with all ten metrics. */
+  days: Map<string, GbpDayMetrics>;
+  /**
+   * The latest day inside the range for which Google served ANY dated entry (any series, any
+   * metric, value present or absent), or null when it served none. Zero-filling erases this
+   * signal from `days`; the sync needs it to tell a quiet location ("served, zero") apart from
+   * days Google has not published yet, so its watermark keeps advancing.
+   */
+  latestServedDay: string | null;
+}
+
 /**
- * Daily metrics for `range` (inclusive ISO days), keyed by ISO day. Every day of the range is
- * present with all ten metrics: Google omits `value` for zero and may omit whole days, both
- * become 0. Days Google returns outside the range are ignored, as are unknown metrics and
- * breakdown series (`dailySubEntityType`), which would double count the unbroken total.
+ * Daily metrics for `range` (inclusive ISO days). Every day of the range is present in `days`
+ * with all ten metrics: Google omits `value` for zero and may omit whole days, both become 0.
+ * Days Google returns outside the range are ignored, as are unknown metrics and breakdown series
+ * (`dailySubEntityType`), which would double count the unbroken total (`latestServedDay` still
+ * counts their in-range dates: any served date means Google has published that day).
  */
 export async function fetchDailyMetrics(
   token: string,
   locationName: string,
   range: { start: string; end: string },
   fetchJson: GbpFetchJson = googleFetch,
-): Promise<Map<string, GbpDayMetrics>> {
+): Promise<GbpDailyMetricsResult> {
   const start = parseIsoDay(range.start);
   const end = parseIsoDay(range.end);
   const url = new URL(`${PERFORMANCE_BASE}/${locationName}:fetchMultiDailyMetricsTimeSeries`);
@@ -180,18 +193,21 @@ export async function fetchDailyMetrics(
   const days = new Map<string, GbpDayMetrics>();
   for (const day of daysBetween(range.start, range.end)) days.set(day, zeroDay());
 
+  let latestServedDay: string | null = null;
   for (const group of body?.multiDailyMetricTimeSeries ?? []) {
     for (const series of group?.dailyMetricTimeSeries ?? []) {
       const key = series?.dailyMetric ? METRIC_KEY_BY_ENUM.get(series.dailyMetric) : undefined;
-      if (!key || series.dailySubEntityType) continue;
-      for (const point of series.timeSeries?.datedValues ?? []) {
+      const counted = !!key && !series.dailySubEntityType;
+      for (const point of series?.timeSeries?.datedValues ?? []) {
         const day = isoDay(point?.date);
         const row = day ? days.get(day) : undefined;
-        if (row) row[key] = toCount(point.value) ?? 0;
+        if (!row) continue;
+        if (latestServedDay === null || day! > latestServedDay) latestServedDay = day;
+        if (counted) row[key!] = toCount(point.value) ?? 0;
       }
     }
   }
-  return days;
+  return { days, latestServedDay };
 }
 
 interface KeywordsResponse {
