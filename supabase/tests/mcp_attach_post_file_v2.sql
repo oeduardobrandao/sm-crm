@@ -20,9 +20,14 @@ begin
     insert into files (conta_id, r2_key, name, kind, mime_type, size_bytes)
       values (ws, 'contas/' || ws || '/files/' || gen_random_uuid() || '.jpg', 's.jpg', 'image', 'image/jpeg', 10)
       returning id into fid;
+    -- trg_post_file_link_auto_cover makes the first link the cover
     insert into post_file_links (conta_id, post_id, file_id, origin, sort_order, is_cover)
-      values (ws, post, fid, 'manual', i, i = cover_at);
+      values (ws, post, fid, 'manual', i, false);
   end loop;
+  if cover_at <> 0 then
+    update post_file_links set is_cover = false where post_id = post and is_cover;
+    update post_file_links set is_cover = true where post_id = post and sort_order = cover_at;
+  end if;
 end $$;
 
 create function pg_temp.link_at(post bigint, pos int) returns bigint language sql as $$
