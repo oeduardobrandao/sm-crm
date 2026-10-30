@@ -289,3 +289,70 @@ describe('suggestionAwareCaption', () => {
     expect(suggestionAwareCaption(p, null)).toBe('derivada');
   });
 });
+
+describe('suggestionDiffBlocks: TikTok and Geral captions', () => {
+  const multi = (over: Partial<HubPost> = {}) =>
+    post({
+      targets: ['instagram', 'tiktok', 'geral'],
+      tiktok_caption: null,
+      geral_caption: 'Geral antiga',
+      ...over,
+    });
+
+  it('diffs a changed column against its RAW live value, never the caption TikTok shows', () => {
+    const blocks = suggestionDiffBlocks(
+      multi(),
+      sugg({
+        changed_fields: ['tiktok_caption', 'geral_caption'],
+        suggested_tiktok_caption: 'TikTok novo',
+        suggested_geral_caption: 'Geral nova',
+      }),
+    );
+    expect(blocks).toEqual([
+      // tiktok_caption null: the base is '' (what the server compares), not the IG caption.
+      { field: 'tiktok', before: '', after: 'TikTok novo' },
+      { field: 'geral', before: 'Geral antiga', after: 'Geral nova' },
+    ]);
+  });
+
+  it('ignores a stored copy for a column the suggestion did not change', () => {
+    expect(
+      suggestionDiffBlocks(
+        multi(),
+        sugg({
+          changed_fields: [],
+          suggested_tiktok_caption: 'velho',
+          suggested_geral_caption: 'x',
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it('labels each caption block by destination', () => {
+    render(
+      <SuggestionDiff
+        post={multi()}
+        suggestion={sugg({
+          suggested_ig_caption: 'Legenda nova',
+          changed_fields: ['ig_caption', 'tiktok_caption', 'geral_caption'],
+          suggested_tiktok_caption: 'TikTok novo',
+          suggested_geral_caption: 'Geral nova',
+        })}
+      />,
+    );
+    expect(screen.getByText('Legenda do Instagram')).toBeInTheDocument();
+    expect(screen.getByText('Legenda do TikTok')).toBeInTheDocument();
+    expect(screen.getByText('Legenda Geral')).toBeInTheDocument();
+  });
+
+  it('keeps the plain "Legenda" label on an Instagram-only post', () => {
+    render(
+      <SuggestionDiff
+        post={post({ targets: ['instagram'] })}
+        suggestion={sugg({ suggested_ig_caption: 'Legenda nova', changed_fields: ['ig_caption'] })}
+      />,
+    );
+    expect(screen.getAllByText('Legenda').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Legenda do Instagram')).not.toBeInTheDocument();
+  });
+});

@@ -7,9 +7,18 @@
     "aprovar": "Aprovar",
     "suggestionPendingReviewFull": "Sugestão enviada para revisão da equipe",
     "suggestionShowing": "Abaixo está a versão que você sugeriu.",
-    "suggestionShowingText": "Abaixo está a versão que você sugeriu. Você alterou o texto.",
-    "suggestionShowingCaption": "Abaixo está a versão que você sugeriu. Você alterou a legenda.",
-    "suggestionShowingBoth": "Abaixo está a versão que você sugeriu. Você alterou o texto e a legenda.",
+    "suggestionShowingFields": "Abaixo está a versão que você sugeriu, com mudanças {{fields}}.",
+    "suggestionFieldPhrase": {
+      "texto": "no texto",
+      "legenda": "na legenda",
+      "legendaInstagram": "na legenda do Instagram",
+      "legendaTiktok": "na legenda do TikTok",
+      "legendaGeral": "na legenda Geral"
+    },
+    "saveErrorTargetGone": "Esse destino foi removido do post.",
+    "saveErrorRetry": "Não deu para salvar agora. Tente de novo.",
+    "saveErrorCaptionTooLong": "A legenda do TikTok passou do limite de {{max}} caracteres.",
+    "saveErrorCaptionTooLongNoMax": "A legenda do TikTok passou do limite de caracteres.",
     "suggestionShowingOriginal": "Você está vendo a versão original, sem as suas alterações.",
     "suggestionCompareLabel": "Comparar versões",
     "suggestionViewMine": "Sua sugestão",
@@ -307,6 +316,19 @@
     "empty": "Sem legenda",
     "geralNote": "Esta legenda não é publicada automaticamente. A equipe usa ela para publicar por fora.",
     "sameFor": "Mesma legenda para {{names}}",
-    "tablistLabel": "Legenda de cada plataforma"
+    "tablistLabel": "Legenda de cada plataforma",
+    "changedTab": "alterada",
+    "fieldLabel": {
+      "instagram": "Legenda do Instagram",
+      "tiktok": "Legenda do TikTok",
+      "geral": "Legenda Geral"
+    },
+    "groupFieldLabel": "Legenda de {{names}}",
+    "appliesTo": "Esta mudança vale para {{names}}.",
+    "withArticle": {
+      "instagram": "o Instagram",
+      "tiktok": "o TikTok",
+      "geral": "o destino Geral"
+    }
   }
 }

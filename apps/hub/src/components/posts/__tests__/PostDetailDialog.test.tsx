@@ -214,7 +214,9 @@ describe('PostDetailDialog', () => {
           await vi.advanceTimersByTimeAsync(1600);
         });
         expect(submitEditSuggestionMock).toHaveBeenCalledTimes(1);
-        expect(submitEditSuggestionMock.mock.calls[0][4]).toBe('Legenda editada');
+        expect(submitEditSuggestionMock.mock.calls[0][2].captions.ig_caption).toBe(
+          'Legenda editada',
+        );
         // A clean first save closes the panel too (not only saves on a pending suggestion).
         expect(screen.queryByRole('textbox', { name: 'Legenda do post' })).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: /Corrigir/ })).toBeInTheDocument();
@@ -871,7 +873,7 @@ describe('PostDetailDialog', () => {
       expect(submitEditSuggestionMock.mock.calls[1]).toEqual(
         submitEditSuggestionMock.mock.calls[0],
       );
-      expect(submitEditSuggestionMock.mock.calls[1][4]).toBe('Legenda editada');
+      expect(submitEditSuggestionMock.mock.calls[1][2].captions.ig_caption).toBe('Legenda editada');
     });
 
     it('a retry that fails again still leaves the client a way out', async () => {
@@ -1065,7 +1067,7 @@ describe('PostDetailDialog', () => {
       fireEvent.click(mine);
       expect(
         screen.getByText(
-          'Abaixo está a versão que você sugeriu. Você alterou o texto e a legenda.',
+          'Abaixo está a versão que você sugeriu, com mudanças no texto e na legenda.',
         ),
       ).toBeInTheDocument();
       const original = screen.getByRole('button', { name: 'Original' });
@@ -1139,16 +1141,14 @@ describe('PostDetailDialog', () => {
           await vi.advanceTimersByTimeAsync(1600);
         });
 
-        expect(submitEditSuggestionMock).toHaveBeenCalledWith(
-          'token-publico',
-          1,
-          null,
-          'Corpo',
-          'Legenda editada de novo',
-          ['legenda'],
+        expect(submitEditSuggestionMock).toHaveBeenCalledWith('token-publico', 1, {
+          conteudo: null,
+          conteudo_plain: 'Corpo',
+          captions: { ig_caption: 'Legenda editada de novo' },
+          touched_fields: ['legenda'],
           // The caption as fetched when the panel opened, not the suggestion's.
-          { ig_caption: 'Legenda um' },
-        );
+          bases: { ig_caption: 'Legenda um' },
+        });
         // Clean save: the panel closes back to the reading view, which already shows the saved
         // suggestion as a diff before any refetch.
         expect(screen.queryByRole('textbox', { name: 'Legenda do post' })).not.toBeInTheDocument();
@@ -1337,6 +1337,36 @@ describe('PostDetailDialog', () => {
       renderDialog(11, { posts: [both] });
       expect(screen.getByText('Mesma legenda para Instagram e TikTok')).toBeInTheDocument();
       expect(screen.queryByRole('tab', { name: 'TikTok' })).not.toBeInTheDocument();
+    });
+
+    it('Sua sugestão shows the suggested TikTok caption; Original shows the live one', () => {
+      const pending = post({
+        id: 12,
+        titulo: 'Pendente',
+        ig_caption: 'Legenda IG',
+        tiktok_caption: 'TT vivo',
+        geral_caption: null,
+        targets: ['instagram', 'tiktok'],
+        pending_suggestion: {
+          id: 5,
+          suggested_conteudo: null,
+          suggested_conteudo_plain: 'Corpo',
+          suggested_ig_caption: 'Legenda IG',
+          suggested_tiktok_caption: 'TT sugerido',
+          suggested_geral_caption: null,
+          changed_fields: ['tiktok_caption'],
+          updated_at: '2026-10-30T10:00:00.000Z',
+        },
+      });
+      renderDialog(12, { posts: [pending] });
+      // Alterações (default): one diff block, labeled by destination.
+      expect(screen.getByText('Legenda do TikTok')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Sua sugestão' }));
+      fireEvent.click(screen.getByRole('tab', { name: 'TikTok' }));
+      expect(screen.getByText('TT sugerido')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Original' }));
+      fireEvent.click(screen.getByRole('tab', { name: 'TikTok' }));
+      expect(screen.getByText('TT vivo')).toBeInTheDocument();
     });
 
     it('an Instagram-only post keeps the plain caption', () => {
