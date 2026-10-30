@@ -13,13 +13,16 @@ import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { getClientes } from '../../store';
 import { getInstagramSummary } from '../../services/instagram';
 import { getTikTokSummary } from '../../services/tiktok';
+import { getGoogleSummary } from '../../services/google';
 import { Avatar } from '../analytics/phone/shared';
 import { InstagramAnalyticsTab } from './AnalyticsContaPage';
 import { ContaPhoneMessage } from './phone/ContaPhone';
 import { ClientReportsPanel } from './reports/ClientReportsPanel';
 import { TikTokAnalyticsTab } from './tiktok/TikTokAnalyticsTab';
+import { YouTubeAnalyticsTab } from './youtube/YouTubeAnalyticsTab';
+import { GoogleAnalyticsTab } from './google/GoogleAnalyticsTab';
 
-const ANALYTICS_TABS = ['instagram', 'tiktok', 'relatorios'] as const;
+const ANALYTICS_TABS = ['instagram', 'tiktok', 'youtube', 'google', 'relatorios'] as const;
 export type AnalyticsTab = (typeof ANALYTICS_TABS)[number];
 
 const isAnalyticsTab = (v: string | undefined): v is AnalyticsTab =>
@@ -47,7 +50,8 @@ const httpsOnly = (url: string | null | undefined) =>
 
 /**
  * `/analytics/:id/:tab?`: the client analytics page. Owns the client lookup, the header
- * (back to /analytics, photo, name, specialty) and the Instagram | TikTok | Relatórios tabs;
+ * (back to /analytics, photo, name, specialty) and the Instagram | TikTok | YouTube | Google
+ * Meu Negócio | Relatórios tabs (TikTok, YouTube and Google behind their plan flags);
  * each tab owns its own data and period controls (spec §A6). The only registrant of the
  * Vidro toolbar on this page: the tabs never call usePageToolbar.
  */
@@ -61,6 +65,8 @@ export default function AnalyticsClientShell() {
 
   const { features, isLoading: loadingLimits } = useWorkspaceLimits();
   const tiktokEnabled = features?.feature_tiktok === true;
+  const youtubeEnabled = features?.feature_youtube === true;
+  const googleEnabled = features?.feature_google_business === true;
 
   const { data: clientes = [], isLoading: loadingClientes } = useQuery({
     queryKey: ['clientes'],
@@ -83,12 +89,23 @@ export default function AnalyticsClientShell() {
     retry: false,
   });
 
+  // Same key and queryFn as the client detail's YouTube / Google Meu Negócio sections, so
+  // their connect/disconnect invalidation reaches this page. Only the header avatar reads it
+  // here; a failure just means no channel photo.
+  const googleQuery = useQuery({
+    queryKey: ['googleSummary', clientId],
+    queryFn: () => getGoogleSummary(clientId),
+    enabled: validId && !!cliente && (youtubeEnabled || googleEnabled),
+    retry: false,
+  });
+
   const nome = cliente?.nome ?? '';
   const especialidade = cliente?.especialidade?.trim() || null;
   const photoSrcs = [
     cliente?.foto_url,
     igQuery.data?.account?.profile_picture_url,
     ttQuery.data?.account?.avatar_url,
+    youtubeEnabled ? googleQuery.data?.youtube?.avatarUrl : null,
   ];
   const photo = photoSrcs.map(httpsOnly).find(Boolean) ?? null;
   // Same initials ContaPhone's identity shows.
@@ -143,10 +160,17 @@ export default function AnalyticsClientShell() {
     );
   }
 
-  // TikTok tab without the plan: back to Instagram, but only once the plan is known.
-  if (tab === 'tiktok') {
+  // A gated tab without the plan: back to Instagram, but only once the plan is known.
+  const gatedEnabled: Partial<Record<AnalyticsTab, boolean>> = {
+    tiktok: tiktokEnabled,
+    youtube: youtubeEnabled,
+    google: googleEnabled,
+  };
+  if (tab && tab in gatedEnabled) {
     if (loadingLimits) return <DetailSkeleton />;
-    if (!tiktokEnabled) return <Navigate to={`/analytics/${clientId}/instagram`} replace />;
+    if (!gatedEnabled[tab as AnalyticsTab]) {
+      return <Navigate to={`/analytics/${clientId}/instagram`} replace />;
+    }
   }
 
   if (!isAnalyticsTab(tab)) {
@@ -168,13 +192,17 @@ export default function AnalyticsClientShell() {
     return <Navigate to={`/analytics/${clientId}/${target}`} replace />;
   }
 
-  const visibleTabs = ANALYTICS_TABS.filter((k) => k !== 'tiktok' || tiktokEnabled);
+  const visibleTabs = ANALYTICS_TABS.filter((k) => gatedEnabled[k] !== false);
   const tabLabel = (k: AnalyticsTab) =>
     k === 'instagram'
       ? t('tab.instagram', 'Instagram')
       : k === 'tiktok'
         ? t('tab.tiktok', 'TikTok')
-        : t('tab.reports', 'Relatórios');
+        : k === 'youtube'
+          ? t('tab.youtube', 'YouTube')
+          : k === 'google'
+            ? t('tab.google', 'Google Meu Negócio')
+            : t('tab.reports', 'Relatórios');
   const tabsLabel = t('tab.ariaLabel', 'Analytics');
 
   if (isPhone) {
@@ -191,14 +219,21 @@ export default function AnalyticsClientShell() {
     if (tab === 'instagram') {
       return <InstagramAnalyticsTab clientId={clientId} cliente={cliente} tabs={tabsControl} />;
     }
-    // The TikTok tab owns its phone frame too: the sync button sits in its nav bar.
-    if (tab === 'tiktok') {
-      return (
-        <TikTokAnalyticsTab
-          clientId={clientId}
-          phoneFrame={{ nome: cliente.nome, cor: cliente.cor, photo: photoSrcs, tabs: tabsControl }}
-        />
-      );
+    // The TikTok, YouTube and Google tabs own their phone frame too (the sync button sits in
+    // their nav bar). Without the frame they fall back to the desktop layout, so it is always
+    // passed on a phone.
+    const phoneFrame = {
+      nome: cliente.nome,
+      cor: cliente.cor,
+      photo: photoSrcs,
+      tabs: tabsControl,
+    };
+    if (tab === 'tiktok') return <TikTokAnalyticsTab clientId={clientId} phoneFrame={phoneFrame} />;
+    if (tab === 'youtube') {
+      return <YouTubeAnalyticsTab clientId={clientId} phoneFrame={phoneFrame} />;
+    }
+    if (tab === 'google') {
+      return <GoogleAnalyticsTab clientId={clientId} phoneFrame={phoneFrame} />;
     }
     return (
       <div className="phone-kit phone-an">
@@ -220,6 +255,8 @@ export default function AnalyticsClientShell() {
   if (tab === 'instagram')
     content = <InstagramAnalyticsTab clientId={clientId} cliente={cliente} />;
   else if (tab === 'tiktok') content = <TikTokAnalyticsTab clientId={clientId} />;
+  else if (tab === 'youtube') content = <YouTubeAnalyticsTab clientId={clientId} />;
+  else if (tab === 'google') content = <GoogleAnalyticsTab clientId={clientId} />;
   else content = <ClientReportsPanel clientId={clientId} />;
 
   return (
