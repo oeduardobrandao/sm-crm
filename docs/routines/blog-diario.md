@@ -347,19 +347,20 @@ citar. Se o conteúdo é uma sequência de passos que o texto já lista, **não*
 `etapas`: o resultado é um cartão que só reescreve a lista. Máximo de dois por post, e zero é
 um bom número.
 
-Você decide o tipo pelo que o assunto pede, não por hábito. Os três tipos abaixo são o que o
-site sabe desenhar hoje; se o seu dado pede outra forma (matriz, linha do tempo, antes e
-depois), use uma tabela Markdown ou uma imagem ilustrativa em vez de forçar o dado num tipo que
-não cabe. Não use rótulo em caixa alta, "eyebrow" ou texto decorativo no título: o `titulo` diz
-o que o gráfico mostra, em sentence case.
+Você decide a forma pelo que o assunto pede, não por hábito. Existem três modelos prontos
+(`barras`, `numeros`, `etapas`) para os casos simples. Quando o assunto pede outra coisa
+(matriz 2x2, linha do tempo, funil, antes e depois, diagrama de fluxo, gráfico de linha ou de
+pizza), **desenhe você mesmo com o tipo `svg`**: é a opção aberta, e deve ser a sua primeira
+escolha sempre que um modelo pronto fosse forçar o dado. Não use rótulo em caixa alta,
+"eyebrow" ou texto decorativo: o `titulo` diz o que o gráfico mostra, em sentence case.
 
 Regras:
 
 - O bloco fica no nível principal do texto, com linha em branco antes e depois: nunca dentro de
   lista ou de bloco `>` (ali o validador não o enxerga e o site não o desenha).
-- Três tipos: `barras`, `numeros` e `etapas`. Qualquer chave fora das listadas é recusada.
+- Quatro tipos: `barras`, `numeros`, `etapas` e `svg`. Qualquer chave fora das listadas é recusada.
 - `titulo`: 1 a 90 caracteres.
-- `fonte` (em `barras` e `numeros`) é o **índice, começando em 0**, da fonte em `sources` de
+- `fonte` (obrigatória em `barras` e `numeros`, opcional em `svg`) é o **índice, começando em 0**, da fonte em `sources` de
   onde vieram os números. `fonte: 0` é a primeira fonte. Todo número precisa estar nessa fonte.
 - `etapas` não tem `fonte`: é um passo a passo seu, sem dados.
 
@@ -412,6 +413,54 @@ lugar do número.
 
 Os números dos exemplos acima são ilustrativos: nunca copie para um post. No post, todo valor
 sai da fonte.
+
+#### Tipo `svg`: infográfico desenhado por você
+
+Campos: `tipo: "svg"`, `titulo` (1 a 90), `alt` (1 a 300 caracteres: descreve o que o desenho
+mostra, em pt-BR, para leitor de tela e para quem indexa), `fonte` (opcional) e `svg` (a string
+do desenho, até 20000 caracteres). **Se o desenho mostra algum número, informe `fonte` e todo
+número tem de estar nessa fonte**; um desenho sem dados (diagrama, matriz de decisão) não
+precisa de fonte. Mostrar número inventado é proibido aqui como em qualquer lugar.
+
+O SVG é lido por um validador estrito. O que ele aceita:
+
+- Um único `<svg viewBox="0 0 L A">` na raiz, e **só** `viewBox` (e `xmlns` com o valor
+  `http://www.w3.org/2000/svg`) como atributos dele. Sem `width` nem `height` na raiz: o site
+  escala para a largura do cartão. Pense em proporções como 800x450 ou 600x600.
+- Elementos: `g`, `defs`, `rect`, `circle`, `ellipse`, `line`, `polyline`, `polygon`, `path`,
+  `text`, `tspan`, `linearGradient`, `radialGradient`, `stop`. Nada além (sem `style`, `script`,
+  `image`, `use`, `a`, `foreignObject`, comentários, CDATA).
+- Atributos: `x`, `y`, `x1`, `y1`, `x2`, `y2`, `cx`, `cy`, `r`, `rx`, `ry`, `width`, `height`,
+  `offset`, `d`, `points`, `transform` (só `translate`, `rotate`, `scale`), `fill`, `stroke`,
+  `stop-color`, `stroke-width`, `stroke-dasharray`, `stroke-linecap`, `stroke-linejoin`,
+  `opacity`, `fill-opacity`, `stroke-opacity`, `font-size`, `font-weight`, `text-anchor`,
+  `dominant-baseline`, `id`. Sem `class`, `style`, `href`, `font-family` nem `on*`. Aspas
+  duplas sempre.
+- Números sem unidade ou com `%`/`px`. Cores: `none`, `currentColor`, hex (`#ffbf30`),
+  `url(#id)` de um gradiente do próprio desenho ou uma variável do blog:
+  `var(--blog-r-ink)` (texto), `var(--blog-r-muted)` (texto secundário), `var(--blog-r-accent)`
+  (amarelo da marca), `var(--blog-r-track)` (fundo de barra), `var(--blog-r-line)` (linhas),
+  `var(--blog-r-card)` e `var(--blog-r-soft)`. **Prefira essas variáveis e `currentColor`**:
+  elas mudam sozinhas no modo escuro. Hex fixo só quando a cor é parte da informação.
+- Texto sempre dentro de `<text>`/`<tspan>`, com `&amp;`, `&lt;`, `&gt;`, `&quot;` ou `&#39;`
+  para esses caracteres. O texto do desenho é real e indexável: escreva rótulos completos, não
+  siglas, e use `font-size` legível (não abaixo de 14 numa tela de 800 de largura).
+- No máximo 300 elementos e 10 níveis.
+
+Qualidade: contraste suficiente, margem interna de pelo menos 24 unidades, nenhum texto cortado
+na borda, rótulos curtos que caibam. Se o validador recusar, ele devolve uma linha
+`infografico[N].svg: motivo`: corrija só isso.
+
+Exemplo (funil sem dados, para ilustrar o formato; não copie):
+
+```infografico
+{
+  "tipo": "svg",
+  "titulo": "Do briefing à entrega aprovada",
+  "alt": "Três blocos ligados por setas: briefing, produção e aprovação do cliente.",
+  "svg": "<svg viewBox=\"0 0 800 240\"><g font-size=\"20\" text-anchor=\"middle\"><rect x=\"24\" y=\"70\" width=\"220\" height=\"100\" rx=\"14\" fill=\"var(--blog-r-card)\" stroke=\"var(--blog-r-line)\"/><text x=\"134\" y=\"128\" fill=\"currentColor\">Briefing</text><rect x=\"290\" y=\"70\" width=\"220\" height=\"100\" rx=\"14\" fill=\"var(--blog-r-card)\" stroke=\"var(--blog-r-line)\"/><text x=\"400\" y=\"128\" fill=\"currentColor\">Produção</text><rect x=\"556\" y=\"70\" width=\"220\" height=\"100\" rx=\"14\" fill=\"var(--blog-r-accent)\"/><text x=\"666\" y=\"128\" fill=\"#12151a\">Aprovação</text></g><path d=\"M250 120 L284 120 M516 120 L550 120\" stroke=\"var(--blog-r-muted)\" stroke-width=\"3\" stroke-linecap=\"round\"/></svg>"
+}
+```
 
 ### Regras de texto (obrigatórias)
 

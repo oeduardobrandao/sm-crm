@@ -1,5 +1,12 @@
+import { createElement, type ReactNode } from 'react';
 import { formatNumberPtBR } from './format';
-import { infograficoSchema, type BlogSource, type Infografico as InfograficoData } from './model';
+import {
+  infograficoSchema,
+  parseSvg,
+  type BlogSource,
+  type Infografico as InfograficoData,
+  type SvgNode,
+} from './model';
 import { safeHref } from './safe-href';
 
 /** One infographic, drawn as HTML so every number stays real text crawlers
@@ -11,8 +18,11 @@ export function Infografico({ data, sources }: { data: unknown; sources: BlogSou
   const parsed = infograficoSchema.safeParse(data);
   if (!parsed.success) return null;
   const info = parsed.data;
-  const source = info.tipo === 'etapas' ? undefined : sources[info.fonte];
-  if (info.tipo !== 'etapas' && !source) return null;
+  const cited = 'fonte' in info ? info.fonte : undefined;
+  const source = cited === undefined ? undefined : sources[cited];
+  if (cited !== undefined && !source) return null;
+  const drawing = info.tipo === 'svg' ? parseSvg(info.svg) : undefined;
+  if (drawing && 'error' in drawing) return null;
 
   return (
     <figure className={`blog-info blog-info--${info.tipo}`}>
@@ -42,6 +52,9 @@ export function Infografico({ data, sources }: { data: unknown; sources: BlogSou
           ))}
         </ol>
       )}
+      {info.tipo === 'svg' && drawing && 'node' in drawing && (
+        <div className="blog-info__svg">{renderSvg(drawing.node, info.alt)}</div>
+      )}
       <figcaption className="blog-info__caption">
         {source ? (
           <>
@@ -55,6 +68,38 @@ export function Infografico({ data, sources }: { data: unknown; sources: BlogSou
         )}
       </figcaption>
     </figure>
+  );
+}
+
+const REACT_ATTR: Record<string, string> = {
+  'stop-color': 'stopColor',
+  'stroke-width': 'strokeWidth',
+  'stroke-dasharray': 'strokeDasharray',
+  'stroke-linecap': 'strokeLinecap',
+  'stroke-linejoin': 'strokeLinejoin',
+  'fill-opacity': 'fillOpacity',
+  'stroke-opacity': 'strokeOpacity',
+  'font-size': 'fontSize',
+  'font-weight': 'fontWeight',
+  'text-anchor': 'textAnchor',
+  'dominant-baseline': 'dominantBaseline',
+};
+
+/** Builds elements from the tree `parseSvg` already vetted; no markup string
+ * ever reaches the DOM. */
+function renderSvg(node: SvgNode, alt: string, key: number | string = 0): ReactNode {
+  const props: Record<string, string | number> = { key };
+  for (const [name, value] of Object.entries(node.attrs)) props[REACT_ATTR[name] ?? name] = value;
+  if (node.tag === 'svg') {
+    props.role = 'img';
+    props['aria-label'] = alt;
+  }
+  return createElement(
+    node.tag,
+    props,
+    ...node.children.map((child, i) =>
+      typeof child === 'string' ? child : renderSvg(child, alt, i),
+    ),
   );
 }
 

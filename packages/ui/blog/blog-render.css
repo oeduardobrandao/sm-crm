@@ -68,6 +68,18 @@ figure.blog-info {
   color: var(--blog-r-ink);
 }
 
+/* Free-form SVG: scales to the card, ink and accent come from the page tokens */
+.blog-info .blog-info__svg {
+  color: var(--blog-r-ink);
+}
+
+.blog-info .blog-info__svg svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-family: var(--blog-r-text);
+}
+
 /* Bars */
 .blog-info .blog-info__bars {
   margin: 0;

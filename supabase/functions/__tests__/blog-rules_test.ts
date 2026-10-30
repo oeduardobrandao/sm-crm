@@ -67,7 +67,7 @@ Deno.test("blog-rules: shape errors use the CRM's wording", () => {
     "infografico[0]: JSON inválido",
   ]);
   assertEquals(validateInfograficos(fence({ ...BARRAS, tipo: "pizza" }), 2), [
-    "infografico[0].tipo: deve ser barras, numeros ou etapas",
+    "infografico[0].tipo: deve ser barras, numeros, etapas ou svg",
   ]);
   assertEquals(
     validateInfograficos(fence({ ...BARRAS, titulo: "x".repeat(91), cor: "azul" }), 2).sort(),
@@ -132,4 +132,27 @@ Deno.test("blog-rules: source and image schemas reject non-http URLs and empty c
   assertEquals(blogImageSchema.safeParse({ ...image, credit: "" }).success, false);
   assertEquals(blogImageSchema.safeParse({ ...image, url: "javascript:alert(1)" }).success, false);
   assertEquals(blogImageSchema.safeParse({ ...image, url: "/x.jpg" }).success, false);
+});
+
+Deno.test("blog-rules: svg infographic accepts the allowlist and refuses everything else", () => {
+  const draw = (svg: string, extra: Record<string, unknown> = {}) =>
+    validateInfograficos(fence({ tipo: "svg", titulo: "Funil", alt: "Barras", svg, ...extra }), 1);
+  const ok = '<svg viewBox="0 0 100 50"><rect width="40" height="10" fill="#ffbf30"/>' +
+    '<text x="2" y="8" fill="currentColor">Leads &amp; vendas</text></svg>';
+  assertEquals(draw(ok), []);
+  assertEquals(draw(ok, { fonte: 3 }), ["infografico[0].fonte: índice 3 fora de sources (0..0)"]);
+  for (
+    const bad of [
+      '<svg viewBox="0 0 1 1"><script>alert(1)</script></svg>',
+      '<svg viewBox="0 0 1 1"><rect onload="x()" width="1" height="1"/></svg>',
+      '<svg viewBox="0 0 1 1"><rect style="fill:red" width="1" height="1"/></svg>',
+      '<svg viewBox="0 0 1 1"><a href="javascript:x()"><text>x</text></a></svg>',
+      '<svg viewBox="0 0 1 1"><!-- x --></svg>',
+      '<svg><rect width="1" height="1"/></svg>',
+    ]
+  ) {
+    const messages = draw(bad);
+    assertEquals(messages.length, 1);
+    assertEquals(messages[0].startsWith("infografico[0].svg: "), true);
+  }
 });

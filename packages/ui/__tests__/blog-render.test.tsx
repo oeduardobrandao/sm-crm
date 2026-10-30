@@ -223,3 +223,48 @@ describe('safeHref agrees with sanitizeUrl', () => {
     expect(safeHref(input)).toBe(sanitizeUrl(input));
   });
 });
+
+describe('infográfico svg', () => {
+  const base = {
+    tipo: 'svg',
+    titulo: 'Do lead à venda',
+    alt: 'Funil com três etapas',
+  };
+
+  it('desenha as formas permitidas, com texto real e rótulo acessível', () => {
+    const html = md(
+      fence({
+        ...base,
+        svg: '<svg viewBox="0 0 100 40"><rect x="0" y="0" width="80" height="10" stroke-width="2" fill="var(--blog-r-accent)"/><text x="2" y="8" font-size="6" text-anchor="start">Leads &amp; vendas</text></svg>',
+      }),
+    );
+    expect(html).toContain('blog-info--svg');
+    expect(html).toContain('role="img"');
+    expect(html).toContain('aria-label="Funil com três etapas"');
+    expect(html).toContain('viewBox="0 0 100 40"');
+    expect(html).toContain('stroke-width="2"');
+    expect(html).toContain('Leads &amp; vendas');
+    expect(html).toContain('Infográfico: Mesaas');
+    expect(html).not.toContain('<pre');
+  });
+
+  it('cita a fonte quando informada e some se ela não existe', () => {
+    const svg = '<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>';
+    expect(md(fence({ ...base, svg, fonte: 0 }), { sources: SOURCES })).toContain('Fonte:');
+    expect(md(fence({ ...base, svg, fonte: 9 }), { sources: SOURCES })).not.toContain('<svg');
+  });
+
+  it('não renderiza nada de um SVG com script, estilo ou link', () => {
+    for (const inner of [
+      '<script>alert(1)</script>',
+      '<style>*{}</style>',
+      '<a href="https://x.example"><text>x</text></a>',
+      '<rect onclick="x()" width="1" height="1"/>',
+    ]) {
+      const html = md(fence({ ...base, svg: `<svg viewBox="0 0 1 1">${inner}</svg>` }));
+      expect(html).not.toContain('<svg');
+      expect(html).not.toContain('alert');
+      expect(html).not.toContain('onclick');
+    }
+  });
+});
