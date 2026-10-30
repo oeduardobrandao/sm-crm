@@ -12,6 +12,14 @@ export function normalizeCollaborators(v: unknown): string[] {
 }
 
 /**
+ * `workflow_posts.ig_user_tags` (menções do Stories), lido com a mesma defesa
+ * de normalizeCollaborators.
+ */
+export function normalizeUserTags(v: unknown): string[] {
+  return normalizeCollaborators(v);
+}
+
+/**
  * Quais colaboradores a Meta recusou, a partir do `error_user_msg` localizado
  * (ex.: "Os seguintes usuários não podem ser acessados: clinicaviva").
  * Tokens = mensagem em minúsculas quebrada em [^a-z0-9._]+, casamento exato

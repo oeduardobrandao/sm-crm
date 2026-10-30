@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { getIntlLocale } from '@mesaas/i18n';
-import { Eye, History, Loader2 } from 'lucide-react';
+import { AtSign, Eye, History, Loader2 } from 'lucide-react';
 import {
   type WorkflowPost,
   type PostApproval,
@@ -50,6 +50,7 @@ import { TikTokSettingsPanel } from './TikTokSettingsPanel';
 import type { TikTokReadiness } from '../tiktokComposerRules';
 import { TrialReelPanel } from './TrialReelPanel';
 import { InstagramCollaboratorsField } from './InstagramCollaboratorsField';
+import { MAX_STORY_MENTIONS } from '../collaborators';
 import {
   ScheduleButton,
   PlatformStatusRow,
@@ -373,6 +374,14 @@ export function PostEditorBody({
     serverCollaborators.current = post.ig_collaborators ?? [];
     if (fieldWritesPending.current === 0) setCollaboratorsLocal(serverCollaborators.current);
   }, [post.ig_collaborators]);
+  // Menções do Stories: mesma lista otimista e mesma fila dos colaboradores.
+  const [storyMentions, setStoryMentionsLocal] = useState<string[]>(post.ig_user_tags ?? []);
+  const serverStoryMentions = useRef<string[]>(post.ig_user_tags ?? []);
+  const storyMentionsWriteFailed = useRef(false);
+  useEffect(() => {
+    serverStoryMentions.current = post.ig_user_tags ?? [];
+    if (fieldWritesPending.current === 0) setStoryMentionsLocal(serverStoryMentions.current);
+  }, [post.ig_user_tags]);
   const queueFieldWrite = (field: keyof WorkflowPost, value: unknown) => {
     // Os drawers resolvem `false` quando o PATCH falha (já avisaram com toast).
     const write = () =>
@@ -380,6 +389,7 @@ export function PostEditorBody({
       new Promise<unknown>((resolve) => resolve(onFieldChangeRef.current(field, value))).then(
         (ok) => {
           if (ok === false && field === 'ig_collaborators') collaboratorsWriteFailed.current = true;
+          if (ok === false && field === 'ig_user_tags') storyMentionsWriteFailed.current = true;
         },
       );
     const idle = fieldWritesPending.current === 0;
@@ -393,6 +403,10 @@ export function PostEditorBody({
           collaboratorsWriteFailed.current = false;
           setCollaboratorsLocal(serverCollaborators.current);
         }
+        if (fieldWritesPending.current === 0 && storyMentionsWriteFailed.current) {
+          storyMentionsWriteFailed.current = false;
+          setStoryMentionsLocal(serverStoryMentions.current);
+        }
       });
     fieldWriteQueue.current = chain;
     // Troca silenciosa de versão espera a fila; Agendar/Publicar também (flushFieldWrites).
@@ -401,6 +415,10 @@ export function PostEditorBody({
   const setCollaborators = (next: string[]) => {
     setCollaboratorsLocal(next);
     queueFieldWrite('ig_collaborators', next);
+  };
+  const setStoryMentions = (next: string[]) => {
+    setStoryMentionsLocal(next);
+    queueFieldWrite('ig_user_tags', next);
   };
   const flushFieldWrites = () => fieldWriteQueue.current;
   useEffect(() => {
@@ -710,10 +728,28 @@ export function PostEditorBody({
     if (on) setCaptionTab(platform);
   };
 
+  // Menções do Stories (user_tags sem sticker): o trigger do banco zera a lista fora de
+  // stories ou sem Instagram, então o campo só aparece aqui.
+  const showStoryMentions = hasInstagramAccount && isStoryPost && isInstagramPost(post.platform);
   const storiesNote = (
-    <p className="mt-3 text-xs" style={{ color: 'var(--text-light)' }}>
-      {t('postEditorBody.storiesNote')}
-    </p>
+    <>
+      <p className="mt-3 text-xs" style={{ color: 'var(--text-light)' }}>
+        {t('postEditorBody.storiesNote')}
+      </p>
+      {showStoryMentions && (
+        <div className="mt-3">
+          <InstagramCollaboratorsField
+            value={storyMentions}
+            onChange={setStoryMentions}
+            locked={isScheduleLocked}
+            idPrefix={`story-mentions-${post.id}`}
+            max={MAX_STORY_MENTIONS}
+            copyKey="storyMentions"
+            icon={AtSign}
+          />
+        </div>
+      )}
+    </>
   );
   const captionSuggested = editSuggestion?.changed_fields.includes('ig_caption') === true;
   const instagramCaptionField = (frameless: boolean) => (

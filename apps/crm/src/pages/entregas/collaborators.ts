@@ -1,6 +1,8 @@
 import { i18n } from '@mesaas/i18n';
 /** Máximo de colaboradores por post (limite do Instagram). */
 export const MAX_COLLABORATORS = 3;
+/** Máximo de contas mencionadas por Stories (CHECK ig_user_tags_valid). */
+export const MAX_STORY_MENTIONS = 10;
 
 const USERNAME_RE = /^[a-z0-9._]{1,30}$/;
 const PROFILE_URL_RE = /^(?:https?:\/\/)?(?:www\.)?instagram\.com\/([^/?#\s]+)/i;
@@ -28,10 +30,14 @@ export function parseCollaboratorInput(raw: string): string[] {
 
 export type CollaboratorProblem = 'invalid' | 'duplicate' | 'limit';
 
-export function validateCollaborator(u: string, current: string[]): CollaboratorProblem | null {
+export function validateCollaborator(
+  u: string,
+  current: string[],
+  max = MAX_COLLABORATORS,
+): CollaboratorProblem | null {
   if (!USERNAME_RE.test(u)) return 'invalid';
   if (current.includes(u)) return 'duplicate';
-  if (current.length >= MAX_COLLABORATORS) return 'limit';
+  if (current.length >= max) return 'limit';
   return null;
 }
 

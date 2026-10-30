@@ -52,7 +52,7 @@ begin
        -- copiadas
        'titulo','conteudo','conteudo_plain','tipo','platform','responsavel_id',
        'ig_caption','music_note','cover_url','tiktok_caption','tiktok_title',
-       'tiktok_settings','ig_trial_strategy','ig_collaborators','is_express','scheduled_at',
+       'tiktok_settings','ig_trial_strategy','ig_collaborators','ig_user_tags','is_express','scheduled_at',
        'cliente_id','conta_id','workflow_id','ordem','status','custom_status_id',
        'board_ordem','created_via',
        -- zeradas (default da coluna)

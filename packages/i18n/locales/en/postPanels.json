@@ -256,6 +256,15 @@
     "removeAria": "Remove @{{username}}",
     "placeholder": "Add @username"
   },
+  "storyMentions": {
+    "help": "Each account is tagged on every segment, with no sticker on the image. Public accounts only.",
+    "limit": "Limit of 10 mentions per Story. Remove one to swap.",
+    "locked": "Cancel the schedule to edit",
+    "label": "Mentions",
+    "count": "{{n}} of {{max}}",
+    "removeAria": "Remove @{{username}}",
+    "placeholder": "Mention @username"
+  },
   "platformSelector": {
     "reverted": "Platform reverted to Instagram: Stories aren't supported on TikTok.",
     "storiesUnsupported": "Stories aren't supported on TikTok",
