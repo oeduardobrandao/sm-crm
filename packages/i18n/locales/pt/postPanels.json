@@ -256,6 +256,15 @@
     "removeAria": "Remover @{{username}}",
     "placeholder": "Adicionar @usuário"
   },
+  "storyMentions": {
+    "help": "Cada conta é marcada em todos os segmentos, sem sticker na imagem. Só contas públicas.",
+    "limit": "Limite de 10 menções por Stories. Remova uma para trocar.",
+    "locked": "Cancelar agendamento para editar",
+    "label": "Menções",
+    "count": "{{n}} de {{max}}",
+    "removeAria": "Remover @{{username}}",
+    "placeholder": "Mencionar @usuário"
+  },
   "platformSelector": {
     "reverted": "Plataforma revertida para Instagram: Stories não são suportados no TikTok.",
     "storiesUnsupported": "Stories não são suportados no TikTok",

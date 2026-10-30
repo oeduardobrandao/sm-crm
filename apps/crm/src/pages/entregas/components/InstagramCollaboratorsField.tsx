@@ -1,5 +1,5 @@
 import { useState, type ClipboardEvent, type KeyboardEvent, type Ref } from 'react';
-import { AlertCircle, Users, X } from 'lucide-react';
+import { AlertCircle, Users, X, type LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
   COLLAB_ERROR_COPY,
@@ -20,11 +20,17 @@ interface InstagramCollaboratorsFieldProps {
   refused?: string[];
   inputRef?: Ref<HTMLInputElement>;
   idPrefix: string;
+  /** Limite de contas. Padrão: colaboradores (3). */
+  max?: number;
+  /** Bloco de textos em postPanels: colaboradores ou menções do Stories. */
+  copyKey?: 'collaborators' | 'storyMentions';
+  icon?: LucideIcon;
 }
 
 /**
  * Campo de colaboradores do Instagram (tag input). Apresentacional: quem
  * monta decide se ele aparece (conta conectada, não-stories, mira Instagram).
+ * Com `copyKey="storyMentions"` é o mesmo campo para as menções do Stories.
  */
 export function InstagramCollaboratorsField({
   value,
@@ -34,6 +40,9 @@ export function InstagramCollaboratorsField({
   refused = [],
   inputRef,
   idPrefix,
+  max = MAX_COLLABORATORS,
+  copyKey = 'collaborators',
+  icon: Icon = Users,
 }: InstagramCollaboratorsFieldProps) {
   const { t } = useTranslation('postPanels');
   const [draft, setDraft] = useState('');
@@ -41,7 +50,7 @@ export function InstagramCollaboratorsField({
 
   const readOnly = locked;
   const disabled = !locked && trialOn;
-  const atLimit = value.length >= MAX_COLLABORATORS;
+  const atLimit = value.length >= max;
   const showInput = !readOnly && !atLimit;
 
   /**
@@ -54,7 +63,7 @@ export function InstagramCollaboratorsField({
     let firstError: { piece: string; problem: 'invalid' | 'duplicate'; message: string } | null =
       null;
     for (const piece of pieces) {
-      const problem = validateCollaborator(piece, next);
+      const problem = validateCollaborator(piece, next, max);
       if (problem === null) {
         next.push(piece);
       } else if (problem !== 'limit' && !firstError) {
@@ -116,17 +125,15 @@ export function InstagramCollaboratorsField({
 
   const refusedInValue = value.filter((u) => refused.includes(u));
   const refusedLine =
-    refusedInValue.length === 0
-      ? null
-      : t('collaborators.refused', { count: refusedInValue.length });
+    refusedInValue.length === 0 ? null : t(`${copyKey}.refused`, { count: refusedInValue.length });
 
   const statusLine = locked
-    ? t('collaborators.locked')
+    ? t(`${copyKey}.locked`)
     : trialOn
-      ? t('collaborators.trial')
+      ? t(`${copyKey}.trial`)
       : atLimit
-        ? t('collaborators.limit')
-        : t('collaborators.help');
+        ? t(`${copyKey}.limit`)
+        : t(`${copyKey}.help`);
 
   const inputId = `${idPrefix}-input`;
   const labelId = `${idPrefix}-label`;
@@ -141,14 +148,14 @@ export function InstagramCollaboratorsField({
           className="inline-flex items-center gap-1.5"
           style={{ fontSize: '0.78rem', fontWeight: 500, color: 'var(--text-muted)' }}
         >
-          <Users className="h-3.5 w-3.5" aria-hidden="true" />
-          {t('collaborators.label')}
+          <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+          {t(`${copyKey}.label`)}
         </span>
         <span
           className="whitespace-nowrap text-xs"
           style={{ color: 'var(--text-light)', fontFamily: 'var(--font-mono)' }}
         >
-          {t('collaborators.count', { n: value.length, max: MAX_COLLABORATORS })}
+          {t(`${copyKey}.count`, { n: value.length, max })}
         </span>
       </div>
 
@@ -189,7 +196,7 @@ export function InstagramCollaboratorsField({
               {!readOnly && (
                 <button
                   type="button"
-                  aria-label={t('collaborators.removeAria', { username: u })}
+                  aria-label={t(`${copyKey}.removeAria`, { username: u })}
                   disabled={disabled}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -211,7 +218,7 @@ export function InstagramCollaboratorsField({
             type="text"
             value={draft}
             disabled={disabled}
-            placeholder={t('collaborators.placeholder')}
+            placeholder={t(`${copyKey}.placeholder`)}
             aria-labelledby={labelId}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? `${errorId} ${statusId}` : statusId}

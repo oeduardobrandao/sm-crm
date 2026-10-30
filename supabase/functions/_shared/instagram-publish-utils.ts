@@ -3,7 +3,7 @@ import { CAROUSEL_MAX_ITEMS, validateMedia } from "./instagram-limits.ts";
 import type { MediaFile, ValidationError } from "./instagram-limits.ts";
 import { GRAPH_BASE, throwGraphError } from "./instagram-graph.ts";
 import { TRIAL_MEDIA_SHAPE_ERROR } from "./publish-error-codes.ts";
-import { normalizeCollaborators } from "./instagram-collaborators.ts";
+import { normalizeCollaborators, normalizeUserTags } from "./instagram-collaborators.ts";
 
 export { CAROUSEL_MAX_ITEMS, validateMedia };
 export type { MediaFile, ValidationError };
@@ -216,6 +216,26 @@ function collaboratorsConflict(
   return null;
 }
 
+// --- Story user tags ---
+
+/** Story mentions go as Graph `user_tags` with no x/y: since 2025-07-09 the
+ * coordinates are optional for stories, so the account is tagged without any
+ * sticker on the media. Only sent when there is at least one name. */
+function withStoryUserTags(body: Record<string, unknown>, userTags: string[]): void {
+  if (userTags.length > 0) body.user_tags = userTags.map((username) => ({ username }));
+}
+
+/** `workflow_posts.ig_user_tags` read at container time, so an edit made
+ * between attempts is what the next container carries. */
+async function fetchStoryUserTags(db: DbClient, postId: number): Promise<string[]> {
+  const { data } = await db
+    .from("workflow_posts")
+    .select("ig_user_tags")
+    .eq("id", postId)
+    .single();
+  return normalizeUserTags(data?.ig_user_tags);
+}
+
 // --- Graph API Helpers ---
 
 export async function createSingleImageContainer(
@@ -283,15 +303,18 @@ export async function createStoryImageContainer(
   token: string,
   imageUrl: string,
   timeoutMs = GRAPH_TIMEOUT_MS,
+  userTags: string[] = [],
 ): Promise<{ id: string }> {
+  const body: Record<string, unknown> = {
+    media_type: "STORIES",
+    image_url: imageUrl,
+    access_token: token,
+  };
+  withStoryUserTags(body, userTags);
   const res = await fetch(`${GRAPH_BASE}/${igUserId}/media`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      media_type: "STORIES",
-      image_url: imageUrl,
-      access_token: token,
-    }),
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(timeoutMs),
   });
   const data = await res.json();
@@ -304,15 +327,18 @@ export async function createStoryVideoContainer(
   token: string,
   videoUrl: string,
   timeoutMs = GRAPH_TIMEOUT_MS,
+  userTags: string[] = [],
 ): Promise<{ id: string }> {
+  const body: Record<string, unknown> = {
+    media_type: "STORIES",
+    video_url: videoUrl,
+    access_token: token,
+  };
+  withStoryUserTags(body, userTags);
   const res = await fetch(`${GRAPH_BASE}/${igUserId}/media`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      media_type: "STORIES",
-      video_url: videoUrl,
-      access_token: token,
-    }),
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(timeoutMs),
   });
   const data = await res.json();
@@ -467,8 +493,11 @@ export async function createMissingStorySegmentContainers(
 ): Promise<StorySegment[]> {
   const { postId, igUserId, token, timeoutMs = GRAPH_TIMEOUT_MS } = opts;
   const segments = await ensureStorySegments(db, postId);
+  if (segments.every((seg) => seg.container_id)) return segments;
   const media = await fetchPostMedia(db, postId);
   const byFileId = new Map(media.map((m) => [m.id, m]));
+  // Every segment carries the mentions: each one is a separate story on Instagram.
+  const userTags = await fetchStoryUserTags(db, postId);
 
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
@@ -477,8 +506,8 @@ export async function createMissingStorySegmentContainers(
     if (!file) throw new Error(`Story segment ${i}: media file ${seg.file_id} not found`);
     const url = await signGetUrl(file.r2_key, 7200);
     const container = file.kind === "video"
-      ? await createStoryVideoContainer(igUserId, token, url, timeoutMs)
-      : await createStoryImageContainer(igUserId, token, url, timeoutMs);
+      ? await createStoryVideoContainer(igUserId, token, url, timeoutMs, userTags)
+      : await createStoryImageContainer(igUserId, token, url, timeoutMs, userTags);
     seg.container_id = container.id;
     await setSegmentField(db, postId, i, "container_id", container.id);
   }
@@ -806,6 +835,8 @@ export async function createContainerForPost(
     tipo?: string;
     trialStrategy?: string | null;
     collaborators?: string[] | null;
+    /** Story mentions (`ig_user_tags`); ignored for any other tipo. */
+    userTags?: string[] | null;
     timeoutMs?: number;
   },
 ): Promise<ContainerCreationResult> {
@@ -834,9 +865,10 @@ export async function createContainerForPost(
     if (media.length !== 1) throw new Error("Stories require exactly one media file");
 
     const url = await signGetUrl(media[0].r2_key, 7200);
+    const userTags = normalizeUserTags(opts.userTags);
     const container = media[0].kind === "video"
-      ? await createStoryVideoContainer(igUserId, token, url, timeoutMs)
-      : await createStoryImageContainer(igUserId, token, url, timeoutMs);
+      ? await createStoryVideoContainer(igUserId, token, url, timeoutMs, userTags)
+      : await createStoryImageContainer(igUserId, token, url, timeoutMs, userTags);
     return { containerId: container.id };
   }
 

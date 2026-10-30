@@ -204,4 +204,29 @@ describe('InstagramCollaboratorsField', () => {
     setup({ inputRef: ref });
     expect(ref.current).toBe(input());
   });
+
+  describe('storyMentions copy', () => {
+    const mentions = { copyKey: 'storyMentions' as const, max: 10 };
+
+    it('renders the Stories label, counter and placeholder', () => {
+      setup(mentions);
+      expect(screen.getByText('Menções')).toBeInTheDocument();
+      expect(screen.getByText('0 de 10')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Mencionar @usuário')).toBeInTheDocument();
+    });
+
+    it('accepts a fourth account (the collaborators limit does not apply)', async () => {
+      const { onChange, user } = setup({ ...mentions, value: ['a', 'b', 'c'] });
+      await user.type(screen.getByPlaceholderText('Mencionar @usuário'), 'd{enter}');
+      expect(onChange).toHaveBeenCalledWith(['a', 'b', 'c', 'd']);
+    });
+
+    it('hides the input and shows the limit line at 10', () => {
+      setup({ ...mentions, value: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'] });
+      expect(screen.queryByPlaceholderText('Mencionar @usuário')).not.toBeInTheDocument();
+      expect(
+        screen.getByText('Limite de 10 menções por Stories. Remova uma para trocar.'),
+      ).toBeInTheDocument();
+    });
+  });
 });

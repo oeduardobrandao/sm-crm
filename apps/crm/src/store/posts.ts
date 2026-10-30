@@ -126,6 +126,9 @@ export interface WorkflowPost {
   /** Subconjunto de ig_collaborators que o Instagram recusou na última falha.
    * Só chega pelo select('*') do editor: nunca entra em lista explícita de colunas. */
   ig_collaborators_refused?: string[];
+  /** Menções do Stories (Graph `user_tags` sem sticker; usernames minúsculos, sem @,
+   * máx. 10). Só vale em stories mirando Instagram; ausente/NULL = []. */
+  ig_user_tags?: string[];
 }
 
 export interface ClientePost {
