@@ -1,13 +1,12 @@
 /**
  * Whether the public legal pages (privacy policy and terms) name YouTube and Google Meu Negócio.
  *
- * Off until the Google integration launches. Those pages are public and pre-rendered, so the
- * per-workspace plan flags (`feature_youtube`, `feature_google_business`) cannot gate them, and
- * the policy text promises deletion jobs that only Phase 2 delivers. Flip it to `true` in the
- * PR that ships Phase 2, before submitting Google's OAuth verification (which reviews this
- * policy) and before either flag leaves the pilot workspace.
+ * On since Phase 2, which delivers the deletion jobs the policy text promises (the 30-day
+ * expiry, revocation retries and orphan release in gbp-sync-cron, the YouTube purge on unlink and
+ * revoke). The pages are public and pre-rendered, so the per-workspace plan flags
+ * (`feature_youtube`, `feature_google_business`) cannot gate them.
  */
-export const GOOGLE_LEGAL_TEXT_LIVE = false;
+export const GOOGLE_LEGAL_TEXT_LIVE = true;
 
 /** The connected networks the legal pages name, in Portuguese list form. */
 export function legalNetworkList(): string {
