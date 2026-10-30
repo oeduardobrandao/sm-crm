@@ -243,7 +243,6 @@ export async function getVideos(
   const url = new URL(`${DATA_API}/videos`);
   url.searchParams.set("part", "snippet,contentDetails,statistics");
   url.searchParams.set("id", ids.join(","));
-  url.searchParams.set("maxResults", String(MAX_VIDEOS_PER_CALL));
   const body = (await fetchJson(url.toString(), token)) as { items?: VideoItem[] } | null;
   const videos: YtVideo[] = [];
   for (const item of body?.items ?? []) {
