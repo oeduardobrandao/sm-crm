@@ -353,6 +353,17 @@
     "titleLabel": "TikTok title (optional)",
     "titlePlaceholder": "Photo post title"
   },
+  "tiktokCover": {
+    "label": "TikTok cover",
+    "default": "TikTok's default frame",
+    "frameAt": "Frame at {{time}}",
+    "choose": "Choose frame",
+    "title": "TikTok cover",
+    "disclaimer": "TikTok only accepts a frame from the video itself as the cover. Pause on the frame you want and use it. The Instagram thumbnail doesn't change.",
+    "playhead": "Current frame: {{time}}",
+    "useFrame": "Use this frame",
+    "useDefault": "Use TikTok's default"
+  },
   "trialReel": {
     "lockedBySchedule": "Cancel the schedule to edit",
     "blockedByCollaborators": "Unavailable with collaborators on the post. Remove the collaborators to publish as a trial.",

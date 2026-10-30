@@ -756,6 +756,7 @@ export function PostEditorBody({
       mediaError={postMediaError}
       showTestModeBanner={tiktokTestModeBanner}
       hideCaption={hideCaption}
+      layout={isPhone ? 'phone' : 'default'}
     />
   );
 

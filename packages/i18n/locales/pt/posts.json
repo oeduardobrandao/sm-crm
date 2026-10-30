@@ -353,6 +353,17 @@
     "titleLabel": "Título do TikTok (opcional)",
     "titlePlaceholder": "Título do post de fotos"
   },
+  "tiktokCover": {
+    "label": "Capa do TikTok",
+    "default": "Quadro padrão do TikTok",
+    "frameAt": "Quadro em {{time}}",
+    "choose": "Escolher quadro",
+    "title": "Capa do TikTok",
+    "disclaimer": "O TikTok só aceita um quadro do próprio vídeo como capa. Pause no quadro desejado e use-o. A miniatura do Instagram não muda.",
+    "playhead": "Quadro atual: {{time}}",
+    "useFrame": "Usar este quadro",
+    "useDefault": "Usar padrão do TikTok"
+  },
   "trialReel": {
     "lockedBySchedule": "Cancelar agendamento para editar",
     "blockedByCollaborators": "Indisponível com colaboradores no post. Remova os colaboradores para publicar como teste.",
