@@ -101,11 +101,11 @@ Deno.test("off: tool list identical to baseline", () => {
 Deno.test("on: resource registered with the exact _meta", async () => {
   const server = recordingServer();
   registerTools(server, depsWith({ enabled: true, oauth: false, r2Origin: R2 }));
-  assertEquals(server.resources.length, 2);
+  assertEquals(server.resources.length, 3);
   const r = server.resources[0];
   assertEquals(r.name, "mesaas-cards");
   assertEquals(r.uri, CARDS_URI);
-  assertEquals(r.uri, "ui://mesaas/cards-v2.html");
+  assertEquals(r.uri, "ui://mesaas/cards-v3.html");
   assertEquals(r.config.mimeType, CARDS_MIME);
   assertEquals(r.config.mimeType, "text/html;profile=mcp-app");
   const ui = r.config._meta.ui;
@@ -122,16 +122,36 @@ Deno.test("on: resource registered with the exact _meta", async () => {
   assertEquals(out.contents[0]._meta, r.config._meta);
 });
 
-Deno.test("on: the previous URI stays registered and serves the current HTML", async () => {
+Deno.test("on: the previous URIs stay registered and serve the current HTML", async () => {
   const server = recordingServer();
   registerTools(server, depsWith({ enabled: true, oauth: false, r2Origin: R2 }));
-  const [current, legacy] = server.resources;
-  assertEquals(legacy.name, "mesaas-cards-v1");
-  assertEquals(legacy.uri, "ui://mesaas/cards-v1.html");
-  assertEquals(legacy.config, current.config);
-  const [a, b] = await Promise.all([current.read(), legacy.read()]);
-  assertEquals(b.contents[0].uri, "ui://mesaas/cards-v1.html");
-  assertEquals(b.contents[0].text, a.contents[0].text);
+  const [current, ...legacy] = server.resources;
+  assertEquals(legacy.map((r: any) => [r.name, r.uri]), [
+    ["mesaas-cards-v2", "ui://mesaas/cards-v2.html"],
+    ["mesaas-cards-v1", "ui://mesaas/cards-v1.html"],
+  ]);
+  const a = await current.read();
+  for (const r of legacy) {
+    assertEquals(r.config, current.config);
+    const b = await r.read();
+    assertEquals(b.contents[0].uri, r.uri);
+    assertEquals(b.contents[0].text, a.contents[0].text);
+  }
+});
+
+Deno.test("on: MCP_IMAGE_HOSTS become resourceDomains so the card can show the chat images", () => {
+  const prev = Deno.env.get("MCP_IMAGE_HOSTS");
+  Deno.env.set("MCP_IMAGE_HOSTS", " Files.Example.com ,bad host/x, cdn.example.net");
+  try {
+    const server = recordingServer();
+    registerTools(server, depsWith({ enabled: true, oauth: false, r2Origin: R2 }));
+    assertEquals(server.resources[0].config._meta.ui.csp.resourceDomains, [
+      R2, "https://files.example.com", "https://cdn.example.net",
+    ]);
+  } finally {
+    if (prev === undefined) Deno.env.delete("MCP_IMAGE_HOSTS");
+    else Deno.env.set("MCP_IMAGE_HOSTS", prev);
+  }
 });
 
 Deno.test("on with no R2 account: resourceDomains is empty", () => {

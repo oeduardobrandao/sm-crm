@@ -56,12 +56,23 @@ export interface AttachImageData {
   v: 1;
   post: { id: number; titulo: string; tipo: Tipo; status: string };
   client: ClientRef;
-  media: { position: number; url: string }[];
+  /** `link_id` lets the card tell the server which slide it saw (absent from older servers). */
+  media: { position: number; url: string; link_id?: number }[];
   max: number;
   eligible: boolean;
   reason?: string;
-  image: { download_url: string; file_id: string };
+  /** Every chat image, in chat order. Absent from older servers: then only `image`. */
+  images?: ChatImage[];
+  /** The first image (the only field cards cached before multi-image support read). */
+  image: ChatImage;
   position?: number;
+}
+
+export interface ChatImage {
+  download_url: string;
+  file_id: string;
+  mime_type?: string;
+  file_name?: string;
 }
 
 export type SendOutcome = 'sent' | 'already_sent' | 'approved' | 'failed' | 'stale';

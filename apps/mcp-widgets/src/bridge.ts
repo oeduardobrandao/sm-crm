@@ -20,6 +20,7 @@ export interface PickedImage {
   download_url: string;
   file_id: string;
   mime_type?: string;
+  file_name?: string;
 }
 
 export interface Host {
@@ -33,6 +34,9 @@ export interface Host {
   resultError?: string;
   /** ChatGPT only (window.openai file picker); undefined on hosts without it. */
   pickImage?: () => Promise<PickedImage | null>;
+  /** ChatGPT only: a fresh temporary download URL for a chat file (the one in the tool input
+   *  expires). Null when the host could not give one. */
+  refreshImageUrl?: (fileId: string) => Promise<string | null>;
 }
 
 interface Snapshot {
@@ -75,6 +79,25 @@ interface OpenAiGlobals {
   getFileDownloadUrl?: (arg: unknown) => Promise<unknown>;
 }
 
+/** getFileDownloadUrl answers `{ downloadUrl }`; older shapes are read too. */
+function downloadUrlOf(res: unknown): string | null {
+  const r = res as Record<string, unknown> | null;
+  const url = typeof res === 'string' ? res : (r?.downloadUrl ?? r?.download_url ?? r?.url);
+  return typeof url === 'string' && url ? url : null;
+}
+
+function openAiRefresh(): Host['refreshImageUrl'] {
+  const oa = (globalThis as { openai?: OpenAiGlobals }).openai;
+  if (typeof oa?.getFileDownloadUrl !== 'function') return undefined;
+  return async (fileId) => {
+    try {
+      return downloadUrlOf(await oa.getFileDownloadUrl!({ fileId }));
+    } catch {
+      return null;
+    }
+  };
+}
+
 function openAiPicker(): Host['pickImage'] {
   const oa = (globalThis as { openai?: OpenAiGlobals }).openai;
   if (typeof oa?.selectFiles !== 'function' || typeof oa?.getFileDownloadUrl !== 'function') {
@@ -86,14 +109,8 @@ function openAiPicker(): Host['pickImage'] {
     const f = list[0] as Record<string, unknown> | undefined;
     const fileId = (f?.fileId ?? f?.file_id ?? f?.id) as string | undefined;
     if (!fileId) return null;
-    const res = (await oa.getFileDownloadUrl!({ fileId })) as unknown;
-    const url =
-      typeof res === 'string'
-        ? res
-        : ((res as Record<string, unknown> | null)?.downloadUrl ??
-          (res as Record<string, unknown> | null)?.download_url ??
-          (res as Record<string, unknown> | null)?.url);
-    if (typeof url !== 'string') return null;
+    const url = downloadUrlOf(await oa.getFileDownloadUrl!({ fileId }));
+    if (!url) return null;
     const mime = (f?.mimeType ?? f?.mime_type) as string | undefined;
     return { download_url: url, file_id: fileId, ...(mime ? { mime_type: mime } : {}) };
   };
@@ -146,7 +163,9 @@ class HostStore {
 }
 
 let store: HostStore | undefined;
-let actions: Pick<Host, 'callTool' | 'sendMessage' | 'openLink' | 'pickImage'> | undefined;
+let actions:
+  | Pick<Host, 'callTool' | 'sendMessage' | 'openLink' | 'pickImage' | 'refreshImageUrl'>
+  | undefined;
 
 function getStore(): HostStore {
   if (!store) {
@@ -174,6 +193,7 @@ function getStore(): HostStore {
         if (r.isError) throw new Error('link_rejected');
       },
       pickImage: openAiPicker(),
+      refreshImageUrl: openAiRefresh(),
     };
   }
   return store;
