@@ -659,7 +659,7 @@ Deno.test("gbp-sync: RATE_LIMITED retries after 1 s, 2 s and 4 s, then succeeds"
   assertEquals(sleeps, [1000, 2000, 4000]);
 });
 
-Deno.test("gbp-sync: RATE_LIMITED a fourth time throws", async () => {
+Deno.test("gbp-sync: a persistent 429 ends as quota_skipped after the retries, without last_synced_at", async () => {
   const db = createSupabaseQueryMock();
   activeGuards(db);
   const { api } = fakeApi({
@@ -668,15 +668,11 @@ Deno.test("gbp-sync: RATE_LIMITED a fourth time throws", async () => {
     },
   });
   const { deps: d, sleeps } = deps(db, api);
-  let code = "";
-  try {
-    await syncGbpLocation(d, location(), { now: NOW });
-  } catch (err) {
-    code = (err as GoogleApiError).code;
-  }
-  assertEquals(code, "RATE_LIMITED");
+  const out = await syncGbpLocation(d, location(), { now: NOW });
+  assertEquals(out, { status: "quota_skipped", backfill: false });
   assertEquals(sleeps, [1000, 2000, 4000]);
   assertEquals(writes(db).length, 0);
+  assert(!locationUpdates(db).some((c) => (c.payload as Record<string, unknown>).last_synced_at));
 });
 
 Deno.test("gbp-sync: token REVOKED is revoked, TOKEN_INVALID and NOT_FOUND are skipped, with no API call", async () => {

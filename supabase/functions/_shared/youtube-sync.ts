@@ -17,13 +17,15 @@
 //   5. last_synced_at.
 // Quota (QUOTA_EXCEEDED, or NOT_APPROVED per P6) in steps 2-3 jumps to step 4; in step 4 it stops
 // the remaining Analytics calls. Either way the outcome is `quota_skipped` with no last_synced_at.
+// RATE_LIMITED (a per-minute throttle) is retried after 1, 2 and 4 s on every API call; still
+// throttled after that, it is handled as quota (skip, `quota_skipped`), never as a failure.
 //
 // Write guard (review C2): every write is preceded, in the same step, by
 // `UPDATE youtube_channels ... WHERE id = ? AND authorization_status = 'active'`. Zero rows means
 // google_mark_revoked's purge (or an unlink) won the race: stop with `revoked`, write nothing else.
 // Every history read, write and delete carries the channel's conta_id (Review Focus 3).
 
-import { type DbClient, GoogleApiError } from "./google.ts";
+import { type DbClient, GoogleApiError, retryRateLimited } from "./google.ts";
 import type * as YoutubeApiModule from "./youtube-api.ts";
 import type { DateRange, YtChannelDailyRow, YtContentType, YtVideo, YtVideoDailyRow } from "./youtube-api.ts";
 
@@ -93,6 +95,8 @@ export interface YoutubeSyncDeps {
   getFreshGoogleToken: (svc: DbClient, connectionId: string) => Promise<string>;
   /** Timestamps written (last_synced_at, metadata_refreshed_at). Day windows use opts.now. */
   now: () => Date;
+  /** Backoff between RATE_LIMITED retries; a real timer when omitted (tests pass a stub). */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 export type YoutubeSyncStatus = "synced" | "revoked" | "quota_skipped" | "skipped" | "mismatch";
@@ -139,8 +143,17 @@ function earlierDay(a: string, b: string): string {
 /** The write guard updated zero rows: the unit was revoked or unlinked mid-run. */
 class UnitGone extends Error {}
 
+/** Quota, quota-zero, or a throttle that outlasted its retries: skip the step, never a failure. */
 function isQuota(err: unknown): boolean {
-  return err instanceof GoogleApiError && (err.code === "QUOTA_EXCEEDED" || err.code === "NOT_APPROVED");
+  return err instanceof GoogleApiError &&
+    (err.code === "QUOTA_EXCEEDED" || err.code === "NOT_APPROVED" || err.code === "RATE_LIMITED");
+}
+
+const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** Every YouTube API call goes through here: a RATE_LIMITED answer is retried after 1, 2, 4 s. */
+function callApi<T>(deps: YoutubeSyncDeps, call: () => Promise<T>): Promise<T> {
+  return retryRateLimited(deps.sleep ?? realSleep, call);
 }
 
 function dbError(what: string, error: { message?: string }): Error {
@@ -180,7 +193,7 @@ function chunks<T>(items: T[], size: number): T[][] {
 /** Returns false on a channel-id mismatch (nothing written). */
 async function syncChannelInfo(ctx: Ctx): Promise<boolean> {
   const { channel } = ctx;
-  const info = await ctx.deps.api.getMyChannel(ctx.token);
+  const info = await callApi(ctx.deps, () => ctx.deps.api.getMyChannel(ctx.token));
   if (!info || info.id !== channel.channel_id) {
     console.error(
       `[youtube-sync] channel row ${channel.id}: token's channel ${info?.id ?? "(none)"} != stored ${channel.channel_id}; skipped`,
@@ -228,7 +241,8 @@ async function listNewUploads(ctx: Ctx): Promise<string[]> {
   for (let pages = 0; pages < MAX_UPLOAD_PAGES && seen.size < MAX_UPLOAD_IDS; pages++) {
     let page: { videoIds: string[]; nextPageToken: string | null };
     try {
-      page = await ctx.deps.api.listUploads(ctx.token, playlistId, pageToken ? { pageToken } : {});
+      const opts = pageToken ? { pageToken } : {};
+      page = await callApi(ctx.deps, () => ctx.deps.api.listUploads(ctx.token, playlistId, opts));
     } catch (err) {
       // YouTube answers 404 playlistNotFound for the uploads playlist of a channel with no uploads.
       if (err instanceof GoogleApiError && err.code === "NOT_FOUND") break;
@@ -343,14 +357,12 @@ async function refreshVideos(ctx: Ctx, requested: string[], storedShort: Map<str
   const today = pacificDate(ctx.now);
   let types: Map<string, YtContentType> | null | undefined = undefined;
   if (shouldRefreshContentTypes(channel, ctx.now)) {
-    types = await deps.api.videoContentTypes(ctx.token, {
-      start: addDays(today, -BACKFILL_DAYS),
-      end: addDays(today, -1),
-    });
+    const typesRange = { start: addDays(today, -BACKFILL_DAYS), end: addDays(today, -1) };
+    types = await callApi(deps, () => deps.api.videoContentTypes(ctx.token, typesRange));
   }
 
   for (const ids of chunks(requested, VIDEOS_PER_CALL)) {
-    const videos = await deps.api.getVideos(ctx.token, ids);
+    const videos = await callApi(deps, () => deps.api.getVideos(ctx.token, ids));
     await guard(ctx);
     const refreshedAt = deps.now().toISOString();
     if (videos.length > 0) {
@@ -430,7 +442,7 @@ async function syncAnalytics(ctx: Ctx): Promise<void> {
   const range: DateRange = { start, end: yesterday };
 
   // Channel daily, all content. data_through = last returned day, never backwards.
-  const allRows = await deps.api.channelDaily(token, range, false);
+  const allRows = await callApi(deps, () => deps.api.channelDaily(token, range, false));
   let dataThrough = channel.data_through;
   if (allRows.length > 0) {
     await guard(ctx);
@@ -448,7 +460,7 @@ async function syncAnalytics(ctx: Ctx): Promise<void> {
   // Channel daily by content type. A 400 (dimension unsupported, spike S2) means "no split".
   let split: YtChannelDailyRow[] | null = null;
   try {
-    split = await deps.api.channelDaily(token, range, true);
+    split = await callApi(deps, () => deps.api.channelDaily(token, range, true));
   } catch (err) {
     if (!(err instanceof GoogleApiError && err.status === 400)) throw err;
     console.warn(`[youtube-sync] channel row ${channel.id}: content-type split unavailable (400)`);
@@ -467,7 +479,7 @@ async function syncAnalytics(ctx: Ctx): Promise<void> {
   }
 
   // Traffic sources.
-  const traffic = await deps.api.trafficDaily(token, range);
+  const traffic = await callApi(deps, () => deps.api.trafficDaily(token, range));
   await guard(ctx);
   await upsertRows(
     ctx,
@@ -484,7 +496,8 @@ async function syncAnalytics(ctx: Ctx): Promise<void> {
   if (splitThrough) await guard(ctx, { traffic_through: splitThrough });
 
   // Demographics: one 28-day snapshot per channel, replaced.
-  const demo = await deps.api.demographics(token, { start: addDays(yesterday, -(DEMOGRAPHICS_DAYS - 1)), end: yesterday });
+  const demoRange = { start: addDays(yesterday, -(DEMOGRAPHICS_DAYS - 1)), end: yesterday };
+  const demo = await callApi(deps, () => deps.api.demographics(token, demoRange));
   await guard(ctx);
   {
     const { error } = await history(ctx, "youtube_demographics")
@@ -535,7 +548,8 @@ async function syncAnalytics(ctx: Ctx): Promise<void> {
       : addDays(today, -VIDEO_WINDOW_DAYS);
     let rows: YtVideoDailyRow[];
     try {
-      rows = await deps.api.videoDaily(token, video.video_id, { start: vStart, end: yesterday });
+      const videoRange = { start: vStart, end: yesterday };
+      rows = await callApi(deps, () => deps.api.videoDaily(token, video.video_id, videoRange));
     } catch (err) {
       // One video the API rejects (deleted or made private since step 3, or not reportable) must
       // not fail the channel: leave its daily_through and move on. Quota and 5xx still propagate.

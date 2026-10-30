@@ -32,8 +32,9 @@
 // Outcomes, not failures: token REVOKED -> revoked; TOKEN_INVALID or NOT_FOUND -> skipped (one
 // console.error; a location deleted at Google 404s every hour and must not page anyone);
 // NOT_APPROVED -> not_approved; QUOTA_EXCEEDED -> quota_skipped (keeps what was written, no
-// last_synced_at, so the next hour retries). RATE_LIMITED is retried after 1, 2 and 4 s and
-// then thrown. Anything else is thrown for the caller to count as a failure.
+// last_synced_at, so the next hour retries). RATE_LIMITED (a per-minute throttle) is retried
+// after 1, 2 and 4 s; still throttled after that, it ends as quota_skipped too, never as a
+// failure. Anything else is thrown for the caller to count as a failure.
 //
 // Every history read, write and delete is keyed by the location's own conta_id: the same
 // location_name may be linked in another workspace (Review Focus 3).
@@ -46,7 +47,7 @@ import {
   type GbpKeywordRow,
   type GbpReview,
 } from "./gbp-api.ts";
-import { type DbClient, GoogleApiError } from "./google.ts";
+import { type DbClient, GoogleApiError, retryRateLimited } from "./google.ts";
 import { previousMonth, saoPauloDate } from "./sao-paulo-date.ts";
 
 /** The `gbp_locations` columns the sync reads. Never token columns. */
@@ -99,7 +100,6 @@ const BACKFILL_KEYWORD_MONTHS = 18;
 const MAX_REVIEWS = 200;
 /** 200 rows = 4 pages of 50; the cap guards against a pagination loop from the upstream. */
 const MAX_REVIEW_PAGES = 10;
-const RATE_LIMIT_BACKOFF_MS = [1000, 2000, 4000];
 const UPSERT_CHUNK = 500;
 
 const METRIC_COLUMNS = GBP_DAILY_METRICS.map((m) => m.toLowerCase() as keyof GbpDayMetrics);
@@ -138,16 +138,8 @@ function roundRating(value: number | null): number | null {
   return value === null ? null : Math.round(value * 10) / 10;
 }
 
-async function withRetry<T>(deps: GbpSyncDeps, call: () => Promise<T>): Promise<T> {
-  for (let attempt = 0;; attempt++) {
-    try {
-      return await call();
-    } catch (err) {
-      const rateLimited = err instanceof GoogleApiError && err.code === "RATE_LIMITED";
-      if (!rateLimited || attempt >= RATE_LIMIT_BACKOFF_MS.length) throw err;
-      await deps.sleep(RATE_LIMIT_BACKOFF_MS[attempt]);
-    }
-  }
+function withRetry<T>(deps: GbpSyncDeps, call: () => Promise<T>): Promise<T> {
+  return retryRateLimited(deps.sleep, call);
 }
 
 class LocationSync {
@@ -429,6 +421,9 @@ export async function syncGbpLocation(
           return outcome("not_approved");
         case "QUOTA_EXCEEDED":
           console.warn(`[gbp-sync] location ${location.id}: quota exceeded, retried next hour`);
+          return outcome("quota_skipped");
+        case "RATE_LIMITED":
+          console.warn(`[gbp-sync] location ${location.id}: still rate limited after the retries, retried next hour`);
           return outcome("quota_skipped");
         case "TOKEN_INVALID":
         case "NOT_FOUND":

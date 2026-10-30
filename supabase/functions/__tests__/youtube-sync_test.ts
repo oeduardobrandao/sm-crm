@@ -232,6 +232,39 @@ Deno.test("youtube-sync: QUOTA_EXCEEDED on getMyChannel skips to analytics and r
   }
 });
 
+Deno.test("youtube-sync: a transient 429 is retried after 1 s, 2 s and 4 s, then the run completes", async () => {
+  const db = createSupabaseQueryMock();
+  queueGuardPass(db);
+  let attempts = 0;
+  const { api } = quietApi({
+    getMyChannel: async () => {
+      if (++attempts <= 3) throw new GoogleApiError("RATE_LIMITED", 429, "slow down");
+      return ytChannel();
+    },
+  });
+  const sleeps: number[] = [];
+  const outcome = await run({ ...deps(db, api), sleep: async (ms: number) => void sleeps.push(ms) }, channelRow());
+  assertEquals(outcome.status, "synced");
+  assertEquals(sleeps, [1000, 2000, 4000]);
+});
+
+Deno.test("youtube-sync: a persistent 429 ends as quota_skipped after the retries, without last_synced_at (I-3)", async () => {
+  const db = createSupabaseQueryMock();
+  queueGuardPass(db);
+  const { api, calls } = quietApi({
+    channelDaily: async () => {
+      throw new GoogleApiError("RATE_LIMITED", 429, "per-minute");
+    },
+  });
+  const sleeps: number[] = [];
+  const outcome = await run({ ...deps(db, api), sleep: async (ms: number) => void sleeps.push(ms) }, channelRow());
+  assertEquals(outcome.status, "quota_skipped");
+  assertEquals(sleeps, [1000, 2000, 4000]);
+  assertEquals(calls.filter((c) => c === "channelDaily").length, 4);
+  assertEquals(lastValue(db, "last_synced_at"), undefined);
+  assert(!calls.includes("trafficDaily"), "the remaining Analytics calls are skipped");
+});
+
 // ── step 3: videos ──────────────────────────────────────────────────────────────
 
 Deno.test("youtube-sync: a video missing from getVideos is deleted together with its daily rows", async () => {

@@ -6,9 +6,12 @@
 // Error contract: every failure this module raises is a GoogleApiError with one of nine codes,
 // so callers switch on `code` only.
 //   googleFetch: 401 -> TOKEN_INVALID; 403/429 carrying quota_limit_value "0" -> NOT_APPROVED;
-//     403/429 quota exhaustion (reason quotaExceeded/dailyLimitExceeded, error.status
-//     RESOURCE_EXHAUSTED or a details reason QUOTA_EXCEEDED) -> QUOTA_EXCEEDED (not retryable:
-//     callers skip that step until the quota resets); other 429 -> RATE_LIMITED (retryable); 403 SERVICE_DISABLED / "has not been used in
+//     403/429 whose reason (details[].reason or errors[].reason) is quotaExceeded,
+//     dailyLimitExceeded or QUOTA_EXCEEDED -> QUOTA_EXCEEDED (not retryable: callers skip that
+//     step until the quota resets); 403/429 whose reason is RATE_LIMIT_EXCEEDED, rateLimitExceeded
+//     or userRateLimitExceeded -> RATE_LIMITED (a per-minute throttle, retryable); a 403
+//     RESOURCE_EXHAUSTED with no such reason -> QUOTA_EXCEEDED; any other 429 (a bare
+//     RESOURCE_EXHAUSTED included) -> RATE_LIMITED; 403 SERVICE_DISABLED / "has not been used in
 //     project" / "API has not been enabled" -> API_DISABLED; other 403 -> FORBIDDEN;
 //     404 -> NOT_FOUND; 5xx -> UPSTREAM (retryable); any other non-2xx -> UPSTREAM
 //     (non-retryable, status kept).
@@ -281,20 +284,22 @@ function isQuotaZero(body: GoogleErrorBody | null): boolean {
   });
 }
 
-/**
- * Quota exhaustion, as opposed to quota-zero (which means "API access not approved"): the Data
- * API's `errors[].reason` quotaExceeded/dailyLimitExceeded, and the google.rpc shape the
- * Analytics API uses (`error.status` RESOURCE_EXHAUSTED or a `details[].reason` QUOTA_EXCEEDED).
- */
-function isQuotaExceeded(body: GoogleErrorBody | null): boolean {
+/** Every `reason` the body carries: the google.rpc `details[].reason` and the Data API's
+ * `errors[].reason`. */
+function errorReasons(body: GoogleErrorBody | null): string[] {
   const err = body?.error;
-  if (!err) return false;
-  if (err.status === "RESOURCE_EXHAUSTED") return true;
-  if (Array.isArray(err.errors) && err.errors.some((e) => e?.reason === "quotaExceeded" || e?.reason === "dailyLimitExceeded")) {
-    return true;
-  }
-  return Array.isArray(err.details) && err.details.some((d) => d?.reason === "QUOTA_EXCEEDED");
+  if (!err) return [];
+  const out: string[] = [];
+  for (const d of Array.isArray(err.details) ? err.details : []) if (typeof d?.reason === "string") out.push(d.reason);
+  for (const e of Array.isArray(err.errors) ? err.errors : []) if (typeof e?.reason === "string") out.push(e.reason);
+  return out;
 }
+
+/** Daily quota exhaustion: skip until the quota resets. */
+const QUOTA_REASONS = new Set(["quotaExceeded", "dailyLimitExceeded", "QUOTA_EXCEEDED"]);
+/** Per-minute throttles (the Business Profile and YouTube Analytics APIs answer them with 429
+ * RESOURCE_EXHAUSTED too): back off and retry. */
+const RATE_LIMIT_REASONS = new Set(["RATE_LIMIT_EXCEEDED", "rateLimitExceeded", "userRateLimitExceeded"]);
 
 function isServiceDisabled(body: GoogleErrorBody | null): boolean {
   const err = body?.error;
@@ -311,8 +316,13 @@ function mapGoogleError(status: number, body: GoogleErrorBody | null): GoogleApi
   if ((status === 403 || status === 429) && isQuotaZero(body)) {
     return new GoogleApiError("NOT_APPROVED", status, message);
   }
-  if ((status === 403 || status === 429) && isQuotaExceeded(body)) {
-    return new GoogleApiError("QUOTA_EXCEEDED", status, message);
+  if (status === 403 || status === 429) {
+    const reasons = errorReasons(body);
+    if (reasons.some((r) => QUOTA_REASONS.has(r))) return new GoogleApiError("QUOTA_EXCEEDED", status, message);
+    if (reasons.some((r) => RATE_LIMIT_REASONS.has(r))) return new GoogleApiError("RATE_LIMITED", status, message);
+    if (status === 403 && body?.error?.status === "RESOURCE_EXHAUSTED") {
+      return new GoogleApiError("QUOTA_EXCEEDED", status, message);
+    }
   }
   if (status === 429) return new GoogleApiError("RATE_LIMITED", status, message);
   if (status === 403) {
@@ -329,6 +339,23 @@ function hostOf(url: string): string {
     return new URL(url).host;
   } catch {
     return "invalid-url";
+  }
+}
+
+/** Backoff before each retry of a RATE_LIMITED call: three retries, then the error is thrown. */
+export const RATE_LIMIT_BACKOFF_MS = [1000, 2000, 4000];
+
+/** Runs `call`, retrying a RATE_LIMITED GoogleApiError after 1, 2 and 4 s; any other error, or a
+ * fourth RATE_LIMITED, is thrown. The sync engines turn an exhausted retry into `quota_skipped`. */
+export async function retryRateLimited<T>(sleep: (ms: number) => Promise<void>, call: () => Promise<T>): Promise<T> {
+  for (let attempt = 0;; attempt++) {
+    try {
+      return await call();
+    } catch (err) {
+      const rateLimited = err instanceof GoogleApiError && err.code === "RATE_LIMITED";
+      if (!rateLimited || attempt >= RATE_LIMIT_BACKOFF_MS.length) throw err;
+      await sleep(RATE_LIMIT_BACKOFF_MS[attempt]);
+    }
   }
 }
 
