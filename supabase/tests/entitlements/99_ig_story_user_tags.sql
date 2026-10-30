@@ -5,7 +5,7 @@
 -- Menções no Stories (20261111000001_ig_story_user_tags.sql). Cobre:
 -- 1 CHECK workflow_posts_ig_user_tags_valid: aceita até 10, recusa 11, NULL,
 --   maiúscula, duplicado; helper nunca devolve NULL
--- 2 trigger z5: fora de stories / plataforma sem Instagram limpa a lista;
+-- 2 trigger z5: fora de stories limpa a lista (sem Instagram: bloco 3);
 --   colaboradores seguem limpos em stories
 -- 3 duplicate_post copia a lista (e restaura no re-apply de um quadro sem Instagram)
 
@@ -91,12 +91,10 @@ begin
   select ig_user_tags into v_arr from workflow_posts where id = v_post;
   assert v_arr = '{}', format('sair de stories deve limpar a lista, got %s', v_arr);
 
-  update workflow_posts set tipo = 'stories', ig_user_tags = '{julia}' where id = v_post;
-  update workflow_posts set platform = 'tiktok' where id = v_post;
-  select ig_user_tags into v_arr from workflow_posts where id = v_post;
-  assert v_arr = '{}', format('tiktok-only deve limpar a lista, got %s', v_arr);
-
-  update workflow_posts set platform = 'both', ig_user_tags = '{julia}' where id = v_post;
+  -- Stories nunca fica só TikTok (o z4b rederiva o platform); o caminho "sem
+  -- Instagram" de stories é o quadro sem Instagram, coberto no bloco 3.
+  update workflow_posts set tipo = 'stories', platform = 'both', ig_user_tags = '{julia}'
+    where id = v_post;
   select ig_user_tags into v_arr from workflow_posts where id = v_post;
   assert v_arr = array['julia'], format('both mantem, got %s', v_arr);
 
