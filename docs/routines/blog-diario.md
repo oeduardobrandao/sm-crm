@@ -49,7 +49,8 @@ atalho. Não escreva post que só elogia o produto.
 
 ### Tools que você usa
 
-Todas do conector do Admin do Mesaas:
+Todas do conector do Admin do Mesaas (e, só para gerar imagem quando não houver boa opção online,
+as tools `generate_image` e `jobs_wait` do conector Higgsfield, descritas no passo 6):
 
 - `list_blog_posts({status?, since_days?})`: posts do banco sem o corpo, mais recentes primeiro
   (até 200). Devolve `{posts, file_posts, feature_slugs}`. `posts` traz `id`, `slug`, `title`,
@@ -146,10 +147,32 @@ Use:
 - Kits de imprensa oficiais que permitam uso editorial (página de imprensa ou newsroom da
   empresa). Licença: "uso editorial, kit de imprensa da <empresa>".
 
-Nunca use foto de site de notícia, de banco pago, de rede social ou de busca de imagens. Nunca
-gere imagem. Se, depois de tentar várias fotos e fontes, você não conseguir subir nenhuma capa,
-não invente uma saída: crie o rascunho com `cover_image: null` e diga isso, com o motivo, no
-topo do relatório final. É uma falha da execução, não o padrão.
+Nunca use foto de site de notícia, de banco pago, de rede social ou de busca de imagens.
+
+**Quando não houver boa opção online, gere a imagem no Higgsfield.** Primeiro procure de verdade
+nas fontes acima (algumas buscas por imagem, não só a primeira). Se nenhuma servir (tema
+abstrato demais, foto genérica que não conversa com o texto, ou todas inacessíveis), gere a
+imagem com as tools do conector Higgsfield (`generate_image`; use `jobs_wait` para esperar
+terminar e pegue a URL final do resultado). Regras:
+
+- Gere só o que faltar: a capa e, no máximo, as imagens de corpo que não achou online. No máximo
+  **4 imagens geradas por execução** (cada geração gasta crédito).
+- O prompt descreve uma cena ou ilustração ligada ao tema do post, em formato horizontal para a
+  capa. **Sem texto dentro da imagem**, sem logotipo ou marca de terceiros, sem interface de
+  Instagram ou de outra plataforma, sem pessoas reais identificáveis e sem gráficos ou números
+  (eles pareceriam dados e não são). Escolha o estilo (fotografia, ilustração, 3D) e mantenha o
+  mesmo estilo na capa e nas imagens do mesmo post.
+- Suba com `upload_blog_image` como qualquer outra: `source_url` é a URL direta da imagem
+  gerada (https, sem redirecionamento), `page_url` é a mesma URL, `credit` é
+  "Mesaas / Higgsfield" e `license` é "Imagem gerada por IA (Higgsfield), uso editorial". No
+  `alt`, descreva o que aparece, sem afirmar que é uma foto real.
+- Se a URL gerada for recusada pelo upload (redirecionamento, tipo ou tamanho), gere de novo uma
+  vez; se falhar de novo, tente outra opção online.
+- Cite no `topic_reason` quais imagens foram geradas, para o Eduardo conferir.
+
+Se, depois de tentar as fontes online e o Higgsfield, você não conseguir subir nenhuma capa, não
+invente uma saída: crie o rascunho com `cover_image: null` e diga isso, com o motivo, no topo do
+relatório final. É uma falha da execução, não o padrão.
 
 Dica de URL: no Unsplash, a URL direta de uma foto tem a forma
 `https://images.unsplash.com/photo-<id>?fm=jpg&q=70&w=1600&auto=format&fit=crop` (o `<id>` está
@@ -163,7 +186,8 @@ Como subir:
   `upload.wikimedia.org/...` do arquivo, não a página `File:`. Até 10 MB, PNG, JPEG, WebP ou
   GIF; `mime_type` precisa bater com o arquivo.
 - `page_url` é a página onde a imagem e a licença aparecem (a página `File:` do Commons, a página
-  da foto no Unsplash ou no Pexels, a página do kit de imprensa).
+  da foto no Unsplash ou no Pexels, a página do kit de imprensa; para imagem gerada no
+  Higgsfield, a própria URL da imagem).
 - `alt` descreve a imagem em pt-BR (até 200 caracteres). `credit` é "autor / fonte" (até 200).
   `license` é o nome da licença (até 120).
 - Use o `url` devolvido em `cover_image.url` ou em `images[].url`, e o `page_url` como
@@ -406,7 +430,10 @@ Para o Eduardo, uma vez, e de novo sempre que o brief ou os escopos mudarem.
    **Blog (escrita)** (`blog:write`). Um conector autorizado antes desta feature não tem os
    escopos novos: precisa reautorizar.
 2. **Crie a Routine** no Claude Code, na conta do Eduardo: execução diária às **06:00
-   America/Sao_Paulo**, com acesso à web (busca e fetch) ligado e o conector do Admin habilitado.
+   America/Sao_Paulo**, com acesso à web (busca e fetch) ligado e o conector do Admin
+   habilitado. Habilite também o conector **Higgsfield** (usado para gerar capa e imagens quando
+   não há boa opção online; sem ele a rotina só consegue imagens de Unsplash, Pexels e
+   Wikimedia).
 3. **Cole o brief** (Parte 1, entre as marcações) como instrução da Routine.
 4. **Rode uma vez à mão** e acompanhe: o rascunho deve aparecer em Admin > Blog, na aba
    Aguardando, com os checks no painel lateral.
