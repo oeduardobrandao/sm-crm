@@ -451,10 +451,11 @@ function demoDeps(svc: SupabaseClient): DemoDeps {
       const u = await findAuthUserByEmail(svc, email);
       return u ? { id: u.id } : null;
     },
-    getUserEmail: async (userId) => {
+    getOwnerAuth: async (userId) => {
       const { data, error } = await svc.auth.admin.getUserById(userId);
       if (error) throw error;
-      return data.user?.email ?? null;
+      if (!data.user) return null;
+      return { email: data.user.email ?? null, emailConfirmed: Boolean(data.user.email_confirmed_at) };
     },
     deleteUser: async (userId) => {
       const { error } = await svc.auth.admin.deleteUser(userId);
