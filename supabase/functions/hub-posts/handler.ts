@@ -395,7 +395,10 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
         ? pagedRows("pending suggestions", (from, to) =>
             db
               .from("post_edit_suggestions")
-              .select("id, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption, changed_fields, updated_at")
+              .select(
+                "id, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption, " +
+                  "suggested_tiktok_caption, suggested_geral_caption, changed_fields, updated_at",
+              )
               .in("post_id", postIds)
               .eq("status", "pending")
               .order("id", { ascending: true })

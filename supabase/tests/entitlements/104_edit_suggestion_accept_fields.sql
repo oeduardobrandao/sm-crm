@@ -18,7 +18,9 @@
 -- 104.8 outra conta: Suggestion not found, nada muda
 -- 104.9 suggestion_changed continua valendo
 -- 104.10 conflito só conta em campo que o cliente mudou; NULL em original_* lê ''
--- 104.11 grants e assinatura de 4 args (as de 2 e 3 args não existem mais)
+-- 104.11 grants e assinatura de 4 args (as de 2 e 3 args não existem mais); upsert só com 9 args
+--        (as de 6 e 8 args não existem mais, 20261111000001)
+-- 104.12-104.18 legendas de TikTok e Geral (20261111000001), ver o bloco no fim
 
 create or replace function pg_temp.et_af_doc(txt text) returns jsonb
 language sql as $$
@@ -439,6 +441,305 @@ begin
     'authenticated executa (o CRM chama)';
   assert has_function_privilege('service_role', 'public.accept_edit_suggestion(bigint, timestamptz, text[], text[])', 'EXECUTE'),
     'service_role mantém execute';
-  raise notice 'PASS 104.11 grants e assinatura';
+  -- upsert (20261111000001): só a de 9 args, service_role-only
+  assert to_regprocedure('public.upsert_edit_suggestion(bigint, uuid, text, jsonb, text, text)') is null,
+    'a assinatura de 6 args do upsert tem que sumir';
+  assert to_regprocedure('public.upsert_edit_suggestion(bigint, uuid, text, jsonb, text, text, text[], jsonb)') is null,
+    'a assinatura de 8 args do upsert tem que sumir (chamada com 8 args resolveria ambígua)';
+  assert to_regprocedure('public.upsert_edit_suggestion(bigint, uuid, text, jsonb, text, text, text[], jsonb, jsonb)') is not null,
+    'a assinatura de 9 args do upsert existe';
+  assert has_function_privilege('anon', 'public.upsert_edit_suggestion(bigint, uuid, text, jsonb, text, text, text[], jsonb, jsonb)', 'EXECUTE') = false,
+    'anon não executa o upsert';
+  assert has_function_privilege('authenticated', 'public.upsert_edit_suggestion(bigint, uuid, text, jsonb, text, text, text[], jsonb, jsonb)', 'EXECUTE') = false,
+    'authenticated não executa o upsert (só o hub-edit-suggestion, com service_role)';
+  assert has_function_privilege('service_role', 'public.upsert_edit_suggestion(bigint, uuid, text, jsonb, text, text, text[], jsonb, jsonb)', 'EXECUTE'),
+    'service_role executa o upsert';
+  raise notice 'PASS 104.11 grants e assinatura (accept e upsert)';
+end $$;
+rollback;
+
+-- =====================================================================
+-- Legendas de TikTok e Geral (migration 20261111000001, spec
+-- docs/superpowers/specs/2026-10-30-hub-captions-per-platform-design.md "PR 2").
+-- 104.12 legenda_tiktok aplicada; o resto do post intocado
+-- 104.13 legenda_geral aplicada em post_targets
+-- 104.14 conflito no TikTok e no Geral: sem reconhecimento levanta, com p_acknowledged aplica
+-- 104.15 p_fields NULL (CRM antigo) com campo novo mudado: suggestion_conflict, nada muda
+-- 104.16 target_gone: linha geral removida, recriada (id <> geral_target_id), linha tiktok removida
+-- 104.17 target_locked: TikTok em processando/publicado; Geral segue aceitável
+-- 104.18 campo novo fora de p_fields fica como está; os quatro juntos num aceite
+-- =====================================================================
+
+-- Destinos tiktok (status p_tt_status) e geral (legenda p_g) + tiktok_caption = p_tt no post.
+-- Devolve o id da linha geral.
+create or replace function pg_temp.et_af_targets(p_post bigint, p_tt text, p_g text, p_tt_status text default 'pendente')
+returns bigint language plpgsql as $$
+declare v_ws uuid; v_gid bigint;
+begin
+  select conta_id into v_ws from workflow_posts where id = p_post;
+  update workflow_posts set tiktok_caption = p_tt where id = p_post;
+  insert into post_targets (conta_id, post_id, platform) values (v_ws, p_post, 'tiktok')
+    on conflict (post_id, platform) do nothing;
+  update post_targets set status = p_tt_status where post_id = p_post and platform = 'tiktok';
+  insert into post_targets (conta_id, post_id, platform, caption) values (v_ws, p_post, 'geral', p_g)
+    on conflict (post_id, platform) do update set caption = excluded.caption
+    returning id into v_gid;
+  return v_gid;
+end $$;
+
+-- Sugestão com TikTok TT0 -> TT1 e Geral G0 -> G1 (bases = vivo de partida), mais o que
+-- p_changed disser. geral_target_id = a linha geral viva.
+create or replace function pg_temp.et_af_env_captions(
+  p_changed text[], p_tt_status text default 'pendente',
+  out ws uuid, out usr uuid, out post bigint, out sug bigint, out gid bigint)
+language plpgsql as $$
+declare e record;
+begin
+  select * into e from pg_temp.et_af_env(p_changed, pg_temp.et_af_doc('T1'), 'T1', 'L1');
+  ws := e.ws; usr := e.usr; post := e.post; sug := e.sug;
+  gid := pg_temp.et_af_targets(post, 'TT0', 'G0', p_tt_status);
+  update post_edit_suggestions set
+    original_tiktok_caption = 'TT0', suggested_tiktok_caption = 'TT1',
+    original_geral_caption = 'G0', suggested_geral_caption = 'G1',
+    geral_target_id = gid
+  where id = sug;
+end $$;
+
+-- 104.12
+begin;
+select et_grant_hosted_parity();
+do $$
+declare e record;
+begin
+  select * into e from pg_temp.et_af_env_captions(array['tiktok_caption']);
+  perform pg_temp.et_af_as(e.usr);
+  perform accept_edit_suggestion(e.sug, null, array['legenda_tiktok']);
+  execute 'reset role';
+  assert (select tiktok_caption from workflow_posts where id = e.post) = 'TT1', 'legenda do TikTok aplicada';
+  assert (select ig_caption from workflow_posts where id = e.post) = 'L0', 'legenda do Instagram intocada';
+  assert (select conteudo_plain from workflow_posts where id = e.post) = 'T0', 'texto intocado';
+  assert (select caption from post_targets where id = e.gid) = 'G0', 'Geral intocado';
+  assert (select status from post_edit_suggestions where id = e.sug) = 'accepted', 'accepted';
+  raise notice 'PASS 104.12 legenda_tiktok aplicada';
+end $$;
+rollback;
+
+-- 104.13
+begin;
+select et_grant_hosted_parity();
+do $$
+declare e record;
+begin
+  select * into e from pg_temp.et_af_env_captions(array['geral_caption']);
+  perform pg_temp.et_af_as(e.usr);
+  perform accept_edit_suggestion(e.sug, null, array['legenda_geral']);
+  execute 'reset role';
+  assert (select caption from post_targets where id = e.gid) = 'G1', 'legenda Geral aplicada';
+  assert (select tiktok_caption from workflow_posts where id = e.post) = 'TT0', 'TikTok intocado';
+  assert (select ig_caption from workflow_posts where id = e.post) = 'L0', 'Instagram intocado';
+  assert (select status from post_edit_suggestions where id = e.sug) = 'accepted', 'accepted';
+  raise notice 'PASS 104.13 legenda_geral aplicada';
+end $$;
+rollback;
+
+-- 104.14
+begin;
+select et_grant_hosted_parity();
+do $$
+declare e record; v_raised int := 0;
+begin
+  select * into e from pg_temp.et_af_env_captions(array['tiktok_caption','geral_caption']);
+  update workflow_posts set tiktok_caption = 'TT-team' where id = e.post;
+  update post_targets set caption = 'G-team' where id = e.gid;
+  perform pg_temp.et_af_as(e.usr);
+  begin
+    perform accept_edit_suggestion(e.sug, null, array['legenda_tiktok'], '{}'::text[]);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'suggestion_conflict', format('wrong msg: %s', sqlerrm);
+    v_raised := v_raised + 1;
+  end;
+  begin
+    perform accept_edit_suggestion(e.sug, null, array['legenda_geral'], array['legenda_tiktok']);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'suggestion_conflict', format('wrong msg: %s', sqlerrm);
+    v_raised := v_raised + 1;
+  end;
+  assert v_raised = 2, 'conflito sem reconhecimento levanta, por campo';
+  assert (select tiktok_caption from workflow_posts where id = e.post) = 'TT-team', 'TikTok intocado';
+  assert (select caption from post_targets where id = e.gid) = 'G-team', 'Geral intocado';
+  perform accept_edit_suggestion(e.sug, null, array['legenda_tiktok','legenda_geral'],
+                                 array['legenda_tiktok','legenda_geral']);
+  execute 'reset role';
+  assert (select tiktok_caption from workflow_posts where id = e.post) = 'TT1', 'o cliente vence no TikTok';
+  assert (select caption from post_targets where id = e.gid) = 'G1', 'o cliente vence no Geral';
+  raise notice 'PASS 104.14 conflito nas legendas novas';
+end $$;
+rollback;
+
+-- 104.15
+begin;
+select et_grant_hosted_parity();
+do $$
+declare e record; v_raised int := 0;
+begin
+  -- sem conflito nenhum: só ter um campo novo mudado já recusa o CRM antigo
+  select * into e from pg_temp.et_af_env_captions(array['conteudo_plain','geral_caption']);
+  perform pg_temp.et_af_as(e.usr);
+  begin
+    perform accept_edit_suggestion(e.sug);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'suggestion_conflict', format('wrong msg: %s', sqlerrm);
+    v_raised := v_raised + 1;
+  end;
+  begin
+    perform accept_edit_suggestion(e.sug, null, null);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'suggestion_conflict', format('wrong msg: %s', sqlerrm);
+    v_raised := v_raised + 1;
+  end;
+  execute 'reset role';
+  assert v_raised = 2, 'CRM antigo com Geral mudado levanta';
+  update post_edit_suggestions set changed_fields = array['tiktok_caption'] where id = e.sug;
+  perform pg_temp.et_af_as(e.usr);
+  begin
+    perform accept_edit_suggestion(e.sug);
+    assert false, 'CRM antigo com TikTok mudado devia levantar';
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'suggestion_conflict', format('wrong msg: %s', sqlerrm);
+  end;
+  execute 'reset role';
+  assert (select conteudo_plain from workflow_posts where id = e.post) = 'T0', 'texto intocado';
+  assert (select tiktok_caption from workflow_posts where id = e.post) = 'TT0', 'TikTok intocado';
+  assert (select caption from post_targets where id = e.gid) = 'G0', 'Geral intocado';
+  assert (select status from post_edit_suggestions where id = e.sug) = 'pending', 'segue pendente';
+  raise notice 'PASS 104.15 p_fields NULL com campo novo: suggestion_conflict';
+end $$;
+rollback;
+
+-- 104.16
+begin;
+select et_grant_hosted_parity();
+do $$
+declare e record; v_msg text;
+begin
+  -- (a) linha geral removida
+  select * into e from pg_temp.et_af_env_captions(array['conteudo_plain','geral_caption']);
+  delete from post_targets where id = e.gid;
+  perform pg_temp.et_af_as(e.usr);
+  begin
+    perform accept_edit_suggestion(e.sug, null, array['texto','legenda_geral']);
+    assert false, 'Geral removido devia levantar';
+  exception when sqlstate 'P0001' then
+    get stacked diagnostics v_msg = message_text;
+    assert v_msg = 'target_gone', format('esperava target_gone, veio %s', v_msg);
+  end;
+  execute 'reset role';
+  assert (select conteudo_plain from workflow_posts where id = e.post) = 'T0', 'nada muda (texto)';
+  -- (b) recriada: id diferente de geral_target_id
+  insert into post_targets (conta_id, post_id, platform, caption) values (e.ws, e.post, 'geral', 'G0');
+  perform pg_temp.et_af_as(e.usr);
+  begin
+    perform accept_edit_suggestion(e.sug, null, array['legenda_geral']);
+    assert false, 'Geral recriado devia levantar';
+  exception when sqlstate 'P0001' then
+    get stacked diagnostics v_msg = message_text;
+    assert v_msg = 'target_gone', format('esperava target_gone (recriado), veio %s', v_msg);
+  end;
+  -- só o texto ainda aceita: o Geral fora de p_fields não conta
+  perform accept_edit_suggestion(e.sug, null, array['texto']);
+  execute 'reset role';
+  assert (select conteudo_plain from workflow_posts where id = e.post) = 'T1', 'texto aplicado';
+  assert (select caption from post_targets where post_id = e.post and platform = 'geral') = 'G0', 'Geral novo intocado';
+  raise notice 'PASS 104.16a/b target_gone no Geral';
+end $$;
+rollback;
+
+begin;
+select et_grant_hosted_parity();
+do $$
+declare e record; v_msg text;
+begin
+  -- (c) linha tiktok removida
+  select * into e from pg_temp.et_af_env_captions(array['tiktok_caption']);
+  delete from post_targets where post_id = e.post and platform = 'tiktok';
+  perform pg_temp.et_af_as(e.usr);
+  begin
+    perform accept_edit_suggestion(e.sug, null, array['legenda_tiktok']);
+    assert false, 'TikTok removido devia levantar';
+  exception when sqlstate 'P0001' then
+    get stacked diagnostics v_msg = message_text;
+    assert v_msg = 'target_gone', format('esperava target_gone (tiktok), veio %s', v_msg);
+  end;
+  execute 'reset role';
+  assert (select tiktok_caption from workflow_posts where id = e.post) = 'TT0', 'nada muda';
+  assert (select status from post_edit_suggestions where id = e.sug) = 'pending', 'segue pendente';
+  raise notice 'PASS 104.16c target_gone no TikTok';
+end $$;
+rollback;
+
+-- 104.17
+begin;
+select et_grant_hosted_parity();
+do $$
+declare e record; v_msg text; v_st text;
+begin
+  foreach v_st in array array['processando', 'publicado'] loop
+    select * into e from pg_temp.et_af_env_captions(array['tiktok_caption','geral_caption'], v_st);
+    perform pg_temp.et_af_as(e.usr);
+    begin
+      perform accept_edit_suggestion(e.sug, null, array['legenda_tiktok','legenda_geral']);
+      assert false, format('TikTok %s devia levantar', v_st);
+    exception when sqlstate 'P0001' then
+      get stacked diagnostics v_msg = message_text;
+      assert v_msg = 'target_locked', format('esperava target_locked (%s), veio %s', v_st, v_msg);
+    end;
+    execute 'reset role';
+    assert (select tiktok_caption from workflow_posts where id = e.post) = 'TT0', 'TikTok intocado';
+    assert (select caption from post_targets where id = e.gid) = 'G0', 'Geral intocado (nada muda)';
+    -- sem o TikTok, o Geral segue aceitável
+    perform pg_temp.et_af_as(e.usr);
+    perform accept_edit_suggestion(e.sug, null, array['legenda_geral']);
+    execute 'reset role';
+    assert (select caption from post_targets where id = e.gid) = 'G1', 'Geral aplicado';
+    assert (select tiktok_caption from workflow_posts where id = e.post) = 'TT0', 'TikTok publicado não muda';
+  end loop;
+  raise notice 'PASS 104.17 target_locked';
+end $$;
+rollback;
+
+-- 104.18
+begin;
+select et_grant_hosted_parity();
+do $$
+declare e record;
+begin
+  -- (a) campo novo fora de p_fields fica como está
+  select * into e from pg_temp.et_af_env_captions(array['ig_caption','tiktok_caption','geral_caption']);
+  perform pg_temp.et_af_as(e.usr);
+  perform accept_edit_suggestion(e.sug, null, array['legenda']);
+  execute 'reset role';
+  assert (select ig_caption from workflow_posts where id = e.post) = 'L1', 'legenda aplicada';
+  assert (select tiktok_caption from workflow_posts where id = e.post) = 'TT0', 'TikTok fora de p_fields fica';
+  assert (select caption from post_targets where id = e.gid) = 'G0', 'Geral fora de p_fields fica';
+end $$;
+rollback;
+
+begin;
+select et_grant_hosted_parity();
+do $$
+declare e record;
+begin
+  -- (b) os quatro campos num aceite só
+  select * into e from pg_temp.et_af_env_captions(
+    array['conteudo_plain','conteudo','ig_caption','tiktok_caption','geral_caption']);
+  perform pg_temp.et_af_as(e.usr);
+  perform accept_edit_suggestion(e.sug, null, array['texto','legenda','legenda_tiktok','legenda_geral']);
+  execute 'reset role';
+  assert (select conteudo_plain from workflow_posts where id = e.post) = 'T1', 'texto';
+  assert (select ig_caption from workflow_posts where id = e.post) = 'L1', 'legenda';
+  assert (select tiktok_caption from workflow_posts where id = e.post) = 'TT1', 'TikTok';
+  assert (select caption from post_targets where id = e.gid) = 'G1', 'Geral';
+  assert (select status from post_edit_suggestions where id = e.sug) = 'accepted', 'accepted';
+  raise notice 'PASS 104.18 campos fora de p_fields ficam; os quatro juntos aplicam';
 end $$;
 rollback;

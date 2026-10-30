@@ -17,6 +17,11 @@
 -- close_suggestion_on_publish (20261106000001) is the trigger function that closes a pending
 -- edit suggestion as 'superseded' when its post is published.
 --
+-- upsert_edit_suggestion gained p_suggested_captions in 20261111000001 (9 args).
+-- _record_post_geral_caption_version / post_targets_geral_caption_version (same migration)
+-- record the Geral caption in post_content_versions: called by the post_targets trigger and
+-- by accept_edit_suggestion, never by a user.
+--
 -- Locally there is no hosted pg_default_acl granting anon/authenticated EXECUTE
 -- at function-creation time (see _helpers.sql), so `anon`/`authenticated` already
 -- read false here even without the fix -- this suite can't reproduce the hosted-only
@@ -51,7 +56,7 @@ declare
     'public.ideia_audio_release(uuid, uuid, text)',
     'public.ideia_audio_apply_transcript(uuid, uuid, text, text, int)',
     'public.ideia_file_insert_with_quota(jsonb)',
-    'public.upsert_edit_suggestion(bigint, uuid, text, jsonb, text, text, text[], jsonb)',
+    'public.upsert_edit_suggestion(bigint, uuid, text, jsonb, text, text, text[], jsonb, jsonb)',
     'public.create_edit_suggestion_notification(bigint)',
     'public.create_post_approval_notification(bigint, text, text)',
     'public.insert_notification_batch(uuid, uuid[], text, text, jsonb, uuid)',
@@ -96,7 +101,9 @@ declare
     'public._financeiro_encerrar_atribuicoes(uuid, bigint, date)',
     'public._financeiro_v2_legado_trigger()',
     'public.financeiro_rolar_periodos(date)',
-    'public.close_suggestion_on_publish()'
+    'public.close_suggestion_on_publish()',
+    'public._record_post_geral_caption_version(bigint, text, text)',
+    'public.post_targets_geral_caption_version()'
   ];
   -- check_resource_limit and rls_auto_enable are deliberately excluded: they have
   -- no CREATE FUNCTION in any migration in this repo (prod-only drift, locked down

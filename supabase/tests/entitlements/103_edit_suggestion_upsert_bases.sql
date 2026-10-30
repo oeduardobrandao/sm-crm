@@ -322,3 +322,280 @@ begin
   raise notice 'PASS 103.10 _tiptap_inline_image_keys';
 end $$;
 rollback;
+
+-- =====================================================================
+-- Legendas de TikTok e Geral (migration 20261111000001, spec
+-- docs/superpowers/specs/2026-10-30-hub-captions-per-platform-design.md "PR 2").
+-- 103.11 legenda_tiktok tocada mede contra a base; geral intocado vale o vivo; retorno traz os suggested_* novos
+-- 103.12 legenda_geral tocada grava geral_target_id = id da linha geral
+-- 103.13 base_required para tiktok_caption e geral_caption
+-- 103.14 rebase: edição da equipe no TikTok com a legenda do TikTok fora da sugestão; reverter re-baseia no vivo
+-- 103.15 target_gone: sem linha tiktok, sem linha geral, linha geral removida e recriada
+-- 103.16 ramo legado: linha nova com legendas novas = vivo; preserva tiktok_caption/geral_caption;
+--        não apaga a linha que só tem campos novos; changed_fields nunca vira NULL
+-- 103.17 tiktok_followed_ig: gravado quando a legenda entra, mantido, limpo quando sai
+-- =====================================================================
+
+-- Post T0/L0 com destinos instagram + tiktok + geral: tiktok_caption = p_tt, geral = p_g.
+create or replace function pg_temp.et_ub_targets(p_post bigint, p_tt text, p_g text)
+returns bigint language plpgsql as $$
+declare v_ws uuid; v_gid bigint;
+begin
+  select conta_id into v_ws from workflow_posts where id = p_post;
+  update workflow_posts set tiktok_caption = p_tt where id = p_post;
+  insert into post_targets (conta_id, post_id, platform) values (v_ws, p_post, 'tiktok')
+    on conflict (post_id, platform) do nothing;
+  insert into post_targets (conta_id, post_id, platform, caption) values (v_ws, p_post, 'geral', p_g)
+    on conflict (post_id, platform) do update set caption = excluded.caption
+    returning id into v_gid;
+  return v_gid;
+end $$;
+
+-- 103.11
+begin;
+do $$
+declare e record; r jsonb; s post_edit_suggestions;
+begin
+  select * into e from pg_temp.et_ub_env();
+  perform pg_temp.et_ub_targets(e.post, 'TT0', 'G0');
+  r := upsert_edit_suggestion(e.post, e.ws, 'tok', null, 'T0', 'L0',
+         array['legenda_tiktok'], '{"tiktok_caption": "TT0"}'::jsonb,
+         '{"tiktok_caption": "TT1"}'::jsonb);
+  assert r->>'action' = 'upserted', format('esperava upserted: %s', r);
+  assert r->'suggestion'->>'suggested_tiktok_caption' = 'TT1', format('retorno sem suggested_tiktok_caption: %s', r);
+  assert r->'suggestion' ? 'suggested_geral_caption', format('retorno sem suggested_geral_caption: %s', r);
+  s := pg_temp.et_ub_pending(e.post);
+  assert s.changed_fields = array['tiktok_caption'], format('só tiktok_caption: %s', s.changed_fields);
+  assert s.original_tiktok_caption = 'TT0' and s.suggested_tiktok_caption = 'TT1', 'base e sugestão do TikTok';
+  assert s.original_geral_caption = 'G0' and s.suggested_geral_caption = 'G0', 'geral intocado vale o vivo';
+  assert s.geral_target_id is null, 'geral fora de changed_fields: sem geral_target_id';
+  assert s.original_ig_caption = 'L0' and s.suggested_ig_caption = 'L0', 'legenda intocada vale o vivo';
+  assert (select tiktok_caption from workflow_posts where id = e.post) = 'TT0', 'o post não foi tocado';
+  raise notice 'PASS 103.11 legenda_tiktok mede contra a base';
+end $$;
+rollback;
+
+-- 103.12
+begin;
+do $$
+declare e record; r jsonb; s post_edit_suggestions; v_gid bigint;
+begin
+  select * into e from pg_temp.et_ub_env();
+  v_gid := pg_temp.et_ub_targets(e.post, null, 'G0');
+  r := upsert_edit_suggestion(e.post, e.ws, 'tok', null, 'T0', 'L0',
+         array['legenda_geral'], '{"geral_caption": "G0"}'::jsonb, '{"geral_caption": "G1"}'::jsonb);
+  assert r->'suggestion'->>'suggested_geral_caption' = 'G1', format('retorno: %s', r);
+  s := pg_temp.et_ub_pending(e.post);
+  assert s.changed_fields = array['geral_caption'], format('só geral_caption: %s', s.changed_fields);
+  assert s.original_geral_caption = 'G0' and s.suggested_geral_caption = 'G1', 'base e sugestão do Geral';
+  assert s.geral_target_id = v_gid, format('geral_target_id %s, esperava %s', s.geral_target_id, v_gid);
+  assert s.original_tiktok_caption is null and s.suggested_tiktok_caption is null, 'tiktok nulo intocado';
+  -- segunda save do Geral: base guardada continua valendo, id mantido
+  perform upsert_edit_suggestion(e.post, e.ws, 'tok', null, 'T0', 'L0',
+    array['legenda_geral'], null, '{"geral_caption": "G2"}'::jsonb);
+  s := pg_temp.et_ub_pending(e.post);
+  assert s.original_geral_caption = 'G0' and s.suggested_geral_caption = 'G2' and s.geral_target_id = v_gid,
+    'segunda save mantém base e id';
+  -- save de outro campo não mexe no Geral pendente
+  perform upsert_edit_suggestion(e.post, e.ws, 'tok', null, 'T0', 'L1',
+    array['legenda'], '{"ig_caption": "L0"}'::jsonb, null);
+  s := pg_temp.et_ub_pending(e.post);
+  assert s.changed_fields = array['ig_caption','geral_caption'], format('changed_fields: %s', s.changed_fields);
+  assert s.suggested_geral_caption = 'G2' and s.geral_target_id = v_gid, 'Geral pendente preservado';
+  raise notice 'PASS 103.12 legenda_geral grava geral_target_id';
+end $$;
+rollback;
+
+-- 103.13
+begin;
+do $$
+declare e record; v_msg text;
+begin
+  select * into e from pg_temp.et_ub_env();
+  perform pg_temp.et_ub_targets(e.post, 'TT0', 'G0');
+  begin
+    perform upsert_edit_suggestion(e.post, e.ws, 'tok', null, 'T0', 'L0',
+      array['legenda_tiktok'], '{"ig_caption": "L0"}'::jsonb, '{"tiktok_caption": "TT1"}'::jsonb);
+    assert false, 'tiktok tocado sem base devia levantar';
+  exception when others then
+    get stacked diagnostics v_msg = message_text;
+    assert v_msg = 'base_required', format('esperava base_required, veio %s', v_msg);
+  end;
+  begin
+    perform upsert_edit_suggestion(e.post, e.ws, 'tok', null, 'T0', 'L0',
+      array['legenda_geral'], null, '{"geral_caption": "G1"}'::jsonb);
+    assert false, 'geral tocado sem base devia levantar';
+  exception when others then
+    get stacked diagnostics v_msg = message_text;
+    assert v_msg = 'base_required', format('esperava base_required, veio %s', v_msg);
+  end;
+  assert not exists (select 1 from post_edit_suggestions where post_id = e.post), 'nada gravado';
+  -- base nula presente vale (TikTok sozinho com valor cru nulo): aceitar grava a coluna
+  update workflow_posts set tiktok_caption = null where id = e.post;
+  perform upsert_edit_suggestion(e.post, e.ws, 'tok', null, 'T0', 'L0',
+    array['legenda_tiktok'], '{"tiktok_caption": null}'::jsonb, '{"tiktok_caption": "TT1"}'::jsonb);
+  assert (pg_temp.et_ub_pending(e.post)).changed_fields = array['tiktok_caption'], 'base nula aceita';
+  assert (pg_temp.et_ub_pending(e.post)).original_tiktok_caption is null, 'original nulo guardado';
+  raise notice 'PASS 103.13 base_required nas legendas novas';
+end $$;
+rollback;
+
+-- 103.14
+begin;
+do $$
+declare e record; s post_edit_suggestions; r jsonb;
+begin
+  select * into e from pg_temp.et_ub_env();
+  perform pg_temp.et_ub_targets(e.post, 'TT0', 'G0');
+  perform upsert_edit_suggestion(e.post, e.ws, 'tok', pg_temp.et_ub_doc('T1'), 'T1', 'L0',
+    array['texto'], jsonb_build_object('conteudo', pg_temp.et_ub_doc('T0'), 'conteudo_plain', 'T0'));
+  -- a equipe edita TikTok e Geral; o próximo save do texto acompanha o vivo
+  update workflow_posts set tiktok_caption = 'TT-team' where id = e.post;
+  update post_targets set caption = 'G-team' where post_id = e.post and platform = 'geral';
+  perform upsert_edit_suggestion(e.post, e.ws, 'tok', pg_temp.et_ub_doc('T2'), 'T2', 'L0', array['texto'], null);
+  s := pg_temp.et_ub_pending(e.post);
+  assert s.original_tiktok_caption = 'TT-team' and s.suggested_tiktok_caption = 'TT-team', 'tiktok re-baseado no vivo';
+  assert s.original_geral_caption = 'G-team' and s.suggested_geral_caption = 'G-team', 'geral re-baseado no vivo';
+  -- cliente muda o TikTok e depois volta para a base: o campo sai e re-baseia no vivo
+  perform upsert_edit_suggestion(e.post, e.ws, 'tok', null, 'T2', 'L0',
+    array['legenda_tiktok'], '{"tiktok_caption": "TT-team"}'::jsonb, '{"tiktok_caption": "TT-cliente"}'::jsonb);
+  assert (pg_temp.et_ub_pending(e.post)).changed_fields @> array['tiktok_caption'], 'tiktok entrou';
+  update workflow_posts set tiktok_caption = 'TT-team2' where id = e.post;
+  r := upsert_edit_suggestion(e.post, e.ws, 'tok', null, 'T2', 'L0',
+    array['legenda_tiktok'], null, '{"tiktok_caption": "TT-team"}'::jsonb);
+  assert r->>'action' = 'upserted', 'o texto segue pendente';
+  s := pg_temp.et_ub_pending(e.post);
+  assert not (s.changed_fields @> array['tiktok_caption']), format('tiktok voltou à base: %s', s.changed_fields);
+  assert s.original_tiktok_caption = 'TT-team2' and s.suggested_tiktok_caption = 'TT-team2',
+    format('re-baseado no vivo: %s / %s', s.original_tiktok_caption, s.suggested_tiktok_caption);
+  -- igualdade por COALESCE: '' e NULL são a mesma legenda
+  update workflow_posts set tiktok_caption = null where id = e.post;
+  perform upsert_edit_suggestion(e.post, e.ws, 'tok', null, 'T2', 'L0',
+    array['legenda_tiktok'], '{"tiktok_caption": null}'::jsonb, '{"tiktok_caption": ""}'::jsonb);
+  assert not ((pg_temp.et_ub_pending(e.post)).changed_fields @> array['tiktok_caption']), 'vazio == nulo';
+  raise notice 'PASS 103.14 rebase das legendas novas';
+end $$;
+rollback;
+
+-- 103.15
+begin;
+do $$
+declare e record; v_msg text; v_gid bigint;
+begin
+  select * into e from pg_temp.et_ub_env();
+  -- sem linha tiktok nem geral
+  begin
+    perform upsert_edit_suggestion(e.post, e.ws, 'tok', null, 'T0', 'L0',
+      array['legenda_tiktok'], '{"tiktok_caption": null}'::jsonb, '{"tiktok_caption": "TT1"}'::jsonb);
+    assert false, 'sem destino tiktok devia levantar';
+  exception when others then
+    get stacked diagnostics v_msg = message_text;
+    assert v_msg = 'target_gone', format('esperava target_gone (tiktok), veio %s', v_msg);
+  end;
+  begin
+    perform upsert_edit_suggestion(e.post, e.ws, 'tok', null, 'T0', 'L0',
+      array['legenda_geral'], '{"geral_caption": null}'::jsonb, '{"geral_caption": "G1"}'::jsonb);
+    assert false, 'sem destino geral devia levantar';
+  exception when others then
+    get stacked diagnostics v_msg = message_text;
+    assert v_msg = 'target_gone', format('esperava target_gone (geral), veio %s', v_msg);
+  end;
+  assert not exists (select 1 from post_edit_suggestions where post_id = e.post), 'nada gravado';
+
+  -- linha geral removida e recriada com a sugestão pendente: não herda
+  v_gid := pg_temp.et_ub_targets(e.post, null, 'G0');
+  perform upsert_edit_suggestion(e.post, e.ws, 'tok', null, 'T0', 'L0',
+    array['legenda_geral'], '{"geral_caption": "G0"}'::jsonb, '{"geral_caption": "G1"}'::jsonb);
+  delete from post_targets where id = v_gid;
+  insert into post_targets (conta_id, post_id, platform, caption) values (e.ws, e.post, 'geral', 'G0');
+  begin
+    perform upsert_edit_suggestion(e.post, e.ws, 'tok', null, 'T0', 'L0',
+      array['legenda_geral'], null, '{"geral_caption": "G2"}'::jsonb);
+    assert false, 'linha geral recriada devia levantar';
+  exception when others then
+    get stacked diagnostics v_msg = message_text;
+    assert v_msg = 'target_gone', format('esperava target_gone (recriada), veio %s', v_msg);
+  end;
+  assert (pg_temp.et_ub_pending(e.post)).suggested_geral_caption = 'G1', 'a sugestão não mudou';
+  raise notice 'PASS 103.15 target_gone';
+end $$;
+rollback;
+
+-- 103.16
+begin;
+do $$
+declare e record; s post_edit_suggestions; r jsonb;
+begin
+  -- (a) linha nova pelo ramo legado: legendas novas = vivo, fora de changed_fields
+  select * into e from pg_temp.et_ub_env();
+  perform pg_temp.et_ub_targets(e.post, 'TT0', 'G0');
+  r := upsert_edit_suggestion(e.post, e.ws, 'tok', pg_temp.et_ub_doc('T1'), 'T1', 'L0');
+  assert r->'suggestion' ? 'suggested_tiktok_caption' and r->'suggestion' ? 'suggested_geral_caption',
+    format('retorno legado sem as chaves novas: %s', r);
+  s := pg_temp.et_ub_pending(e.post);
+  assert not (s.changed_fields && array['tiktok_caption','geral_caption']), format('legado: %s', s.changed_fields);
+  assert s.original_tiktok_caption = 'TT0' and s.suggested_tiktok_caption = 'TT0', 'tiktok = vivo';
+  assert s.original_geral_caption = 'G0' and s.suggested_geral_caption = 'G0', 'geral = vivo';
+  assert s.geral_target_id is null and s.tiktok_followed_ig is null, 'legado não grava id nem followed';
+  delete from post_edit_suggestions where post_id = e.post;
+
+  -- (b) Hub novo sugeriu TikTok e Geral; aba antiga salva texto: as entradas novas ficam
+  perform upsert_edit_suggestion(e.post, e.ws, 'tok', null, 'T0', 'L0',
+    array['legenda_tiktok','legenda_geral'], '{"tiktok_caption": "TT0", "geral_caption": "G0"}'::jsonb,
+    '{"tiktok_caption": "TT1", "geral_caption": "G1"}'::jsonb);
+  perform upsert_edit_suggestion(e.post, e.ws, 'tok', pg_temp.et_ub_doc('T1'), 'T1', 'L0');
+  s := pg_temp.et_ub_pending(e.post);
+  assert s.changed_fields @> array['conteudo_plain','tiktok_caption','geral_caption'],
+    format('entradas novas preservadas: %s', s.changed_fields);
+  assert s.suggested_tiktok_caption = 'TT1' and s.suggested_geral_caption = 'G1'
+     and s.original_tiktok_caption = 'TT0' and s.original_geral_caption = 'G0', 'colunas novas intocadas';
+  assert s.geral_target_id is not null, 'geral_target_id intocado';
+
+  -- (c) aba antiga com texto e legenda iguais ao vivo: a linha NÃO é apagada
+  r := upsert_edit_suggestion(e.post, e.ws, 'tok', pg_temp.et_ub_doc('T0'), 'T0', 'L0');
+  assert r->>'action' = 'upserted', format('a linha com campos novos não pode sumir: %s', r);
+  s := pg_temp.et_ub_pending(e.post);
+  assert s.changed_fields @> array['tiktok_caption','geral_caption']
+     and not (s.changed_fields && array['conteudo','conteudo_plain','ig_caption']),
+    format('só os campos novos: %s', s.changed_fields);
+  delete from post_edit_suggestions where post_id = e.post;
+
+  -- (d) linha só com a legenda: legado não deixa changed_fields NULL
+  perform upsert_edit_suggestion(e.post, e.ws, 'tok', null, 'T0', 'L1', array['legenda'], '{"ig_caption": "L0"}'::jsonb);
+  perform upsert_edit_suggestion(e.post, e.ws, 'tok', pg_temp.et_ub_doc('T0'), 'T0', 'L2');
+  s := pg_temp.et_ub_pending(e.post);
+  assert s.changed_fields is not null and s.changed_fields = array['ig_caption'],
+    format('changed_fields: %s', s.changed_fields);
+  -- (e) e sem nada mudado de fato, apaga como antes
+  r := upsert_edit_suggestion(e.post, e.ws, 'tok', pg_temp.et_ub_doc('T0'), 'T0', 'L0');
+  assert r->>'action' = 'deleted', format('legado sem mudança apaga: %s', r);
+  raise notice 'PASS 103.16 ramo legado preserva os campos novos';
+end $$;
+rollback;
+
+-- 103.17
+begin;
+do $$
+declare e record; s post_edit_suggestions;
+begin
+  select * into e from pg_temp.et_ub_env();
+  perform pg_temp.et_ub_targets(e.post, null, 'G0');
+  -- legenda entra com o TikTok seguindo o Instagram
+  perform upsert_edit_suggestion(e.post, e.ws, 'tok', null, 'T0', 'L1', array['legenda'], '{"ig_caption": "L0"}'::jsonb);
+  assert (pg_temp.et_ub_pending(e.post)).tiktok_followed_ig is true, 'tiktok nulo: seguia o Instagram';
+  -- a equipe dá legenda própria ao TikTok; o valor gravado não muda enquanto a legenda fica
+  update workflow_posts set tiktok_caption = 'TT-proprio' where id = e.post;
+  perform upsert_edit_suggestion(e.post, e.ws, 'tok', null, 'T0', 'L2', array['legenda'], null);
+  assert (pg_temp.et_ub_pending(e.post)).tiktok_followed_ig is true, 'mantido enquanto a legenda fica';
+  -- texto entra e a legenda sai: limpa
+  perform upsert_edit_suggestion(e.post, e.ws, 'tok', pg_temp.et_ub_doc('T1'), 'T1', 'L0',
+    array['texto','legenda'], jsonb_build_object('conteudo', pg_temp.et_ub_doc('T0'), 'conteudo_plain', 'T0'));
+  s := pg_temp.et_ub_pending(e.post);
+  assert not (s.changed_fields @> array['ig_caption']), format('legenda saiu: %s', s.changed_fields);
+  assert s.tiktok_followed_ig is null, 'limpo quando a legenda sai';
+  -- legenda volta a entrar com o TikTok próprio: false
+  perform upsert_edit_suggestion(e.post, e.ws, 'tok', null, 'T1', 'L3', array['legenda'], '{"ig_caption": "L0"}'::jsonb);
+  assert (pg_temp.et_ub_pending(e.post)).tiktok_followed_ig is false, 'tiktok próprio: não seguia';
+  raise notice 'PASS 103.17 tiktok_followed_ig';
+end $$;
+rollback;
