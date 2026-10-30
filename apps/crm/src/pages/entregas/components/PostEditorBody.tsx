@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Expand } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { getIntlLocale } from '@mesaas/i18n';
@@ -311,6 +311,7 @@ export function PostEditorBody({
   // Shares the ['post-media', post.id] cache key with PostMediaGallery below, so this is a
   // cache hit whenever the gallery already loaded it. Feeds ScheduleButton's client-side
   // media preflight (size/format/aspect-ratio) once the post is expanded.
+  const queryClient = useQueryClient();
   const { data: postMedia, isError: postMediaError } = useQuery({
     queryKey: ['post-media', post.id],
     queryFn: () => listPostMedia(post.id!),
@@ -757,6 +758,11 @@ export function PostEditorBody({
       showTestModeBanner={tiktokTestModeBanner}
       hideCaption={hideCaption}
       layout={isPhone ? 'phone' : 'default'}
+      onThumbnailUpdated={() => {
+        // Same keys PostMediaGallery refreshes after the thumbnail editor saves.
+        void queryClient.invalidateQueries({ queryKey: ['post-media', post.id] });
+        void queryClient.invalidateQueries({ queryKey: ['workflow-covers'] });
+      }}
     />
   );
 

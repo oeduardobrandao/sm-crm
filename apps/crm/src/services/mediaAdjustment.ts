@@ -9,6 +9,8 @@ export async function replacePostMedia(
   thumbnail: File | undefined,
   onProgress?: (progress: UploadProgress) => void,
   signal?: AbortSignal,
+  /** Video: the moment (ms) `thumbnail` shows; the replacement file keeps it as its cover frame. */
+  thumbnailFrameMs?: number | null,
 ): Promise<void> {
   signal?.throwIfAborted();
   const {
@@ -20,6 +22,7 @@ export async function replacePostMedia(
     file,
     folderId: null,
     thumbnail,
+    thumbnailFrameMs,
     onProgress,
     ...(signal ? { signal } : {}),
   });

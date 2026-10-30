@@ -192,6 +192,32 @@ Deno.test("tiktok-publish-cron init phase: caps at 5 inits per account, releases
 
 // ── (c) init phase: payload shape per tipo ──────────────────────────────────────
 
+Deno.test("tiktok-publish-cron init phase: the video's thumbnail frame becomes video_cover_timestamp_ms", async () => {
+  for (const [frame, expected] of [[12300, 12300], [null, undefined], [99000, undefined]] as const) {
+    const db = createSupabaseQueryMock();
+    queueClaims(db, [claimedPost({ post_id: 10, tipo: "reels", caption: "legenda video" })], [], []);
+    const calls: Array<{ path: string; body: Record<string, unknown> }> = [];
+    const response = await runTikTokPublishCron(baseDeps(db, {
+      getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
+      tiktokFetch: async (path, init) => {
+        calls.push({ path, body: JSON.parse(String(init.body)) });
+        return { publish_id: "pub-1" };
+      },
+      buildTikTokMediaUrl,
+      fetchPostMedia: async () => [{ id: 1, kind: "video", r2_key: "vid/1.mp4", sort_order: 0 }],
+      fetchCreatorCheck: async () => ({ kind: "skip" }),
+      // 99000 ms is past the 42 s video: dropped, TikTok uses its default frame.
+      fetchPrecheckMedia: async () => [
+        { kind: "video", duration_seconds: 42, media_lost_at: null, thumbnail_frame_ms: frame },
+      ],
+    }));
+    assertEquals(response.status, 200);
+    const postInfo = (calls[0].body as { post_info: Record<string, unknown> }).post_info;
+    assertEquals(postInfo.video_cover_timestamp_ms, expected);
+    assertEquals("video_cover_timestamp_ms" in postInfo, expected !== undefined);
+  }
+});
+
 Deno.test("tiktok-publish-cron init phase: reels hits video/init with a video payload; carrossel hits content/init with a photo payload", async () => {
   const db = createSupabaseQueryMock();
   const videoPost = claimedPost({ post_id: 10, tipo: "reels", caption: "legenda video" });

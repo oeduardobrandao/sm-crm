@@ -21,10 +21,18 @@ vi.mock('../../../../services/postMedia', async (importOriginal) => {
   };
 });
 
-vi.mock('@mesaas/ui/video/frame', () => ({
-  extractVideoFrame: vi.fn(),
-  captureFrameFromElement: vi.fn(),
-}));
+vi.mock('@mesaas/ui/video/frame', () => {
+  const extractVideoFrame = vi.fn();
+  return {
+    extractVideoFrame,
+    // The gallery calls this one; it reports the frame at 0.5 s (the real auto-frame time).
+    extractVideoFrameWithTime: vi.fn(async (...args: unknown[]) => ({
+      file: await extractVideoFrame(...args),
+      timeSeconds: 0.5,
+    })),
+    captureFrameFromElement: vi.fn(),
+  };
+});
 
 vi.mock('../../../../utils/imageJpeg', () => ({
   encodeImageAsJpeg: vi.fn((f: File) => Promise.resolve(f)),
@@ -158,6 +166,8 @@ describe('PostMediaGallery upload orchestration', () => {
       postId: 42,
       file: video,
       thumbnail: expect.any(File),
+      // The auto frame's moment becomes files.thumbnail_frame_ms (the TikTok cover).
+      thumbnailFrameMs: 500,
     });
     expect(screen.queryByText(/Não foi possível gerar a miniatura/)).not.toBeInTheDocument();
   });

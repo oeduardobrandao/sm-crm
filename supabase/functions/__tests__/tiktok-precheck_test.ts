@@ -94,15 +94,22 @@ Deno.test("fetchCreatorCheck: ok / cannot_post / fail-open / token errors rethro
   }
 });
 
-Deno.test("fetchPrecheckMedia: selects kind, duration, media_lost_at in order", async () => {
+Deno.test("fetchPrecheckMedia: selects kind, duration, media_lost_at, thumbnail frame in order", async () => {
   const db = createSupabaseQueryMock();
   db.queue("post_file_links", "select", { data: [
-    { sort_order: 0, files: { kind: "video", duration_seconds: 42, media_lost_at: null } },
+    { sort_order: 0, files: { kind: "video", duration_seconds: 42, media_lost_at: null, thumbnail_frame_ms: 1200 } },
+    { sort_order: 1, files: { kind: "video", duration_seconds: 10, media_lost_at: null } },
   ], error: null });
-  assertEquals(await fetchPrecheckMedia(db as never, 7), [{ kind: "video", duration_seconds: 42, media_lost_at: null }]);
+  assertEquals(await fetchPrecheckMedia(db as never, 7), [
+    { kind: "video", duration_seconds: 42, media_lost_at: null, thumbnail_frame_ms: 1200 },
+    { kind: "video", duration_seconds: 10, media_lost_at: null, thumbnail_frame_ms: null },
+  ]);
   const call = db.calls.find((c) => c.table === "post_file_links");
   // supabaseMock records `.select(...)` arguments in `selectArgs: unknown[][]` (test/shared/supabaseMock.ts:14-21).
-  assertEquals(String(call?.selectArgs[0]?.[0]), "sort_order, files!inner(kind, duration_seconds, media_lost_at)");
+  assertEquals(
+    String(call?.selectArgs[0]?.[0]),
+    "sort_order, files!inner(kind, duration_seconds, media_lost_at, thumbnail_frame_ms)",
+  );
   assertEquals(call?.modifiers.map((m) => m.method), ["eq", "order"]);
 });
 

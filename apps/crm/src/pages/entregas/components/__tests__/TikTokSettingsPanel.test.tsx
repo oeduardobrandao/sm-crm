@@ -855,92 +855,62 @@ describe('notices, preview and duration (spec A4/A5/A6/A7)', () => {
   });
 });
 
-describe('TikTokSettingsPanel — cover frame', () => {
-  const coverVideo = [{ ...video42[0], url: 'https://media.test/v.mp4' }] as unknown as PostMedia[];
-  /** jsdom media elements have no playback; pin the playhead the dialog reads. */
-  function setPlayhead(video: HTMLVideoElement, seconds: number, duration = 42) {
-    Object.defineProperty(video, 'currentTime', {
-      configurable: true,
-      value: seconds,
-      writable: true,
-    });
-    Object.defineProperty(video, 'duration', { configurable: true, value: duration });
-    video.pause = vi.fn();
+describe('TikTokSettingsPanel — cover follows the thumbnail', () => {
+  function videoWith(overrides: Record<string, unknown>) {
+    return [
+      { ...video42[0], thumbnail_url: 'https://media.test/thumb.jpg', ...overrides },
+    ] as unknown as PostMedia[];
   }
 
-  it("shows TikTok's default frame when no cover is saved", async () => {
-    renderPanel({}, { media: coverVideo });
+  it('says TikTok uses the thumbnail frame when the file knows it', async () => {
+    renderPanel({}, { media: videoWith({ thumbnail_frame_ms: 12300 }) });
     await screen.findByText('Dra Marina');
-    expect(screen.getByRole('region', { name: 'Capa do TikTok' })).toBeInTheDocument();
-    expect(screen.getByText('Quadro padrão do TikTok')).toBeInTheDocument();
-    const preview = screen.getByTestId('tiktok-cover-preview') as HTMLVideoElement;
-    expect(preview.getAttribute('src')).toBe('https://media.test/v.mp4#t=1');
+    const section = screen.getByRole('region', { name: 'Capa do TikTok' });
+    expect(
+      within(section).getByText('O TikTok usa o mesmo quadro da miniatura (0:12.3).'),
+    ).toBeInTheDocument();
+    const thumb = within(section).getByTestId('tiktok-cover-thumbnail') as HTMLImageElement;
+    expect(thumb.getAttribute('src')).toBe('https://media.test/thumb.jpg');
   });
 
-  it('shows the saved frame and previews that offset', async () => {
-    renderPanel({ tiktok_settings: { video_cover_timestamp_ms: 3250 } }, { media: coverVideo });
-    await screen.findByText('Dra Marina');
-    expect(screen.getByText('Quadro em 0:03.2')).toBeInTheDocument();
-    const preview = screen.getByTestId('tiktok-cover-preview') as HTMLVideoElement;
-    expect(preview.getAttribute('src')).toBe('https://media.test/v.mp4#t=3.25');
+  it('warns that TikTok falls back to its default frame when the thumbnail is not a video frame', async () => {
+    for (const frame of [null, undefined]) {
+      const { unmount } = renderPanel({}, { media: videoWith({ thumbnail_frame_ms: frame }) });
+      await screen.findByText('Dra Marina');
+      const section = screen.getByRole('region', { name: 'Capa do TikTok' });
+      expect(within(section).getByText(/O TikTok não aceita imagem como capa/)).toBeInTheDocument();
+      unmount();
+    }
   });
 
-  it('keeps the saved cover when another setting is persisted (full-object writes)', async () => {
-    const { onFieldChange } = renderPanel({
-      tiktok_settings: { video_cover_timestamp_ms: 3250 },
-    });
+  it('never writes a cover into tiktok_settings (the publishers read the file)', async () => {
+    const { onFieldChange } = renderPanel(
+      { tiktok_settings: { video_cover_timestamp_ms: 3250 } },
+      { media: videoWith({ thumbnail_frame_ms: 500 }) },
+    );
     await selectPrivacy('Somente eu (privado)');
-    expect(onFieldChange).toHaveBeenLastCalledWith(
-      'tiktok_settings',
-      expect.objectContaining({ privacy_level: 'SELF_ONLY', video_cover_timestamp_ms: 3250 }),
-    );
-  });
-
-  it('saves the playhead as video_cover_timestamp_ms', async () => {
-    const { onFieldChange } = renderPanel({ tiktok_settings: { privacy_level: 'SELF_ONLY' } });
-    await screen.findByText('Dra Marina');
-    fireEvent.click(screen.getByRole('button', { name: 'Escolher quadro' }));
-    const dialog = await screen.findByRole('dialog');
-    setPlayhead(dialog.querySelector('video') as HTMLVideoElement, 5.2504);
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Usar este quadro' }));
-    expect(onFieldChange).toHaveBeenLastCalledWith(
-      'tiktok_settings',
-      expect.objectContaining({ privacy_level: 'SELF_ONLY', video_cover_timestamp_ms: 5250 }),
-    );
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(screen.getByText('Quadro em 0:05.2')).toBeInTheDocument();
-  });
-
-  it("going back to TikTok's default drops the key instead of storing null", async () => {
-    const { onFieldChange } = renderPanel({
-      tiktok_settings: { privacy_level: 'SELF_ONLY', video_cover_timestamp_ms: 3250 },
-    });
-    await screen.findByText('Dra Marina');
-    fireEvent.click(screen.getByRole('button', { name: 'Escolher quadro' }));
-    const dialog = await screen.findByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Usar padrão do TikTok' }));
     const saved = onFieldChange.mock.calls.at(-1)?.[1] as Record<string, unknown>;
     expect(saved.privacy_level).toBe('SELF_ONLY');
     expect('video_cover_timestamp_ms' in saved).toBe(false);
   });
 
-  it('ignores a malformed stored value', async () => {
-    renderPanel({ tiktok_settings: { video_cover_timestamp_ms: -5 } });
+  it('"Editar miniatura" opens the same thumbnail editor the gallery uses', async () => {
+    renderPanel({}, { media: videoWith({ thumbnail_frame_ms: 500 }) });
     await screen.findByText('Dra Marina');
-    expect(screen.getByText('Quadro padrão do TikTok')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Editar miniatura' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Miniatura do vídeo')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Usar este frame' })).toBeInTheDocument();
   });
 
-  it('skips the preview for a URL sanitizeUrl rejects', async () => {
-    renderPanel(
-      {},
-      { media: [{ ...video42[0], url: 'javascript:alert(1)' }] as unknown as PostMedia[] },
-    );
+  it('disables the editor button for a lost video', async () => {
+    renderPanel({}, { media: videoWith({ media_lost_at: '2026-08-14T03:00:00.000Z' }) });
     await screen.findByText('Dra Marina');
-    expect(screen.getByText('Quadro padrão do TikTok')).toBeInTheDocument();
-    expect(screen.queryByTestId('tiktok-cover-preview')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Editar miniatura' })).toBeDisabled();
+    expect(screen.queryByTestId('tiktok-cover-thumbnail')).not.toBeInTheDocument();
   });
 
-  it('is not offered for photo posts', async () => {
+  it('is not shown for photo posts', async () => {
     renderPanelProps({
       post: reelsPost({ tipo: 'feed' }),
       media: [

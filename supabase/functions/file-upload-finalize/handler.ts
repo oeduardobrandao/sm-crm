@@ -51,6 +51,8 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
       height?: number;
       duration_seconds?: number;
       blur_data_url?: string;
+      /** Videos: the moment (ms) the thumbnail was captured from. See files.thumbnail_frame_ms. */
+      thumbnail_frame_ms?: number;
       post_id?: number;
       sort_order?: number;
     };
@@ -136,6 +138,24 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
       await svc.from("files").update({ blur_data_url: body.blur_data_url }).eq("id", (inserted as any).id);
     }
 
+    // Written after the insert, like blur_data_url (file_insert_with_quota takes a fixed field
+    // list). Anything but a non-negative integer on a video is dropped: NULL just means TikTok
+    // falls back to its default cover frame.
+    let thumbnailFrameMs =
+      body.kind === "video" && Number.isInteger(body.thumbnail_frame_ms) && (body.thumbnail_frame_ms as number) >= 0
+        ? (body.thumbnail_frame_ms as number)
+        : null;
+    if (thumbnailFrameMs !== null) {
+      const { error: frameErr } = await svc
+        .from("files")
+        .update({ thumbnail_frame_ms: thumbnailFrameMs })
+        .eq("id", (inserted as any).id);
+      if (frameErr) {
+        console.error("file-upload-finalize:thumbnail-frame", frameErr);
+        thumbnailFrameMs = null;
+      }
+    }
+
     if (body.post_id) {
       // sort_order is assigned client-side from the upload selection order so
       // concurrent uploads land in the picked order, not finalize-completion
@@ -188,6 +208,12 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
     // to the client — always null at this point in the flow anyway (the ingest below hasn't
     // run yet), but strip them so the keys never leak even if that ever changes.
     const { stream_uid, stream_status, ...pub } = inserted as Record<string, unknown>;
-    return json({ ...pub, url, thumbnail_url, blur_data_url: body.blur_data_url ?? null });
+    return json({
+      ...pub,
+      url,
+      thumbnail_url,
+      blur_data_url: body.blur_data_url ?? null,
+      thumbnail_frame_ms: thumbnailFrameMs,
+    });
   };
 }
