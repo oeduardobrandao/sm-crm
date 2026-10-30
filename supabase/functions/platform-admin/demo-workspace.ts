@@ -65,7 +65,8 @@ export interface DemoDeps {
   /** Only mints a link for an existing user (`invite` for a new demo, `recovery` for a resend). */
   generateLink(type: "invite" | "recovery", email: string, redirectTo: string): Promise<{ actionLink: string }>;
   findUserByEmail(email: string): Promise<{ id: string } | null>;
-  getUserEmail(userId: string): Promise<string | null>;
+  /** null when the user does not exist. `emailConfirmed` = the owner opened a link at least once. */
+  getOwnerAuth(userId: string): Promise<{ email: string | null; emailConfirmed: boolean } | null>;
   deleteUser(userId: string): Promise<void>;
   sendEmail: typeof sendDemoAccessEmail;
   redirectBase: string;
@@ -330,13 +331,19 @@ export async function resendDemoAccess(
     if (!ws.demo_created_at || !ws.created_by) return { status: 409, body: { error: MSG_NOT_DEMO } };
     const ownerId = ws.created_by as string;
 
-    const { data: pw, error: pwErr } = await db.rpc("user_has_password", { p_user_id: ownerId });
-    const hasPassword = coerceHasPassword(pw, pwErr);
-    if (hasPassword === true) return { status: 409, body: { error: MSG_PASSWORD_SET } };
-    if (hasPassword === null) throw pwErr ?? new Error("user_has_password returned no boolean");
-
-    const email = await deps.getUserEmail(ownerId);
+    const owner = await deps.getOwnerAuth(ownerId);
+    const email = owner?.email;
     if (!email) throw new Error("owner e-mail not found");
+
+    // createUser without a password stores a random hash, so user_has_password is true for every
+    // demo owner from birth. Choosing a password needs a session from one of our links, and opening
+    // that link confirms the e-mail: an unconfirmed owner cannot have set one.
+    if (owner.emailConfirmed) {
+      const { data: pw, error: pwErr } = await db.rpc("user_has_password", { p_user_id: ownerId });
+      const hasPassword = coerceHasPassword(pw, pwErr);
+      if (hasPassword === true) return { status: 409, body: { error: MSG_PASSWORD_SET } };
+      if (hasPassword === null) throw pwErr ?? new Error("user_has_password returned no boolean");
+    }
 
     const { data: profile } = await db.from("profiles").select("nome").eq("id", ownerId).maybeSingle();
     const { data: plan } = ws.plan_id
