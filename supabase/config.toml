@@ -281,3 +281,6 @@ verify_jwt = false
 
 [functions.gbp-analytics]
 verify_jwt = false
+
+[functions.youtube-analytics]
+verify_jwt = false
