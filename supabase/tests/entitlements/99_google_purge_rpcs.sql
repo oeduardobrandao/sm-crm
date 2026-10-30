@@ -183,10 +183,12 @@ begin
   perform set_config('role', 'postgres', true);
 end $$;
 
-create or replace function pg_temp.gp_expire() returns table(g int, y int) language plpgsql as $$
+create or replace function pg_temp.gp_expire() returns table(g int, y int, oy int, og int) language plpgsql as $$
 begin
   perform set_config('role', 'service_role', true);
-  return query select e.gbp_locations_deleted, e.youtube_channels_deleted from google_expire_units() e;
+  return query select e.gbp_locations_deleted, e.youtube_channels_deleted,
+                      e.orphan_youtube_rows_deleted, e.orphan_gbp_rows_deleted
+                 from google_expire_units() e;
   perform set_config('role', 'postgres', true);
 end $$;
 
@@ -647,6 +649,220 @@ end $$;
 rollback;
 
 -- =====================================================================
+-- client_delete_history_reaped_by_expire (I-1): deleting a client cascades its channel and unit
+-- rows away (the history tables have no FK by design); the next google_expire_units reaps the
+-- orphaned history, and only that history.
+-- =====================================================================
+begin;
+do $$
+declare
+  s jsonb := pg_temp.gp_seed();
+  v_ws_a uuid := (s->>'ws_a')::uuid; v_ws_b uuid := (s->>'ws_b')::uuid;
+  v_conn_a uuid; v_conn_b uuid; r record;
+begin
+  v_conn_a := pg_temp.gp_upsert(v_ws_a, 'sub-1', 'RA', pg_temp.gp_yt() || pg_temp.gp_gbp());
+  v_conn_b := pg_temp.gp_upsert(v_ws_b, 'sub-1', 'RB', pg_temp.gp_yt() || pg_temp.gp_gbp());
+  -- A1 (deleted below) and A2 (kept) in workspace A; B1 links the same channel and unit as A1.
+  perform pg_temp.gp_channel(v_ws_a, (s->>'cli_a1')::bigint, v_conn_a, 'UCx');
+  perform pg_temp.gp_location(v_ws_a, (s->>'cli_a1')::bigint, v_conn_a, 'locations/X');
+  perform pg_temp.gp_channel(v_ws_a, (s->>'cli_a2')::bigint, v_conn_a, 'UC-a2');
+  perform pg_temp.gp_location(v_ws_a, (s->>'cli_a2')::bigint, v_conn_a, 'locations/a2');
+  perform pg_temp.gp_channel(v_ws_b, (s->>'cli_b1')::bigint, v_conn_b, 'UCx');
+  perform pg_temp.gp_location(v_ws_b, (s->>'cli_b1')::bigint, v_conn_b, 'locations/X');
+  perform pg_temp.gp_yt_hist(v_ws_a, 'UCx');
+  perform pg_temp.gp_gbp_hist(v_ws_a, 'locations/X');
+  perform pg_temp.gp_yt_hist(v_ws_a, 'UC-a2');
+  perform pg_temp.gp_gbp_hist(v_ws_a, 'locations/a2');
+  perform pg_temp.gp_yt_hist(v_ws_b, 'UCx');
+  perform pg_temp.gp_gbp_hist(v_ws_b, 'locations/X');
+
+  delete from clientes where id = (s->>'cli_a1')::bigint;
+  assert not exists (select 1 from youtube_channels where conta_id = v_ws_a and channel_id = 'UCx'),
+    'the channel row cascaded away with the client';
+  assert not exists (select 1 from gbp_locations where conta_id = v_ws_a and location_name = 'locations/X'),
+    'the unit row cascaded away with the client';
+  assert pg_temp.gp_yt_count(v_ws_a, 'UCx') = 5, 'history is orphaned until the expiry runs';
+
+  select * into r from pg_temp.gp_expire();
+  assert r.g = 0 and r.y = 0, format('no unit reached its 30 days, got (%s, %s)', r.g, r.y);
+  assert r.oy = 5, format('five orphaned YouTube rows reaped, got %s', r.oy);
+  assert r.og = 4, format('four orphaned GMN rows reaped, got %s', r.og);
+  assert pg_temp.gp_yt_count(v_ws_a, 'UCx') = 0, 'the deleted client''s YouTube history is gone';
+  assert pg_temp.gp_gbp_count(v_ws_a, 'locations/X') = 0, 'the deleted client''s GMN history is gone';
+  assert pg_temp.gp_yt_count(v_ws_a, 'UC-a2') = 5, 'another client''s YouTube history is untouched';
+  assert pg_temp.gp_gbp_count(v_ws_a, 'locations/a2') = 4, 'another client''s GMN history is untouched';
+  assert pg_temp.gp_yt_count(v_ws_b, 'UCx') = 5, 'B''s history of the same channel is untouched';
+  assert pg_temp.gp_gbp_count(v_ws_b, 'locations/X') = 4, 'B''s history of the same unit is untouched';
+
+  select * into r from pg_temp.gp_expire();
+  assert r.oy = 0 and r.og = 0, 'a second run reaps nothing';
+  raise notice 'PASS google_purge.client_delete_history_reaped_by_expire';
+end $$;
+rollback;
+
+-- =====================================================================
+-- orphan_pass_spares_disconnected_units: a disconnected unit keeps its row (and history) for its
+-- 30 days, so the orphan pass never fights the soft delete.
+-- =====================================================================
+begin;
+do $$
+declare
+  s jsonb := pg_temp.gp_seed();
+  v_ws uuid := (s->>'ws_a')::uuid;
+  v_conn uuid; v_loc uuid; r record;
+begin
+  v_conn := pg_temp.gp_upsert(v_ws, 'sub-1', 'R1', pg_temp.gp_gbp());
+  v_loc := pg_temp.gp_location(v_ws, (s->>'cli_a1')::bigint, v_conn, 'locations/1');
+  perform pg_temp.gp_gbp_hist(v_ws, 'locations/1');
+  update gbp_locations set status = 'disconnected', disconnected_at = now() - interval '5 days' where id = v_loc;
+
+  select * into r from pg_temp.gp_expire();
+  assert r.og = 0 and r.g = 0, format('nothing reaped, got (%s, %s)', r.og, r.g);
+  assert pg_temp.gp_gbp_count(v_ws, 'locations/1') = 4, 'the disconnected unit keeps its history';
+  raise notice 'PASS google_purge.orphan_pass_spares_disconnected_units';
+end $$;
+rollback;
+
+-- =====================================================================
+-- workspace_delete_revokes_unused_sub (I-1): the workspace is the only user of its Google
+-- identities, and one of them was authorized minutes ago (inside the one-hour grace). Deleting
+-- the workspace queues a revocation for each identity before the cascade drops the tokens; the
+-- orphaned history goes on the next expiry.
+-- =====================================================================
+begin;
+do $$
+declare
+  s jsonb := pg_temp.gp_seed();
+  v_ws_a uuid := (s->>'ws_a')::uuid; v_ws_b uuid := (s->>'ws_b')::uuid;
+  v_conn uuid; v_conn2 uuid; v_conn_b uuid; r record;
+begin
+  -- fresh: no gp_backdate, so _google_revoke_if_unused's grace would otherwise keep the token
+  v_conn := pg_temp.gp_upsert(v_ws_a, 'sub-ws', 'R-fresh', pg_temp.gp_yt() || pg_temp.gp_gbp());
+  v_conn2 := pg_temp.gp_upsert(v_ws_a, 'sub-ws2', 'R-old', pg_temp.gp_gbp());
+  perform pg_temp.gp_backdate(v_conn2);
+  perform pg_temp.gp_channel(v_ws_a, (s->>'cli_a1')::bigint, v_conn, 'UC-1');
+  perform pg_temp.gp_location(v_ws_a, (s->>'cli_a2')::bigint, v_conn, 'locations/1');
+  perform pg_temp.gp_location(v_ws_a, (s->>'cli_a3')::bigint, v_conn2, 'locations/2');
+  perform pg_temp.gp_yt_hist(v_ws_a, 'UC-1');
+  perform pg_temp.gp_gbp_hist(v_ws_a, 'locations/1');
+  perform pg_temp.gp_gbp_hist(v_ws_a, 'locations/2');
+  -- an unrelated identity in B must not be touched
+  v_conn_b := pg_temp.gp_upsert(v_ws_b, 'sub-b', 'RB', pg_temp.gp_yt());
+  perform pg_temp.gp_channel(v_ws_b, (s->>'cli_b1')::bigint, v_conn_b, 'UC-b');
+
+  delete from workspaces where id = v_ws_a;
+
+  assert (select count(*) from google_revocations where google_sub = 'sub-ws') = 1,
+    'one revocation queued for the fresh identity';
+  select * into r from google_revocations where google_sub = 'sub-ws';
+  assert r.token_kind = 'refresh' and r.encrypted_token = 'R-fresh', 'the refresh token is queued';
+  assert (select count(*) from google_revocations where google_sub = 'sub-ws2') = 1,
+    'one revocation queued for the second identity';
+  assert not exists (select 1 from google_revocations where google_sub = 'sub-b'), 'B''s identity is not revoked';
+  assert not exists (select 1 from google_connections where google_sub in ('sub-ws', 'sub-ws2')),
+    'the workspace''s connections are gone';
+  assert exists (select 1 from google_connections where id = v_conn_b), 'B''s connection is kept';
+  assert pg_temp.gp_yt_count(v_ws_a, 'UC-1') = 5, 'history is orphaned until the expiry runs';
+
+  select * into r from pg_temp.gp_expire();
+  assert r.oy = 5 and r.og = 8, format('orphaned history reaped, got (%s, %s)', r.oy, r.og);
+  assert pg_temp.gp_yt_count(v_ws_a, 'UC-1') = 0, 'YouTube history gone';
+  assert pg_temp.gp_gbp_count(v_ws_a, 'locations/1') = 0, 'GMN history gone';
+  assert pg_temp.gp_gbp_count(v_ws_a, 'locations/2') = 0, 'GMN history of the second identity gone';
+  raise notice 'PASS google_purge.workspace_delete_revokes_unused_sub';
+end $$;
+rollback;
+
+-- =====================================================================
+-- workspace_delete_keeps_shared_sub (I-1, spec 4.2): B still uses the same Google identity, so
+-- deleting A revokes nothing and leaves B's connection, units and history alone.
+-- =====================================================================
+begin;
+do $$
+declare
+  s jsonb := pg_temp.gp_seed();
+  v_ws_a uuid := (s->>'ws_a')::uuid; v_ws_b uuid := (s->>'ws_b')::uuid;
+  v_conn_a uuid; v_conn_b uuid; v_ch_b uuid; v_loc_b uuid; r record;
+begin
+  v_conn_a := pg_temp.gp_upsert(v_ws_a, 'sub-shared', 'RA', pg_temp.gp_yt() || pg_temp.gp_gbp());
+  v_conn_b := pg_temp.gp_upsert(v_ws_b, 'sub-shared', 'RB', pg_temp.gp_yt() || pg_temp.gp_gbp());
+  -- B is past its grace: only its units keep the identity in use
+  perform pg_temp.gp_backdate(v_conn_b);
+  perform pg_temp.gp_channel(v_ws_a, (s->>'cli_a1')::bigint, v_conn_a, 'UCx');
+  perform pg_temp.gp_location(v_ws_a, (s->>'cli_a1')::bigint, v_conn_a, 'locations/X');
+  v_ch_b := pg_temp.gp_channel(v_ws_b, (s->>'cli_b1')::bigint, v_conn_b, 'UCx');
+  v_loc_b := pg_temp.gp_location(v_ws_b, (s->>'cli_b1')::bigint, v_conn_b, 'locations/X');
+  perform pg_temp.gp_yt_hist(v_ws_a, 'UCx');
+  perform pg_temp.gp_gbp_hist(v_ws_a, 'locations/X');
+  perform pg_temp.gp_yt_hist(v_ws_b, 'UCx');
+  perform pg_temp.gp_gbp_hist(v_ws_b, 'locations/X');
+
+  delete from workspaces where id = v_ws_a;
+
+  assert not exists (select 1 from google_revocations), 'no revocation queued';
+  assert not exists (select 1 from google_connections where id = v_conn_a), 'A''s connection is gone';
+  assert (select status from google_connections where id = v_conn_b) = 'active', 'B''s connection is kept';
+  assert (select encrypted_refresh_token from google_connections where id = v_conn_b) = 'RB', 'with its token';
+  assert (select authorization_status from youtube_channels where id = v_ch_b) = 'active', 'B''s channel kept';
+  assert (select status from gbp_locations where id = v_loc_b) = 'active', 'B''s unit kept';
+
+  select * into r from pg_temp.gp_expire();
+  assert r.oy = 5 and r.og = 4, format('only A''s history is reaped, got (%s, %s)', r.oy, r.og);
+  assert pg_temp.gp_yt_count(v_ws_a, 'UCx') = 0 and pg_temp.gp_gbp_count(v_ws_a, 'locations/X') = 0,
+    'A''s history gone';
+  assert pg_temp.gp_yt_count(v_ws_b, 'UCx') = 5, 'B''s YouTube history kept';
+  assert pg_temp.gp_gbp_count(v_ws_b, 'locations/X') = 4, 'B''s GMN history kept';
+  raise notice 'PASS google_purge.workspace_delete_keeps_shared_sub';
+end $$;
+rollback;
+
+-- =====================================================================
+-- workspace_delete_keeps_sub_fresh_elsewhere: B authorized the same identity minutes ago and has
+-- no unit yet (its picker is open). That is B's grace, and it still keeps the identity in use.
+-- =====================================================================
+begin;
+do $$
+declare
+  s jsonb := pg_temp.gp_seed();
+  v_ws_a uuid := (s->>'ws_a')::uuid; v_ws_b uuid := (s->>'ws_b')::uuid;
+  v_conn_a uuid; v_conn_b uuid;
+begin
+  v_conn_a := pg_temp.gp_upsert(v_ws_a, 'sub-shared', 'RA', pg_temp.gp_yt());
+  perform pg_temp.gp_backdate(v_conn_a);
+  perform pg_temp.gp_channel(v_ws_a, (s->>'cli_a1')::bigint, v_conn_a, 'UCx');
+  v_conn_b := pg_temp.gp_upsert(v_ws_b, 'sub-shared', 'RB', pg_temp.gp_gbp());
+
+  delete from workspaces where id = v_ws_a;
+
+  assert not exists (select 1 from google_revocations), 'no revocation queued';
+  assert exists (select 1 from google_connections where id = v_conn_b), 'B''s fresh connection is kept';
+  raise notice 'PASS google_purge.workspace_delete_keeps_sub_fresh_elsewhere';
+end $$;
+rollback;
+
+-- =====================================================================
+-- workspace_delete_trigger_takes_sub_lock: the trigger serializes with the other in-use paths
+-- =====================================================================
+begin;
+do $$
+declare
+  s jsonb := pg_temp.gp_seed();
+  v_ws_a uuid := (s->>'ws_a')::uuid;
+begin
+  perform pg_temp.gp_upsert(v_ws_a, 'sub-lock', 'R', pg_temp.gp_yt());
+  -- the upsert took the lock in this transaction too; check a sub the upsert never saw instead
+  insert into google_connections (conta_id, google_sub, email, encrypted_access_token,
+                                  encrypted_refresh_token, access_token_expires_at)
+    values (v_ws_a, 'sub-direct', 'x@example.com', 'A1', 'R1', now() + interval '1 hour');
+  assert not pg_temp.gp_holds_sub_lock('sub-direct'), 'no lock before the delete';
+  delete from workspaces where id = v_ws_a;
+  assert pg_temp.gp_holds_sub_lock('sub-direct'), 'the workspace delete holds the google-sub lock';
+  assert (select count(*) from google_revocations where google_sub = 'sub-direct') = 1, 'and revoked it';
+  raise notice 'PASS google_purge.workspace_delete_trigger_takes_sub_lock';
+end $$;
+rollback;
+
+-- =====================================================================
 -- grants
 -- =====================================================================
 begin;
@@ -672,6 +888,22 @@ begin
     assert not has_function_privilege(v_role, 'public._google_revoke_if_unused(text)', 'EXECUTE'),
       format('%s cannot execute _google_revoke_if_unused', v_role);
   end loop;
+  -- the workspace-delete trigger function: definer, pinned search_path, nobody may call it
+  v_fn := 'public.google_workspace_release_identities()';
+  foreach v_role in array array['authenticated', 'anon'] loop
+    assert not has_function_privilege(v_role, v_fn, 'EXECUTE'), format('%s cannot execute %s', v_role, v_fn);
+  end loop;
+  assert (select prosecdef from pg_proc where oid = v_fn::regprocedure), format('%s is SECURITY DEFINER', v_fn);
+  assert (select proconfig from pg_proc where oid = v_fn::regprocedure) @> array['search_path=public, pg_temp'],
+    format('%s pins search_path', v_fn);
+  assert exists (
+    select 1 from pg_trigger t
+     where t.tgrelid = 'public.workspaces'::regclass and t.tgname = 'trg_workspaces_google_release'
+       and t.tgfoid = v_fn::regprocedure and not t.tgisinternal
+       and (t.tgtype & 2) = 2      -- BEFORE
+       and (t.tgtype & 8) = 8      -- DELETE
+       and (t.tgtype & 1) = 1),    -- FOR EACH ROW
+    'BEFORE DELETE row trigger on workspaces';
   raise notice 'PASS google_purge.grants';
 end $$;
 rollback;

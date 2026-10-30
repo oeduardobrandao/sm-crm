@@ -367,7 +367,9 @@ Deno.test("gbp-sync-cron: an unexpected error fails that unit only and reaches r
 Deno.test("gbp-sync-cron: with every flag off the deletion duties still run", async () => {
   const db = createSupabaseQueryMock();
   db.queue("gbp_locations", "select", { data: [unit("a", "ws-free")] });
-  db.queueRpc("google_expire_units", { data: [{ gbp_locations_deleted: 2, youtube_channels_deleted: 1 }] });
+  db.queueRpc("google_expire_units", {
+    data: [{ gbp_locations_deleted: 2, youtube_channels_deleted: 1, orphan_youtube_rows_deleted: 7, orphan_gbp_rows_deleted: 4 }],
+  });
   db.queueRpc("google_orphan_subs", { data: ["sub-1"] });
   db.queueRpc("google_release_sub", { data: [{ should_revoke: true, revocation_id: "rev-1" }] });
   const { deps, revocationCalls, decisions } = baseDeps(db, {
@@ -385,7 +387,7 @@ Deno.test("gbp-sync-cron: with every flag off the deletion duties still run", as
   assertEquals(revocationCalls, [{ limit: 50, maxAttempts: 10 }]);
   assertEquals(db.calls.find((c) => c.table === "rpc:google_orphan_subs")!.payload, { p_limit: 25 });
   assertEquals(decisions, [[{ should_revoke: true, revocation_id: "rev-1" }]]);
-  assertEquals(body.expired, { gbpLocations: 2, youtubeChannels: 1 });
+  assertEquals(body.expired, { gbpLocations: 2, youtubeChannels: 1, orphanYoutubeRows: 7, orphanGbpRows: 4 });
   assertEquals(body.revocations, { revoked: 3, failed: 0, gaveUp: 0 });
   assertEquals(body.orphansReleased, 1);
 });

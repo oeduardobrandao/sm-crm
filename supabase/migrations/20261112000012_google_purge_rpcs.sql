@@ -24,10 +24,24 @@
 --   is released by the next orphan sweep, and a reconnect racing an expiry re-inserts the channel
 --   in the callback. Each row is deleted first, with its expiry condition re-checked, and its
 --   history only when that delete hit: a unit reactivated by a concurrent reconnect keeps it.
+--   Then an orphan pass: history rows whose unit row no longer exists in its link table
+--   (youtube_channels by (conta_id, channel_id), gbp_locations by (conta_id, location_name)) are
+--   deleted, at most 10,000 rows per table per call. That is how history leaves after a
+--   client or workspace delete, which cascades the link rows away while the history tables have
+--   no FK by design. A disconnected GMN unit keeps its row for its 30 days, so the pass never
+--   fights the soft delete; an expired unit's history is already gone by then (deleted above).
+-- google_workspace_release_identities (BEFORE DELETE trigger on workspaces): the cascade would
+--   drop the workspace's google_connections with their tokens, never revoked at Google. For each
+--   sub of the workspace (sub locks taken first, in sub order) it deletes the workspace's channel
+--   and unit rows, ends the fresh-connection grace for the workspace's own connections, and runs
+--   google_release_sub, so spec 4.2 still decides: the grant is revoked (a google_revocations row,
+--   retried by gbp-sync-cron) only when no OTHER workspace still uses the identity. History is
+--   left to the orphan pass above.
 -- google_orphan_subs / google_release_sub (P4): the orphan sweep lists subs no longer in use
 --   (read-only), then releases them one call (one transaction, one sub lock) each.
 --
--- All functions are SECURITY DEFINER with EXECUTE for service_role only.
+-- All functions are SECURITY DEFINER with EXECUTE for service_role only (the trigger function
+-- is not callable outside its trigger anyway).
 
 SET LOCAL lock_timeout = '5s';
 
@@ -188,17 +202,23 @@ GRANT EXECUTE ON FUNCTION public.google_mark_revoked(uuid) TO service_role;
 
 -- ============ (4) google_expire_units ============
 CREATE OR REPLACE FUNCTION public.google_expire_units()
-RETURNS TABLE(gbp_locations_deleted int, youtube_channels_deleted int)
+RETURNS TABLE(gbp_locations_deleted int, youtube_channels_deleted int,
+              orphan_youtube_rows_deleted int, orphan_gbp_rows_deleted int)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 #variable_conflict use_column
 DECLARE
+  -- Per table per call: the cron runs hourly, so a large orphaned channel drains over a few runs.
+  c_orphan_batch CONSTANT int := 10000;
   v_loc record;
   v_ch record;
   v_gbp int := 0;
   v_yt int := 0;
+  v_orphan_yt int := 0;
+  v_orphan_gbp int := 0;
+  v_n int;
 BEGIN
   -- GMN: the row first (condition re-checked under its row lock), then its history in all four
   -- tables, keyed by the unit's own conta_id.
@@ -230,7 +250,66 @@ BEGIN
     v_yt := v_yt + 1;
   END LOOP;
 
-  RETURN QUERY SELECT v_gbp, v_yt;
+  -- Orphan pass (after the expiries, so it only counts what a client or workspace delete left
+  -- behind). Plain deletes, not youtube_purge_channel: the client is gone (report_documents went
+  -- with it) and the purge's audit row would name a workspace that may no longer exist. Each
+  -- delete is keyed by the history row's own (conta_id, unit), the link tables' unique keys.
+  DELETE FROM public.youtube_video_daily WHERE ctid = ANY (ARRAY(
+    SELECT h.ctid FROM public.youtube_video_daily h
+     WHERE NOT EXISTS (SELECT 1 FROM public.youtube_channels c
+                        WHERE c.conta_id = h.conta_id AND c.channel_id = h.channel_id)
+     LIMIT c_orphan_batch));
+  GET DIAGNOSTICS v_n = ROW_COUNT; v_orphan_yt := v_orphan_yt + v_n;
+  DELETE FROM public.youtube_videos WHERE ctid = ANY (ARRAY(
+    SELECT h.ctid FROM public.youtube_videos h
+     WHERE NOT EXISTS (SELECT 1 FROM public.youtube_channels c
+                        WHERE c.conta_id = h.conta_id AND c.channel_id = h.channel_id)
+     LIMIT c_orphan_batch));
+  GET DIAGNOSTICS v_n = ROW_COUNT; v_orphan_yt := v_orphan_yt + v_n;
+  DELETE FROM public.youtube_channel_daily WHERE ctid = ANY (ARRAY(
+    SELECT h.ctid FROM public.youtube_channel_daily h
+     WHERE NOT EXISTS (SELECT 1 FROM public.youtube_channels c
+                        WHERE c.conta_id = h.conta_id AND c.channel_id = h.channel_id)
+     LIMIT c_orphan_batch));
+  GET DIAGNOSTICS v_n = ROW_COUNT; v_orphan_yt := v_orphan_yt + v_n;
+  DELETE FROM public.youtube_traffic_daily WHERE ctid = ANY (ARRAY(
+    SELECT h.ctid FROM public.youtube_traffic_daily h
+     WHERE NOT EXISTS (SELECT 1 FROM public.youtube_channels c
+                        WHERE c.conta_id = h.conta_id AND c.channel_id = h.channel_id)
+     LIMIT c_orphan_batch));
+  GET DIAGNOSTICS v_n = ROW_COUNT; v_orphan_yt := v_orphan_yt + v_n;
+  DELETE FROM public.youtube_demographics WHERE ctid = ANY (ARRAY(
+    SELECT h.ctid FROM public.youtube_demographics h
+     WHERE NOT EXISTS (SELECT 1 FROM public.youtube_channels c
+                        WHERE c.conta_id = h.conta_id AND c.channel_id = h.channel_id)
+     LIMIT c_orphan_batch));
+  GET DIAGNOSTICS v_n = ROW_COUNT; v_orphan_yt := v_orphan_yt + v_n;
+  DELETE FROM public.gbp_metrics_daily WHERE ctid = ANY (ARRAY(
+    SELECT h.ctid FROM public.gbp_metrics_daily h
+     WHERE NOT EXISTS (SELECT 1 FROM public.gbp_locations l
+                        WHERE l.conta_id = h.conta_id AND l.location_name = h.location_name)
+     LIMIT c_orphan_batch));
+  GET DIAGNOSTICS v_n = ROW_COUNT; v_orphan_gbp := v_orphan_gbp + v_n;
+  DELETE FROM public.gbp_search_keywords_monthly WHERE ctid = ANY (ARRAY(
+    SELECT h.ctid FROM public.gbp_search_keywords_monthly h
+     WHERE NOT EXISTS (SELECT 1 FROM public.gbp_locations l
+                        WHERE l.conta_id = h.conta_id AND l.location_name = h.location_name)
+     LIMIT c_orphan_batch));
+  GET DIAGNOSTICS v_n = ROW_COUNT; v_orphan_gbp := v_orphan_gbp + v_n;
+  DELETE FROM public.gbp_reviews WHERE ctid = ANY (ARRAY(
+    SELECT h.ctid FROM public.gbp_reviews h
+     WHERE NOT EXISTS (SELECT 1 FROM public.gbp_locations l
+                        WHERE l.conta_id = h.conta_id AND l.location_name = h.location_name)
+     LIMIT c_orphan_batch));
+  GET DIAGNOSTICS v_n = ROW_COUNT; v_orphan_gbp := v_orphan_gbp + v_n;
+  DELETE FROM public.gbp_rating_daily WHERE ctid = ANY (ARRAY(
+    SELECT h.ctid FROM public.gbp_rating_daily h
+     WHERE NOT EXISTS (SELECT 1 FROM public.gbp_locations l
+                        WHERE l.conta_id = h.conta_id AND l.location_name = h.location_name)
+     LIMIT c_orphan_batch));
+  GET DIAGNOSTICS v_n = ROW_COUNT; v_orphan_gbp := v_orphan_gbp + v_n;
+
+  RETURN QUERY SELECT v_gbp, v_yt, v_orphan_yt, v_orphan_gbp;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.google_expire_units() FROM PUBLIC, anon, authenticated;
@@ -289,3 +368,63 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.google_release_sub(text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.google_release_sub(text) TO service_role;
+
+-- ============ (7) google_workspace_release_identities (BEFORE DELETE ON workspaces) ============
+-- Deleting a workspace cascades google_connections away, tokens included, so without this the
+-- grant would stay alive at Google. Order, all inside the deleting transaction (the workspace row
+-- is already locked, so no new connection or unit can reference it meanwhile):
+--   1. Every sub of the workspace is locked first, sorted, before any in-use state changes (the
+--      lock rule of 20261108000003). This is the one path besides the YouTube relink that holds
+--      more than one sub lock in a transaction; the fixed order keeps two workspace deletes from
+--      deadlocking each other, and Postgres breaks any other cycle by aborting one side.
+--   2. The workspace's channel and unit rows go (by conta_id, so disconnected units with a NULL
+--      connection_id go too), so they no longer count as "in use". Their history stays for the
+--      orphan pass of google_expire_units.
+--   3. The workspace's own connections leave the fresh-connection grace (authorized_at moved two
+--      hours back): that grace protects a picker still open in THIS workspace, which is going away.
+--      Another workspace's fresh connection still keeps the sub in use.
+--   4. google_release_sub per sub: _google_revoke_if_unused decides with spec 4.2's rule (revoke
+--      only when no workspace still uses the identity), queues google_revocations (retried by
+--      gbp-sync-cron) and deletes the sub's connections. A sub still in use elsewhere is left
+--      alone, and this workspace's connection then goes with the cascade.
+CREATE OR REPLACE FUNCTION public.google_workspace_release_identities()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_subs text[];
+  v_sub text;
+BEGIN
+  v_subs := ARRAY(
+    SELECT DISTINCT gc.google_sub FROM public.google_connections gc
+     WHERE gc.conta_id = OLD.id
+     ORDER BY gc.google_sub);
+  IF cardinality(v_subs) = 0 THEN
+    RETURN OLD;
+  END IF;
+
+  FOREACH v_sub IN ARRAY v_subs LOOP
+    PERFORM pg_advisory_xact_lock(hashtext('google-sub:' || v_sub));
+  END LOOP;
+
+  DELETE FROM public.youtube_channels WHERE conta_id = OLD.id;
+  DELETE FROM public.gbp_locations WHERE conta_id = OLD.id;
+  UPDATE public.google_connections
+     SET authorized_at = now() - interval '2 hours'
+   WHERE conta_id = OLD.id AND authorized_at > now() - interval '2 hours';
+
+  FOREACH v_sub IN ARRAY v_subs LOOP
+    PERFORM 1 FROM public.google_release_sub(v_sub);
+  END LOOP;
+
+  RETURN OLD;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.google_workspace_release_identities() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS trg_workspaces_google_release ON public.workspaces;
+CREATE TRIGGER trg_workspaces_google_release
+  BEFORE DELETE ON public.workspaces
+  FOR EACH ROW EXECUTE FUNCTION public.google_workspace_release_identities();

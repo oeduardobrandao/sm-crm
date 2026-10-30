@@ -22,7 +22,8 @@
 // 2. Deletion duties, each in its own try/catch, run after the batch on EVERY invocation:
 //    regardless of plan flags, of an empty batch and of a failed candidate query, because they
 //    are privacy duties (spec §4.2, §4.6):
-//      - google_expire_units(): history and rows of units disconnected or revoked 30+ days ago;
+//      - google_expire_units(): history and rows of units disconnected or revoked 30+ days ago,
+//        then history left behind by a client or workspace delete (orphaned history rows);
 //      - retryPendingRevocations: tokens still to be revoked at Google (P5);
 //      - google_orphan_subs(25), then google_release_sub(sub) one sub per call, so no
 //        transaction ever holds two sub locks (P4), each followed by processUnlinkDecisionData.
@@ -216,15 +217,22 @@ async function runBatch(deps: GbpSyncCronDeps, now: Date, counts: Counts, errors
 }
 
 async function expireUnits(deps: GbpSyncCronDeps, errors: CronFailureError[]) {
-  const expired = { gbpLocations: 0, youtubeChannels: 0 };
+  const expired = { gbpLocations: 0, youtubeChannels: 0, orphanYoutubeRows: 0, orphanGbpRows: 0 };
   try {
     const { data, error } = await deps.svc.rpc("google_expire_units");
     if (error) throw new Error(`google_expire_units failed: ${messageOf(error)}`);
     const row = (Array.isArray(data) ? data[0] : data) as
-      | { gbp_locations_deleted?: number; youtube_channels_deleted?: number }
+      | {
+        gbp_locations_deleted?: number;
+        youtube_channels_deleted?: number;
+        orphan_youtube_rows_deleted?: number;
+        orphan_gbp_rows_deleted?: number;
+      }
       | null;
     expired.gbpLocations = Number(row?.gbp_locations_deleted) || 0;
     expired.youtubeChannels = Number(row?.youtube_channels_deleted) || 0;
+    expired.orphanYoutubeRows = Number(row?.orphan_youtube_rows_deleted) || 0;
+    expired.orphanGbpRows = Number(row?.orphan_gbp_rows_deleted) || 0;
   } catch (err) {
     console.error(`[${CRON_NAME}] expiry failed: ${messageOf(err)}`);
     errors.push({ accountId: "expire-units", error: messageOf(err) });
@@ -308,7 +316,8 @@ export async function runGbpSyncCron(deps: GbpSyncCronDeps): Promise<Response> {
   console.log(
     `[${CRON_NAME}] Done. Synced ${counts.synced}, revoked ${counts.revoked}, not approved ${counts.notApproved}, ` +
       `quota ${counts.quotaSkipped}, skipped ${counts.skipped}, failed ${counts.failed}; expired ` +
-      `${expired.gbpLocations} location(s) + ${expired.youtubeChannels} channel(s); orphans released ${orphansReleased}`,
+      `${expired.gbpLocations} location(s) + ${expired.youtubeChannels} channel(s), orphaned history rows ` +
+      `${expired.orphanYoutubeRows} YouTube + ${expired.orphanGbpRows} GMN; orphans released ${orphansReleased}`,
   );
 
   if (errors.length > 0) {
