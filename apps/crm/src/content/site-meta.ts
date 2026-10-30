@@ -67,7 +67,7 @@ export const PUBLIC_ROUTES: RouteMeta[] = [
     file: 'index.html',
     title: 'Mesaas — CRM para agências e gestores de social media',
     description:
-      'CRM para social media: clientes, aprovação de posts por link, agendamento automático no Instagram, relatórios e financeiro em um só lugar. Comece grátis.',
+      'CRM para social media: clientes, aprovação de posts por link, agendamento no Instagram e no TikTok, relatórios e financeiro em um só lugar. Comece grátis.',
     lastmod: '2026-07-24',
   },
   {

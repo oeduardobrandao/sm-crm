@@ -18,6 +18,7 @@ const FREE: PublicPricingPlan = {
   storage_quota_bytes: 100 * 1024 ** 2,
   feature_analytics_reports: false,
   feature_post_scheduling: false,
+  feature_tiktok: false,
   feature_leads: false,
   feature_financial: false,
   feature_contracts: false,
@@ -41,6 +42,7 @@ const PRO: PublicPricingPlan = {
   storage_quota_bytes: 10 * 1024 ** 3,
   feature_analytics_reports: true,
   feature_post_scheduling: true,
+  feature_tiktok: true,
   feature_leads: true,
   feature_financial: true,
   feature_contracts: true,
@@ -74,7 +76,7 @@ describe('PlanComparison', () => {
       'scope',
       'rowgroup',
     );
-    expect(within(rowGroups[1]).getAllByRole('row')).toHaveLength(9);
+    expect(within(rowGroups[1]).getAllByRole('row')).toHaveLength(10);
     expect(within(rowGroups[1]).queryByText('Capacidade')).not.toBeInTheDocument();
   });
 
@@ -100,6 +102,9 @@ describe('PlanComparison', () => {
     const analytics = screen.getByRole('row', { name: /Agendamento de posts/ });
     expect(within(analytics).getByText('Não incluído')).toBeInTheDocument();
     expect(within(analytics).getByText('Incluído')).toBeInTheDocument();
+    const tiktok = screen.getByRole('row', { name: /TikTok/ });
+    expect(within(tiktok).getByText('Não incluído')).toBeInTheDocument();
+    expect(within(tiktok).getByText('Incluído')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Tabela comparativa de planos' })).toHaveAttribute(
       'tabindex',
       '0',

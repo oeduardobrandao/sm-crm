@@ -44,17 +44,19 @@ export const LANDING: {
     titleBefore: 'Chega de gerenciar clientes de social media ',
     titleEm: 'em planilha e grupo de WhatsApp',
     titleAfter: '.',
-    sub: 'O Mesaas reúne clientes, entregas, aprovações, agendamento no Instagram e métricas em um único lugar. Feito para quem gerencia social media, sozinho ou com equipe.',
+    sub: 'O Mesaas reúne clientes, entregas, aprovações, agendamento no Instagram e no TikTok e métricas em um único lugar. Feito para quem gerencia social media, sozinho ou com equipe.',
     note: '30 dias grátis em qualquer plano pago.',
   },
   ticker: [
     'Clientes + contratos',
     'Kanban de entregas',
     'Agendamento no Instagram',
+    'Publicação no TikTok',
     'Portal do cliente',
     'Publicação automática',
     'Calendário editorial',
     'Métricas do Instagram',
+    'Métricas do TikTok',
     'Financeiro',
     'Equipe + tarefas',
     'Aprovações por link',
@@ -77,25 +79,27 @@ export const LANDING: {
       ],
     },
     {
-      title: 'Agende e publique no Instagram sem sair do Mesaas.',
+      title: 'Agende e publique no Instagram e no TikTok sem sair do Mesaas.',
       showBullets: true,
       description:
-        'Escolha dia e horário, escreva a legenda e pronto: o post vai ao ar no perfil do seu cliente pela API oficial do Meta. Feed, Reels e Carrossel, sem app de terceiros e sem alarme no celular.',
+        'Escolha dia e horário, escreva a legenda e pronto: o post vai ao ar no perfil do seu cliente pelas APIs oficiais do Meta e do TikTok. Um post só pode sair nas duas redes, sem app de terceiros e sem alarme no celular.',
       bullets: [
         'O post é <strong>publicado sozinho</strong> na data e hora marcadas',
-        '<strong>Feed, Reels e Carrossel</strong>, com a mídia validada antes de agendar',
+        '<strong>Feed, Reels e Carrossel</strong> no Instagram e <strong>vídeos no TikTok</strong>, com a mídia validada antes de agendar',
+        '<strong>Um post, duas redes</strong>: a legenda de cada rede no mesmo post, com uma aprovação só do cliente',
+        'TikTok nos planos <strong>Pro e Max</strong>',
         'Botão de <strong>publicar agora</strong> para os urgentes',
       ],
     },
     {
-      title: 'Métricas do Instagram prontas para o relatório do cliente.',
+      title: 'Métricas do Instagram e do TikTok prontas para o relatório do cliente.',
       description:
-        'Seguidores, alcance, engajamento e top posts atualizados todo dia nos planos pagos, direto da API oficial. Dados confiáveis para provar o resultado do seu trabalho.',
+        'Seguidores, alcance, visualizações, engajamento e top posts atualizados todo dia nos planos pagos, direto das APIs oficiais. Dados confiáveis para provar o resultado do seu trabalho.',
       bullets: [
-        'Dados da <strong>API oficial do Meta</strong>, sem scraping',
+        'Dados das <strong>APIs oficiais do Meta e do TikTok</strong>, sem scraping',
         'Crescimento de seguidores, <strong>alcance e engajamento</strong> por período',
         'Top posts da semana em destaque',
-        'Relatório em PDF gerado em um clique',
+        'Relatório em PDF com <strong>uma seção para cada rede</strong>, gerado em um clique',
       ],
     },
     {
@@ -157,7 +161,7 @@ export const LANDING: {
         n: '02',
         title: 'Monte o fluxo de entregas',
         description:
-          'Conecte o Instagram de cada cliente, distribua as tarefas para a equipe e defina os prazos no kanban.',
+          'Conecte o Instagram e o TikTok de cada cliente, distribua as tarefas para a equipe e defina os prazos no kanban.',
       },
       {
         n: '03',
@@ -183,6 +187,10 @@ export const LANDING: {
     {
       q: 'Como funciona a integração com o Instagram?',
       a: 'Você conecta a conta do cliente pela API oficial do Meta. A partir daí, o Mesaas puxa seguidores, alcance, engajamento e posts automaticamente, e você pode agendar publicações de Feed, Reels e Carrossel para sair direto no perfil no dia e horário escolhidos. Nada de scraping: métricas e publicações passam 100% pela API oficial.',
+    },
+    {
+      q: 'O Mesaas publica no TikTok?',
+      a: 'Sim, nos planos Pro e Max. Você conecta a conta do TikTok do cliente pela API oficial do TikTok e agenda vídeos para sair no perfil no dia e horário escolhidos. O mesmo post pode ir para o Instagram e para o TikTok, com a legenda de cada rede, e o cliente aprova uma vez só. As métricas dos vídeos (visualizações, curtidas, comentários e compartilhamentos) aparecem no Mesaas e entram nos relatórios.',
     },
     {
       q: 'Consigo importar meus clientes de uma planilha?',

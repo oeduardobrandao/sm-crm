@@ -26,7 +26,7 @@ describe('trial and plan claims on static surfaces', () => {
       feature.description.includes('atualizados todo dia'),
     );
     expect(metrics?.description).toContain(
-      'atualizados todo dia nos planos pagos, direto da API oficial.',
+      'atualizados todo dia nos planos pagos, direto das APIs oficiais.',
     );
   });
 
