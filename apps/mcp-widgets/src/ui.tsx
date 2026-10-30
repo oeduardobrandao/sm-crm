@@ -1,7 +1,7 @@
 // Pieces every card shares: shell, buttons, chips, copy helpers.
 import type { ReactNode } from 'react';
 import { Loader2 } from 'lucide-react';
-import { resultText, type ToolCallResult } from './bridge';
+import { resultText, type Host, type PickedImage, type ToolCallResult } from './bridge';
 import type { Tipo } from './types';
 
 export const MESAAS_ORIGIN = 'https://www.mesaas.com.br';
@@ -162,4 +162,12 @@ export function Notice({ tone, children }: { tone: 'info' | 'error' | 'ok'; chil
       {children}
     </p>
   );
+}
+
+/** The image with a fresh download URL when the host can give one (the chat's URL is temporary),
+ *  else as it came. Never throws. */
+export async function freshImage(host: Host, image: PickedImage): Promise<PickedImage> {
+  if (!host.refreshImageUrl) return image;
+  const url = await host.refreshImageUrl(image.file_id).catch(() => null);
+  return url ? { ...image, download_url: url } : image;
 }

@@ -1,8 +1,11 @@
 // deno-lint-ignore-file no-explicit-any
-// Cards (MCP Apps): anexar uma imagem do chat a um post. `show_attach_image` mostra o card com as
-// slides do post; `attach_image_to_post` (só o widget chama, só OAuth) baixa a imagem com o fetch
-// endurecido, sobe para o R2 e liga ao post pela RPC `mcp_attach_post_file`.
-// Spec: docs/superpowers/specs/2026-10-29-mcp-apps-cards-design.md §4.6.
+// Cards (MCP Apps): anexar imagens do chat a um post. `show_attach_image` mostra o card com os
+// slides do post e as imagens (uma ou várias); `attach_image_to_post` (só o widget chama, só OAuth,
+// uma imagem por chamada) baixa a imagem com o fetch endurecido, sobe para o R2 e liga ao post pela RPC
+// `mcp_attach_post_file_v2` (confere o estado que o card esperava e, com `trim_after`, tira os slides
+// depois dela na mesma transação). Sem expectativa (card antigo em cache) usa `mcp_attach_post_file`.
+// Specs: docs/superpowers/specs/2026-10-29-mcp-apps-cards-design.md §4.6 e
+// docs/superpowers/specs/2026-10-29-mcp-attach-multi-images-design.md.
 import { z } from "npm:zod@3";
 import { signGetUrl } from "../_shared/r2.ts";
 import { McpInputError } from "../_shared/mcp-token.ts";
@@ -41,6 +44,8 @@ const MSG = {
   notFound: "Post não encontrado neste workspace.",
   workspace: "Você não tem mais acesso a este workspace no Mesaas.",
   saveFailed: "Não foi possível salvar a imagem no post. Tente de novo.",
+  imagesArg: "Envie as imagens em `images` (uma lista, na ordem do chat).",
+  stalePost: "O post mudou no Mesaas depois que o card abriu. Peça para abrir o card de novo.",
 };
 
 const tipoMessage = (tipo: string) =>
@@ -80,15 +85,15 @@ async function loadPost(d: Deps, postId: number): Promise<any | null> {
   return data ?? null;
 }
 
-async function loadMedia(d: Deps, postId: number): Promise<Array<{ r2_key: string }>> {
+async function loadMedia(d: Deps, postId: number): Promise<Array<{ id: number; r2_key: string }>> {
   const { data } = await d.db
     .from("post_file_links")
-    .select("sort_order, files!inner(r2_key)")
+    .select("id, sort_order, files!inner(r2_key)")
     .eq("conta_id", d.ctx.conta_id)
     .eq("post_id", postId)
     .order("sort_order")
     .order("id"); // same (sort_order, id) order the RPC normalizes by
-  return ((data ?? []) as any[]).map((l) => ({ r2_key: l.files.r2_key }));
+  return ((data ?? []) as any[]).map((l) => ({ id: l.id, r2_key: l.files.r2_key }));
 }
 
 /** Cheap mirror of the RPC's gate (publish state, status, tipo); the RPC re-checks under the row
@@ -104,7 +109,7 @@ function ineligibleReason(p: any): string | null {
 
 const RPC_RAISES = [
   "media_full", "post_not_found", "post_published", "invalid_position", "invalid_file", "quota_exceeded",
-  "workspace_unavailable",
+  "workspace_unavailable", "stale_post",
 ];
 
 /** True only for the RPC's own raises, which roll the transaction back. A transport failure or a
@@ -122,6 +127,7 @@ function mapAttachError(message: string): string {
   if (message.startsWith("post_not_editable:")) return statusMessage(message.slice("post_not_editable:".length));
   if (message.startsWith("tipo_not_image:")) return tipoMessage(message.slice("tipo_not_image:".length));
   if (message === "invalid_position") return MSG.staleSlide;
+  if (message === "stale_post") return MSG.stalePost;
   if (message === "quota_exceeded") return MSG.quota;
   if (message === "workspace_unavailable") return MSG.workspace;
   // invalid_file (key outside the workspace or a mime we never send) is our bug, not the user's.
@@ -132,6 +138,16 @@ function mapAttachError(message: string): string {
 function fileName(raw: string | undefined, ext: string): string {
   const base = (raw ?? "").split(/[\\/]/).pop()!.trim().slice(0, 120);
   return base || `imagem-do-chat.${ext}`;
+}
+
+/** The card's copy of a chat file: only the fields the widget needs, never extra keys. */
+function imagePayload(i: { download_url: string; file_id: string; mime_type?: string; file_name?: string }) {
+  return {
+    download_url: i.download_url,
+    file_id: i.file_id,
+    ...(i.mime_type ? { mime_type: i.mime_type } : {}),
+    ...(i.file_name ? { file_name: i.file_name } : {}),
+  };
 }
 
 const imageShape = {
@@ -149,15 +165,25 @@ export function registerAttachTools(server: any, deps: Deps): void {
     deps,
     "show_attach_image",
     "posts:read",
-    "Mostra um card com os slides do post e onde a imagem do chat entraria. A pessoa escolhe o " +
-      "slide e confirma no próprio card; este tool não anexa nada. Use quando a pessoa pedir para " +
-      "colocar uma imagem gerada ou enviada no chat em um post do Mesaas. `position` (1 a 10) sugere o slide.",
+    "Mostra um card com os slides do post e onde as imagens do chat entrariam. A pessoa ajusta e " +
+      "confirma no próprio card; este tool não anexa nada. Use quando a pessoa pedir para colocar imagens " +
+      "geradas ou enviadas no chat em um post do Mesaas. Passe TODAS as imagens do pedido em `images`, na " +
+      "ordem em que a pessoa enviou, numa chamada só: nunca abra um card por imagem. Mais de 10: mande as " +
+      "10 primeiras e diga à pessoa que as outras precisam de outro post. `position` (1 a 10) sugere o " +
+      "slide e só vale com uma imagem.",
     {
       post_id: z.number().int().positive(),
-      image: z.object(imageShape),
+      images: z.array(z.object(imageShape)).min(1).max(MAX_MEDIA).optional(),
+      image: z.object(imageShape).optional(),
       position: z.number().int().min(1).max(MAX_MEDIA).optional(),
     },
     async (args): Promise<CardRun> => {
+      // `image` is the old single-file field (hosts holding the earlier tool listing). A model that fills
+      // both gets them merged, `image` first, each file once.
+      const all = [...(args.image ? [args.image] : []), ...(args.images ?? [])];
+      const images = all.filter((i, n) => all.findIndex((j) => j.file_id === i.file_id) === n)
+        .slice(0, MAX_MEDIA).map(imagePayload);
+      if (images.length === 0) throw new McpInputError(MSG.imagesArg);
       const post = await loadPost(deps, args.post_id);
       if (!post) throw new McpInputError(MSG.notFound);
       const [links, client] = await Promise.all([
@@ -167,13 +193,19 @@ export function registerAttachTools(server: any, deps: Deps): void {
             .maybeSingle().then((r: any) => r.data ?? null)
           : Promise.resolve(null),
       ]);
-      const media = await Promise.all(links.map(async (l, i) => ({ position: i + 1, url: await signUrl(l.r2_key) })));
+      const media = await Promise.all(
+        links.map(async (l, i) => ({ position: i + 1, url: await signUrl(l.r2_key), link_id: l.id })),
+      );
       const reason = ineligibleReason(post);
       const titulo = post.titulo ?? "sem título";
+      const what = images.length === 1 ? "a imagem" : `as ${images.length} imagens`;
       const summary = reason
-        ? `O post "${titulo}" não pode receber a imagem agora: ${reason}`
-        : `Card aberto com as ${media.length} mídias do post "${titulo}" (máximo ${MAX_MEDIA}). ` +
-          "A pessoa escolhe o slide e confirma no card.";
+        ? `O post "${titulo}" não pode receber ${what} agora: ${reason}`
+        : `Card aberto com as ${media.length} mídias do post "${titulo}" e ${what} do chat ` +
+          `(máximo ${MAX_MEDIA} slides). A pessoa confirma no card; nada foi anexado ainda.` +
+          (images.length > 1
+            ? " Se o card mostrar só uma imagem, o app está numa versão antiga: peça para atualizar o conector."
+            : "");
       return {
         summary,
         data: {
@@ -185,13 +217,15 @@ export function registerAttachTools(server: any, deps: Deps): void {
           max: MAX_MEDIA,
           eligible: reason === null,
           ...(reason ? { reason } : {}),
-          image: { download_url: args.image.download_url, file_id: args.image.file_id },
-          ...(args.position !== undefined ? { position: args.position } : {}),
+          images,
+          // The card cached by hosts before multi-image support reads only `image`.
+          image: images[0],
+          ...(args.position !== undefined && images.length === 1 ? { position: args.position } : {}),
         },
       };
     },
-    (a) => ({ post_id: a.post_id, position: a.position }),
-    { card: true, meta: { ...cardToolMeta(), "openai/fileParams": ["image"] } },
+    (a) => ({ post_id: a.post_id, position: a.position, images: (a.images ?? (a.image ? [a.image] : [])).length }),
+    { card: true, meta: { ...cardToolMeta(), "openai/fileParams": ["images", "image"] } },
   );
 
   if (!widgetOnly(deps)) return;
@@ -201,12 +235,17 @@ export function registerAttachTools(server: any, deps: Deps): void {
     deps,
     "attach_image_to_post",
     "posts:write",
-    "Anexa a imagem do chat ao post no slide escolhido no card. Só o card chama.",
+    "Anexa a imagem do chat ao post no slide escolhido no card. Só o card chama. `expected_link_id` " +
+      "(substituir) ou `expected_count` (anexar) é o que o card viu; se o post mudou, recusa. `trim_after` " +
+      "tira do post os slides depois deste (última imagem de \"Substituir os slides atuais\").",
     {
       post_id: z.number().int().positive(),
       image: z.object(imageShape),
       position: z.number().int().min(1).max(MAX_MEDIA),
       replace: z.boolean(),
+      expected_count: z.number().int().min(0).max(MAX_MEDIA).optional(),
+      expected_link_id: z.number().int().positive().optional(),
+      trim_after: z.boolean().optional(),
     },
     async (args) => {
       // 1. Host allowlist, then a cheap eligibility check: most refusals before any download.
@@ -217,7 +256,17 @@ export function registerAttachTools(server: any, deps: Deps): void {
       if (!post) throw new McpInputError(MSG.notFound);
       const reason = ineligibleReason(post);
       if (reason) throw new McpInputError(reason);
-      const count = (await loadMedia(deps, post.id)).length;
+      const current = await loadMedia(deps, post.id);
+      const count = current.length;
+      // The card's expectation (cards from before the multi-image card send none): checked again by
+      // the v2 RPC under the row lock; here it only saves a download when the post already moved.
+      const expects = args.expected_count !== undefined || args.expected_link_id !== undefined;
+      if (expects) {
+        const stale = args.replace
+          ? current[args.position - 1]?.id !== args.expected_link_id
+          : count !== args.expected_count;
+        if (stale) throw new McpInputError(MSG.stalePost);
+      }
       if (args.replace) {
         if (args.position > count) throw new McpInputError(slideRangeMessage(count));
       } else {
@@ -273,8 +322,10 @@ export function registerAttachTools(server: any, deps: Deps): void {
         throw new McpInputError(MSG.saveFailed);
       }
 
-      // 4. One RPC: membership, row lock, eligibility, quota and the link, in one transaction.
-      const { data, error } = await deps.db.rpc("mcp_attach_post_file", {
+      // 4. One RPC: membership, row lock, the card's expectation, eligibility, quota, the link and
+      // the trim, in one transaction.
+      const rpcName = expects ? "mcp_attach_post_file_v2" : "mcp_attach_post_file";
+      const { data, error } = await deps.db.rpc(rpcName, {
         p_conta_id: deps.ctx.conta_id,
         p_post_id: args.post_id,
         p_actor: deps.ctx.created_by,
@@ -288,10 +339,17 @@ export function registerAttachTools(server: any, deps: Deps): void {
         },
         p_position: args.position,
         p_replace: args.replace,
+        ...(expects
+          ? {
+            p_expected_count: args.expected_count ?? null,
+            p_expected_link_id: args.expected_link_id ?? null,
+            p_trim_after: args.trim_after === true,
+          }
+          : {}),
       });
       if (error) {
         const raw = (error as { message?: string }).message ?? "";
-        console.error("[mcp] mcp_attach_post_file failed:", raw);
+        console.error(`[mcp] ${rpcName} failed:`, raw);
         if (!isRpcRaise(raw)) {
           // Outcome unknown: the link may have committed. Leave the object; the orphan scan reaps it
           // only when no `files` row references it.
@@ -301,7 +359,14 @@ export function registerAttachTools(server: any, deps: Deps): void {
         if (queueError) console.error("[mcp] file_deletions enqueue failed:", queueError);
         throw new McpInputError(mapAttachError(raw));
       }
-      const r = (data ?? {}) as { link_id?: number; file_id?: number; is_cover?: boolean; tipo?: string };
+      const r = (data ?? {}) as {
+        link_id?: number;
+        file_id?: number;
+        is_cover?: boolean;
+        tipo?: string;
+        trimmed?: number;
+      };
+
       return {
         post_id: args.post_id,
         position: args.position,
@@ -311,9 +376,10 @@ export function registerAttachTools(server: any, deps: Deps): void {
         is_cover: r.is_cover,
         tipo: r.tipo,
         url: await signUrl(upload.r2_key),
+        ...(r.trimmed !== undefined ? { trimmed: r.trimmed } : {}),
       };
     },
-    (a) => ({ post_id: a.post_id, position: a.position, replace: a.replace }),
+    (a) => ({ post_id: a.post_id, position: a.position, replace: a.replace, trim_after: a.trim_after === true }),
     { meta: appOnlyToolMeta() },
   );
 }

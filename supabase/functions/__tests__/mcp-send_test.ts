@@ -73,7 +73,7 @@ Deno.test("send_post_to_client: registered only with apps on + OAuth, app-only v
   const on = setup();
   const tool = on.server.tools.send_post_to_client;
   assert(tool, "registered with apps on + oauth");
-  assertEquals(tool.config._meta, { ui: { resourceUri: "ui://mesaas/cards-v2.html", visibility: ["app"] } });
+  assertEquals(tool.config._meta, { ui: { resourceUri: "ui://mesaas/cards-v3.html", visibility: ["app"] } });
   assertEquals(tool.config.annotations.openWorldHint, true);
   assertEquals(tool.config.annotations.readOnlyHint, false);
 

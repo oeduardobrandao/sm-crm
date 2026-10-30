@@ -37,7 +37,10 @@ Related secrets:
 - `MCP_APPS_PILOT_CONTAS`: comma-separated `conta_id`s, used only by `pilot`.
 - `MCP_IMAGE_HOSTS`: comma-separated hostnames allowed as `image.download_url` for
   `attach_image_to_post` (exact match, lowercase). **Empty or unset means every chat image is refused**,
-  so the attach card is dead until you fill it in step 3.
+  so the attach card is dead until you fill it in step 3. The same hosts go into the card's CSP
+  (`resourceDomains`) so it can show the chat images. The card asks ChatGPT for a fresh link
+  (`getFileDownloadUrl`) right before each attach; if that link comes from another host, it shows up as
+  `[mcp] image host refused: <host>`: add it here.
 
 Rollback at any point: `MCP_APPS=off` (instant, no deploy). Hosts may have cached the resource; the
 versioned URI (`CARDS_URI` in `supabase/functions/mcp/apps.ts`) keeps an old cache harmless.

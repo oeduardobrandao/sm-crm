@@ -206,7 +206,7 @@ Deno.test("audit rows carry no slide, roteiro or caption text", async () => {
 Deno.test("card tools carry the cards _meta and the scope posts:read", () => {
   const { server } = setup();
   for (const name of ["preview_post", "show_caption_options"]) {
-    assertEquals(server.tools[name].config._meta, { ui: { resourceUri: "ui://mesaas/cards-v2.html" } }, name);
+    assertEquals(server.tools[name].config._meta, { ui: { resourceUri: "ui://mesaas/cards-v3.html" } }, name);
     assertEquals(server.tools[name].config.annotations.readOnlyHint, true, name);
   }
 });
