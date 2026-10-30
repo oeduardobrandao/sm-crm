@@ -99,7 +99,11 @@ import { DuplicateDialog, type DuplicateTarget } from './DuplicateDialog';
 import { usePostProcessCommands } from '../hooks/usePostProcessCommands';
 import { postRascunhoBanner } from '../approvalExit';
 import type { SuggestionField } from '../editSuggestionFields';
-import { classifyAcceptError, mentionIdsToSyncAfterAccept } from '../editSuggestionAccept';
+import {
+  classifyAcceptError,
+  destinationAcceptErrorKey,
+  mentionIdsToSyncAfterAccept,
+} from '../editSuggestionAccept';
 import { RascunhoBanner } from './RascunhoBanner';
 import { getPostProcessErrorToast, isStaleStateError } from '../postProcessErrors';
 import {
@@ -563,6 +567,8 @@ export function StandalonePostDrawer({
         // next autosave (even a non-user content-normalization update) writes
         // it back over the suggestion we just accepted.
         await qc.invalidateQueries({ queryKey: ['standalone-post', postId] });
+        // An accepted Geral caption lives in post_targets, outside the post query.
+        void qc.invalidateQueries({ queryKey: ['post-targets', postId] });
         setEditorVersion((v) => v + 1);
         toast.success(t('standalonePostDrawer.suggestionAccepted'));
         refresh();
@@ -570,6 +576,15 @@ export function StandalonePostDrawer({
       } catch (err) {
         // PostgrestError is a plain object, not an Error instance.
         const kind = classifyAcceptError(err);
+        const destinationKey = destinationAcceptErrorKey(kind, fields);
+        if (destinationKey) {
+          // target_gone / target_locked: a destination moved under the card; retry: a deadlock
+          // with a concurrent destination change. Refetch so the card reflects the post now.
+          toast.error(t(destinationKey));
+          refresh();
+          void qc.invalidateQueries({ queryKey: ['post-targets', postId] });
+          return;
+        }
         if (kind !== 'other') {
           // changed: the client saved a newer version. conflict: the post moved since the card
           // was loaded. refresh() refetches both, so the next Aceitar is judged against fresh data.

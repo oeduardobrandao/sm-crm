@@ -165,6 +165,13 @@ export function PostVersionHistorySheet({
   const showTiktokCaption = !!(
     selectedNode?.version.tiktok_caption || precedingVersion?.tiktok_caption
   );
+  // Geral: NULL = not recorded (no Geral row, or a version from before the column existed),
+  // '' = an empty Geral caption. A version that did not record it shows nothing; one whose
+  // predecessor did not record it shows its text without a diff (it was not added then).
+  const selectedGeral = selectedNode?.version.geral_caption ?? null;
+  const precedingGeral = precedingVersion ? (precedingVersion.geral_caption ?? null) : null;
+  const showGeralCaption = selectedGeral != null && !!(selectedGeral || precedingGeral);
+  const geralBaseUnrecorded = !!precedingVersion && precedingGeral == null;
 
   const renderNode = (node: VersionTimelineNode) =>
     node.kind === 'version' ? (
@@ -242,6 +249,24 @@ export function PostVersionHistorySheet({
                 ? precedingVersion.tiktok_caption
                 : selectedNode.version.tiktok_caption) ?? '',
               selectedNode.version.tiktok_caption ?? '',
+            )}
+          />
+        </div>
+      )}
+      {showGeralCaption && (
+        <div className="border-t pt-3">
+          <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">
+            {t('versionHistory.geralCaption')}
+          </p>
+          {geralBaseUnrecorded && (
+            <p className="mb-1.5 text-[11px] text-muted-foreground">
+              {t('versionHistory.geralNotRecordedBefore')}
+            </p>
+          )}
+          <DiffView
+            segments={computeWordDiff(
+              geralBaseUnrecorded ? (selectedGeral ?? '') : (precedingGeral ?? selectedGeral ?? ''),
+              selectedGeral ?? '',
             )}
           />
         </div>

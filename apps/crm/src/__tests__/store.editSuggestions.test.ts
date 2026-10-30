@@ -92,6 +92,50 @@ describe('store edit suggestions', () => {
     expect(cols).toContain('original_ig_caption');
   });
 
+  it('getPostEditSuggestions selects the TikTok and Geral caption columns', async () => {
+    mockedSupabase.__queueSupabaseResult('post_edit_suggestions', 'select', {
+      data: [],
+      error: null,
+    });
+
+    await store.getPostEditSuggestions([100]);
+
+    const call = getCalls('post_edit_suggestions', 'select').at(-1)! as unknown as {
+      selectArgs: unknown[][];
+    };
+    const cols = String(call.selectArgs[0]?.[0])
+      .split(',')
+      .map((c) => c.trim());
+    for (const col of [
+      'suggested_tiktok_caption',
+      'original_tiktok_caption',
+      'suggested_geral_caption',
+      'original_geral_caption',
+      'geral_target_id',
+      'tiktok_followed_ig',
+    ]) {
+      expect(cols).toContain(col);
+    }
+  });
+
+  it('getPostContentVersions selects geral_caption', async () => {
+    mockedSupabase.__queueSupabaseResult('post_content_versions', 'select', {
+      data: [],
+      error: null,
+    });
+
+    await store.getPostContentVersions([100]);
+
+    const call = getCalls('post_content_versions', 'select').at(-1)! as unknown as {
+      selectArgs: unknown[][];
+    };
+    const cols = String(call.selectArgs[0]?.[0])
+      .split(',')
+      .map((c) => c.trim());
+    expect(cols).toContain('geral_caption');
+    expect(cols).toContain('tiktok_caption');
+  });
+
   it('acceptEditSuggestion calls the RPC with suggestion id', async () => {
     mockedSupabase.__queueSupabaseRpc('accept_edit_suggestion', {
       data: null,

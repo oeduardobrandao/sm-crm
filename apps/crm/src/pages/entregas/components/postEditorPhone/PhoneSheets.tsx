@@ -10,11 +10,19 @@ import type {
   WorkflowPost,
 } from '../../../../store';
 import { useAcceptSuggestionFlow } from '../AcceptSuggestionDialog';
-import { SuggestionFieldDiff, TeamOnlyFooter, visibleSuggestionStates } from '../SuggestionReview';
 import {
+  SuggestionFieldDiff,
+  TeamOnlyFooter,
+  UnchangedFieldsLine,
+  useSuggestionFieldName,
+  visibleSuggestionStates,
+} from '../SuggestionReview';
+import {
+  acceptAvailability,
   suggestionFieldStates,
   teamOnlyChangedFields,
   type SuggestionField,
+  type SuggestionLivePost,
 } from '../../editSuggestionFields';
 import { PostTimelineList } from '../PostTimelinePopover';
 import { buildPostTimeline } from '../postTimeline';
@@ -23,13 +31,15 @@ import { buildPostTimeline } from '../postTimeline';
  * Client edit suggestion (EditorSugestao mockup): the same diffs desktop shows in place
  * of the editor, and the same Rejeitar / Aceitar commands (the host still confirms the
  * rejection). The sheet closes before either command runs, so the host's confirmation
- * never opens under a closing sheet.
+ * never opens under a closing sheet. `post` carries the live Geral row the host fetched
+ * (`useSuggestionGeralTarget`); `reviewable` lists the fields the post carries.
  */
 export function PhoneSuggestionSheet({
   open,
   onOpenChange,
   suggestion,
   post,
+  reviewable,
   clientName,
   resolvedContent,
   resolvedSuggestion,
@@ -39,7 +49,8 @@ export function PhoneSuggestionSheet({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   suggestion: PostEditSuggestion | null;
-  post: WorkflowPost;
+  post: SuggestionLivePost;
+  reviewable: SuggestionField[];
   clientName?: string | null;
   resolvedContent: Record<string, unknown> | null;
   resolvedSuggestion: Record<string, unknown> | null;
@@ -66,6 +77,7 @@ export function PhoneSuggestionSheet({
           <SuggestionBody
             suggestion={suggestion}
             post={post}
+            reviewable={reviewable}
             clientName={clientName}
             resolvedContent={resolvedContent}
             resolvedSuggestion={resolvedSuggestion}
@@ -82,6 +94,7 @@ export function PhoneSuggestionSheet({
 function SuggestionBody({
   suggestion,
   post,
+  reviewable,
   clientName,
   resolvedContent,
   resolvedSuggestion,
@@ -89,7 +102,8 @@ function SuggestionBody({
   onReject,
 }: {
   suggestion: PostEditSuggestion;
-  post: WorkflowPost;
+  post: SuggestionLivePost;
+  reviewable: SuggestionField[];
   clientName?: string | null;
   resolvedContent: Record<string, unknown> | null;
   resolvedSuggestion: Record<string, unknown> | null;
@@ -98,8 +112,10 @@ function SuggestionBody({
 }) {
   const { t } = useTranslation('postEditor');
   const { closeThen } = useSheetActions();
+  const fieldName = useSuggestionFieldName();
   const states = suggestionFieldStates(post, suggestion);
   const teamOnly = teamOnlyChangedFields(post, suggestion);
+  const { canAccept, needsReview } = acceptAvailability(states);
   return (
     <div className="phone-suggestion">
       <p className="phone-suggestion__meta">
@@ -114,7 +130,7 @@ function SuggestionBody({
       {visibleSuggestionStates(states, resolvedContent, resolvedSuggestion).map((st) => (
         <section key={st.field} className="phone-suggestion__block">
           <h3 className="phone-group__header">
-            {st.field === 'texto' ? t('shared.scriptAndBrief') : t('shared.igCaption')}
+            {st.field === 'texto' ? t('shared.scriptAndBrief') : fieldName(st.field, 'heading')}
           </h3>
           <div className="phone-suggestion__card">
             <SuggestionFieldDiff
@@ -128,6 +144,7 @@ function SuggestionBody({
           </div>
         </section>
       ))}
+      <UnchangedFieldsLine states={states} reviewable={reviewable} className="mx-1 mb-3" />
       <TeamOnlyFooter teamOnly={teamOnly} className="mx-1 mb-4" />
       <p className="phone-suggestion__legend">
         <span className="phone-suggestion__legend-out">{t('phoneSuggestionSheet.out')}</span>
@@ -145,11 +162,9 @@ function SuggestionBody({
           type="button"
           className="phone-editor-bar__primary phone-editor-bar__primary--success"
           onClick={() => closeThen(() => onAccept(suggestion))}
-          disabled={!states.some((st) => st.changed)}
+          disabled={!canAccept}
         >
-          {states.some((st) => st.conflict)
-            ? t('suggestionReview.acceptReview')
-            : t('shared.accept')}
+          {needsReview ? t('suggestionReview.acceptReview') : t('shared.accept')}
         </button>
       </div>
     </div>

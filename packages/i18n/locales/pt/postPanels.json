@@ -171,6 +171,8 @@
     "initialVersion": "Versão inicial",
     "igCaption": "Legenda do Instagram",
     "tiktokCaption": "Legenda do TikTok",
+    "geralCaption": "Legenda Geral",
+    "geralNotRecordedBefore": "A versão anterior não registrou a legenda Geral.",
     "title": "Histórico de versões",
     "empty": "Sem histórico registrado ainda. Versões passam a ser guardadas a partir da próxima edição de conteúdo deste post.",
     "readOnly": "Somente leitura. Nenhuma versão pode ser restaurada por aqui."

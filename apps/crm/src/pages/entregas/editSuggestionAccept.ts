@@ -25,16 +25,49 @@ export function mentionIdsToSyncAfterAccept(
     .map((ref) => ref.id);
 }
 
-export type AcceptErrorKind = 'changed' | 'conflict' | 'other';
+export type AcceptErrorKind =
+  | 'changed'
+  | 'conflict'
+  | 'target_gone'
+  | 'target_locked'
+  | 'retry'
+  | 'other';
 
 /**
  * Which toast an `acceptEditSuggestion` failure gets. `changed`: the client saved a newer
- * version. `conflict`: the post moved since the card was loaded. Both refetch and ask for a new
- * review. PostgrestError is a plain object, not an Error instance.
+ * version. `conflict`: the post moved since the card was loaded. `target_gone`: the TikTok or
+ * Geral destination of a chosen caption was removed. `target_locked`: the TikTok destination is
+ * publishing or published. Those four refetch and ask for a new review. `retry`: Postgres broke a
+ * deadlock (40P01, a destination removed at the same moment); the RPC is safe to repeat.
+ * PostgrestError is a plain object, not an Error instance: the RPC's own refusals arrive as P0001
+ * with the tag in `message`, the deadlock as `code`.
  */
 export function classifyAcceptError(err: unknown): AcceptErrorKind {
-  const message = String((err as { message?: unknown } | null)?.message ?? '');
+  const e = err as { message?: unknown; code?: unknown } | null | undefined;
+  const message = String(e?.message ?? '');
   if (message.includes('suggestion_changed')) return 'changed';
   if (message.includes('suggestion_conflict')) return 'conflict';
+  if (message.includes('target_gone')) return 'target_gone';
+  if (message.includes('target_locked')) return 'target_locked';
+  if (e?.code === '40P01') return 'retry';
   return 'other';
+}
+
+/**
+ * The toast key (namespace `postEditor`) for the three destination-level refusals, or `null` for
+ * the kinds each drawer words itself. `target_gone` names the destination when the accepted
+ * fields leave no doubt which one it was.
+ */
+export function destinationAcceptErrorKey(
+  kind: AcceptErrorKind,
+  fields: SuggestionField[],
+): string | null {
+  if (kind === 'target_locked') return 'postEditor:suggestionReview.errors.targetLocked';
+  if (kind === 'retry') return 'postEditor:suggestionReview.errors.retry';
+  if (kind !== 'target_gone') return null;
+  const tiktok = fields.includes('legenda_tiktok');
+  const geral = fields.includes('legenda_geral');
+  if (tiktok && !geral) return 'postEditor:suggestionReview.errors.targetGoneTiktok';
+  if (geral && !tiktok) return 'postEditor:suggestionReview.errors.targetGoneGeral';
+  return 'postEditor:suggestionReview.errors.targetGone';
 }

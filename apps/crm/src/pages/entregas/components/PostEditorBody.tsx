@@ -67,13 +67,22 @@ import {
   CaptionSuggestionNote,
   SuggestionFieldDiff,
   TeamOnlyFooter,
+  UnchangedFieldsLine,
+  useSuggestionFieldName,
   visibleSuggestionStates,
 } from './SuggestionReview';
 import {
+  acceptAvailability,
+  geralFromTargets,
+  reviewableFields,
   suggestionFieldStates,
+  suggestionTouchesGeral,
   teamOnlyChangedFields,
+  type LiveGeralTarget,
   type SuggestionField,
+  type SuggestionLivePost,
 } from '../editSuggestionFields';
+import { useSuggestionGeralTarget } from '../hooks/useSuggestionGeralTarget';
 import {
   getStatusAutomationHint,
   isVisibleToClient,
@@ -576,9 +585,34 @@ export function PostEditorBody({
     card.scrollIntoView({ behavior: 'smooth', block: 'center' });
     card.focus({ preventScroll: true });
   };
-  const acceptFlow = useAcceptSuggestionFlow(post, onAcceptSuggestion);
-  const suggestionStates = editSuggestion ? suggestionFieldStates(post, editSuggestion) : [];
-  const teamOnlyFields = editSuggestion ? teamOnlyChangedFields(post, editSuggestion) : [];
+  // The review judges the Geral caption against its live row (post_targets), fetched only while
+  // the suggestion changed it. Otherwise the editor's own destination list fills it in when it is
+  // loaded (for the team-only footer and the unchanged line); it is never needed to judge then.
+  const suggestionGeral = useSuggestionGeralTarget(post, editSuggestion);
+  const liveGeral: LiveGeralTarget | null | undefined = suggestionTouchesGeral(editSuggestion)
+    ? suggestionGeral
+    : geralFromTargets(destinations.targets);
+  const suggestionPost: SuggestionLivePost & Pick<WorkflowPost, 'platform'> = {
+    conteudo: post.conteudo,
+    conteudo_plain: post.conteudo_plain,
+    ig_caption: post.ig_caption,
+    tiktok_caption: post.tiktok_caption,
+    platform: post.platform,
+    geral: liveGeral,
+  };
+  const acceptFlow = useAcceptSuggestionFlow(suggestionPost, onAcceptSuggestion);
+  const suggestionStates = editSuggestion
+    ? suggestionFieldStates(suggestionPost, editSuggestion)
+    : [];
+  const teamOnlyFields = editSuggestion
+    ? teamOnlyChangedFields(suggestionPost, editSuggestion)
+    : [];
+  const suggestionAccept = acceptAvailability(suggestionStates);
+  const suggestionReviewable = reviewableFields(
+    suggestionPost,
+    destinations.targets?.map((tg) => tg.platform),
+  );
+  const suggestionFieldName = useSuggestionFieldName();
   const [referencesOpen, setReferencesOpen] = useState(false);
   const [statusSheetOpen, setStatusSheetOpen] = useState(false);
   // One schedule/publish state per phone editor, shared by the bottom bar and the
@@ -752,6 +786,12 @@ export function PostEditorBody({
     </>
   );
   const captionSuggested = editSuggestion?.changed_fields.includes('ig_caption') === true;
+  const tiktokSuggestionNote = editSuggestion?.changed_fields.includes('tiktok_caption') ? (
+    <CaptionSuggestionNote field="legenda_tiktok" onViewSuggestion={viewSuggestion} />
+  ) : null;
+  const geralSuggestionNote = editSuggestion?.changed_fields.includes('geral_caption') ? (
+    <CaptionSuggestionNote field="legenda_geral" onViewSuggestion={viewSuggestion} />
+  ) : null;
   const instagramCaptionField = (frameless: boolean) => (
     <>
       {captionSuggested && <CaptionSuggestionNote onViewSuggestion={viewSuggestion} />}
@@ -878,6 +918,8 @@ export function PostEditorBody({
         tiktokSettings={null}
         tiktokFieldRef={tiktokCaptionRef}
         geralFieldRef={geralCaptionRef}
+        tiktokNote={tiktokSuggestionNote}
+        geralNote={geralSuggestionNote}
         onSaveCaption={destinations.saveCaption}
       />
     ) : isStoryPost ? (
@@ -1394,7 +1436,8 @@ export function PostEditorBody({
           open={suggestionOpen}
           onOpenChange={setSuggestionOpen}
           suggestion={editSuggestion}
-          post={post}
+          post={suggestionPost}
+          reviewable={suggestionReviewable}
           clientName={phone.clientName}
           resolvedContent={resolvedContent}
           resolvedSuggestion={resolvedSuggestion}
@@ -1667,12 +1710,13 @@ export function PostEditorBody({
               </button>
               <button
                 onClick={() => acceptFlow.request(editSuggestion)}
-                // A legacy row can list changed_fields with nothing the CRM can apply (a NULL doc):
-                // there is nothing to accept, only to reject.
-                disabled={!suggestionStates.some((st) => st.changed)}
+                // A legacy row can list changed_fields with nothing the CRM can apply (a NULL doc),
+                // or only a destination that is gone: nothing to accept, only to reject. A caption
+                // still loading cannot be judged yet.
+                disabled={!suggestionAccept.canAccept}
                 className="px-3 py-1 text-[12px] font-medium rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-emerald-600"
               >
-                {suggestionStates.some((st) => st.conflict)
+                {suggestionAccept.needsReview
                   ? t('suggestionReview.acceptReview')
                   : t('shared.accept')}
               </button>
@@ -1688,21 +1732,20 @@ export function PostEditorBody({
                   <SuggestionFieldDiff
                     field={st.field}
                     state={st}
-                    post={post}
+                    post={suggestionPost}
                     suggestion={editSuggestion}
                     resolvedContent={resolvedContent}
                     resolvedSuggestion={resolvedSuggestion}
                     label={
                       <p className="text-[11px] font-medium text-stone-500">
-                        {st.field === 'texto'
-                          ? t('suggestionReview.postText')
-                          : t('shared.igCaption')}
+                        {suggestionFieldName(st.field, 'heading')}
                       </p>
                     }
                   />
                 </div>
               ),
             )}
+            <UnchangedFieldsLine states={suggestionStates} reviewable={suggestionReviewable} />
           </div>
           {teamOnlyFields.length > 0 && (
             <TeamOnlyFooter
@@ -1790,6 +1833,8 @@ export function PostEditorBody({
           tiktokSettings={tiktokSettingsPanel(true)}
           tiktokFieldRef={tiktokCaptionRef}
           geralFieldRef={geralCaptionRef}
+          tiktokNote={tiktokSuggestionNote}
+          geralNote={geralSuggestionNote}
           onSaveCaption={destinations.saveCaption}
         />
       ) : isStoryPost ? (

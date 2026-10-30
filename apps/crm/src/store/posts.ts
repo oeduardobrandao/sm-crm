@@ -579,6 +579,10 @@ export interface PostContentVersion {
   conteudo_plain: string | null;
   ig_caption: string | null;
   tiktok_caption: string | null;
+  /** Caption of the post's Geral destination at this version. `''` = the Geral row existed with an
+   *  empty caption; NULL = no Geral row, or a version recorded before the column existed
+   *  ("not recorded", never "deleted"). */
+  geral_caption: string | null;
   changed_fields: string[];
   source: 'workspace_user' | 'client' | 'system';
   actor_user_id: string | null;
@@ -1494,7 +1498,7 @@ export async function getPostContentVersions(postIds: number[]): Promise<PostCon
   const { data, error } = await supabase
     .from('post_content_versions')
     .select(
-      'id, post_id, conteudo, conteudo_plain, ig_caption, tiktok_caption, changed_fields, source, actor_user_id, actor_name, suggestion_id, created_at, last_touched_at',
+      'id, post_id, conteudo, conteudo_plain, ig_caption, tiktok_caption, geral_caption, changed_fields, source, actor_user_id, actor_name, suggestion_id, created_at, last_touched_at',
     )
     .in('post_id', postIds)
     .order('last_touched_at', { ascending: true });
@@ -1527,10 +1531,13 @@ export async function replyToPostApproval(
 // =============================================
 
 /**
- * The two logical fields of an edit suggestion: `texto` is `conteudo` + `conteudo_plain`
- * (always together), `legenda` is `ig_caption`. `changed_fields` keeps storing the column names.
+ * The logical fields of an edit suggestion. `changed_fields` keeps storing the column names:
+ *   texto          -> conteudo + conteudo_plain (always together)
+ *   legenda        -> ig_caption
+ *   legenda_tiktok -> tiktok_caption (workflow_posts)
+ *   legenda_geral  -> geral_caption (post_targets.caption of the `geral` row)
  */
-export type SuggestionField = 'texto' | 'legenda';
+export type SuggestionField = 'texto' | 'legenda' | 'legenda_tiktok' | 'legenda_geral';
 
 export interface PostEditSuggestion {
   id: number;
@@ -1538,10 +1545,20 @@ export interface PostEditSuggestion {
   suggested_conteudo: Record<string, unknown> | null;
   suggested_conteudo_plain: string;
   suggested_ig_caption: string | null;
+  suggested_tiktok_caption: string | null;
+  suggested_geral_caption: string | null;
   /** Per-field base: what the client started from. NULL on rows created before the base was kept. */
   original_conteudo: Record<string, unknown> | null;
   original_conteudo_plain: string | null;
   original_ig_caption: string | null;
+  original_tiktok_caption: string | null;
+  original_geral_caption: string | null;
+  /** `post_targets.id` of the Geral row when `geral_caption` entered `changed_fields`. A live row
+   *  with another id was removed and re-added: the suggestion no longer applies to it. */
+  geral_target_id: number | null;
+  /** `tiktok_caption` was NULL (TikTok following Instagram) when `ig_caption` entered
+   *  `changed_fields`. */
+  tiktok_followed_ig: boolean | null;
   changed_fields: string[];
   status: 'pending' | 'accepted' | 'rejected' | 'superseded';
   updated_at: string;
@@ -1552,7 +1569,7 @@ export async function getPostEditSuggestions(postIds: number[]): Promise<PostEdi
   const { data, error } = await supabase
     .from('post_edit_suggestions')
     .select(
-      'id, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption, original_conteudo, original_conteudo_plain, original_ig_caption, changed_fields, status, updated_at',
+      'id, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption, suggested_tiktok_caption, suggested_geral_caption, original_conteudo, original_conteudo_plain, original_ig_caption, original_tiktok_caption, original_geral_caption, geral_target_id, tiktok_followed_ig, changed_fields, status, updated_at',
     )
     .in('post_id', postIds)
     .eq('status', 'pending');
