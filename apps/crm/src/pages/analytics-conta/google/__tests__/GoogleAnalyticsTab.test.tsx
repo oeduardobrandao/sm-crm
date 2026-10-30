@@ -24,7 +24,7 @@ vi.mock('chart.js', () => ({
   },
   registerables: [],
 }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 // Keep the real error classes: the tab tells "not connected" apart with instanceof.
 vi.mock('../../../../services/gbpAnalytics', async (importOriginal) => ({
@@ -380,7 +380,10 @@ describe('GoogleAnalyticsTab', () => {
   });
 
   it('Sincronizar calls syncGoogleProduct and refetches the gbp queries', async () => {
-    vi.mocked(syncGoogleProduct).mockResolvedValue();
+    vi.mocked(syncGoogleProduct).mockResolvedValue({
+      ok: true,
+      locations: [{ id: 'a', status: 'synced' }],
+    });
     renderTab();
     await screen.findByText('Visualizações do perfil');
     await waitFor(() => expect(getGbpUnits).toHaveBeenCalledTimes(1));
@@ -389,6 +392,51 @@ describe('GoogleAnalyticsTab', () => {
     await waitFor(() => expect(getGbpOverview).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(getGbpUnits).toHaveBeenCalledTimes(2));
     expect(toast.success).toHaveBeenCalledWith('Dados do Google Meu Negócio atualizados.');
+  });
+
+  it('a location that did not sync shows the neutral "não concluída" toast', async () => {
+    vi.mocked(syncGoogleProduct).mockResolvedValue({
+      ok: true,
+      locations: [
+        { id: 'a', status: 'synced' },
+        { id: 'b', status: 'not_approved' },
+      ],
+    });
+    renderTab();
+    await screen.findByText('Visualizações do perfil');
+    fireEvent.click(screen.getByRole('button', { name: 'Sincronizar' }));
+    await waitFor(() =>
+      expect(toast.info).toHaveBeenCalledWith(
+        'Sincronização não concluída agora. Tentaremos de novo automaticamente.',
+      ),
+    );
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it.each(['reconnect', 'revoked'] as const)(
+    'a %s sync error reads the reconnect copy and refetches the units',
+    async (code) => {
+      vi.mocked(syncGoogleProduct).mockRejectedValue(new GoogleServiceError(code));
+      renderTab();
+      await screen.findByText('Visualizações do perfil');
+      await waitFor(() => expect(getGbpUnits).toHaveBeenCalledTimes(1));
+      fireEvent.click(screen.getByRole('button', { name: 'Sincronizar' }));
+      await waitFor(() =>
+        expect(toast.error).toHaveBeenCalledWith(
+          'A autorização do Google expirou. Reconecte a conta para voltar a sincronizar.',
+        ),
+      );
+      await waitFor(() => expect(getGbpUnits).toHaveBeenCalledTimes(2));
+    },
+  );
+
+  it('a not_connected sync error refetches the tab so it shows the not-connected state', async () => {
+    vi.mocked(syncGoogleProduct).mockRejectedValue(new GoogleServiceError('not_connected'));
+    renderTab();
+    await screen.findByText('Visualizações do perfil');
+    await waitFor(() => expect(getGbpOverview).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Sincronizar' }));
+    await waitFor(() => expect(getGbpOverview).toHaveBeenCalledTimes(2));
   });
 
   it('a rate-limited sync says so', async () => {

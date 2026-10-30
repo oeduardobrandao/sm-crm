@@ -5,7 +5,9 @@ import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createGoogleIntegrationHandler, type GoogleIntegrationDeps } from "../google-integration/handlers.ts";
 import { listEligibleLocations, listGbpLocations } from "../google-integration/locations.ts";
-import { encryptGoogleToken } from "../_shared/google.ts";
+import { encryptGoogleToken, getFreshGoogleToken, GoogleApiError } from "../_shared/google.ts";
+import * as gbpApi from "../_shared/gbp-api.ts";
+import * as youtubeApi from "../_shared/youtube-api.ts";
 
 Deno.env.set("TOKEN_ENCRYPTION_KEY", "test-google-routes-key-32chars!!");
 Deno.env.set("GOOGLE_OAUTH_CLIENT_ID", "test-client-id");
@@ -1005,33 +1007,38 @@ function gbpRow(id: string, status = "active") {
 }
 
 /** Fake unit syncs: record the calls (and any overlap) and answer the queued statuses. */
-function fakeSyncs(opts: { yt?: string[]; gbp?: string[]; throwYt?: Error } = {}) {
-  const ytCalls: Array<{ channel: Record<string, unknown>; opts: Record<string, unknown> }> = [];
+function fakeSyncs(opts: { yt?: string[]; gbp?: Array<string | Error>; throwYt?: Error } = {}) {
+  const ytCalls: Array<{ deps: Record<string, unknown>; channel: Record<string, unknown>; opts: Record<string, unknown> }> =
+    [];
   const gbpCalls: Array<Record<string, unknown>> = [];
+  const gbpDeps: Array<Record<string, unknown>> = [];
   let inflight = 0;
   let maxInflight = 0;
   const yt = [...(opts.yt ?? [])];
   const gbp = [...(opts.gbp ?? [])];
   const deps: Partial<GoogleIntegrationDeps> = {
     // deno-lint-ignore no-explicit-any
-    syncYouTubeChannel: ((_deps: unknown, channel: any, o: any) => {
-      ytCalls.push({ channel, opts: o });
+    syncYouTubeChannel: ((d: any, channel: any, o: any) => {
+      ytCalls.push({ deps: d, channel, opts: o });
       if (opts.throwYt) return Promise.reject(opts.throwYt);
       return Promise.resolve({ status: yt.shift() ?? "synced", backfill: false });
       // deno-lint-ignore no-explicit-any
     }) as any,
     // deno-lint-ignore no-explicit-any
-    syncGbpLocation: (async (_deps: unknown, location: any) => {
+    syncGbpLocation: (async (d: any, location: any) => {
       inflight += 1;
       maxInflight = Math.max(maxInflight, inflight);
       gbpCalls.push(location);
+      gbpDeps.push(d);
       await new Promise((r) => setTimeout(r, 1));
       inflight -= 1;
-      return { status: gbp.shift() ?? "synced", backfill: false };
+      const next = gbp.shift() ?? "synced";
+      if (next instanceof Error) throw next;
+      return { status: next, backfill: false };
       // deno-lint-ignore no-explicit-any
     }) as any,
   };
-  return { deps, ytCalls, gbpCalls, maxInflight: () => maxInflight };
+  return { deps, ytCalls, gbpCalls, gbpDeps, maxInflight: () => maxInflight };
 }
 
 Deno.test("sync_foreign_client_403: a client outside the tenant -> 403 before any flag read or rate limit", async () => {
@@ -1337,4 +1344,95 @@ Deno.test("disconnect_drains_pdf_purges: after the unlink commits, only this ten
   assert(order.indexOf("rpc:google_unlink_youtube:rpc") < order.indexOf("youtube_pdf_purges:select"), order.join(","));
   const audit = db.calls.find((c) => c.table === "audit_log")!.payload as Record<string, unknown>;
   assertEquals([audit.action, audit.actor_user_id], ["youtube-unlink", USER]);
+});
+
+// ─── Task 9 fix round 1 ──────────────────────────────────────────────────────────
+
+Deno.test("sync_passes_real_deps: the unit syncs receive the real api module and getFreshGoogleToken", async () => {
+  const yt = routeDb();
+  yt.queue("youtube_channels", "select", { data: YT_ROW });
+  const s = fakeSyncs();
+  await makeHandler(yt, s.deps)(req("POST", `/sync/youtube/${CLIENT}`));
+  assert(s.ytCalls[0].deps.api === youtubeApi, "youtube api module");
+  assert(s.ytCalls[0].deps.getFreshGoogleToken === getFreshGoogleToken, "youtube token reader");
+  assert(s.ytCalls[0].deps.svc === yt as unknown, "service client");
+
+  const g = routeDb();
+  g.queue("gbp_locations", "select", { data: [gbpRow("a")] });
+  const s2 = fakeSyncs();
+  await makeHandler(g, s2.deps)(req("POST", `/sync/gbp/${CLIENT}`));
+  assert(s2.gbpDeps[0].api === gbpApi, "gbp api module");
+  assert(s2.gbpDeps[0].getFreshGoogleToken === getFreshGoogleToken, "gbp token reader");
+  assertEquals(typeof s2.gbpDeps[0].sleep, "function");
+});
+
+Deno.test("sync_google_api_error: a GoogleApiError reaches the dispatcher (REVOKED -> 409 reconnect, other -> 502)", async () => {
+  const revoked = routeDb();
+  revoked.queue("youtube_channels", "select", { data: YT_ROW });
+  const s = fakeSyncs({ throwYt: new GoogleApiError("REVOKED", 400, "invalid_grant") });
+  const res = await makeHandler(revoked, s.deps)(req("POST", `/sync/youtube/${CLIENT}`));
+  assertEquals(res.status, 409);
+  assertEquals(await res.json(), { error: "reconnect" });
+
+  const upstream = routeDb();
+  upstream.queue("youtube_channels", "select", { data: YT_ROW });
+  const s2 = fakeSyncs({ throwYt: new GoogleApiError("UPSTREAM", 503, "secret upstream detail") });
+  const res2 = await makeHandler(upstream, s2.deps)(req("POST", `/sync/youtube/${CLIENT}`));
+  assertEquals(res2.status, 502);
+  assertEquals(await res2.json(), { error: "unknown" });
+
+  // GMN: a REVOKED from one location applies to the whole connection.
+  const g = routeDb();
+  g.queue("gbp_locations", "select", { data: [gbpRow("a"), gbpRow("b")] });
+  const s3 = fakeSyncs({ gbp: [new GoogleApiError("REVOKED", 400, "invalid_grant")] });
+  const res3 = await makeHandler(g, s3.deps)(req("POST", `/sync/gbp/${CLIENT}`));
+  assertEquals(res3.status, 409);
+  assertEquals(await res3.json(), { error: "reconnect" });
+  assertEquals(s3.gbpCalls.length, 1, "the walk stops at the dead connection");
+});
+
+Deno.test("sync_gbp_one_location_fails: A synced, B throws -> 200 with synced and failed, no detail leaked", async () => {
+  const db = routeDb();
+  db.queue("gbp_locations", "select", { data: [gbpRow("a"), gbpRow("b"), gbpRow("c")] });
+  const s = fakeSyncs({ gbp: ["synced", new Error("secret db detail"), new GoogleApiError("UPSTREAM", 500, "x")] });
+  const res = await makeHandler(db, s.deps)(req("POST", `/sync/gbp/${CLIENT}`));
+  assertEquals(res.status, 200);
+  const text = await res.text();
+  assert(!text.includes("secret db detail"), text);
+  assertEquals(JSON.parse(text), {
+    ok: true,
+    locations: [{ id: "a", status: "synced" }, { id: "b", status: "failed" }, { id: "c", status: "failed" }],
+  });
+});
+
+Deno.test("sync_youtube_revoked_drains_pdfs: a revoked outcome drains this tenant's PDF purges; a drain failure keeps 200", async () => {
+  const db = routeDb();
+  db.queue("youtube_channels", "select", { data: YT_ROW });
+  db.queue("youtube_pdf_purges", "select", {
+    data: [{ id: "purge-1", conta_id: CONTA, storage_path: `${CONTA}/r.pdf`, attempts: 0 }],
+  });
+  const st = fakeStorage();
+  const s = fakeSyncs({ yt: ["revoked"] });
+  const res = await makeHandler(db, { ...s.deps, storage: st.storage })(req("POST", `/sync/youtube/${CLIENT}`));
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { ok: true, status: "revoked" });
+  const listing = db.calls.find((c) => c.table === "youtube_pdf_purges" && c.operation === "select")!;
+  assert(listing.modifiers.some((m) => m.method === "eq" && m.args[0] === "conta_id" && m.args[1] === CONTA));
+  assertEquals(st.removed.map((r) => r.paths), [[`${CONTA}/r.pdf`]]);
+
+  // Synced: no drain.
+  const ok = routeDb();
+  ok.queue("youtube_channels", "select", { data: YT_ROW });
+  await makeHandler(ok, fakeSyncs().deps)(req("POST", `/sync/youtube/${CLIENT}`));
+  assertEquals(ok.calls.filter((c) => c.table === "youtube_pdf_purges").length, 0);
+
+  // A drain that blows up never fails the request.
+  const broken = routeDb();
+  broken.queue("youtube_channels", "select", { data: YT_ROW });
+  broken.queue("youtube_pdf_purges", "select", () => {
+    throw new Error("listing exploded");
+  });
+  const res3 = await makeHandler(broken, fakeSyncs({ yt: ["revoked"] }).deps)(req("POST", `/sync/youtube/${CLIENT}`));
+  assertEquals(res3.status, 200);
+  assertEquals(await res3.json(), { ok: true, status: "revoked" });
 });

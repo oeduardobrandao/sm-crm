@@ -154,7 +154,8 @@
     "firstSyncBody": "Os números do canal aparecem aqui quando a primeira sincronização terminar. Pode levar até uma hora. Você também pode usar Sincronizar.",
     "syncSuccess": "Dados do YouTube sincronizados.",
     "syncError": "Não foi possível sincronizar o YouTube. Tente de novo.",
-    "syncRateLimited": "Limite da API do Google atingido. Tente de novo em alguns minutos."
+    "syncRateLimited": "Limite da API do Google atingido. Tente de novo em alguns minutos.",
+    "syncIncomplete": "Sincronização não concluída agora. Tentaremos de novo automaticamente."
   },
   "footer": "Dados do YouTube, como o YouTube informa."
 }

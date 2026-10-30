@@ -990,8 +990,9 @@ async function handleDisconnectYouTube(
  * Manual sync of one client's YouTube channel or GMN locations, with the cron's unit sync.
  * Order (globals): client in tenant (403), product flag (403), rate limit (429), unit lookup
  * (404 not_connected, 409 revoked). The unit's own outcome (synced, quota_skipped, skipped,
- * mismatch, not_approved, or revoked when the token died during this run) is a 200; only an
- * unexpected throw is a 500, with no details.
+ * mismatch, not_approved, or revoked when the token died during this run) is a 200. A GMN
+ * location that throws is reported as `failed` alongside the others. A Google error keeps the
+ * dispatcher's mapping (409 reconnect / 502); anything else is a 500 with no details.
  */
 async function handleSync(
   svc: DbClient,
@@ -1031,10 +1032,13 @@ async function handleSync(
 
       const sync = deps.syncYouTubeChannel ?? syncYouTubeChannel;
       const outcome = await sync(
-        { svc, api: youtubeApi, getFreshGoogleToken: (db, id) => getFreshGoogleToken(db, id), now },
+        { svc, api: youtubeApi, getFreshGoogleToken, now },
         channel,
         { now: now(), maxVideoReports: MAX_VIDEO_REPORTS_PER_RUN },
       );
+      // The token died during this run: google_mark_revoked purged the channel and queued its
+      // report PDFs. Remove them now rather than waiting for the cron (never fails the request).
+      if (outcome.status === "revoked") await drainTenantPdfPurges(svc, deps, ctx.contaId);
       return json(cors, { ok: true, status: outcome.status });
     }
 
@@ -1055,18 +1059,31 @@ async function handleSync(
     const syncDeps = {
       svc,
       api: gbpApi,
-      getFreshGoogleToken: (db: DbClient, id: string) => getFreshGoogleToken(db, id),
+      getFreshGoogleToken,
       now,
       sleep: (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
     };
-    // Sequential: GMN quotas are per minute and low (the cron's per-location pacing).
+    // Sequential: GMN quotas are per minute and low (the cron's per-location pacing). One
+    // location's unexpected failure is that location's `failed`, logged here and never echoed;
+    // a REVOKED connection is everyone's, so it ends the walk and answers 409 reconnect.
     const locations: Array<{ id: string; status: string }> = [];
     for (const location of active) {
-      const outcome = await sync(syncDeps, location, { now: now() });
-      locations.push({ id: location.id, status: outcome.status });
+      try {
+        const outcome = await sync(syncDeps, location, { now: now() });
+        locations.push({ id: location.id, status: outcome.status });
+      } catch (err) {
+        if (err instanceof GoogleApiError && err.code === "REVOKED") throw err;
+        console.error(
+          `[google-integration] manual sync of location ${location.id} failed:`,
+          err instanceof Error ? err.message : String(err),
+        );
+        locations.push({ id: location.id, status: "failed" });
+      }
     }
     return json(cors, { ok: true, locations });
   } catch (err) {
+    // Google errors keep the dispatcher's mapping (REVOKED -> 409 reconnect, others -> 502).
+    if (err instanceof GoogleApiError) throw err;
     return internalServerError(createJsonResponder(cors), "google-integration:sync", err);
   }
 }

@@ -23,7 +23,7 @@ vi.mock('chart.js', () => ({
   },
   registerables: [],
 }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 vi.mock('../../../../services/gbpAnalytics', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../../services/gbpAnalytics')>()),
@@ -150,7 +150,7 @@ describe('GoogleAnalyticsTab (phone)', () => {
   });
 
   it('the sync button calls syncGoogleProduct', async () => {
-    vi.mocked(syncGoogleProduct).mockResolvedValue();
+    vi.mocked(syncGoogleProduct).mockResolvedValue({ ok: true, locations: [] });
     renderTab();
     await screen.findByText('Visualizações do perfil');
     fireEvent.click(screen.getByRole('button', { name: 'Sincronizar' }));

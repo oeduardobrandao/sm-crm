@@ -15,7 +15,8 @@
     "action": "Sync",
     "success": "Google Business Profile data updated.",
     "rateLimited": "Google API limit reached. Try again in a few minutes.",
-    "error": "Could not sync Google Business Profile. Try again."
+    "error": "Could not sync Google Business Profile. Try again.",
+    "incomplete": "Sync didn't finish right now. We'll try again automatically."
   },
   "note": "Data through {{date}}. Google counts distinct people per day on each surface.",
   "states": {

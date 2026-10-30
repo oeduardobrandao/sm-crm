@@ -11,7 +11,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { PageSkeleton } from '@/components/ui/skeletons';
-import { GoogleServiceError, syncGoogleProduct } from '../../../services/google';
+import {
+  GoogleServiceError,
+  isGoogleSyncIncomplete,
+  syncGoogleProduct,
+} from '../../../services/google';
 import {
   YouTubeNotConnectedError,
   type AnalyticsRange,
@@ -79,8 +83,10 @@ export function YouTubeAnalyticsTab({
   const handleSync = async () => {
     setSyncing(true);
     try {
-      await syncGoogleProduct('youtube', clientId);
-      toast.success(t('states.syncSuccess'));
+      const result = await syncGoogleProduct('youtube', clientId);
+      // Quota, a mismatch or a token that died mid-run: the call worked, the sync did not finish.
+      if (isGoogleSyncIncomplete(result)) toast.info(t('states.syncIncomplete'));
+      else toast.success(t('states.syncSuccess'));
       await Promise.all([
         qc.invalidateQueries({ predicate: isYouTubeTabQuery(clientId) }),
         // The Redes sociais card's last sync.
@@ -88,15 +94,21 @@ export function YouTubeAnalyticsTab({
       ]);
     } catch (e) {
       const code = e instanceof GoogleServiceError ? e.code : null;
+      // `revoked`: the channel's authorization expired before the call; same as `reconnect`.
+      const needsReconnect = code === 'reconnect' || code === 'revoked';
       toast.error(
         code === 'rate_limited'
           ? t('states.syncRateLimited')
-          : code === 'reconnect'
+          : needsReconnect
             ? t('states.revokedBody')
             : t('states.syncError'),
       );
       // The overview carries authorizationStatus: refetch it so the reconnect callout shows.
-      if (code === 'reconnect') await qc.invalidateQueries({ queryKey: ['yt-overview', clientId] });
+      if (needsReconnect) await qc.invalidateQueries({ queryKey: ['yt-overview', clientId] });
+      // The channel was unlinked meanwhile: refetch so the tab shows its not-connected state.
+      if (code === 'not_connected') {
+        await qc.invalidateQueries({ predicate: isYouTubeTabQuery(clientId) });
+      }
     } finally {
       setSyncing(false);
     }

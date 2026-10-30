@@ -11,6 +11,7 @@ import {
   getGoogleSummary,
   GOOGLE_SERVICE_ERROR_CODES,
   GoogleServiceError,
+  isGoogleSyncIncomplete,
   linkGbpLocations,
   listGbpLocationOptions,
   syncGoogleProduct,
@@ -135,15 +136,19 @@ describe('google service', () => {
     expect(err.code).toBe('gmn_not_approved');
   });
 
-  it.each(['feature_disabled', 'reconnect', 'location_unavailable', 'rate_limited'])(
-    'maps the %s body error to its code',
-    async (code) => {
-      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse({ error: code }, 403));
-      const err = await getGoogleAuthUrl(1, 'gbp').catch((e) => e);
-      expect(err).toBeInstanceOf(GoogleServiceError);
-      expect(err.code).toBe(code);
-    },
-  );
+  it.each([
+    'feature_disabled',
+    'reconnect',
+    'location_unavailable',
+    'rate_limited',
+    'revoked',
+    'not_connected',
+  ])('maps the %s body error to its code', async (code) => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse({ error: code }, 403));
+    const err = await getGoogleAuthUrl(1, 'gbp').catch((e) => e);
+    expect(err).toBeInstanceOf(GoogleServiceError);
+    expect(err.code).toBe(code);
+  });
 
   it.each([...GOOGLE_SERVICE_ERROR_CODES])('has pt and en dialog copy for the %s code', (code) => {
     expect(pt.gmn.dialog.errors).toHaveProperty(code);
@@ -178,6 +183,43 @@ describe('google service', () => {
       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-integration/sync/${product}/${clientId}`,
     );
     expect((fetchSpy.mock.calls[0][1] as RequestInit).method).toBe('POST');
+  });
+
+  it('returns the parsed manual sync body', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({ ok: true, locations: [{ id: 'a', status: 'not_approved' }] }),
+    );
+    await expect(syncGoogleProduct('gbp', 3)).resolves.toEqual({
+      ok: true,
+      locations: [{ id: 'a', status: 'not_approved' }],
+    });
+  });
+
+  it.each([
+    [{ ok: true, status: 'synced' }, false],
+    [{ ok: true, status: 'quota_skipped' }, true],
+    [{ ok: true, status: 'revoked' }, true],
+    [{ ok: true, locations: [{ id: 'a', status: 'synced' }] }, false],
+    [
+      {
+        ok: true,
+        locations: [
+          { id: 'a', status: 'synced' },
+          { id: 'b', status: 'failed' },
+        ],
+      },
+      true,
+    ],
+  ] as const)('isGoogleSyncIncomplete(%j) is %s', (result, expected) => {
+    expect(isGoogleSyncIncomplete(result)).toBe(expected);
+  });
+
+  it('maps 404 not_connected and 409 revoked manual syncs to their codes', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse({ error: 'not_connected' }, 404))
+      .mockResolvedValueOnce(jsonResponse({ error: 'revoked' }, 409));
+    expect((await syncGoogleProduct('youtube', 1).catch((e) => e)).code).toBe('not_connected');
+    expect((await syncGoogleProduct('gbp', 1).catch((e) => e)).code).toBe('revoked');
   });
 
   it('maps a 429 manual sync to the rate_limited code', async () => {

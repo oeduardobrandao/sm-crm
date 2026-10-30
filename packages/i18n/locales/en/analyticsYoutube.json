@@ -154,7 +154,8 @@
     "firstSyncBody": "The channel's numbers show up here once the first sync finishes. It can take up to an hour. You can also use Sync.",
     "syncSuccess": "YouTube data synced.",
     "syncError": "Could not sync YouTube. Try again.",
-    "syncRateLimited": "Google API limit reached. Try again in a few minutes."
+    "syncRateLimited": "Google API limit reached. Try again in a few minutes.",
+    "syncIncomplete": "Sync didn't finish right now. We'll try again automatically."
   },
   "footer": "YouTube data, as reported by YouTube."
 }

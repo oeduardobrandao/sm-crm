@@ -18,7 +18,7 @@ vi.mock('chart.js', () => ({
   },
   registerables: [],
 }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 // Keep the real error classes: the tab tells the states apart with instanceof.
 vi.mock('../../../../services/youtubeAnalytics', async (importOriginal) => ({
@@ -292,7 +292,7 @@ describe('YouTubeAnalyticsTab', () => {
   });
 
   it('Sincronizar calls syncGoogleProduct and invalidates the yt- queries', async () => {
-    vi.mocked(syncGoogleProduct).mockResolvedValue(undefined);
+    vi.mocked(syncGoogleProduct).mockResolvedValue({ ok: true, status: 'synced' });
     renderTab();
     await screen.findByText('Inscritos', { selector: '.kpi-label, .kpi-label *' });
     await waitFor(() => expect(getYouTubeVideos).toHaveBeenCalledTimes(1));
@@ -304,6 +304,49 @@ describe('YouTubeAnalyticsTab', () => {
     expect(getYouTubeTraffic).toHaveBeenCalledTimes(2);
     expect(getYouTubeTopShorts).toHaveBeenCalledTimes(2);
     expect(toast.success).toHaveBeenCalledWith('Dados do YouTube sincronizados.');
+  });
+
+  it.each(['quota_skipped', 'skipped', 'mismatch', 'revoked'] as const)(
+    'a %s outcome shows the neutral "não concluída" toast, not the success one',
+    async (status) => {
+      vi.mocked(syncGoogleProduct).mockResolvedValue({ ok: true, status });
+      renderTab();
+      await screen.findByText('Inscritos', { selector: '.kpi-label, .kpi-label *' });
+      fireEvent.click(screen.getByRole('button', { name: 'Sincronizar' }));
+      await waitFor(() =>
+        expect(toast.info).toHaveBeenCalledWith(
+          'Sincronização não concluída agora. Tentaremos de novo automaticamente.',
+        ),
+      );
+      expect(toast.success).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['reconnect', 'revoked'] as const)(
+    'a %s sync error reads the reconnect copy and refetches the overview',
+    async (code) => {
+      vi.mocked(syncGoogleProduct).mockRejectedValue(new GoogleServiceError(code));
+      renderTab();
+      await screen.findByText('Inscritos', { selector: '.kpi-label, .kpi-label *' });
+      await waitFor(() => expect(getYouTubeOverview).toHaveBeenCalledTimes(1));
+      fireEvent.click(screen.getByRole('button', { name: 'Sincronizar' }));
+      await waitFor(() =>
+        expect(toast.error).toHaveBeenCalledWith(
+          'Reconecte o canal na aba Redes sociais para voltar a sincronizar.',
+        ),
+      );
+      await waitFor(() => expect(getYouTubeOverview).toHaveBeenCalledTimes(2));
+    },
+  );
+
+  it('a not_connected sync error refetches the tab so it shows the not-connected state', async () => {
+    vi.mocked(syncGoogleProduct).mockRejectedValue(new GoogleServiceError('not_connected'));
+    renderTab();
+    await screen.findByText('Inscritos', { selector: '.kpi-label, .kpi-label *' });
+    await waitFor(() => expect(getYouTubeVideos).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Sincronizar' }));
+    await waitFor(() => expect(getYouTubeOverview).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(getYouTubeVideos).toHaveBeenCalledTimes(2));
   });
 
   it('a rate-limited sync reads the Google limit copy', async () => {

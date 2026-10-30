@@ -15,7 +15,8 @@
     "action": "Sincronizar",
     "success": "Dados do Google Meu Negócio atualizados.",
     "rateLimited": "Limite da API do Google atingido. Tente de novo em alguns minutos.",
-    "error": "Não foi possível sincronizar o Google Meu Negócio. Tente de novo."
+    "error": "Não foi possível sincronizar o Google Meu Negócio. Tente de novo.",
+    "incomplete": "Sincronização não concluída agora. Tentaremos de novo automaticamente."
   },
   "note": "Dados até {{date}}. O Google conta pessoas diferentes por dia em cada superfície.",
   "states": {

@@ -19,7 +19,7 @@ vi.mock('chart.js', () => ({
   },
   registerables: [],
 }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 vi.mock('../../../../services/youtubeAnalytics', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../../services/youtubeAnalytics')>()),
@@ -214,7 +214,7 @@ describe('YouTubeAnalyticsTab (phone)', () => {
   });
 
   it('Sincronizar in the nav bar syncs', async () => {
-    vi.mocked(syncGoogleProduct).mockResolvedValue(undefined);
+    vi.mocked(syncGoogleProduct).mockResolvedValue({ ok: true, status: 'synced' });
     renderTab();
     await screen.findByText('Inscritos', { selector: '.phone-stat-tile__label' });
     fireEvent.click(screen.getByRole('button', { name: 'Sincronizar' }));

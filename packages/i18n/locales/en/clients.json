@@ -240,7 +240,9 @@
         "reconnect": "Google authorization expired. Reconnect the account to continue.",
         "location_unavailable": "One of the checked locations is no longer available. The list was refreshed, review the selection.",
         "rate_limited": "Too many attempts. Try again in a moment.",
-        "unknown": "Could not reach Google right now. Try again."
+        "unknown": "Could not reach Google right now. Try again.",
+        "revoked": "Google authorization expired. Reconnect the account to continue.",
+        "not_connected": "This client is no longer connected to Google. Refresh the page."
       }
     }
   },

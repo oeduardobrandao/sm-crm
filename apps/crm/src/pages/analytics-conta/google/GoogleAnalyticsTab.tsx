@@ -16,7 +16,11 @@ import {
   type GbpReviewFilter,
   type GbpUnitRow,
 } from '../../../services/gbpAnalytics';
-import { GoogleServiceError, syncGoogleProduct } from '../../../services/google';
+import {
+  GoogleServiceError,
+  isGoogleSyncIncomplete,
+  syncGoogleProduct,
+} from '../../../services/google';
 import { BILLING_PATH, StateCard } from '../AnalyticsStateCards';
 import type { TikTokPhoneFrame } from '../tiktok/TikTokAnalyticsTabPhone';
 import { dimmed } from '../tiktok/tiktokTabFormat';
@@ -84,22 +88,29 @@ function useGoogleTab(clientId: number) {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      await syncGoogleProduct('gbp', clientId);
-      toast.success(t('sync.success'));
+      const result = await syncGoogleProduct('gbp', clientId);
+      // A location skipped for quota or approval, or one that failed: not finished now.
+      if (isGoogleSyncIncomplete(result)) toast.info(t('sync.incomplete'));
+      else toast.success(t('sync.success'));
       await qc.invalidateQueries({ predicate: isGbpTabQuery(clientId) });
     } catch (e) {
       const code = e instanceof GoogleServiceError ? e.code : 'unknown';
+      // `revoked`: every unit's authorization expired before the call; same as `reconnect`.
+      const needsReconnect = code === 'reconnect' || code === 'revoked';
       toast.error(
         code === 'rate_limited'
           ? t('sync.rateLimited')
-          : code === 'reconnect'
+          : needsReconnect
             ? t('clients:gmn.revokedBanner')
             : code === 'feature_disabled'
               ? t('states.locked')
               : t('sync.error'),
       );
-      // A revoked connection shows up on the units: refetch them for the callout.
-      if (code === 'reconnect') await qc.invalidateQueries({ predicate: isGbpTabQuery(clientId) });
+      // A revoked connection shows up on the units: refetch them for the callout. With no unit
+      // left (`not_connected`) the same refetch switches the tab to its not-connected state.
+      if (needsReconnect || code === 'not_connected') {
+        await qc.invalidateQueries({ predicate: isGbpTabQuery(clientId) });
+      }
     } finally {
       setSyncing(false);
     }
