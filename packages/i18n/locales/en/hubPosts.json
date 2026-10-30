@@ -106,7 +106,8 @@
   },
   "textCard": {
     "mediaRemoved": "Media removed to free up space",
-    "instagramCaptionLabel": "Instagram caption"
+    "instagramCaptionLabel": "Instagram caption",
+    "captionLabel": "Caption"
   },
   "collab": {
     "partnership": "In partnership with {{names}}",
@@ -301,5 +302,11 @@
     "team": "Team",
     "justNow": "just now",
     "marker": "Comment at {{time}}"
+  },
+  "captions": {
+    "empty": "No caption",
+    "geralNote": "This caption is not published automatically. The team uses it to post manually.",
+    "sameFor": "Same caption for {{names}}",
+    "tablistLabel": "Caption for each platform"
   }
 }

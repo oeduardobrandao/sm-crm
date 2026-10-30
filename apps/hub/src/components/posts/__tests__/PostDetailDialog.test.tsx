@@ -1306,4 +1306,43 @@ describe('PostDetailDialog', () => {
       expect(screen.queryByRole('tab', { name: 'Texto do post' })).not.toBeInTheDocument();
     });
   });
+
+  describe('captions per platform', () => {
+    it('shows a switcher when the destinations publish different captions', () => {
+      const multi = post({
+        id: 10,
+        titulo: 'Multi',
+        ig_caption: 'Legenda IG',
+        tiktok_caption: 'Legenda TT',
+        geral_caption: 'Legenda Geral',
+        targets: ['instagram', 'tiktok', 'geral'],
+      });
+      renderDialog(10, { posts: [multi] });
+      expect(screen.getByText('Legenda IG')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('tab', { name: 'TikTok' }));
+      expect(screen.getByText('Legenda TT')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('tab', { name: 'Geral' }));
+      expect(screen.getByText('Legenda Geral')).toBeInTheDocument();
+    });
+
+    it('collapses a TikTok that follows Instagram into one labeled block', () => {
+      const both = post({
+        id: 11,
+        titulo: 'Ambos',
+        ig_caption: 'Igual',
+        tiktok_caption: null,
+        targets: ['instagram', 'tiktok'],
+        geral_caption: null,
+      });
+      renderDialog(11, { posts: [both] });
+      expect(screen.getByText('Mesma legenda para Instagram e TikTok')).toBeInTheDocument();
+      expect(screen.queryByRole('tab', { name: 'TikTok' })).not.toBeInTheDocument();
+    });
+
+    it('an Instagram-only post keeps the plain caption', () => {
+      renderDialog(1, { posts: [post({ id: 1, ig_caption: 'Só IG', targets: ['instagram'] })] });
+      expect(screen.getByText('Só IG')).toBeInTheDocument();
+      expect(screen.queryByText(/Mesma legenda/)).not.toBeInTheDocument();
+    });
+  });
 });

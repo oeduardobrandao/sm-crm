@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next';
-import { CONTENT_FORMAT_LABELS } from '@mesaas/platforms';
+import { CONTENT_FORMAT_LABELS, PLATFORM_IDS, type PlatformId } from '@mesaas/platforms';
 import type { EmProducaoReason, HubPost, HubPostMedia, PendingEditSuggestion } from '../types';
 import type { StatusToneKey } from '../theme';
 
@@ -210,6 +210,71 @@ export function hasDistinctPostText(post: HubPost): boolean {
     if (legendaIdx !== -1) return rawText.slice(0, legendaIdx).trim() !== '';
   }
   return body !== deriveCaption(post, post.ig_caption).trim();
+}
+
+/**
+ * The destinations whose captions the Hub shows, or null when the post should keep today's
+ * single caption block: no destinations at all, or a payload too old to carry the Geral caption.
+ * Old payloads without `targets` derive them from the legacy `platform` column.
+ */
+export function resolvePostTargets(post: HubPost): PlatformId[] | null {
+  let targets: PlatformId[];
+  if (post.targets) {
+    targets = PLATFORM_IDS.filter((id) => post.targets!.includes(id));
+  } else {
+    const legacy: Record<NonNullable<HubPost['platform']>, PlatformId[]> = {
+      instagram: ['instagram'],
+      tiktok: ['tiktok'],
+      both: ['instagram', 'tiktok'],
+      other: ['geral'],
+    };
+    targets = legacy[post.platform ?? 'instagram'];
+  }
+  if (targets.length === 0) return null;
+  if (targets.includes('geral') && post.geral_caption === undefined) return null;
+  return targets;
+}
+
+export interface DestinationCaption {
+  platform: PlatformId;
+  text: string;
+}
+
+export interface CaptionGroup {
+  platforms: PlatformId[];
+  text: string;
+}
+
+/**
+ * The caption each destination shows (spec 2026-10-30-hub-captions-per-platform-design.md):
+ * - Instagram: `igShown`, the caption the dialog already shows (LEGENDA fallback or pending
+ *   suggestion included);
+ * - TikTok: its own caption, else the raw Instagram one (`igRaw`), else '' — the publisher's
+ *   rule (`tiktok_caption ?? ig_caption ?? ''`), so the client sees what TikTok posts;
+ * - Geral: the destination's own caption, else ''.
+ */
+export function destinationCaptions(
+  post: HubPost,
+  targets: PlatformId[],
+  igShown: string,
+  igRaw: string | null,
+): DestinationCaption[] {
+  return targets.map((platform) => {
+    if (platform === 'instagram') return { platform, text: igShown };
+    if (platform === 'tiktok') return { platform, text: post.tiktok_caption ?? igRaw ?? '' };
+    return { platform, text: post.geral_caption ?? '' };
+  });
+}
+
+/** Destinations with the exact same caption share one group, in PLATFORM_IDS order. */
+export function groupCaptions(captions: DestinationCaption[]): CaptionGroup[] {
+  const groups: CaptionGroup[] = [];
+  for (const { platform, text } of captions) {
+    const group = groups.find((g) => g.text === text);
+    if (group) group.platforms.push(platform);
+    else groups.push({ platforms: [platform], text });
+  }
+  return groups;
 }
 
 export type PostSortDirection = 'asc' | 'desc';

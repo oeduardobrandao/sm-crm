@@ -41,11 +41,14 @@ import { usePostReferences } from '../../hooks/usePostReferences';
 import type { ReferenceItem } from '../../types/postReferences';
 import {
   deriveCaption,
+  destinationCaptions,
   getPostPublishState,
+  groupCaptions,
   getTipoLabel,
   hasDistinctPostText,
   isInProduction,
   pickPostCardKind,
+  resolvePostTargets,
   suggestionAwareCaption,
 } from '../../lib/postView';
 import { sanitizeExternalUrl } from '../../lib/security';
@@ -58,6 +61,7 @@ import { preloadRichText, RichTextContent } from '../RichTextContent';
 import { SharePostButton } from '../SharePostButton';
 import { StatusTag } from './StatusTag';
 import { PostMediaPane } from './PostMediaPane';
+import { PlatformCaptions, usePlatformNames } from './PlatformCaptions';
 import { MediaNoteComposer } from './mediaNotes/MediaNoteComposer';
 import { MediaNotesList } from './mediaNotes/MediaNotesList';
 import { InProductionNotice } from './InProductionNotice';
@@ -279,6 +283,7 @@ function PostDetailContent({
 }: ContentProps) {
   const { t, i18n } = useTranslation('hubPosts');
   const { t: tCard } = useTranslation('hubPostCard');
+  const platformNames = usePlatformNames();
   const dateLang = i18n.language === 'en' ? 'en-US' : 'pt-BR';
   const kind = pickPostCardKind(post);
   const isPending = post.status === 'enviado_cliente';
@@ -414,6 +419,28 @@ function PostDetailContent({
     ? post.conteudo_plain
     : (suggestion?.suggested_conteudo_plain ?? post.conteudo_plain);
   const textCaption = showOriginal ? post.ig_caption : (draftIgCaption ?? post.ig_caption);
+  // Each destination's caption. Null = keep the single Instagram-style block (Instagram-only
+  // post, or a payload too old to carry the other captions). The raw Instagram caption feeds
+  // TikTok when it has none of its own, and follows the pending suggestion like the IG block.
+  const captionTargets = resolvePostTargets(post);
+  const multiCaption =
+    captionTargets !== null && !(captionTargets.length === 1 && captionTargets[0] === 'instagram');
+  const igRawShown =
+    !showOriginal &&
+    edit.isEditable &&
+    suggestion?.suggested_ig_caption != null &&
+    suggestion.changed_fields?.includes('ig_caption')
+      ? suggestion.suggested_ig_caption
+      : post.ig_caption;
+  const mediaCaptionGroups = multiCaption
+    ? groupCaptions(destinationCaptions(post, captionTargets, caption, igRawShown))
+    : null;
+  const textCaptionGroups = multiCaption
+    ? groupCaptions(destinationCaptions(post, captionTargets, textCaption ?? '', textCaption))
+    : null;
+  const hasTextCaptions = textCaptionGroups
+    ? textCaptionGroups.some((g) => g.text !== '')
+    : Boolean(textCaption);
   // Media layouts show only the caption; the full text gets its own read-only tab. Computed
   // from the DISPLAYED version (bodyPlain/textCaption), not the original post: a pending
   // suggestion can add body text beyond its caption (no tab on the original post would give
@@ -658,7 +685,9 @@ function PostDetailContent({
       <p className="text-[13px] leading-snug hub-tx2">
         {typeLabel}
         {dot}
-        {getPlatformLabel(tCard, post.platform ?? 'instagram')}
+        {captionTargets
+          ? platformNames(captionTargets)
+          : getPlatformLabel(tCard, post.platform ?? 'instagram')}
       </p>
       {collaborators.length > 0 && (
         <div className="space-y-0.5">
@@ -699,6 +728,27 @@ function PostDetailContent({
         : null
     : null;
 
+  // A text post's caption, under its body. One destination keeps today's "Legenda do Instagram"
+  // block; several get the per-platform captions under a plain "Legenda" title.
+  const textCaptionSection = hasTextCaptions && (
+    <div className="border-t hub-border pt-3">
+      <p className="text-[12px] font-semibold uppercase tracking-[0.06em] hub-tx3 mb-1">
+        {textCaptionGroups
+          ? t('textCard.captionLabel', 'Legenda')
+          : t('textCard.instagramCaptionLabel', 'Legenda do Instagram')}
+      </p>
+      {textCaptionGroups ? (
+        <PlatformCaptions
+          key={post.id}
+          groups={textCaptionGroups}
+          textClassName="text-[13px] hub-tx2 leading-relaxed"
+        />
+      ) : (
+        <p className="text-[13px] hub-tx2 leading-relaxed whitespace-pre-wrap">{textCaption}</p>
+      )}
+    </div>
+  );
+
   const readingBody =
     kind === 'text' ? (
       <div className="space-y-4">
@@ -735,15 +785,14 @@ function PostDetailContent({
             {bodyPlain}
           </p>
         )}
-        {textCaption && (
-          <div className="border-t hub-border pt-3">
-            <p className="text-[12px] font-semibold uppercase tracking-[0.06em] hub-tx3 mb-1">
-              {t('textCard.instagramCaptionLabel', 'Legenda do Instagram')}
-            </p>
-            <p className="text-[13px] hub-tx2 leading-relaxed whitespace-pre-wrap">{textCaption}</p>
-          </div>
-        )}
+        {textCaptionSection}
       </div>
+    ) : mediaCaptionGroups ? (
+      <PlatformCaptions
+        key={post.id}
+        groups={mediaCaptionGroups}
+        textClassName="text-[14px] hub-txt leading-[1.55]"
+      />
     ) : (
       <p className="text-[14px] hub-txt leading-[1.55] whitespace-pre-wrap">{caption}</p>
     );
@@ -1017,16 +1066,7 @@ function PostDetailContent({
                       {bodyPlain}
                     </p>
                   )}
-                  {textCaption && (
-                    <div className="border-t hub-border pt-3">
-                      <p className="text-[12px] font-semibold uppercase tracking-[0.06em] hub-tx3 mb-1">
-                        {t('textCard.instagramCaptionLabel', 'Legenda do Instagram')}
-                      </p>
-                      <p className="text-[13px] hub-tx2 leading-relaxed whitespace-pre-wrap">
-                        {textCaption}
-                      </p>
-                    </div>
-                  )}
+                  {textCaptionSection}
                 </div>
               )}
               {showReferencesTab && referencesVisited && (

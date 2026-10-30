@@ -1,4 +1,4 @@
-import type { ContentFormat } from '@mesaas/platforms';
+import type { ContentFormat, PlatformId } from '@mesaas/platforms';
 export interface WorkspaceInfo {
   name: string;
   logo_url: string | null;
@@ -104,6 +104,14 @@ export interface HubPost {
   ig_caption: string | null;
   instagram_permalink: string | null;
   tiktok_post_url?: string | null;
+  /** Destinations (post_targets rows) in PLATFORM_IDS order. Absent on stale cached payloads
+   * and before the hub-posts deploy: derive from `platform` (see resolvePostTargets). */
+  targets?: PlatformId[];
+  /** Own TikTok caption. Null = TikTok publishes the Instagram caption. Absent on old payloads. */
+  tiktok_caption?: string | null;
+  /** Caption of the Geral destination (post_targets.caption). Null when the row has none or
+   * there is no Geral destination; absent (undefined) on old payloads. */
+  geral_caption?: string | null;
   published_at: string | null;
   publish_error: string | null;
   /** Set when the storage auto-clean removed this post's media after
