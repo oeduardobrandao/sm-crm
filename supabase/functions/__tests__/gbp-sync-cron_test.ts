@@ -215,14 +215,16 @@ Deno.test("gbp-sync-cron: 26 ineligible candidates ahead of an eligible one do n
   assert(ids.includes("paid"));
 });
 
-Deno.test("gbp-sync-cron: the batch is capped at GOOGLE_SYNC_BATCH_LIMIT eligible units", async () => {
+Deno.test("gbp-sync-cron: the batch is capped at GOOGLE_SYNC_BATCH_LIMIT and a deferred eligible unit is not stamped", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("gbp_locations", "select", { data: [unit("a", "ws"), unit("b", "ws"), unit("c", "ws")] });
+  db.queue("gbp_locations", "select", {
+    data: [unit("a", "ws"), unit("x", "ws-free"), unit("b", "ws"), unit("c", "ws")],
+  });
   queueQuietDuties(db);
   const synced: string[] = [];
   const { deps } = baseDeps(db, {
     batchLimit: 2,
-    effectivePlanFeature: allFlagsOn,
+    effectivePlanFeature: async (_svc, ws) => ws === "ws",
     syncLocation: async (_d, loc) => {
       synced.push(loc.id);
       return { status: "synced", backfill: false };
@@ -231,6 +233,10 @@ Deno.test("gbp-sync-cron: the batch is capped at GOOGLE_SYNC_BATCH_LIMIT eligibl
   const body = await (await runGbpSyncCron(deps)).json();
   assertEquals(synced, ["a", "b"]);
   assertEquals(body.total, 2);
+  // The batch and the ineligible candidate are stamped; "c" (eligible, deferred) keeps its place.
+  const stamps = db.calls.filter((c) => c.table === "gbp_locations" && c.operation === "update");
+  assertEquals(stamps.length, 1);
+  assertEquals(stamps[0].modifiers.find((m) => m.method === "in")!.args, ["id", ["a", "x", "b"]]);
 });
 
 Deno.test("gbp-sync-cron: concurrency is capped at 4", async () => {
@@ -421,16 +427,26 @@ Deno.test("gbp-sync-cron: a failing duty does not stop the others, and the failu
   db.queue("gbp_locations", "select", { data: [] });
   db.queueRpc("google_expire_units", { data: null, error: { message: "expire boom" } });
   db.queueRpc("google_orphan_subs", { data: ["sub-1", "sub-2"] });
-  db.queueRpc("google_release_sub", { data: null, error: { message: "lock timeout" } }, {
+  db.queueRpc("google_release_sub", { data: null, error: { message: "lock timeout on sub-1", code: "55P03" } }, {
     data: [{ should_revoke: true, revocation_id: "rev-2" }],
   });
+  const logged: string[] = [];
+  const originalError = console.error;
+  console.error = (...args: unknown[]) => {
+    logged.push(args.map(String).join(" "));
+  };
   const { deps, revocationCalls, decisions, reports } = baseDeps(db, {
     retryPendingRevocations: async (_svc, opts) => {
       revocationCalls.push(opts);
       throw new Error("revocations boom");
     },
   });
-  const res = await runGbpSyncCron(deps);
+  let res: Response;
+  try {
+    res = await runGbpSyncCron(deps);
+  } finally {
+    console.error = originalError;
+  }
   const body = await res.json();
   assertEquals(res.status, 200);
   assertEquals(revocationCalls.length, 1);
@@ -440,8 +456,14 @@ Deno.test("gbp-sync-cron: a failing duty does not stop the others, and the failu
   assertEquals(reports.length, 1);
   const errors = reports[0].detail.errors as Array<{ error: string }>;
   assertEquals(errors.length, 3);
-  // A sub is a Google account id: it never goes into the failure report.
+  // A sub is a Google account id: the raw database message (which may quote it) is neither
+  // logged nor reported; the generic line carries the error code.
   assert(!JSON.stringify(reports[0].detail).includes("sub-1"));
+  assert(!JSON.stringify(reports[0].detail).includes("lock timeout"));
+  assert(errors.some((e) => e.error === "google_release_sub failed (code 55P03)"));
+  const releaseLog = logged.find((l) => l.includes("orphan release failed"));
+  assertEquals(releaseLog, "[gbp-sync-cron] orphan release failed: google_release_sub failed (code 55P03)");
+  assert(!logged.some((l) => l.includes("sub-1")));
 });
 
 Deno.test("gbp-sync-cron: revocations that failed or gave up are reported", async () => {

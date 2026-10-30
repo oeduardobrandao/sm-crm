@@ -138,6 +138,8 @@ function deps(db: Db, api: GbpSyncDeps["api"], overrides: Partial<GbpSyncDeps> =
 const writeOps = new Set(["insert", "update", "upsert", "delete"]);
 const writes = (db: Db) => db.calls.filter((c) => writeOps.has(c.operation));
 const upsertsOf = (db: Db, table: string) => db.calls.filter((c) => c.table === table && c.operation === "upsert");
+const insertsOf = (db: Db, table: string) => db.calls.filter((c) => c.table === table && c.operation === "insert");
+const deletesOf = (db: Db, table: string) => db.calls.filter((c) => c.table === table && c.operation === "delete");
 const locationUpdates = (db: Db) => db.calls.filter((c) => c.table === "gbp_locations" && c.operation === "update");
 const eqArg = (call: QueryCall, column: string) => call.modifiers.find((m) => m.method === "eq" && m.args[0] === column)?.args[1];
 
@@ -329,13 +331,39 @@ Deno.test("gbp-sync: keywords refresh the last 2 closed months with one single-m
   });
   assertEquals(months, ["2026-9", "2026-8"]);
 
-  const kw = upsertsOf(db, "gbp_search_keywords_monthly");
-  assertEquals(kw.length, 1, "an empty month writes nothing");
+  // Each fetched month replaces its stored rows: delete, then insert (an empty month only deletes).
+  const deletes = deletesOf(db, "gbp_search_keywords_monthly");
+  assertEquals(deletes.map((c) => eqArg(c, "month")), ["2026-09-01", "2026-08-01"]);
+  for (const del of deletes) {
+    assertEquals(eqArg(del, "conta_id"), "ws-A");
+    assertEquals(eqArg(del, "location_name"), "locations/9");
+  }
+  const kw = insertsOf(db, "gbp_search_keywords_monthly");
+  assertEquals(kw.length, 1);
   assertEquals(kw[0].payload, [
     { conta_id: "ws-A", location_name: "locations/9", month: "2026-09-01", keyword: "padaria", value: 120, threshold: null },
     { conta_id: "ws-A", location_name: "locations/9", month: "2026-09-01", keyword: "pão de queijo", value: null, threshold: 15 },
   ]);
-  assertEquals(kw[0].options, { onConflict: "conta_id,location_name,month,keyword" });
+  const septDelete = db.calls.indexOf(deletes[0]);
+  assert(septDelete < db.calls.indexOf(kw[0]), "the month's delete precedes its insert");
+  const guardBefore = db.calls.slice(0, septDelete).filter((c) => c.table === "gbp_locations" && c.operation === "update");
+  assertEquals((guardBefore[guardBefore.length - 1].payload as Record<string, unknown>).updated_at, NOW.toISOString());
+});
+
+Deno.test("gbp-sync: a 400 on a refresh keyword month is skipped and the next month still runs", async () => {
+  const db = createSupabaseQueryMock();
+  activeGuards(db);
+  const { api } = fakeApi({
+    fetchMonthlyKeywords: async (_t, _l, month) => {
+      if (month === "2026-09") throw new GoogleApiError("UPSTREAM", 400, "bad month", false);
+      return [{ month, keyword: "padaria", value: 2 }];
+    },
+  });
+  const out = await syncGbpLocation(deps(db, api).deps, location(), { now: NOW });
+  assertEquals(out.status, "synced");
+  const deletes = deletesOf(db, "gbp_search_keywords_monthly");
+  assertEquals(deletes.map((c) => eqArg(c, "month")), ["2026-08-01"], "the rejected month keeps its rows");
+  assertEquals(insertsOf(db, "gbp_search_keywords_monthly").length, 1);
 });
 
 Deno.test("gbp-sync: a backfill stops the keyword months at the first 400 and keeps going", async () => {
@@ -355,7 +383,7 @@ Deno.test("gbp-sync: a backfill stops the keyword months at the first 400 and ke
   assertEquals(out.status, "synced");
   assertEquals(asked[asked.length - 1], "2025-06");
   assertEquals(asked.length, 16);
-  assertEquals(upsertsOf(db, "gbp_search_keywords_monthly").length, 15);
+  assertEquals(insertsOf(db, "gbp_search_keywords_monthly").length, 15);
   assertEquals(log.location, 1, "the later steps still run");
   // The backfill watermark lands only after the keyword months are stored.
   const lastKeyword = db.calls.findLastIndex((c) => c.table === "gbp_search_keywords_monthly");
@@ -391,7 +419,7 @@ Deno.test("gbp-sync: a backfill whose keyword step fails leaves data_through nul
     // Metric rows and the first keyword months are stored (idempotent upserts) ...
     const metricRows = upsertsOf(db, "gbp_metrics_daily").flatMap((c) => c.payload as Array<Record<string, unknown>>);
     assertEquals(metricRows[metricRows.length - 1].day, "2026-10-25");
-    assertEquals(upsertsOf(db, "gbp_search_keywords_monthly").length, 2);
+    assertEquals(insertsOf(db, "gbp_search_keywords_monthly").length, 2);
     // ... but the watermark is not, so data_through stays null.
     assert(
       !locationUpdates(db).some((c) => "data_through" in (c.payload as Record<string, unknown>)),
@@ -402,34 +430,24 @@ Deno.test("gbp-sync: a backfill whose keyword step fails leaves data_through nul
 
 // ── Step 3: reviews ─────────────────────────────────────────────────────────────
 
-Deno.test("gbp-sync: the review walk stops at a known review whose update_time is unchanged", async () => {
+Deno.test("gbp-sync: reviews Google no longer returns are deleted; every returned one is upserted (§4.6)", async () => {
   const db = createSupabaseQueryMock();
   activeGuards(db);
-  db.queue("gbp_reviews", "select", {
-    data: [
-      { review_id: "r-edited", update_time: "2026-10-01T10:00:00+00:00" },
-      { review_id: "r-known", update_time: "2026-09-01T10:00:00+00:00" },
-    ],
-  });
+  // Stored after the upsert: the two returned ids plus one Google no longer returns.
+  db.queue("gbp_reviews", "select", { data: [{ review_id: "r-kept" }, { review_id: "r-new" }, { review_id: "r-gone" }] });
   const { api, log } = fakeApi({
     listReviews: async (_t, account, loc, opts = {}) => {
       log.reviews.push({ account, location: loc, pageToken: opts.pageToken });
-      return page(
-        [
-          review("r-new", "2026-10-28T10:00:00.123Z"),
-          review("r-edited", "2026-10-27T10:00:00Z"),
-          review("r-known", "2026-09-01T10:00:00Z"),
-          review("r-older", "2026-08-01T10:00:00Z"),
-        ],
-        { nextPageToken: "page-2" },
-      );
+      return page([review("r-new", "2026-10-28T10:00:00.123Z"), review("r-kept", "2026-09-01T10:00:00Z", { hasReply: true })]);
     },
   });
   await syncGbpLocation(deps(db, api).deps, location(), { now: NOW });
 
   assertEquals(log.reviews, [{ account: "accounts/1", location: "locations/9", pageToken: undefined }]);
   const upserted = upsertsOf(db, "gbp_reviews")[0].payload as Array<Record<string, unknown>>;
-  assertEquals(upserted.map((r) => r.review_id), ["r-new", "r-edited"]);
+  // No early stop: an unchanged stored review is upserted again (a new reply refreshes has_reply).
+  assertEquals(upserted.map((r) => r.review_id), ["r-new", "r-kept"]);
+  assertEquals(upserted[1].has_reply, true);
   assertEquals(upserted[0], {
     conta_id: "ws-A",
     location_name: "locations/9",
@@ -442,15 +460,20 @@ Deno.test("gbp-sync: the review walk stops at a known review whose update_time i
     has_reply: false,
   });
   assertEquals(upsertsOf(db, "gbp_reviews")[0].options, { onConflict: "conta_id,location_name,review_id" });
+
+  const [del] = deletesOf(db, "gbp_reviews");
+  assertEquals(eqArg(del, "conta_id"), "ws-A");
+  assertEquals(eqArg(del, "location_name"), "locations/9");
+  assertEquals(del.modifiers.find((m) => m.method === "in")!.args, ["review_id", ["r-gone"]]);
+  assert(db.calls.indexOf(upsertsOf(db, "gbp_reviews")[0]) < db.calls.indexOf(del), "upsert before delete");
 });
 
-Deno.test("gbp-sync: the review walk follows nextPageToken until a known review appears", async () => {
+Deno.test("gbp-sync: the review walk follows nextPageToken to the end", async () => {
   const db = createSupabaseQueryMock();
   activeGuards(db);
-  db.queue("gbp_reviews", "select", { data: [{ review_id: "r-known", update_time: "2026-09-01T10:00:00Z" }] });
   const pages = [
     page([review("r-1", "2026-10-28T10:00:00Z")], { nextPageToken: "p2" }),
-    page([review("r-2", "2026-10-20T10:00:00Z"), review("r-known", "2026-09-01T10:00:00Z")], { nextPageToken: "p3" }),
+    page([review("r-2", "2026-10-20T10:00:00Z"), review("r-3", "2026-09-01T10:00:00Z")]),
   ];
   const { api, log } = fakeApi({
     listReviews: async (_t, account, loc, opts = {}) => {
@@ -462,44 +485,72 @@ Deno.test("gbp-sync: the review walk follows nextPageToken until a known review 
 
   assertEquals(log.reviews.map((r) => r.pageToken), [undefined, "p2"]);
   const upserted = upsertsOf(db, "gbp_reviews")[0].payload as Array<Record<string, unknown>>;
-  assertEquals(upserted.map((r) => r.review_id), ["r-1", "r-2"]);
+  assertEquals(upserted.map((r) => r.review_id), ["r-1", "r-2", "r-3"]);
 });
 
-Deno.test("gbp-sync: rows beyond the newest 200 reviews are pruned", async () => {
+Deno.test("gbp-sync: the walk stops at 200 reviews (4 pages) and deletes every stored review past them", async () => {
   const db = createSupabaseQueryMock();
   activeGuards(db);
-  // 200 stored reviews, r-000 newest … r-199 oldest.
-  const stored = Array.from({ length: 200 }, (_, i) => ({
-    review_id: `r-${String(i).padStart(3, "0")}`,
-    update_time: new Date(Date.UTC(2026, 8, 1) - i * 3600_000).toISOString(),
-  }));
-  db.queue("gbp_reviews", "select", { data: stored });
+  const returned = Array.from({ length: 250 }, (_, i) => review(`n-${i}`, new Date(Date.UTC(2026, 9, 28) - i * 3600_000).toISOString()));
+  let calls = 0;
   const { api } = fakeApi({
-    listReviews: async () =>
-      page([
-        review("n-1", "2026-10-28T10:00:00Z"),
-        review("n-2", "2026-10-27T10:00:00Z"),
-        review("n-3", "2026-10-26T10:00:00Z"),
-        review("r-000", stored[0].update_time),
-      ]),
+    listReviews: async () => {
+      const from = calls++ * 50;
+      return page(returned.slice(from, from + 50), { nextPageToken: `p${calls + 1}` });
+    },
+  });
+  // Stored: the newest 200 plus three older ones.
+  db.queue("gbp_reviews", "select", {
+    data: [...returned.slice(0, 200), review("old-1", "2026-01-01T00:00:00Z"), review("old-2", "2026-01-01T00:00:00Z"), returned[230]]
+      .map((r) => ({ review_id: r.reviewId })),
   });
   await syncGbpLocation(deps(db, api).deps, location(), { now: NOW });
 
-  const prune = db.calls.find((c) => c.table === "gbp_reviews" && c.operation === "delete");
-  assert(prune, "expected a prune delete");
-  assertEquals(eqArg(prune!, "conta_id"), "ws-A");
-  assertEquals(eqArg(prune!, "location_name"), "locations/9");
-  const inMod = prune!.modifiers.find((m) => m.method === "in");
-  assertEquals(inMod!.args, ["review_id", ["r-197", "r-198", "r-199"]]);
+  assertEquals(calls, 4);
+  assertEquals((upsertsOf(db, "gbp_reviews")[0].payload as unknown[]).length, 200);
+  const [del] = deletesOf(db, "gbp_reviews");
+  assertEquals(del.modifiers.find((m) => m.method === "in")!.args, ["review_id", ["old-1", "old-2", "n-230"]]);
 });
 
-Deno.test("gbp-sync: no prune when 200 or fewer reviews are stored", async () => {
+Deno.test("gbp-sync: nothing is deleted when every stored review is returned", async () => {
   const db = createSupabaseQueryMock();
   activeGuards(db);
-  db.queue("gbp_reviews", "select", { data: [] });
+  db.queue("gbp_reviews", "select", { data: [{ review_id: "n-1" }] });
   const { api } = fakeApi({ listReviews: async () => page([review("n-1", "2026-10-28T10:00:00Z")]) });
   await syncGbpLocation(deps(db, api).deps, location(), { now: NOW });
-  assertEquals(db.calls.filter((c) => c.table === "gbp_reviews" && c.operation === "delete").length, 0);
+  assertEquals(deletesOf(db, "gbp_reviews").length, 0);
+});
+
+Deno.test("gbp-sync: a walk cut by the page cap deletes nothing", async () => {
+  const db = createSupabaseQueryMock();
+  activeGuards(db);
+  let n = 0;
+  const { api } = fakeApi({
+    // One review per page and always another page: the walk ends on the cap, not naturally.
+    listReviews: async () => page([review(`r-${n}`, "2026-10-28T10:00:00Z")], { nextPageToken: `p${++n}` }),
+  });
+  const out = await syncGbpLocation(deps(db, api).deps, location(), { now: NOW });
+  assertEquals(out.status, "synced");
+  assertEquals(n, 10);
+  assertEquals((upsertsOf(db, "gbp_reviews")[0].payload as unknown[]).length, 10);
+  assertEquals(db.calls.filter((c) => c.table === "gbp_reviews" && c.operation !== "upsert").length, 0);
+});
+
+Deno.test("gbp-sync: a location with no reviews stores total 0 and a null average", async () => {
+  const db = createSupabaseQueryMock();
+  activeGuards(db);
+  const { api } = fakeApi({ listReviews: async () => page([], { averageRating: null, totalReviewCount: null }) });
+  await syncGbpLocation(deps(db, api).deps, location(), { now: NOW });
+
+  const cache = locationUpdates(db).find((c) => "total_review_count" in (c.payload as Record<string, unknown>));
+  assertEquals(cache!.payload, { average_rating: null, total_review_count: 0 });
+  assertEquals(upsertsOf(db, "gbp_rating_daily")[0].payload, {
+    conta_id: "ws-A",
+    location_name: "locations/9",
+    day: "2026-10-30",
+    average_rating: null,
+    total_review_count: 0,
+  });
 });
 
 Deno.test("gbp-sync: today's rating row and the cached totals come from the reviews response", async () => {
@@ -666,8 +717,8 @@ Deno.test("gbp-sync: a unit revoked mid-run (guard matches 0 rows) stops with re
 
 Deno.test("gbp-sync: a guard that matches 0 rows before the review write stops the run", async () => {
   const db = createSupabaseQueryMock();
-  // Step 1: guard + data_through; step 2: no keyword rows; step 3: the cache guard misses.
-  db.queue("gbp_locations", "update", { data: [{ id: "loc-1" }] }, { data: [{ id: "loc-1" }] }, { data: [] });
+  // Step 1: guard + data_through; step 2: one guard per keyword month; step 3: the cache guard misses.
+  db.queue("gbp_locations", "update", ...Array.from({ length: 4 }, () => ({ data: [{ id: "loc-1" }] })), { data: [] });
   const { api } = fakeApi({
     listReviews: async () => page([review("n-1", "2026-10-28T10:00:00Z")]),
     getLocation: async () => {
@@ -703,7 +754,7 @@ Deno.test("gbp-sync: every gbp_* history read, write and delete carries the loca
     assert(tables.has(t), `expected a ${t} call`);
   }
   for (const call of history) {
-    if (call.operation === "upsert") {
+    if (call.operation === "upsert" || call.operation === "insert") {
       const rows = Array.isArray(call.payload) ? call.payload : [call.payload];
       for (const row of rows as Array<Record<string, unknown>>) {
         assertEquals(row.conta_id, "ws-B", `${call.table} upsert row`);

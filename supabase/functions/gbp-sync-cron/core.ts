@@ -9,8 +9,11 @@
 //    instagram-sync-cron/select.ts: ineligible units cluster at the head of that order, so one
 //    fixed window would starve the eligible ones). Eligible = the workspace has
 //    feature_google_business AND feature_auto_sync_cron (one lookup pair per workspace) and is
-//    not internal. Every candidate examined is stamped with last_sync_attempt_at BEFORE any
-//    work, so a unit that kills the run rotates to the back. Units run through runPool with at
+//    not internal. The selected batch and every INELIGIBLE candidate examined are stamped with
+//    last_sync_attempt_at BEFORE any work, so a unit that kills the run, or one that can never
+//    sync, rotates to the back. Eligible candidates deferred by the batch cap keep their place:
+//    stamping them too would send them behind the batch again every run and, once eligible
+//    units outnumber the scan, starve the same ones forever. Units run through runPool with at
 //    most 4 in flight (4 locations x ~4 calls stays far under the 300 QPM per API). The pool
 //    callback swallows its own errors (runPool stops taking work after the first throw). Once a
 //    connection's token comes back REVOKED, its other units are skipped without another call.
@@ -155,15 +158,19 @@ async function runBatch(deps: GbpSyncCronDeps, now: Date, counts: Counts, errors
   }
   if (candidates.length === 0) return 0;
 
-  // Stamp EVERY candidate examined (P1), eligible or not, before any work: a unit that kills
-  // the run, or one that can never sync, rotates to the back instead of pinning the head.
-  for (let i = 0; i < candidates.length; i += STAMP_CHUNK) {
-    const ids = candidates.slice(i, i + STAMP_CHUNK).map((c) => c.id);
+  const batch = candidates.filter((c) => isEligible(c, allowedWorkspaces, internal)).slice(0, batchLimit);
+  const batchIds = new Set(batch.map((c) => c.id));
+
+  // Stamp the batch and the ineligible candidates before any work (deferred eligible ones keep
+  // their queue position; see the header).
+  const stampIds = candidates
+    .filter((c) => batchIds.has(c.id) || !isEligible(c, allowedWorkspaces, internal))
+    .map((c) => c.id);
+  for (let i = 0; i < stampIds.length; i += STAMP_CHUNK) {
+    const ids = stampIds.slice(i, i + STAMP_CHUNK);
     const { error } = await svc.from("gbp_locations").update({ last_sync_attempt_at: now.toISOString() }).in("id", ids);
     if (error) console.error(`[${CRON_NAME}] failed to stamp last_sync_attempt_at: ${messageOf(error)}`);
   }
-
-  const batch = candidates.filter((c) => isEligible(c, allowedWorkspaces, internal)).slice(0, batchLimit);
   console.log(`[${CRON_NAME}] syncing ${batch.length} of ${candidates.length} candidate(s) over ${pages} page(s)`);
 
   const revokedConnections = new Set<string>();
@@ -259,16 +266,20 @@ async function releaseOrphanSubs(deps: GbpSyncCronDeps, errors: CronFailureError
     return 0;
   }
 
-  // One sub per call: google_release_sub takes that sub's lock in its own transaction.
+  // One sub per call: google_release_sub takes that sub's lock in its own transaction. A raw
+  // database message may quote its arguments (the sub, a Google account id), so failures are
+  // logged and reported as a generic line plus the error code only.
   for (const sub of subs) {
     try {
       const { data, error } = await deps.svc.rpc("google_release_sub", { p_sub: sub });
-      if (error) throw new Error(`google_release_sub failed: ${messageOf(error)}`);
+      if (error) throw error;
       await processDecision(deps.svc, data);
       released++;
     } catch (err) {
-      console.error(`[${CRON_NAME}] orphan release failed: ${messageOf(err)}`);
-      errors.push({ accountId: "orphan-release", error: messageOf(err) });
+      const code = (err as { code?: unknown } | null)?.code;
+      const line = `google_release_sub failed${typeof code === "string" && code ? ` (code ${code})` : ""}`;
+      console.error(`[${CRON_NAME}] orphan release failed: ${line}`);
+      errors.push({ accountId: "orphan-release", error: line });
     }
   }
   return released;

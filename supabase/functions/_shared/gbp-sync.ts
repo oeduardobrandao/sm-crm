@@ -8,13 +8,18 @@
 //      Every day of the window up to it is written (0 for days Google omitted); later days never
 //      are.
 //   2. Search keywords, one single-month call per closed month (2, or 18 on a backfill: over a
-//      multi-month range Google sums the months into one number). On a backfill the new
+//      multi-month range Google sums the months into one number). Each fetched month replaces
+//      its stored rows (delete, then insert), so a keyword that disappeared does not linger. A
+//      400 skips the month on a refresh and ends the walk on a backfill. On a backfill the new
 //      data_through is persisted only after this step completes: the backfill is keyed on
 //      data_through IS NULL, so a run that dies before the 18 months are stored backfills again
 //      next hour (the metric rows already written are idempotent upserts).
-//   3. Reviews, newest first, until a known review with an unchanged update_time or 200 rows;
-//      rows beyond the newest 200 are pruned. Today's gbp_rating_daily and the cached totals on
-//      the location come from the same response.
+//   3. Reviews: every run walks newest first up to 200 (4 pages), upserts all of them (so
+//      replies and edits refresh) and, once the walk completed, deletes the location's stored
+//      reviews that Google no longer returns. Reviews are non-analytics API data that must be
+//      refreshed or deleted within 30 days (spec §4.6), so nothing older than the returned set
+//      is kept. Today's gbp_rating_daily and the cached totals come from the same response; no
+//      totals at all means no reviews (total 0, average null).
 //   4. Location refresh (title, voice of merchant, Maps link) together with last_synced_at.
 //
 // Write guard (plan "Shared sync semantics"): every write first runs a guarded
@@ -92,7 +97,7 @@ const WATERMARK_LAG_DAYS = 2;
 const KEYWORD_MONTHS = 2;
 const BACKFILL_KEYWORD_MONTHS = 18;
 const MAX_REVIEWS = 200;
-/** Guard against a pagination loop from a misbehaving upstream (200 rows = 4 pages of 50). */
+/** 200 rows = 4 pages of 50; the cap guards against a pagination loop from the upstream. */
 const MAX_REVIEW_PAGES = 10;
 const RATE_LIMIT_BACKOFF_MS = [1000, 2000, 4000];
 const UPSERT_CHUNK = 500;
@@ -250,50 +255,55 @@ class LocationSync {
         const m = month;
         rows = await withRetry(this.deps, () => this.deps.api.fetchMonthlyKeywords(token, this.loc.location_name, m));
       } catch (err) {
-        // Older months than the API serves: the remaining ones are older still.
-        if (this.backfill && isRangeRejected(err)) {
+        if (!isRangeRejected(err)) throw err;
+        if (this.backfill) {
+          // Older months than the API serves: the remaining ones are older still.
           console.warn(`[gbp-sync] location ${this.loc.id}: keywords not served from ${month} back`);
           break;
         }
-        throw err;
+        console.warn(`[gbp-sync] location ${this.loc.id}: keywords for ${month} rejected (400), skipped`);
+        continue;
       }
-      if (rows.length === 0) continue;
-      await this.guard({ updated_at: this.nowIso });
-      await this.upsert(
-        "gbp_search_keywords_monthly",
-        rows.map((r) => ({
+      await this.replaceKeywordMonth(month, rows);
+    }
+  }
+
+  /** Delete-then-insert of one month's keywords, behind the guard. */
+  private async replaceKeywordMonth(month: string, rows: GbpKeywordRow[]): Promise<void> {
+    const monthDate = `${month}-01`;
+    await this.guard({ updated_at: this.nowIso });
+    const { error: delError } = await this.deps.svc
+      .from("gbp_search_keywords_monthly")
+      .delete()
+      .eq("conta_id", this.loc.conta_id)
+      .eq("location_name", this.loc.location_name)
+      .eq("month", monthDate);
+    if (delError) throw new Error(`gbp-sync: gbp_search_keywords_monthly delete failed: ${delError.message}`);
+
+    const byKeyword = new Map<string, GbpKeywordRow>();
+    for (const r of rows) if (!byKeyword.has(r.keyword)) byKeyword.set(r.keyword, r);
+    for (const part of chunk([...byKeyword.values()], UPSERT_CHUNK)) {
+      const { error } = await this.deps.svc.from("gbp_search_keywords_monthly").insert(
+        part.map((r) => ({
           conta_id: this.loc.conta_id,
           location_name: this.loc.location_name,
-          month: `${month}-01`,
+          month: monthDate,
           keyword: r.keyword,
-          // Both keys always: an upsert only touches the keys it sends, and a keyword moving
-          // from threshold to value would otherwise break the exactly-one CHECK.
           value: r.value ?? null,
           threshold: r.threshold ?? null,
         })),
-        "conta_id,location_name,month,keyword",
       );
+      if (error) throw new Error(`gbp-sync: gbp_search_keywords_monthly insert failed: ${error.message}`);
     }
   }
 
   private async syncReviews(token: string): Promise<void> {
-    const { data: knownRows, error: knownError } = await this.deps.svc
-      .from("gbp_reviews")
-      .select("review_id, update_time")
-      .eq("conta_id", this.loc.conta_id)
-      .eq("location_name", this.loc.location_name)
-      .order("update_time", { ascending: false })
-      .limit(1000);
-    if (knownError) throw new Error(`gbp-sync: gbp_reviews read failed: ${knownError.message}`);
-    const known = new Map<string, number>();
-    for (const row of (knownRows ?? []) as Array<{ review_id: string; update_time: string }>) {
-      known.set(row.review_id, Date.parse(row.update_time));
-    }
-
     const collected = new Map<string, GbpReview>();
     let averageRating: number | null = null;
     let totalReviewCount: number | null = null;
     let pageToken: string | undefined;
+    // Only a walk that reached its natural end (no next page, or 200 rows) may delete.
+    let complete = false;
     walk: for (let page = 0; page < MAX_REVIEW_PAGES; page++) {
       const opts = pageToken ? { pageToken } : {};
       const result = await withRetry(
@@ -305,19 +315,23 @@ class LocationSync {
         totalReviewCount = result.totalReviewCount;
       }
       for (const review of result.reviews) {
-        if (known.get(review.reviewId) === Date.parse(review.updateTime)) break walk;
         if (!collected.has(review.reviewId)) collected.set(review.reviewId, review);
-        if (collected.size >= MAX_REVIEWS) break walk;
+        if (collected.size >= MAX_REVIEWS) {
+          complete = true;
+          break walk;
+        }
       }
-      if (!result.nextPageToken) break;
+      if (!result.nextPageToken) {
+        complete = true;
+        break;
+      }
       pageToken = result.nextPageToken;
     }
 
-    const hasTotals = averageRating !== null || totalReviewCount !== null;
+    // No totals at all on a successful response: the location has no reviews.
+    if (averageRating === null && totalReviewCount === null) totalReviewCount = 0;
     const rating = roundRating(averageRating);
-    await this.guard(
-      hasTotals ? { average_rating: rating, total_review_count: totalReviewCount } : { updated_at: this.nowIso },
-    );
+    await this.guard({ average_rating: rating, total_review_count: totalReviewCount });
 
     if (collected.size > 0) {
       await this.upsert(
@@ -337,32 +351,38 @@ class LocationSync {
       );
     }
 
-    if (hasTotals) {
-      const { error } = await this.deps.svc.from("gbp_rating_daily").upsert({
-        conta_id: this.loc.conta_id,
-        location_name: this.loc.location_name,
-        day: this.today,
-        average_rating: rating,
-        total_review_count: totalReviewCount,
-      }, { onConflict: "conta_id,location_name,day" });
-      if (error) throw new Error(`gbp-sync: gbp_rating_daily upsert failed: ${error.message}`);
-    }
+    const { error: ratingError } = await this.deps.svc.from("gbp_rating_daily").upsert({
+      conta_id: this.loc.conta_id,
+      location_name: this.loc.location_name,
+      day: this.today,
+      average_rating: rating,
+      total_review_count: totalReviewCount,
+    }, { onConflict: "conta_id,location_name,day" });
+    if (ratingError) throw new Error(`gbp-sync: gbp_rating_daily upsert failed: ${ratingError.message}`);
 
-    // Keep the newest 200 (by update time, the order the walk reads in).
-    const merged = new Map(known);
-    for (const r of collected.values()) merged.set(r.reviewId, Date.parse(r.updateTime));
-    const stale = [...merged.entries()]
-      .sort((a, b) => (b[1] - a[1]) || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
-      .slice(MAX_REVIEWS)
-      .map(([id]) => id);
-    for (const ids of chunk(stale, UPSERT_CHUNK)) {
+    if (!complete) {
+      console.warn(`[gbp-sync] location ${this.loc.id}: review walk hit the page cap, nothing deleted`);
+      return;
+    }
+    // Delete what Google no longer returns (deleted reviews, and everything past the newest 200).
+    const { data: storedRows, error: storedError } = await this.deps.svc
+      .from("gbp_reviews")
+      .select("review_id")
+      .eq("conta_id", this.loc.conta_id)
+      .eq("location_name", this.loc.location_name)
+      .limit(1000);
+    if (storedError) throw new Error(`gbp-sync: gbp_reviews read failed: ${storedError.message}`);
+    const gone = ((storedRows ?? []) as Array<{ review_id: string }>)
+      .map((r) => r.review_id)
+      .filter((id) => !collected.has(id));
+    for (const ids of chunk(gone, UPSERT_CHUNK)) {
       const { error } = await this.deps.svc
         .from("gbp_reviews")
         .delete()
         .eq("conta_id", this.loc.conta_id)
         .eq("location_name", this.loc.location_name)
         .in("review_id", ids);
-      if (error) throw new Error(`gbp-sync: gbp_reviews prune failed: ${error.message}`);
+      if (error) throw new Error(`gbp-sync: gbp_reviews delete failed: ${error.message}`);
     }
   }
 
