@@ -9,6 +9,7 @@ type CapacityKey =
 
 type FeatureKey =
   | 'feature_post_scheduling'
+  | 'feature_tiktok'
   | 'feature_leads'
   | 'feature_financial'
   | 'feature_contracts'
@@ -44,6 +45,7 @@ const ZERO_IS_NOT_INCLUDED: ReadonlySet<CapacityKey> = new Set([
 
 const FEATURE_ROWS: ReadonlyArray<{ key: FeatureKey; label: string }> = [
   { key: 'feature_post_scheduling', label: 'Agendamento de posts' },
+  { key: 'feature_tiktok', label: 'TikTok' },
   { key: 'feature_leads', label: 'Leads' },
   { key: 'feature_financial', label: 'Financeiro' },
   { key: 'feature_contracts', label: 'Contratos' },

@@ -34,6 +34,7 @@ vi.mock('@/context/AuthContext', () => ({
 const PAID_FEATURES = {
   feature_analytics_reports: true,
   feature_post_scheduling: true,
+  feature_tiktok: true,
   feature_leads: true,
   feature_financial: true,
   feature_contracts: true,
@@ -59,6 +60,7 @@ const PRICING_PLANS: PublicPricingPlan[] = [
     storage_quota_bytes: 100 * 1024 ** 2,
     feature_analytics_reports: false,
     feature_post_scheduling: false,
+    feature_tiktok: false,
     feature_leads: false,
     feature_financial: false,
     feature_contracts: false,

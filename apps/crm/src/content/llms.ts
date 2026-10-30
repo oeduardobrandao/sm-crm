@@ -28,7 +28,7 @@ export function buildLlmsTxt(routes: RouteMeta[], posts: BlogPost[] = []): strin
   return [
     '# Mesaas',
     '',
-    '> CRM para agências e gestores de social media no Brasil: gestão de clientes e contratos, kanban de entregas, calendário editorial, aprovação de posts pelo cliente via link (sem login), agendamento e publicação automática no Instagram pela API oficial do Meta, relatórios de métricas, financeiro e um agente de conteúdo com IA conectado via MCP (Model Context Protocol).',
+    '> CRM para agências e gestores de social media no Brasil: gestão de clientes e contratos, kanban de entregas, calendário editorial, aprovação de posts pelo cliente via link (sem login), agendamento e publicação automática no Instagram e no TikTok pelas APIs oficiais do Meta e do TikTok, relatórios de métricas, financeiro e um agente de conteúdo com IA conectado via MCP (Model Context Protocol).',
     '',
     'O produto é 100% web, em português (pt-BR). Plano Free disponível — sem cartão de crédito.',
     '',

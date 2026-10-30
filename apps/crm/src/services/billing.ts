@@ -48,6 +48,7 @@ export interface PublicPricingPlan {
   storage_quota_bytes: number | null;
   feature_analytics_reports: boolean;
   feature_post_scheduling: boolean;
+  feature_tiktok: boolean;
   feature_leads: boolean;
   feature_financial: boolean;
   feature_contracts: boolean;
@@ -135,7 +136,7 @@ export async function listPublicPricingPlans(): Promise<PublicPricingPlan[]> {
   const { data, error } = await supabase
     .from('plans')
     .select(
-      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, max_workflow_templates, max_instagram_accounts, max_hub_tokens, rate_report_generations_per_month, storage_quota_bytes, feature_analytics_reports, feature_post_scheduling, feature_leads, feature_financial, feature_contracts, feature_brand_customization, feature_mcp, feature_instagram_automation, feature_briefing_audio, pagarme_12x_enabled, pagarme_installment_cents',
+      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, max_workflow_templates, max_instagram_accounts, max_hub_tokens, rate_report_generations_per_month, storage_quota_bytes, feature_analytics_reports, feature_post_scheduling, feature_tiktok, feature_leads, feature_financial, feature_contracts, feature_brand_customization, feature_mcp, feature_instagram_automation, feature_briefing_audio, pagarme_12x_enabled, pagarme_installment_cents',
     )
     .eq('is_active', true)
     .order('sort_order', { ascending: true });
