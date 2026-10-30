@@ -177,3 +177,25 @@ Deno.test("retryPendingRevocations: a list error returns zeros instead of throwi
     console.error = origError;
   }
 });
+
+Deno.test("retryPendingRevocations: gaveUp is counted and logged only when the attempts write succeeded", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue(
+    "google_revocations",
+    "select",
+    { data: [{ id: "c", attempts: 9 }] },
+    { data: await row("c", 9) },
+  );
+  db.queue("google_revocations", "update", { error: { message: "db down" } });
+  const errors: string[] = [];
+  const origError = console.error;
+  console.error = (...args: unknown[]) => void errors.push(args.join(" "));
+  let out;
+  try {
+    out = await retryPendingRevocations(db as never, { limit: 5, maxAttempts: 10, revoke: revokeStub(false).revoke });
+  } finally {
+    console.error = origError;
+  }
+  assertEquals(out, { revoked: 0, failed: 1, gaveUp: 0 });
+  assert(!errors.some((e) => e.includes("gave up")), "no give-up line while the bump is unsaved");
+});

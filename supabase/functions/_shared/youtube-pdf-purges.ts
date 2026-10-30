@@ -20,13 +20,26 @@ interface PurgeRow {
   attempts: number | null;
 }
 
-function isAlreadyMissing(message: string): boolean {
-  return /not.?found|does not exist|no such object|\b404\b/i.test(message);
+const STORAGE_TIMEOUT_MS = 10_000;
+
+/** Bounds a storage call that has no native abort: a hung promise never rejects on its own. */
+async function withTimeout<T>(p: PromiseLike<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      p,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }
 
 export async function drainYoutubePdfPurges(
   svc: DbClient,
-  opts: { storage: StorageLike; contaId?: string; limit: number; maxAttempts: number },
+  opts: { storage: StorageLike; contaId?: string; limit: number; maxAttempts: number; timeoutMs?: number },
 ): Promise<{ removed: number; failed: number; gaveUp: number }> {
   const out = { removed: 0, failed: 0, gaveUp: 0 };
 
@@ -51,8 +64,13 @@ export async function drainYoutubePdfPurges(
 
     let failure: string | null = null;
     try {
-      const { error: removeError } = await opts.storage.from(PDF_BUCKET).remove([row.storage_path]);
-      if (removeError && !isAlreadyMissing(removeError.message)) failure = removeError.message;
+      // storage-js reports an absent object as success (no error), so any error is a failure.
+      const { error: removeError } = await withTimeout(
+        opts.storage.from(PDF_BUCKET).remove([row.storage_path]),
+        opts.timeoutMs ?? STORAGE_TIMEOUT_MS,
+        "storage remove",
+      );
+      if (removeError) failure = removeError.message;
     } catch (err) {
       failure = (err as Error).message;
     }
@@ -78,7 +96,8 @@ export async function drainYoutubePdfPurges(
       .eq("id", row.id)
       .eq("conta_id", row.conta_id);
     if (updError) console.error(`[youtube-pdf-purges] purge ${row.id} update failed: ${updError.message}`);
-    if (attempts + 1 >= opts.maxAttempts) {
+    // Count/log the give-up only when the bump was persisted (else the row is retried and re-reported).
+    if (!updError && attempts + 1 >= opts.maxAttempts) {
       out.gaveUp += 1;
       console.error(`[youtube-pdf-purges] purge ${row.id} gave up after ${attempts + 1} attempts: ${failure}`);
     } else {

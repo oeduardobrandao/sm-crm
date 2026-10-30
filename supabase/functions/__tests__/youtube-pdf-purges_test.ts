@@ -60,15 +60,59 @@ Deno.test("drainYoutubePdfPurges: filters the listing by conta_id when one is gi
   assertEquals(all.calls[0].modifiers.filter((m) => m.args[0] === "conta_id").length, 0);
 });
 
-Deno.test("drainYoutubePdfPurges: an already-missing object counts as success", async () => {
+Deno.test("drainYoutubePdfPurges: an absent object (remove resolves with no error and empty data) counts as success", async () => {
   const db = createSupabaseQueryMock();
   db.queue("youtube_pdf_purges", "select", {
     data: [{ id: "p1", conta_id: "c1", client_id: 7, storage_path: "gone.pdf", attempts: 4 }],
   });
-  const { storage } = storageStub(() => ({ error: { message: "Object not found" } }));
+  const storage: StorageLike = {
+    from: () => ({ remove: () => Promise.resolve({ data: [], error: null } as never) }),
+  };
   const out = await drainYoutubePdfPurges(db as never, { storage, limit: 10, maxAttempts: 10 });
   assertEquals(out, { removed: 1, failed: 0, gaveUp: 0 });
   assertEquals(db.calls.filter((c) => c.operation === "delete").length, 1);
+});
+
+Deno.test("drainYoutubePdfPurges: any storage error is a failure, even one that reads like not found (Bucket not found, gateway 404)", async () => {
+  for (const message of ["Bucket not found", "<html>404 Not Found</html>", "Object not found"]) {
+    const db = createSupabaseQueryMock();
+    db.queue("youtube_pdf_purges", "select", {
+      data: [{ id: "p1", conta_id: "c1", client_id: 7, storage_path: "a.pdf", attempts: 0 }],
+    });
+    const { storage } = storageStub(() => ({ error: { message } }));
+    const out = await drainYoutubePdfPurges(db as never, { storage, limit: 10, maxAttempts: 10 });
+    assertEquals(out, { removed: 0, failed: 1, gaveUp: 0 }, message);
+    assertEquals(db.calls.filter((c) => c.operation === "delete").length, 0, message);
+    const upd = db.calls.find((c) => c.operation === "update")!;
+    assertEquals((upd.payload as Record<string, unknown>).attempts, 1);
+  }
+});
+
+Deno.test("drainYoutubePdfPurges: a remove() that never resolves times out and counts as a failed attempt", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("youtube_pdf_purges", "select", {
+    data: [{ id: "p1", conta_id: "c1", client_id: 7, storage_path: "hang.pdf", attempts: 1 }],
+  });
+  const storage: StorageLike = { from: () => ({ remove: () => new Promise(() => {}) }) };
+  const out = await drainYoutubePdfPurges(db as never, { storage, limit: 10, maxAttempts: 10, timeoutMs: 20 });
+  assertEquals(out, { removed: 0, failed: 1, gaveUp: 0 });
+  assertEquals(db.calls.filter((c) => c.operation === "delete").length, 0);
+  const upd = db.calls.find((c) => c.operation === "update")!;
+  assertEquals((upd.payload as Record<string, unknown>).attempts, 2);
+});
+
+Deno.test("drainYoutubePdfPurges: gaveUp is counted and logged only when the attempts write succeeded", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("youtube_pdf_purges", "select", {
+    data: [{ id: "p1", conta_id: "c1", client_id: 7, storage_path: "a.pdf", attempts: 9 }],
+  });
+  db.queue("youtube_pdf_purges", "update", { error: { message: "db down" } });
+  const { storage } = storageStub(() => ({ error: { message: "storage unavailable" } }));
+  const { value, lines } = await quiet(() =>
+    drainYoutubePdfPurges(db as never, { storage, limit: 10, maxAttempts: 10 }),
+  );
+  assertEquals(value, { removed: 0, failed: 1, gaveUp: 0 });
+  assert(!lines.some((l) => l.includes("gave up")), "no give-up line while the row can still be retried");
 });
 
 Deno.test("drainYoutubePdfPurges: a storage failure increments attempts (scoped by conta_id) and keeps the row", async () => {

@@ -12,16 +12,17 @@ type RevokeFn = typeof revokeGoogleToken;
 
 export type RevocationOutcome = "revoked" | "failed" | "missing";
 
-/**
- * Revokes the queued token at Google. Success deletes the `google_revocations` row, failure bumps
- * `attempts` and records `last_error`. "missing" means no such row (already processed).
- */
-export async function processRevocation(
+interface RevocationDetail {
+  outcome: RevocationOutcome;
+  /** True only when a failed attempt's `attempts` bump was actually persisted. */
+  attemptsSaved: boolean;
+}
+
+async function processRevocationDetailed(
   svc: DbClient,
   revocationId: string,
-  deps: { revoke?: RevokeFn } = {},
-): Promise<RevocationOutcome> {
-  const revoke = deps.revoke ?? revokeGoogleToken;
+  revoke: RevokeFn,
+): Promise<RevocationDetail> {
   try {
     const { data: row, error } = await svc
       .from("google_revocations")
@@ -30,11 +31,11 @@ export async function processRevocation(
       .maybeSingle();
     if (error) {
       console.error(`[google-revocations] revocation ${revocationId} not readable: ${error.message}`);
-      return "failed";
+      return { outcome: "failed", attemptsSaved: false };
     }
     if (!row) {
       console.error(`[google-revocations] revocation ${revocationId} not readable: missing`);
-      return "missing";
+      return { outcome: "missing", attemptsSaved: false };
     }
 
     let lastError: string | null = null;
@@ -48,18 +49,30 @@ export async function processRevocation(
     if (lastError === null) {
       const { error: delError } = await svc.from("google_revocations").delete().eq("id", revocationId);
       if (delError) console.error(`[google-revocations] revocation ${revocationId} delete failed: ${delError.message}`);
-      return "revoked";
+      return { outcome: "revoked", attemptsSaved: false };
     }
     const { error: updError } = await svc
       .from("google_revocations")
       .update({ attempts: (Number(row.attempts) || 0) + 1, last_error: lastError })
       .eq("id", revocationId);
     if (updError) console.error(`[google-revocations] revocation ${revocationId} update failed: ${updError.message}`);
-    return "failed";
+    return { outcome: "failed", attemptsSaved: !updError };
   } catch (err) {
     console.error(`[google-revocations] revocation ${revocationId} failed:`, (err as Error).message);
-    return "failed";
+    return { outcome: "failed", attemptsSaved: false };
   }
+}
+
+/**
+ * Revokes the queued token at Google. Success deletes the `google_revocations` row, failure bumps
+ * `attempts` and records `last_error`. "missing" means no such row (already processed).
+ */
+export async function processRevocation(
+  svc: DbClient,
+  revocationId: string,
+  deps: { revoke?: RevokeFn } = {},
+): Promise<RevocationOutcome> {
+  return (await processRevocationDetailed(svc, revocationId, deps.revoke ?? revokeGoogleToken)).outcome;
 }
 
 /**
@@ -104,11 +117,13 @@ export async function retryPendingRevocations(
       console.error(`[google-revocations] revocation ${row.id} gave up after ${attempts} attempts; row kept for manual follow-up`);
       continue;
     }
-    const result = await processRevocation(svc, row.id, { revoke: opts.revoke });
-    if (result === "revoked") {
+    const { outcome, attemptsSaved } = await processRevocationDetailed(svc, row.id, opts.revoke ?? revokeGoogleToken);
+    if (outcome === "revoked") {
       out.revoked += 1;
-    } else if (result === "failed") {
-      if (attempts + 1 >= opts.maxAttempts) {
+    } else if (outcome === "failed") {
+      // Count/log the give-up only when the bump was persisted: otherwise the row is selected
+      // again next run and would be reported again.
+      if (attemptsSaved && attempts + 1 >= opts.maxAttempts) {
         out.gaveUp += 1;
         console.error(
           `[google-revocations] revocation ${row.id} gave up after ${attempts + 1} attempts; row kept for manual follow-up`,
