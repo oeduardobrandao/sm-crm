@@ -1,5 +1,5 @@
 import { i18n } from '@mesaas/i18n';
-import { TIKTOK_MSG, tiktokErrorMessage } from '@mesaas/tiktok-messages';
+import { TIKTOK_LIMITS, TIKTOK_MSG, tiktokErrorMessage } from '@mesaas/tiktok-messages';
 
 // Spec 2026-10-08-tiktok-audit-readiness A0-A7: every composer decision lives here, pure.
 // TikTokSettingsPanel only renders what these functions return.
@@ -20,12 +20,20 @@ export interface ComposerInputs {
     max_video_post_duration_sec?: number;
   } | null;
   tipo: string | null | undefined;
+  /** workflow_posts.platform: o teto do carrossel cai para o do Instagram com 'both'. */
+  platform?: string | null;
   privacyLevel: string | undefined;
   disclosureOn: boolean;
   brandOrganic: boolean;
   brandContent: boolean;
   media:
-    | { kind: 'image' | 'video'; duration_seconds: number | null; media_lost_at?: string | null }[]
+    | {
+        kind: 'image' | 'video';
+        duration_seconds: number | null;
+        media_lost_at?: string | null;
+        mime_type?: string;
+        size_bytes?: number;
+      }[]
     | undefined;
   mediaError: boolean;
 }
@@ -79,6 +87,8 @@ export function computeTikTokReadiness(i: ComposerInputs): TikTokReadiness {
   if (i.media === undefined) return fail(i18n.t('entregas:tiktokRules.mediaLoading'));
   if (i.media.length === 0) return fail(TIKTOK_MSG.mediaMissing);
   if (i.media.some((m) => m.media_lost_at != null)) return fail(TIKTOK_MSG.mediaLost);
+  const mediaIssue = tiktokMediaIssues(i.tipo, i.platform, i.media)[0];
+  if (mediaIssue) return fail(mediaIssue);
   if (!i.privacyLevel) return fail(i18n.t('entregas:tiktokRules.privacyRequired'));
   if (i.disclosureOn && !i.brandOrganic && !i.brandContent)
     return fail(i18n.t('entregas:tiktokRules.disclosureIncomplete'));
@@ -125,4 +135,87 @@ export function brandedCheckboxState(ctx: { audited: boolean; privacyLevel: stri
   if (ctx.privacyLevel === 'SELF_ONLY')
     return { disabled: true, helper: i18n.t('entregas:tiktokRules.brandedPrivateHelper') };
   return { disabled: false };
+}
+
+export function tiktokCarouselMax(platform: string | null | undefined): number {
+  return platform === 'both'
+    ? TIKTOK_LIMITS.carouselMaxWithInstagram
+    : TIKTOK_LIMITS.carouselMaxTikTokOnly;
+}
+
+/**
+ * Espelho de validateMediaForTipo (supabase/functions/_shared/tiktok-publish-utils.ts):
+ * as mesmas regras de mídia que o servidor confere ao agendar, para o editor mostrar o
+ * problema antes do clique. Lista vazia (sem mídia) fica com a regra de mídia ausente.
+ */
+export function tiktokMediaIssues(
+  tipo: string | null | undefined,
+  platform: string | null | undefined,
+  media: ComposerInputs['media'],
+): string[] {
+  if (!media || media.length === 0 || tipo === 'stories') return [];
+  const issues: string[] = [];
+  if (tipo === 'reels') {
+    if (media.length !== 1 || media[0].kind !== 'video') {
+      issues.push(i18n.t('entregas:tiktokRules.videoNeedsOne'));
+    }
+    return issues;
+  }
+  const hasVideo = media.some((m) => m.kind === 'video');
+  if (hasVideo) {
+    issues.push(i18n.t('entregas:tiktokRules.photoNoVideo'));
+  } else {
+    const images = media.filter((m) => m.kind === 'image');
+    if (
+      images.some((m) => m.mime_type != null && !TIKTOK_LIMITS.photoMimes.includes(m.mime_type))
+    ) {
+      issues.push(i18n.t('entregas:tiktokRules.photoFormat'));
+    }
+    if (images.some((m) => m.size_bytes != null && m.size_bytes > TIKTOK_LIMITS.photoMaxBytes)) {
+      issues.push(
+        i18n.t('entregas:tiktokRules.photoSize', { mb: TIKTOK_LIMITS.photoMaxBytes / 1024 / 1024 }),
+      );
+    }
+    const cap = tiktokCarouselMax(platform);
+    if (tipo === 'carrossel' && media.length > cap) {
+      issues.push(i18n.t('entregas:tiktokRules.carouselMax', { cap, count: media.length }));
+    }
+    if (tipo === 'feed' && media.length !== 1) {
+      issues.push(i18n.t('entregas:tiktokRules.feedNeedsOne'));
+    }
+  }
+  return issues;
+}
+
+/** Os limites que valem para este post no TikTok, em linhas curtas para o painel. */
+export function tiktokLimitLines(
+  tipo: string | null | undefined,
+  platform: string | null | undefined,
+  maxVideoSeconds: number | null | undefined,
+): string[] {
+  if (tipo === 'reels') {
+    return [
+      maxVideoSeconds != null
+        ? i18n.t('entregas:tiktokRules.limits.videoWithMax', { seconds: maxVideoSeconds })
+        : i18n.t('entregas:tiktokRules.limits.video'),
+      i18n.t('entregas:tiktokRules.limits.captionVideo', {
+        max: TIKTOK_LIMITS.captionVideoMax.toLocaleString(i18n.language),
+      }),
+    ];
+  }
+  if (tipo === 'feed' || tipo === 'carrossel') {
+    return [
+      tipo === 'feed'
+        ? i18n.t('entregas:tiktokRules.limits.photoOne')
+        : i18n.t('entregas:tiktokRules.limits.photoCarousel', { cap: tiktokCarouselMax(platform) }),
+      i18n.t('entregas:tiktokRules.limits.photoFile', {
+        mb: TIKTOK_LIMITS.photoMaxBytes / 1024 / 1024,
+      }),
+      i18n.t('entregas:tiktokRules.limits.captionPhoto', {
+        max: TIKTOK_LIMITS.captionPhotoMax.toLocaleString(i18n.language),
+        title: TIKTOK_LIMITS.titlePhotoMax,
+      }),
+    ];
+  }
+  return [];
 }

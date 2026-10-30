@@ -4,6 +4,8 @@ import {
   computeTikTokReadiness,
   disclosureLabel,
   privacyOptionState,
+  tiktokLimitLines,
+  tiktokMediaIssues,
   type ComposerInputs,
 } from '../tiktokComposerRules';
 
@@ -131,5 +133,85 @@ describe('privacyOptionState / brandedCheckboxState', () => {
     expect(brandedCheckboxState({ audited: true, privacyLevel: 'PUBLIC_TO_EVERYONE' })).toEqual({
       disabled: false,
     });
+  });
+});
+
+describe('tiktokMediaIssues (espelho de validateMediaForTipo)', () => {
+  const img = (over: Partial<NonNullable<ComposerInputs['media']>[number]> = {}) => ({
+    kind: 'image' as const,
+    duration_seconds: null,
+    mime_type: 'image/jpeg',
+    size_bytes: 1024,
+    ...over,
+  });
+  const vid = { kind: 'video' as const, duration_seconds: 10, mime_type: 'video/mp4' };
+
+  it('vídeo válido e carrossel válido não têm problema', () => {
+    expect(tiktokMediaIssues('reels', 'tiktok', [vid])).toEqual([]);
+    expect(
+      tiktokMediaIssues('carrossel', 'tiktok', [img(), img({ mime_type: 'image/webp' })]),
+    ).toEqual([]);
+  });
+  it('vídeo exige exatamente um arquivo de vídeo', () => {
+    expect(tiktokMediaIssues('reels', 'tiktok', [vid, vid])).toHaveLength(1);
+    expect(tiktokMediaIssues('reels', 'tiktok', [img()])).toHaveLength(1);
+  });
+  it('post de fotos recusa vídeo', () => {
+    expect(tiktokMediaIssues('carrossel', 'tiktok', [img(), vid])).toEqual([
+      'O TikTok não aceita vídeo em post de fotos: imagem e carrossel levam só imagens.',
+    ]);
+  });
+  it('PNG e imagem acima de 20 MB', () => {
+    expect(
+      tiktokMediaIssues('feed', 'tiktok', [
+        img({ mime_type: 'image/png', size_bytes: 21 * 1024 * 1024 }),
+      ]),
+    ).toEqual([
+      'Imagens para o TikTok precisam estar em JPEG ou WebP (PNG não é aceito).',
+      'Cada imagem para o TikTok pode ter no máximo 20 MB.',
+    ]);
+  });
+  it('teto do carrossel: 20 só TikTok, 10 com Instagram', () => {
+    const eleven = Array.from({ length: 11 }, () => img());
+    expect(tiktokMediaIssues('carrossel', 'tiktok', eleven)).toEqual([]);
+    expect(tiktokMediaIssues('carrossel', 'both', eleven)).toEqual([
+      'Carrossel no TikTok aceita no máximo 10 imagens (este post tem 11).',
+    ]);
+    expect(
+      tiktokMediaIssues(
+        'carrossel',
+        'tiktok',
+        Array.from({ length: 21 }, () => img()),
+      ),
+    ).toHaveLength(1);
+  });
+  it('imagem única exige 1 imagem', () => {
+    expect(tiktokMediaIssues('feed', 'tiktok', [img(), img()])).toEqual([
+      'Post de imagem no TikTok leva exatamente 1 imagem. Para mais, use carrossel.',
+    ]);
+  });
+  it('bloqueia a prontidão com o primeiro problema', () => {
+    expect(
+      computeTikTokReadiness({ ...base, tipo: 'feed', media: [img({ mime_type: 'image/png' })] }),
+    ).toEqual({
+      complete: false,
+      reason: 'Imagens para o TikTok precisam estar em JPEG ou WebP (PNG não é aceito).',
+    });
+  });
+});
+
+describe('tiktokLimitLines', () => {
+  it('vídeo cita a duração da conta quando conhecida', () => {
+    expect(tiktokLimitLines('reels', 'tiktok', 600)[0]).toBe(
+      '1 vídeo por post, até 600s nesta conta',
+    );
+    expect(tiktokLimitLines('reels', 'tiktok', null)[0]).toBe('1 vídeo por post');
+  });
+  it('carrossel usa o teto da combinação de destinos', () => {
+    expect(tiktokLimitLines('carrossel', 'both', null)[0]).toBe('Até 10 imagens no carrossel');
+    expect(tiktokLimitLines('carrossel', 'tiktok', null)[0]).toBe('Até 20 imagens no carrossel');
+  });
+  it('stories não tem linhas', () => {
+    expect(tiktokLimitLines('stories', 'tiktok', null)).toEqual([]);
   });
 });

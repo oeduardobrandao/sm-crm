@@ -327,7 +327,6 @@
     "testModeBanner": "App em modo de teste: até a aprovação do TikTok, as publicações saem como privadas.",
     "loadingCreator": "Carregando informações do criador…",
     "postingAs": "Publicando como @<name>{{nickname}}</name>",
-    "maxDuration": "Duração máxima de vídeo nesta conta: {{seconds}}s",
     "preview": "Prévia",
     "privacy": "Privacidade",
     "privacyPlaceholder": "Selecione a privacidade",
