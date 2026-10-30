@@ -83,7 +83,8 @@
     "likes": "Curtidas",
     "shorts": "Shorts {{value}}",
     "long": "Longos {{value}}",
-    "barAria": "{{metric}}: Shorts {{pct}}%"
+    "barAria": "{{metric}}: Shorts {{pct}}%",
+    "unavailable": "A divisão entre Shorts e vídeos longos ainda não está disponível."
   },
   "traffic": {
     "title": "De onde vêm as visualizações",

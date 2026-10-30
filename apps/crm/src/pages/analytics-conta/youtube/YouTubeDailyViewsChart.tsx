@@ -26,6 +26,7 @@ export function YouTubeDailyViewsChart({
   windowDays,
   lagThrough,
   state,
+  splitUnavailable,
   phone,
 }: {
   daily: YtDailyPoint[];
@@ -34,11 +35,13 @@ export function YouTubeDailyViewsChart({
   /** contentTypeThrough when it lags: the Shorts x long split stops there. */
   lagThrough: string | null;
   state: CardLoadState;
+  /** The channel has data but no content-type split yet: one total series and a note. */
+  splitUnavailable?: boolean;
   phone?: boolean;
 }) {
   const { t, i18n } = useTranslation('analyticsYoutube');
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const stacked = isStacked(daily, type);
+  const stacked = !splitUnavailable && isStacked(daily, type);
   const hasViews = daily.some((d) => d.views > 0);
 
   useEffect(() => {
@@ -137,11 +140,21 @@ export function YouTubeDailyViewsChart({
       sub={
         stacked ? t('daily.subSplit', { count: windowDays }) : t('daily.sub', { count: windowDays })
       }
-      lagThrough={type === 'all' ? lagThrough : null}
+      // Every type's series ends at contentTypeThrough when it lags (the split for "Tudo",
+      // the whole series for Shorts and long videos, which can hold fewer points than the window).
+      lagThrough={splitUnavailable ? null : lagThrough}
       legend={legend}
       state={state}
     >
-      {hasViews ? (
+      {splitUnavailable && type === 'all' && (
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', margin: '0 0 0.75rem' }}>
+          {t('split.unavailable')}
+        </p>
+      )}
+      {splitUnavailable && type !== 'all' ? (
+        // Shorts or long videos alone need the split: the server sends no points at all.
+        <EmptyLine>{t('split.unavailable')}</EmptyLine>
+      ) : hasViews ? (
         <div style={{ position: 'relative', height: phone ? 200 : 260 }}>
           <canvas
             ref={canvasRef}

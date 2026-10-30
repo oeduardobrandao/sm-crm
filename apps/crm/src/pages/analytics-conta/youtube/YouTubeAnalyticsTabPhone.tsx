@@ -286,6 +286,8 @@ function PhoneBody({
   const redesSociais = `/clientes/${clientId}/redes-sociais`;
   const windowDays = windowDaysOf(overviewData, range);
   const contentLag = lagging(channel.contentTypeThrough, channel.dataThrough);
+  // Data, but no Shorts x long split yet: those cards say so instead of reading 0%.
+  const splitUnavailable = !!channel.dataThrough && !channel.contentTypeThrough;
   const trafficLag = lagging(channel.trafficThrough, channel.dataThrough);
   const videosLag = lagging(channel.videosThrough, channel.dataThrough);
 
@@ -331,7 +333,12 @@ function PhoneBody({
           </p>
 
           <div style={dimmed(overview.isPlaceholderData)} aria-busy={overview.isPlaceholderData}>
-            <YouTubeKpiGrid kpis={overviewData.kpis} windowDays={windowDays} daily={daily.data} />
+            <YouTubeKpiGrid
+              kpis={overviewData.kpis}
+              windowDays={windowDays}
+              // A type's series ends at contentTypeThrough: only the full one sums the window.
+              daily={type === 'all' ? daily.data : undefined}
+            />
           </div>
 
           <YouTubeDailyViewsChart
@@ -340,9 +347,15 @@ function PhoneBody({
             type={type}
             windowDays={windowDays}
             lagThrough={contentLag}
+            splitUnavailable={splitUnavailable}
             state={cardState(daily)}
           />
-          <YouTubeSplitCard phone split={overviewData.split} lagThrough={contentLag} />
+          <YouTubeSplitCard
+            phone
+            split={overviewData.split}
+            lagThrough={contentLag}
+            unavailable={splitUnavailable}
+          />
           <YouTubeTrafficCard
             phone
             rows={traffic.data ?? []}

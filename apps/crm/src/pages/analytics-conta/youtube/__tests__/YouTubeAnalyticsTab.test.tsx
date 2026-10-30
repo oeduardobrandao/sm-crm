@@ -379,6 +379,78 @@ describe('YouTubeAnalyticsTab', () => {
     expect(within(kpi('Inscritos')).getByText('12,4 mil')).toBeInTheDocument();
   });
 
+  it('no content-type split yet: the split card and the daily chart say so, not 0%', async () => {
+    vi.mocked(getYouTubeOverview).mockResolvedValue(overview({ contentTypeThrough: null }));
+    renderTab();
+    await screen.findByText('Feed de Shorts');
+    const split = within(card('Shorts x vídeos longos'));
+    expect(
+      split.getByText('A divisão entre Shorts e vídeos longos ainda não está disponível.'),
+    ).toBeInTheDocument();
+    expect(split.queryByText(/%/)).toBeNull();
+    expect(split.queryByText(/^Shorts \d/)).toBeNull();
+    const daily = within(card('Visualizações por dia'));
+    expect(
+      daily.getByText('A divisão entre Shorts e vídeos longos ainda não está disponível.'),
+    ).toBeInTheDocument();
+    // One total series, not the stacked Shorts x long bars.
+    expect(
+      daily.getByRole('img', { name: 'Gráfico de barras: visualizações diárias' }),
+    ).toBeInTheDocument();
+    expect(daily.queryByText(/^Shorts e vídeos longos/)).toBeNull();
+    // The toggle stays usable.
+    fireEvent.click(screen.getByRole('tab', { name: 'Shorts' }));
+    await waitFor(() =>
+      expect(getYouTubeOverview).toHaveBeenLastCalledWith(12, { days: 28 }, 'shorts'),
+    );
+  });
+
+  it('Shorts with no split yet: the daily chart shows the unavailable state, not an empty period', async () => {
+    vi.mocked(getYouTubeOverview).mockResolvedValue(overview({ contentTypeThrough: null }));
+    renderTab();
+    await screen.findByText('Feed de Shorts');
+    vi.mocked(getYouTubeDaily).mockResolvedValue([]);
+    fireEvent.click(screen.getByRole('tab', { name: 'Shorts' }));
+    await waitFor(() =>
+      expect(getYouTubeDaily).toHaveBeenLastCalledWith(12, { days: 28 }, 'shorts'),
+    );
+    const daily = within(card('Visualizações por dia'));
+    expect(
+      await daily.findByText('A divisão entre Shorts e vídeos longos ainda não está disponível.'),
+    ).toBeInTheDocument();
+    expect(daily.queryByText('Sem visualizações no período.')).toBeNull();
+    expect(daily.queryByRole('img')).toBeNull();
+  });
+
+  it('Shorts with a lagging split: fewer daily points than the window still chart, with Dados até', async () => {
+    vi.mocked(getYouTubeOverview).mockResolvedValue(overview({ contentTypeThrough: '2026-10-23' }));
+    vi.mocked(getYouTubeDaily).mockResolvedValue([
+      {
+        date: '2026-10-23',
+        views: 900,
+        engagedViews: null,
+        watchMinutes: null,
+        likes: null,
+        comments: null,
+        shares: null,
+        subscribersGained: null,
+        subscribersLost: null,
+      },
+    ]);
+    renderTab();
+    await screen.findByText('Feed de Shorts');
+    fireEvent.click(screen.getByRole('tab', { name: 'Shorts' }));
+    await waitFor(() =>
+      expect(getYouTubeDaily).toHaveBeenLastCalledWith(12, { days: 28 }, 'shorts'),
+    );
+    const daily = within(card('Visualizações por dia'));
+    expect(
+      await daily.findByRole('img', { name: 'Gráfico de barras: visualizações diárias' }),
+    ).toBeInTheDocument();
+    expect(daily.getByText('Dados até 23 de out.')).toBeInTheDocument();
+    expect(daily.getByText('Últimos 28 dias')).toBeInTheDocument();
+  });
+
   it('maps traffic sources and sums the rest into Outras origens', async () => {
     renderTab();
     const traffic = within(

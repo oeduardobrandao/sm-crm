@@ -166,6 +166,8 @@ export function YouTubeAnalyticsTab({
   const revoked = channel.authorizationStatus === 'revoked';
   const windowDays = windowDaysOf(ov, range);
   const contentLag = lagging(channel.contentTypeThrough, channel.dataThrough);
+  // Data, but no Shorts x long split yet: those cards say so instead of reading 0%.
+  const splitUnavailable = !!channel.dataThrough && !channel.contentTypeThrough;
   const trafficLag = lagging(channel.trafficThrough, channel.dataThrough);
   const videosLag = lagging(channel.videosThrough, channel.dataThrough);
 
@@ -228,7 +230,12 @@ export function YouTubeAnalyticsTab({
           </div>
 
           <div style={dimmed(overview.isPlaceholderData)} aria-busy={overview.isPlaceholderData}>
-            <YouTubeKpiGrid kpis={ov.kpis} windowDays={windowDays} daily={daily.data} />
+            <YouTubeKpiGrid
+              kpis={ov.kpis}
+              windowDays={windowDays}
+              // A type's series ends at contentTypeThrough: only the full one sums the window.
+              daily={type === 'all' ? daily.data : undefined}
+            />
           </div>
 
           <YouTubeDailyViewsChart
@@ -236,6 +243,7 @@ export function YouTubeAnalyticsTab({
             type={type}
             windowDays={windowDays}
             lagThrough={contentLag}
+            splitUnavailable={splitUnavailable}
             state={cardState(daily)}
           />
 
@@ -248,7 +256,11 @@ export function YouTubeAnalyticsTab({
             }}
           >
             <div style={dimmed(overview.isPlaceholderData)}>
-              <YouTubeSplitCard split={ov.split} lagThrough={contentLag} />
+              <YouTubeSplitCard
+                split={ov.split}
+                lagThrough={contentLag}
+                unavailable={splitUnavailable}
+              />
             </div>
             <YouTubeTrafficCard
               rows={traffic.data ?? []}

@@ -83,7 +83,8 @@
     "likes": "Likes",
     "shorts": "Shorts {{value}}",
     "long": "Long {{value}}",
-    "barAria": "{{metric}}: Shorts {{pct}}%"
+    "barAria": "{{metric}}: Shorts {{pct}}%",
+    "unavailable": "The Shorts and long-form split isn't available yet."
   },
   "traffic": {
     "title": "Where views come from",
