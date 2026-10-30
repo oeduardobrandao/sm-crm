@@ -448,7 +448,7 @@ Deno.test("youtube-sync: QUOTA_EXCEEDED mid-analytics keeps data_through, leaves
   assert(!calls.includes("trafficDaily") && !calls.includes("demographics") && !calls.includes("videoDaily"));
 });
 
-Deno.test("youtube-sync: demographics replace the channel's snapshot (delete, then insert with window_end = yesterday)", async () => {
+Deno.test("youtube-sync: demographics replace the channel's snapshot (delete, then upsert on the PK with window_end = yesterday)", async () => {
   const db = createSupabaseQueryMock();
   queueGuardPass(db);
   const ranges: unknown[] = [];
@@ -461,16 +461,17 @@ Deno.test("youtube-sync: demographics replace the channel's snapshot (delete, th
   await run(deps(db, api), channelRow());
   assertEquals(ranges, [{ start: "2026-10-02", end: YESTERDAY }]);
   const ops = db.calls.filter((c) => c.table === "youtube_demographics").map((c) => c.operation);
-  assertEquals(ops, ["delete", "insert"]);
-  const insert = db.calls.find((c) => c.table === "youtube_demographics" && c.operation === "insert")!;
+  assertEquals(ops, ["delete", "upsert"]);
+  const insert = db.calls.find((c) => c.table === "youtube_demographics" && c.operation === "upsert")!;
+  assertEquals((insert.options as { onConflict: string }).onConflict, "conta_id,channel_id,window_end,age_group,gender");
   assertEquals(insert.payload, [{ conta_id: CONTA, channel_id: "UC1", window_end: YESTERDAY, age_group: "age18-24", gender: "female", viewer_pct: 40.5 }]);
 });
 
 Deno.test("youtube-sync: video cap: with 41 lagging videos 40 reports run, one waits, videos_through not set", async () => {
   const db = createSupabaseQueryMock();
   queueGuardPass(db);
-  // Step 3 reads (no uploads -> 3 stored-set reads), then the lag read for step 4.
-  db.queue("youtube_videos", "select", { data: [] }, { data: [] }, { data: [] });
+  // Step 3 reads (no uploads -> 3 stored-set reads + 2 head counts), then the lag read for step 4.
+  db.queue("youtube_videos", "select", { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] });
   const lagging = Array.from({ length: 41 }, (_, i) => ({ video_id: `v${i}`, daily_through: null, published_at: "2026-10-01T00:00:00Z" }));
   db.queue("youtube_videos", "select", { data: lagging });
   let reports = 0;
@@ -494,7 +495,7 @@ Deno.test("youtube-sync: video cap: with 41 lagging videos 40 reports run, one w
 Deno.test("youtube-sync: videos_through is set when no video lags", async () => {
   const db = createSupabaseQueryMock();
   queueGuardPass(db);
-  db.queue("youtube_videos", "select", { data: [] }, { data: [] }, { data: [] });
+  db.queue("youtube_videos", "select", { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] });
   db.queue("youtube_videos", "select", { data: [{ video_id: "v1", daily_through: YESTERDAY, published_at: "2026-10-01T00:00:00Z" }] });
   const { api, calls } = quietApi({
     channelDaily: async (_t: string, _r: unknown, byType: boolean) =>
@@ -550,6 +551,7 @@ Deno.test("youtube-sync: every history read, upsert, insert and delete carries t
   queueGuardPass(db);
   db.queue("youtube_videos", "select", { data: [{ video_id: "v-old" }] });
   db.queue("youtube_videos", "select", { data: [{ video_id: "v-gone", is_short: false }] }, { data: [] }, { data: [] });
+  db.queue("youtube_videos", "select", { data: [], count: 2 }, { data: [], count: 0 }); // shorts / long head counts
   db.queue("youtube_videos", "select", { data: [{ video_id: "v-new", daily_through: null, published_at: "2026-10-20T00:00:00Z" }] });
   const dayRow = { day: YESTERDAY, contentType: null, views: 1, engagedViews: 1, estimatedMinutesWatched: 1, likes: 0, comments: 0, shares: 0, subscribersGained: 0, subscribersLost: 0, averageViewDuration: 1 };
   const { api } = quietApi({
@@ -568,7 +570,7 @@ Deno.test("youtube-sync: every history read, upsert, insert and delete carries t
   for (const expected of [
     "youtube_videos:select", "youtube_videos:upsert", "youtube_videos:delete", "youtube_videos:update",
     "youtube_video_daily:delete", "youtube_video_daily:upsert", "youtube_channel_daily:upsert",
-    "youtube_traffic_daily:upsert", "youtube_demographics:delete", "youtube_demographics:insert",
+    "youtube_traffic_daily:upsert", "youtube_demographics:delete", "youtube_demographics:upsert",
   ]) {
     assert(tables.has(expected), `expected a ${expected} call`);
   }
@@ -608,4 +610,166 @@ Deno.test("youtube-sync: Pacific dates: 2026-10-31 03:00 UTC is still 2026-10-30
   );
   assertEquals(ranges[0].end, YESTERDAY);
   assertEquals(TODAY, "2026-10-30");
+});
+
+// ── review follow-ups ───────────────────────────────────────────────────────────
+
+Deno.test("youtube-sync: a stored is_short wins over the duration fallback even when the report ran and lacks the id", async () => {
+  const db = createSupabaseQueryMock();
+  queueGuardPass(db);
+  db.queue("youtube_videos", "select", { data: [] }); // known ids: none (listUploads is empty anyway)
+  db.queue("youtube_videos", "select", { data: [{ video_id: "v1", is_short: false }] }); // 90 days
+  const { api, calls } = quietApi({
+    getVideos: async () => [ytVideo("v1", { durationS: 60, isShortByDuration: true })],
+    videoContentTypes: async () => new Map([["other", "shorts"]]),
+  });
+  await run(deps(db, api), channelRow());
+  assert(calls.includes("videoContentTypes"), "the report ran this time");
+  const upsert = db.calls.find((c) => c.table === "youtube_videos" && c.operation === "upsert")!;
+  assertEquals((upsert.payload as { is_short: boolean }[])[0].is_short, false);
+});
+
+Deno.test("youtube-sync: duration fallback only when nothing is stored; live stays not-short over a stored true", async () => {
+  const db = createSupabaseQueryMock();
+  queueGuardPass(db);
+  db.queue("youtube_videos", "select", { data: [{ video_id: "live", is_short: true }, { video_id: "fresh", is_short: null }] });
+  const { api } = quietApi({
+    getVideos: async () => [
+      ytVideo("live", { durationS: 0, isShortByDuration: true, liveBroadcastContent: "live" }),
+      ytVideo("fresh", { durationS: 60, isShortByDuration: true }),
+    ],
+    videoContentTypes: async () => null,
+  });
+  await run(deps(db, api), channelRow());
+  const upsert = db.calls.find((c) => c.table === "youtube_videos" && c.operation === "upsert")!;
+  const byId = Object.fromEntries((upsert.payload as { video_id: string; is_short: boolean }[]).map((r) => [r.video_id, r.is_short]));
+  assertEquals(byId, { live: false, fresh: true });
+});
+
+Deno.test("youtube-sync: uploads paging stops at the page cap even when pages repeat ids", async () => {
+  const db = createSupabaseQueryMock();
+  queueGuardPass(db);
+  const { api, calls } = quietApi({
+    listUploads: async () => ({ videoIds: ["same"], nextPageToken: "again" }),
+    getVideos: async () => [ytVideo("same")],
+  });
+  await run(deps(db, api), channelRow());
+  assertEquals(calls.filter((c) => c === "listUploads").length, 25);
+});
+
+Deno.test("youtube-sync: the 90-day stored-videos reads are ordered newest first and bounded", async () => {
+  const db = createSupabaseQueryMock();
+  queueGuardPass(db);
+  const { api } = quietApi();
+  await run(deps(db, api), channelRow());
+  const windowReads = db.calls.filter((c) =>
+    c.table === "youtube_videos" && c.operation === "select" && c.modifiers.some((m) => m.method === "gte")
+  );
+  assertEquals(windowReads.length, 2, "step 3 refresh set + step 4 lag read");
+  for (const c of windowReads) {
+    assert(c.modifiers.some((m) => m.method === "order" && m.args[0] === "published_at" && (m.args[1] as { ascending: boolean }).ascending === false));
+    assert(c.modifiers.some((m) => m.method === "limit" && m.args[0] === 1000));
+  }
+});
+
+const ALL_ROW = { day: YESTERDAY, contentType: null, views: 1, engagedViews: 1, estimatedMinutesWatched: 1, likes: 0, comments: 0, shares: 0, subscribersGained: 0, subscribersLost: 0, averageViewDuration: 1 };
+const VIDEO_ROW = { day: YESTERDAY, views: 1, engagedViews: 1, likes: 0, comments: 0, shares: 0, subscribersGained: 0, averageViewDuration: 3, averageViewPercentage: 50 };
+
+function queueLagRead(db: Db, rows: unknown[]) {
+  // 3 refresh-set reads + 2 head counts (no uploads), then the step-4 lag read.
+  db.queue("youtube_videos", "select", { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: rows });
+}
+
+Deno.test("youtube-sync: a 404 on one video's report leaves that video behind and the channel still syncs", async () => {
+  const db = createSupabaseQueryMock();
+  queueGuardPass(db);
+  queueLagRead(db, [
+    { video_id: "bad", daily_through: null, published_at: "2026-10-20T00:00:00Z" },
+    { video_id: "ok", daily_through: null, published_at: "2026-10-19T00:00:00Z" },
+  ]);
+  const { api } = quietApi({
+    channelDaily: async (_t: string, _r: unknown, byType: boolean) => byType ? [] : [ALL_ROW],
+    videoDaily: async (_t: string, id: string) => {
+      if (id === "bad") throw new GoogleApiError("NOT_FOUND", 404, "gone", false);
+      return [VIDEO_ROW];
+    },
+  });
+  const outcome = await run(deps(db, api), channelRow());
+  assertEquals(outcome.status, "synced");
+  const advanced = db.calls.filter((c) => c.table === "youtube_videos" && c.operation === "update");
+  assertEquals(advanced.map((c) => c.modifiers.find((m) => m.args[0] === "video_id")!.args[1]), ["ok"]);
+  assertEquals(lastValue(db, "videos_through"), undefined, "the rejected video is still uncovered");
+});
+
+Deno.test("youtube-sync: a 5xx on one video's report still fails the channel", async () => {
+  const db = createSupabaseQueryMock();
+  queueGuardPass(db);
+  queueLagRead(db, [{ video_id: "v", daily_through: null, published_at: "2026-10-20T00:00:00Z" }]);
+  const { api } = quietApi({
+    channelDaily: async (_t: string, _r: unknown, byType: boolean) => byType ? [] : [ALL_ROW],
+    videoDaily: async () => {
+      throw new GoogleApiError("UPSTREAM", 503, "unavailable");
+    },
+  });
+  let threw = false;
+  try {
+    await run(deps(db, api), channelRow());
+  } catch {
+    threw = true;
+  }
+  assert(threw);
+});
+
+Deno.test("youtube-sync: videos_through = oldest daily_through over in-window videos, capped at data_through", async () => {
+  const db = createSupabaseQueryMock();
+  queueGuardPass(db);
+  queueLagRead(db, [
+    { video_id: "never", daily_through: null, published_at: "2026-10-20T00:00:00Z" },
+    { video_id: "behind", daily_through: "2026-10-20", published_at: "2026-10-01T00:00:00Z" },
+  ]);
+  const reported: string[] = [];
+  const { api } = quietApi({
+    channelDaily: async (_t: string, _r: unknown, byType: boolean) => byType ? [] : [ALL_ROW],
+    videoDaily: async (_t: string, id: string) => {
+      reported.push(id);
+      return [VIDEO_ROW];
+    },
+  });
+  // Cap 1: only the never-reported video runs; "behind" waits at 2026-10-20.
+  await run(deps(db, api), channelRow({ videos_through: null }), 1);
+  assertEquals(reported, ["never"]);
+  assertEquals(lastValue(db, "videos_through"), "2026-10-20");
+});
+
+Deno.test("youtube-sync: an uncovered (never-reported) in-window video keeps videos_through unchanged", async () => {
+  const db = createSupabaseQueryMock();
+  queueGuardPass(db);
+  queueLagRead(db, [
+    { video_id: "a", daily_through: null, published_at: "2026-10-20T00:00:00Z" },
+    { video_id: "b", daily_through: null, published_at: "2026-10-19T00:00:00Z" },
+  ]);
+  const { api } = quietApi({
+    channelDaily: async (_t: string, _r: unknown, byType: boolean) => byType ? [] : [ALL_ROW],
+    videoDaily: async () => [VIDEO_ROW],
+  });
+  await run(deps(db, api), channelRow(), 1);
+  assertEquals(lastValue(db, "videos_through"), undefined);
+});
+
+Deno.test("youtube-sync: shorts_count / long_count come from tenant-scoped head counts, written behind the guard", async () => {
+  const db = createSupabaseQueryMock();
+  queueGuardPass(db);
+  db.queue("youtube_videos", "select", { data: [] }, { data: [] }, { data: [] }, { data: [], count: 7 }, { data: [], count: 3 });
+  const { api } = quietApi();
+  await run(deps(db, api), channelRow());
+  const counts = db.calls.filter((c) => c.table === "youtube_videos" && c.selectArgs.some((a) => (a[1] as { head?: boolean })?.head === true));
+  assertEquals(counts.length, 2);
+  for (const c of counts) {
+    assert(c.modifiers.some((m) => m.method === "eq" && m.args[0] === "conta_id" && m.args[1] === CONTA));
+    assert(c.modifiers.some((m) => m.method === "eq" && m.args[0] === "channel_id" && m.args[1] === "UC1"));
+  }
+  assertEquals(counts.map((c) => c.modifiers.find((m) => m.args[0] === "is_short")!.args[1]), [true, false]);
+  const write = db.calls.find((c) => c.table === "youtube_channels" && c.operation === "update" && "shorts_count" in (c.payload as object))!;
+  assertEquals(write.payload && { s: (write.payload as Record<string, unknown>).shorts_count, l: (write.payload as Record<string, unknown>).long_count }, { s: 7, l: 3 });
+  assert(write.modifiers.some((m) => m.method === "eq" && m.args[0] === "authorization_status" && m.args[1] === "active"));
 });

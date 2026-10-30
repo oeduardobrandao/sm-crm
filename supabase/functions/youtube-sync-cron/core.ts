@@ -10,8 +10,10 @@
 // last_sync_attempt_at NULLS FIRST, id, and paged (200 per page, at most 10 pages) until the batch
 // limit of eligible units is found: ineligible units (flags off, internal workspace) cluster at the
 // head of that order, so one fixed window would starve the eligible ones (instagram-sync-cron
-// select.ts). Every candidate examined, eligible or not, is stamped before any work, so units
-// that can never sync rotate to the back.
+// select.ts). Before any work the selected batch AND every ineligible candidate examined are
+// stamped, so units that can never sync rotate to the back. Eligible units left over past the
+// batch limit are NOT stamped: they keep their place at the head and go first next hour (stamping
+// them would, under sustained overload, keep pushing the same tail back and starve it).
 //
 // Eligibility: feature_youtube AND feature_auto_sync_cron, one lookup pair per workspace; internal
 // workspaces are skipped without a lookup.
@@ -21,6 +23,7 @@
 // connection are counted `skipped` without a token call (Review Focus 2: one dead connection, no
 // failure storm). Only unexpected errors count as `failed` and reach reportCronFailure; quota,
 // mismatch, re-auth and revocation are outcomes (Global Constraints, "Outcomes, not failures").
+// PDF purge failures (failed + gave up) are reported too, but counted apart as `purgeFailed`.
 //
 // `svc` is created by index.ts before the outer try, so a broken candidate query still reaches
 // reportCronFailure.
@@ -81,13 +84,14 @@ async function collectCandidates(
   deps: YouTubeSyncCronDeps,
   now: Date,
   batchLimit: number,
-): Promise<{ examined: YoutubeChannelRow[]; eligible: YoutubeChannelRow[] }> {
+): Promise<{ examined: YoutubeChannelRow[]; eligible: YoutubeChannelRow[]; ineligible: YoutubeChannelRow[] }> {
   const { svc } = deps;
   const cutoff = new Date(now.getTime() - SYNC_WINDOW_MS).toISOString();
   const internal = await (deps.fetchInternalWorkspaceIds ?? realFetchInternalWorkspaceIds)(svc);
   const allowed = new Map<string, boolean>();
   const examined: YoutubeChannelRow[] = [];
   const eligible: YoutubeChannelRow[] = [];
+  const ineligible: YoutubeChannelRow[] = [];
 
   for (let page = 0; page < MAX_PAGES && eligible.length < batchLimit; page++) {
     const from = page * PAGE_SIZE;
@@ -119,6 +123,7 @@ async function collectCandidates(
     for (const row of rows) {
       examined.push(row);
       if (allowed.get(row.conta_id)) eligible.push(row);
+      else ineligible.push(row);
     }
     if (rows.length < PAGE_SIZE) break;
   }
@@ -126,10 +131,10 @@ async function collectCandidates(
   if (eligible.length < batchLimit && examined.length >= MAX_PAGES * PAGE_SIZE) {
     console.warn(`[${CRON_NAME}] stopped after ${MAX_PAGES} pages without filling the batch`);
   }
-  return { examined, eligible };
+  return { examined, eligible, ineligible };
 }
 
-/** Stamps last_sync_attempt_at on every examined candidate, one update per page-sized chunk.
+/** Stamps last_sync_attempt_at on the given candidates, one update per page-sized chunk.
  * A failed stamp is logged, not fatal: the next run re-reads the real ordering. */
 async function stampAttempts(svc: DbClient, rows: YoutubeChannelRow[], now: Date): Promise<void> {
   const stampedAt = now.toISOString();
@@ -148,11 +153,12 @@ export async function runYouTubeSyncCron(deps: YouTubeSyncCronDeps): Promise<Res
   const maxVideoReports = deps.maxVideoReports ?? MAX_VIDEO_REPORTS_PER_RUN;
 
   try {
-    const { examined, eligible } = await collectCandidates(deps, now, batchLimit);
+    const { examined, eligible, ineligible } = await collectCandidates(deps, now, batchLimit);
     const selected = eligible.slice(0, batchLimit);
-    if (examined.length > 0) await stampAttempts(svc, examined, now);
+    const toStamp = [...selected, ...ineligible];
+    if (toStamp.length > 0) await stampAttempts(svc, toStamp, now);
 
-    const counts = { synced: 0, revoked: 0, quotaSkipped: 0, skipped: 0, failed: 0 };
+    const counts = { synced: 0, revoked: 0, quotaSkipped: 0, skipped: 0, failed: 0, purgeFailed: 0 };
     const errors: Array<{ channelId: string; error: string }> = [];
 
     const byConnection = new Map<string, YoutubeChannelRow[]>();
@@ -206,22 +212,28 @@ export async function runYouTubeSyncCron(deps: YouTubeSyncCronDeps): Promise<Res
       const purge = await drain(svc, { storage, limit: PDF_PURGE_LIMIT, maxAttempts: PDF_PURGE_MAX_ATTEMPTS });
       const purgeFailures = purge.failed + purge.gaveUp;
       if (purgeFailures > 0) {
-        counts.failed += purgeFailures;
+        counts.purgeFailed += purgeFailures;
         errors.push({ channelId: "pdf-purges", error: `${purgeFailures} PDF purge(s) failed or gave up` });
       }
     } catch (err) {
-      counts.failed++;
+      counts.purgeFailed++;
       errors.push({ channelId: "pdf-purges", error: errorMessage(err) });
       console.error(`[${CRON_NAME}] PDF purge drain failed:`, errorMessage(err));
     }
 
     console.log(
       `[${CRON_NAME}] Done. examined=${examined.length} selected=${selected.length} synced=${counts.synced} ` +
-        `revoked=${counts.revoked} quotaSkipped=${counts.quotaSkipped} skipped=${counts.skipped} failed=${counts.failed}`,
+        `revoked=${counts.revoked} quotaSkipped=${counts.quotaSkipped} skipped=${counts.skipped} failed=${counts.failed} ` +
+        `purgeFailed=${counts.purgeFailed}`,
     );
 
-    if (counts.failed > 0) {
-      await deps.reportCronFailure(svc, CRON_NAME, { total: selected.length, failed: counts.failed, errors });
+    if (counts.failed + counts.purgeFailed > 0) {
+      await deps.reportCronFailure(svc, CRON_NAME, {
+        total: selected.length,
+        failed: counts.failed + counts.purgeFailed,
+        errors,
+        context: { purgeFailed: counts.purgeFailed },
+      });
     }
 
     return json({ success: true, ...counts, total: selected.length }, 200);

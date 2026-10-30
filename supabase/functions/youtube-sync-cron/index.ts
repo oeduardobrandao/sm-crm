@@ -19,6 +19,8 @@ function requireEnv(name: string): string {
 const SUPABASE_URL = requireEnv("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
 const CRON_SECRET = requireEnv("CRON_SECRET");
+// getFreshGoogleToken decrypts with it on every call; fail at boot, not per channel.
+requireEnv("TOKEN_ENCRYPTION_KEY");
 
 function intEnv(name: string, fallback: number): number {
   return Math.max(1, parseInt(Deno.env.get(name) || String(fallback), 10) || fallback);

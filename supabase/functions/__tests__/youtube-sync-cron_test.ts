@@ -299,6 +299,26 @@ Deno.test("youtube-sync-cron: starvation (I1): 26 ineligible ahead of one eligib
   assert(stamped.includes("on"));
 });
 
+Deno.test("youtube-sync-cron: eligible units beyond the batch limit are not stamped (26 eligible, batch 25)", async () => {
+  const db = createSupabaseQueryMock();
+  const rows = Array.from({ length: 26 }, (_, i) => row(`e${String(i).padStart(2, "0")}`, { connection_id: `c${i}` }));
+  db.queue("youtube_channels", "select", { data: rows });
+  queueGuardPass(db);
+  const h = harness(db, {
+    flags: allFlags,
+    token: async () => "tok",
+    api: { getMyChannel: async () => ytChannel("UC-nobody") }, // mismatch: quick, no writes
+    batchLimit: 25,
+  });
+  const body = await (await runYouTubeSyncCron(h.deps)).json();
+  assertEquals(body.total, 25);
+  const stamped = db.calls
+    .filter((c) => c.table === "youtube_channels" && c.operation === "update" && "last_sync_attempt_at" in (c.payload as object))
+    .flatMap((c) => (c.modifiers.find((m) => m.method === "in")!.args[1] as string[]));
+  assertEquals(stamped.length, 25);
+  assert(!stamped.includes("e25"), "the deferred 26th keeps its place at the head");
+});
+
 Deno.test("youtube-sync-cron: pages until the batch fills (second page reached when the first is all ineligible)", async () => {
   const db = createSupabaseQueryMock();
   const page1 = Array.from({ length: 200 }, (_, i) => row(`off${i}`, { conta_id: "ws-off" }));
@@ -342,7 +362,7 @@ Deno.test("youtube-sync-cron: REVOKED on channel 1 skips channel 2 on the same c
   });
   const body = await (await runYouTubeSyncCron(h.deps)).json();
   assertEquals(h.tokenCalls, ["conn-1", "conn-2"]);
-  assertEquals(body, { success: true, synced: 1, revoked: 1, quotaSkipped: 0, skipped: 1, failed: 0, total: 3 });
+  assertEquals(body, { success: true, synced: 1, revoked: 1, quotaSkipped: 0, skipped: 1, failed: 0, purgeFailed: 0, total: 3 });
   assertEquals(h.report.calls.length, 0);
 });
 
@@ -431,7 +451,8 @@ Deno.test("youtube-sync-cron: drains PDF purges with limit 50; failed + gaveUp a
   const body = await (await runYouTubeSyncCron(h.deps)).json();
   assertEquals((h.drainCalls[0] as { limit: number; maxAttempts: number }).limit, 50);
   assertEquals((h.drainCalls[0] as { limit: number; maxAttempts: number }).maxAttempts, 10);
-  assertEquals(body.failed, 2);
+  assertEquals(body.failed, 0, "purge failures are not channel failures");
+  assertEquals(body.purgeFailed, 2);
   assertEquals(h.report.calls.length, 1);
 });
 

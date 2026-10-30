@@ -25,7 +25,7 @@
 
 import { type DbClient, GoogleApiError } from "./google.ts";
 import type * as YoutubeApiModule from "./youtube-api.ts";
-import type { DateRange, YtChannelDailyRow, YtContentType, YtVideo } from "./youtube-api.ts";
+import type { DateRange, YtChannelDailyRow, YtContentType, YtVideo, YtVideoDailyRow } from "./youtube-api.ts";
 
 /** P7: per-video daily reports per channel per run. */
 export const MAX_VIDEO_REPORTS_PER_RUN = 40;
@@ -39,6 +39,10 @@ const METADATA_REFRESH_DAYS = 25;
 const ROTATING_BATCH = 50;
 const MAX_UPLOAD_IDS = 1000;
 const VIDEOS_PER_CALL = 50;
+/** Hard bound on playlist pages even if pages repeat ids (1,000 / 50 + slack). */
+const MAX_UPLOAD_PAGES = MAX_UPLOAD_IDS / 50 + 5;
+/** Bound on the "published in the last 90 days" reads. */
+const MAX_WINDOW_VIDEOS = 1000;
 const CONTENT_TYPES_MIN_INTERVAL_MS = 20 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -221,7 +225,7 @@ async function listNewUploads(ctx: Ctx): Promise<string[]> {
   const seen = new Set<string>();
   const fresh: string[] = [];
   let pageToken: string | null = null;
-  while (seen.size < MAX_UPLOAD_IDS) {
+  for (let pages = 0; pages < MAX_UPLOAD_PAGES && seen.size < MAX_UPLOAD_IDS; pages++) {
     let page: { videoIds: string[]; nextPageToken: string | null };
     try {
       page = await ctx.deps.api.listUploads(ctx.token, playlistId, pageToken ? { pageToken } : {});
@@ -255,7 +259,10 @@ async function storedVideosToRefresh(ctx: Ctx): Promise<StoredVideoFlag[]> {
       .eq("conta_id", channel.conta_id)
       .eq("channel_id", channel.channel_id);
 
-  const recent90 = await base().gte("published_at", cutoff90);
+  const recent90 = await base()
+    .gte("published_at", cutoff90)
+    .order("published_at", { ascending: false })
+    .limit(MAX_WINDOW_VIDEOS);
   if (recent90.error) throw dbError("recent videos read", recent90.error);
   const latest = await base().order("published_at", { ascending: false, nullsFirst: false }).limit(RECENT_VIDEOS);
   if (latest.error) throw dbError("latest videos read", latest.error);
@@ -279,9 +286,10 @@ function shouldRefreshContentTypes(channel: YoutubeChannelRow, now: Date): boole
 }
 
 /**
- * is_short: the content-type report when it lists the video; live/upcoming or zero-duration
- * videos are never shorts by duration; when the report was not refreshed this run, a stored value
- * is kept; otherwise the duration fallback (S2).
+ * is_short: the content-type report when it names the video; live/upcoming or zero-duration
+ * videos are never shorts; otherwise a stored non-null value is kept (the top-200 report drops
+ * videos as they age out, and an earlier classification is better than the duration guess);
+ * the duration fallback (S2) only when nothing is stored.
  */
 function classifyShort(
   video: YtVideo,
@@ -293,11 +301,29 @@ function classifyShort(
   if ((video.liveBroadcastContent !== null && video.liveBroadcastContent !== "none") || video.durationS === 0) {
     return false;
   }
-  if (types === undefined) {
-    const kept = stored.get(video.id);
-    if (kept !== undefined && kept !== null) return kept;
-  }
+  const kept = stored.get(video.id);
+  if (kept !== undefined && kept !== null) return kept;
   return video.isShortByDuration;
+}
+
+/** Cached shorts_count / long_count (spec §4.3) from the stored videos, behind the guard. */
+async function refreshVideoCounts(ctx: Ctx): Promise<void> {
+  const { channel } = ctx;
+  const count = async (isShort: boolean): Promise<number | null> => {
+    const { count, error } = await history(ctx, "youtube_videos")
+      .select("video_id", { count: "exact", head: true })
+      .eq("conta_id", channel.conta_id)
+      .eq("channel_id", channel.channel_id)
+      .eq("is_short", isShort);
+    if (error) throw dbError("video count", error);
+    return typeof count === "number" ? count : null;
+  };
+  const shorts = await count(true);
+  const long = await count(false);
+  const patch: Record<string, unknown> = {};
+  if (shorts !== null) patch.shorts_count = shorts;
+  if (long !== null) patch.long_count = long;
+  if (Object.keys(patch).length > 0) await guard(ctx, patch);
 }
 
 async function syncVideos(ctx: Ctx): Promise<void> {
@@ -307,7 +333,12 @@ async function syncVideos(ctx: Ctx): Promise<void> {
   const storedShort = new Map<string, boolean | null>();
   for (const v of stored) storedShort.set(v.video_id, v.is_short);
   const requested = [...new Set([...fresh, ...stored.map((v) => v.video_id)])];
-  if (requested.length === 0) return;
+  if (requested.length > 0) await refreshVideos(ctx, requested, storedShort);
+  await refreshVideoCounts(ctx);
+}
+
+async function refreshVideos(ctx: Ctx, requested: string[], storedShort: Map<string, boolean | null>): Promise<void> {
+  const { channel, deps } = ctx;
 
   const today = pacificDate(ctx.now);
   let types: Map<string, YtContentType> | null | undefined = undefined;
@@ -462,21 +493,25 @@ async function syncAnalytics(ctx: Ctx): Promise<void> {
       .eq("channel_id", channel.channel_id);
     if (error) throw dbError("demographics delete", error);
   }
-  if (demo.length > 0) {
-    const { error } = await history(ctx, "youtube_demographics").insert(
-      demo.map((r) => ({
-        conta_id: channel.conta_id,
-        channel_id: channel.channel_id,
-        window_end: yesterday,
-        age_group: r.ageGroup,
-        gender: r.gender,
-        viewer_pct: r.viewerPercentage,
-      })),
-    );
-    if (error) throw dbError("demographics insert", error);
-  }
+  // Upsert on the PK, not insert: a manual sync racing the cron on the same day writes the same
+  // (window_end, age_group, gender) keys and must not fail on a duplicate.
+  await upsertRows(
+    ctx,
+    "youtube_demographics",
+    demo.map((r) => ({
+      conta_id: channel.conta_id,
+      channel_id: channel.channel_id,
+      window_end: yesterday,
+      age_group: r.ageGroup,
+      gender: r.gender,
+      viewer_pct: r.viewerPercentage,
+    })),
+    "conta_id,channel_id,window_end,age_group,gender",
+  );
 
-  // Per-video daily: videos published in the last 90 days whose daily_through lags data_through.
+  // Per-video daily: videos published in the last 90 days whose daily_through lags data_through,
+  // at most maxVideoReports per run (P7). A channel with N lagging videos therefore refreshes each
+  // video's daily rows every ceil(N / 40) days; videos_through reports that honestly (below).
   if (!dataThrough || !splitThrough) return;
   const cutoff90 = new Date(ctx.now.getTime() - VIDEO_WINDOW_DAYS * DAY_MS).toISOString();
   const { data, error } = await history(ctx, "youtube_videos")
@@ -484,19 +519,32 @@ async function syncAnalytics(ctx: Ctx): Promise<void> {
     .eq("conta_id", channel.conta_id)
     .eq("channel_id", channel.channel_id)
     .gte("published_at", cutoff90)
-    .order("published_at", { ascending: false });
+    .order("published_at", { ascending: false })
+    .limit(MAX_WINDOW_VIDEOS);
   if (error) throw dbError("lagging videos read", error);
-  const lagging = ((data ?? []) as LaggingVideo[])
+  const inWindow = (data ?? []) as LaggingVideo[];
+  const coveredThrough = new Map<string, string | null>(inWindow.map((v) => [v.video_id, v.daily_through]));
+  const lagging = inWindow
     .filter((v) => !v.daily_through || v.daily_through < dataThrough)
     // Never-reported first, then the most behind; ties keep newest-published first (stable sort).
     .sort((a, b) => (a.daily_through ?? "") < (b.daily_through ?? "") ? -1 : (a.daily_through ?? "") > (b.daily_through ?? "") ? 1 : 0);
 
-  const batch = lagging.slice(0, Math.max(0, ctx.maxVideoReports));
-  for (const video of batch) {
+  for (const video of lagging.slice(0, Math.max(0, ctx.maxVideoReports))) {
     const vStart = video.daily_through
       ? addDays(video.daily_through, -OVERLAP_DAYS)
       : addDays(today, -VIDEO_WINDOW_DAYS);
-    const rows = await deps.api.videoDaily(token, video.video_id, { start: vStart, end: yesterday });
+    let rows: YtVideoDailyRow[];
+    try {
+      rows = await deps.api.videoDaily(token, video.video_id, { start: vStart, end: yesterday });
+    } catch (err) {
+      // One video the API rejects (deleted or made private since step 3, or not reportable) must
+      // not fail the channel: leave its daily_through and move on. Quota and 5xx still propagate.
+      if (err instanceof GoogleApiError && !isQuota(err) && [400, 403, 404].includes(err.status)) {
+        console.warn(`[youtube-sync] channel row ${channel.id}: video report rejected (${err.status}); video left behind`);
+        continue;
+      }
+      throw err;
+    }
     await guard(ctx);
     await upsertRows(
       ctx,
@@ -523,9 +571,17 @@ async function syncAnalytics(ctx: Ctx): Promise<void> {
       .eq("channel_id", channel.channel_id)
       .eq("video_id", video.video_id);
     if (advanceError) throw dbError("video daily_through update", advanceError);
+    coveredThrough.set(video.video_id, splitThrough);
   }
-  if (lagging.length <= batch.length) await guard(ctx, { videos_through: splitThrough });
+
+  // videos_through = the oldest daily_through over the in-window videos, capped at data_through.
+  // A video never reported (null) means the set is not covered: keep the previous value.
+  const covered = [...coveredThrough.values()];
+  if (covered.some((d) => !d)) return;
+  const oldest = covered.reduce<string>((min, d) => earlierDay(min, d as string), splitThrough);
+  if (oldest !== channel.videos_through) await guard(ctx, { videos_through: oldest });
 }
+
 
 // --- Entry point ---
 
