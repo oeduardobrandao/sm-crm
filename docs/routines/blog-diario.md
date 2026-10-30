@@ -448,7 +448,10 @@ O SVG é lido por um validador estrito. O que ele aceita:
 - No máximo 300 elementos e 10 níveis.
 
 Qualidade: contraste suficiente, margem interna de pelo menos 24 unidades, nenhum texto cortado
-na borda, rótulos curtos que caibam. Se o validador recusar, ele devolve uma linha
+na borda, rótulos curtos que caibam. Em matriz, eixo ou gráfico, os valores crescem da esquerda
+para a direita e de baixo para cima (o quadrante "alto/alto" fica no canto superior direito), e
+cada eixo diz a direção no rótulo ("Alcance: baixo → alto"). Antes de enviar, confira posição
+por posição que cada quadrante ou ponto está no lugar que os eixos dizem. Se o validador recusar, ele devolve uma linha
 `infografico[N].svg: motivo`: corrija só isso.
 
 Exemplo (funil sem dados, para ilustrar o formato; não copie):
