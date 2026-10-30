@@ -347,6 +347,30 @@ Deno.test("gbp-analytics: 'Todas as unidades' ends its window on the earliest da
   assert(hasMod(m, "lte", "day", "2026-10-25"));
 });
 
+Deno.test("gbp-analytics: a revoked unit's frozen data_through does not hold 'Todas' back, but its rows still count", async () => {
+  const db = createSupabaseQueryMock();
+  ready(db, [U1, { ...U2, status: "revoked", data_through: "2026-10-20" }]); // active 10-27, revoked 10-20
+  db.queue("gbp_metrics_daily", "select", {
+    data: [
+      metrics("locations/1", "2026-10-27", { call_clicks: 2 }),
+      metrics("locations/2", "2026-10-21", { call_clicks: 5 }),
+    ],
+  });
+  const res = await makeHandler(db)(get("/overview/42?days=7"));
+  const body = await res.json();
+  assertEquals(body.dataThrough, "2026-10-27");
+  assertEquals(body.window.end, "2026-10-27");
+  assertEquals(body.kpis.calls, { value: 7, prev: 0 });
+  const [m] = callsTo(db, "gbp_metrics_daily");
+  assert(hasMod(m, "in", "location_name", ["locations/1", "locations/2"]));
+
+  // Every unit revoked: the earliest watermark.
+  const db2 = createSupabaseQueryMock();
+  ready(db2, [{ ...U1, status: "revoked" }, { ...U2, status: "revoked", data_through: "2026-10-20" }]);
+  const body2 = await (await makeHandler(db2)(get("/overview/42?days=7"))).json();
+  assertEquals(body2.window.end, "2026-10-20");
+});
+
 Deno.test("gbp-analytics: one unit selected uses its own data_through and only its rows", async () => {
   const db = createSupabaseQueryMock();
   ready(db);
@@ -636,12 +660,13 @@ Deno.test("gbp-analytics: rating distribution is partial when only 200 of 440 re
 
 Deno.test("gbp-analytics: units returns each unit's window sums, rating and review count", async () => {
   const db = createSupabaseQueryMock();
+  // Active U1 (10-27) sets the window; the revoked U2's frozen 10-25 does not hold it back.
   ready(db, [U1, { ...U2, status: "revoked" }]);
   db.queue("gbp_metrics_daily", "select", {
     data: [
-      metrics("locations/1", "2026-10-20", { business_impressions_mobile_search: 7, call_clicks: 1 }),
+      metrics("locations/1", "2026-10-26", { business_impressions_mobile_search: 7, call_clicks: 1 }),
       metrics("locations/2", "2026-10-21", { website_clicks: 2, messaging_clicks: 3 }),
-      metrics("locations/1", "2026-10-26", { call_clicks: 100 }), // after "all"'s data_through
+      metrics("locations/1", "2026-10-20", { call_clicks: 100 }), // before the window
     ],
   });
   const res = await makeHandler(db)(get(`/units/42?days=7&location=${U1_ID}`));
@@ -678,8 +703,8 @@ Deno.test("gbp-analytics: units returns each unit's window sums, rating and revi
   });
   const [m] = callsTo(db, "gbp_metrics_daily");
   assert(hasMod(m, "in", "location_name", ["locations/1", "locations/2"]));
-  assert(hasMod(m, "gte", "day", "2026-10-19"));
-  assert(hasMod(m, "lte", "day", "2026-10-25"));
+  assert(hasMod(m, "gte", "day", "2026-10-21"));
+  assert(hasMod(m, "lte", "day", "2026-10-27"));
 });
 
 // ── tenant keys on every history read ─────────────────────────────────────────

@@ -105,6 +105,16 @@ export function minDataThrough(units: { data_through: string | null }[]): string
   return min;
 }
 
+/** The watermark a window over the selected units ends on. With an active unit that has synced,
+ * the earliest watermark among the ACTIVE units: a revoked unit's data_through freezes at
+ * revocation and would otherwise hold the window back until its 30-day expiry (its rows still
+ * count in the sums). Otherwise (every unit revoked, or no active unit synced yet) the earliest
+ * across all of them. A single unit therefore always uses its own watermark. */
+export function windowDataThrough(units: { status: string; data_through: string | null }[]): string | null {
+  const active = minDataThrough(units.filter((u) => u.status === "active"));
+  return active ?? minDataThrough(units);
+}
+
 /** Every day of [start, end], oldest first. */
 export function daysOf(start: string, end: string): string[] {
   const out: string[] = [];

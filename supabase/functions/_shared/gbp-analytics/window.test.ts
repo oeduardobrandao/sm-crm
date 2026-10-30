@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { minDataThrough, parseWindowRequest, resolveWindow } from "./window.ts";
+import { minDataThrough, parseWindowRequest, resolveWindow, windowDataThrough } from "./window.ts";
 
 const NOW = new Date("2026-10-30T15:00:00.000Z"); // SP 12:00 on 2026-10-30
 
@@ -67,4 +67,18 @@ Deno.test("minDataThrough: the earliest watermark; units never synced are left o
   assertEquals(minDataThrough([{ data_through: null }, { data_through: "2026-10-27" }]), "2026-10-27");
   assertEquals(minDataThrough([{ data_through: null }]), null);
   assertEquals(minDataThrough([]), null);
+});
+
+Deno.test("windowDataThrough: active units set the watermark; a revoked unit's frozen one does not hold it back", () => {
+  const active = (d: string | null) => ({ status: "active", data_through: d });
+  const revoked = (d: string | null) => ({ status: "revoked", data_through: d });
+  assertEquals(windowDataThrough([active("2026-10-27"), revoked("2026-10-20")]), "2026-10-27");
+  assertEquals(windowDataThrough([active("2026-10-27"), active("2026-10-25"), revoked("2026-10-20")]), "2026-10-25");
+  // Every unit revoked: the earliest of them.
+  assertEquals(windowDataThrough([revoked("2026-10-27"), revoked("2026-10-20")]), "2026-10-20");
+  // A single unit uses its own watermark, revoked or not.
+  assertEquals(windowDataThrough([revoked("2026-10-20")]), "2026-10-20");
+  // No active unit has synced yet: fall back to every unit.
+  assertEquals(windowDataThrough([active(null), revoked("2026-10-20")]), "2026-10-20");
+  assertEquals(windowDataThrough([active(null)]), null);
 });

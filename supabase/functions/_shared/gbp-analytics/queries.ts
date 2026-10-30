@@ -23,7 +23,7 @@ import {
   sumMetrics,
   surfaceBreakdown,
 } from "./kpis.ts";
-import { addDays, type AnalyticsWindow, minDataThrough, resolveWindow, type WindowRequest } from "./window.ts";
+import { addDays, type AnalyticsWindow, resolveWindow, type WindowRequest, windowDataThrough } from "./window.ts";
 
 // deno-lint-ignore no-explicit-any
 type Db = any;
@@ -108,14 +108,15 @@ async function loadRatings(db: Db, contaId: string, units: GbpUnit[], w: Analyti
 // ─── Overview, daily, surfaces ─────────────────────────────────────────────────────
 
 export interface GbpOverview {
-  /** The earliest data_through across the selected units; null before the first sync. */
+  /** The window's watermark (`windowDataThrough`): the earliest data_through of the selected
+   * active units, or of all of them when none is active; null before the first sync. */
   dataThrough: string | null;
   window: AnalyticsWindow;
   kpis: Record<GbpKpiId, GbpKpiEntry>;
 }
 
 export async function buildOverview(db: Db, contaId: string, units: GbpUnit[], req: WindowRequest, now: Date): Promise<GbpOverview> {
-  const dataThrough = minDataThrough(units);
+  const dataThrough = windowDataThrough(units);
   const { window, hasData } = resolveWindow(req, dataThrough, now);
   if (!hasData) return { dataThrough, window, kpis: emptyGbpKpis() };
   // Fixed order (metrics, then ratings): the handler tests queue mock rows per table.
@@ -131,14 +132,14 @@ export async function buildOverview(db: Db, contaId: string, units: GbpUnit[], r
 }
 
 export async function buildDaily(db: Db, contaId: string, units: GbpUnit[], req: WindowRequest, now: Date): Promise<GbpDailyPoint[]> {
-  const { window, hasData } = resolveWindow(req, minDataThrough(units), now);
+  const { window, hasData } = resolveWindow(req, windowDataThrough(units), now);
   if (!hasData) return [];
   const rows = await loadMetrics(db, contaId, units, window.start, window.end);
   return dailySeries(rows, window.start, window.end);
 }
 
 export async function buildSurfaces(db: Db, contaId: string, units: GbpUnit[], req: WindowRequest, now: Date): Promise<GbpSurfaceRow[]> {
-  const { window, hasData } = resolveWindow(req, minDataThrough(units), now);
+  const { window, hasData } = resolveWindow(req, windowDataThrough(units), now);
   const rows = hasData ? await loadMetrics(db, contaId, units, window.start, window.end) : [];
   return surfaceBreakdown(sumMetrics(rows, window.start, window.end));
 }
@@ -159,10 +160,10 @@ export interface GbpUnitRow {
   totalReviewCount: number | null;
 }
 
-/** Every counted unit with its sums over the "Todas as unidades" window (earliest data_through),
+/** Every counted unit with its sums over the "Todas as unidades" window (`windowDataThrough`),
  * so the rows compare like with like, plus the unit's current rating and review count. */
 export async function buildUnits(db: Db, contaId: string, units: GbpUnit[], req: WindowRequest, now: Date): Promise<GbpUnitRow[]> {
-  const { window, hasData } = resolveWindow(req, minDataThrough(units), now);
+  const { window, hasData } = resolveWindow(req, windowDataThrough(units), now);
   const rows = hasData ? await loadMetrics(db, contaId, units, window.start, window.end) : [];
   return units.map((u) => {
     const t = sumMetrics(rows.filter((r) => r.location_name === u.location_name), window.start, window.end);
