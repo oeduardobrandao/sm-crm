@@ -23,9 +23,11 @@ import {
   daysOf,
   laDayStartIso,
   resolveYtWindow,
+  spanDays,
   type YtWindow,
   type YtWindowRequest,
 } from "./window.ts";
+import { fetchAllRows } from "../paginate.ts";
 
 // deno-lint-ignore no-explicit-any
 type Db = any;
@@ -70,6 +72,7 @@ export interface YtOverview {
     dataThrough: string | null;
     contentTypeThrough: string | null;
     trafficThrough: string | null;
+    videosThrough: string | null;
   };
   window: YtWindow;
   /** Every id present; all null before the first sync. */
@@ -123,21 +126,8 @@ export interface YtVideoRow {
 
 // ─── Reads ───────────────────────────────────────────────────────────────────────
 
-/** PostgREST caps a response at 1000 rows; a 365-day window of four content types goes past it. */
-// Assumes the project's PostgREST max_rows = 1000: a page shorter than PAGE_SIZE ends paging.
-const PAGE_SIZE = 1000;
-
-// deno-lint-ignore no-explicit-any
-async function selectAllPages<T>(page: (from: number, to: number) => PromiseLike<{ data: any; error: any }>): Promise<T[]> {
-  const out: T[] = [];
-  for (let from = 0;; from += PAGE_SIZE) {
-    const { data, error } = await page(from, from + PAGE_SIZE - 1);
-    if (error) throw error;
-    const rows = (data ?? []) as T[];
-    out.push(...rows);
-    if (rows.length < PAGE_SIZE) return out;
-  }
-}
+// PostgREST caps a response at 1000 rows (a 365-day window of four content types goes past it):
+// every list read drains through fetchAllRows, each with a total order ending in its primary key.
 
 export async function loadYouTubeChannel(db: Db, contaId: string, clientId: number): Promise<YouTubeChannelRow | null> {
   const { data, error } = await db.from("youtube_channels").select(YOUTUBE_CHANNEL_COLUMNS)
@@ -146,30 +136,32 @@ export async function loadYouTubeChannel(db: Db, contaId: string, clientId: numb
   return (data as YouTubeChannelRow | null) ?? null;
 }
 
-/** Every content type's rows with `day` in [start, end], oldest first. */
+/** Rows with `day` in [start, end], oldest first: every content type, or only `contentType`. */
 export async function loadChannelDaily(
   db: Db,
   contaId: string,
   channelId: string,
   start: string,
   end: string,
+  contentType?: YtContentType,
 ): Promise<YtChannelDailyRow[]> {
-  return await selectAllPages<YtChannelDailyRow>((from, to) =>
-    db.from("youtube_channel_daily").select(CHANNEL_DAILY_COLUMNS)
+  return await fetchAllRows<YtChannelDailyRow>((from, to) => {
+    let q = db.from("youtube_channel_daily").select(CHANNEL_DAILY_COLUMNS)
       .eq("conta_id", contaId)
-      .eq("channel_id", channelId)
-      .gte("day", start)
+      .eq("channel_id", channelId);
+    if (contentType) q = q.eq("content_type", contentType);
+    return q.gte("day", start)
       .lte("day", end)
       .order("day", { ascending: true })
       .order("content_type", { ascending: true })
-      .range(from, to)
-  );
+      .range(from, to);
+  });
 }
 
 type TrafficDbRow = { day: string; source_type: string; views: number | null };
 
 async function loadTraffic(db: Db, contaId: string, channelId: string, start: string, end: string): Promise<TrafficDbRow[]> {
-  return await selectAllPages<TrafficDbRow>((from, to) =>
+  return await fetchAllRows<TrafficDbRow>((from, to) =>
     db.from("youtube_traffic_daily").select("day, source_type, views")
       .eq("conta_id", contaId)
       .eq("channel_id", channelId)
@@ -197,7 +189,7 @@ async function loadVideosPublishedIn(
   start: string,
   end: string,
 ): Promise<VideoDbRow[]> {
-  return await selectAllPages<VideoDbRow>((from, to) =>
+  return await fetchAllRows<VideoDbRow>((from, to) =>
     db.from("youtube_videos").select(VIDEO_COLUMNS)
       .eq("conta_id", contaId)
       .eq("channel_id", channelId)
@@ -210,7 +202,7 @@ async function loadVideosPublishedIn(
 }
 
 async function loadShorts(db: Db, contaId: string, channelId: string): Promise<VideoDbRow[]> {
-  return await selectAllPages<VideoDbRow>((from, to) =>
+  return await fetchAllRows<VideoDbRow>((from, to) =>
     db.from("youtube_videos").select(VIDEO_COLUMNS)
       .eq("conta_id", contaId)
       .eq("channel_id", channelId)
@@ -229,7 +221,7 @@ async function loadVideoDaily(
   start: string,
   end: string,
 ): Promise<YtVideoDailyRow[]> {
-  return await selectAllPages<YtVideoDailyRow>((from, to) =>
+  return await fetchAllRows<YtVideoDailyRow>((from, to) =>
     db.from("youtube_video_daily").select(VIDEO_DAILY_COLUMNS)
       .eq("conta_id", contaId)
       .eq("channel_id", channelId)
@@ -263,6 +255,7 @@ function channelSummary(c: YouTubeChannelRow): YtOverview["channel"] {
     dataThrough: c.data_through,
     contentTypeThrough: c.content_type_through,
     trafficThrough: c.traffic_through,
+    videosThrough: c.videos_through,
   };
 }
 
@@ -278,31 +271,74 @@ export async function buildYtOverview(
   const base = { channel: channelSummary(channel), window: w };
   if (!hasData) return { ...base, kpis: emptyYtKpis(), split: emptySplit() };
 
-  // One read covers both windows; partitioned in memory.
+  // Read 1: every content type over both full windows (subscriber KPIs, split, `all` KPIs).
   const rows = await loadChannelDaily(db, contaId, channel.channel_id, w.prevStart, w.end);
-  const cur = rows.filter((r) => inRange(r.day, w.start, w.end));
-  const prev = rows.filter((r) => inRange(r.day, w.prevStart, w.prevEnd));
-  const ofType = (list: YtChannelDailyRow[], t: string) => list.filter((r) => r.content_type === t);
+  const ofType = (t: string, start: string, end: string) =>
+    rows.filter((r) => r.content_type === t && inRange(r.day, start, end));
+  const allCurrent = ofType("all", w.start, w.end);
+  const allPrev = ofType("all", w.prevStart, w.prevEnd);
 
   const ctt = channel.content_type_through;
   const splitEnd = ctt ? minDay(w.end, ctt) : null;
-  const split = splitEnd ? computeYtSplit(cur.filter((r) => r.day <= splitEnd)) : emptySplit();
+  const split = splitEnd
+    ? computeYtSplit(rows.filter((r) => inRange(r.day, w.start, splitEnd)))
+    : emptySplit();
 
+  const subscriberCount = num(channel.subscriber_count);
+  if (type === "all") {
+    return {
+      ...base,
+      kpis: computeYtKpis({
+        current: allCurrent,
+        prev: allPrev,
+        prevCovered: allPrev.length > 0,
+        allCurrent,
+        allPrev,
+        subscriberCount,
+      }),
+      split,
+    };
+  }
+
+  // A split type reads only up to content_type_through: the current window ends there and the
+  // previous window has the clipped length, right before the start. No split data in the window
+  // at all leaves the type's KPIs null.
+  const typeWindow = typeWindowOf(w, ctt);
+  if (!typeWindow) {
+    return {
+      ...base,
+      kpis: computeYtKpis({ current: null, prev: [], prevCovered: false, allCurrent, allPrev, subscriberCount }),
+      split,
+    };
+  }
+  // Read 2 (after read 1 has drained): the selected type over its clipped windows.
+  const typed = await loadChannelDaily(db, contaId, channel.channel_id, typeWindow.prevStart, typeWindow.end, type);
   return {
     ...base,
     kpis: computeYtKpis({
-      current: ofType(cur, type),
-      prev: ofType(prev, type),
-      allCurrent: ofType(cur, "all"),
-      allPrev: ofType(prev, "all"),
-      subscriberCount: num(channel.subscriber_count),
+      current: typed.filter((r) => inRange(r.day, typeWindow.start, typeWindow.end)),
+      prev: typed.filter((r) => inRange(r.day, typeWindow.prevStart, typeWindow.prevEnd)),
+      prevCovered: rows.some((r) => r.content_type === "all" && inRange(r.day, typeWindow.prevStart, typeWindow.prevEnd)),
+      allCurrent,
+      allPrev,
+      subscriberCount,
     }),
     split,
   };
 }
 
-/** One point per day of the window. A day the report omitted counts as 0 once the watermark of
- * the selected type covers it (`data_through` for `all`, `content_type_through` for a split). */
+/** The window clipped to `content_type_through`, with the previous window of the clipped length;
+ * null when the watermark is missing or before the window start. */
+function typeWindowOf(w: YtWindow, ctt: string | null): YtWindow | null {
+  if (!ctt || ctt < w.start) return null;
+  const end = minDay(w.end, ctt);
+  const len = spanDays(w.start, end);
+  return { start: w.start, end, prevStart: addDays(w.start, -len), prevEnd: addDays(w.start, -1) };
+}
+
+/** One point per day of the window, a day the report omitted counting as 0. For a split type the
+ * window ends at `content_type_through`, as on the overview (empty when that type has no data in
+ * the window yet). `shortsViews`/`longViews` are set only on days the split watermark covers. */
 export async function buildYtDaily(
   db: Db,
   contaId: string,
@@ -313,15 +349,19 @@ export async function buildYtDaily(
 ): Promise<YtDailyPoint[]> {
   const { window: w, hasData } = resolveYtWindow(req, channel.data_through, now);
   if (!hasData) return [];
-  const rows = await loadChannelDaily(db, contaId, channel.channel_id, w.start, w.end);
-  const byKey = new Map(rows.map((r) => [`${r.day}|${r.content_type}`, r]));
   const ctt = channel.content_type_through;
+  let end = w.end;
+  if (type !== "all") {
+    const typeWindow = typeWindowOf(w, ctt);
+    if (!typeWindow) return [];
+    end = typeWindow.end;
+  }
+  const rows = await loadChannelDaily(db, contaId, channel.channel_id, w.start, end);
+  const byKey = new Map(rows.map((r) => [`${r.day}|${r.content_type}`, r]));
 
-  return daysOf(w.start, w.end).map((day) => {
+  return daysOf(w.start, end).map((day) => {
     const row = byKey.get(`${day}|${type}`);
-    const covered = type === "all" || (ctt !== null && day <= ctt);
-    const fill = row ? null : covered ? 0 : null;
-    const metric = (key: keyof YtChannelDailyRow) => (row ? num(row[key]) : fill);
+    const metric = (key: keyof YtChannelDailyRow) => (row ? num(row[key]) : 0);
     const point: YtDailyPoint = {
       date: day,
       views: row ? num(row.views) ?? 0 : 0,

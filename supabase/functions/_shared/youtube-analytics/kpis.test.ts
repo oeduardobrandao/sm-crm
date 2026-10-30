@@ -31,7 +31,7 @@ function row(day: string, over: Partial<YtChannelDailyRow> = {}): YtChannelDaily
 function input(over: Partial<YtKpiInput> = {}): YtKpiInput {
   const current = [row("2026-10-26"), row("2026-10-27", { views: 300, average_view_duration_s: 10 })];
   const prev = [row("2026-10-24", { views: 50 })];
-  return { current, prev, allCurrent: current, allPrev: prev, subscriberCount: 1000, ...over };
+  return { current, prev, prevCovered: true, allCurrent: current, allPrev: prev, subscriberCount: 1000, ...over };
 }
 
 Deno.test("returns every KPI id", () => {
@@ -54,9 +54,9 @@ Deno.test("weighted mean skips rows missing either side and is null on zero view
   assertEquals(weightedAverage([], "average_view_duration_s"), null);
 });
 
-Deno.test("net_subscribers is sum gained minus sum lost, with both exposed", () => {
+Deno.test("net_subscribers is sum gained minus sum lost over the 'all' rows, with both exposed", () => {
   const k = computeYtKpis(input({
-    current: [row("d1", { subscribers_gained: 10, subscribers_lost: 3 }), row("d2", { subscribers_gained: 4, subscribers_lost: 6 })],
+    allCurrent: [row("d1", { subscribers_gained: 10, subscribers_lost: 3 }), row("d2", { subscribers_gained: 4, subscribers_lost: 6 })],
   })).net_subscribers;
   assertEquals(k.value, 5);
   assertEquals(k.gained, 14);
@@ -69,12 +69,29 @@ Deno.test("subscribers is the current count; prev is the count before the window
   assertEquals(computeYtKpis(input()).subscribers, { value: 1000, prev: 992 });
 });
 
-Deno.test("subscribers uses the 'all' rows even when the selected type has no subscriber metrics", () => {
-  const shorts = [row("2026-10-27", { content_type: "shorts", subscribers_gained: null, subscribers_lost: null })];
+Deno.test("subscribers and net_subscribers use the 'all' rows whatever the selected type", () => {
+  const shorts = [row("2026-10-27", { content_type: "shorts", subscribers_gained: null, subscribers_lost: null, views: 7 })];
   const k = computeYtKpis(input({ current: shorts, prev: shorts }));
   assertEquals(k.subscribers, { value: 1000, prev: 992 });
-  // Google does not split subscriber metrics: the type's net is unknown, not zero.
-  assertEquals(k.net_subscribers.value, null);
+  // Google does not split subscriber metrics: the channel-wide net is shown.
+  assertEquals(k.net_subscribers.value, 8);
+  assertEquals(k.net_subscribers.prev, 4);
+  assertEquals(k.views.value, 7);
+});
+
+Deno.test("current null (no split data in the window): the type's KPIs are null, subscriber KPIs are not", () => {
+  const k = computeYtKpis(input({ current: null, prev: [] }));
+  for (const id of ["views", "engaged_views", "watch_minutes", "avg_view_duration_s", "likes", "shares", "comments"] as const) {
+    assertEquals(k[id], { value: null, prev: null }, id);
+  }
+  assertEquals(k.subscribers, { value: 1000, prev: 992 });
+  assertEquals(k.net_subscribers.value, 8);
+});
+
+Deno.test("prevCovered false nulls the type's prev; subscriber prev follows the 'all' previous window", () => {
+  const k = computeYtKpis(input({ prevCovered: false }));
+  assertEquals(k.views, { value: 400, prev: null });
+  assertEquals(k.net_subscribers.prev, 4);
 });
 
 Deno.test("subscribers is null when the channel count is unknown", () => {
@@ -106,7 +123,7 @@ Deno.test("a channel with no Shorts: type=shorts KPIs are 0, not null", () => {
 });
 
 Deno.test("previous window with no 'all' rows (before the backfill) has every prev null", () => {
-  const k = computeYtKpis(input({ prev: [], allPrev: [] }));
+  const k = computeYtKpis(input({ prev: [], allPrev: [], prevCovered: false }));
   for (const id of YT_KPI_IDS) {
     if (id === "subscribers") continue; // its prev comes from the current window's net change
     assertEquals(k[id].prev, null, id);

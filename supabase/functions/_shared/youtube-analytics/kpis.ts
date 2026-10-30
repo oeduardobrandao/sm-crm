@@ -1,16 +1,19 @@
 // YouTube KPI cards (spec §7). Pure: the caller loads the daily rows and splits them per window.
 //
 // - `subscribers` is the channel's current count (rounded by YouTube); its `prev` is that count
-//   minus the window's net change, so value - prev is the spec's delta. It always reads the `all`
-//   rows: Google does not split subscriber metrics by content type.
+//   minus the window's net change, so value - prev is the spec's delta.
 // - `net_subscribers` is Σ gained − Σ lost, with both sums exposed on the entry.
+//   Both subscriber KPIs always read the `all` rows of the full window, whatever the selected
+//   content type: Google does not split subscriber metrics by content type.
 // - `avg_view_duration_s` is the view-weighted mean of the daily averages.
-// - Every other KPI is a Σ of the selected content type's rows.
+// - Every other KPI is a Σ of the selected content type's rows. For `shorts`/`long` the caller
+//   clips those rows to `content_type_through` (and the previous window to the same length); with
+//   no split data in the window at all it passes `current: null` and those KPIs are null.
 //
 // Null versus zero (Review Focus 4): no rows sums to 0 (a channel with no Shorts has zero Shorts
 // views, not "sem dados"); rows whose metric is null on every row sum to null (Google left that
-// metric unsplit). A previous window with no `all` rows predates the backfill, so every `prev`
-// is null there instead of a fake comparison against zero.
+// metric unsplit). A previous window with no `all` rows predates the backfill, so its `prev` is
+// null instead of a fake comparison against zero.
 
 export const YT_KPI_IDS = [
   "subscribers",
@@ -53,10 +56,14 @@ export interface YtChannelDailyRow {
 type DailyMetric = Exclude<keyof YtChannelDailyRow, "day" | "content_type">;
 
 export interface YtKpiInput {
-  /** Rows of the selected content type, current and previous window. */
-  current: YtChannelDailyRow[];
+  /** Rows of the selected content type in its (possibly clipped) current window; null when that
+   * type has no data in the window yet (`content_type_through` null or before the start). */
+  current: YtChannelDailyRow[] | null;
+  /** Rows of the selected type in the previous window of the same length. */
   prev: YtChannelDailyRow[];
-  /** `all` rows of the same windows (subscriber delta and backfill coverage). */
+  /** That previous window has `all` rows (otherwise it predates the backfill). */
+  prevCovered: boolean;
+  /** `all` rows of the full current and previous windows (subscriber KPIs). */
   allCurrent: YtChannelDailyRow[];
   allPrev: YtChannelDailyRow[];
   subscriberCount: number | null;
@@ -131,24 +138,24 @@ export function emptyYtKpis(): Record<YtKpiId, YtKpiEntry> {
 }
 
 export function computeYtKpis(i: YtKpiInput): Record<YtKpiId, YtKpiEntry> {
-  const covered = i.allPrev.length > 0;
-  const prevOf = (v: number | null) => (covered ? v : null);
   const out = emptyYtKpis();
 
-  const allNet = net(i.allCurrent).net;
+  const allNet = net(i.allCurrent);
+  const allPrevNet = i.allPrev.length > 0 ? net(i.allPrev).net : null;
   out.subscribers = {
     value: i.subscriberCount,
-    prev: i.subscriberCount !== null && allNet !== null ? i.subscriberCount - allNet : null,
+    prev: i.subscriberCount !== null && allNet.net !== null ? i.subscriberCount - allNet.net : null,
   };
+  out.net_subscribers = { value: allNet.net, prev: allPrevNet, gained: allNet.gained, lost: allNet.lost };
 
-  const cur = net(i.current);
-  out.net_subscribers = { value: cur.net, prev: prevOf(net(i.prev).net), gained: cur.gained, lost: cur.lost };
-
+  const current = i.current;
+  if (current === null) return out; // the type's KPIs stay { value: null, prev: null }
+  const prevOf = (v: number | null) => (i.prevCovered ? v : null);
   for (const [id, key] of SUMMED) {
-    out[id] = { value: sumMetric(i.current, key), prev: prevOf(sumMetric(i.prev, key)) };
+    out[id] = { value: sumMetric(current, key), prev: prevOf(sumMetric(i.prev, key)) };
   }
   out.avg_view_duration_s = {
-    value: weightedAverage(i.current, "average_view_duration_s"),
+    value: weightedAverage(current, "average_view_duration_s"),
     prev: prevOf(weightedAverage(i.prev, "average_view_duration_s")),
   };
   return out;

@@ -5,6 +5,7 @@ import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock, type QueryCall } from "../../../test/shared/supabaseMock.ts";
 import { createYouTubeAnalyticsHandler } from "../youtube-analytics/handlers.ts";
 import { YT_KPI_IDS } from "../_shared/youtube-analytics/kpis.ts";
+import { loadChannelDaily } from "../_shared/youtube-analytics/queries.ts";
 
 type Mock = ReturnType<typeof createSupabaseQueryMock>;
 
@@ -386,6 +387,7 @@ Deno.test("youtube-analytics: overview ?days=28 ends at data_through and compare
     dataThrough: "2026-10-27",
     contentTypeThrough: "2026-10-27",
     trafficThrough: "2026-10-27",
+    videosThrough: "2026-10-27",
   });
   assertEquals(body.kpis.views, { value: 400, prev: 50 });
   assertEquals(body.kpis.avg_view_duration_s.value, 15);
@@ -415,22 +417,90 @@ Deno.test("youtube-analytics: overview defaults to 28 days and type=all", async 
   assertEquals(body.kpis.views, { value: 0, prev: null });
 });
 
-Deno.test("youtube-analytics: overview type=shorts sums the shorts rows; subscribers still uses 'all'", async () => {
+Deno.test("youtube-analytics: overview type=shorts sums the shorts rows; subscriber KPIs use 'all'", async () => {
   const db = createSupabaseQueryMock();
   connected(db);
-  db.queue("youtube_channel_daily", "select", {
-    data: [
-      daily("2026-09-10", "all"),
-      daily("2026-10-27", "all", { views: 500, subscribers_gained: 7, subscribers_lost: 2 }),
-      daily("2026-10-27", "shorts", { views: 200, subscribers_gained: null, subscribers_lost: null }),
-      daily("2026-10-27", "long", { views: 300 }),
-    ],
-  });
+  // Read 1 (every type, both full windows), its empty closing page, then read 2 (shorts only).
+  db.queue(
+    "youtube_channel_daily",
+    "select",
+    {
+      data: [
+        daily("2026-09-10", "all", { subscribers_gained: 3, subscribers_lost: 1 }),
+        daily("2026-10-27", "all", { views: 500, subscribers_gained: 7, subscribers_lost: 2 }),
+        daily("2026-10-27", "shorts", { views: 200, subscribers_gained: null, subscribers_lost: null }),
+        daily("2026-10-27", "long", { views: 300 }),
+      ],
+    },
+    { data: [] },
+    { data: [daily("2026-10-27", "shorts", { views: 200, subscribers_gained: null, subscribers_lost: null })] },
+  );
   const body = await (await makeHandler(db)(get("/overview/42?type=shorts"))).json();
   assertEquals(body.kpis.views, { value: 200, prev: 0 });
-  assertEquals(body.kpis.net_subscribers.value, null);
+  // Subscriber metrics are not split by content type: the channel-wide net, as with type=all.
+  assertEquals(body.kpis.net_subscribers, { value: 5, prev: 2, gained: 7, lost: 2 });
   assertEquals(body.kpis.subscribers, { value: 1000, prev: 995 });
   assertEquals(body.split.views, { shorts: 200, long: 300 });
+
+  const [full, typed] = callsTo(db, "youtube_channel_daily").filter((c) => mods(c, "range")[0]?.[0] === 0);
+  assertEquals(mods(full, "eq").some(([k]) => k === "content_type"), false);
+  assert(hasEq(typed, "content_type", "shorts"));
+  assertEquals(mods(typed, "gte"), [["day", "2026-09-02"]]);
+  assertEquals(mods(typed, "lte"), [["day", "2026-10-27"]]);
+  assertScoped(db, "youtube_channel_daily");
+});
+
+Deno.test("youtube-analytics: overview type=shorts with content_type_through null has null type KPIs", async () => {
+  const db = createSupabaseQueryMock();
+  connected(db, { content_type_through: null });
+  db.queue("youtube_channel_daily", "select", {
+    data: [daily("2026-10-27", "all", { views: 500, subscribers_gained: 7, subscribers_lost: 2 })],
+  });
+  const body = await (await makeHandler(db)(get("/overview/42?type=shorts"))).json();
+  assertEquals(body.kpis.views, { value: null, prev: null });
+  assertEquals(body.kpis.avg_view_duration_s, { value: null, prev: null });
+  assertEquals(body.kpis.net_subscribers.value, 5);
+  assertEquals(body.kpis.subscribers.value, 1000);
+  // Only the full read: no shorts read without split data.
+  assertEquals(
+    callsTo(db, "youtube_channel_daily").some((c) => hasEq(c, "content_type", "shorts")),
+    false,
+  );
+});
+
+Deno.test("youtube-analytics: overview type=long with content_type_through before the window start is null", async () => {
+  const db = createSupabaseQueryMock();
+  connected(db, { content_type_through: "2026-09-29" });
+  const body = await (await makeHandler(db)(get("/overview/42?type=long"))).json();
+  assertEquals(body.kpis.views, { value: null, prev: null });
+});
+
+Deno.test("youtube-analytics: overview type=shorts with a lagging content_type_through clips both windows", async () => {
+  const db = createSupabaseQueryMock();
+  connected(db, { content_type_through: "2026-10-20" });
+  db.queue(
+    "youtube_channel_daily",
+    "select",
+    { data: [daily("2026-09-15", "all"), daily("2026-10-27", "all")] },
+    { data: [] },
+    {
+      data: [
+        daily("2026-09-09", "shorts", { views: 7 }),
+        daily("2026-10-01", "shorts", { views: 40 }),
+        daily("2026-10-20", "shorts", { views: 60 }),
+      ],
+    },
+  );
+  const body = await (await makeHandler(db)(get("/overview/42?days=28&type=shorts"))).json();
+  // Current window [2026-09-30, 2026-10-20] (21 days); previous [2026-09-09, 2026-09-29].
+  assertEquals(body.kpis.views, { value: 100, prev: 7 });
+  // The returned window stays the full one; the lag shows through contentTypeThrough.
+  assertEquals(body.window.end, "2026-10-27");
+  assertEquals(body.channel.contentTypeThrough, "2026-10-20");
+  const typed = callsTo(db, "youtube_channel_daily").find((c) => hasEq(c, "content_type", "shorts"));
+  assert(typed);
+  assertEquals(mods(typed, "gte"), [["day", "2026-09-09"]]);
+  assertEquals(mods(typed, "lte"), [["day", "2026-10-20"]]);
 });
 
 Deno.test("youtube-analytics: overview split stops at content_type_through", async () => {
@@ -574,6 +644,48 @@ Deno.test("youtube-analytics: daily type=long reads the long rows", async () => 
   assertEquals(points[6].views, 30);
   assertEquals(points[6].likes, null);
   assertEquals(points[0].views, 0);
+  assertEquals(points[0].likes, 0);
+});
+
+Deno.test("youtube-analytics: daily type=shorts stops at content_type_through, like the overview", async () => {
+  const db = createSupabaseQueryMock();
+  connected(db, { content_type_through: "2026-10-25" });
+  db.queue("youtube_channel_daily", "select", { data: [daily("2026-10-25", "shorts", { views: 9 })] });
+  const { daily: points } = await (await makeHandler(db)(get("/daily/42?days=7&type=shorts"))).json();
+  assertEquals(points.map((p: { date: string }) => p.date), [
+    "2026-10-21",
+    "2026-10-22",
+    "2026-10-23",
+    "2026-10-24",
+    "2026-10-25",
+  ]);
+  assertEquals(points[4].views, 9);
+  const [read] = callsTo(db, "youtube_channel_daily");
+  assertEquals(mods(read, "lte"), [["day", "2026-10-25"]]);
+});
+
+Deno.test("youtube-analytics: daily type=shorts without split data is empty and reads nothing", async () => {
+  for (const ctt of [null, "2026-10-20"]) {
+    const db = createSupabaseQueryMock();
+    connected(db, { content_type_through: ctt });
+    assertEquals(await (await makeHandler(db)(get("/daily/42?days=7&type=shorts"))).json(), { daily: [] }, String(ctt));
+    assertEquals(callsTo(db, "youtube_channel_daily").length, 0);
+  }
+});
+
+Deno.test("youtube-analytics queries: loadChannelDaily drains every page (fetchAllRows)", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue(
+    "youtube_channel_daily",
+    "select",
+    { data: Array.from({ length: 1000 }, (_, i) => daily(`2026-01-01`, `t${i}`)) },
+    { data: [daily("2026-01-02", "all")] },
+  );
+  // deno-lint-ignore no-explicit-any
+  const rows = await loadChannelDaily(db as any, "ws-B", "UC123", "2026-01-01", "2026-12-31");
+  assertEquals(rows.length, 1001);
+  // Advances by rows received and stops on the empty page.
+  assertEquals(callsTo(db, "youtube_channel_daily").map((c) => mods(c, "range")[0]), [[0, 999], [1000, 1999], [1001, 2000]]);
 });
 
 // ── traffic / demographics ────────────────────────────────────────────────────
