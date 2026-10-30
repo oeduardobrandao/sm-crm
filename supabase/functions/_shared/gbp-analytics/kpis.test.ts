@@ -118,16 +118,22 @@ Deno.test("new_reviews: Δ against the row before the window start; prev uses th
   assertEquals(k.new_reviews, { value: 6, prev: 4 });
 });
 
-Deno.test("new_reviews is null when any selected unit lacks a baseline row", () => {
+Deno.test("new_reviews sums the units that have both rows; a unit without a baseline is left out", () => {
   const ratings = [
     rating("L1", "2026-10-20", 4.0, 14),
     rating("L1", "2026-10-25", 4.0, 20),
     rating("L2", "2026-10-25", 5.0, 3), // linked inside the window: no row before the start
   ];
   const k = computeGbpKpis({ metrics: [], ratings, locationNames: ["L1", "L2"], window: W });
-  assertEquals(k.new_reviews.value, null);
+  assertEquals(k.new_reviews.value, 6);
   // The rating still averages both units at the window end.
   assertEquals(k.avg_rating.value, (4.0 * 20 + 5.0 * 3) / 23);
+});
+
+Deno.test("new_reviews is null only when no selected unit has both rows", () => {
+  const ratings = [rating("L1", "2026-10-25", 4.0, 20), rating("L2", "2026-10-24", 5.0, 3)];
+  const k = computeGbpKpis({ metrics: [], ratings, locationNames: ["L1", "L2"], window: W });
+  assertEquals(k.new_reviews, { value: null, prev: null });
 });
 
 Deno.test("avg_rating is null when no unit has a rating row by the window end", () => {

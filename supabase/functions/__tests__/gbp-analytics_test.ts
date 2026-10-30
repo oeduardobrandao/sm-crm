@@ -446,6 +446,21 @@ Deno.test("gbp-analytics: a revoked unit's data is still returned", async () => 
   assertEquals(body.kpis.website_clicks, { value: 8, prev: 0 });
 });
 
+Deno.test("gbp-analytics: history reads page past PostgREST's 1000-row cap until an empty page", async () => {
+  const db = createSupabaseQueryMock();
+  ready(db);
+  db.queue(
+    "gbp_metrics_daily",
+    "select",
+    { data: Array.from({ length: 1000 }, () => metrics("locations/1", "2026-10-25", { call_clicks: 1 })) },
+    { data: Array.from({ length: 5 }, () => metrics("locations/2", "2026-10-24", { call_clicks: 2 })) },
+  );
+  const res = await makeHandler(db)(get("/overview/42?days=7"));
+  assertEquals(res.status, 200);
+  assertEquals((await res.json()).kpis.calls, { value: 1010, prev: 0 });
+  assertEquals(callsTo(db, "gbp_metrics_daily").map((c) => mods(c, "range")[0]), [[0, 999], [1000, 1999], [1005, 2004]]);
+});
+
 // ── daily / surfaces ──────────────────────────────────────────────────────────
 
 Deno.test("gbp-analytics: daily returns one point per window day, zeros where the API omitted the day", async () => {
@@ -511,21 +526,31 @@ Deno.test("gbp-analytics: surfaces returns the four impression sums with percent
 
 // ── keywords ──────────────────────────────────────────────────────────────────
 
-Deno.test("gbp-analytics: keywords default to the latest closed month and list closed months only", async () => {
-  const db = createSupabaseQueryMock();
-  ready(db);
+/** The 18 closed months before SP 2026-10, newest first: one month probe each, in this order. */
+const CANDIDATE_MONTHS = Array.from({ length: 18 }, (_, i) => new Date(Date.UTC(2026, 8 - i, 1)).toISOString().slice(0, 7));
+
+function keywordProbes(db: Mock, present: string[]) {
   db.queue(
     "gbp_search_keywords_monthly",
     "select",
-    { data: [{ month: "2026-09-01" }, { month: "2026-09-01" }, { month: "2026-08-01" }] },
-    {
-      data: [
-        { location_name: "locations/1", keyword: "dentista", value: 40, threshold: null },
-        { location_name: "locations/2", keyword: "dentista", value: 5, threshold: null },
-        { location_name: "locations/1", keyword: "implante", value: null, threshold: 15 },
-      ],
-    },
+    ...CANDIDATE_MONTHS.map((m) => ({ data: present.includes(m) ? [{ month: `${m}-01` }] : [] })),
   );
+}
+
+const probeCalls = (db: Mock) => callsTo(db, "gbp_search_keywords_monthly").filter((c) => mods(c, "limit").length > 0);
+const keywordRowCalls = (db: Mock) => callsTo(db, "gbp_search_keywords_monthly").filter((c) => mods(c, "limit").length === 0);
+
+Deno.test("gbp-analytics: keywords default to the latest closed month and list closed months only", async () => {
+  const db = createSupabaseQueryMock();
+  ready(db);
+  keywordProbes(db, ["2026-09", "2026-08"]);
+  db.queue("gbp_search_keywords_monthly", "select", {
+    data: [
+      { location_name: "locations/1", keyword: "dentista", value: 40, threshold: null },
+      { location_name: "locations/2", keyword: "dentista", value: 5, threshold: null },
+      { location_name: "locations/1", keyword: "implante", value: null, threshold: 15 },
+    ],
+  });
   const res = await makeHandler(db)(get("/keywords/42"));
   assertEquals(res.status, 200);
   assertEquals(await res.json(), {
@@ -536,10 +561,19 @@ Deno.test("gbp-analytics: keywords default to the latest closed month and list c
       { keyword: "implante", value: null, threshold: 15 },
     ],
   });
-  const [monthsCall, rowsCall] = callsTo(db, "gbp_search_keywords_monthly");
-  assert(hasMod(monthsCall, "eq", "conta_id", "ws-B"));
-  assert(hasMod(monthsCall, "lt", "month", "2026-10-01"));
-  assert(hasMod(monthsCall, "gte", "month", "2025-04-01")); // 18 months back
+  // One limit(1) probe per closed month, 2026-09 back to 2025-04; never the current month.
+  const probes = probeCalls(db);
+  assertEquals(probes.length, 18);
+  assertEquals(
+    probes.map((c) => mods(c, "eq").find(([k]) => k === "month")?.[1]).sort(),
+    CANDIDATE_MONTHS.map((m) => `${m}-01`).sort(),
+  );
+  for (const c of probes) {
+    assert(hasMod(c, "eq", "conta_id", "ws-B"));
+    assert(hasMod(c, "in", "location_name", ["locations/1", "locations/2"]));
+    assertEquals(mods(c, "limit"), [[1]]);
+  }
+  const [rowsCall] = keywordRowCalls(db);
   assert(hasMod(rowsCall, "eq", "conta_id", "ws-B"));
   assert(hasMod(rowsCall, "eq", "month", "2026-09-01"));
   assert(hasMod(rowsCall, "in", "location_name", ["locations/1", "locations/2"]));
@@ -548,17 +582,17 @@ Deno.test("gbp-analytics: keywords default to the latest closed month and list c
 Deno.test("gbp-analytics: keywords for a requested closed month; none stored is empty", async () => {
   const db = createSupabaseQueryMock();
   ready(db);
-  db.queue("gbp_search_keywords_monthly", "select", { data: [{ month: "2026-09-01" }] }, { data: [] });
+  keywordProbes(db, ["2026-09"]);
   const res = await makeHandler(db)(get("/keywords/42?month=2026-07"));
   assertEquals(await res.json(), { month: "2026-07", months: ["2026-09"], keywords: [] });
-  const [, rowsCall] = callsTo(db, "gbp_search_keywords_monthly");
+  const [rowsCall] = keywordRowCalls(db);
   assert(hasMod(rowsCall, "eq", "month", "2026-07-01"));
 
   const db2 = createSupabaseQueryMock();
   ready(db2);
   const res2 = await makeHandler(db2)(get("/keywords/42"));
   assertEquals(await res2.json(), { month: null, months: [], keywords: [] });
-  assertEquals(callsTo(db2, "gbp_search_keywords_monthly").length, 1);
+  assertEquals(keywordRowCalls(db2).length, 0);
 });
 
 // ── reviews ───────────────────────────────────────────────────────────────────

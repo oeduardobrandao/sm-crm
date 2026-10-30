@@ -178,15 +178,16 @@ function weightedRating(points: (GbpRatingRow | null)[]): number | null {
   return count > 0 ? weighted / count : null;
 }
 
-/** Σ over units of (count at `later` - count at `earlier`); null when any unit lacks either. */
+/** Σ over the units that have both rows of (count at `later` - count at `earlier`); null only
+ * when no unit has both. A unit linked inside the window (no baseline yet) is left out rather
+ * than blanking the card for "Todas as unidades". */
 function reviewDelta(later: (GbpRatingRow | null)[], earlier: (GbpRatingRow | null)[]): number | null {
-  if (later.length === 0) return null;
-  let delta = 0;
+  let delta: number | null = null;
   for (let i = 0; i < later.length; i++) {
     const a = later[i]?.total_review_count;
     const b = earlier[i]?.total_review_count;
-    if (a === null || a === undefined || b === null || b === undefined) return null;
-    delta += n(a) - n(b);
+    if (a === null || a === undefined || b === null || b === undefined) continue;
+    delta = (delta ?? 0) + n(a) - n(b);
   }
   return delta;
 }

@@ -5,6 +5,7 @@
 // Every history read carries the workspace's conta_id: two workspaces can link the same location,
 // and their rows share `location_name`. Query errors throw; callers answer a generic 500.
 import { saoPauloDate } from "../sao-paulo-date.ts";
+import { fetchAllRows } from "../paginate.ts";
 import {
   aggregateKeywords,
   computeGbpKpis,
@@ -49,21 +50,11 @@ const RATING_LOOKBACK_DAYS = 90;
 /** The "3 estrelas ou menos" review filter. */
 const LOW_RATING_MAX = 3;
 
-/** PostgREST caps a response at 1000 rows; long windows over several units go past it. */
-// Assumes the project's PostgREST max_rows = 1000: a page shorter than PAGE_SIZE ends paging.
-const PAGE_SIZE = 1000;
-
+/** Every paged read below orders by its table's full primary key (conta_id is fixed by the
+ * filter), the total order `fetchAllRows` requires. */
 // deno-lint-ignore no-explicit-any
-async function selectAllPages<T>(page: (from: number, to: number) => PromiseLike<{ data: any; error: any }>): Promise<T[]> {
-  const out: T[] = [];
-  for (let from = 0;; from += PAGE_SIZE) {
-    const { data, error } = await page(from, from + PAGE_SIZE - 1);
-    if (error) throw error;
-    const rows = (data ?? []) as T[];
-    out.push(...rows);
-    if (rows.length < PAGE_SIZE) return out;
-  }
-}
+const pages = <T>(page: (from: number, to: number) => PromiseLike<{ data: any; error: any }>): Promise<T[]> =>
+  fetchAllRows<T>(page);
 
 /** The client's counted units (active and revoked), oldest link first. */
 export async function loadUnits(db: Db, contaId: string, clientId: number): Promise<GbpUnit[]> {
@@ -80,7 +71,7 @@ export async function loadUnits(db: Db, contaId: string, clientId: number): Prom
 const locationNames = (units: GbpUnit[]) => units.map((u) => u.location_name);
 
 async function loadMetrics(db: Db, contaId: string, units: GbpUnit[], start: string, end: string): Promise<GbpMetricsRow[]> {
-  return await selectAllPages<GbpMetricsRow>((from, to) =>
+  return await pages<GbpMetricsRow>((from, to) =>
     db.from("gbp_metrics_daily").select(GBP_METRIC_COLUMNS)
       .eq("conta_id", contaId)
       .in("location_name", locationNames(units))
@@ -93,7 +84,7 @@ async function loadMetrics(db: Db, contaId: string, units: GbpUnit[], start: str
 }
 
 async function loadRatings(db: Db, contaId: string, units: GbpUnit[], w: AnalyticsWindow): Promise<GbpRatingRow[]> {
-  return await selectAllPages<GbpRatingRow>((from, to) =>
+  return await pages<GbpRatingRow>((from, to) =>
     db.from("gbp_rating_daily").select("location_name, day, average_rating, total_review_count")
       .eq("conta_id", contaId)
       .in("location_name", locationNames(units))
@@ -196,32 +187,34 @@ export function currentMonthStart(now: Date): string {
   return `${saoPauloDate(now).slice(0, 7)}-01`;
 }
 
-/** Keywords are backfilled 18 months: older months are not listed (bounds the month scan). */
+/** Keywords are backfilled 18 months: only the 18 closed months before the current one are listed. */
 const KEYWORD_MONTHS_BACK = 18;
 
-/** First day of the month `months` before the month that opens on `monthStart` (YYYY-MM-01). */
-function monthsBefore(monthStart: string, months: number): string {
+/** The `count` closed months before the month opening on `monthStart`, newest first (YYYY-MM). */
+function closedMonths(monthStart: string, count: number): string[] {
   const [y, m] = monthStart.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1 - months, 1)).toISOString().slice(0, 10);
+  return Array.from({ length: count }, (_, i) => new Date(Date.UTC(y, m - 2 - i, 1)).toISOString().slice(0, 7));
 }
 
 /** Closed months with stored keywords (newest first) and the keywords of `month`, or of the
- * newest stored closed month when `month` is null. */
+ * newest stored closed month when `month` is null. The months come from one `limit(1)` probe per
+ * candidate month (at most 18, in parallel, newest first), so the scan never reads keyword rows. */
 export async function buildKeywords(db: Db, contaId: string, units: GbpUnit[], month: string | null, now: Date): Promise<GbpKeywords> {
-  const monthRows = await selectAllPages<{ month: string }>((from, to) =>
-    db.from("gbp_search_keywords_monthly").select("month")
+  const candidates = closedMonths(currentMonthStart(now), KEYWORD_MONTHS_BACK);
+  const present = await Promise.all(candidates.map(async (m) => {
+    const { data, error } = await db.from("gbp_search_keywords_monthly").select("month")
       .eq("conta_id", contaId)
       .in("location_name", locationNames(units))
-      .gte("month", monthsBefore(currentMonthStart(now), KEYWORD_MONTHS_BACK))
-      .lt("month", currentMonthStart(now))
-      .order("month", { ascending: false })
-      .range(from, to)
-  );
-  const months = [...new Set(monthRows.map((r) => String(r.month).slice(0, 7)))].sort().reverse();
+      .eq("month", `${m}-01`)
+      .limit(1);
+    if (error) throw error;
+    return ((data ?? []) as unknown[]).length > 0;
+  }));
+  const months = candidates.filter((_, i) => present[i]);
   const shown = month ?? months[0] ?? null;
   if (shown === null) return { month: null, months, keywords: [] };
 
-  const rows = await selectAllPages<{ keyword: string; value: number | null; threshold: number | null }>((from, to) =>
+  const rows = await pages<{ keyword: string; value: number | null; threshold: number | null }>((from, to) =>
     db.from("gbp_search_keywords_monthly").select("location_name, keyword, value, threshold")
       .eq("conta_id", contaId)
       .in("location_name", locationNames(units))
@@ -282,7 +275,7 @@ export async function buildReviews(db: Db, contaId: string, units: GbpUnit[], fi
 }
 
 export async function buildRatingDistribution(db: Db, contaId: string, units: GbpUnit[]): Promise<GbpRatingDistribution> {
-  const stars = await selectAllPages<{ location_name: string; star_rating: number }>((from, to) =>
+  const stars = await pages<{ location_name: string; star_rating: number }>((from, to) =>
     db.from("gbp_reviews").select("location_name, star_rating")
       .eq("conta_id", contaId)
       .in("location_name", locationNames(units))
