@@ -1702,6 +1702,22 @@ describe('WorkflowDrawer scrolls the targeted post into view', () => {
     expect(container.querySelector('.drawer-body')!.scrollTop).toBe(0);
   });
 
+  it('creates the new post after the highest ordem, even with gaps in the list', async () => {
+    // Deletes and moves leave gaps: 2 posts whose ordem is 0 and 5. posts.length (2) would
+    // sort the new post between them.
+    mockGetPosts.mockResolvedValue([makePost(1, 0), makePost(2, 5)]);
+    mockAddPost.mockResolvedValue(makePost(3, 6));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, { initialPostId: undefined });
+    await screen.findByText('Post 2');
+
+    fireEvent.click(screen.getAllByRole('button', { name: /Novo Post/ })[1]);
+
+    await waitFor(() =>
+      expect(mockAddPost).toHaveBeenCalledWith(expect.objectContaining({ ordem: 6 })),
+    );
+  });
+
   it('scrolls to the post "Novo Post" just created once it renders', async () => {
     mockGetPosts.mockResolvedValue([makePost(1, 0)]);
     mockAddPost.mockResolvedValue(makePost(3, 1));
@@ -1711,7 +1727,11 @@ describe('WorkflowDrawer scrolls the targeted post into view', () => {
     await screen.findByText('Post 1');
 
     mockGetPosts.mockResolvedValue([makePost(1, 0), makePost(3, 1)]);
-    fireEvent.click(screen.getByRole('button', { name: /Novo Post/ }));
+    // Header button and the full-width one after the last post both create a post; use the latter.
+    const addButtons = screen.getAllByRole('button', { name: /Novo Post/ });
+    expect(addButtons).toHaveLength(2);
+    expect(addButtons[1]).toHaveClass('drawer-add-post-btn--row');
+    fireEvent.click(addButtons[1]);
 
     const body = container.querySelector('.drawer-body')!;
     await waitFor(() => expect(body.scrollTop).toBe(800));

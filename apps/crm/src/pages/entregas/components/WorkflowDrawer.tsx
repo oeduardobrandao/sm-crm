@@ -618,7 +618,9 @@ export function WorkflowDrawer({
         conteudo: null,
         conteudo_plain: '',
         tipo: 'feed',
-        ordem: posts.length,
+        // After the highest ordem, not posts.length: deletes, moves and detaches leave
+        // gaps, and the count would sort the new post into the middle of the list.
+        ordem: posts.reduce((max, p) => Math.max(max, p.ordem), -1) + 1,
         status: 'rascunho',
         responsavel_id: null,
       });
@@ -1484,6 +1486,15 @@ export function WorkflowDrawer({
                           }
                         />
                       ))}
+                      {!isPhone && (
+                        <button
+                          type="button"
+                          className="drawer-add-post-btn drawer-add-post-btn--row"
+                          onClick={handleAddPost}
+                        >
+                          <Plus className="h-4 w-4" /> {t('workflowDrawer.newPost')}
+                        </button>
+                      )}
                     </div>
                   </SortableContext>
                 </DndContext>
