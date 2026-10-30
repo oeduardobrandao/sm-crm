@@ -287,3 +287,6 @@ verify_jwt = false
 
 [functions.youtube-sync-cron]
 verify_jwt = false
+
+[functions.gbp-sync-cron]
+verify_jwt = false
