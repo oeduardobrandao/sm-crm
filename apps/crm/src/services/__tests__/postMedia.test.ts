@@ -338,16 +338,18 @@ describe('post media service', () => {
         file,
         thumbnail: createFile('thumb.jpg', 'image/jpeg', 64),
         thumbnailFrameMs,
+        thumbnailSource: 'auto',
       });
       return JSON.parse(String(fetchHarness.calls.at(-1)?.init?.body));
     };
 
     expect(await finalizeBodyFor(createFile('a.mp4', 'video/mp4', 1024), 500)).toMatchObject({
       thumbnail_frame_ms: 500,
+      thumbnail_source: 'auto',
     });
-    expect(await finalizeBodyFor(createFile('a.jpg', 'image/jpeg', 1024), 500)).not.toHaveProperty(
-      'thumbnail_frame_ms',
-    );
+    const imageBody = await finalizeBodyFor(createFile('a.jpg', 'image/jpeg', 1024), 500);
+    expect(imageBody).not.toHaveProperty('thumbnail_frame_ms');
+    expect(imageBody).not.toHaveProperty('thumbnail_source');
   });
 
   it('rejects unsupported video MIME types', () => {

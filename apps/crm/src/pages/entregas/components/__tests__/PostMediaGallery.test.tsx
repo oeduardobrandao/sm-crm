@@ -72,7 +72,8 @@ vi.mock('@/store/mediaNotes', async (importOriginal) => ({
 }));
 
 vi.mock('../ThumbnailPickerDialog', () => ({
-  ThumbnailPickerDialog: () => null,
+  ThumbnailPickerDialog: ({ media }: { media: { id: number } | null }) =>
+    media ? <div data-testid="thumbnail-editor-stub" data-media-id={media.id} /> : null,
 }));
 
 vi.mock('../../../arquivos/components/FilePickerModal', () => ({
@@ -168,6 +169,7 @@ describe('PostMediaGallery upload orchestration', () => {
       thumbnail: expect.any(File),
       // The auto frame's moment becomes files.thumbnail_frame_ms (the TikTok cover).
       thumbnailFrameMs: 500,
+      thumbnailSource: 'auto',
     });
     expect(screen.queryByText(/Não foi possível gerar a miniatura/)).not.toBeInTheDocument();
   });
@@ -1397,5 +1399,69 @@ describe('PostMediaGallery warning box: oversized existing video', () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Reduzir resolução de uhd.mp4' })).toBeNull();
     expect(screen.queryByTitle('Reduzir resolução')).toBeNull();
+  });
+});
+
+describe('PostMediaGallery: tile shape and video cover chip', () => {
+  function videoItem(overrides: Partial<PostMedia>): PostMedia {
+    return {
+      ...makeMedia(1)[0],
+      id: 50,
+      kind: 'video',
+      mime_type: 'video/mp4',
+      original_filename: 'reel.mp4',
+      width: 1080,
+      height: 1920,
+      duration_seconds: 20,
+      thumbnail_r2_key: 'thumb/50.jpg',
+      thumbnail_url: 'https://example.test/thumb/50.jpg',
+      ...overrides,
+    } as PostMedia;
+  }
+
+  function renderWith(media: PostMedia[]) {
+    vi.mocked(listPostMedia).mockResolvedValueOnce(media);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery postId={1} />
+      </QueryClientProvider>,
+    );
+  }
+
+  it('shapes each tile like its file, and the add tiles like the first one', async () => {
+    renderWith([
+      { ...makeMedia(1)[0], width: 1080, height: 1440 },
+      { ...makeMedia(2)[1], width: 1080, height: 1080 },
+    ]);
+    const add = (await screen.findByText('Adicionar')).closest('label')!;
+    const tiles = screen
+      .getAllByRole('img', { name: /img\d\.jpg/ })
+      .map((img) => img.parentElement!);
+    expect(tiles[0].style.aspectRatio).toBe('0.75');
+    expect(tiles[1].style.aspectRatio).toBe('1');
+    expect(add.style.aspectRatio).toBe('0.75');
+  });
+
+  it.each([
+    ['auto', 500, 'Capa padrão'],
+    ['frame', 12300, 'Capa 0:12.3'],
+    ['image', null, 'Capa: imagem'],
+    [null, null, 'Capa'],
+  ] as const)('labels a %s cover on the tile', async (source, frame, label) => {
+    renderWith([videoItem({ thumbnail_source: source, thumbnail_frame_ms: frame })]);
+    const chip = await screen.findByTestId('video-cover-chip');
+    expect(chip).toHaveTextContent(label);
+    expect(chip.parentElement!.style.aspectRatio).toBe('0.5625');
+  });
+
+  it('the chip opens the thumbnail editor without opening the lightbox', async () => {
+    renderWith([videoItem({ thumbnail_source: 'auto', thumbnail_frame_ms: 500 })]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Capa padrão. Trocar capa' }));
+    expect(await screen.findByTestId('thumbnail-editor-stub')).toHaveAttribute(
+      'data-media-id',
+      '50',
+    );
+    expect(screen.queryByTestId('lightbox-stub')).not.toBeInTheDocument();
   });
 });

@@ -27,6 +27,9 @@ Instagram (segue usando o JPEG); carrosséis de fotos do TikTok (`photo_cover_in
 
 - Opção 1: um editor só. Quando a miniatura é uma imagem enviada (ou não se sabe de que quadro veio), o
   TikTok usa o quadro padrão dele e o painel do TikTok avisa, com um botão para abrir o editor.
+- A pessoa precisa ver, em cada vídeo, se a capa é a padrão (o quadro automático) ou uma que ela
+  escolheu (um quadro ou uma imagem), e saber que pode trocar.
+- As prévias de mídia no editor de post seguem a proporção do arquivo (1080×1440 não vira quadrado).
 - O seletor só do TikTok do #785 sai. Em prod, 0 posts têm `tiktok_settings.video_cover_timestamp_ms`
   (consulta de 2026-10-30, 9 posts com `tiktok_settings`), então não há valor a migrar nem fallback.
 
@@ -38,11 +41,18 @@ Migration `20261110000001_files_thumbnail_frame_ms.sql`:
   Significado: **o momento do vídeo, em milissegundos, de onde saiu a miniatura atual.** `NULL` = a
   miniatura não é um quadro do vídeo (imagem enviada, capa do Estúdio) ou não se sabe (arquivos de antes
   desta mudança, vídeo que o navegador não decodificou).
+- `files.thumbnail_source text NULL` (migration `20261110000002_files_thumbnail_source.sql`, que veio depois do #786 e recria a função do trigger), `CHECK (thumbnail_source IN ('auto', 'frame', 'image'))`: de onde
+  veio a miniatura atual. `auto` = o quadro gerado no upload (ou regerado por um ajuste); `frame` = um
+  quadro que a pessoa escolheu; `image` = uma imagem (enviada no editor, "Usar como capa do Reel", capa do
+  Estúdio); `NULL` = desconhecido (arquivos de antes desta mudança). Só o quadro não basta para isso: o
+  quadro automático e um quadro escolhido no mesmo milissegundo seriam iguais.
 - Trigger `trg_files_thumbnail_frame_reset` (`BEFORE UPDATE OF thumbnail_r2_key ON files`): quando
-  `thumbnail_r2_key` muda (`IS DISTINCT FROM`), põe `thumbnail_frame_ms := NULL`. Assim toda escrita que
+  `thumbnail_r2_key` muda (`IS DISTINCT FROM`), põe `thumbnail_frame_ms := NULL` e
+  `thumbnail_source := 'image'` (o único tipo de miniatura sem quadro; `NULL` se a miniatura sumir). Assim toda escrita que
   troca a miniatura sem saber o quadro (RPCs do Estúdio `finalize_design_render`, backfill,
   qualquer caminho futuro) zera o quadro sozinha e o TikTok nunca usa um quadro velho para uma miniatura
-  nova. Quem sabe o quadro grava `thumbnail_frame_ms` **num UPDATE seguinte**, que não toca
+  nova, e a capa do Estúdio e o "Usar como capa do Reel" saem como `image` sem mudar nada neles. Quem
+  sabe o quadro grava `thumbnail_frame_ms` e `thumbnail_source` **num UPDATE seguinte**, que não toca
   `thumbnail_r2_key` e por isso não dispara o trigger. (Um UPDATE único com as duas colunas não serve: o
   trigger não distingue "quadro novo informado" de "quadro igual ao anterior" quando a pessoa recaptura
   no mesmo milissegundo.)
@@ -53,27 +63,28 @@ Migration `20261110000001_files_thumbnail_frame_ms.sql`:
 
 ## Escritas
 
-| Caminho | Quadro gravado |
-|---|---|
-| Upload no editor de post (`PostMediaGallery` → `uploadPostMedia` → `file-upload-finalize`) | o momento usado por `extractVideoFrame` (0,5 s ou metade da duração) |
-| Upload com miniatura manual (vídeo que o navegador não decodifica, `pendingVideos`) | `NULL` |
-| Upload em Arquivos (`FileUploader` → `uploadFile`) | 100 ms (o `captureVideoThumbnail` busca 0,1 s) |
-| Ajuste de mídia (`MediaAdjustmentDialog`, recorte sem corte de tempo) → `replacePostMedia` | o momento da prévia (`time`) quando a miniatura foi gerada |
-| Reduzir vídeo (`DownscaleMediaDialog`) | reaproveita a miniatura antiga → o `thumbnail_frame_ms` antigo; se gerar uma nova → o momento extraído |
-| Editor: "Usar este frame" (`ThumbnailPickerDialog`) | `video.currentTime` na captura |
-| Editor: "Enviar imagem" | `NULL` |
-| Cópia de arquivo/pasta (`file-manage`) | copia o valor da origem |
-| Capa do Estúdio, backfill, MCP | não informam; o trigger zera |
+| Caminho | Quadro gravado | Origem |
+|---|---|---|
+| Upload no editor de post (`PostMediaGallery` → `uploadPostMedia` → `file-upload-finalize`) | o momento usado por `extractVideoFrame` (0,5 s ou metade da duração) | `auto` |
+| Upload com miniatura manual (vídeo que o navegador não decodifica, `pendingVideos`) | `NULL` | `image` |
+| Upload em Arquivos (`FileUploader` → `uploadFile`) | 100 ms (o `captureVideoThumbnail` busca 0,1 s) | `auto` |
+| Ajuste de mídia (`MediaAdjustmentDialog`, recorte sem corte de tempo) → `replacePostMedia` | o momento da prévia quando a miniatura foi gerada | `auto` (a miniatura é regerada, não escolhida) |
+| Reduzir vídeo (`DownscaleMediaDialog`) | reaproveita a miniatura antiga → o quadro e a origem antigos; se gerar uma nova → o momento extraído | antiga / `auto` |
+| Editor: "Usar este frame" (`ThumbnailPickerDialog`) | `video.currentTime` na captura | `frame` |
+| Editor: "Enviar imagem", "Usar como capa do Reel" | `NULL` | `image` (trigger) |
+| Cópia de arquivo/pasta (`file-manage`) | copia o valor da origem | copia |
+| Capa do Estúdio, backfill, MCP | não informam; o trigger zera | `image` (trigger) |
 
 Servidor:
 
-- `file-upload-finalize`: aceita `thumbnail_frame_ms` opcional; só para `kind = 'video'`, inteiro ≥ 0;
-  qualquer outro valor é ignorado (fica `NULL`). Grava num UPDATE depois do insert (mesmo padrão do
+- `file-upload-finalize`: aceita `thumbnail_frame_ms` e `thumbnail_source` opcionais, só para
+  `kind = 'video'` (`videoThumbnailOrigin`): quadro inteiro ≥ 0, origem conhecida; quadro sem origem é
+  `auto`; origem `image` descarta o quadro; o resto é ignorado (fica `NULL`). Grava num UPDATE depois do insert (mesmo padrão do
   `blur_data_url`; o RPC `file_insert_with_quota` não muda) e devolve o campo na resposta.
-- `post-media-manage` PATCH com `thumbnail_r2_key`: o UPDATE da miniatura (o trigger zera o quadro) e,
-  se `thumbnail_frame_ms` vier válido, um segundo UPDATE gravando o quadro. `toLegacy` passa a devolver
-  `thumbnail_frame_ms`.
-- `file-manage`: as duas cópias levam `thumbnail_frame_ms: source.thumbnail_frame_ms ?? null`.
+- `post-media-manage` PATCH com `thumbnail_r2_key`: o UPDATE da miniatura (o trigger zera o quadro e
+  marca `image`) e, se `thumbnail_frame_ms` vier válido, um segundo UPDATE gravando o quadro com origem
+  `frame`. `toLegacy` passa a devolver `thumbnail_frame_ms` e `thumbnail_source`.
+- `file-manage`: as duas cópias levam `thumbnail_frame_ms` e `thumbnail_source` da origem.
 - `extractVideoFrame` (`packages/ui/video/frame.ts`) ganha `extractVideoFrameWithTime`, que devolve
   `{ file, timeSeconds }` com o `currentTime` real depois do seek; `extractVideoFrame` passa a delegar
   para ela (os outros chamadores, como o Hub, não mudam).
@@ -90,10 +101,23 @@ Servidor:
 
 ## Interface
 
+- **Estado da capa** (`videoCoverState(media)`): `default` (`auto`), `frame` (com o momento), `image`,
+  `unknown` (`NULL`). É a mesma leitura em todos os lugares abaixo.
+- **Galeria do editor de post**: todo vídeo mostra, sempre visível (não só no hover), um selo com o estado:
+  "Capa padrão", "Capa 0:12.3", "Capa: imagem" ou "Capa" (desconhecido, com dica). No desktop o selo é o
+  botão que abre o editor da miniatura (substitui o ícone de imagem que só aparecia no hover); no celular
+  ele mostra o estado e a troca segue pelo menu do toque longo ("Escolher miniatura").
+- **Proporção das prévias**: os tiles do desktop, os do celular e a prévia grande do toque longo usam
+  `width`/`height` do arquivo (limitado entre 1:2 e 2:1; sem dimensões, quadrado). No desktop os botões
+  "Adicionar"/"Escolher" seguem a proporção da primeira mídia; no celular a faixa tem altura fixa e a
+  largura varia. As prévias "Miniatura atual"/"Nova miniatura" do editor seguem a proporção do vídeo; a
+  prévia "Feed · 1:1" continua quadrada de propósito (é o recorte do Instagram).
+- **Editor da miniatura**: abaixo da descrição, a linha "Capa atual: …" com o mesmo estado.
 - **Painel do TikTok** (`TikTokSettingsPanel`, posts de vídeo): a seção "Capa do TikTok" deixa de ter
   seletor próprio. Mostra a miniatura atual e:
-  - quadro conhecido: "O TikTok usa o mesmo quadro da miniatura (0:12.3)."
-  - `NULL`: aviso "A miniatura atual não é um quadro do vídeo (imagem enviada ou definida antes desta
+  - `default`: "O TikTok usa o quadro padrão da miniatura (0:00.5)."; `frame`: "O TikTok usa o quadro
+    escolhido na miniatura (0:12.3)."
+  - `image` ou `unknown`: aviso "A miniatura atual não é um quadro do vídeo (imagem enviada ou definida antes desta
     versão). O TikTok não aceita imagem como capa e vai usar o quadro padrão dele. Para escolher, abra a
     miniatura e use "Usar este frame"."
   - botão "Editar miniatura", que abre o mesmo `ThumbnailPickerDialog` (bottom sheet no celular) e, ao
@@ -104,6 +128,13 @@ Servidor:
 - Sai `TikTokCoverFrameDialog` e as chaves `posts.tiktokCover.*`; entram as novas mensagens do painel.
 
 ## Ordem de deploy
+
+Estado da capa (`thumbnail_source`, o follow-up do #786): migration `20261110000002` antes de
+`file-upload-finalize`, `post-media-manage` e `file-manage` novos (eles gravam a coluna; sem ela o
+finalize loga a falha e salva o arquivo sem quadro, e o PATCH perde o quadro escolhido). O frontend
+pode vir em qualquer ordem: sem a coluna, o selo mostra "Capa" (desconhecido).
+
+#786:
 
 1. Migration `20261110000001` (coluna + trigger). Antes dela, as functions novas quebram: o
    `tiktok-publish` e o cron selecionam a coluna explicitamente e dariam erro em todo post de vídeo.

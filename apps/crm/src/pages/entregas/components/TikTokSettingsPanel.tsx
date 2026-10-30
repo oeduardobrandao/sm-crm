@@ -33,6 +33,7 @@ import {
   type TikTokReadiness,
 } from '../tiktokComposerRules';
 import { ThumbnailPickerDialog } from './ThumbnailPickerDialog';
+import { formatCoverTimestamp, videoCoverState } from '../videoCover';
 
 // =============================================================================
 // TikTok settings panel — audit-mandated creator_info compliance UI
@@ -77,14 +78,6 @@ const CAPTION_DEBOUNCE_MS = 1500;
 
 function formatDuration(s: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-}
-
-/** `m:ss.s` for a cover frame in milliseconds. */
-export function formatCoverTimestamp(ms: number): string {
-  const totalTenths = Math.floor(ms / 100);
-  const minutes = Math.floor(totalTenths / 600);
-  const seconds = Math.floor((totalTenths % 600) / 10);
-  return `${minutes}:${String(seconds).padStart(2, '0')}.${totalTenths % 10}`;
 }
 
 /** TikTok privacy_level values with a translated label; anything else renders raw. */
@@ -333,6 +326,8 @@ export function TikTokSettingsPanel({
   };
 
   const coverVideo = isVideoTipo ? media?.find((m) => m.kind === 'video') : undefined;
+  const cover = coverVideo ? videoCoverState(coverVideo) : null;
+  // What the publishers send: the file's frame, whatever its source (see videoCover.ts).
   const coverFrameMs = coverVideo?.thumbnail_frame_ms ?? null;
 
   const handleCaptionChange = (value: string) => {
@@ -530,7 +525,12 @@ export function TikTokSettingsPanel({
             </span>
             {coverFrameMs !== null ? (
               <span className="text-xs" style={{ color: 'var(--text-light)' }}>
-                {t('tiktokCover.followsThumbnail', { time: formatCoverTimestamp(coverFrameMs) })}
+                {t(
+                  cover?.kind === 'frame'
+                    ? 'tiktokCover.followsChosenFrame'
+                    : 'tiktokCover.followsDefaultFrame',
+                  { time: formatCoverTimestamp(coverFrameMs) },
+                )}
               </span>
             ) : (
               <p className="flex items-start gap-1.5 text-xs" style={{ color: 'var(--text-main)' }}>
@@ -539,7 +539,9 @@ export function TikTokSettingsPanel({
                   className="mt-px h-3.5 w-3.5 shrink-0"
                   style={{ color: 'var(--warning)' }}
                 />
-                <span>{t('tiktokCover.noFrame')}</span>
+                <span>
+                  {t(cover?.kind === 'image' ? 'tiktokCover.imageCover' : 'tiktokCover.noFrame')}
+                </span>
               </p>
             )}
             <button

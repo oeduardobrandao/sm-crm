@@ -495,6 +495,8 @@ export async function getActivePosts(): Promise<ActivePost[]> {
     .sort(compareScheduledAtAscNullsLast);
 }
 
+export type ThumbnailSource = 'auto' | 'frame' | 'image';
+
 export interface PostMedia {
   id: number;
   post_id: number;
@@ -505,6 +507,9 @@ export interface PostMedia {
    * cover; null when the thumbnail is an uploaded image or unknown (files from before the
    * column). Optional because responses from an older post-media-manage omit it. */
   thumbnail_frame_ms?: number | null;
+  /** Video: where the thumbnail came from (files.thumbnail_source): the frame generated at
+   * upload, a frame the user picked, or an image; null = unknown (files from before it). */
+  thumbnail_source?: ThumbnailSource | null;
   kind: 'image' | 'video';
   mime_type: string;
   size_bytes: number;
