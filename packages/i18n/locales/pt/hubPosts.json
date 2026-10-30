@@ -106,7 +106,8 @@
   },
   "textCard": {
     "mediaRemoved": "Mídia removida para liberar espaço",
-    "instagramCaptionLabel": "Legenda do Instagram"
+    "instagramCaptionLabel": "Legenda do Instagram",
+    "captionLabel": "Legenda"
   },
   "collab": {
     "partnership": "Em parceria com {{names}}",
@@ -301,5 +302,11 @@
     "team": "Equipe",
     "justNow": "agora",
     "marker": "Comentário em {{time}}"
+  },
+  "captions": {
+    "empty": "Sem legenda",
+    "geralNote": "Esta legenda não é publicada automaticamente. A equipe usa ela para publicar por fora.",
+    "sameFor": "Mesma legenda para {{names}}",
+    "tablistLabel": "Legenda de cada plataforma"
   }
 }

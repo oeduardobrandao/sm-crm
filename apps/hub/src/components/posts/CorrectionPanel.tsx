@@ -11,7 +11,7 @@ import { ReferencePicker } from './references/ReferencePicker';
 import { ReferenceOpen, ReferenceThumb } from './references/ReferenceTiles';
 import { referenceErrorMessage } from './references/referenceErrors';
 import { referenceTitle } from './references/referenceFormat';
-import { pickPostCardKind, suggestionAwareCaption } from '../../lib/postView';
+import { pickPostCardKind, resolvePostTargets, suggestionAwareCaption } from '../../lib/postView';
 import { canonicalDoc } from '../../lib/richDoc';
 import { RichTextContent } from '../RichTextContent';
 import { CorrectionReasonChips } from '../CorrectionReasonChips';
@@ -376,6 +376,10 @@ export function CorrectionPanel({
   // '' when it had no caption field, which must not reveal one.
   // A suggestion's stored caption counts only while it changed the caption (see
   // suggestionAwareCaption): otherwise it is a stale copy of what the client saw.
+  // With other destinations the client must know this field only edits the Instagram caption.
+  const captionTargets = resolvePostTargets(post);
+  const hasOtherDestinations =
+    captionTargets !== null && captionTargets.some((p) => p !== 'instagram');
   const showCaptionField =
     !isText ||
     post.ig_caption != null ||
@@ -536,7 +540,7 @@ export function CorrectionPanel({
         )}
         {showCaptionField && (
           <>
-            {isText && (
+            {(isText || hasOtherDestinations) && (
               <p className="text-[12px] hub-tx3 font-medium">
                 {t('textCard.instagramCaptionLabel', 'Legenda do Instagram')}
               </p>

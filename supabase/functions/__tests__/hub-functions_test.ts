@@ -186,9 +186,12 @@ Deno.test("hub-posts takes tiktok_post_url from the TikTok destination's permali
         platform: "both",
         workflow_id: 7,
         workflows: { titulo: "Calendário Abril" },
+        ig_caption: "Legenda IG",
+        tiktok_caption: "Legenda TikTok",
         targets_state: [
-          { platform: "instagram", permalink: "https://instagram.com/p/x" },
-          { platform: "tiktok", permalink: "https://www.tiktok.com/@marca/video/123" },
+          { platform: "tiktok", permalink: "https://www.tiktok.com/@marca/video/123", caption: "nunca exposta" },
+          { platform: "geral", permalink: null, caption: "Legenda Geral" },
+          { platform: "instagram", permalink: "https://instagram.com/p/x", caption: null },
         ],
       },
       {
@@ -226,12 +229,20 @@ Deno.test("hub-posts takes tiktok_post_url from the TikTok destination's permali
   assertEquals(byId.get(99)?.tiktok_post_url, "https://www.tiktok.com/@marca/video/123");
   assertEquals(byId.get(100)?.tiktok_post_url, null);
   assert(!("targets_state" in byId.get(99)!), "the embed must not leak into the response");
+  // Destinations come back in PLATFORM_IDS order, and only the Geral row's caption is exposed.
+  assertEquals(byId.get(99)?.targets, ["instagram", "tiktok", "geral"]);
+  assertEquals(byId.get(99)?.tiktok_caption, "Legenda TikTok");
+  assertEquals(byId.get(99)?.geral_caption, "Legenda Geral");
+  assert(!JSON.stringify(body).includes("nunca exposta"), "other rows' caption must not leak");
+  assertEquals(byId.get(100)?.targets, ["instagram"]);
+  assertEquals(byId.get(100)?.geral_caption, null);
 
   const postsSelect = db.calls.find((c) =>
     c.table === "workflow_posts" && c.operation === "select" && String(c.selectArgs[0]?.[0]).includes("titulo")
   )!;
   const select = String(postsSelect.selectArgs[0][0]);
-  assert(select.includes("targets_state:post_targets(platform, permalink)"), select);
+  assert(select.includes("targets_state:post_targets(platform, permalink, caption)"), select);
+  assert(select.includes("tiktok_caption"), select);
   assert(!/(^|[ ,])tiktok_post_url/.test(select), "the frozen column is no longer selected");
 });
 
