@@ -38,6 +38,7 @@ import {
   customRange,
   presetDays,
   rangeDays,
+  syncedDate,
 } from './youtubeTabFormat';
 import type { useYouTubeTabData } from './useYouTubeTabData';
 
@@ -156,6 +157,7 @@ function Frame({
   const dateLocale = i18n.language.startsWith('en') ? enUS : ptBR;
   const url = channel ? channelUrl(channel.handle) : null;
   const channelName = channel?.title ?? channel?.handle ?? '';
+  const synced = channel ? syncedDate(channel.lastSyncedAt) : null;
   return (
     <div className="phone-kit phone-an">
       <PhoneNavBar
@@ -200,11 +202,9 @@ function Frame({
                 {channel.subscriberCount !== null &&
                   ` · ${t('header.subscribers', { value: formatCount(channel.subscriberCount) })}`}
                 {' · '}
-                {channel.lastSyncedAt
+                {synced
                   ? t('header.syncedAgo', {
-                      time: formatDistanceToNow(new Date(channel.lastSyncedAt), {
-                        locale: dateLocale,
-                      }),
+                      time: formatDistanceToNow(synced, { locale: dateLocale }),
                     })
                   : t('header.neverSynced')}
               </span>

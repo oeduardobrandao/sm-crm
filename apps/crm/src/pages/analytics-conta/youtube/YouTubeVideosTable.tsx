@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,7 @@ import {
   formatShortDate,
   formatThrough,
   formatSigned,
-  videoUrl,
+  videoHref,
 } from './youtubeTabFormat';
 
 export interface YtVideoTableSort {
@@ -93,12 +93,7 @@ export function YouTubeVideosTable({
             <GroupedList aria-label={t('videos.title')}>
               {visible.map((v) => (
                 <li key={v.videoId} className="phone-cell">
-                  <a
-                    href={sanitizeUrl(videoUrl(v))}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="phone-cell__main"
-                  >
+                  <PhoneRowLink href={videoHref(v)}>
                     <PostThumb url={v.thumbnailUrl} mediaType="VIDEO" />
                     <span className="phone-cell__body">
                       <span className="phone-cell__text">
@@ -113,7 +108,7 @@ export function YouTubeVideosTable({
                         <span className="phone-an-row-value">{formatCount(v.views)}</span>
                       </span>
                     </span>
-                  </a>
+                  </PhoneRowLink>
                 </li>
               ))}
               {sorted.length > limit && (
@@ -204,6 +199,7 @@ export function YouTubeVideosTable({
               <tbody>
                 {visible.map((v) => {
                   const title = titleOf(v);
+                  const href = videoHref(v);
                   return (
                     <tr key={v.videoId}>
                       <td data-label={t('videos.video')}>
@@ -242,15 +238,17 @@ export function YouTubeVideosTable({
                         {formatSigned(v.subscribersGained)}
                       </td>
                       <td data-label={t('videos.link')}>
-                        <a
-                          href={sanitizeUrl(videoUrl(v))}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          aria-label={`${t('videos.open')}: ${title}`}
-                          style={{ whiteSpace: 'nowrap' }}
-                        >
-                          {t('videos.open')}
-                        </a>
+                        {href && (
+                          <a
+                            href={href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label={`${t('videos.open')}: ${title}`}
+                            style={{ whiteSpace: 'nowrap' }}
+                          >
+                            {t('videos.open')}
+                          </a>
+                        )}
                       </td>
                     </tr>
                   );
@@ -297,5 +295,16 @@ function VideoThumb({ video }: { video: YtVideoRow }) {
         />
       )}
     </span>
+  );
+}
+
+/** A phone row opens the video on YouTube; without a safe link it only shows the numbers. */
+function PhoneRowLink({ href, children }: { href: string | null; children: ReactNode }) {
+  return href ? (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="phone-cell__main">
+      {children}
+    </a>
+  ) : (
+    <div className="phone-cell__main">{children}</div>
   );
 }

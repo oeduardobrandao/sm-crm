@@ -46,6 +46,7 @@ import {
   customRange,
   presetDays,
   rangeDays,
+  syncedDate,
 } from './youtubeTabFormat';
 import { isYouTubeTabQuery, useYouTubeTabData } from './useYouTubeTabData';
 
@@ -300,6 +301,7 @@ function ChannelIdentity({ channel }: { channel: YtOverview['channel'] }) {
   const avatar = channel.avatarUrl?.startsWith('https://') ? channel.avatarUrl : null;
   const url = channelUrl(channel.handle);
   const name = channel.title ?? channel.handle ?? '';
+  const synced = syncedDate(channel.lastSyncedAt);
   return (
     <p className="flex flex-wrap items-center gap-2" style={{ margin: 0 }}>
       {avatar && (
@@ -327,9 +329,9 @@ function ChannelIdentity({ channel }: { channel: YtOverview['channel'] }) {
         </span>
       )}
       <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-        {channel.lastSyncedAt
+        {synced
           ? t('header.syncedAgo', {
-              time: formatDistanceToNow(new Date(channel.lastSyncedAt), { locale: dateLocale }),
+              time: formatDistanceToNow(synced, { locale: dateLocale }),
             })
           : t('header.neverSynced')}
       </span>
@@ -338,7 +340,7 @@ function ChannelIdentity({ channel }: { channel: YtOverview['channel'] }) {
 }
 
 /**
- * 7 / 28 / 90 dias and Personalizado: a day count (1-365, committed on Enter) ending at the
+ * 7 / 28 / 90 dias and Personalizado: a day count (1-365, Aplicar or Enter) ending at the
  * channel's last data day. Without that day (an overview error) only the presets show.
  */
 function YouTubePeriodBar({
@@ -355,6 +357,15 @@ function YouTubePeriodBar({
   const preset = presetDays(range);
   const [customOpen, setCustomOpen] = useState(preset === null);
   const customActive = !!anchor && (customOpen || preset === null);
+  const [customText, setCustomText] = useState(preset === null ? String(rangeDays(range)) : '');
+  const apply = (end: string) => {
+    const val = parseInt(customText, 10);
+    if (isNaN(val) || val < 1 || val > YT_MAX_CUSTOM_DAYS) {
+      toast.error(t('period.customInvalid'));
+      return;
+    }
+    onChange(customRange(val, end));
+  };
   return (
     <div className="flex flex-wrap items-center gap-3">
       <div className="page-tabs page-tabs--inline" role="tablist" aria-label={t('period.label')}>
@@ -389,24 +400,32 @@ function YouTubePeriodBar({
         )}
       </div>
       {customActive && anchor && (
-        <Input
-          type="number"
-          min={1}
-          max={YT_MAX_CUSTOM_DAYS}
-          defaultValue={preset === null ? rangeDays(range) : undefined}
-          placeholder={t('period.customPlaceholder')}
-          aria-label={t('period.customAria')}
-          className="!rounded-full !text-xs h-9 w-[130px] mb-0"
-          onKeyDown={(e) => {
-            if (e.key !== 'Enter') return;
-            const val = parseInt((e.target as HTMLInputElement).value, 10);
-            if (isNaN(val) || val < 1 || val > YT_MAX_CUSTOM_DAYS) {
-              toast.error(t('period.customInvalid'));
-              return;
-            }
-            onChange(customRange(val, anchor));
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            apply(anchor);
           }}
-        />
+        >
+          <Input
+            type="number"
+            min={1}
+            max={YT_MAX_CUSTOM_DAYS}
+            value={customText}
+            onChange={(e) => setCustomText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter') return;
+              e.preventDefault();
+              apply(anchor);
+            }}
+            placeholder={t('period.customPlaceholder')}
+            aria-label={t('period.customAria')}
+            className="!rounded-full !text-xs h-9 w-[130px] mb-0"
+          />
+          <Button type="submit" size="sm" variant="outline">
+            {t('period.apply')}
+          </Button>
+        </form>
       )}
     </div>
   );

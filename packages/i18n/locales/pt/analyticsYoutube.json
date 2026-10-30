@@ -15,7 +15,8 @@
     "custom": "Personalizado",
     "customAria": "Período personalizado em dias",
     "customPlaceholder": "Dias (1 a 365)",
-    "customInvalid": "Insira um valor entre 1 e 365 dias."
+    "customInvalid": "Insira um valor entre 1 e 365 dias.",
+    "apply": "Aplicar"
   },
   "contentType": {
     "label": "Tipo de conteúdo",
@@ -150,7 +151,7 @@
     "revokedBody": "Reconecte o canal na aba Redes sociais para voltar a sincronizar.",
     "reconnectAction": "Reconectar",
     "firstSyncTitle": "Primeira sincronização em andamento",
-    "firstSyncBody": "Os números do canal aparecem aqui quando a primeira sincronização terminar.",
+    "firstSyncBody": "Os números do canal aparecem aqui quando a primeira sincronização terminar. Pode levar até uma hora. Você também pode usar Sincronizar.",
     "syncSuccess": "Dados do YouTube sincronizados.",
     "syncError": "Não foi possível sincronizar o YouTube. Tente de novo.",
     "syncRateLimited": "Limite da API do Google atingido. Tente de novo em alguns minutos."

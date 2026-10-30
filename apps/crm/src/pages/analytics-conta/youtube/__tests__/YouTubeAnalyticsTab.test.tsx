@@ -451,6 +451,46 @@ describe('YouTubeAnalyticsTab', () => {
     expect(daily.getByText('Últimos 28 dias')).toBeInTheDocument();
   });
 
+  it('Personalizado also applies from a visible Aplicar button', async () => {
+    renderTab();
+    await screen.findByText('Inscritos', { selector: '.kpi-label, .kpi-label *' });
+    fireEvent.click(screen.getByRole('tab', { name: 'Personalizado' }));
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Período personalizado em dias' }), {
+      target: { value: '10' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }));
+    await waitFor(() =>
+      expect(getYouTubeOverview).toHaveBeenLastCalledWith(
+        12,
+        { start: '2026-10-16', end: '2026-10-25' },
+        'all',
+      ),
+    );
+  });
+
+  it('missing numbers and dates read "-", never an em dash; a bad sync date reads as never synced', async () => {
+    vi.mocked(getYouTubeOverview).mockResolvedValue(
+      overview({ subscriberCount: null, lastSyncedAt: 'not-a-date' }),
+    );
+    vi.mocked(getYouTubeVideos).mockResolvedValue([
+      video('n', {
+        title: 'Sem números',
+        engagedViews: null,
+        avgViewDurationS: null,
+        avgViewPct: null,
+        publishedAt: null,
+      }),
+    ]);
+    vi.mocked(getYouTubeTopShorts).mockResolvedValue([video('n', { avgViewPct: null })]);
+    renderTab();
+    const table = await screen.findByRole('table');
+    const row = within(table).getByText('Sem números').closest('tr') as HTMLElement;
+    expect(within(row).getAllByText('-')).toHaveLength(4);
+    expect(screen.getByText('Ainda não sincronizado')).toBeInTheDocument();
+    expect(screen.queryByText(/^· .*inscritos$/)).toBeNull();
+    expect(document.body.textContent).not.toContain('—');
+  });
+
   it('maps traffic sources and sums the rest into Outras origens', async () => {
     renderTab();
     const traffic = within(
@@ -607,6 +647,11 @@ describe('YouTubeAnalyticsTab', () => {
     );
     renderTab();
     expect(await screen.findByText('Primeira sincronização em andamento')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Os números do canal aparecem aqui quando a primeira sincronização terminar. Pode levar até uma hora. Você também pode usar Sincronizar.',
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByText('Inscritos', { selector: '.kpi-label, .kpi-label *' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Sincronizar' })).toBeInTheDocument();
   });

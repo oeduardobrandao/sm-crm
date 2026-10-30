@@ -1,8 +1,9 @@
+import type { CSSProperties, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { YtVideoRow } from '../../../services/youtubeAnalytics';
 import { sanitizeUrl } from '../../../utils/security';
 import { EmptyLine, YouTubeCardFrame, type CardLoadState } from './YouTubeCardFrame';
-import { formatCompact, formatPct, videoUrl } from './youtubeTabFormat';
+import { formatCompact, formatPct, videoHref } from './youtubeTabFormat';
 
 const TOP_SIZE = 5;
 
@@ -105,18 +106,7 @@ export function YouTubeTopShorts({
             const views = formatCompact(v.views);
             return (
               <li key={v.videoId} style={phone ? { flex: '0 0 130px' } : undefined}>
-                <a
-                  href={sanitizeUrl(videoUrl(v))}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.4rem',
-                    color: 'inherit',
-                    textDecoration: 'none',
-                  }}
-                >
+                <TileLink href={videoHref(v)}>
                   <ShortCover url={v.thumbnailUrl} rank={t('topShorts.rank', { n: i + 1 })} />
                   <strong
                     style={{
@@ -135,12 +125,31 @@ export function YouTubeTopShorts({
                       ? t('topShorts.metaViews', { views })
                       : t('topShorts.meta', { views, pct: formatPct(v.avgViewPct) })}
                   </span>
-                </a>
+                </TileLink>
               </li>
             );
           })}
         </ol>
       )}
     </YouTubeCardFrame>
+  );
+}
+
+const tileStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.4rem',
+  color: 'inherit',
+  textDecoration: 'none',
+};
+
+/** A tile opens the Short on YouTube; without a safe link it only shows the numbers. */
+function TileLink({ href, children }: { href: string | null; children: ReactNode }) {
+  return href ? (
+    <a href={href} target="_blank" rel="noopener noreferrer" style={tileStyle}>
+      {children}
+    </a>
+  ) : (
+    <div style={tileStyle}>{children}</div>
   );
 }

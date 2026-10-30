@@ -15,7 +15,8 @@
     "custom": "Custom",
     "customAria": "Custom period in days",
     "customPlaceholder": "Days (1 to 365)",
-    "customInvalid": "Enter a value between 1 and 365 days."
+    "customInvalid": "Enter a value between 1 and 365 days.",
+    "apply": "Apply"
   },
   "contentType": {
     "label": "Content type",
@@ -150,7 +151,7 @@
     "revokedBody": "Reconnect the channel in the Social networks tab to resume syncing.",
     "reconnectAction": "Reconnect",
     "firstSyncTitle": "First sync in progress",
-    "firstSyncBody": "The channel's numbers show up here once the first sync finishes.",
+    "firstSyncBody": "The channel's numbers show up here once the first sync finishes. It can take up to an hour. You can also use Sync.",
     "syncSuccess": "YouTube data synced.",
     "syncError": "Could not sync YouTube. Try again.",
     "syncRateLimited": "Google API limit reached. Try again in a few minutes."

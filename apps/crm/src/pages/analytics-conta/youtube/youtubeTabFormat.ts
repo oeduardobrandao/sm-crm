@@ -1,7 +1,16 @@
 // Formatting, period and link helpers for the client YouTube tab (desktop and phone).
 import type { AnalyticsRange, YtOverview, YtVideoRow } from '../../../services/youtubeAnalytics';
+import { sanitizeUrl } from '../../../utils/security';
+import { formatDuration as tiktokDuration } from '../tiktok/tiktokTabFormat';
 
-export { dimmed, formatDuration } from '../tiktok/tiktokTabFormat';
+export { dimmed } from '../tiktok/tiktokTabFormat';
+
+/** Placeholder for a missing number or date in a dense cell (KPI cards say "sem dados"). */
+export const MISSING = '-';
+
+/** Seconds as "m:ss"; a missing or negative value reads as the placeholder. */
+export const formatDuration = (seconds: number | null | undefined): string =>
+  seconds === null || seconds === undefined || seconds < 0 ? MISSING : tiktokDuration(seconds);
 
 /** YouTube's own presets (the Analytics API's 7/28/90-day windows); 28 is the default. */
 export const YT_PERIOD_PRESETS = [7, 28, 90] as const;
@@ -18,24 +27,28 @@ export const LONG_COLOR_HEX = '#4285f4';
 const DAY_MS = 86_400_000;
 const compact = new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 });
 
-/** A count, pt-BR; a missing one reads "—", never 0. */
+/** A count, pt-BR; a missing one reads as the placeholder, never 0. */
 export const formatCount = (n: number | null | undefined): string =>
-  n === null || n === undefined ? '—' : n.toLocaleString('pt-BR');
+  n === null || n === undefined ? MISSING : n.toLocaleString('pt-BR');
 
 /** Large counts as "12,4 mil" (from 10 mil up), smaller ones in full: "9.112". */
 export const formatCompact = (n: number | null | undefined): string =>
-  n === null || n === undefined ? '—' : Math.abs(n) >= 10_000 ? compact.format(n) : formatCount(n);
+  n === null || n === undefined
+    ? MISSING
+    : Math.abs(n) >= 10_000
+      ? compact.format(n)
+      : formatCount(n);
 
 /** A net change with its sign: "+284", "-12", "0". */
 export const formatSigned = (n: number | null | undefined): string =>
-  n === null || n === undefined ? '—' : n > 0 ? `+${formatCount(n)}` : formatCount(n);
+  n === null || n === undefined ? MISSING : n > 0 ? `+${formatCount(n)}` : formatCount(n);
 
 /** Minutes as whole hours, pt-BR: 110400 → "1.840". */
 export const formatHours = (minutes: number): string => formatCount(Math.round(minutes / 60));
 
-/** A 0-100 share as a whole percent: 84.2 → "84%". Null reads "—". */
+/** A 0-100 share as a whole percent: 84.2 → "84%". Null reads as the placeholder. */
 export const formatPct = (v: number | null | undefined): string =>
-  v === null || v === undefined ? '—' : `${Math.round(v)}%`;
+  v === null || v === undefined ? MISSING : `${Math.round(v)}%`;
 
 /** `part` as a whole percent of `total`; an empty total is 0%, never "sem dados". */
 export const sharePct = (part: number, total: number): number =>
@@ -99,10 +112,10 @@ export const throughInSentence = (day: string, language: string): string =>
  * time, a YYYY-MM-DD day as itself.
  */
 export function formatShortDate(value: string | null, language: string): string {
-  if (!value) return '—';
+  if (!value) return MISSING;
   const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
   const date = dateOnly ? dayDate(value) : new Date(value);
-  if (isNaN(date.getTime())) return '—';
+  if (isNaN(date.getTime())) return MISSING;
   const opts: Intl.DateTimeFormatOptions = {
     day: 'numeric',
     month: 'short',
@@ -118,6 +131,19 @@ export function formatShortDate(value: string | null, language: string): string 
 /** A card "lags" when its own watermark is older than the channel's. */
 export const lagging = (through: string | null, dataThrough: string | null): string | null =>
   through && dataThrough && through < dataThrough ? through : null;
+
+/** The video's YouTube link after `sanitizeUrl`, or null when it would be unsafe ("#"). */
+export function videoHref(video: Pick<YtVideoRow, 'videoId' | 'isShort'>): string | null {
+  const href = sanitizeUrl(videoUrl(video));
+  return href === '#' ? null : href;
+}
+
+/** A last-sync timestamp as a Date, or null when missing or unparseable. */
+export function syncedDate(iso: string | null): Date | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d;
+}
 
 /** The channel page from its handle; no handle, no link. */
 export function channelUrl(handle: string | null): string | null {
