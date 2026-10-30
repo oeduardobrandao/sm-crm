@@ -1,6 +1,7 @@
 // Env wiring only: business logic lives in core.ts, the auth gate in handler.ts (same split as
-// tiktok-sync-cron). `svc` is created here, before core.ts's try block, so a broken candidate
-// query still reaches reportCronFailure.
+// tiktok-sync-cron). `svc` is created once at module scope, before any request and before
+// core.ts's try block: a broken candidate query still reaches reportCronFailure, and a client that
+// cannot even be built fails the boot (visible in the function logs) instead of every run.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
@@ -22,6 +23,8 @@ const CRON_SECRET = requireEnv("CRON_SECRET");
 // getFreshGoogleToken decrypts with it on every call; fail at boot, not per channel.
 requireEnv("TOKEN_ENCRYPTION_KEY");
 
+const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
 function intEnv(name: string, fallback: number): number {
   return Math.max(1, parseInt(Deno.env.get(name) || String(fallback), 10) || fallback);
 }
@@ -29,9 +32,8 @@ function intEnv(name: string, fallback: number): number {
 Deno.serve(createYouTubeSyncCronHandler({
   cronSecret: CRON_SECRET,
   timingSafeEqual,
-  run: async () => {
-    const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    return runYouTubeSyncCron({
+  run: () =>
+    runYouTubeSyncCron({
       svc,
       api: youtubeApi,
       getFreshGoogleToken: (db, connectionId) => getFreshGoogleToken(db, connectionId),
@@ -40,6 +42,5 @@ Deno.serve(createYouTubeSyncCronHandler({
       storage: svc.storage,
       batchLimit: intEnv("GOOGLE_SYNC_BATCH_LIMIT", 25),
       concurrency: intEnv("GOOGLE_SYNC_CONCURRENCY", 4),
-    });
-  },
+    }),
 }));
