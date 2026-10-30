@@ -52,7 +52,7 @@ describe.each(parsed)('$file guards', ({ root }) => {
     root.walkDecls((d) => expect(d.important, `${d.prop} in ${d.parent}`).toBeFalsy());
   });
 
-  it('keeps every rule in the 1101px block, except the scoped Analytics de Fluxos print block', () => {
+  it('keeps every rule in the 768px block, except the scoped Analytics de Fluxos print block', () => {
     root.walkRules((rule) => {
       if (inKeyframes(rule)) return;
       const media = enclosingMedia(rule);
@@ -61,8 +61,8 @@ describe.each(parsed)('$file guards', ({ root }) => {
         return;
       }
       expect(
-        media.some((m) => /min-width:\s*1101px/.test(m)),
-        `outside the 1101px block: ${rule.selector}`,
+        media.some((m) => /min-width:\s*768px/.test(m)),
+        `outside the 768px block: ${rule.selector}`,
       ).toBe(true);
     });
   });

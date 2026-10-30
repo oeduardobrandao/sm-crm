@@ -25,17 +25,26 @@ interface SidebarProps {
   onClose?: () => void;
   /** Desktop static sidebar: an icon rail that expands over the content on hover. */
   collapsible?: boolean;
+  /** Tablet rail (Vidro): never pins; its toggle opens the rail over the content until a
+   *  navigation, Escape or a tap outside closes it. Touch has no hover to expand it. */
+  railOnly?: boolean;
   /** Pinned open: always expanded, and the content sits beside it. */
   pinned?: boolean;
   onTogglePinned?: () => void;
   /** Desktop "Vidro" shell: glass header (logo, workspace, plan) and the search above the nav. */
   vidroShell?: boolean;
-  /** Account-menu switch between the Vidro and classic looks (desktop rail only). */
+  /** Account-menu switch between the Vidro and classic looks (not on phones). */
   look?: { enabled: boolean; optedOut: boolean; onToggle: () => void };
 }
 
 // Hover intent: crossing the rail on the way to the content shouldn't flap it open.
 const HOVER_EXPAND_DELAY_MS = 120;
+
+// A finger tap fires mouseenter before click; on the tablet rail that would expand it after the
+// navigation and keep it open. A trackpad or mouse still hovers.
+function canHover(): boolean {
+  return typeof window.matchMedia !== 'function' || window.matchMedia('(hover: hover)').matches;
+}
 
 const COLLAPSED_GROUPS_STORAGE_KEY = 'sidebar-collapsed-groups';
 
@@ -55,6 +64,7 @@ export default function Sidebar({
   isOpen = false,
   onClose,
   collapsible = false,
+  railOnly = false,
   pinned = false,
   onTogglePinned,
   vidroShell,
@@ -78,6 +88,8 @@ export default function Sidebar({
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(readCollapsedGroups);
   const [hovered, setHovered] = useState(false);
   const [keyboardFocused, setKeyboardFocused] = useState(false);
+  const [railOpen, setRailOpen] = useState(false);
+  const navRef = useRef<HTMLElement>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(
@@ -89,7 +101,8 @@ export default function Sidebar({
 
   // The open account menu holds the overlay: it lives inside the sidebar and
   // would otherwise collapse out from under the pointer.
-  const expanded = !collapsible || pinned || hovered || keyboardFocused || userMenuOpen;
+  const expanded =
+    !collapsible || pinned || hovered || keyboardFocused || userMenuOpen || (railOnly && railOpen);
   const isRail = collapsible && !expanded;
   const isOverlay = collapsible && expanded && !pinned;
 
@@ -99,6 +112,7 @@ export default function Sidebar({
   // toward portal content should still collapse.
   const handleMouseEnter = (e: React.MouseEvent<HTMLElement>) => {
     if (!collapsible || !e.currentTarget.contains(e.target as Node)) return;
+    if (railOnly && !canHover()) return;
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     hoverTimer.current = setTimeout(() => setHovered(true), HOVER_EXPAND_DELAY_MS);
   };
@@ -162,6 +176,33 @@ export default function Sidebar({
     )?.workspaces?.name ?? null;
 
   useEffect(() => {
+    if (!railOnly) setRailOpen(false);
+  }, [railOnly]);
+
+  useEffect(() => {
+    setRailOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!railOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setRailOpen(false);
+    };
+    // Portaled content (the search dialog) is outside the nav's DOM but is not "outside" here.
+    const handlePointerDown = (e: PointerEvent) => {
+      const target = e.target as Element | null;
+      if (navRef.current?.contains(target) || target?.closest?.('[role="dialog"]')) return;
+      setRailOpen(false);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('pointerdown', handlePointerDown);
+    };
+  }, [railOpen]);
+
+  useEffect(() => {
     if (!isDrawer || !isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose?.();
@@ -180,6 +221,7 @@ export default function Sidebar({
 
   const handleNavClick = (route: string) => {
     navigate(route);
+    setRailOpen(false);
     if (isDrawer) onClose?.();
   };
 
@@ -268,6 +310,7 @@ export default function Sidebar({
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={() => {
+                        setRailOpen(false);
                         if (isDrawer) onClose?.();
                       }}
                     >
@@ -304,7 +347,18 @@ export default function Sidebar({
     );
   };
 
-  const pinButton = (
+  const pinButton = railOnly ? (
+    <button
+      type="button"
+      className="sidebar-pin-btn"
+      onClick={() => setRailOpen((v) => !v)}
+      aria-expanded={railOpen}
+      aria-label={railOpen ? 'Fechar menu lateral' : 'Abrir menu lateral'}
+      title={railOpen ? 'Fechar menu lateral' : 'Abrir menu lateral'}
+    >
+      <i className="ph ph-sidebar-simple" />
+    </button>
+  ) : (
     <button
       type="button"
       className="sidebar-pin-btn"
@@ -319,7 +373,8 @@ export default function Sidebar({
 
   return (
     <nav
-      className={`sidebar${isDrawer ? ' sidebar--drawer' : ''}${isDrawer && isOpen ? ' sidebar--open' : ''}${isRail ? ' sidebar--rail' : ''}${isOverlay ? ' sidebar--overlay' : ''}`}
+      ref={navRef}
+      className={`sidebar${isDrawer ? ' sidebar--drawer' : ''}${isDrawer && isOpen ? ' sidebar--open' : ''}${isRail ? ' sidebar--rail' : ''}${isOverlay ? ' sidebar--overlay' : ''}${railOnly ? ' sidebar--rail-only' : ''}`}
       id="sidebar"
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
@@ -522,7 +577,7 @@ export default function Sidebar({
                   <span>{isDark ? t('sidebar.lightMode') : t('sidebar.darkMode')}</span>
                 </button>
 
-                {look?.enabled && collapsible && (
+                {look?.enabled && (collapsible || isDrawer) && (
                   <button
                     className="user-dropdown-item"
                     onClick={(e) => {

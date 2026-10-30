@@ -1887,7 +1887,7 @@ html[data-standalone] {
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767px) {
   .card {
     padding: 1rem !important; /* reduce padding on mobile */
   }
@@ -1956,16 +1956,17 @@ html[data-standalone] {
   z-index: 200;
 }
 
-@media (min-width: 1101px) {
-  .sidebar {
+/* The static sidebar (desktop, and the Vidro tablet rail); the tablet drawer keeps its slide. */
+@media (min-width: 768px) {
+  .sidebar:not(.sidebar--drawer) {
     transition:
       width 0.25s ease,
       box-shadow 0.25s ease;
   }
 }
 
-@media (min-width: 1101px) and (prefers-reduced-motion: reduce) {
-  .sidebar {
+@media (min-width: 768px) and (prefers-reduced-motion: reduce) {
+  .sidebar:not(.sidebar--drawer) {
     transition: none;
   }
 }

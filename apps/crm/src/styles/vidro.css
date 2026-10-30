@@ -2,10 +2,10 @@
  * Desktop "Vidro" (level 3) shell and content look.
  * Spec: docs/superpowers/specs/2026-10-12-desktop-vidro-design.md
  * Applies only with html[data-look='vidro'] (workspace flag feature_crm_vidro + no opt-out,
- * src/hooks/useVidro.ts) and only at >=1101px. Ordinary stylesheet on purpose: no @layer, no
+ * src/hooks/useVidro.ts) and only on screens >=768px (print keeps the classic sheet). Ordinary stylesheet on purpose: no @layer, no
  * !important. src/__tests__/vidroContracts.test.ts enforces the guards.
  */
-@media (min-width: 1101px) {
+@media screen and (min-width: 768px) {
   /* ---------- Tokens + backdrop ---------- */
   html[data-look='vidro'] body:has(.app-container) {
     --vd-panel: rgba(255, 255, 255, 0.94);
@@ -173,6 +173,20 @@
   html[data-look='vidro'] .app-container .sidebar--rail .vidro-sidebar-head .sidebar-pin-btn,
   html[data-look='vidro'] .app-container .sidebar--rail .vidro-sidebar-ws {
     visibility: hidden;
+  }
+
+  /* Tablet rail (Sidebar railOnly): touch has no hover, so the rail shows its open toggle where
+     the mark sits, and the mark returns with the logo once it opens. */
+  html[data-look='vidro'] .app-container .sidebar--rail.sidebar--rail-only .vidro-sidebar-logo {
+    display: none;
+  }
+
+  html[data-look='vidro']
+    .app-container
+    .sidebar--rail.sidebar--rail-only
+    .vidro-sidebar-head
+    .sidebar-pin-btn {
+    visibility: visible;
   }
 
   html[data-look='vidro'] .app-container .search-trigger--sidebar {
@@ -351,7 +365,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
     min-width: 0;
-    flex: 0 1 auto;
+    /* Never shrinks beside the subtitle (a fractional shrink already ellipsizes it in a narrow
+       panel); max-width still ellipsizes a title longer than the whole cluster. */
+    flex: 0 0 auto;
+    max-width: 100%;
   }
 
   html[data-look='vidro'] .app-container .vidro-toolbar-subtitle {
@@ -492,7 +509,7 @@
     right: auto;
     top: calc(100% + 15px);
     transform: translateY(-10px);
-    /* Wrap long hints instead of running past the panel's right edge (1101px, pinned
+    /* Wrap long hints instead of running past the panel's right edge (narrow panel, pinned
        sidebar). An explicit width: the trigger is the containing block and is often an icon. */
     width: max-content;
     max-width: 320px;
@@ -794,7 +811,7 @@
 }
 
 /* Reduced transparency / no backdrop-filter: opaque surfaces. */
-@media (min-width: 1101px) and (prefers-reduced-transparency: reduce) {
+@media screen and (min-width: 768px) and (prefers-reduced-transparency: reduce) {
   html[data-look='vidro'] .app-container .sidebar,
   html[data-look='vidro'] .app-container .vidro-capsule {
     background: var(--vd-solid);
@@ -804,7 +821,7 @@
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  @media (min-width: 1101px) {
+  @media screen and (min-width: 768px) {
     html[data-look='vidro'] .app-container .sidebar,
     html[data-look='vidro'] .app-container .vidro-capsule {
       background: var(--vd-solid);
@@ -815,7 +832,7 @@
 /* No dvh: the sidebar's dvh height is dropped at parse time and style.css's fallback sizes it from
    --topbar-height, which Vidro redefines to 70px. Restate the floating box in vh. */
 @supports not (height: 100dvh) {
-  @media (min-width: 1101px) {
+  @media screen and (min-width: 768px) {
     html[data-look='vidro'] .app-container .sidebar {
       height: calc(100vh - var(--banner-height, 0px) - 20px);
     }
@@ -833,7 +850,7 @@
   }
 
   /* Title and content share the classic 1.5rem left edge on paper. The page's own padding is
-     restated because the >=1101px rules zero it (a wide print layout would otherwise misalign). */
+     restated because the screen rules zero it (a wide print layout would otherwise misalign). */
   html[data-look='vidro'] body:has(.analytics-fluxos-page) .vidro-toolbar {
     padding: 0 1.5rem 12px;
   }
@@ -908,7 +925,7 @@
   html[data-look='vidro'] body:has(.analytics-fluxos-page) .vidro-panel > .main-content {
     overflow: visible;
     height: auto;
-    /* Below 1101px (the sheet) the Vidro margin reset is off and style.css's topbar offset
+    /* In print (screen-only rules) the Vidro margin reset is off and style.css's topbar offset
        would open a blank band between the toolbar title and the page. */
     margin-top: 0;
   }

@@ -5952,7 +5952,7 @@ body.role-agent input[name='valor_total'] {
   grid-column: 1 / -1;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767px) {
   /* Convert tables to cards on mobile */
   .card .overflow-auto > table {
     display: block;
@@ -9988,15 +9988,16 @@ a.mention-chip:hover {
 /* Desktop sidebar: icon rail by default, expands OVER the content on hover
    (.sidebar--overlay), and pinning (Sidebar's toggle) keeps it open with the
    content beside it. AppLayout sets data-sidebar-collapsed only while
-   unpinned and static; the media query is the CSS-side guard so it can never
-   touch the tablet drawer. .main-content reads --sidebar-width, so only
-   pinning moves the content; hovering only widens the sidebar itself.
+   unpinned and static. At 768-1100px the classic look uses the drawer instead
+   (no collapsible classes, no pin row), and the Vidro tablet rail uses this
+   block. .main-content reads --sidebar-width, so only pinning moves the
+   content; hovering only widens the sidebar itself.
 
    Rail and expanded share one left-anchored layout and the rail just clips it
    to 64px: hovering is pure width growth, nothing reflows. Text fades with
    opacity, so labels stay the links' accessible names. */
 
-@media (min-width: 1101px) {
+@media screen and (min-width: 768px) {
   .app-container[data-sidebar-collapsed] {
     --sidebar-width: 64px;
   }
@@ -13014,10 +13015,11 @@ a.hub-fill__row-inner:hover {
   }
 }
 
-/* >=1101px the Guia pill owns bottom: 20px of the same corner: sit above it. */
+/* With the static sidebar (>=768px, no drawer) the Guia pill owns bottom: 20px of the same
+   corner: sit above it. */
 
-@media (min-width: 1101px) {
-  body:has(.guide-pill) .context-help {
+@media screen and (min-width: 768px) {
+  body:has(.guide-pill):not(:has(.sidebar--drawer)) .context-help {
     bottom: max(72px, calc(var(--corner-clearance, 0px) + 64px));
   }
 }
@@ -13029,8 +13031,8 @@ a.hub-fill__row-inner:hover {
     padding-bottom: 64px;
   }
 }
-@media (min-width: 1101px) {
-  body:has(.guide-pill) .mensagens-thread-scroll {
+@media screen and (min-width: 768px) {
+  body:has(.guide-pill):not(:has(.sidebar--drawer)) .mensagens-thread-scroll {
     padding-bottom: 116px;
   }
 }
@@ -15008,15 +15010,16 @@ a.hub-fill__row-inner:hover {
 
 /* ── Guia de primeiros passos ─────────────────────────────── */
 
-/* UI fixa ancorada: display none por padrão, só existe >=1101px
-   (abaixo disso a sidebar vira drawer e o canto é do MobileNav). */
+/* UI fixa ancorada: display none por padrão, só existe >=768px com a sidebar
+   estática (desktop e trilho do Vidro no tablet). Com a sidebar em drawer
+   (tablet clássico) o guia fica no drawer; no telefone, no MobileNav. */
 
 .guide-pill {
   display: none;
 }
 
-@media (min-width: 1101px) {
-  .guide-pill {
+@media screen and (min-width: 768px) {
+  body:not(:has(.sidebar--drawer)) .guide-pill {
     position: fixed;
     right: 20px;
     bottom: max(20px, calc(var(--corner-clearance, 0px) + 12px));
@@ -15033,7 +15036,7 @@ a.hub-fill__row-inner:hover {
     cursor: pointer;
     box-shadow: var(--shadow);
   }
-  .guide-pill:hover {
+  body:not(:has(.sidebar--drawer)) .guide-pill:hover {
     background: var(--surface-hover);
   }
 }

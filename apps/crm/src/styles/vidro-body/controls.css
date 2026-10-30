@@ -2,7 +2,7 @@
  * Vidro body skin: controls (segmented capsules, filter chips, in-page side navs).
  * Spec: docs/superpowers/specs/2026-10-13-vidro-body-skin-design.md section 6.
  * Guards: every selector starts with html[data-look='vidro']; everything inside
- * @media (min-width: 1101px); no @layer; no !important. Page-body prefix:
+ * @media screen and (min-width: 768px); no @layer; no !important. Page-body prefix:
  * html[data-look='vidro'] body:has(.app-container) .vidro-panel; segmented and chip rules are
  * duplicated under the portaled-content prefix (dialogs, sheets, popovers, comment/mention popovers).
  *
@@ -11,7 +11,7 @@
  *  - .agenda-rapido__tipos: its items are chips (below), a capsule track behind them would double up.
  *  - .grid / .flex-col groups (RecorrenciaFields, TrialReelPanel): stacked option lists, not segments.
  */
-@media (min-width: 1101px) {
+@media screen and (min-width: 768px) {
   /* ---------- Segmented capsule: track ---------- */
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tabs__group,
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .icon-seg,
