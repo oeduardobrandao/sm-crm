@@ -1,1 +1,158 @@
-{}
+{
+  "header": {
+    "subscribers": "{{value}} subscribers",
+    "sync": "Sync",
+    "syncedAgo": "Synced {{time}} ago",
+    "neverSynced": "Not synced yet",
+    "dataThrough": "Data through {{date}}. YouTube releases its numbers 2 to 3 days late.",
+    "back": "Back"
+  },
+  "period": {
+    "label": "Period",
+    "days_one": "{{count}} day",
+    "days_other": "{{count}} days",
+    "short": "{{count}}d",
+    "custom": "Custom",
+    "customAria": "Custom period in days",
+    "customPlaceholder": "Days (1 to 365)",
+    "customInvalid": "Enter a value between 1 and 365 days."
+  },
+  "contentType": {
+    "label": "Content type",
+    "all": "All",
+    "shorts": "Shorts",
+    "long": "Long videos"
+  },
+  "kpi": {
+    "vsPrevious_one": "vs. previous {{count}} day",
+    "vsPrevious_other": "vs. previous {{count}} days",
+    "noData": "no data",
+    "hours": "{{value}} h",
+    "subscribers": {
+      "label": "Subscribers",
+      "sub": "Current channel total"
+    },
+    "net_subscribers": {
+      "label": "New subscribers",
+      "sub": "{{gained}} gained, {{lost}} lost",
+      "subFallback": "Gained minus lost in the period"
+    },
+    "views": {
+      "label": "Views",
+      "sub": "Received in the period"
+    },
+    "engaged_views": {
+      "label": "Engaged views",
+      "sub": "Watched past the first seconds"
+    },
+    "watch_minutes": {
+      "label": "Watch time",
+      "sub": "Received in the period"
+    },
+    "avg_view_duration_s": {
+      "label": "Average duration",
+      "sub": "Per view"
+    },
+    "likes": {
+      "label": "Likes",
+      "sub": "Received in the period"
+    },
+    "shares": {
+      "label": "Shares",
+      "sub": "{{value}} comments in the period",
+      "subFallback": "Received in the period"
+    }
+  },
+  "lag": "Data through {{date}}",
+  "daily": {
+    "title": "Views per day",
+    "subSplit_one": "Shorts and long videos, last day",
+    "subSplit_other": "Shorts and long videos, last {{count}} days",
+    "sub_one": "Last day",
+    "sub_other": "Last {{count}} days",
+    "ariaSplit": "Bar chart: daily views, Shorts in red and long videos in blue",
+    "aria": "Bar chart: daily views",
+    "views": "Views",
+    "empty": "No views in the period."
+  },
+  "split": {
+    "title": "Shorts x long videos",
+    "sub": "Share in the period: Shorts have {{pct}}% of views",
+    "views": "Views",
+    "minutes": "Watch time",
+    "likes": "Likes",
+    "shorts": "Shorts {{value}}",
+    "long": "Long {{value}}",
+    "barAria": "{{metric}}: Shorts {{pct}}%"
+  },
+  "traffic": {
+    "title": "Where views come from",
+    "sub": "Traffic source",
+    "empty": "No views in the period.",
+    "source": {
+      "SHORTS": "Shorts feed",
+      "YT_SEARCH": "Search",
+      "RELATED_VIDEO": "Suggested",
+      "EXT_URL": "External links",
+      "YT_CHANNEL": "Channel page",
+      "other": "Other sources"
+    }
+  },
+  "audience": {
+    "title": "Audience",
+    "sub": "Viewer age and gender · last 28 days",
+    "women": "Women {{pct}}%",
+    "men": "Men {{pct}}%",
+    "rowAria": "{{age}}: {{total}}% of the audience, women {{women}}%, men {{men}}%",
+    "empty": "No audience data for this channel."
+  },
+  "topShorts": {
+    "title": "Top Shorts",
+    "sub": "The 5 Shorts with the most views in the period",
+    "meta": "{{views}} views · {{pct}} watched",
+    "metaViews": "{{views}} views",
+    "rank": "#{{n}}",
+    "empty": "No Shorts with views in the period."
+  },
+  "videos": {
+    "title": "Videos",
+    "sub": "Published in the period · current numbers for each video",
+    "video": "Video",
+    "type": "Type",
+    "date": "Date",
+    "views": "Views",
+    "engaged": "Engaged",
+    "avgDuration": "Average duration",
+    "avgPct": "% watched",
+    "likes": "Likes",
+    "comments": "Comments",
+    "subscribers": "New subscribers",
+    "link": "Link",
+    "open": "Open on YouTube",
+    "short": "Short",
+    "long": "Long video",
+    "untitled": "Untitled video",
+    "empty": "No videos published in the period.",
+    "showAll": "See all {{count}} videos",
+    "showLess": "Show less"
+  },
+  "states": {
+    "notConnectedTitle": "YouTube not connected",
+    "notConnectedBody": "Connect the client's channel in the Social networks tab to see the numbers here.",
+    "connectAction": "Go to Social networks",
+    "lockedTitle": "YouTube",
+    "locked": "YouTube is not available on your plan.",
+    "lockedAction": "See plans",
+    "error": "Could not load the YouTube data.",
+    "retry": "Try again",
+    "revokedTitle": "Google authorization expired",
+    "revokedBody": "Reconnect the channel in the Social networks tab to resume syncing.",
+    "reconnectAction": "Reconnect",
+    "firstSyncTitle": "First sync in progress",
+    "firstSyncBody": "The channel's numbers show up here once the first sync finishes.",
+    "syncSuccess": "YouTube data synced.",
+    "syncError": "Could not sync YouTube. Try again.",
+    "syncRateLimited": "Google API limit reached. Try again in a few minutes."
+  },
+  "footer": "YouTube data, as reported by YouTube."
+}

@@ -29,6 +29,9 @@ export type YouTubeContentType = 'all' | 'shorts' | 'long';
 export interface YtKpiEntry {
   value: number | null;
   prev: number | null;
+  /** `net_subscribers` only: the window's gained and lost subscribers behind the net value. */
+  gained?: number | null;
+  lost?: number | null;
 }
 
 export interface YtSplitEntry {
@@ -48,6 +51,8 @@ export interface YtOverview {
     dataThrough: string | null;
     contentTypeThrough: string | null;
     trafficThrough: string | null;
+    /** Last day of the per-video reports (Shorts em destaque, Vídeos). */
+    videosThrough: string | null;
   };
   window: { start: string; end: string; prevStart: string; prevEnd: string };
   /** All null before the first sync. */
