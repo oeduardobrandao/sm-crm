@@ -241,18 +241,16 @@ describe('hub api client', () => {
       },
     });
 
-    const result = await submitEditSuggestion(
-      'token-hub',
-      42,
-      {
+    const result = await submitEditSuggestion('token-hub', 42, {
+      conteudo: {
         type: 'doc',
         content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Texto editado' }] }],
       },
-      'Texto editado',
-      null,
-      ['texto'],
-      { conteudo: null, conteudo_plain: 'Texto original' },
-    );
+      conteudo_plain: 'Texto editado',
+      captions: { ig_caption: null },
+      touched_fields: ['texto'],
+      bases: { conteudo: null, conteudo_plain: 'Texto original' },
+    });
 
     expect(result.ok).toBe(true);
     expect(result.pending_suggestion?.post_id).toBe(42);
@@ -270,6 +268,45 @@ describe('hub api client', () => {
       bases: { conteudo: null, conteudo_plain: 'Texto original' },
     });
     expect(body.bases).toHaveProperty('conteudo', null);
+    // Captions not given are not sent at all (absent = untouched).
+    expect(body).not.toHaveProperty('suggested_tiktok_caption');
+    expect(body).not.toHaveProperty('suggested_geral_caption');
+  });
+
+  it('sends the TikTok and Geral captions and their bases, null base kept', async () => {
+    fetchHarness.queueResponse({ json: { ok: true, pending_suggestion: null } });
+    await submitEditSuggestion('token-hub', 42, {
+      conteudo: null,
+      conteudo_plain: 'Corpo',
+      captions: { ig_caption: 'IG', tiktok_caption: 'TT novo', geral_caption: null },
+      touched_fields: ['legenda_tiktok'],
+      bases: { tiktok_caption: null },
+    });
+    const body = JSON.parse(String(fetchHarness.calls[0].init?.body));
+    expect(body).toMatchObject({
+      suggested_ig_caption: 'IG',
+      suggested_tiktok_caption: 'TT novo',
+      suggested_geral_caption: null,
+      touched_fields: ['legenda_tiktok'],
+    });
+    expect(body.bases).toHaveProperty('tiktok_caption', null);
+  });
+
+  it('keeps the status and code of a 409 target_gone so callers can tell it apart', async () => {
+    fetchHarness.queueResponse({
+      ok: false,
+      status: 409,
+      json: { error: 'Destino removido', code: 'target_gone' },
+    });
+    await expect(
+      submitEditSuggestion('token-hub', 42, {
+        conteudo: null,
+        conteudo_plain: 'x',
+        captions: { ig_caption: null, geral_caption: 'g' },
+        touched_fields: ['legenda_geral'],
+        bases: { geral_caption: '' },
+      }),
+    ).rejects.toMatchObject({ status: 409, code: 'target_gone' });
   });
 
   it('throws on edit suggestion error', async () => {
@@ -280,7 +317,13 @@ describe('hub api client', () => {
     });
 
     await expect(
-      submitEditSuggestion('token-hub', 99, null, 'texto', null, ['legenda'], null),
+      submitEditSuggestion('token-hub', 99, {
+        conteudo: null,
+        conteudo_plain: 'texto',
+        captions: { ig_caption: null },
+        touched_fields: ['legenda'],
+        bases: null,
+      }),
     ).rejects.toThrow('Post não está em revisão');
   });
 

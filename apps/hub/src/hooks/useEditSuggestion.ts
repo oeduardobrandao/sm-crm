@@ -7,9 +7,34 @@ import { docPlainText } from '../lib/richDoc';
 export type SaveState = 'idle' | 'saving' | 'saved';
 
 /**
+ * Why the last save failed, when the server said something actionable: `target_gone` (409, a
+ * destination was removed from the post; the post is reloaded), `retry` (409, a concurrent write
+ * on the server, safe to resend) or `caption_too_long` (400, TikTok caption above its limit).
+ * Null for any other failure.
+ */
+export type SaveErrorKind = 'target_gone' | 'retry' | 'caption_too_long';
+
+/** The TikTok and Geral captions a save carries besides the Instagram one. */
+export interface OtherCaptions {
+  tiktok_caption?: string | null;
+  geral_caption?: string | null;
+}
+
+/** Reads the `status`/`code` a HubApiError carries (duck-typed: any thrown value is accepted). */
+export function classifySaveError(err: unknown): SaveErrorKind | null {
+  if (typeof err !== 'object' || err === null) return null;
+  const { status, code } = err as { status?: unknown; code?: unknown };
+  if (status === 409 && code === 'target_gone') return 'target_gone';
+  if (status === 409 && code === 'retry') return 'retry';
+  if (status === 400 && code === 'caption_too_long') return 'caption_too_long';
+  return null;
+}
+
+/**
  * What a save touched and the values the client started from. `bases` carries the keys of the
- * touched fields only (texto: `conteudo` + `conteudo_plain`; legenda: `ig_caption`), `null`
- * included: the server tests key presence.
+ * touched fields only (texto: `conteudo` + `conteudo_plain`; legenda: `ig_caption`;
+ * legenda_tiktok: `tiktok_caption`; legenda_geral: `geral_caption`), `null` included: the
+ * server tests key presence.
  */
 export interface SuggestionTouch {
   fields: SuggestionField[];
@@ -150,6 +175,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
     conteudo: Record<string, unknown> | null;
     conteudoPlain: string;
     igCaption: string | null;
+    otherCaptions: OtherCaptions;
     touchedFields: SuggestionField[];
     bases: SuggestionBases;
   };
@@ -180,6 +206,8 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
   // the last attempt for the displayed post has settled as a failure, until a new
   // attempt is queued (retry), succeeds, or is explicitly discarded.
   const [saveFailed, setSaveFailed] = useState(() => failedPostIds.has(post.id));
+  // The actionable reason of the last failure on screen (see SaveErrorKind); null otherwise.
+  const [saveError, setSaveError] = useState<SaveErrorKind | null>(null);
 
   // A field the suggestion did not change shows the live post, not the copy the suggestion
   // stored when it was saved: the team may have edited the post since, and seeding the editor
@@ -206,6 +234,19 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
     () => (captionChanged ? suggestion?.suggested_ig_caption : null) ?? post.ig_caption ?? null,
     [suggestion, captionChanged, post.ig_caption],
   );
+  // TikTok and Geral: same gating. Raw values (null = TikTok follows Instagram / no Geral
+  // caption), never the caption the destination displays.
+  const tiktokChanged = changedFields.includes('tiktok_caption');
+  const geralChanged = changedFields.includes('geral_caption');
+  const draftTiktokCaption = useMemo(
+    () =>
+      (tiktokChanged ? suggestion?.suggested_tiktok_caption : null) ?? post.tiktok_caption ?? null,
+    [suggestion, tiktokChanged, post.tiktok_caption],
+  );
+  const draftGeralCaption = useMemo(
+    () => (geralChanged ? suggestion?.suggested_geral_caption : null) ?? post.geral_caption ?? null,
+    [suggestion, geralChanged, post.geral_caption],
+  );
 
   // Always holds the id of whichever post this hook is CURRENTLY rendering. `flush`
   // uses it to decide whether a just-drained save's outcome should update this
@@ -229,6 +270,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
     setSaveState(isSavingFor(post.id) ? 'saving' : 'idle');
     setDirty(isDirtyFor(post.id));
     setSaveFailed(failedPostIds.has(post.id) && !isSavingFor(post.id));
+    setSaveError(null);
     // The cosmetic "saved -> idle" timer belongs to the post being left; if left
     // running, it would fire later and could stomp the newly-displayed post's own,
     // legitimately different saveState (e.g. flipping it from 'saving' to 'idle'
@@ -255,6 +297,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
       postId: number;
       succeeded: boolean;
       pendingSuggestion: PendingEditSuggestion | null;
+      error?: SaveErrorKind | null;
     } | null = null;
     // Newest row an earlier save in this drain returned for the displayed post: when a later
     // one reverts it, a refetch triggered in between (onSaved) may still carry that row.
@@ -269,15 +312,13 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
         const attemptId = ++nextAttemptId;
         latestAttemptByPostId.set(postId, attemptId);
         const send = () =>
-          submitEditSuggestion(
-            token,
-            payload.postId,
-            payload.conteudo,
-            payload.conteudoPlain,
-            payload.igCaption,
-            payload.touchedFields,
-            payload.bases,
-          );
+          submitEditSuggestion(token, payload.postId, {
+            conteudo: payload.conteudo,
+            conteudo_plain: payload.conteudoPlain,
+            captions: { ig_caption: payload.igCaption, ...payload.otherCaptions },
+            touched_fields: payload.touchedFields,
+            bases: payload.bases,
+          });
         const previous = lastRequestByPostId.get(postId);
         // Sent right away when nothing is in flight for this post (the common case).
         const request = previous ? previous.then(send, send) : send();
@@ -305,7 +346,11 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
               res.pending_suggestion?.updated_at ?? null,
             );
           }
-        } catch {
+        } catch (err) {
+          const error = classifySaveError(err);
+          // The destination left the post: reload it so the panel and the reading view stop
+          // offering a caption that no longer exists.
+          if (error === 'target_gone') onSaved();
           // Unconditional: a post left mid-save (possibly a full unmount, not just a
           // same-instance navigation) must still remember its attempt failed once the
           // user comes back to it. Gated by the same latest-attempt check as the
@@ -315,7 +360,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
             failedPostIds.add(postId);
           }
           if (isCurrentPost)
-            currentPostOutcome = { postId, succeeded: false, pendingSuggestion: null };
+            currentPostOutcome = { postId, succeeded: false, pendingSuggestion: null, error };
         } finally {
           inFlightPostIdRef.current = null;
           if (lastRequestByPostId.get(postId) === request) lastRequestByPostId.delete(postId);
@@ -341,6 +386,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
         setSaveState('saved');
         setDirty(false);
         setSaveFailed(false);
+        setSaveError(null);
         savedTimerRef.current = setTimeout(() => setSaveState('idle'), 3000);
       } else {
         // Swallowed on purpose, so `dirty` is the only signal left that the edit
@@ -349,6 +395,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
         // than the debounce window before the request goes out.
         setSaveState('idle');
         setSaveFailed(true);
+        setSaveError(currentPostOutcome.error ?? null);
       }
     }
   }, [token, onSaved]);
@@ -359,9 +406,11 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
       conteudoPlain: string,
       igCaption: string | null,
       touch: SuggestionTouch,
+      otherCaptions: OtherCaptions = {},
     ) => {
       setDirty(true);
       setSaveFailed(false);
+      setSaveError(null);
       // Edits to the same post coalesce onto one queued entry: the text is the newest, but
       // the touched fields accumulate and each base keeps the FIRST value seen. The base is
       // what the client started from, so a later edit must not replace it with a value the
@@ -372,6 +421,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
         conteudo,
         conteudoPlain,
         igCaption,
+        otherCaptions,
         touchedFields: [
           ...(queued?.touchedFields ?? []),
           ...touch.fields.filter((f) => !queued?.touchedFields.includes(f)),
@@ -396,6 +446,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
     if (pendingRef.current.has(post.id) || inFlightPostIdRef.current === post.id) return;
     failedPostIds.delete(post.id);
     setSaveFailed(false);
+    setSaveError(null);
     setDirty(false);
   }, [post.id]);
 
@@ -414,9 +465,12 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
     approvalBlocked,
     dirty,
     saveFailed,
+    saveError,
     discardFailedSave,
     draftConteudo,
     draftConteudoPlain,
     draftIgCaption,
+    draftTiktokCaption,
+    draftGeralCaption,
   };
 }

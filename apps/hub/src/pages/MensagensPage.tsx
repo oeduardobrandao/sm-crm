@@ -42,7 +42,7 @@ function mediaNoteLabel(
 
 function eventLabel(m: MensagemFeedItem, t: (key: string, defaultValue: string) => string) {
   if (m.source === 'edit_suggestion') {
-    return t('events.editSuggestion', 'Você sugeriu edições no texto');
+    return t('events.editSuggestion', 'Você sugeriu edições');
   }
   return m.action === 'aprovado'
     ? t('events.approved', 'Você aprovou o post')

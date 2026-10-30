@@ -9,7 +9,7 @@
   "loadError": "Couldn't load messages.",
   "emptyState": "No messages yet. Send the first one!",
   "events": {
-    "editSuggestion": "You suggested edits to the copy",
+    "editSuggestion": "You suggested edits",
     "approved": "You approved the post",
     "correctionRequested": "You requested a correction"
   },

@@ -10,7 +10,7 @@ contratos abaixo são a interface entre elas; nenhuma frente muda um contrato se
 
 ### Banco (frente A)
 
-Migration `supabase/migrations/20261111000001_edit_suggestion_platform_captions.sql`.
+Migration `supabase/migrations/20261112000001_edit_suggestion_platform_captions.sql`.
 
 `post_edit_suggestions` ganha `original_tiktok_caption text`, `suggested_tiktok_caption text`,
 `original_geral_caption text`, `suggested_geral_caption text`, `geral_target_id bigint`,

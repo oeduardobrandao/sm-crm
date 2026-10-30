@@ -9,7 +9,7 @@
   "loadError": "Não foi possível carregar as mensagens.",
   "emptyState": "Nenhuma mensagem ainda. Envie a primeira!",
   "events": {
-    "editSuggestion": "Você sugeriu edições no texto",
+    "editSuggestion": "Você sugeriu edições",
     "approved": "Você aprovou o post",
     "correctionRequested": "Você pediu correção"
   },

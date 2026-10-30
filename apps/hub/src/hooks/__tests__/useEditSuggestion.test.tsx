@@ -201,7 +201,7 @@ describe('useEditSuggestion', () => {
       first.resolve({ ok: true, pending_suggestion: null });
     });
     expect(mockedSubmit).toHaveBeenCalledTimes(2);
-    expect(mockedSubmit.mock.calls[1][3]).toBe('segunda');
+    expect(mockedSubmit.mock.calls[1][2].conteudo_plain).toBe('segunda');
   });
 
   it('coalesces touched fields (union) and keeps the first base per key within one debounce', async () => {
@@ -227,9 +227,9 @@ describe('useEditSuggestion', () => {
     });
     expect(mockedSubmit).toHaveBeenCalledTimes(1);
     const call = mockedSubmit.mock.calls[0];
-    expect(call[4]).toBe('L2');
-    expect(call[5]).toEqual(['texto', 'legenda']);
-    expect(call[6]).toEqual({ conteudo_plain: 'A', ig_caption: 'L' });
+    expect(call[2].captions.ig_caption).toBe('L2');
+    expect(call[2].touched_fields).toEqual(['texto', 'legenda']);
+    expect(call[2].bases).toEqual({ conteudo_plain: 'A', ig_caption: 'L' });
   });
 
   it('keeps a null base as an explicit key when coalescing', async () => {
@@ -253,7 +253,7 @@ describe('useEditSuggestion', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1600);
     });
-    const bases = mockedSubmit.mock.calls[0][6];
+    const bases = mockedSubmit.mock.calls[0][2].bases;
     expect(bases).toHaveProperty('ig_caption', null);
   });
 
@@ -280,8 +280,8 @@ describe('useEditSuggestion', () => {
       await vi.advanceTimersByTimeAsync(1600);
     });
     expect(mockedSubmit).toHaveBeenCalledTimes(2);
-    expect(mockedSubmit.mock.calls[0][5]).toEqual(['texto']);
-    expect(mockedSubmit.mock.calls[1][5]).toEqual(['legenda']);
+    expect(mockedSubmit.mock.calls[0][2].touched_fields).toEqual(['texto']);
+    expect(mockedSubmit.mock.calls[1][2].touched_fields).toEqual(['legenda']);
   });
 
   it('seeds the caption from the live post when the pending suggestion did not change it', () => {
@@ -437,15 +437,13 @@ describe('useEditSuggestion', () => {
 
     // Now that #1 settled, the queued edit must be flushed as request #2.
     expect(mockedSubmit).toHaveBeenCalledTimes(2);
-    expect(mockedSubmit).toHaveBeenLastCalledWith(
-      'tok',
-      5103,
-      { type: 'doc', content: [] },
-      'edit-2-final',
-      null,
-      TEXTO.fields,
-      TEXTO.bases,
-    );
+    expect(mockedSubmit).toHaveBeenLastCalledWith('tok', 5103, {
+      conteudo: { type: 'doc', content: [] },
+      conteudo_plain: 'edit-2-final',
+      captions: { ig_caption: null },
+      touched_fields: TEXTO.fields,
+      bases: TEXTO.bases,
+    });
 
     await act(async () => {
       second.resolve({ ok: true, pending_suggestion: null });
@@ -453,15 +451,13 @@ describe('useEditSuggestion', () => {
     });
 
     // The final server-bound payload is the latest edit, never the stale intermediate one.
-    expect(mockedSubmit).toHaveBeenLastCalledWith(
-      'tok',
-      5103,
-      { type: 'doc', content: [] },
-      'edit-2-final',
-      null,
-      TEXTO.fields,
-      TEXTO.bases,
-    );
+    expect(mockedSubmit).toHaveBeenLastCalledWith('tok', 5103, {
+      conteudo: { type: 'doc', content: [] },
+      conteudo_plain: 'edit-2-final',
+      captions: { ig_caption: null },
+      touched_fields: TEXTO.fields,
+      bases: TEXTO.bases,
+    });
   });
 
   it('attributes a queued save to the post it was typed into, even when the hook is reused for a different post mid-flight', async () => {
@@ -487,16 +483,13 @@ describe('useEditSuggestion', () => {
       vi.advanceTimersByTime(1500);
     });
     expect(mockedSubmit).toHaveBeenCalledTimes(1);
-    expect(mockedSubmit).toHaveBeenNthCalledWith(
-      1,
-      'tok',
-      5103,
-      { type: 'doc', content: [] },
-      'edit-for-post-a',
-      null,
-      TEXTO.fields,
-      TEXTO.bases,
-    );
+    expect(mockedSubmit).toHaveBeenNthCalledWith(1, 'tok', 5103, {
+      conteudo: { type: 'doc', content: [] },
+      conteudo_plain: 'edit-for-post-a',
+      captions: { ig_caption: null },
+      touched_fields: TEXTO.fields,
+      bases: TEXTO.bases,
+    });
 
     // Navigate to a different post (5104) -- same hook instance, new `post` prop --
     // and edit it before post A's save has resolved.
@@ -518,16 +511,13 @@ describe('useEditSuggestion', () => {
 
     // The queued edit must be sent for post B (5104), not misattributed to post A (5103).
     expect(mockedSubmit).toHaveBeenCalledTimes(2);
-    expect(mockedSubmit).toHaveBeenNthCalledWith(
-      2,
-      'tok',
-      5104,
-      { type: 'doc', content: [] },
-      'edit-for-post-b',
-      null,
-      TEXTO.fields,
-      TEXTO.bases,
-    );
+    expect(mockedSubmit).toHaveBeenNthCalledWith(2, 'tok', 5104, {
+      conteudo: { type: 'doc', content: [] },
+      conteudo_plain: 'edit-for-post-b',
+      captions: { ig_caption: null },
+      touched_fields: TEXTO.fields,
+      bases: TEXTO.bases,
+    });
   });
 
   it('queues edits per post so a third post edited mid-flight does not drop a second, still-queued post', async () => {

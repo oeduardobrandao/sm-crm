@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { destinationCaptions, groupCaptions, resolvePostTargets } from '../postView';
-import type { HubPost } from '../../types';
+import {
+  changedSuggestionFields,
+  destinationCaptions,
+  editCaptionGroups,
+  groupCaptions,
+  resolvePostTargets,
+  suggestionAwareRawCaptions,
+} from '../postView';
+import type { HubPost, PendingEditSuggestion } from '../../types';
 
 function post(over: Partial<HubPost> = {}): HubPost {
   return {
@@ -118,5 +125,97 @@ describe('groupCaptions', () => {
         { platform: 'tiktok', text: 'A ' },
       ]),
     ).toHaveLength(2);
+  });
+});
+
+describe('editCaptionGroups (PR 2: which fields a group touches)', () => {
+  const groupsOf = (p: HubPost, igShown: string) =>
+    groupCaptions(destinationCaptions(p, resolvePostTargets(p)!, igShown, p.ig_caption));
+
+  it('TikTok with a null caption in the Instagram group is not a field', () => {
+    const p = post({ targets: ['instagram', 'tiktok'], ig_caption: 'IG', tiktok_caption: null });
+    expect(editCaptionGroups(groupsOf(p, 'IG'), p.tiktok_caption)).toEqual([
+      { platforms: ['instagram', 'tiktok'], text: 'IG', fields: ['legenda'] },
+    ]);
+  });
+
+  it('TikTok with its own caption equal to Instagram touches both fields', () => {
+    const p = post({ targets: ['instagram', 'tiktok'], ig_caption: 'IG', tiktok_caption: 'IG' });
+    expect(editCaptionGroups(groupsOf(p, 'IG'), p.tiktok_caption)[0].fields).toEqual([
+      'legenda',
+      'legenda_tiktok',
+    ]);
+  });
+
+  it('TikTok alone with a null raw caption IS a field (LEGENDA fallback case)', () => {
+    const p = post({
+      targets: ['instagram', 'tiktok'],
+      ig_caption: null,
+      tiktok_caption: null,
+      conteudo_plain: 'Roteiro\nLEGENDA: do corpo',
+    });
+    expect(editCaptionGroups(groupsOf(p, 'do corpo'), p.tiktok_caption)).toEqual([
+      { platforms: ['instagram'], text: 'do corpo', fields: ['legenda'] },
+      { platforms: ['tiktok'], text: '', fields: ['legenda_tiktok'] },
+    ]);
+  });
+
+  it('Geral is its own field, grouped or not', () => {
+    const p = post({
+      targets: ['instagram', 'tiktok', 'geral'],
+      ig_caption: 'IG',
+      tiktok_caption: 'TT',
+      geral_caption: 'TT',
+    });
+    expect(editCaptionGroups(groupsOf(p, 'IG'), p.tiktok_caption)).toEqual([
+      { platforms: ['instagram'], text: 'IG', fields: ['legenda'] },
+      { platforms: ['tiktok', 'geral'], text: 'TT', fields: ['legenda_tiktok', 'legenda_geral'] },
+    ]);
+  });
+});
+
+describe('suggestionAwareRawCaptions', () => {
+  const suggestion = (over: Partial<PendingEditSuggestion>): PendingEditSuggestion => ({
+    id: 1,
+    suggested_conteudo: null,
+    suggested_conteudo_plain: '',
+    suggested_ig_caption: null,
+    changed_fields: [],
+    updated_at: '2026-10-30T00:00:00Z',
+    ...over,
+  });
+
+  it('uses the suggested value only for a column the suggestion changed', () => {
+    const p = post({ tiktok_caption: 'TT vivo', geral_caption: 'G vivo' });
+    expect(
+      suggestionAwareRawCaptions(
+        p,
+        suggestion({
+          changed_fields: ['tiktok_caption'],
+          suggested_tiktok_caption: 'TT novo',
+          suggested_geral_caption: 'G velho',
+        }),
+      ),
+    ).toEqual({ tiktok_caption: 'TT novo', geral_caption: 'G vivo' });
+  });
+
+  it('keeps the live values without a suggestion or on an old payload', () => {
+    const p = post({ tiktok_caption: null, geral_caption: 'G' });
+    expect(suggestionAwareRawCaptions(p, null)).toEqual({
+      tiktok_caption: null,
+      geral_caption: 'G',
+    });
+    expect(
+      suggestionAwareRawCaptions(p, suggestion({ changed_fields: ['geral_caption'] })),
+    ).toEqual({ tiktok_caption: null, geral_caption: 'G' });
+  });
+});
+
+describe('changedSuggestionFields', () => {
+  it('maps columns to logical fields in display order', () => {
+    expect(
+      changedSuggestionFields(['geral_caption', 'conteudo_plain', 'tiktok_caption', 'ig_caption']),
+    ).toEqual(['texto', 'legenda', 'legenda_tiktok', 'legenda_geral']);
+    expect(changedSuggestionFields(undefined)).toEqual([]);
   });
 });

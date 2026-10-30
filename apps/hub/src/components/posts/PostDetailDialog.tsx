@@ -50,6 +50,7 @@ import {
   pickPostCardKind,
   resolvePostTargets,
   suggestionAwareCaption,
+  suggestionAwareRawCaptions,
 } from '../../lib/postView';
 import { sanitizeExternalUrl } from '../../lib/security';
 import { HubDialog } from '../ui/HubDialog';
@@ -432,11 +433,18 @@ function PostDetailContent({
     suggestion.changed_fields?.includes('ig_caption')
       ? suggestion.suggested_ig_caption
       : post.ig_caption;
+  // TikTok and Geral follow the pending suggestion the same way (only the columns it changed).
+  const captionPost =
+    !showOriginal && edit.isEditable
+      ? { ...post, ...suggestionAwareRawCaptions(post, suggestion) }
+      : post;
   const mediaCaptionGroups = multiCaption
-    ? groupCaptions(destinationCaptions(post, captionTargets, caption, igRawShown))
+    ? groupCaptions(destinationCaptions(captionPost, captionTargets, caption, igRawShown))
     : null;
   const textCaptionGroups = multiCaption
-    ? groupCaptions(destinationCaptions(post, captionTargets, textCaption ?? '', textCaption))
+    ? groupCaptions(
+        destinationCaptions(captionPost, captionTargets, textCaption ?? '', textCaption),
+      )
     : null;
   const hasTextCaptions = textCaptionGroups
     ? textCaptionGroups.some((g) => g.text !== '')
@@ -1102,6 +1110,7 @@ function PostDetailContent({
                       <div className="mb-3">
                         <SuggestionPendingNotice
                           changedFields={suggestion?.changed_fields}
+                          multiDestination={multiCaption}
                           view={suggestionView}
                           onViewChange={suggestion ? setSuggestionView : undefined}
                         />

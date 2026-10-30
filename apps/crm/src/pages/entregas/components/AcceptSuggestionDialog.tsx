@@ -10,10 +10,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import type { PostEditSuggestion, WorkflowPost } from '../../../store';
-import { suggestionFieldStates, type SuggestionField } from '../editSuggestionFields';
-
-const FIELD_ORDER: SuggestionField[] = ['texto', 'legenda'];
+import type { PostEditSuggestion } from '../../../store';
+import {
+  SUGGESTION_FIELDS,
+  isApplicable,
+  suggestionFieldStates,
+  type SuggestionField,
+  type SuggestionLivePost,
+} from '../editSuggestionFields';
+import { joinList, useSuggestionFieldName } from './SuggestionReview';
 
 interface AcceptSuggestionDialogProps {
   open: boolean;
@@ -60,20 +65,12 @@ function DialogBody({
   onCancel: () => void;
 }) {
   const { t } = useTranslation('postEditor');
+  const fieldName = useSuggestionFieldName();
   const [useClient, setUseClient] = useState<SuggestionField[]>([]);
 
-  const toApply = FIELD_ORDER.filter((f) => applied.includes(f) || useClient.includes(f));
-  const fieldLabel = (f: SuggestionField) =>
-    f === 'texto' ? t('suggestionReview.postText') : t('shared.igCaption');
-  const conflictNames = conflicts
-    .map((f) =>
-      t(
-        f === 'texto'
-          ? 'suggestionReview.dialog.fieldTexto'
-          : 'suggestionReview.dialog.fieldLegenda',
-      ),
-    )
-    .join(t('suggestionReview.dialog.and'));
+  const toApply = SUGGESTION_FIELDS.filter((f) => applied.includes(f) || useClient.includes(f));
+  const fieldLabel = (f: SuggestionField) => fieldName(f, 'heading');
+  const conflictNames = joinList(conflicts.map((f) => fieldName(f, 'inline')));
 
   const choose = (field: SuggestionField, client: boolean) =>
     setUseClient((prev) => {
@@ -176,7 +173,7 @@ function RadioRow({
  * re-checks conflicts and refuses an unacknowledged one).
  */
 export function useAcceptSuggestionFlow(
-  post: Pick<WorkflowPost, 'conteudo' | 'conteudo_plain' | 'ig_caption'>,
+  post: SuggestionLivePost,
   onAccept: (
     suggestion: PostEditSuggestion,
     fields: SuggestionField[],
@@ -191,15 +188,16 @@ export function useAcceptSuggestionFlow(
 
   const request = (suggestion: PostEditSuggestion) => {
     const states = suggestionFieldStates(post, suggestion);
+    // A caption still loading has no judged conflict yet: nothing is sent until it arrives (the
+    // buttons are disabled meanwhile; this guards a click that raced the load).
+    if (states.some((st) => st.changed && st.pending)) return;
     if (states.some((st) => st.conflict)) {
       setState({ suggestion, open: true });
       return;
     }
-    onAccept(
-      suggestion,
-      states.filter((st) => st.changed).map((st) => st.field),
-      [],
-    );
+    const fields = states.filter(isApplicable).map((st) => st.field);
+    if (fields.length === 0) return;
+    onAccept(suggestion, fields, []);
   };
 
   const close = () => setState((prev) => prev && { ...prev, open: false });
@@ -210,7 +208,7 @@ export function useAcceptSuggestionFlow(
     <AcceptSuggestionDialog
       open={state?.open ?? false}
       conflicts={conflictsNow}
-      applied={states.filter((st) => st.changed && !st.conflict).map((st) => st.field)}
+      applied={states.filter((st) => isApplicable(st) && !st.conflict).map((st) => st.field)}
       onConfirm={(fields) => {
         // The dialog stays mounted while it fades out: a second click must not accept twice.
         if (state?.open) {
