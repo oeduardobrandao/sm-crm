@@ -60,11 +60,18 @@ export function GbpReviewsList({
 function ReviewItem({ review, first }: { review: GbpReview; first: boolean }) {
   const { t, i18n } = useTranslation('analyticsGoogle');
   const name = review.reviewer?.trim() || t('reviews.anonymous');
-  const when = formatDistanceToNow(new Date(review.createTime), {
-    addSuffix: true,
-    locale: i18n.language.startsWith('en') ? enUS : ptBR,
-  });
-  const meta = review.unitTitle ? `${review.unitTitle} · ${when}` : when;
+  // A missing or unparseable createTime drops the date: `new Date(null)` would read "há 56 anos".
+  const created = review.createTime ? new Date(review.createTime) : null;
+  const when =
+    created && !isNaN(created.getTime())
+      ? formatDistanceToNow(created, {
+          addSuffix: true,
+          locale: i18n.language.startsWith('en') ? enUS : ptBR,
+        })
+      : null;
+  const meta = [review.unitTitle, when].filter(Boolean).join(' · ');
+  // A URI that sanitizes to '#' (not http/https) opens nothing: no link at all.
+  const href = review.unitMapsUri ? sanitizeUrl(review.unitMapsUri) : '#';
   return (
     <li
       data-review
@@ -103,7 +110,7 @@ function ReviewItem({ review, first }: { review: GbpReview; first: boolean }) {
         >
           <strong>{name}</strong>
           <Stars rating={review.rating} small />
-          <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{meta}</span>
+          {meta && <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{meta}</span>}
           <span style={{ marginLeft: 'auto' }}>
             {review.hasReply ? (
               <Badge variant="success" size="sm">
@@ -119,9 +126,9 @@ function ReviewItem({ review, first }: { review: GbpReview; first: boolean }) {
         {review.comment && (
           <p style={{ margin: '0.4rem 0 0', overflowWrap: 'anywhere' }}>{review.comment}</p>
         )}
-        {review.unitMapsUri && (
+        {href !== '#' && (
           <a
-            href={sanitizeUrl(review.unitMapsUri)}
+            href={href}
             target="_blank"
             rel="noopener noreferrer"
             style={{ display: 'inline-block', marginTop: '0.4rem', fontSize: '0.8rem' }}

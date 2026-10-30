@@ -21,7 +21,7 @@ import { BILLING_PATH, StateCard } from '../AnalyticsStateCards';
 import type { TikTokPhoneFrame } from '../tiktok/TikTokAnalyticsTabPhone';
 import { dimmed } from '../tiktok/tiktokTabFormat';
 import { GbpActionsChart } from './GbpActionsChart';
-import { GbpCard, QueryBody, Segments, UnitControl, visibleUnits } from './GbpCard';
+import { GbpCard, QueryBody, Segments, UnitControl } from './GbpCard';
 import { GbpKeywordsCard } from './GbpKeywordsCard';
 import { GbpKpiGrid } from './GbpKpiGrid';
 import { GbpRatingCard } from './GbpRatingCard';
@@ -67,7 +67,9 @@ function useGoogleTab(clientId: number) {
     overview.isError &&
     (err instanceof GbpNotConnectedError || (err instanceof Error && err.message === 'Error 404'));
   useEffect(() => {
-    if (unitGone) setLocationState('all');
+    if (!unitGone) return;
+    setLocationState('all');
+    setKeywordsMonth(null);
   }, [unitGone]);
 
   const setLocation = (next: GbpLocation) => {
@@ -194,7 +196,8 @@ export function GoogleAnalyticsTab({
   }
 
   const ov = overview.data!;
-  const units = visibleUnits(data.units.data);
+  // The server lists only the client's `active` and `revoked` units.
+  const units = data.units.data ?? [];
   const selectedUnit = location === 'all' ? null : units.find((u) => u.id === location);
   const days = windowDays(ov.window);
 

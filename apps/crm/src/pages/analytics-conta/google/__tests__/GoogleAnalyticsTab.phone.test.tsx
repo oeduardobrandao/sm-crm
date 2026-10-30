@@ -127,7 +127,12 @@ describe('GoogleAnalyticsTab (phone)', () => {
     renderTab();
     const evil = await screen.findByText('Evil');
     const row = evil.closest('[data-review]') as HTMLElement;
-    expect(within(row).getByRole('link', { name: 'Abrir no Google' })).toHaveAttribute('href', '#');
+    expect(within(row).queryByRole('link')).toBeNull();
+    const good = (await screen.findByText('Mariana Lopes')).closest('[data-review]') as HTMLElement;
+    expect(within(good).getByRole('link', { name: 'Abrir no Google' })).toHaveAttribute(
+      'href',
+      'https://maps.google.com/?cid=123',
+    );
     const filter = screen.getByRole('radiogroup', { name: 'Filtro de avaliações' });
     fireEvent.click(within(filter).getByRole('radio', { name: 'Sem resposta' }));
     await waitFor(() => expect(getGbpReviews).toHaveBeenLastCalledWith(12, 'unanswered', 'all'));

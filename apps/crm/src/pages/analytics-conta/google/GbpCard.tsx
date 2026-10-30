@@ -166,9 +166,6 @@ export function Stars({ rating, small }: { rating: number; small?: boolean }) {
 /** More units than this become a select instead of segments. */
 const MAX_UNIT_SEGMENTS = 4;
 
-/** The client's linked units (the server returns only `active` and `revoked` ones). */
-export const visibleUnits = (units: GbpUnitRow[] | undefined): GbpUnitRow[] => units ?? [];
-
 /** "Todas as unidades (n)" plus one segment per unit, a select past four; hidden for one unit. */
 export function UnitControl({
   units,

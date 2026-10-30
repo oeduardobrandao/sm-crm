@@ -28,7 +28,7 @@
     "error": "Could not load Google Business Profile data.",
     "retry": "Try again",
     "firstSyncTitle": "First sync in progress",
-    "firstSyncBody": "We are fetching the locations' history from Google. This can take a few minutes.",
+    "firstSyncBody": "This can take up to an hour. You can also use Sync.",
     "noData": "no data",
     "back": "Back"
   },

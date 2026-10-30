@@ -200,6 +200,8 @@ describe('GoogleAnalyticsTab', () => {
       review('Mariana Lopes'),
       review('Evil', { unitMapsUri: 'javascript:alert(1)' }),
       review('Sem link', { unitMapsUri: null, hasReply: false, rating: 3 }),
+      review('Sem data', { createTime: null as unknown as string }),
+      review('Data ruim', { createTime: 'not-a-date' }),
     ]);
     renderTab();
     const list = (await screen.findByRole('heading', { name: 'Avaliações recentes' })).closest(
@@ -211,15 +213,17 @@ describe('GoogleAnalyticsTab', () => {
     expect(
       within(item('Mariana Lopes')).getByRole('link', { name: 'Abrir no Google' }),
     ).toHaveAttribute('href', 'https://maps.google.com/?cid=123');
-    expect(within(item('Evil')).getByRole('link', { name: 'Abrir no Google' })).toHaveAttribute(
-      'href',
-      '#',
-    );
+    // A URI that sanitizes to '#' is not a link at all.
+    expect(within(item('Evil')).queryByRole('link')).toBeNull();
     expect(within(item('Sem link')).queryByRole('link')).toBeNull();
     expect(within(item('Sem link')).getByText('Sem resposta')).toBeInTheDocument();
     expect(within(item('Sem link')).getByLabelText('3 de 5 estrelas')).toBeInTheDocument();
     expect(within(item('Mariana Lopes')).getByText('Respondida')).toBeInTheDocument();
     expect(within(item('Mariana Lopes')).getByText(/^Moema · há 2 dias$/)).toBeInTheDocument();
+    // A missing or invalid createTime drops the date, never "há 56 anos" or a RangeError.
+    expect(within(item('Sem data')).getByText(/^Moema$/)).toBeInTheDocument();
+    expect(within(item('Data ruim')).getByText(/^Moema$/)).toBeInTheDocument();
+    expect(within(list).queryByText(/anos/)).toBeNull();
   });
 
   it('the partial note appears when only part of the reviews is stored', async () => {
@@ -277,6 +281,9 @@ describe('GoogleAnalyticsTab', () => {
     vi.mocked(getGbpOverview).mockResolvedValue(overview({}, null));
     renderTab();
     expect(await screen.findByText('Primeira sincronização em andamento')).toBeInTheDocument();
+    expect(
+      screen.getByText('Pode levar até uma hora. Você também pode usar Sincronizar.'),
+    ).toBeInTheDocument();
     expect(screen.queryByText('Visualizações do perfil')).toBeNull();
   });
 
@@ -317,6 +324,36 @@ describe('GoogleAnalyticsTab', () => {
       ).toHaveAttribute('aria-selected', 'true'),
     );
     expect(screen.getByText('Visualizações do perfil')).toBeInTheDocument();
+  });
+
+  it('a selected unit that starts answering not_connected (server contract) resets to every unit', async () => {
+    renderTab();
+    const units = await screen.findByRole('tablist', { name: 'Unidade' });
+    fireEvent.click(within(units).getByRole('tab', { name: 'Moema' }));
+    await waitFor(() => expect(getGbpOverview).toHaveBeenLastCalledWith(12, { days: 30 }, MOEMA));
+    const kw = (await screen.findByRole('heading', { name: 'O que buscaram no Google' })).closest(
+      '.card',
+    ) as HTMLElement;
+    fireEvent.click(await within(kw).findByRole('tab', { name: 'Ago.' }));
+    await waitFor(() => expect(getGbpKeywords).toHaveBeenLastCalledWith(12, '2026-08', MOEMA));
+    // The unit is unlinked elsewhere: its next read is a not_connected 404.
+    vi.mocked(getGbpOverview).mockImplementation(async (_id, _range, location) => {
+      if (location === MOEMA) throw new GbpNotConnectedError();
+      return overview();
+    });
+    fireEvent.click(screen.getByRole('tab', { name: '7 dias' }));
+    await waitFor(() => expect(getGbpOverview).toHaveBeenCalledWith(12, { days: 7 }, MOEMA));
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('tablist', { name: 'Unidade' })).getByRole('tab', {
+          name: 'Todas as unidades (2)',
+        }),
+      ).toHaveAttribute('aria-selected', 'true'),
+    );
+    expect(screen.queryByText('Google Meu Negócio não conectado')).toBeNull();
+    expect(screen.getByText('Visualizações do perfil')).toBeInTheDocument();
+    // Back on every unit, the keywords read the latest closed month again.
+    await waitFor(() => expect(getGbpKeywords).toHaveBeenLastCalledWith(12, null, 'all'));
   });
 
   it('periods are 7, 30 and 90 days, and Personalizado sends a range ending on data-through', async () => {

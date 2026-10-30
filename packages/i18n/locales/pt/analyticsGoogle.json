@@ -28,7 +28,7 @@
     "error": "Não foi possível carregar os dados do Google Meu Negócio.",
     "retry": "Tentar novamente",
     "firstSyncTitle": "Primeira sincronização em andamento",
-    "firstSyncBody": "Estamos buscando o histórico das unidades no Google. Pode levar alguns minutos.",
+    "firstSyncBody": "Pode levar até uma hora. Você também pode usar Sincronizar.",
     "noData": "sem dados",
     "back": "Voltar"
   },
