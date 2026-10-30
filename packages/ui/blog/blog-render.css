@@ -58,17 +58,8 @@ figure.blog-info {
   margin-bottom: 26px;
 }
 
-.blog-info .blog-info__eyebrow {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--blog-r-muted);
-}
-
 .blog-info .blog-info__title {
-  margin: 6px 0 0;
+  margin: 0;
   font-family: var(--blog-r-display);
   font-size: clamp(1.25rem, 2.6vw, 1.6rem);
   line-height: 1.15;

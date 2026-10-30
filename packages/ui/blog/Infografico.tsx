@@ -17,7 +17,6 @@ export function Infografico({ data, sources }: { data: unknown; sources: BlogSou
   return (
     <figure className={`blog-info blog-info--${info.tipo}`}>
       <div className="blog-info__head">
-        <p className="blog-info__eyebrow">Infográfico</p>
         <p className="blog-info__title">{info.titulo}</p>
       </div>
       {info.tipo === 'barras' && <Barras itens={info.itens} />}

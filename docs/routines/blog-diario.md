@@ -338,8 +338,20 @@ Conte os caracteres de `title` e `description` antes de enviar. É o erro mais c
 ### Infográficos
 
 Um infográfico é um bloco de código com a linguagem `infografico` e um JSON dentro. O site
-desenha como HTML no estilo da casa, então os números continuam texto real. Use no máximo dois
-por post, só quando os dados ficam mais claros desenhados.
+desenha como HTML no estilo da casa, então os números continuam texto real.
+
+**Infográfico é opcional e não é enfeite.** Muitos posts não precisam de nenhum. Só use quando
+desenhar deixa algo claramente mais fácil de entender do que o texto, uma lista ou uma tabela:
+uma comparação de números vinda de uma fonte, um número de destaque que o leitor vai querer
+citar. Se o conteúdo é uma sequência de passos que o texto já lista, **não** repita em
+`etapas`: o resultado é um cartão que só reescreve a lista. Máximo de dois por post, e zero é
+um bom número.
+
+Você decide o tipo pelo que o assunto pede, não por hábito. Os três tipos abaixo são o que o
+site sabe desenhar hoje; se o seu dado pede outra forma (matriz, linha do tempo, antes e
+depois), use uma tabela Markdown ou uma imagem ilustrativa em vez de forçar o dado num tipo que
+não cabe. Não use rótulo em caixa alta, "eyebrow" ou texto decorativo no título: o `titulo` diz
+o que o gráfico mostra, em sentence case.
 
 Regras:
 
