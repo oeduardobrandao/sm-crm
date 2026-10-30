@@ -331,7 +331,7 @@ Deno.test("gbp-analytics: 'Todas as unidades' ends its window on the earliest da
       metrics("locations/2", "2026-10-19", { business_impressions_desktop_search: 6, call_clicks: 1 }),
       metrics("locations/2", "2026-10-15", { call_clicks: 7 }), // previous window
     ],
-  });
+  }, { data: [] }, { data: [{ day: "2026-10-01" }] }); // read, its closing page, then the coverage read
   const res = await makeHandler(db)(get("/overview/42?days=7&location=all"));
   assertEquals(res.status, 200);
   const body = await res.json();
@@ -345,6 +345,28 @@ Deno.test("gbp-analytics: 'Todas as unidades' ends its window on the earliest da
   assert(hasMod(m, "in", "location_name", ["locations/1", "locations/2"]));
   assert(hasMod(m, "gte", "day", "2026-10-12"));
   assert(hasMod(m, "lte", "day", "2026-10-25"));
+  // Coverage read: any selected unit's row on or before prevStart.
+  const cover = callsTo(db, "gbp_metrics_daily").at(-1)!;
+  assert(hasMod(cover, "eq", "conta_id", "ws-B"));
+  assert(hasMod(cover, "in", "location_name", ["locations/1", "locations/2"]));
+  assert(hasMod(cover, "lte", "day", "2026-10-12"));
+  assertEquals(mods(cover, "limit"), [[1]]);
+});
+
+Deno.test("gbp-analytics: a previous window the data only half covers has no comparison (I-2)", async () => {
+  const db = createSupabaseQueryMock();
+  ready(db);
+  // The earliest row is 2026-10-15, inside the previous window [2026-10-12, 2026-10-18].
+  db.queue(
+    "gbp_metrics_daily",
+    "select",
+    { data: [metrics("locations/1", "2026-10-15", { call_clicks: 7 }), metrics("locations/1", "2026-10-25", { call_clicks: 2 })] },
+    { data: [] },
+    { data: [] }, // coverage: nothing on or before 2026-10-12
+  );
+  const body = await (await makeHandler(db)(get("/overview/42?days=7"))).json();
+  assertEquals(body.kpis.calls, { value: 2, prev: null });
+  assertEquals(body.kpis.profile_views, { value: 0, prev: null });
 });
 
 Deno.test("gbp-analytics: a revoked unit's frozen data_through does not hold 'Todas' back, but its rows still count", async () => {
@@ -355,7 +377,7 @@ Deno.test("gbp-analytics: a revoked unit's frozen data_through does not hold 'To
       metrics("locations/1", "2026-10-27", { call_clicks: 2 }),
       metrics("locations/2", "2026-10-21", { call_clicks: 5 }),
     ],
-  });
+  }, { data: [] }, { data: [{ day: "2026-10-01" }] });
   const res = await makeHandler(db)(get("/overview/42?days=7"));
   const body = await res.json();
   assertEquals(body.dataThrough, "2026-10-27");
@@ -439,7 +461,13 @@ Deno.test("gbp-analytics: before the first sync the overview has a window and ev
 Deno.test("gbp-analytics: a revoked unit's data is still returned", async () => {
   const db = createSupabaseQueryMock();
   ready(db, [{ ...U1, status: "revoked" }]);
-  db.queue("gbp_metrics_daily", "select", { data: [metrics("locations/1", "2026-10-27", { website_clicks: 8 })] });
+  db.queue(
+    "gbp_metrics_daily",
+    "select",
+    { data: [metrics("locations/1", "2026-10-27", { website_clicks: 8 })] },
+    { data: [] },
+    { data: [{ day: "2026-10-01" }] },
+  );
   const res = await makeHandler(db)(get("/overview/42?days=7"));
   assertEquals(res.status, 200);
   const body = await res.json();
@@ -454,11 +482,14 @@ Deno.test("gbp-analytics: history reads page past PostgREST's 1000-row cap until
     "select",
     { data: Array.from({ length: 1000 }, () => metrics("locations/1", "2026-10-25", { call_clicks: 1 })) },
     { data: Array.from({ length: 5 }, () => metrics("locations/2", "2026-10-24", { call_clicks: 2 })) },
+    { data: [] },
+    { data: [{ day: "2026-10-01" }] },
   );
   const res = await makeHandler(db)(get("/overview/42?days=7"));
   assertEquals(res.status, 200);
   assertEquals((await res.json()).kpis.calls, { value: 1010, prev: 0 });
-  assertEquals(callsTo(db, "gbp_metrics_daily").map((c) => mods(c, "range")[0]), [[0, 999], [1000, 1999], [1005, 2004]]);
+  const paged = callsTo(db, "gbp_metrics_daily").filter((c) => mods(c, "range").length > 0);
+  assertEquals(paged.map((c) => mods(c, "range")[0]), [[0, 999], [1000, 1999], [1005, 2004]]);
 });
 
 // ── daily / surfaces ──────────────────────────────────────────────────────────

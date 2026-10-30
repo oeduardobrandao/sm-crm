@@ -371,7 +371,7 @@ Deno.test("youtube-analytics: overview ?days=28 ends at data_through and compare
       daily("2026-10-27", "all", { views: 300, average_view_duration_s: 10, subscribers_gained: 10, subscribers_lost: 4 }),
       daily("2026-10-27", "long", { views: 300 }),
     ],
-  });
+  }, { data: [] }, { data: [{ day: "2026-08-01" }] }); // read, its closing page, then the coverage read
   const res = await makeHandler(db)(get("/overview/42?days=28"));
   assertEquals(res.status, 200);
   const body = await res.json();
@@ -403,6 +403,11 @@ Deno.test("youtube-analytics: overview ?days=28 ends at data_through and compare
   const [read] = callsTo(db, "youtube_channel_daily");
   assertEquals(mods(read, "gte"), [["day", "2026-09-02"]]);
   assertEquals(mods(read, "lte"), [["day", "2026-10-27"]]);
+  // Then the coverage read: any 'all' row on or before prevStart.
+  const cover = callsTo(db, "youtube_channel_daily").at(-1)!;
+  assert(hasEq(cover, "content_type", "all"));
+  assertEquals(mods(cover, "lte"), [["day", "2026-09-02"]]);
+  assertEquals(mods(cover, "limit"), [[1]]);
   assertScoped(db, "youtube_channel_daily");
 });
 
@@ -434,6 +439,10 @@ Deno.test("youtube-analytics: overview type=shorts sums the shorts rows; subscri
     },
     { data: [] },
     { data: [daily("2026-10-27", "shorts", { views: 200, subscribers_gained: null, subscribers_lost: null })] },
+    { data: [] },
+    // Coverage: 'all' and then 'shorts' rows exist on or before their previous windows' start.
+    { data: [{ day: "2026-08-01" }] },
+    { data: [{ day: "2026-08-01" }] },
   );
   const body = await (await makeHandler(db)(get("/overview/42?type=shorts"))).json();
   assertEquals(body.kpis.views, { value: 200, prev: 0 });
@@ -490,6 +499,9 @@ Deno.test("youtube-analytics: overview type=shorts with a lagging content_type_t
         daily("2026-10-20", "shorts", { views: 60 }),
       ],
     },
+    { data: [] },
+    { data: [{ day: "2026-08-01" }] },
+    { data: [{ day: "2026-09-09" }] },
   );
   const body = await (await makeHandler(db)(get("/overview/42?days=28&type=shorts"))).json();
   // Current window [2026-09-30, 2026-10-20] (21 days); previous [2026-09-09, 2026-09-29].
@@ -501,6 +513,47 @@ Deno.test("youtube-analytics: overview type=shorts with a lagging content_type_t
   assert(typed);
   assertEquals(mods(typed, "gte"), [["day", "2026-09-09"]]);
   assertEquals(mods(typed, "lte"), [["day", "2026-10-20"]]);
+  // The type's coverage is checked against the clipped previous window's start.
+  const typeCover = callsTo(db, "youtube_channel_daily").at(-1)!;
+  assert(hasEq(typeCover, "content_type", "shorts"));
+  assertEquals(mods(typeCover, "lte"), [["day", "2026-09-09"]]);
+});
+
+Deno.test("youtube-analytics: a previous window the data only half covers has no comparison (I-2)", async () => {
+  const db = createSupabaseQueryMock();
+  connected(db);
+  // The channel's data starts on 2026-09-15, inside the previous window [2026-09-02, 2026-09-29].
+  db.queue(
+    "youtube_channel_daily",
+    "select",
+    { data: [daily("2026-09-15", "all", { views: 50 }), daily("2026-10-27", "all", { views: 300 })] },
+    { data: [] },
+    { data: [] }, // coverage: no 'all' row on or before 2026-09-02
+  );
+  const body = await (await makeHandler(db)(get("/overview/42?days=28"))).json();
+  assertEquals(body.kpis.views, { value: 300, prev: null });
+  assertEquals(body.kpis.avg_view_duration_s.prev, null);
+  assertEquals(body.kpis.net_subscribers.prev, null);
+  assertEquals(body.kpis.net_subscribers.value, 4);
+});
+
+Deno.test("youtube-analytics: type=shorts with a half-covered shorts history has no type comparison (I-2)", async () => {
+  const db = createSupabaseQueryMock();
+  connected(db);
+  db.queue(
+    "youtube_channel_daily",
+    "select",
+    { data: [daily("2026-09-10", "all"), daily("2026-10-27", "all")] },
+    { data: [] },
+    { data: [daily("2026-09-20", "shorts", { views: 7 }), daily("2026-10-27", "shorts", { views: 60 })] },
+    { data: [] },
+    { data: [{ day: "2026-08-01" }] }, // 'all' covers its previous window
+    { data: [] }, // the first Shorts row is after 2026-09-02
+  );
+  const body = await (await makeHandler(db)(get("/overview/42?days=28&type=shorts"))).json();
+  assertEquals(body.kpis.views, { value: 60, prev: null });
+  // Subscriber metrics follow the channel-wide window, which is covered.
+  assertEquals(body.kpis.net_subscribers.prev, 4);
 });
 
 Deno.test("youtube-analytics: overview split stops at content_type_through", async () => {

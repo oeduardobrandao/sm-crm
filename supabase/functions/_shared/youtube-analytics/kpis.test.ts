@@ -31,7 +31,7 @@ function row(day: string, over: Partial<YtChannelDailyRow> = {}): YtChannelDaily
 function input(over: Partial<YtKpiInput> = {}): YtKpiInput {
   const current = [row("2026-10-26"), row("2026-10-27", { views: 300, average_view_duration_s: 10 })];
   const prev = [row("2026-10-24", { views: 50 })];
-  return { current, prev, prevCovered: true, allCurrent: current, allPrev: prev, subscriberCount: 1000, ...over };
+  return { current, prev, prevCovered: true, allCurrent: current, allPrev: prev, allPrevCovered: true, subscriberCount: 1000, ...over };
 }
 
 Deno.test("returns every KPI id", () => {
@@ -92,6 +92,12 @@ Deno.test("prevCovered false nulls the type's prev; subscriber prev follows the 
   const k = computeYtKpis(input({ prevCovered: false }));
   assertEquals(k.views, { value: 400, prev: null });
   assertEquals(k.net_subscribers.prev, 4);
+});
+
+Deno.test("allPrevCovered false (the 'all' previous window only partly synced) nulls the net subscribers prev", () => {
+  const k = computeYtKpis(input({ allPrevCovered: false }));
+  assertEquals(k.net_subscribers.prev, null);
+  assertEquals(k.net_subscribers.value, 8);
 });
 
 Deno.test("subscribers is null when the channel count is unknown", () => {

@@ -158,6 +158,25 @@ export async function loadChannelDaily(
   });
 }
 
+/** Whether the channel has a `contentType` row on or before `day`: the history reaches back to
+ * that day, so a window starting there is fully covered (one indexed row, by the primary key). */
+async function hasDataOnOrBefore(
+  db: Db,
+  contaId: string,
+  channelId: string,
+  contentType: YtContentType,
+  day: string,
+): Promise<boolean> {
+  const { data, error } = await db.from("youtube_channel_daily").select("day")
+    .eq("conta_id", contaId)
+    .eq("channel_id", channelId)
+    .eq("content_type", contentType)
+    .lte("day", day)
+    .limit(1);
+  if (error) throw error;
+  return Array.isArray(data) && data.length > 0;
+}
+
 type TrafficDbRow = { day: string; source_type: string; views: number | null };
 
 async function loadTraffic(db: Db, contaId: string, channelId: string, start: string, end: string): Promise<TrafficDbRow[]> {
@@ -273,6 +292,8 @@ export async function buildYtOverview(
 
   // Read 1: every content type over both full windows (subscriber KPIs, split, `all` KPIs).
   const rows = await loadChannelDaily(db, contaId, channel.channel_id, w.prevStart, w.end);
+  // Coverage reads come after the window reads (the handler tests queue mock pages per table).
+  const allPrevCoveredOf = () => hasDataOnOrBefore(db, contaId, channel.channel_id, "all", w.prevStart);
   const ofType = (t: string, start: string, end: string) =>
     rows.filter((r) => r.content_type === t && inRange(r.day, start, end));
   const allCurrent = ofType("all", w.start, w.end);
@@ -286,14 +307,16 @@ export async function buildYtOverview(
 
   const subscriberCount = num(channel.subscriber_count);
   if (type === "all") {
+    const allPrevCovered = await allPrevCoveredOf();
     return {
       ...base,
       kpis: computeYtKpis({
         current: allCurrent,
         prev: allPrev,
-        prevCovered: allPrev.length > 0,
+        prevCovered: allPrevCovered,
         allCurrent,
         allPrev,
+        allPrevCovered,
         subscriberCount,
       }),
       split,
@@ -305,22 +328,27 @@ export async function buildYtOverview(
   // at all leaves the type's KPIs null.
   const typeWindow = typeWindowOf(w, ctt);
   if (!typeWindow) {
+    const allPrevCovered = await allPrevCoveredOf();
     return {
       ...base,
-      kpis: computeYtKpis({ current: null, prev: [], prevCovered: false, allCurrent, allPrev, subscriberCount }),
+      kpis: computeYtKpis({ current: null, prev: [], prevCovered: false, allCurrent, allPrev, allPrevCovered, subscriberCount }),
       split,
     };
   }
   // Read 2 (after read 1 has drained): the selected type over its clipped windows.
   const typed = await loadChannelDaily(db, contaId, channel.channel_id, typeWindow.prevStart, typeWindow.end, type);
+  const allPrevCovered = await allPrevCoveredOf();
+  // The type's own history must reach its (clipped) previous window's start.
+  const typePrevCovered = await hasDataOnOrBefore(db, contaId, channel.channel_id, type, typeWindow.prevStart);
   return {
     ...base,
     kpis: computeYtKpis({
       current: typed.filter((r) => inRange(r.day, typeWindow.start, typeWindow.end)),
       prev: typed.filter((r) => inRange(r.day, typeWindow.prevStart, typeWindow.prevEnd)),
-      prevCovered: rows.some((r) => r.content_type === "all" && inRange(r.day, typeWindow.prevStart, typeWindow.prevEnd)),
+      prevCovered: typePrevCovered,
       allCurrent,
       allPrev,
+      allPrevCovered,
       subscriberCount,
     }),
     split,

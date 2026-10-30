@@ -83,6 +83,19 @@ async function loadMetrics(db: Db, contaId: string, units: GbpUnit[], start: str
   );
 }
 
+/** Whether any selected unit has a metrics row on or before `day`: the stored history reaches
+ * back to that day, so a window starting there is fully covered (the sync stores every day from
+ * its backfill start, zeros included, so the earliest row is where the history begins). */
+async function hasMetricsOnOrBefore(db: Db, contaId: string, units: GbpUnit[], day: string): Promise<boolean> {
+  const { data, error } = await db.from("gbp_metrics_daily").select("day")
+    .eq("conta_id", contaId)
+    .in("location_name", locationNames(units))
+    .lte("day", day)
+    .limit(1);
+  if (error) throw error;
+  return Array.isArray(data) && data.length > 0;
+}
+
 async function loadRatings(db: Db, contaId: string, units: GbpUnit[], w: AnalyticsWindow): Promise<GbpRatingRow[]> {
   return await pages<GbpRatingRow>((from, to) =>
     db.from("gbp_rating_daily").select("location_name, day, average_rating, total_review_count")
@@ -115,10 +128,12 @@ export async function buildOverview(db: Db, contaId: string, units: GbpUnit[], r
     loadMetrics(db, contaId, units, window.prevStart, window.end),
     loadRatings(db, contaId, units, window),
   ]);
+  // After the metrics pages have drained, for the same reason.
+  const prevCovered = await hasMetricsOnOrBefore(db, contaId, units, window.prevStart);
   return {
     dataThrough,
     window,
-    kpis: computeGbpKpis({ metrics, ratings, locationNames: locationNames(units), window }),
+    kpis: computeGbpKpis({ metrics, ratings, locationNames: locationNames(units), window, prevCovered }),
   };
 }
 

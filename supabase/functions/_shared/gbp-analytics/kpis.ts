@@ -199,6 +199,11 @@ export interface GbpKpiInput {
   ratings: GbpRatingRow[];
   locationNames: string[];
   window: { start: string; end: string; prevStart: string; prevEnd: string };
+  /** The selected units' earliest metrics row is on or before `prevStart`, so the previous
+   * window is fully covered. False (data starts inside or after it) nulls the action cards'
+   * prev: a % change against a half-synced window would be wrong ("sem comparação" in the UI).
+   * The rating cards read point-in-time snapshots and are not affected. */
+  prevCovered: boolean;
 }
 
 export function emptyGbpKpis(): Record<GbpKpiId, GbpKpiEntry> {
@@ -219,7 +224,7 @@ export function computeGbpKpis(i: GbpKpiInput): Record<GbpKpiId, GbpKpiEntry> {
   const atStart = at(w.prevEnd);
   const atPrevStart = at(addDays(w.prevStart, -1));
 
-  const entry = (value: number, prevValue: number): GbpKpiEntry => ({ value, prev: prevValue });
+  const entry = (value: number, prevValue: number): GbpKpiEntry => ({ value, prev: i.prevCovered ? prevValue : null });
   return {
     profile_views: entry(cur.profileViews, prev.profileViews),
     calls: entry(cur.calls, prev.calls),

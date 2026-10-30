@@ -59,7 +59,7 @@ Deno.test("profile_views sums the four impression surfaces over the window", () 
     // Outside both windows: never counted.
     metrics("L1", "2026-10-26", { business_impressions_desktop_maps: 1000 }),
   ];
-  const k = computeGbpKpis({ metrics: rows, ratings: [], locationNames: ["L1", "L2"], window: W });
+  const k = computeGbpKpis({ metrics: rows, ratings: [], locationNames: ["L1", "L2"], window: W, prevCovered: true });
   assertEquals(k.profile_views, { value: 20, prev: 5 });
 });
 
@@ -76,12 +76,24 @@ Deno.test("action KPIs sum their own metric; the food-menu column feeds none of 
     metrics("L1", "2026-10-23", { call_clicks: 1 }),
     metrics("L1", "2026-10-17", { call_clicks: 2, website_clicks: 9 }),
   ];
-  const k = computeGbpKpis({ metrics: rows, ratings: [], locationNames: ["L1"], window: W });
+  const k = computeGbpKpis({ metrics: rows, ratings: [], locationNames: ["L1"], window: W, prevCovered: true });
   assertEquals(k.calls, { value: 4, prev: 2 });
   assertEquals(k.directions, { value: 4, prev: 0 });
   assertEquals(k.website_clicks, { value: 5, prev: 9 });
   assertEquals(k.messages, { value: 6, prev: 0 });
   assertEquals(k.bookings, { value: 7, prev: 0 });
+});
+
+Deno.test("a previous window the data only partly covers has no comparison: action prev is null", () => {
+  // The unit's data starts on 2026-10-18, inside the previous window [2026-10-16, 2026-10-20].
+  const rows = [metrics("L1", "2026-10-18", { call_clicks: 2 }), metrics("L1", "2026-10-22", { call_clicks: 3 })];
+  const ratings = [rating("L1", "2026-10-10", 4.0, 10), rating("L1", "2026-10-20", 4.0, 14), rating("L1", "2026-10-25", 4.0, 20)];
+  const k = computeGbpKpis({ metrics: rows, ratings, locationNames: ["L1"], window: W, prevCovered: false });
+  assertEquals(k.calls, { value: 3, prev: null });
+  assertEquals(k.profile_views, { value: 0, prev: null });
+  // Rating cards read point-in-time snapshots, not window sums: unaffected.
+  assertEquals(k.avg_rating, { value: 4.0, prev: 4.0 });
+  assertEquals(k.new_reviews, { value: 6, prev: 4 });
 });
 
 Deno.test("avg_rating is weighted by review count across units", () => {
@@ -94,7 +106,7 @@ Deno.test("avg_rating is weighted by review count across units", () => {
     // After the window end: ignored.
     rating("L1", "2026-10-26", 1.0, 999),
   ];
-  const k = computeGbpKpis({ metrics: [], ratings, locationNames: ["L1", "L2"], window: W });
+  const k = computeGbpKpis({ metrics: [], ratings, locationNames: ["L1", "L2"], window: W, prevCovered: true });
   // (4.0 * 300 + 5.0 * 100) / 400 = 4.25; prev (before the window start) = (4 * 100 + 5 * 100) / 200 = 4.5.
   assertEquals(k.avg_rating, { value: 4.25, prev: 4.5 });
   // Δ total_review_count: (300 + 100) - (100 + 100).
@@ -103,7 +115,7 @@ Deno.test("avg_rating is weighted by review count across units", () => {
 
 Deno.test("avg_rating with no rating row before the window start gives prev null", () => {
   const ratings = [rating("L1", "2026-10-21", 4.5, 40), rating("L1", "2026-10-25", 4.6, 44)];
-  const k = computeGbpKpis({ metrics: [], ratings, locationNames: ["L1"], window: W });
+  const k = computeGbpKpis({ metrics: [], ratings, locationNames: ["L1"], window: W, prevCovered: true });
   assertEquals(k.avg_rating, { value: 4.6, prev: null });
   assertEquals(k.new_reviews, { value: null, prev: null });
 });
@@ -114,7 +126,7 @@ Deno.test("new_reviews: Δ against the row before the window start; prev uses th
     rating("L1", "2026-10-20", 4.0, 14), // on or before prevEnd
     rating("L1", "2026-10-25", 4.0, 20), // on or before end
   ];
-  const k = computeGbpKpis({ metrics: [], ratings, locationNames: ["L1"], window: W });
+  const k = computeGbpKpis({ metrics: [], ratings, locationNames: ["L1"], window: W, prevCovered: true });
   assertEquals(k.new_reviews, { value: 6, prev: 4 });
 });
 
@@ -124,7 +136,7 @@ Deno.test("new_reviews sums the units that have both rows; a unit without a base
     rating("L1", "2026-10-25", 4.0, 20),
     rating("L2", "2026-10-25", 5.0, 3), // linked inside the window: no row before the start
   ];
-  const k = computeGbpKpis({ metrics: [], ratings, locationNames: ["L1", "L2"], window: W });
+  const k = computeGbpKpis({ metrics: [], ratings, locationNames: ["L1", "L2"], window: W, prevCovered: true });
   assertEquals(k.new_reviews.value, 6);
   // The rating still averages both units at the window end.
   assertEquals(k.avg_rating.value, (4.0 * 20 + 5.0 * 3) / 23);
@@ -132,12 +144,12 @@ Deno.test("new_reviews sums the units that have both rows; a unit without a base
 
 Deno.test("new_reviews is null only when no selected unit has both rows", () => {
   const ratings = [rating("L1", "2026-10-25", 4.0, 20), rating("L2", "2026-10-24", 5.0, 3)];
-  const k = computeGbpKpis({ metrics: [], ratings, locationNames: ["L1", "L2"], window: W });
+  const k = computeGbpKpis({ metrics: [], ratings, locationNames: ["L1", "L2"], window: W, prevCovered: true });
   assertEquals(k.new_reviews, { value: null, prev: null });
 });
 
 Deno.test("avg_rating is null when no unit has a rating row by the window end", () => {
-  const k = computeGbpKpis({ metrics: [], ratings: [], locationNames: ["L1"], window: W });
+  const k = computeGbpKpis({ metrics: [], ratings: [], locationNames: ["L1"], window: W, prevCovered: true });
   assertEquals(k.avg_rating, { value: null, prev: null });
 });
 

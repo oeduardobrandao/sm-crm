@@ -61,11 +61,15 @@ export interface YtKpiInput {
   current: YtChannelDailyRow[] | null;
   /** Rows of the selected type in the previous window of the same length. */
   prev: YtChannelDailyRow[];
-  /** That previous window has `all` rows (otherwise it predates the backfill). */
+  /** The stored history of the selected type reaches back to the previous window's start, so the
+   * whole window is covered. False (data starts inside or after it) nulls the type's prev: a %
+   * change against a half-synced window would be wrong, and the UI shows "sem comparação". */
   prevCovered: boolean;
   /** `all` rows of the full current and previous windows (subscriber KPIs). */
   allCurrent: YtChannelDailyRow[];
   allPrev: YtChannelDailyRow[];
+  /** Same coverage test for the `all` rows over the full previous window (net subscribers prev). */
+  allPrevCovered: boolean;
   subscriberCount: number | null;
 }
 
@@ -141,7 +145,7 @@ export function computeYtKpis(i: YtKpiInput): Record<YtKpiId, YtKpiEntry> {
   const out = emptyYtKpis();
 
   const allNet = net(i.allCurrent);
-  const allPrevNet = i.allPrev.length > 0 ? net(i.allPrev).net : null;
+  const allPrevNet = i.allPrevCovered && i.allPrev.length > 0 ? net(i.allPrev).net : null;
   out.subscribers = {
     value: i.subscriberCount,
     prev: i.subscriberCount !== null && allNet.net !== null ? i.subscriberCount - allNet.net : null,
