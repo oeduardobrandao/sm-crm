@@ -13,6 +13,7 @@ import {
   GoogleServiceError,
   linkGbpLocations,
   listGbpLocationOptions,
+  syncGoogleProduct,
 } from '../google';
 
 type MockedSupabaseModule = typeof supabaseModule & {
@@ -163,5 +164,28 @@ describe('google service', () => {
     const err = await getGoogleSummary(1).catch((e) => e);
     expect(err).toBeInstanceOf(GoogleServiceError);
     expect(err.code).toBe('unknown');
+  });
+
+  it.each([
+    ['youtube', 4],
+    ['gbp', 9],
+  ] as const)('POSTs /sync/%s/:clientId for a manual sync', async (product, clientId) => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    await syncGoogleProduct(product, clientId);
+    expect(fetchSpy.mock.calls[0][0]).toBe(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-integration/sync/${product}/${clientId}`,
+    );
+    expect((fetchSpy.mock.calls[0][1] as RequestInit).method).toBe('POST');
+  });
+
+  it('maps a 429 manual sync to the rate_limited code', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({ error: 'rate_limited' }, 429),
+    );
+    const err = await syncGoogleProduct('youtube', 1).catch((e) => e);
+    expect(err).toBeInstanceOf(GoogleServiceError);
+    expect(err.code).toBe('rate_limited');
   });
 });

@@ -154,3 +154,15 @@ export async function linkGbpLocations(
 export async function disconnectYouTube(clientId: number): Promise<void> {
   await request<{ ok: true }>(`/disconnect/youtube/${clientId}`, { method: 'POST' });
 }
+
+/**
+ * Manual "Sincronizar agora" for one product of a client. Rate limited server-side
+ * (`rate_limited`); the caller refreshes its `yt-`/`gbp-` queries on success.
+ */
+export async function syncGoogleProduct(product: GoogleProduct, clientId: number): Promise<void> {
+  await request<unknown>(`/sync/${product}/${clientId}`, { method: 'POST' });
+}
+
+/** 403 `feature_disabled` from an analytics read: the workspace plan lacks the product flag. */
+export const isGoogleFeatureDisabled = (err: unknown): boolean =>
+  err instanceof Error && err.message === 'feature_disabled';
