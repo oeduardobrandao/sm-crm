@@ -1,5 +1,16 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const m = vi.hoisted(() => ({
+  captureFrameFromElement: vi.fn(),
+  encodeImageAsJpeg: vi.fn(),
+  updateVideoThumbnail: vi.fn(),
+}));
+vi.mock('@mesaas/ui/video/frame', () => ({ captureFrameFromElement: m.captureFrameFromElement }));
+vi.mock('../../../../utils/imageJpeg', () => ({ encodeImageAsJpeg: m.encodeImageAsJpeg }));
+vi.mock('../../../../services/postMedia', () => ({ updateVideoThumbnail: m.updateVideoThumbnail }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
 import { ThumbnailPickerDialog } from '../ThumbnailPickerDialog';
 import type { PostMedia } from '../../../../store';
 
@@ -38,5 +49,79 @@ describe('ThumbnailPickerDialog', () => {
     );
     expect(screen.getByText('Mídia indisponível')).toBeInTheDocument();
     expect(document.querySelector('video')).not.toBeInTheDocument();
+  });
+});
+
+describe('ThumbnailPickerDialog — frame for the TikTok cover', () => {
+  const captured = new File(['c'], 'thumb.jpg', { type: 'image/jpeg' });
+  const uploaded = new File(['u'], 'cover.jpg', { type: 'image/jpeg' });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    m.captureFrameFromElement.mockResolvedValue(captured);
+    m.encodeImageAsJpeg.mockResolvedValue(uploaded);
+    m.updateVideoThumbnail.mockResolvedValue({});
+    // jsdom has no object URLs; the dialog only uses them for the preview <img>.
+    URL.createObjectURL = vi.fn(() => 'blob:preview');
+    URL.revokeObjectURL = vi.fn();
+  });
+
+  function renderDialog() {
+    const onUpdated = vi.fn();
+    render(
+      <ThumbnailPickerDialog
+        media={makeVideoMedia({ id: 3 })}
+        onClose={vi.fn()}
+        onUpdated={onUpdated}
+      />,
+    );
+    return { onUpdated };
+  }
+
+  it('"Usar este frame" saves the paused moment as the frame', async () => {
+    const { onUpdated } = renderDialog();
+    const video = document.querySelector('video') as HTMLVideoElement;
+    Object.defineProperty(video, 'currentTime', {
+      configurable: true,
+      value: 12.3456,
+      writable: true,
+    });
+    video.pause = vi.fn();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Usar este frame' }));
+    await screen.findByAltText('Nova miniatura');
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar miniatura' }));
+
+    await waitFor(() => expect(onUpdated).toHaveBeenCalled());
+    expect(m.updateVideoThumbnail).toHaveBeenCalledWith(3, captured, 12346);
+  });
+
+  it('"Enviar imagem" saves no frame (TikTok will use its default)', async () => {
+    const { onUpdated } = renderDialog();
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+
+    fireEvent.change(input, { target: { files: [uploaded] } });
+    await screen.findByAltText('Nova miniatura');
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar miniatura' }));
+
+    await waitFor(() => expect(onUpdated).toHaveBeenCalled());
+    expect(m.updateVideoThumbnail).toHaveBeenCalledWith(3, uploaded, null);
+  });
+
+  it('a capture after an upload switches back to a frame', async () => {
+    const { onUpdated } = renderDialog();
+    const video = document.querySelector('video') as HTMLVideoElement;
+    Object.defineProperty(video, 'currentTime', { configurable: true, value: 2, writable: true });
+    video.pause = vi.fn();
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+
+    fireEvent.change(input, { target: { files: [uploaded] } });
+    await screen.findByAltText('Nova miniatura');
+    fireEvent.click(screen.getByRole('button', { name: 'Usar este frame' }));
+    await waitFor(() => expect(m.captureFrameFromElement).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar miniatura' }));
+
+    await waitFor(() => expect(onUpdated).toHaveBeenCalled());
+    expect(m.updateVideoThumbnail).toHaveBeenCalledWith(3, captured, 2000);
   });
 });

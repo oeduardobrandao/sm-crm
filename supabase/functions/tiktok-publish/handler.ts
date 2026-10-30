@@ -476,7 +476,10 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
         if (post.tipo === "reels") {
           const videoUrl = await buildMediaUrl(media[0].r2_key, 7200);
           initPath = "/post/publish/video/init/";
-          initPayload = buildVideoInitPayload(claimedPost, videoUrl, media[0].duration_seconds);
+          initPayload = buildVideoInitPayload(claimedPost, videoUrl, {
+            durationSeconds: media[0].duration_seconds,
+            thumbnailFrameMs: media[0].thumbnail_frame_ms,
+          });
         } else {
           const imageUrls = await Promise.all(media.map((m) => buildMediaUrl(m.r2_key, 7200)));
           initPath = "/post/publish/content/init/";

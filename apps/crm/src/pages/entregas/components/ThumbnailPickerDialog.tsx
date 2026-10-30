@@ -39,6 +39,9 @@ export function ThumbnailPickerDialog({
   const { t: tc } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [pending, setPending] = useState<File | null>(null);
+  // The moment the pending thumbnail was captured from (TikTok's cover); null for an
+  // uploaded image, which TikTok can't use as a cover.
+  const [pendingFrameMs, setPendingFrameMs] = useState<number | null>(null);
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -51,12 +54,14 @@ export function ThumbnailPickerDialog({
   // Reset choice when the dialog opens for a different video.
   useEffect(() => {
     setPending(null);
+    setPendingFrameMs(null);
     setPendingUrl(null);
     setSaving(false);
   }, [media?.id]);
 
-  function choosePending(file: File) {
+  function choosePending(file: File, frameMs: number | null) {
     setPending(file);
+    setPendingFrameMs(frameMs);
     setPendingUrl(URL.createObjectURL(file));
   }
 
@@ -65,7 +70,8 @@ export function ThumbnailPickerDialog({
     if (!video) return;
     try {
       video.pause();
-      choosePending(await captureFrameFromElement(video));
+      const frameMs = Math.max(0, Math.round(video.currentTime * 1000));
+      choosePending(await captureFrameFromElement(video), frameMs);
     } catch {
       toast.error(t('thumbnailEditor.captureError'));
     }
@@ -75,7 +81,7 @@ export function ThumbnailPickerDialog({
     if (!media || !pending) return;
     setSaving(true);
     try {
-      await updateVideoThumbnail(media.id, pending);
+      await updateVideoThumbnail(media.id, pending, pendingFrameMs);
       toast.success(t('thumbnailEditor.updated'));
       onUpdated();
       onClose();
@@ -123,7 +129,7 @@ export function ThumbnailPickerDialog({
                   e.target.value = '';
                   if (!f) return;
                   try {
-                    choosePending(await encodeImageAsJpeg(f));
+                    choosePending(await encodeImageAsJpeg(f), null);
                   } catch {
                     toast.error(t('thumbnailEditor.imageError'));
                   }

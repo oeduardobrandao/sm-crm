@@ -188,11 +188,13 @@ async function uploadFileUnguarded(args: {
   file: File;
   folderId: number | null;
   thumbnail?: File;
+  /** Video: the moment (ms) `thumbnail` was captured from (files.thumbnail_frame_ms). */
+  thumbnailFrameMs?: number | null;
   onProgress?: (p: UploadProgress) => void;
   postId?: number;
   signal?: AbortSignal;
 }): Promise<FileRecord> {
-  const { file, folderId, thumbnail, onProgress, postId, signal } = args;
+  const { file, folderId, thumbnail, thumbnailFrameMs, onProgress, postId, signal } = args;
   signal?.throwIfAborted();
 
   const kind = file.type.startsWith('image/')
@@ -274,6 +276,9 @@ async function uploadFileUnguarded(args: {
       height,
       duration_seconds,
       post_id: postId,
+      ...(kind === 'video' && thumbnailFrameMs != null
+        ? { thumbnail_frame_ms: thumbnailFrameMs }
+        : {}),
     },
     undefined,
     '',

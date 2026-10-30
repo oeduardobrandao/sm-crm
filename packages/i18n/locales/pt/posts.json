@@ -178,7 +178,7 @@
   },
   "thumbnailEditor": {
     "title": "Miniatura do vídeo",
-    "disclaimer": "Esta miniatura será a capa do Reel no Instagram e aparece nas pré-visualizações do CRM e do portal do cliente. (Em carrosséis, o Instagram usa o primeiro item como capa.)",
+    "disclaimer": "Esta miniatura será a capa do Reel no Instagram e aparece nas pré-visualizações do CRM e do portal do cliente. (Em carrosséis, o Instagram usa o primeiro item como capa.) No TikTok, a capa é este quadro do vídeo; uma imagem enviada não vale para o TikTok, que usa o quadro padrão dele.",
     "useFrame": "Usar este frame",
     "uploadImage": "Enviar imagem",
     "current": "Miniatura atual",
@@ -355,14 +355,9 @@
   },
   "tiktokCover": {
     "label": "Capa do TikTok",
-    "default": "Quadro padrão do TikTok",
-    "frameAt": "Quadro em {{time}}",
-    "choose": "Escolher quadro",
-    "title": "Capa do TikTok",
-    "disclaimer": "O TikTok só aceita um quadro do próprio vídeo como capa. Pause no quadro desejado e use-o. A miniatura do Instagram não muda.",
-    "playhead": "Quadro atual: {{time}}",
-    "useFrame": "Usar este quadro",
-    "useDefault": "Usar padrão do TikTok"
+    "followsThumbnail": "O TikTok usa o mesmo quadro da miniatura ({{time}}).",
+    "noFrame": "A miniatura atual não é um quadro do vídeo (imagem enviada ou definida antes desta versão). O TikTok não aceita imagem como capa e vai usar o quadro padrão dele. Para escolher, abra a miniatura e use “Usar este frame”.",
+    "editThumbnail": "Editar miniatura"
   },
   "trialReel": {
     "lockedBySchedule": "Cancelar agendamento para editar",

@@ -164,6 +164,8 @@ it('closes and refreshes only after the adjusted file is saved', async () => {
   await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
   expect(onUpdated).toHaveBeenCalledOnce();
   expect(vi.mocked(replacePostMedia).mock.calls.at(-1)?.[1].type).toBe('image/jpeg');
+  // An image has no TikTok cover frame.
+  expect(vi.mocked(replacePostMedia).mock.calls.at(-1)?.[5]).toBeNull();
 });
 
 it('keeps the editor open and offers another attempt when saving fails', async () => {

@@ -3,7 +3,7 @@ import { Check, Circle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { trackUnsavedWork } from '@mesaas/app-lifecycle';
-import { extractVideoFrame } from '@mesaas/ui/video/frame';
+import { extractVideoFrameWithTime } from '@mesaas/ui/video/frame';
 import {
   Dialog,
   DialogContent,
@@ -33,16 +33,26 @@ interface Props {
 
 const isAbort = (e: unknown) => e instanceof Error && e.name === 'AbortError';
 
-async function thumbnailFor(media: PostMedia, output: File, signal: AbortSignal): Promise<File> {
+/** The replacement keeps the current thumbnail (and so its TikTok cover frame); only when
+ * that can't be fetched is a new frame taken from the downscaled video. */
+async function thumbnailFor(
+  media: PostMedia,
+  output: File,
+  signal: AbortSignal,
+): Promise<{ file: File; frameMs: number | null }> {
   const url = media.thumbnail_url;
   try {
     if (!url) throw new Error('no thumbnail');
     const res = await fetchWithRetry(url, { signal });
     const blob = await res.blob();
-    return await encodeImageAsJpeg(new File([blob], 'cover', { type: blob.type || 'image/jpeg' }));
+    const file = await encodeImageAsJpeg(
+      new File([blob], 'cover', { type: blob.type || 'image/jpeg' }),
+    );
+    return { file, frameMs: media.thumbnail_frame_ms ?? null };
   } catch {
     signal.throwIfAborted();
-    return extractVideoFrame(output);
+    const frame = await extractVideoFrameWithTime(output);
+    return { file: frame.file, frameMs: Math.round(frame.timeSeconds * 1000) };
   }
 }
 
@@ -162,11 +172,12 @@ export function DownscaleMediaDialog({ media, forStories, onOpenChange, onDone }
           await replacePostMedia(
             media,
             output,
-            thumbnail,
+            thumbnail.file,
             (p) => {
               if (!ctl.signal.aborted) setPct(Math.round((p.loaded / p.total) * 100));
             },
             ctl.signal,
+            thumbnail.frameMs,
           );
           report('ok', extra);
           toast.success(t('mediaGallery.downscale.done', { w: result.width, h: result.height }));

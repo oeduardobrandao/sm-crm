@@ -252,8 +252,11 @@ async function processInitPhase(
           if (!videoFile) throw new Error("Post de vídeo sem arquivo de vídeo vinculado.");
           const videoUrl = await buildTikTokMediaUrl(videoFile.r2_key, 7200);
           initPath = "/post/publish/video/init/";
-          const videoDuration = precheckMedia.find((m) => m.kind === "video")?.duration_seconds;
-          initPayload = buildVideoInitPayload(claimedForBuilder, videoUrl, videoDuration);
+          const precheckVideo = precheckMedia.find((m) => m.kind === "video");
+          initPayload = buildVideoInitPayload(claimedForBuilder, videoUrl, {
+            durationSeconds: precheckVideo?.duration_seconds,
+            thumbnailFrameMs: precheckVideo?.thumbnail_frame_ms,
+          });
         } else {
           if (media.length === 0) throw new Error("Post sem arquivos de mídia vinculados.");
           const imageUrls = await Promise.all(media.map((f) => buildTikTokMediaUrl(f.r2_key, 7200)));

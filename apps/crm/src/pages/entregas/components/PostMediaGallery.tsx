@@ -50,7 +50,7 @@ import {
   updateVideoThumbnail,
 } from '../../../services/postMedia';
 import { trackUnsavedWork } from '@mesaas/app-lifecycle';
-import { extractVideoFrame } from '@mesaas/ui/video/frame';
+import { extractVideoFrameWithTime } from '@mesaas/ui/video/frame';
 import { encodeImageAsJpeg } from '../../../utils/imageJpeg';
 import { MediaAdjustmentDialog } from './MediaAdjustmentDialog';
 import { DownscaleMediaDialog } from './DownscaleMediaDialog';
@@ -384,9 +384,12 @@ export function PostMediaGallery({
   async function uploadOne({ file, uid, sortOrder }: UploadItem): Promise<UploadOutcome> {
     try {
       let thumbnail: File | undefined;
+      let thumbnailFrameMs: number | undefined;
       if (detectKind(file) === 'video') {
         try {
-          thumbnail = await extractVideoFrame(file);
+          const frame = await extractVideoFrameWithTime(file);
+          thumbnail = frame.file;
+          thumbnailFrameMs = Math.round(frame.timeSeconds * 1000);
         } catch (err) {
           // Browser can't decode this video — fall back to asking for a
           // manual thumbnail (finalize rejects videos without one).
@@ -401,6 +404,7 @@ export function PostMediaGallery({
         postId,
         file,
         thumbnail,
+        thumbnailFrameMs,
         sortOrder,
         onProgress: (p) =>
           setQueueRow(uid, {

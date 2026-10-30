@@ -308,6 +308,8 @@ describe('post media service', () => {
       name: 'bastidores.mp4',
       thumbnail_r2_key: 'contas/1/files/file-v1.thumb.jpg',
     });
+    // No frame given (e.g. a manual thumbnail for an undecodable video): none sent.
+    expect(finalizeBody).not.toHaveProperty('thumbnail_frame_ms');
 
     expect(MockXHR.instances).toHaveLength(2);
     expect(MockXHR.instances[0].url).toBe('https://upload.r2.dev/media-v1');
@@ -316,6 +318,36 @@ describe('post media service', () => {
     expect(MockXHR.instances[1].method).toBe('PUT');
 
     expect(onProgress).toHaveBeenCalledWith({ loaded: 1024, total: 1024 });
+  });
+
+  it("sends the auto thumbnail's frame with a video, never with an image", async () => {
+    const finalizeBodyFor = async (file: File, thumbnailFrameMs: number) => {
+      fetchHarness.calls.length = 0;
+      fetchHarness.queueResponse({
+        json: {
+          file_id: 'file-f',
+          upload_url: 'https://upload.r2.dev/media-f',
+          r2_key: 'contas/1/files/file-f',
+          thumbnail_upload_url: 'https://upload.r2.dev/thumb-f',
+          thumbnail_r2_key: 'contas/1/files/file-f.thumb.jpg',
+        },
+      });
+      fetchHarness.queueResponse({ json: { id: 9, post_id: 31, kind: 'video' } });
+      await uploadPostMedia({
+        postId: 31,
+        file,
+        thumbnail: createFile('thumb.jpg', 'image/jpeg', 64),
+        thumbnailFrameMs,
+      });
+      return JSON.parse(String(fetchHarness.calls.at(-1)?.init?.body));
+    };
+
+    expect(await finalizeBodyFor(createFile('a.mp4', 'video/mp4', 1024), 500)).toMatchObject({
+      thumbnail_frame_ms: 500,
+    });
+    expect(await finalizeBodyFor(createFile('a.jpg', 'image/jpeg', 1024), 500)).not.toHaveProperty(
+      'thumbnail_frame_ms',
+    );
   });
 
   it('rejects unsupported video MIME types', () => {
@@ -386,11 +418,32 @@ describe('post media service', () => {
     expect(JSON.parse(String(fetchHarness.calls[1].init?.body))).toMatchObject({
       thumbnail_r2_key: 'contas/1/files/novo.thumb.jpg',
     });
+    // No frame (an uploaded image): the PATCH carries none, so the server leaves it NULL.
+    expect(JSON.parse(String(fetchHarness.calls[1].init?.body))).not.toHaveProperty(
+      'thumbnail_frame_ms',
+    );
 
     expect(MockXHR.instances).toHaveLength(1);
     expect(MockXHR.instances[0].method).toBe('PUT');
     expect(MockXHR.instances[0].url).toBe('https://upload.r2.dev/thumb-new');
     expect(MockXHR.instances[0].body).toBe(thumbnail);
+  });
+
+  it('sends the captured frame with the thumbnail PATCH', async () => {
+    fetchHarness.queueResponse({
+      json: {
+        thumbnail_r2_key: 'contas/1/files/f.thumb.jpg',
+        thumbnail_upload_url: 'https://upload.r2.dev/thumb-f',
+      },
+    });
+    fetchHarness.queueResponse({ json: { id: 7, kind: 'video' } });
+
+    await updateVideoThumbnail(7, createFile('frame.jpg', 'image/jpeg', 64), 12300);
+
+    expect(JSON.parse(String(fetchHarness.calls[1].init?.body))).toEqual({
+      thumbnail_r2_key: 'contas/1/files/f.thumb.jpg',
+      thumbnail_frame_ms: 12300,
+    });
   });
 
   it('rejects unsupported thumbnail mime types before any network call', async () => {

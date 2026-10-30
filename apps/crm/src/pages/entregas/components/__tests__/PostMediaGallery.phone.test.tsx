@@ -20,10 +20,17 @@ vi.mock('../../../../services/postMedia', async (importOriginal) => {
   };
 });
 
-vi.mock('@mesaas/ui/video/frame', () => ({
-  extractVideoFrame: vi.fn(),
-  captureFrameFromElement: vi.fn(),
-}));
+vi.mock('@mesaas/ui/video/frame', () => {
+  const extractVideoFrame = vi.fn();
+  return {
+    extractVideoFrame,
+    extractVideoFrameWithTime: vi.fn(async (...args: unknown[]) => ({
+      file: await extractVideoFrame(...args),
+      timeSeconds: 0.5,
+    })),
+    captureFrameFromElement: vi.fn(),
+  };
+});
 
 vi.mock('../../../../utils/imageJpeg', () => ({
   encodeImageAsJpeg: vi.fn((f: File) => Promise.resolve(f)),

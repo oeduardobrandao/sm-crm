@@ -22,7 +22,12 @@ vi.mock('@mesaas/app-lifecycle', () => ({ trackUnsavedWork: m.trackUnsavedWork }
 vi.mock('@/services/mediaAdjustment', () => ({ replacePostMedia: m.replacePostMedia }));
 vi.mock('@/utils/imageJpeg', () => ({ encodeImageAsJpeg: m.encodeImageAsJpeg }));
 vi.mock('@/utils/fetchWithRetry', () => ({ fetchWithRetry: m.fetchWithRetry }));
-vi.mock('@mesaas/ui/video/frame', () => ({ extractVideoFrame: m.extractVideoFrame }));
+vi.mock('@mesaas/ui/video/frame', () => ({
+  extractVideoFrameWithTime: async (file: File) => ({
+    file: await m.extractVideoFrame(file),
+    timeSeconds: 0.25,
+  }),
+}));
 vi.mock('../../media-editor/fetchMediaFile', () => ({ fetchMediaFile: m.fetchMediaFile }));
 vi.mock('../../media-editor/downscaleVideo', () => ({ downscaleVideo: m.downscaleVideo }));
 vi.mock('@/components/ui/dialog', () => ({
@@ -56,6 +61,7 @@ const media = {
   duration_seconds: 30,
   url: 'https://x/clip.mp4',
   thumbnail_url: 'https://x/thumb.jpg',
+  thumbnail_frame_ms: 4200,
 } as unknown as PostMedia;
 
 const source = new File(['a'], 'clip.mp4', { type: 'video/mp4' });
@@ -115,6 +121,8 @@ describe('DownscaleMediaDialog', () => {
       jpeg,
       expect.any(Function),
       expect.any(AbortSignal),
+      // The reused thumbnail keeps its TikTok cover frame.
+      4200,
     );
     expect(m.toast.success).toHaveBeenCalledWith('Vídeo reduzido para 1080×1920.');
     expect(m.trackUnsavedWork).toHaveBeenCalled();
@@ -130,6 +138,8 @@ describe('DownscaleMediaDialog', () => {
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     expect(m.extractVideoFrame).toHaveBeenCalledWith(output);
     expect(m.replacePostMedia.mock.calls[0]![2]).toBe(frame);
+    // A new frame is taken from the output, so its own moment is the cover frame.
+    expect(m.replacePostMedia.mock.calls[0]![5]).toBe(250);
   });
 
   it('cancel during convert aborts and never saves; cancel hidden while saving', async () => {
