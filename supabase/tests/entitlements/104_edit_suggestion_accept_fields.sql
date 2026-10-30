@@ -19,8 +19,8 @@
 -- 104.9 suggestion_changed continua valendo
 -- 104.10 conflito só conta em campo que o cliente mudou; NULL em original_* lê ''
 -- 104.11 grants e assinatura de 4 args (as de 2 e 3 args não existem mais); upsert só com 9 args
---        (as de 6 e 8 args não existem mais, 20261111000001)
--- 104.12-104.18 legendas de TikTok e Geral (20261111000001), ver o bloco no fim
+--        (as de 6 e 8 args não existem mais, 20261112000001)
+-- 104.12-104.18 legendas de TikTok e Geral (20261112000001), ver o bloco no fim
 
 create or replace function pg_temp.et_af_doc(txt text) returns jsonb
 language sql as $$
@@ -441,7 +441,7 @@ begin
     'authenticated executa (o CRM chama)';
   assert has_function_privilege('service_role', 'public.accept_edit_suggestion(bigint, timestamptz, text[], text[])', 'EXECUTE'),
     'service_role mantém execute';
-  -- upsert (20261111000001): só a de 9 args, service_role-only
+  -- upsert (20261112000001): só a de 9 args, service_role-only
   assert to_regprocedure('public.upsert_edit_suggestion(bigint, uuid, text, jsonb, text, text)') is null,
     'a assinatura de 6 args do upsert tem que sumir';
   assert to_regprocedure('public.upsert_edit_suggestion(bigint, uuid, text, jsonb, text, text, text[], jsonb)') is null,
@@ -459,7 +459,7 @@ end $$;
 rollback;
 
 -- =====================================================================
--- Legendas de TikTok e Geral (migration 20261111000001, spec
+-- Legendas de TikTok e Geral (migration 20261112000001, spec
 -- docs/superpowers/specs/2026-10-30-hub-captions-per-platform-design.md "PR 2").
 -- 104.12 legenda_tiktok aplicada; o resto do post intocado
 -- 104.13 legenda_geral aplicada em post_targets

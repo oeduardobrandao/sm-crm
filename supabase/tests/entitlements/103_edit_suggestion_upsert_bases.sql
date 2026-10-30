@@ -324,7 +324,7 @@ end $$;
 rollback;
 
 -- =====================================================================
--- Legendas de TikTok e Geral (migration 20261111000001, spec
+-- Legendas de TikTok e Geral (migration 20261112000001, spec
 -- docs/superpowers/specs/2026-10-30-hub-captions-per-platform-design.md "PR 2").
 -- 103.11 legenda_tiktok tocada mede contra a base; geral intocado vale o vivo; retorno traz os suggested_* novos
 -- 103.12 legenda_geral tocada grava geral_target_id = id da linha geral

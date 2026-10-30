@@ -542,7 +542,7 @@ end $$;
 rollback;
 
 -- =====================================================================
--- Legenda Geral no histórico (20261111000001, spec
+-- Legenda Geral no histórico (20261112000001, spec
 -- docs/superpowers/specs/2026-10-30-hub-captions-per-platform-design.md "PR 2" item 4).
 -- Post T0/L0 com destino geral; o helper zera as versões da preparação, então cada
 -- caso começa sem versão nenhuma ou com a ponta que ele mesmo cria.

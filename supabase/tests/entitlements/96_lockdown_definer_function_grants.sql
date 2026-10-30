@@ -17,7 +17,7 @@
 -- close_suggestion_on_publish (20261106000001) is the trigger function that closes a pending
 -- edit suggestion as 'superseded' when its post is published.
 --
--- upsert_edit_suggestion gained p_suggested_captions in 20261111000001 (9 args).
+-- upsert_edit_suggestion gained p_suggested_captions in 20261112000001 (9 args).
 -- _record_post_geral_caption_version / post_targets_geral_caption_version (same migration)
 -- record the Geral caption in post_content_versions: called by the post_targets trigger and
 -- by accept_edit_suggestion, never by a user.
