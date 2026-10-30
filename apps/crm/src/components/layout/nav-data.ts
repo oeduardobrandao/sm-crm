@@ -200,7 +200,14 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         icon: 'ph-sparkle',
         newTab: true,
       },
-      { id: 'ajuda', route: '/ajuda', label: 'Ajuda', labelKey: 'nav.ajuda', icon: 'ph-question' },
+      {
+        id: 'politica-de-privacidade',
+        route: '/politica-de-privacidade',
+        label: 'Privacidade',
+        labelKey: 'nav.privacidade',
+        icon: 'ph-shield-check',
+        outsideShell: true,
+      },
     ],
   },
   {
@@ -216,14 +223,7 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         labelKey: 'nav.configuracoes',
         icon: 'ph-gear',
       },
-      {
-        id: 'politica-de-privacidade',
-        route: '/politica-de-privacidade',
-        label: 'Privacidade',
-        labelKey: 'nav.privacidade',
-        icon: 'ph-shield-check',
-        outsideShell: true,
-      },
+      { id: 'ajuda', route: '/ajuda', label: 'Ajuda', labelKey: 'nav.ajuda', icon: 'ph-question' },
     ],
   },
 ];

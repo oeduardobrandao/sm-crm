@@ -245,7 +245,7 @@ export default function Sidebar({
 
   const userName = profile?.nome || t('sidebar.myAccount');
 
-  // The support group (Novidades/Ajuda) lives in the account menu on desktop
+  // The support group (Novidades/Privacidade) lives in the account menu on desktop
   // instead of the main nav list — see the utilityItems section below.
   // Configurações lives in the main nav list itself (it's not filtered out
   // here), so it isn't repeated in the dropdown.
