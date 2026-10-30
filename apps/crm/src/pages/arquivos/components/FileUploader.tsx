@@ -103,6 +103,7 @@ export function FileUploader({
         thumbnail,
         // captureVideoThumbnail grabs the frame at 0.1 s; that is the TikTok cover frame.
         thumbnailFrameMs: thumbnail ? THUMBNAIL_FRAME_SECONDS * 1000 : null,
+        thumbnailSource: thumbnail ? 'auto' : null,
         onProgress: ({ loaded, total }) => {
           const progress = total > 0 ? Math.round((loaded / total) * 100) : 0;
           setQueue((prev) =>

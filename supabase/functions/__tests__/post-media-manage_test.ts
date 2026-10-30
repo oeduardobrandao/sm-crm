@@ -438,7 +438,7 @@ Deno.test("post-media-manage: PATCH thumbnail with a frame swaps the thumbnail f
   // Two statements: the swap (which trg_files_thumbnail_frame_reset clears), then the frame.
   assertEquals(updates.map((u) => u.payload), [
     { thumbnail_r2_key: "contas/conta-1/files/new-thumb.jpg" },
-    { thumbnail_frame_ms: 12300 },
+    { thumbnail_frame_ms: 12300, thumbnail_source: "frame" },
   ]);
 });
 

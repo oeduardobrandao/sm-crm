@@ -62,6 +62,7 @@ const media = {
   url: 'https://x/clip.mp4',
   thumbnail_url: 'https://x/thumb.jpg',
   thumbnail_frame_ms: 4200,
+  thumbnail_source: 'frame',
 } as unknown as PostMedia;
 
 const source = new File(['a'], 'clip.mp4', { type: 'video/mp4' });
@@ -121,8 +122,9 @@ describe('DownscaleMediaDialog', () => {
       jpeg,
       expect.any(Function),
       expect.any(AbortSignal),
-      // The reused thumbnail keeps its TikTok cover frame.
+      // The reused thumbnail keeps its TikTok cover frame and its source.
       4200,
+      'frame',
     );
     expect(m.toast.success).toHaveBeenCalledWith('Vídeo reduzido para 1080×1920.');
     expect(m.trackUnsavedWork).toHaveBeenCalled();
@@ -140,6 +142,7 @@ describe('DownscaleMediaDialog', () => {
     expect(m.replacePostMedia.mock.calls[0]![2]).toBe(frame);
     // A new frame is taken from the output, so its own moment is the cover frame.
     expect(m.replacePostMedia.mock.calls[0]![5]).toBe(250);
+    expect(m.replacePostMedia.mock.calls[0]![6]).toBe('auto');
   });
 
   it('cancel during convert aborts and never saves; cancel hidden while saving', async () => {

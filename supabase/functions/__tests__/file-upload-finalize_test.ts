@@ -1,6 +1,6 @@
 import { assert, assertEquals, readJson } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
-import { createFileUploadFinalizeHandler } from "../file-upload-finalize/handler.ts";
+import { createFileUploadFinalizeHandler, videoThumbnailOrigin } from "../file-upload-finalize/handler.ts";
 
 const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://app.mesaas.com" });
 
@@ -342,9 +342,12 @@ Deno.test("file-upload-finalize: video with thumbnail_frame_ms stores it after t
   db.queue("files", "update", { data: null, error: null });
   const res = await makeHandler(db)(authedRequest({ ...frameVideoBody, thumbnail_frame_ms: 500 }));
   assertEquals(res.status, 200);
-  assertEquals((await readJson(res)).thumbnail_frame_ms, 500);
+  const json = await readJson(res);
+  assertEquals(json.thumbnail_frame_ms, 500);
+  // A frame without a source is the auto-generated one.
+  assertEquals(json.thumbnail_source, "auto");
   const update = db.calls.find((c) => c.table === "files" && c.operation === "update");
-  assertEquals(update?.payload, { thumbnail_frame_ms: 500 });
+  assertEquals(update?.payload, { thumbnail_frame_ms: 500, thumbnail_source: "auto" });
   assertEquals(update?.modifiers, [{ method: "eq", args: ["id", 21] }]);
 });
 
@@ -362,9 +365,34 @@ Deno.test("file-upload-finalize: invalid or non-video thumbnail_frame_ms is drop
     db.queueRpc("file_insert_with_quota", { data: { id: 22, r2_key: body.r2_key, kind: body.kind }, error: null });
     const res = await makeHandler(db)(authedRequest(body));
     assertEquals(res.status, 200);
-    assertEquals((await readJson(res)).thumbnail_frame_ms, null);
+    const json = await readJson(res);
+    assertEquals(json.thumbnail_frame_ms, null);
+    assertEquals(json.thumbnail_source, null);
     assertEquals(db.calls.some((c) => c.table === "files" && c.operation === "update"), false);
   }
+});
+
+Deno.test("file-upload-finalize: a manual image thumbnail is stored as source image, without a frame", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queueRpc("file_insert_with_quota", { data: { id: 24, r2_key: frameVideoBody.r2_key, kind: "video" }, error: null });
+  db.queue("files", "update", { data: null, error: null });
+  const res = await makeHandler(db)(
+    authedRequest({ ...frameVideoBody, thumbnail_source: "image", thumbnail_frame_ms: 500 }),
+  );
+  assertEquals(res.status, 200);
+  const update = db.calls.find((c) => c.table === "files" && c.operation === "update");
+  assertEquals(update?.payload, { thumbnail_frame_ms: null, thumbnail_source: "image" });
+});
+
+Deno.test("videoThumbnailOrigin: resolves the stored frame and source", () => {
+  assertEquals(videoThumbnailOrigin(500, undefined), { frameMs: 500, source: "auto" });
+  assertEquals(videoThumbnailOrigin(500, "frame"), { frameMs: 500, source: "frame" });
+  assertEquals(videoThumbnailOrigin(500, "image"), { frameMs: null, source: "image" });
+  assertEquals(videoThumbnailOrigin(undefined, "image"), { frameMs: null, source: "image" });
+  assertEquals(videoThumbnailOrigin(500, "bogus"), { frameMs: 500, source: "auto" });
+  assertEquals(videoThumbnailOrigin(-1, undefined), { frameMs: null, source: null });
+  assertEquals(videoThumbnailOrigin(undefined, undefined), { frameMs: null, source: null });
 });
 
 Deno.test("file-upload-finalize: a failed frame update still finalizes, reporting no frame", async () => {

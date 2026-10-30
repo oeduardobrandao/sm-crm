@@ -125,3 +125,36 @@ describe('ThumbnailPickerDialog — frame for the TikTok cover', () => {
     expect(m.updateVideoThumbnail).toHaveBeenCalledWith(3, captured, 2000);
   });
 });
+
+describe('ThumbnailPickerDialog — current cover', () => {
+  it.each([
+    [
+      { thumbnail_source: 'auto', thumbnail_frame_ms: 500 },
+      'Capa padrão: o quadro automático do início do vídeo.',
+    ],
+    [
+      { thumbnail_source: 'frame', thumbnail_frame_ms: 12300 },
+      'Capa escolhida: o quadro em 0:12.3.',
+    ],
+    [{ thumbnail_source: 'image', thumbnail_frame_ms: null }, 'Capa escolhida: uma imagem.'],
+  ] as const)('says what the cover is (%o)', (fields, text) => {
+    render(
+      <ThumbnailPickerDialog
+        media={makeVideoMedia(fields)}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('video-cover-current')).toHaveTextContent(`Capa atual. ${text}`);
+  });
+
+  it('shows the current thumbnail in the video shape, not 16:9', () => {
+    render(
+      <ThumbnailPickerDialog media={makeVideoMedia()} onClose={vi.fn()} onUpdated={vi.fn()} />,
+    );
+    const current = screen.getByAltText('Miniatura atual');
+    // makeVideoMedia is 1080×1920.
+    expect(current.style.aspectRatio).toBe('0.5625');
+    expect(current).toHaveClass('h-40');
+  });
+});

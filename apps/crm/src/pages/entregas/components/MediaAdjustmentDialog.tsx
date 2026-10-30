@@ -266,6 +266,8 @@ function MediaAdjustmentDialogBody({
         },
         controller.signal,
         thumbnailFrameMs,
+        // Regenerated from the preview, not chosen as a cover: the default kind.
+        thumbnailFrameMs === null ? null : 'auto',
       );
       controller.signal.throwIfAborted();
       toast.success(t('mediaAdjustment.applied'));

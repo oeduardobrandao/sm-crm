@@ -15,6 +15,7 @@ import { encodeImageAsJpeg } from '../../../utils/imageJpeg';
 import { updateVideoThumbnail } from '../../../services/postMedia';
 import type { PostMedia } from '../../../store';
 import { BottomSheet } from '@/components/mobile';
+import { mediaPreviewAspect, videoCoverDescription, videoCoverState } from '../videoCover';
 
 interface ThumbnailPickerDialogProps {
   /** Video link to edit, or null when closed. Pass the freshest object you
@@ -92,10 +93,19 @@ export function ThumbnailPickerDialog({
     }
   }
 
+  const aspect = media ? mediaPreviewAspect(media) : 1;
+  const previewAspect = String(aspect);
+  // Portrait previews are sized by height, landscape ones by the column width.
+  const previewSize = aspect < 1 ? 'h-40 w-auto max-w-full' : 'w-full';
   const body = (
     <>
       {media && (
         <div className="space-y-3">
+          <p className="text-xs text-muted-foreground" data-testid="video-cover-current">
+            {t('videoCover.current', {
+              description: videoCoverDescription(videoCoverState(media)),
+            })}
+          </p>
           {media.media_lost_at ? (
             <MediaUnavailable size="full" className="w-full aspect-video rounded-xl" />
           ) : (
@@ -143,7 +153,8 @@ export function ThumbnailPickerDialog({
                 <img
                   src={media.thumbnail_url}
                   alt={t('thumbnailEditor.current')}
-                  className="w-full aspect-video object-cover rounded-lg ring-1 ring-stone-200/80"
+                  style={{ aspectRatio: previewAspect }}
+                  className={`${previewSize} object-cover rounded-lg ring-1 ring-stone-200/80`}
                 />
                 <figcaption className="mt-1 text-[11px] text-stone-500">
                   {t('thumbnailEditor.current')}
@@ -155,7 +166,8 @@ export function ThumbnailPickerDialog({
                 <img
                   src={pendingUrl}
                   alt={t('thumbnailEditor.preview')}
-                  className="w-full aspect-video object-cover rounded-lg ring-2 ring-[#eab308]"
+                  style={{ aspectRatio: previewAspect }}
+                  className={`${previewSize} object-cover rounded-lg ring-2 ring-[#eab308]`}
                 />
                 <figcaption className="mt-1 text-[11px] font-semibold text-stone-700">
                   {t('thumbnailEditor.preview')}

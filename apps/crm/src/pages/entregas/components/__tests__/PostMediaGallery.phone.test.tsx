@@ -224,3 +224,34 @@ describe('PostMediaGallery, phone strip, oversized video', () => {
     expect(labels).toContain('Ajustar proporção');
   });
 });
+
+describe('PostMediaGallery, phone strip, shape and video cover', () => {
+  it('keeps the strip height and sizes each tile by its file shape', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([item(1, 'a.jpg', 0)]);
+    renderPhoneGallery();
+    // 1080×1350 (4:5) at the 92px strip height.
+    expect((await screen.findByRole('button', { name: /^a\.jpg/ })).style.width).toBe('74px');
+  });
+
+  it('shows the short cover state on a video and reads it in the tile name', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([
+      {
+        ...item(9, 'reel.mp4', 0),
+        kind: 'video',
+        mime_type: 'video/mp4',
+        width: 1080,
+        height: 1920,
+        duration_seconds: 20,
+        thumbnail_url: 'https://cdn.test/9.jpg',
+        thumbnail_source: 'frame',
+        thumbnail_frame_ms: 12300,
+      } as PostMedia,
+    ]);
+    renderPhoneGallery();
+    const reel = await screen.findByRole('button', { name: /^reel\.mp4/ });
+    expect(reel).toHaveAccessibleName(/, Capa 0:12\.3/);
+    expect(reel).toHaveTextContent('0:12.3');
+    expect(reel.querySelector('[data-custom-cover]')).not.toBeNull();
+    expect(reel.style.width).toBe('52px');
+  });
+});

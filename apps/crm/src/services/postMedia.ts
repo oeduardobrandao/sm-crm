@@ -1,7 +1,7 @@
 // apps/crm/src/services/postMedia.ts
 import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import { supabase } from '../lib/supabase';
-import type { PostMedia } from '../store';
+import type { PostMedia, ThumbnailSource } from '../store';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 
@@ -221,10 +221,13 @@ async function uploadPostMediaUnguarded(args: {
   thumbnail?: File; // required for video
   /** Video: the moment (ms) `thumbnail` was captured from; omit for a non-frame image. */
   thumbnailFrameMs?: number | null;
+  /** Video: 'auto' for the generated frame, 'image' for a picked image (files.thumbnail_source). */
+  thumbnailSource?: ThumbnailSource;
   sortOrder?: number; // position in the carousel; assigned from selection order
   onProgress?: (p: UploadProgress) => void;
 }): Promise<PostMedia> {
-  const { postId, file, thumbnail, thumbnailFrameMs, sortOrder, onProgress } = args;
+  const { postId, file, thumbnail, thumbnailFrameMs, thumbnailSource, sortOrder, onProgress } =
+    args;
   const kind = detectKind(file);
   validateFile(file, kind);
 
@@ -281,6 +284,7 @@ async function uploadPostMediaUnguarded(args: {
     ...(kind === 'video' && thumbnailFrameMs != null
       ? { thumbnail_frame_ms: thumbnailFrameMs }
       : {}),
+    ...(kind === 'video' && thumbnailSource ? { thumbnail_source: thumbnailSource } : {}),
   });
 }
 

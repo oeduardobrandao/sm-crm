@@ -107,7 +107,7 @@
     "chooseThumbnail": "Choose thumbnail",
     "adjustThumbnail": "Adjust thumbnail",
     "videoThumbnail": "Video thumbnail",
-    "thumbnailHint": "Videos get an automatic thumbnail (a frame from the video). You can adjust it later via the image icon on the video.",
+    "thumbnailHint": "Videos get an automatic cover (a frame from the start of the video). To change it, click the “Cover” chip on the video: pick another frame or upload an image.",
     "thumbnailFallback": "Could not generate a thumbnail automatically. Select a cover image for",
     "remainingVideos": "{{count}} video(s) awaiting a thumbnail",
     "carouselLimit": "Carousel exceeds Instagram's limit",
@@ -165,7 +165,7 @@
     "done": "Done",
     "reorderHint": "Hold and drag to change the order. The first item is the cover.",
     "actionsOf": "Actions for {{name}}",
-    "phoneTileLabel": "{{name}}{{cover}}{{notes}}. Tap to view, hold for more actions",
+    "phoneTileLabel": "{{name}}{{cover}}{{videoCover}}{{notes}}. Tap to view, hold for more actions",
     "coverSuffix": " (cover)",
     "cover": "Cover",
     "needsAdjustment": "Media needs adjustment",
@@ -355,9 +355,11 @@
   },
   "tiktokCover": {
     "label": "TikTok cover",
-    "followsThumbnail": "TikTok uses the same frame as the thumbnail ({{time}}).",
     "noFrame": "The current thumbnail isn't a frame of the video (an uploaded image, or set before this version). TikTok doesn't accept an image as the cover and will use its default frame. To choose one, open the thumbnail and use “Use this frame”.",
-    "editThumbnail": "Edit thumbnail"
+    "editThumbnail": "Edit thumbnail",
+    "followsDefaultFrame": "TikTok uses the thumbnail's default frame ({{time}}).",
+    "followsChosenFrame": "TikTok uses the frame chosen for the thumbnail ({{time}}).",
+    "imageCover": "The cover is an image. TikTok doesn't accept an image as the cover and will use its default frame. To choose one, open the thumbnail and use “Use this frame”."
   },
   "trialReel": {
     "lockedBySchedule": "Cancel the schedule to edit",
@@ -399,5 +401,29 @@
     "replyPlaceholder": "Reply to the client…",
     "replyLabel": "Reply to the client",
     "sendReply": "Send reply"
+  },
+  "videoCover": {
+    "chip": {
+      "default": "Default cover",
+      "frame": "Cover {{time}}",
+      "frameNoTime": "Cover: frame",
+      "image": "Cover: image",
+      "unknown": "Cover"
+    },
+    "short": {
+      "default": "Default",
+      "frameNoTime": "Frame",
+      "image": "Image",
+      "unknown": "Cover"
+    },
+    "describe": {
+      "default": "Default cover: the automatic frame from the start of the video.",
+      "frame": "Chosen cover: the frame at {{time}}.",
+      "frameNoTime": "Chosen cover: a frame of the video.",
+      "image": "Chosen cover: an image.",
+      "unknown": "Cover set before this version: there is no way to tell if it is the default or a chosen one."
+    },
+    "current": "Current cover. {{description}}",
+    "change": "Change cover"
   }
 }

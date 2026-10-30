@@ -18433,8 +18433,27 @@ button.phone-stat-tile:active {
 .phone-media__video {
   bottom: 6px;
   left: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: calc(100% - 12px);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   background: rgba(0, 0, 0, 0.55);
   color: #ffffff;
+}
+
+.phone-media__video svg {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+}
+
+/* A cover the person chose (a frame or an image) stands out from the default one. */
+.phone-media__video[data-custom-cover] {
+  background: var(--phone-accent);
+  color: var(--phone-on-accent);
 }
 
 .phone-media__badge {

@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import type { PostMedia } from '../store/posts';
+import type { PostMedia, ThumbnailSource } from '../store/posts';
 import { uploadFile, type UploadProgress } from './fileService';
 
 /** Upload a separate file, preserving both the original and its links in other posts. */
@@ -11,6 +11,8 @@ export async function replacePostMedia(
   signal?: AbortSignal,
   /** Video: the moment (ms) `thumbnail` shows; the replacement file keeps it as its cover frame. */
   thumbnailFrameMs?: number | null,
+  /** Video: where `thumbnail` came from (files.thumbnail_source). */
+  thumbnailSource?: ThumbnailSource | null,
 ): Promise<void> {
   signal?.throwIfAborted();
   const {
@@ -23,6 +25,7 @@ export async function replacePostMedia(
     folderId: null,
     thumbnail,
     thumbnailFrameMs,
+    thumbnailSource,
     onProgress,
     ...(signal ? { signal } : {}),
   });

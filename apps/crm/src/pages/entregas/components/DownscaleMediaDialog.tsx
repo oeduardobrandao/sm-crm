@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
 import { captureEvent } from '@/lib/analytics';
-import type { PostMedia } from '@/store';
+import type { PostMedia, ThumbnailSource } from '@/store';
 import { replacePostMedia } from '@/services/mediaAdjustment';
 import { fetchWithRetry } from '@/utils/fetchWithRetry';
 import { encodeImageAsJpeg } from '@/utils/imageJpeg';
@@ -39,7 +39,7 @@ async function thumbnailFor(
   media: PostMedia,
   output: File,
   signal: AbortSignal,
-): Promise<{ file: File; frameMs: number | null }> {
+): Promise<{ file: File; frameMs: number | null; source: ThumbnailSource | null }> {
   const url = media.thumbnail_url;
   try {
     if (!url) throw new Error('no thumbnail');
@@ -48,11 +48,15 @@ async function thumbnailFor(
     const file = await encodeImageAsJpeg(
       new File([blob], 'cover', { type: blob.type || 'image/jpeg' }),
     );
-    return { file, frameMs: media.thumbnail_frame_ms ?? null };
+    return {
+      file,
+      frameMs: media.thumbnail_frame_ms ?? null,
+      source: media.thumbnail_source ?? null,
+    };
   } catch {
     signal.throwIfAborted();
     const frame = await extractVideoFrameWithTime(output);
-    return { file: frame.file, frameMs: Math.round(frame.timeSeconds * 1000) };
+    return { file: frame.file, frameMs: Math.round(frame.timeSeconds * 1000), source: 'auto' };
   }
 }
 
@@ -178,6 +182,7 @@ export function DownscaleMediaDialog({ media, forStories, onOpenChange, onDone }
             },
             ctl.signal,
             thumbnail.frameMs,
+            thumbnail.source,
           );
           report('ok', extra);
           toast.success(t('mediaGallery.downscale.done', { w: result.width, h: result.height }));
