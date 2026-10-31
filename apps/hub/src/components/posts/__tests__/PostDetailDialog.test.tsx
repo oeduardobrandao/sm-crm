@@ -727,6 +727,110 @@ describe('PostDetailDialog', () => {
       expect(screen.queryByText(BANNER)).not.toBeInTheDocument();
     });
   });
+  describe('auto-publish note', () => {
+    const one = (over: Partial<HubPost>) => [post({ id: 1, ...over })];
+
+    it('names Instagram for an Instagram post', () => {
+      renderDialog(1, { posts: one({ targets: ['instagram'] }), isAutoPublish: () => true });
+      expect(screen.getByText(/publicado automaticamente no Instagram em/)).toBeInTheDocument();
+    });
+
+    it('names TikTok for a TikTok-only post', () => {
+      renderDialog(1, {
+        posts: one({ targets: ['tiktok'], tiktok_caption: null }),
+        isAutoPublish: () => true,
+      });
+      expect(screen.getByText(/publicado automaticamente no TikTok em/)).toBeInTheDocument();
+      expect(screen.queryByText(/automaticamente no Instagram/)).not.toBeInTheDocument();
+    });
+
+    it('names both platforms and leaves Geral out', () => {
+      renderDialog(1, {
+        posts: one({
+          targets: ['instagram', 'tiktok', 'geral'],
+          tiktok_caption: null,
+          geral_caption: null,
+          scheduled_at: null,
+        }),
+        isAutoPublish: () => true,
+      });
+      expect(screen.getByText(/publicação automática no Instagram e TikTok\./)).toBeInTheDocument();
+    });
+
+    it('shows no note for a post that is only Geral (it is never scheduled)', () => {
+      renderDialog(1, {
+        posts: one({ targets: ['geral'], geral_caption: 'Texto' }),
+        isAutoPublish: () => true,
+      });
+      expect(screen.queryByText(/Ao aprovar, este post/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('published post links', () => {
+    const published = (over: Partial<HubPost>) => [
+      post({ id: 1, status: 'postado', published_at: '2026-04-28T10:00:00.000Z', ...over }),
+    ];
+
+    it('links a TikTok-only published post to TikTok', () => {
+      renderDialog(1, {
+        posts: published({
+          targets: ['tiktok'],
+          tiktok_post_url: 'https://www.tiktok.com/@x/video/1',
+        }),
+      });
+      expect(screen.getByRole('link', { name: /Ver no TikTok/ })).toHaveAttribute(
+        'href',
+        'https://www.tiktok.com/@x/video/1',
+      );
+      expect(screen.queryByRole('link', { name: /Ver no Instagram/ })).not.toBeInTheDocument();
+    });
+
+    it('links both platforms when the post went to both', () => {
+      renderDialog(1, {
+        posts: published({
+          targets: ['instagram', 'tiktok'],
+          instagram_permalink: 'https://www.instagram.com/p/abc/',
+          tiktok_post_url: 'https://www.tiktok.com/@x/video/1',
+        }),
+      });
+      expect(screen.getByRole('link', { name: /Ver no Instagram/ })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /Ver no TikTok/ })).toBeInTheDocument();
+    });
+  });
+
+  describe('Geral download', () => {
+    const geral = (over: Partial<HubPost>) => [
+      post({ id: 1, targets: ['geral'], geral_caption: 'Legenda geral', ...over }),
+    ];
+
+    it('offers the file and the caption once the client approved', () => {
+      renderDialog(1, { posts: geral({ status: 'aprovado_cliente' }) });
+      expect(screen.getByRole('button', { name: /Baixar arquivo/ })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Copiar legenda/ })).toBeInTheDocument();
+    });
+
+    it('counts the files when there are several', () => {
+      renderDialog(1, {
+        posts: geral({ status: 'postado', media: [MEDIA, { ...MEDIA, id: 2 }] }),
+      });
+      expect(
+        screen.getByRole('button', { name: /Baixar conteúdo \(2 arquivos\)/ }),
+      ).toBeInTheDocument();
+    });
+
+    it('is not offered before approval', () => {
+      renderDialog(1, { posts: geral({ status: 'enviado_cliente' }) });
+      expect(screen.queryByRole('button', { name: /Baixar/ })).not.toBeInTheDocument();
+    });
+
+    it('is not offered without a Geral destination', () => {
+      renderDialog(1, {
+        posts: [post({ id: 1, status: 'aprovado_cliente', targets: ['instagram'] })],
+      });
+      expect(screen.queryByRole('button', { name: /Baixar/ })).not.toBeInTheDocument();
+    });
+  });
+
   describe('failed edit save (no lockout)', () => {
     const FAILED = 'Não foi possível salvar. Tente novamente.';
 

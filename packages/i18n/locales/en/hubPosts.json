@@ -106,8 +106,8 @@
     "nextSlideAriaLabel": "Next slide",
     "captionAriaLabel": "Post caption",
     "postApprovedAndScheduled": "Post approved and scheduled for publication!",
-    "autoPublishScheduled": "Once approved, this post will be published automatically on Instagram at {{date}}.",
-    "autoPublishUnscheduled": "Once approved, this post will be scheduled for automatic publication on Instagram."
+    "autoPublishScheduled": "Once approved, this post will be published automatically on {{platforms}} at {{date}}.",
+    "autoPublishUnscheduled": "Once approved, this post will be scheduled for automatic publication on {{platforms}}."
   },
   "storyCard": {
     "prevAriaLabel": "Previous",
@@ -330,5 +330,12 @@
       "tiktok": "TikTok",
       "geral": "the Geral destination"
     }
+  },
+  "geral": {
+    "download": "Download file",
+    "downloadAll": "Download content ({{count}} files)",
+    "copyCaption": "Copy caption",
+    "copied": "Copied!",
+    "downloadFailed": "Couldn't download right now. Try again."
   }
 }

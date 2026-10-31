@@ -40,6 +40,7 @@ import { usePostAdvance, type ConfirmFlash, type SlideDir } from '../../hooks/us
 import { usePostReferences } from '../../hooks/usePostReferences';
 import type { ReferenceItem } from '../../types/postReferences';
 import {
+  autoPublishDestinations,
   deriveCaption,
   destinationCaptions,
   getPostPublishState,
@@ -52,6 +53,8 @@ import {
   suggestionAwareCaption,
   suggestionAwareRawCaptions,
 } from '../../lib/postView';
+import { canDownloadGeral } from '../../lib/geralDownload';
+import { GeralDownload } from './GeralDownload';
 import { sanitizeExternalUrl } from '../../lib/security';
 import { HubDialog } from '../ui/HubDialog';
 import { HubConfirmDialog } from '../ui/HubConfirmDialog';
@@ -728,6 +731,23 @@ function PostDetailContent({
     </div>
   );
 
+  // Every published destination's link (a post on both platforms gets both).
+  const publishedLinks =
+    post.status === 'postado'
+      ? [
+          post.instagram_permalink && {
+            href: post.instagram_permalink,
+            label: t('shared.viewOnInstagram', 'Ver no Instagram'),
+          },
+          post.tiktok_post_url && {
+            href: post.tiktok_post_url,
+            label: t('shared.viewOnTikTok', 'Ver no TikTok'),
+          },
+        ].filter((l): l is { href: string; label: string } => !!l)
+      : [];
+
+  const geralDownload = canDownloadGeral(post);
+
   const autocleanedLink = post.media_autocleaned_at
     ? post.instagram_permalink
       ? { href: post.instagram_permalink, label: t('shared.viewOnInstagram', 'Ver no Instagram') }
@@ -805,13 +825,16 @@ function PostDetailContent({
       <p className="text-[14px] hub-txt leading-[1.55] whitespace-pre-wrap">{caption}</p>
     );
 
-  const autoPublishNote = isPending && isAutoPublish(post) && (
+  // Only destinations that publish on their own: a post that is only Geral is never scheduled.
+  const autoTargets = autoPublishDestinations(post);
+  const autoPublishNote = isPending && isAutoPublish(post) && autoTargets.length > 0 && (
     <p className="text-[12px] hub-tx3 mt-4">
       {post.scheduled_at
         ? t(
             'instagramCard.autoPublishScheduled',
-            'Ao aprovar, este post será publicado automaticamente no Instagram em {{date}}.',
+            'Ao aprovar, este post será publicado automaticamente no {{platforms}} em {{date}}.',
             {
+              platforms: platformNames(autoTargets),
               date: new Date(post.scheduled_at).toLocaleDateString(dateLang, {
                 day: '2-digit',
                 month: 'short',
@@ -822,7 +845,8 @@ function PostDetailContent({
           )
         : t(
             'instagramCard.autoPublishUnscheduled',
-            'Ao aprovar, este post será agendado para publicação automática no Instagram.',
+            'Ao aprovar, este post será agendado para publicação automática no {{platforms}}.',
+            { platforms: platformNames(autoTargets) },
           )}
     </p>
   );
@@ -1148,9 +1172,7 @@ function PostDetailContent({
             </div>
           </div>
 
-          {(isPending ||
-            inProduction ||
-            (post.status === 'postado' && post.instagram_permalink)) && (
+          {(isPending || inProduction || publishedLinks.length > 0 || geralDownload) && (
             <div className="px-4 py-3 border-t hub-border hub-bg-soft shrink-0 space-y-2">
               {error && (
                 <p className="text-[12px] text-rose-700 bg-rose-50 dark:bg-rose-950/50 dark:text-rose-300 rounded-lg px-3 py-2">
@@ -1227,18 +1249,27 @@ function PostDetailContent({
                     </p>
                   )}
                 </>
-              ) : post.status === 'postado' && post.instagram_permalink ? (
-                // The status already sits in the header chips; only the permalink lives here.
-                <div className="flex items-center justify-end">
-                  <a
-                    href={sanitizeExternalUrl(post.instagram_permalink)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[12px] font-semibold"
-                    style={{ color: 'var(--hub-acc)' }}
-                  >
-                    {t('shared.viewOnInstagram', 'Ver no Instagram')}
-                  </a>
+              ) : publishedLinks.length > 0 || geralDownload ? (
+                // The status already sits in the header chips; only the Geral download and the
+                // permalinks live here.
+                <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+                  {geralDownload && (
+                    <div className="mr-auto">
+                      <GeralDownload post={post} />
+                    </div>
+                  )}
+                  {publishedLinks.map((link) => (
+                    <a
+                      key={link.href}
+                      href={sanitizeExternalUrl(link.href)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[12px] font-semibold"
+                      style={{ color: 'var(--hub-acc)' }}
+                    >
+                      {link.label}
+                    </a>
+                  ))}
                 </div>
               ) : inProduction ? (
                 <p className="flex items-center justify-center gap-1.5 text-[12.5px] hub-tx3">
