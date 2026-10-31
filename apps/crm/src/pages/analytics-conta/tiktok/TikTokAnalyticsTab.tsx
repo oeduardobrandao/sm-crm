@@ -21,7 +21,8 @@ import {
 } from '../../../services/tiktokAnalytics';
 import type { BestPostingTimes } from '../../../services/analytics';
 import { sanitizeUrl } from '../../../utils/security';
-import { AISection, BestTimesHeatmap, FollowerChart } from '../AnalyticsContaPage';
+import { AISection, BestTimesHeatmap } from '../AnalyticsContaPage';
+import { FollowerChart } from '../FollowerChart';
 import { TikTokKpiGrid } from './TikTokKpiGrid';
 import { TikTokPeriodBar } from './TikTokPeriodBar';
 import { TikTokRankedVideos } from './TikTokRankedVideos';

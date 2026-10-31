@@ -625,7 +625,8 @@ describe('AnalyticsContaPage', () => {
     expect(screen.queryByText(client.nome)).toBeNull();
     expect(screen.getByText(`@${account.username}`)).toBeTruthy();
     expect(screen.getByText('Seguidores')).toBeTruthy();
-    expect(screen.getByText('1.234')).toBeTruthy();
+    // The follower chart repeats the current total in its summary row.
+    expect(screen.getAllByText('1.234').length).toBeGreaterThan(0);
     expect(screen.getByText('12.34%')).toBeTruthy();
     // Matched by its description: the title also exists as a KPI card label
     expect(screen.getByText(/métrica mais subestimada/)).toBeTruthy();
@@ -644,9 +645,7 @@ describe('AnalyticsContaPage', () => {
     expect(screen.getByText(/Top posts por visualizações/i)).toBeTruthy();
     // The reports card moved to the Relatórios tab (ClientReportsPanel).
     expect(screen.queryByText('Relatórios Gerados')).toBeNull();
-    await waitFor(() => {
-      expect(chartCalls.length).toBeGreaterThan(0);
-    });
+    expect(await screen.findByRole('img', { name: /^Seguidores de / })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /Gerar Análise IA/i }));
 

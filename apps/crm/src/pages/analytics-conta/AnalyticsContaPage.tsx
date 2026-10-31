@@ -83,6 +83,7 @@ import {
 import { compareNullableNumber, type ActionSortKey } from '../../lib/post-action-metrics';
 import { InstagramPostCarousel } from '@/components/instagram/InstagramPostCarousel';
 import { NewReportDialog } from './reports/NewReportDialog';
+import { FollowerChart } from './FollowerChart';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import { ContaPhone, ContaPhoneMessage } from './phone/ContaPhone';
@@ -450,93 +451,6 @@ function KpiCard({
         </>
       }
     />
-  );
-}
-
-// ---- Follower Chart ----
-// Also drawn by the TikTok tab, which passes its own line colour and empty copy.
-export function FollowerChart({
-  history,
-  postDates,
-  color = '#E1306C',
-  emptyText = 'Dados insuficientes. O histórico é construído diariamente.',
-}: {
-  history: any[];
-  postDates: any[];
-  color?: string;
-  emptyText?: string;
-}) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    if (!canvasRef.current || history.length < 2) return;
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    const textColor = isDark ? '#e0e0e0' : '#333';
-    const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
-    const postDateSet = new Set(postDates.map((p: any) => p.date));
-    const chart = new Chart(canvasRef.current, {
-      type: 'line',
-      data: {
-        labels: history.map((h) =>
-          new Date(h.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-        ),
-        datasets: [
-          {
-            label: 'Seguidores',
-            data: history.map((h) => h.follower_count),
-            borderColor: color,
-            backgroundColor: `${color}1a`,
-            borderWidth: 2,
-            fill: true,
-            tension: 0.4,
-            pointRadius: 3,
-            pointStyle: 'circle',
-            pointBackgroundColor: color,
-            pointBorderColor: '#fff',
-            pointHoverBackgroundColor: '#fff',
-            pointHoverBorderColor: color,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            backgroundColor: isDark ? '#1a1e26' : '#fff',
-            titleColor: isDark ? '#fff' : '#12151a',
-            bodyColor: isDark ? '#94a3b8' : '#4a5468',
-            borderColor: isDark ? '#1e2430' : 'rgba(0,0,0,0.1)',
-            borderWidth: 1,
-            padding: 10,
-            displayColors: false,
-            callbacks: {
-              label: (ctx: any) => ` ${ctx.parsed.y.toLocaleString('pt-BR')} Seguidores`,
-            },
-          },
-        },
-        scales: {
-          x: {
-            grid: { display: false },
-            ticks: { color: textColor, font: { size: 10 }, maxTicksLimit: 10 },
-          },
-          y: {
-            // @ts-ignore
-            grid: { color: gridColor, borderDash: [5, 5] },
-            ticks: { color: textColor, font: { size: 10 }, precision: 0 },
-            beginAtZero: false,
-          },
-        },
-      },
-    });
-    return () => chart.destroy();
-  }, [history, postDates, color]);
-  if (history.length < 2)
-    return <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>{emptyText}</p>;
-  return (
-    <div style={{ position: 'relative', height: 280, marginTop: '1rem' }}>
-      <canvas ref={canvasRef} />
-    </div>
   );
 }
 
