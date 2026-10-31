@@ -19,7 +19,10 @@ O motivo é custo: o Stream cobra por minuto armazenado, e esse volume só cresc
   playback (`hub-posts`, `post-media-manage`, `file-manage`) usa o Stream só quando
   `stream_status === 'ready'` e senão cai para o R2. **Tirar um vídeo do Stream não exige mudança
   em player nenhum.**
-- O original no R2 (`files.r2_key`) é sempre mantido; o Stream é uma cópia.
+- O original no R2 (`files.r2_key`) fica enquanto a linha de `files` existir; o Stream é uma cópia.
+  Exceção: o `storage-autoclean-cron` apaga o `files` (e por isso o R2 e o Stream) de post publicado
+  nos workspaces que o ligaram. A volta para o R2 descrita aqui vale só enquanto o arquivo existir;
+  depois do autoclean não há o que tocar, como já é hoje.
 - `file-upload-finalize` copia para o Stream na hora todo upload `kind='video'`.
 - `post-media-cleanup-cron` (em prod de hora em hora, job `post-media-cleanup-hourly`, `5 * * * *`;
   em staging e bancos novos só o diário `5 3 * * *`, migration `20260925110001`) já tem, em `stream-steps.ts`: ingest
@@ -59,6 +62,11 @@ Um vídeo (`files` com `kind='video'`, não referência) é **elegível ao Strea
 (Minha escolha: `agendado` sem limite evita que um post agendado para daqui a meses saia e volte
 do Stream.)
 
+Só contam links e posts do mesmo workspace do arquivo (`files.conta_id = post_file_links.conta_id =
+workflow_posts.conta_id`). `post_file_links` não tem FK composta de tenant, e o
+`storage_autoclean_run` já trata link cruzado como malformado; aqui um link de outro workspace é
+ignorado, nunca mantém nem traz de volta ao Stream o vídeo de outro tenant.
+
 Tudo deriva desse único predicado, inclusive a volta ao Stream: não há estado "liberado para
 sempre". Um arquivo ligado a vários posts fica no Stream enquanto **qualquer** um deles for vivo.
 
@@ -76,8 +84,10 @@ dos outros dials do `post-media-cleanup-cron`.
 
 ### "Publicado" e "movimento" (minha escolha)
 
-- Publicado = `workflow_posts.status = 'postado'`. Momento da publicação: `published_at`; se nulo
-  (marcado à mão), a última transição para `postado` em `post_status_events`; se nada, `updated_at`.
+- Publicado = `workflow_posts.status = 'postado'`; momento = `published_at`, sem fallback. O trigger
+  `20260601000001` garante `published_at` não nulo em todo post `postado`. Uma linha `postado` com
+  `published_at` nulo é dado corrompido e conta como publicada há muito tempo (sai do Stream: o
+  lado seguro aqui é o R2, que sempre toca).
 - Movimento = a última mudança de status em `post_status_events` (se não houver, `created_at` do
   post). Não usar `workflow_posts.updated_at`: o trigger o carimba em todo UPDATE, inclusive de
   crons, o que manteria post abandonado vivo para sempre. Reenviar ao cliente é mudança de status,
@@ -88,19 +98,23 @@ dos outros dials do `post-media-cleanup-cron`.
 ### Release (novo passo em `stream-steps.ts`)
 
 Novo passo `releaseSweep`, ao lado de ingest/settle/reap, com o mesmo isolamento (falha de um
-passo não bloqueia os outros) e o mesmo `StreamRetryBudget`. Para cada vídeo com `stream_uid` não
-elegível, em lote (`STREAM_RELEASE_BATCH`, padrão no mesmo espírito dos outros, por exemplo 50):
+passo não bloqueia os outros) e o mesmo `StreamRetryBudget`. Em lote (`STREAM_RELEASE_BATCH`,
+por exemplo 50):
 
-1. Gravar a intenção no banco antes da chamada externa, no mesmo padrão do upload: o arquivo fica
-   num estado que diz "fora do Stream por política" (novo valor `parked` no CHECK de
-   `stream_status`).
-2. Apagar o vídeo no Stream (`deleteStreamVideo`, que já trata 404 como sucesso).
-3. Limpar `stream_uid`.
+1. **Claim atômico no banco** (RPC, `service_role` só): num único statement, para os vídeos com
+   `stream_uid` que o predicado diz não elegíveis **naquele momento**, troca `stream_status` para
+   `parked` (novo valor no CHECK), zera `stream_uid` e devolve os uids. Elegibilidade reavaliada
+   dentro do mesmo statement que escreve, com `FOR UPDATE SKIP LOCKED` nas linhas de `files`, para
+   que nenhum arquivo fique `ready` apontando para um vídeo apagado.
+2. Apagar cada uid devolvido no Stream (`deleteStreamVideo`, que já trata 404 como sucesso).
 
-A ordem precisa garantir que nenhum estado intermediário deixe um uid vivo no Stream sem que
-alguém volte a ele, nem deixe o arquivo marcado `ready` com o vídeo já apagado (o player tentaria
-o HLS e falharia em vez de cair no R2). Se o delete falhar, a próxima execução tenta de novo. O
-orphan reap continua sendo a rede de segurança para uid que escapou do banco.
+Se o delete falhar, o uid não está mais em nenhuma tabela, então o orphan reap o apaga na próxima
+rodada dele (já tem carência de 1h). Não precisa de fila nova.
+
+**Corrida aceita:** um post que volta a ficar vivo (ou um link novo para post vivo) depois do claim
+não salva o vídeo: ele sai do Stream, toca do R2, e o ingest da hora seguinte o traz de volta. O
+pior caso é uma hora de MP4 e uma cópia a mais, o que é raro (o claim só pega post parado há dias).
+Uma trava entre claim e mudança de status/link não vale a complexidade.
 
 O backfill é só este passo rodando sobre o acervo: o tamanho do lote e a cadência horária limitam o
 ritmo (50 por execução = até 1.200 por dia em prod), sem migração de dados. O filtro de
