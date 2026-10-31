@@ -1,7 +1,7 @@
 // Cloudflare Stream reconciliation sweeps, run by post-media-cleanup-cron after the R2
-// orphan-key section (spec 2026-08-13, Task 8). Three independent steps — ingest catch-up,
-// settle pending, orphan reap — each wrapped so one step's failure can never block the next;
-// a caught step failure increments `errors` and is logged, never rethrown. A per-row failure
+// orphan-key section (spec 2026-08-13, Task 8). Four independent steps — ingest catch-up,
+// settle pending, release (retention), orphan reap — each wrapped so one step's failure can
+// never block the next; a caught step failure increments `errors` and is logged, never rethrown. A per-row failure
 // inside a step (one bad copy, one bad delete) is likewise caught and logged so it can't stall
 // the rest of that step's batch — mirrors the existing R2 orphan-cleanup loop in index.ts.
 //
@@ -14,10 +14,18 @@
 // getStreamVideoStatus collapses API/network failures to "inprogress" (Task 2 decision) — the
 // settle step treats that as "skip, retry next run", never a terminal state.
 //
-// The DB-side WHERE clauses (kind/stream_uid/stream_status/age) are the real filter in
-// production Postgres; the JS-side `created_at` re-check below is a defensive belt-and-suspenders
-// pass, not a substitute — it's what makes the age-gate behavior independently testable against
-// the shared supabase mock, which doesn't evaluate query modifiers.
+// Release needs only deleteStreamVideo, so it also runs in kill-switch mode. It claims rows via
+// stream_release_claim, a single statement that parks the row and nulls its stream_uid BEFORE
+// this step deletes anything from Stream; a delete that then fails is not retried by release
+// (the uid is no longer in `files`) and is left to the orphan reap. The claim is not
+// linearizable with link/status changes: one committing between its snapshot and its row lock
+// can still release a video that just went live. The next ingest run copies it back.
+//
+// Ingest candidates come from the stream_ingest_candidates RPC, which applies the real filter
+// (eligibility, kind/stream_uid/stream_status, 10-minute age) in Postgres. The JS-side
+// `created_at` re-check below is a defensive belt-and-suspenders pass, not a substitute: it's
+// what makes the age gate testable against the shared supabase mock, which returns queued
+// rows as-is. Settle still filters with a PostgREST select, re-checked the same way.
 
 // deno-lint-ignore no-explicit-any
 type DbClient = any;
@@ -36,6 +44,10 @@ export interface StreamStepsDeps {
   // so existing callers/tests that don't set these keep today's behavior.
   ingestBatchSize?: number;
   settleBatchSize?: number;
+  // Release (retention) dials; default to RELEASE_BATCH / 7 grace days / 60 idle days.
+  releaseBatchSize?: number;
+  releaseGraceDays?: number;
+  releaseIdleDays?: number;
   // Reap cadence gate: orphanReap lists the WHOLE Stream account every time it runs, so running
   // it every hourly cron tick is the dominant contributor to the account's Stream API request
   // volume (prod 2026-09-22: this listing 429'd twice in one morning). Orphans are rare — only
@@ -53,6 +65,7 @@ export interface StreamStepsDeps {
 export interface StreamSweepResult {
   ingested: number;
   settled: number;
+  released: number;
   reaped: number;
   errors: number;
 }
@@ -61,6 +74,9 @@ const TEN_MINUTES_MS = 10 * 60 * 1000;
 const ONE_HOUR_MS = 60 * 60 * 1000;
 const INGEST_BATCH = 20;
 const SETTLE_BATCH = 50;
+const RELEASE_BATCH = 50;
+const RELEASE_GRACE_DAYS = 7;
+const RELEASE_IDLE_DAYS = 60;
 // PostgREST silently caps any single response at 1000 rows regardless of what `.limit()` asks
 // for — this is also the largest single page worth requesting. Exported so tests can build a
 // fixture that spans exactly one full page + one short page without guessing the boundary.
@@ -81,7 +97,7 @@ interface SettleRow {
 
 export async function runStreamSweeps(deps: StreamStepsDeps): Promise<StreamSweepResult> {
   const nowMs = deps.nowMs ?? (() => Date.now());
-  const result: StreamSweepResult = { ingested: 0, settled: 0, reaped: 0, errors: 0 };
+  const result: StreamSweepResult = { ingested: 0, settled: 0, released: 0, reaped: 0, errors: 0 };
 
   try {
     result.ingested = await ingestCatchUp(deps, nowMs);
@@ -94,6 +110,13 @@ export async function runStreamSweeps(deps: StreamStepsDeps): Promise<StreamSwee
     result.settled = await settlePending(deps, nowMs);
   } catch (e) {
     console.error("stream-steps:settle", e);
+    result.errors++;
+  }
+
+  try {
+    result.released = await releaseSweep(deps);
+  } catch (e) {
+    console.error("stream-steps:release", e);
     result.errors++;
   }
 
@@ -122,24 +145,20 @@ async function shouldRunReap(deps: StreamStepsDeps, nowMs: () => number): Promis
   return nowMs() - lastRunMs >= deps.reapIntervalMs;
 }
 
-/** Selects videoless `files` rows past the 10-minute grace window and re-drives the copy — this
- * is what repairs both a failed enqueue and a file-manage upload (which never calls copyToStream
- * itself; it just leaves stream_uid null for this sweep to pick up). */
+/** Asks stream_ingest_candidates for eligible `files` rows without a stream_uid, past the
+ * 10-minute grace window, and re-drives the copy. This repairs a failed enqueue and brings
+ * back a parked video whose post went live (a file-manage link, a duplicate, a library pick). */
 async function ingestCatchUp(deps: StreamStepsDeps, nowMs: () => number): Promise<number> {
   if (!deps.copyToStream || !deps.signSourceUrl) return 0;
   const copyToStream = deps.copyToStream;
   const signSourceUrl = deps.signSourceUrl;
 
   const cutoffIso = new Date(nowMs() - TEN_MINUTES_MS).toISOString();
-  const { data, error } = await deps.db
-    .from("files")
-    .select("id, r2_key, conta_id, created_at")
-    .eq("kind", "video")
-    .is("stream_uid", null)
-    .or("stream_status.is.null,stream_status.eq.pending")
-    .lt("created_at", cutoffIso)
-    .order("created_at", { ascending: true })
-    .limit(deps.ingestBatchSize ?? INGEST_BATCH);
+  const { data, error } = await deps.db.rpc("stream_ingest_candidates", {
+    p_limit: deps.ingestBatchSize ?? INGEST_BATCH,
+    p_grace_days: deps.releaseGraceDays ?? RELEASE_GRACE_DAYS,
+    p_idle_days: deps.releaseIdleDays ?? RELEASE_IDLE_DAYS,
+  });
   if (error) throw error;
 
   const rows = ((data ?? []) as IngestRow[]).filter((row) => row.created_at < cutoffIso);
@@ -192,6 +211,31 @@ async function ingestCatchUp(deps: StreamStepsDeps, nowMs: () => number): Promis
   return ingested;
 }
 
+/** Retention release: claims videos no longer in front of a client (the RPC parks the row and
+ * nulls stream_uid in one statement), then deletes each claimed uid from Stream. A failed
+ * delete is logged and skipped; the uid is no longer referenced, so the orphan reap picks it
+ * up. A video released just as it went live is copied back by the next ingest run. */
+async function releaseSweep(deps: StreamStepsDeps): Promise<number> {
+  const { data, error } = await deps.db.rpc("stream_release_claim", {
+    p_limit: deps.releaseBatchSize ?? RELEASE_BATCH,
+    p_grace_days: deps.releaseGraceDays ?? RELEASE_GRACE_DAYS,
+    p_idle_days: deps.releaseIdleDays ?? RELEASE_IDLE_DAYS,
+  });
+  if (error) throw error;
+
+  const rows = Array.isArray(data) ? (data as Array<{ id: number | string; stream_uid: string }>) : [];
+  let released = 0;
+  for (const row of rows) {
+    try {
+      await deps.deleteStreamVideo(row.stream_uid);
+      released++;
+    } catch (e) {
+      console.error("stream-steps:release-uid", row.stream_uid, e);
+    }
+  }
+  return released;
+}
+
 /** Settles `files` rows the webhook never heard back on (missed delivery, or Stream took
  * over an hour). getStreamVideoStatus's "inprogress" collapse (network/API failure OR a
  * genuinely still-processing video) is treated identically: skip, retry next run. */
@@ -221,10 +265,15 @@ async function settlePending(deps: StreamStepsDeps, nowMs: () => number): Promis
       // failure here used to still increment `settled` and log nothing, hiding a row that's
       // actually still stuck `pending` in the DB. The row is left `pending` on a checked
       // failure too (nothing to undo), which is already correct: it's retried next run.
+      // Guarded like the webhook: a release claim that ran after this select already parked
+      // the row and nulled its uid. An unguarded write would flip it to ready/error with no
+      // uid, a state neither ingest nor release ever picks up again.
       const { error: updateErr } = await deps.db
         .from("files")
         .update({ stream_status: status })
-        .eq("id", row.id);
+        .eq("id", row.id)
+        .eq("stream_uid", row.stream_uid)
+        .eq("stream_status", "pending");
       if (updateErr) throw updateErr;
       settled++;
     } catch (e) {

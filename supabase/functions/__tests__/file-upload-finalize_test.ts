@@ -495,9 +495,12 @@ Deno.test("file-upload-finalize: video finalize with streamCopy set kicks off St
     mime_type: "video/mp4",
     r2_key: "contas/conta-1/files/vid-stream.mp4",
     thumbnail_r2_key: "contas/conta-1/files/vid-stream.thumb.jpg",
+    post_id: 7,
   };
   const insertedFile = { id: 20, r2_key: videoBody.r2_key, name: "clip.mp4", kind: "video" };
   db.queueRpc("file_insert_with_quota", { data: insertedFile, error: null });
+  db.queue("workflow_posts", "select", { data: { conta_id: "conta-1" }, error: null });
+  db.queue("post_file_links", "insert", { data: null, error: null });
   db.queue("files", "update", { data: null, error: null }); // pending
   db.queue("files", "update", { data: null, error: null }); // uid
   let streamCopyArgs: [string, { file_id: string; conta_id: string }] | null = null;
@@ -524,9 +527,12 @@ Deno.test("file-upload-finalize: video finalize with streamCopy rejecting still 
     mime_type: "video/mp4",
     r2_key: "contas/conta-1/files/vid-stream-fail.mp4",
     thumbnail_r2_key: "contas/conta-1/files/vid-stream-fail.thumb.jpg",
+    post_id: 7,
   };
   const insertedFile = { id: 21, r2_key: videoBody.r2_key, name: "clip2.mp4", kind: "video" };
   db.queueRpc("file_insert_with_quota", { data: insertedFile, error: null });
+  db.queue("workflow_posts", "select", { data: { conta_id: "conta-1" }, error: null });
+  db.queue("post_file_links", "insert", { data: null, error: null });
   db.queue("files", "update", { data: null, error: null }); // pending
   const streamCopy = async () => {
     throw new Error("stream copy failed");
@@ -554,9 +560,12 @@ Deno.test("file-upload-finalize: video finalize skips streamCopy when the pendin
     mime_type: "video/mp4",
     r2_key: "contas/conta-1/files/vid-pending-fails.mp4",
     thumbnail_r2_key: "contas/conta-1/files/vid-pending-fails.thumb.jpg",
+    post_id: 7,
   };
   const insertedFile = { id: 24, r2_key: videoBody.r2_key, name: "clip4.mp4", kind: "video" };
   db.queueRpc("file_insert_with_quota", { data: insertedFile, error: null });
+  db.queue("workflow_posts", "select", { data: { conta_id: "conta-1" }, error: null });
+  db.queue("post_file_links", "insert", { data: null, error: null });
   db.queue("files", "update", { data: null, error: { message: "connection reset" } }); // pending write FAILS
   let streamCopyCalled = false;
   const streamCopy = async () => {
@@ -580,9 +589,12 @@ Deno.test("file-upload-finalize: video finalize does not credit the uid write wh
     mime_type: "video/mp4",
     r2_key: "contas/conta-1/files/vid-uid-save-fails.mp4",
     thumbnail_r2_key: "contas/conta-1/files/vid-uid-save-fails.thumb.jpg",
+    post_id: 7,
   };
   const insertedFile = { id: 25, r2_key: videoBody.r2_key, name: "clip5.mp4", kind: "video" };
   db.queueRpc("file_insert_with_quota", { data: insertedFile, error: null });
+  db.queue("workflow_posts", "select", { data: { conta_id: "conta-1" }, error: null });
+  db.queue("post_file_links", "insert", { data: null, error: null });
   db.queue("files", "update", { data: null, error: null }); // pending write ok
   db.queue("files", "update", { data: null, error: { message: "connection reset" } }); // uid write FAILS
   const streamCopy = async () => "stream-uid-never-persisted";
@@ -596,6 +608,34 @@ Deno.test("file-upload-finalize: video finalize does not credit the uid write wh
   // Row is left with stream_status='pending' and no stream_uid recorded -- exactly the
   // repairable state the ingest catch-up sweep selects for, not an unrepairable
   // stream_uid-set/stream_status-null orphan.
+});
+
+Deno.test("file-upload-finalize: video finalize without post_id does not call streamCopy and writes no stream fields", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const videoBody = {
+    ...baseBody,
+    kind: "video" as const,
+    mime_type: "video/mp4",
+    r2_key: "contas/conta-1/files/vid-library.mp4",
+    thumbnail_r2_key: "contas/conta-1/files/vid-library.thumb.jpg",
+  };
+  const insertedFile = { id: 26, r2_key: videoBody.r2_key, name: "lib.mp4", kind: "video" };
+  db.queueRpc("file_insert_with_quota", { data: insertedFile, error: null });
+  let called = false;
+  const streamCopy = async () => {
+    called = true;
+    return "uid";
+  };
+  const handler = makeHandler(db, { streamCopy });
+  const res = await handler(authedRequest(videoBody));
+  assertEquals(res.status, 200);
+  assertEquals(called, false);
+  const streamWrites = db.calls.filter(
+    (c) => c.table === "files" && c.operation === "update" &&
+      c.payload && ("stream_status" in (c.payload as any) || "stream_uid" in (c.payload as any)),
+  );
+  assertEquals(streamWrites.length, 0);
 });
 
 Deno.test("file-upload-finalize: image finalize does not call streamCopy", async () => {
