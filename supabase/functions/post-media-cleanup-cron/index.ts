@@ -56,6 +56,13 @@ const ORPHAN_SCAN_PAGES_PER_RUN = Math.max(
 const STREAM_INGEST_BATCH = Math.max(1, parseInt(Deno.env.get("STREAM_INGEST_BATCH") || "20", 10) || 20);
 const STREAM_SETTLE_BATCH = Math.max(1, parseInt(Deno.env.get("STREAM_SETTLE_BATCH") || "50", 10) || 50);
 
+// Retention dials: a video stays in Stream only while a post it belongs to is in front of the
+// client. Release batch = Stream deletes per run; grace/idle days also feed the ingest
+// eligibility RPC (one shared predicate). Plain edge secrets, no redeploy needed.
+const STREAM_RELEASE_BATCH = Math.max(1, parseInt(Deno.env.get("STREAM_RELEASE_BATCH") || "50", 10) || 50);
+const STREAM_RELEASE_GRACE_DAYS = Math.max(0, parseInt(Deno.env.get("STREAM_RELEASE_GRACE_DAYS") || "7", 10) || 7);
+const STREAM_RELEASE_IDLE_DAYS = Math.max(1, parseInt(Deno.env.get("STREAM_RELEASE_IDLE_DAYS") || "60", 10) || 60);
+
 // Hours between orphanReap runs (see stream-steps.ts:shouldRunReap). Reap lists the WHOLE
 // Stream account every time it runs, so this is the main lever on the account's Stream API
 // request volume as the video library grows -- raise it if 429s persist even after the
@@ -186,6 +193,7 @@ Deno.serve(createPostMediaCleanupCronHandler({
     let streamIngested = 0;
     let streamSettled = 0;
     let streamReaped = 0;
+    let streamReleased = 0;
     let streamErrors = 0;
     if (cleanupEnabled) {
       const sweep = await runStreamSweeps({
@@ -194,6 +202,9 @@ Deno.serve(createPostMediaCleanupCronHandler({
         listStreamVideos: () => listStreamVideos(fetch, undefined, streamRetryBudget),
         ingestBatchSize: STREAM_INGEST_BATCH,
         settleBatchSize: STREAM_SETTLE_BATCH,
+        releaseBatchSize: STREAM_RELEASE_BATCH,
+        releaseGraceDays: STREAM_RELEASE_GRACE_DAYS,
+        releaseIdleDays: STREAM_RELEASE_IDLE_DAYS,
         reapIntervalMs: STREAM_REAP_INTERVAL_HOURS * 60 * 60 * 1000,
         // Reuses cron_scan_state (migration 20260913000001): its schema is already a generic
         // '<key> -> last write' checkpoint (continuation_token/cycles_completed exist for the R2
@@ -229,6 +240,7 @@ Deno.serve(createPostMediaCleanupCronHandler({
       streamIngested = sweep.ingested;
       streamSettled = sweep.settled;
       streamReaped = sweep.reaped;
+      streamReleased = sweep.released;
       streamErrors = sweep.errors;
     }
 
@@ -359,7 +371,7 @@ Deno.serve(createPostMediaCleanupCronHandler({
       orphanScanAborted: scan.aborted, orphanScanPages: scan.pages,
       orphanScanCyclesCompleted: scan.cyclesCompleted, trashPurged, canaryChecked,
       canaryMissing: canaryMissing.length,
-      streamIngested, streamSettled, streamReaped, streamErrors,
+      streamIngested, streamSettled, streamReaped, streamReleased, streamErrors,
       equipeChatTmpTrashed: equipeChat.tmpTrashed,
       equipeChatStagedReleased: equipeChat.stagedReleased,
       equipeChatFailed: equipeChat.failed,

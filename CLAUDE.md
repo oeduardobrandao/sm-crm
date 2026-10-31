@@ -188,6 +188,17 @@ Monorepo with npm workspaces:
   `stream-steps:ingest`/`stream-steps:settle`/`stream-steps:reap`); `_shared/stream.ts` already
   retries a lone 429 with backoff, so a 429 reaching these logs means the retry budget was
   exhausted under sustained throttling, not a one-off blip
+- `STREAM_RELEASE_GRACE_DAYS` / `STREAM_RELEASE_IDLE_DAYS` / `STREAM_RELEASE_BATCH` -- retention
+  dials for the same cron (defaults 7 / 60 / 50). A video stays in Cloudflare Stream only while a
+  post it belongs to is "live" (`stream_post_is_live`, migration 20261113000001): `agendado` or
+  `falha_publicacao` is always live; `postado` is live for GRACE days after `published_at`; any
+  other status is live only if it changed status in the last IDLE days. When no post is live the
+  next run deletes the Stream copy and sets `stream_status = 'parked'` (out of Stream by policy,
+  not an error). A `parked` video is re-ingested automatically once a post makes it live again,
+  and playback falls back to R2 meanwhile. GRACE/IDLE also drive the ingest eligibility RPC (one
+  shared predicate), so change them knowing both sides move. BATCH caps Stream deletes per run:
+  50/run on the hourly prod job caps a backlog at about 1,200 deletes/day. Plain edge secrets, no
+  deploy needed
 - `STREAM_REAP_INTERVAL_HOURS` -- hours between the same cron's Stream orphan-reap runs (default
   6). Reap lists the WHOLE Cloudflare Stream account every time it runs -- as the video library
   grows this is the main driver of the account's Stream API request volume, so it's the lever to
