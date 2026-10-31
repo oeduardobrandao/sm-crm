@@ -19,6 +19,8 @@ function requireEnv(name: string): string {
 const SUPABASE_URL = requireEnv("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
 const CRON_SECRET = requireEnv("CRON_SECRET");
+// getFreshGoogleToken and the revocation retry decrypt with it; fail at boot, not per location.
+requireEnv("TOKEN_ENCRYPTION_KEY");
 
 const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
