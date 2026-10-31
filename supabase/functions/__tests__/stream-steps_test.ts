@@ -42,7 +42,7 @@ function baseDeps(db: Db, overrides: Partial<StreamStepsDeps> = {}): StreamSteps
 
 Deno.test("stream-steps: ingest catch-up copies a 15-minute-old video and saves the uid, but skips a 5-minute-old one in the same batch", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("files", "select", {
+  db.queueRpc("stream_ingest_candidates", {
     data: [
       { id: 1, r2_key: "contas/a/videos/old.mp4", conta_id: "conta-1", created_at: minutesAgoIso(15) },
       { id: 2, r2_key: "contas/a/videos/young.mp4", conta_id: "conta-1", created_at: minutesAgoIso(5) },
@@ -108,7 +108,7 @@ Deno.test("stream-steps: ingest and settle are both skipped when copyToStream is
 
 Deno.test("stream-steps: settle flips a ready video to stream_status=ready and leaves an inprogress one untouched", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("files", "select", { data: [] }); // ingest: none due
+  db.queueRpc("stream_ingest_candidates", { data: [] }); // ingest: none due
   db.queue("files", "select", {
     data: [
       { id: 10, stream_uid: "uid-ready", created_at: hoursAgoIso(2) },
@@ -142,7 +142,7 @@ Deno.test("stream-steps: settle flips a ready video to stream_status=ready and l
 
 Deno.test("stream-steps: settle maps a terminal error state to stream_status=error", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("files", "select", { data: [] }); // ingest: none due
+  db.queueRpc("stream_ingest_candidates", { data: [] }); // ingest: none due
   db.queue("files", "select", { data: [{ id: 20, stream_uid: "uid-error", created_at: hoursAgoIso(2) }] });
   db.queue("files", "update", { data: null, error: null });
   db.queue("files", "select", { data: [] }); // reap known set
@@ -169,7 +169,7 @@ Deno.test("stream-steps: settle does not credit a row when the status-settling w
   // actually still stuck `pending` in the DB (it's retried next run either way, since
   // nothing here undoes anything -- the bug was purely the false credit + silent log).
   const db = createSupabaseQueryMock();
-  db.queue("files", "select", { data: [] }); // ingest: none due
+  db.queueRpc("stream_ingest_candidates", { data: [] }); // ingest: none due
   db.queue("files", "select", {
     data: [
       { id: 30, stream_uid: "uid-write-fails", created_at: hoursAgoIso(2) },
@@ -287,7 +287,7 @@ Deno.test("stream-steps: reap paginates the files known-set query past PostgREST
 
 Deno.test("stream-steps: a failing ingest select does not block settle or reap, and counts one error", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("files", "select", { data: null, error: { message: "connection reset" } }); // ingest fails
+  db.queueRpc("stream_ingest_candidates", { data: null, error: { message: "connection reset" } }); // ingest fails
   db.queue("files", "select", { data: [] }); // settle: none due
   db.queue("files", "select", { data: [] }); // reap known set
   db.queue("file_deletions", "select", { data: [] }); // reap queued set
@@ -307,7 +307,7 @@ Deno.test("stream-steps: a failing ingest select does not block settle or reap, 
 
 Deno.test("stream-steps: a single bad row in ingest (copyToStream throws) does not stop the rest of the batch", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("files", "select", {
+  db.queueRpc("stream_ingest_candidates", {
     data: [
       { id: 1, r2_key: "contas/a/bad.mp4", conta_id: "conta-1", created_at: hoursAgoIso(1) },
       { id: 2, r2_key: "contas/a/good.mp4", conta_id: "conta-1", created_at: hoursAgoIso(1) },
@@ -339,7 +339,7 @@ Deno.test("stream-steps: ingest row skips copyToStream when the pending-status w
   // sweep (webhook/settle require stream_status='pending', this same catch-up sweep
   // requires stream_uid is null) can ever repair again.
   const db = createSupabaseQueryMock();
-  db.queue("files", "select", {
+  db.queueRpc("stream_ingest_candidates", {
     data: [
       { id: 1, r2_key: "contas/a/pending-fails.mp4", conta_id: "conta-1", created_at: hoursAgoIso(1) },
       { id: 2, r2_key: "contas/a/good.mp4", conta_id: "conta-1", created_at: hoursAgoIso(1) },
@@ -368,7 +368,7 @@ Deno.test("stream-steps: ingest row skips copyToStream when the pending-status w
 
 Deno.test("stream-steps: ingest row is not counted as ingested when the uid-save write resolves with an error", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("files", "select", {
+  db.queueRpc("stream_ingest_candidates", {
     data: [
       { id: 1, r2_key: "contas/a/uid-save-fails.mp4", conta_id: "conta-1", created_at: hoursAgoIso(1) },
     ],
@@ -390,7 +390,7 @@ Deno.test("stream-steps: ingest row is not counted as ingested when the uid-save
 
 Deno.test("stream-steps: ingest marks a row error on a 4xx copy failure (dead source) but leaves it pending on a 5xx, and the loop continues", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("files", "select", {
+  db.queueRpc("stream_ingest_candidates", {
     data: [
       { id: 40, r2_key: "contas/a/videos/dead.mp4", conta_id: "conta-1", created_at: minutesAgoIso(30) },
       { id: 41, r2_key: "contas/a/videos/flaky.mp4", conta_id: "conta-1", created_at: minutesAgoIso(20) },
@@ -437,7 +437,7 @@ Deno.test("stream-steps: ingest marks a row error on a 4xx copy failure (dead so
 
 Deno.test("stream-steps: ingest leaves a row pending (never error) on a 429 copy failure — it's a rate limit, not a dead source", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("files", "select", {
+  db.queueRpc("stream_ingest_candidates", {
     data: [
       { id: 50, r2_key: "contas/a/videos/throttled.mp4", conta_id: "conta-1", created_at: minutesAgoIso(30) },
     ],
@@ -544,7 +544,7 @@ Deno.test("stream-steps: reap always runs when the gate is unconfigured (no reap
 
 Deno.test("stream-steps: ingest honors a custom ingestBatchSize instead of the INGEST_BATCH default", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("files", "select", { data: [] });
+  db.queueRpc("stream_ingest_candidates", { data: [] });
   db.queue("files", "select", { data: [] }); // reap: files known set
   db.queue("file_deletions", "select", { data: [] }); // reap: queued set
 
@@ -555,9 +555,8 @@ Deno.test("stream-steps: ingest honors a custom ingestBatchSize instead of the I
     ingestBatchSize: 3,
   }));
 
-  const ingestSelect = callsFor(db, "files", "select")[0];
-  const limitMod = ingestSelect.modifiers.find((m) => m.method === "limit");
-  assertEquals(limitMod?.args, [3]);
+  const ingestRpc = callsFor(db, "rpc:stream_ingest_candidates", "rpc")[0];
+  assertEquals((ingestRpc.payload as { p_limit: number }).p_limit, 3);
 });
 
 Deno.test("stream-steps: settle honors a custom settleBatchSize instead of the SETTLE_BATCH default", async () => {
@@ -620,4 +619,95 @@ Deno.test("stream-steps: a failed kb_videos read aborts the reap before any dele
   assertEquals(deleted, []);
   assertEquals(result.reaped, 0);
   assertEquals(result.errors, 1);
+});
+
+// ── release ──────────────────────────────────────────────────────────────────
+
+Deno.test("stream-steps: release deletes every claimed uid and counts them", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("stream_release_claim", {
+    data: [{ id: 1, stream_uid: "u1" }, { id: 2, stream_uid: "u2" }],
+    error: null,
+  });
+  db.queue("files", "select", { data: [] }); // reap known set
+  const deleted: string[] = [];
+  const result = await runStreamSweeps(baseDeps(db, {
+    listStreamVideos: async () => [],
+    deleteStreamVideo: async (uid) => {
+      deleted.push(uid);
+    },
+  }));
+  assertEquals(result.released, 2);
+  assertEquals(result.errors, 0);
+  assertEquals(deleted, ["u1", "u2"]);
+  assertEquals(callsFor(db, "rpc:stream_release_claim", "rpc")[0].payload, {
+    p_limit: 50,
+    p_grace_days: 7,
+    p_idle_days: 60,
+  });
+});
+
+Deno.test("stream-steps: release honors custom batch/grace/idle", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("stream_release_claim", { data: [], error: null });
+  await runStreamSweeps(baseDeps(db, {
+    listStreamVideos: async () => [],
+    releaseBatchSize: 5,
+    releaseGraceDays: 3,
+    releaseIdleDays: 30,
+  }));
+  assertEquals(callsFor(db, "rpc:stream_release_claim", "rpc")[0].payload, {
+    p_limit: 5,
+    p_grace_days: 3,
+    p_idle_days: 30,
+  });
+});
+
+Deno.test("stream-steps: a failed Stream delete after the claim is not counted and the loop continues", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("stream_release_claim", {
+    data: [{ id: 1, stream_uid: "u1" }, { id: 2, stream_uid: "u2" }],
+    error: null,
+  });
+  const attempted: string[] = [];
+  const result = await runStreamSweeps(baseDeps(db, {
+    listStreamVideos: async () => [],
+    deleteStreamVideo: async (uid) => {
+      attempted.push(uid);
+      if (uid === "u1") throw new Error("stream delete failed: 500");
+    },
+  }));
+  assertEquals(result.released, 1);
+  assertEquals(attempted, ["u1", "u2"]);
+  assertEquals(result.errors, 0);
+});
+
+Deno.test("stream-steps: a failing release claim counts one error and the reap still runs", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("stream_release_claim", { data: null, error: { message: "boom" } });
+  let listed = 0;
+  const result = await runStreamSweeps(baseDeps(db, {
+    listStreamVideos: async () => {
+      listed++;
+      return [];
+    },
+  }));
+  assertEquals(result.errors, 1);
+  assertEquals(result.released, 0);
+  assertEquals(listed, 1);
+});
+
+Deno.test("stream-steps: release runs in kill-switch mode (no copyToStream)", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("stream_release_claim", { data: [{ id: 1, stream_uid: "u1" }], error: null });
+  const deleted: string[] = [];
+  const result = await runStreamSweeps(baseDeps(db, {
+    listStreamVideos: async () => [],
+    deleteStreamVideo: async (uid) => {
+      deleted.push(uid);
+    },
+  }));
+  assertEquals(result.released, 1);
+  assertEquals(deleted, ["u1"]);
+  assertEquals(callsFor(db, "rpc:stream_ingest_candidates", "rpc").length, 0);
 });
