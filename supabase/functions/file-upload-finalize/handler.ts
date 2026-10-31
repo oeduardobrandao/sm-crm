@@ -190,7 +190,10 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
       if (linkErr) return internalServerError(json, "file-upload-finalize:create-link", linkErr);
     }
 
-    if (body.kind === "video" && deps.streamCopy) {
+    // Only uploads into a post copy to Stream right away. Library videos stay
+    // `parked` (set by the files BEFORE INSERT trigger) and enter Stream through
+    // post-media-cleanup-cron once they are linked to a live post.
+    if (body.kind === "video" && body.post_id && deps.streamCopy) {
       const fileId = (inserted as any).id;
       try {
         // Durable intent BEFORE the external call: a pending row with a null uid
