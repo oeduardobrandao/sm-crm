@@ -106,8 +106,8 @@
     "nextSlideAriaLabel": "Próximo slide",
     "captionAriaLabel": "Legenda do post",
     "postApprovedAndScheduled": "Post aprovado e agendado para publicação!",
-    "autoPublishScheduled": "Ao aprovar, este post será publicado automaticamente no Instagram em {{date}}.",
-    "autoPublishUnscheduled": "Ao aprovar, este post será agendado para publicação automática no Instagram."
+    "autoPublishScheduled": "Ao aprovar, este post será publicado automaticamente no {{platforms}} em {{date}}.",
+    "autoPublishUnscheduled": "Ao aprovar, este post será agendado para publicação automática no {{platforms}}."
   },
   "storyCard": {
     "prevAriaLabel": "Anterior",
@@ -330,5 +330,12 @@
       "tiktok": "o TikTok",
       "geral": "o destino Geral"
     }
+  },
+  "geral": {
+    "download": "Baixar arquivo",
+    "downloadAll": "Baixar conteúdo ({{count}} arquivos)",
+    "copyCaption": "Copiar legenda",
+    "copied": "Copiada!",
+    "downloadFailed": "Não foi possível baixar agora. Tente de novo."
   }
 }

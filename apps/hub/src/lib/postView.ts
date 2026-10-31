@@ -1,5 +1,10 @@
 import type { TFunction } from 'i18next';
-import { CONTENT_FORMAT_LABELS, PLATFORM_IDS, type PlatformId } from '@mesaas/platforms';
+import {
+  CONTENT_FORMAT_LABELS,
+  PLATFORM_DEFS,
+  PLATFORM_IDS,
+  type PlatformId,
+} from '@mesaas/platforms';
 import type {
   EmProducaoReason,
   HubPost,
@@ -219,23 +224,31 @@ export function hasDistinctPostText(post: HubPost): boolean {
 }
 
 /**
+ * The post's destinations in PLATFORM_IDS order. Old payloads without `targets` derive them
+ * from the legacy `platform` column.
+ */
+export function postDestinations(post: Pick<HubPost, 'targets' | 'platform'>): PlatformId[] {
+  if (post.targets) return PLATFORM_IDS.filter((id) => post.targets!.includes(id));
+  const legacy: Record<NonNullable<HubPost['platform']>, PlatformId[]> = {
+    instagram: ['instagram'],
+    tiktok: ['tiktok'],
+    both: ['instagram', 'tiktok'],
+    other: ['geral'],
+  };
+  return legacy[post.platform ?? 'instagram'];
+}
+
+/** The destinations that publish on their own once the post is scheduled (not Geral). */
+export function autoPublishDestinations(post: Pick<HubPost, 'targets' | 'platform'>): PlatformId[] {
+  return postDestinations(post).filter((id) => PLATFORM_DEFS[id].autoPublish);
+}
+
+/**
  * The destinations whose captions the Hub shows, or null when the post should keep today's
  * single caption block: no destinations at all, or a payload too old to carry the Geral caption.
- * Old payloads without `targets` derive them from the legacy `platform` column.
  */
 export function resolvePostTargets(post: HubPost): PlatformId[] | null {
-  let targets: PlatformId[];
-  if (post.targets) {
-    targets = PLATFORM_IDS.filter((id) => post.targets!.includes(id));
-  } else {
-    const legacy: Record<NonNullable<HubPost['platform']>, PlatformId[]> = {
-      instagram: ['instagram'],
-      tiktok: ['tiktok'],
-      both: ['instagram', 'tiktok'],
-      other: ['geral'],
-    };
-    targets = legacy[post.platform ?? 'instagram'];
-  }
+  const targets = postDestinations(post);
   if (targets.length === 0) return null;
   if (targets.includes('geral') && post.geral_caption === undefined) return null;
   return targets;

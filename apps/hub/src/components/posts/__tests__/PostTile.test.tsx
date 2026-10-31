@@ -279,5 +279,19 @@ describe('PostTile', () => {
     it('is false for stories even when media is present', () => {
       expect(isFeedSelectable(post({ tipo: 'stories', media: [media()] }))).toBe(false);
     });
+
+    it('is false when the post does not go to Instagram', () => {
+      expect(isFeedSelectable(post({ targets: ['tiktok'], media: [media()] }))).toBe(false);
+      expect(isFeedSelectable(post({ targets: ['geral'], media: [media()] }))).toBe(false);
+      expect(isFeedSelectable(post({ platform: 'tiktok', media: [media()] }))).toBe(false);
+    });
+
+    it('is true for an Instagram destination, alone or with others', () => {
+      expect(isFeedSelectable(post({ targets: ['instagram', 'tiktok'], media: [media()] }))).toBe(
+        true,
+      );
+      // Stale payload without targets or platform: Instagram, like the DB default.
+      expect(isFeedSelectable(post({ media: [media()] }))).toBe(true);
+    });
   });
 });
