@@ -60,7 +60,9 @@ const STREAM_SETTLE_BATCH = Math.max(1, parseInt(Deno.env.get("STREAM_SETTLE_BAT
 // client. Release batch = Stream deletes per run; grace/idle days also feed the ingest
 // eligibility RPC (one shared predicate). Plain edge secrets, no redeploy needed.
 const STREAM_RELEASE_BATCH = Math.max(1, parseInt(Deno.env.get("STREAM_RELEASE_BATCH") || "50", 10) || 50);
-const STREAM_RELEASE_GRACE_DAYS = Math.max(0, parseInt(Deno.env.get("STREAM_RELEASE_GRACE_DAYS") || "7", 10) || 7);
+// Grace 0 is meaningful (release right at publish), so parse explicitly instead of `|| default`.
+const STREAM_RELEASE_GRACE_RAW = parseInt(Deno.env.get("STREAM_RELEASE_GRACE_DAYS") ?? "", 10);
+const STREAM_RELEASE_GRACE_DAYS = Number.isFinite(STREAM_RELEASE_GRACE_RAW) ? Math.max(0, STREAM_RELEASE_GRACE_RAW) : 7;
 const STREAM_RELEASE_IDLE_DAYS = Math.max(1, parseInt(Deno.env.get("STREAM_RELEASE_IDLE_DAYS") || "60", 10) || 60);
 
 // Hours between orphanReap runs (see stream-steps.ts:shouldRunReap). Reap lists the WHOLE
