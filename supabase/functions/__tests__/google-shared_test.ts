@@ -213,8 +213,89 @@ Deno.test("google-shared: googleFetch maps 401 to TOKEN_INVALID", async () => {
 });
 
 Deno.test("google-shared: googleFetch maps plain 429 to retryable RATE_LIMITED", async () => {
-  const e = await mappedCode(429, { error: { code: 429, message: "Too many", status: "RESOURCE_EXHAUSTED" } });
+  const e = await mappedCode(429, { error: { code: 429, message: "Too many" } });
   assertEquals([e.code, e.status, e.retryable], ["RATE_LIMITED", 429, true]);
+});
+
+Deno.test("google-shared: googleFetch maps 403 quotaExceeded / dailyLimitExceeded to non-retryable QUOTA_EXCEEDED", async () => {
+  for (const reason of ["quotaExceeded", "dailyLimitExceeded"]) {
+    const e = await mappedCode(403, {
+      error: { code: 403, message: "The request cannot be completed", errors: [{ reason, message: "quota" }] },
+    });
+    assertEquals([e.code, e.status, e.retryable], ["QUOTA_EXCEEDED", 403, false], reason);
+  }
+});
+
+Deno.test("google-shared: googleFetch maps the google.rpc quota shapes (403 RESOURCE_EXHAUSTED, details QUOTA_EXCEEDED) to QUOTA_EXCEEDED", async () => {
+  const byStatus403 = await mappedCode(403, {
+    error: { code: 403, message: "Quota exceeded", status: "RESOURCE_EXHAUSTED" },
+  });
+  assertEquals(byStatus403.code, "QUOTA_EXCEEDED");
+  const byDetails = await mappedCode(429, {
+    error: {
+      code: 429,
+      message: "Quota exceeded",
+      details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "QUOTA_EXCEEDED" }],
+    },
+  });
+  assertEquals(byDetails.code, "QUOTA_EXCEEDED");
+});
+
+Deno.test("google-shared: a bare 429 RESOURCE_EXHAUSTED (no reason) is a per-minute throttle: retryable RATE_LIMITED", async () => {
+  const e = await mappedCode(429, {
+    error: { code: 429, message: "Quota exceeded", status: "RESOURCE_EXHAUSTED" },
+  });
+  assertEquals([e.code, e.status, e.retryable], ["RATE_LIMITED", 429, true]);
+});
+
+Deno.test("google-shared: 429/RESOURCE_EXHAUSTED with a rate-limit reason maps to RATE_LIMITED", async () => {
+  for (const reason of ["RATE_LIMIT_EXCEEDED", "rateLimitExceeded", "userRateLimitExceeded"]) {
+    const byDetails = await mappedCode(429, {
+      error: {
+        code: 429,
+        message: "Quota exceeded for quota metric 'Requests' and limit 'Requests per minute'",
+        status: "RESOURCE_EXHAUSTED",
+        details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason, metadata: { quota_limit_value: "300" } }],
+      },
+    });
+    assertEquals([byDetails.code, byDetails.retryable], ["RATE_LIMITED", true], `details ${reason}`);
+    const byErrors = await mappedCode(429, {
+      error: { code: 429, message: "Rate limit", status: "RESOURCE_EXHAUSTED", errors: [{ reason, message: "rate" }] },
+    });
+    assertEquals(byErrors.code, "RATE_LIMITED", `errors ${reason}`);
+    // A 403 carrying a rate-limit reason (YouTube Data API's userRateLimitExceeded) is a throttle too.
+    const by403 = await mappedCode(403, {
+      error: { code: 403, message: "Rate limit", errors: [{ reason, message: "rate" }] },
+    });
+    assertEquals([by403.code, by403.retryable], ["RATE_LIMITED", true], `403 ${reason}`);
+  }
+});
+
+Deno.test("google-shared: quota reasons on a 429 RESOURCE_EXHAUSTED stay QUOTA_EXCEEDED", async () => {
+  for (const reason of ["quotaExceeded", "dailyLimitExceeded", "QUOTA_EXCEEDED"]) {
+    const byDetails = await mappedCode(429, {
+      error: {
+        code: 429,
+        message: "Quota exceeded",
+        status: "RESOURCE_EXHAUSTED",
+        details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason }],
+      },
+    });
+    assertEquals([byDetails.code, byDetails.retryable], ["QUOTA_EXCEEDED", false], `details ${reason}`);
+    const byErrors = await mappedCode(429, {
+      error: { code: 429, message: "Quota exceeded", status: "RESOURCE_EXHAUSTED", errors: [{ reason, message: "q" }] },
+    });
+    assertEquals(byErrors.code, "QUOTA_EXCEEDED", `errors ${reason}`);
+  }
+});
+
+Deno.test("google-shared: a quota-zero 403/429 stays NOT_APPROVED even when it also reads as exhausted", async () => {
+  const body = structuredClone(QUOTA_ZERO_DETAILS);
+  body.error.code = 403;
+  const e = await mappedCode(403, body);
+  assertEquals(e.code, "NOT_APPROVED");
+  const e429 = await mappedCode(429, QUOTA_ZERO_DETAILS); // status RESOURCE_EXHAUSTED + quota 0
+  assertEquals(e429.code, "NOT_APPROVED");
 });
 
 Deno.test("google-shared: googleFetch maps 429 with quota_limit_value 0 to NOT_APPROVED", async () => {

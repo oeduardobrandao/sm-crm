@@ -6,7 +6,7 @@ import type { AnalyticsRange, KpiEntry } from '../../../services/tiktokAnalytics
 import { spDayStartMs } from '../../analytics-tiktok/videoRanking';
 
 /** Where a plan-locked section sends the user. */
-export const BILLING_PATH = '/configuracao/cobranca';
+export { BILLING_PATH } from '../AnalyticsStateCards';
 
 /** Same floor the Instagram heatmap uses before it ranks time slots. */
 export const MIN_BEST_TIME_VIDEOS = 5;
