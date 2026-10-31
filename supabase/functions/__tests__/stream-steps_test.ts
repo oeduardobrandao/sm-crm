@@ -137,7 +137,13 @@ Deno.test("stream-steps: settle flips a ready video to stream_status=ready and l
   const updates = callsFor(db, "files", "update");
   assertEquals(updates.length, 1, "the inprogress row must not be updated");
   assertEquals(updates[0].payload, { stream_status: "ready" });
-  assertEquals(updates[0].modifiers, [{ method: "eq", args: ["id", 10] }]);
+  // Same guard as the webhook: a row a release claim parked after the select (uid nulled,
+  // status 'parked') must not be flipped to ready.
+  assertEquals(updates[0].modifiers, [
+    { method: "eq", args: ["id", 10] },
+    { method: "eq", args: ["stream_uid", "uid-ready"] },
+    { method: "eq", args: ["stream_status", "pending"] },
+  ]);
 });
 
 Deno.test("stream-steps: settle maps a terminal error state to stream_status=error", async () => {
@@ -161,6 +167,11 @@ Deno.test("stream-steps: settle maps a terminal error state to stream_status=err
   assertEquals(result.settled, 1);
   const updates = callsFor(db, "files", "update");
   assertEquals(updates[0].payload, { stream_status: "error" });
+  assertEquals(updates[0].modifiers, [
+    { method: "eq", args: ["id", 20] },
+    { method: "eq", args: ["stream_uid", "uid-error"] },
+    { method: "eq", args: ["stream_status", "pending"] },
+  ]);
 });
 
 Deno.test("stream-steps: settle does not credit a row when the status-settling write resolves with an error, and the loop continues", async () => {
@@ -557,6 +568,46 @@ Deno.test("stream-steps: ingest honors a custom ingestBatchSize instead of the I
 
   const ingestRpc = callsFor(db, "rpc:stream_ingest_candidates", "rpc")[0];
   assertEquals((ingestRpc.payload as { p_limit: number }).p_limit, 3);
+});
+
+Deno.test("stream-steps: ingest sends the default retention window (7 grace / 60 idle days) to the candidates RPC", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("stream_ingest_candidates", { data: [] });
+  db.queue("files", "select", { data: [] }); // reap: files known set
+  db.queue("file_deletions", "select", { data: [] }); // reap: queued set
+
+  await runStreamSweeps(baseDeps(db, {
+    copyToStream: unreachable("copyToStream") as unknown as NonNullable<StreamStepsDeps["copyToStream"]>,
+    signSourceUrl: unreachable("signSourceUrl") as unknown as NonNullable<StreamStepsDeps["signSourceUrl"]>,
+    listStreamVideos: async () => [],
+  }));
+
+  assertEquals(callsFor(db, "rpc:stream_ingest_candidates", "rpc")[0].payload, {
+    p_limit: 20,
+    p_grace_days: 7,
+    p_idle_days: 60,
+  });
+});
+
+Deno.test("stream-steps: ingest sends custom releaseGraceDays/releaseIdleDays to the candidates RPC (same window as release)", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("stream_ingest_candidates", { data: [] });
+  db.queue("files", "select", { data: [] }); // reap: files known set
+  db.queue("file_deletions", "select", { data: [] }); // reap: queued set
+
+  await runStreamSweeps(baseDeps(db, {
+    copyToStream: unreachable("copyToStream") as unknown as NonNullable<StreamStepsDeps["copyToStream"]>,
+    signSourceUrl: unreachable("signSourceUrl") as unknown as NonNullable<StreamStepsDeps["signSourceUrl"]>,
+    listStreamVideos: async () => [],
+    releaseGraceDays: 0,
+    releaseIdleDays: 15,
+  }));
+
+  assertEquals(callsFor(db, "rpc:stream_ingest_candidates", "rpc")[0].payload, {
+    p_limit: 20,
+    p_grace_days: 0,
+    p_idle_days: 15,
+  });
 });
 
 Deno.test("stream-steps: settle honors a custom settleBatchSize instead of the SETTLE_BATCH default", async () => {

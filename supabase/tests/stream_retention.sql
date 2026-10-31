@@ -175,6 +175,32 @@ begin
   insert into post_file_links (conta_id, post_id, file_id) values (ws, agendado_post, v_id);
   assert not exists (select 1 from stream_ingest_candidates(1000, 7, 60) c where c.id = v_id), 'skipped video is never an ingest candidate';
 
+  -- Fixtures para a equivalência: os liberados e dois elegíveis (via post_status_events) viram
+  -- 'parked' sem uid, fora da carência de 10 minutos.
+  update files set stream_uid = null, stream_status = 'parked'
+    where id in (f_shared, f_revived);
+  update files set created_at = now() - interval '1 hour'
+    where id in (f_shared, f_revived, f_old, f_foreign, f_library, f_corrupt);
+  assert exists (select 1 from stream_ingest_candidates(1000, 7, 60) c where c.id = f_shared), 'parked file of fresh enviado_cliente is a candidate';
+  assert exists (select 1 from stream_ingest_candidates(1000, 7, 60) c where c.id = f_revived), 'parked file of revived rascunho is a candidate';
+  assert not exists (select 1 from stream_ingest_candidates(1000, 7, 60) c where c.id in (f_old, f_corrupt)), 'parked files of old/corrupt postado are not candidates';
+
+  -- Equivalência: entre os vídeos com status de ingest e fora da carência de 10 minutos, o
+  -- conjunto do ingest (que parte dos posts vivos) é exatamente o de stream_file_is_eligible.
+  assert not exists (
+    (select f.id from files f
+      where f.conta_id in (ws, other_ws) and f.kind = 'video' and f.stream_uid is null
+        and (f.stream_status is null or f.stream_status in ('pending', 'parked'))
+        and f.created_at < now() - interval '10 minutes'
+        and stream_file_is_eligible(f.id, 7, 60)
+     except
+     select c.id from stream_ingest_candidates(1000, 7, 60) c)
+    union all
+    (select c.id from stream_ingest_candidates(1000, 7, 60) c
+     except
+     select f.id from files f where stream_file_is_eligible(f.id, 7, 60))
+  ), 'ingest candidates match stream_file_is_eligible';
+
   -- ---------- Grants ----------
   assert not has_function_privilege('authenticated', 'stream_release_claim(int,int,int)', 'execute'), 'authenticated cannot claim';
   assert not has_function_privilege('anon', 'stream_release_claim(int,int,int)', 'execute'), 'anon cannot claim';

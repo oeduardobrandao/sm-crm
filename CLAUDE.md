@@ -199,7 +199,10 @@ Monorepo with npm workspaces:
   shared predicate), so change them knowing both sides move. BATCH caps Stream deletes per run:
   50/run on the hourly prod job caps a backlog at about 1,200 deletes/day. Plain edge secrets, no
   deploy needed. The release step runs whenever `STREAM_ACCOUNT_ID` + `STREAM_API_TOKEN` are set,
-  so also in the cleanup-only kill-switch mode
+  so also in the cleanup-only kill-switch mode. Rolling the cron back to a pre-retention version
+  is safe but leaves the migration's insert trigger in place, and the old cron never ingests
+  `parked`: post videos linked by any path other than `file-upload-finalize` (file-manage
+  `/links`, duplicating a post, MCP, picking from the library) stay on R2 until the new cron is back
 - `STREAM_REAP_INTERVAL_HOURS` -- hours between the same cron's Stream orphan-reap runs (default
   6). Reap lists the WHOLE Cloudflare Stream account every time it runs -- as the video library
   grows this is the main driver of the account's Stream API request volume, so it's the lever to
