@@ -7,9 +7,18 @@
     "aprovar": "Approve",
     "suggestionPendingReviewFull": "Suggestion sent for the team to review",
     "suggestionShowing": "Below is the version you suggested.",
-    "suggestionShowingText": "Below is the version you suggested. You changed the text.",
-    "suggestionShowingCaption": "Below is the version you suggested. You changed the caption.",
-    "suggestionShowingBoth": "Below is the version you suggested. You changed the text and the caption.",
+    "suggestionShowingFields": "Below is the version you suggested, with changes to {{fields}}.",
+    "suggestionFieldPhrase": {
+      "texto": "the text",
+      "legenda": "the caption",
+      "legendaInstagram": "the Instagram caption",
+      "legendaTiktok": "the TikTok caption",
+      "legendaGeral": "the Geral caption"
+    },
+    "saveErrorTargetGone": "This destination was removed from the post.",
+    "saveErrorRetry": "Could not save right now. Try again.",
+    "saveErrorCaptionTooLong": "The TikTok caption is over the {{max}} character limit.",
+    "saveErrorCaptionTooLongNoMax": "The TikTok caption is over the character limit.",
     "suggestionShowingOriginal": "You are viewing the original version, without your changes.",
     "suggestionCompareLabel": "Compare versions",
     "suggestionViewMine": "Your suggestion",
@@ -97,8 +106,8 @@
     "nextSlideAriaLabel": "Next slide",
     "captionAriaLabel": "Post caption",
     "postApprovedAndScheduled": "Post approved and scheduled for publication!",
-    "autoPublishScheduled": "Once approved, this post will be published automatically on Instagram at {{date}}.",
-    "autoPublishUnscheduled": "Once approved, this post will be scheduled for automatic publication on Instagram."
+    "autoPublishScheduled": "Once approved, this post will be published automatically on {{platforms}} at {{date}}.",
+    "autoPublishUnscheduled": "Once approved, this post will be scheduled for automatic publication on {{platforms}}."
   },
   "storyCard": {
     "prevAriaLabel": "Previous",
@@ -106,7 +115,8 @@
   },
   "textCard": {
     "mediaRemoved": "Media removed to free up space",
-    "instagramCaptionLabel": "Instagram caption"
+    "instagramCaptionLabel": "Instagram caption",
+    "captionLabel": "Caption"
   },
   "collab": {
     "partnership": "In partnership with {{names}}",
@@ -301,5 +311,31 @@
     "team": "Team",
     "justNow": "just now",
     "marker": "Comment at {{time}}"
+  },
+  "captions": {
+    "empty": "No caption",
+    "geralNote": "This caption is not published automatically. The team uses it to post manually.",
+    "sameFor": "Same caption for {{names}}",
+    "tablistLabel": "Caption for each platform",
+    "changedTab": "changed",
+    "fieldLabel": {
+      "instagram": "Instagram caption",
+      "tiktok": "TikTok caption",
+      "geral": "Geral caption"
+    },
+    "groupFieldLabel": "Caption for {{names}}",
+    "appliesTo": "This change applies to {{names}}.",
+    "withArticle": {
+      "instagram": "Instagram",
+      "tiktok": "TikTok",
+      "geral": "the Geral destination"
+    }
+  },
+  "geral": {
+    "download": "Download file",
+    "downloadAll": "Download content ({{count}} files)",
+    "copyCaption": "Copy caption",
+    "copied": "Copied!",
+    "downloadFailed": "Couldn't download right now. Try again."
   }
 }

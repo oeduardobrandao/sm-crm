@@ -1,16 +1,60 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Info, TriangleAlert } from 'lucide-react';
+import { getIntlLocale } from '@mesaas/i18n';
+import { Info, Loader2, TriangleAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { extractR2Keys, injectSignedUrls, resolveInlineImageUrls } from '@/services/inlineImage';
 import { computeWordDiff } from '@/utils/textDiff';
 import { computeTipTapDiff } from '@/utils/tiptapDiff';
-import type { PostEditSuggestion, WorkflowPost } from '../../../store';
-import type { SuggestionField, SuggestionFieldState } from '../editSuggestionFields';
+import type { PostEditSuggestion } from '../../../store';
+import {
+  liveCaption,
+  originalCaption,
+  suggestedCaption,
+  tiktokNoLongerFollowsIg,
+  type CaptionField,
+  type SuggestionField,
+  type SuggestionFieldState,
+  type SuggestionLivePost,
+} from '../editSuggestionFields';
 import { DiffView } from './DiffView';
 import { ReadOnlyTipTap } from './ReadOnlyTipTap';
 
 type DiffBase = 'live' | 'original';
+
+/** "a, b e c" / "a, b, and c" in the UI language. */
+export function joinList(items: string[]): string {
+  return new Intl.ListFormat(getIntlLocale(), { style: 'long', type: 'conjunction' }).format(items);
+}
+
+const capitalize = (s: string) => s.charAt(0).toLocaleUpperCase(getIntlLocale()) + s.slice(1);
+
+/**
+ * Names of a suggestion field. `heading`: the field's title ("Legenda do TikTok"). `inline`: with
+ * its article, inside a sentence ("a legenda do TikTok"). `plain`: lower case, no article
+ * ("legenda do TikTok"), for the unchanged-fields line.
+ */
+export function useSuggestionFieldName() {
+  const { t } = useTranslation('postEditor');
+  return (field: SuggestionField, form: 'heading' | 'inline' | 'plain'): string => {
+    if (form === 'heading') {
+      if (field === 'texto') return t('suggestionReview.postText');
+      if (field === 'legenda') return t('shared.igCaption');
+      if (field === 'legenda_tiktok') return t('suggestionReview.fieldNames.tiktokCaption');
+      return t('suggestionReview.fieldNames.geralCaption');
+    }
+    if (form === 'inline') {
+      if (field === 'texto') return t('suggestionReview.dialog.fieldTexto');
+      if (field === 'legenda') return t('suggestionReview.dialog.fieldLegenda');
+      if (field === 'legenda_tiktok') return t('suggestionReview.dialog.fieldLegendaTiktok');
+      return t('suggestionReview.dialog.fieldLegendaGeral');
+    }
+    if (field === 'texto') return t('suggestionReview.unchangedNames.texto');
+    if (field === 'legenda') return t('suggestionReview.unchangedNames.legenda');
+    if (field === 'legenda_tiktok') return t('suggestionReview.unchangedNames.legendaTiktok');
+    return t('suggestionReview.unchangedNames.legendaGeral');
+  };
+}
 
 /** The doc with signed inline-image URLs, so a diff against `original_conteudo` shows its images. */
 function useSignedDoc(doc: Record<string, unknown> | null): Record<string, unknown> | null {
@@ -54,11 +98,34 @@ export function visibleSuggestionStates(
   );
 }
 
+const CONFLICT_KEY: Record<SuggestionField, string> = {
+  texto: 'suggestionReview.conflictTexto',
+  legenda: 'suggestionReview.conflictLegenda',
+  legenda_tiktok: 'suggestionReview.conflictLegendaTiktok',
+  legenda_geral: 'suggestionReview.conflictLegendaGeral',
+};
+
+function FieldNote({ tone, children }: { tone: 'amber' | 'muted'; children: ReactNode }) {
+  return (
+    <div
+      role="note"
+      className={cn(
+        'flex items-start gap-2 rounded-lg px-2.5 py-2 text-[12px]',
+        tone === 'amber' ? 'bg-amber-100 text-amber-900' : 'bg-stone-100 text-stone-700',
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
 /**
  * One field of a client suggestion: its diff and, when the team edited the field after the
  * suggestion was sent, the amber line plus the toggle between "what accepting does" (live ->
  * suggested, the default) and "what the client changed" (their base -> suggested).
  * `label` is the desktop card's field heading; the phone sheet draws its own and passes none.
+ * A caption whose live value is still loading, or whose destination is gone, shows only what the
+ * client changed, with a line saying why.
  */
 export function SuggestionFieldDiff({
   field,
@@ -71,46 +138,49 @@ export function SuggestionFieldDiff({
 }: {
   field: SuggestionField;
   state: SuggestionFieldState;
-  post: Pick<WorkflowPost, 'ig_caption'>;
+  post: SuggestionLivePost;
   suggestion: PostEditSuggestion;
   resolvedContent: Record<string, unknown> | null;
   resolvedSuggestion: Record<string, unknown> | null;
   label?: ReactNode;
 }) {
   const { t } = useTranslation('postEditor');
+  const fieldName = useSuggestionFieldName();
   const [base, setBase] = useState<DiffBase>('live');
   const original = useSignedDoc(
     field === 'texto' && base === 'original' ? suggestion.original_conteudo : null,
   );
 
   // An old row can have no stored base for the doc: nothing to compare against.
-  const canToggle = state.conflict && (field === 'legenda' || suggestion.original_conteudo != null);
-  const against = state.conflict ? base : 'live';
+  const canToggle = state.conflict && (field !== 'texto' || suggestion.original_conteudo != null);
+  // Without a judged live value there is only the client's own change to show.
+  const against: DiffBase =
+    state.pending || state.gone ? 'original' : state.conflict ? base : 'live';
 
-  const diff =
-    field === 'texto' ? (
-      (against === 'original' ? original : resolvedContent) && resolvedSuggestion ? (
-        <ReadOnlyTipTap
-          content={computeTipTapDiff(
-            (against === 'original' ? original : resolvedContent) as Record<string, unknown>,
-            resolvedSuggestion,
-          )}
-        />
-      ) : null
-    ) : (
+  let diff: ReactNode;
+  if (field === 'texto') {
+    const from = against === 'original' ? original : resolvedContent;
+    diff =
+      from && resolvedSuggestion ? (
+        <ReadOnlyTipTap content={computeTipTapDiff(from, resolvedSuggestion)} />
+      ) : null;
+  } else {
+    const captionField: CaptionField = field;
+    const from =
+      against === 'original'
+        ? originalCaption(suggestion, captionField)
+        : liveCaption(post, captionField);
+    diff = (
       <DiffView
-        segments={computeWordDiff(
-          (against === 'original' ? suggestion.original_ig_caption : post.ig_caption) ?? '',
-          suggestion.suggested_ig_caption ?? '',
-        )}
+        segments={computeWordDiff(from ?? '', suggestedCaption(suggestion, captionField) ?? '')}
       />
     );
+  }
 
-  const fieldName = field === 'texto' ? t('suggestionReview.postText') : t('shared.igCaption');
   const toggle = canToggle && (
     <div
       role="group"
-      aria-label={t('suggestionReview.compareAria', { field: fieldName })}
+      aria-label={t('suggestionReview.compareAria', { field: fieldName(field, 'heading') })}
       className="flex gap-0.5 rounded-lg bg-stone-100 p-0.5"
     >
       {(['live', 'original'] as const).map((value) => (
@@ -143,19 +213,28 @@ export function SuggestionFieldDiff({
         </div>
       )}
       {state.conflict && (
-        <div
-          role="note"
-          className="flex items-start gap-2 rounded-lg bg-amber-100 px-2.5 py-2 text-[12px] text-amber-900"
-        >
+        <FieldNote tone="amber">
           <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          <span>
-            {t(
-              field === 'texto'
-                ? 'suggestionReview.conflictTexto'
-                : 'suggestionReview.conflictLegenda',
-            )}
-          </span>
-        </div>
+          <span>{t(CONFLICT_KEY[field])}</span>
+        </FieldNote>
+      )}
+      {state.pending && (
+        <FieldNote tone="muted">
+          <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden="true" />
+          <span>{t('suggestionReview.geralLoading')}</span>
+        </FieldNote>
+      )}
+      {state.gone && (
+        <FieldNote tone="amber">
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span>{t('suggestionReview.geralGone')}</span>
+        </FieldNote>
+      )}
+      {field === 'legenda' && state.changed && tiktokNoLongerFollowsIg(post, suggestion) && (
+        <FieldNote tone="amber">
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span>{t('suggestionReview.tiktokFollowedIg')}</span>
+        </FieldNote>
       )}
       {diff}
     </div>
@@ -163,9 +242,8 @@ export function SuggestionFieldDiff({
 }
 
 /**
- * Quiet line under the diffs: when the team edited the one field the client did NOT touch,
- * accepting leaves it alone. `teamOnly` is `teamOnlyChangedFields`; it only reads sensibly when
- * exactly one field is team-only (the other one is what the client changed).
+ * Quiet line under the diffs: the fields the team edited that the client did NOT touch, which
+ * accepting leaves alone. `teamOnly` is `teamOnlyChangedFields`.
  */
 export function TeamOnlyFooter({
   teamOnly,
@@ -175,7 +253,8 @@ export function TeamOnlyFooter({
   className?: string;
 }) {
   const { t } = useTranslation('postEditor');
-  if (teamOnly.length !== 1) return null;
+  const fieldName = useSuggestionFieldName();
+  if (teamOnly.length === 0) return null;
   return (
     <p
       className={cn(
@@ -185,25 +264,51 @@ export function TeamOnlyFooter({
     >
       <Info className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       <span>
-        {t(
-          teamOnly[0] === 'legenda'
-            ? 'suggestionReview.footerOnlyTexto'
-            : 'suggestionReview.footerOnlyLegenda',
-        )}
+        {t('suggestionReview.footerTeamOnly', {
+          count: teamOnly.length,
+          fields: joinList(teamOnly.map((f) => fieldName(f, 'inline'))),
+        })}
       </span>
     </p>
   );
 }
 
 /**
- * Note above the caption field while the client's pending suggestion rewrote the caption:
- * editing it now makes the suggestion show a conflict, so the team is pointed at the review
- * first. Not blocking.
+ * The fields the post carries that the client left as they were: "Texto do post e legenda do
+ * Instagram: sem alterações do cliente." Nothing when the client changed every one of them.
+ */
+export function UnchangedFieldsLine({
+  states,
+  reviewable,
+  className,
+}: {
+  states: SuggestionFieldState[];
+  reviewable: SuggestionField[];
+  className?: string;
+}) {
+  const { t } = useTranslation('postEditor');
+  const fieldName = useSuggestionFieldName();
+  const unchanged = reviewable.filter((f) => !states.find((st) => st.field === f)?.changed);
+  if (unchanged.length === 0) return null;
+  return (
+    <p className={cn('text-[12px] text-stone-500', className)}>
+      {t('suggestionReview.unchangedFields', {
+        fields: capitalize(joinList(unchanged.map((f) => fieldName(f, 'plain')))),
+      })}
+    </p>
+  );
+}
+
+/**
+ * Note above a caption field while the client's pending suggestion rewrote it: editing it now
+ * makes the suggestion show a conflict, so the team is pointed at the review first. Not blocking.
  */
 export function CaptionSuggestionNote({
+  field = 'legenda',
   onViewSuggestion,
   className,
 }: {
+  field?: CaptionField;
   onViewSuggestion: () => void;
   className?: string;
 }) {
@@ -216,7 +321,15 @@ export function CaptionSuggestionNote({
       )}
     >
       <Info className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-      <span className="grow">{t('suggestionReview.captionNote')}</span>
+      <span className="grow">
+        {t(
+          field === 'legenda_tiktok'
+            ? 'suggestionReview.captionNoteTiktok'
+            : field === 'legenda_geral'
+              ? 'suggestionReview.captionNoteGeral'
+              : 'suggestionReview.captionNote',
+        )}
+      </span>
       <button
         type="button"
         onClick={onViewSuggestion}

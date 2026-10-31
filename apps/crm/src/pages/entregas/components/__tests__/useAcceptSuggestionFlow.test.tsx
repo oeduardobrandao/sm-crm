@@ -30,7 +30,12 @@ import type { PostEditSuggestion } from '@/store/posts';
 
 afterEach(cleanup);
 
-const post = { conteudo: null, conteudo_plain: 'Texto', ig_caption: 'Legenda da equipe' };
+const post = {
+  conteudo: null,
+  conteudo_plain: 'Texto',
+  ig_caption: 'Legenda da equipe',
+  tiktok_caption: null,
+};
 // The client changed texto and legenda; the team edited the legenda since.
 const clash: PostEditSuggestion = {
   id: 1,
@@ -41,6 +46,12 @@ const clash: PostEditSuggestion = {
   original_conteudo: null,
   original_conteudo_plain: 'Texto',
   original_ig_caption: 'Legenda base',
+  suggested_tiktok_caption: null,
+  original_tiktok_caption: null,
+  suggested_geral_caption: null,
+  original_geral_caption: null,
+  geral_target_id: null,
+  tiktok_followed_ig: null,
   changed_fields: ['conteudo', 'ig_caption'],
   status: 'pending',
   updated_at: '2026-10-28T20:33:00Z',
@@ -75,7 +86,7 @@ describe('useAcceptSuggestionFlow, dialog while it closes', () => {
   function expectContentIntact() {
     expect(screen.getByTestId('dialog')).toHaveAttribute('data-open', 'false');
     expect(
-      screen.getByText(/A equipe editou a legenda depois que o cliente enviou/),
+      screen.getByText(/A equipe editou a legenda do Instagram depois que o cliente enviou/),
     ).toBeInTheDocument();
     expect(screen.getByText('Legenda do Instagram')).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Manter a versão da equipe' })).toBeInTheDocument();

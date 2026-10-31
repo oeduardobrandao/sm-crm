@@ -171,6 +171,8 @@
     "initialVersion": "Initial version",
     "igCaption": "Instagram caption",
     "tiktokCaption": "TikTok caption",
+    "geralCaption": "General caption",
+    "geralNotRecordedBefore": "The previous version did not record the General caption.",
     "title": "Version history",
     "empty": "No history recorded yet. Versions are saved starting with this post's next content edit.",
     "readOnly": "Read-only. Versions can't be restored from here."

@@ -34,7 +34,7 @@ export function softwareApplicationJsonLd(): object {
     operatingSystem: 'Web',
     url: `${SITE_URL}/`,
     description:
-      'CRM para agências e gestores de social media: clientes, aprovações, agendamento no Instagram, relatórios e financeiro.',
+      'CRM para agências e gestores de social media: clientes, aprovações, agendamento no Instagram e no TikTok, relatórios e financeiro.',
     offers: {
       '@type': 'Offer',
       price: '0',

@@ -1,6 +1,17 @@
 import type { TFunction } from 'i18next';
-import { CONTENT_FORMAT_LABELS } from '@mesaas/platforms';
-import type { EmProducaoReason, HubPost, HubPostMedia, PendingEditSuggestion } from '../types';
+import {
+  CONTENT_FORMAT_LABELS,
+  PLATFORM_DEFS,
+  PLATFORM_IDS,
+  type PlatformId,
+} from '@mesaas/platforms';
+import type {
+  EmProducaoReason,
+  HubPost,
+  HubPostMedia,
+  PendingEditSuggestion,
+  SuggestionField,
+} from '../types';
 import type { StatusToneKey } from '../theme';
 
 export type { EmProducaoReason };
@@ -210,6 +221,139 @@ export function hasDistinctPostText(post: HubPost): boolean {
     if (legendaIdx !== -1) return rawText.slice(0, legendaIdx).trim() !== '';
   }
   return body !== deriveCaption(post, post.ig_caption).trim();
+}
+
+/**
+ * The post's destinations in PLATFORM_IDS order. Old payloads without `targets` derive them
+ * from the legacy `platform` column.
+ */
+export function postDestinations(post: Pick<HubPost, 'targets' | 'platform'>): PlatformId[] {
+  if (post.targets) return PLATFORM_IDS.filter((id) => post.targets!.includes(id));
+  const legacy: Record<NonNullable<HubPost['platform']>, PlatformId[]> = {
+    instagram: ['instagram'],
+    tiktok: ['tiktok'],
+    both: ['instagram', 'tiktok'],
+    other: ['geral'],
+  };
+  return legacy[post.platform ?? 'instagram'];
+}
+
+/** The destinations that publish on their own once the post is scheduled (not Geral). */
+export function autoPublishDestinations(post: Pick<HubPost, 'targets' | 'platform'>): PlatformId[] {
+  return postDestinations(post).filter((id) => PLATFORM_DEFS[id].autoPublish);
+}
+
+/**
+ * The destinations whose captions the Hub shows, or null when the post should keep today's
+ * single caption block: no destinations at all, or a payload too old to carry the Geral caption.
+ */
+export function resolvePostTargets(post: HubPost): PlatformId[] | null {
+  const targets = postDestinations(post);
+  if (targets.length === 0) return null;
+  if (targets.includes('geral') && post.geral_caption === undefined) return null;
+  return targets;
+}
+
+export interface DestinationCaption {
+  platform: PlatformId;
+  text: string;
+}
+
+export interface CaptionGroup {
+  platforms: PlatformId[];
+  text: string;
+}
+
+/**
+ * The caption each destination shows (spec 2026-10-30-hub-captions-per-platform-design.md):
+ * - Instagram: `igShown`, the caption the dialog already shows (LEGENDA fallback or pending
+ *   suggestion included);
+ * - TikTok: its own caption, else the raw Instagram one (`igRaw`), else '' — the publisher's
+ *   rule (`tiktok_caption ?? ig_caption ?? ''`), so the client sees what TikTok posts;
+ * - Geral: the destination's own caption, else ''.
+ */
+export function destinationCaptions(
+  post: HubPost,
+  targets: PlatformId[],
+  igShown: string,
+  igRaw: string | null,
+): DestinationCaption[] {
+  return targets.map((platform) => {
+    if (platform === 'instagram') return { platform, text: igShown };
+    if (platform === 'tiktok') return { platform, text: post.tiktok_caption ?? igRaw ?? '' };
+    return { platform, text: post.geral_caption ?? '' };
+  });
+}
+
+/** Destinations with the exact same caption share one group, in PLATFORM_IDS order. */
+export function groupCaptions(captions: DestinationCaption[]): CaptionGroup[] {
+  const groups: CaptionGroup[] = [];
+  for (const { platform, text } of captions) {
+    const group = groups.find((g) => g.text === text);
+    if (group) group.platforms.push(platform);
+    else groups.push({ platforms: [platform], text });
+  }
+  return groups;
+}
+
+/**
+ * The raw TikTok and Geral captions the suggestion-aware view shows: the suggested value when
+ * the suggestion changed that column (`changed_fields`), else the live post's. Same gating as
+ * `suggestionAwareCaption`: a column the suggestion did not change holds a stale copy.
+ */
+export function suggestionAwareRawCaptions(
+  post: HubPost,
+  suggestion: PendingEditSuggestion | null,
+): Pick<HubPost, 'tiktok_caption' | 'geral_caption'> {
+  const changed = suggestion?.changed_fields ?? [];
+  const pick = (
+    column: 'tiktok_caption' | 'geral_caption',
+    suggested: string | null | undefined,
+  ): string | null | undefined =>
+    changed.includes(column) && suggested != null ? suggested : post[column];
+  return {
+    tiktok_caption: pick('tiktok_caption', suggestion?.suggested_tiktok_caption),
+    geral_caption: pick('geral_caption', suggestion?.suggested_geral_caption),
+  };
+}
+
+/** The logical fields a suggestion changed, from its `changed_fields`, in display order. */
+export function changedSuggestionFields(changedFields: string[] | undefined): SuggestionField[] {
+  const changed = changedFields ?? [];
+  const fields: SuggestionField[] = [];
+  if (changed.includes('conteudo') || changed.includes('conteudo_plain')) fields.push('texto');
+  if (changed.includes('ig_caption')) fields.push('legenda');
+  if (changed.includes('tiktok_caption')) fields.push('legenda_tiktok');
+  if (changed.includes('geral_caption')) fields.push('legenda_geral');
+  return fields;
+}
+
+/** A caption group in the edit panel, with the suggestion fields saving it touches. */
+export interface EditCaptionGroup extends CaptionGroup {
+  fields: SuggestionField[];
+}
+
+/**
+ * The fields each caption group writes (spec 2026-10-30, PR 2 "Hub"): Instagram is `legenda`,
+ * Geral is `legenda_geral`, TikTok is `legenda_tiktok` except when its raw caption is null and
+ * it shares the Instagram group: it keeps following the Instagram caption and is not touched.
+ * TikTok alone with a null raw caption IS touched (null base). `rawTiktok` is the raw value the
+ * editor opened with (the suggestion's when it changed it, else the post's).
+ */
+export function editCaptionGroups(
+  groups: CaptionGroup[],
+  rawTiktok: string | null | undefined,
+): EditCaptionGroup[] {
+  return groups.map((group) => {
+    const fields: SuggestionField[] = [];
+    for (const platform of group.platforms) {
+      if (platform === 'instagram') fields.push('legenda');
+      else if (platform === 'geral') fields.push('legenda_geral');
+      else if (!(rawTiktok == null && group.platforms.includes('instagram')))
+        fields.push('legenda_tiktok');
+    }
+    return { ...group, platforms: [...group.platforms], fields };
+  });
 }
 
 export type PostSortDirection = 'asc' | 'desc';

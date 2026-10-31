@@ -6236,6 +6236,18 @@ body.role-agent input[name='valor_total'] {
   color: var(--primary-color);
 }
 
+/* Full-width adder after the last post, sized like a collapsed .drawer-post-item. */
+.drawer-add-post-btn--row {
+  justify-content: center;
+  gap: 0.4rem;
+  width: 100%;
+  min-height: 3.075rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
 /* Bulk selection bar (desmembrar do fluxo) */
 
 /* Floating action bar: last child of the scrolling .drawer-body, stuck to its
@@ -18920,4 +18932,150 @@ button.phone-stat-tile:active {
   .phone-editor-screen {
     animation: none !important;
   }
+}
+
+/* ---- Follower chart (analytics-conta/FollowerChart.tsx) ---- */
+.fc {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+.fc-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.fc-total {
+  font-family: var(--font-heading);
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-main);
+}
+.fc-pct {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+.fc-body {
+  display: flex;
+  gap: 0.75rem;
+}
+.fc-yaxis {
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 2.75rem;
+  height: 240px;
+}
+.fc-yaxis span,
+.fc-xaxis span {
+  position: absolute;
+  font-size: 0.6875rem;
+  color: var(--text-light);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.fc-yaxis span {
+  right: 0;
+}
+.fc-plot-col {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.fc-plot {
+  position: relative;
+  height: 240px;
+  cursor: crosshair;
+  touch-action: pan-y;
+  border-radius: 6px;
+}
+.fc-plot:focus-visible {
+  outline: 2px solid var(--text-main);
+  outline-offset: 4px;
+}
+.fc-plot svg {
+  display: block;
+  overflow: visible;
+}
+.fc-grid {
+  stroke: var(--border-color);
+  stroke-width: 1;
+}
+.fc-cross {
+  stroke: var(--text-light);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+  opacity: 0.5;
+}
+.fc-post {
+  fill: var(--card-bg);
+}
+.fc-dot {
+  stroke: var(--card-bg);
+}
+.fc-tip {
+  position: absolute;
+  z-index: 2;
+  width: 184px;
+  box-sizing: border-box;
+  padding: 0.625rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+.fc-tip-date {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.fc-tip-value {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.fc-tip-delta {
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.fc-tip-delta.is-up {
+  color: #15803d;
+}
+.fc-tip-delta.is-down {
+  color: var(--danger-text);
+}
+[data-theme='dark'] .fc-tip-delta.is-up {
+  color: #4ade80;
+}
+.fc-tip-post,
+.fc-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.fc-ring {
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  border: 2px solid;
+  border-radius: 999px;
+}
+.fc-xaxis {
+  position: relative;
+  height: 1.25rem;
+  margin-top: 0.5rem;
+}
+.fc-xaxis span {
+  width: 60px;
+  text-align: center;
 }

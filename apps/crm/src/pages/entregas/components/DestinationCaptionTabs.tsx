@@ -28,6 +28,9 @@ interface DestinationCaptionTabsProps {
   tiktokFieldRef: Ref<DestinationCaptionFieldHandle>;
   geralFieldRef: Ref<DestinationCaptionFieldHandle>;
   onSaveCaption: (platform: 'tiktok' | 'geral', text: string) => Promise<void>;
+  /** Shown above the TikTok / Geral field while a pending client suggestion changed it. */
+  tiktokNote?: ReactNode;
+  geralNote?: ReactNode;
 }
 
 /**
@@ -54,6 +57,8 @@ export function DestinationCaptionTabs({
   tiktokFieldRef,
   geralFieldRef,
   onSaveCaption,
+  tiktokNote,
+  geralNote,
 }: DestinationCaptionTabsProps) {
   const { t } = useTranslation('postPanels');
   if (loading) {
@@ -129,6 +134,7 @@ export function DestinationCaptionTabs({
             {tg.platform === 'instagram' && instagramCaption}
             {tg.platform === 'tiktok' && (
               <div className="flex flex-col gap-3">
+                {tiktokNote && <div>{tiktokNote}</div>}
                 <DestinationCaptionField
                   key={post.id}
                   ref={tiktokFieldRef}
@@ -151,6 +157,7 @@ export function DestinationCaptionTabs({
                 {tiktokSettings}
               </div>
             )}
+            {tg.platform === 'geral' && geralNote}
             {tg.platform === 'geral' && geral && (
               <DestinationCaptionField
                 key={post.id}

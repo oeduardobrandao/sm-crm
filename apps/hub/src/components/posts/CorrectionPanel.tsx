@@ -3,18 +3,29 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { AlertCircle, Loader2, Save, X } from 'lucide-react';
+import { captionMaxFor, type PlatformId } from '@mesaas/platforms';
 import type { CorrectionReason, HubPost, SuggestionBases, SuggestionField } from '../../types';
-import type { useEditSuggestion } from '../../hooks/useEditSuggestion';
+import type { SaveErrorKind, useEditSuggestion } from '../../hooks/useEditSuggestion';
 import type { PostReferencesState } from '../../hooks/usePostReferences';
 import type { ReferenceItem } from '../../types/postReferences';
 import { ReferencePicker } from './references/ReferencePicker';
 import { ReferenceOpen, ReferenceThumb } from './references/ReferenceTiles';
 import { referenceErrorMessage } from './references/referenceErrors';
 import { referenceTitle } from './references/referenceFormat';
-import { pickPostCardKind, suggestionAwareCaption } from '../../lib/postView';
+import {
+  changedSuggestionFields,
+  destinationCaptions,
+  editCaptionGroups,
+  groupCaptions,
+  pickPostCardKind,
+  resolvePostTargets,
+  suggestionAwareCaption,
+  type EditCaptionGroup,
+} from '../../lib/postView';
 import { canonicalDoc } from '../../lib/richDoc';
 import { RichTextContent } from '../RichTextContent';
 import { CorrectionReasonChips } from '../CorrectionReasonChips';
+import { CaptionTabPanel, CaptionTabs, usePlatformNames } from './PlatformCaptions';
 
 export type EditSuggestion = ReturnType<typeof useEditSuggestion>;
 
@@ -23,6 +34,8 @@ export type SuggestionView = 'diff' | 'suggestion' | 'original';
 interface SuggestionPendingNoticeProps {
   /** The pending suggestion's `changed_fields`; only read when `onViewChange` is given. */
   changedFields?: string[];
+  /** The post has a destination besides Instagram: name the Instagram caption explicitly. */
+  multiDestination?: boolean;
   view?: SuggestionView;
   /** Reading view only: says which version is on screen and lets the client switch. */
   onViewChange?: (view: SuggestionView) => void;
@@ -36,13 +49,26 @@ interface SuggestionPendingNoticeProps {
  */
 export function SuggestionPendingNotice({
   changedFields = [],
+  multiDestination = false,
   view = 'diff',
   onViewChange,
 }: SuggestionPendingNoticeProps = {}) {
-  const { t } = useTranslation('hubPosts');
-  const textChanged =
-    changedFields.includes('conteudo') || changedFields.includes('conteudo_plain');
-  const captionChanged = changedFields.includes('ig_caption');
+  const { t, i18n } = useTranslation('hubPosts');
+  const phrase = (field: SuggestionField) => {
+    if (field === 'texto') return t('shared.suggestionFieldPhrase.texto', 'no texto');
+    if (field === 'legenda_tiktok')
+      return t('shared.suggestionFieldPhrase.legendaTiktok', 'na legenda do TikTok');
+    if (field === 'legenda_geral')
+      return t('shared.suggestionFieldPhrase.legendaGeral', 'na legenda Geral');
+    return multiDestination
+      ? t('shared.suggestionFieldPhrase.legendaInstagram', 'na legenda do Instagram')
+      : t('shared.suggestionFieldPhrase.legenda', 'na legenda');
+  };
+  const fields = changedSuggestionFields(changedFields);
+  const fieldList = new Intl.ListFormat(i18n.language || 'pt-BR', {
+    style: 'long',
+    type: 'conjunction',
+  }).format(fields.map(phrase));
   const detail =
     view === 'diff'
       ? t(
@@ -54,22 +80,13 @@ export function SuggestionPendingNotice({
             'shared.suggestionShowingOriginal',
             'Você está vendo a versão original, sem as suas alterações.',
           )
-        : textChanged && captionChanged
+        : fields.length > 0
           ? t(
-              'shared.suggestionShowingBoth',
-              'Abaixo está a versão que você sugeriu. Você alterou o texto e a legenda.',
+              'shared.suggestionShowingFields',
+              'Abaixo está a versão que você sugeriu, com mudanças {{fields}}.',
+              { fields: fieldList },
             )
-          : textChanged
-            ? t(
-                'shared.suggestionShowingText',
-                'Abaixo está a versão que você sugeriu. Você alterou o texto.',
-              )
-            : captionChanged
-              ? t(
-                  'shared.suggestionShowingCaption',
-                  'Abaixo está a versão que você sugeriu. Você alterou a legenda.',
-                )
-              : t('shared.suggestionShowing', 'Abaixo está a versão que você sugeriu.');
+          : t('shared.suggestionShowing', 'Abaixo está a versão que você sugeriu.');
   const option = (key: SuggestionView, label: string) => (
     <button
       type="button"
@@ -127,6 +144,38 @@ export function RejectedSuggestionNotice() {
   );
 }
 
+/** The suggestion field that holds each destination's caption. */
+const FIELD_OF_PLATFORM: Record<PlatformId, SuggestionField> = {
+  instagram: 'legenda',
+  tiktok: 'legenda_tiktok',
+  geral: 'legenda_geral',
+};
+
+/** The failure line of a save, by the reason the server gave (see SaveErrorKind). */
+function saveErrorText(
+  t: TFunction<'hubPosts'>,
+  error: SaveErrorKind | null,
+  tiktokMax: number | null,
+  lang: string,
+): string {
+  if (error === 'target_gone')
+    return t('shared.saveErrorTargetGone', 'Esse destino foi removido do post.');
+  if (error === 'retry')
+    return t('shared.saveErrorRetry', 'Não deu para salvar agora. Tente de novo.');
+  if (error === 'caption_too_long')
+    return tiktokMax !== null
+      ? t(
+          'shared.saveErrorCaptionTooLong',
+          'A legenda do TikTok passou do limite de {{max}} caracteres.',
+          { max: tiktokMax.toLocaleString(lang) },
+        )
+      : t(
+          'shared.saveErrorCaptionTooLongNoMax',
+          'A legenda do TikTok passou do limite de caracteres.',
+        );
+  return t('shared.saveFailedRetry', 'Não foi possível salvar. Tente novamente.');
+}
+
 interface CorrectionPanelProps {
   post: HubPost;
   edit: EditSuggestion;
@@ -175,8 +224,29 @@ export function CorrectionPanel({
   onOpenReference,
   onOverlayChange,
 }: CorrectionPanelProps) {
-  const { t } = useTranslation('hubPosts');
+  const { t, i18n } = useTranslation('hubPosts');
   const isText = pickPostCardKind(post) === 'text';
+  const listFormat = new Intl.ListFormat(i18n.language || 'pt-BR', {
+    style: 'long',
+    type: 'conjunction',
+  });
+  const fieldLabel = (p: PlatformId) =>
+    p === 'instagram'
+      ? t('captions.fieldLabel.instagram', 'Legenda do Instagram')
+      : p === 'tiktok'
+        ? t('captions.fieldLabel.tiktok', 'Legenda do TikTok')
+        : t('captions.fieldLabel.geral', 'Legenda Geral');
+  const platformNames = usePlatformNames();
+  const platformList = (platforms: PlatformId[]) =>
+    t('captions.groupFieldLabel', 'Legenda de {{names}}', { names: platformNames(platforms) });
+  const withArticle = (p: PlatformId) =>
+    p === 'instagram'
+      ? t('captions.withArticle.instagram', 'o Instagram')
+      : p === 'tiktok'
+        ? t('captions.withArticle.tiktok', 'o TikTok')
+        : t('captions.withArticle.geral', 'o destino Geral');
+  const platformListWithArticles = (platforms: PlatformId[]) =>
+    listFormat.format(platforms.map(withArticle));
   const {
     hasPendingSuggestion,
     wasRejected,
@@ -185,9 +255,13 @@ export function CorrectionPanel({
     approvalBlocked,
     dirty,
     saveFailed,
+    saveError,
     discardFailedSave,
     draftConteudo,
     draftConteudoPlain,
+    draftIgCaption,
+    draftTiktokCaption,
+    draftGeralCaption,
     suggestion,
   } = edit;
 
@@ -202,6 +276,8 @@ export function CorrectionPanel({
     conteudo: post.conteudo ?? null,
     conteudo_plain: post.conteudo_plain ?? null,
     ig_caption: post.ig_caption ?? null,
+    tiktok_caption: post.tiktok_caption ?? null,
+    geral_caption: post.geral_caption ?? null,
   });
   // Fields edited at any point in this session. Sticky: once a save has recorded a field in
   // the suggestion, the next save (after the draft re-seeds from it) still sends it.
@@ -213,6 +289,69 @@ export function CorrectionPanel({
   const [stagedConteudo, setStagedConteudo] = useState(draftConteudo);
   const [stagedConteudoPlain, setStagedConteudoPlain] = useState(draftConteudoPlain);
   const [stagedCaption, setStagedCaption] = useState(captionBaseline);
+
+  // Posts with a destination besides Instagram edit one caption per group (spec 2026-10-30,
+  // PR 2 "Hub"): the groups of the reading view, computed from the drafts when the panel opens
+  // and then frozen, so the tabs never regroup while the client types. Null = today's single
+  // Instagram caption field.
+  const captionTargets = resolvePostTargets(post);
+  const multiCaption =
+    captionTargets !== null && !(captionTargets.length === 1 && captionTargets[0] === 'instagram');
+  const editTargets: PlatformId[] = multiCaption && captionTargets ? captionTargets : [];
+  // The Instagram caption as this panel shows it: media posts keep the LEGENDA fallback (the
+  // single field already does), text posts show the stored caption, as the reading view does.
+  const igShownBaseline = isText ? (draftIgCaption ?? '') : captionBaseline;
+  // What each field reads before any edit, from the current drafts (a refetch moves these).
+  const fieldBaseline = (field: SuggestionField): string =>
+    field === 'legenda'
+      ? igShownBaseline
+      : field === 'legenda_tiktok'
+        ? (draftTiktokCaption ?? '')
+        : (draftGeralCaption ?? '');
+  const [frozenGroups] = useState<EditCaptionGroup[]>(() =>
+    multiCaption
+      ? editCaptionGroups(
+          groupCaptions(
+            destinationCaptions(
+              { ...post, tiktok_caption: draftTiktokCaption, geral_caption: draftGeralCaption },
+              editTargets,
+              igShownBaseline,
+              draftIgCaption,
+            ),
+          ),
+          draftTiktokCaption,
+        )
+      : [],
+  );
+  // The mode is frozen with the groups: a refetch that turns a single-caption post into a
+  // multi-destination one (an old cached payload) must not leave the panel without a field.
+  const groupMode = frozenGroups.length > 0;
+  // The destinations the post has now; unknown (a payload without them) keeps every group.
+  const liveTargets: PlatformId[] = captionTargets ?? frozenGroups.flatMap((g) => g.platforms);
+  // A destination removed while the panel is open (refetch after a 409 target_gone) leaves its
+  // group; the fields are recomputed so a TikTok that followed a removed Instagram becomes its own.
+  const captionGroups: EditCaptionGroup[] = groupMode
+    ? editCaptionGroups(
+        frozenGroups
+          .map((g) => ({ ...g, platforms: g.platforms.filter((p) => liveTargets.includes(p)) }))
+          .filter((g) => g.platforms.length > 0),
+        draftTiktokCaption,
+      )
+    : [];
+  // Staged text per frozen group, keyed by the group's first destination (stable across removal).
+  const groupKey = (g: { platforms: PlatformId[] }) => g.platforms[0];
+  const groupBaseline = (g: EditCaptionGroup) =>
+    g.fields.length > 0 ? fieldBaseline(g.fields[0]) : g.text;
+  const [stagedGroups, setStagedGroups] = useState<Record<string, string>>(() =>
+    Object.fromEntries(frozenGroups.map((g) => [groupKey(g), g.text])),
+  );
+  const stagedOf = (g: EditCaptionGroup) => stagedGroups[groupKey(g)] ?? groupBaseline(g);
+  const groupsDirty = captionGroups.map((g) => stagedOf(g) !== groupBaseline(g));
+  const [activeGroup, setActiveGroup] = useState(0);
+  const activeIdx = Math.min(activeGroup, Math.max(0, captionGroups.length - 1));
+  const tabsPanelId = useId();
+  const resetStagedGroups = () =>
+    setStagedGroups(Object.fromEntries(captionGroups.map((g) => [groupKey(g), groupBaseline(g)])));
   const [comentario, setComentario] = useState('');
   const [motivo, setMotivo] = useState<CorrectionReason | null>(null);
   // Ids of references added from this composer and still meant for this correction.
@@ -277,6 +416,40 @@ export function CorrectionPanel({
     lastSyncedCaptionRef.current = captionBaseline;
   }
 
+  // Same resync, per caption group: a refetch moves a group's baseline; a group the client has
+  // not typed in follows it (and its untouched fields re-seed their bases from the raw post).
+  const groupBaselineKey = JSON.stringify(
+    captionGroups.map((g) => [groupKey(g), groupBaseline(g)]),
+  );
+  const lastSyncedGroupsRef = useRef<Record<string, string>>(
+    Object.fromEntries(captionGroups.map((g) => [groupKey(g), groupBaseline(g)])),
+  );
+  const lastGroupBaselineKeyRef = useRef(groupBaselineKey);
+  if (groupBaselineKey !== lastGroupBaselineKeyRef.current) {
+    lastGroupBaselineKeyRef.current = groupBaselineKey;
+    const next = { ...stagedGroups };
+    let changed = false;
+    for (const g of captionGroups) {
+      const key = groupKey(g);
+      const baseline = groupBaseline(g);
+      const prev = lastSyncedGroupsRef.current[key];
+      if (prev !== undefined && baseline !== prev && stagedOf(g) === prev) {
+        next[key] = baseline;
+        changed = true;
+        for (const f of g.fields) {
+          if (touchedRef.current.has(f)) continue;
+          if (f === 'legenda') seedBasesRef.current.ig_caption = post.ig_caption ?? null;
+          if (f === 'legenda_tiktok')
+            seedBasesRef.current.tiktok_caption = post.tiktok_caption ?? null;
+          if (f === 'legenda_geral')
+            seedBasesRef.current.geral_caption = post.geral_caption ?? null;
+        }
+      }
+      lastSyncedGroupsRef.current[key] = baseline;
+    }
+    if (changed) setStagedGroups(next);
+  }
+
   // The body is tracked by plain text AND by canonical document, so a refetch that only
   // changes formatting (or re-signs image URLs, which canonicalDoc ignores) resyncs too.
   const draftDocKey = canonicalDoc(draftConteudo);
@@ -314,6 +487,7 @@ export function CorrectionPanel({
     conteudo: unknown;
     conteudoPlain: string;
     caption: string;
+    groups: Record<string, string>;
   } | null>(null);
 
   // Resubmits whatever is currently staged. Shared by Salvar edição and the failed-save retry.
@@ -323,6 +497,7 @@ export function CorrectionPanel({
       conteudo: stagedConteudo,
       conteudoPlain: stagedConteudoPlain,
       caption: stagedCaption,
+      groups: stagedGroups,
     };
     // An untouched body sends its STORED text: draftConteudoPlain is the editor's rendering
     // of the document, which can differ from the stored text in line breaks alone, and the
@@ -339,7 +514,33 @@ export function CorrectionPanel({
         post.conteudo_plain ??
         '');
     if (isText && bodyEdited) touchedRef.current.add('texto');
-    if (showCaptionField && stagedCaption !== captionBaseline) touchedRef.current.add('legenda');
+    // Captions sent: each group's staged text for its fields; a field in no group (destination
+    // absent, or TikTok still following Instagram) carries its raw draft, which the server
+    // ignores while untouched.
+    const captionValues: Record<'legenda' | 'legenda_tiktok' | 'legenda_geral', string | null> = {
+      legenda: showCaptionField ? stagedCaption : '',
+      legenda_tiktok: draftTiktokCaption,
+      legenda_geral: draftGeralCaption,
+    };
+    if (groupMode) {
+      captionValues.legenda = draftIgCaption;
+      // A destination that left the post is no longer a field (the server answers target_gone).
+      for (const f of [...touchedRef.current]) {
+        if (f === 'texto') continue;
+        const platform = (Object.keys(FIELD_OF_PLATFORM) as PlatformId[]).find(
+          (p) => FIELD_OF_PLATFORM[p] === f,
+        );
+        if (platform && !liveTargets.includes(platform)) touchedRef.current.delete(f);
+      }
+      captionGroups.forEach((g, i) => {
+        for (const f of g.fields) {
+          if (f !== 'texto') captionValues[f] = stagedOf(g);
+          if (groupsDirty[i]) touchedRef.current.add(f);
+        }
+      });
+    } else if (showCaptionField && stagedCaption !== captionBaseline) {
+      touchedRef.current.add('legenda');
+    }
     // Bases only for touched fields: the server checks the ones it receives.
     const seed = seedBasesRef.current;
     const bases: SuggestionBases = {};
@@ -348,12 +549,18 @@ export function CorrectionPanel({
       bases.conteudo_plain = seed.conteudo_plain;
     }
     if (touchedRef.current.has('legenda')) bases.ig_caption = seed.ig_caption;
-    saveSuggestion(
-      isText ? stagedConteudo : draftConteudo,
-      isText ? textPlain : (post.conteudo_plain ?? ''),
-      showCaptionField ? stagedCaption : '',
-      { fields: [...touchedRef.current], bases },
-    );
+    if (touchedRef.current.has('legenda_tiktok')) bases.tiktok_caption = seed.tiktok_caption;
+    if (touchedRef.current.has('legenda_geral')) bases.geral_caption = seed.geral_caption;
+    const conteudo = isText ? stagedConteudo : draftConteudo;
+    const conteudoPlain = isText ? textPlain : (post.conteudo_plain ?? '');
+    const touch = { fields: [...touchedRef.current], bases };
+    // An Instagram-only post sends no TikTok/Geral keys at all (absent = untouched).
+    if (groupMode)
+      saveSuggestion(conteudo, conteudoPlain, captionValues.legenda, touch, {
+        tiktok_caption: captionValues.legenda_tiktok,
+        geral_caption: captionValues.legenda_geral,
+      });
+    else saveSuggestion(conteudo, conteudoPlain, captionValues.legenda, touch);
   }
 
   // Way out of a failed save: forget the failure on the hook (which clears `dirty`) and
@@ -365,6 +572,7 @@ export function CorrectionPanel({
     setStagedConteudo(draftConteudo);
     setStagedConteudoPlain(draftConteudoPlain);
     setStagedCaption(captionBaseline);
+    resetStagedGroups();
     setContentVersion((v) => v + 1);
   }
 
@@ -385,7 +593,7 @@ export function CorrectionPanel({
   // document is compared too, canonically (see canonicalDoc).
   const contentDirty =
     (isText && (stagedConteudoPlain !== draftConteudoPlain || stagedDocKey !== draftDocKey)) ||
-    stagedCaption !== captionBaseline;
+    (groupMode ? groupsDirty.some(Boolean) : stagedCaption !== captionBaseline);
   // Staged references that still exist: one removed in the Referências tab drops out here too
   // (a failed upload never gets staged).
   const stagedItems: ReferenceItem[] = references
@@ -441,7 +649,8 @@ export function CorrectionPanel({
       sent !== null &&
       (stagedConteudo !== sent.conteudo ||
         stagedConteudoPlain !== sent.conteudoPlain ||
-        stagedCaption !== sent.caption);
+        stagedCaption !== sent.caption ||
+        Object.keys(sent.groups).some((k) => stagedGroups[k] !== sent.groups[k]));
     if (saveState === 'saved' && !editedSinceSend) {
       setStagedConteudo(draftConteudo);
       setStagedConteudoPlain(draftConteudoPlain);
@@ -451,6 +660,7 @@ export function CorrectionPanel({
         seedBasesRef.current.conteudo_plain = post.conteudo_plain ?? null;
       }
       setStagedCaption(captionBaseline);
+      resetStagedGroups();
       if (enteredSaved && comentario.trim() === '' && motivo === null) onSavedCleanRef.current?.();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -490,6 +700,54 @@ export function CorrectionPanel({
         saveSlot,
       )
     ) : null;
+
+  const tiktokMax = captionMaxFor('tiktok', post.tipo);
+
+  // One caption group's field: its textarea, the TikTok counter and, when the text goes to
+  // several destinations, a note saying so. `labelled`: a lone field names its destination.
+  function renderGroupField(group: EditCaptionGroup, labelled: boolean) {
+    const value = stagedOf(group);
+    const key = groupKey(group);
+    const label =
+      group.platforms.length === 1 ? fieldLabel(group.platforms[0]) : platformList(group.platforms);
+    const max = group.platforms.includes('tiktok') ? tiktokMax : null;
+    return (
+      <div className="space-y-1.5">
+        {labelled && group.platforms.length === 1 && (
+          <p className="text-[12px] hub-tx3 font-medium">{label}</p>
+        )}
+        <textarea
+          aria-label={label}
+          value={value}
+          onChange={(e) => {
+            const text = e.target.value;
+            setStagedGroups((prev) => ({ ...prev, [key]: text }));
+          }}
+          className="hub-focus-accent w-full text-[13px] hub-tx2 leading-relaxed border border-dashed hub-border-strong rounded-lg px-3 py-2 resize-none min-h-[120px] hub-bg-card focus:outline-none focus:border-solid"
+        />
+        {(max !== null || group.platforms.length > 1) && (
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-[12px] hub-tx3">
+              {group.platforms.length > 1 &&
+                t('captions.appliesTo', 'Esta mudança vale para {{names}}.', {
+                  names: platformListWithArticles(group.platforms),
+                })}
+            </p>
+            {max !== null && (
+              <p
+                className={`shrink-0 text-[12px] tabular-nums ${
+                  value.length > max ? 'text-rose-600 dark:text-rose-400 font-semibold' : 'hub-tx3'
+                }`}
+              >
+                {value.length.toLocaleString(i18n.language || 'pt-BR')} /{' '}
+                {max.toLocaleString(i18n.language || 'pt-BR')}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   const reasons: CorrectionReason[] = isText
     ? ['texto', 'legenda', 'outro']
@@ -534,7 +792,32 @@ export function CorrectionPanel({
             className="hub-focus-accent w-full text-[13px] hub-tx2 leading-relaxed border border-dashed hub-border-strong rounded-lg px-3 py-2 resize-none min-h-[100px] hub-bg-card focus:outline-none focus:border-solid"
           />
         )}
-        {showCaptionField && (
+        {groupMode && captionGroups.length > 0 && (
+          <div className="space-y-2">
+            {isText && (
+              <p className="text-[12px] hub-tx3 font-medium">
+                {t('textCard.captionLabel', 'Legenda')}
+              </p>
+            )}
+            {captionGroups.length > 1 ? (
+              <>
+                <CaptionTabs
+                  groups={captionGroups}
+                  active={activeIdx}
+                  onChange={setActiveGroup}
+                  dirty={groupsDirty}
+                  panelId={tabsPanelId}
+                />
+                <CaptionTabPanel panelId={tabsPanelId} active={activeIdx}>
+                  {renderGroupField(captionGroups[activeIdx], false)}
+                </CaptionTabPanel>
+              </>
+            ) : (
+              renderGroupField(captionGroups[0], true)
+            )}
+          </div>
+        )}
+        {!groupMode && showCaptionField && (
           <>
             {isText && (
               <p className="text-[12px] hub-tx3 font-medium">
@@ -572,8 +855,8 @@ export function CorrectionPanel({
           )}
           {showFailure && (
             <>
-              <span className="text-[12px] text-rose-600 dark:text-rose-400">
-                {t('shared.saveFailedRetry', 'Não foi possível salvar. Tente novamente.')}
+              <span role="alert" className="text-[12px] text-rose-600 dark:text-rose-400">
+                {saveErrorText(t, saveError, tiktokMax, i18n.language || 'pt-BR')}
               </span>
               {/* A failure remembered from an earlier mount leaves nothing staged here, and
                   resubmitting the baseline would create a no-op pending suggestion. */}

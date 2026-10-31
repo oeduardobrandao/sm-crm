@@ -35,7 +35,7 @@ describe('AcceptSuggestionDialog', () => {
     expect(screen.getByRole('heading', { name: 'Aceitar a sugestão?' })).toBeInTheDocument();
     expect(
       screen.getByText(
-        'A equipe editou a legenda depois que o cliente enviou a sugestão. Escolha qual versão fica.',
+        'A equipe editou a legenda do Instagram depois que o cliente enviou a sugestão. Escolha qual versão fica.',
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Manter a versão da equipe' })).toBeChecked();
@@ -74,7 +74,7 @@ describe('AcceptSuggestionDialog', () => {
 
     expect(
       screen.getByText(
-        'A equipe editou o texto e a legenda depois que o cliente enviou a sugestão. Escolha qual versão fica.',
+        'A equipe editou o texto e a legenda do Instagram depois que o cliente enviou a sugestão. Escolha qual versão fica.',
       ),
     ).toBeInTheDocument();
     const clientChoices = screen.getAllByRole('radio', { name: 'Usar a versão do cliente' });
@@ -83,6 +83,25 @@ describe('AcceptSuggestionDialog', () => {
     await user.click(clientChoices[1]);
     await user.click(screen.getByRole('button', { name: 'Aceitar sugestão' }));
     expect(onConfirm).toHaveBeenCalledWith(['legenda']);
+  });
+
+  it('lists TikTok and Geral by name, and sends the fields in canonical order', async () => {
+    const user = userEvent.setup();
+    const { onConfirm } = setup(['legenda_geral', 'legenda'], ['legenda_tiktok']);
+
+    expect(
+      screen.getByText(
+        'A equipe editou a legenda Geral e a legenda do Instagram depois que o cliente enviou a sugestão. Escolha qual versão fica.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Legenda do TikTok')).toBeInTheDocument();
+    expect(screen.getByText('Legenda Geral')).toBeInTheDocument();
+    const clientChoices = screen.getAllByRole('radio', { name: 'Usar a versão do cliente' });
+    // Geral first (the order the conflicts came in), then Instagram.
+    await user.click(clientChoices[0]);
+    await user.click(clientChoices[1]);
+    await user.click(screen.getByRole('button', { name: 'Aceitar sugestão' }));
+    expect(onConfirm).toHaveBeenCalledWith(['legenda', 'legenda_tiktok', 'legenda_geral']);
   });
 
   it('Cancelar closes without confirming', async () => {

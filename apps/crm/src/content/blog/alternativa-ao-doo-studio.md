@@ -3,6 +3,7 @@ title: Alternativa ao Doo Studio para agências brasileiras
 h1: Procurando uma alternativa ao Doo Studio? O que avaliar antes de trocar
 description: O que avaliar antes de trocar o Doo Studio: aprovação do cliente sem login, agendamento no Instagram, portal com sua marca e gestão financeira.
 date: 2026-07-27
+updated: 2026-10-30
 category: comparativo
 ---
 
@@ -71,7 +72,7 @@ Seja qual for a ferramenta, estes sete pontos separam o que muda a rotina do que
 
 Comparativo que não concede nada é anúncio. As fronteiras reais:
 
-- **É Instagram-first.** A integração nativa é com o Instagram, pela API oficial do Meta. Se você precisa publicar em várias redes do mesmo lugar — LinkedIn incluído, que o Doo Studio anuncia no agendamento —, esse ponto pesa contra o Mesaas.
+- **É Instagram-first.** A integração nativa é com o Instagram, pela API oficial do Meta, e com o TikTok, nos planos Pro e Max. Se você precisa publicar em outras redes do mesmo lugar, LinkedIn incluído, que o Doo Studio anuncia no agendamento, esse ponto pesa contra o Mesaas.
 - **Não é editor de design.** O Mesaas organiza, aprova, agenda e publica o material; não desenha o carrossel nem edita o vídeo.
 - **O agente de IA escreve, não desenha.** Pelo MCP ele enxerga o briefing da marca e devolve um rascunho no próprio fluxo, para você revisar. Não gera imagens com IA: a arte é produzida fora e anexada ao post.
 - **Não é agendador multirredes.** Não existe caixa de entrada unificada de redes sociais nem publicação simultânea em vários canais.

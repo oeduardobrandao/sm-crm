@@ -3,6 +3,7 @@ import { resolveHubToken } from "../_shared/hub-token.ts";
 import { getClientIP } from "../_shared/rate-limit.ts";
 import { isClientVisibleApproval } from "../_shared/hub-approvals.ts";
 import { fetchAllRows } from "../_shared/paginate.ts";
+import { PLATFORM_IDS } from "../_shared/platform-registry.ts";
 import { type HubMediaNoteDTO, loadClientMediaNotes } from "../_shared/media-notes.ts";
 import {
   computeEmProducaoByPost,
@@ -165,7 +166,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
     // older published posts come through ?before= (Postagens) and ?from=&to= (calendar).
     let postsQuery = db
       .from("workflow_posts")
-      .select("id, titulo, tipo, status, ordem, conteudo, conteudo_plain, scheduled_at, ig_caption, instagram_permalink, published_at, publish_error, platform, ig_trial_strategy, ig_collaborators, media_autocleaned_at, workflow_id, targets_state:post_targets(platform, permalink), workflows(titulo, created_at)")
+      .select("id, titulo, tipo, status, ordem, conteudo, conteudo_plain, scheduled_at, ig_caption, tiktok_caption, instagram_permalink, published_at, publish_error, platform, ig_trial_strategy, ig_collaborators, media_autocleaned_at, workflow_id, targets_state:post_targets(platform, permalink, caption), workflows(titulo, created_at)")
       .eq("conta_id", hubToken.conta_id)
       .eq("cliente_id", hubToken.cliente_id);
     if (mode.kind === "shell") {
@@ -236,13 +237,19 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
     // frontend can tell "no workflow" apart from "workflow with an empty titulo".
     // P4: the TikTok URL lives on the TikTok destination (post_targets.permalink); the
     // response keeps the legacy field name so the Hub frontend does not change.
+    // `targets` + `geral_caption` let the Hub show each destination's caption (spec
+    // 2026-10-30-hub-captions-per-platform-design.md). Only the Geral row's caption is
+    // exposed: Instagram and TikTok captions still live on workflow_posts.
     const flatPosts = (posts ?? []).map((post: any) => {
       const { workflows: workflow, targets_state: targets, ...rest } = post;
-      const tiktokTarget = Array.isArray(targets)
-        ? targets.find((t: { platform?: string }) => t?.platform === "tiktok")
-        : null;
+      const rows: Array<{ platform?: string; permalink?: string | null; caption?: string | null }> =
+        Array.isArray(targets) ? targets : [];
+      const tiktokTarget = rows.find((t) => t?.platform === "tiktok");
+      const geralTarget = rows.find((t) => t?.platform === "geral");
       return {
         ...rest,
+        targets: PLATFORM_IDS.filter((id) => rows.some((t) => t?.platform === id)),
+        geral_caption: geralTarget?.caption ?? null,
         tiktok_post_url: tiktokTarget?.permalink ?? null,
         workflow_titulo: workflow?.titulo ?? null,
         workflow_created_at: workflow?.created_at ?? null,
@@ -388,7 +395,10 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
         ? pagedRows("pending suggestions", (from, to) =>
             db
               .from("post_edit_suggestions")
-              .select("id, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption, changed_fields, updated_at")
+              .select(
+                "id, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption, " +
+                  "suggested_tiktok_caption, suggested_geral_caption, changed_fields, updated_at",
+              )
               .in("post_id", postIds)
               .eq("status", "pending")
               .order("id", { ascending: true })

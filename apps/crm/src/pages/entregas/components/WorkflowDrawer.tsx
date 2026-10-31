@@ -122,7 +122,11 @@ import type { BoardCard } from '../hooks/useEntregasData';
 import { shouldAutoCompleteApproval } from './autoComplete';
 import { fluxoRascunhoBanner } from '../approvalExit';
 import type { SuggestionField } from '../editSuggestionFields';
-import { classifyAcceptError, mentionIdsToSyncAfterAccept } from '../editSuggestionAccept';
+import {
+  classifyAcceptError,
+  destinationAcceptErrorKey,
+  mentionIdsToSyncAfterAccept,
+} from '../editSuggestionAccept';
 import { getErrorIdentifier, getPostProcessErrorToast } from '../postProcessErrors';
 import { RascunhoBanner } from './RascunhoBanner';
 import { PostTimelinePopover } from './PostTimelinePopover';
@@ -614,7 +618,9 @@ export function WorkflowDrawer({
         conteudo: null,
         conteudo_plain: '',
         tipo: 'feed',
-        ordem: posts.length,
+        // After the highest ordem, not posts.length: deletes, moves and detaches leave
+        // gaps, and the count would sort the new post into the middle of the list.
+        ordem: posts.reduce((max, p) => Math.max(max, p.ordem), -1) + 1,
         status: 'rascunho',
         responsavel_id: null,
       });
@@ -983,6 +989,8 @@ export function WorkflowDrawer({
         // the next autosave (even a non-user content-normalization update) writes
         // it back over the suggestion we just accepted.
         await qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', workflowId] });
+        // An accepted Geral caption lives in post_targets, outside the posts query.
+        void qc.invalidateQueries({ queryKey: ['post-targets', suggestion.post_id] });
         setEditorVersions((prev) => ({
           ...prev,
           [suggestion.post_id]: (prev[suggestion.post_id] ?? 0) + 1,
@@ -993,6 +1001,15 @@ export function WorkflowDrawer({
       } catch (err) {
         // PostgrestError is a plain object, not an Error instance.
         const kind = classifyAcceptError(err);
+        const destinationKey = destinationAcceptErrorKey(kind, fields);
+        if (destinationKey) {
+          // target_gone / target_locked: a destination moved under the card; retry: a deadlock
+          // with a concurrent destination change. Refetch so the card reflects the post now.
+          toast.error(t(destinationKey));
+          refresh();
+          void qc.invalidateQueries({ queryKey: ['post-targets', suggestion.post_id] });
+          return;
+        }
         if (kind !== 'other') {
           // changed: the client saved a newer version. conflict: the post moved since the card
           // was loaded. refresh() refetches both, so the next Aceitar is judged against fresh data.
@@ -1469,6 +1486,15 @@ export function WorkflowDrawer({
                           }
                         />
                       ))}
+                      {!isPhone && (
+                        <button
+                          type="button"
+                          className="drawer-add-post-btn drawer-add-post-btn--row"
+                          onClick={handleAddPost}
+                        >
+                          <Plus className="h-4 w-4" /> {t('workflowDrawer.newPost')}
+                        </button>
+                      )}
                     </div>
                   </SortableContext>
                 </DndContext>

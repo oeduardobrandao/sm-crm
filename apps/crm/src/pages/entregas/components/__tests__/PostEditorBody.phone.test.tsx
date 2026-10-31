@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('sonner', () => ({
   toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), info: vi.fn() }),
@@ -151,7 +151,12 @@ import { toast } from 'sonner';
 import { PostEditorBody, type PostEditorBodyProps } from '../PostEditorBody';
 import { TIPO_LABELS } from '../../postLabels';
 import type { PhoneEditorChrome } from '../postEditorPhone/types';
-import type { CommentThreadWithComments, PostEditSuggestion, WorkflowPost } from '@/store';
+import {
+  getPostTargets,
+  type CommentThreadWithComments,
+  type PostEditSuggestion,
+  type WorkflowPost,
+} from '@/store';
 
 const basePost = {
   id: 42,
@@ -666,6 +671,12 @@ const teamEditedCaptionOnly: PostEditSuggestion = {
   original_conteudo: null,
   original_conteudo_plain: 'Primeiro parágrafo\nSegundo parágrafo',
   original_ig_caption: 'Legenda antiga',
+  suggested_tiktok_caption: null,
+  original_tiktok_caption: null,
+  suggested_geral_caption: null,
+  original_geral_caption: null,
+  geral_target_id: null,
+  tiktok_followed_ig: null,
   changed_fields: ['conteudo', 'conteudo_plain'],
   status: 'pending',
   updated_at: '2026-10-28T20:33:00Z',
@@ -714,7 +725,7 @@ describe('PostEditorBody, client suggestion card (desktop)', () => {
 
     expect(
       screen.getByText(
-        'Aceitar aplica só o texto do post. A legenda que a equipe editou fica como está.',
+        'Aceitar não muda a legenda do Instagram, que a equipe editou depois da sugestão.',
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/depois desta sugestão/)).toBeNull();
@@ -777,6 +788,129 @@ describe('PostEditorBody, client suggestion card (desktop)', () => {
     await user.click(within(dialog).getByRole('radio', { name: 'Usar a versão do cliente' }));
     await user.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
     expect(onAcceptSuggestion).toHaveBeenCalledWith(captionClash, ['legenda'], ['legenda']);
+  });
+
+  it('lists the fields the client left alone', () => {
+    renderCard(teamEditedCaptionOnly);
+    expect(
+      screen.getByText('Legenda do Instagram: sem alterações do cliente.'),
+    ).toBeInTheDocument();
+  });
+
+  describe('TikTok and Geral captions', () => {
+    /** The client rewrote the TikTok and the Geral captions; the team has since edited Geral. */
+    const tiktokAndGeral: PostEditSuggestion = {
+      ...teamEditedCaptionOnly,
+      id: 14000,
+      suggested_conteudo: null,
+      suggested_conteudo_plain: '',
+      suggested_tiktok_caption: 'TikTok do cliente',
+      original_tiktok_caption: null,
+      suggested_geral_caption: 'Geral do cliente',
+      original_geral_caption: 'Geral base',
+      geral_target_id: 5,
+      changed_fields: ['tiktok_caption', 'geral_caption'],
+    };
+    const bothPost = { ...basePost, platform: 'both', conteudo: { type: 'doc', content: [] } };
+    afterEach(() => {
+      vi.mocked(getPostTargets).mockImplementation(async () => []);
+    });
+
+    it('Geral still loading: the field says so and Aceitar stays disabled', async () => {
+      vi.mocked(getPostTargets).mockImplementation(() => new Promise(() => {}));
+      renderPhone({
+        layout: 'desktop',
+        post: bothPost as WorkflowPost,
+        editSuggestion: tiktokAndGeral,
+      });
+
+      expect(await screen.findByText('Carregando a legenda Geral atual…')).toBeInTheDocument();
+      expect(screen.getByText('Legenda do TikTok')).toBeInTheDocument();
+      expect(screen.getByText('Legenda Geral')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Aceitar' })).toBeDisabled();
+      expect(getPostTargets).toHaveBeenCalledWith(42);
+    });
+
+    it('Geral loaded in conflict: amber line, and the dialog acknowledges it per field', async () => {
+      const user = userEvent.setup();
+      const onAcceptSuggestion = vi.fn();
+      vi.mocked(getPostTargets).mockResolvedValue([
+        { id: 3, post_id: 42, platform: 'instagram', status: 'pendente', caption: null },
+        { id: 4, post_id: 42, platform: 'tiktok', status: 'pendente', caption: null },
+        { id: 5, post_id: 42, platform: 'geral', status: 'pendente', caption: 'Geral da equipe' },
+      ]);
+      renderPhone({
+        layout: 'desktop',
+        post: bothPost as WorkflowPost,
+        editSuggestion: tiktokAndGeral,
+        onAcceptSuggestion,
+      });
+
+      expect(
+        await screen.findByText('A equipe editou a legenda Geral depois desta sugestão.'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Texto do post e legenda do Instagram: sem alterações do cliente.'),
+      ).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Aceitar…' }));
+      const dialog = await screen.findByRole('dialog', { name: 'Aceitar a sugestão?' });
+      // TikTok has no conflict: listed as applied.
+      expect(within(dialog).getByText('Legenda do TikTok')).toBeInTheDocument();
+      await user.click(within(dialog).getByRole('radio', { name: 'Usar a versão do cliente' }));
+      await user.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
+      expect(onAcceptSuggestion).toHaveBeenCalledWith(
+        tiktokAndGeral,
+        ['legenda_tiktok', 'legenda_geral'],
+        ['legenda_geral'],
+      );
+    });
+
+    it('Geral removed from the post: not offered, the rest still accepts', async () => {
+      const user = userEvent.setup();
+      const onAcceptSuggestion = vi.fn();
+      vi.mocked(getPostTargets).mockResolvedValue([
+        { id: 3, post_id: 42, platform: 'instagram', status: 'pendente', caption: null },
+        { id: 4, post_id: 42, platform: 'tiktok', status: 'pendente', caption: null },
+      ]);
+      renderPhone({
+        layout: 'desktop',
+        post: bothPost as WorkflowPost,
+        editSuggestion: tiktokAndGeral,
+        onAcceptSuggestion,
+      });
+
+      expect(
+        await screen.findByText(
+          'O destino Geral foi removido do post. Esta parte da sugestão não pode ser aplicada.',
+        ),
+      ).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Aceitar' }));
+      expect(onAcceptSuggestion).toHaveBeenCalledWith(tiktokAndGeral, ['legenda_tiktok'], []);
+    });
+
+    it('warns on the Instagram caption when TikTok followed it and now has its own', () => {
+      renderCard({
+        ...captionClash,
+        original_ig_caption: 'Legenda IG',
+        tiktok_followed_ig: true,
+      });
+      expect(screen.queryByText(/O TikTok seguia o Instagram/)).toBeNull();
+      cleanup();
+      renderPhone({
+        layout: 'desktop',
+        post: { ...basePost, tiktok_caption: 'Legenda própria do TikTok' } as WorkflowPost,
+        editSuggestion: {
+          ...captionClash,
+          original_ig_caption: 'Legenda IG',
+          tiktok_followed_ig: true,
+        },
+      });
+      expect(
+        screen.getByText(
+          'O TikTok seguia o Instagram quando o cliente sugeriu; agora tem legenda própria e não muda.',
+        ),
+      ).toBeInTheDocument();
+    });
   });
 });
 
@@ -865,6 +999,32 @@ describe('PostEditorBody, client suggestion sheet (phone)', () => {
     expect(onAcceptSuggestion).not.toHaveBeenCalled();
   });
 
+  it('TikTok caption: the sheet names it and Aceitar sends legenda_tiktok', async () => {
+    const user = userEvent.setup();
+    const onAcceptSuggestion = vi.fn();
+    const tiktokOnly: PostEditSuggestion = {
+      ...captionClash,
+      id: 15000,
+      suggested_ig_caption: null,
+      suggested_tiktok_caption: 'TikTok do cliente',
+      original_tiktok_caption: '',
+      changed_fields: ['tiktok_caption'],
+    };
+    renderPhone({
+      post: { ...basePost, platform: 'both' } as WorkflowPost,
+      editSuggestion: tiktokOnly,
+      onAcceptSuggestion,
+    });
+
+    await user.click(screen.getByRole('button', { name: /Roteiro e briefing/ }));
+    const sheet = await screen.findByRole('dialog', { name: 'Sugestão do cliente' });
+    expect(within(sheet).getByRole('heading', { name: 'Legenda do TikTok' })).toBeInTheDocument();
+    await user.click(within(sheet).getByRole('button', { name: 'Aceitar' }));
+    await waitFor(() =>
+      expect(onAcceptSuggestion).toHaveBeenCalledWith(tiktokOnly, ['legenda_tiktok'], []),
+    );
+  });
+
   it('team-only caption edit: footer in the sheet, plain Aceitar sends the changed field', async () => {
     const user = userEvent.setup();
     const onAcceptSuggestion = vi.fn();
@@ -874,7 +1034,7 @@ describe('PostEditorBody, client suggestion sheet (phone)', () => {
     const sheet = await screen.findByRole('dialog', { name: 'Sugestão do cliente' });
     expect(
       within(sheet).getByText(
-        'Aceitar aplica só o texto do post. A legenda que a equipe editou fica como está.',
+        'Aceitar não muda a legenda do Instagram, que a equipe editou depois da sugestão.',
       ),
     ).toBeInTheDocument();
     await user.click(within(sheet).getByRole('button', { name: 'Aceitar' }));

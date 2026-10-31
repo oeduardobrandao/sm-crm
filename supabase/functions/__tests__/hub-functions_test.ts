@@ -186,9 +186,12 @@ Deno.test("hub-posts takes tiktok_post_url from the TikTok destination's permali
         platform: "both",
         workflow_id: 7,
         workflows: { titulo: "Calendário Abril" },
+        ig_caption: "Legenda IG",
+        tiktok_caption: "Legenda TikTok",
         targets_state: [
-          { platform: "instagram", permalink: "https://instagram.com/p/x" },
-          { platform: "tiktok", permalink: "https://www.tiktok.com/@marca/video/123" },
+          { platform: "tiktok", permalink: "https://www.tiktok.com/@marca/video/123", caption: "nunca exposta" },
+          { platform: "geral", permalink: null, caption: "Legenda Geral" },
+          { platform: "instagram", permalink: "https://instagram.com/p/x", caption: null },
         ],
       },
       {
@@ -226,12 +229,20 @@ Deno.test("hub-posts takes tiktok_post_url from the TikTok destination's permali
   assertEquals(byId.get(99)?.tiktok_post_url, "https://www.tiktok.com/@marca/video/123");
   assertEquals(byId.get(100)?.tiktok_post_url, null);
   assert(!("targets_state" in byId.get(99)!), "the embed must not leak into the response");
+  // Destinations come back in PLATFORM_IDS order, and only the Geral row's caption is exposed.
+  assertEquals(byId.get(99)?.targets, ["instagram", "tiktok", "geral"]);
+  assertEquals(byId.get(99)?.tiktok_caption, "Legenda TikTok");
+  assertEquals(byId.get(99)?.geral_caption, "Legenda Geral");
+  assert(!JSON.stringify(body).includes("nunca exposta"), "other rows' caption must not leak");
+  assertEquals(byId.get(100)?.targets, ["instagram"]);
+  assertEquals(byId.get(100)?.geral_caption, null);
 
   const postsSelect = db.calls.find((c) =>
     c.table === "workflow_posts" && c.operation === "select" && String(c.selectArgs[0]?.[0]).includes("titulo")
   )!;
   const select = String(postsSelect.selectArgs[0][0]);
-  assert(select.includes("targets_state:post_targets(platform, permalink)"), select);
+  assert(select.includes("targets_state:post_targets(platform, permalink, caption)"), select);
+  assert(select.includes("tiktok_caption"), select);
   assert(!/(^|[ ,])tiktok_post_url/.test(select), "the frozen column is no longer selected");
 });
 
@@ -3846,6 +3857,307 @@ Deno.test("hub-edit-suggestion maps base_required from the RPC to 400 and does n
     db.calls.some((c: { table: string }) => c.table === "rpc:create_edit_suggestion_notification"),
     false,
   );
+});
+
+// --- legendas por plataforma (PR 2: legenda_tiktok / legenda_geral) ---
+
+function captionsDb(tipo = "reels", targets: string[] = ["instagram", "tiktok", "geral"]) {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: 7, status: "enviado_cliente", tipo, conteudo: null, conta_id: "conta-1", cliente_id: 14 },
+    error: null,
+  });
+  db.queue("post_targets", "select", {
+    data: targets.map((platform) => ({ platform })),
+    error: null,
+  });
+  return db;
+}
+
+Deno.test("hub-edit-suggestion forwards the TikTok and Geral captions, touched fields and bases", async () => {
+  const db = captionsDb();
+  db.queueRpc("upsert_edit_suggestion", {
+    data: {
+      action: "upserted",
+      is_new: true,
+      suggestion: { id: 5, post_id: 99, suggested_tiktok_caption: "TT novo", suggested_geral_caption: "G novo" },
+    },
+    error: null,
+  });
+  const bases = { tiktok_caption: null, geral_caption: "G base" };
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_tiktok_caption: "TT novo",
+    suggested_geral_caption: "G novo",
+    touched_fields: ["legenda_tiktok", "legenda_geral"],
+    bases,
+  }));
+  assertEquals(response.status, 200);
+  const body = await readJson(response);
+  assertEquals(body.pending_suggestion.suggested_tiktok_caption, "TT novo");
+  assertEquals(body.pending_suggestion.suggested_geral_caption, "G novo");
+  const call = upsertCall(db);
+  assert(call);
+  assertEquals(call.payload.p_touched_fields, ["legenda_tiktok", "legenda_geral"]);
+  assertEquals(call.payload.p_bases, bases);
+  assertEquals(call.payload.p_suggested_captions, { tiktok_caption: "TT novo", geral_caption: "G novo" });
+  // The destination check reads only the touched destinations of this post.
+  const targetsCall = db.calls.find((c: { table: string }) => c.table === "post_targets");
+  assert(targetsCall);
+  assertEquals(
+    targetsCall.modifiers.find((m: { method: string }) => m.method === "in")?.args,
+    ["platform", ["tiktok", "geral"]],
+  );
+  assertEquals(
+    targetsCall.modifiers.find((m: { method: string }) => m.method === "eq")?.args,
+    ["post_id", 99],
+  );
+});
+
+Deno.test("hub-edit-suggestion sends p_suggested_captions with null for the caption the body omits", async () => {
+  const db = captionsDb();
+  db.queueRpc("upsert_edit_suggestion", {
+    data: { action: "upserted", is_new: true, suggestion: { id: 5, post_id: 99 } },
+    error: null,
+  });
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_geral_caption: "G novo",
+    touched_fields: ["legenda_geral"],
+    bases: { geral_caption: "G" },
+  }));
+  assertEquals(response.status, 200);
+  assertEquals(upsertCall(db)?.payload.p_suggested_captions, { tiktok_caption: null, geral_caption: "G novo" });
+});
+
+Deno.test("hub-edit-suggestion accepts a save that only carries a per-platform caption", async () => {
+  const db = captionsDb();
+  db.queueRpc("upsert_edit_suggestion", {
+    data: { action: "upserted", is_new: true, suggestion: { id: 5, post_id: 99 } },
+    error: null,
+  });
+  // No conteudo_plain / ig_caption at all: the "No content provided" check looks at every field.
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_tiktok_caption: "Só TikTok",
+    touched_fields: ["legenda_tiktok"],
+    bases: { tiktok_caption: "TT" },
+  }));
+  assertEquals(response.status, 200);
+});
+
+Deno.test("hub-edit-suggestion still answers 400 No content provided when every caption is absent", async () => {
+  const db = captionsDb();
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_tiktok_caption: null,
+    suggested_geral_caption: null,
+  }));
+  assertEquals(response.status, 400);
+  assertEquals((await readJson(response)).error, "No content provided");
+  assertEquals(upsertCall(db), undefined);
+});
+
+Deno.test("hub-edit-suggestion does not read post_targets nor send p_suggested_captions for texto/legenda saves", async () => {
+  const db = hubEditSuggestionDb();
+  db.queueRpc("upsert_edit_suggestion", {
+    data: { action: "upserted", is_new: true, suggestion: { id: 5, post_id: 99 } },
+    error: null,
+  });
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_ig_caption: "Legenda nova",
+    touched_fields: ["legenda"],
+    bases: { ig_caption: "Legenda base" },
+  }));
+  assertEquals(response.status, 200);
+  assertEquals(db.calls.some((c: { table: string }) => c.table === "post_targets"), false);
+  assertEquals("p_suggested_captions" in (upsertCall(db)?.payload ?? {}), false);
+});
+
+Deno.test("hub-edit-suggestion returns 409 target_gone when a touched destination is not on the post", async () => {
+  for (const [field, targets] of [
+    ["legenda_tiktok", ["instagram", "geral"]],
+    ["legenda_geral", ["instagram", "tiktok"]],
+  ] as const) {
+    const db = captionsDb("feed", [...targets]);
+    const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+      suggested_tiktok_caption: "TT",
+      suggested_geral_caption: "G",
+      touched_fields: [field],
+      bases: { tiktok_caption: null, geral_caption: null },
+    }));
+    assertEquals(response.status, 409, field);
+    const body = await readJson(response);
+    assertEquals(body.code, "target_gone", field);
+    assertEquals(typeof body.error, "string");
+    assertEquals(upsertCall(db), undefined, field);
+  }
+});
+
+Deno.test("hub-edit-suggestion rejects a TikTok caption over captionMaxFor with 400 caption_too_long", async () => {
+  // reels -> Vídeo TikTok, 2200; feed -> Foto, 4000 (platform-registry).
+  for (const [tipo, max] of [["reels", 2200], ["feed", 4000]] as const) {
+    const over = captionsDb(tipo);
+    const tooLong = await hubEditSuggestionHandlerFor(over)(touchedFieldsRequest({
+      suggested_tiktok_caption: "a".repeat(max + 1),
+      touched_fields: ["legenda_tiktok"],
+      bases: { tiktok_caption: null },
+    }));
+    assertEquals(tooLong.status, 400, tipo);
+    assertEquals((await readJson(tooLong)).code, "caption_too_long", tipo);
+    assertEquals(upsertCall(over), undefined, tipo);
+
+    const atLimit = captionsDb(tipo);
+    atLimit.queueRpc("upsert_edit_suggestion", {
+      data: { action: "upserted", is_new: true, suggestion: { id: 5, post_id: 99 } },
+      error: null,
+    });
+    const ok = await hubEditSuggestionHandlerFor(atLimit)(touchedFieldsRequest({
+      suggested_tiktok_caption: "a".repeat(max),
+      touched_fields: ["legenda_tiktok"],
+      bases: { tiktok_caption: null },
+    }));
+    assertEquals(ok.status, 200, `${tipo} at the limit`);
+  }
+});
+
+Deno.test("hub-edit-suggestion does not limit the Geral caption, an untouched TikTok caption, or Instagram", async () => {
+  const db = captionsDb("reels");
+  db.queueRpc("upsert_edit_suggestion", {
+    data: { action: "upserted", is_new: true, suggestion: { id: 5, post_id: 99 } },
+    error: null,
+  });
+  const long = "a".repeat(5000);
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_ig_caption: long,
+    suggested_tiktok_caption: long, // carried along, not touched
+    suggested_geral_caption: long,
+    touched_fields: ["legenda", "legenda_geral"],
+    bases: { ig_caption: "L", geral_caption: "G" },
+  }));
+  assertEquals(response.status, 200);
+});
+
+Deno.test("hub-edit-suggestion rejects touched_fields outside the four logical fields and non-string captions", async () => {
+  const badField = hubEditSuggestionDb();
+  const r1 = await hubEditSuggestionHandlerFor(badField)(touchedFieldsRequest({
+    suggested_tiktok_caption: "TT",
+    touched_fields: ["legenda_youtube"],
+  }));
+  assertEquals(r1.status, 400);
+  assertEquals((await readJson(r1)).error, "Campos inválidos.");
+
+  const badCaption = hubEditSuggestionDb();
+  const r2 = await hubEditSuggestionHandlerFor(badCaption)(touchedFieldsRequest({
+    suggested_conteudo_plain: "Corpo",
+    suggested_geral_caption: 42,
+  }));
+  assertEquals(r2.status, 400);
+  assertEquals((await readJson(r2)).error, "Campos inválidos.");
+
+  const badBase = hubEditSuggestionDb();
+  const r3 = await hubEditSuggestionHandlerFor(badBase)(touchedFieldsRequest({
+    suggested_tiktok_caption: "TT",
+    touched_fields: ["legenda_tiktok"],
+    bases: { tiktok_caption: 7 },
+  }));
+  assertEquals(r3.status, 400);
+  assertEquals((await readJson(r3)).error, "Campos inválidos.");
+  for (const db of [badField, badCaption, badBase]) assertEquals(upsertCall(db), undefined);
+});
+
+Deno.test("hub-edit-suggestion maps target_gone from the RPC to 409 and does not notify", async () => {
+  const db = captionsDb();
+  db.queueRpc("upsert_edit_suggestion", { data: null, error: { message: "target_gone", code: "P0001" } });
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_geral_caption: "G novo",
+    touched_fields: ["legenda_geral"],
+    bases: { geral_caption: "G" },
+  }));
+  assertEquals(response.status, 409);
+  assertEquals((await readJson(response)).code, "target_gone");
+  assertEquals(
+    db.calls.some((c: { table: string }) => c.table === "rpc:create_edit_suggestion_notification"),
+    false,
+  );
+});
+
+Deno.test("hub-edit-suggestion maps a deadlock (40P01) to 409 retry instead of a 500", async () => {
+  const db = captionsDb();
+  db.queueRpc("upsert_edit_suggestion", { data: null, error: { message: "deadlock detected", code: "40P01" } });
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_geral_caption: "G novo",
+    touched_fields: ["legenda_geral"],
+    bases: { geral_caption: "G" },
+  }));
+  assertEquals(response.status, 409);
+  const body = await readJson(response);
+  assertEquals(body.code, "retry");
+  assertEquals(body.error, "Não deu para salvar agora. Tente de novo.");
+});
+
+Deno.test("hub-posts selects suggested_tiktok_caption and suggested_geral_caption for the pending suggestion", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflow_posts", "select", {
+    data: [
+      {
+        id: 1,
+        titulo: "Post",
+        tipo: "reels",
+        status: "enviado_cliente",
+        ordem: 0,
+        conteudo: null,
+        conteudo_plain: "",
+        scheduled_at: null,
+        workflow_id: 7,
+        workflows: { titulo: "Cal", created_at: "2026-04-01" },
+      },
+    ],
+    error: null,
+  });
+  db.queue("post_edit_suggestions", "select", {
+    data: [
+      {
+        id: 5,
+        post_id: 1,
+        suggested_conteudo: null,
+        suggested_conteudo_plain: "",
+        suggested_ig_caption: "L",
+        suggested_tiktok_caption: "TT novo",
+        suggested_geral_caption: "G novo",
+        changed_fields: ["tiktok_caption", "geral_caption"],
+        updated_at: "2026-04-10T10:00:00.000Z",
+      },
+    ],
+    error: null,
+  });
+  db.queue("post_edit_suggestions", "select", { data: [], error: null });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: false }, error: null });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async (key) => `https://signed/${key}`,
+    rateLimit: async () => true,
+  });
+  const res = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(res);
+  assertEquals(res.status, 200);
+  const pendingSelect = db.calls.find((c: { table: string; operation: string; modifiers: Array<{ method: string; args: unknown[] }> }) =>
+    c.table === "post_edit_suggestions" && c.operation === "select" &&
+    c.modifiers.some((m) => m.method === "eq" && m.args[1] === "pending")
+  );
+  assert(pendingSelect, "pending suggestions select");
+  const select = String(pendingSelect.selectArgs[0][0]);
+  assert(select.includes("suggested_tiktok_caption"), select);
+  assert(select.includes("suggested_geral_caption"), select);
+  assertEquals(body.posts[0].pending_suggestion.suggested_tiktok_caption, "TT novo");
+  assertEquals(body.posts[0].pending_suggestion.suggested_geral_caption, "G novo");
 });
 
 Deno.test("hub-approve aprovado uses record_client_approval_with_notes with the token's conta and cliente", async () => {

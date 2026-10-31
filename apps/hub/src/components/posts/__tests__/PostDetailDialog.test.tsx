@@ -214,7 +214,9 @@ describe('PostDetailDialog', () => {
           await vi.advanceTimersByTimeAsync(1600);
         });
         expect(submitEditSuggestionMock).toHaveBeenCalledTimes(1);
-        expect(submitEditSuggestionMock.mock.calls[0][4]).toBe('Legenda editada');
+        expect(submitEditSuggestionMock.mock.calls[0][2].captions.ig_caption).toBe(
+          'Legenda editada',
+        );
         // A clean first save closes the panel too (not only saves on a pending suggestion).
         expect(screen.queryByRole('textbox', { name: 'Legenda do post' })).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: /Corrigir/ })).toBeInTheDocument();
@@ -725,6 +727,110 @@ describe('PostDetailDialog', () => {
       expect(screen.queryByText(BANNER)).not.toBeInTheDocument();
     });
   });
+  describe('auto-publish note', () => {
+    const one = (over: Partial<HubPost>) => [post({ id: 1, ...over })];
+
+    it('names Instagram for an Instagram post', () => {
+      renderDialog(1, { posts: one({ targets: ['instagram'] }), isAutoPublish: () => true });
+      expect(screen.getByText(/publicado automaticamente no Instagram em/)).toBeInTheDocument();
+    });
+
+    it('names TikTok for a TikTok-only post', () => {
+      renderDialog(1, {
+        posts: one({ targets: ['tiktok'], tiktok_caption: null }),
+        isAutoPublish: () => true,
+      });
+      expect(screen.getByText(/publicado automaticamente no TikTok em/)).toBeInTheDocument();
+      expect(screen.queryByText(/automaticamente no Instagram/)).not.toBeInTheDocument();
+    });
+
+    it('names both platforms and leaves Geral out', () => {
+      renderDialog(1, {
+        posts: one({
+          targets: ['instagram', 'tiktok', 'geral'],
+          tiktok_caption: null,
+          geral_caption: null,
+          scheduled_at: null,
+        }),
+        isAutoPublish: () => true,
+      });
+      expect(screen.getByText(/publicação automática no Instagram e TikTok\./)).toBeInTheDocument();
+    });
+
+    it('shows no note for a post that is only Geral (it is never scheduled)', () => {
+      renderDialog(1, {
+        posts: one({ targets: ['geral'], geral_caption: 'Texto' }),
+        isAutoPublish: () => true,
+      });
+      expect(screen.queryByText(/Ao aprovar, este post/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('published post links', () => {
+    const published = (over: Partial<HubPost>) => [
+      post({ id: 1, status: 'postado', published_at: '2026-04-28T10:00:00.000Z', ...over }),
+    ];
+
+    it('links a TikTok-only published post to TikTok', () => {
+      renderDialog(1, {
+        posts: published({
+          targets: ['tiktok'],
+          tiktok_post_url: 'https://www.tiktok.com/@x/video/1',
+        }),
+      });
+      expect(screen.getByRole('link', { name: /Ver no TikTok/ })).toHaveAttribute(
+        'href',
+        'https://www.tiktok.com/@x/video/1',
+      );
+      expect(screen.queryByRole('link', { name: /Ver no Instagram/ })).not.toBeInTheDocument();
+    });
+
+    it('links both platforms when the post went to both', () => {
+      renderDialog(1, {
+        posts: published({
+          targets: ['instagram', 'tiktok'],
+          instagram_permalink: 'https://www.instagram.com/p/abc/',
+          tiktok_post_url: 'https://www.tiktok.com/@x/video/1',
+        }),
+      });
+      expect(screen.getByRole('link', { name: /Ver no Instagram/ })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /Ver no TikTok/ })).toBeInTheDocument();
+    });
+  });
+
+  describe('Geral download', () => {
+    const geral = (over: Partial<HubPost>) => [
+      post({ id: 1, targets: ['geral'], geral_caption: 'Legenda geral', ...over }),
+    ];
+
+    it('offers the file and the caption once the client approved', () => {
+      renderDialog(1, { posts: geral({ status: 'aprovado_cliente' }) });
+      expect(screen.getByRole('button', { name: /Baixar arquivo/ })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Copiar legenda/ })).toBeInTheDocument();
+    });
+
+    it('counts the files when there are several', () => {
+      renderDialog(1, {
+        posts: geral({ status: 'postado', media: [MEDIA, { ...MEDIA, id: 2 }] }),
+      });
+      expect(
+        screen.getByRole('button', { name: /Baixar conteúdo \(2 arquivos\)/ }),
+      ).toBeInTheDocument();
+    });
+
+    it('is not offered before approval', () => {
+      renderDialog(1, { posts: geral({ status: 'enviado_cliente' }) });
+      expect(screen.queryByRole('button', { name: /Baixar/ })).not.toBeInTheDocument();
+    });
+
+    it('is not offered without a Geral destination', () => {
+      renderDialog(1, {
+        posts: [post({ id: 1, status: 'aprovado_cliente', targets: ['instagram'] })],
+      });
+      expect(screen.queryByRole('button', { name: /Baixar/ })).not.toBeInTheDocument();
+    });
+  });
+
   describe('failed edit save (no lockout)', () => {
     const FAILED = 'Não foi possível salvar. Tente novamente.';
 
@@ -871,7 +977,7 @@ describe('PostDetailDialog', () => {
       expect(submitEditSuggestionMock.mock.calls[1]).toEqual(
         submitEditSuggestionMock.mock.calls[0],
       );
-      expect(submitEditSuggestionMock.mock.calls[1][4]).toBe('Legenda editada');
+      expect(submitEditSuggestionMock.mock.calls[1][2].captions.ig_caption).toBe('Legenda editada');
     });
 
     it('a retry that fails again still leaves the client a way out', async () => {
@@ -1065,7 +1171,7 @@ describe('PostDetailDialog', () => {
       fireEvent.click(mine);
       expect(
         screen.getByText(
-          'Abaixo está a versão que você sugeriu. Você alterou o texto e a legenda.',
+          'Abaixo está a versão que você sugeriu, com mudanças no texto e na legenda.',
         ),
       ).toBeInTheDocument();
       const original = screen.getByRole('button', { name: 'Original' });
@@ -1139,16 +1245,14 @@ describe('PostDetailDialog', () => {
           await vi.advanceTimersByTimeAsync(1600);
         });
 
-        expect(submitEditSuggestionMock).toHaveBeenCalledWith(
-          'token-publico',
-          1,
-          null,
-          'Corpo',
-          'Legenda editada de novo',
-          ['legenda'],
+        expect(submitEditSuggestionMock).toHaveBeenCalledWith('token-publico', 1, {
+          conteudo: null,
+          conteudo_plain: 'Corpo',
+          captions: { ig_caption: 'Legenda editada de novo' },
+          touched_fields: ['legenda'],
           // The caption as fetched when the panel opened, not the suggestion's.
-          { ig_caption: 'Legenda um' },
-        );
+          bases: { ig_caption: 'Legenda um' },
+        });
         // Clean save: the panel closes back to the reading view, which already shows the saved
         // suggestion as a diff before any refetch.
         expect(screen.queryByRole('textbox', { name: 'Legenda do post' })).not.toBeInTheDocument();
@@ -1304,6 +1408,75 @@ describe('PostDetailDialog', () => {
       fireEvent.click(screen.getByRole('tab', { name: 'Legenda' }));
       fireEvent.click(screen.getByRole('button', { name: 'Original' }));
       expect(screen.queryByRole('tab', { name: 'Texto do post' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('captions per platform', () => {
+    it('shows a switcher when the destinations publish different captions', () => {
+      const multi = post({
+        id: 10,
+        titulo: 'Multi',
+        ig_caption: 'Legenda IG',
+        tiktok_caption: 'Legenda TT',
+        geral_caption: 'Legenda Geral',
+        targets: ['instagram', 'tiktok', 'geral'],
+      });
+      renderDialog(10, { posts: [multi] });
+      expect(screen.getByText('Legenda IG')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('tab', { name: 'TikTok' }));
+      expect(screen.getByText('Legenda TT')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('tab', { name: 'Geral' }));
+      expect(screen.getByText('Legenda Geral')).toBeInTheDocument();
+    });
+
+    it('collapses a TikTok that follows Instagram into one labeled block', () => {
+      const both = post({
+        id: 11,
+        titulo: 'Ambos',
+        ig_caption: 'Igual',
+        tiktok_caption: null,
+        targets: ['instagram', 'tiktok'],
+        geral_caption: null,
+      });
+      renderDialog(11, { posts: [both] });
+      expect(screen.getByText('Mesma legenda para Instagram e TikTok')).toBeInTheDocument();
+      expect(screen.queryByRole('tab', { name: 'TikTok' })).not.toBeInTheDocument();
+    });
+
+    it('Sua sugestão shows the suggested TikTok caption; Original shows the live one', () => {
+      const pending = post({
+        id: 12,
+        titulo: 'Pendente',
+        ig_caption: 'Legenda IG',
+        tiktok_caption: 'TT vivo',
+        geral_caption: null,
+        targets: ['instagram', 'tiktok'],
+        pending_suggestion: {
+          id: 5,
+          suggested_conteudo: null,
+          suggested_conteudo_plain: 'Corpo',
+          suggested_ig_caption: 'Legenda IG',
+          suggested_tiktok_caption: 'TT sugerido',
+          suggested_geral_caption: null,
+          changed_fields: ['tiktok_caption'],
+          updated_at: '2026-10-30T10:00:00.000Z',
+        },
+      });
+      renderDialog(12, { posts: [pending] });
+      // Alterações (default): one diff block, labeled by destination.
+      expect(screen.getByText('Legenda do TikTok')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Sua sugestão' }));
+      fireEvent.click(screen.getByRole('tab', { name: 'TikTok' }));
+      expect(screen.getByText('TT sugerido')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Original' }));
+      fireEvent.click(screen.getByRole('tab', { name: 'TikTok' }));
+      expect(screen.getByText('TT vivo')).toBeInTheDocument();
+    });
+
+    it('an Instagram-only post keeps the plain caption', () => {
+      renderDialog(1, { posts: [post({ id: 1, ig_caption: 'Só IG', targets: ['instagram'] })] });
+      expect(screen.getByText('Só IG')).toBeInTheDocument();
+      expect(screen.queryByText(/Mesma legenda/)).not.toBeInTheDocument();
     });
   });
 });

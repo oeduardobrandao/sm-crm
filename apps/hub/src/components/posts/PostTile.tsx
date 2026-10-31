@@ -2,7 +2,12 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Images, Play, Circle, ImageOff, ExternalLink } from 'lucide-react';
 import type { HubPost } from '../../types';
-import { getPostCover, getPostPublishState, getTipoLabel } from '../../lib/postView';
+import {
+  getPostCover,
+  getPostPublishState,
+  getTipoLabel,
+  postDestinations,
+} from '../../lib/postView';
 import { formatDate } from '../PostCard';
 import { OptimizedImage } from '../OptimizedImage';
 import { MediaUnavailable } from '../MediaUnavailable';
@@ -22,8 +27,13 @@ interface PostTileProps {
   priority?: boolean;
 }
 
+/** Whether the post can go into the Instagram feed preview: it must publish to Instagram. */
 export function isFeedSelectable(post: HubPost): boolean {
-  return (post.media?.length ?? 0) > 0 && post.tipo !== 'stories';
+  return (
+    (post.media?.length ?? 0) > 0 &&
+    post.tipo !== 'stories' &&
+    postDestinations(post).includes('instagram')
+  );
 }
 
 function typeGlyph(post: HubPost): ReactNode {

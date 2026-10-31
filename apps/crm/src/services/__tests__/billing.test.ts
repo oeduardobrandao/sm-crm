@@ -60,6 +60,7 @@ describe('billing service', () => {
       storage_quota_bytes: null,
       feature_analytics_reports: true,
       feature_post_scheduling: true,
+      feature_tiktok: true,
       feature_leads: true,
       feature_financial: true,
       feature_contracts: true,
@@ -85,6 +86,7 @@ describe('billing service', () => {
       storage_quota_bytes: 5 * 1024 ** 3,
       feature_analytics_reports: true,
       feature_post_scheduling: true,
+      feature_tiktok: true,
       feature_leads: true,
       feature_financial: true,
       feature_contracts: true,
@@ -105,7 +107,7 @@ describe('billing service', () => {
     ]);
     expect(from).toHaveBeenCalledWith('plans');
     expect(select).toHaveBeenCalledWith(
-      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, max_workflow_templates, max_instagram_accounts, max_hub_tokens, rate_report_generations_per_month, storage_quota_bytes, feature_analytics_reports, feature_post_scheduling, feature_leads, feature_financial, feature_contracts, feature_brand_customization, feature_mcp, feature_instagram_automation, feature_briefing_audio, pagarme_12x_enabled, pagarme_installment_cents',
+      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, max_workflow_templates, max_instagram_accounts, max_hub_tokens, rate_report_generations_per_month, storage_quota_bytes, feature_analytics_reports, feature_post_scheduling, feature_tiktok, feature_leads, feature_financial, feature_contracts, feature_brand_customization, feature_mcp, feature_instagram_automation, feature_briefing_audio, pagarme_12x_enabled, pagarme_installment_cents',
     );
     expect(eq).toHaveBeenCalledWith('is_active', true);
     expect(order).toHaveBeenCalledWith('sort_order', { ascending: true });

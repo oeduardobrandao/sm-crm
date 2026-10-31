@@ -45,6 +45,7 @@ const FREE: PublicPricingPlan = {
   storage_quota_bytes: 100 * 1024 ** 2,
   feature_analytics_reports: false,
   feature_post_scheduling: true,
+  feature_tiktok: true,
   feature_leads: false,
   feature_financial: false,
   feature_contracts: false,

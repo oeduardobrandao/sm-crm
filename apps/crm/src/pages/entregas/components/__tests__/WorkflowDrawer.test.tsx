@@ -613,6 +613,66 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
     expect(mockSyncMentions).not.toHaveBeenCalled();
   });
 
+  it('invalidates the post destinations after an accept (the Geral caption lives there)', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+    renderDrawer(qc);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar' }));
+
+    await waitFor(() =>
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['post-targets', 1] }),
+    );
+  });
+
+  it('target_gone on a TikTok caption names the destination and refetches', async () => {
+    const { toast } = await import('sonner');
+    mockGetEditSuggestions.mockResolvedValue([
+      {
+        ...suggestion,
+        changed_fields: ['tiktok_caption'],
+        suggested_tiktok_caption: 'TikTok do cliente',
+        original_tiktok_caption: null,
+      },
+    ] as never);
+    mockAcceptEditSuggestion.mockRejectedValue({ message: 'target_gone', code: 'P0001' });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+    renderDrawer(qc);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar' }));
+
+    await waitFor(() =>
+      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(
+        200,
+        '2026-08-01T00:00:00Z',
+        ['legenda_tiktok'],
+        [],
+      ),
+    );
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'O destino TikTok foi removido do post. Revise a sugestão de novo.',
+      ),
+    );
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['post-edit-suggestions'] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['post-targets', 1] });
+  });
+
+  it('a deadlock (40P01) asks to try again instead of the generic error', async () => {
+    const { toast } = await import('sonner');
+    mockAcceptEditSuggestion.mockRejectedValue({ message: 'deadlock detected', code: '40P01' });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar' }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('Não deu para aplicar agora. Tente de novo.'),
+    );
+    expect(toast.error).not.toHaveBeenCalledWith('Erro ao aceitar sugestão');
+  });
+
   describe('when the team edited a field the client also changed', () => {
     // texto: the client added a mention; the team edited the legenda since. Aceitar… asks first.
     const captionClash = {
@@ -1642,6 +1702,22 @@ describe('WorkflowDrawer scrolls the targeted post into view', () => {
     expect(container.querySelector('.drawer-body')!.scrollTop).toBe(0);
   });
 
+  it('creates the new post after the highest ordem, even with gaps in the list', async () => {
+    // Deletes and moves leave gaps: 2 posts whose ordem is 0 and 5. posts.length (2) would
+    // sort the new post between them.
+    mockGetPosts.mockResolvedValue([makePost(1, 0), makePost(2, 5)]);
+    mockAddPost.mockResolvedValue(makePost(3, 6));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, { initialPostId: undefined });
+    await screen.findByText('Post 2');
+
+    fireEvent.click(screen.getAllByRole('button', { name: /Novo Post/ })[1]);
+
+    await waitFor(() =>
+      expect(mockAddPost).toHaveBeenCalledWith(expect.objectContaining({ ordem: 6 })),
+    );
+  });
+
   it('scrolls to the post "Novo Post" just created once it renders', async () => {
     mockGetPosts.mockResolvedValue([makePost(1, 0)]);
     mockAddPost.mockResolvedValue(makePost(3, 1));
@@ -1651,7 +1727,11 @@ describe('WorkflowDrawer scrolls the targeted post into view', () => {
     await screen.findByText('Post 1');
 
     mockGetPosts.mockResolvedValue([makePost(1, 0), makePost(3, 1)]);
-    fireEvent.click(screen.getByRole('button', { name: /Novo Post/ }));
+    // Header button and the full-width one after the last post both create a post; use the latter.
+    const addButtons = screen.getAllByRole('button', { name: /Novo Post/ });
+    expect(addButtons).toHaveLength(2);
+    expect(addButtons[1]).toHaveClass('drawer-add-post-btn--row');
+    fireEvent.click(addButtons[1]);
 
     const body = container.querySelector('.drawer-body')!;
     await waitFor(() => expect(body.scrollTop).toBe(800));

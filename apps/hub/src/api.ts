@@ -185,25 +185,43 @@ export async function reorderPostSchedules(
   return res.json() as Promise<{ ok: boolean; updated: number }>;
 }
 
+/** What one edit-suggestion save sends. Untouched fields still carry their draft value; the
+ * server only records the ones in `touched_fields` (each with its raw base in `bases`). */
+export interface EditSuggestionPayload {
+  conteudo: Record<string, unknown> | null;
+  conteudo_plain: string;
+  captions: {
+    ig_caption: string | null;
+    /** Omitted (undefined) = not sent at all. */
+    tiktok_caption?: string | null;
+    geral_caption?: string | null;
+  };
+  touched_fields: SuggestionField[];
+  bases: SuggestionBases | null;
+}
+
+/**
+ * Errors worth telling apart (HubApiError.status/code): 409 `target_gone` (the destination
+ * was removed from the post), 409 `retry` (a concurrent write, safe to resend), 400
+ * `caption_too_long` (TikTok caption above its limit).
+ */
 export function submitEditSuggestion(
   token: string,
   post_id: number,
-  suggested_conteudo: Record<string, unknown> | null,
-  suggested_conteudo_plain: string,
-  suggested_ig_caption: string | null,
-  touched_fields: SuggestionField[],
-  bases: SuggestionBases | null,
+  payload: EditSuggestionPayload,
 ) {
   return post<{ ok: boolean; pending_suggestion: PendingEditSuggestion | null }>(
     'hub-edit-suggestion',
     {
       token,
       post_id,
-      suggested_conteudo,
-      suggested_conteudo_plain,
-      suggested_ig_caption,
-      touched_fields,
-      bases,
+      suggested_conteudo: payload.conteudo,
+      suggested_conteudo_plain: payload.conteudo_plain,
+      suggested_ig_caption: payload.captions.ig_caption,
+      suggested_tiktok_caption: payload.captions.tiktok_caption,
+      suggested_geral_caption: payload.captions.geral_caption,
+      touched_fields: payload.touched_fields,
+      bases: payload.bases,
     },
   );
 }
