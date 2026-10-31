@@ -240,7 +240,9 @@
         "reconnect": "A autorização do Google expirou. Reconecte a conta para continuar.",
         "location_unavailable": "Uma das unidades marcadas não está mais disponível. A lista foi atualizada, confira a seleção.",
         "rate_limited": "Muitas tentativas. Tente de novo em instantes.",
-        "unknown": "Não foi possível falar com o Google agora. Tente de novo."
+        "unknown": "Não foi possível falar com o Google agora. Tente de novo.",
+        "revoked": "A autorização do Google expirou. Reconecte a conta para continuar.",
+        "not_connected": "Este cliente não está mais conectado ao Google. Atualize a página."
       }
     }
   },

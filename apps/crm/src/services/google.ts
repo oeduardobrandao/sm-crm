@@ -76,6 +76,10 @@ export const GOOGLE_SERVICE_ERROR_CODES = [
   'reconnect',
   'location_unavailable',
   'rate_limited',
+  /** Manual sync: the unit's authorization expired before the call (same handling as `reconnect`). */
+  'revoked',
+  /** Manual sync: the client has no unit of that product any more. */
+  'not_connected',
   'unknown',
 ] as const;
 
@@ -154,3 +158,45 @@ export async function linkGbpLocations(
 export async function disconnectYouTube(clientId: number): Promise<void> {
   await request<{ ok: true }>(`/disconnect/youtube/${clientId}`, { method: 'POST' });
 }
+
+/** Outcome of one unit's manual sync. Anything but `synced` means it did not finish now. */
+export type GoogleSyncStatus =
+  | 'synced'
+  | 'revoked'
+  | 'quota_skipped'
+  | 'skipped'
+  | 'mismatch'
+  | 'not_approved'
+  | 'failed';
+
+/** POST /sync body: YouTube answers one `status`, GMN one per active location. */
+export interface GoogleSyncResult {
+  ok: true;
+  status?: GoogleSyncStatus;
+  locations?: Array<{ id: string; status: GoogleSyncStatus }>;
+}
+
+/**
+ * Manual "Sincronizar agora" for one product of a client. Rate limited server-side
+ * (`rate_limited`); the caller refreshes its `yt-`/`gbp-` queries on success.
+ */
+export async function syncGoogleProduct(
+  product: GoogleProduct,
+  clientId: number,
+): Promise<GoogleSyncResult> {
+  return request<GoogleSyncResult>(`/sync/${product}/${clientId}`, { method: 'POST' });
+}
+
+/**
+ * True when the sync answered but some unit did not finish (quota, approval, a revoked token
+ * mid-run...). A body without statuses (an older server) counts as complete.
+ */
+export function isGoogleSyncIncomplete(result: GoogleSyncResult | undefined | null): boolean {
+  if (!result) return false;
+  if (result.status !== undefined && result.status !== 'synced') return true;
+  return (result.locations ?? []).some((l) => l.status !== 'synced');
+}
+
+/** 403 `feature_disabled` from an analytics read: the workspace plan lacks the product flag. */
+export const isGoogleFeatureDisabled = (err: unknown): boolean =>
+  err instanceof Error && err.message === 'feature_disabled';

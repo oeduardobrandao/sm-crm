@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 import { enUS, ptBR } from 'date-fns/locale';
-import { AlertTriangle, Lock, RefreshCw } from 'lucide-react';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { PageSkeleton } from '@/components/ui/skeletons';
@@ -23,6 +23,7 @@ import type { BestPostingTimes } from '../../../services/analytics';
 import { sanitizeUrl } from '../../../utils/security';
 import { AISection, BestTimesHeatmap } from '../AnalyticsContaPage';
 import { FollowerChart } from '../FollowerChart';
+import { LoadingCard, LockedCard, StateCard } from '../AnalyticsStateCards';
 import { TikTokKpiGrid } from './TikTokKpiGrid';
 import { TikTokPeriodBar } from './TikTokPeriodBar';
 import { TikTokRankedVideos } from './TikTokRankedVideos';
@@ -305,7 +306,11 @@ export function TikTokAnalyticsTab({
       />
 
       {aiLocked ? (
-        <LockedCard title={t('ai.title')} body={t('ai.locked')} />
+        <LockedCard
+          title={t('ai.title')}
+          body={t('ai.locked')}
+          actionLabel={t('states.lockedAction')}
+        />
       ) : (
         <AISection
           clientId={clientId}
@@ -325,16 +330,6 @@ export function TikTokAnalyticsTab({
 
 /** An already-translated AI message, passed through the loader's catch as-is. */
 class AIMessage extends Error {}
-
-function StateCard({ title, body, action }: { title: string; body?: string; action: ReactNode }) {
-  return (
-    <div className="card animate-up" style={{ textAlign: 'center', padding: '2.5rem 1.5rem' }}>
-      <h3 style={{ marginBottom: '0.5rem' }}>{title}</h3>
-      {body && <p style={{ color: 'var(--text-muted)', marginBottom: '1.25rem' }}>{body}</p>}
-      {action}
-    </div>
-  );
-}
 
 function LoadingBody() {
   return (
@@ -365,41 +360,6 @@ function ErrorBody({ onRetry }: { onRetry: () => void }) {
   );
 }
 
-function LoadingCard() {
-  return (
-    <div className="card animate-up">
-      <LoadingBody />
-    </div>
-  );
-}
-
-/** A section the plan does not include: what it is, and where to upgrade. */
-function LockedCard({ title, body }: { title: string; body: string }) {
-  const { t } = useTranslation('analyticsTiktok');
-  return (
-    <div className="card animate-up">
-      <div className="dashboard-hub-card-header">
-        <h3>{title}</h3>
-      </div>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.75rem',
-          flexWrap: 'wrap',
-          marginTop: '0.75rem',
-        }}
-      >
-        <Lock className="h-4 w-4" style={{ color: 'var(--text-muted)' }} aria-hidden="true" />
-        <p style={{ color: 'var(--text-muted)', margin: 0, flex: 1 }}>{body}</p>
-        <Button asChild size="sm" variant="outline">
-          <Link to={BILLING_PATH}>{t('states.lockedAction')}</Link>
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 function BestTimesCard({
   locked,
   loading,
@@ -413,7 +373,14 @@ function BestTimesCard({
   onRetry: (() => void) | null;
 }) {
   const { t } = useTranslation('analyticsTiktok');
-  if (locked) return <LockedCard title={t('bestTimes.title')} body={t('bestTimes.locked')} />;
+  if (locked)
+    return (
+      <LockedCard
+        title={t('bestTimes.title')}
+        body={t('bestTimes.locked')}
+        actionLabel={t('states.lockedAction')}
+      />
+    );
   const top = data?.topSlots[0];
   const enough = !!data && data.totalPosts >= MIN_BEST_TIME_VIDEOS;
   const videosLabel = (count: number) => t('bestTimes.postCount', { count });

@@ -278,3 +278,15 @@ verify_jwt = false
 
 [functions.equipe-chat-media]
 verify_jwt = false
+
+[functions.gbp-analytics]
+verify_jwt = false
+
+[functions.youtube-analytics]
+verify_jwt = false
+
+[functions.youtube-sync-cron]
+verify_jwt = false
+
+[functions.gbp-sync-cron]
+verify_jwt = false

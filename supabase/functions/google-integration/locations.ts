@@ -12,6 +12,8 @@ export interface GbpLocationOption {
   addressLine: string | null;
   website: string | null;
   hasVoiceOfMerchant: boolean;
+  /** Business Information metadata.mapsUri ("Abrir no Google"); null when Google omits it. */
+  mapsUri: string | null;
 }
 
 const ACCOUNTS_URL = "https://mybusinessaccountmanagement.googleapis.com/v1/accounts";
@@ -40,7 +42,7 @@ interface GoogleLocation {
   title?: string;
   storefrontAddress?: { addressLines?: string[]; locality?: string };
   websiteUri?: string;
-  metadata?: { hasVoiceOfMerchant?: boolean };
+  metadata?: { hasVoiceOfMerchant?: boolean; mapsUri?: string };
 }
 
 async function listAccounts(
@@ -115,6 +117,7 @@ export async function listGbpLocations(
           addressLine: addressLineOf(location.storefrontAddress),
           website: location.websiteUri || null,
           hasVoiceOfMerchant: location.metadata?.hasVoiceOfMerchant === true,
+          mapsUri: location.metadata?.mapsUri || null,
         });
       }
       pageToken = body?.nextPageToken || undefined;

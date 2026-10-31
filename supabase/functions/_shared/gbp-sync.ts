@@ -1,0 +1,436 @@
+// Sync of ONE Google Meu Negócio location (spec §5.2, plan Task 8). Shared by gbp-sync-cron
+// and the manual sync route of google-integration (Task 9), so both follow the same steps:
+//
+//   1. Daily metrics for [data_through - 7, yesterday] (a backfill tries 548, then 365, then
+//      180 days, taking a 400 as "range not allowed"). `data_through` = the latest day Google
+//      SERVED a dated entry for (value or not, so a location gone quiet keeps advancing) minus
+//      2; a response with no dated entry at all gives yesterday - 2; it never moves backwards.
+//      Every day of the window up to it is written (0 for days Google omitted); later days never
+//      are.
+//   2. Search keywords, one single-month call per closed month (2, or 18 on a backfill: over a
+//      multi-month range Google sums the months into one number). Each fetched month replaces
+//      its stored rows (delete, then insert), so a keyword that disappeared does not linger. A
+//      400 skips the month on a refresh and ends the walk on a backfill. On a backfill the new
+//      data_through is persisted only after this step completes: the backfill is keyed on
+//      data_through IS NULL, so a run that dies before the 18 months are stored backfills again
+//      next hour (the metric rows already written are idempotent upserts).
+//   3. Reviews: every run walks newest first up to 200 (4 pages), upserts all of them (so
+//      replies and edits refresh) and, once the walk completed, deletes the location's stored
+//      reviews that Google no longer returns. Reviews are non-analytics API data that must be
+//      refreshed or deleted within 30 days (spec §4.6), so nothing older than the returned set
+//      is kept. Today's gbp_rating_daily and the cached totals come from the same response; no
+//      totals at all means no reviews (total 0, average null).
+//   4. Location refresh (title, voice of merchant, Maps link) together with last_synced_at.
+//
+// Write guard (plan "Shared sync semantics"): every write first runs a guarded
+// `UPDATE gbp_locations … WHERE id AND conta_id AND status = 'active'`. Zero rows means the
+// unit was disconnected or revoked mid-run, so the sync stops with `revoked` and writes nothing
+// else; otherwise a write could land after google_expire_units deleted the unit's history and
+// orphan it forever. Each step persists before the next network call (spec §5.3), and the
+// metrics rows land BEFORE data_through advances, so a run killed mid-backfill re-backfills.
+//
+// Outcomes, not failures: token REVOKED -> revoked; TOKEN_INVALID or NOT_FOUND -> skipped (one
+// console.error; a location deleted at Google 404s every hour and must not page anyone);
+// NOT_APPROVED -> not_approved; QUOTA_EXCEEDED -> quota_skipped (keeps what was written, no
+// last_synced_at, so the next hour retries). RATE_LIMITED (a per-minute throttle) is retried
+// after 1, 2 and 4 s; still throttled after that, it ends as quota_skipped too, never as a
+// failure. Anything else is thrown for the caller to count as a failure.
+//
+// Every history read, write and delete is keyed by the location's own conta_id: the same
+// location_name may be linked in another workspace (Review Focus 3).
+
+import type * as GbpApiModule from "./gbp-api.ts";
+import {
+  GBP_DAILY_METRICS,
+  type GbpDailyMetricsResult,
+  type GbpDayMetrics,
+  type GbpKeywordRow,
+  type GbpReview,
+} from "./gbp-api.ts";
+import { type DbClient, GoogleApiError, retryRateLimited } from "./google.ts";
+import { previousMonth, saoPauloDate } from "./sao-paulo-date.ts";
+
+/** The `gbp_locations` columns the sync reads. Never token columns. */
+export interface GbpLocationRow {
+  id: string;
+  conta_id: string;
+  client_id: number | string;
+  connection_id: string | null;
+  account_name: string;
+  location_name: string;
+  title: string | null;
+  has_voice_of_merchant: boolean;
+  average_rating: number | string | null;
+  total_review_count: number | null;
+  status: string;
+  data_through: string | null;
+  last_synced_at: string | null;
+  last_sync_attempt_at?: string | null;
+  maps_uri?: string | null;
+}
+
+/** Column list for selecting a GbpLocationRow (no token columns). */
+export const GBP_LOCATION_COLUMNS =
+  "id, conta_id, client_id, connection_id, account_name, location_name, title, has_voice_of_merchant, " +
+  "average_rating, total_review_count, status, data_through, last_synced_at, last_sync_attempt_at, maps_uri";
+
+export interface GbpSyncDeps {
+  svc: DbClient;
+  api: typeof GbpApiModule;
+  getFreshGoogleToken: (svc: DbClient, connectionId: string) => Promise<string>;
+  now: () => Date;
+  sleep: (ms: number) => Promise<void>;
+}
+
+export type GbpSyncStatus = "synced" | "revoked" | "not_approved" | "quota_skipped" | "skipped";
+
+export interface GbpSyncOutcome {
+  status: GbpSyncStatus;
+  /** True when the location had no data_through yet (first sync). */
+  backfill: boolean;
+}
+
+/** Spike S3 default: the first window the Performance API accepts wins. */
+const BACKFILL_WINDOWS_DAYS = [548, 365, 180];
+const REWRITE_LOOKBACK_DAYS = 7;
+/** Google back-fills the most recent days, so the watermark trails the latest served day by two. */
+const WATERMARK_LAG_DAYS = 2;
+const KEYWORD_MONTHS = 2;
+const BACKFILL_KEYWORD_MONTHS = 18;
+const MAX_REVIEWS = 200;
+/** 200 rows = 4 pages of 50; the cap guards against a pagination loop from the upstream. */
+const MAX_REVIEW_PAGES = 10;
+const UPSERT_CHUNK = 500;
+
+const METRIC_COLUMNS = GBP_DAILY_METRICS.map((m) => m.toLowerCase() as keyof GbpDayMetrics);
+
+/** A guarded unit update matched no row: the location is no longer active. */
+class UnitNotActive extends Error {
+  constructor() {
+    super("gbp location is no longer active");
+    this.name = "UnitNotActive";
+  }
+}
+
+function addDays(isoDay: string, days: number): string {
+  const [y, m, d] = isoDay.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+function daysBetween(start: string, end: string): string[] {
+  const out: string[] = [];
+  for (let day = start; day <= end; day = addDays(day, 1)) out.push(day);
+  return out;
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+/** A 400 from Google on a date range: the API does not serve a window that long or that old. */
+function isRangeRejected(err: unknown): boolean {
+  return err instanceof GoogleApiError && err.code === "UPSTREAM" && err.status === 400;
+}
+
+function roundRating(value: number | null): number | null {
+  return value === null ? null : Math.round(value * 10) / 10;
+}
+
+function withRetry<T>(deps: GbpSyncDeps, call: () => Promise<T>): Promise<T> {
+  return retryRateLimited(deps.sleep, call);
+}
+
+class LocationSync {
+  private readonly nowIso: string;
+  private readonly today: string;
+  private readonly yesterday: string;
+
+  constructor(
+    private readonly deps: GbpSyncDeps,
+    private readonly loc: GbpLocationRow,
+    now: Date,
+    private readonly backfill: boolean,
+  ) {
+    this.nowIso = now.toISOString();
+    // GMN days are São Paulo dates (plan "Shared sync semantics").
+    this.today = saoPauloDate(now);
+    this.yesterday = addDays(this.today, -1);
+  }
+
+  /** The write guard: zero rows updated means the unit was revoked or unlinked mid-run. */
+  private async guard(patch: Record<string, unknown>): Promise<void> {
+    const { data, error } = await this.deps.svc
+      .from("gbp_locations")
+      .update(patch)
+      .eq("id", this.loc.id)
+      .eq("conta_id", this.loc.conta_id)
+      .eq("status", "active")
+      .select("id");
+    if (error) throw new Error(`gbp-sync: location update failed: ${error.message}`);
+    if (!Array.isArray(data) || data.length === 0) throw new UnitNotActive();
+  }
+
+  private async upsert(table: string, rows: Record<string, unknown>[], onConflict: string): Promise<void> {
+    for (const part of chunk(rows, UPSERT_CHUNK)) {
+      const { error } = await this.deps.svc.from(table).upsert(part, { onConflict });
+      if (error) throw new Error(`gbp-sync: ${table} upsert failed: ${error.message}`);
+    }
+  }
+
+  async run(token: string): Promise<void> {
+    const through = await this.syncDailyMetrics(token);
+    await this.syncKeywords(token);
+    // Backfill: the watermark lands only now that the 18 keyword months are stored.
+    if (this.backfill) await this.guard({ data_through: through });
+    await this.syncReviews(token);
+    await this.refreshLocation(token);
+  }
+
+  private async fetchMetrics(token: string, range: { start: string; end: string }) {
+    return await withRetry(this.deps, () => this.deps.api.fetchDailyMetrics(token, this.loc.location_name, range));
+  }
+
+  /** Writes the metric rows and returns the new data_through (persisted here unless backfill). */
+  private async syncDailyMetrics(token: string): Promise<string> {
+    let range: { start: string; end: string } | null = null;
+    let result: GbpDailyMetricsResult | null = null;
+
+    if (this.backfill) {
+      let rejected: unknown = null;
+      for (const length of BACKFILL_WINDOWS_DAYS) {
+        const candidate = { start: addDays(this.today, -length), end: this.yesterday };
+        try {
+          result = await this.fetchMetrics(token, candidate);
+          range = candidate;
+          break;
+        } catch (err) {
+          if (!isRangeRejected(err)) throw err;
+          rejected = err;
+        }
+      }
+      if (!result || !range) throw rejected;
+    } else {
+      range = { start: addDays(this.loc.data_through!, -REWRITE_LOOKBACK_DAYS), end: this.yesterday };
+      result = await this.fetchMetrics(token, range);
+    }
+
+    const { days } = result;
+    const served = result.latestServedDay;
+    const latest = served && served >= range.start && served <= range.end ? served : null;
+    const computed = addDays(latest ?? this.yesterday, -WATERMARK_LAG_DAYS);
+    const stored = this.loc.data_through;
+    const through = stored && stored > computed ? stored : computed;
+
+    const lastDay = through < range.end ? through : range.end;
+    const rows = daysBetween(range.start, lastDay).map((day) => {
+      const metrics = days.get(day);
+      const row: Record<string, unknown> = { conta_id: this.loc.conta_id, location_name: this.loc.location_name, day };
+      for (const column of METRIC_COLUMNS) row[column] = metrics ? Number(metrics[column]) || 0 : 0;
+      return row;
+    });
+
+    await this.guard({ updated_at: this.nowIso });
+    if (rows.length > 0) await this.upsert("gbp_metrics_daily", rows, "conta_id,location_name,day");
+    if (!this.backfill) await this.guard({ data_through: through });
+    return through;
+  }
+
+  private async syncKeywords(token: string): Promise<void> {
+    const count = this.backfill ? BACKFILL_KEYWORD_MONTHS : KEYWORD_MONTHS;
+    let month = this.today.slice(0, 7);
+    for (let i = 0; i < count; i++) {
+      month = previousMonth(month);
+      let rows: GbpKeywordRow[];
+      try {
+        const m = month;
+        rows = await withRetry(this.deps, () => this.deps.api.fetchMonthlyKeywords(token, this.loc.location_name, m));
+      } catch (err) {
+        if (!isRangeRejected(err)) throw err;
+        if (this.backfill) {
+          // Older months than the API serves: the remaining ones are older still.
+          console.warn(`[gbp-sync] location ${this.loc.id}: keywords not served from ${month} back`);
+          break;
+        }
+        console.warn(`[gbp-sync] location ${this.loc.id}: keywords for ${month} rejected (400), skipped`);
+        continue;
+      }
+      await this.replaceKeywordMonth(month, rows);
+    }
+  }
+
+  /** Delete-then-insert of one month's keywords, behind the guard. */
+  private async replaceKeywordMonth(month: string, rows: GbpKeywordRow[]): Promise<void> {
+    const monthDate = `${month}-01`;
+    await this.guard({ updated_at: this.nowIso });
+    const { error: delError } = await this.deps.svc
+      .from("gbp_search_keywords_monthly")
+      .delete()
+      .eq("conta_id", this.loc.conta_id)
+      .eq("location_name", this.loc.location_name)
+      .eq("month", monthDate);
+    if (delError) throw new Error(`gbp-sync: gbp_search_keywords_monthly delete failed: ${delError.message}`);
+
+    const byKeyword = new Map<string, GbpKeywordRow>();
+    for (const r of rows) if (!byKeyword.has(r.keyword)) byKeyword.set(r.keyword, r);
+    for (const part of chunk([...byKeyword.values()], UPSERT_CHUNK)) {
+      const { error } = await this.deps.svc.from("gbp_search_keywords_monthly").insert(
+        part.map((r) => ({
+          conta_id: this.loc.conta_id,
+          location_name: this.loc.location_name,
+          month: monthDate,
+          keyword: r.keyword,
+          value: r.value ?? null,
+          threshold: r.threshold ?? null,
+        })),
+      );
+      if (error) throw new Error(`gbp-sync: gbp_search_keywords_monthly insert failed: ${error.message}`);
+    }
+  }
+
+  private async syncReviews(token: string): Promise<void> {
+    const collected = new Map<string, GbpReview>();
+    let averageRating: number | null = null;
+    let totalReviewCount: number | null = null;
+    let pageToken: string | undefined;
+    // Only a walk that reached its natural end (no next page, or 200 rows) may delete.
+    let complete = false;
+    walk: for (let page = 0; page < MAX_REVIEW_PAGES; page++) {
+      const opts = pageToken ? { pageToken } : {};
+      const result = await withRetry(
+        this.deps,
+        () => this.deps.api.listReviews(token, this.loc.account_name, this.loc.location_name, opts),
+      );
+      if (page === 0) {
+        averageRating = result.averageRating;
+        totalReviewCount = result.totalReviewCount;
+      }
+      for (const review of result.reviews) {
+        if (!collected.has(review.reviewId)) collected.set(review.reviewId, review);
+        if (collected.size >= MAX_REVIEWS) {
+          complete = true;
+          break walk;
+        }
+      }
+      if (!result.nextPageToken) {
+        complete = true;
+        break;
+      }
+      pageToken = result.nextPageToken;
+    }
+
+    // No totals at all on a successful response: the location has no reviews.
+    if (averageRating === null && totalReviewCount === null) totalReviewCount = 0;
+    const rating = roundRating(averageRating);
+    await this.guard({ average_rating: rating, total_review_count: totalReviewCount });
+
+    if (collected.size > 0) {
+      await this.upsert(
+        "gbp_reviews",
+        [...collected.values()].map((r) => ({
+          conta_id: this.loc.conta_id,
+          location_name: this.loc.location_name,
+          review_id: r.reviewId,
+          reviewer_name: r.reviewerName,
+          star_rating: r.starRating,
+          comment: r.comment,
+          create_time: r.createTime,
+          update_time: r.updateTime,
+          has_reply: r.hasReply,
+        })),
+        "conta_id,location_name,review_id",
+      );
+    }
+
+    const { error: ratingError } = await this.deps.svc.from("gbp_rating_daily").upsert({
+      conta_id: this.loc.conta_id,
+      location_name: this.loc.location_name,
+      day: this.today,
+      average_rating: rating,
+      total_review_count: totalReviewCount,
+    }, { onConflict: "conta_id,location_name,day" });
+    if (ratingError) throw new Error(`gbp-sync: gbp_rating_daily upsert failed: ${ratingError.message}`);
+
+    if (!complete) {
+      console.warn(`[gbp-sync] location ${this.loc.id}: review walk hit the page cap, nothing deleted`);
+      return;
+    }
+    // Delete what Google no longer returns (deleted reviews, and everything past the newest 200).
+    const { data: storedRows, error: storedError } = await this.deps.svc
+      .from("gbp_reviews")
+      .select("review_id")
+      .eq("conta_id", this.loc.conta_id)
+      .eq("location_name", this.loc.location_name)
+      .limit(1000);
+    if (storedError) throw new Error(`gbp-sync: gbp_reviews read failed: ${storedError.message}`);
+    const gone = ((storedRows ?? []) as Array<{ review_id: string }>)
+      .map((r) => r.review_id)
+      .filter((id) => !collected.has(id));
+    for (const ids of chunk(gone, UPSERT_CHUNK)) {
+      const { error } = await this.deps.svc
+        .from("gbp_reviews")
+        .delete()
+        .eq("conta_id", this.loc.conta_id)
+        .eq("location_name", this.loc.location_name)
+        .in("review_id", ids);
+      if (error) throw new Error(`gbp-sync: gbp_reviews delete failed: ${error.message}`);
+    }
+  }
+
+  private async refreshLocation(token: string): Promise<void> {
+    const info = await withRetry(this.deps, () => this.deps.api.getLocation(token, this.loc.location_name));
+    await this.guard({
+      title: info.title,
+      has_voice_of_merchant: info.hasVoiceOfMerchant,
+      maps_uri: info.mapsUri,
+      last_synced_at: this.nowIso,
+    });
+  }
+}
+
+/** Syncs one location. Throws only for errors the caller must count as failures. */
+export async function syncGbpLocation(
+  deps: GbpSyncDeps,
+  location: GbpLocationRow,
+  opts: { now: Date },
+): Promise<GbpSyncOutcome> {
+  const backfill = location.data_through === null;
+  const outcome = (status: GbpSyncStatus): GbpSyncOutcome => ({ status, backfill });
+
+  if (!location.connection_id) {
+    console.error(`[gbp-sync] location ${location.id}: no connection, skipped`);
+    return outcome("skipped");
+  }
+
+  try {
+    const token = await deps.getFreshGoogleToken(deps.svc, location.connection_id);
+    await new LocationSync(deps, location, opts.now, backfill).run(token);
+    return outcome("synced");
+  } catch (err) {
+    if (err instanceof UnitNotActive) {
+      console.log(`[gbp-sync] location ${location.id}: no longer active, stopped`);
+      return outcome("revoked");
+    }
+    if (err instanceof GoogleApiError) {
+      switch (err.code) {
+        case "REVOKED":
+          return outcome("revoked");
+        case "NOT_APPROVED":
+          console.warn(`[gbp-sync] location ${location.id}: API access not approved, skipped today`);
+          return outcome("not_approved");
+        case "QUOTA_EXCEEDED":
+          console.warn(`[gbp-sync] location ${location.id}: quota exceeded, retried next hour`);
+          return outcome("quota_skipped");
+        case "RATE_LIMITED":
+          console.warn(`[gbp-sync] location ${location.id}: still rate limited after the retries, retried next hour`);
+          return outcome("quota_skipped");
+        case "TOKEN_INVALID":
+        case "NOT_FOUND":
+          console.error(`[gbp-sync] location ${location.id}: ${err.code}, skipped`);
+          return outcome("skipped");
+      }
+    }
+    throw err;
+  }
+}

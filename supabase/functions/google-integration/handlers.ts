@@ -13,7 +13,6 @@ import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
 import {
   buildGoogleAuthUrl,
-  decryptGoogleToken,
   encryptGoogleToken,
   exchangeGoogleCode,
   fetchGoogleUserInfo,
@@ -25,6 +24,18 @@ import {
   hasRequiredScopes,
   revokeGoogleToken,
 } from "../_shared/google.ts";
+import { processUnlinkDecisionData } from "../_shared/google-revocations.ts";
+import * as gbpApi from "../_shared/gbp-api.ts";
+import { GBP_LOCATION_COLUMNS, type GbpLocationRow, syncGbpLocation } from "../_shared/gbp-sync.ts";
+import { createJsonResponder, internalServerError } from "../_shared/http.ts";
+import * as youtubeApi from "../_shared/youtube-api.ts";
+import { drainYoutubePdfPurges, type StorageLike } from "../_shared/youtube-pdf-purges.ts";
+import {
+  MAX_VIDEO_REPORTS_PER_RUN,
+  syncYouTubeChannel,
+  YOUTUBE_CHANNEL_SYNC_COLUMNS,
+  type YoutubeChannelRow,
+} from "../_shared/youtube-sync.ts";
 import { type GbpLocationOption, listGbpLocations } from "./locations.ts";
 import { createGoogleState, verifyGoogleState, type VerifiedGoogleState } from "./oauth-state.ts";
 import { type DbClient, loadClientInTenant, resolveTenant } from "./tenant.ts";
@@ -34,6 +45,37 @@ export interface GoogleIntegrationDeps {
   createServiceDb: () => DbClient;
   /** Clock override for tests; defaults to the real time. */
   now?: () => Date;
+  /** Unit syncs for POST /sync (tests inject fakes; the real ones are tested on their own). */
+  syncYouTubeChannel?: typeof syncYouTubeChannel;
+  syncGbpLocation?: typeof syncGbpLocation;
+  /** Storage for the YouTube PDF purge drain; defaults to the service client's storage. */
+  storage?: StorageLike;
+}
+
+/** Same bounds as youtube-sync-cron's drain: what one request removes is this tenant's queue. */
+const PDF_PURGE_LIMIT = 50;
+const PDF_PURGE_MAX_ATTEMPTS = 10;
+/** Manual sync budget per client and product (globals: 5 per 300 s). */
+const SYNC_RATE_LIMIT = 5;
+const SYNC_RATE_WINDOW_S = 300;
+
+/**
+ * Removes the Storage objects of this tenant's report PDFs that a YouTube purge queued. Runs
+ * after the purge committed and never fails the request: leftovers are retried by
+ * youtube-sync-cron.
+ */
+async function drainTenantPdfPurges(svc: DbClient, deps: GoogleIntegrationDeps, contaId: string): Promise<void> {
+  try {
+    const storage = deps.storage ?? (svc.storage as StorageLike);
+    await drainYoutubePdfPurges(svc, {
+      storage,
+      contaId,
+      limit: PDF_PURGE_LIMIT,
+      maxAttempts: PDF_PURGE_MAX_ATTEMPTS,
+    });
+  } catch (err) {
+    console.error("[google-integration] PDF purge drain failed:", (err as Error).message);
+  }
 }
 
 const PRODUCT_FEATURE: Record<GoogleProduct, string> = {
@@ -106,7 +148,7 @@ class CallbackOutcome {
   constructor(readonly location: string) {}
 }
 
-async function handleCallback(svc: DbClient, url: URL): Promise<Response> {
+async function handleCallback(svc: DbClient, url: URL, deps: GoogleIntegrationDeps): Promise<Response> {
   let state: VerifiedGoogleState;
   try {
     state = await verifyGoogleState(url.searchParams.get("state") ?? "", svc);
@@ -124,7 +166,7 @@ async function handleCallback(svc: DbClient, url: URL): Promise<Response> {
   const fail = (code: string, extra = "") => redirect(`${target}?${p}_error=${code}${extra}`);
 
   try {
-    const outcome = await runCallback(svc, url, state, target, fail);
+    const outcome = await runCallback(svc, url, state, target, fail, deps);
     return outcome instanceof CallbackOutcome ? redirect(outcome.location) : outcome;
   } catch (err) {
     console.error(`[google-integration] callback (${state.product}) failed:`, (err as Error).message);
@@ -138,6 +180,7 @@ async function runCallback(
   state: VerifiedGoogleState,
   target: string,
   fail: (code: string, extra?: string) => Response,
+  deps: GoogleIntegrationDeps,
 ): Promise<Response | CallbackOutcome> {
   const clientId = parseInt(state.clientId, 10);
   // The client may have been deleted or moved during the 10-minute window.
@@ -220,11 +263,24 @@ async function runCallback(
 
   let success: string;
   if (channel) {
-    const result = await linkYouTubeChannel(svc, state.contaId, clientId, connectionId, channel);
+    const relink = await prepareYouTubeRelink(svc, deps, state, clientId, connectionId, channel.id, user.sub);
+    const result = await linkYouTubeChannel(svc, state.contaId, clientId, connectionId, channel, {
+      resetWatermarks: relink.resetWatermarks,
+    });
     if (result.kind === "in_use") {
       // Race backstop: another client linked the channel between the pre-check and here. The
       // connection row now exists, so the grant is in use and is NOT revoked.
       return fail("channel_in_use", result.otherName ? `&yt_other=${encodeURIComponent(result.otherName)}` : "");
+    }
+    if (relink.releaseSub) {
+      // Same channel, now through another Google account: the old account may hold nothing else.
+      const { data, error } = await svc.rpc("google_release_sub", { p_sub: relink.releaseSub });
+      if (error) {
+        // Non-fatal: the channel is linked; the orphan sweep releases the sub later.
+        console.error(`[google-integration] google_release_sub failed: ${error.message}`);
+      } else {
+        await processUnlinkDecisionData(svc, data);
+      }
     }
     success = `${target}?yt_connected=1`;
   } else {
@@ -306,16 +362,100 @@ async function findOtherChannelOwner(
 
 type LinkResult = { kind: "linked" } | { kind: "in_use"; otherName: string | null };
 
+/**
+ * P11, run after the connection upsert and before the channel write. The client's stored row:
+ * - another channel_id: unlink it first (google_unlink_youtube purges its history, decides the
+ *   revoke, deletes the row), so no history is orphaned and the new channel backfills from NULL
+ *   watermarks;
+ * - the same channel_id on another connection: keep the row and its history, and return the old
+ *   connection's sub so the caller releases it after the write (captured now, before the row
+ *   moves to the new connection).
+ * The connection upsert runs first on purpose: when the old and new channel share the Google
+ * account, the fresh authorized_at keeps the sub "in use" and the unlink does not revoke it.
+ */
+async function prepareYouTubeRelink(
+  svc: DbClient,
+  deps: GoogleIntegrationDeps,
+  state: VerifiedGoogleState,
+  clientId: number,
+  connectionId: string,
+  channelId: string,
+  newSub: string,
+): Promise<{ resetWatermarks: boolean; releaseSub: string | null }> {
+  const { data, error } = await svc
+    .from("youtube_channels")
+    .select("channel_id, connection_id")
+    .eq("conta_id", state.contaId)
+    .eq("client_id", clientId)
+    .limit(1);
+  if (error) throw new Error(`youtube_channels stored row read failed: ${error.message}`);
+  type StoredChannel = { channel_id: string; connection_id: string | null };
+  const stored = Array.isArray(data) ? (data[0] as StoredChannel | undefined) : undefined;
+  if (!stored) return { resetWatermarks: false, releaseSub: null };
+
+  if (stored.channel_id !== channelId) {
+    const { data: decision, error: unlinkError } = await svc.rpc("google_unlink_youtube", {
+      p_conta_id: state.contaId,
+      p_client_id: clientId,
+    });
+    if (unlinkError) {
+      // P0002: a concurrent disconnect removed it meanwhile; the insert below proceeds.
+      if (unlinkError.code !== "P0002") throw new Error(`google_unlink_youtube failed: ${unlinkError.message}`);
+      return { resetWatermarks: true, releaseSub: null };
+    }
+    await processUnlinkDecisionData(svc, decision);
+    await drainTenantPdfPurges(svc, deps, state.contaId);
+    await insertAuditLog(svc, {
+      conta_id: state.contaId,
+      actor_user_id: state.userId,
+      action: "youtube-unlink",
+      resource_type: "youtube_channel",
+      metadata: { client_id: clientId, reason: "relink", channel_id: stored.channel_id },
+    });
+    return { resetWatermarks: true, releaseSub: null };
+  }
+
+  if (!stored.connection_id || stored.connection_id === connectionId) {
+    return { resetWatermarks: false, releaseSub: null };
+  }
+  const { data: old, error: oldError } = await svc
+    .from("google_connections")
+    .select("google_sub")
+    .eq("id", stored.connection_id)
+    .eq("conta_id", state.contaId)
+    .maybeSingle();
+  if (oldError) {
+    // Non-fatal: without the sub there is nothing to release; the orphan sweep covers it.
+    console.error(`[google-integration] old connection sub read failed: ${oldError.message}`);
+    return { resetWatermarks: false, releaseSub: null };
+  }
+  const oldSub = typeof old?.google_sub === "string" ? old.google_sub : null;
+  return { resetWatermarks: false, releaseSub: oldSub && oldSub !== newSub ? oldSub : null };
+}
+
 async function linkYouTubeChannel(
   svc: DbClient,
   contaId: string,
   clientId: number,
   connectionId: string,
   channel: YouTubeChannelItem & { id: string },
+  opts: { resetWatermarks: boolean },
 ): Promise<LinkResult> {
   const stats = channel.statistics ?? {};
+  // A different channel than the stored one starts from NULL watermarks (P11) even if the
+  // unlink's row delete raced this write; the same channel keeps them.
+  const reset = opts.resetWatermarks
+    ? {
+      data_through: null,
+      content_type_through: null,
+      traffic_through: null,
+      videos_through: null,
+      last_synced_at: null,
+    }
+    : {};
   const { error } = await svc.from("youtube_channels").upsert(
     {
+      ...reset,
       conta_id: contaId,
       client_id: clientId,
       connection_id: connectionId,
@@ -354,18 +494,25 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const LOCATION_NAME_RE = /^locations\/[^/\s]+$/;
 const MAX_LOCATIONS_PER_SAVE = 200;
 
-/** Tenant + `:clientId` (path segment 2 or 3) loaded inside the tenant. */
+/**
+ * Tenant + `:clientId` (path segment 2 or 3) loaded inside the tenant. Phase 1 routes answer a
+ * foreign client with 404; the sync routes answer 403 (globals: "403 for a foreign client, as in
+ * tiktok-analytics").
+ */
 async function requireClient(
   svc: DbClient,
   req: Request,
   rawClientId: string,
   cors: Record<string, string>,
+  foreign: "not_found" | "forbidden" = "not_found",
 ): Promise<{ userId: string; contaId: string; clientId: number } | Response> {
   const tenant = await resolveTenant(req, svc, cors);
   if (tenant instanceof Response) return tenant;
   if (!/^\d+$/.test(rawClientId)) return json(cors, { error: "invalid_client" }, 400);
   const clientId = parseInt(rawClientId, 10);
-  if (!(await loadClientInTenant(svc, clientId, tenant.contaId))) return json(cors, { error: "not_found" }, 404);
+  if (!(await loadClientInTenant(svc, clientId, tenant.contaId))) {
+    return foreign === "forbidden" ? json(cors, { error: "forbidden" }, 403) : json(cors, { error: "not_found" }, 404);
+  }
   return { ...tenant, clientId };
 }
 
@@ -501,6 +648,7 @@ interface StoredLocationRow extends LinkedRow {
   address_line?: string | null;
   website?: string | null;
   has_voice_of_merchant?: boolean | null;
+  maps_uri?: string | null;
 }
 
 async function handleListLocations(
@@ -530,7 +678,7 @@ async function handleListLocations(
   const { data: linked, error } = await svc
     .from("gbp_locations")
     .select(
-      "location_name, client_id, connection_id, status, account_name, title, address_line, website, has_voice_of_merchant",
+      "location_name, client_id, connection_id, status, account_name, title, address_line, website, has_voice_of_merchant, maps_uri",
     )
     .eq("conta_id", ctx.contaId)
     .in("status", ["active", "revoked"]);
@@ -587,6 +735,7 @@ async function handleListLocations(
         addressLine: r.address_line ?? null,
         website: r.website ?? null,
         hasVoiceOfMerchant: r.has_voice_of_merchant === true,
+        mapsUri: r.maps_uri ?? null,
         linkedClientId: ctx.clientId,
         linkedClientName: names.get(ctx.clientId) ?? null,
         linkedConnectionId: connectionId,
@@ -626,10 +775,20 @@ async function handleLinkLocations(svc: DbClient, req: Request, rawClientId: str
   // The save re-lists every account too, so it shares the listing budget.
   if (await locationsRateLimited(svc, ctx.contaId)) return json(cors, { error: "rate_limited" }, 429);
 
-  const token = await getFreshGoogleToken(svc, connectionId);
-  // A truncated listing only means fewer new names are accepted (409), never a wrong link.
-  const listing = await listGbpLocations(token);
-  const fromGoogle = new Map(listing.options.map((o) => [o.locationName, o]));
+  // I3: a dead connection (REVOKED) cannot list, but an empty save on it only unlinks, which
+  // needs no Google call. Anything else on a dead connection still answers 409 reconnect.
+  let fromGoogle = new Map<string, GbpLocationOption>();
+  let token: string | null = null;
+  try {
+    token = await getFreshGoogleToken(svc, connectionId);
+  } catch (err) {
+    if (!(err instanceof GoogleApiError && err.code === "REVOKED" && parsed.locationNames.length === 0)) throw err;
+  }
+  if (token !== null) {
+    // A truncated listing only means fewer new names are accepted (409), never a wrong link.
+    const listing = await listGbpLocations(token);
+    fromGoogle = new Map(listing.options.map((o) => [o.locationName, o]));
+  }
 
   let requestedRows: LinkedRow[] = [];
   if (parsed.locationNames.length) {
@@ -652,14 +811,15 @@ async function handleLinkLocations(svc: DbClient, req: Request, rawClientId: str
       row.connection_id !== connectionId);
   });
 
-  // This client's units on THIS connection: the only ones this save may unlink.
+  // This client's units on THIS connection, active or awaiting reconnect: the only ones this
+  // save may unlink. A revoked unit left unchecked is unlinked too.
   const { data: mineData, error: mineError } = await svc
     .from("gbp_locations")
     .select("id, location_name")
     .eq("conta_id", ctx.contaId)
     .eq("client_id", ctx.clientId)
     .eq("connection_id", connectionId)
-    .eq("status", "active");
+    .in("status", ["active", "revoked"]);
   if (mineError) throw new Error(`gbp_locations read failed: ${mineError.message}`);
   const mine = (mineData ?? []) as Array<{ id: string; location_name: string }>;
   const keptHere = new Set(mine.map((r) => r.location_name));
@@ -691,6 +851,7 @@ async function handleLinkLocations(svc: DbClient, req: Request, rawClientId: str
       address_line: o.addressLine,
       website: o.website,
       has_voice_of_merchant: o.hasVoiceOfMerchant,
+      maps_uri: o.mapsUri,
     }));
   const ownRows: Array<{ id: string; fields: (typeof listedRows)[number] }> = [];
   const newRows: Array<(typeof listedRows)[number]> = [];
@@ -759,7 +920,7 @@ async function handleLinkLocations(svc: DbClient, req: Request, rawClientId: str
       if (error.code === "P0002") continue; // removed concurrently
       throw new Error(`google_unlink_gbp_location failed: ${error.message}`);
     }
-    await processUnlinkDecision(svc, data);
+    await processUnlinkDecisionData(svc, data);
   }
 
   await insertAuditLog(svc, {
@@ -791,7 +952,13 @@ async function findTakenName(svc: DbClient, contaId: string, clientId: number, n
 
 // ─── POST /disconnect/youtube/:clientId ───────────────────────────────────────────────
 
-async function handleDisconnectYouTube(svc: DbClient, req: Request, rawClientId: string, cors: Record<string, string>) {
+async function handleDisconnectYouTube(
+  svc: DbClient,
+  req: Request,
+  rawClientId: string,
+  cors: Record<string, string>,
+  deps: GoogleIntegrationDeps,
+) {
   const ctx = await requireClient(svc, req, rawClientId, cors);
   if (ctx instanceof Response) return ctx;
 
@@ -803,7 +970,9 @@ async function handleDisconnectYouTube(svc: DbClient, req: Request, rawClientId:
     if (error.code === "P0002") return json(cors, { error: "not_found" }, 404);
     throw new Error(`google_unlink_youtube failed: ${error.message}`);
   }
-  await processUnlinkDecision(svc, data);
+  await processUnlinkDecisionData(svc, data);
+  // The purge queued this tenant's report PDFs that held YouTube data; remove them now.
+  await drainTenantPdfPurges(svc, deps, ctx.contaId);
 
   await insertAuditLog(svc, {
     conta_id: ctx.contaId,
@@ -815,52 +984,107 @@ async function handleDisconnectYouTube(svc: DbClient, req: Request, rawClientId:
   return json(cors, { ok: true });
 }
 
-// ─── Revocation after a committed unlink ─────────────────────────────────────────────
+// ─── POST /sync/:product/:clientId ──────────────────────────────────────────────────
 
 /**
- * Runs after the unlink RPC committed. When it decided to revoke, revokes the queued token at
- * Google: success deletes the `google_revocations` row, failure bumps `attempts` and records
- * `last_error` for Phase 2's gbp-sync-cron to retry. Never throws: the unlink already happened.
+ * Manual sync of one client's YouTube channel or GMN locations, with the cron's unit sync.
+ * Order (globals): client in tenant (403), product flag (403), rate limit (429), unit lookup
+ * (404 not_connected, 409 revoked). The unit's own outcome (synced, quota_skipped, skipped,
+ * mismatch, not_approved, or revoked when the token died during this run) is a 200. A GMN
+ * location that throws is reported as `failed` alongside the others. A Google error keeps the
+ * dispatcher's mapping (409 reconnect / 502); anything else is a 500 with no details.
  */
-async function processUnlinkDecision(svc: DbClient, data: unknown): Promise<void> {
-  const decision = (Array.isArray(data) ? data[0] : data) as
-    | { should_revoke?: boolean; revocation_id?: string | null }
-    | null
-    | undefined;
-  if (!decision?.should_revoke || !decision.revocation_id) return;
-  const revocationId = decision.revocation_id;
+async function handleSync(
+  svc: DbClient,
+  req: Request,
+  product: GoogleProduct,
+  rawClientId: string,
+  cors: Record<string, string>,
+  deps: GoogleIntegrationDeps,
+): Promise<Response> {
+  const ctx = await requireClient(svc, req, rawClientId, cors, "forbidden");
+  if (ctx instanceof Response) return ctx;
 
+  const feature = PRODUCT_FEATURE[product];
+  // deno-lint-ignore no-explicit-any
+  if (!(await effectivePlanFeature(svc as any, ctx.contaId, feature))) {
+    return json(cors, { error: "feature_disabled", feature }, 403);
+  }
+  const rateKey = `google-sync:${ctx.contaId}:${ctx.clientId}:${product}`;
+  // deno-lint-ignore no-explicit-any
+  if (!(await checkRateLimit(svc as any, rateKey, SYNC_RATE_LIMIT, SYNC_RATE_WINDOW_S))) {
+    return json(cors, { error: "rate_limited" }, 429);
+  }
+
+  const now = deps.now ?? (() => new Date());
   try {
-    const { data: row, error } = await svc
-      .from("google_revocations")
-      .select("id, encrypted_token, token_kind, attempts")
-      .eq("id", revocationId)
-      .maybeSingle();
-    if (error || !row) {
-      console.error(`[google-integration] revocation ${revocationId} not readable: ${error?.message ?? "missing"}`);
-      return;
+    if (product === "youtube") {
+      const { data, error } = await svc
+        .from("youtube_channels")
+        .select(YOUTUBE_CHANNEL_SYNC_COLUMNS)
+        .eq("conta_id", ctx.contaId)
+        .eq("client_id", ctx.clientId)
+        .maybeSingle();
+      if (error) throw new Error(`youtube_channels read failed: ${error.message}`);
+      const channel = data as YoutubeChannelRow | null;
+      if (!channel) return json(cors, { error: "not_connected" }, 404);
+      if (channel.authorization_status !== "active") return json(cors, { error: "revoked" }, 409);
+
+      const sync = deps.syncYouTubeChannel ?? syncYouTubeChannel;
+      const outcome = await sync(
+        { svc, api: youtubeApi, getFreshGoogleToken, now },
+        channel,
+        { now: now(), maxVideoReports: MAX_VIDEO_REPORTS_PER_RUN },
+      );
+      // The token died during this run: google_mark_revoked purged the channel and queued its
+      // report PDFs. Remove them now rather than waiting for the cron (never fails the request).
+      if (outcome.status === "revoked") await drainTenantPdfPurges(svc, deps, ctx.contaId);
+      return json(cors, { ok: true, status: outcome.status });
     }
 
-    let lastError: string | null = null;
-    try {
-      const token = await decryptGoogleToken(row.encrypted_token, row.token_kind === "access" ? "access" : "refresh");
-      if (!(await revokeGoogleToken(token))) lastError = "revoke_failed";
-    } catch {
-      lastError = "decrypt_failed";
-    }
+    const { data, error } = await svc
+      .from("gbp_locations")
+      .select(GBP_LOCATION_COLUMNS)
+      .eq("conta_id", ctx.contaId)
+      .eq("client_id", ctx.clientId)
+      .in("status", ["active", "revoked"])
+      .order("id", { ascending: true });
+    if (error) throw new Error(`gbp_locations read failed: ${error.message}`);
+    const units = (data ?? []) as GbpLocationRow[];
+    if (!units.length) return json(cors, { error: "not_connected" }, 404);
+    const active = units.filter((u) => u.status === "active");
+    if (!active.length) return json(cors, { error: "revoked" }, 409);
 
-    if (lastError === null) {
-      const { error: delError } = await svc.from("google_revocations").delete().eq("id", revocationId);
-      if (delError) console.error(`[google-integration] revocation ${revocationId} delete failed: ${delError.message}`);
-      return;
+    const sync = deps.syncGbpLocation ?? syncGbpLocation;
+    const syncDeps = {
+      svc,
+      api: gbpApi,
+      getFreshGoogleToken,
+      now,
+      sleep: (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+    };
+    // Sequential: GMN quotas are per minute and low (the cron's per-location pacing). One
+    // location's unexpected failure is that location's `failed`, logged here and never echoed;
+    // a REVOKED connection is everyone's, so it ends the walk and answers 409 reconnect.
+    const locations: Array<{ id: string; status: string }> = [];
+    for (const location of active) {
+      try {
+        const outcome = await sync(syncDeps, location, { now: now() });
+        locations.push({ id: location.id, status: outcome.status });
+      } catch (err) {
+        if (err instanceof GoogleApiError && err.code === "REVOKED") throw err;
+        console.error(
+          `[google-integration] manual sync of location ${location.id} failed:`,
+          err instanceof Error ? err.message : String(err),
+        );
+        locations.push({ id: location.id, status: "failed" });
+      }
     }
-    const { error: updError } = await svc
-      .from("google_revocations")
-      .update({ attempts: (Number(row.attempts) || 0) + 1, last_error: lastError })
-      .eq("id", revocationId);
-    if (updError) console.error(`[google-integration] revocation ${revocationId} update failed: ${updError.message}`);
+    return json(cors, { ok: true, locations });
   } catch (err) {
-    console.error(`[google-integration] revocation ${revocationId} failed:`, (err as Error).message);
+    // Google errors keep the dispatcher's mapping (REVOKED -> 409 reconnect, others -> 502).
+    if (err instanceof GoogleApiError) throw err;
+    return internalServerError(createJsonResponder(cors), "google-integration:sync", err);
   }
 }
 
@@ -880,7 +1104,7 @@ export function createGoogleIntegrationHandler(deps: GoogleIntegrationDeps) {
 
     try {
       if (req.method === "GET" && path === "/callback") {
-        return await handleCallback(svc, url);
+        return await handleCallback(svc, url, deps);
       }
       if (req.method === "GET" && /^\/auth\/[^/]+$/.test(path)) {
         return await handleAuth(svc, req, path, url, cors);
@@ -894,7 +1118,10 @@ export function createGoogleIntegrationHandler(deps: GoogleIntegrationDeps) {
         if (req.method === "POST") return await handleLinkLocations(svc, req, segs[2], cors);
       }
       if (req.method === "POST" && segs.length === 4 && segs[1] === "disconnect" && segs[2] === "youtube") {
-        return await handleDisconnectYouTube(svc, req, segs[3], cors);
+        return await handleDisconnectYouTube(svc, req, segs[3], cors, deps);
+      }
+      if (req.method === "POST" && segs.length === 4 && segs[1] === "sync" && isProduct(segs[2])) {
+        return await handleSync(svc, req, segs[2], segs[3], cors, deps);
       }
       return json(cors, { error: "not_found" }, 404);
     } catch (err) {
@@ -902,8 +1129,7 @@ export function createGoogleIntegrationHandler(deps: GoogleIntegrationDeps) {
         console.error(`[google-integration] Google error ${err.code} (${err.status}): ${err.message}`);
         return googleErrorResponse(err, cors);
       }
-      console.error("[google-integration] error:", err instanceof Error ? err.message : String(err));
-      return json(cors, { error: "unknown" }, 500);
+      return internalServerError(createJsonResponder(cors), "google-integration", err);
     }
   };
 }

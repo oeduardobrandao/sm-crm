@@ -1,0 +1,161 @@
+{
+  "header": {
+    "subscribers": "{{value}} inscritos",
+    "sync": "Sincronizar",
+    "syncedAgo": "Sincronizado há {{time}}",
+    "neverSynced": "Ainda não sincronizado",
+    "dataThrough": "Dados até {{date}}. O YouTube libera os números com 2 a 3 dias de atraso.",
+    "back": "Voltar"
+  },
+  "period": {
+    "label": "Período",
+    "days_one": "{{count}} dia",
+    "days_other": "{{count}} dias",
+    "short": "{{count}}d",
+    "custom": "Personalizado",
+    "customAria": "Período personalizado em dias",
+    "customPlaceholder": "Dias (1 a 365)",
+    "customInvalid": "Insira um valor entre 1 e 365 dias.",
+    "apply": "Aplicar"
+  },
+  "contentType": {
+    "label": "Tipo de conteúdo",
+    "all": "Tudo",
+    "shorts": "Shorts",
+    "long": "Vídeos longos"
+  },
+  "kpi": {
+    "vsPrevious_one": "vs. {{count}} dia anterior",
+    "vsPrevious_other": "vs. {{count}} dias anteriores",
+    "noData": "sem dados",
+    "hours": "{{value}} h",
+    "subscribers": {
+      "label": "Inscritos",
+      "sub": "Total atual do canal"
+    },
+    "net_subscribers": {
+      "label": "Novos inscritos",
+      "sub": "{{gained}} ganhos, {{lost}} perdidos",
+      "subFallback": "Ganhos menos perdidos no período"
+    },
+    "views": {
+      "label": "Visualizações",
+      "sub": "Recebidas no período"
+    },
+    "engaged_views": {
+      "label": "Visualizações engajadas",
+      "sub": "Assistidas além dos primeiros segundos"
+    },
+    "watch_minutes": {
+      "label": "Tempo assistido",
+      "sub": "Recebido no período"
+    },
+    "avg_view_duration_s": {
+      "label": "Duração média",
+      "sub": "Por visualização"
+    },
+    "likes": {
+      "label": "Curtidas",
+      "sub": "Recebidas no período"
+    },
+    "shares": {
+      "label": "Compartilhamentos",
+      "sub": "{{value}} comentários no período",
+      "subFallback": "Recebidos no período"
+    }
+  },
+  "lag": "Dados até {{date}}",
+  "daily": {
+    "title": "Visualizações por dia",
+    "subSplit_one": "Shorts e vídeos longos, último dia",
+    "subSplit_other": "Shorts e vídeos longos, últimos {{count}} dias",
+    "sub_one": "Último dia",
+    "sub_other": "Últimos {{count}} dias",
+    "ariaSplit": "Gráfico de barras: visualizações diárias, Shorts em vermelho e vídeos longos em azul",
+    "aria": "Gráfico de barras: visualizações diárias",
+    "views": "Visualizações",
+    "empty": "Sem visualizações no período."
+  },
+  "split": {
+    "title": "Shorts x vídeos longos",
+    "sub": "Participação no período: Shorts têm {{pct}}% das visualizações",
+    "views": "Visualizações",
+    "minutes": "Tempo assistido",
+    "likes": "Curtidas",
+    "shorts": "Shorts {{value}}",
+    "long": "Longos {{value}}",
+    "barAria": "{{metric}}: Shorts {{pct}}%",
+    "unavailable": "A divisão entre Shorts e vídeos longos ainda não está disponível."
+  },
+  "traffic": {
+    "title": "De onde vêm as visualizações",
+    "sub": "Origem do tráfego",
+    "empty": "Sem visualizações no período.",
+    "source": {
+      "SHORTS": "Feed de Shorts",
+      "YT_SEARCH": "Pesquisa",
+      "RELATED_VIDEO": "Sugestões",
+      "EXT_URL": "Links externos",
+      "YT_CHANNEL": "Página do canal",
+      "other": "Outras origens"
+    }
+  },
+  "audience": {
+    "title": "Público",
+    "sub": "Idade e gênero dos espectadores · últimos 28 dias",
+    "women": "Mulheres {{pct}}%",
+    "men": "Homens {{pct}}%",
+    "rowAria": "{{age}}: {{total}}% do público, mulheres {{women}}%, homens {{men}}%",
+    "empty": "Sem dados de público para este canal."
+  },
+  "topShorts": {
+    "title": "Shorts em destaque",
+    "sub": "Os 5 Shorts com mais visualizações no período",
+    "meta": "{{views}} visualizações · {{pct}} assistido",
+    "metaViews": "{{views}} visualizações",
+    "rank": "#{{n}}",
+    "empty": "Nenhum Short com visualizações no período."
+  },
+  "videos": {
+    "title": "Vídeos",
+    "sub": "Publicados no período · números atuais de cada vídeo",
+    "video": "Vídeo",
+    "type": "Tipo",
+    "date": "Data",
+    "views": "Visualizações",
+    "engaged": "Engajadas",
+    "avgDuration": "Duração média",
+    "avgPct": "% assistido",
+    "likes": "Curtidas",
+    "comments": "Comentários",
+    "subscribers": "Novos inscritos",
+    "link": "Link",
+    "open": "Abrir no YouTube",
+    "short": "Short",
+    "long": "Vídeo longo",
+    "untitled": "Vídeo sem título",
+    "empty": "Nenhum vídeo publicado no período.",
+    "showAll": "Ver todos os {{count}} vídeos",
+    "showLess": "Mostrar menos"
+  },
+  "states": {
+    "notConnectedTitle": "YouTube não conectado",
+    "notConnectedBody": "Conecte o canal do cliente na aba Redes sociais para ver os números aqui.",
+    "connectAction": "Ir para Redes sociais",
+    "lockedTitle": "YouTube",
+    "locked": "O YouTube não está disponível no seu plano.",
+    "lockedAction": "Ver planos",
+    "error": "Não foi possível carregar os dados do YouTube.",
+    "retry": "Tentar novamente",
+    "revokedTitle": "Autorização do Google expirada",
+    "revokedBody": "Reconecte o canal na aba Redes sociais para voltar a sincronizar.",
+    "reconnectAction": "Reconectar",
+    "firstSyncTitle": "Primeira sincronização em andamento",
+    "firstSyncBody": "Os números do canal aparecem aqui quando a primeira sincronização terminar. Pode levar até uma hora. Você também pode usar Sincronizar.",
+    "syncSuccess": "Dados do YouTube sincronizados.",
+    "syncError": "Não foi possível sincronizar o YouTube. Tente de novo.",
+    "syncRateLimited": "Limite da API do Google atingido. Tente de novo em alguns minutos.",
+    "syncIncomplete": "Sincronização não concluída agora. Tentaremos de novo automaticamente."
+  },
+  "footer": "Dados do YouTube, como o YouTube informa."
+}

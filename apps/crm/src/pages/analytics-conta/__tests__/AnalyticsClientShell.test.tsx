@@ -23,6 +23,7 @@ vi.mock('../../../services/instagram', () => ({
   syncInstagramData: vi.fn(),
 }));
 vi.mock('../../../services/tiktok', () => ({ getTikTokSummary: vi.fn() }));
+vi.mock('../../../services/google', () => ({ getGoogleSummary: vi.fn() }));
 
 // The connected Instagram tab stays on its skeleton: every content query never settles.
 const pending = () => new Promise<never>(() => {});
@@ -65,6 +66,22 @@ vi.mock('../tiktok/TikTokAnalyticsTab', () => ({
     </div>
   ),
 }));
+// The YouTube and Google tabs have their own suites too.
+type MockFrame = { nome: string; tabs: ReactNode };
+vi.mock('../youtube/YouTubeAnalyticsTab', () => ({
+  YouTubeAnalyticsTab: ({ clientId, phoneFrame }: { clientId: number; phoneFrame?: MockFrame }) => (
+    <div data-testid="youtube-tab" data-client={clientId} data-nome={phoneFrame?.nome}>
+      {phoneFrame?.tabs}
+    </div>
+  ),
+}));
+vi.mock('../google/GoogleAnalyticsTab', () => ({
+  GoogleAnalyticsTab: ({ clientId, phoneFrame }: { clientId: number; phoneFrame?: MockFrame }) => (
+    <div data-testid="google-tab" data-client={clientId} data-nome={phoneFrame?.nome}>
+      {phoneFrame?.tabs}
+    </div>
+  ),
+}));
 vi.mock('../reports/NewReportDialog', () => ({
   NewReportDialog: ({ open }: { open: boolean }) =>
     open ? <div role="dialog" aria-label="Novo relatório" /> : null,
@@ -75,6 +92,7 @@ import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { getClientes } from '../../../store';
 import { getInstagramSummary } from '../../../services/instagram';
 import { getTikTokSummary } from '../../../services/tiktok';
+import { getGoogleSummary } from '../../../services/google';
 import { getClientReports } from '../../../services/analytics';
 import { listReportDocs } from '../../../services/reportDocs';
 import { VidroToolbarHarness } from '@/test/vidroToolbar';
@@ -134,6 +152,7 @@ beforeEach(() => {
   ]);
   vi.mocked(getInstagramSummary).mockResolvedValue(IG as never);
   vi.mocked(getTikTokSummary).mockResolvedValue(TT as never);
+  vi.mocked(getGoogleSummary).mockResolvedValue({ youtube: null, gmn: null });
   vi.mocked(getClientReports).mockResolvedValue([]);
   vi.mocked(listReportDocs).mockResolvedValue([]);
 });
@@ -328,6 +347,84 @@ describe('AnalyticsClientShell: tabs', () => {
   });
 });
 
+describe('AnalyticsClientShell: YouTube and Google Meu Negócio tabs', () => {
+  const tabTexts = async () => {
+    const nav = await screen.findByRole('navigation', { name: 'Analytics' });
+    return within(nav)
+      .getAllByRole('link')
+      .map((l) => l.textContent);
+  };
+
+  it('hides both tabs and never reads the Google summary with both flags off', async () => {
+    renderShell('/analytics/12/instagram');
+    expect(await tabTexts()).toEqual(['Instagram', 'TikTok', 'Relatórios']);
+    expect(getGoogleSummary).not.toHaveBeenCalled();
+  });
+
+  it('redirects a deep link to YouTube or Google to instagram with the flags off', async () => {
+    renderShell('/analytics/12/youtube');
+    await waitFor(() => expect(path()).toBe('/analytics/12/instagram'));
+    expect(screen.queryByTestId('youtube-tab')).toBeNull();
+  });
+
+  it('redirects /google to instagram when only the YouTube flag is on', async () => {
+    setFeatures({ feature_tiktok: true, feature_youtube: true });
+    renderShell('/analytics/12/google');
+    await waitFor(() => expect(path()).toBe('/analytics/12/instagram'));
+  });
+
+  it('does not bounce a deep link while the plan is loading', async () => {
+    setFeatures(null, true);
+    renderShell('/analytics/12/youtube');
+    await waitFor(() => expect(getClientes).toHaveBeenCalled());
+    expect(path()).toBe('/analytics/12/youtube');
+  });
+
+  it('shows the YouTube tab and renders YouTubeAnalyticsTab with the flag on', async () => {
+    setFeatures({ feature_tiktok: true, feature_youtube: true });
+    renderShell('/analytics/12/youtube');
+    expect(await screen.findByTestId('youtube-tab')).toHaveAttribute('data-client', '12');
+    expect(await tabTexts()).toEqual(['Instagram', 'TikTok', 'YouTube', 'Relatórios']);
+    expect(screen.getByRole('link', { name: 'YouTube' })).toHaveAttribute(
+      'href',
+      '/analytics/12/youtube',
+    );
+  });
+
+  it('shows the Google Meu Negócio tab and renders GoogleAnalyticsTab with the flag on', async () => {
+    setFeatures({ feature_google_business: true });
+    renderShell('/analytics/12/google');
+    expect(await screen.findByTestId('google-tab')).toHaveAttribute('data-client', '12');
+    expect(await tabTexts()).toEqual(['Instagram', 'Google Meu Negócio', 'Relatórios']);
+  });
+
+  it('keeps instagram as the default tab even when a Google product is connected', async () => {
+    setFeatures({ feature_youtube: true, feature_google_business: true });
+    vi.mocked(getInstagramSummary).mockResolvedValue(null as never);
+    vi.mocked(getGoogleSummary).mockResolvedValue({
+      youtube: { channelId: 'UC1', avatarUrl: null } as never,
+      gmn: null,
+    });
+    renderShell('/analytics/12');
+    await waitFor(() => expect(path()).toBe('/analytics/12/instagram'));
+  });
+
+  it('uses the YouTube channel avatar in the header', async () => {
+    setFeatures({ feature_youtube: true });
+    vi.mocked(getGoogleSummary).mockResolvedValue({
+      youtube: { channelId: 'UC1', avatarUrl: 'https://yt.example/a.jpg' } as never,
+      gmn: null,
+    });
+    const { container } = renderShell('/analytics/12/youtube');
+    await waitFor(() =>
+      expect(container.querySelector('img.conta-identity__avatar')).toHaveAttribute(
+        'src',
+        'https://yt.example/a.jpg',
+      ),
+    );
+  });
+});
+
 describe('AnalyticsClientShell in the Vidro toolbar', () => {
   it('registers the client identity once, from the shell, and keeps the tabs in the page', async () => {
     vi.mocked(getInstagramSummary).mockResolvedValue(null as never);
@@ -414,5 +511,42 @@ describe('AnalyticsClientShell (phone)', () => {
     expect(await screen.findByText('Instagram não conectado')).toBeInTheDocument();
     expect(screen.getByRole('tablist', { name: 'Analytics' })).toBeInTheDocument();
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+  });
+
+  it('lists the visible tabs in the phone tablist, flags on', async () => {
+    setFeatures({ feature_tiktok: true, feature_youtube: true, feature_google_business: true });
+    renderShell('/analytics/12/relatorios');
+    const tabs = await screen.findByRole('tablist', { name: 'Analytics' });
+    expect(
+      within(tabs)
+        .getAllByRole('tab')
+        .map((t) => t.textContent),
+    ).toEqual(['Instagram', 'TikTok', 'YouTube', 'Google Meu Negócio', 'Relatórios']);
+  });
+
+  it('omits the new tabs from the phone tablist with the flags off', async () => {
+    renderShell('/analytics/12/relatorios');
+    const tabs = await screen.findByRole('tablist', { name: 'Analytics' });
+    expect(
+      within(tabs)
+        .getAllByRole('tab')
+        .map((t) => t.textContent),
+    ).toEqual(['Instagram', 'TikTok', 'Relatórios']);
+  });
+
+  it('YouTube and Google tabs always get the phone frame with the tab control', async () => {
+    setFeatures({ feature_youtube: true, feature_google_business: true });
+    renderShell('/analytics/12/youtube');
+    const yt = await screen.findByTestId('youtube-tab');
+    expect(yt).toHaveAttribute('data-nome', 'Clínica Aurora');
+    const tabs = within(yt).getByRole('tablist', { name: 'Analytics' });
+    fireEvent.click(within(tabs).getByRole('tab', { name: 'Google Meu Negócio' }));
+    await waitFor(() => expect(path()).toBe('/analytics/12/google'));
+    const g = await screen.findByTestId('google-tab');
+    expect(g).toHaveAttribute('data-nome', 'Clínica Aurora');
+    expect(within(g).getByRole('tab', { name: 'Google Meu Negócio' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
   });
 });

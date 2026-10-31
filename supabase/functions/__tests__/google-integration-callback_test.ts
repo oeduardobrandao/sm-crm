@@ -3,9 +3,14 @@
 // _shared/google.ts calls the global fetch.
 import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
-import { createGoogleIntegrationHandler } from "../google-integration/handlers.ts";
+import { createGoogleIntegrationHandler, type GoogleIntegrationDeps } from "../google-integration/handlers.ts";
 import { createGoogleState } from "../google-integration/oauth-state.ts";
-import { decryptGoogleToken, GOOGLE_PRODUCT_SCOPES, type GoogleProduct } from "../_shared/google.ts";
+import {
+  decryptGoogleToken,
+  encryptGoogleToken,
+  GOOGLE_PRODUCT_SCOPES,
+  type GoogleProduct,
+} from "../_shared/google.ts";
 
 Deno.env.set("TOKEN_ENCRYPTION_KEY", "test-google-integration-key-32ch");
 Deno.env.set("GOOGLE_OAUTH_CLIENT_ID", "test-client-id");
@@ -23,11 +28,12 @@ const FN = "https://proj.supabase.co/functions/v1/google-integration";
 
 type Mock = ReturnType<typeof createSupabaseQueryMock>;
 
-function makeHandler(db: Mock) {
+function makeHandler(db: Mock, extra: Partial<GoogleIntegrationDeps> = {}) {
   return createGoogleIntegrationHandler({
     buildCorsHeaders: () => ({}),
     // deno-lint-ignore no-explicit-any
     createServiceDb: () => db as any,
+    ...extra,
   });
 }
 
@@ -507,7 +513,8 @@ Deno.test("callback_channel_in_use: pre-check names the other client before any 
 Deno.test("callback_channel_in_use_race: 23505 on the channel upsert still names the other client, no revoke", async () => {
   const state = await mintState("youtube");
   const db = callbackDb();
-  db.queue("youtube_channels", "select", { data: [] }, { data: { client_id: 7 } });
+  // Pre-check, then this client's stored row (none), then the 23505 backstop.
+  db.queue("youtube_channels", "select", { data: [] }, { data: [] }, { data: { client_id: 7 } });
   db.queueRpc("google_connection_upsert", { data: CONNECTION_ID });
   db.queue("youtube_channels", "upsert", { data: null, error: { code: "23505", message: "duplicate key" } });
   db.queue("clientes", "select", { data: { id: 7, nome: "Clínica X" } });
@@ -516,7 +523,7 @@ Deno.test("callback_channel_in_use_race: 23505 on the channel upsert still names
     const res = await makeHandler(db)(callbackRequest(state));
     assertEquals(res.headers.get("Location"), `${TARGET}?yt_error=channel_in_use&yt_other=Cl%C3%ADnica%20X`);
     assertEquals(f.count("https://oauth2.googleapis.com/revoke"), 0, "the connection row now exists: keep the grant");
-    const backstop = db.calls.filter((c) => c.table === "youtube_channels" && c.operation === "select")[1];
+    const backstop = db.calls.filter((c) => c.table === "youtube_channels" && c.operation === "select")[2];
     assert(backstop.modifiers.some((m) => m.method === "eq" && m.args[0] === "conta_id" && m.args[1] === CONTA));
   } finally {
     f.restore();
@@ -569,4 +576,173 @@ Deno.test("callback_replayed_state: a consumed nonce returns 400 text, no token 
   }
   const garbage = await makeHandler(createSupabaseQueryMock())(callbackRequest("not-a-state"));
   assertEquals(garbage.status, 400);
+});
+
+// ─── Phase 2 Task 9: YouTube relink (P11) ────────────────────────────────────────
+
+const OLD_CONNECTION_ID = "6f1c1f0e-0000-4000-8000-0000000000aa";
+
+function fakeStorage() {
+  const removed: string[][] = [];
+  return {
+    removed,
+    storage: {
+      from(_bucket: string) {
+        return {
+          remove(paths: string[]) {
+            removed.push(paths);
+            return Promise.resolve({ error: null });
+          },
+        };
+      },
+    },
+  };
+}
+
+async function revocationRow(id: string) {
+  return {
+    id,
+    encrypted_token: await encryptGoogleToken("old-refresh", "refresh"),
+    token_kind: "refresh",
+    attempts: 0,
+  };
+}
+
+function channelUpsert(db: Mock) {
+  return db.calls.find((c) => c.table === "youtube_channels" && c.operation === "upsert")!;
+}
+
+Deno.test("callback_relink_other_channel (C1): unlink the stored channel once before the insert; new row has NULL watermarks", async () => {
+  const state = await mintState("youtube");
+  const db = callbackDb();
+  db.queue(
+    "youtube_channels",
+    "select",
+    { data: [] }, // pre-check: no other client holds UC123
+    { data: [{ channel_id: "UCa", connection_id: OLD_CONNECTION_ID }] }, // this client's stored row
+  );
+  db.queueRpc("google_connection_upsert", { data: CONNECTION_ID });
+  db.queueRpc("google_unlink_youtube", { data: [{ should_revoke: true, revocation_id: "rev-a" }] });
+  db.queue("google_revocations", "select", { data: await revocationRow("rev-a") });
+  db.queue("youtube_pdf_purges", "select", {
+    data: [{ id: "purge-1", conta_id: CONTA, storage_path: `${CONTA}/r.pdf`, attempts: 0 }],
+  });
+  db.queue("youtube_channels", "upsert", { data: null });
+  const st = fakeStorage();
+  const f = stubGoogle();
+  try {
+    const res = await makeHandler(db, { storage: st.storage })(callbackRequest(state));
+    assertEquals(res.headers.get("Location"), `${TARGET}?yt_connected=1`);
+
+    const unlinks = rpcCalls(db, "google_unlink_youtube");
+    assertEquals(unlinks.length, 1);
+    assertEquals(unlinks[0].payload, { p_conta_id: CONTA, p_client_id: CLIENT });
+    assertEquals(f.count("https://oauth2.googleapis.com/revoke"), 1, "one revoke decision for the old sub");
+    assertEquals(rpcCalls(db, "google_release_sub").length, 0);
+
+    const stored = db.calls.filter((c) => c.table === "youtube_channels" && c.operation === "select")[1];
+    const filters = stored.modifiers.map((m) => `${m.method}:${m.args[0]}:${m.args[1]}`);
+    assert(filters.includes(`eq:conta_id:${CONTA}`) && filters.includes(`eq:client_id:${CLIENT}`), filters.join(","));
+
+    const order = db.calls.map((c) => `${c.table}:${c.operation}`);
+    assert(
+      order.indexOf("rpc:google_connection_upsert:rpc") < order.indexOf("rpc:google_unlink_youtube:rpc") &&
+        order.indexOf("rpc:google_unlink_youtube:rpc") < order.indexOf("youtube_channels:upsert"),
+      `unlink runs after the connection upsert and before the channel insert: ${order}`,
+    );
+    const purgeListing = db.calls.find((c) => c.table === "youtube_pdf_purges" && c.operation === "select")!;
+    assert(purgeListing.modifiers.some((m) => m.method === "eq" && m.args[0] === "conta_id" && m.args[1] === CONTA));
+    assertEquals(st.removed, [[`${CONTA}/r.pdf`]]);
+
+    const row = channelUpsert(db).payload as Record<string, unknown>;
+    assertEquals(row.channel_id, "UC123");
+    assertEquals(row.connection_id, CONNECTION_ID);
+    for (const col of ["data_through", "content_type_through", "traffic_through", "videos_through", "last_synced_at"]) {
+      assert(col in row && row[col] === null, `${col} must be NULL so the new channel backfills`);
+    }
+
+    const actions = db.calls.filter((c) => c.table === "audit_log").map((c) => c.payload as Record<string, unknown>);
+    const unlinkAudit = actions.find((a) => a.action === "youtube-unlink")!;
+    assertEquals(unlinkAudit.actor_user_id, USER);
+    assertEquals(unlinkAudit.conta_id, CONTA);
+    assertEquals((unlinkAudit.metadata as Record<string, unknown>).client_id, CLIENT);
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("callback_relink_same_channel_new_account: release the old sub once after the write", async () => {
+  const state = await mintState("youtube");
+  const db = callbackDb();
+  db.queue(
+    "youtube_channels",
+    "select",
+    { data: [] },
+    { data: [{ channel_id: "UC123", connection_id: OLD_CONNECTION_ID }] },
+  );
+  db.queueRpc("google_connection_upsert", { data: CONNECTION_ID });
+  db.queue("google_connections", "select", { data: { google_sub: "sub-A" } });
+  db.queueRpc("google_release_sub", { data: [{ should_revoke: true, revocation_id: "rev-a" }] });
+  db.queue("google_revocations", "select", { data: await revocationRow("rev-a") });
+  db.queue("youtube_channels", "upsert", { data: null });
+  const f = stubGoogle();
+  try {
+    const res = await makeHandler(db)(callbackRequest(state));
+    assertEquals(res.headers.get("Location"), `${TARGET}?yt_connected=1`);
+    const releases = rpcCalls(db, "google_release_sub");
+    assertEquals(releases.length, 1);
+    assertEquals(releases[0].payload, { p_sub: "sub-A" });
+    assertEquals(rpcCalls(db, "google_unlink_youtube").length, 0, "same channel keeps its history");
+    assertEquals(f.count("https://oauth2.googleapis.com/revoke"), 1);
+
+    const subRead = db.calls.find((c) => c.table === "google_connections" && c.operation === "select")!;
+    const filters = subRead.modifiers.map((m) => `${m.method}:${m.args[0]}:${m.args[1]}`);
+    assert(filters.includes(`eq:id:${OLD_CONNECTION_ID}`) && filters.includes(`eq:conta_id:${CONTA}`), filters.join(","));
+    assertEquals(String(subRead.selectArgs[0][0]), "google_sub", "only the sub, never a token column");
+
+    const order = db.calls.map((c) => `${c.table}:${c.operation}`);
+    assert(
+      order.indexOf("google_connections:select") < order.indexOf("youtube_channels:upsert") &&
+        order.indexOf("youtube_channels:upsert") < order.indexOf("rpc:google_release_sub:rpc"),
+      `sub captured before the write, released after it: ${order}`,
+    );
+    const row = channelUpsert(db).payload as Record<string, unknown>;
+    assertEquals(row.connection_id, CONNECTION_ID);
+    assert(!("data_through" in row), "same channel: watermarks are kept");
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("callback_relink_same_sub: no release when the stored row is on this connection or on the same sub", async () => {
+  // Stored row already on the connection this flow upserted.
+  const db = callbackDb();
+  db.queue("youtube_channels", "select", { data: [] }, { data: [{ channel_id: "UC123", connection_id: CONNECTION_ID }] });
+  db.queueRpc("google_connection_upsert", { data: CONNECTION_ID });
+  db.queue("youtube_channels", "upsert", { data: null });
+  const f = stubGoogle();
+  try {
+    const res = await makeHandler(db)(callbackRequest(await mintState("youtube")));
+    assertEquals(res.headers.get("Location"), `${TARGET}?yt_connected=1`);
+    assertEquals(rpcCalls(db, "google_release_sub").length, 0);
+    assertEquals(rpcCalls(db, "google_unlink_youtube").length, 0);
+    assertEquals(db.calls.filter((c) => c.table === "google_connections").length, 0);
+  } finally {
+    f.restore();
+  }
+
+  // Stored row on another connection row whose sub is this flow's sub.
+  const same = callbackDb();
+  same.queue("youtube_channels", "select", { data: [] }, { data: [{ channel_id: "UC123", connection_id: OLD_CONNECTION_ID }] });
+  same.queueRpc("google_connection_upsert", { data: CONNECTION_ID });
+  same.queue("google_connections", "select", { data: { google_sub: "sub-1" } });
+  same.queue("youtube_channels", "upsert", { data: null });
+  const f2 = stubGoogle();
+  try {
+    const res = await makeHandler(same)(callbackRequest(await mintState("youtube")));
+    assertEquals(res.headers.get("Location"), `${TARGET}?yt_connected=1`);
+    assertEquals(rpcCalls(same, "google_release_sub").length, 0);
+  } finally {
+    f2.restore();
+  }
 });
