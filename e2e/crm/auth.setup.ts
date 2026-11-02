@@ -22,7 +22,11 @@ setup('authenticate crm user', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem(
       'consent_v1',
-      JSON.stringify({ analytics: false, support: false, decidedAt: '2026-09-19T00:00:00.000Z' }),
+      JSON.stringify({
+        analytics: false,
+        support: false,
+        marketing: false,
+        decidedAt: '2026-09-19T00:00:00.000Z' }),
     );
   });
 

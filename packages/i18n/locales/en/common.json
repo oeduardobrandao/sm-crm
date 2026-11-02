@@ -161,7 +161,7 @@
   "cookies": {
     "banner": {
       "title": "Cookies and privacy",
-      "body": "We use essential storage so Mesaas works. With your permission we also use usage analytics (including session recording and heatmaps) and the support chat.",
+      "body": "We use essential storage so Mesaas works. With your permission we also use usage analytics (including session recording and heatmaps), the support chat and measurement of our ads.",
       "learnMore": "See details on the data protection page",
       "acceptAll": "Accept all",
       "rejectAll": "Reject all",
@@ -177,6 +177,8 @@
       "supportTitle": "Support chat",
       "supportDescription": "Crisp: chat with our team. Without this the chat does not load.",
       "supportNeeded": "To open the support chat, keep Support chat enabled and save.",
+      "marketingTitle": "Advertising",
+      "marketingDescription": "Google Ads: measures which ads brought you to Mesaas and lets us show our ads again to people who visited the site.",
       "revokeNote": "Turning a tool off takes full effect after you reload the page.",
       "save": "Save preferences",
       "cancel": "Cancel"

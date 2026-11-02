@@ -161,7 +161,7 @@
   "cookies": {
     "banner": {
       "title": "Cookies e privacidade",
-      "body": "Usamos armazenamento essencial para o Mesaas funcionar. Com a sua permissão, também usamos análise de uso (incluindo gravação de sessão e mapas de calor) e o chat de suporte.",
+      "body": "Usamos armazenamento essencial para o Mesaas funcionar. Com a sua permissão, também usamos análise de uso (incluindo gravação de sessão e mapas de calor), o chat de suporte e a medição dos nossos anúncios.",
       "learnMore": "Ver detalhes na página de LGPD",
       "acceptAll": "Aceitar todos",
       "rejectAll": "Rejeitar todos",
@@ -177,6 +177,8 @@
       "supportTitle": "Chat de suporte",
       "supportDescription": "Crisp: chat com a nossa equipe. Sem isto o chat não carrega.",
       "supportNeeded": "Para abrir o chat de suporte, mantenha o Chat de suporte ativado e salve.",
+      "marketingTitle": "Publicidade",
+      "marketingDescription": "Google Ads: mede quais anúncios trouxeram você até o Mesaas e permite mostrar nossos anúncios de novo a quem já visitou o site.",
       "revokeNote": "Ao desativar uma ferramenta, o efeito é aplicado por completo ao recarregar a página.",
       "save": "Salvar preferências",
       "cancel": "Cancelar"

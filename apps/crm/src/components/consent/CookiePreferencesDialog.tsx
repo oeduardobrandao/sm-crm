@@ -30,9 +30,10 @@ function PreferencesForm({ focus, onClose }: { focus?: ConsentCategory; onClose:
   const consent = useConsent();
   const [analytics, setAnalytics] = useState(consent?.analytics === true);
   const [support, setSupport] = useState(focus === 'support' ? true : consent?.support === true);
+  const [marketing, setMarketing] = useState(consent?.marketing === true);
 
   const save = () => {
-    setConsent({ analytics, support });
+    setConsent({ analytics, support, marketing });
     onClose();
   };
 
@@ -71,6 +72,18 @@ function PreferencesForm({ focus, onClose }: { focus?: ConsentCategory; onClose:
             )}
           </div>
           <Switch id="cookie-support" checked={support} onCheckedChange={setSupport} />
+        </div>
+
+        <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
+          <div>
+            <Label htmlFor="cookie-marketing" className="text-sm font-medium">
+              {t('cookies.dialog.marketingTitle')}
+            </Label>
+            <p className="text-sm text-muted-foreground">
+              {t('cookies.dialog.marketingDescription')}
+            </p>
+          </div>
+          <Switch id="cookie-marketing" checked={marketing} onCheckedChange={setMarketing} />
         </div>
 
         <p className="text-xs text-muted-foreground">{t('cookies.dialog.revokeNote')}</p>

@@ -8,14 +8,16 @@
 export const CONSENT_STORAGE_KEY = 'consent_v1';
 export const OPEN_PREFERENCES_EVENT = 'mesaas:open-cookie-preferences';
 
-export type ConsentCategory = 'analytics' | 'support';
+export type ConsentCategory = 'analytics' | 'support' | 'marketing';
 
 export interface ConsentChoice {
   analytics: boolean;
   support: boolean;
+  /** Google Ads. Optional because it came after the first two: omitted means declined. */
+  marketing?: boolean;
 }
 
-export interface Consent extends ConsentChoice {
+export interface Consent extends Required<ConsentChoice> {
   decidedAt: string;
 }
 
@@ -51,7 +53,14 @@ function parse(raw: string | null): Consent | null {
     ) {
       return null;
     }
-    return { analytics: value.analytics, support: value.support, decidedAt: value.decidedAt };
+    // `marketing` arrived after consent_v1 shipped. A record without it is a valid earlier
+    // decision, kept as is with marketing declined: bumping the key would re-prompt everyone.
+    return {
+      analytics: value.analytics,
+      support: value.support,
+      marketing: value.marketing === true,
+      decidedAt: value.decidedAt,
+    };
   } catch {
     return null;
   }
@@ -75,6 +84,7 @@ export function setConsent(choice: ConsentChoice): void {
   const raw = JSON.stringify({
     analytics: choice.analytics,
     support: choice.support,
+    marketing: choice.marketing === true,
     decidedAt: new Date().toISOString(),
   });
   memoryRaw = raw;
