@@ -174,6 +174,14 @@ export default function PoliticaPage() {
                     mídias ou dados de pagamento.
                   </li>
                   <li>
+                    <strong>Google Ads</strong> · medição dos nossos anúncios (quais anúncios
+                    trouxeram visitas, cadastros e assinaturas) e exibição de anúncios a quem já
+                    visitou o site. Só é ativado com o seu consentimento. Os dados são processados
+                    nos Estados Unidos, o que constitui uma transferência internacional de dados
+                    pessoais para fora do Brasil, realizada em conformidade com a LGPD. Não enviamos
+                    conteúdo de clientes, mídias ou dados de pagamento.
+                  </li>
+                  <li>
                     <strong>Loops</strong> · envio de e-mails de marketing e de ciclo de vida. Os
                     dados são processados nos Estados Unidos, o que constitui uma transferência
                     internacional de dados pessoais para fora do Brasil, realizada em conformidade
@@ -214,9 +222,10 @@ export default function PoliticaPage() {
             content: (
               <p>
                 Usamos armazenamento essencial e, com base em legítimo interesse, ferramentas de
-                monitoramento de erros e de medição agregada de acessos. Ferramentas de análise e de
-                chat de suporte só são ativadas com o seu consentimento. Veja a lista completa e
-                como retirar o consentimento na nossa <a href="/lgpd">página de LGPD</a>.
+                monitoramento de erros e de medição agregada de acessos. Ferramentas de análise, de
+                chat de suporte e de publicidade só são ativadas com o seu consentimento. Veja a
+                lista completa e como retirar o consentimento na nossa{' '}
+                <a href="/lgpd">página de LGPD</a>.
               </p>
             ),
           },

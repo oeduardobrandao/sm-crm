@@ -390,6 +390,24 @@ export default function LgpdPage() {
                         ],
                         [
                           <>
+                            <strong>Google Ads</strong> (Estados Unidos). Categoria: publicidade.
+                            Depende do seu consentimento. Política:{' '}
+                            <a
+                              href="https://policies.google.com/privacy"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}
+                            >
+                              policies.google.com/privacy
+                            </a>
+                            .
+                          </>,
+                          'Saber quais anúncios trouxeram visitantes e cadastros ao Mesaas, e mostrar nossos anúncios de novo a quem já visitou o site.',
+                          'Páginas visitadas, o clique no anúncio que trouxe você (identificador gclid), cadastros e assinaturas feitos depois dele, e identificadores guardados no navegador (cookies _gcl_*, por até 90 dias). Não enviamos conteúdo de clientes, mídias ou dados de pagamento.',
+                          'Consentimento (art. 7º, I).',
+                        ],
+                        [
+                          <>
                             <strong>Sentry</strong> (Estados Unidos). Categoria: sempre ativa
                             (legítimo interesse, art. 7º, IX). Política:{' '}
                             <a

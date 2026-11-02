@@ -166,6 +166,7 @@ Monorepo with npm workspaces:
 ### CRM app (Vite, prefixed with `VITE_`)
 - `VITE_SUPABASE_URL` -- Supabase project URL
 - `VITE_SUPABASE_ANON_KEY` -- Supabase anon key
+- `VITE_GOOGLE_ADS_ID` -- Google Ads tag ID (`AW-…`). Optional: unset, gtag.js never loads. Vercel **Production** only, so preview/staging/dev clicks stay out of the Ads account. Loads only with the `marketing` ("Publicidade") cookie consent via `lib/googleAdsLoader.ts`; conversions go through `trackGoogleAdsConversion(label)`. Build-time, so a change needs a redeploy
 
 ### Edge functions (Deno.env)
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`

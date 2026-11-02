@@ -89,7 +89,7 @@ export default function CookieConsent() {
               variant="outline"
               size="sm"
               className="px-2 sm:px-3"
-              onClick={() => setConsent({ analytics: false, support: false })}
+              onClick={() => setConsent({ analytics: false, support: false, marketing: false })}
             >
               {t('cookies.banner.rejectAll')}
             </Button>
@@ -97,7 +97,7 @@ export default function CookieConsent() {
               variant="outline"
               size="sm"
               className="px-2 sm:px-3"
-              onClick={() => setConsent({ analytics: true, support: true })}
+              onClick={() => setConsent({ analytics: true, support: true, marketing: true })}
             >
               {t('cookies.banner.acceptAll')}
             </Button>

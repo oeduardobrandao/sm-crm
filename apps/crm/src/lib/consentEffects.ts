@@ -1,7 +1,8 @@
 import { disableAnalytics, initAnalytics } from './analytics';
 import { getConsent, subscribe } from './consent';
 import { loadCrisp, loadCrispWhenIdle } from './crispLoader';
-import { purgeAnalyticsStorage, purgeSupportStorage } from './legacyStorage';
+import { disableGoogleAds, loadGoogleAds, loadGoogleAdsWhenIdle } from './googleAdsLoader';
+import { purgeAnalyticsStorage, purgeMarketingStorage, purgeSupportStorage } from './legacyStorage';
 import { resumePendingSupportChat } from './supportChat';
 
 // PostHog pulls in ~108 KiB of lazy extensions (recorder, surveys, web-vitals) as soon as it
@@ -33,12 +34,14 @@ function initAnalyticsWhenIdle(): void {
 export function installConsentEffects(): void {
   let analyticsOn = false;
   let supportOn = false;
+  let marketingOn = false;
   let booted = false;
 
   const apply = (): void => {
     const consent = getConsent();
     const analytics = consent?.analytics === true;
     const support = consent?.support === true;
+    const marketing = consent?.marketing === true;
 
     if (analytics && !analyticsOn) {
       if (booted) initAnalytics();
@@ -57,8 +60,18 @@ export function installConsentEffects(): void {
     }
     if (!support && !booted) purgeSupportStorage();
 
+    if (marketing && !marketingOn) {
+      if (booted) loadGoogleAds();
+      else loadGoogleAdsWhenIdle();
+    }
+    if (!marketing) {
+      if (marketingOn) disableGoogleAds();
+      else if (!booted) purgeMarketingStorage();
+    }
+
     analyticsOn = analytics;
     supportOn = support;
+    marketingOn = marketing;
     booted = true;
   };
 
