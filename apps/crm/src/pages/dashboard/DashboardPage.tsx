@@ -20,6 +20,7 @@ import { InicioHealthTable } from './components/InicioHealthTable';
 import { DashboardPhone } from './phone/DashboardPhone';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { usePageToolbar } from '@/components/layout/PageToolbarContext';
+import { reportPurchaseConversion } from '@/lib/googleAdsLoader';
 
 export default function DashboardPage() {
   const { role, workspaceRole, canSeeFinancials } = useAuth();
@@ -40,6 +41,7 @@ export default function DashboardPage() {
     if (!trial) return;
     if (trial === 'started') {
       toast.success('Teste de 30 dias ativado! Atualizando seu plano…');
+      reportPurchaseConversion();
       let tries = 0;
       const id = window.setInterval(() => {
         tries += 1;

@@ -29,6 +29,7 @@ import {
   planHasReports,
 } from './plan-display';
 import { captureCheckoutStarted } from '@/lib/checkout-analytics';
+import { rememberCheckoutValue, reportPurchaseConversion } from '@/lib/googleAdsLoader';
 import { isPagarme12xEnabled } from '@/lib/pagarme-gate';
 import { PagarmeCheckoutDialog, formatUtcDateBR } from '@/components/billing/PagarmeCheckoutDialog';
 import {
@@ -179,6 +180,7 @@ export default function CobrancaPage() {
     if (!status) return;
     if (status === 'success') {
       toast.success(t('cobrancaPage.toastPaymentConfirmed'));
+      reportPurchaseConversion();
       const id = startPlanRefetchPoll();
       setSearchParams({}, { replace: true });
       return () => window.clearInterval(id);
@@ -270,6 +272,8 @@ export default function CobrancaPage() {
    * inside the Pagar.me dialog's `onPayUpfront`) so both callers cannot drift.
    */
   async function startStripeUpgrade(planId: string) {
+    const plan = plans?.find((p) => p.id === planId);
+    rememberCheckoutValue(interval === 'year' ? plan?.price_brl_annual : plan?.price_brl);
     setBusy(planId);
     try {
       const url = await startCheckout(planId, interval, 'billing');
@@ -284,6 +288,7 @@ export default function CobrancaPage() {
   async function handleUpgrade(planId: string) {
     const plan = plans?.find((p) => p.id === planId);
     if (interval === 'year' && isPagarme12xEnabled(plan)) {
+      rememberCheckoutValue(plan?.price_brl_annual);
       captureCheckoutStarted(planId, 'year', 'billing', 'pagarme');
       setPagarmeDialog({ mode: 'checkout', plan: plan ?? null });
       return;
@@ -563,7 +568,11 @@ export default function CobrancaPage() {
           : undefined
       }
       onClose={() => setPagarmeDialog(null)}
-      onSuccess={startPlanRefetchPoll}
+      onSuccess={() => {
+        // A switch moves an existing Stripe customer to Pagar.me: not a new purchase.
+        if (pagarmeDialog?.mode === 'checkout') reportPurchaseConversion();
+        startPlanRefetchPoll();
+      }}
     />
   );
 

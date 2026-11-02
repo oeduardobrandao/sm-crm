@@ -12,6 +12,10 @@ const GOOGLE_ADS_ID = import.meta.env.VITE_GOOGLE_ADS_ID as string | undefined;
 
 export const GOOGLE_TAG_SRC = 'https://www.googletagmanager.com/gtag/js';
 
+/** Label of the "Compra" conversion action (Google Ads > Metas > Compra > snippet de evento). */
+export const PURCHASE_CONVERSION_LABEL = 'sdWKCNvS268dEPru1oxF';
+const CHECKOUT_VALUE_KEY = 'gads_checkout_value_cents';
+
 const GRANTED = {
   ad_storage: 'granted',
   ad_user_data: 'granted',
@@ -97,14 +101,16 @@ export function disableGoogleAds(): void {
 }
 
 /**
- * Reports a Google Ads conversion (`label` from the conversion action's tag setup). A no-op until
- * the tag is loaded with consent, so call sites need no guard of their own.
+ * Reports a Google Ads conversion (`label` from the conversion action's tag setup). A no-op
+ * without marketing consent, so call sites need no guard of their own. Loads the tag first when
+ * the idle load has not fired yet: a checkout return reports on mount, before that window.
  */
 export function trackGoogleAdsConversion(
   label: string,
   value?: { amount: number; currency?: string; transactionId?: string },
 ): void {
-  if (!requested || !GOOGLE_ADS_ID || getConsent()?.marketing !== true) return;
+  if (!GOOGLE_ADS_ID || getConsent()?.marketing !== true) return;
+  loadGoogleAds();
   gtag('event', 'conversion', {
     send_to: `${GOOGLE_ADS_ID}/${label}`,
     ...(value && {
@@ -113,4 +119,30 @@ export function trackGoogleAdsConversion(
       ...(value.transactionId && { transaction_id: value.transactionId }),
     }),
   });
+}
+
+/**
+ * Called when a checkout starts, so the return page can report the plan's price: Stripe's
+ * success URL carries no plan. sessionStorage survives the round trip to the hosted checkout
+ * in the same tab.
+ */
+export function rememberCheckoutValue(cents: number | null | undefined): void {
+  try {
+    if (cents && cents > 0) sessionStorage.setItem(CHECKOUT_VALUE_KEY, String(cents));
+    else sessionStorage.removeItem(CHECKOUT_VALUE_KEY);
+  } catch {
+    // Storage blocked: the conversion still goes out, without a value.
+  }
+}
+
+/** Reports the "Compra" conversion on a successful checkout return, with the remembered price. */
+export function reportPurchaseConversion(): void {
+  let cents: number | null = null;
+  try {
+    cents = Number(sessionStorage.getItem(CHECKOUT_VALUE_KEY)) || null;
+    sessionStorage.removeItem(CHECKOUT_VALUE_KEY);
+  } catch {
+    // Storage blocked: report without a value.
+  }
+  trackGoogleAdsConversion(PURCHASE_CONVERSION_LABEL, cents ? { amount: cents / 100 } : undefined);
 }

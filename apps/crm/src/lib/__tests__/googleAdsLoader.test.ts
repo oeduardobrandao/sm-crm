@@ -99,17 +99,44 @@ describe('googleAdsLoader', () => {
     expect(document.cookie).not.toContain('_gcl_au');
   });
 
-  it('sends conversions only once loaded with consent', async () => {
-    seedConsent({ marketing: true });
-    const { loadGoogleAds, trackGoogleAdsConversion } = await import('../googleAdsLoader');
+  it('sends no conversion without marketing consent', async () => {
+    seedConsent({ marketing: false });
+    const { trackGoogleAdsConversion } = await import('../googleAdsLoader');
     trackGoogleAdsConversion('signup');
     expect(window.dataLayer).toBeUndefined();
-    loadGoogleAds();
+    expect(tagScripts()).toHaveLength(0);
+  });
+
+  it('loads the tag before the idle window when a conversion arrives first', async () => {
+    seedConsent({ marketing: true });
+    const { trackGoogleAdsConversion } = await import('../googleAdsLoader');
     trackGoogleAdsConversion('purchase', { amount: 97, transactionId: 'in_1' });
+    expect(tagScripts()).toHaveLength(1);
     expect(queuedCalls().at(-1)).toEqual([
       'event',
       'conversion',
       { send_to: `${AW_ID}/purchase`, value: 97, currency: 'BRL', transaction_id: 'in_1' },
+    ]);
+  });
+
+  it('reports the purchase with the price remembered at checkout start, once', async () => {
+    seedConsent({ marketing: true });
+    sessionStorage.clear();
+    const { rememberCheckoutValue, reportPurchaseConversion, PURCHASE_CONVERSION_LABEL } =
+      await import('../googleAdsLoader');
+    rememberCheckoutValue(9990);
+    reportPurchaseConversion();
+    expect(queuedCalls().at(-1)).toEqual([
+      'event',
+      'conversion',
+      { send_to: `${AW_ID}/${PURCHASE_CONVERSION_LABEL}`, value: 99.9, currency: 'BRL' },
+    ]);
+    expect(sessionStorage.length).toBe(0);
+    reportPurchaseConversion();
+    expect(queuedCalls().at(-1)).toEqual([
+      'event',
+      'conversion',
+      { send_to: `${AW_ID}/${PURCHASE_CONVERSION_LABEL}` },
     ]);
   });
 });
