@@ -22,6 +22,7 @@ import {
 } from '@/pages/configuracao/cobranca/plan-display';
 import { captureEvent } from '@/lib/analytics';
 import { captureCheckoutStarted } from '@/lib/checkout-analytics';
+import { rememberCheckoutValue } from '@/lib/googleAdsLoader';
 import { isPagarme12xEnabled } from '@/lib/pagarme-gate';
 import { isWhatsAppSupportEnabled } from '@/lib/whatsapp';
 import { WhatsAppSupportButton } from '@/components/support/WhatsAppSupportButton';
@@ -199,6 +200,7 @@ export default function ComecarPage() {
     // lagging webhook can never bounce someone who just entered a card back here.
     await ensureTrialOfferSeen();
     const plan = plans?.find((p) => p.id === planId);
+    rememberCheckoutValue(interval === 'year' ? plan?.price_brl_annual : plan?.price_brl);
     if (interval === 'year' && plan && isPagarme12xEnabled(plan)) {
       captureCheckoutStarted(planId, 'year', 'onboarding', 'pagarme');
       setPagarmeDialog({ plan });
