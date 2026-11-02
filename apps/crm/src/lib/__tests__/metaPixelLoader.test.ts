@@ -28,16 +28,19 @@ describe('metaPixelLoader', () => {
     vi.unstubAllEnvs();
   });
 
-  it('injects fbevents.js once and queues consent, init and the first PageView', async () => {
+  it('injects fbevents.js once and queues consent, init and the first PageView only', async () => {
     const { loadMetaPixel } = await import('../metaPixelLoader');
     loadMetaPixel();
     loadMetaPixel();
     expect(pixelScripts()).toHaveLength(1);
     expect(queuedCalls()).toEqual([
       ['consent', 'grant'],
+      ['set', 'autoConfig', false, PIXEL_ID],
       ['init', PIXEL_ID],
       ['track', 'PageView'],
     ]);
+    // No automatic PageView per SPA route: signed-in CRM URLs must not reach Meta.
+    expect(window.fbq?.disablePushState).toBe(true);
   });
 
   it('does nothing when VITE_META_PIXEL_ID is unset (dev, staging)', async () => {

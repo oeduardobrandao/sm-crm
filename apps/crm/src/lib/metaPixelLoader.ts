@@ -7,6 +7,7 @@ type Fbq = ((...args: unknown[]) => void) & {
   push: Fbq;
   loaded: boolean;
   version: string;
+  disablePushState?: boolean;
 };
 
 declare global {
@@ -29,8 +30,11 @@ function fbq(...args: unknown[]): void {
 /**
  * Injects the Meta Pixel (fbevents.js). Same gate as the Google Ads tag: only after the visitor
  * consented to the `marketing` ("Publicidade") category, and only where `VITE_META_PIXEL_ID` is
- * set (production). The pixel tracks SPA route changes (history API) as PageView by itself, so
- * only the first PageView is sent here.
+ * set (production).
+ *
+ * Meta only gets the landing PageView and the explicit events (trackMetaEvent): `autoConfig` off
+ * stops the pixel scraping button text and page metadata, and `disablePushState` stops it sending
+ * a PageView per SPA route change, which would leak signed-in CRM URLs (`/clientes/123`).
  */
 export function loadMetaPixel(): void {
   if (requested || !META_PIXEL_ID || typeof document === 'undefined') return;
@@ -48,7 +52,9 @@ export function loadMetaPixel(): void {
     window.fbq = stub;
     if (!window._fbq) window._fbq = stub;
   }
+  window.fbq!.disablePushState = true;
   fbq('consent', 'grant');
+  fbq('set', 'autoConfig', false, META_PIXEL_ID);
   fbq('init', META_PIXEL_ID);
   fbq('track', 'PageView');
 
