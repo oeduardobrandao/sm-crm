@@ -2,6 +2,7 @@ import { disableAnalytics, initAnalytics } from './analytics';
 import { getConsent, subscribe } from './consent';
 import { loadCrisp, loadCrispWhenIdle } from './crispLoader';
 import { disableGoogleAds, loadGoogleAds, loadGoogleAdsWhenIdle } from './googleAdsLoader';
+import { disableMetaPixel, loadMetaPixel, loadMetaPixelWhenIdle } from './metaPixelLoader';
 import { purgeAnalyticsStorage, purgeMarketingStorage, purgeSupportStorage } from './legacyStorage';
 import { resumePendingSupportChat } from './supportChat';
 
@@ -61,12 +62,19 @@ export function installConsentEffects(): void {
     if (!support && !booted) purgeSupportStorage();
 
     if (marketing && !marketingOn) {
-      if (booted) loadGoogleAds();
-      else loadGoogleAdsWhenIdle();
+      if (booted) {
+        loadGoogleAds();
+        loadMetaPixel();
+      } else {
+        loadGoogleAdsWhenIdle();
+        loadMetaPixelWhenIdle();
+      }
     }
     if (!marketing) {
-      if (marketingOn) disableGoogleAds();
-      else if (!booted) purgeMarketingStorage();
+      if (marketingOn) {
+        disableGoogleAds();
+        disableMetaPixel();
+      } else if (!booted) purgeMarketingStorage();
     }
 
     analyticsOn = analytics;

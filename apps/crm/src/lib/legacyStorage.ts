@@ -62,11 +62,11 @@ export function purgeAnalyticsStorage(): void {
 }
 
 /**
- * Google Ads tag storage: `_gcl_au` (conversion linker) and `_gcl_aw` / `_gac_*` when the visit
- * came from an ad click.
+ * Ad tag storage. Google Ads: `_gcl_au` (conversion linker) and `_gcl_aw` / `_gac_*` when the
+ * visit came from an ad click. Meta Pixel: `_fbp` (browser id) and `_fbc` (ad click).
  */
 export function purgeMarketingStorage(): void {
-  purge(['_gcl_', '_gac_']);
+  purge(['_gcl_', '_gac_', '_fbp', '_fbc']);
 }
 
 /**
