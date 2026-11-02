@@ -13,6 +13,9 @@ const m = vi.hoisted(() => ({
   loadGoogleAds: vi.fn(),
   loadGoogleAdsWhenIdle: vi.fn(),
   disableGoogleAds: vi.fn(),
+  loadMetaPixel: vi.fn(),
+  loadMetaPixelWhenIdle: vi.fn(),
+  disableMetaPixel: vi.fn(),
 }));
 vi.mock('../analytics', () => ({
   initAnalytics: m.initAnalytics,
@@ -26,6 +29,11 @@ vi.mock('../googleAdsLoader', () => ({
   loadGoogleAds: m.loadGoogleAds,
   loadGoogleAdsWhenIdle: m.loadGoogleAdsWhenIdle,
   disableGoogleAds: m.disableGoogleAds,
+}));
+vi.mock('../metaPixelLoader', () => ({
+  loadMetaPixel: m.loadMetaPixel,
+  loadMetaPixelWhenIdle: m.loadMetaPixelWhenIdle,
+  disableMetaPixel: m.disableMetaPixel,
 }));
 vi.mock('../legacyStorage', () => ({
   purgeAnalyticsStorage: m.purgeAnalyticsStorage,
@@ -126,6 +134,7 @@ describe('installConsentEffects', () => {
     vi.advanceTimersByTime(5000);
     expect(m.loadGoogleAds).not.toHaveBeenCalled();
     expect(m.loadGoogleAdsWhenIdle).not.toHaveBeenCalled();
+    expect(m.loadMetaPixelWhenIdle).not.toHaveBeenCalled();
     expect(m.purgeMarketingStorage).toHaveBeenCalledTimes(1);
   });
 
@@ -133,7 +142,9 @@ describe('installConsentEffects', () => {
     seedConsent({ marketing: true });
     await boot();
     expect(m.loadGoogleAdsWhenIdle).toHaveBeenCalledTimes(1);
+    expect(m.loadMetaPixelWhenIdle).toHaveBeenCalledTimes(1);
     expect(m.loadGoogleAds).not.toHaveBeenCalled();
+    expect(m.loadMetaPixel).not.toHaveBeenCalled();
     expect(m.purgeMarketingStorage).not.toHaveBeenCalled();
   });
 
@@ -141,8 +152,10 @@ describe('installConsentEffects', () => {
     const { setConsent } = await boot();
     setConsent({ analytics: false, support: false, marketing: true });
     expect(m.loadGoogleAds).toHaveBeenCalledTimes(1);
+    expect(m.loadMetaPixel).toHaveBeenCalledTimes(1);
     setConsent({ analytics: false, support: false, marketing: false });
     expect(m.disableGoogleAds).toHaveBeenCalledTimes(1);
+    expect(m.disableMetaPixel).toHaveBeenCalledTimes(1);
   });
 
   it('does not touch Google Ads on an unrelated change', async () => {

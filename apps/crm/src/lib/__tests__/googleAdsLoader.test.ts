@@ -16,10 +16,13 @@ describe('googleAdsLoader', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubEnv('VITE_GOOGLE_ADS_ID', AW_ID);
+    vi.stubEnv('VITE_META_PIXEL_ID', 'PIXEL');
     localStorage.clear();
     document.head.querySelectorAll('script').forEach((s) => s.remove());
     delete window.dataLayer;
     delete window.gtag;
+    delete window.fbq;
+    delete window._fbq;
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -130,6 +133,11 @@ describe('googleAdsLoader', () => {
       'event',
       'conversion',
       { send_to: `${AW_ID}/${PURCHASE_CONVERSION_LABEL}`, value: 99.9, currency: 'BRL' },
+    ]);
+    expect(window.fbq?.queue.at(-1)).toEqual([
+      'track',
+      'Purchase',
+      { value: 99.9, currency: 'BRL' },
     ]);
     expect(sessionStorage.length).toBe(0);
     reportPurchaseConversion();

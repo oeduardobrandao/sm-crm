@@ -408,6 +408,24 @@ export default function LgpdPage() {
                         ],
                         [
                           <>
+                            <strong>Meta Pixel</strong> (Estados Unidos). Categoria: publicidade.
+                            Depende do seu consentimento. Política:{' '}
+                            <a
+                              href="https://www.facebook.com/privacy/policy/"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}
+                            >
+                              facebook.com/privacy/policy
+                            </a>
+                            .
+                          </>,
+                          'Saber quais anúncios no Instagram e no Facebook trouxeram visitantes e cadastros ao Mesaas, e mostrar nossos anúncios de novo a quem já visitou o site.',
+                          'Páginas visitadas, o clique no anúncio que trouxe você (identificador fbclid), cadastros e assinaturas feitos depois dele, e identificadores guardados no navegador (cookies _fbp e _fbc, por até 90 dias). Não enviamos conteúdo de clientes, mídias ou dados de pagamento.',
+                          'Consentimento (art. 7º, I).',
+                        ],
+                        [
+                          <>
                             <strong>Sentry</strong> (Estados Unidos). Categoria: sempre ativa
                             (legítimo interesse, art. 7º, IX). Política:{' '}
                             <a

@@ -1,5 +1,6 @@
 import { getConsent } from './consent';
 import { purgeMarketingStorage } from './legacyStorage';
+import { trackMetaEvent } from './metaPixelLoader';
 
 declare global {
   interface Window {
@@ -135,7 +136,10 @@ export function rememberCheckoutValue(cents: number | null | undefined): void {
   }
 }
 
-/** Reports the "Compra" conversion on a successful checkout return, with the remembered price. */
+/**
+ * Reports a successful checkout return, with the remembered price: the Google Ads "Compra"
+ * conversion and the Meta Pixel `Purchase` event.
+ */
 export function reportPurchaseConversion(): void {
   let cents: number | null = null;
   try {
@@ -145,4 +149,5 @@ export function reportPurchaseConversion(): void {
     // Storage blocked: report without a value.
   }
   trackGoogleAdsConversion(PURCHASE_CONVERSION_LABEL, cents ? { amount: cents / 100 } : undefined);
+  trackMetaEvent('Purchase', cents ? { value: cents / 100, currency: 'BRL' } : undefined);
 }

@@ -182,6 +182,14 @@ export default function PoliticaPage() {
                     conteúdo de clientes, mídias ou dados de pagamento.
                   </li>
                   <li>
+                    <strong>Meta Pixel</strong> · medição dos nossos anúncios no Instagram e no
+                    Facebook (quais anúncios trouxeram visitas, cadastros e assinaturas) e exibição
+                    de anúncios a quem já visitou o site. Só é ativado com o seu consentimento. Os
+                    dados são processados nos Estados Unidos, o que constitui uma transferência
+                    internacional de dados pessoais para fora do Brasil, realizada em conformidade
+                    com a LGPD. Não enviamos conteúdo de clientes, mídias ou dados de pagamento.
+                  </li>
+                  <li>
                     <strong>Loops</strong> · envio de e-mails de marketing e de ciclo de vida. Os
                     dados são processados nos Estados Unidos, o que constitui uma transferência
                     internacional de dados pessoais para fora do Brasil, realizada em conformidade

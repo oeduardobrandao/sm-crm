@@ -12,6 +12,7 @@ import { Sparkles, ChevronRight, Images, Film, Camera } from 'lucide-react';
 import { signIn, signUp, resetPassword } from '../../lib/supabase';
 import { clearStoredReferral, getStoredReferral } from '../../lib/referral';
 import { captureEvent, identifySignup } from '@/lib/analytics';
+import { trackMetaEvent } from '@/lib/metaPixelLoader';
 import { useAuth } from '@/context/AuthContext';
 import { CookiePreferencesLink } from '@/components/consent/CookiePreferencesLink';
 import { parsePlanIntent, buildPlanIntentQuery } from '@/pages/comecar/plan-intent';
@@ -137,6 +138,7 @@ export default function LoginPage() {
     // A atribuição já foi gravada com o usuário; não reaproveitar em outro cadastro deste navegador.
     if (refCode) clearStoredReferral();
     captureEvent('signup_completed');
+    trackMetaEvent('CompleteRegistration');
     // With email confirmation disabled signUp returns a live session, so the
     // user goes straight to the trial step. When it is enabled there is no
     // session yet and the check-your-email screen still applies.
