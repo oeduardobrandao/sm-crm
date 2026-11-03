@@ -473,7 +473,11 @@ describe('CorrectionPanel', () => {
         onDirtyChange={onDirtyChange}
       />,
     );
-    expect(await screen.findByText('Corpo original do roteiro')).toBeInTheDocument();
+    // A real TipTap editor mounts here; under the CI coverage shards that alone has gone past
+    // findByText's 1s default, so both waits get room.
+    expect(
+      await screen.findByText('Corpo original do roteiro', undefined, { timeout: 5000 }),
+    ).toBeInTheDocument();
 
     rerender(
       <CorrectionPanel
@@ -492,7 +496,9 @@ describe('CorrectionPanel', () => {
       />,
     );
 
-    expect(await screen.findByText('Corpo atualizado do roteiro')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Corpo atualizado do roteiro', undefined, { timeout: 5000 }),
+    ).toBeInTheDocument();
     expect(screen.queryByText('Corpo original do roteiro')).not.toBeInTheDocument();
   });
 
