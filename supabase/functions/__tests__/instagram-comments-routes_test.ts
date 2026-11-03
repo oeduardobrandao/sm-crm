@@ -318,7 +318,7 @@ Deno.test("POST manda à IA só textos, grava upsert com analyzed_at novo e idei
   assertEquals(u.row.posts_analyzed, 1);
   assertEquals(u.row.period_start, null);
   assertEquals(u.row.period_end, null);
-  assertEquals(u.row.model, "gemini-2.5-flash-lite");
+  assertEquals(u.row.model, "gemini-2.5-flash");
   assertEquals(u.row.analyzed_by, USER);
   assertEquals(u.row.analyzed_at, new Date(NOW).toISOString());
   // deno-lint-ignore no-explicit-any

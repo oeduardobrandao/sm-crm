@@ -19,7 +19,8 @@ export interface CommentAnalysis {
   ideias: { id: string; titulo: string; descricao: string; motivo: string }[];
 }
 
-export const COMMENTS_MODEL = "gemini-2.5-flash-lite";
+// gemini-2.5-flash-lite responde 404 na API; o resto das functions usa o flash.
+export const COMMENTS_MODEL = "gemini-2.5-flash";
 export const GEMINI_CALL_BUDGET_MS = 25_000;
 const BACKOFF_MS = [1000, 3000];
 const REDACTED = "alguém do público";
@@ -297,6 +298,8 @@ export async function callGemini(
       temperature: 0.3,
       responseMimeType: "application/json",
       responseSchema: RESPONSE_SCHEMA,
+      // Sem raciocínio: classificação curta, e o orçamento por chamada é de 25 s.
+      thinkingConfig: { thinkingBudget: 0 },
     },
   });
 
