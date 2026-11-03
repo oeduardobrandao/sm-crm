@@ -35,6 +35,22 @@ describe('instagramComments service', () => {
     expect(err.status).toBe(409);
   });
 
+  it('token do Instagram expirado: lê code do corpo { error: true, code }', async () => {
+    mockFetch(401, { error: true, code: 'TOKEN_EXPIRED' });
+    const err = await getPostComments(1, 'm1').catch((e) => e);
+    expect(err).toBeInstanceOf(CommentsApiError);
+    expect(err.status).toBe(401);
+    expect(err.code).toBe('TOKEN_EXPIRED');
+  });
+
+  it('401 sem code (login do usuário) fica unknown', async () => {
+    mockFetch(401, { error: 'Unauthorized' });
+    const err = await getPostComments(1, 'm1').catch((e) => e);
+    expect(err.status).toBe(401);
+    expect(err.code).toBe('Unauthorized');
+    expect(commentsErrorMessage(err)).toBe('Não foi possível carregar os comentários.');
+  });
+
   it('chama as rotas do contrato e desembrulha analysis', async () => {
     const analysis = { result: {}, comments_analyzed: 3 };
     const f = mockFetch(200, { analysis, current_comments: 4 });

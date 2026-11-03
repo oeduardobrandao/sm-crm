@@ -108,6 +108,7 @@ vi.mock('../reports/NewReportDialog', () => ({
 }));
 
 import AnalyticsClientShell from '../AnalyticsClientShell';
+import { PostDetailSheet } from '../phone/PostDetailSheet';
 import { getClientes } from '../../../store';
 import { getInstagramSummary } from '../../../services/instagram';
 import {
@@ -213,6 +214,7 @@ describe('AnalyticsContaPage (phone)', () => {
         post({ id: 1, tags: [TAG] }),
         post({
           id: 2,
+          instagram_post_id: 'ig2',
           caption: 'Reel de bastidores',
           media_type: 'VIDEO',
           profile_visits: null,
@@ -375,8 +377,76 @@ describe('AnalyticsContaPage (phone)', () => {
 
     fireEvent.click(within(tabs).getByRole('tab', { name: 'Comentários' }));
     expect(await within(sheet).findByText('Amei o conteúdo')).toBeInTheDocument();
-    expect(getPostComments).toHaveBeenCalledWith(42, 'ig1');
+    expect(getPostComments).toHaveBeenCalledWith(42, 'ig2');
     expect(within(sheet).getByRole('button', { name: 'Analisar comentários' })).toBeDisabled();
+  });
+
+  it('fechar o sheet em Comentários e abrir outro post abre em Insights, sem buscar', async () => {
+    limitsFeatures.feature_instagram_comments_ai = true;
+    vi.mocked(getPostComments).mockResolvedValue({
+      comments: [],
+      total_fetched: 0,
+      truncated: false,
+      comments_count: 0,
+      cached_analysis: null,
+    });
+    renderPage();
+    await ready();
+    const list = await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(within(list).getByRole('button', { name: /Post sobre botox/ }));
+    let sheet = await screen.findByRole('dialog');
+    fireEvent.click(within(sheet).getByRole('tab', { name: 'Comentários' }));
+    await waitFor(() => expect(getPostComments).toHaveBeenCalledWith(42, 'ig1'));
+
+    // The sheet is a Radix dialog: Escape closes it.
+    fireEvent.keyDown(sheet, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    fireEvent.click(within(list).getByRole('button', { name: /Reel de bastidores/ }));
+    sheet = await screen.findByRole('dialog');
+    expect(within(sheet).getByRole('tab', { name: 'Insights' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(within(sheet).getByText('Reel de bastidores')).toBeInTheDocument();
+    expect(getPostComments).not.toHaveBeenCalledWith(42, 'ig2');
+    expect(getPostComments).toHaveBeenCalledTimes(1);
+  });
+
+  it('trocar de post com o sheet em Comentários volta a Insights sem buscar o post novo', async () => {
+    limitsFeatures.feature_instagram_comments_ai = true;
+    vi.mocked(getPostComments).mockResolvedValue({
+      comments: [],
+      total_fetched: 0,
+      truncated: false,
+      comments_count: 0,
+      cached_analysis: null,
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    const sheet = (p: PostAnalytics) => (
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <PostDetailSheet
+            clientId={42}
+            post={p}
+            onOpenChange={() => {}}
+            tags={[]}
+            onToggleTag={async () => {}}
+            onNewTag={() => {}}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const a = post({ id: 1, instagram_post_id: 'ig1' });
+    const b = post({ id: 2, instagram_post_id: 'ig2', caption: 'Reel de bastidores' });
+    const { rerender } = render(sheet(a));
+    fireEvent.click(await screen.findByRole('tab', { name: 'Comentários' }));
+    await waitFor(() => expect(getPostComments).toHaveBeenCalledWith(42, 'ig1'));
+
+    rerender(sheet(b));
+    expect(await screen.findByText('Reel de bastidores')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Insights' })).toHaveAttribute('aria-selected', 'true');
+    expect(getPostComments).not.toHaveBeenCalledWith(42, 'ig2');
   });
 
   it('removes a tag from a post by toggling it off', async () => {

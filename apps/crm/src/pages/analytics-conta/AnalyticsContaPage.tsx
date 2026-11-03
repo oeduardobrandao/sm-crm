@@ -986,7 +986,7 @@ function ExpandedPostDetail({
             role="tab"
             id={tabId(t.key)}
             aria-selected={tab === t.key}
-            aria-controls={panelId(t.key)}
+            aria-controls={tab === t.key ? panelId(t.key) : undefined}
             className={`page-tab${tab === t.key ? ' active' : ''}`}
             onClick={() => setTab(t.key)}
           >
@@ -995,7 +995,11 @@ function ExpandedPostDetail({
         ))}
       </div>
       <div role="tabpanel" id={panelId(tab)} aria-labelledby={tabId(tab)}>
-        {tab === 'insights' ? insights : <PostCommentsPanel clientId={clientId} post={p} />}
+        {tab === 'insights' ? (
+          insights
+        ) : (
+          <PostCommentsPanel key={p.id} clientId={clientId} post={p} />
+        )}
       </div>
     </>
   );

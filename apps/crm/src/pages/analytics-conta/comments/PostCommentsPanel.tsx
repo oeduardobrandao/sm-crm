@@ -32,13 +32,20 @@ function relative(ts: string): string {
   return formatDistanceToNowStrict(d, { addSuffix: true, locale: ptBR });
 }
 
-/** Errors only a reconnection fixes: the comments scope is missing (409) or the token
- *  expired (401, `{ error: true, code: "TOKEN_EXPIRED" }`, so only the status tells). */
+/** Errors only a reconnection fixes: the comments scope is missing (409) or the
+ *  Instagram token expired (401 `TOKEN_EXPIRED`). Any other 401 (the user's own session)
+ *  falls through to the generic message. */
 function reconnectReason(e: unknown): 'scope' | 'expired' | null {
   if (!(e instanceof CommentsApiError)) return null;
   if (e.code === 'missing_comments_scope') return 'scope';
-  if (e.status === 401) return 'expired';
+  if (e.status === 401 && e.code === 'TOKEN_EXPIRED') return 'expired';
   return null;
+}
+
+function analyzedAgo(ts: string): string {
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return '';
+  return formatDistanceToNow(d, { addSuffix: true, locale: ptBR });
 }
 
 /** "Reels de 28 out": names the post in the origin line of a saved idea. */
@@ -280,7 +287,12 @@ export function PostCommentsPanel({
         <h3 className="igc-card__title">Leitura dos comentários</h3>
         {analysis && (
           <span className="igc-card__meta">
-            {`${plural(analysis.comments_analyzed, 'comentário analisado', 'comentários analisados')} · ${formatDistanceToNow(new Date(analysis.analyzed_at), { addSuffix: true, locale: ptBR })}`}
+            {[
+              plural(analysis.comments_analyzed, 'comentário analisado', 'comentários analisados'),
+              analyzedAgo(analysis.analyzed_at),
+            ]
+              .filter(Boolean)
+              .join(' · ')}
           </span>
         )}
       </div>

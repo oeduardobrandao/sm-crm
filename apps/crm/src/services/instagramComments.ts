@@ -67,7 +67,10 @@ async function request<T>(path: string, method: 'GET' | 'POST'): Promise<T> {
     let code = 'unknown';
     try {
       const body = await res.json();
+      // Comments routes answer `{ error: "<code>" }`; the shared expired-token path
+      // answers `{ error: true, code: "TOKEN_EXPIRED" }`.
       if (body && typeof body.error === 'string') code = body.error;
+      else if (body && typeof body.code === 'string') code = body.code;
     } catch {
       /* non-JSON body */
     }
@@ -113,6 +116,8 @@ export function commentsErrorMessage(e: unknown): string {
     switch (e.code) {
       case 'missing_comments_scope':
         return 'Reconecte o Instagram deste cliente para ver os comentários.';
+      case 'TOKEN_EXPIRED':
+        return 'A conexão com o Instagram expirou. Reconecte para ver os comentários.';
       case 'too_few_comments':
         return 'Ainda não há comentários suficientes para analisar.';
       case 'ai_unavailable':

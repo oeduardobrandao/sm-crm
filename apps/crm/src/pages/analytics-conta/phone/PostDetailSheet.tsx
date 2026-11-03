@@ -42,19 +42,23 @@ export function PostDetailSheet({
   // Keeps the last post while the sheet animates out.
   const [shown, setShown] = useState<PostAnalytics | null>(post);
   const [busyTag, setBusyTag] = useState<number | null>(null);
-  const [tab, setTab] = useState<'insights' | 'comments'>('insights');
+  // The tab belongs to one post: any other post opens on Insights, decided during render
+  // so the comments panel never mounts (and fetches) for a post nobody asked about.
+  const [tabState, setTabState] = useState<{ postId: number | null; tab: 'insights' | 'comments' }>(
+    {
+      postId: null,
+      tab: 'insights',
+    },
+  );
   const commentsEnabled = useWorkspaceLimits().features?.feature_instagram_comments_ai === true;
   useEffect(() => {
     if (post) setShown(post);
   }, [post]);
-  // Every post opens on Insights.
-  const shownId = post?.id ?? null;
-  useEffect(() => {
-    if (shownId !== null) setTab('insights');
-  }, [shownId]);
 
   const p = post ?? shown;
   if (!p) return null;
+  const tab = tabState.postId === p.id ? tabState.tab : 'insights';
+  const setTab = (t: 'insights' | 'comments') => setTabState({ postId: p.id, tab: t });
 
   const actionKeys = Object.keys(ACTION_LABELS) as ActionMetricKey[];
   const missing = actionKeys.filter((k) => typeof p[k] !== 'number');
@@ -218,7 +222,7 @@ export function PostDetailSheet({
             aria-labelledby={`post-sheet-${p.id}-tab-${tab}`}
           >
             {tab === 'comments' ? (
-              <PostCommentsPanel clientId={clientId} post={p} compact />
+              <PostCommentsPanel key={p.id} clientId={clientId} post={p} compact />
             ) : (
               insightsBody
             )}

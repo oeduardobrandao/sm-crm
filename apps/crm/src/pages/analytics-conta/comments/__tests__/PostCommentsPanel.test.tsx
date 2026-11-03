@@ -255,7 +255,7 @@ describe('PostCommentsPanel', () => {
   });
 
   it('401 (token expirado) mostra Reconectar Instagram com a cópia de conexão expirada', async () => {
-    getPostCommentsMock.mockRejectedValue(new CommentsApiError('unknown', 401));
+    getPostCommentsMock.mockRejectedValue(new CommentsApiError('TOKEN_EXPIRED', 401));
     renderPanel();
     expect(
       await screen.findByText(
@@ -268,10 +268,27 @@ describe('PostCommentsPanel', () => {
 
   it('401 ao analisar também leva a Reconectar Instagram', async () => {
     getPostCommentsMock.mockResolvedValue(response());
-    analyzeMock.mockRejectedValue(new CommentsApiError('unknown', 401));
+    analyzeMock.mockRejectedValue(new CommentsApiError('TOKEN_EXPIRED', 401));
     renderPanel();
     fireEvent.click(await screen.findByRole('button', { name: 'Analisar comentários' }));
     expect(await screen.findByRole('button', { name: 'Reconectar Instagram' })).toBeInTheDocument();
+  });
+
+  it('401 que não é token do Instagram mostra a mensagem genérica', async () => {
+    getPostCommentsMock.mockRejectedValue(new CommentsApiError('Unauthorized', 401));
+    renderPanel();
+    expect(
+      await screen.findByText('Não foi possível carregar os comentários.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reconectar Instagram' })).not.toBeInTheDocument();
+  });
+
+  it('analyzed_at inválido não quebra o cabeçalho', async () => {
+    getPostCommentsMock.mockResolvedValue(
+      response({ cached_analysis: { ...ANALYSIS, analyzed_at: 'not-a-date' } }),
+    );
+    renderPanel();
+    expect(await screen.findByText('12 comentários analisados')).toBeInTheDocument();
   });
 
   it('404 de post mostra a mensagem genérica', async () => {
