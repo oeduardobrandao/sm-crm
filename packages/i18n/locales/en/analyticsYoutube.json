@@ -157,5 +157,43 @@
     "syncRateLimited": "Google API limit reached. Try again in a few minutes.",
     "syncIncomplete": "Sync didn't finish right now. We'll try again automatically."
   },
+  "overview": {
+    "title": "YouTube",
+    "description": "One channel per row. Click a channel to open the client's full analytics.",
+    "search": "Search channel or client",
+    "clientFilter": "Client",
+    "allClients": "All clients",
+    "period": "Period",
+    "periodDays_one": "{{count}} day",
+    "periodDays_other": "{{count}} days",
+    "statusFilter": "Connection status",
+    "statusAll": "All ({{count}})",
+    "statusRevoked": "Need to reconnect ({{count}})",
+    "connected_one": "{{count}} channel connected",
+    "connected_other": "{{count}} channels connected",
+    "channels": "Channels",
+    "perChannel": "Every number belongs only to the channel in its row.",
+    "reconnect": "Reconnect",
+    "neverSynced": "Never",
+    "noMatch": "No channel matches these filters.",
+    "emptyTitle": "No channel connected",
+    "emptyBody": "Connect a client's YouTube in the Social networks tab to see the channel here.",
+    "emptyAction": "Go to clients",
+    "sortBy": "Sort channels",
+    "sortToAsc": "Ascending order",
+    "sortToDesc": "Descending order",
+    "sortAsc": "ascending",
+    "sortDesc": "descending",
+    "column": {
+      "title": "Channel",
+      "subscriberCount": "Subscribers",
+      "netSubscribers": "Gained in period",
+      "views": "Views",
+      "watchHours": "Watch hours",
+      "shortsShare": "Shorts in views",
+      "avgViewDurationS": "Average duration",
+      "lastSyncedAt": "Updated"
+    }
+  },
   "footer": "YouTube data, as reported by YouTube."
 }
