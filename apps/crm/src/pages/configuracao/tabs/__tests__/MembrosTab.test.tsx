@@ -1,7 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // The tab branches on the viewport; this suite asserts the desktop markup.
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
@@ -15,11 +15,26 @@ const { useAuthMock, storeMock } = vi.hoisted(() => ({
     removeWorkspaceUser: vi.fn(async () => {}),
     updateWorkspaceUserRole: vi.fn(async () => {}),
     setWorkspaceUserFinancialAccess: vi.fn(async () => {}),
+    // Acesso por cliente (Clientes column + ClientAccessDialog).
+    getClientes: vi.fn(async () => [] as Record<string, unknown>[]),
+    getWorkspaceMemberClienteIds: vi.fn(async () => ({}) as Record<string, number[]>),
+    setWorkspaceUserClientScope: vi.fn(async () => {}),
   },
 }));
 
 vi.mock('../../../../context/AuthContext', () => ({
   useAuth: useAuthMock,
+}));
+
+// feature_acesso_por_cliente: off unless a test turns it on.
+const { limitsHolder } = vi.hoisted(() => ({
+  limitsHolder: { features: { feature_acesso_por_cliente: false } as Record<string, boolean> },
+}));
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({ features: limitsHolder.features, limits: null, isLoading: false }),
+}));
+vi.mock('@/hooks/useClienteAvatars', () => ({
+  useClienteAvatars: () => ({ fotosDe: () => [] }),
 }));
 
 vi.mock('../../../../store', () => storeMock);
@@ -911,5 +926,126 @@ describe('MembrosTab — login e-mails', () => {
     await screen.findByText('Ana Owner');
     expect(emailsMock).not.toHaveBeenCalled();
     expect(screen.queryByText('ana@exemplo.com')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Acesso por cliente: the Clientes cell on each member row. Only the owner
+ * edits it; the flag gates moving someone INTO 'atribuidos', never releasing.
+ */
+describe('MembrosTab — acesso a clientes', () => {
+  const OWNER = { id: 'u1', nome: 'Ana Owner', role: 'owner', client_scope: 'todos' };
+  const ADMIN = { id: 'u2', nome: 'Beto Admin', role: 'admin', client_scope: 'todos' };
+  const AGENT_RESTRITA = {
+    id: 'u3',
+    nome: 'Clara Agente',
+    role: 'agent',
+    client_scope: 'atribuidos',
+  };
+  const AGENT_TODOS = { id: 'u4', nome: 'Davi Agente', role: 'agent', client_scope: 'todos' };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    limitsHolder.features = { feature_acesso_por_cliente: true };
+    storeMock.getWorkspaceRoles.mockResolvedValue([]);
+    storeMock.getClientes.mockResolvedValue([
+      { id: 1, nome: 'Clínica Alfa', sigla: 'CA', cor: '#111111' },
+      { id: 2, nome: 'Bistrô Beta', sigla: 'BB', cor: '#222222' },
+    ]);
+    storeMock.getWorkspaceMemberClienteIds.mockResolvedValue({ u3: [2] });
+    storeMock.setWorkspaceUserClientScope.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    limitsHolder.features = { feature_acesso_por_cliente: false };
+  });
+
+  it('column_hidden_for_flag_off_and_todos', async () => {
+    limitsHolder.features = { feature_acesso_por_cliente: false };
+    storeMock.getWorkspaceUsers.mockResolvedValue([OWNER, ADMIN, AGENT_TODOS]);
+    setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+    renderTab();
+
+    await screen.findByText('Davi Agente');
+    expect(screen.queryByText('Clientes')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Todos os clientes/ })).toBeNull();
+    expect(storeMock.getWorkspaceMemberClienteIds).not.toHaveBeenCalled();
+  });
+
+  it('flag on: the owner gets a button per member, with the count for a restricted one', async () => {
+    storeMock.getWorkspaceUsers.mockResolvedValue([OWNER, ADMIN, AGENT_RESTRITA]);
+    setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+    renderTab();
+
+    const beto = await getRow('Beto Admin');
+    expect(beto.getByRole('button', { name: 'Todos os clientes' })).toBeInTheDocument();
+    const clara = await getRow('Clara Agente');
+    expect(await clara.findByRole('button', { name: '1 cliente' })).toBeEnabled();
+    expect(storeMock.getWorkspaceMemberClienteIds).toHaveBeenCalledTimes(1);
+
+    // Opens the dialog with the member's assignments preselected.
+    fireEvent.click(clara.getByRole('button', { name: '1 cliente' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Acesso a clientes · Clara Agente' });
+    expect(await within(dialog).findByRole('checkbox', { name: 'Bistrô Beta' })).toBeChecked();
+    expect(within(dialog).getByRole('checkbox', { name: 'Clínica Alfa' })).not.toBeChecked();
+  });
+
+  it('flag_off_restricted_shows_only_liberar', async () => {
+    limitsHolder.features = { feature_acesso_por_cliente: false };
+    storeMock.getWorkspaceUsers.mockResolvedValue([OWNER, AGENT_TODOS, AGENT_RESTRITA]);
+    setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+    renderTab();
+
+    // The column shows because someone is already restricted...
+    const davi = await getRow('Davi Agente');
+    expect(davi.getByText('Todos os clientes')).toBeInTheDocument();
+    // ...but a 'todos' member cannot be restricted with the flag off.
+    expect(davi.queryByRole('button', { name: 'Todos os clientes' })).toBeNull();
+
+    const clara = await getRow('Clara Agente');
+    fireEvent.click(await clara.findByRole('button', { name: '1 cliente' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByRole('radio')).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Liberar todos os clientes' }));
+    await waitFor(() =>
+      expect(storeMock.setWorkspaceUserClientScope).toHaveBeenCalledWith('u3', 'todos', []),
+    );
+  });
+
+  it('admin_viewer_sees_text_not_button', async () => {
+    storeMock.getWorkspaceUsers.mockResolvedValue([OWNER, ADMIN, AGENT_RESTRITA, AGENT_TODOS]);
+    setAuth({ workspaceRole: 'admin', staleProfileRole: 'admin' });
+    renderTab();
+
+    const clara = await getRow('Clara Agente');
+    // RLS shows an admin only its own assignments, so no count is read or shown.
+    expect(clara.getByText('Só selecionados')).toBeInTheDocument();
+    expect(clara.queryByRole('button', { name: /cliente/ })).toBeNull();
+    const davi = await getRow('Davi Agente');
+    expect(davi.getByText('Todos os clientes')).toBeInTheDocument();
+    expect(davi.queryByRole('button', { name: 'Todos os clientes' })).toBeNull();
+    expect(storeMock.getWorkspaceMemberClienteIds).not.toHaveBeenCalled();
+  });
+
+  it('owner_row_has_no_action', async () => {
+    storeMock.getWorkspaceUsers.mockResolvedValue([OWNER, ADMIN]);
+    setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+    renderTab();
+
+    const ana = await getRow('Ana Owner');
+    expect(ana.getByText('Todos')).toBeInTheDocument();
+    expect(ana.queryByRole('button', { name: /clientes/ })).toBeNull();
+  });
+
+  it('a restricted member stays count-free when the assignments read fails', async () => {
+    storeMock.getWorkspaceMemberClienteIds.mockRejectedValue(new Error('rls'));
+    storeMock.getWorkspaceUsers.mockResolvedValue([OWNER, AGENT_RESTRITA]);
+    setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+    renderTab();
+
+    const clara = await getRow('Clara Agente');
+    const button = await clara.findByRole('button', { name: 'Só selecionados' });
+    await waitFor(() => expect(button).toBeDisabled());
+    expect(clara.queryByText(/0 clientes/)).toBeNull();
   });
 });

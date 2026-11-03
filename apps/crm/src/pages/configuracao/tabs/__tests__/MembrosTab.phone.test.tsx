@@ -15,8 +15,22 @@ const { useAuthMock, storeMock, invitesRowsHolder } = vi.hoisted(() => ({
     removeWorkspaceUser: vi.fn(async () => {}),
     updateWorkspaceUserRole: vi.fn(async () => {}),
     setWorkspaceUserFinancialAccess: vi.fn(async () => {}),
+    getClientes: vi.fn(async () => [] as Record<string, unknown>[]),
+    getWorkspaceMemberClienteIds: vi.fn(async () => ({}) as Record<string, number[]>),
+    setWorkspaceUserClientScope: vi.fn(async () => {}),
   },
   invitesRowsHolder: { current: [] as Record<string, unknown>[] },
+}));
+
+// feature_acesso_por_cliente: off unless a test turns it on.
+const { limitsHolder } = vi.hoisted(() => ({
+  limitsHolder: { features: { feature_acesso_por_cliente: false } as Record<string, boolean> },
+}));
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({ features: limitsHolder.features, limits: null, isLoading: false }),
+}));
+vi.mock('@/hooks/useClienteAvatars', () => ({
+  useClienteAvatars: () => ({ fotosDe: () => [] }),
 }));
 
 vi.mock('../../../../context/AuthContext', () => ({ useAuth: useAuthMock }));
@@ -312,5 +326,64 @@ describe('MembrosTab (phone)', () => {
     expect(screen.queryByRole('button', { name: /Beto Admin/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Cancelar' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Toque em um membro/)).not.toBeInTheDocument();
+  });
+});
+
+describe('MembrosTab (phone) — acesso a clientes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    limitsHolder.features = { feature_acesso_por_cliente: true };
+    storeMock.getWorkspaceUsers.mockResolvedValue([
+      { id: 'me', nome: 'Ana Dona', role: 'owner', client_scope: 'todos' },
+      { id: 'u3', nome: 'Carla Agente', role: 'agent', client_scope: 'atribuidos' },
+      { id: 'u5', nome: 'Eva Agente', role: 'agent', client_scope: 'todos' },
+    ]);
+    storeMock.getWorkspaceRoles.mockResolvedValue([]);
+    storeMock.getWorkspaceMemberClienteIds.mockResolvedValue({ u3: [1, 2] });
+    storeMock.getClientes.mockResolvedValue([
+      { id: 1, nome: 'Clínica Alfa', sigla: 'CA', cor: '#111111' },
+      { id: 2, nome: 'Bistrô Beta', sigla: 'BB', cor: '#222222' },
+      { id: 3, nome: 'Dental Gama', sigla: 'DG', cor: '#333333' },
+    ]);
+    storeMock.setWorkspaceUserClientScope.mockResolvedValue(undefined);
+    invitesRowsHolder.current = [];
+    setAuth('owner');
+  });
+
+  afterEach(() => {
+    limitsHolder.features = { feature_acesso_por_cliente: false };
+  });
+
+  it('shows "Clientes: {n}" on the row and opens the sheet from the member screen', async () => {
+    renderTab();
+    expect(await screen.findByText('Agente · Clientes: 2')).toBeInTheDocument();
+    expect(screen.getByText('Agente · Clientes: todos')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Carla Agente/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Clientes/ }));
+    const sheet = await screen.findByRole('dialog', { name: 'Clientes de Carla' });
+    expect(await within(sheet).findByText('2 de 3 clientes')).toBeInTheDocument();
+    expect(await within(sheet).findByRole('checkbox', { name: 'Clínica Alfa' })).toBeChecked();
+
+    fireEvent.click(within(sheet).getByRole('checkbox', { name: 'Dental Gama' }));
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Salvar' }));
+    await waitFor(() =>
+      expect(storeMock.setWorkspaceUserClientScope).toHaveBeenCalledWith(
+        'u3',
+        'atribuidos',
+        [1, 2, 3],
+      ),
+    );
+  });
+
+  it('flag off with nobody restricted: no Clientes line', async () => {
+    limitsHolder.features = { feature_acesso_por_cliente: false };
+    storeMock.getWorkspaceUsers.mockResolvedValue([
+      { id: 'me', nome: 'Ana Dona', role: 'owner', client_scope: 'todos' },
+      { id: 'u5', nome: 'Eva Agente', role: 'agent', client_scope: 'todos' },
+    ]);
+    renderTab();
+    expect(await screen.findByText('Eva Agente')).toBeInTheDocument();
+    expect(screen.queryByText(/Clientes:/)).toBeNull();
   });
 });

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus } from 'lucide-react';
+import { Lock, Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,9 +35,11 @@ import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { captureEvent } from '@/lib/analytics';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useWorkspaceMemberEmails } from '@/hooks/useWorkspaceMemberEmails';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
 import {
+  getWorkspaceMemberClienteIds,
   getWorkspaceRoles,
   getWorkspaceUsers,
   removeWorkspaceUser,
@@ -51,7 +53,12 @@ import {
   computeEffectiveInviteStatus,
   inviteSuccessMessage,
 } from '../inviteHelpers';
-import { MembrosPhone } from './phone/MembrosPhone';
+import { MembrosPhone, type ClientAccessView } from './phone/MembrosPhone';
+import {
+  ClientAccessDialog,
+  ClientAccessSheet,
+  type ClientAccessMember,
+} from './ClientAccessDialog';
 import { inviteRoleLabel } from './phone/membrosPhoneHelpers';
 
 /** The roster rows with each member's login e-mail (empty when not visible). */
@@ -108,6 +115,54 @@ export default function MembrosTab() {
     queryFn: getWorkspaceUsers,
     enabled: canViewTeam,
   });
+  // Acesso por cliente. The flag gates moving someone INTO 'atribuidos' (and
+  // the column itself); a member already restricted keeps the column visible
+  // with the flag off, so the owner can still release them.
+  const { features } = useWorkspaceLimits();
+  const canRestrictClients = features?.feature_acesso_por_cliente === true;
+  const isClientRestricted = (u: Record<string, string>) =>
+    u.role !== 'owner' && u.client_scope === 'atribuidos';
+  const anyRestricted = (wsUsers ?? []).some(isClientRestricted);
+  const showClientAccess = canRestrictClients || anyRestricted;
+  // Every assignment in ONE read, for the per-member counts and the dialog's
+  // preselection. Owner only: RLS shows anyone else just their own rows, so a
+  // non-owner viewer gets count-free labels instead of a wrong number.
+  const { data: memberClienteIds, isSuccess: memberClienteIdsReady } = useQuery({
+    queryKey: ['workspace-member-clientes'],
+    queryFn: getWorkspaceMemberClienteIds,
+    enabled: canViewTeam && isOwner && anyRestricted,
+  });
+  const clientAccessOf = (u: Record<string, string>): ClientAccessView => {
+    if (u.role === 'owner') return { kind: 'owner', count: null, editable: false, ready: true };
+    if (!isClientRestricted(u)) {
+      return { kind: 'todos', count: null, editable: isOwner && canRestrictClients, ready: true };
+    }
+    const count = isOwner && memberClienteIdsReady ? (memberClienteIds?.[u.id]?.length ?? 0) : null;
+    return { kind: 'atribuidos', count, editable: isOwner, ready: count !== null };
+  };
+  const [clientAccessTarget, setClientAccessTarget] = useState<{
+    member: ClientAccessMember;
+    initialIds: number[];
+  } | null>(null);
+  const openClientAccess = (u: Record<string, string>) =>
+    setClientAccessTarget({
+      member: {
+        user_id: u.id,
+        nome: u.nome,
+        client_scope: isClientRestricted(u) ? 'atribuidos' : 'todos',
+      },
+      initialIds: memberClienteIds?.[u.id] ?? [],
+    });
+  const clientAccessProps = clientAccessTarget && {
+    open: true,
+    onOpenChange: (open: boolean) => {
+      if (!open) setClientAccessTarget(null);
+    },
+    member: clientAccessTarget.member,
+    initialIds: clientAccessTarget.initialIds,
+    canRestrict: canRestrictClients,
+  };
+
   // Login e-mails come from their own RPC (equipe:editar only); merged in so
   // both layouts read `email` off the row like any other field.
   const memberEmails = useMemberEmailsMerge(wsUsers);
@@ -335,42 +390,50 @@ export default function MembrosTab() {
     // Phone: grouped lists, a member sub-screen and kit sheets. The desktop dialogs
     // below are not mounted here.
     return (
-      <MembrosPhone
-        currentUserId={user?.id}
-        loading={wsUsersLoading}
-        members={memberEmails}
-        invites={invites ?? []}
-        workspaceRoles={workspaceRoles}
-        canManageTeam={canManageTeam}
-        canAssignRoles={canAssignRoles}
-        isOwner={isOwner}
-        canActOnMember={canActOnMember}
-        roleSaving={editRoleLoading}
-        onSaveRole={saveRole}
-        financialAccessLoadingId={financialAccessLoadingId}
-        onToggleFinancialAccess={handleToggleFinancialAccess}
-        removeUserId={removeUserId}
-        onRequestRemove={setRemoveUserId}
-        onConfirmRemove={handleRemoveUser}
-        inviteOpen={inviteOpen}
-        onInviteOpenChange={(open) => {
-          if (!open) {
-            setInviteEmail('');
-            setInviteRole('agent');
+      <>
+        <MembrosPhone
+          clientAccess={
+            showClientAccess ? { viewOf: clientAccessOf, onOpen: openClientAccess } : undefined
           }
-          setInviteOpen(open);
-        }}
-        inviteEmail={inviteEmail}
-        onInviteEmailChange={setInviteEmail}
-        inviteRole={inviteRole}
-        onInviteRoleChange={setInviteRole}
-        inviteLoading={inviteLoading}
-        onInvite={handleInvite}
-        cancelInviteId={cancelInviteId}
-        onRequestCancelInvite={setCancelInviteId}
-        onConfirmCancelInvite={handleCancelInvite}
-        onResendInvite={handleResendInvite}
-      />
+          currentUserId={user?.id}
+          loading={wsUsersLoading}
+          members={memberEmails}
+          invites={invites ?? []}
+          workspaceRoles={workspaceRoles}
+          canManageTeam={canManageTeam}
+          canAssignRoles={canAssignRoles}
+          isOwner={isOwner}
+          canActOnMember={canActOnMember}
+          roleSaving={editRoleLoading}
+          onSaveRole={saveRole}
+          financialAccessLoadingId={financialAccessLoadingId}
+          onToggleFinancialAccess={handleToggleFinancialAccess}
+          removeUserId={removeUserId}
+          onRequestRemove={setRemoveUserId}
+          onConfirmRemove={handleRemoveUser}
+          inviteOpen={inviteOpen}
+          onInviteOpenChange={(open) => {
+            if (!open) {
+              setInviteEmail('');
+              setInviteRole('agent');
+            }
+            setInviteOpen(open);
+          }}
+          inviteEmail={inviteEmail}
+          onInviteEmailChange={setInviteEmail}
+          inviteRole={inviteRole}
+          onInviteRoleChange={setInviteRole}
+          inviteLoading={inviteLoading}
+          onInvite={handleInvite}
+          cancelInviteId={cancelInviteId}
+          onRequestCancelInvite={setCancelInviteId}
+          onConfirmCancelInvite={handleCancelInvite}
+          onResendInvite={handleResendInvite}
+        />
+        {clientAccessProps && (
+          <ClientAccessSheet key={clientAccessProps.member.user_id} {...clientAccessProps} />
+        )}
+      </>
     );
   }
 
@@ -457,6 +520,21 @@ export default function MembrosTab() {
                     onCheckedChange={(checked) => handleToggleFinancialAccess(u.id, checked)}
                     aria-label={t('membros.financialAria', { name: u.nome })}
                   />
+                </div>
+              )}
+              {showClientAccess && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    flexShrink: 0,
+                  }}
+                >
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    {t('membros.clientAccess.column')}
+                  </span>
+                  <ClientAccessCell view={clientAccessOf(u)} onOpen={() => openClientAccess(u)} />
                 </div>
               )}
               {canManageTeam && canActOnMember(u) && (
@@ -661,6 +739,10 @@ export default function MembrosTab() {
         </DialogContent>
       </Dialog>
 
+      {clientAccessProps && (
+        <ClientAccessDialog key={clientAccessProps.member.user_id} {...clientAccessProps} />
+      )}
+
       {/* Remove User Confirm */}
       <AlertDialog
         open={removeUserId !== null}
@@ -697,5 +779,44 @@ export default function MembrosTab() {
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+/** The Clientes cell: a button for the owner, plain text for everyone else. */
+function ClientAccessCell({ view, onOpen }: { view: ClientAccessView; onOpen: () => void }) {
+  const { t } = useTranslation('settings');
+  if (view.kind === 'owner') {
+    return (
+      <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+        {t('membros.clientAccess.all')}
+      </span>
+    );
+  }
+  const restricted = view.kind === 'atribuidos';
+  const label = !restricted
+    ? t('membros.clientAccess.allClients')
+    : view.count !== null
+      ? t('membros.clientAccess.count', { count: view.count })
+      : t('membros.clientAccess.restricted');
+  if (!view.editable) {
+    return <span style={{ fontSize: 13 }}>{label}</span>;
+  }
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      onClick={onOpen}
+      disabled={!view.ready}
+      style={{
+        height: 32,
+        borderRadius: 8,
+        fontSize: 13,
+        ...(restricted ? { borderColor: 'var(--text-main)', fontWeight: 600 } : {}),
+      }}
+    >
+      {restricted && <Lock size={14} aria-hidden="true" />}
+      {label}
+    </Button>
   );
 }

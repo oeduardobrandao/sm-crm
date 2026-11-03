@@ -24,7 +24,23 @@ import './membrosPhone.css';
 
 type Row = Record<string, string>;
 
+/** One member's Clientes cell, computed by MembrosTab (same rules on both layouts). */
+export interface ClientAccessView {
+  kind: 'owner' | 'todos' | 'atribuidos';
+  /** Assigned clientes; null when not readable by this viewer (or still loading). */
+  count: number | null;
+  /** Owner viewer and an action is allowed (the flag gates restricting). */
+  editable: boolean;
+  /** False while a restricted member's assignments are not loaded. */
+  ready: boolean;
+}
+
 export interface MembrosPhoneProps {
+  /** Acesso por cliente; undefined hides the Clientes line (flag off, nobody restricted). */
+  clientAccess?: {
+    viewOf: (member: Row) => ClientAccessView;
+    onOpen: (member: Row) => void;
+  };
   currentUserId?: string;
   loading: boolean;
   members: Row[];
@@ -94,7 +110,21 @@ export function MembrosPhone(props: MembrosPhoneProps) {
   const showFinancial = (m: Row) => isOwner && m.role === 'admin';
   // A visible e-mail opens the member screen too, even with nothing to edit:
   // the list subtitle stays the role, the full address lives there.
-  const isTappable = (m: Row) => canManageMember(m) || showFinancial(m) || Boolean(m.email);
+  const canEditClients = (m: Row) => props.clientAccess?.viewOf(m).editable === true;
+  const isTappable = (m: Row) =>
+    canManageMember(m) || showFinancial(m) || canEditClients(m) || Boolean(m.email);
+  // "Clientes: {n}" / "Clientes: todos" after the role, owners excluded (always all).
+  const clientsLine = (m: Row): string | null => {
+    const view = props.clientAccess?.viewOf(m);
+    if (!view || view.kind === 'owner') return null;
+    const value =
+      view.kind === 'todos'
+        ? t('membros.clientAccess.phone.rowAll')
+        : view.count !== null
+          ? String(view.count)
+          : t('membros.clientAccess.phone.rowRestricted');
+    return t('membros.clientAccess.phone.rowLine', { value });
+  };
 
   if (selected) {
     return <MemberScreen {...props} member={selected} onBack={sub.close} />;
@@ -122,7 +152,7 @@ export function MembrosPhone(props: MembrosPhoneProps) {
         <GroupedList
           header={t('membros.phone.header')}
           footer={
-            members.some((m) => canManageMember(m) || showFinancial(m))
+            members.some((m) => canManageMember(m) || showFinancial(m) || canEditClients(m))
               ? t('membros.phone.footerManage')
               : members.some(isTappable)
                 ? t('membros.phone.footerEmail')
@@ -133,13 +163,15 @@ export function MembrosPhone(props: MembrosPhoneProps) {
             const self = m.id === currentUserId;
             const role = memberRoleLabel(m);
             const seesFinancial = m.role === 'admin' && Boolean(m.can_see_financials);
+            const base = seesFinancial ? t('membros.phone.roleWithFinancial', { role }) : role;
+            const clients = clientsLine(m);
             return (
               <Cell
                 key={m.id}
                 className="phone-membros-cell"
                 icon={<MemberAvatar member={m} />}
                 label={self ? t('membros.phone.self', { name: m.nome }) : m.nome}
-                subtitle={seesFinancial ? t('membros.phone.roleWithFinancial', { role }) : role}
+                subtitle={clients ? `${base} · ${clients}` : base}
                 chevron={isTappable(m)}
                 onClick={isTappable(m) ? () => sub.open(m.id) : undefined}
               />
@@ -190,8 +222,10 @@ function MemberScreen({
   removeUserId,
   onRequestRemove,
   onConfirmRemove,
+  clientAccess,
 }: MembrosPhoneProps & { member: Row; onBack: () => void }) {
   const { t } = useTranslation('settings');
+  const clientView = clientAccess?.viewOf(member);
   const canManage = canManageTeam && canActOnMember(member);
   const canEditRole = canManage && canAssignRoles;
   const showFinancial = isOwner && member.role === 'admin';
@@ -243,6 +277,25 @@ function MemberScreen({
               checked: Boolean(member.can_see_financials),
               onCheckedChange: (checked) => onToggleFinancialAccess(member.id, checked),
             }}
+          />
+        </GroupedList>
+      )}
+
+      {clientView && clientView.kind !== 'owner' && (
+        <GroupedList aria-label={t('membros.clientAccess.column')}>
+          <Cell
+            label={t('membros.clientAccess.column')}
+            value={
+              clientView.kind === 'todos'
+                ? t('membros.clientAccess.phone.segAll')
+                : clientView.count !== null
+                  ? t('membros.clientAccess.count', { count: clientView.count })
+                  : t('membros.clientAccess.restricted')
+            }
+            chevron={clientView.editable}
+            disabled={clientView.editable && !clientView.ready}
+            aria-haspopup={clientView.editable ? 'dialog' : undefined}
+            onClick={clientView.editable ? () => clientAccess?.onOpen(member) : undefined}
           />
         </GroupedList>
       )}

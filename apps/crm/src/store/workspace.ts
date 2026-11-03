@@ -159,6 +159,28 @@ export async function getMemberClienteIds(userId: string): Promise<number[]> {
 }
 
 /**
+ * Every client assignment of the active workspace, grouped by member, in ONE
+ * query (Configuração > Membros shows a per-member count; one read per row
+ * would be N+1 on large teams). Owner-only in practice: RLS lets a non-owner
+ * read only its own rows, so a non-owner caller would get a partial map. The
+ * UI never runs this for a non-owner viewer. Throws on error (fail closed: a
+ * failed read must not render as "0 clientes").
+ */
+export async function getWorkspaceMemberClienteIds(): Promise<Record<string, number[]>> {
+  const conta_id = await getContaId();
+  const { data, error } = await supabase
+    .from('workspace_member_clientes')
+    .select('user_id, cliente_id')
+    .eq('workspace_id', conta_id);
+  if (error) throw error;
+  const byUser: Record<string, number[]> = {};
+  for (const r of (data as { user_id: string; cliente_id: number | string }[] | null) ?? []) {
+    (byUser[r.user_id] ??= []).push(Number(r.cliente_id));
+  }
+  return byUser;
+}
+
+/**
  * Login e-mails of the active workspace's members. profiles has no e-mail
  * column, so this goes through a SECURITY DEFINER RPC over auth.users that
  * answers only callers with equipe:editar (zero rows otherwise).
