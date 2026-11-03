@@ -16,7 +16,12 @@ import {
   signOut as supabaseSignOut,
   healPendingInvite,
 } from '../lib/supabase';
-import { getMyMembership, type MyMembership } from '../store/workspace';
+import {
+  getMyMembership,
+  normalizeClientScope,
+  normalizeClientScopeRev,
+  type MyMembership,
+} from '../store/workspace';
 import { deriveFinancialAccess, type FinancialAccess } from '../lib/financialAccess';
 import {
   computePermissionTransitions,
@@ -893,6 +898,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             role?: string;
             can_see_financials?: boolean;
             role_id?: string | null;
+            client_scope?: unknown;
+            client_scope_rev?: unknown;
           };
           if (row.workspace_id !== workspaceId) return;
           // The realtime UPDATE payload is the raw workspace_members row — it
@@ -903,7 +910,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // that now points at a custom role, or that just stopped pointing
           // at one, needs the full embed to know its `permissions` — re-fetch
           // through getMyMembership() rather than guess at that here.
-          if (row.role_id != null || row.role_id !== (membershipRef.current?.role_id ?? null)) {
+          //
+          // Acesso por cliente: the payload carries client_scope and
+          // client_scope_rev but NEVER the assignment list (it lives in
+          // workspace_member_clientes, which has no channel here; the server
+          // bumps client_scope_rev on every scope/list change precisely so
+          // this channel fires). Any scope or rev change refetches through
+          // getMyMembership() for the new list, and the resulting
+          // computePermissionTransitions purges the client-dependent caches.
+          // Compared NORMALIZED: a pre-migration row has no such keys, which
+          // must read as 'todos'/0 (what getMyMembership() resolved), not as
+          // a change on every can_see_financials edit.
+          const current = membershipRef.current;
+          const scopeChanged =
+            normalizeClientScope(row.client_scope) !== (current?.client_scope ?? 'todos') ||
+            normalizeClientScopeRev(row.client_scope_rev) !== (current?.client_scope_rev ?? 0);
+          if (scopeChanged || row.role_id != null || row.role_id !== (current?.role_id ?? null)) {
             fetchAndApplyMembership();
           } else {
             // Bump the shared seq FIRST: this direct apply never goes through
@@ -913,7 +935,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // afterwards, and overwrite this newer, already-applied raw row
             // with its stale result.
             membershipFetchSeq += 1;
-            applyMembership({ ...row, role_id: null, permissions: null } as MyMembership);
+            // Scope and rev are unchanged (checked above), so the current
+            // assignment list is still the truth: carry it forward instead of
+            // letting `cliente_ids: undefined` reach the transition check.
+            applyMembership({
+              ...row,
+              role_id: null,
+              permissions: null,
+              client_scope: current?.client_scope ?? 'todos',
+              client_scope_rev: current?.client_scope_rev ?? 0,
+              cliente_ids: current?.cliente_ids ?? [],
+            } as MyMembership);
           }
         },
       )

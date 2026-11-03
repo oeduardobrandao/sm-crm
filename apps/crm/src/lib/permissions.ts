@@ -136,9 +136,19 @@ export function computePermissionTransitions(
   prev: MyMembership | null,
   next: MyMembership | null,
 ): { downgraded: PermissionModule[]; upgraded: PermissionModule[] } {
+  const scopeNarrowed = clientScopeChanged(prev, next);
   const downgraded: PermissionModule[] = [];
   const upgraded: PermissionModule[] = [];
   for (const module of PERMISSION_MODULES) {
+    // Acesso por cliente: a scope/rev change or a lost cliente purges every
+    // client-dependent module outright, whatever derivePermission says (the
+    // module may still be 'ver' true, but the SET of rows it may show shrank).
+    // Never also listed as upgraded: removeQueries is a superset of
+    // invalidateQueries for the cache.
+    if (scopeNarrowed && CLIENT_SCOPED_MODULES.has(module)) {
+      downgraded.push(module);
+      continue;
+    }
     const before = derivePermission(prev, module, 'ver');
     const after = derivePermission(next, module, 'ver');
     if (before === after) continue;
@@ -146,4 +156,49 @@ export function computePermissionTransitions(
     else if (after === true) upgraded.push(module);
   }
   return { downgraded, upgraded };
+}
+
+/**
+ * Modules whose data is scoped by cliente (acesso por cliente, spec
+ * "Revogação ao vivo"): purged when the member's client scope changes.
+ */
+const CLIENT_SCOPED_MODULES: ReadonlySet<PermissionModule> = new Set<PermissionModule>([
+  'clientes',
+  'entregas',
+  'calendario',
+  'aprovacoes',
+  'arquivos',
+  'ideias',
+  'tarefas',
+  'analytics',
+  'financeiro',
+  'contratos',
+]);
+
+/**
+ * True when the member's client scope changed in a way that may hide rows:
+ * `client_scope` changed, `client_scope_rev` changed (the server bumps it on
+ * EVERY scope/list change, including ones that only add clientes; treating
+ * those as a purge too is the safe side), or `cliente_ids` lost an id.
+ * Only compares two resolved memberships: null -> X and X -> null already
+ * resolve through derivePermission's 'unknown' path.
+ */
+function clientScopeChanged(prev: MyMembership | null, next: MyMembership | null): boolean {
+  if (!prev || !next) return false;
+  if ((prev.client_scope ?? 'todos') !== (next.client_scope ?? 'todos')) return true;
+  if ((prev.client_scope_rev ?? 0) !== (next.client_scope_rev ?? 0)) return true;
+  const nextIds = new Set(next.cliente_ids ?? []);
+  return (prev.cliente_ids ?? []).some((id) => !nextIds.has(id));
+}
+
+/**
+ * True only for a non-owner restricted to assigned clientes. Every owner is
+ * unrestricted (the SQL predicate checks the role first); an unresolved
+ * membership (null) is not "scoped" here, callers gate on resolution
+ * separately.
+ */
+export function isClientScoped(m: MyMembership | null): boolean {
+  if (!m) return false;
+  if (m.role === 'owner') return false;
+  return m.client_scope === 'atribuidos';
 }
