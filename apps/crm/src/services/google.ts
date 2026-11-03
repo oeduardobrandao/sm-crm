@@ -159,6 +159,11 @@ export async function disconnectYouTube(clientId: number): Promise<void> {
   await request<{ ok: true }>(`/disconnect/youtube/${clientId}`, { method: 'POST' });
 }
 
+/** Unlinks every GMN unit of the client, on any connection (POST /disconnect/gbp). */
+export async function disconnectGbp(clientId: number): Promise<void> {
+  await request<{ ok: true }>(`/disconnect/gbp/${clientId}`, { method: 'POST' });
+}
+
 /** Outcome of one unit's manual sync. Anything but `synced` means it did not finish now. */
 export type GoogleSyncStatus =
   | 'synced'

@@ -10,6 +10,7 @@ import { renderTikTokOverviewCard } from '../../components/tiktok/TikTokOverview
 import { renderTikTokFollowerChart } from '../../components/tiktok/TikTokFollowerChart';
 import { renderTikTokPostsTable } from '../../components/tiktok/TikTokPostsTable';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { FullAnalyticsLink } from './components/PlatformActions';
 import './phone/clienteDetalhePhone.css';
 
 // Isolated component for imperative TikTok widgets, mirroring InstagramSection
@@ -93,6 +94,9 @@ export function TikTokSection({ clienteId }: { clienteId: number }) {
       <div ref={overviewRef} />
       <div ref={chartRef} />
       <div ref={postsRef} />
+      {!loadingTt && !needsConnect && ttSummary?.account?.last_synced_at && (
+        <FullAnalyticsLink clienteId={clienteId} platform="tiktok" />
+      )}
       <div ref={connectRef} />
     </div>
   );

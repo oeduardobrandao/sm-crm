@@ -244,7 +244,13 @@
         "revoked": "Google authorization expired. Reconnect the account to continue.",
         "not_connected": "This client is no longer connected to Google. Refresh the page."
       }
-    }
+    },
+    "disconnectTitle": "Disconnect Google Business Profile?",
+    "disconnectBody": "This client's locations stop syncing and their data is deleted from Mesaas within 30 days.",
+    "disconnectConfirm": "Disconnect",
+    "disconnectCancel": "Cancel",
+    "disconnectSuccess": "Google Business Profile disconnected.",
+    "disconnectError": "Could not disconnect Google Business Profile. Try again."
   },
   "googleOAuth": {
     "ytConnected": "YouTube connected.",

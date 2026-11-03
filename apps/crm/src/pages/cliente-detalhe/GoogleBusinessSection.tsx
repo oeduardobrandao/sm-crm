@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { AlertTriangle, Loader2, Store } from 'lucide-react';
@@ -7,10 +7,23 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ReportSkeleton } from '@/components/ui/skeletons';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
-import { getGoogleAuthUrl, getGoogleSummary } from '../../services/google';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { disconnectGbp, getGoogleAuthUrl, getGoogleSummary } from '../../services/google';
 import { GbpUnitsDialog } from './GbpUnitsDialog';
+import { FullAnalyticsLink, PlatformActions } from './components/PlatformActions';
+import { useGoogleProductSync } from './components/useGoogleProductSync';
 
-// Google Meu Negócio card for the "Redes sociais" tab (Phase 1: connect + unit picker).
+// Google Meu Negócio card for the "Redes sociais" tab: connect + unit picker, then the units with
+// the same sync / disconnect actions and "Ver analytics completo" link as the other platforms.
 // Same rule as TikTokSection/YouTubeSection: renders nothing, fetches nothing, unless the
 // `feature_google_business` entitlement is on. Shares the ['googleSummary', id] query with
 // the YouTube card (one /summary call serves both halves).
@@ -32,6 +45,21 @@ export function GoogleBusinessSection({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogConnectionId, setDialogConnectionId] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const { sync, syncing } = useGoogleProductSync('gbp', clienteId);
+
+  const disconnect = useMutation({
+    mutationFn: () => disconnectGbp(clienteId),
+    onSuccess: () => {
+      setConfirmOpen(false);
+      toast.success(t('gmn.disconnectSuccess'));
+      queryClient.invalidateQueries({ queryKey: ['googleSummary', clienteId] });
+    },
+    onError: () => {
+      toast.error(t('gmn.disconnectError'));
+    },
+  });
 
   const {
     data: summary,
@@ -164,12 +192,19 @@ export function GoogleBusinessSection({
 
       {!isLoading && !isError && units.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <Store size={24} color="#2563eb" aria-hidden="true" />
             <h3 id="gmn-card-title" style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>
               {t('gmn.title')}
             </h3>
             <Badge variant="success">{t('gmn.unitsBadge', { count: units.length })}</Badge>
+            <PlatformActions
+              onSync={() => void sync()}
+              syncing={syncing}
+              syncDisabled={!units.some((u) => u.status === 'active')}
+              onDisconnect={() => setConfirmOpen(true)}
+              disconnecting={disconnect.isPending}
+            />
           </div>
 
           {hasRevoked && (
@@ -253,8 +288,34 @@ export function GoogleBusinessSection({
             )}
             {connectButton(t('gmn.useOtherAccount'), 'ghost')}
           </div>
+
+          <FullAnalyticsLink clienteId={clienteId} platform="google" />
         </div>
       )}
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('gmn.disconnectTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('gmn.disconnectBody')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={disconnect.isPending}>
+              {t('gmn.disconnectCancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={disconnect.isPending}
+              onClick={(e) => {
+                // Keep the dialog open until the request settles (onSuccess closes it).
+                e.preventDefault();
+                disconnect.mutate();
+              }}
+            >
+              {t('gmn.disconnectConfirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {activeConnections.length > 0 && (
         <GbpUnitsDialog

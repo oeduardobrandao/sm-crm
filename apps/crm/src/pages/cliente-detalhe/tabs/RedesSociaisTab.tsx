@@ -283,7 +283,7 @@ export default function RedesSociaisTab() {
             loadingIg={loadingIg}
             igSummary={igSummary}
             refetchIg={refetchIg}
-            onNavigateAnalytics={() => navigate(`/analytics/${clienteId}`)}
+            onNavigateAnalytics={() => navigate(`/analytics/${clienteId}/instagram`)}
           />
 
           <AutomationContactsSection clienteId={clienteId} clienteNome={cliente?.nome ?? ''} />

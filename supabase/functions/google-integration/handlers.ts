@@ -984,6 +984,57 @@ async function handleDisconnectYouTube(
   return json(cors, { ok: true });
 }
 
+// ─── POST /disconnect/gbp/:clientId ───────────────────────────────────────────────────
+
+/**
+ * Unlinks every GMN unit of this client, on every connection, in one call: the "Desconectar"
+ * of the Redes sociais card. Same per-unit RPC and §4.2 revocation decision as an empty save
+ * on /locations, without the Google listing. Like the YouTube disconnect it skips the plan
+ * flag, so a workspace that lost the plan can still remove the data. No unit: 404.
+ */
+async function handleDisconnectGbp(
+  svc: DbClient,
+  req: Request,
+  rawClientId: string,
+  cors: Record<string, string>,
+) {
+  const ctx = await requireClient(svc, req, rawClientId, cors);
+  if (ctx instanceof Response) return ctx;
+
+  const { data: rowsData, error } = await svc
+    .from("gbp_locations")
+    .select("id, location_name")
+    .eq("conta_id", ctx.contaId)
+    .eq("client_id", ctx.clientId)
+    .in("status", ["active", "revoked"]);
+  if (error) throw new Error(`gbp_locations read failed: ${error.message}`);
+  const rows = (rowsData ?? []) as Array<{ id: string; location_name: string }>;
+  if (!rows.length) return json(cors, { error: "not_found" }, 404);
+
+  const unlinked: string[] = [];
+  for (const row of rows) {
+    const { data, error: rpcError } = await svc.rpc("google_unlink_gbp_location", {
+      p_conta_id: ctx.contaId,
+      p_location_id: row.id,
+    });
+    if (rpcError) {
+      if (rpcError.code === "P0002") continue; // removed concurrently
+      throw new Error(`google_unlink_gbp_location failed: ${rpcError.message}`);
+    }
+    unlinked.push(row.location_name);
+    await processUnlinkDecisionData(svc, data);
+  }
+
+  await insertAuditLog(svc, {
+    conta_id: ctx.contaId,
+    actor_user_id: ctx.userId,
+    action: "gmn-unlink",
+    resource_type: "gbp_location",
+    metadata: { client_id: ctx.clientId, unlinked },
+  });
+  return json(cors, { ok: true });
+}
+
 // ─── POST /sync/:product/:clientId ──────────────────────────────────────────────────
 
 /**
@@ -1119,6 +1170,9 @@ export function createGoogleIntegrationHandler(deps: GoogleIntegrationDeps) {
       }
       if (req.method === "POST" && segs.length === 4 && segs[1] === "disconnect" && segs[2] === "youtube") {
         return await handleDisconnectYouTube(svc, req, segs[3], cors, deps);
+      }
+      if (req.method === "POST" && segs.length === 4 && segs[1] === "disconnect" && segs[2] === "gbp") {
+        return await handleDisconnectGbp(svc, req, segs[3], cors);
       }
       if (req.method === "POST" && segs.length === 4 && segs[1] === "sync" && isProduct(segs[2])) {
         return await handleSync(svc, req, segs[2], segs[3], cors, deps);

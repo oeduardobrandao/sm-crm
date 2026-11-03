@@ -244,7 +244,13 @@
         "revoked": "A autorização do Google expirou. Reconecte a conta para continuar.",
         "not_connected": "Este cliente não está mais conectado ao Google. Atualize a página."
       }
-    }
+    },
+    "disconnectTitle": "Desconectar Google Meu Negócio?",
+    "disconnectBody": "As unidades deste cliente deixam de ser sincronizadas e os dados delas são apagados do Mesaas em até 30 dias.",
+    "disconnectConfirm": "Desconectar",
+    "disconnectCancel": "Cancelar",
+    "disconnectSuccess": "Google Meu Negócio desconectado.",
+    "disconnectError": "Não foi possível desconectar o Google Meu Negócio. Tente de novo."
   },
   "googleOAuth": {
     "ytConnected": "YouTube conectado.",
