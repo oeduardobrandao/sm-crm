@@ -13,7 +13,6 @@ import {
   commentsErrorMessage,
   getAccountCommentsAnalysis,
   type AccountCommentsAnalysisResponse,
-  type StoredAnalysis,
 } from '../../../services/instagramComments';
 import { CommentsAnalysisView, type CommentsViewLabels } from './CommentsAnalysisView';
 import { ReconnectState, reconnectReason } from './ReconnectState';
