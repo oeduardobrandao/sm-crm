@@ -184,14 +184,17 @@ export function AccountCommentsCard({
           <h3 className="igc-card__title">O que o público está dizendo</h3>
           <span className="igc-account__sub">{subtitle}</span>
         </div>
-        <Button
-          variant={analysis ? 'outline' : 'default'}
-          className={`igc-btn igc-account__action${compact ? ' igc-btn--block' : ''}`}
-          disabled={analyzing}
-          onClick={() => void analyze()}
-        >
-          {analyzing ? 'Analisando...' : analysis ? 'Atualizar análise' : 'Analisar'}
-        </Button>
+        {/* Com comentários novos, o aviso da análise já traz "Refazer análise". */}
+        {!(analysis && newComments > 0) && (
+          <Button
+            variant={analysis ? 'outline' : 'default'}
+            className={`igc-btn igc-account__action${compact ? ' igc-btn--block' : ''}`}
+            disabled={analyzing}
+            onClick={() => void analyze()}
+          >
+            {analyzing ? 'Analisando...' : analysis ? 'Atualizar análise' : 'Analisar'}
+          </Button>
+        )}
       </div>
       {body}
       {analyzeError != null && (

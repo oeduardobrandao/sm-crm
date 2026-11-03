@@ -130,6 +130,8 @@ describe('AccountCommentsCard', () => {
     getMock.mockResolvedValue({ analysis: ANALYSIS, current_comments: 630 });
     renderCard();
     expect(await screen.findByText('18 comentários novos desde a análise')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Refazer análise' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Atualizar análise' })).not.toBeInTheDocument();
   });
 
   it('422 mostra a dica de poucos comentários', async () => {
