@@ -140,24 +140,31 @@ export default function MembrosTab() {
     const count = isOwner && memberClienteIdsReady ? (memberClienteIds?.[u.id]?.length ?? 0) : null;
     return { kind: 'atribuidos', count, editable: isOwner, ready: count !== null };
   };
+  // Stays mounted after closing, with a real `open`: the phone sheet pops its
+  // history entry only when `open` turns false (unmounting it open left a dead
+  // entry, so the next Back seemed to do nothing). `seq` remounts a fresh form
+  // on every open.
   const [clientAccessTarget, setClientAccessTarget] = useState<{
     member: ClientAccessMember;
     initialIds: number[];
+    open: boolean;
+    seq: number;
   } | null>(null);
   const openClientAccess = (u: Record<string, string>) =>
-    setClientAccessTarget({
+    setClientAccessTarget((prev) => ({
       member: {
         user_id: u.id,
         nome: u.nome,
         client_scope: isClientRestricted(u) ? 'atribuidos' : 'todos',
       },
       initialIds: memberClienteIds?.[u.id] ?? [],
-    });
+      open: true,
+      seq: (prev?.seq ?? 0) + 1,
+    }));
   const clientAccessProps = clientAccessTarget && {
-    open: true,
-    onOpenChange: (open: boolean) => {
-      if (!open) setClientAccessTarget(null);
-    },
+    open: clientAccessTarget.open,
+    onOpenChange: (open: boolean) =>
+      setClientAccessTarget((prev) => (prev ? { ...prev, open } : prev)),
     member: clientAccessTarget.member,
     initialIds: clientAccessTarget.initialIds,
     canRestrict: canRestrictClients,
@@ -431,7 +438,7 @@ export default function MembrosTab() {
           onResendInvite={handleResendInvite}
         />
         {clientAccessProps && (
-          <ClientAccessSheet key={clientAccessProps.member.user_id} {...clientAccessProps} />
+          <ClientAccessSheet key={clientAccessTarget?.seq} {...clientAccessProps} />
         )}
       </>
     );
@@ -740,7 +747,7 @@ export default function MembrosTab() {
       </Dialog>
 
       {clientAccessProps && (
-        <ClientAccessDialog key={clientAccessProps.member.user_id} {...clientAccessProps} />
+        <ClientAccessDialog key={clientAccessTarget?.seq} {...clientAccessProps} />
       )}
 
       {/* Remove User Confirm */}

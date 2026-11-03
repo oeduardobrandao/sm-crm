@@ -27,6 +27,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { BottomSheet } from '@/components/mobile/BottomSheet';
+import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
 import { ClienteFoto } from '@/components/ClienteFoto';
 import { useClienteAvatars } from '@/hooks/useClienteAvatars';
 import {
@@ -55,6 +56,21 @@ export interface ClientAccessDialogProps {
    */
   canRestrict?: boolean;
 }
+
+/** Plain buttons, not the link Button: a stylesheet margin on it pushed the
+ *  links below the "·" separator. Inline, so no rule can add it back. */
+const LINK_STYLE = {
+  margin: 0,
+  padding: 0,
+  border: 0,
+  background: 'none',
+  font: 'inherit',
+  lineHeight: 1.2,
+  color: 'var(--text-main)',
+  textDecoration: 'underline',
+  textUnderlineOffset: 3,
+  cursor: 'pointer',
+} as const;
 
 const firstName = (nome: string) => nome.trim().split(/\s+/)[0] || nome;
 
@@ -159,7 +175,10 @@ function useClientAccessForm({
     saving: save.isPending,
     // The list must be loaded before a restricted save: the ids sent are the
     // selected ones that still exist.
-    canSave: !save.isPending && (scope === 'todos' || clientesQuery.isSuccess),
+    // Nothing changed = nothing to send: a clean save would still bump
+    // client_scope_rev (purging the member's caches), and on a degraded roster
+    // read (every row 'todos') it would really release a restricted member.
+    canSave: dirty && !save.isPending && (scope === 'todos' || clientesQuery.isSuccess),
     submit: () =>
       save.mutate(scope === 'todos' ? { scope: 'todos', ids: [] } : { scope, ids: selectedIds }),
     liberar: () => save.mutate({ scope: 'todos', ids: [] }),
@@ -265,42 +284,41 @@ function ClientAccessFields({
 
           <div className="flex items-center justify-between gap-2" style={{ fontSize: 13 }}>
             <span style={{ color: 'var(--text-muted)' }} aria-live="polite">
-              {t('membros.clientAccess.counter', {
-                n: form.selectedCount,
-                total: form.clientes.length,
-              })}
+              {!form.clientesError &&
+                t('membros.clientAccess.counter', {
+                  n: form.selectedCount,
+                  total: form.clientes.length,
+                })}
             </span>
             <span className="flex items-center gap-1">
-              <Button
+              <button
                 type="button"
-                variant="link"
-                size="sm"
-                className="h-auto p-0"
+                style={LINK_STYLE}
                 onClick={form.selectAllVisible}
                 disabled={form.visible.length === 0}
               >
                 {t('membros.clientAccess.selectAll')}
-              </Button>
-              <span aria-hidden="true" style={{ color: 'var(--text-muted)' }}>
+              </button>
+              <span aria-hidden="true" style={{ color: 'var(--text-muted)', lineHeight: 1 }}>
                 ·
               </span>
-              <Button
+              <button
                 type="button"
-                variant="link"
-                size="sm"
-                className="h-auto p-0"
+                style={LINK_STYLE}
                 onClick={form.clear}
                 disabled={form.selected.size === 0}
               >
                 {t('membros.clientAccess.clear')}
-              </Button>
+              </button>
             </span>
           </div>
 
           <ul
             aria-label={t('membros.clientAccess.listAria', { name })}
             style={{
-              maxHeight: sheet ? undefined : 236,
+              // The rest of the dialog is ~560px: the list shrinks first, so the
+              // dialog body itself never needs to scroll on a short viewport.
+              maxHeight: sheet ? undefined : 'min(236px, max(96px, calc(85vh - 580px)))',
               overflowY: sheet ? undefined : 'auto',
               border: '1px solid var(--border-color)',
               borderRadius: 10,
@@ -383,7 +401,7 @@ function ClientAccessFields({
             )}
           </ul>
 
-          {form.selectedCount === 0 && !form.clientesLoading && (
+          {form.selectedCount === 0 && !form.clientesLoading && !form.clientesError && (
             <div
               role="status"
               className="badge badge-warning"
@@ -438,7 +456,9 @@ export function ClientAccessDialog({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          style={{ maxWidth: 512 }}
+          // +2px: the primitive caps both the box (with its 1px borders) and its
+          // inner scroller at 85vh, so a full-height body overflowed the box by 2px.
+          style={{ maxWidth: 512, maxHeight: 'calc(85vh + 2px)' }}
           confirmClose={form.dirty}
           onConfirmClose={() => onOpenChange(false)}
         >
@@ -507,6 +527,7 @@ export function ClientAccessSheet({
   canRestrict = true,
 }: ClientAccessDialogProps) {
   const { t } = useTranslation('settings');
+  const { t: tc } = useTranslation();
   const form = useClientAccessForm({
     member,
     initialIds,
@@ -516,6 +537,17 @@ export function ClientAccessSheet({
   });
   // Holds a silent deploy swap while there are unsaved choices on screen.
   useUnsavedWork(open && form.dirty);
+  // Back, swipe-down, the X and a tap outside all arrive here: with unsaved
+  // choices the close is refused (repushIfStillOpen restores the history
+  // entry) and the confirm asks first.
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const requestOpenChange = (next: boolean) => {
+    if (!next && form.dirty && !form.saving) {
+      setConfirmDiscard(true);
+      return;
+    }
+    onOpenChange(next);
+  };
 
   const subtitle =
     form.scope === 'todos'
@@ -526,41 +558,62 @@ export function ClientAccessSheet({
         });
 
   return (
-    <BottomSheet
-      open={open}
-      onOpenChange={onOpenChange}
-      title={t('membros.clientAccess.phone.title', { firstName: firstName(member.nome) })}
-      description={
-        form.liberarOnly ? t('membros.clientAccess.liberarHint', { name: member.nome }) : subtitle
-      }
-      detents={['large']}
-    >
-      <div style={{ padding: '0 16px' }}>
-        {!form.liberarOnly && <ClientAccessFields form={form} member={member} variant="sheet" />}
-      </div>
-      <div className="phone-membros-sheet-actions">
-        {form.liberarOnly ? (
-          <button
-            type="button"
-            className="phone-config-primary phone-config-primary--block"
-            disabled={form.saving}
-            aria-busy={form.saving || undefined}
-            onClick={form.liberar}
-          >
-            {t('membros.clientAccess.liberar')}
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="phone-config-primary phone-config-primary--block"
-            disabled={!form.canSave}
-            aria-busy={form.saving || undefined}
-            onClick={form.submit}
-          >
-            {t('actions.save')}
-          </button>
-        )}
-      </div>
-    </BottomSheet>
+    <>
+      <BottomSheet
+        open={open}
+        onOpenChange={requestOpenChange}
+        repushIfStillOpen
+        popOnUnmount
+        title={t('membros.clientAccess.phone.title', { firstName: firstName(member.nome) })}
+        description={
+          form.liberarOnly ? t('membros.clientAccess.liberarHint', { name: member.nome }) : subtitle
+        }
+        detents={['large']}
+      >
+        <div style={{ padding: '0 16px' }}>
+          {!form.liberarOnly && <ClientAccessFields form={form} member={member} variant="sheet" />}
+        </div>
+        <div className="phone-membros-sheet-actions">
+          {form.liberarOnly ? (
+            <button
+              type="button"
+              className="phone-config-primary phone-config-primary--block"
+              disabled={form.saving}
+              aria-busy={form.saving || undefined}
+              onClick={form.liberar}
+            >
+              {t('membros.clientAccess.liberar')}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="phone-config-primary phone-config-primary--block"
+              disabled={!form.canSave}
+              aria-busy={form.saving || undefined}
+              onClick={form.submit}
+            >
+              {t('actions.save')}
+            </button>
+          )}
+        </div>
+      </BottomSheet>
+      <PhoneConfirmSheet
+        open={confirmDiscard}
+        title={tc('ui.confirmClose.title')}
+        message={tc('ui.confirmClose.message')}
+        actions={[
+          {
+            label: tc('ui.confirmClose.discard'),
+            destructive: true,
+            onSelect: () => {
+              setConfirmDiscard(false);
+              onOpenChange(false);
+            },
+          },
+        ]}
+        cancelLabel={tc('ui.confirmClose.keepEditing')}
+        onCancel={() => setConfirmDiscard(false)}
+      />
+    </>
   );
 }

@@ -199,4 +199,30 @@ describe('ClientAccessDialog', () => {
     );
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
   });
+
+  it('save_disabled_when_clean', async () => {
+    renderDialog({ member: CARLA_RESTRITA, initialIds: [1] });
+    const dialog = await screen.findByRole('dialog');
+    const salvar = within(dialog).getByRole('button', { name: 'Salvar' });
+    await within(dialog).findByRole('checkbox', { name: 'Bistrô Beta' });
+    expect(salvar).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Bistrô Beta' }));
+    expect(salvar).toBeEnabled();
+    // Back to the initial selection: clean again.
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Bistrô Beta' }));
+    expect(salvar).toBeDisabled();
+    fireEvent.click(salvar);
+    expect(storeMock.setWorkspaceUserClientScope).not.toHaveBeenCalled();
+  });
+
+  it('a failed client list read shows the error, not the zero warning or counter', async () => {
+    storeMock.getClientes.mockRejectedValue(new Error('rls'));
+    renderDialog({ member: CARLA_RESTRITA, initialIds: [1] });
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      await within(dialog).findByText('Não foi possível carregar os clientes.'),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText('Carla Souza não vai ver nenhum cliente.')).toBeNull();
+    expect(within(dialog).queryByText(/de \d+ selecionados/)).toBeNull();
+  });
 });

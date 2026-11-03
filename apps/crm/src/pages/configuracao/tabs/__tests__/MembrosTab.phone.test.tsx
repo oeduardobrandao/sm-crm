@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, RouterProvider, createBrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeCan, fakeMembership } from '@/test/makeCan';
@@ -385,5 +385,114 @@ describe('MembrosTab (phone) — acesso a clientes', () => {
     renderTab();
     expect(await screen.findByText('Eva Agente')).toBeInTheDocument();
     expect(screen.queryByText(/Clientes:/)).toBeNull();
+  });
+});
+
+/**
+ * The sheet's history entry, under the app's real data router (MemoryRouter
+ * keeps no slot index in window.history.state).
+ */
+describe('MembrosTab (phone) — sheet de acesso a clientes e o histórico', () => {
+  const idx = () => (window.history.state as { idx: number }).idx;
+
+  function renderWithDataRouter() {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const router = createBrowserRouter([
+      {
+        path: '*',
+        element: (
+          <QueryClientProvider client={queryClient}>
+            <MembrosTab />
+          </QueryClientProvider>
+        ),
+      },
+    ]);
+    return render(<RouterProvider router={router} />);
+  }
+
+  async function openCarlaSheet() {
+    fireEvent.click(await screen.findByRole('button', { name: /Carla Agente/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Clientes/ }));
+    return screen.findByRole('dialog', { name: 'Clientes de Carla' });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    limitsHolder.features = { feature_acesso_por_cliente: true };
+    storeMock.getWorkspaceUsers.mockResolvedValue([
+      { id: 'me', nome: 'Ana Dona', role: 'owner', client_scope: 'todos' },
+      { id: 'u3', nome: 'Carla Agente', role: 'agent', client_scope: 'atribuidos' },
+    ]);
+    storeMock.getWorkspaceRoles.mockResolvedValue([]);
+    storeMock.getWorkspaceMemberClienteIds.mockResolvedValue({ u3: [1] });
+    storeMock.getClientes.mockResolvedValue([
+      { id: 1, nome: 'Clínica Alfa', sigla: 'CA', cor: '#111111' },
+      { id: 2, nome: 'Bistrô Beta', sigla: 'BB', cor: '#222222' },
+    ]);
+    storeMock.setWorkspaceUserClientScope.mockResolvedValue(undefined);
+    invitesRowsHolder.current = [];
+    setAuth('owner');
+  });
+
+  afterEach(() => {
+    limitsHolder.features = { feature_acesso_por_cliente: false };
+  });
+
+  it('closing via Salvar pops the sheet history entry', async () => {
+    renderWithDataRouter();
+    await screen.findByRole('button', { name: /Carla Agente/ });
+    const start = idx();
+    const sheet = await openCarlaSheet();
+    // The member screen and the sheet each hold an entry above the list.
+    await waitFor(() => expect(idx()).toBeGreaterThan(start));
+    const withSheet = idx();
+
+    const salvar = within(sheet).getByRole('button', { name: 'Salvar' });
+    expect(salvar).toBeDisabled();
+    fireEvent.click(await within(sheet).findByRole('checkbox', { name: 'Bistrô Beta' }));
+    fireEvent.click(salvar);
+
+    await waitFor(() =>
+      expect(storeMock.setWorkspaceUserClientScope).toHaveBeenCalledWith(
+        'u3',
+        'atribuidos',
+        [1, 2],
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Clientes de Carla' })).toBeNull(),
+    );
+    await waitFor(() => expect(idx()).toBe(withSheet - 1));
+  });
+
+  it('cancel_when_dirty_asks_confirm (phone): Back with unsaved choices asks first', async () => {
+    renderWithDataRouter();
+    await screen.findByRole('button', { name: /Carla Agente/ });
+    const sheet = await openCarlaSheet();
+    await waitFor(() => expect(idx()).toBeGreaterThan(0));
+    const withSheet = idx();
+    fireEvent.click(await within(sheet).findByRole('checkbox', { name: 'Bistrô Beta' }));
+
+    act(() => window.history.back());
+
+    expect(await screen.findByText('Fechar sem salvar?')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Clientes de Carla' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar editando' }));
+    await waitFor(() => expect(screen.queryByText('Fechar sem salvar?')).toBeNull());
+    expect(screen.getByRole('dialog', { name: 'Clientes de Carla' })).toBeInTheDocument();
+    // The refused Back put the sheet's entry back.
+    await waitFor(() => expect(idx()).toBe(withSheet));
+
+    // A second Back asks again; discarding closes the sheet and pops its entry.
+    act(() => window.history.back());
+    fireEvent.click(await screen.findByRole('button', { name: 'Fechar mesmo assim' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Clientes de Carla' })).toBeNull(),
+    );
+    await waitFor(() => expect(idx()).toBe(withSheet - 1));
+    expect(storeMock.setWorkspaceUserClientScope).not.toHaveBeenCalled();
   });
 });
