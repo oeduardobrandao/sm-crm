@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, Outlet, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Cliente } from '@/store';
 import type { ClienteDetalheOutletContext } from '../../clienteTabs.model';
 
-// Google (YouTube + Google Meu Negócio) wiring in RedesSociaisTab: the sections render after
-// TikTok, and the tab's single OAuth-param effect toasts and strips the Google return params.
+// Google (YouTube + Google Meu Negócio) wiring in RedesSociaisTab: each has its own platform
+// tab, an OAuth return lands on it, and the tab's single OAuth-param effect toasts and strips the Google return params.
 
 const { captureEventMock } = vi.hoisted(() => ({ captureEventMock: vi.fn() }));
 vi.mock('@/lib/analytics', () => ({ captureEvent: captureEventMock }));
@@ -24,9 +24,14 @@ vi.mock('@/services/instagram', async (importOriginal) => ({
 let mockFeatures:
   | { feature_tiktok?: boolean; feature_youtube?: boolean; feature_google_business?: boolean }
   | null
-  | undefined = {};
+  | undefined = { feature_youtube: true, feature_google_business: true };
+let mockLimitsLoading = false;
+// jsdom has no layout, so useIsDesktop would report a phone; the desktop tabs are the default.
+let mockIsDesktop = true;
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => mockIsDesktop }));
+
 vi.mock('@/hooks/useWorkspaceLimits', () => ({
-  useWorkspaceLimits: () => ({ features: mockFeatures }),
+  useWorkspaceLimits: () => ({ features: mockFeatures, isLoading: mockLimitsLoading }),
 }));
 
 const { getTikTokSummaryMock } = vi.hoisted(() => ({ getTikTokSummaryMock: vi.fn() }));
@@ -143,23 +148,52 @@ function renderTab(initialEntry: string, cliente: Cliente = CLIENTE) {
 
 afterEach(() => {
   cleanup();
+  mockIsDesktop = true;
   vi.clearAllMocks();
-  mockFeatures = {};
+  mockFeatures = { feature_youtube: true, feature_google_business: true };
+  mockLimitsLoading = false;
 });
 
 describe('RedesSociaisTab Google wiring', () => {
-  it('renders both Google sections after TikTok, passing the client name', async () => {
+  it('gives each Google product its own tab and mounts only the open one', async () => {
     getInstagramSummaryMock.mockResolvedValue(null);
     renderTab('/clientes/42/redes-sociais');
+    const nav = await screen.findByRole('navigation', { name: 'Redes sociais' });
+    expect(
+      within(nav)
+        .getAllByRole('link')
+        .map((l) => l.textContent),
+    ).toEqual(['Instagram', 'YouTube', 'Google Meu Negócio']);
+    expect(screen.queryByTestId('youtube-section')).toBeNull();
+    expect(screen.queryByTestId('gmn-section')).toBeNull();
+
+    fireEvent.click(within(nav).getByRole('link', { name: 'YouTube' }));
     expect(await screen.findByTestId('youtube-section')).toHaveTextContent('yt-42');
-    expect(screen.getByTestId('gmn-section')).toHaveTextContent('gmn-42-Aurora Estética-no-pick');
+    expect(screen.queryByTestId('instagram-section')).toBeNull();
+
+    fireEvent.click(within(nav).getByRole('link', { name: 'Google Meu Negócio' }));
+    expect(await screen.findByTestId('gmn-section')).toHaveTextContent(
+      'gmn-42-Aurora Estética-no-pick',
+    );
+    expect(screen.queryByTestId('youtube-section')).toBeNull();
+  });
+
+  it('a deep link to a Google tab waits for the plan instead of flashing Instagram', async () => {
+    getInstagramSummaryMock.mockResolvedValue(null);
+    mockFeatures = undefined;
+    mockLimitsLoading = true;
+    renderTab('/clientes/42/redes-sociais?rede=youtube');
+    await waitFor(() => expect(getInstagramSummaryMock).toHaveBeenCalled());
+    expect(screen.queryByTestId('instagram-section')).toBeNull();
+    expect(screen.queryByTestId('youtube-section')).toBeNull();
   });
 
   it('toasts YouTube connected and strips yt_connected', async () => {
     getInstagramSummaryMock.mockResolvedValue(null);
     renderTab('/clientes/42/redes-sociais?yt_connected=1');
     await waitFor(() => expect(toastSuccessMock).toHaveBeenCalledWith('YouTube conectado.'));
-    await waitFor(() => expect(screen.getByTestId('search')).toHaveTextContent(/^$/));
+    await waitFor(() => expect(screen.getByTestId('search')).toHaveTextContent(/^\?rede=youtube$/));
+    expect(screen.getByTestId('youtube-section')).toBeInTheDocument();
   });
 
   it('names the other client on channel_in_use and removes every Google param', async () => {
@@ -221,7 +255,7 @@ describe('RedesSociaisTab Google wiring', () => {
         'gmn-42-Aurora Estética-conn-uuid-1',
       ),
     );
-    await waitFor(() => expect(screen.getByTestId('search')).toHaveTextContent(/^$/));
+    await waitFor(() => expect(screen.getByTestId('search')).toHaveTextContent(/^\?rede=google$/));
 
     fireEvent.click(screen.getByRole('button', { name: 'handled' }));
     await waitFor(() => expect(screen.getByTestId('gmn-section')).toHaveTextContent('no-pick'));
@@ -232,6 +266,6 @@ describe('RedesSociaisTab Google wiring', () => {
     renderTab('/clientes/42/redes-sociais?tt_error=1&yt_connected=1&ig_connected=1');
     await waitFor(() => expect(toastErrorMock).toHaveBeenCalled());
     await waitFor(() => expect(toastSuccessMock).toHaveBeenCalledWith('YouTube conectado.'));
-    await waitFor(() => expect(screen.getByTestId('search')).toHaveTextContent(/^$/));
+    await waitFor(() => expect(screen.getByTestId('search')).toHaveTextContent(/^\?rede=youtube$/));
   });
 });

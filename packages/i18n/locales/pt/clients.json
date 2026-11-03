@@ -535,7 +535,8 @@
     "calendarDayWithPosts_one": "{{day}} de {{month}}, {{count}} post",
     "calendarDayWithPosts_other": "{{day}} de {{month}}, {{count}} posts",
     "notInformed": "Não informado",
-    "fileOpenError": "Erro ao abrir arquivo"
+    "fileOpenError": "Erro ao abrir arquivo",
+    "socialTabs": "Redes sociais"
   },
   "connect": {
     "title": "Conectar Instagram",

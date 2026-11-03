@@ -153,7 +153,7 @@ export function GoogleAnalyticsTab({
   const { data, range, setRange, applyCustomDays, location, setLocation, syncing, handleSync } =
     tab;
   const { overview, daily, surfaces, keywords, reviews, ratingDistribution } = data;
-  const redesSociais = `/clientes/${clientId}/redes-sociais`;
+  const redesSociais = `/clientes/${clientId}/redes-sociais?rede=google`;
 
   // The shell always passes the frame on phones; without one there is no identity to head the page.
   if (isPhone && phoneFrame) {

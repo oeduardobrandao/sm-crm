@@ -145,7 +145,7 @@ describe('GoogleAnalyticsTab (phone)', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Clínica Sorriso Pleno');
     expect(screen.getByRole('link', { name: 'Ir para Redes sociais' })).toHaveAttribute(
       'href',
-      '/clientes/12/redes-sociais',
+      '/clientes/12/redes-sociais?rede=google',
     );
   });
 

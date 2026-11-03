@@ -64,7 +64,7 @@ export function TikTokAnalyticsTab({
   const [syncing, setSyncing] = useState(false);
   const data = useTikTokTabData(clientId, range, sort.col as TikTokPostSort);
   const { overview, history, posts, bestTimes, bestTimesLocked, aiLocked } = data;
-  const redesSociais = `/clientes/${clientId}/redes-sociais`;
+  const redesSociais = `/clientes/${clientId}/redes-sociais?rede=tiktok`;
 
   const handleSync = async () => {
     setSyncing(true);

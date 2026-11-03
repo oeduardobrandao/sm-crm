@@ -229,7 +229,7 @@ describe('YouTubeAnalyticsTab (phone)', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Clínica Aurora');
     expect(screen.getByRole('link', { name: 'Ir para Redes sociais' })).toHaveAttribute(
       'href',
-      '/clientes/12/redes-sociais',
+      '/clientes/12/redes-sociais?rede=youtube',
     );
   });
 

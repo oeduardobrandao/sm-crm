@@ -252,7 +252,7 @@ describe('TikTokAnalyticsTab (phone)', () => {
     expect(screen.getByTestId('shell-tabs')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Ir para Redes sociais' })).toHaveAttribute(
       'href',
-      '/clientes/12/redes-sociais',
+      '/clientes/12/redes-sociais?rede=tiktok',
     );
   });
 
@@ -285,7 +285,7 @@ describe('TikTokAnalyticsTab (phone)', () => {
     expect(await screen.findByText('Conexão expirada')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Ir para Redes sociais' })).toHaveAttribute(
       'href',
-      '/clientes/12/redes-sociais',
+      '/clientes/12/redes-sociais?rede=tiktok',
     );
     expect(await screen.findByRole('list', { name: 'Desempenho dos vídeos' })).toBeInTheDocument();
   });

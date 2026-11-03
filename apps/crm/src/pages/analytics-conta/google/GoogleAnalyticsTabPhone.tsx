@@ -41,7 +41,7 @@ export function GoogleAnalyticsTabPhone({
   const { t, i18n } = useTranslation(['analyticsGoogle', 'clients']);
   const { data, location, setLocation, syncing, handleSync } = tab;
   const { overview, daily, surfaces, keywords, reviews, ratingDistribution } = data;
-  const redesSociais = `/clientes/${clientId}/redes-sociais`;
+  const redesSociais = `/clientes/${clientId}/redes-sociais?rede=google`;
 
   if (overview.isPending || tab.unitGone) {
     return (
