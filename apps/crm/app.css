@@ -157,6 +157,14 @@ html[data-standalone] .app-container {
   pointer-events: none;
 }
 
+/* A long label ("Google Meu Negócio") gives way to the "Em breve" pill, never the reverse. */
+.sidebar-sub-link--disabled .sidebar-sub-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sidebar-sub-link--locked,
 .mobile-more-item--locked {
   opacity: 0.55;
@@ -184,6 +192,7 @@ html[data-standalone] .app-container {
   background: var(--surface-hover);
   border: 1px solid var(--border-color);
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .nav-badge--count {

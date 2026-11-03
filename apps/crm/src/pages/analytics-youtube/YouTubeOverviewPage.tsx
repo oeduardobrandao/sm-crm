@@ -247,7 +247,8 @@ function YouTubeOverviewContent() {
       <TableHead
         key={col}
         aria-sort={active ? (sortDirection === 'asc' ? 'ascending' : 'descending') : undefined}
-        style={{ whiteSpace: 'nowrap', textAlign: numeric ? 'right' : 'left' }}
+        // Headers may wrap to two lines so the row fits without sideways scrolling; cells stay nowrap.
+        style={{ textAlign: numeric ? 'right' : 'left', verticalAlign: 'bottom' }}
       >
         <button
           type="button"
@@ -262,11 +263,12 @@ function YouTubeOverviewContent() {
             border: 0,
             padding: 0,
             cursor: 'pointer',
+            textAlign: 'inherit',
           }}
         >
           {t(`overview.column.${col}`)}
           <ArrowUpDown
-            className="h-3 w-3"
+            className="h-3 w-3 shrink-0"
             aria-hidden
             style={{
               opacity: active ? 1 : 0.3,
@@ -399,18 +401,36 @@ function ChannelRow({
       onClick={onOpen}
       style={{ cursor: 'pointer', color: revoked ? 'var(--text-muted)' : undefined }}
     >
-      <TableCell data-label={t('overview.column.title')}>
+      <TableCell data-label={t('overview.column.title')} style={{ minWidth: 176 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
           <ChannelAvatar channel={c} size={32} />
-          <div style={{ minWidth: 0 }}>
+          {/* One line each: a narrow column wrapped names word by word. */}
+          <div style={{ minWidth: 0, maxWidth: 220, whiteSpace: 'nowrap' }}>
             <Link
               to={href}
               onClick={(e) => e.stopPropagation()}
-              style={{ color: 'var(--text-main)', textDecoration: 'none', fontWeight: 600 }}
+              title={channelName(c) ?? c.clientName}
+              style={{
+                display: 'block',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                color: 'var(--text-main)',
+                textDecoration: 'none',
+                fontWeight: 600,
+              }}
             >
               {channelName(c) ?? c.clientName}
             </Link>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{c.clientName}</div>
+            <div
+              style={{
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                fontSize: '0.75rem',
+                color: 'var(--text-muted)',
+              }}
+            >
+              {c.clientName}
+            </div>
           </div>
         </div>
       </TableCell>
@@ -462,7 +482,7 @@ function ShortsBar({ pct }: { pct: number }) {
       <span
         aria-hidden
         style={{
-          width: 64,
+          width: 40,
           height: 6,
           borderRadius: 3,
           background: 'var(--surface-2)',
