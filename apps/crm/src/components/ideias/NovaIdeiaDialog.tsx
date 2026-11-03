@@ -85,9 +85,22 @@ interface Props {
   onSaved: (ideiaId: string) => void;
   /** Agency-created ideia being edited, or null/omitted to create a new one. */
   editing?: Ideia | null;
+  /** Prefill for a new ideia (e.g. from an AI suggestion). Ignored while `editing`. */
+  initialValues?: {
+    cliente_id: number;
+    titulo: string;
+    descricao: string;
+    origem_sugestao_id: string;
+  } | null;
 }
 
-export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Props) {
+export function NovaIdeiaDialog({
+  open,
+  onClose,
+  onSaved,
+  editing = null,
+  initialValues = null,
+}: Props) {
   const qc = useQueryClient();
   const { t } = useTranslation('ideaDrawer');
   const schema = useMemo(() => buildSchema(t), [t]);
@@ -145,6 +158,14 @@ export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Prop
         links: editing.links.length ? editing.links.map((value) => ({ value })) : [{ value: '' }],
         visivel_no_hub: editing.visivel_no_hub,
       });
+    } else if (initialValues) {
+      form.reset({
+        cliente_id: String(initialValues.cliente_id),
+        titulo: initialValues.titulo,
+        descricao: initialValues.descricao,
+        links: [{ value: '' }],
+        visivel_no_hub: false,
+      });
     } else {
       form.reset({
         cliente_id: '',
@@ -156,7 +177,7 @@ export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Prop
     }
     discardAudio();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, editing]);
+  }, [open, editing, initialValues?.origem_sugestao_id]);
 
   async function onSubmit(values: FormValues) {
     // While `rerecord` is true, the recorder shown is empty (the user asked to replace
@@ -203,6 +224,7 @@ export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Prop
         links,
         visivel_no_hub: values.visivel_no_hub,
         autor_membro_id: membro?.id ?? null,
+        ...(initialValues ? { origem_sugestao_id: initialValues.origem_sugestao_id } : {}),
       });
       let audioOk = true;
       if (audioToUpload) {
@@ -241,6 +263,14 @@ export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Prop
       discardAudio();
       onSaved(id);
     } catch (e: any) {
+      // Suggestion already saved (double click, another tab): treat as success.
+      if (e?.name === 'DuplicateSuggestionError') {
+        qc.invalidateQueries({ queryKey: ['ideias'] });
+        form.reset();
+        discardAudio();
+        onSaved('');
+        return;
+      }
       toast.error(
         e.message ?? (editing ? t('novaIdeiaDialog.errorSave') : t('novaIdeiaDialog.errorCreate')),
       );
