@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { AlertTriangle, Clock, Loader2, Unplug, Youtube } from 'lucide-react';
+import { AlertTriangle, Clock, Loader2, Youtube } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ReportSkeleton } from '@/components/ui/skeletons';
@@ -19,6 +19,8 @@ import {
 import { sanitizeUrl } from '@/utils/security';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { disconnectYouTube, getGoogleAuthUrl, getGoogleSummary } from '../../services/google';
+import { FullAnalyticsLink, PlatformActions } from './components/PlatformActions';
+import { useGoogleProductSync } from './components/useGoogleProductSync';
 
 // maximumFractionDigits: 1 is needed for "12,4 mil": bare compact notation keeps only two
 // significant digits for values under 100 mil ("12 mil").
@@ -39,7 +41,8 @@ function channelUrl(handle: string | null, channelId: string): string {
   return `https://www.youtube.com/channel/${encodeURIComponent(channelId)}`;
 }
 
-// YouTube connection card for the "Redes sociais" tab (Phase 1: connect / disconnect only).
+// YouTube connection card for the "Redes sociais" tab: connect, then the channel with the same
+// sync / disconnect actions and "Ver analytics completo" link as the other platforms.
 // Follows the TikTokSection rule: renders nothing, fetches nothing, unless the
 // `feature_youtube` entitlement is on. The query key is shared with the Google Meu
 // Negócio section: both halves come from one /summary call.
@@ -51,6 +54,7 @@ export function YouTubeSection({ clienteId }: { clienteId: number }) {
   const validId = !isNaN(clienteId);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [redirecting, setRedirecting] = useState(false);
+  const { sync, syncing } = useGoogleProductSync('youtube', clienteId);
 
   const {
     data: summary,
@@ -150,24 +154,19 @@ export function YouTubeSection({ clienteId }: { clienteId: number }) {
 
       {!isLoading && !isError && channel && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <Youtube size={24} color="#dc2626" aria-hidden="true" />
             <h3 id="youtube-card-title" style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>
               {t('youtube.title')}
             </h3>
             {!revoked && <Badge variant="success">{t('youtube.connected')}</Badge>}
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                aria-label={t('youtube.disconnectTooltip')}
-                title={t('youtube.disconnectTooltip')}
-                onClick={() => setConfirmOpen(true)}
-              >
-                <Unplug className="h-4 w-4" aria-hidden="true" />
-              </Button>
-            </div>
+            <PlatformActions
+              onSync={() => void sync()}
+              syncing={syncing}
+              syncDisabled={revoked}
+              onDisconnect={() => setConfirmOpen(true)}
+              disconnecting={disconnect.isPending}
+            />
           </div>
 
           {revoked && (
@@ -249,6 +248,8 @@ export function YouTubeSection({ clienteId }: { clienteId: number }) {
             <Clock size={14} aria-hidden="true" />
             {t('youtube.delayNote')}
           </p>
+
+          <FullAnalyticsLink clienteId={clienteId} platform="youtube" />
         </div>
       )}
 

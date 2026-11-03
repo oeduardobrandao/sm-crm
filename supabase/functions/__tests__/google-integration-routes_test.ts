@@ -1,4 +1,4 @@
-// google-integration: GET /summary, GET|POST /locations, POST /disconnect/youtube. DI handler +
+// google-integration: GET /summary, GET|POST /locations, POST /disconnect/youtube|gbp. DI handler +
 // createSupabaseQueryMock and a routed globalThis.fetch stub (google-integration-callback_test.ts's
 // conventions). The SQL RPCs (unlink, rate limit, flags) are mocked by name.
 import { assert, assertEquals } from "./assert.ts";
@@ -657,6 +657,78 @@ Deno.test("link_empty_set_unlinks_all: [] unlinks every unit of this client on t
     );
     assertEquals(f.count("https://oauth2.googleapis.com/revoke"), 1);
     assertEquals(db.calls.filter((c) => c.table === "google_revocations" && c.operation === "delete").length, 1);
+  } finally {
+    f.restore();
+  }
+});
+
+// ─── POST /disconnect/gbp/:clientId ─────────────────────────────────────────────
+
+Deno.test("disconnect_gbp: unlinks every unit of the client on any connection, revokes per decision, no Google listing", async () => {
+  const db = routeDb();
+  db.queue("gbp_locations", "select", {
+    data: [
+      { id: "row-a", location_name: "locations/a" },
+      { id: "row-b", location_name: "locations/b" },
+    ],
+  });
+  db.queueRpc(
+    "google_unlink_gbp_location",
+    { data: [{ should_revoke: false, revocation_id: null }] },
+    { data: [{ should_revoke: true, revocation_id: "rev-1" }] },
+  );
+  db.queue("google_revocations", "select", { data: await revocationRow() });
+  const f = stubGoogle();
+  try {
+    const res = await makeHandler(db)(req("POST", `/disconnect/gbp/${CLIENT}`));
+    assertEquals(res.status, 200);
+    assertEquals(await res.json(), { ok: true });
+    const read = db.calls.find((c) => c.table === "gbp_locations" && c.operation === "select")!;
+    assert(read.modifiers.some((m) => m.method === "eq" && m.args[0] === "client_id" && m.args[1] === CLIENT));
+    assert(!read.modifiers.some((m) => m.method === "eq" && m.args[0] === "connection_id"));
+    assertEquals(
+      rpcCalls(db, "google_unlink_gbp_location").map((c) => c.payload),
+      [
+        { p_conta_id: CONTA, p_location_id: "row-a" },
+        { p_conta_id: CONTA, p_location_id: "row-b" },
+      ],
+    );
+    assertEquals(f.count("https://oauth2.googleapis.com/revoke"), 1);
+    assertEquals(f.calls.filter((c) => c.url.startsWith(ACCOUNTS_URL)).length, 0);
+    const audit = db.calls.find((c) => c.table === "audit_log")!.payload as Record<string, unknown>;
+    assertEquals([audit.action, audit.resource_type], ["gmn-unlink", "gbp_location"]);
+    assertEquals((audit.metadata as Record<string, unknown>).unlinked, ["locations/a", "locations/b"]);
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("disconnect_gbp: no unit -> 404 and no RPC; a unit removed concurrently is skipped", async () => {
+  const empty = routeDb();
+  empty.queue("gbp_locations", "select", { data: [] });
+  const res = await makeHandler(empty)(req("POST", `/disconnect/gbp/${CLIENT}`));
+  assertEquals(res.status, 404);
+  assertEquals(await res.json(), { error: "not_found" });
+  assertEquals(rpcCalls(empty, "google_unlink_gbp_location").length, 0);
+
+  const racing = routeDb();
+  racing.queue("gbp_locations", "select", {
+    data: [
+      { id: "row-a", location_name: "locations/a" },
+      { id: "row-b", location_name: "locations/b" },
+    ],
+  });
+  racing.queueRpc(
+    "google_unlink_gbp_location",
+    { data: null, error: { code: "P0002", message: "not found" } },
+    { data: [{ should_revoke: false, revocation_id: null }] },
+  );
+  const f = stubGoogle();
+  try {
+    const ok = await makeHandler(racing)(req("POST", `/disconnect/gbp/${CLIENT}`));
+    assertEquals(await ok.json(), { ok: true });
+    const audit = racing.calls.find((c) => c.table === "audit_log")!.payload as Record<string, unknown>;
+    assertEquals((audit.metadata as Record<string, unknown>).unlinked, ["locations/b"]);
   } finally {
     f.restore();
   }

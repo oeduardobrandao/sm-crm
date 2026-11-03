@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
 let mockFeatures: { feature_google_business?: boolean } | null | undefined = {
   feature_google_business: false,
@@ -11,16 +12,32 @@ vi.mock('../../../hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: () => ({ features: mockFeatures }),
 }));
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
-const { getGoogleSummaryMock, getGoogleAuthUrlMock, listOptionsMock, linkMock } = vi.hoisted(
-  () => ({
-    getGoogleSummaryMock: vi.fn(),
-    getGoogleAuthUrlMock: vi.fn(),
-    listOptionsMock: vi.fn(),
-    linkMock: vi.fn(),
-  }),
-);
+// jsdom has no layout: render the desktop card (a phone shows the analytics link as a cell).
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
+// Shows the path only after a navigation, so "renders nothing" tests still see an empty container.
+function PathProbe() {
+  const { pathname } = useLocation();
+  return pathname.startsWith('/analytics') ? <span data-testid="path">{pathname}</span> : null;
+}
+
+const {
+  getGoogleSummaryMock,
+  getGoogleAuthUrlMock,
+  listOptionsMock,
+  linkMock,
+  syncMock,
+  disconnectGbpMock,
+} = vi.hoisted(() => ({
+  getGoogleSummaryMock: vi.fn(),
+  getGoogleAuthUrlMock: vi.fn(),
+  listOptionsMock: vi.fn(),
+  linkMock: vi.fn(),
+  syncMock: vi.fn(),
+  disconnectGbpMock: vi.fn(),
+}));
 
 vi.mock('../../../services/google', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../services/google')>();
@@ -30,6 +47,8 @@ vi.mock('../../../services/google', async (importOriginal) => {
     getGoogleAuthUrl: (...a: unknown[]) => getGoogleAuthUrlMock(...a),
     listGbpLocationOptions: (...a: unknown[]) => listOptionsMock(...a),
     linkGbpLocations: (...a: unknown[]) => linkMock(...a),
+    syncGoogleProduct: (...a: unknown[]) => syncMock(...a),
+    disconnectGbp: (...a: unknown[]) => disconnectGbpMock(...a),
   };
 });
 
@@ -64,12 +83,22 @@ function renderSection(props: Partial<{ pick: string | null; onPickHandled: () =
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <GoogleBusinessSection
-        clienteId={7}
-        clienteNome="Clínica Sorriso Pleno"
-        pickConnectionId={props.pick ?? null}
-        onPickHandled={props.onPickHandled ?? (() => {})}
-      />
+      <MemoryRouter initialEntries={['/clientes/7/redes-sociais']}>
+        <Routes>
+          <Route
+            path="*"
+            element={
+              <GoogleBusinessSection
+                clienteId={7}
+                clienteNome="Clínica Sorriso Pleno"
+                pickConnectionId={props.pick ?? null}
+                onPickHandled={props.onPickHandled ?? (() => {})}
+              />
+            }
+          />
+        </Routes>
+        <PathProbe />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -202,5 +231,36 @@ describe('GoogleBusinessSection', () => {
     getGoogleSummaryMock.mockRejectedValue(new Error('boom'));
     renderSection();
     expect(await screen.findByRole('region', { name: 'Google Meu Negócio' })).toBeInTheDocument();
+  });
+
+  it('sync calls the GMN sync for the client', async () => {
+    mockFeatures = { feature_google_business: true };
+    getGoogleSummaryMock.mockResolvedValue(summary);
+    syncMock.mockResolvedValue({ ok: true, locations: [{ id: 'l1', status: 'synced' }] });
+    renderSection();
+    await userEvent.click(await screen.findByRole('button', { name: 'Sincronizar Dados' }));
+    await waitFor(() => expect(syncMock).toHaveBeenCalledWith('gbp', 7));
+  });
+
+  it('disconnect confirms, then unlinks every unit of the client', async () => {
+    mockFeatures = { feature_google_business: true };
+    getGoogleSummaryMock.mockResolvedValue(summary);
+    disconnectGbpMock.mockResolvedValue(undefined);
+    renderSection();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Desconectar' }));
+    const dialog = await screen.findByRole('alertdialog');
+    expect(within(dialog).getByText(/em até 30 dias/)).toBeInTheDocument();
+    expect(disconnectGbpMock).not.toHaveBeenCalled();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Desconectar' }));
+    await waitFor(() => expect(disconnectGbpMock).toHaveBeenCalledWith(7));
+  });
+
+  it('full analytics opens the client Google analytics tab', async () => {
+    mockFeatures = { feature_google_business: true };
+    getGoogleSummaryMock.mockResolvedValue(summary);
+    renderSection();
+    await userEvent.click(await screen.findByRole('button', { name: /Ver Analytics Completo/ }));
+    expect(screen.getByTestId('path')).toHaveTextContent('/analytics/7/google');
   });
 });

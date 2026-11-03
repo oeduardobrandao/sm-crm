@@ -68,24 +68,31 @@ export function renderTikTokOverviewCard(
     ? `@${account.username}`
     : account.display_name || (t('tiktok.account') as string);
 
+  // Same labeled actions as the Instagram card (`.btn-instagram-action`); the icon swaps to a
+  // spinner while a request runs.
+  const actionLabel = (icon: string, key: string) =>
+    `<i class="ph ${icon}" aria-hidden="true"></i><span>${escapeHTML(t(key) as string)}</span>`;
+  const syncLabel = actionLabel('ph-arrows-clockwise', 'tiktok.syncTooltip');
+  const disconnectLabel = actionLabel('ph-plugs', 'tiktok.disconnectTooltip');
+
   // Translation values from static JSON, user data escaped via escapeHTML/sanitizeUrl.
   container.innerHTML = `
     <div class="card animate-up" style="position: relative; margin-bottom: 1.5rem;">
 
       ${statusBanner}
 
-      <div style="display: flex; align-items: center; gap: 1.5rem; margin-bottom: 1.5rem;">
+      <div class="instagram-overview__profile" style="display: flex; align-items: center; gap: 1.5rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
          <img src="${avatarUrl}" alt="TikTok" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid #000000;" />
-         <div style="flex: 1; min-width: 0;">
+         <div class="instagram-overview__metadata" style="flex: 1; min-width: 0;">
             <h3 class="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-1">
                 ${escapeHTML(displayLabel)}
                 <i class="ph ph-tiktok-logo" aria-hidden="true" style="color: #000000; font-size: 1.1rem;"></i>
             </h3>
             <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0;">${escapeHTML(updatedDate as string)}</p>
          </div>
-         <div style="display: flex; gap: 0.5rem; flex-shrink: 0;">
-            <button id="btn-tt-sync" class="btn-icon" data-tooltip="${escapeHTML(t('tiktok.syncTooltip') as string)}" data-tooltip-dir="bottom" style="color: var(--text-muted);"><i class="ph ph-arrows-clockwise"></i></button>
-            <button id="btn-tt-disconnect" class="btn-icon" data-tooltip="${escapeHTML(t('tiktok.disconnectTooltip') as string)}" data-tooltip-dir="bottom" style="color: var(--danger);"><i class="ph ph-plugs"></i></button>
+         <div class="instagram-overview__actions">
+            <button id="btn-tt-sync" class="btn-instagram-action">${syncLabel}</button>
+            <button id="btn-tt-disconnect" class="btn-instagram-action btn-instagram-action--danger">${disconnectLabel}</button>
          </div>
       </div>
 
@@ -111,7 +118,7 @@ export function renderTikTokOverviewCard(
   if (btnSync) {
     btnSync.addEventListener('click', async () => {
       try {
-        btnSync.innerHTML = '<i class="ph ph-spinner ph-spin"></i>';
+        btnSync.innerHTML = actionLabel('ph-spinner ph-spin', 'tiktok.syncTooltip');
         btnSync.disabled = true;
         const result = await syncTikTokData(clientId);
         toast.success(
@@ -122,7 +129,7 @@ export function renderTikTokOverviewCard(
         );
         onRefresh();
       } catch (err: any) {
-        btnSync.innerHTML = '<i class="ph ph-arrows-clockwise"></i>';
+        btnSync.innerHTML = syncLabel;
         btnSync.disabled = false;
         if (err.message === 'TOKEN_EXPIRED') {
           toast.error(t('tiktok.syncTokenExpired') as string);
@@ -161,13 +168,13 @@ export function renderTikTokOverviewCard(
         async () => {
           closeModal();
           try {
-            btnDisconnect.innerHTML = '<i class="ph ph-spinner ph-spin"></i>';
+            btnDisconnect.innerHTML = actionLabel('ph-spinner ph-spin', 'tiktok.disconnectTooltip');
             btnDisconnect.disabled = true;
             await disconnectTikTok(clientId);
             toast.success(t('tiktok.disconnectSuccess') as string);
             onRefresh();
           } catch (err: any) {
-            btnDisconnect.innerHTML = '<i class="ph ph-plugs"></i>';
+            btnDisconnect.innerHTML = disconnectLabel;
             btnDisconnect.disabled = false;
             toast.error(t('tiktok.disconnectError', { error: err.message }) as string);
           }

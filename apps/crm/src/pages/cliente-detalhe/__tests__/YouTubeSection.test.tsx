@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
 let mockFeatures: { feature_youtube?: boolean } | null | undefined = { feature_youtube: false };
 
@@ -9,13 +10,25 @@ vi.mock('../../../hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: () => ({ features: mockFeatures }),
 }));
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
-const { getGoogleSummaryMock, getGoogleAuthUrlMock, disconnectYouTubeMock } = vi.hoisted(() => ({
-  getGoogleSummaryMock: vi.fn(),
-  getGoogleAuthUrlMock: vi.fn(),
-  disconnectYouTubeMock: vi.fn(),
-}));
+// jsdom has no layout: render the desktop card (a phone shows the analytics link as a cell).
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
+// Shows the path only after a navigation, so "renders nothing" tests still see an empty container.
+function PathProbe() {
+  const { pathname } = useLocation();
+  return pathname.startsWith('/analytics') ? <span data-testid="path">{pathname}</span> : null;
+}
+
+const { getGoogleSummaryMock, getGoogleAuthUrlMock, disconnectYouTubeMock, syncMock } = vi.hoisted(
+  () => ({
+    getGoogleSummaryMock: vi.fn(),
+    getGoogleAuthUrlMock: vi.fn(),
+    disconnectYouTubeMock: vi.fn(),
+    syncMock: vi.fn(),
+  }),
+);
 
 vi.mock('../../../services/google', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../services/google')>();
@@ -24,6 +37,7 @@ vi.mock('../../../services/google', async (importOriginal) => {
     getGoogleSummary: (...a: unknown[]) => getGoogleSummaryMock(...a),
     getGoogleAuthUrl: (...a: unknown[]) => getGoogleAuthUrlMock(...a),
     disconnectYouTube: (...a: unknown[]) => disconnectYouTubeMock(...a),
+    syncGoogleProduct: (...a: unknown[]) => syncMock(...a),
   };
 });
 
@@ -47,7 +61,12 @@ function renderSection(clienteId = 7) {
   const invalidate = vi.spyOn(qc, 'invalidateQueries');
   const utils = render(
     <QueryClientProvider client={qc}>
-      <YouTubeSection clienteId={clienteId} />
+      <MemoryRouter initialEntries={['/clientes/7/redes-sociais']}>
+        <Routes>
+          <Route path="*" element={<YouTubeSection clienteId={clienteId} />} />
+        </Routes>
+        <PathProbe />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
   return { ...utils, invalidate };
@@ -170,5 +189,36 @@ describe('YouTubeSection', () => {
     await waitFor(() =>
       expect(invalidate).toHaveBeenCalledWith({ queryKey: ['googleSummary', 7] }),
     );
+  });
+
+  it('sync_calls_the_youtube_sync_and_refreshes_the_card', async () => {
+    mockFeatures = { feature_youtube: true };
+    getGoogleSummaryMock.mockResolvedValue({ youtube: channel, gmn: null });
+    syncMock.mockResolvedValue({ ok: true, status: 'synced' });
+    const { invalidate } = renderSection(7);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Sincronizar Dados' }));
+    await waitFor(() => expect(syncMock).toHaveBeenCalledWith('youtube', 7));
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['googleSummary', 7] }),
+    );
+  });
+
+  it('sync is disabled while the channel needs reconnecting', async () => {
+    mockFeatures = { feature_youtube: true };
+    getGoogleSummaryMock.mockResolvedValue({
+      youtube: { ...channel, authorizationStatus: 'revoked' },
+      gmn: null,
+    });
+    renderSection(7);
+    expect(await screen.findByRole('button', { name: 'Sincronizar Dados' })).toBeDisabled();
+  });
+
+  it('full analytics opens the client YouTube analytics tab', async () => {
+    mockFeatures = { feature_youtube: true };
+    getGoogleSummaryMock.mockResolvedValue({ youtube: channel, gmn: null });
+    renderSection(7);
+    await userEvent.click(await screen.findByRole('button', { name: /Ver Analytics Completo/ }));
+    expect(screen.getByTestId('path')).toHaveTextContent('/analytics/7/youtube');
   });
 });
