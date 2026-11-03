@@ -136,7 +136,7 @@ export function AccountCommentsCard({
 
   const tooFewHint =
     analyzeError instanceof CommentsApiError && analyzeError.code === 'too_few_comments'
-      ? `São precisos pelo menos ${MIN_COMMENTS} comentários nos últimos 30 dias para analisar.`
+      ? `São necessários pelo menos ${MIN_COMMENTS} comentários nos últimos 30 dias para analisar.`
       : null;
 
   let body;
@@ -156,7 +156,7 @@ export function AccountCommentsCard({
       <CommentsAnalysisView
         analysis={analysis}
         clienteId={clientId}
-        sourceLabel="os últimos 30 dias"
+        sourceLabel="dos últimos 30 dias"
         newComments={newComments}
         onRefresh={() => void analyze()}
         refreshing={analyzing}
@@ -170,7 +170,7 @@ export function AccountCommentsCard({
       <div className="igc-empty-reading">
         <p className="igc-state__text">
           {current < MIN_COMMENTS
-            ? `São precisos pelo menos ${MIN_COMMENTS} comentários nos últimos 30 dias para analisar. Há ${current.toLocaleString('pt-BR')}.`
+            ? `São necessários pelo menos ${MIN_COMMENTS} comentários nos últimos 30 dias para analisar. Há ${current.toLocaleString('pt-BR')}.`
             : 'Resuma o clima dos comentários dos últimos 30 dias e receba ideias de conteúdo.'}
         </p>
       </div>

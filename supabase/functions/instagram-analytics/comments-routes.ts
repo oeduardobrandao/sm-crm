@@ -129,6 +129,8 @@ async function loadAccount(deps: CommentsRouteDeps, clientId: string): Promise<A
     .eq("client_id", clientId)
     .maybeSingle();
   if (error) throw new Error(`account query failed: ${error.message}`);
+  // Conta com token vencido: mesmo caminho do 190 da Graph (401 TOKEN_EXPIRED no index.ts).
+  if (data && data.authorization_status === "expired") tokenExpired();
   if (
     !data || data.authorization_status !== "active" || !data.encrypted_access_token ||
     !data.instagram_user_id

@@ -201,7 +201,7 @@ describe('PostCommentsPanel', () => {
     );
     renderPanel(post({ comments: 340 }));
     expect(await screen.findByText(/1 curtida · 25\+ respostas/)).toBeInTheDocument();
-    expect(screen.getByText(/Mostrando os 200 mais recentes/)).toBeInTheDocument();
+    expect(screen.getByText(/Mostrando 200 comentários/)).toBeInTheDocument();
   });
 
   it('sem análise mostra Analisar comentários; clique chama analyzePostComments e mostra o chip', async () => {
@@ -236,7 +236,7 @@ describe('PostCommentsPanel', () => {
     const button = await screen.findByRole('button', { name: 'Analisar comentários' });
     expect(button).toBeDisabled();
     expect(
-      screen.getByText('São precisos pelo menos 5 comentários para analisar. Este post tem 3.'),
+      screen.getByText('São necessários pelo menos 5 comentários para analisar. Este post tem 3.'),
     ).toBeInTheDocument();
   });
 
@@ -341,7 +341,7 @@ describe('PostCommentsPanel', () => {
     expect(within(dialog).getByTestId('ideia-cliente')).toHaveTextContent('42');
     expect(within(dialog).getByTestId('ideia-titulo')).toHaveTextContent('Rotina para pele oleosa');
     expect(within(dialog).getByTestId('ideia-descricao').textContent).toBe(
-      'Carrossel com a rotina adaptada.\n\nOrigem: comentários de Reels de 28 out (31% perguntam sobre pele oleosa)',
+      'Carrossel com a rotina adaptada.\n\nOrigem: comentários do Reels de 28 out (31% perguntam sobre pele oleosa)',
     );
     expect(within(dialog).getByTestId('ideia-origem')).toHaveTextContent('sug-1');
 

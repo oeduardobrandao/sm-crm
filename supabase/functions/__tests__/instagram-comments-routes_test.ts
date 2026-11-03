@@ -185,12 +185,28 @@ Deno.test("sem escopo de comentários → 409 missing_comments_scope sem chamar 
 
 Deno.test("conta inativa → 404 account_not_found", async () => {
   const { deps, calls } = setup({
-    tables: { instagram_accounts: [account({ authorization_status: "expired" })], instagram_posts: [] },
+    tables: { instagram_accounts: [account({ authorization_status: "disconnected" })], instagram_posts: [] },
   });
   const r = await handleCommentsRoute("GET", "/post-comments/7/p1", deps);
   assertEquals(r?.status, 404);
   assertEquals(body(r), { error: "account_not_found" });
   assertEquals(calls.graph.length, 0);
+});
+
+Deno.test("conta com authorization_status expired sobe TOKEN_EXPIRED sem chamar a Graph", async () => {
+  for (const [method, path] of [["GET", "/post-comments/7/p1"], ["POST", "/comments-analysis/7/p1"], ["POST", "/comments-analysis-account/7"]]) {
+    const { deps, calls } = setup({
+      tables: { instagram_accounts: [account({ authorization_status: "expired" })], instagram_posts: [] },
+    });
+    let thrown: unknown = null;
+    try {
+      await handleCommentsRoute(method, path, deps);
+    } catch (e) {
+      thrown = e;
+    }
+    assertEquals((thrown as { code?: string })?.code, "TOKEN_EXPIRED");
+    assertEquals(calls.graph.length, 0);
+  }
 });
 
 Deno.test("post de outra conta → 404", async () => {

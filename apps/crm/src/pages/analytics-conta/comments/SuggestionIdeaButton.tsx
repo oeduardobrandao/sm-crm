@@ -9,7 +9,7 @@ type Idea = CommentAnalysis['ideias'][number];
 
 /** Prefilled description of an idea saved from a comments reading. */
 export function suggestionDescription(idea: Idea, sourceLabel: string): string {
-  return `${idea.descricao}\n\nOrigem: comentários de ${sourceLabel} (${idea.motivo})`;
+  return `${idea.descricao}\n\nOrigem: comentários ${sourceLabel} (${idea.motivo})`;
 }
 
 /**

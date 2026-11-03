@@ -10,10 +10,12 @@
 -- 3. ideias.origem_sugestao_id: id da sugestão da IA que virou ideia, para o "Virar ideia" não
 --    duplicar (índice único parcial por workspace).
 --
--- Ordem de deploy: esta migration (staging, depois prod) -> redeploy de cada function que importa
+-- Ordem de deploy: esta migration (staging, depois prod) -> redeploy de `instagram-analytics` e
+-- `instagram-integration` (o /disconnect apaga da tabela nova) e de cada function que importa
 -- _shared/entitlements.ts (FEATURE_COLUMNS ganha a chave; o platform-admin espalha FEATURE_COLUMNS
--- no insert/update de planos, então a coluna precisa existir antes) e de instagram-analytics
--- -> merge (o frontend sai com o merge).
+-- no insert/update de planos, então a coluna precisa existir antes): automation-media, data-import,
+-- equipe-chat-media, mcp-keys, mcp-oauth-consent, paywall-report, platform-admin e workspace-limits
+-- -> merge (o frontend sai com o merge) -> override do piloto.
 
 SET LOCAL lock_timeout = '5s';
 

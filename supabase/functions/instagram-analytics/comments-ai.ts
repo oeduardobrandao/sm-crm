@@ -48,7 +48,7 @@ function clean(s: string, max?: number): string {
 }
 
 function block(tag: string, texts: string[]): string {
-  const lines = texts.map((t) => clean(t)).filter(Boolean);
+  const lines = texts.map((t) => clean(t, 500)).filter(Boolean);
   return `<<<COMENTARIOS_${tag}\n${lines.join("\n")}\nCOMENTARIOS_${tag}>>>`;
 }
 

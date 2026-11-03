@@ -14,7 +14,6 @@ import {
   type PostCommentsResponse,
 } from '../../../services/instagramComments';
 import { sanitizeUrl } from '../../../utils/security';
-import { mediaTypeLabel } from '../../analytics/phone/shared';
 import { CommentsAnalysisView } from './CommentsAnalysisView';
 import { ReconnectState, reconnectReason } from './ReconnectState';
 
@@ -38,10 +37,18 @@ function analyzedAgo(ts: string): string {
 }
 
 /** "Reels de 28 out": names the post in the origin line of a saved idea. */
+const POST_KIND_WITH_PREPOSITION: Record<string, string> = {
+  VIDEO: 'do Reels',
+  CAROUSEL_ALBUM: 'do carrossel',
+  IMAGE: 'da imagem',
+  STORY: 'do story',
+};
+
 export function postSourceLabel(post: PostAnalytics): string {
   const d = new Date(post.posted_at);
   const when = isNaN(d.getTime()) ? '' : ` de ${format(d, 'd MMM', { locale: ptBR })}`;
-  return `${mediaTypeLabel(post.media_type)}${when}`;
+  const kind = POST_KIND_WITH_PREPOSITION[post.media_type] ?? 'do post';
+  return `${kind}${when}`;
 }
 
 function CommentRow({ c }: { c: IgComment }) {
@@ -96,7 +103,7 @@ function CommentsList({
   const footer = data.comments.length > 0 && (
     <p className="igc-comments__foot">
       {data.truncated
-        ? 'Mostrando os 200 mais recentes'
+        ? 'Mostrando 200 comentários'
         : `Mostrando ${plural(data.comments.length, 'comentário', 'comentários')}`}
       {' · '}
       <a href={sanitizeUrl(post.permalink)} target="_blank" rel="noopener noreferrer">
@@ -120,7 +127,6 @@ function CommentsList({
     <section className="igc-card igc-card--flush igc-panel__list">
       <div className="igc-card__head">
         <h3 className="igc-card__title">Comentários</h3>
-        <span className="igc-card__meta">Mais recentes</span>
       </div>
       {list}
       {footer}
@@ -234,7 +240,7 @@ export function PostCommentsPanel({
       <div className="igc-empty-reading">
         <p className="igc-state__text">
           {tooFew
-            ? `São precisos pelo menos ${MIN_COMMENTS} comentários para analisar. Este post tem ${data.total_fetched.toLocaleString('pt-BR')}.`
+            ? `São necessários pelo menos ${MIN_COMMENTS} comentários para analisar. Este post tem ${data.total_fetched.toLocaleString('pt-BR')}.`
             : `Resuma o clima ${total === 1 ? 'do comentário' : `dos ${total.toLocaleString('pt-BR')} comentários`} e receba ideias de conteúdo.`}
         </p>
         <Button

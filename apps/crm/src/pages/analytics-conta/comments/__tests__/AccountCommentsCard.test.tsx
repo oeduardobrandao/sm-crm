@@ -138,7 +138,7 @@ describe('AccountCommentsCard', () => {
     renderCard();
     fireEvent.click(await screen.findByRole('button', { name: 'Analisar' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'São precisos pelo menos 10 comentários nos últimos 30 dias para analisar.',
+      'São necessários pelo menos 10 comentários nos últimos 30 dias para analisar.',
     );
   });
 
