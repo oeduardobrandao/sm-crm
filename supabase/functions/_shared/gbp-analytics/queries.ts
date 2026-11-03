@@ -70,7 +70,7 @@ export async function loadUnits(db: Db, contaId: string, clientId: number): Prom
 
 const locationNames = (units: GbpUnit[]) => units.map((u) => u.location_name);
 
-async function loadMetrics(db: Db, contaId: string, units: GbpUnit[], start: string, end: string): Promise<GbpMetricsRow[]> {
+export async function loadMetrics(db: Db, contaId: string, units: GbpUnit[], start: string, end: string): Promise<GbpMetricsRow[]> {
   return await pages<GbpMetricsRow>((from, to) =>
     db.from("gbp_metrics_daily").select(GBP_METRIC_COLUMNS)
       .eq("conta_id", contaId)
@@ -96,7 +96,7 @@ async function hasMetricsOnOrBefore(db: Db, contaId: string, units: GbpUnit[], d
   return Array.isArray(data) && data.length > 0;
 }
 
-async function loadRatings(db: Db, contaId: string, units: GbpUnit[], w: AnalyticsWindow): Promise<GbpRatingRow[]> {
+export async function loadRatings(db: Db, contaId: string, units: GbpUnit[], w: AnalyticsWindow): Promise<GbpRatingRow[]> {
   return await pages<GbpRatingRow>((from, to) =>
     db.from("gbp_rating_daily").select("location_name, day, average_rating, total_review_count")
       .eq("conta_id", contaId)
