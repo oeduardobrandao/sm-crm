@@ -312,6 +312,9 @@ describe('GoogleOverviewPage', () => {
   it('the client filter asks the server for that client and keeps every option', async () => {
     renderPage();
     await heading();
+    // The options come from the loaded units: the heading renders first, so wait for option 2
+    // or the change lands on a select that has no such value yet.
+    await screen.findByRole('option', { name: 'Odonto Beta' });
     const select = screen.getByRole('combobox', { name: 'Cliente' });
     fireEvent.change(select, { target: { value: '2' } });
     await waitFor(() => expect(getGbpPortfolio).toHaveBeenCalledWith(30, 2));
