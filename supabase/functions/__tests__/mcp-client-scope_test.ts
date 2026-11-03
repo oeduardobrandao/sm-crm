@@ -287,7 +287,7 @@ Deno.test("client scope: errorResult maps ClientScopeError to the generic messag
   }
 });
 
-Deno.test("client scope: loaded at most once per request, and not at all by tools that don't touch clients", async () => {
+Deno.test("client scope: tools that don't touch clients never load it (at-most-once is the clientScopeGetter test)", async () => {
   const s = setup(RESTRICTED, { clientes: [{ data: [], error: null }] });
   await s.call("list_workflow_templates", {});
   assertEquals(s.loads(), 0);

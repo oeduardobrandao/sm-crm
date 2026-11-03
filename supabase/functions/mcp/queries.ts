@@ -1327,9 +1327,10 @@ export async function createWorkflow(
   d: Deps,
   args: { client_id: number; titulo: string; template_id?: number },
 ): Promise<any> {
+  // Scope first: a restricted member gets the same refusal whether the client exists or not.
+  await assertClientWrite(d, args.client_id);
   const client = await verifyClient(d, args.client_id);
   if (!client) throw new McpInputError("Cliente não encontrado neste workspace.");
-  await assertClientWrite(d, args.client_id);
 
   // Optional template (tenant-scoped); DB error re-thrown before the not-found check.
   let template: any = null;
@@ -1435,9 +1436,9 @@ export async function createPost(
   // Post avulso: sem fluxo, preso direto ao cliente. ordem conta so entre os
   // avulsos deste cliente (workflow_id is null), nunca entre posts ja anexados
   // a um fluxo do mesmo cliente.
+  await assertClientWrite(d, args.cliente_id!);
   const client = await verifyClient(d, args.cliente_id!);
   if (!client) throw new McpInputError("Cliente não encontrado neste workspace.");
-  await assertClientWrite(d, args.cliente_id!);
 
   const { data: last } = await d.db
     .from("workflow_posts")
