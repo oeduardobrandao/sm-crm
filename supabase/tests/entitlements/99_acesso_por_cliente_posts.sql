@@ -55,6 +55,20 @@ begin
   execute 'reset role';
   return null;
 end $f$;
+-- error message of a statement run WITHOUT RLS but with p_user's claims (what a
+-- SECURITY DEFINER RPC called by p_user does), or NULL on success
+create or replace function pg_temp.errm_definer_as(p_user uuid, p_sql text) returns text language plpgsql as $f$
+begin
+  perform set_config('request.jwt.claims', json_build_object('sub', p_user, 'role', 'authenticated')::text, true);
+  begin
+    execute p_sql;
+  exception when others then
+    perform set_config('request.jwt.claims', '', true);
+    return sqlerrm;
+  end;
+  perform set_config('request.jwt.claims', '', true);
+  return null;
+end $f$;
 -- rows affected by a statement as p_user
 create or replace function pg_temp.rows_as(p_user uuid, p_sql text) returns bigint language plpgsql as $f$
 declare v bigint;
@@ -175,7 +189,7 @@ begin
     values (v_pb_other, v_ws, 'own', v_restr, 'conteudo');
 
   -- workflow children
-  insert into workflow_select_options (workflow_id, property_definition_id, conta_id, label) values (v_wa, v_prop, v_ws, 'a'), (v_wb, v_prop, v_ws, 'b');
+  insert into workflow_select_options (workflow_id, property_definition_id, conta_id, label) values (v_wa, v_prop, v_ws, 'a'), (v_wb, v_prop, v_ws, 'b'), (v_wb2, v_prop, v_ws, 'b2');
   insert into portal_tokens (workflow_id, conta_id) values (v_wa, v_ws), (v_wb, v_ws);
   insert into portal_approvals (workflow_etapa_id, token, action) values (v_ea, 'ta', 'mensagem'), (v_eb_other, 'tb', 'mensagem');
   insert into workflow_events (workflow_id, conta_id, event_type, source) values (v_wa, v_ws, 'fluxo_editado', 'system'), (v_wb, v_ws, 'fluxo_editado', 'system');
@@ -274,15 +288,30 @@ begin
   assert v_err = 'client_scope_restricted', 'own_post_in_b_move_to_hidden_client_denied (cliente): ' || coalesce(v_err, 'updated');
   v_err := pg_temp.err_as(v_restr, format('update workflow_posts set cliente_id = %s where id = %s', v_cb, v_av_a));
   assert v_err = '42501', 'move_post_to_hidden_client_denied: ' || coalesce(v_err, 'updated');
-  -- moving his own B post into a client he does access is fine
+  -- move_out_of_hidden_client_denied: the SOURCE is checked too, so his own item
+  -- in a hidden client can be edited but never relocated (then deleted)
   v_err := pg_temp.errm_as(v_restr, format('update workflow_posts set workflow_id = %s where id = %s', v_wa, v_pb_own));
-  assert v_err is null, 'own_post_in_b_move_to_accessible_workflow_allowed: ' || coalesce(v_err, '');
-  perform set_config('request.jwt.claims', '', true);
-  perform set_config('app.allow_post_move', 'on', true);
-  update workflow_posts set workflow_id = v_wb where id = v_pb_own;  -- back to wB (superuser)
-  perform set_config('app.allow_post_move', '', true);
+  assert v_err = 'client_scope_restricted', 'own_post_in_b_move_to_accessible_workflow_denied: ' || coalesce(v_err, 'updated');
+  v_err := pg_temp.errm_as(v_restr, format('update workflow_posts set workflow_id = null where id = %s', v_pb_own));
+  assert v_err = 'client_scope_restricted', 'own_post_in_b_detach_denied: ' || coalesce(v_err, 'updated');
+  v_err := pg_temp.errm_as(v_restr, format('update workflow_posts set workflow_id = null, cliente_id = %s where id = %s', v_ca, v_pb_own));
+  assert v_err = 'client_scope_restricted', 'own_post_in_b_move_to_accessible_client_denied: ' || coalesce(v_err, 'updated');
   v_err := pg_temp.errm_as(v_restr, format('update workflow_etapas set workflow_id = %s where id = %s', v_wb2, v_eb_own));
   assert v_err = 'client_scope_restricted', 'own_etapa_in_b_move_to_hidden_workflow_denied: ' || coalesce(v_err, 'updated');
+  v_err := pg_temp.errm_as(v_restr, format('update workflow_etapas set workflow_id = %s where id = %s', v_wa, v_eb_own));
+  assert v_err = 'client_scope_restricted', 'own_etapa_in_b_move_to_accessible_workflow_denied: ' || coalesce(v_err, 'updated');
+  -- moves between accessible clients still work
+  v_err := pg_temp.errm_as(v_restr, format('update workflow_posts set workflow_id = %s where id = %s', v_wa, v_av_a_own));
+  assert v_err is null, 'own_post_in_a_attach_to_a_workflow_allowed: ' || coalesce(v_err, '');
+  perform set_config('app.allow_post_move', '', true);
+  -- responsavel_id guard (DEFINER path, RLS bypassed): a restricted caller can't
+  -- make a row of a client he can't access his own
+  v_err := pg_temp.errm_definer_as(v_restr, format('update workflow_posts set responsavel_id = %s where id = %s', v_membro, v_pb_other));
+  assert v_err = 'client_scope_restricted', 'self_assign_hidden_post_denied: ' || coalesce(v_err, 'updated');
+  v_err := pg_temp.errm_definer_as(v_restr, format('update workflow_etapas set responsavel_id = %s where id = %s', v_membro, v_eb_other));
+  assert v_err = 'client_scope_restricted', 'self_assign_hidden_etapa_denied: ' || coalesce(v_err, 'updated');
+  v_n := pg_temp.rows_as(v_restr, format('update workflow_posts set responsavel_id = %s where id = %s', v_membro, v_pa));
+  assert v_n = 1, 'self_assign_accessible_post_allowed: ' || v_n;
   -- own_post_in_b_can_edit_caption / own_etapa_in_b_can_complete
   v_n := pg_temp.rows_as(v_restr, format('update workflow_posts set ig_caption = ''nova'' where id = %s', v_pb_own));
   assert v_n = 1, 'own_post_in_b_can_edit_caption: ' || v_n;
@@ -367,8 +396,22 @@ begin
   assert public.can_see_cliente_context(v_cb), 'own_post_gives_context_of_b';
   perform set_config('request.jwt.claims', '', true);
 
+  -- workflow_select_options: readable in wB (own post there, so the labels of his
+  -- post's select properties show), never writable; wB2 (no own item) hidden
+  v_n := pg_temp.n_as(v_restr, format('select count(*) from workflow_select_options where workflow_id = %s', v_wb));
+  assert v_n = 1, 'select_options_of_own_item_workflow_visible: ' || v_n;
+  v_n := pg_temp.n_as(v_restr, format('select count(*) from workflow_select_options where workflow_id = %s', v_wb2));
+  assert v_n = 0, 'select_options_of_workflow_without_own_item_hidden: ' || v_n;
+  v_n := pg_temp.n_as(v_restr, format('select count(*) from workflow_select_options where workflow_id = %s', v_wa));
+  assert v_n = 1, 'select_options_of_visible_workflow_visible: ' || v_n;
+  v_n := pg_temp.rows_as(v_restr, format('update workflow_select_options set label = ''x'' where workflow_id = %s', v_wb));
+  assert v_n = 0, 'select_options_of_own_item_workflow_not_updatable: ' || v_n;
+  v_n := pg_temp.rows_as(v_restr, format('delete from workflow_select_options where workflow_id = %s', v_wb));
+  assert v_n = 0, 'select_options_of_own_item_workflow_not_deletable: ' || v_n;
+  v_n := pg_temp.rows_as(v_restr, format('update workflow_select_options set label = ''a2'' where workflow_id = %s', v_wa));
+  assert v_n = 1, 'select_options_of_visible_workflow_updatable: ' || v_n;
   -- workflow children: wA visible, wB hidden
-  foreach v_t in array array['workflow_select_options', 'portal_tokens', 'workflow_events'] loop
+  foreach v_t in array array['portal_tokens', 'workflow_events'] loop
     v_n := pg_temp.n_as(v_restr, format('select count(*) from %I where workflow_id = %s', v_t, v_wb));
     assert v_n = 0, format('%s_of_hidden_workflow_hidden: %s', v_t, v_n);
     v_n := pg_temp.n_as(v_restr, format('select count(*) from %I where workflow_id = %s', v_t, v_wa));
@@ -401,6 +444,8 @@ begin
   v_err := pg_temp.err_as(v_restr, format(
     'insert into workflow_select_options (workflow_id, property_definition_id, conta_id, label) values (%s, %s, %L, ''z'')', v_wb, v_prop, v_ws));
   assert v_err = '42501', 'insert_select_option_into_hidden_workflow_denied: ' || coalesce(v_err, 'inserted');
+  v_n := pg_temp.rows_as(v_todos, format('update workflow_select_options set label = ''b'' where workflow_id = %s', v_wb));
+  assert v_n = 1, 'todos_update_select_option_in_b: ' || v_n;
   v_n := pg_temp.rows_as(v_restr, format('delete from post_media where post_id = %s and uploaded_by <> %L', v_pb_other, v_restr));
   assert v_n = 0, 'delete_media_of_hidden_post_denied: ' || v_n;
 
@@ -412,6 +457,34 @@ begin
   assert v_n = 1, 'own_media_on_own_b_post_delete_ok: ' || v_n;
   v_n := pg_temp.rows_as(v_restr, format('delete from post_media where post_id = %s and uploaded_by = %L', v_pb_own, v_owner));
   assert v_n = 0, 'others_media_on_own_b_post_delete_denied: ' || v_n;
+  -- author_forge_denied: rewriting the author column to unlock the delete is refused
+  v_err := pg_temp.errm_as(v_restr, format('update post_media set uploaded_by = %L where post_id = %s', v_restr, v_pb_own));
+  assert v_err = 'author_immutable', 'forge_media_uploaded_by_denied: ' || coalesce(v_err, 'updated');
+  v_err := pg_temp.errm_as(v_restr, format('update post_comment_threads set created_by = %L where post_id = %s', v_restr, v_pb_own));
+  assert v_err = 'author_immutable', 'forge_thread_created_by_denied: ' || coalesce(v_err, 'updated');
+  v_err := pg_temp.errm_as(v_restr, format('update post_comments set author_id = %L where thread_id in (select id from post_comment_threads where post_id = %s)', v_restr, v_pb_own));
+  assert v_err = 'author_immutable', 'forge_comment_author_denied: ' || coalesce(v_err, 'updated');
+  v_err := pg_temp.errm_as(v_todos, format('update post_media set uploaded_by = %L where post_id = %s', v_todos, v_pa));
+  assert v_err = 'author_immutable', 'forge_media_uploaded_by_denied_for_todos_too: ' || coalesce(v_err, 'updated');
+  -- child_move_out_of_hidden_post_denied: re-parenting a child of his hidden-client
+  -- post onto a post he can access, to delete it there
+  v_err := pg_temp.errm_as(v_restr, format('update post_media set post_id = %s where post_id = %s', v_pa, v_pb_own));
+  assert v_err = 'client_scope_restricted', 'move_media_out_of_hidden_post_denied: ' || coalesce(v_err, 'updated');
+  v_err := pg_temp.errm_as(v_restr, format('update post_comment_threads set post_id = %s where post_id = %s', v_pa, v_pb_own));
+  assert v_err = 'client_scope_restricted', 'move_thread_out_of_hidden_post_denied: ' || coalesce(v_err, 'updated');
+  v_err := pg_temp.errm_as(v_restr, format(
+    'update post_comments set thread_id = (select id from post_comment_threads where post_id = %s limit 1) where thread_id in (select id from post_comment_threads where post_id = %s)', v_pa, v_pb_own));
+  assert v_err = 'client_scope_restricted', 'move_comment_out_of_hidden_post_denied: ' || coalesce(v_err, 'updated');
+  foreach v_t in array array['post_property_values', 'post_edit_suggestions', 'post_targets'] loop
+    v_err := pg_temp.errm_as(v_restr, format('update %I set post_id = %s where post_id = %s', v_t, v_av_a_own, v_pb_own));
+    assert v_err = 'client_scope_restricted', format('move_%s_out_of_hidden_post_denied: %s', v_t, coalesce(v_err, 'updated'));
+  end loop;
+  -- service role (auth.uid() NULL) may still rewrite authors
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  update post_media set uploaded_by = uploaded_by where post_id = v_pa;
+  update post_media set uploaded_by = v_todos where post_id = v_pa and uploaded_by = v_owner;
+  update post_media set uploaded_by = v_owner where post_id = v_pa and uploaded_by = v_todos;
+  perform set_config('request.jwt.claims', '', true);
   v_n := pg_temp.rows_as(v_restr, format('update post_media set sort_order = 5 where post_id = %s', v_pb_own));
   assert v_n = 1, 'others_media_on_own_b_post_updatable: ' || v_n;
   v_err := pg_temp.err_as(v_restr, format(

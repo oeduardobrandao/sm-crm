@@ -15,8 +15,8 @@
 -- Filhas do post: leitura, INSERT e UPDATE pelo post visível (EXISTS no pai, que
 --   roda com a RLS dele), mais as colunas de autor na leitura. DELETE num post de
 --   cliente que ele não acessa: só a linha que ele mesmo escreveu.
--- Filhas do workflow (opções, tokens do portal, eventos): estritas pelo cliente
---   do workflow; o workflow legível por contexto não as libera.
+-- Filhas do workflow (tokens do portal, eventos): estritas pelo cliente do
+--   workflow. Opções de select: legíveis no workflow de contexto, escrita estrita.
 -- Onde a policy atual é FOR ALL, a parte estrita (INSERT/DELETE) entra como
 -- policy RESTRICTIVE nova: a permissiva fica igual e o membro irrestrito não muda
 -- (o primeiro termo de cada restritiva é (SELECT my_client_scope_all())).
@@ -70,27 +70,44 @@ $$;
 REVOKE ALL ON FUNCTION public.workflow_has_own_item(bigint) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.workflow_has_own_item(bigint) TO authenticated, service_role;
 
--- Mover um item (cliente_id ou workflow_id) para um cliente que um membro
--- restrito não acessa: o WITH CHECK do UPDATE tem o "é dele", então quem barra
--- a troca é este trigger. Restrito = linha em workspace_members da conta do item
--- com client_scope 'atribuidos' e papel diferente de owner. auth.uid() NULL
--- (service role, cron) e membros irrestritos passam. Também vale dentro das RPCs
--- de mover (detach/attach), que rodam com o auth.uid() de quem chamou.
+-- Guarda das raízes de item (workflow_posts, workflow_etapas) para membro
+-- restrito: o WITH CHECK do UPDATE tem o "é dele", então quem barra a
+-- realocação e a autoatribuição é este trigger.
+--   * mover (cliente_id ou workflow_id, inclusive para NULL) exige acesso ao
+--     cliente de ORIGEM e ao de DESTINO: o item dele num cliente oculto pode
+--     ser editado, nunca tirado de lá (e depois apagado);
+--   * pôr a si mesmo como responsável exige acesso ao cliente do item (vale
+--     também nos caminhos SECURITY DEFINER, que não passam pela RLS).
+-- Restrito = linha em workspace_members da conta do item com client_scope
+-- 'atribuidos' e papel diferente de owner. auth.uid() NULL (service role, cron)
+-- e membros irrestritos passam. Vale dentro das RPCs de mover (detach/attach),
+-- que rodam com o auth.uid() de quem chamou.
 CREATE OR REPLACE FUNCTION public.guard_client_scope_move()
 RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_uid   uuid := auth.uid();
-  v_conta uuid;
-  v_cli   bigint;
+  v_uid     uuid := auth.uid();
+  v_conta   uuid;
+  v_old_cli bigint;
+  v_new_cli bigint;
+  v_moved   boolean;
 BEGIN
   IF v_uid IS NULL THEN RETURN NEW; END IF;
+  -- IFs aninhados: plpgsql resolve NEW.cliente_id mesmo com o AND falso, e
+  -- workflow_etapas não tem a coluna.
   IF TG_TABLE_NAME = 'workflow_posts' THEN
-    v_conta := NEW.conta_id;
+    v_conta   := NEW.conta_id;
+    v_old_cli := OLD.cliente_id;
+    v_new_cli := NEW.cliente_id;  -- já derivado do workflow por post_a0_sync_cliente
+    v_moved   := NEW.cliente_id IS DISTINCT FROM OLD.cliente_id
+                 OR NEW.workflow_id IS DISTINCT FROM OLD.workflow_id;
   ELSE
-    SELECT w.conta_id INTO v_conta FROM public.workflows w WHERE w.id = NEW.workflow_id;
+    SELECT w.conta_id, w.cliente_id INTO v_conta, v_new_cli
+      FROM public.workflows w WHERE w.id = NEW.workflow_id;
+    SELECT w.cliente_id INTO v_old_cli FROM public.workflows w WHERE w.id = OLD.workflow_id;
+    v_moved := NEW.workflow_id IS DISTINCT FROM OLD.workflow_id;
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM public.workspace_members wm
@@ -99,19 +116,24 @@ BEGIN
   ) THEN
     RETURN NEW;
   END IF;
-  -- IF aninhado: plpgsql resolve NEW.cliente_id mesmo com o AND falso, e
-  -- workflow_etapas não tem a coluna.
-  IF TG_TABLE_NAME = 'workflow_posts' THEN
-    IF NEW.cliente_id IS DISTINCT FROM OLD.cliente_id
-       AND NOT public.can_access_cliente(v_uid, v_conta, NEW.cliente_id) THEN
+  IF v_moved THEN
+    IF NOT public.can_access_cliente(v_uid, v_conta, v_old_cli)
+       OR NOT public.can_access_cliente(v_uid, v_conta, v_new_cli) THEN
       RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';
+    END IF;
+    IF TG_TABLE_NAME = 'workflow_posts' THEN
+      IF NEW.workflow_id IS NOT NULL
+         AND NOT public.can_access_cliente(v_uid, v_conta,
+               (SELECT w.cliente_id FROM public.workflows w WHERE w.id = NEW.workflow_id)) THEN
+        RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';
+      END IF;
     END IF;
   END IF;
-  IF NEW.workflow_id IS DISTINCT FROM OLD.workflow_id AND NEW.workflow_id IS NOT NULL THEN
-    SELECT w.cliente_id INTO v_cli FROM public.workflows w WHERE w.id = NEW.workflow_id;
-    IF NOT public.can_access_cliente(v_uid, v_conta, v_cli) THEN
-      RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';
-    END IF;
+  IF NEW.responsavel_id IS DISTINCT FROM OLD.responsavel_id
+     AND EXISTS (SELECT 1 FROM public.membros m
+                  WHERE m.id = NEW.responsavel_id AND m.crm_user_id = v_uid AND m.conta_id = v_conta)
+     AND NOT public.can_access_cliente(v_uid, v_conta, v_new_cli) THEN
+    RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';
   END IF;
   RETURN NEW;
 END;
@@ -119,11 +141,94 @@ $$;
 REVOKE ALL ON FUNCTION public.guard_client_scope_move() FROM PUBLIC, anon, authenticated;
 
 CREATE TRIGGER workflow_posts_client_scope_guard
-  BEFORE UPDATE OF cliente_id, workflow_id ON public.workflow_posts
+  BEFORE UPDATE OF cliente_id, workflow_id, responsavel_id ON public.workflow_posts
   FOR EACH ROW EXECUTE FUNCTION public.guard_client_scope_move();
 CREATE TRIGGER workflow_etapas_client_scope_guard
-  BEFORE UPDATE OF workflow_id ON public.workflow_etapas
+  BEFORE UPDATE OF workflow_id, responsavel_id ON public.workflow_etapas
   FOR EACH ROW EXECUTE FUNCTION public.guard_client_scope_move();
+
+-- Guarda das filhas do post com DELETE estrito (post_media, threads,
+-- comentários, sugestões, alvos, valores de propriedade):
+--   * a coluna de autor que libera o DELETE (uploaded_by, created_by,
+--     author_id) é imutável para qualquer usuário logado: sem isto um restrito
+--     reescreveria o autor da linha visível e então a apagaria. Nenhum trigger
+--     ou grant por coluna fixava essas colunas (post_media_notes.author_user_id
+--     já é fixado pelo GRANT UPDATE (status) da tabela);
+--   * trocar o pai (post_id, thread_id) exige, para o restrito, acesso ao
+--     cliente do post de ORIGEM: senão ele moveria a filha do post dele num
+--     cliente oculto para um post acessível e a apagaria lá.
+-- auth.uid() NULL (service role, cron) passa.
+CREATE OR REPLACE FUNCTION public.guard_post_child_update()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid      uuid := auth.uid();
+  v_old_post bigint;
+  v_moved    boolean := false;
+  v_conta    uuid;
+  v_cli      bigint;
+BEGIN
+  IF v_uid IS NULL THEN RETURN NEW; END IF;
+  IF TG_TABLE_NAME = 'post_media' THEN
+    IF NEW.uploaded_by IS DISTINCT FROM OLD.uploaded_by THEN
+      RAISE EXCEPTION 'author_immutable' USING ERRCODE = '42501';
+    END IF;
+  ELSIF TG_TABLE_NAME = 'post_comment_threads' THEN
+    IF NEW.created_by IS DISTINCT FROM OLD.created_by THEN
+      RAISE EXCEPTION 'author_immutable' USING ERRCODE = '42501';
+    END IF;
+  ELSIF TG_TABLE_NAME = 'post_comments' THEN
+    IF NEW.author_id IS DISTINCT FROM OLD.author_id THEN
+      RAISE EXCEPTION 'author_immutable' USING ERRCODE = '42501';
+    END IF;
+  END IF;
+  IF TG_TABLE_NAME = 'post_comments' THEN
+    IF NEW.thread_id IS DISTINCT FROM OLD.thread_id THEN
+      v_moved := true;
+      SELECT t.post_id INTO v_old_post FROM public.post_comment_threads t WHERE t.id = OLD.thread_id;
+    END IF;
+  ELSE
+    IF NEW.post_id IS DISTINCT FROM OLD.post_id THEN
+      v_moved := true;
+      v_old_post := OLD.post_id;
+    END IF;
+  END IF;
+  IF v_moved THEN
+    SELECT wp.conta_id, wp.cliente_id INTO v_conta, v_cli
+      FROM public.workflow_posts wp WHERE wp.id = v_old_post;
+    IF EXISTS (
+         SELECT 1 FROM public.workspace_members wm
+          WHERE wm.workspace_id = v_conta AND wm.user_id = v_uid
+            AND wm.role <> 'owner' AND wm.client_scope = 'atribuidos')
+       AND NOT public.can_access_cliente(v_uid, v_conta, v_cli) THEN
+      RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.guard_post_child_update() FROM PUBLIC, anon, authenticated;
+
+CREATE TRIGGER post_media_scope_guard
+  BEFORE UPDATE OF uploaded_by, post_id ON public.post_media
+  FOR EACH ROW EXECUTE FUNCTION public.guard_post_child_update();
+CREATE TRIGGER post_comment_threads_scope_guard
+  BEFORE UPDATE OF created_by, post_id ON public.post_comment_threads
+  FOR EACH ROW EXECUTE FUNCTION public.guard_post_child_update();
+CREATE TRIGGER post_comments_scope_guard
+  BEFORE UPDATE OF author_id, thread_id ON public.post_comments
+  FOR EACH ROW EXECUTE FUNCTION public.guard_post_child_update();
+CREATE TRIGGER post_edit_suggestions_scope_guard
+  BEFORE UPDATE OF post_id ON public.post_edit_suggestions
+  FOR EACH ROW EXECUTE FUNCTION public.guard_post_child_update();
+CREATE TRIGGER post_targets_scope_guard
+  BEFORE UPDATE OF post_id ON public.post_targets
+  FOR EACH ROW EXECUTE FUNCTION public.guard_post_child_update();
+CREATE TRIGGER post_property_values_scope_guard
+  BEFORE UPDATE OF post_id ON public.post_property_values
+  FOR EACH ROW EXECUTE FUNCTION public.guard_post_child_update();
 
 -- -------------------------------------------------------------
 -- 1. workflow_posts
@@ -231,13 +336,18 @@ ALTER POLICY workflow_etapas_delete ON public.workflow_etapas
 -- -------------------------------------------------------------
 -- 4. Filhas do workflow: estritas pelo cliente do workflow
 -- -------------------------------------------------------------
+-- Opções de select: legíveis também no workflow de contexto (item dele), para
+-- os rótulos das propriedades do post dele aparecerem. Escrita estrita: o WITH
+-- CHECK não tem o item dele, e UPDATE/DELETE (que o USING do FOR ALL também
+-- rege) ficam estritos pelas RESTRICTIVE abaixo.
 ALTER POLICY workspace_wso_all ON public.workflow_select_options
   USING (
     conta_id IN (SELECT public.get_my_conta_id())
     AND ((SELECT public.my_client_scope_all())
          OR EXISTS (SELECT 1 FROM public.workflows w
                      WHERE w.id = workflow_select_options.workflow_id
-                       AND public.can_access_cliente(w.cliente_id)))
+                       AND (public.can_access_cliente(w.cliente_id)
+                            OR public.workflow_has_own_item(w.id))))
   )
   WITH CHECK (
     conta_id IN (SELECT public.get_my_conta_id())
@@ -245,6 +355,23 @@ ALTER POLICY workspace_wso_all ON public.workflow_select_options
          OR EXISTS (SELECT 1 FROM public.workflows w
                      WHERE w.id = workflow_select_options.workflow_id
                        AND public.can_access_cliente(w.cliente_id)))
+  );
+
+CREATE POLICY workflow_select_options_scope_update ON public.workflow_select_options
+  AS RESTRICTIVE FOR UPDATE TO authenticated
+  USING (
+    (SELECT public.my_client_scope_all())
+    OR EXISTS (SELECT 1 FROM public.workflows w
+                WHERE w.id = workflow_select_options.workflow_id
+                  AND public.can_access_cliente(w.cliente_id))
+  );
+CREATE POLICY workflow_select_options_scope_delete ON public.workflow_select_options
+  AS RESTRICTIVE FOR DELETE TO authenticated
+  USING (
+    (SELECT public.my_client_scope_all())
+    OR EXISTS (SELECT 1 FROM public.workflows w
+                WHERE w.id = workflow_select_options.workflow_id
+                  AND public.can_access_cliente(w.cliente_id))
   );
 
 ALTER POLICY portal_tokens_workspace_all ON public.portal_tokens
