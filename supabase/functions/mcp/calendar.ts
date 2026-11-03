@@ -4,7 +4,7 @@
 import { z } from "npm:zod@3";
 import { McpInputError } from "../_shared/mcp-token.ts";
 import { cardToolMeta } from "./apps.ts";
-import type { Deps } from "./queries.ts";
+import { canReadClient, type Deps } from "./queries.ts";
 import { register } from "./register.ts";
 import type { ToolMeta } from "./tool-meta.ts";
 
@@ -161,6 +161,8 @@ export async function listClientCalendar(
   const today = spDateOf(new Date(d.now?.() ?? new Date().toISOString()).getTime());
   const from = mondayOf(a.from ?? today);
 
+  // A client hidden by the request's client scope reads exactly like a missing one.
+  if (!(await canReadClient(d, a.client_id))) throw new McpInputError("Cliente não encontrado neste workspace.");
   const { data: client } = await d.db
     .from("clientes")
     .select("id, nome")

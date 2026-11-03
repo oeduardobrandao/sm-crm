@@ -2,7 +2,7 @@
 // web UI's file-upload-url → PUT → finalize flow; all DB mutation for set lives in the
 // post_media_set_from_uploads RPC. Own-auth via MCP key scopes (posts:write).
 import { McpInputError } from "../_shared/mcp-token.ts";
-import { getPost, type Deps } from "./queries.ts";
+import { assertClientWrite, getPost, type Deps } from "./queries.ts";
 
 const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png" };
 
@@ -65,6 +65,16 @@ export async function setPostMedia(
       throw new McpInputError("Upload não encontrado ou divergente. Gere os uploads com create_media_upload.");
     }
   }
+  // Acesso por cliente: the post's client must be assigned (writes have no "é dele"). A missing
+  // post is left to the RPC, which answers post_not_found as before.
+  const { data: post, error: postErr } = await d.db
+    .from("workflow_posts")
+    .select("id, cliente_id")
+    .eq("conta_id", d.ctx.conta_id)
+    .eq("id", args.post_id)
+    .maybeSingle();
+  if (postErr) throw postErr;
+  if (post) await assertClientWrite(d, (post as { cliente_id?: number | null }).cliente_id ?? null);
   // RETURNS jsonb (scalar) → { data, error } directly (no .single()); we ignore data and re-read
   // via getPost so the agent gets the full ordered media back.
   const { error } = await d.db.rpc("post_media_set_from_uploads", {

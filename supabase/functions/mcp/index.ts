@@ -12,6 +12,7 @@ import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { headObject, signPutUrl } from "../_shared/r2.ts";
 import { appsEnabledFor, r2OriginFrom } from "./apps.ts";
 import { registerTools } from "./tools.ts";
+import { clientScopeGetter } from "./queries.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -146,6 +147,8 @@ Deno.serve(async (req) => {
     },
     resolveDns: (hostname, recordType) => Deno.resolveDns(hostname, recordType),
     fetchUrl: (url, init) => fetch(url, init),
+    // Acesso por cliente: loaded at most once per request, only by tools that touch clients.
+    clientScope: clientScopeGetter(db, ctx),
   });
 
   const transport = new WebStandardStreamableHTTPServerTransport();

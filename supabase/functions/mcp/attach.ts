@@ -13,7 +13,7 @@ import { fetchImageSafely } from "../_shared/safe-image-fetch.ts";
 import { imageDimensions } from "../_shared/image-dimensions.ts";
 import { cardToolMeta, appOnlyToolMeta, widgetOnly } from "./apps.ts";
 import { createMediaUpload } from "./media.ts";
-import { EDITABLE_STATUSES, type Deps } from "./queries.ts";
+import { assertClientWrite, canReadPost, EDITABLE_STATUSES, type Deps } from "./queries.ts";
 import { type CardRun, register } from "./register.ts";
 import type { ToolMeta } from "./tool-meta.ts";
 
@@ -72,7 +72,7 @@ export function allowedImageHost(url: string, list: string | undefined): boolean
 }
 
 const POST_ELIGIBILITY_COLS =
-  "id, titulo, tipo, status, cliente_id, published_at, instagram_media_id, instagram_container_id, " +
+  "id, titulo, tipo, status, cliente_id, responsavel_id, published_at, instagram_media_id, instagram_container_id, " +
   "publish_processing_at, tiktok_publish_processing_at, tiktok_publish_status";
 
 async function loadPost(d: Deps, postId: number): Promise<any | null> {
@@ -185,7 +185,8 @@ export function registerAttachTools(server: any, deps: Deps): void {
         .slice(0, MAX_MEDIA).map(imagePayload);
       if (images.length === 0) throw new McpInputError(MSG.imagesArg);
       const post = await loadPost(deps, args.post_id);
-      if (!post) throw new McpInputError(MSG.notFound);
+      // A post hidden by the client scope (not the user's either) reads like a missing one.
+      if (!post || !(await canReadPost(deps, post))) throw new McpInputError(MSG.notFound);
       const [links, client] = await Promise.all([
         loadMedia(deps, post.id),
         post.cliente_id
@@ -254,6 +255,8 @@ export function registerAttachTools(server: any, deps: Deps): void {
       }
       const post = await loadPost(deps, args.post_id);
       if (!post) throw new McpInputError(MSG.notFound);
+      // Writes never use "é dele": the post's client must be assigned.
+      await assertClientWrite(deps, post.cliente_id ?? null);
       const reason = ineligibleReason(post);
       if (reason) throw new McpInputError(reason);
       const current = await loadMedia(deps, post.id);

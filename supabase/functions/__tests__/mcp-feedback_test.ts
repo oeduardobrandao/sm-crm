@@ -23,10 +23,17 @@ function makeFakeDb(responses: Record<string, Resp[]>) {
         return rec;
       };
     }
+    const next = (): Resp =>
+      (queues[table] ?? []).shift() ??
+        (table === "workspace_members"
+          ? { data: { role: "agent", client_scope: "todos" }, error: null }
+          : { data: [], error: null });
     // deno-lint-ignore no-explicit-any
-    (rec as any).then = (resolve: (r: Resp) => unknown) => {
-      const r = (queues[table] ?? []).shift() ?? { data: [], error: null };
-      return Promise.resolve(resolve(r));
+    (rec as any).then = (resolve: (r: Resp) => unknown) => Promise.resolve(resolve(next()));
+    // deno-lint-ignore no-explicit-any
+    (rec as any).maybeSingle = () => {
+      calls.push({ table, method: "maybeSingle", args: [] });
+      return Promise.resolve(next());
     };
     return rec;
   }
