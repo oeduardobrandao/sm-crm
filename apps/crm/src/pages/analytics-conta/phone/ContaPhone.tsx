@@ -529,6 +529,7 @@ export function ContaPhone(props: ContaPhoneProps) {
       />
 
       <PostDetailSheet
+        clientId={clientId}
         post={selectedPost}
         onOpenChange={(open) => {
           if (!open) setSelectedPostId(null);

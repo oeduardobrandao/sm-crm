@@ -66,10 +66,18 @@ vi.mock('../../../services/reportDocs', () => ({
   deleteReportDoc: vi.fn(),
 }));
 
+const { limitsFeatures } = vi.hoisted(() => ({
+  limitsFeatures: {
+    feature_tiktok: true,
+    feature_analytics_reports: true,
+    feature_instagram_comments_ai: false,
+  },
+}));
+
 vi.mock('@/hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: () => ({
     limits: null,
-    features: { feature_tiktok: true, feature_analytics_reports: true },
+    features: limitsFeatures,
     planName: null,
     isLoading: false,
     isSuccess: true,
@@ -80,6 +88,19 @@ vi.mock('@/hooks/useWorkspaceLimits', () => ({
 vi.mock('../../../services/tiktok', () => ({
   getTikTokSummary: vi.fn(() => Promise.resolve(null)),
 }));
+
+vi.mock('../../../services/instagramComments', async () => {
+  const actual = await vi.importActual<typeof import('../../../services/instagramComments')>(
+    '../../../services/instagramComments',
+  );
+  return { ...actual, getPostComments: vi.fn(), analyzePostComments: vi.fn() };
+});
+
+vi.mock('@/store/ideias', () => ({
+  getSavedSuggestionIds: vi.fn(() => Promise.resolve(new Set())),
+}));
+
+vi.mock('@/components/ideias/NovaIdeiaDialog', () => ({ NovaIdeiaDialog: () => null }));
 
 vi.mock('../reports/NewReportDialog', () => ({
   NewReportDialog: ({ open }: { open: boolean }) =>
@@ -108,6 +129,7 @@ import {
 import { deleteReportDoc, listReportDocs } from '../../../services/reportDocs';
 import { getReportDownloadUrl } from '../../../services/analytics';
 import { toast } from 'sonner';
+import { getPostComments } from '../../../services/instagramComments';
 
 const kpi = (current: number, previous: number) => ({
   current,
@@ -170,6 +192,7 @@ async function ready() {
 describe('AnalyticsContaPage (phone)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    limitsFeatures.feature_instagram_comments_ai = false;
     vi.mocked(getClientes).mockResolvedValue([{ id: 42, nome: 'Clínica Aurora' } as never]);
     vi.mocked(getInstagramSummary).mockResolvedValue({
       account: { username: 'clinica.aurora', profile_picture_url: null },
@@ -306,6 +329,54 @@ describe('AnalyticsContaPage (phone)', () => {
 
     fireEvent.click(within(sheet).getByRole('button', { name: 'Educativo' }));
     await waitFor(() => expect(assignTagToPost).toHaveBeenCalledWith(2, 9));
+  });
+
+  it('flag desligada: o sheet do post não tem abas nem busca comentários', async () => {
+    renderPage();
+    await ready();
+    const list = await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(within(list).getByRole('button', { name: /Reel de bastidores/ }));
+    const sheet = await screen.findByRole('dialog');
+    expect(within(sheet).queryByRole('tablist')).not.toBeInTheDocument();
+    expect(getPostComments).not.toHaveBeenCalled();
+  });
+
+  it('sheet do post tem a aba Comentários com a flag', async () => {
+    limitsFeatures.feature_instagram_comments_ai = true;
+    vi.mocked(getPostComments).mockResolvedValue({
+      comments: [
+        {
+          id: 'c1',
+          text: 'Amei o conteúdo',
+          timestamp: '2026-09-21T12:00:00Z',
+          username: 'maria',
+          like_count: 2,
+          replies_count: 0,
+          replies_more: false,
+        },
+      ],
+      total_fetched: 1,
+      truncated: false,
+      comments_count: 1,
+      cached_analysis: null,
+    });
+    renderPage();
+    await ready();
+    const list = await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(within(list).getByRole('button', { name: /Reel de bastidores/ }));
+    const sheet = await screen.findByRole('dialog');
+    const tabs = within(sheet).getByRole('tablist', { name: 'Detalhes do post' });
+    expect(within(tabs).getByRole('tab', { name: 'Insights' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(within(sheet).getByText('Reel de bastidores')).toBeInTheDocument();
+    expect(getPostComments).not.toHaveBeenCalled();
+
+    fireEvent.click(within(tabs).getByRole('tab', { name: 'Comentários' }));
+    expect(await within(sheet).findByText('Amei o conteúdo')).toBeInTheDocument();
+    expect(getPostComments).toHaveBeenCalledWith(42, 'ig1');
+    expect(within(sheet).getByRole('button', { name: 'Analisar comentários' })).toBeDisabled();
   });
 
   it('removes a tag from a post by toggling it off', async () => {
