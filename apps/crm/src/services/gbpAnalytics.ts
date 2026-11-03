@@ -107,6 +107,65 @@ export interface GbpUnitRow {
   totalReviewCount: number | null;
 }
 
+/** A counted unit (`active` or `revoked`) of an active client, over the portfolio window. */
+export interface GbpPortfolioUnit {
+  id: string;
+  clientId: number;
+  clientName: string;
+  especialidade: string | null;
+  title: string | null;
+  status: 'active' | 'revoked';
+  mapsUri: string | null;
+  lastSyncedAt: string | null;
+  /** Active and not synced for more than 48 h: left out of the portfolio watermark. */
+  stale: boolean;
+  profileViews: number;
+  /** Null when the unit's previous window is not covered. */
+  prevProfileViews: number | null;
+  calls: number;
+  directions: number;
+  websiteClicks: number;
+  messages: number;
+  bookings: number;
+  /** calls + directions + websiteClicks + messages + bookings */
+  actions: number;
+  /** The rating snapshot at the window end, else the unit's current rating. */
+  avgRating: number | null;
+  reviewCount: number | null;
+  newReviews: number | null;
+}
+
+/** A review of 3 stars or less without a reply, from the last N São Paulo days. */
+export interface GbpAttentionReview {
+  unitId: string;
+  clientId: number;
+  unitTitle: string | null;
+  mapsUri: string | null;
+  reviewerName: string | null;
+  starRating: number;
+  comment: string | null;
+  createTime: string | null;
+}
+
+export interface GbpPortfolio {
+  window: GbpOverview['window'];
+  dataThrough: string | null;
+  kpis: {
+    units: number;
+    revokedUnits: number;
+    profileViews: GbpKpiEntry;
+    actions: GbpKpiEntry;
+    avgRating: GbpKpiEntry;
+    newReviews: GbpKpiEntry;
+  };
+  units: GbpPortfolioUnit[];
+  /** Every match, newest first; the page shows 10. */
+  reviewsAttention: GbpAttentionReview[];
+}
+
+/** The portfolio page's presets: the server accepts exactly these `days`. */
+export type GbpPortfolioDays = 7 | 30 | 90;
+
 /** 404 `not_connected`: the client has no Google Meu Negócio unit (or the unit is not theirs). */
 export class GbpNotConnectedError extends Error {
   constructor() {
@@ -222,4 +281,11 @@ export function getGbpRatingDistribution(
 export async function getGbpUnits(clientId: number, range: AnalyticsRange): Promise<GbpUnitRow[]> {
   const data = await request<{ units: GbpUnitRow[] }>(`/units/${clientId}?${rangeQuery(range)}`);
   return data.units;
+}
+
+/** `/analytics/google`: every counted unit of the workspace's active clients, or one client's. */
+export function getGbpPortfolio(days: GbpPortfolioDays, clientId?: number): Promise<GbpPortfolio> {
+  const q = new URLSearchParams({ days: String(days) });
+  if (clientId !== undefined) q.set('client', String(clientId));
+  return request(`/portfolio?${q}`);
 }
