@@ -177,11 +177,12 @@ export async function fileManageScopeGate(
     fid == null || itemVisible(scope, await fileClienteId(db, fid, contaId));
   const folderVisible = async (fid: number | null) =>
     fid == null || itemVisible(scope, await folderClienteId(db, fid, contaId));
-  // Subtree operations: "hidden" answers as missing, "limited" is 403.
-  const subtree = async (fid: number | null): Promise<"ok" | "hidden" | "limited"> => {
+  // Subtree operations: "missing" lets the route answer its own not-found first (it validates the
+  // primary item before any secondary id), "hidden" answers as missing, "limited" is 403.
+  const subtree = async (fid: number | null): Promise<"ok" | "missing" | "hidden" | "limited"> => {
     if (fid == null) return "ok";
     const c = await folderClienteId(db, fid, contaId);
-    if (c === NOT_IN_WORKSPACE) return "ok"; // the route answers its own not-found
+    if (c === NOT_IN_WORKSPACE) return "missing";
     if (!itemVisible(scope, c)) return "hidden";
     return (await subtreeHasHiddenClient(db, scope, fid, contaId)) ? "limited" : "ok";
   };
@@ -221,20 +222,25 @@ export async function fileManageScopeGate(
       return (await folderVisible(id(body?.parent_id))) ? decision : nf("Parent folder not found");
     }
     if (method === "PATCH" && idStr) {
+      // Same order as the route: the folder (404), then the new parent (404). A missing folder is
+      // answered by the route before it ever looks at parent_id.
       const moving = body?.parent_id !== undefined;
       if (moving) {
         const s = await subtree(fid);
+        if (s === "missing") return decision;
         if (s === "hidden") return nf("Folder not found");
         if (s === "limited") return limited();
-      } else if (!(await folderVisible(fid))) return nf("Folder not found");
-      return (await folderVisible(moving ? id(body?.parent_id) : null)) ? decision : nf("Parent folder not found");
+        return (await folderVisible(id(body?.parent_id))) ? decision : nf("Parent folder not found");
+      }
+      return (await folderVisible(fid)) ? decision : nf("Folder not found");
     }
     if (method === "DELETE" && idStr) {
       const s = await subtree(fid);
-      return s === "hidden" ? nf("Folder not found") : s === "limited" ? limited() : decision;
+      return s === "hidden" ? nf("Folder not found") : s === "limited" ? limited() : decision; // missing: route 404
     }
     if (method === "POST" && idStr && subResource === "copy") {
       const s = await subtree(fid);
+      if (s === "missing") return decision; // the route's "Folder not found" comes before the destination
       if (s === "hidden") return nf("Folder not found");
       if (s === "limited") return limited();
       return (await folderVisible(id(body?.destination_folder_id))) ? decision : nf("Destination not found");
@@ -248,7 +254,16 @@ export async function fileManageScopeGate(
       (method === "POST" && idStr && subResource === "copy") ||
       (method === "PATCH" && idStr) || (method === "DELETE" && idStr);
     if (!known) return nf("Not found");
-    if (!(await fileVisible(fid))) return nf("File not found");
+    if (method === "PATCH" && fid != null) {
+      // The route answers "File not found" for a missing, foreign or reference file before it reads
+      // folder_id; leave those to it so a hidden folder_id never changes the answer.
+      const { data: f, error } = await db.from("files").select("conta_id, attached_to").eq("id", fid).maybeSingle();
+      if (error) throw new Error(`file-manage gate: file read failed: ${error.message ?? "unknown"}`);
+      if (!f || f.conta_id !== contaId || f.attached_to != null) return decision;
+    }
+    const c = fid == null ? null : await fileClienteId(db, fid, contaId);
+    if (c === NOT_IN_WORKSPACE) return decision; // the route's "File not found" comes first
+    if (!itemVisible(scope, c)) return nf("File not found");
     if (method === "POST") {
       return (await folderVisible(id(body?.destination_folder_id))) ? decision : nf("Destination not found");
     }

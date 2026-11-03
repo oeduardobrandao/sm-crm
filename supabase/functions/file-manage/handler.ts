@@ -6,7 +6,9 @@ import { effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
 import {
   type ClientScope,
   type ClientScopeLoader,
+  hasClientAccess,
   loadClientScope as realLoadClientScope,
+  rowVisibility,
 } from "../_shared/client-scope.ts";
 import { visibleFolderRows } from "../_shared/file-client-scope.ts";
 import {
@@ -573,26 +575,40 @@ export function createFileManageHandler(deps: FileManageDeps) {
           // tem FK composta e este cliente é service role (spec 2026-10-02).
           const [{ data: links }, { data: reportLinks }] = await Promise.all([
             svc.from("post_file_links")
-              .select("post_id, workflow_posts(titulo, workflow_id, workflows(titulo))")
+              .select("post_id, workflow_posts(titulo, cliente_id, responsavel_id, workflow_id, workflows(titulo))")
               .eq("file_id", fileId)
               .eq("conta_id", contaId),
             svc.from("report_document_files")
-              .select("report_id, report_documents(title)")
+              .select("report_id, report_documents(title, client_id)")
               .eq("file_id", fileId)
               .eq("conta_id", contaId),
           ]);
+          // Acesso por cliente: a restricted caller keeps the 409 and the counts, but entries of
+          // hidden clients come back anonymised (no ids, no post / workflow / report titles). The
+          // caller's own post stays readable (é dele); reports have no "é dele".
+          const postHidden = (l: any) =>
+            !scope.all && rowVisibility(scope, {
+              cliente_id: l.workflow_posts?.cliente_id ?? null,
+              responsavel_id: l.workflow_posts?.responsavel_id ?? null,
+            }, user.id) === "hidden";
+          const reportHidden = (l: any) =>
+            !scope.all && !hasClientAccess(scope, l.report_documents?.client_id ?? null, false);
           return json({
             error: "file_in_use",
             reference_count: file.reference_count,
-            linked_posts: (links ?? []).map((l: any) => ({
-              post_id: l.post_id,
-              post_titulo: l.workflow_posts?.titulo,
-              workflow_titulo: l.workflow_posts?.workflows?.titulo,
-            })),
-            linked_reports: (reportLinks ?? []).map((l: any) => ({
-              report_id: l.report_id,
-              title: l.report_documents?.title ?? "",
-            })),
+            linked_posts: (links ?? []).map((l: any) =>
+              postHidden(l) ? { post_id: null, post_titulo: null, workflow_titulo: null } : {
+                post_id: l.post_id,
+                post_titulo: l.workflow_posts?.titulo,
+                workflow_titulo: l.workflow_posts?.workflows?.titulo,
+              }
+            ),
+            linked_reports: (reportLinks ?? []).map((l: any) =>
+              reportHidden(l) ? { report_id: null, title: "" } : {
+                report_id: l.report_id,
+                title: l.report_documents?.title ?? "",
+              }
+            ),
           }, 409);
         }
 

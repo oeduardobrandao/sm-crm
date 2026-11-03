@@ -14,7 +14,7 @@
 // The DB policies of Task 4c own the authoritative definition; keep the two in step.
 
 import { type ClientScope, hasClientAccess } from "./client-scope.ts";
-import { chunk, fetchAllRows } from "./paginate.ts";
+import { chunk, fetchAllRowsKeyset } from "./paginate.ts";
 
 // deno-lint-ignore no-explicit-any
 type Db = { from: (table: string) => any; rpc: (fn: string, params: Record<string, unknown>) => any };
@@ -121,6 +121,7 @@ async function typedRowClients(db: Db, rows: TypedRow[], contaId: string): Promi
 }
 
 const MAX_TREE_DEPTH = 64;
+const SUBTREE_PAGE = 1000;
 
 /** True when any typed folder BELOW `folderId` belongs to a client the scope hides. Used for
  * operations over a whole subtree (zip, copy, delete, move): the folder itself must be visible
@@ -138,15 +139,18 @@ export async function subtreeHasHiddenClient(
   let frontier = [folderId];
   for (let depth = 0; frontier.length > 0; depth++) {
     if (depth >= MAX_TREE_DEPTH) throw new Error("file scope: folder tree too deep");
-    // Each level is read in full: the frontier is chunked (URL length) and every chunk is paged
-    // with .range() until an empty page (PostgREST truncates at its row cap without an error). A
-    // page error throws, and the caller answers a generic 500: never "nothing hidden below".
+    // Each level is read in full: the frontier is chunked (URL length) and every chunk is drained
+    // by keyset pages on id (PostgREST truncates at its row cap without an error, and offset pages
+    // can skip a row when another is deleted between pages). A page error throws, and the caller
+    // answers a generic 500: never "nothing hidden below".
     const level: TypedRow[] = [];
     for (const part of chunk(frontier)) {
-      level.push(...await fetchAllRows<TypedRow>((from, to) =>
-        db.from("folders").select("id, source_type, source_id").eq("conta_id", contaId).in("parent_id", part)
-          .order("id", { ascending: true }).range(from, to)
-      ));
+      level.push(...await fetchAllRowsKeyset<TypedRow>((after) => {
+        let q = db.from("folders").select("id, source_type, source_id").eq("conta_id", contaId)
+          .in("parent_id", part);
+        if (after != null) q = q.gt("id", Number(after));
+        return q.order("id", { ascending: true }).limit(SUBTREE_PAGE);
+      }, (r) => String(r.id), SUBTREE_PAGE));
     }
     const next: number[] = [];
     for (const r of level) {

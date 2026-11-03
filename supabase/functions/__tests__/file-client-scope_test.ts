@@ -78,11 +78,14 @@ Deno.test("subtreeHasHiddenClient: walks every level and resolves workflow / pos
   clean.queue("workflows", "select", { data: [{ id: 100, cliente_id: 42 }], error: null });
   clean.queue("workflow_posts", "select", { data: [{ id: 500, cliente_id: 42 }], error: null });
   assertEquals(await subtreeHasHiddenClient(clean, r, 5, W), false);
-  // Each level is ordered by id and paged with .range().
+  // Each level is drained by keyset pages on id: .gt(id, last seen).order(id).limit().
   const levelReads = clean.calls.filter((c) => c.table === "folders");
   assertEquals(levelReads.length, 7);
-  assertEquals(levelReads[1].modifiers.find((m) => m.method === "range")?.args, [2, 1001]);
+  assertEquals(levelReads[0].modifiers.find((m) => m.method === "gt"), undefined);
+  assertEquals(levelReads[1].modifiers.find((m) => m.method === "gt")?.args, ["id", 7]);
   assert(levelReads[0].modifiers.some((m) => m.method === "order" && m.args[0] === "id"));
+  assertEquals(levelReads[0].modifiers.find((m) => m.method === "limit")?.args, [1000]);
+  assertEquals(levelReads.some((c) => c.modifiers.some((m) => m.method === "range")), false);
 
   const deepHidden = createSupabaseQueryMock();
   deepHidden.queue(
@@ -106,7 +109,7 @@ Deno.test("subtreeHasHiddenClient: walks every level and resolves workflow / pos
   assertEquals(await subtreeHasHiddenClient(createSupabaseQueryMock(), allClientsScope(), 5, W), false);
 });
 
-Deno.test("subtreeHasHiddenClient: a level past the row cap is read page by page (hidden on page 2)", async () => {
+Deno.test("subtreeHasHiddenClient: a level past the row cap is read by keyset pages (hidden on page 2)", async () => {
   const r = restricted([42]);
   const db = createSupabaseQueryMock();
   const firstPage = Array.from({ length: 1000 }, (_, i) => ({ id: 1000 + i, source_type: "client", source_id: 42 }));
@@ -122,7 +125,9 @@ Deno.test("subtreeHasHiddenClient: a level past the row cap is read page by page
   );
   assertEquals(await subtreeHasHiddenClient(db, r, 5, W), true);
   const reads = db.calls.filter((c) => c.table === "folders");
-  assertEquals(reads[1].modifiers.find((m) => m.method === "range")?.args, [1000, 1999]);
+  // Page 2 re-anchors on the last id of page 1 (keyset), so a concurrent delete cannot skip a row.
+  assertEquals(reads[1].modifiers.find((m) => m.method === "gt")?.args, ["id", 1999]);
+  assertEquals(reads[2].modifiers.find((m) => m.method === "gt")?.args, ["id", 5000]);
   // The 1001-folder frontier of level 2 goes out in chunks of at most 500 ids.
   const level2 = reads.slice(3).map((c) => (c.modifiers.find((m) => m.method === "in")?.args[1] as number[]).length);
   assertEquals(level2, [500, 500, 1]);

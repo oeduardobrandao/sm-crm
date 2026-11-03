@@ -1508,3 +1508,142 @@ Deno.test("shape: null keeps meaning root, and the route uses the normalized par
   const insert = db.calls.find((c) => c.table === "folders" && c.operation === "insert");
   assertEquals((insert?.payload as { parent_id: unknown }).parent_id, null);
 });
+
+// ─── fix round 2: secondary ids answer in the route's order ──
+
+Deno.test("probe: a missing primary item answers first, whether the secondary id is hidden or missing", async () => {
+  const missingFolder = (db: Db) => queueMissingFolder(db);
+  const cases: { label: string; method: string; path: string; body: unknown; primaryMissing: (db: Db) => void; error: string }[] = [
+    {
+      label: "PATCH /folders/<missing> + parent_id",
+      method: "PATCH",
+      path: "/folders/99",
+      body: { parent_id: 3 },
+      primaryMissing: (db) => {
+        missingFolder(db);
+        db.queue("folders", "select", { data: null, error: null }); // route: the folder
+      },
+      error: "Folder not found",
+    },
+    {
+      label: "POST /folders/<missing>/copy + destination",
+      method: "POST",
+      path: "/folders/99/copy",
+      body: { destination_folder_id: 3 },
+      primaryMissing: (db) => {
+        missingFolder(db);
+        db.queue("folders", "select", { data: null, error: null });
+      },
+      error: "Folder not found",
+    },
+    {
+      label: "POST /files/<missing>/copy + destination",
+      method: "POST",
+      path: "/files/99/copy",
+      body: { destination_folder_id: 3 },
+      primaryMissing: (db) => db.queue("files", "select", { data: null, error: null }, { data: null, error: null }),
+      error: "File not found",
+    },
+    {
+      label: "PATCH /files/<missing> + folder_id",
+      method: "PATCH",
+      path: "/files/99",
+      body: { folder_id: 3 },
+      primaryMissing: (db) => db.queue("files", "select", { data: null, error: null }, { data: null, error: null }),
+      error: "File not found",
+    },
+    {
+      label: "PATCH /files/<reference file> + folder_id",
+      method: "PATCH",
+      path: "/files/10",
+      body: { folder_id: 3 },
+      primaryMissing: (db) => {
+        const ref = { data: { conta_id: "conta-1", attached_to: "post_reference" }, error: null };
+        db.queue("files", "select", ref, ref);
+      },
+      error: "File not found",
+    },
+  ];
+  for (const c of cases) {
+    // The secondary folder 3 is hidden in one run and missing in the other; the gate must not read
+    // it before the route has answered for the primary item.
+    const p = await probe(
+      c.path,
+      c.body,
+      c.method,
+      (db) => {
+        c.primaryMissing(db);
+        queueClientFolder(db);
+      },
+      (db) => {
+        c.primaryMissing(db);
+        queueMissingFolder(db);
+      },
+    );
+    assertSameAnswer(p);
+    assertEquals([p.hidden.status, JSON.parse(p.hidden.body)], [404, { error: c.error }], c.label);
+  }
+});
+
+// ─── fix round 2: file_in_use does not name hidden clients' posts or reports ──
+
+function queueFileInUse(db: Db) {
+  db.queue(
+    "files",
+    "select",
+    { data: { conta_id: "conta-1", folder_id: null, attached_to: null }, error: null }, // gate
+    { data: { conta_id: "conta-1", reference_count: 3 }, error: null }, // route
+  );
+  db.queue("post_file_links", "select", {
+    data: [
+      { post_id: 50, workflow_posts: { titulo: "Visível", cliente_id: 42, responsavel_id: 1, workflows: { titulo: "WF A" } } },
+      { post_id: 51, workflow_posts: { titulo: "Oculto", cliente_id: 43, responsavel_id: 1, workflows: { titulo: "WF B" } } },
+      { post_id: 52, workflow_posts: { titulo: "Meu", cliente_id: 43, responsavel_id: 9, workflows: { titulo: "WF C" } } },
+    ],
+    error: null,
+  });
+  db.queue("report_document_files", "select", {
+    data: [
+      { report_id: "r1", report_documents: { title: "Relatório A", client_id: 42 } },
+      { report_id: "r2", report_documents: { title: "Relatório B", client_id: 43 } },
+    ],
+    error: null,
+  });
+}
+
+Deno.test("file_in_use: a restricted caller gets the 409 and the counts, but no hidden titles", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  queueFileInUse(db);
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([42], [9]) })(req("DELETE", "/files/10"));
+  assertEquals(res.status, 409);
+  const body = await readJson(res);
+  assertEquals(body.reference_count, 3);
+  assertEquals(body.linked_posts, [
+    { post_id: 50, post_titulo: "Visível", workflow_titulo: "WF A" },
+    { post_id: null, post_titulo: null, workflow_titulo: null },
+    { post_id: 52, post_titulo: "Meu", workflow_titulo: "WF C" }, // é dele: readable
+  ]);
+  assertEquals(body.linked_reports, [{ report_id: "r1", title: "Relatório A" }, { report_id: null, title: "" }]);
+  const text = JSON.stringify(body);
+  for (const leaked of ["Oculto", "WF B", "Relatório B", "r2", "51"]) assert(!text.includes(leaked), leaked);
+  assertEquals(db.calls.filter((c) => c.operation === "delete").length, 0);
+});
+
+Deno.test("file_in_use: an unrestricted caller still sees every title", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("files", "select", { data: { conta_id: "conta-1", reference_count: 3 }, error: null });
+  db.queue("post_file_links", "select", {
+    data: [{ post_id: 51, workflow_posts: { titulo: "Oculto", cliente_id: 43, workflows: { titulo: "WF B" } } }],
+    error: null,
+  });
+  db.queue("report_document_files", "select", {
+    data: [{ report_id: "r2", report_documents: { title: "Relatório B", client_id: 43 } }],
+    error: null,
+  });
+  const res = await makeHandler(db)(req("DELETE", "/files/10"));
+  const body = await readJson(res);
+  assertEquals(body.linked_posts, [{ post_id: 51, post_titulo: "Oculto", workflow_titulo: "WF B" }]);
+  assertEquals(body.linked_reports, [{ report_id: "r2", title: "Relatório B" }]);
+});
