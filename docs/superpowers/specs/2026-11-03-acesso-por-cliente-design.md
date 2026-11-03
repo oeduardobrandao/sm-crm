@@ -152,7 +152,9 @@ Toda tabela e RPC que aceita `cliente_id` (ou chega ao cliente por pai) ganha `I
 criaria ou moveria uma tarefa/post para um cliente oculto e, como autor, passaria a lê-lo. Hoje
 `tarefas`, `workflows` e `workflow_posts` aceitam escrita por workspace, então isso é obrigatório na
 Fase 1. Outros membros (não restritos) continuam podendo atribuir trabalho de um cliente oculto a um
-restrito; é o caminho pretendido para o "é dele".
+restrito; é o caminho pretendido para o "é dele". Filha: WITH CHECK pelo pai visível (a escrita na
+tabela filha confere o pai por uma subconsulta que respeita a RLS dele); raiz: WITH CHECK com
+`can_access_cliente`, sem a exceção "é dele".
 
 ## Quem gerencia
 

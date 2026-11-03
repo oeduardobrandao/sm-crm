@@ -24,7 +24,8 @@
 --                                   de leitura, e toda policy PERMISSIVE (não
 --                                   service_role) que expõe
 --                                   linhas (SELECT/UPDATE/DELETE/ALL) cita
---                                   can_access_cliente ou can_see_cliente_context;
+--                                   can_access_cliente (can_see_cliente_context só
+--                                   vale nas v_context_tables);
 --                                   ou uma RESTRICTIVE do mesmo comando (ou ALL) cita; ou, só
 --                                   para filha sem chave própria, o qual
 --                                   consulta (FROM/JOIN) uma tabela-pai pela FK
@@ -44,6 +45,7 @@
 --                                   mais qualquer tabela de cliente cuja policy
 --                                   use my_membro_ids()) aparece no corpo de
 --                                   can_see_cliente_context(bigint).
+-- oauth_states_pinned: fixa RLS off + ACL atual da isenção de oauth_states.
 -- Sanidade: todo nome dos arrays existe; toda entrada de v_exempt_no_policy
 -- continua com RLS ligada e sem policy fora de service_role.
 
@@ -83,12 +85,21 @@ declare
   -- Outras isenções, cada uma com o motivo.
   v_exempt text[] := array[
     'workspace_member_clientes',   -- a própria tabela de atribuições (Task 1, policy própria)
-    'financeiro_atribuicoes',      -- Task 6: escrita só por RPC, filtro na camada de leitura
-    'financeiro_cliente_versoes',  -- Task 6
-    'financeiro_entregas_manuais', -- Task 6
-    'oauth_states'                 -- RLS desligada (estado de OAuth, só service role usa);
-                                   -- ver "Surpresas" no relatório da Task 2
+    'oauth_states'                 -- RLS off, pre-existing, tracked separately. O estado atual
+                                   -- (RLS off + ALL para anon/authenticated) fica fixado pelo
+                                   -- caso oauth_states_pinned: mudou, retriagem
   ];
+
+  -- Isenção temporária, só até a Task 6. Cada execução avisa por NOTICE. Critério de saída da
+  -- Task 6: estas três saem daqui, e as policies de SELECT delas citam o predicado ou a leitura
+  -- direta por authenticated é revogada.
+  v_exempt_until_task6 text[] := array[
+    'financeiro_atribuicoes', 'financeiro_cliente_versoes', 'financeiro_entregas_manuais'
+  ];
+
+  -- Únicas tabelas em que can_see_cliente_context vale como predicado de leitura (contexto do
+  -- item "dele" num cliente oculto: marca e briefing). Em qualquer outra, só can_access_cliente.
+  v_context_tables text[] := array['hub_brand', 'hub_brand_files', 'briefings', 'hub_briefing_questions'];
 
   -- Itens que um restrito pode ter "dele" num cliente oculto e que precisam do
   -- contexto do cliente (nome, marca). Task 1 cobre os três primeiros; ideias
@@ -96,7 +107,8 @@ declare
   -- my_membro_ids() entra sozinha (ver o caso).
   v_context_roots text[] := array['workflow_posts', 'workflow_etapas', 'tarefas', 'ideias'];
 
-  v_read_pred  text := '\m(can_access_cliente|can_see_cliente_context)\M';
+  v_read_pred  text := '\mcan_access_cliente\M';
+  v_ctx_pred   text := '\m(can_access_cliente|can_see_cliente_context)\M';  -- só v_context_tables
   v_write_pred text := '\m(can_access_cliente|my_client_scope_all)\M';
 
   v_missing text[];
@@ -110,9 +122,24 @@ declare
 begin
   -- sanity: every hardcoded name exists
   select array_agg(n) into v_missing
-    from unnest(v_extra_scoped || v_exempt_no_policy || v_exempt || v_context_roots) n
+    from unnest(v_extra_scoped || v_exempt_no_policy || v_exempt || v_exempt_until_task6 || v_context_tables || v_context_roots) n
    where to_regclass('public.' || n) is null;
   assert v_missing is null, 'sanity: unknown tables in the arrays: ' || array_to_string(v_missing, ', ');
+
+  -- oauth_states_pinned: RLS off e ALL para anon e authenticated, como hoje. Se alguém ligar a
+  -- RLS ou mexer nos grants, este caso falha e a isenção é retriada.
+  assert not (select relrowsecurity from pg_class where oid = 'public.oauth_states'::regclass)
+     and (select string_agg(a.privilege_type, ',' order by a.privilege_type)
+            from pg_class c, aclexplode(c.relacl) a
+           where c.oid = 'public.oauth_states'::regclass and a.grantee = 'anon'::regrole)
+         = 'DELETE,INSERT,MAINTAIN,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE'
+     and (select string_agg(a.privilege_type, ',' order by a.privilege_type)
+            from pg_class c, aclexplode(c.relacl) a
+           where c.oid = 'public.oauth_states'::regclass and a.grantee = 'authenticated'::regrole)
+         = 'DELETE,INSERT,MAINTAIN,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE',
+    'oauth_states_pinned: RLS or grants changed; re-triage the oauth_states exemption';
+  raise notice 'oauth_states_pinned: ok (RLS off, ALL to anon/authenticated; pre-existing, tracked separately)';
+  raise notice 'exempt_until_task6 (Task 6 must remove them): %', array_to_string(v_exempt_until_task6, ', ');
 
   -- client tables: roots, FK closure, extras
   create temp table _ct on commit drop as
@@ -140,7 +167,7 @@ begin
 
   -- scoped = client tables minus exemptions
   create temp table _scoped on commit drop as
-  select * from _ct where tbl <> all (v_exempt || v_exempt_no_policy);
+  select * from _ct where tbl <> all (v_exempt || v_exempt_until_task6 || v_exempt_no_policy);
 
   -- policies that only ever match service_role (BYPASSRLS anyway): TO service_role,
   -- or the legacy USING (auth.role() = 'service_role') with no other check
@@ -181,11 +208,12 @@ begin
             where p.tbl = s.tbl and p.permissive = 'PERMISSIVE'
               and p.cmd in ('SELECT', 'UPDATE', 'DELETE', 'ALL')
               and not (
-                p.qual ~ v_read_pred
+                p.qual ~ case when s.tbl = any (v_context_tables) then v_ctx_pred else v_read_pred end
                 or p.qual = 'false'   -- policy que não concede nada
                 -- uma RESTRICTIVE do mesmo comando (ou ALL) com o predicado cobre esta
                 or exists (select 1 from _pol q where q.tbl = s.tbl and q.permissive = 'RESTRICTIVE'
-                              and q.cmd in (p.cmd, 'ALL') and q.qual ~ v_read_pred)
+                              and q.cmd in (p.cmd, 'ALL')
+                              and q.qual ~ case when s.tbl = any (v_context_tables) then v_ctx_pred else v_read_pred end)
                 or (not s.is_root and exists (
                       select 1 from _parent pa join _read_ok ok on ok.tbl = pa.parent
                        where pa.tbl = s.tbl

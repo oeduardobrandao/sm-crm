@@ -32,10 +32,30 @@ Spec: `docs/superpowers/specs/2026-11-03-acesso-por-cliente-design.md`. Plano:
 |---|---|
 | Tabelas inventariadas | 104 (95 que a guarda calcula + 9 de histórico do Google sem FK) |
 | `scoped` | 75 |
-| `exempt` | 29 (24 sem policy para authenticated, 3 do Task 6, a de atribuições, `oauth_states`) |
+| `exempt` | 29 (24 sem policy para authenticated, 3 até a Task 6 (`v_exempt_until_task6`), a de atribuições, `oauth_states` fixada) |
 | Views sobre tabela de cliente | 3 (`clientes_v` barrier, sem predicado; `post_media_notes_v` e `instagram_account_last_post` invoker) |
 | SECURITY DEFINER que tocam tabela de cliente | 271 por `prosrc` (55 executáveis por authenticated fora do financeiro; 144 só service_role/dono; 63 triggers; 9 `financeiro`), mais 48 `financeiro_*` por nome |
 | Edge functions que leem dados de cliente | 65 com `from()` em tabela de cliente, mais 4 que chegam por RPC ou `_shared` (`youtube-analytics`, `briefing-audio`, `ideia-media-manage`, `agenda-feed`): 24 para Task 13 (mais `instagram-report-generator-v2`, filtrado no chamador), 1 (`mcp`) para Task 12, 2 crons para Task 14 (mais `agenda-lembretes-email` a conferir), o resto isento |
+
+## Regras da guarda (resumo)
+
+- Leitura: toda policy PERMISSIVE que expõe linhas cita `can_access_cliente`.
+  `can_see_cliente_context` só vale como predicado de leitura nas tabelas de contexto
+  (`v_context_tables`: `hub_brand`, `hub_brand_files`, `briefings`, `hub_briefing_questions`,
+  nomes conferidos no catálogo). Em qualquer outra tabela ele não conta.
+- Escrita (espelho da spec, "Escrita"): filha, WITH CHECK pelo pai visível (subconsulta no pai,
+  que respeita a RLS dele); raiz, WITH CHECK explícito com `can_access_cliente` (ou
+  `my_client_scope_all`), sem a exceção "é dele".
+- `oauth_states`: RLS off, pre-existing, tracked separately. Isenta, mas o caso
+  `oauth_states_pinned` fixa o estado atual (RLS off + ALL para anon e authenticated); se mudar,
+  o caso falha e a isenção é retriada. `file_deletions`, `contas` e `workspace_plan_overrides`
+  têm o mesmo problema (RLS off, ALL para anon/authenticated no stack local); não são tabelas de
+  cliente, ficam fora da guarda e foram escaladas ao usuário à parte.
+- Financeiro: `financeiro_atribuicoes`, `financeiro_cliente_versoes` e
+  `financeiro_entregas_manuais` estão em `v_exempt_until_task6`, e toda execução da guarda avisa
+  por NOTICE. **Critério de saída da Task 6:** as três saem da lista de isenção da guarda, e as
+  policies de SELECT delas passam a citar o predicado ou a leitura direta por authenticated é
+  revogada.
 
 ## Decisões de interpretação (para o controller confirmar)
 
@@ -221,12 +241,12 @@ e `instagram_connect_links.created_by` (listado). Colunas uuid que são FK para 
 | `youtube_videos` | 4d | exempt: sem policy p/ authenticated (só service role) | sem FK: sem FK de propósito; liga por channel_id a youtube_channels | - | - | - | (nenhuma) | (nenhuma) |  |
 | `notifications` | 4e | scoped | próprio `cliente_id:bigint`; cliente_id sem FK (Task 1), backfill do metadata | user_id (destinatário) | - | 4e usa can_see_cliente_context | `notifications_select` (SELECT: custom) | `notifications_update` (UPDATE: check custom) |  |
 | `contratos` | 6 | scoped | próprio `cliente_id:bigint` | user_id (criador) | - | Task 6: sem "é dele" | `contratos_select` (SELECT: custom) | `contratos_delete` (DELETE: custom)<br>`contratos_insert` (INSERT: check custom)<br>`contratos_update` (UPDATE: check custom) |  |
-| `financeiro_atribuicoes` | 6 | exempt: Task 6 (escrita só por RPC; filtro na leitura). Policy de SELECT direta continua aberta: Task 6 decide | próprio `cliente_id:bigint NOT NULL` | - | membro_id (custo, não "é dele") | - | `financeiro_atribuicoes_select` (SELECT: custom) | (nenhuma) |  |
-| `financeiro_cliente_versoes` | 6 | exempt: idem | próprio `cliente_id:bigint NOT NULL` | created_by | - | - | `financeiro_cliente_versoes_select` (SELECT: custom) | (nenhuma) |  |
-| `financeiro_entregas_manuais` | 6 | exempt: idem | próprio `cliente_id:bigint NOT NULL` | - | membro_id (custo, não "é dele") | - | `financeiro_entregas_manuais_select` (SELECT: custom) | (nenhuma) |  |
+| `financeiro_atribuicoes` | 6 | exempt até a Task 6 (`v_exempt_until_task6`, NOTICE a cada execução). Saída: sair da isenção, com predicado no SELECT ou leitura direta revogada | próprio `cliente_id:bigint NOT NULL` | - | membro_id (custo, não "é dele") | - | `financeiro_atribuicoes_select` (SELECT: custom) | (nenhuma) |  |
+| `financeiro_cliente_versoes` | 6 | exempt até a Task 6 (`v_exempt_until_task6`), mesma saída | próprio `cliente_id:bigint NOT NULL` | created_by | - | - | `financeiro_cliente_versoes_select` (SELECT: custom) | (nenhuma) |  |
+| `financeiro_entregas_manuais` | 6 | exempt até a Task 6 (`v_exempt_until_task6`), mesma saída | próprio `cliente_id:bigint NOT NULL` | - | membro_id (custo, não "é dele") | - | `financeiro_entregas_manuais_select` (SELECT: custom) | (nenhuma) |  |
 | `transacoes` | 6 | scoped | próprio `cliente_id:bigint` | user_id (criador) | - | Task 6: sem "é dele" | `transacoes_select` (SELECT: custom) | `transacoes_delete` (DELETE: custom)<br>`transacoes_insert` (INSERT: check custom)<br>`transacoes_update` (UPDATE: check custom) |  |
 | `workspace_member_clientes` | 1 | exempt: a tabela de atribuições (Task 1) | próprio `cliente_id:bigint NOT NULL` | - | - | - | `wmc_select_own_or_owner` (SELECT: custom) | (nenhuma) |  |
-| `oauth_states` | - | exempt: RLS DESLIGADA; estado de OAuth usado só por service role (ver Surpresas) | próprio `client_id:bigint NOT NULL` | initiated_by | - | - | (nenhuma) | (nenhuma) |  |
+| `oauth_states` | - | exempt: RLS off, pre-existing, tracked separately (estado fixado por `oauth_states_pinned`) | próprio `client_id:bigint NOT NULL` | initiated_by | - | - | (nenhuma) | (nenhuma) |  |
 
 ## Views
 
