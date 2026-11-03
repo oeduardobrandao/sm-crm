@@ -130,6 +130,7 @@ export interface Plan {
   feature_linha_editorial: boolean;
   feature_youtube: boolean;
   feature_google_business: boolean;
+  feature_instagram_comments_ai: boolean;
   rate_instagram_syncs_per_day: number | null;
   rate_ai_analyses_per_month: number | null;
   rate_report_generations_per_month: number | null;
@@ -171,12 +172,7 @@ export interface GlobalBanner {
 
 export type WorkspaceActivityBucket = '7d' | '30d' | 'dormente' | 'nunca';
 export type WorkspaceSortKey =
-  | 'name'
-  | 'plan'
-  | 'client_count'
-  | 'member_count'
-  | 'created_at'
-  | 'last_activity_at';
+  'name' | 'plan' | 'client_count' | 'member_count' | 'created_at' | 'last_activity_at';
 export type SortDir = 'asc' | 'desc';
 
 // A `type` literal (not `interface`) so it keeps the implicit string index signature
@@ -285,6 +281,7 @@ export const FEATURE_FLAG_KEYS = [
   'feature_linha_editorial',
   'feature_youtube',
   'feature_google_business',
+  'feature_instagram_comments_ai',
 ] as const;
 
 export const FEATURE_FLAG_LABELS: Record<string, string> = {
@@ -321,6 +318,7 @@ export const FEATURE_FLAG_LABELS: Record<string, string> = {
   feature_linha_editorial: 'Linha editorial',
   feature_youtube: 'YouTube',
   feature_google_business: 'Google Meu Negócio',
+  feature_instagram_comments_ai: 'Comentários com IA',
 };
 
 export const RATE_LIMIT_KEYS = [
