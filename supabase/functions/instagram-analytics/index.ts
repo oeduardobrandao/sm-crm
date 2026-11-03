@@ -17,6 +17,9 @@ const CRON_SECRET = Deno.env.get('CRON_SECRET') ?? '';
 import { UUID_RE } from "./utils.ts";
 import { parseViewsRange, sumViewsRange } from "./views.ts";
 import { handleAccountMetrics, parseAccountMetricsRange } from "./account-metrics.ts";
+import { handleCommentsRoute } from "./comments-routes.ts";
+import { fetchMediaComments } from "./comments-graph.ts";
+import { callGemini } from "./comments-ai.ts";
 
 // --- Token Decryption ---
 async function getEncryptionKey(purpose: string, usage: KeyUsage[]): Promise<CryptoKey> {
@@ -240,6 +243,21 @@ Deno.serve(async (req) => {
     if (requiredFlag && !(await effectivePlanFeature(serviceClient, contaId, requiredFlag))) {
       return json({ error: "feature_disabled", feature: requiredFlag }, 403);
     }
+
+    // Comentários do Instagram + leitura por IA (comments-routes.ts). null = outra rota.
+    const commentsRoute = await handleCommentsRoute(req.method, path, {
+      svc: serviceClient,
+      contaId,
+      userId: user.id,
+      geminiKey: GEMINI_API_KEY || null,
+      now: Date.now,
+      decryptToken,
+      verifyClientOwnership: (clientId) => verifyClientOwnership(serviceClient, clientId, contaId),
+      rateLimit: (key, max, windowS) => checkRateLimit(serviceClient, key, max, windowS),
+      fetchComments: fetchMediaComments,
+      callGemini,
+    });
+    if (commentsRoute) return json(commentsRoute.body, commentsRoute.status);
 
     // ==========================================
     // GET /overview/:clientId?days=30
