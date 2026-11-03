@@ -247,6 +247,13 @@ vi.mock('@/components/ui/sheet', async () => {
   };
 });
 
+// Its own suite covers the panel; here only whether the expanded row mounts it.
+vi.mock('../comments/PostCommentsPanel', () => ({
+  PostCommentsPanel: ({ clientId, post }: { clientId: number; post: { id: number } }) => (
+    <div data-testid="post-comments-panel">{`painel ${clientId}/${post.id}`}</div>
+  ),
+}));
+
 import { InstagramAnalyticsTab } from '../AnalyticsContaPage';
 import {
   getAccountAIAnalysis,
@@ -793,6 +800,75 @@ describe('AnalyticsContaPage', () => {
     expect(within(detail).getByText('Ações após a visualização')).toBeInTheDocument();
     expect(within(detail).getByText('Novos seguidores').nextSibling).toHaveTextContent('75');
     expect(within(detail).queryByText('Reposts')).not.toBeInTheDocument();
+  });
+
+  function seedOneExpandablePost() {
+    seedCommonAnalyticsData();
+    queryState['analytics-posts'] = {
+      data: {
+        posts: [
+          {
+            id: 7,
+            instagram_post_id: 'ig-7',
+            permalink: 'https://instagram.com/p/7',
+            caption: 'Rotina de skincare',
+            media_type: 'VIDEO',
+            posted_at: '2026-10-28T12:00:00Z',
+            likes: 1284,
+            comments: 142,
+            reach: 18200,
+            impressions: 20000,
+            views: 20000,
+            saved: 10,
+            shares: 3,
+            profile_visits: 3,
+            follows: 2,
+            bio_link_clicks: null,
+            follows_per_mil_reach: 1,
+            thumbnail_url: null,
+            engagement_rate: 5,
+            saves_rate: 1,
+            rates: { share_rate: null, like_rate: null, save_rate: null, comment_rate: null },
+            unavailable_metrics: [],
+            ig_score: null,
+            tags: [],
+          },
+        ],
+      },
+    };
+  }
+
+  it('flag desligada: não renderiza aba nem o painel de comentários', () => {
+    seedOneExpandablePost();
+    const { container } = render(<AnalyticsContaPage />);
+    const table = container.querySelector('#posts-table') as HTMLTableElement;
+    fireEvent.click(table.querySelector('tbody tr') as HTMLTableRowElement);
+    const detail = table.querySelector('tr.post-detail-row') as HTMLTableRowElement;
+    expect(within(detail).getByText('Ações após a visualização')).toBeInTheDocument();
+    expect(within(detail).queryByRole('tablist')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('post-comments-panel')).not.toBeInTheDocument();
+  });
+
+  it('linha expandida tem abas Insights e Comentários com a flag', () => {
+    seedOneExpandablePost();
+    queryState['workspace-limits'] = {
+      data: { plan_name: null, limits: null, features: { feature_instagram_comments_ai: true } },
+    };
+    const { container } = render(<AnalyticsContaPage />);
+    const table = container.querySelector('#posts-table') as HTMLTableElement;
+    fireEvent.click(table.querySelector('tbody tr') as HTMLTableRowElement);
+    const detail = table.querySelector('tr.post-detail-row') as HTMLTableRowElement;
+
+    const insights = within(detail).getByRole('tab', { name: 'Insights' });
+    const comments = within(detail).getByRole('tab', { name: 'Comentários · 142' });
+    expect(insights).toHaveAttribute('aria-selected', 'true');
+    expect(within(detail).getByText('Ações após a visualização')).toBeInTheDocument();
+    expect(screen.queryByTestId('post-comments-panel')).not.toBeInTheDocument();
+
+    fireEvent.click(comments);
+    expect(comments).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('post-comments-panel')).toHaveTextContent('painel 42/7');
+    expect(within(detail).queryByText('Ações após a visualização')).not.toBeInTheDocument();
   });
 
   it('opens the reach-ranked posts drawer using only this client account posts', () => {

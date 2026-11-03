@@ -43,6 +43,7 @@ const FEATURE_LABELS: Record<string, string> = {
   feature_linha_editorial: 'Linha editorial',
   feature_youtube: 'YouTube',
   feature_google_business: 'Google Meu Negócio',
+  feature_instagram_comments_ai: 'Comentários com IA',
 };
 
 /** Normalizes a DB-raised message or an edge-function JSON error into an EntitlementError, or null. */

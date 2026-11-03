@@ -76,6 +76,9 @@ export interface FeatureFlags {
   /** Google Meu Negócio (same spec). Optional: read it only as
    *  `features?.feature_google_business === true`, never through hasFeature. */
   feature_google_business?: boolean;
+  /** Comentários do Instagram com leitura por IA. Optional: read it only as
+   *  `features?.feature_instagram_comments_ai === true`, never through hasFeature. */
+  feature_instagram_comments_ai?: boolean;
 }
 
 interface WorkspaceLimitsResponse {

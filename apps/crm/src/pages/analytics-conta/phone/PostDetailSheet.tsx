@@ -3,6 +3,9 @@ import { ExternalLink, Plus } from 'lucide-react';
 import { BottomSheet } from '@/components/mobile/BottomSheet';
 import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import { FormRow } from '@/components/mobile/FormRow';
+import { SegmentedControl } from '@/components/mobile/SegmentedControl';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
+import { PostCommentsPanel } from '../comments/PostCommentsPanel';
 import type { PostAnalytics, PostTag } from '../../../services/analytics';
 import { missingActionMetricTitle, type ActionMetricKey } from '../../../lib/post-action-metrics';
 import { sanitizeUrl } from '../../../utils/security';
@@ -22,12 +25,14 @@ const fmtEng = (v: number) => `${v.toFixed(1).replace('.', ',')}%`;
  * desktop), the Instagram link and the tags as toggles.
  */
 export function PostDetailSheet({
+  clientId,
   post,
   onOpenChange,
   tags,
   onToggleTag,
   onNewTag,
 }: {
+  clientId: number;
   post: PostAnalytics | null;
   onOpenChange: (open: boolean) => void;
   tags: PostTag[];
@@ -37,12 +42,23 @@ export function PostDetailSheet({
   // Keeps the last post while the sheet animates out.
   const [shown, setShown] = useState<PostAnalytics | null>(post);
   const [busyTag, setBusyTag] = useState<number | null>(null);
+  // The tab belongs to one post: any other post opens on Insights, decided during render
+  // so the comments panel never mounts (and fetches) for a post nobody asked about.
+  const [tabState, setTabState] = useState<{ postId: number | null; tab: 'insights' | 'comments' }>(
+    {
+      postId: null,
+      tab: 'insights',
+    },
+  );
+  const commentsEnabled = useWorkspaceLimits().features?.feature_instagram_comments_ai === true;
   useEffect(() => {
     if (post) setShown(post);
   }, [post]);
 
   const p = post ?? shown;
   if (!p) return null;
+  const tab = tabState.postId === p.id ? tabState.tab : 'insights';
+  const setTab = (t: 'insights' | 'comments') => setTabState({ postId: p.id, tab: t });
 
   const actionKeys = Object.keys(ACTION_LABELS) as ActionMetricKey[];
   const missing = actionKeys.filter((k) => typeof p[k] !== 'number');
@@ -63,6 +79,110 @@ export function PostDetailSheet({
 
   const assigned = new Set(p.tags.map((t) => t.id));
 
+  const insightsBody = (
+    <>
+      <GroupedList aria-label="Legenda">
+        <Cell
+          label={mediaTypeLabel(p.media_type)}
+          value={
+            p.ig_score === null || p.ig_score === undefined
+              ? 'IG Score: amostra insuficiente (<5)'
+              : `IG Score ${p.ig_score}`
+          }
+        />
+        <TextCell>
+          <p>{p.caption || 'Sem legenda'}</p>
+        </TextCell>
+      </GroupedList>
+
+      <div className="phone-an-tiles">
+        <ValueTile label="Visualizações" value={fmtNumber(p.views)} />
+        <ValueTile label="Alcance" value={fmtNumber(p.reach)} />
+        <ValueTile label="Engajamento" value={fmtEng(p.engagement_rate)} />
+      </div>
+
+      <h3 className="phone-group__header">Interações</h3>
+      <div className="phone-an-tiles phone-an-tiles--4">
+        <ValueTile label="Curtidas" value={fmtNumber(p.likes)} />
+        <ValueTile label="Comentários" value={fmtNumber(p.comments)} />
+        <ValueTile label="Compart." value={fmtNumber(p.shares)} />
+        <ValueTile label="Salvamentos" value={fmtNumber(p.saved)} />
+      </div>
+
+      <h3 className="phone-group__header">Ações após a visualização</h3>
+      <div className="phone-an-tiles">
+        {actionKeys.map((k) => {
+          const v = p[k];
+          return (
+            <ValueTile
+              key={k}
+              label={ACTION_LABELS[k]}
+              value={typeof v === 'number' ? fmtNumber(v) : null}
+            />
+          );
+        })}
+      </div>
+      {notes.length > 0 && <p className="phone-an-footnote">{notes.join(' ')}</p>}
+
+      <GroupedList aria-label="Instagram">
+        <li className="phone-cell">
+          <a
+            href={sanitizeUrl(p.permalink)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="phone-cell__main"
+          >
+            <span className="phone-cell__icon" aria-hidden="true">
+              <ExternalLink />
+            </span>
+            <span className="phone-cell__body">
+              <span className="phone-cell__text">
+                <span className="phone-cell__label">Ver no Instagram</span>
+              </span>
+            </span>
+          </a>
+        </li>
+      </GroupedList>
+
+      <GroupedList header="Tags">
+        {tags.length > 0 && (
+          <li className="phone-cell">
+            <div className="phone-an-tags" role="group" aria-label="Tags do post">
+              {tags.map((t) => {
+                const on = assigned.has(t.id);
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className="phone-an-tag"
+                    aria-pressed={on}
+                    disabled={busyTag !== null}
+                    onClick={async () => {
+                      setBusyTag(t.id);
+                      try {
+                        await onToggleTag(p, t, on);
+                      } finally {
+                        setBusyTag(null);
+                      }
+                    }}
+                  >
+                    <span
+                      className="phone-an-tag__dot"
+                      style={{ background: t.color }}
+                      aria-hidden="true"
+                    />
+                    {t.tag_name}
+                  </button>
+                );
+              })}
+            </div>
+          </li>
+        )}
+        <Cell icon={<Plus />} label="Nova tag" onClick={onNewTag} aria-haspopup="dialog" />
+      </GroupedList>
+    </>
+  );
+
   return (
     <BottomSheet
       open={post !== null}
@@ -72,105 +192,44 @@ export function PostDetailSheet({
       className="phone-an-sheet"
     >
       <div className="phone-an-sheet__body">
-        <GroupedList aria-label="Legenda">
-          <Cell
-            label={mediaTypeLabel(p.media_type)}
-            value={
-              p.ig_score === null || p.ig_score === undefined
-                ? 'IG Score: amostra insuficiente (<5)'
-                : `IG Score ${p.ig_score}`
-            }
+        {commentsEnabled && (
+          <SegmentedControl
+            semantics="tablist"
+            aria-label="Detalhes do post"
+            className="igc-phone-tabs"
+            value={tab}
+            onChange={setTab}
+            options={[
+              {
+                value: 'insights',
+                label: 'Insights',
+                id: `post-sheet-${p.id}-tab-insights`,
+                controls: `post-sheet-${p.id}-panel`,
+              },
+              {
+                value: 'comments',
+                label: 'Comentários',
+                id: `post-sheet-${p.id}-tab-comments`,
+                controls: `post-sheet-${p.id}-panel`,
+              },
+            ]}
           />
-          <TextCell>
-            <p>{p.caption || 'Sem legenda'}</p>
-          </TextCell>
-        </GroupedList>
-
-        <div className="phone-an-tiles">
-          <ValueTile label="Visualizações" value={fmtNumber(p.views)} />
-          <ValueTile label="Alcance" value={fmtNumber(p.reach)} />
-          <ValueTile label="Engajamento" value={fmtEng(p.engagement_rate)} />
-        </div>
-
-        <h3 className="phone-group__header">Interações</h3>
-        <div className="phone-an-tiles phone-an-tiles--4">
-          <ValueTile label="Curtidas" value={fmtNumber(p.likes)} />
-          <ValueTile label="Comentários" value={fmtNumber(p.comments)} />
-          <ValueTile label="Compart." value={fmtNumber(p.shares)} />
-          <ValueTile label="Salvamentos" value={fmtNumber(p.saved)} />
-        </div>
-
-        <h3 className="phone-group__header">Ações após a visualização</h3>
-        <div className="phone-an-tiles">
-          {actionKeys.map((k) => {
-            const v = p[k];
-            return (
-              <ValueTile
-                key={k}
-                label={ACTION_LABELS[k]}
-                value={typeof v === 'number' ? fmtNumber(v) : null}
-              />
-            );
-          })}
-        </div>
-        {notes.length > 0 && <p className="phone-an-footnote">{notes.join(' ')}</p>}
-
-        <GroupedList aria-label="Instagram">
-          <li className="phone-cell">
-            <a
-              href={sanitizeUrl(p.permalink)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="phone-cell__main"
-            >
-              <span className="phone-cell__icon" aria-hidden="true">
-                <ExternalLink />
-              </span>
-              <span className="phone-cell__body">
-                <span className="phone-cell__text">
-                  <span className="phone-cell__label">Ver no Instagram</span>
-                </span>
-              </span>
-            </a>
-          </li>
-        </GroupedList>
-
-        <GroupedList header="Tags">
-          {tags.length > 0 && (
-            <li className="phone-cell">
-              <div className="phone-an-tags" role="group" aria-label="Tags do post">
-                {tags.map((t) => {
-                  const on = assigned.has(t.id);
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      className="phone-an-tag"
-                      aria-pressed={on}
-                      disabled={busyTag !== null}
-                      onClick={async () => {
-                        setBusyTag(t.id);
-                        try {
-                          await onToggleTag(p, t, on);
-                        } finally {
-                          setBusyTag(null);
-                        }
-                      }}
-                    >
-                      <span
-                        className="phone-an-tag__dot"
-                        style={{ background: t.color }}
-                        aria-hidden="true"
-                      />
-                      {t.tag_name}
-                    </button>
-                  );
-                })}
-              </div>
-            </li>
-          )}
-          <Cell icon={<Plus />} label="Nova tag" onClick={onNewTag} aria-haspopup="dialog" />
-        </GroupedList>
+        )}
+        {commentsEnabled ? (
+          <div
+            role="tabpanel"
+            id={`post-sheet-${p.id}-panel`}
+            aria-labelledby={`post-sheet-${p.id}-tab-${tab}`}
+          >
+            {tab === 'comments' ? (
+              <PostCommentsPanel key={p.id} clientId={clientId} post={p} compact />
+            ) : (
+              insightsBody
+            )}
+          </div>
+        ) : (
+          insightsBody
+        )}
       </div>
     </BottomSheet>
   );

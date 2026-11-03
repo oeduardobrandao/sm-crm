@@ -81,6 +81,16 @@ describe('mapEntitlementError keys with digits', () => {
     });
   });
 
+  it('labels feature_instagram_comments_ai', () => {
+    expect(
+      mapEntitlementError({ message: 'feature_disabled:feature_instagram_comments_ai' }),
+    ).toEqual({
+      kind: 'feature',
+      key: 'feature_instagram_comments_ai',
+      label: 'Comentários com IA',
+    });
+  });
+
   it('reads a limit key with digits whole', () => {
     expect(mapEntitlementError({ message: 'plan_limit_exceeded:max_v2_items' })).toEqual({
       kind: 'limit',

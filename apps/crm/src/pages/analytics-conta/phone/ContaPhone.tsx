@@ -39,6 +39,7 @@ import {
 } from '../../analytics/phone/shared';
 import { RankedPostStrip } from '../../analytics/phone/RankedPostStrip';
 import { AllPostsSheet, type AllPostsRow } from '../../analytics/phone/AllPostsSheet';
+import { AccountCommentsCard } from '../comments/AccountCommentsCard';
 import { AIAnalysisPhone, useAIAnalysis } from '../../analytics/phone/AIAnalysisPhone';
 import { PeriodSegmented } from '../../analytics/phone/PeriodControl';
 import { NewTagSheet, PostDetailSheet } from './PostDetailSheet';
@@ -498,6 +499,8 @@ export function ContaPhone(props: ContaPhoneProps) {
           ))}
       </GroupedList>
 
+      <AccountCommentsCard clientId={clientId} posts={posts} compact />
+
       <AIAnalysisPhone
         title="Análise inteligente"
         view={aiView}
@@ -529,6 +532,7 @@ export function ContaPhone(props: ContaPhoneProps) {
       />
 
       <PostDetailSheet
+        clientId={clientId}
         post={selectedPost}
         onOpenChange={(open) => {
           if (!open) setSelectedPostId(null);

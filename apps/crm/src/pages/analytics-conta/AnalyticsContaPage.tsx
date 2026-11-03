@@ -89,6 +89,9 @@ import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import { ContaPhone, ContaPhoneMessage } from './phone/ContaPhone';
 import { BEST_TIME_BUCKET_STARTS, bucketBestTimes, toStatDelta } from './contaFormat';
 import { ActionMetricValue, PostInsightsDetail } from './components/PostInsightsDetail';
+import { AccountCommentsCard } from './comments/AccountCommentsCard';
+import { PostCommentsPanel } from './comments/PostCommentsPanel';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 
 Chart.register(...registerables);
 
@@ -918,6 +921,91 @@ function TagPill({ tag, onRemove }: { tag: PostTag; onRemove: () => void }) {
   );
 }
 
+/** The expanded row of the posts table. With `feature_instagram_comments_ai` it gets
+ *  "Insights" / "Comentários · N" tabs; the comments panel mounts (and fetches) only once
+ *  its tab is opened. Without the flag the row is exactly the insights it always was. */
+function ExpandedPostDetail({
+  clientId,
+  post: p,
+  commentsEnabled,
+}: {
+  clientId: number;
+  post: PostAnalytics;
+  commentsEnabled: boolean;
+}) {
+  const [tab, setTab] = useState<'insights' | 'comments'>('insights');
+  const insights = (
+    <>
+      <p
+        style={{
+          fontSize: '0.85rem',
+          whiteSpace: 'pre-wrap',
+          marginBottom: '0.5rem',
+        }}
+      >
+        {p.caption || 'Sem legenda'}
+      </p>
+      <div
+        style={{
+          display: 'flex',
+          gap: '1rem',
+          alignItems: 'center',
+          fontSize: '0.8rem',
+        }}
+      >
+        <a
+          href={sanitizeUrl(p.permalink)}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: 'var(--primary-color)' }}
+        >
+          ↗ Ver no Instagram
+        </a>
+      </div>
+      <PostInsightsDetail post={p} />
+    </>
+  );
+  if (!commentsEnabled) return insights;
+
+  const tabId = (t: string) => `post-${p.id}-tab-${t}`;
+  const panelId = (t: string) => `post-${p.id}-panel-${t}`;
+  const tabs: { key: 'insights' | 'comments'; label: string }[] = [
+    { key: 'insights', label: 'Insights' },
+    { key: 'comments', label: `Comentários · ${(p.comments || 0).toLocaleString('pt-BR')}` },
+  ];
+  return (
+    <>
+      <div
+        className="page-tabs page-tabs--inline igc-detail-tabs"
+        role="tablist"
+        aria-label="Detalhes do post"
+      >
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            role="tab"
+            id={tabId(t.key)}
+            aria-selected={tab === t.key}
+            aria-controls={tab === t.key ? panelId(t.key) : undefined}
+            className={`page-tab${tab === t.key ? ' active' : ''}`}
+            onClick={() => setTab(t.key)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel" id={panelId(tab)} aria-labelledby={tabId(tab)}>
+        {tab === 'insights' ? (
+          insights
+        ) : (
+          <PostCommentsPanel key={p.id} clientId={clientId} post={p} />
+        )}
+      </div>
+    </>
+  );
+}
+
 // ---- Main Content ----
 function AnalyticsContent({
   clientId,
@@ -947,6 +1035,7 @@ function AnalyticsContent({
     dir: 'desc',
   });
   const [expandedPostId, setExpandedPostId] = useState<number | null>(null);
+  const commentsAiEnabled = useWorkspaceLimits().features?.feature_instagram_comments_ai === true;
   const [syncing, setSyncing] = useState(false);
   // Collapsed by default on phones, where the callout ate most of a screen
   const [savesOpen, setSavesOpen] = useState(
@@ -1987,33 +2076,11 @@ function AnalyticsContent({
                             background: vidroShell ? undefined : 'var(--card-bg)',
                           }}
                         >
-                          <p
-                            style={{
-                              fontSize: '0.85rem',
-                              whiteSpace: 'pre-wrap',
-                              marginBottom: '0.5rem',
-                            }}
-                          >
-                            {p.caption || 'Sem legenda'}
-                          </p>
-                          <div
-                            style={{
-                              display: 'flex',
-                              gap: '1rem',
-                              alignItems: 'center',
-                              fontSize: '0.8rem',
-                            }}
-                          >
-                            <a
-                              href={sanitizeUrl(p.permalink)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{ color: 'var(--primary-color)' }}
-                            >
-                              ↗ Ver no Instagram
-                            </a>
-                          </div>
-                          <PostInsightsDetail post={p} />
+                          <ExpandedPostDetail
+                            clientId={clientId}
+                            post={p}
+                            commentsEnabled={commentsAiEnabled}
+                          />
                         </td>
                       </tr>
                     )}
@@ -2045,6 +2112,8 @@ function AnalyticsContent({
           </div>
         )}
       </div>
+
+      <AccountCommentsCard clientId={clientId} posts={posts} />
 
       {/* AI Analysis */}
       <AISection clientId={clientId} days={days} />
