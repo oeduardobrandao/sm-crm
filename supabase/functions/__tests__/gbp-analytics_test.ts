@@ -786,3 +786,410 @@ Deno.test("gbp-analytics: every history read is keyed by the workspace's conta_i
     for (const c of reads) assert(hasMod(c, "eq", "conta_id", "ws-B"), `${path} ${c.table}`);
   }
 });
+
+// ── portfolio ─────────────────────────────────────────────────────────────────
+// Read order (fixed in buildGbpPortfolio): clientes -> gbp_locations -> metrics, ratings and
+// reviews in parallel. Each is paged, so the mock's default empty select closes each read.
+// No list of ids rides a whole-workspace query string: gbp_locations is read by tenant + status
+// and the history by tenant + dates, each filtered in code. Only `?client=` keeps `in location_name`.
+
+const FRESH = "2026-10-30T10:00:00.000Z"; // 5 h before NOW
+const STALE = "2026-10-27T15:00:00.000Z"; // 72 h before NOW
+const PU1 = { ...U1, client_id: 42, last_synced_at: FRESH };
+const PU2 = { ...U2, client_id: 43, last_synced_at: FRESH };
+const CLIENTS = [
+  { id: 42, nome: "Dra. Ana", especialidade: "Odontologia" },
+  { id: 43, nome: "Dr. Beto", especialidade: "" },
+];
+
+function portfolioReady(db: Mock, clients: unknown[] = CLIENTS, rows: unknown[] = [PU1, PU2]) {
+  signedIn(db);
+  db.queue("clientes", "select", { data: clients });
+  db.queue("gbp_locations", "select", { data: rows });
+}
+
+/** Every day of [start, start + count - 1]. */
+const daysFrom = (start: string, count: number) =>
+  Array.from({ length: count }, (_, i) => new Date(Date.parse(`${start}T00:00:00.000Z`) + i * 86400000).toISOString().slice(0, 10));
+
+Deno.test("portfolio: 403 feature_disabled when a plan flag is off, before any read", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  db.queueRpc("effective_plan_feature", { data: false });
+  const res = await makeHandler(db)(get("/portfolio"));
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: "feature_disabled", feature: "feature_google_business" });
+  assertEquals(callsTo(db, "clientes").length, 0);
+
+  const db2 = createSupabaseQueryMock();
+  signedIn(db2);
+  db2.queueRpc("effective_plan_feature", { data: true }, { data: false });
+  const res2 = await makeHandler(db2)(get("/portfolio"));
+  assertEquals(res2.status, 403);
+  assertEquals(await res2.json(), { error: "feature_disabled", feature: "feature_analytics_reports" });
+  assertEquals(callsTo(db2, "clientes").length, 0);
+});
+
+Deno.test("portfolio: 400 invalid_window on days=28 and invalid_client_id on a bad client", async () => {
+  const cases: [string, string][] = [
+    ["/portfolio?days=28", "invalid_window"],
+    ["/portfolio?start=2026-10-01&end=2026-10-10", "invalid_window"], // days only
+    ["/portfolio?client=abc", "invalid_client_id"],
+    ["/portfolio?client=0", "invalid_client_id"],
+    ["/portfolio?client=", "invalid_client_id"],
+  ];
+  for (const [path, error] of cases) {
+    const db = createSupabaseQueryMock();
+    signedIn(db);
+    const res = await makeHandler(db)(get(path));
+    assertEquals(res.status, 400, path);
+    assertEquals(await res.json(), { error }, path);
+    assertEquals(featureCalls(db), [], path);
+    assertEquals(callsTo(db, "clientes").length, 0, path);
+  }
+});
+
+Deno.test("portfolio: reads active clients of the tenant only, and their counted units", async () => {
+  const db = createSupabaseQueryMock();
+  portfolioReady(db, [CLIENTS[0]], [PU1]);
+  const res = await makeHandler(db)(get("/portfolio?client=42"));
+  assertEquals(res.status, 200);
+  const [client] = callsTo(db, "clientes");
+  assert(hasMod(client, "eq", "conta_id", "ws-B"));
+  assert(hasMod(client, "eq", "status", "ativo"));
+  assert(hasMod(client, "eq", "id", 42));
+  const [loc] = callsTo(db, "gbp_locations");
+  assert(hasMod(loc, "eq", "conta_id", "ws-B"));
+  assertEquals(mods(loc, "in"), [["status", ["active", "revoked"]]]); // active clients filtered in code
+  assert(hasMod(loc, "in", "status", ["active", "revoked"]));
+  assert(hasMod(loc, "eq", "client_id", 42)); // one client: narrow the unit read
+  assertEquals(mods(loc, "order"), [
+    ["client_id", { ascending: true }],
+    ["created_at", { ascending: true }],
+    ["id", { ascending: true }],
+  ]);
+  assertEquals(featureCalls(db), ["feature_google_business", "feature_analytics_reports"]);
+  for (const c of db.calls.filter((c) => c.operation === "select" && !c.table.startsWith("rpc:"))) {
+    const cols = String(c.selectArgs[0]?.[0] ?? "");
+    assert(!cols.includes("token") && !cols.includes("*"), `${c.table}: ${cols}`);
+  }
+  for (const c of db.calls.filter((c) => HISTORY_TABLES.includes(c.table))) {
+    assert(hasMod(c, "eq", "conta_id", "ws-B"), c.table);
+  }
+});
+
+Deno.test("portfolio: empty when no client or no unit", async () => {
+  for (const [clients, rows] of [[[], []], [CLIENTS, []]] as [unknown[], unknown[]][]) {
+    const db = createSupabaseQueryMock();
+    portfolioReady(db, clients, rows);
+    const res = await makeHandler(db)(get("/portfolio"));
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(Object.keys(body), ["window", "dataThrough", "kpis", "units", "reviewsAttention"]);
+    assertEquals(body.units, []);
+    assertEquals(body.reviewsAttention, []);
+    assertEquals(body.dataThrough, null);
+    assertEquals(body.kpis.units, 0);
+    assertEquals(body.kpis.revokedUnits, 0);
+    assertEquals(body.kpis.actions, { value: null, prev: null });
+    assert(typeof body.window.start === "string");
+    if (clients.length === 0) assertEquals(callsTo(db, "gbp_locations").length, 0);
+    for (const t of HISTORY_TABLES) assertEquals(callsTo(db, t).length, 0, t);
+  }
+});
+
+Deno.test("portfolio: foreign client id yields the empty portfolio", async () => {
+  const db = createSupabaseQueryMock();
+  portfolioReady(db, [], [PU1]); // the tenant-keyed clientes read finds nothing
+  const res = await makeHandler(db)(get("/portfolio?client=999"));
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.units, []);
+  const [client] = callsTo(db, "clientes");
+  assert(hasMod(client, "eq", "conta_id", "ws-B"));
+  assert(hasMod(client, "eq", "id", 999));
+  assertEquals(callsTo(db, "gbp_locations").length, 0);
+  for (const t of HISTORY_TABLES) assertEquals(callsTo(db, t).length, 0, t);
+});
+
+Deno.test("portfolio: before the first sync the units are listed with zeros and no metric is read", async () => {
+  const db = createSupabaseQueryMock();
+  portfolioReady(db, CLIENTS, [{ ...PU1, data_through: null }, { ...PU2, data_through: null }]);
+  const body = await (await makeHandler(db)(get("/portfolio"))).json();
+  assertEquals(body.dataThrough, null);
+  assertEquals(body.units.length, 2);
+  assertEquals(body.units[0].actions, 0);
+  assertEquals(body.units[0].prevProfileViews, null);
+  assertEquals(body.units[0].avgRating, 4.5); // gbp_locations fallback: no snapshot read
+  assertEquals(body.kpis.units, 2);
+  assertEquals(body.kpis.profileViews, { value: null, prev: null });
+  for (const t of ["gbp_metrics_daily", "gbp_rating_daily"]) assertEquals(callsTo(db, t).length, 0, t);
+});
+
+Deno.test("portfolio: attention reviews do not wait for the metrics window", async () => {
+  const db = createSupabaseQueryMock();
+  portfolioReady(db, CLIENTS, [{ ...PU1, data_through: null }]);
+  db.queue("gbp_reviews", "select", {
+    data: [{ location_name: "locations/1", reviewer_name: "Ana", star_rating: 2, comment: "Fila", create_time: "2026-10-29T12:00:00+00:00" }],
+  });
+  const body = await (await makeHandler(db)(get("/portfolio?days=7"))).json();
+  assertEquals(body.dataThrough, null);
+  assertEquals(body.reviewsAttention.map((r: { unitId: string; starRating: number }) => [r.unitId, r.starRating]), [[U1_ID, 2]]);
+  const [r] = callsTo(db, "gbp_reviews");
+  assert(hasMod(r, "gte", "create_time", "2026-10-24T03:00:00.000Z")); // SP 2026-10-30 - 6 days
+});
+
+Deno.test("portfolio: sums KPIs and per-unit rows over the shared window", async () => {
+  const db = createSupabaseQueryMock();
+  portfolioReady(db); // fresh 10-27 and 10-25: the window ends on 10-25
+  // days=30: [2026-09-26, 2026-10-25], previous [2026-08-27, 2026-09-25].
+  db.queue("gbp_metrics_daily", "select", {
+    data: [
+      metrics("locations/1", "2026-08-27", { call_clicks: 4 }), // on prevStart: U1 covered
+      ...daysFrom("2026-09-26", 30).map((d) => metrics("locations/1", d, { call_clicks: 1, business_direction_requests: 1 })),
+      metrics("locations/2", "2026-10-20", { business_impressions_mobile_maps: 10, website_clicks: 3, messaging_clicks: 2 }),
+    ],
+  });
+  const res = await makeHandler(db)(get("/portfolio?days=30"));
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.dataThrough, "2026-10-25");
+  assertEquals(body.window, { start: "2026-09-26", end: "2026-10-25", prevStart: "2026-08-27", prevEnd: "2026-09-25" });
+  assertEquals(body.kpis.units, 2);
+  assertEquals(body.kpis.revokedUnits, 0);
+  assertEquals(body.kpis.actions, { value: 65, prev: 4 });
+  assertEquals(body.kpis.profileViews, { value: 10, prev: 0 });
+
+  const [u1, u2] = body.units;
+  assertEquals(u1, {
+    id: U1_ID,
+    clientId: 42,
+    clientName: "Dra. Ana",
+    especialidade: "Odontologia",
+    title: "Clínica Centro",
+    status: "active",
+    mapsUri: "https://maps.google.com/?cid=1",
+    lastSyncedAt: FRESH,
+    stale: false,
+    profileViews: 0,
+    prevProfileViews: 0,
+    calls: 30,
+    directions: 30,
+    websiteClicks: 0,
+    messages: 0,
+    bookings: 0,
+    actions: 60,
+    avgRating: 4.5,
+    reviewCount: 440,
+    newReviews: null,
+  });
+  assertEquals(u2.clientName, "Dr. Beto");
+  assertEquals(u2.especialidade, null); // '' is no specialty
+  assertEquals(u2.profileViews, 10);
+  assertEquals(u2.actions, 5);
+
+  const [m] = callsTo(db, "gbp_metrics_daily");
+  assert(hasMod(m, "eq", "conta_id", "ws-B"));
+  assertEquals(mods(m, "in"), []); // whole workspace: tenant + dates, units kept in code
+  assert(hasMod(m, "gte", "day", "2026-08-27"));
+  assert(hasMod(m, "lte", "day", "2026-10-25"));
+  assertEquals(mods(m, "order"), [["location_name", { ascending: true }], ["day", { ascending: true }]]);
+});
+
+Deno.test("portfolio: whole workspace keeps only the listed units' rows, in code", async () => {
+  const db = createSupabaseQueryMock();
+  // Client 99 is not active: its unit is dropped, and locations/9 (its, or a disconnected unit's
+  // history) comes back from the tenant-wide reads without counting anywhere.
+  portfolioReady(db, CLIENTS, [PU1, PU2, { ...PU2, id: "u-99", client_id: 99, location_name: "locations/9", data_through: "2026-10-01" }]);
+  db.queue("gbp_metrics_daily", "select", {
+    data: [
+      metrics("locations/1", "2026-10-20", { call_clicks: 2 }),
+      metrics("locations/9", "2026-10-20", { call_clicks: 500, business_impressions_desktop_maps: 500 }),
+    ],
+  });
+  db.queue("gbp_rating_daily", "select", {
+    data: [
+      { location_name: "locations/1", day: "2026-10-20", average_rating: 4.0, total_review_count: 100 },
+      { location_name: "locations/9", day: "2026-10-20", average_rating: 1.0, total_review_count: 9000 },
+    ],
+  });
+  db.queue("gbp_reviews", "select", {
+    data: [
+      { location_name: "locations/9", reviewer_name: "X", star_rating: 1, comment: null, create_time: "2026-10-29T12:00:00+00:00" },
+      { location_name: "locations/1", reviewer_name: "Y", star_rating: 2, comment: null, create_time: "2026-10-28T12:00:00+00:00" },
+    ],
+  });
+  const body = await (await makeHandler(db)(get("/portfolio?days=30"))).json();
+  assertEquals(body.units.map((u: { id: string }) => u.id), [U1_ID, U2_ID]);
+  assertEquals(body.kpis.units, 2);
+  assertEquals(body.kpis.actions.value, 2);
+  assertEquals(body.kpis.profileViews.value, 0);
+  assertEquals(body.kpis.avgRating.value, 4);
+  assertEquals(body.reviewsAttention.map((r: { reviewerName: string }) => r.reviewerName), ["Y"]);
+  for (const t of ["gbp_metrics_daily", "gbp_rating_daily", "gbp_reviews"]) {
+    for (const c of callsTo(db, t)) {
+      assert(hasMod(c, "eq", "conta_id", "ws-B"), t);
+      assertEquals(mods(c, "in"), [], t);
+    }
+  }
+});
+
+Deno.test("portfolio: a client filter keeps in location_name on every history read", async () => {
+  const db = createSupabaseQueryMock();
+  portfolioReady(db, [CLIENTS[0]], [PU1, PU2]); // PU2 belongs to client 43: dropped in code
+  const body = await (await makeHandler(db)(get("/portfolio?client=42&days=30"))).json();
+  assertEquals(body.units.map((u: { id: string }) => u.id), [U1_ID]);
+  for (const t of ["gbp_metrics_daily", "gbp_rating_daily", "gbp_reviews"]) {
+    const calls = callsTo(db, t);
+    assert(calls.length > 0, t);
+    for (const c of calls) {
+      assert(hasMod(c, "eq", "conta_id", "ws-B"), t);
+      assert(hasMod(c, "in", "location_name", ["locations/1"]), t);
+    }
+  }
+});
+
+Deno.test("portfolio: per-unit prevProfileViews null when the unit has no row on prevStart", async () => {
+  const db = createSupabaseQueryMock();
+  portfolioReady(db);
+  db.queue("gbp_metrics_daily", "select", {
+    data: [
+      metrics("locations/1", "2026-08-28", { business_impressions_desktop_maps: 9 }), // the day after prevStart
+      metrics("locations/1", "2026-10-01", { business_impressions_desktop_maps: 3 }),
+      metrics("locations/2", "2026-08-27", { business_impressions_desktop_maps: 2 }), // on prevStart
+    ],
+  });
+  const body = await (await makeHandler(db)(get("/portfolio?days=30"))).json();
+  assertEquals(body.units[0].profileViews, 3);
+  assertEquals(body.units[0].prevProfileViews, null);
+  assertEquals(body.units[1].prevProfileViews, 2);
+  // Some unit is covered on prevStart, so the portfolio keeps its comparison.
+  assertEquals(body.kpis.profileViews, { value: 3, prev: 11 });
+
+  const db2 = createSupabaseQueryMock();
+  portfolioReady(db2);
+  db2.queue("gbp_metrics_daily", "select", { data: [metrics("locations/1", "2026-08-28", { call_clicks: 1 })] });
+  const body2 = await (await makeHandler(db2)(get("/portfolio?days=30"))).json();
+  assertEquals(body2.kpis.actions, { value: 0, prev: null });
+  assertEquals(body2.kpis.profileViews.prev, null);
+});
+
+Deno.test("portfolio: avgRating uses the window-end snapshot, falls back to gbp_locations", async () => {
+  const db = createSupabaseQueryMock();
+  portfolioReady(db); // window [2026-09-26, 2026-10-25]
+  db.queue("gbp_rating_daily", "select", {
+    data: [
+      { location_name: "locations/1", day: "2026-09-20", average_rating: 4.2, total_review_count: 90 },
+      { location_name: "locations/1", day: "2026-10-20", average_rating: "4.0", total_review_count: 100 },
+      { location_name: "locations/1", day: "2026-10-26", average_rating: 3.0, total_review_count: 200 }, // after the end
+    ],
+  });
+  const body = await (await makeHandler(db)(get("/portfolio?days=30"))).json();
+  const [u1, u2] = body.units;
+  assertEquals([u1.avgRating, u1.reviewCount, u1.newReviews], [4, 100, 10]);
+  assertEquals([u2.avgRating, u2.reviewCount, u2.newReviews], [5, 10, null]); // no snapshot: gbp_locations
+  assertEquals(body.kpis.avgRating, { value: 4, prev: 4.2 });
+  assertEquals(body.kpis.newReviews.value, 10);
+  const [r] = callsTo(db, "gbp_rating_daily");
+  assert(hasMod(r, "eq", "conta_id", "ws-B"));
+  assert(hasMod(r, "lte", "day", "2026-10-25"));
+});
+
+Deno.test("portfolio: a stale unit is flagged and does not move the window end", async () => {
+  const db = createSupabaseQueryMock();
+  portfolioReady(db, CLIENTS, [PU1, { ...PU2, data_through: "2026-10-20", last_synced_at: STALE }]);
+  db.queue("gbp_metrics_daily", "select", {
+    data: [
+      metrics("locations/1", "2026-10-27", { call_clicks: 2 }),
+      metrics("locations/2", "2026-10-15", { call_clicks: 5 }),
+    ],
+  });
+  const body = await (await makeHandler(db)(get("/portfolio?days=30"))).json();
+  assertEquals(body.dataThrough, "2026-10-27");
+  assertEquals(body.window.end, "2026-10-27");
+  assertEquals(body.units.map((u: { stale: boolean }) => u.stale), [false, true]);
+  assertEquals(body.units[1].lastSyncedAt, STALE);
+  assertEquals(body.units[1].calls, 5); // still counted with what it has stored
+  assertEquals(body.kpis.actions.value, 7);
+});
+
+Deno.test("portfolio: a revoked unit is counted apart and never stale", async () => {
+  const db = createSupabaseQueryMock();
+  portfolioReady(db, CLIENTS, [PU1, { ...PU2, status: "revoked", last_synced_at: STALE }]);
+  const body = await (await makeHandler(db)(get("/portfolio"))).json();
+  assertEquals(body.kpis.units, 2);
+  assertEquals(body.kpis.revokedUnits, 1);
+  assertEquals(body.units[1].status, "revoked");
+  assertEquals(body.units[1].stale, false);
+});
+
+Deno.test("portfolio: reviewsAttention filters <=3 stars, unanswered, from SP today - N + 1, newest first", async () => {
+  const db = createSupabaseQueryMock();
+  portfolioReady(db);
+  db.queue("gbp_reviews", "select", {
+    data: [
+      { location_name: "locations/2", reviewer_name: "Maria", star_rating: 1, comment: "Demorou", create_time: "2026-10-29T12:00:00+00:00" },
+      { location_name: "locations/1", reviewer_name: null, star_rating: 3, comment: null, create_time: "2026-10-02T12:00:00+00:00" },
+    ],
+  });
+  const res = await makeHandler(db)(get("/portfolio?days=30"));
+  assertEquals(res.status, 200);
+  assertEquals((await res.json()).reviewsAttention, [
+    {
+      unitId: U2_ID,
+      clientId: 43,
+      unitTitle: "Clínica Sul",
+      mapsUri: null,
+      reviewerName: "Maria",
+      starRating: 1,
+      comment: "Demorou",
+      createTime: "2026-10-29T12:00:00+00:00",
+    },
+    {
+      unitId: U1_ID,
+      clientId: 42,
+      unitTitle: "Clínica Centro",
+      mapsUri: "https://maps.google.com/?cid=1",
+      reviewerName: null,
+      starRating: 3,
+      comment: null,
+      createTime: "2026-10-02T12:00:00+00:00",
+    },
+  ]);
+  const [r] = callsTo(db, "gbp_reviews");
+  assert(hasMod(r, "eq", "conta_id", "ws-B"));
+  assertEquals(mods(r, "in"), []); // whole workspace: units kept in code
+  assert(hasMod(r, "lte", "star_rating", 3));
+  assert(hasMod(r, "eq", "has_reply", false));
+  // SP 2026-10-30 - 29 days = 2026-10-01, midnight in São Paulo (UTC-3).
+  assert(hasMod(r, "gte", "create_time", "2026-10-01T03:00:00.000Z"));
+  assertEquals(mods(r, "order"), [
+    ["create_time", { ascending: false, nullsFirst: false }],
+    ["location_name", { ascending: true }],
+    ["review_id", { ascending: true }],
+  ]);
+  assert(mods(r, "range").length > 0);
+});
+
+Deno.test("portfolio: 100 units × 90 days paged", async () => {
+  const db = createSupabaseQueryMock();
+  const many = Array.from({ length: 100 }, (_, i) => ({
+    ...PU1,
+    id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+    location_name: `locations/${String(i).padStart(3, "0")}`,
+  }));
+  portfolioReady(db, [CLIENTS[0]], many);
+  // days=90 at data_through 10-27: [2026-07-30, 2026-10-27], previous from 2026-05-01: 180 days per unit.
+  const days = daysFrom("2026-05-01", 180);
+  const rows = many.flatMap((u) => days.map((d) => metrics(u.location_name, d, { call_clicks: 1 })));
+  assertEquals(rows.length, 18000);
+  db.queue("gbp_metrics_daily", "select", ...Array.from({ length: 18 }, (_, p) => ({ data: rows.slice(p * 1000, p * 1000 + 1000) })));
+  const res = await makeHandler(db)(get("/portfolio?days=90"));
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.units.length, 100);
+  assertEquals(body.window, { start: "2026-07-30", end: "2026-10-27", prevStart: "2026-05-01", prevEnd: "2026-07-29" });
+  assertEquals(body.kpis.actions, { value: 9000, prev: 9000 });
+  assert(body.units.every((u: { calls: number; prevProfileViews: number | null }) => u.calls === 90 && u.prevProfileViews === 0));
+  assertEquals(callsTo(db, "gbp_metrics_daily").length, 19); // 18 pages and the empty closing one
+});

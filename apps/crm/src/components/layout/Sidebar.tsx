@@ -283,6 +283,7 @@ export default function Sidebar({
                     <div
                       className="sidebar-sub-link sidebar-sub-link--disabled"
                       aria-disabled="true"
+                      title={t(item.labelKey, item.label)}
                     >
                       <i className={`ph ${item.icon}`} />
                       <span className="sidebar-sub-label">{t(item.labelKey, item.label)}</span>

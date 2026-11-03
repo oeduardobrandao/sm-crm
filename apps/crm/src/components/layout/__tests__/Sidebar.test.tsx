@@ -364,6 +364,38 @@ describe('Sidebar', () => {
     expect(screen.getByText('Instagram').closest('a')).not.toHaveClass('active');
   });
 
+  it('renders YouTube as an inert "Em breve" row when feature_youtube is false', () => {
+    setAuth();
+    setLimits({
+      features: {
+        feature_youtube: false,
+        feature_google_business: true,
+        feature_analytics_reports: true,
+      },
+    });
+
+    renderSidebar('/dashboard', { isDrawer: true, isOpen: true, onClose: vi.fn() });
+
+    const row = screen.getByText('YouTube').closest('.sidebar-sub-link');
+    expect(row).toHaveAttribute('aria-disabled', 'true');
+    expect(row).toHaveTextContent('Em breve');
+    expect(screen.queryByRole('link', { name: /YouTube/ })).toBeNull();
+    // Google Meu Negócio has its flag on: a real link.
+    expect(screen.getByRole('link', { name: /Google Meu Negócio/ })).toHaveAttribute(
+      'href',
+      expect.stringContaining('/analytics/google'),
+    );
+  });
+
+  it('lights YouTube, not Instagram, on the YouTube overview', () => {
+    setAuth();
+    setLimits({ features: { feature_youtube: true, feature_analytics_reports: true } });
+
+    renderSidebar('/analytics/youtube', { isDrawer: true, isOpen: true, onClose: vi.fn() });
+    expect(screen.getByText('YouTube').closest('a')).toHaveClass('active');
+    expect(screen.getByText('Instagram').closest('a')).not.toHaveClass('active');
+  });
+
   it('lights Instagram on the client Relatórios tab', () => {
     setAuth();
     setLimits({ features: { feature_tiktok: true, feature_analytics_reports: true } });

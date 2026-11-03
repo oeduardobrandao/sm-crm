@@ -9,12 +9,15 @@
 // validation, the client loaded with conta_id = tenant (403 for a foreign client, before any plan
 // flag), the two plan flags, then the channel row (404 not_connected when missing). A revoked
 // channel still answers 200 with its status, so the tab shows the reconnect banner.
+// GET /portfolio (2026-11-03 overview spec §7) has no client: tenant, rate limit, window, the two
+// flags, then reads keyed by the tenant's conta_id (no ownership check to make).
 
 import { checkRateLimit as realCheckRateLimit } from "../_shared/rate-limit.ts";
 import { effectivePlanFeature as realEffectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { createJsonResponder, internalServerError, type JsonResponder } from "../_shared/http.ts";
 import { loadClientInTenant, resolveTenant } from "../google-integration/tenant.ts";
 import { parseYtWindowRequest, type YtWindowRequest } from "../_shared/youtube-analytics/window.ts";
+import { buildYtPortfolio } from "../_shared/youtube-analytics/portfolio.ts";
 import type { YtContentType } from "../_shared/youtube-analytics/kpis.ts";
 import {
   buildYtDaily,
@@ -72,15 +75,22 @@ function parseClientId(segment: string | undefined): number | null {
 
 const badRequest = (ctx: RouteContext, error: string) => ctx.json({ error }, 400);
 
+/** The two plan flags, in order; the 403 for the first one off, else null. */
+async function requireFeatures(ctx: RouteContext): Promise<Response | null> {
+  const check: FeatureCheck = ctx.deps.effectivePlanFeature ?? realEffectivePlanFeature;
+  for (const feature of FEATURES) {
+    if (!(await check(ctx.db, ctx.contaId, feature))) return ctx.json({ error: "feature_disabled", feature }, 403);
+  }
+  return null;
+}
+
 /** Ownership, flags, then the channel row. Any Response is the answer as is. */
 async function requireChannel(ctx: RouteContext, clientId: number): Promise<YouTubeChannelRow | Response> {
   const client = await loadClientInTenant(ctx.db, clientId, ctx.contaId);
   if (!client) return ctx.json({ error: "Unauthorized" }, 403);
 
-  const check: FeatureCheck = ctx.deps.effectivePlanFeature ?? realEffectivePlanFeature;
-  for (const feature of FEATURES) {
-    if (!(await check(ctx.db, ctx.contaId, feature))) return ctx.json({ error: "feature_disabled", feature }, 403);
-  }
+  const denied = await requireFeatures(ctx);
+  if (denied) return denied;
 
   const channel = await loadYouTubeChannel(ctx.db, ctx.contaId, clientId);
   if (!channel) return ctx.json({ error: "not_connected" }, 404);
@@ -157,6 +167,18 @@ async function handleTopShorts(ctx: RouteContext, clientId: number): Promise<Res
   return ctx.json({ shorts: await buildYtTopShorts(ctx.db, ctx.contaId, channel, input.req, ctx.now) });
 }
 
+/** One row per channel, each over its own window. The body is `{ channels }` and nothing else:
+ * no field may span channels (YouTube API policy). */
+async function handlePortfolio(ctx: RouteContext): Promise<Response> {
+  // `?days` only (spec §7): the read is sized for 90 days, so no `?start&end` range up to 365.
+  const req = parseYtWindowRequest(ctx.url.searchParams);
+  if (!req || !("days" in req)) return badRequest(ctx, "invalid_window");
+  const denied = await requireFeatures(ctx);
+  if (denied) return denied;
+  const portfolio = await buildYtPortfolio(ctx.db, ctx.contaId, req, ctx.now);
+  return ctx.json({ channels: portfolio.channels });
+}
+
 type ClientRoute = (ctx: RouteContext, clientId: number) => Promise<Response>;
 const CLIENT_GET_ROUTES: Record<string, ClientRoute> = {
   "overview": handleOverview,
@@ -168,6 +190,7 @@ const CLIENT_GET_ROUTES: Record<string, ClientRoute> = {
 };
 
 async function route(req: Request, ctx: RouteContext, path: string): Promise<Response> {
+  if (req.method === "GET" && path === "/portfolio") return await handlePortfolio(ctx);
   const match = path.match(/^\/([a-z-]+)\/([^/]+)$/);
   const handler = match && req.method === "GET" && Object.hasOwn(CLIENT_GET_ROUTES, match[1])
     ? CLIENT_GET_ROUTES[match[1]]

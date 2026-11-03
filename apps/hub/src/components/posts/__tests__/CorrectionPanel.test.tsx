@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CorrectionPanel } from '../CorrectionPanel';
 import type { HubPost } from '../../../types';
@@ -474,10 +474,12 @@ describe('CorrectionPanel', () => {
       />,
     );
     // A real TipTap editor mounts here; under the CI coverage shards that alone has gone past
-    // findByText's 1s default, so both waits get room.
-    expect(
-      await screen.findByText('Corpo original do roteiro', undefined, { timeout: 5000 }),
-    ).toBeInTheDocument();
+    // findByText's 1s default, so both waits get room. The checks run inside waitFor rather
+    // than on findByText's result: TipTap can replace its paragraph node after it first
+    // renders, and an element found a tick earlier then fails toBeInTheDocument as detached.
+    await waitFor(() => expect(screen.getByText('Corpo original do roteiro')).toBeInTheDocument(), {
+      timeout: 5000,
+    });
 
     rerender(
       <CorrectionPanel
@@ -496,10 +498,13 @@ describe('CorrectionPanel', () => {
       />,
     );
 
-    expect(
-      await screen.findByText('Corpo atualizado do roteiro', undefined, { timeout: 5000 }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText('Corpo original do roteiro')).not.toBeInTheDocument();
+    await waitFor(
+      () => {
+        expect(screen.getByText('Corpo atualizado do roteiro')).toBeInTheDocument();
+        expect(screen.queryByText('Corpo original do roteiro')).not.toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
   });
 
   const PENDING = {
