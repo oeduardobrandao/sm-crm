@@ -831,6 +831,7 @@ Deno.test("portfolio: 403 feature_disabled when a plan flag is off, before any r
 Deno.test("portfolio: 400 invalid_window on days=28 and invalid_client_id on a bad client", async () => {
   const cases: [string, string][] = [
     ["/portfolio?days=28", "invalid_window"],
+    ["/portfolio?start=2026-10-01&end=2026-10-10", "invalid_window"], // days only
     ["/portfolio?client=abc", "invalid_client_id"],
     ["/portfolio?client=0", "invalid_client_id"],
     ["/portfolio?client=", "invalid_client_id"],
@@ -848,7 +849,7 @@ Deno.test("portfolio: 400 invalid_window on days=28 and invalid_client_id on a b
 
 Deno.test("portfolio: reads active clients of the tenant only, and their counted units", async () => {
   const db = createSupabaseQueryMock();
-  portfolioReady(db);
+  portfolioReady(db, [CLIENTS[0]], [PU1]);
   const res = await makeHandler(db)(get("/portfolio?client=42"));
   assertEquals(res.status, 200);
   const [client] = callsTo(db, "clientes");
@@ -857,8 +858,13 @@ Deno.test("portfolio: reads active clients of the tenant only, and their counted
   assert(hasMod(client, "eq", "id", 42));
   const [loc] = callsTo(db, "gbp_locations");
   assert(hasMod(loc, "eq", "conta_id", "ws-B"));
-  assert(hasMod(loc, "in", "client_id", [42, 43]));
+  assert(hasMod(loc, "in", "client_id", [42]));
   assert(hasMod(loc, "in", "status", ["active", "revoked"]));
+  assertEquals(mods(loc, "order"), [
+    ["client_id", { ascending: true }],
+    ["created_at", { ascending: true }],
+    ["id", { ascending: true }],
+  ]);
   assertEquals(featureCalls(db), ["feature_google_business", "feature_analytics_reports"]);
   for (const c of db.calls.filter((c) => c.operation === "select" && !c.table.startsWith("rpc:"))) {
     const cols = String(c.selectArgs[0]?.[0] ?? "");
@@ -903,7 +909,7 @@ Deno.test("portfolio: foreign client id yields the empty portfolio", async () =>
   for (const t of HISTORY_TABLES) assertEquals(callsTo(db, t).length, 0, t);
 });
 
-Deno.test("portfolio: before the first sync the units are listed with zeros and nothing is read", async () => {
+Deno.test("portfolio: before the first sync the units are listed with zeros and no metric is read", async () => {
   const db = createSupabaseQueryMock();
   portfolioReady(db, CLIENTS, [{ ...PU1, data_through: null }, { ...PU2, data_through: null }]);
   const body = await (await makeHandler(db)(get("/portfolio"))).json();
@@ -914,7 +920,20 @@ Deno.test("portfolio: before the first sync the units are listed with zeros and 
   assertEquals(body.units[0].avgRating, 4.5); // gbp_locations fallback: no snapshot read
   assertEquals(body.kpis.units, 2);
   assertEquals(body.kpis.profileViews, { value: null, prev: null });
-  for (const t of HISTORY_TABLES) assertEquals(callsTo(db, t).length, 0, t);
+  for (const t of ["gbp_metrics_daily", "gbp_rating_daily"]) assertEquals(callsTo(db, t).length, 0, t);
+});
+
+Deno.test("portfolio: attention reviews do not wait for the metrics window", async () => {
+  const db = createSupabaseQueryMock();
+  portfolioReady(db, CLIENTS, [{ ...PU1, data_through: null }]);
+  db.queue("gbp_reviews", "select", {
+    data: [{ location_name: "locations/1", reviewer_name: "Ana", star_rating: 2, comment: "Fila", create_time: "2026-10-29T12:00:00+00:00" }],
+  });
+  const body = await (await makeHandler(db)(get("/portfolio?days=7"))).json();
+  assertEquals(body.dataThrough, null);
+  assertEquals(body.reviewsAttention.map((r: { unitId: string; starRating: number }) => [r.unitId, r.starRating]), [[U1_ID, 2]]);
+  const [r] = callsTo(db, "gbp_reviews");
+  assert(hasMod(r, "gte", "create_time", "2026-10-24T03:00:00.000Z")); // SP 2026-10-30 - 6 days
 });
 
 Deno.test("portfolio: sums KPIs and per-unit rows over the shared window", async () => {
@@ -1087,7 +1106,11 @@ Deno.test("portfolio: reviewsAttention filters <=3 stars, unanswered, from SP to
   assert(hasMod(r, "eq", "has_reply", false));
   // SP 2026-10-30 - 29 days = 2026-10-01, midnight in São Paulo (UTC-3).
   assert(hasMod(r, "gte", "create_time", "2026-10-01T03:00:00.000Z"));
-  assertEquals(mods(r, "order")[0], ["create_time", { ascending: false, nullsFirst: false }]);
+  assertEquals(mods(r, "order"), [
+    ["create_time", { ascending: false, nullsFirst: false }],
+    ["location_name", { ascending: true }],
+    ["review_id", { ascending: true }],
+  ]);
   assert(mods(r, "range").length > 0);
 });
 

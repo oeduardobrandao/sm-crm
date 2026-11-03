@@ -179,8 +179,9 @@ async function handleRatingDistribution(ctx: RouteContext, clientId: number): Pr
 /** Every counted unit of the workspace's active clients, or of `?client=`. No ownership check:
  * the clientes read is keyed by the tenant, so a foreign id selects nothing. */
 async function handlePortfolio(ctx: RouteContext): Promise<Response> {
+  // `?days=` only: the page has no date range.
   const req = parseWindowRequest(ctx.url.searchParams);
-  if (!req) return badRequest(ctx, "invalid_window");
+  if (!req || req.kind !== "days") return badRequest(ctx, "invalid_window");
   const rawClient = ctx.url.searchParams.get("client");
   const clientId = rawClient === null ? null : parseClientId(rawClient);
   if (rawClient !== null && clientId === null) return badRequest(ctx, "invalid_client_id");

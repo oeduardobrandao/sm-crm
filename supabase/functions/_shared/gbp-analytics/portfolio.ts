@@ -5,10 +5,19 @@
 //
 // Reads, in this fixed order (the handler tests queue mock rows per table in call order):
 // clientes -> gbp_locations -> gbp_metrics_daily, gbp_rating_daily and gbp_reviews in parallel.
-// Each is one paged query for the whole selection, never one per unit.
+// Each is one paged query for the whole selection, never one per unit. The two history reads
+// need a synced window; the reviews do not (they are current, see `reviewsSince`).
 import { saoPauloDate } from "../sao-paulo-date.ts";
 import { fetchAllRows } from "../paginate.ts";
-import { computeGbpKpis, emptyGbpKpis, type GbpKpiEntry, type GbpKpiId, type GbpMetricsRow, type GbpRatingRow } from "./kpis.ts";
+import {
+  computeGbpKpis,
+  emptyGbpKpis,
+  type GbpKpiEntry,
+  type GbpKpiId,
+  type GbpMetricsRow,
+  type GbpRatingRow,
+  latestOnOrBefore,
+} from "./kpis.ts";
 import { COUNTED_UNIT_STATUSES, type GbpUnit, loadMetrics, loadRatings } from "./queries.ts";
 import {
   addDays,
@@ -129,23 +138,13 @@ function groupBy<T extends { location_name: string }>(rows: T[]): Map<string, T[
   return out;
 }
 
-/** The unit's latest rating snapshot on or before `day`, or null when it has none. */
-function snapshotAt(rows: GbpRatingRow[], day: string): GbpRatingRow | null {
-  let best: GbpRatingRow | null = null;
-  for (const r of rows) if (r.day <= day && (!best || r.day > best.day)) best = r;
-  return best;
-}
-
-const toNumber = (v: number | string | null | undefined): number | null => {
-  if (v === null || v === undefined) return null;
-  const x = Number(v);
-  return Number.isFinite(x) ? x : null;
-};
+/** The portfolio takes `?days=` only (spec §7). */
+export type GbpPortfolioRequest = Extract<WindowRequest, { kind: "days" }>;
 
 /** São Paulo midnight, as an ISO instant, of the first day of the reviews list: the last N SP
  * days ending today (not the metrics window, which ends days back at data_through). */
-function reviewsSince(req: WindowRequest, now: Date): string {
-  const first = req.kind === "range" ? req.start : addDays(saoPauloDate(now), -(req.days - 1));
+function reviewsSince(days: number, now: Date): string {
+  const first = addDays(saoPauloDate(now), -(days - 1));
   return new Date((dayMs(first) as number) + SP_OFFSET_MS).toISOString();
 }
 
@@ -196,7 +195,7 @@ async function loadAttentionReviews(db: Db, contaId: string, units: PortfolioSou
 export async function buildGbpPortfolio(
   db: Db,
   contaId: string,
-  req: WindowRequest,
+  req: GbpPortfolioRequest,
   clientId: number | null,
   now: Date,
 ): Promise<GbpPortfolio> {
@@ -206,13 +205,11 @@ export async function buildGbpPortfolio(
   const { window, hasData } = resolveWindow(req, dataThrough, now);
   const read = hasData && units.length > 0;
 
-  const [metrics, ratings, reviews] = read
-    ? await Promise.all([
-      loadMetrics(db, contaId, units, window.prevStart, window.end),
-      loadRatings(db, contaId, units, window),
-      loadAttentionReviews(db, contaId, units, reviewsSince(req, now)),
-    ])
-    : [[] as GbpMetricsRow[], [] as GbpRatingRow[], []];
+  const [metrics, ratings, reviews] = await Promise.all([
+    read ? loadMetrics(db, contaId, units, window.prevStart, window.end) : [] as GbpMetricsRow[],
+    read ? loadRatings(db, contaId, units, window) : [] as GbpRatingRow[],
+    units.length > 0 ? loadAttentionReviews(db, contaId, units, reviewsSince(req.days, now)) : [],
+  ]);
 
   const metricsByUnit = groupBy(metrics);
   const ratingsByUnit = groupBy(ratings);
@@ -243,7 +240,7 @@ export async function buildGbpPortfolio(
         prevCovered: coveredOnPrevStart(unitMetrics),
       })
       : emptyGbpKpis();
-    const snapshot = snapshotAt(unitRatings, window.end);
+    const snapshot = latestOnOrBefore(unitRatings, u.location_name, window.end);
     const client = clientById.get(u.client_id);
     const especialidade = client?.especialidade?.trim() || null;
     const calls = k.calls.value ?? 0;
@@ -269,7 +266,9 @@ export async function buildGbpPortfolio(
       messages,
       bookings,
       actions: calls + directions + websiteClicks + messages + bookings,
-      avgRating: snapshot ? k.avg_rating.value : toNumber(u.average_rating),
+      avgRating: snapshot
+        ? k.avg_rating.value
+        : (u.average_rating === null || u.average_rating === undefined ? null : Number(u.average_rating)),
       reviewCount: snapshot ? (snapshot.total_review_count ?? null) : (u.total_review_count ?? null),
       newReviews: k.new_reviews.value,
     };
