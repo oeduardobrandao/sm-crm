@@ -157,6 +157,24 @@ begin
     raise exception 'import job % has no created_by user', p_job_id;
   end if;
 
+  -- ACESSO POR CLIENTE (defesa em profundidade): job de membro restrito
+  -- ('atribuidos', não dono) não grava nada, em nenhum p_kind: nem cliente
+  -- novo, nem merge (UPDATE pelo definer num cliente oculto), nem template,
+  -- workflow, entrega, post ou ideia.
+  -- A checagem do CHAMADOR fica no edge data-import, que recusa todo chamador restrito.
+  -- Aqui o chamador é o service_role (auth.uid() NULL, então
+  -- my_client_scope_all() daria true), por isso a checagem é sobre o criador
+  -- do job, na conta do job. Criador sem linha em workspace_members na conta
+  -- passa: a membership é conferida pelo edge antes de criar o job, e a suíte
+  -- supabase/tests/import_commit_row.sql usa um criador assim.
+  if exists (
+    select 1 from public.workspace_members wm
+     where wm.workspace_id = p_conta_id and wm.user_id = v_user_id
+       and wm.role <> 'owner' and wm.client_scope = 'atribuidos'
+  ) then
+    raise exception 'client_scope_restricted';
+  end if;
+
   v_primary_table := case p_kind
     when 'cliente' then 'clientes'
     when 'container' then 'workflows'
@@ -178,17 +196,6 @@ begin
   end if;
 
   if p_kind = 'cliente' then
-    -- ACESSO POR CLIENTE: membro restrito ('atribuidos', não dono) não cria
-    -- cliente, nem pelo merge (um UPDATE pelo definer num cliente oculto).
-    -- O chamador é o service_role (auth.uid() NULL, então my_client_scope_all()
-    -- daria true): a checagem é sobre o criador do job, na conta do job.
-    if exists (
-      select 1 from public.workspace_members wm
-       where wm.workspace_id = p_conta_id and wm.user_id = v_user_id
-         and wm.role <> 'owner' and wm.client_scope = 'atribuidos'
-    ) then
-      raise exception 'client_scope_restricted';
-    end if;
     if p_payload ? 'mergeClienteId' then
       -- fill-only-empty-fields merge into a cliente the workspace already owns.
       -- A bookkeeping row IS recorded (later rows resolve clienteRef{created} through
@@ -452,3 +459,183 @@ begin
   return jsonb_build_object('skipped', false, 'table', v_primary_table, 'row_id', v_id);
 end;
 $function$;
+
+-- -------------------------------------------------------------
+-- 5. import_resolve_cliente: cliente resolvido acessível ao criador
+-- -------------------------------------------------------------
+-- Corpo de 20260729000004 mais a checagem de escopo. CREATE OR REPLACE mantém
+-- o ACL (EXECUTE só service_role).
+CREATE OR REPLACE FUNCTION public.import_resolve_cliente(p_conta_id uuid, p_job_id bigint, p_payload jsonb)
+ RETURNS bigint
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_id bigint;
+  v_creator uuid;
+begin
+  if p_payload->'clienteRef'->>'type' = 'existing' then
+    v_id := (p_payload->'clienteRef'->>'clienteId')::bigint;
+    if not exists (select 1 from public.clientes where id = v_id and conta_id = p_conta_id) then
+      raise exception 'cliente % does not belong to this workspace', v_id;
+    end if;
+  else
+    -- 'created' branch: note `conta_id = p_conta_id` proves only that the BOOKKEEPING
+    -- row belongs to the caller -- never that the cliente id inside row_id does. The
+    -- writers above keep that invariant (both the insert and the merge path are
+    -- conta-scoped and the merge now raises on a zero-row UPDATE), but re-assert it
+    -- here so the guarantee is local to this function and cannot be broken by a future
+    -- writer of import_job_items.
+    select row_id::bigint into v_id from public.import_job_items
+      where job_id = p_job_id and conta_id = p_conta_id
+        and source_row_key = p_payload->'clienteRef'->>'sourceKey'
+        and table_name = 'clientes' and ordinal = 0;
+    if v_id is null then
+      raise exception 'cliente % not committed yet', p_payload->'clienteRef'->>'sourceKey';
+    end if;
+    if not exists (select 1 from public.clientes where id = v_id and conta_id = p_conta_id) then
+      raise exception 'cliente % does not belong to this workspace', v_id;
+    end if;
+  end if;
+  -- ACESSO POR CLIENTE: o cliente resolvido (existing ou created) tem que ser
+  -- acessível ao criador do job, pelo núcleo service-role do predicado. Só
+  -- barra criador com membership na conta (sem membership: ver o comentário
+  -- em import_commit_row).
+  select created_by into v_creator from public.import_jobs
+   where id = p_job_id and conta_id = p_conta_id;
+  if exists (select 1 from public.workspace_members wm
+              where wm.workspace_id = p_conta_id and wm.user_id = v_creator)
+     and not public.can_access_cliente(v_creator, p_conta_id, v_id) then
+    raise exception 'client_scope_restricted';
+  end if;
+  return v_id;
+end;
+$function$;
+
+-- -------------------------------------------------------------
+-- 6. Sub-tabelas da ficha do cliente (datas, endereços, links)
+-- -------------------------------------------------------------
+-- Leitura, DELETE e o USING do UPDATE ganham o predicado; os quals
+-- existentes ficam. INSERT e o WITH CHECK do UPDATE já barravam cliente oculto
+-- pelo EXISTS (SELECT 1 FROM clientes ...), que herda a RLS de clientes; o
+-- predicado entra explícito também neles porque as três são tabelas raiz
+-- (cliente_id próprio) e a guarda de deriva exige o predicado no WITH CHECK
+-- de raiz, sem depender de uma subconsulta.
+ALTER POLICY workspace_read_datas ON public.cliente_datas
+  USING (
+    conta_id IN (SELECT workspace_members.workspace_id FROM public.workspace_members
+                  WHERE workspace_members.user_id = auth.uid())
+    AND conta_id IN (SELECT public.get_my_conta_id())
+    AND ((SELECT public.my_client_scope_all()) OR public.can_access_cliente(cliente_id))
+  );
+ALTER POLICY workspace_delete_datas ON public.cliente_datas
+  USING (
+    conta_id IN (SELECT workspace_members.workspace_id FROM public.workspace_members
+                  WHERE workspace_members.user_id = auth.uid())
+    AND conta_id IN (SELECT public.get_my_conta_id())
+    AND ((SELECT public.my_client_scope_all()) OR public.can_access_cliente(cliente_id))
+  );
+ALTER POLICY workspace_update_datas ON public.cliente_datas
+  USING (
+    conta_id IN (SELECT workspace_members.workspace_id FROM public.workspace_members
+                  WHERE workspace_members.user_id = auth.uid())
+    AND conta_id IN (SELECT public.get_my_conta_id())
+    AND ((SELECT public.my_client_scope_all()) OR public.can_access_cliente(cliente_id))
+  );
+ALTER POLICY workspace_read_enderecos ON public.cliente_enderecos
+  USING (
+    conta_id IN (SELECT workspace_members.workspace_id FROM public.workspace_members
+                  WHERE workspace_members.user_id = auth.uid())
+    AND conta_id IN (SELECT public.get_my_conta_id())
+    AND ((SELECT public.my_client_scope_all()) OR public.can_access_cliente(cliente_id))
+  );
+ALTER POLICY workspace_delete_enderecos ON public.cliente_enderecos
+  USING (
+    conta_id IN (SELECT workspace_members.workspace_id FROM public.workspace_members
+                  WHERE workspace_members.user_id = auth.uid())
+    AND conta_id IN (SELECT public.get_my_conta_id())
+    AND ((SELECT public.my_client_scope_all()) OR public.can_access_cliente(cliente_id))
+  );
+ALTER POLICY workspace_update_enderecos ON public.cliente_enderecos
+  USING (
+    conta_id IN (SELECT workspace_members.workspace_id FROM public.workspace_members
+                  WHERE workspace_members.user_id = auth.uid())
+    AND conta_id IN (SELECT public.get_my_conta_id())
+    AND ((SELECT public.my_client_scope_all()) OR public.can_access_cliente(cliente_id))
+  );
+ALTER POLICY workspace_select_links ON public.cliente_links
+  USING (
+    conta_id IN (SELECT workspace_members.workspace_id FROM public.workspace_members
+                  WHERE workspace_members.user_id = auth.uid())
+    AND conta_id IN (SELECT public.get_my_conta_id())
+    AND ((SELECT public.my_client_scope_all()) OR public.can_access_cliente(cliente_id))
+  );
+ALTER POLICY workspace_delete_links ON public.cliente_links
+  USING (
+    conta_id IN (SELECT workspace_members.workspace_id FROM public.workspace_members
+                  WHERE workspace_members.user_id = auth.uid())
+    AND conta_id IN (SELECT public.get_my_conta_id())
+    AND ((SELECT public.my_client_scope_all()) OR public.can_access_cliente(cliente_id))
+  );
+ALTER POLICY workspace_update_links ON public.cliente_links
+  USING (
+    conta_id IN (SELECT workspace_members.workspace_id FROM public.workspace_members
+                  WHERE workspace_members.user_id = auth.uid())
+    AND conta_id IN (SELECT public.get_my_conta_id())
+    AND ((SELECT public.my_client_scope_all()) OR public.can_access_cliente(cliente_id))
+  );
+ALTER POLICY workspace_insert_datas ON public.cliente_datas
+  WITH CHECK (
+    conta_id IN (SELECT workspace_members.workspace_id FROM public.workspace_members
+                  WHERE workspace_members.user_id = auth.uid())
+    AND conta_id IN (SELECT public.get_my_conta_id())
+    AND EXISTS (SELECT 1 FROM public.clientes c
+                 WHERE c.id = cliente_datas.cliente_id AND c.conta_id = cliente_datas.conta_id)
+    AND ((SELECT public.my_client_scope_all()) OR public.can_access_cliente(cliente_id))
+  );
+ALTER POLICY workspace_update_datas ON public.cliente_datas
+  WITH CHECK (
+    conta_id IN (SELECT workspace_members.workspace_id FROM public.workspace_members
+                  WHERE workspace_members.user_id = auth.uid())
+    AND conta_id IN (SELECT public.get_my_conta_id())
+    AND EXISTS (SELECT 1 FROM public.clientes c
+                 WHERE c.id = cliente_datas.cliente_id AND c.conta_id = cliente_datas.conta_id)
+    AND ((SELECT public.my_client_scope_all()) OR public.can_access_cliente(cliente_id))
+  );
+ALTER POLICY workspace_insert_enderecos ON public.cliente_enderecos
+  WITH CHECK (
+    conta_id IN (SELECT workspace_members.workspace_id FROM public.workspace_members
+                  WHERE workspace_members.user_id = auth.uid())
+    AND conta_id IN (SELECT public.get_my_conta_id())
+    AND EXISTS (SELECT 1 FROM public.clientes c
+                 WHERE c.id = cliente_enderecos.cliente_id AND c.conta_id = cliente_enderecos.conta_id)
+    AND ((SELECT public.my_client_scope_all()) OR public.can_access_cliente(cliente_id))
+  );
+ALTER POLICY workspace_update_enderecos ON public.cliente_enderecos
+  WITH CHECK (
+    conta_id IN (SELECT workspace_members.workspace_id FROM public.workspace_members
+                  WHERE workspace_members.user_id = auth.uid())
+    AND conta_id IN (SELECT public.get_my_conta_id())
+    AND EXISTS (SELECT 1 FROM public.clientes c
+                 WHERE c.id = cliente_enderecos.cliente_id AND c.conta_id = cliente_enderecos.conta_id)
+    AND ((SELECT public.my_client_scope_all()) OR public.can_access_cliente(cliente_id))
+  );
+ALTER POLICY workspace_insert_links ON public.cliente_links
+  WITH CHECK (
+    conta_id IN (SELECT workspace_members.workspace_id FROM public.workspace_members
+                  WHERE workspace_members.user_id = auth.uid())
+    AND conta_id IN (SELECT public.get_my_conta_id())
+    AND EXISTS (SELECT 1 FROM public.clientes c
+                 WHERE c.id = cliente_links.cliente_id AND c.conta_id = cliente_links.conta_id)
+    AND ((SELECT public.my_client_scope_all()) OR public.can_access_cliente(cliente_id))
+  );
+ALTER POLICY workspace_update_links ON public.cliente_links
+  WITH CHECK (
+    conta_id IN (SELECT workspace_members.workspace_id FROM public.workspace_members
+                  WHERE workspace_members.user_id = auth.uid())
+    AND conta_id IN (SELECT public.get_my_conta_id())
+    AND EXISTS (SELECT 1 FROM public.clientes c
+                 WHERE c.id = cliente_links.cliente_id AND c.conta_id = cliente_links.conta_id)
+    AND ((SELECT public.my_client_scope_all()) OR public.can_access_cliente(cliente_id))
+  );

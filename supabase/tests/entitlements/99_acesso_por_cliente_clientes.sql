@@ -55,6 +55,26 @@ exception when others then
   return sqlerrm;
 end $f$;
 
+-- import_commit_row of any kind (service_role), error message or NULL
+create or replace function pg_temp.import_kind_err(p_conta uuid, p_job bigint, p_key text, p_kind text, p_payload jsonb)
+returns text language plpgsql as $f$
+begin
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  perform public.import_commit_row(p_conta, p_job, p_key, p_kind, p_payload);
+  return null;
+exception when others then
+  return sqlerrm;
+end $f$;
+-- import_resolve_cliente called directly (bypasses the entry gate), error or NULL
+create or replace function pg_temp.resolve_err(p_conta uuid, p_job bigint, p_payload jsonb)
+returns text language plpgsql as $f$
+begin
+  perform public.import_resolve_cliente(p_conta, p_job, p_payload);
+  return null;
+exception when others then
+  return sqlerrm;
+end $f$;
+
 do $$
 declare
   v_ws_a uuid := et_make_workspace('max');
@@ -66,7 +86,7 @@ declare
   v_c1 bigint; v_c2 bigint; v_c3 bigint; v_cb bigint;
   v_membro bigint; v_job_r bigint; v_job_t bigint;
   v_n bigint; v_expected bigint; v_err text; v_ids bigint[];
-  v_row record;
+  v_row record; v_t text;
 begin
   insert into auth.users (id, email) values
     (v_owner, 'owner@accc.test'), (v_todos, 'todos@accc.test'),
@@ -191,6 +211,71 @@ begin
   assert v_err = 'client_scope_restricted', 'import_restricted_merge_denied: ' || coalesce(v_err, 'ok');
   v_err := pg_temp.import_err(v_ws_a, v_job_t, 't1', '{"nome":"Novo"}'::jsonb);
   assert v_err is null, 'import_todos_create_allowed: ' || coalesce(v_err, '');
+
+  -- import gate at the entry: a restricted creator's rows of every kind are refused
+  v_err := pg_temp.import_kind_err(v_ws_a, v_job_r, 'rc1', 'container',
+    jsonb_build_object('titulo', 'W', 'clienteRef', jsonb_build_object('type', 'existing', 'clienteId', v_c2)));
+  assert v_err = 'client_scope_restricted', 'import_restricted_container_denied: ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.import_kind_err(v_ws_a, v_job_r, 'rc2', 'container',
+    jsonb_build_object('titulo', 'W', 'clienteRef', jsonb_build_object('type', 'existing', 'clienteId', v_c1)));
+  assert v_err = 'client_scope_restricted', 'import_restricted_container_denied (assigned client too): ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.import_kind_err(v_ws_a, v_job_r, 'ri1', 'ideia',
+    jsonb_build_object('titulo', 'I', 'clienteRef', jsonb_build_object('type', 'existing', 'clienteId', v_c2)));
+  assert v_err = 'client_scope_restricted', 'import_restricted_ideia_denied: ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.import_kind_err(v_ws_a, v_job_r, 're1', 'entrega',
+    jsonb_build_object('titulo', 'E', 'templateKey', 'tp', 'etapaIndex', 0,
+                       'clienteRef', jsonb_build_object('type', 'existing', 'clienteId', v_c2)));
+  assert v_err = 'client_scope_restricted', 'import_restricted_entrega_denied: ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.import_kind_err(v_ws_a, v_job_r, 'rt1', 'template', '{"nome":"T","etapas":["a"]}'::jsonb);
+  assert v_err = 'client_scope_restricted', 'import_restricted_template_denied: ' || coalesce(v_err, 'ok');
+  assert not exists (select 1 from import_job_items where job_id = v_job_r), 'restricted job wrote nothing';
+
+  -- todos creator unchanged: container, ideia, template + entrega on any client
+  v_err := pg_temp.import_kind_err(v_ws_a, v_job_t, 'tc1', 'container',
+    jsonb_build_object('titulo', 'W', 'clienteRef', jsonb_build_object('type', 'existing', 'clienteId', v_c2)));
+  assert v_err is null, 'import_todos_container_allowed: ' || coalesce(v_err, '');
+  v_err := pg_temp.import_kind_err(v_ws_a, v_job_t, 'ti1', 'ideia',
+    jsonb_build_object('titulo', 'I', 'clienteRef', jsonb_build_object('type', 'existing', 'clienteId', v_c2)));
+  assert v_err is null, 'import_todos_ideia_allowed: ' || coalesce(v_err, '');
+  v_err := pg_temp.import_kind_err(v_ws_a, v_job_t, 'tp', 'template', '{"nome":"T","etapas":["a","b"]}'::jsonb);
+  assert v_err is null, 'import_todos_template_allowed: ' || coalesce(v_err, '');
+  v_err := pg_temp.import_kind_err(v_ws_a, v_job_t, 'te1', 'entrega',
+    jsonb_build_object('titulo', 'E', 'templateKey', 'tp', 'etapaIndex', 0,
+                       'clienteRef', jsonb_build_object('type', 'created', 'sourceKey', 't1')));
+  assert v_err is null, 'import_todos_entrega_allowed: ' || coalesce(v_err, '');
+
+  -- import_resolve_cliente on its own (defense behind the entry gate)
+  v_err := pg_temp.resolve_err(v_ws_a, v_job_r, jsonb_build_object('clienteRef', jsonb_build_object('type', 'existing', 'clienteId', v_c2)));
+  assert v_err = 'client_scope_restricted', 'resolve_restricted_hidden_denied: ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.resolve_err(v_ws_a, v_job_r, jsonb_build_object('clienteRef', jsonb_build_object('type', 'existing', 'clienteId', v_c1)));
+  assert v_err is null, 'resolve_restricted_assigned_allowed: ' || coalesce(v_err, '');
+  v_err := pg_temp.resolve_err(v_ws_a, v_job_t, jsonb_build_object('clienteRef', jsonb_build_object('type', 'existing', 'clienteId', v_c2)));
+  assert v_err is null, 'resolve_todos_allowed: ' || coalesce(v_err, '');
+
+  -- sub-tables of the client record: datas, enderecos, links
+  insert into cliente_datas (cliente_id, conta_id, titulo, data) values (v_c1, v_ws_a, 'D1', current_date), (v_c2, v_ws_a, 'D2', current_date);
+  insert into cliente_enderecos (cliente_id, conta_id) values (v_c1, v_ws_a), (v_c2, v_ws_a);
+  insert into cliente_links (cliente_id, conta_id, titulo, url) values (v_c1, v_ws_a, 'L1', 'https://x.test/1'), (v_c2, v_ws_a, 'L2', 'https://x.test/2');
+  for v_t in select unnest(array['cliente_datas', 'cliente_enderecos', 'cliente_links']) loop
+    v_n := pg_temp.n_as(v_restr, format('select count(*) from %I where cliente_id = %s', v_t, v_c2));
+    assert v_n = 0, format('restricted_hidden_%s_not_readable: %s', v_t, v_n);
+    v_n := pg_temp.n_as(v_restr, format('select count(*) from %I where cliente_id = %s', v_t, v_c1));
+    assert v_n = 1, format('restricted_assigned_%s_readable: %s', v_t, v_n);
+    v_n := pg_temp.rows_as(v_restr, format('delete from %I where cliente_id = %s', v_t, v_c2));
+    assert v_n = 0, format('restricted_hidden_%s_not_deletable: %s', v_t, v_n);
+    v_n := pg_temp.rows_as(v_restr, format('update %I set conta_id = conta_id where cliente_id = %s', v_t, v_c2));
+    assert v_n = 0, format('restricted_hidden_%s_not_updatable: %s', v_t, v_n);
+    execute format('select count(*) from %I where conta_id = %L', v_t, v_ws_a) into v_expected;
+    v_n := pg_temp.n_as(v_todos, format('select count(*) from %I', v_t));
+    assert v_n = v_expected, format('todos_counts_unchanged (%s): %s vs %s', v_t, v_n, v_expected);
+  end loop;
+  -- INSERT goes through clientes (EXISTS), so the hidden client is refused
+  v_err := pg_temp.err_as(v_restr, format(
+    'insert into cliente_datas (cliente_id, conta_id, titulo, data) values (%s, %L, ''X'', current_date)', v_c2, v_ws_a));
+  assert v_err = '42501', 'restricted_insert_hidden_datas_denied: ' || coalesce(v_err, 'inserted');
+  v_err := pg_temp.err_as(v_restr, format(
+    'insert into cliente_links (cliente_id, conta_id, titulo, url) values (%s, %L, ''X'', ''https://x.test'')', v_c1, v_ws_a));
+  assert v_err is null, 'restricted_insert_assigned_links_allowed: ' || coalesce(v_err, '');
 end $$;
 
 -- initplan: my_client_scope_all() runs once per query, not per row
