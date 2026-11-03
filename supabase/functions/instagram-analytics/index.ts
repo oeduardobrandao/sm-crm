@@ -12,6 +12,9 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const TOKEN_ENCRYPTION_KEY = Deno.env.get("TOKEN_ENCRYPTION_KEY") ?? (() => { throw new Error("TOKEN_ENCRYPTION_KEY environment variable is required"); })();
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") || '';
+// Workers AI (Cloudflare) para a leitura de comentários; sem os dois, as análises respondem 503.
+const WORKERS_AI_ACCOUNT_ID = Deno.env.get("WORKERS_AI_ACCOUNT_ID") || '';
+const WORKERS_AI_API_TOKEN = Deno.env.get("WORKERS_AI_API_TOKEN") || '';
 const INTERNAL_FUNCTION_SECRET = Deno.env.get('INTERNAL_FUNCTION_SECRET') ?? (() => { throw new Error('INTERNAL_FUNCTION_SECRET is required'); })();
 const CRON_SECRET = Deno.env.get('CRON_SECRET') ?? '';
 import { UUID_RE } from "./utils.ts";
@@ -19,7 +22,7 @@ import { parseViewsRange, sumViewsRange } from "./views.ts";
 import { handleAccountMetrics, parseAccountMetricsRange } from "./account-metrics.ts";
 import { handleCommentsRoute } from "./comments-routes.ts";
 import { fetchMediaComments } from "./comments-graph.ts";
-import { callGemini } from "./comments-ai.ts";
+import { callAi } from "./comments-ai.ts";
 
 // --- Token Decryption ---
 async function getEncryptionKey(purpose: string, usage: KeyUsage[]): Promise<CryptoKey> {
@@ -249,13 +252,16 @@ Deno.serve(async (req) => {
       svc: serviceClient,
       contaId,
       userId: user.id,
-      geminiKey: GEMINI_API_KEY || null,
+      ai: WORKERS_AI_ACCOUNT_ID && WORKERS_AI_API_TOKEN
+        ? { accountId: WORKERS_AI_ACCOUNT_ID, token: WORKERS_AI_API_TOKEN }
+        : null,
+      lang: url.searchParams.get("lang") === "en" ? "en" : "pt",
       now: Date.now,
       decryptToken,
       verifyClientOwnership: (clientId) => verifyClientOwnership(serviceClient, clientId, contaId),
       rateLimit: (key, max, windowS) => checkRateLimit(serviceClient, key, max, windowS),
       fetchComments: fetchMediaComments,
-      callGemini,
+      callAi,
     });
     if (commentsRoute) return json(commentsRoute.body, commentsRoute.status);
 

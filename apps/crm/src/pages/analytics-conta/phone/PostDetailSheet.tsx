@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ExternalLink, Plus } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { BottomSheet } from '@/components/mobile/BottomSheet';
 import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import { FormRow } from '@/components/mobile/FormRow';
@@ -50,6 +51,7 @@ export function PostDetailSheet({
       tab: 'insights',
     },
   );
+  const { t } = useTranslation('analyticsComments');
   const commentsEnabled = useWorkspaceLimits().features?.feature_instagram_comments_ai === true;
   useEffect(() => {
     if (post) setShown(post);
@@ -195,20 +197,20 @@ export function PostDetailSheet({
         {commentsEnabled && (
           <SegmentedControl
             semantics="tablist"
-            aria-label="Detalhes do post"
+            aria-label={t('common.tabsAriaLabel')}
             className="igc-phone-tabs"
             value={tab}
             onChange={setTab}
             options={[
               {
                 value: 'insights',
-                label: 'Insights',
+                label: t('common.tabInsights'),
                 id: `post-sheet-${p.id}-tab-insights`,
                 controls: `post-sheet-${p.id}-panel`,
               },
               {
                 value: 'comments',
-                label: 'Comentários',
+                label: t('common.comments'),
                 id: `post-sheet-${p.id}-tab-comments`,
                 controls: `post-sheet-${p.id}-panel`,
               },

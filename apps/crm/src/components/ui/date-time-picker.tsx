@@ -176,8 +176,10 @@ export function DateTimePicker({
           }
         >
           <CalendarIcon className="mr-2 h-4 w-4" />
+          {/* Both branches are elements: page translation swaps bare text nodes for its own,
+              and swapping one out from under React leaves the old text behind. */}
           {value ? (
-            format(value, "dd MMM yyyy '·' HH:mm", { locale: dateLocale })
+            <span>{format(value, "dd MMM yyyy '·' HH:mm", { locale: dateLocale })}</span>
           ) : (
             <span>{placeholder ?? t('ui.selectDateTime')}</span>
           )}

@@ -102,3 +102,21 @@ Deno.test("comentário sem text vira string vazia e não quebra", async () => {
   );
   assertEquals(r.comments[0].text, "");
 });
+
+Deno.test("username vazio cai para from.username e pede o campo from", async () => {
+  const urls: string[] = [];
+  const r = await fetchMediaComments(
+    {
+      fetchFn: pagedFetch([{
+        data: [
+          { id: "a", text: "x", timestamp: "t", like_count: 0, from: { id: "1", username: "ana" } },
+          { id: "b", text: "x", timestamp: "t", username: "bia", like_count: 0, from: { id: "2", username: "outra" } },
+          { id: "c", text: "x", timestamp: "t", like_count: 0 },
+        ],
+      }], urls),
+    },
+    { mediaId: "m1", token: "tk", max: 100, deadlineAt: Date.now() + 60_000 },
+  );
+  assertEquals(r.comments.map((c) => c.username), ["ana", "bia", ""]);
+  assert(decodeURIComponent(urls[0]).includes("from{id,username}"));
+});

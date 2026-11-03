@@ -4,7 +4,11 @@ import { RouterProvider } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Analytics } from '@vercel/analytics/react';
 import { Toaster } from 'sonner';
-import { installDeployRecovery, installSilentUpdate } from '@mesaas/app-lifecycle';
+import {
+  installDeployRecovery,
+  installSilentUpdate,
+  installTranslateGuard,
+} from '@mesaas/app-lifecycle';
 import { AdminAuthProvider } from './context/AdminAuthContext';
 import { LiquidGlassProvider } from './liquidglass/LiquidGlassProvider';
 import { TooltipProvider } from './components/ui/tooltip';
@@ -16,6 +20,8 @@ import './ios/admin-kit.css';
 
 // Before anything else: a tab open across a deploy loads chunks that no longer exist.
 installDeployRecovery();
+// Browser page translation rewrites text nodes React still owns; keep it from crashing the app.
+installTranslateGuard();
 
 const queryClient = new QueryClient({
   defaultOptions: {

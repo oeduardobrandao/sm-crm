@@ -1,4 +1,9 @@
+import type { TFunction } from 'i18next';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import pt from '../../../../../packages/i18n/locales/pt/analyticsComments.json';
+
+const { i18nMock } = vi.hoisted(() => ({ i18nMock: { language: 'pt' } }));
+vi.mock('@mesaas/i18n', () => ({ i18n: i18nMock }));
 
 vi.mock('../analytics', () => ({
   EDGE_URL: 'https://edge.test/functions/v1/instagram-analytics',
@@ -24,7 +29,19 @@ function mockFetch(status: number, body: unknown) {
   return fn;
 }
 
-afterEach(() => vi.unstubAllGlobals());
+// `t` do namespace analyticsComments em português, sem subir o i18next.
+const t = ((key: string) =>
+  key
+    .split('.')
+    .reduce<unknown>(
+      (node, part) => (node as Record<string, unknown>)?.[part],
+      pt,
+    )) as unknown as TFunction;
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  i18nMock.language = 'pt';
+});
 
 describe('instagramComments service', () => {
   it('lança CommentsApiError com code do corpo', async () => {
@@ -48,7 +65,7 @@ describe('instagramComments service', () => {
     const err = await getPostComments(1, 'm1').catch((e) => e);
     expect(err.status).toBe(401);
     expect(err.code).toBe('Unauthorized');
-    expect(commentsErrorMessage(err)).toBe('Não foi possível carregar os comentários.');
+    expect(commentsErrorMessage(err, t)).toBe('Não foi possível carregar os comentários.');
   });
 
   it('chama as rotas do contrato e desembrulha analysis', async () => {
@@ -56,19 +73,29 @@ describe('instagramComments service', () => {
     const f = mockFetch(200, { analysis, current_comments: 4 });
     expect(await analyzePostComments(7, 'm9')).toBe(analysis);
     expect(f.mock.calls[0][0]).toBe(
-      'https://edge.test/functions/v1/instagram-analytics/comments-analysis/7/m9',
+      'https://edge.test/functions/v1/instagram-analytics/comments-analysis/7/m9?lang=pt',
     );
     expect(f.mock.calls[0][1].method).toBe('POST');
     expect((await getAccountCommentsAnalysis(7)).current_comments).toBe(4);
     expect(f.mock.calls[1][0]).toMatch(/\/comments-analysis-account\/7$/);
     expect(f.mock.calls[1][1].method).toBe('GET');
     await analyzeAccountComments(7);
+    expect(f.mock.calls[2][0]).toMatch(/\/comments-analysis-account\/7\?lang=pt$/);
     expect(f.mock.calls[2][1].method).toBe('POST');
+  });
+
+  it('com a interface em inglês, o POST pede a análise em inglês', async () => {
+    i18nMock.language = 'en';
+    const f = mockFetch(200, { analysis: { result: {} } });
+    await analyzePostComments(7, 'm9');
+    await analyzeAccountComments(7);
+    expect(f.mock.calls[0][0]).toMatch(/\?lang=en$/);
+    expect(f.mock.calls[1][0]).toMatch(/\?lang=en$/);
   });
 
   it('commentsErrorMessage mapeia cada código', () => {
     const m = (code: string, status = 500) =>
-      commentsErrorMessage(new CommentsApiError(code, status));
+      commentsErrorMessage(new CommentsApiError(code, status), t);
     expect(m('missing_comments_scope', 409)).toBe(
       'Reconecte o Instagram deste cliente para ver os comentários.',
     );
@@ -80,7 +107,7 @@ describe('instagramComments service', () => {
       'Muitas análises seguidas. Tente de novo em alguns minutos.',
     );
     expect(m('x')).toBe('Não foi possível carregar os comentários.');
-    expect(commentsErrorMessage(new Error('boom'))).toBe(
+    expect(commentsErrorMessage(new Error('boom'), t)).toBe(
       'Não foi possível carregar os comentários.',
     );
   });

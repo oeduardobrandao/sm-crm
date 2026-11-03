@@ -2,6 +2,13 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import i18n from 'i18next';
+import ptComments from '../../../../../../packages/i18n/locales/pt/analyticsComments.json';
+import enComments from '../../../../../../packages/i18n/locales/en/analyticsComments.json';
+
+i18n.addResourceBundle('pt', 'analyticsComments', ptComments, true, true);
+i18n.addResourceBundle('en', 'analyticsComments', enComments, true, true);
+
 const {
   paramsState,
   navigateMock,

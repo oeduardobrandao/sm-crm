@@ -18,7 +18,10 @@ export interface IgComment {
 const PAGE_LIMIT = 50;
 const REPLIES_LIMIT = 25;
 const PAGE_TIMEOUT_MS = 8000;
-const FIELDS = `id,text,timestamp,username,like_count,replies.limit(${REPLIES_LIMIT}){id}`;
+// `username` vem vazio para boa parte dos comentários; `from{username}` é o
+// mesmo campo que o webhook de comentários já lê e serve de alternativa.
+const FIELDS =
+  `id,text,timestamp,username,from{id,username},like_count,replies.limit(${REPLIES_LIMIT}){id}`;
 
 // deno-lint-ignore no-explicit-any
 function mapComment(raw: any): IgComment {
@@ -27,7 +30,11 @@ function mapComment(raw: any): IgComment {
     id: String(raw?.id ?? ""),
     text: typeof raw?.text === "string" ? raw.text : "",
     timestamp: typeof raw?.timestamp === "string" ? raw.timestamp : "",
-    username: typeof raw?.username === "string" ? raw.username : "",
+    username: typeof raw?.username === "string" && raw.username
+      ? raw.username
+      : typeof raw?.from?.username === "string"
+      ? raw.from.username
+      : "",
     like_count: typeof raw?.like_count === "number" ? raw.like_count : 0,
     replies_count: replies.length,
     replies_more: replies.length >= REPLIES_LIMIT || Boolean(raw?.replies?.paging?.next),
