@@ -227,7 +227,7 @@ function ClientAccessFields({
   ];
 
   return (
-    <div className={sheet ? 'space-y-3' : 'flex min-h-0 flex-1 flex-col gap-3'}>
+    <div className={sheet ? 'space-y-3' : 'flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto'}>
       <div
         role="radiogroup"
         aria-label={t('membros.clientAccess.column')}
@@ -477,8 +477,8 @@ export function ClientAccessDialog({
           // Flex columns all the way down, inside the primitive's 85vh cap: the box
           // and its inner wrapper (data-dialog-scroll) stop scrolling, every
           // section is shrink-0 and the client list gives way first (to its min-height),
-          // after which the wrapper scrolls.
-          className="flex flex-col [&>[data-dialog-scroll]]:flex [&>[data-dialog-scroll]]:min-h-0 [&>[data-dialog-scroll]]:flex-col [&>[data-dialog-scroll]]:overflow-y-auto"
+          // after which the fields area (not the header/footer) scrolls.
+          className="flex flex-col [&>[data-dialog-scroll]]:flex [&>[data-dialog-scroll]]:min-h-0 [&>[data-dialog-scroll]]:flex-col [&>[data-dialog-scroll]]:overflow-hidden"
           style={{ maxWidth: 512 }}
           confirmClose={form.dirty}
           onConfirmClose={() => onOpenChange(false)}
