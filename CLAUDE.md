@@ -247,6 +247,7 @@ Monorepo with npm workspaces:
   até o piloto preencher (o host sai do log `[mcp] image host refused: <host>`). As mesmas origens entram na CSP do
   card (`resourceDomains`), para as miniaturas das imagens do chat aparecerem. Sem deploy ao mudar
 - `GEMINI_API_KEY` -- Google Gemini key for AI narrative generation in analytics reports (instagram-analytics, instagram-report-generator-v2). Optional, no default -- AI narrative is skipped when unset
+- `WORKERS_AI_ACCOUNT_ID`, `WORKERS_AI_API_TOKEN` -- Cloudflare account id + API token (permissões `Workers AI - Read` e `Workers AI - Edit`) da leitura de comentários do Instagram (`instagram-analytics`, rotas `comments-analysis*`, modelo `COMMENTS_MODEL` em `comments-ai.ts`). Opcionais, sem default: sem os dois, as análises respondem 503 `ai_unavailable` e a lista de comentários segue funcionando. O plano gratuito do Workers AI dá 10 mil neurons/dia (zera 00:00 UTC; esgotado, erro 3036 vira `ai_unavailable` até o dia seguinte). Secrets comuns: mudar não precisa de deploy
 - `GSC_SERVICE_ACCOUNT_JSON` -- chave JSON (uma linha) da conta de serviço do Google com acesso
   **Restrito** à propriedade do Search Console; lida só pelo `blog-search-console-cron`
   (cliques, impressões, posição e indexação por post, para o Admin do blog). Opcional, sem

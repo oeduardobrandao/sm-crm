@@ -66,6 +66,13 @@ vi.mock('../../../services/reportDocs', () => ({
   deleteReportDoc: vi.fn(),
 }));
 
+import i18n from 'i18next';
+import ptComments from '../../../../../../packages/i18n/locales/pt/analyticsComments.json';
+import enComments from '../../../../../../packages/i18n/locales/en/analyticsComments.json';
+
+i18n.addResourceBundle('pt', 'analyticsComments', ptComments, true, true);
+i18n.addResourceBundle('en', 'analyticsComments', enComments, true, true);
+
 const { limitsFeatures } = vi.hoisted(() => ({
   limitsFeatures: {
     feature_tiktok: true,

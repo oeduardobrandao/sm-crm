@@ -1,5 +1,7 @@
 import { Fragment, type ReactNode, useMemo, useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { useIntlLocale } from '@mesaas/i18n';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -934,6 +936,8 @@ function ExpandedPostDetail({
   commentsEnabled: boolean;
 }) {
   const [tab, setTab] = useState<'insights' | 'comments'>('insights');
+  const { t } = useTranslation('analyticsComments');
+  const intlLocale = useIntlLocale();
   const insights = (
     <>
       <p
@@ -970,28 +974,31 @@ function ExpandedPostDetail({
   const tabId = (t: string) => `post-${p.id}-tab-${t}`;
   const panelId = (t: string) => `post-${p.id}-panel-${t}`;
   const tabs: { key: 'insights' | 'comments'; label: string }[] = [
-    { key: 'insights', label: 'Insights' },
-    { key: 'comments', label: `Comentários · ${(p.comments || 0).toLocaleString('pt-BR')}` },
+    { key: 'insights', label: t('common.tabInsights') },
+    {
+      key: 'comments',
+      label: t('common.tabComments', { n: (p.comments || 0).toLocaleString(intlLocale) }),
+    },
   ];
   return (
     <>
       <div
         className="page-tabs page-tabs--inline igc-detail-tabs"
         role="tablist"
-        aria-label="Detalhes do post"
+        aria-label={t('common.tabsAriaLabel')}
       >
-        {tabs.map((t) => (
+        {tabs.map((tb) => (
           <button
-            key={t.key}
+            key={tb.key}
             type="button"
             role="tab"
-            id={tabId(t.key)}
-            aria-selected={tab === t.key}
-            aria-controls={tab === t.key ? panelId(t.key) : undefined}
-            className={`page-tab${tab === t.key ? ' active' : ''}`}
-            onClick={() => setTab(t.key)}
+            id={tabId(tb.key)}
+            aria-selected={tab === tb.key}
+            aria-controls={tab === tb.key ? panelId(tb.key) : undefined}
+            className={`page-tab${tab === tb.key ? ' active' : ''}`}
+            onClick={() => setTab(tb.key)}
           >
-            {t.label}
+            {tb.label}
           </button>
         ))}
       </div>

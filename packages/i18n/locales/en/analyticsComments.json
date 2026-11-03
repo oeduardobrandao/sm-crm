@@ -1,0 +1,110 @@
+{
+  "count": {
+    "comment_one": "{{n}} comment",
+    "comment_other": "{{n}} comments",
+    "commentNew_one": "{{n}} new comment",
+    "commentNew_other": "{{n}} new comments",
+    "commentAnalyzed_one": "{{n}} comment analyzed",
+    "commentAnalyzed_other": "{{n}} comments analyzed",
+    "post_one": "{{n}} post",
+    "post_other": "{{n}} posts",
+    "reply_one": "{{n}} reply",
+    "reply_other": "{{n}} replies",
+    "like_one": "{{n}} like",
+    "like_other": "{{n}} likes",
+    "repliesMany": "25+ replies"
+  },
+  "common": {
+    "loading": "Loading comments...",
+    "retry": "Try again",
+    "reading_one": "Reading {{n}} comment...",
+    "reading_other": "Reading {{n}} comments...",
+    "comments": "Comments",
+    "tabInsights": "Insights",
+    "tabComments": "Comments · {{n}}",
+    "tabsAriaLabel": "Post details"
+  },
+  "sentiment": {
+    "positivo": "Mostly positive",
+    "misto": "Mixed",
+    "negativo": "Mostly negative",
+    "polemico": "Controversial"
+  },
+  "distribution": {
+    "ariaLabel": "Comment distribution",
+    "apoio": "Support",
+    "duvida": "Question",
+    "critica": "Criticism",
+    "discussao": "Discussion",
+    "spam": "Spam"
+  },
+  "analysis": {
+    "newSince": "{{comments}} since the analysis",
+    "redo": "Redo analysis",
+    "redoing": "Redoing...",
+    "viewDetails": "View themes and questions",
+    "why": "Why: {{reason}}",
+    "defaultThemes": "Themes",
+    "defaultQuestions": "Frequent questions",
+    "defaultIdeas": "Content ideas"
+  },
+  "account": {
+    "title": "What the audience is saying",
+    "last30": "Last 30 days",
+    "analyzedAgo": "analyzed {{ago}}",
+    "commentsInPosts": "{{comments}} across {{posts}}",
+    "sourceLabel": "from the last 30 days",
+    "tooFew": "At least {{min}} comments in the last 30 days are needed to analyze.",
+    "tooFewWithCurrent": "At least {{min}} comments in the last 30 days are needed to analyze. There are {{current}}.",
+    "prompt": "Summarize the mood of the last 30 days of comments and get content ideas.",
+    "analyze": "Analyze",
+    "analyzing": "Analyzing...",
+    "update": "Update analysis",
+    "themes": "Themes and where they came from",
+    "questions": "Most repeated questions",
+    "ideas": "Content ideas for the month"
+  },
+  "post": {
+    "empty": "This post has no comments yet.",
+    "showingTruncated": "Showing 200 comments",
+    "showing": "Showing {{comments}}",
+    "seeMore": "See more comments ({{n}})",
+    "openInstagram": "Open on Instagram",
+    "unknownUser": "Instagram user",
+    "readingTitle": "Comments reading",
+    "analyze": "Analyze comments",
+    "tooFew": "At least {{min}} comments are needed to analyze. This post has {{current}}.",
+    "prompt_one": "Summarize the mood of the comment and get content ideas.",
+    "prompt_other": "Summarize the mood of the {{n}} comments and get content ideas.",
+    "kindVIDEO": "from the Reel",
+    "kindCAROUSEL_ALBUM": "from the carousel",
+    "kindIMAGE": "from the image",
+    "kindSTORY": "from the story",
+    "kindDefault": "from the post",
+    "sourceWithDate": "{{kind}} of {{date}}",
+    "dateFormat": "MMM d"
+  },
+  "reconnect": {
+    "expiredTitle": "Connection expired",
+    "scopeTitle": "No comments permission",
+    "expiredText": "The Instagram connection expired. Reconnect to see the comments.",
+    "scopeText": "To see the comments, reconnect this client's Instagram and accept the comments permission.",
+    "button": "Reconnect Instagram"
+  },
+  "idea": {
+    "saved": "Saved",
+    "save": "Save as idea",
+    "alreadySaved": "This suggestion was already saved in Ideas.",
+    "origin": "Source: comments {{source}} ({{reason}})"
+  },
+  "error": {
+    "rateLimited": "Too many analyses in a row. Try again in a few minutes.",
+    "missingScope": "Reconnect this client's Instagram to see the comments.",
+    "tokenExpired": "The Instagram connection expired. Reconnect to see the comments.",
+    "tooFewComments": "There are not enough comments to analyze yet.",
+    "aiUnavailable": "AI analysis is unavailable right now.",
+    "aiTimeout": "The analysis took too long. Try again.",
+    "aiBadOutput": "Could not generate the analysis. Try again.",
+    "generic": "Could not load the comments."
+  }
+}

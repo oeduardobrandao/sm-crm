@@ -5,6 +5,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PostAnalytics } from '../../../../services/analytics';
 import type { StoredAnalysis } from '../../../../services/instagramComments';
 
+import i18n from 'i18next';
+import ptComments from '../../../../../../../packages/i18n/locales/pt/analyticsComments.json';
+import enComments from '../../../../../../../packages/i18n/locales/en/analyticsComments.json';
+
+i18n.addResourceBundle('pt', 'analyticsComments', ptComments, true, true);
+i18n.addResourceBundle('en', 'analyticsComments', enComments, true, true);
+
 const { getMock, analyzeMock, savedIdsMock, limitsMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
   analyzeMock: vi.fn(),
