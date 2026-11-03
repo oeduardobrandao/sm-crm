@@ -1037,6 +1037,16 @@ describe('MembrosTab — acesso a clientes', () => {
     expect(ana.queryByRole('button', { name: /clientes/ })).toBeNull();
   });
 
+  it('a restricted member with zero assignments reads "0 clientes" (pt plural zero)', async () => {
+    storeMock.getWorkspaceMemberClienteIds.mockResolvedValue({});
+    storeMock.getWorkspaceUsers.mockResolvedValue([OWNER, AGENT_RESTRITA]);
+    setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+    renderTab();
+
+    const clara = await getRow('Clara Agente');
+    expect(await clara.findByRole('button', { name: '0 clientes' })).toBeInTheDocument();
+  });
+
   it('a restricted member stays count-free when the assignments read fails', async () => {
     storeMock.getWorkspaceMemberClienteIds.mockRejectedValue(new Error('rls'));
     storeMock.getWorkspaceUsers.mockResolvedValue([OWNER, AGENT_RESTRITA]);

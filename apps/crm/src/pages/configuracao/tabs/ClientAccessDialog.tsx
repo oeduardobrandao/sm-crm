@@ -73,6 +73,10 @@ const LINK_STYLE = {
   cursor: 'pointer',
 } as const;
 
+/** The plain link buttons have no native disabled look. */
+const linkStyle = (disabled: boolean) =>
+  disabled ? { ...LINK_STYLE, opacity: 0.5, cursor: 'default' } : LINK_STYLE;
+
 const firstName = (nome: string) => nome.trim().split(/\s+/)[0] || nome;
 
 const normalize = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -300,7 +304,7 @@ function ClientAccessFields({
             <span className="flex items-center gap-1">
               <button
                 type="button"
-                style={LINK_STYLE}
+                style={linkStyle(form.visible.length === 0)}
                 onClick={form.selectAllVisible}
                 disabled={form.visible.length === 0}
               >
@@ -311,7 +315,7 @@ function ClientAccessFields({
               </span>
               <button
                 type="button"
-                style={LINK_STYLE}
+                style={linkStyle(form.selected.size === 0)}
                 onClick={form.clear}
                 disabled={form.selected.size === 0}
               >
@@ -322,10 +326,12 @@ function ClientAccessFields({
 
           <ul
             aria-label={t('membros.clientAccess.listAria', { name })}
-            // Dialog: up to 236px, and the only part that gives way on a short viewport.
+            // Dialog: up to 236px; gives way on a short viewport down to 96px, then the
+            // dialog body scrolls.
             className={sheet ? undefined : 'min-h-0 flex-1 overflow-y-auto'}
             style={{
               maxHeight: sheet ? undefined : 236,
+              minHeight: sheet ? undefined : 96,
               border: '1px solid var(--border-color)',
               borderRadius: 10,
             }}
@@ -470,8 +476,9 @@ export function ClientAccessDialog({
         <DialogContent
           // Flex columns all the way down, inside the primitive's 85vh cap: the box
           // and its inner wrapper (data-dialog-scroll) stop scrolling, every
-          // section is shrink-0 and only the client list gives way.
-          className="flex flex-col [&>[data-dialog-scroll]]:flex [&>[data-dialog-scroll]]:min-h-0 [&>[data-dialog-scroll]]:flex-col [&>[data-dialog-scroll]]:overflow-hidden"
+          // section is shrink-0 and the client list gives way first (to its min-height),
+          // after which the wrapper scrolls.
+          className="flex flex-col [&>[data-dialog-scroll]]:flex [&>[data-dialog-scroll]]:min-h-0 [&>[data-dialog-scroll]]:flex-col [&>[data-dialog-scroll]]:overflow-y-auto"
           style={{ maxWidth: 512 }}
           confirmClose={form.dirty}
           onConfirmClose={() => onOpenChange(false)}
@@ -563,13 +570,16 @@ export function ClientAccessSheet({
     onOpenChange(next);
   };
 
+  // A failed client list has no meaningful total: no count (as the desktop counter).
   const subtitle =
     form.scope === 'todos'
       ? t('membros.clientAccess.allClients')
-      : t('membros.clientAccess.phone.countSelected', {
-          n: form.selectedCount,
-          total: form.clientes.length,
-        });
+      : form.clientesError
+        ? undefined
+        : t('membros.clientAccess.phone.countSelected', {
+            n: form.selectedCount,
+            total: form.clientes.length,
+          });
 
   return (
     <>

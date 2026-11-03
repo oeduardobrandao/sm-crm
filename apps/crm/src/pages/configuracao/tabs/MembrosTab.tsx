@@ -127,7 +127,11 @@ export default function MembrosTab() {
   // Every assignment in ONE read, for the per-member counts and the dialog's
   // preselection. Owner only: RLS shows anyone else just their own rows, so a
   // non-owner viewer gets count-free labels instead of a wrong number.
-  const { data: memberClienteIds, isSuccess: memberClienteIdsReady } = useQuery({
+  const {
+    data: memberClienteIds,
+    isSuccess: memberClienteIdsReady,
+    isFetching: memberClienteIdsFetching,
+  } = useQuery({
     queryKey: ['workspace-member-clientes'],
     queryFn: getWorkspaceMemberClienteIds,
     enabled: canViewTeam && isOwner && anyRestricted,
@@ -138,7 +142,14 @@ export default function MembrosTab() {
       return { kind: 'todos', count: null, editable: isOwner && canRestrictClients, ready: true };
     }
     const count = isOwner && memberClienteIdsReady ? (memberClienteIds?.[u.id]?.length ?? 0) : null;
-    return { kind: 'atribuidos', count, editable: isOwner, ready: count !== null };
+    // Not while refetching (right after a save the cache still holds the old
+    // ids, and opening then would preselect them).
+    return {
+      kind: 'atribuidos',
+      count,
+      editable: isOwner,
+      ready: count !== null && !memberClienteIdsFetching,
+    };
   };
   // Stays mounted after closing, with a real `open`: the phone sheet pops its
   // history entry only when `open` turns false (unmounting it open left a dead

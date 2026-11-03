@@ -38,7 +38,17 @@ export function normalizeClientScopeRev(value: unknown): number {
  */
 function isMissingClientScopeSchemaError(error: { code?: string; message?: string }): boolean {
   const message = error.message ?? '';
-  return message.includes('client_scope') || message.includes('workspace_member_clientes');
+  // Code AND message: a permission error (42501) that merely mentions the
+  // column must throw, not step down to a tier that resolves 'todos'.
+  const schemaCode =
+    error.code === '42703' ||
+    error.code === '42P01' ||
+    error.code === 'PGRST200' ||
+    error.code === 'PGRST204';
+  return (
+    schemaCode &&
+    (message.includes('client_scope') || message.includes('workspace_member_clientes'))
+  );
 }
 
 /** The error message names the roles schema (role_id / workspace_roles) specifically. */
@@ -137,25 +147,6 @@ export async function getWorkspaceUsers(): Promise<any[]> {
     created_at: m.profiles.created_at,
     client_scope: normalizeClientScope(m.client_scope),
   }));
-}
-
-/**
- * Cliente ids assigned to `userId` in the ACTIVE workspace (owner-side read
- * for the "Acesso a clientes" dialog; RLS lets the owner read every row of
- * the workspace). Throws on any error: the caller must show an error, never
- * treat a failed read as "no restriction" or as "all clients".
- */
-export async function getMemberClienteIds(userId: string): Promise<number[]> {
-  const conta_id = await getContaId();
-  const { data, error } = await supabase
-    .from('workspace_member_clientes')
-    .select('cliente_id')
-    .eq('workspace_id', conta_id)
-    .eq('user_id', userId);
-  if (error) throw error;
-  return ((data as { cliente_id: number | string }[] | null) ?? []).map((r) =>
-    Number(r.cliente_id),
-  );
 }
 
 /**

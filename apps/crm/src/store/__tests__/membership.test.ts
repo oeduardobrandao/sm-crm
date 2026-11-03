@@ -6,57 +6,31 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // vi.hoisted() guarantees these are ready before that happens; plain
 // `const mock... = vi.fn()` above the vi.mock call left `mockGetContaId`
 // in the TDZ when the factory actually ran.
-const {
-  mockMaybeSingle,
-  mockGetContaId,
-  mockGetUser,
-  mockAssignments,
-  mockAssignmentEqs,
-  mockGetSession,
-} = vi.hoisted(() => ({
+const { mockMaybeSingle, mockGetContaId, mockGetUser, mockGetSession } = vi.hoisted(() => ({
   mockMaybeSingle: vi.fn(),
   mockGetContaId: vi.fn(),
   mockGetUser: vi.fn(),
-  // workspace_member_clientes read (getMemberClienteIds): resolved by
-  // awaiting the builder after the last .eq().
-  mockAssignments: vi.fn(),
-  mockAssignmentEqs: [] as Array<[string, unknown]>,
   mockGetSession: vi.fn(),
 }));
 
 vi.mock('../core', () => ({
   supabase: {
     auth: { getUser: mockGetUser, getSession: mockGetSession },
-    from: (table: string) =>
-      table === 'workspace_member_clientes'
-        ? {
-            select: () => ({
-              eq: (c1: string, v1: unknown) => {
-                mockAssignmentEqs.push([c1, v1]);
-                return {
-                  eq: (c2: string, v2: unknown) => {
-                    mockAssignmentEqs.push([c2, v2]);
-                    return mockAssignments();
-                  },
-                };
-              },
-            }),
-          }
-        : {
-            // The column list is forwarded to the mock so the pre-migration
-            // fallback tests below can answer the enriched select and the legacy
-            // select differently. Tests that don't care still work: a plain
-            // mockResolvedValue ignores the argument.
-            select: (columns: string) => ({
-              eq: () => ({ eq: () => ({ maybeSingle: () => mockMaybeSingle(columns) }) }),
-            }),
-          },
+    from: () => ({
+      // The column list is forwarded to the mock so the pre-migration
+      // fallback tests below can answer the enriched select and the legacy
+      // select differently. Tests that don't care still work: a plain
+      // mockResolvedValue ignores the argument.
+      select: (columns: string) => ({
+        eq: () => ({ eq: () => ({ maybeSingle: () => mockMaybeSingle(columns) }) }),
+      }),
+    }),
   },
   getContaId: mockGetContaId,
   getUserId: vi.fn().mockResolvedValue('u1'),
 }));
 
-import { getMyMembership, getMemberClienteIds, setWorkspaceUserClientScope } from '../workspace';
+import { getMyMembership, setWorkspaceUserClientScope } from '../workspace';
 
 // Fields every MyMembership carries when the client-scope schema is absent or
 // the row is unrestricted.
@@ -309,37 +283,18 @@ describe('getMyMembership', () => {
     expect(answered.at(-1)).not.toContain('client_scope');
   });
 
+  it('a 42501 error that mentions client_scope throws (no step-down to a todos tier)', async () => {
+    const permError = { code: '42501', message: 'permission denied for column client_scope' };
+    mockMaybeSingle.mockResolvedValue({ data: null, error: permError });
+    await expect(getMyMembership()).rejects.toBe(permError);
+    expect(mockMaybeSingle).toHaveBeenCalledTimes(1);
+  });
+
   it('a transport error on the full select still throws (no step-down)', async () => {
     const transportError = { message: 'TypeError: Failed to fetch' };
     mockMaybeSingle.mockResolvedValue({ data: null, error: transportError });
     await expect(getMyMembership()).rejects.toBe(transportError);
     expect(mockMaybeSingle).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('getMemberClienteIds', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockAssignmentEqs.length = 0;
-    mockGetContaId.mockResolvedValue('ws-1');
-  });
-
-  it('reads the member assignments of the active workspace', async () => {
-    mockAssignments.mockResolvedValue({
-      data: [{ cliente_id: 3 }, { cliente_id: 11 }],
-      error: null,
-    });
-    await expect(getMemberClienteIds('u-9')).resolves.toEqual([3, 11]);
-    expect(mockAssignmentEqs).toEqual([
-      ['workspace_id', 'ws-1'],
-      ['user_id', 'u-9'],
-    ]);
-  });
-
-  it('throws on error instead of returning a list', async () => {
-    const err = { message: 'permission denied' };
-    mockAssignments.mockResolvedValue({ data: null, error: err });
-    await expect(getMemberClienteIds('u-9')).rejects.toBe(err);
   });
 });
 

@@ -376,6 +376,18 @@ describe('MembrosTab (phone) — acesso a clientes', () => {
     );
   });
 
+  it('a failed client list read leaves the sheet subtitle without a "0 de 0" count', async () => {
+    storeMock.getClientes.mockRejectedValue(new Error('rls'));
+    renderTab();
+    fireEvent.click(await screen.findByRole('button', { name: /Carla Agente/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Clientes/ }));
+    const sheet = await screen.findByRole('dialog', { name: 'Clientes de Carla' });
+    expect(
+      await within(sheet).findByText('Não foi possível carregar os clientes.'),
+    ).toBeInTheDocument();
+    expect(within(sheet).queryByText(/\d+ de \d+ clientes/)).toBeNull();
+  });
+
   it('flag off with nobody restricted: no Clientes line', async () => {
     limitsHolder.features = { feature_acesso_por_cliente: false };
     storeMock.getWorkspaceUsers.mockResolvedValue([

@@ -244,6 +244,16 @@ describe('store core helpers and CRUD', () => {
     ]);
   });
 
+  it('a permission error (42501) that mentions client_scope throws instead of stepping down', async () => {
+    const permError = { code: '42501', message: 'permission denied for column client_scope' };
+    mockedSupabase.__queueSupabaseResult('workspace_members', 'select', {
+      data: null,
+      error: permError,
+    });
+
+    await expect(store.getWorkspaceUsers()).rejects.toBe(permError);
+  });
+
   it('rethrows a non-schema error instead of falling back (a network blip must not be swallowed)', async () => {
     const queryError = { message: 'permission denied' };
     mockedSupabase.__queueSupabaseResult('workspace_members', 'select', {

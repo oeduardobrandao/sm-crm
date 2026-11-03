@@ -278,6 +278,7 @@
       "column": "Clients",
       "all": "All",
       "allClients": "All clients",
+      "count_zero": "{{count}} clients",
       "count_one": "{{count}} client",
       "count_other": "{{count}} clients",
       "restricted": "Selected only",
