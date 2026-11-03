@@ -12,10 +12,11 @@ import {
 import type { Deps } from "./queries.ts";
 import { FINANCEIRO_ERROS } from "./financeiro-errors.ts";
 import { TOOL_META } from "./tool-meta.ts";
-import { ClientScopeError } from "../_shared/client-scope.ts";
+import { CLIENT_SCOPE_MESSAGE, ClientScopeError } from "../_shared/client-scope.ts";
 
-/** What a restricted member sees when a write touches a client outside their assignments. */
-export const CLIENT_SCOPE_MESSAGE = "Seu acesso é limitado aos clientes atribuídos.";
+/** What a restricted member sees when a write touches a client outside their assignments. One
+ * definition, in _shared/client-scope.ts; re-exported here for the MCP tools and tests. */
+export { CLIENT_SCOPE_MESSAGE };
 
 export function jsonResult(data: unknown, meta?: Record<string, unknown>) {
   return {

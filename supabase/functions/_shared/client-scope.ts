@@ -10,6 +10,8 @@
 // - a read error or an unknown client_scope value throws: never "all" by accident.
 // The feature flag is never read here: an existing restriction keeps applying (fail closed).
 
+import { fetchAllRowsKeyset } from "./paginate.ts";
+
 // deno-lint-ignore no-explicit-any
 type Db = { from: (table: string) => any };
 
@@ -32,6 +34,8 @@ export class ClientScopeError extends Error {
     this.name = "ClientScopeError";
   }
 }
+
+const SCOPE_PAGE = 1000;
 
 const allClients = (): ClientScope => ({ all: true, ids: new Set(), membroIds: new Set() });
 
@@ -59,23 +63,26 @@ export async function loadClientScope(svc: Db, userId: string, workspaceId: stri
   if (member.client_scope === "todos") return allClients();
   if (member.client_scope !== "atribuidos") throw new Error("client scope: unknown client_scope value");
 
-  // One un-ranged read each: past PostgREST's 1000-row cap this would truncate CLOSED (fewer
-  // clients visible), never open.
-  const [assigned, membros] = await Promise.all([
-    svc
-      .from("workspace_member_clientes")
-      .select("cliente_id")
-      .eq("workspace_id", workspaceId)
-      .eq("user_id", userId),
-    svc
-      .from("membros")
-      .select("id")
-      .eq("conta_id", workspaceId)
-      .eq("crm_user_id", userId),
-  ]);
-  if (assigned.error) throw new Error(`client scope: assignments read failed: ${assigned.error.message ?? "unknown"}`);
-  if (membros.error) throw new Error(`client scope: membros read failed: ${membros.error.message ?? "unknown"}`);
-  return { all: false, ids: toIds(assigned.data, "cliente_id"), membroIds: toIds(membros.data, "id") };
+  // Both reads are drained by keyset pages (PostgREST truncates an un-ranged read at its row cap,
+  // and an owner can assign up to 2000 clients). Any page error throws: never a partial scope.
+  const page = (table: string, col: string, filters: [string, string][]) =>
+    fetchAllRowsKeyset<Record<string, unknown>>((after) => {
+      let q = svc.from(table).select(col);
+      for (const [k, v] of filters) q = q.eq(k, v);
+      if (after != null) q = q.gt(col, Number(after));
+      return q.order(col, { ascending: true }).limit(SCOPE_PAGE);
+    }, (r) => String(r[col]), SCOPE_PAGE);
+  let assigned: Record<string, unknown>[];
+  let membros: Record<string, unknown>[];
+  try {
+    [assigned, membros] = await Promise.all([
+      page("workspace_member_clientes", "cliente_id", [["workspace_id", workspaceId], ["user_id", userId]]),
+      page("membros", "id", [["conta_id", workspaceId], ["crm_user_id", userId]]),
+    ]);
+  } catch (err) {
+    throw new Error(`client scope: assignments read failed: ${err instanceof Error ? err.message : "unknown"}`);
+  }
+  return { all: false, ids: toIds(assigned, "cliente_id"), membroIds: toIds(membros, "id") };
 }
 
 /** Boolean form of {@link assertClientAccess}, for reads that answer "not found" instead. */

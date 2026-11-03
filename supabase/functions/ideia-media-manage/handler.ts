@@ -84,8 +84,13 @@ export function createIdeiaMediaManageHandler(deps: Deps) {
     const notFound = () => json({ error: "Ideia não encontrada." }, 404);
     const ideiaGate = async (id: string | null | undefined, write: boolean): Promise<Response | null> => {
       if (clientScope.all || !id) return null;
-      const { data: row } = await db.from("ideias").select("cliente_id, autor_membro_id")
+      const { data: row, error: rowErr } = await db.from("ideias").select("cliente_id, autor_membro_id")
         .eq("id", id).eq("workspace_id", conta_id).maybeSingle();
+      // A failed read is never "missing": the shared helper would re-read and serve the ideia.
+      if (rowErr) {
+        console.error("[ideia-media-manage] scope ideia read:", rowErr.message ?? rowErr);
+        return json({ error: "Internal server error" }, 500);
+      }
       if (!row) return null; // missing: the shared helper answers its own not-found
       const vis = rowVisibility(clientScope, { cliente_id: row.cliente_id, responsavel_id: row.autor_membro_id }, user.id);
       if (vis === "hidden") return notFound();

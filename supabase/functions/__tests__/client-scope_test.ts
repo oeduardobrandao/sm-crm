@@ -16,20 +16,28 @@ import {
 type Resp = { data: unknown; error: unknown };
 type Call = { table: string; method: string; args: unknown[] };
 
-function fakeDb(responses: Record<string, Resp>) {
+/** A table maps to one response (served once, then empty pages) or to a list of pages. */
+function fakeDb(responses: Record<string, Resp | Resp[]>) {
   const calls: Call[] = [];
+  const served: Record<string, number> = {};
   const db = {
     from(table: string) {
       calls.push({ table, method: "from", args: [] });
       // deno-lint-ignore no-explicit-any
       const rec: any = {};
-      for (const m of ["select", "eq"]) {
+      for (const m of ["select", "eq", "gt", "order", "limit"]) {
         rec[m] = (...args: unknown[]) => {
           calls.push({ table, method: m, args });
           return rec;
         };
       }
-      const resp = () => responses[table] ?? { data: null, error: null };
+      const resp = () => {
+        const n = served[table] = (served[table] ?? 0) + 1;
+        const r = responses[table];
+        if (Array.isArray(r)) return r[n - 1] ?? { data: [], error: null };
+        if (n === 1) return r ?? { data: null, error: null };
+        return { data: [], error: null };
+      };
       rec.maybeSingle = () => Promise.resolve(resp());
       rec.then = (resolve: (r: Resp) => unknown) => Promise.resolve(resolve(resp()));
       return rec;
@@ -69,6 +77,39 @@ Deno.test("loadClientScope: 'atribuidos' loads assigned ids and the user's membr
   assert(calls.some((c) => c.table === "workspace_member_clientes" && c.method === "eq" && JSON.stringify(c.args) === '["user_id","u1"]'));
   assert(calls.some((c) => c.table === "membros" && c.method === "eq" && JSON.stringify(c.args) === '["crm_user_id","u1"]'));
   assert(calls.some((c) => c.table === "membros" && c.method === "eq" && JSON.stringify(c.args) === '["conta_id","w1"]'));
+});
+
+Deno.test("loadClientScope: more than 1000 assignments are read by keyset pages, all of them", async () => {
+  const first = Array.from({ length: 1000 }, (_, i) => ({ cliente_id: i + 1 }));
+  const second = Array.from({ length: 500 }, (_, i) => ({ cliente_id: 1001 + i }));
+  const { db, calls } = fakeDb({
+    workspace_members: { data: { role: "agent", client_scope: "atribuidos" }, error: null },
+    workspace_member_clientes: [{ data: first, error: null }, { data: second, error: null }, { data: [], error: null }],
+    membros: [{ data: [{ id: 30 }], error: null }, { data: [], error: null }],
+  });
+  const s = await loadClientScope(db, "u1", "w1");
+  assertEquals(s.ids.size, 1500);
+  assert(s.ids.has(1500) && s.ids.has(1001) && s.ids.has(1));
+  const gts = calls.filter((c) => c.table === "workspace_member_clientes" && c.method === "gt").map((c) => c.args);
+  assertEquals(gts, [["cliente_id", 1000], ["cliente_id", 1500]]);
+  assert(calls.some((c) => c.table === "workspace_member_clientes" && c.method === "limit" && c.args[0] === 1000));
+});
+
+Deno.test("loadClientScope: a failing second page throws (never a partial scope)", async () => {
+  const { db } = fakeDb({
+    workspace_members: { data: { role: "agent", client_scope: "atribuidos" }, error: null },
+    workspace_member_clientes: [
+      { data: Array.from({ length: 1000 }, (_, i) => ({ cliente_id: i + 1 })), error: null },
+      { data: null, error: { message: "boom" } },
+    ],
+  });
+  let threw = false;
+  try {
+    await loadClientScope(db, "u1", "w1");
+  } catch {
+    threw = true;
+  }
+  assert(threw);
 });
 
 Deno.test("loadClientScope: 'atribuidos' with zero rows is zero clients, never all", async () => {

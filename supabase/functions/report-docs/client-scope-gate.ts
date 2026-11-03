@@ -14,8 +14,10 @@ export function assertGenerateClientInScope(scope: ClientScope, clientId: number
   if (!hasClientAccess(scope, clientId, false)) throw new GenerateError("not_found");
 }
 
-/** /:id routes: the document's client must be in scope. Unrestricted callers skip the read; a
- * missing or foreign document is left to the route's own not-found. */
+/** /:id routes: the document's client must be in scope. Unrestricted callers skip the read. For a
+ * restricted caller a missing, foreign or hidden document all throw the same DocActionError
+ * "not_found" here (the route's own not-found answer), so the three are indistinguishable. A read
+ * error throws a plain Error, which the route turns into a generic 500. */
 export async function assertDocInScope(db: Db, scope: ClientScope, contaId: string, docId: string): Promise<void> {
   if (scope.all) return;
   const { data: doc, error } = await db.from("report_documents")

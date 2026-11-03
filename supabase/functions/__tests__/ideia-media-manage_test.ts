@@ -251,3 +251,25 @@ Deno.test("ideia-media-manage: a scope read error is a 500, never data", async (
   assertEquals(res.status, 500);
   assertEquals(db.calls.some((c) => c.table === "ideias"), false);
 });
+
+Deno.test("ideia-media-manage: a failed ideia read in the scope gate is a 500, never served", async () => {
+  for (const [method, path] of [
+    ["GET", "ideia-media-manage?ideia_id=i1"],
+    ["DELETE", "ideia-media-manage/i1/files/5"],
+  ]) {
+    const db = createSupabaseQueryMock();
+    setupAuth(db);
+    db.queue(
+      "ideias",
+      "select",
+      { data: null, error: { message: "read failed" } },
+      // What the shared helper would read next: it must never get there.
+      { data: { id: "i1", cliente_id: 14, workspace_id: "conta-1" }, error: null },
+    );
+    const res = await makeHandler(db, null, restricted([9]))(req(method, path));
+    assertEquals(res.status, 500, `${method} ${path}`);
+    assertEquals(await readJson(res), { error: "Internal server error" });
+    assertEquals(db.calls.filter((c) => c.table === "ideias").length, 1);
+    assertEquals(db.calls.some((c) => c.table === "ideia_files"), false);
+  }
+});

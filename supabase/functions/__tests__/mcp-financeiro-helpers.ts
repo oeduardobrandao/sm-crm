@@ -30,7 +30,7 @@ export function makeFakeDb(responses: Record<string, Resp[]>, rpc: Record<string
     };
     for (
       const m of [
-        "select", "eq", "neq", "in", "is", "gte", "lt", "lte", "like", "order", "limit", "range",
+        "select", "eq", "neq", "in", "is", "gt", "gte", "lt", "lte", "like", "order", "limit", "range",
         "insert", "update", "upsert", "delete", "ilike",
       ]
     ) {
