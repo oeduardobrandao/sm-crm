@@ -1355,8 +1355,9 @@ Deno.test("subtree: deleting an own root folder with no hidden client below it i
   db.queue(
     "folders",
     "select",
-    { data: [{ id: 6, source_type: null, source_id: null }], error: null }, // subtree level 1
-    { data: [], error: null }, // subtree level 2
+    { data: [{ id: 6, source_type: null, source_id: null }], error: null }, // subtree level 1, page 1
+    { data: [], error: null }, // level 1, empty page: level done
+    { data: [], error: null }, // level 2: nothing below
     { data: { source: "user", conta_id: "conta-1" }, error: null }, // route
   );
   const res = await makeHandler(db, { loadClientScope: restrictedTo([42]) })(req("DELETE", "/folders/5"));
@@ -1377,7 +1378,8 @@ Deno.test("subtree: a visible folder holding a hidden client's folder is limitad
       data: [{ id: 3, source_type: "client", source_id: 42 }, { id: 4, source_type: "client", source_id: 43 }],
       error: null,
     },
-    { data: [], error: null },
+    { data: [], error: null }, // level 1 done
+    { data: [], error: null }, // level 2: nothing below
   );
   const res = await makeHandler(db, { loadClientScope: restrictedTo([43]) })(req("POST", "/zip-token", { folder_id: 1 }));
   assertEquals(res.status, 403);
@@ -1460,4 +1462,49 @@ Deno.test("listing: workflow and post folders of hidden clients are dropped", as
   const res = await makeHandler(db, { loadClientScope: restrictedTo([42]) })(req("GET", "/tree?parent_id=3"));
   assertEquals(res.status, 200);
   assertEquals((await readJson(res)).map((f: { id: number }) => f.id), [10, 13]);
+});
+
+Deno.test("shape: a string, float or object in a single id field answers 400 with no read or write", async () => {
+  const bad: [string, string, unknown][] = [
+    ["POST", "/folders", { name: "x", parent_id: "3" }],
+    ["POST", "/folders", { name: "x", parent_id: 1.5 }],
+    ["POST", "/folders", { name: "x", parent_id: { id: 3 } }],
+    ["PATCH", "/folders/5", { parent_id: "3" }],
+    ["PATCH", "/folders/5", { parent_id: [3] }],
+    ["POST", "/folders/5/copy", { destination_folder_id: "3" }],
+    ["POST", "/files/10/copy", { destination_folder_id: 2.5 }],
+    ["PATCH", "/files/10", { folder_id: "3" }],
+    ["POST", "/links", { post_id: "50", file_id: 10 }],
+    ["POST", "/links", { post_id: 50, file_id: 1.5 }],
+    ["POST", "/links", { post_id: 50, file_id: { id: 10 } }],
+    ["POST", "/links", { post_id: true, file_id: 10 }],
+    ["GET", "/tree?parent_id=abc", undefined],
+    ["GET", "/folders?parent_id=1.5", undefined],
+    ["GET", "/links?post_id=5x", undefined],
+    ["DELETE", "/folders/abc", undefined],
+    ["PATCH", "/links/1e3", { sort_order: 1 }],
+  ];
+  for (const scope of [restrictedTo([7]), () => Promise.resolve(allClientsScope())]) {
+    for (const [method, path, body] of bad) {
+      const db = createSupabaseQueryMock();
+      setupAuth(db);
+      const res = await makeHandler(db, { loadClientScope: scope })(req(method, path, body));
+      const label = `${method} ${path} ${JSON.stringify(body)}`;
+      assertEquals(res.status, 400, label);
+      assertEquals(await readJson(res), { error: "Requisição inválida." }, label);
+      assertEquals(db.calls.filter((c) => c.table !== "profiles").length, 0, label);
+    }
+  }
+});
+
+Deno.test("shape: null keeps meaning root, and the route uses the normalized parent id", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("folders", "insert", { data: { id: 9, name: "x", parent_id: null }, error: null });
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([7]) })(
+    req("POST", "/folders", { name: "x", parent_id: null }),
+  );
+  assertEquals(res.status, 201);
+  const insert = db.calls.find((c) => c.table === "folders" && c.operation === "insert");
+  assertEquals((insert?.payload as { parent_id: unknown }).parent_id, null);
 });

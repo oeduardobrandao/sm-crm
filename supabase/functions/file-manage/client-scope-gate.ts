@@ -106,12 +106,39 @@ export function normalizeBulkBody(resource: string, raw: unknown): BulkBody | nu
   return out;
 }
 
+/** Body id fields any single-item route reads. Present (not null) = a JSON positive safe integer. */
+const BODY_ID_FIELDS = ["parent_id", "destination_folder_id", "folder_id", "post_id", "file_id"] as const;
+
+/** Fail closed on shape for the single-item routes: the parsed body back (a non-object body reads as
+ * {}), or null when an id field is present but not a positive safe integer. null keeps its meaning
+ * (root / no destination). The gate and the route both read this one object. */
+export function normalizeIdFields(raw: unknown): Record<string, unknown> | null {
+  const b = (raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>;
+  for (const k of BODY_ID_FIELDS) {
+    if (b[k] !== undefined && b[k] !== null && !isPosInt(b[k])) return null;
+  }
+  return b;
+}
+
+/** A path segment or query value that must be an id: absent / "" = null, digits = the number,
+ * anything else = INVALID_ID. */
+export const INVALID_ID = Symbol("invalid_id");
+export function textId(v: string | null | undefined): number | null | typeof INVALID_ID {
+  if (v === undefined || v === null || v === "") return null;
+  if (!/^[1-9][0-9]*$/.test(v)) return INVALID_ID;
+  const n = Number(v);
+  return Number.isSafeInteger(n) ? n : INVALID_ID;
+}
+
 export interface GateRequest {
   method: string;
   resource: string | undefined;
   idStr: string | undefined;
   subResource: string | undefined;
-  url: URL;
+  /** Normalized ids (textId / normalizeIdFields): the route uses these same values. */
+  pathId: number | null;
+  queryParent: number | null;
+  queryPost: number | null;
   // deno-lint-ignore no-explicit-any
   body: any;
   /** Normalized ids for bulk-move / bulk-delete / zip-token (null on the other routes). */
@@ -130,10 +157,8 @@ export function allowAll(): GateDecision {
   return { deny: null, hiddenFiles: new Set(), hiddenFolders: new Set() };
 }
 
-const id = (v: unknown): number | null => {
-  const n = Number(v);
-  return v != null && v !== "" && Number.isInteger(n) && n > 0 ? n : null;
-};
+/** A normalized body id: a number, or null when absent / null. */
+const id = (v: unknown): number | null => (typeof v === "number" ? v : null);
 
 export async function fileManageScopeGate(
   db: Db,
@@ -178,8 +203,7 @@ export async function fileManageScopeGate(
     if (error) throw new Error(`file-manage gate: link read failed: ${error.message ?? "unknown"}`);
     return l?.post_id ?? null;
   };
-  const { method, resource, idStr, subResource, url, body, bulk } = r;
-  const parentParam = id(url.searchParams.get("parent_id"));
+  const { method, resource, idStr, subResource, body, bulk, pathId, queryParent: parentParam } = r;
 
   if (resource === "tree") {
     if (method !== "GET") return nf("Not found");
@@ -188,7 +212,7 @@ export async function fileManageScopeGate(
   }
 
   if (resource === "folders") {
-    const fid = id(idStr);
+    const fid = pathId;
     if (method === "GET") {
       return (await folderVisible(idStr ? fid : parentParam)) ? decision : nf("Folder not found");
     }
@@ -219,7 +243,7 @@ export async function fileManageScopeGate(
   }
 
   if (resource === "files") {
-    const fid = id(idStr);
+    const fid = pathId;
     const known = (method === "GET" && idStr && subResource === "url") ||
       (method === "POST" && idStr && subResource === "copy") ||
       (method === "PATCH" && idStr) || (method === "DELETE" && idStr);
@@ -235,7 +259,7 @@ export async function fileManageScopeGate(
   if (resource === "links") {
     if (method === "GET") {
       // A missing post has no links: 200 {links: []}. The caller's own post stays readable.
-      return (await post(id(url.searchParams.get("post_id")), false)) === "hidden" ? answer(200, { links: [] }) : decision;
+      return (await post(r.queryPost, false)) === "hidden" ? answer(200, { links: [] }) : decision;
     }
     if (method === "POST") {
       // Same order as the route: required fields (400), file (404), document (400), post (404).
@@ -252,7 +276,7 @@ export async function fileManageScopeGate(
       return p === "hidden" ? nf("Post not found") : p === "limited" ? limited() : decision;
     }
     if ((method === "DELETE" || method === "PATCH") && idStr) {
-      const p = await post(await linkPost(id(idStr)), true);
+      const p = await post(await linkPost(pathId), true);
       return p === "hidden" ? nf("Link not found") : p === "limited" ? limited() : decision;
     }
     return nf("Not found");

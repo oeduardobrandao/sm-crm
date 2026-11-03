@@ -1,5 +1,5 @@
 // _shared/file-client-scope.ts: which client a folder / file of the library belongs to.
-import { assertEquals } from "./assert.ts";
+import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import {
   fileClienteId,
@@ -58,42 +58,89 @@ Deno.test("itemVisible: assigned and workspace-level pass, hidden clients do not
   assertEquals(itemVisible(r, NOT_IN_WORKSPACE), true); // the route answers its own not-found
 });
 
+const page = (rows: Record<string, unknown>[]) => ({ data: rows, error: null });
+const EMPTY = page([]);
+
 Deno.test("subtreeHasHiddenClient: walks every level and resolves workflow / post folders in batch", async () => {
   const r = restricted([42]);
   const clean = createSupabaseQueryMock();
   clean.queue(
     "folders",
     "select",
-    { data: [{ id: 6, source_type: null, source_id: null }, { id: 7, source_type: "client", source_id: 42 }], error: null },
-    { data: [{ id: 8, source_type: "workflow", source_id: 100 }], error: null },
-    { data: [{ id: 9, source_type: "post", source_id: 500 }], error: null },
-    { data: [], error: null },
+    page([{ id: 6, source_type: null, source_id: null }, { id: 7, source_type: "client", source_id: 42 }]),
+    EMPTY, // level 1 done
+    page([{ id: 8, source_type: "workflow", source_id: 100 }]),
+    EMPTY, // level 2 done
+    page([{ id: 9, source_type: "post", source_id: 500 }]),
+    EMPTY, // level 3 done
+    EMPTY, // level 4: nothing below
   );
   clean.queue("workflows", "select", { data: [{ id: 100, cliente_id: 42 }], error: null });
   clean.queue("workflow_posts", "select", { data: [{ id: 500, cliente_id: 42 }], error: null });
   assertEquals(await subtreeHasHiddenClient(clean, r, 5, W), false);
+  // Each level is ordered by id and paged with .range().
+  const levelReads = clean.calls.filter((c) => c.table === "folders");
+  assertEquals(levelReads.length, 7);
+  assertEquals(levelReads[1].modifiers.find((m) => m.method === "range")?.args, [2, 1001]);
+  assert(levelReads[0].modifiers.some((m) => m.method === "order" && m.args[0] === "id"));
 
   const deepHidden = createSupabaseQueryMock();
   deepHidden.queue(
     "folders",
     "select",
-    { data: [{ id: 6, source_type: null, source_id: null }], error: null },
-    { data: [{ id: 9, source_type: "post", source_id: 500 }], error: null },
-    { data: [], error: null },
+    page([{ id: 6, source_type: null, source_id: null }]),
+    EMPTY,
+    page([{ id: 9, source_type: "post", source_id: 500 }]),
+    EMPTY,
+    EMPTY,
   );
   deepHidden.queue("workflow_posts", "select", { data: [{ id: 500, cliente_id: 43 }], error: null });
   assertEquals(await subtreeHasHiddenClient(deepHidden, r, 5, W), true);
 
   // A workflow folder whose workflow is gone is hidden by default.
   const orphan = createSupabaseQueryMock();
-  orphan.queue("folders", "select", { data: [{ id: 8, source_type: "workflow", source_id: 100 }], error: null }, {
-    data: [],
-    error: null,
-  });
+  orphan.queue("folders", "select", page([{ id: 8, source_type: "workflow", source_id: 100 }]), EMPTY, EMPTY);
   orphan.queue("workflows", "select", { data: [], error: null });
   assertEquals(await subtreeHasHiddenClient(orphan, r, 5, W), true);
 
   assertEquals(await subtreeHasHiddenClient(createSupabaseQueryMock(), allClientsScope(), 5, W), false);
+});
+
+Deno.test("subtreeHasHiddenClient: a level past the row cap is read page by page (hidden on page 2)", async () => {
+  const r = restricted([42]);
+  const db = createSupabaseQueryMock();
+  const firstPage = Array.from({ length: 1000 }, (_, i) => ({ id: 1000 + i, source_type: "client", source_id: 42 }));
+  db.queue(
+    "folders",
+    "select",
+    page(firstPage), // a full page: PostgREST would stop here at its 1000-row cap
+    page([{ id: 5000, source_type: "client", source_id: 43 }]), // the hidden client, on page 2
+    EMPTY, // level 1 done
+    EMPTY, // level 2 (1001 parents, chunked in 3 reads of up to 500 ids)
+    EMPTY,
+    EMPTY,
+  );
+  assertEquals(await subtreeHasHiddenClient(db, r, 5, W), true);
+  const reads = db.calls.filter((c) => c.table === "folders");
+  assertEquals(reads[1].modifiers.find((m) => m.method === "range")?.args, [1000, 1999]);
+  // The 1001-folder frontier of level 2 goes out in chunks of at most 500 ids.
+  const level2 = reads.slice(3).map((c) => (c.modifiers.find((m) => m.method === "in")?.args[1] as number[]).length);
+  assertEquals(level2, [500, 500, 1]);
+});
+
+Deno.test("subtreeHasHiddenClient: a page error throws (fails closed)", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("folders", "select", page([{ id: 6, source_type: null, source_id: null }]), {
+    data: null,
+    error: { message: "boom" },
+  });
+  let threw = false;
+  try {
+    await subtreeHasHiddenClient(db, restricted([42]), 5, W);
+  } catch {
+    threw = true;
+  }
+  assertEquals(threw, true);
 });
 
 Deno.test("visibleFolderRows: drops client, workflow and post folders of hidden clients", async () => {

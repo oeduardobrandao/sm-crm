@@ -14,8 +14,11 @@ import {
   type BulkBody,
   fileManageScopeGate,
   type GateDecision,
+  INVALID_ID,
   INVALID_REQUEST,
   normalizeBulkBody,
+  normalizeIdFields,
+  textId,
 } from "./client-scope-gate.ts";
 
 async function signZipToken(payload: Record<string, unknown>, secret: string): Promise<string> {
@@ -78,11 +81,29 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
     // bulk-move / bulk-delete / zip-token: the id fields are normalized once, for every caller, and
     // both the scope gate and the route use exactly these values. Present but malformed = 400.
+    // Every other id the scope gate checks (path id, ?parent_id, ?post_id, body parent_id /
+    // destination_folder_id / folder_id / post_id / file_id) is normalized the same way, once: the
+    // body is parsed a single time and the routes read only these values.
+    const rawBody = req.method === "POST" || req.method === "PATCH" ? await req.json().catch(() => ({})) : {};
     let bulk: BulkBody | null = null;
+    // deno-lint-ignore no-explicit-any
+    let reqBody: any = {};
     if (req.method === "POST" && (resource === "bulk-move" || resource === "bulk-delete" || resource === "zip-token")) {
-      bulk = normalizeBulkBody(resource, await req.json().catch(() => ({})));
+      bulk = normalizeBulkBody(resource, rawBody);
       if (!bulk) return json(INVALID_REQUEST, 400);
+    } else {
+      reqBody = normalizeIdFields(rawBody);
+      if (!reqBody) return json(INVALID_REQUEST, 400);
     }
+    const pathIdRaw = resource === "folders" || resource === "files" || resource === "links" ? textId(idStr) : null;
+    const queryParentRaw = textId(url.searchParams.get("parent_id"));
+    const queryPostRaw = textId(url.searchParams.get("post_id"));
+    if (pathIdRaw === INVALID_ID || queryParentRaw === INVALID_ID || queryPostRaw === INVALID_ID) {
+      return json(INVALID_REQUEST, 400);
+    }
+    const pathId = pathIdRaw;
+    const queryParent = queryParentRaw;
+    const queryPost = queryPostRaw;
 
     // Acesso por cliente. Every read below is pinned to contaId, so the scope is loaded for it. A
     // restricted caller goes through the gate (client-scope-gate.ts: hidden = answered exactly like
@@ -94,11 +115,8 @@ export function createFileManageHandler(deps: FileManageDeps) {
     try {
       scope = await (deps.loadClientScope ?? realLoadClientScope)(svc, user.id, contaId);
       if (!scope.all) {
-        const gateBody = bulk || req.method === "GET" || req.method === "DELETE"
-          ? {}
-          : await req.clone().json().catch(() => ({}));
         gate = await fileManageScopeGate(svc, scope, contaId, user.id, {
-          method: req.method, resource, idStr, subResource, url, body: gateBody, bulk,
+          method: req.method, resource, idStr, subResource, pathId, queryParent, queryPost, body: reqBody, bulk,
         });
         if (gate.deny) return json(gate.deny.body, gate.deny.status);
       }
@@ -110,12 +128,12 @@ export function createFileManageHandler(deps: FileManageDeps) {
     // ─── TREE ─────────────────────────────────────────────────────
     if (resource === "tree") {
       if (req.method === "GET") {
-        const parentParam = url.searchParams.get("parent_id");
+        const parentParam = queryParent;
 
         const foldersQ = svc.from("folders")
           .select("id, name, source, source_type, source_id, position")
           .eq("conta_id", contaId);
-        if (parentParam) foldersQ.eq("parent_id", Number(parentParam));
+        if (parentParam) foldersQ.eq("parent_id", parentParam);
         else foldersQ.is("parent_id", null);
         foldersQ.order("source", { ascending: true }).order("name", { ascending: true });
 
@@ -137,7 +155,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
     if (resource === "folders") {
       // GET /folders/:id → single folder info
       if (req.method === "GET" && idStr) {
-        const folderId = Number(idStr);
+        const folderId = pathId!;
         const { data: folder } = await svc.from("folders").select("*").eq("id", folderId).single();
         if (!folder || folder.conta_id !== contaId) return json({ error: "Folder not found" }, 404);
 
@@ -163,8 +181,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
       // GET /folders?parent_id=... → list folder contents
       if (req.method === "GET") {
-        const parentId = url.searchParams.get("parent_id");
-        const parentFilter = parentId ? Number(parentId) : null;
+        const parentFilter = queryParent;
 
         const foldersQ = svc.from("folders").select("*").eq("conta_id", contaId);
         if (parentFilter) foldersQ.eq("parent_id", parentFilter);
@@ -256,7 +273,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
       // POST /folders → create folder
       if (req.method === "POST" && !idStr) {
-        const body = await req.json().catch(() => ({}));
+        const body = reqBody;
         const { name, parent_id } = body as { name?: string; parent_id?: number | null };
         if (!name) return json({ error: "name required" }, 400);
 
@@ -278,11 +295,11 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
       // PATCH /folders/:id → rename or move
       if (req.method === "PATCH" && idStr) {
-        const folderId = Number(idStr);
+        const folderId = pathId!;
         const { data: folder } = await svc.from("folders").select("*").eq("id", folderId).single();
         if (!folder || folder.conta_id !== contaId) return json({ error: "Folder not found" }, 404);
 
-        const body = await req.json().catch(() => ({}));
+        const body = reqBody;
         const patch: Record<string, unknown> = { updated_at: (deps.now ?? (() => new Date().toISOString()))() };
 
         if (typeof body.name === "string") {
@@ -309,7 +326,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
       // DELETE /folders/:id
       if (req.method === "DELETE" && idStr) {
-        const folderId = Number(idStr);
+        const folderId = pathId!;
         const { data: folder } = await svc.from("folders").select("source, conta_id").eq("id", folderId).single();
         if (!folder || folder.conta_id !== contaId) return json({ error: "Folder not found" }, 404);
 
@@ -324,8 +341,8 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
       // POST /folders/:id/copy → recursively copy a folder to a destination
       if (req.method === "POST" && idStr && subResource === "copy") {
-        const folderId = Number(idStr);
-        const body = await req.json().catch(() => ({}));
+        const folderId = pathId!;
+        const body = reqBody;
         const { destination_folder_id } = body as { destination_folder_id?: number | null };
 
         const { data: source } = await svc.from("folders").select("*").eq("id", folderId).single();
@@ -437,7 +454,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
       // GET /files/:id/url → return a signed URL for the file
       if (req.method === "GET" && idStr) {
         if (subResource === "url") {
-          const fileId = Number(idStr);
+          const fileId = pathId!;
           const { data: file } = await svc.from("files").select("conta_id, r2_key").eq("id", fileId).single();
           if (!file || file.conta_id !== contaId) return json({ error: "File not found" }, 404);
           const signedUrl = await deps.signUrl(file.r2_key);
@@ -447,8 +464,8 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
       // POST /files/:id/copy → copy a file to a destination folder
       if (req.method === "POST" && idStr && subResource === "copy") {
-        const fileId = Number(idStr);
-        const body = await req.json().catch(() => ({}));
+        const fileId = pathId!;
+        const body = reqBody;
         const { destination_folder_id } = body as { destination_folder_id?: number | null };
 
         const { data: source } = await svc.from("files").select("*").eq("id", fileId).single();
@@ -518,14 +535,14 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
       // PATCH /files/:id → rename, move, or update blur_data_url
       if (req.method === "PATCH" && idStr) {
-        const fileId = Number(idStr);
+        const fileId = pathId!;
         const { data: file } = await svc.from("files").select("conta_id, attached_to").eq("id", fileId).single();
         // Mover uma referência para uma pasta a faria aparecer em Arquivos.
         if (!file || file.conta_id !== contaId || file.attached_to != null) {
           return json({ error: "File not found" }, 404);
         }
 
-        const body = await req.json().catch(() => ({}));
+        const body = reqBody;
         const patch: Record<string, unknown> = {};
         if (typeof body.name === "string") patch.name = body.name;
         if (body.folder_id !== undefined) {
@@ -547,7 +564,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
       // DELETE /files/:id
       if (req.method === "DELETE" && idStr) {
-        const fileId = Number(idStr);
+        const fileId = pathId!;
         const { data: file } = await svc.from("files").select("conta_id, reference_count").eq("id", fileId).single();
         if (!file || file.conta_id !== contaId) return json({ error: "File not found" }, 404);
 
@@ -589,7 +606,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
     if (resource === "links") {
       // POST /links → link file to post
       if (req.method === "POST") {
-        const body = await req.json().catch(() => ({}));
+        const body = reqBody;
         const { post_id, file_id, sort_order } = body as { post_id?: number; file_id?: number; sort_order?: number };
         if (!post_id || !file_id) return json({ error: "post_id and file_id required" }, 400);
 
@@ -621,7 +638,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
       // DELETE /links/:id → unlink file from post
       if (req.method === "DELETE" && idStr) {
-        const linkId = Number(idStr);
+        const linkId = pathId!;
         const { data: link } = await svc.from("post_file_links").select("conta_id").eq("id", linkId).single();
         if (!link || link.conta_id !== contaId) return json({ error: "Link not found" }, 404);
 
@@ -632,7 +649,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
       // GET /links?post_id=... → list links for a post (with file data)
       if (req.method === "GET") {
-        const postId = Number(url.searchParams.get("post_id"));
+        const postId = queryPost;
         if (!postId) return json({ error: "post_id required" }, 400);
 
         const { data: links } = await svc.from("post_file_links")
@@ -661,11 +678,11 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
       // PATCH /links/:id → update sort_order or is_cover
       if (req.method === "PATCH" && idStr) {
-        const linkId = Number(idStr);
+        const linkId = pathId!;
         const { data: link } = await svc.from("post_file_links").select("conta_id").eq("id", linkId).single();
         if (!link || link.conta_id !== contaId) return json({ error: "Link not found" }, 404);
 
-        const body = await req.json().catch(() => ({}));
+        const body = reqBody;
 
         if (body.is_cover === true) {
           const { error: swapErr } = await svc.rpc("post_file_link_set_cover", { p_link_id: linkId });

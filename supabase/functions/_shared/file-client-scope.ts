@@ -14,6 +14,7 @@
 // The DB policies of Task 4c own the authoritative definition; keep the two in step.
 
 import { type ClientScope, hasClientAccess } from "./client-scope.ts";
+import { chunk, fetchAllRows } from "./paginate.ts";
 
 // deno-lint-ignore no-explicit-any
 type Db = { from: (table: string) => any; rpc: (fn: string, params: Record<string, unknown>) => any };
@@ -104,11 +105,16 @@ async function typedRowClients(db: Db, rows: TypedRow[], contaId: string): Promi
     const list = bySource[table];
     if (list.length === 0) continue;
     const sourceIds = [...new Set(list.map((r) => Number(r.source_id)))];
-    const { data, error } = await db.from(table).select("id, cliente_id").eq("conta_id", contaId).in("id", sourceIds);
-    if (error) throw new Error(`file scope: ${table} batch read failed: ${error.message ?? "unknown"}`);
-    const clientOf = new Map(
-      ((data ?? []) as { id: number; cliente_id: number | null }[]).map((x) => [Number(x.id), x.cliente_id]),
-    );
+    const clientOf = new Map<number, number | null>();
+    // Chunked so the URL stays short; each chunk is at most 500 unique ids, under the row cap. A
+    // row that does not come back maps to -1 (hidden), so a short read fails closed.
+    for (const part of chunk(sourceIds)) {
+      const { data, error } = await db.from(table).select("id, cliente_id").eq("conta_id", contaId).in("id", part);
+      if (error) throw new Error(`file scope: ${table} batch read failed: ${error.message ?? "unknown"}`);
+      for (const x of (data ?? []) as { id: number; cliente_id: number | null }[]) {
+        clientOf.set(Number(x.id), x.cliente_id);
+      }
+    }
     for (const r of list) out.set(Number(r.id), clientOf.get(Number(r.source_id)) ?? -1);
   }
   return out;
@@ -132,11 +138,18 @@ export async function subtreeHasHiddenClient(
   let frontier = [folderId];
   for (let depth = 0; frontier.length > 0; depth++) {
     if (depth >= MAX_TREE_DEPTH) throw new Error("file scope: folder tree too deep");
-    const { data, error } = await db.from("folders").select("id, source_type, source_id").eq("conta_id", contaId)
-      .in("parent_id", frontier);
-    if (error) throw new Error(`file scope: subtree read failed: ${error.message ?? "unknown"}`);
+    // Each level is read in full: the frontier is chunked (URL length) and every chunk is paged
+    // with .range() until an empty page (PostgREST truncates at its row cap without an error). A
+    // page error throws, and the caller answers a generic 500: never "nothing hidden below".
+    const level: TypedRow[] = [];
+    for (const part of chunk(frontier)) {
+      level.push(...await fetchAllRows<TypedRow>((from, to) =>
+        db.from("folders").select("id, source_type, source_id").eq("conta_id", contaId).in("parent_id", part)
+          .order("id", { ascending: true }).range(from, to)
+      ));
+    }
     const next: number[] = [];
-    for (const r of (data ?? []) as TypedRow[]) {
+    for (const r of level) {
       const id = Number(r.id);
       if (!Number.isInteger(id) || seen.has(id)) continue;
       seen.add(id);
