@@ -6,6 +6,8 @@ import { GOOGLE_LEGAL_TEXT_LIVE, legalNetworkList } from '../../lib/googleLegalL
 const YOUTUBE_TERMS_URL = 'https://www.youtube.com/t/terms';
 const GOOGLE_PRIVACY_URL = 'https://policies.google.com/privacy';
 const GOOGLE_PERMISSIONS_URL = 'https://myaccount.google.com/permissions';
+const GOOGLE_USER_DATA_POLICY_URL =
+  'https://developers.google.com/terms/api-services-user-data-policy';
 
 function ExternalLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
@@ -112,6 +114,15 @@ export default function PoliticaPage() {
                         Política de Privacidade do Google
                       </ExternalLink>
                       .
+                    </p>
+                    <p>
+                      O uso e a transferência, pelo Mesaas, de informações recebidas das APIs do
+                      Google seguem a{' '}
+                      <ExternalLink href={GOOGLE_USER_DATA_POLICY_URL}>
+                        Política de Dados do Usuário dos Serviços de API do Google
+                      </ExternalLink>{' '}
+                      (Google API Services User Data Policy), incluindo os requisitos de Uso
+                      Limitado (Limited Use).
                     </p>
                   </>
                 )}
