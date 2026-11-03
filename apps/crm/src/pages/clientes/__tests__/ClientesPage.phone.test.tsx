@@ -426,3 +426,46 @@ describe('ClientesPage on phones', () => {
     expect(toastSuccessMock).toHaveBeenCalledWith('Cliente adicionado');
   });
 });
+
+describe('ClientesPage on phones — membro restrito', () => {
+  it('restricted_hides_novo_cliente: no "+", no Novo Cliente in the empty state, row menus stay', async () => {
+    const membership = fakeMembership({ role: 'agent', client_scope: 'atribuidos' });
+    mockUseAuth.mockReturnValue({ canSeeFinancials: false, can: makeCan(membership), membership });
+    renderPage();
+    await screen.findByText('Alpha Studio');
+
+    expect(screen.queryByRole('button', { name: 'Novo cliente ou importar CSV' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Mais ações de Alpha Studio' })).toBeInTheDocument();
+  });
+
+  it('restricted_hides_novo_cliente: empty list offers no Novo Cliente', async () => {
+    const membership = fakeMembership({ role: 'agent', client_scope: 'atribuidos' });
+    mockUseAuth.mockReturnValue({ canSeeFinancials: false, can: makeCan(membership), membership });
+    mockedGetClientes.mockResolvedValue([]);
+    renderPage();
+
+    expect(await screen.findByText('Nenhum cliente ainda')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Novo Cliente' })).toBeNull();
+  });
+
+  it('restricted_shows_badge: shows the assigned-clients line', async () => {
+    const membership = fakeMembership({ role: 'agent', client_scope: 'atribuidos' });
+    mockUseAuth.mockReturnValue({ canSeeFinancials: false, can: makeCan(membership), membership });
+    renderPage();
+    await screen.findByText('Alpha Studio');
+
+    expect(screen.getByText('Você vê os clientes atribuídos a você.')).toBeInTheDocument();
+  });
+
+  it('todos_unchanged: "+" stays and no badge', async () => {
+    const membership = fakeMembership({ role: 'agent', client_scope: 'todos' });
+    mockUseAuth.mockReturnValue({ canSeeFinancials: false, can: makeCan(membership), membership });
+    renderPage();
+    await screen.findByText('Alpha Studio');
+
+    expect(
+      screen.getByRole('button', { name: 'Novo cliente ou importar CSV' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Você vê os clientes atribuídos a você.')).toBeNull();
+  });
+});

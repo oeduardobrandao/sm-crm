@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useContext, useState } from 'react';
+import { Navigate } from 'react-router-dom';
 import { useQuery, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -13,6 +14,8 @@ import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { getClientes } from '@/store';
+import { AuthContext } from '@/context/AuthContext';
+import { isClientScoped } from '@/lib/permissions';
 import {
   analyzeImport,
   commitBatch,
@@ -91,7 +94,17 @@ const STEP_TITLES: [Step, string][] = [
   ['commit', 'Importar'],
 ];
 
+/**
+ * The wizard creates clients, which a member restricted to assigned clients never does
+ * (acesso por cliente): their entries are hidden, and a deep link lands on /clientes.
+ */
 export default function ImportarPage() {
+  const membership = useContext(AuthContext)?.membership ?? null;
+  if (isClientScoped(membership)) return <Navigate to="/clientes" replace />;
+  return <ImportarWizard />;
+}
+
+function ImportarWizard() {
   const queryClient = useQueryClient();
   // Phones (below 768px) get the kit wizard; 768 and up keep the desktop page.
   const isPhone = !useIsDesktop(768);

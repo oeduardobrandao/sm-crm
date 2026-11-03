@@ -147,6 +147,7 @@ import {
   VISIBILITY_BADGE_LABEL,
 } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
+import { useClienteContexto } from '@/hooks/useClienteContexto';
 import {
   canonicalOfStatusKey,
   statusChangeNeedsConfirm,
@@ -539,6 +540,10 @@ export function WorkflowDrawer({
   const { byPost: discussaoByPost } = usePostDiscussaoNaoLidas({ postIds });
 
   const clienteId = card.workflow.cliente_id;
+  // Acesso por cliente: a restricted member's own post can sit in a client outside their
+  // scope, which then is not in the visible clients list behind `card.cliente`.
+  const clienteContexto = useClienteContexto(clienteId, !card.cliente);
+  const clienteNome = card.cliente?.nome ?? clienteContexto?.nome;
 
   // Reuses the same ['clientePosts', clienteId] key as WorkflowCalendarView, so opening the
   // calendar first turns this into a cache hit instead of a new round trip. Feeds the
@@ -864,7 +869,7 @@ export function WorkflowDrawer({
 
   const mediaNotesFor = (postId: number | undefined): MediaNotesBinding => ({
     notes: mediaNotes.filter((n) => n.post_id === postId),
-    clientName: card.cliente?.nome,
+    clientName: clienteNome,
     onChanged: refreshMediaNotes,
     onReply: async (noteId, body) => {
       await replyToMediaNote(noteId, body);
@@ -1215,7 +1220,7 @@ export function WorkflowDrawer({
           <FluxoPhoneHeader
             workflowId={workflowId}
             title={card.workflow.titulo}
-            clienteNome={card.cliente?.nome}
+            clienteNome={clienteNome}
             etapaNome={card.etapa.nome}
             readyToSend={readyToSend}
             isSending={isSending}
@@ -1231,7 +1236,7 @@ export function WorkflowDrawer({
             <div className="drawer-header-info">
               <div className="drawer-header-title">{card.workflow.titulo}</div>
               <div className="drawer-header-subtitle">
-                {card.cliente?.nome || '—'} &bull;{' '}
+                {clienteNome || '—'} &bull;{' '}
                 {t('workflowDrawer.stageLabel', { name: card.etapa.nome })}
               </div>
             </div>
@@ -1322,7 +1327,7 @@ export function WorkflowDrawer({
           {drawerView === 'calendar' ? (
             <WorkflowCalendarView
               clienteId={clienteId}
-              clienteNome={card.cliente?.nome || '—'}
+              clienteNome={clienteNome || '—'}
               currentWorkflowId={workflowId}
               currentWorkflowTitulo={card.workflow.titulo}
               membros={membros}
@@ -1335,7 +1340,7 @@ export function WorkflowDrawer({
               onBack={() => setDrawerView('posts')}
             />
           ) : drawerView === 'grid' ? (
-            <WorkflowGridView clienteId={clienteId} clienteNome={card.cliente?.nome || '—'} />
+            <WorkflowGridView clienteId={clienteId} clienteNome={clienteNome || '—'} />
           ) : drawerView === 'history' ? (
             <WorkflowHistoryView workflowId={workflowId} />
           ) : (
@@ -1583,8 +1588,8 @@ export function WorkflowDrawer({
               layout="phone"
               phone={{
                 onBack: () => setExpandedId(null),
-                subtitle: `${card.cliente?.nome || '—'} · ${card.workflow.titulo}`,
-                clientName: card.cliente?.nome,
+                subtitle: `${clienteNome || '—'} · ${card.workflow.titulo}`,
+                clientName: clienteNome,
                 saving: savingIds.has(phoneExpandedPost.id!),
                 menuActions: phoneMenuActions(phoneExpandedPost),
                 sendToClient: {

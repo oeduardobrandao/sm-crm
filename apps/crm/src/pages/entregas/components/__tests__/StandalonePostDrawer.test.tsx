@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { afterAll, describe, expect, it, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 
@@ -27,7 +27,7 @@ vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 // `can` e um vi.fn() para cada teste poder negar uma permissao especifica.
-const authMock = vi.hoisted(() => ({ can: vi.fn() }));
+const authMock = vi.hoisted(() => ({ can: vi.fn(), membership: null as unknown }));
 vi.mock('@/context/AuthContext', () => ({
   useAuth: () => ({
     user: { id: 'user-1' },
@@ -35,6 +35,7 @@ vi.mock('@/context/AuthContext', () => ({
     loading: false,
     profile: null,
     can: authMock.can,
+    membership: authMock.membership,
   }),
 }));
 
@@ -76,6 +77,7 @@ vi.mock('@/lib/supabase', () => ({
 
 vi.mock('@/store', () => ({
   getStandalonePost: vi.fn(),
+  getClienteContexto: vi.fn(),
   getPostApprovals: vi.fn(async () => []),
   getPostStatusEvents: vi.fn(async () => []),
   getPostCommentThreads: vi.fn(async () => []),
@@ -235,6 +237,7 @@ vi.mock('../WorkflowCalendarView', () => ({
 import { StandalonePostDrawer } from '../StandalonePostDrawer';
 import {
   getStandalonePost,
+  getClienteContexto,
   getVigentePostProcess,
   getPostStatusEvents,
   updateWorkflowPost,
@@ -1121,5 +1124,48 @@ describe('StandalonePostDrawer edit suggestions', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['standalone-post', 5] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['post-edit-suggestions'] });
     expect(vi.mocked(syncMentions)).not.toHaveBeenCalled();
+  });
+});
+
+describe('StandalonePostDrawer: client identity for a restricted member', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    limitsMock.features = null;
+    authMock.can.mockImplementation(makeCan(fakeMembership({ role: 'agent' })));
+    mockHasPending.mockResolvedValue(false);
+    vi.mocked(getClienteContexto).mockResolvedValue({
+      id: 42,
+      nome: 'Clínica Sol',
+      sigla: 'CS',
+      cor: null,
+      foto_url: null,
+    });
+  });
+
+  afterAll(() => {
+    authMock.membership = null;
+  });
+
+  const subtitle = () => document.querySelector('.drawer-header-subtitle') as HTMLElement;
+
+  it('post_detail_uses_context_rpc_for_hidden_client: names the client the embed hid', async () => {
+    authMock.membership = fakeMembership({ role: 'agent', client_scope: 'atribuidos' });
+    mockGetStandalonePost.mockResolvedValue(basePost({ cliente_nome: '' }) as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    await waitFor(() => expect(subtitle()).toHaveTextContent('Clínica Sol'));
+    expect(getClienteContexto).toHaveBeenCalledWith(42);
+  });
+
+  it('todos_unchanged: an unscoped member never calls the RPC', async () => {
+    authMock.membership = fakeMembership({ role: 'agent', client_scope: 'todos' });
+    mockGetStandalonePost.mockResolvedValue(basePost({ cliente_nome: '' }) as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    await screen.findByTestId('post-editor-stub');
+    expect(subtitle()).toHaveTextContent('—');
+    expect(getClienteContexto).not.toHaveBeenCalled();
   });
 });

@@ -71,6 +71,7 @@ import { buildUsableTokenMap } from '@/lib/hubTokenMap';
 import { useAuth } from '@/context/AuthContext';
 import { useClienteSocialAccounts } from '@/hooks/useClienteSocialAccounts';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
+import { useClienteContexto } from '@/hooks/useClienteContexto';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import {
   canonicalOfStatusKey,
@@ -215,6 +216,10 @@ export function StandalonePostDrawer({
       : null;
 
   const clienteId = post?.cliente_id ?? null;
+  // Acesso por cliente: the client embed comes back empty (RLS) when a restricted
+  // member's own post sits in a client outside their scope; ask for its identity.
+  const clienteContexto = useClienteContexto(clienteId, !!post && !post.cliente_nome);
+  const clienteNome = post?.cliente_nome || clienteContexto?.nome || '';
 
   const { data: approvals = [] } = useQuery({
     queryKey: ['post-approvals', String(postId)],
@@ -707,7 +712,7 @@ export function StandalonePostDrawer({
 
   const mediaNotesBinding: MediaNotesBinding = {
     notes: mediaNotes,
-    clientName: post?.cliente_nome,
+    clientName: clienteNome,
     onChanged: refreshMediaNotes,
     onReply: async (noteId, body) => {
       await replyToMediaNote(noteId, body);
@@ -1000,7 +1005,7 @@ export function StandalonePostDrawer({
               t('standalonePostDrawer.clientCalendar'),
               <WorkflowCalendarView
                 clienteId={clienteId}
-                clienteNome={post.cliente_nome || '—'}
+                clienteNome={clienteNome || '—'}
                 currentWorkflowId={null}
                 membros={membros}
                 hubUrl={hubUrl}
@@ -1018,7 +1023,7 @@ export function StandalonePostDrawer({
               layout="phone"
               phone={{
                 onBack: onClose,
-                subtitle: `${post.cliente_nome || '—'} · ${
+                subtitle: `${clienteNome || '—'} · ${
                   postProcess
                     ? t('standalonePostDrawer.individual', {
                         step: activeStepName ?? t('standalonePostDrawer.processDone'),
@@ -1027,7 +1032,7 @@ export function StandalonePostDrawer({
                       ? t('standalonePostDrawer.standaloneNoProcess')
                       : t('standalonePostDrawer.standalone')
                 }`,
-                clientName: post.cliente_nome,
+                clientName: clienteNome,
                 saving: isSaving,
                 menuActions: phoneMenuActions,
                 processEvents,
@@ -1107,7 +1112,7 @@ export function StandalonePostDrawer({
             </div>
             {post && (
               <div className="drawer-header-subtitle">
-                {post.cliente_nome || '—'} &bull;{' '}
+                {clienteNome || '—'} &bull;{' '}
                 {postProcess ? (
                   <span className="post-fluxo-tag post-fluxo-tag--avulso post-fluxo-tag--individual">
                     <Route size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
@@ -1276,7 +1281,7 @@ export function StandalonePostDrawer({
           ) : drawerView === 'calendar' && clienteId != null ? (
             <WorkflowCalendarView
               clienteId={clienteId}
-              clienteNome={post.cliente_nome || '—'}
+              clienteNome={clienteNome || '—'}
               currentWorkflowId={null}
               membros={membros}
               hubUrl={hubUrl}

@@ -3,9 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Settings } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { useAuth } from '@/context/AuthContext';
+import { isClientScoped } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import { getRentabilidade } from '@/store';
 import ConfigSheet from './ConfigSheet';
@@ -46,7 +48,10 @@ function V2Header() {
  */
 export default function FinanceiroV2Layout() {
   const { t } = useTranslation('financeV2');
-  const { can } = useAuth();
+  const { can, membership } = useAuth();
+  // Acesso por cliente: the server already restricts every financeiro read to the
+  // member's clients; the badge says so on every tab (Lançamentos included).
+  const clientScoped = isClientScoped(membership);
   const { pathname } = useLocation();
   const [configOpen, setConfigOpen] = useState(false);
   const canEdit = can('financeiro', 'editar') === true;
@@ -78,6 +83,11 @@ export default function FinanceiroV2Layout() {
           </NavLink>
         ))}
       </nav>
+      {clientScoped && (
+        <Badge variant="neutral" className="shrink-0">
+          {t('layout.scopedBadge')}
+        </Badge>
+      )}
       {canEdit && (
         <Button
           variant="outline"

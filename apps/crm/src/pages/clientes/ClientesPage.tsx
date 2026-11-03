@@ -98,6 +98,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useFinanceiroV2 } from '@/hooks/useFinanceiroV2';
 import { assertNoFinancialColumns, stripFinancialFields } from '@/lib/financialAccess';
 import { ClientesPhone } from './phone/ClientesPhone';
+import { ClientScopeNotice } from './ClientScopeNotice';
+import { isClientScoped } from '@/lib/permissions';
 import { ClienteFormPhoneFields } from './phone/ClienteFormPhoneFields';
 import { ClienteFoto } from '@/components/ClienteFoto';
 import { useClienteAvatars } from '@/hooks/useClienteAvatars';
@@ -138,8 +140,12 @@ function NotionIcon() {
 export default function ClientesPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { canSeeFinancials, can } = useAuth();
+  const { canSeeFinancials, can, membership } = useAuth();
   const canEditClients = can('clientes', 'editar') === true;
+  // Acesso por cliente: a member restricted to assigned clients edits those but never
+  // creates or imports clients (the server refuses the insert anyway).
+  const clientScoped = isClientScoped(membership);
+  const canCreateClients = canEditClients && !clientScoped;
   const { t } = useTranslation('clients');
   const { t: tc } = useTranslation();
   // Phone branch below 768px (iOS plan F2a); 768-900 keeps the table with the
@@ -363,7 +369,9 @@ export default function ClientesPage() {
         showUpgradeCta={isOwner}
       />
     ) : null;
-  const headerActions = (
+  const headerActions = clientScoped ? (
+    <ClientScopeNotice />
+  ) : (
     <>
       <span data-tooltip={t('csvTooltip')} data-tooltip-dir="bottom" style={{ display: 'flex' }}>
         <HelpCircle className="h-4 w-4" style={{ color: 'var(--text-muted)', cursor: 'pointer' }} />
@@ -386,7 +394,7 @@ export default function ClientesPage() {
       )}
     </>
   );
-  const primaryAction = canEditClients ? (
+  const primaryAction = canCreateClients ? (
     <Button
       onClick={openAdd}
       disabled={clientsAtLimit}
@@ -763,6 +771,8 @@ export default function ClientesPage() {
           sortDir={sortDir}
           onSortDirChange={setSortDir}
           canEdit={canEditClients}
+          canCreate={canCreateClients}
+          clientScoped={clientScoped}
           canSeeFinancials={canSeeFinancials}
           atLimit={clientsAtLimit}
           usageLimit={!isLoading && limits ? limits.max_clients : undefined}

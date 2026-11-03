@@ -181,6 +181,12 @@ interface AuthContextValue {
    * 1:1, never re-implements the role/preset semantics here.
    */
   can: (module: PermissionModule, action?: PermissionAction) => PermissionCheck;
+  /**
+   * Full membership row for the active workspace, `null` while unresolved.
+   * Read it through the helpers in `lib/permissions.ts` (e.g. `isClientScoped`),
+   * never by poking at its fields directly.
+   */
+  membership: MyMembership | null;
   loading: boolean;
   refetchProfile: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -1122,6 +1128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         membershipResolved,
         canSeeFinancials,
         can,
+        membership,
         loading,
         refetchProfile: fetchProfile,
         signOut,

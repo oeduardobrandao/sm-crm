@@ -264,3 +264,25 @@ describe('LeadsPage — Vidro toolbar', () => {
     expect(screen.getAllByRole('button', { name: /Novo Lead/ })).toHaveLength(1);
   });
 });
+
+describe('LeadsPage — membro restrito a clientes atribuídos', () => {
+  it('hides Converter em cliente for a member restricted to assigned clients', async () => {
+    const membership = fakeMembership({ role: 'admin', client_scope: 'atribuidos' });
+    useAuthMock.mockReturnValue({ canSeeFinancials: true, can: makeCan(membership), membership });
+    renderPage();
+
+    await waitFor(() => expect(screen.getAllByText('Ana Lead').length).toBeGreaterThan(0));
+    expect(screen.getByRole('button', { name: /Novo Lead/ })).toBeInTheDocument();
+    expect(screen.queryByTitle('Converter em cliente')).not.toBeInTheDocument();
+    expect(screen.queryByText('Converter em cliente')).not.toBeInTheDocument();
+  });
+
+  it('todos_unchanged: a todos admin keeps Converter em cliente', async () => {
+    const membership = fakeMembership({ role: 'admin', client_scope: 'todos' });
+    useAuthMock.mockReturnValue({ canSeeFinancials: true, can: makeCan(membership), membership });
+    renderPage();
+
+    await waitFor(() => expect(screen.getAllByText('Ana Lead').length).toBeGreaterThan(0));
+    expect(screen.getByTitle('Converter em cliente')).toBeInTheDocument();
+  });
+});
