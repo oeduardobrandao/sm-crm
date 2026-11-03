@@ -145,6 +145,25 @@ export async function canReadPost(
   );
 }
 
+/** Write gate for a row already fetched by id. A row the request cannot even READ answers exactly
+ * like a missing one (`notFound`), so sequential ids cannot be probed. A readable row whose client
+ * is not assigned (the user's own post in a hidden client) is refused with ClientScopeError: writes
+ * never use "é dele". Pass `isOwn = false` for tables without an "é dele" read in the MCP. */
+export async function assertRowWritable(
+  d: Deps,
+  row: { cliente_id?: number | null; responsavel_id?: number | null },
+  notFound: string,
+  isOwn?: boolean,
+): Promise<void> {
+  const readable = isOwn === false ? await canReadClientOrNull(d, row.cliente_id) : await canReadPost(d, row);
+  if (!readable) throw new McpInputError(notFound);
+  await assertClientWrite(d, row.cliente_id ?? null);
+}
+
+async function canReadClientOrNull(d: Deps, clienteId: number | null | undefined): Promise<boolean> {
+  return hasClientAccess(await scopeOf(d), clienteId ?? null, false);
+}
+
 /** True when the request may read the client itself (no "é dele" for a client in v1). */
 export async function canReadClient(d: Deps, clienteId: number): Promise<boolean> {
   return hasClientAccess(await scopeOf(d), clienteId, false);
@@ -996,7 +1015,8 @@ export async function updateTask(
     .from("tarefas").select("id, cliente_id")
     .eq("conta_id", d.ctx.conta_id).eq("id", args.task_id).maybeSingle();
   if (!existing) throw new McpInputError("Tarefa não encontrada neste workspace.");
-  await assertClientWrite(d, (existing as any).cliente_id ?? null);
+  // No "é dele" read for tasks in the MCP: a hidden task answers like a missing one.
+  await assertRowWritable(d, existing as any, "Tarefa não encontrada neste workspace.", false);
 
   if (Object.hasOwn(args, "responsavel_id") && args.responsavel_id != null) {
     await assertMembroInWorkspace(d, args.responsavel_id);
@@ -1401,7 +1421,8 @@ export async function createPost(
   if (hasWorkflow) {
     const wf = await verifyActiveWorkflow(d, args.workflow_id!);
     if (!wf) throw new McpInputError("Fluxo não encontrado, ou inativo, neste workspace.");
-    await assertClientWrite(d, (wf as any).cliente_id ?? null);
+    // A workflow of a hidden client answers like a missing one.
+    await assertRowWritable(d, wf as any, "Fluxo não encontrado, ou inativo, neste workspace.", false);
 
     const { data: last } = await d.db
       .from("workflow_posts")
@@ -1496,15 +1517,15 @@ export async function updatePost(
   // Prefetch for granular errors (distinguish not-found from not-editable).
   const { data: existing } = await d.db
     .from("workflow_posts")
-    .select("id, status, cliente_id")
+    .select("id, status, cliente_id, responsavel_id")
     .eq("conta_id", d.ctx.conta_id)
     .eq("id", args.post_id)
     .maybeSingle();
   if (!existing) {
     throw new McpInputError("Post não encontrado neste workspace.");
   }
-  // Writes never use "é dele": the post's client must be assigned.
-  await assertClientWrite(d, (existing as any).cliente_id ?? null);
+  // Hidden post -> same not-found; own post in a hidden client -> "limitado" (writes have no é dele).
+  await assertRowWritable(d, existing as any, "Post não encontrado neste workspace.");
   const currentStatus = (existing as any).status as string;
   if (!EDITABLE_STATUSES.includes(currentStatus)) {
     throw new McpInputError(`Post em estado '${currentStatus}' não pode ser editado pelo agente.`);
@@ -1560,14 +1581,14 @@ export async function setPostProperty(
   // excluir avulsos).
   const { data: post, error: postErr } = await d.db
     .from("workflow_posts")
-    .select("id, status, workflow_id, cliente_id, workflows(template_id, conta_id)")
+    .select("id, status, workflow_id, cliente_id, responsavel_id, workflows(template_id, conta_id)")
     .eq("conta_id", d.ctx.conta_id)
     .eq("id", args.post_id)
     .maybeSingle();
   if (postErr) throw postErr;
   if (!post) throw new McpInputError("Post não encontrado neste workspace.");
   const p = post as any;
-  await assertClientWrite(d, p.cliente_id ?? null);
+  await assertRowWritable(d, p, "Post não encontrado neste workspace.");
   if (!EDITABLE_STATUSES.includes(p.status)) {
     throw new McpInputError(`Post em estado '${p.status}' não pode ser editado pelo agente.`);
   }

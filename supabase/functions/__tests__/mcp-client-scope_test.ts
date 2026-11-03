@@ -166,18 +166,23 @@ Deno.test("client scope: cards and calendar of a hidden client -> existing not-f
   assertEquals(reads(cal.calls, "workflow_posts"), 0);
 });
 
-Deno.test("client scope: show_attach_image of a hidden post -> not found; own post -> card", async () => {
-  const image = { download_url: "https://files.example.com/a.png", file_id: "f1" };
-  const post = (responsavel_id: number) => ({
-    id: 1, titulo: "T", tipo: "feed", status: "rascunho", cliente_id: 9, responsavel_id, published_at: null,
-    instagram_media_id: null, instagram_container_id: null, publish_processing_at: null,
-    tiktok_publish_processing_at: null, tiktok_publish_status: null,
-  });
-  const hidden = setup(RESTRICTED, { workflow_posts: [{ data: post(31), error: null }] });
-  assertEquals((await hidden.call("show_attach_image", { post_id: 1, images: [image] })).error, "Post não encontrado neste workspace.");
+const IMAGE = { download_url: "https://files.example.com/a.png", file_id: "f1" };
+const attachPost = (cliente_id: number, responsavel_id: number) => ({
+  id: 1, titulo: "T", tipo: "feed", status: "rascunho", cliente_id, responsavel_id, published_at: null,
+  instagram_media_id: null, instagram_container_id: null, publish_processing_at: null,
+  tiktok_publish_processing_at: null, tiktok_publish_status: null,
+});
 
-  const own = setup(RESTRICTED, { workflow_posts: [{ data: post(30), error: null }] });
-  const res = await own.call("show_attach_image", { post_id: 1, images: [image] });
+Deno.test("client scope: show_attach_image hidden -> not found; own post in hidden client -> limitado; assigned -> card", async () => {
+  const hidden = setup(RESTRICTED, { workflow_posts: [{ data: attachPost(9, 31), error: null }] });
+  assertEquals((await hidden.call("show_attach_image", { post_id: 1, images: [IMAGE] })).error, "Post não encontrado neste workspace.");
+
+  const own = setup(RESTRICTED, { workflow_posts: [{ data: attachPost(9, 30), error: null }] });
+  assertEquals((await own.call("show_attach_image", { post_id: 1, images: [IMAGE] })).error, CLIENT_SCOPE_MESSAGE);
+  assertEquals(reads(own.calls, "post_file_links"), 0);
+
+  const ok = setup(RESTRICTED, { workflow_posts: [{ data: attachPost(5, 31), error: null }] });
+  const res = await ok.call("show_attach_image", { post_id: 1, images: [IMAGE] });
   assertEquals(res.error, undefined);
   assertEquals(res.res.structuredContent?.card, "attach_image");
 });
@@ -190,25 +195,57 @@ Deno.test("client scope: create_client is refused for a restricted key, before a
   assertEquals(reads(calls, "clientes"), 0);
 });
 
-Deno.test("client scope: writes to a hidden client are refused, no write happens", async () => {
-  const cases: Array<[string, Record<string, unknown>, Record<string, Resp[]>, string]> = [
-    ["create_workflow", { client_id: 9, titulo: "F" }, { clientes: [{ data: { id: 9 }, error: null }] }, "workflows"],
-    ["create_post", { cliente_id: 9, titulo: "P" }, { clientes: [{ data: { id: 9 }, error: null }] }, "workflow_posts"],
-    ["create_post", { workflow_id: 7, titulo: "P" }, { workflows: [{ data: { id: 7, cliente_id: 9 }, error: null }] }, "workflow_posts"],
-    ["update_post", { post_id: 1, titulo: "x" }, { workflow_posts: [{ data: { id: 1, status: "rascunho", cliente_id: 9 }, error: null }] }, "workflow_posts"],
-    ["set_post_property", { post_id: 1, property_id: 2, value: "a" }, {
-      workflow_posts: [{ data: { id: 1, status: "rascunho", workflow_id: 7, cliente_id: 9, workflows: { template_id: 3 } }, error: null }],
-    }, "post_property_values"],
-    ["create_task", { titulo: "T", cliente_id: 9 }, {}, "tarefas"],
-    ["create_task", { titulo: "T" }, {}, "tarefas"],
-    ["update_task", { task_id: 1, titulo: "x" }, { tarefas: [{ data: { id: 1, cliente_id: 9 }, error: null }] }, "tarefas"],
-    ["update_task", { task_id: 1, titulo: "x" }, { tarefas: [{ data: { id: 1, cliente_id: null }, error: null }] }, "tarefas"],
+Deno.test("client scope: create_* with a direct hidden client_id are refused (scope first, no client read)", async () => {
+  const cases: Array<[string, Record<string, unknown>, string]> = [
+    ["create_workflow", { client_id: 9, titulo: "F" }, "workflows"],
+    ["create_post", { cliente_id: 9, titulo: "P" }, "workflow_posts"],
+    ["create_task", { titulo: "T", cliente_id: 9 }, "tarefas"],
+    ["create_task", { titulo: "T" }, "tarefas"],
   ];
-  for (const [tool, args, tables, target] of cases) {
-    const { call, calls } = setup(RESTRICTED, tables);
-    const { error } = await call(tool, args);
-    assertEquals(error, CLIENT_SCOPE_MESSAGE, `${tool} ${JSON.stringify(args)}`);
-    assert(!wrote(calls, target), `${tool} writes nothing to ${target}`);
+  for (const [tool, args, target] of cases) {
+    const { call, calls } = setup(RESTRICTED, { clientes: [{ data: { id: 9 }, error: null }] });
+    assertEquals((await call(tool, args)).error, CLIENT_SCOPE_MESSAGE, `${tool} ${JSON.stringify(args)}`);
+    assertEquals(reads(calls, "clientes"), 0, `${tool} reads no client`);
+    assert(!wrote(calls, target), `${tool} writes nothing`);
+  }
+});
+
+const hiddenPost = { id: 1, status: "rascunho", workflow_id: 7, cliente_id: 9, responsavel_id: 31, workflows: { template_id: 3 } };
+const ownHiddenPost = { ...hiddenPost, responsavel_id: 30 };
+
+/** Writes on a row fetched by id: [tool, args, table holding the row, the hidden row, write target]. */
+const ROW_WRITES: Array<[string, Record<string, unknown>, string, Record<string, unknown>, string]> = [
+  ["create_post", { workflow_id: 7, titulo: "P" }, "workflows", { id: 7, cliente_id: 9 }, "workflow_posts"],
+  ["update_post", { post_id: 1, titulo: "x" }, "workflow_posts", hiddenPost, "workflow_posts"],
+  ["set_post_property", { post_id: 1, property_id: 2, value: "a" }, "workflow_posts", hiddenPost, "post_property_values"],
+  ["update_task", { task_id: 1, titulo: "x" }, "tarefas", { id: 1, cliente_id: 9 }, "tarefas"],
+  ["update_task", { task_id: 1, titulo: "x" }, "tarefas", { id: 1, cliente_id: null }, "tarefas"],
+  ["attach_image_to_post", { post_id: 1, image: IMAGE, position: 1, replace: false }, "workflow_posts", attachPost(9, 31), "post_file_links"],
+];
+
+Deno.test("client scope: a hidden row answers byte-identically to a missing row (no id probing)", async () => {
+  for (const [tool, args, table, row, target] of ROW_WRITES) {
+    const hidden = setup(RESTRICTED, { [table]: [{ data: row, error: null }] });
+    const missing = setup(RESTRICTED, { [table]: [{ data: null, error: null }] });
+    const h = await hidden.call(tool, args);
+    const m = await missing.call(tool, args);
+    assert(h.res.isError, `${tool} hidden is an error`);
+    assertEquals(h.res.content[0].text, m.res.content[0].text, `${tool} ${JSON.stringify(row)}`);
+    assert(h.error !== CLIENT_SCOPE_MESSAGE, `${tool} never says "limitado" for a hidden row`);
+    assert(!wrote(hidden.calls, target), `${tool} writes nothing`);
+  }
+});
+
+Deno.test("client scope: own post in a hidden client is readable but never writable", async () => {
+  const cases: Array<[string, Record<string, unknown>, Record<string, unknown>, string]> = [
+    ["update_post", { post_id: 1, titulo: "x" }, ownHiddenPost, "workflow_posts"],
+    ["set_post_property", { post_id: 1, property_id: 2, value: "a" }, ownHiddenPost, "post_property_values"],
+    ["attach_image_to_post", { post_id: 1, image: IMAGE, position: 1, replace: false }, attachPost(9, 30), "post_file_links"],
+  ];
+  for (const [tool, args, row, target] of cases) {
+    const { call, calls } = setup(RESTRICTED, { workflow_posts: [{ data: row, error: null }] });
+    assertEquals((await call(tool, args)).error, CLIENT_SCOPE_MESSAGE, tool);
+    assert(!wrote(calls, target), `${tool} writes nothing`);
   }
 });
 
@@ -221,52 +258,50 @@ Deno.test("client scope: writes to an assigned client go through", async () => {
   assert(wrote(calls, "tarefas"));
 });
 
-Deno.test("client scope: own post in a hidden client still cannot be written", async () => {
-  const { call, calls } = setup(RESTRICTED, {
-    workflow_posts: [{ data: { id: 1, status: "rascunho", cliente_id: 9, responsavel_id: 30 }, error: null }],
+async function setMedia(row: Record<string, unknown> | null) {
+  const s = setup(RESTRICTED, { workflow_posts: [{ data: row, error: null }] }, {
+    post_media_set_from_uploads: [{ data: null, error: { message: "post_not_found" } }],
   });
-  assertEquals((await call("update_post", { post_id: 1, titulo: "x" })).error, CLIENT_SCOPE_MESSAGE);
-  assert(!wrote(calls, "workflow_posts"));
-});
-
-Deno.test("client scope: set_post_media of a hidden post is refused before the RPC", async () => {
-  const s = setup(RESTRICTED, { workflow_posts: [{ data: { id: 1, cliente_id: 9 }, error: null }] });
   (s.deps as any).headObject = () => Promise.resolve({ contentLength: 1, contentType: "image/png" });
   const { setPostMedia } = await import("../mcp/media.ts");
-  let threw: unknown;
   try {
     await setPostMedia(s.deps as any, { post_id: 1, items: [{ r2_key: `contas/${CONTA}/files/a.png`, size_bytes: 1, mime_type: "image/png" }] });
+    return { err: undefined as unknown, calls: s.calls };
   } catch (e) {
-    threw = e;
+    return { err: e, calls: s.calls };
   }
-  assert(threw instanceof ClientScopeError);
-  assert(!s.calls.some((c) => c.table === "rpc:post_media_set_from_uploads"), "no RPC");
+}
+
+Deno.test("client scope: set_post_media hidden == missing; own post in hidden client -> limitado; no RPC for either", async () => {
+  const hidden = await setMedia({ id: 1, cliente_id: 9, responsavel_id: 31 });
+  const missing = await setMedia(null);
+  assert(hidden.err instanceof Error && missing.err instanceof Error);
+  assertEquals((hidden.err as Error).message, (missing.err as Error).message);
+  assertEquals((hidden.err as Error).constructor, (missing.err as Error).constructor);
+  assert(!hidden.calls.some((c) => c.table === "rpc:post_media_set_from_uploads"), "no RPC for a hidden post");
+
+  const own = await setMedia({ id: 1, cliente_id: 9, responsavel_id: 30 });
+  assert(own.err instanceof ClientScopeError);
+  assert(!own.calls.some((c) => c.table === "rpc:post_media_set_from_uploads"));
 });
 
-Deno.test("client scope: send_post_to_client of a hidden post is refused before the RPC", async () => {
-  const { call, calls } = setup(RESTRICTED, { workflow_posts: [{ data: { id: 1, cliente_id: 9 }, error: null }] });
+Deno.test("client scope: send_post_to_client hidden == missing ('stale'); own post in hidden client -> limitado", async () => {
   const nonce = await signSendNonce(SECRET, { conta_id: CONTA, user_id: USER, post_id: 1 });
-  const { error } = await call("send_post_to_client", { post_id: 1, expected_status: "rascunho", nonce });
-  assertEquals(error, CLIENT_SCOPE_MESSAGE);
-  assert(!calls.some((c) => c.table === "rpc:mcp_send_post_to_client"));
-});
+  const args = { post_id: 1, expected_status: "rascunho", nonce };
+  const hidden = setup(RESTRICTED, { workflow_posts: [{ data: { id: 1, cliente_id: 9, responsavel_id: 31 }, error: null }] });
+  // Missing post: the RPC finds no row and answers 'stale'.
+  const missing = setup(RESTRICTED, { workflow_posts: [{ data: null, error: null }] }, {
+    mcp_send_post_to_client: [{ data: "stale", error: null }],
+  });
+  const h = await hidden.call("send_post_to_client", args);
+  const m = await missing.call("send_post_to_client", args);
+  assertEquals(h.res.content, m.res.content);
+  assertEquals(h.res.structuredContent, m.res.structuredContent);
+  assert(!hidden.calls.some((c) => c.table === "rpc:mcp_send_post_to_client"), "no RPC for a hidden post");
 
-Deno.test("client scope: attach_image_to_post of a hidden post is refused before any download", async () => {
-  const { call, calls } = setup(RESTRICTED, {
-    workflow_posts: [{
-      data: {
-        id: 1, titulo: "T", tipo: "feed", status: "rascunho", cliente_id: 9, responsavel_id: 30, published_at: null,
-        instagram_media_id: null, instagram_container_id: null, publish_processing_at: null,
-        tiktok_publish_processing_at: null, tiktok_publish_status: null,
-      },
-      error: null,
-    }],
-  });
-  const { error } = await call("attach_image_to_post", {
-    post_id: 1, image: { download_url: "https://files.example.com/a.png", file_id: "f1" }, position: 1, replace: false,
-  });
-  assertEquals(error, CLIENT_SCOPE_MESSAGE);
-  assertEquals(reads(calls, "post_file_links"), 0);
+  const own = setup(RESTRICTED, { workflow_posts: [{ data: { id: 1, cliente_id: 9, responsavel_id: 30 }, error: null }] });
+  assertEquals((await own.call("send_post_to_client", args)).error, CLIENT_SCOPE_MESSAGE);
+  assert(!own.calls.some((c) => c.table === "rpc:mcp_send_post_to_client"));
 });
 
 // ---- plumbing ------------------------------------------------------------------------------

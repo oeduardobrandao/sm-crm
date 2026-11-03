@@ -2,7 +2,7 @@
 // web UI's file-upload-url → PUT → finalize flow; all DB mutation for set lives in the
 // post_media_set_from_uploads RPC. Own-auth via MCP key scopes (posts:write).
 import { McpInputError } from "../_shared/mcp-token.ts";
-import { assertClientWrite, getPost, type Deps } from "./queries.ts";
+import { assertRowWritable, getPost, type Deps } from "./queries.ts";
 
 const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png" };
 
@@ -65,16 +65,17 @@ export async function setPostMedia(
       throw new McpInputError("Upload não encontrado ou divergente. Gere os uploads com create_media_upload.");
     }
   }
-  // Acesso por cliente: the post's client must be assigned (writes have no "é dele"). A missing
-  // post is left to the RPC, which answers post_not_found as before.
+  // Acesso por cliente: a hidden post answers like a missing one (the RPC's post_not_found); the
+  // user's own post in a hidden client is refused (writes have no "é dele"). A missing post is
+  // left to the RPC, as before.
   const { data: post, error: postErr } = await d.db
     .from("workflow_posts")
-    .select("id, cliente_id")
+    .select("id, cliente_id, responsavel_id")
     .eq("conta_id", d.ctx.conta_id)
     .eq("id", args.post_id)
     .maybeSingle();
   if (postErr) throw postErr;
-  if (post) await assertClientWrite(d, (post as { cliente_id?: number | null }).cliente_id ?? null);
+  if (post) await assertRowWritable(d, post as any, "Post não encontrado neste workspace.");
   // RETURNS jsonb (scalar) → { data, error } directly (no .single()); we ignore data and re-read
   // via getPost so the agent gets the full ordered media back.
   const { error } = await d.db.rpc("post_media_set_from_uploads", {
