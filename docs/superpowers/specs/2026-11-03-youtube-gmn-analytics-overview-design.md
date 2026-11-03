@@ -247,9 +247,12 @@ flags product + `feature_analytics_reports`, 403 `feature_disabled`). No migrati
   `watchMinutes`, `avgViewDurationS`, `shortsShare`), every metric nullable. **The response has
   no field that spans channels**, and a test asserts the top-level keys are exactly
   `["channels"]`. Per-channel math reuses `computeYtKpis` / `computeYtSplit`.
-- Reads stay bounded: one paged query per table for the whole workspace (`.in(...)` over the
-  selected units/channels, ordered by the full primary key, `fetchAllRows`), never one query
-  per unit in a loop. Sizes at 90 days to design and test against:
+- Reads stay bounded: paged queries ordered by the full primary key (`fetchAllRows`), never one
+  query per unit or channel in a loop. Whole-workspace reads filter by `conta_id` and dates and
+  drop other units/channels in code, so no request URL lists every id (a few hundred location
+  names in an `.in(...)` would exceed the URL limit); a `client` filter keeps the short `.in`.
+  YouTube issues one daily read per distinct channel window, so a channel stuck months behind
+  does not widen everyone's range. Sizes at 90 days to design and test against:
   - GMN, 100 units: metrics for the current + previous window = 18k rows (18 pages of 1000),
     plus rating snapshots (at most 100 × 271 days: both windows plus the 91-day lookback `loadRatings` uses)
     and the attention reviews (filtered in SQL: `star_rating <= 3`, `has_reply = false`,

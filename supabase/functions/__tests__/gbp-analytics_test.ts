@@ -860,8 +860,9 @@ Deno.test("portfolio: reads active clients of the tenant only, and their counted
   assert(hasMod(client, "eq", "id", 42));
   const [loc] = callsTo(db, "gbp_locations");
   assert(hasMod(loc, "eq", "conta_id", "ws-B"));
-  assertEquals(mods(loc, "in"), [["status", ["active", "revoked"]]]); // clients filtered in code
+  assertEquals(mods(loc, "in"), [["status", ["active", "revoked"]]]); // active clients filtered in code
   assert(hasMod(loc, "in", "status", ["active", "revoked"]));
+  assert(hasMod(loc, "eq", "client_id", 42)); // one client: narrow the unit read
   assertEquals(mods(loc, "order"), [
     ["client_id", { ascending: true }],
     ["created_at", { ascending: true }],

@@ -171,16 +171,24 @@ async function loadClients(db: Db, contaId: string, clientId: number | null) {
 }
 
 /** The tenant's counted units of the given (active) clients; the client filter is in code. */
-async function loadPortfolioUnits(db: Db, contaId: string, clientIds: Set<number>): Promise<PortfolioSourceUnit[]> {
-  const rows = await fetchAllRows<PortfolioSourceUnit>((from, to) =>
-    db.from("gbp_locations").select(UNIT_COLUMNS)
+async function loadPortfolioUnits(
+  db: Db,
+  contaId: string,
+  clientIds: Set<number>,
+  clientId: number | null,
+): Promise<PortfolioSourceUnit[]> {
+  const rows = await fetchAllRows<PortfolioSourceUnit>((from, to) => {
+    let q = db.from("gbp_locations").select(UNIT_COLUMNS)
       .eq("conta_id", contaId)
-      .in("status", [...COUNTED_UNIT_STATUSES])
+      .in("status", [...COUNTED_UNIT_STATUSES]);
+    // One client: a single id keeps the URL short and the read small.
+    if (clientId !== null) q = q.eq("client_id", clientId);
+    return q
       .order("client_id", { ascending: true })
       .order("created_at", { ascending: true })
       .order("id", { ascending: true })
-      .range(from, to)
-  );
+      .range(from, to);
+  });
   return rows.filter((u) => clientIds.has(u.client_id));
 }
 
@@ -221,7 +229,7 @@ export async function buildGbpPortfolio(
   now: Date,
 ): Promise<GbpPortfolio> {
   const clients = await loadClients(db, contaId, clientId);
-  const units = clients.length > 0 ? await loadPortfolioUnits(db, contaId, new Set(clients.map((c) => c.id))) : [];
+  const units = clients.length > 0 ? await loadPortfolioUnits(db, contaId, new Set(clients.map((c) => c.id)), clientId) : [];
   const dataThrough = portfolioDataThrough(units, now);
   const { window, hasData } = resolveWindow(req, dataThrough, now);
   const read = hasData && units.length > 0;
