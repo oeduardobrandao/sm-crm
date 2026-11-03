@@ -17,6 +17,7 @@ import { subscribeToComments, fetchSubscribedFields } from "../_shared/instagram
 import { makeBoundedFetch } from "../_shared/bounded-fetch.ts";
 import { handlePublishedMedia } from "./published-media.ts";
 import { disconnectAccount } from "./disconnect.ts";
+import { ClientScopeUnavailableError, makeClientAccessCheck } from "./ownership.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const META_APP_ID = Deno.env.get("META_APP_ID")!;
@@ -81,21 +82,6 @@ async function decryptToken(encryptedBase64: string): Promise<string> {
   }
 }
 
-// --- Workspace Ownership Verification ---
-async function verifyClientOwnership(
-  // deno-lint-ignore no-explicit-any
-  svc: { from: (table: string) => any },
-  clientId: string,
-  contaId: string
-): Promise<boolean> {
-  const { data: client } = await svc
-    .from('clientes')
-    .select('conta_id')
-    .eq('id', parseInt(clientId, 10))
-    .single();
-  return client?.conta_id === contaId;
-}
-
 // --- Main Handler ---
 Deno.serve(async (req) => {
   const url = new URL(req.url);
@@ -141,6 +127,8 @@ Deno.serve(async (req) => {
        }
        user = verifiedUser;
     }
+    // Acesso por cliente: client ownership AND the caller's client scope (hidden = foreign 403).
+    const clientAccess = makeClientAccessCheck(user?.id ?? null);
 
     // 1. GET /auth/:clientId
     if (req.method === 'GET' && path.startsWith('/auth/')) {
@@ -150,7 +138,7 @@ Deno.serve(async (req) => {
         // Verify caller's workspace owns this client
         const authServiceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
         const { data: authCallerProfile } = await authServiceClient.from('profiles').select('conta_id').eq('id', user!.id).single();
-        if (!authCallerProfile?.conta_id || !await verifyClientOwnership(authServiceClient, clientId, authCallerProfile.conta_id)) {
+        if (!authCallerProfile?.conta_id || !await clientAccess(authServiceClient, clientId, authCallerProfile.conta_id)) {
             return new Response(JSON.stringify({ error: true, message: 'Unauthorized' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
         }
 
@@ -627,7 +615,7 @@ Deno.serve(async (req) => {
 
         // Verify caller's workspace owns this client
         const { data: callerProfile } = await serviceClient.from('profiles').select('conta_id').eq('id', user!.id).single();
-        if (!callerProfile?.conta_id || !await verifyClientOwnership(serviceClient, clientId, callerProfile.conta_id)) {
+        if (!callerProfile?.conta_id || !await clientAccess(serviceClient, clientId, callerProfile.conta_id)) {
             return new Response(JSON.stringify({ error: true, message: 'Unauthorized' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
         }
 
@@ -871,7 +859,7 @@ Deno.serve(async (req) => {
         const serviceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
         const { data: callerProfile } = await serviceClient.from('profiles').select('conta_id').eq('id', user!.id).single();
-        if (!callerProfile?.conta_id || !await verifyClientOwnership(serviceClient, clientId, callerProfile.conta_id)) {
+        if (!callerProfile?.conta_id || !await clientAccess(serviceClient, clientId, callerProfile.conta_id)) {
             return new Response(JSON.stringify({ error: true, message: 'Unauthorized' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
         }
 
@@ -928,7 +916,7 @@ Deno.serve(async (req) => {
 
          // Verify caller's workspace owns this client
          const { data: callerProfile } = await serviceClient.from('profiles').select('conta_id').eq('id', user!.id).single();
-         if (!callerProfile?.conta_id || !await verifyClientOwnership(serviceClient, clientId, callerProfile.conta_id)) {
+         if (!callerProfile?.conta_id || !await clientAccess(serviceClient, clientId, callerProfile.conta_id)) {
              return new Response(JSON.stringify({ error: true, message: 'Unauthorized' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
          }
 
@@ -949,7 +937,7 @@ Deno.serve(async (req) => {
 
          // Verify caller's workspace owns this client
          const { data: callerProfile } = await serviceClient.from('profiles').select('conta_id').eq('id', user!.id).single();
-         if (!callerProfile?.conta_id || !await verifyClientOwnership(serviceClient, clientId, callerProfile.conta_id)) {
+         if (!callerProfile?.conta_id || !await clientAccess(serviceClient, clientId, callerProfile.conta_id)) {
              return new Response(JSON.stringify({ error: true, message: 'Unauthorized' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
          }
 
@@ -977,7 +965,7 @@ Deno.serve(async (req) => {
 
          // Verify caller's workspace owns this client
          const { data: callerProfile } = await serviceClient.from('profiles').select('conta_id').eq('id', user!.id).single();
-         if (!callerProfile?.conta_id || !await verifyClientOwnership(serviceClient, clientId, callerProfile.conta_id)) {
+         if (!callerProfile?.conta_id || !await clientAccess(serviceClient, clientId, callerProfile.conta_id)) {
              return new Response(JSON.stringify({ error: true, message: 'Unauthorized' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
          }
 
@@ -1008,7 +996,7 @@ Deno.serve(async (req) => {
           global: { fetch: makeBoundedFetch() },
         });
         return await handlePublishedMedia(req, {
-          svc: serviceClient, userId: user!.id, corsHeaders, decryptToken, verifyClientOwnership,
+          svc: serviceClient, userId: user!.id, corsHeaders, decryptToken, verifyClientOwnership: clientAccess,
           // Fecha sobre o `serviceClient` real: `checkRateLimit` (importado no
           // topo deste arquivo) e tipado pra `SupabaseClient`, que nao bate
           // com o `Svc` estrutural que `published-media.ts` usa pro resto do
@@ -1021,6 +1009,13 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: true, message: `Not Found - method: ${req.method}, path: "${path}"` }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (err: any) {
+    if (err instanceof ClientScopeUnavailableError) {
+      // Logged where it was raised. Generic 500, never "all clients" and never TOKEN_EXPIRED.
+      return new Response(JSON.stringify({ error: true, message: "Erro interno" }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
     console.error('[instagram-integration] error:', err?.message ?? 'unknown');
 
     // If this was a callback (browser redirect), send user back to client page instead of showing JSON

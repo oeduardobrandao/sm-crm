@@ -13,6 +13,8 @@ import { deleteReportDocument } from "./delete-doc.ts";
 import { exportReportPdf } from "./pdf.ts";
 import { convertUrlToPdf } from "../_shared/report-template/pdf-url.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
+import { loadClientScope } from "../_shared/client-scope.ts";
+import { assertDocInScope, assertGenerateClientInScope } from "./client-scope-gate.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -57,6 +59,9 @@ Deno.serve(async (req) => {
       .from("workspace_members").select("user_id")
       .eq("user_id", user.id).eq("workspace_id", contaId).maybeSingle();
     if (!membership) return json({ error: "Unauthorized" }, 401);
+    // Acesso por cliente: scope of the caller in the verified active workspace. A read error falls
+    // to the generic 500 below, never "all clients".
+    const scope = await loadClientScope(serviceClient, user.id, contaId);
 
     if (req.method === "POST" && path === "/generate") {
       const allowed = await checkRateLimit(serviceClient, `report-docs:${contaId}`, 20, 3600);
@@ -71,6 +76,7 @@ Deno.serve(async (req) => {
       const parsed = parseGenerateBody(body);
       if (parsed === null) return json({ error: "invalid_body" }, 400);
       const { clientId, month, templateId, platforms } = parsed;
+      assertGenerateClientInScope(scope, clientId);
 
       const result = await generateReportDocument(
         serviceClient,
@@ -88,6 +94,7 @@ Deno.serve(async (req) => {
     if (docMatch) {
       const docId = docMatch[1];
       const action = docMatch[3];
+      await assertDocInScope(serviceClient, scope, contaId, docId);
       // refresh-data e pdf disparam trabalho pago (bateria de queries do
       // snapshot, narrativa AI, conversão Gotenberg) -- exigem a mesma
       // entitlement de POST /generate, mesmo em cache hit do pdf (workspace
