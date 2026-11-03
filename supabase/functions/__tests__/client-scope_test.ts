@@ -6,6 +6,8 @@ import {
   hasClientAccess,
   isOwnItem,
   loadClientScope,
+  rowVisibility,
+  allClientsScope,
   visibleClientIds,
 } from "../_shared/client-scope.ts";
 
@@ -155,4 +157,14 @@ Deno.test("isOwnItem: responsavel_id in membroIds or author uuid", () => {
   assertEquals(isOwnItem(RESTRICTED, { responsavelId: null, createdBy: "u1" }, "u1"), true);
   assertEquals(isOwnItem(RESTRICTED, { createdBy: "u2" }, "u1"), false);
   assertEquals(visibleClientIds(ALL), null);
+});
+
+Deno.test("rowVisibility: visible / own_only / hidden", () => {
+  const scope: ClientScope = { all: false, ids: new Set([5]), membroIds: new Set([30]) };
+  assertEquals(rowVisibility(scope, { cliente_id: 5, responsavel_id: null }, "u1"), "visible");
+  assertEquals(rowVisibility(scope, { cliente_id: 9, responsavel_id: 30 }, "u1"), "own_only");
+  assertEquals(rowVisibility(scope, { cliente_id: 9, created_by: "u1" }, "u1"), "own_only");
+  assertEquals(rowVisibility(scope, { cliente_id: 9, responsavel_id: 31 }, "u1"), "hidden");
+  assertEquals(rowVisibility(scope, { cliente_id: null }, "u1"), "hidden");
+  assertEquals(rowVisibility(allClientsScope(), { cliente_id: 9 }, "u1"), "visible");
 });

@@ -106,3 +106,34 @@ export function isOwnItem(
 export function visibleClientIds(scope: ClientScope): number[] | null {
   return scope.all ? null : [...scope.ids];
 }
+
+// ---- edge-function helpers (Task 13) ---------------------------------------------------------
+
+/** The user-facing refusal for a write on the user's own item in a client outside the scope.
+ * Same copy as the MCP (mcp/register.ts). */
+export const CLIENT_SCOPE_MESSAGE = "Seu acesso é limitado aos clientes atribuídos.";
+
+/** Loader signature, so handlers can take it as an injectable dependency. */
+export type ClientScopeLoader = (svc: Db, userId: string, workspaceId: string) => Promise<ClientScope>;
+
+/** A scope with no restriction, for tests and owner-only paths. */
+export function allClientsScope(): ClientScope {
+  return allClients();
+}
+
+/** Visibility of a post-like row (`cliente_id` + `responsavel_id` membros.id) for the user:
+ * - `visible`: the client is in scope;
+ * - `own_only`: the client is hidden but the row is the user's ("é dele"), so READS are allowed and
+ *   WRITES answer {@link CLIENT_SCOPE_MESSAGE};
+ * - `hidden`: answer exactly like a missing row. */
+export type RowVisibility = "visible" | "own_only" | "hidden";
+
+export function rowVisibility(
+  scope: ClientScope,
+  row: { cliente_id?: number | null; responsavel_id?: number | null; created_by?: string | null },
+  userId: string,
+): RowVisibility {
+  if (hasClientAccess(scope, row.cliente_id ?? null, false)) return "visible";
+  const own = isOwnItem(scope, { responsavelId: row.responsavel_id ?? null, createdBy: row.created_by ?? null }, userId);
+  return own ? "own_only" : "hidden";
+}
