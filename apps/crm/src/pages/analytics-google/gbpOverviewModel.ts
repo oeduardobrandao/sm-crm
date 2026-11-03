@@ -67,6 +67,7 @@ export function growthOf(u: GbpPortfolioUnit): number | null {
 
 /** "Destaques do período": a card with no eligible unit is left out. */
 export function highlightsFor(units: GbpPortfolioUnit[]): GbpHighlight[] {
+  // Actions and growth need a value above 0, so a "0 ações" or negative-growth leader never shows.
   const rules: [GbpHighlightKind, (u: GbpPortfolioUnit) => number | null][] = [
     ['actions', (u) => (u.actions > 0 ? u.actions : null)],
     [

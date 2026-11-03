@@ -255,28 +255,37 @@ function GoogleOverviewContent() {
 
   const renderSortableHead = (col: GbpUnitSortCol, align: 'left' | 'right' = 'right') => (
     <TableHead
-      onClick={() => handleSort(col)}
       aria-sort={
-        sortColumn === col ? (sortDirection === 'asc' ? 'ascending' : 'descending') : undefined
+        sortColumn === col ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'
       }
-      style={{ cursor: 'pointer', whiteSpace: 'nowrap', textAlign: align }}
+      style={{ whiteSpace: 'nowrap', textAlign: align }}
     >
-      <div
+      {/* A real button, so the sort works from the keyboard too. */}
+      <button
+        type="button"
+        onClick={() => handleSort(col)}
         style={{
           display: 'inline-flex',
           alignItems: 'center',
           gap: '4px',
+          background: 'none',
+          border: 0,
+          padding: 0,
+          font: 'inherit',
+          color: 'inherit',
+          cursor: 'pointer',
         }}
       >
         {t(UNIT_SORT_KEY[col])}
         <ArrowUpDown
+          aria-hidden="true"
           className="h-3 w-3"
           style={{
             opacity: sortColumn === col ? 1 : 0.3,
             transform: sortColumn === col && sortDirection === 'desc' ? 'scaleY(-1)' : 'none',
           }}
         />
-      </div>
+      </button>
     </TableHead>
   );
 
@@ -411,10 +420,12 @@ function GoogleOverviewContent() {
                         <TableCell style={right}>{num(u.websiteClicks)}</TableCell>
                         <TableCell style={right}>{num(u.messages)}</TableCell>
                         <TableCell style={{ ...right, whiteSpace: 'nowrap' }}>
-                          {u.avgRating === null ? '—' : `★ ${formatRating(u.avgRating)}`}
+                          {u.avgRating === null
+                            ? t('units.noRating')
+                            : `★ ${formatRating(u.avgRating)}`}
                         </TableCell>
                         <TableCell style={right}>
-                          {u.newReviews === null ? '—' : num(u.newReviews)}
+                          {u.newReviews === null ? t('states.noData') : num(u.newReviews)}
                         </TableCell>
                         <TableCell style={{ ...right, whiteSpace: 'nowrap' }}>
                           {u.status === 'revoked' ? (
@@ -576,7 +587,9 @@ function SpecialtyRow({ stat }: { stat: GbpSpecialtyStat }) {
         </span>
       </div>
       <div style={{ textAlign: 'right', fontSize: '0.8rem' }}>
-        <div>{stat.avgRating === null ? '—' : `★ ${formatRating(stat.avgRating)}`}</div>
+        <div>
+          {stat.avgRating === null ? t('units.noRating') : `★ ${formatRating(stat.avgRating)}`}
+        </div>
         <div style={{ color: 'var(--text-muted)' }}>
           {t('overview.specialtyViews', { value: formatGbpCount(Math.round(stat.viewsPerUnit)) })}
           {' · '}

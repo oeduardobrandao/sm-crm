@@ -123,7 +123,7 @@ export function highlightCards(t: GbpTFn, units: GbpPortfolioUnit[]): GbpHighlig
           label: t('overview.highlightRating'),
           sub: t('overview.highlightRatingSub', {
             rating: formatRating(value),
-            reviews: (unit.reviewCount ?? 0).toLocaleString('pt-BR'),
+            reviews: formatGbpCount(unit.reviewCount ?? 0),
           }),
           short: `★ ${formatRating(value)}`,
         };

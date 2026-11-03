@@ -97,9 +97,9 @@ export function GoogleOverviewPhone(props: GoogleOverviewPhoneProps) {
   const valueOf = (u: GbpPortfolioUnit): string => {
     switch (sortColumn) {
       case 'avgRating':
-        return u.avgRating === null ? '—' : `★ ${formatRating(u.avgRating)}`;
+        return u.avgRating === null ? t('units.noRating') : `★ ${formatRating(u.avgRating)}`;
       case 'newReviews':
-        return u.newReviews === null ? '—' : formatGbpCount(u.newReviews);
+        return u.newReviews === null ? t('states.noData') : formatGbpCount(u.newReviews);
       case 'lastSyncedAt':
         return u.status === 'revoked'
           ? t('overview.attentionReconnect')

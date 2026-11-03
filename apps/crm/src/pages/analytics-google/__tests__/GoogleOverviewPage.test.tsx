@@ -258,6 +258,19 @@ describe('GoogleOverviewPage', () => {
     expect(await screen.findByTestId('client-google-tab')).toBeInTheDocument();
   });
 
+  it('sorts the units table from a header button', async () => {
+    renderPage();
+    await heading();
+    const table = screen.getByRole('table');
+    const firstUnit = () => within(within(table).getAllByRole('row')[1]).getAllByRole('link')[0];
+    expect(firstUnit()).toHaveTextContent('Alfa Moema');
+    const viewsButton = within(table).getByRole('button', { name: 'Visualizações' });
+    expect(viewsButton.closest('th')).toHaveAttribute('aria-sort', 'descending');
+    fireEvent.click(viewsButton);
+    expect(firstUnit()).toHaveTextContent('Beta Centro');
+    expect(viewsButton.closest('th')).toHaveAttribute('aria-sort', 'ascending');
+  });
+
   it('a revoked unit shows "Reconectar" in Atualizado', async () => {
     vi.mocked(getGbpPortfolio).mockResolvedValue(
       portfolio({ units: [unit('a', { title: 'Revogada', status: 'revoked' })] }),
