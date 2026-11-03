@@ -5,8 +5,12 @@
 -- workflows, workflow_posts and every table that hangs off them (etapas, media,
 -- threads, comments, approvals, versions, notes, references, targets, events,
 -- processes, select options, portal tokens).
--- Roots (workflows, workflow_posts): read = scope OR "é dele" (posts only), write =
--- scope with no "é dele". Children: read and write through the visible parent.
+-- Item roots (workflow_posts, workflow_etapas): read and UPDATE = scope OR "é dele";
+-- INSERT and DELETE strict; moving an own item to a client he can't access is
+-- refused by guard_client_scope_move. workflows: readable as context when he has
+-- an own post/etapa in it, never writable through that. Post children: read,
+-- insert and update through the visible post; DELETE on a post of a client he
+-- can't access only for rows he wrote. Workflow children: strict.
 -- Spec: docs/superpowers/specs/2026-11-03-acesso-por-cliente-design.md
 -- Inventory: docs/superpowers/plans/2026-11-03-acesso-por-cliente-inventario.md
 
@@ -33,6 +37,20 @@ begin
   exception when others then
     execute 'reset role';
     return sqlstate;
+  end;
+  execute 'reset role';
+  return null;
+end $f$;
+-- error message raised by a statement as p_user, or NULL on success
+create or replace function pg_temp.errm_as(p_user uuid, p_sql text) returns text language plpgsql as $f$
+begin
+  perform set_config('request.jwt.claims', json_build_object('sub', p_user, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  begin
+    execute p_sql;
+  exception when others then
+    execute 'reset role';
+    return sqlerrm;
   end;
   execute 'reset role';
   return null;
@@ -95,7 +113,7 @@ declare
   v_restr uuid := gen_random_uuid();
   v_other uuid := gen_random_uuid();
   v_ca bigint; v_cb bigint; v_cc bigint; v_cd bigint; v_cx bigint;
-  v_wa bigint; v_wb bigint; v_wx bigint;
+  v_wa bigint; v_wb bigint; v_wb2 bigint; v_wx bigint;
   v_pa bigint; v_pb_own bigint; v_pb_other bigint; v_av_a bigint; v_av_b bigint; v_av_a_own bigint; v_pd bigint;
   v_ea bigint; v_eb_own bigint; v_eb_other bigint; v_ex bigint;
   v_membro bigint; v_membro_todos bigint; v_tpl bigint; v_prop bigint;
@@ -130,6 +148,7 @@ begin
 
   insert into workflows (user_id, conta_id, cliente_id, titulo, status) values (v_owner, v_ws, v_ca, 'WA', 'ativo') returning id into v_wa;
   insert into workflows (user_id, conta_id, cliente_id, titulo, status) values (v_owner, v_ws, v_cb, 'WB', 'ativo') returning id into v_wb;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status) values (v_owner, v_ws, v_cb, 'WB2', 'ativo') returning id into v_wb2;
   insert into workflows (user_id, conta_id, cliente_id, titulo, status) values (v_other, v_ws_x, v_cx, 'WX', 'ativo') returning id into v_wx;
 
   insert into workflow_posts (workflow_id, conta_id, titulo) values (v_wa, v_ws, 'pA') returning id into v_pa;
@@ -188,11 +207,16 @@ begin
   v_n := pg_temp.n_as(v_restr, 'select count(*) from workflow_posts');
   assert v_n = 4, 'restricted sees pA, avA, avAown and pBown only: ' || v_n;
 
-  -- workflows: no "é dele" (user_id is not authorship, ruling), so wB stays hidden
+  -- workflows: user_id is not authorship (ruling); wB is readable as context
+  -- because he has an own post and etapa in it, never writable through that
   v_n := pg_temp.n_as(v_restr, format('select count(*) from workflows where id = %s', v_wa));
   assert v_n = 1, 'workflow_in_a_visible: ' || v_n;
   v_n := pg_temp.n_as(v_restr, format('select count(*) from workflows where id = %s', v_wb));
-  assert v_n = 0, 'workflow_in_b_hidden_even_with_own_items: ' || v_n;
+  assert v_n = 1, 'workflow_of_own_post_in_b_visible: ' || v_n;
+  v_n := pg_temp.n_as(v_restr, format('select count(*) from workflows where id = %s', v_wb2));
+  assert v_n = 0, 'workflow_in_b_without_own_items_hidden: ' || v_n;
+  v_n := pg_temp.n_as(v_restr, 'select count(*) from workflows');
+  assert v_n = 2, 'restricted sees wA and wB only: ' || v_n;
   v_n := pg_temp.rows_as(v_restr, format('update workflows set titulo = titulo where id = %s', v_wb));
   assert v_n = 0, 'workflow_in_b_not_updatable: ' || v_n;
   v_n := pg_temp.rows_as(v_restr, format('delete from workflows where id = %s', v_wb));
@@ -240,16 +264,33 @@ begin
   assert not public.can_see_cliente_context(v_cc), 'restricted_cannot_author_into_hidden_client: no context for C';
   perform set_config('request.jwt.claims', '', true);
 
-  -- move_own_post_to_hidden_client_denied (the move guard opened, so only RLS refuses)
+  -- moves (the post move guard opened, so only RLS and the scope trigger refuse)
   perform set_config('app.allow_post_move', 'on', true);
-  v_err := pg_temp.err_as(v_restr, format('update workflow_posts set cliente_id = %s where id = %s', v_cb, v_av_a_own));
-  assert v_err = '42501', 'move_own_post_to_hidden_client_denied: ' || coalesce(v_err, 'updated');
+  v_err := pg_temp.errm_as(v_restr, format('update workflow_posts set cliente_id = %s where id = %s', v_cb, v_av_a_own));
+  assert v_err = 'client_scope_restricted', 'move_own_post_to_hidden_client_denied: ' || coalesce(v_err, 'updated');
+  v_err := pg_temp.errm_as(v_restr, format('update workflow_posts set workflow_id = %s where id = %s', v_wb2, v_pb_own));
+  assert v_err = 'client_scope_restricted', 'own_post_in_b_move_to_hidden_client_denied (workflow): ' || coalesce(v_err, 'updated');
+  v_err := pg_temp.errm_as(v_restr, format('update workflow_posts set workflow_id = null, cliente_id = %s where id = %s', v_cc, v_pb_own));
+  assert v_err = 'client_scope_restricted', 'own_post_in_b_move_to_hidden_client_denied (cliente): ' || coalesce(v_err, 'updated');
   v_err := pg_temp.err_as(v_restr, format('update workflow_posts set cliente_id = %s where id = %s', v_cb, v_av_a));
   assert v_err = '42501', 'move_post_to_hidden_client_denied: ' || coalesce(v_err, 'updated');
+  -- moving his own B post into a client he does access is fine
+  v_err := pg_temp.errm_as(v_restr, format('update workflow_posts set workflow_id = %s where id = %s', v_wa, v_pb_own));
+  assert v_err is null, 'own_post_in_b_move_to_accessible_workflow_allowed: ' || coalesce(v_err, '');
+  perform set_config('request.jwt.claims', '', true);
+  perform set_config('app.allow_post_move', 'on', true);
+  update workflow_posts set workflow_id = v_wb where id = v_pb_own;  -- back to wB (superuser)
   perform set_config('app.allow_post_move', '', true);
-  -- own_post_in_hidden_client_read_only: WITH CHECK has no "é dele"
-  v_err := pg_temp.err_as(v_restr, format('update workflow_posts set titulo = ''y'' where id = %s', v_pb_own));
-  assert v_err = '42501', 'own_post_in_hidden_client_read_only: ' || coalesce(v_err, 'updated');
+  v_err := pg_temp.errm_as(v_restr, format('update workflow_etapas set workflow_id = %s where id = %s', v_wb2, v_eb_own));
+  assert v_err = 'client_scope_restricted', 'own_etapa_in_b_move_to_hidden_workflow_denied: ' || coalesce(v_err, 'updated');
+  -- own_post_in_b_can_edit_caption / own_etapa_in_b_can_complete
+  v_n := pg_temp.rows_as(v_restr, format('update workflow_posts set ig_caption = ''nova'' where id = %s', v_pb_own));
+  assert v_n = 1, 'own_post_in_b_can_edit_caption: ' || v_n;
+  v_n := pg_temp.rows_as(v_restr, format('update workflow_etapas set status = ''concluido'', concluido_em = now() where id = %s', v_eb_own));
+  assert v_n = 1, 'own_etapa_in_b_can_complete: ' || v_n;
+  -- handing the own B post to someone else drops "é dele" from the new row: refused
+  v_err := pg_temp.err_as(v_restr, format('update workflow_posts set responsavel_id = %s where id = %s', v_membro_todos, v_pb_own));
+  assert v_err = '42501', 'own_post_in_b_handoff_denied: ' || coalesce(v_err, 'updated');
   v_n := pg_temp.rows_as(v_restr, format('update workflow_posts set titulo = ''y'' where id = %s', v_pb_other));
   assert v_n = 0, 'hidden_post_not_updatable: ' || v_n;
   v_n := pg_temp.rows_as(v_restr, format('update workflow_posts set titulo = ''y'' where id = %s', v_pa));
@@ -258,8 +299,13 @@ begin
   assert v_err = '42501', 'move_workflow_to_hidden_client_denied: ' || coalesce(v_err, 'updated');
   v_n := pg_temp.rows_as(v_restr, format('update workflow_etapas set nome = nome where id = %s', v_eb_other));
   assert v_n = 0, 'hidden_etapa_not_updatable: ' || v_n;
-  v_err := pg_temp.err_as(v_restr, format('update workflow_etapas set nome = ''z'' where id = %s', v_eb_own));
-  assert v_err = '42501', 'own_etapa_in_hidden_workflow_read_only: ' || coalesce(v_err, 'updated');
+  -- own_post_in_b_delete_denied / own_etapa_in_b_delete_denied
+  v_n := pg_temp.rows_as(v_restr, format('delete from workflow_posts where id = %s', v_pb_own));
+  assert v_n = 0, 'own_post_in_b_delete_denied: ' || v_n;
+  v_n := pg_temp.rows_as(v_restr, format('delete from workflow_etapas where id = %s', v_eb_own));
+  assert v_n = 0, 'own_etapa_in_b_delete_denied: ' || v_n;
+  v_n := pg_temp.rows_as(v_restr, format('delete from workflow_posts where id = %s', v_av_a));
+  assert v_n = 1, 'post_in_a_deletable: ' || v_n;
 
   -- ---------------------------------------------------------------- children
   -- own_post_in_b_media_visible (uploaded_by is the owner: visible only through the post)
@@ -358,6 +404,34 @@ begin
   v_n := pg_temp.rows_as(v_restr, format('delete from post_media where post_id = %s and uploaded_by <> %L', v_pb_other, v_restr));
   assert v_n = 0, 'delete_media_of_hidden_post_denied: ' || v_n;
 
+  -- children of his own post in B: insert and update work, delete only what he wrote
+  v_err := pg_temp.err_as(v_restr, format(
+    'insert into post_media (conta_id, post_id, r2_key, kind, mime_type, size_bytes, original_filename, uploaded_by) values (%L, %s, ''k/mine'', ''image'', ''image/png'', 1, ''mine.png'', %L)', v_ws, v_pb_own, v_restr));
+  assert v_err is null, 'insert_media_into_own_b_post_allowed: ' || coalesce(v_err, '');
+  v_n := pg_temp.rows_as(v_restr, format('delete from post_media where post_id = %s and uploaded_by = %L', v_pb_own, v_restr));
+  assert v_n = 1, 'own_media_on_own_b_post_delete_ok: ' || v_n;
+  v_n := pg_temp.rows_as(v_restr, format('delete from post_media where post_id = %s and uploaded_by = %L', v_pb_own, v_owner));
+  assert v_n = 0, 'others_media_on_own_b_post_delete_denied: ' || v_n;
+  v_n := pg_temp.rows_as(v_restr, format('update post_media set sort_order = 5 where post_id = %s', v_pb_own));
+  assert v_n = 1, 'others_media_on_own_b_post_updatable: ' || v_n;
+  v_err := pg_temp.err_as(v_restr, format(
+    'insert into post_comments (thread_id, author_id, content) values ((select id from post_comment_threads where post_id = %s limit 1), %L, ''meu'')', v_pb_own, v_restr));
+  assert v_err is null, 'comment_on_own_b_post_allowed: ' || coalesce(v_err, '');
+  v_n := pg_temp.rows_as(v_restr, format('delete from post_comments where author_id = %L and content = ''meu''', v_restr));
+  assert v_n = 1, 'own_comment_on_own_b_post_delete_ok: ' || v_n;
+  v_n := pg_temp.rows_as(v_restr, format('delete from post_comments where thread_id in (select id from post_comment_threads where post_id = %s)', v_pb_own));
+  assert v_n = 0, 'others_comment_on_own_b_post_delete_denied: ' || v_n;
+  v_n := pg_temp.rows_as(v_restr, format('delete from post_comment_threads where post_id = %s', v_pb_own));
+  assert v_n = 0, 'others_thread_on_own_b_post_delete_denied: ' || v_n;
+  v_n := pg_temp.rows_as(v_restr, format('update post_property_values set value = ''"w"'' where post_id = %s', v_pb_own));
+  assert v_n = 1, 'property_value_of_own_b_post_updatable: ' || v_n;
+  foreach v_t in array array['post_property_values', 'post_edit_suggestions', 'post_targets'] loop
+    v_n := pg_temp.rows_as(v_restr, format('delete from %I where post_id = %s', v_t, v_pb_own));
+    assert v_n = 0, format('%s_of_own_b_post_delete_denied: %s', v_t, v_n);
+  end loop;
+  v_n := pg_temp.rows_as(v_restr, format('delete from portal_approvals where workflow_etapa_id = %s', v_ea));
+  assert v_n = 1, 'portal_approval_of_visible_etapa_deletable: ' || v_n;
+
   -- ---------------------------------------------------------------- todos / owner unchanged
   foreach v_t in array array['workflows', 'workflow_posts', 'post_comment_threads',
       'post_content_versions', 'post_edit_suggestions', 'post_media', 'post_media_notes',
@@ -397,6 +471,23 @@ begin
   v_err := pg_temp.err_as(v_todos, format(
     'insert into workflow_posts (conta_id, cliente_id, titulo) values (%L, %s, ''t'')', v_ws, v_cb));
   assert v_err is null, 'todos_insert_post_into_b_allowed: ' || coalesce(v_err, '');
+  -- unrestricted writes unchanged: update, move, delete in B
+  v_n := pg_temp.rows_as(v_todos, format('update workflow_etapas set status = ''concluido'' where id = %s', v_eb_other));
+  assert v_n = 1, 'todos_update_etapa_in_b: ' || v_n;
+  perform set_config('app.allow_post_move', 'on', true);
+  v_err := pg_temp.errm_as(v_todos, format('update workflow_posts set cliente_id = %s where id = %s', v_cc, v_av_b));
+  assert v_err is null, 'todos_move_post_between_clients: ' || coalesce(v_err, '');
+  perform set_config('app.allow_post_move', '', true);
+  v_n := pg_temp.rows_as(v_todos, format('delete from post_media where post_id = %s and uploaded_by = %L', v_pb_own, v_owner));
+  assert v_n = 1, 'todos_delete_media_in_b: ' || v_n;
+  v_n := pg_temp.rows_as(v_todos, format('delete from post_comments where thread_id in (select id from post_comment_threads where post_id = %s)', v_pb_own));
+  assert v_n >= 1, 'todos_delete_comments_in_b: ' || v_n;
+  v_n := pg_temp.rows_as(v_todos, format('delete from post_targets where post_id = %s', v_av_b));
+  assert v_n >= 0, 'todos_delete_targets_in_b ran';
+  v_n := pg_temp.rows_as(v_todos, format('delete from workflow_etapas where id = %s', v_eb_other));
+  assert v_n = 1, 'todos_delete_etapa_in_b: ' || v_n;
+  v_n := pg_temp.rows_as(v_todos, format('delete from workflow_posts where id = %s', v_av_b));
+  assert v_n = 1, 'todos_delete_post_in_b: ' || v_n;
 
   -- non_restricted_member_can_assign_restricted_to_b_post (the intended path to "é dele")
   v_n := pg_temp.rows_as(v_todos, format('update workflow_posts set responsavel_id = %s where id = %s', v_membro, v_pb_other));

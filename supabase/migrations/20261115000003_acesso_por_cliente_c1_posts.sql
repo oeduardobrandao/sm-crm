@@ -1,27 +1,135 @@
 -- Acesso por cliente, Migração C1 (posts e fluxos): workflows, workflow_posts e
 -- tudo que pende deles respeitam o escopo do membro.
 --
--- Raízes (cliente_id próprio):
---   leitura  = <qual atual> AND ((SELECT my_client_scope_all()) OR can_access_cliente(cliente_id) OR <é dele>)
---   escrita  = WITH CHECK explícito <check atual> AND ((SELECT my_client_scope_all()) OR can_access_cliente(cliente_id)),
---              sem o "é dele" (senão um restrito criaria/moveria um post para um
---              cliente oculto e passaria a lê-lo como responsável).
+-- Raízes de item (workflow_posts, workflow_etapas; post_process_steps só por RPC):
+--   leitura  = <qual atual> AND ((SELECT my_client_scope_all()) OR can_access_cliente(cliente) OR <é dele>)
+--   UPDATE   = USING e WITH CHECK com a regra de leitura: o membro restrito
+--              conclui a própria etapa e edita o próprio post num cliente oculto.
+--              Mover o item (cliente_id/workflow_id) para um cliente que ele não
+--              acessa é barrado pelo trigger guard_client_scope_move.
+--   INSERT e DELETE = estritos, sem o "é dele" (senão um restrito criaria um
+--              item num cliente oculto e passaria a lê-lo, ou apagaria o item).
 --   workflow_posts usa o próprio cliente_id (NOT NULL, também no post avulso).
---   workflows não tem "é dele" (user_id é o criador técnico, não autoria; decisão).
--- Filhas: leitura e escrita pelo pai visível (EXISTS no pai, que roda com a RLS
--- dele), mais as colunas de autor que o inventário lista, só na leitura.
+-- workflows: sem "é dele" por user_id (decisão). Legível quando o membro tem um
+--   post ou etapa dele no workflow (contexto), nunca gravável por isso.
+-- Filhas do post: leitura, INSERT e UPDATE pelo post visível (EXISTS no pai, que
+--   roda com a RLS dele), mais as colunas de autor na leitura. DELETE num post de
+--   cliente que ele não acessa: só a linha que ele mesmo escreveu.
+-- Filhas do workflow (opções, tokens do portal, eventos): estritas pelo cliente
+--   do workflow; o workflow legível por contexto não as libera.
+-- Onde a policy atual é FOR ALL, a parte estrita (INSERT/DELETE) entra como
+-- policy RESTRICTIVE nova: a permissiva fica igual e o membro irrestrito não muda
+-- (o primeiro termo de cada restritiva é (SELECT my_client_scope_all())).
 -- O termo (SELECT my_client_scope_all()) vem primeiro: é um initplan, então o
 -- membro irrestrito não paga can_access_cliente nem o EXISTS por linha.
--- Já herdam o pai sem mudança (o qual consulta o pai pela FK): post_approvals,
--- post_property_values, post_comments, post_approval_media_notes, portal_approvals.
+-- Já herdam o pai sem mudança na leitura (o qual consulta o pai pela FK):
+-- post_approvals, post_property_values, post_comments, post_approval_media_notes,
+-- portal_approvals.
 -- Spec: docs/superpowers/specs/2026-11-03-acesso-por-cliente-design.md
 -- Inventário: docs/superpowers/plans/2026-11-03-acesso-por-cliente-inventario.md
 
 -- -------------------------------------------------------------
--- 1. Raízes
+-- 0. Helpers
 -- -------------------------------------------------------------
--- FOR ALL sem WITH CHECK até aqui: o Postgres usava o USING (que agora traz o
--- "é dele") na escrita. O WITH CHECK explícito tira o "é dele" da escrita.
+-- Workspace do workflow sem passar pela RLS de workflows (o "é dele" da etapa
+-- não tem conta_id próprio; my_membro_ids() limita o membro, não a etapa).
+CREATE OR REPLACE FUNCTION public.workflow_in_active_conta(p_workflow_id bigint)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.workflows w
+     WHERE w.id = p_workflow_id AND w.conta_id = public.get_my_conta_id()
+  );
+$$;
+REVOKE ALL ON FUNCTION public.workflow_in_active_conta(bigint) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.workflow_in_active_conta(bigint) TO authenticated, service_role;
+
+-- O usuário atual tem um post ou etapa "dele" neste workflow (workspace ativo).
+-- DEFINER: a policy de workflows chamá-la como invoker recursaria em
+-- workflow_etapas, cuja policy consulta workflows.
+CREATE OR REPLACE FUNCTION public.workflow_has_own_item(p_workflow_id bigint)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+      SELECT 1 FROM public.workflow_posts wp
+       WHERE wp.workflow_id = p_workflow_id
+         AND wp.conta_id = public.get_my_conta_id()
+         AND wp.responsavel_id = ANY (public.my_membro_ids())
+    ) OR EXISTS (
+      SELECT 1 FROM public.workflow_etapas e
+        JOIN public.workflows w ON w.id = e.workflow_id
+       WHERE e.workflow_id = p_workflow_id
+         AND w.conta_id = public.get_my_conta_id()
+         AND e.responsavel_id = ANY (public.my_membro_ids())
+    );
+$$;
+REVOKE ALL ON FUNCTION public.workflow_has_own_item(bigint) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.workflow_has_own_item(bigint) TO authenticated, service_role;
+
+-- Mover um item (cliente_id ou workflow_id) para um cliente que um membro
+-- restrito não acessa: o WITH CHECK do UPDATE tem o "é dele", então quem barra
+-- a troca é este trigger. Restrito = linha em workspace_members da conta do item
+-- com client_scope 'atribuidos' e papel diferente de owner. auth.uid() NULL
+-- (service role, cron) e membros irrestritos passam. Também vale dentro das RPCs
+-- de mover (detach/attach), que rodam com o auth.uid() de quem chamou.
+CREATE OR REPLACE FUNCTION public.guard_client_scope_move()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid   uuid := auth.uid();
+  v_conta uuid;
+  v_cli   bigint;
+BEGIN
+  IF v_uid IS NULL THEN RETURN NEW; END IF;
+  IF TG_TABLE_NAME = 'workflow_posts' THEN
+    v_conta := NEW.conta_id;
+  ELSE
+    SELECT w.conta_id INTO v_conta FROM public.workflows w WHERE w.id = NEW.workflow_id;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.workspace_members wm
+     WHERE wm.workspace_id = v_conta AND wm.user_id = v_uid
+       AND wm.role <> 'owner' AND wm.client_scope = 'atribuidos'
+  ) THEN
+    RETURN NEW;
+  END IF;
+  -- IF aninhado: plpgsql resolve NEW.cliente_id mesmo com o AND falso, e
+  -- workflow_etapas não tem a coluna.
+  IF TG_TABLE_NAME = 'workflow_posts' THEN
+    IF NEW.cliente_id IS DISTINCT FROM OLD.cliente_id
+       AND NOT public.can_access_cliente(v_uid, v_conta, NEW.cliente_id) THEN
+      RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';
+    END IF;
+  END IF;
+  IF NEW.workflow_id IS DISTINCT FROM OLD.workflow_id AND NEW.workflow_id IS NOT NULL THEN
+    SELECT w.cliente_id INTO v_cli FROM public.workflows w WHERE w.id = NEW.workflow_id;
+    IF NOT public.can_access_cliente(v_uid, v_conta, v_cli) THEN
+      RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.guard_client_scope_move() FROM PUBLIC, anon, authenticated;
+
+CREATE TRIGGER workflow_posts_client_scope_guard
+  BEFORE UPDATE OF cliente_id, workflow_id ON public.workflow_posts
+  FOR EACH ROW EXECUTE FUNCTION public.guard_client_scope_move();
+CREATE TRIGGER workflow_etapas_client_scope_guard
+  BEFORE UPDATE OF workflow_id ON public.workflow_etapas
+  FOR EACH ROW EXECUTE FUNCTION public.guard_client_scope_move();
+
+-- -------------------------------------------------------------
+-- 1. workflow_posts
+-- -------------------------------------------------------------
+-- FOR ALL sem WITH CHECK até aqui. USING e WITH CHECK levam o "é dele" (leitura
+-- e UPDATE); INSERT e DELETE estritos pelas RESTRICTIVE abaixo.
 ALTER POLICY workspace_posts_all ON public.workflow_posts
   USING (
     conta_id IN (SELECT public.get_my_conta_id())
@@ -31,13 +139,26 @@ ALTER POLICY workspace_posts_all ON public.workflow_posts
   )
   WITH CHECK (
     conta_id IN (SELECT public.get_my_conta_id())
-    AND ((SELECT public.my_client_scope_all()) OR public.can_access_cliente(cliente_id))
+    AND ((SELECT public.my_client_scope_all())
+         OR public.can_access_cliente(cliente_id)
+         OR responsavel_id = ANY ((SELECT public.my_membro_ids())::bigint[]))
   );
+CREATE POLICY workflow_posts_scope_insert ON public.workflow_posts
+  AS RESTRICTIVE FOR INSERT TO authenticated
+  WITH CHECK ((SELECT public.my_client_scope_all()) OR public.can_access_cliente(cliente_id));
+CREATE POLICY workflow_posts_scope_delete ON public.workflow_posts
+  AS RESTRICTIVE FOR DELETE TO authenticated
+  USING ((SELECT public.my_client_scope_all()) OR public.can_access_cliente(cliente_id));
 
+-- -------------------------------------------------------------
+-- 2. workflows
+-- -------------------------------------------------------------
 ALTER POLICY workflows_select ON public.workflows
   USING (
     conta_id IN (SELECT public.get_my_conta_id())
-    AND ((SELECT public.my_client_scope_all()) OR public.can_access_cliente(cliente_id))
+    AND ((SELECT public.my_client_scope_all())
+         OR public.can_access_cliente(cliente_id)
+         OR public.workflow_has_own_item(id))
   );
 ALTER POLICY workflows_delete ON public.workflows
   USING (
@@ -60,87 +181,114 @@ ALTER POLICY workflows_update ON public.workflows
   );
 
 -- -------------------------------------------------------------
--- 2. workflow_etapas (sem conta_id; o tenant vem do workflow)
+-- 3. workflow_etapas (sem conta_id; tenant e cliente vêm do workflow)
 -- -------------------------------------------------------------
--- A subconsulta em workflows já roda com a RLS de workflows, então o qual
--- atual passa a ser "workflow visível". O "é dele" (responsavel_id) não pode
--- ficar em AND com ele (o workflow de cliente oculto não aparece na
--- subconsulta), e sozinho não confere o tenant: my_membro_ids() limita o
--- membro ao workspace ativo, não a etapa. workflow_in_active_conta confere o
--- workspace do workflow sem passar pela RLS de workflows.
-CREATE OR REPLACE FUNCTION public.workflow_in_active_conta(p_workflow_id bigint)
-RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM public.workflows w
-     WHERE w.id = p_workflow_id AND w.conta_id = public.get_my_conta_id()
-  );
-$$;
-REVOKE ALL ON FUNCTION public.workflow_in_active_conta(bigint) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.workflow_in_active_conta(bigint) TO authenticated, service_role;
-
+-- O workflow pode estar legível só por contexto (item dele), então a
+-- subconsulta exige também o acesso ao cliente do workflow: as outras etapas de
+-- um workflow de cliente oculto continuam ocultas. O "é dele" fica num OR
+-- próprio, com o tenant conferido por workflow_in_active_conta.
 ALTER POLICY workflow_etapas_select ON public.workflow_etapas
   USING (
     workflow_id IN (SELECT workflows.id FROM public.workflows
-                     WHERE workflows.conta_id IN (SELECT public.get_my_conta_id()))
+                     WHERE workflows.conta_id IN (SELECT public.get_my_conta_id())
+                       AND ((SELECT public.my_client_scope_all())
+                            OR public.can_access_cliente(workflows.cliente_id)))
     OR (responsavel_id = ANY ((SELECT public.my_membro_ids())::bigint[])
         AND public.workflow_in_active_conta(workflow_id))
   );
 ALTER POLICY workflow_etapas_update ON public.workflow_etapas
   USING (
     workflow_id IN (SELECT workflows.id FROM public.workflows
-                     WHERE workflows.conta_id IN (SELECT public.get_my_conta_id()))
+                     WHERE workflows.conta_id IN (SELECT public.get_my_conta_id())
+                       AND ((SELECT public.my_client_scope_all())
+                            OR public.can_access_cliente(workflows.cliente_id)))
+    OR (responsavel_id = ANY ((SELECT public.my_membro_ids())::bigint[])
+        AND public.workflow_in_active_conta(workflow_id))
+  )
+  WITH CHECK (
+    workflow_id IN (SELECT workflows.id FROM public.workflows
+                     WHERE workflows.conta_id IN (SELECT public.get_my_conta_id())
+                       AND ((SELECT public.my_client_scope_all())
+                            OR public.can_access_cliente(workflows.cliente_id)))
     OR (responsavel_id = ANY ((SELECT public.my_membro_ids())::bigint[])
         AND public.workflow_in_active_conta(workflow_id))
   );
-  -- WITH CHECK fica como está: workflow visível (sem "é dele").
+ALTER POLICY workflow_etapas_insert ON public.workflow_etapas
+  WITH CHECK (
+    workflow_id IN (SELECT workflows.id FROM public.workflows
+                     WHERE workflows.conta_id IN (SELECT public.get_my_conta_id())
+                       AND ((SELECT public.my_client_scope_all())
+                            OR public.can_access_cliente(workflows.cliente_id)))
+  );
 ALTER POLICY workflow_etapas_delete ON public.workflow_etapas
   USING (
     workflow_id IN (SELECT workflows.id FROM public.workflows
-                     WHERE workflows.conta_id IN (SELECT public.get_my_conta_id()))
-    OR (responsavel_id = ANY ((SELECT public.my_membro_ids())::bigint[])
-        AND public.workflow_in_active_conta(workflow_id))
+                     WHERE workflows.conta_id IN (SELECT public.get_my_conta_id())
+                       AND ((SELECT public.my_client_scope_all())
+                            OR public.can_access_cliente(workflows.cliente_id)))
   );
--- workflow_etapas_insert: inalterada, o check em workflows já é "workflow visível".
 
 -- -------------------------------------------------------------
--- 3. Filhas do workflow
+-- 4. Filhas do workflow: estritas pelo cliente do workflow
 -- -------------------------------------------------------------
 ALTER POLICY workspace_wso_all ON public.workflow_select_options
   USING (
     conta_id IN (SELECT public.get_my_conta_id())
     AND ((SELECT public.my_client_scope_all())
-         OR EXISTS (SELECT 1 FROM public.workflows w WHERE w.id = workflow_select_options.workflow_id))
+         OR EXISTS (SELECT 1 FROM public.workflows w
+                     WHERE w.id = workflow_select_options.workflow_id
+                       AND public.can_access_cliente(w.cliente_id)))
   )
   WITH CHECK (
     conta_id IN (SELECT public.get_my_conta_id())
     AND ((SELECT public.my_client_scope_all())
-         OR EXISTS (SELECT 1 FROM public.workflows w WHERE w.id = workflow_select_options.workflow_id))
+         OR EXISTS (SELECT 1 FROM public.workflows w
+                     WHERE w.id = workflow_select_options.workflow_id
+                       AND public.can_access_cliente(w.cliente_id)))
   );
 
 ALTER POLICY portal_tokens_workspace_all ON public.portal_tokens
   USING (
     conta_id IN (SELECT public.get_my_conta_id())
     AND ((SELECT public.my_client_scope_all())
-         OR EXISTS (SELECT 1 FROM public.workflows w WHERE w.id = portal_tokens.workflow_id))
+         OR EXISTS (SELECT 1 FROM public.workflows w
+                     WHERE w.id = portal_tokens.workflow_id
+                       AND public.can_access_cliente(w.cliente_id)))
   )
   WITH CHECK (
     conta_id IN (SELECT public.get_my_conta_id())
     AND ((SELECT public.my_client_scope_all())
-         OR EXISTS (SELECT 1 FROM public.workflows w WHERE w.id = portal_tokens.workflow_id))
+         OR EXISTS (SELECT 1 FROM public.workflows w
+                     WHERE w.id = portal_tokens.workflow_id
+                       AND public.can_access_cliente(w.cliente_id)))
   );
 
 ALTER POLICY workflow_events_select ON public.workflow_events
   USING (
     conta_id IN (SELECT public.get_my_conta_id())
     AND ((SELECT public.my_client_scope_all())
-         OR EXISTS (SELECT 1 FROM public.workflows w WHERE w.id = workflow_events.workflow_id))
+         OR EXISTS (SELECT 1 FROM public.workflows w
+                     WHERE w.id = workflow_events.workflow_id
+                       AND public.can_access_cliente(w.cliente_id)))
+  );
+
+-- portal_approvals: leitura, INSERT e UPDATE seguem a etapa visível (qual atual,
+-- inalterado); DELETE só com acesso ao cliente do workflow.
+ALTER POLICY portal_approvals_delete ON public.portal_approvals
+  USING (
+    workflow_etapa_id IN (SELECT we.id
+                            FROM public.workflow_etapas we
+                            JOIN public.workflows w ON w.id = we.workflow_id
+                           WHERE w.conta_id IN (SELECT public.get_my_conta_id()))
+    AND ((SELECT public.my_client_scope_all())
+         OR EXISTS (SELECT 1 FROM public.workflow_etapas we
+                      JOIN public.workflows w ON w.id = we.workflow_id
+                     WHERE we.id = portal_approvals.workflow_etapa_id
+                       AND public.can_access_cliente(w.cliente_id)))
   );
 
 -- -------------------------------------------------------------
--- 4. Filhas do post
+-- 5. Filhas do post
 -- -------------------------------------------------------------
 ALTER POLICY post_media_tenant_all ON public.post_media
   USING (
@@ -156,13 +304,6 @@ ALTER POLICY post_media_tenant_all ON public.post_media
   );
 
 ALTER POLICY post_comment_threads_select ON public.post_comment_threads
-  USING (
-    conta_id IN (SELECT public.get_my_conta_id())
-    AND ((SELECT public.my_client_scope_all())
-         OR EXISTS (SELECT 1 FROM public.workflow_posts wp WHERE wp.id = post_comment_threads.post_id)
-         OR created_by = auth.uid())
-  );
-ALTER POLICY post_comment_threads_delete ON public.post_comment_threads
   USING (
     conta_id IN (SELECT public.get_my_conta_id())
     AND ((SELECT public.my_client_scope_all())
@@ -313,7 +454,65 @@ ALTER POLICY ppe_select_member ON public.post_process_events
   );
 
 -- -------------------------------------------------------------
--- 5. Contexto do item dele em cliente oculto: + post_process_steps
+-- 6. DELETE de filha: num post de cliente que o membro não acessa (o post dele
+--    num cliente oculto), só a linha que ele mesmo escreveu
+-- -------------------------------------------------------------
+-- Tabelas com policy permissiva FOR ALL ganham uma RESTRICTIVE FOR DELETE; a
+-- permissiva fica como está.
+CREATE POLICY post_media_scope_delete ON public.post_media
+  AS RESTRICTIVE FOR DELETE TO authenticated
+  USING (
+    (SELECT public.my_client_scope_all())
+    OR EXISTS (SELECT 1 FROM public.workflow_posts wp
+                WHERE wp.id = post_media.post_id AND public.can_access_cliente(wp.cliente_id))
+    OR uploaded_by = auth.uid()
+  );
+CREATE POLICY post_edit_suggestions_scope_delete ON public.post_edit_suggestions
+  AS RESTRICTIVE FOR DELETE TO authenticated
+  USING (
+    (SELECT public.my_client_scope_all())
+    OR EXISTS (SELECT 1 FROM public.workflow_posts wp
+                WHERE wp.id = post_edit_suggestions.post_id AND public.can_access_cliente(wp.cliente_id))
+  );
+CREATE POLICY post_targets_scope_delete ON public.post_targets
+  AS RESTRICTIVE FOR DELETE TO authenticated
+  USING (
+    (SELECT public.my_client_scope_all())
+    OR EXISTS (SELECT 1 FROM public.workflow_posts wp
+                WHERE wp.id = post_targets.post_id AND public.can_access_cliente(wp.cliente_id))
+  );
+CREATE POLICY post_property_values_scope_delete ON public.post_property_values
+  AS RESTRICTIVE FOR DELETE TO authenticated
+  USING (
+    (SELECT public.my_client_scope_all())
+    OR EXISTS (SELECT 1 FROM public.workflow_posts wp
+                WHERE wp.id = post_property_values.post_id AND public.can_access_cliente(wp.cliente_id))
+  );
+
+-- Policies de DELETE próprias: o qual ganha a mesma regra.
+ALTER POLICY post_comment_threads_delete ON public.post_comment_threads
+  USING (
+    conta_id IN (SELECT public.get_my_conta_id())
+    AND ((SELECT public.my_client_scope_all())
+         OR EXISTS (SELECT 1 FROM public.workflow_posts wp
+                     WHERE wp.id = post_comment_threads.post_id
+                       AND public.can_access_cliente(wp.cliente_id))
+         OR created_by = auth.uid())
+  );
+ALTER POLICY post_comments_delete ON public.post_comments
+  USING (
+    thread_id IN (SELECT post_comment_threads.id FROM public.post_comment_threads
+                   WHERE post_comment_threads.conta_id IN (SELECT public.get_my_conta_id()))
+    AND ((SELECT public.my_client_scope_all())
+         OR EXISTS (SELECT 1 FROM public.post_comment_threads t
+                      JOIN public.workflow_posts wp ON wp.id = t.post_id
+                     WHERE t.id = post_comments.thread_id
+                       AND public.can_access_cliente(wp.cliente_id))
+         OR author_id = auth.uid())
+  );
+
+-- -------------------------------------------------------------
+-- 7. Contexto do item dele em cliente oculto: + post_process_steps
 -- -------------------------------------------------------------
 -- Corpo de 20261115000001 mais a etapa de processo atribuída (cliente via
 -- post_processes -> workflow_posts). CREATE OR REPLACE mantém o ACL.
