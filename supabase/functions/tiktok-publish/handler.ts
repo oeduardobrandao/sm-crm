@@ -54,6 +54,8 @@ import {
   type ClientScopeLoader,
   hasClientAccess,
   loadClientScope as realLoadClientScope,
+  memberWorkspaceOfClient,
+  type ResourceWorkspaceResolver,
   rowWriteGate,
 } from "../_shared/client-scope.ts";
 
@@ -79,6 +81,8 @@ export interface TikTokPublishDeps {
   sleep?: (ms: number) => Promise<void>;
   /** Acesso por cliente: the caller's client scope (defaults to the real loader). */
   loadClientScope?: ClientScopeLoader;
+  /** The post's own workspace, if the caller is a member of it (defaults to the real resolver). */
+  resolvePostWorkspace?: ResourceWorkspaceResolver;
 }
 
 /** A failure whose message is a curated pt-BR sentence: safe to persist and return (422). */
@@ -252,12 +256,21 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
     if (!post) return json({ error: "Post não encontrado." }, 404);
 
     const { data: actorProfile } = await svcDb.from("profiles").select("conta_id").eq("id", actorId).single();
-    const contaId = actorProfile?.conta_id as string | undefined;
-    if (!contaId) return json({ error: "Unauthorized" }, 403);
+    if (!actorProfile?.conta_id) return json({ error: "Unauthorized" }, 403);
 
-    // Acesso por cliente: every action below writes with the service role. Publishing is a write
-    // (no "é dele"): the caller's own post in a hidden client gets the "limitado" copy; a post they
-    // cannot read at all (RLS already hides it; defense in depth) answers like a missing one.
+    // Acesso por cliente. The workspace is the POST's own (its client's conta_id, with the caller a
+    // member there), never profiles.conta_id: that column goes stale on a workspace switch, and a
+    // member restricted in the post's workspace but `todos` in the stale one would pass. The same
+    // workspace drives the plan gates. Every action below writes with the service role: publishing
+    // is a write (no "é dele"), the caller's own post in a hidden client gets the "limitado" copy,
+    // and a post they cannot read answers like a missing one.
+    let contaId: string | null;
+    try {
+      contaId = await (deps.resolvePostWorkspace ?? memberWorkspaceOfClient)(svcDb, actorId!, post.cliente_id);
+    } catch (err) {
+      return internalServerError(json, "tiktok-publish:post-workspace", err);
+    }
+    if (!contaId) return json({ error: "Post não encontrado." }, 404);
     const scopeDenied = await rowWriteGate(
       svcDb,
       actorId!,

@@ -8,6 +8,7 @@ import {
   loadClientScope,
   rowVisibility,
   rowWriteGate,
+  memberWorkspaceOfClient,
   allClientsScope,
   visibleClientIds,
 } from "../_shared/client-scope.ts";
@@ -184,4 +185,29 @@ Deno.test("rowWriteGate: allowed / not found / limitado / scope error", async ()
   assertEquals(await rowWriteGate(db, "u1", "w1", { cliente_id: 9 }, nf, scope(allClientsScope())), null);
   const failed = await rowWriteGate(db, "u1", "w1", { cliente_id: 5 }, nf, () => Promise.reject(new Error("x")));
   assertEquals(failed?.status, 500);
+});
+
+Deno.test("memberWorkspaceOfClient: the client's workspace only when the user is a member there", async () => {
+  const member = fakeDb({
+    clientes: { data: { conta_id: "ws-A" }, error: null },
+    workspace_members: { data: { user_id: "u1" }, error: null },
+  });
+  assertEquals(await memberWorkspaceOfClient(member.db, "u1", 5), "ws-A");
+  assert(member.calls.some((c) => c.table === "workspace_members" && JSON.stringify(c.args) === '["workspace_id","ws-A"]'));
+
+  const stranger = fakeDb({
+    clientes: { data: { conta_id: "ws-A" }, error: null },
+    workspace_members: { data: null, error: null },
+  });
+  assertEquals(await memberWorkspaceOfClient(stranger.db, "u1", 5), null);
+  assertEquals(await memberWorkspaceOfClient(fakeDb({}).db, "u1", null), null);
+  assertEquals(await memberWorkspaceOfClient(fakeDb({ clientes: { data: null, error: null } }).db, "u1", 5), null);
+
+  let threw = false;
+  try {
+    await memberWorkspaceOfClient(fakeDb({ clientes: { data: null, error: { message: "x" } } }).db, "u1", 5);
+  } catch {
+    threw = true;
+  }
+  assert(threw);
 });

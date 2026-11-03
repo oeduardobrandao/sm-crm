@@ -163,3 +163,36 @@ export async function rowWriteGate(
   if (vis === "own_only") return { status: 403, body: { error: CLIENT_SCOPE_MESSAGE } };
   return null;
 }
+
+/** Resolves the workspace a client-linked resource belongs to, for handlers that did NOT already
+ * pin the resource to a verified workspace (e.g. a post read through RLS). */
+export type ResourceWorkspaceResolver = (
+  svc: Db,
+  userId: string,
+  clienteId: number | null | undefined,
+) => Promise<string | null>;
+
+/** The client's own workspace (`clientes.conta_id`), but only when `userId` is a member of it
+ * (`workspace_members`); null otherwise (callers answer their not-found). Throws on read errors.
+ * Never derive the scope's workspace from `profiles.conta_id`: it goes stale on a workspace switch
+ * (and can be NULL), so a member restricted in the post's workspace but `todos` in the stale one
+ * would load `all: true`. */
+export async function memberWorkspaceOfClient(
+  svc: Db,
+  userId: string,
+  clienteId: number | null | undefined,
+): Promise<string | null> {
+  if (clienteId == null) return null;
+  const { data: cliente, error } = await svc.from("clientes").select("conta_id").eq("id", clienteId).maybeSingle();
+  if (error) throw new Error(`client scope: client workspace read failed: ${error.message ?? "unknown"}`);
+  const workspaceId = (cliente as { conta_id?: string } | null)?.conta_id;
+  if (!workspaceId) return null;
+  const { data: member, error: memberError } = await svc
+    .from("workspace_members")
+    .select("user_id")
+    .eq("user_id", userId)
+    .eq("workspace_id", workspaceId)
+    .maybeSingle();
+  if (memberError) throw new Error(`client scope: membership read failed: ${memberError.message ?? "unknown"}`);
+  return member ? workspaceId : null;
+}

@@ -18,7 +18,12 @@ import {
   INTERACTIVE_GRAPH_TIMEOUT_MS,
 } from "../_shared/instagram-publish-utils.ts";
 import { buildCollaboratorFailureFields, normalizeCollaborators } from "../_shared/instagram-collaborators.ts";
-import { type ClientScopeLoader, rowWriteGate } from "../_shared/client-scope.ts";
+import {
+  type ClientScopeLoader,
+  memberWorkspaceOfClient,
+  type ResourceWorkspaceResolver,
+  rowWriteGate,
+} from "../_shared/client-scope.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -32,6 +37,8 @@ interface PublishHandlerDeps {
   createServiceDb: () => DbClient;
   /** Acesso por cliente: the caller's client scope (defaults to the real loader). */
   loadClientScope?: ClientScopeLoader;
+  /** The post's own workspace, if the caller is a member of it (defaults to the real resolver). */
+  resolvePostWorkspace?: ResourceWorkspaceResolver;
 }
 
 export function createPublishHandler(deps: PublishHandlerDeps) {
@@ -77,14 +84,23 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
     // Resolve caller's workspace and guard feature_post_scheduling
     const { data: actorProfile } = await svcDb.from("profiles").select("conta_id").eq("id", actorId).single();
     if (!actorProfile?.conta_id) return json({ error: "Unauthorized" }, 403);
-    // Acesso por cliente: every action below writes with the service role, so the post's client
-    // must be in the caller's scope. Publishing is a write (no "é dele"): the caller's own post in a
-    // hidden client is refused with the "limitado" copy; a post they cannot read at all (RLS already
-    // hides it, this is defense in depth) answers like a missing one.
+    // Acesso por cliente. The workspace is the POST's own (its client's conta_id, with the caller
+    // a member there), never profiles.conta_id: that column goes stale on a workspace switch, and a
+    // member restricted in the post's workspace but `todos` in the stale one would pass. The same
+    // workspace drives the plan gate. Every action below writes with the service role, so the post's
+    // client must be in scope: publishing is a write (no "é dele"), the caller's own post in a hidden
+    // client gets the "limitado" copy, and a post they cannot read answers like a missing one.
+    let postWorkspace: string | null;
+    try {
+      postWorkspace = await (deps.resolvePostWorkspace ?? memberWorkspaceOfClient)(svcDb, actorId!, post.cliente_id);
+    } catch (err) {
+      return internalServerError(json, "instagram-publish:post-workspace", err);
+    }
+    if (!postWorkspace) return json({ error: "Post não encontrado." }, 404);
     const scopeDenied = await rowWriteGate(
       svcDb,
       actorId!,
-      actorProfile.conta_id,
+      postWorkspace,
       post,
       { status: 404, body: { error: "Post não encontrado." } },
       deps.loadClientScope,
@@ -92,7 +108,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
     if (scopeDenied) return json(scopeDenied.body, scopeDenied.status);
     if (
       (action === "schedule" || action === "publish-now") &&
-      !(await effectivePlanFeature(svcDb as any, actorProfile.conta_id, "feature_post_scheduling"))
+      !(await effectivePlanFeature(svcDb as any, postWorkspace, "feature_post_scheduling"))
     ) {
       return json({ error: "feature_disabled", feature: "feature_post_scheduling" }, 403);
     }

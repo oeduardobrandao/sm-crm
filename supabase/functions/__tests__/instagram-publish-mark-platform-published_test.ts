@@ -51,6 +51,8 @@ function makeHandler(db: ReturnType<typeof createSupabaseQueryMock>) {
     createServiceDb: () => db as never,
     // Acesso por cliente: unrestricted unless a test overrides it.
     loadClientScope: () => Promise.resolve(allClientsScope()),
+    // The post's workspace: the fixtures' "ws-1" (the real resolver has its own tests).
+    resolvePostWorkspace: () => Promise.resolve("ws-1"),
   });
 }
 

@@ -119,6 +119,8 @@ function makeDeps(
     createServiceDb: () => db as never,
     // Acesso por cliente: unrestricted unless a test overrides it.
     loadClientScope: () => Promise.resolve(allClientsScope()),
+    // The post's workspace: the fixtures' "ws-1" (the real resolver has its own tests).
+    resolvePostWorkspace: () => Promise.resolve("ws-1"),
     ...overrides,
   };
 }
@@ -1219,5 +1221,28 @@ Deno.test("tiktok-publish: own post in a hidden client is refused with the limit
   const res = await handler(tiktokRequest("cancel", 1));
   assertEquals(res.status, 403);
   assertEquals(await res.json(), { error: "Seu acesso é limitado aos clientes atribuídos." });
+  assertEquals(db.calls.filter((c) => c.operation === "rpc" || c.operation === "update").length, 0);
+});
+
+Deno.test("tiktok-publish: scope comes from the post's workspace, never a stale profiles.conta_id", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", {
+    data: { id: 1, status: "aprovado_cliente", platform: "tiktok", cliente_id: 5, responsavel_id: 8 },
+    error: null,
+  });
+  db.queue("profiles", "select", { data: { conta_id: "ws-B" }, error: null });
+  db.queue("clientes", "select", { data: { conta_id: "ws-A" }, error: null });
+  db.queue("workspace_members", "select", { data: { user_id: "actor-1" }, error: null });
+  const handler = createPublishHandler(makeDeps(db, {
+    resolvePostWorkspace: undefined, // the real resolver
+    loadClientScope: ((_db: unknown, _u: string, ws: string) =>
+      Promise.resolve<ClientScope>(
+        ws === "ws-B" ? allClientsScope() : { all: false, ids: new Set([4]), membroIds: new Set([7]) },
+      )) as never,
+  }));
+  const res = await handler(tiktokRequest("schedule", 1, { body: { scheduled_at: "2099-01-01T12:00:00Z" } }));
+  assertEquals(res.status, 404);
+  assertEquals(await res.json(), { error: "Post não encontrado." });
   assertEquals(db.calls.filter((c) => c.operation === "rpc" || c.operation === "update").length, 0);
 });
