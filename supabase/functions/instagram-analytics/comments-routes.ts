@@ -14,10 +14,12 @@ import {
   buildAccountPrompt,
   buildPostPrompt,
   type AiConfig,
+  type AnalysisPrompts,
   type AnalysisLang,
   type callAi,
   type CommentAnalysis,
   COMMENTS_MODEL,
+  MAX_OUTPUT_TOKENS,
   fitTexts,
   PROMPT_COMMENT_CHARS,
   redactIdentities,
@@ -219,26 +221,37 @@ function textsOf(comments: IgComment[]): string[] {
 }
 
 /**
- * Pede a análise à IA, valida, dá id às ideias e redige identidades.
+ * Pede as duas partes da análise à IA em paralelo, junta, valida, dá id às
+ * ideias e redige identidades.
  * Devolve a análise final ou o erro HTTP correspondente.
  */
 async function analyze(
   deps: CommentsRouteDeps,
   route: string,
-  prompt: string,
+  prompts: AnalysisPrompts,
   deadlineAt: number,
   usernames: string[],
   allowPostIds?: Set<string>,
 ): Promise<CommentAnalysis | RouteResult> {
-  let raw: unknown;
-  try {
-    if (!deps.ai) throw new Error("ai_not_configured");
-    raw = await deps.callAi({ now: deps.now }, {
-      config: deps.ai,
-      prompt,
-      deadlineAt,
-    });
-  } catch (e) {
+  const config = deps.ai;
+  if (!config) {
+    console.error(`[comments-routes] ${route} ai unavailable: ai_not_configured`);
+    return err(503, "ai_unavailable");
+  }
+  const parts = await Promise.allSettled(
+    (["leitura", "ideias"] as const).map((part) =>
+      deps.callAi({ now: deps.now }, {
+        config,
+        prompt: prompts[part],
+        deadlineAt,
+        maxTokens: MAX_OUTPUT_TOKENS[part],
+      })
+    ),
+  );
+  const failures = parts.flatMap((p) => (p.status === "rejected" ? [p.reason] : []));
+  if (failures.length) {
+    const e = failures.find((f) => f instanceof AiTimeoutError) ??
+      failures.find((f) => f instanceof AiBadOutputError) ?? failures[0];
     if (e instanceof AiTimeoutError) {
       console.error(`[comments-routes] ${route} ai timeout`);
       return err(504, "ai_timeout");
@@ -250,6 +263,10 @@ async function analyze(
     console.error(`[comments-routes] ${route} ai unavailable:`, e instanceof Error ? e.message : "unknown");
     return err(503, "ai_unavailable");
   }
+  const [leituraRaw, ideiasRaw] = parts.map((p) => (p as PromiseFulfilledResult<unknown>).value);
+  const isObject = (v: unknown): v is Record<string, unknown> =>
+    typeof v === "object" && v !== null && !Array.isArray(v);
+  const raw = isObject(leituraRaw) && isObject(ideiasRaw) ? { ...ideiasRaw, ...leituraRaw } : null;
 
   const valid = validateAnalysis(raw, allowPostIds ? { allowPostIds } : {});
   if (!valid) {

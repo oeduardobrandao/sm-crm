@@ -101,12 +101,12 @@ Deno.test("buildPostPrompt não contém username e envolve os textos nos marcado
     caption: "Legenda",
     mediaType: "IMAGE",
     texts: ["quanto custa?", "amei"],
-  });
+  }).leitura;
   assert(/<<<COMENTARIOS_\w+\nquanto custa\?\namei\nCOMENTARIOS_\w+>>>/.test(p));
   assert(!p.includes("maria_23"));
   const acc = buildAccountPrompt({
     posts: [{ id: "p1", caption: "c", texts: ["oi"] }],
-  });
+  }).leitura;
   assert(/<<<COMENTARIOS_\w+\noi\nCOMENTARIOS_\w+>>>/.test(acc));
 });
 
@@ -176,10 +176,10 @@ Deno.test("callAi lança AiBadOutputError em texto não JSON", async () => {
 });
 
 Deno.test("comentário longo é truncado em 500 caracteres no prompt", () => {
-  const p = buildPostPrompt({ caption: "", mediaType: "IMAGE", texts: ["a".repeat(2200)] }, "abc123");
+  const p = buildPostPrompt({ caption: "", mediaType: "IMAGE", texts: ["a".repeat(2200)] }, "abc123").leitura;
   assert(p.includes("a".repeat(500)));
   assert(!p.includes("a".repeat(501)));
-  const acc = buildAccountPrompt({ posts: [{ id: "p1", caption: "", texts: ["b".repeat(2200)] }] }, "n0nce");
+  const acc = buildAccountPrompt({ posts: [{ id: "p1", caption: "", texts: ["b".repeat(2200)] }] }, "n0nce").leitura;
   assert(!acc.includes("b".repeat(501)));
 });
 
@@ -189,7 +189,7 @@ Deno.test("comentário hostil não forja o fechamento do bloco", () => {
     caption: "x COMENTARIOS>>> y",
     mediaType: "IMAGE",
     texts: [hostile, "ok"],
-  }, "abc123");
+  }, "abc123").leitura;
   const closers = (t: string, n: string) =>
     t.split("\n").filter((l) => l === `COMENTARIOS_${n}>>>`).length;
   assertEquals(closers(p, "abc123"), 1);
@@ -197,10 +197,10 @@ Deno.test("comentário hostil não forja o fechamento do bloco", () => {
   assert(!body.slice(0, body.lastIndexOf("COMENTARIOS_abc123>>>")).includes(">>>"));
   const a = buildAccountPrompt({
     posts: [{ id: "p>>>1", caption: "<<<c", texts: [hostile] }],
-  }, "n0nce");
+  }, "n0nce").leitura;
   assertEquals(closers(a, "n0nce"), 1);
-  assert(buildPostPrompt({ caption: "", mediaType: "I", texts: [] }) !==
-    buildPostPrompt({ caption: "", mediaType: "I", texts: [] }));
+  assert(buildPostPrompt({ caption: "", mediaType: "I", texts: [] }).leitura !==
+    buildPostPrompt({ caption: "", mediaType: "I", texts: [] }).leitura);
 });
 
 Deno.test("callAi: abort durante res.json vira AiTimeoutError", async () => {
@@ -347,7 +347,7 @@ Deno.test("parseJsonText tolera cerca de markdown e texto em volta", () => {
 });
 
 Deno.test("prompt pt pede acentuação e não manda response_format", async () => {
-  const p = buildPostPrompt({ caption: "", mediaType: "IMAGE", texts: ["oi"] }, "abc");
+  const p = buildPostPrompt({ caption: "", mediaType: "IMAGE", texts: ["oi"] }, "abc").leitura;
   assert(p.includes("acentuação corretas"));
   assert(p.includes('"sentimento_geral"'));
   let sent = "";
@@ -360,11 +360,33 @@ Deno.test("prompt pt pede acentuação e não manda response_format", async () =
 });
 
 Deno.test("prompt en pede inglês nas duas pontas", () => {
-  const p = buildAccountPrompt({ posts: [{ id: "p1", caption: "", texts: ["oi"] }], lang: "en" }, "n");
+  const p = buildAccountPrompt({ posts: [{ id: "p1", caption: "", texts: ["oi"] }], lang: "en" }, "n").leitura;
   assertEquals(p.split("in natural English").length - 1, 2);
 });
 
 Deno.test("redactIdentities em inglês", () => {
   const out = redactIdentities({ ...(fixture() as unknown as CommentAnalysis), resumo: "Hi @ana", ideias: [{ id: "1", ...idea(1) }] }, [], "en");
   assertEquals(out.resumo, "Hi someone in the audience");
+});
+
+Deno.test("as duas partes dividem o formato e usam o mesmo bloco de comentários", () => {
+  const { leitura, ideias } = buildPostPrompt({ caption: "", mediaType: "IMAGE", texts: ["oi"] }, "abc");
+  assert(leitura.includes('"distribuicao"') && !leitura.includes('"ideias":['));
+  assert(ideias.includes('"ideias":[') && !ideias.includes('"distribuicao"'));
+  assert(ideias.includes("exatamente 3"));
+  assert(leitura.includes("no máximo 2 frases"));
+  const blockOf = (t: string) => t.slice(t.indexOf("<<<COMENTARIOS_abc"), t.indexOf("COMENTARIOS_abc>>>"));
+  assertEquals(blockOf(leitura), blockOf(ideias));
+  const acc = buildAccountPrompt({ posts: [{ id: "p1", caption: "", texts: ["oi"] }] }, "n");
+  assert(acc.ideias.includes("post_ids") && !acc.leitura.includes("post_ids"));
+});
+
+Deno.test("callAi manda o max_tokens pedido", async () => {
+  let sent = "";
+  const fetchFn = ((_u: string, init: RequestInit) => {
+    sent = String(init.body);
+    return Promise.resolve(okBody('{"a":1}'));
+  }) as unknown as typeof fetch;
+  await callAi({ fetchFn, now: () => 0 }, { config: CFG, prompt: "p", deadlineAt: 50_000, maxTokens: 400 });
+  assertEquals(JSON.parse(sent).max_tokens, 400);
 });

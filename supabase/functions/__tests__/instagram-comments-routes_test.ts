@@ -299,8 +299,11 @@ Deno.test("POST manda à IA só textos, grava upsert com analyzed_at novo e idei
   assertEquals(r?.status, 200);
   assertEquals(calls.rate, [`ig-comments-ai:${CONTA}`]);
   assertEquals(calls.graph[0], { mediaId: "p1", max: 200, deadlineAt: NOW + 20_000 });
-  assertEquals(calls.ai.length, 1);
-  assertEquals(calls.ai[0].deadlineAt, NOW + 50_000);
+  // Duas partes em paralelo (leitura e ideias), com o mesmo prazo.
+  assertEquals(calls.ai.length, 2);
+  assertEquals(calls.ai.map((c) => c.deadlineAt), [NOW + 50_000, NOW + 50_000]);
+  assert(calls.ai[0].prompt.includes('"distribuicao"'));
+  assert(calls.ai[1].prompt.includes('"ideias":['));
   const prompt = calls.ai[0].prompt;
   assert(prompt.includes("comentário 3 de c"), "prompt leva o texto");
   assert(!prompt.includes("fulano_"), "prompt não leva username");
@@ -601,4 +604,33 @@ Deno.test("lang=en: prompt pede inglês e a redação usa o texto em inglês", a
   assert(calls.ai[0].prompt.includes("in natural English"));
   const u = upserts.find((x) => x.table === "instagram_comment_analyses")!;
   assertEquals((u.row.result as { resumo: string }).resumo, "Fans like someone in the audience a lot.");
+});
+
+Deno.test("uma parte da IA falhando derruba a análise (504 vence 503)", async () => {
+  let n = 0;
+  const { deps, upserts } = setup({
+    aiRaw: () => {
+      n++;
+      if (n === 1) throw new Error("ai_unavailable");
+      throw new AiTimeoutError("deadline");
+    },
+  });
+  const r = await handleCommentsRoute("POST", "/comments-analysis/7/p1", deps);
+  assertEquals(r?.status, 504);
+  assertEquals(upserts.length, 0);
+});
+
+Deno.test("as duas partes da IA são juntadas antes de validar", async () => {
+  let n = 0;
+  const full = goodRaw() as Record<string, unknown>;
+  const { deps } = setup({
+    aiRaw: () => {
+      n++;
+      return n === 1
+        ? { sentimento_geral: full.sentimento_geral, resumo: full.resumo, distribuicao: full.distribuicao }
+        : { temas: full.temas, perguntas_frequentes: full.perguntas_frequentes, ideias: full.ideias };
+    },
+  });
+  const r = await handleCommentsRoute("POST", "/comments-analysis/7/p1", deps);
+  assertEquals(r?.status, 200);
 });
