@@ -45,7 +45,7 @@ export function classifyIgError(err: unknown): IgErrorKind {
   return "permanent";
 }
 
-async function igRequest(
+export async function igRequest(
   deps: IgMessagingDeps,
   method: "GET" | "POST",
   path: string,
