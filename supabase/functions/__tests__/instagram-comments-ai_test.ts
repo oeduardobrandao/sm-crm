@@ -8,11 +8,14 @@ import {
   AiTimeoutError,
   buildAccountPrompt,
   buildPostPrompt,
-  callGemini,
+  callAi,
+  fitTexts,
   type CommentAnalysis,
   redactIdentities,
   validateAnalysis,
 } from "../instagram-analytics/comments-ai.ts";
+
+const CFG = { accountId: "acc", token: "tok" };
 
 const idea = (n: number) => ({
   titulo: `Ideia ${n}`,
@@ -108,56 +111,62 @@ Deno.test("buildPostPrompt não contém username e envolve os textos nos marcado
 
 const okBody = (text: string) =>
   new Response(
-    JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] }),
+    JSON.stringify({ result: { response: text }, success: true, errors: [] }),
     { status: 200 },
   );
 
-Deno.test("callGemini tenta de novo em 429 e devolve o JSON", async () => {
+Deno.test("callAi tenta de novo em 429 e devolve o JSON", async () => {
   let calls = 0;
   const sleeps: number[] = [];
   let headerKey = "";
-  const fetchFn = ((_u: string, init: RequestInit) => {
+  let url = "";
+  const fetchFn = ((u: string, init: RequestInit) => {
     calls++;
-    headerKey = (init.headers as Record<string, string>)["x-goog-api-key"];
+    url = u;
+    headerKey = (init.headers as Record<string, string>)["Authorization"];
     return Promise.resolve(
       calls === 1 ? new Response("x", { status: 429 }) : okBody('{"a":1}'),
     );
   }) as unknown as typeof fetch;
-  const r = await callGemini(
+  const r = await callAi(
     { fetchFn, now: () => 0, sleep: (ms) => (sleeps.push(ms), Promise.resolve()) },
-    { apiKey: "k", prompt: "p", deadlineAt: 50_000 },
+    { config: CFG, prompt: "p", deadlineAt: 50_000 },
   );
   assertEquals(r, { a: 1 });
   assertEquals(calls, 2);
   assertEquals(sleeps, [1000]);
-  assertEquals(headerKey, "k");
+  assertEquals(headerKey, "Bearer tok");
+  assertEquals(
+    url,
+    "https://api.cloudflare.com/client/v4/accounts/acc/ai/run/@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+  );
 });
 
-Deno.test("callGemini lança AiTimeoutError quando o prazo acaba", async () => {
+Deno.test("callAi lança AiTimeoutError quando o prazo acaba", async () => {
   let t = 0;
   const fetchFn = (() =>
     Promise.resolve(new Response("x", { status: 503 }))) as unknown as typeof fetch;
   await assertRejects(
     () =>
-      callGemini(
+      callAi(
         {
           fetchFn,
           now: () => t,
           sleep: (ms) => (t += ms, Promise.resolve()),
         },
-        { apiKey: "k", prompt: "p", deadlineAt: 1500 },
+        { config: CFG, prompt: "p", deadlineAt: 1500 },
       ),
     AiTimeoutError,
   );
 });
 
-Deno.test("callGemini lança AiBadOutputError em texto não JSON", async () => {
+Deno.test("callAi lança AiBadOutputError em texto não JSON", async () => {
   const fetchFn = (() =>
     Promise.resolve(okBody("isso não é json"))) as unknown as typeof fetch;
   await assertRejects(
     () =>
-      callGemini({ fetchFn, now: () => 0 }, {
-        apiKey: "k",
+      callAi({ fetchFn, now: () => 0 }, {
+        config: CFG,
         prompt: "p",
         deadlineAt: 50_000,
       }),
@@ -193,7 +202,7 @@ Deno.test("comentário hostil não forja o fechamento do bloco", () => {
     buildPostPrompt({ caption: "", mediaType: "I", texts: [] }));
 });
 
-Deno.test("callGemini: abort durante res.json vira AiTimeoutError", async () => {
+Deno.test("callAi: abort durante res.json vira AiTimeoutError", async () => {
   const fetchFn = (() =>
     Promise.resolve({
       ok: true,
@@ -203,8 +212,8 @@ Deno.test("callGemini: abort durante res.json vira AiTimeoutError", async () => 
     })) as unknown as typeof fetch;
   await assertRejects(
     () =>
-      callGemini({ fetchFn, now: () => 0 }, {
-        apiKey: "k",
+      callAi({ fetchFn, now: () => 0 }, {
+        config: CFG,
         prompt: "p",
         deadlineAt: 50_000,
       }),
@@ -212,15 +221,15 @@ Deno.test("callGemini: abort durante res.json vira AiTimeoutError", async () => 
   );
 });
 
-Deno.test("callGemini: 4xx não-429 lança sem retry", async () => {
+Deno.test("callAi: 4xx não-429 lança sem retry", async () => {
   let calls = 0;
   const fetchFn = (() => {
     calls++;
     return Promise.resolve(new Response("x", { status: 400 }));
   }) as unknown as typeof fetch;
   await assertRejects(() =>
-    callGemini({ fetchFn, now: () => 0 }, {
-      apiKey: "k",
+    callAi({ fetchFn, now: () => 0 }, {
+      config: CFG,
       prompt: "p",
       deadlineAt: 50_000,
     })
@@ -270,4 +279,63 @@ Deno.test("validateAnalysis tolera modelo leve", () => {
   assertEquals(r.ideias.length, 5);
   f.ideias = [idea(1), idea(2), { titulo: "x", descricao: "", motivo: "m" }];
   assertEquals(validateAnalysis(f, {}), null);
+});
+
+Deno.test("callAi aceita response já como objeto (JSON mode)", async () => {
+  const fetchFn = (() =>
+    Promise.resolve(
+      new Response(JSON.stringify({ result: { response: { a: 2 } }, success: true }), {
+        status: 200,
+      }),
+    )) as unknown as typeof fetch;
+  const r = await callAi({ fetchFn, now: () => 0 }, {
+    config: CFG,
+    prompt: "p",
+    deadlineAt: 50_000,
+  });
+  assertEquals(r, { a: 2 });
+});
+
+Deno.test("callAi: cota diária esgotada (3036) lança sem retry", async () => {
+  let calls = 0;
+  const fetchFn = (() => {
+    calls++;
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({ success: false, errors: [{ code: 3036, message: "Account limited" }] }),
+        { status: 429 },
+      ),
+    );
+  }) as unknown as typeof fetch;
+  const e = await assertRejects(() =>
+    callAi({ fetchFn, now: () => 0, sleep: () => Promise.resolve() }, {
+      config: CFG,
+      prompt: "p",
+      deadlineAt: 50_000,
+    })
+  );
+  assertEquals((e as Error).message, "ai_daily_limit");
+  assertEquals(calls, 1);
+});
+
+Deno.test("callAi: JSON mode não atendido vira AiBadOutputError", async () => {
+  const fetchFn = (() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({ success: false, errors: [{ code: 5006, message: "JSON Mode couldn't be met" }] }),
+        { status: 400 },
+      ),
+    )) as unknown as typeof fetch;
+  await assertRejects(
+    () =>
+      callAi({ fetchFn, now: () => 0 }, { config: CFG, prompt: "p", deadlineAt: 50_000 }),
+    AiBadOutputError,
+  );
+});
+
+Deno.test("fitTexts para no teto de caracteres, na ordem", () => {
+  const texts = ["a".repeat(100), "b".repeat(100), "c".repeat(100)];
+  assertEquals(fitTexts(texts, 205), texts.slice(0, 2));
+  assertEquals(fitTexts(["x".repeat(2000)], 600), ["x".repeat(2000)]);
+  assertEquals(fitTexts(texts, 50), []);
 });

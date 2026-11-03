@@ -13,9 +13,12 @@ import {
   AiTimeoutError,
   buildAccountPrompt,
   buildPostPrompt,
-  type callGemini,
+  type AiConfig,
+  type callAi,
   type CommentAnalysis,
   COMMENTS_MODEL,
+  fitTexts,
+  PROMPT_COMMENT_CHARS,
   redactIdentities,
   validateAnalysis,
 } from "./comments-ai.ts";
@@ -24,13 +27,13 @@ export interface CommentsRouteDeps {
   svc: SupabaseClient;
   contaId: string;
   userId: string;
-  geminiKey: string | null;
+  ai: AiConfig | null;
   now: () => number;
   decryptToken: (enc: string) => Promise<string>;
   verifyClientOwnership: (clientId: string) => Promise<void>;
   rateLimit: (key: string, max: number, windowS: number) => Promise<boolean>;
   fetchComments: typeof fetchMediaComments;
-  callGemini: typeof callGemini;
+  callAi: typeof callAi;
 }
 
 export interface StoredAnalysis {
@@ -226,8 +229,9 @@ async function analyze(
 ): Promise<CommentAnalysis | RouteResult> {
   let raw: unknown;
   try {
-    raw = await deps.callGemini({ now: deps.now }, {
-      apiKey: deps.geminiKey ?? "",
+    if (!deps.ai) throw new Error("ai_not_configured");
+    raw = await deps.callAi({ now: deps.now }, {
+      config: deps.ai,
       prompt,
       deadlineAt,
     });
@@ -341,7 +345,7 @@ async function analyzePostRoute(
   post: PostRow,
   start: number,
 ): Promise<RouteResult> {
-  if (!deps.geminiKey) return err(503, "ai_unavailable");
+  if (!deps.ai) return err(503, "ai_unavailable");
   if (!(await deps.rateLimit(`ig-comments-ai:${deps.contaId}`, 20, 3600))) {
     return err(429, "rate_limited");
   }
@@ -352,7 +356,7 @@ async function analyzePostRoute(
     max: POST_MAX_COMMENTS,
     deadlineAt: start + FETCH_BUDGET_MS,
   });
-  const texts = textsOf(comments);
+  const texts = fitTexts(textsOf(comments), PROMPT_COMMENT_CHARS);
   if (texts.length < POST_MIN) return err(422, "too_few_comments");
 
   const prompt = buildPostPrompt({
@@ -394,7 +398,7 @@ async function accountRoute(
     return { status: 200, body: { analysis, current_comments: sumComments(posts) } };
   }
 
-  if (!deps.geminiKey) return err(503, "ai_unavailable");
+  if (!deps.ai) return err(503, "ai_unavailable");
   if (!(await deps.rateLimit(`ig-comments-ai:${deps.contaId}`, 20, 3600))) {
     return err(429, "rate_limited");
   }
@@ -445,6 +449,9 @@ async function accountRoute(
   }
   if (failed === chosen.length) throw new GraphFailure("all_posts_failed");
 
+  // Teto do prompt dividido igualmente entre os posts lidos.
+  const perPost = Math.floor(PROMPT_COMMENT_CHARS / Math.max(1, blocks.length));
+  for (const b of blocks) b.texts = fitTexts(b.texts, perPost);
   const total = blocks.reduce((s, b) => s + b.texts.length, 0);
   if (total < ACCOUNT_MIN) return err(422, "too_few_comments");
 

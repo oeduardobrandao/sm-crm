@@ -1,4 +1,4 @@
-// Análise de comentários do Instagram com Gemini: prompt, schema, validação,
+// Análise de comentários do Instagram com Workers AI (Cloudflare): prompt, schema, validação,
 // redação de identidades e chamada HTTP. Módulo puro (sem Supabase).
 // Nunca registrar texto de comentário nem username em log.
 
@@ -19,9 +19,13 @@ export interface CommentAnalysis {
   ideias: { id: string; titulo: string; descricao: string; motivo: string }[];
 }
 
-// gemini-2.5-flash-lite responde 404 na API; o resto das functions usa o flash.
-export const COMMENTS_MODEL = "gemini-2.5-flash";
-export const GEMINI_CALL_BUDGET_MS = 25_000;
+// Workers AI (REST): modelo com JSON mode. O contexto é de 24 mil tokens,
+// por isso o texto dos comentários tem teto (PROMPT_COMMENT_CHARS).
+export const COMMENTS_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+export const AI_CALL_BUDGET_MS = 40_000;
+// ~10 mil tokens em português; sobra espaço para regras, legendas e a resposta.
+export const PROMPT_COMMENT_CHARS = 36_000;
+const MAX_OUTPUT_TOKENS = 2048;
 const BACKOFF_MS = [1000, 3000];
 const REDACTED = "alguém do público";
 const SENTIMENTOS: Sentimento[] = ["positivo", "misto", "negativo", "polemico"];
@@ -51,6 +55,22 @@ function clean(s: string, max?: number): string {
 function block(tag: string, texts: string[]): string {
   const lines = texts.map((t) => clean(t, 500)).filter(Boolean);
   return `<<<COMENTARIOS_${tag}\n${lines.join("\n")}\nCOMENTARIOS_${tag}>>>`;
+}
+
+/**
+ * Comentários, na ordem, até o teto de caracteres do prompt (cada um já
+ * truncado em 500). Quem chama conta só os que couberam.
+ */
+export function fitTexts(texts: string[], maxChars: number): string[] {
+  const out: string[] = [];
+  let used = 0;
+  for (const t of texts) {
+    const len = Math.min(clean(t).length, 500) + 1;
+    if (used + len > maxChars) break;
+    out.push(t);
+    used += len;
+  }
+  return out;
 }
 
 export function buildPostPrompt(
@@ -87,43 +107,43 @@ ${parts.join("\n\n")}`;
 }
 
 export const RESPONSE_SCHEMA: Record<string, unknown> = {
-  type: "OBJECT",
+  type: "object",
   properties: {
-    sentimento_geral: { type: "STRING", enum: SENTIMENTOS },
-    resumo: { type: "STRING" },
+    sentimento_geral: { type: "string", enum: SENTIMENTOS },
+    resumo: { type: "string" },
     distribuicao: {
-      type: "OBJECT",
+      type: "object",
       properties: {
-        apoio: { type: "INTEGER" },
-        duvida: { type: "INTEGER" },
-        critica: { type: "INTEGER" },
-        discussao: { type: "INTEGER" },
-        spam: { type: "INTEGER" },
+        apoio: { type: "integer" },
+        duvida: { type: "integer" },
+        critica: { type: "integer" },
+        discussao: { type: "integer" },
+        spam: { type: "integer" },
       },
       required: [...DIST_KEYS],
     },
     temas: {
-      type: "ARRAY",
+      type: "array",
       items: {
-        type: "OBJECT",
+        type: "object",
         properties: {
-          tema: { type: "STRING" },
-          peso: { type: "INTEGER" },
-          exemplo: { type: "STRING" },
-          post_ids: { type: "ARRAY", items: { type: "STRING" } },
+          tema: { type: "string" },
+          peso: { type: "integer" },
+          exemplo: { type: "string" },
+          post_ids: { type: "array", items: { type: "string" } },
         },
         required: ["tema", "peso", "exemplo"],
       },
     },
-    perguntas_frequentes: { type: "ARRAY", items: { type: "STRING" } },
+    perguntas_frequentes: { type: "array", items: { type: "string" } },
     ideias: {
-      type: "ARRAY",
+      type: "array",
       items: {
-        type: "OBJECT",
+        type: "object",
         properties: {
-          titulo: { type: "STRING" },
-          descricao: { type: "STRING" },
-          motivo: { type: "STRING" },
+          titulo: { type: "string" },
+          descricao: { type: "string" },
+          motivo: { type: "string" },
         },
         required: ["titulo", "descricao", "motivo"],
       },
@@ -276,31 +296,36 @@ function isAbort(e: unknown): boolean {
     (e.name === "TimeoutError" || e.name === "AbortError");
 }
 
-export async function callGemini(
+export interface AiConfig {
+  accountId: string;
+  token: string;
+}
+
+// Código do Workers AI para a cota diária gratuita esgotada: não adianta repetir.
+const CF_DAILY_LIMIT = 3036;
+
+export async function callAi(
   deps: {
     fetchFn?: typeof fetch;
     now?: () => number;
     sleep?: (ms: number) => Promise<void>;
   },
-  args: { apiKey: string; prompt: string; deadlineAt: number },
+  args: { config: AiConfig; prompt: string; deadlineAt: number },
 ): Promise<unknown> {
   const fetchFn = deps.fetchFn ?? fetch;
   const now = deps.now ?? Date.now;
   const sleep = deps.sleep ??
     ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const start = now();
-  const hardEnd = start + Math.min(GEMINI_CALL_BUDGET_MS, args.deadlineAt - start);
-  const url =
-    `https://generativelanguage.googleapis.com/v1beta/models/${COMMENTS_MODEL}:generateContent`;
+  const hardEnd = start + Math.min(AI_CALL_BUDGET_MS, args.deadlineAt - start);
+  const url = `https://api.cloudflare.com/client/v4/accounts/${
+    encodeURIComponent(args.config.accountId)
+  }/ai/run/${COMMENTS_MODEL}`;
   const body = JSON.stringify({
-    contents: [{ role: "user", parts: [{ text: args.prompt }] }],
-    generationConfig: {
-      temperature: 0.3,
-      responseMimeType: "application/json",
-      responseSchema: RESPONSE_SCHEMA,
-      // Sem raciocínio: classificação curta, e o orçamento por chamada é de 25 s.
-      thinkingConfig: { thinkingBudget: 0 },
-    },
+    messages: [{ role: "user", content: args.prompt }],
+    response_format: { type: "json_schema", json_schema: RESPONSE_SCHEMA },
+    temperature: 0.3,
+    max_tokens: MAX_OUTPUT_TOKENS,
   });
 
   for (let attempt = 0; attempt <= BACKOFF_MS.length; attempt++) {
@@ -312,37 +337,44 @@ export async function callGemini(
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-goog-api-key": args.apiKey,
+          Authorization: `Bearer ${args.config.token}`,
         },
         body,
         signal: AbortSignal.timeout(remaining),
       });
+      let data: unknown;
+      try {
+        data = await res.json();
+      } catch (e) {
+        if (now() >= hardEnd || isAbort(e)) throw new AiTimeoutError("deadline");
+        if (res.ok) throw new Error("ai_network");
+        data = null;
+      }
+      const errors = (data as { errors?: { code?: unknown; message?: unknown }[] })?.errors ?? [];
+      if (errors.some((e) => typeof e?.message === "string" && /json mode/i.test(e.message))) {
+        throw new AiBadOutputError("json_mode");
+      }
       if (res.ok) {
-        let data: unknown;
-        try {
-          data = await res.json();
-        } catch (e) {
-          if (now() >= hardEnd || isAbort(e)) throw new AiTimeoutError("deadline");
-          throw new Error("gemini_network");
-        }
-        const text = (data as {
-          candidates?: { content?: { parts?: { text?: unknown }[] } }[];
-        })?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (typeof text !== "string" || !text.trim()) {
+        const response = (data as { result?: { response?: unknown } })?.result?.response;
+        if (isObj(response)) return response;
+        if (typeof response !== "string" || !response.trim()) {
           throw new AiBadOutputError("empty");
         }
         try {
-          return JSON.parse(text);
+          return JSON.parse(response);
         } catch {
           throw new AiBadOutputError("not_json");
         }
       }
-      await res.body?.cancel().catch(() => {});
-      if (res.status === 429 || res.status >= 500) retryable = true;
-      else throw new Error(`gemini_http_${res.status}`);
+      if (errors.some((e) => e?.code === CF_DAILY_LIMIT)) throw new Error("ai_daily_limit");
+      if (res.status === 429 || res.status === 408 || res.status >= 500) retryable = true;
+      else throw new Error(`ai_http_${res.status}`);
     } catch (e) {
       if (e instanceof AiBadOutputError || e instanceof AiTimeoutError) throw e;
-      if (e instanceof Error && e.message.startsWith("gemini_http_")) throw e;
+      if (
+        e instanceof Error &&
+        (e.message.startsWith("ai_http_") || e.message === "ai_daily_limit")
+      ) throw e;
       retryable = true; // erro de rede ou abort por prazo
     }
     if (!retryable || attempt >= BACKOFF_MS.length) break;
@@ -351,5 +383,5 @@ export async function callGemini(
     await sleep(wait);
   }
   if (now() >= hardEnd) throw new AiTimeoutError("deadline");
-  throw new Error("gemini_unavailable");
+  throw new Error("ai_unavailable");
 }
