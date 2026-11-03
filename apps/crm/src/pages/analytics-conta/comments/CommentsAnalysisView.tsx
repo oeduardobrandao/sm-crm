@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
+import { useIntlLocale } from '@mesaas/i18n';
 import { Button } from '@/components/ui/button';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
@@ -11,51 +14,43 @@ import type {
 import { sanitizeUrl } from '../../../utils/security';
 import { SuggestionIdeaButton } from './SuggestionIdeaButton';
 
-export const SENTIMENTO_LABEL: Record<Sentimento, string> = {
-  positivo: 'Majoritariamente positivo',
-  misto: 'Misto',
-  negativo: 'Majoritariamente negativo',
-  polemico: 'Polêmico',
-};
+export const SENTIMENTO_KEYS: Sentimento[] = ['positivo', 'misto', 'negativo', 'polemico'];
 
 type Categoria = keyof CommentAnalysis['distribuicao'];
 
-const CATEGORIAS: { key: Categoria; label: string }[] = [
-  { key: 'apoio', label: 'Apoio' },
-  { key: 'duvida', label: 'Dúvida' },
-  { key: 'critica', label: 'Crítica' },
-  { key: 'discussao', label: 'Discussão' },
-  { key: 'spam', label: 'Spam' },
-];
+const CATEGORIAS: Categoria[] = ['apoio', 'duvida', 'critica', 'discussao', 'spam'];
 
-function plural(n: number, one: string, many: string): string {
-  return `${n.toLocaleString('pt-BR')} ${n === 1 ? one : many}`;
+/** "1 comentário" / "612 comentários": `key` is a plural group under `count.` (comment,
+ *  commentNew, post, ...). Numbers use the active display locale. */
+export function countText(t: TFunction, key: string, n: number, locale: string): string {
+  return t(`count.${key}`, { count: n, n: n.toLocaleString(locale) });
 }
 
 /** Distribution bar + text legend (the colours never carry the meaning alone). */
 function DistributionBar({ distribuicao }: { distribuicao: CommentAnalysis['distribuicao'] }) {
-  const total = CATEGORIAS.reduce((s, c) => s + Math.max(0, distribuicao[c.key] || 0), 0);
+  const { t } = useTranslation('analyticsComments');
+  const total = CATEGORIAS.reduce((s, c) => s + Math.max(0, distribuicao[c] || 0), 0);
   return (
     <div className="igc-dist">
       <div className="igc-dist__bar" aria-hidden="true">
         {total > 0 &&
           CATEGORIAS.map((c) => {
-            const v = Math.max(0, distribuicao[c.key] || 0);
+            const v = Math.max(0, distribuicao[c] || 0);
             if (v === 0) return null;
             return (
               <span
-                key={c.key}
-                className={`igc-dist__seg igc-cat--${c.key}`}
+                key={c}
+                className={`igc-dist__seg igc-cat--${c}`}
                 style={{ width: `${(v / total) * 100}%` }}
               />
             );
           })}
       </div>
-      <ul className="igc-dist__legend" aria-label="Distribuição dos comentários">
+      <ul className="igc-dist__legend" aria-label={t('distribution.ariaLabel')}>
         {CATEGORIAS.map((c) => (
-          <li key={c.key}>
-            <span className={`igc-dist__dot igc-cat--${c.key}`} aria-hidden="true" />
-            {`${c.label} ${Math.round(Math.max(0, distribuicao[c.key] || 0))}%`}
+          <li key={c}>
+            <span className={`igc-dist__dot igc-cat--${c}`} aria-hidden="true" />
+            {`${t(`distribution.${c}`)} ${Math.round(Math.max(0, distribuicao[c] || 0))}%`}
           </li>
         ))}
       </ul>
@@ -68,12 +63,6 @@ export interface CommentsViewLabels {
   questions: string;
   ideas: string;
 }
-
-const DEFAULT_LABELS: CommentsViewLabels = {
-  themes: 'Temas',
-  questions: 'Perguntas frequentes',
-  ideas: 'Ideias de conteúdo',
-};
 
 /**
  * The result of a comments reading (post or account): new-comments notice, overall
@@ -89,7 +78,7 @@ export function CommentsAnalysisView({
   refreshing,
   postThumbs,
   compact = false,
-  labels = DEFAULT_LABELS,
+  labels,
 }: {
   analysis: StoredAnalysis;
   clienteId: number;
@@ -104,6 +93,8 @@ export function CommentsAnalysisView({
   /** Section headings (the account card words them differently). */
   labels?: CommentsViewLabels;
 }) {
+  const { t } = useTranslation('analyticsComments');
+  const locale = useIntlLocale();
   const qc = useQueryClient();
   const [showDetails, setShowDetails] = useState(!compact);
   const { result } = analysis;
@@ -125,20 +116,20 @@ export function CommentsAnalysisView({
     <div className="igc-analysis__cols">
       {result.temas.length > 0 && (
         <section className="igc-analysis__col">
-          <h3 className="igc-eyebrow">{labels.themes}</h3>
+          <h3 className="igc-eyebrow">{labels?.themes ?? t('analysis.defaultThemes')}</h3>
           <ul className="igc-themes">
-            {result.temas.map((t, i) => {
+            {result.temas.map((theme, i) => {
               const thumbs = postThumbs
-                ? (t.post_ids ?? []).filter((id) => id in postThumbs).slice(0, 3)
+                ? (theme.post_ids ?? []).filter((id) => id in postThumbs).slice(0, 3)
                 : [];
               return (
-                <li key={`${t.tema}-${i}`} className="igc-theme">
+                <li key={`${theme.tema}-${i}`} className="igc-theme">
                   <div className="igc-theme__body">
                     <span className="igc-theme__title">
-                      <b>{t.tema}</b>
-                      {` · ${Math.round(t.peso)}%`}
+                      <b>{theme.tema}</b>
+                      {` · ${Math.round(theme.peso)}%`}
                     </span>
-                    {t.exemplo && <span className="igc-theme__example">{t.exemplo}</span>}
+                    {theme.exemplo && <span className="igc-theme__example">{theme.exemplo}</span>}
                   </div>
                   {thumbs.length > 0 && (
                     <div className="igc-theme__thumbs" aria-hidden="true">
@@ -160,7 +151,7 @@ export function CommentsAnalysisView({
       )}
       {result.perguntas_frequentes.length > 0 && (
         <section className="igc-analysis__col">
-          <h3 className="igc-eyebrow">{labels.questions}</h3>
+          <h3 className="igc-eyebrow">{labels?.questions ?? t('analysis.defaultQuestions')}</h3>
           <ul className="igc-questions">
             {result.perguntas_frequentes.map((q, i) => (
               <li key={i}>{q}</li>
@@ -176,18 +167,20 @@ export function CommentsAnalysisView({
       {newComments > 0 && (
         <div className="igc-notice" role="status">
           <span className="igc-notice__text">
-            {`${plural(newComments, 'comentário novo', 'comentários novos')} desde a análise`}
+            {t('analysis.newSince', { comments: countText(t, 'commentNew', newComments, locale) })}
           </span>
           <Button variant="outline" className="igc-btn" onClick={onRefresh} disabled={refreshing}>
             <RefreshCw aria-hidden="true" size={14} className={refreshing ? 'animate-spin' : ''} />
-            {refreshing ? 'Refazendo...' : 'Refazer análise'}
+            {refreshing ? t('analysis.redoing') : t('analysis.redo')}
           </Button>
         </div>
       )}
 
       <span className={`igc-chip igc-chip--${result.sentimento_geral}`}>
         <span className="igc-chip__dot" aria-hidden="true" />
-        {SENTIMENTO_LABEL[result.sentimento_geral] ?? result.sentimento_geral}
+        {SENTIMENTO_KEYS.includes(result.sentimento_geral)
+          ? t(`sentiment.${result.sentimento_geral}`)
+          : result.sentimento_geral}
       </span>
 
       <p className="igc-analysis__summary">{result.resumo}</p>
@@ -201,7 +194,7 @@ export function CommentsAnalysisView({
             className="igc-btn igc-btn--block"
             onClick={() => setShowDetails(true)}
           >
-            Ver temas e perguntas
+            {t('analysis.viewDetails')}
           </Button>
         ) : (
           details
@@ -209,7 +202,7 @@ export function CommentsAnalysisView({
 
       {result.ideias.length > 0 && (
         <section className="igc-ideas">
-          <h3 className="igc-eyebrow">{labels.ideas}</h3>
+          <h3 className="igc-eyebrow">{labels?.ideas ?? t('analysis.defaultIdeas')}</h3>
           <ul className="igc-ideas__list">
             {result.ideias.map((idea) => (
               <li key={idea.id} className="igc-idea">
@@ -218,7 +211,11 @@ export function CommentsAnalysisView({
                   {!compact && idea.descricao && (
                     <span className="igc-idea__desc">{idea.descricao}</span>
                   )}
-                  {idea.motivo && <span className="igc-idea__why">Por quê: {idea.motivo}</span>}
+                  {idea.motivo && (
+                    <span className="igc-idea__why">
+                      {t('analysis.why', { reason: idea.motivo })}
+                    </span>
+                  )}
                 </div>
                 <SuggestionIdeaButton
                   clienteId={clienteId}

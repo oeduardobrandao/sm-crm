@@ -1,4 +1,11 @@
+import type { TFunction } from 'i18next';
+import { i18n } from '@mesaas/i18n';
 import { EDGE_URL, getAuthHeaders } from './analytics';
+
+/** A análise sai no idioma da interface (seletor pt/en). */
+function langQuery(): string {
+  return `?lang=${i18n.language?.startsWith('en') ? 'en' : 'pt'}`;
+}
 
 export interface IgComment {
   id: string;
@@ -90,7 +97,7 @@ export async function analyzePostComments(
   postId: string,
 ): Promise<StoredAnalysis> {
   const r = await request<{ analysis: StoredAnalysis }>(
-    `/comments-analysis/${clientId}/${encodeURIComponent(postId)}`,
+    `/comments-analysis/${clientId}/${encodeURIComponent(postId)}${langQuery()}`,
     'POST',
   );
   return r.analysis;
@@ -104,31 +111,33 @@ export function getAccountCommentsAnalysis(
 
 export async function analyzeAccountComments(clientId: number): Promise<StoredAnalysis> {
   const r = await request<{ analysis: StoredAnalysis }>(
-    `/comments-analysis-account/${clientId}`,
+    `/comments-analysis-account/${clientId}${langQuery()}`,
     'POST',
   );
   return r.analysis;
 }
 
-export function commentsErrorMessage(e: unknown): string {
+/** User-facing copy for a comments error. `t` is the one from
+ *  `useTranslation('analyticsComments')`. */
+export function commentsErrorMessage(e: unknown, t: TFunction): string {
   if (e instanceof CommentsApiError) {
     if (e.status === 429 || e.code === 'rate_limited') {
-      return 'Muitas análises seguidas. Tente de novo em alguns minutos.';
+      return t('error.rateLimited');
     }
     switch (e.code) {
       case 'missing_comments_scope':
-        return 'Reconecte o Instagram deste cliente para ver os comentários.';
+        return t('error.missingScope');
       case 'TOKEN_EXPIRED':
-        return 'A conexão com o Instagram expirou. Reconecte para ver os comentários.';
+        return t('error.tokenExpired');
       case 'too_few_comments':
-        return 'Ainda não há comentários suficientes para analisar.';
+        return t('error.tooFewComments');
       case 'ai_unavailable':
-        return 'A análise por IA está indisponível no momento.';
+        return t('error.aiUnavailable');
       case 'ai_timeout':
-        return 'A análise demorou demais. Tente de novo.';
+        return t('error.aiTimeout');
       case 'ai_bad_output':
-        return 'Não foi possível gerar a análise. Tente de novo.';
+        return t('error.aiBadOutput');
     }
   }
-  return 'Não foi possível carregar os comentários.';
+  return t('error.generic');
 }

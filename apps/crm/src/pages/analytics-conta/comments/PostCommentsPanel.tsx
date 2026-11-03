@@ -3,7 +3,10 @@ import { Button } from '@/components/ui/button';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, formatDistanceToNow, formatDistanceToNowStrict } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import type { Locale } from 'date-fns';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
+import { useDateFnsLocale, useIntlLocale } from '@mesaas/i18n';
 import { Loader2, Sparkles } from 'lucide-react';
 import type { PostAnalytics } from '../../../services/analytics';
 import {
@@ -14,56 +17,52 @@ import {
   type PostCommentsResponse,
 } from '../../../services/instagramComments';
 import { sanitizeUrl } from '../../../utils/security';
-import { CommentsAnalysisView } from './CommentsAnalysisView';
+import { CommentsAnalysisView, countText } from './CommentsAnalysisView';
 import { ReconnectState, reconnectReason } from './ReconnectState';
 
 /** Server minimum for a post reading (`too_few_comments` below it). */
 const MIN_COMMENTS = 5;
 
-function plural(n: number, one: string, many: string): string {
-  return `${n.toLocaleString('pt-BR')} ${n === 1 ? one : many}`;
-}
-
-function relative(ts: string): string {
+function relative(ts: string, locale: Locale): string {
   const d = new Date(ts);
   if (isNaN(d.getTime())) return '';
-  return formatDistanceToNowStrict(d, { addSuffix: true, locale: ptBR });
+  return formatDistanceToNowStrict(d, { addSuffix: true, locale });
 }
 
-function analyzedAgo(ts: string): string {
+function analyzedAgo(ts: string, locale: Locale): string {
   const d = new Date(ts);
   if (isNaN(d.getTime())) return '';
-  return formatDistanceToNow(d, { addSuffix: true, locale: ptBR });
+  return formatDistanceToNow(d, { addSuffix: true, locale });
 }
 
-/** "Reels de 28 out": names the post in the origin line of a saved idea. */
-const POST_KIND_WITH_PREPOSITION: Record<string, string> = {
-  VIDEO: 'do Reels',
-  CAROUSEL_ALBUM: 'do carrossel',
-  IMAGE: 'da imagem',
-  STORY: 'do story',
-};
+const POST_KINDS = ['VIDEO', 'CAROUSEL_ALBUM', 'IMAGE', 'STORY'];
 
-export function postSourceLabel(post: PostAnalytics): string {
+/** "do Reels de 28 out": names the post in the origin line of a saved idea. */
+export function postSourceLabel(post: PostAnalytics, t: TFunction, locale: Locale): string {
   const d = new Date(post.posted_at);
-  const when = isNaN(d.getTime()) ? '' : ` de ${format(d, 'd MMM', { locale: ptBR })}`;
-  const kind = POST_KIND_WITH_PREPOSITION[post.media_type] ?? 'do post';
-  return `${kind}${when}`;
+  const kind = t(
+    POST_KINDS.includes(post.media_type) ? `post.kind${post.media_type}` : 'post.kindDefault',
+  );
+  if (isNaN(d.getTime())) return kind;
+  return t('post.sourceWithDate', { kind, date: format(d, t('post.dateFormat'), { locale }) });
 }
 
 function CommentRow({ c }: { c: IgComment }) {
+  const { t } = useTranslation('analyticsComments');
+  const dfLocale = useDateFnsLocale();
+  const locale = useIntlLocale();
   const name = (c.username || '').replace(/^@/, '');
   const initial = name.charAt(0).toUpperCase() || '?';
   const replies =
     c.replies_more || c.replies_count >= 25
-      ? '25+ respostas'
+      ? t('count.repliesMany')
       : c.replies_count > 0
-        ? plural(c.replies_count, 'resposta', 'respostas')
+        ? countText(t, 'reply', c.replies_count, locale)
         : null;
-  const meta = [plural(c.like_count || 0, 'curtida', 'curtidas'), replies]
+  const meta = [countText(t, 'like', c.like_count || 0, locale), replies]
     .filter(Boolean)
     .join(' · ');
-  const when = relative(c.timestamp);
+  const when = relative(c.timestamp, dfLocale);
   return (
     <li className="igc-comment">
       <span className="igc-comment__avatar" aria-hidden="true">
@@ -71,7 +70,7 @@ function CommentRow({ c }: { c: IgComment }) {
       </span>
       <div className="igc-comment__body">
         <span className="igc-comment__head">
-          <b>{name ? `@${name}` : 'Usuário do Instagram'}</b>
+          <b>{name ? `@${name}` : t('post.unknownUser')}</b>
           {when && <span className="igc-comment__when">{` · ${when}`}</span>}
         </span>
         <span className="igc-comment__text">{c.text}</span>
@@ -90,11 +89,13 @@ function CommentsList({
   post: PostAnalytics;
   compact: boolean;
 }) {
+  const { t } = useTranslation('analyticsComments');
+  const locale = useIntlLocale();
   const list =
     data.comments.length === 0 ? (
-      <p className="igc-empty">Este post ainda não tem comentários.</p>
+      <p className="igc-empty">{t('post.empty')}</p>
     ) : (
-      <ul className="igc-comments" aria-label="Comentários">
+      <ul className="igc-comments" aria-label={t('common.comments')}>
         {data.comments.map((c) => (
           <CommentRow key={c.id} c={c} />
         ))}
@@ -103,11 +104,11 @@ function CommentsList({
   const footer = data.comments.length > 0 && (
     <p className="igc-comments__foot">
       {data.truncated
-        ? 'Mostrando 200 comentários'
-        : `Mostrando ${plural(data.comments.length, 'comentário', 'comentários')}`}
+        ? t('post.showingTruncated')
+        : t('post.showing', { comments: countText(t, 'comment', data.comments.length, locale) })}
       {' · '}
       <a href={sanitizeUrl(post.permalink)} target="_blank" rel="noopener noreferrer">
-        Abrir no Instagram
+        {t('post.openInstagram')}
       </a>
     </p>
   );
@@ -115,7 +116,7 @@ function CommentsList({
   if (compact) {
     return (
       <section className="igc-section">
-        <h3 className="igc-eyebrow">Comentários</h3>
+        <h3 className="igc-eyebrow">{t('common.comments')}</h3>
         <div className="igc-card igc-card--flush">
           {list}
           {footer}
@@ -126,7 +127,7 @@ function CommentsList({
   return (
     <section className="igc-card igc-card--flush igc-panel__list">
       <div className="igc-card__head">
-        <h3 className="igc-card__title">Comentários</h3>
+        <h3 className="igc-card__title">{t('common.comments')}</h3>
       </div>
       {list}
       {footer}
@@ -148,6 +149,9 @@ export function PostCommentsPanel({
   post: PostAnalytics;
   compact?: boolean;
 }) {
+  const { t } = useTranslation('analyticsComments');
+  const dfLocale = useDateFnsLocale();
+  const locale = useIntlLocale();
   const qc = useQueryClient();
   const postId = post.instagram_post_id;
   const queryKey = ['ig-post-comments', clientId, postId];
@@ -173,7 +177,7 @@ export function PostCommentsPanel({
       <div className="igc-card igc-state" role="status">
         <span className="igc-state__loading">
           <Loader2 aria-hidden="true" size={16} className="animate-spin" />
-          Carregando comentários...
+          {t('common.loading')}
         </span>
       </div>
     );
@@ -182,9 +186,9 @@ export function PostCommentsPanel({
   if (query.error || !query.data) {
     return (
       <div className="igc-card igc-state">
-        <p className="igc-state__text">{commentsErrorMessage(query.error)}</p>
+        <p className="igc-state__text">{commentsErrorMessage(query.error, t)}</p>
         <Button variant="outline" className="igc-btn" onClick={() => void query.refetch()}>
-          Tentar de novo
+          {t('common.retry')}
         </Button>
       </div>
     );
@@ -216,7 +220,7 @@ export function PostCommentsPanel({
       <div className="igc-analyzing" role="status">
         <span className="igc-state__loading">
           <Loader2 aria-hidden="true" size={16} className="animate-spin" />
-          {`Lendo ${plural(total, 'comentário', 'comentários')}...`}
+          {t('common.reading', { count: total, n: total.toLocaleString(locale) })}
         </span>
         <span className="igc-skeleton" />
         <span className="igc-skeleton igc-skeleton--short" />
@@ -227,7 +231,7 @@ export function PostCommentsPanel({
       <CommentsAnalysisView
         analysis={analysis}
         clienteId={clientId}
-        sourceLabel={postSourceLabel(post)}
+        sourceLabel={postSourceLabel(post, t, dfLocale)}
         newComments={newComments}
         onRefresh={() => void analyze()}
         refreshing={analyzing}
@@ -240,15 +244,18 @@ export function PostCommentsPanel({
       <div className="igc-empty-reading">
         <p className="igc-state__text">
           {tooFew
-            ? `São necessários pelo menos ${MIN_COMMENTS} comentários para analisar. Este post tem ${data.total_fetched.toLocaleString('pt-BR')}.`
-            : `Resuma o clima ${total === 1 ? 'do comentário' : `dos ${total.toLocaleString('pt-BR')} comentários`} e receba ideias de conteúdo.`}
+            ? t('post.tooFew', {
+                min: MIN_COMMENTS,
+                current: data.total_fetched.toLocaleString(locale),
+              })
+            : t('post.prompt', { count: total, n: total.toLocaleString(locale) })}
         </p>
         <Button
           className={`igc-btn${compact ? ' igc-btn--block' : ''}`}
           disabled={tooFew}
           onClick={() => void analyze()}
         >
-          Analisar comentários
+          {t('post.analyze')}
         </Button>
       </div>
     );
@@ -258,12 +265,12 @@ export function PostCommentsPanel({
     <section className="igc-card igc-panel__reading">
       <div className="igc-card__head">
         <Sparkles aria-hidden="true" size={16} className="igc-card__icon" />
-        <h3 className="igc-card__title">Leitura dos comentários</h3>
+        <h3 className="igc-card__title">{t('post.readingTitle')}</h3>
         {analysis && (
           <span className="igc-card__meta">
             {[
-              plural(analysis.comments_analyzed, 'comentário analisado', 'comentários analisados'),
-              analyzedAgo(analysis.analyzed_at),
+              countText(t, 'commentAnalyzed', analysis.comments_analyzed, locale),
+              analyzedAgo(analysis.analyzed_at, dfLocale),
             ]
               .filter(Boolean)
               .join(' · ')}
@@ -273,7 +280,7 @@ export function PostCommentsPanel({
       {readingBody}
       {analyzeError != null && (
         <p className="igc-error" role="alert">
-          {commentsErrorMessage(analyzeError)}
+          {commentsErrorMessage(analyzeError, t)}
         </p>
       )}
     </section>

@@ -2,7 +2,9 @@ import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { formatDistanceToNow } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import type { Locale } from 'date-fns';
+import { useTranslation } from 'react-i18next';
+import { useDateFnsLocale, useIntlLocale } from '@mesaas/i18n';
 import { Loader2, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
@@ -14,26 +16,16 @@ import {
   getAccountCommentsAnalysis,
   type AccountCommentsAnalysisResponse,
 } from '../../../services/instagramComments';
-import { CommentsAnalysisView, type CommentsViewLabels } from './CommentsAnalysisView';
+import { CommentsAnalysisView, countText } from './CommentsAnalysisView';
 import { ReconnectState, reconnectReason } from './ReconnectState';
 
 /** Server minimum for an account reading (`too_few_comments` below it). */
 const MIN_COMMENTS = 10;
 
-const ACCOUNT_LABELS: CommentsViewLabels = {
-  themes: 'Temas e de onde vieram',
-  questions: 'Perguntas que mais se repetem',
-  ideas: 'Ideias de conteúdo do mês',
-};
-
-function plural(n: number, one: string, many: string): string {
-  return `${n.toLocaleString('pt-BR')} ${n === 1 ? one : many}`;
-}
-
-function analyzedAgo(ts: string): string {
+function analyzedAgo(ts: string, locale: Locale): string {
   const d = new Date(ts);
   if (isNaN(d.getTime())) return '';
-  return formatDistanceToNow(d, { addSuffix: true, locale: ptBR });
+  return formatDistanceToNow(d, { addSuffix: true, locale });
 }
 
 /**
@@ -50,6 +42,9 @@ export function AccountCommentsCard({
   posts: PostAnalytics[];
   compact?: boolean;
 }) {
+  const { t } = useTranslation('analyticsComments');
+  const dfLocale = useDateFnsLocale();
+  const locale = useIntlLocale();
   const enabled = useWorkspaceLimits().features?.feature_instagram_comments_ai === true;
   const qc = useQueryClient();
   const queryKey = ['ig-account-comments-analysis', clientId];
@@ -84,7 +79,7 @@ export function AccountCommentsCard({
       <section className="igc-card igc-state" role="status">
         <span className="igc-state__loading">
           <Loader2 aria-hidden="true" size={16} className="animate-spin" />
-          Carregando comentários...
+          {t('common.loading')}
         </span>
       </section>
     );
@@ -93,9 +88,9 @@ export function AccountCommentsCard({
   if (query.error || !query.data) {
     return (
       <section className="igc-card igc-state">
-        <p className="igc-state__text">{commentsErrorMessage(query.error)}</p>
+        <p className="igc-state__text">{commentsErrorMessage(query.error, t)}</p>
         <Button variant="outline" className="igc-btn" onClick={() => void query.refetch()}>
-          Tentar de novo
+          {t('common.retry')}
         </Button>
       </section>
     );
@@ -119,15 +114,20 @@ export function AccountCommentsCard({
     }
   };
 
-  let subtitle = 'Últimos 30 dias';
+  let subtitle = t('account.last30');
   if (analysis) {
     const m = analysis.posts_analyzed ?? 0;
+    const commentsText = countText(t, 'comment', analysis.comments_analyzed, locale);
+    const ago = analyzedAgo(analysis.analyzed_at, dfLocale);
     subtitle = [
-      'Últimos 30 dias',
+      t('account.last30'),
       m > 0
-        ? `${plural(analysis.comments_analyzed, 'comentário', 'comentários')} em ${plural(m, 'post', 'posts')}`
-        : plural(analysis.comments_analyzed, 'comentário', 'comentários'),
-      analyzedAgo(analysis.analyzed_at) && `analisado ${analyzedAgo(analysis.analyzed_at)}`,
+        ? t('account.commentsInPosts', {
+            comments: commentsText,
+            posts: countText(t, 'post', m, locale),
+          })
+        : commentsText,
+      ago && t('account.analyzedAgo', { ago }),
     ]
       .filter(Boolean)
       .join(' · ');
@@ -135,7 +135,7 @@ export function AccountCommentsCard({
 
   const tooFewHint =
     analyzeError instanceof CommentsApiError && analyzeError.code === 'too_few_comments'
-      ? `São necessários pelo menos ${MIN_COMMENTS} comentários nos últimos 30 dias para analisar.`
+      ? t('account.tooFew', { min: MIN_COMMENTS })
       : null;
 
   let body;
@@ -144,7 +144,7 @@ export function AccountCommentsCard({
       <div className="igc-analyzing" role="status">
         <span className="igc-state__loading">
           <Loader2 aria-hidden="true" size={16} className="animate-spin" />
-          {`Lendo ${plural(current, 'comentário', 'comentários')}...`}
+          {t('common.reading', { count: current, n: current.toLocaleString(locale) })}
         </span>
         <span className="igc-skeleton" />
         <span className="igc-skeleton igc-skeleton--short" />
@@ -155,13 +155,17 @@ export function AccountCommentsCard({
       <CommentsAnalysisView
         analysis={analysis}
         clienteId={clientId}
-        sourceLabel="dos últimos 30 dias"
+        sourceLabel={t('account.sourceLabel')}
         newComments={newComments}
         onRefresh={() => void analyze()}
         refreshing={analyzing}
         postThumbs={postThumbs}
         compact={compact}
-        labels={ACCOUNT_LABELS}
+        labels={{
+          themes: t('account.themes'),
+          questions: t('account.questions'),
+          ideas: t('account.ideas'),
+        }}
       />
     );
   } else {
@@ -169,8 +173,11 @@ export function AccountCommentsCard({
       <div className="igc-empty-reading">
         <p className="igc-state__text">
           {current < MIN_COMMENTS
-            ? `São necessários pelo menos ${MIN_COMMENTS} comentários nos últimos 30 dias para analisar. Há ${current.toLocaleString('pt-BR')}.`
-            : 'Resuma o clima dos comentários dos últimos 30 dias e receba ideias de conteúdo.'}
+            ? t('account.tooFewWithCurrent', {
+                min: MIN_COMMENTS,
+                current: current.toLocaleString(locale),
+              })
+            : t('account.prompt')}
         </p>
       </div>
     );
@@ -181,7 +188,7 @@ export function AccountCommentsCard({
       <div className="igc-card__head">
         <Sparkles aria-hidden="true" size={16} className="igc-card__icon" />
         <div className="igc-account__titles">
-          <h3 className="igc-card__title">O que o público está dizendo</h3>
+          <h3 className="igc-card__title">{t('account.title')}</h3>
           <span className="igc-account__sub">{subtitle}</span>
         </div>
         {/* Com comentários novos, o aviso da análise já traz "Refazer análise". */}
@@ -192,14 +199,18 @@ export function AccountCommentsCard({
             disabled={analyzing}
             onClick={() => void analyze()}
           >
-            {analyzing ? 'Analisando...' : analysis ? 'Atualizar análise' : 'Analisar'}
+            {analyzing
+              ? t('account.analyzing')
+              : analysis
+                ? t('account.update')
+                : t('account.analyze')}
           </Button>
         )}
       </div>
       {body}
       {analyzeError != null && (
         <p className="igc-error" role="alert">
-          {tooFewHint ?? commentsErrorMessage(analyzeError)}
+          {tooFewHint ?? commentsErrorMessage(analyzeError, t)}
         </p>
       )}
     </section>

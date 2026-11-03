@@ -1,0 +1,109 @@
+{
+  "count": {
+    "comment_one": "{{n}} comentário",
+    "comment_other": "{{n}} comentários",
+    "commentNew_one": "{{n}} comentário novo",
+    "commentNew_other": "{{n}} comentários novos",
+    "commentAnalyzed_one": "{{n}} comentário analisado",
+    "commentAnalyzed_other": "{{n}} comentários analisados",
+    "post_one": "{{n}} post",
+    "post_other": "{{n}} posts",
+    "reply_one": "{{n}} resposta",
+    "reply_other": "{{n}} respostas",
+    "like_one": "{{n}} curtida",
+    "like_other": "{{n}} curtidas",
+    "repliesMany": "25+ respostas"
+  },
+  "common": {
+    "loading": "Carregando comentários...",
+    "retry": "Tentar de novo",
+    "reading_one": "Lendo {{n}} comentário...",
+    "reading_other": "Lendo {{n}} comentários...",
+    "comments": "Comentários",
+    "tabInsights": "Insights",
+    "tabComments": "Comentários · {{n}}",
+    "tabsAriaLabel": "Detalhes do post"
+  },
+  "sentiment": {
+    "positivo": "Majoritariamente positivo",
+    "misto": "Misto",
+    "negativo": "Majoritariamente negativo",
+    "polemico": "Polêmico"
+  },
+  "distribution": {
+    "ariaLabel": "Distribuição dos comentários",
+    "apoio": "Apoio",
+    "duvida": "Dúvida",
+    "critica": "Crítica",
+    "discussao": "Discussão",
+    "spam": "Spam"
+  },
+  "analysis": {
+    "newSince": "{{comments}} desde a análise",
+    "redo": "Refazer análise",
+    "redoing": "Refazendo...",
+    "viewDetails": "Ver temas e perguntas",
+    "why": "Por quê: {{reason}}",
+    "defaultThemes": "Temas",
+    "defaultQuestions": "Perguntas frequentes",
+    "defaultIdeas": "Ideias de conteúdo"
+  },
+  "account": {
+    "title": "O que o público está dizendo",
+    "last30": "Últimos 30 dias",
+    "analyzedAgo": "analisado {{ago}}",
+    "commentsInPosts": "{{comments}} em {{posts}}",
+    "sourceLabel": "dos últimos 30 dias",
+    "tooFew": "São necessários pelo menos {{min}} comentários nos últimos 30 dias para analisar.",
+    "tooFewWithCurrent": "São necessários pelo menos {{min}} comentários nos últimos 30 dias para analisar. Há {{current}}.",
+    "prompt": "Resuma o clima dos comentários dos últimos 30 dias e receba ideias de conteúdo.",
+    "analyze": "Analisar",
+    "analyzing": "Analisando...",
+    "update": "Atualizar análise",
+    "themes": "Temas e de onde vieram",
+    "questions": "Perguntas que mais se repetem",
+    "ideas": "Ideias de conteúdo do mês"
+  },
+  "post": {
+    "empty": "Este post ainda não tem comentários.",
+    "showingTruncated": "Mostrando 200 comentários",
+    "showing": "Mostrando {{comments}}",
+    "openInstagram": "Abrir no Instagram",
+    "unknownUser": "Usuário do Instagram",
+    "readingTitle": "Leitura dos comentários",
+    "analyze": "Analisar comentários",
+    "tooFew": "São necessários pelo menos {{min}} comentários para analisar. Este post tem {{current}}.",
+    "prompt_one": "Resuma o clima do comentário e receba ideias de conteúdo.",
+    "prompt_other": "Resuma o clima dos {{n}} comentários e receba ideias de conteúdo.",
+    "kindVIDEO": "do Reels",
+    "kindCAROUSEL_ALBUM": "do carrossel",
+    "kindIMAGE": "da imagem",
+    "kindSTORY": "do story",
+    "kindDefault": "do post",
+    "sourceWithDate": "{{kind}} de {{date}}",
+    "dateFormat": "d MMM"
+  },
+  "reconnect": {
+    "expiredTitle": "Conexão expirada",
+    "scopeTitle": "Sem permissão de comentários",
+    "expiredText": "A conexão com o Instagram expirou. Reconecte para ver os comentários.",
+    "scopeText": "Para ver os comentários, reconecte o Instagram deste cliente e aceite a permissão de comentários.",
+    "button": "Reconectar Instagram"
+  },
+  "idea": {
+    "saved": "Salva",
+    "save": "Salvar como ideia",
+    "alreadySaved": "Esta sugestão já estava salva em Ideias.",
+    "origin": "Origem: comentários {{source}} ({{reason}})"
+  },
+  "error": {
+    "rateLimited": "Muitas análises seguidas. Tente de novo em alguns minutos.",
+    "missingScope": "Reconecte o Instagram deste cliente para ver os comentários.",
+    "tokenExpired": "A conexão com o Instagram expirou. Reconecte para ver os comentários.",
+    "tooFewComments": "Ainda não há comentários suficientes para analisar.",
+    "aiUnavailable": "A análise por IA está indisponível no momento.",
+    "aiTimeout": "A análise demorou demais. Tente de novo.",
+    "aiBadOutput": "Não foi possível gerar a análise. Tente de novo.",
+    "generic": "Não foi possível carregar os comentários."
+  }
+}
