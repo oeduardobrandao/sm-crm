@@ -68,6 +68,18 @@ function DistributionBar({ distribuicao }: { distribuicao: CommentAnalysis['dist
  * sentiment chip, summary, distribution, themes, frequent questions and content ideas
  * with "Salvar como ideia". The header (title, counts, analysed when) is the caller's.
  */
+export interface CommentsViewLabels {
+  themes: string;
+  questions: string;
+  ideas: string;
+}
+
+const DEFAULT_LABELS: CommentsViewLabels = {
+  themes: 'Temas',
+  questions: 'Perguntas frequentes',
+  ideas: 'Ideias de conteúdo',
+};
+
 export function CommentsAnalysisView({
   analysis,
   clienteId,
@@ -77,6 +89,7 @@ export function CommentsAnalysisView({
   refreshing,
   postThumbs,
   compact = false,
+  labels = DEFAULT_LABELS,
 }: {
   analysis: StoredAnalysis;
   clienteId: number;
@@ -88,6 +101,8 @@ export function CommentsAnalysisView({
   postThumbs?: Record<string, string | null>;
   /** Phone: themes and questions behind "Ver temas e perguntas", full-width buttons. */
   compact?: boolean;
+  /** Section headings (the account card words them differently). */
+  labels?: CommentsViewLabels;
 }) {
   const qc = useQueryClient();
   const [showDetails, setShowDetails] = useState(!compact);
@@ -110,7 +125,7 @@ export function CommentsAnalysisView({
     <div className="igc-analysis__cols">
       {result.temas.length > 0 && (
         <section className="igc-analysis__col">
-          <h3 className="igc-eyebrow">Temas</h3>
+          <h3 className="igc-eyebrow">{labels.themes}</h3>
           <ul className="igc-themes">
             {result.temas.map((t, i) => {
               const thumbs = postThumbs
@@ -145,7 +160,7 @@ export function CommentsAnalysisView({
       )}
       {result.perguntas_frequentes.length > 0 && (
         <section className="igc-analysis__col">
-          <h3 className="igc-eyebrow">Perguntas frequentes</h3>
+          <h3 className="igc-eyebrow">{labels.questions}</h3>
           <ul className="igc-questions">
             {result.perguntas_frequentes.map((q, i) => (
               <li key={i}>{q}</li>
@@ -194,7 +209,7 @@ export function CommentsAnalysisView({
 
       {result.ideias.length > 0 && (
         <section className="igc-ideas">
-          <h3 className="igc-eyebrow">Ideias de conteúdo</h3>
+          <h3 className="igc-eyebrow">{labels.ideas}</h3>
           <ul className="igc-ideas__list">
             {result.ideias.map((idea) => (
               <li key={idea.id} className="igc-idea">

@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { useNavigate } from 'react-router-dom';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, formatDistanceToNow, formatDistanceToNowStrict } from 'date-fns';
@@ -9,7 +8,6 @@ import { Loader2, Sparkles } from 'lucide-react';
 import type { PostAnalytics } from '../../../services/analytics';
 import {
   analyzePostComments,
-  CommentsApiError,
   commentsErrorMessage,
   getPostComments,
   type IgComment,
@@ -18,6 +16,7 @@ import {
 import { sanitizeUrl } from '../../../utils/security';
 import { mediaTypeLabel } from '../../analytics/phone/shared';
 import { CommentsAnalysisView } from './CommentsAnalysisView';
+import { ReconnectState, reconnectReason } from './ReconnectState';
 
 /** Server minimum for a post reading (`too_few_comments` below it). */
 const MIN_COMMENTS = 5;
@@ -30,16 +29,6 @@ function relative(ts: string): string {
   const d = new Date(ts);
   if (isNaN(d.getTime())) return '';
   return formatDistanceToNowStrict(d, { addSuffix: true, locale: ptBR });
-}
-
-/** Errors only a reconnection fixes: the comments scope is missing (409) or the
- *  Instagram token expired (401 `TOKEN_EXPIRED`). Any other 401 (the user's own session)
- *  falls through to the generic message. */
-function reconnectReason(e: unknown): 'scope' | 'expired' | null {
-  if (!(e instanceof CommentsApiError)) return null;
-  if (e.code === 'missing_comments_scope') return 'scope';
-  if (e.status === 401 && e.code === 'TOKEN_EXPIRED') return 'expired';
-  return null;
 }
 
 function analyzedAgo(ts: string): string {
@@ -153,7 +142,6 @@ export function PostCommentsPanel({
   post: PostAnalytics;
   compact?: boolean;
 }) {
-  const navigate = useNavigate();
   const qc = useQueryClient();
   const postId = post.instagram_post_id;
   const queryKey = ['ig-post-comments', clientId, postId];
@@ -172,27 +160,7 @@ export function PostCommentsPanel({
 
   const reconnect = reconnectReason(query.error) ?? reconnectReason(analyzeError);
 
-  if (reconnect) {
-    return (
-      <div className="igc-card igc-state">
-        <h3 className="igc-eyebrow">
-          {reconnect === 'expired' ? 'Conexão expirada' : 'Sem permissão de comentários'}
-        </h3>
-        <p className="igc-state__text">
-          {reconnect === 'expired'
-            ? 'A conexão com o Instagram expirou. Reconecte para ver os comentários.'
-            : 'Para ver os comentários, reconecte o Instagram deste cliente e aceite a permissão de comentários.'}
-        </p>
-        <Button
-          variant="outline"
-          className="igc-btn"
-          onClick={() => navigate(`/clientes/${clientId}/redes-sociais`)}
-        >
-          Reconectar Instagram
-        </Button>
-      </div>
-    );
-  }
+  if (reconnect) return <ReconnectState clientId={clientId} reason={reconnect} />;
 
   if (query.isLoading) {
     return (

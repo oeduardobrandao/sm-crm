@@ -19484,6 +19484,37 @@ button.phone-stat-tile:active {
   color: var(--igc-pos-fg);
 }
 
+/* ---- Account card ---- */
+.igc-account {
+  margin-bottom: 1.5rem;
+}
+.igc-account .igc-card__head {
+  align-items: flex-start;
+}
+.igc-account__titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.igc-account__sub {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.igc-account__action {
+  margin-left: auto;
+}
+@media (max-width: 767px) {
+  .igc-account__titles {
+    flex-basis: calc(100% - 32px);
+  }
+  .igc-account__action {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+}
+
 /* ---- Comment list ---- */
 .igc-comment {
   display: flex;

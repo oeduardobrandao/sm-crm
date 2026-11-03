@@ -89,6 +89,7 @@ import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import { ContaPhone, ContaPhoneMessage } from './phone/ContaPhone';
 import { BEST_TIME_BUCKET_STARTS, bucketBestTimes, toStatDelta } from './contaFormat';
 import { ActionMetricValue, PostInsightsDetail } from './components/PostInsightsDetail';
+import { AccountCommentsCard } from './comments/AccountCommentsCard';
 import { PostCommentsPanel } from './comments/PostCommentsPanel';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 
@@ -2111,6 +2112,8 @@ function AnalyticsContent({
           </div>
         )}
       </div>
+
+      <AccountCommentsCard clientId={clientId} posts={posts} />
 
       {/* AI Analysis */}
       <AISection clientId={clientId} days={days} />
