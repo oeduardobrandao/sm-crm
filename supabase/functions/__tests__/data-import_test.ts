@@ -1,6 +1,7 @@
 import { assert, assertEquals, readJson } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createDataImportHandler, MAX_SOURCE_ROWS, PREVIEW_LIMIT } from "../data-import/handler.ts";
+import { allClientsScope, type ClientScope } from "../_shared/client-scope.ts";
 
 const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://app.mesaas.com" });
 
@@ -10,12 +11,18 @@ const ENTITLED = {
   features: { feature_csv_import: true },
 };
 
-function makeHandler(db: ReturnType<typeof createSupabaseQueryMock>, entitlements: unknown = ENTITLED) {
+function makeHandler(
+  db: ReturnType<typeof createSupabaseQueryMock>,
+  entitlements: unknown = ENTITLED,
+  scope: () => Promise<ClientScope> = () => Promise.resolve(allClientsScope()),
+) {
   return createDataImportHandler({
     buildCorsHeaders,
     createDb: () => db as never,
     resolveEntitlements: async () => entitlements as never,
     geminiKey: null,
+    // Acesso por cliente: unrestricted unless a test overrides it.
+    loadClientScope: scope,
   });
 }
 
@@ -2114,4 +2121,38 @@ Deno.test("data-import: undo never leaks a database message to the client", asyn
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   assertEquals(res.status, 500);
   assertEquals(await readJson(res), { error: "Internal error" });
+});
+
+// ── acesso por cliente ──────────────────────────────────────────────────────
+
+Deno.test("data-import: a restricted member is refused on every action, before any write", async () => {
+  for (const action of ["start", "analyze", "commit", "undo"]) {
+    const db = createSupabaseQueryMock();
+    authAs(db);
+    const restricted = () => Promise.resolve<ClientScope>({ all: false, ids: new Set([5]), membroIds: new Set() });
+    const res = await makeHandler(db, ENTITLED, restricted)(
+      new Request(`https://x.test/data-import/${action}`, {
+        method: "POST",
+        headers: { Authorization: "Bearer jwt", "Content-Type": "application/json" },
+        body: JSON.stringify({ source: "csv", jobId: "j1" }),
+      }),
+    );
+    assertEquals(res.status, 403, action);
+    assertEquals(await res.json(), { error: "Seu acesso é limitado aos clientes atribuídos." });
+    assertEquals(db.calls.filter((c) => c.operation !== "select").length, 0, action);
+  }
+});
+
+Deno.test("data-import: a scope read error is a 500, never an import", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  const res = await makeHandler(db, ENTITLED, () => Promise.reject(new Error("boom")))(
+    new Request("https://x.test/data-import/start", {
+      method: "POST",
+      headers: { Authorization: "Bearer jwt", "Content-Type": "application/json" },
+      body: JSON.stringify({ source: "csv" }),
+    }),
+  );
+  assertEquals(res.status, 500);
+  assertEquals(db.calls.filter((c) => c.table === "import_jobs").length, 0);
 });

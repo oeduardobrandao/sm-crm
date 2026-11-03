@@ -18,6 +18,7 @@ import {
   INTERACTIVE_GRAPH_TIMEOUT_MS,
 } from "../_shared/instagram-publish-utils.ts";
 import { buildCollaboratorFailureFields, normalizeCollaborators } from "../_shared/instagram-collaborators.ts";
+import { type ClientScopeLoader, rowWriteGate } from "../_shared/client-scope.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -29,6 +30,8 @@ interface PublishHandlerDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: (token: string) => DbClient;
   createServiceDb: () => DbClient;
+  /** Acesso por cliente: the caller's client scope (defaults to the real loader). */
+  loadClientScope?: ClientScopeLoader;
 }
 
 export function createPublishHandler(deps: PublishHandlerDeps) {
@@ -62,7 +65,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
     // Verify post exists and user has access (via RLS)
     const { data: post } = await userDb
       .from("workflow_posts")
-      .select("id, status, workflow_id, cliente_id, scheduled_at, ig_caption, instagram_container_id, publish_retry_count, tipo, ig_trial_strategy, ig_collaborators")
+      .select("id, status, workflow_id, cliente_id, responsavel_id, scheduled_at, ig_caption, instagram_container_id, publish_retry_count, tipo, ig_trial_strategy, ig_collaborators")
       .eq("id", postId)
       .single();
 
@@ -74,6 +77,19 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
     // Resolve caller's workspace and guard feature_post_scheduling
     const { data: actorProfile } = await svcDb.from("profiles").select("conta_id").eq("id", actorId).single();
     if (!actorProfile?.conta_id) return json({ error: "Unauthorized" }, 403);
+    // Acesso por cliente: every action below writes with the service role, so the post's client
+    // must be in the caller's scope. Publishing is a write (no "é dele"): the caller's own post in a
+    // hidden client is refused with the "limitado" copy; a post they cannot read at all (RLS already
+    // hides it, this is defense in depth) answers like a missing one.
+    const scopeDenied = await rowWriteGate(
+      svcDb,
+      actorId!,
+      actorProfile.conta_id,
+      post,
+      { status: 404, body: { error: "Post não encontrado." } },
+      deps.loadClientScope,
+    );
+    if (scopeDenied) return json(scopeDenied.body, scopeDenied.status);
     if (
       (action === "schedule" || action === "publish-now") &&
       !(await effectivePlanFeature(svcDb as any, actorProfile.conta_id, "feature_post_scheduling"))

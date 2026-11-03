@@ -19,6 +19,7 @@ import type { TikTokValidationResult } from "../_shared/tiktok-publish-utils.ts"
 import type { ScheduleValidationResult } from "../_shared/instagram-publish-utils.ts";
 import { buildTikTokMediaUrl, verifyTikTokMediaToken } from "../_shared/tiktok-media-url.ts";
 import { TikTokApiError } from "../_shared/tiktok.ts";
+import { allClientsScope, type ClientScope } from "../_shared/client-scope.ts";
 
 Deno.env.set("TOKEN_ENCRYPTION_KEY", "test-tiktok-publish-key");
 Deno.env.set("SUPABASE_URL", "https://supabase.example");
@@ -116,6 +117,8 @@ function makeDeps(
     buildCorsHeaders: () => ({}),
     createDb: () => db as never,
     createServiceDb: () => db as never,
+    // Acesso por cliente: unrestricted unless a test overrides it.
+    loadClientScope: () => Promise.resolve(allClientsScope()),
     ...overrides,
   };
 }
@@ -1172,4 +1175,49 @@ Deno.test("tiktok-publish publish-now: unmapped init error stays retryable and r
   assertEquals(failed[0].p_error, "socket hang up");
   assertEquals(failed[0].p_retryable, true);
   assertNoLegacyTikTokWrites(db);
+});
+
+// ============================================================
+// acesso por cliente
+// ============================================================
+
+const restricted = (ids: number[], membroIds: number[] = []) => () =>
+  Promise.resolve<ClientScope>({ all: false, ids: new Set(ids), membroIds: new Set(membroIds) });
+
+Deno.test("tiktok-publish creator-info: hidden client answers like a foreign one", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queue("clientes", "select", { data: { conta_id: "ws-1" }, error: null });
+  const handler = createPublishHandler(makeDeps(db, { loadClientScope: restricted([9]) }));
+  const res = await handler(tiktokRequest("creator-info", 5, { method: "GET" }));
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: "Unauthorized" });
+  assertEquals(db.calls.filter((c) => c.table === "tiktok_accounts").length, 0);
+});
+
+Deno.test("tiktok-publish creator-info: a scope read error is a 500", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queue("clientes", "select", { data: { conta_id: "ws-1" }, error: null });
+  const handler = createPublishHandler(makeDeps(db, { loadClientScope: () => Promise.reject(new Error("boom")) }));
+  const res = await handler(tiktokRequest("creator-info", 5, { method: "GET" }));
+  assertEquals(res.status, 500);
+  assertEquals(db.calls.filter((c) => c.table === "tiktok_accounts").length, 0);
+});
+
+Deno.test("tiktok-publish: own post in a hidden client is refused with the limitado copy, no write", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", {
+    data: { id: 1, status: "aprovado_cliente", platform: "tiktok", cliente_id: 5, responsavel_id: 7 },
+    error: null,
+  });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  const handler = createPublishHandler(makeDeps(db, { loadClientScope: restricted([4], [7]) }));
+  const res = await handler(tiktokRequest("cancel", 1));
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: "Seu acesso é limitado aos clientes atribuídos." });
+  assertEquals(db.calls.filter((c) => c.operation === "rpc" || c.operation === "update").length, 0);
 });

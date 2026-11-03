@@ -1,5 +1,9 @@
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { createCrmReorderHandler } from "./handler.ts";
+import { allClientsScope, type ClientScope } from "../_shared/client-scope.ts";
+
+// Acesso por cliente: unrestricted unless a test passes its own scope.
+const ALL = () => Promise.resolve(allClientsScope());
 
 const CONTA = "11111111-1111-1111-1111-111111111111";
 
@@ -67,28 +71,28 @@ const okBody = {
 
 Deno.test("rejects a request with no Authorization header", async () => {
   const { db } = makeDb({});
-  const handler = createCrmReorderHandler({ buildCorsHeaders: () => ({}), createDb: () => db });
+  const handler = createCrmReorderHandler({ buildCorsHeaders: () => ({}), createDb: () => db, loadClientScope: ALL });
   const res = await handler(makeReq(okBody, false));
   assertEquals(res.status, 401);
 });
 
 Deno.test("rejects a body without a numeric cliente_id", async () => {
   const { db } = makeDb({});
-  const handler = createCrmReorderHandler({ buildCorsHeaders: () => ({}), createDb: () => db });
+  const handler = createCrmReorderHandler({ buildCorsHeaders: () => ({}), createDb: () => db, loadClientScope: ALL });
   const res = await handler(makeReq({ updates: okBody.updates }));
   assertEquals(res.status, 400);
 });
 
 Deno.test("rejects a malformed update entry", async () => {
   const { db } = makeDb({});
-  const handler = createCrmReorderHandler({ buildCorsHeaders: () => ({}), createDb: () => db });
+  const handler = createCrmReorderHandler({ buildCorsHeaders: () => ({}), createDb: () => db, loadClientScope: ALL });
   const res = await handler(makeReq({ cliente_id: 7, updates: [{ post_id: 1 }] }));
   assertEquals(res.status, 400);
 });
 
 Deno.test("rejects a cliente in another account (cross-tenant)", async () => {
   const { db, rpcCalls } = makeDb({ clienteConta: "22222222-2222-2222-2222-222222222222" });
-  const handler = createCrmReorderHandler({ buildCorsHeaders: () => ({}), createDb: () => db });
+  const handler = createCrmReorderHandler({ buildCorsHeaders: () => ({}), createDb: () => db, loadClientScope: ALL });
   const res = await handler(makeReq(okBody));
   assertEquals(res.status, 403);
   assertEquals(rpcCalls.length, 0);
@@ -96,7 +100,7 @@ Deno.test("rejects a cliente in another account (cross-tenant)", async () => {
 
 Deno.test("happy path calls the RPC scoped to the caller's account and allowlist", async () => {
   const { db, rpcCalls } = makeDb({});
-  const handler = createCrmReorderHandler({ buildCorsHeaders: () => ({}), createDb: () => db });
+  const handler = createCrmReorderHandler({ buildCorsHeaders: () => ({}), createDb: () => db, loadClientScope: ALL });
   const res = await handler(makeReq(okBody));
   assertEquals(res.status, 200);
   assertEquals(rpcCalls.length, 1);
@@ -111,7 +115,7 @@ Deno.test("happy path calls the RPC scoped to the caller's account and allowlist
 
 Deno.test("maps a LOCKED rpc error to 409 with locked_post_ids", async () => {
   const { db } = makeDb({ rpc: { error: { message: "LOCKED: publishing in progress: {2,3}" } } });
-  const handler = createCrmReorderHandler({ buildCorsHeaders: () => ({}), createDb: () => db });
+  const handler = createCrmReorderHandler({ buildCorsHeaders: () => ({}), createDb: () => db, loadClientScope: ALL });
   const res = await handler(makeReq(okBody));
   assertEquals(res.status, 409);
   const json = await res.json();
@@ -120,7 +124,40 @@ Deno.test("maps a LOCKED rpc error to 409 with locked_post_ids", async () => {
 
 Deno.test("maps a BAD_REQUEST rpc error to 400", async () => {
   const { db } = makeDb({ rpc: { error: { message: "BAD_REQUEST: agendado needs a future date" } } });
-  const handler = createCrmReorderHandler({ buildCorsHeaders: () => ({}), createDb: () => db });
+  const handler = createCrmReorderHandler({ buildCorsHeaders: () => ({}), createDb: () => db, loadClientScope: ALL });
   const res = await handler(makeReq(okBody));
   assertEquals(res.status, 400);
+});
+
+const restricted = (ids: number[]) => () =>
+  Promise.resolve<ClientScope>({ all: false, ids: new Set(ids), membroIds: new Set([3]) });
+
+Deno.test("restricted member on a hidden client gets the foreign-client 403 and no RPC", async () => {
+  const { db, rpcCalls } = makeDb({});
+  const handler = createCrmReorderHandler({ buildCorsHeaders: () => ({}), createDb: () => db, loadClientScope: restricted([8]) });
+  const res = await handler(makeReq(okBody));
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: "Cliente não autorizado." });
+  assertEquals(rpcCalls.length, 0);
+});
+
+Deno.test("restricted member on an assigned client reschedules as before", async () => {
+  const { db, rpcCalls } = makeDb({});
+  const handler = createCrmReorderHandler({ buildCorsHeaders: () => ({}), createDb: () => db, loadClientScope: restricted([7]) });
+  const res = await handler(makeReq(okBody));
+  assertEquals(res.status, 200);
+  assertEquals(rpcCalls.length, 1);
+});
+
+Deno.test("a scope read error is a generic 500 and no RPC", async () => {
+  const { db, rpcCalls } = makeDb({});
+  const handler = createCrmReorderHandler({
+    buildCorsHeaders: () => ({}),
+    createDb: () => db,
+    loadClientScope: () => Promise.reject(new Error("boom")),
+  });
+  const res = await handler(makeReq(okBody));
+  assertEquals(res.status, 500);
+  assertEquals(await res.json(), { error: "Falha ao reagendar." });
+  assertEquals(rpcCalls.length, 0);
 });

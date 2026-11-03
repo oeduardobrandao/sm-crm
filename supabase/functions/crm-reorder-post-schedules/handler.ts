@@ -1,4 +1,9 @@
 import { createJsonResponder } from "../_shared/http.ts";
+import {
+  type ClientScopeLoader,
+  hasClientAccess,
+  loadClientScope as realLoadClientScope,
+} from "../_shared/client-scope.ts";
 
 // Agency-facing allowlist: the CRM may reschedule any planned post that is not
 // already published or failed. Broader than the Hub's client-facing set, but the
@@ -23,6 +28,8 @@ type DbClient = {
 interface CrmReorderHandlerDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: () => DbClient;
+  /** Acesso por cliente: the caller's client scope (defaults to the real loader). */
+  loadClientScope?: ClientScopeLoader;
 }
 
 export function createCrmReorderHandler(deps: CrmReorderHandlerDeps) {
@@ -73,6 +80,15 @@ export function createCrmReorderHandler(deps: CrmReorderHandlerDeps) {
       .single();
     if (!cliente || cliente.conta_id !== contaId) {
       return json({ error: "Cliente não autorizado." }, 403);
+    }
+    // Acesso por cliente: rescheduling is a write on the client's posts (no "é dele"); a client
+    // outside the caller's scope answers like a foreign one. A scope read error is a generic 500.
+    try {
+      const scope = await (deps.loadClientScope ?? realLoadClientScope)(db, user.id, contaId);
+      if (!hasClientAccess(scope, clienteId, false)) return json({ error: "Cliente não autorizado." }, 403);
+    } catch (err) {
+      console.error("[crm-reorder-post-schedules] client scope:", err instanceof Error ? err.message : String(err));
+      return json({ error: "Falha ao reagendar." }, 500);
     }
 
     const { data, error } = await db.rpc("reorder_post_schedules", {

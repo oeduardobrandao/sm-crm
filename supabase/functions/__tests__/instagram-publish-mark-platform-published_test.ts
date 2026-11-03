@@ -14,6 +14,7 @@
 import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import type { QueryCall } from "../../../test/shared/supabaseMock.ts";
+import { allClientsScope } from "../_shared/client-scope.ts";
 
 Deno.env.set("TOKEN_ENCRYPTION_KEY", "test-token-key");
 Deno.env.set("R2_ACCOUNT_ID", "acct");
@@ -48,6 +49,8 @@ function makeHandler(db: ReturnType<typeof createSupabaseQueryMock>) {
     buildCorsHeaders: () => ({}),
     createDb: () => db as never,
     createServiceDb: () => db as never,
+    // Acesso por cliente: unrestricted unless a test overrides it.
+    loadClientScope: () => Promise.resolve(allClientsScope()),
   });
 }
 

@@ -50,6 +50,12 @@ import {
   fetchCreatorCheck as realFetchCreatorCheck,
 } from "../_shared/tiktok-precheck.ts";
 import { buildTikTokMediaUrl as realBuildTikTokMediaUrl } from "../_shared/tiktok-media-url.ts";
+import {
+  type ClientScopeLoader,
+  hasClientAccess,
+  loadClientScope as realLoadClientScope,
+  rowWriteGate,
+} from "../_shared/client-scope.ts";
 
 type DbClient = {
   // deno-lint-ignore no-explicit-any
@@ -71,6 +77,8 @@ export interface TikTokPublishDeps {
   fetchCreatorCheck?: typeof realFetchCreatorCheck;
   buildTikTokMediaUrl?: typeof realBuildTikTokMediaUrl;
   sleep?: (ms: number) => Promise<void>;
+  /** Acesso por cliente: the caller's client scope (defaults to the real loader). */
+  loadClientScope?: ClientScopeLoader;
 }
 
 /** A failure whose message is a curated pt-BR sentence: safe to persist and return (422). */
@@ -144,6 +152,13 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
     const { data: client } = await svcDb.from("clientes").select("conta_id").eq("id", clientId).single();
     if (!client || (client as { conta_id?: string }).conta_id !== contaId) {
       return json({ error: "Unauthorized" }, 403);
+    }
+    // Acesso por cliente: a client outside the caller's scope answers like a foreign one.
+    try {
+      const scope = await (deps.loadClientScope ?? realLoadClientScope)(svcDb, actorId!, contaId);
+      if (!hasClientAccess(scope, clientId, false)) return json({ error: "Unauthorized" }, 403);
+    } catch (err) {
+      return internalServerError(json, "tiktok-publish:client-scope", err);
     }
 
     const gateFailure = await requireFeatureGates(svcDb, contaId, json);
@@ -229,6 +244,7 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
       .from("workflow_posts")
       .select(
         "id, status, platform, tipo, tiktok_caption, tiktok_title, tiktok_settings, ig_caption, scheduled_at, " +
+          "cliente_id, responsavel_id, " +
           "instagram_media_id, targets_state:post_targets(id, platform, status, processing_at)",
       )
       .eq("id", postId)
@@ -238,6 +254,19 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
     const { data: actorProfile } = await svcDb.from("profiles").select("conta_id").eq("id", actorId).single();
     const contaId = actorProfile?.conta_id as string | undefined;
     if (!contaId) return json({ error: "Unauthorized" }, 403);
+
+    // Acesso por cliente: every action below writes with the service role. Publishing is a write
+    // (no "é dele"): the caller's own post in a hidden client gets the "limitado" copy; a post they
+    // cannot read at all (RLS already hides it; defense in depth) answers like a missing one.
+    const scopeDenied = await rowWriteGate(
+      svcDb,
+      actorId!,
+      contaId,
+      post,
+      { status: 404, body: { error: "Post não encontrado." } },
+      deps.loadClientScope,
+    );
+    if (scopeDenied) return json(scopeDenied.body, scopeDenied.status);
 
     // Gate scope mirrors instagram-publish's asymmetry: only schedule/publish-now require the
     // paid feature flags (creator-info is gated separately above, inside handleCreatorInfo).
