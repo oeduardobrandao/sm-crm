@@ -70,17 +70,40 @@ export async function loadUnits(db: Db, contaId: string, clientId: number): Prom
 
 const locationNames = (units: GbpUnit[]) => units.map((u) => u.location_name);
 
-export async function loadMetrics(db: Db, contaId: string, units: GbpUnit[], start: string, end: string): Promise<GbpMetricsRow[]> {
-  return await pages<GbpMetricsRow>((from, to) =>
-    db.from("gbp_metrics_daily").select(GBP_METRIC_COLUMNS)
-      .eq("conta_id", contaId)
-      .in("location_name", locationNames(units))
-      .gte("day", start)
+/** How a history read selects the units' rows. `units` (the default, every per-client route):
+ * `in location_name` in the query. `workspace` (the portfolio over the whole workspace, whose unit
+ * list can be long enough to break a GET query string): tenant + dates only, and the rows of
+ * other locations are dropped here, so the result is the same rows either way. */
+export interface UnitReadOptions {
+  scope?: "units" | "workspace";
+}
+
+/** The `workspace` scope's in-code filter: only the given units' rows. */
+export function keepUnitRows<T extends { location_name: string }>(rows: T[], units: { location_name: string }[]): T[] {
+  const names = new Set(units.map((u) => u.location_name));
+  return rows.filter((r) => names.has(r.location_name));
+}
+
+export async function loadMetrics(
+  db: Db,
+  contaId: string,
+  units: GbpUnit[],
+  start: string,
+  end: string,
+  opts: UnitReadOptions = {},
+): Promise<GbpMetricsRow[]> {
+  const workspace = opts.scope === "workspace";
+  const rows = await pages<GbpMetricsRow>((from, to) => {
+    let q = db.from("gbp_metrics_daily").select(GBP_METRIC_COLUMNS)
+      .eq("conta_id", contaId);
+    if (!workspace) q = q.in("location_name", locationNames(units));
+    return q.gte("day", start)
       .lte("day", end)
       .order("location_name", { ascending: true })
       .order("day", { ascending: true })
-      .range(from, to)
-  );
+      .range(from, to);
+  });
+  return workspace ? keepUnitRows(rows, units) : rows;
 }
 
 /** Whether any selected unit has a metrics row on or before `day`: the stored history reaches
@@ -96,17 +119,25 @@ async function hasMetricsOnOrBefore(db: Db, contaId: string, units: GbpUnit[], d
   return Array.isArray(data) && data.length > 0;
 }
 
-export async function loadRatings(db: Db, contaId: string, units: GbpUnit[], w: AnalyticsWindow): Promise<GbpRatingRow[]> {
-  return await pages<GbpRatingRow>((from, to) =>
-    db.from("gbp_rating_daily").select("location_name, day, average_rating, total_review_count")
-      .eq("conta_id", contaId)
-      .in("location_name", locationNames(units))
-      .gte("day", addDays(w.prevStart, -1 - RATING_LOOKBACK_DAYS))
+export async function loadRatings(
+  db: Db,
+  contaId: string,
+  units: GbpUnit[],
+  w: AnalyticsWindow,
+  opts: UnitReadOptions = {},
+): Promise<GbpRatingRow[]> {
+  const workspace = opts.scope === "workspace";
+  const rows = await pages<GbpRatingRow>((from, to) => {
+    let q = db.from("gbp_rating_daily").select("location_name, day, average_rating, total_review_count")
+      .eq("conta_id", contaId);
+    if (!workspace) q = q.in("location_name", locationNames(units));
+    return q.gte("day", addDays(w.prevStart, -1 - RATING_LOOKBACK_DAYS))
       .lte("day", w.end)
       .order("location_name", { ascending: true })
       .order("day", { ascending: true })
-      .range(from, to)
-  );
+      .range(from, to);
+  });
+  return workspace ? keepUnitRows(rows, units) : rows;
 }
 
 // ─── Overview, daily, surfaces ─────────────────────────────────────────────────────

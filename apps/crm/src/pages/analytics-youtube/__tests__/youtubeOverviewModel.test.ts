@@ -79,14 +79,15 @@ describe('sortChannels', () => {
     expect(ids(sortChannels([c, a, b], 'lastSyncedAt', 'asc'))).toEqual([1, 2, 3]);
   });
 
-  it('sorts by title alphabetically, a channel without a title last', () => {
+  it('sorts by the name the cell shows: title, else handle, else the client name', () => {
     const list = [
       channel(1, 'X', { title: 'Zeta' }),
-      channel(2, 'Y', { title: null, handle: null }),
+      channel(2, 'Mário', { title: null, handle: null }),
       channel(3, 'Z', { title: 'Ágata' }),
+      channel(4, 'W', { title: null, handle: '@bruno' }),
     ];
-    expect(ids(sortChannels(list, 'title', 'asc'))).toEqual([3, 1, 2]);
-    expect(ids(sortChannels(list, 'title', 'desc'))).toEqual([1, 3, 2]);
+    expect(ids(sortChannels(list, 'title', 'asc'))).toEqual([4, 3, 2, 1]);
+    expect(ids(sortChannels(list, 'title', 'desc'))).toEqual([1, 2, 3, 4]);
   });
 
   it('does not mutate its input', () => {

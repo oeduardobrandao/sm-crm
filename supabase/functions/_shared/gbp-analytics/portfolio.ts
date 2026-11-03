@@ -7,6 +7,11 @@
 // clientes -> gbp_locations -> gbp_metrics_daily, gbp_rating_daily and gbp_reviews in parallel.
 // Each is one paged query for the whole selection, never one per unit. The two history reads
 // need a synced window; the reviews do not (they are current, see `reviewsSince`).
+//
+// No id list rides a whole-workspace query string (a few hundred units would 414): gbp_locations
+// is read by tenant + counted status and units of inactive clients are dropped in code, and
+// without `?client=` the three history reads are tenant + dates (the `workspace` scope), keeping
+// the listed units' rows in code. With `?client=` they keep `in location_name` (few units).
 import { saoPauloDate } from "../sao-paulo-date.ts";
 import { fetchAllRows } from "../paginate.ts";
 import {
@@ -18,7 +23,14 @@ import {
   type GbpRatingRow,
   latestOnOrBefore,
 } from "./kpis.ts";
-import { COUNTED_UNIT_STATUSES, type GbpUnit, loadMetrics, loadRatings } from "./queries.ts";
+import {
+  COUNTED_UNIT_STATUSES,
+  type GbpUnit,
+  keepUnitRows,
+  loadMetrics,
+  loadRatings,
+  type UnitReadOptions,
+} from "./queries.ts";
 import {
   addDays,
   type AnalyticsWindow,
@@ -158,38 +170,47 @@ async function loadClients(db: Db, contaId: string, clientId: number | null) {
   });
 }
 
-async function loadPortfolioUnits(db: Db, contaId: string, clientIds: number[]): Promise<PortfolioSourceUnit[]> {
-  return await fetchAllRows<PortfolioSourceUnit>((from, to) =>
+/** The tenant's counted units of the given (active) clients; the client filter is in code. */
+async function loadPortfolioUnits(db: Db, contaId: string, clientIds: Set<number>): Promise<PortfolioSourceUnit[]> {
+  const rows = await fetchAllRows<PortfolioSourceUnit>((from, to) =>
     db.from("gbp_locations").select(UNIT_COLUMNS)
       .eq("conta_id", contaId)
-      .in("client_id", clientIds)
       .in("status", [...COUNTED_UNIT_STATUSES])
       .order("client_id", { ascending: true })
       .order("created_at", { ascending: true })
       .order("id", { ascending: true })
       .range(from, to)
   );
+  return rows.filter((u) => clientIds.has(u.client_id));
 }
 
-async function loadAttentionReviews(db: Db, contaId: string, units: PortfolioSourceUnit[], since: string) {
-  return await fetchAllRows<{
+async function loadAttentionReviews(
+  db: Db,
+  contaId: string,
+  units: PortfolioSourceUnit[],
+  since: string,
+  opts: UnitReadOptions,
+) {
+  const workspace = opts.scope === "workspace";
+  const rows = await fetchAllRows<{
     location_name: string;
     reviewer_name: string | null;
     star_rating: number;
     comment: string | null;
     create_time: string | null;
-  }>((from, to) =>
-    db.from("gbp_reviews").select("location_name, reviewer_name, star_rating, comment, create_time")
-      .eq("conta_id", contaId)
-      .in("location_name", units.map((u) => u.location_name))
-      .lte("star_rating", ATTENTION_MAX_STARS)
+  }>((from, to) => {
+    let q = db.from("gbp_reviews").select("location_name, reviewer_name, star_rating, comment, create_time")
+      .eq("conta_id", contaId);
+    if (!workspace) q = q.in("location_name", units.map((u) => u.location_name));
+    return q.lte("star_rating", ATTENTION_MAX_STARS)
       .eq("has_reply", false)
       .gte("create_time", since)
       .order("create_time", { ascending: false, nullsFirst: false })
       .order("location_name", { ascending: true })
       .order("review_id", { ascending: true })
-      .range(from, to)
-  );
+      .range(from, to);
+  });
+  return workspace ? keepUnitRows(rows, units) : rows;
 }
 
 export async function buildGbpPortfolio(
@@ -200,15 +221,18 @@ export async function buildGbpPortfolio(
   now: Date,
 ): Promise<GbpPortfolio> {
   const clients = await loadClients(db, contaId, clientId);
-  const units = clients.length > 0 ? await loadPortfolioUnits(db, contaId, clients.map((c) => c.id)) : [];
+  const units = clients.length > 0 ? await loadPortfolioUnits(db, contaId, new Set(clients.map((c) => c.id))) : [];
   const dataThrough = portfolioDataThrough(units, now);
   const { window, hasData } = resolveWindow(req, dataThrough, now);
   const read = hasData && units.length > 0;
+  // The whole workspace reads by tenant + dates and keeps the units' rows in code; one client
+  // names its (few) units.
+  const scope: UnitReadOptions = { scope: clientId === null ? "workspace" : "units" };
 
   const [metrics, ratings, reviews] = await Promise.all([
-    read ? loadMetrics(db, contaId, units, window.prevStart, window.end) : [] as GbpMetricsRow[],
-    read ? loadRatings(db, contaId, units, window) : [] as GbpRatingRow[],
-    units.length > 0 ? loadAttentionReviews(db, contaId, units, reviewsSince(req.days, now)) : [],
+    read ? loadMetrics(db, contaId, units, window.prevStart, window.end, scope) : [] as GbpMetricsRow[],
+    read ? loadRatings(db, contaId, units, window, scope) : [] as GbpRatingRow[],
+    units.length > 0 ? loadAttentionReviews(db, contaId, units, reviewsSince(req.days, now), scope) : [],
   ]);
 
   const metricsByUnit = groupBy(metrics);

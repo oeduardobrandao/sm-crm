@@ -129,27 +129,36 @@ export function attentionUnits(units: GbpPortfolioUnit[]): GbpPortfolioUnit[] {
   ];
 }
 
-function sortValue(u: GbpPortfolioUnit, col: GbpUnitSortCol): number | string | null {
+function sortValue(
+  u: GbpPortfolioUnit,
+  col: GbpUnitSortCol,
+  untitledLabel: string,
+): number | string | null {
   switch (col) {
     case 'title':
-      return u.title ?? u.clientName;
-    case 'lastSyncedAt':
-      return u.lastSyncedAt ? Date.parse(u.lastSyncedAt) : null;
+      // The text the unit cell shows (`title || untitled`), so the order matches what is read.
+      return u.title || untitledLabel;
+    case 'lastSyncedAt': {
+      const t = u.lastSyncedAt ? Date.parse(u.lastSyncedAt) : NaN;
+      return Number.isNaN(t) ? null : t;
+    }
     default:
       return u[col];
   }
 }
 
-/** A new array; nulls last in both directions. */
+/** A new array; nulls last in both directions. `untitledLabel` is what the cell shows for a unit
+ * without a title. */
 export function sortUnits(
   units: GbpPortfolioUnit[],
   col: GbpUnitSortCol,
   dir: 'asc' | 'desc',
+  untitledLabel = '',
 ): GbpPortfolioUnit[] {
   const sign = dir === 'asc' ? 1 : -1;
   return [...units].sort((a, b) => {
-    const va = sortValue(a, col);
-    const vb = sortValue(b, col);
+    const va = sortValue(a, col, untitledLabel);
+    const vb = sortValue(b, col, untitledLabel);
     if (va === null && vb === null) return 0;
     if (va === null) return 1;
     if (vb === null) return -1;

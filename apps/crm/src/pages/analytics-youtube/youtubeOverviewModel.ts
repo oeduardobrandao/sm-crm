@@ -73,7 +73,8 @@ export function metricOf(c: YtPortfolioChannel, col: YtMetricCol): number | null
 }
 
 function sortValue(c: YtPortfolioChannel, col: YtChannelSortCol): number | string | null {
-  if (col === 'title') return channelName(c);
+  // The text the name cell shows, so the order matches what the user reads.
+  if (col === 'title') return channelName(c) ?? c.clientName;
   if (col === 'lastSyncedAt') {
     const t = c.lastSyncedAt ? Date.parse(c.lastSyncedAt) : NaN;
     return Number.isNaN(t) ? null : t;

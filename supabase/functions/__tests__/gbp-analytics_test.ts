@@ -790,6 +790,8 @@ Deno.test("gbp-analytics: every history read is keyed by the workspace's conta_i
 // ── portfolio ─────────────────────────────────────────────────────────────────
 // Read order (fixed in buildGbpPortfolio): clientes -> gbp_locations -> metrics, ratings and
 // reviews in parallel. Each is paged, so the mock's default empty select closes each read.
+// No list of ids rides a whole-workspace query string: gbp_locations is read by tenant + status
+// and the history by tenant + dates, each filtered in code. Only `?client=` keeps `in location_name`.
 
 const FRESH = "2026-10-30T10:00:00.000Z"; // 5 h before NOW
 const STALE = "2026-10-27T15:00:00.000Z"; // 72 h before NOW
@@ -858,7 +860,7 @@ Deno.test("portfolio: reads active clients of the tenant only, and their counted
   assert(hasMod(client, "eq", "id", 42));
   const [loc] = callsTo(db, "gbp_locations");
   assert(hasMod(loc, "eq", "conta_id", "ws-B"));
-  assert(hasMod(loc, "in", "client_id", [42]));
+  assertEquals(mods(loc, "in"), [["status", ["active", "revoked"]]]); // clients filtered in code
   assert(hasMod(loc, "in", "status", ["active", "revoked"]));
   assertEquals(mods(loc, "order"), [
     ["client_id", { ascending: true }],
@@ -987,9 +989,63 @@ Deno.test("portfolio: sums KPIs and per-unit rows over the shared window", async
 
   const [m] = callsTo(db, "gbp_metrics_daily");
   assert(hasMod(m, "eq", "conta_id", "ws-B"));
-  assert(hasMod(m, "in", "location_name", ["locations/1", "locations/2"]));
+  assertEquals(mods(m, "in"), []); // whole workspace: tenant + dates, units kept in code
   assert(hasMod(m, "gte", "day", "2026-08-27"));
   assert(hasMod(m, "lte", "day", "2026-10-25"));
+  assertEquals(mods(m, "order"), [["location_name", { ascending: true }], ["day", { ascending: true }]]);
+});
+
+Deno.test("portfolio: whole workspace keeps only the listed units' rows, in code", async () => {
+  const db = createSupabaseQueryMock();
+  // Client 99 is not active: its unit is dropped, and locations/9 (its, or a disconnected unit's
+  // history) comes back from the tenant-wide reads without counting anywhere.
+  portfolioReady(db, CLIENTS, [PU1, PU2, { ...PU2, id: "u-99", client_id: 99, location_name: "locations/9", data_through: "2026-10-01" }]);
+  db.queue("gbp_metrics_daily", "select", {
+    data: [
+      metrics("locations/1", "2026-10-20", { call_clicks: 2 }),
+      metrics("locations/9", "2026-10-20", { call_clicks: 500, business_impressions_desktop_maps: 500 }),
+    ],
+  });
+  db.queue("gbp_rating_daily", "select", {
+    data: [
+      { location_name: "locations/1", day: "2026-10-20", average_rating: 4.0, total_review_count: 100 },
+      { location_name: "locations/9", day: "2026-10-20", average_rating: 1.0, total_review_count: 9000 },
+    ],
+  });
+  db.queue("gbp_reviews", "select", {
+    data: [
+      { location_name: "locations/9", reviewer_name: "X", star_rating: 1, comment: null, create_time: "2026-10-29T12:00:00+00:00" },
+      { location_name: "locations/1", reviewer_name: "Y", star_rating: 2, comment: null, create_time: "2026-10-28T12:00:00+00:00" },
+    ],
+  });
+  const body = await (await makeHandler(db)(get("/portfolio?days=30"))).json();
+  assertEquals(body.units.map((u: { id: string }) => u.id), [U1_ID, U2_ID]);
+  assertEquals(body.kpis.units, 2);
+  assertEquals(body.kpis.actions.value, 2);
+  assertEquals(body.kpis.profileViews.value, 0);
+  assertEquals(body.kpis.avgRating.value, 4);
+  assertEquals(body.reviewsAttention.map((r: { reviewerName: string }) => r.reviewerName), ["Y"]);
+  for (const t of ["gbp_metrics_daily", "gbp_rating_daily", "gbp_reviews"]) {
+    for (const c of callsTo(db, t)) {
+      assert(hasMod(c, "eq", "conta_id", "ws-B"), t);
+      assertEquals(mods(c, "in"), [], t);
+    }
+  }
+});
+
+Deno.test("portfolio: a client filter keeps in location_name on every history read", async () => {
+  const db = createSupabaseQueryMock();
+  portfolioReady(db, [CLIENTS[0]], [PU1, PU2]); // PU2 belongs to client 43: dropped in code
+  const body = await (await makeHandler(db)(get("/portfolio?client=42&days=30"))).json();
+  assertEquals(body.units.map((u: { id: string }) => u.id), [U1_ID]);
+  for (const t of ["gbp_metrics_daily", "gbp_rating_daily", "gbp_reviews"]) {
+    const calls = callsTo(db, t);
+    assert(calls.length > 0, t);
+    for (const c of calls) {
+      assert(hasMod(c, "eq", "conta_id", "ws-B"), t);
+      assert(hasMod(c, "in", "location_name", ["locations/1"]), t);
+    }
+  }
 });
 
 Deno.test("portfolio: per-unit prevProfileViews null when the unit has no row on prevStart", async () => {
@@ -1101,7 +1157,7 @@ Deno.test("portfolio: reviewsAttention filters <=3 stars, unanswered, from SP to
   ]);
   const [r] = callsTo(db, "gbp_reviews");
   assert(hasMod(r, "eq", "conta_id", "ws-B"));
-  assert(hasMod(r, "in", "location_name", ["locations/1", "locations/2"]));
+  assertEquals(mods(r, "in"), []); // whole workspace: units kept in code
   assert(hasMod(r, "lte", "star_rating", 3));
   assert(hasMod(r, "eq", "has_reply", false));
   // SP 2026-10-30 - 29 days = 2026-10-01, midnight in São Paulo (UTC-3).

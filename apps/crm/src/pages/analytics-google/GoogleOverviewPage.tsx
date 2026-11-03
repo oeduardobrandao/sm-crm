@@ -176,7 +176,7 @@ function GoogleOverviewContent() {
   }
 
   const units = data.units;
-  const sortedUnits = sortUnits(units, sortColumn, sortDirection);
+  const sortedUnits = sortUnits(units, sortColumn, sortDirection, t('filters.untitledUnit'));
   const highlights = highlightCards(t, units);
   const attention = attentionUnits(units);
   const specialtyStats = specialtyStatsFor(units);

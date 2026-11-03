@@ -8,6 +8,7 @@ import { GroupedList, Cell } from '@/components/mobile/GroupedList';
 import { ActionSheet } from '@/components/mobile/ActionSheet';
 import type { YtPortfolioChannel, YtPortfolioDays } from '../../../services/youtubeAnalytics';
 import { Avatar, PickerChip, SectionHead } from '../../analytics/phone/shared';
+import { dimmed as dimmedStyle } from '../../analytics-conta/youtube/youtubeTabFormat';
 import { initialsOf } from '../../analytics-tiktok/overviewModel';
 import {
   SORT_COLS,
@@ -39,6 +40,8 @@ export interface YouTubeOverviewPhoneProps {
   sortDirection: 'asc' | 'desc';
   onSortColumn: (c: YtChannelSortCol) => void;
   onToggleDirection: () => void;
+  /** A period change is loading: the previous rows stay on screen, dimmed. */
+  dimmed: boolean;
 }
 
 /** The trailing value of a cell: the sorted column's number (views when sorting by name). */
@@ -67,6 +70,7 @@ export function YouTubeOverviewPhone(props: YouTubeOverviewPhoneProps) {
     sortDirection,
     onSortColumn,
     onToggleDirection,
+    dimmed,
   } = props;
   const { t, i18n } = useTranslation('analyticsYoutube');
   const [sortOpen, setSortOpen] = useState(false);
@@ -167,41 +171,43 @@ export function YouTubeOverviewPhone(props: YouTubeOverviewPhoneProps) {
         }
       />
 
-      {channels.length === 0 ? (
-        <p className="phone-an-tone--muted">{t('overview.noMatch')}</p>
-      ) : (
-        <GroupedList aria-label={t('overview.channels')}>
-          {channels.map((c) => {
-            const name = channelName(c) ?? c.clientName;
-            const revoked = c.authorizationStatus === 'revoked';
-            return (
-              <Cell
-                key={c.clientId}
-                to={`/analytics/${c.clientId}/youtube`}
-                icon={<Avatar src={c.avatarUrl} initials={initialsOf(name)} />}
-                label={name}
-                subtitle={
-                  <>
-                    {c.clientName} ·{' '}
-                    {revoked ? (
-                      <span className="phone-an-badge phone-an-badge--warn">
-                        {t('overview.reconnect')}
-                      </span>
-                    ) : (
-                      (syncedAgo(c.lastSyncedAt, i18n.language) ?? t('overview.neverSynced'))
-                    )}
-                  </>
-                }
-                value={
-                  <span className="phone-an-row-value">
-                    {cellValue(c, sortColumn, i18n.language)}
-                  </span>
-                }
-              />
-            );
-          })}
-        </GroupedList>
-      )}
+      <div style={dimmedStyle(dimmed)} aria-busy={dimmed || undefined}>
+        {channels.length === 0 ? (
+          <p className="phone-an-tone--muted">{t('overview.noMatch')}</p>
+        ) : (
+          <GroupedList aria-label={t('overview.channels')}>
+            {channels.map((c) => {
+              const name = channelName(c) ?? c.clientName;
+              const revoked = c.authorizationStatus === 'revoked';
+              return (
+                <Cell
+                  key={c.clientId}
+                  to={`/analytics/${c.clientId}/youtube`}
+                  icon={<Avatar src={c.avatarUrl} initials={initialsOf(name)} />}
+                  label={name}
+                  subtitle={
+                    <>
+                      {c.clientName} ·{' '}
+                      {revoked ? (
+                        <span className="phone-an-badge phone-an-badge--warn">
+                          {t('overview.reconnect')}
+                        </span>
+                      ) : (
+                        (syncedAgo(c.lastSyncedAt, i18n.language) ?? t('overview.neverSynced'))
+                      )}
+                    </>
+                  }
+                  value={
+                    <span className="phone-an-row-value">
+                      {cellValue(c, sortColumn, i18n.language)}
+                    </span>
+                  }
+                />
+              );
+            })}
+          </GroupedList>
+        )}
+      </div>
 
       <p className="phone-an-tone--muted" style={{ fontSize: '0.75rem', margin: '0.75rem 0 0' }}>
         {t('overview.perChannel')}

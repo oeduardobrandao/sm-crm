@@ -120,10 +120,11 @@ Deno.test("channelPortfolioRow: shortsShare null without split data in the windo
   );
 });
 
-Deno.test("channelPortfolioRow: shortsShare null when shorts + long views are 0", () => {
+Deno.test("channelPortfolioRow: shortsShare 0 when shorts + long views are 0 in a covered split", () => {
+  // The client tab's split card reads 0% there (sharePct of a zero total), never "sem dados".
   const rows = [...ALL_ROWS, row("2026-10-21", "shorts", { views: 0 }), row("2026-10-21", "long", { views: null })];
-  assertEquals(channelPortfolioRow(CHANNEL, "Ana", rows, W, true).metrics.shortsShare, null);
-  assertEquals(channelPortfolioRow(CHANNEL, "Ana", ALL_ROWS, W, true).metrics.shortsShare, null);
+  assertEquals(channelPortfolioRow(CHANNEL, "Ana", rows, W, true).metrics.shortsShare, 0);
+  assertEquals(channelPortfolioRow(CHANNEL, "Ana", ALL_ROWS, W, true).metrics.shortsShare, 0);
 });
 
 Deno.test("channelPortfolioRow: hasData false nulls every metric and the window", () => {

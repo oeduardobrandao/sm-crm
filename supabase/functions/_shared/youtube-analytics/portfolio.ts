@@ -7,9 +7,13 @@
 // tab's (`computeYtKpis`, `computeYtSplit`); no previous window is read (the list shows no % change).
 //
 // Reads, in this fixed order (the handler tests queue mock pages per table in call order):
-//   clientes (tenant, ativo) → youtube_channels (tenant, in client_id) → ONE youtube_channel_daily
-//   paged read (tenant, in channel_id, content types all/shorts/long, day between the earliest
-//   window start and the latest window end of the channels with data). Never one read per channel.
+//   clientes (tenant, ativo) → youtube_channels (tenant only; channels of inactive clients are
+//   dropped in code, so no id list rides the query string) → one youtube_channel_daily paged read
+//   per distinct window (start, end) among the channels with data, oldest window first, one after
+//   the other. Usually one or two reads, never one per channel, and a channel stuck months back
+//   never widens the others' read. Each is tenant + content types all/shorts/long + that window's
+//   days, plus `in channel_id` when the group is small (≤ PORTFOLIO_IN_LIMIT); a larger group reads
+//   the tenant's days and keeps its own channels in code, so the URL stays short.
 // Query errors throw; the handler answers a generic 500.
 import { computeYtKpis, computeYtSplit, num, type YtChannelDailyRow } from "./kpis.ts";
 import { resolveYtWindow, type YtWindow, type YtWindowRequest } from "./window.ts";
@@ -45,7 +49,10 @@ export interface YtPortfolio {
 /** `live` is left out: the list shows the `all` totals and the Shorts split (shorts vs long). */
 const PORTFOLIO_CONTENT_TYPES = ["all", "shorts", "long"] as const;
 
-/** queries.ts' channel daily columns plus `channel_id`, to group the one workspace-wide read. */
+/** Up to this many channel ids go in a read's `in channel_id`; past it, they are kept in code. */
+export const PORTFOLIO_IN_LIMIT = 50;
+
+/** queries.ts' channel daily columns plus `channel_id`, to group the workspace-wide reads. */
 const PORTFOLIO_DAILY_COLUMNS =
   "channel_id, day, content_type, views, engaged_views, estimated_minutes_watched, likes, comments, shares, subscribers_gained, subscribers_lost, average_view_duration_s";
 
@@ -100,7 +107,8 @@ export function channelPortfolioRow(
     const splitEnd = ctt < w.end ? ctt : w.end;
     const { views } = computeYtSplit(rows.filter((r) => inRange(r.day, w.start, splitEnd)));
     const total = views.shorts + views.long;
-    shortsShare = total > 0 ? views.shorts / total : null;
+    // The client tab's split card reads 0% on a zero total, not "sem dados": same here.
+    shortsShare = total > 0 ? views.shorts / total : 0;
   }
 
   return {
@@ -130,40 +138,47 @@ export async function buildYtPortfolio(db: Db, contaId: string, req: YtWindowReq
   const channelRows = await fetchAllRows<YouTubeChannelRow>((from, to) =>
     db.from("youtube_channels").select(YOUTUBE_CHANNEL_COLUMNS)
       .eq("conta_id", contaId)
-      .in("client_id", clients.map((c) => c.id))
       .order("client_id", { ascending: true })
       .order("id", { ascending: true })
       .range(from, to)
   );
-  // Belt and braces on top of the `in` filter: only channels of the clients just read.
+  // Only channels of the active clients just read (the query carries the tenant alone).
   const channels = channelRows.filter((c) => clientName.has(c.client_id));
   if (channels.length === 0) return { channels: [] };
 
   const resolved = channels.map((c) => ({ channel: c, ...resolveYtWindow(req, c.data_through, now) }));
-  const withData = resolved.filter((r) => r.hasData);
+
+  // channel_id is unique per workspace, so a channel's rows come from its own group's read only.
+  const groups = new Map<string, { start: string; end: string; ids: Set<string> }>();
+  for (const r of resolved) {
+    if (!r.hasData) continue;
+    const key = `${r.window.start}|${r.window.end}`;
+    const group = groups.get(key) ?? { start: r.window.start, end: r.window.end, ids: new Set<string>() };
+    group.ids.add(r.channel.channel_id);
+    groups.set(key, group);
+  }
+  const ordered = [...groups.values()].sort((a, b) =>
+    a.start < b.start ? -1 : a.start > b.start ? 1 : a.end < b.end ? -1 : a.end > b.end ? 1 : 0
+  );
 
   const rowsByChannel = new Map<string, PortfolioDailyRow[]>();
-  if (withData.length > 0) {
-    let start = withData[0].window.start;
-    let end = withData[0].window.end;
-    for (const { window: w } of withData) {
-      if (w.start < start) start = w.start;
-      if (w.end > end) end = w.end;
-    }
-    const channelIds = [...new Set(withData.map((r) => r.channel.channel_id))];
-    const rows = await fetchAllRows<PortfolioDailyRow>((from, to) =>
-      db.from("youtube_channel_daily").select(PORTFOLIO_DAILY_COLUMNS)
-        .eq("conta_id", contaId)
-        .in("channel_id", channelIds)
-        .in("content_type", [...PORTFOLIO_CONTENT_TYPES])
-        .gte("day", start)
-        .lte("day", end)
+  for (const group of ordered) {
+    const ids = [...group.ids];
+    const byId = ids.length <= PORTFOLIO_IN_LIMIT;
+    const rows = await fetchAllRows<PortfolioDailyRow>((from, to) => {
+      let q = db.from("youtube_channel_daily").select(PORTFOLIO_DAILY_COLUMNS)
+        .eq("conta_id", contaId);
+      if (byId) q = q.in("channel_id", ids);
+      return q.in("content_type", [...PORTFOLIO_CONTENT_TYPES])
+        .gte("day", group.start)
+        .lte("day", group.end)
         .order("channel_id", { ascending: true })
         .order("day", { ascending: true })
         .order("content_type", { ascending: true })
-        .range(from, to)
-    );
+        .range(from, to);
+    });
     for (const r of rows) {
+      if (!group.ids.has(r.channel_id)) continue;
       const list = rowsByChannel.get(r.channel_id) ?? [];
       list.push(r);
       rowsByChannel.set(r.channel_id, list);

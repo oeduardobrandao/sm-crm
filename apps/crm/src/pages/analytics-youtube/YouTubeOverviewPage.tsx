@@ -200,6 +200,7 @@ function YouTubeOverviewContent() {
           setSortDirection(col === 'title' ? 'asc' : 'desc');
         }}
         onToggleDirection={() => setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))}
+        dimmed={isPlaceholderData}
       />
     );
   }

@@ -154,6 +154,36 @@ describe('sortUnits', () => {
     expect(sortUnits(units, 'title', 'asc').map((u) => u.id)).toEqual(['b', 'a', 'c']);
   });
 
+  it('sorts an untitled unit by the label its cell shows', () => {
+    const list = [
+      unit('a', { title: 'Zona Sul', clientName: 'Ana' }),
+      unit('b', { title: null, clientName: 'Aaron' }),
+      unit('c', { title: '', clientName: 'Abel' }),
+      unit('d', { title: 'Centro' }),
+    ];
+    const ids = sortUnits(list, 'title', 'asc', 'Unidade sem nome').map((u) => u.id);
+    expect(ids).toEqual(['d', 'b', 'c', 'a']);
+  });
+
+  it('sorts an unparseable sync time last, like a missing one', () => {
+    const list = [
+      unit('bad', { lastSyncedAt: 'not-a-date' }),
+      unit('old', { lastSyncedAt: '2026-10-01T00:00:00.000Z' }),
+      unit('none', { lastSyncedAt: null }),
+      unit('new', { lastSyncedAt: '2026-10-30T00:00:00.000Z' }),
+    ];
+    expect(
+      sortUnits(list, 'lastSyncedAt', 'desc')
+        .map((u) => u.id)
+        .slice(0, 2),
+    ).toEqual(['new', 'old']);
+    expect(
+      sortUnits(list, 'lastSyncedAt', 'asc')
+        .map((u) => u.id)
+        .slice(0, 2),
+    ).toEqual(['old', 'new']);
+  });
+
   it('does not mutate its input', () => {
     const before = units.map((u) => u.id);
     sortUnits(units, 'profileViews', 'asc');

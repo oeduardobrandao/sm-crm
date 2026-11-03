@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -63,6 +63,21 @@ describe('YouTubeOverviewPage (phone)', () => {
     expect(screen.getByText('Cada número pertence só ao canal da linha.')).toBeInTheDocument();
     expect(screen.getByText(/Dados do YouTube/)).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/Total|Média/);
+  });
+
+  it('dims the previous rows while the next period loads', async () => {
+    renderPage();
+    const list = await screen.findByRole('list', { name: 'Canais' });
+    expect(list.closest('[aria-busy="true"]')).toBeNull();
+    vi.mocked(getYouTubePortfolio).mockReturnValueOnce(new Promise(() => {}));
+    fireEvent.click(screen.getByRole('button', { name: 'Período: 28 dias' }));
+    fireEvent.click(await screen.findByRole('button', { name: '90 dias' }));
+    await waitFor(() => expect(getYouTubePortfolio).toHaveBeenLastCalledWith(90));
+    const kept = screen.getByRole('list', { name: 'Canais' });
+    const busy = kept.closest('[aria-busy="true"]');
+    expect(busy).not.toBeNull();
+    expect((busy as HTMLElement).style.opacity).not.toBe('1');
+    expect(within(kept).getByRole('link', { name: /Dra. Ana Lima/ })).toBeInTheDocument();
   });
 
   it('empty state with a link to /clientes', async () => {

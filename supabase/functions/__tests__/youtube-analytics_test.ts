@@ -925,7 +925,9 @@ Deno.test("youtube-analytics: top-shorts is the top 5 Shorts by window views", a
 
 // ── portfolio ─────────────────────────────────────────────────────────────────
 // One row per channel of the workspace's active clients. Reads, in this fixed order: clientes →
-// youtube_channels → youtube_channel_daily (the mock queues pages per table, in call order).
+// youtube_channels → one youtube_channel_daily paged read per distinct channel window, oldest
+// window first (the mock queues pages per table, in call order, so a test with two windows queues
+// an empty page to end the first read).
 
 function portfolioChannel(n: number, over: Record<string, unknown> = {}) {
   return { ...CHANNEL, id: `ych-${n}`, client_id: n, channel_id: `UC${n}`, title: `Canal ${n}`, ...over };
@@ -1034,7 +1036,7 @@ Deno.test("youtube-analytics: portfolio reads active clients only and every cont
 
   const [channels] = callsTo(db, "youtube_channels");
   assert(hasEq(channels, "conta_id", "ws-B"), "channels must be keyed by the tenant");
-  assertEquals(mods(channels, "in"), [["client_id", [1, 2]]]);
+  assertEquals(mods(channels, "in"), [], "no id list in the query string: inactive clients are dropped in code");
   assertEquals(mods(channels, "order").map(([col]) => col), ["client_id", "id"]);
 
   const daily = callsTo(db, "youtube_channel_daily");
@@ -1066,25 +1068,62 @@ Deno.test("youtube-analytics: portfolio each channel uses its own data_through",
     portfolioChannel(1, { data_through: "2026-10-27", content_type_through: "2026-10-27" }),
     portfolioChannel(2, { data_through: "2026-10-20", content_type_through: "2026-10-20" }),
   ]);
-  db.queue("youtube_channel_daily", "select", {
-    data: [
-      channelDaily("UC1", "2026-10-21", "all", { views: 1 }),
-      channelDaily("UC1", "2026-10-27", "all", { views: 2 }),
-      channelDaily("UC2", "2026-10-14", "all", { views: 10 }),
-      channelDaily("UC2", "2026-10-20", "all", { views: 20 }),
-      channelDaily("UC2", "2026-10-21", "all", { views: 999 }), // past UC2's window
-    ],
-  });
+  // One read per window, the older (UC2's) first; an empty page ends each drain.
+  db.queue(
+    "youtube_channel_daily",
+    "select",
+    { data: [channelDaily("UC2", "2026-10-14", "all", { views: 10 }), channelDaily("UC2", "2026-10-20", "all", { views: 20 })] },
+    { data: [] },
+    { data: [channelDaily("UC1", "2026-10-21", "all", { views: 1 }), channelDaily("UC1", "2026-10-27", "all", { views: 2 })] },
+  );
   const res = await makeHandler(db)(get("/portfolio?days=7"));
   const { channels } = await res.json();
   assertEquals(channels[0].window, { start: "2026-10-21", end: "2026-10-27", prevStart: "2026-10-14", prevEnd: "2026-10-20" });
   assertEquals(channels[1].window, { start: "2026-10-14", end: "2026-10-20", prevStart: "2026-10-07", prevEnd: "2026-10-13" });
   assertEquals(channels[0].metrics.views, 3);
   assertEquals(channels[1].metrics.views, 30);
-  // The one read spans the earliest start to the latest end.
-  const [read] = callsTo(db, "youtube_channel_daily");
-  assertEquals(mods(read, "gte"), [["day", "2026-10-14"]]);
-  assertEquals(mods(read, "lte"), [["day", "2026-10-27"]]);
+});
+
+Deno.test("youtube-analytics: portfolio reads each distinct window apart, a year apart included", async () => {
+  const db = createSupabaseQueryMock();
+  portfolioOf(db, [{ id: 1, nome: "Ana" }, { id: 2, nome: "Bia" }, { id: 3, nome: "Caio" }], [
+    portfolioChannel(1, { data_through: "2026-10-27", content_type_through: "2026-10-27" }),
+    portfolioChannel(2, { data_through: "2025-10-27", content_type_through: "2025-10-27" }),
+    portfolioChannel(3, { data_through: "2026-10-27", content_type_through: "2026-10-27" }),
+  ]);
+  db.queue(
+    "youtube_channel_daily",
+    "select",
+    // Oldest window first: UC2 alone.
+    { data: [channelDaily("UC2", "2025-10-21", "all", { views: 40 }), channelDaily("UC2", "2025-10-27", "all", { views: 2 })] },
+    { data: [] },
+    {
+      data: [
+        channelDaily("UC1", "2026-10-21", "all", { views: 5 }),
+        channelDaily("UC3", "2026-10-27", "all", { views: 9 }),
+        channelDaily("UC2", "2026-10-27", "all", { views: 999 }), // not in this group's channels
+      ],
+    },
+  );
+  const res = await makeHandler(db)(get("/portfolio?days=7"));
+  assertEquals(res.status, 200);
+  const { channels } = await res.json();
+  assertEquals(channels.map((c: { metrics: { views: number } }) => c.metrics.views), [5, 42, 9]);
+  assertEquals(channels[1].window, { start: "2025-10-21", end: "2025-10-27", prevStart: "2025-10-14", prevEnd: "2025-10-20" });
+
+  const reads = callsTo(db, "youtube_channel_daily");
+  // Two paged reads, each a data page and the empty page that ends its drain.
+  assertEquals(reads.length, 4);
+  const [old, , recent] = reads;
+  assertEquals(mods(reads[1], "gte"), mods(old, "gte"));
+  assertEquals(mods(reads[3], "gte"), mods(recent, "gte"));
+  for (const r of reads) assert(hasEq(r, "conta_id", "ws-B"));
+  assertEquals(mods(old, "gte"), [["day", "2025-10-21"]]);
+  assertEquals(mods(old, "lte"), [["day", "2025-10-27"]]);
+  assertEquals(mods(old, "in")[0], ["channel_id", ["UC2"]]);
+  assertEquals(mods(recent, "gte"), [["day", "2026-10-21"]]);
+  assertEquals(mods(recent, "lte"), [["day", "2026-10-27"]]);
+  assertEquals(mods(recent, "in")[0], ["channel_id", ["UC1", "UC3"]]);
 });
 
 Deno.test("youtube-analytics: portfolio revoked purged channel has null metrics and no daily read", async () => {
@@ -1132,7 +1171,45 @@ Deno.test("youtube-analytics: portfolio 100 channels x 90 days paged", async () 
     assertEquals(c.metrics.netSubscribers, 360);
     assertEquals(c.metrics.shortsShare, 0.5);
   }
-  assertEquals(callsTo(db, "youtube_channel_daily").length, 28, "27 full pages and the empty one that ends the drain");
+  const reads = callsTo(db, "youtube_channel_daily");
+  assertEquals(reads.length, 28, "27 full pages and the empty one that ends the drain");
+  // Over 50 channels the ids stay out of the query string: tenant + dates + types, ids in code.
+  for (const r of reads) {
+    assert(hasEq(r, "conta_id", "ws-B"));
+    assertEquals(mods(r, "in"), [["content_type", ["all", "shorts", "long"]]]);
+    assertEquals(mods(r, "gte"), [["day", "2026-07-30"]]);
+    assertEquals(mods(r, "lte"), [["day", "2026-10-27"]]);
+    assertEquals(mods(r, "order").map(([col]) => col), ["channel_id", "day", "content_type"]);
+  }
+});
+
+Deno.test("youtube-analytics: portfolio over 50 channels drops other channels' rows in code", async () => {
+  const ids = Array.from({ length: 51 }, (_, i) => i + 1);
+  const db = createSupabaseQueryMock();
+  // Client 99 is not active: its channel is not listed, yet the workspace-wide read returns its rows.
+  portfolioOf(db, ids.map((id) => ({ id, nome: `Cliente ${id}` })), [...ids.map((id) => portfolioChannel(id)), portfolioChannel(99)]);
+  db.queue("youtube_channel_daily", "select", {
+    data: [
+      channelDaily("UC1", "2026-10-27", "all", { views: 7 }),
+      channelDaily("UC99", "2026-10-27", "all", { views: 500 }),
+      channelDaily("UC51", "2026-10-27", "all", { views: 3 }),
+    ],
+  });
+  const res = await makeHandler(db)(get("/portfolio?days=7"));
+  const { channels } = await res.json();
+  assertEquals(channels.length, 51);
+  assertEquals(channels[0].metrics.views, 7);
+  assertEquals(channels[50].metrics.views, 3);
+  assert(!channels.some((c: { clientId: number }) => c.clientId === 99));
+  const [read] = callsTo(db, "youtube_channel_daily");
+  assertEquals(mods(read, "in"), [["content_type", ["all", "shorts", "long"]]]);
+
+  // 50 channels still name their ids.
+  const db50 = createSupabaseQueryMock();
+  portfolioOf(db50, ids.slice(0, 50).map((id) => ({ id, nome: `Cliente ${id}` })), ids.slice(0, 50).map((id) => portfolioChannel(id)));
+  await makeHandler(db50)(get("/portfolio?days=7"));
+  const [read50] = callsTo(db50, "youtube_channel_daily");
+  assertEquals(mods(read50, "in")[0], ["channel_id", ids.slice(0, 50).map((id) => `UC${id}`)]);
 });
 
 Deno.test("youtube-analytics: portfolio failed read is a generic 500 with no detail", async () => {
