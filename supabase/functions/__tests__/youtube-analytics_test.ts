@@ -6,6 +6,7 @@ import { createSupabaseQueryMock, type QueryCall } from "../../../test/shared/su
 import { createYouTubeAnalyticsHandler } from "../youtube-analytics/handlers.ts";
 import { YT_KPI_IDS } from "../_shared/youtube-analytics/kpis.ts";
 import { loadChannelDaily } from "../_shared/youtube-analytics/queries.ts";
+import { daysOf } from "../_shared/youtube-analytics/window.ts";
 
 type Mock = ReturnType<typeof createSupabaseQueryMock>;
 
@@ -920,4 +921,214 @@ Deno.test("youtube-analytics: top-shorts is the top 5 Shorts by window views", a
   assert(hasEq(list, "is_short", true));
   assertScoped(db, "youtube_videos");
   assertScoped(db, "youtube_video_daily");
+});
+
+// ── portfolio ─────────────────────────────────────────────────────────────────
+// One row per channel of the workspace's active clients. Reads, in this fixed order: clientes →
+// youtube_channels → youtube_channel_daily (the mock queues pages per table, in call order).
+
+function portfolioChannel(n: number, over: Record<string, unknown> = {}) {
+  return { ...CHANNEL, id: `ych-${n}`, client_id: n, channel_id: `UC${n}`, title: `Canal ${n}`, ...over };
+}
+
+/** Clientes and channels as list pages (fetchAllRows); the next read of each table is empty. */
+function portfolioOf(db: Mock, clients: { id: number; nome: string }[], channels: Record<string, unknown>[]) {
+  signedIn(db);
+  db.queue("clientes", "select", { data: clients });
+  db.queue("youtube_channels", "select", { data: channels });
+}
+
+const channelDaily = (channelId: string, day: string, contentType: string, over: Record<string, unknown> = {}) => ({
+  channel_id: channelId,
+  ...daily(day, contentType, over),
+});
+
+Deno.test("youtube-analytics: portfolio top-level keys are exactly [\"channels\"]", async () => {
+  const db = createSupabaseQueryMock();
+  portfolioOf(db, [{ id: 1, nome: "Ana" }, { id: 2, nome: "Bia" }], [portfolioChannel(1), portfolioChannel(2)]);
+  db.queue("youtube_channel_daily", "select", {
+    data: [channelDaily("UC1", "2026-10-27", "all"), channelDaily("UC2", "2026-10-27", "all", { views: 7 })],
+  });
+  const res = await makeHandler(db)(get("/portfolio?days=7"));
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(Object.keys(body), ["channels"]);
+  assertEquals(body.channels.length, 2);
+  assertEquals(body.channels[0].clientName, "Ana");
+  assertEquals(body.channels[0].metrics.views, 100);
+  assertEquals(body.channels[1].clientName, "Bia");
+  assertEquals(body.channels[1].metrics.views, 7);
+  assertEquals(featureCalls(db), ["feature_youtube", "feature_analytics_reports"]);
+});
+
+Deno.test("youtube-analytics: portfolio with no active client or no channel is an empty list", async () => {
+  const db = createSupabaseQueryMock();
+  portfolioOf(db, [], []);
+  let res = await makeHandler(db)(get("/portfolio"));
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { channels: [] });
+  assertEquals(callsTo(db, "youtube_channels").length, 0);
+
+  const db2 = createSupabaseQueryMock();
+  portfolioOf(db2, [{ id: 1, nome: "Ana" }], []);
+  res = await makeHandler(db2)(get("/portfolio"));
+  assertEquals(await res.json(), { channels: [] });
+  assertEquals(callsTo(db2, "youtube_channel_daily").length, 0);
+});
+
+Deno.test("youtube-analytics: portfolio 403 feature_disabled for each flag, before any read", async () => {
+  for (const [responses, feature] of [[[{ data: false }], "feature_youtube"], [[{ data: true }, { data: false }], "feature_analytics_reports"]] as const) {
+    const db = createSupabaseQueryMock();
+    signedIn(db);
+    db.queueRpc("effective_plan_feature", ...responses);
+    const res = await makeHandler(db)(get("/portfolio?days=28"));
+    assertEquals(res.status, 403, feature);
+    assertEquals(await res.json(), { error: "feature_disabled", feature });
+    assertEquals(callsTo(db, "clientes").length, 0, feature);
+    assertEquals(callsTo(db, "youtube_channels").length, 0, feature);
+  }
+});
+
+Deno.test("youtube-analytics: portfolio 400 invalid_window on days=30, before flags and reads", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  const res = await makeHandler(db)(get("/portfolio?days=30"));
+  assertEquals(res.status, 400);
+  assertEquals(await res.json(), { error: "invalid_window" });
+  assertEquals(featureCalls(db), []);
+  assertEquals(callsTo(db, "clientes").length, 0);
+});
+
+Deno.test("youtube-analytics: portfolio only answers GET", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  const res = await makeHandler(db)(new Request("https://proj.supabase.co/functions/v1/youtube-analytics/portfolio", {
+    method: "POST",
+    headers: { Authorization: "Bearer tok" },
+  }));
+  assertEquals(res.status, 404);
+  assertEquals(callsTo(db, "clientes").length, 0);
+});
+
+Deno.test("youtube-analytics: portfolio reads active clients only and every content type except live", async () => {
+  const db = createSupabaseQueryMock();
+  portfolioOf(db, [{ id: 1, nome: "Ana" }, { id: 2, nome: "Bia" }], [portfolioChannel(1), portfolioChannel(2)]);
+  const res = await makeHandler(db)(get("/portfolio?days=28"));
+  assertEquals(res.status, 200);
+
+  const [clients] = callsTo(db, "clientes");
+  assert(hasEq(clients, "conta_id", "ws-B"), "clientes must be keyed by the tenant");
+  assert(hasEq(clients, "status", "ativo"), "only active clients");
+
+  const [channels] = callsTo(db, "youtube_channels");
+  assert(hasEq(channels, "conta_id", "ws-B"), "channels must be keyed by the tenant");
+  assertEquals(mods(channels, "in"), [["client_id", [1, 2]]]);
+  assertEquals(mods(channels, "order").map(([col]) => col), ["client_id", "id"]);
+
+  const daily = callsTo(db, "youtube_channel_daily");
+  assertEquals(daily.length, 1, "one paged read for every channel");
+  assert(hasEq(daily[0], "conta_id", "ws-B"));
+  assertEquals(mods(daily[0], "in"), [["channel_id", ["UC1", "UC2"]], ["content_type", ["all", "shorts", "long"]]]);
+  assertEquals(mods(daily[0], "order").map(([col]) => col), ["channel_id", "day", "content_type"]);
+  assertEquals(mods(daily[0], "gte"), [["day", "2026-09-30"]]);
+  assertEquals(mods(daily[0], "lte"), [["day", "2026-10-27"]]);
+});
+
+Deno.test("youtube-analytics: portfolio never selects token columns and never reads google_connections", async () => {
+  const db = createSupabaseQueryMock();
+  portfolioOf(db, [{ id: 1, nome: "Ana" }], [portfolioChannel(1)]);
+  await makeHandler(db)(get("/portfolio"));
+  assertEquals(callsTo(db, "google_connections").length, 0);
+  for (const c of db.calls) {
+    for (const args of c.selectArgs) {
+      const cols = String(args[0] ?? "");
+      assert(!cols.includes("token"), `${c.table}: ${cols}`);
+      assert(!cols.includes("*"), `${c.table}: ${cols}`);
+    }
+  }
+});
+
+Deno.test("youtube-analytics: portfolio each channel uses its own data_through", async () => {
+  const db = createSupabaseQueryMock();
+  portfolioOf(db, [{ id: 1, nome: "Ana" }, { id: 2, nome: "Bia" }], [
+    portfolioChannel(1, { data_through: "2026-10-27", content_type_through: "2026-10-27" }),
+    portfolioChannel(2, { data_through: "2026-10-20", content_type_through: "2026-10-20" }),
+  ]);
+  db.queue("youtube_channel_daily", "select", {
+    data: [
+      channelDaily("UC1", "2026-10-21", "all", { views: 1 }),
+      channelDaily("UC1", "2026-10-27", "all", { views: 2 }),
+      channelDaily("UC2", "2026-10-14", "all", { views: 10 }),
+      channelDaily("UC2", "2026-10-20", "all", { views: 20 }),
+      channelDaily("UC2", "2026-10-21", "all", { views: 999 }), // past UC2's window
+    ],
+  });
+  const res = await makeHandler(db)(get("/portfolio?days=7"));
+  const { channels } = await res.json();
+  assertEquals(channels[0].window, { start: "2026-10-21", end: "2026-10-27", prevStart: "2026-10-14", prevEnd: "2026-10-20" });
+  assertEquals(channels[1].window, { start: "2026-10-14", end: "2026-10-20", prevStart: "2026-10-07", prevEnd: "2026-10-13" });
+  assertEquals(channels[0].metrics.views, 3);
+  assertEquals(channels[1].metrics.views, 30);
+  // The one read spans the earliest start to the latest end.
+  const [read] = callsTo(db, "youtube_channel_daily");
+  assertEquals(mods(read, "gte"), [["day", "2026-10-14"]]);
+  assertEquals(mods(read, "lte"), [["day", "2026-10-27"]]);
+});
+
+Deno.test("youtube-analytics: portfolio revoked purged channel has null metrics and no daily read", async () => {
+  const db = createSupabaseQueryMock();
+  portfolioOf(db, [{ id: 1, nome: "Ana" }], [
+    portfolioChannel(1, { authorization_status: "revoked", revoked_at: "2026-10-20T00:00:00.000Z", data_through: null, content_type_through: null }),
+  ]);
+  const res = await makeHandler(db)(get("/portfolio"));
+  assertEquals(res.status, 200);
+  const { channels } = await res.json();
+  assertEquals(channels.length, 1);
+  assertEquals(channels[0].authorizationStatus, "revoked");
+  assertEquals(channels[0].window, null);
+  assertEquals(channels[0].metrics, { netSubscribers: null, views: null, watchMinutes: null, avgViewDurationS: null, shortsShare: null });
+  assertEquals(callsTo(db, "youtube_channel_daily").length, 0);
+});
+
+Deno.test("youtube-analytics: portfolio drops a channel whose client is not an active client of the tenant", async () => {
+  const db = createSupabaseQueryMock();
+  portfolioOf(db, [{ id: 1, nome: "Ana" }], [portfolioChannel(1), portfolioChannel(99)]);
+  const res = await makeHandler(db)(get("/portfolio"));
+  const { channels } = await res.json();
+  assertEquals(channels.map((c: { clientId: number }) => c.clientId), [1]);
+  const [read] = callsTo(db, "youtube_channel_daily");
+  assertEquals(mods(read, "in")[0], ["channel_id", ["UC1"]]);
+});
+
+Deno.test("youtube-analytics: portfolio 100 channels x 90 days paged", async () => {
+  const db = createSupabaseQueryMock();
+  const ids = Array.from({ length: 100 }, (_, i) => i + 1);
+  portfolioOf(db, ids.map((id) => ({ id, nome: `Cliente ${id}` })), ids.map((id) => portfolioChannel(id)));
+  const days = daysOf("2026-07-30", "2026-10-27");
+  assertEquals(days.length, 90);
+  const rows = ids.flatMap((id) => days.flatMap((d) => ["all", "long", "shorts"].map((t) => channelDaily(`UC${id}`, d, t))));
+  assertEquals(rows.length, 27000);
+  for (let i = 0; i < rows.length; i += 1000) db.queue("youtube_channel_daily", "select", { data: rows.slice(i, i + 1000) });
+
+  const res = await makeHandler(db)(get("/portfolio?days=90"));
+  assertEquals(res.status, 200);
+  const { channels } = await res.json();
+  assertEquals(channels.length, 100);
+  for (const c of channels) {
+    assertEquals(c.metrics.views, 9000);
+    assertEquals(c.metrics.watchMinutes, 4500);
+    assertEquals(c.metrics.netSubscribers, 360);
+    assertEquals(c.metrics.shortsShare, 0.5);
+  }
+  assertEquals(callsTo(db, "youtube_channel_daily").length, 28, "27 full pages and the empty one that ends the drain");
+});
+
+Deno.test("youtube-analytics: portfolio failed read is a generic 500 with no detail", async () => {
+  const db = createSupabaseQueryMock();
+  portfolioOf(db, [{ id: 1, nome: "Ana" }], [portfolioChannel(1)]);
+  db.queue("youtube_channel_daily", "select", { data: null, error: { message: "relation secret detail", code: "42P01" } });
+  const res = await quietly(() => makeHandler(db)(get("/portfolio")));
+  assertEquals(res.status, 500);
+  const text = await res.text();
+  assert(!text.includes("secret"), text);
 });
