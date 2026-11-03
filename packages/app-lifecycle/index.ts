@@ -26,3 +26,4 @@ export type {
 } from './src/silent-update';
 export { prefetchBuildAssets } from './src/prefetch-build';
 export type { PrefetchBuildOptions } from './src/prefetch-build';
+export { installTranslateGuard } from './src/translate-guard';

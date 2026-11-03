@@ -1,7 +1,11 @@
 import React from 'react';
 import * as Sentry from '@sentry/react';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
-import { installDeployRecovery, installSilentUpdate } from '@mesaas/app-lifecycle';
+import {
+  installDeployRecovery,
+  installSilentUpdate,
+  installTranslateGuard,
+} from '@mesaas/app-lifecycle';
 import { initSentry } from '@/lib/sentry';
 import { installConsentEffects } from './lib/consentEffects';
 import { captureReferral } from './lib/referral';
@@ -14,6 +18,8 @@ import '../style.css';
 
 // Before anything else: a tab open across a deploy loads chunks that no longer exist.
 installDeployRecovery();
+// Browser page translation rewrites text nodes React still owns; keep it from crashing the app.
+installTranslateGuard();
 
 initSentry();
 
