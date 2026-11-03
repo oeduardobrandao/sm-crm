@@ -137,3 +137,29 @@ export function rowVisibility(
   const own = isOwnItem(scope, { responsavelId: row.responsavel_id ?? null, createdBy: row.created_by ?? null }, userId);
   return own ? "own_only" : "hidden";
 }
+
+/** Write gate for a row already fetched and known to be in the workspace, for handlers that build
+ * their own responses: null = allowed; otherwise the status and body to answer with. A hidden row
+ * answers `notFound` (same as a missing one), the user's own row in a hidden client answers
+ * {@link CLIENT_SCOPE_MESSAGE}, and a scope read error answers a generic 500 (logged), never
+ * "all clients". Unrestricted callers pay the one membership read and nothing else. */
+export async function rowWriteGate(
+  svc: Db,
+  userId: string,
+  workspaceId: string,
+  row: { cliente_id?: number | null; responsavel_id?: number | null; created_by?: string | null },
+  notFound: { status: number; body: unknown },
+  loader: ClientScopeLoader = loadClientScope,
+): Promise<{ status: number; body: unknown } | null> {
+  let scope: ClientScope;
+  try {
+    scope = await loader(svc, userId, workspaceId);
+  } catch (err) {
+    console.error("[client-scope] scope read failed:", err instanceof Error ? err.message : String(err));
+    return { status: 500, body: { error: "Internal server error" } };
+  }
+  const vis = rowVisibility(scope, row, userId);
+  if (vis === "hidden") return notFound;
+  if (vis === "own_only") return { status: 403, body: { error: CLIENT_SCOPE_MESSAGE } };
+  return null;
+}

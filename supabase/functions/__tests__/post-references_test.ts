@@ -1,15 +1,18 @@
 import { assert, assertEquals, readJson } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createPostReferencesHandler } from "../post-references/handler.ts";
+import { allClientsScope, type ClientScope } from "../_shared/client-scope.ts";
 
 type Db = ReturnType<typeof createSupabaseQueryMock>;
 
-function makeHandler(db: Db) {
+function makeHandler(db: Db, scope: () => Promise<ClientScope> = () => Promise.resolve(allClientsScope())) {
   return createPostReferencesHandler({
     buildCorsHeaders: () => ({ "Access-Control-Allow-Origin": "https://app.mesaas.com" }),
     createDb: () => db as never,
     signGetUrl: async (key: string, _exp?: number, name?: string) =>
       `https://get.example.com/${key}${name ? `?dl=${encodeURIComponent(name)}` : ""}`,
+    // Acesso por cliente: unrestricted unless a test passes a scope.
+    loadClientScope: scope,
   });
 }
 
@@ -137,4 +140,59 @@ Deno.test("post-references: a DB error on delete is a generic 500", async () => 
   const res = await makeHandler(db)(req("DELETE", "/7"));
   assertEquals(res.status, 500);
   assertEquals(await readJson(res), { error: "internal" });
+});
+
+// ── acesso por cliente ───────────────────────────────────────────────────────
+
+const restricted = (ids: number[], membroIds: number[] = []) => () =>
+  Promise.resolve<ClientScope>({ all: false, ids: new Set(ids), membroIds: new Set(membroIds) });
+
+Deno.test("post-references: restricted member, post of a hidden client -> 404, never lists", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", { data: { id: 99, cliente_id: 5, responsavel_id: 1 }, error: null });
+  const res = await makeHandler(db, restricted([4]))(req("GET", "?post_id=99"));
+  assertEquals(res.status, 404);
+  assertEquals((await readJson(res)).error, "not_found");
+  assertEquals(db.calls.find((c) => c.table === "rpc:post_reference_list"), undefined);
+});
+
+Deno.test("post-references: restricted member, assigned client or own post -> listed", async () => {
+  for (const scope of [restricted([5]), restricted([4], [1])]) {
+    const db = createSupabaseQueryMock();
+    setupAuth(db);
+    db.queue("workflow_posts", "select", { data: { id: 99, cliente_id: 5, responsavel_id: 1 }, error: null });
+    db.queueRpc("post_reference_list", { data: [LINK_ROW], error: null });
+    const res = await makeHandler(db, scope)(req("GET", "?post_id=99"));
+    assertEquals(res.status, 200);
+  }
+});
+
+Deno.test("post-references: restricted DELETE on a hidden post is 404, own post in hidden client is limitado", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("post_references", "select", { data: { post_id: 99 }, error: null });
+  db.queue("workflow_posts", "select", { data: { cliente_id: 5, responsavel_id: 2 }, error: null });
+  const res = await makeHandler(db, restricted([4], [1]))(req("DELETE", "/7"));
+  assertEquals(res.status, 404);
+  assertEquals(db.calls.find((c) => c.table === "post_references" && c.operation === "delete"), undefined);
+
+  const db2 = createSupabaseQueryMock();
+  setupAuth(db2);
+  db2.queue("post_references", "select", { data: { post_id: 99 }, error: null });
+  db2.queue("workflow_posts", "select", { data: { cliente_id: 5, responsavel_id: 1 }, error: null });
+  const res2 = await makeHandler(db2, restricted([4], [1]))(req("DELETE", "/7"));
+  assertEquals(res2.status, 403);
+  assertEquals(await readJson(res2), { error: "Seu acesso é limitado aos clientes atribuídos." });
+  assertEquals(db2.calls.find((c) => c.table === "post_references" && c.operation === "delete"), undefined);
+});
+
+Deno.test("post-references: a scope read error is a generic 500, never data", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", { data: { id: 99 }, error: null });
+  const res = await makeHandler(db, () => Promise.reject(new Error("boom")))(req("GET", "?post_id=99"));
+  assertEquals(res.status, 500);
+  assertEquals(await readJson(res), { error: "internal" });
+  assertEquals(db.calls.find((c) => c.table === "workflow_posts"), undefined);
 });

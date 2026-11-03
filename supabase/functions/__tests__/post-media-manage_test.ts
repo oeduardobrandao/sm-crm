@@ -1,6 +1,7 @@
 import { assert, assertEquals, readJson } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createPostMediaManageHandler } from "../post-media-manage/handler.ts";
+import { allClientsScope, type ClientScope } from "../_shared/client-scope.ts";
 
 const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://app.mesaas.com" });
 
@@ -17,6 +18,8 @@ function makeHandler(
     signUrl: async (key) => `https://signed.example.com/${key}`,
     signPutUrl: async (key, _mime, size) => `https://r2.example.com/put/${key}?len=${size}`,
     randomUUID: () => "thumb-uuid",
+    // Acesso por cliente: unrestricted unless a test overrides it.
+    loadClientScope: () => Promise.resolve(allClientsScope()),
     ...overrides,
   });
 }
@@ -651,4 +654,84 @@ Deno.test("post-media-manage: thrown replacement failure becomes a generic serve
   const res = await makeHandler(db)(req("PATCH", "/1/replace", replacement));
   assertEquals(res.status, 500);
   assertEquals(await readJson(res), { error: "Internal server error" });
+});
+
+// ─── acesso por cliente ──────────────────────────────────────────
+
+const restricted = (ids: number[], membroIds: number[] = []) => () =>
+  Promise.resolve<ClientScope>({ all: false, ids: new Set(ids), membroIds: new Set(membroIds) });
+
+Deno.test("post-media-manage: restricted member, post of a hidden client -> 404 Post not found", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", { data: { conta_id: "conta-1", cliente_id: 5, responsavel_id: 2 }, error: null });
+  const res = await makeHandler(db, { loadClientScope: restricted([4], [1]) })(req("GET", "?post_id=50"));
+  assertEquals(res.status, 404);
+  assertEquals(await readJson(res), { error: "Post not found" });
+  assert(!db.calls.some((c) => c.table === "post_file_links"));
+});
+
+Deno.test("post-media-manage: restricted member reads an assigned client's or own post", async () => {
+  for (const scope of [restricted([5]), restricted([4], [2])]) {
+    const db = createSupabaseQueryMock();
+    setupAuth(db);
+    db.queue("workflow_posts", "select", { data: { conta_id: "conta-1", cliente_id: 5, responsavel_id: 2 }, error: null });
+    db.queue("post_file_links", "select", { data: [], error: null });
+    const res = await makeHandler(db, { loadClientScope: scope })(req("GET", "?post_id=50"));
+    assertEquals(res.status, 200);
+  }
+});
+
+Deno.test("post-media-manage: covers by post_ids drop posts of hidden clients", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", {
+    data: [{ id: 50, cliente_id: 5, responsavel_id: null }, { id: 51, cliente_id: 4, responsavel_id: null }],
+    error: null,
+  });
+  db.queue("post_file_links", "select", { data: [], error: null });
+  const res = await makeHandler(db, { loadClientScope: restricted([4]) })(req("GET", "?post_ids=50,51"));
+  assertEquals(res.status, 200);
+  const links = db.calls.find((c) => c.table === "post_file_links")!;
+  assertEquals(links.modifiers.find((m) => m.method === "in")?.args, ["post_id", [51]]);
+});
+
+Deno.test("post-media-manage: restricted DELETE on own post in a hidden client is limitado, hidden is 404", async () => {
+  const own = createSupabaseQueryMock();
+  setupAuth(own);
+  own.queue("post_file_links", "select", { data: sampleLink, error: null }, { data: { post_id: 50 }, error: null });
+  own.queue("workflow_posts", "select", { data: { cliente_id: 5, responsavel_id: 2 }, error: null });
+  const res = await makeHandler(own, { loadClientScope: restricted([4], [2]) })(req("DELETE", "/1"));
+  assertEquals(res.status, 403);
+  assertEquals(await readJson(res), { error: "Seu acesso é limitado aos clientes atribuídos." });
+  assert(!own.calls.some((c) => c.operation === "delete"));
+
+  const hidden = createSupabaseQueryMock();
+  setupAuth(hidden);
+  hidden.queue("post_file_links", "select", { data: sampleLink, error: null }, { data: { post_id: 50 }, error: null });
+  hidden.queue("workflow_posts", "select", { data: { cliente_id: 5, responsavel_id: 3 }, error: null });
+  const res2 = await makeHandler(hidden, { loadClientScope: restricted([4], [2]) })(req("DELETE", "/1"));
+  assertEquals(res2.status, 404);
+  assert(!hidden.calls.some((c) => c.operation === "delete"));
+});
+
+Deno.test("post-media-manage: restricted replace on a hidden post never reaches the RPC", async () => {
+  const db = createSupabaseQueryMock();
+  setupReplace(db);
+  db.queue("post_file_links", "select", { data: { post_id: 50 }, error: null });
+  db.queue("workflow_posts", "select", { data: { cliente_id: 5, responsavel_id: 3 }, error: null });
+  const res = await makeHandler(db, { loadClientScope: restricted([4]) })(req("PATCH", "/1/replace", replacement));
+  assertEquals(res.status, 404);
+  assertEquals(await readJson(res), { error: "Media not found" });
+  assert(!db.calls.some((c) => c.operation === "rpc"));
+});
+
+Deno.test("post-media-manage: a scope read error is a 500, never data", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const res = await makeHandler(db, { loadClientScope: () => Promise.reject(new Error("boom")) })(
+    req("GET", "?post_id=50"),
+  );
+  assertEquals(res.status, 500);
+  assert(!db.calls.some((c) => c.table === "workflow_posts"));
 });

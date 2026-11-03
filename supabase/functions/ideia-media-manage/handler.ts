@@ -2,6 +2,13 @@ import { createJsonResponder } from "../_shared/http.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { hasPermissionFor } from "../_shared/permissions.ts";
 import {
+  CLIENT_SCOPE_MESSAGE,
+  type ClientScope,
+  type ClientScopeLoader,
+  loadClientScope as realLoadClientScope,
+  rowVisibility,
+} from "../_shared/client-scope.ts";
+import {
   presignIdeiaImage, finalizeIdeiaImage, listIdeiaImages, removeIdeiaImage,
 } from "../_shared/ideia-media.ts";
 import {
@@ -23,6 +30,8 @@ interface Deps {
   headObject: (key: string) => Promise<{ contentLength: number; contentType: string | null } | null>;
   transcribe: Transcriber | null;
   randomUUID?: () => string;
+  /** Acesso por cliente: the caller's client scope (defaults to the real loader). */
+  loadClientScope?: ClientScopeLoader;
 }
 
 const RESERVED = new Set(["upload-url", "audio-upload-url", "audio"]);
@@ -61,6 +70,29 @@ export function createIdeiaMediaManageHandler(deps: Deps) {
     const isTranscribe = !!ideiaId && seg.length === 3 && seg[1] === "audio" && seg[2] === "transcribe";
     const scope = { db: db as any, workspace_id: conta_id, origem: "agencia" as const };
 
+    // Acesso por cliente. An ideia of a client outside the caller's scope answers exactly like a
+    // missing one; reads honor "é dele" (autor_membro_id), writes do not (own ideia in a hidden
+    // client -> CLIENT_SCOPE_MESSAGE). Unrestricted callers skip the extra read. A scope read error
+    // is a generic 500, never "all clients".
+    let clientScope: ClientScope;
+    try {
+      clientScope = await (deps.loadClientScope ?? realLoadClientScope)(db, user.id, conta_id);
+    } catch (err) {
+      console.error("[ideia-media-manage] client scope:", err);
+      return json({ error: "Internal server error" }, 500);
+    }
+    const notFound = () => json({ error: "Ideia não encontrada." }, 404);
+    const ideiaGate = async (id: string | null | undefined, write: boolean): Promise<Response | null> => {
+      if (clientScope.all || !id) return null;
+      const { data: row } = await db.from("ideias").select("cliente_id, autor_membro_id")
+        .eq("id", id).eq("workspace_id", conta_id).maybeSingle();
+      if (!row) return null; // missing: the shared helper answers its own not-found
+      const vis = rowVisibility(clientScope, { cliente_id: row.cliente_id, responsavel_id: row.autor_membro_id }, user.id);
+      if (vis === "hidden") return notFound();
+      if (vis === "own_only" && write) return json({ error: CLIENT_SCOPE_MESSAGE }, 403);
+      return null;
+    };
+
     // ── Áudio ──────────────────────────────────────────────────────
     // 'ideias:ver'/'ideias:editar' checam o papel do chamador -- sem isso um
     // membro com papel custom SEM ideias nenhum ainda mintaria URL assinada
@@ -72,6 +104,8 @@ export function createIdeiaMediaManageHandler(deps: Deps) {
       if (!canView) return json({ error: "Forbidden" }, 403);
       const qid = url.searchParams.get("ideia_id");
       if (!qid) return json({ error: "ideia_id required" }, 400);
+      const viewGate = await ideiaGate(qid, false);
+      if (viewGate) return viewGate;
       const v = await loadIdeiaAudioView({ db: db as any, workspace_id: conta_id, ideia_id: qid, signGetUrl: signGet });
       if (!v) return json({ error: "Ideia não encontrada." }, 404);
       return json(v);
@@ -87,6 +121,8 @@ export function createIdeiaMediaManageHandler(deps: Deps) {
         return json({ error: "Method not allowed" }, 405);
       }
       const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
+      const audioGate = await ideiaGate(isAudioPresign ? (typeof body.ideia_id === "string" ? body.ideia_id : null) : ideiaId, true);
+      if (audioGate) return audioGate;
 
       if (isAudioPresign) {
         const ideia_id = typeof body.ideia_id === "string" ? body.ideia_id : "";
@@ -136,6 +172,8 @@ export function createIdeiaMediaManageHandler(deps: Deps) {
     if (req.method === "GET") {
       const qid = url.searchParams.get("ideia_id");
       if (!qid) return json({ error: "ideia_id required" }, 400);
+      const listGate = await ideiaGate(qid, false);
+      if (listGate) return listGate;
       const r = await listIdeiaImages({
         db: db as any, conta_id, cliente_id: null, ideia_id: qid, signGetUrl: deps.signGetUrl,
       });
@@ -145,6 +183,8 @@ export function createIdeiaMediaManageHandler(deps: Deps) {
     // POST /upload-url -> presign
     if (isImageUploadUrl) {
       const body = await req.json().catch(() => ({}));
+      const uploadGate = await ideiaGate(String(body.ideia_id ?? ""), true);
+      if (uploadGate) return uploadGate;
       const r = await presignIdeiaImage({
         db: db as any, conta_id, cliente_id: null,
         ideia_id: String(body.ideia_id ?? ""),
@@ -162,6 +202,8 @@ export function createIdeiaMediaManageHandler(deps: Deps) {
 
     // POST /:id/files -> finalize
     if (isImageFinalize) {
+      const finalizeGate = await ideiaGate(ideiaId, true);
+      if (finalizeGate) return finalizeGate;
       const body = await req.json().catch(() => ({}));
       const r = await finalizeIdeiaImage({
         db: db as any, conta_id, cliente_id: null, ideia_id: ideiaId!,
@@ -186,6 +228,8 @@ export function createIdeiaMediaManageHandler(deps: Deps) {
     if (isImageDelete) {
       const fileId = Number(seg[2]);
       if (Number.isNaN(fileId)) return json({ error: "invalid file id" }, 400);
+      const deleteGate = await ideiaGate(ideiaId, true);
+      if (deleteGate) return deleteGate;
       const r = await removeIdeiaImage({
         db: db as any, conta_id, cliente_id: null, ideia_id: ideiaId!, file_id: fileId,
       });

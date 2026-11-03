@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { signPutUrl } from "../_shared/r2.ts";
 import { buildCorsHeaders } from "../_shared/cors.ts";
+import { rowWriteGate } from "../_shared/client-scope.ts";
 import { effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -73,8 +74,15 @@ Deno.serve(async (req) => {
   }
 
   // Verify post belongs to this conta
-  const { data: post } = await svc.from("workflow_posts").select("id, conta_id").eq("id", post_id).single();
+  const { data: post } = await svc.from("workflow_posts").select("id, conta_id, cliente_id, responsavel_id")
+    .eq("id", post_id).single();
   if (!post || post.conta_id !== profile.conta_id) return json({ error: "Post not found" }, 404);
+  // Acesso por cliente: uploading to a post is a write (no "é dele"); hidden = same 404.
+  const scopeDenied = await rowWriteGate(svc, user.id, profile.conta_id, post, {
+    status: 404,
+    body: { error: "Post not found" },
+  });
+  if (scopeDenied) return json(scopeDenied.body, scopeDenied.status);
 
   // Advisory quota pre-check against the maintained counter. The authoritative
   // check happens atomically inside post-media-finalize via an RPC that locks

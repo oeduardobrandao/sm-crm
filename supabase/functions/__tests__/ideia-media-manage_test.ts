@@ -1,12 +1,15 @@
 import { assertEquals, readJson } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createIdeiaMediaManageHandler } from "../ideia-media-manage/handler.ts";
+import { allClientsScope, type ClientScope } from "../_shared/client-scope.ts";
 
 const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://app.mesaas.com" });
 
 function makeHandler(
   db: ReturnType<typeof createSupabaseQueryMock>,
   transcribe: ((key: string) => Promise<{ text: string; duration?: number }>) | null = null,
+  // Acesso por cliente: unrestricted unless a test passes a scope.
+  loadClientScope: () => Promise<ClientScope> = () => Promise.resolve(allClientsScope()),
 ) {
   return createIdeiaMediaManageHandler({
     buildCorsHeaders,
@@ -16,6 +19,7 @@ function makeHandler(
     headObject: async (k: string) => ({ contentLength: k.includes('.thumb.') ? 2000 : 5000, contentType: null }),
     transcribe,
     randomUUID: () => "fixed-uuid",
+    loadClientScope,
   });
 }
 
@@ -196,4 +200,54 @@ Deno.test("ideia-media-manage: a custom role without ideias:ver is forbidden fro
   const rpc = db.calls.find((c) => c.table === "rpc:has_permission_for");
   assertEquals((rpc?.payload as Record<string, unknown>).p_module, "ideias");
   assertEquals((rpc?.payload as Record<string, unknown>).p_action, "ver");
+});
+
+// ── acesso por cliente ───────────────────────────────────────────────────────
+
+const restricted = (ids: number[], membroIds: number[] = []) => () =>
+  Promise.resolve<ClientScope>({ all: false, ids: new Set(ids), membroIds: new Set(membroIds) });
+
+Deno.test("ideia-media-manage: restricted member, ideia of a hidden client -> 404, never listed", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("ideias", "select", { data: { cliente_id: 14, autor_membro_id: 3 }, error: null });
+  const res = await makeHandler(db, null, restricted([9], [2]))(req("GET", "ideia-media-manage?ideia_id=i1"));
+  assertEquals(res.status, 404);
+  assertEquals(await readJson(res), { error: "Ideia não encontrada." });
+  assertEquals(db.calls.some((c) => c.table === "ideia_files"), false);
+});
+
+Deno.test("ideia-media-manage: restricted member lists an assigned client's ideia or own ideia", async () => {
+  for (const scope of [restricted([14]), restricted([9], [3])]) {
+    const db = createSupabaseQueryMock();
+    setupAuth(db);
+    db.queue(
+      "ideias",
+      "select",
+      { data: { cliente_id: 14, autor_membro_id: 3 }, error: null },
+      { data: { id: "i1", cliente_id: 14, workspace_id: "conta-1" }, error: null },
+    );
+    db.queue("ideia_files", "select", { data: [], error: null });
+    const res = await makeHandler(db, null, scope)(req("GET", "ideia-media-manage?ideia_id=i1"));
+    assertEquals(res.status, 200);
+  }
+});
+
+Deno.test("ideia-media-manage: restricted member deleting an image of own ideia in a hidden client is limitado", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("ideias", "select", { data: { cliente_id: 14, autor_membro_id: 3 }, error: null });
+  const res = await makeHandler(db, null, restricted([9], [3]))(req("DELETE", "ideia-media-manage/i1/files/5"));
+  assertEquals(res.status, 403);
+  assertEquals(await readJson(res), { error: "Seu acesso é limitado aos clientes atribuídos." });
+});
+
+Deno.test("ideia-media-manage: a scope read error is a 500, never data", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const res = await makeHandler(db, null, () => Promise.reject(new Error("boom")))(
+    req("GET", "ideia-media-manage?ideia_id=i1"),
+  );
+  assertEquals(res.status, 500);
+  assertEquals(db.calls.some((c) => c.table === "ideias"), false);
 });

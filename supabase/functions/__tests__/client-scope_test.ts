@@ -7,6 +7,7 @@ import {
   isOwnItem,
   loadClientScope,
   rowVisibility,
+  rowWriteGate,
   allClientsScope,
   visibleClientIds,
 } from "../_shared/client-scope.ts";
@@ -167,4 +168,20 @@ Deno.test("rowVisibility: visible / own_only / hidden", () => {
   assertEquals(rowVisibility(scope, { cliente_id: 9, responsavel_id: 31 }, "u1"), "hidden");
   assertEquals(rowVisibility(scope, { cliente_id: null }, "u1"), "hidden");
   assertEquals(rowVisibility(allClientsScope(), { cliente_id: 9 }, "u1"), "visible");
+});
+
+Deno.test("rowWriteGate: allowed / not found / limitado / scope error", async () => {
+  const nf = { status: 404, body: { error: "Post not found" } };
+  const scope = (s: ClientScope) => () => Promise.resolve(s);
+  const r = { all: false, ids: new Set([5]), membroIds: new Set([30]) };
+  const db = { from: () => { throw new Error("no reads expected"); } };
+  assertEquals(await rowWriteGate(db, "u1", "w1", { cliente_id: 5 }, nf, scope(r)), null);
+  assertEquals(await rowWriteGate(db, "u1", "w1", { cliente_id: 9, responsavel_id: 31 }, nf, scope(r)), nf);
+  assertEquals(await rowWriteGate(db, "u1", "w1", { cliente_id: 9, responsavel_id: 30 }, nf, scope(r)), {
+    status: 403,
+    body: { error: "Seu acesso é limitado aos clientes atribuídos." },
+  });
+  assertEquals(await rowWriteGate(db, "u1", "w1", { cliente_id: 9 }, nf, scope(allClientsScope())), null);
+  const failed = await rowWriteGate(db, "u1", "w1", { cliente_id: 5 }, nf, () => Promise.reject(new Error("x")));
+  assertEquals(failed?.status, 500);
 });
