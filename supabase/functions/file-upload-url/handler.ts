@@ -1,4 +1,9 @@
-import { createJsonResponder } from "../_shared/http.ts";
+import { createJsonResponder, internalServerError } from "../_shared/http.ts";
+import {
+  type ClientScopeLoader,
+  loadClientScope as realLoadClientScope,
+} from "../_shared/client-scope.ts";
+import { folderClienteId, itemVisible } from "../_shared/file-client-scope.ts";
 import { effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
 
 type DbClient = {
@@ -12,6 +17,8 @@ interface FileUploadUrlDeps {
   createDb: () => DbClient;
   signPutUrl: (key: string, mimeType: string, sizeBytes: number) => Promise<string>;
   randomUUID?: () => string;
+  /** Acesso por cliente: the caller's client scope (defaults to the real loader). */
+  loadClientScope?: ClientScopeLoader;
 }
 
 const MAX_SIZE = 400 * 1024 * 1024;
@@ -96,6 +103,18 @@ export function createFileUploadUrlHandler(deps: FileUploadUrlDeps) {
     if (folder_id) {
       const { data: folder } = await svc.from("folders").select("conta_id").eq("id", folder_id).single();
       if (!folder || folder.conta_id !== profile.conta_id) return json({ error: "Folder not found" }, 404);
+    }
+    // Acesso por cliente: uploading into a hidden client's folder answers like a missing folder.
+    // A workspace-level folder stays writable. A scope read error is a generic 500.
+    if (folder_id) {
+      try {
+        const scope = await (deps.loadClientScope ?? realLoadClientScope)(svc, user.id, profile.conta_id);
+        if (!scope.all && !itemVisible(scope, await folderClienteId(svc as any, Number(folder_id), profile.conta_id))) {
+          return json({ error: "Folder not found" }, 404);
+        }
+      } catch (err) {
+        return internalServerError(json, "file-upload-url:client-scope", err);
+      }
     }
 
     const { data: ws } = await svc.from("workspaces")

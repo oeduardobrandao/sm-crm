@@ -1,6 +1,7 @@
 import { assert, assertEquals, readJson } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createFileManageHandler } from "../file-manage/handler.ts";
+import { allClientsScope, type ClientScope } from "../_shared/client-scope.ts";
 
 Deno.env.set("ZIP_TOKEN_SECRET", "test-secret-key-for-unit-tests");
 Deno.env.set("SUPABASE_URL", "https://test.supabase.co");
@@ -16,6 +17,8 @@ function makeHandler(
     createDb: () => db as never,
     signUrl: async (key) => `https://signed.example.com/${key}`,
     now: () => "2026-05-01T12:00:00.000Z",
+    // Acesso por cliente: unrestricted unless a test overrides it.
+    loadClientScope: () => Promise.resolve(allClientsScope()),
     ...overrides,
   });
 }

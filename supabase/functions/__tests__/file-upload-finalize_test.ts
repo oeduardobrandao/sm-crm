@@ -1,6 +1,7 @@
 import { assert, assertEquals, readJson } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createFileUploadFinalizeHandler, videoThumbnailOrigin } from "../file-upload-finalize/handler.ts";
+import { allClientsScope, type ClientScope } from "../_shared/client-scope.ts";
 
 const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://app.mesaas.com" });
 
@@ -9,6 +10,7 @@ function makeHandler(
   opts?: {
     headObject?: (key: string) => Promise<{ contentLength: number } | null>;
     streamCopy?: (r2Key: string, meta: { file_id: string; conta_id: string }) => Promise<string>;
+    loadClientScope?: () => Promise<ClientScope>;
   },
 ) {
   return createFileUploadFinalizeHandler({
@@ -17,6 +19,8 @@ function makeHandler(
     headObject: opts?.headObject ?? (async () => ({ contentLength: 5000 })),
     signUrl: async (key) => `https://signed.example.com/${key}`,
     streamCopy: opts?.streamCopy,
+    // Acesso por cliente: unrestricted unless a test passes a scope.
+    loadClientScope: opts?.loadClientScope ?? (() => Promise.resolve(allClientsScope())),
   });
 }
 
@@ -673,4 +677,49 @@ Deno.test("file-upload-finalize: video finalize without streamCopy dep leaves st
   assertEquals(res.status, 200);
   const updateCalls = db.calls.filter((c) => c.table === "files" && c.operation === "update");
   assertEquals(updateCalls.length, 0);
+});
+
+// ─── acesso por cliente ─────────────────────────────────────────
+
+const restricted = (ids: number[], membroIds: number[] = []) => () =>
+  Promise.resolve<ClientScope>({ all: false, ids: new Set(ids), membroIds: new Set(membroIds) });
+
+Deno.test("file-upload-finalize: own post in a hidden client is limitado, a hidden post is 404, no insert", async () => {
+  for (const [responsavel, status] of [[9, 403], [8, 404]] as const) {
+    const db = createSupabaseQueryMock();
+    setupAuth(db);
+    db.queue(
+      "workflow_posts",
+      "select",
+      { data: { conta_id: "conta-1", cliente_id: 42, responsavel_id: responsavel }, error: null },
+      { data: { cliente_id: 42, responsavel_id: responsavel }, error: null },
+    );
+    const res = await makeHandler(db, { loadClientScope: restricted([7], [9]) })(authedRequest({ ...baseBody, post_id: 7 }));
+    assertEquals(res.status, status);
+    assertEquals(db.calls.some((c) => c.table === "rpc:file_insert_with_quota"), false);
+  }
+});
+
+Deno.test("file-upload-finalize: assigned client's post is unchanged; scope error is a 500", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queueRpc("file_insert_with_quota", { data: { id: 13 }, error: null });
+  db.queue(
+    "workflow_posts",
+    "select",
+    { data: { conta_id: "conta-1", cliente_id: 42, responsavel_id: null }, error: null },
+    { data: { cliente_id: 42, responsavel_id: null }, error: null },
+  );
+  db.queue("post_file_links", "insert", { data: null, error: null });
+  const ok = await makeHandler(db, { loadClientScope: restricted([42]) })(authedRequest({ ...baseBody, post_id: 7 }));
+  assertEquals(ok.status, 200);
+
+  const broken = createSupabaseQueryMock();
+  setupAuth(broken);
+  broken.queue("workflow_posts", "select", { data: { conta_id: "conta-1", cliente_id: 42 }, error: null });
+  const res = await makeHandler(broken, { loadClientScope: () => Promise.reject(new Error("boom")) })(
+    authedRequest({ ...baseBody, post_id: 7 }),
+  );
+  assertEquals(res.status, 500);
+  assertEquals(broken.calls.some((c) => c.table === "rpc:file_insert_with_quota"), false);
 });

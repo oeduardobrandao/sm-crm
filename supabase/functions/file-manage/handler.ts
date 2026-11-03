@@ -3,6 +3,13 @@ import { insertAuditLog } from "../_shared/audit.ts";
 import { copyObject as r2CopyObject } from "../_shared/r2.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
+import {
+  type ClientScope,
+  type ClientScopeLoader,
+  loadClientScope as realLoadClientScope,
+} from "../_shared/client-scope.ts";
+import { visibleFolderRows } from "../_shared/file-client-scope.ts";
+import { fileManageScopeGate } from "./client-scope-gate.ts";
 
 async function signZipToken(payload: Record<string, unknown>, secret: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -31,6 +38,8 @@ interface FileManageDeps {
   // Task 8 reconciliation sweep picks up `files` rows with a null stream_uid.
   copyObject?: (sourceKey: string, destKey: string) => Promise<void>;
   now?: () => string;
+  /** Acesso por cliente: the caller's client scope (defaults to the real loader). */
+  loadClientScope?: ClientScopeLoader;
 }
 
 export function createFileManageHandler(deps: FileManageDeps) {
@@ -60,19 +69,40 @@ export function createFileManageHandler(deps: FileManageDeps) {
     const subResource = parts[idx + 3]; // e.g. 'copy', 'url'
     const contaId = profile.conta_id;
 
+    // Acesso por cliente. Every read below is pinned to contaId, so the scope is loaded for it. A
+    // restricted caller goes through the gate (hidden folder/file/post = the route's own not-found;
+    // own post in a hidden client = CLIENT_SCOPE_MESSAGE on writes) and listings drop the folders of
+    // hidden clients. A scope read error is a generic 500, never "all clients".
+    let scope: ClientScope;
+    try {
+      scope = await (deps.loadClientScope ?? realLoadClientScope)(svc, user.id, contaId);
+      if (!scope.all) {
+        const gateBody = req.method === "GET" || req.method === "DELETE"
+          ? {}
+          : await req.clone().json().catch(() => ({}));
+        const denied = await fileManageScopeGate(svc, scope, contaId, user.id, {
+          method: req.method, resource, idStr, subResource, url, body: gateBody,
+        });
+        if (denied) return json(denied.body, denied.status);
+      }
+    } catch (err) {
+      return internalServerError(json, "file-manage:client-scope", err);
+    }
+
     // ─── TREE ─────────────────────────────────────────────────────
     if (resource === "tree") {
       if (req.method === "GET") {
         const parentParam = url.searchParams.get("parent_id");
 
         const foldersQ = svc.from("folders")
-          .select("id, name, source, source_type, position")
+          .select("id, name, source, source_type, source_id, position")
           .eq("conta_id", contaId);
         if (parentParam) foldersQ.eq("parent_id", Number(parentParam));
         else foldersQ.is("parent_id", null);
         foldersQ.order("source", { ascending: true }).order("name", { ascending: true });
 
-        const { data: folders } = await foldersQ;
+        const { data: allFolders } = await foldersQ;
+        const folders = visibleFolderRows(allFolders as any[], scope);
         const folderIds = (folders ?? []).map((f: any) => f.id);
 
         let parentSet = new Set<number>();
@@ -131,7 +161,8 @@ export function createFileManageHandler(deps: FileManageDeps) {
         filesQ.is("attached_to", null);
         filesQ.order("created_at", { ascending: false });
 
-        const [{ data: subfolders }, { data: files }] = await Promise.all([foldersQ, filesQ]);
+        const [{ data: allSubfolders }, { data: files }] = await Promise.all([foldersQ, filesQ]);
+        const subfolders = visibleFolderRows(allSubfolders as any[], scope);
 
         // Compute folder sizes using batch RPC (replaces N+1 individual calls)
         const folderIds = (subfolders ?? []).map((f: any) => f.id);

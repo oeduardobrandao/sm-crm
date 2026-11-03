@@ -1,6 +1,7 @@
 import { assert, assertEquals, readJson } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createFileManageHandler } from "../file-manage/handler.ts";
+import { allClientsScope, type ClientScope } from "../_shared/client-scope.ts";
 
 const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://app.mesaas.com" });
 
@@ -13,6 +14,8 @@ function makeHandler(
     createDb: () => db as never,
     signUrl: async (key) => `https://signed.example.com/${key}`,
     now: () => "2026-04-24T12:00:00.000Z",
+    // Acesso por cliente: unrestricted unless a test overrides it.
+    loadClientScope: () => Promise.resolve(allClientsScope()),
     ...overrides,
   });
 }
@@ -1039,4 +1042,97 @@ Deno.test("file-manage: POST /links refuses to link a reference file to a post",
   const res = await makeHandler(db)(req("POST", "/links", { post_id: 50, file_id: 10 }));
   assertEquals(res.status, 404);
   assertEquals(db.calls.find((c) => c.table === "post_file_links" && c.operation === "insert"), undefined);
+});
+
+// ─── acesso por cliente ───────────────────────────────────────
+
+const restrictedTo = (ids: number[], membroIds: number[] = []) => () =>
+  Promise.resolve<ClientScope>({ all: false, ids: new Set(ids), membroIds: new Set(membroIds) });
+
+/** Folder 3 = client folder of client 42, under the "Clientes" root (1). */
+function queueClientFolder(db: ReturnType<typeof createSupabaseQueryMock>) {
+  db.queueRpc("folder_breadcrumbs", { data: [{ id: 1 }, { id: 3 }], error: null });
+  db.queue("folders", "select", {
+    data: [
+      { id: 1, conta_id: "conta-1", source_type: "root_clients", source_id: null },
+      { id: 3, conta_id: "conta-1", source_type: "client", source_id: 42 },
+    ],
+    error: null,
+  });
+}
+
+Deno.test("file-manage: restricted member listing a hidden client's folder gets the missing-folder 404", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  queueClientFolder(db);
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([7]) })(req("GET", "/folders?parent_id=3"));
+  assertEquals(res.status, 404);
+  assertEquals(await readJson(res), { error: "Folder not found" });
+  assertEquals(db.calls.filter((c) => c.table === "files").length, 0);
+});
+
+Deno.test("file-manage: restricted member listing an assigned client's folder is unchanged", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  queueClientFolder(db);
+  db.queue("folders", "select", { data: [], error: null }, { data: { id: 3, conta_id: "conta-1" }, error: null });
+  db.queueRpc("folder_breadcrumbs", { data: [{ id: 1, name: "Clientes" }, { id: 3, name: "Ana" }], error: null });
+  db.queue("files", "select", { data: [], error: null });
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([42]) })(req("GET", "/folders?parent_id=3"));
+  assertEquals(res.status, 200);
+});
+
+Deno.test("file-manage: tree under the Clientes root drops hidden clients' folders", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queueRpc("folder_breadcrumbs", { data: [{ id: 1 }], error: null });
+  db.queue("folders", "select", {
+    data: [{ id: 1, conta_id: "conta-1", source_type: "root_clients", source_id: null }],
+    error: null,
+  }, {
+    data: [
+      { id: 3, name: "Ana", source: "system", source_type: "client", source_id: 42, position: 0 },
+      { id: 4, name: "Bia", source: "system", source_type: "client", source_id: 43, position: 1 },
+    ],
+    error: null,
+  });
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([43]) })(req("GET", "/tree?parent_id=1"));
+  assertEquals(res.status, 200);
+  assertEquals((await readJson(res)).map((f: { id: number }) => f.id), [4]);
+});
+
+Deno.test("file-manage: restricted zip of a workspace-level folder is refused (it may hold hidden clients)", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queueRpc("folder_breadcrumbs", { data: [{ id: 1 }], error: null });
+  db.queue("folders", "select", {
+    data: [{ id: 1, conta_id: "conta-1", source_type: "root_clients", source_id: null }],
+    error: null,
+  });
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([43]) })(req("POST", "/zip-token", { folder_id: 1 }));
+  assertEquals(res.status, 404);
+  assertEquals(await readJson(res), { error: "Not found" });
+});
+
+Deno.test("file-manage: linking a file to own post in a hidden client is limitado", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("files", "select", { data: { conta_id: "conta-1", folder_id: null, attached_to: null }, error: null });
+  db.queue("workflow_posts", "select", { data: { cliente_id: 42, responsavel_id: 9 }, error: null });
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([7], [9]) })(
+    req("POST", "/links", { post_id: 50, file_id: 10 }),
+  );
+  assertEquals(res.status, 403);
+  assertEquals(await readJson(res), { error: "Seu acesso é limitado aos clientes atribuídos." });
+  assertEquals(db.calls.filter((c) => c.operation === "insert").length, 0);
+});
+
+Deno.test("file-manage: a scope read error is a 500, never data", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const res = await makeHandler(db, { loadClientScope: () => Promise.reject(new Error("boom")) })(
+    req("GET", "/folders?parent_id=3"),
+  );
+  assertEquals(res.status, 500);
+  assertEquals(db.calls.filter((c) => c.table === "folders" || c.table === "files").length, 0);
 });
