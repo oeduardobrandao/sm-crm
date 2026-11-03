@@ -999,6 +999,18 @@ Deno.test("youtube-analytics: portfolio 400 invalid_window on days=30, before fl
   assertEquals(callsTo(db, "clientes").length, 0);
 });
 
+Deno.test("youtube-analytics: portfolio 400 invalid_window on a ?start&end range", async () => {
+  for (const q of ["start=2026-10-01&end=2026-10-27", "start=2025-11-01&end=2026-10-27"]) {
+    const db = createSupabaseQueryMock();
+    signedIn(db);
+    const res = await makeHandler(db)(get(`/portfolio?${q}`));
+    assertEquals(res.status, 400, q);
+    assertEquals(await res.json(), { error: "invalid_window" }, q);
+    assertEquals(featureCalls(db), [], q);
+    assertEquals(callsTo(db, "clientes").length, 0, q);
+  }
+});
+
 Deno.test("youtube-analytics: portfolio only answers GET", async () => {
   const db = createSupabaseQueryMock();
   signedIn(db);

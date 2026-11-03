@@ -170,8 +170,9 @@ async function handleTopShorts(ctx: RouteContext, clientId: number): Promise<Res
 /** One row per channel, each over its own window. The body is `{ channels }` and nothing else:
  * no field may span channels (YouTube API policy). */
 async function handlePortfolio(ctx: RouteContext): Promise<Response> {
+  // `?days` only (spec §7): the read is sized for 90 days, so no `?start&end` range up to 365.
   const req = parseYtWindowRequest(ctx.url.searchParams);
-  if (!req) return badRequest(ctx, "invalid_window");
+  if (!req || !("days" in req)) return badRequest(ctx, "invalid_window");
   const denied = await requireFeatures(ctx);
   if (denied) return denied;
   const portfolio = await buildYtPortfolio(ctx.db, ctx.contaId, req, ctx.now);
