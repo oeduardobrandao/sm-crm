@@ -1134,3 +1134,45 @@ describe('ClientesPage — membro restrito a clientes atribuídos', () => {
     expect(screen.queryByText('Você vê os clientes atribuídos a você.')).not.toBeInTheDocument();
   });
 });
+
+describe('ClientesPage — ?novo=1 deep link', () => {
+  function renderAt(path: string) {
+    const queryClient = createTestQueryClient();
+    render(
+      <MemoryRouter initialEntries={[path]}>
+        <QueryClientProvider client={queryClient}>
+          <ClientesPage />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  beforeEach(() => {
+    mockedGetClientes.mockResolvedValue([makeCliente({ id: 5, nome: 'Gamma Care', sigla: 'GC' })]);
+  });
+
+  it('does not open the create dialog for a member restricted to assigned clients', async () => {
+    const membership = fakeMembership({ role: 'agent', client_scope: 'atribuidos' });
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: false,
+      can: makeCan(membership),
+      membership,
+    } as never);
+    renderAt('/clientes?novo=1');
+
+    await screen.findByRole('button', { name: 'Gamma Care' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('todos_unchanged: still opens the create dialog for an unscoped member', async () => {
+    const membership = fakeMembership({ role: 'agent', client_scope: 'todos' });
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: false,
+      can: makeCan(membership),
+      membership,
+    } as never);
+    renderAt('/clientes?novo=1');
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+});

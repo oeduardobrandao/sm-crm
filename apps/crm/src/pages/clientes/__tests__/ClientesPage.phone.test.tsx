@@ -469,3 +469,15 @@ describe('ClientesPage on phones — membro restrito', () => {
     expect(screen.queryByText('Você vê os clientes atribuídos a você.')).toBeNull();
   });
 });
+
+describe('ClientesPage on phones — membro restrito, plan usage', () => {
+  it('shows a plain count instead of the plan usage line', async () => {
+    limitsRef.current = { max_clients: 4 };
+    const membership = fakeMembership({ role: 'agent', client_scope: 'atribuidos' });
+    mockUseAuth.mockReturnValue({ canSeeFinancials: false, can: makeCan(membership), membership });
+    renderPage();
+
+    expect(await screen.findByText('3 clientes')).toBeInTheDocument();
+    expect(screen.queryByText('3 de 4 clientes')).toBeNull();
+  });
+});

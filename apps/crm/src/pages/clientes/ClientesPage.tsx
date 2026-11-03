@@ -228,7 +228,12 @@ export default function ClientesPage() {
     setModalOpen(true);
   };
 
-  useOpenParam('novo', openAdd);
+  // A restricted member never creates clients: the param is consumed without opening.
+  // Gated on the scope alone (not canCreateClients) so an unresolved membership keeps
+  // today's behaviour for everyone else.
+  useOpenParam('novo', () => {
+    if (!clientScoped) openAdd();
+  });
 
   const openEdit = (c: Cliente) => {
     setEditing(c);
@@ -360,7 +365,9 @@ export default function ClientesPage() {
     </span>
   );
   const usageMeter =
-    !isLoading && limits && limits.max_clients !== null ? (
+    // A restricted member's count is only their visible clients: measured against the
+    // workspace plan it misleads and hints at the total, so the meter stays off.
+    !clientScoped && !isLoading && limits && limits.max_clients !== null ? (
       <UsageMeter
         size="compact"
         label="clientes"
@@ -775,7 +782,7 @@ export default function ClientesPage() {
           clientScoped={clientScoped}
           canSeeFinancials={canSeeFinancials}
           atLimit={clientsAtLimit}
-          usageLimit={!isLoading && limits ? limits.max_clients : undefined}
+          usageLimit={!clientScoped && !isLoading && limits ? limits.max_clients : undefined}
           isOwner={isOwner}
           onNew={openAdd}
           onImport={handleCSVImport}

@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Settings } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { useAuth } from '@/context/AuthContext';
@@ -11,6 +10,7 @@ import { isClientScoped } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import { getRentabilidade } from '@/store';
 import ConfigSheet from './ConfigSheet';
+import { FinanceiroScopeBadge } from './FinanceiroScopeBadge';
 import OnboardingCard from './OnboardingCard';
 
 const TABS = [
@@ -83,11 +83,7 @@ export default function FinanceiroV2Layout() {
           </NavLink>
         ))}
       </nav>
-      {clientScoped && (
-        <Badge variant="neutral" className="shrink-0">
-          {t('layout.scopedBadge')}
-        </Badge>
-      )}
+      {clientScoped && <FinanceiroScopeBadge />}
       {canEdit && (
         <Button
           variant="outline"

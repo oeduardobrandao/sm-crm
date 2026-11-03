@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { afterAll, describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 
@@ -357,6 +357,7 @@ const approvalActiveProcessFixture = {
 describe('StandalonePostDrawer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authMock.membership = null;
     limitsMock.features = null;
     authMock.can.mockImplementation(makeCan(fakeMembership({ role: 'owner' })));
     mockGetStandalonePost.mockResolvedValue(basePost() as never);
@@ -1026,6 +1027,7 @@ describe('StandalonePostDrawer edit suggestions', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    authMock.membership = null;
     mockGetStandalonePost.mockResolvedValue(basePost({ ig_caption: 'Legenda da equipe' }) as never);
     vi.mocked(getPostEditSuggestions).mockResolvedValue([suggestion] as never);
     vi.mocked(acceptEditSuggestion).mockResolvedValue(undefined as never);
@@ -1130,6 +1132,7 @@ describe('StandalonePostDrawer edit suggestions', () => {
 describe('StandalonePostDrawer: client identity for a restricted member', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authMock.membership = null;
     limitsMock.features = null;
     authMock.can.mockImplementation(makeCan(fakeMembership({ role: 'agent' })));
     mockHasPending.mockResolvedValue(false);
@@ -1140,10 +1143,6 @@ describe('StandalonePostDrawer: client identity for a restricted member', () => 
       cor: null,
       foto_url: null,
     });
-  });
-
-  afterAll(() => {
-    authMock.membership = null;
   });
 
   const subtitle = () => document.querySelector('.drawer-header-subtitle') as HTMLElement;
