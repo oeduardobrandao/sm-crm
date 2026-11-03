@@ -246,8 +246,9 @@ describe('YouTubeOverviewPage', () => {
     await screen.findByRole('table');
     const bella = rowOf('Studio Bella');
     expect(within(bella).getByText('Reconectar')).toBeInTheDocument();
-    expect(within(bella).getByText('5.880')).toBeInTheDocument();
-    expect(within(bella).getAllByText('-')).toHaveLength(5);
+    // Inscritos included: a revoked authorization's YouTube data is not shown.
+    expect(within(bella).queryByText('5.880')).toBeNull();
+    expect(within(bella).getAllByText('-')).toHaveLength(6);
   });
 
   it('credits the data to YouTube and says each number is its own channel', async () => {
@@ -264,6 +265,18 @@ describe('YouTubeOverviewPage', () => {
       target: { value: '7' },
     });
     await waitFor(() => expect(getYouTubePortfolio).toHaveBeenLastCalledWith(7));
+  });
+
+  it('keeps the previous rows on screen while the next period loads', async () => {
+    renderPage();
+    await screen.findByRole('table');
+    vi.mocked(getYouTubePortfolio).mockReturnValueOnce(new Promise(() => {}));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Período' }), {
+      target: { value: '90' },
+    });
+    await waitFor(() => expect(getYouTubePortfolio).toHaveBeenLastCalledWith(90));
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Dra. Ana Lima' })).toBeInTheDocument();
   });
 
   it('empty state when no channel is connected', async () => {

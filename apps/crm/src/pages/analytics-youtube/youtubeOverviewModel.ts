@@ -59,13 +59,13 @@ export function statusCounts(channels: YtPortfolioChannel[]): Record<YtStatusFil
 }
 
 /**
- * The value a metric cell shows. A revoked channel's history is purged on revocation, so its
- * window metrics read as missing even if the server answered before the purge ran: the cell
- * and the sort agree.
+ * The value a metric cell shows. A revoked channel's YouTube data is purged on revocation, so
+ * every metric, Inscritos included, reads as missing even if the server answered before the
+ * purge ran: the cell and the sort agree.
  */
 export function metricOf(c: YtPortfolioChannel, col: YtMetricCol): number | null {
-  if (col === 'subscriberCount') return c.subscriberCount;
   if (c.authorizationStatus === 'revoked') return null;
+  if (col === 'subscriberCount') return c.subscriberCount;
   if (col === 'watchHours') {
     return c.metrics.watchMinutes === null ? null : c.metrics.watchMinutes / 60;
   }

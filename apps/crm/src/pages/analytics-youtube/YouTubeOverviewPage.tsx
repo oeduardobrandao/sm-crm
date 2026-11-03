@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowUpDown } from 'lucide-react';
@@ -33,7 +33,7 @@ import {
 } from '../../services/youtubeAnalytics';
 import { sanitizeUrl } from '../../utils/security';
 import { initialsOf } from '../analytics-tiktok/overviewModel';
-import { MISSING } from '../analytics-conta/youtube/youtubeTabFormat';
+import { MISSING, dimmed } from '../analytics-conta/youtube/youtubeTabFormat';
 import {
   METRIC_COLS,
   channelName,
@@ -73,9 +73,12 @@ function YouTubeOverviewContent() {
   // Phones (below 768px) get the phone layout; tablet and desktop keep this one.
   const isPhone = !useIsDesktop(768);
 
-  const { data, isLoading, error, refetch } = useQuery({
+  // A period change keeps the previous rows on screen (dimmed) instead of the skeleton, which
+  // only shows on the first load.
+  const { data, isLoading, isPlaceholderData, error, refetch } = useQuery({
     queryKey: ['youtube-portfolio', days],
     queryFn: () => getYouTubePortfolio(days),
+    placeholderData: keepPreviousData,
   });
 
   const all = useMemo(() => data ?? [], [data]);
@@ -323,7 +326,11 @@ function YouTubeOverviewContent() {
         </span>
       </div>
 
-      <div className="card animate-up">
+      <div
+        className="card animate-up"
+        style={dimmed(isPlaceholderData)}
+        aria-busy={isPlaceholderData || undefined}
+      >
         {sorted.length === 0 ? (
           <p style={{ color: 'var(--text-muted)', margin: 0 }}>{t('overview.noMatch')}</p>
         ) : (
