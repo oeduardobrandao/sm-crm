@@ -198,6 +198,18 @@ describe('PostCommentsPanel', () => {
     expect(within(first).getByText(/há 2 horas/)).toBeInTheDocument();
   });
 
+  it('mostra 20 comentários e libera mais 20 a cada clique em Ver mais', async () => {
+    getPostCommentsMock.mockResolvedValue(response({ comments: manyComments(45) }));
+    renderPanel();
+    const list = await screen.findByRole('list', { name: 'Comentários' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(20);
+    fireEvent.click(screen.getByRole('button', { name: 'Ver mais comentários (25)' }));
+    expect(within(list).getAllByRole('listitem')).toHaveLength(40);
+    fireEvent.click(screen.getByRole('button', { name: 'Ver mais comentários (5)' }));
+    expect(within(list).getAllByRole('listitem')).toHaveLength(45);
+    expect(screen.queryByRole('button', { name: /Ver mais comentários/ })).not.toBeInTheDocument();
+  });
+
   it('mostra 25+ respostas e o aviso de truncado', async () => {
     getPostCommentsMock.mockResolvedValue(
       response({

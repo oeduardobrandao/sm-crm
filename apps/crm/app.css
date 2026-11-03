@@ -19561,6 +19561,10 @@ button.phone-stat-tile:active {
 .igc-comment__meta {
   font-size: 0.75rem;
 }
+.igc-comments__more {
+  display: flex;
+  margin: 12px auto 0;
+}
 .igc-comments__foot {
   margin: 0;
   padding: 12px 18px;

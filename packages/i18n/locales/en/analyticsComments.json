@@ -68,6 +68,7 @@
     "empty": "This post has no comments yet.",
     "showingTruncated": "Showing 200 comments",
     "showing": "Showing {{comments}}",
+    "seeMore": "See more comments ({{n}})",
     "openInstagram": "Open on Instagram",
     "unknownUser": "Instagram user",
     "readingTitle": "Comments reading",

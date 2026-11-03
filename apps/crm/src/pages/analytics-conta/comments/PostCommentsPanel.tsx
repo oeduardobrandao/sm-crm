@@ -80,6 +80,9 @@ function CommentRow({ c }: { c: IgComment }) {
   );
 }
 
+// Lista longa cansa: mostra os primeiros e libera mais a cada clique.
+const COMMENTS_PAGE = 20;
+
 function CommentsList({
   data,
   post,
@@ -91,15 +94,28 @@ function CommentsList({
 }) {
   const { t } = useTranslation('analyticsComments');
   const locale = useIntlLocale();
+  const [visible, setVisible] = useState(COMMENTS_PAGE);
+  const remaining = data.comments.length - visible;
   const list =
     data.comments.length === 0 ? (
       <p className="igc-empty">{t('post.empty')}</p>
     ) : (
-      <ul className="igc-comments" aria-label={t('common.comments')}>
-        {data.comments.map((c) => (
-          <CommentRow key={c.id} c={c} />
-        ))}
-      </ul>
+      <>
+        <ul className="igc-comments" aria-label={t('common.comments')}>
+          {data.comments.slice(0, visible).map((c) => (
+            <CommentRow key={c.id} c={c} />
+          ))}
+        </ul>
+        {remaining > 0 && (
+          <Button
+            variant="outline"
+            className="igc-btn igc-comments__more"
+            onClick={() => setVisible((v) => v + COMMENTS_PAGE)}
+          >
+            {t('post.seeMore', { n: remaining.toLocaleString(locale) })}
+          </Button>
+        )}
+      </>
     );
   const footer = data.comments.length > 0 && (
     <p className="igc-comments__foot">

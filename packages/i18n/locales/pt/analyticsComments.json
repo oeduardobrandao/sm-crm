@@ -68,6 +68,7 @@
     "empty": "Este post ainda não tem comentários.",
     "showingTruncated": "Mostrando 200 comentários",
     "showing": "Mostrando {{comments}}",
+    "seeMore": "Ver mais comentários ({{n}})",
     "openInstagram": "Abrir no Instagram",
     "unknownUser": "Usuário do Instagram",
     "readingTitle": "Leitura dos comentários",
