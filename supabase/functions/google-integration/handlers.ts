@@ -39,6 +39,12 @@ import {
 import { type GbpLocationOption, listGbpLocations } from "./locations.ts";
 import { createGoogleState, verifyGoogleState, type VerifiedGoogleState } from "./oauth-state.ts";
 import { type DbClient, loadClientInTenant, resolveTenant } from "./tenant.ts";
+import {
+  type ClientScope,
+  type ClientScopeLoader,
+  hasClientAccess,
+  loadClientScope as realLoadClientScope,
+} from "../_shared/client-scope.ts";
 
 export interface GoogleIntegrationDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
@@ -50,6 +56,8 @@ export interface GoogleIntegrationDeps {
   syncGbpLocation?: typeof syncGbpLocation;
   /** Storage for the YouTube PDF purge drain; defaults to the service client's storage. */
   storage?: StorageLike;
+  /** Acesso por cliente: the caller's client scope (defaults to the real loader). */
+  loadClientScope?: ClientScopeLoader;
 }
 
 /** Same bounds as youtube-sync-cron's drain: what one request removes is this tenant's queue. */
@@ -115,6 +123,7 @@ async function handleAuth(
   path: string,
   url: URL,
   cors: Record<string, string>,
+  loadScope: ClientScopeLoader,
 ): Promise<Response> {
   const tenant = await resolveTenant(req, svc, cors);
   if (tenant instanceof Response) return tenant;
@@ -128,6 +137,10 @@ async function handleAuth(
 
   const client = await loadClientInTenant(svc, clientId, tenant.contaId);
   if (!client) return json(cors, { error: "not_found" }, 404);
+  // Acesso por cliente: a client outside the caller's scope answers like a foreign one, before the
+  // state is signed (the callback trusts the signed clientId).
+  const scope = await loadScope(svc, tenant.userId, tenant.contaId);
+  if (!hasClientAccess(scope, clientId, false)) return json(cors, { error: "not_found" }, 404);
 
   const feature = PRODUCT_FEATURE[product];
   // deno-lint-ignore no-explicit-any
@@ -504,16 +517,21 @@ async function requireClient(
   req: Request,
   rawClientId: string,
   cors: Record<string, string>,
+  loadScope: ClientScopeLoader,
   foreign: "not_found" | "forbidden" = "not_found",
-): Promise<{ userId: string; contaId: string; clientId: number } | Response> {
+): Promise<{ userId: string; contaId: string; clientId: number; scope: ClientScope } | Response> {
   const tenant = await resolveTenant(req, svc, cors);
   if (tenant instanceof Response) return tenant;
   if (!/^\d+$/.test(rawClientId)) return json(cors, { error: "invalid_client" }, 400);
   const clientId = parseInt(rawClientId, 10);
-  if (!(await loadClientInTenant(svc, clientId, tenant.contaId))) {
-    return foreign === "forbidden" ? json(cors, { error: "forbidden" }, 403) : json(cors, { error: "not_found" }, 404);
-  }
-  return { ...tenant, clientId };
+  const denied = () =>
+    foreign === "forbidden" ? json(cors, { error: "forbidden" }, 403) : json(cors, { error: "not_found" }, 404);
+  if (!(await loadClientInTenant(svc, clientId, tenant.contaId))) return denied();
+  // Acesso por cliente: a client outside the caller's scope answers exactly like a foreign one.
+  // A scope read error throws into the generic 500, never "all clients".
+  const scope = await loadScope(svc, tenant.userId, tenant.contaId);
+  if (!hasClientAccess(scope, clientId, false)) return denied();
+  return { ...tenant, clientId, scope };
 }
 
 async function requireGbpFeature(svc: DbClient, contaId: string, cors: Record<string, string>): Promise<Response | null> {
@@ -553,8 +571,14 @@ function googleErrorResponse(err: GoogleApiError, cors: Record<string, string>):
 
 // ─── GET /summary/:clientId ──────────────────────────────────────────────────────────
 
-async function handleSummary(svc: DbClient, req: Request, rawClientId: string, cors: Record<string, string>) {
-  const ctx = await requireClient(svc, req, rawClientId, cors);
+async function handleSummary(
+  svc: DbClient,
+  req: Request,
+  rawClientId: string,
+  cors: Record<string, string>,
+  loadScope: ClientScopeLoader,
+) {
+  const ctx = await requireClient(svc, req, rawClientId, cors, loadScope);
   if (ctx instanceof Response) return ctx;
 
   // deno-lint-ignore no-explicit-any
@@ -657,8 +681,9 @@ async function handleListLocations(
   rawClientId: string,
   url: URL,
   cors: Record<string, string>,
+  loadScope: ClientScopeLoader,
 ) {
-  const ctx = await requireClient(svc, req, rawClientId, cors);
+  const ctx = await requireClient(svc, req, rawClientId, cors, loadScope);
   if (ctx instanceof Response) return ctx;
   const gate = await requireGbpFeature(svc, ctx.contaId, cors);
   if (gate) return gate;
@@ -721,7 +746,10 @@ async function handleListLocations(
       return {
         ...o,
         linkedClientId,
-        linkedClientName: linkedClientId !== null ? names.get(linkedClientId) ?? null : null,
+        // Acesso por cliente: the name of a client outside the caller's scope is never shown.
+        linkedClientName: linkedClientId !== null && hasClientAccess(ctx.scope, linkedClientId, false)
+          ? names.get(linkedClientId) ?? null
+          : null,
         // R12: a unit of this client on ANOTHER connection is shown checked and locked by the
         // picker, and POST ignores it; only the connection that linked it manages it.
         linkedConnectionId: row?.connection_id ?? null,
@@ -756,8 +784,14 @@ function parseLinkBody(body: unknown): { connectionId: string; locationNames: st
   return { connectionId, locationNames: [...new Set(locationNames as string[])] };
 }
 
-async function handleLinkLocations(svc: DbClient, req: Request, rawClientId: string, cors: Record<string, string>) {
-  const ctx = await requireClient(svc, req, rawClientId, cors);
+async function handleLinkLocations(
+  svc: DbClient,
+  req: Request,
+  rawClientId: string,
+  cors: Record<string, string>,
+  loadScope: ClientScopeLoader,
+) {
+  const ctx = await requireClient(svc, req, rawClientId, cors, loadScope);
   if (ctx instanceof Response) return ctx;
   const gate = await requireGbpFeature(svc, ctx.contaId, cors);
   if (gate) return gate;
@@ -959,7 +993,7 @@ async function handleDisconnectYouTube(
   cors: Record<string, string>,
   deps: GoogleIntegrationDeps,
 ) {
-  const ctx = await requireClient(svc, req, rawClientId, cors);
+  const ctx = await requireClient(svc, req, rawClientId, cors, deps.loadClientScope ?? realLoadClientScope);
   if (ctx instanceof Response) return ctx;
 
   const { data, error } = await svc.rpc("google_unlink_youtube", {
@@ -997,8 +1031,9 @@ async function handleDisconnectGbp(
   req: Request,
   rawClientId: string,
   cors: Record<string, string>,
+  loadScope: ClientScopeLoader,
 ) {
-  const ctx = await requireClient(svc, req, rawClientId, cors);
+  const ctx = await requireClient(svc, req, rawClientId, cors, loadScope);
   if (ctx instanceof Response) return ctx;
 
   const { data: rowsData, error } = await svc
@@ -1053,7 +1088,7 @@ async function handleSync(
   cors: Record<string, string>,
   deps: GoogleIntegrationDeps,
 ): Promise<Response> {
-  const ctx = await requireClient(svc, req, rawClientId, cors, "forbidden");
+  const ctx = await requireClient(svc, req, rawClientId, cors, deps.loadClientScope ?? realLoadClientScope, "forbidden");
   if (ctx instanceof Response) return ctx;
 
   const feature = PRODUCT_FEATURE[product];
@@ -1152,27 +1187,28 @@ export function createGoogleIntegrationHandler(deps: GoogleIntegrationDeps) {
     if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
     const svc = deps.createServiceDb();
+    const loadScope = deps.loadClientScope ?? realLoadClientScope;
 
     try {
       if (req.method === "GET" && path === "/callback") {
         return await handleCallback(svc, url, deps);
       }
       if (req.method === "GET" && /^\/auth\/[^/]+$/.test(path)) {
-        return await handleAuth(svc, req, path, url, cors);
+        return await handleAuth(svc, req, path, url, cors, loadScope);
       }
       const segs = path.split("/"); // ["", route, ...]
       if (req.method === "GET" && segs.length === 3 && segs[1] === "summary") {
-        return await handleSummary(svc, req, segs[2], cors);
+        return await handleSummary(svc, req, segs[2], cors, loadScope);
       }
       if (segs.length === 3 && segs[1] === "locations") {
-        if (req.method === "GET") return await handleListLocations(svc, req, segs[2], url, cors);
-        if (req.method === "POST") return await handleLinkLocations(svc, req, segs[2], cors);
+        if (req.method === "GET") return await handleListLocations(svc, req, segs[2], url, cors, loadScope);
+        if (req.method === "POST") return await handleLinkLocations(svc, req, segs[2], cors, loadScope);
       }
       if (req.method === "POST" && segs.length === 4 && segs[1] === "disconnect" && segs[2] === "youtube") {
         return await handleDisconnectYouTube(svc, req, segs[3], cors, deps);
       }
       if (req.method === "POST" && segs.length === 4 && segs[1] === "disconnect" && segs[2] === "gbp") {
-        return await handleDisconnectGbp(svc, req, segs[3], cors);
+        return await handleDisconnectGbp(svc, req, segs[3], cors, loadScope);
       }
       if (req.method === "POST" && segs.length === 4 && segs[1] === "sync" && isProduct(segs[2])) {
         return await handleSync(svc, req, segs[2], segs[3], cors, deps);

@@ -4,6 +4,7 @@
 import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createGoogleIntegrationHandler, type GoogleIntegrationDeps } from "../google-integration/handlers.ts";
+import { allClientsScope, type ClientScope } from "../_shared/client-scope.ts";
 import { listEligibleLocations, listGbpLocations } from "../google-integration/locations.ts";
 import { encryptGoogleToken, getFreshGoogleToken, GoogleApiError } from "../_shared/google.ts";
 import * as gbpApi from "../_shared/gbp-api.ts";
@@ -30,6 +31,8 @@ function makeHandler(db: Mock, extra: Partial<GoogleIntegrationDeps> = {}) {
     buildCorsHeaders: () => ({}),
     // deno-lint-ignore no-explicit-any
     createServiceDb: () => db as any,
+    // Acesso por cliente: unrestricted unless a test overrides it.
+    loadClientScope: () => Promise.resolve(allClientsScope()),
     ...extra,
   });
 }
@@ -1507,4 +1510,59 @@ Deno.test("sync_youtube_revoked_drains_pdfs: a revoked outcome drains this tenan
   const res3 = await makeHandler(broken, fakeSyncs({ yt: ["revoked"] }).deps)(req("POST", `/sync/youtube/${CLIENT}`));
   assertEquals(res3.status, 200);
   assertEquals(await res3.json(), { ok: true, status: "revoked" });
+});
+
+// ─── acesso por cliente ─────────────────────────────────────────────────────────
+
+const restrictedTo = (ids: number[]) => () =>
+  Promise.resolve<ClientScope>({ all: false, ids: new Set(ids), membroIds: new Set<number>() });
+
+Deno.test("scope_hidden_client: restricted member gets the foreign-client answer on summary and sync", async () => {
+  const db = routeDb();
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([99]) })(req("GET", `/summary/${CLIENT}`));
+  assertEquals(res.status, 404);
+  assertEquals(await res.json(), { error: "not_found" });
+
+  const sdb = routeDb();
+  const s = fakeSyncs();
+  const sres = await makeHandler(sdb, { ...s.deps, loadClientScope: restrictedTo([99]) })(
+    req("POST", `/sync/youtube/${CLIENT}`),
+  );
+  assertEquals(sres.status, 403);
+  assertEquals(await sres.json(), { error: "forbidden" });
+  assertEquals(rpcCalls(sdb, "effective_plan_feature").length, 0);
+});
+
+Deno.test("scope_assigned_client: restricted member on an assigned client reaches the route", async () => {
+  const db = routeDb();
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([CLIENT]) })(req("GET", `/summary/${CLIENT}`));
+  assertEquals(res.status, 200);
+});
+
+Deno.test("scope_read_error: a scope read error is a generic 500", async () => {
+  const db = routeDb();
+  const res = await makeHandler(db, { loadClientScope: () => Promise.reject(new Error("boom")) })(
+    req("GET", `/summary/${CLIENT}`),
+  );
+  assertEquals(res.status, 500);
+});
+
+Deno.test("scope_locations_hide_other_client_name: a hidden client's name is never listed", async () => {
+  const db = routeDb();
+  await queueConnection(db);
+  db.queue("gbp_locations", "select", {
+    data: [{ location_name: "locations/c", client_id: 7, connection_id: CONN_1, status: "active" }],
+  });
+  db.queue("clientes", "select", { data: [{ id: 7, nome: "Clínica X" }] });
+  const f = stubGoogle({ accounts: [{ name: "accounts/1" }], locations: { "accounts/1": [loc("c", "C")] } });
+  try {
+    const res = await makeHandler(db, { loadClientScope: restrictedTo([CLIENT]) })(
+      req("GET", `/locations/${CLIENT}?connection=${CONN_1}`),
+    );
+    assertEquals(res.status, 200);
+    const { options } = await res.json();
+    assertEquals([options[0].linkedClientId, options[0].linkedClientName, options[0].eligible], [7, null, false]);
+  } finally {
+    f.restore();
+  }
 });

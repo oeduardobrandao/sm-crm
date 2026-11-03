@@ -4,6 +4,7 @@
 import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createGoogleIntegrationHandler, type GoogleIntegrationDeps } from "../google-integration/handlers.ts";
+import { allClientsScope, type ClientScope } from "../_shared/client-scope.ts";
 import { createGoogleState } from "../google-integration/oauth-state.ts";
 import {
   decryptGoogleToken,
@@ -33,6 +34,8 @@ function makeHandler(db: Mock, extra: Partial<GoogleIntegrationDeps> = {}) {
     buildCorsHeaders: () => ({}),
     // deno-lint-ignore no-explicit-any
     createServiceDb: () => db as any,
+    // Acesso por cliente: unrestricted unless a test overrides it.
+    loadClientScope: () => Promise.resolve(allClientsScope()),
     ...extra,
   });
 }
@@ -745,4 +748,30 @@ Deno.test("callback_relink_same_sub: no release when the stored row is on this c
   } finally {
     f2.restore();
   }
+});
+
+// ─── acesso por cliente ─────────────────────────────────────────────────────────
+
+Deno.test("auth_hidden_client: restricted member gets the foreign-client 404, no state signed", async () => {
+  const db = authedDb();
+  db.queue("clientes", "select", { data: { id: CLIENT, nome: "Cliente A" } });
+  db.queueRpc("effective_plan_feature", { data: true });
+  const scope: ClientScope = { all: false, ids: new Set([99]), membroIds: new Set() };
+  const res = await makeHandler(db, { loadClientScope: () => Promise.resolve(scope) })(
+    authRequest(`/auth/${CLIENT}?product=youtube`),
+  );
+  assertEquals(res.status, 404);
+  assertEquals(await res.json(), { error: "not_found" });
+  assertEquals(db.calls.filter((c) => c.table === "oauth_states").length, 0);
+});
+
+Deno.test("auth_assigned_client: restricted member on an assigned client gets the URL", async () => {
+  const db = authedDb();
+  db.queue("clientes", "select", { data: { id: CLIENT, nome: "Cliente A" } });
+  db.queueRpc("effective_plan_feature", { data: true });
+  const scope: ClientScope = { all: false, ids: new Set([CLIENT]), membroIds: new Set() };
+  const res = await makeHandler(db, { loadClientScope: () => Promise.resolve(scope) })(
+    authRequest(`/auth/${CLIENT}?product=youtube`),
+  );
+  assertEquals(res.status, 200);
 });
