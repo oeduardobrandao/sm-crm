@@ -6,7 +6,7 @@ import {
   folderClienteId,
   itemVisible,
   NOT_IN_WORKSPACE,
-  subtreeVisible,
+  subtreeHasHiddenClient,
   visibleFolderRows,
 } from "../_shared/file-client-scope.ts";
 import { allClientsScope, type ClientScope } from "../_shared/client-scope.ts";
@@ -52,15 +52,64 @@ Deno.test("fileClienteId: folder's client, post-reference files follow their pos
   assertEquals(await fileClienteId(foreign, 10, W), NOT_IN_WORKSPACE);
 });
 
-Deno.test("item / subtree / listing visibility", () => {
+Deno.test("itemVisible: assigned and workspace-level pass, hidden clients do not", () => {
   const r = restricted([42]);
   assertEquals([itemVisible(r, 42), itemVisible(r, 43), itemVisible(r, null)], [true, false, true]);
-  assertEquals([subtreeVisible(r, 42), subtreeVisible(r, null), subtreeVisible(allClientsScope(), null)], [true, false, true]);
+  assertEquals(itemVisible(r, NOT_IN_WORKSPACE), true); // the route answers its own not-found
+});
+
+Deno.test("subtreeHasHiddenClient: walks every level and resolves workflow / post folders in batch", async () => {
+  const r = restricted([42]);
+  const clean = createSupabaseQueryMock();
+  clean.queue(
+    "folders",
+    "select",
+    { data: [{ id: 6, source_type: null, source_id: null }, { id: 7, source_type: "client", source_id: 42 }], error: null },
+    { data: [{ id: 8, source_type: "workflow", source_id: 100 }], error: null },
+    { data: [{ id: 9, source_type: "post", source_id: 500 }], error: null },
+    { data: [], error: null },
+  );
+  clean.queue("workflows", "select", { data: [{ id: 100, cliente_id: 42 }], error: null });
+  clean.queue("workflow_posts", "select", { data: [{ id: 500, cliente_id: 42 }], error: null });
+  assertEquals(await subtreeHasHiddenClient(clean, r, 5, W), false);
+
+  const deepHidden = createSupabaseQueryMock();
+  deepHidden.queue(
+    "folders",
+    "select",
+    { data: [{ id: 6, source_type: null, source_id: null }], error: null },
+    { data: [{ id: 9, source_type: "post", source_id: 500 }], error: null },
+    { data: [], error: null },
+  );
+  deepHidden.queue("workflow_posts", "select", { data: [{ id: 500, cliente_id: 43 }], error: null });
+  assertEquals(await subtreeHasHiddenClient(deepHidden, r, 5, W), true);
+
+  // A workflow folder whose workflow is gone is hidden by default.
+  const orphan = createSupabaseQueryMock();
+  orphan.queue("folders", "select", { data: [{ id: 8, source_type: "workflow", source_id: 100 }], error: null }, {
+    data: [],
+    error: null,
+  });
+  orphan.queue("workflows", "select", { data: [], error: null });
+  assertEquals(await subtreeHasHiddenClient(orphan, r, 5, W), true);
+
+  assertEquals(await subtreeHasHiddenClient(createSupabaseQueryMock(), allClientsScope(), 5, W), false);
+});
+
+Deno.test("visibleFolderRows: drops client, workflow and post folders of hidden clients", async () => {
+  const r = restricted([42]);
+  const db = createSupabaseQueryMock();
+  db.queue("workflows", "select", { data: [{ id: 100, cliente_id: 42 }, { id: 101, cliente_id: 43 }], error: null });
+  db.queue("workflow_posts", "select", { data: [{ id: 500, cliente_id: 43 }], error: null });
   const rows = [
     { id: 1, source_type: "client", source_id: 42 },
     { id: 2, source_type: "client", source_id: 43 },
     { id: 3, source_type: null, source_id: null },
+    { id: 4, source_type: "workflow", source_id: 100 },
+    { id: 5, source_type: "workflow", source_id: 101 },
+    { id: 6, source_type: "post", source_id: 500 },
+    { id: 7, source_type: "root_clients", source_id: null },
   ];
-  assertEquals(visibleFolderRows(rows, r).map((x) => x.id), [1, 3]);
-  assertEquals(visibleFolderRows(rows, allClientsScope()).length, 3);
+  assertEquals((await visibleFolderRows(db, rows, r, W)).map((x) => x.id), [1, 3, 4, 7]);
+  assertEquals((await visibleFolderRows(createSupabaseQueryMock(), rows, allClientsScope(), W)).length, 7);
 });

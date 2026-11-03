@@ -9,7 +9,14 @@ import {
   loadClientScope as realLoadClientScope,
 } from "../_shared/client-scope.ts";
 import { visibleFolderRows } from "../_shared/file-client-scope.ts";
-import { fileManageScopeGate } from "./client-scope-gate.ts";
+import {
+  allowAll,
+  type BulkBody,
+  fileManageScopeGate,
+  type GateDecision,
+  INVALID_REQUEST,
+  normalizeBulkBody,
+} from "./client-scope-gate.ts";
 
 async function signZipToken(payload: Record<string, unknown>, secret: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -69,25 +76,36 @@ export function createFileManageHandler(deps: FileManageDeps) {
     const subResource = parts[idx + 3]; // e.g. 'copy', 'url'
     const contaId = profile.conta_id;
 
+    // bulk-move / bulk-delete / zip-token: the id fields are normalized once, for every caller, and
+    // both the scope gate and the route use exactly these values. Present but malformed = 400.
+    let bulk: BulkBody | null = null;
+    if (req.method === "POST" && (resource === "bulk-move" || resource === "bulk-delete" || resource === "zip-token")) {
+      bulk = normalizeBulkBody(resource, await req.json().catch(() => ({})));
+      if (!bulk) return json(INVALID_REQUEST, 400);
+    }
+
     // Acesso por cliente. Every read below is pinned to contaId, so the scope is loaded for it. A
-    // restricted caller goes through the gate (hidden folder/file/post = the route's own not-found;
-    // own post in a hidden client = CLIENT_SCOPE_MESSAGE on writes) and listings drop the folders of
-    // hidden clients. A scope read error is a generic 500, never "all clients".
+    // restricted caller goes through the gate (client-scope-gate.ts: hidden = answered exactly like
+    // missing; own post in a hidden client = CLIENT_SCOPE_MESSAGE on writes; routes it does not know
+    // are denied) and listings drop the folders of hidden clients. A scope read error is a generic
+    // 500, never "all clients".
     let scope: ClientScope;
+    let gate: GateDecision = allowAll();
     try {
       scope = await (deps.loadClientScope ?? realLoadClientScope)(svc, user.id, contaId);
       if (!scope.all) {
-        const gateBody = req.method === "GET" || req.method === "DELETE"
+        const gateBody = bulk || req.method === "GET" || req.method === "DELETE"
           ? {}
           : await req.clone().json().catch(() => ({}));
-        const denied = await fileManageScopeGate(svc, scope, contaId, user.id, {
-          method: req.method, resource, idStr, subResource, url, body: gateBody,
+        gate = await fileManageScopeGate(svc, scope, contaId, user.id, {
+          method: req.method, resource, idStr, subResource, url, body: gateBody, bulk,
         });
-        if (denied) return json(denied.body, denied.status);
+        if (gate.deny) return json(gate.deny.body, gate.deny.status);
       }
     } catch (err) {
       return internalServerError(json, "file-manage:client-scope", err);
     }
+    const { hiddenFiles, hiddenFolders } = gate;
 
     // ─── TREE ─────────────────────────────────────────────────────
     if (resource === "tree") {
@@ -102,7 +120,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
         foldersQ.order("source", { ascending: true }).order("name", { ascending: true });
 
         const { data: allFolders } = await foldersQ;
-        const folders = visibleFolderRows(allFolders as any[], scope);
+        const folders = await visibleFolderRows(svc, allFolders as any[], scope, contaId);
         const folderIds = (folders ?? []).map((f: any) => f.id);
 
         let parentSet = new Set<number>();
@@ -162,7 +180,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
         filesQ.order("created_at", { ascending: false });
 
         const [{ data: allSubfolders }, { data: files }] = await Promise.all([foldersQ, filesQ]);
-        const subfolders = visibleFolderRows(allSubfolders as any[], scope);
+        const subfolders = await visibleFolderRows(svc, allSubfolders as any[], scope, contaId);
 
         // Compute folder sizes using batch RPC (replaces N+1 individual calls)
         const folderIds = (subfolders ?? []).map((f: any) => f.id);
@@ -669,12 +687,14 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
     // ─── BULK-MOVE ────────────────────────────────────────────────
     if (resource === "bulk-move" && req.method === "POST") {
-      const body = await req.json().catch(() => ({}));
-      const { file_ids, folder_ids, destination_id } = body as {
-        file_ids?: number[];
-        folder_ids?: number[];
-        destination_id?: number | null;
-      };
+      // Ids the scope hides go in as -1 (no such row), so they fail exactly where a missing id does.
+      const asMissing = (ids: number[] | undefined, hidden: Set<number>) =>
+        ids?.map((i) => (hidden.has(i) ? -1 : i));
+      const file_ids = asMissing(bulk!.file_ids, hiddenFiles);
+      const folder_ids = asMissing(bulk!.folder_ids, hiddenFolders);
+      const destination_id = bulk!.destination_id != null && hiddenFolders.has(bulk!.destination_id)
+        ? -1
+        : bulk!.destination_id;
 
       if ((!file_ids || file_ids.length === 0) && (!folder_ids || folder_ids.length === 0)) {
         return json({ error: "No items to move" }, 400);
@@ -714,8 +734,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
     // ─── BULK-DELETE ──────────────────────────────────────────────
     if (resource === "bulk-delete" && req.method === "POST") {
-      const body = await req.json().catch(() => ({}));
-      const { file_ids, folder_ids } = body as { file_ids?: number[]; folder_ids?: number[] };
+      const { file_ids, folder_ids } = bulk!;
 
       if ((!file_ids || file_ids.length === 0) && (!folder_ids || folder_ids.length === 0)) {
         return json({ error: "No items to delete" }, 400);
@@ -726,11 +745,13 @@ export function createFileManageHandler(deps: FileManageDeps) {
       const deletableFolderIds: number[] = [];
 
       if (file_ids && file_ids.length > 0) {
-        const { data: files } = await svc
+        const { data: foundFiles } = await svc
           .from("files")
           .select("id, reference_count, size_bytes")
           .eq("conta_id", contaId)
           .in("id", file_ids);
+        // Hidden by the client scope = not found.
+        const files = (foundFiles ?? []).filter((f: { id: number }) => !hiddenFiles.has(Number(f.id)));
 
         for (const f of files ?? []) {
           if (f.reference_count > 0) {
@@ -747,11 +768,12 @@ export function createFileManageHandler(deps: FileManageDeps) {
       }
 
       if (folder_ids && folder_ids.length > 0) {
-        const { data: folders } = await svc
+        const { data: foundFolders } = await svc
           .from("folders")
           .select("id, source")
           .eq("conta_id", contaId)
           .in("id", folder_ids);
+        const folders = (foundFolders ?? []).filter((f: { id: number }) => !hiddenFolders.has(Number(f.id)));
 
         for (const f of folders ?? []) {
           if (f.source === "system") {
@@ -812,8 +834,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
       const ZIP_TOKEN_SECRET = Deno.env.get("ZIP_TOKEN_SECRET");
       if (!ZIP_TOKEN_SECRET) throw new Error("ZIP_TOKEN_SECRET is required");
 
-      const body = await req.json().catch(() => ({}));
-      const { folder_id, file_ids } = body as { folder_id?: number; file_ids?: number[] };
+      const { folder_id, file_ids } = bulk!;
 
       if (!folder_id && (!file_ids || file_ids.length === 0)) {
         return json({ error: "folder_id or file_ids required" }, 400);
@@ -822,12 +843,22 @@ export function createFileManageHandler(deps: FileManageDeps) {
       let totalBytes = 0;
       let fileCount = 0;
 
+      // A token is only minted for ids that exist in this workspace; one the client scope hides
+      // answers exactly like a missing one.
       if (folder_id) {
+        if (hiddenFolders.has(folder_id)) return json({ error: "Not found" }, 404);
+        const { data: folder } = await svc.from("folders").select("id").eq("id", folder_id).eq("conta_id", contaId)
+          .maybeSingle();
+        if (!folder) return json({ error: "Not found" }, 404);
         const { data: sizeInfo } = await svc.rpc("folder_sizes_batch", { p_folder_ids: [folder_id] });
         totalBytes = sizeInfo?.[0]?.total_size_bytes ?? 0;
         fileCount = sizeInfo?.[0]?.file_count ?? 0;
       } else if (file_ids) {
-        const { data: files } = await svc.from("files").select("size_bytes").eq("conta_id", contaId).in("id", file_ids);
+        if (file_ids.some((f) => hiddenFiles.has(f))) return json({ error: "Not found" }, 404);
+        const { data: files } = await svc.from("files").select("id, size_bytes").eq("conta_id", contaId)
+          .in("id", file_ids);
+        const found = new Set((files ?? []).map((f: { id: number }) => Number(f.id)));
+        if (found.size !== new Set(file_ids).size) return json({ error: "Not found" }, 404);
         totalBytes = (files ?? []).reduce((sum: number, f: { size_bytes: number }) => sum + f.size_bytes, 0);
         fileCount = file_ids.length;
       }

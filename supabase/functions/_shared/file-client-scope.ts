@@ -6,9 +6,9 @@
 //   'workflow' -> workflows.cliente_id;  'post' -> workflow_posts.cliente_id;
 //   'root_clients' / untyped (user folder) -> keep walking up; the root -> null (workspace-level).
 // A file belongs to its folder's client; a post-reference file (attached_to) to its post's client.
-// Workspace-level items (null client) stay visible to a restricted member, EXCEPT for operations
-// over a folder's whole subtree (zip, copy, delete, move): a workspace-level folder can hold hidden
-// client subtrees (the "Clientes" root does), so those need a folder of a visible client.
+// Workspace-level items (null client) stay visible to a restricted member. Operations over a folder's
+// whole subtree (zip, copy, delete, move) also need every typed folder below it to belong to a
+// visible client: a workspace-level folder can hold hidden client subtrees (the "Clientes" root does).
 //
 // This mapping mirrors the folder tree the sync triggers build (folder_sync_cliente/workflow/post).
 // The DB policies of Task 4c own the authoritative definition; keep the two in step.
@@ -75,27 +75,93 @@ export async function fileClienteId(db: Db, fileId: number, contaId: string): Pr
   return await folderClienteId(db, Number(file.folder_id), contaId);
 }
 
-/** Read / write-into check for one item: a workspace-level item passes. */
+/** Read / write-into check for one item: a workspace-level item passes. NOT_IN_WORKSPACE passes
+ * too, so the route answers its own not-found for it. */
 export function itemVisible(scope: ClientScope, clienteId: ClientOf): boolean {
-  if (clienteId === NOT_IN_WORKSPACE) return true; // the route answers its own not-found
+  if (clienteId === NOT_IN_WORKSPACE) return true;
   return clienteId === null || hasClientAccess(scope, clienteId, false);
 }
 
-/** Subtree check (zip, copy, delete, move of a folder): needs a folder of a visible client. */
-export function subtreeVisible(scope: ClientScope, clienteId: ClientOf): boolean {
-  if (scope.all) return true;
-  if (clienteId === NOT_IN_WORKSPACE) return true;
-  return clienteId !== null && hasClientAccess(scope, clienteId, false);
+type TypedRow = { id: number | string; source_type?: string | null; source_id?: number | string | null };
+
+function isTypedRow(r: TypedRow): boolean {
+  return !!r.source_type && r.source_type !== "root_clients" && r.source_id != null;
 }
 
-/** Folder rows of a listing a restricted member may see: client folders of hidden clients go. */
-export function visibleFolderRows<T extends { source_type?: string | null; source_id?: number | null }>(
+/** folder id -> cliente_id for typed folder rows, in batch (one read per source table). A typed row
+ * whose source row is gone maps to -1, a client nobody is assigned (hidden by default). */
+async function typedRowClients(db: Db, rows: TypedRow[], contaId: string): Promise<Map<number, number>> {
+  const out = new Map<number, number>();
+  const bySource: Record<"workflows" | "workflow_posts", TypedRow[]> = { workflows: [], workflow_posts: [] };
+  for (const r of rows) {
+    if (!isTypedRow(r)) continue;
+    if (r.source_type === "client" || r.source_type === "client_reports") out.set(Number(r.id), Number(r.source_id));
+    else if (r.source_type === "workflow") bySource.workflows.push(r);
+    else if (r.source_type === "post") bySource.workflow_posts.push(r);
+    else out.set(Number(r.id), -1); // unknown typed folder: fail closed
+  }
+  for (const table of ["workflows", "workflow_posts"] as const) {
+    const list = bySource[table];
+    if (list.length === 0) continue;
+    const sourceIds = [...new Set(list.map((r) => Number(r.source_id)))];
+    const { data, error } = await db.from(table).select("id, cliente_id").eq("conta_id", contaId).in("id", sourceIds);
+    if (error) throw new Error(`file scope: ${table} batch read failed: ${error.message ?? "unknown"}`);
+    const clientOf = new Map(
+      ((data ?? []) as { id: number; cliente_id: number | null }[]).map((x) => [Number(x.id), x.cliente_id]),
+    );
+    for (const r of list) out.set(Number(r.id), clientOf.get(Number(r.source_id)) ?? -1);
+  }
+  return out;
+}
+
+const MAX_TREE_DEPTH = 64;
+
+/** True when any typed folder BELOW `folderId` belongs to a client the scope hides. Used for
+ * operations over a whole subtree (zip, copy, delete, move): the folder itself must be visible
+ * (checked by the caller), and a visible folder that holds a hidden client's folder answers
+ * CLIENT_SCOPE_MESSAGE. Walks the tree one level per read; throws on read errors. */
+export async function subtreeHasHiddenClient(
+  db: Db,
+  scope: ClientScope,
+  folderId: number,
+  contaId: string,
+): Promise<boolean> {
+  if (scope.all) return false;
+  const seen = new Set<number>([folderId]);
+  const typed: TypedRow[] = [];
+  let frontier = [folderId];
+  for (let depth = 0; frontier.length > 0; depth++) {
+    if (depth >= MAX_TREE_DEPTH) throw new Error("file scope: folder tree too deep");
+    const { data, error } = await db.from("folders").select("id, source_type, source_id").eq("conta_id", contaId)
+      .in("parent_id", frontier);
+    if (error) throw new Error(`file scope: subtree read failed: ${error.message ?? "unknown"}`);
+    const next: number[] = [];
+    for (const r of (data ?? []) as TypedRow[]) {
+      const id = Number(r.id);
+      if (!Number.isInteger(id) || seen.has(id)) continue;
+      seen.add(id);
+      next.push(id);
+      if (isTypedRow(r)) typed.push(r);
+    }
+    frontier = next;
+  }
+  const clients = await typedRowClients(db, typed, contaId);
+  return [...clients.values()].some((c) => !hasClientAccess(scope, c, false));
+}
+
+/** Folder rows of a listing a restricted member may see: typed folders (client, client_reports,
+ * workflow, post) of hidden clients go; workflow/post rows are resolved in batch. */
+export async function visibleFolderRows<T extends TypedRow>(
+  db: Db,
   rows: T[] | null | undefined,
   scope: ClientScope,
-): T[] {
-  if (scope.all) return rows ?? [];
-  return (rows ?? []).filter((r) =>
-    !(r.source_type === "client" || r.source_type === "client_reports") ||
-    hasClientAccess(scope, r.source_id ?? null, false)
-  );
+  contaId: string,
+): Promise<T[]> {
+  const list = rows ?? [];
+  if (scope.all) return list;
+  const clients = await typedRowClients(db, list, contaId);
+  return list.filter((r) => {
+    const c = clients.get(Number(r.id));
+    return c === undefined || hasClientAccess(scope, c, false);
+  });
 }

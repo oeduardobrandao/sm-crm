@@ -308,7 +308,7 @@ Deno.test("zip-token: rejects when no folder_id or file_ids", async () => {
 Deno.test("zip-token: returns 413 when file count limit exceeded", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
-  const manyFiles = Array.from({ length: 501 }, (_, i) => ({ size_bytes: 1000 }));
+  const manyFiles = Array.from({ length: 501 }, (_, i) => ({ id: i + 1, size_bytes: 1000 }));
   db.queue("files", "select", { data: manyFiles, error: null });
   const handler = makeHandler(db);
   const fileIds = Array.from({ length: 501 }, (_, i) => i + 1);
@@ -335,7 +335,7 @@ Deno.test("zip-token: returns token and download_url for folder", async () => {
 Deno.test("zip-token: returns token and download_url for file_ids", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
-  db.queue("files", "select", { data: [{ size_bytes: 500 }, { size_bytes: 300 }], error: null });
+  db.queue("files", "select", { data: [{ id: 10, size_bytes: 500 }, { id: 20, size_bytes: 300 }], error: null });
   const handler = makeHandler(db);
   const res = await handler(req("POST", "/zip-token", { file_ids: [10, 20] }));
   assertEquals(res.status, 200);
