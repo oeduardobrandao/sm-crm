@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
+import { cn } from '@/lib/utils';
 import {
   Dialog,
   DialogContent,
@@ -202,6 +203,9 @@ function ClientAccessFields({
   const sheet = variant === 'sheet';
   const name = member.nome;
   const radioName = `client-scope-${member.user_id}`;
+  // Dialog: a flex column where only the list may shrink (see ClientAccessDialog).
+  // Sheet: plain flow, the sheet scrolls as a whole.
+  const fixed = sheet ? undefined : 'shrink-0';
 
   const options: { value: ClientScope; label: string; hint: string }[] = [
     {
@@ -219,11 +223,11 @@ function ClientAccessFields({
   ];
 
   return (
-    <div className="space-y-3">
+    <div className={sheet ? 'space-y-3' : 'flex min-h-0 flex-1 flex-col gap-3'}>
       <div
         role="radiogroup"
         aria-label={t('membros.clientAccess.column')}
-        className={sheet ? 'grid grid-cols-2 gap-2' : 'space-y-2'}
+        className={sheet ? 'grid grid-cols-2 gap-2' : 'shrink-0 space-y-2'}
       >
         {options.map((o) => {
           const checked = form.scope === o.value;
@@ -266,7 +270,7 @@ function ClientAccessFields({
 
       {form.scope === 'atribuidos' && (
         <>
-          <div className="relative">
+          <div className={cn('relative', fixed)}>
             <Search
               className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2"
               style={{ color: 'var(--text-muted)' }}
@@ -282,7 +286,10 @@ function ClientAccessFields({
             />
           </div>
 
-          <div className="flex items-center justify-between gap-2" style={{ fontSize: 13 }}>
+          <div
+            className={cn('flex items-center justify-between gap-2', fixed)}
+            style={{ fontSize: 13 }}
+          >
             <span style={{ color: 'var(--text-muted)' }} aria-live="polite">
               {!form.clientesError &&
                 t('membros.clientAccess.counter', {
@@ -315,11 +322,10 @@ function ClientAccessFields({
 
           <ul
             aria-label={t('membros.clientAccess.listAria', { name })}
+            // Dialog: up to 236px, and the only part that gives way on a short viewport.
+            className={sheet ? undefined : 'min-h-0 flex-1 overflow-y-auto'}
             style={{
-              // The rest of the dialog is ~560px: the list shrinks first, so the
-              // dialog body itself never needs to scroll on a short viewport.
-              maxHeight: sheet ? undefined : 'min(236px, max(96px, calc(85vh - 580px)))',
-              overflowY: sheet ? undefined : 'auto',
+              maxHeight: sheet ? undefined : 236,
               border: '1px solid var(--border-color)',
               borderRadius: 10,
             }}
@@ -404,8 +410,13 @@ function ClientAccessFields({
           {form.selectedCount === 0 && !form.clientesLoading && !form.clientesError && (
             <div
               role="status"
-              className="badge badge-warning"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              className={cn('badge badge-warning', fixed)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                alignSelf: 'flex-start',
+              }}
             >
               <AlertTriangle size={14} aria-hidden="true" />
               {t('membros.clientAccess.zeroWarning', { name })}
@@ -413,6 +424,7 @@ function ClientAccessFields({
           )}
 
           <p
+            className={fixed}
             style={{
               fontSize: 12,
               color: 'var(--text-muted)',
@@ -456,13 +468,15 @@ export function ClientAccessDialog({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          // +2px: the primitive caps both the box (with its 1px borders) and its
-          // inner scroller at 85vh, so a full-height body overflowed the box by 2px.
-          style={{ maxWidth: 512, maxHeight: 'calc(85vh + 2px)' }}
+          // Flex columns all the way down, inside the primitive's 85vh cap: the box
+          // and its inner wrapper (data-dialog-scroll) stop scrolling, every
+          // section is shrink-0 and only the client list gives way.
+          className="flex flex-col [&>[data-dialog-scroll]]:flex [&>[data-dialog-scroll]]:min-h-0 [&>[data-dialog-scroll]]:flex-col [&>[data-dialog-scroll]]:overflow-hidden"
+          style={{ maxWidth: 512 }}
           confirmClose={form.dirty}
           onConfirmClose={() => onOpenChange(false)}
         >
-          <DialogHeader>
+          <DialogHeader className="shrink-0">
             <DialogTitle>{t('membros.clientAccess.title', { name: member.nome })}</DialogTitle>
             <DialogDescription>
               {form.liberarOnly
@@ -473,7 +487,7 @@ export function ClientAccessDialog({
 
           {!form.liberarOnly && <ClientAccessFields form={form} member={member} variant="dialog" />}
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button
               type="button"
               variant="outline"
