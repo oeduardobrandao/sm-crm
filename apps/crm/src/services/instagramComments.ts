@@ -31,6 +31,8 @@ export interface StoredAnalysis {
   result: CommentAnalysis;
   comments_analyzed: number;
   comments_count_at_analysis: number;
+  /** Posts whose comments were read for this analysis; null on rows saved before it existed. */
+  posts_analyzed: number | null;
   analyzed_at: string;
   period_start: string | null;
   period_end: string | null;

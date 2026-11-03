@@ -37,6 +37,7 @@ export interface StoredAnalysis {
   result: CommentAnalysis;
   comments_analyzed: number;
   comments_count_at_analysis: number;
+  posts_analyzed: number | null;
   analyzed_at: string;
   period_start: string | null;
   period_end: string | null;
@@ -56,7 +57,7 @@ const REQUEST_BUDGET_MS = 50_000;
 const FETCH_BUDGET_MS = 20_000;
 const DAY_MS = 86_400_000;
 const STORED_COLUMNS =
-  "result, comments_analyzed, comments_count_at_analysis, analyzed_at, period_start, period_end";
+  "result, comments_analyzed, comments_count_at_analysis, posts_analyzed, analyzed_at, period_start, period_end";
 const POST_ID_RE = /^[A-Za-z0-9_]{1,64}$/;
 
 const err = (status: number, code: string): RouteResult => ({ status, body: { error: code } });
@@ -114,6 +115,7 @@ function toStored(row: Record<string, unknown>): StoredAnalysis {
     result: row.result as CommentAnalysis,
     comments_analyzed: Number(row.comments_analyzed) || 0,
     comments_count_at_analysis: Number(row.comments_count_at_analysis) || 0,
+    posts_analyzed: row.posts_analyzed == null ? null : Number(row.posts_analyzed) || 0,
     analyzed_at: String(row.analyzed_at),
     period_start: typeof row.period_start === "string" ? row.period_start : null,
     period_end: typeof row.period_end === "string" ? row.period_end : null,
@@ -267,6 +269,7 @@ async function save(
     instagram_post_id: string | null;
     comments_analyzed: number;
     comments_count_at_analysis: number;
+    posts_analyzed: number;
     period_start: string | null;
     period_end: string | null;
     result: CommentAnalysis;
@@ -281,6 +284,7 @@ async function save(
     instagram_post_id: row.instagram_post_id,
     comments_analyzed: row.comments_analyzed,
     comments_count_at_analysis: row.comments_count_at_analysis,
+    posts_analyzed: row.posts_analyzed,
     period_start: row.period_start,
     period_end: row.period_end,
     result: row.result,
@@ -293,6 +297,7 @@ async function save(
     result: row.result,
     comments_analyzed: row.comments_analyzed,
     comments_count_at_analysis: row.comments_count_at_analysis,
+    posts_analyzed: row.posts_analyzed,
     analyzed_at,
     period_start: row.period_start,
     period_end: row.period_end,
@@ -367,6 +372,7 @@ async function analyzePostRoute(
     instagram_post_id: post.instagram_post_id,
     comments_analyzed: texts.length,
     comments_count_at_analysis: Math.max(Number(post.comments) || 0, comments.length),
+    posts_analyzed: 1,
     period_start: null,
     period_end: null,
     result,
@@ -456,6 +462,8 @@ async function accountRoute(
     instagram_post_id: null,
     comments_analyzed: total,
     comments_count_at_analysis: currentComments,
+    // só os posts cujos comentários foram lidos e seguiram para a IA (não os candidatos)
+    posts_analyzed: blocks.length,
     period_start: isoDate(now - ACCOUNT_DAYS * DAY_MS),
     period_end: isoDate(now),
     result,

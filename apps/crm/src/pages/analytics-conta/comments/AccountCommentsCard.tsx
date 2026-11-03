@@ -20,9 +20,6 @@ import { ReconnectState, reconnectReason } from './ReconnectState';
 
 /** Server minimum for an account reading (`too_few_comments` below it). */
 const MIN_COMMENTS = 10;
-/** Posts the server reads per account reading. */
-const MAX_POSTS = 15;
-const DAY_MS = 86_400_000;
 
 const ACCOUNT_LABELS: CommentsViewLabels = {
   themes: 'Temas e de onde vieram',
@@ -38,18 +35,6 @@ function analyzedAgo(ts: string): string {
   const d = new Date(ts);
   if (isNaN(d.getTime())) return '';
   return formatDistanceToNow(d, { addSuffix: true, locale: ptBR });
-}
-
-/** Posts the reading drew from: commented posts inside its period, capped like the server. */
-function postsInPeriod(posts: PostAnalytics[], analysis: StoredAnalysis): number {
-  const end = analysis.period_end ? new Date(analysis.period_end).getTime() : Date.now();
-  const startParsed = analysis.period_start ? new Date(analysis.period_start).getTime() : NaN;
-  const start = isNaN(startParsed) ? end - 30 * DAY_MS : startParsed;
-  const n = posts.filter((p) => {
-    const t = new Date(p.posted_at).getTime();
-    return (p.comments || 0) > 0 && t >= start && t <= end;
-  }).length;
-  return Math.min(n, MAX_POSTS);
 }
 
 /**
@@ -137,7 +122,7 @@ export function AccountCommentsCard({
 
   let subtitle = 'Últimos 30 dias';
   if (analysis) {
-    const m = postsInPeriod(posts, analysis);
+    const m = analysis.posts_analyzed ?? 0;
     subtitle = [
       'Últimos 30 dias',
       m > 0

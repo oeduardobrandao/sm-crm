@@ -248,6 +248,7 @@ Deno.test("GET post-comments devolve cached_analysis só do ig_user_id atual", a
     result: { resumo: "x" },
     comments_analyzed: 8,
     comments_count_at_analysis: 10,
+    posts_analyzed: null,
     analyzed_at: "2026-11-01T00:00:00.000Z",
     period_start: null,
     period_end: null,
@@ -298,6 +299,7 @@ Deno.test("POST manda à IA só textos, grava upsert com analyzed_at novo e idei
   assertEquals(u.row.instagram_post_id, "p1");
   assertEquals(u.row.comments_analyzed, 8);
   assertEquals(u.row.comments_count_at_analysis, 12);
+  assertEquals(u.row.posts_analyzed, 1);
   assertEquals(u.row.period_start, null);
   assertEquals(u.row.period_end, null);
   assertEquals(u.row.model, "gemini-2.5-flash-lite");
@@ -315,6 +317,7 @@ Deno.test("POST manda à IA só textos, grava upsert com analyzed_at novo e idei
   assertEquals(a.analyzed_at, new Date(NOW).toISOString());
   assertEquals(a.comments_analyzed, 8);
   assertEquals(a.comments_count_at_analysis, 12);
+  assertEquals(a.posts_analyzed, 1);
 });
 
 Deno.test("POST: comments_count_at_analysis usa o maior entre o espelho e o buscado", async () => {
@@ -478,6 +481,8 @@ Deno.test("conta: escolhe os 15 com mais comentários dos últimos 30 dias e cor
   assertEquals(u.scope, "account");
   assertEquals(u.instagram_post_id, null);
   assertEquals(u.comments_analyzed, 15 * 60);
+  assertEquals(u.posts_analyzed, 15);
+  assertEquals(body(r).analysis.posts_analyzed, 15);
   assertEquals(u.comments_count_at_analysis, sum);
   assertEquals(u.period_start, "2026-10-04");
   assertEquals(u.period_end, "2026-11-03");
@@ -512,13 +517,16 @@ Deno.test("conta: menos de 10 comentários no total → 422", async () => {
 });
 
 Deno.test("conta: falha num post segue com os outros", async () => {
-  const { deps, calls } = setup({
+  const { deps, calls, upserts } = setup({
     tables: { instagram_accounts: [account()], instagram_posts: [post("p1", 30), post("p2", 20)] },
     graph: (id) => (id === "p1" ? new IgApiError("boom", { graphCode: 100 }) : comments(12, id)),
   });
   const r = await handleCommentsRoute("POST", "/comments-analysis-account/7", deps);
   assertEquals(r?.status, 200);
   assertEquals(body(r).analysis.comments_analyzed, 12);
+  // 2 candidatos, 1 buscado com sucesso: só ele conta
+  assertEquals(upserts[0].row.posts_analyzed, 1);
+  assertEquals(body(r).analysis.posts_analyzed, 1);
   assert(!calls.gemini[0].prompt.includes("legenda p1"), "post que falhou fica fora");
 });
 

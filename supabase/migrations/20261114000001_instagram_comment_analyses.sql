@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS public.instagram_comment_analyses (
   instagram_post_id           text,
   comments_analyzed           int  NOT NULL,
   comments_count_at_analysis  int  NOT NULL,
+  -- posts cujos comentários foram lidos e enviados à IA (1 no scope 'post'; null em linhas antigas)
+  posts_analyzed              int,
   period_start                date,
   period_end                  date,
   result                      jsonb NOT NULL,

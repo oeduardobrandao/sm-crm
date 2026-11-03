@@ -58,6 +58,7 @@ const ANALYSIS: StoredAnalysis = {
   },
   comments_analyzed: 612,
   comments_count_at_analysis: 612,
+  posts_analyzed: 15,
   analyzed_at: new Date(Date.now() - 3 * 86400000).toISOString(),
   period_start: null,
   period_end: null,
@@ -105,7 +106,7 @@ describe('AccountCommentsCard', () => {
     expect(await screen.findByText('Engajamento alto nos Reels educativos.')).toBeInTheDocument();
     expect(screen.getByText('O que o público está dizendo')).toBeInTheDocument();
     expect(
-      screen.getByText(/612 comentários em 2 posts · analisado há 3 dias/),
+      screen.getByText(/612 comentários em 15 posts · analisado há 3 dias/),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Atualizar análise' })).toBeInTheDocument();
     expect(screen.getByText('Temas e de onde vieram')).toBeInTheDocument();
@@ -113,6 +114,16 @@ describe('AccountCommentsCard', () => {
     expect(container.querySelectorAll('.igc-theme__thumbs img')).toHaveLength(1);
     expect(container.querySelectorAll('.igc-theme__thumb-empty')).toHaveLength(1);
     expect(screen.getAllByRole('button', { name: 'Salvar como ideia' })).toHaveLength(3);
+  });
+
+  it('posts_analyzed nulo (linha antiga) omite "em M posts"', async () => {
+    getMock.mockResolvedValue({
+      analysis: { ...ANALYSIS, posts_analyzed: null },
+      current_comments: 612,
+    });
+    renderCard();
+    expect(await screen.findByText(/612 comentários · analisado há 3 dias/)).toBeInTheDocument();
+    expect(screen.queryByText(/em \d+ posts?/)).toBeNull();
   });
 
   it('current_comments maior que comments_count_at_analysis mostra o aviso de novos', async () => {

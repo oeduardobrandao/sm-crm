@@ -139,6 +139,7 @@ const ANALYSIS: StoredAnalysis = {
   },
   comments_analyzed: 12,
   comments_count_at_analysis: 12,
+  posts_analyzed: 1,
   analyzed_at: new Date(Date.now() - 2 * 86400 * 1000).toISOString(),
   period_start: null,
   period_end: null,

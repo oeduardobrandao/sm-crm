@@ -63,11 +63,6 @@ function DistributionBar({ distribuicao }: { distribuicao: CommentAnalysis['dist
   );
 }
 
-/**
- * The result of a comments reading (post or account): new-comments notice, overall
- * sentiment chip, summary, distribution, themes, frequent questions and content ideas
- * with "Salvar como ideia". The header (title, counts, analysed when) is the caller's.
- */
 export interface CommentsViewLabels {
   themes: string;
   questions: string;
@@ -80,6 +75,11 @@ const DEFAULT_LABELS: CommentsViewLabels = {
   ideas: 'Ideias de conteúdo',
 };
 
+/**
+ * The result of a comments reading (post or account): new-comments notice, overall
+ * sentiment chip, summary, distribution, themes, frequent questions and content ideas
+ * with "Salvar como ideia". The header (title, counts, analysed when) is the caller's.
+ */
 export function CommentsAnalysisView({
   analysis,
   clienteId,
