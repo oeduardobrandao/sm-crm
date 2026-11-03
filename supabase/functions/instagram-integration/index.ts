@@ -16,6 +16,7 @@ import { resolveGrantedPermissions } from "../_shared/instagram-permissions.ts";
 import { subscribeToComments, fetchSubscribedFields } from "../_shared/instagram-messaging.ts";
 import { makeBoundedFetch } from "../_shared/bounded-fetch.ts";
 import { handlePublishedMedia } from "./published-media.ts";
+import { disconnectAccount } from "./disconnect.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const META_APP_ID = Deno.env.get("META_APP_ID")!;
@@ -933,14 +934,7 @@ Deno.serve(async (req) => {
 
          const { data: account } = await serviceClient.from('instagram_accounts').select('id').eq('client_id', clientId).single();
          if (account) {
-           await serviceClient.from('instagram_posts').delete().eq('instagram_account_id', account.id);
-           const { error: updateErr } = await serviceClient.from('instagram_accounts').update({
-             encrypted_access_token: '',
-             token_expires_at: new Date(0).toISOString(),
-             authorization_status: 'disconnected',
-             last_synced_at: null,
-           }).eq('id', account.id);
-           if (updateErr) throw new Error(updateErr.message);
+           await disconnectAccount(serviceClient, account.id);
          }
          return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
