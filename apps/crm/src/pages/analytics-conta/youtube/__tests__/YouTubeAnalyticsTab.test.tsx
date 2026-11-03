@@ -636,7 +636,7 @@ describe('YouTubeAnalyticsTab', () => {
     expect(await screen.findByText('YouTube não conectado')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Ir para Redes sociais' })).toHaveAttribute(
       'href',
-      '/clientes/12/redes-sociais',
+      '/clientes/12/redes-sociais?rede=youtube',
     );
     expect(getYouTubeVideos).not.toHaveBeenCalled();
   });
@@ -679,7 +679,7 @@ describe('YouTubeAnalyticsTab', () => {
     expect(await screen.findByText('Autorização do Google expirada')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Reconectar' })).toHaveAttribute(
       'href',
-      '/clientes/12/redes-sociais',
+      '/clientes/12/redes-sociais?rede=youtube',
     );
     expect(screen.queryByText('Primeira sincronização em andamento')).toBeNull();
   });

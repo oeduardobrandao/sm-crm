@@ -246,7 +246,7 @@ describe('GoogleAnalyticsTab', () => {
     expect(await screen.findByText('Google Meu Negócio não conectado')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Ir para Redes sociais' })).toHaveAttribute(
       'href',
-      '/clientes/12/redes-sociais',
+      '/clientes/12/redes-sociais?rede=google',
     );
     expect(getGbpDaily).not.toHaveBeenCalled();
     expect(getGbpUnits).not.toHaveBeenCalled();
@@ -301,7 +301,7 @@ describe('GoogleAnalyticsTab', () => {
     expect(screen.getByText('Unidade com autorização expirada: Pinheiros')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Reconectar' })).toHaveAttribute(
       'href',
-      '/clientes/12/redes-sociais',
+      '/clientes/12/redes-sociais?rede=google',
     );
     expect(screen.getByText('Visualizações do perfil')).toBeInTheDocument();
     expect(within(card('Comparar unidades')).getByText('Pinheiros')).toBeInTheDocument();

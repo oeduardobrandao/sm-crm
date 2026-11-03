@@ -78,7 +78,7 @@ export function YouTubeAnalyticsTab({
   const [syncing, setSyncing] = useState(false);
   const data = useYouTubeTabData(clientId, range, type, sort.col);
   const { overview, daily, traffic, demographics, videos, topShorts } = data;
-  const redesSociais = `/clientes/${clientId}/redes-sociais`;
+  const redesSociais = `/clientes/${clientId}/redes-sociais?rede=youtube`;
 
   const handleSync = async () => {
     setSyncing(true);

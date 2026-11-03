@@ -71,7 +71,7 @@ export function YouTubeAnalyticsTabPhone(props: YouTubeAnalyticsTabPhoneProps) {
   const { t } = useTranslation('analyticsYoutube');
   const { clientId, frame, data, range, onRange, syncing, onSync } = props;
   const { overview } = data;
-  const redesSociais = `/clientes/${clientId}/redes-sociais`;
+  const redesSociais = `/clientes/${clientId}/redes-sociais?rede=youtube`;
 
   if (overview.isPending) {
     return (
@@ -283,7 +283,7 @@ function PhoneBody({
   const { overview, daily, traffic, demographics, videos, topShorts } = data;
   const channel = overviewData.channel;
   const revoked = channel.authorizationStatus === 'revoked';
-  const redesSociais = `/clientes/${clientId}/redes-sociais`;
+  const redesSociais = `/clientes/${clientId}/redes-sociais?rede=youtube`;
   const windowDays = windowDaysOf(overviewData, range);
   const contentLag = lagging(channel.contentTypeThrough, channel.dataThrough);
   // Data, but no Shorts x long split yet: those cards say so instead of reading 0%.

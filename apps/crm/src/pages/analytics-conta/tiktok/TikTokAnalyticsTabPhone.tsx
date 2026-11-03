@@ -93,7 +93,7 @@ export function TikTokAnalyticsTabPhone(props: TikTokAnalyticsTabPhoneProps) {
   const { t } = useTranslation('analyticsTiktok');
   const { clientId, frame, data, range, onRange, syncing, onSync } = props;
   const { overview } = data;
-  const redesSociais = `/clientes/${clientId}/redes-sociais`;
+  const redesSociais = `/clientes/${clientId}/redes-sociais?rede=tiktok`;
 
   if (overview.isPending) {
     return (
@@ -363,7 +363,7 @@ function PhoneBody({
   );
 
   const sortLabel = t(SORT_KEYS[sort.col]);
-  const redesSociais = `/clientes/${clientId}/redes-sociais`;
+  const redesSociais = `/clientes/${clientId}/redes-sociais?rede=tiktok`;
 
   return (
     <>

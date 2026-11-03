@@ -639,8 +639,9 @@ html[data-standalone] .app-container {
 }
 
 /*
- * Client analytics page (/analytics/:id/:tab): the Instagram | TikTok | Relatórios
- * tabs. Text links with a 2px underline on the active one; they scroll sideways
+ * Client analytics page (/analytics/:id/:tab) and the client detail "Redes sociais" platform
+ * tabs: Instagram | TikTok | YouTube | Google Meu Negócio (| Relatórios on analytics).
+ * Text links with a 2px underline on the active one; they scroll sideways
  * instead of wrapping when the row is too narrow.
  */
 

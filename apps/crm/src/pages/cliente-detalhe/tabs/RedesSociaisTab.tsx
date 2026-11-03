@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useOutletContext, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useOutletContext, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -14,6 +14,9 @@ import {
 } from '@/components/ui/alert-dialog';
 import { getInstagramSummary, syncInstagramData } from '@/services/instagram';
 import { useInstagramActivationEvent } from '@/hooks/useInstagramActivationEvent';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
+import { SegmentedControl } from '@/components/mobile/SegmentedControl';
 import { captureEvent } from '@/lib/analytics';
 import { resolveIgError } from '@/lib/instagram-oauth-errors';
 import { InstagramSection } from '../components/InstagramSection';
@@ -24,7 +27,11 @@ import { GoogleBusinessSection } from '../GoogleBusinessSection';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
 
 /**
- * "Redes sociais" tab: Instagram + TikTok sections, ported from the pre-split
+ * "Redes sociais" tab: one sub-tab per platform (Instagram | TikTok | YouTube | Google Meu
+ * Negócio, the last three behind their plan flags), picked by `?rede=` (absent = Instagram)
+ * and styled like the analytics page's tabs. Only the active platform's section mounts.
+ * An OAuth return lands on its platform's tab: the effect below writes `rede` in the same
+ * URL update that strips the callback params. Originally the Instagram + TikTok sections, ported from the pre-split
  * ClienteDetalhePage (see git history at d30adeea), plus the OAuth-callback
  * query-param processing that used to live in that same file's top-level
  * effect.
@@ -72,6 +79,18 @@ const YT_ERROR_CODES = [
 ] as const;
 const GMN_ERROR_CODES = ['denied', 'missing_scope', 'no_refresh_token', 'unknown'] as const;
 
+const REDES = ['instagram', 'tiktok', 'youtube', 'google'] as const;
+type Rede = (typeof REDES)[number];
+const REDE_LABEL: Record<Rede, string> = {
+  instagram: 'Instagram',
+  tiktok: 'TikTok',
+  youtube: 'YouTube',
+  google: 'Google Meu Negócio',
+};
+// The phone segmented control truncates the full name at four segments.
+const REDE_LABEL_PHONE: Record<Rede, string> = { ...REDE_LABEL, google: 'Google' };
+const isRede = (v: string | null): v is Rede => (REDES as readonly string[]).includes(v ?? '');
+
 export default function RedesSociaisTab() {
   const { clienteId, cliente } = useOutletContext<ClienteDetalheOutletContext>();
   const navigate = useNavigate();
@@ -87,6 +106,33 @@ export default function RedesSociaisTab() {
   useInstagramActivationEvent(clienteId);
 
   const [searchParams, setSearchParams] = useSearchParams();
+  const isPhone = !useIsDesktop(768);
+  const { features, isLoading: loadingLimits } = useWorkspaceLimits();
+  const enabled: Record<Rede, boolean> = {
+    instagram: true,
+    tiktok: !!features?.feature_tiktok,
+    youtube: !!features?.feature_youtube,
+    google: !!features?.feature_google_business,
+  };
+  const visibleRedes = REDES.filter((r) => enabled[r]);
+  const redeParam = searchParams.get('rede');
+  // A gated tab without the plan falls back to Instagram, but only once the plan is known,
+  // so a deep link to ?rede=youtube does not flash Instagram while the limits load.
+  const rede: Rede | null = !isRede(redeParam)
+    ? 'instagram'
+    : enabled[redeParam]
+      ? redeParam
+      : loadingLimits
+        ? null
+        : 'instagram';
+  const redeHref = (r: Rede) => {
+    const next = new URLSearchParams(searchParams);
+    if (r === 'instagram') next.delete('rede');
+    else next.set('rede', r);
+    const qs = next.toString();
+    return qs ? `?${qs}` : '?';
+  };
+
   const processedOAuthParams = useRef(false);
   useEffect(() => {
     if (processedOAuthParams.current) return;
@@ -152,6 +198,18 @@ export default function RedesSociaisTab() {
     if (gbpPickParam) setGbpPick(gbpPickParam);
 
     const next = new URLSearchParams(searchParams);
+    // Land on the platform that just came back from OAuth (a callback carries one platform's
+    // params; the order only matters for a hand-made URL).
+    const landing: Rede | null =
+      gbpPickParam || gmnError
+        ? 'google'
+        : ytConnected || ytError
+          ? 'youtube'
+          : ttConnected || ttError
+            ? 'tiktok'
+            : null;
+    if (landing) next.set('rede', landing);
+    else if (igConnected || igError) next.delete('rede');
     next.delete('ig_connected');
     next.delete('ig_error');
     next.delete('tt_error');
@@ -185,31 +243,66 @@ export default function RedesSociaisTab() {
     }
   }, [igSummary, clienteId, refetchIg]);
 
+  const tabsLabel = t('detail.socialTabs', 'Redes sociais');
+  const tabs =
+    visibleRedes.length < 2 ? null : isPhone ? (
+      <SegmentedControl
+        semantics="tablist"
+        aria-label={tabsLabel}
+        className="analytics-phone-tabs"
+        options={visibleRedes.map((r) => ({ value: r, label: REDE_LABEL_PHONE[r] }))}
+        value={rede ?? 'instagram'}
+        onChange={(r) => navigate(redeHref(r), { replace: true })}
+      />
+    ) : (
+      <nav className="analytics-tabs redes-tabs" aria-label={tabsLabel}>
+        {visibleRedes.map((r) => (
+          <Link
+            key={r}
+            to={redeHref(r)}
+            replace
+            className={r === rede ? 'analytics-tab active' : 'analytics-tab'}
+            aria-current={r === rede ? 'page' : undefined}
+          >
+            {REDE_LABEL[r]}
+          </Link>
+        ))}
+      </nav>
+    );
+
   return (
     <>
-      <InstagramSection
-        key={`ig-${clienteId}`}
-        clienteId={clienteId}
-        clienteEmail={cliente?.email ?? null}
-        loadingIg={loadingIg}
-        igSummary={igSummary}
-        refetchIg={refetchIg}
-        onNavigateAnalytics={() => navigate(`/analytics/${clienteId}`)}
-      />
+      {tabs}
 
-      <AutomationContactsSection clienteId={clienteId} clienteNome={cliente?.nome ?? ''} />
+      {rede === 'instagram' && (
+        <>
+          <InstagramSection
+            key={`ig-${clienteId}`}
+            clienteId={clienteId}
+            clienteEmail={cliente?.email ?? null}
+            loadingIg={loadingIg}
+            igSummary={igSummary}
+            refetchIg={refetchIg}
+            onNavigateAnalytics={() => navigate(`/analytics/${clienteId}`)}
+          />
 
-      <TikTokSection key={`tt-${clienteId}`} clienteId={clienteId} />
+          <AutomationContactsSection clienteId={clienteId} clienteNome={cliente?.nome ?? ''} />
+        </>
+      )}
 
-      <YouTubeSection key={`yt-${clienteId}`} clienteId={clienteId} />
+      {rede === 'tiktok' && <TikTokSection key={`tt-${clienteId}`} clienteId={clienteId} />}
 
-      <GoogleBusinessSection
-        key={`gmn-${clienteId}`}
-        clienteId={clienteId}
-        clienteNome={cliente?.nome ?? ''}
-        pickConnectionId={gbpPick}
-        onPickHandled={() => setGbpPick(null)}
-      />
+      {rede === 'youtube' && <YouTubeSection key={`yt-${clienteId}`} clienteId={clienteId} />}
+
+      {rede === 'google' && (
+        <GoogleBusinessSection
+          key={`gmn-${clienteId}`}
+          clienteId={clienteId}
+          clienteNome={cliente?.nome ?? ''}
+          pickConnectionId={gbpPick}
+          onPickHandled={() => setGbpPick(null)}
+        />
+      )}
 
       {/* Instagram off-Meta activity setting blocked the OAuth connection */}
       <AlertDialog open={igOffMetaOpen} onOpenChange={setIgOffMetaOpen}>
