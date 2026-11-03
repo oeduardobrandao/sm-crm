@@ -119,6 +119,7 @@ function setup(opts: {
   graph?: (mediaId: string, max: number) => IgComment[] | Error;
   aiRaw?: () => unknown;
   ai?: { accountId: string; token: string } | null;
+  lang?: "pt" | "en";
   rateOk?: boolean;
 } = {}) {
   const tables = opts.tables ?? {
@@ -134,6 +135,7 @@ function setup(opts: {
     contaId: CONTA,
     userId: USER,
     ai: opts.ai === undefined ? { accountId: "acc", token: "tok" } : opts.ai,
+    lang: opts.lang ?? "pt",
     now: () => NOW,
     decryptToken: () => Promise.resolve("tok"),
     verifyClientOwnership: () => Promise.resolve(),
@@ -587,4 +589,16 @@ Deno.test("GET conta devolve a análise salva do ig_user_id atual", async () => 
   assertEquals(body(r).current_comments, 7);
   assertEquals(body(r).analysis.period_start, "2026-10-03");
   assertEquals(body(r).analysis.comments_count_at_analysis, 5);
+});
+
+Deno.test("lang=en: prompt pede inglês e a redação usa o texto em inglês", async () => {
+  const { deps, calls, upserts } = setup({
+    lang: "en",
+    aiRaw: () => ({ ...goodRaw(), resumo: "Fans like @someone a lot." }),
+  });
+  const r = await handleCommentsRoute("POST", "/comments-analysis/7/p1", deps);
+  assertEquals(r?.status, 200);
+  assert(calls.ai[0].prompt.includes("in natural English"));
+  const u = upserts.find((x) => x.table === "instagram_comment_analyses")!;
+  assertEquals((u.row.result as { resumo: string }).resumo, "Fans like someone in the audience a lot.");
 });

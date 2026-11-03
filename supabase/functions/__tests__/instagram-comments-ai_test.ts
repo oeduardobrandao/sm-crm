@@ -10,6 +10,7 @@ import {
   buildPostPrompt,
   callAi,
   fitTexts,
+  parseJsonText,
   type CommentAnalysis,
   redactIdentities,
   validateAnalysis,
@@ -338,4 +339,32 @@ Deno.test("fitTexts para no teto de caracteres, na ordem", () => {
   assertEquals(fitTexts(texts, 205), texts.slice(0, 2));
   assertEquals(fitTexts(["x".repeat(2000)], 600), ["x".repeat(2000)]);
   assertEquals(fitTexts(texts, 50), []);
+});
+
+Deno.test("parseJsonText tolera cerca de markdown e texto em volta", () => {
+  assertEquals(parseJsonText('Aqui está:\n```json\n{"a":"ação"}\n```'), { a: "ação" });
+  assertEquals(parseJsonText('{"a":1}'), { a: 1 });
+});
+
+Deno.test("prompt pt pede acentuação e não manda response_format", async () => {
+  const p = buildPostPrompt({ caption: "", mediaType: "IMAGE", texts: ["oi"] }, "abc");
+  assert(p.includes("acentuação corretas"));
+  assert(p.includes('"sentimento_geral"'));
+  let sent = "";
+  const fetchFn = ((_u: string, init: RequestInit) => {
+    sent = String(init.body);
+    return Promise.resolve(okBody('{"a":1}'));
+  }) as unknown as typeof fetch;
+  await callAi({ fetchFn, now: () => 0 }, { config: CFG, prompt: "p", deadlineAt: 50_000 });
+  assert(!sent.includes("response_format"));
+});
+
+Deno.test("prompt en pede inglês nas duas pontas", () => {
+  const p = buildAccountPrompt({ posts: [{ id: "p1", caption: "", texts: ["oi"] }], lang: "en" }, "n");
+  assertEquals(p.split("in natural English").length - 1, 2);
+});
+
+Deno.test("redactIdentities em inglês", () => {
+  const out = redactIdentities({ ...(fixture() as unknown as CommentAnalysis), resumo: "Hi @ana", ideias: [{ id: "1", ...idea(1) }] }, [], "en");
+  assertEquals(out.resumo, "Hi someone in the audience");
 });

@@ -255,6 +255,7 @@ Deno.serve(async (req) => {
       ai: WORKERS_AI_ACCOUNT_ID && WORKERS_AI_API_TOKEN
         ? { accountId: WORKERS_AI_ACCOUNT_ID, token: WORKERS_AI_API_TOKEN }
         : null,
+      lang: url.searchParams.get("lang") === "en" ? "en" : "pt",
       now: Date.now,
       decryptToken,
       verifyClientOwnership: (clientId) => verifyClientOwnership(serviceClient, clientId, contaId),

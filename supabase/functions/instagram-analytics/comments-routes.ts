@@ -14,6 +14,7 @@ import {
   buildAccountPrompt,
   buildPostPrompt,
   type AiConfig,
+  type AnalysisLang,
   type callAi,
   type CommentAnalysis,
   COMMENTS_MODEL,
@@ -28,6 +29,8 @@ export interface CommentsRouteDeps {
   contaId: string;
   userId: string;
   ai: AiConfig | null;
+  /** Idioma da interface de quem pediu (query `lang`); textos da análise saem nele. */
+  lang: AnalysisLang;
   now: () => number;
   decryptToken: (enc: string) => Promise<string>;
   verifyClientOwnership: (clientId: string) => Promise<void>;
@@ -257,7 +260,7 @@ async function analyze(
     ...valid,
     ideias: valid.ideias.map((i) => ({ id: crypto.randomUUID(), ...i })),
   };
-  const red = redactIdentities(withIds, usernames);
+  const red = redactIdentities(withIds, usernames, deps.lang);
   const resumo = red.resumo.trim();
   const ideias = red.ideias.filter((i) => i.titulo.trim() && i.descricao.trim() && i.motivo.trim());
   if (!resumo || ideias.length < 3) {
@@ -363,6 +366,7 @@ async function analyzePostRoute(
     caption: post.caption ?? "",
     mediaType: post.media_type ?? "",
     texts,
+    lang: deps.lang,
   });
   const result = await analyze(
     deps,
@@ -458,7 +462,7 @@ async function accountRoute(
   const result = await analyze(
     deps,
     "comments-analysis-account",
-    buildAccountPrompt({ posts: blocks }),
+    buildAccountPrompt({ posts: blocks, lang: deps.lang }),
     start + REQUEST_BUDGET_MS,
     usernames,
     new Set(blocks.map((b) => b.id)),
