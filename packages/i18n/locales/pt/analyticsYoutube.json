@@ -157,5 +157,43 @@
     "syncRateLimited": "Limite da API do Google atingido. Tente de novo em alguns minutos.",
     "syncIncomplete": "Sincronização não concluída agora. Tentaremos de novo automaticamente."
   },
+  "overview": {
+    "title": "YouTube",
+    "description": "Um canal por linha. Clique em um canal para abrir o analytics completo do cliente.",
+    "search": "Buscar canal ou cliente",
+    "clientFilter": "Cliente",
+    "allClients": "Todos os clientes",
+    "period": "Período",
+    "periodDays_one": "{{count}} dia",
+    "periodDays_other": "{{count}} dias",
+    "statusFilter": "Situação da conexão",
+    "statusAll": "Todos ({{count}})",
+    "statusRevoked": "Precisam reconectar ({{count}})",
+    "connected_one": "{{count}} canal conectado",
+    "connected_other": "{{count}} canais conectados",
+    "channels": "Canais",
+    "perChannel": "Cada número pertence só ao canal da linha.",
+    "reconnect": "Reconectar",
+    "neverSynced": "Nunca",
+    "noMatch": "Nenhum canal encontrado com esses filtros.",
+    "emptyTitle": "Nenhum canal conectado",
+    "emptyBody": "Conecte o YouTube de um cliente na aba Redes sociais para ver o canal aqui.",
+    "emptyAction": "Ir para clientes",
+    "sortBy": "Ordenar canais",
+    "sortToAsc": "Ordem crescente",
+    "sortToDesc": "Ordem decrescente",
+    "sortAsc": "crescente",
+    "sortDesc": "decrescente",
+    "column": {
+      "title": "Canal",
+      "subscriberCount": "Inscritos",
+      "netSubscribers": "Ganho no período",
+      "views": "Visualizações",
+      "watchHours": "Horas assistidas",
+      "shortsShare": "Shorts nas visualizações",
+      "avgViewDurationS": "Duração média",
+      "lastSyncedAt": "Atualizado"
+    }
+  },
   "footer": "Dados do YouTube, como o YouTube informa."
 }

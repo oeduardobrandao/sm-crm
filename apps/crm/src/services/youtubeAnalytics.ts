@@ -39,6 +39,14 @@ export interface YtSplitEntry {
   long: number;
 }
 
+/** A channel's window, YYYY-MM-DD Pacific days, inclusive. */
+export interface YtWindow {
+  start: string;
+  end: string;
+  prevStart: string;
+  prevEnd: string;
+}
+
 export interface YtOverview {
   channel: {
     title: string | null;
@@ -54,7 +62,7 @@ export interface YtOverview {
     /** Last day of the per-video reports (Shorts em destaque, Vídeos). */
     videosThrough: string | null;
   };
-  window: { start: string; end: string; prevStart: string; prevEnd: string };
+  window: YtWindow;
   /** All null before the first sync. */
   kpis: Record<YtKpiId, YtKpiEntry>;
   split: { views: YtSplitEntry; minutes: YtSplitEntry; likes: YtSplitEntry };
@@ -101,6 +109,35 @@ export interface YtVideoRow {
   likes: number;
   comments: number;
   subscribersGained: number;
+}
+
+/** The windows `/portfolio` accepts (YouTube's own 7/28/90-day presets). */
+export type YtPortfolioDays = 7 | 28 | 90;
+
+/**
+ * One row of `/analytics/youtube`: one channel over its own window (its own `data_through`).
+ * Rows are never added up across channels.
+ */
+export interface YtPortfolioChannel {
+  clientId: number;
+  clientName: string;
+  title: string | null;
+  handle: string | null;
+  avatarUrl: string | null;
+  subscriberCount: number | null;
+  authorizationStatus: 'active' | 'revoked';
+  lastSyncedAt: string | null;
+  /** Null when the channel has no data (first sync, purged after revocation). */
+  window: YtWindow | null;
+  metrics: {
+    netSubscribers: number | null;
+    views: number | null;
+    /** Estimated minutes watched; the page shows hours. */
+    watchMinutes: number | null;
+    avgViewDurationS: number | null;
+    /** Shorts views over Shorts + long views, 0..1. */
+    shortsShare: number | null;
+  };
 }
 
 /** 404 `not_connected`: the client has no YouTube channel. */
@@ -152,6 +189,12 @@ function rangeQuery(range: AnalyticsRange): URLSearchParams {
 }
 
 // ─── Reads ──────────────────────────────────────────────────────────────
+
+/** Every channel of the workspace's active clients, one row each. */
+export async function getYouTubePortfolio(days: YtPortfolioDays): Promise<YtPortfolioChannel[]> {
+  const data = await request<{ channels: YtPortfolioChannel[] }>(`/portfolio?days=${days}`);
+  return data.channels;
+}
 
 export function getYouTubeOverview(
   clientId: number,
