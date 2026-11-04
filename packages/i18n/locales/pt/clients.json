@@ -177,6 +177,7 @@
     "videos": "Vídeos",
     "channelAvatarAlt": "Foto do canal {{name}}",
     "delayNote": "O YouTube libera os números com 2 a 3 dias de atraso.",
+    "account": "Conta Google: {{email}}",
     "disconnectTooltip": "Desconectar",
     "disconnectTitle": "Desconectar YouTube?",
     "disconnectBody": "O canal deixa de ser sincronizado e os dados dele são apagados do Mesaas em até 7 dias.",
@@ -242,7 +243,10 @@
         "rate_limited": "Muitas tentativas. Tente de novo em instantes.",
         "unknown": "Não foi possível falar com o Google agora. Tente de novo.",
         "revoked": "A autorização do Google expirou. Reconecte a conta para continuar.",
-        "not_connected": "Este cliente não está mais conectado ao Google. Atualize a página."
+        "not_connected": "Este cliente não está mais conectado ao Google. Atualize a página.",
+        "forbidden": "Você não tem permissão para isso neste workspace.",
+        "not_found": "Não encontramos este item. Atualize a página.",
+        "conflict": "Algo mudou enquanto salvávamos. Tente de novo."
       }
     },
     "disconnectTitle": "Desconectar Google Meu Negócio?",
@@ -251,6 +255,10 @@
     "disconnectCancel": "Cancelar",
     "disconnectSuccess": "Google Meu Negócio desconectado.",
     "disconnectError": "Não foi possível desconectar o Google Meu Negócio. Tente de novo."
+  },
+  "google": {
+    "manageAccounts": "Gerenciar contas",
+    "disconnectFromClient": "Desconectar deste cliente"
   },
   "googleOAuth": {
     "ytConnected": "YouTube conectado.",

@@ -2,7 +2,7 @@
 // Mesaas - Google Integration Service (YouTube + Google Meu Negócio)
 // =============================================
 // Phase 1: connect / summary / GMN unit picker / YouTube disconnect
-// (google-integration edge function). Mirrors tiktok.ts's session-token fetch
+// (google-integration edge function), plus the workspace-level account list / disconnect. Mirrors tiktok.ts's session-token fetch
 // helper. No cache: the summary changes right after the OAuth round trip.
 import { supabase } from '../lib/supabase';
 
@@ -62,6 +62,44 @@ export interface GbpLocationOptionView {
   eligible: boolean;
 }
 
+/** One YouTube channel fed by a workspace Google account (GET /accounts). */
+export interface GoogleAccountYouTubeChannel {
+  channelId: string;
+  title: string | null;
+  handle: string | null;
+  clientId: number;
+  clientName: string | null;
+  authorizationStatus: 'active' | 'revoked';
+}
+
+/** One GMN unit fed by a workspace Google account. `disconnected` units are never listed. */
+export interface GoogleAccountGbpLocation {
+  id: string;
+  title: string | null;
+  addressLine: string | null;
+  clientId: number;
+  clientName: string | null;
+  status: 'active' | 'revoked';
+}
+
+/** A Google identity connected to the active workspace and what it feeds. */
+export interface GoogleAccount {
+  id: string;
+  email: string;
+  displayName: string | null;
+  status: 'active' | 'revoked';
+  connectedAt: string;
+  youtube: GoogleAccountYouTubeChannel[];
+  gbp: GoogleAccountGbpLocation[];
+}
+
+/** POST /accounts/:id/disconnect. Never says whether the grant was revoked at Google. */
+export interface GoogleAccountDisconnectResult {
+  ok: true;
+  youtubeChannelsUnlinked: number;
+  gbpLocationsUnlinked: number;
+}
+
 export interface GbpLocationOptionsPage {
   options: GbpLocationOptionView[];
   /** Google listed only part of the account; this client's linked units are always included. */
@@ -80,6 +118,12 @@ export const GOOGLE_SERVICE_ERROR_CODES = [
   'revoked',
   /** Manual sync: the client has no unit of that product any more. */
   'not_connected',
+  /** The caller lacks the permission the route checks (e.g. `configuracoes:editar`). */
+  'forbidden',
+  /** Account disconnect: the connection is already gone (treated as done by the UI). */
+  'not_found',
+  /** Account disconnect: a concurrent link interleaved; nothing was committed, retry. */
+  'conflict',
   'unknown',
 ] as const;
 
@@ -163,6 +207,49 @@ export async function disconnectYouTube(clientId: number): Promise<void> {
 export async function disconnectGbp(clientId: number): Promise<void> {
   await request<{ ok: true }>(`/disconnect/gbp/${clientId}`, { method: 'POST' });
 }
+
+/** Google accounts of the active workspace, with the channels and units each one feeds. */
+export async function listGoogleAccounts(): Promise<GoogleAccount[]> {
+  const data = await request<{ accounts: GoogleAccount[] }>('/accounts');
+  return data.accounts;
+}
+
+/**
+ * "Desconectar conta" (Configurações > Contas conectadas): unlinks every channel and unit of
+ * this workspace on the account and drops the workspace's connection. `not_found` means it
+ * was already gone; `conflict` means a concurrent link interleaved and nothing changed.
+ */
+export async function disconnectGoogleAccount(
+  connectionId: string,
+): Promise<GoogleAccountDisconnectResult> {
+  return request<GoogleAccountDisconnectResult>(
+    `/accounts/${encodeURIComponent(connectionId)}/disconnect`,
+    { method: 'POST' },
+  );
+}
+
+/** Query key of `listGoogleAccounts` (no conta_id: a workspace switch clears the cache). */
+export const GOOGLE_ACCOUNTS_QUERY_KEY = ['googleAccounts'] as const;
+
+/**
+ * First segment of every per-client YouTube / GMN analytics query. An account disconnect
+ * refreshes all of them; a new analytics tab adds its key here.
+ */
+export const GOOGLE_DATA_QUERY_PREFIXES: readonly string[] = [
+  'yt-overview',
+  'yt-daily',
+  'yt-traffic',
+  'yt-demographics',
+  'yt-videos',
+  'yt-top-shorts',
+  'gbp-overview',
+  'gbp-daily',
+  'gbp-surfaces',
+  'gbp-keywords',
+  'gbp-reviews',
+  'gbp-rating-distribution',
+  'gbp-units',
+];
 
 /** Outcome of one unit's manual sync. Anything but `synced` means it did not finish now. */
 export type GoogleSyncStatus =

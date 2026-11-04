@@ -125,6 +125,7 @@ const PapeisTab = lazy(() => import('./pages/configuracao/tabs/PapeisTab'));
 const RelatoriosTab = lazy(() => import('./pages/configuracao/tabs/RelatoriosTab'));
 const StatusTab = lazy(() => import('./pages/configuracao/tabs/StatusTab'));
 const HubTab = lazy(() => import('./pages/configuracao/tabs/HubTab'));
+const ContasConectadasTab = lazy(() => import('./pages/configuracao/tabs/ContasConectadasTab'));
 const ArmazenamentoTab = lazy(() => import('./pages/configuracao/tabs/ArmazenamentoTab'));
 const CobrancaPage = lazy(() => import('./pages/configuracao/cobranca/CobrancaPage'));
 const IntegracoesClaudePage = lazy(() => import('./pages/configuracao/mcp/IntegracoesClaudePage'));
@@ -317,6 +318,7 @@ export default function App() {
                   <Route path="relatorios" element={<RelatoriosTab />} />
                   <Route path="status" element={<StatusTab />} />
                   <Route path="hub" element={<HubTab />} />
+                  <Route path="contas-conectadas" element={<ContasConectadasTab />} />
                   <Route path="armazenamento" element={<ArmazenamentoTab />} />
                   <Route path="mcp" element={<IntegracoesClaudePage />} />
                   <Route path="cobranca" element={<CobrancaPage />} />

@@ -11,6 +11,15 @@ vi.mock('../../../context/AuthContext', () => ({
 const viewport = vi.hoisted(() => ({ desktop: true }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => viewport.desktop }));
 
+// Plan flags only decide whether the nav lists Contas conectadas (Google). Off by default,
+// so the existing enumerations stay as they were; the Google cases below flip it.
+const planFlags = vi.hoisted(() => ({
+  features: null as { feature_youtube?: boolean; feature_google_business?: boolean } | null,
+}));
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({ features: planFlags.features }),
+}));
+
 // The real actions need the KB query and notifications; their own suites cover them.
 vi.mock('@/components/layout/PhoneShellHeader', () => ({
   PhoneShellActions: () => <div data-testid="shell-actions" />,
@@ -89,6 +98,7 @@ function renderAt(path: string, { vidroShell }: { vidroShell?: boolean } = {}) {
         <Route path="perfil" element={<div>conteudo perfil</div>} />
         <Route path="membros" element={<div>conteudo membros</div>} />
         <Route path="cobranca" element={<div>conteudo cobranca</div>} />
+        <Route path="contas-conectadas" element={<div>conteudo contas</div>} />
       </Route>
     </Routes>
   );
@@ -112,6 +122,35 @@ describe('ConfiguracaoLayout', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     viewport.desktop = true;
+    planFlags.features = null;
+  });
+
+  it('lists Contas conectadas after Hub once YouTube or Google Meu Negócio is on', () => {
+    planFlags.features = { feature_youtube: false, feature_google_business: true };
+    setAuth('owner');
+    renderAt('/configuracao/perfil');
+    const labels = tabLabels();
+    expect(labels.indexOf('Contas conectadas')).toBe(labels.indexOf('Hub') + 1);
+    expect(screen.getByRole('link', { name: 'Contas conectadas' })).toHaveAttribute(
+      'href',
+      '/configuracao/contas-conectadas',
+    );
+  });
+
+  it('hides Contas conectadas from the nav with both Google flags off, yet lets the URL in', () => {
+    planFlags.features = { feature_youtube: false, feature_google_business: false };
+    setAuth('admin');
+    renderAt('/configuracao/contas-conectadas');
+    expect(tabLabels()).not.toContain('Contas conectadas');
+    // No redirect to Perfil: a downgraded workspace can still remove a Google account.
+    expect(screen.getByTestId('path')).toHaveTextContent('/configuracao/contas-conectadas');
+  });
+
+  it('still bounces an agent off Contas conectadas by URL', () => {
+    planFlags.features = { feature_youtube: true, feature_google_business: true };
+    setAuth('agent');
+    renderAt('/configuracao/contas-conectadas');
+    expect(screen.getByTestId('path')).toHaveTextContent('/configuracao/perfil');
   });
 
   it('sends /configuracao to Perfil on desktop', () => {
@@ -319,6 +358,17 @@ describe('ConfiguracaoLayout on phones', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     viewport.desktop = false;
+    planFlags.features = null;
+  });
+
+  it('lists Contas conectadas in the Settings list with a Google flag on', () => {
+    planFlags.features = { feature_youtube: true };
+    setAuth('owner');
+    renderAt('/configuracao');
+    expect(screen.getByRole('link', { name: /Contas conectadas/ })).toHaveAttribute(
+      'href',
+      '/configuracao/contas-conectadas',
+    );
   });
 
   function groupNames() {

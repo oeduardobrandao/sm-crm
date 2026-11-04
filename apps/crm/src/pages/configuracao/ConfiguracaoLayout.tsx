@@ -9,6 +9,7 @@ import { usePhoneChrome } from '@/components/layout/PhoneLayoutContext';
 import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
 import { useAuth } from '../../context/AuthContext';
+import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { visibleConfigTabs, canAccessConfigTab, CONFIG_TABS } from './configTabs';
 import { ConfigPhoneScreen, ConfigPhoneSkeleton } from './phone/ConfigPhoneScreen';
 
@@ -23,6 +24,8 @@ import { ConfigPhoneScreen, ConfigPhoneSkeleton } from './phone/ConfigPhoneScree
 export default function ConfiguracaoLayout() {
   const { t } = useTranslation('settings');
   const { user, workspaceRole, membershipResolved, can, loading } = useAuth();
+  // Plan flags only decide which tabs the nav advertises (contas-conectadas), never access.
+  const { features } = useWorkspaceLimits();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const isPhone = !useIsDesktop(768);
@@ -139,7 +142,7 @@ export default function ConfiguracaoLayout() {
     );
   }
 
-  const tabs = visibleConfigTabs(can, workspaceRole);
+  const tabs = visibleConfigTabs(can, workspaceRole, features);
 
   if (current && !canAccessConfigTab(current, can, workspaceRole)) {
     return <Navigate to="/configuracao/perfil" replace />;

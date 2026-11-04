@@ -177,6 +177,7 @@
     "videos": "Videos",
     "channelAvatarAlt": "{{name}} channel picture",
     "delayNote": "YouTube releases the numbers with a 2 to 3 day delay.",
+    "account": "Google account: {{email}}",
     "disconnectTooltip": "Disconnect",
     "disconnectTitle": "Disconnect YouTube?",
     "disconnectBody": "The channel stops syncing and its data is deleted from Mesaas within 7 days.",
@@ -242,7 +243,10 @@
         "rate_limited": "Too many attempts. Try again in a moment.",
         "unknown": "Could not reach Google right now. Try again.",
         "revoked": "Google authorization expired. Reconnect the account to continue.",
-        "not_connected": "This client is no longer connected to Google. Refresh the page."
+        "not_connected": "This client is no longer connected to Google. Refresh the page.",
+        "forbidden": "You don't have permission to do this in this workspace.",
+        "not_found": "We couldn't find this item. Refresh the page.",
+        "conflict": "Something changed while we were saving. Try again."
       }
     },
     "disconnectTitle": "Disconnect Google Business Profile?",
@@ -251,6 +255,10 @@
     "disconnectCancel": "Cancel",
     "disconnectSuccess": "Google Business Profile disconnected.",
     "disconnectError": "Could not disconnect Google Business Profile. Try again."
+  },
+  "google": {
+    "manageAccounts": "Manage accounts",
+    "disconnectFromClient": "Disconnect from this client"
   },
   "googleOAuth": {
     "ytConnected": "YouTube connected.",
