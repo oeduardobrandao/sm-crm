@@ -1,9 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
-import { supabase } from '../../lib/supabase';
 import { changeLanguage, SUPPORTED_LANGUAGES } from '@mesaas/i18n';
 import type { Language } from '@mesaas/i18n';
 import { getNavGroups, isNavRouteActive } from './nav-data';
@@ -14,9 +12,8 @@ import { useMensagensUnread } from '../../hooks/useMensagensUnread';
 import { useEquipeChatUnread } from '../../hooks/useEquipeChatUnread';
 import { FlagIcon } from '@mesaas/ui/FlagIcon';
 import { PessoaAvatar } from '@/components/PessoaAvatar';
-import { switchWorkspace } from '@/store/workspace';
+import { useWorkspaceSwitcher } from '../../hooks/useWorkspaceSwitcher';
 import { GuideNavItem } from '../guide/GuidePill';
-import { clearVidroCache } from '../../lib/vidroLook';
 import GlobalSearchTrigger from './GlobalSearchTrigger';
 
 interface SidebarProps {
@@ -84,7 +81,6 @@ export default function Sidebar({
   );
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [languageMenuOpen, setLanguageMenuOpen] = useState(false);
-  const [workspaces, setWorkspaces] = useState<any[]>([]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(readCollapsedGroups);
   const [hovered, setHovered] = useState(false);
   const [keyboardFocused, setKeyboardFocused] = useState(false);
@@ -156,24 +152,12 @@ export default function Sidebar({
   const navGroups = getNavGroups(features, workspaceRole, can);
   const activeRoute = location.pathname;
 
-  // Load workspaces for switcher
-  useEffect(() => {
-    if (!user) return;
-    supabase
-      .from('workspace_members')
-      .select('workspace_id, role, workspaces!inner(id, name)')
-      .eq('user_id', user.id)
-      .then(({ data }) => {
-        // Every row is kept (the Vidro header names the active one); the account-menu switcher
-        // still renders only with more than one. An empty result leaves the initial [] as is.
-        if (data?.length) setWorkspaces(data);
-      });
-  }, [user?.id]);
-
-  const activeWorkspaceName =
-    workspaces.find(
-      (m: any) => m.workspaces?.id === (profile?.active_workspace_id || profile?.conta_id),
-    )?.workspaces?.name ?? null;
+  const {
+    workspaces,
+    activeWorkspaceId,
+    activeWorkspaceName,
+    switchTo: handleWorkspaceSwitch,
+  } = useWorkspaceSwitcher();
 
   useEffect(() => {
     if (!railOnly) setRailOpen(false);
@@ -223,20 +207,6 @@ export default function Sidebar({
     navigate(route);
     setRailOpen(false);
     if (isDrawer) onClose?.();
-  };
-
-  const handleWorkspaceSwitch = async (workspaceId: string) => {
-    if (!user) return;
-    try {
-      await switchWorkspace(workspaceId);
-      // The pre-paint cache belongs to the workspace being left.
-      clearVidroCache();
-      window.location.reload();
-    } catch {
-      // Previously the error was discarded and the page reloaded regardless, so
-      // a refused switch was indistinguishable from a successful one.
-      toast.error('Não foi possível trocar de workspace.');
-    }
   };
 
   const handleLanguageChange = (lang: Language) => {
@@ -476,17 +446,16 @@ export default function Sidebar({
                 {workspaces.length > 1 && (
                   <div className="user-dropdown-section">
                     <div className="user-dropdown-section-label">{t('sidebar.workspace')}</div>
-                    {workspaces.map((m: any) => {
-                      const isActive =
-                        m.workspaces.id === (profile?.active_workspace_id || profile?.conta_id);
+                    {workspaces.map((w) => {
+                      const isActive = w.id === activeWorkspaceId;
                       return (
                         <button
-                          key={m.workspaces.id}
+                          key={w.id}
                           className={`user-dropdown-item${isActive ? ' user-dropdown-item--active' : ''}`}
-                          onClick={() => !isActive && handleWorkspaceSwitch(m.workspaces.id)}
+                          onClick={() => !isActive && handleWorkspaceSwitch(w.id)}
                         >
                           <i className="ph-bold ph-buildings" />
-                          <span>{m.workspaces.name || 'Workspace'}</span>
+                          <span>{w.name}</span>
                           {isActive && <i className="ph-bold ph-check user-dropdown-item-check" />}
                         </button>
                       );

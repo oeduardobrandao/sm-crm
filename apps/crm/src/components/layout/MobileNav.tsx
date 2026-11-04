@@ -5,6 +5,8 @@ import {
   CalendarDays,
   ChartLine,
   Compass,
+  Building2,
+  Check,
   Ellipsis,
   ExternalLink,
   House,
@@ -22,6 +24,7 @@ import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { useEffectiveNavFeatures } from '../../hooks/useEffectiveNavFeatures';
 import { useMensagensUnread } from '../../hooks/useMensagensUnread';
 import { useEquipeChatUnread } from '../../hooks/useEquipeChatUnread';
+import { useWorkspaceSwitcher } from '../../hooks/useWorkspaceSwitcher';
 import { getPhoneNav, isNavRouteActive, type NavItem } from './nav-data';
 import GlobalSearchDialog from './GlobalSearchDialog';
 import { PessoaAvatar } from '@/components/PessoaAvatar';
@@ -243,6 +246,7 @@ function MoreSheetContent({ shortcuts, moreGroups, onSearch }: MoreSheetContentP
   const { profile, signOut } = useAuth();
   const { planName } = useWorkspaceLimits();
   const guide = useGuide();
+  const { workspaces, activeWorkspaceId, switchTo } = useWorkspaceSwitcher();
   const { close, closeThen } = useSheetActions();
   const [isDark, setIsDark] = useState(
     document.documentElement.getAttribute('data-theme') === 'dark',
@@ -335,6 +339,30 @@ function MoreSheetContent({ shortcuts, moreGroups, onSearch }: MoreSheetContentP
           <div className="mobile-more-profile-plan">{planName?.toUpperCase() || 'FREE'}</div>
         </div>
       </div>
+
+      {workspaces.length > 1 && (
+        <GroupedList header={t('sidebar.workspace', 'Workspace')}>
+          {workspaces.map((w) => {
+            const isActive = w.id === activeWorkspaceId;
+            return (
+              <Cell
+                key={w.id}
+                label={w.name}
+                icon={<Building2 />}
+                current={isActive}
+                aria-current={isActive ? 'true' : undefined}
+                accessory={
+                  isActive ? (
+                    <Check className="phone-cell__chevron" aria-hidden="true" />
+                  ) : undefined
+                }
+                // The switch reloads the app, so the sheet needs no close of its own.
+                onClick={isActive ? undefined : () => switchTo(w.id)}
+              />
+            );
+          })}
+        </GroupedList>
+      )}
 
       {shortcuts.length > 0 && (
         <GroupedList aria-label="Atalhos">{shortcuts.map(navCell)}</GroupedList>
