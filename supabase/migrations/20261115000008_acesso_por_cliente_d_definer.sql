@@ -94,6 +94,11 @@ END;
 $$;
 
 -- Processos de p_ids: seguem o post (process_not_found se ele não lê o post).
+-- De propósito NÃO usa o ramo created_by = auth.uid() de pp_select_member: quem
+-- criou o processo num post que não lê (o post mudou de cliente ou de
+-- responsável depois) continua lendo o processo pela RLS, mas não escreve por
+-- estas RPCs, que mexem no post (status). Processo segue o post: é a escolha
+-- mais estrita. Não "corrija" para incluir created_by: isso abre o post oculto.
 CREATE OR REPLACE FUNCTION public.scope_check_processes(
   p_conta uuid, p_ids bigint[], p_strict boolean)
 RETURNS void
@@ -1426,6 +1431,9 @@ BEGIN
   IF public.move_posts_source_of_batch(v_conta, v_ids) IS DISTINCT FROM v_source THEN
     RAISE EXCEPTION 'post_not_in_source_flow' USING ERRCODE = 'P0001';
   END IF;
+  -- [escopo] de novo com os posts travados: o cliente pode ter mudado desde a checagem
+  -- [escopo] sem lock acima (ela fica, para o erro de inexistente vir antes de tudo)
+  PERFORM public.scope_check_posts(v_conta, v_ids, 'post_not_found', 'P0001', true);
 
   -- 3) Limite de posts do destino (guarda manual; advisory ja tomado).
   v_limit := effective_plan_limit(v_conta, 'max_posts_per_workflow');
@@ -1549,6 +1557,9 @@ BEGIN
   IF public.move_posts_source_of_batch(v_conta, v_ids) IS DISTINCT FROM v_source THEN
     RAISE EXCEPTION 'post_not_in_source_flow' USING ERRCODE = 'P0001';
   END IF;
+  -- [escopo] de novo com os posts travados: o cliente pode ter mudado desde a checagem
+  -- [escopo] sem lock acima (ela fica, para o erro de inexistente vir antes de tudo)
+  PERFORM public.scope_check_posts(v_conta, v_ids, 'post_not_found', 'P0001', true);
 
   -- 4) Limite de posts do fluxo destino (que nasce vazio): o trigger
   -- trg_limit_posts so roda em INSERT e nunca dispara neste UPDATE, entao a

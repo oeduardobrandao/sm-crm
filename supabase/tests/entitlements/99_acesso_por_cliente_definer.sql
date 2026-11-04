@@ -482,6 +482,15 @@ begin
     assert has_function_privilege('authenticated', v_f, 'EXECUTE'), 'executable by authenticated: ' || v_f;
     assert not has_function_privilege('anon', v_f, 'EXECUTE'), 'not executable by anon: ' || v_f;
   end loop;
+  -- move RPCs repeat the post scope check after the locked re-validation (FOR UPDATE OF wp):
+  -- the race itself (client changed between the unlocked check and the lock) needs two
+  -- sessions, so this pins the order structurally
+  foreach v_f in array array['public.move_posts_to_existing_flow(bigint[], bigint, bigint, boolean)',
+      'public.move_posts_to_new_flow(bigint[], bigint, text, integer, boolean)'] loop
+    assert (select prosrc ~ 'scope_check_posts\(v_conta, v_ids[^;]*;.*FOR UPDATE OF wp;.*IS DISTINCT FROM v_source THEN[^;]*;\s*END IF;\s*--[^\n]*\n\s*--[^\n]*\n\s*PERFORM public\.scope_check_posts\(v_conta, v_ids, ''post_not_found'', ''P0001'', true\);'
+              from pg_proc where oid = v_f::regprocedure),
+      'move_rechecks_scope_after_lock: ' || v_f;
+  end loop;
   raise notice 'PASS 99_acesso_por_cliente_definer';
 end $$;
 
