@@ -243,7 +243,10 @@
         "rate_limited": "Too many attempts. Try again in a moment.",
         "unknown": "Could not reach Google right now. Try again.",
         "revoked": "Google authorization expired. Reconnect the account to continue.",
-        "not_connected": "This client is no longer connected to Google. Refresh the page."
+        "not_connected": "This client is no longer connected to Google. Refresh the page.",
+        "forbidden": "You don't have permission to do this in this workspace.",
+        "not_found": "We couldn't find this item. Refresh the page.",
+        "conflict": "Something changed while we were saving. Try again."
       }
     },
     "disconnectTitle": "Disconnect Google Business Profile?",

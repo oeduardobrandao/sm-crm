@@ -253,7 +253,13 @@ export const GOOGLE_DATA_QUERY_PREFIXES: readonly string[] = [
 
 /** Outcome of one unit's manual sync. Anything but `synced` means it did not finish now. */
 export type GoogleSyncStatus =
-  'synced' | 'revoked' | 'quota_skipped' | 'skipped' | 'mismatch' | 'not_approved' | 'failed';
+  | 'synced'
+  | 'revoked'
+  | 'quota_skipped'
+  | 'skipped'
+  | 'mismatch'
+  | 'not_approved'
+  | 'failed';
 
 /** POST /sync body: YouTube answers one `status`, GMN one per active location. */
 export interface GoogleSyncResult {

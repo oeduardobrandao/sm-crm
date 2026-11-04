@@ -24,7 +24,9 @@ import type { FeatureFlags } from '@/hooks/useWorkspaceLimits';
  * evaluated via `can()`.
  */
 export type ConfigPermission =
-  { module: PermissionModule; action: PermissionAction } | 'owner' | 'all';
+  | { module: PermissionModule; action: PermissionAction }
+  | 'owner'
+  | 'all';
 
 /** Section id of a tab in the settings nav; its label is `settings:tabs.groups.<id>`. */
 export type ConfigTabGroup = 'conta' | 'workspace' | 'avancado';
