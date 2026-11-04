@@ -32,6 +32,11 @@
 --    guarda nome e sigla de todo cliente criado e eventos de post; um admin
 --    restrito não lê nada dele (só o platform-admin, service role, lê o log).
 --    Dono e admin 'todos' seguem iguais.
+-- 3. workspace_usage(): para o restrito, clients, instagram_accounts e
+--    hub_tokens contam só os clientes que ele vê (can_access_cliente). Dono e
+--    'todos' seguem com o corpo de antes, sem chamada por linha. Só o CRM lê
+--    (useWorkspaceUsage, para exibição); os limites do plano são conferidos no
+--    servidor (workspace-limits, service role) e não mudam.
 
 -- -------------------------------------------------------------
 -- 1. Notificações por item
@@ -460,6 +465,58 @@ CREATE POLICY owner_admin_select ON public.audit_log
                        AND profiles.role = ANY (ARRAY['owner'::public.user_role, 'admin'::public.user_role])))
     AND (SELECT public.my_client_scope_all())
   );
+
+-- -------------------------------------------------------------
+-- 3. workspace_usage
+-- -------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.workspace_usage()
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_ws uuid := public.get_my_conta_id();
+  v_all boolean;
+begin
+  if v_ws is null then
+    return '{}'::jsonb;
+  end if;
+
+  -- Defense-in-depth: a stale active_workspace_id pointer (membership deleted,
+  -- pointer not yet cleared) must not leak aggregate counts to a removed user.
+  if not exists (
+    select 1 from workspace_members
+     where workspace_id = v_ws and user_id = auth.uid()
+  ) then
+    return '{}'::jsonb;
+  end if;
+
+  v_all := public.my_client_scope_all();
+
+  return jsonb_build_object(
+    'clients',            (select count(*) from clientes c
+                            where c.conta_id = v_ws
+                              and (v_all or public.can_access_cliente(c.id))),
+    'team_members',       (select count(*) from workspace_members where workspace_id = v_ws),
+    'pending_invites',    (select count(*) from invites
+                            where conta_id = v_ws and status = 'pending'),
+    'leads',              (select count(*) from leads where conta_id = v_ws),
+    'hub_tokens',         (select count(*) from client_hub_tokens h
+                            where h.conta_id = v_ws
+                              and (v_all or public.can_access_cliente(h.cliente_id))),
+    'workflow_templates', (select count(*) from workflow_templates where conta_id = v_ws),
+    'instagram_accounts', (select count(*) from instagram_accounts t
+                             join clientes c on c.id = t.client_id
+                            where c.conta_id = v_ws
+                              and (v_all or public.can_access_cliente(c.id))),
+    'mcp_keys',           (select count(*) from mcp_api_keys
+                            where conta_id = v_ws and revoked_at is null),
+    'storage_used_bytes', (select coalesce(storage_used_bytes, 0)
+                             from workspaces where id = v_ws)
+  );
+end;
+$function$;
 
 -- -------------------------------------------------------------
 -- Pós-condição

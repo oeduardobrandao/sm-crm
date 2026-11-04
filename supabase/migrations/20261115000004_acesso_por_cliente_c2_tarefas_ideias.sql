@@ -712,6 +712,17 @@ $$;
 REVOKE ALL ON FUNCTION public.guard_briefing_question_cliente() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.guard_briefing_question_cliente() TO service_role;
 
+-- Linhas antigas incoerentes passam a ter o cliente do próprio briefing, antes
+-- do trigger e das policies por cliente: a pergunta segue o briefing (é o que
+-- o Hub e o CRM mostram juntos), e a leitura por cliente não a deixa visível a
+-- quem vê só o cliente errado. Sem trocar de workspace.
+UPDATE public.hub_briefing_questions q
+   SET cliente_id = b.cliente_id
+  FROM public.briefings b
+ WHERE b.id = q.briefing_id
+   AND b.cliente_id <> q.cliente_id
+   AND b.conta_id = q.conta_id;
+
 CREATE TRIGGER zz_briefing_cliente_guard
   BEFORE INSERT OR UPDATE OF briefing_id, cliente_id ON public.hub_briefing_questions
   FOR EACH ROW EXECUTE FUNCTION public.guard_briefing_question_cliente();
