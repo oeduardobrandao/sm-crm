@@ -122,13 +122,14 @@ série sem passar pela RLS de `clientes`/`tarefa_series`, para a tarefa dele e a
 cliente oculto), `folder_scope_cliente_id(bigint)` e `folder_row_scope_cliente_id(text, bigint, bigint)`
 (cliente de uma pasta, subindo `parent_id` até a pasta de origem, devolvido só quando ele o acessa; senão
 NULL), `file_own_client_less(bigint)` (upload dele sem cliente) e `file_linked_to_visible_post(bigint)`
-(INVOKER: o arquivo está ligado a um post que ele vê) e `file_is_readable_brand_logo(bigint)` (o arquivo é o
-logo de uma marca que ele lê). Os resolvedores crus `folder_cliente_id(bigint)` e
+(INVOKER: o arquivo está ligado a um post que ele vê) `file_is_readable_brand_logo(bigint)` (o arquivo é o
+logo de uma marca que ele lê), `file_visible_at_source(bigint)` (visível pela origem: upload dele ou pasta de
+cliente acessível) e `file_visible_without_logo(bigint)` (a origem ou um post que ele vê). Os resolvedores crus `folder_cliente_id(bigint)` e
 `folder_row_cliente_id(text, bigint, bigint)` são só de `service_role` (devolvem o cliente de qualquer
 pasta). As funções de trigger das guardas (`guard_client_scope_move`,
 `guard_post_child_update`, `guard_post_process_step_assign`, `guard_client_scope_item`,
 `guard_scope_child_reparent`, `guard_file_scope_update`, `guard_folder_scope_parent`,
-`guard_brand_logo_file`) não têm EXECUTE
+`guard_brand_logo_file`, `guard_post_file_link_swap`) não têm EXECUTE
 para `authenticated` nem `anon`.
 
 Espelho TS: só `isClientScoped(membership)` em `lib/permissions.ts`, para afordâncias de UI

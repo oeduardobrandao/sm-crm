@@ -303,6 +303,15 @@ begin
   assert v_err is null, 'move_own_task_without_client_to_a_allowed: ' || coalesce(v_err, '');
   v_err := pg_temp.errm_as(v_restr, format('update tarefas set cliente_id = %s where id = %s', v_ca2, v_ta_own));
   assert v_err is null, 'move_task_between_accessible_clients_allowed: ' || coalesce(v_err, '');
+  -- the NULL-source relaxation holds only for HIS rows: a client-less task of
+  -- someone else, reached without RLS (DEFINER path, as superuser here
+  -- with his claims), can't be given a client (4c round 2, defense in depth)
+  v_err := pg_temp.errm_definer_as(v_restr, format('update tarefas set cliente_id = %s where id = %s', v_ca, v_tnull));
+  assert v_err = 'client_scope_restricted', 'others_task_without_client_given_a_denied: ' || coalesce(v_err, 'updated');
+  v_err := pg_temp.errm_definer_as(v_restr, format('update tarefas set cliente_id = %s where id = %s', v_ca, v_tnull_auth));
+  assert v_err is null, 'own_authored_task_without_client_given_a_allowed: ' || coalesce(v_err, '');
+  update tarefas set cliente_id = null where id = v_tnull_auth;
+  -- (ideias.cliente_id is NOT NULL: no client-less ideia to test)
   -- self-assign (DEFINER path, RLS bypassed)
   v_err := pg_temp.errm_definer_as(v_restr, format('update tarefas set responsavel_id = %s where id = %s', v_membro, v_tb));
   assert v_err = 'client_scope_restricted', 'self_assign_hidden_task_denied: ' || coalesce(v_err, 'updated');

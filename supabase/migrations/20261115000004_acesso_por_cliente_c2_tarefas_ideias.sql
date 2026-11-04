@@ -78,8 +78,10 @@ GRANT EXECUTE ON FUNCTION public.tarefa_serie_in_active_conta(bigint) TO authent
 --     é imutável por tarefa_series_guard). ideias.autor_membro_id pode ir a NULL
 --     (ON DELETE SET NULL do membro);
 --   * para o restrito: mudar cliente_id (inclusive para NULL) exige acesso à
---     ORIGEM e ao DESTINO (origem NULL dispensa a origem: dar um cliente que ele
---     acessa à tarefa/série sem cliente é permitido); pôr a si mesmo como responsável exige acesso ao
+--     ORIGEM e ao DESTINO (origem NULL dispensa a origem só quando a linha é dele:
+--     autor ou responsável ele mesmo, na ideia o autor-membro; dar um cliente que
+--     ele acessa à tarefa/série/ideia sem cliente DELE é permitido, à de outro
+--     não); pôr a si mesmo como responsável exige acesso ao
 --     cliente; no INSERT, uma linha "dele" (autor ou responsável) só num cliente
 --     que ele acessa. Isso cobre os caminhos SECURITY DEFINER (RPCs de série,
 --     RPCs futuras), que não passam pela RLS;
@@ -102,6 +104,7 @@ DECLARE
   v_old_own bigint;
   v_new_own bigint;
   v_mine    boolean := false;
+  v_old_mine boolean := false;
 BEGIN
   IF v_uid IS NULL THEN RETURN NEW; END IF;
   IF TG_OP = 'UPDATE' THEN
@@ -133,6 +136,7 @@ BEGIN
       v_old_cli := OLD.cliente_id;
       v_old_own := OLD.autor_membro_id;
     END IF;
+    -- ideia "dele" = autor-membro ele mesmo (abaixo, pelo v_old_own)
   ELSE
     v_conta   := NEW.conta_id;
     v_new_cli := NEW.cliente_id;
@@ -141,6 +145,7 @@ BEGIN
     IF TG_OP = 'UPDATE' THEN
       v_old_cli := OLD.cliente_id;
       v_old_own := OLD.responsavel_id;
+      v_old_mine := OLD.user_id = v_uid;
     END IF;
   END IF;
   IF NOT EXISTS (
@@ -169,9 +174,16 @@ BEGIN
        AND NOT EXISTS (SELECT 1 FROM public.clientes c WHERE c.id = v_old_cli) THEN
       RETURN NEW;
     END IF;
-    -- origem sem cliente: nada de cliente a proteger, ele pode dar à tarefa dele
-    -- um cliente que acessa; origem com cliente exige acesso a ela
-    IF (v_old_cli IS NOT NULL AND NOT public.can_access_cliente(v_uid, v_conta, v_old_cli))
+    -- origem sem cliente: nada de cliente a proteger, ele pode dar à linha DELE
+    -- um cliente que acessa (a de outro, sem cliente, é recusada); origem com
+    -- cliente exige acesso a ela
+    IF v_old_cli IS NULL THEN
+      v_old_mine := coalesce(v_old_mine, false) OR (v_old_own IS NOT NULL AND EXISTS (
+        SELECT 1 FROM public.membros m
+         WHERE m.id = v_old_own AND m.crm_user_id = v_uid AND m.conta_id = v_conta));
+    END IF;
+    IF (v_old_cli IS NULL AND NOT v_old_mine)
+       OR (v_old_cli IS NOT NULL AND NOT public.can_access_cliente(v_uid, v_conta, v_old_cli))
        OR NOT public.can_access_cliente(v_uid, v_conta, v_new_cli) THEN
       RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';
     END IF;
@@ -914,11 +926,14 @@ BEGIN
                 OR v_existing.user_id = v_user) THEN
       RAISE EXCEPTION 'Tarefa não encontrada neste workspace.';
     END IF;
-    -- a promoção grava cliente_id = v_cli: tirar a tarefa do cliente de origem exige acesso a ele
+    -- a promoção grava cliente_id = v_cli: tirar a tarefa do cliente de origem exige acesso a ele;
+    -- origem sem cliente só se a tarefa é dele (autor ou responsável)
     IF NOT public.my_client_scope_all()
        AND v_cli IS DISTINCT FROM v_existing.cliente_id
-       AND v_existing.cliente_id IS NOT NULL
-       AND NOT public.can_access_cliente(v_existing.cliente_id) THEN
+       AND ((v_existing.cliente_id IS NOT NULL AND NOT public.can_access_cliente(v_existing.cliente_id))
+            OR (v_existing.cliente_id IS NULL
+                AND NOT (v_existing.user_id IS NOT DISTINCT FROM v_user
+                         OR coalesce(v_existing.responsavel_id = ANY (public.my_membro_ids()), false)))) THEN
       RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';
     END IF;
     IF v_existing.serie_id IS NOT NULL THEN RAISE EXCEPTION 'Esta tarefa já pertence a uma série.'; END IF;
@@ -1033,10 +1048,16 @@ BEGIN
   -- pôr como responsável num cliente que ele não acessa
   IF NOT public.my_client_scope_all() THEN
     IF (v_cli IS DISTINCT FROM v_t.cliente_id
-          AND NOT ((v_t.cliente_id IS NULL OR public.can_access_cliente(v_t.cliente_id))
+          AND NOT (((v_t.cliente_id IS NULL
+                      AND (v_t.user_id IS NOT DISTINCT FROM v_user
+                           OR coalesce(v_t.responsavel_id = ANY (public.my_membro_ids()), false)))
+                     OR public.can_access_cliente(v_t.cliente_id))
                    AND public.can_access_cliente(v_cli)))
        OR (NOT p_encerrar AND v_cli IS DISTINCT FROM v_s.cliente_id
-          AND NOT ((v_s.cliente_id IS NULL OR public.can_access_cliente(v_s.cliente_id))
+          AND NOT (((v_s.cliente_id IS NULL
+                      AND (v_s.user_id IS NOT DISTINCT FROM v_user
+                           OR coalesce(v_s.responsavel_id = ANY (public.my_membro_ids()), false)))
+                     OR public.can_access_cliente(v_s.cliente_id))
                    AND public.can_access_cliente(v_cli)))
        OR (v_resp IS DISTINCT FROM v_t.responsavel_id AND coalesce(v_resp = ANY (public.my_membro_ids()), false)
           AND NOT public.can_access_cliente(v_cli)) THEN

@@ -302,6 +302,103 @@ CREATE TRIGGER zz_client_scope_reparent_guard
   BEFORE UPDATE OF post_id ON public.post_file_links
   FOR EACH ROW EXECUTE FUNCTION public.guard_post_child_update();
 
+-- O arquivo é visível ao usuário atual pela ORIGEM dele: vê todos os clientes,
+-- upload dele, ou pasta de um cliente que ele acessa. Não conta nenhum caminho
+-- emprestado (vínculo a post, logo de marca). É o teste das escritas que dão ao
+-- arquivo um caminho NOVO de leitura para outras pessoas (vincular a um post,
+-- trocar o arquivo de um vínculo, apontar um logo): senão a mídia do post dele
+-- num cliente oculto, ou o logo de B visto só como contexto, iria para um post ou
+-- marca de A e ficaria visível a quem só vê A. DEFINER, workspace ativo.
+CREATE OR REPLACE FUNCTION public.file_visible_at_source(p_file_id bigint)
+RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid    uuid := auth.uid();
+  v_conta  uuid := public.get_my_conta_id();
+  v_by     uuid;
+  v_folder bigint;
+BEGIN
+  IF v_conta IS NULL THEN RETURN false; END IF;
+  SELECT f.uploaded_by, f.folder_id INTO v_by, v_folder
+    FROM public.files f WHERE f.id = p_file_id AND f.conta_id = v_conta;
+  IF NOT FOUND THEN RETURN false; END IF;
+  IF public.my_client_scope_all() THEN RETURN true; END IF;
+  IF v_uid IS NOT NULL AND v_by = v_uid THEN RETURN true; END IF;
+  RETURN public.can_access_cliente(public.folder_cliente_id(v_folder));
+END;
+$$;
+REVOKE ALL ON FUNCTION public.file_visible_at_source(bigint) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.file_visible_at_source(bigint) TO authenticated, service_role;
+
+-- O arquivo é visível para o usuário atual SEM contar o logo de marca: a regra
+-- de leitura de files menos file_is_readable_brand_logo (vê todos os clientes,
+-- upload dele, pasta de cliente acessível, ou ligado a um post que ele vê, com a
+-- regra de leitura de workflow_posts). É o teste de "arquivo visível" das
+-- escritas que tornam um arquivo legível por outro caminho (vínculo a post, logo):
+-- senão o logo de B, visto só como contexto, seria ligado a um post de A e
+-- passaria a ser visível a quem vê A. DEFINER e restrito ao workspace ativo.
+CREATE OR REPLACE FUNCTION public.file_visible_without_logo(p_file_id bigint)
+RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_conta uuid := public.get_my_conta_id();
+BEGIN
+  IF v_conta IS NULL THEN RETURN false; END IF;
+  IF public.file_visible_at_source(p_file_id) THEN RETURN true; END IF;
+  RETURN EXISTS (
+    SELECT 1 FROM public.post_file_links l
+      JOIN public.workflow_posts wp ON wp.id = l.post_id
+     WHERE l.file_id = p_file_id AND wp.conta_id = v_conta
+       AND (public.can_access_cliente(wp.cliente_id)
+            OR wp.responsavel_id = ANY (public.my_membro_ids()))
+  );
+END;
+$$;
+REVOKE ALL ON FUNCTION public.file_visible_without_logo(bigint) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.file_visible_without_logo(bigint) TO authenticated, service_role;
+
+-- Vínculo de post: trocar file_id é desvincular o arquivo antigo, então exige o
+-- mesmo que o DELETE: acesso ao cliente do post; e o arquivo novo tem de ser
+-- visível pela origem (file_visible_at_source). No post dele num cliente
+-- oculto, ordem e capa continuam editáveis; o arquivo do vínculo, não.
+CREATE OR REPLACE FUNCTION public.guard_post_file_link_swap()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid   uuid := auth.uid();
+  v_conta uuid;
+  v_cli   bigint;
+BEGIN
+  IF v_uid IS NULL OR NEW.file_id IS NOT DISTINCT FROM OLD.file_id THEN RETURN NEW; END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.workspace_members wm
+     WHERE wm.workspace_id = OLD.conta_id AND wm.user_id = v_uid
+       AND wm.role <> 'owner' AND wm.client_scope = 'atribuidos'
+  ) THEN
+    RETURN NEW;
+  END IF;
+  SELECT wp.conta_id, wp.cliente_id INTO v_conta, v_cli
+    FROM public.workflow_posts wp WHERE wp.id = OLD.post_id;
+  IF NOT public.can_access_cliente(v_uid, OLD.conta_id, v_cli)
+     OR NOT public.file_visible_at_source(NEW.file_id) THEN
+    RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.guard_post_file_link_swap() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.guard_post_file_link_swap() TO service_role;
+
+CREATE TRIGGER zz_client_scope_file_swap_guard
+  BEFORE UPDATE OF file_id ON public.post_file_links
+  FOR EACH ROW EXECUTE FUNCTION public.guard_post_file_link_swap();
+
 -- O arquivo é o logo (hub_brand.logo_file_id) de uma marca que o usuário atual
 -- lê: mesma regra da leitura de hub_brand (cliente acessível ou contexto do item
 -- dele num cliente oculto). Os logos não têm pasta (MarcaPage e
@@ -350,12 +447,8 @@ BEGIN
   ) THEN
     RETURN NEW;
   END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM public.files f
-     WHERE f.id = NEW.logo_file_id AND f.conta_id = v_conta
-       AND (f.uploaded_by = v_uid
-            OR public.can_access_cliente(v_uid, v_conta, public.folder_cliente_id(f.folder_id)))
-  ) THEN
+  IF NOT public.file_visible_at_source(NEW.logo_file_id)
+     OR NOT EXISTS (SELECT 1 FROM public.files f WHERE f.id = NEW.logo_file_id AND f.conta_id = v_conta) THEN
     RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';
   END IF;
   RETURN NEW;
@@ -439,9 +532,11 @@ CREATE POLICY folders_scope_delete ON public.folders
 -- 3. post_file_links
 -- -------------------------------------------------------------
 -- Leitura e UPDATE pelo post visível. A escrita exige também o arquivo visível
--- (EXISTS em files sob a RLS dele): um vínculo é o que torna um arquivo legível
--- pelo post, então ligar um arquivo oculto ao post dele vazaria o arquivo. Num
--- UPDATE que não troca file_id o arquivo já é visível pelo próprio vínculo.
+-- SEM o logo de marca (file_visible_without_logo): um vínculo é o que torna um
+-- arquivo legível pelo post, então ligar um arquivo oculto (ou o logo de um
+-- cliente visto só como contexto) a um post vazaria o arquivo. Num UPDATE que não
+-- troca file_id o arquivo já é visível pelo próprio vínculo. Trocar file_id:
+-- trigger zz_client_scope_file_swap_guard.
 ALTER POLICY post_file_links_tenant_all ON public.post_file_links
   USING (
     conta_id IN (SELECT public.get_my_conta_id())
@@ -452,8 +547,13 @@ ALTER POLICY post_file_links_tenant_all ON public.post_file_links
     conta_id IN (SELECT public.get_my_conta_id())
     AND ((SELECT public.my_client_scope_all())
          OR (EXISTS (SELECT 1 FROM public.workflow_posts wp WHERE wp.id = post_file_links.post_id)
-             AND EXISTS (SELECT 1 FROM public.files f WHERE f.id = post_file_links.file_id)))
+             AND public.file_visible_without_logo(file_id)))
   );
+-- INSERT: o arquivo tem de ser visível pela origem, não só emprestado de outro
+-- post ou de um logo (ver file_visible_at_source).
+CREATE POLICY post_file_links_scope_insert ON public.post_file_links
+  AS RESTRICTIVE FOR INSERT TO authenticated
+  WITH CHECK ((SELECT public.my_client_scope_all()) OR public.file_visible_at_source(file_id));
 CREATE POLICY post_file_links_scope_delete ON public.post_file_links
   AS RESTRICTIVE FOR DELETE TO authenticated
   USING (

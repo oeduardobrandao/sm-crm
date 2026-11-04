@@ -383,6 +383,10 @@ begin
   assert v_err = '42501', 'link_hidden_file_to_a_post_denied: ' || coalesce(v_err, 'ok');
   v_err := pg_temp.err_as(v_restr, format('insert into post_file_links (post_id, file_id, conta_id) values (%s, %s, %L)', v_pb_own, f_b_linked_other, v_ws));
   assert v_err = '42501', 'link_file_of_hidden_post_to_own_post_denied: ' || coalesce(v_err, 'ok');
+  -- media he sees only through his own post in B can't be linked to an A post
+  -- (A-only viewers would gain a B file)
+  v_err := pg_temp.err_as(v_restr, format('insert into post_file_links (post_id, file_id, conta_id) values (%s, %s, %L)', v_pa, f_b_linked_own, v_ws));
+  assert v_err = '42501', 'link_own_b_post_media_to_a_post_denied: ' || coalesce(v_err, 'ok');
   v_n := pg_temp.n_as(v_restr, format('select count(*) from files where id in (%s, %s)', f_b, f_b_linked_other));
   assert v_n = 0, 'hidden_files_stay_hidden_after_denied_links: ' || v_n;
   v_err := pg_temp.err_as(v_restr, format('insert into post_file_links (post_id, file_id, conta_id) values (%s, %s, %L)', v_pb_other, f_a3, v_ws));
@@ -394,6 +398,14 @@ begin
 
   v_err := pg_temp.err_as(v_restr, format('update post_file_links set file_id = %s where id = %s', f_b, l_own));
   assert v_err = '42501', 'relink_own_link_to_hidden_file_denied: ' || coalesce(v_err, 'ok');
+  -- swapping the file of a link is an unlink: same rule as DELETE (post's client)
+  v_err := pg_temp.errm_as(v_restr, format('update post_file_links set file_id = %s where id = %s', f_a3, l_own));
+  assert v_err = 'client_scope_restricted', 'swap_file_of_own_b_post_link_denied: ' || coalesce(v_err, 'ok');
+  assert (select file_id from post_file_links where id = l_own) = f_b_linked_own, 'own_b_post_link_kept_its_file';
+  v_n := pg_temp.rows_as(v_restr, format('update post_file_links set file_id = %s where id = %s', f_null_own, l_a));
+  assert v_n = 1, 'swap_file_of_a_post_link_ok: ' || v_n;
+  v_n := pg_temp.rows_as(v_restr, format('update post_file_links set is_cover = true, sort_order = 7 where id = %s', l_own));
+  assert v_n = 1, 'cover_and_order_of_own_b_post_link_editable: ' || v_n;
   v_n := pg_temp.rows_as(v_restr, format('update post_file_links set sort_order = 5 where id = %s', l_own));
   assert v_n = 1, 'reorder_link_of_own_b_post_ok: ' || v_n;
   v_err := pg_temp.errm_as(v_restr, format('update post_file_links set post_id = %s where id = %s', v_pa, l_own));
@@ -432,6 +444,13 @@ begin
   assert v_err = 'client_scope_restricted', 'point_a_logo_at_file_seen_only_as_b_logo_denied: ' || coalesce(v_err, 'ok');
   v_err := pg_temp.errm_as(v_restr, format('update hub_brand set logo_file_id = %s where cliente_id = %s', f_null_other, v_ca));
   assert v_err = 'client_scope_restricted', 'point_a_logo_at_client_less_file_of_other_denied: ' || coalesce(v_err, 'ok');
+  -- B's logo, seen only through context, can't be laundered into an A post
+  v_err := pg_temp.err_as(v_restr, format('insert into post_file_links (post_id, file_id, conta_id) values (%s, %s, %L)', v_pa, f_logo_b, v_ws));
+  assert v_err = '42501', 'link_context_only_b_logo_to_a_post_denied: ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.err_as(v_restr, format('insert into post_file_links (post_id, file_id, conta_id) values (%s, %s, %L)', v_pa, f_logo_a, v_ws));
+  assert v_err = '42501', 'link_logo_only_file_to_a_post_denied: ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.errm_as(v_restr, format('update hub_brand set logo_file_id = %s where cliente_id = %s', f_b_linked_own, v_ca));
+  assert v_err = 'client_scope_restricted', 'point_a_logo_at_own_b_post_media_denied: ' || coalesce(v_err, 'ok');
   v_n := pg_temp.rows_as(v_restr, format('update hub_brand set logo_file_id = %s where cliente_id = %s', f_logo_own, v_ca));
   assert v_n = 1, 'own_upload_as_logo_ok: ' || v_n;
   v_n := pg_temp.rows_as(v_restr, format('update hub_brand set primary_color = ''#abc'' where cliente_id = %s', v_ca));
@@ -519,14 +538,16 @@ declare v_f text;
 begin
   foreach v_f in array array['public.folder_scope_cliente_id(bigint)', 'public.folder_row_scope_cliente_id(text,bigint,bigint)',
       'public.file_own_client_less(bigint)', 'public.file_linked_to_visible_post(bigint)',
-      'public.file_is_readable_brand_logo(bigint)'] loop
+      'public.file_is_readable_brand_logo(bigint)', 'public.file_visible_without_logo(bigint)',
+      'public.file_visible_at_source(bigint)'] loop
     assert has_function_privilege('authenticated', v_f, 'EXECUTE'), 'helper executable by authenticated: ' || v_f;
     assert not has_function_privilege('anon', v_f, 'EXECUTE'), 'helper not executable by anon: ' || v_f;
     assert has_function_privilege('service_role', v_f, 'EXECUTE'), 'helper executable by service_role: ' || v_f;
   end loop;
   -- raw resolvers return a cliente_id: service_role only
   foreach v_f in array array['public.folder_cliente_id(bigint)', 'public.folder_row_cliente_id(text,bigint,bigint)',
-      'public.guard_file_scope_update()', 'public.guard_folder_scope_parent()', 'public.guard_brand_logo_file()'] loop
+      'public.guard_file_scope_update()', 'public.guard_folder_scope_parent()', 'public.guard_brand_logo_file()',
+      'public.guard_post_file_link_swap()'] loop
     assert not has_function_privilege('authenticated', v_f, 'EXECUTE'), 'not executable by authenticated: ' || v_f;
     assert not has_function_privilege('anon', v_f, 'EXECUTE'), 'not executable by anon: ' || v_f;
     assert has_function_privilege('service_role', v_f, 'EXECUTE'), 'executable by service_role: ' || v_f;
