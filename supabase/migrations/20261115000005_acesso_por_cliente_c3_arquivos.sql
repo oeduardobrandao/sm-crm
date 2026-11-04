@@ -34,6 +34,10 @@
 --   exigem também o arquivo visível, senão o restrito ligaria um arquivo oculto ao
 --   post dele e passaria a lê-lo; DELETE estrito (sem coluna de autor); trocar
 --   post_id exige o post de origem acessível (guard_post_child_update da C1).
+-- Logo da marca: o arquivo de hub_brand.logo_file_id é legível (só leitura) para
+-- quem lê a marca (contexto incluído); o trigger zz_client_scope_logo_guard só
+-- deixa o restrito apontar o logo para um arquivo que ele já via sem o logo.
+-- Nenhuma outra coluna que aponta para files abre leitura do arquivo.
 -- ideia_files não abre leitura de arquivo (a mídia da ideia vem pelo
 -- ideia-media-manage, service role), então o file_id dele não precisa de guarda.
 -- O termo (SELECT my_client_scope_all()) vem primeiro: é um initplan, então o
@@ -298,19 +302,88 @@ CREATE TRIGGER zz_client_scope_reparent_guard
   BEFORE UPDATE OF post_id ON public.post_file_links
   FOR EACH ROW EXECUTE FUNCTION public.guard_post_child_update();
 
+-- O arquivo é o logo (hub_brand.logo_file_id) de uma marca que o usuário atual
+-- lê: mesma regra da leitura de hub_brand (cliente acessível ou contexto do item
+-- dele num cliente oculto). Os logos não têm pasta (MarcaPage e
+-- _shared/brand-logo.ts gravam folder_id NULL), então sem isto o restrito não
+-- veria o logo nem do cliente dele. DEFINER: lê hub_brand sem a RLS e confere a
+-- regra aqui; só responde sim/não, e só no workspace ativo.
+CREATE OR REPLACE FUNCTION public.file_is_readable_brand_logo(p_file_id bigint)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.hub_brand hb
+     WHERE hb.logo_file_id = p_file_id
+       AND public.cliente_in_active_conta(hb.cliente_id)
+       AND (public.my_client_scope_all() OR public.can_see_cliente_context(hb.cliente_id))
+  );
+$$;
+REVOKE ALL ON FUNCTION public.file_is_readable_brand_logo(bigint) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.file_is_readable_brand_logo(bigint) TO authenticated, service_role;
+
+-- Guarda de hub_brand.logo_file_id: como o logo torna o arquivo legível (acima),
+-- o restrito só aponta o logo para NULL ou para um arquivo que ele já via SEM
+-- passar por um logo: upload dele, ou arquivo cuja pasta é de um cliente que ele
+-- acessa. Senão ele apontaria o logo do cliente A para um arquivo oculto e o
+-- leria. A escrita em hub_brand já é estrita no cliente da marca. auth.uid()
+-- NULL (service role: brand-logo.ts) e membro irrestrito saem antes.
+CREATE OR REPLACE FUNCTION public.guard_brand_logo_file()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid   uuid := auth.uid();
+  v_conta uuid;
+BEGIN
+  IF v_uid IS NULL OR NEW.logo_file_id IS NULL THEN RETURN NEW; END IF;
+  IF TG_OP = 'UPDATE' THEN
+    IF NEW.logo_file_id IS NOT DISTINCT FROM OLD.logo_file_id THEN RETURN NEW; END IF;
+  END IF;
+  SELECT c.conta_id INTO v_conta FROM public.clientes c WHERE c.id = NEW.cliente_id;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.workspace_members wm
+     WHERE wm.workspace_id = v_conta AND wm.user_id = v_uid
+       AND wm.role <> 'owner' AND wm.client_scope = 'atribuidos'
+  ) THEN
+    RETURN NEW;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.files f
+     WHERE f.id = NEW.logo_file_id AND f.conta_id = v_conta
+       AND (f.uploaded_by = v_uid
+            OR public.can_access_cliente(v_uid, v_conta, public.folder_cliente_id(f.folder_id)))
+  ) THEN
+    RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.guard_brand_logo_file() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.guard_brand_logo_file() TO service_role;
+
+-- zz: roda depois de trg_hub_brand_reference_file_guard e trg_feature_brand.
+CREATE TRIGGER zz_client_scope_logo_guard
+  BEFORE INSERT OR UPDATE OF logo_file_id ON public.hub_brand
+  FOR EACH ROW EXECUTE FUNCTION public.guard_brand_logo_file();
+
 -- -------------------------------------------------------------
 -- 1. files
 -- -------------------------------------------------------------
 -- FOR ALL sem WITH CHECK até aqui. USING e WITH CHECK levam a regra de leitura;
 -- INSERT e DELETE estritos pelas RESTRICTIVE abaixo; troca de pasta e autor pelo
--- trigger zz_client_scope_guard.
+-- trigger zz_client_scope_guard. O logo de uma marca que ele lê entra só no
+-- USING: legível, nunca gravável por esse caminho (o WITH CHECK não o tem).
 ALTER POLICY files_tenant_all ON public.files
   USING (
     conta_id IN (SELECT public.get_my_conta_id())
     AND ((SELECT public.my_client_scope_all())
          OR uploaded_by = (SELECT auth.uid())
          OR public.can_access_cliente(public.folder_scope_cliente_id(folder_id))
-         OR public.file_linked_to_visible_post(id))
+         OR public.file_linked_to_visible_post(id)
+         OR public.file_is_readable_brand_logo(id))
   )
   WITH CHECK (
     conta_id IN (SELECT public.get_my_conta_id())

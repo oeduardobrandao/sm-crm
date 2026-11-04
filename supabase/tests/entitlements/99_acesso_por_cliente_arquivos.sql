@@ -105,6 +105,7 @@ declare
   f_null_own bigint; f_null_own2 bigint; f_null_other bigint; f_root_other bigint; f_cycle bigint;
   -- links
   l_own bigint; l_other bigint; l_a bigint;
+  v_cc bigint; f_logo_a bigint; f_logo_b bigint; f_logo_c bigint; f_logo_own bigint;
   v_n bigint; v_expected bigint; v_err text; v_t text; v_id bigint;
 begin
   insert into auth.users (id, email) values
@@ -405,6 +406,44 @@ begin
   assert v_n = 1, 'unlink_from_a_post_ok: ' || v_n;
 
   -- ---------------------------------------------------------------
+  -- brand logos: readable through the brand (context included), read-only
+  -- through it, and a logo can only point at a file he already sees
+  -- ---------------------------------------------------------------
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  insert into clientes (user_id, conta_id, nome, sigla, cor, status) values (v_owner, v_ws, 'C', 'C', '#333', 'ativo') returning id into v_cc;
+  -- logos land without a folder (MarcaPage uploadFile({ folderId: null }), _shared/brand-logo.ts)
+  f_logo_a := pg_temp.mkfile(v_ws, null, v_owner, 'logoA');
+  f_logo_b := pg_temp.mkfile(v_ws, null, v_owner, 'logoB');
+  f_logo_c := pg_temp.mkfile(v_ws, null, v_owner, 'logoC');
+  f_logo_own := pg_temp.mkfile(v_ws, null, v_restr, 'logoOwn');
+  insert into hub_brand (cliente_id, logo_file_id) values (v_ca, f_logo_a), (v_cb, f_logo_b), (v_cc, f_logo_c);
+  perform set_config('request.jwt.claims', '', true);
+  v_n := pg_temp.n_as(v_restr, format('select count(*) from files where id = %s', f_logo_a));
+  assert v_n = 1, 'brand_logo_of_accessible_client_visible: ' || v_n;
+  v_n := pg_temp.n_as(v_restr, format('select count(*) from files where id = %s', f_logo_b));
+  assert v_n = 1, 'brand_logo_of_b_visible_with_own_post: ' || v_n;
+  v_n := pg_temp.n_as(v_restr, format('select count(*) from files where id = %s', f_logo_c));
+  assert v_n = 0, 'brand_logo_of_c_hidden_without_context: ' || v_n;
+  v_err := pg_temp.err_as(v_restr, format('update files set name = ''x'' where id = %s', f_logo_a));
+  assert v_err = '42501', 'brand_logo_file_read_only_through_brand: ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.errm_as(v_restr, format('update hub_brand set logo_file_id = %s where cliente_id = %s', f_b, v_ca));
+  assert v_err = 'client_scope_restricted', 'point_a_logo_at_hidden_b_file_denied: ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.errm_as(v_restr, format('update hub_brand set logo_file_id = %s where cliente_id = %s', f_logo_b, v_ca));
+  assert v_err = 'client_scope_restricted', 'point_a_logo_at_file_seen_only_as_b_logo_denied: ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.errm_as(v_restr, format('update hub_brand set logo_file_id = %s where cliente_id = %s', f_null_other, v_ca));
+  assert v_err = 'client_scope_restricted', 'point_a_logo_at_client_less_file_of_other_denied: ' || coalesce(v_err, 'ok');
+  v_n := pg_temp.rows_as(v_restr, format('update hub_brand set logo_file_id = %s where cliente_id = %s', f_logo_own, v_ca));
+  assert v_n = 1, 'own_upload_as_logo_ok: ' || v_n;
+  v_n := pg_temp.rows_as(v_restr, format('update hub_brand set primary_color = ''#abc'' where cliente_id = %s', v_ca));
+  assert v_n = 1, 'brand_update_without_logo_change_ok: ' || v_n;
+  v_n := pg_temp.rows_as(v_restr, format('update hub_brand set logo_file_id = null where cliente_id = %s', v_ca));
+  assert v_n = 1, 'clear_logo_ok: ' || v_n;
+  v_n := pg_temp.n_as(v_restr, format('select count(*) from files where id = %s', f_logo_a));
+  assert v_n = 0, 'old_logo_hidden_after_unset: ' || v_n;
+  v_n := pg_temp.rows_as(v_todos, format('update hub_brand set logo_file_id = %s where cliente_id = %s', f_logo_a, v_ca));
+  assert v_n = 1, 'todos_set_logo_ok: ' || v_n;
+
+  -- ---------------------------------------------------------------
   -- RPC get_or_create_client_reports_folder
   -- ---------------------------------------------------------------
   v_err := pg_temp.errm_as(v_restr, format('select public.get_or_create_client_reports_folder(%s)', v_cb));
@@ -479,14 +518,15 @@ do $$
 declare v_f text;
 begin
   foreach v_f in array array['public.folder_scope_cliente_id(bigint)', 'public.folder_row_scope_cliente_id(text,bigint,bigint)',
-      'public.file_own_client_less(bigint)', 'public.file_linked_to_visible_post(bigint)'] loop
+      'public.file_own_client_less(bigint)', 'public.file_linked_to_visible_post(bigint)',
+      'public.file_is_readable_brand_logo(bigint)'] loop
     assert has_function_privilege('authenticated', v_f, 'EXECUTE'), 'helper executable by authenticated: ' || v_f;
     assert not has_function_privilege('anon', v_f, 'EXECUTE'), 'helper not executable by anon: ' || v_f;
     assert has_function_privilege('service_role', v_f, 'EXECUTE'), 'helper executable by service_role: ' || v_f;
   end loop;
   -- raw resolvers return a cliente_id: service_role only
   foreach v_f in array array['public.folder_cliente_id(bigint)', 'public.folder_row_cliente_id(text,bigint,bigint)',
-      'public.guard_file_scope_update()', 'public.guard_folder_scope_parent()'] loop
+      'public.guard_file_scope_update()', 'public.guard_folder_scope_parent()', 'public.guard_brand_logo_file()'] loop
     assert not has_function_privilege('authenticated', v_f, 'EXECUTE'), 'not executable by authenticated: ' || v_f;
     assert not has_function_privilege('anon', v_f, 'EXECUTE'), 'not executable by anon: ' || v_f;
     assert has_function_privilege('service_role', v_f, 'EXECUTE'), 'executable by service_role: ' || v_f;
