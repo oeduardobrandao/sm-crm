@@ -119,8 +119,11 @@ action)`, `can_access_cliente(bigint)`, `can_see_cliente_context(bigint)` (só n
 passar pela RLS de `workflows`), `workflow_has_own_item(bigint)` (workflow legível como contexto do item
 dele), `cliente_in_active_conta(bigint)` e `tarefa_serie_in_active_conta(bigint)` (tenant do cliente e da
 série sem passar pela RLS de `clientes`/`tarefa_series`, para a tarefa dele e a marca de contexto num
-cliente oculto). As funções de trigger das guardas (`guard_client_scope_move`, `guard_post_child_update`,
-`guard_post_process_step_assign`, `guard_client_scope_item`, `guard_scope_child_reparent`) não têm EXECUTE
+cliente oculto), `folder_cliente_id(bigint)` e `folder_row_cliente_id(text, bigint, bigint)` (cliente de
+uma pasta, subindo `parent_id` até a pasta de origem) e `file_linked_to_visible_post(bigint)` (INVOKER: o
+arquivo está ligado a um post que ele vê). As funções de trigger das guardas (`guard_client_scope_move`,
+`guard_post_child_update`, `guard_post_process_step_assign`, `guard_client_scope_item`,
+`guard_scope_child_reparent`, `guard_file_scope_update`, `guard_folder_scope_parent`) não têm EXECUTE
 para `authenticated` nem `anon`.
 
 Espelho TS: só `isClientScoped(membership)` em `lib/permissions.ts`, para afordâncias de UI
