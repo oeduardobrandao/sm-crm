@@ -727,22 +727,36 @@ end $$;
 -- block 6: explain_todos_short_circuits + zero scope calls for todos
 -- =============================================================
 set local track_functions = 'all';
+-- the plan has a filter "((InitPlan N).col1 OR can_access_cliente(" and InitPlan N
+-- is my_client_scope_all() (not some other initplan of the same plan, such as
+-- has_permission or get_my_conta_id)
+create or replace function pg_temp.assert_scope_initplan(p_plan text, p_label text) returns void language plpgsql as $f$
+declare v_n text;
+begin
+  v_n := (regexp_match(p_plan, 'Filter:[^\n]*\(\(InitPlan ([0-9]+)\)\.col1 OR can_access_cliente\('))[1];
+  assert v_n is not null, p_label || ': scope initplan comes first in an OR with can_access_cliente: ' || p_plan;
+  assert p_plan ~ ('InitPlan ' || v_n || '\n\s*->  Result\n\s*Output: my_client_scope_all\(\)'),
+    p_label || ': InitPlan ' || v_n || ' is my_client_scope_all(): ' || p_plan;
+end $f$;
+grant execute on function pg_temp.assert_scope_initplan(text, text) to authenticated;
 do $$
-declare v_plan text := ''; v_json json; r record;
+declare v_plan text := ''; r record;
 begin
   perform set_config('request.jwt.claims', json_build_object('sub', (select u.id from auth.users u where u.email = 'todos@acag.test'), 'role', 'authenticated')::text, true);
   execute 'set local role authenticated';
   for r in execute 'explain (verbose, costs off) select * from instagram_accounts' loop v_plan := v_plan || r."QUERY PLAN" || E'\n'; end loop;
-  assert v_plan ~ 'Filter:[^\n]*\((\(InitPlan [0-9]+\)\.col1|\$[0-9]+) OR can_access_cliente\(',
-    'instagram_accounts: scope initplan comes first in the filter: ' || v_plan;
+  perform pg_temp.assert_scope_initplan(v_plan, 'instagram_accounts');
   v_plan := '';
   for r in execute 'explain (verbose, costs off) select * from agenda_eventos' loop v_plan := v_plan || r."QUERY PLAN" || E'\n'; end loop;
-  assert v_plan ~ 'Filter:[^\n]*\((\(InitPlan [0-9]+\)\.col1|\$[0-9]+) OR can_access_cliente\(',
-    'agenda_eventos: scope initplan comes first in the filter: ' || v_plan;
-  execute 'explain (format json) select * from instagram_posts' into v_json;
-  assert v_json::text ~ '"Subplan Name": "InitPlan', 'instagram_posts: JSON plan has an InitPlan: ' || v_json::text;
-  execute 'explain (format json) select * from agenda_ocorrencias' into v_json;
-  assert v_json::text ~ '"Subplan Name": "InitPlan', 'agenda_ocorrencias: JSON plan has an InitPlan: ' || v_json::text;
+  perform pg_temp.assert_scope_initplan(v_plan, 'agenda_eventos');
+  -- children: the parent's subquery carries the scope initplan (instagram_posts via
+  -- instagram_accounts, agenda_ocorrencias via agenda_eventos)
+  v_plan := '';
+  for r in execute 'explain (verbose, costs off) select * from instagram_posts' loop v_plan := v_plan || r."QUERY PLAN" || E'\n'; end loop;
+  perform pg_temp.assert_scope_initplan(v_plan, 'instagram_posts');
+  v_plan := '';
+  for r in execute 'explain (verbose, costs off) select * from agenda_ocorrencias' loop v_plan := v_plan || r."QUERY PLAN" || E'\n'; end loop;
+  perform pg_temp.assert_scope_initplan(v_plan, 'agenda_ocorrencias');
   execute 'reset role';
 end $$;
 
