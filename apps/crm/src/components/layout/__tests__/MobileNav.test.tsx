@@ -31,13 +31,28 @@ vi.mock('../GlobalSearchDialog', () => ({
     open ? <div data-testid="global-search-dialog" /> : null,
 }));
 
+vi.mock('../../../lib/supabase');
+
+vi.mock('@/store/workspace', () => ({
+  switchWorkspace: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../../../lib/vidroLook', () => ({
+  clearVidroCache: vi.fn(),
+}));
+
 import MobileNav from '../MobileNav';
+import * as supabaseModule from '../../../lib/supabase';
+import { switchWorkspace } from '@/store/workspace';
 import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
 import { useMensagensUnread } from '../../../hooks/useMensagensUnread';
 import { useEquipeChatUnread } from '../../../hooks/useEquipeChatUnread';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 
 const mockedUseAuth = vi.mocked(useAuth);
+const mockedSupabase = supabaseModule as typeof supabaseModule & {
+  __queueSupabaseResult: (table: string, op: string, result: unknown) => void;
+};
 const mockedUseWorkspaceLimits = vi.mocked(useWorkspaceLimits);
 const mockedUseMensagensUnread = vi.mocked(useMensagensUnread);
 const mockedUseEquipeChatUnread = vi.mocked(useEquipeChatUnread);
@@ -686,6 +701,54 @@ describe('MobileNav', () => {
       renderMobileNav('/dashboard');
 
       expect(screen.getByRole('button', { name: 'Clientes' })).toBeInTheDocument();
+    });
+  });
+
+  describe('workspace switcher in the Mais sheet', () => {
+    function queueWorkspaces(rows: Array<{ id: string; name: string }>) {
+      mockedSupabase.__queueSupabaseResult('workspace_members', 'select', {
+        data: rows.map((w) => ({ workspace_id: w.id, role: 'owner', workspaces: w })),
+        error: null,
+      });
+    }
+
+    it('lists every workspace and switches to another one', async () => {
+      setAuth({ conta_id: 'w-1' });
+      queueWorkspaces([
+        { id: 'w-1', name: 'Agência Norte' },
+        { id: 'w-2', name: 'Agência Sul' },
+      ]);
+      const reload = vi.fn();
+      const originalLocation = window.location;
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        value: { ...originalLocation, reload },
+      });
+
+      try {
+        renderMobileNav('/dashboard');
+        const sheet = openMore();
+        const group = await within(sheet).findByRole('list', { name: 'Workspace' });
+        const active = within(group).getByText('Agência Norte').closest('.phone-cell__main')!;
+        expect(active).toHaveAttribute('aria-current', 'true');
+
+        fireEvent.click(within(group).getByRole('button', { name: /Agência Sul/ }));
+        await waitFor(() => expect(switchWorkspace).toHaveBeenCalledWith('w-2'));
+        await waitFor(() => expect(reload).toHaveBeenCalled());
+      } finally {
+        Object.defineProperty(window, 'location', { configurable: true, value: originalLocation });
+      }
+    });
+
+    it('hides the section with a single workspace', async () => {
+      setAuth({ conta_id: 'w-1' });
+      queueWorkspaces([{ id: 'w-1', name: 'Agência Norte' }]);
+
+      renderMobileNav('/dashboard');
+      const sheet = openMore();
+      await waitFor(() => expect(within(sheet).getByText('Sair')).toBeInTheDocument());
+      expect(within(sheet).queryByRole('list', { name: 'Workspace' })).toBeNull();
+      expect(within(sheet).queryByText('Agência Norte')).toBeNull();
     });
   });
 });
