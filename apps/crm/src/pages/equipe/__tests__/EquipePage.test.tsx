@@ -730,6 +730,22 @@ describe('EquipePage on phones', () => {
     expect(screen.queryByText('Custo mensal total')).not.toBeInTheDocument();
   });
 
+  it('shows no member cost to a member restricted to assigned clients (custo_mensal is NULL for them)', async () => {
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: true,
+      can: makeCan(fakeMembership({ role: 'admin' })),
+      profile: { id: 'me', nome: 'Eu', conta_id: 'ws-1' },
+      membership: fakeMembership({ role: 'admin', client_scope: 'atribuidos' }),
+    });
+    renderPage();
+    await screen.findByText('Bruno');
+
+    expect(screen.queryByText('Custo mensal total')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Filtros: Tipo e Ordenar por' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Filtros' });
+    expect(within(sheet).queryByRole('button', { name: 'Custo (maior)' })).not.toBeInTheDocument();
+  });
+
   it('keeps the ?novo deep link opening the add form', async () => {
     renderPage('/equipe?novo=1');
 
