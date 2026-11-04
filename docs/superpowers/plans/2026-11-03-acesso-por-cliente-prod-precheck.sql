@@ -1,5 +1,8 @@
 -- Acesso por cliente: pré-checagem de produção (leitura apenas).
--- Rode em prod ANTES do db push das migrations 20261117000000..20261117000014
+-- Rode em prod ANTES do db push das migrations 20261117000000..20261117000015 e DEPOIS da
+-- 20261116100000 (que converge o drift conhecido: antes dela as duas checagens listam as
+-- policies legadas de clientes, membros, integracoes_status, instagram_post_tags,
+-- analytics_reports, hub_*, client_hub_tokens, portal_approvals e portal_tokens).
 -- (CLAUDE.md, passo 0 da ordem de deploy).
 --
 -- As migrations reescrevem estas policies com ALTER POLICY (que falha se a
@@ -148,3 +151,27 @@ select v.schemaname, v.tablename, v.policyname
   left join pg_policies p using (schemaname, tablename, policyname)
  where p.policyname is null
  order by v.tablename, v.policyname;
+
+-- Direção inversa: policies que prod tem e o repo não define, nas tabelas de cliente.
+-- Policies PERMISSIVE somam com OR: qualquer uma que sobrar anula o escopo naquela tabela.
+-- Saída esperada: 0 linhas.
+select p.tablename, p.policyname, p.cmd, p.permissive
+  from pg_policies p
+ where p.schemaname = 'public'
+   and p.permissive = 'PERMISSIVE'
+   and p.tablename in (
+     select c.relname from pg_class c join pg_attribute a on a.attrelid = c.oid
+      where c.relnamespace = 'public'::regnamespace and c.relkind = 'r'
+        and a.attname = 'cliente_id' and not a.attisdropped
+     union select unnest(array['clientes', 'membros', 'integracoes_status', 'instagram_post_tags',
+       'analytics_reports', 'hub_pages', 'client_hub_tokens', 'portal_approvals', 'portal_tokens',
+       'workflows', 'workflow_etapas']))
+   and (p.policyname in (
+         'Users can CRUD own clientes', 'Usuários podem gerenciar clientes da sua conta',
+         'Users can CRUD own membros', 'Usuários podem gerenciar membros da sua conta',
+         'Users can CRUD own integracoes_status',
+         'Usuários podem gerenciar status de integração da sua conta',
+         'tags_conta', 'reports_conta', 'owners_manage_portal_tokens',
+         'Users can view portal approvals for their accounts', 'owners_insert_portal_approvals')
+        or p.policyname like 'workspace members can manage %')
+ order by 1, 2;
