@@ -552,6 +552,89 @@ begin
   assert not public.can_see_cliente_context(v_cc), 'no_context_of_c';
   perform set_config('request.jwt.claims', '', true);
 
+  -- ---------------------------------------------------------------- SECURITY DEFINER RPCs
+  -- tarefa_comentario_enviar: hidden task stays unconfirmed; his own hidden task and A are ok
+  v_err := pg_temp.errm_as(v_restr, format('select tarefa_comentario_enviar(%s, ''oi'')', v_tb));
+  assert v_err = 'tarefa_not_found', 'rpc_comment_on_hidden_task_denied: ' || coalesce(v_err, 'sent');
+  v_err := pg_temp.errm_as(v_restr, format('select tarefa_comentario_enviar(%s, ''oi'')', v_tb_own));
+  assert v_err is null, 'rpc_comment_on_own_hidden_task_allowed: ' || coalesce(v_err, '');
+  v_err := pg_temp.errm_as(v_restr, format('select tarefa_comentario_enviar(%s, ''oi'')', v_ta));
+  assert v_err is null, 'rpc_comment_on_task_in_a_allowed: ' || coalesce(v_err, '');
+  -- tarefa_serie_criar: strict on the client; promotion of a hidden task stays unconfirmed
+  v_err := pg_temp.errm_as(v_restr, format(
+    'select tarefa_serie_criar(''{"freq":"daily","intervalo":1,"modo":"ao_concluir"}'', %L, ''{}'', ''{}'')',
+    jsonb_build_object('titulo', 'sx', 'status', 'pendente', 'cliente_id', v_cc, 'data_limite', current_date)));
+  assert v_err = 'client_scope_restricted', 'rpc_create_series_in_hidden_client_denied: ' || coalesce(v_err, 'created');
+  v_err := pg_temp.errm_as(v_restr, format(
+    'select tarefa_serie_criar(''{"freq":"daily","intervalo":1,"modo":"ao_concluir"}'', %L, ''{}'', ''{}'')',
+    jsonb_build_object('titulo', 'sx', 'status', 'pendente', 'data_limite', current_date)));
+  assert v_err = 'client_scope_restricted', 'rpc_create_series_without_client_denied: ' || coalesce(v_err, 'created');
+  v_err := pg_temp.errm_as(v_restr, format(
+    'select tarefa_serie_criar(''{"freq":"daily","intervalo":1,"modo":"ao_concluir"}'', %L, ''{}'', ''{}'')',
+    jsonb_build_object('titulo', 'sx', 'status', 'pendente', 'cliente_id', v_ca, 'data_limite', current_date)));
+  assert v_err is null, 'rpc_create_series_in_a_allowed: ' || coalesce(v_err, '');
+  v_err := pg_temp.errm_as(v_restr, format(
+    'select tarefa_serie_criar(''{"freq":"daily","intervalo":1,"modo":"ao_concluir"}'', %L, ''{}'', ''{}'', %s)',
+    jsonb_build_object('titulo', 'p', 'status', 'pendente', 'cliente_id', v_ca, 'data_limite', current_date), v_tb));
+  assert v_err = 'Tarefa não encontrada neste workspace.', 'rpc_promote_hidden_task_unconfirmed: ' || coalesce(v_err, 'promoted');
+  v_err := pg_temp.errm_as(v_restr, format(
+    'select tarefa_serie_criar(''{"freq":"daily","intervalo":1,"modo":"ao_concluir"}'', %L, ''{}'', ''{}'', %s)',
+    jsonb_build_object('titulo', 'p', 'status', 'pendente', 'cliente_id', v_cb, 'data_limite', current_date), v_tb_own));
+  assert v_err = 'client_scope_restricted', 'rpc_promote_own_hidden_task_denied: ' || coalesce(v_err, 'promoted');
+  v_err := pg_temp.errm_as(v_restr, format(
+    'select tarefa_serie_criar(''{"freq":"daily","intervalo":1,"modo":"ao_concluir"}'', %L, ''{}'', ''{}'', %s)',
+    jsonb_build_object('titulo', 'p', 'status', 'pendente', 'cliente_id', v_ca, 'data_limite', current_date), v_tb_own2));
+  assert v_err = 'client_scope_restricted', 'rpc_promote_own_hidden_task_into_a_denied (relocation): ' || coalesce(v_err, 'promoted');
+  -- tarefa_serie_aplicar_edicao: edit own occurrence in place, never relocate
+  select id into v_n from tarefas where titulo = 'occ' and serie_id = v_sb_own;
+  v_err := pg_temp.errm_as(v_restr, format(
+    'select tarefa_serie_aplicar_edicao(%s, %L, ''{}'', ''{"freq":"daily","intervalo":1,"modo":"calendario"}'')',
+    v_n, jsonb_build_object('titulo', 'occ2', 'responsavel_id', v_membro, 'cliente_id', v_cb, 'data_limite', current_date)));
+  assert v_err is null, 'rpc_edit_own_occurrence_in_hidden_client_allowed: ' || coalesce(v_err, '');
+  v_err := pg_temp.errm_as(v_restr, format(
+    'select tarefa_serie_aplicar_edicao(%s, %L, ''{}'', ''{"freq":"daily","intervalo":1,"modo":"calendario"}'')',
+    v_n, jsonb_build_object('titulo', 'occ3', 'responsavel_id', v_membro, 'cliente_id', v_ca, 'data_limite', current_date)));
+  assert v_err = 'client_scope_restricted', 'rpc_relocate_own_occurrence_denied: ' || coalesce(v_err, 'edited');
+  v_err := pg_temp.errm_as(v_restr, format(
+    'select tarefa_serie_aplicar_edicao(%s, %L, ''{}'', ''{"freq":"daily","intervalo":1,"modo":"calendario"}'')',
+    v_tb_ser, jsonb_build_object('titulo', 'x', 'responsavel_id', v_membro, 'cliente_id', v_cb, 'data_limite', current_date)));
+  assert v_err = 'Série não encontrada neste workspace.', 'rpc_edit_hidden_series_through_own_occurrence_denied: ' || coalesce(v_err, 'edited');
+  v_err := pg_temp.errm_as(v_restr, format(
+    'select tarefa_serie_aplicar_edicao(%s, %L, ''{}'', ''{"freq":"daily","intervalo":1,"modo":"calendario"}'')',
+    v_tb, jsonb_build_object('titulo', 'x', 'cliente_id', v_cb, 'data_limite', current_date)));
+  assert v_err = 'Tarefa não encontrada neste workspace.', 'rpc_edit_hidden_task_unconfirmed: ' || coalesce(v_err, 'edited');
+  -- tarefa_serie_definir_estado: own series ok, hidden unconfirmed
+  v_err := pg_temp.errm_as(v_restr, format('select tarefa_serie_definir_estado(%s, ''pausar'')', v_sb));
+  assert v_err = 'Série não encontrada neste workspace.', 'rpc_pause_hidden_series_unconfirmed: ' || coalesce(v_err, 'paused');
+  v_err := pg_temp.errm_as(v_restr, format('select tarefa_serie_definir_estado(%s, ''pausar'')', v_sb_own));
+  assert v_err is null, 'rpc_pause_own_series_in_hidden_client_allowed: ' || coalesce(v_err, '');
+  -- tarefa_serie_excluir: strict
+  v_err := pg_temp.errm_as(v_restr, format('select tarefa_serie_excluir(%s)', v_sb));
+  assert v_err = 'Série não encontrada neste workspace.', 'rpc_delete_hidden_series_unconfirmed: ' || coalesce(v_err, 'deleted');
+  v_err := pg_temp.errm_as(v_restr, format('select tarefa_serie_excluir(%s)', v_sb_own));
+  assert v_err = 'client_scope_restricted', 'rpc_delete_own_series_in_hidden_client_denied: ' || coalesce(v_err, 'deleted');
+  v_err := pg_temp.errm_as(v_restr, format('select tarefa_serie_excluir(%s)', v_sa));
+  assert v_err is null, 'rpc_delete_series_in_a_allowed: ' || coalesce(v_err, '');
+  -- linha editorial RPCs: strict, hidden linha/client unconfirmed
+  v_err := pg_temp.errm_as(v_restr, format('select linha_editorial_criar(%s, current_date + 40)', v_cb));
+  assert v_err = 'nao_encontrada', 'rpc_create_linha_in_hidden_client_denied: ' || coalesce(v_err, 'created');
+  v_err := pg_temp.errm_as(v_restr, format('select linha_editorial_criar(%s, current_date + 40)', v_ca));
+  assert v_err is null, 'rpc_create_linha_in_a_allowed: ' || coalesce(v_err, '');
+  foreach v_t in array array['linha_editorial_enviar(%L)', 'linha_editorial_recolher(%L)',
+      'linha_editorial_converter(%L, null, ''[{"item_id":"00000000-0000-0000-0000-000000000000"}]'')'] loop
+    v_err := pg_temp.errm_as(v_restr, format('select ' || v_t, v_lb));
+    assert v_err = 'nao_encontrada', format('rpc_%s_on_hidden_linha_denied: %s', split_part(v_t, '(', 1), coalesce(v_err, 'ran'));
+  end loop;
+  v_err := pg_temp.errm_as(v_restr, format('select linha_editorial_enviar(%L)', v_la));
+  assert v_err is null, 'rpc_send_linha_in_a_allowed: ' || coalesce(v_err, '');
+  -- deleting a workspace column strips its values from every linha, hidden ones included
+  v_err := pg_temp.errm_as(v_restr, format('select linha_editorial_coluna_excluir(%L)',
+    (select id from linha_editorial_colunas where conta_id = v_ws order by ordem limit 1)));
+  assert v_err = 'client_scope_restricted', 'rpc_restricted_delete_workspace_column_denied: ' || coalesce(v_err, 'deleted');
+  v_err := pg_temp.errm_as(v_todos, format('select linha_editorial_coluna_excluir(%L)',
+    (select id from linha_editorial_colunas where conta_id = v_ws order by ordem limit 1)));
+  assert v_err is null, 'rpc_todos_delete_workspace_column_allowed: ' || coalesce(v_err, '');
+
   -- ---------------------------------------------------------------- todos / owner unchanged
   foreach v_t in array array['tarefas', 'tarefa_series', 'tarefa_comentarios', 'tarefa_eventos',
       'subtarefas', 'tarefa_tag_links', 'mencoes', 'ideia_files', 'linhas_editoriais',
@@ -633,6 +716,16 @@ begin
     assert not has_function_privilege('authenticated', v_f, 'EXECUTE'), 'trigger fn not executable by authenticated: ' || v_f;
     assert not has_function_privilege('anon', v_f, 'EXECUTE'), 'trigger fn not executable by anon: ' || v_f;
     assert has_function_privilege('service_role', v_f, 'EXECUTE'), 'trigger fn executable by service_role: ' || v_f;
+  end loop;
+  -- the gated RPCs keep their grants (CREATE OR REPLACE keeps the ACL)
+  foreach v_f in array array['public.tarefa_serie_criar(jsonb,jsonb,bigint[],text[],bigint)',
+      'public.tarefa_serie_aplicar_edicao(bigint,jsonb,bigint[],jsonb,boolean)',
+      'public.tarefa_serie_definir_estado(bigint,text)', 'public.tarefa_serie_excluir(bigint)',
+      'public.tarefa_comentario_enviar(bigint,text)', 'public.linha_editorial_criar(bigint,date)',
+      'public.linha_editorial_enviar(uuid)', 'public.linha_editorial_recolher(uuid)',
+      'public.linha_editorial_converter(uuid,bigint,jsonb)', 'public.linha_editorial_coluna_excluir(uuid)'] loop
+    assert has_function_privilege('authenticated', v_f, 'EXECUTE'), 'rpc executable by authenticated: ' || v_f;
+    assert not has_function_privilege('anon', v_f, 'EXECUTE'), 'rpc not executable by anon: ' || v_f;
   end loop;
 end $$;
 
