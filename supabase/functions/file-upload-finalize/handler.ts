@@ -1,4 +1,11 @@
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
+import {
+  CLIENT_SCOPE_MESSAGE,
+  type ClientScopeLoader,
+  loadClientScope as realLoadClientScope,
+  rowVisibility,
+} from "../_shared/client-scope.ts";
+import { folderInfo, folderReadable, folderWritable } from "../_shared/file-client-scope.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -17,6 +24,8 @@ interface FileUploadFinalizeDeps {
   headObject: (key: string) => Promise<HeadResult | null>;
   signUrl: (key: string) => Promise<string>;
   streamCopy?: (r2Key: string, meta: { file_id: string; conta_id: string }) => Promise<string>;
+  /** Acesso por cliente: the caller's client scope (defaults to the real loader). */
+  loadClientScope?: ClientScopeLoader;
 }
 
 const THUMBNAIL_SOURCES = new Set(["auto", "frame", "image"]);
@@ -124,8 +133,36 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
     }
 
     if (body.post_id) {
-      const { data: post } = await svc.from("workflow_posts").select("conta_id").eq("id", body.post_id).single();
+      const { data: post } = await svc.from("workflow_posts").select("conta_id, cliente_id, responsavel_id")
+        .eq("id", body.post_id).single();
       if (!post || post.conta_id !== profile.conta_id) return json({ error: "Post not found" }, 404);
+    }
+
+    // Acesso por cliente (migration C3 files INSERT): the target folder must be an assigned client's
+    // (hidden = missing folder; the Clientes root = limitado), and a file with neither folder nor post
+    // would have no client, which only unrestricted members create. Attaching to a post is a write
+    // (no "é dele": own post in a hidden client -> limitado). Unrestricted callers skip the extra
+    // reads; a scope read error is a generic 500.
+    try {
+      const scope = await (deps.loadClientScope ?? realLoadClientScope)(svc, user.id, profile.conta_id);
+      if (!scope.all) {
+        if (body.folder_id) {
+          const info = await folderInfo(svc as any, Number(body.folder_id), profile.conta_id);
+          if (!folderReadable(scope, info)) return json({ error: "Folder not found" }, 404);
+          if (!folderWritable(scope, info)) return json({ error: CLIENT_SCOPE_MESSAGE }, 403);
+        } else if (!body.post_id) {
+          return json({ error: CLIENT_SCOPE_MESSAGE }, 403);
+        }
+        if (body.post_id) {
+          const { data: p } = await svc.from("workflow_posts").select("cliente_id, responsavel_id")
+            .eq("id", body.post_id).eq("conta_id", profile.conta_id).maybeSingle();
+          const vis = p ? rowVisibility(scope, p, user.id) : "hidden";
+          if (vis === "hidden") return json({ error: "Post not found" }, 404);
+          if (vis === "own_only") return json({ error: CLIENT_SCOPE_MESSAGE }, 403);
+        }
+      }
+    } catch (err) {
+      return internalServerError(json, "file-upload-finalize:client-scope", err);
     }
 
     const { data: inserted, error: insErr } = await svc.rpc("file_insert_with_quota", {

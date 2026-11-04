@@ -6,6 +6,7 @@ import { createSupabaseQueryMock, type QueryCall } from "../../../test/shared/su
 import { createTikTokAnalyticsHandler } from "../tiktok-analytics/handlers.ts";
 import { loadVideosInWindow } from "../_shared/tiktok-analytics/queries.ts";
 import { buildAccountPrompts, buildPortfolioPrompts, callGemini } from "../tiktok-analytics/ai.ts";
+import { allClientsScope, type ClientScope } from "../_shared/client-scope.ts";
 
 type Mock = ReturnType<typeof createSupabaseQueryMock>;
 
@@ -47,6 +48,8 @@ function makeHandler(db: Mock, overrides: Record<string, unknown> = {}) {
     // deno-lint-ignore no-explicit-any
     createServiceDb: () => db as any,
     now: () => NOW,
+    // Acesso por cliente: unrestricted unless a test overrides it (scope tests below).
+    loadClientScope: () => Promise.resolve(allClientsScope()),
     ...overrides,
   });
 }
@@ -1093,4 +1096,58 @@ Deno.test("tiktok-analytics: AI routes answer 403 when feature_tiktok is off", a
   assertEquals(p.status, 403);
   assertEquals(await p.json(), { error: "feature_disabled", feature: "feature_tiktok" });
   assertEquals(gemini.calls.length, 0);
+});
+
+// ── acesso por cliente ────────────────────────────────────────────────────────
+
+const restricted = (ids: number[]): ClientScope => ({ all: false, ids: new Set(ids), membroIds: new Set([7]) });
+
+Deno.test("tiktok-analytics: restricted member on a hidden client gets the foreign-client 403", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  ownedClient(db);
+  db.queue("tiktok_accounts", "select", { data: ACCOUNT });
+  const res = await makeHandler(db, { loadClientScope: () => Promise.resolve(restricted([99])) })(get("/overview/42"));
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: "Unauthorized" });
+  assertEquals(callsTo(db, "tiktok_accounts").length, 0);
+});
+
+Deno.test("tiktok-analytics: restricted member on an assigned client is unchanged", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  ownedClient(db);
+  db.queue("tiktok_accounts", "select", { data: null });
+  const res = await makeHandler(db, { loadClientScope: () => Promise.resolve(restricted([42])) })(get("/overview/42"));
+  assertEquals(res.status, 404);
+  assertEquals(await res.json(), { error: "not_connected" });
+});
+
+Deno.test("tiktok-analytics: portfolio keeps only the restricted member's clients", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  queuePortfolio(db);
+  const res = await makeHandler(db, { loadClientScope: () => Promise.resolve(restricted([43])) })(get("/portfolio"));
+  assertEquals(res.status, 200);
+  const [accounts] = callsTo(db, "tiktok_accounts");
+  assertEquals(mods(accounts, "in"), [["client_id", [43]]]);
+});
+
+Deno.test("tiktok-analytics: portfolio with zero assigned clients is empty without a query", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  const res = await makeHandler(db, { loadClientScope: () => Promise.resolve(restricted([])) })(get("/portfolio"));
+  assertEquals(res.status, 200);
+  assertEquals((await res.json()).accounts, []);
+  assertEquals(callsTo(db, "clientes").length, 0);
+});
+
+Deno.test("tiktok-analytics: a scope read error is a 500, never data", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  ownedClient(db);
+  db.queue("tiktok_accounts", "select", { data: ACCOUNT });
+  const res = await makeHandler(db, { loadClientScope: () => Promise.reject(new Error("boom")) })(get("/overview/42"));
+  assertEquals(res.status, 500);
+  assertEquals(callsTo(db, "tiktok_accounts").length, 0);
 });

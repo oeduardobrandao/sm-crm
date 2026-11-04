@@ -1,0 +1,295 @@
+import { assert, assertEquals } from "./assert.ts";
+import {
+  assertClientAccess,
+  ClientScopeError,
+  type ClientScope,
+  hasClientAccess,
+  isOwnItem,
+  loadClientScope,
+  rowVisibility,
+  rowWriteGate,
+  memberWorkspaceOfClient,
+  allClientsScope,
+  visibleClientIds,
+} from "../_shared/client-scope.ts";
+
+type Resp = { data: unknown; error: unknown };
+type Call = { table: string; method: string; args: unknown[] };
+
+/** A table maps to one response (served once, then empty pages) or to a list of pages. */
+function fakeDb(responses: Record<string, Resp | Resp[]>) {
+  const calls: Call[] = [];
+  const served: Record<string, number> = {};
+  const db = {
+    from(table: string) {
+      calls.push({ table, method: "from", args: [] });
+      // deno-lint-ignore no-explicit-any
+      const rec: any = {};
+      for (const m of ["select", "eq", "gt", "order", "limit"]) {
+        rec[m] = (...args: unknown[]) => {
+          calls.push({ table, method: m, args });
+          return rec;
+        };
+      }
+      const resp = () => {
+        const n = served[table] = (served[table] ?? 0) + 1;
+        const r = responses[table];
+        if (Array.isArray(r)) return r[n - 1] ?? { data: [], error: null };
+        if (n === 1) return r ?? { data: null, error: null };
+        return { data: [], error: null };
+      };
+      rec.maybeSingle = () => Promise.resolve(resp());
+      rec.then = (resolve: (r: Resp) => unknown) => Promise.resolve(resolve(resp()));
+      return rec;
+    },
+  };
+  return { db, calls };
+}
+
+const tables = (calls: Call[]) => [...new Set(calls.filter((c) => c.method === "from").map((c) => c.table))];
+
+Deno.test("loadClientScope: owner sees all, without reading assignments", async () => {
+  const { db, calls } = fakeDb({ workspace_members: { data: { role: "owner", client_scope: "atribuidos" }, error: null } });
+  const s = await loadClientScope(db, "u1", "w1");
+  assertEquals(s.all, true);
+  assertEquals(tables(calls), ["workspace_members"]);
+  assert(calls.some((c) => c.method === "eq" && JSON.stringify(c.args) === '["user_id","u1"]'));
+  assert(calls.some((c) => c.method === "eq" && JSON.stringify(c.args) === '["workspace_id","w1"]'));
+});
+
+Deno.test("loadClientScope: 'todos' sees all, no further reads", async () => {
+  const { db, calls } = fakeDb({ workspace_members: { data: { role: "agent", client_scope: "todos" }, error: null } });
+  const s = await loadClientScope(db, "u1", "w1");
+  assertEquals(s.all, true);
+  assertEquals(tables(calls), ["workspace_members"]);
+});
+
+Deno.test("loadClientScope: 'atribuidos' loads assigned ids and the user's membros ids", async () => {
+  const { db, calls } = fakeDb({
+    workspace_members: { data: { role: "agent", client_scope: "atribuidos" }, error: null },
+    workspace_member_clientes: { data: [{ cliente_id: 5 }, { cliente_id: 7 }], error: null },
+    membros: { data: [{ id: 30 }], error: null },
+  });
+  const s = await loadClientScope(db, "u1", "w1");
+  assertEquals(s.all, false);
+  assertEquals([...s.ids].sort(), [5, 7]);
+  assertEquals([...s.membroIds], [30]);
+  assert(calls.some((c) => c.table === "workspace_member_clientes" && c.method === "eq" && JSON.stringify(c.args) === '["user_id","u1"]'));
+  assert(calls.some((c) => c.table === "membros" && c.method === "eq" && JSON.stringify(c.args) === '["crm_user_id","u1"]'));
+  assert(calls.some((c) => c.table === "membros" && c.method === "eq" && JSON.stringify(c.args) === '["conta_id","w1"]'));
+});
+
+Deno.test("loadClientScope: more than 1000 assignments are read by keyset pages, all of them", async () => {
+  const first = Array.from({ length: 1000 }, (_, i) => ({ cliente_id: i + 1 }));
+  const second = Array.from({ length: 500 }, (_, i) => ({ cliente_id: 1001 + i }));
+  const { db, calls } = fakeDb({
+    workspace_members: { data: { role: "agent", client_scope: "atribuidos" }, error: null },
+    workspace_member_clientes: [{ data: first, error: null }, { data: second, error: null }, { data: [], error: null }],
+    membros: [{ data: [{ id: 30 }], error: null }, { data: [], error: null }],
+  });
+  const s = await loadClientScope(db, "u1", "w1");
+  assertEquals(s.ids.size, 1500);
+  assert(s.ids.has(1500) && s.ids.has(1001) && s.ids.has(1));
+  const gts = calls.filter((c) => c.table === "workspace_member_clientes" && c.method === "gt").map((c) => c.args);
+  assertEquals(gts, [["cliente_id", 1000], ["cliente_id", 1500]]);
+  assert(calls.some((c) => c.table === "workspace_member_clientes" && c.method === "limit" && c.args[0] === 1000));
+});
+
+Deno.test("loadClientScope: a failing second page throws (never a partial scope)", async () => {
+  const { db } = fakeDb({
+    workspace_members: { data: { role: "agent", client_scope: "atribuidos" }, error: null },
+    workspace_member_clientes: [
+      { data: Array.from({ length: 1000 }, (_, i) => ({ cliente_id: i + 1 })), error: null },
+      { data: null, error: { message: "boom" } },
+    ],
+  });
+  let threw = false;
+  try {
+    await loadClientScope(db, "u1", "w1");
+  } catch {
+    threw = true;
+  }
+  assert(threw);
+});
+
+Deno.test("loadClientScope: 'atribuidos' with zero rows is zero clients, never all", async () => {
+  const { db } = fakeDb({
+    workspace_members: { data: { role: "admin", client_scope: "atribuidos" }, error: null },
+    workspace_member_clientes: { data: [], error: null },
+    membros: { data: null, error: null },
+  });
+  const s = await loadClientScope(db, "u1", "w1");
+  assertEquals(s.all, false);
+  assertEquals(s.ids.size, 0);
+  assertEquals(visibleClientIds(s), []);
+});
+
+Deno.test("loadClientScope: no membership row -> no clients", async () => {
+  const { db } = fakeDb({ workspace_members: { data: null, error: null } });
+  const s = await loadClientScope(db, "u1", "w1");
+  assertEquals(s.all, false);
+  assertEquals(s.ids.size, 0);
+});
+
+Deno.test("loadClientScope: unknown client_scope throws", async () => {
+  for (const v of ["algum", null, undefined]) {
+    const { db } = fakeDb({ workspace_members: { data: { role: "agent", client_scope: v }, error: null } });
+    let threw = false;
+    try {
+      await loadClientScope(db, "u1", "w1");
+    } catch {
+      threw = true;
+    }
+    assert(threw, `client_scope=${String(v)} must throw`);
+  }
+});
+
+Deno.test("loadClientScope: any read error throws (never all)", async () => {
+  const cases: Record<string, Resp>[] = [
+    { workspace_members: { data: null, error: { message: "boom" } } },
+    {
+      workspace_members: { data: { role: "agent", client_scope: "atribuidos" }, error: null },
+      workspace_member_clientes: { data: null, error: { message: "boom" } },
+    },
+    {
+      workspace_members: { data: { role: "agent", client_scope: "atribuidos" }, error: null },
+      workspace_member_clientes: { data: [{ cliente_id: 1 }], error: null },
+      membros: { data: null, error: { message: "boom" } },
+    },
+  ];
+  for (const responses of cases) {
+    const { db } = fakeDb(responses);
+    let threw = false;
+    try {
+      await loadClientScope(db, "u1", "w1");
+    } catch {
+      threw = true;
+    }
+    assert(threw);
+  }
+});
+
+const RESTRICTED: ClientScope = { all: false, ids: new Set([5]), membroIds: new Set([30]) };
+const ALL: ClientScope = { all: true, ids: new Set(), membroIds: new Set() };
+
+function throwsScope(fn: () => void): boolean {
+  try {
+    fn();
+    return false;
+  } catch (e) {
+    return e instanceof ClientScopeError;
+  }
+}
+
+Deno.test("assertClientAccess: all, assigned and own pass; hidden and null throw", () => {
+  assertClientAccess(ALL, 99, false);
+  assertClientAccess(ALL, null, false);
+  assertClientAccess(RESTRICTED, 5, false);
+  assertClientAccess(RESTRICTED, 99, true);
+  assertClientAccess(RESTRICTED, null, true);
+  assert(throwsScope(() => assertClientAccess(RESTRICTED, 99, false)));
+  assert(throwsScope(() => assertClientAccess(RESTRICTED, null, false)));
+  assert(throwsScope(() => assertClientAccess({ all: false, ids: new Set(), membroIds: new Set() }, 5, false)));
+  assertEquals(hasClientAccess(RESTRICTED, 99, false), false);
+  assertEquals(new ClientScopeError().code, "client_scope_restricted");
+});
+
+Deno.test("isOwnItem: responsavel_id in membroIds or author uuid", () => {
+  assertEquals(isOwnItem(RESTRICTED, { responsavelId: 30 }, "u1"), true);
+  assertEquals(isOwnItem(RESTRICTED, { responsavelId: 31 }, "u1"), false);
+  assertEquals(isOwnItem(RESTRICTED, { responsavelId: null, createdBy: "u1" }, "u1"), true);
+  assertEquals(isOwnItem(RESTRICTED, { createdBy: "u2" }, "u1"), false);
+  assertEquals(visibleClientIds(ALL), null);
+});
+
+Deno.test("rowVisibility: visible / own_only / hidden", () => {
+  const scope: ClientScope = { all: false, ids: new Set([5]), membroIds: new Set([30]) };
+  assertEquals(rowVisibility(scope, { cliente_id: 5, responsavel_id: null }, "u1"), "visible");
+  assertEquals(rowVisibility(scope, { cliente_id: 9, responsavel_id: 30 }, "u1"), "own_only");
+  assertEquals(rowVisibility(scope, { cliente_id: 9, created_by: "u1" }, "u1"), "own_only");
+  assertEquals(rowVisibility(scope, { cliente_id: 9, responsavel_id: 31 }, "u1"), "hidden");
+  assertEquals(rowVisibility(scope, { cliente_id: null }, "u1"), "hidden");
+  assertEquals(rowVisibility(allClientsScope(), { cliente_id: 9 }, "u1"), "visible");
+});
+
+Deno.test("rowWriteGate: allowed / not found / limitado / scope error", async () => {
+  const nf = { status: 404, body: { error: "Post not found" } };
+  const scope = (s: ClientScope) => () => Promise.resolve(s);
+  const r = { all: false, ids: new Set([5]), membroIds: new Set([30]) };
+  const db = { from: () => { throw new Error("no reads expected"); } };
+  assertEquals(await rowWriteGate(db, "u1", "w1", { cliente_id: 5 }, nf, scope(r)), null);
+  assertEquals(await rowWriteGate(db, "u1", "w1", { cliente_id: 9, responsavel_id: 31 }, nf, scope(r)), nf);
+  assertEquals(await rowWriteGate(db, "u1", "w1", { cliente_id: 9, responsavel_id: 30 }, nf, scope(r)), {
+    status: 403,
+    body: { error: "Seu acesso é limitado aos clientes atribuídos." },
+  });
+  assertEquals(await rowWriteGate(db, "u1", "w1", { cliente_id: 9 }, nf, scope(allClientsScope())), null);
+  const failed = await rowWriteGate(db, "u1", "w1", { cliente_id: 5 }, nf, () => Promise.reject(new Error("x")));
+  assertEquals(failed?.status, 500);
+});
+
+Deno.test("memberWorkspaceOfClient: the client's workspace only when the user is a member there", async () => {
+  const member = fakeDb({
+    clientes: { data: { conta_id: "ws-A" }, error: null },
+    workspace_members: { data: { user_id: "u1" }, error: null },
+  });
+  assertEquals(await memberWorkspaceOfClient(member.db, "u1", 5), "ws-A");
+  assert(member.calls.some((c) => c.table === "workspace_members" && JSON.stringify(c.args) === '["workspace_id","ws-A"]'));
+
+  const stranger = fakeDb({
+    clientes: { data: { conta_id: "ws-A" }, error: null },
+    workspace_members: { data: null, error: null },
+  });
+  assertEquals(await memberWorkspaceOfClient(stranger.db, "u1", 5), null);
+  assertEquals(await memberWorkspaceOfClient(fakeDb({}).db, "u1", null), null);
+  assertEquals(await memberWorkspaceOfClient(fakeDb({ clientes: { data: null, error: null } }).db, "u1", 5), null);
+
+  let threw = false;
+  try {
+    await memberWorkspaceOfClient(fakeDb({ clientes: { data: null, error: { message: "x" } } }).db, "u1", 5);
+  } catch {
+    threw = true;
+  }
+  assert(threw);
+});
+
+// ---- clientsWithOwnContext (can_see_cliente_context twin) ----
+
+Deno.test("clientsWithOwnContext: assigned, own post / task / idea / flow step / process step", async () => {
+  const { clientsWithOwnContext } = await import("../_shared/client-scope.ts");
+  const { createSupabaseQueryMock } = await import("../../../test/shared/supabaseMock.ts");
+  const r = { all: false, ids: new Set([1]), membroIds: new Set([9]) };
+  const db = createSupabaseQueryMock();
+  db.queue("workflow_posts", "select", { data: [{ cliente_id: 2 }], error: null }); // own post
+  db.queue("tarefas", "select", { data: [], error: null }, { data: [{ cliente_id: 3 }], error: null }); // task he created
+  db.queue("tarefa_series", "select", { data: [], error: null }, { data: [], error: null });
+  db.queue("ideias", "select", { data: [{ cliente_id: 4 }], error: null });
+  db.queue("workflow_etapas", "select", { data: [{ id: 1, workflow_id: 70 }], error: null }, { data: [], error: null });
+  db.queue("workflows", "select", { data: [{ cliente_id: 5 }], error: null });
+  db.queue("post_process_steps", "select", { data: [{ id: 1, process_id: 80 }], error: null }, {
+    data: [],
+    error: null,
+  });
+  db.queue("post_processes", "select", { data: [{ post_id: 90 }], error: null });
+  db.queue("workflow_posts", "select", { data: [{ cliente_id: 6 }], error: null });
+  const seen = await clientsWithOwnContext(db as never, r, [1, 2, 3, 4, 5, 6, 7], "w", "u");
+  assertEquals([...seen].sort(), [1, 2, 3, 4, 5, 6]);
+});
+
+Deno.test("clientsWithOwnContext: unrestricted sees every client with no read; read errors throw", async () => {
+  const { allClientsScope, clientsWithOwnContext } = await import("../_shared/client-scope.ts");
+  const { createSupabaseQueryMock } = await import("../../../test/shared/supabaseMock.ts");
+  const none = createSupabaseQueryMock();
+  assertEquals([...(await clientsWithOwnContext(none as never, allClientsScope(), [3, 4], "w", "u"))].sort(), [3, 4]);
+  assertEquals(none.calls.length, 0);
+
+  const broken = createSupabaseQueryMock();
+  broken.queue("workflow_posts", "select", { data: null, error: { message: "boom" } });
+  let threw = false;
+  try {
+    await clientsWithOwnContext(broken as never, { all: false, ids: new Set(), membroIds: new Set([9]) }, [3], "w", "u");
+  } catch {
+    threw = true;
+  }
+  assertEquals(threw, true);
+});

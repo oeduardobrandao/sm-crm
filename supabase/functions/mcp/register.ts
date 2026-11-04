@@ -12,6 +12,11 @@ import {
 import type { Deps } from "./queries.ts";
 import { FINANCEIRO_ERROS } from "./financeiro-errors.ts";
 import { TOOL_META } from "./tool-meta.ts";
+import { CLIENT_SCOPE_MESSAGE, ClientScopeError } from "../_shared/client-scope.ts";
+
+/** What a restricted member sees when a write touches a client outside their assignments. One
+ * definition, in _shared/client-scope.ts; re-exported here for the MCP tools and tests. */
+export { CLIENT_SCOPE_MESSAGE };
 
 export function jsonResult(data: unknown, meta?: Record<string, unknown>) {
   return {
@@ -37,9 +42,14 @@ export function errorResult(e: unknown) {
     ? FINANCEIRO_ERROS.owner_only
     : e instanceof McpInputError
     ? e.message
+    : e instanceof ClientScopeError
+    ? CLIENT_SCOPE_MESSAGE
     : "Internal error.";
-  // Never leak raw error details (logged internally instead).
-  if (!(e instanceof McpScopeError) && !(e instanceof McpOwnerError) && !(e instanceof McpInputError)) {
+  // Never leak raw error details (logged internally instead). A client-scope refusal is expected.
+  if (
+    !(e instanceof McpScopeError) && !(e instanceof McpOwnerError) && !(e instanceof McpInputError) &&
+    !(e instanceof ClientScopeError)
+  ) {
     console.error("[mcp] tool error:", e);
   }
   return { content: [{ type: "text" as const, text: JSON.stringify({ error: message }) }], isError: true };

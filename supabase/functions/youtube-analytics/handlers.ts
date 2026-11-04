@@ -11,6 +11,12 @@
 // channel still answers 200 with its status, so the tab shows the reconnect banner.
 
 import { checkRateLimit as realCheckRateLimit } from "../_shared/rate-limit.ts";
+import {
+  type ClientScope,
+  type ClientScopeLoader,
+  hasClientAccess,
+  loadClientScope as realLoadClientScope,
+} from "../_shared/client-scope.ts";
 import { effectivePlanFeature as realEffectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { createJsonResponder, internalServerError, type JsonResponder } from "../_shared/http.ts";
 import { loadClientInTenant, resolveTenant } from "../google-integration/tenant.ts";
@@ -48,6 +54,8 @@ export interface YouTubeAnalyticsDeps {
   effectivePlanFeature?: FeatureCheck;
   checkRateLimit?: RateLimitCheck;
   now?: () => Date;
+  /** Acesso por cliente: the caller's client scope (defaults to the real loader). */
+  loadClientScope?: ClientScopeLoader;
 }
 
 interface RouteContext {
@@ -55,6 +63,8 @@ interface RouteContext {
   json: JsonResponder;
   url: URL;
   contaId: string;
+  /** Client scope of the caller (acesso por cliente): a hidden client answers like a foreign one. */
+  scope: ClientScope;
   now: Date;
   deps: YouTubeAnalyticsDeps;
 }
@@ -75,7 +85,7 @@ const badRequest = (ctx: RouteContext, error: string) => ctx.json({ error }, 400
 /** Ownership, flags, then the channel row. Any Response is the answer as is. */
 async function requireChannel(ctx: RouteContext, clientId: number): Promise<YouTubeChannelRow | Response> {
   const client = await loadClientInTenant(ctx.db, clientId, ctx.contaId);
-  if (!client) return ctx.json({ error: "Unauthorized" }, 403);
+  if (!client || !hasClientAccess(ctx.scope, clientId, false)) return ctx.json({ error: "Unauthorized" }, 403);
 
   const check: FeatureCheck = ctx.deps.effectivePlanFeature ?? realEffectivePlanFeature;
   for (const feature of FEATURES) {
@@ -196,8 +206,10 @@ export function createYouTubeAnalyticsHandler(deps: YouTubeAnalyticsDeps): (req:
         return json({ error: "Rate limit exceeded" }, 429);
       }
 
+      // Acesso por cliente: a read error throws into the generic 500 below, never "all clients".
+      const scope = await (deps.loadClientScope ?? realLoadClientScope)(db, tenant.userId, tenant.contaId);
       const now = (deps.now ?? (() => new Date()))();
-      return await route(req, { db, json, url, contaId: tenant.contaId, now, deps }, path);
+      return await route(req, { db, json, url, contaId: tenant.contaId, scope, now, deps }, path);
     } catch (err) {
       return internalServerError(json, "youtube-analytics", err);
     }

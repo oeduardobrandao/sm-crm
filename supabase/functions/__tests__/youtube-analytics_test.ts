@@ -4,6 +4,7 @@
 import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock, type QueryCall } from "../../../test/shared/supabaseMock.ts";
 import { createYouTubeAnalyticsHandler } from "../youtube-analytics/handlers.ts";
+import { allClientsScope, type ClientScope } from "../_shared/client-scope.ts";
 import { YT_KPI_IDS } from "../_shared/youtube-analytics/kpis.ts";
 import { loadChannelDaily } from "../_shared/youtube-analytics/queries.ts";
 
@@ -78,6 +79,8 @@ function makeHandler(db: Mock, overrides: Record<string, unknown> = {}) {
     // deno-lint-ignore no-explicit-any
     createServiceDb: () => db as any,
     now: () => NOW,
+    // Acesso por cliente: unrestricted unless a test overrides it (scope tests below).
+    loadClientScope: () => Promise.resolve(allClientsScope()),
     ...overrides,
   });
 }
@@ -920,4 +923,35 @@ Deno.test("youtube-analytics: top-shorts is the top 5 Shorts by window views", a
   assert(hasEq(list, "is_short", true));
   assertScoped(db, "youtube_videos");
   assertScoped(db, "youtube_video_daily");
+});
+
+// ── acesso por cliente ────────────────────────────────────────────────────────
+
+const restricted = (ids: number[]): ClientScope => ({ all: false, ids: new Set(ids), membroIds: new Set([7]) });
+
+Deno.test("youtube-analytics: restricted member on a hidden client gets the foreign-client 403", async () => {
+  const db = createSupabaseQueryMock();
+  connected(db);
+  const res = await makeHandler(db, { loadClientScope: () => Promise.resolve(restricted([99])) })(get("/overview/42"));
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: "Unauthorized" });
+  assertEquals(callsTo(db, "youtube_channels").length, 0);
+});
+
+Deno.test("youtube-analytics: restricted member on an assigned client is unchanged", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  ownedClient(db);
+  db.queue("youtube_channels", "select", { data: null });
+  const res = await makeHandler(db, { loadClientScope: () => Promise.resolve(restricted([42])) })(get("/overview/42"));
+  assertEquals(res.status, 404);
+  assertEquals(await res.json(), { error: "not_connected" });
+});
+
+Deno.test("youtube-analytics: a scope read error is a 500, never data", async () => {
+  const db = createSupabaseQueryMock();
+  connected(db);
+  const res = await makeHandler(db, { loadClientScope: () => Promise.reject(new Error("boom")) })(get("/overview/42"));
+  assertEquals(res.status, 500);
+  assertEquals(callsTo(db, "youtube_channels").length, 0);
 });

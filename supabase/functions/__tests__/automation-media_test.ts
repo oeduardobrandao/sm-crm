@@ -1,6 +1,7 @@
 import { assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createAutomationMediaHandler } from "../automation-media/handler.ts";
+import { allClientsScope, type ClientScope } from "../_shared/client-scope.ts";
 
 const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://app.mesaas.com" });
 
@@ -9,6 +10,7 @@ function makeHandler(db: any, opts?: {
   headObject?: (key: string) => Promise<{ contentLength: number; contentType: string | null } | null>;
   trashed?: string[];
   copies?: Array<{ from: string; to: string }>;
+  scope?: ClientScope | Error;
 }) {
   return createAutomationMediaHandler({
     buildCorsHeaders,
@@ -19,6 +21,8 @@ function makeHandler(db: any, opts?: {
     trashObject: async (key: string) => { opts?.trashed?.push(key); },
     copyObject: async (from: string, to: string) => { opts?.copies?.push({ from, to }); },
     randomUUID: () => "fixed-uuid",
+    loadClientScope: () =>
+      opts?.scope instanceof Error ? Promise.reject(opts.scope) : Promise.resolve(opts?.scope ?? allClientsScope()),
   });
 }
 
@@ -333,4 +337,47 @@ Deno.test("sign-view: devolve GET assinado só para key do tenant", async () => 
     (await makeHandler(db2)(req("sign-view", { key: "automation-media/OUTRA/x.jpg" }))).status,
     400,
   );
+});
+
+// ─── acesso por cliente ─────────────────────────────────────────
+
+const restricted = (ids: number[]): ClientScope => ({ all: false, ids: new Set(ids), membroIds: new Set() });
+const KEY = "automation-media/conta-1/x.jpg";
+
+Deno.test("sign-view: media used only by a hidden client's automations answers like a foreign key", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db, "conta-1", "agent");
+  db.queueRpc("has_permission_for", { data: true, error: null });
+  db.queue("instagram_comment_automations", "select", { data: [{ client_id: 43 }], error: null });
+  const res = await makeHandler(db, { scope: restricted([42]) })(req("sign-view", { key: KEY }));
+  assertEquals(res.status, 400);
+  assertEquals(await res.json(), { error: "invalid key" });
+});
+
+Deno.test("sign-view: an assigned client's media, or media no automation uses yet, is signed", async () => {
+  for (const refs of [[{ client_id: 43 }, { client_id: 42 }], []]) {
+    const db = createSupabaseQueryMock();
+    setupAuth(db, "conta-1", "agent");
+    db.queueRpc("has_permission_for", { data: true, error: null });
+    db.queue("instagram_comment_automations", "select", { data: refs, error: null });
+    const res = await makeHandler(db, { scope: restricted([42]) })(req("sign-view", { key: KEY }));
+    assertEquals(res.status, 200, JSON.stringify(refs));
+    assertEquals((await res.json()).url, `https://get.example.com/${KEY}`);
+  }
+});
+
+Deno.test("sign-view: a scope or reference read error is a 500, never a signed URL", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db, "conta-1", "agent");
+  db.queueRpc("has_permission_for", { data: true, error: null });
+  const res = await makeHandler(db, { scope: new Error("boom") })(req("sign-view", { key: KEY }));
+  assertEquals(res.status, 500);
+
+  const db2 = createSupabaseQueryMock();
+  setupAuth(db2, "conta-1", "agent");
+  db2.queueRpc("has_permission_for", { data: true, error: null });
+  db2.queue("instagram_comment_automations", "select", { data: null, error: { message: "boom" } });
+  const res2 = await makeHandler(db2, { scope: restricted([42]) })(req("sign-view", { key: KEY }));
+  assertEquals(res2.status, 500);
+  assertEquals(JSON.stringify(await res2.json()).includes("boom"), false);
 });

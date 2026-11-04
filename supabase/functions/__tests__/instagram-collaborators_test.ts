@@ -10,6 +10,7 @@ import {
   normalizeCollaborators,
   refusedCollaborators,
 } from "../_shared/instagram-collaborators.ts";
+import { allClientsScope } from "../_shared/client-scope.ts";
 
 // signGetUrl presigns locally (no network) but reads R2 env lazily: dummy creds
 // so the container helpers can build media URLs under test.
@@ -541,6 +542,10 @@ function makeHandler(db: ReturnType<typeof createSupabaseQueryMock>) {
     buildCorsHeaders: () => ({}),
     createDb: () => db as never,
     createServiceDb: () => db as never,
+    // Acesso por cliente: unrestricted unless a test overrides it.
+    loadClientScope: () => Promise.resolve(allClientsScope()),
+    // The post's workspace: the fixtures' "ws-1" (the real resolver has its own tests).
+    resolvePostWorkspace: () => Promise.resolve("ws-1"),
   });
 }
 

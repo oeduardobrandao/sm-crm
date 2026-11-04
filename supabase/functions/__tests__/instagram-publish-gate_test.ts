@@ -1,17 +1,25 @@
 import { assertEquals, readJson } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createPublishHandler } from "../instagram-publish/handler.ts";
+import { allClientsScope, type ClientScope } from "../_shared/client-scope.ts";
 
 // The handler uses both createDb(token) (user-scoped, RLS) and createServiceDb()
 // (service role). We hand it the SAME mock for both: the shared mock keys its
 // queues by table / rpc name, not by client instance, so a single mock can serve
 // reads issued through either db.
 
-function makeHandler(db: ReturnType<typeof createSupabaseQueryMock>) {
+function makeHandler(
+  db: ReturnType<typeof createSupabaseQueryMock>,
+  scope: () => Promise<ClientScope> = () => Promise.resolve(allClientsScope()),
+) {
   return createPublishHandler({
     buildCorsHeaders: () => ({}),
     createDb: () => db as never,
     createServiceDb: () => db as never,
+    // Acesso por cliente: unrestricted unless a test overrides it.
+    loadClientScope: scope,
+    // The post's workspace: the fixtures' "ws-1" (the real resolver has its own tests).
+    resolvePostWorkspace: () => Promise.resolve("ws-1"),
   });
 }
 
@@ -227,4 +235,106 @@ Deno.test("instagram-publish: retry clearCollaborators update error → generic 
   assertEquals(res.status, 500);
   assertEquals(await readJson(res), { error: "Internal server error" });
   assertEquals(db.calls.some((c) => c.table === "rpc:record_post_status_change"), false);
+});
+
+// ─── acesso por cliente ───────────────────────────────────────────
+
+const restricted = (ids: number[], membroIds: number[] = []) => () =>
+  Promise.resolve<ClientScope>({ all: false, ids: new Set(ids), membroIds: new Set(membroIds) });
+
+function setupScopedPost(db: ReturnType<typeof createSupabaseQueryMock>, responsavel: number) {
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", {
+    data: { id: 1, status: "aprovado_cliente", cliente_id: 5, responsavel_id: responsavel },
+    error: null,
+  });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+}
+
+Deno.test("instagram-publish: own post in a hidden client is allowed (é dele), reaches the feature gate", async () => {
+  const db = createSupabaseQueryMock();
+  setupScopedPost(db, 7);
+  db.queueRpc("effective_plan_feature", { data: false, error: null });
+  const res = await makeHandler(db, restricted([4], [7]))(publishRequest("schedule", 1));
+  assertEquals(res.status, 403);
+  assertEquals(await readJson(res), { error: "feature_disabled", feature: "feature_post_scheduling" });
+});
+
+Deno.test("instagram-publish: own post in a hidden client can be cancelled", async () => {
+  const db = createSupabaseQueryMock();
+  setupScopedPost(db, 7);
+  const res = await makeHandler(db, restricted([4], [7]))(publishRequest("cancel", 1));
+  // Past the scope gate: the fixture post is not `agendado`, so the cancel rule answers 422.
+  assertEquals(res.status, 422);
+});
+
+Deno.test("instagram-publish: a post of a hidden client that is not the caller's answers like a missing one", async () => {
+  const db = createSupabaseQueryMock();
+  setupScopedPost(db, 8);
+  const res = await makeHandler(db, restricted([4], [7]))(publishRequest("cancel", 1));
+  assertEquals(res.status, 404);
+  assertEquals(await readJson(res), { error: "Post não encontrado." });
+});
+
+Deno.test("instagram-publish: assigned client is unchanged (reaches the feature gate)", async () => {
+  const db = createSupabaseQueryMock();
+  setupScopedPost(db, 8);
+  db.queueRpc("effective_plan_feature", { data: false, error: null });
+  const res = await makeHandler(db, restricted([5]))(publishRequest("schedule", 1));
+  assertEquals(res.status, 403);
+  assertEquals(await readJson(res), { error: "feature_disabled", feature: "feature_post_scheduling" });
+});
+
+Deno.test("instagram-publish: a scope read error is a 500, no write", async () => {
+  const db = createSupabaseQueryMock();
+  setupScopedPost(db, 8);
+  const res = await makeHandler(db, () => Promise.reject(new Error("boom")))(publishRequest("schedule", 1));
+  assertEquals(res.status, 500);
+  assertEquals(db.calls.filter((c) => c.table === "rpc:effective_plan_feature").length, 0);
+});
+
+Deno.test("instagram-publish: scope comes from the post's workspace, never a stale profiles.conta_id", async () => {
+  // Restricted in ws-A (the post's), `todos` in ws-B (profiles.conta_id, stale after a switch).
+  const byWorkspace = (_db: unknown, _user: string, ws: string) =>
+    Promise.resolve<ClientScope>(
+      ws === "ws-B" ? allClientsScope() : { all: false, ids: new Set([4]), membroIds: new Set([7]) },
+    );
+  for (const [responsavel, status, error] of [[8, 404, "Post não encontrado."]] as const) {
+    const db = createSupabaseQueryMock();
+    db.withAuth({ id: "actor-1" });
+    db.queue("workflow_posts", "select", {
+      data: { id: 1, status: "aprovado_cliente", cliente_id: 5, responsavel_id: responsavel },
+      error: null,
+    });
+    db.queue("profiles", "select", { data: { conta_id: "ws-B" }, error: null });
+    db.queue("clientes", "select", { data: { conta_id: "ws-A" }, error: null });
+    db.queue("workspace_members", "select", { data: { user_id: "actor-1" }, error: null });
+    const res = await createPublishHandler({
+      buildCorsHeaders: () => ({}),
+      createDb: () => db as never,
+      createServiceDb: () => db as never,
+      loadClientScope: byWorkspace as never,
+      // real resolver: clientes.conta_id + workspace_members
+    })(publishRequest("schedule", 1));
+    assertEquals(res.status, status);
+    assertEquals(await readJson(res), { error });
+    assertEquals(db.calls.filter((c) => c.operation === "rpc" || c.operation === "update").length, 0);
+  }
+});
+
+Deno.test("instagram-publish: caller not a member of the post's workspace -> 404", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", { data: { id: 1, status: "aprovado_cliente", cliente_id: 5 }, error: null });
+  db.queue("profiles", "select", { data: { conta_id: "ws-B" }, error: null });
+  db.queue("clientes", "select", { data: { conta_id: "ws-A" }, error: null });
+  db.queue("workspace_members", "select", { data: null, error: null });
+  const res = await createPublishHandler({
+    buildCorsHeaders: () => ({}),
+    createDb: () => db as never,
+    createServiceDb: () => db as never,
+    loadClientScope: () => Promise.resolve(allClientsScope()),
+  })(publishRequest("schedule", 1));
+  assertEquals(res.status, 404);
+  assertEquals(db.calls.filter((c) => c.table === "rpc:effective_plan_feature").length, 0);
 });

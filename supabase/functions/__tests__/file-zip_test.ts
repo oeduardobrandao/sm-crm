@@ -7,9 +7,11 @@ import {
   collectFolderEntries,
   MAX_FOLDER_DEPTH,
   type FileZipDeps,
+  resolveZipRoot,
   ZipBudgetExceededError,
   type ZipPlanEntry,
 } from "../file-zip/handler.ts";
+import { allClientsScope, type ClientScope } from "../_shared/client-scope.ts";
 import { MAX_FILE_SIZE_BYTES, MAX_ZIP_ENTRIES, MAX_ZIP_FOLDERS, MAX_ZIP_TOTAL_BYTES } from "../file-zip/utils.ts";
 
 type Row = Record<string, unknown>;
@@ -22,8 +24,19 @@ type Row = Record<string, unknown>;
  * filters by equality or membership. `order()`/`range()` are needed because
  * Task 9 drives both walk queries through `fetchAllRows`.
  */
-function makeFakeDb(tables: { files: Row[]; folders: Row[] }): FileZipDeps["db"] {
+function makeFakeDb(tables: { files: Row[]; folders: Row[]; [t: string]: Row[] }): FileZipDeps["db"] {
   return {
+    rpc(fn: string, params: Record<string, unknown>) {
+      if (fn !== "folder_breadcrumbs") return Promise.resolve({ data: null, error: { message: `no rpc ${fn}` } });
+      // Root first, the folder itself last (as the real RPC).
+      const chain: Row[] = [];
+      let cur = tables.folders.find((f) => f.id === params.p_folder_id);
+      while (cur) {
+        chain.unshift({ id: cur.id, name: cur.name });
+        cur = cur.parent_id == null ? undefined : tables.folders.find((f) => f.id === cur!.parent_id);
+      }
+      return Promise.resolve({ data: chain, error: null });
+    },
     from(table: string) {
       const rows = (tables as Record<string, Row[]>)[table] ?? [];
       const filters: Array<{ column: string; kind: "eq" | "in" | "gt"; value: unknown }> = [];
@@ -60,6 +73,12 @@ function makeFakeDb(tables: { files: Row[]; folders: Row[] }): FileZipDeps["db"]
         limit(n: number) {
           limitN = n;
           return chain;
+        },
+        not() {
+          return chain;
+        },
+        maybeSingle() {
+          return { then: (ok: (v: unknown) => unknown) => chain.then((r: { data: Row[] }) => ok({ data: r.data[0] ?? null, error: null })) };
         },
         then(onFulfilled: (v: { data: Row[] | null; error: null }) => unknown) {
           let data = rows.filter((r) =>
@@ -156,6 +175,8 @@ Deno.test("collectFolderEntries returns 3 entries with correct nested paths", as
   const deps: FileZipDeps = {
     db: makeFakeDb({ files, folders }),
     contaId: "conta-1",
+    scope: allClientsScope(),
+    userId: "user-1",
     getObjectStream: makeFakeGetObjectStream({}),
   };
 
@@ -172,6 +193,8 @@ Deno.test("collectFolderEntries scopes to conta_id", async () => {
   const deps: FileZipDeps = {
     db: makeFakeDb({ files, folders }),
     contaId: "conta-1",
+    scope: allClientsScope(),
+    userId: "user-1",
     getObjectStream: makeFakeGetObjectStream({}),
   };
 
@@ -186,6 +209,8 @@ Deno.test("collectFileEntries resolves explicit file ids scoped to conta_id", as
   const deps: FileZipDeps = {
     db: makeFakeDb({ files, folders }),
     contaId: "conta-1",
+    scope: allClientsScope(),
+    userId: "user-1",
     getObjectStream: makeFakeGetObjectStream({}),
   };
 
@@ -213,6 +238,8 @@ Deno.test({
     const deps: FileZipDeps = {
       db: makeFakeDb({ files, folders }),
       contaId: "conta-1",
+    scope: allClientsScope(),
+    userId: "user-1",
       getObjectStream: makeFakeGetObjectStream(objects),
     };
 
@@ -243,6 +270,8 @@ Deno.test({
     const deps: FileZipDeps = {
       db: makeFakeDb({ files, folders }),
       contaId: "conta-1",
+    scope: allClientsScope(),
+    userId: "user-1",
       getObjectStream: makeFakeGetObjectStream(objects),
     };
 
@@ -280,6 +309,8 @@ Deno.test({
     const deps: FileZipDeps = {
       db: makeFakeDb({ files: [], folders: [] }),
       contaId: "conta-1",
+    scope: allClientsScope(),
+    userId: "user-1",
       getObjectStream: (key: string) => key === "r2/big" ? Promise.resolve(objectStream) : Promise.resolve(null),
     };
 
@@ -312,6 +343,8 @@ Deno.test({
     const deps: FileZipDeps = {
       db: makeFakeDb({ files: [], folders: [] }),
       contaId: "conta-1",
+    scope: allClientsScope(),
+    userId: "user-1",
       getObjectStream: makeFakeGetObjectStream(objects),
     };
 
@@ -357,6 +390,8 @@ Deno.test({
     const deps: FileZipDeps = {
       db: makeFakeDb({ files: [], folders: [] }),
       contaId: "conta-1",
+    scope: allClientsScope(),
+    userId: "user-1",
       getObjectStream: makeFakeGetObjectStream(objects),
     };
 
@@ -421,6 +456,8 @@ Deno.test("collectFolderEntries paginates file pages and stops at depth cap", as
   const deps: FileZipDeps = {
     db: makeFakeDb({ files, folders }),
     contaId: "conta-1",
+    scope: allClientsScope(),
+    userId: "user-1",
     getObjectStream: makeFakeGetObjectStream({}),
   };
 
@@ -453,6 +490,8 @@ Deno.test("collectFolderEntries throws ZipBudgetExceededError past the entry cap
   const deps: FileZipDeps = {
     db: makeFakeDb({ files, folders }),
     contaId: "conta-1",
+    scope: allClientsScope(),
+    userId: "user-1",
     getObjectStream: makeFakeGetObjectStream({}),
   };
 
@@ -474,6 +513,8 @@ Deno.test("collectFolderEntries throws ZipBudgetExceededError once the running s
   const deps: FileZipDeps = {
     db: makeFakeDb({ files, folders }),
     contaId: "conta-1",
+    scope: allClientsScope(),
+    userId: "user-1",
     getObjectStream: makeFakeGetObjectStream({}),
   };
 
@@ -496,6 +537,8 @@ Deno.test("collectFolderEntries throws ZipBudgetExceededError past the folder tr
   const deps: FileZipDeps = {
     db: makeFakeDb({ files: [], folders }),
     contaId: "conta-1",
+    scope: allClientsScope(),
+    userId: "user-1",
     getObjectStream: makeFakeGetObjectStream({}),
   };
 
@@ -540,7 +583,7 @@ Deno.test("collectFolderEntries keyset paging survives a concurrent deletion wit
       return base.from(table);
     },
   };
-  const deps: FileZipDeps = { db, contaId: "conta-1", getObjectStream: makeFakeGetObjectStream({}) };
+  const deps: FileZipDeps = { db, contaId: "conta-1", scope: allClientsScope(), userId: "user-1", getObjectStream: makeFakeGetObjectStream({}) };
 
   const { entries } = await collectFolderEntries(deps, 1);
 
@@ -566,6 +609,8 @@ Deno.test("collectFileEntries throws ZipBudgetExceededError past the entry cap",
   const deps: FileZipDeps = {
     db: makeFakeDb({ files, folders }),
     contaId: "conta-1",
+    scope: allClientsScope(),
+    userId: "user-1",
     getObjectStream: makeFakeGetObjectStream({}),
   };
 
@@ -587,6 +632,8 @@ Deno.test({
     const deps: FileZipDeps = {
       db: makeFakeDb({ files: [], folders: [] }),
       contaId: "conta-1",
+    scope: allClientsScope(),
+    userId: "user-1",
       getObjectStream: makeFakeGetObjectStream(objects),
     };
     const entries: ZipPlanEntry[] = [
@@ -653,6 +700,8 @@ Deno.test({
     const deps: FileZipDeps = {
       db: makeFakeDb({ files: [], folders: [] }),
       contaId: "conta-1",
+    scope: allClientsScope(),
+    userId: "user-1",
       getObjectStream: () => Promise.resolve(stalledStream),
       stallIdleMs: 20,
     };
@@ -669,4 +718,127 @@ Deno.test({
     }
     assert(rejected, "expected the output stream to error instead of hanging");
   },
+});
+
+// ─── acesso por cliente (migration C3) ───────────────────────
+
+const ME = "user-1";
+const restricted = (ids: number[], membroIds: number[] = []): ClientScope => ({
+  all: false,
+  ids: new Set(ids),
+  membroIds: new Set(membroIds),
+});
+
+/**
+ * 1 Clientes (root_clients)
+ * +-- 2 Ana (client 42, assigned)      a.txt (colleague)
+ * |   +-- 4 Fotos (untyped)            f.txt (colleague)
+ * +-- 3 Bia (client 43, hidden)        b.txt (colleague), meu.txt (his upload)
+ *     +-- 5 Segredo (untyped)          s.txt
+ * +-- 6 Solta (untyped, no client)     x.txt
+ * 1 itself holds raiz.txt (colleague) and minha.txt (his upload)
+ */
+function scopedTree() {
+  const folders: Row[] = [
+    { id: 1, name: "Clientes", parent_id: null, conta_id: "conta-1", source_type: "root_clients", source_id: null },
+    { id: 2, name: "Ana", parent_id: 1, conta_id: "conta-1", source_type: "client", source_id: 42 },
+    { id: 3, name: "Bia", parent_id: 1, conta_id: "conta-1", source_type: "client", source_id: 43 },
+    { id: 4, name: "Fotos", parent_id: 2, conta_id: "conta-1", source_type: null, source_id: null },
+    { id: 5, name: "Segredo", parent_id: 3, conta_id: "conta-1", source_type: null, source_id: null },
+    { id: 6, name: "Solta", parent_id: 1, conta_id: "conta-1", source_type: null, source_id: null },
+  ];
+  const f = (id: number, name: string, folder_id: number, uploaded_by = "user-2") => ({
+    id,
+    name,
+    r2_key: `r2/${name}`,
+    size_bytes: 3,
+    folder_id,
+    conta_id: "conta-1",
+    uploaded_by,
+  });
+  const files: Row[] = [
+    f(10, "raiz.txt", 1),
+    f(11, "minha.txt", 1, ME),
+    f(20, "a.txt", 2),
+    f(21, "f.txt", 4),
+    f(30, "b.txt", 3),
+    f(31, "meu.txt", 3, ME),
+    f(32, "s.txt", 5),
+    f(40, "x.txt", 6),
+  ];
+  return { folders, files };
+}
+
+const zipDeps = (tables: { files: Row[]; folders: Row[]; [t: string]: Row[] }, scope: ClientScope): FileZipDeps => ({
+  db: makeFakeDb(tables),
+  contaId: "conta-1",
+  scope,
+  userId: ME,
+  getObjectStream: makeFakeGetObjectStream({}),
+});
+
+Deno.test("scope: zipping the Clientes root keeps assigned clients and own files, drops the rest silently", async () => {
+  const deps = zipDeps({ ...scopedTree(), post_file_links: [], workflow_posts: [] }, restricted([42]));
+  const root = await resolveZipRoot(deps, 1);
+  assertEquals(root, { name: "Clientes", client: null });
+  const { entries, skippedPaths } = await collectFolderEntries(deps, 1, root!.client);
+  assertEquals(entries.map((e) => e.path).sort(), ["Ana/Fotos/f.txt", "Ana/a.txt", "minha.txt"]);
+  // Hidden folders are never named in the LEIA-ME manifest.
+  assertEquals(skippedPaths, []);
+});
+
+Deno.test("scope: a hidden client's root folder answers like a missing one; an assigned one zips whole", async () => {
+  const deps = zipDeps({ ...scopedTree(), post_file_links: [], workflow_posts: [] }, restricted([42]));
+  assertEquals(await resolveZipRoot(deps, 3), null); // Bia, hidden
+  assertEquals(await resolveZipRoot(deps, 6), null); // no client, not the Clientes root
+  assertEquals(await resolveZipRoot(deps, 999), null); // missing
+  const ana = await resolveZipRoot(deps, 2);
+  assertEquals(ana, { name: "Ana", client: 42 });
+  const { entries } = await collectFolderEntries(deps, 2, ana!.client);
+  assertEquals(entries.map((e) => e.path).sort(), ["Fotos/f.txt", "a.txt"]);
+});
+
+Deno.test("scope: a file linked to his own post in a hidden client stays in the zip", async () => {
+  const tables = {
+    ...scopedTree(),
+    post_file_links: [{ id: 1, file_id: 10, post_id: 50, conta_id: "conta-1" }],
+    workflow_posts: [{ id: 50, cliente_id: 43, responsavel_id: 9, conta_id: "conta-1" }],
+  };
+  const deps = zipDeps(tables, restricted([42], [9]));
+  const { entries } = await collectFolderEntries(deps, 1, null);
+  assertEquals(entries.map((e) => e.path).sort(), ["Ana/Fotos/f.txt", "Ana/a.txt", "minha.txt", "raiz.txt"]);
+});
+
+Deno.test("scope: an explicit selection keeps only files the member can read", async () => {
+  const deps = zipDeps({ ...scopedTree(), post_file_links: [], workflow_posts: [] }, restricted([42]));
+  const entries = await collectFileEntries(deps, [10, 11, 20, 21, 30, 31, 32, 40]);
+  // a.txt and f.txt (assigned client), minha.txt and meu.txt (his uploads, even in a hidden client).
+  assertEquals(entries.map((e) => e.path).sort(), ["a.txt", "f.txt", "meu.txt", "minha.txt"]);
+});
+
+Deno.test("scope: unrestricted members zip everything, with no scope reads", async () => {
+  const deps = zipDeps(scopedTree(), allClientsScope());
+  const root = await resolveZipRoot(deps, 1);
+  const { entries } = await collectFolderEntries(deps, 1, root!.client);
+  assertEquals(entries.length, 8);
+  assertEquals((await collectFileEntries(deps, [10, 30, 40])).length, 3);
+});
+
+Deno.test("scope: a link read error fails the collection (never zips past the scope)", async () => {
+  const db = makeFakeDb({ ...scopedTree(), workflow_posts: [] });
+  const broken: FileZipDeps["db"] = {
+    rpc: db.rpc,
+    from: (t: string) =>
+      t === "post_file_links"
+        ? { select: () => ({ eq: () => ({ in: () => ({ order: () => ({ limit: () => Promise.resolve({ data: null, error: { message: "boom" } }) }) }) }) }) }
+        : db.from(t),
+  };
+  const deps: FileZipDeps = { db: broken, contaId: "conta-1", scope: restricted([42]), userId: ME, getObjectStream: makeFakeGetObjectStream({}) };
+  let threw = false;
+  try {
+    await collectFolderEntries(deps, 1, null);
+  } catch {
+    threw = true;
+  }
+  assert(threw);
 });

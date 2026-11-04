@@ -1,4 +1,9 @@
 import { createJsonResponder } from "../_shared/http.ts";
+import {
+  type ClientScopeLoader,
+  hasClientAccess,
+  loadClientScope as realLoadClientScope,
+} from "../_shared/client-scope.ts";
 
 // Agency-facing allowlist: the CRM may reschedule any planned post that is not
 // already published or failed. Broader than the Hub's client-facing set, but the
@@ -23,6 +28,8 @@ type DbClient = {
 interface CrmReorderHandlerDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: () => DbClient;
+  /** Acesso por cliente: the caller's client scope (defaults to the real loader). */
+  loadClientScope?: ClientScopeLoader;
 }
 
 export function createCrmReorderHandler(deps: CrmReorderHandlerDeps) {
@@ -73,6 +80,41 @@ export function createCrmReorderHandler(deps: CrmReorderHandlerDeps) {
       .single();
     if (!cliente || cliente.conta_id !== contaId) {
       return json({ error: "Cliente não autorizado." }, 403);
+    }
+    // Acesso por cliente: a client outside the caller's scope answers like a foreign one, unless
+    // every post in the batch is his own there (responsavel_id among his membros, the
+    // workflow_posts read rule; ruling 4a lets him reschedule his own post in a hidden client).
+    // A scope or post read error is a generic 500.
+    try {
+      const scope = await (deps.loadClientScope ?? realLoadClientScope)(db, user.id, contaId);
+      if (!hasClientAccess(scope, clienteId, false)) {
+        const postIds = [...new Set(updates.map((u: { post_id: number }) => u.post_id))];
+        const { data: rows, error: postsError } = await db
+          .from("workflow_posts")
+          .select("id, cliente_id, responsavel_id")
+          .eq("conta_id", contaId)
+          .in("id", postIds);
+        if (postsError) throw new Error(`own posts read failed: ${postsError.message ?? "unknown"}`);
+        const byId = new Map(
+          ((rows ?? []) as { id: number; cliente_id: number | null; responsavel_id: number | null }[]).map((r) => [
+            Number(r.id),
+            r,
+          ]),
+        );
+        const allOwn = postIds.every((id) => {
+          const r = byId.get(Number(id));
+          return (
+            r != null &&
+            Number(r.cliente_id) === clienteId &&
+            r.responsavel_id != null &&
+            scope.membroIds.has(Number(r.responsavel_id))
+          );
+        });
+        if (!allOwn) return json({ error: "Cliente não autorizado." }, 403);
+      }
+    } catch (err) {
+      console.error("[crm-reorder-post-schedules] client scope:", err instanceof Error ? err.message : String(err));
+      return json({ error: "Falha ao reagendar." }, 500);
     }
 
     const { data, error } = await db.rpc("reorder_post_schedules", {

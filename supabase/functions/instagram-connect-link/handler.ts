@@ -1,6 +1,11 @@
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 import { buildConnectUrl, connectLinkLive, connectLinkStatus, isValidEmail } from "../_shared/instagram-connect-link.ts";
 import { buildScopeParam } from "../_shared/instagram-scopes.ts";
+import {
+  type ClientScopeLoader,
+  hasClientAccess,
+  loadClientScope as realLoadClientScope,
+} from "../_shared/client-scope.ts";
 
 // deno-lint-ignore no-explicit-any
 type DbClient = { from: (table: string) => any; rpc: (fn: string, params: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown }> };
@@ -40,6 +45,8 @@ export interface ConnectLinkHandlerDeps {
    *  Deno.env by index.ts and injected here -- handlers never read Deno.env
    *  directly (index/handler convention). */
   automationScopesLive: boolean;
+  /** Acesso por cliente: the caller's client scope (defaults to the real loader). */
+  loadClientScope?: ClientScopeLoader;
 }
 
 /**
@@ -95,6 +102,10 @@ async function authorize(
 
   const { data: cliente } = await db.from("clientes").select("conta_id").eq("id", clienteId).single();
   if (!cliente || cliente.conta_id !== contaId) return { status: 403, error: "Não autorizado" };
+  // Acesso por cliente: a client outside the caller's scope answers exactly like a foreign one.
+  // A scope read error throws into the generic 500, never "all clients".
+  const scope = await (deps.loadClientScope ?? realLoadClientScope)(db, user.id, contaId);
+  if (!hasClientAccess(scope, clienteId, false)) return { status: 403, error: "Não autorizado" };
 
   if (opts.requireFeature !== false && !(await deps.planFeature(db, contaId, "feature_instagram"))) {
     return { status: 403, error: "feature_disabled" };

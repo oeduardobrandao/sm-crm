@@ -4,6 +4,7 @@
 import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock, type QueryCall } from "../../../test/shared/supabaseMock.ts";
 import { createGbpAnalyticsHandler } from "../gbp-analytics/handlers.ts";
+import { allClientsScope, type ClientScope } from "../_shared/client-scope.ts";
 
 type Mock = ReturnType<typeof createSupabaseQueryMock>;
 
@@ -59,6 +60,8 @@ function makeHandler(db: Mock, overrides: Record<string, unknown> = {}) {
     // deno-lint-ignore no-explicit-any
     createServiceDb: () => db as any,
     now: () => NOW,
+    // Acesso por cliente: unrestricted unless a test overrides it (scope tests below).
+    loadClientScope: () => Promise.resolve(allClientsScope()),
     ...overrides,
   });
 }
@@ -785,4 +788,34 @@ Deno.test("gbp-analytics: every history read is keyed by the workspace's conta_i
     assert(reads.length > 0, path);
     for (const c of reads) assert(hasMod(c, "eq", "conta_id", "ws-B"), `${path} ${c.table}`);
   }
+});
+
+// ── acesso por cliente ────────────────────────────────────────────────────────
+
+const restricted = (ids: number[]): ClientScope => ({ all: false, ids: new Set(ids), membroIds: new Set([7]) });
+
+Deno.test("gbp-analytics: restricted member on a hidden client gets the foreign-client 403", async () => {
+  const db = createSupabaseQueryMock();
+  ready(db);
+  const res = await makeHandler(db, { loadClientScope: () => Promise.resolve(restricted([99])) })(get("/overview/42"));
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: "Unauthorized" });
+  assertEquals(callsTo(db, "gbp_locations").length, 0);
+});
+
+Deno.test("gbp-analytics: restricted member on an assigned client is unchanged", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  ownedClient(db);
+  const res = await makeHandler(db, { loadClientScope: () => Promise.resolve(restricted([42])) })(get("/overview/42"));
+  assertEquals(res.status, 404);
+  assertEquals(await res.json(), { error: "not_connected" });
+});
+
+Deno.test("gbp-analytics: a scope read error is a 500, never data", async () => {
+  const db = createSupabaseQueryMock();
+  ready(db);
+  const res = await makeHandler(db, { loadClientScope: () => Promise.reject(new Error("boom")) })(get("/overview/42"));
+  assertEquals(res.status, 500);
+  assertEquals(callsTo(db, "gbp_locations").length, 0);
 });
