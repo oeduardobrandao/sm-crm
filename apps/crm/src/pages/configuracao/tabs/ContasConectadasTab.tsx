@@ -105,19 +105,21 @@ export default function ContasConectadasTab() {
         {isLoading ? (
           <ConfigPhoneSkeleton groups={1} rows={2} />
         ) : (
-          <GroupedList header={t('connectedAccounts.googleHeading')}>
-            {isError ? (
-              <li className="phone-config-block">{errorState}</li>
-            ) : list.length === 0 ? (
-              <li className="phone-config-block">{emptyCopy}</li>
-            ) : (
-              list.map((account) => (
-                <li key={account.id} className="connected-account-cell">
-                  {card(account)}
-                </li>
-              ))
-            )}
-          </GroupedList>
+          <div data-connected-accounts-focus tabIndex={-1} className="outline-none">
+            <GroupedList header={t('connectedAccounts.googleHeading')}>
+              {isError ? (
+                <li className="phone-cell phone-config-block">{errorState}</li>
+              ) : list.length === 0 ? (
+                <li className="phone-cell phone-config-block">{emptyCopy}</li>
+              ) : (
+                list.map((account) => (
+                  <li key={account.id} className="connected-account-cell">
+                    {card(account)}
+                  </li>
+                ))
+              )}
+            </GroupedList>
+          </div>
         )}
         {dialog}
       </ConfigPhoneScreen>
@@ -127,7 +129,9 @@ export default function ContasConectadasTab() {
   return (
     <div>
       <section className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-        <h3 className="config-title">{t('connectedAccounts.title')}</h3>
+        <h3 className="config-title" data-connected-accounts-focus tabIndex={-1}>
+          {t('connectedAccounts.title')}
+        </h3>
         <p style={{ margin: '0 0 1.25rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
           {t('connectedAccounts.subtitle')}
         </p>

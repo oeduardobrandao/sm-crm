@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -69,10 +70,14 @@ export function GoogleAccountDisconnectDialog({
   const { t } = useTranslation('settings');
   const queryClient = useQueryClient();
   const label = useLinkedItemLabel();
+  // The card that opened the dialog unmounts once the list refetches without it, so after a
+  // finished disconnect focus goes to the page heading instead of falling back to <body>.
+  const finished = useRef(false);
 
   const disconnect = useMutation({
     mutationFn: (connectionId: string) => disconnectGoogleAccount(connectionId),
     onSuccess: () => {
+      finished.current = true;
       onClose();
       toast.success(t('connectedAccounts.success'));
       invalidateAfterGoogleAccountDisconnect(queryClient);
@@ -81,6 +86,7 @@ export function GoogleAccountDisconnectDialog({
       switch (errorCode(err)) {
         case 'not_found':
           // Already gone (another tab, a concurrent unlink, the orphan sweep): done.
+          finished.current = true;
           onClose();
           toast.success(t('connectedAccounts.alreadyDisconnected'));
           void queryClient.invalidateQueries({ queryKey: [...GOOGLE_ACCOUNTS_QUERY_KEY] });
@@ -113,7 +119,17 @@ export function GoogleAccountDisconnectDialog({
         if (!next && !pending) onClose();
       }}
     >
-      <AlertDialogContent>
+      <AlertDialogContent
+        onCloseAutoFocus={(event) => {
+          if (!finished.current) return;
+          finished.current = false;
+          const target = document.querySelector<HTMLElement>('[data-connected-accounts-focus]');
+          if (target) {
+            event.preventDefault();
+            target.focus();
+          }
+        }}
+      >
         <AlertDialogHeader>
           <AlertDialogTitle className="break-all">
             {t('connectedAccounts.dialog.title', { email: account?.email ?? '' })}
