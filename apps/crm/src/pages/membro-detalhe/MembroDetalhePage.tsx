@@ -20,7 +20,8 @@ import { getMembros, getTransacoes, formatDate } from '../../store';
 import { useAuth } from '../../context/AuthContext';
 import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { FotoPessoaEditor } from '@/components/FotoPessoaEditor';
-import { formatFinancialBRL } from '@/lib/financialAccess';
+import { formatFinancialBRL, type FinancialAccess } from '@/lib/financialAccess';
+import { isClientScoped } from '@/lib/permissions';
 import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
 import { MembroFormDialog } from '../equipe/MembroFormDialog';
 import { useFinanceiroV2 } from '@/hooks/useFinanceiroV2';
@@ -33,7 +34,10 @@ import { MembroDetalhePhone } from './phone/MembroDetalhePhone';
 
 export default function MembroDetalhePage() {
   const { t } = useTranslation('member');
-  const { canSeeFinancials, can } = useAuth();
+  const { canSeeFinancials, can, membership } = useAuth();
+  // A member restricted to assigned clients reads membros_v.custo_mensal as NULL: mask the
+  // cost instead of showing a believable R$ 0.
+  const costAccess: FinancialAccess = isClientScoped(membership) ? false : canSeeFinancials;
   const canEditTeam = can('equipe', 'editar') === true;
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -101,9 +105,10 @@ export default function MembroDetalhePage() {
   );
 
   // Financeiro v2: the member's acordo (where the cost is edited once v2 is on) and the
-  // deliveries of a per-delivery member. Same cards on desktop and phone.
+  // deliveries of a per-delivery member. Same cards on desktop and phone. Acordos are hidden
+  // from a member restricted to assigned clients, and so are these cards.
   const financeiroCards =
-    financeiroV2 && canSeeFinancials === true && membro?.id != null ? (
+    financeiroV2 && costAccess === true && membro?.id != null ? (
       <>
         <AcordoCard membro={membro} />
         <EntregasManuaisCard membroId={membro.id} />
@@ -119,6 +124,7 @@ export default function MembroDetalhePage() {
           loadingMembro={loadingMembros}
           canEditTeam={canEditTeam}
           canSeeFinancials={canSeeFinancials}
+          costAccess={costAccess}
           transacoes={membroTx}
           loadingTransacoes={canSeeFinancials === true && loadingTx}
           totalPago={totalPago}
@@ -227,7 +233,7 @@ export default function MembroDetalhePage() {
                   {
                     key: 'custo',
                     label: t('shared.custoMensal'),
-                    value: formatFinancialBRL(membro.custo_mensal, canSeeFinancials),
+                    value: formatFinancialBRL(membro.custo_mensal, costAccess),
                     icon: Wallet,
                     tone: 'blue' as const,
                   },
@@ -279,7 +285,7 @@ export default function MembroDetalhePage() {
               {canEditTeam && (
                 <div>
                   <strong>{t('membroDetalhe.custoMensal')}</strong>{' '}
-                  {formatFinancialBRL(membro.custo_mensal, canSeeFinancials)}
+                  {formatFinancialBRL(membro.custo_mensal, costAccess)}
                 </div>
               )}
             </div>

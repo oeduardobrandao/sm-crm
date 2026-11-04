@@ -1157,6 +1157,28 @@ describe('StandalonePostDrawer: client identity for a restricted member', () => 
     expect(getClienteContexto).toHaveBeenCalledWith(42);
   });
 
+  it('hides "Remover processo" on the own post in a hidden client (remove_post_process is refused)', async () => {
+    authMock.membership = fakeMembership({ role: 'agent', client_scope: 'atribuidos' });
+    mockGetStandalonePost.mockResolvedValue(basePost({ cliente_nome: '' }) as never);
+    mockGetVigentePostProcess.mockResolvedValueOnce(processFixture as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    await screen.findByRole('button', { name: 'Avançar etapa' });
+    expect(screen.queryByRole('button', { name: 'Remover processo' })).toBeNull();
+  });
+
+  it('keeps "Remover processo" for a restricted member on a visible client', async () => {
+    authMock.membership = fakeMembership({ role: 'agent', client_scope: 'atribuidos' });
+    mockGetStandalonePost.mockResolvedValue(basePost() as never);
+    mockGetVigentePostProcess.mockResolvedValueOnce(processFixture as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    await screen.findByRole('button', { name: 'Avançar etapa' });
+    expect(screen.getByRole('button', { name: 'Remover processo' })).toBeInTheDocument();
+  });
+
   it('todos_unchanged: an unscoped member never calls the RPC', async () => {
     authMock.membership = fakeMembership({ role: 'agent', client_scope: 'todos' });
     mockGetStandalonePost.mockResolvedValue(basePost({ cliente_nome: '' }) as never);

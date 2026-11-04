@@ -72,3 +72,17 @@ describe('avisarErroFinanceiro', () => {
     expect(qc.invalidateQueries).not.toHaveBeenCalled();
   });
 });
+
+describe('mensagemErroFinanceiro: acesso por cliente', () => {
+  it('maps client_scope_restricted to the scope copy', () => {
+    expect(mensagemErroFinanceiro(pg('client_scope_restricted', '42501'))).toBe(
+      'Seu acesso é limitado aos clientes atribuídos.',
+    );
+  });
+
+  it('financial_access_denied keeps its own copy', () => {
+    expect(mensagemErroFinanceiro(pg('financial_access_denied', '42501'))).toBe(
+      'Você não tem permissão para alterar o financeiro.',
+    );
+  });
+});

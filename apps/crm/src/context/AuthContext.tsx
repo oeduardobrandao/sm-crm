@@ -26,11 +26,13 @@ import { deriveFinancialAccess, type FinancialAccess } from '../lib/financialAcc
 import {
   computePermissionTransitions,
   derivePermission,
+  isClientScoped,
   type PermissionAction,
   type PermissionCheck,
   type PermissionModule,
 } from '../lib/permissions';
 import { identifyWorkspaceUser, resetAnalytics } from '../lib/analytics';
+import { setClientScopedForErrors } from '../lib/client-scope-errors';
 import { clearPopupSession } from '../hooks/popupSession';
 import { resetVidroLook } from '../lib/vidroLook';
 import {
@@ -209,6 +211,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * truth. `null` while unresolved, same as `workspaceRole`.
    */
   const [membership, setMembership] = useState<MyMembership | null>(null);
+  // Lets plain store functions and event handlers read a bare 42501 as a client-scope
+  // refusal (lib/client-scope-errors.ts) without access to this context.
+  useEffect(() => {
+    setClientScopedForErrors(isClientScoped(membership));
+  }, [membership]);
   const [loading, setLoading] = useState(true);
   const [sessionReady, setSessionReady] = useState(false);
   const authGeneration = useRef(0);

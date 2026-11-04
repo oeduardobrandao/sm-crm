@@ -124,3 +124,17 @@ describe('isStaleStateError', () => {
     expect(isStaleStateError(null)).toBe(false);
   });
 });
+
+describe('getPostProcessErrorToast: acesso por cliente', () => {
+  it('maps client_scope_restricted to the scope copy', () => {
+    expect(
+      getPostProcessErrorToast({ message: 'client_scope_restricted', code: '42501' }, 'Erro'),
+    ).toBe('Seu acesso é limitado aos clientes atribuídos.');
+  });
+
+  it('a known code keeps its own copy', () => {
+    expect(getPostProcessErrorToast({ message: 'permission_denied', code: '42501' }, 'Erro')).toBe(
+      POST_PROCESS_ERROR_MESSAGES.permission_denied,
+    );
+  });
+});

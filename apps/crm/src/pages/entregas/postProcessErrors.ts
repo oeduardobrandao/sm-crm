@@ -1,5 +1,6 @@
 import { lazyLabels } from './postLabels';
 import { entitlementMessage, mapEntitlementError } from '@/lib/entitlement-errors';
+import { clientScopeErrorMessage, isClientScopeError } from '@/lib/client-scope-errors';
 
 /**
  * Cópia em português para os códigos identificadores que as RPCs de processos
@@ -99,7 +100,10 @@ export function getPostProcessErrorToast(err: unknown, fallback: string): string
   const ent = mapEntitlementError(err);
   if (ent) return entitlementMessage(ent);
   const id = getErrorIdentifier(err);
-  return POST_PROCESS_ERROR_MESSAGES[id] ?? fallback;
+  const known = POST_PROCESS_ERROR_MESSAGES[id];
+  if (known) return known;
+  // After the known codes: `permission_denied` and friends keep their own copy.
+  return isClientScopeError(err) ? clientScopeErrorMessage() : fallback;
 }
 
 export function isStaleStateError(err: unknown): boolean {

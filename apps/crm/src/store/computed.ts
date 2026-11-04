@@ -6,13 +6,21 @@ import type { Cliente } from './clients';
 import type { Membro } from './team';
 import type { FinancialAccess } from '@/lib/financialAccess';
 
-/** Projects virtual scheduled transactions for the current month from clientes/membros/recorrentes */
+/**
+ * Projects virtual scheduled transactions for the current month from clientes/membros/recorrentes.
+ *
+ * `clientScoped`: the member is restricted to assigned clients (acesso por cliente). The
+ * database hides `membros_v.custo_mensal` (NULL) from them, so a member entry would be a
+ * phantom R$ 0 payment; members and recorrentes are skipped and only their own clients
+ * are projected.
+ */
 export function projetarAgendamentos(
   transacoesFisicas: Transacao[],
   clientes: Cliente[],
   membros: Membro[],
   canSeeFinancials: FinancialAccess,
   recorrentes: TransacaoRecorrente[] = [],
+  clientScoped = false,
 ): Transacao[] {
   const transacoes = [...transacoesFisicas];
 
@@ -63,6 +71,8 @@ export function projetarAgendamentos(
       );
     });
 
+  if (clientScoped) return transacoes;
+
   membros
     .filter((m) => m.data_pagamento)
     .forEach((m) => {
@@ -94,7 +104,7 @@ export function projetarAgendamentos(
   return transacoes;
 }
 
-export async function getDashboardStats(canSeeFinancials: FinancialAccess) {
+export async function getDashboardStats(canSeeFinancials: FinancialAccess, clientScoped = false) {
   // Skip the transactions fetch entirely when the caller lacks the capability.
   // Before Migration B lands, RLS still returns real rows here — the UI masks
   // aReceber/aPagar behind `canSeeFinancials === true` (DashboardPage.tsx),
@@ -106,7 +116,9 @@ export async function getDashboardStats(canSeeFinancials: FinancialAccess) {
     canSeeFinancials === true ? getTransacoes() : Promise.resolve([]),
     getMembros(),
     // The dashboard must not go down with this table (e.g. before its migration lands).
-    canSeeFinancials === true ? getRecorrentes().catch(() => []) : Promise.resolve([]),
+    canSeeFinancials === true && !clientScoped
+      ? getRecorrentes().catch(() => [])
+      : Promise.resolve([]),
   ]);
 
   const now = new Date();
@@ -118,6 +130,7 @@ export async function getDashboardStats(canSeeFinancials: FinancialAccess) {
     membros,
     canSeeFinancials,
     recorrentes,
+    clientScoped,
   );
   const transacoesMes = transacoes.filter((t) => t.data.startsWith(mesAtual));
   const clientesAtivos = clientes.filter((c) => c.status === 'ativo');

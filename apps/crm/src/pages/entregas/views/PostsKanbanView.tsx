@@ -102,6 +102,7 @@ import { useSuggestionMoveGuard } from '../hooks/useSuggestionMoveGuard';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { PhoneStatusBoard } from '../phone/PhoneStatusBoard';
 import { PhoneConfirmSheet } from '../phone/PhoneConfirmSheet';
+import { scopeErrorOr } from '@/lib/client-scope-errors';
 
 /* Column-header icon per canonical status; color only where the status carries
  * a semantic outcome (approved/scheduled/published/failed), muted otherwise.
@@ -797,8 +798,8 @@ export function PostsKanbanView({
       const byId = new Map(updates.map((u) => [u.id, u.board_ordem]));
       return old.map((p) => (byId.has(p.id) ? { ...p, board_ordem: byId.get(p.id)! } : p));
     });
-    reorderBoardPosts(updates).catch(() => {
-      toast.error(t('postsKanbanView.saveOrderError'));
+    reorderBoardPosts(updates).catch((err: unknown) => {
+      toast.error(scopeErrorOr(err, t('postsKanbanView.saveOrderError')));
       qc.invalidateQueries({ queryKey: ACTIVE_POSTS_KEY });
     });
   };

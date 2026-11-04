@@ -222,6 +222,7 @@ export default function FinanceiroPage() {
     membros,
     canSeeFinancials,
     recorrentes,
+    isClientScoped(membership),
   );
   const allTransacoes = projected.filter((tr) => !monthFilter || tr.data.startsWith(monthFilter));
 

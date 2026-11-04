@@ -202,3 +202,16 @@ export function isClientScoped(m: MyMembership | null): boolean {
   if (m.role === 'owner') return false;
   return m.client_scope === 'atribuidos';
 }
+
+/**
+ * A restricted member's own item (post, process) in a client outside their scope: they
+ * still see the item, but RLS hides the client, so its embedded name comes back empty.
+ * Some writes stay refused there (e.g. `remove_post_process`), so callers hide them.
+ */
+export function isOutsideClientScope(
+  m: MyMembership | null,
+  clienteId: number | null | undefined,
+  clienteNome: string | null | undefined,
+): boolean {
+  return isClientScoped(m) && clienteId != null && !clienteNome;
+}

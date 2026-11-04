@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { i18n } from '@mesaas/i18n';
+import { clientScopeErrorMessage, isClientScopeError } from '@/lib/client-scope-errors';
 
 // Copy for the errors the Financeiro v2 RPCs raise on purpose. Postgres puts the RAISE
 // text in `message` (PostgREST relays it as-is), so the match is on the token inside it
@@ -37,6 +38,10 @@ export function mensagemErroFinanceiro(e: unknown): string | null {
   for (const token of TOKENS) {
     if (temToken(message, token)) return copia(token);
   }
+  // A restricted member's Financeiro write (atribuições, acordo, config, função, seed,
+  // fechar/reabrir, status do cliente) is refused by the client scope. After the tokens,
+  // so `financial_access_denied` keeps its own copy.
+  if (isClientScopeError(e)) return clientScopeErrorMessage();
   // P0002 is no_data_found: the RPCs raise it for `not_found`.
   if (code === 'P0002') return copia('not_found');
   return null;

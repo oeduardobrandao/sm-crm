@@ -5,6 +5,7 @@ import {
   computePermissionTransitions,
   derivePermission,
   isClientScoped,
+  isOutsideClientScope,
 } from '../permissions';
 import { deriveFinancialAccess } from '../financialAccess';
 import type { MyMembership } from '@/store/workspace';
@@ -414,5 +415,19 @@ describe('computePermissionTransitions: escopo de clientes', () => {
     });
     expect(downgraded).toEqual([]);
     expect(upgraded).toEqual([]);
+  });
+});
+
+describe('isOutsideClientScope', () => {
+  it.each<[string, MyMembership | null, number | null, string | null, boolean]>([
+    ['restrito, cliente sem nome (oculto)', scoped('agent', 'atribuidos', [1]), 9, '', true],
+    ['restrito, nome nulo', scoped('agent', 'atribuidos', [1]), 9, null, true],
+    ['restrito, cliente visível', scoped('agent', 'atribuidos', [9]), 9, 'Clínica', false],
+    ['restrito, post sem cliente', scoped('agent', 'atribuidos', [1]), null, '', false],
+    ['irrestrito, nome vazio', scoped('agent', 'todos'), 9, '', false],
+    ['dono', scoped('owner', 'atribuidos'), 9, '', false],
+    ['membership nula', null, 9, '', false],
+  ])('%s => %s', (_label, m, id, nome, expected) => {
+    expect(isOutsideClientScope(m, id, nome)).toBe(expected);
   });
 });

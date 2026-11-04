@@ -72,6 +72,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useClienteSocialAccounts } from '@/hooks/useClienteSocialAccounts';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import { useClienteContexto } from '@/hooks/useClienteContexto';
+import { isOutsideClientScope } from '@/lib/permissions';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import {
   canonicalOfStatusKey,
@@ -119,6 +120,7 @@ import { PhoneIconButton } from '@/components/mobile';
 import { useIsPhoneEditor } from './postEditorPhone/useIsPhoneEditor';
 import { PhoneEditorScreen } from './postEditorPhone/PhoneEditorScreen';
 import type { PhoneMenuAction } from './postEditorPhone/types';
+import { scopeErrorOr } from '@/lib/client-scope-errors';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -250,7 +252,9 @@ export function StandalonePostDrawer({
     queryFn: () => getPostProcessEvents([postId]),
   });
 
-  const { user, role, can } = useAuth();
+  const { user, role, can, membership } = useAuth();
+  // Own post in a client outside a restricted member's scope: remove_post_process is refused.
+  const canRemoveProcess = !isOutsideClientScope(membership, clienteId, post?.cliente_nome);
   // Was `currentUserRole === 'owner' || 'admin'` inside PostAutomationSection
   // -- AGENT_ROLE_PRESET.automacoes is 'editar' (lib/permissions.ts), so a
   // legacy agent already gets full write on instagram_comment_automations
@@ -449,8 +453,8 @@ export function StandalonePostDrawer({
       try {
         await updateWorkflowPost(postId, statusKeyToPatch(key));
         refresh();
-      } catch {
-        toast.error(t('standalonePostDrawer.updatePostError'));
+      } catch (err) {
+        toast.error(scopeErrorOr(err, t('standalonePostDrawer.updatePostError')));
       }
       return;
     }
@@ -458,8 +462,8 @@ export function StandalonePostDrawer({
       await updateWorkflowPost(postId, { [field]: value } as Partial<WorkflowPost>);
       refresh();
       return true;
-    } catch {
-      toast.error(t('standalonePostDrawer.updatePostError'));
+    } catch (err) {
+      toast.error(scopeErrorOr(err, t('standalonePostDrawer.updatePostError')));
       return false;
     }
   };
@@ -472,8 +476,8 @@ export function StandalonePostDrawer({
     try {
       await updateWorkflowPost(postId, statusKeyToPatch(key));
       refresh();
-    } catch {
-      toast.error(t('standalonePostDrawer.updateStatusError'));
+    } catch (err) {
+      toast.error(scopeErrorOr(err, t('standalonePostDrawer.updateStatusError')));
     }
   };
 
@@ -640,7 +644,7 @@ export function StandalonePostDrawer({
       try {
         await saveIgCaption(targetPostId, text, anchors);
       } catch (err) {
-        toast.error(t('standalonePostDrawer.updatePostError'));
+        toast.error(scopeErrorOr(err, t('standalonePostDrawer.updatePostError')));
         throw err;
       }
       await refetchComments(); // threads first, then the post (see WorkflowDrawer)
@@ -913,7 +917,7 @@ export function StandalonePostDrawer({
         onSelect: () => commands.reabrir(target),
       });
     }
-    if (post && target) {
+    if (post && target && canRemoveProcess) {
       phoneMenuActions.push({
         label: t('standalonePostDrawer.removeProcess'),
         disabled: commands.busy,
@@ -1171,7 +1175,7 @@ export function StandalonePostDrawer({
                     <RotateCcw className="h-3.5 w-3.5" /> {t('standalonePostDrawer.reopenProcess')}
                   </button>
                 )}
-                {target && (
+                {target && canRemoveProcess && (
                   <button
                     className="drawer-add-post-btn"
                     aria-label={t('standalonePostDrawer.removeProcess')}

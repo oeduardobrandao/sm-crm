@@ -223,7 +223,11 @@ export function PhonePostEntityListRow({
         forwardLabel={forwardLabelFor(entity.process)}
         canRevert={previousStepOf(entity.process) != null}
         onRevert={post ? () => post.revert(entity) : undefined}
-        onRemoveProcess={post ? () => post.removeProcess(entity) : undefined}
+        onRemoveProcess={
+          post && post.canRemoveProcess?.(entity) !== false
+            ? () => post.removeProcess(entity)
+            : undefined
+        }
         onDuplicate={post?.duplicate ? () => post.duplicate?.(entity) : undefined}
         onDelete={post?.remove ? () => post.remove?.(entity) : undefined}
         preview={actions ? <PhonePostProcessCard entity={entity} preview /> : undefined}

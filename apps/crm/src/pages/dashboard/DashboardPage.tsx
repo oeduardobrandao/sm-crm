@@ -25,6 +25,7 @@ import { reportPurchaseConversion } from '@/lib/googleAdsLoader';
 
 export default function DashboardPage() {
   const { role, workspaceRole, canSeeFinancials, membership } = useAuth();
+  const clientScoped = isClientScoped(membership);
   // workspaceRole reflects the ACTIVE workspace; profile-level `role` goes
   // stale across workspace switches (a user can be owner in one workspace and
   // agent in another). Fall back to `role` only while membership resolves.
@@ -66,8 +67,8 @@ export default function DashboardPage() {
   const results = useQueries({
     queries: [
       {
-        queryKey: ['dashboardStats', canSeeFinancials],
-        queryFn: () => getDashboardStats(canSeeFinancials),
+        queryKey: ['dashboardStats', canSeeFinancials, clientScoped],
+        queryFn: () => getDashboardStats(canSeeFinancials, clientScoped),
         retry: 1,
       },
       { queryKey: ['clientes'], queryFn: getClientes, retry: 1 },
@@ -87,7 +88,7 @@ export default function DashboardPage() {
     .reduce((s, tx) => s + Number(tx.valor), 0);
 
   const importBanner = clientesRes.data && (
-    <ImportBanner clienteCount={clientes.length} clientScoped={isClientScoped(membership)} />
+    <ImportBanner clienteCount={clientes.length} clientScoped={clientScoped} />
   );
   const financeStrip = canSeeFinancials === true && stats && (
     <FinanceKpiStrip

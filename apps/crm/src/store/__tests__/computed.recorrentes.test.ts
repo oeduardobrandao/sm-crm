@@ -91,3 +91,30 @@ describe('projetarAgendamentos with recorrentes', () => {
     expect(out.map((t) => t.data)).toEqual(['2026-02-28', '2026-02-28']);
   });
 });
+
+describe('projetarAgendamentos for a member restricted to assigned clients', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 10, 15));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('skips members (NULL custo_mensal) and recorrentes, keeps own clients', () => {
+    const cliente = {
+      id: 3,
+      nome: 'Clínica',
+      status: 'ativo',
+      data_pagamento: 5,
+      valor_mensal: 1500,
+    } as unknown as Parameters<typeof projetarAgendamentos>[1][number];
+    const membro = {
+      id: 4,
+      nome: 'Ana',
+      data_pagamento: 10,
+      custo_mensal: null,
+    } as unknown as Parameters<typeof projetarAgendamentos>[2][number];
+    const out = projetarAgendamentos([], [cliente], [membro], true, [canva], true);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ tipo: 'entrada', descricao: 'Clínica', valor: 1500 });
+  });
+});

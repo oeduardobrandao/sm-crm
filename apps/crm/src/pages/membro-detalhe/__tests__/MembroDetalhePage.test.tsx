@@ -158,6 +158,7 @@ const membro = {
 let transacoes: unknown[] = [];
 let membrosLoading = false;
 let financeiroV2 = false;
+let membershipState: ReturnType<typeof fakeMembership> | null = null;
 
 function setup(
   canSeeFinancials: boolean | 'unknown',
@@ -171,6 +172,7 @@ function setup(
     can,
     workspaceRole: 'admin',
     profile: { id: 'me', nome: 'Eu', conta_id: 'ws-1' },
+    membership: membershipState,
   });
   useWorkspaceLimitsMock.mockReturnValue({
     limits: { max_team_members: 10 },
@@ -278,6 +280,24 @@ describe('MembroDetalhePage financial query gate', () => {
     setup(false);
     expect(screen.queryByTestId('acordo-card')).toBeNull();
     expect(screen.queryByTestId('entregas-card')).toBeNull();
+  });
+
+  it('masks the cost and hides the acordo cards for a member restricted to assigned clients', () => {
+    // membros_v.custo_mensal reads NULL for them and acordos are hidden.
+    viewport.desktop = true;
+    financeiroV2 = true;
+    setup(true);
+    expect(screen.getAllByText(/1\.000,00/).length).toBeGreaterThan(0);
+    cleanup();
+
+    membershipState = fakeMembership({ role: 'admin', client_scope: 'atribuidos' });
+    try {
+      setup(true);
+      expect(screen.queryByText(/1\.000,00/)).toBeNull();
+      expect(screen.queryByTestId('acordo-card')).toBeNull();
+    } finally {
+      membershipState = null;
+    }
   });
 
   it('does not mount the acordo cards without financial access', () => {

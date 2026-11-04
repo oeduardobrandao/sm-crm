@@ -189,6 +189,7 @@ import '../phone/fluxoSheet.css';
 import { useIsPhoneEditor } from './postEditorPhone/useIsPhoneEditor';
 import { PhoneEditorScreen, type PhoneEditorScreenApi } from './postEditorPhone/PhoneEditorScreen';
 import type { PhoneMenuAction } from './postEditorPhone/types';
+import { scopeErrorOr } from '@/lib/client-scope-errors';
 
 // Stable empty array so the fallback in `useQuery({ data: processEvents = ... })` never
 // changes identity across renders when the flag is off or the query hasn't resolved yet.
@@ -605,8 +606,8 @@ export function WorkflowDrawer({
       try {
         await reorderWorkflowPosts(newIds.map((id, ordem) => ({ id, ordem })));
         qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', workflowId] });
-      } catch {
-        toast.error(t('workflowDrawer.reorderError'));
+      } catch (err) {
+        toast.error(scopeErrorOr(err, t('workflowDrawer.reorderError')));
         setLocalOrder(null);
       }
     },
@@ -678,8 +679,8 @@ export function WorkflowDrawer({
         const updated = await updateWorkflowPost(id, statusKeyToPatch(key));
         refresh();
         maybeNudge(updated);
-      } catch {
-        toast.error(t('workflowDrawer.updateError'));
+      } catch (err) {
+        toast.error(scopeErrorOr(err, t('workflowDrawer.updateError')));
       }
       return;
     }
@@ -687,8 +688,8 @@ export function WorkflowDrawer({
       await updateWorkflowPost(id, { [field]: value } as Partial<WorkflowPost>);
       refresh();
       return true;
-    } catch {
-      toast.error(t('workflowDrawer.updateError'));
+    } catch (err) {
+      toast.error(scopeErrorOr(err, t('workflowDrawer.updateError')));
       return false;
     }
   };
@@ -702,8 +703,8 @@ export function WorkflowDrawer({
       const updated = await updateWorkflowPost(id, statusKeyToPatch(newStatusKey));
       refresh();
       maybeNudge(updated);
-    } catch {
-      toast.error(t('workflowDrawer.statusError'));
+    } catch (err) {
+      toast.error(scopeErrorOr(err, t('workflowDrawer.statusError')));
     }
   };
 
@@ -1071,7 +1072,7 @@ export function WorkflowDrawer({
       try {
         await saveIgCaption(postId, text, anchors);
       } catch (err) {
-        toast.error(t('workflowDrawer.updateError'));
+        toast.error(scopeErrorOr(err, t('workflowDrawer.updateError')));
         throw err;
       }
       await refetchComments();
