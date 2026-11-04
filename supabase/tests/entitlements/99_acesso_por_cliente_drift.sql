@@ -1,9 +1,8 @@
 \set ON_ERROR_STOP on
 
--- Acesso por cliente, guarda de deriva (catálogo). PENDING: o nome sem dígito
--- inicial deixa o test:db pular este arquivo até a Task 4e renomeá-lo para
--- 99_acesso_por_cliente_drift.sql. Até lá ele FALHA de propósito, listando o
--- que as Tasks 3 e 4a-4e ainda têm de escopar.
+-- Acesso por cliente, guarda de deriva (catálogo). Roda no test:db desde a
+-- Task 4e; o que ainda falta escopar (Task 6) está em v_exempt_until_task6,
+-- com um NOTICE a cada execução.
 --
 -- Inventário: docs/superpowers/plans/2026-11-03-acesso-por-cliente-inventario.md
 -- Spec: docs/superpowers/specs/2026-11-03-acesso-por-cliente-design.md
@@ -94,12 +93,18 @@ declare
   -- Task 6: estas três saem daqui, e as policies de SELECT delas citam o predicado ou a leitura
   -- direta por authenticated é revogada.
   v_exempt_until_task6 text[] := array[
-    'financeiro_atribuicoes', 'financeiro_cliente_versoes', 'financeiro_entregas_manuais'
+    'financeiro_atribuicoes', 'financeiro_cliente_versoes', 'financeiro_entregas_manuais',
+    -- legado do financeiro: a Task 6 dá a elas os predicados de leitura e escrita da Task 4
+    -- (plano, Task 6: "Legacy readers (transacoes, contratos tables) get the Task 4 ...")
+    'contratos', 'transacoes'
   ];
 
   -- Únicas tabelas em que can_see_cliente_context vale como predicado de leitura (contexto do
   -- item "dele" num cliente oculto: marca e briefing). Em qualquer outra, só can_access_cliente.
-  v_context_tables text[] := array['hub_brand', 'hub_brand_files', 'briefings', 'hub_briefing_questions'];
+  -- notifications (Task 4e): o destinatário vê a notificação sobre um cliente oculto em que tem
+  -- item dele (o plano manda ler por can_see_cliente_context); notificação não é raiz de contexto.
+  v_context_tables text[] := array['hub_brand', 'hub_brand_files', 'briefings', 'hub_briefing_questions',
+                                   'notifications'];
 
   -- Itens que um restrito pode ter "dele" num cliente oculto e que precisam do
   -- contexto do cliente (nome, marca). Task 1 cobre os três primeiros; ideias

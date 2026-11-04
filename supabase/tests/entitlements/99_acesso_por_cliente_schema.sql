@@ -152,6 +152,9 @@ begin
 
   -- my_membro_ids + can_see_cliente_context
   assert pg_temp.membro_ids(v_restr) = '{}'::bigint[], 'my_membro_ids empty without a linked membro';
+  -- as superuser without the restricted claims pg_temp.membro_ids left behind (linking a
+  -- restricted member is owner-only under trg_membros_crm_user_scope_lock)
+  perform set_config('request.jwt.claims', '', true);
   insert into membros (user_id, conta_id, nome, crm_user_id) values (v_owner, v_ws_a, 'Restr', v_restr) returning id into v_membro;
   assert pg_temp.membro_ids(v_restr) = array[v_membro], 'my_membro_ids returns the linked membro';
   assert pg_temp.ctx(v_restr, v_c1), 'context: assigned client';

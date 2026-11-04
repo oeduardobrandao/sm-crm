@@ -130,7 +130,8 @@ pasta). As funções de trigger das guardas (`guard_client_scope_move`,
 `guard_post_child_update`, `guard_post_process_step_assign`, `guard_client_scope_item`,
 `guard_scope_child_reparent`, `guard_file_scope_update`, `guard_folder_scope_parent`,
 `guard_brand_logo_file`, `guard_post_file_link_swap`, `guard_agenda_evento_scope`,
-`guard_agenda_participante_scope`, `guard_report_layout_files`, `guard_analytics_report_refs`) não têm EXECUTE
+`guard_agenda_participante_scope`, `guard_report_layout_files`, `guard_analytics_report_refs`,
+`guard_membros_crm_user_scope`) não têm EXECUTE
 para `authenticated` nem `anon`.
 
 Espelho TS: só `isClientScoped(membership)` em `lib/permissions.ts`, para afordâncias de UI
@@ -235,6 +236,10 @@ flag de liberação só liga depois das duas fases.
 - Chat da equipe: conforme a decisão de chat (ver Decisões em aberto).
 - Notificações já guardadas: a policy de leitura de `notifications` (e as menções) filtra pelo cliente
   referenciado no payload, para um restrito não seguir vendo e clicando em eventos de cliente oculto.
+  O escopo é o do workspace da notificação (o sino lista todos os workspaces do usuário): no workspace
+  ativo vale escopo ou contexto (`can_see_cliente_context`); em outro workspace, só a membership daquele
+  (dono, `todos` ou cliente atribuído), sem o "é dele". Vincular, trocar ou desfazer o `membros.crm_user_id`
+  de um restrito (que decide o "é dele" dele) é só do dono (`trg_membros_crm_user_scope_lock`).
 
 O Hub (token do cliente final) não muda: ele não é membro do workspace.
 
