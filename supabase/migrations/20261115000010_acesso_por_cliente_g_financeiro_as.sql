@@ -6,7 +6,8 @@
 --     (actor_cliente_ids: NULL para dono e 'todos'; sem membership, lista vazia,
 --     nunca todos);
 --   * escrita: cliente da linha acessível ao ator (can_access_cliente(uuid,
---     uuid, bigint)); linha sem cliente (acordo, config, função, seed, período,
+--     uuid, bigint)); linha sem cliente ou com efeito sobre outros clientes
+--     (acordo, atribuições, status do cliente, config, função, seed, período,
 --     recorrente, agendamento) só para quem vê todos; client_scope_restricted.
 -- Hoje as ferramentas financeiro:* do MCP são só do dono e _financeiro_exigir_dono
 -- roda antes (dono é sempre irrestrito), então nada muda para quem chama: o
@@ -137,11 +138,9 @@ BEGIN
     RAISE EXCEPTION 'feature_disabled:feature_financeiro_v2' USING ERRCODE = 'P0001';
   END IF;
   PERFORM public._financeiro_exigir_dono(p_conta, p_user);
-  -- [escopo] todo cliente_id das mudanças
-  PERFORM public._financeiro_exigir_clientes(p_user, p_conta, (SELECT coalesce(array_agg(CASE WHEN e->>'cliente_id' ~ '^[0-9]{1,18}$' THEN (e->>'cliente_id')::bigint END),
-                      '{}'::bigint[])
-        FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p_mudancas) = 'array' THEN p_mudancas
-                                       ELSE '[]'::jsonb END) e));
+  -- [escopo] mudar atribuição muda o rateio do membro em todos os clientes:
+  -- só quem vê todos, mesmo num cliente do ator
+  PERFORM public._financeiro_exigir_clientes(p_user, p_conta, NULL);
   PERFORM public._financeiro_atribuicoes_salvar_core(p_conta, p_user, p_vale_desde, p_mudancas);
 END;$function$;
 
@@ -159,8 +158,11 @@ BEGIN
     RAISE EXCEPTION 'feature_disabled:feature_financeiro_v2' USING ERRCODE = 'P0001';
   END IF;
   PERFORM public._financeiro_exigir_dono(p_conta, p_user);
-  -- [escopo] cliente da linha
+  -- [escopo] cliente da linha; mudar o status muda o rateio nos outros clientes
   PERFORM public._financeiro_exigir_clientes(p_user, p_conta, ARRAY[p_cliente_id]);
+  IF public._financeiro_status_muda(p_conta, p_cliente_id, p_vale_desde, p_status) THEN
+    PERFORM public._financeiro_exigir_clientes(p_user, p_conta, NULL);
+  END IF;
   PERFORM public._financeiro_cliente_salvar_core(
     p_conta, p_user, p_cliente_id, p_vale_desde, p_valor_mensal, p_dia_pagamento, p_status);
 END;$function$;

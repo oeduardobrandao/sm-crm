@@ -6,8 +6,9 @@
 -- their authenticated twins, judged for p_user in p_conta:
 --   * rentabilidade_as: only the actor's clients (owner / todos: unchanged; no membership:
 --     zero clients, never all);
---   * writers: a row of a client the actor can't access, or a row with no client, refused
---     with client_scope_restricted.
+--   * writers: a row of a client the actor can't access, a row with no client, or a change
+--     whose effect spreads across clients (atribuicoes, client status), refused with
+--     client_scope_restricted.
 -- Today _financeiro_exigir_dono runs first (financeiro:* is owner-only and an owner is never
 -- restricted), so callers see no change: case `owner_only_precedence_unchanged`. The scope
 -- cases replace _financeiro_exigir_dono with a no-op inside this transaction (rolled back),
@@ -151,7 +152,12 @@ begin
   assert v_err = 'client_scope_restricted', 'restricted_actor_atribuicoes_hidden_denied: ' || coalesce(v_err, 'saved');
   v_err := pg_temp.svc_erro(format('select financeiro_atribuicoes_salvar_as(%L, %L, ''2026-10-01'', %L::jsonb)', v_ws, v_restr,
     jsonb_build_array(jsonb_build_object('membro_id', v_m1, 'cliente_id', v_ca, 'ativo', true))));
-  assert v_err is null, 'restricted_actor_atribuicoes_assigned_ok: ' || coalesce(v_err, '');
+  assert v_err = 'client_scope_restricted', 'restricted_actor_atribuicoes_own_client_denied: ' || coalesce(v_err, 'saved');
+  v_err := pg_temp.svc_erro(format('select financeiro_atribuicoes_salvar_as(%L, %L, ''2026-10-01'', %L::jsonb)', v_ws, v_todos,
+    jsonb_build_array(jsonb_build_object('membro_id', v_m1, 'cliente_id', v_ca, 'ativo', true))));
+  assert v_err is null, 'todos_actor_atribuicoes_ok: ' || coalesce(v_err, '');
+  v_err := pg_temp.svc_erro(format('select financeiro_cliente_salvar_as(%L, %L, %s, ''2026-10-01'', 2100, 5, ''encerrado'')', v_ws, v_restr, v_ca));
+  assert v_err = 'client_scope_restricted', 'restricted_actor_cliente_status_change_denied: ' || coalesce(v_err, 'saved');
   v_err := pg_temp.svc_erro(format('select financeiro_entregas_salvar_as(%L, %L, ''2026-10-01'', %s, %L::jsonb)', v_ws, v_restr, v_m1,
     jsonb_build_array(jsonb_build_object('cliente_id', v_cb, 'quantidade', null))));
   assert v_err = 'client_scope_restricted', 'restricted_actor_entregas_hidden_denied: ' || coalesce(v_err, 'saved');

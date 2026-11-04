@@ -11,8 +11,10 @@
 --   * owner / todos: byte-identical to _financeiro_calcular (and to the stored snapshot),
 --     zero per-row scope calls.
 --   * every financeiro_*_salvar refuses a row of a client he can't access, and every write
---     with no client (acordo, config, funcao, seed, period close/reopen) refuses him:
---     client_scope_restricted (42501).
+--     with no client or whose effect spreads across clients (acordo, atribuicoes, a client
+--     status change, config, funcao, seed, period close/reopen) refuses him:
+--     client_scope_restricted (42501). pessoas[]: regra / total / n_clientes over his
+--     clients only.
 --   * direct reads: financeiro_cliente_versoes / _atribuicoes / _entregas_manuais by client;
 --     financeiro_acordo_versoes, financeiro_periodos (full snapshots) and
 --     transacoes_recorrentes not at all; membros_v.custo_mensal NULL; transacoes and
@@ -243,6 +245,21 @@ begin
   select p into v_p from jsonb_array_elements(v_r->'clientes'->0->'pessoas') p where (p->>'membro_id')::bigint = v_m1;
   assert (v_p->>'total')::numeric = 500 and (v_p->>'n_clientes')::int = 1 and (v_p->>'valor')::numeric = 500,
     'restricted pessoa total/n_clientes do not reveal hidden clients: ' || v_p::text;
+  -- regra comes from his clients only: M1 serves only A among them, so exclusivo (rateio would
+  -- reveal that M1 also works on a hidden client)
+  assert v_p->>'regra' = 'exclusivo', 'restricted_pessoa_regra_from_his_clients: ' || v_p::text;
+  select p into v_p from jsonb_array_elements(v_r->'clientes'->0->'pessoas') p where (p->>'membro_id')::bigint = v_m3;
+  assert v_p->>'regra' = 'entrega' and (v_p->>'n_clientes')::int = 1 and (v_p->>'total')::numeric = 300,
+    'restricted por_entrega pessoa over his clients: ' || v_p::text;
+  -- no per-member number in the restricted output exceeds the member's share on his clients
+  assert not exists (
+    select 1 from jsonb_array_elements(v_r->'clientes') c, jsonb_array_elements(c->'pessoas') p
+     where p->>'regra' = 'rateio' or (p->>'total')::numeric > 500 or (p->>'n_clientes')::int > 1),
+    'restricted_pessoas_never_reveal_hidden_clients: ' || (v_r->'clientes')::text;
+  assert not exists (
+    select 1 from jsonb_array_elements(v_r->'membros') m
+     where (m->>'custo')::numeric > 500 or (m->>'n_clientes')::int > 1 or (m->>'por_cliente')::numeric > 500),
+    'restricted_membros_never_reveal_full_cost: ' || (v_r->'membros')::text;
 
   -- the closed period is filtered the same way (snapshot path)
   v_r := pg_temp.j_as(v_restr, 'select financeiro_rentabilidade(''2026-09-01'')');
@@ -251,6 +268,10 @@ begin
      and (v_r->'totais'->>'receita')::numeric = 2000
      and (v_r->'totais'->>'custo_total')::numeric = 700
      and (v_r->'totais'->>'custo_sem_cliente')::numeric = 0, 'restricted_closed_snapshot_filtered: ' || (v_r->'totais')::text;
+  assert not exists (
+    select 1 from jsonb_array_elements(v_r->'clientes') c, jsonb_array_elements(c->'pessoas') p
+     where p->>'regra' = 'rateio' or (p->>'n_clientes')::int > 1),
+    'restricted_closed_pessoas_never_reveal_hidden_clients: ' || (v_r->'clientes')::text;
 
   -- restricted with an empty list sees zero clients, never all
   v_r := pg_temp.j_as(v_zero, 'select financeiro_rentabilidade(''2026-10-01'')');
@@ -367,6 +388,14 @@ begin
   v_err := pg_temp.err_as(v_todos, format('insert into transacoes_recorrentes (conta_id, user_id, tipo, descricao, valor, dia, inicio) values (%L, %L, ''saida'', ''x'', 1, 1, ''2026-10-01'')', v_ws, v_todos));
   assert v_err is null, 'todos_insert_recorrente_ok: ' || coalesce(v_err, '');
 
+  -- client status through the legacy column: same rule as financeiro_cliente_salvar
+  v_err := pg_temp.errm_as(v_restr, format('update clientes set status = ''pausado'' where id = %s', v_ca));
+  assert v_err = 'client_scope_restricted', 'restricted_legacy_status_change_denied: ' || coalesce(v_err, 'written');
+  v_err := pg_temp.errm_as(v_restr, format('update clientes set valor_mensal = 2050 where id = %s', v_ca));
+  assert v_err is null, 'restricted_legacy_fee_change_ok: ' || coalesce(v_err, '');
+  v_err := pg_temp.errm_as(v_todos, format('update clientes set status = ''ativo'', valor_mensal = 2000 where id = %s', v_ca));
+  assert v_err is null, 'todos_legacy_status_ok: ' || coalesce(v_err, '');
+
   -- member cost (legacy column): a restricted member can't change what he can't see
   v_err := pg_temp.errm_as(v_restr, format('update membros set custo_mensal = null where id = %s', v_m1));
   assert v_err = 'client_scope_restricted', 'restricted_write_member_cost_denied: ' || coalesce(v_err, 'written');
@@ -386,11 +415,12 @@ declare
   v_ws uuid := (select active_workspace_id from profiles where id = (select id from auth.users where email = 'owner@acfin.test'));
   v_todos uuid := (select id from auth.users where email = 'todos@acfin.test');
   v_restr uuid := (select id from auth.users where email = 'restr@acfin.test');
-  v_ca bigint; v_cb bigint; v_m1 bigint; v_m3 bigint; v_f1 bigint; v_err text; v_sql text;
+  v_ca bigint; v_cb bigint; v_m1 bigint; v_m2 bigint; v_m3 bigint; v_f1 bigint; v_err text; v_sql text;
 begin
   select id into v_ca from clientes where conta_id = v_ws and nome = 'A';
   select id into v_cb from clientes where conta_id = v_ws and nome = 'B';
   select id into v_m1 from membros where conta_id = v_ws and nome in ('M1', 'M1x');
+  select id into v_m2 from membros where conta_id = v_ws and nome = 'M2';
   select id into v_m3 from membros where conta_id = v_ws and nome = 'M3';
   select id into v_f1 from financeiro_funcoes where conta_id = v_ws and nome = 'Video';
 
@@ -404,9 +434,19 @@ begin
     jsonb_build_array(jsonb_build_object('membro_id', v_m1, 'cliente_id', v_ca, 'ativo', true),
                       jsonb_build_object('membro_id', v_m1, 'cliente_id', v_cb, 'ativo', false))));
   assert v_err = 'client_scope_restricted', 'restricted_atribuicoes_hidden_client_denied: ' || coalesce(v_err, 'saved');
+  -- an assignment change on his own client still shifts the rateio on hidden clients
   v_err := pg_temp.errm_as(v_restr, format('select financeiro_atribuicoes_salvar(''2026-10-01'', %L::jsonb)',
-    jsonb_build_array(jsonb_build_object('membro_id', v_m1, 'cliente_id', v_ca, 'ativo', true))));
-  assert v_err is null, 'restricted_atribuicoes_assigned_ok: ' || coalesce(v_err, '');
+    jsonb_build_array(jsonb_build_object('membro_id', v_m2, 'cliente_id', v_ca, 'ativo', true))));
+  assert v_err = 'client_scope_restricted', 'restricted_atribuicoes_own_client_denied: ' || coalesce(v_err, 'saved');
+  v_err := pg_temp.errm_as(v_todos, format('select financeiro_atribuicoes_salvar(''2026-10-01'', %L::jsonb)',
+    jsonb_build_array(jsonb_build_object('membro_id', v_m2, 'cliente_id', v_ca, 'ativo', true))));
+  assert v_err is null, 'todos_atribuicoes_same_change_ok: ' || coalesce(v_err, '');
+  -- a client status change moves the members' rateio to/from the other clients: all-clients-only;
+  -- the fee alone only touches his client
+  v_err := pg_temp.errm_as(v_restr, format('select financeiro_cliente_salvar(%s, ''2026-10-01'', 2100, 5, ''pausado'')', v_ca));
+  assert v_err = 'client_scope_restricted', 'restricted_cliente_status_change_denied: ' || coalesce(v_err, 'saved');
+  v_err := pg_temp.errm_as(v_restr, format('select financeiro_cliente_salvar(%s, ''2026-10-01'', 2200, 6, ''ativo'')', v_ca));
+  assert v_err is null, 'restricted_cliente_fee_change_ok: ' || coalesce(v_err, '');
 
   v_err := pg_temp.errm_as(v_restr, format('select financeiro_entregas_salvar(''2026-10-01'', %s, %L::jsonb)', v_m3,
     jsonb_build_array(jsonb_build_object('cliente_id', v_cb, 'quantidade', 1))));
@@ -497,6 +537,7 @@ begin
     'public._financeiro_exigir_clientes(uuid,uuid,bigint[])',
     'public.actor_client_scope_all(uuid,uuid)',
     'public.actor_cliente_ids(uuid,uuid)',
+    'public._financeiro_status_muda(uuid,bigint,date,text)',
     'public._financeiro_rentabilidade_core(uuid,uuid,date,bigint[])'] loop
     assert not has_function_privilege('anon', v_f, 'execute'), v_f || ': anon can execute';
     assert not has_function_privilege('authenticated', v_f, 'execute'), v_f || ': authenticated can execute';

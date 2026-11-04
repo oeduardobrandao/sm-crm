@@ -9,8 +9,11 @@
 --     cliente não entram, só o rateio que cai nos clientes dele; membros e
 --     totais recalculados sobre esses clientes. Sem "é dele" no financeiro.
 --   * escritas: todo financeiro_*_salvar recusa linha de cliente que ele não
---     acessa; escrita sem cliente (acordo, config, função, seed, fechar e
---     reabrir período) recusa o restrito: client_scope_restricted (42501).
+--     acessa; escrita sem cliente ou cujo efeito se espalha pelos outros
+--     clientes (acordo, atribuições, mudança de status do cliente, config,
+--     função, seed, fechar e reabrir período) recusa o restrito:
+--     client_scope_restricted (42501). Entregas manuais ficam por cliente: o
+--     custo por entrega é quantidade x valor no próprio cliente, sem rateio.
 --   * leitura direta: versões, atribuições e entregas por cliente; acordos
 --     (custo de membro), períodos (snapshot completo) e recorrentes (despesa
 --     sem cliente) nada; membros_v.custo_mensal NULL e escrita dele recusada;
@@ -75,11 +78,25 @@ BEGIN
 END;
 $$;
 
+-- p_status difere do status vigente do cliente em p_vale_desde (ou o cliente
+-- ainda não tem versão)? Mudança de status entra/sai do rateio dos membros.
+CREATE OR REPLACE FUNCTION public._financeiro_status_muda(p_conta uuid, p_cliente_id bigint, p_vale_desde date, p_status text)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT p_status IS DISTINCT FROM (
+    SELECT cv.status FROM public.financeiro_cliente_versoes cv
+     WHERE cv.conta_id = p_conta AND cv.cliente_id = p_cliente_id AND cv.vale_desde <= p_vale_desde
+     ORDER BY cv.vale_desde DESC LIMIT 1);
+$$;
+
 -- O resultado de _financeiro_calcular (ou o snapshot de um período fechado)
 -- reduzido aos clientes de p_cliente_ids (NULL = intacto):
 --   clientes: só os da lista, cada um igual à linha original, exceto
---     pessoas[].total / n_clientes, recalculados sobre a lista (o total
---     original revelaria o custo do membro nos clientes ocultos);
+--     pessoas[].total / n_clientes / regra, recalculados sobre a lista (o total
+--     original revelaria o custo do membro, e n_clientes ou um "rateio" que
+--     vem dos clientes ocultos revelaria que ele atende outros clientes);
 --   membros: só quem tem linha num cliente da lista, com custo = soma das
 --     linhas dele na lista, n_clientes = clientes ativos dele na lista;
 --   totais: receita e custo sobre a lista; custo_sem_cliente = 0, custo_total
@@ -112,8 +129,12 @@ AS $$
   cli2 AS (
     SELECT cli.ord,
            cli.c || jsonb_build_object('pessoas', coalesce((
-             SELECT jsonb_agg(y.p || jsonb_build_object('total', trim_scale(round(mem.custo, 2)),
-                                                       'n_clientes', mem.n) ORDER BY y.o)
+             SELECT jsonb_agg(y.p || jsonb_build_object(
+                      'total', trim_scale(round(mem.custo, 2)),
+                      'n_clientes', mem.n,
+                      'regra', CASE WHEN y.p->>'regra' = 'entrega' THEN 'entrega'
+                                    WHEN mem.n = 1 THEN 'exclusivo'
+                                    ELSE 'rateio' END) ORDER BY y.o)
                FROM jsonb_array_elements(coalesce(cli.c->'pessoas', '[]'::jsonb)) WITH ORDINALITY y(p, o)
                JOIN mem ON mem.membro_id = (y.p->>'membro_id')::bigint), '[]'::jsonb)) AS c
       FROM cli
@@ -165,6 +186,8 @@ REVOKE ALL ON FUNCTION public.actor_cliente_ids(uuid, uuid) FROM PUBLIC, anon, a
 GRANT EXECUTE ON FUNCTION public.actor_cliente_ids(uuid, uuid) TO service_role;
 REVOKE ALL ON FUNCTION public._financeiro_exigir_clientes(uuid, uuid, bigint[]) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public._financeiro_exigir_clientes(uuid, uuid, bigint[]) TO service_role;
+REVOKE ALL ON FUNCTION public._financeiro_status_muda(uuid, bigint, date, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public._financeiro_status_muda(uuid, bigint, date, text) TO service_role;
 REVOKE ALL ON FUNCTION public._financeiro_filtrar_clientes(jsonb, bigint[]) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public._financeiro_filtrar_clientes(jsonb, bigint[]) TO service_role;
 
@@ -285,9 +308,14 @@ BEGIN
   IF public.has_permission('financeiro', 'editar') IS NOT TRUE THEN
     RAISE EXCEPTION 'financial_access_denied' USING ERRCODE = '42501';
   END IF;
-  -- [escopo]
+  -- [escopo] cliente da linha acessível; mudar o status (ativo, pausado,
+  -- encerrado) muda o rateio dos membros dele nos outros clientes: só quem vê
+  -- todos. Valor e dia de pagamento só mexem no cliente dele.
   IF NOT (SELECT public.my_client_scope_all()) THEN
     PERFORM public._financeiro_exigir_clientes(auth.uid(), v_conta, ARRAY[p_cliente_id]);
+    IF public._financeiro_status_muda(v_conta, p_cliente_id, p_vale_desde, p_status) THEN
+      PERFORM public._financeiro_exigir_clientes(auth.uid(), v_conta, NULL);
+    END IF;
   END IF;
   PERFORM public._financeiro_cliente_salvar_core(
     v_conta, auth.uid(), p_cliente_id, p_vale_desde, p_valor_mensal, p_dia_pagamento, p_status);
@@ -312,13 +340,11 @@ BEGIN
   IF public.has_permission('financeiro', 'editar') IS NOT TRUE THEN
     RAISE EXCEPTION 'financial_access_denied' USING ERRCODE = '42501';
   END IF;
-  -- [escopo] todo cliente_id das mudanças; o que não for id vira NULL e recusa
+  -- [escopo] atribuir ou tirar um membro de um cliente muda o rateio dele em
+  -- todos os outros clientes, inclusive os ocultos: só quem vê todos, mesmo
+  -- que a mudança seja num cliente dele
   IF NOT (SELECT public.my_client_scope_all()) THEN
-    PERFORM public._financeiro_exigir_clientes(auth.uid(), v_conta, (
-      SELECT coalesce(array_agg(CASE WHEN e->>'cliente_id' ~ '^[0-9]{1,18}$' THEN (e->>'cliente_id')::bigint END),
-                      '{}'::bigint[])
-        FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p_mudancas) = 'array' THEN p_mudancas
-                                       ELSE '[]'::jsonb END) e));
+    PERFORM public._financeiro_exigir_clientes(auth.uid(), v_conta, NULL);
   END IF;
   PERFORM public._financeiro_atribuicoes_salvar_core(v_conta, auth.uid(), p_vale_desde, p_mudancas);
 END;
@@ -704,5 +730,128 @@ BEGIN
   END IF;
 
   RETURN NEW;
+END;
+$function$;
+
+-- -------------------------------------------------------------
+-- 6. Status do cliente pelo caminho legado (UPDATE em clientes)
+-- -------------------------------------------------------------
+-- Mesma definição de 20261027000005 (pg_get_functiondef) + "[escopo]".
+CREATE OR REPLACE FUNCTION public._financeiro_v2_legado_trigger()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_inicio     date;
+  v_dia        smallint;
+  v_valor      numeric;
+  v_status     text;
+  v_achou      boolean;
+  v_cur_valor  numeric;
+  v_cur_dia    smallint;
+  v_cur_status text;
+  v_cur_id     bigint;
+  v_cur_modelo text;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.financeiro_config c
+                  WHERE c.conta_id = NEW.conta_id AND c.seeded_at IS NOT NULL) THEN
+    RETURN NULL;
+  END IF;
+  -- shared, before reading the latest aberto period: waits for a running roll /
+  -- reabrir / fechar of this workspace (exclusive, same key). Unseeded workspaces
+  -- (most legacy writes) never take it.
+  PERFORM pg_advisory_xact_lock_shared(public._financeiro_lock_key(NEW.conta_id));
+  SELECT p.inicio INTO v_inicio FROM public.financeiro_periodos p
+   WHERE p.conta_id = NEW.conta_id AND p.status = 'aberto' ORDER BY p.inicio DESC LIMIT 1;
+  IF v_inicio IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  v_dia := CASE WHEN NEW.data_pagamento BETWEEN 1 AND 31 THEN NEW.data_pagamento END;
+
+  IF TG_TABLE_NAME = 'clientes' THEN
+    v_valor := greatest(round(coalesce(NEW.valor_mensal, 0), 2), 0);
+    v_status := CASE WHEN NEW.status IN ('ativo', 'pausado', 'encerrado') THEN NEW.status ELSE 'ativo' END;
+
+    SELECT cv.valor_mensal, cv.dia_pagamento, cv.status
+      INTO v_cur_valor, v_cur_dia, v_cur_status
+      FROM public.financeiro_cliente_versoes cv
+     WHERE cv.conta_id = NEW.conta_id AND cv.cliente_id = NEW.id AND cv.vale_desde <= v_inicio
+     ORDER BY cv.vale_desde DESC LIMIT 1;
+    v_achou := FOUND;
+    IF v_achou AND v_cur_valor = v_valor AND v_cur_dia IS NOT DISTINCT FROM v_dia AND v_cur_status = v_status THEN
+      RETURN NULL;
+    END IF;
+    -- [escopo] mudar o status do cliente (UPDATE direto em clientes) muda o rateio
+    -- dos membros nos outros clientes: só quem vê todos, como em
+    -- financeiro_cliente_salvar. Valor e dia seguem. Cron e service role
+    -- (auth.uid() NULL) passam em my_client_scope_all().
+    IF (NOT v_achou OR v_cur_status IS DISTINCT FROM v_status)
+       AND NOT public.my_client_scope_all() THEN
+      RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';
+    END IF;
+
+    INSERT INTO public.financeiro_cliente_versoes
+      (conta_id, cliente_id, vale_desde, valor_mensal, dia_pagamento, status, created_by)
+    VALUES (NEW.conta_id, NEW.id, v_inicio, v_valor, v_dia, v_status, auth.uid())
+    ON CONFLICT (cliente_id, vale_desde) DO UPDATE
+       SET valor_mensal = EXCLUDED.valor_mensal,
+           dia_pagamento = EXCLUDED.dia_pagamento,
+           status = EXCLUDED.status,
+           created_by = EXCLUDED.created_by;
+
+    IF v_status = 'encerrado' THEN
+      PERFORM public._financeiro_encerrar_atribuicoes(NEW.conta_id, NEW.id, v_inicio);
+    END IF;
+    RETURN NULL;
+  END IF;
+
+  -- membros
+  SELECT av.id, av.modelo, av.valor, av.dia_pagamento
+    INTO v_cur_id, v_cur_modelo, v_cur_valor, v_cur_dia
+    FROM public.financeiro_acordo_versoes av
+   WHERE av.conta_id = NEW.conta_id AND av.membro_id = NEW.id AND av.vale_desde <= v_inicio
+   ORDER BY av.vale_desde DESC LIMIT 1;
+  v_achou := FOUND;
+
+  IF NOT v_achou THEN
+    INSERT INTO public.financeiro_acordo_versoes
+      (conta_id, membro_id, vale_desde, funcao_id, modelo, valor, dia_pagamento, created_by)
+    VALUES (NEW.conta_id, NEW.id, v_inicio,
+            (SELECT f.id FROM public.financeiro_funcoes f
+              WHERE f.conta_id = NEW.conta_id
+                AND public._financeiro_normalizar(f.nome) = public._financeiro_normalizar(NEW.cargo)
+              ORDER BY f.ordem, f.id LIMIT 1),
+            'mensal_meta',
+            greatest(round(coalesce(NEW.custo_mensal, 0), 2), 0),
+            v_dia,
+            auth.uid())
+    ON CONFLICT (membro_id, vale_desde) DO NOTHING;
+    RETURN NULL;
+  END IF;
+
+  IF v_cur_modelo = 'por_entrega' THEN
+    v_valor := v_cur_valor;
+  ELSE
+    v_valor := greatest(round(coalesce(NEW.custo_mensal, 0), 2), 0);
+  END IF;
+  IF v_cur_valor = v_valor AND v_cur_dia IS NOT DISTINCT FROM v_dia THEN
+    RETURN NULL;
+  END IF;
+
+  INSERT INTO public.financeiro_acordo_versoes
+    (conta_id, membro_id, vale_desde, funcao_id, modelo, valor, unidade, meta_quantidade, meta_periodo,
+     limite_clientes, dia_pagamento, vigencia_inicio, vigencia_fim, arquivo_path, created_by)
+  SELECT av.conta_id, av.membro_id, v_inicio, av.funcao_id, av.modelo, v_valor, av.unidade, av.meta_quantidade,
+         av.meta_periodo, av.limite_clientes, v_dia, av.vigencia_inicio, av.vigencia_fim, av.arquivo_path, auth.uid()
+    FROM public.financeiro_acordo_versoes av
+   WHERE av.id = v_cur_id
+  ON CONFLICT (membro_id, vale_desde) DO UPDATE
+     SET valor = EXCLUDED.valor,
+         dia_pagamento = EXCLUDED.dia_pagamento,
+         created_by = EXCLUDED.created_by;
+  RETURN NULL;
 END;
 $function$;
