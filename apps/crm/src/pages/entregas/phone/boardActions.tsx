@@ -30,6 +30,8 @@ export interface PhoneBoardActions {
     forward: (entity: PostEntity) => void;
     revert: (entity: PostEntity) => void;
     removeProcess: (entity: PostEntity) => void;
+    /** false hides "Encerrar processo" for that post (acesso por cliente). */
+    canRemoveProcess?: (entity: PostEntity) => boolean;
     duplicate?: (entity: PostEntity) => void;
     remove?: (entity: PostEntity) => void;
   };

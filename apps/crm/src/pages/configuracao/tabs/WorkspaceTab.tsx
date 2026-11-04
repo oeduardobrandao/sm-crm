@@ -19,6 +19,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useAuth } from '../../../context/AuthContext';
+import { isClientScoped } from '@/lib/permissions';
 import { supabase } from '../../../lib/supabase';
 import { getCurrentWorkspace, updateWorkspace } from '../../../store';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
@@ -27,7 +28,10 @@ import { WorkspacePhone } from './phone/WorkspacePhone';
 /** Workspace identity (name + logo) and the Instagram auto-sync switch. */
 export default function WorkspaceTab() {
   const { t } = useTranslation('settings');
-  const { profile, can } = useAuth();
+  const { profile, can, membership } = useAuth();
+  // Acesso por cliente: the import wizard creates clients, which a restricted member
+  // never does, so its entry is hidden for them.
+  const showImport = !isClientScoped(membership);
   const isPhone = !useIsDesktop(768);
   const queryClient = useQueryClient();
   // The `configuracoes` tab itself is already gated on `configuracoes:ver`
@@ -193,6 +197,7 @@ export default function WorkspaceTab() {
           logoBusy={wsLogoLoading}
           onPickLogo={() => logoInputRef.current?.click()}
           onRemoveLogo={handleRemoveLogo}
+          showImport={showImport}
           autoSync={
             (igAccounts ?? []).length > 0
               ? { enabled: autoSyncEnabled, onChange: handleAutoSyncToggle }
@@ -294,19 +299,21 @@ export default function WorkspaceTab() {
       )}
 
       {/* Import Wizard */}
-      <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-        <h3 className="config-title">{t('workspace.importTitle')}</h3>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>
-          {t('workspace.importBody')}
-        </p>
-        {/* Button + asChild rather than `className="btn-secondary"` on the Link:
+      {showImport && (
+        <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+          <h3 className="config-title">{t('workspace.importTitle')}</h3>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>
+            {t('workspace.importBody')}
+          </p>
+          {/* Button + asChild rather than `className="btn-secondary"` on the Link:
             btn-secondary is the legacy style.css class, which renders a bare
             bordered box that matches nothing else on this screen. Every other
             action in this tab uses <Button>, so this one does too. */}
-        <Button asChild>
-          <Link to="/importar">{t('workspace.importOpen')}</Link>
-        </Button>
-      </div>
+          <Button asChild>
+            <Link to="/importar">{t('workspace.importOpen')}</Link>
+          </Button>
+        </div>
+      )}
 
       {/* Remove Logo Confirm */}
       <AlertDialog open={removeLogoOpen} onOpenChange={setRemoveLogoOpen}>

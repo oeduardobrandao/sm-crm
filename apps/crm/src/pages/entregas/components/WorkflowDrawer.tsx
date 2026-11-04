@@ -147,6 +147,7 @@ import {
   VISIBILITY_BADGE_LABEL,
 } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
+import { useClienteContexto } from '@/hooks/useClienteContexto';
 import {
   canonicalOfStatusKey,
   statusChangeNeedsConfirm,
@@ -188,6 +189,7 @@ import '../phone/fluxoSheet.css';
 import { useIsPhoneEditor } from './postEditorPhone/useIsPhoneEditor';
 import { PhoneEditorScreen, type PhoneEditorScreenApi } from './postEditorPhone/PhoneEditorScreen';
 import type { PhoneMenuAction } from './postEditorPhone/types';
+import { scopeErrorOr } from '@/lib/client-scope-errors';
 
 // Stable empty array so the fallback in `useQuery({ data: processEvents = ... })` never
 // changes identity across renders when the flag is off or the query hasn't resolved yet.
@@ -539,6 +541,10 @@ export function WorkflowDrawer({
   const { byPost: discussaoByPost } = usePostDiscussaoNaoLidas({ postIds });
 
   const clienteId = card.workflow.cliente_id;
+  // Acesso por cliente: a restricted member's own post can sit in a client outside their
+  // scope, which then is not in the visible clients list behind `card.cliente`.
+  const clienteContexto = useClienteContexto(clienteId, !card.cliente);
+  const clienteNome = card.cliente?.nome ?? clienteContexto?.nome;
 
   // Reuses the same ['clientePosts', clienteId] key as WorkflowCalendarView, so opening the
   // calendar first turns this into a cache hit instead of a new round trip. Feeds the
@@ -600,8 +606,8 @@ export function WorkflowDrawer({
       try {
         await reorderWorkflowPosts(newIds.map((id, ordem) => ({ id, ordem })));
         qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', workflowId] });
-      } catch {
-        toast.error(t('workflowDrawer.reorderError'));
+      } catch (err) {
+        toast.error(scopeErrorOr(err, t('workflowDrawer.reorderError')));
         setLocalOrder(null);
       }
     },
@@ -673,8 +679,8 @@ export function WorkflowDrawer({
         const updated = await updateWorkflowPost(id, statusKeyToPatch(key));
         refresh();
         maybeNudge(updated);
-      } catch {
-        toast.error(t('workflowDrawer.updateError'));
+      } catch (err) {
+        toast.error(scopeErrorOr(err, t('workflowDrawer.updateError')));
       }
       return;
     }
@@ -682,8 +688,8 @@ export function WorkflowDrawer({
       await updateWorkflowPost(id, { [field]: value } as Partial<WorkflowPost>);
       refresh();
       return true;
-    } catch {
-      toast.error(t('workflowDrawer.updateError'));
+    } catch (err) {
+      toast.error(scopeErrorOr(err, t('workflowDrawer.updateError')));
       return false;
     }
   };
@@ -697,8 +703,8 @@ export function WorkflowDrawer({
       const updated = await updateWorkflowPost(id, statusKeyToPatch(newStatusKey));
       refresh();
       maybeNudge(updated);
-    } catch {
-      toast.error(t('workflowDrawer.statusError'));
+    } catch (err) {
+      toast.error(scopeErrorOr(err, t('workflowDrawer.statusError')));
     }
   };
 
@@ -864,7 +870,7 @@ export function WorkflowDrawer({
 
   const mediaNotesFor = (postId: number | undefined): MediaNotesBinding => ({
     notes: mediaNotes.filter((n) => n.post_id === postId),
-    clientName: card.cliente?.nome,
+    clientName: clienteNome,
     onChanged: refreshMediaNotes,
     onReply: async (noteId, body) => {
       await replyToMediaNote(noteId, body);
@@ -1066,7 +1072,7 @@ export function WorkflowDrawer({
       try {
         await saveIgCaption(postId, text, anchors);
       } catch (err) {
-        toast.error(t('workflowDrawer.updateError'));
+        toast.error(scopeErrorOr(err, t('workflowDrawer.updateError')));
         throw err;
       }
       await refetchComments();
@@ -1215,7 +1221,7 @@ export function WorkflowDrawer({
           <FluxoPhoneHeader
             workflowId={workflowId}
             title={card.workflow.titulo}
-            clienteNome={card.cliente?.nome}
+            clienteNome={clienteNome}
             etapaNome={card.etapa.nome}
             readyToSend={readyToSend}
             isSending={isSending}
@@ -1231,7 +1237,7 @@ export function WorkflowDrawer({
             <div className="drawer-header-info">
               <div className="drawer-header-title">{card.workflow.titulo}</div>
               <div className="drawer-header-subtitle">
-                {card.cliente?.nome || '—'} &bull;{' '}
+                {clienteNome || '—'} &bull;{' '}
                 {t('workflowDrawer.stageLabel', { name: card.etapa.nome })}
               </div>
             </div>
@@ -1322,7 +1328,7 @@ export function WorkflowDrawer({
           {drawerView === 'calendar' ? (
             <WorkflowCalendarView
               clienteId={clienteId}
-              clienteNome={card.cliente?.nome || '—'}
+              clienteNome={clienteNome || '—'}
               currentWorkflowId={workflowId}
               currentWorkflowTitulo={card.workflow.titulo}
               membros={membros}
@@ -1335,7 +1341,7 @@ export function WorkflowDrawer({
               onBack={() => setDrawerView('posts')}
             />
           ) : drawerView === 'grid' ? (
-            <WorkflowGridView clienteId={clienteId} clienteNome={card.cliente?.nome || '—'} />
+            <WorkflowGridView clienteId={clienteId} clienteNome={clienteNome || '—'} />
           ) : drawerView === 'history' ? (
             <WorkflowHistoryView workflowId={workflowId} />
           ) : (
@@ -1583,8 +1589,8 @@ export function WorkflowDrawer({
               layout="phone"
               phone={{
                 onBack: () => setExpandedId(null),
-                subtitle: `${card.cliente?.nome || '—'} · ${card.workflow.titulo}`,
-                clientName: card.cliente?.nome,
+                subtitle: `${clienteNome || '—'} · ${card.workflow.titulo}`,
+                clientName: clienteNome,
                 saving: savingIds.has(phoneExpandedPost.id!),
                 menuActions: phoneMenuActions(phoneExpandedPost),
                 sendToClient: {

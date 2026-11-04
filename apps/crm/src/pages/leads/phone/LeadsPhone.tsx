@@ -69,6 +69,8 @@ export interface LeadsPhoneProps {
   sortDir: SortDir;
   onSortDirChange: (value: SortDir) => void;
   canEdit: boolean;
+  /** Converter em cliente. False for a member restricted to assigned clients. */
+  canConvert: boolean;
   atLimit: boolean;
   /** Plan leads in use (the exact server count, list length as fallback). */
   used: number;
@@ -105,6 +107,7 @@ export function LeadsPhone(props: LeadsPhoneProps) {
     sortDir,
     onSortDirChange,
     canEdit,
+    canConvert,
     atLimit,
     used,
     usageLimit,
@@ -347,6 +350,7 @@ export function LeadsPhone(props: LeadsPhoneProps) {
                 lead={l}
                 locale={locale}
                 canEdit={canEdit}
+                canConvert={canConvert}
                 onEdit={onEdit}
                 onConvert={onConvert}
                 onDelete={onDelete}
@@ -407,6 +411,7 @@ function LeadRow({
   lead: l,
   locale,
   canEdit,
+  canConvert,
   onEdit,
   onConvert,
   onDelete,
@@ -415,6 +420,7 @@ function LeadRow({
   lead: Lead;
   locale: string;
   canEdit: boolean;
+  canConvert: boolean;
   onEdit: (l: Lead) => void;
   onConvert: (l: Lead) => void;
   onDelete: (id: number) => void;
@@ -474,11 +480,15 @@ function LeadRow({
             icon: <ChevronRight aria-hidden="true" />,
             onSelect: () => onPickStatus(l),
           },
-          {
-            label: t('convertToClient'),
-            icon: <UserPlus aria-hidden="true" />,
-            onSelect: () => onConvert(l),
-          },
+          ...(canConvert
+            ? [
+                {
+                  label: t('convertToClient'),
+                  icon: <UserPlus aria-hidden="true" />,
+                  onSelect: () => onConvert(l),
+                },
+              ]
+            : []),
           {
             label: tc('actions.edit'),
             icon: <Edit2 aria-hidden="true" />,
@@ -497,14 +507,18 @@ function LeadRow({
           : [],
       ]}
       moreAction
-      leadingActions={[
-        {
-          label: t('phone.convert'),
-          icon: <UserPlus aria-hidden="true" />,
-          tone: 'success',
-          onAction: () => onConvert(l),
-        },
-      ]}
+      leadingActions={
+        canConvert
+          ? [
+              {
+                label: t('phone.convert'),
+                icon: <UserPlus aria-hidden="true" />,
+                tone: 'success',
+                onAction: () => onConvert(l),
+              },
+            ]
+          : []
+      }
       trailingActions={
         l.id
           ? [

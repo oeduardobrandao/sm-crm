@@ -312,6 +312,14 @@ describe('KanbanView com posts individuais', () => {
     );
   });
 
+  it('canRemoveProcess false esconde "Encerrar processo" daquele post (acesso por cliente)', () => {
+    const a = postEntity(9, 0, 'Post Individual A');
+    const canRemoveProcess = vi.fn((e: PostEntity) => e.id !== a.id);
+    renderBoard([a], vi.fn(), { canRemoveProcess });
+    expect(screen.queryByRole('button', { name: 'Encerrar processo' })).toBeNull();
+    expect(canRemoveProcess).toHaveBeenCalledWith(a);
+  });
+
   it('kebab do post: "Excluir post" chama onDeletePostClick com a entidade', () => {
     const onDeletePostClick = vi.fn();
     const entity = postEntity(9, 0, 'Post Individual A');

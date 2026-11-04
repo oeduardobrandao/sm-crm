@@ -1,6 +1,8 @@
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { AuthContext } from '@/context/AuthContext';
+import { fakeMembership } from '@/test/makeCan';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ImportCollection } from '@mesaas/import-parsers';
@@ -664,5 +666,36 @@ describe('ImportarPage in the Vidro toolbar', () => {
     expect(h1s[0]).toHaveTextContent('Importar dados');
     expect(h1s[0].closest('.vidro-toolbar')).toBeNull();
     expect(document.querySelector('.vidro-toolbar')).toBeNull();
+  });
+});
+
+describe('ImportarPage — membro restrito a clientes atribuídos', () => {
+  function renderWithScope(clientScope: 'todos' | 'atribuidos') {
+    const membership = fakeMembership({ role: 'admin', client_scope: clientScope });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <AuthContext.Provider value={{ membership } as never}>
+          <MemoryRouter initialEntries={['/importar']}>
+            <Routes>
+              <Route path="/importar" element={<ImportarPage />} />
+              <Route path="/clientes" element={<div>pagina de clientes</div>} />
+            </Routes>
+          </MemoryRouter>
+        </AuthContext.Provider>
+      </QueryClientProvider>,
+    );
+  }
+
+  test('a deep link redirects a restricted member to /clientes', async () => {
+    renderWithScope('atribuidos');
+    expect(await screen.findByText('pagina de clientes')).toBeInTheDocument();
+    expect(getClientes).not.toHaveBeenCalled();
+  });
+
+  test('todos_unchanged: an unscoped member gets the wizard', async () => {
+    renderWithScope('todos');
+    await waitFor(() => expect(getClientes).toHaveBeenCalled());
+    expect(screen.queryByText('pagina de clientes')).toBeNull();
   });
 });

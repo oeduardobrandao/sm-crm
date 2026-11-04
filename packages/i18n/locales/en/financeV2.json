@@ -68,6 +68,7 @@
     "title": "Finance",
     "navLabel": "Finance sections",
     "configurar": "Settings",
+    "scopedBadge": "Values for your clients",
     "tabs": {
       "rentabilidade": "Profitability",
       "atribuicao": "Team by client",

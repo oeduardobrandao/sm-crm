@@ -11,6 +11,7 @@ import { i18n } from '@mesaas/i18n';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useAuth } from '@/context/AuthContext';
+import { isClientScoped } from '@/lib/permissions';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import {
   AGENDA_QUERY_KEY,
@@ -159,7 +160,7 @@ const inicioDaOcorrencia = (o: AgendaOcorrencia) =>
 
 export default function AgendaTab() {
   const { t } = useTranslation('agenda');
-  const { user, can, canSeeFinancials } = useAuth();
+  const { user, can, canSeeFinancials, membership } = useAuth();
   const meuId = user?.id ?? null;
   // View-only roles never see the create entry points ('unknown' = still resolving).
   const podeCriar = can('calendario', 'editar') === true;
@@ -235,7 +236,13 @@ export default function AgendaTab() {
   const { pedirConfirmacao, dialog: confirmarPagamentoDialog } = useConfirmarPagamento(
     canSeeFinancials ?? 'unknown',
   );
-  const itensCamadas = useCamadas(periodoAtual, camadasAtivas, canSeeFinancials, nichoKey);
+  const itensCamadas = useCamadas(
+    periodoAtual,
+    camadasAtivas,
+    canSeeFinancials,
+    nichoKey,
+    isClientScoped(membership),
+  );
 
   const { data: ocorrencias = [], isFetching } = useQuery({
     queryKey: [

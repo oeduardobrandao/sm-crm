@@ -41,12 +41,14 @@ export function useCamadas(
   ativas: CamadasAtivas,
   canSeeFinancials: FinancialAccess | undefined,
   nichoKey: string,
+  /** Member restricted to assigned clients: `custo_mensal` reads NULL, so no team payments. */
+  clientScoped = false,
 ): CamadaItem[] {
   // Birthday items carry a translated title: rebuild them when the UI language changes.
   const { t } = useTranslation('calendario');
   const financeiro = canSeeFinancials === true;
   const recebimentos = ativas.recebimentos && financeiro;
-  const pagamentos = ativas.pagamentos && financeiro;
+  const pagamentos = ativas.pagamentos && financeiro && !clientScoped;
   const startISO = periodo?.start.toISOString() ?? '';
   const endISO = periodo?.end.toISOString() ?? '';
 

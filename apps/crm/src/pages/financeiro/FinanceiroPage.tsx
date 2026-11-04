@@ -41,6 +41,9 @@ import { PickerCell } from '@/components/mobile/PickerSheet';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { FinanceiroPhone } from './phone/FinanceiroPhone';
+import { FinanceiroScopeBadge } from './v2/FinanceiroScopeBadge';
+import { isClientScoped } from '@/lib/permissions';
+import { useLocation } from 'react-router-dom';
 import { RecorrentesDialog } from './RecorrentesDialog';
 import {
   Select,
@@ -164,7 +167,12 @@ export default function FinanceiroPage() {
   // The form body follows the dialog primitive, which turns into a sheet only inside the
   // phone shell (PhoneLayoutContext), so a dialog rendered elsewhere keeps its fields.
   const { isPhone: phoneForm } = usePhoneLayout();
-  const { canSeeFinancials, profile } = useAuth();
+  const { canSeeFinancials, profile, membership } = useAuth();
+  // Acesso por cliente: under Financeiro v2 this page is the Lançamentos tab, whose layout
+  // already shows the badge in the tab bar; only the legacy v1 page shows its own.
+  const { pathname } = useLocation();
+  const showScopeBadge =
+    isClientScoped(membership) && !/^\/financeiro\/lancamentos\/?$/i.test(pathname);
   const qc = useQueryClient();
   const [filter, setFilter] = useState<FilterType>('todas');
   const [search, setSearch] = useState('');
@@ -214,6 +222,7 @@ export default function FinanceiroPage() {
     membros,
     canSeeFinancials,
     recorrentes,
+    isClientScoped(membership),
   );
   const allTransacoes = projected.filter((tr) => !monthFilter || tr.data.startsWith(monthFilter));
 
@@ -750,9 +759,17 @@ export default function FinanceiroPage() {
     </Button>
   );
   // Toolbar: classic order, Entrada then Saída, both after the shell capsule.
+  const titleAccessory = showScopeBadge ? (
+    <>
+      {infoTooltip}
+      <FinanceiroScopeBadge />
+    </>
+  ) : (
+    infoTooltip
+  );
   const inToolbar = usePageToolbar({
     title: t('shared.title'),
-    titleAccessory: infoTooltip,
+    titleAccessory,
     actions: csvActions,
     primary: (
       <>
@@ -769,6 +786,7 @@ export default function FinanceiroPage() {
           isLoading={isLoading}
           transacoes={filtered}
           canSeeFinancials={canSeeFinancials}
+          clientScoped={showScopeBadge}
           kpis={{ recebido, aReceber, aPagar, saldoAtual, saldoProjetado }}
           filter={filter}
           onFilterChange={setFilter}
@@ -806,7 +824,7 @@ export default function FinanceiroPage() {
             style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
           >
             <h1>{t('shared.title')}</h1>
-            {infoTooltip}
+            {titleAccessory}
           </div>
           <div className="header-actions">
             {csvActions}

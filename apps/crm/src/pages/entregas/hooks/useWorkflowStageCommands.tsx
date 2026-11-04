@@ -25,6 +25,7 @@ import {
 import { ApprovalExitDialog } from '../components/ApprovalExitDialog';
 import { AutoScheduleBatchDialog } from '../components/AutoScheduleBatchDialog';
 import { ForwardConfirmDialog, RevertConfirmDialog } from '../components/WorkflowModals';
+import { scopeErrorOr } from '@/lib/client-scope-errors';
 
 /**
  * Hooks a board passes to keep its optimistic overlays in step with a move. The
@@ -217,7 +218,12 @@ export function useWorkflowStageCommands<Ctx = unknown>(
         onRefresh();
       } catch (err: unknown) {
         onMoveFailed?.(card, ctx);
-        toast.error((err as Error).message || i18n.t('entregasPhone:workflowStage.advanceError'));
+        toast.error(
+          scopeErrorOr(
+            err,
+            (err as Error).message || i18n.t('entregasPhone:workflowStage.advanceError'),
+          ),
+        );
       }
     },
     [onRefresh, onBeforeMove, onMoveSucceeded, onMoveFailed, handleRecurringOrToast],
@@ -315,7 +321,12 @@ export function useWorkflowStageCommands<Ctx = unknown>(
       onRefresh();
     } catch (err: unknown) {
       onMoveFailed?.(card ?? revertTarget, ctx);
-      toast.error((err as Error).message || i18n.t('entregasPhone:workflowStage.revertError'));
+      toast.error(
+        scopeErrorOr(
+          err,
+          (err as Error).message || i18n.t('entregasPhone:workflowStage.revertError'),
+        ),
+      );
     }
     setRevertTarget(null);
   };

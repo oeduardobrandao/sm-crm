@@ -32,6 +32,7 @@ vi.mock('../../../store', async (importOriginal) => ({
 }));
 
 import FinanceiroPage from '../FinanceiroPage';
+import { fakeMembership } from '@/test/makeCan';
 
 const now = new Date();
 const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -377,5 +378,30 @@ describe('FinanceiroPage on phones', () => {
     const sheet = await screen.findByRole('dialog', { name: 'Adicionar' });
     expect(within(sheet).queryByRole('button', { name: 'Recorrentes' })).toBeNull();
     expect(store.getRecorrentes).not.toHaveBeenCalled();
+  });
+});
+
+describe('FinanceiroPage on phones — membro restrito', () => {
+  it('financeiro_badge_when_restricted: shows the badge under the page header', async () => {
+    useAuthMock.mockReturnValue({
+      canSeeFinancials: true,
+      profile: { conta_id: 'w1' },
+      membership: fakeMembership({
+        role: 'admin',
+        can_see_financials: true,
+        client_scope: 'atribuidos',
+      }),
+    });
+    renderPage();
+
+    expect(await screen.findByText('Clínica Sol')).toBeInTheDocument();
+    expect(screen.getByText('Valores dos seus clientes')).toBeInTheDocument();
+  });
+
+  it('todos_unchanged: no badge for an unscoped member', async () => {
+    renderPage();
+
+    expect(await screen.findByText('Clínica Sol')).toBeInTheDocument();
+    expect(screen.queryByText('Valores dos seus clientes')).toBeNull();
   });
 });

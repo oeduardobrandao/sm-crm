@@ -67,15 +67,15 @@ import {
   type EtapaFormData,
   type ModoPrazo,
 } from './SortableEtapaList';
+import { scopeErrorOr } from '@/lib/client-scope-errors';
 
 // ---- Edit Workflow Modal ----
 // feature_disabled:feature_multiplatform (quadro {geral} num workspace sem a flag)
 // e demais erros de plano viram texto legível em vez do código do banco.
 function saveErrorMessage(err: unknown): string {
   const entitlement = mapEntitlementError(err);
-  return entitlement
-    ? entitlementMessage(entitlement)
-    : (err as Error).message || i18n.t('workflows:shared.genericError');
+  if (entitlement) return entitlementMessage(entitlement);
+  return scopeErrorOr(err, (err as Error).message || i18n.t('workflows:shared.genericError'));
 }
 
 export function EditWorkflowModal({

@@ -115,6 +115,9 @@ interface KanbanViewBaseProps {
   onDuplicateWorkflowClick?: (card: BoardCard, postsCount: number | null) => void;
   /** "Duplicar post" no kebab do card de post individual. */
   onDuplicatePostClick?: (entity: PostEntity) => void;
+  /** false esconde "Encerrar processo" daquele post (acesso por cliente: post do
+   *  próprio membro num cliente fora do escopo dele, onde remove_post_process é recusado). */
+  canRemoveProcess?: (entity: PostEntity) => boolean;
   /** Quick-add: opens the new-workflow wizard preloaded with the row's template. */
   onAddWorkflow?: (templateId: number | null) => void;
   /** Opens the existing "Gerenciar Templates" modal from the board's trailing "+" tab. */
@@ -481,6 +484,7 @@ export function KanbanView({
   onDeletePostClick,
   onDuplicateWorkflowClick,
   onDuplicatePostClick,
+  canRemoveProcess,
   membros,
   templates,
   postsCounts,
@@ -1253,6 +1257,7 @@ export function KanbanView({
             canRevert: (entity) => previousStepOf(entity.process) != null,
             revert: (entity) => commands.voltar(targetOf(entity)),
             removeProcess: (entity) => commands.remover(targetOf(entity)),
+            canRemoveProcess,
             duplicate: onDuplicatePostClick,
             remove: onDeletePostClick,
           }}
@@ -1416,7 +1421,11 @@ export function KanbanView({
                                 : commands.avancar(targetOf(entity))
                             }
                             onRevertClick={() => commands.voltar(targetOf(entity))}
-                            onRemoveProcessClick={() => commands.remover(targetOf(entity))}
+                            onRemoveProcessClick={
+                              canRemoveProcess?.(entity) === false
+                                ? undefined
+                                : () => commands.remover(targetOf(entity))
+                            }
                             onDeleteClick={
                               onDeletePostClick ? () => onDeletePostClick(entity) : undefined
                             }

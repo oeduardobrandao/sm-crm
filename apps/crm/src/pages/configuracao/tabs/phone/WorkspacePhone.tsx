@@ -23,6 +23,8 @@ export interface WorkspacePhoneProps {
   /** Opens the file picker (the hidden input stays in WorkspaceTab). */
   onPickLogo: () => void;
   onRemoveLogo: () => void;
+  /** False for a member restricted to assigned clients: the import wizard link is hidden. */
+  showImport: boolean;
   /** Null when no Instagram account is connected: the switch isn't shown. */
   autoSync: { enabled: boolean; onChange: (checked: boolean) => void } | null;
 }
@@ -109,14 +111,16 @@ export function WorkspacePhone(props: WorkspacePhoneProps) {
         </GroupedList>
       )}
 
-      <GroupedList header={t('workspace.importTitle')} footer={t('workspace.importBody')}>
-        <Cell
-          label={t('workspace.importOpen')}
-          icon={<Upload />}
-          iconColor="#007aff"
-          to="/importar"
-        />
-      </GroupedList>
+      {props.showImport && (
+        <GroupedList header={t('workspace.importTitle')} footer={t('workspace.importBody')}>
+          <Cell
+            label={t('workspace.importOpen')}
+            icon={<Upload />}
+            iconColor="#007aff"
+            to="/importar"
+          />
+        </GroupedList>
+      )}
 
       <ActionSheet
         open={logoMenuOpen}

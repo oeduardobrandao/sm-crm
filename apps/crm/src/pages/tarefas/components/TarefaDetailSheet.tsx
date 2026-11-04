@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useClienteContexto } from '@/hooks/useClienteContexto';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { useIntlLocale } from '@mesaas/i18n';
@@ -106,6 +107,10 @@ export function TarefaDetailSheet({
   const [newSubtarefa, setNewSubtarefa] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const now = new Date();
+  // Acesso por cliente: a restricted member's own task can sit in a client outside their
+  // scope, whose embed then comes back empty (RLS); ask for the client's identity.
+  const clienteContexto = useClienteContexto(tarefa.cliente_id, !tarefa.cliente_nome);
+  const clienteNome = tarefa.cliente_nome || clienteContexto?.nome || null;
 
   // Body view, reset whenever another task is shown in the same mounted sheet.
   const [navState, setNavState] = useState<SheetNav>({
@@ -270,6 +275,7 @@ export function TarefaDetailSheet({
       <TarefaDetailPhone
         open={open}
         tarefa={tarefa}
+        clienteNome={clienteNome}
         membros={membros}
         subtarefas={subtarefas}
         serie={serie}
@@ -576,12 +582,12 @@ export function TarefaDetailSheet({
                 </div>
               )}
 
-              {tarefa.cliente_nome && (
+              {clienteNome && (
                 <div className="flex items-center gap-2">
                   <span className="text-xs w-24 shrink-0" style={{ color: 'var(--text-muted)' }}>
                     {t('detail.client')}
                   </span>
-                  <span className="text-sm">{tarefa.cliente_nome}</span>
+                  <span className="text-sm">{clienteNome}</span>
                 </div>
               )}
             </div>

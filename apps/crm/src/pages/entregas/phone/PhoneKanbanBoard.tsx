@@ -49,6 +49,8 @@ export interface PhoneKanbanPostActions {
   canRevert: (entity: PostEntity) => boolean;
   revert: (entity: PostEntity) => void;
   removeProcess: (entity: PostEntity) => void;
+  /** false hides "Encerrar processo" for that post (acesso por cliente). */
+  canRemoveProcess?: (entity: PostEntity) => boolean;
   duplicate?: (entity: PostEntity) => void;
   remove?: (entity: PostEntity) => void;
 }
@@ -203,7 +205,9 @@ export function PhoneKanbanBoard({
           forwardLabel={post.forwardLabel(entity)}
           canRevert={post.canRevert(entity)}
           onRevert={() => post.revert(entity)}
-          onRemoveProcess={() => post.removeProcess(entity)}
+          onRemoveProcess={
+            post.canRemoveProcess?.(entity) === false ? undefined : () => post.removeProcess(entity)
+          }
           onDuplicate={post.duplicate ? () => post.duplicate!(entity) : undefined}
           onDelete={post.remove ? () => post.remove!(entity) : undefined}
           preview={

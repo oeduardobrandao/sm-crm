@@ -33,6 +33,8 @@ export interface TarefaDetailPhoneProps {
    *  the screen is mounted (useOverlayHistoryEntry never pops on unmount). */
   open: boolean;
   tarefa: TarefaWithRelations;
+  /** Client name to show: the embed's, or the context RPC's for a hidden client. */
+  clienteNome: string | null;
   membros: Membro[];
   subtarefas: Subtarefa[];
   serie: TarefaSerieResumo | null;
@@ -106,6 +108,7 @@ export function TarefaDetailPhone(p: TarefaDetailPhoneProps) {
 
 function DetailBody({
   tarefa,
+  clienteNome,
   membros,
   subtarefas,
   serie,
@@ -225,7 +228,7 @@ function DetailBody({
             aria-haspopup="dialog"
             onClick={() => setPrazoOpen(true)}
           />
-          {tarefa.cliente_nome && <Cell label={t('detail.client')} value={tarefa.cliente_nome} />}
+          {clienteNome && <Cell label={t('detail.client')} value={clienteNome} />}
         </GroupedList>
 
         {serie && estado && (

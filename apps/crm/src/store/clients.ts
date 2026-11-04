@@ -114,6 +114,28 @@ export async function getCliente(id: number): Promise<Cliente | null> {
   return data;
 }
 
+/** Identity of a client, enough to label an item that belongs to it. */
+export interface ClienteContexto {
+  id: number;
+  nome: string;
+  sigla: string | null;
+  cor: string | null;
+  foto_url: string | null;
+}
+
+/**
+ * Acesso por cliente: identity of a client the caller may not list but has an item of
+ * (a post or task assigned to them in a client outside their scope). The RPC returns a
+ * row only when the caller may see that client's context, so `null` means "not yours".
+ * Throws on error; the caller decides how to degrade.
+ */
+export async function getClienteContexto(id: number): Promise<ClienteContexto | null> {
+  const { data, error } = await supabase.rpc('get_cliente_contexto', { p_cliente_id: id });
+  if (error) throw error;
+  const row = (Array.isArray(data) ? data[0] : data) as ClienteContexto | null | undefined;
+  return row ?? null;
+}
+
 export async function getClientes(): Promise<Cliente[]> {
   const all: Cliente[] = [];
   for (let from = 0; ; ) {

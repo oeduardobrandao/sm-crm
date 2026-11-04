@@ -33,6 +33,7 @@ import type { PostEntity } from '../boardEntity';
 import { WorkflowHistoryView } from '../components/WorkflowHistoryView';
 import { workflowForwardLabel } from './phoneFormat';
 import './entregasPhone.css';
+import { scopeErrorOr } from '@/lib/client-scope-errors';
 
 type MenuChildren = (api: { triggerProps: ContextMenuTriggerProps }) => ReactNode;
 
@@ -213,8 +214,8 @@ function AssignResponsavelSheet({
       await updateWorkflowEtapa(card.etapa.id!, { responsavel_id: m.id });
       toast.success(i18n.t('entregasPhone:menus.responsavelUpdated'));
       onRefresh?.();
-    } catch {
-      toast.error(i18n.t('entregasPhone:menus.updateError'));
+    } catch (err) {
+      toast.error(scopeErrorOr(err, i18n.t('entregasPhone:menus.updateError')));
     }
   };
   return (

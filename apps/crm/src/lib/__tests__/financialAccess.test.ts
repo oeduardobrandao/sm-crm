@@ -42,6 +42,9 @@ describe('deriveFinancialAccess', () => {
       can_see_financials: false,
       role_id: null,
       permissions: null,
+      client_scope: 'todos',
+      client_scope_rev: 0,
+      cliente_ids: [],
     };
     expect(deriveFinancialAccess(membership)).toBe(true);
   });
@@ -52,6 +55,9 @@ describe('deriveFinancialAccess', () => {
       can_see_financials: true,
       role_id: null,
       permissions: null,
+      client_scope: 'todos',
+      client_scope_rev: 0,
+      cliente_ids: [],
     };
     expect(deriveFinancialAccess(membership)).toBe(true);
   });
@@ -62,6 +68,9 @@ describe('deriveFinancialAccess', () => {
       can_see_financials: true,
       role_id: null,
       permissions: null,
+      client_scope: 'todos',
+      client_scope_rev: 0,
+      cliente_ids: [],
     };
     expect(deriveFinancialAccess(membership)).toBe(true);
   });
@@ -72,6 +81,9 @@ describe('deriveFinancialAccess', () => {
       can_see_financials: false,
       role_id: null,
       permissions: null,
+      client_scope: 'todos',
+      client_scope_rev: 0,
+      cliente_ids: [],
     };
     expect(deriveFinancialAccess(membership)).toBe(false);
   });
@@ -82,6 +94,9 @@ describe('deriveFinancialAccess', () => {
       can_see_financials: true,
       role_id: null,
       permissions: null,
+      client_scope: 'todos',
+      client_scope_rev: 0,
+      cliente_ids: [],
     };
     expect(deriveFinancialAccess(membership)).toBe(false);
   });
@@ -92,6 +107,9 @@ describe('deriveFinancialAccess', () => {
       can_see_financials: false,
       role_id: null,
       permissions: null,
+      client_scope: 'todos',
+      client_scope_rev: 0,
+      cliente_ids: [],
     };
     expect(deriveFinancialAccess(membership)).toBe(false);
   });
@@ -116,6 +134,9 @@ describe('deriveFinancialAccess', () => {
       can_see_financials: true,
       role_id: 'role-1',
       permissions: {},
+      client_scope: 'todos',
+      client_scope_rev: 0,
+      cliente_ids: [],
     };
     expect(deriveFinancialAccess(membership)).toBe(false);
   });

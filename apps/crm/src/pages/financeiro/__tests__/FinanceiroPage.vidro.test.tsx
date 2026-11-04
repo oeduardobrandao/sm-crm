@@ -31,6 +31,7 @@ vi.mock('../../../store', async (importOriginal) => ({
 }));
 
 import FinanceiroPage from '../FinanceiroPage';
+import { fakeMembership } from '@/test/makeCan';
 
 function renderPage(vidroShell: boolean) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -100,5 +101,70 @@ describe('FinanceiroPage in the Vidro toolbar', () => {
       ?.querySelector('.vidro-toolbar-right') as HTMLElement;
     const labels = Array.from(right.querySelectorAll('button')).map((b) => b.textContent?.trim());
     expect(labels.slice(-3)).toEqual(['Importar CSV', 'Entrada', 'Saída']);
+  });
+});
+
+describe('FinanceiroPage (v1) — membro restrito', () => {
+  const BADGE = 'Valores dos seus clientes';
+
+  function renderAt(path: string, vidroShell: boolean) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={[path]}>
+          <VidroToolbarHarness vidroShell={vidroShell}>
+            <FinanceiroPage />
+          </VidroToolbarHarness>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  const scoped = () => ({
+    canSeeFinancials: true,
+    profile: { conta_id: 'w1' },
+    membership: fakeMembership({
+      role: 'admin',
+      can_see_financials: true,
+      client_scope: 'atribuidos',
+    }),
+  });
+
+  it('financeiro_badge_when_restricted: shows the badge in the toolbar', async () => {
+    useAuthMock.mockReturnValue(scoped());
+    renderAt('/financeiro', true);
+
+    const h1 = await screen.findByRole('heading', { level: 1, name: 'Financeiro' });
+    const toolbar = h1.closest('.vidro-toolbar') as HTMLElement;
+    expect(within(toolbar).getByText(BADGE)).toBeInTheDocument();
+    expect(screen.getAllByText(BADGE)).toHaveLength(1);
+  });
+
+  it('financeiro_badge_when_restricted: shows the badge in the in-page header', async () => {
+    useAuthMock.mockReturnValue(scoped());
+    renderAt('/financeiro', false);
+
+    const h1 = await screen.findByRole('heading', { level: 1, name: 'Financeiro' });
+    expect(within(h1.closest('.header') as HTMLElement).getByText(BADGE)).toBeInTheDocument();
+  });
+
+  it('leaves the badge to the v2 layout on /financeiro/lancamentos (no duplicate)', async () => {
+    useAuthMock.mockReturnValue(scoped());
+    renderAt('/financeiro/lancamentos', false);
+
+    await screen.findByRole('heading', { level: 1, name: 'Financeiro' });
+    expect(screen.queryByText(BADGE)).toBeNull();
+  });
+
+  it('todos_unchanged: no badge for an unscoped member', async () => {
+    useAuthMock.mockReturnValue({
+      canSeeFinancials: true,
+      profile: { conta_id: 'w1' },
+      membership: fakeMembership({ role: 'admin', can_see_financials: true }),
+    });
+    renderAt('/financeiro', false);
+
+    await screen.findByRole('heading', { level: 1, name: 'Financeiro' });
+    expect(screen.queryByText(BADGE)).toBeNull();
   });
 });

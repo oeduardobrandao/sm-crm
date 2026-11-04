@@ -81,6 +81,16 @@ describe('mapEntitlementError keys with digits', () => {
     });
   });
 
+  it('labels feature_acesso_por_cliente', () => {
+    expect(mapEntitlementError({ message: 'feature_disabled:feature_acesso_por_cliente' })).toEqual(
+      {
+        kind: 'feature',
+        key: 'feature_acesso_por_cliente',
+        label: 'Acesso por cliente',
+      },
+    );
+  });
+
   it('labels feature_instagram_comments_ai', () => {
     expect(
       mapEntitlementError({ message: 'feature_disabled:feature_instagram_comments_ai' }),

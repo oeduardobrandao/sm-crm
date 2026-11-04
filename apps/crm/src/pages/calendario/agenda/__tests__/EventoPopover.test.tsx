@@ -713,6 +713,15 @@ describe('EventoPopover: cliente e remarcação', () => {
     expect(screen.queryByRole('button', { name: 'Recusar' })).toBeNull();
   });
 
+  it('shows the event without a client label when agenda_listar hides the client name', async () => {
+    // Acesso por cliente: an event in a client the member cannot see comes back with
+    // cliente_id set and cliente_nome NULL.
+    abrir(ocorrencia({ cliente_id: 12, cliente_nome: null }));
+    await screen.findByRole('dialog', { name: 'Gravação: Clínica Sorriso' });
+    expect(screen.queryByText(/Cliente:/)).toBeNull();
+    expect(screen.getByText('Estúdio 2, Av. Paulista, 900')).toBeInTheDocument();
+  });
+
   it('shows nothing of the client on a masked (private) event', async () => {
     abrir(
       compartilhado({

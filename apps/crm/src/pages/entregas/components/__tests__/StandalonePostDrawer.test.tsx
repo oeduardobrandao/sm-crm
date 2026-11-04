@@ -27,7 +27,7 @@ vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 // `can` e um vi.fn() para cada teste poder negar uma permissao especifica.
-const authMock = vi.hoisted(() => ({ can: vi.fn() }));
+const authMock = vi.hoisted(() => ({ can: vi.fn(), membership: null as unknown }));
 vi.mock('@/context/AuthContext', () => ({
   useAuth: () => ({
     user: { id: 'user-1' },
@@ -35,6 +35,7 @@ vi.mock('@/context/AuthContext', () => ({
     loading: false,
     profile: null,
     can: authMock.can,
+    membership: authMock.membership,
   }),
 }));
 
@@ -76,6 +77,7 @@ vi.mock('@/lib/supabase', () => ({
 
 vi.mock('@/store', () => ({
   getStandalonePost: vi.fn(),
+  getClienteContexto: vi.fn(),
   getPostApprovals: vi.fn(async () => []),
   getPostStatusEvents: vi.fn(async () => []),
   getPostCommentThreads: vi.fn(async () => []),
@@ -235,6 +237,7 @@ vi.mock('../WorkflowCalendarView', () => ({
 import { StandalonePostDrawer } from '../StandalonePostDrawer';
 import {
   getStandalonePost,
+  getClienteContexto,
   getVigentePostProcess,
   getPostStatusEvents,
   updateWorkflowPost,
@@ -354,6 +357,7 @@ const approvalActiveProcessFixture = {
 describe('StandalonePostDrawer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authMock.membership = null;
     limitsMock.features = null;
     authMock.can.mockImplementation(makeCan(fakeMembership({ role: 'owner' })));
     mockGetStandalonePost.mockResolvedValue(basePost() as never);
@@ -1023,6 +1027,7 @@ describe('StandalonePostDrawer edit suggestions', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    authMock.membership = null;
     mockGetStandalonePost.mockResolvedValue(basePost({ ig_caption: 'Legenda da equipe' }) as never);
     vi.mocked(getPostEditSuggestions).mockResolvedValue([suggestion] as never);
     vi.mocked(acceptEditSuggestion).mockResolvedValue(undefined as never);
@@ -1121,5 +1126,67 @@ describe('StandalonePostDrawer edit suggestions', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['standalone-post', 5] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['post-edit-suggestions'] });
     expect(vi.mocked(syncMentions)).not.toHaveBeenCalled();
+  });
+});
+
+describe('StandalonePostDrawer: client identity for a restricted member', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    authMock.membership = null;
+    limitsMock.features = null;
+    authMock.can.mockImplementation(makeCan(fakeMembership({ role: 'agent' })));
+    mockHasPending.mockResolvedValue(false);
+    vi.mocked(getClienteContexto).mockResolvedValue({
+      id: 42,
+      nome: 'Clínica Sol',
+      sigla: 'CS',
+      cor: null,
+      foto_url: null,
+    });
+  });
+
+  const subtitle = () => document.querySelector('.drawer-header-subtitle') as HTMLElement;
+
+  it('post_detail_uses_context_rpc_for_hidden_client: names the client the embed hid', async () => {
+    authMock.membership = fakeMembership({ role: 'agent', client_scope: 'atribuidos' });
+    mockGetStandalonePost.mockResolvedValue(basePost({ cliente_nome: '' }) as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    await waitFor(() => expect(subtitle()).toHaveTextContent('Clínica Sol'));
+    expect(getClienteContexto).toHaveBeenCalledWith(42);
+  });
+
+  it('hides "Remover processo" on the own post in a hidden client (remove_post_process is refused)', async () => {
+    authMock.membership = fakeMembership({ role: 'agent', client_scope: 'atribuidos' });
+    mockGetStandalonePost.mockResolvedValue(basePost({ cliente_nome: '' }) as never);
+    mockGetVigentePostProcess.mockResolvedValueOnce(processFixture as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    await screen.findByRole('button', { name: 'Avançar etapa' });
+    expect(screen.queryByRole('button', { name: 'Remover processo' })).toBeNull();
+  });
+
+  it('keeps "Remover processo" for a restricted member on a visible client', async () => {
+    authMock.membership = fakeMembership({ role: 'agent', client_scope: 'atribuidos' });
+    mockGetStandalonePost.mockResolvedValue(basePost() as never);
+    mockGetVigentePostProcess.mockResolvedValueOnce(processFixture as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    await screen.findByRole('button', { name: 'Avançar etapa' });
+    expect(screen.getByRole('button', { name: 'Remover processo' })).toBeInTheDocument();
+  });
+
+  it('todos_unchanged: an unscoped member never calls the RPC', async () => {
+    authMock.membership = fakeMembership({ role: 'agent', client_scope: 'todos' });
+    mockGetStandalonePost.mockResolvedValue(basePost({ cliente_nome: '' }) as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    await screen.findByTestId('post-editor-stub');
+    expect(subtitle()).toHaveTextContent('—');
+    expect(getClienteContexto).not.toHaveBeenCalled();
   });
 });
