@@ -1,6 +1,6 @@
 # Google Meu Negócio section in block reports: design addendum
 
-Date: 2026-11-04 · Status: draft, awaiting Eduardo's OK on the mockups
+Date: 2026-11-04 · Status: approved by Eduardo 2026-11-04 (mockups and the recommended choices A-D)
 Mockups: https://claude.ai/artifact/1TFcauWXBipKacf4RrR13M
 Parent specs: `2026-10-29-youtube-google-meu-negocio-design.md` §8 (Phase 4, GMN half),
 `2026-10-28-report-platform-sections-design.md` (the section model),
