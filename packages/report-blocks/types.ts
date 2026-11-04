@@ -15,6 +15,8 @@ export {
   BLOCK_TYPES,
   TEXT_BLOCK_TYPES,
   TIKTOK_BLOCK_PREFIX,
+  GBP_BLOCK_PREFIX,
+  PLATFORM_BLOCK_PREFIXES,
   blockPlatform,
   validateLayout,
   normalizeCoverSize,
@@ -33,6 +35,7 @@ export {
   isValidSectionTitle,
   trimSectionTitle,
 } from '../../supabase/functions/_shared/report-docs/layout';
+export type { SectionPlatformId } from '../../supabase/functions/_shared/report-docs/layout';
 export type {
   ReportSection,
   SectionKind,
@@ -44,6 +47,7 @@ export {
   isSectioned,
   isSectionMarker,
   makeSectionMarker,
+  PLATFORM_ORDER,
   sectionizeLayout,
   sectionKindOf,
   sectionOfBlock,
@@ -59,8 +63,16 @@ export type {
   SnapshotTopPost,
   TikTokReportSnapshot,
   TikTokSnapshotTopPost,
+  GbpReportKpiEntry,
+  GoogleReportSnapshot,
 } from '../../supabase/functions/_shared/report-docs/snapshot';
 export type { KpiEntry, ReportKpiId } from '../../supabase/functions/_shared/report-docs/kpis';
 export { KPI_LABELS_PT } from '../../supabase/functions/_shared/report-docs/kpis';
 export type { TikTokKpiId } from '../../supabase/functions/_shared/tiktok-analytics/kpis';
 export { TIKTOK_KPI_IDS } from '../../supabase/functions/_shared/tiktok-analytics/kpis';
+export type { GbpKpiId } from '../../supabase/functions/_shared/gbp-analytics/kpis';
+export { GBP_KPI_IDS } from '../../supabase/functions/_shared/gbp-analytics/kpis';
+export {
+  GBP_KPI_LABELS_PT,
+  GBP_KPI_TOOLTIPS_PT,
+} from '../../supabase/functions/_shared/report-docs/gbp-kpi-labels';

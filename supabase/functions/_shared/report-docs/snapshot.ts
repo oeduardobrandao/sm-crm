@@ -8,6 +8,7 @@ import type {
 } from "../report-template/types.ts";
 import { isEphemeralInstagramUrl } from "../instagram-thumbnail-cache.ts";
 import type { TikTokKpiId } from "../tiktok-analytics/kpis.ts";
+import type { GbpKpiId, GbpRatingDistribution, GbpSurface } from "../gbp-analytics/kpis.ts";
 import { computeKpis, type KpiEntry, type KpiSources, type ReportKpiId } from "./kpis.ts";
 import { monthWindow } from "./month-window.ts";
 
@@ -80,6 +81,53 @@ export interface TikTokReportSnapshot {
   top_posts: TikTokSnapshotTopPost[];
 }
 
+/** KPI do Google Meu Negócio no relatório. `rating` = nota média (uma casa decimal), nunca
+ * formatada como contagem. */
+export interface GbpReportKpiEntry {
+  value: number | null;
+  prev: number | null;
+  unit: "count" | "rating";
+}
+
+/** Seção Google Meu Negócio do snapshot (spec 2026-11-04-gmn-report-section). Os números são os
+ * da aba Google Meu Negócio para o período personalizado do mês do relatório: `window` termina no
+ * `data_through` das unidades e o anterior é o mesmo número de dias logo antes. */
+export interface GoogleReportSnapshot {
+  /** Unidades usadas (ids de gbp_locations): o documento não tem coluna de conta do Google. */
+  units: { id: string; title: string | null; status: "active" | "revoked" }[];
+  data_through: string | null;
+  /** null = nada sincronizado dentro do mês do relatório. Datas YYYY-MM-DD, SP, inclusivas. */
+  window: { start: string; end: string; prevStart: string; prevEnd: string } | null;
+  kpis: Record<GbpKpiId, GbpReportKpiEntry>;
+  surfaces: { surface: GbpSurface; value: number; pct: number }[];
+  daily: { date: string; calls: number; directions: number; websiteClicks: number; messages: number }[];
+  /** `month` = YYYY-MM dos termos mostrados (o do relatório, ou o último fechado antes dele). */
+  keywords: {
+    month: string | null;
+    rows: { keyword: string; value: number | null; threshold: number | null }[];
+  };
+  rating_distribution: GbpRatingDistribution | null;
+  /** Avaliação de 5 (senão 4) estrelas com texto criada no período; nome abreviado. */
+  highlight: {
+    reviewer: string;
+    rating: 4 | 5;
+    comment: string;
+    unit_title: string | null;
+    date: string;
+  } | null;
+  unit_rows: {
+    id: string;
+    title: string | null;
+    status: "active" | "revoked";
+    views: number;
+    calls: number;
+    directions: number;
+    website_clicks: number;
+    rating: number | null;
+    reviews: number | null;
+  }[];
+}
+
 export interface ReportDocSnapshot {
   version: 1;
   period: {
@@ -125,6 +173,8 @@ export interface ReportDocSnapshot {
   instagram_connected?: boolean;
   /** Ausente/null = relatório sem TikTok ou conta TikTok sem dados. */
   tiktok?: TikTokReportSnapshot | null;
+  /** Ausente/null = relatório sem Google Meu Negócio (sem unidades, ou sem a flag). */
+  google?: GoogleReportSnapshot | null;
 }
 
 export interface SnapshotPostRow {

@@ -8,7 +8,7 @@ import {
   layoutPlatforms,
   tiktokBlockView,
 } from '../platform';
-import { TIKTOK_KPI_IDS } from '../types';
+import { GBP_KPI_IDS, GBP_KPI_LABELS_PT, TIKTOK_KPI_IDS } from '../types';
 import ptTiktok from '../../i18n/locales/pt/analyticsTiktok.json';
 import type {
   ReportBlock,
@@ -332,5 +332,17 @@ describe('makeSnapshotFixture: seção TikTok', () => {
     for (const p of tt.top_posts) {
       expect(p.permalink).toMatch(/^https:\/\/www\.tiktok\.com\/@seucliente\/video\/\d+$/);
     }
+  });
+});
+
+describe('Google Meu Negócio: rótulos e fixture', () => {
+  it('rótulos dos KPIs iguais aos da aba Google Meu Negócio', async () => {
+    const pt = (await import('../../i18n/locales/pt/analyticsGoogle.json')).default as {
+      kpi: Record<string, { label: string }>;
+    };
+    for (const id of GBP_KPI_IDS) expect(GBP_KPI_LABELS_PT[id]).toBe(pt.kpi[id].label);
+  });
+  it('fixture com 3 unidades', () => {
+    expect(makeSnapshotFixture().google?.unit_rows).toHaveLength(3);
   });
 });
