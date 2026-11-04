@@ -132,7 +132,9 @@ pasta). As funções de trigger das guardas (`guard_client_scope_move`,
 `guard_brand_logo_file`, `guard_post_file_link_swap`, `guard_agenda_evento_scope`,
 `guard_agenda_participante_scope`, `guard_report_layout_files`, `guard_analytics_report_refs`,
 `guard_membros_crm_user_scope`) não têm EXECUTE
-para `authenticated` nem `anon`.
+para `authenticated` nem `anon`. Os helpers que as RPCs SECURITY DEFINER chamam para o escopo
+(`scope_check_posts`, `scope_check_workflows`, `scope_check_processes`,
+`scope_check_template_workflows`, Task 5) são só de `service_role`.
 
 Espelho TS: só `isClientScoped(membership)` em `lib/permissions.ts`, para afordâncias de UI
 (esconder "Novo cliente", mostrar o aviso). O filtro de dados é sempre do servidor.
