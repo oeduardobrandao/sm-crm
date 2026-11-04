@@ -134,7 +134,7 @@ declare
   v_membro bigint; v_membro_todos bigint; v_membro_owner bigint; v_tag bigint;
   v_ta bigint; v_tb bigint; v_tb_own bigint; v_tb_auth bigint; v_tb_own2 bigint; v_tb_ser bigint;
   v_tnull bigint; v_tnull_own bigint; v_tnull_auth bigint; v_ta_own bigint; v_ta2 bigint;
-  v_sa bigint; v_sb bigint; v_sb_own bigint; v_se_own bigint; v_sa2 bigint;
+  v_sa bigint; v_sa3 bigint; v_sb bigint; v_sb_own bigint; v_se_own bigint; v_sa2 bigint;
   v_ia uuid; v_ib uuid; v_ib_own uuid; v_ib_sol_own uuid; v_ia_sol uuid; v_id_own uuid;
   v_la uuid; v_lb uuid; v_la_item uuid; v_lb_item uuid;
   v_n bigint; v_expected bigint; v_err text; v_t text;
@@ -627,6 +627,17 @@ begin
   assert v_err = 'Série não encontrada neste workspace.', 'rpc_delete_hidden_series_unconfirmed: ' || coalesce(v_err, 'deleted');
   v_err := pg_temp.errm_as(v_restr, format('select tarefa_serie_excluir(%s)', v_sb_own));
   assert v_err = 'client_scope_restricted', 'rpc_delete_own_series_in_hidden_client_denied: ' || coalesce(v_err, 'deleted');
+  -- series in A whose open occurrence an unrestricted member moved to B: ending
+  -- it would delete that occurrence, so it is refused
+  insert into tarefa_series (conta_id, user_id, freq, intervalo, modo, inicio, titulo, cliente_id)
+    values (v_ws, v_owner, 'daily', 1, 'ao_concluir', current_date, 'sA3', v_ca) returning id into v_sa3;
+  insert into tarefas (conta_id, user_id, titulo, status, cliente_id, serie_id, data_limite)
+    values (v_ws, v_owner, 'occA3movedB', 'pendente', v_cb, v_sa3, current_date);
+  v_err := pg_temp.errm_as(v_restr, format('select tarefa_serie_excluir(%s)', v_sa3));
+  assert v_err = 'client_scope_restricted', 'rpc_delete_series_with_occurrence_in_hidden_client_denied: ' || coalesce(v_err, 'deleted');
+  assert (select count(*) from tarefas where serie_id = v_sa3) = 1, 'occurrence in hidden client survived';
+  v_err := pg_temp.errm_as(v_todos, format('select tarefa_serie_excluir(%s)', v_sa3));
+  assert v_err is null, 'todos_delete_series_with_occurrence_in_b_allowed: ' || coalesce(v_err, '');
   v_err := pg_temp.errm_as(v_restr, format('select tarefa_serie_excluir(%s)', v_sa));
   assert v_err is null, 'rpc_delete_series_in_a_allowed: ' || coalesce(v_err, '');
   -- linha editorial RPCs: strict, hidden linha/client unconfirmed
@@ -648,6 +659,23 @@ begin
   v_err := pg_temp.errm_as(v_todos, format('select linha_editorial_coluna_excluir(%L)',
     (select id from linha_editorial_colunas where conta_id = v_ws order by ordem limit 1)));
   assert v_err is null, 'rpc_todos_delete_workspace_column_allowed: ' || coalesce(v_err, '');
+  -- the columns table directly: workspace-wide, restricted can't write it (ruling)
+  v_n := pg_temp.rows_as(v_restr, format('delete from linha_editorial_colunas where conta_id = %L', v_ws));
+  assert v_n = 0, 'restricted_direct_delete_column_denied: ' || v_n;
+  v_n := pg_temp.rows_as(v_restr, format('update linha_editorial_colunas set nome = nome || ''x'' where conta_id = %L', v_ws));
+  assert v_n = 0, 'restricted_direct_update_column_denied: ' || v_n;
+  v_err := pg_temp.err_as(v_restr, format(
+    'insert into linha_editorial_colunas (conta_id, nome, tipo, config, ordem) values (%L, ''Nova'', ''text'', ''{}'', 9)', v_ws));
+  assert v_err = '42501', 'restricted_direct_insert_column_denied: ' || coalesce(v_err, 'inserted');
+  v_n := pg_temp.n_as(v_restr, format('select count(*) from linha_editorial_colunas where conta_id = %L', v_ws));
+  assert v_n >= 1, 'restricted_still_reads_columns: ' || v_n;
+  v_n := pg_temp.rows_as(v_todos, format('update linha_editorial_colunas set nome = nome || ''x'' where conta_id = %L', v_ws));
+  assert v_n >= 1, 'todos_direct_update_column_allowed: ' || v_n;
+  v_err := pg_temp.err_as(v_todos, format(
+    'insert into linha_editorial_colunas (conta_id, nome, tipo, config, ordem) values (%L, ''Nova'', ''text'', ''{}'', 9)', v_ws));
+  assert v_err is null, 'todos_direct_insert_column_allowed: ' || coalesce(v_err, '');
+  v_n := pg_temp.rows_as(v_todos, format('delete from linha_editorial_colunas where conta_id = %L and nome = ''Nova''', v_ws));
+  assert v_n = 1, 'todos_direct_delete_column_allowed: ' || v_n;
 
   -- ---------------------------------------------------------------- todos / owner unchanged
   foreach v_t in array array['tarefas', 'tarefa_series', 'tarefa_comentarios', 'tarefa_eventos',

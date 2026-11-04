@@ -628,6 +628,22 @@ ALTER POLICY linha_editorial_respostas_delete ON public.linha_editorial_resposta
          OR EXISTS (SELECT 1 FROM public.linhas_editoriais l WHERE l.id = linha_editorial_respostas.linha_id))
   );
 
+-- Colunas da linha: configuração do workspace (sem cliente). Apagar ou mudar uma
+-- coluna muda todas as linhas, inclusive as de clientes que o restrito não acessa,
+-- então só quem vê todos os clientes escreve (leitura igual). authenticated tem
+-- DELETE e INSERT/UPDATE por coluna direto na tabela, então as RESTRICTIVE fecham
+-- esse caminho além da RPC linha_editorial_coluna_excluir.
+CREATE POLICY linha_editorial_colunas_scope_insert ON public.linha_editorial_colunas
+  AS RESTRICTIVE FOR INSERT TO authenticated
+  WITH CHECK ((SELECT public.my_client_scope_all()));
+CREATE POLICY linha_editorial_colunas_scope_update ON public.linha_editorial_colunas
+  AS RESTRICTIVE FOR UPDATE TO authenticated
+  USING ((SELECT public.my_client_scope_all()))
+  WITH CHECK ((SELECT public.my_client_scope_all()));
+CREATE POLICY linha_editorial_colunas_scope_delete ON public.linha_editorial_colunas
+  AS RESTRICTIVE FOR DELETE TO authenticated
+  USING ((SELECT public.my_client_scope_all()));
+
 -- -------------------------------------------------------------
 -- 5. Contexto (marca e briefing): leitura por can_see_cliente_context,
 --    escrita estrita
@@ -788,7 +804,8 @@ $$;
 -- São o único caminho de escrita de tarefa_series, dos comentários e do fluxo da
 -- linha editorial, e não passam pela RLS. Cada uma ganha o escopo logo depois da
 -- leitura da linha, com as regras das policies acima:
---   * séries: criar e excluir estritos (can_access_cliente); editar, pausar,
+--   * séries: criar e excluir estritos (can_access_cliente; excluir também em
+--     toda ocorrência aberta, que ele apagaria); editar, pausar,
 --     retomar e encerrar valem também para a série/ocorrência dele num cliente
 --     oculto, sem realocar; série ou tarefa que ele não vê responde com o mesmo
 --     erro de inexistente, para não confirmar ids;
@@ -1123,6 +1140,15 @@ BEGIN
       RAISE EXCEPTION 'Série não encontrada neste workspace.';
     END IF;
     IF NOT public.can_access_cliente(v_s.cliente_id) THEN
+      RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';
+    END IF;
+    -- o DELETE abaixo apaga as ocorrências abertas, que um irrestrito pode ter
+    -- movido para outro cliente: todas têm de estar em cliente que ele acessa
+    -- (já travadas pelo SELECT ... FOR UPDATE acima)
+    IF EXISTS (SELECT 1 FROM tarefas t
+                WHERE t.serie_id = p_serie_id AND t.conta_id = v_conta
+                  AND t.status <> 'concluida'
+                  AND NOT public.can_access_cliente(t.cliente_id)) THEN
       RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';
     END IF;
   END IF;
