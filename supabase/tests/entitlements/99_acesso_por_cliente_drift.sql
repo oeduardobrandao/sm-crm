@@ -1,8 +1,8 @@
 \set ON_ERROR_STOP on
 
 -- Acesso por cliente, guarda de deriva (catálogo). Roda no test:db desde a
--- Task 4e; o que ainda falta escopar (Task 6) está em v_exempt_until_task6,
--- com um NOTICE a cada execução.
+-- Task 4e; desde a Task 6 (financeiro) nenhuma tabela de cliente tem isenção
+-- temporária.
 --
 -- Inventário: docs/superpowers/plans/2026-11-03-acesso-por-cliente-inventario.md
 -- Spec: docs/superpowers/specs/2026-11-03-acesso-por-cliente-design.md
@@ -89,16 +89,6 @@ declare
                                    -- caso oauth_states_pinned: mudou, retriagem
   ];
 
-  -- Isenção temporária, só até a Task 6. Cada execução avisa por NOTICE. Critério de saída da
-  -- Task 6: estas cinco saem daqui, e as policies de SELECT delas citam o predicado ou a leitura
-  -- direta por authenticated é revogada.
-  v_exempt_until_task6 text[] := array[
-    'financeiro_atribuicoes', 'financeiro_cliente_versoes', 'financeiro_entregas_manuais',
-    -- legado do financeiro: a Task 6 dá a elas os predicados de leitura e escrita da Task 4
-    -- (plano, Task 6: "Legacy readers (transacoes, contratos tables) get the Task 4 ...")
-    'contratos', 'transacoes'
-  ];
-
   -- Únicas tabelas em que can_see_cliente_context vale como predicado de leitura (contexto do
   -- item "dele" num cliente oculto: marca e briefing). Em qualquer outra, só can_access_cliente.
   -- notifications (Task 4e): o destinatário vê a notificação sobre um cliente oculto em que tem
@@ -127,7 +117,7 @@ declare
 begin
   -- sanity: every hardcoded name exists
   select array_agg(n) into v_missing
-    from unnest(v_extra_scoped || v_exempt_no_policy || v_exempt || v_exempt_until_task6 || v_context_tables || v_context_roots) n
+    from unnest(v_extra_scoped || v_exempt_no_policy || v_exempt || v_context_tables || v_context_roots) n
    where to_regclass('public.' || n) is null;
   assert v_missing is null, 'sanity: unknown tables in the arrays: ' || array_to_string(v_missing, ', ');
 
@@ -144,7 +134,6 @@ begin
          = 'DELETE,INSERT,MAINTAIN,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE',
     'oauth_states_pinned: RLS or grants changed; re-triage the oauth_states exemption';
   raise notice 'oauth_states_pinned: ok (RLS off, ALL to anon/authenticated; pre-existing, tracked separately)';
-  raise notice 'exempt_until_task6 (Task 6 must remove them): %', array_to_string(v_exempt_until_task6, ', ');
 
   -- client tables: roots, FK closure, extras
   create temp table _ct on commit drop as
@@ -172,7 +161,7 @@ begin
 
   -- scoped = client tables minus exemptions
   create temp table _scoped on commit drop as
-  select * from _ct where tbl <> all (v_exempt || v_exempt_until_task6 || v_exempt_no_policy);
+  select * from _ct where tbl <> all (v_exempt || v_exempt_no_policy);
 
   -- policies that only ever match service_role (BYPASSRLS anyway): TO service_role,
   -- or the legacy USING (auth.role() = 'service_role') with no other check

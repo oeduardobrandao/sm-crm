@@ -99,7 +99,7 @@ begin
     'public._financeiro_seed_core(uuid,uuid,int)',
     'public._financeiro_periodo_reabrir_core(uuid,uuid,date)',
     'public._financeiro_periodo_fechar_core(uuid,uuid,date)',
-    'public._financeiro_rentabilidade_core(uuid,uuid,date)',
+    'public._financeiro_rentabilidade_core(uuid,uuid,date,bigint[])',
     'public._financeiro_periodos_listar_core(uuid,uuid)',
     'public._financeiro_periodos_editaveis_core(uuid,uuid)',
     'public._financeiro_exigir_dono(uuid,uuid)'] loop
