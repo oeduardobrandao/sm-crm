@@ -101,7 +101,7 @@ All copy is pt with en translations; no em dashes in user-facing copy.
 
 ## 3. Backend: RPC `google_disconnect_identity`
 
-New migration `supabase/migrations/20261115000001_google_disconnect_identity.sql` (main's tail is
+New migration `supabase/migrations/20261116000001_google_disconnect_identity.sql` (main's tail is
 `20261114000001`; re-check `ls supabase/migrations | tail` against `origin/main` right before
 `gh pr create` and renumber if taken). `SET LOCAL lock_timeout = '5s'`.
 
@@ -534,7 +534,7 @@ conta. Desconecte para apagar o acesso dela neste workspace.", accurate in both 
 
 ## 9. Deploy order and rollback
 
-1. Migration `20261115000001` (staging, then prod). Additive: one new function, nothing existing
+1. Migration `20261116000001` (staging, then prod). Additive: one new function, nothing existing
    changes, so it is safe ahead of any code.
 2. `google-integration` with `--no-verify-jwt` (staging, then prod). Old CRM never calls the new
    routes, so this is safe before the merge. Deploying it before the migration makes the new
@@ -570,7 +570,7 @@ dropping it needs a migration and is unnecessary. Disconnects already done are f
 
 ### Task A: backend
 
-Migration `20261115000001_google_disconnect_identity.sql` with `google_disconnect_identity`
+Migration `20261116000001_google_disconnect_identity.sql` with `google_disconnect_identity`
 (§3: P0002 in steps 1 and 3, step 3b state consumption, step 5's unit-row lock over all
 statuses); `handlers.ts` routes + dispatch (§4, including the 23514/23503 → 409 `conflict`
 mapping and the `Number(...) || 0` count coercion); psql suite `99_google_disconnect_identity.sql`
