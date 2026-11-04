@@ -12,13 +12,15 @@
 --              NULL) sem acesso à origem e ao destino, reescrever o autor e pôr a
 --              si mesmo como responsável num cliente que ele não acessa.
 --   INSERT e DELETE = estritos (RESTRICTIVE ou qual próprio), sem o "é dele":
---              cliente NULL só para quem tem my_client_scope_all().
+--              cliente NULL só para quem tem my_client_scope_all(). Exceção: o
+--              restrito apaga a tarefa sem cliente que ele mesmo criou.
 --   tarefa_series: authenticated só lê (escrita pelas RPCs); o mesmo trigger
 --              guarda o caminho SECURITY DEFINER.
 -- Filhas (subtarefas, tags, comentários, eventos, menções, arquivos e reações da
 --   ideia): leitura, INSERT e UPDATE pelo pai visível (EXISTS no pai, que roda com
 --   a RLS dele), mais o autor na leitura onde há autor. DELETE num pai de cliente
---   que ele não acessa: só a linha que ele mesmo escreveu (sem autor: nenhuma).
+--   que ele não acessa: só a linha que ele mesmo escreveu (sem autor: nenhuma),
+--   exceto subtarefas e tags, que ele apaga em qualquer tarefa dele.
 --   Trocar o pai exige acesso ao cliente do pai de origem (zz_client_scope_reparent_guard).
 -- Linha editorial: estrita (created_by/enviada_por/convertido_por não são "é dele",
 --   como workflows.user_id na C1); itens e respostas pela linha visível.
@@ -284,9 +286,15 @@ ALTER POLICY tarefas_tenant_all ON public.tarefas
 CREATE POLICY tarefas_scope_insert ON public.tarefas
   AS RESTRICTIVE FOR INSERT TO authenticated
   WITH CHECK ((SELECT public.my_client_scope_all()) OR public.can_access_cliente(cliente_id));
+-- DELETE: cliente que ele acessa, ou tarefa sem cliente que ele mesmo criou
+-- (nada de cliente em jogo). A só atribuída a ele, ou a dele num cliente oculto, não.
 CREATE POLICY tarefas_scope_delete ON public.tarefas
   AS RESTRICTIVE FOR DELETE TO authenticated
-  USING ((SELECT public.my_client_scope_all()) OR public.can_access_cliente(cliente_id));
+  USING (
+    (SELECT public.my_client_scope_all())
+    OR public.can_access_cliente(cliente_id)
+    OR (cliente_id IS NULL AND user_id = auth.uid())
+  );
 
 -- tarefa_series: só SELECT para authenticated (escrita pelas RPCs, guardadas pelo
 -- zz_client_scope_guard).
@@ -355,12 +363,15 @@ ALTER POLICY subtarefas_tenant_all ON public.subtarefas
     AND ((SELECT public.my_client_scope_all())
          OR EXISTS (SELECT 1 FROM public.tarefas t WHERE t.id = subtarefas.tarefa_id))
   );
+-- DELETE de subtarefa e de tag: cliente acessível ou a tarefa é dele, qualquer que
+-- seja o cliente (fazem parte do trabalho dele). O EXISTS em tarefas roda com a RLS
+-- de tarefas, que é exatamente "acessível ou é dele"; sem my_membro_ids() aqui, a
+-- tabela não vira raiz de contexto.
 CREATE POLICY subtarefas_scope_delete ON public.subtarefas
   AS RESTRICTIVE FOR DELETE TO authenticated
   USING (
     (SELECT public.my_client_scope_all())
-    OR EXISTS (SELECT 1 FROM public.tarefas t
-                WHERE t.id = subtarefas.tarefa_id AND public.can_access_cliente(t.cliente_id))
+    OR EXISTS (SELECT 1 FROM public.tarefas t WHERE t.id = subtarefas.tarefa_id)
   );
 
 ALTER POLICY tarefa_tag_links_tenant_all ON public.tarefa_tag_links
@@ -374,12 +385,15 @@ ALTER POLICY tarefa_tag_links_tenant_all ON public.tarefa_tag_links
     AND ((SELECT public.my_client_scope_all())
          OR EXISTS (SELECT 1 FROM public.tarefas t WHERE t.id = tarefa_tag_links.tarefa_id))
   );
+-- DELETE de subtarefa e de tag: cliente acessível ou a tarefa é dele, qualquer que
+-- seja o cliente (fazem parte do trabalho dele). O EXISTS em tarefas roda com a RLS
+-- de tarefas, que é exatamente "acessível ou é dele"; sem my_membro_ids() aqui, a
+-- tabela não vira raiz de contexto.
 CREATE POLICY tarefa_tag_links_scope_delete ON public.tarefa_tag_links
   AS RESTRICTIVE FOR DELETE TO authenticated
   USING (
     (SELECT public.my_client_scope_all())
-    OR EXISTS (SELECT 1 FROM public.tarefas t
-                WHERE t.id = tarefa_tag_links.tarefa_id AND public.can_access_cliente(t.cliente_id))
+    OR EXISTS (SELECT 1 FROM public.tarefas t WHERE t.id = tarefa_tag_links.tarefa_id)
   );
 
 -- Menções (polimórficas, sem FK: host_type/host_id). Não são raiz de contexto (a

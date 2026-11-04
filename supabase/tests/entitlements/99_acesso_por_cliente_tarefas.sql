@@ -133,7 +133,7 @@ declare
   v_ca bigint; v_ca2 bigint; v_cb bigint; v_cc bigint; v_cd bigint; v_ce bigint; v_cx bigint;
   v_membro bigint; v_membro_todos bigint; v_membro_owner bigint; v_tag bigint;
   v_ta bigint; v_tb bigint; v_tb_own bigint; v_tb_auth bigint; v_tb_own2 bigint; v_tb_ser bigint;
-  v_tnull bigint; v_tnull_own bigint; v_ta_own bigint; v_ta2 bigint;
+  v_tnull bigint; v_tnull_own bigint; v_tnull_auth bigint; v_ta_own bigint; v_ta2 bigint;
   v_sa bigint; v_sb bigint; v_sb_own bigint; v_se_own bigint; v_sa2 bigint;
   v_ia uuid; v_ib uuid; v_ib_own uuid; v_ib_sol_own uuid; v_ia_sol uuid; v_id_own uuid;
   v_la uuid; v_lb uuid; v_la_item uuid; v_lb_item uuid;
@@ -193,6 +193,8 @@ begin
     values (v_ws, v_owner, 'tBser', 'pendente', v_cb, v_membro, v_sb, current_date) returning id into v_tb_ser;
   insert into tarefas (conta_id, user_id, titulo, status) values (v_ws, v_owner, 'tNull', 'pendente') returning id into v_tnull;
   insert into tarefas (conta_id, user_id, titulo, status, responsavel_id) values (v_ws, v_owner, 'tNullown', 'pendente', v_membro) returning id into v_tnull_own;
+  -- a task he created himself, with no client
+  insert into tarefas (conta_id, user_id, titulo, status) values (v_ws, v_restr, 'tNullauth', 'pendente') returning id into v_tnull_auth;
 
   perform pg_temp.seed_tarefa_children(v_ta, v_ws, v_owner, v_tag, v_membro_todos);
   perform pg_temp.seed_tarefa_children(v_tb, v_ws, v_owner, v_tag, v_membro_todos);
@@ -249,7 +251,7 @@ begin
   v_n := pg_temp.n_as(v_restr, format('select count(*) from tarefas where id = %s', v_tnull_own));
   assert v_n = 1, 'own_task_without_client_visible: ' || v_n;
   v_n := pg_temp.n_as(v_restr, 'select count(*) from tarefas');
-  assert v_n = 8, 'restricted sees tA, tAown, tA2, tBown, tBauth, tBown2, tBser, tNullown: ' || v_n;
+  assert v_n = 9, 'restricted sees tA, tAown, tA2, tBown, tBauth, tBown2, tBser, tNullown, tNullauth: ' || v_n;
 
   -- ---------------------------------------------------------------- tarefas: writes
   v_err := pg_temp.err_as(v_restr, format(
@@ -317,8 +319,12 @@ begin
   -- delete strict
   v_n := pg_temp.rows_as(v_restr, format('delete from tarefas where id = %s', v_tb_auth));
   assert v_n = 0, 'own_task_in_b_delete_denied: ' || v_n;
+  -- no-client task only assigned to him (created by someone else): delete denied
   v_n := pg_temp.rows_as(v_restr, format('delete from tarefas where id = %s', v_tnull_own));
-  assert v_n = 0, 'own_task_without_client_delete_denied: ' || v_n;
+  assert v_n = 0, 'assigned_task_without_client_delete_denied: ' || v_n;
+  -- no-client task he created himself: delete allowed (ruling, round 1)
+  v_n := pg_temp.rows_as(v_restr, format('delete from tarefas where id = %s', v_tnull_auth));
+  assert v_n = 1, 'own_created_task_without_client_deletable: ' || v_n;
 
   -- ideia -> tarefa conversion (INVOKER): an own solicitacao in B is visible to
   -- him, the tarefa it would create lands in B and is refused; in A it works
@@ -413,10 +419,6 @@ begin
   assert v_err is null, 'insert_subtask_into_own_b_task_allowed: ' || coalesce(v_err, '');
   v_n := pg_temp.rows_as(v_restr, format('update subtarefas set concluida = true where tarefa_id = %s', v_tb_own));
   assert v_n = 2, 'subtasks_of_own_b_task_updatable: ' || v_n;
-  v_n := pg_temp.rows_as(v_restr, format('delete from subtarefas where tarefa_id = %s', v_tb_own));
-  assert v_n = 0, 'subtasks_of_own_b_task_delete_denied: ' || v_n;
-  v_n := pg_temp.rows_as(v_restr, format('delete from tarefa_tag_links where tarefa_id = %s', v_tb_own));
-  assert v_n = 0, 'tags_of_own_b_task_delete_denied: ' || v_n;
   v_n := pg_temp.rows_as(v_restr, format('delete from subtarefas where tarefa_id = %s', v_ta));
   assert v_n = 1, 'subtask_of_task_in_a_deletable: ' || v_n;
   -- re-parenting a child of his hidden-client task onto a visible task is refused
@@ -424,6 +426,18 @@ begin
   assert v_err = 'client_scope_restricted', 'move_subtask_out_of_hidden_task_denied: ' || coalesce(v_err, 'updated');
   v_err := pg_temp.errm_as(v_restr, format('update tarefa_tag_links set tarefa_id = %s where tarefa_id = %s', v_ta_own, v_tb_own));
   assert v_err = 'client_scope_restricted', 'move_tag_out_of_hidden_task_denied: ' || coalesce(v_err, 'updated');
+  -- on his own task, whatever its client, subtasks and tags can be removed (ruling, round 1)
+  v_n := pg_temp.rows_as(v_restr, format('delete from subtarefas where tarefa_id = %s', v_tb_own));
+  assert v_n = 2, 'subtasks_of_own_b_task_deletable: ' || v_n;
+  v_n := pg_temp.rows_as(v_restr, format('delete from tarefa_tag_links where tarefa_id = %s', v_tb_own));
+  assert v_n = 1, 'tag_removal_on_own_b_task_works: ' || v_n;
+  v_n := pg_temp.rows_as(v_restr, format('delete from subtarefas where tarefa_id = %s', v_tnull_own));
+  assert v_n = 1, 'subtask_of_own_task_without_client_deletable: ' || v_n;
+  -- still strict on a hidden task that is not his
+  v_n := pg_temp.rows_as(v_restr, format('delete from subtarefas where tarefa_id = %s', v_tb));
+  assert v_n = 0, 'subtask_of_hidden_task_delete_denied: ' || v_n;
+  v_n := pg_temp.rows_as(v_restr, format('delete from tarefa_tag_links where tarefa_id = %s', v_tb));
+  assert v_n = 0, 'tag_of_hidden_task_delete_denied: ' || v_n;
 
   -- ---------------------------------------------------------------- ideias
   v_n := pg_temp.n_as(v_restr, format('select count(*) from ideias where id = %L', v_ia));
@@ -668,7 +682,7 @@ begin
   assert v_err is null, 'todos_insert_ideia_into_b: ' || coalesce(v_err, '');
   v_n := pg_temp.rows_as(v_todos, format('update hub_brand set primary_color = ''#fff'' where cliente_id = %s', v_cb));
   assert v_n = 1, 'todos_update_brand_in_b: ' || v_n;
-  v_n := pg_temp.rows_as(v_todos, format('delete from subtarefas where tarefa_id = %s', v_tb_own));
+  v_n := pg_temp.rows_as(v_todos, format('delete from subtarefas where tarefa_id = %s', v_tb));
   assert v_n >= 1, 'todos_delete_subtasks_in_b: ' || v_n;
   v_n := pg_temp.rows_as(v_todos, format('delete from tarefas where id = %s', v_tb_auth));
   assert v_n = 1, 'todos_delete_task_in_b: ' || v_n;
