@@ -41,3 +41,23 @@ export function makeClientAccessCheck(
     return hasClientAccess(scope, parseInt(clientId, 10), false);
   };
 }
+
+/** Whether the creator of a connect link may still be told about `clientId` (notification and
+ * e-mail with the client's name after the client connects): a member of `contaId` who sees that
+ * client. `loadClientScope` answers "no clients" for a non-member, so an ex-member is out too. A
+ * scope read error answers false (logged): a lost notice costs less than a leaked client name. */
+export async function linkCreatorSeesClient(
+  svc: Svc,
+  userId: string,
+  contaId: string,
+  clientId: number,
+  loader: ClientScopeLoader = loadClientScope,
+): Promise<boolean> {
+  try {
+    const scope = await loader(svc, userId, contaId);
+    return hasClientAccess(scope, clientId, false);
+  } catch (err) {
+    console.error("[instagram-integration] link creator scope:", err instanceof Error ? err.message : String(err));
+    return false;
+  }
+}

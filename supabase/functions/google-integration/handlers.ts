@@ -233,7 +233,7 @@ async function runCallback(
     const owner = await findOtherChannelOwner(svc, state.contaId, channel.id, clientId);
     if (owner) {
       await revokeIfUnused(svc, user.sub, grantToken);
-      return fail("channel_in_use", owner.name ? `&yt_other=${encodeURIComponent(owner.name)}` : "");
+      return fail("channel_in_use", await otherClientParam(svc, deps, state, owner.clientId, owner.name));
     }
   }
 
@@ -283,7 +283,10 @@ async function runCallback(
     if (result.kind === "in_use") {
       // Race backstop: another client linked the channel between the pre-check and here. The
       // connection row now exists, so the grant is in use and is NOT revoked.
-      return fail("channel_in_use", result.otherName ? `&yt_other=${encodeURIComponent(result.otherName)}` : "");
+      return fail(
+        "channel_in_use",
+        await otherClientParam(svc, deps, state, result.otherClientId, result.otherName),
+      );
     }
     if (relink.releaseSub) {
       // Same channel, now through another Google account: the old account may hold nothing else.
@@ -352,13 +355,34 @@ async function fetchOwnYouTubeChannel(accessToken: string): Promise<(YouTubeChan
   return channel?.id ? (channel as YouTubeChannelItem & { id: string }) : null;
 }
 
+/** `&yt_other=<name>` for the "channel in use" redirect, only when the caller sees that client
+ * (acesso por cliente: a hidden client's name never reaches the URL). A scope read error drops the
+ * name (logged), never names. */
+async function otherClientParam(
+  svc: DbClient,
+  deps: GoogleIntegrationDeps,
+  state: VerifiedGoogleState,
+  otherClientId: number | null,
+  name: string | null,
+): Promise<string> {
+  if (!name || otherClientId == null) return "";
+  try {
+    const scope = await (deps.loadClientScope ?? realLoadClientScope)(svc, state.userId, state.contaId);
+    if (!hasClientAccess(scope, otherClientId, false)) return "";
+  } catch (err) {
+    console.error("[google-integration] callback client scope:", (err as Error).message);
+    return "";
+  }
+  return `&yt_other=${encodeURIComponent(name)}`;
+}
+
 /** Another client of the same workspace already holding this channel, if any. */
 async function findOtherChannelOwner(
   svc: DbClient,
   contaId: string,
   channelId: string,
   clientId: number,
-): Promise<{ name: string | null } | null> {
+): Promise<{ clientId: number; name: string | null } | null> {
   const { data, error } = await svc
     .from("youtube_channels")
     .select("client_id")
@@ -370,10 +394,10 @@ async function findOtherChannelOwner(
   const row = Array.isArray(data) ? data[0] : null;
   if (!row) return null;
   const other = await loadClientInTenant(svc, row.client_id as number, contaId);
-  return { name: other?.nome ?? null };
+  return { clientId: Number(row.client_id), name: other?.nome ?? null };
 }
 
-type LinkResult = { kind: "linked" } | { kind: "in_use"; otherName: string | null };
+type LinkResult = { kind: "linked" } | { kind: "in_use"; otherClientId: number | null; otherName: string | null };
 
 /**
  * P11, run after the connection upsert and before the channel write. The client's stored row:
@@ -497,7 +521,11 @@ async function linkYouTubeChannel(
     .eq("channel_id", channel.id)
     .maybeSingle();
   const otherClient = other?.client_id ? await loadClientInTenant(svc, other.client_id as number, contaId) : null;
-  return { kind: "in_use", otherName: otherClient?.nome ?? null };
+  return {
+    kind: "in_use",
+    otherClientId: other?.client_id ? Number(other.client_id) : null,
+    otherName: otherClient?.nome ?? null,
+  };
 }
 
 // ─── Shared route guards ─────────────────────────────────────────────────────────────

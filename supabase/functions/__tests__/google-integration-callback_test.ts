@@ -775,3 +775,56 @@ Deno.test("auth_assigned_client: restricted member on an assigned client gets th
   );
   assertEquals(res.status, 200);
 });
+
+// ---- acesso por cliente: the other client's name only for a caller who sees that client ----
+
+const onlyThisClient = () =>
+  Promise.resolve<ClientScope>({ all: false, ids: new Set([Number(CLIENT)]), membroIds: new Set() });
+
+Deno.test("callback_channel_in_use: a hidden other client is never named (pre-check)", async () => {
+  const state = await mintState("youtube");
+  const db = callbackDb();
+  db.queue("youtube_channels", "select", { data: [{ client_id: 7 }] });
+  db.queue("clientes", "select", { data: { id: 7, nome: "Clínica X" } });
+  db.queue("google_connections", "select", { data: [] });
+  const f = stubGoogle();
+  try {
+    const res = await makeHandler(db, { loadClientScope: onlyThisClient })(callbackRequest(state));
+    assertEquals(res.headers.get("Location"), `${TARGET}?yt_error=channel_in_use`);
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("callback_channel_in_use_race: a hidden other client is never named (23505 backstop)", async () => {
+  const state = await mintState("youtube");
+  const db = callbackDb();
+  db.queue("youtube_channels", "select", { data: [] }, { data: [] }, { data: { client_id: 7 } });
+  db.queueRpc("google_connection_upsert", { data: CONNECTION_ID });
+  db.queue("youtube_channels", "upsert", { data: null, error: { code: "23505", message: "duplicate key" } });
+  db.queue("clientes", "select", { data: { id: 7, nome: "Clínica X" } });
+  const f = stubGoogle();
+  try {
+    const res = await makeHandler(db, { loadClientScope: onlyThisClient })(callbackRequest(state));
+    assertEquals(res.headers.get("Location"), `${TARGET}?yt_error=channel_in_use`);
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("callback_channel_in_use: a scope read error drops the name, never names", async () => {
+  const state = await mintState("youtube");
+  const db = callbackDb();
+  db.queue("youtube_channels", "select", { data: [{ client_id: 7 }] });
+  db.queue("clientes", "select", { data: { id: 7, nome: "Clínica X" } });
+  db.queue("google_connections", "select", { data: [] });
+  const f = stubGoogle();
+  try {
+    const res = await makeHandler(db, { loadClientScope: () => Promise.reject(new Error("boom")) })(
+      callbackRequest(state),
+    );
+    assertEquals(res.headers.get("Location"), `${TARGET}?yt_error=channel_in_use`);
+  } finally {
+    f.restore();
+  }
+});

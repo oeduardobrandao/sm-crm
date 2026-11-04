@@ -17,7 +17,7 @@ import { subscribeToComments, fetchSubscribedFields } from "../_shared/instagram
 import { makeBoundedFetch } from "../_shared/bounded-fetch.ts";
 import { handlePublishedMedia } from "./published-media.ts";
 import { disconnectAccount } from "./disconnect.ts";
-import { ClientScopeUnavailableError, makeClientAccessCheck } from "./ownership.ts";
+import { ClientScopeUnavailableError, linkCreatorSeesClient, makeClientAccessCheck } from "./ownership.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const META_APP_ID = Deno.env.get("META_APP_ID")!;
@@ -531,24 +531,18 @@ Deno.serve(async (req) => {
             // Falha-fechado: se não dá para confirmar a associação, os dois avisos
             // são pulados -- o custo de uma notificação perdida é bem menor que o de
             // vazar dado de cliente para um ex-membro do workspace.
-            let isStillMember = false;
-            try {
-                const { data: membership } = await serviceClient
-                    .from('workspace_members')
-                    .select('workspace_id')
-                    .eq('user_id', userId)
-                    .eq('workspace_id', contaId)
-                    .maybeSingle();
-                isStillMember = !!membership;
-            } catch (e) {
-                console.error('[IG-CALLBACK] membership check for notice failed, skipping notices (non-fatal):', e);
-            }
+            // Acesso por cliente: a member restricted away from this client is out too
+            // (linkCreatorSeesClient: membership + client scope, fail closed).
+            const isStillMember = await linkCreatorSeesClient(
+                serviceClient, userId, contaId, parseInt(String(clientId), 10),
+            );
 
             if (isStillMember) {
                 try {
                     await serviceClient.from('notifications').insert({
                         workspace_id: contaId,
                         user_id: userId,
+                        cliente_id: parseInt(String(clientId), 10),
                         type: 'instagram_connected_by_client',
                         metadata: { client_name: clienteNome, ig_username: igProfile.username || '' },
                         link: `/clientes/${clientId}`,

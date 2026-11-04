@@ -42,3 +42,15 @@ Deno.test("instagram-integration ownership: a scope read error raises ClientScop
   assertEquals(caught instanceof ClientScopeUnavailableError, true);
   assertEquals((caught as Error).message.includes("expired"), false);
 });
+
+Deno.test("linkCreatorSeesClient: member who sees the client only; not a member / hidden / error -> false", async () => {
+  const { linkCreatorSeesClient } = await import("../instagram-integration/ownership.ts");
+  const svc = {} as never;
+  const scope = (s: { all: boolean; ids: number[] }) => () =>
+    Promise.resolve({ all: s.all, ids: new Set(s.ids), membroIds: new Set<number>() });
+  assertEquals(await linkCreatorSeesClient(svc, "u", "w", 7, scope({ all: true, ids: [] })), true);
+  assertEquals(await linkCreatorSeesClient(svc, "u", "w", 7, scope({ all: false, ids: [7] })), true);
+  // loadClientScope answers "no clients" for a non-member, so this covers the ex-member too.
+  assertEquals(await linkCreatorSeesClient(svc, "u", "w", 7, scope({ all: false, ids: [] })), false);
+  assertEquals(await linkCreatorSeesClient(svc, "u", "w", 7, () => Promise.reject(new Error("boom"))), false);
+});
