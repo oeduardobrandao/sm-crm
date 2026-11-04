@@ -35,6 +35,9 @@
 --   o pai pela FK (instagram_posts, histórico, cache, tags, tiktok_posts,
 --   histórico do TikTok) herdam sem mudança; as que só olhavam conta_id ganham
 --   o EXISTS no pai com can_access_cliente.
+-- analytics_reports: o restrito só grava caminho de arquivo (storage_path,
+--   html_storage_path) dentro de reports/<conta>/<cliente da linha>/ e conta do
+--   Instagram do mesmo cliente (as edges assinam o caminho gravado).
 -- report_documents.layout: o restrito só referencia imagem visível pela origem
 --   (file_visible_at_source), senão report_document_files levaria um arquivo
 --   oculto para um relatório visível (o PDF e o editor o mostram).
@@ -236,6 +239,61 @@ GRANT EXECUTE ON FUNCTION public.guard_report_layout_files() TO service_role;
 CREATE TRIGGER zz_client_scope_layout_guard
   BEFORE INSERT OR UPDATE OF layout ON public.report_documents
   FOR EACH ROW EXECUTE FUNCTION public.guard_report_layout_files();
+
+-- Referências do relatório mensal (analytics_reports): authenticated tem
+-- escrita direta (grant padrão do hosted), e as edges servem o arquivo pelo
+-- caminho gravado na linha (instagram-analytics e hub-reports assinam
+-- storage_path / html_storage_path). Como o caminho é previsível
+-- (reports/<conta>/<cliente>/<mês>.pdf|.html), um restrito gravaria numa linha
+-- do cliente A o caminho do PDF de B e baixaria o relatório oculto. Para o
+-- restrito: os caminhos só dentro de reports/<conta>/<cliente da linha>/ (um
+-- nível, sem '..'), e instagram_account_id só de uma conta do mesmo cliente.
+-- auth.uid() NULL (geradores, cron) e membros irrestritos saem antes.
+CREATE OR REPLACE FUNCTION public.guard_analytics_report_refs()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_dir text;
+BEGIN
+  IF v_uid IS NULL THEN RETURN NEW; END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.workspace_members wm
+     WHERE wm.workspace_id = NEW.conta_id AND wm.user_id = v_uid
+       AND wm.role <> 'owner' AND wm.client_scope = 'atribuidos'
+  ) THEN
+    RETURN NEW;
+  END IF;
+  v_dir := 'reports/' || NEW.conta_id::text || '/' || coalesce(NEW.client_id::text, '-') || '/';
+  -- no UPDATE só conta o que mudou (linhas antigas do gerador seguem editáveis)
+  IF (NEW.storage_path IS NOT NULL
+      AND (TG_OP = 'INSERT' OR NEW.storage_path IS DISTINCT FROM OLD.storage_path)
+      AND (left(NEW.storage_path, length(v_dir)) <> v_dir
+           OR position('/' IN substr(NEW.storage_path, length(v_dir) + 1)) > 0
+           OR NEW.storage_path LIKE '%..%'))
+     OR (NEW.html_storage_path IS NOT NULL
+      AND (TG_OP = 'INSERT' OR NEW.html_storage_path IS DISTINCT FROM OLD.html_storage_path)
+      AND (left(NEW.html_storage_path, length(v_dir)) <> v_dir
+           OR position('/' IN substr(NEW.html_storage_path, length(v_dir) + 1)) > 0
+           OR NEW.html_storage_path LIKE '%..%'))
+     OR (NEW.instagram_account_id IS NOT NULL
+      AND (TG_OP = 'INSERT' OR NEW.instagram_account_id IS DISTINCT FROM OLD.instagram_account_id
+           OR NEW.client_id IS DISTINCT FROM OLD.client_id)
+      AND NOT EXISTS (SELECT 1 FROM public.instagram_accounts ia
+                       WHERE ia.id = NEW.instagram_account_id AND ia.client_id = NEW.client_id)) THEN
+    RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.guard_analytics_report_refs() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.guard_analytics_report_refs() TO service_role;
+
+CREATE TRIGGER zz_client_scope_refs_guard
+  BEFORE INSERT OR UPDATE ON public.analytics_reports
+  FOR EACH ROW EXECUTE FUNCTION public.guard_analytics_report_refs();
 
 -- -------------------------------------------------------------
 -- 1. Agenda

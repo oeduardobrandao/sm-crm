@@ -337,6 +337,24 @@ begin
   v_err := pg_temp.err_as(v_restr, format('update analytics_reports set client_id = %s where client_id = %s', v_cb, v_ca));
   assert v_err = '42501', 'move_analytics_report_to_b_denied: ' || coalesce(v_err, 'ok');
 
+  -- report file paths and account: only the row's own client (the edges sign
+  -- storage_path / html_storage_path as written; the path is predictable)
+  v_err := pg_temp.errm_as(v_restr, format('insert into analytics_reports (conta_id, client_id, report_month, storage_path) values (%L, %s, ''2026-08'', %L)',
+             v_ws, v_ca, format('reports/%s/%s/2026-10.pdf', v_ws, v_cb)));
+  assert v_err = 'client_scope_restricted', 'analytics_report_pointing_at_b_pdf_denied: ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.errm_as(v_restr, format('update analytics_reports set html_storage_path = %L where client_id = %s',
+             format('reports/%s/%s/../%s/2026-10.html', v_ws, v_ca, v_cb), v_ca));
+  assert v_err = 'client_scope_restricted', 'analytics_report_path_traversal_denied: ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.errm_as(v_restr, format('insert into analytics_reports (conta_id, client_id, report_month, instagram_account_id) values (%L, %s, ''2026-07'', %L)',
+             v_ws, v_ca, ig_b));
+  assert v_err = 'client_scope_restricted', 'analytics_report_with_b_account_denied: ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.errm_as(v_restr, format('insert into analytics_reports (conta_id, client_id, report_month, instagram_account_id, storage_path) values (%L, %s, ''2026-06'', %L, %L)',
+             v_ws, v_ca, ig_a, format('reports/%s/%s/2026-06.pdf', v_ws, v_ca)));
+  assert v_err is null, 'analytics_report_own_client_refs_ok: ' || coalesce(v_err, '');
+  v_n := pg_temp.rows_as(v_todos, format('update analytics_reports set storage_path = %L where client_id = %s and report_month = ''2026-06''',
+             format('reports/%s/%s/2026-10.pdf', v_ws, v_cb), v_ca));
+  assert v_n = 1, 'todos_analytics_report_refs_unchanged: ' || v_n;
+
   v_n := pg_temp.rows_as(v_restr, format('update report_documents set title = ''x'' where id = %L', rd_b));
   assert v_n = 0, 'update_report_of_b_noop: ' || v_n;
   -- report layout: a new image must be visible at its source (no hidden file
@@ -718,7 +736,7 @@ do $$
 declare v_f text;
 begin
   foreach v_f in array array['public.guard_agenda_evento_scope()', 'public.guard_agenda_participante_scope()',
-      'public.guard_report_layout_files()'] loop
+      'public.guard_report_layout_files()', 'public.guard_analytics_report_refs()'] loop
     assert not has_function_privilege('authenticated', v_f, 'EXECUTE'), 'not executable by authenticated: ' || v_f;
     assert not has_function_privilege('anon', v_f, 'EXECUTE'), 'not executable by anon: ' || v_f;
     assert has_function_privilege('service_role', v_f, 'EXECUTE'), 'executable by service_role: ' || v_f;

@@ -130,7 +130,7 @@ pasta). As funções de trigger das guardas (`guard_client_scope_move`,
 `guard_post_child_update`, `guard_post_process_step_assign`, `guard_client_scope_item`,
 `guard_scope_child_reparent`, `guard_file_scope_update`, `guard_folder_scope_parent`,
 `guard_brand_logo_file`, `guard_post_file_link_swap`, `guard_agenda_evento_scope`,
-`guard_agenda_participante_scope`, `guard_report_layout_files`) não têm EXECUTE
+`guard_agenda_participante_scope`, `guard_report_layout_files`, `guard_analytics_report_refs`) não têm EXECUTE
 para `authenticated` nem `anon`.
 
 Espelho TS: só `isClientScoped(membership)` em `lib/permissions.ts`, para afordâncias de UI
