@@ -68,6 +68,16 @@ begin
   execute 'reset role';
   return v;
 end $f$;
+-- count(*) of a query run WITHOUT RLS but with p_user's claims (the service-role
+-- path: the raw resolvers are not callable by authenticated)
+create or replace function pg_temp.n_claims(p_user uuid, p_sql text) returns bigint language plpgsql as $f$
+declare v bigint;
+begin
+  perform set_config('request.jwt.claims', json_build_object('sub', p_user, 'role', 'authenticated')::text, true);
+  execute p_sql into v;
+  perform set_config('request.jwt.claims', '', true);
+  return v;
+end $f$;
 -- a file row (as superuser)
 create or replace function pg_temp.mkfile(p_conta uuid, p_folder bigint, p_by uuid, p_name text)
 returns bigint language sql as $f$
@@ -162,20 +172,45 @@ begin
   -- ---------------------------------------------------------------
   -- resolver
   -- ---------------------------------------------------------------
-  v_n := pg_temp.n_as(v_restr, format('select count(*) from (select public.folder_cliente_id(%s) c) x where c = %s', v_ua2, v_ca));
+  v_n := pg_temp.n_claims(v_restr, format('select count(*) from (select public.folder_cliente_id(%s) c) x where c = %s', v_ua2, v_ca));
   assert v_n = 1, 'resolver_user_folder_walks_to_client: ' || v_n;
-  v_n := pg_temp.n_as(v_restr, format('select count(*) from (select public.folder_cliente_id(%s) c) x where c = %s', v_fpb_own, v_cb));
+  v_n := pg_temp.n_claims(v_restr, format('select count(*) from (select public.folder_cliente_id(%s) c) x where c = %s', v_fpb_own, v_cb));
   assert v_n = 1, 'resolver_post_folder_uses_post_client: ' || v_n;
-  v_n := pg_temp.n_as(v_restr, format('select count(*) from (select public.folder_cliente_id(%s) c) x where c = %s', v_fwa, v_ca));
+  v_n := pg_temp.n_claims(v_restr, format('select count(*) from (select public.folder_cliente_id(%s) c) x where c = %s', v_fwa, v_ca));
   assert v_n = 1, 'resolver_workflow_folder_uses_workflow_client: ' || v_n;
-  v_n := pg_temp.n_as(v_restr, format('select count(*) from (select public.folder_cliente_id(%s) c) x where c = %s', v_rep_a, v_ca));
+  v_n := pg_temp.n_claims(v_restr, format('select count(*) from (select public.folder_cliente_id(%s) c) x where c = %s', v_rep_a, v_ca));
   assert v_n = 1, 'resolver_client_reports_folder: ' || v_n;
-  v_n := pg_temp.n_as(v_restr, format('select count(*) from (select public.folder_cliente_id(%s) c) x where c is null', v_root));
+  v_n := pg_temp.n_claims(v_restr, format('select count(*) from (select public.folder_cliente_id(%s) c) x where c is null', v_root));
   assert v_n = 1, 'resolver_root_clients_no_client: ' || v_n;
-  v_n := pg_temp.n_as(v_restr, format('select count(*) from (select public.folder_cliente_id(%s) c) x where c is null', v_cyc1));
+  v_n := pg_temp.n_claims(v_restr, format('select count(*) from (select public.folder_cliente_id(%s) c) x where c is null', v_cyc1));
   assert v_n = 1, 'resolver_cycle_returns_null: ' || v_n;
-  v_n := pg_temp.n_as(v_restr, 'select count(*) from (select public.folder_cliente_id(null) c) x where c is null');
+  v_n := pg_temp.n_claims(v_restr, 'select count(*) from (select public.folder_cliente_id(null) c) x where c is null');
   assert v_n = 1, 'resolver_null_folder_no_client: ' || v_n;
+  -- resolver_not_exposed: a restricted member can't ask which client a folder,
+  -- workflow or post belongs to; the policy wrappers only answer "in my scope?"
+  v_err := pg_temp.err_as(v_restr, format('select public.folder_cliente_id(%s)', v_fcb));
+  assert v_err = '42501', 'resolver_folder_cliente_id_not_callable: ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.err_as(v_restr, format('select public.folder_row_cliente_id(''post'', %s, null)', v_pb_other));
+  assert v_err = '42501', 'resolver_folder_row_cliente_id_not_callable: ' || coalesce(v_err, 'ok');
+  -- the authenticated-callable resolvers return only a client he already accesses
+  v_n := pg_temp.n_as(v_restr, format('select count(*) from (select public.folder_scope_cliente_id(%s) c) x where c is null', v_fcb));
+  assert v_n = 1, 'folder_scope_cliente_id_of_b_folder_null: ' || v_n;
+  v_n := pg_temp.n_as(v_restr, format('select count(*) from (select public.folder_scope_cliente_id(%s) c) x where c is null', v_fpb_own));
+  assert v_n = 1, 'folder_scope_cliente_id_of_own_b_post_folder_null: ' || v_n;
+  v_n := pg_temp.n_as(v_restr, format('select count(*) from (select public.folder_scope_cliente_id(%s) c) x where c = %s', v_ua, v_ca));
+  assert v_n = 1, 'folder_scope_cliente_id_of_a_folder: ' || v_n;
+  v_n := pg_temp.n_as(v_restr, format('select count(*) from (select public.folder_row_scope_cliente_id(''post'', %s, null) c) x where c is null', v_pb_other));
+  assert v_n = 1, 'folder_row_scope_cliente_id_of_b_post_null: ' || v_n;
+  v_n := pg_temp.n_as(v_restr, format('select count(*) from (select public.folder_row_scope_cliente_id(''workflow'', %s, null) c) x where c is null', v_wb));
+  assert v_n = 1, 'folder_row_scope_cliente_id_of_b_workflow_null: ' || v_n;
+  v_n := pg_temp.n_as(v_restr, format('select count(*) from (select public.folder_row_scope_cliente_id(''post'', %s, null) c) x where c = %s', v_pa, v_ca));
+  assert v_n = 1, 'folder_row_scope_cliente_id_of_a_post: ' || v_n;
+  v_n := pg_temp.n_as(v_restr, format('select count(*) from (select public.file_own_client_less(%s) b) x where b', f_null_other));
+  assert v_n = 0, 'file_own_client_less_of_other_false: ' || v_n;
+  v_n := pg_temp.n_as(v_restr, format('select count(*) from (select public.file_own_client_less(%s) b) x where b', f_b_own));
+  assert v_n = 0, 'file_own_client_less_own_in_b_false: ' || v_n;
+  v_n := pg_temp.n_as(v_restr, format('select count(*) from (select public.file_own_client_less(%s) b) x where b', f_null_own));
+  assert v_n = 1, 'file_own_client_less_own_true: ' || v_n;
 
   -- ---------------------------------------------------------------
   -- files: read
@@ -326,6 +361,13 @@ begin
   v_n := pg_temp.n_as(v_restr, format('select count(*) from files where id = %s', f_a_sub));
   assert v_n = 0, 'orphaned_file_of_other_now_client_less_hidden: ' || v_n;
 
+  -- a restricted member's avulso post in A gets its folder under A's client folder
+  -- (folder_sync_post runs inside the post trigger; the folder guard lets it through)
+  v_err := pg_temp.err_as(v_restr, format('insert into workflow_posts (conta_id, cliente_id, titulo) values (%L, %s, ''avA restr'')', v_ws, v_ca));
+  assert v_err is null, 'restricted_post_in_a_ok: ' || coalesce(v_err, '');
+  assert (select f.parent_id from folders f join workflow_posts wp on wp.id = f.source_id
+           where f.source_type = 'post' and wp.titulo = 'avA restr' and wp.conta_id = v_ws) = v_fca,
+    'restricted_post_in_a_folder_under_client_a';
   -- own post title in hidden client: folder_sync_post renames the (hidden) post folder
   v_n := pg_temp.rows_as(v_restr, format('update workflow_posts set titulo = ''pBown renamed'' where id = %s', v_pb_own));
   assert v_n = 1, 'own_b_post_rename_ok: ' || v_n;
@@ -412,13 +454,17 @@ begin
   assert v_plan ~ 'Output: my_client_scope_all\(\)' and v_plan !~ 'Filter:[^\n]*my_client_scope_all',
     'files: my_client_scope_all is an initplan: ' || v_plan;
   -- PG 17 prints the initplan as (InitPlan N).col1, older versions as $N
-  assert v_plan ~ 'Filter:[^\n]*(\(InitPlan [0-9]+\)\.col1|\$[0-9]+) OR ',
+  assert v_plan ~ 'Filter:[^\n]*AND \((\(InitPlan [0-9]+\)\.col1|\$[0-9]+) OR \(files\.uploaded_by = ',
     'files: scope initplan comes first in the filter: ' || v_plan;
   execute 'explain (format json) select * from files' into v_json;
   assert v_json::text ~ '"Subplan Name": "InitPlan', 'files: JSON plan has an InitPlan: ' || v_json::text;
   -- the only SubPlan is the pre-existing hashed conta_id IN (...), built once
   assert replace(v_json -> 0 -> 'Plan' ->> 'Filter', 'hashed SubPlan', '') !~ 'SubPlan',
     'files: no per-row SubPlan: ' || v_json::text;
+  v_plan := '';
+  for r in execute 'explain (verbose, costs off) select * from folders' loop v_plan := v_plan || r."QUERY PLAN" || E'\n'; end loop;
+  assert v_plan ~ 'Filter:[^\n]*AND \((\(InitPlan [0-9]+\)\.col1|\$[0-9]+) OR can_access_cliente\(folder_row_scope_cliente_id\(',
+    'folders: scope initplan comes first in the filter: ' || v_plan;
   execute 'explain (format json) select * from folders' into v_json;
   assert replace(v_json -> 0 -> 'Plan' ->> 'Filter', 'hashed SubPlan', '') !~ 'SubPlan',
     'folders: no per-row SubPlan: ' || v_json::text;
@@ -432,16 +478,18 @@ reset role;
 do $$
 declare v_f text;
 begin
-  foreach v_f in array array['public.folder_cliente_id(bigint)',
-      'public.folder_row_cliente_id(text,bigint,bigint)', 'public.file_linked_to_visible_post(bigint)'] loop
+  foreach v_f in array array['public.folder_scope_cliente_id(bigint)', 'public.folder_row_scope_cliente_id(text,bigint,bigint)',
+      'public.file_own_client_less(bigint)', 'public.file_linked_to_visible_post(bigint)'] loop
     assert has_function_privilege('authenticated', v_f, 'EXECUTE'), 'helper executable by authenticated: ' || v_f;
     assert not has_function_privilege('anon', v_f, 'EXECUTE'), 'helper not executable by anon: ' || v_f;
     assert has_function_privilege('service_role', v_f, 'EXECUTE'), 'helper executable by service_role: ' || v_f;
   end loop;
-  foreach v_f in array array['public.guard_file_scope_update()', 'public.guard_folder_scope_parent()'] loop
-    assert not has_function_privilege('authenticated', v_f, 'EXECUTE'), 'trigger fn not executable by authenticated: ' || v_f;
-    assert not has_function_privilege('anon', v_f, 'EXECUTE'), 'trigger fn not executable by anon: ' || v_f;
-    assert has_function_privilege('service_role', v_f, 'EXECUTE'), 'trigger fn executable by service_role: ' || v_f;
+  -- raw resolvers return a cliente_id: service_role only
+  foreach v_f in array array['public.folder_cliente_id(bigint)', 'public.folder_row_cliente_id(text,bigint,bigint)',
+      'public.guard_file_scope_update()', 'public.guard_folder_scope_parent()'] loop
+    assert not has_function_privilege('authenticated', v_f, 'EXECUTE'), 'not executable by authenticated: ' || v_f;
+    assert not has_function_privilege('anon', v_f, 'EXECUTE'), 'not executable by anon: ' || v_f;
+    assert has_function_privilege('service_role', v_f, 'EXECUTE'), 'executable by service_role: ' || v_f;
   end loop;
   -- the security-definer resolver is not inlinable and the link check stays invoker
   assert (select prosecdef from pg_proc where oid = 'public.folder_cliente_id(bigint)'::regprocedure), 'folder_cliente_id is definer';

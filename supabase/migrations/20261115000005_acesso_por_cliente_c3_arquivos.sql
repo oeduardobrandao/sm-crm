@@ -50,7 +50,9 @@
 -- UPDATE em folders: buscar a linha pelo id veria a versão antiga). DEFINER: lê
 -- folders, workflows e workflow_posts sem a RLS (a pasta do post dele num
 -- cliente oculto continua resolvendo para o cliente certo). Só pastas, workflows
--- e posts do workspace ativo.
+-- e posts do workspace ativo. Só service_role (e as guardas DEFINER): devolve o
+-- cliente cru de qualquer pasta/workflow/post, então authenticated não a chama;
+-- as policies usam folder_row_scope_cliente_id.
 CREATE OR REPLACE FUNCTION public.folder_row_cliente_id(p_source_type text, p_source_id bigint, p_parent_id bigint)
 RETURNS bigint
 LANGUAGE plpgsql STABLE SECURITY DEFINER
@@ -90,9 +92,10 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.folder_row_cliente_id(text, bigint, bigint) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.folder_row_cliente_id(text, bigint, bigint) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.folder_row_cliente_id(text, bigint, bigint) TO service_role;
 
--- Cliente da pasta p_folder_id (a de um arquivo). NULL = sem cliente.
+-- Cliente da pasta p_folder_id (a de um arquivo). NULL = sem cliente. Só
+-- service_role, como a de cima.
 CREATE OR REPLACE FUNCTION public.folder_cliente_id(p_folder_id bigint)
 RETURNS bigint
 LANGUAGE plpgsql STABLE SECURITY DEFINER
@@ -112,7 +115,64 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.folder_cliente_id(bigint) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.folder_cliente_id(bigint) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.folder_cliente_id(bigint) TO service_role;
+
+-- Versões das policies (authenticated): devolvem o cliente só quando o usuário
+-- atual o acessa; caso contrário NULL, que nas policies vira can_access_cliente
+-- falso. NULL aqui não quer dizer "sem cliente": o "sem cliente e é dele" do
+-- DELETE usa file_own_client_less. Assim um restrito que chama a função pelo
+-- PostgREST não descobre de qual cliente é uma pasta, workflow ou post oculto.
+CREATE OR REPLACE FUNCTION public.folder_scope_cliente_id(p_folder_id bigint)
+RETURNS bigint
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_cli bigint := public.folder_cliente_id(p_folder_id);
+BEGIN
+  IF v_cli IS NOT NULL AND public.can_access_cliente(v_cli) THEN RETURN v_cli; END IF;
+  RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.folder_scope_cliente_id(bigint) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.folder_scope_cliente_id(bigint) TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.folder_row_scope_cliente_id(p_source_type text, p_source_id bigint, p_parent_id bigint)
+RETURNS bigint
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_cli bigint := public.folder_row_cliente_id(p_source_type, p_source_id, p_parent_id);
+BEGIN
+  IF v_cli IS NOT NULL AND public.can_access_cliente(v_cli) THEN RETURN v_cli; END IF;
+  RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.folder_row_scope_cliente_id(text, bigint, bigint) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.folder_row_scope_cliente_id(text, bigint, bigint) TO authenticated, service_role;
+
+-- O arquivo é um upload do usuário atual, do workspace ativo, numa pasta sem
+-- cliente (ou sem pasta): o único DELETE "é dele" de files. Responde só sobre os
+-- arquivos dele.
+CREATE OR REPLACE FUNCTION public.file_own_client_less(p_file_id bigint)
+RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_folder bigint;
+BEGIN
+  IF auth.uid() IS NULL THEN RETURN false; END IF;
+  SELECT f.folder_id INTO v_folder FROM public.files f
+   WHERE f.id = p_file_id AND f.conta_id = public.get_my_conta_id()
+     AND f.uploaded_by = auth.uid();
+  IF NOT FOUND THEN RETURN false; END IF;
+  RETURN public.folder_cliente_id(v_folder) IS NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.file_own_client_less(bigint) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.file_own_client_less(bigint) TO authenticated, service_role;
 
 -- O arquivo está ligado a um post que o usuário atual vê. INVOKER de propósito:
 -- a consulta passa pela RLS de post_file_links (que segue o post visível,
@@ -249,28 +309,28 @@ ALTER POLICY files_tenant_all ON public.files
     conta_id IN (SELECT public.get_my_conta_id())
     AND ((SELECT public.my_client_scope_all())
          OR uploaded_by = (SELECT auth.uid())
-         OR public.can_access_cliente(public.folder_cliente_id(folder_id))
+         OR public.can_access_cliente(public.folder_scope_cliente_id(folder_id))
          OR public.file_linked_to_visible_post(id))
   )
   WITH CHECK (
     conta_id IN (SELECT public.get_my_conta_id())
     AND ((SELECT public.my_client_scope_all())
          OR uploaded_by = (SELECT auth.uid())
-         OR public.can_access_cliente(public.folder_cliente_id(folder_id))
+         OR public.can_access_cliente(public.folder_scope_cliente_id(folder_id))
          OR public.file_linked_to_visible_post(id))
   );
 CREATE POLICY files_scope_insert ON public.files
   AS RESTRICTIVE FOR INSERT TO authenticated
   WITH CHECK (
     (SELECT public.my_client_scope_all())
-    OR public.can_access_cliente(public.folder_cliente_id(folder_id))
+    OR public.can_access_cliente(public.folder_scope_cliente_id(folder_id))
   );
 CREATE POLICY files_scope_delete ON public.files
   AS RESTRICTIVE FOR DELETE TO authenticated
   USING (
     (SELECT public.my_client_scope_all())
-    OR public.can_access_cliente(public.folder_cliente_id(folder_id))
-    OR (uploaded_by = (SELECT auth.uid()) AND public.folder_cliente_id(folder_id) IS NULL)
+    OR public.can_access_cliente(public.folder_scope_cliente_id(folder_id))
+    OR (uploaded_by = (SELECT auth.uid()) AND public.file_own_client_less(id))
   );
 
 -- -------------------------------------------------------------
@@ -280,26 +340,26 @@ ALTER POLICY folders_tenant_all ON public.folders
   USING (
     conta_id IN (SELECT public.get_my_conta_id())
     AND ((SELECT public.my_client_scope_all())
-         OR public.can_access_cliente(public.folder_row_cliente_id(source_type, source_id, parent_id))
+         OR public.can_access_cliente(public.folder_row_scope_cliente_id(source_type, source_id, parent_id))
          OR source_type = 'root_clients')
   )
   WITH CHECK (
     conta_id IN (SELECT public.get_my_conta_id())
     AND ((SELECT public.my_client_scope_all())
-         OR public.can_access_cliente(public.folder_row_cliente_id(source_type, source_id, parent_id)))
+         OR public.can_access_cliente(public.folder_row_scope_cliente_id(source_type, source_id, parent_id)))
   );
 -- root_clients é legível pela navegação, nunca gravável pelo restrito.
 CREATE POLICY folders_scope_update ON public.folders
   AS RESTRICTIVE FOR UPDATE TO authenticated
   USING (
     (SELECT public.my_client_scope_all())
-    OR public.can_access_cliente(public.folder_row_cliente_id(source_type, source_id, parent_id))
+    OR public.can_access_cliente(public.folder_row_scope_cliente_id(source_type, source_id, parent_id))
   );
 CREATE POLICY folders_scope_delete ON public.folders
   AS RESTRICTIVE FOR DELETE TO authenticated
   USING (
     (SELECT public.my_client_scope_all())
-    OR public.can_access_cliente(public.folder_row_cliente_id(source_type, source_id, parent_id))
+    OR public.can_access_cliente(public.folder_row_scope_cliente_id(source_type, source_id, parent_id))
   );
 
 -- -------------------------------------------------------------
