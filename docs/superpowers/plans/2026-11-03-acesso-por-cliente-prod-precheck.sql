@@ -141,7 +141,9 @@ select v.schemaname, v.tablename, v.policyname
   ('public', 'workflows', 'workflows_delete'),
   ('public', 'workflows', 'workflows_insert'),
   ('public', 'workflows', 'workflows_select'),
-  ('public', 'workflows', 'workflows_update')
+  ('public', 'workflows', 'workflows_update'),
+  ('storage', 'objects', 'financeiro_acordos_insert'),
+  ('storage', 'objects', 'financeiro_acordos_select')
   ) v(schemaname, tablename, policyname)
   left join pg_policies p using (schemaname, tablename, policyname)
  where p.policyname is null
