@@ -556,6 +556,74 @@ begin
 end $$;
 
 -- =============================================================
+-- storage: public buckets no longer list across workspaces
+-- (20261115000015_acesso_por_cliente_k_storage_listagem.sql)
+-- =============================================================
+create or replace function pg_temp.bucket_n(p_role text, p_user uuid, p_bucket text) returns bigint language plpgsql as $f$
+declare v bigint;
+begin
+  perform set_config('request.jwt.claims', case when p_user is null then json_build_object('role', 'anon')
+    else json_build_object('sub', p_user, 'role', 'authenticated') end::text, true);
+  execute format('set local role %I', p_role);
+  select count(*) into v from storage.objects where bucket_id = p_bucket and name like '%-k.%';
+  execute 'reset role';
+  return v;
+end $f$;
+create or replace function pg_temp.upd_rows_as(p_user uuid, p_sql text) returns bigint language plpgsql as $f$
+declare v bigint;
+begin
+  perform set_config('request.jwt.claims', json_build_object('sub', p_user, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  execute p_sql;
+  get diagnostics v = row_count;
+  execute 'reset role';
+  return v;
+end $f$;
+do $$
+declare
+  v_ws uuid := (select active_workspace_id from profiles where id = (select id from auth.users where email = 'owner@acfin.test'));
+  v_owner uuid := (select id from auth.users where email = 'owner@acfin.test');
+  v_restr uuid := (select id from auth.users where email = 'restr@acfin.test');
+  v_cb bigint := (select id from clientes where conta_id = v_ws and nome = 'B');
+  v_ca bigint := (select id from clientes where conta_id = v_ws and nome = 'A');
+  v_other uuid := gen_random_uuid();
+begin
+  insert into storage.objects (bucket_id, name) values
+    ('avatars', 'workspaces/' || v_ws || '/logo-k.png'),
+    ('avatars', 'workspaces/' || v_other || '/logo-k.png'),
+    ('avatars', 'clientes/' || v_ca || '/a-k.png'),
+    ('avatars', 'clientes/' || v_cb || '/b-k.png'),
+    ('avatars', 'profiles/' || v_restr || '/p-k.jpg'),
+    ('avatars', 'profiles/' || v_owner || '/p-k.jpg'),
+    ('post-media', v_ws || '/x-k.jpg'),
+    ('post-media', v_other || '/y-k.jpg'),
+    ('tiktok-posts', 'v1-k.jpg');
+
+  assert pg_temp.bucket_n('anon', null, 'avatars') = 0, 'anon_lists_no_avatars';
+  assert pg_temp.bucket_n('anon', null, 'post-media') = 0, 'anon_lists_no_post_media';
+  assert pg_temp.bucket_n('anon', null, 'tiktok-posts') = 0, 'anon_lists_no_tiktok_posts';
+  assert pg_temp.bucket_n('authenticated', v_owner, 'tiktok-posts') = 0, 'member_lists_no_tiktok_posts';
+  assert pg_temp.bucket_n('authenticated', v_owner, 'post-media') = 1,
+    'owner_lists_only_own_post_media: ' || pg_temp.bucket_n('authenticated', v_owner, 'post-media');
+  -- owner: own logo, both clients, own profile
+  assert pg_temp.bucket_n('authenticated', v_owner, 'avatars') = 4,
+    'owner_lists_own_workspace_avatars: ' || pg_temp.bucket_n('authenticated', v_owner, 'avatars');
+  -- restricted: own logo, client A only, own profile
+  assert pg_temp.bucket_n('authenticated', v_restr, 'avatars') = 3,
+    'restricted_lists_assigned_client_photos: ' || pg_temp.bucket_n('authenticated', v_restr, 'avatars');
+
+  -- the logo upsert (storage-api overwrite: UPDATE ... RETURNING, which needs SELECT on the
+  -- row) still works for the owner, and finds nothing on another workspace's logo
+  assert pg_temp.upd_rows_as(v_owner, format(
+    'update storage.objects set updated_at = now() where bucket_id = ''avatars'' and name = %L returning id',
+    'workspaces/' || v_ws || '/logo-k.png')) = 1, 'owner_logo_overwrite_ok';
+  assert pg_temp.upd_rows_as(v_owner, format(
+    'update storage.objects set updated_at = now() where bucket_id = ''avatars'' and name = %L returning id',
+    'workspaces/' || v_other || '/logo-k.png')) = 0, 'other_workspace_logo_overwrite_denied';
+  raise notice 'PASS storage listing';
+end $$;
+
+-- =============================================================
 -- zero scope calls for todos / owner (pg_stat_xact_user_functions)
 -- =============================================================
 set local track_functions = 'all';
