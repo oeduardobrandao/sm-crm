@@ -178,11 +178,10 @@ service-role client, every read with `conta_id`.
   (`website_clicks`, `profile_views` exist on both) never gets `tiktok_`, and an Instagram id
   never gets read as GMN.
 - `refresh-data`: a GMN section frozen in the document stays when GMN is gone (all units
-  unlinked, or flag off), as TikTok does. Today `loadClientSnapshot` throws `not_found` when no
-  platform is connected, so a single-platform document whose platform left 404s before the
-  carry-over runs (true for TikTok-only today too). Refresh calls it with `allowNone: true`:
-  empty Instagram root, then `carryOverFrozenPlatforms` restores what the document had; only a
-  document with nothing frozen and nothing connected still answers `not_found`.
+  unlinked, or flag off) while another network is still connected, as TikTok does. A document
+  whose networks are all gone keeps answering `not_found` on refresh, the rule
+  `refresh.test.ts` already pins for TikTok ("nenhuma rede conectada mais continua not_found,
+  mesmo com snapshot congelado"); the document itself still renders its frozen sections.
 - `PDF_RENDERER_VERSION` 6 → 7.
 
 ### Renderer (`packages/report-blocks`)

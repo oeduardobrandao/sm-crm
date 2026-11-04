@@ -92,12 +92,15 @@ export async function generateReportDocument(
   // conta como não conectada: snapshot.tiktok null e tiktok_account_id null. Erro na RPC
   // derruba a geração, como o feature_analytics_reports acima.
   const tiktokEnabled = await effectivePlanFeature(db, contaId, "feature_tiktok");
+  // Google Meu Negócio no relatório só com feature_google_business (spec 2026-11-04), mesma regra.
+  const googleEnabled = await effectivePlanFeature(db, contaId, "feature_google_business");
+  const flags = { tiktokEnabled, googleEnabled };
 
   // Plataformas pedidas (spec 2026-10-28 §B1): só as conectadas, conferidas pelas linhas de conta
   // antes do snapshot completo (que chama a Graph e baixa thumbnails). A escolha molda só o
   // layout; os dados de toda rede conectada entram no snapshot de qualquer jeito.
   if (platforms) {
-    const connectedNow = await connectedPlatforms(db, clientId, tiktokEnabled);
+    const connectedNow = await connectedPlatforms(db, contaId, clientId, flags);
     if (platforms.some((p) => !connectedNow.includes(p))) throw new GenerateError("invalid_platforms");
   }
 
@@ -147,12 +150,13 @@ export async function generateReportDocument(
     db, deps, contaId,
     { id: cliente.id, especialidade: cliente.especialidade, nome: cliente.nome, foto_url: cliente.foto_url },
     month,
-    { tiktokEnabled },
+    flags,
   );
 
   const connected: ReportPlatform[] = [];
   if (igAccountId) connected.push("instagram");
   if (tiktokAccountId) connected.push("tiktok");
+  if (snapshot.google) connected.push("google");
   // A escolha molda o layout (seção por plataforma no padrão; no template, as seções escolhidas
   // + a seção das plataformas que ele não cobre); os dados de toda rede conectada já estão no
   // snapshot.
@@ -168,6 +172,7 @@ export async function generateReportDocument(
     hasBestTimes: snapshot.best_times.length > 0,
     hasTags: snapshot.tags_performance.length > 0,
     hasTikTokBestTimes: (snapshot.tiktok?.best_times.length ?? 0) > 0,
+    hasGbpUnits: (snapshot.google?.unit_rows.length ?? 0) > 1,
   };
   // Modelo do workspace (spec 2026-10-28-report-platform-sections §Generation): seções das
   // plataformas desmarcadas (ou sem dados) saem inteiras; só um modelo com alguma seção de
@@ -175,7 +180,12 @@ export async function generateReportDocument(
   // imagem) só é seccionado. Com duas seções de plataforma, os dois títulos aparecem.
   const baseLayout = templateLayout
     ? showAllPlatformHeadings(selectPlatformSections(templateLayout, selectedPlatforms, {
-      hasData: (p) => p === "instagram" ? snapshot.instagram_connected !== false : !!snapshot.tiktok,
+      hasData: (p) =>
+        p === "instagram"
+          ? snapshot.instagram_connected !== false
+          : p === "tiktok"
+          ? !!snapshot.tiktok
+          : !!snapshot.google,
       sectionOpts,
       onCapSkip: (platform) =>
         console.warn(

@@ -38,7 +38,7 @@ function makeDb(
   // deno-lint-ignore no-explicit-any
   const chain = (result: any, error: { message: string } | null = null): any => {
     const c: Record<string, unknown> = {};
-    for (const m of ["select", "eq", "gte", "lt", "lte", "order", "limit", "range"]) {
+    for (const m of ["select", "eq", "in", "gte", "lt", "lte", "order", "limit", "range"]) {
       c[m] = () => chain(result, error);
     }
     c.maybeSingle = () => Promise.resolve({ data: error ? null : result, error });
@@ -1230,4 +1230,65 @@ Deno.test("template with no room for the TikTok section warns with the template 
   assert(capWarn, warnings.join("\n"));
   assert(capWarn.includes("tiktok"));
   assert(!capWarn.includes("dra."), "sem @ ou dado do cliente no log");
+});
+
+// ── Google Meu Negócio (spec 2026-11-04-gmn-report-section) ──
+// Unidade sem sync (data_through null): a seção nasce sem janela e sem leitura de histórico,
+// o que basta para a fake db (que devolve as mesmas linhas para qualquer filtro).
+const GBP_UNIT = {
+  id: "u-1", location_name: "locations/1", title: "Unidade Centro", status: "active", maps_uri: null,
+  data_through: null, average_rating: "4.8", total_review_count: 10,
+};
+
+Deno.test("generate GMN-only: Google section, empty Instagram root, unit ids in the snapshot", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: null,
+    tiktok_accounts: null,
+    gbp_locations: [GBP_UNIT],
+    workspaces: WORKSPACE,
+  });
+  await generateReportDocument(db, deps, "c", 1, "2026-07", null, ["google"]);
+  const row = db.inserts[0] as InsertedRow & {
+    data_snapshot: { google?: { units: { id: string }[]; window: unknown } | null };
+  };
+  assertEquals(row.data_snapshot.instagram_connected, false);
+  assertEquals(row.data_snapshot.google?.units.map((u) => u.id), ["u-1"]);
+  assertEquals(row.data_snapshot.google?.window, null);
+  assertEquals(kindsOf(row.layout), ["general", "google"]);
+});
+
+Deno.test("generate without feature_google_business: no Google data and platforms google is invalid", async () => {
+  const rows = {
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: { id: "ig-1", username: "dra.x" },
+    instagram_posts: [],
+    gbp_locations: [GBP_UNIT],
+    workspaces: WORKSPACE,
+  };
+  const off = { featureByKey: { feature_google_business: false } };
+  let err: unknown;
+  try {
+    await generateReportDocument(makeDb(rows, off), deps, "c", 1, "2026-07", null, ["google"]);
+  } catch (e) { err = e; }
+  assert(err instanceof GenerateError && err.code === "invalid_platforms");
+
+  const db = makeDb(rows, off);
+  await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  const row = db.inserts[0] as InsertedRow & { data_snapshot: { google?: unknown } };
+  assertEquals(row.data_snapshot.google, null);
+  assert(!kindsOf(row.layout).includes("google"));
+  assert(!db.tables.includes("gbp_locations"));
+});
+
+Deno.test("generate: feature_google_business RPC error fails the generation", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+  }, { featureErrors: { feature_google_business: { message: "boom" } } });
+  let err: unknown;
+  try {
+    await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  } catch (e) { err = e; }
+  assert(err !== undefined);
+  assertEquals(db.inserts.length, 0);
 });

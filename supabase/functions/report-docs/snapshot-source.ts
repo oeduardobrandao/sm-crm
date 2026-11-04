@@ -25,6 +25,7 @@ import { GenerateError } from "./errors.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { isTikTokConnected, loadTikTokReportSection } from "./tiktok-section.ts";
 import { loadTikTokAccount } from "../_shared/tiktok-analytics/queries.ts";
+import { hasGoogleUnits, loadGoogleReportSection } from "./google-section.ts";
 import type { ReportPlatform } from "./client-id.ts";
 
 // As 7 métricas de conta que a cadeia (Graph ao vivo -> linha mensal -> soma
@@ -81,58 +82,88 @@ type SnapshotCliente = {
 const WORKSPACE_COLUMNS = "name, logo_url, brand_color, report_splash_url, hub_surface_theme, " +
   "hub_font_display, hub_font_body, hub_radius, hub_card_style";
 
+/** Plataformas ligadas pelo plano do workspace (lidas uma vez pelo chamador). */
+export interface PlatformFlags {
+  /** feature_tiktok. */
+  tiktokEnabled: boolean;
+  /** feature_google_business. */
+  googleEnabled: boolean;
+}
+
 /** Snapshot do mês para as redes conectadas do cliente (spec 2026-10-28 §B3). A raiz continua
  * sendo o Instagram; sem Instagram ela sai vazia com `instagram_connected: false`. `tiktok` só
- * existe com `opts.tiktokEnabled` (feature_tiktok) e uma conta TikTok conectada. Sem nenhuma das
- * duas, a geração falha. */
+ * existe com `tiktokEnabled` (feature_tiktok) e uma conta TikTok conectada; `google` só com
+ * `googleEnabled` (feature_google_business) e alguma unidade ligada (spec 2026-11-04). Sem
+ * nenhuma, a geração (e o refresh-data) falha com not_found. */
 export async function loadClientSnapshot(
   db: Db,
   deps: SnapshotDeps,
   contaId: string,
   cliente: SnapshotCliente,
   month: string,
-  opts: { tiktokEnabled: boolean },
-): Promise<{ snapshot: ReportDocSnapshot; igAccountId: string | null; tiktokAccountId: string | null }> {
+  opts: PlatformFlags,
+): Promise<{
+  snapshot: ReportDocSnapshot;
+  igAccountId: string | null;
+  tiktokAccountId: string | null;
+  /** Ids das unidades do Google usadas (também em snapshot.google.units). null = sem GMN. */
+  googleUnitIds: string[] | null;
+}> {
   // Conta IG do cliente. instagram_accounts NÃO tem conta_id (baseline
   // 20260301:171-188): o ownership do workspace já foi provado pelo chamador
   // via clientes.conta_id, e client_id é UNIQUE na tabela — buscar só por ele.
   // A conta TikTok segue a mesma regra (tiktok_accounts.client_id também é UNIQUE).
-  const [{ data: account, error: igError }, tiktok] = await Promise.all([
+  const [{ data: account, error: igError }, tiktok, google] = await Promise.all([
     db.from("instagram_accounts").select("*").eq("client_id", cliente.id).maybeSingle(),
     opts.tiktokEnabled
       ? loadTikTokReportSection(db, cliente.id, month, new Date())
+      : Promise.resolve(null),
+    opts.googleEnabled
+      ? loadGoogleReportSection(db, contaId, cliente.id, month, new Date())
       : Promise.resolve(null),
   ]);
   // Erro de leitura não é "sem Instagram": tratado como ausente, viraria um relatório só
   // TikTok (generate) ou apagaria a metade Instagram congelada (refresh). Falha a geração.
   if (igError) throw new Error(`instagram account query failed: ${igError.message ?? igError}`);
-  if (!account && !tiktok) throw new GenerateError("not_found", "Nenhuma rede conectada");
+  if (!account && !tiktok && !google) {
+    throw new GenerateError("not_found", "Nenhuma rede conectada");
+  }
 
   const snapshot = account
     ? await loadInstagramSnapshot(db, deps, contaId, cliente, month, account)
     : await loadSnapshotWithoutInstagram(db, contaId, cliente, month);
   return {
-    snapshot: { ...snapshot, instagram_connected: !!account, tiktok: tiktok?.section ?? null },
+    snapshot: {
+      ...snapshot,
+      instagram_connected: !!account,
+      tiktok: tiktok?.section ?? null,
+      google: google ?? null,
+    },
     igAccountId: account?.id ?? null,
     tiktokAccountId: tiktok?.accountId ?? null,
+    googleUnitIds: google ? google.units.map((u) => u.id) : null,
   };
 }
 
 /** Redes conectadas do cliente só pelas linhas de conta (sem carregar dado nenhum): o generate
- * valida `platforms` com isto antes do snapshot. TikTok conta só com `tiktokEnabled`. */
+ * valida `platforms` com isto antes do snapshot. TikTok conta só com `tiktokEnabled`; Google só
+ * com `googleEnabled` (unidades do workspace, por isso o contaId). */
 export async function connectedPlatforms(
   db: Db,
+  contaId: string,
   clientId: number,
-  tiktokEnabled: boolean,
+  flags: PlatformFlags,
 ): Promise<ReportPlatform[]> {
-  const [igRes, tiktokAccount] = await Promise.all([
+  const [igRes, tiktokAccount, google] = await Promise.all([
     db.from("instagram_accounts").select("id").eq("client_id", clientId).maybeSingle(),
-    tiktokEnabled ? loadTikTokAccount(db, clientId) : Promise.resolve(null),
+    flags.tiktokEnabled ? loadTikTokAccount(db, clientId) : Promise.resolve(null),
+    flags.googleEnabled ? hasGoogleUnits(db, contaId, clientId) : Promise.resolve(false),
   ]);
   if (igRes.error) throw new Error(`instagram account query failed: ${igRes.error.message ?? igRes.error}`);
   const out: ReportPlatform[] = [];
   if (igRes.data) out.push("instagram");
   if (isTikTokConnected(tiktokAccount)) out.push("tiktok");
+  if (google) out.push("google");
   return out;
 }
 
