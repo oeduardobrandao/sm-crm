@@ -24,7 +24,8 @@
 --                                   service_role) que expõe
 --                                   linhas (SELECT/UPDATE/DELETE/ALL) cita
 --                                   can_access_cliente (can_see_cliente_context só
---                                   vale nas v_context_tables);
+--                                   vale nas v_context_tables; nas v_scope_all_tables,
+--                                   my_client_scope_all);
 --                                   ou uma RESTRICTIVE do mesmo comando (ou ALL) cita; ou, só
 --                                   para filha sem chave própria, o qual
 --                                   consulta (FROM/JOIN) uma tabela-pai pela FK
@@ -60,8 +61,13 @@ declare
   v_extra_scoped text[] := array[
     'folders',  -- source_type/source_id: client | workflow | post | client_reports
     'files',    -- cliente via folders.folder_id (FK para folders, que é polimórfica)
-    'mencoes'   -- host_type/host_id: post_comment | tarefa | workflow_post | tarefa_comentario
+    'mencoes',  -- host_type/host_id: post_comment | tarefa | workflow_post | tarefa_comentario
+    'audit_log' -- resource_type/resource_id: client | post (nome e sigla do cliente no metadata)
   ];
+
+  -- Tabelas sem cliente por linha, fechadas inteiras para o restrito: a leitura
+  -- exige my_client_scope_all() (20261115000012).
+  v_scope_all_tables text[] := array['audit_log'];
 
   -- Tabelas de cliente sem policy para authenticated/anon/public, com RLS
   -- ligada: só service_role lê. Isentas enquanto continuarem assim; o caso de
@@ -108,6 +114,7 @@ declare
   v_read_pred  text := '\mcan_access_cliente\M';
   v_ctx_pred   text := '\m(can_access_cliente|can_see_cliente_context)\M';  -- só v_context_tables
   v_write_pred text := '\m(can_access_cliente|my_client_scope_all)\M';
+  v_all_pred   text := '\mmy_client_scope_all\M';  -- só v_scope_all_tables
 
   v_missing text[];
   v_fail_read text[] := '{}';
@@ -121,7 +128,8 @@ declare
 begin
   -- sanity: every hardcoded name exists
   select array_agg(n) into v_missing
-    from unnest(v_extra_scoped || v_exempt_no_policy || v_exempt || v_context_tables || v_context_roots) n
+    from unnest(v_extra_scoped || v_exempt_no_policy || v_exempt || v_context_tables || v_context_roots
+                || v_scope_all_tables) n
    where to_regclass('public.' || n) is null;
   assert v_missing is null, 'sanity: unknown tables in the arrays: ' || array_to_string(v_missing, ', ');
 
@@ -159,7 +167,7 @@ begin
 
   insert into _ct
   select ('public.' || n)::regclass::oid, n,
-         n in ('folders', 'mencoes')   -- polimórficas: sem pai por FK, contam como raiz
+         n in ('folders', 'mencoes', 'audit_log')   -- polimórficas: sem pai por FK, contam como raiz
     from unnest(v_extra_scoped) n
    where not exists (select 1 from _ct where tbl = n);
 
@@ -206,12 +214,14 @@ begin
             where p.tbl = s.tbl and p.permissive = 'PERMISSIVE'
               and p.cmd in ('SELECT', 'UPDATE', 'DELETE', 'ALL')
               and not (
-                p.qual ~ case when s.tbl = any (v_context_tables) then v_ctx_pred else v_read_pred end
+                p.qual ~ case when s.tbl = any (v_context_tables) then v_ctx_pred
+                                      when s.tbl = any (v_scope_all_tables) then v_all_pred else v_read_pred end
                 or p.qual = 'false'   -- policy que não concede nada
                 -- uma RESTRICTIVE do mesmo comando (ou ALL) com o predicado cobre esta
                 or exists (select 1 from _pol q where q.tbl = s.tbl and q.permissive = 'RESTRICTIVE'
                               and q.cmd in (p.cmd, 'ALL')
-                              and q.qual ~ case when s.tbl = any (v_context_tables) then v_ctx_pred else v_read_pred end)
+                              and q.qual ~ case when s.tbl = any (v_context_tables) then v_ctx_pred
+                                      when s.tbl = any (v_scope_all_tables) then v_all_pred else v_read_pred end)
                 or (not s.is_root and exists (
                       select 1 from _parent pa join _read_ok ok on ok.tbl = pa.parent
                        where pa.tbl = s.tbl

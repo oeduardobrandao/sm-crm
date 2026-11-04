@@ -28,6 +28,10 @@
 --      can_see_cliente_context_for sai (sem outro uso).
 --    - trg_post_comments_discussao_insert não grava a prévia para quem segue
 --      a discussão de um post que não abre.
+-- 2. audit_log: owner_admin_select ganha AND my_client_scope_all(). O log
+--    guarda nome e sigla de todo cliente criado e eventos de post; um admin
+--    restrito não lê nada dele (só o platform-admin, service role, lê o log).
+--    Dono e admin 'todos' seguem iguais.
 
 -- -------------------------------------------------------------
 -- 1. Notificações por item
@@ -443,6 +447,19 @@ AS $function$
 $function$;
 
 DROP FUNCTION IF EXISTS public.can_see_cliente_context_for(uuid, uuid, bigint);
+
+-- -------------------------------------------------------------
+-- 2. audit_log
+-- -------------------------------------------------------------
+DROP POLICY IF EXISTS owner_admin_select ON public.audit_log;
+CREATE POLICY owner_admin_select ON public.audit_log
+  FOR SELECT
+  USING (
+    (auth.uid() IN (SELECT profiles.id FROM public.profiles
+                     WHERE profiles.conta_id = audit_log.conta_id
+                       AND profiles.role = ANY (ARRAY['owner'::public.user_role, 'admin'::public.user_role])))
+    AND (SELECT public.my_client_scope_all())
+  );
 
 -- -------------------------------------------------------------
 -- Pós-condição
