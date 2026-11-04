@@ -78,7 +78,8 @@ GRANT EXECUTE ON FUNCTION public.tarefa_serie_in_active_conta(bigint) TO authent
 --     é imutável por tarefa_series_guard). ideias.autor_membro_id pode ir a NULL
 --     (ON DELETE SET NULL do membro);
 --   * para o restrito: mudar cliente_id (inclusive para NULL) exige acesso à
---     ORIGEM e ao DESTINO; pôr a si mesmo como responsável exige acesso ao
+--     ORIGEM e ao DESTINO (origem NULL dispensa a origem: dar um cliente que ele
+--     acessa à tarefa/série sem cliente é permitido); pôr a si mesmo como responsável exige acesso ao
 --     cliente; no INSERT, uma linha "dele" (autor ou responsável) só num cliente
 --     que ele acessa. Isso cobre os caminhos SECURITY DEFINER (RPCs de série,
 --     RPCs futuras), que não passam pela RLS;
@@ -168,7 +169,9 @@ BEGIN
        AND NOT EXISTS (SELECT 1 FROM public.clientes c WHERE c.id = v_old_cli) THEN
       RETURN NEW;
     END IF;
-    IF NOT public.can_access_cliente(v_uid, v_conta, v_old_cli)
+    -- origem sem cliente: nada de cliente a proteger, ele pode dar à tarefa dele
+    -- um cliente que acessa; origem com cliente exige acesso a ela
+    IF (v_old_cli IS NOT NULL AND NOT public.can_access_cliente(v_uid, v_conta, v_old_cli))
        OR NOT public.can_access_cliente(v_uid, v_conta, v_new_cli) THEN
       RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';
     END IF;
@@ -673,6 +676,34 @@ ALTER POLICY briefings_delete ON public.briefings
     AND ((SELECT public.my_client_scope_all()) OR public.can_access_cliente(cliente_id))
   );
 
+-- Pergunta e briefing do mesmo cliente. briefing_id não tinha checagem de
+-- coerência com cliente_id: uma pergunta de A podia apontar para o briefing de
+-- B. Trigger (e não WITH CHECK) para valer só quando briefing_id ou cliente_id
+-- entram no UPDATE: uma linha antiga incoerente continua editável (resposta,
+-- ordem, seção). Vale para qualquer chamador; o Hub (hub-briefing) só grava
+-- answer. DEFINER: lê o briefing sem a RLS (o restrito não vê o de cliente oculto,
+-- e o erro é o mesmo, sem confirmar o id).
+CREATE OR REPLACE FUNCTION public.guard_briefing_question_cliente()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.briefing_id IS NULL THEN RETURN NEW; END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.briefings b
+                  WHERE b.id = NEW.briefing_id AND b.cliente_id = NEW.cliente_id) THEN
+    RAISE EXCEPTION 'briefing_cliente_mismatch' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.guard_briefing_question_cliente() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.guard_briefing_question_cliente() TO service_role;
+
+CREATE TRIGGER zz_briefing_cliente_guard
+  BEFORE INSERT OR UPDATE OF briefing_id, cliente_id ON public.hub_briefing_questions
+  FOR EACH ROW EXECUTE FUNCTION public.guard_briefing_question_cliente();
+
 ALTER POLICY hub_briefing_questions_select ON public.hub_briefing_questions
   USING (
     conta_id IN (SELECT public.get_my_conta_id())
@@ -886,6 +917,7 @@ BEGIN
     -- a promoção grava cliente_id = v_cli: tirar a tarefa do cliente de origem exige acesso a ele
     IF NOT public.my_client_scope_all()
        AND v_cli IS DISTINCT FROM v_existing.cliente_id
+       AND v_existing.cliente_id IS NOT NULL
        AND NOT public.can_access_cliente(v_existing.cliente_id) THEN
       RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';
     END IF;
@@ -1001,9 +1033,11 @@ BEGIN
   -- pôr como responsável num cliente que ele não acessa
   IF NOT public.my_client_scope_all() THEN
     IF (v_cli IS DISTINCT FROM v_t.cliente_id
-          AND NOT (public.can_access_cliente(v_t.cliente_id) AND public.can_access_cliente(v_cli)))
+          AND NOT ((v_t.cliente_id IS NULL OR public.can_access_cliente(v_t.cliente_id))
+                   AND public.can_access_cliente(v_cli)))
        OR (NOT p_encerrar AND v_cli IS DISTINCT FROM v_s.cliente_id
-          AND NOT (public.can_access_cliente(v_s.cliente_id) AND public.can_access_cliente(v_cli)))
+          AND NOT ((v_s.cliente_id IS NULL OR public.can_access_cliente(v_s.cliente_id))
+                   AND public.can_access_cliente(v_cli)))
        OR (v_resp IS DISTINCT FROM v_t.responsavel_id AND coalesce(v_resp = ANY (public.my_membro_ids()), false)
           AND NOT public.can_access_cliente(v_cli)) THEN
       RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';

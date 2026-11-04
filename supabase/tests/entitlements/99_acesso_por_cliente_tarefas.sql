@@ -133,7 +133,7 @@ declare
   v_ca bigint; v_ca2 bigint; v_cb bigint; v_cc bigint; v_cd bigint; v_ce bigint; v_cx bigint;
   v_membro bigint; v_membro_todos bigint; v_membro_owner bigint; v_tag bigint;
   v_ta bigint; v_tb bigint; v_tb_own bigint; v_tb_auth bigint; v_tb_own2 bigint; v_tb_ser bigint;
-  v_tnull bigint; v_tnull_own bigint; v_tnull_auth bigint; v_ta_own bigint; v_ta2 bigint;
+  v_tnull bigint; v_tnull_own bigint; v_tnull_auth bigint; v_tnull_own2 bigint; v_ta_own bigint; v_ta2 bigint;
   v_sa bigint; v_sa3 bigint; v_sb bigint; v_sb_own bigint; v_se_own bigint; v_sa2 bigint;
   v_ia uuid; v_ib uuid; v_ib_own uuid; v_ib_sol_own uuid; v_ia_sol uuid; v_id_own uuid;
   v_la uuid; v_lb uuid; v_la_item uuid; v_lb_item uuid;
@@ -193,6 +193,7 @@ begin
     values (v_ws, v_owner, 'tBser', 'pendente', v_cb, v_membro, v_sb, current_date) returning id into v_tb_ser;
   insert into tarefas (conta_id, user_id, titulo, status) values (v_ws, v_owner, 'tNull', 'pendente') returning id into v_tnull;
   insert into tarefas (conta_id, user_id, titulo, status, responsavel_id) values (v_ws, v_owner, 'tNullown', 'pendente', v_membro) returning id into v_tnull_own;
+  insert into tarefas (conta_id, user_id, titulo, status, responsavel_id) values (v_ws, v_owner, 'tNullown2', 'pendente', v_membro) returning id into v_tnull_own2;
   -- a task he created himself, with no client
   insert into tarefas (conta_id, user_id, titulo, status) values (v_ws, v_restr, 'tNullauth', 'pendente') returning id into v_tnull_auth;
 
@@ -251,7 +252,7 @@ begin
   v_n := pg_temp.n_as(v_restr, format('select count(*) from tarefas where id = %s', v_tnull_own));
   assert v_n = 1, 'own_task_without_client_visible: ' || v_n;
   v_n := pg_temp.n_as(v_restr, 'select count(*) from tarefas');
-  assert v_n = 9, 'restricted sees tA, tAown, tA2, tBown, tBauth, tBown2, tBser, tNullown, tNullauth: ' || v_n;
+  assert v_n = 10, 'restricted sees tA, tAown, tA2, tBown, tBauth, tBown2, tBser, tNullown, tNullown2, tNullauth: ' || v_n;
 
   -- ---------------------------------------------------------------- tarefas: writes
   v_err := pg_temp.err_as(v_restr, format(
@@ -294,8 +295,12 @@ begin
   assert v_err = 'client_scope_restricted', 'detach_own_task_from_hidden_client_denied: ' || coalesce(v_err, 'updated');
   v_err := pg_temp.errm_as(v_restr, format('update tarefas set cliente_id = null where id = %s', v_ta_own));
   assert v_err = 'client_scope_restricted', 'move_own_task_to_no_client_denied: ' || coalesce(v_err, 'updated');
-  v_err := pg_temp.errm_as(v_restr, format('update tarefas set cliente_id = %s where id = %s', v_ca, v_tnull_own));
-  assert v_err = 'client_scope_restricted', 'move_own_task_without_client_to_a_denied: ' || coalesce(v_err, 'updated');
+  -- own client-less task: giving it a client he can access is allowed (ruling,
+  -- round 2: a NULL source has no client content to protect); a hidden one is not
+  v_err := pg_temp.errm_as(v_restr, format('update tarefas set cliente_id = %s where id = %s', v_cb, v_tnull_own2));
+  assert v_err = 'client_scope_restricted', 'move_own_task_without_client_to_b_denied: ' || coalesce(v_err, 'updated');
+  v_err := pg_temp.errm_as(v_restr, format('update tarefas set cliente_id = %s where id = %s', v_ca, v_tnull_own2));
+  assert v_err is null, 'move_own_task_without_client_to_a_allowed: ' || coalesce(v_err, '');
   v_err := pg_temp.errm_as(v_restr, format('update tarefas set cliente_id = %s where id = %s', v_ca2, v_ta_own));
   assert v_err is null, 'move_task_between_accessible_clients_allowed: ' || coalesce(v_err, '');
   -- self-assign (DEFINER path, RLS bypassed)
@@ -551,8 +556,25 @@ begin
   assert v_err = '42501', 'insert_question_into_context_client_denied: ' || coalesce(v_err, 'inserted');
   v_err := pg_temp.err_as(v_restr, format('insert into briefings (cliente_id, conta_id, title) values (%s, %L, ''t'')', v_cb, v_ws));
   assert v_err = '42501', 'insert_briefing_into_context_client_denied: ' || coalesce(v_err, 'inserted');
-  v_err := pg_temp.err_as(v_restr, format('update hub_briefing_questions set cliente_id = %s where cliente_id = %s', v_cb, v_ca));
+  -- briefing_id cleared so the briefing/client trigger passes and the strict WITH CHECK is what refuses
+  v_err := pg_temp.err_as(v_restr, format('update hub_briefing_questions set cliente_id = %s, briefing_id = null where cliente_id = %s', v_cb, v_ca));
   assert v_err = '42501', 'move_question_to_context_client_denied: ' || coalesce(v_err, 'updated');
+  -- briefing_id and cliente_id must agree (any caller, todos included)
+  v_err := pg_temp.errm_as(v_todos, format(
+    'insert into hub_briefing_questions (cliente_id, conta_id, question, briefing_id) values (%s, %L, ''q'', %L)',
+    v_ca, v_ws, (select id from briefings where cliente_id = v_cb limit 1)));
+  assert v_err = 'briefing_cliente_mismatch', 'question_with_briefing_of_other_client_denied: ' || coalesce(v_err, 'inserted');
+  v_err := pg_temp.errm_as(v_todos, format(
+    'update hub_briefing_questions set briefing_id = %L where cliente_id = %s',
+    (select id from briefings where cliente_id = v_cb limit 1), v_ca));
+  assert v_err = 'briefing_cliente_mismatch', 'question_relinked_to_other_client_briefing_denied: ' || coalesce(v_err, 'updated');
+  v_err := pg_temp.errm_as(v_todos, format(
+    'insert into hub_briefing_questions (cliente_id, conta_id, question, briefing_id) values (%s, %L, ''q2'', %L)',
+    v_ca, v_ws, (select id from briefings where cliente_id = v_ca limit 1)));
+  assert v_err is null, 'question_with_own_client_briefing_allowed: ' || coalesce(v_err, '');
+  v_err := pg_temp.errm_as(v_restr, format(
+    'insert into hub_briefing_questions (cliente_id, conta_id, question) values (%s, %L, ''solta'')', v_ca, v_ws));
+  assert v_err is null, 'question_without_briefing_allowed: ' || coalesce(v_err, '');
   -- Hub pages are not context: strict
   v_n := pg_temp.n_as(v_restr, format('select count(*) from hub_pages where cliente_id = %s', v_ca));
   assert v_n = 1, 'hub_page_of_a_visible: ' || v_n;
@@ -680,7 +702,7 @@ begin
   -- ---------------------------------------------------------------- todos / owner unchanged
   foreach v_t in array array['tarefas', 'tarefa_series', 'tarefa_comentarios', 'tarefa_eventos',
       'subtarefas', 'tarefa_tag_links', 'mencoes', 'ideia_files', 'linhas_editoriais',
-      'linha_editorial_itens', 'linha_editorial_respostas', 'briefings',
+      'linha_editorial_itens', 'linha_editorial_respostas', 'linha_editorial_colunas', 'briefings',
       'hub_briefing_questions', 'hub_pages'] loop
     execute format('select count(*) from %I where conta_id = %L', v_t, v_ws) into v_expected;
     v_n := pg_temp.n_as(v_todos, format('select count(*) from %I', v_t));
@@ -754,7 +776,8 @@ begin
     assert not has_function_privilege('anon', v_f, 'EXECUTE'), 'helper not executable by anon: ' || v_f;
     assert has_function_privilege('service_role', v_f, 'EXECUTE'), 'helper executable by service_role: ' || v_f;
   end loop;
-  foreach v_f in array array['public.guard_client_scope_item()', 'public.guard_scope_child_reparent()'] loop
+  foreach v_f in array array['public.guard_client_scope_item()', 'public.guard_scope_child_reparent()',
+      'public.guard_briefing_question_cliente()'] loop
     assert not has_function_privilege('authenticated', v_f, 'EXECUTE'), 'trigger fn not executable by authenticated: ' || v_f;
     assert not has_function_privilege('anon', v_f, 'EXECUTE'), 'trigger fn not executable by anon: ' || v_f;
     assert has_function_privilege('service_role', v_f, 'EXECUTE'), 'trigger fn executable by service_role: ' || v_f;
