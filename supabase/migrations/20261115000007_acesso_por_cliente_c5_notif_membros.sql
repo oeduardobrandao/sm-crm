@@ -1,4 +1,6 @@
 -- Acesso por cliente, Task 4e: notificações e vínculo de membro.
+-- Nota: a leitura de notifications descrita abaixo (escopo ou contexto) foi
+-- substituída pela leitura por item em 20261115000012.
 -- Spec: docs/superpowers/specs/2026-11-03-acesso-por-cliente-design.md
 -- Inventário: docs/superpowers/plans/2026-11-03-acesso-por-cliente-inventario.md
 --
