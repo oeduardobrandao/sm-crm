@@ -15,6 +15,7 @@
     "relatorios": "Reports",
     "status": "Post statuses",
     "hub": "Hub",
+    "contasConectadas": "Connected accounts",
     "armazenamento": "Storage",
     "mcp": "Agents (MCP)",
     "cobranca": "Plan & Billing",
@@ -571,6 +572,51 @@
         "when": "the nightly cleanup removes old files",
         "recipients": "owners and admins"
       }
+    }
+  },
+  "connectedAccounts": {
+    "title": "Connected accounts",
+    "subtitle": "Accounts from other platforms used by this workspace.",
+    "googleHeading": "Google (YouTube and Google Business Profile)",
+    "connectedAt": "Connected on {{date}}",
+    "statusActive": "Active",
+    "statusRevoked": "Needs reconnecting",
+    "youtubeCount_one": "YouTube · {{count}} channel",
+    "youtubeCount_other": "YouTube · {{count}} channels",
+    "gbpCount_one": "Google Business Profile · {{count}} location",
+    "gbpCount_other": "Google Business Profile · {{count}} locations",
+    "unitLine": "{{title}} ({{client}})",
+    "moreUnits_one": "+ {{count}} location",
+    "moreUnits_other": "+ {{count}} locations",
+    "showLess": "Show less",
+    "emptyHint": "Nothing is linked to this account. Disconnect it to remove its access in this workspace.",
+    "empty": "No Google account connected.",
+    "emptyConnect": "Connect one through YouTube or Google Business Profile on a client's page.",
+    "loadError": "Could not load the connected accounts.",
+    "retry": "Try again",
+    "disconnectButton": "Disconnect account",
+    "untitled": "Untitled",
+    "dialog": {
+      "title": "Disconnect {{email}}?",
+      "unlinks": "This unlinks:",
+      "youtubeGroup": "YouTube",
+      "gbpGroup": "Google Business Profile",
+      "nothingLinked": "No channel or location linked.",
+      "youtubeData": "YouTube data is deleted from Mesaas within 7 days, including from generated reports.",
+      "gbpHistory": "Google Business Profile history is kept for 30 days. If you link the location again within that time, it comes back.",
+      "revoke": "We revoke Mesaas's access in your Google account. On the next connection, Google asks for authorization again.",
+      "otherWorkspaces": "If this Google account is also connected in another Mesaas workspace, access stays active there and is not revoked at Google.",
+      "cancel": "Cancel",
+      "confirm": "Disconnect account"
+    },
+    "success": "Google account disconnected",
+    "alreadyDisconnected": "This Google account had already been disconnected.",
+    "errors": {
+      "conflict": "The account changed while we were disconnecting it. Try again.",
+      "forbidden": "You don't have permission to disconnect accounts.",
+      "clientScope": "Disconnecting the account affects clients outside your access. Ask someone who sees all clients.",
+      "rateLimited": "Too many attempts. Wait a minute and try again.",
+      "generic": "Could not disconnect the account. Try again."
     }
   }
 }

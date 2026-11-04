@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Acesso por cliente, RPCs SECURITY DEFINER (20261115000008_acesso_por_cliente_d_definer.sql):
+-- Acesso por cliente, RPCs SECURITY DEFINER (20261117000008_acesso_por_cliente_d_definer.sql):
 -- the RPCs a signed-in user calls on posts, flows, processes, the post
 -- discussion, edit suggestions and flow templates follow the same rules as the
 -- RLS of the C1 migration, since they run without it:

@@ -42,8 +42,10 @@ Stated defaults the user did not object to:
 
 Non-goals (v1): replying to reviews, posting to GMN (updates/offers/photos), GMN Q&A (API shut
 down 2025-11), YouTube long-video publishing, captions/subtitles upload (needs the broader
-`youtube.force-ssl` scope), custom thumbnails, playlists, YouTube comments, portfolio-level
-pages like `/analytics/tiktok` for the two new platforms, Hub analytics tabs, MCP tools,
+`youtube.force-ssl` scope), custom thumbnails, playlists, YouTube comments, a YouTube
+portfolio dashboard (totals, leaders, benchmarks; a GMN portfolio page and a YouTube
+per-channel list exist per `2026-11-03-youtube-gmn-analytics-overview-design.md`), Hub
+analytics tabs, MCP tools,
 **AI analysis of YouTube data** and YouTube metrics beyond simple arithmetic until Google
 approves derived metrics (§4.6).
 
@@ -242,8 +244,10 @@ From the YouTube API Services Developer Policies (checked 2026-10-29):
   calling function deletes those Storage objects after commit; `youtube-sync-cron` retries
   leftovers. `refresh.ts`'s carry-over of a disconnected platform's frozen section does not apply
   to YouTube. Each purge writes an `insertAuditLog` entry (`youtube-data-purged`).
-- **Aggregation**: YouTube data is never combined across channels of different owners (no
-  portfolio page in v1) and is shown only inside the client it belongs to.
+- **Aggregation**: YouTube data is never combined across channels: no sum, average, ranking
+  label or chart across channels. Channels may be listed side by side, one row per channel with
+  only its own numbers (`/analytics/youtube`, spec
+  `2026-11-03-youtube-gmn-analytics-overview-design.md`).
 - **Attribution**: YouTube UI blocks say the data comes from YouTube and link videos to
   YouTube; YouTube logos unaltered.
 

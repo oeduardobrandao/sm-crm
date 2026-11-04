@@ -103,7 +103,7 @@ Deno.test("notifyAutomationFailure inclui extraMetadata no insert", async () => 
   assertEquals(meta.automation_name, "Calendario Setembro");
 });
 
-// Acesso por cliente (20261115000011): o cliente vai para a seleção de
+// Acesso por cliente (20261117000011): o cliente vai para a seleção de
 // destinatários (admin restrito sem acesso fica de fora) e para a linha gravada.
 Deno.test("notifyAutomationFailure passa o cliente para os destinatários e para o insert", async () => {
   const calls: Array<{ name: string; params: Record<string, unknown> }> = [];

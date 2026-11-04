@@ -2,7 +2,7 @@
 
 Mapa de onde o escopo de cliente tem de entrar. Tasks 3, 4a-4e, 5, 6, 12, 13 e 14 trabalham a
 partir daqui. Gerado em 2026-11-03 só com consultas de catálogo, num banco local com todas as
-migrations aplicadas (até `20261115000001`, Task 1). A guarda de deriva
+migrations aplicadas (até `20261117000001`, Task 1). A guarda de deriva
 `supabase/tests/entitlements/pending_acesso_por_cliente_drift.sql` recalcula o conjunto de
 tabelas no catálogo a cada execução, então este documento é o retrato de hoje e o teste é a regra.
 
@@ -239,7 +239,7 @@ e `instagram_connect_links.created_by` (listado). Colunas uuid que são FK para 
 | `youtube_traffic_daily` | 4d | exempt: sem policy p/ authenticated (só service role) | sem FK: sem FK de propósito; liga por channel_id a youtube_channels | - | - | - | (nenhuma) | (nenhuma) |  |
 | `youtube_video_daily` | 4d | exempt: sem policy p/ authenticated (só service role) | sem FK: sem FK de propósito; liga por channel_id a youtube_channels | - | - | - | (nenhuma) | (nenhuma) |  |
 | `youtube_videos` | 4d | exempt: sem policy p/ authenticated (só service role) | sem FK: sem FK de propósito; liga por channel_id a youtube_channels | - | - | - | (nenhuma) | (nenhuma) |  |
-| `notifications` | 4e | scoped | próprio `cliente_id:bigint`; cliente_id sem FK (Task 1), backfill do metadata | user_id (destinatário) | - | por item desde 20261115000012 (can_access_cliente OR notification_item_visible) | `notifications_select` (SELECT: custom) | `notifications_update` (UPDATE: check custom) |  |
+| `notifications` | 4e | scoped | próprio `cliente_id:bigint`; cliente_id sem FK (Task 1), backfill do metadata | user_id (destinatário) | - | por item desde 20261117000012 (can_access_cliente OR notification_item_visible) | `notifications_select` (SELECT: custom) | `notifications_update` (UPDATE: check custom) |  |
 | `contratos` | 6 | scoped | próprio `cliente_id:bigint` | user_id (criador) | - | Task 6: sem "é dele" | `contratos_select` (SELECT: custom) | `contratos_delete` (DELETE: custom)<br>`contratos_insert` (INSERT: check custom)<br>`contratos_update` (UPDATE: check custom) |  |
 | `financeiro_atribuicoes` | 6 | exempt até a Task 6 (`v_exempt_until_task6`, NOTICE a cada execução). Saída: sair da isenção, com predicado no SELECT ou leitura direta revogada | próprio `cliente_id:bigint NOT NULL` | - | membro_id (custo, não "é dele") | - | `financeiro_atribuicoes_select` (SELECT: custom) | (nenhuma) |  |
 | `financeiro_cliente_versoes` | 6 | exempt até a Task 6 (`v_exempt_until_task6`), mesma saída | próprio `cliente_id:bigint NOT NULL` | created_by | - | - | `financeiro_cliente_versoes_select` (SELECT: custom) | (nenhuma) |  |

@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Acesso por cliente, Financeiro (20261115000009_acesso_por_cliente_e_financeiro.sql): a
+-- Acesso por cliente, Financeiro (20261117000009_acesso_por_cliente_e_financeiro.sql): a
 -- restricted member's Financeiro covers only the clients assigned to him.
 --   * _financeiro_calcular is untouched (single rateio; the pg_cron roll snapshots run
 --     through it): its prosrc md5 is pinned, and so is financeiro_rolar_periodos'.
@@ -557,7 +557,7 @@ end $$;
 
 -- =============================================================
 -- storage: public buckets no longer list across workspaces
--- (20261115000015_acesso_por_cliente_k_storage_listagem.sql)
+-- (20261117000015_acesso_por_cliente_k_storage_listagem.sql)
 -- =============================================================
 create or replace function pg_temp.bucket_n(p_role text, p_user uuid, p_bucket text) returns bigint language plpgsql as $f$
 declare v bigint;

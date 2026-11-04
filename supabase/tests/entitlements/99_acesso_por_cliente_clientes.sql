@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Acesso por cliente, clientes (20261115000002_acesso_por_cliente_b_clientes.sql):
+-- Acesso por cliente, clientes (20261117000002_acesso_por_cliente_b_clientes.sql):
 -- the clientes policies, clientes_v, get_cliente_contexto, the import gate and
 -- get_client_health_aggregates (INVOKER, inherits the clientes policy).
 -- Spec: docs/superpowers/specs/2026-11-03-acesso-por-cliente-design.md

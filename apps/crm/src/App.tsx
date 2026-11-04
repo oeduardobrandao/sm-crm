@@ -125,6 +125,7 @@ const PapeisTab = lazy(() => import('./pages/configuracao/tabs/PapeisTab'));
 const RelatoriosTab = lazy(() => import('./pages/configuracao/tabs/RelatoriosTab'));
 const StatusTab = lazy(() => import('./pages/configuracao/tabs/StatusTab'));
 const HubTab = lazy(() => import('./pages/configuracao/tabs/HubTab'));
+const ContasConectadasTab = lazy(() => import('./pages/configuracao/tabs/ContasConectadasTab'));
 const ArmazenamentoTab = lazy(() => import('./pages/configuracao/tabs/ArmazenamentoTab'));
 const CobrancaPage = lazy(() => import('./pages/configuracao/cobranca/CobrancaPage'));
 const IntegracoesClaudePage = lazy(() => import('./pages/configuracao/mcp/IntegracoesClaudePage'));
@@ -134,6 +135,8 @@ const TarefasPage = lazy(() => import('./pages/tarefas/TarefasPage'));
 const ExpressPostPage = lazy(() => import('./pages/post-express/ExpressPostPage'));
 const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage'));
 const TikTokOverviewPage = lazy(() => import('./pages/analytics-tiktok/TikTokOverviewPage'));
+const YouTubeOverviewPage = lazy(() => import('./pages/analytics-youtube/YouTubeOverviewPage'));
+const GoogleOverviewPage = lazy(() => import('./pages/analytics-google/GoogleOverviewPage'));
 const AnalyticsClientShell = lazy(() => import('./pages/analytics-conta/AnalyticsClientShell'));
 const AnalyticsFluxosPage = lazy(() => import('./pages/analytics-fluxos/AnalyticsFluxosPage'));
 const RelatorioEditorPage = lazy(() => import('./pages/relatorio-editor/RelatorioEditorPage'));
@@ -315,6 +318,7 @@ export default function App() {
                   <Route path="relatorios" element={<RelatoriosTab />} />
                   <Route path="status" element={<StatusTab />} />
                   <Route path="hub" element={<HubTab />} />
+                  <Route path="contas-conectadas" element={<ContasConectadasTab />} />
                   <Route path="armazenamento" element={<ArmazenamentoTab />} />
                   <Route path="mcp" element={<IntegracoesClaudePage />} />
                   <Route path="cobranca" element={<CobrancaPage />} />
@@ -326,6 +330,8 @@ export default function App() {
                 <Route path="/arquivos" element={<ArquivosPage />} />
                 <Route path="/analytics" element={<AnalyticsPage />} />
                 <Route path="/analytics/tiktok" element={<TikTokOverviewPage />} />
+                <Route path="/analytics/youtube" element={<YouTubeOverviewPage />} />
+                <Route path="/analytics/google" element={<GoogleOverviewPage />} />
                 <Route path="/analytics/:id/:tab?" element={<AnalyticsClientShell />} />
                 <Route path="/relatorios/modelos/padrao" element={<ModeloPadraoPage />} />
                 <Route path="/relatorios/modelos/:id" element={<ModeloEditorPage />} />

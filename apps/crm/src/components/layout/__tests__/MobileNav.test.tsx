@@ -369,6 +369,23 @@ describe('MobileNav', () => {
     expect(rows.some((label) => label.includes('TikTok'))).toBe(false);
   });
 
+  it('shows YouTube in Mais as an inert "Em breve" row when feature_youtube is false', () => {
+    setAuth();
+    setLimits({ features: { feature_youtube: false, feature_analytics_reports: true } });
+    renderMobileNav('/dashboard');
+    const sheet = openMore();
+
+    expect(moreRows()).toContain('YouTube');
+    const label = Array.from(sheet.querySelectorAll('.phone-cell__label')).find(
+      (el) => el.textContent === 'YouTube',
+    )!;
+    const row = label.closest('[aria-disabled]');
+    expect(row).toHaveAttribute('aria-disabled', 'true');
+    expect(row).toHaveTextContent('Em breve');
+    expect(within(sheet).queryByRole('link', { name: /YouTube/ })).toBeNull();
+    expect(within(sheet).queryByRole('button', { name: /YouTube/ })).toBeNull();
+  });
+
   it('lists TikTok analytics in Mais under feature_tiktok', () => {
     setAuth();
     setLimits({ features: { feature_tiktok: true, feature_analytics_reports: true } });

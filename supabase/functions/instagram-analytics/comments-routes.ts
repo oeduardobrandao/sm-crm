@@ -13,9 +13,15 @@ import {
   AiTimeoutError,
   buildAccountPrompt,
   buildPostPrompt,
-  type callGemini,
+  type AiConfig,
+  type AnalysisPrompts,
+  type AnalysisLang,
+  type callAi,
   type CommentAnalysis,
   COMMENTS_MODEL,
+  MAX_OUTPUT_TOKENS,
+  fitTexts,
+  PROMPT_COMMENT_CHARS,
   redactIdentities,
   validateAnalysis,
 } from "./comments-ai.ts";
@@ -24,13 +30,15 @@ export interface CommentsRouteDeps {
   svc: SupabaseClient;
   contaId: string;
   userId: string;
-  geminiKey: string | null;
+  ai: AiConfig | null;
+  /** Idioma da interface de quem pediu (query `lang`); textos da análise saem nele. */
+  lang: AnalysisLang;
   now: () => number;
   decryptToken: (enc: string) => Promise<string>;
   verifyClientOwnership: (clientId: string) => Promise<void>;
   rateLimit: (key: string, max: number, windowS: number) => Promise<boolean>;
   fetchComments: typeof fetchMediaComments;
-  callGemini: typeof callGemini;
+  callAi: typeof callAi;
 }
 
 export interface StoredAnalysis {
@@ -213,25 +221,37 @@ function textsOf(comments: IgComment[]): string[] {
 }
 
 /**
- * Pede a análise à IA, valida, dá id às ideias e redige identidades.
+ * Pede as duas partes da análise à IA em paralelo, junta, valida, dá id às
+ * ideias e redige identidades.
  * Devolve a análise final ou o erro HTTP correspondente.
  */
 async function analyze(
   deps: CommentsRouteDeps,
   route: string,
-  prompt: string,
+  prompts: AnalysisPrompts,
   deadlineAt: number,
   usernames: string[],
   allowPostIds?: Set<string>,
 ): Promise<CommentAnalysis | RouteResult> {
-  let raw: unknown;
-  try {
-    raw = await deps.callGemini({ now: deps.now }, {
-      apiKey: deps.geminiKey ?? "",
-      prompt,
-      deadlineAt,
-    });
-  } catch (e) {
+  const config = deps.ai;
+  if (!config) {
+    console.error(`[comments-routes] ${route} ai unavailable: ai_not_configured`);
+    return err(503, "ai_unavailable");
+  }
+  const parts = await Promise.allSettled(
+    (["leitura", "ideias"] as const).map((part) =>
+      deps.callAi({ now: deps.now }, {
+        config,
+        prompt: prompts[part],
+        deadlineAt,
+        maxTokens: MAX_OUTPUT_TOKENS[part],
+      })
+    ),
+  );
+  const failures = parts.flatMap((p) => (p.status === "rejected" ? [p.reason] : []));
+  if (failures.length) {
+    const e = failures.find((f) => f instanceof AiTimeoutError) ??
+      failures.find((f) => f instanceof AiBadOutputError) ?? failures[0];
     if (e instanceof AiTimeoutError) {
       console.error(`[comments-routes] ${route} ai timeout`);
       return err(504, "ai_timeout");
@@ -243,6 +263,10 @@ async function analyze(
     console.error(`[comments-routes] ${route} ai unavailable:`, e instanceof Error ? e.message : "unknown");
     return err(503, "ai_unavailable");
   }
+  const [leituraRaw, ideiasRaw] = parts.map((p) => (p as PromiseFulfilledResult<unknown>).value);
+  const isObject = (v: unknown): v is Record<string, unknown> =>
+    typeof v === "object" && v !== null && !Array.isArray(v);
+  const raw = isObject(leituraRaw) && isObject(ideiasRaw) ? { ...ideiasRaw, ...leituraRaw } : null;
 
   const valid = validateAnalysis(raw, allowPostIds ? { allowPostIds } : {});
   if (!valid) {
@@ -253,7 +277,7 @@ async function analyze(
     ...valid,
     ideias: valid.ideias.map((i) => ({ id: crypto.randomUUID(), ...i })),
   };
-  const red = redactIdentities(withIds, usernames);
+  const red = redactIdentities(withIds, usernames, deps.lang);
   const resumo = red.resumo.trim();
   const ideias = red.ideias.filter((i) => i.titulo.trim() && i.descricao.trim() && i.motivo.trim());
   if (!resumo || ideias.length < 3) {
@@ -341,7 +365,7 @@ async function analyzePostRoute(
   post: PostRow,
   start: number,
 ): Promise<RouteResult> {
-  if (!deps.geminiKey) return err(503, "ai_unavailable");
+  if (!deps.ai) return err(503, "ai_unavailable");
   if (!(await deps.rateLimit(`ig-comments-ai:${deps.contaId}`, 20, 3600))) {
     return err(429, "rate_limited");
   }
@@ -352,13 +376,14 @@ async function analyzePostRoute(
     max: POST_MAX_COMMENTS,
     deadlineAt: start + FETCH_BUDGET_MS,
   });
-  const texts = textsOf(comments);
+  const texts = fitTexts(textsOf(comments), PROMPT_COMMENT_CHARS);
   if (texts.length < POST_MIN) return err(422, "too_few_comments");
 
   const prompt = buildPostPrompt({
     caption: post.caption ?? "",
     mediaType: post.media_type ?? "",
     texts,
+    lang: deps.lang,
   });
   const result = await analyze(
     deps,
@@ -394,7 +419,7 @@ async function accountRoute(
     return { status: 200, body: { analysis, current_comments: sumComments(posts) } };
   }
 
-  if (!deps.geminiKey) return err(503, "ai_unavailable");
+  if (!deps.ai) return err(503, "ai_unavailable");
   if (!(await deps.rateLimit(`ig-comments-ai:${deps.contaId}`, 20, 3600))) {
     return err(429, "rate_limited");
   }
@@ -445,13 +470,16 @@ async function accountRoute(
   }
   if (failed === chosen.length) throw new GraphFailure("all_posts_failed");
 
+  // Teto do prompt dividido igualmente entre os posts lidos.
+  const perPost = Math.floor(PROMPT_COMMENT_CHARS / Math.max(1, blocks.length));
+  for (const b of blocks) b.texts = fitTexts(b.texts, perPost);
   const total = blocks.reduce((s, b) => s + b.texts.length, 0);
   if (total < ACCOUNT_MIN) return err(422, "too_few_comments");
 
   const result = await analyze(
     deps,
     "comments-analysis-account",
-    buildAccountPrompt({ posts: blocks }),
+    buildAccountPrompt({ posts: blocks, lang: deps.lang }),
     start + REQUEST_BUDGET_MS,
     usernames,
     new Set(blocks.map((b) => b.id)),

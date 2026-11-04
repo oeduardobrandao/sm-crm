@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Acesso por cliente, arquivos (20261115000005_acesso_por_cliente_c3_arquivos.sql):
+-- Acesso por cliente, arquivos (20261117000005_acesso_por_cliente_c3_arquivos.sql):
 -- files, folders and post_file_links.
 -- A file's client is its folder's, resolved by walking parent_id up to a source
 -- folder (client/client_reports -> source_id, workflow -> workflows.cliente_id,

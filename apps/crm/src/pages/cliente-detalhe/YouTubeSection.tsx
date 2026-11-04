@@ -19,7 +19,11 @@ import {
 import { sanitizeUrl } from '@/utils/security';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { disconnectYouTube, getGoogleAuthUrl, getGoogleSummary } from '../../services/google';
-import { FullAnalyticsLink, PlatformActions } from './components/PlatformActions';
+import {
+  FullAnalyticsLink,
+  ManageGoogleAccountsLink,
+  PlatformActions,
+} from './components/PlatformActions';
 import { useGoogleProductSync } from './components/useGoogleProductSync';
 
 // maximumFractionDigits: 1 is needed for "12,4 mil": bare compact notation keeps only two
@@ -166,6 +170,7 @@ export function YouTubeSection({ clienteId }: { clienteId: number }) {
               syncDisabled={revoked}
               onDisconnect={() => setConfirmOpen(true)}
               disconnecting={disconnect.isPending}
+              disconnectLabel={t('google.disconnectFromClient')}
             />
           </div>
 
@@ -219,6 +224,22 @@ export function YouTubeSection({ clienteId }: { clienteId: number }) {
               </a>
             </div>
           </div>
+
+          {channel.connectionEmail && (
+            <p
+              style={{
+                margin: 0,
+                fontSize: '0.8125rem',
+                color: 'var(--text-light)',
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '4px 12px',
+              }}
+            >
+              <span>{t('youtube.account', { email: channel.connectionEmail })}</span>
+              <ManageGoogleAccountsLink />
+            </p>
+          )}
 
           <div
             style={{

@@ -2,9 +2,9 @@
 \i supabase/tests/entitlements/_helpers.sql
 
 -- Acesso por cliente, notificações e vínculo de membro
--- (20261115000007_acesso_por_cliente_c5_notif_membros.sql).
+-- (20261117000007_acesso_por_cliente_c5_notif_membros.sql).
 -- notifications: the recipient reads a notification with no client, about a
--- client he sees, or about an ITEM he can open (20261115000012: item-level,
+-- client he sees, or about an ITEM he can open (20261117000012: item-level,
 -- not the client context). The item is the most specific key of the metadata
 -- (post_id > task_id > idea_id > linha_id > etapa_id > workflow_id), read
 -- under his own RLS; no item key = client scope only. The scope is judged in

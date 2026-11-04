@@ -2,7 +2,7 @@
 \i supabase/tests/entitlements/_helpers.sql
 
 -- Acesso por cliente, agenda, analytics e relatórios
--- (20261115000006_acesso_por_cliente_c4_agenda_analytics.sql).
+-- (20261117000006_acesso_por_cliente_c4_agenda_analytics.sql).
 -- Agenda: agenda_eventos is an "é dele" root (organizer, or participant through
 -- agenda_participantes); an event without client shows only through é dele;
 -- occurrences, participants and answers follow the visible event. Writes go

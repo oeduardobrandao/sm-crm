@@ -804,7 +804,7 @@ ALTER POLICY hub_pages_workspace_all ON public.hub_pages
 -- -------------------------------------------------------------
 -- 6. Contexto do item dele em cliente oculto: + ideias e tarefa_series
 -- -------------------------------------------------------------
--- Corpo de 20261115000003 mais a ideia de autoria dele (autor_membro_id) e a
+-- Corpo de 20261117000003 mais a ideia de autoria dele (autor_membro_id) e a
 -- série dele (responsável ou autor). CREATE OR REPLACE mantém o ACL.
 CREATE OR REPLACE FUNCTION public.can_see_cliente_context(p_cliente_id bigint)
 RETURNS boolean

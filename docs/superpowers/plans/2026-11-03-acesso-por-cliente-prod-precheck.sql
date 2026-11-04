@@ -1,5 +1,5 @@
 -- Acesso por cliente: pré-checagem de produção (leitura apenas).
--- Rode em prod ANTES do db push das migrations 20261115000000..20261115000014
+-- Rode em prod ANTES do db push das migrations 20261117000000..20261117000014
 -- (CLAUDE.md, passo 0 da ordem de deploy).
 --
 -- As migrations reescrevem estas policies com ALTER POLICY (que falha se a

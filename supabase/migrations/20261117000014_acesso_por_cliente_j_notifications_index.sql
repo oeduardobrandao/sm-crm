@@ -1,5 +1,5 @@
 -- Acesso por cliente: índice de notifications por (workspace, cliente), depois
--- do backfill (20261115000013), para o índice ser construído uma vez sobre os
+-- do backfill (20261117000013), para o índice ser construído uma vez sobre os
 -- valores finais em vez de mantido linha a linha durante o UPDATE.
 -- Spec: docs/superpowers/specs/2026-11-03-acesso-por-cliente-design.md
 --

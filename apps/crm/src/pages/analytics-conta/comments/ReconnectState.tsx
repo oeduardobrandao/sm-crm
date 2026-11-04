@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { CommentsApiError } from '../../../services/instagramComments';
 
@@ -21,22 +22,21 @@ export function ReconnectState({
   reason: 'scope' | 'expired';
 }) {
   const navigate = useNavigate();
+  const { t } = useTranslation('analyticsComments');
   return (
     <div className="igc-card igc-state">
       <h3 className="igc-eyebrow">
-        {reason === 'expired' ? 'Conexão expirada' : 'Sem permissão de comentários'}
+        {reason === 'expired' ? t('reconnect.expiredTitle') : t('reconnect.scopeTitle')}
       </h3>
       <p className="igc-state__text">
-        {reason === 'expired'
-          ? 'A conexão com o Instagram expirou. Reconecte para ver os comentários.'
-          : 'Para ver os comentários, reconecte o Instagram deste cliente e aceite a permissão de comentários.'}
+        {reason === 'expired' ? t('reconnect.expiredText') : t('reconnect.scopeText')}
       </p>
       <Button
         variant="outline"
         className="igc-btn"
         onClick={() => navigate(`/clientes/${clientId}/redes-sociais`)}
       >
-        Reconectar Instagram
+        {t('reconnect.button')}
       </Button>
     </div>
   );

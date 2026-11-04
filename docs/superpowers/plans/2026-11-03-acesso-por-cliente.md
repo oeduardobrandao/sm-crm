@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Migration versions start at `20261115000001` and increase by 1; re-check main's tail before `gh pr create` and renumber above it if needed (the `migration-version-guard` CI job fails duplicates).
+- Migration versions start at `20261117000001` and increase by 1; re-check main's tail before `gh pr create` and renumber above it if needed (the `migration-version-guard` CI job fails duplicates).
 - Scope values are exactly `'todos'` and `'atribuidos'`; default `'todos'`. Restricted with zero rows = zero clients, never "all".
 - Any `workspace_members.role = 'owner'` is always unrestricted; the predicate checks role first.
 - Policies call only functions with EXECUTE for `authenticated` (`has_permission(module, action)`, `can_access_cliente(bigint)`, `can_see_cliente_context(bigint)`, `my_membro_ids()`, `my_client_scope_all()`, `workflow_in_active_conta(bigint)`, `workflow_has_own_item(bigint)`, `cliente_in_active_conta(bigint)`, `tarefa_serie_in_active_conta(bigint)`, `folder_scope_cliente_id(bigint)`, `folder_row_scope_cliente_id(text, bigint, bigint)`, `file_own_client_less(bigint)`, `file_linked_to_visible_post(bigint)`, `file_is_readable_brand_logo(bigint)`, `file_visible_at_source(bigint)`, `file_visible_without_logo(bigint)`, `agenda_pode_ver_evento(bigint, boolean, uuid)`, `notification_item_visible(jsonb)` (SECURITY INVOKER)). `folder_cliente_id(bigint)` and `folder_row_cliente_id(text, bigint, bigint)` are `service_role` only. `has_permission_for`, `can_access_cliente(uuid, uuid, bigint)`, `notification_item_visible_for(uuid, uuid, bigint, jsonb)` (final review; replaced Task 14's `can_see_cliente_context_for`) and the Task 5 RPC helpers (`scope_check_posts`, `scope_check_workflows`, `scope_check_processes`, `scope_check_template_workflows`) are `service_role` only.
@@ -42,7 +42,7 @@
 ### Task 1: Scope schema, predicates and the owner RPC
 
 **Files:**
-- Create: `supabase/migrations/20261115000001_acesso_por_cliente_a_schema.sql`
+- Create: `supabase/migrations/20261117000001_acesso_por_cliente_a_schema.sql`
 - Create: `supabase/tests/entitlements/99_acesso_por_cliente_schema.sql`
 
 **Interfaces:**
@@ -58,7 +58,7 @@
   - `set_member_client_scope(p_actor uuid, p_workspace uuid, p_user uuid, p_scope text, p_cliente_ids bigint[]) RETURNS jsonb` → `{"changed": bool}`, `service_role` only. Raises `not_owner`, `target_is_owner`, `target_not_member`, `invalid_scope`, `cliente_not_in_workspace`, `feature_disabled` (only when moving into `atribuidos` and `effective_plan_feature(p_workspace,'feature_acesso_por_cliente')` is false). Replaces rows, bumps `client_scope_rev`, inserts `audit_log` (action `member_client_scope_set`, details = scope + count, never names)
   - trigger `trg_workspace_members_owner_clears_scope` BEFORE UPDATE OF role: when NEW.role = 'owner', set `client_scope='todos'`, bump rev, delete the user's rows
   - `plans.feature_acesso_por_cliente boolean NOT NULL DEFAULT false`
-  - `notifications.cliente_id bigint NULL` (no FK; client deletion leaves the id, harmless), index `(workspace_id, cliente_id)`, one-time backfill from `metadata->>'post_id'` (via `workflow_posts.cliente_id`) and `metadata->>'workflow_id'` (via `workflows.cliente_id`). (Final review: moved out of `…01`, which holds ACCESS EXCLUSIVE on `workspace_members`. Column in `20261115000000`, batched backfill in `20261115000013` that also reads `task_id`, `idea_id`, `linha_id`, `etapa_id` and `cliente_id`/`client_id`, index in `20261115000014`.) The column is `metadata`, not `payload`
+  - `notifications.cliente_id bigint NULL` (no FK; client deletion leaves the id, harmless), index `(workspace_id, cliente_id)`, one-time backfill from `metadata->>'post_id'` (via `workflow_posts.cliente_id`) and `metadata->>'workflow_id'` (via `workflows.cliente_id`). (Final review: moved out of `…01`, which holds ACCESS EXCLUSIVE on `workspace_members`. Column in `20261117000000`, batched backfill in `20261117000013` that also reads `task_id`, `idea_id`, `linha_id`, `etapa_id` and `cliente_id`/`client_id`, index in `20261117000014`.) The column is `metadata`, not `payload`
   - RLS on `workspace_member_clientes`: SELECT own rows, or all rows of the workspace for an owner; `GRANT SELECT` to `authenticated`, no write grants
 
 - [ ] **Step 1: Write the failing suite** `99_acesso_por_cliente_schema.sql` (pattern of `99_workspace_member_emails.sql`: `_helpers.sql`, `et_grant_hosted_parity()`, `et_make_workspace`). Cases, each an `assert`:
@@ -114,7 +114,7 @@
 ### Task 3: Clients, views and client creation
 
 **Files:**
-- Create: `supabase/migrations/20261115000002_acesso_por_cliente_b_clientes.sql`
+- Create: `supabase/migrations/20261117000002_acesso_por_cliente_b_clientes.sql`
 - Create: `supabase/tests/entitlements/99_acesso_por_cliente_clientes.sql`
 
 **Interfaces:**
@@ -142,11 +142,11 @@ Five tasks, one per domain, each with its own migration and suite so a reviewer 
 
 | Task | Migration | Suite | Tables (confirm with the inventory) | Extra cases |
 |---|---|---|---|---|
-| 4a | `20261115000003_acesso_por_cliente_c1_posts.sql` | `99_acesso_por_cliente_posts.sql` | `workflows`, `workflow_etapas`, `workflow_posts` and children, `post_edit_suggestions`, `post_references`, `post_content_versions`, `post_discussao_participantes` | `post_in_a_visible`, `post_in_b_hidden`, `own_post_in_b_visible` (via `responsavel_id` → `membros.crm_user_id`), `own_post_in_b_media_visible`, `other_post_in_b_of_same_workflow_hidden`, `avulso_post_no_workflow_uses_own_cliente_id`, `insert_post_into_b_denied`, `move_own_post_to_hidden_client_denied`, `non_restricted_member_can_assign_restricted_to_b_post`, `post_discussao_of_hidden_post_hidden`, `explain_todos_short_circuits` (`EXPLAIN (FORMAT JSON)` of `select * from workflow_posts` as the `todos` agent shows `my_client_scope_all` as an InitPlan and no per-row `can_access_cliente` SubPlan) |
-| 4b | `20261115000004_acesso_por_cliente_c2_tarefas_ideias.sql` | `99_acesso_por_cliente_tarefas.sql` | `tarefas` and comments/history, `ideias` and media, `linha_editorial_*`, briefing tables, brand profile tables (read via `can_see_cliente_context`) | `task_without_client_hidden`, `own_task_without_client_visible`, `insert_task_null_client_denied_for_restricted`, `brand_profile_of_b_visible_with_own_post`, `brand_profile_of_b_hidden_without_own_item` |
-| 4c | `20261115000005_acesso_por_cliente_c3_arquivos.sql` | `99_acesso_por_cliente_arquivos.sql` | `files`, `folders`, `post_file_links`, `file_deletions` readers | `file_in_b_hidden`, `file_linked_to_own_b_post_visible`, `upload_into_b_folder_denied` |
-| 4d | `20261115000006_acesso_por_cliente_c4_agenda_analytics.sql` | `99_acesso_por_cliente_agenda.sql` | agenda events, Instagram/TikTok/YouTube/GBP account and history tables, `report_documents`, Hub token tables, `instagram_comment_*` | `ig_metrics_of_b_hidden`, `report_of_b_hidden`, `agenda_event_own_without_client_visible` |
-| 4e | `20261115000007_acesso_por_cliente_c5_notif_membros.sql` | `99_acesso_por_cliente_notificacoes_leitura.sql`; rename `pending_acesso_por_cliente_drift.sql` → `99_acesso_por_cliente_drift.sql` | `notifications` read: `<existing qual> AND (cliente_id IS NULL OR my_client_scope_all() OR can_see_cliente_context(cliente_id))`. Trigger `trg_membros_crm_user_scope_lock` on `membros`: an UPDATE of `crm_user_id` where the old or new value is a user with `client_scope='atribuidos'` in that `conta_id` raises `client_scope_owner_only` unless `auth.uid()` is an owner there. `equipe_conversas` and children unchanged | `notification_about_b_hidden`, `notification_about_own_b_post_visible`, `chat_room_member_visible`, `relink_crm_user_id_of_restricted_by_admin_denied`, `relink_by_owner_ok`; the drift suite passes |
+| 4a | `20261117000003_acesso_por_cliente_c1_posts.sql` | `99_acesso_por_cliente_posts.sql` | `workflows`, `workflow_etapas`, `workflow_posts` and children, `post_edit_suggestions`, `post_references`, `post_content_versions`, `post_discussao_participantes` | `post_in_a_visible`, `post_in_b_hidden`, `own_post_in_b_visible` (via `responsavel_id` → `membros.crm_user_id`), `own_post_in_b_media_visible`, `other_post_in_b_of_same_workflow_hidden`, `avulso_post_no_workflow_uses_own_cliente_id`, `insert_post_into_b_denied`, `move_own_post_to_hidden_client_denied`, `non_restricted_member_can_assign_restricted_to_b_post`, `post_discussao_of_hidden_post_hidden`, `explain_todos_short_circuits` (`EXPLAIN (FORMAT JSON)` of `select * from workflow_posts` as the `todos` agent shows `my_client_scope_all` as an InitPlan and no per-row `can_access_cliente` SubPlan) |
+| 4b | `20261117000004_acesso_por_cliente_c2_tarefas_ideias.sql` | `99_acesso_por_cliente_tarefas.sql` | `tarefas` and comments/history, `ideias` and media, `linha_editorial_*`, briefing tables, brand profile tables (read via `can_see_cliente_context`) | `task_without_client_hidden`, `own_task_without_client_visible`, `insert_task_null_client_denied_for_restricted`, `brand_profile_of_b_visible_with_own_post`, `brand_profile_of_b_hidden_without_own_item` |
+| 4c | `20261117000005_acesso_por_cliente_c3_arquivos.sql` | `99_acesso_por_cliente_arquivos.sql` | `files`, `folders`, `post_file_links`, `file_deletions` readers | `file_in_b_hidden`, `file_linked_to_own_b_post_visible`, `upload_into_b_folder_denied` |
+| 4d | `20261117000006_acesso_por_cliente_c4_agenda_analytics.sql` | `99_acesso_por_cliente_agenda.sql` | agenda events, Instagram/TikTok/YouTube/GBP account and history tables, `report_documents`, Hub token tables, `instagram_comment_*` | `ig_metrics_of_b_hidden`, `report_of_b_hidden`, `agenda_event_own_without_client_visible` |
+| 4e | `20261117000007_acesso_por_cliente_c5_notif_membros.sql` | `99_acesso_por_cliente_notificacoes_leitura.sql`; rename `pending_acesso_por_cliente_drift.sql` → `99_acesso_por_cliente_drift.sql` | `notifications` read: `<existing qual> AND (cliente_id IS NULL OR my_client_scope_all() OR can_see_cliente_context(cliente_id))`. Trigger `trg_membros_crm_user_scope_lock` on `membros`: an UPDATE of `crm_user_id` where the old or new value is a user with `client_scope='atribuidos'` in that `conta_id` raises `client_scope_owner_only` unless `auth.uid()` is an owner there. `equipe_conversas` and children unchanged | `notification_about_b_hidden`, `notification_about_own_b_post_visible`, `chat_room_member_visible`, `relink_crm_user_id_of_restricted_by_admin_denied`, `relink_by_owner_ok`; the drift suite passes |
 
 Steps for each of 4a–4e:
 
@@ -159,7 +159,7 @@ Steps for each of 4a–4e:
 ### Task 5: SECURITY DEFINER readers
 
 **Files:**
-- Create: `supabase/migrations/20261115000008_acesso_por_cliente_d_definer.sql`
+- Create: `supabase/migrations/20261117000008_acesso_por_cliente_d_definer.sql`
 - Create: `supabase/tests/entitlements/99_acesso_por_cliente_definer.sql`
 
 **Interfaces:**
@@ -175,7 +175,7 @@ Steps for each of 4a–4e:
 ### Task 6: Financeiro over the member's clients
 
 **Files:**
-- Create: `supabase/migrations/20261115000009_acesso_por_cliente_e_financeiro.sql`
+- Create: `supabase/migrations/20261117000009_acesso_por_cliente_e_financeiro.sql`
 - Create: `supabase/tests/entitlements/99_acesso_por_cliente_financeiro.sql`
 
 **Interfaces:**
@@ -293,7 +293,7 @@ Column rules: owner row "Todos" with no action; non-owner viewer sees text only;
 - Test: `supabase/functions/__tests__/client-scope_test.ts`, the MCP tool tests that cover those tools
 
 **Interfaces:**
-- Produces: `loadClientScope(svc, userId: string, workspaceId: string): Promise<{ all: boolean; ids: Set<number> }>` (owner or `todos` → `all: true`; read errors throw, never `all: true`), `assertClientAccess(scope, clienteId: number | null, isOwnItem: boolean): void` throwing `ClientScopeError`. `financeiro_*_as` RPCs get a `p_actor` scope check in SQL instead (new migration `20261115000010_acesso_por_cliente_g_financeiro_as.sql`).
+- Produces: `loadClientScope(svc, userId: string, workspaceId: string): Promise<{ all: boolean; ids: Set<number> }>` (owner or `todos` → `all: true`; read errors throw, never `all: true`), `assertClientAccess(scope, clienteId: number | null, isOwnItem: boolean): void` throwing `ClientScopeError`. `financeiro_*_as` RPCs get a `p_actor` scope check in SQL instead (new migration `20261117000010_acesso_por_cliente_g_financeiro_as.sql`).
 - MCP tools filter lists with `scope.ids`; get/update of a hidden client returns the same "not found" the tool already returns; `create_client` for a restricted key returns `client_scope_restricted` mapped to "Seu acesso é limitado aos clientes atribuídos.". `auditArgs` unchanged (no ids lists).
 
 - [ ] **Step 1: Failing tests** for `loadClientScope` (owner, todos, atribuidos, read error throws) and one test per touched tool (restricted key sees only assigned; hidden get → not found; create refused).
@@ -313,7 +313,7 @@ Column rules: owner row "Todos" with no action; non-owner viewer sees text only;
 ### Task 14: Notification targeting and e-mail crons
 
 **Files:**
-- Create: `supabase/migrations/20261115000011_acesso_por_cliente_f_notificacoes.sql`
+- Create: `supabase/migrations/20261117000011_acesso_por_cliente_f_notificacoes.sql`
 - Modify: the notification/e-mail crons from the inventory that pick recipients themselves (`notification-email-cron`, `notification-deadline-cron`, `client-event-email-cron`)
 - Test: `supabase/tests/entitlements/99_acesso_por_cliente_notificacoes.sql`, the crons' Deno tests
 

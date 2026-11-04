@@ -42,7 +42,7 @@ export const FINANCEIRO_ERROS: Record<string, string> = {
   origem_invalida: "Origem inválida. Use cliente, membro ou recorrente.",
   nao_agendado: "Não há agendamento deste item no mês corrente.",
   valor_indefinido: "O valor deste agendamento não está definido (nulo ou zero). Cadastre o valor antes de confirmar.",
-  // Acesso por cliente (migrations 20261115000009/10, ERRCODE 42501): the `_as` RPCs refuse a
+  // Acesso por cliente (migrations 20261117000009/10, ERRCODE 42501): the `_as` RPCs refuse a
   // restricted actor. Every Financeiro tool is owner-only today, so this is defense in depth.
   [CLIENT_SCOPE_RESTRICTED]: CLIENT_SCOPE_MESSAGE,
 };

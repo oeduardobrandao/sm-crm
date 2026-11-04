@@ -723,7 +723,7 @@ ALTER POLICY post_comments_delete ON public.post_comments
 -- -------------------------------------------------------------
 -- 7. Contexto do item dele em cliente oculto: + post_process_steps
 -- -------------------------------------------------------------
--- Corpo de 20261115000001 mais a etapa de processo atribuída (cliente via
+-- Corpo de 20261117000001 mais a etapa de processo atribuída (cliente via
 -- post_processes -> workflow_posts). CREATE OR REPLACE mantém o ACL.
 CREATE OR REPLACE FUNCTION public.can_see_cliente_context(p_cliente_id bigint)
 RETURNS boolean

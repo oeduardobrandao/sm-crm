@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Acesso por cliente, Financeiro do MCP (20261115000010_acesso_por_cliente_g_financeiro_as.sql):
+-- Acesso por cliente, Financeiro do MCP (20261117000010_acesso_por_cliente_g_financeiro_as.sql):
 -- the financeiro_*_as RPCs (service_role, p_user = the actor) apply the same client scope as
 -- their authenticated twins, judged for p_user in p_conta:
 --   * rentabilidade_as: only the actor's clients (owner / todos: unchanged; no membership:

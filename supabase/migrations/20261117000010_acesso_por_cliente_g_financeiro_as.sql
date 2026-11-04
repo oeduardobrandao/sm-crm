@@ -1,6 +1,6 @@
 -- Acesso por cliente, Migração G (financeiro do MCP): as variantes _as do
 -- Financeiro (service_role, chamadas pelo mcp com p_user = o ator) aplicam o
--- mesmo escopo das gêmeas authenticated (20261115000009), julgado para p_user
+-- mesmo escopo das gêmeas authenticated (20261117000009), julgado para p_user
 -- em p_conta:
 --   * leitura (financeiro_rentabilidade_as): só os clientes do ator
 --     (actor_cliente_ids: NULL para dono e 'todos'; sem membership, lista vazia,

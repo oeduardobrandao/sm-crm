@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Acesso por cliente, posts e fluxos (20261115000003_acesso_por_cliente_c1_posts.sql):
+-- Acesso por cliente, posts e fluxos (20261117000003_acesso_por_cliente_c1_posts.sql):
 -- workflows, workflow_posts and every table that hangs off them (etapas, media,
 -- threads, comments, approvals, versions, notes, references, targets, events,
 -- processes, select options, portal tokens).

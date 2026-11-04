@@ -43,7 +43,7 @@
 --                                   security_invoker=true ou cita o predicado.
 --   notifications_item_level        as policies de leitura/UPDATE de notifications citam
 --                                   can_access_cliente e notification_item_visible, nunca
---                                   o contexto (20261115000012).
+--                                   o contexto (20261117000012).
 --   context_fn_covers_own_tables    toda tabela "raiz de contexto" (v_context_roots,
 --                                   mais qualquer tabela de cliente cuja policy
 --                                   use my_membro_ids()) aparece no corpo de
@@ -66,7 +66,7 @@ declare
   ];
 
   -- Tabelas sem cliente por linha, fechadas inteiras para o restrito: a leitura
-  -- exige my_client_scope_all() (20261115000012).
+  -- exige my_client_scope_all() (20261117000012).
   v_scope_all_tables text[] := array['audit_log'];
 
   -- Tabelas de cliente sem policy para authenticated/anon/public, com RLS
@@ -100,7 +100,7 @@ declare
 
   -- Únicas tabelas em que can_see_cliente_context vale como predicado de leitura (contexto do
   -- item "dele" num cliente oculto: marca e briefing). Em qualquer outra, só can_access_cliente.
-  -- notifications saiu daqui (20261115000012): a leitura é por item
+  -- notifications saiu daqui (20261117000012): a leitura é por item
   -- (can_access_cliente OR notification_item_visible), e o caso
   -- notifications_item_level abaixo fixa que o contexto não volta.
   v_context_tables text[] := array['hub_brand', 'hub_brand_files', 'briefings', 'hub_briefing_questions'];

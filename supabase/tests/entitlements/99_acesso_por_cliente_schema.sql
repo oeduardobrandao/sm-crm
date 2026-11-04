@@ -1,13 +1,13 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Acesso por cliente, schema (20261115000001_acesso_por_cliente_a_schema.sql):
+-- Acesso por cliente, schema (20261117000001_acesso_por_cliente_a_schema.sql):
 -- workspace_members.client_scope / client_scope_rev, workspace_member_clientes,
 -- the predicate can_access_cliente (core + wrapper), my_client_scope_all,
 -- my_membro_ids, can_see_cliente_context, the owner-only RPC
 -- set_member_client_scope, the promote-to-owner trigger, plans.feature_acesso_por_cliente
--- and notifications.cliente_id (column: 20261115000000; batched backfill:
--- 20261115000013; index: 20261115000014).
+-- and notifications.cliente_id (column: 20261117000000; batched backfill:
+-- 20261117000013; index: 20261117000014).
 -- Spec: docs/superpowers/specs/2026-11-03-acesso-por-cliente-design.md
 
 begin;

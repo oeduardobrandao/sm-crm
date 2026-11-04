@@ -9,6 +9,13 @@ import type {
   StoredAnalysis,
 } from '../../../../services/instagramComments';
 
+import i18n from 'i18next';
+import ptComments from '../../../../../../../packages/i18n/locales/pt/analyticsComments.json';
+import enComments from '../../../../../../../packages/i18n/locales/en/analyticsComments.json';
+
+i18n.addResourceBundle('pt', 'analyticsComments', ptComments, true, true);
+i18n.addResourceBundle('en', 'analyticsComments', enComments, true, true);
+
 const { getPostCommentsMock, analyzeMock, savedIdsMock, navigateMock } = vi.hoisted(() => ({
   getPostCommentsMock: vi.fn(),
   analyzeMock: vi.fn(),
@@ -189,6 +196,18 @@ describe('PostCommentsPanel', () => {
     expect(within(first).getByText('M')).toBeInTheDocument();
     expect(within(first).getByText(/12 curtidas · 1 resposta$/)).toBeInTheDocument();
     expect(within(first).getByText(/há 2 horas/)).toBeInTheDocument();
+  });
+
+  it('mostra 20 comentários e libera mais 20 a cada clique em Ver mais', async () => {
+    getPostCommentsMock.mockResolvedValue(response({ comments: manyComments(45) }));
+    renderPanel();
+    const list = await screen.findByRole('list', { name: 'Comentários' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(20);
+    fireEvent.click(screen.getByRole('button', { name: 'Ver mais comentários (25)' }));
+    expect(within(list).getAllByRole('listitem')).toHaveLength(40);
+    fireEvent.click(screen.getByRole('button', { name: 'Ver mais comentários (5)' }));
+    expect(within(list).getAllByRole('listitem')).toHaveLength(45);
+    expect(screen.queryByRole('button', { name: /Ver mais comentários/ })).not.toBeInTheDocument();
   });
 
   it('mostra 25+ respostas e o aviso de truncado', async () => {

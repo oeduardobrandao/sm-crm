@@ -1,6 +1,6 @@
 // Acesso por cliente for the file library (file-manage, file-upload-url, file-upload-finalize, file-zip).
 // Spec: docs/superpowers/specs/2026-11-03-acesso-por-cliente-design.md. Mirrors migration C3
-// (20261115000005_acesso_por_cliente_c3_arquivos.sql, folder_row_cliente_id / folder_cliente_id and
+// (20261117000005_acesso_por_cliente_c3_arquivos.sql, folder_row_cliente_id / folder_cliente_id and
 // the files / folders / post_file_links policies); keep the two in step.
 //
 // A folder belongs to the client of its nearest typed ancestor (itself included):

@@ -2,7 +2,7 @@
 \i supabase/tests/entitlements/_helpers.sql
 
 -- Acesso por cliente, quem recebe notificação e e-mail
--- (20261115000011_acesso_por_cliente_f_notificacoes.sql).
+-- (20261117000011_acesso_por_cliente_f_notificacoes.sql).
 -- Criação: resolve_notification_targets(ws, responsavel, roles, p_cliente_id)
 -- mantém sempre o responsável (o item é dele) e, entre os destinatários por
 -- papel, só quem vê o cliente: owner, 'todos' ou cliente atribuído. Todo
@@ -10,7 +10,7 @@
 -- notifications.cliente_id.
 -- Entrega: claim_notification_emails aplica a regra do sino por destinatário,
 -- no workspace da própria notificação: escopo, ou o ITEM da notificação é dele
--- (notification_item_visible_for, 20261115000012; não o contexto do cliente).
+-- (notification_item_visible_for, 20261117000012; não o contexto do cliente).
 -- A linha fora do escopo é marcada como tratada (emailed_at) e não volta.
 -- Spec: docs/superpowers/specs/2026-11-03-acesso-por-cliente-design.md
 

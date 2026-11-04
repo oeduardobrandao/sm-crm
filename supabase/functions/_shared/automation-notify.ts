@@ -48,7 +48,7 @@ export async function notifyAutomationFailure(
       p_workspace_id: args.contaId,
       p_responsavel_id: null,
       p_roles_filter: ["owner", "admin"],
-      // Admin restrito só recebe o aviso de cliente que ele vê (20261115000011).
+      // Admin restrito só recebe o aviso de cliente que ele vê (20261117000011).
       p_cliente_id: args.clientId,
     });
     if (targetsErr) throw targetsErr;

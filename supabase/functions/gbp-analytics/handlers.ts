@@ -7,12 +7,14 @@
 // Guard order: tenant (google-integration/tenant.ts: active_workspace_id + workspace_members,
 // never profiles.conta_id) -> rate limit -> query syntax (400) -> the client with conta_id =
 // tenant (403) -> plan flags -> the client's counted units (404 not_connected).
+// `GET /portfolio` skips the client steps: query syntax (400) -> plan flags -> the tenant-keyed read.
 
 import { checkRateLimit as realCheckRateLimit } from "../_shared/rate-limit.ts";
 import {
   type ClientScope,
   type ClientScopeLoader,
   hasClientAccess,
+  visibleClientIds,
   loadClientScope as realLoadClientScope,
 } from "../_shared/client-scope.ts";
 import { effectivePlanFeature as realEffectivePlanFeature } from "../_shared/entitlements-rpc.ts";
@@ -33,6 +35,7 @@ import {
   type GbpUnit,
   loadUnits,
 } from "../_shared/gbp-analytics/queries.ts";
+import { buildGbpPortfolio } from "../_shared/gbp-analytics/portfolio.ts";
 
 type DbClient = {
   // deno-lint-ignore no-explicit-any
@@ -185,6 +188,20 @@ async function handleRatingDistribution(ctx: RouteContext, clientId: number): Pr
   return ctx.json(await buildRatingDistribution(ctx.db, ctx.contaId, units));
 }
 
+/** Every counted unit of the workspace's active clients, or of `?client=`. No ownership check:
+ * the clientes read is keyed by the tenant, so a foreign id selects nothing. */
+async function handlePortfolio(ctx: RouteContext): Promise<Response> {
+  // `?days=` only: the page has no date range.
+  const req = parseWindowRequest(ctx.url.searchParams);
+  if (!req || req.kind !== "days") return badRequest(ctx, "invalid_window");
+  const rawClient = ctx.url.searchParams.get("client");
+  const clientId = rawClient === null ? null : parseClientId(rawClient);
+  if (rawClient !== null && clientId === null) return badRequest(ctx, "invalid_client_id");
+  const denied = await requireFeatures(ctx);
+  if (denied) return denied;
+  return ctx.json(await buildGbpPortfolio(ctx.db, ctx.contaId, req, clientId, ctx.now, visibleClientIds(ctx.scope)));
+}
+
 const CLIENT_GET_ROUTES: Record<string, ClientRoute> = {
   "overview": handleOverview,
   "daily": handleDaily,
@@ -196,6 +213,7 @@ const CLIENT_GET_ROUTES: Record<string, ClientRoute> = {
 };
 
 async function route(req: Request, ctx: RouteContext, path: string): Promise<Response> {
+  if (req.method === "GET" && path === "/portfolio") return await handlePortfolio(ctx);
   const match = req.method === "GET" ? path.match(/^\/([a-z-]+)\/([^/]+)$/) : null;
   const handler = match && Object.hasOwn(CLIENT_GET_ROUTES, match[1]) ? CLIENT_GET_ROUTES[match[1]] : undefined;
   if (!match || !handler) return ctx.json({ error: "not_found" }, 404);

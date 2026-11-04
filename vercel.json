@@ -80,6 +80,10 @@
     }
   ],
   "rewrites": [
+    {
+      "source": "/oauth/google/callback",
+      "destination": "https://skjzpekeqefvlojenfsw.supabase.co/functions/v1/google-integration/callback"
+    },
     { "source": "/:workspace/hub/:token/(.*)", "destination": "/hub/index.html" },
     { "source": "/:workspace/hub/:token", "destination": "/hub/index.html" },
     { "source": "/relatorios/print/:docId", "destination": "/hub/index.html" },

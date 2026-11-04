@@ -249,8 +249,76 @@ export default function Sidebar({
   // instead of the main nav list — see the utilityItems section below.
   // Configurações lives in the main nav list itself (it's not filtered out
   // here), so it isn't repeated in the dropdown.
-  const mainGroups = navGroups.filter((g) => g.id !== 'ajuda-group');
+  // Configurações + Ajuda stay pinned under the scrolling list, always in reach.
+  const mainGroups = navGroups.filter((g) => g.id !== 'ajuda-group' && g.id !== 'config');
+  const pinnedItems = navGroups.find((g) => g.id === 'config')?.items ?? [];
   const utilityItems = navGroups.find((g) => g.id === 'ajuda-group')?.items ?? [];
+
+  const renderItem = (item: NavGroup['items'][number]) => {
+    const isActiveItem = isNavRouteActive(activeRoute, item.route, item.id);
+    const ItemIcon = isActiveItem ? `ph-fill ${item.icon}` : `ph ${item.icon}`;
+    return (
+      <li key={item.id} className="sidebar-sub-item">
+        {item.disabled ? (
+          <div
+            className="sidebar-sub-link sidebar-sub-link--disabled"
+            aria-disabled="true"
+            title={t(item.labelKey, item.label)}
+          >
+            <i className={`ph ${item.icon}`} />
+            <span className="sidebar-sub-label">{t(item.labelKey, item.label)}</span>
+            <span className="nav-badge">{t('sidebar.comingSoon', 'Em breve')}</span>
+          </div>
+        ) : item.locked ? (
+          <a
+            className="sidebar-sub-link sidebar-sub-link--locked"
+            href={`#${item.route}`}
+            data-testid={`nav-locked-${item.id}`}
+            title={t('sidebar.upgradeToUnlock', 'Disponível nos planos Pro e Max')}
+            onClick={(e) => {
+              e.preventDefault();
+              handleNavClick(item.route);
+            }}
+          >
+            <i className={`ph ${item.icon}`} />
+            <span className="sidebar-sub-label">{t(item.labelKey, item.label)}</span>
+            <i className="ph ph-lock nav-lock-icon" aria-hidden="true" />
+          </a>
+        ) : item.newTab ? (
+          <a
+            className="sidebar-sub-link"
+            href={item.route}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => {
+              setRailOpen(false);
+              if (isDrawer) onClose?.();
+            }}
+          >
+            <i className={`ph ${item.icon}`} />
+            <span className="sidebar-sub-label">{t(item.labelKey, item.label)}</span>
+          </a>
+        ) : (
+          <a
+            className={`sidebar-sub-link ${isActiveItem ? 'active' : ''}`}
+            href={`#${item.route}`}
+            onClick={(e) => {
+              e.preventDefault();
+              handleNavClick(item.route);
+            }}
+          >
+            <i className={ItemIcon} />
+            <span className="sidebar-sub-label">{t(item.labelKey, item.label)}</span>
+            {item.id === 'mensagens' && mensagensBadge > 0 && (
+              <span className="nav-badge nav-badge--count" data-testid="mensagens-nav-badge">
+                {mensagensBadge > 99 ? '99+' : mensagensBadge}
+              </span>
+            )}
+          </a>
+        )}
+      </li>
+    );
+  };
 
   const renderGroup = (group: NavGroup) => {
     const groupHasActiveItem = group.items.some((item) =>
@@ -274,73 +342,7 @@ export default function Sidebar({
           className={`sidebar-group-content${isCollapsed ? ' sidebar-group-content--collapsed' : ''}`}
         >
           <ul className="sidebar-sub-nav" inert={isCollapsed || undefined}>
-            {group.items.map((item) => {
-              const isActiveItem = isNavRouteActive(activeRoute, item.route, item.id);
-              const ItemIcon = isActiveItem ? `ph-fill ${item.icon}` : `ph ${item.icon}`;
-              return (
-                <li key={item.id} className="sidebar-sub-item">
-                  {item.disabled ? (
-                    <div
-                      className="sidebar-sub-link sidebar-sub-link--disabled"
-                      aria-disabled="true"
-                    >
-                      <i className={`ph ${item.icon}`} />
-                      <span className="sidebar-sub-label">{t(item.labelKey, item.label)}</span>
-                      <span className="nav-badge">{t('sidebar.comingSoon', 'Em breve')}</span>
-                    </div>
-                  ) : item.locked ? (
-                    <a
-                      className="sidebar-sub-link sidebar-sub-link--locked"
-                      href={`#${item.route}`}
-                      data-testid={`nav-locked-${item.id}`}
-                      title={t('sidebar.upgradeToUnlock', 'Disponível nos planos Pro e Max')}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        handleNavClick(item.route);
-                      }}
-                    >
-                      <i className={`ph ${item.icon}`} />
-                      <span className="sidebar-sub-label">{t(item.labelKey, item.label)}</span>
-                      <i className="ph ph-lock nav-lock-icon" aria-hidden="true" />
-                    </a>
-                  ) : item.newTab ? (
-                    <a
-                      className="sidebar-sub-link"
-                      href={item.route}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => {
-                        setRailOpen(false);
-                        if (isDrawer) onClose?.();
-                      }}
-                    >
-                      <i className={`ph ${item.icon}`} />
-                      <span className="sidebar-sub-label">{t(item.labelKey, item.label)}</span>
-                    </a>
-                  ) : (
-                    <a
-                      className={`sidebar-sub-link ${isActiveItem ? 'active' : ''}`}
-                      href={`#${item.route}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        handleNavClick(item.route);
-                      }}
-                    >
-                      <i className={ItemIcon} />
-                      <span className="sidebar-sub-label">{t(item.labelKey, item.label)}</span>
-                      {item.id === 'mensagens' && mensagensBadge > 0 && (
-                        <span
-                          className="nav-badge nav-badge--count"
-                          data-testid="mensagens-nav-badge"
-                        >
-                          {mensagensBadge > 99 ? '99+' : mensagensBadge}
-                        </span>
-                      )}
-                    </a>
-                  )}
-                </li>
-              );
-            })}
+            {group.items.map(renderItem)}
           </ul>
         </div>
       </li>
@@ -422,6 +424,12 @@ export default function Sidebar({
             {mainGroups.map(renderGroup)}
           </ul>
         </div>
+
+        {pinnedItems.length > 0 && (
+          <div className="sidebar-pinned">
+            <ul className="sidebar-sub-nav">{pinnedItems.map(renderItem)}</ul>
+          </div>
+        )}
 
         <div className="sidebar-bottom">
           {isDrawer && (

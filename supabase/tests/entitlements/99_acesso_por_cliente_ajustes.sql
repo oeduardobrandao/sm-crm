@@ -2,7 +2,7 @@
 \i supabase/tests/entitlements/_helpers.sql
 
 -- Acesso por cliente, ajustes da revisão final
--- (20261115000012_acesso_por_cliente_h_ajustes.sql).
+-- (20261117000012_acesso_por_cliente_h_ajustes.sql).
 -- audit_log: owner_admin_select também exige my_client_scope_all(). O log
 -- guarda nome e sigla de todo cliente criado (e eventos de post), então um
 -- admin restrito não lê nada dele; dono e admin 'todos' seguem iguais.

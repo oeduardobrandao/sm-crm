@@ -68,7 +68,7 @@ Deno.serve(createNotificationDeadlineCronHandler({
               p_responsavel_id:  c.responsavel_id,
               p_roles_filter:    ["owner", "admin"],
               // Admin restrito só recebe o prazo de cliente que ele vê
-              // (migration 20261115000011); o responsável recebe sempre.
+              // (migration 20261117000011); o responsável recebe sempre.
               p_cliente_id:      c.cliente_id,
             });
 

@@ -184,6 +184,20 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         labelKey: 'nav.tiktok',
         icon: 'ph-tiktok-logo',
       },
+      {
+        id: 'analytics-youtube',
+        route: '/analytics/youtube',
+        label: 'YouTube',
+        labelKey: 'nav.youtube',
+        icon: 'ph-youtube-logo',
+      },
+      {
+        id: 'analytics-google',
+        route: '/analytics/google',
+        label: 'Google Meu Negócio',
+        labelKey: 'nav.googleBusiness',
+        icon: 'ph-storefront',
+      },
     ],
   },
   {
@@ -252,6 +266,8 @@ const NAV_FEATURE: Record<string, string | string[]> = {
   mensagens: ['feature_mensagens', 'feature_team_chat'],
   analytics: 'feature_analytics_reports',
   'analytics-tiktok': 'feature_analytics_reports',
+  'analytics-youtube': 'feature_analytics_reports',
+  'analytics-google': 'feature_analytics_reports',
   'analytics-fluxos': 'feature_analytics_reports',
   'post-express': 'feature_post_scheduling',
   automacoes: 'feature_instagram_automation',
@@ -265,6 +281,18 @@ const NAV_FEATURE: Record<string, string | string[]> = {
  */
 const NAV_FEATURE_REQUIRED_TRUE: Record<string, string> = {
   'analytics-tiktok': 'feature_tiktok',
+};
+
+/**
+ * Maps nav item id -> a flag that must be explicitly `true` for the item to be
+ * usable. Fail-closed like NAV_FEATURE_REQUIRED_TRUE (null features included),
+ * but instead of removing the item it keeps it as `disabled: true`, which the
+ * sidebar and the phone "Mais" sheet render as an inert "Em breve" row.
+ * Disabled-then-enabled while the plan loads is fine; the reverse is not.
+ */
+const NAV_FEATURE_SOON: Record<string, string> = {
+  'analytics-youtube': 'feature_youtube',
+  'analytics-google': 'feature_google_business',
 };
 
 /**
@@ -299,6 +327,8 @@ export const NAV_MODULE: Partial<Record<string, [PermissionModule, PermissionAct
   equipe: ['equipe', 'ver'],
   analytics: ['analytics', 'ver'],
   'analytics-tiktok': ['analytics', 'ver'],
+  'analytics-youtube': ['analytics', 'ver'],
+  'analytics-google': ['analytics', 'ver'],
   'analytics-fluxos': ['analytics', 'ver'],
   automacoes: ['automacoes', 'ver'],
   importar: ['clientes', 'editar'],
@@ -349,6 +379,15 @@ export function getNavGroups(
     }))
     .filter((g) => g.items.length > 0);
 
+  // "Em breve" flags: kept in the list but inert unless explicitly true.
+  groups = groups.map((g) => ({
+    ...g,
+    items: g.items.map((i) => {
+      const flag = NAV_FEATURE_SOON[i.id];
+      return !flag || features?.[flag] === true ? i : { ...i, disabled: true };
+    }),
+  }));
+
   // Hide feature-gated nav items when the flag is explicitly false, unless
   // the item opts into staying visible-but-locked.
   if (features) {
@@ -385,18 +424,29 @@ export function getNavGroups(
  * starts with '/analytics'. Requiring the boundary '/' after `route` rules
  * that out while still matching real sub-routes like '/analytics/12'.
  *
- * TikTok paths are the one exception, and only when `itemId` is passed (the
- * sidebar): '/analytics/tiktok' and a client's '/analytics/<id>/tiktok' tab
- * belong to the `analytics-tiktok` item, so the `analytics` (Instagram) item
- * is NOT active there even though they are children of '/analytics'. Without
- * an item id (the phone tab bar's single Analytics tab) every '/analytics*'
- * child path still matches '/analytics', TikTok included.
+ * Platform paths (TikTok, YouTube, Google Meu Negócio) are the exception, and
+ * only when `itemId` is passed (the sidebar): '/analytics/<platform>' and a
+ * client's '/analytics/<id>/<platform>' tab belong to that platform's item,
+ * whose own regex alone decides its active state, so the `analytics`
+ * (Instagram) item is NOT active there even though they are children of
+ * '/analytics'. Without an item id (the phone tab bar's single Analytics tab)
+ * every '/analytics*' child path still matches '/analytics', platforms included.
  */
-const TIKTOK_ANALYTICS_PATH = /^\/analytics\/(?:tiktok|[^/]+\/tiktok)\/?$/;
+const PLATFORM_ANALYTICS_PATH: Record<string, RegExp> = {
+  'analytics-tiktok': /^\/analytics\/(?:tiktok|[^/]+\/tiktok)\/?$/,
+  'analytics-youtube': /^\/analytics\/(?:youtube|[^/]+\/youtube)\/?$/,
+  'analytics-google': /^\/analytics\/(?:google|[^/]+\/google)\/?$/,
+};
 
 export function isNavRouteActive(pathname: string, route: string, itemId?: string): boolean {
-  if (itemId === 'analytics-tiktok') return TIKTOK_ANALYTICS_PATH.test(pathname);
-  if (itemId === 'analytics' && TIKTOK_ANALYTICS_PATH.test(pathname)) return false;
+  const platformPath = itemId ? PLATFORM_ANALYTICS_PATH[itemId] : undefined;
+  if (platformPath) return platformPath.test(pathname);
+  if (
+    itemId === 'analytics' &&
+    Object.values(PLATFORM_ANALYTICS_PATH).some((re) => re.test(pathname))
+  ) {
+    return false;
+  }
   return pathname === route || pathname.startsWith(`${route}/`);
 }
 

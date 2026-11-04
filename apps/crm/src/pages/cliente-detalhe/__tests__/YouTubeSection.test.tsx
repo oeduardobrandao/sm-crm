@@ -1,3 +1,4 @@
+import type { ContextType } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -42,6 +43,16 @@ vi.mock('../../../services/google', async (importOriginal) => {
 });
 
 import { YouTubeSection } from '../YouTubeSection';
+import { AuthContext } from '../../../context/AuthContext';
+import { makeCan, fakeMembership } from '@/test/makeCan';
+
+type AuthValue = NonNullable<ContextType<typeof AuthContext>>;
+
+/** Only what "Gerenciar contas" reads (`canAccessConfigTab`). */
+function authFor(membership: Parameters<typeof fakeMembership>[0]) {
+  const m = fakeMembership(membership);
+  return { can: makeCan(m), workspaceRole: m.role } as unknown as AuthValue;
+}
 
 const channel = {
   channelId: 'UC123',
@@ -56,17 +67,19 @@ const channel = {
   lastSyncedAt: null,
 };
 
-function renderSection(clienteId = 7) {
+function renderSection(clienteId = 7, auth: AuthValue | null = null) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const invalidate = vi.spyOn(qc, 'invalidateQueries');
   const utils = render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/clientes/7/redes-sociais']}>
-        <Routes>
-          <Route path="*" element={<YouTubeSection clienteId={clienteId} />} />
-        </Routes>
-        <PathProbe />
-      </MemoryRouter>
+      <AuthContext.Provider value={auth}>
+        <MemoryRouter initialEntries={['/clientes/7/redes-sociais']}>
+          <Routes>
+            <Route path="*" element={<YouTubeSection clienteId={clienteId} />} />
+          </Routes>
+          <PathProbe />
+        </MemoryRouter>
+      </AuthContext.Provider>
     </QueryClientProvider>,
   );
   return { ...utils, invalidate };
@@ -177,7 +190,7 @@ describe('YouTubeSection', () => {
     disconnectYouTubeMock.mockResolvedValue(undefined);
     const { invalidate } = renderSection(7);
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Desconectar' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Desconectar deste cliente' }));
     const dialog = await screen.findByRole('alertdialog');
     expect(within(dialog).getByText('Desconectar YouTube?')).toBeInTheDocument();
     expect(within(dialog).getByText(/em até 7 dias/)).toBeInTheDocument();
@@ -220,5 +233,55 @@ describe('YouTubeSection', () => {
     renderSection(7);
     await userEvent.click(await screen.findByRole('button', { name: /Ver Analytics Completo/ }));
     expect(screen.getByTestId('path')).toHaveTextContent('/analytics/7/youtube');
+  });
+
+  it('shows the Google account line from connectionEmail', async () => {
+    mockFeatures = { feature_youtube: true };
+    getGoogleSummaryMock.mockResolvedValue({ youtube: channel, gmn: null });
+    renderSection();
+    expect(
+      await screen.findByText('Conta Google: contato@sorrisopleno.com.br'),
+    ).toBeInTheDocument();
+  });
+
+  it('hides the account line (and its link) when connectionEmail is null', async () => {
+    mockFeatures = { feature_youtube: true };
+    getGoogleSummaryMock.mockResolvedValue({
+      youtube: { ...channel, connectionEmail: null },
+      gmn: null,
+    });
+    renderSection(7, authFor({ role: 'owner' }));
+    expect(await screen.findByText('Conectado')).toBeInTheDocument();
+    expect(screen.queryByText(/^Conta Google:/)).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Gerenciar contas' })).toBeNull();
+  });
+
+  it('links "Gerenciar contas" to Contas conectadas for who can open it', async () => {
+    mockFeatures = { feature_youtube: true };
+    getGoogleSummaryMock.mockResolvedValue({ youtube: channel, gmn: null });
+    renderSection(7, authFor({ role: 'admin' }));
+    const link = await screen.findByRole('link', { name: 'Gerenciar contas' });
+    expect(link).toHaveAttribute('href', '/configuracao/contas-conectadas');
+    expect(link.parentElement).toHaveTextContent('Conta Google: contato@sorrisopleno.com.br');
+  });
+
+  it('hides "Gerenciar contas" without configuracoes:ver', async () => {
+    mockFeatures = { feature_youtube: true };
+    getGoogleSummaryMock.mockResolvedValue({ youtube: channel, gmn: null });
+    renderSection(7, authFor({ role: 'agent' }));
+    expect(
+      await screen.findByText('Conta Google: contato@sorrisopleno.com.br'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Gerenciar contas' })).toBeNull();
+  });
+
+  it('labels the per-client disconnect "Desconectar deste cliente"', async () => {
+    mockFeatures = { feature_youtube: true };
+    getGoogleSummaryMock.mockResolvedValue({ youtube: channel, gmn: null });
+    renderSection();
+    expect(
+      await screen.findByRole('button', { name: 'Desconectar deste cliente' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Desconectar' })).toBeNull();
   });
 });

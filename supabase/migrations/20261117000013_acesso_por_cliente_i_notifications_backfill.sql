@@ -1,9 +1,9 @@
 -- Acesso por cliente: backfill de notifications.cliente_id (coluna em
--- 20261115000000) a partir do metadata das notificações já gravadas.
+-- 20261117000000) a partir do metadata das notificações já gravadas.
 -- Spec: docs/superpowers/specs/2026-11-03-acesso-por-cliente-design.md
 --
 -- Chaves, da mais específica para a menos (a mesma ordem da leitura por item,
--- 20261115000012): post_id, task_id, idea_id, linha_id, etapa_id, workflow_id
+-- 20261117000012): post_id, task_id, idea_id, linha_id, etapa_id, workflow_id
 -- e, por fim, o cliente_id / client_id que client_message e a falha de
 -- automação gravam no metadata. Cada UPDATE só toca linha ainda NULL, então a
 -- primeira chave que acha o item decide (um post_id que não existe mais cai

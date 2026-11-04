@@ -2,7 +2,7 @@
 \i supabase/tests/entitlements/_helpers.sql
 
 -- Acesso por cliente, tarefas, ideias e contexto
--- (20261115000004_acesso_por_cliente_c2_tarefas_ideias.sql): tarefas and their
+-- (20261117000004_acesso_por_cliente_c2_tarefas_ideias.sql): tarefas and their
 -- children (subtarefas, tags, comments, events, series, mentions), ideias and
 -- theirs (files, reactions), the linha editorial, and the client context
 -- tables (brand, brand files, briefings, briefing questions) plus Hub pages.

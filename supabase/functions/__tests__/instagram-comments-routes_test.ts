@@ -110,15 +110,16 @@ function goodRaw(over: Record<string, unknown> = {}) {
 
 interface Calls {
   graph: { mediaId: string; max: number; deadlineAt: number }[];
-  gemini: { prompt: string; deadlineAt: number }[];
+  ai: { prompt: string; deadlineAt: number }[];
   rate: string[];
 }
 
 function setup(opts: {
   tables?: Record<string, Row[]>;
   graph?: (mediaId: string, max: number) => IgComment[] | Error;
-  gemini?: () => unknown;
-  geminiKey?: string | null;
+  aiRaw?: () => unknown;
+  ai?: { accountId: string; token: string } | null;
+  lang?: "pt" | "en";
   rateOk?: boolean;
 } = {}) {
   const tables = opts.tables ?? {
@@ -127,13 +128,14 @@ function setup(opts: {
     instagram_comment_analyses: [],
   };
   const { svc, upserts } = makeSvc(tables);
-  const calls: Calls = { graph: [], gemini: [], rate: [] };
+  const calls: Calls = { graph: [], ai: [], rate: [] };
   const deps: CommentsRouteDeps = {
     // deno-lint-ignore no-explicit-any
     svc: svc as any,
     contaId: CONTA,
     userId: USER,
-    geminiKey: opts.geminiKey === undefined ? "key" : opts.geminiKey,
+    ai: opts.ai === undefined ? { accountId: "acc", token: "tok" } : opts.ai,
+    lang: opts.lang ?? "pt",
     now: () => NOW,
     decryptToken: () => Promise.resolve("tok"),
     verifyClientOwnership: () => Promise.resolve(),
@@ -147,10 +149,10 @@ function setup(opts: {
       if (r instanceof Error) return Promise.reject(r);
       return Promise.resolve({ comments: r.slice(0, args.max), truncated: r.length > args.max });
     },
-    callGemini: (_d, args) => {
-      calls.gemini.push({ prompt: args.prompt, deadlineAt: args.deadlineAt });
+    callAi: (_d, args) => {
+      calls.ai.push({ prompt: args.prompt, deadlineAt: args.deadlineAt });
       try {
-        return Promise.resolve(opts.gemini ? opts.gemini() : goodRaw());
+        return Promise.resolve(opts.aiRaw ? opts.aiRaw() : goodRaw());
       } catch (e) {
         return Promise.reject(e);
       }
@@ -287,7 +289,7 @@ Deno.test("POST com 4 comentários → 422 too_few_comments sem chamar Gemini", 
   const r = await handleCommentsRoute("POST", "/comments-analysis/7/p1", deps);
   assertEquals(r?.status, 422);
   assertEquals(body(r), { error: "too_few_comments" });
-  assertEquals(calls.gemini.length, 0);
+  assertEquals(calls.ai.length, 0);
   assertEquals(upserts.length, 0);
 });
 
@@ -297,9 +299,12 @@ Deno.test("POST manda à IA só textos, grava upsert com analyzed_at novo e idei
   assertEquals(r?.status, 200);
   assertEquals(calls.rate, [`ig-comments-ai:${CONTA}`]);
   assertEquals(calls.graph[0], { mediaId: "p1", max: 200, deadlineAt: NOW + 20_000 });
-  assertEquals(calls.gemini.length, 1);
-  assertEquals(calls.gemini[0].deadlineAt, NOW + 50_000);
-  const prompt = calls.gemini[0].prompt;
+  // Duas partes em paralelo (leitura e ideias), com o mesmo prazo.
+  assertEquals(calls.ai.length, 2);
+  assertEquals(calls.ai.map((c) => c.deadlineAt), [NOW + 50_000, NOW + 50_000]);
+  assert(calls.ai[0].prompt.includes('"distribuicao"'));
+  assert(calls.ai[1].prompt.includes('"ideias":['));
+  const prompt = calls.ai[0].prompt;
   assert(prompt.includes("comentário 3 de c"), "prompt leva o texto");
   assert(!prompt.includes("fulano_"), "prompt não leva username");
   assert(prompt.includes("legenda p1"), "prompt leva a legenda");
@@ -318,7 +323,7 @@ Deno.test("POST manda à IA só textos, grava upsert com analyzed_at novo e idei
   assertEquals(u.row.posts_analyzed, 1);
   assertEquals(u.row.period_start, null);
   assertEquals(u.row.period_end, null);
-  assertEquals(u.row.model, "gemini-2.5-flash-lite");
+  assertEquals(u.row.model, "@cf/meta/llama-3.3-70b-instruct-fp8-fast");
   assertEquals(u.row.analyzed_by, USER);
   assertEquals(u.row.analyzed_at, new Date(NOW).toISOString());
   // deno-lint-ignore no-explicit-any
@@ -346,7 +351,7 @@ Deno.test("POST: comments_count_at_analysis usa o maior entre o espelho e o busc
 
 Deno.test("POST redige username no resultado gravado", async () => {
   const { deps, upserts } = setup({
-    gemini: () =>
+    aiRaw: () =>
       goodRaw({
         resumo: "fulano_c1 elogiou e @marcia.souza também.",
         ideias: [
@@ -366,7 +371,7 @@ Deno.test("POST redige username no resultado gravado", async () => {
 });
 
 Deno.test("Gemini sem chave → 503 ai_unavailable; GET de comentários segue 200", async () => {
-  const { deps, calls } = setup({ geminiKey: null });
+  const { deps, calls } = setup({ ai: null });
   const r = await handleCommentsRoute("POST", "/comments-analysis/7/p1", deps);
   assertEquals(r?.status, 503);
   assertEquals(body(r), { error: "ai_unavailable" });
@@ -380,7 +385,7 @@ Deno.test("Gemini sem chave → 503 ai_unavailable; GET de comentários segue 20
 
 Deno.test("AiTimeoutError → 504 ai_timeout", async () => {
   const { deps, upserts } = setup({
-    gemini: () => {
+    aiRaw: () => {
       throw new AiTimeoutError("deadline");
     },
   });
@@ -392,7 +397,7 @@ Deno.test("AiTimeoutError → 504 ai_timeout", async () => {
 
 Deno.test("AiBadOutputError ou validação null → 502 ai_bad_output, sem upsert", async () => {
   for (
-    const gemini of [
+    const aiRaw of [
       () => {
         throw new AiBadOutputError("not_json");
       },
@@ -400,7 +405,7 @@ Deno.test("AiBadOutputError ou validação null → 502 ai_bad_output, sem upser
       () => goodRaw({ ideias: [{ titulo: "só uma", descricao: "d", motivo: "m" }] }),
     ]
   ) {
-    const { deps, upserts } = setup({ gemini });
+    const { deps, upserts } = setup({ aiRaw });
     const r = await handleCommentsRoute("POST", "/comments-analysis/7/p1", deps);
     assertEquals(r?.status, 502);
     assertEquals(body(r), { error: "ai_bad_output" });
@@ -408,10 +413,10 @@ Deno.test("AiBadOutputError ou validação null → 502 ai_bad_output, sem upser
   }
 });
 
-Deno.test("gemini_unavailable e gemini_http_* → 503 ai_unavailable", async () => {
-  for (const msg of ["gemini_unavailable", "gemini_http_400"]) {
+Deno.test("ai_unavailable, ai_daily_limit e ai_http_* → 503 ai_unavailable", async () => {
+  for (const msg of ["ai_unavailable", "ai_daily_limit", "ai_http_400"]) {
     const { deps, upserts } = setup({
-      gemini: () => {
+      aiRaw: () => {
         throw new Error(msg);
       },
     });
@@ -432,7 +437,7 @@ Deno.test("rate limit negado → 429", async () => {
   const acc = await handleCommentsRoute("POST", "/comments-analysis-account/7", deps);
   assertEquals(acc?.status, 429);
   assertEquals(calls.graph.length, 0);
-  assertEquals(calls.gemini.length, 0);
+  assertEquals(calls.ai.length, 0);
 });
 
 Deno.test("token expirado na Graph sobe no formato TOKEN_EXPIRED do index.ts", async () => {
@@ -488,7 +493,7 @@ Deno.test("conta: escolhe os 15 com mais comentários dos últimos 30 dias e cor
     assertEquals(g.max, 60);
     assertEquals(g.deadlineAt, NOW + 20_000);
   }
-  const prompt = calls.gemini[0].prompt;
+  const prompt = calls.ai[0].prompt;
   assert(!prompt.includes("fulano_"), "prompt sem username");
   assert(!prompt.includes("legenda velho"), "post antigo fora");
 
@@ -529,7 +534,7 @@ Deno.test("conta: menos de 10 comentários no total → 422", async () => {
   const r = await handleCommentsRoute("POST", "/comments-analysis-account/7", deps);
   assertEquals(r?.status, 422);
   assertEquals(body(r), { error: "too_few_comments" });
-  assertEquals(calls.gemini.length, 0);
+  assertEquals(calls.ai.length, 0);
 });
 
 Deno.test("conta: falha num post segue com os outros", async () => {
@@ -543,7 +548,7 @@ Deno.test("conta: falha num post segue com os outros", async () => {
   // 2 candidatos, 1 buscado com sucesso: só ele conta
   assertEquals(upserts[0].row.posts_analyzed, 1);
   assertEquals(body(r).analysis.posts_analyzed, 1);
-  assert(!calls.gemini[0].prompt.includes("legenda p1"), "post que falhou fica fora");
+  assert(!calls.ai[0].prompt.includes("legenda p1"), "post que falhou fica fora");
 });
 
 Deno.test("GET conta devolve current_comments mesmo sem análise", async () => {
@@ -587,4 +592,45 @@ Deno.test("GET conta devolve a análise salva do ig_user_id atual", async () => 
   assertEquals(body(r).current_comments, 7);
   assertEquals(body(r).analysis.period_start, "2026-10-03");
   assertEquals(body(r).analysis.comments_count_at_analysis, 5);
+});
+
+Deno.test("lang=en: prompt pede inglês e a redação usa o texto em inglês", async () => {
+  const { deps, calls, upserts } = setup({
+    lang: "en",
+    aiRaw: () => ({ ...goodRaw(), resumo: "Fans like @someone a lot." }),
+  });
+  const r = await handleCommentsRoute("POST", "/comments-analysis/7/p1", deps);
+  assertEquals(r?.status, 200);
+  assert(calls.ai[0].prompt.includes("in natural English"));
+  const u = upserts.find((x) => x.table === "instagram_comment_analyses")!;
+  assertEquals((u.row.result as { resumo: string }).resumo, "Fans like someone in the audience a lot.");
+});
+
+Deno.test("uma parte da IA falhando derruba a análise (504 vence 503)", async () => {
+  let n = 0;
+  const { deps, upserts } = setup({
+    aiRaw: () => {
+      n++;
+      if (n === 1) throw new Error("ai_unavailable");
+      throw new AiTimeoutError("deadline");
+    },
+  });
+  const r = await handleCommentsRoute("POST", "/comments-analysis/7/p1", deps);
+  assertEquals(r?.status, 504);
+  assertEquals(upserts.length, 0);
+});
+
+Deno.test("as duas partes da IA são juntadas antes de validar", async () => {
+  let n = 0;
+  const full = goodRaw() as Record<string, unknown>;
+  const { deps } = setup({
+    aiRaw: () => {
+      n++;
+      return n === 1
+        ? { sentimento_geral: full.sentimento_geral, resumo: full.resumo, distribuicao: full.distribuicao }
+        : { temas: full.temas, perguntas_frequentes: full.perguntas_frequentes, ideias: full.ideias };
+    },
+  });
+  const r = await handleCommentsRoute("POST", "/comments-analysis/7/p1", deps);
+  assertEquals(r?.status, 200);
 });

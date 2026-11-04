@@ -64,8 +64,8 @@ GRANT ALL ON TABLE public.workspace_member_clientes TO service_role;
 -- 3. Flag de plano
 -- -------------------------------------------------------------
 -- notifications.cliente_id fica fora desta migração (que segura ACCESS
--- EXCLUSIVE em workspace_members até o commit): coluna em 20261115000000,
--- backfill em lotes em 20261115000013, índice em 20261115000014.
+-- EXCLUSIVE em workspace_members até o commit): coluna em 20261117000000,
+-- backfill em lotes em 20261117000013, índice em 20261117000014.
 ALTER TABLE public.plans
   ADD COLUMN feature_acesso_por_cliente boolean NOT NULL DEFAULT false;
 

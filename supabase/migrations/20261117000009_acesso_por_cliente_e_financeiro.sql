@@ -21,7 +21,7 @@
 --     some para o restrito).
 --   * dono e "todos": saem no primeiro my_client_scope_all(), nenhuma outra
 --     leitura, resultado byte a byte igual ao de antes.
--- As variantes _as (MCP, service_role) ficam com a migração 20261115000010.
+-- As variantes _as (MCP, service_role) ficam com a migração 20261117000010.
 -- Inventário: docs/superpowers/plans/2026-11-03-acesso-por-cliente-inventario.md
 -- Spec: docs/superpowers/specs/2026-11-03-acesso-por-cliente-design.md
 
@@ -195,7 +195,7 @@ GRANT EXECUTE ON FUNCTION public._financeiro_filtrar_clientes(jsonb, bigint[]) T
 -- 1. Leitura: _financeiro_rentabilidade_core(p_cliente_ids)
 -- -------------------------------------------------------------
 -- Assinatura nova: DROP da antiga para não ficar sobrecarga ambígua. Chamadas
--- com 3 argumentos (financeiro_rentabilidade_as até a 20261115000010) caem no
+-- com 3 argumentos (financeiro_rentabilidade_as até a 20261117000010) caem no
 -- DEFAULT NULL = todos.
 DROP FUNCTION public._financeiro_rentabilidade_core(uuid, uuid, date);
 CREATE FUNCTION public._financeiro_rentabilidade_core(

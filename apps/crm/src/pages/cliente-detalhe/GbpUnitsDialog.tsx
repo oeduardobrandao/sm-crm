@@ -40,8 +40,17 @@ export interface GbpUnitsDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+// Codes the service knows for the account routes but this dialog has no copy for
+// (`gmn.dialog.errors.*`): shown as the generic message, as before they existed.
+const GENERIC_DIALOG_CODES: ReadonlySet<GoogleServiceError['code']> = new Set([
+  'forbidden',
+  'not_found',
+  'conflict',
+]);
+
 function errorCode(err: unknown): GoogleServiceError['code'] {
-  return err instanceof GoogleServiceError ? err.code : 'unknown';
+  if (!(err instanceof GoogleServiceError)) return 'unknown';
+  return GENERIC_DIALOG_CODES.has(err.code) ? 'unknown' : err.code;
 }
 
 function isLinkedElsewhere(option: GbpLocationOptionView, clienteId: number): boolean {

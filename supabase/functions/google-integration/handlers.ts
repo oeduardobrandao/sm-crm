@@ -10,6 +10,7 @@
 
 import { insertAuditLog } from "../_shared/audit.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
+import { hasPermissionFor } from "../_shared/permissions.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
 import {
   buildGoogleAuthUrl,
@@ -1202,6 +1203,212 @@ async function handleSync(
   }
 }
 
+// ─── GET /accounts ───────────────────────────────────────────────────────────────────
+
+/** Sorts by the given keys in order; a null key sorts as the empty string. */
+function byKeys<T>(...keys: Array<(item: T) => string | null>) {
+  return (a: T, b: T): number => {
+    for (const key of keys) {
+      const diff = (key(a) ?? "").localeCompare(key(b) ?? "", "pt-BR");
+      if (diff !== 0) return diff;
+    }
+    return 0;
+  };
+}
+
+function toIso(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toISOString();
+}
+
+/**
+ * The workspace's Google accounts and what each one feeds (Configurações > Contas conectadas,
+ * spec 2026-11-04 section 4.1). Gate: `configuracoes:ver` (has_permission_for, the CRM's can()).
+ * No plan-flag gate: the page must keep working after a downgrade. Only ids, emails, names,
+ * titles and statuses leave the function: never a token, scope, sub or authorized_at.
+ */
+async function handleListAccounts(
+  svc: DbClient,
+  req: Request,
+  cors: Record<string, string>,
+  loadScope: ClientScopeLoader,
+): Promise<Response> {
+  const tenant = await resolveTenant(req, svc, cors);
+  if (tenant instanceof Response) return tenant;
+  if (!(await hasPermissionFor(svc, tenant.userId, tenant.contaId, "configuracoes", "ver"))) {
+    return json(cors, { error: "forbidden" }, 403);
+  }
+  // Acesso por cliente: a restricted member sees only the channels and units of his clients, so a
+  // hidden client's name never leaves. A scope read error throws into the generic 500.
+  const scope = await loadScope(svc, tenant.userId, tenant.contaId);
+  const visible = (clientId: number) => hasClientAccess(scope, clientId, false);
+
+  const { data: connData, error: connError } = await svc
+    .from("google_connections")
+    .select("id, email, display_name, status, created_at")
+    .eq("conta_id", tenant.contaId);
+  if (connError) throw new Error(`google_connections read failed: ${connError.message}`);
+  const connections = (connData ?? []) as Array<{
+    id: string;
+    email: string;
+    display_name: string | null;
+    status: string;
+    created_at: string;
+  }>;
+  if (!connections.length) return json(cors, { accounts: [] });
+
+  const { data: chData, error: chError } = await svc
+    .from("youtube_channels")
+    .select("connection_id, channel_id, title, handle, client_id, authorization_status")
+    .eq("conta_id", tenant.contaId);
+  if (chError) throw new Error(`youtube_channels read failed: ${chError.message}`);
+  const channels = ((chData ?? []) as Array<{
+    connection_id: string;
+    channel_id: string;
+    title: string | null;
+    handle: string | null;
+    client_id: number;
+    authorization_status: string;
+  }>).filter((c) => visible(c.client_id));
+
+  const { data: locData, error: locError } = await svc
+    .from("gbp_locations")
+    .select("id, connection_id, title, address_line, client_id, status")
+    .eq("conta_id", tenant.contaId)
+    .in("status", ["active", "revoked"]);
+  if (locError) throw new Error(`gbp_locations read failed: ${locError.message}`);
+  const locations = ((locData ?? []) as Array<{
+    id: string;
+    connection_id: string | null;
+    title: string | null;
+    address_line: string | null;
+    client_id: number;
+    status: string;
+  }>).filter((l) => visible(l.client_id));
+
+  const clientIds = [...new Set([...channels.map((c) => c.client_id), ...locations.map((l) => l.client_id)])];
+  const names = new Map<number, string>();
+  if (clientIds.length) {
+    const { data: clients, error: clientError } = await svc
+      .from("clientes")
+      .select("id, nome")
+      .eq("conta_id", tenant.contaId)
+      .in("id", clientIds);
+    if (clientError) throw new Error(`clientes read failed: ${clientError.message}`);
+    for (const c of (clients ?? []) as Array<{ id: number; nome: string }>) names.set(c.id, c.nome);
+  }
+
+  const accounts = connections
+    .map((conn) => ({
+      id: conn.id,
+      email: conn.email,
+      displayName: conn.display_name ?? null,
+      status: conn.status,
+      connectedAt: toIso(conn.created_at),
+      youtube: channels
+        .filter((c) => c.connection_id === conn.id)
+        .map((c) => ({
+          channelId: c.channel_id,
+          title: c.title ?? null,
+          handle: c.handle ?? null,
+          clientId: c.client_id,
+          clientName: names.get(c.client_id) ?? null,
+          authorizationStatus: c.authorization_status,
+        }))
+        .sort(byKeys((c) => c.clientName, (c) => c.title)),
+      gbp: locations
+        .filter((l) => l.connection_id === conn.id)
+        .map((l) => ({
+          id: l.id,
+          title: l.title ?? null,
+          addressLine: l.address_line ?? null,
+          clientId: l.client_id,
+          clientName: names.get(l.client_id) ?? null,
+          status: l.status,
+        }))
+        .sort(byKeys((l) => l.title, (l) => l.clientName)),
+    }))
+    .sort(byKeys((a) => a.email));
+
+  return json(cors, { accounts });
+}
+
+// ─── POST /accounts/:connectionId/disconnect ─────────────────────────────────────────
+
+/** Account-level disconnects per workspace: 10 per minute. */
+const ACCOUNT_DISCONNECT_RATE_LIMIT = 10;
+const ACCOUNT_DISCONNECT_RATE_WINDOW_S = 60;
+
+/**
+ * "Desconectar conta" (spec 2026-11-04 section 4.2): unlinks every YouTube channel and GMN unit of
+ * this workspace on the connection, deletes the workspace's connection row and revokes the grant
+ * at Google only when no other workspace still uses the identity, all in google_disconnect_identity.
+ * Gate: `configuracoes:editar`, checked before any other read or the rate-limit slot. No plan-flag
+ * gate. Neither the body nor the audit row ever says whether the grant was revoked: that would
+ * reveal that another workspace uses the identity.
+ */
+async function handleDisconnectAccount(
+  svc: DbClient,
+  req: Request,
+  connectionId: string,
+  cors: Record<string, string>,
+  deps: GoogleIntegrationDeps,
+): Promise<Response> {
+  const tenant = await resolveTenant(req, svc, cors);
+  if (tenant instanceof Response) return tenant;
+  if (!(await hasPermissionFor(svc, tenant.userId, tenant.contaId, "configuracoes", "editar"))) {
+    return json(cors, { error: "forbidden" }, 403);
+  }
+  // Acesso por cliente: disconnecting the account unlinks the channels and units of every client
+  // on it, so only a member who sees all clients may do it (like the other workspace-wide writes).
+  const scope = await (deps.loadClientScope ?? realLoadClientScope)(svc, tenant.userId, tenant.contaId);
+  if (!scope.all) return json(cors, { error: "client_scope_restricted" }, 403);
+  const rateKey = `google-account-disconnect:${tenant.contaId}`;
+  // deno-lint-ignore no-explicit-any
+  if (!(await checkRateLimit(svc as any, rateKey, ACCOUNT_DISCONNECT_RATE_LIMIT, ACCOUNT_DISCONNECT_RATE_WINDOW_S))) {
+    return json(cors, { error: "rate_limited" }, 429);
+  }
+  if (!(await connectionInTenant(svc, connectionId, tenant.contaId))) {
+    return json(cors, { error: "not_found" }, 404);
+  }
+
+  const { data, error } = await svc.rpc("google_disconnect_identity", {
+    p_conta_id: tenant.contaId,
+    p_connection_id: connectionId,
+  });
+  if (error) {
+    // Gone between the check and the lock (another tab, a concurrent unlink, the orphan sweep).
+    if (error.code === "P0002") return json(cors, { error: "not_found" }, 404);
+    // A concurrent link interleaved (CHECK or FK); the transaction rolled back, the user retries.
+    if (error.code === "23514" || error.code === "23503") return json(cors, { error: "conflict" }, 409);
+    throw new Error(`google_disconnect_identity failed: ${error.message}`);
+  }
+
+  const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null | undefined;
+  const youtubeChannelsUnlinked = Number(row?.youtube_channels_unlinked) || 0;
+  const gbpLocationsUnlinked = Number(row?.gbp_locations_unlinked) || 0;
+
+  // Never throws: a failed revoke stays queued in google_revocations for gbp-sync-cron.
+  await processUnlinkDecisionData(svc, data);
+  // The YouTube purges queued this tenant's report PDFs that held YouTube data; remove them now.
+  await drainTenantPdfPurges(svc, deps, tenant.contaId);
+
+  await insertAuditLog(svc, {
+    conta_id: tenant.contaId,
+    actor_user_id: tenant.userId,
+    action: "google-account-disconnect",
+    resource_type: "google_connection",
+    resource_id: connectionId,
+    metadata: {
+      youtube_channels_unlinked: youtubeChannelsUnlinked,
+      gbp_locations_unlinked: gbpLocationsUnlinked,
+    },
+  });
+
+  return json(cors, { ok: true, youtubeChannelsUnlinked, gbpLocationsUnlinked });
+}
+
 // ─── Dispatch ──────────────────────────────────────────────────────────────────────────
 
 export function createGoogleIntegrationHandler(deps: GoogleIntegrationDeps) {
@@ -1240,6 +1447,12 @@ export function createGoogleIntegrationHandler(deps: GoogleIntegrationDeps) {
       }
       if (req.method === "POST" && segs.length === 4 && segs[1] === "sync" && isProduct(segs[2])) {
         return await handleSync(svc, req, segs[2], segs[3], cors, deps);
+      }
+      if (req.method === "GET" && segs.length === 2 && segs[1] === "accounts") {
+        return await handleListAccounts(svc, req, cors, loadScope);
+      }
+      if (req.method === "POST" && segs.length === 4 && segs[1] === "accounts" && segs[3] === "disconnect") {
+        return await handleDisconnectAccount(svc, req, segs[2], cors, deps);
       }
       return json(cors, { error: "not_found" }, 404);
     } catch (err) {

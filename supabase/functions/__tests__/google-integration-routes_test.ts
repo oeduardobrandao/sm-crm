@@ -1,4 +1,5 @@
-// google-integration: GET /summary, GET|POST /locations, POST /disconnect/youtube|gbp. DI handler +
+// google-integration: GET /summary, GET|POST /locations, POST /disconnect/youtube|gbp, GET /accounts,
+// POST /accounts/:id/disconnect. DI handler +
 // createSupabaseQueryMock and a routed globalThis.fetch stub (google-integration-callback_test.ts's
 // conventions). The SQL RPCs (unlink, rate limit, flags) are mocked by name.
 import { assert, assertEquals } from "./assert.ts";
@@ -1565,4 +1566,442 @@ Deno.test("scope_locations_hide_other_client_name: a hidden client's name is nev
   } finally {
     f.restore();
   }
+});
+
+// ─── Contas conectadas: GET /accounts, POST /accounts/:id/disconnect ─────────────
+// Spec docs/superpowers/specs/2026-11-04-google-account-disconnect-design.md §4 and §7. These
+// routes take no clientId, so the fixture is tenant-only (no `clientes` queue). The mock's
+// unqueued rpc answers `{ data: true }`, so has_permission_for and check_rate_limit pass unless a
+// test queues `{ data: false }`; google_disconnect_identity is always queued BY NAME, since a bare
+// `true` would pass silently as a malformed decision.
+
+/** Tenant only: auth + active workspace + membership. */
+function tenantDb(): Mock {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: USER });
+  db.queue("profiles", "select", { data: { active_workspace_id: CONTA } });
+  db.queue("workspace_members", "select", { data: { user_id: USER } });
+  return db;
+}
+
+const DATA_TABLES = ["google_connections", "youtube_channels", "gbp_locations", "clientes"];
+
+function dataReads(db: Mock) {
+  return db.calls.filter((c) => DATA_TABLES.includes(c.table));
+}
+
+function decision(
+  shouldRevoke: boolean,
+  yt: unknown = 0,
+  gbp: unknown = 0,
+): { data: Array<Record<string, unknown>> } {
+  return {
+    data: [{
+      should_revoke: shouldRevoke,
+      revocation_id: shouldRevoke ? "rev-1" : null,
+      youtube_channels_unlinked: yt,
+      gbp_locations_unlinked: gbp,
+    }],
+  };
+}
+
+/** Tenant + `editar` (default true) + rate limit (default true) + connection in tenant. */
+function disconnectDb(id = CONN_1): Mock {
+  const db = tenantDb();
+  db.queue("google_connections", "select", { data: { id, status: "active" } });
+  return db;
+}
+
+const DISCONNECT_PATH = `/accounts/${CONN_1}/disconnect`;
+
+Deno.test("accounts_list_shape: grouped per connection, units filtered by status, client names joined, sorted, no secrets", async () => {
+  const db = tenantDb();
+  db.queue("google_connections", "select", {
+    data: [
+      {
+        id: CONN_2,
+        email: "zeta@example.com",
+        display_name: null,
+        status: "revoked",
+        created_at: "2026-10-31T09:00:00+00:00",
+      },
+      {
+        id: CONN_1,
+        email: "agencia@example.com",
+        display_name: "Agência X",
+        status: "active",
+        created_at: "2026-10-30T14:02:11+00:00",
+      },
+    ],
+  });
+  db.queue("youtube_channels", "select", {
+    data: [
+      { connection_id: CONN_1, channel_id: "UC-b", title: "Canal B", handle: "@b", client_id: 2, authorization_status: "active" },
+      { connection_id: CONN_1, channel_id: "UC-a", title: "Canal A", handle: null, client_id: 1, authorization_status: "revoked" },
+    ],
+  });
+  db.queue("gbp_locations", "select", {
+    data: [
+      { id: "loc-2", connection_id: CONN_1, title: "Loja Sul", address_line: "Rua 2", client_id: 1, status: "revoked" },
+      { id: "loc-1", connection_id: CONN_1, title: "Loja Centro", address_line: "Rua 1", client_id: 2, status: "active" },
+      { id: "loc-3", connection_id: CONN_2, title: null, address_line: null, client_id: 3, status: "active" },
+    ],
+  });
+  db.queue("clientes", "select", {
+    data: [
+      { id: 1, nome: "Cliente A" },
+      { id: 2, nome: "Cliente B" },
+    ],
+  });
+
+  const res = await makeHandler(db)(req("GET", "/accounts"));
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body, {
+    accounts: [
+      {
+        id: CONN_1,
+        email: "agencia@example.com",
+        displayName: "Agência X",
+        status: "active",
+        connectedAt: "2026-10-30T14:02:11.000Z",
+        youtube: [
+          { channelId: "UC-a", title: "Canal A", handle: null, clientId: 1, clientName: "Cliente A", authorizationStatus: "revoked" },
+          { channelId: "UC-b", title: "Canal B", handle: "@b", clientId: 2, clientName: "Cliente B", authorizationStatus: "active" },
+        ],
+        gbp: [
+          { id: "loc-1", title: "Loja Centro", addressLine: "Rua 1", clientId: 2, clientName: "Cliente B", status: "active" },
+          { id: "loc-2", title: "Loja Sul", addressLine: "Rua 2", clientId: 1, clientName: "Cliente A", status: "revoked" },
+        ],
+      },
+      {
+        id: CONN_2,
+        email: "zeta@example.com",
+        displayName: null,
+        status: "revoked",
+        connectedAt: "2026-10-31T09:00:00.000Z",
+        youtube: [],
+        gbp: [{ id: "loc-3", title: null, addressLine: null, clientId: 3, clientName: null, status: "active" }],
+      },
+    ],
+  });
+
+  // Every read is scoped to the tenant; disconnected units are excluded by the query filter.
+  for (const table of DATA_TABLES) {
+    const call = db.calls.find((c) => c.table === table)!;
+    assert(
+      call.modifiers.some((m) => m.method === "eq" && m.args[0] === "conta_id" && m.args[1] === CONTA),
+      `${table} read is scoped to the tenant`,
+    );
+  }
+  const units = db.calls.find((c) => c.table === "gbp_locations")!;
+  assert(
+    units.modifiers.some((m) =>
+      m.method === "in" && m.args[0] === "status" && JSON.stringify(m.args[1]) === JSON.stringify(["active", "revoked"])
+    ),
+    "units are read with status IN (active, revoked)",
+  );
+  const clients = db.calls.find((c) => c.table === "clientes")!;
+  const idsFilter = clients.modifiers.find((m) => m.method === "in" && m.args[0] === "id")!;
+  assertEquals([...(idsFilter.args[1] as number[])].sort(), [1, 2, 3]);
+
+  // No secret column is ever selected, and none leaks into the body.
+  const conn = db.calls.find((c) => c.table === "google_connections")!;
+  assertEquals(conn.selectArgs[0][0], "id, email, display_name, status, created_at");
+  const text = JSON.stringify(body);
+  for (const secret of ["token", "scope", "sub", "authorized_at"]) {
+    assert(!text.toLowerCase().includes(secret), `no ${secret} in the body`);
+  }
+
+  const perm = rpcCalls(db, "has_permission_for")[0];
+  assertEquals(perm.payload, { p_user: USER, p_workspace: CONTA, p_module: "configuracoes", p_action: "ver" });
+  assertEquals(rpcCalls(db, "check_rate_limit").length, 0, "GET is not rate-limited");
+});
+
+Deno.test("accounts_list_empty: no connection -> [] and no unit reads", async () => {
+  const db = tenantDb();
+  db.queue("google_connections", "select", { data: [] });
+  const res = await makeHandler(db)(req("GET", "/accounts"));
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { accounts: [] });
+  assertEquals(dataReads(db).map((c) => c.table), ["google_connections"]);
+});
+
+Deno.test("accounts_list_forbidden: configuracoes:ver false -> 403, no table read", async () => {
+  const db = tenantDb();
+  db.queueRpc("has_permission_for", { data: false });
+  const res = await makeHandler(db)(req("GET", "/accounts"));
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: "forbidden" });
+  assertEquals(dataReads(db).length, 0);
+
+  // No session: 401 before the permission check.
+  const anon = createSupabaseQueryMock();
+  const res401 = await makeHandler(anon)(req("GET", "/accounts"));
+  assertEquals(res401.status, 401);
+  assertEquals(await res401.json(), { error: "unauthorized" });
+  assertEquals(rpcCalls(anon, "has_permission_for").length, 0);
+});
+
+Deno.test("accounts_list_flags_off: both plan flags off still lists (no effective_plan_feature call)", async () => {
+  const db = tenantDb();
+  db.queueRpc("effective_plan_feature", { data: false }, { data: false });
+  db.queue("google_connections", "select", {
+    data: [{ id: CONN_1, email: "a@example.com", display_name: null, status: "active", created_at: "2026-10-30T14:02:11Z" }],
+  });
+  const res = await makeHandler(db)(req("GET", "/accounts"));
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.accounts.length, 1);
+  assertEquals(rpcCalls(db, "effective_plan_feature").length, 0);
+});
+
+Deno.test("accounts_disconnect_forbidden: configuracoes:editar false -> 403, no rate-limit slot, no RPC", async () => {
+  const db = tenantDb();
+  db.queueRpc("has_permission_for", { data: false });
+  const res = await makeHandler(db)(req("POST", DISCONNECT_PATH));
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: "forbidden" });
+  assertEquals(rpcCalls(db, "has_permission_for")[0].payload, {
+    p_user: USER,
+    p_workspace: CONTA,
+    p_module: "configuracoes",
+    p_action: "editar",
+  });
+  assertEquals(rpcCalls(db, "check_rate_limit").length, 0);
+  assertEquals(rpcCalls(db, "google_disconnect_identity").length, 0);
+  assertEquals(dataReads(db).length, 0);
+  assertEquals(db.calls.filter((c) => c.table === "audit_log").length, 0);
+});
+
+Deno.test("accounts_disconnect_rate_limited: denied -> 429, key google-account-disconnect:<conta>, no RPC", async () => {
+  const db = tenantDb();
+  db.queueRpc("check_rate_limit", { data: false });
+  const res = await makeHandler(db)(req("POST", DISCONNECT_PATH));
+  assertEquals(res.status, 429);
+  assertEquals(await res.json(), { error: "rate_limited" });
+  assertEquals(rpcCalls(db, "check_rate_limit")[0].payload, {
+    p_key: `google-account-disconnect:${CONTA}`,
+    p_max_requests: 10,
+    p_window_seconds: 60,
+  });
+  assertEquals(rpcCalls(db, "google_disconnect_identity").length, 0);
+  assertEquals(dataReads(db).length, 0);
+});
+
+Deno.test("accounts_disconnect_foreign_or_bad_id: not in tenant / not a UUID -> 404 without RPC; RPC P0002 -> 404", async () => {
+  const foreign = tenantDb();
+  foreign.queue("google_connections", "select", { data: null });
+  foreign.queueRpc("google_disconnect_identity", decision(true));
+  const res = await makeHandler(foreign)(req("POST", DISCONNECT_PATH));
+  assertEquals(res.status, 404);
+  assertEquals(await res.json(), { error: "not_found" });
+  assertEquals(rpcCalls(foreign, "google_disconnect_identity").length, 0);
+  const lookup = foreign.calls.find((c) => c.table === "google_connections")!;
+  assert(lookup.modifiers.some((m) => m.method === "eq" && m.args[0] === "conta_id" && m.args[1] === CONTA));
+
+  const bad = tenantDb();
+  bad.queueRpc("google_disconnect_identity", decision(true));
+  const resBad = await makeHandler(bad)(req("POST", "/accounts/not-a-uuid/disconnect"));
+  assertEquals(resBad.status, 404);
+  assertEquals(await resBad.json(), { error: "not_found" });
+  assertEquals(rpcCalls(bad, "google_disconnect_identity").length, 0);
+  assertEquals(bad.calls.filter((c) => c.table === "google_connections").length, 0, "no lookup for a non-UUID");
+
+  const gone = disconnectDb();
+  gone.queueRpc("google_disconnect_identity", { data: null, error: { code: "P0002", message: "not found" } });
+  const resGone = await makeHandler(gone)(req("POST", DISCONNECT_PATH));
+  assertEquals(resGone.status, 404);
+  assertEquals(await resGone.json(), { error: "not_found" });
+  assertEquals(gone.calls.filter((c) => c.table === "audit_log").length, 0);
+  assertEquals(gone.calls.filter((c) => c.table === "google_revocations").length, 0);
+});
+
+Deno.test("accounts_disconnect_revokes_after_commit: should_revoke -> revoke once, row deleted; HTTP 500 -> still 200, attempts bumped", async () => {
+  const db = disconnectDb();
+  db.queueRpc("google_disconnect_identity", decision(true, 2, 5));
+  db.queue("google_revocations", "select", { data: await revocationRow() });
+  const f = stubGoogle();
+  try {
+    const res = await makeHandler(db)(req("POST", DISCONNECT_PATH));
+    assertEquals(res.status, 200);
+    assertEquals(await res.json(), { ok: true, youtubeChannelsUnlinked: 2, gbpLocationsUnlinked: 5 });
+    assertEquals(rpcCalls(db, "google_disconnect_identity")[0].payload, { p_conta_id: CONTA, p_connection_id: CONN_1 });
+    assertEquals(f.count("https://oauth2.googleapis.com/revoke"), 1);
+    const revoke = f.calls.find((c) => c.url === "https://oauth2.googleapis.com/revoke")!;
+    assertEquals(new URLSearchParams(String(revoke.init?.body)).get("token"), "refresh-to-revoke");
+    const del = db.calls.find((c) => c.table === "google_revocations" && c.operation === "delete")!;
+    assert(del.modifiers.some((m) => m.method === "eq" && m.args[0] === "id" && m.args[1] === "rev-1"));
+    const order = db.calls.map((c) => `${c.table}:${c.operation}`);
+    assert(
+      order.indexOf("rpc:google_disconnect_identity:rpc") < order.indexOf("google_revocations:select"),
+      "the revoke runs after the RPC committed",
+    );
+  } finally {
+    f.restore();
+  }
+
+  const failing = disconnectDb();
+  failing.queueRpc("google_disconnect_identity", decision(true, 0, 0));
+  failing.queue("google_revocations", "select", { data: await revocationRow() });
+  const f2 = stubGoogle({ revokeStatus: 500 });
+  try {
+    const res = await makeHandler(failing)(req("POST", DISCONNECT_PATH));
+    assertEquals(res.status, 200, "the disconnect committed; a failed revoke is queued, not an error");
+    assertEquals(await res.json(), { ok: true, youtubeChannelsUnlinked: 0, gbpLocationsUnlinked: 0 });
+    assertEquals(failing.calls.filter((c) => c.table === "google_revocations" && c.operation === "delete").length, 0);
+    const upd = failing.calls.find((c) => c.table === "google_revocations" && c.operation === "update")!;
+    assertEquals((upd.payload as Record<string, unknown>).attempts, 1);
+  } finally {
+    f2.restore();
+  }
+});
+
+Deno.test("accounts_disconnect_no_revoke: should_revoke false -> no revoke fetch, no revoke field, audit has only the counts", async () => {
+  const db = disconnectDb();
+  db.queueRpc("google_disconnect_identity", decision(false, 1, 3));
+  const f = stubGoogle();
+  try {
+    const res = await makeHandler(db)(req("POST", DISCONNECT_PATH));
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body, { ok: true, youtubeChannelsUnlinked: 1, gbpLocationsUnlinked: 3 });
+    assert(!JSON.stringify(body).toLowerCase().includes("revoke"), "the body never says whether it revoked");
+    assertEquals(f.calls.length, 0);
+    assertEquals(db.calls.filter((c) => c.table === "google_revocations").length, 0);
+    const audits = db.calls.filter((c) => c.table === "audit_log");
+    assertEquals(audits.length, 1);
+    const audit = audits[0].payload as Record<string, unknown>;
+    assertEquals(
+      [audit.conta_id, audit.actor_user_id, audit.action, audit.resource_type, audit.resource_id],
+      [CONTA, USER, "google-account-disconnect", "google_connection", CONN_1],
+    );
+    assertEquals(audit.metadata, { youtube_channels_unlinked: 1, gbp_locations_unlinked: 3 });
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("accounts_disconnect_drains_pdfs: after the RPC, this tenant's queued PDFs are removed from storage", async () => {
+  const db = disconnectDb();
+  db.queueRpc("google_disconnect_identity", decision(false, 1, 0));
+  db.queue("youtube_pdf_purges", "select", {
+    data: [{ id: "purge-1", conta_id: CONTA, storage_path: `${CONTA}/report-1.pdf`, attempts: 0 }],
+  });
+  const st = fakeStorage();
+  const res = await makeHandler(db, { storage: st.storage })(req("POST", DISCONNECT_PATH));
+  assertEquals(res.status, 200);
+  const listing = db.calls.find((c) => c.table === "youtube_pdf_purges" && c.operation === "select")!;
+  assert(
+    listing.modifiers.some((m) => m.method === "eq" && m.args[0] === "conta_id" && m.args[1] === CONTA),
+    "the drain is scoped to the tenant",
+  );
+  assertEquals(st.removed.map((r) => r.paths), [[`${CONTA}/report-1.pdf`]]);
+  const del = db.calls.find((c) => c.table === "youtube_pdf_purges" && c.operation === "delete")!;
+  assert(del.modifiers.some((m) => m.method === "eq" && m.args[0] === "id" && m.args[1] === "purge-1"));
+  const order = db.calls.map((c) => `${c.table}:${c.operation}`);
+  assert(order.indexOf("rpc:google_disconnect_identity:rpc") < order.indexOf("youtube_pdf_purges:select"), order.join(","));
+});
+
+Deno.test("accounts_disconnect_unexpected_error: other RPC error -> generic 500, no details, no audit", async () => {
+  const db = disconnectDb();
+  db.queueRpc("google_disconnect_identity", {
+    data: null,
+    error: { code: "40P01", message: "deadlock detected: secret internal detail" },
+  });
+  const res = await makeHandler(db)(req("POST", DISCONNECT_PATH));
+  assertEquals(res.status, 500);
+  const text = await res.text();
+  assert(!text.includes("secret internal detail") && !text.includes("deadlock"), text);
+  assertEquals(db.calls.filter((c) => c.table === "audit_log").length, 0);
+  assertEquals(db.calls.filter((c) => c.table === "youtube_pdf_purges").length, 0);
+});
+
+Deno.test("accounts_disconnect_conflict: RPC 23514 or 23503 -> 409 conflict, no revoke, no drain, no audit", async () => {
+  for (const code of ["23514", "23503"]) {
+    const db = disconnectDb();
+    db.queueRpc("google_disconnect_identity", { data: null, error: { code, message: "constraint" } });
+    const f = stubGoogle();
+    try {
+      const res = await makeHandler(db)(req("POST", DISCONNECT_PATH));
+      assertEquals(res.status, 409, code);
+      assertEquals(await res.json(), { error: "conflict" });
+      assertEquals(f.calls.length, 0);
+      assertEquals(db.calls.filter((c) => c.table === "google_revocations").length, 0);
+      assertEquals(db.calls.filter((c) => c.table === "youtube_pdf_purges").length, 0);
+      assertEquals(db.calls.filter((c) => c.table === "audit_log").length, 0);
+    } finally {
+      f.restore();
+    }
+  }
+});
+
+Deno.test("accounts_disconnect_counts_coerced: string and null counts -> numbers; a bare object is read too", async () => {
+  const db = disconnectDb();
+  db.queueRpc("google_disconnect_identity", decision(false, "2", null));
+  const res = await makeHandler(db)(req("POST", DISCONNECT_PATH));
+  assertEquals(await res.json(), { ok: true, youtubeChannelsUnlinked: 2, gbpLocationsUnlinked: 0 });
+  const audit = db.calls.find((c) => c.table === "audit_log")!.payload as Record<string, unknown>;
+  assertEquals(audit.metadata, { youtube_channels_unlinked: 2, gbp_locations_unlinked: 0 });
+
+  const bare = disconnectDb();
+  bare.queueRpc("google_disconnect_identity", {
+    data: { should_revoke: false, revocation_id: null, youtube_channels_unlinked: 4, gbp_locations_unlinked: "1" },
+  });
+  const res2 = await makeHandler(bare)(req("POST", DISCONNECT_PATH));
+  assertEquals(await res2.json(), { ok: true, youtubeChannelsUnlinked: 4, gbpLocationsUnlinked: 1 });
+});
+
+Deno.test("accounts_routes_dispatch: wrong method or shape -> 404 not_found", async () => {
+  const db = tenantDb();
+  const res = await makeHandler(db)(req("POST", "/accounts"));
+  assertEquals(res.status, 404);
+  const res2 = await makeHandler(tenantDb())(req("GET", DISCONNECT_PATH));
+  assertEquals(res2.status, 404);
+  const res3 = await makeHandler(tenantDb())(req("POST", `/accounts/${CONN_1}/remove`));
+  assertEquals(res3.status, 404);
+});
+
+Deno.test("accounts_list_scope: a restricted member sees only his clients' channels and units", async () => {
+  const db = tenantDb();
+  db.queue("google_connections", "select", {
+    data: [{ id: CONN_1, email: "agencia@example.com", display_name: null, status: "active", created_at: "2026-10-30T14:02:11+00:00" }],
+  });
+  db.queue("youtube_channels", "select", {
+    data: [
+      { connection_id: CONN_1, channel_id: "UC-a", title: "Canal A", handle: null, client_id: 1, authorization_status: "active" },
+      { connection_id: CONN_1, channel_id: "UC-b", title: "Canal B", handle: null, client_id: 2, authorization_status: "active" },
+    ],
+  });
+  db.queue("gbp_locations", "select", {
+    data: [{ id: "loc-1", connection_id: CONN_1, title: "Loja", address_line: null, client_id: 1, status: "active" }],
+  });
+  db.queue("clientes", "select", { data: [{ id: 2, nome: "Cliente B" }] });
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([2]) })(req("GET", "/accounts"));
+  assertEquals(res.status, 200);
+  const [account] = (await res.json()).accounts;
+  assertEquals(account.youtube.map((c: { clientId: number }) => c.clientId), [2]);
+  assertEquals(account.gbp, []);
+  // the hidden client's id never reaches the clientes name read
+  const [clientes] = db.calls.filter((c) => c.table === "clientes");
+  assertEquals(clientes.modifiers.filter((m) => m.method === "in").map((m) => m.args), [["id", [2]]]);
+});
+
+Deno.test("accounts_disconnect_scope: a restricted member cannot disconnect the account (no slot, no RPC)", async () => {
+  const db = tenantDb();
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([CLIENT]) })(req("POST", DISCONNECT_PATH));
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: "client_scope_restricted" });
+  assertEquals(rpcCalls(db, "check_rate_limit").length, 0);
+  assertEquals(rpcCalls(db, "google_disconnect_identity").length, 0);
+});
+
+Deno.test("accounts_scope_read_error: a scope read error is a generic 500 on list and disconnect", async () => {
+  const boom = () => Promise.reject(new Error("boom"));
+  const list = await makeHandler(tenantDb(), { loadClientScope: boom })(req("GET", "/accounts"));
+  assertEquals(list.status, 500);
+  const db = tenantDb();
+  const disc = await makeHandler(db, { loadClientScope: boom })(req("POST", DISCONNECT_PATH));
+  assertEquals(disc.status, 500);
+  assertEquals(rpcCalls(db, "google_disconnect_identity").length, 0);
 });

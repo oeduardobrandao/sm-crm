@@ -212,7 +212,7 @@ export async function memberWorkspaceOfClient(
 const CONTEXT_PAGE = 1000;
 
 /** Of `clienteIds`, the ones the user sees as CONTEXT: assigned (or unrestricted), or a client where
- * he has an own item. Mirrors `can_see_cliente_context` (migration 20261115000004 §6): a post
+ * he has an own item. Mirrors `can_see_cliente_context` (migration 20261117000004 §6): a post
  * (responsavel_id), a flow step (workflow_etapas.responsavel_id), a post process step
  * (post_process_steps.responsavel_id), a task or task series (responsavel_id or user_id), or an
  * idea he wrote (autor_membro_id), each in `contaId`. That SQL function reads auth.uid(), so the

@@ -154,7 +154,7 @@ export function surfaceBreakdown(t: GbpTotals): GbpSurfaceRow[] {
 // ─── Ratings ────────────────────────────────────────────────────────────────────────
 
 /** The unit's latest rating row with `day <= day`; null when it has none. */
-function latestOnOrBefore(rows: GbpRatingRow[], locationName: string, day: string): GbpRatingRow | null {
+export function latestOnOrBefore(rows: GbpRatingRow[], locationName: string, day: string): GbpRatingRow | null {
   let best: GbpRatingRow | null = null;
   for (const r of rows) {
     if (r.location_name !== locationName || r.day > day) continue;

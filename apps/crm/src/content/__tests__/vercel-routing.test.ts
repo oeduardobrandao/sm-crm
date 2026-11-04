@@ -144,4 +144,17 @@ describe('vercel.json Permissions-Policy', () => {
       ).toBeGreaterThan(catchAllIdx);
     }
   });
+
+  // Google's OAuth verification only accepts redirect URIs on a verified domain, so the
+  // callback is served from mesaas.com.br and proxied to the prod edge function.
+  // GOOGLE_REDIRECT_URI on prod must equal https://www.mesaas.com.br/oauth/google/callback.
+  test('o callback do Google em mesaas.com.br encaminha para o google-integration de prod', () => {
+    const idx = rewrites.findIndex((r) => r.source === '/oauth/google/callback');
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(rewrites[idx].destination).toBe(
+      'https://skjzpekeqefvlojenfsw.supabase.co/functions/v1/google-integration/callback',
+    );
+    const appShellIdx = rewrites.findIndex((r) => r.destination === '/app.html');
+    expect(idx).toBeLessThan(appShellIdx);
+  });
 });
