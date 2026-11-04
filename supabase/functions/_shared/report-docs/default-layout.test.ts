@@ -150,12 +150,14 @@ Deno.test("the TikTok section has no section_header titled TikTok", () => {
 });
 
 Deno.test("platformSectionBlocks: content only (no marker), ids from makeId, the same blocks as the default", () => {
-  for (const p of ["instagram", "tiktok"] as const) {
-    const blocks = platformSectionBlocks(p, { ...FULL, hasTikTokBestTimes: true }, seqId());
+  for (const p of ["instagram", "tiktok", "google"] as const) {
+    const blocks = platformSectionBlocks(p, { ...FULL, hasTikTokBestTimes: true, hasGbpUnits: true }, seqId());
     assert(!blocks.some((b) => b.type === "section"));
     assertEquals(blocks.map((b) => b.id), blocks.map((_, i) => `b${i + 1}`));
-    for (const b of blocks) assert([p, null].includes(blockPlatform(b.type)), b.type);
-    const l = buildDefaultLayout({ ...FULL, platforms: [p], hasTikTokBestTimes: true, makeId: seqId() });
+    for (const b of blocks) assert(([p, null] as (string | null)[]).includes(blockPlatform(b.type)), b.type);
+    const l = buildDefaultLayout({
+      ...FULL, platforms: [p], hasTikTokBestTimes: true, hasGbpUnits: true, makeId: seqId(),
+    });
     const section = toSections(l).find((s) => s.kind === p);
     assertEquals(shape(section!.blocks), shape(blocks));
   }

@@ -144,3 +144,36 @@ Deno.test("aiGoalsDoc: id tiktok_<kpi> vira o rótulo TikTok com a plataforma", 
     "tiktok_desconhecido: 10",
   ]);
 });
+
+// ── Google Meu Negócio (spec 2026-11-04-gmn-report-section) ──
+Deno.test("aiGoalsDoc: meta gbp_ vira rótulo do Google Meu Negócio", () => {
+  const doc = aiGoalsDoc({
+    ...ai,
+    suggested_goals: [{ metric: "gbp_website_clicks", target: "150", rationale: "r" }],
+  }) as { content: { type: string; content: { text: string }[] }[] };
+  const heading = doc.content.find((n) => n.type === "heading")!.content[0].text;
+  assertEquals(heading, "Cliques no site no Google Meu Negócio: 150");
+});
+
+Deno.test("fallbackSummaryParagraphs: Google só e Instagram + Google", () => {
+  const g = {
+    profile_views: { value: 18420, prev: null, unit: "count" as const },
+    calls: { value: 592, prev: null, unit: "count" as const },
+    directions: { value: 459, prev: null, unit: "count" as const },
+    website_clicks: { value: null, prev: null, unit: "count" as const },
+    messages: { value: 0, prev: null, unit: "count" as const },
+    bookings: { value: 0, prev: null, unit: "count" as const },
+    avg_rating: { value: 4.8, prev: null, unit: "rating" as const },
+    new_reviews: { value: 3, prev: null, unit: "count" as const },
+  };
+  const kpis = Object.fromEntries(
+    ["followers_gained", "followers_total", "reach", "views", "engagement_rate", "saves", "posts_count",
+      "profile_views", "website_clicks", "follows"].map((id) => [id, { value: null, unit: "count", prev: null }]),
+  ) as never;
+  assertEquals(
+    fallbackSummaryParagraphs(kpis, "outubro de 2026", { instagram: false, tiktok: null, google: g }),
+    ["Resumo de outubro de 2026 no Google Meu Negócio: 18.420 visualizações do perfil, 592 ligações, 459 pedidos de rota."],
+  );
+  const both = fallbackSummaryParagraphs(kpis, "outubro de 2026", { instagram: true, tiktok: null, google: g });
+  assertEquals(both[both.length - 1], "No Google Meu Negócio: 18.420 visualizações do perfil, 592 ligações, 459 pedidos de rota.");
+});

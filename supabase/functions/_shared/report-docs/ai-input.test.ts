@@ -168,3 +168,67 @@ Deno.test("prefixTikTokGoalMetrics: id TikTok sem prefixo ganha tiktok_; o resto
   assertEquals(out.recommendations.map((r) => r.based_on_metric), ["tiktok_views", "tiktok_likes", undefined]);
   assert(!("based_on_metric" in out.recommendations[2]));
 });
+
+// ── Google Meu Negócio (spec 2026-11-04-gmn-report-section) ──
+import { prefixGoalMetrics } from "./ai-input.ts";
+import type { GoogleReportSnapshot } from "./snapshot.ts";
+
+const google: GoogleReportSnapshot = {
+  units: [{ id: "u1", title: "Unidade Centro", status: "active" }, { id: "u2", title: "Unidade Sul", status: "active" }],
+  data_through: "2026-07-31",
+  window: { start: "2026-07-01", end: "2026-07-31", prevStart: "2026-05-31", prevEnd: "2026-06-30" },
+  kpis: {
+    profile_views: { value: 1000, prev: 900, unit: "count" },
+    calls: { value: 40, prev: null, unit: "count" },
+    directions: { value: 30, prev: 25, unit: "count" },
+    website_clicks: { value: 12, prev: 10, unit: "count" },
+    messages: { value: 2, prev: 1, unit: "count" },
+    bookings: { value: null, prev: null, unit: "count" },
+    avg_rating: { value: 4.8, prev: 4.7, unit: "rating" },
+    new_reviews: { value: 5, prev: 3, unit: "count" },
+  },
+  surfaces: [
+    { surface: "mobile_search", value: 600, pct: 60 },
+    { surface: "mobile_maps", value: 400, pct: 40 },
+  ],
+  daily: [],
+  keywords: {
+    month: "2026-07",
+    rows: [
+      { keyword: "dermatologista", value: 80, threshold: null },
+      { keyword: "pintas", value: null, threshold: 15 },
+    ],
+  },
+  rating_distribution: { counts: { "1": 0, "2": 0, "3": 1, "4": 2, "5": 20 }, storedTotal: 23, total: 23, partial: false },
+  highlight: { reviewer: "Maria S.", rating: 5, comment: "Excelente atendimento", unit_title: "Unidade Centro", date: "2026-07-10T12:00:00Z" },
+  unit_rows: [],
+};
+
+Deno.test("snapshotToReportData: seção Google vira google sem nomes nem texto de avaliação", () => {
+  const data = snapshotToReportData({ ...snap, google });
+  assertEquals(data.google?.units, 2);
+  assertEquals(data.google?.kpis.calls, 40);
+  assertEquals(data.google?.kpis_previous_period, {
+    profile_views: 900, directions: 25, website_clicks: 10, messages: 1, avg_rating: 4.7, new_reviews: 3,
+  });
+  assertEquals(data.google?.window, { start: "2026-07-01", end: "2026-07-31", compared_with_days: 31 });
+  assertEquals(data.google?.top_keywords[1], { keyword: "pintas", people: null, at_most: 15 });
+  const json = JSON.stringify(data);
+  assert(!json.includes("Maria"));
+  assert(!json.includes("Excelente atendimento"));
+  assertEquals(snapshotToReportData({ ...snap, google }, ["instagram"]).google, undefined);
+});
+
+Deno.test("prefixGoalMetrics google: id GMN cru ganha gbp_; prefixado e livre passam iguais", () => {
+  const out = prefixGoalMetrics({
+    executive_summary: "s", detailed_analysis: "d",
+    recommendations: [{ title: "t", description: "d", priority: "high", based_on_metric: "website_clicks" }],
+    suggested_goals: [
+      { metric: "calls", target: "50", rationale: "r" },
+      { metric: "gbp_directions", target: "40", rationale: "r" },
+      { metric: "mais avaliações", target: "+10", rationale: "r" },
+    ],
+  }, "google");
+  assertEquals(out.recommendations[0].based_on_metric, "gbp_website_clicks");
+  assertEquals(out.suggested_goals.map((g) => g.metric), ["gbp_calls", "gbp_directions", "mais avaliações"]);
+});

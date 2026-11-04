@@ -1,10 +1,12 @@
 // Adapter snapshot -> ReportData, o shape que buildAIPrompt já valida e usa.
 // KPIs null ficam FORA (o prompt proíbe inventar números; 0 falso seria pior).
 import type {
-  AIOutput, KpiValue, ReportData, ReportDataComparison, ReportDataTikTok,
+  AIOutput, KpiValue, ReportData, ReportDataComparison, ReportDataGoogle, ReportDataTikTok,
 } from "../report-template/types.ts";
 import { TIKTOK_KPI_IDS, type TikTokKpiId } from "../tiktok-analytics/kpis.ts";
-import type { ReportDocSnapshot, TikTokReportSnapshot } from "./snapshot.ts";
+import { GBP_KPI_IDS, type GbpKpiId } from "../gbp-analytics/kpis.ts";
+import type { GoogleReportSnapshot, ReportDocSnapshot, TikTokReportSnapshot } from "./snapshot.ts";
+import type { SectionPlatform } from "./sections.ts";
 
 // Instrução curta em pt-BR, embutida no payload de DADOS que vai pro modelo
 // (buildAIPrompt serializa `promptData` inteiro como JSON no userPrompt) --
@@ -55,13 +57,46 @@ function tiktokToReportData(tt: TikTokReportSnapshot): ReportDataTikTok {
   };
 }
 
+const DAY_MS = 86_400_000;
+const GOOGLE_TOP_KEYWORDS = 5;
+
+function googleToReportData(g: GoogleReportSnapshot): ReportDataGoogle {
+  const kpis = {} as Record<GbpKpiId, number | null>;
+  const prev: Partial<Record<GbpKpiId, number>> = {};
+  for (const id of GBP_KPI_IDS) {
+    const e = g.kpis[id];
+    kpis[id] = e?.value ?? null;
+    if (e && e.value !== null && e.prev !== null) prev[id] = e.prev;
+  }
+  const w = g.window;
+  return {
+    units: g.units.length,
+    window: w
+      ? {
+        start: w.start,
+        end: w.end,
+        compared_with_days: Math.round((Date.parse(w.prevEnd) - Date.parse(w.prevStart)) / DAY_MS) + 1,
+      }
+      : null,
+    kpis,
+    kpis_previous_period: prev,
+    surfaces: g.surfaces.map((s) => ({ surface: s.surface, pct: s.pct })),
+    top_keywords: g.keywords.rows.slice(0, GOOGLE_TOP_KEYWORDS).map((k) => ({
+      keyword: k.keyword,
+      people: k.value,
+      at_most: k.threshold,
+    })),
+    rating_distribution: g.rating_distribution ? { ...g.rating_distribution.counts } : null,
+  };
+}
+
 /** `platforms` = plataformas do relatório (a escolha do dialog): a narrativa cobre só essas,
  * mesmo com dados carregados das outras. Ausente = todas as presentes no snapshot. As chaves
  * `tiktok` e `instagram_connected` só existem quando mudam algo: o caminho só Instagram
  * produz o mesmo objeto (e o mesmo prompt) de antes do TikTok. */
 export function snapshotToReportData(
   snap: ReportDocSnapshot,
-  platforms?: readonly ("instagram" | "tiktok")[],
+  platforms?: readonly SectionPlatform[],
 ): ReportData {
   const kpis: Record<string, KpiValue> = {};
   for (const [id, entry] of Object.entries(snap.kpis)) {
@@ -98,22 +133,36 @@ export function snapshotToReportData(
   const tiktok = snap.tiktok && (!platforms || platforms.includes("tiktok")) ? snap.tiktok : null;
   if (!instagram) data.instagram_connected = false;
   if (tiktok) data.tiktok = tiktokToReportData(tiktok);
+  const google = snap.google && (!platforms || platforms.includes("google")) ? snap.google : null;
+  if (google) data.google = googleToReportData(google);
   return data;
 }
 
-/** Narrativa só TikTok: id TikTok sem o prefixo ("views") em meta ou recomendação ganha
- * "tiktok_", para o rótulo sair o do TikTok e não o do Instagram de mesmo id. */
-export function prefixTikTokGoalMetrics(output: AIOutput): AIOutput {
-  const ids: readonly string[] = TIKTOK_KPI_IDS;
+const GOAL_PREFIXES = {
+  tiktok: { prefix: "tiktok_", ids: TIKTOK_KPI_IDS as readonly string[] },
+  google: { prefix: "gbp_", ids: GBP_KPI_IDS as readonly string[] },
+} as const;
+
+/** Narrativa de UMA plataforma sem Instagram: id dela sem o prefixo ("views", "website_clicks")
+ * em meta ou recomendação ganha o prefixo ("tiktok_", "gbp_"), para o rótulo sair o dessa
+ * plataforma e não o do Instagram de mesmo id. Com duas plataformas sem Instagram, o prompt já
+ * pede os prefixos e nada é reescrito (um id cru seria ambíguo). */
+export function prefixGoalMetrics(output: AIOutput, platform: "tiktok" | "google"): AIOutput {
+  const { prefix, ids } = GOAL_PREFIXES[platform];
   return {
     ...output,
     recommendations: output.recommendations.map((r) =>
       r.based_on_metric !== undefined && ids.includes(r.based_on_metric)
-        ? { ...r, based_on_metric: `tiktok_${r.based_on_metric}` }
+        ? { ...r, based_on_metric: `${prefix}${r.based_on_metric}` }
         : r
     ),
     suggested_goals: output.suggested_goals.map((g) =>
-      ids.includes(g.metric) ? { ...g, metric: `tiktok_${g.metric}` } : g
+      ids.includes(g.metric) ? { ...g, metric: `${prefix}${g.metric}` } : g
     ),
   };
+}
+
+/** Narrativa só TikTok (nome de antes do Google Meu Negócio). */
+export function prefixTikTokGoalMetrics(output: AIOutput): AIOutput {
+  return prefixGoalMetrics(output, "tiktok");
 }
