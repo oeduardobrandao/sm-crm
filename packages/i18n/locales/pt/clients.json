@@ -3,6 +3,7 @@
   "tooltip": "Gerencie todos os clientes e contratos ativos.",
   "csvTooltip": "Colunas: nome*, email, telefone, plano, valor_mensal, notion_page_url, data_pagamento",
   "newClient": "Novo Cliente",
+  "scopedNotice": "Você vê os clientes atribuídos a você.",
   "searchPlaceholder": "Buscar por nome ou e-mail...",
   "sort": {
     "monthlyValue": "Valor Mensal",

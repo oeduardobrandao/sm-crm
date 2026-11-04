@@ -6,6 +6,7 @@
 import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createTikTokIntegrationHandler } from "../tiktok-integration/handlers.ts";
+import { allClientsScope, type ClientScopeLoader } from "../_shared/client-scope.ts";
 import { importTikTokVideos, refreshStoredPostMetrics } from "../tiktok-integration/import.ts";
 import { createSignedState, toUrlSafeBase64 } from "../tiktok-integration/oauth-state.ts";
 import { TIKTOK_API_BASE, decryptTikTokToken } from "../_shared/tiktok.ts";
@@ -52,11 +53,18 @@ function makeDb(db: ReturnType<typeof createSupabaseQueryMock>, storage: Thumbna
   } as any;
 }
 
-function makeHandler(db: ReturnType<typeof createSupabaseQueryMock>, storage: ThumbnailStorage, now?: () => Date) {
+function makeHandler(
+  db: ReturnType<typeof createSupabaseQueryMock>,
+  storage: ThumbnailStorage,
+  now?: () => Date,
+  // Acesso por cliente: unrestricted unless a test passes its own loader.
+  loadClientScope: ClientScopeLoader = () => Promise.resolve(allClientsScope()),
+) {
   return createTikTokIntegrationHandler({
     buildCorsHeaders: () => ({}),
     createServiceDb: () => makeDb(db, storage),
     now,
+    loadClientScope,
   });
 }
 
@@ -919,4 +927,45 @@ Deno.test("tiktok-integration: disconnect returns 500 and does NOT blank tokens/
   } finally {
     f.restore();
   }
+});
+
+// ─── acesso por cliente ──────────────────────────────────────────────────────────────
+
+function summaryDb() {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "user-1" });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queue("clientes", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queue("tiktok_accounts", "select", { data: null, error: null });
+  return db;
+}
+const restrictedTo = (ids: number[]): ClientScopeLoader => () =>
+  Promise.resolve({ all: false, ids: new Set(ids), membroIds: new Set([7]) });
+
+Deno.test("tiktok-integration: restricted member on a hidden client gets the foreign-client 403", async () => {
+  const db = summaryDb();
+  const { storage } = makeStorage();
+  const res = await makeHandler(db, storage, undefined, restrictedTo([99]))(authedRequest("/summary/42"));
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: true, message: "Unauthorized" });
+  assertEquals(db.calls.filter((c) => c.table === "tiktok_accounts").length, 0);
+});
+
+Deno.test("tiktok-integration: restricted member on an assigned client is unchanged", async () => {
+  const db = summaryDb();
+  const { storage } = makeStorage();
+  const res = await makeHandler(db, storage, undefined, restrictedTo([42]))(authedRequest("/summary/42"));
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { exists: false });
+});
+
+Deno.test("tiktok-integration: a scope read error is a 500, never data", async () => {
+  const db = summaryDb();
+  const { storage } = makeStorage();
+  const res = await makeHandler(db, storage, undefined, () => Promise.reject(new Error("JWT expired")))(
+    authedRequest("/summary/42"),
+  );
+  assertEquals(res.status, 500);
+  assertEquals(await res.json(), { error: true, message: "Erro interno" });
+  assertEquals(db.calls.filter((c) => c.table === "tiktok_accounts").length, 0);
 });

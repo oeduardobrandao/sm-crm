@@ -98,6 +98,9 @@ export function GoogleAccountDisconnectDialog({
         case 'forbidden':
           toast.error(t('connectedAccounts.errors.forbidden'));
           return;
+        case 'client_scope_restricted':
+          toast.error(t('connectedAccounts.errors.clientScope'));
+          return;
         case 'rate_limited':
           toast.error(t('connectedAccounts.errors.rateLimited'));
           return;

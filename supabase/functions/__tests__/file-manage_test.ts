@@ -1,6 +1,8 @@
 import { assert, assertEquals, readJson } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createFileManageHandler } from "../file-manage/handler.ts";
+import { allClientsScope, type ClientScope } from "../_shared/client-scope.ts";
+import { GATED_ROUTES } from "../file-manage/client-scope-gate.ts";
 
 const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://app.mesaas.com" });
 
@@ -13,6 +15,8 @@ function makeHandler(
     createDb: () => db as never,
     signUrl: async (key) => `https://signed.example.com/${key}`,
     now: () => "2026-04-24T12:00:00.000Z",
+    // Acesso por cliente: unrestricted unless a test overrides it.
+    loadClientScope: () => Promise.resolve(allClientsScope()),
     ...overrides,
   });
 }
@@ -1039,4 +1043,686 @@ Deno.test("file-manage: POST /links refuses to link a reference file to a post",
   const res = await makeHandler(db)(req("POST", "/links", { post_id: 50, file_id: 10 }));
   assertEquals(res.status, 404);
   assertEquals(db.calls.find((c) => c.table === "post_file_links" && c.operation === "insert"), undefined);
+});
+
+// ─── acesso por cliente ───────────────────────────────────────
+
+const restrictedTo = (ids: number[], membroIds: number[] = []) => () =>
+  Promise.resolve<ClientScope>({ all: false, ids: new Set(ids), membroIds: new Set(membroIds) });
+
+/** Folder 3 = client folder of client 42, under the "Clientes" root (1). */
+function queueClientFolder(db: ReturnType<typeof createSupabaseQueryMock>) {
+  db.queueRpc("folder_breadcrumbs", { data: [{ id: 1 }, { id: 3 }], error: null });
+  db.queue("folders", "select", {
+    data: [
+      { id: 1, conta_id: "conta-1", source_type: "root_clients", source_id: null },
+      { id: 3, conta_id: "conta-1", source_type: "client", source_id: 42 },
+    ],
+    error: null,
+  });
+}
+
+Deno.test("file-manage: restricted member listing a hidden client's folder gets the missing-folder 404", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  queueClientFolder(db);
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([7]) })(req("GET", "/folders?parent_id=3"));
+  assertEquals(res.status, 404);
+  assertEquals(await readJson(res), { error: "Folder not found" });
+  assertEquals(db.calls.filter((c) => c.table === "files").length, 0);
+});
+
+Deno.test("file-manage: restricted member listing an assigned client's folder is unchanged", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  queueClientFolder(db);
+  db.queue("folders", "select", { data: [], error: null }, { data: { id: 3, conta_id: "conta-1" }, error: null });
+  db.queueRpc("folder_breadcrumbs", { data: [{ id: 1, name: "Clientes" }, { id: 3, name: "Ana" }], error: null });
+  db.queue("files", "select", { data: [], error: null });
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([42]) })(req("GET", "/folders?parent_id=3"));
+  assertEquals(res.status, 200);
+});
+
+Deno.test("file-manage: tree under the Clientes root drops hidden clients' folders", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queueRpc("folder_breadcrumbs", { data: [{ id: 1 }], error: null });
+  db.queue("folders", "select", {
+    data: [{ id: 1, conta_id: "conta-1", source_type: "root_clients", source_id: null }],
+    error: null,
+  }, {
+    data: [
+      { id: 3, name: "Ana", source: "system", source_type: "client", source_id: 42, position: 0 },
+      { id: 4, name: "Bia", source: "system", source_type: "client", source_id: 43, position: 1 },
+    ],
+    error: null,
+  });
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([43]) })(req("GET", "/tree?parent_id=1"));
+  assertEquals(res.status, 200);
+  assertEquals((await readJson(res)).map((f: { id: number }) => f.id), [4]);
+});
+
+Deno.test("file-manage: linking a file to own post in a hidden client is limitado", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue(
+    "files",
+    "select",
+    { data: { conta_id: "conta-1", folder_id: null, uploaded_by: "user-1" }, error: null },
+    { data: { conta_id: "conta-1", kind: "image", attached_to: null }, error: null },
+  );
+  db.queue("workflow_posts", "select", { data: { cliente_id: 42, responsavel_id: 9 }, error: null });
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([7], [9]) })(
+    req("POST", "/links", { post_id: 50, file_id: 10 }),
+  );
+  assertEquals(res.status, 403);
+  assertEquals(await readJson(res), { error: "Seu acesso é limitado aos clientes atribuídos." });
+  assertEquals(db.calls.filter((c) => c.operation === "insert").length, 0);
+});
+
+Deno.test("file-manage: a scope read error is a 500, never data", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const res = await makeHandler(db, { loadClientScope: () => Promise.reject(new Error("boom")) })(
+    req("GET", "/folders?parent_id=3"),
+  );
+  assertEquals(res.status, 500);
+  assertEquals(db.calls.filter((c) => c.table === "folders" || c.table === "files").length, 0);
+});
+
+// ─── acesso por cliente: fix round 1 ─────────────────────────
+
+Deno.env.set("ZIP_TOKEN_SECRET", "test-secret-key-for-unit-tests");
+Deno.env.set("SUPABASE_URL", "https://test.supabase.co");
+
+type Db = ReturnType<typeof createSupabaseQueryMock>;
+const LIMITADO = { error: "Seu acesso é limitado aos clientes atribuídos." };
+
+/** Gate setup: folder `id` is not in this workspace (folder_breadcrumbs finds nothing). */
+const queueMissingFolder = (db: Db) => db.queueRpc("folder_breadcrumbs", { data: [], error: null });
+/** Gate setup: file 10 sits in folder 3 (client 42). */
+/** Folder 4 = client folder of client 7 (the probe's assigned client), under the Clientes root. */
+function queueAssignedFolder(db: Db) {
+  db.queueRpc("folder_breadcrumbs", { data: [{ id: 1 }, { id: 4 }], error: null });
+  db.queue("folders", "select", {
+    data: [
+      { id: 1, conta_id: "conta-1", source_type: "root_clients", source_id: null },
+      { id: 4, conta_id: "conta-1", source_type: "client", source_id: 7 },
+    ],
+    error: null,
+  });
+}
+
+function queueFileInClientFolder(db: Db) {
+  db.queue("files", "select", { data: { conta_id: "conta-1", folder_id: 3, attached_to: null }, error: null });
+  queueClientFolder(db);
+}
+
+/** Runs the same request with the id hidden and with the id missing; returns both answers. */
+async function probe(path: string, body: unknown, method: string, hidden: (db: Db) => void, missing: (db: Db) => void) {
+  const run = async (setup: (db: Db) => void) => {
+    const db = createSupabaseQueryMock();
+    setupAuth(db);
+    setup(db);
+    const res = await makeHandler(db, { loadClientScope: restrictedTo([7]) })(req(method, path, body));
+    return { status: res.status, body: await res.text(), db };
+  };
+  return { hidden: await run(hidden), missing: await run(missing) };
+}
+
+function assertSameAnswer(p: { hidden: { status: number; body: string }; missing: { status: number; body: string } }) {
+  assertEquals(p.hidden.status, p.missing.status);
+  assertEquals(p.hidden.body, p.missing.body);
+}
+
+Deno.test("probe: GET /tree under a hidden folder answers like a missing one (200 [])", async () => {
+  const p = await probe("/tree?parent_id=3", undefined, "GET", queueClientFolder, queueMissingFolder);
+  assertSameAnswer(p);
+  assertEquals([p.hidden.status, p.hidden.body], [200, "[]"]);
+});
+
+Deno.test("probe: GET /links of a hidden post answers like a missing one (200 {links: []})", async () => {
+  const p = await probe(
+    "/links?post_id=50",
+    undefined,
+    "GET",
+    (db) => db.queue("workflow_posts", "select", { data: { cliente_id: 42, responsavel_id: 1 }, error: null }),
+    (db) => db.queue("workflow_posts", "select", { data: null, error: null }),
+  );
+  assertSameAnswer(p);
+  assertEquals([p.hidden.status, JSON.parse(p.hidden.body)], [200, { links: [] }]);
+  assertEquals(p.hidden.db.calls.filter((c) => c.table === "post_file_links").length, 0);
+});
+
+Deno.test("probe: bulk-move of a hidden file answers like a missing one (RPC invalid_files)", async () => {
+  const invalid = { error: "Some files not found or not owned", code: "invalid_files" };
+  const p = await probe(
+    "/bulk-move",
+    { file_ids: [10], folder_ids: [], destination_id: 4 },
+    "POST",
+    (db) => {
+      queueFileInClientFolder(db);
+      queueAssignedFolder(db);
+      db.queue("files", "select", { data: [], error: null });
+      db.queueRpc("bulk_move_items", { data: invalid, error: null });
+    },
+    (db) => {
+      db.queue("files", "select", { data: null, error: null }, { data: [], error: null });
+      queueAssignedFolder(db);
+      db.queueRpc("bulk_move_items", { data: invalid, error: null });
+    },
+  );
+  assertSameAnswer(p);
+  assertEquals(p.hidden.status, 400);
+  // The hidden id reaches the RPC as an id no row has, so it fails exactly where a missing id does.
+  const rpc = p.hidden.db.calls.find((c) => c.table === "rpc:bulk_move_items");
+  assertEquals((rpc?.payload as { p_file_ids: number[] }).p_file_ids, [-1]);
+});
+
+Deno.test("probe: bulk-move into a hidden destination answers like a missing one", async () => {
+  const invalid = { error: "Destination folder not found", code: "invalid_destination" };
+  const p = await probe(
+    "/bulk-move",
+    { folder_ids: [], file_ids: [], destination_id: 3 },
+    "POST",
+    queueClientFolder,
+    queueMissingFolder,
+  );
+  // file_ids and folder_ids both empty: the route's own 400 comes first in both cases.
+  assertSameAnswer(p);
+  const q = await probe(
+    "/bulk-move",
+    { file_ids: [11], destination_id: 3 },
+    "POST",
+    (db) => {
+      db.queue("files", "select", { data: { conta_id: "conta-1", folder_id: null, attached_to: null }, error: null });
+      queueClientFolder(db);
+      db.queueRpc("bulk_move_items", { data: invalid, error: null });
+    },
+    (db) => {
+      db.queue("files", "select", { data: { conta_id: "conta-1", folder_id: null, attached_to: null }, error: null });
+      queueMissingFolder(db);
+      db.queueRpc("bulk_move_items", { data: invalid, error: null });
+    },
+  );
+  assertSameAnswer(q);
+  const rpc = q.hidden.db.calls.find((c) => c.table === "rpc:bulk_move_items");
+  assertEquals((rpc?.payload as { p_destination_id: number }).p_destination_id, -1);
+});
+
+Deno.test("probe: bulk-delete of a hidden file or folder answers like a missing one (409 not_found)", async () => {
+  const files = await probe(
+    "/bulk-delete",
+    { file_ids: [10] },
+    "POST",
+    (db) => {
+      queueFileInClientFolder(db);
+      // The row exists in the database; the scope must still report it as not found.
+      db.queue("files", "select", { data: [{ id: 10, reference_count: 0, size_bytes: 5 }], error: null });
+    },
+    (db) => db.queue("files", "select", { data: null, error: null }, { data: [], error: null }),
+  );
+  assertSameAnswer(files);
+  assertEquals(JSON.parse(files.hidden.body), {
+    blocked: [{ id: 10, type: "file", reason: "not_found" }],
+    deletable: { file_ids: [], folder_ids: [] },
+  });
+  assertEquals(files.hidden.db.calls.filter((c) => c.operation === "delete").length, 0);
+
+  const folders = await probe(
+    "/bulk-delete",
+    { folder_ids: [3] },
+    "POST",
+    (db) => {
+      queueClientFolder(db);
+      db.queue("folders", "select", { data: [{ id: 3, source: "user" }], error: null });
+    },
+    (db) => {
+      queueMissingFolder(db);
+      db.queue("folders", "select", { data: [], error: null });
+    },
+  );
+  assertSameAnswer(folders);
+  assertEquals(folders.hidden.status, 409);
+});
+
+Deno.test("probe: zip-token of a hidden folder or file answers like a missing one (404, no token)", async () => {
+  const folder = await probe("/zip-token", { folder_id: 3 }, "POST", queueClientFolder, (db) => {
+    queueMissingFolder(db);
+    db.queue("folders", "select", { data: null, error: null });
+  });
+  assertSameAnswer(folder);
+  assertEquals([folder.hidden.status, JSON.parse(folder.hidden.body)], [404, { error: "Not found" }]);
+
+  const files = await probe(
+    "/zip-token",
+    { file_ids: [10] },
+    "POST",
+    queueFileInClientFolder,
+    (db) => db.queue("files", "select", { data: null, error: null }, { data: [], error: null }),
+  );
+  assertSameAnswer(files);
+  assertEquals(files.hidden.status, 404);
+});
+
+Deno.test("probe: GET /folders?parent_id of a hidden folder answers like a missing one", async () => {
+  const p = await probe("/folders?parent_id=3", undefined, "GET", queueClientFolder, (db) => {
+    queueMissingFolder(db);
+    db.queue("folders", "select", { data: [], error: null }, { data: null, error: null });
+  });
+  assertSameAnswer(p);
+  assertEquals(p.hidden.status, 404);
+});
+
+Deno.test("zip-token: a missing folder no longer mints a token", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("folders", "select", { data: null, error: null });
+  const res = await makeHandler(db)(req("POST", "/zip-token", { folder_id: 999 }));
+  assertEquals(res.status, 404);
+  assertEquals(await readJson(res), { error: "Not found" });
+});
+
+// ─── default deny + route parity ─────────────────────────────
+
+Deno.test("gate: a restricted caller on a route the gate does not know gets the fallthrough 404", async () => {
+  for (const [method, path] of [["PUT", "/folders/3"], ["GET", "/files/10"], ["POST", "/folders/3/move"], ["POST", "/tree"]]) {
+    const db = createSupabaseQueryMock();
+    setupAuth(db);
+    const res = await makeHandler(db, { loadClientScope: restrictedTo([7]) })(req(method, path, method === "GET" ? undefined : {}));
+    assertEquals(res.status, 404, `${method} ${path}`);
+    assertEquals(await readJson(res), { error: "Not found" });
+    assertEquals(db.calls.filter((c) => c.table !== "profiles").length, 0, `${method} ${path} touched data`);
+  }
+});
+
+Deno.test("gate: every route condition in handler.ts has a GATED_ROUTES entry, and no more", async () => {
+  const src = await Deno.readTextFile(new URL("../file-manage/handler.ts", import.meta.url));
+  const routes = src.slice(src.indexOf("// ─── TREE"));
+  const found: Record<string, string[]> = {};
+  let resource = "";
+  for (const line of routes.split("\n")) {
+    const res = line.match(/if \(resource === "([\w-]+)"/);
+    if (res) resource = res[1];
+    const cond = line.match(/if \((.*)\) \{\s*$/);
+    if (!cond || !/req\.method ===|subResource ===/.test(cond[1])) continue;
+    (found[resource] ??= []).push(cond[1]);
+  }
+  assertEquals(found, GATED_ROUTES);
+});
+
+// ─── subtree operations ──────────────────────────────────────
+
+/** Folder 5: the member's own user folder at the workspace root. */
+function queueOwnRootFolder(db: Db) {
+  db.queueRpc("folder_breadcrumbs", { data: [{ id: 5 }], error: null });
+  db.queue("folders", "select", {
+    data: [{ id: 5, conta_id: "conta-1", source_type: null, source_id: null }],
+    error: null,
+  });
+}
+
+Deno.test("subtree: a top-level folder with no client is hidden (C3), answered like a missing one", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  queueOwnRootFolder(db);
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([42]) })(req("DELETE", "/folders/5"));
+  assertEquals(res.status, 404);
+  assertEquals(await readJson(res), { error: "Folder not found" });
+  assertEquals(db.calls.filter((c) => c.operation === "delete").length, 0);
+});
+
+Deno.test("subtree: deleting an assigned client's subfolder with nothing hidden below it is allowed", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  // Folder 5: untyped, inside client 42's folder (3), under the Clientes root (1).
+  db.queueRpc("folder_breadcrumbs", { data: [{ id: 1 }, { id: 3 }, { id: 5 }], error: null });
+  db.queue(
+    "folders",
+    "select",
+    {
+      data: [
+        { id: 1, conta_id: "conta-1", source_type: "root_clients", source_id: null },
+        { id: 3, conta_id: "conta-1", source_type: "client", source_id: 42 },
+        { id: 5, conta_id: "conta-1", source_type: null, source_id: null },
+      ],
+      error: null,
+    },
+    { data: [{ id: 6, source_type: null, source_id: null }], error: null }, // subtree level 1, page 1
+    { data: [], error: null }, // level 1, empty page: level done
+    { data: [], error: null }, // level 2: nothing below
+    { data: { source: "user", conta_id: "conta-1" }, error: null }, // route
+  );
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([42]) })(req("DELETE", "/folders/5"));
+  assertEquals(res.status, 200);
+  assertEquals(await readJson(res), { ok: true });
+});
+
+Deno.test("subtree: the Clientes root is readable but never deleted, moved or renamed by a restricted member", async () => {
+  for (const [method, path, body] of [
+    ["DELETE", "/folders/1", undefined],
+    ["PATCH", "/folders/1", { name: "x" }],
+    ["PATCH", "/folders/1", { parent_id: null }],
+  ] as const) {
+    const db = createSupabaseQueryMock();
+    setupAuth(db);
+    db.queueRpc("folder_breadcrumbs", { data: [{ id: 1 }], error: null });
+    db.queue("folders", "select", {
+      data: [{ id: 1, conta_id: "conta-1", source_type: "root_clients", source_id: null }],
+      error: null,
+    });
+    const res = await makeHandler(db, { loadClientScope: restrictedTo([42]) })(req(method, path, body));
+    assertEquals(res.status, 403, `${method} ${JSON.stringify(body)}`);
+    assertEquals(await readJson(res), { error: "Seu acesso é limitado aos clientes atribuídos." });
+    assertEquals(db.calls.filter((c) => c.operation === "delete" || c.operation === "update").length, 0);
+  }
+});
+
+Deno.test("C3: a restricted member never writes at the top level or moves his upload out of a hidden client", async () => {
+  // New folder at the top level: it would have no client.
+  const top = createSupabaseQueryMock();
+  setupAuth(top);
+  const r1 = await makeHandler(top, { loadClientScope: restrictedTo([42]) })(req("POST", "/folders", { name: "x" }));
+  assertEquals(r1.status, 403);
+  assertEquals(top.calls.filter((c) => c.operation === "insert").length, 0);
+
+  // His upload in hidden client 43's folder: readable, but delete is not his to do.
+  const own = createSupabaseQueryMock();
+  setupAuth(own);
+  own.queue("files", "select", { data: { conta_id: "conta-1", folder_id: 3, uploaded_by: "user-1" }, error: null });
+  queueClientFolder(own); // client 42 folder, scope below assigns 7 only
+  const r2 = await makeHandler(own, { loadClientScope: restrictedTo([7]) })(req("DELETE", "/files/10"));
+  assertEquals(r2.status, 403);
+  assertEquals(own.calls.filter((c) => c.operation === "delete").length, 0);
+
+  // A colleague's file at the top level (no client, no post link): answered like a missing one.
+  const other = createSupabaseQueryMock();
+  setupAuth(other);
+  other.queue("files", "select", { data: { conta_id: "conta-1", folder_id: null, uploaded_by: "user-2" }, error: null });
+  other.queue("post_file_links", "select", { data: [], error: null });
+  const r3 = await makeHandler(other, { loadClientScope: restrictedTo([7]) })(req("GET", "/files/10/url"));
+  assertEquals(r3.status, 404);
+  assertEquals(await readJson(r3), { error: "File not found" });
+});
+
+Deno.test("C3: root listing keeps the Clientes root and own files, drops client-less folders and others' files", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("folders", "select", {
+    data: [
+      { id: 1, name: "Clientes", source: "system", source_type: "root_clients", source_id: null },
+      { id: 5, name: "Pasta", source: "user", source_type: null, source_id: null },
+    ],
+    error: null,
+  });
+  db.queue("files", "select", {
+    data: [
+      { id: 10, name: "meu.png", r2_key: "k10", kind: "document", uploaded_by: "user-1" },
+      { id: 11, name: "dele.png", r2_key: "k11", kind: "document", uploaded_by: "user-2" },
+    ],
+    error: null,
+  });
+  db.queue("post_file_links", "select", { data: [], error: null });
+  db.queueRpc("folder_sizes_batch", { data: [], error: null });
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 0 }, error: null });
+  db.queueRpc("effective_plan_limit", { data: 1000000, error: null });
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([42]) })(req("GET", "/folders"));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.subfolders.map((f: { id: number }) => f.id), [1]);
+  assertEquals(body.files.map((f: { id: number }) => f.id), [10]);
+});
+
+// ─── id shape (no parser differential) ───────────────────────
+
+Deno.test("shape: malformed id lists answer 400 and never reach the gate or the RPC", async () => {
+  const bad: [string, unknown][] = [
+    ["/bulk-move", { file_ids: [10, "x"], folder_ids: [] }],
+    ["/bulk-move", { file_ids: ["10"] }],
+    ["/bulk-move", { file_ids: [10], destination_id: "3" }],
+    ["/bulk-delete", { folder_ids: 3 }],
+    ["/bulk-delete", { file_ids: [1.5] }],
+    ["/bulk-delete", { file_ids: [-1] }],
+    ["/zip-token", { folder_id: "3" }],
+    ["/zip-token", { file_ids: [0] }],
+  ];
+  for (const [path, body] of bad) {
+    const db = createSupabaseQueryMock();
+    setupAuth(db);
+    const res = await makeHandler(db, { loadClientScope: restrictedTo([7]) })(req("POST", path, body));
+    assertEquals(res.status, 400, `${path} ${JSON.stringify(body)}`);
+    assertEquals(await readJson(res), { error: "Requisição inválida." });
+    assertEquals(db.calls.filter((c) => c.table !== "profiles").length, 0);
+  }
+});
+
+Deno.test("shape: the route uses exactly the ids the gate checked", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  // Gate: both files are his uploads with no client (readable, movable) into assigned folder 4.
+  db.queue(
+    "files",
+    "select",
+    { data: { conta_id: "conta-1", folder_id: null, uploaded_by: "user-1" }, error: null },
+    { data: { conta_id: "conta-1", folder_id: null, uploaded_by: "user-1" }, error: null },
+    { data: [], error: null }, // route: attached check
+  );
+  queueAssignedFolder(db);
+  db.queueRpc("bulk_move_items", { data: { ok: true, files_moved: 2, folders_moved: 0 }, error: null });
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([7]) })(
+    req("POST", "/bulk-move", { file_ids: [10, 11], destination_id: 4 }),
+  );
+  assertEquals(res.status, 200);
+  const gateReads = db.calls.filter((c) => c.table === "files" && c.modifiers.some((m) => m.method === "maybeSingle"));
+  assertEquals(gateReads.map((c) => c.modifiers.find((m) => m.method === "eq")?.args[1]), [10, 11]);
+  const rpc = db.calls.find((c) => c.table === "rpc:bulk_move_items");
+  assertEquals((rpc?.payload as { p_file_ids: number[] }).p_file_ids, [10, 11]);
+});
+
+// ─── listings: workflow / post folders ───────────────────────
+
+Deno.test("listing: workflow and post folders of hidden clients are dropped", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  queueClientFolder(db); // parent 3 = client 42, assigned
+  db.queue("folders", "select", {
+    data: [
+      { id: 10, name: "A", source: "system", source_type: "workflow", source_id: 100, position: 0 },
+      { id: 11, name: "B", source: "system", source_type: "workflow", source_id: 101, position: 1 },
+      { id: 12, name: "C", source: "system", source_type: "post", source_id: 500, position: 2 },
+      { id: 13, name: "D", source: "user", source_type: null, source_id: null, position: 3 },
+    ],
+    error: null,
+  });
+  db.queue("workflows", "select", { data: [{ id: 100, cliente_id: 42 }, { id: 101, cliente_id: 43 }], error: null });
+  db.queue("workflow_posts", "select", { data: [{ id: 500, cliente_id: 43 }], error: null });
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([42]) })(req("GET", "/tree?parent_id=3"));
+  assertEquals(res.status, 200);
+  assertEquals((await readJson(res)).map((f: { id: number }) => f.id), [10, 13]);
+});
+
+Deno.test("shape: a string, float or object in a single id field answers 400 with no read or write", async () => {
+  const bad: [string, string, unknown][] = [
+    ["POST", "/folders", { name: "x", parent_id: "3" }],
+    ["POST", "/folders", { name: "x", parent_id: 1.5 }],
+    ["POST", "/folders", { name: "x", parent_id: { id: 3 } }],
+    ["PATCH", "/folders/5", { parent_id: "3" }],
+    ["PATCH", "/folders/5", { parent_id: [3] }],
+    ["POST", "/folders/5/copy", { destination_folder_id: "3" }],
+    ["POST", "/files/10/copy", { destination_folder_id: 2.5 }],
+    ["PATCH", "/files/10", { folder_id: "3" }],
+    ["POST", "/links", { post_id: "50", file_id: 10 }],
+    ["POST", "/links", { post_id: 50, file_id: 1.5 }],
+    ["POST", "/links", { post_id: 50, file_id: { id: 10 } }],
+    ["POST", "/links", { post_id: true, file_id: 10 }],
+    ["GET", "/tree?parent_id=abc", undefined],
+    ["GET", "/folders?parent_id=1.5", undefined],
+    ["GET", "/links?post_id=5x", undefined],
+    ["DELETE", "/folders/abc", undefined],
+    ["PATCH", "/links/1e3", { sort_order: 1 }],
+  ];
+  for (const scope of [restrictedTo([7]), () => Promise.resolve(allClientsScope())]) {
+    for (const [method, path, body] of bad) {
+      const db = createSupabaseQueryMock();
+      setupAuth(db);
+      const res = await makeHandler(db, { loadClientScope: scope })(req(method, path, body));
+      const label = `${method} ${path} ${JSON.stringify(body)}`;
+      assertEquals(res.status, 400, label);
+      assertEquals(await readJson(res), { error: "Requisição inválida." }, label);
+      assertEquals(db.calls.filter((c) => c.table !== "profiles").length, 0, label);
+    }
+  }
+});
+
+Deno.test("shape: null keeps meaning root, and the route uses the normalized parent id", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("folders", "insert", { data: { id: 9, name: "x", parent_id: null }, error: null });
+  // Unrestricted: a restricted member never creates at the top level (C3 test above).
+  const res = await makeHandler(db, { loadClientScope: () => Promise.resolve(allClientsScope()) })(
+    req("POST", "/folders", { name: "x", parent_id: null }),
+  );
+  assertEquals(res.status, 201);
+  const insert = db.calls.find((c) => c.table === "folders" && c.operation === "insert");
+  assertEquals((insert?.payload as { parent_id: unknown }).parent_id, null);
+});
+
+// ─── fix round 2: secondary ids answer in the route's order ──
+
+Deno.test("probe: a missing primary item answers first, whether the secondary id is hidden or missing", async () => {
+  const missingFolder = (db: Db) => queueMissingFolder(db);
+  const cases: { label: string; method: string; path: string; body: unknown; primaryMissing: (db: Db) => void; error: string }[] = [
+    {
+      label: "PATCH /folders/<missing> + parent_id",
+      method: "PATCH",
+      path: "/folders/99",
+      body: { parent_id: 3 },
+      primaryMissing: (db) => {
+        missingFolder(db);
+        db.queue("folders", "select", { data: null, error: null }); // route: the folder
+      },
+      error: "Folder not found",
+    },
+    {
+      label: "POST /folders/<missing>/copy + destination",
+      method: "POST",
+      path: "/folders/99/copy",
+      body: { destination_folder_id: 3 },
+      primaryMissing: (db) => {
+        missingFolder(db);
+        db.queue("folders", "select", { data: null, error: null });
+      },
+      error: "Folder not found",
+    },
+    {
+      label: "POST /files/<missing>/copy + destination",
+      method: "POST",
+      path: "/files/99/copy",
+      body: { destination_folder_id: 3 },
+      primaryMissing: (db) => db.queue("files", "select", { data: null, error: null }, { data: null, error: null }),
+      error: "File not found",
+    },
+    {
+      label: "PATCH /files/<missing> + folder_id",
+      method: "PATCH",
+      path: "/files/99",
+      body: { folder_id: 3 },
+      primaryMissing: (db) => db.queue("files", "select", { data: null, error: null }, { data: null, error: null }),
+      error: "File not found",
+    },
+    {
+      label: "PATCH /files/<reference file> + folder_id",
+      method: "PATCH",
+      path: "/files/10",
+      body: { folder_id: 3 },
+      primaryMissing: (db) => {
+        const ref = { data: { conta_id: "conta-1", attached_to: "post_reference" }, error: null };
+        db.queue("files", "select", ref, ref);
+      },
+      error: "File not found",
+    },
+  ];
+  for (const c of cases) {
+    // The secondary folder 3 is hidden in one run and missing in the other; the gate must not read
+    // it before the route has answered for the primary item.
+    const p = await probe(
+      c.path,
+      c.body,
+      c.method,
+      (db) => {
+        c.primaryMissing(db);
+        queueClientFolder(db);
+      },
+      (db) => {
+        c.primaryMissing(db);
+        queueMissingFolder(db);
+      },
+    );
+    assertSameAnswer(p);
+    assertEquals([p.hidden.status, JSON.parse(p.hidden.body)], [404, { error: c.error }], c.label);
+  }
+});
+
+// ─── fix round 2: file_in_use does not name hidden clients' posts or reports ──
+
+function queueFileInUse(db: Db) {
+  db.queue(
+    "files",
+    "select",
+    { data: { conta_id: "conta-1", folder_id: 3, uploaded_by: "user-2" }, error: null }, // gate
+    { data: { conta_id: "conta-1", reference_count: 3 }, error: null }, // route
+  );
+  queueClientFolder(db); // client 42
+  db.queue("post_file_links", "select", {
+    data: [
+      { post_id: 50, workflow_posts: { titulo: "Visível", cliente_id: 42, responsavel_id: 1, workflows: { titulo: "WF A" } } },
+      { post_id: 51, workflow_posts: { titulo: "Oculto", cliente_id: 43, responsavel_id: 1, workflows: { titulo: "WF B" } } },
+      { post_id: 52, workflow_posts: { titulo: "Meu", cliente_id: 43, responsavel_id: 9, workflows: { titulo: "WF C" } } },
+    ],
+    error: null,
+  });
+  db.queue("report_document_files", "select", {
+    data: [
+      { report_id: "r1", report_documents: { title: "Relatório A", client_id: 42 } },
+      { report_id: "r2", report_documents: { title: "Relatório B", client_id: 43 } },
+    ],
+    error: null,
+  });
+}
+
+Deno.test("file_in_use: a restricted caller gets the 409 and the counts, but no hidden titles", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  queueFileInUse(db);
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([42], [9]) })(req("DELETE", "/files/10"));
+  assertEquals(res.status, 409);
+  const body = await readJson(res);
+  assertEquals(body.reference_count, 3);
+  assertEquals(body.linked_posts, [
+    { post_id: 50, post_titulo: "Visível", workflow_titulo: "WF A" },
+    { post_id: null, post_titulo: null, workflow_titulo: null },
+    { post_id: 52, post_titulo: "Meu", workflow_titulo: "WF C" }, // é dele: readable
+  ]);
+  assertEquals(body.linked_reports, [{ report_id: "r1", title: "Relatório A" }, { report_id: null, title: "" }]);
+  const text = JSON.stringify(body);
+  for (const leaked of ["Oculto", "WF B", "Relatório B", "r2", "51"]) assert(!text.includes(leaked), leaked);
+  assertEquals(db.calls.filter((c) => c.operation === "delete").length, 0);
+});
+
+Deno.test("file_in_use: an unrestricted caller still sees every title", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("files", "select", { data: { conta_id: "conta-1", reference_count: 3 }, error: null });
+  db.queue("post_file_links", "select", {
+    data: [{ post_id: 51, workflow_posts: { titulo: "Oculto", cliente_id: 43, workflows: { titulo: "WF B" } } }],
+    error: null,
+  });
+  db.queue("report_document_files", "select", {
+    data: [{ report_id: "r2", report_documents: { title: "Relatório B", client_id: 43 } }],
+    error: null,
+  });
+  const res = await makeHandler(db)(req("DELETE", "/files/10"));
+  const body = await readJson(res);
+  assertEquals(body.linked_posts, [{ post_id: 51, post_titulo: "Oculto", workflow_titulo: "WF B" }]);
+  assertEquals(body.linked_reports, [{ report_id: "r2", title: "Relatório B" }]);
 });

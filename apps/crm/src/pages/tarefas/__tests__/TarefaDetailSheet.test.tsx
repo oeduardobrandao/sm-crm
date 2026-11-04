@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { fakeMembership } from '@/test/makeCan';
 import type { Membro, TarefaEvento, TarefaWithRelations } from '../../../store';
 
 const {
@@ -27,6 +28,11 @@ const {
   toastErrorMock: vi.fn(),
 }));
 
+const ctxAuth = vi.hoisted(() => ({
+  membership: null as unknown,
+  getClienteContexto: vi.fn(),
+}));
+
 vi.mock('../../../store', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../store')>();
   return {
@@ -44,6 +50,7 @@ vi.mock('../../../store', async (importOriginal) => {
     getMembros: vi.fn(async () => []),
     getClientes: vi.fn(async () => []),
     getTarefas: vi.fn(async () => []),
+    getClienteContexto: ctxAuth.getClienteContexto,
   };
 });
 vi.mock('sonner', () => ({ toast: { success: toastSuccessMock, error: toastErrorMock } }));
@@ -62,7 +69,11 @@ vi.mock('@/hooks/useWorkspaceLimits', () => ({
 }));
 vi.mock('@/context/AuthContext', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/context/AuthContext')>()),
-  useAuth: () => ({ user: { id: 'user-me' }, profile: { conta_id: 'conta-1' } }),
+  useAuth: () => ({
+    user: { id: 'user-me' },
+    profile: { conta_id: 'conta-1' },
+    membership: ctxAuth.membership,
+  }),
 }));
 // Same reasoning as TarefaCard.test.tsx: Radix DropdownMenu does not open under jsdom.
 vi.mock('@/components/ui/dropdown-menu', () => ({
@@ -150,6 +161,7 @@ const originalScrollIntoView = Element.prototype.scrollIntoView;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  ctxAuth.membership = null;
   Element.prototype.scrollIntoView = scrollIntoViewMock;
   getSubtarefasMock.mockResolvedValue([]);
   getTarefaEventosMock.mockResolvedValue([]);
@@ -396,5 +408,34 @@ describe('TarefaDetailSheet header, history and comments', () => {
     await screen.findByText('Nenhum comentário ainda. Use @ para mencionar alguém.');
     await new Promise((r) => requestAnimationFrame(() => r(null)));
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('client identity for a restricted member (acesso por cliente)', () => {
+  beforeEach(() => {
+    ctxAuth.getClienteContexto.mockResolvedValue({
+      id: 7,
+      nome: 'Clínica Sol',
+      sigla: 'CS',
+      cor: null,
+      foto_url: null,
+    });
+  });
+
+  it('scoped and missing: shows the client name from get_cliente_contexto', async () => {
+    ctxAuth.membership = fakeMembership({ role: 'agent', client_scope: 'atribuidos' });
+    renderSheet(makeTarefa({ cliente_id: 7, cliente_nome: null }));
+
+    expect(await screen.findByText('Clínica Sol')).toBeInTheDocument();
+    expect(ctxAuth.getClienteContexto).toHaveBeenCalledWith(7);
+  });
+
+  it('todos_unchanged: an unscoped member never calls the RPC', async () => {
+    ctxAuth.membership = fakeMembership({ role: 'agent', client_scope: 'todos' });
+    renderSheet(makeTarefa({ cliente_id: 7, cliente_nome: null }));
+
+    expect((await screen.findAllByText('Relatório')).length).toBeGreaterThan(0);
+    expect(screen.queryByText('Clínica Sol')).toBeNull();
+    expect(ctxAuth.getClienteContexto).not.toHaveBeenCalled();
   });
 });

@@ -16,7 +16,7 @@ function makeFakeDb(responses: Record<string, Resp[]>) {
   function recorder(table: string) {
     // deno-lint-ignore no-explicit-any
     const rec: any = {};
-    const next = (): Resp => (queues[table] ?? []).shift() ?? { data: null, error: null };
+    const next = (): Resp => (queues[table] ?? []).shift() ?? (table === "workspace_members" ? { data: { role: "agent", client_scope: "todos" }, error: null } : { data: null, error: null });
     for (const m of ["select", "eq", "in", "gte", "order", "limit", "range", "insert", "update", "upsert", "delete"]) {
       rec[m] = (...args: unknown[]) => { calls.push({ table, method: m, args }); return rec; };
     }

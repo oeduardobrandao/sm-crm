@@ -26,7 +26,15 @@ function makeDb(client: { id: number; nome: string } | null, posts: Post[]) {
     for (const m of ["select", "eq", "or", "gte", "lt", "order", "limit"]) {
       r[m] = (...args: unknown[]) => { calls.push({ table, method: m, args }); return r; };
     }
-    r.maybeSingle = () => Promise.resolve({ data: table === "clientes" ? client : null, error: null });
+    r.maybeSingle = () =>
+      Promise.resolve({
+        data: table === "clientes"
+          ? client
+          : table === "workspace_members"
+          ? { role: "agent", client_scope: "todos" }
+          : null,
+        error: null,
+      });
     r.then = (resolve: (v: unknown) => unknown) =>
       Promise.resolve(resolve({ data: table === "workflow_posts" ? posts : [], error: null }));
     return r;

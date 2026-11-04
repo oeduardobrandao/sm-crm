@@ -131,6 +131,7 @@ export interface Plan {
   feature_youtube: boolean;
   feature_google_business: boolean;
   feature_instagram_comments_ai: boolean;
+  feature_acesso_por_cliente: boolean;
   rate_instagram_syncs_per_day: number | null;
   rate_ai_analyses_per_month: number | null;
   rate_report_generations_per_month: number | null;
@@ -287,6 +288,7 @@ export const FEATURE_FLAG_KEYS = [
   'feature_youtube',
   'feature_google_business',
   'feature_instagram_comments_ai',
+  'feature_acesso_por_cliente',
 ] as const;
 
 export const FEATURE_FLAG_LABELS: Record<string, string> = {
@@ -324,6 +326,7 @@ export const FEATURE_FLAG_LABELS: Record<string, string> = {
   feature_youtube: 'YouTube',
   feature_google_business: 'Google Meu Negócio',
   feature_instagram_comments_ai: 'Comentários com IA',
+  feature_acesso_por_cliente: 'Acesso por cliente',
 };
 
 export const RATE_LIMIT_KEYS = [

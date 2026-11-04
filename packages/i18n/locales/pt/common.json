@@ -103,7 +103,8 @@
   },
   "toast": {
     "saveError": "Erro ao salvar",
-    "deleteError": "Erro ao remover"
+    "deleteError": "Erro ao remover",
+    "clientScopeRestricted": "Seu acesso é limitado aos clientes atribuídos."
   },
   "months": {
     "0": "Janeiro",

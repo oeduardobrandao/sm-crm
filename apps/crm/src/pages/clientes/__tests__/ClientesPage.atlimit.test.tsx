@@ -4,7 +4,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { VidroToolbarHarness } from '@/test/vidroToolbar';
+import { fakeMembership } from '@/test/makeCan';
 
+const scopeAuth = vi.hoisted(() => ({ membership: null as unknown }));
 const { isAtLimitMock, limitsRef } = vi.hoisted(() => ({
   isAtLimitMock: vi.fn(),
   limitsRef: { current: null as null | Record<string, number | null> },
@@ -52,7 +54,7 @@ vi.mock('../../../hooks/useIsWorkspaceOwner', () => ({
 }));
 
 vi.mock('../../../context/AuthContext', () => ({
-  useAuth: () => ({ canSeeFinancials: true, can: () => true }),
+  useAuth: () => ({ canSeeFinancials: true, can: () => true, membership: scopeAuth.membership }),
 }));
 
 // The CSV import button is wrapped in FeatureGate; render its children unconditionally
@@ -158,6 +160,7 @@ beforeEach(() => {
   mockedGetClientes.mockReset();
   mockedGetClientes.mockResolvedValue([]);
   limitsRef.current = null;
+  scopeAuth.membership = null;
 });
 
 describe('ClientesPage at-limit create button', () => {
@@ -275,5 +278,22 @@ describe('ClientesPage header meter in the Vidro toolbar', () => {
     expect(meter.closest('.vidro-toolbar-subtitle')).not.toBeNull();
     expect(meter.closest('.page-content')).toBeNull();
     expect(screen.getAllByText('2 de 15 clientes')).toHaveLength(1);
+  });
+});
+
+describe('ClientesPage header meter, membro restrito', () => {
+  it('hides the plan meter for a member restricted to assigned clients', async () => {
+    isAtLimitMock.mockReturnValue(false);
+    limitsRef.current = { max_clients: 15 };
+    scopeAuth.membership = fakeMembership({ role: 'agent', client_scope: 'atribuidos' });
+    mockedGetClientes.mockResolvedValue([
+      { id: 1, nome: 'A', sigla: 'A', cor: '#000', status: 'ativo' } as store.Cliente,
+      { id: 2, nome: 'B', sigla: 'B', cor: '#000', status: 'ativo' } as store.Cliente,
+    ]);
+    renderPage();
+
+    await waitFor(() => expect(isAtLimitMock).toHaveBeenCalledWith('max_clients', 2));
+    expect(screen.getByText('Você vê os clientes atribuídos a você.')).toBeInTheDocument();
+    expect(screen.queryByText('2 de 15 clientes')).toBeNull();
   });
 });

@@ -15,6 +15,8 @@ describe('flags de plano no Admin', () => {
     expect(FEATURE_FLAG_LABELS.feature_financeiro_v2).toBe('Financeiro v2 (rentabilidade)');
     expect(FEATURE_FLAG_KEYS).toContain('feature_linha_editorial');
     expect(FEATURE_FLAG_LABELS.feature_linha_editorial).toBe('Linha editorial');
+    expect(FEATURE_FLAG_KEYS).toContain('feature_acesso_por_cliente');
+    expect(FEATURE_FLAG_LABELS.feature_acesso_por_cliente).toBe('Acesso por cliente');
     expect(FEATURE_FLAG_KEYS).toContain('feature_instagram_comments_ai');
     expect(FEATURE_FLAG_LABELS.feature_instagram_comments_ai).toBe('Comentários com IA');
     for (const key of FEATURE_FLAG_KEYS) {

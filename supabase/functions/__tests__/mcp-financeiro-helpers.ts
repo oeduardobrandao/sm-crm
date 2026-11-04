@@ -26,11 +26,11 @@ export function makeFakeDb(responses: Record<string, Resp[]>, rpc: Record<string
     const eqKeys: string[] = [];
     const next = (): Resp => {
       const key = eqKeys.find((k) => k in queues) ?? table;
-      return (queues[key] ?? []).shift() ?? { data: null, error: null };
+      return (queues[key] ?? []).shift() ?? (table === "workspace_members" ? { data: { role: "agent", client_scope: "todos" }, error: null } : { data: null, error: null });
     };
     for (
       const m of [
-        "select", "eq", "neq", "in", "is", "gte", "lt", "lte", "like", "order", "limit", "range",
+        "select", "eq", "neq", "in", "is", "gt", "gte", "lt", "lte", "like", "order", "limit", "range",
         "insert", "update", "upsert", "delete", "ilike",
       ]
     ) {

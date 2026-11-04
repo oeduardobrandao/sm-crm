@@ -34,6 +34,7 @@ import { reportPaywallHit } from '@/lib/paywall-report';
 import { sanitizeUrl } from '@/utils/security';
 import { getInitials, type Cliente } from '@/store';
 import { ClienteFoto } from '@/components/ClienteFoto';
+import { ClientScopeNotice } from '../ClientScopeNotice';
 
 export type ClienteFilterStatus = 'todos' | 'ativo' | 'pausado' | 'encerrado';
 export type ClienteSortBy = 'nome' | 'valor_mensal' | 'data_pagamento';
@@ -54,6 +55,10 @@ export interface ClientesPhoneProps {
   sortDir: SortDir;
   onSortDirChange: (value: SortDir) => void;
   canEdit: boolean;
+  /** Novo cliente / importar CSV. False for a member restricted to assigned clients. */
+  canCreate: boolean;
+  /** Member restricted to assigned clients: shows the scope notice under the title. */
+  clientScoped: boolean;
   canSeeFinancials: boolean | 'unknown';
   atLimit: boolean;
   /** Resolved plan limit for the usage line; `undefined` while it isn't known. */
@@ -93,6 +98,8 @@ export function ClientesPhone(props: ClientesPhoneProps) {
     sortDir,
     onSortDirChange,
     canEdit,
+    canCreate,
+    clientScoped,
     canSeeFinancials,
     atLimit,
     usageLimit,
@@ -120,9 +127,9 @@ export function ClientesPhone(props: ClientesPhoneProps) {
   // FeatureGate reports a paywall hit when it renders locked; on phones the gated
   // import lives in the "+" sheet, so report when that sheet shows it locked.
   useEffect(() => {
-    if (addOpen && canEdit && csvLocked && workspaceId)
+    if (addOpen && canCreate && csvLocked && workspaceId)
       reportPaywallHit({ workspaceId, feature: FEATURE_CSV });
-  }, [addOpen, canEdit, csvLocked, workspaceId]);
+  }, [addOpen, canCreate, csvLocked, workspaceId]);
 
   const sortLabels: Record<ClienteSortBy, string> = {
     nome: tc('sort.name'),
@@ -242,7 +249,7 @@ export function ClientesPhone(props: ClientesPhoneProps) {
               content={
                 <>
                   <p>{t('tooltip')}</p>
-                  {canEdit && <p>{t('csvTooltip')}</p>}
+                  {canCreate && <p>{t('csvTooltip')}</p>}
                 </>
               }
             />
@@ -270,7 +277,7 @@ export function ClientesPhone(props: ClientesPhoneProps) {
             >
               <SlidersHorizontal aria-hidden="true" />
             </PhoneIconButton>
-            {canEdit && (
+            {canCreate && (
               <PhoneIconButton
                 ref={addRef}
                 label={t('phone.addMenu')}
@@ -284,6 +291,7 @@ export function ClientesPhone(props: ClientesPhoneProps) {
           </>
         }
       >
+        {clientScoped && <ClientScopeNotice className="phone-clientes__scope" />}
         {searchOpen && (
           <PhoneListSearch
             ref={searchRef}
@@ -302,9 +310,9 @@ export function ClientesPhone(props: ClientesPhoneProps) {
             icon={<Users />}
             title={t('phone.emptyTitle')}
             description={
-              canEdit ? t('phone.emptyText') : t('emptyList', 'Nenhum cliente encontrado.')
+              canCreate ? t('phone.emptyText') : t('emptyList', 'Nenhum cliente encontrado.')
             }
-            action={canEdit && !atLimit ? { label: t('newClient'), onClick: onNew } : undefined}
+            action={canCreate && !atLimit ? { label: t('newClient'), onClick: onNew } : undefined}
           />
         ) : (
           <PhoneListEmpty
@@ -354,7 +362,7 @@ export function ClientesPhone(props: ClientesPhoneProps) {
         returnFocusRef={filtersRef}
       />
 
-      {canEdit && (
+      {canCreate && (
         <ActionSheet
           open={addOpen}
           onOpenChange={setAddOpen}

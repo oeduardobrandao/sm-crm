@@ -4,6 +4,7 @@
 import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock, type QueryCall } from "../../../test/shared/supabaseMock.ts";
 import { createGbpAnalyticsHandler } from "../gbp-analytics/handlers.ts";
+import { allClientsScope, type ClientScope } from "../_shared/client-scope.ts";
 
 type Mock = ReturnType<typeof createSupabaseQueryMock>;
 
@@ -59,6 +60,8 @@ function makeHandler(db: Mock, overrides: Record<string, unknown> = {}) {
     // deno-lint-ignore no-explicit-any
     createServiceDb: () => db as any,
     now: () => NOW,
+    // Acesso por cliente: unrestricted unless a test overrides it (scope tests below).
+    loadClientScope: () => Promise.resolve(allClientsScope()),
     ...overrides,
   });
 }
@@ -787,6 +790,36 @@ Deno.test("gbp-analytics: every history read is keyed by the workspace's conta_i
   }
 });
 
+// ── acesso por cliente ────────────────────────────────────────────────────────
+
+const restricted = (ids: number[]): ClientScope => ({ all: false, ids: new Set(ids), membroIds: new Set([7]) });
+
+Deno.test("gbp-analytics: restricted member on a hidden client gets the foreign-client 403", async () => {
+  const db = createSupabaseQueryMock();
+  ready(db);
+  const res = await makeHandler(db, { loadClientScope: () => Promise.resolve(restricted([99])) })(get("/overview/42"));
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: "Unauthorized" });
+  assertEquals(callsTo(db, "gbp_locations").length, 0);
+});
+
+Deno.test("gbp-analytics: restricted member on an assigned client is unchanged", async () => {
+  const db = createSupabaseQueryMock();
+  signedIn(db);
+  ownedClient(db);
+  const res = await makeHandler(db, { loadClientScope: () => Promise.resolve(restricted([42])) })(get("/overview/42"));
+  assertEquals(res.status, 404);
+  assertEquals(await res.json(), { error: "not_connected" });
+});
+
+Deno.test("gbp-analytics: a scope read error is a 500, never data", async () => {
+  const db = createSupabaseQueryMock();
+  ready(db);
+  const res = await makeHandler(db, { loadClientScope: () => Promise.reject(new Error("boom")) })(get("/overview/42"));
+  assertEquals(res.status, 500);
+  assertEquals(callsTo(db, "gbp_locations").length, 0);
+});
+
 // ── portfolio ─────────────────────────────────────────────────────────────────
 // Read order (fixed in buildGbpPortfolio): clientes -> gbp_locations -> metrics, ratings and
 // reviews in parallel. Each is paged, so the mock's default empty select closes each read.
@@ -1192,4 +1225,23 @@ Deno.test("portfolio: 100 units × 90 days paged", async () => {
   assertEquals(body.kpis.actions, { value: 9000, prev: 9000 });
   assert(body.units.every((u: { calls: number; prevProfileViews: number | null }) => u.calls === 90 && u.prevProfileViews === 0));
   assertEquals(callsTo(db, "gbp_metrics_daily").length, 19); // 18 pages and the empty closing one
+});
+
+Deno.test("portfolio: a restricted member gets only the units of his clients", async () => {
+  const db = createSupabaseQueryMock();
+  portfolioReady(db, CLIENTS, [PU1, PU2]);
+  const res = await makeHandler(db, { loadClientScope: () => Promise.resolve(restricted([43])) })(get("/portfolio"));
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.units.map((u: { clientId: number }) => u.clientId), [43]);
+  assert(!JSON.stringify(body).includes("Dra. Ana"));
+});
+
+Deno.test("portfolio: a restricted member asking for a hidden client gets the empty portfolio", async () => {
+  const db = createSupabaseQueryMock();
+  portfolioReady(db, [CLIENTS[0]], [PU1]);
+  const res = await makeHandler(db, { loadClientScope: () => Promise.resolve(restricted([43])) })(get("/portfolio?client=42"));
+  assertEquals(res.status, 200);
+  assertEquals((await res.json()).units, []);
+  assertEquals(callsTo(db, "gbp_locations").length, 0);
 });

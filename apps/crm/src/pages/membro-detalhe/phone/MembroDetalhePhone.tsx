@@ -23,6 +23,8 @@ export interface MembroDetalhePhoneProps {
   loadingMembro: boolean;
   canEditTeam: boolean;
   canSeeFinancials: FinancialAccess;
+  /** Access for the member's own cost; masked for a member restricted to assigned clients. */
+  costAccess?: FinancialAccess;
   transacoes: Transacao[];
   loadingTransacoes: boolean;
   totalPago: number;
@@ -44,6 +46,7 @@ export function MembroDetalhePhone({
   loadingMembro,
   canEditTeam,
   canSeeFinancials,
+  costAccess = canSeeFinancials,
   transacoes,
   loadingTransacoes,
   totalPago,
@@ -121,9 +124,9 @@ export function MembroDetalhePhone({
   }
 
   const kpis = [
-    { label: t('shared.custoMensal'), value: membro.custo_mensal, dot: 'cost' },
-    { label: t('shared.totalPago'), value: totalPago, dot: 'paid' },
-    { label: t('shared.pendente'), value: pendente, dot: 'pending' },
+    { label: t('shared.custoMensal'), value: membro.custo_mensal, dot: 'cost', access: costAccess },
+    { label: t('shared.totalPago'), value: totalPago, dot: 'paid', access: canSeeFinancials },
+    { label: t('shared.pendente'), value: pendente, dot: 'pending', access: canSeeFinancials },
   ] as const;
 
   const avatar = (
@@ -181,7 +184,7 @@ export function MembroDetalhePhone({
                 {k.label}
               </span>
               <strong className="phone-membro-kpis__value">
-                {formatFinancialBRL(k.value, canSeeFinancials)}
+                {formatFinancialBRL(k.value, k.access)}
               </strong>
             </div>
           ))}
@@ -204,7 +207,7 @@ export function MembroDetalhePhone({
         {canEditTeam && (
           <Cell
             label={t('shared.custoMensal')}
-            value={formatFinancialBRL(membro.custo_mensal, canSeeFinancials)}
+            value={formatFinancialBRL(membro.custo_mensal, costAccess)}
           />
         )}
       </GroupedList>

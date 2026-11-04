@@ -41,6 +41,9 @@ import { CalendarSkeleton } from '@/components/ui/skeletons';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { CalendarioClassicoPhone } from './phone/CalendarioClassicoPhone';
+import { isClientScoped } from '@/lib/permissions';
+
+const SEM_MEMBROS: Membro[] = [];
 
 // Lazy: FullCalendar is heavy and workspaces without feature_agenda never render it.
 const AgendaTab = lazy(() => import('./agenda/AgendaTab'));
@@ -615,10 +618,13 @@ function CalendarioClassico() {
     writeStoredNicheKey(key);
   }
 
-  const { canSeeFinancials } = useAuth();
+  const { canSeeFinancials, membership } = useAuth();
 
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
-  const { data: membros = [] } = useQuery({ queryKey: ['membros'], queryFn: getMembros });
+  const { data: membrosRaw = [] } = useQuery({ queryKey: ['membros'], queryFn: getMembros });
+  // Here `membros` only feeds team payments. A member restricted to assigned clients reads
+  // `custo_mensal` as NULL (membros_v), so every payment would be a phantom R$ 0: none shown.
+  const membros = isClientScoped(membership) ? SEM_MEMBROS : membrosRaw;
   // getTransacoes returns raw financial rows: this page is not a financial
   // route, so the route guard never covers it. Gate the fetch itself, not
   // just its rendering — the day/selected-day views below already mask via

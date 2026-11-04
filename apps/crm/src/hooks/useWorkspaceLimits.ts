@@ -63,6 +63,9 @@ export interface FeatureFlags {
   /** Linha editorial (spec 2026-10-26-linha-editorial). Optional: read it only as
    *  `features?.feature_linha_editorial === true`, never through hasFeature. */
   feature_linha_editorial?: boolean;
+  /** Acesso por cliente (membros restritos a clientes atribuídos). Optional: read it only as
+   *  `features?.feature_acesso_por_cliente === true`, never through hasFeature. */
+  feature_acesso_por_cliente?: boolean;
   /** Rollout flag for Financeiro v2 (rentabilidade por cliente). Optional on purpose:
    *  read only as `features?.feature_financeiro_v2 === true` (fail-closed). */
   feature_financeiro_v2?: boolean;

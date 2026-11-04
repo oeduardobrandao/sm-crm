@@ -18,6 +18,12 @@ import {
   INTERACTIVE_GRAPH_TIMEOUT_MS,
 } from "../_shared/instagram-publish-utils.ts";
 import { buildCollaboratorFailureFields, normalizeCollaborators } from "../_shared/instagram-collaborators.ts";
+import {
+  type ClientScopeLoader,
+  memberWorkspaceOfClient,
+  type ResourceWorkspaceResolver,
+  rowWriteGate,
+} from "../_shared/client-scope.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -29,6 +35,10 @@ interface PublishHandlerDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: (token: string) => DbClient;
   createServiceDb: () => DbClient;
+  /** Acesso por cliente: the caller's client scope (defaults to the real loader). */
+  loadClientScope?: ClientScopeLoader;
+  /** The post's own workspace, if the caller is a member of it (defaults to the real resolver). */
+  resolvePostWorkspace?: ResourceWorkspaceResolver;
 }
 
 export function createPublishHandler(deps: PublishHandlerDeps) {
@@ -62,7 +72,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
     // Verify post exists and user has access (via RLS)
     const { data: post } = await userDb
       .from("workflow_posts")
-      .select("id, status, workflow_id, cliente_id, scheduled_at, ig_caption, instagram_container_id, publish_retry_count, tipo, ig_trial_strategy, ig_collaborators")
+      .select("id, status, workflow_id, cliente_id, responsavel_id, scheduled_at, ig_caption, instagram_container_id, publish_retry_count, tipo, ig_trial_strategy, ig_collaborators")
       .eq("id", postId)
       .single();
 
@@ -74,9 +84,33 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
     // Resolve caller's workspace and guard feature_post_scheduling
     const { data: actorProfile } = await svcDb.from("profiles").select("conta_id").eq("id", actorId).single();
     if (!actorProfile?.conta_id) return json({ error: "Unauthorized" }, 403);
+    // Acesso por cliente. The workspace is the POST's own (its client's conta_id, with the caller
+    // a member there), never profiles.conta_id: that column goes stale on a workspace switch, and a
+    // member restricted in the post's workspace but `todos` in the stale one would pass. The same
+    // workspace drives the plan gate. Every action below writes with the service role, so the post's
+    // client must be in scope, or the post must be the caller's own ("é dele": responsavel_id among his
+    // membros, the workflow_posts read rule; ruling 4a lets him publish his own post in a hidden
+    // client). A post they cannot read answers like a missing one.
+    let postWorkspace: string | null;
+    try {
+      postWorkspace = await (deps.resolvePostWorkspace ?? memberWorkspaceOfClient)(svcDb, actorId!, post.cliente_id);
+    } catch (err) {
+      return internalServerError(json, "instagram-publish:post-workspace", err);
+    }
+    if (!postWorkspace) return json({ error: "Post não encontrado." }, 404);
+    const scopeDenied = await rowWriteGate(
+      svcDb,
+      actorId!,
+      postWorkspace,
+      post,
+      { status: 404, body: { error: "Post não encontrado." } },
+      deps.loadClientScope,
+      { allowOwn: true },
+    );
+    if (scopeDenied) return json(scopeDenied.body, scopeDenied.status);
     if (
       (action === "schedule" || action === "publish-now") &&
-      !(await effectivePlanFeature(svcDb as any, actorProfile.conta_id, "feature_post_scheduling"))
+      !(await effectivePlanFeature(svcDb as any, postWorkspace, "feature_post_scheduling"))
     ) {
       return json({ error: "feature_disabled", feature: "feature_post_scheduling" }, 403);
     }

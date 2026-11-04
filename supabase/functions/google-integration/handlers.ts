@@ -40,6 +40,12 @@ import {
 import { type GbpLocationOption, listGbpLocations } from "./locations.ts";
 import { createGoogleState, verifyGoogleState, type VerifiedGoogleState } from "./oauth-state.ts";
 import { type DbClient, loadClientInTenant, resolveTenant } from "./tenant.ts";
+import {
+  type ClientScope,
+  type ClientScopeLoader,
+  hasClientAccess,
+  loadClientScope as realLoadClientScope,
+} from "../_shared/client-scope.ts";
 
 export interface GoogleIntegrationDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
@@ -51,6 +57,8 @@ export interface GoogleIntegrationDeps {
   syncGbpLocation?: typeof syncGbpLocation;
   /** Storage for the YouTube PDF purge drain; defaults to the service client's storage. */
   storage?: StorageLike;
+  /** Acesso por cliente: the caller's client scope (defaults to the real loader). */
+  loadClientScope?: ClientScopeLoader;
 }
 
 /** Same bounds as youtube-sync-cron's drain: what one request removes is this tenant's queue. */
@@ -116,6 +124,7 @@ async function handleAuth(
   path: string,
   url: URL,
   cors: Record<string, string>,
+  loadScope: ClientScopeLoader,
 ): Promise<Response> {
   const tenant = await resolveTenant(req, svc, cors);
   if (tenant instanceof Response) return tenant;
@@ -129,6 +138,10 @@ async function handleAuth(
 
   const client = await loadClientInTenant(svc, clientId, tenant.contaId);
   if (!client) return json(cors, { error: "not_found" }, 404);
+  // Acesso por cliente: a client outside the caller's scope answers like a foreign one, before the
+  // state is signed (the callback trusts the signed clientId).
+  const scope = await loadScope(svc, tenant.userId, tenant.contaId);
+  if (!hasClientAccess(scope, clientId, false)) return json(cors, { error: "not_found" }, 404);
 
   const feature = PRODUCT_FEATURE[product];
   // deno-lint-ignore no-explicit-any
@@ -221,7 +234,7 @@ async function runCallback(
     const owner = await findOtherChannelOwner(svc, state.contaId, channel.id, clientId);
     if (owner) {
       await revokeIfUnused(svc, user.sub, grantToken);
-      return fail("channel_in_use", owner.name ? `&yt_other=${encodeURIComponent(owner.name)}` : "");
+      return fail("channel_in_use", await otherClientParam(svc, deps, state, owner.clientId, owner.name));
     }
   }
 
@@ -271,7 +284,10 @@ async function runCallback(
     if (result.kind === "in_use") {
       // Race backstop: another client linked the channel between the pre-check and here. The
       // connection row now exists, so the grant is in use and is NOT revoked.
-      return fail("channel_in_use", result.otherName ? `&yt_other=${encodeURIComponent(result.otherName)}` : "");
+      return fail(
+        "channel_in_use",
+        await otherClientParam(svc, deps, state, result.otherClientId, result.otherName),
+      );
     }
     if (relink.releaseSub) {
       // Same channel, now through another Google account: the old account may hold nothing else.
@@ -340,13 +356,34 @@ async function fetchOwnYouTubeChannel(accessToken: string): Promise<(YouTubeChan
   return channel?.id ? (channel as YouTubeChannelItem & { id: string }) : null;
 }
 
+/** `&yt_other=<name>` for the "channel in use" redirect, only when the caller sees that client
+ * (acesso por cliente: a hidden client's name never reaches the URL). A scope read error drops the
+ * name (logged), never names. */
+async function otherClientParam(
+  svc: DbClient,
+  deps: GoogleIntegrationDeps,
+  state: VerifiedGoogleState,
+  otherClientId: number | null,
+  name: string | null,
+): Promise<string> {
+  if (!name || otherClientId == null) return "";
+  try {
+    const scope = await (deps.loadClientScope ?? realLoadClientScope)(svc, state.userId, state.contaId);
+    if (!hasClientAccess(scope, otherClientId, false)) return "";
+  } catch (err) {
+    console.error("[google-integration] callback client scope:", (err as Error).message);
+    return "";
+  }
+  return `&yt_other=${encodeURIComponent(name)}`;
+}
+
 /** Another client of the same workspace already holding this channel, if any. */
 async function findOtherChannelOwner(
   svc: DbClient,
   contaId: string,
   channelId: string,
   clientId: number,
-): Promise<{ name: string | null } | null> {
+): Promise<{ clientId: number; name: string | null } | null> {
   const { data, error } = await svc
     .from("youtube_channels")
     .select("client_id")
@@ -358,10 +395,10 @@ async function findOtherChannelOwner(
   const row = Array.isArray(data) ? data[0] : null;
   if (!row) return null;
   const other = await loadClientInTenant(svc, row.client_id as number, contaId);
-  return { name: other?.nome ?? null };
+  return { clientId: Number(row.client_id), name: other?.nome ?? null };
 }
 
-type LinkResult = { kind: "linked" } | { kind: "in_use"; otherName: string | null };
+type LinkResult = { kind: "linked" } | { kind: "in_use"; otherClientId: number | null; otherName: string | null };
 
 /**
  * P11, run after the connection upsert and before the channel write. The client's stored row:
@@ -485,7 +522,11 @@ async function linkYouTubeChannel(
     .eq("channel_id", channel.id)
     .maybeSingle();
   const otherClient = other?.client_id ? await loadClientInTenant(svc, other.client_id as number, contaId) : null;
-  return { kind: "in_use", otherName: otherClient?.nome ?? null };
+  return {
+    kind: "in_use",
+    otherClientId: other?.client_id ? Number(other.client_id) : null,
+    otherName: otherClient?.nome ?? null,
+  };
 }
 
 // ─── Shared route guards ─────────────────────────────────────────────────────────────
@@ -505,16 +546,21 @@ async function requireClient(
   req: Request,
   rawClientId: string,
   cors: Record<string, string>,
+  loadScope: ClientScopeLoader,
   foreign: "not_found" | "forbidden" = "not_found",
-): Promise<{ userId: string; contaId: string; clientId: number } | Response> {
+): Promise<{ userId: string; contaId: string; clientId: number; scope: ClientScope } | Response> {
   const tenant = await resolveTenant(req, svc, cors);
   if (tenant instanceof Response) return tenant;
   if (!/^\d+$/.test(rawClientId)) return json(cors, { error: "invalid_client" }, 400);
   const clientId = parseInt(rawClientId, 10);
-  if (!(await loadClientInTenant(svc, clientId, tenant.contaId))) {
-    return foreign === "forbidden" ? json(cors, { error: "forbidden" }, 403) : json(cors, { error: "not_found" }, 404);
-  }
-  return { ...tenant, clientId };
+  const denied = () =>
+    foreign === "forbidden" ? json(cors, { error: "forbidden" }, 403) : json(cors, { error: "not_found" }, 404);
+  if (!(await loadClientInTenant(svc, clientId, tenant.contaId))) return denied();
+  // Acesso por cliente: a client outside the caller's scope answers exactly like a foreign one.
+  // A scope read error throws into the generic 500, never "all clients".
+  const scope = await loadScope(svc, tenant.userId, tenant.contaId);
+  if (!hasClientAccess(scope, clientId, false)) return denied();
+  return { ...tenant, clientId, scope };
 }
 
 async function requireGbpFeature(svc: DbClient, contaId: string, cors: Record<string, string>): Promise<Response | null> {
@@ -554,8 +600,14 @@ function googleErrorResponse(err: GoogleApiError, cors: Record<string, string>):
 
 // ─── GET /summary/:clientId ──────────────────────────────────────────────────────────
 
-async function handleSummary(svc: DbClient, req: Request, rawClientId: string, cors: Record<string, string>) {
-  const ctx = await requireClient(svc, req, rawClientId, cors);
+async function handleSummary(
+  svc: DbClient,
+  req: Request,
+  rawClientId: string,
+  cors: Record<string, string>,
+  loadScope: ClientScopeLoader,
+) {
+  const ctx = await requireClient(svc, req, rawClientId, cors, loadScope);
   if (ctx instanceof Response) return ctx;
 
   // deno-lint-ignore no-explicit-any
@@ -658,8 +710,9 @@ async function handleListLocations(
   rawClientId: string,
   url: URL,
   cors: Record<string, string>,
+  loadScope: ClientScopeLoader,
 ) {
-  const ctx = await requireClient(svc, req, rawClientId, cors);
+  const ctx = await requireClient(svc, req, rawClientId, cors, loadScope);
   if (ctx instanceof Response) return ctx;
   const gate = await requireGbpFeature(svc, ctx.contaId, cors);
   if (gate) return gate;
@@ -722,7 +775,10 @@ async function handleListLocations(
       return {
         ...o,
         linkedClientId,
-        linkedClientName: linkedClientId !== null ? names.get(linkedClientId) ?? null : null,
+        // Acesso por cliente: the name of a client outside the caller's scope is never shown.
+        linkedClientName: linkedClientId !== null && hasClientAccess(ctx.scope, linkedClientId, false)
+          ? names.get(linkedClientId) ?? null
+          : null,
         // R12: a unit of this client on ANOTHER connection is shown checked and locked by the
         // picker, and POST ignores it; only the connection that linked it manages it.
         linkedConnectionId: row?.connection_id ?? null,
@@ -757,8 +813,14 @@ function parseLinkBody(body: unknown): { connectionId: string; locationNames: st
   return { connectionId, locationNames: [...new Set(locationNames as string[])] };
 }
 
-async function handleLinkLocations(svc: DbClient, req: Request, rawClientId: string, cors: Record<string, string>) {
-  const ctx = await requireClient(svc, req, rawClientId, cors);
+async function handleLinkLocations(
+  svc: DbClient,
+  req: Request,
+  rawClientId: string,
+  cors: Record<string, string>,
+  loadScope: ClientScopeLoader,
+) {
+  const ctx = await requireClient(svc, req, rawClientId, cors, loadScope);
   if (ctx instanceof Response) return ctx;
   const gate = await requireGbpFeature(svc, ctx.contaId, cors);
   if (gate) return gate;
@@ -960,7 +1022,7 @@ async function handleDisconnectYouTube(
   cors: Record<string, string>,
   deps: GoogleIntegrationDeps,
 ) {
-  const ctx = await requireClient(svc, req, rawClientId, cors);
+  const ctx = await requireClient(svc, req, rawClientId, cors, deps.loadClientScope ?? realLoadClientScope);
   if (ctx instanceof Response) return ctx;
 
   const { data, error } = await svc.rpc("google_unlink_youtube", {
@@ -998,8 +1060,9 @@ async function handleDisconnectGbp(
   req: Request,
   rawClientId: string,
   cors: Record<string, string>,
+  loadScope: ClientScopeLoader,
 ) {
-  const ctx = await requireClient(svc, req, rawClientId, cors);
+  const ctx = await requireClient(svc, req, rawClientId, cors, loadScope);
   if (ctx instanceof Response) return ctx;
 
   const { data: rowsData, error } = await svc
@@ -1054,7 +1117,7 @@ async function handleSync(
   cors: Record<string, string>,
   deps: GoogleIntegrationDeps,
 ): Promise<Response> {
-  const ctx = await requireClient(svc, req, rawClientId, cors, "forbidden");
+  const ctx = await requireClient(svc, req, rawClientId, cors, deps.loadClientScope ?? realLoadClientScope, "forbidden");
   if (ctx instanceof Response) return ctx;
 
   const feature = PRODUCT_FEATURE[product];
@@ -1165,12 +1228,21 @@ function toIso(value: unknown): string | null {
  * No plan-flag gate: the page must keep working after a downgrade. Only ids, emails, names,
  * titles and statuses leave the function: never a token, scope, sub or authorized_at.
  */
-async function handleListAccounts(svc: DbClient, req: Request, cors: Record<string, string>): Promise<Response> {
+async function handleListAccounts(
+  svc: DbClient,
+  req: Request,
+  cors: Record<string, string>,
+  loadScope: ClientScopeLoader,
+): Promise<Response> {
   const tenant = await resolveTenant(req, svc, cors);
   if (tenant instanceof Response) return tenant;
   if (!(await hasPermissionFor(svc, tenant.userId, tenant.contaId, "configuracoes", "ver"))) {
     return json(cors, { error: "forbidden" }, 403);
   }
+  // Acesso por cliente: a restricted member sees only the channels and units of his clients, so a
+  // hidden client's name never leaves. A scope read error throws into the generic 500.
+  const scope = await loadScope(svc, tenant.userId, tenant.contaId);
+  const visible = (clientId: number) => hasClientAccess(scope, clientId, false);
 
   const { data: connData, error: connError } = await svc
     .from("google_connections")
@@ -1191,14 +1263,14 @@ async function handleListAccounts(svc: DbClient, req: Request, cors: Record<stri
     .select("connection_id, channel_id, title, handle, client_id, authorization_status")
     .eq("conta_id", tenant.contaId);
   if (chError) throw new Error(`youtube_channels read failed: ${chError.message}`);
-  const channels = (chData ?? []) as Array<{
+  const channels = ((chData ?? []) as Array<{
     connection_id: string;
     channel_id: string;
     title: string | null;
     handle: string | null;
     client_id: number;
     authorization_status: string;
-  }>;
+  }>).filter((c) => visible(c.client_id));
 
   const { data: locData, error: locError } = await svc
     .from("gbp_locations")
@@ -1206,14 +1278,14 @@ async function handleListAccounts(svc: DbClient, req: Request, cors: Record<stri
     .eq("conta_id", tenant.contaId)
     .in("status", ["active", "revoked"]);
   if (locError) throw new Error(`gbp_locations read failed: ${locError.message}`);
-  const locations = (locData ?? []) as Array<{
+  const locations = ((locData ?? []) as Array<{
     id: string;
     connection_id: string | null;
     title: string | null;
     address_line: string | null;
     client_id: number;
     status: string;
-  }>;
+  }>).filter((l) => visible(l.client_id));
 
   const clientIds = [...new Set([...channels.map((c) => c.client_id), ...locations.map((l) => l.client_id)])];
   const names = new Map<number, string>();
@@ -1288,6 +1360,10 @@ async function handleDisconnectAccount(
   if (!(await hasPermissionFor(svc, tenant.userId, tenant.contaId, "configuracoes", "editar"))) {
     return json(cors, { error: "forbidden" }, 403);
   }
+  // Acesso por cliente: disconnecting the account unlinks the channels and units of every client
+  // on it, so only a member who sees all clients may do it (like the other workspace-wide writes).
+  const scope = await (deps.loadClientScope ?? realLoadClientScope)(svc, tenant.userId, tenant.contaId);
+  if (!scope.all) return json(cors, { error: "client_scope_restricted" }, 403);
   const rateKey = `google-account-disconnect:${tenant.contaId}`;
   // deno-lint-ignore no-explicit-any
   if (!(await checkRateLimit(svc as any, rateKey, ACCOUNT_DISCONNECT_RATE_LIMIT, ACCOUNT_DISCONNECT_RATE_WINDOW_S))) {
@@ -1346,33 +1422,34 @@ export function createGoogleIntegrationHandler(deps: GoogleIntegrationDeps) {
     if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
     const svc = deps.createServiceDb();
+    const loadScope = deps.loadClientScope ?? realLoadClientScope;
 
     try {
       if (req.method === "GET" && path === "/callback") {
         return await handleCallback(svc, url, deps);
       }
       if (req.method === "GET" && /^\/auth\/[^/]+$/.test(path)) {
-        return await handleAuth(svc, req, path, url, cors);
+        return await handleAuth(svc, req, path, url, cors, loadScope);
       }
       const segs = path.split("/"); // ["", route, ...]
       if (req.method === "GET" && segs.length === 3 && segs[1] === "summary") {
-        return await handleSummary(svc, req, segs[2], cors);
+        return await handleSummary(svc, req, segs[2], cors, loadScope);
       }
       if (segs.length === 3 && segs[1] === "locations") {
-        if (req.method === "GET") return await handleListLocations(svc, req, segs[2], url, cors);
-        if (req.method === "POST") return await handleLinkLocations(svc, req, segs[2], cors);
+        if (req.method === "GET") return await handleListLocations(svc, req, segs[2], url, cors, loadScope);
+        if (req.method === "POST") return await handleLinkLocations(svc, req, segs[2], cors, loadScope);
       }
       if (req.method === "POST" && segs.length === 4 && segs[1] === "disconnect" && segs[2] === "youtube") {
         return await handleDisconnectYouTube(svc, req, segs[3], cors, deps);
       }
       if (req.method === "POST" && segs.length === 4 && segs[1] === "disconnect" && segs[2] === "gbp") {
-        return await handleDisconnectGbp(svc, req, segs[3], cors);
+        return await handleDisconnectGbp(svc, req, segs[3], cors, loadScope);
       }
       if (req.method === "POST" && segs.length === 4 && segs[1] === "sync" && isProduct(segs[2])) {
         return await handleSync(svc, req, segs[2], segs[3], cors, deps);
       }
       if (req.method === "GET" && segs.length === 2 && segs[1] === "accounts") {
-        return await handleListAccounts(svc, req, cors);
+        return await handleListAccounts(svc, req, cors, loadScope);
       }
       if (req.method === "POST" && segs.length === 4 && segs[1] === "accounts" && segs[3] === "disconnect") {
         return await handleDisconnectAccount(svc, req, segs[2], cors, deps);

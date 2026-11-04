@@ -37,7 +37,8 @@ import { FormRow } from '@/components/mobile/FormRow';
 import { PickerCell } from '@/components/mobile/PickerSheet';
 import { useAuth } from '@/context/AuthContext';
 import { captureEvent } from '@/lib/analytics';
-import { stripFinancialFields } from '@/lib/financialAccess';
+import { stripFinancialFields, type FinancialAccess } from '@/lib/financialAccess';
+import { isClientScoped } from '@/lib/permissions';
 import { supabase } from '@/lib/supabase';
 import { inviteUser } from '@/services/invite';
 import {
@@ -73,7 +74,10 @@ interface MembroFormDialogProps {
 export function MembroFormDialog({ open, membro, membros, onOpenChange }: MembroFormDialogProps) {
   const { t } = useTranslation('team');
   const qc = useQueryClient();
-  const { canSeeFinancials, can, workspaceRole, profile, user } = useAuth();
+  const { canSeeFinancials, can, workspaceRole, profile, user, membership } = useAuth();
+  // A member restricted to assigned clients reads membros_v.custo_mensal as NULL and cannot
+  // write it: no cost field, and the save leaves custo_mensal out.
+  const costAccess: FinancialAccess = isClientScoped(membership) ? false : canSeeFinancials;
   const canManageWorkspace = can('equipe', 'editar') === true;
   const canAssignRoles = workspaceRole === 'owner' || workspaceRole === 'admin';
   const [saving, setSaving] = useState(false);
@@ -202,7 +206,7 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
           ? {}
           : { custo_mensal: values.custo ? Number(values.custo) : null, data_pagamento: diaPag }),
       };
-      const safePayload = stripFinancialFields(payload, canSeeFinancials, ['custo_mensal']);
+      const safePayload = stripFinancialFields(payload, costAccess, ['custo_mensal']);
       const desiredCrmUser =
         values.crmUserId === '' || values.crmUserId == null ? null : values.crmUserId;
       let membroId: number | undefined;
@@ -311,7 +315,7 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
                     value={tipo}
                     onChange={(v) => v && form.setValue('tipo', v, { shouldDirty: true })}
                   />
-                  {canSeeFinancials === true && !custoNoAcordo && (
+                  {costAccess === true && !custoNoAcordo && (
                     <FormRow
                       label={t('membroFormDialog.cost')}
                       error={errors.custo?.message}
@@ -431,7 +435,7 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
                     </FormItem>
                   )}
                 />
-                {canSeeFinancials === true && !custoNoAcordo && (
+                {costAccess === true && !custoNoAcordo && (
                   <FormField
                     control={form.control}
                     name="custo"
@@ -536,7 +540,7 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
                 )}
               </>
             )}
-            {custoNoAcordo && canSeeFinancials === true && (
+            {custoNoAcordo && costAccess === true && (
               <p className="text-sm text-muted-foreground">
                 {t('membroFormDialog.costInAgreement')}{' '}
                 <Link to={`/equipe/${membro?.id}`} className="underline underline-offset-2">

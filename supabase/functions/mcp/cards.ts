@@ -6,7 +6,7 @@ import { McpInputError } from "../_shared/mcp-token.ts";
 import { CONTENT_FORMATS, captionMaxFor, IG_CAPTION_MAX } from "../_shared/platform-registry.ts";
 import type { ContentFormat } from "../_shared/platform-registry.ts";
 import { cardToolMeta } from "./apps.ts";
-import type { Deps } from "./queries.ts";
+import { canReadClient, type Deps } from "./queries.ts";
 import { register } from "./register.ts";
 import type { ToolMeta } from "./tool-meta.ts";
 
@@ -66,6 +66,8 @@ export function bodyToSlides(conteudoPlain: string): Slide[] {
 }
 
 async function clientOf(d: Deps, clientId: number): Promise<{ id: number; nome: string }> {
+  // A client hidden by the request's client scope reads exactly like a missing one.
+  if (!(await canReadClient(d, clientId))) throw new McpInputError("Cliente não encontrado neste workspace.");
   const { data } = await d.db
     .from("clientes")
     .select("id, nome")

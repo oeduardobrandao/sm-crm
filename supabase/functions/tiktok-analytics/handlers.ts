@@ -13,6 +13,13 @@ import { createJsonResponder, internalServerError, type JsonResponder } from "..
 import { bestTimesFromPosts, tiktokRate } from "../_shared/best-times.ts";
 import { type AnalyticsWindow, windowFromDays, windowFromRange } from "../_shared/tiktok-analytics/window.ts";
 import { videoEngagementRate } from "../_shared/tiktok-analytics/kpis.ts";
+import {
+  type ClientScope,
+  type ClientScopeLoader,
+  hasClientAccess,
+  loadClientScope as realLoadClientScope,
+  visibleClientIds,
+} from "../_shared/client-scope.ts";
 import { AI_UNAVAILABLE, buildAccountPrompts, buildPortfolioPrompts, callGemini } from "./ai.ts";
 import {
   buildOverview,
@@ -45,6 +52,8 @@ export interface TikTokAnalyticsDeps {
   /** AI routes (Task A5). */
   fetch?: typeof fetch;
   geminiKey?: string;
+  /** Acesso por cliente: the caller's client scope (defaults to the real loader). */
+  loadClientScope?: ClientScopeLoader;
 }
 
 /** Everything a route needs once the caller and workspace are known. */
@@ -55,6 +64,8 @@ export interface RouteContext {
   path: string;
   userId: string;
   contaId: string;
+  /** Client scope of the caller (acesso por cliente): a hidden client answers like a foreign one. */
+  scope: ClientScope;
   now: Date;
   deps: TikTokAnalyticsDeps;
 }
@@ -131,6 +142,7 @@ async function requireOwnedClient(ctx: RouteContext, clientId: number): Promise<
   const { data: client, error } = await ctx.db.from("clientes").select("id, conta_id").eq("id", clientId).maybeSingle();
   if (error) throw error;
   if (!client || client.conta_id !== ctx.contaId) return ctx.json({ error: "Unauthorized" }, 403);
+  if (!hasClientAccess(ctx.scope, clientId, false)) return ctx.json({ error: "Unauthorized" }, 403);
   return null;
 }
 
@@ -208,7 +220,7 @@ async function handlePortfolio(ctx: RouteContext): Promise<Response> {
   if (!w) return badRequest(ctx, "invalid_window");
   const denied = await requireFeatures(ctx);
   if (denied) return denied;
-  return ctx.json(await buildPortfolio(ctx.db, ctx.contaId, w, ctx.now));
+  return ctx.json(await buildPortfolio(ctx.db, ctx.contaId, w, ctx.now, visibleClientIds(ctx.scope)));
 }
 
 // ─── AI routes ─────────────────────────────────────────────────────────────────────
@@ -282,7 +294,7 @@ async function handleAiPortfolio(req: Request, ctx: RouteContext): Promise<Respo
   const key = ctx.deps.geminiKey;
   if (!key) return aiUnavailable(ctx);
 
-  const portfolio = await buildPortfolio(ctx.db, ctx.contaId, w, ctx.now);
+  const portfolio = await buildPortfolio(ctx.db, ctx.contaId, w, ctx.now, visibleClientIds(ctx.scope));
   if (portfolio.accounts.length === 0) {
     return ctx.json({ analysis: { error: true, raw: "Nenhuma conta TikTok conectada" } });
   }
@@ -349,8 +361,10 @@ export function createTikTokAnalyticsHandler(deps: TikTokAnalyticsDeps): (req: R
         return json({ error: "Rate limit exceeded" }, 429);
       }
 
+      // Acesso por cliente: a read error throws into the generic 500 below, never "all clients".
+      const scope = await (deps.loadClientScope ?? realLoadClientScope)(db, user.id, contaId);
       const now = (deps.now ?? (() => new Date()))();
-      return await route(req, { db, json, url, path, userId: user.id, contaId, now, deps });
+      return await route(req, { db, json, url, path, userId: user.id, contaId, scope, now, deps });
     } catch (err) {
       return internalServerError(json, "tiktok-analytics", err);
     }

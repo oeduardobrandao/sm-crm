@@ -1,4 +1,11 @@
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
+import {
+  CLIENT_SCOPE_MESSAGE,
+  type ClientScope,
+  type ClientScopeLoader,
+  loadClientScope as realLoadClientScope,
+  rowVisibility,
+} from "../_shared/client-scope.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -13,6 +20,8 @@ interface PostMediaManageDeps {
   signPutUrl: (key: string, mimeType: string, sizeBytes: number) => Promise<string>;
   randomUUID?: () => string;
   signPlayback?: (uid: string) => Promise<{ hls: string; expires_at: string }>;
+  /** Acesso por cliente: the caller's client scope (defaults to the real loader). */
+  loadClientScope?: ClientScopeLoader;
 }
 
 const THUMB_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -95,6 +104,40 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
     const { data: profile } = await svc.from("profiles").select("conta_id, active_workspace_id").eq("id", user.id).single();
     if (!profile) return json({ error: "Profile not found" }, 403);
 
+    // Acesso por cliente. A post outside the caller's scope answers exactly like a missing one;
+    // reads honor "é dele" (responsavel_id), writes do not (own post in a hidden client ->
+    // CLIENT_SCOPE_MESSAGE). Unrestricted callers skip every extra read. A scope read error is a
+    // generic 500, never "all clients".
+    const loadScope = deps.loadClientScope ?? realLoadClientScope;
+    const scopeFor = async (workspaceId: string): Promise<ClientScope | Response> => {
+      try {
+        return await loadScope(svc, user.id, workspaceId);
+      } catch (err) {
+        return internalServerError(json, "post-media-manage:client-scope", err);
+      }
+    };
+    /** Write gate for the post of a link (restricted callers only); null = allowed. */
+    const linkWriteGate = async (
+      scope: ClientScope,
+      workspaceId: string,
+      linkId: number,
+      notFound: Response,
+    ): Promise<Response | null> => {
+      if (scope.all) return null;
+      const { data: l } = await svc.from("post_file_links").select("post_id")
+        .eq("id", linkId).eq("conta_id", workspaceId).maybeSingle();
+      const { data: p } = l?.post_id
+        ? await svc.from("workflow_posts").select("cliente_id, responsavel_id")
+          .eq("id", l.post_id).eq("conta_id", workspaceId).maybeSingle()
+        : { data: null };
+      const vis = p ? rowVisibility(scope, p, user.id) : "hidden";
+      if (vis === "hidden") return notFound;
+      if (vis === "own_only") return json({ error: CLIENT_SCOPE_MESSAGE }, 403);
+      return null;
+    };
+    const readable = (scope: ClientScope, p: { cliente_id?: number | null; responsavel_id?: number | null }) =>
+      rowVisibility(scope, p, user.id) !== "hidden";
+
     const requestUrl = new URL(req.url);
     const parts = requestUrl.pathname.split("/").filter(Boolean);
     const fnIdx = parts.indexOf("post-media-manage");
@@ -114,6 +157,15 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
         body.expected_r2_key.length > 2048) {
         return json({ error: "Invalid replacement" }, 400);
       }
+      const replaceScope = await scopeFor(profile.active_workspace_id);
+      if (replaceScope instanceof Response) return replaceScope;
+      const replaceGate = await linkWriteGate(
+        replaceScope,
+        profile.active_workspace_id,
+        linkId,
+        json({ error: "Media not found" }, 404),
+      );
+      if (replaceGate) return replaceGate;
       try {
         // The RPC locks the post/link/files and rechecks membership and ownership inside
         // the transaction. A preflight SELECT alone would race a publish or another edit.
@@ -138,6 +190,8 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
     }
 
     if (!profile.conta_id) return json({ error: "Profile not found" }, 403);
+    const scope = await scopeFor(profile.conta_id);
+    if (scope instanceof Response) return scope;
 
     if (req.method === "GET") {
       const workflowIdsParam = requestUrl.searchParams.get("workflow_ids");
@@ -145,12 +199,13 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
         const workflowIds = workflowIdsParam.split(",").map(Number).filter((n) => Number.isFinite(n));
         if (workflowIds.length === 0) return json({ covers: [] });
 
-        const { data: posts } = await svc.from("workflow_posts")
-          .select("id, workflow_id, ordem")
+        const { data: allPosts } = await svc.from("workflow_posts")
+          .select("id, workflow_id, ordem, cliente_id, responsavel_id")
           .in("workflow_id", workflowIds)
           .eq("conta_id", profile.conta_id)
           .order("ordem", { ascending: true });
-        if (!posts || posts.length === 0) return json({ covers: [] });
+        const posts = (allPosts ?? []).filter((p: any) => readable(scope, p));
+        if (posts.length === 0) return json({ covers: [] });
 
         const postIds = posts.map((p: any) => p.id);
         const { data: links } = await svc.from("post_file_links")
@@ -201,10 +256,10 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
 
         // Ownership: only cover media for this account's posts.
         const { data: ownedPosts } = await svc.from("workflow_posts")
-          .select("id")
+          .select("id, cliente_id, responsavel_id")
           .in("id", postIds)
           .eq("conta_id", profile.conta_id);
-        const ownedIds = (ownedPosts ?? []).map((p: any) => p.id);
+        const ownedIds = (ownedPosts ?? []).filter((p: any) => readable(scope, p)).map((p: any) => p.id);
         if (ownedIds.length === 0) return json({ covers: [] });
 
         const { data: links } = await svc.from("post_file_links")
@@ -232,8 +287,11 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
       const postId = Number(requestUrl.searchParams.get("post_id"));
       if (!postId) return json({ error: "post_id required" }, 400);
 
-      const { data: post } = await svc.from("workflow_posts").select("conta_id").eq("id", postId).single();
-      if (!post || post.conta_id !== profile.conta_id) return json({ error: "Post not found" }, 404);
+      const { data: post } = await svc.from("workflow_posts").select("conta_id, cliente_id, responsavel_id")
+        .eq("id", postId).single();
+      if (!post || post.conta_id !== profile.conta_id || !readable(scope, post)) {
+        return json({ error: "Post not found" }, 404);
+      }
 
       const { data: links } = await svc.from("post_file_links")
         .select("*, files(*)")
@@ -256,6 +314,9 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
 
     const { data: link } = await svc.from("post_file_links").select("*, files(*)").eq("id", linkId).single();
     if (!link || link.conta_id !== profile.conta_id) return json({ error: "Not found" }, 404);
+    // Every route below changes the post's media (or presigns a write for it): no "é dele".
+    const linkGate = await linkWriteGate(scope, profile.conta_id, linkId, json({ error: "Not found" }, 404));
+    if (linkGate) return linkGate;
     const file = (link as any).files;
 
     if (req.method === "PATCH") {

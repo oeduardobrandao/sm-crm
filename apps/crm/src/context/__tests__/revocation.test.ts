@@ -1617,3 +1617,136 @@ describe('MODULE_QUERY_KEYS', () => {
     );
   });
 });
+
+// Acesso por cliente: the wm: payload carries client_scope/client_scope_rev
+// but never the assignment list (that lives in workspace_member_clientes,
+// which this client does not subscribe to). The RPC bumps client_scope_rev on
+// every scope/list change, so a rev-only UPDATE must refetch the membership
+// and purge every client-dependent cache.
+describe('live revocation handler — client scope (acesso por cliente)', () => {
+  const CLIENT_MODULES = [
+    'clientes',
+    'entregas',
+    'calendario',
+    'aprovacoes',
+    'arquivos',
+    'ideias',
+    'tarefas',
+    'analytics',
+    'financeiro',
+    'contratos',
+  ] as const;
+
+  async function hydrateScopedAgent(userId: string, contaId: string) {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: userId });
+    mockedSupabase.__setCurrentProfile({
+      id: userId,
+      nome: 'Agente Restrito',
+      role: 'agent',
+      conta_id: contaId,
+    });
+    mockMembershipGetUser.mockResolvedValue({ data: { user: { id: userId } } });
+    mockGetContaId.mockResolvedValue(contaId);
+    mockMaybeSingle.mockResolvedValue({
+      data: {
+        role: 'agent',
+        can_see_financials: false,
+        role_id: null,
+        workspace_roles: null,
+        client_scope: 'atribuidos',
+        client_scope_rev: 1,
+        workspace_member_clientes: [{ cliente_id: 1 }, { cliente_id: 2 }],
+      },
+      error: null,
+    });
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    for (const module of CLIENT_MODULES) {
+      for (const key of MODULE_QUERY_KEYS[module]) {
+        queryClient.setQueryData([key], ['cached-value']);
+      }
+    }
+    // Outside the client-dependent modules: must survive.
+    queryClient.setQueryData(['leads'], ['cached-leads']);
+
+    renderWithAuth(queryClient);
+    await waitFor(() => {
+      expect(screen.getByTestId('workspaceRole')).toHaveTextContent('agent');
+    });
+    await waitFor(() => {
+      expect(mockedSupabase.__getWorkspaceMemberSubscription()).not.toBeNull();
+    });
+    return queryClient;
+  }
+
+  it('a realtime UPDATE carrying only a new client_scope_rev refetches and purges the client query keys', async () => {
+    const queryClient = await hydrateScopedAgent('user-90', 'conta-90');
+    const removeSpy = vi.spyOn(queryClient, 'removeQueries');
+    const callsBefore = mockMaybeSingle.mock.calls.length;
+
+    // The refetch: the owner removed cliente 2 (rev bumped to 2).
+    mockMaybeSingle.mockResolvedValue({
+      data: {
+        role: 'agent',
+        can_see_financials: false,
+        role_id: null,
+        workspace_roles: null,
+        client_scope: 'atribuidos',
+        client_scope_rev: 2,
+        workspace_member_clientes: [{ cliente_id: 1 }],
+      },
+      error: null,
+    });
+
+    await act(async () => {
+      mockedSupabase.__emitWorkspaceMemberUpdate({
+        workspace_id: 'conta-90',
+        role: 'agent',
+        can_see_financials: false,
+        role_id: null,
+        client_scope: 'atribuidos',
+        client_scope_rev: 2,
+      });
+    });
+
+    await waitFor(() => {
+      expect(removeSpy).toHaveBeenCalledWith({ queryKey: ['clientes'] });
+    });
+    // Went through getMyMembership() (the payload has no assignment list).
+    expect(mockMaybeSingle.mock.calls.length).toBeGreaterThan(callsBefore);
+    for (const module of CLIENT_MODULES) {
+      for (const key of MODULE_QUERY_KEYS[module]) {
+        expect(removeSpy).toHaveBeenCalledWith({ queryKey: [key] });
+        expect(queryClient.getQueryData([key])).toBeUndefined();
+      }
+    }
+    expect(queryClient.getQueryData(['leads'])).toEqual(['cached-leads']);
+    removeSpy.mockRestore();
+  });
+
+  it('an UPDATE with the same client_scope and rev applies directly and purges no client cache', async () => {
+    const queryClient = await hydrateScopedAgent('user-91', 'conta-91');
+    const removeSpy = vi.spyOn(queryClient, 'removeQueries');
+    const callsBefore = mockMaybeSingle.mock.calls.length;
+
+    await act(async () => {
+      mockedSupabase.__emitWorkspaceMemberUpdate({
+        workspace_id: 'conta-91',
+        role: 'agent',
+        can_see_financials: true,
+        role_id: null,
+        client_scope: 'atribuidos',
+        client_scope_rev: 1,
+      });
+    });
+
+    // Direct apply: no refetch, and the scope/ids carried forward mean no
+    // client-scope transition.
+    expect(mockMaybeSingle.mock.calls.length).toBe(callsBefore);
+    expect(removeSpy).not.toHaveBeenCalledWith({ queryKey: ['clientes'] });
+    expect(removeSpy).not.toHaveBeenCalledWith({ queryKey: ['tarefas'] });
+    expect(queryClient.getQueryData(['tarefas'])).toEqual(['cached-value']);
+    removeSpy.mockRestore();
+  });
+});

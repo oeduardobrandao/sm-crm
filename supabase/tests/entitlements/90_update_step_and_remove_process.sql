@@ -38,6 +38,8 @@ end $$;
 
 -- 90.0
 begin;
+-- hosted grants: the post_process_steps read rule reaches workflow_posts through post_processes
+select et_grant_hosted_parity();
 do $$
 declare e record; v_res jsonb; v_ev record;
 begin
@@ -66,6 +68,8 @@ rollback;
 
 -- 90.1
 begin;
+-- hosted grants: the post_process_steps read rule reaches workflow_posts through post_processes
+select et_grant_hosted_parity();
 do $$
 declare e record; g record; v_raised boolean := false;
 begin
@@ -105,6 +109,8 @@ rollback;
 
 -- 90.2
 begin;
+-- hosted grants: the post_process_steps read rule reaches workflow_posts through post_processes
+select et_grant_hosted_parity();
 do $$
 declare e record; v_res jsonb; v_status text; v_n int;
 begin
@@ -129,6 +135,8 @@ rollback;
 
 -- 90.3
 begin;
+-- hosted grants: the post_process_steps read rule reaches workflow_posts through post_processes
+select et_grant_hosted_parity();
 do $$
 declare e record; v_novo bigint; v_raised boolean := false;
 begin
@@ -160,6 +168,8 @@ rollback;
 
 -- 90.4
 begin;
+-- hosted grants: the post_process_steps read rule reaches workflow_posts through post_processes
+select et_grant_hosted_parity();
 do $$
 declare e record; g record; v_raised boolean := false;
 begin
@@ -192,6 +202,8 @@ rollback;
 
 -- 90.5
 begin;
+-- hosted grants: the post_process_steps read rule reaches workflow_posts through post_processes
+select et_grant_hosted_parity();
 do $$
 declare e record; f record; v_base int; v_n int; v_raised boolean := false;
 begin
@@ -238,6 +250,8 @@ rollback;
 
 -- 90.6
 begin;
+-- hosted grants: the post_process_steps read rule reaches workflow_posts through post_processes
+select et_grant_hosted_parity();
 do $$
 declare e record; v_res jsonb; v_n int;
 begin
@@ -268,6 +282,8 @@ rollback;
 
 -- 90.7
 begin;
+-- hosted grants: the post_process_steps read rule reaches workflow_posts through post_processes
+select et_grant_hosted_parity();
 do $$
 declare e record; v_raised boolean := false; v_revisao_antes int; v_revisao_depois int;
 begin
@@ -299,6 +315,8 @@ rollback;
 
 -- 90.8
 begin;
+-- hosted grants: the post_process_steps read rule reaches workflow_posts through post_processes
+select et_grant_hosted_parity();
 do $$
 declare e record; g record; v_raised boolean := false;
 begin

@@ -10,6 +10,13 @@
 // `GET /portfolio` skips the client steps: query syntax (400) -> plan flags -> the tenant-keyed read.
 
 import { checkRateLimit as realCheckRateLimit } from "../_shared/rate-limit.ts";
+import {
+  type ClientScope,
+  type ClientScopeLoader,
+  hasClientAccess,
+  visibleClientIds,
+  loadClientScope as realLoadClientScope,
+} from "../_shared/client-scope.ts";
 import { effectivePlanFeature as realEffectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { createJsonResponder, internalServerError, type JsonResponder } from "../_shared/http.ts";
 import { resolveTenant } from "../google-integration/tenant.ts";
@@ -49,6 +56,8 @@ export interface GbpAnalyticsDeps {
   effectivePlanFeature?: FeatureCheck;
   checkRateLimit?: RateLimitCheck;
   now?: () => Date;
+  /** Acesso por cliente: the caller's client scope (defaults to the real loader). */
+  loadClientScope?: ClientScopeLoader;
 }
 
 interface RouteContext {
@@ -56,6 +65,8 @@ interface RouteContext {
   json: JsonResponder;
   url: URL;
   contaId: string;
+  /** Client scope of the caller (acesso por cliente): a hidden client answers like a foreign one. */
+  scope: ClientScope;
   now: Date;
   deps: GbpAnalyticsDeps;
 }
@@ -89,6 +100,7 @@ async function requireOwnedClient(ctx: RouteContext, clientId: number): Promise<
     .maybeSingle();
   if (error) throw error;
   if (!client || client.conta_id !== ctx.contaId) return ctx.json({ error: "Unauthorized" }, 403);
+  if (!hasClientAccess(ctx.scope, clientId, false)) return ctx.json({ error: "Unauthorized" }, 403);
   return null;
 }
 
@@ -187,7 +199,7 @@ async function handlePortfolio(ctx: RouteContext): Promise<Response> {
   if (rawClient !== null && clientId === null) return badRequest(ctx, "invalid_client_id");
   const denied = await requireFeatures(ctx);
   if (denied) return denied;
-  return ctx.json(await buildGbpPortfolio(ctx.db, ctx.contaId, req, clientId, ctx.now));
+  return ctx.json(await buildGbpPortfolio(ctx.db, ctx.contaId, req, clientId, ctx.now, visibleClientIds(ctx.scope)));
 }
 
 const CLIENT_GET_ROUTES: Record<string, ClientRoute> = {
@@ -228,8 +240,10 @@ export function createGbpAnalyticsHandler(deps: GbpAnalyticsDeps): (req: Request
         return json({ error: "Rate limit exceeded" }, 429);
       }
 
+      // Acesso por cliente: a read error throws into the generic 500 below, never "all clients".
+      const scope = await (deps.loadClientScope ?? realLoadClientScope)(db, tenant.userId, tenant.contaId);
       const now = (deps.now ?? (() => new Date()))();
-      return await route(req, { db, json, url, contaId: tenant.contaId, now, deps }, path);
+      return await route(req, { db, json, url, contaId: tenant.contaId, scope, now, deps }, path);
     } catch (err) {
       return internalServerError(json, "gbp-analytics", err);
     }

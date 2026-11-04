@@ -68,6 +68,7 @@
     "title": "Financeiro",
     "navLabel": "Seções do financeiro",
     "configurar": "Configurar",
+    "scopedBadge": "Valores dos seus clientes",
     "tabs": {
       "rentabilidade": "Rentabilidade",
       "atribuicao": "Equipe por cliente",

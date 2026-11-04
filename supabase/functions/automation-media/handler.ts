@@ -7,6 +7,11 @@
 // CRM via PostgREST, e o CHECK de tenant do banco é o enforcement final.
 import { assertPlanFeature, FeatureDisabledError } from "../_shared/entitlements.ts";
 import { hasPermissionFor } from "../_shared/permissions.ts";
+import {
+  type ClientScopeLoader,
+  hasClientAccess,
+  loadClientScope as realLoadClientScope,
+} from "../_shared/client-scope.ts";
 
 const MAX_MEDIA_BYTES = 8 * 1024 * 1024; // limite de imagem da Meta
 const ALLOWED_MIME: Record<string, string> = {
@@ -25,6 +30,8 @@ export interface AutomationMediaDeps {
   trashObject: (key: string) => Promise<void>;
   copyObject: (sourceKey: string, destKey: string) => Promise<void>;
   randomUUID?: () => string;
+  /** Acesso por cliente; tests inject a fixed scope. */
+  loadClientScope?: ClientScopeLoader;
 }
 
 export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
@@ -222,6 +229,27 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
     if (route === "sign-view") {
       const key = String(body.key ?? "");
       if (!key.startsWith(tenantPrefix)) return json({ error: "invalid key" }, 400);
+      // Acesso por cliente: media used only by automations of clients the member cannot see answers
+      // like a key outside the workspace. Media no automation uses yet (just uploaded) has no client
+      // and stays viewable. A read error is a generic 500, never a signed URL.
+      try {
+        const scope = await (deps.loadClientScope ?? realLoadClientScope)(svc, user.id, contaId);
+        if (!scope.all) {
+          const { data: refs, error: refsErr } = await svc
+            .from("instagram_comment_automations")
+            .select("client_id")
+            .eq("conta_id", contaId)
+            .eq("dm_media->>key", key);
+          if (refsErr) throw new Error(refsErr.message ?? "refs read failed");
+          const list = (refs ?? []) as { client_id: number | null }[];
+          if (list.length > 0 && !list.some((r) => hasClientAccess(scope, r.client_id, false))) {
+            return json({ error: "invalid key" }, 400);
+          }
+        }
+      } catch (e) {
+        console.error("[automation-media] sign-view scope:", e instanceof Error ? e.message : String(e));
+        return json({ error: "internal" }, 500);
+      }
       return json({ url: await deps.signGetUrl(key) });
     }
 

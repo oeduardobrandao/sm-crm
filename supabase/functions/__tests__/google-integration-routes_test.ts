@@ -5,6 +5,7 @@
 import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createGoogleIntegrationHandler, type GoogleIntegrationDeps } from "../google-integration/handlers.ts";
+import { allClientsScope, type ClientScope } from "../_shared/client-scope.ts";
 import { listEligibleLocations, listGbpLocations } from "../google-integration/locations.ts";
 import { encryptGoogleToken, getFreshGoogleToken, GoogleApiError } from "../_shared/google.ts";
 import * as gbpApi from "../_shared/gbp-api.ts";
@@ -31,6 +32,8 @@ function makeHandler(db: Mock, extra: Partial<GoogleIntegrationDeps> = {}) {
     buildCorsHeaders: () => ({}),
     // deno-lint-ignore no-explicit-any
     createServiceDb: () => db as any,
+    // Acesso por cliente: unrestricted unless a test overrides it.
+    loadClientScope: () => Promise.resolve(allClientsScope()),
     ...extra,
   });
 }
@@ -1510,6 +1513,61 @@ Deno.test("sync_youtube_revoked_drains_pdfs: a revoked outcome drains this tenan
   assertEquals(await res3.json(), { ok: true, status: "revoked" });
 });
 
+// ─── acesso por cliente ─────────────────────────────────────────────────────────
+
+const restrictedTo = (ids: number[]) => () =>
+  Promise.resolve<ClientScope>({ all: false, ids: new Set(ids), membroIds: new Set<number>() });
+
+Deno.test("scope_hidden_client: restricted member gets the foreign-client answer on summary and sync", async () => {
+  const db = routeDb();
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([99]) })(req("GET", `/summary/${CLIENT}`));
+  assertEquals(res.status, 404);
+  assertEquals(await res.json(), { error: "not_found" });
+
+  const sdb = routeDb();
+  const s = fakeSyncs();
+  const sres = await makeHandler(sdb, { ...s.deps, loadClientScope: restrictedTo([99]) })(
+    req("POST", `/sync/youtube/${CLIENT}`),
+  );
+  assertEquals(sres.status, 403);
+  assertEquals(await sres.json(), { error: "forbidden" });
+  assertEquals(rpcCalls(sdb, "effective_plan_feature").length, 0);
+});
+
+Deno.test("scope_assigned_client: restricted member on an assigned client reaches the route", async () => {
+  const db = routeDb();
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([CLIENT]) })(req("GET", `/summary/${CLIENT}`));
+  assertEquals(res.status, 200);
+});
+
+Deno.test("scope_read_error: a scope read error is a generic 500", async () => {
+  const db = routeDb();
+  const res = await makeHandler(db, { loadClientScope: () => Promise.reject(new Error("boom")) })(
+    req("GET", `/summary/${CLIENT}`),
+  );
+  assertEquals(res.status, 500);
+});
+
+Deno.test("scope_locations_hide_other_client_name: a hidden client's name is never listed", async () => {
+  const db = routeDb();
+  await queueConnection(db);
+  db.queue("gbp_locations", "select", {
+    data: [{ location_name: "locations/c", client_id: 7, connection_id: CONN_1, status: "active" }],
+  });
+  db.queue("clientes", "select", { data: [{ id: 7, nome: "Clínica X" }] });
+  const f = stubGoogle({ accounts: [{ name: "accounts/1" }], locations: { "accounts/1": [loc("c", "C")] } });
+  try {
+    const res = await makeHandler(db, { loadClientScope: restrictedTo([CLIENT]) })(
+      req("GET", `/locations/${CLIENT}?connection=${CONN_1}`),
+    );
+    assertEquals(res.status, 200);
+    const { options } = await res.json();
+    assertEquals([options[0].linkedClientId, options[0].linkedClientName, options[0].eligible], [7, null, false]);
+  } finally {
+    f.restore();
+  }
+});
+
 // ─── Contas conectadas: GET /accounts, POST /accounts/:id/disconnect ─────────────
 // Spec docs/superpowers/specs/2026-11-04-google-account-disconnect-design.md §4 and §7. These
 // routes take no clientId, so the fixture is tenant-only (no `clientes` queue). The mock's
@@ -1902,4 +1960,48 @@ Deno.test("accounts_routes_dispatch: wrong method or shape -> 404 not_found", as
   assertEquals(res2.status, 404);
   const res3 = await makeHandler(tenantDb())(req("POST", `/accounts/${CONN_1}/remove`));
   assertEquals(res3.status, 404);
+});
+
+Deno.test("accounts_list_scope: a restricted member sees only his clients' channels and units", async () => {
+  const db = tenantDb();
+  db.queue("google_connections", "select", {
+    data: [{ id: CONN_1, email: "agencia@example.com", display_name: null, status: "active", created_at: "2026-10-30T14:02:11+00:00" }],
+  });
+  db.queue("youtube_channels", "select", {
+    data: [
+      { connection_id: CONN_1, channel_id: "UC-a", title: "Canal A", handle: null, client_id: 1, authorization_status: "active" },
+      { connection_id: CONN_1, channel_id: "UC-b", title: "Canal B", handle: null, client_id: 2, authorization_status: "active" },
+    ],
+  });
+  db.queue("gbp_locations", "select", {
+    data: [{ id: "loc-1", connection_id: CONN_1, title: "Loja", address_line: null, client_id: 1, status: "active" }],
+  });
+  db.queue("clientes", "select", { data: [{ id: 2, nome: "Cliente B" }] });
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([2]) })(req("GET", "/accounts"));
+  assertEquals(res.status, 200);
+  const [account] = (await res.json()).accounts;
+  assertEquals(account.youtube.map((c: { clientId: number }) => c.clientId), [2]);
+  assertEquals(account.gbp, []);
+  // the hidden client's id never reaches the clientes name read
+  const [clientes] = db.calls.filter((c) => c.table === "clientes");
+  assertEquals(clientes.modifiers.filter((m) => m.method === "in").map((m) => m.args), [["id", [2]]]);
+});
+
+Deno.test("accounts_disconnect_scope: a restricted member cannot disconnect the account (no slot, no RPC)", async () => {
+  const db = tenantDb();
+  const res = await makeHandler(db, { loadClientScope: restrictedTo([CLIENT]) })(req("POST", DISCONNECT_PATH));
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: "client_scope_restricted" });
+  assertEquals(rpcCalls(db, "check_rate_limit").length, 0);
+  assertEquals(rpcCalls(db, "google_disconnect_identity").length, 0);
+});
+
+Deno.test("accounts_scope_read_error: a scope read error is a generic 500 on list and disconnect", async () => {
+  const boom = () => Promise.reject(new Error("boom"));
+  const list = await makeHandler(tenantDb(), { loadClientScope: boom })(req("GET", "/accounts"));
+  assertEquals(list.status, 500);
+  const db = tenantDb();
+  const disc = await makeHandler(db, { loadClientScope: boom })(req("POST", DISCONNECT_PATH));
+  assertEquals(disc.status, 500);
+  assertEquals(rpcCalls(db, "google_disconnect_identity").length, 0);
 });

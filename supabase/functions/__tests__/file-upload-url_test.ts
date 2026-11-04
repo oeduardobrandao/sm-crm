@@ -1,15 +1,21 @@
 import { assertEquals, readJson } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createFileUploadUrlHandler } from "../file-upload-url/handler.ts";
+import { allClientsScope, type ClientScope } from "../_shared/client-scope.ts";
 
 const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://app.mesaas.com" });
 
-function makeHandler(db: ReturnType<typeof createSupabaseQueryMock>, opts?: { randomUUID?: () => string }) {
+function makeHandler(
+  db: ReturnType<typeof createSupabaseQueryMock>,
+  opts?: { randomUUID?: () => string; loadClientScope?: () => Promise<ClientScope> },
+) {
   return createFileUploadUrlHandler({
     buildCorsHeaders,
     createDb: () => db as never,
     signPutUrl: async (key, _mime, size) => `https://r2.example.com/put/${key}?len=${size}`,
     randomUUID: opts?.randomUUID ?? (() => "test-uuid-1234"),
+    // Acesso por cliente: unrestricted unless a test passes a scope.
+    loadClientScope: opts?.loadClientScope ?? (() => Promise.resolve(allClientsScope())),
   });
 }
 
@@ -325,4 +331,48 @@ Deno.test("file-upload-url: accepts valid video MIME type", async () => {
     thumbnail: { mime_type: "image/jpeg", size_bytes: 1000 },
   }));
   assertEquals(res.status, 200);
+});
+
+// ─── acesso por cliente ─────────────────────────────────────────
+
+Deno.test("file-upload-url: restricted upload into a hidden client's folder answers like a missing folder", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuthAndProfile(db);
+  db.queue("folders", "select", { data: { conta_id: "conta-1" }, error: null }, {
+    data: [{ id: 99, conta_id: "conta-1", source_type: "client", source_id: 42 }],
+    error: null,
+  });
+  db.queueRpc("folder_breadcrumbs", { data: [{ id: 99 }], error: null });
+  const scope = () => Promise.resolve<ClientScope>({ all: false, ids: new Set([7]), membroIds: new Set() });
+  const res = await makeHandler(db, { loadClientScope: scope })(
+    authedRequest({ filename: "f.png", mime_type: "image/png", size_bytes: 1000, folder_id: 99 }),
+  );
+  assertEquals(res.status, 404);
+  assertEquals((await readJson(res)).error, "Folder not found");
+});
+
+Deno.test("file-upload-url: a scope read error is a 500, no upload URL", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuthAndProfile(db);
+  db.queue("folders", "select", { data: { conta_id: "conta-1" }, error: null });
+  const res = await makeHandler(db, { loadClientScope: () => Promise.reject(new Error("boom")) })(
+    authedRequest({ filename: "f.png", mime_type: "image/png", size_bytes: 1000, folder_id: 99 }),
+  );
+  assertEquals(res.status, 500);
+});
+
+Deno.test("file-upload-url: restricted upload into the Clientes root (no client) is limitado (C3)", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuthAndProfile(db);
+  db.queue("folders", "select", { data: { conta_id: "conta-1" }, error: null }, {
+    data: [{ id: 1, conta_id: "conta-1", source_type: "root_clients", source_id: null }],
+    error: null,
+  });
+  db.queueRpc("folder_breadcrumbs", { data: [{ id: 1 }], error: null });
+  const scope = () => Promise.resolve<ClientScope>({ all: false, ids: new Set([7]), membroIds: new Set() });
+  const res = await makeHandler(db, { loadClientScope: scope })(
+    authedRequest({ filename: "f.png", mime_type: "image/png", size_bytes: 1000, folder_id: 1 }),
+  );
+  assertEquals(res.status, 403);
+  assertEquals((await readJson(res)).error, "Seu acesso é limitado aos clientes atribuídos.");
 });

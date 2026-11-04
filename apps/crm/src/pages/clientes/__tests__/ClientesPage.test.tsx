@@ -1066,3 +1066,113 @@ describe('ClientesPage — Vidro toolbar', () => {
     expect(screen.getAllByRole('button', { name: 'Novo Cliente' })).toHaveLength(1);
   });
 });
+
+describe('ClientesPage — membro restrito a clientes atribuídos', () => {
+  beforeEach(() => {
+    mockedGetClientes.mockResolvedValue([makeCliente({ id: 5, nome: 'Gamma Care', sigla: 'GC' })]);
+  });
+
+  it('restricted_hides_novo_cliente: no Novo Cliente nor Importar CSV, edit stays', async () => {
+    const membership = fakeMembership({ role: 'agent', client_scope: 'atribuidos' });
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: false,
+      can: makeCan(membership),
+      membership,
+    } as never);
+
+    renderPage();
+
+    await screen.findByRole('button', { name: 'Gamma Care' });
+    expect(screen.queryByRole('button', { name: 'Novo Cliente' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Importar CSV' })).not.toBeInTheDocument();
+    const card = getClientCard('Gamma Care');
+    expect(within(card).getByRole('button', { name: 'Editar' })).toBeInTheDocument();
+  });
+
+  it('restricted_shows_badge: shows the assigned-clients line', async () => {
+    const membership = fakeMembership({ role: 'admin', client_scope: 'atribuidos' });
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: false,
+      can: makeCan(membership),
+      membership,
+    } as never);
+
+    renderPage();
+
+    await screen.findByRole('button', { name: 'Gamma Care' });
+    expect(screen.getByText('Você vê os clientes atribuídos a você.')).toBeInTheDocument();
+  });
+
+  it('todos_unchanged: a todos member keeps Novo Cliente and no badge', async () => {
+    const membership = fakeMembership({ role: 'agent', client_scope: 'todos' });
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: false,
+      can: makeCan(membership),
+      membership,
+    } as never);
+
+    renderPage();
+
+    await screen.findByRole('button', { name: 'Gamma Care' });
+    expect(screen.getByRole('button', { name: 'Novo Cliente' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Importar CSV' })).toBeInTheDocument();
+    expect(screen.queryByText('Você vê os clientes atribuídos a você.')).not.toBeInTheDocument();
+  });
+
+  it('an owner with a stale atribuidos scope is never restricted', async () => {
+    const membership = fakeMembership({ role: 'owner', client_scope: 'atribuidos' });
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: true,
+      can: makeCan(membership),
+      membership,
+    } as never);
+
+    renderPage();
+
+    await screen.findByRole('button', { name: 'Gamma Care' });
+    expect(screen.getByRole('button', { name: 'Novo Cliente' })).toBeInTheDocument();
+    expect(screen.queryByText('Você vê os clientes atribuídos a você.')).not.toBeInTheDocument();
+  });
+});
+
+describe('ClientesPage — ?novo=1 deep link', () => {
+  function renderAt(path: string) {
+    const queryClient = createTestQueryClient();
+    render(
+      <MemoryRouter initialEntries={[path]}>
+        <QueryClientProvider client={queryClient}>
+          <ClientesPage />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  beforeEach(() => {
+    mockedGetClientes.mockResolvedValue([makeCliente({ id: 5, nome: 'Gamma Care', sigla: 'GC' })]);
+  });
+
+  it('does not open the create dialog for a member restricted to assigned clients', async () => {
+    const membership = fakeMembership({ role: 'agent', client_scope: 'atribuidos' });
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: false,
+      can: makeCan(membership),
+      membership,
+    } as never);
+    renderAt('/clientes?novo=1');
+
+    await screen.findByRole('button', { name: 'Gamma Care' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('todos_unchanged: still opens the create dialog for an unscoped member', async () => {
+    const membership = fakeMembership({ role: 'agent', client_scope: 'todos' });
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: false,
+      can: makeCan(membership),
+      membership,
+    } as never);
+    renderAt('/clientes?novo=1');
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+});

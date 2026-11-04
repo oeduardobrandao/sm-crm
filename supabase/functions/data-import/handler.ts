@@ -1,4 +1,9 @@
-import { createJsonResponder } from "../_shared/http.ts";
+import { createJsonResponder, internalServerError } from "../_shared/http.ts";
+import {
+  CLIENT_SCOPE_MESSAGE,
+  type ClientScopeLoader,
+  loadClientScope as realLoadClientScope,
+} from "../_shared/client-scope.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { refineMapping } from "../_shared/import-ai.ts";
 import type { ClienteRef, CommitContainerRow, CommitEntregaRow, CommitRow } from "./types.ts";
@@ -19,6 +24,8 @@ interface Deps {
   createDb: () => DbClient;
   resolveEntitlements: (svc: DbClient, workspaceId: string) => Promise<Entitlements | null>;
   geminiKey: string | null;
+  /** Acesso por cliente: the caller's client scope (defaults to the real loader). */
+  loadClientScope?: ClientScopeLoader;
 }
 
 /** Everything an action handler needs from the authenticated request. */
@@ -654,6 +661,17 @@ export function createDataImportHandler(deps: Deps) {
       .maybeSingle();
     if (!membership) return json({ error: "Profile not found" }, 403);
     const conta_id = activeWorkspaceId;
+
+    // Acesso por cliente: an import creates clients and writes posts, deliveries and ideias into
+    // existing ones, so it requires client_scope 'todos' (a restricted member never creates a
+    // client). Every action is refused, undo and commit included: they write the same rows. A scope
+    // read error is a generic 500, never "all clients".
+    try {
+      const scope = await (deps.loadClientScope ?? realLoadClientScope)(db, user.id, conta_id);
+      if (!scope.all) return json({ error: CLIENT_SCOPE_MESSAGE }, 403);
+    } catch (err) {
+      return internalServerError(json, "data-import:client-scope", err);
+    }
 
     const parts = new URL(req.url).pathname.split("/").filter(Boolean);
     // Guard the indexOf: when the segment is absent it returns -1 and a bare

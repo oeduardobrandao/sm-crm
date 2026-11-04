@@ -96,6 +96,7 @@ import { handleEntitlementMutationError } from '@/lib/entitlement-toast';
 import { useAuth } from '../../context/AuthContext';
 import { stripFinancialFields } from '@/lib/financialAccess';
 import { captureEvent } from '@/lib/analytics';
+import { isClientScoped } from '@/lib/permissions';
 import { LeadsPhone } from './phone/LeadsPhone';
 import {
   CANAL_KEYS,
@@ -155,12 +156,15 @@ export default function LeadsPage() {
   // tablet layout; 901+ the table.
   const isPhone = !useIsDesktop(768);
   const qc = useQueryClient();
-  const { canSeeFinancials, profile, can } = useAuth();
+  const { canSeeFinancials, profile, can, membership } = useAuth();
   // No role check existed here before Task 14 -- the route itself already
   // blocks a legacy agent (AGENT_ROLE_PRESET.leads is 'none', routePermissions.ts
   // gates /leads on leads:ver), so this only starts to matter for a custom
   // role that reaches this page with leads:ver but not leads:editar.
   const canEditLeads = can('leads', 'editar') === true;
+  // Acesso por cliente: a member restricted to assigned clients never creates a client,
+  // so converting a lead (which inserts one) is off for them.
+  const canConvertLeads = canEditLeads && !isClientScoped(membership);
   const { t, i18n } = useTranslation('leads');
   const { t: tc } = useTranslation();
   const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
@@ -482,6 +486,7 @@ export default function LeadsPage() {
           sortDir={sortDir}
           onSortDirChange={setSortDir}
           canEdit={canEditLeads}
+          canConvert={canConvertLeads}
           atLimit={leadsAtLimit}
           used={usedLeads}
           usageLimit={leadsCount !== undefined && limits ? limits.max_leads : undefined}
@@ -692,14 +697,16 @@ export default function LeadsPage() {
                         <TableCell>
                           {canEditLeads && (
                             <div className="flex gap-1" style={{ justifyContent: 'flex-end' }}>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                title={t('convertToClient')}
-                                onClick={() => openConvert(l)}
-                              >
-                                <UserPlus className="h-4 w-4" />
-                              </Button>
+                              {canConvertLeads && (
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  title={t('convertToClient')}
+                                  onClick={() => openConvert(l)}
+                                >
+                                  <UserPlus className="h-4 w-4" />
+                                </Button>
+                              )}
                               <Button size="icon" variant="ghost" onClick={() => openEdit(l)}>
                                 <Edit2 className="h-4 w-4" />
                               </Button>
@@ -782,10 +789,12 @@ export default function LeadsPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openConvert(l)}>
-                              <UserPlus className="h-4 w-4 mr-2" />
-                              {t('convertToClient')}
-                            </DropdownMenuItem>
+                            {canConvertLeads && (
+                              <DropdownMenuItem onClick={() => openConvert(l)}>
+                                <UserPlus className="h-4 w-4 mr-2" />
+                                {t('convertToClient')}
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem onClick={() => openEdit(l)}>
                               <Edit2 className="h-4 w-4 mr-2" />
                               {tc('actions.edit')}

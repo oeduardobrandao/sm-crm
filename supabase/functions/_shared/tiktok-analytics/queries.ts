@@ -215,7 +215,15 @@ function ratioOfSums(rows: TikTokVideoRow[]): number | null {
 
 /** Per-account rows, totals and ranked videos for the active clients of `contaId` with a
  * connected TikTok (expired accounts included, flagged by their status). */
-export async function buildPortfolio(db: Db, contaId: string, w: AnalyticsWindow, now: Date): Promise<TikTokPortfolio> {
+/** `clientIds`: the clients the caller may see (acesso por cliente); null = every client of the
+ * workspace, [] = none (no query runs). */
+export async function buildPortfolio(
+  db: Db,
+  contaId: string,
+  w: AnalyticsWindow,
+  now: Date,
+  clientIds: number[] | null = null,
+): Promise<TikTokPortfolio> {
   const empty: TikTokPortfolio = {
     window: w,
     totals: { accounts: 0, followers: 0, views: 0, engagement_rate: null, posts_count: 0 },
@@ -224,11 +232,14 @@ export async function buildPortfolio(db: Db, contaId: string, w: AnalyticsWindow
     bottomVideos: [],
     videos: [],
   };
+  if (clientIds !== null && clientIds.length === 0) return empty;
 
   const { data: clients, error: clientsError } = await db.from("clientes").select("id, nome, especialidade")
     .eq("conta_id", contaId).eq("status", "ativo");
   if (clientsError) throw clientsError;
-  const clientList = (clients ?? []) as { id: number; nome: string | null; especialidade: string | null }[];
+  const visible = clientIds === null ? null : new Set(clientIds);
+  const clientList = ((clients ?? []) as { id: number; nome: string | null; especialidade: string | null }[])
+    .filter((c) => visible === null || visible.has(Number(c.id)));
   if (clientList.length === 0) return empty;
 
   const { data: accountData, error: accountsError } = await db.from("tiktok_accounts").select(TIKTOK_ACCOUNT_COLUMNS)

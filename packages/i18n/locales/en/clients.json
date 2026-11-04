@@ -3,6 +3,7 @@
   "tooltip": "Manage all clients and active contracts.",
   "csvTooltip": "Columns: nome*, email, telefone, plano, valor_mensal, notion_page_url, data_pagamento",
   "newClient": "New Client",
+  "scopedNotice": "You see the clients assigned to you.",
   "searchPlaceholder": "Search by name or email...",
   "sort": {
     "monthlyValue": "Monthly Value",

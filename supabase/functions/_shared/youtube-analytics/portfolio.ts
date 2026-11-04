@@ -124,14 +124,24 @@ export function channelPortfolioRow(
   };
 }
 
-export async function buildYtPortfolio(db: Db, contaId: string, req: YtWindowRequest, now: Date): Promise<YtPortfolio> {
-  const clients = await fetchAllRows<{ id: number; nome: string | null }>((from, to) =>
+/** `visibleClientIds`: a restricted member's assigned clients (acesso por cliente), applied in code
+ * like the tenant filter below; null = every client of the workspace. */
+export async function buildYtPortfolio(
+  db: Db,
+  contaId: string,
+  req: YtWindowRequest,
+  now: Date,
+  visibleClientIds: number[] | null = null,
+): Promise<YtPortfolio> {
+  const visible = visibleClientIds === null ? null : new Set(visibleClientIds);
+  const allClients = await fetchAllRows<{ id: number; nome: string | null }>((from, to) =>
     db.from("clientes").select("id, nome")
       .eq("conta_id", contaId)
       .eq("status", "ativo")
       .order("id", { ascending: true })
       .range(from, to)
   );
+  const clients = visible === null ? allClients : allClients.filter((c) => visible.has(c.id));
   if (clients.length === 0) return { channels: [] };
   const clientName = new Map(clients.map((c) => [c.id, c.nome ?? ""]));
 

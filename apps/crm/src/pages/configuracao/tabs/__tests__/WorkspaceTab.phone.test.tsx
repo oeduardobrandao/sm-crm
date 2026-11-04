@@ -105,3 +105,44 @@ describe('WorkspaceTab on phones', () => {
     expect(screen.queryByRole('button', { name: 'Salvar nome do workspace' })).toBeNull();
   });
 });
+
+describe('WorkspaceTab on phones — import cell, acesso por cliente', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    storeMock.getCurrentWorkspace.mockResolvedValue({
+      id: 'ws-1',
+      name: 'Agência Norte',
+      logo_url: null,
+    });
+  });
+
+  function renderScoped(clientScope: 'todos' | 'atribuidos') {
+    const membership = fakeMembership({ role: 'admin', client_scope: clientScope });
+    useAuthMock.mockReturnValue({
+      profile: { id: 'user-1', conta_id: 'ws-1' },
+      can: makeCan(membership),
+      membership,
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <WorkspaceTab />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  it('hides the import cell for an admin restricted to assigned clients', async () => {
+    renderScoped('atribuidos');
+    expect(await screen.findByDisplayValue('Agência Norte')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Abrir assistente de importação/ })).toBeNull();
+  });
+
+  it('todos_unchanged: keeps the import cell for an unscoped admin', async () => {
+    renderScoped('todos');
+    expect(
+      await screen.findByRole('link', { name: /Abrir assistente de importação/ }),
+    ).toHaveAttribute('href', '/importar');
+  });
+});

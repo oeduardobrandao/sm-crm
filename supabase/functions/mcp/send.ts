@@ -8,7 +8,7 @@ import { z } from "npm:zod@3";
 import { McpInputError } from "../_shared/mcp-token.ts";
 import { signSendNonce, verifySendNonce } from "../_shared/mcp-send-nonce.ts";
 import { appOnlyToolMeta, widgetOnly } from "./apps.ts";
-import type { Deps } from "./queries.ts";
+import { assertClientWrite, canReadPost, type Deps } from "./queries.ts";
 import { register } from "./register.ts";
 import type { ToolMeta } from "./tool-meta.ts";
 
@@ -83,6 +83,25 @@ export async function sendPostToClient(
     // The post id only: never the nonce, its payload or the secret.
     console.warn("[mcp] send nonce rejected", { post_id: a.post_id });
     throw new McpInputError(EXPIRED_CARD);
+  }
+  // Acesso por cliente: sending writes the post's status, so its client must be assigned (no
+  // "é dele"). Checked on every send: an assignment removed after the save still blocks it. A
+  // missing post is left to the RPC, as before.
+  const { data: post, error: postErr } = await d.db
+    .from("workflow_posts")
+    .select("id, cliente_id, responsavel_id")
+    .eq("conta_id", d.ctx.conta_id)
+    .eq("id", a.post_id)
+    .maybeSingle();
+  if (postErr) {
+    console.error("[mcp] send_post_to_client post read failed:", (postErr as any).message ?? "unknown");
+    throw new McpInputError(SEND_FAILED);
+  }
+  if (post) {
+    // A post the request cannot read answers exactly like a missing one: the RPC finds no row and
+    // returns 'stale'. The user's own post in a hidden client is refused (no "é dele" on writes).
+    if (!(await canReadPost(d, post as any))) return { card: "send_result", v: 1, post_id: a.post_id, outcome: "stale" };
+    await assertClientWrite(d, (post as any).cliente_id ?? null);
   }
   if (await hasVideoWithoutCover(d, a.post_id)) throw new McpInputError(VIDEO_WITHOUT_COVER);
 

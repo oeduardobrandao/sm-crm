@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
+import { FinanceiroScopeBadge } from '../v2/FinanceiroScopeBadge';
 import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
 import { SegmentedControl } from '@/components/mobile/SegmentedControl';
 import { GroupedList, Cell } from '@/components/mobile/GroupedList';
@@ -46,6 +47,8 @@ export interface FinanceiroPhoneProps {
   isLoading: boolean;
   transacoes: Transacao[];
   canSeeFinancials: FinancialAccess;
+  /** Member restricted to assigned clients: shows "Valores dos seus clientes". */
+  clientScoped?: boolean;
   kpis: FinanceiroKpis;
   filter: FinanceiroFilter;
   onFilterChange: (filter: FinanceiroFilter) => void;
@@ -194,6 +197,7 @@ export function FinanceiroPhone(props: FinanceiroPhoneProps) {
     isLoading,
     transacoes,
     canSeeFinancials,
+    clientScoped = false,
     kpis,
     filter,
     onFilterChange,
@@ -341,6 +345,7 @@ export function FinanceiroPhone(props: FinanceiroPhoneProps) {
             </>
           }
         >
+          {clientScoped && <FinanceiroScopeBadge className="self-start" />}
           {searchToggle.open && (
             <PhoneSearchField
               inputRef={searchToggle.inputRef}

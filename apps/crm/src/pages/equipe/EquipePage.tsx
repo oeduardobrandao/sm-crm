@@ -64,7 +64,9 @@ import {
   assertNoFinancialColumns,
   formatFinancialBRL,
   stripFinancialFields,
+  type FinancialAccess,
 } from '@/lib/financialAccess';
+import { isClientScoped } from '@/lib/permissions';
 import { derivePendingInvites } from './inviteSupport';
 import { useOpenParam } from '../../hooks/useOpenParam';
 import { useWorkspaceMemberEmails } from '@/hooks/useWorkspaceMemberEmails';
@@ -82,7 +84,10 @@ export default function EquipePage() {
   const qc = useQueryClient();
   const isDesktop = useIsDesktop();
   const navigate = useNavigate();
-  const { canSeeFinancials, can, profile } = useAuth();
+  const { canSeeFinancials: financialAccess, can, profile, membership } = useAuth();
+  // A member restricted to assigned clients reads membros_v.custo_mensal as NULL and cannot
+  // write it: member costs are masked (never a believable R$ 0) and left out of writes.
+  const canSeeFinancials: FinancialAccess = isClientScoped(membership) ? false : financialAccess;
   // Legacy chassis-role checks (agent-vs-not, owner-or-admin) both collapsed
   // onto the real authorization boundary: `manage-workspace-user`/
   // `invite-user` already enforce `equipe:editar` server-side (Task 11). A

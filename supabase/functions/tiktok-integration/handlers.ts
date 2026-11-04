@@ -22,6 +22,11 @@ import {
   requireTikTokClientCredentials,
 } from "../_shared/tiktok.ts";
 import { createSignedState, verifySignedState } from "./oauth-state.ts";
+import {
+  type ClientScopeLoader,
+  hasClientAccess,
+  loadClientScope as realLoadClientScope,
+} from "../_shared/client-scope.ts";
 import { importTikTokVideos, cacheTikTokAvatar, refreshStoredPostMetrics, type ThumbnailStorage } from "./import.ts";
 
 type DbClient = {
@@ -40,7 +45,12 @@ export interface TikTokIntegrationDeps {
   createServiceDb: () => DbClient;
   /** Clock override for tests; defaults to the real time. */
   now?: () => Date;
+  /** Acesso por cliente: the caller's client scope (defaults to the real loader). */
+  loadClientScope?: ClientScopeLoader;
 }
+
+/** The authenticated caller plus a way to load their client scope in a workspace. */
+type Caller = { id: string; loadScope: ClientScopeLoader };
 
 const PROFILE_FIELDS =
   "open_id,union_id,avatar_url,display_name,username,profile_deep_link,follower_count,following_count,likes_count,video_count";
@@ -97,11 +107,24 @@ async function verifyClientOwnership(svc: DbClient, clientId: string, contaId: s
 async function requireOwnership(
   svc: DbClient,
   clientId: string,
-  userId: string,
+  user: Caller,
   cors: Record<string, string>,
 ): Promise<string | Response> {
-  const { data: profile } = await svc.from("profiles").select("conta_id").eq("id", userId).single();
+  const { data: profile } = await svc.from("profiles").select("conta_id").eq("id", user.id).single();
   if (!profile?.conta_id || !(await verifyClientOwnership(svc, clientId, profile.conta_id))) {
+    return json(cors, { error: true, message: "Unauthorized" }, 403);
+  }
+  // Acesso por cliente: a client outside the caller's scope answers exactly like a foreign one.
+  // A scope read error is a generic 500 (logged), never "all clients"; it is answered here so the
+  // outer catch's message sniffing ("expired") can never map it to TOKEN_EXPIRED.
+  let scope;
+  try {
+    scope = await user.loadScope(svc, user.id, profile.conta_id as string);
+  } catch (err) {
+    console.error("[tiktok-integration] client scope:", err instanceof Error ? err.message : String(err));
+    return json(cors, { error: true, message: "Erro interno" }, 500);
+  }
+  if (!hasClientAccess(scope, parseInt(clientId, 10), false)) {
     return json(cors, { error: true, message: "Unauthorized" }, 403);
   }
   return profile.conta_id as string;
@@ -112,14 +135,14 @@ async function requireOwnership(
 async function handleAuth(
   svc: DbClient,
   path: string,
-  user: { id: string },
+  user: Caller,
   req: Request,
   cors: Record<string, string>,
 ): Promise<Response> {
   const clientId = path.split("/")[2];
   if (!isValidClientId(clientId)) return json(cors, { error: true, message: "Client ID required" }, 400);
 
-  const ownership = await requireOwnership(svc, clientId, user.id, cors);
+  const ownership = await requireOwnership(svc, clientId, user, cors);
   if (ownership instanceof Response) return ownership;
   const contaId = ownership;
 
@@ -270,14 +293,14 @@ async function handleCallback(svc: DbClient, url: URL, req: Request): Promise<Re
 async function handleSync(
   svc: DbClient,
   path: string,
-  user: { id: string },
+  user: Caller,
   cors: Record<string, string>,
   now: () => Date,
 ): Promise<Response> {
   const clientId = path.split("/")[2];
   if (!isValidClientId(clientId)) return json(cors, { error: true, message: "Invalid client ID" }, 400);
 
-  const ownership = await requireOwnership(svc, clientId, user.id, cors);
+  const ownership = await requireOwnership(svc, clientId, user, cors);
   if (ownership instanceof Response) return ownership;
   const contaId = ownership;
 
@@ -378,13 +401,13 @@ async function handleSync(
 async function handleRefresh(
   svc: DbClient,
   path: string,
-  user: { id: string },
+  user: Caller,
   cors: Record<string, string>,
 ): Promise<Response> {
   const clientId = path.split("/")[2];
   if (!isValidClientId(clientId)) return json(cors, { error: true, message: "Invalid client ID" }, 400);
 
-  const ownership = await requireOwnership(svc, clientId, user.id, cors);
+  const ownership = await requireOwnership(svc, clientId, user, cors);
   if (ownership instanceof Response) return ownership;
 
   // deno-lint-ignore no-explicit-any
@@ -408,13 +431,13 @@ async function handleRefresh(
 async function handleDisconnect(
   svc: DbClient,
   path: string,
-  user: { id: string },
+  user: Caller,
   cors: Record<string, string>,
 ): Promise<Response> {
   const clientId = path.split("/")[2];
   if (!isValidClientId(clientId)) return json(cors, { error: true, message: "Invalid client ID" }, 400);
 
-  const ownership = await requireOwnership(svc, clientId, user.id, cors);
+  const ownership = await requireOwnership(svc, clientId, user, cors);
   if (ownership instanceof Response) return ownership;
 
   const { data: account } = await svc
@@ -478,13 +501,13 @@ async function handleDisconnect(
 async function handleSummary(
   svc: DbClient,
   path: string,
-  user: { id: string },
+  user: Caller,
   cors: Record<string, string>,
 ): Promise<Response> {
   const clientId = path.split("/")[2];
   if (!isValidClientId(clientId)) return json(cors, { error: true, message: "Invalid client ID" }, 400);
 
-  const ownership = await requireOwnership(svc, clientId, user.id, cors);
+  const ownership = await requireOwnership(svc, clientId, user, cors);
   if (ownership instanceof Response) return ownership;
 
   const SUMMARY_FIELDS =
@@ -514,14 +537,14 @@ async function handleSummary(
 async function handlePosts(
   svc: DbClient,
   path: string,
-  user: { id: string },
+  user: Caller,
   url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
   const clientId = path.split("/")[2];
   if (!isValidClientId(clientId)) return json(cors, { error: true, message: "Invalid client ID" }, 400);
 
-  const ownership = await requireOwnership(svc, clientId, user.id, cors);
+  const ownership = await requireOwnership(svc, clientId, user, cors);
   if (ownership instanceof Response) return ownership;
 
   const pageStr = url.searchParams.get("page") || "1";
@@ -589,11 +612,11 @@ export function createTikTokIntegrationHandler(deps: TikTokIntegrationDeps) {
     const isCallback = path === "/callback" || (path === "" && url.searchParams.has("code"));
 
     try {
-      let user: { id: string } | undefined;
+      let user: Caller | undefined;
       if (!isCallback) {
         const authResult = await requireUser(req, svc, cors);
         if (authResult instanceof Response) return authResult;
-        user = authResult;
+        user = { id: authResult.id, loadScope: deps.loadClientScope ?? realLoadClientScope };
       }
 
       if (req.method === "GET" && path.startsWith("/auth/")) {

@@ -110,6 +110,7 @@ import { countByResponsavel } from './listGrouping';
 import { matchesPostEntityFilters } from './entityFilters';
 import { filtersToReveal } from './revealFilters';
 import type { PostEntity } from './boardEntity';
+import { isOutsideClientScope } from '@/lib/permissions';
 import { nextApprovalAwaited } from './autoScheduleNudge';
 import {
   DEFAULT_LIST_GROUP_BY,
@@ -186,7 +187,18 @@ export default function EntregasPage() {
 
   // contaId is needed by the mode-seeding below, so useAuth is read up front
   // (its own state, tourDone/explainerOpen, is still set up further down).
-  const { profile, can } = useAuth();
+  const { profile, can, membership } = useAuth();
+  // Acesso por cliente: on a restricted member's own post in a client outside their
+  // scope, apply_post_process is allowed but remove_post_process is refused.
+  const canRemoveProcess = useCallback(
+    (entity: PostEntity) =>
+      !isOutsideClientScope(
+        membership,
+        entity.process.post.cliente_id,
+        entity.process.post.cliente_nome,
+      ),
+    [membership],
+  );
   const canDuplicate = can('entregas', 'editar') === true;
   const contaId = profile?.active_workspace_id ?? profile?.conta_id ?? 'unknown';
 
@@ -1358,6 +1370,7 @@ export default function EntregasPage() {
               : phonePostCommands.avancar(processTargetOf(entity)),
           revert: (entity) => phonePostCommands.voltar(processTargetOf(entity)),
           removeProcess: (entity) => phonePostCommands.remover(processTargetOf(entity)),
+          canRemoveProcess,
           duplicate: duplicatePostEntity,
           remove: setDeletePostTarget,
         },
@@ -2007,6 +2020,7 @@ export default function EntregasPage() {
                         })
                     : undefined
                 }
+                canRemoveProcess={canRemoveProcess}
                 onDuplicatePostClick={
                   canDuplicate
                     ? (entity) =>

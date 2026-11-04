@@ -103,7 +103,8 @@
   },
   "toast": {
     "saveError": "Error saving",
-    "deleteError": "Error deleting"
+    "deleteError": "Error deleting",
+    "clientScopeRestricted": "Your access is limited to your assigned clients."
   },
   "months": {
     "0": "January",

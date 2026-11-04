@@ -227,8 +227,11 @@ export async function buildGbpPortfolio(
   req: GbpPortfolioRequest,
   clientId: number | null,
   now: Date,
+  /** A restricted member's assigned clients (acesso por cliente), applied in code; null = all. */
+  visibleClientIds: number[] | null = null,
 ): Promise<GbpPortfolio> {
-  const clients = await loadClients(db, contaId, clientId);
+  const visible = visibleClientIds === null ? null : new Set(visibleClientIds);
+  const clients = (await loadClients(db, contaId, clientId)).filter((c) => visible === null || visible.has(c.id));
   const units = clients.length > 0 ? await loadPortfolioUnits(db, contaId, new Set(clients.map((c) => c.id)), clientId) : [];
   const dataThrough = portfolioDataThrough(units, now);
   const { window, hasData } = resolveWindow(req, dataThrough, now);

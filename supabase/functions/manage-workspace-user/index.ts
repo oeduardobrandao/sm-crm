@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { handleSetFinancialAccess } from "./setFinancialAccess.ts";
+import { handleSetClientScope } from "./setClientScope.ts";
 import { removeMember } from "./removeMember.ts";
 import { resolveRoleUpdate, UUID_RE } from "./roleUpdate.ts";
 import { hasPermissionFor } from "../_shared/permissions.ts";
@@ -113,6 +114,36 @@ Deno.serve(async (req: Request) => {
         targetUserId,
         workspaceId,
         value,
+      });
+      return new Response(
+        JSON.stringify(result.status === 200 ? { message: result.message, changed: result.changed } : { error: result.message }),
+        { status: result.status, headers },
+      );
+    }
+
+    // --- Set Client Scope (owner-only) ---
+    //
+    // Same shape as set-financial-access: workspace from the caller's
+    // active_workspace_id, owner check inside the RPC against workspace_members.
+    // Input validation (scope, clienteIds) lives in the handler.
+    if (action === "set-client-scope") {
+      if (!targetUserId) {
+        return new Response(JSON.stringify({ error: "targetUserId is required" }), { status: 400, headers });
+      }
+
+      const { data: prof } = await serviceClient
+        .from("profiles").select("active_workspace_id").eq("id", user.id).single();
+      const workspaceId = prof?.active_workspace_id;
+      if (!workspaceId) {
+        return new Response(JSON.stringify({ error: "Workspace não encontrado." }), { status: 403, headers });
+      }
+
+      const result = await handleSetClientScope(serviceClient, {
+        actorUserId: user.id,
+        targetUserId,
+        workspaceId,
+        scope: body.scope,
+        clienteIds: body.clienteIds,
       });
       return new Response(
         JSON.stringify(result.status === 200 ? { message: result.message, changed: result.changed } : { error: result.message }),

@@ -103,6 +103,25 @@ Deno.test("notifyAutomationFailure inclui extraMetadata no insert", async () => 
   assertEquals(meta.automation_name, "Calendario Setembro");
 });
 
+// Acesso por cliente (20261117000011): o cliente vai para a seleção de
+// destinatários (admin restrito sem acesso fica de fora) e para a linha gravada.
+Deno.test("notifyAutomationFailure passa o cliente para os destinatários e para o insert", async () => {
+  const calls: Array<{ name: string; params: Record<string, unknown> }> = [];
+  const svc = {
+    from: () => ({ select: () => selectChain(() => ({ data: [], error: null })) }),
+    rpc: (name: string, params: Record<string, unknown>) => {
+      calls.push({ name, params });
+      if (name === "resolve_notification_targets") return { data: ["u1"], error: null };
+      return { data: null, error: null };
+    },
+  };
+
+  await notifyAutomationFailure(svc as never, { contaId: "w1", clientId: 42, reason: "token_expired" });
+
+  assertEquals(calls.find((c) => c.name === "resolve_notification_targets")!.params.p_cliente_id, 42);
+  assertEquals(calls.find((c) => c.name === "insert_notification_batch")!.params.p_cliente_id, 42);
+});
+
 // --- Correção 3: extraMetadata hostil não pode sobrescrever campo canônico ---
 //
 // O spread do `extraMetadata` vinha DEPOIS dos campos canônicos no objeto de

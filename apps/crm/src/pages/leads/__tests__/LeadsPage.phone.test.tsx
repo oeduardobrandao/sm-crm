@@ -276,3 +276,21 @@ describe('LeadsPage on phones', () => {
     expect(screen.queryByRole('button', { name: 'Remover' })).toBeNull();
   });
 });
+
+describe('LeadsPage on phones — membro restrito', () => {
+  it('drops Converter em cliente from the row menu and the swipe', async () => {
+    const membership = fakeMembership({ role: 'admin', client_scope: 'atribuidos' });
+    useAuthMock.mockReturnValue({ canSeeFinancials: true, can: makeCan(membership), membership });
+    renderPage();
+    await screen.findByText('Dra. Helena Prado');
+
+    const helena = screen.getByRole('button', { name: /^Dra\. Helena Prado/ }).closest('li')!;
+    expect(within(helena).queryByRole('button', { name: 'Converter' })).toBeNull();
+    expect(within(helena).getByRole('button', { name: 'Remover' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mais ações de Dra. Helena Prado' }));
+    const menu = await screen.findByRole('menu', { name: 'Ações do lead' });
+    expect(within(menu).queryByRole('menuitem', { name: 'Converter em cliente' })).toBeNull();
+    expect(within(menu).getByRole('menuitem', { name: 'Editar' })).toBeInTheDocument();
+  });
+});
