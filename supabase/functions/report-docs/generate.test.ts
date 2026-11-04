@@ -1177,6 +1177,9 @@ Deno.test("metricPriorityGuidance: Instagram-only text unchanged; with TikTok it
   const both = metricPriorityGuidance({ instagram: true, tiktok: true, instagramHasViews: true }) ?? "";
   assert(both.includes("Instagram"), both);
   assert(!both.includes("for this report"), both);
+  const withGoogle = metricPriorityGuidance({ instagram: true, tiktok: false, google: true, instagramHasViews: true }) ?? "";
+  assert(withGoogle.endsWith("does not apply to the Google Meu Negócio data."), withGoogle);
+  assert(!withGoogle.includes("for this report"), withGoogle);
   assertEquals(metricPriorityGuidance({ instagram: true, tiktok: true, instagramHasViews: false }), undefined);
   assertEquals(metricPriorityGuidance({ instagram: false, tiktok: true, instagramHasViews: true }), undefined);
 });
