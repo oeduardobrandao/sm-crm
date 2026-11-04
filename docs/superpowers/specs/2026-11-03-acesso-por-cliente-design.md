@@ -134,7 +134,9 @@ pasta). As funções de trigger das guardas (`guard_client_scope_move`,
 `guard_membros_crm_user_scope`) não têm EXECUTE
 para `authenticated` nem `anon`. Os helpers que as RPCs SECURITY DEFINER chamam para o escopo
 (`scope_check_posts`, `scope_check_workflows`, `scope_check_processes`,
-`scope_check_template_workflows`, Task 5) são só de `service_role`.
+`scope_check_template_workflows`, Task 5) são só de `service_role`, assim como
+`can_see_cliente_context_for(uuid, uuid, bigint)` (Task 14: o contexto de um usuário qualquer, para
+os emissores de notificação e o claim do e-mail).
 
 Espelho TS: só `isClientScoped(membership)` em `lib/permissions.ts`, para afordâncias de UI
 (esconder "Novo cliente", mostrar o aviso). O filtro de dados é sempre do servidor.
@@ -233,8 +235,13 @@ flag de liberação só liga depois das duas fases.
   da chave/grant; `create_client` recusa restrito.
 - Edge functions que leem dados de cliente para o usuário (analytics, relatórios, `report-docs`,
   arquivos, Instagram/TikTok/Google analytics) conferem o predicado antes de devolver.
-- Notificações: `resolve_notification_targets` e os crons de e-mail deixam de mandar a um restrito
-  eventos de cliente não atribuído (salvo "é dele").
+- Notificações: `resolve_notification_targets(ws, responsavel, roles, p_cliente_id)` mantém sempre o
+  responsável ("é dele") e, entre os destinatários por papel, só quem vê o cliente (dono, `todos`,
+  atribuído ou contexto de um item dele ali). Todo emissor passa o cliente, gravado em
+  `notifications.cliente_id`. `claim_notification_emails` aplica a mesma regra no workspace da
+  notificação; a linha fora do escopo recebe `emailed_at` e não é devolvida. Sem cliente, de
+  propósito: convite, papel, remoção de membro, limpeza de armazenamento, chat da equipe e agenda
+  (participante é "dele" e `agenda_eventos` não abre contexto).
 - Chat da equipe: conforme a decisão de chat (ver Decisões em aberto).
 - Notificações já guardadas: a policy de leitura de `notifications` (e as menções) filtra pelo cliente
   referenciado no payload, para um restrito não seguir vendo e clicando em eventos de cliente oculto.
