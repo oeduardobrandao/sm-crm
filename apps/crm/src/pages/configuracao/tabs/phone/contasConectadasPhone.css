@@ -1,0 +1,23 @@
+/* Contas conectadas on phones: one account per cell of the grouped list. */
+.phone-kit .connected-account-cell {
+  list-style: none;
+}
+.phone-kit .connected-account-cell + .connected-account-cell {
+  border-top: 1px solid var(--phone-separator);
+}
+.phone-kit .connected-account-card {
+  padding: 14px 16px;
+  color: var(--phone-label);
+  font-size: var(--phone-text-subhead);
+}
+.phone-kit .connected-account-card .text-muted-foreground {
+  color: var(--phone-label-secondary);
+}
+/* Full-width "Desconectar conta" at the card's bottom, iOS destructive text. */
+.phone-kit .connected-account-card__disconnect {
+  height: 44px;
+  border-radius: 12px;
+  color: var(--phone-destructive);
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+}

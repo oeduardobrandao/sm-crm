@@ -5,6 +5,7 @@ import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
 import { GroupedList, Cell } from '@/components/mobile/GroupedList';
 import { useAuth } from '../../context/AuthContext';
+import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { visibleConfigTabs, type ConfigTab } from './configTabs';
 import './phone/configPhone.css';
 
@@ -17,6 +18,7 @@ const TILE_COLORS: Record<string, string> = {
   relatorios: '#ff9500',
   status: '#af52de',
   hub: '#30b0c7',
+  'contas-conectadas': '#ff2d55',
   armazenamento: '#8e8e93',
   mcp: '#12151a',
   cobranca: '#ffbf30',
@@ -37,7 +39,8 @@ export default function ConfiguracaoIndex() {
 function ConfiguracaoIndexPhone() {
   const { t } = useTranslation('settings');
   const { user, profile, can, workspaceRole } = useAuth();
-  const tabs = visibleConfigTabs(can, workspaceRole);
+  const { features } = useWorkspaceLimits();
+  const tabs = visibleConfigTabs(can, workspaceRole, features);
 
   const groups: { name: ConfigTab['group']; tabs: ConfigTab[] }[] = [];
   for (const tab of tabs) {

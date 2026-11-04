@@ -15,6 +15,7 @@
     "relatorios": "Relatórios",
     "status": "Status de posts",
     "hub": "Hub",
+    "contasConectadas": "Contas conectadas",
     "armazenamento": "Armazenamento",
     "mcp": "Agentes (MCP)",
     "cobranca": "Plano & Cobrança",
@@ -532,6 +533,51 @@
         "when": "a limpeza noturna remove arquivos antigos",
         "recipients": "donos e admins"
       }
+    }
+  },
+  "connectedAccounts": {
+    "title": "Contas conectadas",
+    "subtitle": "Contas de outras plataformas usadas por este workspace.",
+    "googleHeading": "Google (YouTube e Google Meu Negócio)",
+    "connectedAt": "Conectada em {{date}}",
+    "statusActive": "Ativa",
+    "statusRevoked": "Precisa reconectar",
+    "youtubeCount_one": "YouTube · {{count}} canal",
+    "youtubeCount_other": "YouTube · {{count}} canais",
+    "gbpCount_one": "Google Meu Negócio · {{count}} unidade",
+    "gbpCount_other": "Google Meu Negócio · {{count}} unidades",
+    "unitLine": "{{title}} ({{client}})",
+    "moreUnits_one": "+ {{count}} unidade",
+    "moreUnits_other": "+ {{count}} unidades",
+    "showLess": "Mostrar menos",
+    "emptyHint": "Nada vinculado a esta conta. Desconecte para apagar o acesso dela neste workspace.",
+    "empty": "Nenhuma conta Google conectada.",
+    "emptyConnect": "Conecte pelo YouTube ou Google Meu Negócio na página de um cliente.",
+    "loadError": "Não foi possível carregar as contas conectadas.",
+    "retry": "Tentar de novo",
+    "disconnectButton": "Desconectar conta",
+    "untitled": "Sem nome",
+    "dialog": {
+      "title": "Desconectar {{email}}?",
+      "unlinks": "Isso desvincula:",
+      "youtubeGroup": "YouTube",
+      "gbpGroup": "Google Meu Negócio",
+      "nothingLinked": "Nenhum canal ou unidade vinculado.",
+      "youtubeData": "Os dados do YouTube são apagados do Mesaas em até 7 dias, inclusive dos relatórios gerados.",
+      "gbpHistory": "O histórico do Google Meu Negócio fica guardado por 30 dias. Se você vincular a unidade de novo nesse prazo, ele volta.",
+      "revoke": "Revogamos o acesso do Mesaas na sua conta Google. Na próxima conexão, o Google pede autorização de novo.",
+      "otherWorkspaces": "Se essa conta Google também estiver conectada em outro workspace do Mesaas, o acesso continua ativo lá e não é revogado no Google.",
+      "cancel": "Cancelar",
+      "confirm": "Desconectar conta"
+    },
+    "success": "Conta Google desconectada",
+    "alreadyDisconnected": "Essa conta Google já tinha sido desconectada.",
+    "errors": {
+      "notFound": "Essa conta Google já tinha sido desconectada.",
+      "conflict": "A conta mudou enquanto desconectávamos. Tente de novo.",
+      "forbidden": "Você não tem permissão para desconectar contas.",
+      "rateLimited": "Muitas tentativas. Aguarde um minuto e tente de novo.",
+      "generic": "Não foi possível desconectar a conta. Tente de novo."
     }
   }
 }

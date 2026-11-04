@@ -13,6 +13,7 @@ import {
   Users,
 } from 'lucide-react';
 import type { PermissionAction, PermissionCheck, PermissionModule } from '@/lib/permissions';
+import type { FeatureFlags } from '@/hooks/useWorkspaceLimits';
 
 /**
  * `'all'` = every member, regardless of role or membership state (used for a
@@ -23,9 +24,7 @@ import type { PermissionAction, PermissionCheck, PermissionModule } from '@/lib/
  * evaluated via `can()`.
  */
 export type ConfigPermission =
-  | { module: PermissionModule; action: PermissionAction }
-  | 'owner'
-  | 'all';
+  { module: PermissionModule; action: PermissionAction } | 'owner' | 'all';
 
 /** Section id of a tab in the settings nav; its label is `settings:tabs.groups.<id>`. */
 export type ConfigTabGroup = 'conta' | 'workspace' | 'avancado';
@@ -49,7 +48,12 @@ export interface ConfigTab {
 /**
  * Single source of truth for the Configurações tab strip. The layout renders the
  * strip from this list and also guards direct URL access against it, so a tab
- * can never be hidden in the nav yet reachable by typing its address.
+ * the role cannot open is never reachable by typing its address.
+ *
+ * One deliberate exception goes the other way: `contas-conectadas` is listed in the
+ * nav only while the workspace has YouTube or Google Meu Negócio (see
+ * `visibleConfigTabs`), yet stays reachable by URL and from the client tabs with both
+ * flags off, so a downgraded workspace can still remove a Google account's access.
  *
  * `permission` mirrors the guard each destination already enforces internally
  * (CobrancaPage is owner-only) — those
@@ -108,6 +112,15 @@ export const CONFIG_TABS: ConfigTab[] = [
     icon: Globe,
   },
   {
+    // Nav-listed only with feature_youtube or feature_google_business (visibleConfigTabs);
+    // the route itself checks the permission only.
+    path: 'contas-conectadas',
+    labelKey: 'tabs.contasConectadas',
+    permission: { module: 'configuracoes', action: 'ver' },
+    group: 'workspace',
+    icon: Plug,
+  },
+  {
     path: 'armazenamento',
     labelKey: 'tabs.armazenamento',
     permission: 'owner',
@@ -150,10 +163,28 @@ export function canAccessConfigTab(
   return can(tab.permission.module, tab.permission.action) === true;
 }
 
-/** Tabs to show in the nav for the current permission set, in display order. */
+/** The plan flags `visibleConfigTabs` reads. */
+export type ConfigTabFeatures = Pick<FeatureFlags, 'feature_youtube' | 'feature_google_business'>;
+
+/** Tabs advertised only while a plan flag is on. Their route stays permission-only. */
+function listedForFeatures(path: string, features: ConfigTabFeatures | null | undefined): boolean {
+  if (path === 'contas-conectadas') {
+    return features?.feature_youtube === true || features?.feature_google_business === true;
+  }
+  return true;
+}
+
+/**
+ * Tabs to show in the nav for the current permission set, in display order. `features`
+ * (the workspace's plan flags) hides `contas-conectadas` unless YouTube or Google Meu
+ * Negócio is on; while it is still loading (null) that tab stays hidden.
+ */
 export function visibleConfigTabs(
   can: ConfigCanFn,
   workspaceRole: string | null | undefined,
+  features?: ConfigTabFeatures | null,
 ): ConfigTab[] {
-  return CONFIG_TABS.filter((t) => canAccessConfigTab(t.path, can, workspaceRole));
+  return CONFIG_TABS.filter(
+    (t) => canAccessConfigTab(t.path, can, workspaceRole) && listedForFeatures(t.path, features),
+  );
 }

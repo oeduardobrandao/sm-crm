@@ -177,6 +177,7 @@
     "videos": "Videos",
     "channelAvatarAlt": "{{name}} channel picture",
     "delayNote": "YouTube releases the numbers with a 2 to 3 day delay.",
+    "account": "Google account: {{email}}",
     "disconnectTooltip": "Disconnect",
     "disconnectTitle": "Disconnect YouTube?",
     "disconnectBody": "The channel stops syncing and its data is deleted from Mesaas within 7 days.",
@@ -251,6 +252,10 @@
     "disconnectCancel": "Cancel",
     "disconnectSuccess": "Google Business Profile disconnected.",
     "disconnectError": "Could not disconnect Google Business Profile. Try again."
+  },
+  "google": {
+    "manageAccounts": "Manage accounts",
+    "disconnectFromClient": "Disconnect from this client"
   },
   "googleOAuth": {
     "ytConnected": "YouTube connected.",

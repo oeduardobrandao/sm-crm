@@ -19,8 +19,22 @@ import {
 } from '@/components/ui/alert-dialog';
 import { disconnectGbp, getGoogleAuthUrl, getGoogleSummary } from '../../services/google';
 import { GbpUnitsDialog } from './GbpUnitsDialog';
-import { FullAnalyticsLink, PlatformActions } from './components/PlatformActions';
+import {
+  FullAnalyticsLink,
+  ManageGoogleAccountsLink,
+  PlatformActions,
+} from './components/PlatformActions';
 import { useGoogleProductSync } from './components/useGoogleProductSync';
+
+// "Conta Google: ..." plus the "Gerenciar contas" link beside it.
+const accountLineStyle = {
+  margin: 0,
+  fontSize: '0.8125rem',
+  color: 'var(--text-light)',
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: '4px 12px',
+} as const;
 
 // Google Meu Negócio card for the "Redes sociais" tab: connect + unit picker, then the units with
 // the same sync / disconnect actions and "Ver analytics completo" link as the other platforms.
@@ -150,8 +164,11 @@ export function GoogleBusinessSection({
               {t('gmn.title')}
             </h3>
           </div>
-          <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--text-light)' }}>
-            {t('gmn.account', { email: activeConnections.map((c) => c.email).join(', ') })}
+          <p style={accountLineStyle}>
+            <span>
+              {t('gmn.account', { email: activeConnections.map((c) => c.email).join(', ') })}
+            </span>
+            <ManageGoogleAccountsLink />
           </p>
           <p style={{ margin: 0, fontSize: '0.875rem', lineHeight: 1.5 }}>{t('gmn.noUnits')}</p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -204,6 +221,7 @@ export function GoogleBusinessSection({
               syncDisabled={!units.some((u) => u.status === 'active')}
               onDisconnect={() => setConfirmOpen(true)}
               disconnecting={disconnect.isPending}
+              disconnectLabel={t('google.disconnectFromClient')}
             />
           </div>
 
@@ -233,8 +251,11 @@ export function GoogleBusinessSection({
           )}
 
           {activeConnections.length > 0 && (
-            <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--text-light)' }}>
-              {t('gmn.account', { email: activeConnections.map((c) => c.email).join(', ') })}
+            <p style={accountLineStyle}>
+              <span>
+                {t('gmn.account', { email: activeConnections.map((c) => c.email).join(', ') })}
+              </span>
+              <ManageGoogleAccountsLink />
             </p>
           )}
 

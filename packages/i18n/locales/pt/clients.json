@@ -177,6 +177,7 @@
     "videos": "Vídeos",
     "channelAvatarAlt": "Foto do canal {{name}}",
     "delayNote": "O YouTube libera os números com 2 a 3 dias de atraso.",
+    "account": "Conta Google: {{email}}",
     "disconnectTooltip": "Desconectar",
     "disconnectTitle": "Desconectar YouTube?",
     "disconnectBody": "O canal deixa de ser sincronizado e os dados dele são apagados do Mesaas em até 7 dias.",
@@ -251,6 +252,10 @@
     "disconnectCancel": "Cancelar",
     "disconnectSuccess": "Google Meu Negócio desconectado.",
     "disconnectError": "Não foi possível desconectar o Google Meu Negócio. Tente de novo."
+  },
+  "google": {
+    "manageAccounts": "Gerenciar contas",
+    "disconnectFromClient": "Desconectar deste cliente"
   },
   "googleOAuth": {
     "ytConnected": "YouTube conectado.",

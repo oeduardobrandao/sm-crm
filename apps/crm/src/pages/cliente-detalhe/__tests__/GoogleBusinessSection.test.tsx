@@ -1,3 +1,4 @@
+import type { ContextType } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -53,6 +54,16 @@ vi.mock('../../../services/google', async (importOriginal) => {
 });
 
 import { GoogleBusinessSection } from '../GoogleBusinessSection';
+import { AuthContext } from '../../../context/AuthContext';
+import { makeCan, fakeMembership } from '@/test/makeCan';
+
+type AuthValue = NonNullable<ContextType<typeof AuthContext>>;
+
+/** Only what "Gerenciar contas" reads (`canAccessConfigTab`). */
+function authFor(membership: Parameters<typeof fakeMembership>[0]) {
+  const m = fakeMembership(membership);
+  return { can: makeCan(m), workspaceRole: m.role } as unknown as AuthValue;
+}
 
 const summary = {
   youtube: null,
@@ -79,26 +90,30 @@ const summary = {
   },
 };
 
-function renderSection(props: Partial<{ pick: string | null; onPickHandled: () => void }> = {}) {
+function renderSection(
+  props: Partial<{ pick: string | null; onPickHandled: () => void; auth: AuthValue }> = {},
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/clientes/7/redes-sociais']}>
-        <Routes>
-          <Route
-            path="*"
-            element={
-              <GoogleBusinessSection
-                clienteId={7}
-                clienteNome="Clínica Sorriso Pleno"
-                pickConnectionId={props.pick ?? null}
-                onPickHandled={props.onPickHandled ?? (() => {})}
-              />
-            }
-          />
-        </Routes>
-        <PathProbe />
-      </MemoryRouter>
+      <AuthContext.Provider value={props.auth ?? null}>
+        <MemoryRouter initialEntries={['/clientes/7/redes-sociais']}>
+          <Routes>
+            <Route
+              path="*"
+              element={
+                <GoogleBusinessSection
+                  clienteId={7}
+                  clienteNome="Clínica Sorriso Pleno"
+                  pickConnectionId={props.pick ?? null}
+                  onPickHandled={props.onPickHandled ?? (() => {})}
+                />
+              }
+            />
+          </Routes>
+          <PathProbe />
+        </MemoryRouter>
+      </AuthContext.Provider>
     </QueryClientProvider>,
   );
 }
@@ -248,7 +263,7 @@ describe('GoogleBusinessSection', () => {
     disconnectGbpMock.mockResolvedValue(undefined);
     renderSection();
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Desconectar' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Desconectar deste cliente' }));
     const dialog = await screen.findByRole('alertdialog');
     expect(within(dialog).getByText(/em até 30 dias/)).toBeInTheDocument();
     expect(disconnectGbpMock).not.toHaveBeenCalled();
@@ -262,5 +277,47 @@ describe('GoogleBusinessSection', () => {
     renderSection();
     await userEvent.click(await screen.findByRole('button', { name: /Ver Analytics Completo/ }));
     expect(screen.getByTestId('path')).toHaveTextContent('/analytics/7/google');
+  });
+
+  it('links "Gerenciar contas" to Contas conectadas for who can open it', async () => {
+    mockFeatures = { feature_google_business: true };
+    getGoogleSummaryMock.mockResolvedValue(summary);
+    renderSection({ auth: authFor({ role: 'admin' }) });
+
+    const link = await screen.findByRole('link', { name: 'Gerenciar contas' });
+    expect(link).toHaveAttribute('href', '/configuracao/contas-conectadas');
+    // Beside the account line.
+    expect(link.parentElement).toHaveTextContent('Conta Google: contato@sorrisopleno.com.br');
+  });
+
+  it('shows "Gerenciar contas" also before any unit is linked', async () => {
+    mockFeatures = { feature_google_business: true };
+    getGoogleSummaryMock.mockResolvedValue({
+      youtube: null,
+      gmn: { locations: [], connections: summary.gmn.connections },
+    });
+    renderSection({ auth: authFor({ role: 'owner' }) });
+    expect(await screen.findByRole('link', { name: 'Gerenciar contas' })).toBeInTheDocument();
+  });
+
+  it('hides "Gerenciar contas" without configuracoes:ver', async () => {
+    mockFeatures = { feature_google_business: true };
+    getGoogleSummaryMock.mockResolvedValue(summary);
+    renderSection({ auth: authFor({ role: 'agent' }) });
+
+    expect(
+      await screen.findByText('Conta Google: contato@sorrisopleno.com.br'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Gerenciar contas' })).toBeNull();
+  });
+
+  it('labels the per-client disconnect "Desconectar deste cliente"', async () => {
+    mockFeatures = { feature_google_business: true };
+    getGoogleSummaryMock.mockResolvedValue(summary);
+    renderSection();
+    expect(
+      await screen.findByRole('button', { name: 'Desconectar deste cliente' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Desconectar' })).toBeNull();
   });
 });
