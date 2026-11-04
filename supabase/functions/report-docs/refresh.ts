@@ -29,6 +29,7 @@ export async function refreshReportDocument(
   const month = String(doc.period_start).slice(0, 7);
   // Recarrega as duas redes (spec 2026-10-28 §B3), TikTok só com feature_tiktok, como no generate.
   const tiktokEnabled = await effectivePlanFeature(db, contaId, "feature_tiktok");
+  const googleEnabled = await effectivePlanFeature(db, contaId, "feature_google_business");
   let loaded;
   try {
     loaded = await loadClientSnapshot(
@@ -38,7 +39,7 @@ export async function refreshReportDocument(
         foto_url: cliente.foto_url,
       },
       month,
-      { tiktokEnabled },
+      { tiktokEnabled, googleEnabled },
     );
   } catch (err) {
     if (err instanceof GenerateError) throw new DocActionError("not_found", err.message);
@@ -56,7 +57,11 @@ type StoredDoc = {
   instagram_account_id?: string | null;
   tiktok_account_id?: string | null;
 };
-type Loaded = { snapshot: ReportDocSnapshot; igAccountId: string | null; tiktokAccountId: string | null };
+type Loaded = {
+  snapshot: ReportDocSnapshot;
+  igAccountId: string | null;
+  tiktokAccountId: string | null;
+};
 
 /** Refresh só refaz as redes AINDA conectadas. Uma rede que tinha números congelados no
  * documento e saiu (desconectada, ou TikTok sem feature_tiktok) mantém a seção guardada e a
@@ -89,6 +94,11 @@ export function carryOverFrozenPlatforms(doc: StoredDoc, loaded: Loaded) {
   if (!loaded.tiktokAccountId && prev?.tiktok) {
     snapshot = { ...snapshot, tiktok: prev.tiktok };
     tiktokAccountId = doc.tiktok_account_id ?? null;
+  }
+
+  // Google Meu Negócio não tem coluna de conta: as unidades usadas vão dentro do snapshot.
+  if (!loaded.snapshot.google && prev?.google) {
+    snapshot = { ...snapshot, google: prev.google };
   }
 
   return {

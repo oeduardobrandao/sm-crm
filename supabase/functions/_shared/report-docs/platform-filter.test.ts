@@ -368,3 +368,46 @@ Deno.test("selectPlatformSections: makeId is not called for a section the cap sk
   selectPlatformSections(full, ["instagram", "tiktok"], { hasData: ALL_DATA, sectionOpts: SECTION_OPTS, makeId });
   assertEquals(calls, 0);
 });
+
+// ── Google Meu Negócio (spec 2026-11-04-gmn-report-section) ──
+Deno.test("legacy Instagram template + Instagram and Google: Google default right after Instagram", () => {
+  const out = selectPlatformSections(LEGACY_SEEDED(), ["instagram", "google"], {
+    hasData: ALL_DATA, sectionOpts: { ...SECTION_OPTS, hasGbpUnits: true }, makeId: counter(),
+  });
+  assert(validateLayout(out).ok);
+  const ks = kinds(out);
+  assertEquals(ks.indexOf("google"), ks.indexOf("instagram") + 1);
+  assert(out.blocks.some((b) => b.type === "gbp_units"));
+});
+
+Deno.test("legacy Instagram template + Google only: Instagram dropped, Google where it was", () => {
+  const out = selectPlatformSections(LEGACY_SEEDED(), ["google"], {
+    hasData: ALL_DATA, sectionOpts: SECTION_OPTS, makeId: counter(),
+  });
+  assert(validateLayout(out).ok);
+  assert(!kinds(out).includes("instagram"));
+  assert(kinds(out).includes("google"));
+  assert(!out.blocks.some((b) => blockPlatform(b.type) === "instagram"));
+});
+
+Deno.test("template with no platform section + Google selected: no Google section added", () => {
+  const tpl = L([B("c", "cover", "full"), B("t", "text", "full")]);
+  const out = selectPlatformSections(tpl, ["google"], { hasData: ALL_DATA, sectionOpts: SECTION_OPTS, makeId: counter() });
+  assert(!kinds(out).includes("google"));
+});
+
+Deno.test("Google selected without data: no Google section", () => {
+  const out = selectPlatformSections(LEGACY_SEEDED(), ["instagram", "google"], {
+    hasData: (p: LayoutPlatform) => p !== "google", sectionOpts: SECTION_OPTS, makeId: counter(),
+  });
+  assert(!kinds(out).includes("google"));
+});
+
+Deno.test("showAllPlatformHeadings: hidden Instagram + Google shows both headings", () => {
+  const out = showAllPlatformHeadings(
+    selectPlatformSections(LEGACY_SEEDED(), ["instagram", "google"], {
+      hasData: ALL_DATA, sectionOpts: SECTION_OPTS, makeId: counter(),
+    }),
+  );
+  for (const s of toSections(out)) if (s.kind !== "general") assertEquals(s.marker.config?.hideHeader, undefined);
+});

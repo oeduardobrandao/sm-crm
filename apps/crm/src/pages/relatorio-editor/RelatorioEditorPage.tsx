@@ -29,7 +29,7 @@ import {
 } from '../../services/reportDocs';
 import { getHubToken, getWorkspaceSlug } from '../../store/hub';
 import { useLayoutAutosave } from './useLayoutAutosave';
-import { useBlockEditing } from './useBlockEditing';
+import { enabledReportPlatforms, useBlockEditing } from './useBlockEditing';
 import { usePreventStrayFileDrop } from './usePreventStrayFileDrop';
 import { configCoalesceKey, useLayoutHistory } from './useLayoutHistory';
 import { UndoRedoButtons } from './UndoRedoButtons';
@@ -63,6 +63,7 @@ function snapshotSectionOpts(snapshot: ReportDocSnapshot): PlatformSectionOpts {
     hasBestTimes: snapshot.best_times.length > 0,
     hasTags: snapshot.tags_performance.length > 0,
     hasTikTokBestTimes: (snapshot.tiktok?.best_times.length ?? 0) > 0,
+    hasGbpUnits: (snapshot.google?.unit_rows.length ?? 0) > 1,
   };
 }
 
@@ -70,8 +71,8 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   const qc = useQueryClient();
   const snapshot = doc.data_snapshot!;
   const { features } = useWorkspaceLimits();
-  // TikTok só com a flag (fail closed enquanto o plano não respondeu).
-  const tiktokEnabled = features?.feature_tiktok === true;
+  // TikTok e Google Meu Negócio só com a flag (fail closed enquanto o plano não respondeu).
+  const enabledPlatforms = useMemo(() => enabledReportPlatforms(features), [features]);
   // Defesa contra um layout persistido com um cover de size != full (achado de
   // review externo 2026-08-25): corrige em memória ANTES do estado inicial do
   // autosave existir. Sem isso, a primeira edição seguinte (de QUALQUER bloco)
@@ -107,7 +108,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
     handleRemoveBlock,
     handleRemoveSection,
     handleAddSection,
-  } = useBlockEditing(layoutRef, commit, { tiktokEnabled });
+  } = useBlockEditing(layoutRef, commit, { enabledPlatforms });
   const drawerSection = insertTarget
     ? (toSections(layout).find((s) => s.marker.id === insertTarget.sectionId) ?? null)
     : null;
@@ -346,7 +347,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
         }
         highlightId={highlightId}
         imageContext={{ mode: 'report', clientId: doc.client_id }}
-        tiktokEnabled={tiktokEnabled}
+        enabledPlatforms={enabledPlatforms}
         availablePlatforms={documentPlatforms(snapshot)}
         onAddWidget={openWidgetDrawer}
         onAddSection={(kind, afterId) =>
@@ -374,7 +375,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
       <LayersPanel
         layout={layout}
         highlightId={highlightId}
-        tiktokEnabled={tiktokEnabled}
+        enabledPlatforms={enabledPlatforms}
         onReorder={(activeId, overId) =>
           commit(resolveDragEnd(layoutRef.current, activeId, overId))
         }

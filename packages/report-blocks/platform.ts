@@ -2,7 +2,13 @@
 // os componentes do Instagram por uma "visão" do snapshot montada a partir de
 // snapshot.tiktok. Só importa de ./types: BlockRenderer, data-presence e os
 // blocos importam este módulo, então nada de importar blocos aqui (ciclo).
-import { TIKTOK_BLOCK_PREFIX, blockPlatform, isSectioned, sectionPlatforms } from './types';
+import {
+  PLATFORM_ORDER,
+  TIKTOK_BLOCK_PREFIX,
+  blockPlatform,
+  isSectioned,
+  sectionPlatforms,
+} from './types';
 import type {
   BlockType,
   ReportBlock,
@@ -124,29 +130,43 @@ export function layoutPlatforms(layout: ReportLayout): ReportPlatform[] {
 export const PLATFORM_NAMES: Record<ReportPlatform, string> = {
   instagram: 'Instagram',
   tiktok: 'TikTok',
+  google: 'Google Meu Negócio',
 };
 
+/** "A", "A e B", "A, B e C". */
+function joinNames(names: string[]): string {
+  if (names.length <= 2) return names.join(' e ');
+  return `${names.slice(0, -1).join(', ')} e ${names[names.length - 1]}`;
+}
+
 /** Kicker, handle e foto padrão da capa. Plataformas do layout sem dado no
- * snapshot (instagram_connected false, sem seção TikTok) saem antes: um layout
- * misto atualizado depois de desconectar o Instagram vira "· TikTok". Handle e
- * foto vêm da primeira plataforma restante. Nenhuma com dado (ou layout sem
- * plataforma) = Instagram, o comportamento de antes. */
+ * snapshot (instagram_connected false, sem seção TikTok, sem seção Google) saem
+ * antes: um layout misto atualizado depois de desconectar o Instagram vira
+ * "· TikTok". Handle e foto vêm da primeira plataforma restante; o Google Meu
+ * Negócio não tem @ (handle vazio, a capa omite a linha) e usa a foto do
+ * cliente da raiz. Nenhuma com dado (ou layout sem plataforma) = Instagram, o
+ * comportamento de antes. */
 export function coverDefaults(
   snapshot: ReportDocSnapshot,
   platforms: readonly ReportPlatform[] | undefined,
 ): { kicker: string; handle: string; avatarUrl: string | null } {
   const tiktok = snapshot.tiktok;
-  const withData = (platforms ?? []).filter((p) =>
-    p === 'tiktok' ? Boolean(tiktok) : snapshot.instagram_connected !== false,
-  );
+  const hasData: Record<ReportPlatform, boolean> = {
+    instagram: snapshot.instagram_connected !== false,
+    tiktok: Boolean(tiktok),
+    google: Boolean(snapshot.google?.window),
+  };
+  const withData = (platforms ?? []).filter((p) => hasData[p]);
   const list: readonly ReportPlatform[] = withData.length ? withData : ['instagram'];
-  const names = (['instagram', 'tiktok'] as const)
-    .filter((p) => list.includes(p))
-    .map((p) => PLATFORM_NAMES[p]);
+  const names = PLATFORM_ORDER.filter((p) => list.includes(p)).map((p) => PLATFORM_NAMES[p]);
   const account =
-    list[0] === 'tiktok' && tiktok ? tiktokAccount(snapshot, tiktok) : snapshot.account;
+    list[0] === 'tiktok' && tiktok
+      ? tiktokAccount(snapshot, tiktok)
+      : list[0] === 'google'
+        ? { ...snapshot.account, handle: '' }
+        : snapshot.account;
   return {
-    kicker: `Relatório mensal · ${names.join(' e ')}`,
+    kicker: `Relatório mensal · ${joinNames(names)}`,
     handle: account.handle,
     avatarUrl: account.profile_picture_url ?? null,
   };

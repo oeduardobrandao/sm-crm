@@ -23,6 +23,13 @@ import { PostListBlock } from './blocks/PostListBlock';
 import { TagsTableBlock } from './blocks/TagsTableBlock';
 import { ImageBlock } from './blocks/ImageBlock';
 import { PlatformSectionHeading } from './blocks/PlatformSectionHeading';
+import { GbpKpiCardBlock } from './blocks/gbp/GbpKpiCardBlock';
+import { GbpSurfacesBlock } from './blocks/gbp/GbpSurfacesBlock';
+import { GbpRatingBlock } from './blocks/gbp/GbpRatingBlock';
+import { GbpActionsChartBlock } from './blocks/gbp/GbpActionsChartBlock';
+import { GbpKeywordsBlock } from './blocks/gbp/GbpKeywordsBlock';
+import { GbpReviewHighlightBlock } from './blocks/gbp/GbpReviewHighlightBlock';
+import { GbpUnitsBlock } from './blocks/gbp/GbpUnitsBlock';
 import { instagramAbsent, layoutPlatforms, tiktokBlockView, type ReportPlatform } from './platform';
 import { sectionVisibleInView } from './data-presence';
 
@@ -92,6 +99,21 @@ export const BLOCK_COMPONENTS: Partial<Record<BlockType, FC<BlockProps>>> = {
   tiktok_chart_best_times: withTikTok(BestTimesBlock),
   tiktok_top_posts: withTikTok(TopPostsBlock),
   tiktok_post_list: withTikTok(PostListBlock),
+  // Google Meu Negócio (spec 2026-11-04): componentes próprios, leem snapshot.google.
+  gbp_kpi_profile_views: GbpKpiCardBlock,
+  gbp_kpi_calls: GbpKpiCardBlock,
+  gbp_kpi_directions: GbpKpiCardBlock,
+  gbp_kpi_website_clicks: GbpKpiCardBlock,
+  gbp_kpi_messages: GbpKpiCardBlock,
+  gbp_kpi_bookings: GbpKpiCardBlock,
+  gbp_kpi_avg_rating: GbpKpiCardBlock,
+  gbp_kpi_new_reviews: GbpKpiCardBlock,
+  gbp_surfaces: GbpSurfacesBlock,
+  gbp_rating: GbpRatingBlock,
+  gbp_actions_chart: GbpActionsChartBlock,
+  gbp_keywords: GbpKeywordsBlock,
+  gbp_review_highlight: GbpReviewHighlightBlock,
+  gbp_units: GbpUnitsBlock,
 };
 
 export const SIZE_CLASS = { third: 'rb-third', half: 'rb-half', full: 'rb-full' } as const;

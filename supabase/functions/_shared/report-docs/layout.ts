@@ -33,10 +33,26 @@ export const BLOCK_TYPES = [
   "tiktok_kpi_shares", "tiktok_kpi_posts_count", "tiktok_kpi_likes_total",
   "tiktok_chart_followers", "tiktok_chart_best_times", "tiktok_top_posts",
   "tiktok_post_list",
+  // Google Meu Negócio (spec 2026-11-04-gmn-report-section): mesma regra do TikTok, tipos
+  // próprios com prefixo gbp_. IDs de KPI espelham GBP_KPI_IDS (_shared/gbp-analytics/kpis.ts).
+  "gbp_kpi_profile_views", "gbp_kpi_calls", "gbp_kpi_directions", "gbp_kpi_website_clicks",
+  "gbp_kpi_messages", "gbp_kpi_bookings", "gbp_kpi_avg_rating", "gbp_kpi_new_reviews",
+  "gbp_surfaces", "gbp_rating", "gbp_actions_chart", "gbp_keywords", "gbp_review_highlight",
+  "gbp_units",
 ] as const;
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
 export const TIKTOK_BLOCK_PREFIX = "tiktok_";
+export const GBP_BLOCK_PREFIX = "gbp_";
+/** Plataformas de seção, na ordem em que o validador as aceita. "youtube" entra aqui (e no
+ * trigger SQL) só quando os blocos dele existirem. */
+export const SECTION_PLATFORMS = ["instagram", "tiktok", "google"] as const;
+export type SectionPlatformId = (typeof SECTION_PLATFORMS)[number];
+/** Prefixo de tipo -> plataforma. O Instagram não tem prefixo: é o fallback dos tipos legados. */
+export const PLATFORM_BLOCK_PREFIXES = {
+  tiktok: TIKTOK_BLOCK_PREFIX,
+  google: GBP_BLOCK_PREFIX,
+} as const satisfies Partial<Record<SectionPlatformId, string>>;
 /** Tipos que não pertencem a nenhuma plataforma (estrutura, texto/IA, mídia). */
 const PLATFORM_NEUTRAL_TYPES: readonly string[] = [
   "cover", "section_header", "divider", "text", "ai_summary", "ai_recommendations",
@@ -45,8 +61,10 @@ const PLATFORM_NEUTRAL_TYPES: readonly string[] = [
 
 /** Plataforma de um bloco: o prefixo decide. null = neutro (aparece em qualquer
  * relatório); os demais tipos legados são Instagram. */
-export function blockPlatform(type: string): "instagram" | "tiktok" | null {
-  if (type.startsWith(TIKTOK_BLOCK_PREFIX)) return "tiktok";
+export function blockPlatform(type: string): SectionPlatformId | null {
+  for (const [platform, prefix] of Object.entries(PLATFORM_BLOCK_PREFIXES)) {
+    if (type.startsWith(prefix)) return platform as SectionPlatformId;
+  }
   if (PLATFORM_NEUTRAL_TYPES.includes(type)) return null;
   return "instagram";
 }
@@ -66,7 +84,6 @@ export const MAX_SECTIONS = 12;
 /** Título de seção: 1..80 caracteres depois do trim, contados em code points (como o
  * char_length do Postgres), não em unidades UTF-16. */
 export const SECTION_TITLE_MAX = 80;
-export const SECTION_PLATFORMS = ["instagram", "tiktok"] as const;
 const SECTION_CONFIG_KEYS: readonly string[] = ["platform", "title", "hideHeader"];
 export const TOP_POSTS_MIN = 1;
 export const TOP_POSTS_MAX = 12;

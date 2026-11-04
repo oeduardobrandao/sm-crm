@@ -1,7 +1,9 @@
-// "Adicionar seção" do canvas (spec 2026-10-28-report-platform-sections §Editor): entre as
-// seções e depois da última. Plataforma já presente fica desabilitada; TikTok só com
-// feature_tiktok (fora do menu sem a flag); num relatório, a plataforma precisa ter dados
-// no snapshot (num modelo, as duas valem: dados de exemplo).
+// "Adicionar seção" do canvas (spec 2026-10-28-report-platform-sections §Editor e
+// 2026-11-04-gmn-report-section §CRM editor): entre as seções e depois da última. Lista as
+// plataformas habilitadas na ordem de PLATFORM_ORDER (TikTok só com feature_tiktok, Google Meu
+// Negócio só com feature_google_business: fora do menu sem a flag), depois a Geral. Plataforma
+// já presente fica desabilitada; num relatório, a plataforma precisa ter dados no snapshot (num
+// modelo, todas valem: dados de exemplo).
 import { useId } from 'react';
 import { PanelTop, Plus } from 'lucide-react';
 import {
@@ -12,16 +14,23 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { PlatformIcon } from '@mesaas/report-blocks/PlatformIcon';
 import { PLATFORM_NAMES, type ReportPlatform } from '@mesaas/report-blocks/platform';
-import { MAX_SECTIONS, type SectionKind } from '@mesaas/report-blocks/types';
+import { MAX_SECTIONS, PLATFORM_ORDER, type SectionKind } from '@mesaas/report-blocks/types';
+import { DEFAULT_ENABLED_PLATFORMS } from './useBlockEditing';
 
 export interface AddSectionMenuProps {
   /** Tipo de cada seção já no layout (uma entrada por seção). */
   existing: SectionKind[];
-  tiktokEnabled: boolean;
+  /** Plataformas que o plano libera (Instagram sempre). Fail closed: padrão só Instagram. */
+  enabledPlatforms?: readonly ReportPlatform[];
   /** Plataformas com dados. "all" nos modelos; relatório passa documentPlatforms(snapshot). */
   availablePlatforms: ReportPlatform[] | 'all';
   onAdd: (kind: SectionKind) => void;
 }
+
+/** Descrição do item quando ele pode ser escolhido (sem dica de bloqueio). */
+const PLATFORM_DESCRIPTIONS: Partial<Record<ReportPlatform, string>> = {
+  google: 'Visualizações, ligações, rotas, buscas e avaliações',
+};
 
 function platformHint(
   platform: ReportPlatform,
@@ -38,11 +47,11 @@ function platformHint(
 
 export function AddSectionMenu({
   existing,
-  tiktokEnabled,
+  enabledPlatforms = DEFAULT_ENABLED_PLATFORMS,
   availablePlatforms,
   onAdd,
 }: AddSectionMenuProps) {
-  const platforms: ReportPlatform[] = tiktokEnabled ? ['instagram', 'tiktok'] : ['instagram'];
+  const platforms = PLATFORM_ORDER.filter((p) => enabledPlatforms.includes(p));
   const full = existing.length >= MAX_SECTIONS;
   const fullHintId = useId();
   return (
@@ -61,6 +70,7 @@ export function AddSectionMenu({
         <DropdownMenuContent align="center" className="w-72">
           {platforms.map((p) => {
             const hint = platformHint(p, existing, availablePlatforms);
+            const text = hint ?? PLATFORM_DESCRIPTIONS[p] ?? null;
             return (
               <DropdownMenuItem
                 key={p}
@@ -71,7 +81,7 @@ export function AddSectionMenu({
                 <PlatformIcon platform={p} size={16} className="rb-add-section-icon" />
                 <span className="rb-add-section-text">
                   <span className="rb-add-section-label">{PLATFORM_NAMES[p]}</span>
-                  {hint && <span className="rb-add-section-hint">{hint}</span>}
+                  {text && <span className="rb-add-section-hint">{text}</span>}
                 </span>
               </DropdownMenuItem>
             );

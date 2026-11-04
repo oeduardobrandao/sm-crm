@@ -226,13 +226,16 @@ export function SectionFrame({
   };
   const name = sectionDisplayName(section);
   const { snapshot } = editing;
-  // TikTok sem dado no snapshot fica sem @ (nunca o do Instagram).
+  // TikTok sem dado no snapshot fica sem @ (nunca o do Instagram). Google Meu Negócio não
+  // tem @: no lugar vai o número de unidades do snapshot.
   const handle =
     kind === 'tiktok'
       ? snapshot.tiktok?.account.handle
       : kind === 'instagram'
         ? snapshot.account.handle
         : null;
+  const unitCount = kind === 'google' ? (snapshot.google?.units.length ?? 0) : 0;
+  const detail = unitCount > 0 ? `${unitCount} ${unitCount === 1 ? 'unidade' : 'unidades'}` : null;
   const cellsDroppable = dragGroup === null || dragGroup === marker.id;
 
   return (
@@ -248,6 +251,7 @@ export function SectionFrame({
         index={index}
         count={count}
         handle={handle}
+        detail={detail}
         dragHandleProps={{ ...attributes, ...listeners }}
         onTitleChange={onTitleChange}
         onMove={onMove}

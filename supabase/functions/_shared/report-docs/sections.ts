@@ -10,15 +10,20 @@ import {
   codePointLength,
   MAX_SECTIONS,
   type ReportBlock,
+  SECTION_PLATFORMS,
+  type SectionPlatformId,
   type ReportLayout,
   SECTION_TITLE_MAX,
   sectionStructureError,
   trimSectionTitle,
 } from "./layout.ts";
 
-export type SectionKind = "general" | "instagram" | "tiktok";
-export type SectionPlatform = Exclude<SectionKind, "general">;
-const PLATFORM_ORDER: readonly SectionPlatform[] = ["instagram", "tiktok"];
+export type SectionKind = "general" | SectionPlatformId;
+export type SectionPlatform = SectionPlatformId;
+/** Ordem das seções de plataforma criadas pelo sistema (layout padrão, reparo, seção
+ * acrescentada a um modelo). "youtube" entra entre "tiktok" e "google" (spec
+ * 2026-10-29-youtube-google-meu-negocio §8) quando os blocos dele existirem. */
+export const PLATFORM_ORDER: readonly SectionPlatform[] = ["instagram", "tiktok", "google"];
 
 export interface ReportSection {
   /** O bloco `section`. Sintetizado (id novo via makeId) quando o layout não o tinha. */
@@ -37,7 +42,7 @@ export function isSectionMarker(b: ReportBlock): boolean {
 /** Tipo da seção pelo marcador. Plataforma desconhecida ou ausente = Geral. */
 export function sectionKindOf(marker: ReportBlock): SectionKind {
   const p = marker.config?.platform;
-  return p === "instagram" || p === "tiktok" ? p : "general";
+  return (SECTION_PLATFORMS as readonly unknown[]).includes(p) ? (p as SectionPlatform) : "general";
 }
 
 /** Trim ASCII (o mesmo do validador) + corte em SECTION_TITLE_MAX code points; vazio = sem
@@ -189,7 +194,10 @@ function readSectioned(blocks: readonly ReportBlock[]): Group[] {
  * fica o marcador da primeira (id e título dela; o da de trás some, a menos que a primeira
  * seja sintetizada, aí herda o marcador salvo da de trás). */
 function repairGroups(input: Group[]): Group[] {
-  const moved: Record<SectionPlatform, ReportBlock[]> = { instagram: [], tiktok: [] };
+  const moved = Object.fromEntries(PLATFORM_ORDER.map((p) => [p, [] as ReportBlock[]])) as Record<
+    SectionPlatform,
+    ReportBlock[]
+  >;
   for (const g of input) {
     const keep: ReportBlock[] = [];
     for (const b of g.blocks) {

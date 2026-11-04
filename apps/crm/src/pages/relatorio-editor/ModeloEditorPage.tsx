@@ -17,7 +17,7 @@ import {
 import { getReportTemplate, type ReportTemplateRow } from '../../services/reportTemplates';
 import { useLayoutAutosave } from './useLayoutAutosave';
 import { TEMPLATE_AUTOSAVE_TARGET } from './templateAutosave';
-import { useBlockEditing } from './useBlockEditing';
+import { enabledReportPlatforms, useBlockEditing } from './useBlockEditing';
 import { usePreventStrayFileDrop } from './usePreventStrayFileDrop';
 import { configCoalesceKey, useLayoutHistory } from './useLayoutHistory';
 import { UndoRedoButtons } from './UndoRedoButtons';
@@ -42,15 +42,17 @@ import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
 import { ReportPhoneView } from './phone/ReportPhoneView';
 
 const SETTINGS_PATH = '/configuracao/relatorios';
-// Modelo vale para qualquer cliente: "Adicionar seção" oferece as duas
-// plataformas (dados de exemplo), mas TikTok só com feature_tiktok (fail closed
-// enquanto o plano não respondeu). A seção nova sai completa, como no "Padrão
-// do sistema" (buildSystemDefaultLayout): o generate corta o que faltar.
+// Modelo vale para qualquer cliente: "Adicionar seção" oferece todas as
+// plataformas (dados de exemplo), mas TikTok só com feature_tiktok e Google Meu
+// Negócio só com feature_google_business (fail closed enquanto o plano não
+// respondeu). A seção nova sai completa, como no "Padrão do sistema"
+// (buildSystemDefaultLayout): o generate corta o que faltar.
 const TEMPLATE_SECTION_OPTS: PlatformSectionOpts = {
   hasAudience: true,
   hasBestTimes: true,
   hasTags: true,
   hasTikTokBestTimes: true,
+  hasGbpUnits: true,
 };
 const SAMPLE_NOTE = 'Dados de exemplo. Os números reais entram quando o relatório é gerado.';
 
@@ -77,7 +79,7 @@ function AiPlaceholder() {
 function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
   const snapshot = useSampleSnapshot();
   const { features } = useWorkspaceLimits();
-  const tiktokEnabled = features?.feature_tiktok === true;
+  const enabledPlatforms = useMemo(() => enabledReportPlatforms(features), [features]);
 
   // Seccionado ao abrir (como o relatório): canônico = mesma ref, nada a gravar.
   const initialLayout = useMemo(
@@ -111,7 +113,7 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
     handleRemoveBlock,
     handleRemoveSection,
     handleAddSection,
-  } = useBlockEditing(layoutRef, commit, { tiktokEnabled });
+  } = useBlockEditing(layoutRef, commit, { enabledPlatforms });
   const drawerSection = insertTarget
     ? (toSections(layout).find((s) => s.marker.id === insertTarget.sectionId) ?? null)
     : null;
@@ -221,7 +223,7 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
         }
         highlightId={highlightId}
         imageContext={{ mode: 'template' }}
-        tiktokEnabled={tiktokEnabled}
+        enabledPlatforms={enabledPlatforms}
         availablePlatforms="all"
         onAddWidget={openWidgetDrawer}
         onAddSection={(kind, afterId) =>
@@ -253,7 +255,7 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
       <LayersPanel
         layout={layout}
         highlightId={highlightId}
-        tiktokEnabled={tiktokEnabled}
+        enabledPlatforms={enabledPlatforms}
         onReorder={(activeId, overId) =>
           commit(resolveDragEnd(layoutRef.current, activeId, overId))
         }

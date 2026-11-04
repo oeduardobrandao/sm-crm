@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 import { EditorCanvas } from '../EditorCanvas';
 import { makeSnapshotFixture } from '@mesaas/report-blocks/fixtures';
+import type { ReportPlatform } from '@mesaas/report-blocks/platform';
 import type { ReportLayout } from '@mesaas/report-blocks/types';
 import { sectionizeLayout } from '@mesaas/report-blocks/types';
 import { readCrmCss } from '@/test/readCrmCss';
@@ -297,7 +298,7 @@ function renderSectioned(overrides: Partial<Parameters<typeof EditorCanvas>[0]> 
     onAddSection: vi.fn(),
     onRemoveSection: vi.fn(),
     onSectionConfigChange: vi.fn(),
-    tiktokEnabled: true,
+    enabledPlatforms: ['instagram', 'tiktok'] as ReportPlatform[],
     ...overrides,
   };
   const utils = render(<EditorCanvas {...props} />);
@@ -348,7 +349,7 @@ describe('EditorCanvas: seções', () => {
   });
 
   it('seção TikTok sem feature_tiktok: renderiza e pode ser removida, mas sem "Adicionar widget"', () => {
-    const { props } = renderSectioned({ tiktokEnabled: false });
+    const { props } = renderSectioned({ enabledPlatforms: ['instagram'] });
     const tt = frame('TikTok');
     expect(cellIds(tt)).toEqual(['tv']);
     expect(within(tt).queryByRole('button', { name: /Adicionar widget/ })).toBeNull();
@@ -414,7 +415,7 @@ describe('EditorCanvas: seções', () => {
   it('sem feature_tiktok o "Adicionar seção" não oferece TikTok; documento sem dados desabilita', () => {
     renderSectioned({
       layout: { version: 1, blocks: [{ id: 'g', type: 'section', size: 'full' }] },
-      tiktokEnabled: false,
+      enabledPlatforms: ['instagram'],
     });
     expect(screen.queryByRole('button', { name: /^TikTok/ })).toBeNull();
   });
@@ -429,6 +430,73 @@ describe('EditorCanvas: seções', () => {
     expect(tt).toHaveTextContent(
       'Sem dados do TikTok neste relatório. Atualize os dados depois de conectar a conta.',
     );
+  });
+
+  const withGoogle = (): ReportLayout => ({
+    version: 1,
+    blocks: [
+      { id: 'g', type: 'section', size: 'full' },
+      { id: 'cv', type: 'cover', size: 'full' },
+      { id: 'ig', type: 'section', size: 'full', config: { platform: 'instagram' } },
+      { id: 'r', type: 'kpi_reach', size: 'third' },
+      { id: 'gb', type: 'section', size: 'full', config: { platform: 'google' } },
+      { id: 'gc', type: 'gbp_kpi_calls', size: 'third' },
+    ],
+  });
+
+  it('seção do Google sem feature_google_business: renderiza, mas sem "Adicionar widget"', () => {
+    renderSectioned({ layout: withGoogle(), enabledPlatforms: ['instagram', 'tiktok'] });
+    const gb = frame('Google Meu Negócio');
+    expect(cellIds(gb)).toEqual(['gc']);
+    expect(within(gb).queryByRole('button', { name: /Adicionar widget/ })).toBeNull();
+    expect(
+      within(frame('Instagram')).getByRole('button', {
+        name: 'Adicionar widget na seção Instagram',
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('seção do Google com a flag: "Adicionar widget" abre o drawer com o alvo da seção', () => {
+    const { props } = renderSectioned({
+      layout: withGoogle(),
+      enabledPlatforms: ['instagram', 'google'],
+    });
+    fireEvent.click(
+      within(frame('Google Meu Negócio')).getByRole('button', {
+        name: 'Adicionar widget na seção Google Meu Negócio',
+      }),
+    );
+    expect(props.onAddWidget).toHaveBeenCalledWith({ sectionId: 'gb' });
+  });
+
+  it('seção do Google: sem @, com o número de unidades do snapshot no lugar', () => {
+    const snapshot = makeSnapshotFixture();
+    const units = snapshot.google!.units;
+    const { unmount } = renderSectioned({ layout: withGoogle(), snapshot });
+    const gb = frame('Google Meu Negócio');
+    expect(within(gb).getByText(`${units.length} unidades`)).toBeInTheDocument();
+    expect(gb.querySelector('.rb-section-frame-handle')?.textContent).not.toContain('@');
+    unmount();
+    renderSectioned({
+      layout: withGoogle(),
+      snapshot: { ...snapshot, google: { ...snapshot.google!, units: units.slice(0, 1) } },
+    });
+    expect(within(frame('Google Meu Negócio')).getByText('1 unidade')).toBeInTheDocument();
+  });
+
+  it('seção do Google sem dados no snapshot: nem @ nem contagem', () => {
+    renderSectioned({ layout: withGoogle(), snapshot: { ...makeSnapshotFixture(), google: null } });
+    expect(frame('Google Meu Negócio').querySelector('.rb-section-frame-handle')).toBeNull();
+  });
+
+  it('com feature_google_business o "Adicionar seção" oferece o Google', () => {
+    const { props } = renderSectioned({
+      layout: { version: 1, blocks: [{ id: 'g', type: 'section', size: 'full' }] },
+      enabledPlatforms: ['instagram', 'google'],
+    });
+    expect(screen.queryByRole('button', { name: /^TikTok/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /^Google Meu Negócio/ }));
+    expect(props.onAddSection).toHaveBeenCalledWith('google', 'g');
   });
 
   // dnd-kit mede os droppables com getBoundingClientRect, que no jsdom é sempre

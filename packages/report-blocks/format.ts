@@ -14,7 +14,7 @@ export function deltaPct(value: number, prev: number): number | null {
   return ((value - prev) / prev) * 100;
 }
 
-const MONTHS_PT_LOWER = [
+export const MONTHS_PT_LOWER = [
   'janeiro',
   'fevereiro',
   'março',

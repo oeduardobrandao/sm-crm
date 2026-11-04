@@ -1,4 +1,5 @@
 import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import { GBP_KPI_IDS } from "../gbp-analytics/kpis.ts";
 import {
   BLOCK_TYPES,
   blockPlatform,
@@ -51,8 +52,8 @@ Deno.test("validateLayout rejeita mais de 200 blocos e ids duplicados", () => {
   assert(!validateLayout(layout([block({ id: "x" }), block({ id: "x" })])).ok);
 });
 
-Deno.test("catálogo tem os 42 tipos (28 + 13 tiktok_* + section, de 2026-10-28)", () => {
-  assertEquals(BLOCK_TYPES.length, 42);
+Deno.test("catálogo tem os 56 tipos (28 + 13 tiktok_* + section + 14 gbp_*)", () => {
+  assertEquals(BLOCK_TYPES.length, 56);
   assert((BLOCK_TYPES as readonly string[]).includes("section"));
   assert((BLOCK_TYPES as readonly string[]).includes("image"));
   assert((BLOCK_TYPES as readonly string[]).includes("kpi_follows"));
@@ -224,7 +225,15 @@ Deno.test("blockPlatform: partição de BLOCK_TYPES fixada por nome", () => {
     "cover", "section_header", "divider", "text", "ai_summary", "ai_recommendations",
     "ai_goals", "image", "section",
   ];
-  const by = { instagram: [] as string[], tiktok: [] as string[], neutral: [] as string[] };
+  const GOOGLE = [
+    "gbp_kpi_profile_views", "gbp_kpi_calls", "gbp_kpi_directions", "gbp_kpi_website_clicks",
+    "gbp_kpi_messages", "gbp_kpi_bookings", "gbp_kpi_avg_rating", "gbp_kpi_new_reviews",
+    "gbp_surfaces", "gbp_rating", "gbp_actions_chart", "gbp_keywords", "gbp_review_highlight",
+    "gbp_units",
+  ];
+  const by = {
+    instagram: [] as string[], tiktok: [] as string[], google: [] as string[], neutral: [] as string[],
+  };
   for (const t of BLOCK_TYPES) {
     const p = blockPlatform(t);
     (p === null ? by.neutral : by[p]).push(t);
@@ -232,7 +241,17 @@ Deno.test("blockPlatform: partição de BLOCK_TYPES fixada por nome", () => {
   assertEquals([...by.instagram].sort(), [...INSTAGRAM].sort());
   assertEquals([...by.neutral].sort(), [...NEUTRAL].sort());
   assertEquals([...by.tiktok].sort(), [...TIKTOK_TYPES].sort());
-  assertEquals(by.instagram.length + by.tiktok.length + by.neutral.length, BLOCK_TYPES.length);
+  assertEquals([...by.google].sort(), [...GOOGLE].sort());
+  assertEquals(
+    by.instagram.length + by.tiktok.length + by.google.length + by.neutral.length,
+    BLOCK_TYPES.length,
+  );
+});
+
+Deno.test("BLOCK_TYPES: gbp_kpi_* espelha GBP_KPI_IDS nos dois sentidos", () => {
+  const fromTypes = BLOCK_TYPES.filter((t) => t.startsWith("gbp_kpi_")).sort();
+  const fromIds = GBP_KPI_IDS.map((id) => "gbp_kpi_" + id).sort();
+  assertEquals(fromTypes, fromIds);
 });
 
 Deno.test("BLOCK_TYPES: tiktok_kpi_* espelha TIKTOK_KPI_IDS nos dois sentidos", () => {
@@ -282,4 +301,15 @@ Deno.test("seções: o teto de 200 conta só blocos de conteúdo", () => {
   assert(validateLayout(layout(blocks)).ok);
   blocks.push(block({ id: "extra" }));
   assert(!validateLayout(layout(blocks)).ok);
+});
+
+Deno.test("blockPlatform: prefixo gbp_ = google (spec 2026-11-04-gmn-report-section)", () => {
+  assertEquals(blockPlatform("gbp_units"), "google");
+  assertEquals(blockPlatform("gbp_kpi_calls"), "google");
+  assertEquals(blockPlatform("tiktok_kpi_views"), "tiktok");
+  assertEquals(blockPlatform("kpi_reach"), "instagram");
+  assertEquals(blockPlatform("section"), null);
+  for (const t of BLOCK_TYPES.filter((t) => t.startsWith("gbp_"))) {
+    assertEquals(blockPlatform(t), "google", t);
+  }
 });

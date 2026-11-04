@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WIDGET_CATALOG, WIDGET_CATEGORIES } from '../catalog';
-import { BLOCK_TYPES, blockPlatform } from '../types';
+import { BLOCK_TYPES, GBP_KPI_IDS, GBP_KPI_LABELS_PT, blockPlatform } from '../types';
 
 describe('WIDGET_CATALOG', () => {
   it('cobre todos os tipos de bloco, sem duplicatas', () => {
@@ -24,6 +24,7 @@ describe('WIDGET_CATALOG', () => {
       expect(Object.prototype.hasOwnProperty.call(w, 'platform'), w.type).toBe(true);
       expect(w.platform, w.type).toBe(blockPlatform(w.type));
       if (w.type.startsWith('tiktok_')) expect(w.platform, w.type).toBe('tiktok');
+      if (w.type.startsWith('gbp_')) expect(w.platform, w.type).toBe('google');
       if (['Texto', 'Mídia', 'Estrutura'].includes(w.category))
         expect(w.platform, w.type).toBe(null);
     }
@@ -39,6 +40,39 @@ describe('WIDGET_CATALOG', () => {
     expect(label('tiktok_chart_best_times')).toBe('Melhor horário para postar');
     expect(label('tiktok_top_posts')).toBe('Vídeos em destaque');
     expect(label('tiktok_post_list')).toBe('Lista de vídeos');
+  });
+
+  it('entradas Google Meu Negócio: 14, rótulos e categorias do mockup', () => {
+    const gbp = WIDGET_CATALOG.filter((w) => w.platform === 'google');
+    expect(gbp.map((w) => w.type).sort()).toEqual(
+      BLOCK_TYPES.filter((t) => t.startsWith('gbp_')).sort(),
+    );
+    const entry = (t: string) => WIDGET_CATALOG.find((w) => w.type === t);
+    for (const id of GBP_KPI_IDS) {
+      expect(entry(`gbp_kpi_${id}`)?.label).toBe(GBP_KPI_LABELS_PT[id]);
+      expect(entry(`gbp_kpi_${id}`)?.category).toBe('Números');
+    }
+    expect(entry('gbp_surfaces')).toMatchObject({
+      label: 'Onde viram o perfil',
+      category: 'Gráficos',
+    });
+    expect(entry('gbp_actions_chart')).toMatchObject({
+      label: 'Ações por dia',
+      category: 'Gráficos',
+    });
+    expect(entry('gbp_keywords')).toMatchObject({
+      label: 'O que buscaram no Google',
+      category: 'Conteúdo',
+    });
+    expect(entry('gbp_rating')).toMatchObject({ label: 'Avaliações', category: 'Conteúdo' });
+    expect(entry('gbp_review_highlight')).toMatchObject({
+      label: 'Avaliação em destaque',
+      category: 'Conteúdo',
+    });
+    expect(entry('gbp_units')).toMatchObject({ label: 'Comparar unidades', category: 'Conteúdo' });
+    // Depois das entradas TikTok.
+    const idx = (t: string) => WIDGET_CATALOG.findIndex((w) => w.type === t);
+    expect(idx('gbp_kpi_profile_views')).toBeGreaterThan(idx('tiktok_post_list'));
   });
 
   it('section_header é o "Subtítulo"; seção não é widget do drawer', () => {
