@@ -113,6 +113,13 @@ e um wrapper `can_access_cliente(p_cliente_id)` (usa `auth.uid()` e `get_my_cont
 `authenticated`. Forma nas policies:
 `has_permission(...) AND (can_access_cliente(cliente_id) OR <é dele>)`.
 
+Funções que uma policy pode chamar (todas com EXECUTE para `authenticated`): `has_permission(module,
+action)`, `can_access_cliente(bigint)`, `can_see_cliente_context(bigint)` (só nas tabelas de contexto),
+`my_client_scope_all()`, `my_membro_ids()`, `workflow_in_active_conta(bigint)` (tenant da etapa sem
+passar pela RLS de `workflows`) e `workflow_has_own_item(bigint)` (workflow legível como contexto do item
+dele). As funções de trigger das guardas (`guard_client_scope_move`, `guard_post_child_update`,
+`guard_post_process_step_assign`) não têm EXECUTE para `authenticated` nem `anon`.
+
 Espelho TS: só `isClientScoped(membership)` em `lib/permissions.ts`, para afordâncias de UI
 (esconder "Novo cliente", mostrar o aviso). O filtro de dados é sempre do servidor.
 

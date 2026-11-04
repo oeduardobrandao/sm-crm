@@ -128,8 +128,8 @@ declare
   v_other uuid := gen_random_uuid();
   v_ca bigint; v_cb bigint; v_cc bigint; v_cd bigint; v_cx bigint;
   v_wa bigint; v_wb bigint; v_wb2 bigint; v_wx bigint;
-  v_pa bigint; v_pb_own bigint; v_pb_other bigint; v_av_a bigint; v_av_b bigint; v_av_a_own bigint; v_pd bigint;
-  v_ea bigint; v_eb_own bigint; v_eb_other bigint; v_ex bigint;
+  v_pa bigint; v_pb_own bigint; v_pb_other bigint; v_av_a bigint; v_av_b bigint; v_av_a_own bigint; v_pd bigint; v_pb_own2 bigint; v_pb_own3 bigint;
+  v_ea bigint; v_eb_own bigint; v_eb_own2 bigint; v_eb_other bigint; v_ex bigint;
   v_membro bigint; v_membro_todos bigint; v_tpl bigint; v_prop bigint;
   v_proc_d bigint; v_step_own bigint; v_step_other bigint;
   v_n bigint; v_expected bigint; v_err text; v_t text; v_sql text;
@@ -142,7 +142,7 @@ begin
     (v_restr, v_ws, 'agent'), (v_other, v_ws_x, 'owner');
   update profiles set conta_id = v_ws, active_workspace_id = v_ws where id in (v_owner, v_todos, v_restr);
   update profiles set conta_id = v_ws_x, active_workspace_id = v_ws_x where id = v_other;
-  update plans set feature_post_processes = true where id in (select plan_id from workspaces where id in (v_ws, v_ws_x));
+  update plans set feature_post_processes = true, feature_custom_properties = true where id in (select plan_id from workspaces where id in (v_ws, v_ws_x));
 
   perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
   insert into clientes (user_id, conta_id, nome, sigla, cor, status) values (v_owner, v_ws, 'A', 'A', '#111', 'ativo') returning id into v_ca;
@@ -172,10 +172,14 @@ begin
   insert into workflow_posts (conta_id, cliente_id, titulo) values (v_ws, v_cb, 'avB') returning id into v_av_b;
   insert into workflow_posts (conta_id, cliente_id, titulo, responsavel_id) values (v_ws, v_ca, 'avAown', v_membro) returning id into v_av_a_own;
   insert into workflow_posts (conta_id, cliente_id, titulo) values (v_ws, v_cd, 'pD') returning id into v_pd;
+  -- two more own avulso posts in B, for the handoff and the reassigning automation
+  insert into workflow_posts (conta_id, cliente_id, titulo, responsavel_id) values (v_ws, v_cb, 'pBown2', v_membro) returning id into v_pb_own2;
+  insert into workflow_posts (conta_id, cliente_id, titulo, responsavel_id) values (v_ws, v_cb, 'pBown3', v_membro) returning id into v_pb_own3;
 
   insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias) values (v_wa, 1, 'eA', 1) returning id into v_ea;
   insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, responsavel_id) values (v_wb, 1, 'eBown', 1, v_membro) returning id into v_eb_own;
   insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias) values (v_wb, 2, 'eBother', 1) returning id into v_eb_other;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, responsavel_id) values (v_wb, 3, 'eBown2', 1, v_membro) returning id into v_eb_own2;
   -- cross-tenant: an etapa in another workspace naming the restricted member's membros.id
   insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, responsavel_id) values (v_wx, 1, 'eX', 1, v_membro) returning id into v_ex;
 
@@ -219,7 +223,7 @@ begin
   v_n := pg_temp.n_as(v_restr, format('select count(*) from workflow_posts where id = %s', v_av_b));
   assert v_n = 0, 'avulso_post_no_workflow_uses_own_cliente_id (B hidden): ' || v_n;
   v_n := pg_temp.n_as(v_restr, 'select count(*) from workflow_posts');
-  assert v_n = 4, 'restricted sees pA, avA, avAown and pBown only: ' || v_n;
+  assert v_n = 6, 'restricted sees pA, avA, avAown, pBown, pBown2 and pBown3 only: ' || v_n;
 
   -- workflows: user_id is not authorship (ruling); wB is readable as context
   -- because he has an own post and etapa in it, never writable through that
@@ -317,9 +321,30 @@ begin
   assert v_n = 1, 'own_post_in_b_can_edit_caption: ' || v_n;
   v_n := pg_temp.rows_as(v_restr, format('update workflow_etapas set status = ''concluido'', concluido_em = now() where id = %s', v_eb_own));
   assert v_n = 1, 'own_etapa_in_b_can_complete: ' || v_n;
-  -- handing the own B post to someone else drops "é dele" from the new row: refused
-  v_err := pg_temp.err_as(v_restr, format('update workflow_posts set responsavel_id = %s where id = %s', v_membro_todos, v_pb_own));
-  assert v_err = '42501', 'own_post_in_b_handoff_denied: ' || coalesce(v_err, 'updated');
+  -- LIMITATION (NEEDS_CONTEXT, round 3 ruling): handing off an own hidden item, by
+  -- hand or through a reassigning status automation, is blocked by Postgres
+  -- itself. An UPDATE that needs read access to the row (any WHERE/RETURNING,
+  -- so every PostgREST update) checks the NEW row against the SELECT/ALL
+  -- USING too ("Policies Applied by Command Type"), and the handed-off row is
+  -- no longer visible to him. Relaxing WITH CHECK does not change this (probed:
+  -- with WHERE 42501, without WHERE ok). These cases pin today's behaviour.
+  v_err := pg_temp.err_as(v_restr, format('update workflow_posts set responsavel_id = %s where id = %s', v_membro_todos, v_pb_own2));
+  assert v_err = '42501', 'own_post_in_b_handoff_blocked_by_select_using: ' || coalesce(v_err, 'updated');
+  v_err := pg_temp.err_as(v_restr, format('update workflow_etapas set responsavel_id = %s where id = %s', v_membro_todos, v_eb_own2));
+  assert v_err = '42501', 'own_etapa_in_b_handoff_blocked_by_select_using: ' || coalesce(v_err, 'updated');
+  -- workflow_posts_z2_status_automations (BEFORE UPDATE) rewrites NEW.responsavel_id,
+  -- so his status change on the own hidden post fails the same way
+  insert into post_status_automations (conta_id, trigger_status, action_type, config)
+    values (v_ws, 'revisao_interna', 'assign_responsavel', jsonb_build_object('membro_id', v_membro_todos::text));
+  v_err := pg_temp.err_as(v_restr, format('update workflow_posts set status = ''revisao_interna'' where id = %s', v_pb_own3));
+  assert v_err = '42501', 'status_change_with_reassigning_automation_blocked: ' || coalesce(v_err, 'updated');
+  delete from post_status_automations where conta_id = v_ws;
+  -- without a reassigning rule the same status change goes through
+  v_n := pg_temp.rows_as(v_restr, format('update workflow_posts set status = ''revisao_interna'' where id = %s', v_pb_own3));
+  assert v_n = 1, 'own_post_in_b_status_change_ok: ' || v_n;
+  -- the relaxed WITH CHECK keeps the tenant check: no moving a row to another workspace
+  v_err := pg_temp.err_as(v_restr, format('update workflow_posts set conta_id = %L where id = %s', v_ws_x, v_pb_own));
+  assert v_err is not null, 'own_post_conta_change_denied: ' || coalesce(v_err, 'updated');
   v_n := pg_temp.rows_as(v_restr, format('update workflow_posts set titulo = ''y'' where id = %s', v_pb_other));
   assert v_n = 0, 'hidden_post_not_updatable: ' || v_n;
   v_n := pg_temp.rows_as(v_restr, format('update workflow_posts set titulo = ''y'' where id = %s', v_pa));
@@ -504,6 +529,33 @@ begin
   end loop;
   v_n := pg_temp.rows_as(v_restr, format('delete from portal_approvals where workflow_etapa_id = %s', v_ea));
   assert v_n = 1, 'portal_approval_of_visible_etapa_deletable: ' || v_n;
+  -- own_etapa_approval_relocate_denied: re-parenting the approval of his own hidden
+  -- etapa onto a visible etapa (to delete it there) is refused
+  insert into portal_approvals (workflow_etapa_id, token, action) values (v_eb_own, 'town', 'mensagem');
+  v_n := pg_temp.n_as(v_restr, format('select count(*) from portal_approvals where workflow_etapa_id = %s', v_eb_own));
+  assert v_n = 1, 'portal_approval_of_own_etapa_visible: ' || v_n;
+  v_err := pg_temp.errm_as(v_restr, format('update portal_approvals set workflow_etapa_id = %s where workflow_etapa_id = %s', v_ea, v_eb_own));
+  assert v_err = 'client_scope_restricted', 'own_etapa_approval_relocate_denied: ' || coalesce(v_err, 'updated');
+  v_n := pg_temp.rows_as(v_restr, format('delete from portal_approvals where token = %L', 'town'));
+  assert v_n = 0, 'own_etapa_approval_delete_denied: ' || v_n;
+  v_n := pg_temp.rows_as(v_restr, format('update portal_approvals set comentario = ''ok'' where token = %L', 'town'));
+  assert v_n = 1, 'own_etapa_approval_editable_in_place: ' || v_n;
+
+  -- post_process_steps self-assign: authenticated has no direct write (SELECT grant
+  -- in hosted, false policies), and the DEFINER path is guarded by the trigger
+  v_err := pg_temp.err_as(v_restr, format('update post_process_steps set responsavel_id = %s where id = %s', v_membro, v_step_other));
+  assert v_err is null and pg_temp.rows_as(v_restr, format('update post_process_steps set responsavel_id = %s where id = %s', v_membro, v_step_other)) = 0,
+    'direct_step_update_grants_nothing: ' || coalesce(v_err, '');
+  v_err := pg_temp.err_as(v_restr, format('insert into post_process_steps (conta_id, process_id, ordem, nome, responsavel_id) values (%L, %s, 9, ''x'', %s)', v_ws, v_proc_d, v_membro));
+  assert v_err = '42501', 'direct_step_insert_denied: ' || coalesce(v_err, 'inserted');
+  v_err := pg_temp.errm_definer_as(v_restr, format('update post_process_steps set responsavel_id = %s where id = %s', v_membro, v_step_other));
+  assert v_err = 'client_scope_restricted', 'self_assign_hidden_process_step_denied: ' || coalesce(v_err, 'updated');
+  v_err := pg_temp.errm_definer_as(v_restr, format('insert into post_process_steps (conta_id, process_id, ordem, nome, responsavel_id) values (%L, %s, 9, ''x'', %s)', v_ws, v_proc_d, v_membro));
+  assert v_err = 'client_scope_restricted', 'self_assign_hidden_process_step_insert_denied: ' || coalesce(v_err, 'inserted');
+  v_err := pg_temp.errm_definer_as(v_restr, format('update post_process_steps set responsavel_id = %s where process_id in (select id from post_processes where post_id = %s)', v_membro, v_pa));
+  assert v_err is null, 'self_assign_accessible_process_step_allowed: ' || coalesce(v_err, '');
+  v_err := pg_temp.errm_definer_as(v_todos, format('update post_process_steps set responsavel_id = %s where id = %s', v_membro_todos, v_step_other));
+  assert v_err is null, 'todos_self_assign_process_step_allowed: ' || coalesce(v_err, '');
 
   -- ---------------------------------------------------------------- todos / owner unchanged
   foreach v_t in array array['workflows', 'workflow_posts', 'post_comment_threads',
@@ -595,6 +647,24 @@ begin
     'workflow_posts: no per-row SubPlan: ' || v_json::text;
 end $$;
 reset role;
+
+-- function_privileges: helpers callable by authenticated (policies), trigger
+-- functions never; anon never; service_role always
+do $$
+declare v_f text;
+begin
+  foreach v_f in array array['public.workflow_has_own_item(bigint)', 'public.workflow_in_active_conta(bigint)'] loop
+    assert has_function_privilege('authenticated', v_f, 'EXECUTE'), 'helper executable by authenticated: ' || v_f;
+    assert not has_function_privilege('anon', v_f, 'EXECUTE'), 'helper not executable by anon: ' || v_f;
+    assert has_function_privilege('service_role', v_f, 'EXECUTE'), 'helper executable by service_role: ' || v_f;
+  end loop;
+  foreach v_f in array array['public.guard_client_scope_move()', 'public.guard_post_child_update()',
+      'public.guard_post_process_step_assign()'] loop
+    assert not has_function_privilege('authenticated', v_f, 'EXECUTE'), 'trigger fn not executable by authenticated: ' || v_f;
+    assert not has_function_privilege('anon', v_f, 'EXECUTE'), 'trigger fn not executable by anon: ' || v_f;
+    assert has_function_privilege('service_role', v_f, 'EXECUTE'), 'trigger fn executable by service_role: ' || v_f;
+  end loop;
+end $$;
 
 rollback;
 \echo 99_acesso_por_cliente_posts: ok

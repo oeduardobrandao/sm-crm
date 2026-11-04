@@ -5,8 +5,9 @@
 --   leitura  = <qual atual> AND ((SELECT my_client_scope_all()) OR can_access_cliente(cliente) OR <é dele>)
 --   UPDATE   = USING e WITH CHECK com a regra de leitura: o membro restrito
 --              conclui a própria etapa e edita o próprio post num cliente oculto.
---              Mover o item (cliente_id/workflow_id) para um cliente que ele não
---              acessa é barrado pelo trigger guard_client_scope_move.
+--              O trigger guard_client_scope_move barra mover o item
+--              (cliente_id/workflow_id) sem acesso à origem e ao destino, e pôr a
+--              si mesmo como responsável sem acesso ao cliente.
 --   INSERT e DELETE = estritos, sem o "é dele" (senão um restrito criaria um
 --              item num cliente oculto e passaria a lê-lo, ou apagaria o item).
 --   workflow_posts usa o próprio cliente_id (NOT NULL, também no post avulso).
@@ -71,16 +72,20 @@ REVOKE ALL ON FUNCTION public.workflow_has_own_item(bigint) FROM PUBLIC, anon, a
 GRANT EXECUTE ON FUNCTION public.workflow_has_own_item(bigint) TO authenticated, service_role;
 
 -- Guarda das raízes de item (workflow_posts, workflow_etapas) para membro
--- restrito: o WITH CHECK do UPDATE tem o "é dele", então quem barra a
--- realocação e a autoatribuição é este trigger.
+-- restrito. O WITH CHECK do UPDATE tem o "é dele", então quem barra a
+-- realocação e a autoatribuição é este trigger:
 --   * mover (cliente_id ou workflow_id, inclusive para NULL) exige acesso ao
 --     cliente de ORIGEM e ao de DESTINO: o item dele num cliente oculto pode
 --     ser editado, nunca tirado de lá (e depois apagado);
 --   * pôr a si mesmo como responsável exige acesso ao cliente do item (vale
 --     também nos caminhos SECURITY DEFINER, que não passam pela RLS).
--- Restrito = linha em workspace_members da conta do item com client_scope
--- 'atribuidos' e papel diferente de owner. auth.uid() NULL (service role, cron)
--- e membros irrestritos passam. Vale dentro das RPCs de mover (detach/attach),
+-- conta_id fica com o WITH CHECK (tenant). Sem lista de colunas e com o prefixo
+-- zz, o trigger roda depois dos outros BEFORE UPDATE (post_a0_sync_cliente
+-- deriva cliente_id; as automações de status mexem em responsavel_id) e vê o
+-- NEW final. Restrito = linha em workspace_members da conta do item com
+-- client_scope 'atribuidos' e papel diferente de owner. auth.uid() NULL
+-- (service role, cron) e membros irrestritos saem no primeiro EXISTS, antes de
+-- qualquer leitura de workflows. Vale dentro das RPCs de mover (detach/attach),
 -- que rodam com o auth.uid() de quem chamou.
 CREATE OR REPLACE FUNCTION public.guard_client_scope_move()
 RETURNS trigger
@@ -95,19 +100,29 @@ DECLARE
   v_moved   boolean;
 BEGIN
   IF v_uid IS NULL THEN RETURN NEW; END IF;
+  -- Saída barata: quem não é restrito em nenhum workspace não paga nada mais.
+  IF NOT EXISTS (
+    SELECT 1 FROM public.workspace_members wm
+     WHERE wm.user_id = v_uid AND wm.role <> 'owner' AND wm.client_scope = 'atribuidos'
+  ) THEN
+    RETURN NEW;
+  END IF;
   -- IFs aninhados: plpgsql resolve NEW.cliente_id mesmo com o AND falso, e
   -- workflow_etapas não tem a coluna.
   IF TG_TABLE_NAME = 'workflow_posts' THEN
     v_conta   := NEW.conta_id;
     v_old_cli := OLD.cliente_id;
-    v_new_cli := NEW.cliente_id;  -- já derivado do workflow por post_a0_sync_cliente
+    v_new_cli := NEW.cliente_id;
     v_moved   := NEW.cliente_id IS DISTINCT FROM OLD.cliente_id
                  OR NEW.workflow_id IS DISTINCT FROM OLD.workflow_id;
   ELSE
+    v_moved := NEW.workflow_id IS DISTINCT FROM OLD.workflow_id;
+    IF NOT v_moved AND NEW.responsavel_id IS NOT DISTINCT FROM OLD.responsavel_id THEN
+      RETURN NEW;
+    END IF;
     SELECT w.conta_id, w.cliente_id INTO v_conta, v_new_cli
       FROM public.workflows w WHERE w.id = NEW.workflow_id;
     SELECT w.cliente_id INTO v_old_cli FROM public.workflows w WHERE w.id = OLD.workflow_id;
-    v_moved := NEW.workflow_id IS DISTINCT FROM OLD.workflow_id;
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM public.workspace_members wm
@@ -139,24 +154,25 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.guard_client_scope_move() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.guard_client_scope_move() TO service_role;
 
-CREATE TRIGGER workflow_posts_client_scope_guard
-  BEFORE UPDATE OF cliente_id, workflow_id, responsavel_id ON public.workflow_posts
+CREATE TRIGGER workflow_posts_zz_client_scope_guard
+  BEFORE UPDATE ON public.workflow_posts
   FOR EACH ROW EXECUTE FUNCTION public.guard_client_scope_move();
-CREATE TRIGGER workflow_etapas_client_scope_guard
-  BEFORE UPDATE OF workflow_id, responsavel_id ON public.workflow_etapas
+CREATE TRIGGER workflow_etapas_zz_client_scope_guard
+  BEFORE UPDATE ON public.workflow_etapas
   FOR EACH ROW EXECUTE FUNCTION public.guard_client_scope_move();
 
--- Guarda das filhas do post com DELETE estrito (post_media, threads,
--- comentários, sugestões, alvos, valores de propriedade):
+-- Guarda das filhas com DELETE estrito (post_media, threads, comentários,
+-- sugestões, alvos, valores de propriedade, aprovações do portal):
 --   * a coluna de autor que libera o DELETE (uploaded_by, created_by,
 --     author_id) é imutável para qualquer usuário logado: sem isto um restrito
 --     reescreveria o autor da linha visível e então a apagaria. Nenhum trigger
 --     ou grant por coluna fixava essas colunas (post_media_notes.author_user_id
 --     já é fixado pelo GRANT UPDATE (status) da tabela);
---   * trocar o pai (post_id, thread_id) exige, para o restrito, acesso ao
---     cliente do post de ORIGEM: senão ele moveria a filha do post dele num
---     cliente oculto para um post acessível e a apagaria lá.
+--   * trocar o pai (post_id, thread_id, workflow_etapa_id) exige, para o
+--     restrito, acesso ao cliente do pai de ORIGEM: senão ele moveria a filha do
+--     item dele num cliente oculto para um pai acessível e a apagaria lá.
 -- auth.uid() NULL (service role, cron) passa.
 CREATE OR REPLACE FUNCTION public.guard_post_child_update()
 RETURNS trigger
@@ -164,11 +180,10 @@ LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_uid      uuid := auth.uid();
-  v_old_post bigint;
-  v_moved    boolean := false;
-  v_conta    uuid;
-  v_cli      bigint;
+  v_uid   uuid := auth.uid();
+  v_moved boolean := false;
+  v_conta uuid;
+  v_cli   bigint;
 BEGIN
   IF v_uid IS NULL THEN RETURN NEW; END IF;
   IF TG_TABLE_NAME = 'post_media' THEN
@@ -185,31 +200,46 @@ BEGIN
     END IF;
   END IF;
   IF TG_TABLE_NAME = 'post_comments' THEN
-    IF NEW.thread_id IS DISTINCT FROM OLD.thread_id THEN
-      v_moved := true;
-      SELECT t.post_id INTO v_old_post FROM public.post_comment_threads t WHERE t.id = OLD.thread_id;
-    END IF;
+    v_moved := NEW.thread_id IS DISTINCT FROM OLD.thread_id;
+  ELSIF TG_TABLE_NAME = 'portal_approvals' THEN
+    v_moved := NEW.workflow_etapa_id IS DISTINCT FROM OLD.workflow_etapa_id;
   ELSE
-    IF NEW.post_id IS DISTINCT FROM OLD.post_id THEN
-      v_moved := true;
-      v_old_post := OLD.post_id;
-    END IF;
+    v_moved := NEW.post_id IS DISTINCT FROM OLD.post_id;
   END IF;
-  IF v_moved THEN
+  IF NOT v_moved THEN RETURN NEW; END IF;
+  -- Saída barata para quem não é restrito em nenhum workspace.
+  IF NOT EXISTS (
+    SELECT 1 FROM public.workspace_members wm
+     WHERE wm.user_id = v_uid AND wm.role <> 'owner' AND wm.client_scope = 'atribuidos'
+  ) THEN
+    RETURN NEW;
+  END IF;
+  IF TG_TABLE_NAME = 'post_comments' THEN
     SELECT wp.conta_id, wp.cliente_id INTO v_conta, v_cli
-      FROM public.workflow_posts wp WHERE wp.id = v_old_post;
-    IF EXISTS (
-         SELECT 1 FROM public.workspace_members wm
-          WHERE wm.workspace_id = v_conta AND wm.user_id = v_uid
-            AND wm.role <> 'owner' AND wm.client_scope = 'atribuidos')
-       AND NOT public.can_access_cliente(v_uid, v_conta, v_cli) THEN
-      RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';
-    END IF;
+      FROM public.post_comment_threads t
+      JOIN public.workflow_posts wp ON wp.id = t.post_id
+     WHERE t.id = OLD.thread_id;
+  ELSIF TG_TABLE_NAME = 'portal_approvals' THEN
+    SELECT w.conta_id, w.cliente_id INTO v_conta, v_cli
+      FROM public.workflow_etapas e
+      JOIN public.workflows w ON w.id = e.workflow_id
+     WHERE e.id = OLD.workflow_etapa_id;
+  ELSE
+    SELECT wp.conta_id, wp.cliente_id INTO v_conta, v_cli
+      FROM public.workflow_posts wp WHERE wp.id = OLD.post_id;
+  END IF;
+  IF EXISTS (
+       SELECT 1 FROM public.workspace_members wm
+        WHERE wm.workspace_id = v_conta AND wm.user_id = v_uid
+          AND wm.role <> 'owner' AND wm.client_scope = 'atribuidos')
+     AND NOT public.can_access_cliente(v_uid, v_conta, v_cli) THEN
+    RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';
   END IF;
   RETURN NEW;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.guard_post_child_update() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.guard_post_child_update() TO service_role;
 
 CREATE TRIGGER post_media_scope_guard
   BEFORE UPDATE OF uploaded_by, post_id ON public.post_media
@@ -229,12 +259,64 @@ CREATE TRIGGER post_targets_scope_guard
 CREATE TRIGGER post_property_values_scope_guard
   BEFORE UPDATE OF post_id ON public.post_property_values
   FOR EACH ROW EXECUTE FUNCTION public.guard_post_child_update();
+CREATE TRIGGER portal_approvals_scope_guard
+  BEFORE UPDATE OF workflow_etapa_id ON public.portal_approvals
+  FOR EACH ROW EXECUTE FUNCTION public.guard_post_child_update();
+
+-- Etapa de processo atribuída a si mesmo: torna a etapa "dele" (pps_select_member)
+-- e dá contexto do cliente. authenticated não escreve post_process_steps direto
+-- (só SELECT no grant, policies de escrita false): quem escreve são as RPCs
+-- SECURITY DEFINER (Task 5). Defesa em profundidade para esse caminho: o
+-- restrito só põe a si mesmo como responsável se acessa o cliente do post do
+-- processo.
+CREATE OR REPLACE FUNCTION public.guard_post_process_step_assign()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_cli bigint;
+BEGIN
+  IF v_uid IS NULL OR NEW.responsavel_id IS NULL THEN RETURN NEW; END IF;
+  IF TG_OP = 'UPDATE' THEN
+    IF NEW.responsavel_id IS NOT DISTINCT FROM OLD.responsavel_id THEN RETURN NEW; END IF;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.workspace_members wm
+     WHERE wm.workspace_id = NEW.conta_id AND wm.user_id = v_uid
+       AND wm.role <> 'owner' AND wm.client_scope = 'atribuidos'
+  ) THEN
+    RETURN NEW;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.membros m
+                  WHERE m.id = NEW.responsavel_id AND m.crm_user_id = v_uid
+                    AND m.conta_id = NEW.conta_id) THEN
+    RETURN NEW;
+  END IF;
+  SELECT wp.cliente_id INTO v_cli
+    FROM public.post_processes pp
+    JOIN public.workflow_posts wp ON wp.id = pp.post_id AND wp.conta_id = pp.conta_id
+   WHERE pp.id = NEW.process_id AND pp.conta_id = NEW.conta_id;
+  IF NOT public.can_access_cliente(v_uid, NEW.conta_id, v_cli) THEN
+    RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.guard_post_process_step_assign() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.guard_post_process_step_assign() TO service_role;
+
+CREATE TRIGGER post_process_steps_scope_guard
+  BEFORE INSERT OR UPDATE OF responsavel_id ON public.post_process_steps
+  FOR EACH ROW EXECUTE FUNCTION public.guard_post_process_step_assign();
 
 -- -------------------------------------------------------------
 -- 1. workflow_posts
 -- -------------------------------------------------------------
 -- FOR ALL sem WITH CHECK até aqui. USING e WITH CHECK levam o "é dele" (leitura
--- e UPDATE); INSERT e DELETE estritos pelas RESTRICTIVE abaixo.
+-- e UPDATE); INSERT e DELETE estritos pelas RESTRICTIVE abaixo. Mover e
+-- autoatribuir: trigger workflow_posts_zz_client_scope_guard.
 ALTER POLICY workspace_posts_all ON public.workflow_posts
   USING (
     conta_id IN (SELECT public.get_my_conta_id())
