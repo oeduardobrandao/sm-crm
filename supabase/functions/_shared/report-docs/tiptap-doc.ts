@@ -89,14 +89,14 @@ export interface FallbackPlatforms {
 
 function googleSummaryParts(kpis: Record<GbpKpiId, GbpReportKpiEntry>): string[] {
   const parts: string[] = [];
-  const add = (id: GbpKpiId, label: string) => {
+  const add = (id: GbpKpiId, one: string, many: string) => {
     const v = kpis[id]?.value;
-    if (v !== null && v !== undefined) parts.push(`${fmt.format(v)} ${label}`);
+    if (v !== null && v !== undefined) parts.push(`${fmt.format(v)} ${v === 1 ? one : many}`);
   };
-  add("profile_views", "visualizações do perfil");
-  add("calls", "ligações");
-  add("directions", "pedidos de rota");
-  add("website_clicks", "cliques no site");
+  add("profile_views", "visualização do perfil", "visualizações do perfil");
+  add("calls", "ligação", "ligações");
+  add("directions", "pedido de rota", "pedidos de rota");
+  add("website_clicks", "clique no site", "cliques no site");
   return parts;
 }
 

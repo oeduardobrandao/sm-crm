@@ -176,4 +176,9 @@ Deno.test("fallbackSummaryParagraphs: Google só e Instagram + Google", () => {
   );
   const both = fallbackSummaryParagraphs(kpis, "outubro de 2026", { instagram: true, tiktok: null, google: g });
   assertEquals(both[both.length - 1], "No Google Meu Negócio: 18.420 visualizações do perfil, 592 ligações, 459 pedidos de rota.");
+  const one = { ...g, calls: { value: 1, prev: null, unit: "count" as const }, website_clicks: { value: 1, prev: null, unit: "count" as const } };
+  assertEquals(
+    fallbackSummaryParagraphs(kpis, "outubro de 2026", { instagram: true, tiktok: null, google: one }).at(-1),
+    "No Google Meu Negócio: 18.420 visualizações do perfil, 1 ligação, 459 pedidos de rota, 1 clique no site.",
+  );
 });
