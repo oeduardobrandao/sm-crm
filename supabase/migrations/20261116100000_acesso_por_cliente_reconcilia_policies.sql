@@ -387,45 +387,113 @@ DO $do$ BEGIN
   END IF;
 END $do$;
 
--- pós-condição: nas tabelas acima só restam policies que o repo define
+-- pós-condição: nas tabelas acima sobra exatamente o conjunto de policies que o repo define
+-- em 20261116000001 (gerado de um banco limpo). Qualquer policy a mais, conhecida ou não,
+-- aborta: somada com OR, ela anularia o escopo por cliente.
 DO $$
 DECLARE v text;
 BEGIN
-  SELECT string_agg(tablename || '.' || policyname, ', ') INTO v
-    FROM pg_policies
-   WHERE schemaname = 'public'
-     AND (tablename, policyname) IN (
-       ('clientes', 'Users can CRUD own clientes'),
-       ('clientes', 'Usuários podem gerenciar clientes da sua conta'),
-       ('membros', 'Users can CRUD own membros'),
-       ('membros', 'Usuários podem gerenciar membros da sua conta'),
-       ('integracoes_status', 'Users can CRUD own integracoes_status'),
-       ('integracoes_status', 'Usuários podem gerenciar status de integração da sua conta'),
-       ('instagram_post_tags', 'tags_conta'),
-       ('analytics_reports', 'reports_conta'),
-       ('client_hub_tokens', 'workspace members can manage hub tokens'),
-       ('hub_brand', 'workspace members can manage hub brand'),
-       ('hub_brand_files', 'workspace members can manage hub brand files'),
-       ('hub_pages', 'workspace members can manage hub pages'),
-       ('portal_approvals', 'Users can view portal approvals for their accounts'),
-       ('portal_approvals', 'owners_insert_portal_approvals'),
-       ('portal_tokens', 'owners_manage_portal_tokens'));
+  WITH esperado(t, p) AS (VALUES
+    ('analytics_reports', 'reports_conta_delete'),
+    ('analytics_reports', 'reports_conta_insert'),
+    ('analytics_reports', 'reports_conta_select'),
+    ('analytics_reports', 'reports_conta_update'),
+    ('client_hub_tokens', 'client_hub_tokens_service_role'),
+    ('client_hub_tokens', 'client_hub_tokens_workspace_all'),
+    ('clientes', 'clientes_delete'),
+    ('clientes', 'clientes_insert'),
+    ('clientes', 'clientes_select'),
+    ('clientes', 'clientes_update'),
+    ('hub_brand', 'hub_brand_service_role'),
+    ('hub_brand', 'hub_brand_workspace_all'),
+    ('hub_brand_files', 'hub_brand_files_service_role'),
+    ('hub_brand_files', 'hub_brand_files_workspace_all'),
+    ('hub_pages', 'hub_pages_service_role'),
+    ('hub_pages', 'hub_pages_workspace_all'),
+    ('instagram_post_tags', 'tags_conta_delete'),
+    ('instagram_post_tags', 'tags_conta_insert'),
+    ('instagram_post_tags', 'tags_conta_select'),
+    ('instagram_post_tags', 'tags_conta_update'),
+    ('integracoes_status', 'integracoes_status_delete'),
+    ('integracoes_status', 'integracoes_status_insert'),
+    ('integracoes_status', 'integracoes_status_select'),
+    ('integracoes_status', 'integracoes_status_update'),
+    ('membros', 'membros_delete'),
+    ('membros', 'membros_insert'),
+    ('membros', 'membros_select'),
+    ('membros', 'membros_update'),
+    ('portal_approvals', 'portal_approvals_delete'),
+    ('portal_approvals', 'portal_approvals_insert'),
+    ('portal_approvals', 'portal_approvals_select'),
+    ('portal_approvals', 'portal_approvals_update'),
+    ('portal_tokens', 'portal_tokens_service_role'),
+    ('portal_tokens', 'portal_tokens_workspace_all'),
+    ('workflow_etapas', 'workflow_etapas_delete'),
+    ('workflow_etapas', 'workflow_etapas_insert'),
+    ('workflow_etapas', 'workflow_etapas_select'),
+    ('workflow_etapas', 'workflow_etapas_update'),
+    ('workflows', 'workflows_delete'),
+    ('workflows', 'workflows_insert'),
+    ('workflows', 'workflows_select'),
+    ('workflows', 'workflows_update'))
+  SELECT string_agg(pp.tablename || '.' || pp.policyname, ', ' ORDER BY 1) INTO v
+    FROM pg_policies pp
+   WHERE pp.schemaname = 'public'
+     AND pp.tablename IN ('analytics_reports', 'client_hub_tokens', 'clientes', 'hub_brand', 'hub_brand_files', 'hub_pages', 'instagram_post_tags', 'integracoes_status', 'membros', 'portal_approvals', 'portal_tokens', 'workflow_etapas', 'workflows')
+     AND NOT EXISTS (SELECT 1 FROM esperado e WHERE e.t = pp.tablename AND e.p = pp.policyname);
   IF v IS NOT NULL THEN
-    RAISE EXCEPTION 'reconcilia_policies: legadas ainda presentes: %', v;
+    RAISE EXCEPTION 'reconcilia_policies: policies fora do repo: %', v;
   END IF;
 
-  SELECT string_agg(t || '_' || c, ', ') INTO v
-    FROM unnest(array['clientes', 'membros', 'integracoes_status']) t,
-         unnest(array['select', 'insert', 'update', 'delete']) c
-   WHERE NOT EXISTS (SELECT 1 FROM pg_policies p
-                      WHERE p.schemaname = 'public' AND p.tablename = t AND p.policyname = t || '_' || c);
+  WITH esperado(t, p) AS (VALUES
+    ('analytics_reports', 'reports_conta_delete'),
+    ('analytics_reports', 'reports_conta_insert'),
+    ('analytics_reports', 'reports_conta_select'),
+    ('analytics_reports', 'reports_conta_update'),
+    ('client_hub_tokens', 'client_hub_tokens_service_role'),
+    ('client_hub_tokens', 'client_hub_tokens_workspace_all'),
+    ('clientes', 'clientes_delete'),
+    ('clientes', 'clientes_insert'),
+    ('clientes', 'clientes_select'),
+    ('clientes', 'clientes_update'),
+    ('hub_brand', 'hub_brand_service_role'),
+    ('hub_brand', 'hub_brand_workspace_all'),
+    ('hub_brand_files', 'hub_brand_files_service_role'),
+    ('hub_brand_files', 'hub_brand_files_workspace_all'),
+    ('hub_pages', 'hub_pages_service_role'),
+    ('hub_pages', 'hub_pages_workspace_all'),
+    ('instagram_post_tags', 'tags_conta_delete'),
+    ('instagram_post_tags', 'tags_conta_insert'),
+    ('instagram_post_tags', 'tags_conta_select'),
+    ('instagram_post_tags', 'tags_conta_update'),
+    ('integracoes_status', 'integracoes_status_delete'),
+    ('integracoes_status', 'integracoes_status_insert'),
+    ('integracoes_status', 'integracoes_status_select'),
+    ('integracoes_status', 'integracoes_status_update'),
+    ('membros', 'membros_delete'),
+    ('membros', 'membros_insert'),
+    ('membros', 'membros_select'),
+    ('membros', 'membros_update'),
+    ('portal_approvals', 'portal_approvals_delete'),
+    ('portal_approvals', 'portal_approvals_insert'),
+    ('portal_approvals', 'portal_approvals_select'),
+    ('portal_approvals', 'portal_approvals_update'),
+    ('portal_tokens', 'portal_tokens_service_role'),
+    ('portal_tokens', 'portal_tokens_workspace_all'),
+    ('workflow_etapas', 'workflow_etapas_delete'),
+    ('workflow_etapas', 'workflow_etapas_insert'),
+    ('workflow_etapas', 'workflow_etapas_select'),
+    ('workflow_etapas', 'workflow_etapas_update'),
+    ('workflows', 'workflows_delete'),
+    ('workflows', 'workflows_insert'),
+    ('workflows', 'workflows_select'),
+    ('workflows', 'workflows_update'))
+  SELECT string_agg(e.t || '.' || e.p, ', ' ORDER BY 1) INTO v
+    FROM esperado e
+   WHERE NOT EXISTS (SELECT 1 FROM pg_policies pp
+                      WHERE pp.schemaname = 'public' AND pp.tablename = e.t AND pp.policyname = e.p);
   IF v IS NOT NULL THEN
     RAISE EXCEPTION 'reconcilia_policies: faltam policies do repo: %', v;
-  END IF;
-  IF (SELECT count(*) FROM pg_policies WHERE schemaname = 'public'
-        AND ((tablename = 'instagram_post_tags' AND policyname LIKE 'tags_conta\_%')
-          OR (tablename = 'analytics_reports' AND policyname LIKE 'reports_conta\_%'))) <> 8 THEN
-    RAISE EXCEPTION 'reconcilia_policies: faltam tags_conta_* ou reports_conta_*';
   END IF;
 END $$;
 
