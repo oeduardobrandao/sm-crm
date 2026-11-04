@@ -48,7 +48,7 @@
 --                                   mais qualquer tabela de cliente cuja policy
 --                                   use my_membro_ids()) aparece no corpo de
 --                                   can_see_cliente_context(bigint).
--- oauth_states_pinned: fixa RLS off + ACL atual da isenção de oauth_states.
+-- oauth_states_pinned: fixa RLS off + ACL padrão (sem grant explícito) da isenção de oauth_states.
 -- Sanidade: todo nome dos arrays existe; toda entrada de v_exempt_no_policy
 -- continua com RLS ligada e sem policy fora de service_role.
 
@@ -133,19 +133,28 @@ begin
    where to_regclass('public.' || n) is null;
   assert v_missing is null, 'sanity: unknown tables in the arrays: ' || array_to_string(v_missing, ', ');
 
-  -- oauth_states_pinned: RLS off e ALL para anon e authenticated, como hoje. Se alguém ligar a
-  -- RLS ou mexer nos grants, este caso falha e a isenção é retriada.
+  -- oauth_states_pinned: RLS off e, para anon e authenticated, exatamente o ACL padrão do schema
+  -- public (pg_default_acl de postgres): nenhuma migration concedeu nem revogou nada nela. O padrão
+  -- varia com a imagem (a do CI dá Dxtm, as mais novas e o hosted dão ALL), então a comparação é
+  -- com o padrão do ambiente, não com uma lista fixa. Se alguém ligar a RLS ou mexer nos grants,
+  -- este caso falha e a isenção é retriada.
   assert not (select relrowsecurity from pg_class where oid = 'public.oauth_states'::regclass)
      and (select string_agg(a.privilege_type, ',' order by a.privilege_type)
             from pg_class c, aclexplode(c.relacl) a
            where c.oid = 'public.oauth_states'::regclass and a.grantee = 'anon'::regrole)
-         = 'DELETE,INSERT,MAINTAIN,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE'
+         is not distinct from (select string_agg(a.privilege_type, ',' order by a.privilege_type)
+            from pg_default_acl d, aclexplode(d.defaclacl) a
+           where d.defaclrole = 'postgres'::regrole and d.defaclnamespace = 'public'::regnamespace
+             and d.defaclobjtype = 'r' and a.grantee = 'anon'::regrole)
      and (select string_agg(a.privilege_type, ',' order by a.privilege_type)
             from pg_class c, aclexplode(c.relacl) a
            where c.oid = 'public.oauth_states'::regclass and a.grantee = 'authenticated'::regrole)
-         = 'DELETE,INSERT,MAINTAIN,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE',
+         is not distinct from (select string_agg(a.privilege_type, ',' order by a.privilege_type)
+            from pg_default_acl d, aclexplode(d.defaclacl) a
+           where d.defaclrole = 'postgres'::regrole and d.defaclnamespace = 'public'::regnamespace
+             and d.defaclobjtype = 'r' and a.grantee = 'authenticated'::regrole),
     'oauth_states_pinned: RLS or grants changed; re-triage the oauth_states exemption';
-  raise notice 'oauth_states_pinned: ok (RLS off, ALL to anon/authenticated; pre-existing, tracked separately)';
+  raise notice 'oauth_states_pinned: ok (RLS off, default ACL for anon/authenticated; pre-existing, tracked separately)';
 
   -- client tables: roots, FK closure, extras
   create temp table _ct on commit drop as

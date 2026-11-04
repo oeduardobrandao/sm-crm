@@ -28,6 +28,9 @@ select et_grant_hosted_parity(array[
   'financeiro_acordo_versoes', 'financeiro_atribuicoes', 'financeiro_cliente_versoes',
   'financeiro_config', 'financeiro_entregas_manuais', 'financeiro_funcoes', 'financeiro_periodos',
   'membros', 'clientes', 'workspace_member_clientes']);
+-- clientes/membros keep the hosted table-level writes (only SELECT is a column allowlist), as in
+-- 52_financial_enforcement: the local image's default ACL does not grant them
+grant insert, update, delete on public.membros, public.clientes to anon, authenticated;
 
 -- count(*) of a query as p_user (authenticated)
 create or replace function pg_temp.n_as(p_user uuid, p_sql text) returns bigint language plpgsql as $f$
