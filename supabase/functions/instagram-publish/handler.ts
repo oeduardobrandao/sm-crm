@@ -88,8 +88,9 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
     // a member there), never profiles.conta_id: that column goes stale on a workspace switch, and a
     // member restricted in the post's workspace but `todos` in the stale one would pass. The same
     // workspace drives the plan gate. Every action below writes with the service role, so the post's
-    // client must be in scope: publishing is a write (no "é dele"), the caller's own post in a hidden
-    // client gets the "limitado" copy, and a post they cannot read answers like a missing one.
+    // client must be in scope, or the post must be the caller's own ("é dele": responsavel_id among his
+    // membros, the workflow_posts read rule; ruling 4a lets him publish his own post in a hidden
+    // client). A post they cannot read answers like a missing one.
     let postWorkspace: string | null;
     try {
       postWorkspace = await (deps.resolvePostWorkspace ?? memberWorkspaceOfClient)(svcDb, actorId!, post.cliente_id);
@@ -104,6 +105,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
       post,
       { status: 404, body: { error: "Post não encontrado." } },
       deps.loadClientScope,
+      { allowOwn: true },
     );
     if (scopeDenied) return json(scopeDenied.body, scopeDenied.status);
     if (

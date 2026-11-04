@@ -1209,7 +1209,7 @@ Deno.test("tiktok-publish creator-info: a scope read error is a 500", async () =
   assertEquals(db.calls.filter((c) => c.table === "tiktok_accounts").length, 0);
 });
 
-Deno.test("tiktok-publish: own post in a hidden client is refused with the limitado copy, no write", async () => {
+Deno.test("tiktok-publish: own post in a hidden client is allowed (é dele), past the scope gate", async () => {
   const db = createSupabaseQueryMock();
   db.withAuth({ id: "actor-1" });
   db.queue("workflow_posts", "select", {
@@ -1219,9 +1219,32 @@ Deno.test("tiktok-publish: own post in a hidden client is refused with the limit
   db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
   const handler = createPublishHandler(makeDeps(db, { loadClientScope: restricted([4], [7]) }));
   const res = await handler(tiktokRequest("cancel", 1));
-  assertEquals(res.status, 403);
-  assertEquals(await res.json(), { error: "Seu acesso é limitado aos clientes atribuídos." });
-  assertEquals(db.calls.filter((c) => c.operation === "rpc" || c.operation === "update").length, 0);
+  // Past the scope gate: the fixture post is not `agendado`, so cancel's own rule answers.
+  assertEquals(res.status !== 403 && res.status !== 404, true);
+});
+
+Deno.test("tiktok-publish creator-info: hidden client with an own post there is allowed", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queue("clientes", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queue("workflow_posts", "select", { data: [{ id: 1 }], error: null });
+  const handler = createPublishHandler(makeDeps(db, { loadClientScope: restricted([9], [7]) }));
+  const res = await handler(tiktokRequest("creator-info", 5, { method: "GET" }));
+  assertEquals(res.status === 403, false);
+  assertEquals(db.calls.some((c) => c.table === "tiktok_accounts"), true);
+});
+
+Deno.test("tiktok-publish creator-info: own-post read error is a 500", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queue("clientes", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queue("workflow_posts", "select", { data: null, error: { message: "boom" } });
+  const handler = createPublishHandler(makeDeps(db, { loadClientScope: restricted([9], [7]) }));
+  const res = await handler(tiktokRequest("creator-info", 5, { method: "GET" }));
+  assertEquals(res.status, 500);
+  assertEquals(db.calls.filter((c) => c.table === "tiktok_accounts").length, 0);
 });
 
 Deno.test("tiktok-publish: scope comes from the post's workspace, never a stale profiles.conta_id", async () => {

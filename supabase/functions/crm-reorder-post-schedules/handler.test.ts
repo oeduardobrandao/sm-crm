@@ -13,6 +13,7 @@ interface FakeOpts {
   profileConta?: string | null;
   clienteConta?: string | null | undefined;
   rpc?: { data?: unknown; error?: { message: string } | null };
+  posts?: { data: unknown; error?: { message: string } | null };
 }
 
 function makeDb(opts: FakeOpts) {
@@ -39,7 +40,10 @@ function makeDb(opts: FakeOpts) {
       const builder = {
         select: () => builder,
         eq: () => builder,
+        in: () => builder,
         single: () => Promise.resolve({ data: row }),
+        then: (resolve: (v: unknown) => unknown) =>
+          resolve(table === "workflow_posts" ? (opts.posts ?? { data: [], error: null }) : { data: row }),
       };
       return builder;
     },
@@ -138,6 +142,45 @@ Deno.test("restricted member on a hidden client gets the foreign-client 403 and 
   const res = await handler(makeReq(okBody));
   assertEquals(res.status, 403);
   assertEquals(await res.json(), { error: "Cliente não autorizado." });
+  assertEquals(rpcCalls.length, 0);
+});
+
+Deno.test("restricted member rescheduling only his own posts in a hidden client is allowed", async () => {
+  const { db, rpcCalls } = makeDb({
+    posts: { data: [{ id: 1, cliente_id: 7, responsavel_id: 3 }, { id: 2, cliente_id: 7, responsavel_id: 3 }] },
+  });
+  const handler = createCrmReorderHandler({ buildCorsHeaders: () => ({}), createDb: () => db, loadClientScope: restricted([8]) });
+  const res = await handler(makeReq(okBody));
+  assertEquals(res.status, 200);
+  assertEquals(rpcCalls.length, 1);
+});
+
+Deno.test("hidden client: one post that is not his refuses the whole batch", async () => {
+  const { db, rpcCalls } = makeDb({
+    posts: { data: [{ id: 1, cliente_id: 7, responsavel_id: 3 }, { id: 2, cliente_id: 7, responsavel_id: 9 }] },
+  });
+  const handler = createCrmReorderHandler({ buildCorsHeaders: () => ({}), createDb: () => db, loadClientScope: restricted([8]) });
+  const res = await handler(makeReq(okBody));
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: "Cliente não autorizado." });
+  assertEquals(rpcCalls.length, 0);
+});
+
+Deno.test("hidden client: own post of ANOTHER client in the batch is refused", async () => {
+  const { db, rpcCalls } = makeDb({
+    posts: { data: [{ id: 1, cliente_id: 7, responsavel_id: 3 }, { id: 2, cliente_id: 6, responsavel_id: 3 }] },
+  });
+  const handler = createCrmReorderHandler({ buildCorsHeaders: () => ({}), createDb: () => db, loadClientScope: restricted([8]) });
+  const res = await handler(makeReq(okBody));
+  assertEquals(res.status, 403);
+  assertEquals(rpcCalls.length, 0);
+});
+
+Deno.test("hidden client: own-post read error is a generic 500", async () => {
+  const { db, rpcCalls } = makeDb({ posts: { data: null, error: { message: "boom" } } });
+  const handler = createCrmReorderHandler({ buildCorsHeaders: () => ({}), createDb: () => db, loadClientScope: restricted([8]) });
+  const res = await handler(makeReq(okBody));
+  assertEquals(res.status, 500);
   assertEquals(rpcCalls.length, 0);
 });
 

@@ -157,10 +157,24 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
     if (!client || (client as { conta_id?: string }).conta_id !== contaId) {
       return json({ error: "Unauthorized" }, 403);
     }
-    // Acesso por cliente: a client outside the caller's scope answers like a foreign one.
+    // Acesso por cliente: a client outside the caller's scope answers like a foreign one, unless he
+    // has an own post there (responsavel_id among his membros): creator-info drives the scheduling
+    // modal of his own post, which he may publish (ruling 4a).
     try {
       const scope = await (deps.loadClientScope ?? realLoadClientScope)(svcDb, actorId!, contaId);
-      if (!hasClientAccess(scope, clientId, false)) return json({ error: "Unauthorized" }, 403);
+      if (!hasClientAccess(scope, clientId, false)) {
+        const membroIds = [...scope.membroIds];
+        if (membroIds.length === 0) return json({ error: "Unauthorized" }, 403);
+        const { data: own, error: ownError } = await svcDb
+          .from("workflow_posts")
+          .select("id")
+          .eq("conta_id", contaId)
+          .eq("cliente_id", clientId)
+          .in("responsavel_id", membroIds)
+          .limit(1);
+        if (ownError) throw new Error(`own post read failed: ${ownError.message ?? "unknown"}`);
+        if (!Array.isArray(own) || own.length === 0) return json({ error: "Unauthorized" }, 403);
+      }
     } catch (err) {
       return internalServerError(json, "tiktok-publish:client-scope", err);
     }
@@ -261,9 +275,10 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
     // Acesso por cliente. The workspace is the POST's own (its client's conta_id, with the caller a
     // member there), never profiles.conta_id: that column goes stale on a workspace switch, and a
     // member restricted in the post's workspace but `todos` in the stale one would pass. The same
-    // workspace drives the plan gates. Every action below writes with the service role: publishing
-    // is a write (no "é dele"), the caller's own post in a hidden client gets the "limitado" copy,
-    // and a post they cannot read answers like a missing one.
+    // workspace drives the plan gates. Every action below writes with the service role, so the
+    // post's client must be in scope or the post must be the caller's own ("é dele": responsavel_id
+    // among his membros, the workflow_posts read rule; ruling 4a). A post they cannot read answers
+    // like a missing one.
     let contaId: string | null;
     try {
       contaId = await (deps.resolvePostWorkspace ?? memberWorkspaceOfClient)(svcDb, actorId!, post.cliente_id);
@@ -278,6 +293,7 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
       post,
       { status: 404, body: { error: "Post não encontrado." } },
       deps.loadClientScope,
+      { allowOwn: true },
     );
     if (scopeDenied) return json(scopeDenied.body, scopeDenied.status);
 

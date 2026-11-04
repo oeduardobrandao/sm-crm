@@ -149,7 +149,9 @@ export function rowVisibility(
  * their own responses: null = allowed; otherwise the status and body to answer with. A hidden row
  * answers `notFound` (same as a missing one), the user's own row in a hidden client answers
  * {@link CLIENT_SCOPE_MESSAGE}, and a scope read error answers a generic 500 (logged), never
- * "all clients". Unrestricted callers pay the one membership read and nothing else. */
+ * "all clients". Unrestricted callers pay the one membership read and nothing else.
+ * `opts.allowOwn`: the user's own row in a hidden client passes too (publish, schedule, cancel and
+ * retry of his own post, ruling 4a: same as the `workflow_posts` read rule). */
 export async function rowWriteGate(
   svc: Db,
   userId: string,
@@ -157,6 +159,7 @@ export async function rowWriteGate(
   row: { cliente_id?: number | null; responsavel_id?: number | null; created_by?: string | null },
   notFound: { status: number; body: unknown },
   loader: ClientScopeLoader = loadClientScope,
+  opts: { allowOwn?: boolean } = {},
 ): Promise<{ status: number; body: unknown } | null> {
   let scope: ClientScope;
   try {
@@ -167,7 +170,7 @@ export async function rowWriteGate(
   }
   const vis = rowVisibility(scope, row, userId);
   if (vis === "hidden") return notFound;
-  if (vis === "own_only") return { status: 403, body: { error: CLIENT_SCOPE_MESSAGE } };
+  if (vis === "own_only" && !opts.allowOwn) return { status: 403, body: { error: CLIENT_SCOPE_MESSAGE } };
   return null;
 }
 

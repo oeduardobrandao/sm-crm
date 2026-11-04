@@ -251,13 +251,21 @@ function setupScopedPost(db: ReturnType<typeof createSupabaseQueryMock>, respons
   db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
 }
 
-Deno.test("instagram-publish: own post in a hidden client is refused with the limitado copy, no write", async () => {
+Deno.test("instagram-publish: own post in a hidden client is allowed (é dele), reaches the feature gate", async () => {
   const db = createSupabaseQueryMock();
   setupScopedPost(db, 7);
+  db.queueRpc("effective_plan_feature", { data: false, error: null });
   const res = await makeHandler(db, restricted([4], [7]))(publishRequest("schedule", 1));
   assertEquals(res.status, 403);
-  assertEquals(await readJson(res), { error: "Seu acesso é limitado aos clientes atribuídos." });
-  assertEquals(db.calls.filter((c) => c.operation === "rpc" || c.operation === "update").length, 0);
+  assertEquals(await readJson(res), { error: "feature_disabled", feature: "feature_post_scheduling" });
+});
+
+Deno.test("instagram-publish: own post in a hidden client can be cancelled", async () => {
+  const db = createSupabaseQueryMock();
+  setupScopedPost(db, 7);
+  const res = await makeHandler(db, restricted([4], [7]))(publishRequest("cancel", 1));
+  // Past the scope gate: the fixture post is not `agendado`, so the cancel rule answers 422.
+  assertEquals(res.status, 422);
 });
 
 Deno.test("instagram-publish: a post of a hidden client that is not the caller's answers like a missing one", async () => {
@@ -291,10 +299,7 @@ Deno.test("instagram-publish: scope comes from the post's workspace, never a sta
     Promise.resolve<ClientScope>(
       ws === "ws-B" ? allClientsScope() : { all: false, ids: new Set([4]), membroIds: new Set([7]) },
     );
-  for (const [responsavel, status, error] of [
-    [8, 404, "Post não encontrado."],
-    [7, 403, "Seu acesso é limitado aos clientes atribuídos."],
-  ] as const) {
+  for (const [responsavel, status, error] of [[8, 404, "Post não encontrado."]] as const) {
     const db = createSupabaseQueryMock();
     db.withAuth({ id: "actor-1" });
     db.queue("workflow_posts", "select", {
