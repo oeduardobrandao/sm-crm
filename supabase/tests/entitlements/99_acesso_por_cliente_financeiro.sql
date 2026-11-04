@@ -491,8 +491,8 @@ declare
 begin
   -- structural: shared conta lock, then the client row lock, then the status check
   assert position('pg_advisory_xact_lock_shared' in v_src) > 0
-     and position('FOR UPDATE' in v_src) > position('pg_advisory_xact_lock_shared' in v_src)
-     and position('_financeiro_status_muda' in v_src) > position('FOR UPDATE' in v_src),
+     and position('FOR NO KEY UPDATE' in v_src) > position('pg_advisory_xact_lock_shared' in v_src)
+     and position('_financeiro_status_muda' in v_src) > position('FOR NO KEY UPDATE' in v_src),
     'core_rechecks_status_under_lock';
   -- the core itself refuses a restricted actor's status change (whatever the wrapper saw)
   begin

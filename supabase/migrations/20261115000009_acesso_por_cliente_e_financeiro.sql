@@ -885,7 +885,7 @@ BEGIN
   -- status antes deste lock: trava a linha do cliente (todo caminho que grava a
   -- versão do cliente passa por ela: este core e o trigger legado, que roda
   -- num UPDATE da própria linha) e confere de novo aqui dentro.
-  PERFORM 1 FROM public.clientes c WHERE c.id = p_cliente_id AND c.conta_id = v_conta FOR UPDATE;
+  PERFORM 1 FROM public.clientes c WHERE c.id = p_cliente_id AND c.conta_id = v_conta FOR NO KEY UPDATE;
   IF NOT public.actor_client_scope_all(p_user, v_conta)
      AND public._financeiro_status_muda(v_conta, p_cliente_id, p_vale_desde, p_status) THEN
     RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';
