@@ -22,6 +22,25 @@
 -- Inventory: docs/superpowers/plans/2026-11-03-acesso-por-cliente-inventario.md
 
 begin;
+-- analytics_report_paths_not_writable (catalog, BEFORE parity hands out ALL):
+-- only the service-role generators write the stored file paths the edges sign
+do $$
+declare v_col text;
+begin
+  foreach v_col in array array['storage_path', 'html_storage_path', 'report_url'] loop
+    assert not has_column_privilege('authenticated', 'public.analytics_reports', v_col, 'INSERT')
+       and not has_column_privilege('authenticated', 'public.analytics_reports', v_col, 'UPDATE'),
+      'analytics_report_paths_not_writable_by_authenticated: ' || v_col;
+    assert not has_column_privilege('anon', 'public.analytics_reports', v_col, 'INSERT')
+       and not has_column_privilege('anon', 'public.analytics_reports', v_col, 'UPDATE'),
+      'analytics_report_paths_not_writable_by_anon: ' || v_col;
+  end loop;
+  assert has_column_privilege('authenticated', 'public.analytics_reports', 'client_id', 'UPDATE')
+     and has_column_privilege('authenticated', 'public.analytics_reports', 'client_id', 'INSERT'),
+    'analytics_reports keeps the other columns writable';
+  assert not has_column_privilege('authenticated', 'public.report_documents', 'pdf_storage_path', 'UPDATE'),
+    'report_documents_pdf_storage_path_not_writable';
+end $$;
 update plans set feature_agenda = true, feature_mensagens = true, feature_instagram_automation = true;
 select et_grant_hosted_parity();
 -- production grants of the tables whose privileges matter here (parity would
@@ -31,6 +50,15 @@ grant select on public.agenda_eventos, public.agenda_ocorrencias, public.agenda_
 revoke all on public.report_documents from anon, authenticated;
 grant select on public.report_documents to authenticated;
 grant update (layout, title) on public.report_documents to authenticated;
+-- analytics_reports: the migration's column grants (no storage_path,
+-- html_storage_path, report_url for authenticated; parity would restore ALL)
+revoke insert, update on public.analytics_reports from anon, authenticated;
+grant insert (id, conta_id, client_id, instagram_account_id, report_month, generated_at, status,
+              ai_content, ai_status, ai_error, include_ai, generation_error, retry_count,
+              last_emailed_at, locked_at, locked_by, email_kpis) on public.analytics_reports to authenticated;
+grant update (conta_id, client_id, instagram_account_id, report_month, generated_at, status,
+              ai_content, ai_status, ai_error, include_ai, generation_error, retry_count,
+              last_emailed_at, locked_at, locked_by, email_kpis) on public.analytics_reports to authenticated;
 
 -- ids shared between the DO blocks
 create temp table _fx (k text primary key, v text not null);
@@ -255,7 +283,7 @@ declare
   rd_a uuid := pg_temp.fx('rd_a'); rd_b uuid := pg_temp.fx('rd_b');
   tok_b uuid := pg_temp.fx('tok_b');
   f_a bigint := pg_temp.fx('f_a'); f_a2 bigint := pg_temp.fx('f_a2'); f_b bigint := pg_temp.fx('f_b');
-  v_n bigint; v_err text;
+  v_n bigint; v_err text; v_t text;
   r record;
 begin
   -- per table: (rows the restricted member sees, query). Every table here has
@@ -337,23 +365,37 @@ begin
   v_err := pg_temp.err_as(v_restr, format('update analytics_reports set client_id = %s where client_id = %s', v_cb, v_ca));
   assert v_err = '42501', 'move_analytics_report_to_b_denied: ' || coalesce(v_err, 'ok');
 
-  -- report file paths and account: only the row's own client (the edges sign
-  -- storage_path / html_storage_path as written; the path is predictable)
-  v_err := pg_temp.errm_as(v_restr, format('insert into analytics_reports (conta_id, client_id, report_month, storage_path) values (%L, %s, ''2026-08'', %L)',
-             v_ws, v_ca, format('reports/%s/%s/2026-10.pdf', v_ws, v_cb)));
-  assert v_err = 'client_scope_restricted', 'analytics_report_pointing_at_b_pdf_denied: ' || coalesce(v_err, 'ok');
-  v_err := pg_temp.errm_as(v_restr, format('update analytics_reports set html_storage_path = %L where client_id = %s',
-             format('reports/%s/%s/../%s/2026-10.html', v_ws, v_ca, v_cb), v_ca));
-  assert v_err = 'client_scope_restricted', 'analytics_report_path_traversal_denied: ' || coalesce(v_err, 'ok');
+  -- report file paths: no authenticated caller writes them (only the service-role
+  -- generators do; the edges sign the stored path), so every path shape is
+  -- refused by privilege, whatever its encoding
+  foreach v_t in array array[
+      format('reports/%s/%s/2026-10.pdf', v_ws, v_cb),
+      format('reports/%s/%s/%%2e%%2e/%s/2026-10.pdf', v_ws, v_ca, v_cb),
+      format('reports/%s/%s/..\%s\2026-10.pdf', v_ws, v_ca, v_cb),
+      format('reports/%s/%s/./2026-10.pdf', v_ws, v_ca)] loop
+    v_err := pg_temp.err_as(v_restr, format('insert into analytics_reports (conta_id, client_id, report_month, storage_path) values (%L, %s, ''2026-08'', %L)', v_ws, v_ca, v_t));
+    assert v_err = '42501', format('analytics_report_insert_path_denied (%s): %s', v_t, coalesce(v_err, 'ok'));
+    v_err := pg_temp.err_as(v_restr, format('update analytics_reports set storage_path = %L where client_id = %s', v_t, v_ca));
+    assert v_err = '42501', format('analytics_report_update_pdf_path_denied (%s): %s', v_t, coalesce(v_err, 'ok'));
+    v_err := pg_temp.err_as(v_restr, format('update analytics_reports set html_storage_path = %L where client_id = %s', v_t, v_ca));
+    assert v_err = '42501', format('analytics_report_update_html_path_denied (%s): %s', v_t, coalesce(v_err, 'ok'));
+  end loop;
+  v_err := pg_temp.err_as(v_restr, format('update analytics_reports set report_url = ''https://x'' where client_id = %s', v_ca));
+  assert v_err = '42501', 'analytics_report_update_report_url_denied: ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.err_as(v_todos, format('update analytics_reports set storage_path = %L where client_id = %s', format('reports/%s/%s/2026-10.pdf', v_ws, v_cb), v_ca));
+  assert v_err = '42501', 'todos_analytics_report_path_not_writable_either: ' || coalesce(v_err, 'ok');
+  -- account: only one of the row's own client
   v_err := pg_temp.errm_as(v_restr, format('insert into analytics_reports (conta_id, client_id, report_month, instagram_account_id) values (%L, %s, ''2026-07'', %L)',
              v_ws, v_ca, ig_b));
   assert v_err = 'client_scope_restricted', 'analytics_report_with_b_account_denied: ' || coalesce(v_err, 'ok');
-  v_err := pg_temp.errm_as(v_restr, format('insert into analytics_reports (conta_id, client_id, report_month, instagram_account_id, storage_path) values (%L, %s, ''2026-06'', %L, %L)',
-             v_ws, v_ca, ig_a, format('reports/%s/%s/2026-06.pdf', v_ws, v_ca)));
-  assert v_err is null, 'analytics_report_own_client_refs_ok: ' || coalesce(v_err, '');
-  v_n := pg_temp.rows_as(v_todos, format('update analytics_reports set storage_path = %L where client_id = %s and report_month = ''2026-06''',
-             format('reports/%s/%s/2026-10.pdf', v_ws, v_cb), v_ca));
-  assert v_n = 1, 'todos_analytics_report_refs_unchanged: ' || v_n;
+  v_err := pg_temp.errm_as(v_restr, format('insert into analytics_reports (conta_id, client_id, report_month, instagram_account_id) values (%L, %s, ''2026-06'', %L)',
+             v_ws, v_ca, ig_a));
+  assert v_err is null, 'analytics_report_own_client_account_ok: ' || coalesce(v_err, '');
+  v_n := pg_temp.rows_as(v_todos, format('update analytics_reports set instagram_account_id = %L where client_id = %s and report_month = ''2026-06''', ig_b, v_ca));
+  assert v_n = 1, 'todos_analytics_report_account_unchanged: ' || v_n;
+  -- other signed paths in these tables are not writable by authenticated
+  assert not has_column_privilege('authenticated', 'public.report_documents', 'pdf_storage_path', 'UPDATE'),
+    'report_documents_pdf_storage_path_not_writable';
 
   v_n := pg_temp.rows_as(v_restr, format('update report_documents set title = ''x'' where id = %L', rd_b));
   assert v_n = 0, 'update_report_of_b_noop: ' || v_n;

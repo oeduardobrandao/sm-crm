@@ -35,9 +35,9 @@
 --   o pai pela FK (instagram_posts, histórico, cache, tags, tiktok_posts,
 --   histórico do TikTok) herdam sem mudança; as que só olhavam conta_id ganham
 --   o EXISTS no pai com can_access_cliente.
--- analytics_reports: o restrito só grava caminho de arquivo (storage_path,
---   html_storage_path) dentro de reports/<conta>/<cliente da linha>/ e conta do
---   Instagram do mesmo cliente (as edges assinam o caminho gravado).
+-- analytics_reports: storage_path, html_storage_path e report_url saem do grant
+--   de authenticated (só os geradores, service role, gravam; as edges assinam o
+--   caminho gravado); instagram_account_id do restrito, só do mesmo cliente.
 -- report_documents.layout: o restrito só referencia imagem visível pela origem
 --   (file_visible_at_source), senão report_document_files levaria um arquivo
 --   oculto para um relatório visível (o PDF e o editor o mostram).
@@ -241,15 +241,16 @@ CREATE TRIGGER zz_client_scope_layout_guard
   BEFORE INSERT OR UPDATE OF layout ON public.report_documents
   FOR EACH ROW EXECUTE FUNCTION public.guard_report_layout_files();
 
--- Referências do relatório mensal (analytics_reports): authenticated tem
--- escrita direta (grant padrão do hosted), e as edges servem o arquivo pelo
--- caminho gravado na linha (instagram-analytics e hub-reports assinam
--- storage_path / html_storage_path). Como o caminho é previsível
--- (reports/<conta>/<cliente>/<mês>.pdf|.html), um restrito gravaria numa linha
--- do cliente A o caminho do PDF de B e baixaria o relatório oculto. Para o
--- restrito: os caminhos só dentro de reports/<conta>/<cliente da linha>/ (um
--- nível, sem '..'), e instagram_account_id só de uma conta do mesmo cliente.
--- auth.uid() NULL (geradores, cron) e membros irrestritos saem antes.
+-- Referências do relatório mensal (analytics_reports). As edges assinam e baixam
+-- o arquivo pelo caminho gravado na linha (instagram-analytics, hub-reports,
+-- report-worker: storage_path / html_storage_path), e o caminho é previsível
+-- (reports/<conta>/<cliente>/<mês>.pdf|.html). Só os geradores (service role:
+-- instagram-report-generator, instagram-report-generator-v2) gravam caminho e
+-- report_url; o CRM só lê a tabela. Então authenticated perde INSERT/UPDATE
+-- nessas três colunas (grant por coluna, seção 4), em vez de um filtro de texto
+-- do caminho. Este trigger guarda o resto: para o restrito, instagram_account_id
+-- só de uma conta do mesmo cliente da linha. auth.uid() NULL (geradores, cron)
+-- e membros irrestritos saem antes.
 CREATE OR REPLACE FUNCTION public.guard_analytics_report_refs()
 RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER
@@ -257,9 +258,14 @@ SET search_path = public
 AS $$
 DECLARE
   v_uid uuid := auth.uid();
-  v_dir text;
 BEGIN
-  IF v_uid IS NULL THEN RETURN NEW; END IF;
+  IF v_uid IS NULL OR NEW.instagram_account_id IS NULL THEN RETURN NEW; END IF;
+  IF TG_OP = 'UPDATE' THEN
+    IF NEW.instagram_account_id IS NOT DISTINCT FROM OLD.instagram_account_id
+       AND NEW.client_id IS NOT DISTINCT FROM OLD.client_id THEN
+      RETURN NEW;
+    END IF;
+  END IF;
   IF NOT EXISTS (
     SELECT 1 FROM public.workspace_members wm
      WHERE wm.workspace_id = NEW.conta_id AND wm.user_id = v_uid
@@ -267,23 +273,8 @@ BEGIN
   ) THEN
     RETURN NEW;
   END IF;
-  v_dir := 'reports/' || NEW.conta_id::text || '/' || coalesce(NEW.client_id::text, '-') || '/';
-  -- no UPDATE só conta o que mudou (linhas antigas do gerador seguem editáveis)
-  IF (NEW.storage_path IS NOT NULL
-      AND (TG_OP = 'INSERT' OR NEW.storage_path IS DISTINCT FROM OLD.storage_path)
-      AND (left(NEW.storage_path, length(v_dir)) <> v_dir
-           OR position('/' IN substr(NEW.storage_path, length(v_dir) + 1)) > 0
-           OR NEW.storage_path LIKE '%..%'))
-     OR (NEW.html_storage_path IS NOT NULL
-      AND (TG_OP = 'INSERT' OR NEW.html_storage_path IS DISTINCT FROM OLD.html_storage_path)
-      AND (left(NEW.html_storage_path, length(v_dir)) <> v_dir
-           OR position('/' IN substr(NEW.html_storage_path, length(v_dir) + 1)) > 0
-           OR NEW.html_storage_path LIKE '%..%'))
-     OR (NEW.instagram_account_id IS NOT NULL
-      AND (TG_OP = 'INSERT' OR NEW.instagram_account_id IS DISTINCT FROM OLD.instagram_account_id
-           OR NEW.client_id IS DISTINCT FROM OLD.client_id)
-      AND NOT EXISTS (SELECT 1 FROM public.instagram_accounts ia
-                       WHERE ia.id = NEW.instagram_account_id AND ia.client_id = NEW.client_id)) THEN
+  IF NOT EXISTS (SELECT 1 FROM public.instagram_accounts ia
+                  WHERE ia.id = NEW.instagram_account_id AND ia.client_id = NEW.client_id) THEN
     RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';
   END IF;
   RETURN NEW;
@@ -437,6 +428,36 @@ ALTER POLICY reports_conta_delete ON public.analytics_reports
     conta_id IN (SELECT public.get_my_conta_id())
     AND ((SELECT public.my_client_scope_all()) OR public.can_access_cliente(client_id))
   );
+
+-- Grant por coluna: authenticated escreve analytics_reports sem as colunas de
+-- arquivo (storage_path, html_storage_path, report_url), que só os geradores
+-- (service role) gravam. anon não escreve. O grant de tabela do hosted (ALL)
+-- tornaria o REVOKE por coluna inócuo, por isso o REVOKE é da tabela e o
+-- INSERT/UPDATE volta coluna a coluna. SELECT e DELETE não mudam.
+REVOKE INSERT, UPDATE ON public.analytics_reports FROM PUBLIC, anon, authenticated;
+GRANT INSERT (id, conta_id, client_id, instagram_account_id, report_month, generated_at, status,
+              ai_content, ai_status, ai_error, include_ai, generation_error, retry_count,
+              last_emailed_at, locked_at, locked_by, email_kpis)
+  ON public.analytics_reports TO authenticated;
+GRANT UPDATE (conta_id, client_id, instagram_account_id, report_month, generated_at, status,
+              ai_content, ai_status, ai_error, include_ai, generation_error, retry_count,
+              last_emailed_at, locked_at, locked_by, email_kpis)
+  ON public.analytics_reports TO authenticated;
+GRANT ALL ON public.analytics_reports TO service_role;
+DO $$
+DECLARE v_col text;
+BEGIN
+  FOREACH v_col IN ARRAY ARRAY['storage_path', 'html_storage_path', 'report_url'] LOOP
+    ASSERT NOT has_column_privilege('authenticated', 'public.analytics_reports', v_col, 'INSERT')
+       AND NOT has_column_privilege('authenticated', 'public.analytics_reports', v_col, 'UPDATE')
+       AND NOT has_column_privilege('anon', 'public.analytics_reports', v_col, 'UPDATE'),
+      'analytics_reports.' || v_col || ' still writable by authenticated/anon';
+  END LOOP;
+  ASSERT has_column_privilege('authenticated', 'public.analytics_reports', 'client_id', 'UPDATE'),
+    'analytics_reports.client_id lost UPDATE';
+  ASSERT has_table_privilege('service_role', 'public.analytics_reports', 'UPDATE'),
+    'analytics_reports lost service_role UPDATE';
+END $$;
 
 -- report_documents: created_by não é "é dele". authenticated só atualiza
 -- title e layout (grant por coluna); o layout passa pela guarda acima.
