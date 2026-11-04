@@ -44,6 +44,7 @@ describe('PoliticaPage, Google text live', () => {
       'https://www.youtube.com/t/terms',
       'https://policies.google.com/privacy',
       'https://myaccount.google.com/permissions',
+      'https://developers.google.com/terms/api-services-user-data-policy',
     ]) {
       const link = section.getAllByRole('link').find((a) => a.getAttribute('href') === href);
       expect(link, href).toBeDefined();
@@ -51,6 +52,13 @@ describe('PoliticaPage, Google text live', () => {
       expect(link?.getAttribute('target')).toBe('_blank');
     }
     expect(section.getByText(/O Mesaas usa os Serviços de API do YouTube/)).toBeTruthy();
+  });
+
+  it('states the Limited Use disclosure Google verification asks for', () => {
+    renderPage();
+    expect(section3().textContent).toMatch(
+      /O uso e a transferência, pelo Mesaas, de informações recebidas das APIs do Google seguem a Política de Dados do Usuário dos Serviços de API do Google \(Google API Services User Data Policy\), incluindo os requisitos de Uso Limitado \(Limited Use\)\./,
+    );
   });
 
   it('states the retention windows', () => {
