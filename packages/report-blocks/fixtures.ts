@@ -197,7 +197,7 @@ export function makeSnapshotFixture(over: Partial<ReportDocSnapshot> = {}): Repo
         comment:
           'Atendimento impecável do início ao fim. A médica explicou cada etapa do tratamento com calma e a recepção foi pontual.',
         unit_title: 'Unidade Jardins',
-        date: '2026-07-18T14:32:00Z',
+        date: '2026-07-18',
       },
       unit_rows: [
         {

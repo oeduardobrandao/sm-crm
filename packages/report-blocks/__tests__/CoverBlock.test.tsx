@@ -207,4 +207,27 @@ describe('CoverBlock', () => {
     expect(screen.getByText('Relatório mensal · TikTok')).toBeInTheDocument();
     expect(screen.getByText('@seucliente · Dermatologia · São Paulo')).toBeInTheDocument();
   });
+
+  it('só Google Meu Negócio: sem "@", só a especialidade; sem especialidade, sem linha', () => {
+    const { container, unmount } = render(
+      <CoverBlock
+        block={coverBlock()}
+        snapshot={makeSnapshotFixture()}
+        layoutPlatforms={['google']}
+      />,
+    );
+    expect(screen.getByText('Relatório mensal · Google Meu Negócio')).toBeInTheDocument();
+    expect(screen.getByText('Dermatologia · São Paulo')).toBeInTheDocument();
+    expect(container.textContent).not.toContain('@');
+    unmount();
+
+    const snap = makeSnapshotFixture();
+    snap.account.specialty = '';
+    const { container: bare } = render(
+      <CoverBlock block={coverBlock()} snapshot={snap} layoutPlatforms={['google']} />,
+    );
+    expect(bare.textContent).not.toContain('@');
+    // Kicker e título seguem; a linha do subtítulo some.
+    expect(bare.querySelectorAll('header > p')).toHaveLength(1);
+  });
 });

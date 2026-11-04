@@ -264,6 +264,40 @@ describe('coverDefaults', () => {
     });
   });
 
+  it('Google Meu Negócio: kicker, sem handle, foto da raiz', () => {
+    const snap = withAvatars();
+    expect(coverDefaults(snap, ['google'])).toEqual({
+      kicker: 'Relatório mensal · Google Meu Negócio',
+      handle: '',
+      avatarUrl: 'https://x/ig.jpg',
+    });
+    expect(coverDefaults(snap, ['instagram', 'google'])).toEqual({
+      kicker: 'Relatório mensal · Instagram e Google Meu Negócio',
+      ...IG,
+    });
+    expect(coverDefaults(snap, ['instagram', 'tiktok', 'google']).kicker).toBe(
+      'Relatório mensal · Instagram, TikTok e Google Meu Negócio',
+    );
+    // Ordem do kicker é a de PLATFORM_ORDER; handle da primeira do layout.
+    expect(coverDefaults(snap, ['google', 'tiktok'])).toEqual({
+      kicker: 'Relatório mensal · TikTok e Google Meu Negócio',
+      handle: '',
+      avatarUrl: 'https://x/ig.jpg',
+    });
+  });
+
+  it('Google sem seção ou sem janela (nada sincronizado) não conta como dado', () => {
+    const noGoogle = withAvatars({ google: null });
+    expect(coverDefaults(noGoogle, ['instagram', 'google']).kicker).toBe(
+      'Relatório mensal · Instagram',
+    );
+    const snap = withAvatars();
+    snap.google = { ...snap.google!, window: null };
+    expect(coverDefaults(snap, ['instagram', 'google']).kicker).toBe(
+      'Relatório mensal · Instagram',
+    );
+  });
+
   it('sem foto: avatarUrl null', () => {
     expect(coverDefaults(makeSnapshotFixture(), ['tiktok']).avatarUrl).toBe(null);
     expect(coverDefaults(makeSnapshotFixture(), ['instagram']).avatarUrl).toBe(null);

@@ -70,7 +70,7 @@ export type { KpiEntry, ReportKpiId } from '../../supabase/functions/_shared/rep
 export { KPI_LABELS_PT } from '../../supabase/functions/_shared/report-docs/kpis';
 export type { TikTokKpiId } from '../../supabase/functions/_shared/tiktok-analytics/kpis';
 export { TIKTOK_KPI_IDS } from '../../supabase/functions/_shared/tiktok-analytics/kpis';
-export type { GbpKpiId } from '../../supabase/functions/_shared/gbp-analytics/kpis';
+export type { GbpKpiId, GbpSurface } from '../../supabase/functions/_shared/gbp-analytics/kpis';
 export { GBP_KPI_IDS } from '../../supabase/functions/_shared/gbp-analytics/kpis';
 export {
   GBP_KPI_LABELS_PT,
