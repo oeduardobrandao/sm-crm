@@ -9,6 +9,7 @@ import {
   folderWritable,
   linkedToVisiblePost,
   NOT_IN_WORKSPACE,
+  readableBrandLogos,
   subtreeHasHiddenClient,
   visibleFileRows,
   visibleFolderRows,
@@ -265,4 +266,49 @@ Deno.test("visibleFolderRows: hidden clients go; untyped folders follow the pare
   top.queue("workflow_posts", "select", { data: [{ id: 500, cliente_id: 43 }], error: null });
   assertEquals((await visibleFolderRows(top, rows, r, W, null)).map((x) => x.id), [1, 4, 7]);
   assertEquals((await visibleFolderRows(createSupabaseQueryMock(), rows, allClientsScope(), W, null)).length, 7);
+});
+
+Deno.test("readableBrandLogos: logo of an assigned client or of a client with an own item; read-only", async () => {
+  const r = { all: false, ids: new Set([42]), membroIds: new Set([9]) };
+  const db = createSupabaseQueryMock();
+  db.queue("hub_brand", "select", {
+    data: [
+      { cliente_id: 42, logo_file_id: 10 }, // assigned client
+      { cliente_id: 43, logo_file_id: 11 }, // hidden, his post there (context)
+      { cliente_id: 44, logo_file_id: 12 }, // hidden, nothing of his
+    ],
+    error: null,
+  });
+  db.queue("workflow_posts", "select", { data: [{ cliente_id: 43 }], error: null });
+  assertEquals([...(await readableBrandLogos(db, r, [10, 11, 12, 13], W, ME))].sort(), [10, 11]);
+
+  // fileAccess: a logo he reads opens the file for reading, never for delete / move.
+  const logo = createSupabaseQueryMock();
+  logo.queue("files", "select", { data: { conta_id: W, folder_id: null, uploaded_by: "other" }, error: null });
+  logo.queue("post_file_links", "select", { data: [], error: null });
+  logo.queue("hub_brand", "select", { data: [{ cliente_id: 42, logo_file_id: 10 }], error: null });
+  assertEquals(await fileAccess(logo, r, 10, W, ME), { read: true, del: false, folderId: null });
+
+  // A hub_brand read error throws (fails closed).
+  const broken = createSupabaseQueryMock();
+  broken.queue("hub_brand", "select", { data: null, error: { message: "boom" } });
+  let threw = false;
+  try {
+    await readableBrandLogos(broken, r, [10], W, ME);
+  } catch {
+    threw = true;
+  }
+  assert(threw);
+});
+
+Deno.test("visibleFileRows: the root listing shows the logos of brands he reads", async () => {
+  const r = restricted([42]);
+  const db = createSupabaseQueryMock();
+  db.queue("post_file_links", "select", { data: [], error: null });
+  db.queue("hub_brand", "select", {
+    data: [{ cliente_id: 42, logo_file_id: 11 }, { cliente_id: 44, logo_file_id: 12 }],
+    error: null,
+  });
+  const rows = [{ id: 11, uploaded_by: "other" }, { id: 12, uploaded_by: "other" }];
+  assertEquals((await visibleFileRows(db, rows, r, W, ME, null)).map((f) => f.id), [11]);
 });

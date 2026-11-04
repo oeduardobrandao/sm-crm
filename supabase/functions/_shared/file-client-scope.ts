@@ -14,13 +14,15 @@
 //                  Any other folder with no client is hidden.
 //   folder write = its client is assigned (the Clientes root and client-less folders: never).
 //   file read    = uploaded by him, or its folder's client is assigned, or linked to a post he sees
-//                  (his own post in a hidden client included).
+//                  (his own post in a hidden client included), or the logo (hub_brand.logo_file_id)
+//                  of a brand he reads: assigned client, or context of an own item there
+//                  (file_is_readable_brand_logo). The logo path is read-only.
 //   file delete / move out = its folder's client is assigned, or (his upload AND no client).
 //   file insert / move in  = the destination folder is writable.
 // Operations over a folder's whole subtree (zip, copy, delete, move) also need every typed folder
 // below it to belong to an assigned client.
 
-import { type ClientScope, hasClientAccess, rowVisibility } from "./client-scope.ts";
+import { type ClientScope, clientsWithOwnContext, hasClientAccess, rowVisibility } from "./client-scope.ts";
 import { chunk, fetchAllRowsKeyset } from "./paginate.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -142,6 +144,45 @@ export async function linkedToVisiblePost(
   return out;
 }
 
+/** Files (of `fileIds`) that are the logo of a brand the member reads: the brand's client is
+ * assigned, or he has an own item there (`can_see_cliente_context`). Read-only. Throws on a read
+ * error. */
+export async function readableBrandLogos(
+  db: Db,
+  scope: ClientScope,
+  fileIds: number[],
+  contaId: string,
+  userId: string,
+): Promise<Set<number>> {
+  const out = new Set<number>();
+  if (fileIds.length === 0) return out;
+  const brands: { cliente_id: number; logo_file_id: number }[] = [];
+  for (const part of chunk([...new Set(fileIds)])) {
+    const { data, error } = await db.from("hub_brand").select("cliente_id, logo_file_id").in("logo_file_id", part);
+    if (error) throw new Error(`file scope: hub_brand read failed: ${error.message ?? "unknown"}`);
+    brands.push(...((data ?? []) as { cliente_id: number; logo_file_id: number }[]));
+  }
+  if (brands.length === 0) return out;
+  const seen = await clientsWithOwnContext(db, scope, brands.map((b) => Number(b.cliente_id)), contaId, userId);
+  for (const b of brands) if (seen.has(Number(b.cliente_id))) out.add(Number(b.logo_file_id));
+  return out;
+}
+
+/** Files (of `fileIds`) readable through a borrowed path: linked to a post he sees, or a brand logo
+ * he reads. Throws on a read error. */
+export async function borrowedReadable(
+  db: Db,
+  scope: ClientScope,
+  fileIds: number[],
+  contaId: string,
+  userId: string,
+): Promise<Set<number>> {
+  const linked = await linkedToVisiblePost(db, scope, fileIds, contaId, userId);
+  const rest = fileIds.filter((id) => !linked.has(id));
+  for (const id of await readableBrandLogos(db, scope, rest, contaId, userId)) linked.add(id);
+  return linked;
+}
+
 /** Read / delete rights on one file, or NOT_IN_WORKSPACE (the route answers its own not-found). */
 export async function fileAccess(
   db: Db,
@@ -165,8 +206,8 @@ export async function fileAccess(
   const assigned = clientAccessible(scope, client);
   const del = assigned || (own && client === null);
   if (assigned || own) return { read: true, del, folderId };
-  const linked = await linkedToVisiblePost(db, scope, [fileId], contaId, userId);
-  return { read: linked.has(fileId), del, folderId };
+  const borrowed = await borrowedReadable(db, scope, [fileId], contaId, userId);
+  return { read: borrowed.has(fileId), del, folderId };
 }
 
 /** Files of one folder listing a member may see. `parentClient` is the listed folder's client (null
@@ -182,8 +223,8 @@ export async function visibleFileRows<T extends { id: number | string; uploaded_
   const list = rows ?? [];
   if (clientAccessible(scope, parentClient)) return list;
   const others = list.filter((f) => f.uploaded_by !== userId).map((f) => Number(f.id));
-  const linked = await linkedToVisiblePost(db, scope, others, contaId, userId);
-  return list.filter((f) => (f.uploaded_by != null && f.uploaded_by === userId) || linked.has(Number(f.id)));
+  const borrowed = await borrowedReadable(db, scope, others, contaId, userId);
+  return list.filter((f) => (f.uploaded_by != null && f.uploaded_by === userId) || borrowed.has(Number(f.id)));
 }
 
 export type TypedRow = { id: number | string; source_type?: string | null; source_id?: number | string | null };

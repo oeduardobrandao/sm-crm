@@ -252,3 +252,44 @@ Deno.test("memberWorkspaceOfClient: the client's workspace only when the user is
   }
   assert(threw);
 });
+
+// ---- clientsWithOwnContext (can_see_cliente_context twin) ----
+
+Deno.test("clientsWithOwnContext: assigned, own post / task / idea / flow step / process step", async () => {
+  const { clientsWithOwnContext } = await import("../_shared/client-scope.ts");
+  const { createSupabaseQueryMock } = await import("../../../test/shared/supabaseMock.ts");
+  const r = { all: false, ids: new Set([1]), membroIds: new Set([9]) };
+  const db = createSupabaseQueryMock();
+  db.queue("workflow_posts", "select", { data: [{ cliente_id: 2 }], error: null }); // own post
+  db.queue("tarefas", "select", { data: [], error: null }, { data: [{ cliente_id: 3 }], error: null }); // task he created
+  db.queue("tarefa_series", "select", { data: [], error: null }, { data: [], error: null });
+  db.queue("ideias", "select", { data: [{ cliente_id: 4 }], error: null });
+  db.queue("workflow_etapas", "select", { data: [{ id: 1, workflow_id: 70 }], error: null }, { data: [], error: null });
+  db.queue("workflows", "select", { data: [{ cliente_id: 5 }], error: null });
+  db.queue("post_process_steps", "select", { data: [{ id: 1, process_id: 80 }], error: null }, {
+    data: [],
+    error: null,
+  });
+  db.queue("post_processes", "select", { data: [{ post_id: 90 }], error: null });
+  db.queue("workflow_posts", "select", { data: [{ cliente_id: 6 }], error: null });
+  const seen = await clientsWithOwnContext(db as never, r, [1, 2, 3, 4, 5, 6, 7], "w", "u");
+  assertEquals([...seen].sort(), [1, 2, 3, 4, 5, 6]);
+});
+
+Deno.test("clientsWithOwnContext: unrestricted sees every client with no read; read errors throw", async () => {
+  const { allClientsScope, clientsWithOwnContext } = await import("../_shared/client-scope.ts");
+  const { createSupabaseQueryMock } = await import("../../../test/shared/supabaseMock.ts");
+  const none = createSupabaseQueryMock();
+  assertEquals([...(await clientsWithOwnContext(none as never, allClientsScope(), [3, 4], "w", "u"))].sort(), [3, 4]);
+  assertEquals(none.calls.length, 0);
+
+  const broken = createSupabaseQueryMock();
+  broken.queue("workflow_posts", "select", { data: null, error: { message: "boom" } });
+  let threw = false;
+  try {
+    await clientsWithOwnContext(broken as never, { all: false, ids: new Set(), membroIds: new Set([9]) }, [3], "w", "u");
+  } catch {
+    threw = true;
+  }
+  assertEquals(threw, true);
+});

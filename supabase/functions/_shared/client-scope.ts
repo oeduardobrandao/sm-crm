@@ -206,3 +206,111 @@ export async function memberWorkspaceOfClient(
   if (memberError) throw new Error(`client scope: membership read failed: ${memberError.message ?? "unknown"}`);
   return member ? workspaceId : null;
 }
+
+// ---- client context ("contexto do item dele", can_see_cliente_context) ---------------------------
+
+const CONTEXT_PAGE = 1000;
+
+/** Of `clienteIds`, the ones the user sees as CONTEXT: assigned (or unrestricted), or a client where
+ * he has an own item. Mirrors `can_see_cliente_context` (migration 20261115000004 §6): a post
+ * (responsavel_id), a flow step (workflow_etapas.responsavel_id), a post process step
+ * (post_process_steps.responsavel_id), a task or task series (responsavel_id or user_id), or an
+ * idea he wrote (autor_membro_id), each in `contaId`. That SQL function reads auth.uid(), so the
+ * service role cannot call it for a user: this is its TS twin, keep the two in step. Read-only
+ * uses only (the brand logo, for instance): context never opens a write. Throws on a read error. */
+export async function clientsWithOwnContext(
+  svc: Db,
+  scope: ClientScope,
+  clienteIds: Iterable<number>,
+  contaId: string,
+  userId: string,
+): Promise<Set<number>> {
+  const out = new Set<number>();
+  const remaining = new Set<number>();
+  for (const raw of clienteIds) {
+    const c = Number(raw);
+    if (!Number.isInteger(c)) continue;
+    if (hasClientAccess(scope, c, false)) out.add(c);
+    else remaining.add(c);
+  }
+  if (remaining.size === 0) return out;
+  const membros = [...scope.membroIds];
+  const fail = (what: string, error: { message?: string }) => {
+    throw new Error(`client scope: ${what} read failed: ${error.message ?? "unknown"}`);
+  };
+  const take = (rows: unknown, col = "cliente_id") => {
+    for (const r of (rows ?? []) as Record<string, unknown>[]) {
+      const n = Number(r?.[col]);
+      if (remaining.delete(n)) out.add(n);
+    }
+  };
+  // Direct client columns: repeat while a full page came back and clients are still unresolved
+  // (each page resolves at least one client, so the loop ends).
+  const direct = async (
+    what: string,
+    build: (ids: number[]) => { limit: (n: number) => PromiseLike<{ data: unknown; error: { message?: string } | null }> },
+  ) => {
+    while (remaining.size > 0) {
+      const { data, error } = await build([...remaining]).limit(CONTEXT_PAGE);
+      if (error) fail(what, error);
+      take(data);
+      if (!Array.isArray(data) || data.length < CONTEXT_PAGE) return;
+    }
+  };
+  if (membros.length > 0) {
+    await direct("workflow_posts", (ids) =>
+      svc.from("workflow_posts").select("cliente_id").eq("conta_id", contaId).in("cliente_id", ids)
+        .in("responsavel_id", membros));
+  }
+  for (const table of ["tarefas", "tarefa_series"]) {
+    if (membros.length > 0) {
+      await direct(table, (ids) =>
+        svc.from(table).select("cliente_id").eq("conta_id", contaId).in("cliente_id", ids)
+          .in("responsavel_id", membros));
+    }
+    await direct(table, (ids) =>
+      svc.from(table).select("cliente_id").eq("conta_id", contaId).in("cliente_id", ids).eq("user_id", userId));
+  }
+  if (membros.length > 0) {
+    await direct("ideias", (ids) =>
+      svc.from("ideias").select("cliente_id").eq("workspace_id", contaId).in("cliente_id", ids)
+        .in("autor_membro_id", membros));
+  }
+  if (remaining.size === 0 || membros.length === 0) return out;
+
+  // Flow steps: his etapas -> their flows -> the flow's client.
+  const etapas = await fetchAllRowsKeyset<{ id: number; workflow_id: number }>((after) => {
+    let q = svc.from("workflow_etapas").select("id, workflow_id").in("responsavel_id", membros);
+    if (after != null) q = q.gt("id", Number(after));
+    return q.order("id", { ascending: true }).limit(CONTEXT_PAGE);
+  }, (r) => String(r.id), CONTEXT_PAGE);
+  const wfIds = [...new Set(etapas.map((e) => Number(e.workflow_id)))];
+  for (let i = 0; i < wfIds.length && remaining.size > 0; i += 500) {
+    const { data, error } = await svc.from("workflows").select("cliente_id").eq("conta_id", contaId)
+      .in("id", wfIds.slice(i, i + 500)).in("cliente_id", [...remaining]);
+    if (error) fail("workflows", error);
+    take(data);
+  }
+  if (remaining.size === 0) return out;
+
+  // Post process steps: his steps -> their processes -> the process's post -> its client.
+  const steps = await fetchAllRowsKeyset<{ id: number; process_id: number }>((after) => {
+    let q = svc.from("post_process_steps").select("id, process_id").eq("conta_id", contaId)
+      .in("responsavel_id", membros);
+    if (after != null) q = q.gt("id", Number(after));
+    return q.order("id", { ascending: true }).limit(CONTEXT_PAGE);
+  }, (r) => String(r.id), CONTEXT_PAGE);
+  const procIds = [...new Set(steps.map((s) => Number(s.process_id)))];
+  for (let i = 0; i < procIds.length && remaining.size > 0; i += 500) {
+    const { data: procs, error } = await svc.from("post_processes").select("post_id").eq("conta_id", contaId)
+      .in("id", procIds.slice(i, i + 500));
+    if (error) fail("post_processes", error);
+    const postIds = [...new Set(((procs ?? []) as { post_id: number }[]).map((p) => Number(p.post_id)))];
+    if (postIds.length === 0) continue;
+    const { data: posts, error: postsError } = await svc.from("workflow_posts").select("cliente_id")
+      .eq("conta_id", contaId).in("id", postIds).in("cliente_id", [...remaining]);
+    if (postsError) fail("workflow_posts", postsError);
+    take(posts);
+  }
+  return out;
+}

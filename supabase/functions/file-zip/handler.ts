@@ -7,7 +7,7 @@ import {
   folderClienteId,
   folderInfo,
   folderReadable,
-  linkedToVisiblePost,
+  borrowedReadable,
   NOT_IN_WORKSPACE,
   typedRowClients,
 } from "../_shared/file-client-scope.ts";
@@ -88,11 +88,11 @@ export async function resolveZipRoot(
 type ScopedFileRow = { id: number; uploaded_by?: string | null };
 
 /** Rows of one page the member may read (C3 files read): all of them in an assigned client's
- * folder, otherwise his uploads and files linked to a post he sees. */
+ * folder, otherwise his uploads, files linked to a post he sees and logos of brands he reads. */
 async function readableFiles<T extends ScopedFileRow>(deps: FileZipDeps, rows: T[], client: ClientOf): Promise<T[]> {
   if (deps.scope.all || clientAccessible(deps.scope, client)) return rows;
   const own = (f: T) => f.uploaded_by != null && f.uploaded_by === deps.userId;
-  const linked = await linkedToVisiblePost(
+  const linked = await borrowedReadable(
     deps.db,
     deps.scope,
     rows.filter((f) => !own(f)).map((f) => Number(f.id)),
