@@ -103,3 +103,9 @@ Deno.test("mcp-financeiro-errors: categorias are exactly the CRM form list (no p
   const crm = [...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
   assertEquals([...CATEGORIAS_FINANCEIRO], crm);
 });
+
+Deno.test("mcp-financeiro-errors: client_scope_restricted (42501) maps to the limitado copy", () => {
+  const e = mapFinanceiroError({ message: "client_scope_restricted", code: "42501" });
+  assert(e instanceof McpInputError);
+  assertEquals(e!.message, "Seu acesso é limitado aos clientes atribuídos.");
+});
