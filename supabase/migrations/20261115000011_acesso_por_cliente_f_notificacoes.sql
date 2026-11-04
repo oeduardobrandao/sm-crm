@@ -14,7 +14,7 @@
 --
 -- 1. can_see_cliente_context_for(user, conta, cliente): espelho de
 --    can_see_cliente_context para um usuário qualquer (service_role só), usado
---    pelos emissores e pelo claim do e-mail, que rodam sem auth.uid() do
+--    pelo claim do e-mail, que roda sem auth.uid() do
 --    destinatário.
 -- 2. resolve_notification_targets ganha p_cliente_id (DEFAULT NULL). O
 --    responsável segue sempre (o item é dele); os destinatários por papel
