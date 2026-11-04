@@ -286,6 +286,10 @@
     color: #ffbf30;
   }
 
+  html[data-look='vidro'] .app-container .sidebar-pinned {
+    border-top-color: var(--vd-sep);
+  }
+
   html[data-look='vidro'] .app-container .sidebar-bottom {
     padding-top: 6px;
     padding-bottom: 6px;
