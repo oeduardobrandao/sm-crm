@@ -61,59 +61,13 @@ GRANT SELECT ON TABLE public.workspace_member_clientes TO authenticated;
 GRANT ALL ON TABLE public.workspace_member_clientes TO service_role;
 
 -- -------------------------------------------------------------
--- 3. Flag de plano e cliente da notificação
+-- 3. Flag de plano
 -- -------------------------------------------------------------
+-- notifications.cliente_id fica fora desta migração (que segura ACCESS
+-- EXCLUSIVE em workspace_members até o commit): coluna em 20261115000000,
+-- backfill em lotes em 20261115000013, índice em 20261115000014.
 ALTER TABLE public.plans
   ADD COLUMN feature_acesso_por_cliente boolean NOT NULL DEFAULT false;
-
--- Sem FK: excluir o cliente deixa o id, inofensivo (nenhum cliente o terá).
-ALTER TABLE public.notifications ADD COLUMN cliente_id bigint NULL;
-CREATE INDEX idx_notifications_workspace_cliente
-  ON public.notifications (workspace_id, cliente_id);
-
--- Backfill único a partir do metadata (as triggers de notificação gravam
--- post_id e workflow_id). Ids não numéricos ficam de fora em vez de derrubar a
--- migração; o join confere o workspace. Função para o teste exercitar o mesmo
--- código; EXECUTE só do dono da função.
-CREATE OR REPLACE FUNCTION public._notifications_backfill_cliente_id()
-RETURNS bigint
-LANGUAGE plpgsql
-SET search_path = public
-AS $$
-DECLARE
-  v_post bigint;
-  v_wf   bigint;
-BEGIN
-  UPDATE public.notifications n
-     SET cliente_id = wp.cliente_id
-    FROM public.workflow_posts wp
-   WHERE n.cliente_id IS NULL
-     AND n.metadata ->> 'post_id' ~ '^[0-9]{1,18}$'
-     AND wp.id = (n.metadata ->> 'post_id')::bigint
-     AND wp.conta_id = n.workspace_id;
-  GET DIAGNOSTICS v_post = ROW_COUNT;
-
-  UPDATE public.notifications n
-     SET cliente_id = w.cliente_id
-    FROM public.workflows w
-   WHERE n.cliente_id IS NULL
-     AND n.metadata ->> 'workflow_id' ~ '^[0-9]{1,18}$'
-     AND w.id = (n.metadata ->> 'workflow_id')::bigint
-     AND w.conta_id = n.workspace_id;
-  GET DIAGNOSTICS v_wf = ROW_COUNT;
-
-  RETURN v_post + v_wf;
-END;
-$$;
-REVOKE ALL ON FUNCTION public._notifications_backfill_cliente_id()
-  FROM PUBLIC, anon, authenticated, service_role;
-
-DO $$
-DECLARE v_n bigint;
-BEGIN
-  v_n := public._notifications_backfill_cliente_id();
-  RAISE NOTICE 'notifications.cliente_id backfilled: % rows', v_n;
-END $$;
 
 -- -------------------------------------------------------------
 -- 4. O predicado (fonte única)
@@ -408,19 +362,13 @@ BEGIN
   END LOOP;
 
   -- ninguém além do dono da função
-  FOREACH fn IN ARRAY ARRAY['public._notifications_backfill_cliente_id()',
-                            'public.trg_workspace_members_owner_clears_scope_fn()'] LOOP
+  FOREACH fn IN ARRAY ARRAY['public.trg_workspace_members_owner_clears_scope_fn()'] LOOP
     SELECT array_to_string(proacl, ',') INTO acl FROM pg_proc WHERE oid = fn::regprocedure;
     IF acl IS NULL OR acl LIKE '%authenticated=X%' OR acl LIKE '%anon=X%'
        OR acl LIKE '=X%' OR acl LIKE '%,=X%' THEN
       RAISE EXCEPTION '%: unexpected EXECUTE grant — acl=%', fn, acl;
     END IF;
   END LOOP;
-  SELECT array_to_string(proacl, ',') INTO acl FROM pg_proc
-   WHERE oid = 'public._notifications_backfill_cliente_id()'::regprocedure;
-  IF acl LIKE '%service_role=X%' THEN
-    RAISE EXCEPTION '_notifications_backfill_cliente_id: service_role retains EXECUTE — acl=%', acl;
-  END IF;
 
   -- tabela: authenticated só lê
   IF NOT has_table_privilege('authenticated', 'public.workspace_member_clientes', 'SELECT')

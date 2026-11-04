@@ -6,7 +6,8 @@
 -- the predicate can_access_cliente (core + wrapper), my_client_scope_all,
 -- my_membro_ids, can_see_cliente_context, the owner-only RPC
 -- set_member_client_scope, the promote-to-owner trigger, plans.feature_acesso_por_cliente
--- and notifications.cliente_id with its backfill.
+-- and notifications.cliente_id (column: 20261115000000; batched backfill:
+-- 20261115000013; index: 20261115000014).
 -- Spec: docs/superpowers/specs/2026-11-03-acesso-por-cliente-design.md
 
 begin;
@@ -90,6 +91,9 @@ declare
   v_n bigint; v_rev bigint; v_scope text; v_res jsonb; v_meta jsonb; v_err text;
   v_audit_before bigint;
   v_notif_post uuid; v_notif_wf uuid; v_notif_bad uuid; v_notif_foreign uuid;
+  v_task bigint; v_idea uuid; v_linha uuid; v_etapa bigint;
+  v_notif_task uuid; v_notif_idea uuid; v_notif_linha uuid; v_notif_etapa uuid; v_notif_cli uuid;
+  v_notif_badidea uuid; v_notif_null uuid; v_notif_prec uuid;
 begin
   insert into auth.users (id, email) values
     (v_owner, 'owner@acc.test'), (v_admin, 'admin@acc.test'), (v_todos, 'todos@acc.test'),
@@ -304,12 +308,46 @@ begin
     values (v_ws_a, v_restr, 'post_assigned', '{"post_id": "abc"}'::jsonb) returning id into v_notif_bad;
   insert into notifications (workspace_id, user_id, type, metadata)
     values (v_ws_a, v_restr, 'post_assigned', jsonb_build_object('post_id', v_post_b)) returning id into v_notif_foreign;
-  update notifications set cliente_id = null where id in (v_notif_post, v_notif_wf, v_notif_bad, v_notif_foreign);
-  perform public._notifications_backfill_cliente_id();
+  -- item keys beyond post/workflow: task, idea, linha, etapa, client
+  insert into tarefas (conta_id, user_id, titulo, status, cliente_id) values (v_ws_a, v_owner, 'T', 'pendente', v_c2) returning id into v_task;
+  insert into ideias (workspace_id, cliente_id, titulo, tipo, origem) values (v_ws_a, v_c2, 'I', 'ideia', 'agencia') returning id into v_idea;
+  insert into linhas_editoriais (conta_id, cliente_id, periodo, status, created_by) values (v_ws_a, v_c2, date_trunc('month', current_date)::date, 'rascunho', v_owner) returning id into v_linha;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias) values (v_wf, 1, 'E', 1) returning id into v_etapa;
+  insert into notifications (workspace_id, user_id, type, metadata)
+    values (v_ws_a, v_restr, 'task_assigned', jsonb_build_object('task_id', v_task)) returning id into v_notif_task;
+  insert into notifications (workspace_id, user_id, type, metadata)
+    values (v_ws_a, v_restr, 'idea_submitted', jsonb_build_object('idea_id', v_idea)) returning id into v_notif_idea;
+  insert into notifications (workspace_id, user_id, type, metadata)
+    values (v_ws_a, v_restr, 'linha_editorial_aprovada', jsonb_build_object('linha_id', v_linha)) returning id into v_notif_linha;
+  insert into notifications (workspace_id, user_id, type, metadata)
+    values (v_ws_a, v_restr, 'deadline_approaching', jsonb_build_object('etapa_id', v_etapa)) returning id into v_notif_etapa;
+  insert into notifications (workspace_id, user_id, type, metadata)
+    values (v_ws_a, v_restr, 'client_message', jsonb_build_object('cliente_id', v_c2)) returning id into v_notif_cli;
+  insert into notifications (workspace_id, user_id, type, metadata)
+    values (v_ws_a, v_restr, 'idea_submitted', '{"idea_id": "nope"}'::jsonb) returning id into v_notif_badidea;
+  insert into notifications (workspace_id, user_id, type, metadata)
+    values (v_ws_a, v_restr, 'post_assigned', '{"post_id": null}'::jsonb) returning id into v_notif_null;
+  -- the most specific key wins: post (C1) over workflow (C2)
+  insert into notifications (workspace_id, user_id, type, metadata)
+    values (v_ws_a, v_restr, 'post_approved', jsonb_build_object('post_id', v_post, 'workflow_id', v_wf)) returning id into v_notif_prec;
+  update notifications set cliente_id = null
+   where id in (v_notif_post, v_notif_wf, v_notif_bad, v_notif_foreign, v_notif_task, v_notif_idea, v_notif_linha,
+                v_notif_etapa, v_notif_cli, v_notif_badidea, v_notif_null, v_notif_prec);
+  -- batch of 2 so the loop runs several rounds over the 12 rows (and the
+  -- other NULL rows of the transaction)
+  perform public._notifications_backfill_cliente_id(2);
   assert (select cliente_id from notifications where id = v_notif_post) = v_c1, 'notifications_backfill: post';
   assert (select cliente_id from notifications where id = v_notif_wf) = v_c2, 'notifications_backfill: workflow';
   assert (select cliente_id from notifications where id = v_notif_bad) is null, 'notifications_backfill: non-numeric id left alone';
   assert (select cliente_id from notifications where id = v_notif_foreign) is null, 'notifications_backfill: post of another workspace left alone';
+  assert (select cliente_id from notifications where id = v_notif_task) = v_c2, 'notifications_backfill: task';
+  assert (select cliente_id from notifications where id = v_notif_idea) = v_c2, 'notifications_backfill: idea';
+  assert (select cliente_id from notifications where id = v_notif_linha) = v_c2, 'notifications_backfill: linha';
+  assert (select cliente_id from notifications where id = v_notif_etapa) = v_c2, 'notifications_backfill: etapa';
+  assert (select cliente_id from notifications where id = v_notif_cli) = v_c2, 'notifications_backfill: metadata cliente_id';
+  assert (select cliente_id from notifications where id = v_notif_badidea) is null, 'notifications_backfill: bad uuid left alone';
+  assert (select cliente_id from notifications where id = v_notif_null) is null, 'notifications_backfill: json null left alone';
+  assert (select cliente_id from notifications where id = v_notif_prec) = v_c1, 'notifications_backfill: post wins over workflow';
 
   -- ACLs
   assert has_function_privilege('service_role', 'public.can_access_cliente(uuid,uuid,bigint)', 'execute'), 'core: service_role';
@@ -326,8 +364,11 @@ begin
   assert has_function_privilege('service_role', 'public.set_member_client_scope(uuid,uuid,uuid,text,bigint[])', 'execute'), 'rpc: service_role';
   assert not has_function_privilege('authenticated', 'public.set_member_client_scope(uuid,uuid,uuid,text,bigint[])', 'execute'), 'rpc: no authenticated';
   assert not has_function_privilege('anon', 'public.set_member_client_scope(uuid,uuid,uuid,text,bigint[])', 'execute'), 'rpc: no anon';
-  assert not has_function_privilege('authenticated', 'public._notifications_backfill_cliente_id()', 'execute'), 'backfill: no authenticated';
-  assert not has_function_privilege('service_role', 'public._notifications_backfill_cliente_id()', 'execute'), 'backfill: no service_role';
+  assert not has_function_privilege('authenticated', 'public._notifications_backfill_cliente_id(integer)', 'execute'), 'backfill: no authenticated';
+  assert not has_function_privilege('service_role', 'public._notifications_backfill_cliente_id(integer)', 'execute'), 'backfill: no service_role';
+  assert to_regprocedure('public._notifications_backfill_cliente_id()') is null, 'backfill: old 0-arg signature gone';
+  assert exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'idx_notifications_workspace_cliente'),
+    'notifications index present';
 
   raise notice 'PASS 99_acesso_por_cliente_schema';
 end $$;
