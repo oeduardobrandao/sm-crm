@@ -2,11 +2,15 @@
 -- Spec: docs/superpowers/specs/2026-11-03-acesso-por-cliente-design.md
 -- Inventário: docs/superpowers/plans/2026-11-03-acesso-por-cliente-inventario.md
 --
--- Regra do destinatário (a mesma da policy notifications_select da 4e, julgada
--- no workspace da notificação): a notificação sem cliente vale para todos; com
--- cliente, para quem é dono ou 'todos' ali, tem o cliente atribuído ou tem um
--- item dele naquele cliente (contexto, can_see_cliente_context_for). A ordem é
--- fixa (CASE): dono e 'todos' nunca chamam função de escopo.
+-- Duas regras, julgadas no workspace da notificação; a ordem é fixa (CASE):
+-- dono e 'todos' nunca chamam função de escopo.
+-- - Alvo por papel (owner/admin da notificação, membro escolhido na automação
+--   de status): sem cliente, ou dono, 'todos' ou cliente atribuído. SEM o
+--   contexto: o contexto serve para ler marca/briefing/identidade, não para
+--   inscrever um admin restrito em todo evento do cliente.
+-- - Exibição e e-mail (a da policy notifications_select da 4e): a regra acima
+--   ou o contexto de um item dele ali (can_see_cliente_context_for). Assim o
+--   aviso que ele recebeu como responsável sai e aparece.
 --
 -- 1. can_see_cliente_context_for(user, conta, cliente): espelho de
 --    can_see_cliente_context para um usuário qualquer (service_role só), usado
@@ -14,7 +18,7 @@
 --    destinatário.
 -- 2. resolve_notification_targets ganha p_cliente_id (DEFAULT NULL). O
 --    responsável segue sempre (o item é dele); os destinatários por papel
---    passam pela regra acima. Sem cliente, nada muda.
+--    passam pela regra de alvo por papel. Sem cliente, nada muda.
 -- 3. insert_notification_batch ganha p_cliente_id (DEFAULT NULL) e grava
 --    notifications.cliente_id. Não filtra: agenda_notificar manda participantes
 --    (que são "dele", decisão da 4d) por aqui.
@@ -24,12 +28,13 @@
 -- 4. Os emissores passam o cliente do item: posts, fluxos/etapas, tarefas,
 --    ideias, briefing, mensagens do cliente, linha editorial, menções,
 --    comentário de tarefa e discussão do post. O alvo 'member' da automação de
---    status (membro escolhido na configuração, não "dele") passa pela regra.
+--    status (membro escolhido na configuração, não "dele") passa pela regra de
+--    alvo por papel.
 --    Ficam sem cliente, de propósito: convite aceito, papel alterado, membro
 --    removido, limpeza de armazenamento, chat da equipe e agenda (agenda_eventos
 --    não abre contexto, decisão da 4d; com cliente_id gravado, o participante
 --    restrito perderia o aviso de um evento que ele vê).
--- 5. claim_notification_emails aplica a regra por destinatário. A linha fora do
+-- 5. claim_notification_emails aplica a regra de exibição por destinatário. A linha fora do
 --    escopo recebe emailed_at como as demais, mas não é devolvida: não sai e não
 --    volta para a fila (o releaseClaims do cron só toca os ids devolvidos).
 
@@ -123,14 +128,13 @@ BEGIN
           FROM workspace_members wm
           WHERE wm.workspace_id = p_workspace_id
             AND wm.role = ANY (p_roles_filter)
-            AND (p_cliente_id IS NULL OR CASE
-                  WHEN wm.role = 'owner' OR wm.client_scope = 'todos' THEN true
-                  WHEN EXISTS (SELECT 1 FROM workspace_member_clientes wmc
-                                WHERE wmc.workspace_id = p_workspace_id
-                                  AND wmc.user_id = wm.user_id
-                                  AND wmc.cliente_id = p_cliente_id) THEN true
-                  ELSE public.can_see_cliente_context_for(wm.user_id, p_workspace_id, p_cliente_id)
-                END)
+            -- alvo por papel: sem o contexto (só dono, 'todos' ou atribuído)
+            AND (p_cliente_id IS NULL
+                 OR wm.role = 'owner' OR wm.client_scope = 'todos'
+                 OR EXISTS (SELECT 1 FROM workspace_member_clientes wmc
+                             WHERE wmc.workspace_id = p_workspace_id
+                               AND wmc.user_id = wm.user_id
+                               AND wmc.cliente_id = p_cliente_id))
       ) s
       WHERE user_id IS NOT NULL;
   END IF;
@@ -529,7 +533,7 @@ begin
     begin
       v_targets := case r.config->>'target'
         -- membro escolhido na configuração: não é "dele", então passa pela
-        -- regra do cliente (dono, 'todos', atribuído ou contexto)
+        -- regra de alvo por papel (dono, 'todos' ou atribuído; sem contexto)
         when 'member' then
           coalesce((
             select case when m.crm_user_id is null then '{}'::uuid[]
@@ -542,14 +546,11 @@ begin
                  select 1 from workspace_members wm
                   where wm.workspace_id = new.conta_id
                     and wm.user_id = m.crm_user_id
-                    and case
-                          when wm.role = 'owner' or wm.client_scope = 'todos' then true
-                          when exists (select 1 from workspace_member_clientes wmc
-                                        where wmc.workspace_id = new.conta_id
-                                          and wmc.user_id = m.crm_user_id
-                                          and wmc.cliente_id = new.cliente_id) then true
-                          else public.can_see_cliente_context_for(m.crm_user_id, new.conta_id, new.cliente_id)
-                        end))
+                    and (wm.role = 'owner' or wm.client_scope = 'todos'
+                         or exists (select 1 from workspace_member_clientes wmc
+                                     where wmc.workspace_id = new.conta_id
+                                       and wmc.user_id = m.crm_user_id
+                                       and wmc.cliente_id = new.cliente_id))))
           ), '{}'::uuid[])
         when 'responsavel' then
           resolve_notification_targets(new.conta_id, new.responsavel_id, null, new.cliente_id)

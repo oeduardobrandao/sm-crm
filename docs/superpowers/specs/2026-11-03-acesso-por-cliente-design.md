@@ -236,10 +236,11 @@ flag de liberação só liga depois das duas fases.
 - Edge functions que leem dados de cliente para o usuário (analytics, relatórios, `report-docs`,
   arquivos, Instagram/TikTok/Google analytics) conferem o predicado antes de devolver.
 - Notificações: `resolve_notification_targets(ws, responsavel, roles, p_cliente_id)` mantém sempre o
-  responsável ("é dele") e, entre os destinatários por papel, só quem vê o cliente (dono, `todos`,
-  atribuído ou contexto de um item dele ali). Todo emissor passa o cliente, gravado em
-  `notifications.cliente_id`. `claim_notification_emails` aplica a mesma regra no workspace da
-  notificação; a linha fora do escopo recebe `emailed_at` e não é devolvida. Sem cliente, de
+  responsável ("é dele") e, entre os destinatários por papel (e o membro escolhido na automação de
+  status), só dono, `todos` ou cliente atribuído, sem o contexto (que é para ler marca/briefing, não
+  para inscrever um admin restrito em todo evento do cliente). Todo emissor passa o cliente, gravado em
+  `notifications.cliente_id`. `claim_notification_emails` aplica a regra do sino (escopo ou contexto) no
+  workspace da notificação; a linha fora do escopo recebe `emailed_at` e não é devolvida. Sem cliente, de
   propósito: convite, papel, remoção de membro, limpeza de armazenamento, chat da equipe e agenda
   (participante é "dele" e `agenda_eventos` não abre contexto).
 - Chat da equipe: conforme a decisão de chat (ver Decisões em aberto).

@@ -123,15 +123,19 @@ declare
   v_cb bigint := pg_temp.fx('cb');
   v_r text;
 begin
-  -- restricted_not_targeted_for_hidden_client (radm); radm2 has an own item in B
+  -- restricted_not_targeted_for_hidden_client: role fan-out never uses the
+  -- context branch, so radm2 (own post in B) is out as well as radm
   v_r := pg_temp.who(resolve_notification_targets(v_ws, null, array['owner','admin'], v_cb));
-  assert v_r = 'adm,owner,radm2', 'restricted_not_targeted_for_hidden_client: ' || v_r;
+  assert v_r = 'adm,owner', 'restricted_not_targeted_for_hidden_client: ' || v_r;
+  -- restricted_with_own_item_targeted_when_responsavel: the responsável path stays
+  v_r := pg_temp.who(resolve_notification_targets(v_ws, pg_temp.fx('m_radm2')::bigint, array['owner','admin'], v_cb));
+  assert v_r = 'adm,owner,radm2', 'restricted_with_own_item_targeted_when_responsavel: ' || v_r;
 
   -- restricted_targeted_when_responsavel: the item is his, client hidden or not
   v_r := pg_temp.who(resolve_notification_targets(v_ws, pg_temp.fx('m_restr')::bigint, null, v_cb));
   assert v_r = 'restr', 'restricted_targeted_when_responsavel (no roles): ' || v_r;
   v_r := pg_temp.who(resolve_notification_targets(v_ws, pg_temp.fx('m_radm')::bigint, array['owner','admin'], v_cb));
-  assert v_r = 'adm,owner,radm,radm2', 'restricted_targeted_when_responsavel (with roles): ' || v_r;
+  assert v_r = 'adm,owner,radm', 'restricted_targeted_when_responsavel (with roles): ' || v_r;
 
   -- todos_targets_unchanged: no client, or a client everyone sees
   v_r := pg_temp.who(resolve_notification_targets(v_ws, null, array['owner','admin'], null));
@@ -146,7 +150,7 @@ begin
   -- named-argument call, as the edge functions make it
   v_r := pg_temp.who(resolve_notification_targets(
     p_workspace_id => v_ws, p_responsavel_id => null, p_roles_filter => array['owner','admin'], p_cliente_id => v_cb));
-  assert v_r = 'adm,owner,radm2', 'named_args_call: ' || v_r;
+  assert v_r = 'adm,owner', 'named_args_call: ' || v_r;
 
   raise notice 'PASS block 2 resolve_notification_targets';
 end $$;
@@ -179,10 +183,10 @@ begin
 
   perform set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
 
-  -- client_message about B: fan-out drops radm, keeps radm2 (context), writes B
+  -- client_message about B: fan-out drops both restricted admins, writes B
   insert into mensagens (conta_id, cliente_id, content, is_workspace_user) values (v_ws, v_cb, 'oi', false);
   v_r := pg_temp.notified('client_message');
-  assert v_r = 'adm,owner,radm2', 'client_message_targets: ' || v_r;
+  assert v_r = 'adm,owner', 'client_message_targets: ' || v_r;
   assert pg_temp.notified_clientes('client_message') = v_cb::text, 'client_message_cliente_id: ' || pg_temp.notified_clientes('client_message');
   insert into mensagens (conta_id, cliente_id, content, is_workspace_user) values (v_ws, v_ca, 'oi', false);
   select count(*) into v_n from notifications where type = 'client_message' and workspace_id = v_ws and cliente_id = v_ca;
@@ -226,16 +230,18 @@ begin
   values (v_wf, 1, 'e1', 1, 'pendente') returning id into v_etapa;
   update workflow_etapas set status = 'ativo' where id = v_etapa;
   v_r := pg_temp.notified('step_activated');
-  assert v_r = 'adm,radm2', 'step_activated_targets (actor owner excluded): ' || v_r;
+  assert v_r = 'adm', 'step_activated_targets (actor owner excluded): ' || v_r;
   assert pg_temp.notified_clientes('step_activated') = v_cb::text, 'step_activated_cliente_id';
 
-  -- post status automation, 'member' target: a configured member is not "his"
+  -- post status automation, 'member' target: a configured member is not "his";
+  -- context (radm2's own post in B) does not count either
   insert into post_status_automations (conta_id, trigger_status, action_type, config)
-  values (v_ws, 'revisao_interna', 'notify', jsonb_build_object('target', 'member', 'membro_id', m_radm));
+  values (v_ws, 'revisao_interna', 'notify', jsonb_build_object('target', 'member', 'membro_id', m_radm)),
+         (v_ws, 'revisao_interna', 'notify', jsonb_build_object('target', 'member', 'membro_id', pg_temp.fx('m_radm2')::bigint));
   insert into workflow_posts (conta_id, cliente_id, titulo) values (v_ws, v_ca, 'pA') returning id into v_postA;
   update workflow_posts set status = 'revisao_interna' where id in (v_post, v_postA);
   v_r := pg_temp.notified('post_status_automation');
-  assert v_r = 'radm', 'automation_member_targets: ' || v_r;
+  assert v_r = 'radm,radm2', 'automation_member_targets: ' || v_r;
   assert pg_temp.notified_clientes('post_status_automation') = v_ca::text,
     'automation_member_only_visible_client: ' || pg_temp.notified_clientes('post_status_automation');
 
@@ -317,9 +323,11 @@ begin
   v_after := pg_temp.scope_calls();
   assert v_after = v_before, format('todos_owner_zero_helper_calls: %s -> %s', v_before, v_after);
 
-  -- sanity: a restricted recipient does call the helper
+  -- sanity: claiming a restricted recipient's row does call the helper
+  perform pg_temp.notif(v_ws, pg_temp.fx('radm')::uuid, pg_temp.fx('cb')::bigint, 'rB');
+  update notifications set created_at = now() - interval '20 minutes' where workspace_id = v_ws;
   v_before := pg_temp.scope_calls();
-  perform resolve_notification_targets(v_ws, null, array['owner','admin'], pg_temp.fx('cb')::bigint);
+  perform claim_notification_emails(now() - interval '10 minutes', now() - interval '1 day', 1000);
   v_after := pg_temp.scope_calls();
   assert v_after > v_before, format('restricted_calls_helper: %s -> %s', v_before, v_after);
 
