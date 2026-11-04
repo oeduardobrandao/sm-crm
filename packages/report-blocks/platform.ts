@@ -124,6 +124,7 @@ export function layoutPlatforms(layout: ReportLayout): ReportPlatform[] {
 export const PLATFORM_NAMES: Record<ReportPlatform, string> = {
   instagram: 'Instagram',
   tiktok: 'TikTok',
+  google: 'Google Meu Negócio',
 };
 
 /** Kicker, handle e foto padrão da capa. Plataformas do layout sem dado no
