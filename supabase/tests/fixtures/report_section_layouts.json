@@ -1183,5 +1183,98 @@
     "layout": { "version": 1, "blocks": [
       { "id": "g", "type": "section", "size": "full", "config": {"title": "\u00a0dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\u00a0"} }
     ] }
+  },
+  {
+    "name": "sectioned: instagram + google",
+    "valid": true,
+    "layout": { "version": 1, "blocks": [
+      { "id": "s1", "type": "section", "size": "full" },
+      { "id": "c", "type": "cover", "size": "full" },
+      { "id": "s2", "type": "section", "size": "full", "config": { "platform": "instagram" }},
+      { "id": "r", "type": "kpi_reach", "size": "third" },
+      { "id": "s3", "type": "section", "size": "full", "config": { "platform": "google" }},
+      { "id": "g1", "type": "gbp_kpi_calls", "size": "third" },
+      { "id": "g2", "type": "gbp_surfaces", "size": "half" },
+      { "id": "g3", "type": "gbp_units", "size": "full" }
+    ] }
+  },
+  {
+    "name": "sectioned: google only",
+    "valid": true,
+    "layout": { "version": 1, "blocks": [
+      { "id": "s1", "type": "section", "size": "full" },
+      { "id": "c", "type": "cover", "size": "full" },
+      { "id": "s2", "type": "section", "size": "full", "config": { "platform": "google" }},
+      { "id": "g1", "type": "gbp_kpi_profile_views", "size": "third" },
+      { "id": "g2", "type": "gbp_actions_chart", "size": "full" },
+      { "id": "t", "type": "text", "size": "full" }
+    ] }
+  },
+  {
+    "name": "sectioned: google marker with hideHeader and title",
+    "valid": true,
+    "layout": { "version": 1, "blocks": [
+      { "id": "s1", "type": "section", "size": "full", "config": { "platform": "google", "title": "Google", "hideHeader": true}},
+      { "id": "g1", "type": "gbp_rating", "size": "half" }
+    ] }
+  },
+  {
+    "name": "sectioned: gbp block in instagram section",
+    "valid": false,
+    "layout": { "version": 1, "blocks": [
+      { "id": "s1", "type": "section", "size": "full", "config": { "platform": "instagram" }},
+      { "id": "r", "type": "kpi_reach", "size": "third" },
+      { "id": "g1", "type": "gbp_kpi_calls", "size": "third" }
+    ] }
+  },
+  {
+    "name": "sectioned: gbp block in geral section",
+    "valid": false,
+    "layout": { "version": 1, "blocks": [
+      { "id": "s1", "type": "section", "size": "full" },
+      { "id": "g1", "type": "gbp_keywords", "size": "half" }
+    ] }
+  },
+  {
+    "name": "sectioned: gbp block before first marker",
+    "valid": false,
+    "layout": { "version": 1, "blocks": [
+      { "id": "g1", "type": "gbp_kpi_calls", "size": "third" },
+      { "id": "s1", "type": "section", "size": "full", "config": { "platform": "google" }}
+    ] }
+  },
+  {
+    "name": "sectioned: two google sections",
+    "valid": false,
+    "layout": { "version": 1, "blocks": [
+      { "id": "s1", "type": "section", "size": "full", "config": { "platform": "google" }},
+      { "id": "g1", "type": "gbp_kpi_calls", "size": "third" },
+      { "id": "s2", "type": "section", "size": "full", "config": { "platform": "google" }}
+    ] }
+  },
+  {
+    "name": "sectioned: tiktok block in google section",
+    "valid": false,
+    "layout": { "version": 1, "blocks": [
+      { "id": "s1", "type": "section", "size": "full", "config": { "platform": "google" }},
+      { "id": "t1", "type": "tiktok_kpi_views", "size": "third" }
+    ] }
+  },
+  {
+    "name": "sectioned: youtube platform marker",
+    "valid": false,
+    "layout": { "version": 1, "blocks": [
+      { "id": "s1", "type": "section", "size": "full", "config": { "platform": "youtube" }}
+    ] }
+  },
+  {
+    "name": "legacy: gbp blocks without markers",
+    "valid": true,
+    "layout": { "version": 1, "blocks": [
+      { "id": "c", "type": "cover", "size": "full" },
+      { "id": "r", "type": "kpi_reach", "size": "third" },
+      { "id": "g1", "type": "gbp_kpi_calls", "size": "third" },
+      { "id": "g2", "type": "gbp_review_highlight", "size": "half" }
+    ] }
   }
 ]

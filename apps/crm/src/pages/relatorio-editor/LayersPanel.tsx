@@ -27,6 +27,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { WIDGET_CATALOG } from '@mesaas/report-blocks/catalog';
 import { PlatformIcon } from '@mesaas/report-blocks/PlatformIcon';
+import type { ReportPlatform } from '@mesaas/report-blocks/platform';
 import type {
   BlockSize,
   ReportBlock,
@@ -37,7 +38,11 @@ import { toSections } from '@mesaas/report-blocks/types';
 import { FALLBACK_WIDGET_ICON, WIDGET_ICONS } from './widgetIcons';
 import { sectionDisplayName } from './SectionFrameHeader';
 import { SECTIONS_GROUP } from './SectionFrame';
-import type { InsertTarget } from './useBlockEditing';
+import {
+  DEFAULT_ENABLED_PLATFORMS,
+  sectionAcceptsWidgets,
+  type InsertTarget,
+} from './useBlockEditing';
 
 const SIZE_LABEL: Record<BlockSize, string> = { third: '1/3', half: '1/2', full: '1/1' };
 
@@ -195,8 +200,9 @@ export interface LayersPanelProps {
   layout: ReportLayout;
   /** Bloco ou seção atualmente destacado no canvas (espelha o highlight do editor). */
   highlightId?: string | null;
-  /** feature_tiktok: sem ela a seção TikTok fica sem "+". Fail closed. */
-  tiktokEnabled?: boolean;
+  /** Plataformas que o plano libera (feature_tiktok, feature_google_business; Instagram
+   * sempre): seção de plataforma fora da lista fica sem "+". Fail closed. */
+  enabledPlatforms?: readonly ReportPlatform[];
   /** Reordena via ids: o pai aplica resolveDragEnd sobre o layout corrente
    * (ref), nunca sobre um closure obsoleto deste componente. */
   onReorder: (activeId: string, overId: string) => void;
@@ -209,7 +215,7 @@ export interface LayersPanelProps {
 export function LayersPanel({
   layout,
   highlightId,
-  tiktokEnabled = false,
+  enabledPlatforms = DEFAULT_ENABLED_PLATFORMS,
   onReorder,
   onLocate,
   onAddAt,
@@ -258,7 +264,7 @@ export function LayersPanel({
                 section={section}
                 highlightId={highlightId}
                 dragGroup={dragGroup}
-                canAdd={section.kind !== 'tiktok' || tiktokEnabled}
+                canAdd={sectionAcceptsWidgets(section.kind, enabledPlatforms)}
                 onLocate={onLocate}
                 onAddAt={onAddAt}
               />

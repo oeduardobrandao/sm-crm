@@ -70,10 +70,13 @@ export function CoverBlock({ block, snapshot, layoutPlatforms }: BlockProps) {
   const defaults = coverDefaults(snapshot, layoutPlatforms);
   const kicker = typeof config.kicker === 'string' ? config.kicker : defaults.kicker;
   const title = typeof config.title === 'string' ? config.title : snapshot.period.label;
+  // Sem handle (capa só do Google Meu Negócio): sem "@" solto, só a especialidade.
   const subtitle =
     typeof config.subtitle === 'string'
       ? config.subtitle
-      : `@${defaults.handle}${snapshot.account.specialty ? ` · ${snapshot.account.specialty}` : ''}`;
+      : [defaults.handle ? `@${defaults.handle}` : null, snapshot.account.specialty || null]
+          .filter(Boolean)
+          .join(' · ');
   const logoSize = config.logoSize ?? LOGO_SIZE_DEFAULT;
   const clientName = snapshot.account.client_name ?? defaults.handle;
 
@@ -126,7 +129,9 @@ export function CoverBlock({ block, snapshot, layoutPlatforms }: BlockProps) {
       >
         {title}
       </h1>
-      <p style={{ margin: '0.25rem 0 0', opacity: 0.9 }}>{subtitle}</p>
+      {typeof config.subtitle === 'string' || subtitle ? (
+        <p style={{ margin: '0.25rem 0 0', opacity: 0.9 }}>{subtitle}</p>
+      ) : null}
       {b.splash_url ? (
         <img
           src={b.splash_url}

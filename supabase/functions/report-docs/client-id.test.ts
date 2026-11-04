@@ -132,3 +132,11 @@ Deno.test("parseGenerateBody accepts known platforms, keeps order and drops repe
     ["tiktok", "instagram"],
   );
 });
+
+Deno.test("parseGenerateBody aceita google em platforms e recusa youtube", () => {
+  assertEquals(
+    parseGenerateBody({ clientId: 1, month: "2026-10", platforms: ["google", "instagram"] })?.platforms,
+    ["google", "instagram"],
+  );
+  assertEquals(parseGenerateBody({ clientId: 1, month: "2026-10", platforms: ["youtube"] }), null);
+});

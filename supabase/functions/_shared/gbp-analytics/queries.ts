@@ -109,7 +109,7 @@ export async function loadMetrics(
 /** Whether any selected unit has a metrics row on or before `day`: the stored history reaches
  * back to that day, so a window starting there is fully covered (the sync stores every day from
  * its backfill start, zeros included, so the earliest row is where the history begins). */
-async function hasMetricsOnOrBefore(db: Db, contaId: string, units: GbpUnit[], day: string): Promise<boolean> {
+export async function hasMetricsOnOrBefore(db: Db, contaId: string, units: GbpUnit[], day: string): Promise<boolean> {
   const { data, error } = await db.from("gbp_metrics_daily").select("day")
     .eq("conta_id", contaId)
     .in("location_name", locationNames(units))

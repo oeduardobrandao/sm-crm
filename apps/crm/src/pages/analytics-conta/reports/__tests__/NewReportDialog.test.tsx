@@ -333,6 +333,29 @@ describe('NewReportDialog', () => {
       expect(generateMock.mock.calls[0][3]).toEqual(['instagram']);
     });
 
+    it('com Google Meu Negócio: três checkboxes na ordem das seções; desmarcar o Google envia ["instagram","tiktok"]', async () => {
+      generateMock.mockResolvedValue({ id: 'doc-9' });
+      render(
+        <NewReportDialog
+          open
+          onOpenChange={() => {}}
+          clientId={42}
+          connected={['instagram', 'tiktok', 'google']}
+        />,
+      );
+      expect(screen.getAllByRole('checkbox').map((c) => c.getAttribute('id'))).toEqual([
+        'new-report-platform-instagram',
+        'new-report-platform-tiktok',
+        'new-report-platform-google',
+      ]);
+      const gmn = screen.getByRole('checkbox', { name: 'Google Meu Negócio' });
+      expect(gmn).toBeChecked();
+      fireEvent.click(gmn);
+      fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+      await waitFor(() => expect(generateMock).toHaveBeenCalled());
+      expect(generateMock.mock.calls[0][3]).toEqual(['instagram', 'tiktok']);
+    });
+
     it('com as duas conectadas e nada mudado, não envia platforms (o servidor usa todas)', async () => {
       generateMock.mockResolvedValue({ id: 'doc-9' });
       render(

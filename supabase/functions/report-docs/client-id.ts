@@ -20,7 +20,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // outra string não-uuid rejeita o corpo, igual antes.
 const SYSTEM_SENTINEL = "system";
 
-export const REPORT_PLATFORMS = ["instagram", "tiktok"] as const;
+export const REPORT_PLATFORMS = ["instagram", "tiktok", "google"] as const;
 export type ReportPlatform = (typeof REPORT_PLATFORMS)[number];
 
 // `platforms` (spec 2026-10-28 §B1): ausente/null = todas as redes conectadas, o que mantém

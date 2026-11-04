@@ -13,7 +13,7 @@ import {
   aiGoalsDoc, aiRecommendationsDoc, aiSummaryDoc, fallbackSummaryParagraphs,
   fillAiBlocks, textDoc,
 } from "../_shared/report-docs/tiptap-doc.ts";
-import { prefixTikTokGoalMetrics, snapshotToReportData } from "../_shared/report-docs/ai-input.ts";
+import { prefixGoalMetrics, snapshotToReportData } from "../_shared/report-docs/ai-input.ts";
 import {
   normalizeCoverSize, sanitizeLayoutForTemplate, validateLayout, type ReportLayout,
 } from "../_shared/report-docs/layout.ts";
@@ -30,11 +30,11 @@ const METRIC_PRIORITY_INSTAGRAM =
   "suggested_goals with views wherever the data provides them; treat reach as " +
   "secondary context.";
 
-const METRIC_PRIORITY_INSTAGRAM_WITH_TIKTOK =
+const metricPriorityWithOthers = (others: string) =>
   "METRIC PRIORITY: on Instagram, 'views' (visualizações) is the primary performance metric. " +
   "Lead the Instagram part of the executive summary, analysis, recommendations and " +
   "suggested_goals with Instagram views wherever the data provides them; treat reach as " +
-  "secondary context. This priority does not apply to the TikTok data.";
+  `secondary context. This priority does not apply to the ${others} data.`;
 
 /** Direcionamento de views do Instagram (pedido 2026-08). Só entra quando o Instagram está na
  * narrativa e o dado existe; com TikTok junto, fica restrito ao Instagram. O texto só Instagram
@@ -42,10 +42,14 @@ const METRIC_PRIORITY_INSTAGRAM_WITH_TIKTOK =
 export function metricPriorityGuidance(n: {
   instagram: boolean;
   tiktok: boolean;
+  google?: boolean;
   instagramHasViews: boolean;
 }): string | undefined {
   if (!n.instagram || !n.instagramHasViews) return undefined;
-  return n.tiktok ? METRIC_PRIORITY_INSTAGRAM_WITH_TIKTOK : METRIC_PRIORITY_INSTAGRAM;
+  const others = [n.tiktok ? "TikTok" : null, n.google ? "Google Meu Negócio" : null].filter(
+    (x): x is string => x !== null,
+  );
+  return others.length > 0 ? metricPriorityWithOthers(others.join(" or ")) : METRIC_PRIORITY_INSTAGRAM;
 }
 
 export interface GenerateDeps {
@@ -92,12 +96,15 @@ export async function generateReportDocument(
   // conta como não conectada: snapshot.tiktok null e tiktok_account_id null. Erro na RPC
   // derruba a geração, como o feature_analytics_reports acima.
   const tiktokEnabled = await effectivePlanFeature(db, contaId, "feature_tiktok");
+  // Google Meu Negócio no relatório só com feature_google_business (spec 2026-11-04), mesma regra.
+  const googleEnabled = await effectivePlanFeature(db, contaId, "feature_google_business");
+  const flags = { tiktokEnabled, googleEnabled };
 
   // Plataformas pedidas (spec 2026-10-28 §B1): só as conectadas, conferidas pelas linhas de conta
   // antes do snapshot completo (que chama a Graph e baixa thumbnails). A escolha molda só o
   // layout; os dados de toda rede conectada entram no snapshot de qualquer jeito.
   if (platforms) {
-    const connectedNow = await connectedPlatforms(db, clientId, tiktokEnabled);
+    const connectedNow = await connectedPlatforms(db, contaId, clientId, flags);
     if (platforms.some((p) => !connectedNow.includes(p))) throw new GenerateError("invalid_platforms");
   }
 
@@ -147,12 +154,13 @@ export async function generateReportDocument(
     db, deps, contaId,
     { id: cliente.id, especialidade: cliente.especialidade, nome: cliente.nome, foto_url: cliente.foto_url },
     month,
-    { tiktokEnabled },
+    flags,
   );
 
   const connected: ReportPlatform[] = [];
   if (igAccountId) connected.push("instagram");
   if (tiktokAccountId) connected.push("tiktok");
+  if (snapshot.google) connected.push("google");
   // A escolha molda o layout (seção por plataforma no padrão; no template, as seções escolhidas
   // + a seção das plataformas que ele não cobre); os dados de toda rede conectada já estão no
   // snapshot.
@@ -168,6 +176,7 @@ export async function generateReportDocument(
     hasBestTimes: snapshot.best_times.length > 0,
     hasTags: snapshot.tags_performance.length > 0,
     hasTikTokBestTimes: (snapshot.tiktok?.best_times.length ?? 0) > 0,
+    hasGbpUnits: (snapshot.google?.unit_rows.length ?? 0) > 1,
   };
   // Modelo do workspace (spec 2026-10-28-report-platform-sections §Generation): seções das
   // plataformas desmarcadas (ou sem dados) saem inteiras; só um modelo com alguma seção de
@@ -175,7 +184,12 @@ export async function generateReportDocument(
   // imagem) só é seccionado. Com duas seções de plataforma, os dois títulos aparecem.
   const baseLayout = templateLayout
     ? showAllPlatformHeadings(selectPlatformSections(templateLayout, selectedPlatforms, {
-      hasData: (p) => p === "instagram" ? snapshot.instagram_connected !== false : !!snapshot.tiktok,
+      hasData: (p) =>
+        p === "instagram"
+          ? snapshot.instagram_connected !== false
+          : p === "tiktok"
+          ? !!snapshot.tiktok
+          : !!snapshot.google,
       sectionOpts,
       onCapSkip: (platform) =>
         console.warn(
@@ -190,6 +204,7 @@ export async function generateReportDocument(
   const narrative = narrativePlatforms(baseLayout, selectedPlatforms);
   const narrativeInstagram = narrative.includes("instagram") && snapshot.instagram_connected !== false;
   const narrativeTiktok = narrative.includes("tiktok") ? snapshot.tiktok?.kpis ?? null : null;
+  const narrativeGoogle = narrative.includes("google") ? snapshot.google?.kpis ?? null : null;
 
   // IA: nunca derruba a geração (padrão do v2, index.ts:987-1017).
   let aiContent: unknown = null;
@@ -197,7 +212,9 @@ export async function generateReportDocument(
   let summaryDoc = textDoc(fallbackSummaryParagraphs(
     snapshot.kpis,
     snapshot.period.label,
-    narrativeTiktok ? { instagram: narrativeInstagram, tiktok: narrativeTiktok } : undefined,
+    narrativeTiktok || narrativeGoogle
+      ? { instagram: narrativeInstagram, tiktok: narrativeTiktok, google: narrativeGoogle }
+      : undefined,
   ));
   let recsDoc: unknown | null = null;
   let goalsDoc: unknown | null = null;
@@ -228,6 +245,7 @@ export async function generateReportDocument(
       const guidance = metricPriorityGuidance({
         instagram: narrativeInstagram,
         tiktok: narrativeTiktok !== null,
+        google: narrativeGoogle !== null,
         instagramHasViews: snapshot.kpis.views?.value != null,
       });
       const promptOpts = guidance ? { extraGuidance: guidance } : undefined;
@@ -241,8 +259,13 @@ export async function generateReportDocument(
         timeoutPromise,
       ]);
       if (ai.status === "success" && ai.output) {
-        // Só TikTok: meta "views" é a do TikTok, então ganha o prefixo antes do rótulo.
-        const output = narrativeInstagram ? ai.output : prefixTikTokGoalMetrics(ai.output);
+        // Uma só plataforma sem Instagram: meta "views"/"website_clicks" é a dela, então ganha o
+        // prefixo antes do rótulo. Com duas sem Instagram o prompt já pede os prefixos.
+        const solo = [narrativeTiktok ? "tiktok" as const : null, narrativeGoogle ? "google" as const : null]
+          .filter((x): x is "tiktok" | "google" => x !== null);
+        const output = !narrativeInstagram && solo.length === 1
+          ? prefixGoalMetrics(ai.output, solo[0])
+          : ai.output;
         aiContent = output;
         summaryDoc = aiSummaryDoc(output);
         recsDoc = aiRecommendationsDoc(output);

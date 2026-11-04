@@ -172,6 +172,35 @@ describe('ModeloEditorPage', () => {
     expect(cellIdsIn(tt)).toHaveLength(expected.length);
   });
 
+  it.each([
+    ['sem feature_google_business', { feature_tiktok: true }],
+    ['plano sem resposta', null],
+  ])('%s: "Adicionar seção" não oferece o Google', async (_label, features) => {
+    limits.value = { features };
+    renderAt();
+    await screen.findByDisplayValue('Mensal completo');
+    expect(screen.queryByRole('button', { name: /^Google Meu Negócio/ })).not.toBeInTheDocument();
+  });
+
+  it('com feature_google_business: adicionar o Google no modelo insere a seção completa (com unidades)', async () => {
+    limits.value = { features: { feature_google_business: true } };
+    renderAt();
+    await screen.findByDisplayValue('Mensal completo');
+    const items = screen.getAllByRole('button', { name: /^Google Meu Negócio/ });
+    for (const el of items) expect(el).toBeEnabled();
+    fireEvent.click(items[items.length - 1]);
+    const gb = await screen.findByRole('region', { name: 'Seção Google Meu Negócio' });
+    const expected = platformSectionBlocks('google', {
+      hasAudience: true,
+      hasBestTimes: true,
+      hasTags: true,
+      hasTikTokBestTimes: true,
+      hasGbpUnits: true,
+    });
+    expect(expected.some((b) => b.type === 'gbp_units')).toBe(true);
+    expect(cellIdsIn(gb)).toHaveLength(expected.length);
+  });
+
   it('modelo com seção TikTok sem feature_tiktok: a seção aparece e sai, mas sem "Adicionar widget"', async () => {
     limits.value = { features: { feature_tiktok: false } };
     getReportTemplateMock.mockResolvedValue({

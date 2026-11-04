@@ -220,3 +220,44 @@ Deno.test("prompt TikTok-only: specialty vazia ou null não vira parênteses vaz
     assert(!userPrompt.includes("()"));
   }
 });
+
+// ─── Google Meu Negócio (spec 2026-11-04-gmn-report-section) ─────────────────────────
+const googleData: NonNullable<ReportData["google"]> = {
+  units: 2,
+  window: { start: "2026-05-01", end: "2026-05-31", compared_with_days: 31 },
+  kpis: {
+    profile_views: 1000, calls: 40, directions: 30, website_clicks: 12, messages: 2, bookings: null,
+    avg_rating: 4.8, new_reviews: 5,
+  },
+  kpis_previous_period: { profile_views: 900 },
+  surfaces: [{ surface: "mobile_search", pct: 60 }],
+  top_keywords: [{ keyword: "dermatologista", people: 80, at_most: null }],
+  rating_distribution: null,
+};
+
+Deno.test("prompt Google only: GMN rules and scope, no Instagram data", () => {
+  const { systemPrompt, userPrompt } = buildAIPrompt({ ...fixture, instagram_connected: false, google: googleData });
+  assert(systemPrompt.includes("GOOGLE MEU NEGÓCIO DATA RULES"));
+  assert(systemPrompt.includes("REPORT SCOPE: This report covers only Google Meu Negócio. There is no Instagram data."));
+  assert(!systemPrompt.includes("TIKTOK DATA RULES"));
+  assert(userPrompt.includes('"google"'));
+  assert(!userPrompt.includes("top_posts"));
+});
+
+Deno.test("prompt Instagram + TikTok + Google: one scope line with the three platforms", () => {
+  const { systemPrompt, userPrompt } = buildAIPrompt({ ...fixture, tiktok: tiktokData, google: googleData });
+  assert(systemPrompt.includes("This report covers Instagram, TikTok and Google Meu Negócio."));
+  assert(systemPrompt.includes("TIKTOK DATA RULES"));
+  assert(systemPrompt.includes("GOOGLE MEU NEGÓCIO DATA RULES"));
+  assert(userPrompt.startsWith(LEGACY_USER_PREFIX));
+  assert(userPrompt.includes("Google Meu Negócio profile data (2 units combined), same period"));
+});
+
+Deno.test("prompt TikTok + Google without Instagram: both in the data, no Instagram root", () => {
+  const { systemPrompt, userPrompt } = buildAIPrompt({
+    ...fixture, instagram_connected: false, tiktok: tiktokData, google: googleData,
+  });
+  assert(systemPrompt.includes("This report covers TikTok and Google Meu Negócio. There is no Instagram data."));
+  assert(userPrompt.includes('"tiktok"') && userPrompt.includes('"google"'));
+  assert(!userPrompt.includes("top_posts"));
+});

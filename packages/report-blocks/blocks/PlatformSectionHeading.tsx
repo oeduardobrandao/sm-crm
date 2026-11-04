@@ -20,7 +20,13 @@ export function PlatformSectionHeading({
       ? section.marker.config.title
       : PLATFORM_NAMES[platform];
   // Handle da conta da plataforma; TikTok sem dado no snapshot fica sem (nunca o do Instagram).
-  const handle = platform === 'tiktok' ? snapshot.tiktok?.account.handle : snapshot.account.handle;
+  // Google Meu Negócio não tem @.
+  const handle =
+    platform === 'google'
+      ? null
+      : platform === 'tiktok'
+        ? snapshot.tiktok?.account.handle
+        : snapshot.account.handle;
   return (
     <div className="rb-full rb-platform-heading" data-section-id={section.marker.id}>
       <PlatformIcon platform={platform} className="rb-platform-heading-icon" size={26} />

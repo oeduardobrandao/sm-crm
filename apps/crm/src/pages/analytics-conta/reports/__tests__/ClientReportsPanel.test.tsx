@@ -26,6 +26,7 @@ vi.mock('../../../../services/reportDocs', () => ({
 }));
 vi.mock('../../../../services/instagram', () => ({ getInstagramSummary: vi.fn() }));
 vi.mock('../../../../services/tiktok', () => ({ getTikTokSummary: vi.fn() }));
+vi.mock('../../../../services/google', () => ({ getGoogleSummary: vi.fn() }));
 const { featuresRef } = vi.hoisted(() => ({
   featuresRef: { current: { feature_tiktok: true } as Record<string, boolean> },
 }));
@@ -48,6 +49,7 @@ import { getClientes } from '../../../../store';
 import { getClientReports } from '../../../../services/analytics';
 import { getInstagramSummary } from '../../../../services/instagram';
 import { getTikTokSummary } from '../../../../services/tiktok';
+import { getGoogleSummary, type GbpLocationSummary } from '../../../../services/google';
 import { deleteReportDoc, listReportDocs } from '../../../../services/reportDocs';
 
 const DOC = {
@@ -82,7 +84,25 @@ beforeEach(() => {
   vi.mocked(getTikTokSummary).mockResolvedValue({
     account: { authorization_status: 'active' },
   } as never);
+  vi.mocked(getGoogleSummary).mockResolvedValue(googleSummary(['active']));
 });
+
+function googleSummary(statuses: GbpLocationSummary['status'][]) {
+  return {
+    youtube: null,
+    gmn: {
+      locations: statuses.map((status, i) => ({
+        id: `loc-${i}`,
+        title: `Unidade ${i}`,
+        addressLine: null,
+        averageRating: null,
+        totalReviewCount: null,
+        status,
+      })),
+      connections: [],
+    },
+  };
+}
 
 describe('ClientReportsPanel (moved from the Instagram page)', () => {
   it('shows the empty state', async () => {
@@ -260,6 +280,72 @@ describe('ClientReportsPanel (moved from the Instagram page)', () => {
         'data-connected',
         'instagram',
       ),
+    );
+  });
+
+  const expectConnected = async (value: string) => {
+    fireEvent.click(await screen.findByRole('button', { name: 'Gerar' }));
+    await waitFor(() =>
+      expect(screen.getByRole('dialog', { name: 'Novo relatório' })).toHaveAttribute(
+        'data-connected',
+        value,
+      ),
+    );
+  };
+
+  it('com feature_google_business e unidade ativa: Google Meu Negócio conta como conectado, depois do TikTok', async () => {
+    featuresRef.current = { feature_tiktok: true, feature_google_business: true };
+    renderPanel();
+    await expectConnected('instagram,tiktok,google');
+    expect(getGoogleSummary).toHaveBeenCalledWith(42);
+  });
+
+  it('sem feature_google_business, o Google não conta como conectado e nem é consultado', async () => {
+    featuresRef.current = { feature_tiktok: true, feature_google_business: false };
+    renderPanel();
+    await expectConnected('instagram,tiktok');
+    expect(getGoogleSummary).not.toHaveBeenCalled();
+  });
+
+  it('unidade revogada ainda conta (o histórico entra no relatório); só desconectadas não', async () => {
+    featuresRef.current = { feature_google_business: true };
+    vi.mocked(getGoogleSummary).mockResolvedValue(googleSummary(['disconnected', 'revoked']));
+    renderPanel();
+    await expectConnected('instagram,google');
+  });
+
+  it('todas as unidades desconectadas, ou nenhuma: Google fora', async () => {
+    featuresRef.current = { feature_google_business: true };
+    vi.mocked(getGoogleSummary).mockResolvedValue(googleSummary(['disconnected']));
+    renderPanel();
+    await expectConnected('instagram');
+  });
+
+  it('sem GMN no resumo (gmn null): Google fora', async () => {
+    featuresRef.current = { feature_google_business: true };
+    vi.mocked(getGoogleSummary).mockResolvedValue({ youtube: null, gmn: null });
+    renderPanel();
+    await expectConnected('instagram');
+  });
+
+  it('resumo do Google com erro: connected fica definido, sem o Google', async () => {
+    featuresRef.current = { feature_google_business: true };
+    vi.mocked(getGoogleSummary).mockRejectedValue(new Error('boom'));
+    renderPanel();
+    await expectConnected('instagram');
+  });
+
+  it('resumo do Google carregando (com a flag): connected desconhecido', async () => {
+    featuresRef.current = { feature_google_business: true };
+    vi.mocked(getGoogleSummary).mockReturnValue(new Promise(() => {}));
+    renderPanel();
+    fireEvent.click(await screen.findByRole('button', { name: 'Gerar' }));
+    // O Instagram já resolveu; mesmo assim o Google em voo segura o connected.
+    await waitFor(() => expect(getInstagramSummary).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.getByRole('dialog', { name: 'Novo relatório' })).toHaveAttribute(
+      'data-connected',
+      'unknown',
     );
   });
 

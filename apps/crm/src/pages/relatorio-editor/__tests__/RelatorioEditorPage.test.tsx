@@ -694,6 +694,66 @@ describe('RelatorioEditorPage: seções', () => {
     }
   });
 
+  it('sem feature_google_business (ou plano sem resposta): "Adicionar seção" não oferece o Google', async () => {
+    limits.value = { features: { feature_tiktok: true } };
+    getReportDocMock.mockResolvedValue(doc());
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    expect(screen.getAllByRole('button', { name: /^TikTok/ }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /^Google Meu Negócio/ })).not.toBeInTheDocument();
+  });
+
+  it('documento sem dados do Google: Google desabilitado com a dica de atualizar dados', async () => {
+    limits.value = { features: { feature_google_business: true } };
+    getReportDocMock.mockResolvedValue({
+      ...doc(),
+      data_snapshot: makeSnapshotFixture({ google: null }),
+    });
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    const items = screen.getAllByRole('button', { name: /^Google Meu Negócio/ });
+    expect(items.length).toBeGreaterThan(0);
+    for (const el of items) {
+      expect(el).toBeDisabled();
+      expect(el).toHaveTextContent(
+        'Sem dados do Google Meu Negócio neste relatório. Atualize os dados depois de conectar a conta.',
+      );
+    }
+  });
+
+  it('documento com Google (2+ unidades): adicionar a seção traz os blocos padrão, com a comparação de unidades', async () => {
+    limits.value = { features: { feature_google_business: true } };
+    getReportDocMock.mockResolvedValue(doc());
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    const items = screen.getAllByRole('button', { name: /^Google Meu Negócio/ });
+    for (const el of items) {
+      expect(el).toHaveTextContent('Visualizações, ligações, rotas, buscas e avaliações');
+    }
+    fireEvent.click(items[items.length - 1]);
+    const gb = await screen.findByRole('region', { name: 'Seção Google Meu Negócio' });
+    // Seis números, superfícies, nota, ações, buscas, avaliação em destaque e unidades.
+    expect(cellIdsIn(gb)).toHaveLength(12);
+  });
+
+  it('documento com Google de uma unidade só: a seção nova sai sem a comparação de unidades', async () => {
+    limits.value = { features: { feature_google_business: true } };
+    const snap = makeSnapshotFixture();
+    getReportDocMock.mockResolvedValue({
+      ...doc(),
+      data_snapshot: {
+        ...snap,
+        google: { ...snap.google!, unit_rows: snap.google!.unit_rows.slice(0, 1) },
+      },
+    });
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    const items = screen.getAllByRole('button', { name: /^Google Meu Negócio/ });
+    fireEvent.click(items[items.length - 1]);
+    const gb = await screen.findByRole('region', { name: 'Seção Google Meu Negócio' });
+    expect(cellIdsIn(gb)).toHaveLength(11);
+  });
+
   it('documento com TikTok: adicionar a seção TikTok traz os blocos padrão dela', async () => {
     limits.value = { features: { feature_tiktok: true } };
     getReportDocMock.mockResolvedValue(doc());

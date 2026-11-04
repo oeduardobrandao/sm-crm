@@ -6,9 +6,9 @@
 // TS PURO: importado pela edge function (Deno) e pelo CRM (Vite/tsc).
 import type { BlockSize, BlockType, ReportBlock, ReportLayout } from "./layout.ts";
 import { LAYOUT_VERSION } from "./layout.ts";
-import { makeSectionMarker } from "./sections.ts";
+import { makeSectionMarker, PLATFORM_ORDER, type SectionPlatform } from "./sections.ts";
 
-export type DefaultLayoutPlatform = "instagram" | "tiktok";
+export type DefaultLayoutPlatform = SectionPlatform;
 
 export interface DefaultLayoutOpts {
   hasAi: boolean;
@@ -19,13 +19,15 @@ export interface DefaultLayoutOpts {
   platforms?: readonly DefaultLayoutPlatform[];
   /** snapshot.tiktok.best_times não vazio. Ausente = false. */
   hasTikTokBestTimes?: boolean;
+  /** Google Meu Negócio com 2+ unidades: a seção ganha "Comparar unidades". Ausente = false. */
+  hasGbpUnits?: boolean;
   makeId?: () => string;
 }
 
 /** Opções que moldam a seção de uma plataforma (sem capa, resumo nem "Próximos passos"). */
 export type PlatformSectionOpts = Pick<
   DefaultLayoutOpts,
-  "hasAudience" | "hasBestTimes" | "hasTags" | "hasTikTokBestTimes"
+  "hasAudience" | "hasBestTimes" | "hasTags" | "hasTikTokBestTimes" | "hasGbpUnits"
 >;
 
 export const NEXT_STEPS_TITLE = "Próximos passos";
@@ -46,8 +48,7 @@ export function platformSectionBlocks(
 ): ReportBlock[] {
   const blocks: ReportBlock[] = [];
   const add = blockAdder(blocks, makeId);
-  if (platform === "instagram") addInstagramSection(add, opts);
-  else addTikTokSection(add, opts);
+  SECTION_ADDERS[platform](add, opts);
   return blocks;
 }
 
@@ -65,13 +66,11 @@ export function buildDefaultLayout(opts: DefaultLayoutOpts): ReportLayout {
   add("cover", "full");
   add("ai_summary", "full");
 
-  if (platforms.includes("instagram")) {
-    section("instagram");
-    addInstagramSection(add, opts);
-  }
-  if (platforms.includes("tiktok")) {
-    section("tiktok");
-    addTikTokSection(add, opts);
+  // Ordem fixa (PLATFORM_ORDER), qualquer que seja a ordem pedida.
+  for (const p of PLATFORM_ORDER) {
+    if (!platforms.includes(p)) continue;
+    section(p);
+    SECTION_ADDERS[p](add, opts);
   }
 
   if (opts.hasAi) {
@@ -85,6 +84,25 @@ export function buildDefaultLayout(opts: DefaultLayoutOpts): ReportLayout {
 }
 
 type AddBlock = (type: BlockType, size: BlockSize, config?: Record<string, unknown>) => void;
+
+// Google Meu Negócio (spec 2026-11-04-gmn-report-section, escolha D): seis números em terços,
+// onde viram o perfil e avaliações lado a lado, ações por dia, buscas e avaliação em destaque
+// lado a lado, e a comparação de unidades só com 2+ unidades. Sem section_header: o título da
+// seção já diz.
+function addGoogleSection(add: AddBlock, opts: PlatformSectionOpts): void {
+  add("gbp_kpi_profile_views", "third");
+  add("gbp_kpi_calls", "third");
+  add("gbp_kpi_directions", "third");
+  add("gbp_kpi_website_clicks", "third");
+  add("gbp_kpi_messages", "third");
+  add("gbp_kpi_new_reviews", "third");
+  add("gbp_surfaces", "half");
+  add("gbp_rating", "half");
+  add("gbp_actions_chart", "full");
+  add("gbp_keywords", "half");
+  add("gbp_review_highlight", "half");
+  if (opts.hasGbpUnits) add("gbp_units", "full");
+}
 
 // Sem section_header "TikTok": o título da seção já diz (senão o PDF imprime "TikTok" duas vezes).
 function addTikTokSection(add: AddBlock, opts: PlatformSectionOpts): void {
@@ -130,3 +148,9 @@ function addInstagramSection(add: AddBlock, opts: PlatformSectionOpts): void {
   }
   if (opts.hasBestTimes) add("chart_best_times", "full");
 }
+
+const SECTION_ADDERS: Record<DefaultLayoutPlatform, (add: AddBlock, opts: PlatformSectionOpts) => void> = {
+  instagram: addInstagramSection,
+  tiktok: addTikTokSection,
+  google: addGoogleSection,
+};

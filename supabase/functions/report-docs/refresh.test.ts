@@ -15,7 +15,7 @@ function makeDb(
   // deno-lint-ignore no-explicit-any
   const chain = (result: any, error: { message: string } | null = null): any => {
     const c: Record<string, unknown> = {};
-    for (const m of ["select", "eq", "gte", "lt", "lte", "order", "limit", "range"]) {
+    for (const m of ["select", "eq", "in", "gte", "lt", "lte", "order", "limit", "range"]) {
       c[m] = () => chain(result, error);
     }
     c.maybeSingle = () => Promise.resolve({ data: error ? null : result, error });
@@ -274,4 +274,23 @@ Deno.test("refresh: nenhuma rede conectada mais continua not_found, mesmo com sn
   } catch (e) { err = e; }
   assert(err instanceof DocActionError && err.code === "not_found");
   assert(db.updates.length === 0);
+});
+
+// ── Google Meu Negócio (spec 2026-11-04-gmn-report-section) ──
+Deno.test("refresh keeps a frozen Google section when GMN is gone but Instagram is connected", async () => {
+  const frozenGoogle = { units: [{ id: "u-1", title: "Unidade", status: "active" }], window: null };
+  const db = makeDb({
+    report_documents: {
+      id: "d1", conta_id: "c", client_id: 1, period_start: "2026-07-01",
+      data_snapshot: { ...FROZEN, google: frozenGoogle }, instagram_account_id: "ig-1",
+    },
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: { id: "ig-1", username: "x" },
+    instagram_posts: [],
+    gbp_locations: [],
+    workspaces: { name: "W", logo_url: null, brand_color: "#123456", report_splash_url: null },
+  });
+  await refreshReportDocument(db, deps, "c", "d1");
+  const patch = db.updates[0] as { data_snapshot: { google?: unknown } };
+  assert(JSON.stringify(patch.data_snapshot.google) === JSON.stringify(frozenGoogle));
 });

@@ -150,12 +150,14 @@ Deno.test("the TikTok section has no section_header titled TikTok", () => {
 });
 
 Deno.test("platformSectionBlocks: content only (no marker), ids from makeId, the same blocks as the default", () => {
-  for (const p of ["instagram", "tiktok"] as const) {
-    const blocks = platformSectionBlocks(p, { ...FULL, hasTikTokBestTimes: true }, seqId());
+  for (const p of ["instagram", "tiktok", "google"] as const) {
+    const blocks = platformSectionBlocks(p, { ...FULL, hasTikTokBestTimes: true, hasGbpUnits: true }, seqId());
     assert(!blocks.some((b) => b.type === "section"));
     assertEquals(blocks.map((b) => b.id), blocks.map((_, i) => `b${i + 1}`));
-    for (const b of blocks) assert([p, null].includes(blockPlatform(b.type)), b.type);
-    const l = buildDefaultLayout({ ...FULL, platforms: [p], hasTikTokBestTimes: true, makeId: seqId() });
+    for (const b of blocks) assert(([p, null] as (string | null)[]).includes(blockPlatform(b.type)), b.type);
+    const l = buildDefaultLayout({
+      ...FULL, platforms: [p], hasTikTokBestTimes: true, hasGbpUnits: true, makeId: seqId(),
+    });
     const section = toSections(l).find((s) => s.kind === p);
     assertEquals(shape(section!.blocks), shape(blocks));
   }
@@ -173,4 +175,33 @@ Deno.test("default layout without any platform: Geral and Próximos passos only,
 Deno.test("marker ids come from makeId in document order", () => {
   const l = buildDefaultLayout({ ...FULL, platforms: ["instagram", "tiktok"], hasTikTokBestTimes: true, makeId: seqId() });
   assertEquals(l.blocks.map((b) => b.id), l.blocks.map((_, i) => `b${i + 1}`));
+});
+
+// ── Google Meu Negócio (spec 2026-11-04-gmn-report-section) ──
+const GOOGLE_TYPES = [
+  "gbp_kpi_profile_views", "gbp_kpi_calls", "gbp_kpi_directions", "gbp_kpi_website_clicks",
+  "gbp_kpi_messages", "gbp_kpi_new_reviews", "gbp_surfaces", "gbp_rating", "gbp_actions_chart",
+  "gbp_keywords", "gbp_review_highlight",
+];
+
+Deno.test("layout padrão com Google: seção depois do Instagram, blocos e tamanhos da escolha D", () => {
+  const l = buildDefaultLayout({
+    hasAi: true, hasAudience: false, hasBestTimes: false, hasTags: false,
+    platforms: ["google", "instagram"], hasGbpUnits: true, makeId: seqId(),
+  });
+  assert(validateLayout(l).ok);
+  const sections = toSections(l);
+  assertEquals(sections.map((s) => s.kind), ["general", "instagram", "google", "general"]);
+  const google = sections[2];
+  assertEquals(google.marker.config, { platform: "google" });
+  assertEquals(google.blocks.map((b) => b.type), [...GOOGLE_TYPES, "gbp_units"]);
+  assertEquals(google.blocks.map((b) => b.size), [
+    "third", "third", "third", "third", "third", "third", "half", "half", "full", "half", "half", "full",
+  ]);
+});
+
+Deno.test("seção Google sem 2+ unidades não traz Comparar unidades", () => {
+  const blocks = platformSectionBlocks("google", { hasAudience: false, hasBestTimes: false, hasTags: false }, seqId());
+  assertEquals(blocks.map((b) => b.type), GOOGLE_TYPES);
+  for (const b of blocks) assertEquals(blockPlatform(b.type), "google");
 });

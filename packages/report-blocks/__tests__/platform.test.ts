@@ -8,7 +8,7 @@ import {
   layoutPlatforms,
   tiktokBlockView,
 } from '../platform';
-import { TIKTOK_KPI_IDS } from '../types';
+import { GBP_KPI_IDS, GBP_KPI_LABELS_PT, TIKTOK_KPI_IDS } from '../types';
 import ptTiktok from '../../i18n/locales/pt/analyticsTiktok.json';
 import type {
   ReportBlock,
@@ -264,6 +264,40 @@ describe('coverDefaults', () => {
     });
   });
 
+  it('Google Meu Negócio: kicker, sem handle, foto da raiz', () => {
+    const snap = withAvatars();
+    expect(coverDefaults(snap, ['google'])).toEqual({
+      kicker: 'Relatório mensal · Google Meu Negócio',
+      handle: '',
+      avatarUrl: 'https://x/ig.jpg',
+    });
+    expect(coverDefaults(snap, ['instagram', 'google'])).toEqual({
+      kicker: 'Relatório mensal · Instagram e Google Meu Negócio',
+      ...IG,
+    });
+    expect(coverDefaults(snap, ['instagram', 'tiktok', 'google']).kicker).toBe(
+      'Relatório mensal · Instagram, TikTok e Google Meu Negócio',
+    );
+    // Ordem do kicker é a de PLATFORM_ORDER; handle da primeira do layout.
+    expect(coverDefaults(snap, ['google', 'tiktok'])).toEqual({
+      kicker: 'Relatório mensal · TikTok e Google Meu Negócio',
+      handle: '',
+      avatarUrl: 'https://x/ig.jpg',
+    });
+  });
+
+  it('Google sem seção ou sem janela (nada sincronizado) não conta como dado', () => {
+    const noGoogle = withAvatars({ google: null });
+    expect(coverDefaults(noGoogle, ['instagram', 'google']).kicker).toBe(
+      'Relatório mensal · Instagram',
+    );
+    const snap = withAvatars();
+    snap.google = { ...snap.google!, window: null };
+    expect(coverDefaults(snap, ['instagram', 'google']).kicker).toBe(
+      'Relatório mensal · Instagram',
+    );
+  });
+
   it('sem foto: avatarUrl null', () => {
     expect(coverDefaults(makeSnapshotFixture(), ['tiktok']).avatarUrl).toBe(null);
     expect(coverDefaults(makeSnapshotFixture(), ['instagram']).avatarUrl).toBe(null);
@@ -332,5 +366,17 @@ describe('makeSnapshotFixture: seção TikTok', () => {
     for (const p of tt.top_posts) {
       expect(p.permalink).toMatch(/^https:\/\/www\.tiktok\.com\/@seucliente\/video\/\d+$/);
     }
+  });
+});
+
+describe('Google Meu Negócio: rótulos e fixture', () => {
+  it('rótulos dos KPIs iguais aos da aba Google Meu Negócio', async () => {
+    const pt = (await import('../../i18n/locales/pt/analyticsGoogle.json')).default as {
+      kpi: Record<string, { label: string }>;
+    };
+    for (const id of GBP_KPI_IDS) expect(GBP_KPI_LABELS_PT[id]).toBe(pt.kpi[id].label);
+  });
+  it('fixture com 3 unidades', () => {
+    expect(makeSnapshotFixture().google?.unit_rows).toHaveLength(3);
   });
 });

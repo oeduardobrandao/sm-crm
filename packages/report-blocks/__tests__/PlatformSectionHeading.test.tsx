@@ -72,4 +72,17 @@ describe('PlatformSectionHeading', () => {
     expect(container.querySelector('h2')?.textContent).toBe('TikTok');
     expect(container.textContent).not.toContain('@');
   });
+
+  it('Google Meu Negócio: ícone de vitrine, nome e nenhum @ (nunca o do Instagram)', () => {
+    const { container } = render(
+      <PlatformSectionHeading
+        section={platformSection('google')}
+        snapshot={makeSnapshotFixture()}
+      />,
+    );
+    expect(container.querySelector('h2')?.textContent).toBe('Google Meu Negócio');
+    expect(container.querySelector('svg')?.classList.contains('lucide-store')).toBe(true);
+    expect(container.querySelector('.rb-platform-heading-handle')).toBeNull();
+    expect(container.textContent).not.toContain('@');
+  });
 });

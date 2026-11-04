@@ -1,6 +1,7 @@
 // Barra do topo de cada seção no canvas do editor (spec 2026-10-28-report-platform-sections
 // §Editor): alça para arrastar a seção, ícone, título editável (o nome da plataforma ou
-// "Geral" fica de placeholder), @ da conta e o menu da seção. A Geral nunca tem título no
+// "Geral" fica de placeholder), @ da conta (ou, no Google Meu Negócio, que não tem @, o número
+// de unidades) e o menu da seção. A Geral nunca tem título no
 // relatório; a de plataforma pode ocultá-lo (hideHeader). Remover pede confirmação quando a
 // seção tem widgets.
 import { useRef, useState, type HTMLAttributes } from 'react';
@@ -54,6 +55,8 @@ export interface SectionFrameHeaderProps {
   count: number;
   /** @ da conta da plataforma, sem o "@". */
   handle?: string | null;
+  /** Rótulo secundário no lugar do @, para plataforma sem @ (ex.: "3 unidades"). */
+  detail?: string | null;
   /** attributes + listeners do useSortable da seção, na alça. */
   dragHandleProps?: HTMLAttributes<HTMLButtonElement>;
   /** Texto cru do campo (com espaços): o layoutOps faz o trim ao gravar. */
@@ -69,6 +72,7 @@ export function SectionFrameHeader({
   index,
   count,
   handle,
+  detail,
   dragHandleProps,
   onTitleChange,
   onMove,
@@ -125,7 +129,11 @@ export function SectionFrameHeader({
           onTitleChange(e.target.value);
         }}
       />
-      {handle ? <span className="rb-section-frame-handle">@{handle}</span> : null}
+      {handle ? (
+        <span className="rb-section-frame-handle">@{handle}</span>
+      ) : detail ? (
+        <span className="rb-section-frame-handle">{detail}</span>
+      ) : null}
       {noHeading ? <span className="rb-section-frame-note">Sem título no relatório</span> : null}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

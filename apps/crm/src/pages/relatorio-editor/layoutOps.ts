@@ -52,9 +52,15 @@ const DEFAULT_SIZE: Partial<Record<BlockType, BlockSize>> = {
   audience_age: 'half',
   audience_cities: 'half',
   audience_countries: 'half',
+  gbp_surfaces: 'half',
+  gbp_rating: 'half',
+  gbp_keywords: 'half',
+  gbp_review_highlight: 'half',
 };
-// KPIs do TikTok entram como third, igual ao layout padrão da geração.
-for (const t of BLOCK_TYPES) if (t.startsWith('tiktok_kpi_')) DEFAULT_SIZE[t] = 'third';
+// KPIs do TikTok e do Google Meu Negócio entram como third, igual ao layout padrão da geração.
+for (const t of BLOCK_TYPES) {
+  if (t.startsWith('tiktok_kpi_') || t.startsWith('gbp_kpi_')) DEFAULT_SIZE[t] = 'third';
+}
 
 const EMPTY_TEXT_DOC = { type: 'doc', content: [{ type: 'paragraph', content: [] }] };
 

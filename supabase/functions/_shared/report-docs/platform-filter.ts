@@ -9,17 +9,19 @@
 import { platformSectionBlocks, type PlatformSectionOpts } from "./default-layout.ts";
 import { MAX_BLOCKS, MAX_SECTIONS, type ReportLayout } from "./layout.ts";
 import {
-  makeSectionMarker, type ReportSection, sectionPlatforms, type SectionPlatform, toSections,
-  fromSections,
+  makeSectionMarker, PLATFORM_ORDER, type ReportSection, sectionPlatforms, type SectionPlatform,
+  toSections, fromSections,
 } from "./sections.ts";
 
 export type LayoutPlatform = SectionPlatform;
 
-// Ordem fixa das seções acrescentadas (Instagram antes do TikTok), como no layout padrão.
-const PLATFORM_ORDER: readonly LayoutPlatform[] = ["instagram", "tiktok"];
 // Nome que o título da seção mostra (sem `title` próprio): um section_header com este texto no
 // topo da seção ficaria repetido quando o título aparece.
-const PLATFORM_NAMES: Record<LayoutPlatform, string> = { instagram: "Instagram", tiktok: "TikTok" };
+const PLATFORM_NAMES: Record<LayoutPlatform, string> = {
+  instagram: "Instagram",
+  tiktok: "TikTok",
+  google: "Google Meu Negócio",
+};
 
 export interface SelectPlatformSectionsOpts {
   /** A plataforma tem dados no snapshot. Sem dados, a seção dela sai e nenhuma é acrescentada. */
@@ -34,7 +36,7 @@ export interface SelectPlatformSectionsOpts {
 }
 
 /** Layout canônico de um documento gerado a partir de um modelo do workspace. Ver o cabeçalho.
- * O teto é decidido seção a seção, na ordem Instagram, TikTok, contra o layout já filtrado: a
+ * O teto é decidido seção a seção, na ordem de PLATFORM_ORDER, contra o layout já filtrado: a
  * que não cabe fica de fora (`onCapSkip`) e a seguinte ainda pode entrar. */
 export function selectPlatformSections(
   layout: ReportLayout,

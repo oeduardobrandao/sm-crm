@@ -11,7 +11,7 @@ import type {
   SectionKind,
 } from '@mesaas/report-blocks/types';
 import { isSectionMarker, toSections } from '@mesaas/report-blocks/types';
-import { PLATFORM_NAMES } from '@mesaas/report-blocks/platform';
+import { PLATFORM_NAMES, type ReportPlatform } from '@mesaas/report-blocks/platform';
 import {
   addSection,
   insertBlockInSection,
@@ -28,11 +28,39 @@ export interface InsertTarget {
   position?: number;
 }
 
+/** Padrão fail closed das plataformas habilitadas: só Instagram. */
+export const DEFAULT_ENABLED_PLATFORMS: readonly ReportPlatform[] = ['instagram'];
+
+/** Plataformas que o plano do workspace libera nos relatórios: Instagram sempre, TikTok com
+ * feature_tiktok e Google Meu Negócio com feature_google_business, na ordem das seções. Fail
+ * closed: sem `features` (plano carregando), só Instagram. */
+export function enabledReportPlatforms(
+  features: { feature_tiktok?: boolean; feature_google_business?: boolean } | null | undefined,
+): ReportPlatform[] {
+  return [
+    'instagram',
+    ...(features?.feature_tiktok === true ? (['tiktok'] as const) : []),
+    ...(features?.feature_google_business === true ? (['google'] as const) : []),
+  ];
+}
+
+/** A seção pode receber widget novo? Geral sempre; de plataforma, só se o plano libera a
+ * plataforma (`enabledPlatforms`). Sem a flag a seção renderiza e sai, mas nada entra nela. */
+export function sectionAcceptsWidgets(
+  kind: SectionKind,
+  enabledPlatforms: readonly ReportPlatform[],
+): boolean {
+  return kind === 'general' || enabledPlatforms.includes(kind);
+}
+
 export function useBlockEditing(
   layoutRef: { current: ReportLayout },
   applyLayout: (next: ReportLayout) => void,
-  /** feature_tiktok: sem ela, o "Adicionar widget" sem alvo nunca cai na seção TikTok. */
-  { tiktokEnabled = false }: { tiktokEnabled?: boolean } = {},
+  /** Plataformas que o plano libera: o "Adicionar widget" sem alvo nunca cai numa seção de
+   * plataforma fora da lista (TikTok sem feature_tiktok, Google sem feature_google_business). */
+  {
+    enabledPlatforms = DEFAULT_ENABLED_PLATFORMS,
+  }: { enabledPlatforms?: readonly ReportPlatform[] } = {},
 ) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   // Alvo do próximo widget, setado pelo ponto de inserção antes de abrir o
@@ -135,17 +163,17 @@ export function useBlockEditing(
     }
 
     // Sem alvo ("Adicionar widget" do cabeçalho): fim da última seção que pode
-    // receber widget (TikTok só com feature_tiktok) e aceita o tipo.
+    // receber widget (plataforma só com a flag dela) e aceita o tipo.
     const sections = toSections(current);
     for (let i = sections.length - 1; i >= 0; i--) {
-      if (sections[i].kind === 'tiktok' && !tiktokEnabled) continue;
+      if (!sectionAcceptsWidgets(sections[i].kind, enabledPlatforms)) continue;
       const next = insertBlockInSection(current, sections[i].marker.id, type, undefined, makeId);
       if (next !== current) {
         done(next);
         return;
       }
     }
-    // Nenhuma serve (layout vazio, ou só TikTok sem a flag): Geral nova no fim.
+    // Nenhuma serve (layout vazio, ou só plataformas sem a flag): Geral nova no fim.
     const markerId = crypto.randomUUID();
     const withGeneral = addSection(current, 'general', null, [], () => markerId);
     if (withGeneral === current) {

@@ -388,3 +388,47 @@ Deno.test("propriedade: 300 layouts legados aleatórios viram canônicos válido
     assertStrictEquals(sectionizeLayout(out, counter()), out);
   }
 });
+
+// ── Google Meu Negócio (spec 2026-11-04-gmn-report-section) ──
+const gb = (id: string, type: BlockType, size: ReportBlock["size"] = "third"): ReportBlock => ({ id, type, size });
+
+Deno.test("sectionKindOf: google é plataforma; youtube (ainda) é Geral", () => {
+  assertEquals(sectionKindOf(makeSectionMarker("google", { id: "m" })), "google");
+  assertEquals(
+    sectionKindOf({ id: "m", type: "section", size: "full", config: { platform: "youtube" } }),
+    "general",
+  );
+});
+
+Deno.test("toSections: legado com blocos gbp_ infere a seção google escondida", () => {
+  let n = 0;
+  const layout: ReportLayout = {
+    version: LAYOUT_VERSION,
+    blocks: [gb("c", "cover", "full"), gb("r", "kpi_reach"), gb("g", "gbp_kpi_calls")],
+  };
+  const sections = toSections(layout, () => `x${++n}`);
+  assertEquals(sections.map((s) => s.kind), ["general", "instagram", "google"]);
+  assertEquals(sections[2].marker.config?.hideHeader, true);
+  assertEquals(sections[2].blocks.map((b) => b.id), ["g"]);
+});
+
+Deno.test("toSections: gbp_ fora da seção google vai para uma seção google depois da última de plataforma", () => {
+  let n = 0;
+  const layout: ReportLayout = {
+    version: LAYOUT_VERSION,
+    blocks: [
+      makeSectionMarker("general", { id: "s0" }),
+      gb("c", "cover", "full"),
+      makeSectionMarker("instagram", { id: "s1" }),
+      gb("r", "kpi_reach"),
+      gb("u", "gbp_units", "full"),
+      makeSectionMarker("general", { id: "s2", title: "Próximos passos" }),
+      gb("t", "text", "full"),
+    ],
+  };
+  const sections = toSections(layout, () => `x${++n}`);
+  assertEquals(sections.map((s) => s.kind), ["general", "instagram", "google", "general"]);
+  assertEquals(sections[2].blocks.map((b) => b.id), ["u"]);
+  assertEquals(sections[1].blocks.map((b) => b.id), ["r"]);
+  assert(validateLayout(fromSections(sections, layout)).ok);
+});

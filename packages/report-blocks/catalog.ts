@@ -1,6 +1,7 @@
 // Catálogo do drawer "Adicionar widget": label pt-BR e categoria por tipo.
 // Fonte única para o editor do CRM; a ordem dentro do array é a ordem do drawer.
 import type { BlockType } from './types';
+import { GBP_KPI_LABELS_PT } from './types';
 import { TIKTOK_KPI_LABELS_PT, type ReportPlatform } from './platform';
 
 export type WidgetCategory =
@@ -176,6 +177,71 @@ export const WIDGET_CATALOG: readonly WidgetCatalogEntry[] = [
     platform: 'tiktok',
   },
   { type: 'tiktok_post_list', label: 'Lista de vídeos', category: 'Conteúdo', platform: 'tiktok' },
+  // Google Meu Negócio (spec 2026-11-04): o drawer filtra por platform.
+  {
+    type: 'gbp_kpi_profile_views',
+    label: GBP_KPI_LABELS_PT.profile_views,
+    category: 'Números',
+    platform: 'google',
+  },
+  {
+    type: 'gbp_kpi_calls',
+    label: GBP_KPI_LABELS_PT.calls,
+    category: 'Números',
+    platform: 'google',
+  },
+  {
+    type: 'gbp_kpi_directions',
+    label: GBP_KPI_LABELS_PT.directions,
+    category: 'Números',
+    platform: 'google',
+  },
+  {
+    type: 'gbp_kpi_website_clicks',
+    label: GBP_KPI_LABELS_PT.website_clicks,
+    category: 'Números',
+    platform: 'google',
+  },
+  {
+    type: 'gbp_kpi_messages',
+    label: GBP_KPI_LABELS_PT.messages,
+    category: 'Números',
+    platform: 'google',
+  },
+  {
+    type: 'gbp_kpi_bookings',
+    label: GBP_KPI_LABELS_PT.bookings,
+    category: 'Números',
+    platform: 'google',
+  },
+  {
+    type: 'gbp_kpi_avg_rating',
+    label: GBP_KPI_LABELS_PT.avg_rating,
+    category: 'Números',
+    platform: 'google',
+  },
+  {
+    type: 'gbp_kpi_new_reviews',
+    label: GBP_KPI_LABELS_PT.new_reviews,
+    category: 'Números',
+    platform: 'google',
+  },
+  { type: 'gbp_surfaces', label: 'Onde viram o perfil', category: 'Gráficos', platform: 'google' },
+  { type: 'gbp_actions_chart', label: 'Ações por dia', category: 'Gráficos', platform: 'google' },
+  {
+    type: 'gbp_keywords',
+    label: 'O que buscaram no Google',
+    category: 'Conteúdo',
+    platform: 'google',
+  },
+  { type: 'gbp_rating', label: 'Avaliações', category: 'Conteúdo', platform: 'google' },
+  {
+    type: 'gbp_review_highlight',
+    label: 'Avaliação em destaque',
+    category: 'Conteúdo',
+    platform: 'google',
+  },
+  { type: 'gbp_units', label: 'Comparar unidades', category: 'Conteúdo', platform: 'google' },
   { type: 'text', label: 'Texto livre', category: 'Texto', platform: null },
   { type: 'ai_summary', label: 'Resumo do mês', category: 'Texto', platform: null },
   { type: 'ai_recommendations', label: 'Recomendações', category: 'Texto', platform: null },

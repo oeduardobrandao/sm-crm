@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AddWidgetDrawer, documentPlatforms, drawerWidgets } from '../AddWidgetDrawer';
 import { WIDGET_CATALOG, WIDGET_CATEGORIES } from '@mesaas/report-blocks/catalog';
 import { makeSnapshotFixture } from '@mesaas/report-blocks/fixtures';
-import type { SectionKind } from '@mesaas/report-blocks/types';
+import { BLOCK_TYPES, type SectionKind } from '@mesaas/report-blocks/types';
 
 function renderDrawer(
   section: { kind: SectionKind } | null,
@@ -61,15 +61,32 @@ describe('AddWidgetDrawer: escopo da seção', () => {
     expectListed(neutralNoCover);
   });
 
+  it('seção Google Meu Negócio: os 14 widgets gbp_* e os neutros, nada de outra plataforma', () => {
+    const widgets = drawerWidgets('google', true);
+    const gbpTypes = BLOCK_TYPES.filter((t) => t.startsWith('gbp_'));
+    expect(gbpTypes).toHaveLength(14);
+    expect(
+      widgets
+        .filter((w) => w.platform === 'google')
+        .map((w) => w.type)
+        .sort(),
+    ).toEqual([...gbpTypes].sort());
+    expect(widgets.filter((w) => w.platform === null).map((w) => w.type)).toEqual(
+      neutralNoCover.map((w) => w.type),
+    );
+    expect(widgets.every((w) => w.platform === null || w.platform === 'google')).toBe(true);
+  });
+
   it('capa só na Geral e só enquanto o layout não tem capa', () => {
     expect(drawerWidgets('general', false).some((w) => w.type === 'cover')).toBe(true);
     expect(drawerWidgets('general', true).some((w) => w.type === 'cover')).toBe(false);
     expect(drawerWidgets('instagram', false).some((w) => w.type === 'cover')).toBe(false);
     expect(drawerWidgets('tiktok', false).some((w) => w.type === 'cover')).toBe(false);
+    expect(drawerWidgets('google', false).some((w) => w.type === 'cover')).toBe(false);
   });
 
   it('nunca lista um tipo que a seção recusa', () => {
-    for (const kind of ['general', 'instagram', 'tiktok'] as const) {
+    for (const kind of ['general', 'instagram', 'tiktok', 'google'] as const) {
       for (const w of drawerWidgets(kind, false)) {
         expect(w.platform === null || w.platform === kind).toBe(true);
       }
@@ -117,23 +134,40 @@ describe('AddWidgetDrawer: escopo da seção', () => {
 });
 
 describe('documentPlatforms', () => {
-  it('Instagram e TikTok quando o snapshot tem as duas', () => {
-    expect(documentPlatforms(makeSnapshotFixture())).toEqual(['instagram', 'tiktok']);
+  it('Instagram, TikTok e Google Meu Negócio quando o snapshot tem as três', () => {
+    expect(documentPlatforms(makeSnapshotFixture())).toEqual(['instagram', 'tiktok', 'google']);
   });
 
-  it('só Instagram sem a seção TikTok', () => {
-    expect(documentPlatforms(makeSnapshotFixture({ tiktok: null }))).toEqual(['instagram']);
-  });
-
-  it('só TikTok quando o Instagram não está conectado', () => {
-    expect(documentPlatforms(makeSnapshotFixture({ instagram_connected: false }))).toEqual([
+  it('sem a seção google: sem Google Meu Negócio', () => {
+    expect(documentPlatforms(makeSnapshotFixture({ google: null }))).toEqual([
+      'instagram',
       'tiktok',
     ]);
   });
 
-  it('sem nenhuma conta com dados cai no Instagram, como a capa', () => {
+  it('só Instagram sem as seções TikTok e Google', () => {
+    expect(documentPlatforms(makeSnapshotFixture({ tiktok: null, google: null }))).toEqual([
+      'instagram',
+    ]);
+  });
+
+  it('só TikTok quando o Instagram não está conectado e não há Google', () => {
+    expect(
+      documentPlatforms(makeSnapshotFixture({ instagram_connected: false, google: null })),
+    ).toEqual(['tiktok']);
+  });
+
+  it('só Google Meu Negócio: Instagram desconectado e sem TikTok', () => {
     expect(
       documentPlatforms(makeSnapshotFixture({ instagram_connected: false, tiktok: null })),
+    ).toEqual(['google']);
+  });
+
+  it('sem nenhuma conta com dados cai no Instagram, como a capa', () => {
+    expect(
+      documentPlatforms(
+        makeSnapshotFixture({ instagram_connected: false, tiktok: null, google: null }),
+      ),
     ).toEqual(['instagram']);
   });
 });

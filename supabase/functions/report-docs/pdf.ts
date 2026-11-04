@@ -23,7 +23,7 @@ import { convertUrlToPdf } from "../_shared/report-template/pdf-url.ts";
 // útil do A4 (report-blocks/styles.css), em vez de refluir na largura da folha.
 // v6 (2026-10-28): seções por plataforma. Título de seção de plataforma e seção sem
 // dado omitida inteira (spec 2026-10-28-report-platform-sections §Rendering).
-export const PDF_RENDERER_VERSION = 6;
+export const PDF_RENDERER_VERSION = 7;
 const PRINT_TOKEN_TTL_S = 600;
 const SIGNED_URL_TTL_S = 3600;
 

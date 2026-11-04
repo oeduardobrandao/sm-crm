@@ -203,6 +203,14 @@ describe('BlockRenderer: tipos TikTok', () => {
     }
   });
 
+  it('todo tipo gbp_* do BLOCK_TYPES tem componente', () => {
+    const gbp = BLOCK_TYPES.filter((x) => x.startsWith('gbp_'));
+    expect(gbp).toHaveLength(14);
+    for (const t of gbp) {
+      expect(BLOCK_COMPONENTS[t], t).toBeDefined();
+    }
+  });
+
   it("cover kicker 'Instagram e TikTok' when layout mixes", () => {
     render(
       <BlockRenderer

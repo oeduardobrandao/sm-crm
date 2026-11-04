@@ -39,6 +39,39 @@ const TIKTOK_RULES = `TIKTOK DATA RULES (the "tiktok" data):
 - There is no market benchmark for TikTok: never cite market ranges, never call a TikTok value good or bad in absolute terms, and never invent example numbers.
 - When a recommendation or goal is about a TikTok metric, write its metric id with the "tiktok_" prefix (for example tiktok_views, tiktok_engagement_rate).`;
 
+// Regras do Google Meu Negócio (spec 2026-11-04-gmn-report-section), só quando o relatório tem
+// a seção. Os números são os da aba Google Meu Negócio: somas de usuários únicos por dia e por
+// superfície, toques nos botões do perfil, e o período anterior com o mesmo número de dias.
+const GOOGLE_RULES = `GOOGLE MEU NEGÓCIO DATA RULES (the "google" data, the client's Google Business Profile):
+- profile_views is a sum, over each day and each surface (Google Search and Google Maps, on mobile and desktop), of the distinct people who saw the profile. A person who saw it on Search and on Maps on the same day counts twice. Call it "visualizações do perfil", never "pessoas alcançadas" or reach.
+- calls, directions, website_clicks, messages and bookings count taps on the profile's Ligar, Rotas, Site, Mensagem and Agendar buttons. They are actions, not customers or appointments confirmed.
+- There are no followers, reach, impressions, engagement rate, posts or audience demographics in this data: never mention, estimate or compare them for Google Meu Negócio.
+- kpis_previous_period covers the same number of days right before the period (window.compared_with_days), not the previous calendar month: say "no período anterior", never "no mês anterior", for these comparisons. Only kpis_previous_period may be compared.
+- avg_rating is the average star rating (1 to 5) across all units, weighted by review count; new_reviews is how many reviews were added in the period.
+- top_keywords are searches that showed the profile; when "at_most" is set Google only says "menos de N pessoas": treat it as an upper bound and never as an exact count.
+- A null value means there is no data: say the data is missing instead of estimating it. There is no market benchmark: never call a value good or bad in absolute terms.
+- When a recommendation or goal is about a Google Meu Negócio metric, write its metric id with the "gbp_" prefix (for example gbp_calls, gbp_directions).`;
+
+const PLATFORM_LABELS = { instagram: "Instagram", tiktok: "TikTok", google: "Google Meu Negócio" } as const;
+type PromptPlatform = keyof typeof PLATFORM_LABELS;
+
+const joinNames = (names: string[]) =>
+  names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+
+/** Escopo do relatório. As combinações sem Google mantêm o texto de antes, byte a byte. */
+function scopeLine(platforms: PromptPlatform[]): string {
+  if (platforms.length === 2 && platforms[0] === "instagram" && platforms[1] === "tiktok") {
+    return BOTH_PLATFORMS_SCOPE;
+  }
+  if (platforms.length === 1 && platforms[0] === "tiktok") return TIKTOK_ONLY_SCOPE;
+  const names = platforms.map((p) => PLATFORM_LABELS[p]);
+  const noInstagram = platforms.includes("instagram") ? "" : " There is no Instagram data.";
+  if (platforms.length === 1) {
+    return `REPORT SCOPE: This report covers only ${names[0]}.${noInstagram} Base the whole narrative on the ${names[0]} data.`;
+  }
+  return `REPORT SCOPE: This report covers ${joinNames(names)}.${noInstagram} Write ONE narrative covering ${joinNames(names)} together, naming the platform whenever you cite a number.`;
+}
+
 const BOTH_PLATFORMS_SCOPE = `REPORT SCOPE: This report covers Instagram and TikTok. Write ONE narrative covering Instagram and TikTok together, naming the platform whenever you cite a number.`;
 
 const TIKTOK_ONLY_SCOPE = `REPORT SCOPE: This report covers only TikTok. There is no Instagram data: base the whole narrative on the TikTok data.`;
@@ -47,10 +80,18 @@ const atHandle = (handle: string) => (handle.startsWith("@") ? handle : `@${hand
 
 export function buildAIPrompt(data: ReportData, opts?: AIPromptOpts): AIPrompt {
   const tiktok = data.tiktok;
-  // Instagram ausente só conta com TikTok presente: sem nenhuma das duas, o prompt de hoje.
-  const tiktokOnly = !!tiktok && data.instagram_connected === false;
-  const platformRules = tiktok
-    ? `\n\n${tiktokOnly ? TIKTOK_ONLY_SCOPE : BOTH_PLATFORMS_SCOPE}\n\n${TIKTOK_RULES}`
+  const google = data.google;
+  // Instagram ausente só conta com outra plataforma presente: sem nenhuma, o prompt de hoje.
+  const others = !!tiktok || !!google;
+  const noInstagram = others && data.instagram_connected === false;
+  const tiktokOnly = !!tiktok && !google && noInstagram;
+  const present: PromptPlatform[] = [
+    ...(noInstagram ? [] : ["instagram" as const]),
+    ...(tiktok ? ["tiktok" as const] : []),
+    ...(google ? ["google" as const] : []),
+  ];
+  const platformRules = others
+    ? `\n\n${scopeLine(present)}${tiktok ? `\n\n${TIKTOK_RULES}` : ""}${google ? `\n\n${GOOGLE_RULES}` : ""}`
     : "";
   const systemPrompt = `You are a social media analytics specialist writing a monthly performance report for a client of a Brazilian social media agency.
 
@@ -112,7 +153,31 @@ ${JSON.stringify(tiktokData, null, 2)}`;
     return { systemPrompt, userPrompt };
   }
 
-  const { tiktok: _tiktok, instagram_connected: _connected, ...instagramData } = data;
+  if (noInstagram) {
+    // Sem Instagram e com Google (só ou com TikTok): nada da raiz Instagram vazia entra.
+    const nonInstagramData = {
+      specialty: data.specialty,
+      period: data.period,
+      report_month: data.report_month,
+      ...(tiktok ? { tiktok } : {}),
+      google,
+    };
+    const specialty = data.specialty ? ` (${data.specialty})` : "";
+    const subject = tiktok
+      ? `TikTok account ${atHandle(tiktok.handle)} and Google Meu Negócio profile`
+      : "Google Meu Negócio profile";
+    const userPrompt = `Analyze the following ${subject} data for the client${specialty}, period ${data.period}:
+
+${JSON.stringify(nonInstagramData, null, 2)}`;
+    return { systemPrompt, userPrompt };
+  }
+
+  const {
+    tiktok: _tiktok,
+    google: _google,
+    instagram_connected: _connected,
+    ...instagramData
+  } = data;
   const promptData = {
     ...instagramData,
     top_posts: data.top_posts.map(
@@ -124,13 +189,20 @@ ${JSON.stringify(tiktokData, null, 2)}`;
 
 ${JSON.stringify(promptData, null, 2)}`;
 
-  const userPrompt = tiktok
+  const withTiktok = tiktok
     ? `${instagramPrompt}
 
 TikTok account data for ${atHandle(tiktok.handle)}, same period:
 
 ${JSON.stringify({ tiktok }, null, 2)}`
     : instagramPrompt;
+  const userPrompt = google
+    ? `${withTiktok}
+
+Google Meu Negócio profile data (${google.units} ${google.units === 1 ? "unit" : "units"} combined), same period:
+
+${JSON.stringify({ google }, null, 2)}`
+    : withTiktok;
 
   return { systemPrompt, userPrompt };
 }

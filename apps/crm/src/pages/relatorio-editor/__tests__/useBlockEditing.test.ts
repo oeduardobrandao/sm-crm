@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { validateLayout, type ReportLayout } from '@mesaas/report-blocks/types';
 import { addSection, removeSection } from '../layoutOps';
-import { useBlockEditing } from '../useBlockEditing';
+import type { ReportPlatform } from '@mesaas/report-blocks/platform';
+import { enabledReportPlatforms, sectionAcceptsWidgets, useBlockEditing } from '../useBlockEditing';
 
 vi.mock('sonner', () => ({
   toast: Object.assign(vi.fn(), { info: vi.fn(), error: vi.fn(), success: vi.fn() }),
@@ -20,7 +21,7 @@ const sectioned = (): ReportLayout => ({
   ],
 });
 
-function setup(initial: ReportLayout, opts: { tiktokEnabled?: boolean } = {}) {
+function setup(initial: ReportLayout, opts: { enabledPlatforms?: readonly ReportPlatform[] } = {}) {
   const layoutRef = { current: initial };
   const applyLayout = vi.fn((next: ReportLayout) => {
     layoutRef.current = next;
@@ -215,11 +216,45 @@ describe('useBlockEditing: "Adicionar widget" sem alvo', () => {
   });
 
   it('com feature_tiktok a última seção (TikTok) recebe o widget', () => {
-    const { result, layoutRef } = setup(sectioned(), { tiktokEnabled: true });
+    const { result, layoutRef } = setup(sectioned(), {
+      enabledPlatforms: ['instagram', 'tiktok'],
+    });
     act(() => result.current.openWidgetDrawer(null));
     act(() => result.current.handleInsert('text'));
     expect(layoutRef.current.blocks.at(-1)?.type).toBe('text');
     expect(layoutRef.current.blocks.at(-2)?.id).toBe('tv');
+  });
+
+  const withGoogle = (): ReportLayout => ({
+    version: 1,
+    blocks: [
+      { id: 'g', type: 'section', size: 'full' },
+      { id: 'ig', type: 'section', size: 'full', config: { platform: 'instagram' } },
+      { id: 'r', type: 'kpi_reach', size: 'third' },
+      { id: 'gb', type: 'section', size: 'full', config: { platform: 'google' } },
+      { id: 'gc', type: 'gbp_kpi_calls', size: 'third' },
+    ],
+  });
+
+  it('última seção é Google Meu Negócio sem a flag: o widget entra na seção antes dela', () => {
+    const { result, layoutRef } = setup(withGoogle(), {
+      enabledPlatforms: ['instagram', 'tiktok'],
+    });
+    act(() => result.current.openWidgetDrawer(null));
+    act(() => result.current.handleInsert('text'));
+    expect(layoutRef.current.blocks.map((b) => b.id).slice(0, 3)).toEqual(['g', 'ig', 'r']);
+    expect(layoutRef.current.blocks[3].type).toBe('text');
+    expect(layoutRef.current.blocks.slice(4).map((b) => b.id)).toEqual(['gb', 'gc']);
+  });
+
+  it('com feature_google_business a última seção (Google) recebe o widget', () => {
+    const { result, layoutRef } = setup(withGoogle(), {
+      enabledPlatforms: ['instagram', 'google'],
+    });
+    act(() => result.current.openWidgetDrawer(null));
+    act(() => result.current.handleInsert('text'));
+    expect(layoutRef.current.blocks.at(-1)?.type).toBe('text');
+    expect(layoutRef.current.blocks.at(-2)?.id).toBe('gc');
   });
 
   it('só uma seção TikTok, sem a flag: uma Geral nova entra no fim e recebe o widget', () => {
@@ -272,5 +307,31 @@ describe('useBlockEditing: alvo cuja seção saiu', () => {
       'Essa seção não existe mais. Escolha de novo onde inserir o widget.',
     );
     expect(result.current.insertTarget).toBeNull();
+  });
+});
+
+describe('enabledReportPlatforms', () => {
+  it('Instagram sempre; TikTok e Google só com a flag, na ordem das seções', () => {
+    expect(enabledReportPlatforms(null)).toEqual(['instagram']);
+    expect(enabledReportPlatforms(undefined)).toEqual(['instagram']);
+    expect(enabledReportPlatforms({})).toEqual(['instagram']);
+    expect(enabledReportPlatforms({ feature_tiktok: true })).toEqual(['instagram', 'tiktok']);
+    expect(enabledReportPlatforms({ feature_google_business: true })).toEqual([
+      'instagram',
+      'google',
+    ]);
+    expect(enabledReportPlatforms({ feature_tiktok: true, feature_google_business: true })).toEqual(
+      ['instagram', 'tiktok', 'google'],
+    );
+  });
+});
+
+describe('sectionAcceptsWidgets', () => {
+  it('Geral sempre; plataforma só se habilitada', () => {
+    expect(sectionAcceptsWidgets('general', [])).toBe(true);
+    expect(sectionAcceptsWidgets('instagram', ['instagram'])).toBe(true);
+    expect(sectionAcceptsWidgets('tiktok', ['instagram'])).toBe(false);
+    expect(sectionAcceptsWidgets('google', ['instagram', 'tiktok'])).toBe(false);
+    expect(sectionAcceptsWidgets('google', ['instagram', 'google'])).toBe(true);
   });
 });
