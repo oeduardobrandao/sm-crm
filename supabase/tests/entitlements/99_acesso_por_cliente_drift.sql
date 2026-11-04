@@ -90,7 +90,7 @@ declare
   ];
 
   -- Isenção temporária, só até a Task 6. Cada execução avisa por NOTICE. Critério de saída da
-  -- Task 6: estas três saem daqui, e as policies de SELECT delas citam o predicado ou a leitura
+  -- Task 6: estas cinco saem daqui, e as policies de SELECT delas citam o predicado ou a leitura
   -- direta por authenticated é revogada.
   v_exempt_until_task6 text[] := array[
     'financeiro_atribuicoes', 'financeiro_cliente_versoes', 'financeiro_entregas_manuais',
