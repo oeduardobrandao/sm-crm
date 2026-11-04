@@ -5,12 +5,13 @@
 -- (20261115000011_acesso_por_cliente_f_notificacoes.sql).
 -- Criação: resolve_notification_targets(ws, responsavel, roles, p_cliente_id)
 -- mantém sempre o responsável (o item é dele) e, entre os destinatários por
--- papel, só quem vê o cliente: owner, 'todos', cliente atribuído ou o contexto
--- de um item dele naquele cliente (can_see_cliente_context_for). Todo chamador
--- passa o cliente, e insert_notification_batch grava notifications.cliente_id.
--- Entrega: claim_notification_emails aplica a mesma regra por destinatário, no
--- workspace da própria notificação; a linha fora do escopo é marcada como
--- tratada (emailed_at) e não volta.
+-- papel, só quem vê o cliente: owner, 'todos' ou cliente atribuído. Todo
+-- chamador passa o cliente, e insert_notification_batch grava
+-- notifications.cliente_id.
+-- Entrega: claim_notification_emails aplica a regra do sino por destinatário,
+-- no workspace da própria notificação: escopo, ou o ITEM da notificação é dele
+-- (notification_item_visible_for, 20261115000012; não o contexto do cliente).
+-- A linha fora do escopo é marcada como tratada (emailed_at) e não volta.
 -- Spec: docs/superpowers/specs/2026-11-03-acesso-por-cliente-design.md
 
 begin;
@@ -42,11 +43,17 @@ returns uuid language sql as $f$
   values (p_ws, p_user, 'post_message', jsonb_build_object('tag', p_tag), p_cliente)
   returning id;
 $f$;
+create or replace function pg_temp.notif_m(p_ws uuid, p_user uuid, p_cliente bigint, p_tag text, p_meta jsonb)
+returns uuid language sql as $f$
+  insert into notifications (workspace_id, user_id, type, metadata, cliente_id)
+  values (p_ws, p_user, 'post_message', jsonb_build_object('tag', p_tag) || p_meta, p_cliente)
+  returning id;
+$f$;
 -- calls of the scope helpers in this transaction
 create or replace function pg_temp.scope_calls() returns bigint language sql as $f$
   select coalesce(sum(calls), 0)::bigint from pg_stat_xact_user_functions
    where schemaname = 'public'
-     and funcname in ('can_see_cliente_context_for', 'can_access_cliente', 'can_see_cliente_context');
+     and funcname in ('notification_item_visible_for', 'can_access_cliente', 'can_see_cliente_context');
 $f$;
 
 -- =============================================================
@@ -67,6 +74,7 @@ declare
   v_adm3 uuid := gen_random_uuid();
   v_ca bigint; v_cb bigint; v_ca2 bigint; v_cb2 bigint; v_c3 bigint;
   m_restr bigint; m_radm bigint; m_radm2 bigint; m_owner bigint;
+  v_p_radm2 bigint; v_p_bother bigint;
 begin
   insert into workspace_plan_overrides (workspace_id, feature_overrides)
   values (v_ws, '{"feature_mensagens": true}'::jsonb);
@@ -101,8 +109,9 @@ begin
   insert into membros (user_id, conta_id, nome, crm_user_id) values (v_owner, v_ws, 'Restr', v_restr) returning id into m_restr;
   insert into membros (user_id, conta_id, nome, crm_user_id) values (v_owner, v_ws, 'Radm', v_radm) returning id into m_radm;
   insert into membros (user_id, conta_id, nome, crm_user_id) values (v_owner, v_ws, 'Radm2', v_radm2) returning id into m_radm2;
-  -- radm2's own post in B: B's context is open to him
-  insert into workflow_posts (conta_id, cliente_id, titulo, responsavel_id) values (v_ws, v_cb, 'pBradm2', m_radm2);
+  -- radm2's own post in B, and a B post that is not his
+  insert into workflow_posts (conta_id, cliente_id, titulo, responsavel_id) values (v_ws, v_cb, 'pBradm2', m_radm2) returning id into v_p_radm2;
+  insert into workflow_posts (conta_id, cliente_id, titulo) values (v_ws, v_cb, 'pBother') returning id into v_p_bother;
   perform set_config('request.jwt.claims', '', true);
 
   insert into _fx values
@@ -110,7 +119,8 @@ begin
     ('owner', v_owner), ('adm', v_adm), ('radm', v_radm), ('radm2', v_radm2), ('restr', v_restr),
     ('multi', v_multi), ('owner3', v_owner3), ('adm3', v_adm3),
     ('ca', v_ca), ('cb', v_cb), ('ca2', v_ca2), ('cb2', v_cb2), ('c3', v_c3),
-    ('m_owner', m_owner), ('m_restr', m_restr), ('m_radm', m_radm), ('m_radm2', m_radm2);
+    ('m_owner', m_owner), ('m_restr', m_restr), ('m_radm', m_radm), ('m_radm2', m_radm2),
+    ('p_radm2', v_p_radm2), ('p_bother', v_p_bother);
 end $$;
 
 -- =============================================================
@@ -270,7 +280,11 @@ begin
   perform pg_temp.notif(v_ws, pg_temp.fx('radm')::uuid, v_cb, 'radm/B');
   perform pg_temp.notif(v_ws, pg_temp.fx('radm')::uuid, v_ca, 'radm/A');
   perform pg_temp.notif(v_ws, pg_temp.fx('radm')::uuid, null, 'radm/none');
-  perform pg_temp.notif(v_ws, pg_temp.fx('radm2')::uuid, v_cb, 'radm2/B');
+  perform pg_temp.notif(v_ws, pg_temp.fx('radm2')::uuid, v_cb, 'radm2/B');   -- about B, no item: hidden
+  perform pg_temp.notif_m(v_ws, pg_temp.fx('radm2')::uuid, v_cb, 'radm2/Bown',
+                          jsonb_build_object('post_id', pg_temp.fx('p_radm2'), 'workflow_id', null));
+  perform pg_temp.notif_m(v_ws, pg_temp.fx('radm2')::uuid, v_cb, 'radm2/Bother',
+                          jsonb_build_object('post_id', pg_temp.fx('p_bother')));
   perform pg_temp.notif(v_ws, pg_temp.fx('multi')::uuid, v_cb, 'multi/B');
   perform pg_temp.notif(v_ws2, pg_temp.fx('multi')::uuid, v_ca2, 'multi/A2');
   perform pg_temp.notif(v_ws2, pg_temp.fx('multi')::uuid, v_cb2, 'multi/B2');
@@ -280,15 +294,16 @@ begin
     from claim_notification_emails(now() - interval '10 minutes', now() - interval '1 day', 1000) c;
   select string_agg(n.metadata->>'tag', ',' order by n.metadata->>'tag') into v_got
     from notifications n where n.id = any (v_ids) and n.workspace_id in (v_ws, v_ws2);
-  -- claim_skips_hidden (radm/B), claim_sends_own_item_via_context (radm2/B),
+  -- claim_skips_hidden (radm/B), claim_sends_own_item (radm2/Bown) but not the
+  -- other B post nor B itself (item-level, not the client context),
   -- claim_other_workspace_follows_its_scope (multi: B sent in ws, B2 skipped in ws2)
-  assert v_got = 'adm/B,multi/A2,multi/B,owner/B,radm/A,radm/none,radm2/B', 'claim_returns_in_scope_only: ' || coalesce(v_got, '<none>');
+  assert v_got = 'adm/B,multi/A2,multi/B,owner/B,radm/A,radm/none,radm2/Bown', 'claim_returns_in_scope_only: ' || coalesce(v_got, '<none>');
 
   -- claim_skips_hidden_and_marks_emailed: not returned, never offered again
   select string_agg(n.metadata->>'tag', ',' order by n.metadata->>'tag') into v_hidden
     from notifications n
    where n.workspace_id in (v_ws, v_ws2) and n.emailed_at is not null and not (n.id = any (v_ids));
-  assert v_hidden = 'multi/B2,radm/B', 'claim_skips_hidden_and_marks_emailed: ' || coalesce(v_hidden, '<none>');
+  assert v_hidden = 'multi/B2,radm/B,radm2/B,radm2/Bother', 'claim_skips_hidden_and_marks_emailed: ' || coalesce(v_hidden, '<none>');
   select count(*) into v_n from notifications where workspace_id in (v_ws, v_ws2) and emailed_at is null;
   assert v_n = 0, 'claim_leaves_nothing_queued: ' || v_n;
   select count(*) into v_n
@@ -344,13 +359,15 @@ begin
   foreach f in array array[
     'public.resolve_notification_targets(uuid, bigint, text[], bigint)',
     'public.insert_notification_batch(uuid, uuid[], text, text, jsonb, uuid, bigint)',
-    'public.can_see_cliente_context_for(uuid, uuid, bigint)',
+    'public.notification_item_visible_for(uuid, uuid, bigint, jsonb)',
     'public.claim_notification_emails(timestamptz, timestamptz, int)'
   ] loop
     assert not has_function_privilege('anon', f, 'EXECUTE'), 'anon must not execute ' || f;
     assert not has_function_privilege('authenticated', f, 'EXECUTE'), 'authenticated must not execute ' || f;
     assert has_function_privilege('service_role', f, 'EXECUTE'), 'service_role must execute ' || f;
   end loop;
+  assert to_regprocedure('public.can_see_cliente_context_for(uuid, uuid, bigint)') is null,
+    'can_see_cliente_context_for must be gone (claim is item-level)';
   assert to_regprocedure('public.resolve_notification_targets(uuid, bigint, text[])') is null,
     'old 3-arg resolve_notification_targets must be gone (no overload)';
   assert to_regprocedure('public.insert_notification_batch(uuid, uuid[], text, text, jsonb, uuid)') is null,

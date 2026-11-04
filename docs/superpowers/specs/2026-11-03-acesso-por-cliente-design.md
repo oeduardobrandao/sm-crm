@@ -135,8 +135,9 @@ pasta). As funções de trigger das guardas (`guard_client_scope_move`,
 para `authenticated` nem `anon`. Os helpers que as RPCs SECURITY DEFINER chamam para o escopo
 (`scope_check_posts`, `scope_check_workflows`, `scope_check_processes`,
 `scope_check_template_workflows`, Task 5) são só de `service_role`, assim como
-`can_see_cliente_context_for(uuid, uuid, bigint)` (Task 14: o contexto de um usuário qualquer, para
-os emissores de notificação e o claim do e-mail).
+`notification_item_visible_for(uuid, uuid, bigint, jsonb)` (revisão final: o item da notificação é
+de um usuário qualquer, para o claim do e-mail e a discussão do post). `notification_item_visible(jsonb)`
+(SECURITY INVOKER, roda sob a RLS de quem lê) é de `authenticated`, para as policies de `notifications`.
 
 Espelho TS: só `isClientScoped(membership)` em `lib/permissions.ts`, para afordâncias de UI
 (esconder "Novo cliente", mostrar o aviso). O filtro de dados é sempre do servidor.
@@ -239,7 +240,7 @@ flag de liberação só liga depois das duas fases.
   responsável ("é dele") e, entre os destinatários por papel (e o membro escolhido na automação de
   status), só dono, `todos` ou cliente atribuído, sem o contexto (que é para ler marca/briefing, não
   para inscrever um admin restrito em todo evento do cliente). Todo emissor passa o cliente, gravado em
-  `notifications.cliente_id`. `claim_notification_emails` aplica a regra do sino (escopo ou contexto) no
+  `notifications.cliente_id`. `claim_notification_emails` aplica a regra do sino (escopo ou item dele) no
   workspace da notificação; a linha fora do escopo recebe `emailed_at` e não é devolvida. Sem cliente, de
   propósito: convite, papel, remoção de membro, limpeza de armazenamento, chat da equipe e agenda
   (participante é "dele" e `agenda_eventos` não abre contexto).
@@ -247,7 +248,11 @@ flag de liberação só liga depois das duas fases.
 - Notificações já guardadas: a policy de leitura de `notifications` (e as menções) filtra pelo cliente
   referenciado no payload, para um restrito não seguir vendo e clicando em eventos de cliente oculto.
   O escopo é o do workspace da notificação (o sino lista todos os workspaces do usuário): no workspace
-  ativo vale escopo ou contexto (`can_see_cliente_context`); em outro workspace, só a membership daquele
+  ativo vale escopo ou o ITEM da notificação legível por ele (`notification_item_visible`: a chave mais
+  específica do metadata, `post_id` > `task_id` > `idea_id` > `linha_id` > `etapa_id` > `workflow_id`,
+  lida sob a RLS dele; sem chave de item, só o escopo). Não o contexto do cliente: com um post dele num
+  cliente oculto ele não lê menções e discussões de outros itens daquele cliente, e a discussão do post
+  nem grava a prévia para quem segue um post que não abre. Em outro workspace, só a membership daquele
   (dono, `todos` ou cliente atribuído), sem o "é dele". Vincular, trocar ou desfazer o `membros.crm_user_id`
   de um restrito (que decide o "é dele" dele) é só do dono (`trg_membros_crm_user_scope_lock`).
 

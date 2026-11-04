@@ -3,12 +3,18 @@
 
 -- Acesso por cliente, notificações e vínculo de membro
 -- (20261115000007_acesso_por_cliente_c5_notif_membros.sql).
--- notifications: the recipient reads a notification with no client, or about a
--- client he sees (scope or the context of an own item there). The scope is
--- judged in the notification's own workspace: the bell lists every workspace
--- the user belongs to, and my_client_scope_all() / can_see_cliente_context()
--- answer for the ACTIVE one. In a workspace other than the active one only
--- the membership's own scope counts (owner, 'todos', or an assigned client).
+-- notifications: the recipient reads a notification with no client, about a
+-- client he sees, or about an ITEM he can open (20261115000012: item-level,
+-- not the client context). The item is the most specific key of the metadata
+-- (post_id > task_id > idea_id > linha_id > etapa_id > workflow_id), read
+-- under his own RLS; no item key = client scope only. The scope is judged in
+-- the notification's own workspace: the bell lists every workspace the user
+-- belongs to, and my_client_scope_all() / can_access_cliente() answer for the
+-- ACTIVE one. In a workspace other than the active one only the membership's
+-- own scope counts (owner, 'todos', or an assigned client).
+-- claim_notification_emails mirrors the bell for the recipient
+-- (notification_item_visible_for), and the post discussion trigger does not
+-- even write the preview for a restricted follower of a post he can't open.
 -- Only read_at / dismissed_at are UPDATE-granted, so mark-read can't re-scope.
 -- membros: trg_membros_crm_user_scope_lock. Linking, relinking or unlinking
 -- membros.crm_user_id to or from a member with client_scope = 'atribuidos' in
@@ -100,6 +106,8 @@ declare
   v_ca bigint; v_cb bigint; v_ca2 bigint; v_cb2 bigint;
   m_restr bigint; m_restr2 bigint; m_free bigint; m_todos bigint;
   v_conv bigint;
+  v_pbown bigint; v_pbfree bigint; v_wb bigint; v_eown bigint; v_eother bigint;
+  v_town bigint; v_tother bigint; v_iown uuid; v_iother uuid; v_lb uuid;
 begin
   insert into workspace_plan_overrides (workspace_id, feature_overrides) values (v_ws, '{"feature_team_chat": true}'::jsonb);
   insert into auth.users (id, email) values
@@ -136,8 +144,17 @@ begin
   -- unlinked roster entry (a former employee) with work assigned in B
   insert into membros (user_id, conta_id, nome) values (v_owner, v_ws, 'Livre') returning id into m_free;
 
-  insert into workflow_posts (conta_id, cliente_id, titulo, responsavel_id) values (v_ws, v_cb, 'pBown', m_restr2);
-  insert into workflow_posts (conta_id, cliente_id, titulo, responsavel_id) values (v_ws, v_cb, 'pBfree', m_free);
+  insert into workflow_posts (conta_id, cliente_id, titulo, responsavel_id) values (v_ws, v_cb, 'pBown', m_restr2) returning id into v_pbown;
+  insert into workflow_posts (conta_id, cliente_id, titulo, responsavel_id) values (v_ws, v_cb, 'pBfree', m_free) returning id into v_pbfree;
+  -- B items of restr2 (his) and not his, one per notification item key
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status) values (v_owner, v_ws, v_cb, 'wB', 'ativo') returning id into v_wb;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, responsavel_id) values (v_wb, 1, 'eOwn', 1, m_restr2) returning id into v_eown;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias) values (v_wb, 2, 'eOther', 1) returning id into v_eother;
+  insert into tarefas (conta_id, user_id, titulo, status, cliente_id, responsavel_id, data_limite) values (v_ws, v_owner, 'tOwn', 'pendente', v_cb, m_restr2, current_date) returning id into v_town;
+  insert into tarefas (conta_id, user_id, titulo, status, cliente_id, data_limite) values (v_ws, v_owner, 'tOther', 'pendente', v_cb, current_date) returning id into v_tother;
+  insert into ideias (workspace_id, cliente_id, titulo, tipo, origem, autor_membro_id) values (v_ws, v_cb, 'iOwn', 'ideia', 'agencia', m_restr2) returning id into v_iown;
+  insert into ideias (workspace_id, cliente_id, titulo, tipo, origem) values (v_ws, v_cb, 'iOther', 'ideia', 'agencia') returning id into v_iother;
+  insert into linhas_editoriais (conta_id, cliente_id, periodo, status, created_by, titulo) values (v_ws, v_cb, date_trunc('month', current_date)::date, 'rascunho', v_owner, 'lB') returning id into v_lb;
 
   -- team chat room with the restricted member in it
   insert into equipe_conversas (conta_id, tipo, nome, created_by) values (v_ws, 'grupo', 'Sala', v_owner) returning id into v_conv;
@@ -153,6 +170,26 @@ begin
   perform pg_temp.notif(v_ws2, v_multi, c, t) from (values (v_ca2, 'A2'), (v_cb2, 'B2'), (null::bigint, 'none2')) x(c, t);
   perform pg_temp.notif(v_ws, v_out, c, t) from (values (v_ca, 'A'), (v_cb, 'B'), (null::bigint, 'none')) x(c, t);
   perform pg_temp.notif(v_ws2, v_out, c, t) from (values (v_ca2, 'A2'), (v_cb2, 'B2'), (null::bigint, 'none2')) x(c, t);
+  -- restr2's B notifications, by item (tag B* = about B). The generic 'B' one
+  -- becomes "about his own post"; the rest name one item each.
+  update notifications set metadata = metadata || jsonb_build_object('post_id', v_pbown::text)
+   where user_id = v_restr2 and metadata->>'tag' = 'B';
+  insert into notifications (workspace_id, user_id, type, metadata, cliente_id)
+  select v_ws, v_restr2, 'post_message', jsonb_build_object('tag', t) || m, v_cb
+    from (values
+      ('Bnoitem',      '{}'::jsonb),                                                   -- client-level: hidden
+      ('Bpost_other',  jsonb_build_object('post_id', v_pbfree::text, 'workflow_id', v_wb)),
+      ('Bpost_bad',    jsonb_build_object('post_id', 'abc')),                          -- no error, hidden
+      ('Btask_own',    jsonb_build_object('task_id', v_town)),
+      ('Btask_other',  jsonb_build_object('task_id', v_tother, 'host_id', v_tother)),
+      ('Bidea_own',    jsonb_build_object('idea_id', v_iown)),
+      ('Bidea_other',  jsonb_build_object('idea_id', v_iother)),
+      ('Bidea_bad',    jsonb_build_object('idea_id', 'not-a-uuid')),
+      ('Blinha',       jsonb_build_object('linha_id', v_lb, 'cliente_id', v_cb)),
+      ('Betapa_own',   jsonb_build_object('etapa_id', v_eown, 'workflow_id', v_wb)),
+      ('Betapa_other', jsonb_build_object('etapa_id', v_eother, 'workflow_id', v_wb)), -- etapa decides, not the workflow
+      ('Bwf',          jsonb_build_object('workflow_id', v_wb))                        -- wB has items of his
+    ) x(t, m);
   perform set_config('request.jwt.claims', '', true);
 
   insert into _fx values
@@ -160,7 +197,8 @@ begin
     ('restr', v_restr), ('restr2', v_restr2), ('restr3', v_restr3), ('restr4', v_restr4), ('todos2', v_todos2),
     ('multi', v_multi), ('out', v_out),
     ('ca', v_ca), ('cb', v_cb), ('ca2', v_ca2), ('cb2', v_cb2),
-    ('m_restr', m_restr), ('m_restr2', m_restr2), ('m_free', m_free), ('m_todos', m_todos), ('conv', v_conv);
+    ('m_restr', m_restr), ('m_restr2', m_restr2), ('m_free', m_free), ('m_todos', m_todos), ('conv', v_conv),
+    ('pbown', v_pbown), ('pbfree', v_pbfree), ('town', v_town), ('tother', v_tother);
 end $$;
 
 -- =============================================================
@@ -190,13 +228,14 @@ begin
   execute 'reset role';
   assert v_tags = 'A,none', 'restricted_admin_sees_a_and_no_client_only: ' || coalesce(v_tags, '<none>');
 
-  -- notification_about_own_b_post_visible: an own item in B opens B's context,
-  -- so EVERY notification of his about B shows (the plan's chosen predicate)
+  -- item_level: an own item in B shows the notifications about THAT item only
+  -- (own post, task, idea, etapa, and the workflow he has items in), never the
+  -- ones about another B item or about B itself
   perform set_config('request.jwt.claims', json_build_object('sub', v_restr2, 'role', 'authenticated')::text, true);
   execute 'set local role authenticated';
   execute q into v_tags;
   execute 'reset role';
-  assert v_tags = 'A,B,none', 'notification_about_own_b_post_visible: ' || coalesce(v_tags, '<none>');
+  assert v_tags = 'A,B,Betapa_own,Bidea_own,Btask_own,Bwf,none', 'notification_item_level (restr2): ' || coalesce(v_tags, '<none>');
 
   -- todos / owner: unchanged (their own three)
   v_n := pg_temp.n_as(v_todos, 'select count(*) from notifications');
@@ -235,6 +274,8 @@ begin
   assert v_n = 3, 'restricted_marks_visible_read: ' || v_n;
   v_n := pg_temp.rows_as(v_restr2, $q$update notifications set dismissed_at = now() where metadata->>'tag' = 'B'$q$);
   assert v_n = 1, 'notification_about_own_b_post_dismissable: ' || v_n;
+  v_n := pg_temp.rows_as(v_restr2, $q$update notifications set read_at = now() where metadata->>'tag' in ('Bpost_other', 'Btask_other', 'Bnoitem')$q$);
+  assert v_n = 0, 'restricted_cannot_mark_other_item_read: ' || v_n;
   -- a hidden one is not touched
   v_n := pg_temp.rows_as(v_restr, $q$update notifications set read_at = now() where metadata->>'tag' = 'B'$q$);
   assert v_n = 0, 'restricted_cannot_mark_hidden_read: ' || v_n;
@@ -251,6 +292,69 @@ begin
   assert v_err like '42501:%', 'notification_insert_denied: ' || coalesce(v_err, 'ok');
   v_n := pg_temp.rows_as(v_restr, 'delete from notifications');
   assert v_n = 0, 'notification_delete_denied: ' || v_n;
+end $$;
+
+-- =============================================================
+-- block 3b: real emitters, item-level (final review repro) + the e-mail claim
+-- =============================================================
+do $$
+declare
+  v_ws uuid := pg_temp.fx('ws');
+  v_owner uuid := pg_temp.fx('owner');
+  v_restr2 uuid := pg_temp.fx('restr2');
+  m_restr2 bigint := pg_temp.fx('m_restr2');
+  v_pbown bigint := pg_temp.fx('pbown');
+  v_pbfree bigint := pg_temp.fx('pbfree');
+  v_th_own bigint; v_th_free bigint;
+  v_bell text; v_claim text; v_n bigint;
+  q text := $q$select string_agg(k, ',' order by k) from (
+                 select type || ':' || coalesce(metadata->>'context_title', metadata->>'post_titulo') k
+                   from notifications where type in ('mention', 'post_discussion')) x$q$;
+begin
+  -- restr2 follows the discussion of pBfree (someone mentioned him there once)
+  insert into post_discussao_participantes (post_id, conta_id, user_id, seguindo) values (v_pbfree, v_ws, v_restr2, true);
+  insert into post_comment_threads (post_id, conta_id, quoted_text, created_by, field) values (v_pbown, v_ws, 'q own', v_owner, 'conteudo') returning id into v_th_own;
+  insert into post_comment_threads (post_id, conta_id, quoted_text, created_by, field) values (v_pbfree, v_ws, 'q free', v_owner, 'conteudo') returning id into v_th_free;
+
+  -- the owner mentions restr2 on the hidden task and on his own task, and
+  -- comments on both posts' discussions
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
+  insert into mencoes (conta_id, host_type, host_id, mentioned_membro_id, author_id)
+  values (v_ws, 'tarefa', pg_temp.fx('tother')::bigint, m_restr2, v_owner),
+         (v_ws, 'tarefa', pg_temp.fx('town')::bigint, m_restr2, v_owner);
+  insert into post_comments (thread_id, author_id, content) values (v_th_own, v_owner, 'own discussion text');
+  insert into post_comments (thread_id, author_id, content) values (v_th_free, v_owner, 'SECRET discussion text');
+  perform set_config('request.jwt.claims', '', true);
+
+  -- discussion_preview_not_written: no post_discussion row for a post he can't open
+  select count(*) into v_n from notifications
+   where user_id = v_restr2 and type = 'post_discussion' and metadata->>'post_id' = v_pbfree::text;
+  assert v_n = 0, 'discussion_preview_of_hidden_post_not_written: ' || v_n;
+  select count(*) into v_n from notifications
+   where user_id = v_restr2 and type = 'post_discussion' and metadata->>'post_id' = v_pbown::text;
+  assert v_n = 1, 'discussion_of_own_post_written: ' || v_n;
+  -- the follower row itself is untouched (he keeps following; nothing leaks)
+  assert exists (select 1 from post_discussao_participantes where post_id = v_pbfree and user_id = v_restr2 and seguindo),
+    'follower row kept';
+
+  -- bell: only the own task mention and the own post discussion
+  perform set_config('request.jwt.claims', json_build_object('sub', v_restr2, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  execute q into v_bell;
+  execute 'reset role';
+  assert v_bell = 'mention:tOwn,post_discussion:pBown', 'bell_item_level_real_emitters: ' || coalesce(v_bell, '<none>');
+
+  -- claim: the same rule for the recipient. Every claimable row of restr2 is
+  -- sent iff his bell shows it.
+  update notifications set created_at = now() - interval '20 minutes' where workspace_id = v_ws and emailed_at is null;
+  -- (A, B and none were read / dismissed in block 3, so they are not claimable)
+  select string_agg(k, ',' order by k) into v_claim
+    from (select coalesce(c.metadata->>'tag', c.type || ':' || (c.metadata->>'context_title')) k
+            from claim_notification_emails(now() - interval '10 minutes', now() - interval '1 day', 1000) c
+           where c.user_id = v_restr2) x;
+  assert v_claim = 'Betapa_own,Bidea_own,Btask_own,Bwf,mention:tOwn',
+    'claim_item_level (restr2): ' || coalesce(v_claim, '<none>');
+  raise notice 'PASS block 3b item-level notifications';
 end $$;
 
 -- =============================================================
@@ -368,7 +472,7 @@ end $$;
 set local track_functions = 'all';
 create or replace function pg_temp.scope_calls() returns bigint language sql as $f$
   select coalesce(sum(calls), 0)::bigint from pg_stat_xact_user_functions
-   where funcname in ('can_access_cliente', 'can_see_cliente_context');
+   where funcname in ('can_access_cliente', 'can_see_cliente_context', 'notification_item_visible');
 $f$;
 do $$
 declare

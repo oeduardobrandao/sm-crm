@@ -40,6 +40,9 @@
 --                                   pai que passa.
 --   every_client_view_filtered      view sobre tabela de cliente é
 --                                   security_invoker=true ou cita o predicado.
+--   notifications_item_level        as policies de leitura/UPDATE de notifications citam
+--                                   can_access_cliente e notification_item_visible, nunca
+--                                   o contexto (20261115000012).
 --   context_fn_covers_own_tables    toda tabela "raiz de contexto" (v_context_roots,
 --                                   mais qualquer tabela de cliente cuja policy
 --                                   use my_membro_ids()) aparece no corpo de
@@ -91,10 +94,10 @@ declare
 
   -- Únicas tabelas em que can_see_cliente_context vale como predicado de leitura (contexto do
   -- item "dele" num cliente oculto: marca e briefing). Em qualquer outra, só can_access_cliente.
-  -- notifications (Task 4e): o destinatário vê a notificação sobre um cliente oculto em que tem
-  -- item dele (o plano manda ler por can_see_cliente_context); notificação não é raiz de contexto.
-  v_context_tables text[] := array['hub_brand', 'hub_brand_files', 'briefings', 'hub_briefing_questions',
-                                   'notifications'];
+  -- notifications saiu daqui (20261115000012): a leitura é por item
+  -- (can_access_cliente OR notification_item_visible), e o caso
+  -- notifications_item_level abaixo fixa que o contexto não volta.
+  v_context_tables text[] := array['hub_brand', 'hub_brand_files', 'briefings', 'hub_briefing_questions'];
 
   -- Itens que um restrito pode ter "dele" num cliente oculto e que precisam do
   -- contexto do cliente (nome, marca). Task 1 cobre os três primeiros; ideias
@@ -112,6 +115,7 @@ declare
   v_fail_view text[] := '{}';
   v_fail_ctx text[] := '{}';
   v_fail_np text[] := '{}';
+  v_fail_notif text[] := '{}';
   v_changed bigint;
   v_ctx_src text;
 begin
@@ -257,6 +261,15 @@ begin
           select distinct tbl from _pol where qual ~ '\mmy_membro_ids\M') x
    where v_ctx_src !~ ('\m' || t || '\M');
 
+  -- notifications_item_level: toda policy de leitura/UPDATE de notifications cita
+  -- can_access_cliente e notification_item_visible, e nenhuma cita o contexto
+  select coalesce(array_agg(p.policyname::text order by p.policyname), '{}') into v_fail_notif
+    from pg_policies p
+   where p.schemaname = 'public' and p.tablename = 'notifications'
+     and p.cmd in ('SELECT', 'UPDATE', 'ALL')
+     and (p.qual !~ '\mcan_access_cliente\M' or p.qual !~ '\mnotification_item_visible\M'
+          or p.qual ~ '\mcan_see_cliente_context' or coalesce(p.with_check, '') ~ '\mcan_see_cliente_context');
+
   -- sanity: no-policy exemptions are still policy-less
   select coalesce(array_agg(n order by n), '{}') into v_fail_np
     from unnest(v_exempt_no_policy) n
@@ -279,6 +292,8 @@ begin
     raise notice 'context_fn_covers_own_tables: missing %', array_to_string(v_fail_ctx, ', ');
   end if;
 
+  assert cardinality(v_fail_notif) = 0,
+    'notifications_item_level: ' || array_to_string(v_fail_notif, ', ');
   assert cardinality(v_fail_np) = 0,
     'exempt_no_policy_still_policyless: ' || array_to_string(v_fail_np, ', ');
   assert cardinality(v_fail_read) = 0,
