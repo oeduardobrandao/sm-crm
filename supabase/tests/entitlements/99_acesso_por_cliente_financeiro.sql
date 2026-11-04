@@ -478,6 +478,84 @@ begin
 end $$;
 
 -- =============================================================
+-- status re-check inside the locked section (_financeiro_cliente_salvar_core)
+-- =============================================================
+do $$
+declare
+  v_ws uuid := (select active_workspace_id from profiles where id = (select id from auth.users where email = 'owner@acfin.test'));
+  v_todos uuid := (select id from auth.users where email = 'todos@acfin.test');
+  v_restr uuid := (select id from auth.users where email = 'restr@acfin.test');
+  v_ca bigint := (select id from clientes where conta_id = v_ws and nome = 'A');
+  v_src text := (select prosrc from pg_proc where oid = 'public._financeiro_cliente_salvar_core(uuid,uuid,bigint,date,numeric,integer,text)'::regprocedure);
+  v_err text;
+begin
+  -- structural: shared conta lock, then the client row lock, then the status check
+  assert position('pg_advisory_xact_lock_shared' in v_src) > 0
+     and position('FOR UPDATE' in v_src) > position('pg_advisory_xact_lock_shared' in v_src)
+     and position('_financeiro_status_muda' in v_src) > position('FOR UPDATE' in v_src),
+    'core_rechecks_status_under_lock';
+  -- the core itself refuses a restricted actor's status change (whatever the wrapper saw)
+  begin
+    perform public._financeiro_cliente_salvar_core(v_ws, v_restr, v_ca, date '2026-10-01', 2000, 5, 'pausado');
+    v_err := null;
+  exception when others then v_err := sqlerrm;
+  end;
+  assert v_err = 'client_scope_restricted', 'core_restricted_status_change_denied: ' || coalesce(v_err, 'saved');
+  begin
+    perform public._financeiro_cliente_salvar_core(v_ws, v_todos, v_ca, date '2026-10-01', 2000, 5, 'ativo');
+    v_err := null;
+  exception when others then v_err := sqlerrm;
+  end;
+  assert v_err is null, 'core_todos_ok: ' || coalesce(v_err, '');
+  raise notice 'PASS status recheck';
+end $$;
+
+-- =============================================================
+-- storage: financeiro-acordos (contracts of every member: full cost)
+-- =============================================================
+create or replace function pg_temp.obj_n(p_user uuid) returns bigint language plpgsql as $f$
+declare v bigint;
+begin
+  perform set_config('request.jwt.claims', json_build_object('sub', p_user, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  select count(*) into v from storage.objects where bucket_id = 'financeiro-acordos';
+  execute 'reset role';
+  return v;
+end $f$;
+do $$
+declare
+  v_ws uuid := (select active_workspace_id from profiles where id = (select id from auth.users where email = 'owner@acfin.test'));
+  v_owner uuid := (select id from auth.users where email = 'owner@acfin.test');
+  v_todos uuid := (select id from auth.users where email = 'todos@acfin.test');
+  v_restr uuid := (select id from auth.users where email = 'restr@acfin.test');
+  v_zero uuid := (select id from auth.users where email = 'zero@acfin.test');
+  v_cb bigint := (select id from clientes where conta_id = v_ws and nome = 'B');
+  v_ca bigint := (select id from clientes where conta_id = v_ws and nome = 'A');
+  v_m1 bigint := (select id from membros where conta_id = v_ws and nome in ('M1', 'M1x'));
+  v_m2 bigint := (select id from membros where conta_id = v_ws and nome = 'M2');
+  v_err text;
+begin
+  insert into storage.objects (bucket_id, name) values
+    ('financeiro-acordos', v_ws || '/' || v_m1 || '/a.pdf'), ('financeiro-acordos', v_ws || '/' || v_m2 || '/b.pdf');
+  assert pg_temp.obj_n(v_restr) = 0, 'restricted_lists_no_contract: ' || pg_temp.obj_n(v_restr);
+  assert pg_temp.obj_n(v_zero) = 0, 'zero_assignment_lists_no_contract';
+  assert pg_temp.obj_n(v_todos) = 2, 'todos_contracts_unchanged: ' || pg_temp.obj_n(v_todos);
+  assert pg_temp.obj_n(v_owner) = 2, 'owner_contracts_unchanged';
+  v_err := pg_temp.err_as(v_restr, format('insert into storage.objects (bucket_id, name) values (''financeiro-acordos'', %L)', v_ws || '/' || v_m2 || '/c.pdf'));
+  assert v_err = '42501', 'restricted_upload_contract_denied: ' || coalesce(v_err, 'uploaded');
+  v_err := pg_temp.err_as(v_todos, format('insert into storage.objects (bucket_id, name) values (''financeiro-acordos'', %L)', v_ws || '/' || v_m2 || '/d.pdf'));
+  assert v_err is null, 'todos_upload_contract_ok: ' || coalesce(v_err, '');
+
+  -- avatars: client photo writes already follow clientes RLS (Task 3) through the policy's
+  -- subquery; pinned here
+  v_err := pg_temp.err_as(v_restr, format('insert into storage.objects (bucket_id, name) values (''avatars'', %L)', 'clientes/' || v_cb || '/p.png'));
+  assert v_err = '42501', 'restricted_hidden_client_photo_denied: ' || coalesce(v_err, 'uploaded');
+  v_err := pg_temp.err_as(v_restr, format('insert into storage.objects (bucket_id, name) values (''avatars'', %L)', 'clientes/' || v_ca || '/p.png'));
+  assert v_err is null, 'restricted_own_client_photo_ok: ' || coalesce(v_err, '');
+  raise notice 'PASS storage';
+end $$;
+
+-- =============================================================
 -- zero scope calls for todos / owner (pg_stat_xact_user_functions)
 -- =============================================================
 set local track_functions = 'all';

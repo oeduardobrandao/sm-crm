@@ -855,3 +855,101 @@ BEGIN
   RETURN NULL;
 END;
 $function$;
+
+-- -------------------------------------------------------------
+-- 7. Status do cliente conferido de novo sob lock
+-- -------------------------------------------------------------
+-- Mesma definição de 20261029000002 (pg_get_functiondef) + "[escopo]".
+CREATE OR REPLACE FUNCTION public._financeiro_cliente_salvar_core(p_conta uuid, p_user uuid, p_cliente_id bigint, p_vale_desde date, p_valor_mensal numeric, p_dia_pagamento integer, p_status text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_conta  uuid := p_conta;
+  v_aberto date;
+BEGIN
+  -- shared: serializes against the period roll / reabrir / fechar (exclusive), not other writes
+  PERFORM pg_advisory_xact_lock_shared(public._financeiro_lock_key(v_conta));
+  IF NOT EXISTS (SELECT 1 FROM public.financeiro_config c WHERE c.conta_id = v_conta AND c.seeded_at IS NOT NULL) THEN
+    RAISE EXCEPTION 'nao_configurado' USING ERRCODE = 'P0001';
+  END IF;
+  IF NOT public._financeiro_inicio_editavel(v_conta, p_vale_desde) THEN
+    RAISE EXCEPTION 'periodo_fechado' USING ERRCODE = 'P0001';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.clientes c WHERE c.id = p_cliente_id AND c.conta_id = v_conta) THEN
+    RAISE EXCEPTION 'not_found' USING ERRCODE = 'P0002';
+  END IF;
+  -- [escopo] o wrapper já recusou a mudança de status do restrito, mas leu o
+  -- status antes deste lock: trava a linha do cliente (todo caminho que grava a
+  -- versão do cliente passa por ela: este core e o trigger legado, que roda
+  -- num UPDATE da própria linha) e confere de novo aqui dentro.
+  PERFORM 1 FROM public.clientes c WHERE c.id = p_cliente_id AND c.conta_id = v_conta FOR UPDATE;
+  IF NOT public.actor_client_scope_all(p_user, v_conta)
+     AND public._financeiro_status_muda(v_conta, p_cliente_id, p_vale_desde, p_status) THEN
+    RAISE EXCEPTION 'client_scope_restricted' USING ERRCODE = '42501';
+  END IF;
+
+  INSERT INTO public.financeiro_cliente_versoes
+    (conta_id, cliente_id, vale_desde, valor_mensal, dia_pagamento, status, created_by)
+  VALUES (v_conta, p_cliente_id, p_vale_desde, p_valor_mensal, p_dia_pagamento, p_status, p_user)
+  ON CONFLICT (cliente_id, vale_desde) DO UPDATE
+     SET valor_mensal = EXCLUDED.valor_mensal,
+         dia_pagamento = EXCLUDED.dia_pagamento,
+         status = EXCLUDED.status,
+         created_by = EXCLUDED.created_by;
+
+  IF p_status = 'encerrado' THEN
+    PERFORM public._financeiro_encerrar_atribuicoes(v_conta, p_cliente_id, p_vale_desde);
+  END IF;
+
+  SELECT p.inicio INTO v_aberto FROM public.financeiro_periodos p
+   WHERE p.conta_id = v_conta AND p.status = 'aberto' ORDER BY p.inicio DESC LIMIT 1;
+  IF v_aberto IS NOT NULL THEN
+    PERFORM public._financeiro_sincronizar_legado(v_conta, v_aberto);
+  END IF;
+END;
+$function$;
+
+-- -------------------------------------------------------------
+-- 8. Storage: contratos dos acordos (financeiro-acordos)
+-- -------------------------------------------------------------
+-- <conta_id>/<membro_id>/<uuid>.<ext>: o contrato mostra o custo cheio do
+-- membro, sem cliente. Mesma definição de 20261027000007 + "[escopo]": só quem
+-- vê todos lista, baixa ou envia. Não há policy de UPDATE nem DELETE no bucket.
+DROP POLICY IF EXISTS "financeiro_acordos_select" ON storage.objects;
+CREATE POLICY "financeiro_acordos_select"
+  ON storage.objects FOR SELECT
+  TO authenticated
+  USING (
+    bucket_id = 'financeiro-acordos'
+    AND (storage.foldername(name))[1] = (SELECT public.get_my_conta_id())::text
+    AND EXISTS (
+      SELECT 1 FROM public.membros m
+      WHERE m.id::text = (storage.foldername(name))[2]
+        AND m.conta_id = (SELECT public.get_my_conta_id())
+    )
+    AND (SELECT public.effective_plan_feature((SELECT public.get_my_conta_id()), 'feature_financial'))
+    AND (SELECT public.effective_plan_feature((SELECT public.get_my_conta_id()), 'feature_financeiro_v2'))
+    AND (SELECT public.can_see_financials())
+    AND (SELECT public.my_client_scope_all()) -- [escopo]
+  );
+
+DROP POLICY IF EXISTS "financeiro_acordos_insert" ON storage.objects;
+CREATE POLICY "financeiro_acordos_insert"
+  ON storage.objects FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    bucket_id = 'financeiro-acordos'
+    AND (storage.foldername(name))[1] = (SELECT public.get_my_conta_id())::text
+    AND EXISTS (
+      SELECT 1 FROM public.membros m
+      WHERE m.id::text = (storage.foldername(name))[2]
+        AND m.conta_id = (SELECT public.get_my_conta_id())
+    )
+    AND (SELECT public.effective_plan_feature((SELECT public.get_my_conta_id()), 'feature_financial'))
+    AND (SELECT public.effective_plan_feature((SELECT public.get_my_conta_id()), 'feature_financeiro_v2'))
+    AND (SELECT public.has_permission('financeiro', 'editar'))
+    AND (SELECT public.my_client_scope_all()) -- [escopo]
+  );
