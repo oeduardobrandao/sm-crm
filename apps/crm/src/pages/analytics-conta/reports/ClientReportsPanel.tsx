@@ -24,6 +24,7 @@ import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { getClientes } from '../../../store';
 import { getInstagramSummary } from '../../../services/instagram';
 import { getTikTokSummary } from '../../../services/tiktok';
+import { getGoogleSummary } from '../../../services/google';
 import {
   getClientReports,
   getReportDownloadUrl,
@@ -133,11 +134,24 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
     enabled: tiktokEnabled,
     retry: false,
   });
+  // Google Meu Negócio: mesma chave e queryFn do shell e da seção do cliente (cache
+  // compartilhado). Conta como conectado com alguma unidade que não esteja desconectada; um
+  // erro lê como "sem unidades" (o servidor decide de novo na geração).
+  const googleEnabled = features?.feature_google_business === true;
+  const googleQuery = useQuery({
+    queryKey: ['googleSummary', clientId],
+    queryFn: () => getGoogleSummary(clientId),
+    enabled: googleEnabled,
+    retry: false,
+  });
+  const googleConnected =
+    googleEnabled &&
+    (googleQuery.data?.gmn?.locations ?? []).some((l) => l.status !== 'disconnected');
   const igTokenExpired =
     igQuery.error instanceof Error && igQuery.error.message === 'TOKEN_EXPIRED';
   const igKnown = !igQuery.isLoading && (!igQuery.isError || igTokenExpired);
   const connected: ReportPlatform[] | undefined =
-    igKnown && !(tiktokEnabled && ttQuery.isLoading)
+    igKnown && !(tiktokEnabled && ttQuery.isLoading) && !(googleEnabled && googleQuery.isLoading)
       ? [
           ...(igQuery.data || igTokenExpired ? (['instagram'] as const) : []),
           ...(tiktokEnabled &&
@@ -145,6 +159,7 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
           !TIKTOK_NOT_CONNECTED.includes(ttQuery.data.account?.authorization_status)
             ? (['tiktok'] as const)
             : []),
+          ...(googleConnected ? (['google'] as const) : []),
         ]
       : undefined;
 

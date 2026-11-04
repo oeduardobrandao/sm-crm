@@ -19,13 +19,15 @@ import type { BlockType, ReportDocSnapshot, SectionKind } from '@mesaas/report-b
 import { FALLBACK_WIDGET_ICON, WIDGET_ICONS } from './widgetIcons';
 
 /** Plataformas com dados no documento: Instagram enquanto não estiver
- * desconectado, TikTok quando o snapshot traz a seção. Nenhuma com dado cai no
+ * desconectado, TikTok e Google Meu Negócio quando o snapshot traz a seção
+ * (`tiktok`, `google`). Nenhuma com dado cai no
  * Instagram, como a capa (coverDefaults). "Adicionar seção" do relatório só
  * oferece estas. */
 export function documentPlatforms(snapshot: ReportDocSnapshot): ReportPlatform[] {
   const out: ReportPlatform[] = [];
   if (snapshot.instagram_connected !== false) out.push('instagram');
   if (snapshot.tiktok) out.push('tiktok');
+  if (snapshot.google) out.push('google');
   return out.length ? out : ['instagram'];
 }
 

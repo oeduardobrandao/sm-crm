@@ -44,7 +44,11 @@ import {
   updateSectionConfig,
 } from './layoutOps';
 import type { ImageEditorContext } from './ImageBlockEditor';
-import type { InsertTarget } from './useBlockEditing';
+import {
+  DEFAULT_ENABLED_PLATFORMS,
+  sectionAcceptsWidgets,
+  type InsertTarget,
+} from './useBlockEditing';
 import { AddSectionMenu } from './AddSectionMenu';
 import { SECTIONS_GROUP, SectionFrame, type CellEditing } from './SectionFrame';
 import { sectionDisplayName } from './SectionFrameHeader';
@@ -63,9 +67,10 @@ export interface EditorCanvasProps {
   onConfigChange?: (id: string, patch: Record<string, unknown>) => void;
   /** Habilita o editor do bloco Imagem; ausente = bloco renderiza como na view. */
   imageContext?: ImageEditorContext;
-  /** feature_tiktok do workspace: sem ela, nada de TikTok entra (a seção que
-   * já existe renderiza e sai, mas sem "Adicionar widget"). Fail closed. */
-  tiktokEnabled?: boolean;
+  /** Plataformas que o plano libera (Instagram sempre; TikTok com feature_tiktok, Google Meu
+   * Negócio com feature_google_business). Fora da lista nada entra: a seção que já existe
+   * renderiza e sai, mas sem "Adicionar widget". Fail closed: padrão só Instagram. */
+  enabledPlatforms?: readonly ReportPlatform[];
   /** Plataformas com dados: "all" no modelo; relatório = documentPlatforms(snapshot). */
   availablePlatforms?: ReportPlatform[] | 'all';
   /** "Adicionar widget" no rodapé da seção; ausente = sem o botão. */
@@ -87,7 +92,7 @@ export function EditorCanvas({
   onRemoveBlock,
   onConfigChange,
   imageContext,
-  tiktokEnabled = false,
+  enabledPlatforms = DEFAULT_ENABLED_PLATFORMS,
   availablePlatforms = 'all',
   onAddWidget,
   onAddSection,
@@ -157,7 +162,7 @@ export function EditorCanvas({
     onAddSection ? (
       <AddSectionMenu
         existing={kinds}
-        tiktokEnabled={tiktokEnabled}
+        enabledPlatforms={enabledPlatforms}
         availablePlatforms={availablePlatforms}
         onAdd={(kind) => onAddSection(kind, afterSectionId)}
       />
@@ -189,7 +194,7 @@ export function EditorCanvas({
                 editing={editing}
                 dragGroup={dragGroup}
                 onAddWidget={
-                  onAddWidget && (section.kind !== 'tiktok' || tiktokEnabled)
+                  onAddWidget && sectionAcceptsWidgets(section.kind, enabledPlatforms)
                     ? () => onAddWidget({ sectionId: section.marker.id })
                     : undefined
                 }

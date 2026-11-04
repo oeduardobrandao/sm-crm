@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { ReportLayout } from '@mesaas/report-blocks/types';
+import type { ReportPlatform } from '@mesaas/report-blocks/platform';
+import { BLOCK_TYPES, type ReportLayout } from '@mesaas/report-blocks/types';
 import { WIDGET_CATALOG } from '@mesaas/report-blocks/catalog';
 import { Shapes } from 'lucide-react';
 import { LayersPanel, layerLabel } from '../LayersPanel';
@@ -19,7 +20,7 @@ function renderPanel(overrides: Partial<Parameters<typeof LayersPanel>[0]> = {})
   const props = {
     layout,
     highlightId: null,
-    tiktokEnabled: true,
+    enabledPlatforms: ['instagram', 'tiktok'] as ReportPlatform[],
     onReorder: vi.fn(),
     onLocate: vi.fn(),
     onAddAt: vi.fn(),
@@ -120,7 +121,7 @@ describe('LayersPanel: árvore de seções', () => {
   });
 
   it('seção TikTok sem feature_tiktok: sem "+"', () => {
-    renderPanel({ layout: sectioned, tiktokEnabled: false });
+    renderPanel({ layout: sectioned, enabledPlatforms: ['instagram'] });
     expect(
       within(sectionItem('Vídeos')).queryByRole('button', { name: /Adicionar widget/ }),
     ).toBeNull();
@@ -130,7 +131,45 @@ describe('LayersPanel: árvore de seções', () => {
   });
 });
 
+describe('LayersPanel: seção Google Meu Negócio', () => {
+  const withGoogle: ReportLayout = {
+    version: 1,
+    blocks: [
+      { id: 'g', type: 'section', size: 'full' },
+      { id: 'b-cover', type: 'cover', size: 'full' },
+      { id: 'gb', type: 'section', size: 'full', config: { platform: 'google' } },
+      { id: 'b-gc', type: 'gbp_kpi_calls', size: 'third' },
+    ],
+  };
+
+  it('sem feature_google_business: a seção aparece, mas sem "+"', () => {
+    renderPanel({ layout: withGoogle, enabledPlatforms: ['instagram', 'tiktok'] });
+    const gb = sectionItem('Google Meu Negócio');
+    expect(within(gb).queryByRole('button', { name: /Adicionar widget/ })).toBeNull();
+    expect(
+      within(sectionItem('Geral')).getAllByRole('button', { name: /Adicionar widget/ }),
+    ).toHaveLength(2);
+  });
+
+  it('com feature_google_business: "+" na seção do Google', () => {
+    const props = renderPanel({ layout: withGoogle, enabledPlatforms: ['instagram', 'google'] });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Adicionar widget em Google Meu Negócio, posição 1' }),
+    );
+    expect(props.onAddAt).toHaveBeenCalledWith({ sectionId: 'gb', position: 0 });
+  });
+});
+
 describe('widgetIcons', () => {
+  it('todo tipo gbp_* tem ícone próprio (não o genérico)', () => {
+    const gbp = BLOCK_TYPES.filter((t) => t.startsWith('gbp_'));
+    expect(gbp).toHaveLength(14);
+    for (const t of gbp) {
+      expect(WIDGET_ICONS[t], `sem ícone para ${t}`).toBeTruthy();
+      expect(widgetIcon(t)).not.toBe(Shapes);
+    }
+  });
+
   it('todo tipo do catálogo tem ícone próprio', () => {
     for (const w of WIDGET_CATALOG) {
       expect(WIDGET_ICONS[w.type], `sem ícone para ${w.type}`).toBeTruthy();

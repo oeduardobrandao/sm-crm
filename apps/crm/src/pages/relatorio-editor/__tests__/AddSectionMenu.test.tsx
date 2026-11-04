@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import type { ReportPlatform } from '@mesaas/report-blocks/platform';
 import { MAX_SECTIONS, type SectionKind } from '@mesaas/report-blocks/types';
 import { AddSectionMenu } from '../AddSectionMenu';
 
@@ -8,7 +9,7 @@ vi.mock('@/components/ui/dropdown-menu', () => import('./dropdownMenuMock'));
 function renderMenu(overrides: Partial<Parameters<typeof AddSectionMenu>[0]> = {}) {
   const props = {
     existing: [] as SectionKind[],
-    tiktokEnabled: true,
+    enabledPlatforms: ['instagram', 'tiktok'] as ReportPlatform[],
     availablePlatforms: 'all' as const,
     onAdd: vi.fn(),
     ...overrides,
@@ -37,9 +38,55 @@ describe('AddSectionMenu', () => {
   });
 
   it('sem feature_tiktok o TikTok nem aparece', () => {
-    renderMenu({ tiktokEnabled: false });
+    renderMenu({ enabledPlatforms: ['instagram'] });
     expect(screen.queryByRole('button', { name: /^TikTok/ })).not.toBeInTheDocument();
     expect(item(/^Instagram/)).toBeEnabled();
+  });
+
+  it('sem enabledPlatforms (fail closed): só Instagram e Geral', () => {
+    render(<AddSectionMenu existing={[]} availablePlatforms="all" onAdd={vi.fn()} />);
+    expect(item(/^Instagram/)).toBeEnabled();
+    expect(screen.queryByRole('button', { name: /^TikTok/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Google Meu Negócio/ })).not.toBeInTheDocument();
+    expect(item(/^Geral/)).toBeEnabled();
+  });
+
+  it('com feature_google_business: Google Meu Negócio com a descrição, sem TikTok', () => {
+    const { onAdd } = renderMenu({ enabledPlatforms: ['instagram', 'google'] });
+    const google = item(/^Google Meu Negócio/);
+    expect(google).toBeEnabled();
+    expect(google).toHaveTextContent('Visualizações, ligações, rotas, buscas e avaliações');
+    expect(screen.queryByRole('button', { name: /^TikTok/ })).not.toBeInTheDocument();
+    fireEvent.click(google);
+    expect(onAdd).toHaveBeenCalledWith('google');
+  });
+
+  it('as plataformas seguem a ordem das seções (Instagram, TikTok, Google), depois a Geral', () => {
+    renderMenu({ enabledPlatforms: ['google', 'tiktok', 'instagram'] });
+    const labels = screen
+      .getAllByRole('button')
+      .map((b) => b.textContent ?? '')
+      .filter((t) => /^(Instagram|TikTok|Google Meu Negócio|Geral)/.test(t))
+      .map((t) => t.match(/^(Instagram|TikTok|Google Meu Negócio|Geral)/)![1]);
+    expect(labels).toEqual(['Instagram', 'TikTok', 'Google Meu Negócio', 'Geral']);
+  });
+
+  it('documento sem dados do Google: Google desabilitado com a dica, sem a descrição', () => {
+    renderMenu({ enabledPlatforms: ['instagram', 'google'], availablePlatforms: ['instagram'] });
+    const google = item(/^Google Meu Negócio/);
+    expect(google).toBeDisabled();
+    expect(google).toHaveTextContent(
+      'Sem dados do Google Meu Negócio neste relatório. Atualize os dados depois de conectar a conta.',
+    );
+    expect(google).not.toHaveTextContent('Visualizações, ligações');
+  });
+
+  it('seção do Google já presente: "Já existe uma seção do Google Meu Negócio"', () => {
+    renderMenu({ enabledPlatforms: ['instagram', 'google'], existing: ['google'] });
+    expect(item(/^Google Meu Negócio/)).toBeDisabled();
+    expect(item(/^Google Meu Negócio/)).toHaveTextContent(
+      'Já existe uma seção do Google Meu Negócio',
+    );
   });
 
   it('plataforma já presente: desabilitada com "Já existe…"', () => {
