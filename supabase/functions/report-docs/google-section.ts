@@ -6,7 +6,7 @@
 //
 // Quem chama já provou que o cliente é do workspace (clientes.conta_id); toda leitura daqui leva
 // o conta_id, porque dois workspaces podem ligar a mesma unidade (mesmo location_name).
-import { lastDayOfMonth } from "../_shared/sao-paulo-date.ts";
+import { lastDayOfMonth, saoPauloDate } from "../_shared/sao-paulo-date.ts";
 import { fetchAllRows } from "../_shared/paginate.ts";
 import {
   aggregateKeywords,
@@ -22,6 +22,7 @@ import {
 import {
   buildRatingDistribution,
   type GbpUnit,
+  hasMetricsOnOrBefore,
   loadMetrics,
   loadRatings,
   loadUnits,
@@ -74,17 +75,6 @@ const num = (v: unknown): number | null => {
 
 const names = (units: GbpUnit[]) => units.map((u) => u.location_name);
 
-/** Mesmo teste do buildOverview (queries.ts): o histórico chega até `day`. */
-async function hasMetricsOnOrBefore(db: Db, contaId: string, units: GbpUnit[], day: string): Promise<boolean> {
-  const { data, error } = await db.from("gbp_metrics_daily").select("day")
-    .eq("conta_id", contaId)
-    .in("location_name", names(units))
-    .lte("day", day)
-    .limit(1);
-  if (error) throw error;
-  return Array.isArray(data) && data.length > 0;
-}
-
 /** Termos do mês do relatório; sem nenhum, os do último mês fechado antes dele (até 2). */
 async function loadKeywords(
   db: Db,
@@ -127,6 +117,7 @@ async function loadHighlight(
     .eq("conta_id", contaId)
     .in("location_name", names(units))
     .in("star_rating", [4, 5])
+    .not("comment", "is", null)
     .gte("create_time", spMidnightIso(start))
     .lt("create_time", spMidnightIso(addDays(end, 1)))
     .order("create_time", { ascending: false })
@@ -153,7 +144,8 @@ async function loadHighlight(
     rating: pick.star_rating as 4 | 5,
     comment,
     unit_title: units.find((u) => u.location_name === pick.location_name)?.title ?? null,
-    date: pick.create_time,
+    // Dia de calendário em São Paulo: quem renderiza formata sem conversão de fuso.
+    date: saoPauloDate(new Date(pick.create_time)),
   };
 }
 

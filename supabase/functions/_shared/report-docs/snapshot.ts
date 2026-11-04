@@ -113,6 +113,7 @@ export interface GoogleReportSnapshot {
     rating: 4 | 5;
     comment: string;
     unit_title: string | null;
+    /** Dia em São Paulo, `YYYY-MM-DD`. */
     date: string;
   } | null;
   unit_rows: {

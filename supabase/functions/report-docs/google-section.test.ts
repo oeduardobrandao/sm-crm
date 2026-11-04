@@ -44,6 +44,10 @@ function makeDb(tables: Record<string, Row[]>) {
       rows = rows.filter((r) => r[col] === v);
       return c;
     };
+    c.not = (col: string, op: string, v: unknown) => {
+      if (op === "is" && v === null) rows = rows.filter((r) => r[col] !== null && r[col] !== undefined);
+      return c;
+    };
     c.in = (col: string, vs: unknown[]) => ((rows = rows.filter((r) => vs.includes(r[col]))), c);
     c.gte = (col: string, v: unknown) => ((rows = rows.filter((r) => cmp(r[col], v) >= 0)), c);
     c.lt = (col: string, v: unknown) => ((rows = rows.filter((r) => cmp(r[col], v) < 0)), c);
@@ -220,7 +224,7 @@ Deno.test("highlight: newest 5 stars with text inside the window, else 4 stars",
     rating: 5,
     comment: "Ótimo atendimento",
     unit_title: "Unidade a",
-    date: "2026-10-20T12:00:00Z",
+    date: "2026-10-20",
   });
 
   const t = baseTables();

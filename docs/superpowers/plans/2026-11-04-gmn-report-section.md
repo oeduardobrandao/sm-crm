@@ -28,7 +28,7 @@
 
 1. **Report month entirely after `data_through`** (report for the current month on its 1st-2nd day): GMN section present with null KPIs and empty lists, no crash, blocks omitted in view. → Task 4 test `window after data_through`.
 2. **Mixed active + revoked units with different `data_through`**: window ends on the active units' watermark (`windowDataThrough`), revoked rows still summed. → Task 4 test `revoked unit holds no window back`.
-3. **GMN-only document refreshed after its last unit was unlinked**: refresh keeps the frozen section, no 404. → Task 5 test.
+3. **Document refreshed after its GMN units were unlinked while Instagram stays connected**: refresh keeps the frozen Google section. With every network gone, refresh answers `not_found` (existing rule, kept). → Task 5 test.
 4. **AI goal id `website_clicks` in an Instagram-absent, GMN-only narrative**: label resolves to the GMN label, never TikTok or Instagram. → Task 6 test.
 5. **Old template saved with legacy (unsectioned) layout + Google selected**: template with any platform section gains the default Google section after its last platform section; template without one gains none. → Task 3 test.
 
@@ -157,12 +157,12 @@ export const KEYWORD_ROWS = 10; export const HIGHLIGHT_MAX_CHARS = 400;
 - Produces:
   - `REPORT_PLATFORMS = ["instagram", "tiktok", "google"] as const`.
   - `connectedPlatforms(db, contaId: string, clientId: number, flags: { tiktokEnabled: boolean; googleEnabled: boolean }): Promise<ReportPlatform[]>`.
-  - `loadClientSnapshot(db, deps, contaId, cliente, month, opts: { tiktokEnabled: boolean; googleEnabled: boolean; allowNone?: boolean }): Promise<{ snapshot; igAccountId; tiktokAccountId; googleUnitIds: string[] | null }>`; `snapshot.google` set from the loader; throws `GenerateError("not_found","Nenhuma rede conectada")` only when none of the three is connected AND `!allowNone`; with `allowNone` it returns the empty-Instagram snapshot.
+  - `loadClientSnapshot(db, deps, contaId, cliente, month, opts: { tiktokEnabled: boolean; googleEnabled: boolean }): Promise<{ snapshot; igAccountId; tiktokAccountId; googleUnitIds: string[] | null }>`; `snapshot.google` set from the loader; throws `GenerateError("not_found","Nenhuma rede conectada")` when none of the three is connected (unchanged rule, also on refresh).
   - `generate.ts`: `googleEnabled = await effectivePlanFeature(db, contaId, "feature_google_business")` read once; `connected` gains `"google"` when `snapshot.google`; `hasData: p => p==="instagram" ? … : p==="tiktok" ? !!snapshot.tiktok : !!snapshot.google`; `sectionOpts.hasGbpUnits = (snapshot.google?.unit_rows.length ?? 0) > 1`.
-  - `refresh.ts`: calls `loadClientSnapshot(..., { tiktokEnabled, googleEnabled, allowNone: true })`; `carryOverFrozenPlatforms` keeps `prev.google` when `loaded.snapshot.google` is absent; after carry-over, if the result has no Instagram, no TikTok and no Google, throw `DocActionError("not_found")`.
+  - `refresh.ts`: calls `loadClientSnapshot(..., { tiktokEnabled, googleEnabled })`; `carryOverFrozenPlatforms` keeps `prev.google` when `loaded.snapshot.google` is absent (while some other network is still connected). A document whose networks are all gone keeps answering `not_found`, as the existing TikTok test pins.
   - `pdf.ts`: `PDF_RENDERER_VERSION = 7`.
 
-- [ ] **Step 1: Tests:** `parseGenerateBody({clientId:1, month:"2026-10", platforms:["google"]})` → platforms `["google"]`; `["youtube"]` → null. generate: flag off → no `snapshot.google` and requesting `platforms:["google"]` → `invalid_platforms`; flag on, GMN-only client → doc inserted with sections `general, google, …`, `instagram_connected:false`; feature RPC error → generation fails. refresh: GMN-only doc whose units are gone → `data_snapshot.google` equals the stored one, no throw; doc with nothing frozen and nothing connected → `not_found`; TikTok-only doc with TikTok gone → kept (regression of the old 404).
+- [ ] **Step 1: Tests:** `parseGenerateBody({clientId:1, month:"2026-10", platforms:["google"]})` → platforms `["google"]`; `["youtube"]` → null. generate: flag off → no `snapshot.google` and requesting `platforms:["google"]` → `invalid_platforms`; flag on, GMN-only client → doc inserted with sections `general, google, …`, `instagram_connected:false`; feature RPC error → generation fails. refresh: doc with Instagram still connected and GMN units gone → `data_snapshot.google` equals the stored one; nothing connected → `not_found` (unchanged).
 - [ ] **Step 2:** Run `deno test --no-check supabase/functions/report-docs/` → FAIL.
 - [ ] **Step 3:** Implement per Interfaces (update every existing `connectedPlatforms`/`loadClientSnapshot` call and test mock).
 - [ ] **Step 4:** Run → PASS; `npm run check:functions` → PASS.
