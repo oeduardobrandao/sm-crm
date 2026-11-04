@@ -342,7 +342,7 @@ begin
   -- without a reassigning rule the same status change goes through
   v_n := pg_temp.rows_as(v_restr, format('update workflow_posts set status = ''revisao_interna'' where id = %s', v_pb_own3));
   assert v_n = 1, 'own_post_in_b_status_change_ok: ' || v_n;
-  -- the relaxed WITH CHECK keeps the tenant check: no moving a row to another workspace
+  -- the WITH CHECK keeps the tenant check: no moving a row to another workspace
   v_err := pg_temp.err_as(v_restr, format('update workflow_posts set conta_id = %L where id = %s', v_ws_x, v_pb_own));
   assert v_err is not null, 'own_post_conta_change_denied: ' || coalesce(v_err, 'updated');
   v_n := pg_temp.rows_as(v_restr, format('update workflow_posts set titulo = ''y'' where id = %s', v_pb_other));
