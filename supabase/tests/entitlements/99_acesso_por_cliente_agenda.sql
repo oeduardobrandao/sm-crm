@@ -757,5 +757,31 @@ begin
     'agenda_feed_eventos stays service_role only';
 end $$;
 
+-- mensagens_rpcs_not_anon: the no-user branch of these RPCs takes any
+-- p_conta_id (the Hub reaches it through hub-mensagens with service role), so
+-- anon must not execute them; authenticated and service_role keep EXECUTE
+do $$
+declare v_f text; v_err text; v_ws uuid := pg_temp.fx('ws');
+begin
+  foreach v_f in array array['public.get_mensagens_conversas()',
+      'public.get_mensagens_feed(uuid, bigint, timestamp with time zone, integer, text, bigint)',
+      'public.get_mensagens_unread(uuid, bigint)', 'public.mark_mensagens_seen(uuid, bigint)'] loop
+    assert not has_function_privilege('anon', v_f, 'EXECUTE'), 'mensagens_rpc_not_executable_by_anon: ' || v_f;
+    assert has_function_privilege('authenticated', v_f, 'EXECUTE'), 'mensagens_rpc_executable_by_authenticated: ' || v_f;
+    assert has_function_privilege('service_role', v_f, 'EXECUTE'), 'mensagens_rpc_executable_by_service_role: ' || v_f;
+  end loop;
+  perform set_config('request.jwt.claims', '{"role":"anon"}', true);
+  execute 'set local role anon';
+  begin
+    perform public.get_mensagens_feed(v_ws, null);
+    v_err := null;
+  exception when others then
+    v_err := sqlstate;
+  end;
+  execute 'reset role';
+  perform set_config('request.jwt.claims', '', true);
+  assert v_err = '42501', 'anon_call_get_mensagens_feed_denied: ' || coalesce(v_err, 'ok');
+end $$;
+
 rollback;
 \echo 99_acesso_por_cliente_agenda: ok

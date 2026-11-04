@@ -46,6 +46,7 @@
 --   agenda_evento_editar, agenda_evento_excluir, agenda_remarcacao_resolver,
 --   get_mensagens_conversas/feed/unread (só o ramo com usuário; o do Hub não
 --   muda), hub_token_extend, hub_token_rotate.
+--   As quatro RPCs de mensagens perdem o EXECUTE de anon (seção 7).
 -- O termo (SELECT my_client_scope_all()) vem primeiro: é um initplan, então o
 -- membro irrestrito não paga can_access_cliente nem o EXISTS por linha.
 -- Spec: docs/superpowers/specs/2026-11-03-acesso-por-cliente-design.md
@@ -1746,3 +1747,20 @@ begin
 end;
 $function$;
 
+
+-- -------------------------------------------------------------
+-- 7. RPCs de mensagens: sem EXECUTE para anon
+-- -------------------------------------------------------------
+-- O ramo sem usuário (auth.uid() NULL) aceita qualquer p_conta_id: com EXECUTE
+-- para anon, a chave pública lia as mensagens e o feedback de qualquer
+-- workspace. O Hub chega a ele só pelo hub-mensagens, com service role; o CRM
+-- chama logado (authenticated). REVOKE de PUBLIC também (idempotente); os
+-- grants de authenticated e service_role ficam como estão.
+REVOKE EXECUTE ON FUNCTION public.get_mensagens_conversas() FROM PUBLIC, anon;
+REVOKE EXECUTE ON FUNCTION public.get_mensagens_feed(uuid, bigint, timestamp with time zone, integer, text, bigint) FROM PUBLIC, anon;
+REVOKE EXECUTE ON FUNCTION public.get_mensagens_unread(uuid, bigint) FROM PUBLIC, anon;
+REVOKE EXECUTE ON FUNCTION public.mark_mensagens_seen(uuid, bigint) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_mensagens_conversas() TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.get_mensagens_feed(uuid, bigint, timestamp with time zone, integer, text, bigint) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.get_mensagens_unread(uuid, bigint) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.mark_mensagens_seen(uuid, bigint) TO authenticated, service_role;
