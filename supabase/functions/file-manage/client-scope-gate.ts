@@ -8,17 +8,25 @@
 //   404 (tree and links listings answer an empty list; bulk-move/bulk-delete/zip-token fold missing
 //   ids into their own answers), the gate either gives that same empty answer or hands the hidden
 //   ids back (hiddenFiles / hiddenFolders) for the route to treat as missing at its own check.
-// - Subtree operations (delete, move, copy, zip) need the folder visible AND no typed folder below it
-//   in a hidden client; a visible folder holding one answers 403 CLIENT_SCOPE_MESSAGE.
+// - Visibility follows migration C3 (see _shared/file-client-scope.ts): a folder with no client is
+//   hidden except the Clientes root, which is readable but never writable; a file is readable when it
+//   is his upload, in an assigned client's folder, or linked to a post he sees.
+// - Writes the DB would refuse on an item he can read (rename / delete / move of the Clientes root,
+//   delete or move-out of his upload in a hidden client, writing into the root or the top level)
+//   answer 403 CLIENT_SCOPE_MESSAGE. Hidden items answer as missing.
+// - Subtree operations (delete, move, copy, zip) need the folder writable (an assigned client's) AND
+//   no typed folder below it in a hidden client; a readable folder failing that answers 403.
 // - The caller's own post in a hidden client is readable (é dele); every write on it is 403.
 // - Default deny: a route not listed below answers the route table's own fallthrough, 404 "Not found".
 //   GATED_ROUTES mirrors handler.ts; a structural test keeps the two in step.
 
 import { CLIENT_SCOPE_MESSAGE, type ClientScope, rowVisibility } from "../_shared/client-scope.ts";
 import {
-  fileClienteId,
-  folderClienteId,
-  itemVisible,
+  type ClientOf,
+  fileAccess,
+  folderInfo,
+  folderReadable,
+  folderWritable,
   NOT_IN_WORKSPACE,
   subtreeHasHiddenClient,
 } from "../_shared/file-client-scope.ts";
@@ -151,10 +159,13 @@ export interface GateDecision {
   /** Ids the route must treat as missing (bulk-move, bulk-delete, zip-token). */
   hiddenFiles: Set<number>;
   hiddenFolders: Set<number>;
+  /** Client of the folder a listing (tree, folders) reads, for the route's row filter: null at the
+   * top level or where the folder has no client. */
+  listingParentClient: ClientOf;
 }
 
 export function allowAll(): GateDecision {
-  return { deny: null, hiddenFiles: new Set(), hiddenFolders: new Set() };
+  return { deny: null, hiddenFiles: new Set(), hiddenFolders: new Set(), listingParentClient: null };
 }
 
 /** A normalized body id: a number, or null when absent / null. */
@@ -173,17 +184,29 @@ export async function fileManageScopeGate(
   const nf = (error: string) => answer(404, { error });
   const limited = () => answer(403, { error: CLIENT_SCOPE_MESSAGE });
 
-  const fileVisible = async (fid: number | null) =>
-    fid == null || itemVisible(scope, await fileClienteId(db, fid, contaId));
-  const folderVisible = async (fid: number | null) =>
-    fid == null || itemVisible(scope, await folderClienteId(db, fid, contaId));
+  const fileRead = async (fid: number | null) => {
+    if (fid == null) return true;
+    const a = await fileAccess(db, scope, fid, contaId, userId);
+    return a === NOT_IN_WORKSPACE || a.read;
+  };
+  const folderRead = async (fid: number | null) =>
+    fid == null || folderReadable(scope, await folderInfo(db, fid, contaId));
+  /** A destination folder something is written into (create, copy, move, upload). null = the top
+   * level, which takes no client: never writable by a restricted member. */
+  const dest = async (fid: number | null): Promise<"ok" | "hidden" | "limited"> => {
+    if (fid == null) return "limited";
+    const info = await folderInfo(db, fid, contaId);
+    if (!folderReadable(scope, info)) return "hidden";
+    return folderWritable(scope, info) ? "ok" : "limited";
+  };
   // Subtree operations: "missing" lets the route answer its own not-found first (it validates the
   // primary item before any secondary id), "hidden" answers as missing, "limited" is 403.
   const subtree = async (fid: number | null): Promise<"ok" | "missing" | "hidden" | "limited"> => {
     if (fid == null) return "ok";
-    const c = await folderClienteId(db, fid, contaId);
-    if (c === NOT_IN_WORKSPACE) return "missing";
-    if (!itemVisible(scope, c)) return "hidden";
+    const info = await folderInfo(db, fid, contaId);
+    if (info === NOT_IN_WORKSPACE) return "missing";
+    if (!folderReadable(scope, info)) return "hidden";
+    if (!folderWritable(scope, info)) return "limited";
     return (await subtreeHasHiddenClient(db, scope, fid, contaId)) ? "limited" : "ok";
   };
   const post = async (pid: number | null, write: boolean): Promise<"ok" | "hidden" | "limited"> => {
@@ -206,20 +229,31 @@ export async function fileManageScopeGate(
   };
   const { method, resource, idStr, subResource, body, bulk, pathId, queryParent: parentParam } = r;
 
+  /** Readable parent of a listing (tree / folders): records its client for the row filter. */
+  const listing = async (fid: number | null): Promise<boolean> => {
+    if (fid == null) return true; // the top level: listingParentClient stays null
+    const info = await folderInfo(db, fid, contaId);
+    if (!folderReadable(scope, info)) return false;
+    decision.listingParentClient = info === NOT_IN_WORKSPACE ? null : info.client;
+    return true;
+  };
+
   if (resource === "tree") {
     if (method !== "GET") return nf("Not found");
     // A missing parent lists nothing: 200 [].
-    return (await folderVisible(parentParam)) ? decision : answer(200, []);
+    return (await listing(parentParam)) ? decision : answer(200, []);
   }
 
   if (resource === "folders") {
     const fid = pathId;
     if (method === "GET") {
-      return (await folderVisible(idStr ? fid : parentParam)) ? decision : nf("Folder not found");
+      const ok = idStr ? await folderRead(fid) : await listing(parentParam);
+      return ok ? decision : nf("Folder not found");
     }
     if (method === "POST" && !idStr) {
       if (!body?.name) return decision; // the route answers 400 "name required" first
-      return (await folderVisible(id(body?.parent_id))) ? decision : nf("Parent folder not found");
+      const d = await dest(id(body?.parent_id));
+      return d === "hidden" ? nf("Parent folder not found") : d === "limited" ? limited() : decision;
     }
     if (method === "PATCH" && idStr) {
       // Same order as the route: the folder (404), then the new parent (404). A missing folder is
@@ -230,9 +264,13 @@ export async function fileManageScopeGate(
         if (s === "missing") return decision;
         if (s === "hidden") return nf("Folder not found");
         if (s === "limited") return limited();
-        return (await folderVisible(id(body?.parent_id))) ? decision : nf("Parent folder not found");
+        const d = await dest(id(body?.parent_id));
+        return d === "hidden" ? nf("Parent folder not found") : d === "limited" ? limited() : decision;
       }
-      return (await folderVisible(fid)) ? decision : nf("Folder not found");
+      // Rename: the folder must be writable (the Clientes root never is).
+      const info = fid == null ? NOT_IN_WORKSPACE : await folderInfo(db, fid, contaId);
+      if (!folderReadable(scope, info)) return nf("Folder not found");
+      return folderWritable(scope, info) ? decision : limited();
     }
     if (method === "DELETE" && idStr) {
       const s = await subtree(fid);
@@ -243,7 +281,8 @@ export async function fileManageScopeGate(
       if (s === "missing") return decision; // the route's "Folder not found" comes before the destination
       if (s === "hidden") return nf("Folder not found");
       if (s === "limited") return limited();
-      return (await folderVisible(id(body?.destination_folder_id))) ? decision : nf("Destination not found");
+      const d = await dest(id(body?.destination_folder_id));
+      return d === "hidden" ? nf("Destination not found") : d === "limited" ? limited() : decision;
     }
     return nf("Not found");
   }
@@ -261,13 +300,23 @@ export async function fileManageScopeGate(
       if (error) throw new Error(`file-manage gate: file read failed: ${error.message ?? "unknown"}`);
       if (!f || f.conta_id !== contaId || f.attached_to != null) return decision;
     }
-    const c = fid == null ? null : await fileClienteId(db, fid, contaId);
-    if (c === NOT_IN_WORKSPACE) return decision; // the route's "File not found" comes first
-    if (!itemVisible(scope, c)) return nf("File not found");
+    const a = fid == null ? NOT_IN_WORKSPACE : await fileAccess(db, scope, fid, contaId, userId);
+    if (a === NOT_IN_WORKSPACE) return decision; // the route's "File not found" comes first
+    if (!a.read) return nf("File not found");
     if (method === "POST") {
-      return (await folderVisible(id(body?.destination_folder_id))) ? decision : nf("Destination not found");
+      const d = await dest(id(body?.destination_folder_id));
+      return d === "hidden" ? nf("Destination not found") : d === "limited" ? limited() : decision;
     }
-    if (method === "PATCH") return (await folderVisible(id(body?.folder_id))) ? decision : nf("Folder not found");
+    if (method === "PATCH") {
+      // Rename needs read only (C3 files UPDATE uses the read rule). A move out of the folder needs
+      // the delete rule on the origin and a writable destination.
+      const target = body?.folder_id === undefined ? a.folderId : id(body?.folder_id);
+      if (target === a.folderId) return decision;
+      if (!a.del) return limited();
+      const d = await dest(target);
+      return d === "hidden" ? nf("Folder not found") : d === "limited" ? limited() : decision;
+    }
+    if (method === "DELETE" && !a.del) return limited();
     return decision;
   }
 
@@ -280,7 +329,7 @@ export async function fileManageScopeGate(
       // Same order as the route: required fields (400), file (404), document (400), post (404).
       if (!body?.post_id || !body?.file_id) return decision;
       const fid = id(body.file_id);
-      if (!(await fileVisible(fid))) return nf("File not found");
+      if (!(await fileRead(fid))) return nf("File not found");
       if (fid != null) {
         const { data: f, error } = await db.from("files").select("conta_id, kind, attached_to").eq("id", fid)
           .maybeSingle();
@@ -302,14 +351,21 @@ export async function fileManageScopeGate(
     const folderIds = resource === "zip-token" ? (bulk.folder_id != null ? [bulk.folder_id] : []) : bulk.folder_ids ?? [];
     // zip-token with a folder_id ignores file_ids, so only look at them when there is no folder.
     const fileIds = resource === "zip-token" && bulk.folder_id != null ? [] : bulk.file_ids ?? [];
-    for (const f of fileIds) if (!(await fileVisible(f))) decision.hiddenFiles.add(f);
+    for (const f of fileIds) {
+      const a = await fileAccess(db, scope, f, contaId, userId);
+      if (a === NOT_IN_WORKSPACE) continue; // the route folds missing ids into its own answer
+      if (!a.read) decision.hiddenFiles.add(f);
+      else if (resource !== "zip-token" && !a.del) return limited();
+    }
     for (const f of folderIds) {
       const s = await subtree(f);
       if (s === "limited") return limited();
       if (s === "hidden") decision.hiddenFolders.add(f);
     }
-    if (resource === "bulk-move" && !(await folderVisible(bulk.destination_id))) {
-      decision.hiddenFolders.add(bulk.destination_id!);
+    if (resource === "bulk-move") {
+      const d = await dest(bulk.destination_id);
+      if (d === "limited") return limited();
+      if (d === "hidden") decision.hiddenFolders.add(bulk.destination_id!);
     }
     return decision;
   }

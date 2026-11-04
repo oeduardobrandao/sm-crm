@@ -360,3 +360,19 @@ Deno.test("file-upload-url: a scope read error is a 500, no upload URL", async (
   );
   assertEquals(res.status, 500);
 });
+
+Deno.test("file-upload-url: restricted upload into the Clientes root (no client) is limitado (C3)", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuthAndProfile(db);
+  db.queue("folders", "select", { data: { conta_id: "conta-1" }, error: null }, {
+    data: [{ id: 1, conta_id: "conta-1", source_type: "root_clients", source_id: null }],
+    error: null,
+  });
+  db.queueRpc("folder_breadcrumbs", { data: [{ id: 1 }], error: null });
+  const scope = () => Promise.resolve<ClientScope>({ all: false, ids: new Set([7]), membroIds: new Set() });
+  const res = await makeHandler(db, { loadClientScope: scope })(
+    authedRequest({ filename: "f.png", mime_type: "image/png", size_bytes: 1000, folder_id: 1 }),
+  );
+  assertEquals(res.status, 403);
+  assertEquals((await readJson(res)).error, "Seu acesso é limitado aos clientes atribuídos.");
+});

@@ -723,3 +723,12 @@ Deno.test("file-upload-finalize: assigned client's post is unchanged; scope erro
   assertEquals(res.status, 500);
   assertEquals(broken.calls.some((c) => c.table === "rpc:file_insert_with_quota"), false);
 });
+
+Deno.test("file-upload-finalize: a restricted file with neither folder nor post is limitado (no client, C3)", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const res = await makeHandler(db, { loadClientScope: restricted([42]) })(authedRequest({ ...baseBody }));
+  assertEquals(res.status, 403);
+  assertEquals((await readJson(res)).error, "Seu acesso é limitado aos clientes atribuídos.");
+  assertEquals(db.calls.some((c) => c.table === "rpc:file_insert_with_quota"), false);
+});

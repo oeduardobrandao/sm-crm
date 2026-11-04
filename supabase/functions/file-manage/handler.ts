@@ -10,7 +10,7 @@ import {
   loadClientScope as realLoadClientScope,
   rowVisibility,
 } from "../_shared/client-scope.ts";
-import { visibleFolderRows } from "../_shared/file-client-scope.ts";
+import { visibleFileRows, visibleFolderRows } from "../_shared/file-client-scope.ts";
 import {
   allowAll,
   type BulkBody,
@@ -125,7 +125,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
     } catch (err) {
       return internalServerError(json, "file-manage:client-scope", err);
     }
-    const { hiddenFiles, hiddenFolders } = gate;
+    const { hiddenFiles, hiddenFolders, listingParentClient } = gate;
 
     // ─── TREE ─────────────────────────────────────────────────────
     if (resource === "tree") {
@@ -140,7 +140,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
         foldersQ.order("source", { ascending: true }).order("name", { ascending: true });
 
         const { data: allFolders } = await foldersQ;
-        const folders = await visibleFolderRows(svc, allFolders as any[], scope, contaId);
+        const folders = await visibleFolderRows(svc, allFolders as any[], scope, contaId, listingParentClient);
         const folderIds = (folders ?? []).map((f: any) => f.id);
 
         let parentSet = new Set<number>();
@@ -198,8 +198,9 @@ export function createFileManageHandler(deps: FileManageDeps) {
         filesQ.is("attached_to", null);
         filesQ.order("created_at", { ascending: false });
 
-        const [{ data: allSubfolders }, { data: files }] = await Promise.all([foldersQ, filesQ]);
-        const subfolders = await visibleFolderRows(svc, allSubfolders as any[], scope, contaId);
+        const [{ data: allSubfolders }, { data: allFiles }] = await Promise.all([foldersQ, filesQ]);
+        const subfolders = await visibleFolderRows(svc, allSubfolders as any[], scope, contaId, listingParentClient);
+        const files = await visibleFileRows(svc, allFiles as any[], scope, contaId, user.id, listingParentClient);
 
         // Compute folder sizes using batch RPC (replaces N+1 individual calls)
         const folderIds = (subfolders ?? []).map((f: any) => f.id);
@@ -910,8 +911,10 @@ export function createFileManageHandler(deps: FileManageDeps) {
       }
 
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      // user_id: file-zip loads this member's client scope again at redeem (acesso por cliente).
       const tokenPayload = {
         conta_id: contaId,
+        user_id: user.id,
         ...(folder_id ? { folder_id } : { file_ids }),
         expires_at: expiresAt,
       };

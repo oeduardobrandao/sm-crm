@@ -330,6 +330,9 @@ Deno.test("zip-token: returns token and download_url for folder", async () => {
   assertEquals(typeof body.download_url, "string");
   assertEquals(body.download_url.includes("file-zip"), true);
   assertEquals(body.download_url.includes("token="), true);
+  // The minting member travels in the token: file-zip loads his client scope again at redeem.
+  const payload = JSON.parse(JSON.parse(atob(body.token)).payload);
+  assertEquals([payload.user_id, payload.conta_id, payload.folder_id], ["user-1", "conta-1", 5]);
 });
 
 Deno.test("zip-token: returns token and download_url for file_ids", async () => {

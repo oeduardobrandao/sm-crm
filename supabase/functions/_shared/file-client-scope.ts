@@ -1,19 +1,26 @@
-// Acesso por cliente for the file library (file-manage, file-upload-url, file-upload-finalize).
-// Spec: docs/superpowers/specs/2026-11-03-acesso-por-cliente-design.md.
+// Acesso por cliente for the file library (file-manage, file-upload-url, file-upload-finalize, file-zip).
+// Spec: docs/superpowers/specs/2026-11-03-acesso-por-cliente-design.md. Mirrors migration C3
+// (20261115000005_acesso_por_cliente_c3_arquivos.sql, folder_row_cliente_id / folder_cliente_id and
+// the files / folders / post_file_links policies); keep the two in step.
 //
 // A folder belongs to the client of its nearest typed ancestor (itself included):
 //   source_type 'client' | 'client_reports' -> source_id is the cliente_id;
 //   'workflow' -> workflows.cliente_id;  'post' -> workflow_posts.cliente_id;
-//   'root_clients' / untyped (user folder) -> keep walking up; the root -> null (workspace-level).
-// A file belongs to its folder's client; a post-reference file (attached_to) to its post's client.
-// Workspace-level items (null client) stay visible to a restricted member. Operations over a folder's
-// whole subtree (zip, copy, delete, move) also need every typed folder below it to belong to a
-// visible client: a workspace-level folder can hold hidden client subtrees (the "Clientes" root does).
+//   'root_clients' / untyped (user folder) -> keep walking up; the root -> null (no client).
+// A file belongs to its folder's client (no folder = no client).
 //
-// This mapping mirrors the folder tree the sync triggers build (folder_sync_cliente/workflow/post).
-// The DB policies of Task 4c own the authoritative definition; keep the two in step.
+// For a restricted member (C3):
+//   folder read  = its client is assigned, or it is the "Clientes" root (navigation only).
+//                  Any other folder with no client is hidden.
+//   folder write = its client is assigned (the Clientes root and client-less folders: never).
+//   file read    = uploaded by him, or its folder's client is assigned, or linked to a post he sees
+//                  (his own post in a hidden client included).
+//   file delete / move out = its folder's client is assigned, or (his upload AND no client).
+//   file insert / move in  = the destination folder is writable.
+// Operations over a folder's whole subtree (zip, copy, delete, move) also need every typed folder
+// below it to belong to an assigned client.
 
-import { type ClientScope, hasClientAccess } from "./client-scope.ts";
+import { type ClientScope, hasClientAccess, rowVisibility } from "./client-scope.ts";
 import { chunk, fetchAllRowsKeyset } from "./paginate.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -22,6 +29,9 @@ type Db = { from: (table: string) => any; rpc: (fn: string, params: Record<strin
 /** Sentinel for "not in this workspace / does not exist": the caller answers its not-found. */
 export const NOT_IN_WORKSPACE = Symbol("not_in_workspace");
 export type ClientOf = number | null | typeof NOT_IN_WORKSPACE;
+
+const MAX_TREE_DEPTH = 64;
+const SUBTREE_PAGE = 1000;
 
 async function clienteOfTyped(db: Db, type: string, sourceId: number, contaId: string): Promise<number | null> {
   if (type === "client" || type === "client_reports") return sourceId;
@@ -34,8 +44,14 @@ async function clienteOfTyped(db: Db, type: string, sourceId: number, contaId: s
   return (data as { cliente_id?: number } | null)?.cliente_id ?? -1;
 }
 
-/** The client a folder belongs to (null = workspace-level), or NOT_IN_WORKSPACE. */
-export async function folderClienteId(db: Db, folderId: number, contaId: string): Promise<ClientOf> {
+/** Where a folder sits: its client (null = none) and whether it is the "Clientes" root itself. */
+export interface FolderInfo {
+  client: number | null;
+  rootClients: boolean;
+}
+
+/** The client of a folder and whether it is the Clientes root, or NOT_IN_WORKSPACE. */
+export async function folderInfo(db: Db, folderId: number, contaId: string): Promise<FolderInfo | typeof NOT_IN_WORKSPACE> {
   const { data: crumbs, error } = await db.rpc("folder_breadcrumbs", { p_folder_id: folderId });
   if (error) throw new Error(`file scope: breadcrumbs failed: ${error.message ?? "unknown"}`);
   const ids = ((crumbs ?? []) as { id: number }[]).map((c) => Number(c.id)).filter(Number.isInteger);
@@ -49,49 +65,136 @@ export async function folderClienteId(db: Db, folderId: number, contaId: string)
   );
   const self = byId.get(folderId);
   if (!self || self.conta_id !== contaId) return NOT_IN_WORKSPACE;
+  const rootClients = self.source_type === "root_clients";
   // folder_breadcrumbs orders root first, the folder itself last: walk from the folder up.
   for (const id of [...ids].reverse()) {
     const f = byId.get(id);
     if (!f || f.conta_id !== contaId) return NOT_IN_WORKSPACE;
     if (f.source_type && f.source_type !== "root_clients" && f.source_id != null) {
-      return await clienteOfTyped(db, f.source_type, Number(f.source_id), contaId);
+      return { client: await clienteOfTyped(db, f.source_type, Number(f.source_id), contaId), rootClients };
     }
   }
-  return null;
+  return { client: null, rootClients };
 }
 
-/** The client a file belongs to (null = workspace-level), or NOT_IN_WORKSPACE. */
-export async function fileClienteId(db: Db, fileId: number, contaId: string): Promise<ClientOf> {
-  const { data: file, error } = await db.from("files").select("conta_id, folder_id, attached_to").eq("id", fileId)
+/** The client a folder belongs to (null = no client), or NOT_IN_WORKSPACE. */
+export async function folderClienteId(db: Db, folderId: number, contaId: string): Promise<ClientOf> {
+  const info = await folderInfo(db, folderId, contaId);
+  return info === NOT_IN_WORKSPACE ? info : info.client;
+}
+
+/** The client is set and assigned (or the scope covers every client). */
+export function clientAccessible(scope: ClientScope, clienteId: ClientOf): boolean {
+  if (scope.all) return true;
+  return typeof clienteId === "number" && hasClientAccess(scope, clienteId, false);
+}
+
+/** Folder read (C3 folders USING). NOT_IN_WORKSPACE passes: the route answers its own not-found. */
+export function folderReadable(scope: ClientScope, info: FolderInfo | typeof NOT_IN_WORKSPACE): boolean {
+  if (info === NOT_IN_WORKSPACE || scope.all) return true;
+  return info.rootClients || clientAccessible(scope, info.client);
+}
+
+/** Folder write, or writing into it (C3 folders WITH CHECK / files INSERT). NOT_IN_WORKSPACE passes. */
+export function folderWritable(scope: ClientScope, info: FolderInfo | typeof NOT_IN_WORKSPACE): boolean {
+  if (info === NOT_IN_WORKSPACE || scope.all) return true;
+  return clientAccessible(scope, info.client);
+}
+
+/** What a member may do with one file (C3 files policies). */
+export interface FileAccess {
+  read: boolean;
+  /** Delete, or move it out of its folder. */
+  del: boolean;
+  folderId: number | null;
+}
+
+/** Files (of `fileIds`) linked to a post the member sees: assigned client, or his own post
+ * (responsavel_id in his membros) in a hidden client. Throws on a read error. */
+export async function linkedToVisiblePost(
+  db: Db,
+  scope: ClientScope,
+  fileIds: number[],
+  contaId: string,
+  userId: string,
+): Promise<Set<number>> {
+  const out = new Set<number>();
+  if (fileIds.length === 0) return out;
+  const links: { id: number; file_id: number; post_id: number }[] = [];
+  for (const part of chunk([...new Set(fileIds)])) {
+    links.push(...await fetchAllRowsKeyset<{ id: number; file_id: number; post_id: number }>((after) => {
+      let q = db.from("post_file_links").select("id, file_id, post_id").eq("conta_id", contaId).in("file_id", part);
+      if (after != null) q = q.gt("id", Number(after));
+      return q.order("id", { ascending: true }).limit(SUBTREE_PAGE);
+    }, (r) => String(r.id), SUBTREE_PAGE));
+  }
+  if (links.length === 0) return out;
+  const visiblePosts = new Set<number>();
+  for (const part of chunk([...new Set(links.map((l) => Number(l.post_id)))])) {
+    const { data, error } = await db.from("workflow_posts").select("id, cliente_id, responsavel_id")
+      .eq("conta_id", contaId).in("id", part);
+    if (error) throw new Error(`file scope: workflow_posts read failed: ${error.message ?? "unknown"}`);
+    for (const p of (data ?? []) as { id: number; cliente_id: number | null; responsavel_id: number | null }[]) {
+      if (rowVisibility(scope, p, userId) !== "hidden") visiblePosts.add(Number(p.id));
+    }
+  }
+  for (const l of links) if (visiblePosts.has(Number(l.post_id))) out.add(Number(l.file_id));
+  return out;
+}
+
+/** Read / delete rights on one file, or NOT_IN_WORKSPACE (the route answers its own not-found). */
+export async function fileAccess(
+  db: Db,
+  scope: ClientScope,
+  fileId: number,
+  contaId: string,
+  userId: string,
+): Promise<FileAccess | typeof NOT_IN_WORKSPACE> {
+  const { data: file, error } = await db.from("files").select("conta_id, folder_id, uploaded_by").eq("id", fileId)
     .maybeSingle();
   if (error) throw new Error(`file scope: files read failed: ${error.message ?? "unknown"}`);
   if (!file || file.conta_id !== contaId) return NOT_IN_WORKSPACE;
-  if (file.attached_to != null) {
-    const { data: ref } = await db.from("post_references").select("post_id").eq("file_id", fileId)
-      .eq("conta_id", contaId).maybeSingle();
-    if (!ref?.post_id) return -1;
-    return await clienteOfTyped(db, "post", Number(ref.post_id), contaId);
+  const folderId = file.folder_id == null ? null : Number(file.folder_id);
+  if (scope.all) return { read: true, del: true, folderId };
+  const own = file.uploaded_by != null && file.uploaded_by === userId;
+  let client: ClientOf = null;
+  if (folderId != null) {
+    client = await folderClienteId(db, folderId, contaId);
+    if (client === NOT_IN_WORKSPACE) client = -1; // a folder outside the workspace: no client of his
   }
-  if (file.folder_id == null) return null;
-  return await folderClienteId(db, Number(file.folder_id), contaId);
+  const assigned = clientAccessible(scope, client);
+  const del = assigned || (own && client === null);
+  if (assigned || own) return { read: true, del, folderId };
+  const linked = await linkedToVisiblePost(db, scope, [fileId], contaId, userId);
+  return { read: linked.has(fileId), del, folderId };
 }
 
-/** Read / write-into check for one item: a workspace-level item passes. NOT_IN_WORKSPACE passes
- * too, so the route answers its own not-found for it. */
-export function itemVisible(scope: ClientScope, clienteId: ClientOf): boolean {
-  if (clienteId === NOT_IN_WORKSPACE) return true;
-  return clienteId === null || hasClientAccess(scope, clienteId, false);
+/** Files of one folder listing a member may see. `parentClient` is the listed folder's client (null
+ * at the top, under the Clientes root, or in a folder with no client). */
+export async function visibleFileRows<T extends { id: number | string; uploaded_by?: string | null }>(
+  db: Db,
+  rows: T[] | null | undefined,
+  scope: ClientScope,
+  contaId: string,
+  userId: string,
+  parentClient: ClientOf,
+): Promise<T[]> {
+  const list = rows ?? [];
+  if (clientAccessible(scope, parentClient)) return list;
+  const others = list.filter((f) => f.uploaded_by !== userId).map((f) => Number(f.id));
+  const linked = await linkedToVisiblePost(db, scope, others, contaId, userId);
+  return list.filter((f) => (f.uploaded_by != null && f.uploaded_by === userId) || linked.has(Number(f.id)));
 }
 
-type TypedRow = { id: number | string; source_type?: string | null; source_id?: number | string | null };
+export type TypedRow = { id: number | string; source_type?: string | null; source_id?: number | string | null };
 
-function isTypedRow(r: TypedRow): boolean {
+export function isTypedRow(r: TypedRow): boolean {
   return !!r.source_type && r.source_type !== "root_clients" && r.source_id != null;
 }
 
 /** folder id -> cliente_id for typed folder rows, in batch (one read per source table). A typed row
  * whose source row is gone maps to -1, a client nobody is assigned (hidden by default). */
-async function typedRowClients(db: Db, rows: TypedRow[], contaId: string): Promise<Map<number, number>> {
+export async function typedRowClients(db: Db, rows: TypedRow[], contaId: string): Promise<Map<number, number>> {
   const out = new Map<number, number>();
   const bySource: Record<"workflows" | "workflow_posts", TypedRow[]> = { workflows: [], workflow_posts: [] };
   for (const r of rows) {
@@ -120,8 +223,6 @@ async function typedRowClients(db: Db, rows: TypedRow[], contaId: string): Promi
   return out;
 }
 
-const MAX_TREE_DEPTH = 64;
-const SUBTREE_PAGE = 1000;
 
 /** True when any typed folder BELOW `folderId` belongs to a client the scope hides. Used for
  * operations over a whole subtree (zip, copy, delete, move): the folder itself must be visible
@@ -166,19 +267,24 @@ export async function subtreeHasHiddenClient(
   return [...clients.values()].some((c) => !hasClientAccess(scope, c, false));
 }
 
-/** Folder rows of a listing a restricted member may see: typed folders (client, client_reports,
- * workflow, post) of hidden clients go; workflow/post rows are resolved in batch. */
+/** Folder rows of a listing a restricted member may see. Typed folders (client, client_reports,
+ * workflow, post) follow their own client (workflow/post rows resolved in batch); the Clientes root
+ * is navigation and stays; an untyped folder belongs to the listed parent's client
+ * (`parentClient`, null at the top), so it stays only when that client is assigned. */
 export async function visibleFolderRows<T extends TypedRow>(
   db: Db,
   rows: T[] | null | undefined,
   scope: ClientScope,
   contaId: string,
+  parentClient: ClientOf,
 ): Promise<T[]> {
   const list = rows ?? [];
   if (scope.all) return list;
   const clients = await typedRowClients(db, list, contaId);
+  const parentOk = clientAccessible(scope, parentClient);
   return list.filter((r) => {
+    if (r.source_type === "root_clients") return true;
     const c = clients.get(Number(r.id));
-    return c === undefined || hasClientAccess(scope, c, false);
+    return c === undefined ? parentOk : hasClientAccess(scope, c, false);
   });
 }

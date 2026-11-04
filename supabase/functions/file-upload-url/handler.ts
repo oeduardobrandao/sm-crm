@@ -1,9 +1,10 @@
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 import {
+  CLIENT_SCOPE_MESSAGE,
   type ClientScopeLoader,
   loadClientScope as realLoadClientScope,
 } from "../_shared/client-scope.ts";
-import { folderClienteId, itemVisible } from "../_shared/file-client-scope.ts";
+import { folderInfo, folderReadable, folderWritable } from "../_shared/file-client-scope.ts";
 import { effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
 
 type DbClient = {
@@ -104,13 +105,16 @@ export function createFileUploadUrlHandler(deps: FileUploadUrlDeps) {
       const { data: folder } = await svc.from("folders").select("conta_id").eq("id", folder_id).single();
       if (!folder || folder.conta_id !== profile.conta_id) return json({ error: "Folder not found" }, 404);
     }
-    // Acesso por cliente: uploading into a hidden client's folder answers like a missing folder.
-    // A workspace-level folder stays writable. A scope read error is a generic 500.
+    // Acesso por cliente (migration C3): uploading into a hidden folder answers like a missing one;
+    // a readable folder with no assigned client (the Clientes root) is limitado. Without a folder the
+    // row's place is decided at file-upload-finalize. A scope read error is a generic 500.
     if (folder_id) {
       try {
         const scope = await (deps.loadClientScope ?? realLoadClientScope)(svc, user.id, profile.conta_id);
-        if (!scope.all && !itemVisible(scope, await folderClienteId(svc as any, Number(folder_id), profile.conta_id))) {
-          return json({ error: "Folder not found" }, 404);
+        if (!scope.all) {
+          const info = await folderInfo(svc as any, Number(folder_id), profile.conta_id);
+          if (!folderReadable(scope, info)) return json({ error: "Folder not found" }, 404);
+          if (!folderWritable(scope, info)) return json({ error: CLIENT_SCOPE_MESSAGE }, 403);
         }
       } catch (err) {
         return internalServerError(json, "file-upload-url:client-scope", err);
