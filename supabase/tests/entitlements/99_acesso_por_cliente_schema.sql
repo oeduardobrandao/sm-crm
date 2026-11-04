@@ -157,6 +157,9 @@ begin
   assert pg_temp.ctx(v_restr, v_c1), 'context: assigned client';
   assert not pg_temp.ctx(v_restr, v_c2), 'context: hidden client with nothing of his';
   assert not pg_temp.ctx(v_restr, null), 'context: null client';
+  -- seed as superuser without the restricted claims pg_temp.ctx left behind: the
+  -- C2 scope guard on tarefas (zz_client_scope_guard) would read them as his insert
+  perform set_config('request.jwt.claims', '', true);
   insert into tarefas (conta_id, user_id, titulo, cliente_id, responsavel_id) values (v_ws_a, v_owner, 'T', v_c2, v_membro);
   assert pg_temp.ctx(v_restr, v_c2), 'context: task he is responsible for';
   assert not pg_temp.cac(v_restr, v_c2), 'context does not widen can_access_cliente';
@@ -168,6 +171,7 @@ begin
   insert into workflow_posts (conta_id, cliente_id, workflow_id, titulo, responsavel_id) values (v_ws_a, v_c3, v_wf, 'P', v_membro);
   assert pg_temp.ctx(v_restr, v_c3), 'context: post he is responsible for';
   delete from workflow_posts where workflow_id = v_wf;
+  perform set_config('request.jwt.claims', '', true);
   insert into tarefas (conta_id, user_id, titulo, cliente_id) values (v_ws_a, v_restr, 'T autor', v_c3);
   assert pg_temp.ctx(v_restr, v_c3), 'context: task he authored';
   delete from tarefas where conta_id = v_ws_a;
