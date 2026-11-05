@@ -117,6 +117,7 @@
   "tiktok": {
     "connectTitle": "Connect TikTok",
     "connectDescription": "Connect this client's TikTok account to view metrics, follower growth, and video performance directly in the CRM.",
+    "connectAccountHint": "TikTok uses the account signed in on this browser. Before connecting, check on tiktok.com that it is this client's account.",
     "connectButton": "Connect with TikTok",
     "connecting": "Connecting...",
     "connectError": "Error starting connection: {{error}}",
@@ -297,6 +298,9 @@
     "igOffMetaOk": "Got it",
     "ttConnected": "TikTok account connected.",
     "ttError": "There was an error connecting the TikTok account. Please try again.",
+    "ttAlreadyLinked": "The account {{conta}} is already connected to client {{nome}}. TikTok used the account signed in on this browser. Sign out of it on tiktok.com, sign in with this client's account and connect again.",
+    "ttAlreadyLinkedUnnamed": "The account {{conta}} is already connected to another client in this workspace. TikTok used the account signed in on this browser. Sign out of it on tiktok.com, sign in with this client's account and connect again.",
+    "ttAlreadyLinkedThisAccount": "you picked",
     "ttSyncing": "Syncing TikTok data...",
     "noTitle": "Untitled",
     "standalonePost": "Standalone post",
