@@ -153,10 +153,49 @@ async function handleAuth(
   const { clientKey } = requireTikTokClientCredentials();
   const redirectUri = resolveFunctionBaseUrl(req);
   const state = await createSignedState(clientId, user.id, contaId, svc);
+  // disable_auto_auth=1: always show TikTok's authorization page. With the default, a browser
+  // already signed in to TikTok (e.g. right after connecting another client) skipped the page and
+  // silently linked that same account, without the user ever seeing which account was used.
   const authorizeUrl =
-    `${TIKTOK_AUTH_URL}?client_key=${clientKey}&scope=${TIKTOK_SCOPES}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
+    `${TIKTOK_AUTH_URL}?client_key=${clientKey}&scope=${TIKTOK_SCOPES}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&disable_auto_auth=1`;
 
   return json(cors, { url: authorizeUrl });
+}
+
+/** Another client of the same workspace with this TikTok account actively linked, if any. */
+async function findActiveLinkInWorkspace(
+  svc: DbClient,
+  openId: string,
+  clientId: string,
+  contaId: string,
+): Promise<{ id: string; clientName: string } | null> {
+  const { data, error } = await svc
+    .from("tiktok_accounts")
+    .select("id, client_id, clientes!inner(conta_id, nome)")
+    .eq("tiktok_open_id", openId)
+    .eq("authorization_status", "active")
+    .neq("client_id", parseInt(clientId, 10))
+    .eq("clientes.conta_id", contaId) as {
+      data: Array<{ id: string; clientes: { conta_id: string; nome: string | null } | null }> | null;
+      error: unknown;
+    };
+  if (error) throw new Error("Failed to check existing TikTok links");
+  const row = (data ?? []).find((r) => r.clientes?.conta_id === contaId);
+  return row ? { id: row.id, clientName: row.clientes?.nome ?? "" } : null;
+}
+
+/** True when another client (any workspace) still holds an active link to this TikTok account. */
+async function openIdHasOtherActiveLink(svc: DbClient, openId: string, accountId: string): Promise<boolean> {
+  const { data, error } = await svc
+    .from("tiktok_accounts")
+    .select("id")
+    .eq("tiktok_open_id", openId)
+    .eq("authorization_status", "active")
+    .neq("id", accountId)
+    .limit(1) as { data: unknown[] | null; error: unknown };
+  // On a read error, assume shared: skipping a revoke is harmless, revoking a shared grant is not.
+  if (error) return true;
+  return (data ?? []).length > 0;
 }
 
 // ─── GET /callback (public — no JWT) ──────────────────────────────────────────────────
@@ -214,6 +253,34 @@ async function handleCallback(svc: DbClient, url: URL, req: Request): Promise<Re
   const now = Date.now();
   const accessTokenExpiresAt = new Date(now + (expires_in ?? 0) * 1000).toISOString();
   const refreshTokenExpiresAt = new Date(now + (refresh_expires_in ?? 0) * 1000).toISOString();
+
+  // One TikTok account per client within a workspace. Linking an account that is already active
+  // on another client of the same workspace is almost always the browser's TikTok session being
+  // reused by mistake, and it later made "disconnect" on the wrong client revoke the app grant
+  // that the right client depends on. Refuse it and say which client holds the account. The fresh
+  // tokens go onto that client's row (a new authorization may supersede the old tokens), and the
+  // new token is never revoked here: revoke disconnects the whole app from the TikTok user.
+  const conflict = await findActiveLinkInWorkspace(svc, open_id, clientId, contaId);
+  if (conflict) {
+    const { error: refreshErr } = await svc.from("tiktok_accounts").update({
+      encrypted_access_token: encryptedAccess,
+      encrypted_refresh_token: encryptedRefresh,
+      access_token_expires_at: accessTokenExpiresAt,
+      refresh_token_expires_at: refreshTokenExpiresAt,
+      scopes: String(scope ?? "").split(",").filter(Boolean),
+    }).eq("id", conflict.id);
+    if (refreshErr) {
+      console.error(
+        "[tiktok-integration] callback: refreshing tokens of the existing link failed:",
+        (refreshErr as { message?: string })?.message,
+      );
+    }
+    const params = new URLSearchParams({ tt_error: "already_linked" });
+    const username = String(profile.username ?? "").slice(0, 60);
+    if (username) params.set("tt_user", username);
+    if (conflict.clientName) params.set("tt_other", conflict.clientName.slice(0, 120));
+    return Response.redirect(`${oauthRedirectBase()}/clientes/${clientId}?${params.toString()}`, 302);
+  }
 
   // TikTok avatar_url is also a short-lived signed CDN link — cache it up front (keyed by
   // client_id, which is stable and known before the account row exists) rather than waiting
@@ -442,12 +509,18 @@ async function handleDisconnect(
 
   const { data: account } = await svc
     .from("tiktok_accounts")
-    .select("id, encrypted_access_token")
+    .select("id, tiktok_open_id, encrypted_access_token")
     .eq("client_id", clientId)
-    .maybeSingle() as { data: { id: string; encrypted_access_token: string | null } | null };
+    .maybeSingle() as { data: { id: string; tiktok_open_id: string; encrypted_access_token: string | null } | null };
 
   if (account) {
-    if (account.encrypted_access_token) {
+    // TikTok's revoke "disconnects your app from the user's TikTok account": it kills the grant
+    // for every client linked to that TikTok account, not just this one. Only revoke when this is
+    // the last active link; otherwise disconnecting the wrong client also broke the right one.
+    const shared = account.encrypted_access_token
+      ? await openIdHasOtherActiveLink(svc, account.tiktok_open_id, account.id)
+      : false;
+    if (account.encrypted_access_token && !shared) {
       try {
         const accessToken = await decryptTikTokToken(account.encrypted_access_token, "access");
         const { clientKey, clientSecret } = requireTikTokClientCredentials();

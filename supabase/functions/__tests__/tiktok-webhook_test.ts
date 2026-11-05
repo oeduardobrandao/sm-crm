@@ -124,7 +124,7 @@ Deno.test("tiktok-webhook: unknown user_openid returns 200 and never inserts the
 
 Deno.test("tiktok-webhook: the 200 response is only sent after the event insert resolves", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("tiktok_accounts", "select", { data: baseAccount(), error: null });
+  db.queue("tiktok_accounts", "select", { data: [baseAccount()], error: null });
 
   let insertResolved = false;
   db.queue("tiktok_webhook_events", "insert", async () => {
@@ -150,7 +150,7 @@ Deno.test("tiktok-webhook: the 200 response is only sent after the event insert 
 
 Deno.test("tiktok-webhook: event insert failure returns 500 so TikTok's 72h retry redelivers", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("tiktok_accounts", "select", { data: baseAccount(), error: null });
+  db.queue("tiktok_accounts", "select", { data: [baseAccount()], error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: { message: "connection reset" } });
 
   const handler = createTikTokWebhookHandler(baseDeps(db)); // waitUntil stays unreachable
@@ -164,7 +164,7 @@ Deno.test("tiktok-webhook: event insert failure returns 500 so TikTok's 72h retr
 
 Deno.test("tiktok-webhook: processing runs via the injected waitUntil (not inline) and stamps processed_at", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("tiktok_accounts", "select", { data: baseAccount(), error: null });
+  db.queue("tiktok_accounts", "select", { data: [baseAccount()], error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
   db.queue("tiktok_webhook_events", "update", { data: null, error: null });
 
@@ -188,7 +188,7 @@ Deno.test("tiktok-webhook: processing runs via the injected waitUntil (not inlin
 
 Deno.test("tiktok-webhook: publicly_available stores external_id/permalink on the TikTok destination", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("tiktok_accounts", "select", { data: baseAccount({ username: "dktest" }), error: null });
+  db.queue("tiktok_accounts", "select", { data: [baseAccount({ username: "dktest" })], error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
   db.queue("post_targets", "select", { data: ttTargetRow(70, "pub-70", "carrossel"), error: null });
   db.queue("post_targets", "update", { data: null, error: null });
@@ -228,7 +228,7 @@ Deno.test("tiktok-webhook: publicly_available stores external_id/permalink on th
 Deno.test("tiktok-webhook: publicly_available redelivery writes the exact same fields again (idempotent, no error)", async () => {
   const db = createSupabaseQueryMock();
   const account = baseAccount({ username: "dktest" });
-  db.queue("tiktok_accounts", "select", { data: account, error: null }, { data: account, error: null });
+  db.queue("tiktok_accounts", "select", { data: [account], error: null }, { data: [account], error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null }, { data: null, error: null });
   const row = ttTargetRow(70, "pub-70");
   db.queue("post_targets", "select", { data: row, error: null }, { data: row, error: null });
@@ -258,7 +258,7 @@ Deno.test("tiktok-webhook: publicly_available redelivery writes the exact same f
 
 Deno.test("tiktok-webhook: no_longer_publicaly_available clears the permalink but keeps external_id", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("tiktok_accounts", "select", { data: baseAccount(), error: null });
+  db.queue("tiktok_accounts", "select", { data: [baseAccount()], error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
   db.queue("post_targets", "select", { data: ttTargetRow(71, "pub-71"), error: null });
   db.queue("post_targets", "update", { data: null, error: null });
@@ -286,7 +286,7 @@ Deno.test("tiktok-webhook: authorization.removed revokes the account and writes 
   const db = createSupabaseQueryMock();
   // id (the tiktok_accounts PK) is deliberately distinct from client_id (the CRM client id) so
   // this test catches a regression back to keying the audit row off client_id.
-  db.queue("tiktok_accounts", "select", { data: baseAccount({ id: "acct-555", client_id: 101 }), error: null });
+  db.queue("tiktok_accounts", "select", { data: [baseAccount({ id: "acct-555", client_id: 101 })], error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
   db.queue("tiktok_accounts", "update", { data: null, error: null });
   db.queue("clientes", "select", { data: { conta_id: "conta-abc" }, error: null });
@@ -322,13 +322,46 @@ Deno.test("tiktok-webhook: authorization.removed revokes the account and writes 
   );
 });
 
+Deno.test("tiktok-webhook: authorization.removed revokes every live link of a TikTok account shared by several clients", async () => {
+  // Removing the app on TikTok ends the grant for every client linked to that TikTok account.
+  // The lookup must not be .maybeSingle(): with two rows it errored and every event 500'd.
+  const db = createSupabaseQueryMock();
+  db.queue("tiktok_accounts", "select", {
+    data: [
+      baseAccount({ id: "acct-a", client_id: 101 }),
+      baseAccount({ id: "acct-b", client_id: 202 }),
+      baseAccount({ id: "acct-c", client_id: 303, authorization_status: "disconnected" }),
+    ],
+    error: null,
+  });
+  db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
+  db.queue("tiktok_accounts", "update", { data: null, error: null }, { data: null, error: null });
+  db.queue("clientes", "select", { data: { conta_id: "conta-1" }, error: null }, { data: { conta_id: "conta-2" }, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null }, { data: null, error: null });
+  db.queue("tiktok_webhook_events", "update", { data: null, error: null });
+
+  const waited: Promise<void>[] = [];
+  const handler = createTikTokWebhookHandler(baseDeps(db, { waitUntil: (p) => waited.push(p) }));
+  const res = await handler(webhookRequest(webhookPayload({ event: EVENT_AUTH_REMOVED, content: "{}" })));
+  assertEquals(res.status, 200);
+  await Promise.all(waited);
+
+  const lookup = callsFor(db, "tiktok_accounts", "select")[0];
+  assert(!lookup.modifiers.some((m) => m.method === "maybeSingle" || m.method === "single"));
+  const revoked = callsFor(db, "tiktok_accounts", "update").map(
+    (c) => c.modifiers.find((m) => m.method === "eq" && m.args[0] === "id")?.args[1],
+  );
+  assertEquals(revoked, ["acct-a", "acct-b"]);
+  assertEquals(callsFor(db, "audit_log", "insert").length, 2);
+});
+
 Deno.test("tiktok-webhook: authorization.removed after an in-app disconnect leaves the account disconnected", async () => {
   // Our own disconnect calls TikTok's /oauth/revoke/, and TikTok then echoes
   // authorization.removed a few seconds later. Flipping 'disconnected' to 'revoked' left the CRM
   // showing a "syncing" spinner forever (revoked row, last_synced_at null).
   const db = createSupabaseQueryMock();
   db.queue("tiktok_accounts", "select", {
-    data: baseAccount({ id: "acct-555", client_id: 101, authorization_status: "disconnected" }),
+    data: [baseAccount({ id: "acct-555", client_id: 101, authorization_status: "disconnected" })],
     error: null,
   });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
@@ -351,7 +384,7 @@ Deno.test("tiktok-webhook: authorization.removed after an in-app disconnect leav
 
 Deno.test("tiktok-webhook: post.publish.failed re-confirms via confirmAndApplyPublishStatus with the destination", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("tiktok_accounts", "select", { data: baseAccount(), error: null });
+  db.queue("tiktok_accounts", "select", { data: [baseAccount()], error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
   db.queue("post_targets", "select", { data: ttTargetRow(80, "pub-80", "reels"), error: null });
   db.queue("post_targets", "update", { data: { id: 7080 }, error: null }); // lock claim succeeds
@@ -393,7 +426,7 @@ Deno.test("tiktok-webhook: post.publish.failed re-confirms via confirmAndApplyPu
 
 Deno.test("tiktok-webhook: post.publish.complete also re-confirms via confirmAndApplyPublishStatus", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("tiktok_accounts", "select", { data: baseAccount(), error: null });
+  db.queue("tiktok_accounts", "select", { data: [baseAccount()], error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
   db.queue("post_targets", "select", { data: ttTargetRow(81, "pub-81"), error: null });
   db.queue("post_targets", "update", { data: { id: 7081 }, error: null });
@@ -422,7 +455,7 @@ Deno.test("tiktok-webhook: post.publish.complete also re-confirms via confirmAnd
 
 Deno.test("tiktok-webhook: publish.failed for an unknown publish_id logs and no-ops (still stamps processed_at)", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("tiktok_accounts", "select", { data: baseAccount(), error: null });
+  db.queue("tiktok_accounts", "select", { data: [baseAccount()], error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
   db.queue("post_targets", "select", { data: null, error: null }); // no matching destination
   db.queue("tiktok_webhook_events", "update", { data: null, error: null });
@@ -446,7 +479,7 @@ Deno.test("tiktok-webhook: publish.failed for an unknown publish_id logs and no-
 
 Deno.test("tiktok-webhook: publish.complete cedes to the cron when the destination lock is held", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("tiktok_accounts", "select", { data: baseAccount(), error: null });
+  db.queue("tiktok_accounts", "select", { data: [baseAccount()], error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
   db.queue("post_targets", "select", { data: ttTargetRow(90, "pub-90"), error: null });
   // maybeSingle() resolving to null data = the claim's .or() filter matched zero rows
@@ -480,7 +513,7 @@ Deno.test("tiktok-webhook: publish.complete cedes to the cron when the destinati
 
 Deno.test("tiktok-webhook: publish.failed cedes without a status fetch or mark_target_* when the destination is no longer processando for this publish_ref", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("tiktok_accounts", "select", { data: baseAccount(), error: null });
+  db.queue("tiktok_accounts", "select", { data: [baseAccount()], error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
   db.queue("post_targets", "select", { data: ttTargetRow(93, "pub-93"), error: null });
   // The cron already marked the destination falha (or requeue_target reset it): the gated claim
@@ -524,7 +557,7 @@ Deno.test("tiktok-webhook: publish.failed cedes without a status fetch or mark_t
 
 Deno.test("tiktok-webhook: publish.complete claims the free lock and proceeds to confirmAndApplyPublishStatus", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("tiktok_accounts", "select", { data: baseAccount(), error: null });
+  db.queue("tiktok_accounts", "select", { data: [baseAccount()], error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
   db.queue("post_targets", "select", { data: ttTargetRow(91, "pub-91"), error: null });
   db.queue("post_targets", "update", { data: { id: 7091 }, error: null });
@@ -554,7 +587,7 @@ Deno.test("tiktok-webhook: publish.complete claims the free lock and proceeds to
 
 Deno.test("tiktok-webhook: a DB error while claiming the lock leaves processed_at unstamped and never throws out", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("tiktok_accounts", "select", { data: baseAccount(), error: null });
+  db.queue("tiktok_accounts", "select", { data: [baseAccount()], error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
   db.queue("post_targets", "select", { data: ttTargetRow(92, "pub-92"), error: null });
   db.queue("post_targets", "update", { data: null, error: { message: "connection reset" } });
@@ -575,7 +608,7 @@ Deno.test("tiktok-webhook: a DB error while claiming the lock leaves processed_a
 
 Deno.test("tiktok-webhook: a DB error on the destination lookup leaves processed_at unstamped", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("tiktok_accounts", "select", { data: baseAccount(), error: null });
+  db.queue("tiktok_accounts", "select", { data: [baseAccount()], error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
   db.queue("post_targets", "select", { data: null, error: { message: "timeout" } });
 
@@ -592,7 +625,7 @@ Deno.test("tiktok-webhook: a DB error on the destination lookup leaves processed
 
 Deno.test("tiktok-webhook: an unrecognized event type is a no-op that still stamps processed_at", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("tiktok_accounts", "select", { data: baseAccount(), error: null });
+  db.queue("tiktok_accounts", "select", { data: [baseAccount()], error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
   db.queue("tiktok_webhook_events", "update", { data: null, error: null });
 

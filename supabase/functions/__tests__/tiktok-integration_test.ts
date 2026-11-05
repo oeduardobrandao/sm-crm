@@ -246,6 +246,9 @@ Deno.test("tiktok-integration: /auth with feature_tiktok=true returns an authori
   const body = await res.json();
   assert(body.url.startsWith("https://www.tiktok.com/v2/auth/authorize/?client_key=test-client-key"));
   assert(body.url.includes("state="));
+  // Always show TikTok's authorization page, so a browser already signed in to another client's
+  // TikTok account does not get linked silently.
+  assertEquals(new URL(body.url).searchParams.get("disable_auto_auth"), "1");
 });
 
 Deno.test("tiktok-integration: /auth requests the scope list without video.upload", async () => {
@@ -360,6 +363,81 @@ Deno.test("tiktok-integration: callback happy path upserts BOTH encrypted tokens
   }
 });
 
+// ─── (e2) callback: account already active on another client of the same workspace ─────
+
+async function callbackStateFor(db: ReturnType<typeof createSupabaseQueryMock>, clientId = "42") {
+  db.queue("oauth_states", "delete", { data: null, error: null });
+  db.queue("oauth_states", "insert", { data: null, error: null });
+  const state = await createSignedState(clientId, "user-1", "ws-1", db);
+  db.queue("oauth_states", "update", {
+    data: { nonce: "x", client_id: Number(clientId), conta_id: "ws-1", provider: "tiktok" },
+    error: null,
+  });
+  return state;
+}
+
+Deno.test("tiktok-integration: callback refuses an account already active on another client of the workspace", async () => {
+  const db = createSupabaseQueryMock();
+  const { storage } = makeStorage();
+  const state = await callbackStateFor(db);
+  db.queue("tiktok_accounts", "select", {
+    data: [{ id: "acct-A", client_id: 7, clientes: { conta_id: "ws-1", nome: "Clínica A" } }],
+    error: null,
+  });
+  db.queue("tiktok_accounts", "update", { data: null, error: null });
+
+  const f = stubTikTokFetch();
+  const handler = makeHandler(db, storage);
+  try {
+    const res = await handler(
+      new Request(`http://x/tiktok-integration/callback?code=abc123&state=${encodeURIComponent(state)}`, { method: "GET" }),
+    );
+    assertEquals(res.status, 302);
+    const location = new URL(res.headers.get("location")!);
+    assertEquals(location.pathname, "/clientes/42");
+    assertEquals(location.searchParams.get("tt_error"), "already_linked");
+    assertEquals(location.searchParams.get("tt_user"), "testuser");
+    assertEquals(location.searchParams.get("tt_other"), "Clínica A");
+
+    assert(!db.calls.some((c) => c.table === "tiktok_accounts" && c.operation === "upsert"), "must not link client 42");
+    assert(!f.calls.some((c) => c.url.startsWith(`${TIKTOK_API_BASE}/oauth/revoke/`)), "must not revoke the shared grant");
+    assert(!f.calls.some((c) => c.url.startsWith(`${TIKTOK_API_BASE}/video/list/`)), "must not import videos");
+
+    const update = db.calls.find((c) => c.table === "tiktok_accounts" && c.operation === "update");
+    assert(update, "the existing link should receive the fresh tokens");
+    assert(update!.modifiers.some((m) => m.method === "eq" && m.args[0] === "id" && m.args[1] === "acct-A"));
+    const payload = update!.payload as Record<string, unknown>;
+    assertEquals(await decryptTikTokToken(payload.encrypted_access_token as string, "access"), "access-tok-123");
+    assertEquals(payload.client_id, undefined);
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("tiktok-integration: callback links normally when the same account is active only in another workspace", async () => {
+  const db = createSupabaseQueryMock();
+  const { storage } = makeStorage();
+  const state = await callbackStateFor(db);
+  db.queue("tiktok_accounts", "select", {
+    data: [{ id: "acct-X", client_id: 99, clientes: { conta_id: "ws-other", nome: "Outra agência" } }],
+    error: null,
+  });
+  db.queue("tiktok_accounts", "upsert", { data: { id: "acct-uuid-1" }, error: null });
+
+  const f = stubTikTokFetch();
+  const handler = makeHandler(db, storage);
+  try {
+    const res = await handler(
+      new Request(`http://x/tiktok-integration/callback?code=abc123&state=${encodeURIComponent(state)}`, { method: "GET" }),
+    );
+    assertEquals(res.status, 302);
+    assertEquals(res.headers.get("location"), "https://app.example.com/clientes/42?tt_connected=1");
+    assert(db.calls.some((c) => c.table === "tiktok_accounts" && c.operation === "upsert"));
+  } finally {
+    f.restore();
+  }
+});
+
 // ─── (f) /disconnect keeps the row, calls /v2/oauth/revoke/ ────────────────────────────
 
 Deno.test("tiktok-integration: disconnect keeps the row with authorization_status='disconnected' and calls /v2/oauth/revoke/", async () => {
@@ -395,6 +473,44 @@ Deno.test("tiktok-integration: disconnect keeps the row with authorization_statu
 
     const deleteCall = db.calls.find((c) => c.table === "tiktok_posts" && c.operation === "delete");
     assert(deleteCall, "expected tiktok_posts to be cleared for the account");
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("tiktok-integration: disconnect does NOT revoke when another client still uses the same TikTok account", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "user-1" });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queue("clientes", "select", { data: { conta_id: "ws-1" }, error: null });
+
+  const { encryptTikTokToken } = await import("../_shared/tiktok.ts");
+  const encAccess = await encryptTikTokToken("shared-access", "access");
+  db.queue("tiktok_accounts", "select", {
+    data: { id: "acct-B", tiktok_open_id: "open-1", encrypted_access_token: encAccess },
+    error: null,
+  });
+  db.queue("tiktok_accounts", "select", { data: [{ id: "acct-A" }], error: null });
+  db.queue("tiktok_posts", "delete", { data: null, error: null });
+  db.queue("tiktok_accounts", "update", { data: null, error: null });
+
+  const { storage } = makeStorage();
+  const f = stubTikTokFetch();
+  const handler = makeHandler(db, storage);
+  try {
+    const res = await handler(authedRequest("/disconnect/42", "POST"));
+    assertEquals(res.status, 200);
+    assert(
+      !f.calls.some((c) => c.url.startsWith(`${TIKTOK_API_BASE}/oauth/revoke/`)),
+      "revoke disconnects the app from the TikTok user, which would break the other client",
+    );
+    const sharedCheck = db.calls.filter((c) => c.table === "tiktok_accounts" && c.operation === "select")[1];
+    assert(sharedCheck.modifiers.some((m) => m.method === "eq" && m.args[0] === "tiktok_open_id" && m.args[1] === "open-1"));
+    assert(sharedCheck.modifiers.some((m) => m.method === "neq" && m.args[0] === "id" && m.args[1] === "acct-B"));
+
+    const update = db.calls.find((c) => c.table === "tiktok_accounts" && c.operation === "update");
+    assert(update, "this client's link is still disconnected locally");
+    assertEquals((update!.payload as Record<string, unknown>).authorization_status, "disconnected");
   } finally {
     f.restore();
   }

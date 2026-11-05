@@ -167,7 +167,17 @@ export default function RedesSociaisTab() {
       if (action.level === 'info') toast.info(t(action.i18nKey));
       else toast.error(t(action.i18nKey));
     }
-    if (ttError === '1') {
+    if (ttError === 'already_linked') {
+      const ttUser = searchParams.get('tt_user')?.trim().slice(0, 60);
+      const ttOther = searchParams.get('tt_other')?.trim().slice(0, 120);
+      const conta = ttUser ? `@${ttUser}` : t('detail.ttAlreadyLinkedThisAccount');
+      toast.error(
+        ttOther
+          ? t('detail.ttAlreadyLinked', { conta, nome: ttOther })
+          : t('detail.ttAlreadyLinkedUnnamed', { conta }),
+        { duration: 12000 },
+      );
+    } else if (ttError) {
       toast.error(t('detail.ttError'));
     }
     if (ttConnected === '1') {
@@ -214,6 +224,8 @@ export default function RedesSociaisTab() {
     next.delete('ig_error');
     next.delete('tt_error');
     next.delete('tt_connected');
+    next.delete('tt_user');
+    next.delete('tt_other');
     next.delete('yt_connected');
     next.delete('yt_error');
     next.delete('yt_other');

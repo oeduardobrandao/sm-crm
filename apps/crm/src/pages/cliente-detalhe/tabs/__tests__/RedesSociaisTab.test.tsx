@@ -296,6 +296,23 @@ describe('RedesSociaisTab', () => {
       );
     });
 
+    it('tt_error=already_linked: names the TikTok account and the client that holds it, and strips every param', async () => {
+      getInstagramSummaryMock.mockResolvedValue(null);
+      renderTab(
+        '/clientes/42/redes-sociais?tt_error=already_linked&tt_user=clinica.a&tt_other=Cl%C3%ADnica%20A',
+      );
+
+      await waitFor(() =>
+        expect(toastErrorMock).toHaveBeenCalledWith(
+          expect.stringContaining('A conta @clinica.a já está conectada ao cliente Clínica A.'),
+          { duration: 12000 },
+        ),
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId('search')).toHaveTextContent(/^\?rede=tiktok$/),
+      );
+    });
+
     it('all three params together: each is processed exactly once and the URL ends up fully clean (no clobbering race between the two independent setSearchParams calls)', async () => {
       getInstagramSummaryMock.mockResolvedValue(null);
       renderTab(
