@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Mesaas</title>
+    <style>
+      :root {
+        --bg: #fdfdfd;
+        --fg: #12151a;
+        --muted: #4b5563;
+        --accent: #ffbf30;
+        color-scheme: light;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0a0c0f;
+          --fg: #e8eaf0;
+          --muted: #9ca3af;
+          color-scheme: dark;
+        }
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        background: var(--bg);
+        color: var(--fg);
+        font-family: -apple-system, 'SF Pro Text', system-ui, sans-serif;
+        display: grid;
+        place-items: center;
+        padding: env(safe-area-inset-top) 24px env(safe-area-inset-bottom);
+        box-sizing: border-box;
+        text-align: center;
+      }
+      main {
+        display: grid;
+        gap: 12px;
+        max-width: 320px;
+      }
+      h1 {
+        font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif;
+        font-size: 1.35rem;
+        margin: 0;
+      }
+      p {
+        color: var(--muted);
+        margin: 0;
+        line-height: 1.45;
+      }
+      button {
+        margin-top: 8px;
+        justify-self: center;
+        font: inherit;
+        font-weight: 600;
+        color: #12151a;
+        background: var(--accent);
+        border: 0;
+        border-radius: 12px;
+        padding: 12px 22px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Sem conexão</h1>
+      <p>Não foi possível carregar o Mesaas. Confira sua internet e tente de novo.</p>
+      <button type="button" id="retry">Tentar novamente</button>
+    </main>
+    <script>
+      // Capacitor loads this page directly after a failed navigation, so there is no history
+      // entry to go back to, and Capacitor.getServerUrl() returns the local capacitor:// URL,
+      // not server.url. Keep this in sync with the default in capacitor.config.ts.
+      document.getElementById('retry').addEventListener('click', function () {
+        window.location.href = 'https://www.mesaas.com.br/dashboard';
+      });
+    </script>
+  </body>
+</html>

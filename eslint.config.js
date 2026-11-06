@@ -5,7 +5,7 @@ import prettier from 'eslint-config-prettier';
 import i18next from 'eslint-plugin-i18next';
 
 export default tseslint.config(
-  { ignores: ['dist/', 'node_modules/', 'supabase/functions/'] },
+  { ignores: ['dist/', 'node_modules/', 'supabase/functions/', 'apps/mobile/ios/'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
