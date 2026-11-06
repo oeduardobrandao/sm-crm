@@ -26,11 +26,13 @@ export function createNativeAuthStorage(
   getKeychain: () => Keychain | null,
   legacy: LegacyStorage,
 ): NativeAuthStorage {
-  const keychain = (): Keychain | null => {
+  // `failed` is a throw from getKeychain (bridge broken right now), as opposed to null
+  // (web, or an older binary without the plugin, where nothing can be in the Keychain).
+  const resolveKeychain = (): { kc: Keychain | null; failed: boolean } => {
     try {
-      return getKeychain();
+      return { kc: getKeychain(), failed: false };
     } catch {
-      return null;
+      return { kc: null, failed: true };
     }
   };
 
@@ -56,10 +58,35 @@ export function createNativeAuthStorage(
     }
   };
 
+  // Logout tombstone: when the Keychain copy could not be deleted, a marker in
+  // localStorage makes getItem ignore the Keychain until the delete succeeds, so a
+  // signed-out session (maybe another user's) never comes back on the next launch.
+  const tombstoneKey = (key: string) => `mesaas.authTombstone:${key}`;
+  const hasTombstone = (key: string) => legacyGet(tombstoneKey(key)) !== null;
+  const setTombstone = (key: string) => legacySet(tombstoneKey(key), '1');
+  const clearTombstone = (key: string) => legacyRemove(tombstoneKey(key));
+
+  /** Deletes the Keychain copy; on failure leaves (or keeps) the tombstone. */
+  const removeFromKeychain = async (kc: Keychain, key: string): Promise<void> => {
+    try {
+      await kc.keychainRemove({ key });
+      clearTombstone(key);
+    } catch {
+      setTombstone(key);
+    }
+  };
+
   return {
     async getItem(key) {
-      const kc = keychain();
+      const { kc } = resolveKeychain();
       if (!kc) return legacyGet(key);
+
+      if (hasTombstone(key)) {
+        // Never return or migrate the Keychain value. A localStorage value here can
+        // only be a session setItem wrote after the Keychain failed.
+        await removeFromKeychain(kc, key);
+        return legacyGet(key);
+      }
 
       let stored: string | null;
       try {
@@ -83,35 +110,34 @@ export function createNativeAuthStorage(
     },
 
     async setItem(key, value) {
-      const kc = keychain();
+      const { kc, failed } = resolveKeychain();
       if (!kc) {
         legacySet(key, value);
+        // A broken bridge may have left an older session in the Keychain.
+        if (failed) setTombstone(key);
+        else clearTombstone(key);
         return;
       }
       try {
         await kc.keychainSet({ key, value });
         legacyRemove(key);
+        clearTombstone(key);
       } catch {
         legacySet(key, value);
-        // getItem prefers the Keychain, so an older value left there would shadow
-        // this one (a rotated refresh token that no longer works). Best effort.
-        try {
-          await kc.keychainRemove({ key });
-        } catch {
-          // Keychain unusable right now.
-        }
+        // getItem prefers the Keychain, so an older value left there (a rotated
+        // refresh token, or the previous user's session) would shadow this one.
+        await removeFromKeychain(kc, key);
       }
     },
 
     async removeItem(key) {
       legacyRemove(key);
-      const kc = keychain();
-      if (!kc) return;
-      try {
-        await kc.keychainRemove({ key });
-      } catch {
-        // Best effort: the localStorage copy is already gone.
+      const { kc, failed } = resolveKeychain();
+      if (!kc) {
+        if (failed) setTombstone(key);
+        return;
       }
+      await removeFromKeychain(kc, key);
     },
   };
 }
