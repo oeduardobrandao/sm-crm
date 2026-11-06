@@ -1302,7 +1302,8 @@ export interface EmailBackfillResult {
   inserted: number;
   scanned: number;
   nextCursor: string | null;
-  oldestReached: boolean;
+  /** ISO timestamp of the oldest email reached in this call, or null. */
+  oldestReached: string | null;
   done: boolean;
 }
 

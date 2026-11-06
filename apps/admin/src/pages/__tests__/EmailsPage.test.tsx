@@ -130,14 +130,14 @@ describe('EmailsPage', () => {
         inserted: 10,
         scanned: 10,
         nextCursor: 'c1',
-        oldestReached: false,
+        oldestReached: '2026-09-15T12:00:00Z',
         done: false,
       })
       .mockResolvedValueOnce({
         inserted: 5,
         scanned: 5,
         nextCursor: null,
-        oldestReached: true,
+        oldestReached: '2026-09-02T12:00:00Z',
         done: true,
       });
     const user = userEvent.setup();
@@ -152,10 +152,36 @@ describe('EmailsPage', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Importar' }));
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent(
-        'Importados 15 e-mails, desde 01/10/2026',
+        'Importados 15 e-mails, desde 02/09/2026',
       ),
     );
     expect(api.runEmailBackfill).toHaveBeenNthCalledWith(1, null);
     expect(api.runEmailBackfill).toHaveBeenNthCalledWith(2, 'c1');
+  });
+
+  it('backfill failure mid-loop refetches and reports how many were imported', async () => {
+    const { toast } = await import('sonner');
+    vi.mocked(api.runEmailBackfill)
+      .mockResolvedValueOnce({
+        inserted: 7,
+        scanned: 7,
+        nextCursor: 'c1',
+        oldestReached: null,
+        done: false,
+      })
+      .mockRejectedValueOnce(new Error('boom'));
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByTestId('email-kpi-sent');
+    vi.mocked(api.getEmailMetrics).mockClear();
+    await user.click(screen.getByRole('button', { name: 'Mais ações' }));
+    await user.click(await screen.findByRole('menuitem', { name: /Importar histórico/ }));
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Importar' }),
+    );
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Importados 7 e-mails')),
+    );
+    expect(api.getEmailMetrics).toHaveBeenCalled();
   });
 });

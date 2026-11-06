@@ -70,6 +70,7 @@ export default function EmailsPage() {
   const backfill = (
     <EmailsBackfill
       onMessage={setMessage}
+      formatSince={formatDay}
       onDone={async () => {
         const r = await q.refetch();
         return r.data?.coverage_start ? formatDay(r.data.coverage_start) : null;

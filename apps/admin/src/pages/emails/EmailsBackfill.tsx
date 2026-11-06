@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { History, MoreHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import { PhoneIconButton } from '@mesaas/ios-kit';
@@ -27,40 +27,54 @@ const CONFIRM =
 const MAX_PAGES = 500;
 
 interface Props {
-  /** Runs after the import finishes (refetch); returns the "desde" text. */
+  /** Runs after the import (also after a failure): refetches; returns the coverage "desde" text. */
   onDone: (inserted: number) => Promise<string | null>;
+  /** Formats an ISO timestamp as DD/MM/AAAA. */
+  formatSince: (iso: string) => string;
   onMessage: (message: string | null) => void;
 }
 
 /** Menu "Importar histórico do Resend": confirm dialog, then walks the cursor until done. */
-export function EmailsBackfill({ onDone, onMessage }: Props) {
+export function EmailsBackfill({ onDone, onMessage, formatSince }: Props) {
+  const busy = useRef(false);
   const isPhone = useIsPhone();
   const [confirming, setConfirming] = useState(false);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
 
   async function run() {
+    if (busy.current) return;
+    busy.current = true;
     setConfirming(false);
     setRunning(true);
     setProgress(0);
     onMessage(null);
     let cursor: string | null = null;
     let total = 0;
+    let earliest: string | null = null;
     try {
       for (let page = 0; page < MAX_PAGES; page++) {
         const r = await runEmailBackfill(cursor);
         total += r.inserted;
         setProgress(total);
+        if (r.oldestReached && (!earliest || r.oldestReached < earliest)) {
+          earliest = r.oldestReached;
+        }
         if (r.done) break;
         cursor = r.nextCursor;
       }
-      const since = await onDone(total);
+      const fallback = await onDone(total);
+      const since = earliest ? formatSince(earliest) : fallback;
       const msg = `Importados ${total.toLocaleString('pt-BR')} e-mails${since ? `, desde ${since}` : ''}`;
       onMessage(msg);
       toast.success(msg);
     } catch {
-      toast.error('Não foi possível importar o histórico.');
+      await onDone(total).catch(() => null);
+      toast.error(
+        `Não foi possível importar o histórico. Importados ${total.toLocaleString('pt-BR')} e-mails antes do erro.`,
+      );
     } finally {
+      busy.current = false;
       setRunning(false);
     }
   }
