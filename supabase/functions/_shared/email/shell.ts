@@ -77,11 +77,13 @@ export interface MesaasEmailInput {
   eyebrowTone?: "brand" | "danger";
   sections: string[];
   footerLines: string[];
+  /** Trusted HTML rows (already escaped by the caller), rendered after footerLines and before the tagline. */
+  footerHtml?: string[];
 }
 
 export function mesaasEmail(p: MesaasEmailInput): string {
   const header = `<tr><td class="m-px" style="padding: 28px 40px 24px; border-bottom: 1px solid ${EMAIL.divider};"><img src="${EMAIL_LOGO_URL}" width="158" height="20" alt="Mesaas" style="display: block; border: 0; outline: none; color: ${EMAIL.ink}; font-size: 18px; line-height: 20px; font-weight: 700;"></td></tr>`;
-  const footer = [...p.footerLines.map(escapeHtml), escapeHtml(MESAAS_TAGLINE)]
+  const footer = [...p.footerLines.map(escapeHtml), ...(p.footerHtml ?? []), escapeHtml(MESAAS_TAGLINE)]
     .map((l, i, all) => `<p style="margin: 0 0 ${i === all.length - 1 ? 0 : 6}px; word-break: break-word;">${l}</p>`).join("");
   return documentOpen(p.preheader) + cardOpen() + header +
     sectionRows(p.sections, 36, eyebrowBlock(p.eyebrow, p.eyebrowTone ?? "brand")) +

@@ -81,6 +81,9 @@
     "marketingLabel": "Novidades e dicas do Mesaas",
     "marketingWhen": "marketing ocasional",
     "marketingRecipients": "você (opt-in)",
+    "tipsLabel": "Dicas por e-mail",
+    "tipsWhen": "algumas dicas de uso enquanto você não assina",
+    "tipsRecipients": "você",
     "when": "Quando: {{when}}",
     "recipients": "Quem recebe: {{recipients}}",
     "whenWho": "Quando: {{when}} · Quem recebe: {{recipients}}",
@@ -96,7 +99,7 @@
     "noEmailShort": "Não vira e-mail",
     "emails": {
       "title": "E-mails automáticos",
-      "description": "E-mails que a sua conta envia sozinha, para transparência. Os 3 primeiros são sempre enviados; só o último depende de você.",
+      "description": "E-mails que a sua conta envia sozinha, para transparência. Os 3 primeiros são sempre enviados; os 2 últimos dependem de você.",
       "sameControl": "Mesmo controle que está no seu Perfil.",
       "alwaysSent": "Sempre enviados",
       "dependsOnYou": "Depende de você"
