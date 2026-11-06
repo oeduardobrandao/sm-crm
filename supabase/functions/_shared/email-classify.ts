@@ -43,6 +43,7 @@ export const EMAIL_TYPES: Record<string, EmailCategory> = {
   nurture_a1: "ciclo_de_vida",
   nurture_a2: "ciclo_de_vida",
   nurture_a3: "ciclo_de_vida",
+  nurture_a3_b1: "ciclo_de_vida",
   nurture_a4: "ciclo_de_vida",
   nurture_b1: "ciclo_de_vida",
   nurture_b2: "ciclo_de_vida",
@@ -94,13 +95,19 @@ function trialMatcher(): SubjectMatcher {
 
 function nurtureMatchers(): SubjectMatcher[] {
   const out: SubjectMatcher[] = [];
-  const seen = new Map<string, string>();
+  const a3 = nurtureSubject("a3", { clientCount: 0 });
+  const b1Zero = nurtureSubject("b1", { clientCount: 0 });
+  const a4 = nurtureSubject("a4", { clientCount: 0 });
+  const b4 = nurtureSubject("b4", { clientCount: 0 });
+  // Steps whose subjects collide are one indistinguishable type (a4/b4, a3/b1 with no clients).
+  const shared = (x: string, y: string) => x === y;
   for (const step of NURTURE_STEPS) {
     const s = nurtureSubject(step, { clientCount: 0 });
-    const type = step === "a4" || step === "b4" ? "nurture_a4_b4" : `nurture_${step}`;
-    // a3 and b1 (no clients) share a subject: the first step wins.
-    if (seen.has(s)) continue;
-    seen.set(s, type);
+    let type = `nurture_${step}`;
+    if (step === "a4" || step === "b4") type = shared(a4, b4) ? "nurture_a4_b4" : type;
+    if (step === "a3") type = shared(a3, b1Zero) ? "nurture_a3_b1" : type;
+    if (step === "b1" && shared(a3, b1Zero)) continue;
+    if (step === "b4" && shared(a4, b4)) continue;
     out.push(exact(type, s));
   }
   // b1 with clients: "Você já tem N cliente(s) ..."; N is the only variable part.
@@ -179,10 +186,20 @@ export function normalizeLastEvent(v: string): EmailEvent {
   return "sent";
 }
 
+const SIGNED_EVENTS: ReadonlySet<string> = new Set([
+  "sent",
+  "delivered",
+  "delivery_delayed",
+  "bounced",
+  "complained",
+  "failed",
+  "suppressed",
+]);
+
 export function eventFromWebhookType(t: string): EmailEvent | null {
   if (!t.startsWith("email.")) return null;
   const e = t.slice("email.".length);
-  return e !== "opened" && e !== "clicked" && EVENTS.has(e) ? (e as EmailEvent) : null;
+  return SIGNED_EVENTS.has(e) ? (e as EmailEvent) : null;
 }
 
 export const PII_EVENTS: ReadonlySet<EmailEvent> = new Set<EmailEvent>([

@@ -46,11 +46,11 @@ Deno.test("paridade de assuntos dos builders de nurture (eduardo@)", () => {
   const base = { ...NURTURE_SAMPLE, appBaseUrl: "https://x.test", unsubUrl: "https://x.test/u", whatsappUrl: null };
   for (const step of NURTURE_STEPS) {
     const { subject } = buildNurtureEmail({ ...base, step });
-    // a3 and b1 without clients share one subject; a3 wins.
+    // a3 and b1 without clients share one subject.
     const expected = step === "a4" || step === "b4"
       ? "nurture_a4_b4"
-      : step === "b1" && NURTURE_SAMPLE.clientCount === 0
-      ? "nurture_a3"
+      : step === "a3" || (step === "b1" && NURTURE_SAMPLE.clientCount === 0)
+      ? "nurture_a3_b1"
       : `nurture_${step}`;
     assertEquals(classifyEmail({ from: EDUARDO, subject }).type, expected, step);
   }
@@ -60,7 +60,9 @@ Deno.test("paridade de assuntos dos builders de nurture (eduardo@)", () => {
   }
   const { subject: b1zero } = buildNurtureEmail({ ...base, step: "b1", clientCount: 0 });
   assertEquals(classifyEmail({ from: EDUARDO, subject: b1zero }).category, "ciclo_de_vida");
-  assertEquals(classifyEmail({ from: EDUARDO, subject: b1zero }).type, "nurture_a3");
+  assertEquals(classifyEmail({ from: EDUARDO, subject: b1zero }).type, "nurture_a3_b1");
+  const { subject: a3s } = buildNurtureEmail({ ...base, step: "a3" });
+  assertEquals(classifyEmail({ from: EDUARDO, subject: a3s }).type, "nurture_a3_b1");
 });
 
 Deno.test("paridade de assuntos de ciclo de vida (eduardo@)", () => {
@@ -124,6 +126,7 @@ Deno.test("normalizeLastEvent", () => {
 Deno.test("eventFromWebhookType", () => {
   assertEquals(eventFromWebhookType("email.opened"), null);
   assertEquals(eventFromWebhookType("email.clicked"), null);
+  assertEquals(eventFromWebhookType("email.canceled"), null);
   assertEquals(eventFromWebhookType("domain.created"), null);
   for (
     const e of ["sent", "delivery_delayed", "delivered", "failed", "suppressed", "bounced", "complained"]
