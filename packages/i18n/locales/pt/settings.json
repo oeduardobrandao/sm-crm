@@ -621,5 +621,28 @@
       "rateLimited": "Muitas tentativas. Aguarde um minuto e tente de novo.",
       "generic": "Não foi possível desconectar a conta. Tente de novo."
     }
+  },
+  "nurtureUnsub": {
+    "title": "Parar de receber as dicas do Mesaas?",
+    "body": "Você vai parar de receber os e-mails de dicas. E-mails da sua conta (convites, cobrança, avisos do teste) continuam chegando.",
+    "cta": "Parar de receber",
+    "submitting": "Salvando...",
+    "doneTitle": "Pronto.",
+    "doneBody": "Você não vai mais receber as dicas por e-mail. Dá pra religar em Configurações > Notificações.",
+    "invalidTitle": "Link inválido",
+    "invalidBody": "Este link de descadastro não é válido. Para parar de receber as dicas, entre no Mesaas e desligue em Configurações > Notificações.",
+    "error": "Não foi possível salvar agora. Tente de novo."
+  },
+  "clientUnsub": {
+    "title": "Deixar de receber estes avisos?",
+    "bodyClient": "Você vai parar de receber e-mails de pendências desta agência.",
+    "bodyGuest": "Você vai parar de receber convites e avisos de eventos desta agência neste endereço.",
+    "cta": "Cancelar avisos",
+    "submitting": "Salvando...",
+    "doneTitle": "Pronto.",
+    "doneBody": "Você não vai mais receber estes avisos.",
+    "invalidTitle": "Link inválido",
+    "invalidBody": "Este link não é válido.",
+    "error": "Não foi possível processar seu pedido agora. Tente de novo."
   }
 }

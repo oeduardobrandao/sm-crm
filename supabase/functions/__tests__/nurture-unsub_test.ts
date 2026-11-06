@@ -3,6 +3,7 @@ import {
   signNurtureUnsubToken,
   verifyNurtureUnsubToken,
   nurtureUnsubUrl,
+  nurtureUnsubPageUrl,
 } from "../_shared/nurture-unsub-token.ts";
 import { createNurtureUnsubHandler, type NurtureUnsubDb } from "../nurture-unsub/handler.ts";
 
@@ -67,6 +68,7 @@ Deno.test("token round-trips and rejects tampering", async () => {
 
 Deno.test("nurtureUnsubUrl builds the function path", () => {
   assertEquals(nurtureUnsubUrl("https://x.supabase.co", "tok"), "https://x.supabase.co/functions/v1/nurture-unsub/tok");
+  assertEquals(nurtureUnsubPageUrl("https://www.mesaas.com.br/", "tok"), "https://www.mesaas.com.br/descadastrar/tok");
 });
 
 Deno.test("GET valid token renders confirmation and never writes", async () => {

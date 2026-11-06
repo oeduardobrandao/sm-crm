@@ -275,7 +275,8 @@ function makeDeps(db: ReturnType<typeof makeFakeDb>, overrides?: Partial<Lifecyc
       return Promise.resolve();
     },
     nurtureEnabled: false,
-    nurtureUnsubUrl: (userId) => Promise.resolve(`https://unsub.test/${userId}`),
+    nurtureUnsubLinks: (userId) =>
+      Promise.resolve({ page: `https://app.test/descadastrar/${userId}`, oneClick: `https://unsub.test/${userId}` }),
     whatsappUrl: null,
     sendNurture: (p) => {
       nurtureSent.push({ ...p });
@@ -672,11 +673,13 @@ Deno.test("nurture on sends claimed steps", async () => {
   assertEquals(nurtureSent.length, 1);
   const m = nurtureSent[0];
   const url = `https://unsub.test/${B1.user_id}`;
+  const pageUrl = `https://app.test/descadastrar/${B1.user_id}`;
   assertEquals(m.to, "dona@x.test");
   assertEquals(m.idempotencyKey, "nurture_b1/ws-b1");
   assertEquals(m.headers["List-Unsubscribe"], `<${url}>`);
   assertEquals(m.headers["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click");
-  assert(m.html.includes(url), "html must carry the unsubscribe link");
+  assert(m.html.includes(pageUrl), "footer must link the CRM confirmation page");
+  assert(!m.html.includes(url), "footer must not link the function (gateway serves it as text/plain)");
   assert(m.html.includes("Ana"), "first name from nome");
   assert(m.subject.length > 0);
 
@@ -798,6 +801,7 @@ Deno.test("nurture preview sends 8 without touching ledgers", async () => {
   );
   const previewUrl = "https://unsub.test/00000000-0000-0000-0000-000000000000";
   assert(nurtureSent.every((m) => m.headers["List-Unsubscribe"] === `<${previewUrl}>`));
+  assert(nurtureSent.every((m) => m.html.includes("https://app.test/descadastrar/00000000-0000-0000-0000-000000000000")));
   assertEquals(nurtureSent[0].subject, "Seu primeiro cliente no Mesaas leva 3 minutos");
   assertEquals(db.rpcCalls.length, 0);
   assertEquals(db.fromCalls.length, 0);
@@ -822,7 +826,7 @@ Deno.test("nurture: unsub signing failure is reported, nothing sent, other sweep
   let reported: CronReportDetail | null = null;
   const { deps, nurtureSent } = makeDeps(db, {
     nurtureEnabled: true,
-    nurtureUnsubUrl: () => Promise.reject(new Error("NURTURE_UNSUB_SECRET is required")),
+    nurtureUnsubLinks: () => Promise.reject(new Error("NURTURE_UNSUB_SECRET is required")),
     report: (d: CronReportDetail) => {
       reported = d;
       return Promise.resolve();

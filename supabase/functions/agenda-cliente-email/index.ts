@@ -54,6 +54,13 @@ Deno.serve(createAgendaClienteEmailHandler({
         appBaseUrl,
         tokenSecret: TOKEN_ENCRYPTION_KEY,
         unsubBaseUrl: SUPABASE_URL,
+        unsubPageBaseUrl: (() => {
+          try {
+            return appBaseUrl();
+          } catch {
+            return null;
+          }
+        })(),
         now: () => Date.now(),
       });
       return json({ success: true, ...result });

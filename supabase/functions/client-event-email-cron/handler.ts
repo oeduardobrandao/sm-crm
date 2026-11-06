@@ -86,6 +86,8 @@ import {
   type ClientEventLinha,
   type ClientEventReminder,
   clientEventSubject,
+  clientUnsubFooterUrl,
+  clientUnsubFunctionUrl,
   signUnsubToken,
 } from "../_shared/client-event-email.ts";
 import { sanitizeFromName } from "../_shared/email-headers.ts";
@@ -177,6 +179,11 @@ export interface ClientEventEmailCronDeps {
   tokenSecret: string;
   /** SUPABASE_URL -- the unsub link is `${unsubBaseUrl}/functions/v1/client-email-unsub/<token>`. */
   unsubBaseUrl: string;
+  /**
+   * APP_BASE_URL for the footer's CRM confirmation page (`/cancelar-avisos/`).
+   * null/absent: the footer falls back to the function URL.
+   */
+  unsubPageBaseUrl?: string | null;
   resolveHubUrl: (clienteId: number, contaId: string) => Promise<string>;
   sendEmail: (p: {
     to: string;
@@ -629,7 +636,8 @@ export async function runClientEventEmailCron(
       const logoUrl = branding?.logo_url ?? null;
 
       const unsubToken = await signUnsubToken(row.id, deps.tokenSecret);
-      const unsubUrl = `${deps.unsubBaseUrl}/functions/v1/client-email-unsub/${unsubToken}`;
+      const unsubUrl = clientUnsubFunctionUrl(deps.unsubBaseUrl, unsubToken);
+      const unsubFooterUrl = clientUnsubFooterUrl(deps.unsubPageBaseUrl, deps.unsubBaseUrl, unsubToken);
 
       const html = buildClientEventEmail({
         clienteNome: row.nome,
@@ -639,7 +647,7 @@ export async function runClientEventEmailCron(
         pendingPosts,
         unreadMessages: messages.length,
         hubUrl,
-        unsubUrl,
+        unsubUrl: unsubFooterUrl,
         pendingEvents: reminders,
         linhas: linhas.map((l): ClientEventLinha => ({ periodo: l.periodo, titulo: l.titulo })),
       });

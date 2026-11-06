@@ -21,8 +21,11 @@ trilha B (com cliente: `b1`..`b4`). Spec:
   move). Passou disso (uma falha na sexta às 11h só voltaria na segunda às 9h), o passo é
   abandonado: nem o RPC nem o claim o devolvem, e a sequência daquela pessoa para ali. Perder
   a sequência é aceitável; um e-mail duplicado não.
-- Descadastro em um clique pela function `nurture-unsub` (link no rodapé e no cabeçalho),
-  que grava `profiles.nurture_opt_out_at`. O switch em Configurações > Notificações > E-mails
+- Descadastro pela function `nurture-unsub`, que grava `profiles.nurture_opt_out_at`. O
+  cabeçalho `List-Unsubscribe` aponta direto para ela (One-Click, POST do Gmail). O link do
+  rodapé aponta para a página `/descadastrar/<token>` do CRM, que mostra a confirmação e faz
+  o mesmo POST no botão: o gateway do Supabase entrega o HTML das functions como `text/plain`
+  com CSP `sandbox`, então a página da própria function aparece como código no navegador. O switch em Configurações > Notificações > E-mails
   automáticos faz o mesmo. O claim confere o descadastro de novo antes de cada envio.
 
 ## Variáveis de ambiente (secrets das edge functions)
@@ -63,11 +66,9 @@ temporário>` e apague o arquivo depois.
 4. Merge (frontend: só o switch em Configurações > Notificações > E-mails automáticos).
 5. Prévia manual para o e-mail do Eduardo (abaixo); revisar os 8 no Gmail e no celular.
 6. **Trava antes de ligar:** num dos e-mails da prévia, abra o link "Descadastrar" num
-   navegador, contra a `nurture-unsub` já deployada. Confira que a página aparece como HTML
-   (não como texto cru com as tags à mostra) e que o botão "Parar de receber" leva à página
-   "Pronto.". O link da prévia usa um id que não existe, então nada é gravado. Se o gateway
-   servir a página como `text/plain`, **não ligue a varredura**: o One-Click do cabeçalho
-   (POST do Gmail) continua funcionando, mas quem clica no rodapé não consegue se descadastrar.
+   navegador. Ele leva a `/descadastrar/<token>` no CRM (precisa do deploy da Vercel com essa
+   rota). Confira que a página aparece e que o botão "Parar de receber" leva a "Pronto.". O
+   link da prévia usa um id que não existe, então nada é gravado.
 7. `NURTURE_EMAILS=on`.
 
 ## Prévia manual

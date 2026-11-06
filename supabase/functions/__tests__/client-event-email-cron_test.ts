@@ -1639,3 +1639,28 @@ Deno.test("linha query failure fails the client and releases the lease (nothing 
   assertEquals(db.successCalls.length, 0);
   assertEquals(db.releaseCalls.length, 1);
 });
+
+// --- Unsubscribe footer points at the CRM page ------------------------------
+// The Supabase gateway serves function HTML as text/plain, so the footer link
+// goes to the CRM confirmation page; the List-Unsubscribe header (One-Click
+// POST, never rendered) keeps the function URL.
+
+Deno.test("unsub footer links the CRM page when unsubPageBaseUrl is set; header keeps the function", async () => {
+  const db = makeFromNameDb("Agencia X", 7);
+  const { deps, sent } = makeDeps(db, { unsubPageBaseUrl: "https://app.test/" });
+  await runClientEventEmailCron(deps);
+  assertEquals(sent.length, 1);
+  const token = await signUnsubToken(7, "test-secret");
+  const fnUrl = `https://x.supabase.co/functions/v1/client-email-unsub/${token}`;
+  assert(sent[0].html.includes(`https://app.test/cancelar-avisos/${token}`), "footer must link the CRM page");
+  assert(!sent[0].html.includes(fnUrl), "footer must not link the function");
+  assertEquals(sent[0].headers["List-Unsubscribe"], `<${fnUrl}>`);
+});
+
+Deno.test("unsub footer falls back to the function URL without unsubPageBaseUrl", async () => {
+  const db = makeFromNameDb("Agencia X", 7);
+  const { deps, sent } = makeDeps(db, { unsubPageBaseUrl: null });
+  await runClientEventEmailCron(deps);
+  const token = await signUnsubToken(7, "test-secret");
+  assert(sent[0].html.includes(`https://x.supabase.co/functions/v1/client-email-unsub/${token}`));
+});
