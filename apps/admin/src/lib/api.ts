@@ -246,7 +246,7 @@ export const RESOURCE_LIMIT_LABELS: Record<string, string> = {
   max_instagram_accounts: 'Máx. de contas Instagram',
   max_leads: 'Máx. de leads',
   max_hub_tokens: 'Máx. de tokens do Hub',
-  storage_quota_bytes: 'Armazenamento (bytes)',
+  storage_quota_bytes: 'Armazenamento (GB)',
   max_custom_properties_per_template: 'Máx. de propriedades por modelo',
   max_posts_per_workflow: 'Máx. de posts por fluxo',
   max_workspaces_per_user: 'Máx. de workspaces por usuário',
