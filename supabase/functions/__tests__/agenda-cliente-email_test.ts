@@ -402,6 +402,7 @@ Deno.test("run: no Hub URL sends without a button", async () => {
   await runAgendaClienteEmail(deps);
   assert(!(sent[0][2] as string).includes("Confirmar presença"));
   assertEquals((sent[0][7] as unknown[]).length, 1);
+  assertEquals(sent[0][8], { type: "agenda_cliente" });
 });
 
 Deno.test("run: hostile workspace name cannot inject headers through From", async () => {

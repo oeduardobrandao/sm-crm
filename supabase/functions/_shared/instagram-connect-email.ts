@@ -78,6 +78,9 @@ export async function sendConnectLinkEmail(p: {
     p.idempotencyKey,
     LIFECYCLE_FROM,
     p.replyTo ?? undefined,
+    undefined,
+    undefined,
+    { type: "instagram_connect" },
   );
 }
 
@@ -94,5 +97,10 @@ export async function sendConnectedNoticeEmail(p: {
     CONNECTED_NOTICE_SUBJECT,
     buildConnectedNoticeEmail(p),
     p.idempotencyKey,
+    LIFECYCLE_FROM,
+    undefined,
+    undefined,
+    undefined,
+    { type: "instagram_connected" },
   );
 }

@@ -252,6 +252,7 @@ Deno.serve(async (req) => {
                 to: [clientFlags.email],
                 subject: `Seu relatório de ${monthLabel} está pronto!`,
                 html: emailHtml,
+                tags: [{ name: 'type', value: 'report' }],
               }),
             });
 

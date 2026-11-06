@@ -209,6 +209,4 @@ export const PII_EVENTS: ReadonlySet<EmailEvent> = new Set<EmailEvent>([
   "suppressed",
 ]);
 
-export function tagValue(s: string): string {
-  return s.replace(/[^A-Za-z0-9_-]/g, "_");
-}
+export { tagValue } from "./email-tag.ts";

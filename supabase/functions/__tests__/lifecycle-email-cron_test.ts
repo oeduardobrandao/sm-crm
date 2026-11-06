@@ -249,6 +249,7 @@ function makeDeps(db: ReturnType<typeof makeFakeDb>, overrides?: Partial<Lifecyc
     html: string;
     idempotencyKey: string;
     headers: Record<string, string>;
+    tags: Record<string, string>;
   }> = [];
   const deps: LifecycleCronDeps = {
     db: db as unknown as LifecycleCronDeps["db"],
@@ -676,6 +677,7 @@ Deno.test("nurture on sends claimed steps", async () => {
   const pageUrl = `https://app.test/descadastrar/${B1.user_id}`;
   assertEquals(m.to, "dona@x.test");
   assertEquals(m.idempotencyKey, "nurture_b1/ws-b1");
+  assertEquals(m.tags, { type: "nurture_b1" });
   assertEquals(m.headers["List-Unsubscribe"], `<${url}>`);
   assertEquals(m.headers["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click");
   assert(m.html.includes(pageUrl), "footer must link the CRM confirmation page");
@@ -788,6 +790,10 @@ Deno.test("nurture preview sends 8 without touching ledgers", async () => {
   assertEquals(result.previewSent, 8);
   assertEquals(nurtureSent.length, 8);
   assert(nurtureSent.every((m) => m.to === "e@x"));
+  assertEquals(
+    nurtureSent.map((m) => m.tags.type),
+    ["a1", "a2", "a3", "a4", "b1", "b2", "b3", "b4"].map((s) => `nurture_${s}`),
+  );
   const day = deps.now().toISOString().slice(0, 10);
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("e@x"));
   const who = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0"))

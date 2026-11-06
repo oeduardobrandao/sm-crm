@@ -58,7 +58,7 @@ Deno.serve(createClientEventEmailCronHandler({
         unsubBaseUrl: SUPABASE_URL,
         unsubPageBaseUrl: optionalAppBaseUrl(),
         resolveHubUrl: (clienteId, contaId) => resolveHubUrlImpl(svc, clienteId, contaId),
-        sendEmail: (p) => sendViaResend(p.to, p.subject, p.html, p.idempotencyKey, p.from, undefined, p.headers),
+        sendEmail: (p) => sendViaResend(p.to, p.subject, p.html, p.idempotencyKey, p.from, undefined, p.headers, undefined, p.tags),
         auditLog: (entry) => insertAuditLog(svc, entry),
         report: (detail) => reportCronFailure(svc, CRON_NAME, detail),
       };

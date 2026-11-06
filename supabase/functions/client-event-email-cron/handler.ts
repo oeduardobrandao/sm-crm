@@ -192,6 +192,7 @@ export interface ClientEventEmailCronDeps {
     idempotencyKey: string;
     from: string;
     headers: Record<string, string>;
+    tags: Record<string, string>;
   }) => Promise<void>;
   auditLog: (entry: {
     conta_id: string;
@@ -669,6 +670,7 @@ export async function runClientEventEmailCron(
           "List-Unsubscribe": `<${unsubUrl}>`,
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         },
+        tags: { type: "client_event" },
       });
 
       // `boundIso` (computed above, right after the tie-completed/folded

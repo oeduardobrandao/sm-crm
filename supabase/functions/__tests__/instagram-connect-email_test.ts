@@ -3,6 +3,8 @@ import {
   buildConnectedNoticeEmail,
   buildConnectLinkEmail,
   CONNECT_LINK_SUBJECT,
+  sendConnectedNoticeEmail,
+  sendConnectLinkEmail,
 } from "../_shared/instagram-connect-email.ts";
 
 const BASE = "https://app.mesaas.com.br";
@@ -84,4 +86,39 @@ Deno.test("connect link: eyebrow, steps, fallback link, new shell", () => {
 Deno.test("connected notice: eyebrow and button", () => {
   const html = buildConnectedNoticeEmail({ clienteName: "Clínica", igUsername: "clinica", clienteUrl: "https://app.test/clientes/1", appBaseUrl: "https://app.test" });
   assert(html.includes("Instagram conectado") && html.includes("@clinica") && html.includes("Ver o cliente"));
+});
+
+Deno.test("send functions tag the email: instagram_connect and instagram_connected", async () => {
+  const original = globalThis.fetch;
+  const prevKey = Deno.env.get("RESEND_API_KEY");
+  Deno.env.set("RESEND_API_KEY", "test-key");
+  const tags: unknown[] = [];
+  globalThis.fetch = ((_i: unknown, init?: RequestInit) => {
+    tags.push(JSON.parse(String(init?.body ?? "{}")).tags);
+    return Promise.resolve(new Response("{}", { status: 200 }));
+  }) as typeof fetch;
+  try {
+    await sendConnectLinkEmail({
+      to: "c@x.test",
+      replyTo: "ag@x.test",
+      agencyName: "Ag",
+      clienteName: "Cli",
+      connectUrl: "https://x.test/c",
+      appBaseUrl: BASE,
+      idempotencyKey: "k1",
+    });
+    await sendConnectedNoticeEmail({
+      to: "ag@x.test",
+      clienteName: "Cli",
+      igUsername: "cli",
+      clienteUrl: "https://x.test/clientes/1",
+      appBaseUrl: BASE,
+      idempotencyKey: "k2",
+    });
+  } finally {
+    globalThis.fetch = original;
+    if (prevKey === undefined) Deno.env.delete("RESEND_API_KEY");
+    else Deno.env.set("RESEND_API_KEY", prevKey);
+  }
+  assertEquals(tags, [[{ name: "type", value: "instagram_connect" }], [{ name: "type", value: "instagram_connected" }]]);
 });

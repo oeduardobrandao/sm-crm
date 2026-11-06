@@ -57,6 +57,7 @@ Deno.test("run: sends one e-mail per claimed row with the idempotency key and se
   assertEquals(sent[0][3], `agenda-lembrete:11:u1:10:${epoch}`);
   assertEquals(sent[1][3], `agenda-lembrete:12:u2:1440:${epoch}`);
   assertEquals(sent[0][4], "Mesaas <notificacoes@mesaas.com.br>");
+  assertEquals(sent[0][8], { type: "agenda_lembrete" });
   assert((sent[0][2] as string).includes("/calendario?evento=11"));
   assertEquals(marks().length, 2);
   assertEquals(marks()[0].args, {
