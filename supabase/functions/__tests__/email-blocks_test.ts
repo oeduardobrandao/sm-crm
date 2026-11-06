@@ -84,3 +84,17 @@ Deno.test("signature shows Eduardo's photo from the public asset, at 40x40", () 
   assert(html.includes('width="40" height="40"') && html.includes('alt="Eduardo"'));
   assert(html.includes("Fundador do Mesaas"));
 });
+
+Deno.test("screenshot renders a centered, fixed-width image and escapes alt", () => {
+  const html = B.screenshot({ url: "https://www.mesaas.com.br/email/x.jpg", width: 280, height: 400 }, XSS);
+  assert(html.includes('src="https://www.mesaas.com.br/email/x.jpg"'));
+  assert(html.includes('width="280" height="400"'));
+  assert(html.includes("max-width: 100%") && html.includes("height: auto"));
+  assert(html.includes('align="center"'));
+  assert(!html.includes("<script>") && html.includes("&lt;script&gt;"));
+  assert(!/display:\s*(flex|grid)/.test(html));
+});
+
+Deno.test("screenshot drops the element for an unsafe url", () => {
+  assertEquals(B.screenshot({ url: "javascript:alert(1)", width: 280, height: 400 }, "x"), "");
+});

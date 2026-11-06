@@ -13,12 +13,13 @@ import {
   link,
   paragraph,
   paragraphHtml,
+  screenshot,
   sectionTitle,
   signature,
   spacer,
   steps,
 } from "./email/blocks.ts";
-import { EMAIL } from "./email/tokens.ts";
+import { EMAIL, NURTURE_SHOTS } from "./email/tokens.ts";
 import { escapeHtml } from "./report-template/escape.ts";
 import { sanitizeSubjectValue } from "./lifecycle-emails.ts";
 
@@ -74,6 +75,16 @@ const trialGrid = () =>
     { title: "Clientes sem limite", text: "No Free são 2. No teste, quantos você precisar." },
   ]);
 
+const SHOT_ALT = {
+  clientes: "Tela de clientes do Mesaas no celular, com seis clientes cadastrados.",
+  aprovacoes: "Hub do cliente no celular: quatro posts aguardando aprovação.",
+  aprovar: "Post aberto no Hub do cliente, com os botões Corrigir e Aprovar.",
+  hub: "Página inicial do Hub do cliente no celular, com posts do mês e aprovações pendentes.",
+  relatorios: "Relatórios mensais prontos no Hub do cliente, com opção de baixar o PDF.",
+} as const;
+
+const shot = (key: keyof typeof NURTURE_SHOTS) => screenshot(NURTURE_SHOTS[key], SHOT_ALT[key]);
+
 const trialFine = () =>
   paragraph(
     "O teste pede um cartão, mas você só é cobrado no fim dos 30 dias se continuar. Eu te aviso por e-mail antes da cobrança, e dá pra cancelar em dois cliques.",
@@ -103,7 +114,8 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
         ) +
         paragraph(
           "Com um cliente cadastrado você já consegue montar o calendário editorial dele, organizar as entregas no kanban e guardar briefing e contrato num lugar só.",
-        ),
+        ) +
+        shot("clientes"),
         sectionTitle("Dois jeitos de começar") +
         steps([
           `<strong>Na mão</strong>: nome, Instagram e pronto. Leva uns 3 minutos.${spacer(12)}${button(u("/clientes"), "Cadastrar meu primeiro cliente")}`,
@@ -127,7 +139,8 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
         ) +
         paragraph(
           "No Mesaas cada cliente ganha um Hub: um link com a sua marca onde ele vê os posts da semana, aprova ou pede ajuste em cada um, direto do celular e sem criar conta.",
-        ),
+        ) +
+        shot("aprovacoes"),
         callout(
           "Cada aprovação ou pedido de ajuste já atualiza o status do post no seu kanban. Você para de caçar resposta no WhatsApp.",
         ),
@@ -147,6 +160,7 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
             ? "Dá pra testar o Mesaas inteiro por 30 dias, com todos os recursos dos planos pagos liberados."
             : "Quando você criou sua conta, o Mesaas ainda não tinha teste grátis. Agora tem: 30 dias com todos os recursos dos planos pagos liberados.",
         ) +
+        shot("hub") +
         trialGrid() + spacer(8) + button(u("/comecar"), "Começar meu teste grátis") + trialFine(),
         paragraphHtml(
           "Se ainda não sabe se o Mesaas serve para a sua agência, <strong>me responde contando como você trabalha hoje</strong> que eu digo com sinceridade.",
@@ -190,6 +204,7 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
             ? `Você já cadastrou ${n} clientes, e esse é o limite do plano Free. Para seguir crescendo, e para usar o que o Mesaas tem de melhor, dá pra testar tudo por 30 dias.`
             : "Você já cadastrou seu primeiro cliente. Para usar o que o Mesaas tem de melhor, dá pra testar tudo por 30 dias.",
         ) +
+        shot("hub") +
         trialGrid() + spacer(8) + button(u("/comecar"), "Começar meu teste grátis") + trialFine(),
         paragraphHtml("Ficou alguma dúvida sobre o plano? É só <strong>responder este e-mail</strong>.", "body", "0 0 18px") +
         signature(),
@@ -208,7 +223,8 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
         ) +
         paragraph(
           "Esse é o Hub do cliente. Ele vem com a sua marca, e cada aprovação já atualiza o status do post no seu kanban.",
-        ),
+        ) +
+        shot("aprovar"),
         callout("O Hub, a equipe e o Instagram fazem parte do teste grátis de 30 dias."),
         button(u("/comecar"), "Testar o Hub com meu cliente") + spacer(24) + signature(),
       ];
@@ -227,7 +243,8 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
           p.hasInstagram
             ? "O Instagram de um cliente seu já está conectado, então as métricas já estão sendo atualizadas sozinhas. No teste, o relatório em PDF com a sua marca sai pronto todo mês."
             : "Você conecta o Instagram do cliente uma vez e as métricas passam a ser atualizadas sozinhas, com os melhores horários para postar.",
-        ),
+        ) +
+        shot("relatorios"),
         button(u("/comecar"), "Começar meu teste grátis") + trialFine() + spacer(18) + signature(),
       ];
       break;
