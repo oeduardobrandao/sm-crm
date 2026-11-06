@@ -621,5 +621,16 @@
       "rateLimited": "Too many attempts. Wait a minute and try again.",
       "generic": "Could not disconnect the account. Try again."
     }
+  },
+  "nurtureUnsub": {
+    "title": "Stop receiving Mesaas tips?",
+    "body": "You will stop receiving the tips emails. Account emails (invites, billing, trial notices) keep arriving.",
+    "cta": "Stop receiving",
+    "submitting": "Saving...",
+    "doneTitle": "Done.",
+    "doneBody": "You will no longer receive tips by email. You can turn them back on in Settings > Notifications.",
+    "invalidTitle": "Invalid link",
+    "invalidBody": "This unsubscribe link is not valid. To stop receiving tips, sign in to Mesaas and turn them off in Settings > Notifications.",
+    "error": "Could not save right now. Please try again."
   }
 }

@@ -108,8 +108,13 @@ export interface LifecycleCronDeps {
   // Nurture (owners who never subscribed). Read per run from NURTURE_EMAILS;
   // false skips the sweep entirely (no RPC call).
   nurtureEnabled: boolean;
-  /** Signed one-click unsubscribe URL for a profile id. */
-  nurtureUnsubUrl: (userId: string) => Promise<string>;
+  /**
+   * Signed unsubscribe links for a profile id: `page` is the CRM confirmation
+   * page linked from the footer (the Supabase gateway serves function HTML as
+   * text/plain, so a person cannot use the function URL directly); `oneClick`
+   * is the function URL for the List-Unsubscribe header (RFC 8058 POST).
+   */
+  nurtureUnsubLinks: (userId: string) => Promise<{ page: string; oneClick: string }>;
   whatsappUrl: string | null;
   sendNurture: (p: {
     to: string;
@@ -291,14 +296,14 @@ export async function runNurturePreview(
 ): Promise<{ previewSent: number }> {
   const day = deps.now().toISOString().slice(0, 10);
   const who = await recipientHash(to);
-  const unsubUrl = await deps.nurtureUnsubUrl(PREVIEW_USER_ID);
+  const unsub = await deps.nurtureUnsubLinks(PREVIEW_USER_ID);
   let previewSent = 0;
   for (const step of NURTURE_STEPS) {
     const { subject, html } = buildNurtureEmail({
       ...NURTURE_SAMPLE,
       step,
       appBaseUrl: deps.appBaseUrl,
-      unsubUrl,
+      unsubUrl: unsub.page,
       whatsappUrl: deps.whatsappUrl,
     });
     await deps.sendNurture({
@@ -306,7 +311,7 @@ export async function runNurturePreview(
       subject,
       html,
       idempotencyKey: `nurture_preview/${step}/${day}/${who}`,
-      headers: unsubHeaders(unsubUrl),
+      headers: unsubHeaders(unsub.oneClick),
     });
     previewSent++;
   }
@@ -498,7 +503,7 @@ export async function runLifecycleEmailCron(
 
           // Before the claim: a signing failure (e.g. NURTURE_UNSUB_SECRET
           // missing) is reported without spending a claim attempt.
-          const unsubUrl = await deps.nurtureUnsubUrl(c.user_id);
+          const unsub = await deps.nurtureUnsubLinks(c.user_id);
           const claimed = await deps.db.rpc("claim_nurture_email", {
             p_workspace_id: c.workspace_id,
             p_step: step,
@@ -519,7 +524,7 @@ export async function runLifecycleEmailCron(
             firstClientName: c.first_client_name,
             hasInstagram: c.has_instagram,
             appBaseUrl: deps.appBaseUrl,
-            unsubUrl,
+            unsubUrl: unsub.page,
             whatsappUrl: deps.whatsappUrl,
           });
           await deps.sendNurture({
@@ -527,7 +532,7 @@ export async function runLifecycleEmailCron(
             subject,
             html,
             idempotencyKey: `nurture_${step}/${c.workspace_id}`,
-            headers: unsubHeaders(unsubUrl),
+            headers: unsubHeaders(unsub.oneClick),
           });
           await markNurtureDelivered(deps, c.workspace_id, step, nowIso);
           nurtureSent++;

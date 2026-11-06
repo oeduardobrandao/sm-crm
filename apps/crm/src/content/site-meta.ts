@@ -21,6 +21,7 @@ export const APP_ROUTE_PREFIXES = [
   'workspace-setup',
   'comecar',
   'conectar',
+  'descadastrar',
   'oauth',
   'dashboard',
   'clientes',

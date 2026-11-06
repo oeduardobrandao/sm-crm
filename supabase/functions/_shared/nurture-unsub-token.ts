@@ -59,3 +59,13 @@ export async function verifyNurtureUnsubToken(token: string, secret: string): Pr
 export function nurtureUnsubUrl(supabaseUrl: string, token: string): string {
   return `${supabaseUrl.replace(/\/+$/, "")}/functions/v1/nurture-unsub/${token}`;
 }
+
+/**
+ * Confirmation page in the CRM (`/descadastrar/:token`), linked from the email
+ * footer. The Supabase gateway rewrites function HTML to text/plain with a
+ * sandbox CSP, so the function's own page shows as raw markup; this page POSTs
+ * the token to the function instead.
+ */
+export function nurtureUnsubPageUrl(appBaseUrl: string, token: string): string {
+  return `${appBaseUrl.replace(/\/+$/, "")}/descadastrar/${token}`;
+}

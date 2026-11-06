@@ -5,7 +5,7 @@ import { createJsonResponder } from "../_shared/http.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
 import { appBaseUrl } from "../_shared/app-url.ts";
 import { whatsAppSupportUrl } from "../_shared/whatsapp.ts";
-import { nurtureUnsubUrl, signNurtureUnsubToken } from "../_shared/nurture-unsub-token.ts";
+import { nurtureUnsubPageUrl, nurtureUnsubUrl, signNurtureUnsubToken } from "../_shared/nurture-unsub-token.ts";
 import {
   LIFECYCLE_FROM,
   sendFounderSignupNotice,
@@ -96,8 +96,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
       sendFounderSubscription: sendFounderSubscriptionNotice,
       // Read per run: flipping the secret needs no deploy. Anything but "on" is off.
       nurtureEnabled: Deno.env.get("NURTURE_EMAILS") === "on",
-      nurtureUnsubUrl: async (userId) =>
-        nurtureUnsubUrl(SUPABASE_URL, await signNurtureUnsubToken(userId, nurtureUnsubSecret())),
+      nurtureUnsubLinks: async (userId) => {
+        const token = await signNurtureUnsubToken(userId, nurtureUnsubSecret());
+        return {
+          page: nurtureUnsubPageUrl(appBaseUrl(), token),
+          oneClick: nurtureUnsubUrl(SUPABASE_URL, token),
+        };
+      },
       whatsappUrl: whatsAppSupportUrl({ firstName: null }),
       sendNurture: (p) =>
         sendViaResend(
