@@ -323,5 +323,41 @@
     "untitled": "Untitled post",
     "sendTo": "Send to {{name}}",
     "send": "Send"
+  },
+  "material": {
+    "title": "Request material from the client",
+    "switchLabel": "Request material from the client",
+    "switchHint": "The client sees the list in the Hub and sends the files for each item.",
+    "itemsTitle": "Requested items",
+    "progress": "Requested items · {{done}} of {{total}} with a file",
+    "itemLabel": "Item {{n}} name",
+    "itemLabelPlaceholder": "E.g.: Team photo",
+    "itemDetail": "Item {{n}} detail",
+    "itemDetailPlaceholder": "Detail (optional)",
+    "addItem": "Add item",
+    "save": "Save request",
+    "saving": "Saving…",
+    "needItem": "Add at least one item.",
+    "fileCount_one": "{{count}} file",
+    "fileCount_other": "{{count}} files",
+    "missing": "Missing",
+    "requestedBy": "Requested by {{name}} on {{date}}",
+    "requestedOn": "Requested on {{date}}",
+    "badgeWaiting": "Waiting for material",
+    "badgeReceived": "Material received",
+    "saved": "Material request saved",
+    "cancelled": "Material request cancelled",
+    "moveUp": "Move item {{n}} up",
+    "moveDown": "Move item {{n}} down",
+    "remove": "Remove item {{n}}",
+    "errors": {
+      "invalid_item": "Check the items: each one needs a name.",
+      "items_required": "Add at least one item.",
+      "too_many_items": "A request accepts at most 10 items.",
+      "post_not_requestable": "This post cannot take a material request in its current status.",
+      "forbidden": "You do not have permission to request material.",
+      "not_found": "Post not found.",
+      "generic": "Could not save the request. Try again."
+    }
   }
 }

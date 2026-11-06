@@ -16,7 +16,12 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/context/AuthContext';
-import { deletePostReference, type ReferenceItem } from '@/store/postReferences';
+import {
+  deletePostReference,
+  type CrmMaterialRequest,
+  type ReferenceItem,
+} from '@/store/postReferences';
+import { MaterialRequestEditor } from './MaterialRequestEditor';
 import { ReferenceTile } from './ReferenceTile';
 import { referenceLabel } from './referenceFormat';
 
@@ -24,13 +29,20 @@ export interface PostClientReferencesProps {
   postId: number;
   /** From PostEditorBody's single `usePostReferences` call. */
   references: ReferenceItem[];
+  /** The post's material request (same GET), null when none. */
+  request?: CrmMaterialRequest | null;
   /** Opens the editor's viewer dialog (images and videos). */
   onOpen: (item: ReferenceItem) => void;
 }
 
 /** "Referências do cliente": what the client attached in the Hub. Read-only for the team
  *  except for deletion; renders nothing when there are none (the team cannot add). */
-export function PostClientReferences({ postId, references, onOpen }: PostClientReferencesProps) {
+export function PostClientReferences({
+  postId,
+  references,
+  request = null,
+  onOpen,
+}: PostClientReferencesProps) {
   const { t } = useTranslation('postPanels');
   const qc = useQueryClient();
   const headingId = useId();
@@ -58,65 +70,83 @@ export function PostClientReferences({ postId, references, onOpen }: PostClientR
   });
   useUnsavedWork(removal.isPending);
 
-  if (references.length === 0) return null;
+  const editor = (
+    <MaterialRequestEditor
+      postId={postId}
+      request={request}
+      freeFormCount={references.filter((r) => r.material_item_id == null).length}
+    />
+  );
+
+  if (references.length === 0) return editor;
+
+  const itemLabels = new Map((request?.items ?? []).map((i) => [i.id, i.label]));
 
   return (
-    <section
-      aria-labelledby={headingId}
-      className="space-y-3 rounded-xl border border-[var(--border-color)] bg-[var(--card-bg)] p-3"
-    >
-      <header className="flex flex-wrap items-center gap-2">
-        <Paperclip className="h-4 w-4 text-[var(--text-muted)]" aria-hidden="true" />
-        <h4 id={headingId} className="text-[13px] font-semibold text-[var(--text-main)]">
-          {t('references.title')}
-        </h4>
-        <Badge variant="info" size="sm">
-          {references.length}
-        </Badge>
-        <span className="text-[12px] text-[var(--text-light)]">{t('references.fromHub')}</span>
-      </header>
-
-      <ul className="grid grid-cols-3 gap-3 min-[900px]:grid-cols-4">
-        {references.map((item) => (
-          <li key={item.id} className="min-w-0">
-            <ReferenceTile
-              item={item}
-              canDelete={canDelete}
-              onOpen={onOpen}
-              onDeleteRequest={setPendingDelete}
-            />
-          </li>
-        ))}
-      </ul>
-
-      <AlertDialog
-        open={pendingDelete !== null}
-        onOpenChange={(open) => {
-          if (!open) setPendingDelete(null);
-        }}
+    <div className="space-y-3">
+      {editor}
+      <section
+        aria-labelledby={headingId}
+        className="space-y-3 rounded-xl border border-[var(--border-color)] bg-[var(--card-bg)] p-3"
       >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('references.deleteTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {pendingDelete
-                ? t('references.deleteDescription', { label: referenceLabel(pendingDelete) })
-                : ''}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => {
-                if (pendingDelete) removal.mutate(pendingDelete.id);
-              }}
-            >
-              {t('references.delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </section>
+        <header className="flex flex-wrap items-center gap-2">
+          <Paperclip className="h-4 w-4 text-[var(--text-muted)]" aria-hidden="true" />
+          <h4 id={headingId} className="text-[13px] font-semibold text-[var(--text-main)]">
+            {t('references.title')}
+          </h4>
+          <Badge variant="info" size="sm">
+            {references.length}
+          </Badge>
+          <span className="text-[12px] text-[var(--text-light)]">{t('references.fromHub')}</span>
+        </header>
+
+        <ul className="grid grid-cols-3 gap-3 min-[900px]:grid-cols-4">
+          {references.map((item) => (
+            <li key={item.id} className="min-w-0">
+              <ReferenceTile
+                item={item}
+                materialLabel={
+                  item.material_item_id != null
+                    ? (itemLabels.get(item.material_item_id) ?? null)
+                    : null
+                }
+                canDelete={canDelete}
+                onOpen={onOpen}
+                onDeleteRequest={setPendingDelete}
+              />
+            </li>
+          ))}
+        </ul>
+
+        <AlertDialog
+          open={pendingDelete !== null}
+          onOpenChange={(open) => {
+            if (!open) setPendingDelete(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t('references.deleteTitle')}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {pendingDelete
+                  ? t('references.deleteDescription', { label: referenceLabel(pendingDelete) })
+                  : ''}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => {
+                  if (pendingDelete) removal.mutate(pendingDelete.id);
+                }}
+              >
+                {t('references.delete')}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </section>
+    </div>
   );
 }

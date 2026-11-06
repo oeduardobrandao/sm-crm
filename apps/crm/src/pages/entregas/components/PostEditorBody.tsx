@@ -28,6 +28,7 @@ import { DiscutirNoChat } from '../discussao/DiscutirNoChat';
 import { useDiscussao } from '../discussao/useDiscussao';
 import { Badge } from '@/components/ui/badge';
 import { PostMediaGallery } from './PostMediaGallery';
+import { MaterialStatusBadge } from './references/MaterialRequestEditor';
 import { PostClientReferences } from './references/PostClientReferences';
 import { ReferenceViewerDialog } from './references/ReferenceViewerDialog';
 import { ReferenceChips } from './references/ReferenceChips';
@@ -153,7 +154,6 @@ import type { PhoneEditorChrome, PhoneMenuAction } from './postEditorPhone/types
 // existed).
 // Stable fallback so the per-bubble filter below never sees a new array identity while the
 // references query is disabled (collapsed row) or still loading.
-const EMPTY_REFERENCES: ReferenceItem[] = [];
 const EMPTY_MEDIA_NOTES: MediaNote[] = [];
 const noopAsync = async () => {};
 
@@ -331,7 +331,7 @@ export function PostEditorBody({
 
   // Client references (Hub). One fetch per post feeds the section under the media gallery and
   // the chips on the client's correction bubbles; same expand gate as the media query above.
-  const { data: references = EMPTY_REFERENCES } = usePostReferences(post.id, isExpanded);
+  const { references, request: materialRequest } = usePostReferences(post.id, isExpanded);
   // One viewer for both entry points (tile "Abrir" and bubble chips).
   const [viewingReference, setViewingReference] = useState<ReferenceItem | null>(null);
 
@@ -1047,7 +1047,7 @@ export function PostEditorBody({
             chevron
             onClick={() => (editSuggestion ? setSuggestionOpen(true) : setRoteiroOpen(true))}
           />
-          {references.length > 0 && (
+          {(references.length > 0 || materialRequest != null) && (
             <Cell
               label={t('shared.clientReferences')}
               value={String(references.length)}
@@ -1446,7 +1446,7 @@ export function PostEditorBody({
         />
         {post.id != null && (
           <BottomSheet
-            open={referencesOpen && references.length > 0}
+            open={referencesOpen && (references.length > 0 || materialRequest != null)}
             onOpenChange={setReferencesOpen}
             title={t('shared.clientReferences')}
             detents={['medium', 'large']}
@@ -1454,6 +1454,7 @@ export function PostEditorBody({
             <PostClientReferences
               postId={post.id}
               references={references}
+              request={materialRequest}
               onOpen={setViewingReference}
             />
           </BottomSheet>
@@ -1598,6 +1599,12 @@ export function PostEditorBody({
 
       {statusAutomationHint && <p className="drawer-status-hint">{statusAutomationHint}</p>}
 
+      {materialRequest && (
+        <div>
+          <MaterialStatusBadge request={materialRequest} postStatus={post.status} />
+        </div>
+      )}
+
       {shouldShowPublishErrorBlock(post) && (
         <PublishErrorBlock
           post={post}
@@ -1665,6 +1672,7 @@ export function PostEditorBody({
         <PostClientReferences
           postId={post.id}
           references={references}
+          request={materialRequest}
           onOpen={setViewingReference}
         />
       )}

@@ -6,7 +6,11 @@ import { makeCan, fakeMembership } from '@/test/makeCan';
 import type { ReferenceItem } from '@/store/postReferences';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-vi.mock('@/store/postReferences', () => ({ deletePostReference: vi.fn() }));
+vi.mock('@/store/postReferences', () => ({
+  deletePostReference: vi.fn(),
+  saveMaterialRequest: vi.fn(),
+}));
+vi.mock('@mesaas/app-lifecycle', () => ({ useUnsavedWork: vi.fn() }));
 
 let mockEntregasPerm: 'editar' | 'ver' = 'editar';
 vi.mock('@/context/AuthContext', () => ({
@@ -44,6 +48,7 @@ function ref(overrides: Partial<ReferenceItem> & Pick<ReferenceItem, 'id'>): Ref
     link_title: null,
     link_domain: null,
     note: null,
+    material_item_id: null,
     post_approval_id: null,
     created_at: new Date().toISOString(),
     can_remove: false,
@@ -112,9 +117,41 @@ describe('PostClientReferences', () => {
     mockEntregasPerm = 'editar';
   });
 
-  it('renders nothing when the post has no references', () => {
+  it('shows only the material switch when there are no references (editors)', () => {
+    renderSection([]);
+    expect(screen.queryByRole('region', { name: 'Referências do cliente' })).toBeNull();
+    expect(screen.getByRole('switch', { name: 'Pedir material ao cliente' })).toBeInTheDocument();
+  });
+
+  it('renders nothing without references and without entregas/editar', () => {
+    mockEntregasPerm = 'ver';
     const { container } = renderSection([]);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('names the requested item a file answers on its tile', () => {
+    const qc = new QueryClient();
+    render(
+      <QueryClientProvider client={qc}>
+        <PostClientReferences
+          postId={10}
+          references={[{ ...IMAGE, material_item_id: 7 }]}
+          request={{
+            id: 1,
+            post_id: 10,
+            status: 'aberto',
+            closed_by: null,
+            closed_at: null,
+            opened_by: null,
+            opened_at: '2026-11-06T12:00:00Z',
+            opened_by_name: null,
+            items: [{ id: 7, label: 'Logo', detail: null, position: 0, file_count: 1, done: true }],
+          }}
+          onOpen={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    expect(within(tile(1)).getByText('Logo')).toBeInTheDocument();
   });
 
   it('shows the header with the count and the source', () => {
