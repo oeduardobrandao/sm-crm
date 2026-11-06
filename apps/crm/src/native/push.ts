@@ -54,12 +54,16 @@ export function isNativePushAvailable(): boolean {
 // load is forgotten so the next call retries.
 let pluginModule: Promise<typeof import('@capacitor/push-notifications')> | null = null;
 
-async function loadPushPlugin(): Promise<PushNotificationsPlugin | null> {
+// Returns the plugin wrapped in an object on purpose. Capacitor plugins are proxies
+// that turn ANY property into a native call, `then` included, so resolving an async
+// function with the bare plugin makes the promise call `plugin.then(...)` and never
+// settle. Never return (or await) a plugin object itself.
+async function loadPushPlugin(): Promise<{ plugin: PushNotificationsPlugin } | null> {
   if (!isNativePushAvailable()) return null;
   try {
     pluginModule ??= import('@capacitor/push-notifications');
     const mod = await pluginModule;
-    return mod.PushNotifications;
+    return { plugin: mod.PushNotifications };
   } catch (error) {
     pluginModule = null;
     warn('plugin load failed', error);
@@ -119,7 +123,7 @@ export async function attachNativePushListeners(
     return true;
   };
 
-  const plugin = await loadPushPlugin();
+  const plugin = (await loadPushPlugin())?.plugin;
   if (!plugin) {
     return async () => {
       release();
@@ -157,7 +161,7 @@ export async function attachNativePushListeners(
 
 /** iOS notification permission; 'denied' when the plugin cannot be reached. */
 export async function getPushPermission(): Promise<PushPermission> {
-  const plugin = await loadPushPlugin();
+  const plugin = (await loadPushPlugin())?.plugin;
   if (!plugin) return 'denied';
   try {
     const { receive } = await plugin.checkPermissions();
@@ -202,7 +206,7 @@ export async function onRegistration(token: string): Promise<void> {
 
 /** Asks iOS (the system dialog) and registers with APNs when granted. */
 export async function enableNativePush(): Promise<'granted' | 'denied'> {
-  const plugin = await loadPushPlugin();
+  const plugin = (await loadPushPlugin())?.plugin;
   if (!plugin) return 'denied';
   try {
     const { receive } = await plugin.requestPermissions();
@@ -231,7 +235,7 @@ export async function syncNativePush(): Promise<void> {
     warn('stored token sync failed', error);
   }
 
-  const plugin = await loadPushPlugin();
+  const plugin = (await loadPushPlugin())?.plugin;
   if (!plugin) return;
   try {
     if ((await getPushPermission()) !== 'granted') return;

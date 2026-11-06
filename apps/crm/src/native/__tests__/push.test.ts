@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // mesaasNative.ts run unmocked; only the push plugin and the Supabase client are fakes.
 const { plugin, rpc, events } = vi.hoisted(() => {
   const events: string[] = [];
-  const plugin = {
+  const methods = {
     checkPermissions: vi.fn(),
     requestPermissions: vi.fn(),
     register: vi.fn(async () => {
@@ -15,6 +15,16 @@ const { plugin, rpc, events } = vi.hoisted(() => {
       return { remove: vi.fn(async () => {}) };
     }),
   };
+  // Shaped like Capacitor's registerPlugin() proxy: ANY other property, including
+  // `then`, is a native method call whose promise never settles here. Resolving an
+  // async function with this object would hang, which is the bug this guards against.
+  const plugin = new Proxy(methods, {
+    get(target, prop) {
+      if (prop in target) return target[prop as keyof typeof target];
+      if (prop === '$$typeof') return undefined;
+      return () => new Promise(() => {});
+    },
+  }) as typeof methods;
   return { plugin, rpc: vi.fn(), events };
 });
 
