@@ -259,6 +259,7 @@ Deno.test("post-references: PUT by an own-only member on their own post is 403",
   db.queue("workflow_posts", "select", { data: { id: 99, cliente_id: 5, responsavel_id: 1 }, error: null });
   const res = await makeHandler(db, restricted([4], [1]))(putReq("/requests/99", { open: true, items: [{ label: "Logo" }] }));
   assertEquals(res.status, 403);
+  assertEquals(await readJson(res), { error: "Seu acesso é limitado aos clientes atribuídos." });
   assertEquals(db.calls.find((c) => c.table === "rpc:post_material_request_save"), undefined);
 });
 
@@ -326,4 +327,54 @@ Deno.test("post-references: summary rejects 201 ids and drops ids outside the sc
   assertEquals(db2.calls.find((c) => c.table === "rpc:post_material_summary")?.payload, {
     p_conta: "conta-1", p_post_ids: [1],
   });
+});
+
+Deno.test("post-references: opener name is looked up by profile id only (no conta_id filter)", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", { data: { id: 99, cliente_id: 5, responsavel_id: 1 }, error: null });
+  db.queueRpc("post_material_request_save", { data: { ...REQUEST_DTO, opened_by: "other-user" }, error: null });
+  db.queue("profiles", "select", { data: { nome: "Bia" }, error: null });
+  const res = await makeHandler(db)(putReq("/requests/99", { open: true, items: [{ label: "Logo" }] }));
+  assertEquals((await readJson(res)).request.opened_by_name, "Bia");
+  const lookups = db.calls.filter((c) => c.table === "profiles");
+  const nameLookup = lookups[lookups.length - 1];
+  assertEquals(nameLookup.modifiers.filter((m) => m.method === "eq"), [{ method: "eq", args: ["id", "other-user"] }]);
+});
+
+Deno.test("post-references: a profile read error keeps the name null and the PUT succeeds", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", { data: { id: 99 }, error: null });
+  db.queueRpc("post_material_request_save", { data: REQUEST_DTO, error: null });
+  db.queue("profiles", "select", { data: null, error: { message: "boom" } });
+  const res = await makeHandler(db)(putReq("/requests/99", { open: true, items: [{ label: "Logo" }] }));
+  assertEquals(res.status, 200);
+  assertEquals((await readJson(res)).request.opened_by_name, null);
+});
+
+Deno.test("post-references: a DB error on the PUT post lookup or DELETE pre-select is a generic 500", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", { data: null, error: { message: "db down" } });
+  const res = await makeHandler(db)(putReq("/requests/99", { open: true, items: [{ label: "Logo" }] }));
+  assertEquals(res.status, 500);
+  assertEquals(await readJson(res), { error: "internal" });
+
+  const db2 = createSupabaseQueryMock();
+  setupAuth(db2);
+  db2.queue("post_references", "select", { data: null, error: { message: "db down" } });
+  const res2 = await makeHandler(db2)(req("DELETE", "/7"));
+  assertEquals(res2.status, 500);
+  assertEquals(db2.calls.find((c) => c.table === "rpc:post_reference_team_delete"), undefined);
+});
+
+Deno.test("post-references: a PUT whose RPC raises too_many_items answers 409", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", { data: { id: 99 }, error: null });
+  db.queueRpc("post_material_request_save", { data: null, error: { message: "too_many_items" } });
+  const res = await makeHandler(db)(putReq("/requests/99", { open: true, items: [{ label: "Logo" }] }));
+  assertEquals(res.status, 409);
+  assertEquals(await readJson(res), { error: "too_many_items" });
 });

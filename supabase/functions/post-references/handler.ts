@@ -79,8 +79,10 @@ export function createPostReferencesHandler(deps: PostReferencesHandlerDeps) {
       if (!r) return null;
       let name: string | null = null;
       if (r.opened_by) {
-        const { data: p } = await db.from("profiles").select("nome").eq("id", r.opened_by)
-          .eq("conta_id", contaId).maybeSingle();
+        // profiles.conta_id é o workspace ATIVO do usuário (muda no switch), então não filtra por
+        // ele: opened_by vem do RPC, a partir do chamador, e a linha do pedido já é deste workspace.
+        const { data: p, error } = await db.from("profiles").select("nome").eq("id", r.opened_by).maybeSingle();
+        if (error) console.error("[post-references] opener name:", error);
         name = (p?.nome as string | undefined) ?? null;
       }
       return { ...r, opened_by_name: name };
@@ -150,11 +152,15 @@ export function createPostReferencesHandler(deps: PostReferencesHandlerDeps) {
       if (postId === null) return send(referenceError("not_found"));
       const canEdit = await hasPermissionFor(db, user.id, contaId, "entregas", "editar");
       if (!canEdit) return json({ error: "forbidden" }, 403);
-      const { data: post } = await db.from("workflow_posts")
+      const { data: post, error: postErr } = await db.from("workflow_posts")
         .select("id, cliente_id, responsavel_id").eq("id", postId).eq("conta_id", contaId).maybeSingle();
+      if (postErr) {
+        console.error("[post-references] put post lookup:", postErr);
+        return send(referenceError("internal"));
+      }
       const vis = post ? rowVisibility(scope, post, user.id) : "hidden";
       if (vis === "hidden") return send(referenceError("not_found"));
-      if (vis !== "visible") return json({ error: "forbidden" }, 403);
+      if (vis !== "visible") return json({ error: CLIENT_SCOPE_MESSAGE }, 403);
 
       let body: unknown;
       try {
@@ -192,8 +198,12 @@ export function createPostReferencesHandler(deps: PostReferencesHandlerDeps) {
       const canEdit = await hasPermissionFor(db, user.id, contaId, "entregas", "editar");
       if (!canEdit) return json({ error: "forbidden" }, 403);
 
-      const { data: ref } = await db.from("post_references")
+      const { data: ref, error: refErr } = await db.from("post_references")
         .select("post_id, kind").eq("id", refId).eq("conta_id", contaId).maybeSingle();
+      if (refErr) {
+        console.error("[post-references] delete lookup:", refErr);
+        return send(referenceError("internal"));
+      }
       if (!ref) return send(referenceError("not_found"));
 
       if (!scope.all) {
