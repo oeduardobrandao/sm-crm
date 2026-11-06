@@ -84,19 +84,21 @@ Migration version above main's tail at PR time (see `migration-version-guard`).
 | `status` | text NOT NULL | CHECK in `('aberto','concluido','cancelado')` |
 | `closed_by` | text NULL | CHECK in `('auto','client','team','system')`; NULL iff `status = 'aberto'` (CHECK) |
 | `closed_at` | timestamptz NULL | NULL iff `status = 'aberto'` |
-| `opened_by` | uuid NULL | `auth.users` ON DELETE SET NULL (nullable on purpose: auth-user deletes) |
+| `opened_by` | uuid NULL | `auth.users` ON DELETE SET NULL (nullable on purpose: auth-user deletes). Rewritten on every reopen, with `opened_at`: "Pedido por {nome} em {data}" shows the current opening |
 | `opened_at` | timestamptz NOT NULL DEFAULT now() | updated on reopen |
 | `created_at` / `updated_at` | timestamptz | `updated_at` trigger |
 
-`UNIQUE (post_id)`. Index on `(conta_id, status)`.
+`UNIQUE (post_id)`, plus `UNIQUE (id, post_id, conta_id)` as the target of the items FK.
+Index on `(conta_id, status)`.
 
 ### `post_material_items`
 
 | column | type | notes |
 |---|---|---|
 | `id` | bigserial PK | |
-| `request_id` | bigint NOT NULL | FK → `post_material_requests` ON DELETE CASCADE |
-| `post_id`, `conta_id` | | denormalised for the reference check and scope predicates |
+| `request_id` | bigint NOT NULL | composite FK `(request_id, post_id, conta_id)` → `post_material_requests(id, post_id, conta_id)` ON DELETE CASCADE |
+| `post_id` | bigint NOT NULL | denormalised; the composite FK pins it to the request's post |
+| `conta_id` | uuid NOT NULL | denormalised; same |
 | `label` | text NOT NULL | 1–120 chars (trimmed) |
 | `detail` | text NULL | ≤ 300 chars |
 | `position` | int NOT NULL | 0-based order |
@@ -110,11 +112,17 @@ Hub disables "Enviar" with "Este post chegou ao limite de 10 arquivos. Envie o r
 link ou toque em Enviei o que tenho." (links count too, so the realistic way out is
 "Enviei o que tenho"). The CRM editor hides "Adicionar item" at the same bound (my call).
 
+Items also get `UNIQUE (id, post_id, conta_id)` as the target of the reference FK.
+
 ### `post_references.material_item_id`
 
-`bigint NULL REFERENCES post_material_items(id) ON DELETE SET NULL`, indexed. Deleting an
-item keeps its files as plain references (they still show in "Referências do cliente").
-The insert RPCs guarantee the item belongs to the same `post_id`.
+`bigint NULL`, indexed, with composite FK `(material_item_id, post_id, conta_id)` →
+`post_material_items(id, post_id, conta_id)` `ON DELETE SET NULL (material_item_id)`
+(Postgres 15+ column list, so the delete nulls only the item column, never `post_id` or
+`conta_id`). The database, not only the RPCs, guarantees that a reference, its item, the
+item's request and the post all belong together, the same way `post_references` already
+pins post and file to its workspace. Deleting an item keeps its files as plain references
+(they still show in "Referências do cliente").
 
 ### Access
 
@@ -165,8 +173,10 @@ serialise per post.
 - **`post_reference_can_remove`** (changed). An item file (`material_item_id IS NOT NULL`)
   is removable by the client while the request is `aberto`, whatever the post status. Rows
   without an item keep today's rule. Once the request closes, item files lock like
-  references do after the team answers. `post_reference_client_delete` must use the same
-  rule (it calls `can_remove` today; confirm).
+  references do after the team answers. `post_reference_client_delete` and
+  `post_reference_client_update` (note edit) both call this predicate under the post lock,
+  so while the request is open the client can also edit the note on their own item file.
+  That is intended (my call): it's their file, and the note helps the team.
 - **`post_reference_list`** (changed): add `material_item_id` to the returned columns. A
   `RETURNS TABLE` change needs `DROP FUNCTION` + `CREATE` + re-grant in the migration.
 - **`post_reference_team_delete(p_conta, p_ref_id)`** (new). The CRM `DELETE /:id` today
@@ -218,6 +228,13 @@ serialise per post.
   Map the new errors (`item_required`, `request_closed`) to 409 with generic copy.
 - **`POST /requests/:postId/close`** (new, debits `hub-write`): calls
   `post_material_client_close`.
+- **Error contract, end to end.** Extend `ReferenceErrorCode` and `REFERENCE_ERROR_STATUS`
+  in `_shared/post-references.ts`, the RPC-exception mapper that turns `P0001` messages into
+  codes, and the Hub client's accepted error-code set with: `item_required` (409),
+  `request_closed` (409), `nothing_sent` (409), `too_many_items` (409),
+  `items_required` (400), `post_not_requestable` (409), `invalid_item` (400, label/detail
+  out of bounds). Each gets Hub or CRM copy. A code missing from any layer degrades to a
+  generic 500, so the Deno tests assert each one's status.
 - Ownership stays "the post's own `cliente_id`/`conta_id` match the token" (404, never 403).
 
 `hub-posts` is **not** changed: drafts never enter `posts`, so Postagens, the calendar and
@@ -227,11 +244,15 @@ through `GET /requests`, which keeps decision 4 enforceable in one place.
 ### `post-references` (changed, CRM, JWT)
 
 Same auth and client-scope handling it has today. CORS `Access-Control-Allow-Methods`
-gains `PUT` (today `GET, DELETE, OPTIONS`).
+gains `PUT` (today `GET, DELETE, OPTIONS`, `handler.ts:42`), and the CRM wrapper
+`callPostReferences` in `apps/crm/src/store/postReferences.ts` (typed `'GET' | 'DELETE'`, no
+body) gains `PUT` with a JSON body. Without both, the browser `PUT` fails.
 
 - **`GET ?post_id`**: adds `material_item_id` per item and `request` (status, closed_by,
   closed_at, opened_by name, items with `file_count`).
-- **`PUT /requests/:postId`** (new): body `{ open, items }` → `post_material_request_save`.
+- **`PUT /requests/:postId`** (new): body `{ open: boolean, items: [{id?, label, detail?}] }`
+  → `post_material_request_save`. 200 `{ request }` (same shape as in `GET`); errors use the
+  shared codes above (400 bad body, 403 permission/scope, 404 post, 409 state).
   Requires `hasPermissionFor(…, 'entregas', 'editar')` and the post visible in the caller's
   scope with full access (same rule as the delete route: "é dele" does not grant it, since
   opening a request exposes the post to the client). Own-only members see the request
@@ -369,3 +390,6 @@ migration can stay.
 - A team delete that empties an item reopens a concluded request.
 - Push notification on, like `post_client_reference`.
 - Opening a request needs full client access; "é dele" members see it read-only.
+- While a request is open the client can edit the note on their item files, not only
+  remove them.
+- `opened_by`/`opened_at` show the latest opening, not the first.
