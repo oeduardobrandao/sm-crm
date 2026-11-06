@@ -115,9 +115,18 @@ export function useWorkspaceLimits() {
   // null workspace — outside an AuthProvider (e.g. in isolated component tests).
   const auth = useContext(AuthContext);
   const workspaceId = auth?.profile?.conta_id ?? null;
+  // Signed out, there is nothing to fetch (the call would only throw "Not authenticated").
+  // It also matters for sign-out itself: in the iOS app the Keychain delete is async, so
+  // React renders with `user: null` before AuthContext's `queryClient.clear()`. A fetch
+  // started in that window was dropped from the cache mid-flight and ProtectedRoute's
+  // observer kept reading `isLoading` forever: a skeleton instead of /login. Disabled,
+  // the query reports not-loading and ProtectedRoute redirects. No AuthProvider (isolated
+  // component tests) keeps the old behaviour.
+  const signedIn = auth ? auth.user !== null : true;
   const { data, isLoading, isSuccess } = useQuery({
     queryKey: ['workspace-limits', workspaceId],
     queryFn: fetchWorkspaceLimits,
+    enabled: signedIn,
     staleTime: 5 * 60 * 1000,
     retry: 2,
   });
