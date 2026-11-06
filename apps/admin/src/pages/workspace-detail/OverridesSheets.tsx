@@ -14,6 +14,7 @@ import {
 import { formatBytes } from '../workspace-detail-view';
 import { AdminFormSheet } from '../../components/shell/AdminFormSheet';
 import { cn } from '../../lib/utils';
+import { gbInputToBytes, useGbText } from '../../lib/storage-units';
 import { useIsPhone } from '../../hooks/useIsPhone';
 
 const LIMITS_DESCRIPTION = 'Valores diferentes do plano viram override deste workspace.';
@@ -192,12 +193,10 @@ function LimitRow({
   isOverridden: boolean;
   onChange: (val: string) => void;
 }) {
-  // Byte quotas are unreadable as raw digits; show them humanized under the label.
+  // Byte quotas are edited in GB; the edit state (and the saved override) stays in bytes.
   const isBytes = fieldKey.endsWith('_bytes');
   const fmt = (n: number | null) => (n == null ? '—' : isBytes ? formatBytes(n) : String(n));
-  const current = value.trim() === '' ? null : Number(value);
-  const humanized =
-    isBytes && current != null && Number.isFinite(current) ? `${formatBytes(current)} · ` : '';
+  const [gbText, setGbText] = useGbText(value.trim() === '' ? null : Number(value));
   const inputId = `limit-${fieldKey}`;
   const noteId = `${inputId}-note`;
   return (
@@ -211,7 +210,6 @@ function LimitRow({
             <span id={noteId} className="phone-cell__subtitle">
               {/* Inner span: the kit's subtitle colour is unlayered and beats a utility on it. */}
               <span className={isOverridden ? 'text-primary' : undefined}>
-                {humanized}
                 {isOverridden ? 'Override · ' : ''}plano: {fmt(planValue)}
               </span>
             </span>
@@ -219,14 +217,19 @@ function LimitRow({
           <input
             id={inputId}
             type="number"
-            inputMode="numeric"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
+            inputMode={isBytes ? 'decimal' : 'numeric'}
+            step={isBytes ? 'any' : undefined}
+            value={isBytes ? gbText : value}
+            onChange={(e) => {
+              if (!isBytes) return onChange(e.target.value);
+              setGbText(e.target.value);
+              onChange(String(gbInputToBytes(e.target.value) ?? ''));
+            }}
             aria-describedby={noteId}
             className={cn(
               'min-w-0 shrink-0 rounded-[6px] border-0 bg-transparent p-0 text-right text-[17px] tabular-nums text-[color:var(--phone-label-secondary)] outline-none focus-visible:ring-2 focus-visible:ring-ring',
               NO_STEPPER,
-              isBytes ? 'w-32' : 'w-20',
+              'w-20',
               isOverridden && 'font-semibold text-primary',
             )}
           />

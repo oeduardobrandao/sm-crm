@@ -13,6 +13,7 @@ import { useIsPhone } from '../../hooks/useIsPhone';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Switch } from '../../components/ui/switch';
+import { gbInputToBytes, useGbText } from '../../lib/storage-units';
 import { parseIntInput, type FormState } from '../plan-form';
 
 export const PLAN_FORM_ID = 'plan-form';
@@ -50,6 +51,31 @@ export function PlanFormFields({
   const enabledCount = FEATURE_FLAG_KEYS.filter((k) => form.features[k]).length;
   const setResource = (key: string, raw: string) =>
     setForm((f) => ({ ...f, resources: { ...f.resources, [key]: parseLimit(raw) } }));
+  // Storage is stored in bytes but edited in GB; every other resource limit is a plain count.
+  const [storageText, setStorageText] = useGbText(form.resources.storage_quota_bytes);
+  const resourceInput = (key: string) =>
+    key === 'storage_quota_bytes'
+      ? {
+          type: 'number',
+          inputMode: 'decimal' as const,
+          step: 'any',
+          min: 0,
+          placeholder: '∞',
+          value: storageText,
+          onChange: (e: ChangeEvent<HTMLInputElement>) => {
+            setStorageText(e.target.value);
+            setForm((f) => ({
+              ...f,
+              resources: { ...f.resources, [key]: gbInputToBytes(e.target.value) },
+            }));
+          },
+        }
+      : {
+          type: 'number',
+          placeholder: '∞',
+          value: form.resources[key] ?? '',
+          onChange: (e: ChangeEvent<HTMLInputElement>) => setResource(key, e.target.value),
+        };
   const setRate = (key: string, raw: string) =>
     setForm((f) => ({ ...f, rates: { ...f.rates, [key]: parseLimit(raw) } }));
   const setFeature = (key: string, checked: boolean) =>
@@ -151,13 +177,7 @@ export function PlanFormFields({
           <Grid cols="repeat(3,1fr)">
             {RESOURCE_LIMIT_KEYS.map((key) => (
               <Field key={key} label={RESOURCE_LIMIT_LABELS[key]}>
-                <Input
-                  type="number"
-                  placeholder="∞"
-                  value={form.resources[key] ?? ''}
-                  onChange={(e) => setResource(key, e.target.value)}
-                  className={FIELD}
-                />
+                <Input {...resourceInput(key)} className={FIELD} />
               </Field>
             ))}
           </Grid>
@@ -264,16 +284,7 @@ export function PlanFormFields({
 
       <GroupedList header="Limites de recursos" footer="Deixe vazio para ilimitado (∞).">
         {RESOURCE_LIMIT_KEYS.map((key) => (
-          <FormRow
-            key={key}
-            label={RESOURCE_LIMIT_LABELS[key]}
-            input={{
-              type: 'number',
-              placeholder: '∞',
-              value: form.resources[key] ?? '',
-              onChange: (e) => setResource(key, e.target.value),
-            }}
-          />
+          <FormRow key={key} label={RESOURCE_LIMIT_LABELS[key]} input={resourceInput(key)} />
         ))}
       </GroupedList>
 
