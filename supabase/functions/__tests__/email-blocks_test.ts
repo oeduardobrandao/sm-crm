@@ -77,3 +77,10 @@ Deno.test("no flex/grid layout in any block", () => {
     B.eventCard({ mes: "OUT", dia: "1", tileColor: "#12151a", titulo: "t", lines: ["l"] })].join("");
   assert(!/display:\s*(flex|grid)/.test(all));
 });
+
+Deno.test("signature shows Eduardo's photo from the public asset, at 40x40", () => {
+  const html = B.signature();
+  assert(html.includes('src="https://www.mesaas.com.br/eduardo-email.jpg"'));
+  assert(html.includes('width="40" height="40"') && html.includes('alt="Eduardo"'));
+  assert(html.includes("Fundador do Mesaas"));
+});

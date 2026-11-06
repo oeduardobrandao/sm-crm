@@ -28,6 +28,9 @@ export const FONT_STACK = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Se
 /** Same asset in every environment; `www.` because the bare domain answers 308. */
 export const EMAIL_LOGO_URL = "https://www.mesaas.com.br/logo-black-email.png";
 
+/** Eduardo's photo for `signature()` (160x160 JPEG, shown at 40x40). `public/eduardo-email.jpg`. */
+export const EMAIL_FOUNDER_PHOTO_URL = "https://www.mesaas.com.br/eduardo-email.jpg";
+
 export const DEFAULT_BRAND_COLOR = "#eab308";
 
 export type BadgeTone = "danger" | "warning" | "info" | "success" | "neutral";
