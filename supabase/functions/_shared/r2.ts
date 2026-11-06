@@ -1,5 +1,15 @@
 // supabase/functions/_shared/r2.ts
-import { S3Client, HeadObjectCommand, DeleteObjectCommand, ListObjectsV2Command, CopyObjectCommand } from "npm:@aws-sdk/client-s3@3.637.0";
+import {
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  CopyObjectCommand,
+  CreateMultipartUploadCommand,
+  DeleteObjectCommand,
+  HeadObjectCommand,
+  ListObjectsV2Command,
+  S3Client,
+  UploadPartCopyCommand,
+} from "npm:@aws-sdk/client-s3@3.637.0";
 import { getSignedUrl } from "npm:@aws-sdk/s3-request-presigner@3.637.0";
 import { PutObjectCommand, GetObjectCommand } from "npm:@aws-sdk/client-s3@3.637.0";
 
@@ -103,8 +113,12 @@ export async function headObject(key: string): Promise<{ contentLength: number; 
  * correção é assinar E enviar, nunca omitir. Uma cópia real responde XML
  * <CopyObjectResult>; corpo sem isso = PUT vazio, e falhar alto aqui é o que
  * impede a regressão silenciosa. */
+function copySourceHeader(sourceKey: string): string {
+  return `${getBucket()}/${encodeURIComponent(sourceKey).replace(/%2F/g, "/")}`;
+}
+
 async function copyViaSignedFetch(sourceKey: string, destKey: string): Promise<Response> {
-  const copySource = `${getBucket()}/${encodeURIComponent(sourceKey).replace(/%2F/g, "/")}`;
+  const copySource = copySourceHeader(sourceKey);
   const cmd = new CopyObjectCommand({
     Bucket: getBucket(),
     CopySource: copySource,
@@ -124,10 +138,171 @@ async function copyViaSignedFetch(sourceKey: string, destKey: string): Promise<R
 /** Cópia SEM apagar a origem (metade "copy" do trashObject). Lança em falha,
  * inclusive no 200-sem-CopyObjectResult (ver copyViaSignedFetch). */
 export async function copyObjectSigned(sourceKey: string, destKey: string): Promise<void> {
+  if (await copyObjectSized(sourceKey, destKey) === "missing") {
+    throw new Error("r2 copy failed: 404");
+  }
+}
+
+// Objects above SINGLE_COPY_MAX_BYTES are copied with a multipart copy instead of one
+// CopyObject. R2 does a single CopyObject server-side and only answers when it's done,
+// and for big videos that takes longer than any timeout we can afford: a 679 MB .mp4
+// timed out at 30s on every attempt and dead-lettered its file_deletions row
+// (prod 2026-10-28, row 2526). Copying in ranged parts keeps each request short and
+// bounded no matter how large the object is.
+export const SINGLE_COPY_MAX_BYTES = 100 * 1024 * 1024;
+// R2 requires every part except the last to be the same size (min 5 MiB).
+export const COPY_PART_BYTES = 64 * 1024 * 1024;
+const COPY_PART_CONCURRENCY = 4;
+const COPY_PART_TIMEOUT_MS = 60_000;
+const MULTIPART_CONTROL_TIMEOUT_MS = 30_000;
+
+/** Copies sourceKey to destKey, picking single vs multipart copy by size. Returns
+ * "missing" when the source doesn't exist (404); throws on any other failure. Same
+ * contract as copyViaSignedFetch for the single path: a 200 without
+ * <CopyObjectResult> is a silent empty PUT and is treated as failure. */
+export async function copyObjectSized(
+  sourceKey: string,
+  destKey: string,
+  errorPrefix = "r2 copy failed",
+): Promise<"copied" | "missing"> {
+  // headObjectSigned returns null on 404 AND on any other failure. Either way the
+  // single-copy path below gives the authoritative answer (its 404 means missing), so a
+  // flaky HEAD only costs a possibly-too-slow single copy, never a wrong result.
+  const head = await headObjectSigned(sourceKey);
+  if (head && head.contentLength > SINGLE_COPY_MAX_BYTES) {
+    await multipartCopy(sourceKey, destKey, head.contentLength, head.contentType);
+    return "copied";
+  }
   const res = await copyViaSignedFetch(sourceKey, destKey);
   const bodyText = await res.text().catch(() => "");
+  if (res.status === 404) return "missing";
   if (!res.ok || !bodyText.includes("<CopyObjectResult")) {
-    throw new Error(`r2 copy failed: ${res.status}${bodyText ? ` ${bodyText.slice(0, 300)}` : ""}`);
+    throw new Error(`${errorPrefix}: ${res.status}${bodyText ? ` ${bodyText.slice(0, 300)}` : ""}`);
+  }
+  return "copied";
+}
+
+function xmlTag(body: string, tag: string): string | null {
+  const m = body.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`));
+  return m ? m[1] : null;
+}
+
+/** Splits [0, size) into equal-size inclusive byte ranges (last one shorter). */
+export function copyPartRanges(size: number, partBytes = COPY_PART_BYTES): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  for (let start = 0; start < size; start += partBytes) {
+    ranges.push([start, Math.min(start + partBytes, size) - 1]);
+  }
+  return ranges;
+}
+
+/** Multipart copy via presign + plain fetch: same reason as copyViaSignedFetch (the
+ * SDK transport hangs on the edge runtime), and the same signing rule: the
+ * x-amz-copy-source* headers must be SIGNED and SENT, never hoisted to the query.
+ * Aborts the upload on any failure so no incomplete parts are left behind. */
+async function multipartCopy(
+  sourceKey: string,
+  destKey: string,
+  size: number,
+  contentType: string | null,
+): Promise<void> {
+  const bucket = getBucket();
+  const createUrl = await getSignedUrl(
+    getR2(),
+    new CreateMultipartUploadCommand({
+      Bucket: bucket,
+      Key: destKey,
+      ...(contentType ? { ContentType: contentType } : {}),
+    }),
+    { expiresIn: 300 },
+  );
+  const createRes = await fetch(createUrl, {
+    method: "POST",
+    headers: contentType ? { "content-type": contentType } : {},
+    signal: AbortSignal.timeout(MULTIPART_CONTROL_TIMEOUT_MS),
+  });
+  const createBody = await createRes.text().catch(() => "");
+  const uploadId = createRes.ok ? xmlTag(createBody, "UploadId") : null;
+  if (!uploadId) {
+    throw new Error(`r2 multipart create failed: ${createRes.status} ${createBody.slice(0, 300)}`);
+  }
+
+  try {
+    const copySource = copySourceHeader(sourceKey);
+    const ranges = copyPartRanges(size);
+    const etags: string[] = new Array(ranges.length);
+    let next = 0;
+    let failed = false;
+    const worker = async () => {
+      // Stop handing out parts once any part fails: the upload is about to be aborted.
+      while (!failed && next < ranges.length) {
+        const i = next++;
+        const range = `bytes=${ranges[i][0]}-${ranges[i][1]}`;
+        const url = await getSignedUrl(
+          getR2(),
+          new UploadPartCopyCommand({
+            Bucket: bucket,
+            Key: destKey,
+            UploadId: uploadId,
+            PartNumber: i + 1,
+            CopySource: copySource,
+            CopySourceRange: range,
+          }),
+          {
+            expiresIn: 300,
+            unhoistableHeaders: new Set(["x-amz-copy-source", "x-amz-copy-source-range"]),
+          },
+        );
+        const res = await fetch(url, {
+          method: "PUT",
+          headers: { "x-amz-copy-source": copySource, "x-amz-copy-source-range": range },
+          signal: AbortSignal.timeout(COPY_PART_TIMEOUT_MS),
+        });
+        const body = await res.text().catch(() => "");
+        const etag = res.ok ? xmlTag(body, "ETag") : null;
+        if (!etag) {
+          failed = true;
+          throw new Error(`r2 part copy ${i + 1}/${ranges.length} failed: ${res.status} ${body.slice(0, 300)}`);
+        }
+        etags[i] = etag;
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(COPY_PART_CONCURRENCY, ranges.length) }, worker),
+    );
+
+    const completeUrl = await getSignedUrl(
+      getR2(),
+      new CompleteMultipartUploadCommand({ Bucket: bucket, Key: destKey, UploadId: uploadId }),
+      { expiresIn: 300 },
+    );
+    // ETags are reused exactly as R2 returned them inside its XML (already escaped).
+    const xml = "<CompleteMultipartUpload>" +
+      etags.map((etag, i) => `<Part><PartNumber>${i + 1}</PartNumber><ETag>${etag}</ETag></Part>`).join("") +
+      "</CompleteMultipartUpload>";
+    const completeRes = await fetch(completeUrl, {
+      method: "POST",
+      body: xml,
+      signal: AbortSignal.timeout(MULTIPART_CONTROL_TIMEOUT_MS),
+    });
+    const completeBody = await completeRes.text().catch(() => "");
+    // S3-style APIs can answer 200 with an <Error> body on complete; require the result tag.
+    if (!completeRes.ok || !completeBody.includes("<CompleteMultipartUploadResult")) {
+      throw new Error(`r2 multipart complete failed: ${completeRes.status} ${completeBody.slice(0, 300)}`);
+    }
+  } catch (e) {
+    try {
+      const abortUrl = await getSignedUrl(
+        getR2(),
+        new AbortMultipartUploadCommand({ Bucket: bucket, Key: destKey, UploadId: uploadId }),
+        { expiresIn: 300 },
+      );
+      const res = await fetch(abortUrl, { method: "DELETE", signal: AbortSignal.timeout(10_000) });
+      await res.body?.cancel();
+    } catch (_abortError) {
+      // Best effort: the original error is what matters for file_deletions.last_error.
+    }
+    throw e;
   }
 }
 
@@ -160,25 +335,16 @@ export async function trashObject(key: string): Promise<void> {
   // is the documented edge-runtime hang path, and this function sits on the
   // deletion drains — a hang here stalls every queue. The copy-source signing
   // contract (signed header, sent on the fetch) lives in copyViaSignedFetch.
-  const res = await copyViaSignedFetch(key, `trash/${key}`);
-  // 404 = the source is already gone — either a previous attempt moved it to
-  // trash/ before a downstream step failed, or the object never existed. In
-  // both cases there is nothing left to preserve, so the retry must proceed
-  // (deleteObject below also treats 404 as done). Without this, a partially
-  // successful drain row retries into a copy-404 forever, exhausts its
-  // attempts, and the Stream delete behind it is never reached.
-  const bodyText = await res.text().catch(() => "");
-  if (res.status !== 404) {
-    // Diagnostic: R2's XML error body names the actual rejection (e.g.
-    // SignatureDoesNotMatch vs AccessDenied) that a bare status code can't
-    // distinguish — surfaced via file_deletions.last_error for the next failure.
-    // A 200 whose body lacks <CopyObjectResult> is a copy the R2 silently
-    // downgraded to an empty PUT (the 2026-08→09 zero-byte-trash bug): treat
-    // it as failure BEFORE deleting the original, or the undo window is a lie.
-    if (!res.ok || !bodyText.includes("<CopyObjectResult")) {
-      throw new Error(`r2 trash copy failed: ${res.status}${bodyText ? ` ${bodyText.slice(0, 300)}` : ""}`);
-    }
-  }
+  // copyObjectSized picks a multipart copy for large objects (see SINGLE_COPY_MAX_BYTES)
+  // and keeps the single-copy contract for the rest: a 200 without <CopyObjectResult>
+  // is a copy R2 silently downgraded to an empty PUT (the 2026-08→09 zero-byte-trash
+  // bug), so it throws BEFORE the original is deleted, or the undo window is a lie.
+  // "missing" (404) = the source is already gone, either because a previous attempt
+  // moved it to trash/ before a downstream step failed, or because it never existed.
+  // Nothing is left to preserve, so the retry proceeds (deleteObject treats 404 as
+  // done). Without this, a partly successful drain row retries into a copy-404
+  // forever, runs out of attempts, and the Stream delete behind it never runs.
+  await copyObjectSized(key, `trash/${key}`, "r2 trash copy failed");
   await deleteObject(key);
 }
 
