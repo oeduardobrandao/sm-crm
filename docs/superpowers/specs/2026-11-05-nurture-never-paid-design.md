@@ -15,18 +15,18 @@ de 30 dias (e daí a assinar), e que continua rodando para todo cadastro novo.
 | | |
 |---|---|
 | Workspaces (sem demo, sem `plan_source = manual`) | 104 |
-| Donos que nunca assinaram (sem `ever_subscribed_at`, status fora de active/trialing/past_due) | **68** |
-| ... sem nenhum cliente cadastrado | 35 |
-| ... com cliente, sem assinar | 33 |
+| Donos que nunca assinaram (predicado de `hasEverSubscribed`, ver Elegibilidade) | **59** (59 pessoas, um workspace cada) |
+| ... sem nenhum cliente cadastrado | 33 |
+| ... com cliente, sem assinar | 26 |
 | ... cadastrados antes do trial-first (2026-10-27) e que **nunca viram a oferta de teste** | 60 |
 | ... com `marketing_opt_in = true` | 29 |
 | ... com telefone | 55 |
 | ... que entraram no app nos últimos 14 dias | 9 |
 | Cadastros novos que nunca pagam, por mês | ~18 |
 
-A maior alavanca: 60 dos 68 nunca souberam que existe teste grátis de 30 dias com tudo
+Os números de cohort, consentimento e telefone abaixo da linha 59 foram medidos com um filtro mais largo (68) e servem de ordem de grandeza. A maior alavanca: a grande maioria nunca souberam que existe teste grátis de 30 dias com tudo
 liberado. O teste é por workspace e vale para qualquer um que nunca assinou
-(`resolveTrialDays` em `_shared/trial.ts`), então todos os 68 são elegíveis.
+(`resolveTrialDays` em `_shared/trial.ts`), então todos os 59 são elegíveis.
 
 ### Estado atual
 
@@ -58,7 +58,7 @@ e-mail passa a exigir `marketing_opt_in = true`.
 1. Todo dono que nunca assinou recebe uma sequência curta (4 e-mails em ~2,5 semanas)
    adequada ao estágio dele.
 2. Medir quantos começam o teste a partir dela.
-3. Os 68 atuais entram sem disparar 68 e-mails no mesmo minuto.
+3. Os 59 atuais entram sem disparar 68 e-mails no mesmo minuto.
 4. Cadastros novos entram sozinhos, depois do boas-vindas.
 
 ## Non-goals
@@ -103,8 +103,19 @@ Um dono entra/continua se **todas** valem:
   e o envio, não envia (ex-membro nunca recebe nome de workspace nem de cliente);
 - o workspace não é demo (`demo_created_at is null`);
 - `plan_source` diferente de `manual`;
-- o workspace nunca assinou: `workspace_subscriptions.ever_subscribed_at is null` e status
-  fora de `active`, `trialing`, `past_due` (sem linha conta como nunca assinou);
+- o workspace nunca assinou, pelo **mesmo predicado do checkout** (`hasEverSubscribed`,
+  `_shared/billing-logic.ts:55`): `ever_subscribed_at`, `stripe_subscription_id` e
+  `pagarme_subscription_id` todos nulos (e não ex-demo), além de status fora de `active`,
+  `trialing`, `past_due`; sem linha em `workspace_subscriptions` conta como nunca assinou.
+  `ever_subscribed_at` sozinho não basta: o `stripe-webhook` não o grava, então um teste
+  Stripe cancelado depois de 2026-08-12 passaria e receberia oferta de teste que o checkout
+  recusa;
+- a pessoa não é dona de **nenhum** workspace que já assinou (quem paga em outro workspace
+  não recebe "comece seu teste"; 0 casos hoje);
+- no momento do envio, o workspace ativo da pessoa (`profiles.conta_id`) é o workspace da
+  sequência. O `/comecar` age sobre o workspace ativo e não há troca de workspace por link,
+  então sem essa regra o CTA abriria o workspace errado. Minha escolha: evita mexer no
+  frontend; hoje todos têm um workspace só;
 - o boas-vindas foi entregue há pelo menos 72h (`lifecycle_emails` `welcome`,
   `delivered_at`; na prática é o próprio cap de frequência abaixo);
 - o perfil não se descadastrou do nurture (`profiles.nurture_opt_out_at is null`, coluna nova);
@@ -114,7 +125,7 @@ Um dono entra/continua se **todas** valem:
   workspace em que ela é dona hoje. O ledger atual não grava o destinatário desses dois,
   então a regra usa o dono atual; minha escolha, aceitável porque só serve para espaçar;
 - o workspace tem no máximo 180 dias. Mais velho que isso não entra (conta abandonada,
-  risco de reputação maior que o ganho). Minha escolha; ajustável. Hoje todos os 68 cabem.
+  risco de reputação maior que o ganho). Minha escolha; ajustável. Hoje todos os 59 cabem.
 
 Dono com mais de um workspace que nunca assinou: **uma sequência por pessoa**, sobre o
 workspace criado mais recentemente. Quem já tem qualquer linha de nurture (em qualquer
@@ -181,7 +192,7 @@ começou teste ou assinou; descadastrou; workspace apagado.
 - Só envia de segunda a sexta, das 9h às 11h59 em America/Sao_Paulo. O cron continua a cada
   15 min; fora da janela a RPC devolve vazio.
 - No máximo **15 entradas novas por dia** (A1 ou B1 de quem nunca recebeu nurture; migração
-  A → B não conta). Passos seguintes não contam. Os 68 atuais levam ~5 dias úteis para
+  A → B não conta). Passos seguintes não contam. Os 59 atuais levam ~5 dias úteis para
   entrar; ordem: quem entrou no app mais recentemente primeiro
   (`auth.users.last_sign_in_at desc nulls last`). Volume baixo protege a reputação do
   domínio e deixa o Eduardo responder as respostas.
@@ -213,7 +224,7 @@ começou teste ou assinou; descadastrou; workspace apagado.
 - O ledger `lifecycle_emails` diz quem recebeu o quê e quando; `workspace_subscriptions`
   diz quem começou teste. Conversão = começou teste até 14 dias depois do último nurture
   entregue. Query documentada em `docs/nurture-emails.md` (runbook novo).
-- Sem tela nova no Admin nesta fase. Para 68 pessoas a query basta. Minha escolha.
+- Sem tela nova no Admin nesta fase. Para 59 pessoas a query basta. Minha escolha.
 
 ### Arquitetura
 
@@ -228,7 +239,7 @@ pg_cron (lifecycle-email-cron, 15 min)
 - **RPC `get_nurture_candidates()`** (SECURITY DEFINER, EXECUTE só `service_role`; REVOKE
   nomeando `anon` e `authenticated`, não só `PUBLIC`) devolve no
   máximo um passo por usuário por chamada: `user_id`, `workspace_id`, `email`, `nome`,
-  `workspace_name`, `email_type` (`nurture_a1`..`nurture_b4`), `client_count`,
+  `workspace_name`, `workspace_created_at` (variação do A3), `email_type` (`nurture_a1`..`nurture_b4`), `client_count`,
   `first_client_name`, `has_instagram`. Toda regra de elegibilidade, janela de horário, cota
   diária e cap de 72h vive aqui, não no Deno, como nas RPCs atuais.
 - **Ledger novo `nurture_emails`**, não `lifecycle_emails`: colunas `workspace_id`, `step`
@@ -241,7 +252,7 @@ pg_cron (lifecycle-email-cron, 15 min)
   (>1h), limite de tentativas e Idempotency-Key `nurture_<passo>/<workspace_id>` seguem o
   protocolo do handler atual.
 - **Builders** em `_shared/nurture-emails.ts`: uma função pura por passo, testável.
-- **`sendViaResend`** ganha suporte a headers extras (List-Unsubscribe).
+- **`sendViaResend`** já aceita `headers` (`lifecycle-emails.ts:321`): só passar o List-Unsubscribe.
 - **Rodapé com link:** `mesaasEmail` escapa `footerLines` (`email/shell.ts`), então o link de
   descadastro precisa de um campo novo de rodapé em HTML (ex. `footerHtml`), montado com
   `link()` para o href passar pelo mesmo tratamento dos outros blocos.
