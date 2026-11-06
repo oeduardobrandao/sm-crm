@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { NOTIFICATION_CATALOG, CATEGORY_ORDER, CATEGORY_LABELS } from '@/lib/notification-catalog';
+import { toast } from 'sonner';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 
 // The tab branches on the viewport; this suite asserts the desktop markup.
@@ -379,6 +380,68 @@ describe('NotificacoesTab', () => {
 
       rejectSave(new Error('save failed'));
       await waitFor(() => expect(marketingSwitch.checked).toBe(true));
+    });
+  });
+
+  describe('Dicas por e-mail', () => {
+    it.each([
+      ['null', null, true],
+      ['a timestamp', '2026-11-01T00:00:00Z', false],
+    ])('tips switch reflects nurture_opt_out_at = %s', async (_n, value, checked) => {
+      mockUseAuth.mockReturnValue({
+        user: { id: 'user-1' },
+        profile: { id: 'user-1', marketing_opt_in: true, nurture_opt_out_at: value },
+        refetchProfile,
+        workspaceRole: 'owner',
+        can: makeCan(fakeMembership({ role: 'owner' })),
+      });
+      renderTab();
+      const sw = (await screen.findByRole('switch', {
+        name: 'Dicas por e-mail',
+      })) as HTMLInputElement;
+      expect(sw.checked).toBe(checked);
+    });
+
+    it('toggling tips off stamps the opt-out, and back on clears it', async () => {
+      renderTab();
+      const sw = await screen.findByRole('switch', { name: 'Dicas por e-mail' });
+      fireEvent.click(sw);
+      await waitFor(() =>
+        expect(mockSupabaseUpdate).toHaveBeenCalledWith({
+          nurture_opt_out_at: expect.any(String),
+        }),
+      );
+      expect(mockSupabaseEq).toHaveBeenCalledWith('id', 'user-1');
+      await waitFor(() => expect(refetchProfile).toHaveBeenCalledTimes(1));
+
+      fireEvent.click(sw);
+      await waitFor(() =>
+        expect(mockSupabaseUpdate).toHaveBeenLastCalledWith({ nurture_opt_out_at: null }),
+      );
+      await waitFor(() => expect(refetchProfile).toHaveBeenCalledTimes(2));
+    });
+  });
+
+  describe('Dicas por e-mail rollback', () => {
+    it('flips the tips switch optimistically and rolls back with an error toast if the save fails', async () => {
+      let rejectSave: (err: Error) => void = () => {};
+      mockSupabaseEq.mockReturnValue(
+        new Promise((_resolve, reject) => {
+          rejectSave = reject;
+        }),
+      );
+      renderTab();
+      const sw = (await screen.findByRole('switch', {
+        name: 'Dicas por e-mail',
+      })) as HTMLInputElement;
+      expect(sw.checked).toBe(true);
+
+      fireEvent.click(sw);
+      await waitFor(() => expect(sw.checked).toBe(false));
+
+      rejectSave(new Error('save failed'));
+      await waitFor(() => expect(sw.checked).toBe(true));
+      expect(toast.error).toHaveBeenCalled();
     });
   });
 

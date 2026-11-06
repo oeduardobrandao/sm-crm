@@ -17,15 +17,23 @@ import {
   formatChargeDate,
   formatFirstCharge,
 } from "../_shared/lifecycle-emails.ts";
+import { buildNurtureEmail, NURTURE_SAMPLE, type NurtureStep } from "../_shared/nurture-emails.ts";
 
 interface DbResult<T> {
   data: T | null;
   error: { message: string } | null;
 }
 
-/** The two supabase-js surfaces this handler touches. */
+/** The supabase-js surfaces this handler touches. */
 export interface LifecycleDb {
-  rpc(name: string): Promise<DbResult<unknown>>;
+  rpc(name: string, args?: Record<string, unknown>): PromiseLike<DbResult<unknown>>;
+  from(table: "nurture_emails"): {
+    update(patch: { delivered_at: string }): {
+      eq(col: "workspace_id", val: string): {
+        eq(col: "step", val: string): PromiseLike<{ error: { message: string } | null }>;
+      };
+    };
+  };
   from(table: "lifecycle_emails"): {
     upsert(
       row: {
@@ -97,6 +105,19 @@ export interface LifecycleCronDeps {
     html: string;
     idempotencyKey: string;
   }) => Promise<void>;
+  // Nurture (owners who never subscribed). Read per run from NURTURE_EMAILS;
+  // false skips the sweep entirely (no RPC call).
+  nurtureEnabled: boolean;
+  /** Signed one-click unsubscribe URL for a profile id. */
+  nurtureUnsubUrl: (userId: string) => Promise<string>;
+  whatsappUrl: string | null;
+  sendNurture: (p: {
+    to: string;
+    subject: string;
+    html: string;
+    idempotencyKey: string;
+    headers: Record<string, string>;
+  }) => Promise<void>;
   report: (detail: CronReportDetail) => Promise<void>;
 }
 
@@ -133,6 +154,37 @@ interface TrialReminderCandidate {
   billing_interval: string | null;
   first_charge_at: string;
   attempts: number;
+}
+
+interface NurtureCandidate {
+  user_id: string;
+  workspace_id: string;
+  email: string | null;
+  nome: string | null;
+  workspace_name: string;
+  workspace_created_at: string;
+  email_type: string;
+  step: string;
+  attempts: number;
+  client_count: number;
+  first_client_name: string | null;
+  has_instagram: boolean;
+}
+
+const NURTURE_STEPS: readonly NurtureStep[] = ["a1", "a2", "a3", "a4", "b1", "b2", "b3", "b4"];
+
+function isNurtureStep(s: string): s is NurtureStep {
+  return (NURTURE_STEPS as readonly string[]).includes(s);
+}
+
+/** Fixed profile id for preview unsubscribe links (matches no real profile). */
+const PREVIEW_USER_ID = "00000000-0000-0000-0000-000000000000";
+
+function unsubHeaders(url: string): Record<string, string> {
+  return {
+    "List-Unsubscribe": `<${url}>`,
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  };
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -195,14 +247,87 @@ async function markDelivered(
   }
 }
 
+async function markNurtureDelivered(
+  deps: LifecycleCronDeps,
+  workspaceId: string,
+  step: NurtureStep,
+  nowIso: string,
+): Promise<void> {
+  const { error } = await deps.db
+    .from("nurture_emails")
+    .update({ delivered_at: nowIso })
+    .eq("workspace_id", workspaceId)
+    .eq("step", step);
+  // Same as markDelivered: the stale claim retries with the same key.
+  if (error) {
+    console.error(
+      `[lifecycle-email-cron] nurture delivered_at update failed for ${workspaceId}/${step}:`,
+      error.message,
+    );
+  }
+}
+
+/** First 12 hex chars of sha256(lowercased, trimmed address). */
+async function recipientHash(to: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(to.trim().toLowerCase()),
+  );
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 12);
+}
+
+/**
+ * Manual preview: the 8 nurture emails with sample data to one address. Never
+ * reads the kill switch nor touches the database, so it works with the sweep
+ * off (deploy step 5). The day and a recipient hash in the key dedupe a double
+ * click to the same address without blocking a same-day preview to another one
+ * (Resend answers 409 on a reused key and sendViaResend treats it as success).
+ */
+export async function runNurturePreview(
+  deps: LifecycleCronDeps,
+  to: string,
+): Promise<{ previewSent: number }> {
+  const day = deps.now().toISOString().slice(0, 10);
+  const who = await recipientHash(to);
+  const unsubUrl = await deps.nurtureUnsubUrl(PREVIEW_USER_ID);
+  let previewSent = 0;
+  for (const step of NURTURE_STEPS) {
+    const { subject, html } = buildNurtureEmail({
+      ...NURTURE_SAMPLE,
+      step,
+      appBaseUrl: deps.appBaseUrl,
+      unsubUrl,
+      whatsappUrl: deps.whatsappUrl,
+    });
+    await deps.sendNurture({
+      to,
+      subject,
+      html,
+      idempotencyKey: `nurture_preview/${step}/${day}/${who}`,
+      headers: unsubHeaders(unsubUrl),
+    });
+    previewSent++;
+  }
+  return { previewSent };
+}
+
 export async function runLifecycleEmailCron(
   deps: LifecycleCronDeps,
 ): Promise<
-  { welcomeSent: number; thanksSent: number; trialRemindersSent: number; failed: number }
+  {
+    welcomeSent: number;
+    thanksSent: number;
+    trialRemindersSent: number;
+    nurtureSent: number;
+    failed: number;
+  }
 > {
   let welcomeSent = 0;
   let thanksSent = 0;
   let trialRemindersSent = 0;
+  let nurtureSent = 0;
   const errors: Array<{ accountId?: string; error?: string }> = [];
 
   // --- Welcome sweep -------------------------------------------------------
@@ -350,9 +475,75 @@ export async function runLifecycleEmailCron(
     }
   }
 
+  // --- Nurture sweep -------------------------------------------------------
+  // Owners who never subscribed. Every eligibility rule, quota and cap lives
+  // in get_nurture_candidates; claim_nurture_email re-checks the recipient is
+  // still the owner and refuses (null) a delivered, fresh or exhausted claim.
+  // Both RPCs get the same clock so a claim can never be judged at a different
+  // instant than the read that produced it.
+  if (deps.nurtureEnabled) {
+    const nowIso = deps.now().toISOString();
+    const nurture = await deps.db.rpc("get_nurture_candidates", { p_now: nowIso });
+    if (nurture.error) {
+      errors.push({ error: `nurture candidates: ${nurture.error.message}` });
+    } else {
+      for (const c of (nurture.data ?? []) as NurtureCandidate[]) {
+        try {
+          const step = c.step;
+          if (!isNurtureStep(step)) {
+            throw new Error(`nurture: unknown step ${String(step)}`);
+          }
+          const to = (c.email ?? "").trim();
+          if (!to) throw new Error(`nurture_${step}: candidate has no email`);
+
+          // Before the claim: a signing failure (e.g. NURTURE_UNSUB_SECRET
+          // missing) is reported without spending a claim attempt.
+          const unsubUrl = await deps.nurtureUnsubUrl(c.user_id);
+          const claimed = await deps.db.rpc("claim_nurture_email", {
+            p_workspace_id: c.workspace_id,
+            p_step: step,
+            p_recipient_user_id: c.user_id,
+            p_now: nowIso,
+          });
+          if (claimed.error) throw new Error(`nurture claim failed: ${claimed.error.message}`);
+          // Refused (owner changed, already delivered, claim in flight, budget
+          // spent): not an error, just not ours to send.
+          if (claimed.data == null) continue;
+
+          const { subject, html } = buildNurtureEmail({
+            step,
+            firstName: firstNameFrom(c.nome),
+            workspaceName: c.workspace_name,
+            workspaceCreatedAt: c.workspace_created_at,
+            clientCount: c.client_count,
+            firstClientName: c.first_client_name,
+            hasInstagram: c.has_instagram,
+            appBaseUrl: deps.appBaseUrl,
+            unsubUrl,
+            whatsappUrl: deps.whatsappUrl,
+          });
+          await deps.sendNurture({
+            to,
+            subject,
+            html,
+            idempotencyKey: `nurture_${step}/${c.workspace_id}`,
+            headers: unsubHeaders(unsubUrl),
+          });
+          await markNurtureDelivered(deps, c.workspace_id, step, nowIso);
+          nurtureSent++;
+        } catch (e) {
+          errors.push({
+            accountId: c.workspace_id,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
+    }
+  }
+
   if (errors.length > 0) {
     console.error(`[lifecycle-email-cron] ${errors.length} failure(s)`, errors);
     await deps.report({ failed: errors.length, errors });
   }
-  return { welcomeSent, thanksSent, trialRemindersSent, failed: errors.length };
+  return { welcomeSent, thanksSent, trialRemindersSent, nurtureSent, failed: errors.length };
 }

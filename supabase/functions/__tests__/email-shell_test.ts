@@ -36,3 +36,18 @@ Deno.test("brandedEmail: brand band kept, unsafe logo dropped, bad colour defaul
   assert(bad.includes("background: #eab308"));
   assert(!b.includes("box-shadow"), "card shadow should be gone");
 });
+
+Deno.test("mesaasEmail: footerHtml rows render unescaped after footerLines, before the tagline", () => {
+  const h = mesaasEmail({
+    preheader: "p",
+    eyebrow: "e",
+    sections: ["<p>A</p>"],
+    footerLines: ["L <x>"],
+    footerHtml: ['<a href="https://u">Descadastrar</a>'],
+  });
+  const line = h.indexOf("L &lt;x&gt;");
+  const anchor = h.indexOf('<a href="https://u">Descadastrar</a>');
+  const tag = h.indexOf(MESAAS_TAGLINE);
+  assert(line >= 0 && anchor >= 0 && tag >= 0);
+  assert(line < anchor && anchor < tag);
+});

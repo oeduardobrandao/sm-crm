@@ -23,6 +23,11 @@ export function marketingLabel(): string {
   return i18n.t('settings:notifications.marketingLabel');
 }
 
+/** Label of the nurture-tips opt-out e-mail. */
+export function tipsLabel(): string {
+  return i18n.t('settings:notifications.tipsLabel');
+}
+
 /**
  * The marketing opt-in of "E-mails automáticos", wired to the same
  * `profiles.marketing_opt_in` field as PerfilTab. Shared by the desktop section and
@@ -62,5 +67,36 @@ export function useEmailsAutomaticos() {
     },
   });
 
-  return { marketingOptIn, saveMarketing: saveMarketing.mutate };
+  // Tips (nurture sequence) are on unless profiles.nurture_opt_out_at is stamped.
+  const [tipsEnabled, setTipsEnabled] = useState(profile?.nurture_opt_out_at == null);
+  useEffect(() => {
+    setTipsEnabled(profile?.nurture_opt_out_at == null);
+  }, [profile]);
+
+  const saveTips = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ nurture_opt_out_at: enabled ? null : new Date().toISOString() })
+        .eq('id', user!.id);
+      if (error) throw error;
+      await refetchProfile();
+    },
+    onMutate: (enabled: boolean) => {
+      const prev = tipsEnabled;
+      setTipsEnabled(enabled);
+      return { prev };
+    },
+    onError: (_err, _enabled, ctx) => {
+      if (ctx) setTipsEnabled(ctx.prev);
+      toast.error(i18n.t('settings:notifications.saveError'));
+    },
+  });
+
+  return {
+    marketingOptIn,
+    saveMarketing: saveMarketing.mutate,
+    tipsEnabled,
+    saveTips: saveTips.mutate,
+  };
 }
