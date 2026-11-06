@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Branch `feat/ios-native-d1-d3` from `origin/main` **after #668 is merged** (the native half edits files that only exist on #668's tree).
-- Version line: `@capacitor/core` **8.5.3** in both `apps/crm/package.json` and `apps/mobile/package.json`; `@capacitor/push-notifications` **8.1.3** in both (the CRM needs the JS, `cap sync` discovers native plugins from `apps/mobile`'s deps). One lockfile.
+- Version line: `@capacitor/core` **8.5.3** in both the root `package.json` (where the CRM's dependencies live) and `apps/mobile/package.json`; `@capacitor/push-notifications` **8.1.3** in both (the CRM needs the JS, `cap sync` discovers native plugins from `apps/mobile`'s deps). One lockfile.
 - Nothing under `apps/crm/src/native/` may touch `window`, `document`, `localStorage` or import `@capacitor/*` at module scope. Every Capacitor import is a dynamic `import()` inside a function that first checked `isNativeApp()`. The SSR prerender bundle is single-file and runs every module's top level in Node (`landing-prerender-smoke`).
 - The landing render stays hydration-stable: no `isNativeApp()` branch during render of a prerendered page; in-app redirects run in `useEffect`.
 - Keep CSS class-name string literals out of `native/platform.ts` and anything public code imports (`cssSplitBoundary.test.ts`).
@@ -79,7 +79,7 @@ Task 1 first (it adds every dependency, so no later task touches the lockfile). 
 
 **Files:**
 - Create: `apps/crm/src/native/platform.ts`, `apps/crm/src/native/mesaasNative.ts`
-- Modify: `apps/crm/package.json`, `apps/mobile/package.json`, `package-lock.json`
+- Modify: `package.json` (root), `apps/mobile/package.json`, `package-lock.json`
 - Test: `apps/crm/src/native/__tests__/platform.test.ts`, `apps/crm/src/native/__tests__/mesaasNative.test.ts`
 
 **Interfaces:**
@@ -92,7 +92,7 @@ Task 1 first (it adds every dependency, so no later task touches the lockfile). 
 - [ ] **Step 1: Write failing tests.** `platform.test.ts`: no `window.Capacitor` → `isNativeApp() === false`, `nativePlatform() === null`; stub `window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'ios' }` → `true` / `'ios'`; stub `isNativePlatform: () => false` → `false`. `mesaasNative.test.ts` (stub `window.Capacitor`): not native → `null`; native + `isPluginAvailable('MesaasNative')` false → `null`; native + available → `window.Capacitor.Plugins.MesaasNative`.
 - [ ] **Step 2: Run** `npx vitest run apps/crm/src/native` → FAIL (modules missing).
 - [ ] **Step 3: Implement both modules.** `platform.ts` has no imports and no module-scope reads.
-- [ ] **Step 4: Dependencies.** `npm install -w apps/crm @capacitor/core@8.5.3 @capacitor/push-notifications@8.1.3 --save-exact` and `npm install -w apps/mobile @capacitor/push-notifications@8.1.3 --save-exact`. Check `git diff package-lock.json` adds only `@capacitor/push-notifications` and workspace links (no unrelated bumps).
+- [ ] **Step 4: Dependencies.** `npm install --save-exact @capacitor/core@8.5.3 @capacitor/push-notifications@8.1.3` (the CRM's dependencies live in the root `package.json`) and `npm install -w apps/mobile @capacitor/push-notifications@8.1.3 --save-exact`. Check `git diff package-lock.json` adds only `@capacitor/push-notifications` and workspace links (no unrelated bumps).
 - [ ] **Step 5: Run** `npx vitest run apps/crm/src/native` → PASS; `npx tsc -p apps/crm/tsconfig.json --noEmit` → clean.
 - [ ] **Step 6: Bundle and prerender check.** `npm run build && npm run prerender` (the SSR bundle is single-file with `noExternal`, so a module-scope `registerPlugin` would run in Node), then `grep -l "registerPlugin" dist/assets/index-*.js` → no match.
 - [ ] **Step 7: Commit** `feat(native): detecção do app e wrapper do plugin MesaasNative`.
