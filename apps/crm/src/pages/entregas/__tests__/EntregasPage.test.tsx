@@ -22,6 +22,9 @@ vi.mock('../hooks/useEntregasData', () => ({
   useEntregasData: vi.fn(),
 }));
 
+// The material summary is a TanStack query; this suite has no QueryClientProvider.
+vi.mock('../hooks/useMaterialSummary', () => ({ useMaterialSummary: () => new Map() }));
+
 vi.mock('../hooks/useActivePosts', () => ({
   useActivePosts: vi.fn(() => ({ posts: [], isLoading: false })),
 }));

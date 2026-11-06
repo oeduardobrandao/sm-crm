@@ -154,6 +154,9 @@ import {
   statusKeyToPatch,
   type StatusKey,
 } from '../statusRegistry';
+import { useMaterialSummary } from '../hooks/useMaterialSummary';
+import { materialBadge, type MaterialBadgeData } from '../materialSummary';
+import { MaterialBadge } from './MaterialBadge';
 import { useSuggestionMoveGuard } from '../hooks/useSuggestionMoveGuard';
 import { PostStatusChip } from './PostStatusChip';
 import { formatPostDate, formatPostDateFull } from '@/utils/postDate';
@@ -517,6 +520,9 @@ export function WorkflowDrawer({
     queryFn: () => getPostReferenceCounts(postIds),
     enabled: postIds.length > 0,
   });
+
+  // Material-request summary per post for the collapsed rows' badge (one call for the drawer).
+  const materialByPost = useMaterialSummary(postIds, workflowId, postIds.length > 0);
 
   const { user, role, can } = useAuth();
   const canDuplicate = can('entregas', 'editar') === true;
@@ -1434,6 +1440,7 @@ export function WorkflowDrawer({
                             editSuggestions.find((s) => s.post_id === post.id) ?? null
                           }
                           referenceCount={referenceCounts[post.id!] ?? 0}
+                          material={materialBadge(materialByPost.get(post.id!), post.status)}
                           membros={membros}
                           replyText={replyText[post.id!] || ''}
                           sendingReply={sendingReply === post.id}
@@ -1863,6 +1870,7 @@ interface SortablePostItemProps {
   editSuggestion: PostEditSuggestion | null;
   /** Client references on this post (Hub uploads and links), for the collapsed-row badge. */
   referenceCount: number;
+  material: MaterialBadgeData | null;
   membros: Membro[];
   replyText: string;
   sendingReply: boolean;
@@ -1936,6 +1944,7 @@ function SortablePostItem({
   processEvents,
   editSuggestion,
   referenceCount,
+  material,
   membros,
   replyText,
   sendingReply,
@@ -2088,6 +2097,7 @@ function SortablePostItem({
                 {t('workflowDrawer.pendingSuggestion')}
               </span>
             )}
+            {material && <MaterialBadge {...material} />}
             {referenceCount > 0 && (
               <Badge
                 variant="info"

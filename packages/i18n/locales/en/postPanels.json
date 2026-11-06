@@ -361,6 +361,10 @@
     },
     "receivedOn": "Material received on {{date}}",
     "receivedOnByClient": "Material received on {{date}} · sent by the client",
-    "nameRequired": "Give every item a name."
+    "nameRequired": "Give every item a name.",
+    "cardWaiting_one": "Material · {{done}} of {{count}} item",
+    "cardWaiting_other": "Material · {{done}} of {{count}} items",
+    "cardReceived_one": "Material received · {{done}} of {{count}} item",
+    "cardReceived_other": "Material received · {{done}} of {{count}} items"
   }
 }

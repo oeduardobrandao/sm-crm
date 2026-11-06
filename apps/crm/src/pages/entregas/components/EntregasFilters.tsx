@@ -18,6 +18,7 @@ import {
   Gauge,
   LayoutTemplate,
   Milestone,
+  PackageOpen,
   Shapes,
   SlidersHorizontal,
   UserCheck,
@@ -40,6 +41,7 @@ import { TIPO_ORDER, TIPO_LABELS, TIPO_COLORS } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import type { StatusKey } from '../statusRegistry';
 import { PRAZO_PRESET_LABELS, PRAZO_PRESET_ORDER, type PrazoPreset } from '../etapaPrazo';
+import type { MaterialKind } from '../materialSummary';
 import { ClienteFoto } from '@/components/ClienteFoto';
 import { useClienteAvatars } from '@/hooks/useClienteAvatars';
 
@@ -56,6 +58,8 @@ export interface FilterState {
   filterTemplates: number[];
   filterTipos: WorkflowPost['tipo'][];
   filterPostStatus: StatusKey[];
+  /** Pedido de material (Publicações only). Read as `?? []`: callers/saved views may lack it. */
+  filterMaterial: MaterialKind[];
   filterPrazo: PrazoPreset[];
   /** Custom etapa-deadline range, 'YYYY-MM-DD' or '' for an open end. */
   filterPrazoFrom: string;
@@ -72,6 +76,7 @@ export const EMPTY_FILTERS: FilterState = {
   filterTemplates: [],
   filterTipos: [],
   filterPostStatus: [],
+  filterMaterial: [],
   filterPrazo: [],
   filterPrazoFrom: '',
   filterPrazoTo: '',
@@ -129,6 +134,7 @@ export function countActiveFilters(filters: FilterState, mode: FiltersMode): num
           filters.filterEtapas,
           filters.filterTipos,
           filters.filterPostStatus,
+          filters.filterMaterial ?? [],
         ]
       : [
           filters.filterClientes,
@@ -485,6 +491,11 @@ export function EntregasFilters({
     color: o.color,
   }));
 
+  const materialOptions: MultiSelectOption<MaterialKind>[] = [
+    { value: 'aguardando', label: t('entregasFilters.materialAguardando') },
+    { value: 'recebido', label: t('entregasFilters.materialRecebido') },
+  ];
+
   // Same set of dropdowns rendered two ways: inline pills on desktop
   // (isStacked=false) and stacked full-width rows inside the mobile sheet
   // (isStacked=true) -- mirrors the pattern already shipped in TarefasFilters.
@@ -505,6 +516,14 @@ export function EntregasFilters({
           options={postStatusOptions}
           selected={filters.filterPostStatus}
           onSelectedChange={(filterPostStatus) => onChange({ ...filters, filterPostStatus })}
+          isStacked={isStacked}
+        />
+        <MultiSelectFilter
+          placeholder={t('entregasFilters.material')}
+          icon={PackageOpen}
+          options={materialOptions}
+          selected={filters.filterMaterial ?? []}
+          onSelectedChange={(filterMaterial) => onChange({ ...filters, filterMaterial })}
           isStacked={isStacked}
         />
         <MultiSelectFilter
