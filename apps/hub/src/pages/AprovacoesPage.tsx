@@ -131,16 +131,21 @@ export function AprovacoesPage() {
   const { data: linhasData } = useQuery({ ...hubLinhasQuery(token), enabled: featureLinha });
   const linhasWaiting = (linhasData?.linhas ?? []).filter((l) => l.status === 'enviada').length;
   // Same cache entry the nav badge reads. Open requests only; the endpoint has no flag.
-  const { data: materialData, isLoading: materialLoading } = useQuery(
-    hubMaterialRequestsQuery(token),
-  );
+  const {
+    data: materialData,
+    isLoading: materialLoading,
+    isError: materialIsError,
+  } = useQuery(hubMaterialRequestsQuery(token));
   const materialCount = materialData?.length ?? 0;
+  const materialFailed = materialIsError && materialData === undefined;
   // A post deep link (/aprovacoes/:id) always means the Posts view.
   const aba = searchParams.get('aba');
   const showLinha = featureLinha && aba === 'linha' && currentId === null;
   // Stays on Material while the list loads, falls back to Posts once the last request closes.
   const showMaterial =
-    aba === 'material' && currentId === null && (materialLoading || materialCount > 0);
+    aba === 'material' &&
+    currentId === null &&
+    (materialLoading || materialCount > 0 || materialFailed);
   const { data: feedData } = useQuery({
     queryKey: ['hub-instagram-feed', token],
     queryFn: () => fetchInstagramFeed(token),
@@ -240,7 +245,7 @@ export function AprovacoesPage() {
     ...(featureLinha
       ? [{ key: 'linha' as const, label: tLinha('abas.linha', { n: linhasWaiting }) }]
       : []),
-    ...(materialCount > 0
+    ...(materialCount > 0 || (showMaterial && materialFailed)
       ? [{ key: 'material' as const, label: tLinha('abas.material', { n: materialCount }) }]
       : []),
   ];
@@ -250,7 +255,7 @@ export function AprovacoesPage() {
   const description =
     showLinha || isLoading || fatalError
       ? undefined
-      : showMaterial
+      : materialCount > 0 && mode !== 'select'
         ? materialDescription
         : mode === 'select'
           ? t(

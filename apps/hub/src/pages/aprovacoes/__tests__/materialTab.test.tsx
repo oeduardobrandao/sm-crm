@@ -84,6 +84,35 @@ describe('MaterialTab', () => {
     expect(onOpen).toHaveBeenCalledWith(1);
   });
 
+  it('lists all 10 items without clipping and exposes done/pending to screen readers', async () => {
+    const base = req();
+    const items = Array.from({ length: 10 }, (_, i) => ({
+      id: 100 + i,
+      label: `Item ${i}`,
+      detail: null,
+      position: i,
+      file_count: i === 0 ? 1 : 0,
+      done: i === 0,
+    }));
+    vi.mocked(fetchMaterialRequests).mockResolvedValue([
+      { ...base, request: { ...base.request, items } },
+    ]);
+    renderTab();
+    const tile = await screen.findByRole('button', { name: /Novembro Azul/ });
+    for (let i = 0; i < 10; i++) expect(within(tile).getByText(`Item ${i}`)).toBeInTheDocument();
+    expect(within(tile).getByText(/Enviado:/)).toBeInTheDocument();
+    expect(within(tile).getAllByText(/Pendente:/)).toHaveLength(9);
+    expect(tile.querySelector('.overflow-hidden.flex-col')).toBeNull();
+  });
+
+  it('shows the error state when the fetch fails', async () => {
+    vi.mocked(fetchMaterialRequests).mockRejectedValue(new Error('boom'));
+    renderTab();
+    expect(
+      await screen.findByText('Não foi possível carregar os pedidos de material.'),
+    ).toBeInTheDocument();
+  });
+
   it('shows "Sem data" for a post without a date', async () => {
     vi.mocked(fetchMaterialRequests).mockResolvedValue([req({ scheduled_at: null })]);
     renderTab();

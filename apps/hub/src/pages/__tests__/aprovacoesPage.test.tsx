@@ -140,7 +140,7 @@ function response(over: Partial<HubPostsResponse> = {}): HubPostsResponse {
 
 function LocationProbe() {
   const loc = useLocation();
-  return <span data-testid="location">{loc.pathname}</span>;
+  return <span data-testid="location">{`${loc.pathname}${loc.search}`}</span>;
 }
 
 function renderPage(path: string, resp?: HubPostsResponse) {
@@ -559,6 +559,38 @@ describe('AprovacoesPage', () => {
       ] as never);
       renderPage(`${BASE}?aba=material`, response({ posts: [] }));
       expect(await screen.findByText('3 pedidos de material.')).toBeInTheDocument();
+    });
+
+    it("the combined header also shows on the Posts tab; zero requests keeps today's line", async () => {
+      mockedFetchMaterial.mockResolvedValue([materialReq(7), materialReq(8)] as never);
+      const { unmount } = renderPage(BASE, twoPosts());
+      expect(
+        await screen.findByText('2 posts esperando sua aprovação e 2 pedidos de material.'),
+      ).toBeInTheDocument();
+      unmount();
+      mockedFetchMaterial.mockResolvedValue([]);
+      renderPage(BASE, twoPosts());
+      expect(await screen.findByText('2 posts aguardando sua aprovação.')).toBeInTheDocument();
+    });
+
+    it('keeps the Material view and shows its error when the fetch fails', async () => {
+      mockedFetchMaterial.mockRejectedValue(new Error('boom'));
+      renderPage(`${BASE}?aba=material`, twoPosts());
+      expect(
+        await screen.findByText('Não foi possível carregar os pedidos de material.'),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: /Material/ })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+    });
+
+    it('clicking a tile sets ?pedido=<postId>', async () => {
+      mockedFetchMaterial.mockResolvedValue([materialReq(7)] as never);
+      renderPage(`${BASE}?aba=material`, twoPosts());
+      fireEvent.click(await screen.findByRole('button', { name: /Pedido 7/ }));
+      await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('pedido=7'));
+      expect(screen.getByTestId('location')).toHaveTextContent('aba=material');
     });
 
     it('an enviado_cliente post with an open request is in both Posts and Material', async () => {

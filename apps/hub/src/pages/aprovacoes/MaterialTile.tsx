@@ -60,7 +60,7 @@ export function MaterialTile({
           }}
         />
       </span>
-      <span className="mt-1 flex min-h-0 flex-col gap-1.5 overflow-hidden">
+      <span className="mt-1 flex flex-col gap-1.5">
         {items.map((item) => (
           <span
             key={item.id}
@@ -83,7 +83,10 @@ export function MaterialTile({
                 style={{ borderColor: 'var(--hub-bd2)' }}
               />
             )}
-            <span>{item.label}</span>
+            <span>
+              <span className="sr-only">{item.done ? t('itemEnviado') : t('itemPendente')}: </span>
+              {item.label}
+            </span>
           </span>
         ))}
       </span>
