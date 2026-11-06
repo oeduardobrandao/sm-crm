@@ -315,7 +315,7 @@ begin
 end $$;
 
 -- =============================================================
--- block 4b: push (claim_notification_pushes + push_badge_counts, 20261119000001)
+-- block 4b: push (claim_notification_pushes + push_badge_counts, 20261120000001)
 -- Same rule as the e-mail claim: scope, or the notification's item is his.
 -- A hidden row is stamped pushed_at and never offered again; the badge counts
 -- only what the bell shows.
