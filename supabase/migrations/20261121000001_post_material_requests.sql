@@ -892,3 +892,77 @@ CREATE TRIGGER workflow_posts_material_cancel
   FOR EACH ROW
   WHEN (NEW.status IN ('agendado', 'postado') AND OLD.status IS DISTINCT FROM NEW.status)
   EXECUTE FUNCTION post_material_cancel_on_status();
+
+-- =====================================================================
+-- 4. push: post_material_complete
+-- =====================================================================
+-- claim_notification_pushes com a lista de tipos do 20261120000001 mais
+-- post_material_complete (assinatura e grants iguais). push_badge_counts não
+-- tem lista de tipos (conta tudo o que o sino mostra), então não muda; o tipo
+-- já está nos CHECKs de notifications e notification_inapp_prefs (seção 3).
+
+create or replace function public.claim_notification_pushes(
+  p_after timestamptz,
+  p_limit int
+)
+returns table (id uuid, user_id uuid, workspace_id uuid, type text, metadata jsonb, link text, created_at timestamptz)
+language sql
+security definer
+set search_path = public
+as $$
+  with claimed as (
+    update notifications n
+       set pushed_at = now()
+     where n.id in (
+       select n2.id from notifications n2
+       where n2.type = any (array[
+         'post_approved','post_publish_failed','post_correction','post_message',
+         'client_message','deadline_approaching','task_assigned','post_assigned',
+         'mention','post_edit_suggestion','post_client_reference',
+         'idea_submitted','briefing_answered',
+         'event_invited','event_updated','event_cancelled','event_reminder',
+         'event_client_rsvp','event_reschedule_requested','event_guest_rsvp',
+         'linha_editorial_aprovada','linha_editorial_ajustes',
+         'post_material_complete'
+       ])
+         and n2.read_at is null and n2.dismissed_at is null and n2.pushed_at is null
+         and n2.created_at >= p_after
+         and exists (
+           select 1 from workspace_members wm
+           where wm.workspace_id = n2.workspace_id and wm.user_id = n2.user_id
+         )
+         and not exists (
+           select 1 from notification_push_prefs p
+           where p.user_id = n2.user_id and p.enabled = false
+             and (p.type = n2.type or p.type = '__all__')
+         )
+         and exists (
+           select 1 from push_devices d
+           where d.user_id = n2.user_id and d.disabled_at is null
+         )
+       order by n2.created_at asc
+       limit p_limit
+       for update skip locked
+     )
+    returning n.id, n.user_id, n.workspace_id, n.type, n.metadata, n.link, n.created_at, n.cliente_id
+  )
+  -- E-mail claim's rule, in the notification's own workspace: scope, or the
+  -- item is his. A row that fails was stamped above: not sent, never requeued.
+  select c.id, c.user_id, c.workspace_id, c.type, c.metadata, c.link, c.created_at
+    from claimed c
+   where c.cliente_id is null
+      or exists (
+        select 1 from workspace_members wm
+         where wm.workspace_id = c.workspace_id and wm.user_id = c.user_id
+           and case
+                 when wm.role = 'owner' or wm.client_scope = 'todos' then true
+                 when exists (select 1 from workspace_member_clientes wmc
+                               where wmc.workspace_id = c.workspace_id
+                                 and wmc.user_id = c.user_id
+                                 and wmc.cliente_id = c.cliente_id) then true
+                 else public.notification_item_visible_for(c.user_id, c.workspace_id, c.cliente_id, c.metadata)
+               end);
+$$;
+
+revoke all on function public.claim_notification_pushes(timestamptz, int) from public, anon, authenticated;
+grant execute on function public.claim_notification_pushes(timestamptz, int) to service_role;

@@ -927,3 +927,28 @@ begin
   raise notice 'PASS 99_post_material_requests (n) revisao';
 end $$;
 rollback;
+
+-- ---- (o) push: post_material_complete entra no claim_notification_pushes ----
+begin;
+do $$
+declare
+  e record;
+  v_p bigint; v_r jsonb; v_claimed record;
+begin
+  select * into e from pg_temp.pm_env();
+  insert into push_devices (user_id, token, platform, environment)
+    values (e.usr, 't-material', 'ios', 'production');
+  v_p := pg_temp.pm_post_s(e.ws, e.wf, 'rascunho');
+  v_r := pg_temp.pm_save(e.ws, v_p, e.usr, true, pg_temp.pm_items(1));
+  perform pg_temp.pm_file(e.ws, e.cli, v_p, pg_temp.pm_item_id(v_r, 0));
+  assert pg_temp.pm_notifs(v_p) = 1, 'notificacao criada';
+
+  select * into v_claimed from claim_notification_pushes(now() - interval '15 minutes', 100)
+   where user_id = e.usr and type = 'post_material_complete';
+  assert v_claimed.id is not null, 'push claim devolve post_material_complete';
+  assert v_claimed.metadata->>'closed_by' = 'auto', 'metadata chega ao push';
+  assert (select count(*) from claim_notification_pushes(now() - interval '15 minutes', 100)
+           where type = 'post_material_complete') = 0, 'nao reclama duas vezes';
+  raise notice 'PASS 99_post_material_requests (o) push';
+end $$;
+rollback;
