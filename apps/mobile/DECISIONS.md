@@ -265,8 +265,8 @@ What we chose, what we considered and rejected, and why. Newest at the bottom.
 - **Chosen:** the app target's `IPHONEOS_DEPLOYMENT_TARGET` is 16.2 (was 15.0). The CRM already
   uses CSS `color-mix()` (status badges, phone pills), which WebKit only ships from iOS 16.2; on
   older versions those colours silently drop out.
-- `CapApp-SPM/Package.swift` stays at `.v15`: the Capacitor CLI owns that file and rewrites it on
-  every sync, and a package minimum below the app's is fine.
+- `CapApp-SPM/Package.swift` follows the app: the Capacitor CLI owns that file and, since phase D's
+  `cap sync`, writes `.v16` from the app's deployment target. Never edit it by hand.
 
 ## D33. In-app copy never mentions plans, purchases or the website
 
