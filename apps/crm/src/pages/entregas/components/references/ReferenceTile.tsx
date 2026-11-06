@@ -15,6 +15,8 @@ export interface ReferenceTileProps {
   item: ReferenceItem;
   /** `can('entregas', 'editar') === true`, mirrored server-side by post-references DELETE. */
   canDelete: boolean;
+  /** Name of the requested item this file answers, when it answers one. */
+  materialLabel?: string | null;
   onOpen: (item: ReferenceItem) => void;
   onDeleteRequest: (item: ReferenceItem) => void;
 }
@@ -79,7 +81,13 @@ function ReferencePreview({ item }: { item: ReferenceItem }) {
   );
 }
 
-export function ReferenceTile({ item, canDelete, onOpen, onDeleteRequest }: ReferenceTileProps) {
+export function ReferenceTile({
+  item,
+  canDelete,
+  materialLabel,
+  onOpen,
+  onDeleteRequest,
+}: ReferenceTileProps) {
   const { t } = useTranslation('postPanels');
   const label = referenceLabel(item);
   const size = item.kind === 'file' ? formatReferenceSize(item.size_bytes) : null;
@@ -160,6 +168,11 @@ export function ReferenceTile({ item, canDelete, onOpen, onDeleteRequest }: Refe
           <p className="truncate text-[12.5px] font-semibold text-[var(--text-main)]" title={label}>
             {label}
           </p>
+        )}
+        {materialLabel && (
+          <Badge variant="info" size="sm">
+            {materialLabel}
+          </Badge>
         )}
         {item.note && (
           <p className="line-clamp-2 break-words text-[12px] text-[var(--text-muted)]">

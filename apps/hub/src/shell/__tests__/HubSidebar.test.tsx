@@ -6,6 +6,7 @@ import { HubSidebar } from '../HubSidebar';
 import { HubContext } from '../../HubContext';
 import type { HubBootstrap } from '../../types';
 import { fetchMensagensUnread, fetchPosts } from '../../api';
+import { fetchMaterialRequests } from '../../services/materialRequests';
 
 vi.mock('../../api', () => ({
   fetchPosts: vi.fn().mockResolvedValue({ posts: [], postApprovals: [], instagramProfile: null }),
@@ -44,6 +45,8 @@ function renderSidebar(pathname: string, bootstrap: HubBootstrap = BOOTSTRAP) {
   );
 }
 
+vi.mock('../../services/materialRequests', () => ({ fetchMaterialRequests: vi.fn() }));
+
 describe('HubSidebar', () => {
   // The global afterEach(vi.restoreAllMocks) wipes the factory defaults, so
   // re-arm them: a bare vi.fn() resolves undefined and react-query complains.
@@ -54,6 +57,7 @@ describe('HubSidebar', () => {
       instagramProfile: null,
     } as never);
     vi.mocked(fetchMensagensUnread).mockResolvedValue({ unread: 0 } as never);
+    vi.mocked(fetchMaterialRequests).mockResolvedValue([]);
   });
 
   it('renders all nine destinations including the new Mensagens item', () => {
@@ -141,5 +145,25 @@ describe('HubSidebar', () => {
     expect(badge.style.borderRadius).toBe('var(--hub-r-chip)');
     // Active item: inverted pair.
     expect(badge.style.background).toBe('var(--hub-primary-fg)');
+  });
+
+  it('badge adds the open material requests to the pending posts', async () => {
+    vi.mocked(fetchPosts).mockResolvedValue({
+      posts: [
+        { id: 1, status: 'enviado_cliente' },
+        { id: 2, status: 'enviado_cliente' },
+        { id: 3, status: 'aprovado_cliente' },
+      ],
+      postApprovals: [],
+      instagramProfile: null,
+    } as never);
+    vi.mocked(fetchMaterialRequests).mockResolvedValue([
+      { post_id: 1 },
+      { post_id: 4 },
+      { post_id: 5 },
+    ] as never);
+    renderSidebar('/ws/hub/tok/aprovacoes');
+    const link = await screen.findByRole('link', { name: /aprovações/i });
+    expect(await within(link).findByText('5')).toBeInTheDocument();
   });
 });

@@ -55,6 +55,13 @@ const ERROR_CODES: ReadonlySet<string> = new Set<ReferenceErrorCode>([
   'locked',
   'rate_limited',
   'upload_mismatch',
+  'item_required',
+  'request_closed',
+  'nothing_sent',
+  'too_many_items',
+  'items_required',
+  'post_not_requestable',
+  'invalid_item',
   'internal',
 ]);
 
@@ -135,7 +142,7 @@ export function normalizeReferenceUrl(raw: string): string | null {
 type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
 
 /** One request to hub-post-references. Errors are always PostReferenceError (or an AbortError). */
-async function call<T>(
+export async function call<T>(
   method: Method,
   path: string,
   opts: { query?: Record<string, string>; body?: unknown; signal?: AbortSignal } = {},
@@ -224,6 +231,8 @@ interface UploadOptions {
   onProgress?: (loaded: number, total: number) => void;
   signal?: AbortSignal;
   note?: string;
+  /** Attaches the file to one item of the post's open material request. */
+  materialItemId?: number;
 }
 
 /**
@@ -248,7 +257,7 @@ async function uploadUnguarded(
   token: string,
   postId: number,
   file: File,
-  { onProgress, signal, note }: UploadOptions,
+  { onProgress, signal, note, materialItemId }: UploadOptions,
 ): Promise<ReferenceItem> {
   const invalid = validateReferenceFile(file);
   if (invalid) throw new PostReferenceError(invalid);
@@ -312,6 +321,7 @@ async function uploadUnguarded(
       duration_seconds: media.durationSeconds ?? null,
       blur_data_url: media.blurDataUrl ?? null,
       note: trimmedNote || null,
+      ...(materialItemId !== undefined ? { material_item_id: materialItemId } : {}),
     },
   });
   return item;
@@ -320,7 +330,7 @@ async function uploadUnguarded(
 export function addPostReferenceLink(
   token: string,
   postId: number,
-  input: { url: string; title?: string; note?: string },
+  input: { url: string; title?: string; note?: string; materialItemId?: number },
 ): Promise<ReferenceItem> {
   const url = normalizeReferenceUrl(input.url);
   if (!url) return Promise.reject(new PostReferenceError('invalid_url'));
@@ -337,6 +347,7 @@ export function addPostReferenceLink(
         url,
         ...(title ? { title } : {}),
         ...(note ? { note } : {}),
+        ...(input.materialItemId !== undefined ? { material_item_id: input.materialItemId } : {}),
       },
     }).then((r) => r.item),
   );

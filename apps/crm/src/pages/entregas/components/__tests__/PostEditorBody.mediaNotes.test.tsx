@@ -86,6 +86,7 @@ vi.mock('@/pages/entregas/components/TikTokSettingsPanel', () => ({
 }));
 vi.mock('@/store/postReferences', () => ({
   getPostReferences: vi.fn(async () => []),
+  getPostReferencesData: vi.fn(async () => ({ items: [], request: null })),
   getPostReferenceCounts: vi.fn(async () => ({})),
   deletePostReference: vi.fn(),
 }));

@@ -40,6 +40,11 @@ vi.mock('../../../services/mediaNotes', () => ({
   createMediaNote: createMediaNoteMock,
   replyMediaNote: replyMediaNoteMock,
 }));
+// No QueryClient in this harness: the material request lookup has its own suite.
+vi.mock('../../../hooks/useOpenMaterialRequest', () => ({
+  useOpenMaterialRequest: () => null,
+  useStickyMaterialRequest: () => ({ entry: null, closed: false }),
+}));
 vi.mock('../../../hooks/usePostReferences', async () => {
   const { makePostReferencesStub } = await import('../../../hooks/__tests__/postReferencesStub');
   const stub = makePostReferencesStub();

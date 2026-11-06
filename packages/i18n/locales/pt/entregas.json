@@ -461,7 +461,10 @@
     "clearFilters": "Limpar filtros",
     "filters": "Filtros",
     "sheetDescPosts": "Filtre os posts",
-    "sheetDescFluxos": "Filtre os fluxos"
+    "sheetDescFluxos": "Filtre os fluxos",
+    "material": "Material",
+    "materialAguardando": "Aguardando material",
+    "materialRecebido": "Material recebido"
   },
   "exampleBoard": {
     "columns": {

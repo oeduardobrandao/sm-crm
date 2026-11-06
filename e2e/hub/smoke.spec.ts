@@ -9,5 +9,7 @@ test('hub shell loads with token', async ({ page }) => {
 
   await page.goto(hubPath);
 
-  await expect(page.locator('main.hub-noise')).toBeVisible({ timeout: 15_000 });
+  // The shell's <main> drops .hub-noise under the "pauta" look (feature_hub_pauta),
+  // so assert on the shell itself, not on the classic look's texture class.
+  await expect(page.locator('.hub-root > main')).toBeVisible({ timeout: 15_000 });
 });

@@ -76,6 +76,13 @@
       "resources": {
         "title": "Quick access"
       }
+    },
+    "materialBanner": {
+      "summary": "The team is waiting on {{items}} across {{posts}}",
+      "items_one": "{{count}} item from you",
+      "items_other": "{{count}} items from you",
+      "posts_one": "{{count}} post",
+      "posts_other": "{{count}} posts"
     }
   },
   "calendar": {

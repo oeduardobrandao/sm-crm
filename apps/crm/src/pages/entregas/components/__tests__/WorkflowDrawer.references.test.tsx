@@ -115,11 +115,20 @@ vi.mock('@/store', () => ({
   cloneWorkflow: vi.fn(),
 }));
 
-vi.mock('@/store/postReferences', () => ({
-  getPostReferences: vi.fn(async () => []),
-  getPostReferenceCounts: vi.fn(async () => ({})),
-  deletePostReference: vi.fn(),
-}));
+vi.mock('@/store/postReferences', () => {
+  const getPostReferences = vi.fn(async (_postId: number): Promise<unknown[]> => []);
+  return {
+    getPostReferences,
+    // The hook reads items + the material request in one call; tests keep scripting the list.
+    getPostReferencesData: async (postId: number) => ({
+      items: await getPostReferences(postId),
+      request: null,
+    }),
+    getPostReferenceCounts: vi.fn(async () => ({})),
+    deletePostReference: vi.fn(),
+    saveMaterialRequest: vi.fn(),
+  };
+});
 
 vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,

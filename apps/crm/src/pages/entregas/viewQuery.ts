@@ -1,5 +1,6 @@
 import type { FilterState, StatusFilter } from './components/EntregasFilters';
 import { EMPTY_FILTERS } from './components/EntregasFilters';
+import { MATERIAL_KINDS } from './materialSummary';
 import type { EntregasMode } from './components/ModeToggle';
 import { TIPO_ORDER } from './postLabels';
 import { isStatusKeyToken } from './statusRegistry';
@@ -94,6 +95,7 @@ export function serializeEntregasQuery(state: EntregasViewState): string {
   append('templates', f.filterTemplates);
   append('tipos', f.filterTipos);
   append('pstatus', f.filterPostStatus);
+  append('material', f.filterMaterial ?? []);
   append('prazo', f.filterPrazo);
   if (f.filterPrazoFrom) p.set('de', f.filterPrazoFrom);
   if (f.filterPrazoTo) p.set('ate', f.filterPrazoTo);
@@ -149,6 +151,7 @@ export function parseEntregasQuery(p: URLSearchParams): EntregasViewState {
     // Canonical statuses plus 'custom:<uuid>' tokens. Unknown custom ids
     // simply match no post; the filter UI prunes them on the next change.
     filterPostStatus: p.getAll('pstatus').filter(isStatusKeyToken) as StatusKey[],
+    filterMaterial: oneOf('material', MATERIAL_KINDS),
     filterPrazo: oneOf('prazo', PRAZO_PRESET_ORDER),
     filterPrazoFrom: day('de'),
     filterPrazoTo: day('ate'),

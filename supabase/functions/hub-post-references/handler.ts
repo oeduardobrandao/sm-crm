@@ -3,6 +3,23 @@
 import { createJsonResponder } from "../_shared/http.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
 import { getClientIP } from "../_shared/rate-limit.ts";
+import { computeEmProducaoByPost, isHubVisiblePost, type StatusEventRow } from "../hub-posts/em-producao.ts";
+import { loadOpenRequestsForClient, type MaterialRequestDTO } from "../_shared/material-requests.ts";
+
+/** Quem abriu o pedido (uuid de membro da equipe) nunca vai para o Hub. */
+export type HubMaterialRequestDTO = Omit<MaterialRequestDTO, "opened_by">;
+function toHubRequest(r: MaterialRequestDTO): HubMaterialRequestDTO {
+  const { opened_by: _openedBy, opened_by_name: _openedByName, ...rest } = r as MaterialRequestDTO & {
+    opened_by_name?: unknown;
+  };
+  return rest;
+}
+
+/**
+ * Janela depois do concluido/auto em que o RPC ainda aceita arquivo de item (o resto da mesma
+ * seleção múltipla). Espelha post_reference_file_insert/link_insert (20261121000001).
+ */
+const AUTO_CLOSE_GRACE_MS = 10 * 60 * 1000;
 import {
   finalizeReferenceFile,
   type HeadObject,
@@ -13,6 +30,7 @@ import {
   parsePositiveId,
   presignReferenceUpload,
   referenceError,
+  type ReferenceItem,
   type ReferenceResult,
   type ReferencesDb,
   type SignGetUrl,
@@ -40,9 +58,14 @@ const WRITE_WINDOW = 3600;
 const READ_MAX = 300;
 const READ_WINDOW = 300;
 
-type Route = "list" | "presign" | "files" | "links" | "update" | "delete";
+type Route = "list" | "presign" | "files" | "links" | "update" | "delete" | "requests" | "close";
 
 function resolveRoute(method: string, seg: string[]): { route: Route; refId: number | null } | null {
+  if (seg.length === 1 && seg[0] === "requests" && method === "GET") return { route: "requests", refId: null };
+  if (seg.length === 3 && seg[0] === "requests" && seg[2] === "close" && method === "POST") {
+    const postId = parsePositiveId(seg[1]);
+    return postId === null ? null : { route: "close", refId: postId };
+  }
   if (seg.length === 0 && method === "GET") return { route: "list", refId: null };
   if (seg.length === 1 && method === "POST") {
     if (seg[0] === "upload-url") return { route: "presign", refId: null };
@@ -107,10 +130,99 @@ export function createHubPostReferencesHandler(deps: HubPostReferencesHandlerDep
     const contaId = hubToken.conta_id;
     const clienteId = hubToken.cliente_id;
 
-    const allowed = route === "list"
+    const allowed = route === "list" || route === "requests"
       ? await deps.rateLimit(db, `hub-read:${contaId}:${clienteId}`, READ_MAX, READ_WINDOW)
       : await deps.rateLimit(db, `hub-write:hub-post-references:${contaId}:${clienteId}`, WRITE_MAX, WRITE_WINDOW);
     if (!allowed) return send(referenceError("rate_limited"));
+
+    // ── GET /requests: pedidos abertos do cliente. Select de posts com colunas fixas
+    // (nunca legenda, conteúdo nem mídia: rascunho não vaza).
+    if (route === "requests") {
+      let open: Map<number, MaterialRequestDTO>;
+      try {
+        open = await loadOpenRequestsForClient(db, contaId, clienteId);
+      } catch (e) {
+        console.error("[hub-post-references:requests] load failed:", e);
+        return send(referenceError("internal"));
+      }
+      if (open.size === 0) return json({ requests: [] });
+      const ids = [...open.keys()];
+      const { data: postRows, error: postsErr } = await db.from("workflow_posts")
+        .select("id, titulo, tipo, scheduled_at, platform, status")
+        .in("id", ids)
+        .eq("cliente_id", clienteId)
+        .eq("conta_id", contaId);
+      if (postsErr) {
+        console.error("[hub-post-references:requests] posts lookup failed:", postsErr);
+        return send(referenceError("internal"));
+      }
+      type PostRow = {
+        id: number; titulo: string | null; tipo: string | null; scheduled_at: string | null;
+        platform: string | null; status: string;
+      };
+      const posts = (Array.isArray(postRows) ? postRows : []) as PostRow[];
+      const { data: eventRows, error: eventsErr } = await db.from("post_status_events")
+        .select("id, post_id, from_status, to_status, created_at")
+        .eq("conta_id", contaId)
+        .in("post_id", posts.map((p) => p.id))
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true });
+      if (eventsErr) {
+        console.error("[hub-post-references:requests] status events lookup failed:", eventsErr);
+        return send(referenceError("internal"));
+      }
+      const emProducao = computeEmProducaoByPost((Array.isArray(eventRows) ? eventRows : []) as StatusEventRow[]);
+      const requests = [];
+      for (const p of posts) {
+        const request = open.get(Number(p.id));
+        if (!request) continue;
+        const listed = await listPostReferences({
+          db, post_id: p.id, conta_id: contaId, signGetUrl: deps.signGetUrl, includeDownload: false,
+        });
+        if (!listed.ok) return send(listed.result);
+        const filesByItem: Record<number, ReferenceItem[]> = {};
+        for (const it of listed.items) {
+          if (it.material_item_id === null) continue;
+          (filesByItem[it.material_item_id] ??= []).push(it);
+        }
+        requests.push({
+          post_id: p.id,
+          titulo: p.titulo,
+          tipo: p.tipo,
+          scheduled_at: p.scheduled_at,
+          platform: p.platform,
+          client_visible: isHubVisiblePost({ id: p.id, status: p.status }, emProducao),
+          request: toHubRequest(request),
+          files_by_item: filesByItem,
+        });
+      }
+      requests.sort((a, b) => {
+        if (a.scheduled_at !== b.scheduled_at) {
+          if (a.scheduled_at === null) return 1;
+          if (b.scheduled_at === null) return -1;
+          return a.scheduled_at.localeCompare(b.scheduled_at);
+        }
+        return a.request.opened_at.localeCompare(b.request.opened_at);
+      });
+      return json({ requests });
+    }
+
+    // ── POST /requests/:postId/close: o RPC confere cliente/conta sob o lock.
+    if (route === "close") {
+      const { data, error } = await db.rpc("post_material_client_close", {
+        p_conta: contaId, p_cliente: clienteId, p_post: refId,
+      });
+      if (error) {
+        console.error("[hub-post-references:close] rpc failed:", error);
+        return send(referenceError("internal"));
+      }
+      if (data === "ok") return json({ ok: true });
+      if (data === "not_found") return send(referenceError("not_found"));
+      if (data === "request_closed") return send(referenceError("request_closed"));
+      if (data === "nothing_sent") return send(referenceError("nothing_sent"));
+      console.error("[hub-post-references:close] unexpected rpc result:", data);
+      return send(referenceError("internal"));
+    }
 
     // ── PATCH /:id e DELETE /:id: o RPC confere cliente/conta e can_remove sob o
     // lock do post, então não há leitura prévia aqui (seria só uma corrida a mais).
@@ -172,14 +284,48 @@ export function createHubPostReferencesHandler(deps: HubPostReferencesHandlerDep
         db, post_id: postId, conta_id: contaId, signGetUrl: deps.signGetUrl, includeDownload: false,
       });
       if (!listed.ok) return send(listed.result);
+      let request: MaterialRequestDTO | null;
+      try {
+        request = (await loadOpenRequestsForClient(db, contaId, clienteId)).get(postId) ?? null;
+      } catch (e) {
+        console.error("[hub-post-references:list] request load failed:", e);
+        return send(referenceError("internal"));
+      }
       return json({
         can_add: owned.status === "enviado_cliente" && listed.items.length < MAX_REFERENCES_PER_POST,
         items: listed.items,
+        request: request ? toHubRequest(request) : null,
       });
     }
 
     // Gate de escrita (decisão 1). Best-effort: os RPCs rechecam sob FOR UPDATE.
-    if (owned.status !== "enviado_cliente") return send(referenceError("post_not_pending"));
+    // Pedido de material aberto também libera (rascunho com pedido). Só consulta o
+    // pedido quando o status sozinho não libera.
+    if (owned.status !== "enviado_cliente") {
+      let open: Map<number, MaterialRequestDTO>;
+      try {
+        open = await loadOpenRequestsForClient(db, contaId, clienteId);
+      } catch (e) {
+        console.error("[hub-post-references:gate] request load failed:", e);
+        return send(referenceError("internal"));
+      }
+      if (open.get(postId)?.status !== "aberto") {
+        // Recém-concluído pelo próprio upload (concluido/auto há menos de 10 min): os arquivos
+        // seguintes da mesma seleção ainda passam; o RPC confere a mesma regra sob o lock.
+        const { data: q, error: qErr } = await db.from("post_material_requests")
+          .select("status, closed_by, closed_at")
+          .eq("conta_id", contaId).eq("post_id", postId).maybeSingle();
+        if (qErr) {
+          console.error("[hub-post-references:gate] request lookup failed:", qErr);
+          return send(referenceError("internal"));
+        }
+        const r = q as { status?: string; closed_by?: string | null; closed_at?: string | null } | null;
+        const closedAt = r?.closed_at ? Date.parse(r.closed_at) : NaN;
+        const recentAuto = r?.status === "concluido" && r.closed_by === "auto" &&
+          Number.isFinite(closedAt) && Date.parse(deps.now()) - closedAt < AUTO_CLOSE_GRACE_MS;
+        if (!recentAuto) return send(referenceError("post_not_pending"));
+      }
+    }
 
     if (route === "presign") {
       return send(await presignReferenceUpload({

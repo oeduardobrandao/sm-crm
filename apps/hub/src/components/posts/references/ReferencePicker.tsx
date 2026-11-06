@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ImagePlus, Link2, Paperclip, Plus } from 'lucide-react';
 import type { AddReferenceLinkInput, PostReferencesState } from '../../../hooks/usePostReferences';
-import { REFERENCE_ACCEPT } from '../../../services/postReferences';
+import { PostReferenceError, REFERENCE_ACCEPT } from '../../../services/postReferences';
 import type { ReferenceItem } from '../../../types/postReferences';
 import { AddReferenceSheet } from './AddReferenceSheet';
 import { ReferenceLinkForm } from './ReferenceLinkForm';
@@ -10,8 +10,15 @@ import { ReferenceLinkForm } from './ReferenceLinkForm';
 interface ReferencePickerProps {
   refs: PostReferencesState;
   /** panel: "Adicionar arquivo" + "Adicionar link" on md+, one sheet button on phones.
-   *  composer: "Anexar referência" opening the sheet everywhere. */
-  variant: 'panel' | 'composer';
+   *  composer: "Anexar referência" opening the sheet everywhere.
+   *  item: one "Enviar" button (`label`) opening the sheet, for a material request item. */
+  variant: 'panel' | 'composer' | 'item';
+  /** item variant: the material request item every file and link goes to. */
+  materialItemId?: number;
+  /** item variant: the visible button text. */
+  label?: string;
+  /** item variant: the button's accessible name, when it differs from `label`. */
+  ariaLabel?: string;
   disabled?: boolean;
   /** Each reference added through this picker, as soon as it exists (the composer stages it). */
   onAdded?: (item: ReferenceItem) => void;
@@ -28,6 +35,9 @@ export function ReferencePicker({
   disabled = false,
   onAdded,
   onOverlayChange,
+  materialItemId,
+  label,
+  ariaLabel,
 }: ReferencePickerProps) {
   const { t } = useTranslation('hubPosts');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -57,11 +67,28 @@ export function ReferencePicker({
       void refs.startUploads(files, {
         onUploaded: onAdded,
         source: variant === 'composer' ? 'composer' : 'tab',
+        ...(materialItemId !== undefined ? { materialItemId } : {}),
       });
   }
 
   async function submitLink(input: AddReferenceLinkInput) {
-    const item = await refs.addLink(input);
+    let item: ReferenceItem;
+    try {
+      item = await refs.addLink(
+        materialItemId !== undefined ? { ...input, materialItemId } : input,
+      );
+    } catch (err) {
+      // On a draft the handler's own gate answers post_not_pending once the request closes;
+      // for an item that only ever means the request closed (same mapping as item uploads).
+      if (
+        materialItemId !== undefined &&
+        err instanceof PostReferenceError &&
+        err.code === 'post_not_pending'
+      ) {
+        throw new PostReferenceError('request_closed');
+      }
+      throw err;
+    }
     onAdded?.(item);
     setLinkOpen(false);
   }
@@ -100,6 +127,17 @@ export function ReferencePicker({
             {t('references.addReference', 'Adicionar referência')}
           </button>
         </>
+      ) : variant === 'item' ? (
+        <button
+          type="button"
+          onClick={() => setSheetOpen(true)}
+          disabled={disabled}
+          aria-label={ariaLabel}
+          className="inline-flex shrink-0 items-center justify-center gap-1.5 hub-btn-secondary rounded-[4px] px-3 min-h-[44px] md:min-h-[36px] text-[12.5px] font-semibold disabled:opacity-50"
+        >
+          <Plus size={14} aria-hidden="true" />
+          {label}
+        </button>
       ) : (
         <button
           type="button"
@@ -118,7 +156,11 @@ export function ReferencePicker({
         multiple
         accept={REFERENCE_ACCEPT}
         className="hidden"
-        data-testid={`reference-file-input-${variant}`}
+        data-testid={
+          variant === 'item'
+            ? `reference-file-input-item-${materialItemId}`
+            : `reference-file-input-${variant}`
+        }
         onChange={(e) => handleFiles(e.target.files)}
       />
       <AddReferenceSheet

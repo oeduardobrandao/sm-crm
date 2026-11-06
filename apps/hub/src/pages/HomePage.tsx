@@ -18,6 +18,7 @@ import { HomeAgenda } from './agenda/HomeAgenda';
 import { useHubLook } from '../hooks/useHubLook';
 import { HomePagePauta } from './HomePagePauta';
 import { RESOURCE_LINKS } from './home/resourceLinks';
+import { MaterialBanner } from './home/MaterialBanner';
 import { CalendarSkeleton } from '../components/Skeleton';
 
 const CALENDAR_STATUSES = new Set([
@@ -285,6 +286,8 @@ export function HomePage() {
           />
         </button>
       )}
+
+      <MaterialBanner token={token} base={base} />
 
       {bootstrap.feature_agenda && <HomeAgenda token={token} base={base} />}
 

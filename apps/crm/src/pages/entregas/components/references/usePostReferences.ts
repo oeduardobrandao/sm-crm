@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { getPostReferences } from '@/store/postReferences';
+import { getPostReferencesData, type ReferenceItem } from '@/store/postReferences';
 
 // Same cache policy as ['post-media', post.id] (PostEditorBody): every refetch re-signs the R2
 // URLs, which swaps every <img src> and re-downloads the thumbnails, so refetch rarely. The
@@ -12,12 +12,20 @@ const REFRESH_SIGNED_URLS_MS = 45 * 60 * 1000;
 
 /** The client's references for one post. One call per post editor (PostEditorBody), shared by
  *  the references section and the comment bubbles. */
+const EMPTY_ITEMS: ReferenceItem[] = [];
+
 export function usePostReferences(postId: number | null | undefined, enabled: boolean) {
-  return useQuery({
+  const query = useQuery({
     queryKey: ['post-references', postId],
-    queryFn: () => getPostReferences(postId as number),
+    queryFn: () => getPostReferencesData(postId as number),
     enabled: enabled && postId != null,
     staleTime: STALE_MS,
     refetchInterval: REFRESH_SIGNED_URLS_MS,
   });
+  return {
+    ...query,
+    references: query.data?.items ?? EMPTY_ITEMS,
+    /** The post's "pedir material" request, folded into the same GET. */
+    request: query.data?.request ?? null,
+  };
 }

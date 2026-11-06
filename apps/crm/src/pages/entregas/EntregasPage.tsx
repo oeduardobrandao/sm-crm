@@ -102,6 +102,8 @@ import './phone/entregasPhone.css';
 import { FilaMembroPicker } from './components/FilaMembroPicker';
 import { FilaOrdemPicker } from './components/FilaOrdemPicker';
 import { useActivePosts } from './hooks/useActivePosts';
+import { useMaterialSummary } from './hooks/useMaterialSummary';
+import { MaterialSummaryContext } from './materialContext';
 import { selectSemProcessoPosts, productionFiltersActive, SEM_PROCESSO_LIMIT } from './semProcesso';
 import { useOpenParam } from '../../hooks/useOpenParam';
 import { filterActivePosts, filterBoardCards, withoutPostados } from './boardFilters';
@@ -990,6 +992,11 @@ export default function EntregasPage() {
     isPending: activePostsPending,
     isError: activePostsError,
   } = useActivePosts(postsMode || semProcessoMode || filaView);
+  // Pedido de material de todos os posts da lista, numa passada (blocos de 200): alimenta o
+  // selo dos cards (contexto) e o filtro "Material". Só no modo Publicações.
+  const activePostIds = useMemo(() => activePosts.map((p) => p.id), [activePosts]);
+  const materialByPostId = useMaterialSummary(activePostIds, 'list', postsMode);
+  const materialOf = useCallback((id: number) => materialByPostId.get(id), [materialByPostId]);
   const semProcessoPosts = useMemo(
     () =>
       semProcessoMode
@@ -1078,8 +1085,8 @@ export default function EntregasPage() {
     [cardsByWorkflowId, postEntityByPostId],
   );
   const filteredPosts = useMemo(
-    () => filterActivePosts(activePosts, filters, stageOfPost),
-    [activePosts, filters, stageOfPost],
+    () => filterActivePosts(activePosts, filters, stageOfPost, materialOf),
+    [activePosts, filters, stageOfPost, materialOf],
   );
   // Lista de Publicações: postados ficam fora por padrão (withoutPostados) até o
   // botão da barra os mostrar. Com o filtro de status do post em uso, ele decide
@@ -1108,6 +1115,7 @@ export default function EntregasPage() {
     filters.filterEtapas.length > 0 ||
     filters.filterTipos.length > 0 ||
     filters.filterPostStatus.length > 0 ||
+    (filters.filterMaterial?.length ?? 0) > 0 ||
     filters.filterPrazo.length > 0 ||
     !!filters.filterPrazoFrom ||
     !!filters.filterPrazoTo;
@@ -1169,7 +1177,7 @@ export default function EntregasPage() {
     if (activeView !== 'list' || !responsaveisOpen) return EMPTY_COUNTS;
     const semResponsavel: FilterState = { ...filters, filterMembros: [] };
     if (mode === 'publicacoes') {
-      const posts = filterActivePosts(activePosts, semResponsavel, stageOfPost);
+      const posts = filterActivePosts(activePosts, semResponsavel, stageOfPost, materialOf);
       return countByResponsavel(
         (hidePostados ? withoutPostados(posts) : posts).map((p) =>
           postResponsavelIdOf(p, stageOfPost(p)),
@@ -1196,6 +1204,7 @@ export default function EntregasPage() {
     mode,
     activePosts,
     stageOfPost,
+    materialOf,
     hidePostados,
     effectiveEntidade,
     cards,
@@ -2078,25 +2087,27 @@ export default function EntregasPage() {
               )}
             </>
           ) : (
-            <PostsKanbanView
-              posts={filteredPosts}
-              isLoading={activePostsLoading}
-              openableWorkflowIds={openableWorkflowIds}
-              onPostClick={handlePostClick}
-              cardsByWorkflowId={cardsByWorkflowId}
-              filtersActive={postsFiltersActive}
-              onCreateAvulso={() => {
-                setAvulsoTemplateId(null);
-                setNewAvulsoOpen(true);
-              }}
-              columnSorts={boardColumnSorts}
-              onColumnSortChange={handleBoardColumnSortChange}
-              processEtapaByPostId={processEtapaByPostId}
-              awaitedApprovalByPostId={awaitedApprovalByPostId}
-              schedulingEnabled={schedulingEnabled}
-              tiktokEnabled={tiktokEnabled}
-              multiplatformEnabled={multiplatformEnabled}
-            />
+            <MaterialSummaryContext.Provider value={materialByPostId}>
+              <PostsKanbanView
+                posts={filteredPosts}
+                isLoading={activePostsLoading}
+                openableWorkflowIds={openableWorkflowIds}
+                onPostClick={handlePostClick}
+                cardsByWorkflowId={cardsByWorkflowId}
+                filtersActive={postsFiltersActive}
+                onCreateAvulso={() => {
+                  setAvulsoTemplateId(null);
+                  setNewAvulsoOpen(true);
+                }}
+                columnSorts={boardColumnSorts}
+                onColumnSortChange={handleBoardColumnSortChange}
+                processEtapaByPostId={processEtapaByPostId}
+                awaitedApprovalByPostId={awaitedApprovalByPostId}
+                schedulingEnabled={schedulingEnabled}
+                tiktokEnabled={tiktokEnabled}
+                multiplatformEnabled={multiplatformEnabled}
+              />
+            </MaterialSummaryContext.Provider>
           ))}
         {activeView === 'chart' && (
           <ChartView
@@ -2144,23 +2155,25 @@ export default function EntregasPage() {
                   groupBy={effectiveListGroupBy}
                 />
               ) : (
-                <PostsListView
-                  posts={listPosts}
-                  hiddenPostados={hiddenPostados}
-                  isLoading={activePostsLoading}
-                  openableWorkflowIds={openableWorkflowIds}
-                  onPostClick={handlePostClick}
-                  onFluxoClick={handleFluxoClick}
-                  cardsByWorkflowId={cardsByWorkflowId}
-                  filtersActive={postsFiltersActive}
-                  onCreateAvulso={() => {
-                    setAvulsoTemplateId(null);
-                    setNewAvulsoOpen(true);
-                  }}
-                  postEntityByPostId={postEntityByPostId}
-                  groupBy={effectiveListGroupBy}
-                  membroNomeById={membroNomeById}
-                />
+                <MaterialSummaryContext.Provider value={materialByPostId}>
+                  <PostsListView
+                    posts={listPosts}
+                    hiddenPostados={hiddenPostados}
+                    isLoading={activePostsLoading}
+                    openableWorkflowIds={openableWorkflowIds}
+                    onPostClick={handlePostClick}
+                    onFluxoClick={handleFluxoClick}
+                    cardsByWorkflowId={cardsByWorkflowId}
+                    filtersActive={postsFiltersActive}
+                    onCreateAvulso={() => {
+                      setAvulsoTemplateId(null);
+                      setNewAvulsoOpen(true);
+                    }}
+                    postEntityByPostId={postEntityByPostId}
+                    groupBy={effectiveListGroupBy}
+                    membroNomeById={membroNomeById}
+                  />
+                </MaterialSummaryContext.Provider>
               )}
             </div>
             {isDesktop && responsaveisOpen && (

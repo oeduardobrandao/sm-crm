@@ -76,6 +76,13 @@
       "resources": {
         "title": "Acesso rápido"
       }
+    },
+    "materialBanner": {
+      "summary": "A equipe está esperando {{items}} em {{posts}}",
+      "items_one": "{{count}} item seu",
+      "items_other": "{{count}} itens seus",
+      "posts_one": "{{count}} post",
+      "posts_other": "{{count}} posts"
     }
   },
   "calendar": {

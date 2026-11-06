@@ -43,3 +43,11 @@ Deno.test("linha editorial renders the same text for push as for the e-mail dige
   });
   assertEquals(r("linha_editorial_ajustes", { titulo: " Verão " }).heading, "Cliente pediu ajustes na linha editorial “Verão”");
 });
+
+Deno.test("post_material_complete: auto and client closes use their own wording", () => {
+  const auto = r("post_material_complete", { closed_by: "auto", client_name: "Sol", post_title: "Reels", done: 3, total: 3 });
+  assertEquals(auto, { priority: 5, heading: "Sol enviou todos os itens pedidos em Reels", link: "/x" });
+  const client = r("post_material_complete", { closed_by: "client", client_name: "Sol", post_title: "Reels", done: 1, total: 3 });
+  assertEquals(client.heading, "Sol enviou o que tinha (1 de 3 itens) em Reels");
+  assertEquals(r("post_material_complete", null).heading, "Cliente enviou todos os itens pedidos em um post");
+});
