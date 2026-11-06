@@ -36,6 +36,11 @@ const config: CapacitorConfig = {
       launchFadeOutDuration: 200,
       showSpinner: false,
     },
+    PushNotifications: {
+      // How a push shows while the app is in the foreground. `alert` is deprecated
+      // on iOS in favour of `banner` + `list`.
+      presentationOptions: ['badge', 'sound', 'banner', 'list'],
+    },
     Keyboard: {
       // Shrink the web view above the keyboard so composers and inputs stay visible.
       resize: 'native',

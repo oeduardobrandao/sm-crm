@@ -8,6 +8,11 @@ class MainViewController: CAPBridgeViewController {
 
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
+
+        // Registered before the web view loads, so the bridge injects the plugin's
+        // proxy at document start and isPluginAvailable('MesaasNative') is true.
+        bridge?.registerPluginInstance(MesaasNativePlugin())
+
         guard let webView = webView else { return }
 
         // Long-pressing a link shows Safari's preview with "Open Link" / "Add to
