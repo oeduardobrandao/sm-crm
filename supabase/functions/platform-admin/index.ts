@@ -6,6 +6,7 @@ import { handleGetWorkspaceInvites, handleAdminCancelInvite, handleAdminResendIn
 import { handleListWorkspaces } from "./list-workspaces.ts";
 import { handleListWorkspaceEvents } from "./event-history.ts";
 import { handleGetMrr, handleGetTrials } from "./mrr.ts";
+import { handleGetChurned } from "./churn.ts";
 import { handleGetDeposits } from "./deposits.ts";
 import { handleGetMetricsHistory } from "./metrics-history.ts";
 import { defaultBackfillDeps, handleBackfillMetrics } from "./metrics-backfill.ts";
@@ -143,6 +144,8 @@ Deno.serve(async (req: Request) => {
         return await handleGetMrr(svc, headers);
       case "get-trials":
         return await handleGetTrials(svc, headers);
+      case "get-churned":
+        return await handleGetChurned(svc, headers);
       case "get-deposits":
         return await handleGetDeposits(headers);
       case "get-metrics-history":

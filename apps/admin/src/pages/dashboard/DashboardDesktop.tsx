@@ -27,6 +27,7 @@ import { GlassPanel } from '../../components/shell/GlassPanel';
 import { KpiGrid, KpiTile } from '../../components/shell/KpiTile';
 import { cn } from '../../lib/utils';
 import { RiskCard } from './RiskCard';
+import { ChurnCard } from './ChurnCard';
 import { PlanBadge, activity, trialEndInfo, type DashboardViewProps } from './shared';
 
 function ListSkeleton() {
@@ -62,6 +63,7 @@ const rowClass = 'cursor-pointer';
 export function DashboardDesktop({
   kpis,
   risk,
+  churn,
   mrr,
   trials,
   recent,
@@ -98,7 +100,10 @@ export function DashboardDesktop({
       </KpiGrid>
 
       <div className="mb-5 flex flex-wrap items-start gap-4">
-        <RiskCard {...risk} className="flex-[1_1_340px]" />
+        <div className="flex min-w-0 flex-[1_1_340px] flex-col gap-4">
+          <RiskCard {...risk} />
+          <ChurnCard {...churn} />
+        </div>
 
         <GlassPanel
           title={

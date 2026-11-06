@@ -39,7 +39,7 @@ interface TrialSubRow {
  * Workspaces list and retention radar use — one definition of "activity" everywhere
  * (newest human work artifact, not sign-ins, not cron writes).
  */
-async function fetchLastActivity(
+export async function fetchLastActivity(
   svc: SupabaseClient,
   workspaceIds: string[],
 ): Promise<Map<string, string | null>> {

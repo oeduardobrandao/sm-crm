@@ -8,9 +8,16 @@ vi.mock('../../lib/api', () => ({
   listWorkspaces: vi.fn(),
   getMrr: vi.fn(),
   getTrials: vi.fn(),
+  getChurned: vi.fn(),
 }));
 
-import { getMrr, getTrials, listWorkspaces, type ListWorkspacesParams } from '../../lib/api';
+import {
+  getChurned,
+  getMrr,
+  getTrials,
+  listWorkspaces,
+  type ListWorkspacesParams,
+} from '../../lib/api';
 import DashboardPage from '../DashboardPage';
 
 const DAY = 86_400_000;
@@ -96,6 +103,7 @@ beforeEach(() => {
   // The Stripe-backed queries never resolve by default: the other cards must not wait for them.
   vi.mocked(getMrr).mockReturnValue(new Promise(() => {}) as never);
   vi.mocked(getTrials).mockReturnValue(new Promise(() => {}) as never);
+  vi.mocked(getChurned).mockReturnValue(new Promise(() => {}) as never);
 });
 
 function renderPage() {
@@ -311,6 +319,67 @@ describe('DashboardPage at-risk card', () => {
     );
     expect(kpiCard('Em risco').textContent).toContain('—');
     expect(kpiCard('Em risco').textContent).not.toMatch(/\b0 testes vencendo/);
+    consoleErrorSpy.mockRestore();
+  });
+});
+
+describe('DashboardPage churn card', () => {
+  const ended = (
+    id: string,
+    kind: 'churn' | 'trial_expired' | 'unknown',
+    days: number,
+    monthly_cents: number | null = null,
+  ) => ({
+    workspace_id: id,
+    name: `WS ${id}`,
+    plan_name: 'Pro',
+    kind,
+    ended_at: soon(-days),
+    monthly_cents,
+    created_at: soon(-60),
+    last_activity_at: null,
+    owner_name: null,
+    owner_email: null,
+    owner_telefone: null,
+    owner_marketing_opt_in: false,
+  });
+
+  it('lists churned and trial-ended workspaces and filters by kind', async () => {
+    vi.mocked(getChurned).mockResolvedValue({
+      workspaces: [
+        ended('a', 'trial_expired', 1),
+        ended('b', 'churn', 3, 13990),
+        ended('c', 'unknown', 40),
+      ],
+      churn_count: 1,
+      trial_expired_count: 1,
+      lost_mrr_cents: 13990,
+      window_days: 90,
+      currency: 'brl',
+    });
+    renderPage();
+    const card = within(await screen.findByTestId('churn-card'));
+    expect(await card.findByText('WS a')).toBeInTheDocument();
+    expect(card.getByText('WS b')).toBeInTheDocument();
+    expect(card.getByText('WS c')).toBeInTheDocument();
+    expect(card.getByText('Teste encerrado')).toBeInTheDocument();
+    expect(card.getByText('Sem histórico')).toBeInTheDocument();
+    expect(card.getByText(/1 cancelou/)).toBeInTheDocument();
+
+    card.getByRole('tab', { name: 'Cancelou' }).click();
+    await waitFor(() => expect(card.queryByText('WS a')).not.toBeInTheDocument());
+    expect(card.getByText('WS b')).toBeInTheDocument();
+    expect(card.queryByText('WS c')).not.toBeInTheDocument();
+  });
+
+  it('shows an error with retry when the endpoint fails', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(getChurned).mockRejectedValue(new Error('unknown action'));
+    renderPage();
+    const card = within(await screen.findByTestId('churn-card'));
+    expect(
+      await card.findByText('Não foi possível carregar os cancelamentos.'),
+    ).toBeInTheDocument();
     consoleErrorSpy.mockRestore();
   });
 });

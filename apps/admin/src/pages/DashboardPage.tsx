@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { listWorkspaces, getMrr, getTrials } from '../lib/api';
+import { listWorkspaces, getMrr, getTrials, getChurned } from '../lib/api';
 import { formatMoney } from '../lib/subscription';
 import { toCSV, downloadCSV } from '../lib/csv-export';
 import { useIsPhone } from '../hooks/useIsPhone';
@@ -56,6 +56,12 @@ export default function DashboardPage() {
         limit: 5,
       }),
   });
+  // Subscriptions that ended recently, split into paid-then-canceled vs. trial ended unpaid.
+  const churnQuery = useQuery({
+    queryKey: ['admin', 'churned'],
+    queryFn: getChurned,
+  });
+
   const now = new Date();
   const endingSoonCount = trialsData ? selectTrialsEndingSoon(trialsData.trials, now).length : 0;
   const pendingCount = pendingQuery.data?.total ?? 0;
@@ -179,6 +185,13 @@ export default function DashboardPage() {
         error: pendingQuery.isError,
         retry: () => pendingQuery.refetch(),
       },
+    },
+    churn: {
+      now,
+      data: churnQuery.data,
+      loading: churnQuery.isPending,
+      error: churnQuery.isError,
+      retry: () => churnQuery.refetch(),
     },
     mrr: { loading: mrrLoading, data: mrrData },
     trials: { loading: trialsLoading, data: trialsData, mrrCents: trialMrrCents, currency },
