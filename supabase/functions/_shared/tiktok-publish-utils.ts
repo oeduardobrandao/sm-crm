@@ -19,7 +19,7 @@ import {
   STATUS_PUBLISH_COMPLETE,
   STATUS_SEND_TO_USER_INBOX,
 } from "./tiktok.ts";
-import { TIKTOK_MSG } from "./tiktok-messages.ts";
+import { TIKTOK_LIMITS, TIKTOK_MSG } from "./tiktok-messages.ts";
 
 // --- Shared types ---
 
@@ -35,7 +35,8 @@ export interface TikTokSettings {
   auto_add_music?: boolean;
   photo_cover_index?: number;
   is_aigc?: boolean;
-  video_cover_timestamp_ms?: number;
+  // No video_cover_timestamp_ms: the cover follows the video's thumbnail frame
+  // (files.thumbnail_frame_ms), passed to buildVideoInitPayload by the publishers.
 }
 
 interface TikTokMediaFile {
@@ -46,6 +47,8 @@ interface TikTokMediaFile {
   width: number | null;
   height: number | null;
   duration_seconds: number | null;
+  /** files.thumbnail_frame_ms: the thumbnail's frame, sent as the TikTok cover. */
+  thumbnail_frame_ms: number | null;
   r2_key: string;
   media_lost_at: string | null;
   sort_order: number;
@@ -65,21 +68,20 @@ export interface TikTokValidationResult {
 
 // --- Constants (validation) ---
 
-const CAPTION_VIDEO_MAX = 2200; // UTF-16 code units. JS string.length already counts
-// UTF-16 code units, which is exactly what TikTok calls "runes" in their docs — no
-// separate counting utility needed.
-const CAPTION_PHOTO_MAX = 4000;
-const TITLE_PHOTO_MAX = 90;
+// Valores em TIKTOK_LIMITS (tiktok-messages.ts), compartilhados com o editor do CRM.
+const CAPTION_VIDEO_MAX = TIKTOK_LIMITS.captionVideoMax;
+const CAPTION_PHOTO_MAX = TIKTOK_LIMITS.captionPhotoMax;
+const TITLE_PHOTO_MAX = TIKTOK_LIMITS.titlePhotoMax;
 
-const TIKTOK_CARROSSEL_MAX_TIKTOK_ONLY = 20; // app attachment cap; TikTok's own max is 35
-const TIKTOK_CARROSSEL_MAX_BOTH = 10; // intersected with Instagram's Graph API carousel cap
+const TIKTOK_CARROSSEL_MAX_TIKTOK_ONLY = TIKTOK_LIMITS.carouselMaxTikTokOnly;
+const TIKTOK_CARROSSEL_MAX_BOTH = TIKTOK_LIMITS.carouselMaxWithInstagram;
 
 // TikTok's Content Posting API photo constraints (design doc: "JPEG/WebP, ≤20 MB, ≤1080p").
 // This is narrower than (and additional to) the general image/kind classification mirrored
 // from instagram-publish-utils.ts — that file's ALLOWED_IMAGE_MIMES also allows PNG, which
 // TikTok's photo endpoint does not accept.
-const TIKTOK_PHOTO_MIMES = new Set(["image/jpeg", "image/webp"]);
-const TIKTOK_PHOTO_MAX_BYTES = 20 * 1024 * 1024;
+const TIKTOK_PHOTO_MIMES = new Set(TIKTOK_LIMITS.photoMimes);
+const TIKTOK_PHOTO_MAX_BYTES = TIKTOK_LIMITS.photoMaxBytes;
 
 const VALID_PRIVACY_LEVELS = new Set([
   "PUBLIC_TO_EVERYONE",
@@ -241,7 +243,7 @@ export async function validateForTikTokScheduling(
 
   const { data: links, error: linksError } = await db
     .from("post_file_links")
-    .select("sort_order, files!inner(id, kind, mime_type, size_bytes, width, height, duration_seconds, r2_key, media_lost_at)")
+    .select("sort_order, files!inner(id, kind, mime_type, size_bytes, width, height, duration_seconds, thumbnail_frame_ms, r2_key, media_lost_at)")
     .eq("post_id", postId)
     .order("sort_order", { ascending: true });
   if (linksError) {
@@ -310,10 +312,30 @@ export interface ClaimedTikTokPost {
   tiktok_settings: TikTokSettings;
 }
 
+/** A cover timestamp TikTok can accept: a non-negative integer that falls inside the video.
+ * `duration_seconds` is stored as whole seconds, so a frame in the last partial second can
+ * read as past the end; dropping it lets TikTok pick its default frame instead of failing the
+ * publish over a cover. */
+export function usableCoverTimestampMs(
+  value: unknown,
+  videoDurationSeconds: number | null | undefined,
+): number | undefined {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) return undefined;
+  if (videoDurationSeconds != null && value >= videoDurationSeconds * 1000) return undefined;
+  return value;
+}
+
 /** Builds the POST /v2/post/publish/video/init/ body. Omits every optional key whose
  * setting is undefined/null entirely — TikTok rejects explicit nulls — and never emits a
- * photo-only field (auto_add_music, photo_cover_index, photo_images, post_mode, media_type). */
-export function buildVideoInitPayload(post: ClaimedTikTokPost, videoUrl: string): object {
+ * photo-only field (auto_add_music, photo_cover_index, photo_images, post_mode, media_type).
+ * The cover is the video's thumbnail frame (`video.thumbnailFrameMs`, from
+ * files.thumbnail_frame_ms), bounded by its duration; see usableCoverTimestampMs. No frame
+ * (an uploaded image as thumbnail, or unknown) omits the key and TikTok uses its default. */
+export function buildVideoInitPayload(
+  post: ClaimedTikTokPost,
+  videoUrl: string,
+  video?: { durationSeconds?: number | null; thumbnailFrameMs?: number | null },
+): object {
   const s = post.tiktok_settings ?? {};
   const postInfo: Record<string, unknown> = {
     title: post.caption,
@@ -339,8 +361,9 @@ export function buildVideoInitPayload(post: ClaimedTikTokPost, videoUrl: string)
   if (s.is_aigc !== undefined && s.is_aigc !== null) {
     postInfo.is_aigc = s.is_aigc;
   }
-  if (s.video_cover_timestamp_ms !== undefined && s.video_cover_timestamp_ms !== null) {
-    postInfo.video_cover_timestamp_ms = s.video_cover_timestamp_ms;
+  const coverMs = usableCoverTimestampMs(video?.thumbnailFrameMs, video?.durationSeconds);
+  if (coverMs !== undefined) {
+    postInfo.video_cover_timestamp_ms = coverMs;
   }
 
   return {

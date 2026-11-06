@@ -1,3 +1,4 @@
+import { i18n } from '@mesaas/i18n';
 import { format } from 'date-fns';
 import type { Cliente, ClienteData, Membro, Transacao } from '../../../store';
 import type { CamadaItem, CamadaPagamento } from './tipos';
@@ -122,6 +123,8 @@ export function expandirDatasClientes(
   datas: ClienteData[],
   inicio: Date,
   fim: Date,
+  /** Title of the birthday items; defaults to the current UI language's. */
+  tituloAniversario: string = i18n.t('calendario:shared.birthday'),
 ): CamadaItem[] {
   const itens: CamadaItem[] = [];
   const anos = [...new Set(mesesDoIntervalo(inicio, fim).map((m) => m.ano))];
@@ -138,7 +141,7 @@ export function expandirDatasClientes(
         id: `datas:aniversario:${c.id}:${dia}`,
         dia,
         tipo: 'aniversario',
-        titulo: 'Aniversário',
+        titulo: tituloAniversario,
         cliente: { id: c.id, nome: c.nome },
       });
     }

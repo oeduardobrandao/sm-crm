@@ -1,6 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+// These suites cover the desktop table/toolbar; the phone branch has its own *Phone tests.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 // Canonical-only registry (what the real hook returns while definitions load),
 // without dragging TanStack Query / the supabase client into this test.
 vi.mock('@/hooks/useStatusRegistry', async () => {
@@ -437,6 +440,26 @@ describe('PostsListView', () => {
   it('não mostra o selo em post normal', () => {
     render(<PostsListView {...baseProps} posts={[makePost({ ig_trial_strategy: null })]} />);
     expect(screen.queryByText('Teste')).toBeNull();
+  });
+
+  it('mostra o selo Collab N com a lista no title quando há colaboradores', () => {
+    render(<PostsListView {...baseProps} posts={[makePost({ ig_collaborators: ['a', 'b'] })]} />);
+    const badge = screen.getByText('Collab 2');
+    expect(badge.closest('.post-tipo-badge--collab')?.getAttribute('title')).toBe(
+      'Colaboradores: @a, @b',
+    );
+  });
+
+  it('não mostra o selo Collab com lista vazia ou ausente', () => {
+    const legacy = makePost();
+    delete (legacy as { ig_collaborators?: string[] }).ig_collaborators;
+    render(
+      <PostsListView
+        {...baseProps}
+        posts={[makePost({ titulo: 'Vazio', ig_collaborators: [] }), legacy]}
+      />,
+    );
+    expect(screen.queryByText(/^Collab/)).toBeNull();
   });
 
   it('mostra "Individual · <etapa>" para um avulso com processo, quando o mapa traz a etapa', () => {

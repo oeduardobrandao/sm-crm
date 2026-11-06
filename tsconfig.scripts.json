@@ -23,12 +23,14 @@
     "scripts/seo/**/*.ts",
     "scripts/seo/**/*.tsx",
     "scripts/convert-hub-pages-richtext.ts",
+    "scripts/build-mcp-widgets.ts",
     "scripts/__tests__/convert-hub-pages-richtext.test.ts",
     "scripts/__tests__/convert-hub-pages-richtext.db.test.ts",
     "scripts/__tests__/convert-hub-pages-richtext.fallback.test.ts",
     "scripts/__tests__/convert-hub-pages-richtext.connect.test.ts",
     "scripts/__tests__/convert-hub-pages-richtext.restore.test.ts",
     "scripts/__tests__/convert-hub-pages-richtext.reread.test.ts",
+    "apps/crm/vite.ssr.config.ts",
     "apps/crm/src/content/**/*.ts",
     "apps/crm/src/content/**/*.tsx",
     "apps/crm/src/pages/politica-privacidade/**/*.tsx",
@@ -37,7 +39,9 @@
     // tsx applies the jsx setting above only to files matched by "include", while tsc follows
     // imports regardless. Any .tsx imported by a prerendered page must therefore be listed here,
     // or it falls back to the classic JSX transform and throws "React is not defined".
-    "apps/crm/src/components/consent/CookiePreferencesLink.tsx"
+    "apps/crm/src/components/consent/CookiePreferencesLink.tsx",
+    // The blog render pieces the static mirror (content/blog.seo.tsx) draws.
+    "packages/ui/blog/**/*.tsx"
   ],
   "exclude": ["apps/crm/src/content/blog.client.ts", "apps/crm/src/content/__tests__/**"]
 }

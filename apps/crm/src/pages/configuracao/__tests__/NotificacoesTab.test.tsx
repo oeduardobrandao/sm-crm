@@ -4,6 +4,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { NOTIFICATION_CATALOG, CATEGORY_ORDER, CATEGORY_LABELS } from '@/lib/notification-catalog';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 
+// The tab branches on the viewport; this suite asserts the desktop markup.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 // Real catalog + category constants (Task 3) are pure static data: kept real
 // here so the "6 groups / 31 rows" assertions exercise the actual catalog,
 // not a stand-in. Only the prefs store (network calls) is mocked.
@@ -199,13 +202,13 @@ describe('NotificacoesTab', () => {
     updateWorkspaceBrandingMock.mockReset().mockResolvedValue(undefined);
   });
 
-  it('renders the 6 CATEGORY_LABELS groups and all 31 catalog type rows', async () => {
+  it('renders the 6 CATEGORY_LABELS groups and all 36 catalog type rows', async () => {
     renderTab();
     for (const category of CATEGORY_ORDER) {
       expect(await screen.findByText(CATEGORY_LABELS[category])).toBeInTheDocument();
     }
     expect(CATEGORY_ORDER.length).toBe(6);
-    expect(Object.keys(NOTIFICATION_CATALOG).length).toBe(31);
+    expect(Object.keys(NOTIFICATION_CATALOG).length).toBe(36);
     for (const entry of Object.values(NOTIFICATION_CATALOG)) {
       // getAllByText, not getByText: NOTIFICATION_CATALOG.instagram_connected_by_client
       // shares its label ("Instagram conectado") with a fixed row in

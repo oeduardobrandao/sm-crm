@@ -6,7 +6,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useNotifications } from '../../hooks/useNotifications';
 import NotificationPopover from './NotificationPopover';
 
-export default function NotificationBell() {
+export default function NotificationBell({
+  buttonClassName = 'topbar-action-btn',
+}: {
+  buttonClassName?: string;
+}) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const { notifications, unreadCount, isLoading, markAsRead, markAllAsRead, dismiss } =
@@ -21,7 +25,7 @@ export default function NotificationBell() {
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
-            <button type="button" className="topbar-action-btn" aria-label="Notificações">
+            <button type="button" className={buttonClassName} aria-label="Notificações">
               <Bell size={18} />
               {unreadCount > 0 && (
                 <span

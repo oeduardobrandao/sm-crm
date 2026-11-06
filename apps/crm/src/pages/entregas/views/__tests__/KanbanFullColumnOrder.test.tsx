@@ -2,9 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../../store', () => ({
   completeEtapa: vi.fn(),
-  completeEtapaWithRearm: vi.fn(),
   hasLaterApprovalEtapa: vi.fn(),
-  approvePostsInternally: vi.fn(),
   sendPostsToCliente: vi.fn(),
   revertEtapa: vi.fn(),
   updateWorkflowPositions: vi.fn(),

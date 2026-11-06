@@ -1,9 +1,12 @@
-import { Fragment, memo, useCallback, useMemo, useState } from 'react';
+import { Fragment, memo, useCallback, useMemo, useState, type CSSProperties } from 'react';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import {
   DndContext,
   DragOverlay,
+  MouseSensor,
   PointerSensor,
   TouchSensor,
   useSensor,
@@ -29,10 +32,12 @@ import {
   MessageSquareWarning,
   PencilLine,
   Plus,
+  MessageSquare,
   Route,
   Send,
   ShieldCheck,
 } from 'lucide-react';
+import { usePostDiscussaoNaoLidas } from '../discussao/usePostDiscussaoNaoLidas';
 import { TIPO_ICONS } from '../tipoIcons';
 import { cardAutoScheduleGates, reorderBoardPosts, type ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
@@ -69,8 +74,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { formatPostDate } from '@/utils/postDate';
-import { avatarColorClass } from '@/lib/avatarColor';
-import { getInitials } from '@/lib/initials';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
+import { BoardClienteAvatar } from '../components/BoardClienteAvatar';
 import { formatEtapaPrazo } from '../etapaPrazo';
 import { TIPO_LABELS, LOCKED_STATUSES, LOCKED_TOOLTIPS, getPostPublishState } from '../postLabels';
 import {
@@ -81,6 +86,7 @@ import {
   type BoardColumnSort,
 } from '../postsBoardOrder';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
+import { canonicalOfStatusKey } from '../statusRegistry';
 import type { StatusKey, StatusOption, StatusRegistry } from '../statusRegistry';
 import {
   COL_PREFIX,
@@ -92,6 +98,11 @@ import {
 } from '../postsKanbanDrop';
 import { getCustomStatusIcon } from '../statusIcons';
 import { ACTIVE_POSTS_KEY, useUpdatePostStatus } from '../hooks/useUpdatePostStatus';
+import { useSuggestionMoveGuard } from '../hooks/useSuggestionMoveGuard';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { PhoneStatusBoard } from '../phone/PhoneStatusBoard';
+import { PhoneConfirmSheet } from '../phone/PhoneConfirmSheet';
+import { scopeErrorOr } from '@/lib/client-scope-errors';
 
 /* Column-header icon per canonical status; color only where the status carries
  * a semantic outcome (approved/scheduled/published/failed), muted otherwise.
@@ -196,11 +207,14 @@ function PostBoardCardContent({
   schedulingEnabled,
   tiktokEnabled,
   multiplatformEnabled,
+  discussaoNaoLidas,
 }: {
   post: ActivePost;
   registry: StatusRegistry;
   card: BoardCard | undefined;
   processEtapa?: string;
+  /** Mensagens não lidas na discussão do post (só aparece quando > 0). */
+  discussaoNaoLidas?: number;
   /** Próxima aprovação esperada por um avulso (já filtrada por cliente com
    *  agendamento automático). Posts de fluxo derivam isso de `card`. */
   awaitedApproval?: string;
@@ -211,6 +225,7 @@ function PostBoardCardContent({
   tiktokEnabled?: boolean;
   multiplatformEnabled?: boolean;
 }) {
+  const { t } = useTranslation('entregasViews');
   const opt = registry.resolve(post);
   const locked = LOCKED_STATUSES.has(opt.canonical);
   const membro = card?.membro;
@@ -255,8 +270,21 @@ function PostBoardCardContent({
           {TIPO_LABELS[post.tipo]}
         </span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+          {discussaoNaoLidas != null && discussaoNaoLidas > 0 && (
+            <span
+              className="board-card-discussao-badge"
+              role="img"
+              aria-label={t('postsKanbanView.discussaoNaoLidas', { count: discussaoNaoLidas })}
+              title={t('postsKanbanView.discussaoNaoLidas', { count: discussaoNaoLidas })}
+            >
+              <MessageSquare className="h-3 w-3" aria-hidden="true" />
+              {discussaoNaoLidas}
+            </span>
+          )}
           {getPostPublishState(post) === 'publicando' && (
-            <span className="board-post-prazo-pill board-post-publicando">Publicando…</span>
+            <span className="board-post-prazo-pill board-post-publicando">
+              {t('postsKanbanView.publicando')}
+            </span>
           )}
           {prazo && (
             <span
@@ -295,7 +323,7 @@ function PostBoardCardContent({
           )}
         </span>
       </div>
-      <div className="item-title">{post.titulo || 'Post sem título'}</div>
+      <div className="item-title">{post.titulo || t('shared.untitledPost')}</div>
       {multiplatformEnabled && <DestinationChips post={post} />}
       {card ? (
         <span className="post-fluxo-tag post-fluxo-tag--static">
@@ -305,12 +333,12 @@ function PostBoardCardContent({
       ) : post.workflow_id === null && processEtapa ? (
         <span className="post-fluxo-tag post-fluxo-tag--avulso post-fluxo-tag--individual">
           <Route size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
-          Individual · {processEtapa}
+          {t('shared.individual')} · {processEtapa}
         </span>
       ) : post.workflow_id === null ? (
         <span className="post-fluxo-tag post-fluxo-tag--avulso">
           <CircleDashed size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
-          Avulso
+          {t('shared.avulso')}
         </span>
       ) : null}
       <div className="item-meta board-post-footer">
@@ -320,35 +348,23 @@ function PostBoardCardContent({
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    {card?.clienteAvatarUrl ? (
-                      <img
-                        src={card.clienteAvatarUrl}
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                        className="board-post-cliente-avatar"
-                      />
-                    ) : (
-                      <span
-                        className="board-post-cliente-avatar board-post-cliente-avatar--initials"
-                        style={{
-                          background: card?.cliente?.cor || 'var(--surface-hover)',
-                        }}
-                      >
-                        {getInitials(post.cliente_nome || '?')}
-                      </span>
-                    )}
+                    <BoardClienteAvatar
+                      srcs={[card?.clienteAvatarUrl, card?.cliente?.foto_url]}
+                      nome={post.cliente_nome || '?'}
+                      cor={card?.cliente?.cor}
+                    />
                   </TooltipTrigger>
                   <TooltipContent>{post.cliente_nome || '—'}</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             )}
             {membro && (
-              <span
-                className={`avatar board-post-assignee-avatar ${avatarColorClass(membro.id ?? membro.nome)}`}
-              >
-                {getInitials(membro.nome)}
-              </span>
+              <PessoaAvatar
+                nome={membro.nome}
+                fotoUrl={membro.avatar_url}
+                seed={membro.id}
+                className="board-post-assignee-avatar"
+              />
             )}
           </span>
           {card && membro && (
@@ -365,7 +381,7 @@ function PostBoardCardContent({
           )}
         </span>
         <span className="board-post-date">
-          {post.scheduled_at ? formatPostDate(post.scheduled_at) : 'Sem data'}
+          {post.scheduled_at ? formatPostDate(post.scheduled_at) : t('postsKanbanView.semData')}
         </span>
       </div>
     </>
@@ -388,11 +404,13 @@ const PostBoardCard = memo(function PostBoardCard({
   schedulingEnabled,
   tiktokEnabled,
   multiplatformEnabled,
+  discussaoNaoLidas,
 }: {
   post: ActivePost;
   registry: StatusRegistry;
   card: BoardCard | undefined;
   openable: boolean;
+  discussaoNaoLidas?: number;
   onPostClick: (post: ActivePost) => void;
   processEtapa?: string;
   awaitedApproval?: string;
@@ -436,6 +454,7 @@ const PostBoardCard = memo(function PostBoardCard({
         schedulingEnabled={schedulingEnabled}
         tiktokEnabled={tiktokEnabled}
         multiplatformEnabled={multiplatformEnabled}
+        discussaoNaoLidas={discussaoNaoLidas}
       />
     </div>
   );
@@ -467,6 +486,7 @@ const PostBoardColumn = memo(function PostBoardColumn({
   schedulingEnabled,
   tiktokEnabled,
   multiplatformEnabled,
+  discussaoNaoLidasByPostId,
 }: {
   option: StatusOption;
   posts: ActivePost[];
@@ -493,6 +513,8 @@ const PostBoardColumn = memo(function PostBoardColumn({
    *  espera (selo "Aguarda aprovação"). Só entram avulsos de clientes com
    *  agendamento automático. */
   awaitedApprovalByPostId?: Map<number, string>;
+  /** post id → mensagens não lidas na discussão (selo do card, só quando > 0). */
+  discussaoNaoLidasByPostId?: Map<number, number>;
   /** Stable callback (spec peça 3) -- same identity guarantee as
    *  onColumnSortChange above. */
   onAutoScheduleClick?: (post: ActivePost) => void;
@@ -500,20 +522,30 @@ const PostBoardColumn = memo(function PostBoardColumn({
   tiktokEnabled?: boolean;
   multiplatformEnabled?: boolean;
 }) {
+  const { t } = useTranslation('entregasViews');
   const { setNodeRef } = useDroppable({ id: `${COL_PREFIX}${option.key}` });
   const tint = columnTintFor(option);
+  // Vidro: neutral header and count; the status icon keeps the colour cue.
+  const vidroShell = useVidroShell();
+  const tinted = vidroShell ? null : tint;
 
   return (
     <div
       className={`board-column${dragInvalid ? ' board-column--drag-invalid' : ''}`}
-      style={tint ? { borderColor: `${tint}30` } : undefined}
+      style={
+        tint
+          ? vidroShell
+            ? ({ '--col-tint': tint } as CSSProperties)
+            : { borderColor: `${tint}30` }
+          : undefined
+      }
     >
       <div
         className="board-column-header"
-        style={tint ? { background: `${tint}30`, borderBottomColor: `${tint}30` } : undefined}
+        style={tinted ? { background: `${tinted}30`, borderBottomColor: `${tinted}30` } : undefined}
       >
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.15rem', minWidth: 0 }}>
-          <span className="board-column-title" style={tint ? { color: tint } : undefined}>
+          <span className="board-column-title" style={tinted ? { color: tinted } : undefined}>
             {option.kind === 'custom'
               ? (() => {
                   const CustomIcon = getCustomStatusIcon(option.icone);
@@ -554,9 +586,9 @@ const PostBoardColumn = memo(function PostBoardColumn({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                aria-label={`Ordenar coluna ${option.label}`}
+                aria-label={t('kanbanView.sortColumn', { name: option.label })}
                 className="board-column-sort"
-                style={tint ? { color: tint } : undefined}
+                style={tinted ? { color: tinted } : undefined}
               >
                 <ArrowUpDown size={12} aria-hidden="true" />
               </button>
@@ -581,7 +613,9 @@ const PostBoardColumn = memo(function PostBoardColumn({
         <span
           className="board-column-count"
           style={
-            tint ? { background: `${tint}3d`, color: tint, borderColor: 'transparent' } : undefined
+            tinted
+              ? { background: `${tinted}3d`, color: tinted, borderColor: 'transparent' }
+              : undefined
           }
         >
           {posts.length}
@@ -590,14 +624,14 @@ const PostBoardColumn = memo(function PostBoardColumn({
       <div
         ref={setNodeRef}
         className="board-column-body"
-        style={tint ? { background: `${tint}0a` } : undefined}
+        style={tinted ? { background: `${tinted}0a` } : undefined}
       >
         <SortableContext
           items={posts.map((p) => String(p.id))}
           strategy={verticalListSortingStrategy}
         >
           {posts.length === 0 && dropSlot == null ? (
-            <div className="board-empty">Nenhum post</div>
+            <div className="board-empty">{t('postsKanbanView.columnEmpty')}</div>
           ) : (
             <>
               {posts.map((p, idx) => (
@@ -621,6 +655,7 @@ const PostBoardColumn = memo(function PostBoardColumn({
                     schedulingEnabled={schedulingEnabled}
                     tiktokEnabled={tiktokEnabled}
                     multiplatformEnabled={multiplatformEnabled}
+                    discussaoNaoLidas={discussaoNaoLidasByPostId?.get(p.id)}
                   />
                 </Fragment>
               ))}
@@ -661,9 +696,20 @@ export function PostsKanbanView({
   tiktokEnabled,
   multiplatformEnabled,
 }: PostsKanbanViewProps) {
+  const { t } = useTranslation('entregasViews');
   const registry = useStatusRegistry();
   const updateStatus = useUpdatePostStatus();
+  const { confirmMove, dialog: moveGuardDialog } = useSuggestionMoveGuard();
   const qc = useQueryClient();
+  // Discussion badges: ONE batched RPC for every card on the board. The map handed to the
+  // memoized columns only changes identity when the unread data does.
+  const discussaoPostIds = useMemo(() => posts.map((p) => p.id), [posts]);
+  const { byPost: discussaoByPost } = usePostDiscussaoNaoLidas({ postIds: discussaoPostIds });
+  const discussaoNaoLidasByPostId = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const [postId, row] of discussaoByPost) if (row.naoLidas > 0) m.set(postId, row.naoLidas);
+    return m;
+  }, [discussaoByPost]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [dropSlot, setDropSlot] = useState<PostsKanbanHoverSlot | null>(null);
   const [dragHeight, setDragHeight] = useState(120);
@@ -729,6 +775,14 @@ export function PostsKanbanView({
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
   );
 
+  // Celular: segurar abre o menu do card; arrastar só pela alça, no modo
+  // Reordenar (a PointerSensor acima disputaria o toque com a rolagem).
+  const isPhone = !useIsDesktop(768);
+  const phoneSensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+  );
+
   const activePost = activeId != null ? posts.find((p) => p.id === activeId) : undefined;
 
   /** Persists a manual-column placement: applies it to the cache the board
@@ -744,8 +798,8 @@ export function PostsKanbanView({
       const byId = new Map(updates.map((u) => [u.id, u.board_ordem]));
       return old.map((p) => (byId.has(p.id) ? { ...p, board_ordem: byId.get(p.id)! } : p));
     });
-    reorderBoardPosts(updates).catch(() => {
-      toast.error('Erro ao salvar a ordem');
+    reorderBoardPosts(updates).catch((err: unknown) => {
+      toast.error(scopeErrorOr(err, t('postsKanbanView.saveOrderError')));
       qc.invalidateQueries({ queryKey: ACTIVE_POSTS_KEY });
     });
   };
@@ -808,15 +862,15 @@ export function PostsKanbanView({
         });
       },
     });
-    toast(`Post movido para "${move.targetLabel}".`, {
+    toast(t('postsKanbanView.movedTo', { label: move.targetLabel }), {
       duration: 6000,
       action: {
-        label: 'Desfazer',
+        label: t('postsKanbanView.undo'),
         onClick: () => {
           const cachedPosts = qc.getQueryData<ActivePost[]>(ACTIVE_POSTS_KEY);
           const guard = resolveUndoGuard(cachedPosts, move, registry);
           if (guard === 'stale') {
-            toast.info('O post já mudou de novo. Nada foi desfeito.');
+            toast.info(t('postsKanbanView.undoStale'));
             return;
           }
           // Same cached post the guard above just checked: its board_ordem
@@ -842,6 +896,15 @@ export function PostsKanbanView({
       },
     });
     place?.();
+  };
+
+  /** `applyStatusChange` behind the suggestion guard: a move into `aprovado_cliente` with an
+   *  unreviewed client suggestion asks first. Runs after the "post aprovado" confirm. The
+   *  Desfazer write skips it on purpose (it restores where the post already was). */
+  const guardedApplyStatusChange = async (post: ActivePost, key: StatusKey, place?: () => void) => {
+    const canonical = canonicalOfStatusKey(key, registry);
+    if (canonical && !(await confirmMove(post.id, canonical, post.status))) return;
+    applyStatusChange(post, key, place);
   };
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -941,6 +1004,15 @@ export function PostsKanbanView({
 
     // Cross-column: existing status-change flow, then placement if the
     // target column is manually sorted.
+    moveToStatus(dragged, targetKey, slotAtDrop?.key === targetKey ? slotAtDrop.index : undefined);
+  };
+
+  /** Status change of one post to `targetKey` (drag drop, or the phone card
+   *  menu's "Mover para"): the drop resolver decides locked / confirm / write,
+   *  and a manually sorted target gets the post at `slotIndex` (end when
+   *  absent). */
+  const moveToStatus = (dragged: ActivePost, targetKey: StatusKey, slotIndex?: number) => {
+    const draggedId = dragged.id;
     const result = resolvePostsKanbanDrop({
       post: dragged,
       overId: `${COL_PREFIX}${targetKey}`,
@@ -949,7 +1021,7 @@ export function PostsKanbanView({
     const placeAfter = () => {
       if (columnSortFor(targetKey) !== 'manual') return;
       const targetList = (sortedByStatus.get(targetKey) ?? []).filter((p) => p.id !== draggedId);
-      const index = slotAtDrop?.key === targetKey ? slotAtDrop.index : targetList.length;
+      const index = slotIndex ?? targetList.length;
       persistPlacement(planBoardPlacement(targetList, index, draggedId));
     };
 
@@ -964,7 +1036,7 @@ export function PostsKanbanView({
         setPendingConfirm({ post: dragged, key: result.key, place: placeAfter });
         return;
       case 'write':
-        applyStatusChange(dragged, result.key, placeAfter);
+        void guardedApplyStatusChange(dragged, result.key, placeAfter);
         return;
     }
   };
@@ -973,7 +1045,7 @@ export function PostsKanbanView({
     if (!pendingConfirm) return;
     const { post, key, place } = pendingConfirm;
     setPendingConfirm(null);
-    applyStatusChange(post, key, place);
+    void guardedApplyStatusChange(post, key, place);
   };
 
   if (isLoading) {
@@ -987,17 +1059,89 @@ export function PostsKanbanView({
         style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}
       >
         {filtersActive ? (
-          <p>Nenhum post encontrado. Ajuste os filtros.</p>
+          <p>{t('shared.noPostsFiltered')}</p>
         ) : (
           <>
-            <p>Nenhum post por aqui ainda.</p>
+            <p>{t('shared.noPostsYet')}</p>
             <Button type="button" onClick={onCreateAvulso} style={{ marginTop: '1rem' }}>
               <Plus className="h-4 w-4" />
-              Criar post avulso
+              {t('shared.createAvulso')}
             </Button>
           </>
         )}
       </div>
+    );
+  }
+
+  const confirmTitle = t('postsKanbanView.confirmTitle');
+  const confirmMessage = t('postsKanbanView.confirmMessage');
+  const nudgeDialog = (
+    <AutoSchedulePromptDialog
+      post={nudgePost}
+      onClose={() => setNudgePost(null)}
+      onScheduled={() => {
+        setNudgePost(null);
+        qc.invalidateQueries({ queryKey: ACTIVE_POSTS_KEY });
+        // Prefixo sem o workflowId de propósito: TanStack Query casa chaves por
+        // prefixo, então isto invalida ['workflow-posts-with-props', <qualquer
+        // id>]. O diálogo não carrega o workflow_id do post, e invalidar a lista
+        // de outro fluxo é inofensivo (são listas refetch-on-demand).
+        qc.invalidateQueries({ queryKey: ['workflow-posts-with-props'] });
+        qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
+      }}
+    />
+  );
+
+  const renderCardContent = (post: ActivePost) => (
+    <PostBoardCardContent
+      post={post}
+      registry={registry}
+      card={post.workflow_id != null ? cardsByWorkflowId.get(post.workflow_id) : undefined}
+      processEtapa={processEtapaByPostId?.get(post.id)}
+      awaitedApproval={awaitedApprovalByPostId?.get(post.id)}
+      discussaoNaoLidas={discussaoNaoLidasByPostId.get(post.id)}
+      onAutoScheduleClick={activeId == null ? () => handleAutoScheduleClick(post) : undefined}
+      schedulingEnabled={schedulingEnabled}
+      tiktokEnabled={tiktokEnabled}
+      multiplatformEnabled={multiplatformEnabled}
+    />
+  );
+
+  if (isPhone) {
+    return (
+      <>
+        <PhoneStatusBoard
+          options={registry.options}
+          postsFor={(key) => sortedByStatus.get(key) ?? []}
+          sortFor={columnSortFor}
+          onSortChange={onColumnSortChange}
+          renderContent={renderCardContent}
+          isOpenable={(post) => isPostOpenable(post, openableWorkflowIds)}
+          onOpen={onPostClick}
+          isLockedOption={(o) => LOCKED_STATUSES.has(o.canonical)}
+          lockedReason={(o) => LOCKED_TOOLTIPS[o.canonical] ?? t('postsKanbanView.lockedFallback')}
+          optionOf={(post) => registry.resolve(post)}
+          onMoveTo={(post, key) => moveToStatus(post, key)}
+          sensors={phoneSensors}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+          onDragCancel={() => {
+            setActiveId(null);
+            setDropSlot(null);
+          }}
+          activePost={activePost}
+        />
+        <PhoneConfirmSheet
+          open={!!pendingConfirm}
+          title={confirmTitle}
+          message={confirmMessage}
+          actions={[{ label: t('actions.confirm'), onSelect: handleConfirmStatusChange }]}
+          onCancel={() => setPendingConfirm(null)}
+        />
+        {moveGuardDialog}
+        {nudgeDialog}
+      </>
     );
   }
 
@@ -1031,6 +1175,7 @@ export function PostsKanbanView({
                 onColumnSortChange={onColumnSortChange}
                 processEtapaByPostId={processEtapaByPostId}
                 awaitedApprovalByPostId={awaitedApprovalByPostId}
+                discussaoNaoLidasByPostId={discussaoNaoLidasByPostId}
                 onAutoScheduleClick={handleAutoScheduleClick}
                 schedulingEnabled={schedulingEnabled}
                 tiktokEnabled={tiktokEnabled}
@@ -1052,6 +1197,7 @@ export function PostsKanbanView({
                 }
                 processEtapa={processEtapaByPostId?.get(activePost.id)}
                 awaitedApproval={awaitedApprovalByPostId?.get(activePost.id)}
+                discussaoNaoLidas={discussaoNaoLidasByPostId.get(activePost.id)}
                 schedulingEnabled={schedulingEnabled}
                 tiktokEnabled={tiktokEnabled}
                 multiplatformEnabled={multiplatformEnabled}
@@ -1068,31 +1214,21 @@ export function PostsKanbanView({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Post aprovado</AlertDialogTitle>
-            <AlertDialogDescription>
-              Este post foi aprovado. Alterar o status vai invalidar a aprovação. Deseja continuar?
-            </AlertDialogDescription>
+            <AlertDialogTitle>{confirmTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmMessage}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingConfirm(null)}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmStatusChange}>Confirmar</AlertDialogAction>
+            <AlertDialogCancel onClick={() => setPendingConfirm(null)}>
+              {t('actions.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmStatusChange}>
+              {t('actions.confirm')}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <AutoSchedulePromptDialog
-        post={nudgePost}
-        onClose={() => setNudgePost(null)}
-        onScheduled={() => {
-          setNudgePost(null);
-          qc.invalidateQueries({ queryKey: ACTIVE_POSTS_KEY });
-          // Prefixo sem o workflowId de propósito: TanStack Query casa chaves por
-          // prefixo, então isto invalida ['workflow-posts-with-props', <qualquer
-          // id>]. O diálogo não carrega o workflow_id do post, e invalidar a lista
-          // de outro fluxo é inofensivo (são listas refetch-on-demand).
-          qc.invalidateQueries({ queryKey: ['workflow-posts-with-props'] });
-          qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
-        }}
-      />
+      {moveGuardDialog}
+      {nudgeDialog}
     </>
   );
 }

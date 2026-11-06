@@ -124,18 +124,20 @@ describe('KbVideosPage', () => {
     expect(screen.getAllByText('1:05').length).toBeGreaterThan(0);
   });
 
-  it('"Novo vídeo" links to the new-video route', async () => {
+  it('"Enviar vídeo" links to the new-video route with the series preselected', async () => {
     renderPage();
-    expect(await screen.findByRole('link', { name: /Novo vídeo/ })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: /Enviar vídeo/ })).toHaveAttribute(
       'href',
-      '/admin/kb-videos/new',
+      '/admin/kb-videos/new?series=s1',
     );
   });
 
   it('moving a video down renumbers the series', async () => {
     renderPage();
     await screen.findAllByRole('link', { name: 'Primeiro acesso' });
-    fireEvent.click(screen.getAllByRole('button', { name: 'Mover Primeiro acesso para baixo' })[0]);
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Mover Primeiro acesso para a direita' })[0],
+    );
     await waitFor(() =>
       expect(reorderKbVideos).toHaveBeenCalledWith([
         { id: 2, display_order: 10 },
@@ -153,6 +155,8 @@ describe('KbVideosPage', () => {
     await screen.findAllByRole('link', { name: 'Primeiro acesso' });
     expect(screen.queryByRole('toolbar', { name: 'Ações em massa' })).toBeNull();
 
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar' }));
     fireEvent.click(
       screen.getByRole('checkbox', { name: 'Selecionar todos os vídeos de Primeiros passos' }),
     );
@@ -168,6 +172,8 @@ describe('KbVideosPage', () => {
       ),
     );
     expect(screen.queryByRole('toolbar', { name: 'Ações em massa' })).toBeNull();
+    // Like KB Articles, a finished bulk action leaves selection mode.
+    expect(screen.queryByRole('checkbox')).toBeNull();
   });
 
   it('bulk-unpublishes a single selected video', async () => {
@@ -175,6 +181,8 @@ describe('KbVideosPage', () => {
     vi.mocked(upsertKbVideo).mockResolvedValue({ video: videos[0] } as never);
     renderPage();
     await screen.findAllByRole('link', { name: 'Primeiro acesso' });
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'Selecionar Primeiro acesso' }));
     expect(screen.getByText('1 selecionado')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Despublicar/ }));
@@ -183,6 +191,7 @@ describe('KbVideosPage', () => {
     );
     expect(upsertKbVideo).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('1 item despublicado.'));
+    expect(screen.queryByRole('checkbox')).toBeNull();
   });
 
   it('does not auto-refresh a pending upload that is still fresh', async () => {

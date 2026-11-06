@@ -1,7 +1,11 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Desktop layout; the phone layout has its own tests (jsdom's matchMedia is false).
+const { desktop } = vi.hoisted(() => ({ desktop: { value: true } }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
 
 vi.mock('@/store', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/store')>()),
@@ -127,5 +131,34 @@ describe('VisaoGeralTab', () => {
         .map((q) => q.queryKey[0]);
       expect(new Set(keys)).toEqual(new Set(['clienteLinks', 'clienteDatas', 'clienteEnderecos']));
     });
+  });
+});
+
+describe('VisaoGeralTab no celular', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    desktop.value = false;
+    mockedGetLinks.mockResolvedValue([]);
+    mockedGetDatas.mockResolvedValue([
+      { id: 7, cliente_id: 42, titulo: 'Aniversário da clínica', data: '2026-11-20' },
+    ] as never);
+    mockedGetEnderecos.mockResolvedValue([]);
+  });
+  afterEach(() => {
+    desktop.value = true;
+  });
+
+  it('shows the info as value rows (Não informado when empty) and the three sections', async () => {
+    renderTab({ ...CLIENTE, telefone: '' });
+    expect(await screen.findByText('contato@aurora.com.br')).toBeInTheDocument();
+    expect(screen.getByText('Não informado')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Notion/ })).toHaveAttribute(
+      'href',
+      'https://notion.so/aurora',
+    );
+    for (const label of ['Adicionar link', 'Nova Data Importante', 'Novo Endereço']) {
+      expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
+    }
+    expect(await screen.findByText('Aniversário da clínica')).toBeInTheDocument();
   });
 });

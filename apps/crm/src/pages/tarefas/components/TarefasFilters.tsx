@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -15,12 +16,13 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet';
-import { Check, ChevronDown, Search, SlidersHorizontal } from 'lucide-react';
+import { Check, ChevronDown, Search, SlidersHorizontal, X } from 'lucide-react';
 import type { Cliente, Membro, TarefaTag, TarefaStatus } from '../../../store';
 import {
   STATUS_LABELS,
   STATUS_ORDER,
   type TarefaFilterState,
+  type TarefaKpi,
   EMPTY_TAREFA_FILTERS,
 } from '../tarefasLogic';
 
@@ -30,6 +32,9 @@ interface TarefasFiltersProps {
   clientes: Cliente[];
   membros: Membro[];
   tags: TarefaTag[];
+  /** The KPI card currently filtering the views (null = none). Shown as a removable chip. */
+  kpi?: TarefaKpi | null;
+  onClearKpi?: () => void;
 }
 
 const STATUS_COLORS: Record<TarefaStatus, string> = {
@@ -67,6 +72,7 @@ function MultiSelectFilter<T extends string | number>({
   onSelectedChange: (next: T[]) => void;
   isStacked: boolean;
 }) {
+  const { t } = useTranslation('tasks');
   const selectedOptions = options.filter((o) => selected.includes(o.value));
   const first = selectedOptions[0];
   const label = !first
@@ -105,7 +111,7 @@ function MultiSelectFilter<T extends string | number>({
       <DropdownMenuContent align="start" className="max-h-[320px] overflow-y-auto min-w-[200px]">
         {options.length === 0 && (
           <DropdownMenuItem disabled className="text-xs">
-            Nenhuma opção
+            {t('tarefasFilters.noOptions')}
           </DropdownMenuItem>
         )}
         {options.map((o) => {
@@ -148,12 +154,31 @@ function MultiSelectFilter<T extends string | number>({
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => onSelectedChange([])} className="text-xs">
-              Limpar seleção
+              {t('tarefasFilters.clearSelection')}
             </DropdownMenuItem>
           </>
         )}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/** "Atrasadas ×": the active KPI card's filter, removable from the filters row. */
+function KpiChip({ kpi, onClear }: { kpi: TarefaKpi; onClear: () => void }) {
+  const { t } = useTranslation('tasks');
+  const label = t(`statsHeader.${kpi}`);
+  return (
+    <span className="inline-flex h-9 items-center gap-1 rounded-full border border-[var(--primary-color)] pl-3 pr-1 text-xs shadow-sm shrink-0">
+      <span className="truncate">{label}</span>
+      <button
+        type="button"
+        onClick={onClear}
+        aria-label={t('tarefasFilters.removeKpi', { label })}
+        className="inline-flex h-6 w-6 items-center justify-center rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--surface-hover)]"
+      >
+        <X className="h-3.5 w-3.5" aria-hidden="true" />
+      </button>
+    </span>
   );
 }
 
@@ -172,11 +197,12 @@ function FilterControls({
   sortedMembros: Membro[];
   sortedTags: TarefaTag[];
 }) {
+  const { t } = useTranslation('tasks');
   const isStacked = layout === 'stacked';
   return (
     <div className={isStacked ? 'flex flex-col gap-3' : 'flex gap-2 flex-wrap'}>
       <MultiSelectFilter
-        placeholder="Status"
+        placeholder={t('tarefasFilters.status')}
         options={STATUS_ORDER.map((s) => ({
           value: s,
           label: STATUS_LABELS[s],
@@ -187,7 +213,7 @@ function FilterControls({
         isStacked={isStacked}
       />
       <MultiSelectFilter
-        placeholder="Todos os membros"
+        placeholder={t('tarefasFilters.allMembers')}
         options={sortedMembros
           .filter((m) => m.id != null)
           .map((m) => ({ value: m.id!, label: m.nome }))}
@@ -196,7 +222,7 @@ function FilterControls({
         isStacked={isStacked}
       />
       <MultiSelectFilter
-        placeholder="Todos os clientes"
+        placeholder={t('tarefasFilters.allClients')}
         options={activeClientes
           .filter((c) => c.id != null)
           .map((c) => ({ value: c.id!, label: c.nome }))}
@@ -205,10 +231,10 @@ function FilterControls({
         isStacked={isStacked}
       />
       <MultiSelectFilter
-        placeholder="Todas as tags"
+        placeholder={t('tarefasFilters.allTags')}
         options={sortedTags
-          .filter((t) => t.id != null)
-          .map((t) => ({ value: t.id!, label: t.nome, color: t.cor }))}
+          .filter((tag) => tag.id != null)
+          .map((tag) => ({ value: tag.id!, label: tag.nome, color: tag.cor }))}
         selected={filters.filterTags}
         onSelectedChange={(filterTags) => onChange({ ...filters, filterTags })}
         isStacked={isStacked}
@@ -223,7 +249,10 @@ export function TarefasFilters({
   clientes,
   membros,
   tags,
+  kpi = null,
+  onClearKpi,
 }: TarefasFiltersProps) {
+  const { t } = useTranslation('tasks');
   const [sheetOpen, setSheetOpen] = useState(false);
   const activeClientes = clientes
     .filter((c) => c.status === 'ativo')
@@ -231,6 +260,13 @@ export function TarefasFilters({
   const sortedMembros = [...membros].sort((a, b) => a.nome.localeCompare(b.nome));
   const sortedTags = [...tags].sort((a, b) => a.nome.localeCompare(b.nome));
   const activeCount = countActiveFilters(filters);
+  const showClear = activeCount > 0 || kpi != null;
+  // Resets the dropdowns (search stays, as before) and the KPI card filter.
+  const clearAll = () => {
+    onChange({ ...EMPTY_TAREFA_FILTERS, filterSearch: filters.filterSearch });
+    onClearKpi?.();
+  };
+  const kpiChip = kpi != null && onClearKpi ? <KpiChip kpi={kpi} onClear={onClearKpi} /> : null;
 
   const sharedProps = { filters, onChange, activeClientes, sortedMembros, sortedTags };
 
@@ -241,7 +277,7 @@ export function TarefasFilters({
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
           <Input
-            placeholder="Buscar tarefa..."
+            placeholder={t('tarefasFilters.searchPlaceholder')}
             value={filters.filterSearch}
             onChange={(e) => onChange({ ...filters, filterSearch: e.target.value })}
             className="!rounded-full !text-xs h-9 pl-8 pr-4 mb-0 w-[180px]"
@@ -249,15 +285,10 @@ export function TarefasFilters({
         </div>
         <div className="w-px h-6 bg-border shrink-0" />
         <FilterControls layout="inline" {...sharedProps} />
-        {activeCount > 0 && (
-          <Button
-            variant="ghost"
-            className="h-9 px-3 text-xs font-normal mb-0"
-            onClick={() =>
-              onChange({ ...EMPTY_TAREFA_FILTERS, filterSearch: filters.filterSearch })
-            }
-          >
-            Limpar filtros
+        {kpiChip}
+        {showClear && (
+          <Button variant="ghost" className="h-9 px-3 text-xs font-normal mb-0" onClick={clearAll}>
+            {t('tarefasFilters.clearFilters')}
           </Button>
         )}
       </div>
@@ -267,7 +298,7 @@ export function TarefasFilters({
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
           <Input
-            placeholder="Buscar tarefa..."
+            placeholder={t('tarefasFilters.searchPlaceholder')}
             value={filters.filterSearch}
             onChange={(e) => onChange({ ...filters, filterSearch: e.target.value })}
             className="!rounded-full !text-xs h-9 pl-8 pr-4 mb-0 w-full"
@@ -279,7 +310,7 @@ export function TarefasFilters({
           onClick={() => setSheetOpen(true)}
         >
           <SlidersHorizontal className="h-3.5 w-3.5" />
-          Filtros
+          {t('tarefasFilters.filters')}
           {activeCount > 0 && (
             <span
               className="inline-flex items-center justify-center rounded-full text-[0.6rem] font-semibold leading-none"
@@ -294,24 +325,21 @@ export function TarefasFilters({
             </span>
           )}
         </Button>
+        {kpiChip}
       </div>
 
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent side="bottom" className="rounded-t-[24px] max-h-[85vh] overflow-y-auto pb-24">
           <SheetHeader className="mb-4">
-            <SheetTitle className="text-base">Filtros</SheetTitle>
-            <SheetDescription className="sr-only">Filtre as tarefas</SheetDescription>
+            <SheetTitle className="text-base">{t('tarefasFilters.filters')}</SheetTitle>
+            <SheetDescription className="sr-only">
+              {t('tarefasFilters.sheetDescription')}
+            </SheetDescription>
           </SheetHeader>
           <FilterControls layout="stacked" {...sharedProps} />
-          {activeCount > 0 && (
-            <Button
-              variant="ghost"
-              className="w-full mt-4 text-xs"
-              onClick={() =>
-                onChange({ ...EMPTY_TAREFA_FILTERS, filterSearch: filters.filterSearch })
-              }
-            >
-              Limpar filtros
+          {showClear && (
+            <Button variant="ghost" className="w-full mt-4 text-xs" onClick={clearAll}>
+              {t('tarefasFilters.clearFilters')}
             </Button>
           )}
         </SheetContent>

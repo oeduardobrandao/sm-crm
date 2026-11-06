@@ -16,7 +16,9 @@ import {
   HardDrive,
   Instagram,
   Lightbulb,
+  MessageCircle,
   MessageSquare,
+  MessagesSquare,
   Paperclip,
   Play,
   Shield,
@@ -31,6 +33,7 @@ import { ptBR } from 'date-fns/locale';
 import type { NotificationType } from '../store';
 import { STATUS_LABELS } from '../pages/entregas/postLabels';
 import { formatStorageBytes } from '../components/usage/usage-meter-state';
+import { stripMentionTokens } from '../components/mentions/mentionTokens';
 
 type Tone = 'success' | 'warning' | 'danger' | 'teal' | 'primary';
 
@@ -53,6 +56,65 @@ export const NOTIFICATION_FALLBACK_ICON: LucideIcon = Bell;
 
 const s = (v: unknown, fallback: string): string =>
   typeof v === 'string' && v.length > 0 ? v : fallback;
+
+const QUOTE_MAX = 60;
+
+/** Collapses whitespace and cuts a long quoted passage so the card title stays short. */
+function shortQuote(raw: string): string {
+  const flat = raw.replace(/\s+/g, ' ').trim();
+  return flat.length > QUOTE_MAX ? `${flat.slice(0, QUOTE_MAX).trimEnd()}…` : flat;
+}
+
+/** post_discussion card. One card per (user, post) while unread. The metadata shape and the
+ * grouping rules live in the spec, section "Notificações"
+ * (docs/superpowers/specs/2026-10-22-discussao-do-post-design.md). */
+function postDiscussionDisplay(m: Record<string, unknown>): NotificationDisplay {
+  const author = s(m.author_name, 'Alguém');
+  // Distinct names other than the latest author, so the count is right whether or not the
+  // trigger keeps the latest author inside `authors`.
+  const others = Array.isArray(m.authors)
+    ? new Set(
+        m.authors.filter((a): a is string => typeof a === 'string' && a.length > 0 && a !== author),
+      ).size
+    : 0;
+  const count = typeof m.count === 'number' && Number.isFinite(m.count) ? m.count : 1;
+  const quoted = typeof m.quoted_text === 'string' ? shortQuote(m.quoted_text) : '';
+  const anchored = s(m.thread_field, 'geral') !== 'geral' && quoted.length > 0;
+
+  const who =
+    others > 0 ? `${author} e mais ${others} ${others === 1 ? 'pessoa' : 'pessoas'}` : author;
+  const title = anchored
+    ? `${who} ${others > 0 ? 'responderam' : 'respondeu'} no trecho “${quoted}”`
+    : `${who} ${others > 0 ? 'escreveram' : 'escreveu'} na discussão de ${s(m.post_titulo, 'um post')}`;
+
+  // An anchored title names the passage, not the post, so the body carries the post title.
+  const postTitle = anchored ? s(m.post_titulo, '') : '';
+  const rawPreview = stripMentionTokens(s(m.preview, ''));
+  const preview = postTitle ? (rawPreview ? `${postTitle}: ${rawPreview}` : postTitle) : rawPreview;
+  const countLabel = count > 1 ? `${count} mensagens` : '';
+  return {
+    icon: MessagesSquare,
+    tone: 'teal',
+    title,
+    body: [preview, countLabel].filter(Boolean).join(' · '),
+  };
+}
+
+/** task_comment card. One card per (user, task) while unread: the RPC upserts it, bumping
+ * `count` (docs/superpowers/specs/2026-10-28-tarefas-kpis-comentarios-historico-design.md). */
+function taskCommentDisplay(m: Record<string, unknown>): NotificationDisplay {
+  const count = typeof m.count === 'number' && Number.isFinite(m.count) ? m.count : 1;
+  const task = s(m.task_title, 'uma tarefa');
+  // The title names the task, so the body names who wrote (the RPC keeps the latest author).
+  const author = s(m.author_name, '');
+  const preview = stripMentionTokens(s(m.preview, ''));
+  return {
+    icon: MessageCircle,
+    tone: 'teal',
+    title: count > 1 ? `${count} novos comentários em ${task}` : `Novo comentário em ${task}`,
+    body: author && preview ? `${author}: ${preview}` : author || preview,
+  };
+}
 
 /** "seg., 5 de out., 14:00" (all-day: no time). Shown in the viewer's timezone. */
 function formatEventWhen(m: Record<string, unknown>): string {
@@ -89,6 +151,64 @@ function eventBody(m: Record<string, unknown>): string {
   const when = formatEventWhen(m);
   const title = s(m.titulo, 'Evento');
   return when ? `${title} · ${when}` : title;
+}
+
+const MESES = [
+  'janeiro',
+  'fevereiro',
+  'março',
+  'abril',
+  'maio',
+  'junho',
+  'julho',
+  'agosto',
+  'setembro',
+  'outubro',
+  'novembro',
+  'dezembro',
+];
+
+/** Lowercase pt-BR month of a 'YYYY-MM-DD' (or 'YYYY-MM') string, read from the text so a
+ * local timezone can never shift it. Empty when the value is not a valid month. */
+function monthName(periodo: unknown): string {
+  const mm = typeof periodo === 'string' ? /^\d{4}-(\d{2})/.exec(periodo) : null;
+  return (mm && MESES[Number(mm[1]) - 1]) || '';
+}
+
+/**
+ * linha_editorial_aprovada / linha_editorial_ajustes. Body = comment count (omitted for 0); for
+ * ajustes, the rows with an ajuste (`itens_ajustes`, spec §13.3) when there are any.
+ */
+function linhaEditorialDisplay(
+  type: 'linha_editorial_aprovada' | 'linha_editorial_ajustes',
+  m: Record<string, unknown>,
+): NotificationDisplay {
+  const quem = s(m.cliente_nome, 'Cliente');
+  const mes = monthName(m.periodo);
+  // Reference form (spec §14.2): the custom title in curly quotes, else the month.
+  const titulo = typeof m.titulo === 'string' ? m.titulo.trim() : '';
+  const ref = titulo ? `linha editorial “${titulo}”` : `linha editorial${mes ? ` de ${mes}` : ''}`;
+  const n = typeof m.comentarios === 'number' && Number.isFinite(m.comentarios) ? m.comentarios : 0;
+  const comentarios = n > 0 ? `${n} ${n === 1 ? 'comentário' : 'comentários'}` : '';
+  const ajustes =
+    typeof m.itens_ajustes === 'number' && Number.isFinite(m.itens_ajustes) ? m.itens_ajustes : 0;
+  const body =
+    type === 'linha_editorial_ajustes' && ajustes > 0
+      ? `${ajustes} ${ajustes === 1 ? 'post' : 'posts'} com ajuste`
+      : comentarios;
+  return type === 'linha_editorial_aprovada'
+    ? {
+        icon: CheckCircle,
+        tone: 'success',
+        title: `${quem} aprovou a ${ref}`,
+        body,
+      }
+    : {
+        icon: AlertTriangle,
+        tone: 'warning',
+        title: `${quem} pediu ajustes na ${ref}`,
+        body,
+      };
 }
 
 const RSVP_LABELS: Record<string, string> = { sim: 'Sim', nao: 'Não', talvez: 'Talvez' };
@@ -223,6 +343,8 @@ export function getNotificationDisplay(
           ? `${client} · ${s(m.task_title, 'Tarefa')}`
           : s(m.task_title, 'Tarefa'),
       };
+    case 'task_comment':
+      return taskCommentDisplay(m);
     case 'workflow_completed':
       return {
         icon: Trophy,
@@ -260,6 +382,23 @@ export function getNotificationDisplay(
         title: `${s(m.actor_name, 'Alguém')} mencionou você`,
         body: s(m.excerpt, s(m.context_title, '')),
       };
+    case 'team_message': {
+      // title = nome do grupo quando existe; para DM (sem nome) ou qualquer
+      // metadata incompleta, cai no nome do autor. body repete o autor só
+      // quando o title NAO ja o mostra (grupo) -- numa DM o title JA e o
+      // autor, entao repeti-lo no body seria redundante.
+      const conversaNome = s(m.conversa_nome, '');
+      const authorName = s(m.author_name, 'Equipe');
+      const preview = stripMentionTokens(s(m.preview, ''));
+      return {
+        icon: MessageCircle,
+        tone: 'teal',
+        title: conversaNome || authorName,
+        body: conversaNome ? `${authorName}: ${preview}` : preview,
+      };
+    }
+    case 'post_discussion':
+      return postDiscussionDisplay(m);
     case 'post_publish_failed':
       return {
         icon: AlertCircle,
@@ -378,6 +517,9 @@ export function getNotificationDisplay(
         title: `${reminderPrefix(m)}: ${s(m.titulo, 'Evento')}`,
         body: formatEventWhen(m),
       };
+    case 'linha_editorial_aprovada':
+    case 'linha_editorial_ajustes':
+      return linhaEditorialDisplay(type, m);
     default:
       // Resilience: a notification type the DB allows but the UI doesn't know yet
       // (e.g. added by a migration ahead of the frontend) must never crash the list.

@@ -1,5 +1,14 @@
 import { supabase } from './supabase';
 import type { SubscriptionInfo, SubscriptionSummary, WorkspaceStatusGroup } from './subscription';
+import type {
+  BlogMetricsResponse,
+  BlogPostDetail,
+  BlogPostMetricsResponse,
+  BlogPostRow,
+  BlogTab,
+  EditableField,
+  FilePostRow,
+} from '../pages/blog/blog-view';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 
@@ -16,6 +25,8 @@ export interface WorkspaceSummary {
   member_count: number;
   client_count: number;
   plan_name: string | null;
+  /** 'manual' (comp) and 'demo' get a badge in the plan cell. */
+  plan_source: string | null;
   has_overrides: boolean;
   subscription: SubscriptionSummary | null;
 }
@@ -27,7 +38,10 @@ export interface WorkspaceDetail {
     logo_url: string | null;
     created_at: string;
     plan_source?: string;
+    /** Set when the Admin created the workspace as a demo account. */
+    demo_created_at?: string | null;
   };
+  affiliate?: { id: string; name: string; code: string } | null;
   owner: MemberInfo | null;
   members: MemberInfo[];
   plan: { id: string; name: string } | null;
@@ -110,6 +124,14 @@ export interface Plan {
   feature_agenda: boolean;
   feature_multiplatform: boolean;
   feature_hub_pauta: boolean;
+  feature_crm_vidro: boolean;
+  feature_financeiro_v2: boolean;
+  feature_team_chat: boolean;
+  feature_linha_editorial: boolean;
+  feature_youtube: boolean;
+  feature_google_business: boolean;
+  feature_instagram_comments_ai: boolean;
+  feature_acesso_por_cliente: boolean;
   rate_instagram_syncs_per_day: number | null;
   rate_ai_analyses_per_month: number | null;
   rate_report_generations_per_month: number | null;
@@ -259,6 +281,14 @@ export const FEATURE_FLAG_KEYS = [
   'feature_agenda',
   'feature_multiplatform',
   'feature_hub_pauta',
+  'feature_crm_vidro',
+  'feature_financeiro_v2',
+  'feature_team_chat',
+  'feature_linha_editorial',
+  'feature_youtube',
+  'feature_google_business',
+  'feature_instagram_comments_ai',
+  'feature_acesso_por_cliente',
 ] as const;
 
 export const FEATURE_FLAG_LABELS: Record<string, string> = {
@@ -289,6 +319,14 @@ export const FEATURE_FLAG_LABELS: Record<string, string> = {
   feature_agenda: 'Agenda',
   feature_multiplatform: 'Plataformas por fluxo',
   feature_hub_pauta: 'Hub: visual Pauta',
+  feature_crm_vidro: 'Visual vidro (CRM desktop)',
+  feature_financeiro_v2: 'Financeiro v2 (rentabilidade)',
+  feature_team_chat: 'Chat da equipe',
+  feature_linha_editorial: 'Linha editorial',
+  feature_youtube: 'YouTube',
+  feature_google_business: 'Google Meu Negócio',
+  feature_instagram_comments_ai: 'Comentários com IA',
+  feature_acesso_por_cliente: 'Acesso por cliente',
 };
 
 export const RATE_LIMIT_KEYS = [
@@ -561,6 +599,30 @@ export function unsetWorkspacePlan(workspace_id: string) {
   return adminApi<{ message: string; plan_source: string }>('unset-workspace-plan', {
     workspace_id,
   });
+}
+
+export function createDemoWorkspace(p: {
+  email: string;
+  plan_id: string;
+  nome?: string;
+  empresa?: string;
+  ref_code?: string;
+}) {
+  return adminApi<{ workspace_id: string; email: string; email_sent: boolean }>(
+    'create-demo-workspace',
+    p,
+  );
+}
+
+export function resendDemoAccess(workspaceId: string) {
+  return adminApi<{ message: string }>('resend-demo-access', { workspace_id: workspaceId });
+}
+
+export function setWorkspaceAffiliate(workspaceId: string, refCode: string | null) {
+  return adminApi<{ affiliate: { id: string; name: string; code: string } | null }>(
+    'set-workspace-affiliate',
+    { workspace_id: workspaceId, ref_code: refCode },
+  );
 }
 
 export function setWorkspaceOverrides(params: {
@@ -1088,4 +1150,72 @@ export function updateAffiliateCommissionRule(params: UpdateAffiliateCommissionR
     'update-affiliate-commission-rule',
     params,
   );
+}
+
+// ─── Blog (spec 2026-10-23-blog-automatico §6-§7) ─────────────
+// Row shapes live in pages/blog/blog-view.ts. Mutations return the list columns (no body_md);
+// callers refetch get-blog-post for the full row. expected_revision is always sent where the
+// server accepts it, so a save or a note never lands on a draft the Routine has rewritten.
+
+type BlogFields = Partial<Record<EditableField, string>>;
+
+export function listBlogPosts(tab: BlogTab) {
+  return adminApi<{
+    posts: BlogPostRow[];
+    last_draft_at: string | null;
+    file_posts: FilePostRow[];
+  }>('list-blog-posts', {
+    tab,
+  });
+}
+
+export function getBlogMetrics() {
+  return adminApi<BlogMetricsResponse>('blog-metrics');
+}
+
+export function getBlogPostMetrics(slug: string, days?: number) {
+  return adminApi<BlogPostMetricsResponse>('blog-post-metrics', { slug, days });
+}
+
+export function getBlogPost(id: string) {
+  return adminApi<{ post: BlogPostDetail }>('get-blog-post', { id });
+}
+
+export function updateBlogPost(id: string, fields: BlogFields, expectedRevision: number) {
+  return adminApi<{ post: BlogPostRow }>('update-blog-post', {
+    id,
+    fields,
+    expected_revision: expectedRevision,
+  });
+}
+
+export function approveBlogPost(id: string, expectedRevision: number) {
+  return adminApi<{ post: BlogPostRow }>('approve-blog-post', {
+    id,
+    expected_revision: expectedRevision,
+  });
+}
+
+export function requestBlogChanges(id: string, note: string, expectedRevision: number) {
+  return adminApi<{ post: BlogPostRow }>('request-blog-changes', {
+    id,
+    note,
+    expected_revision: expectedRevision,
+  });
+}
+
+export function rejectBlogPost(id: string, reason?: string) {
+  return adminApi<{ post: BlogPostRow }>('reject-blog-post', reason ? { id, reason } : { id });
+}
+
+export function unpublishBlogPost(id: string) {
+  return adminApi<{ post: BlogPostRow }>('unpublish-blog-post', { id });
+}
+
+export function republishBlogPost(id: string) {
+  return adminApi<{ post: BlogPostRow }>('republish-blog-post', { id });
+}
+
+export function retryBlogPublish(id: string) {
+  return adminApi<{ post: BlogPostRow }>('retry-blog-publish', { id });
 }

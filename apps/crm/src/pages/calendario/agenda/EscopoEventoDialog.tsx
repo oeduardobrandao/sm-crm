@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -23,11 +24,8 @@ export interface EscopoEventoDialogProps {
   onConfirm: (escopo: AgendaEscopo) => void;
 }
 
-const OPCOES: { id: AgendaEscopo; label: string }[] = [
-  { id: 'esta', label: 'Este evento' },
-  { id: 'seguintes', label: 'Este e os seguintes' },
-  { id: 'todas', label: 'Todos os eventos' },
-];
+/** Labels resolve at render: `escopoEventoDialog.options.<id>`. */
+const OPCOES: AgendaEscopo[] = ['esta', 'seguintes', 'todas'];
 
 /** "Este evento / Este e os seguintes / Todos os eventos" for a recurring event
  *  (spec: EscopoEventoDialog). The parent owns `open` and runs the save. */
@@ -40,6 +38,7 @@ export function EscopoEventoDialog({
   onCancel,
   onConfirm,
 }: EscopoEventoDialogProps) {
+  const { t } = useTranslation('agendaEvento');
   const nome = useId();
   const padrao: AgendaEscopo = esteDesabilitado ? 'seguintes' : 'esta';
   const [escopo, setEscopo] = useState<AgendaEscopo>(padrao);
@@ -56,17 +55,21 @@ export function EscopoEventoDialog({
       <AlertDialogContent className="sm:max-w-[420px]">
         <AlertDialogHeader>
           <AlertDialogTitle>
-            {excluir ? 'Excluir evento recorrente?' : 'Editar evento recorrente'}
+            {excluir ? t('escopoEventoDialog.titleDelete') : t('escopoEventoDialog.titleEdit')}
           </AlertDialogTitle>
           <AlertDialogDescription className="sr-only">
-            Escolha a quais eventos da série a alteração se aplica.
+            {t('escopoEventoDialog.description')}
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <div role="radiogroup" aria-label="Aplicar a" className="flex flex-col gap-1">
-          {OPCOES.map((op) => {
-            const desabilitado = op.id === 'esta' && esteDesabilitado;
+        <div
+          role="radiogroup"
+          aria-label={t('escopoEventoDialog.applyTo')}
+          className="flex flex-col gap-1"
+        >
+          {OPCOES.map((id) => {
+            const desabilitado = id === 'esta' && esteDesabilitado;
             return (
-              <div key={op.id}>
+              <div key={id}>
                 <label
                   className="flex items-center gap-2.5 py-2 text-sm"
                   style={{ opacity: desabilitado ? 0.5 : 1 }}
@@ -74,13 +77,13 @@ export function EscopoEventoDialog({
                   <input
                     type="radio"
                     name={nome}
-                    value={op.id}
-                    checked={escopo === op.id}
+                    value={id}
+                    checked={escopo === id}
                     disabled={desabilitado || pendente}
-                    onChange={() => setEscopo(op.id)}
+                    onChange={() => setEscopo(id)}
                     className="h-[18px] w-[18px] accent-[var(--text-main)]"
                   />
-                  {op.label}
+                  {t(`escopoEventoDialog.options.${id}`)}
                 </label>
                 {desabilitado && motivo && (
                   <p className="-mt-1 ml-7 text-xs" style={{ color: 'var(--text-muted)' }}>
@@ -93,12 +96,12 @@ export function EscopoEventoDialog({
         </div>
         {excluir && (
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            Os participantes recebem um aviso de cancelamento.
+            {t('escopoEventoDialog.cancelNotice')}
           </p>
         )}
         <AlertDialogFooter className="gap-2 sm:gap-0">
           <Button type="button" variant="outline" onClick={onCancel} disabled={pendente}>
-            Cancelar
+            {t('actions.cancel')}
           </Button>
           <Button
             type="button"
@@ -106,7 +109,7 @@ export function EscopoEventoDialog({
             disabled={pendente || (escopo === 'esta' && esteDesabilitado)}
             onClick={() => onConfirm(escopo)}
           >
-            {excluir ? 'Excluir' : 'Salvar'}
+            {excluir ? t('escopoEventoDialog.delete') : t('actions.save')}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

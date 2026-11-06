@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { SCOPE_OPTIONS, AGENT_PRESET } from '../mcp-scopes';
 
@@ -44,5 +46,40 @@ describe('import assistant scopes (clientes/membros)', () => {
     expect(AGENT_PRESET).toContain('membros:read');
     expect(AGENT_PRESET).not.toContain('clientes:write');
     expect(AGENT_PRESET).not.toContain('membros:write');
+  });
+});
+
+describe('financeiro scopes (owner-only)', () => {
+  const find = (v: string) => SCOPE_OPTIONS.find((s) => s.value === v);
+
+  it('offers financeiro:read and financeiro:write flagged ownerOnly', () => {
+    expect(find('financeiro:read')).toEqual({
+      value: 'financeiro:read',
+      label: 'Financeiro (leitura, só donos)',
+      ownerOnly: true,
+    });
+    expect(find('financeiro:write')).toEqual({
+      value: 'financeiro:write',
+      label: 'Financeiro (escrita, só donos)',
+      ownerOnly: true,
+    });
+  });
+  it('flags every other option as not owner-only, explicitly', () => {
+    for (const s of SCOPE_OPTIONS) {
+      expect(typeof s.ownerOnly).toBe('boolean');
+      if (!s.value.startsWith('financeiro:')) expect(s.ownerOnly).toBe(false);
+    }
+  });
+  it('keeps AGENT_PRESET free of any financeiro scope', () => {
+    expect(AGENT_PRESET.some((s) => s.startsWith('financeiro:'))).toBe(false);
+  });
+  it('mirrors MCP_ALLOWED_SCOPES in the edge function, in the same order', () => {
+    const src = readFileSync(
+      resolve(__dirname, '../../../../../supabase/functions/_shared/mcp-token.ts'),
+      'utf8',
+    );
+    const block = src.match(/MCP_ALLOWED_SCOPES = \[([\s\S]*?)\] as const/)?.[1] ?? '';
+    const edge = [...block.matchAll(/"([a-z]+:[a-z]+)"/g)].map((m) => m[1]);
+    expect(SCOPE_OPTIONS.map((s) => s.value)).toEqual(edge);
   });
 });

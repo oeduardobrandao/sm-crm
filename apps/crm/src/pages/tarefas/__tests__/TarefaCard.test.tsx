@@ -59,6 +59,7 @@ function makeTarefa(overrides: Partial<TarefaWithRelations> = {}): TarefaWithRel
     tags: [],
     subtarefas_total: 0,
     subtarefas_concluidas: 0,
+    comentarios_total: 0,
     cliente_nome: null,
     cliente_cor: null,
     serie: null,
@@ -249,5 +250,89 @@ describe('TarefaCard', () => {
       'title',
       'Toda segunda',
     );
+  });
+
+  it('TarefaCard shows the assignee photo', () => {
+    const ana = { id: 1, nome: 'Ana Silva', avatar_url: 'https://x.test/a.jpg' } as never;
+    const { container } = render(
+      <TarefaCard
+        tarefa={makeTarefa({ responsavel_id: 1 })}
+        membro={ana}
+        now={NOW}
+        onClick={() => {}}
+        membros={[ana, ...MEMBROS.slice(1)]}
+        onRefresh={() => {}}
+      />,
+    );
+    const photos = container.querySelectorAll<HTMLImageElement>('img.avatar--photo');
+    // The card's assignee chip plus Ana's row in the reassign menu.
+    expect(photos).toHaveLength(2);
+    expect(photos[0]).toHaveAttribute('src', 'https://x.test/a.jpg');
+    expect(photos[0].style.width).toBe('20px');
+    expect(photos[1].style.width).toBe('16px');
+    // The hover name survives the swap to PessoaAvatar.
+    expect(screen.getByTitle('Ana Silva')).toContainElement(photos[0]);
+  });
+
+  it('TarefaCard shows initials without a photo', () => {
+    const { container } = render(
+      <TarefaCard
+        tarefa={makeTarefa({ responsavel_id: 2 })}
+        membro={{ id: 2, nome: 'Bruno Costa', avatar_url: null } as never}
+        now={NOW}
+        onClick={() => {}}
+        membros={[]}
+        onRefresh={() => {}}
+      />,
+    );
+    expect(container.querySelector('img.avatar--photo')).toBeNull();
+    const avatar = screen.getByTitle('Bruno Costa').querySelector<HTMLElement>('.avatar')!;
+    expect(avatar).toHaveTextContent('BC');
+    expect(avatar.style.width).toBe('20px');
+  });
+
+  it('shows MessageCircle count when comentarios_total > 0', () => {
+    render(
+      <TarefaCard
+        tarefa={makeTarefa({ comentarios_total: 3, subtarefas_total: 2, subtarefas_concluidas: 1 })}
+        membro={null}
+        now={NOW}
+        onClick={() => {}}
+        membros={[]}
+        onRefresh={() => {}}
+      />,
+    );
+    const count = screen.getByRole('img', { name: '3 comentários' });
+    expect(count).toHaveTextContent('3');
+    // Next to the subtask counter.
+    expect(screen.getByText('1/2').parentElement).toBe(count.parentElement);
+  });
+
+  it('says "1 comentário" in the singular', () => {
+    render(
+      <TarefaCard
+        tarefa={makeTarefa({ comentarios_total: 1 })}
+        membro={null}
+        now={NOW}
+        onClick={() => {}}
+        membros={[]}
+        onRefresh={() => {}}
+      />,
+    );
+    expect(screen.getByRole('img', { name: '1 comentário' })).toBeInTheDocument();
+  });
+
+  it('hides the comment count at 0', () => {
+    render(
+      <TarefaCard
+        tarefa={makeTarefa({ comentarios_total: 0 })}
+        membro={null}
+        now={NOW}
+        onClick={() => {}}
+        membros={[]}
+        onRefresh={() => {}}
+      />,
+    );
+    expect(screen.queryByRole('img', { name: /comentário/ })).not.toBeInTheDocument();
   });
 });

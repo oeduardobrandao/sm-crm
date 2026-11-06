@@ -1,18 +1,23 @@
 // Editor de modelo (spec 2026-09-25 §2): o mesmo canvas do relatório, com
 // dados de exemplo e a marca real do workspace, gravando em report_templates.
 // Sem PDF, atualizar dados, ver como cliente ou salvar/aplicar template.
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Info, Plus, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DocSkeleton } from '@/components/ui/skeletons';
 import type { ReportBlock } from '@mesaas/report-blocks/types';
+import { sectionizeLayout, toSections } from '@mesaas/report-blocks/types';
 import '@mesaas/report-blocks/styles.css';
+import {
+  platformSectionBlocks,
+  type PlatformSectionOpts,
+} from '../../../../../supabase/functions/_shared/report-docs/default-layout.ts';
 import { getReportTemplate, type ReportTemplateRow } from '../../services/reportTemplates';
 import { useLayoutAutosave } from './useLayoutAutosave';
 import { TEMPLATE_AUTOSAVE_TARGET } from './templateAutosave';
-import { useBlockEditing } from './useBlockEditing';
+import { enabledReportPlatforms, useBlockEditing } from './useBlockEditing';
 import { usePreventStrayFileDrop } from './usePreventStrayFileDrop';
 import { configCoalesceKey, useLayoutHistory } from './useLayoutHistory';
 import { UndoRedoButtons } from './UndoRedoButtons';
@@ -23,9 +28,33 @@ import { TextBlockEditor } from './TextBlockEditor';
 import { AddWidgetDrawer } from './AddWidgetDrawer';
 import { LayersPanel } from './LayersPanel';
 import { AppearancePopover } from './AppearancePopover';
-import { moveBlock, normalizeCoverSize, updateBlockConfig, updateBlockText } from './layoutOps';
+import {
+  normalizeCoverSize,
+  resolveDragEnd,
+  updateBlockConfig,
+  updateBlockText,
+  updateSectionConfig,
+} from './layoutOps';
+import { withAiSampleText } from './templateOps';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
+import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
+import { ReportPhoneView } from './phone/ReportPhoneView';
 
 const SETTINGS_PATH = '/configuracao/relatorios';
+// Modelo vale para qualquer cliente: "Adicionar seção" oferece todas as
+// plataformas (dados de exemplo), mas TikTok só com feature_tiktok e Google Meu
+// Negócio só com feature_google_business (fail closed enquanto o plano não
+// respondeu). A seção nova sai completa, como no "Padrão do sistema"
+// (buildSystemDefaultLayout): o generate corta o que faltar.
+const TEMPLATE_SECTION_OPTS: PlatformSectionOpts = {
+  hasAudience: true,
+  hasBestTimes: true,
+  hasTags: true,
+  hasTikTokBestTimes: true,
+  hasGbpUnits: true,
+};
+const SAMPLE_NOTE = 'Dados de exemplo. Os números reais entram quando o relatório é gerado.';
 
 function AiPlaceholder() {
   return (
@@ -49,10 +78,17 @@ function AiPlaceholder() {
 
 function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
   const snapshot = useSampleSnapshot();
+  const { features } = useWorkspaceLimits();
+  const enabledPlatforms = useMemo(() => enabledReportPlatforms(features), [features]);
 
+  // Seccionado ao abrir (como o relatório): canônico = mesma ref, nada a gravar.
+  const initialLayout = useMemo(
+    () => sectionizeLayout(normalizeCoverSize(template.layout)),
+    [template.layout],
+  );
   const { layout, applyLayout, title, setTitle, saving } = useLayoutAutosave(
     template.id,
-    { layout: normalizeCoverSize(template.layout), title: template.name },
+    { layout: initialLayout, title: template.name },
     TEMPLATE_AUTOSAVE_TARGET,
   );
   // F1 (revisão final): templateAutosave pula a gravação no banco quando o
@@ -71,10 +107,34 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
     setDrawerOpen,
     highlightId,
     highlightAndScroll,
+    insertTarget,
     openWidgetDrawer,
     handleInsert,
     handleRemoveBlock,
-  } = useBlockEditing(layoutRef, commit);
+    handleRemoveSection,
+    handleAddSection,
+  } = useBlockEditing(layoutRef, commit, { enabledPlatforms });
+  const drawerSection = insertTarget
+    ? (toSections(layout).find((s) => s.marker.id === insertTarget.sectionId) ?? null)
+    : null;
+  // Celular (D27): o modelo só é visto, não editado. Todos os hooks acima seguem
+  // montados para a ordem não mudar quando a largura cruza 768px.
+  const isPhone = !useIsDesktop(768);
+  const previewLayout = useMemo(() => withAiSampleText(layout), [layout]);
+
+  if (isPhone) {
+    return (
+      <ReportPhoneView
+        title={title}
+        subtitle="Modelo de relatório"
+        fallbackTo={SETTINGS_PATH}
+        backLabel="Voltar para Modelos"
+        sampleNote={SAMPLE_NOTE}
+        layout={previewLayout}
+        snapshot={snapshot}
+      />
+    );
+  }
 
   return (
     <div className="rb-editor-with-rail">
@@ -150,7 +210,7 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
         }}
       >
         <Info className="h-4 w-4" aria-hidden="true" />
-        Dados de exemplo. Os números reais entram quando o relatório é gerado.
+        {SAMPLE_NOTE}
       </p>
 
       <EditorCanvas
@@ -163,6 +223,20 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
         }
         highlightId={highlightId}
         imageContext={{ mode: 'template' }}
+        enabledPlatforms={enabledPlatforms}
+        availablePlatforms="all"
+        onAddWidget={openWidgetDrawer}
+        onAddSection={(kind, afterId) =>
+          handleAddSection(
+            kind,
+            afterId,
+            kind === 'general' ? [] : platformSectionBlocks(kind, TEMPLATE_SECTION_OPTS),
+          )
+        }
+        onRemoveSection={handleRemoveSection}
+        onSectionConfigChange={(id, patch) =>
+          commit(updateSectionConfig(layoutRef.current, id, patch), configCoalesceKey(id, patch))
+        }
         renderTextBlock={(block: ReportBlock) =>
           block.type === 'text' ? (
             <TextBlockEditor
@@ -181,13 +255,21 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
       <LayersPanel
         layout={layout}
         highlightId={highlightId}
-        onReorder={(activeId, overId) => commit(moveBlock(layoutRef.current, activeId, overId))}
+        enabledPlatforms={enabledPlatforms}
+        onReorder={(activeId, overId) =>
+          commit(resolveDragEnd(layoutRef.current, activeId, overId))
+        }
         onLocate={highlightAndScroll}
         onAddAt={openWidgetDrawer}
-        onAddEnd={() => openWidgetDrawer(null)}
       />
 
-      <AddWidgetDrawer open={drawerOpen} onOpenChange={setDrawerOpen} onInsert={handleInsert} />
+      <AddWidgetDrawer
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        onInsert={handleInsert}
+        section={drawerSection}
+        hasCover={layout.blocks.some((b) => b.type === 'cover')}
+      />
     </div>
   );
 }
@@ -195,6 +277,7 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
 export default function ModeloEditorPage() {
   // Arquivo solto fora das áreas de soltar não pode descarregar o editor.
   usePreventStrayFileDrop();
+  const isPhone = !useIsDesktop(768);
   const { id } = useParams<{ id: string }>();
   const {
     data: template,
@@ -219,7 +302,8 @@ export default function ModeloEditorPage() {
   // qual dos dois aconteceu.
   if (isError) {
     return (
-      <div style={{ padding: '2rem' }}>
+      <div style={{ padding: isPhone ? 0 : '2rem' }}>
+        {isPhone && <PhoneNavBar backLabel="Voltar para Modelos" fallbackTo={SETTINGS_PATH} />}
         <p style={{ color: 'var(--text-muted)' }}>Não foi possível carregar o modelo.</p>
         <Link to={SETTINGS_PATH}>Voltar para os modelos</Link>
       </div>
@@ -228,7 +312,8 @@ export default function ModeloEditorPage() {
 
   if (!template) {
     return (
-      <div style={{ padding: '2rem' }}>
+      <div style={{ padding: isPhone ? 0 : '2rem' }}>
+        {isPhone && <PhoneNavBar backLabel="Voltar para Modelos" fallbackTo={SETTINGS_PATH} />}
         <p style={{ color: 'var(--text-muted)' }}>Modelo não encontrado.</p>
         <Link to={SETTINGS_PATH}>Voltar para os modelos</Link>
       </div>

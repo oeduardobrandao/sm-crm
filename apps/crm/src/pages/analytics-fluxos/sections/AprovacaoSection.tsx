@@ -17,6 +17,8 @@ import type { AprovacaoCliente } from '@/services/workflowAnalytics';
 import type { Cliente } from '../../../store';
 import { formatHorasOuSemDados, horizonteCaption } from '../format';
 import { SectionCard, SectionEmpty } from './SectionCard';
+import { ClienteFoto } from '@/components/ClienteFoto';
+import { useClienteAvatars } from '@/hooks/useClienteAvatars';
 
 // BarController explícito: esta seção usa o componente genérico do
 // react-chartjs-2, que não auto-registra controller nenhum, e o tree-shaking
@@ -25,21 +27,22 @@ import { SectionCard, SectionEmpty } from './SectionCard';
 ChartJS.register(CategoryScale, LinearScale, BarController, BarElement, Tooltip);
 
 /** Rows in the "slowest clients" ranking before it stops being a ranking. */
-const TOP_N = 8;
+export const SLOW_CLIENTS_TOP_N = 8;
+const TOP_N = SLOW_CLIENTS_TOP_N;
 
 /**
  * Above this many hours a client's median reads as a problem rather than a
  * number. 72h is the same boundary the histogram's warning bucket opens at, so
  * the two halves of the section agree about what "slow" means.
  */
-const LENTO_HORAS = 72;
+export const LENTO_HORAS = 72;
 
 /**
  * The RPC's bucket keys, rendered for humans. Keyed rather than positional so a
  * future bucket edit surfaces as an unmapped raw key instead of silently
  * mislabelling a bar.
  */
-const FAIXA_LABEL: Record<string, string> = {
+export const FAIXA_LABEL: Record<string, string> = {
   '<4h': '< 4h',
   '4-24h': '4 a 24h',
   '1-3d': '1 a 3d',
@@ -75,7 +78,7 @@ export function temAtividadeAprovacao(aprovacao: AprovacaoCliente): boolean {
 
 /** Client identity for a ranking row: photo when there is one, coloured
  *  initials otherwise, exactly like the clients list. */
-function ClienteAvatar({ cliente }: { cliente: Cliente | undefined }) {
+function ClienteAvatar({ cliente, fotos }: { cliente: Cliente | undefined; fotos: string[] }) {
   const sigla = (cliente?.sigla || cliente?.nome?.slice(0, 2) || '?').toUpperCase();
   const base = {
     width: 24,
@@ -84,25 +87,28 @@ function ClienteAvatar({ cliente }: { cliente: Cliente | undefined }) {
     flexShrink: 0,
     objectFit: 'cover' as const,
   };
-  if (cliente?.foto_url) {
-    return <img src={cliente.foto_url} alt="" loading="lazy" decoding="async" style={base} />;
-  }
   return (
-    <span
-      aria-hidden
-      style={{
-        ...base,
-        background: cliente?.cor || 'var(--surface-2)',
-        color: '#fff',
-        fontSize: '0.6rem',
-        fontWeight: 700,
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      {sigla}
-    </span>
+    <ClienteFoto
+      srcs={fotos}
+      style={base}
+      fallback={
+        <span
+          aria-hidden
+          style={{
+            ...base,
+            background: cliente?.cor || 'var(--surface-2)',
+            color: '#fff',
+            fontSize: '0.6rem',
+            fontWeight: 700,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {sigla}
+        </span>
+      }
+    />
   );
 }
 
@@ -113,6 +119,8 @@ export function AprovacaoSection({
 }: AprovacaoSectionProps) {
   const isDark = useIsDark();
   const theme = useMemo(() => getChartTheme(isDark), [isDark]);
+  const clientes = useMemo(() => [...clientesById.values()], [clientesById]);
+  const { fotosDe } = useClienteAvatars(clientes);
 
   const horizonte = horizonteCaption(postEventsSince);
   const caption = (base: string) => (horizonte ? `${base} · ${horizonte}` : base);
@@ -272,7 +280,7 @@ export function AprovacaoSection({
                       textDecoration: 'none',
                     }}
                   >
-                    <ClienteAvatar cliente={cliente} />
+                    <ClienteAvatar cliente={cliente} fotos={fotosDe(linha.cliente_id)} />
                     <span
                       style={{
                         overflow: 'hidden',

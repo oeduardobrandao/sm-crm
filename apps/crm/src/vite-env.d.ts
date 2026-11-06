@@ -9,3 +9,6 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+/** Build year as a string, injected by `define` in apps/crm/vite.config.ts and vitest.config.ts. */
+declare const __BUILD_YEAR__: string;

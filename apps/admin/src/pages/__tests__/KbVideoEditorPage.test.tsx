@@ -167,6 +167,24 @@ describe('KbVideoEditorPage', () => {
     expect(screen.queryByLabelText('Arquivo de vídeo')).toBeNull();
   });
 
+  it('preselects the series named in ?series= on a new video', async () => {
+    vi.mocked(listKbVideoSeries).mockResolvedValue({
+      series: [
+        { id: 's1', title: 'Primeiros passos', slug: 'pp', display_order: 1, status: 'published' },
+        { id: 's2', title: 'Agenda', slug: 'agenda', display_order: 2, status: 'published' },
+      ],
+    } as never);
+    renderAt('/admin/kb-videos/new?series=s2');
+    await screen.findByRole('option', { name: 'Agenda' });
+    await waitFor(() => expect(screen.getByLabelText('Série')).toHaveValue('s2'));
+  });
+
+  it('falls back to the first series when ?series= names none', async () => {
+    renderAt('/admin/kb-videos/new?series=nope');
+    await screen.findByRole('option', { name: 'Primeiros passos' });
+    await waitFor(() => expect(screen.getByLabelText('Série')).toHaveValue('s1'));
+  });
+
   it('uploads a chosen file for an existing video', async () => {
     renderAt('/admin/kb-videos/7/edit');
     await screen.findByDisplayValue('Primeiro acesso');

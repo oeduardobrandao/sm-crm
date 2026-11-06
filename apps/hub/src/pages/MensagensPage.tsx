@@ -3,6 +3,7 @@ import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-q
 import { CheckCircle2, FilePen, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
+import { compactHubToken } from '../lib/hubLinks';
 import { fetchMensagens, markMensagensSeen, sendHubMensagem, submitApproval } from '../api';
 import { HubPostChip } from '../components/HubPostChip';
 import type { MensagemFeedItem, MensagensCursor } from '../types';
@@ -28,9 +29,20 @@ function isEventRow(m: MensagemFeedItem) {
   return m.source === 'post_feedback' && m.action !== 'mensagem' && !m.content?.trim();
 }
 
+/** Media-note rows read as bubbles with a small label above, never as event rows. */
+function mediaNoteLabel(
+  m: MensagemFeedItem,
+  t: (key: string, defaultValue: string) => string,
+): string | null {
+  if (m.source === 'media_note') return t('mediaNote', 'Comentário na mídia');
+  if (m.source === 'media_note_reply')
+    return t('mediaNoteReply', 'Resposta a um comentário na mídia');
+  return null;
+}
+
 function eventLabel(m: MensagemFeedItem, t: (key: string, defaultValue: string) => string) {
   if (m.source === 'edit_suggestion') {
-    return t('events.editSuggestion', 'Você sugeriu edições no texto');
+    return t('events.editSuggestion', 'Você sugeriu edições');
   }
   return m.action === 'aprovado'
     ? t('events.approved', 'Você aprovou o post')
@@ -40,7 +52,7 @@ function eventLabel(m: MensagemFeedItem, t: (key: string, defaultValue: string) 
 export function MensagensPage() {
   const { bootstrap, token, workspace } = useHub();
   const { t, i18n } = useTranslation('hubMessages');
-  const base = `/${workspace}/hub/${token}`;
+  const base = `/${workspace}/hub/${compactHubToken(token)}`;
   const qc = useQueryClient();
   const [draft, setDraft] = useState('');
   const [replyTo, setReplyTo] = useState<{ post_id: number; titulo: string } | null>(null);
@@ -184,31 +196,24 @@ export function MensagensPage() {
               <div key={itemKey(m)} className={`max-w-[78%] ${mine ? 'self-end' : 'self-start'}`}>
                 {!mine && (
                   <div className="mb-0.5 flex items-center gap-1.5 text-[12px] font-semibold hub-tx3">
-                    {m.author_avatar_url ? (
-                      <img
-                        src={m.author_avatar_url}
-                        alt=""
-                        data-testid="hub-author-avatar"
-                        className="h-[18px] w-[18px] rounded-full object-cover"
-                      />
-                    ) : (
-                      <span
-                        aria-hidden="true"
-                        className="flex h-[18px] w-[18px] items-center justify-center rounded-full text-[12px] font-bold hub-txt"
-                        style={{
-                          background: 'var(--hub-soft)',
-                          boxShadow: 'inset 0 0 0 1px var(--hub-bd)',
-                        }}
-                      >
-                        {(m.author_name ?? t('defaultAuthorName', 'Equipe'))
-                          .split(' ')
-                          .filter(Boolean)
-                          .slice(0, 2)
-                          .map((p) => p[0])
-                          .join('')
-                          .toUpperCase()}
-                      </span>
-                    )}
+                    {/* Team photos never reach the Hub: initials only, whatever the payload carries. */}
+                    <span
+                      aria-hidden="true"
+                      data-testid="hub-author-initials"
+                      className="flex h-[18px] w-[18px] items-center justify-center rounded-full text-[12px] font-bold hub-txt"
+                      style={{
+                        background: 'var(--hub-soft)',
+                        boxShadow: 'inset 0 0 0 1px var(--hub-bd)',
+                      }}
+                    >
+                      {(m.author_name ?? t('defaultAuthorName', 'Equipe'))
+                        .split(' ')
+                        .filter(Boolean)
+                        .slice(0, 2)
+                        .map((p) => p[0])
+                        .join('')
+                        .toUpperCase()}
+                    </span>
                     {m.author_name ?? t('defaultAuthorName', 'Equipe')}
                   </div>
                 )}
@@ -223,6 +228,11 @@ export function MensagensPage() {
                       : { boxShadow: 'inset 0 0 0 1px var(--hub-bd)' }
                   }
                 >
+                  {mediaNoteLabel(m, t) && (
+                    <div className="mb-1 text-[12px] font-semibold hub-tx3">
+                      {mediaNoteLabel(m, t)}
+                    </div>
+                  )}
                   {m.post_id != null && (
                     <div className="mb-1.5">
                       <HubPostChip

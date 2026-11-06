@@ -11,6 +11,7 @@ vi.mock('../../lib/supabase', () => ({
 import { supabase } from '../../lib/supabase';
 import {
   listEligibleWorkspaces,
+  prepareOAuthAuthorization,
   recordOAuthGrant,
   listOAuthGrants,
   revokeOAuthGrant,
@@ -52,6 +53,17 @@ describe('mcp-oauth service', () => {
     mockFetch({ workspaces: [] });
     const result = await listEligibleWorkspaces();
     expect(result).toEqual({ workspaces: [], platform_admin: false });
+  });
+
+  it('prepareOAuthAuthorization posts prepare-authorization and returns the outcome', async () => {
+    mockFetch({ outcome: 'repaired' });
+    await expect(prepareOAuthAuthorization('a1')).resolves.toBe('repaired');
+    expect(sentBody()).toEqual({ action: 'prepare-authorization', authorization_id: 'a1' });
+  });
+
+  it('prepareOAuthAuthorization rejects on a non-ok response (the page catches it)', async () => {
+    mockFetch({ error: 'unknown action' }, false, 400);
+    await expect(prepareOAuthAuthorization('a1')).rejects.toThrow('unknown action');
   });
 
   it('recordOAuthGrant posts approve with authorization_id and never client_id', async () => {

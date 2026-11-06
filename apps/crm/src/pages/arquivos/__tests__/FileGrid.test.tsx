@@ -245,6 +245,34 @@ describe('FileGrid', () => {
     });
   });
 
+  it('marks the grid tiles as Vidro cards and leaves the loading skeleton unmarked', () => {
+    const { container, rerender } = render(
+      <FileGrid
+        files={[makeFile({ id: 100, name: 'foto.jpg' })]}
+        subfolders={[makeFolder({ id: 1, name: 'Fotos' })]}
+        {...defaultProps}
+      />,
+    );
+    expect(screen.getByText('Fotos').closest("[data-slot='card']")).not.toBeNull();
+    expect(screen.getByText('foto.jpg').closest("[data-slot='card']")).not.toBeNull();
+    expect(container.querySelectorAll("[data-slot='card']")).toHaveLength(2);
+
+    rerender(<FileGrid files={[]} subfolders={[]} {...defaultProps} isLoading />);
+    expect(container.querySelector("[data-slot='card']")).toBeNull();
+  });
+
+  it('marks the list-mode table for the Vidro table rules', () => {
+    const { container } = render(
+      <FileGrid
+        files={[makeFile({ id: 100, name: 'doc.pdf', kind: 'document' })]}
+        subfolders={[]}
+        {...defaultProps}
+        viewMode="list"
+      />,
+    );
+    expect(container.querySelector('table')).toHaveAttribute('data-slot', 'table');
+  });
+
   describe('list mode', () => {
     it('renders table with folder and file rows', () => {
       render(

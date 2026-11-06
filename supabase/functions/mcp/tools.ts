@@ -1,7 +1,6 @@
 // deno-lint-ignore-file no-explicit-any
 import { z } from "npm:zod@3";
-import { insertAuditLog } from "../_shared/audit.ts";
-import { McpInputError, McpScopeError, requireScope } from "../_shared/mcp-token.ts";
+import { requireFinancialWrite } from "../_shared/mcp-token.ts";
 import { CONTENT_FORMATS, IG_CAPTION_MAX } from "../_shared/platform-registry.ts";
 import {
   createClient,
@@ -29,61 +28,13 @@ import {
   listWorkflows,
 } from "./queries.ts";
 import { createMediaUpload, setPostMedia } from "./media.ts";
-
-function jsonResult(data: unknown) {
-  return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
-}
-
-function errorResult(e: unknown) {
-  const message = e instanceof McpScopeError
-    ? `Permission denied: missing scope '${e.scope}'.`
-    : e instanceof McpInputError
-    ? e.message
-    : "Internal error.";
-  // Never leak raw error details (logged internally instead).
-  if (!(e instanceof McpScopeError) && !(e instanceof McpInputError)) {
-    console.error("[mcp] tool error:", e);
-  }
-  return { content: [{ type: "text" as const, text: JSON.stringify({ error: message }) }], isError: true };
-}
-
-async function audit(deps: Deps, name: string, args: Record<string, unknown>) {
-  await insertAuditLog(deps.db as any, {
-    conta_id: deps.ctx.conta_id,
-    actor_user_id: deps.ctx.created_by,
-    action: `mcp.${name}`,
-    resource_type: "mcp",
-    resource_id: String(
-      (args.post_id ?? args.client_id ?? args.workflow_id ?? args.task_id ?? args.member_id ?? args.template_id ?? "") || "",
-    ),
-    metadata: { key_id: deps.ctx.key_id, tool: name, args }, // args = ids/filters only, no payload
-  });
-}
-
-/** Register one tool with scope-gating + audit. `auditArgs` also receives the RESULT, so write
- * audits can carry result metadata (ids, counts) without ever carrying payloads; existing
- * single-param callbacks are unaffected. */
-function register(
-  server: any,
-  deps: Deps,
-  name: string,
-  scope: string,
-  description: string,
-  shape: z.ZodRawShape,
-  run: (args: any) => Promise<unknown>,
-  auditArgs?: (args: any, result: any) => Record<string, unknown>,
-) {
-  server.tool(name, description, shape, async (args: any) => {
-    try {
-      requireScope(deps.ctx, scope);
-      const data = await run(args ?? {});
-      await audit(deps, name, (auditArgs ?? ((a: any) => a))(args ?? {}, data));
-      return jsonResult(data);
-    } catch (e) {
-      return errorResult(e);
-    }
-  });
-}
+import { DATE_ONLY, registerFinanceiroTools } from "./financeiro-tools.ts";
+import { register } from "./register.ts";
+import { registerCardsResource } from "./apps.ts";
+import { registerCardsTools } from "./cards.ts";
+import { registerCalendarTools } from "./calendar.ts";
+import { registerSendTools, sendNonceMeta } from "./send.ts";
+import { registerAttachTools } from "./attach.ts";
 
 const STATUS_CLIENTE = z.enum(["ativo", "pausado", "encerrado"]);
 const FORMATO = z.enum(CONTENT_FORMATS);
@@ -96,9 +47,12 @@ const PROPERTY_TYPE = z.enum([
 ]);
 const TASK_STATUS = z.enum(["pendente", "em_andamento", "concluida"]);
 const TIPO_MEMBRO = z.enum(["clt", "freelancer_mensal", "freelancer_demanda"]);
-const DATE_ONLY = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use o formato YYYY-MM-DD");
 
 export function registerTools(server: any, deps: Deps): void {
+  // Send nonce for the card (widget-only tools on): read once here, so a missing secret fails the
+  // registration before any write, never after one.
+  const nonceMeta = sendNonceMeta(deps);
+
   register(server, deps, "list_clients", "clientes:read",
     "Lista os clientes do workspace (campos não sensíveis).",
     { status: STATUS_CLIENTE.optional() },
@@ -151,7 +105,7 @@ export function registerTools(server: any, deps: Deps): void {
     (a) => listIdeas(deps, a));
 
   register(server, deps, "list_post_feedback", "posts:read",
-    "Lista o feedback dos clientes nos posts (aprovações, correções, mensagens) com a linha do tempo de status.",
+    "Lista o feedback dos clientes nos posts (aprovações, correções, mensagens) com a linha do tempo de status. Inclui os comentários do cliente em slides ou momentos de vídeo específicos (media_notes, com rótulo de posição).",
     {
       post_id: z.number().int().optional(),
       client_id: z.number().int().optional(),
@@ -182,7 +136,7 @@ export function registerTools(server: any, deps: Deps): void {
     (a) => ({ client_id: a.client_id, titulo: a.titulo, template_id: a.template_id }));
 
   register(server, deps, "create_post", "posts:write",
-    "Cria um post em rascunho: dentro de um fluxo ativo (workflow_id) ou avulso, preso direto a um cliente (cliente_id). Informe exatamente um dos dois. O agente nunca publica nem envia ao cliente.",
+    "Cria um post em rascunho: dentro de um fluxo ativo (workflow_id) ou avulso, preso direto a um cliente (cliente_id). Informe exatamente um dos dois. O agente nunca publica. O agente não envia sozinho ao cliente; um clique do usuário no cartão envia.",
     {
       workflow_id: z.number().int().positive().optional(),
       cliente_id: z.number().int().positive().optional(),
@@ -196,10 +150,11 @@ export function registerTools(server: any, deps: Deps): void {
       workflow_id: a.workflow_id, cliente_id: a.cliente_id, tipo: a.tipo, titulo: a.titulo,
       has_body: !!a.body, body_len: a.body?.length ?? 0,
       has_ig_caption: !!a.ig_caption, ig_caption_len: a.ig_caption?.length ?? 0,
-    }));
+    }),
+    nonceMeta ? { resultMeta: (_a, r) => nonceMeta((r as { id?: unknown })?.id) } : undefined);
 
   register(server, deps, "update_post", "posts:write",
-    "Edita um post existente (título, formato, corpo, legenda) e pode avançar o status apenas para rascunho ou revisão interna. O agente nunca envia ao cliente nem publica.",
+    "Edita um post existente (título, formato, corpo, legenda) e pode avançar o status apenas para rascunho ou revisão interna. O agente nunca publica. O agente não envia sozinho ao cliente; um clique do usuário no cartão envia.",
     {
       post_id: z.number().int().positive(),
       titulo: z.string().trim().min(1).max(200).optional(),
@@ -218,7 +173,8 @@ export function registerTools(server: any, deps: Deps): void {
       body_len: a.body?.length ?? 0,
       has_ig_caption: Object.hasOwn(a, "ig_caption"),
       ig_caption_len: a.ig_caption?.length ?? 0,
-    }));
+    }),
+    nonceMeta ? { resultMeta: (_a, r) => nonceMeta((r as { id?: unknown })?.id) } : undefined);
 
   register(server, deps, "set_post_property", "posts:write",
     "Define o valor de uma propriedade personalizada de um post (ex.: modo, anotação). A propriedade deve pertencer ao modelo do fluxo do post; status, mídia e publicação não são afetados.",
@@ -338,7 +294,7 @@ export function registerTools(server: any, deps: Deps): void {
     }));
 
   register(server, deps, "create_client", "clientes:write",
-    "Cria um cliente no workspace. Se já existir um cliente com o mesmo nome, retorna o existente e preenche apenas os campos vazios (already_existed: true, filled_fields). Pensado para importação de outras plataformas.",
+    "Cria um cliente no workspace. Se já existir um cliente com o mesmo nome, retorna o existente e preenche apenas os campos vazios (already_existed: true, filled_fields). Pensado para importação de outras plataformas. Campos financeiros (valor_mensal / custo_mensal, data_pagamento) exigem a permissão de editar o Financeiro.",
     {
       nome: z.string().trim().min(1).max(120),
       email: z.string().trim().max(200).optional(),
@@ -347,7 +303,10 @@ export function registerTools(server: any, deps: Deps): void {
       valor_mensal: z.number().min(0).optional(),
       status: STATUS_CLIENTE.optional(),
     },
-    (a) => createClient(deps, a),
+    (a) => {
+      requireFinancialWrite(deps.ctx, a, ["valor_mensal"]);
+      return createClient(deps, a);
+    },
     (a, r) => ({
       client_id: (r as { id?: number })?.id,
       already_existed: (r as { already_existed?: boolean })?.already_existed,
@@ -363,7 +322,7 @@ export function registerTools(server: any, deps: Deps): void {
     () => listMembers(deps));
 
   register(server, deps, "create_member", "membros:write",
-    "Cria um membro da equipe (roster interno). Não envia convite de login nem e-mail. Se já existir um membro com o mesmo nome, retorna o existente e preenche apenas os campos vazios.",
+    "Cria um membro da equipe (roster interno). Não envia convite de login nem e-mail. Se já existir um membro com o mesmo nome, retorna o existente e preenche apenas os campos vazios. Campos financeiros (valor_mensal / custo_mensal, data_pagamento) exigem a permissão de editar o Financeiro.",
     {
       nome: z.string().trim().min(1).max(120),
       cargo: z.string().trim().max(120).optional(),
@@ -371,7 +330,10 @@ export function registerTools(server: any, deps: Deps): void {
       custo_mensal: z.number().min(0).optional(),
       data_pagamento: z.number().int().min(1).max(31).optional(),
     },
-    (a) => createMember(deps, a),
+    (a) => {
+      requireFinancialWrite(deps.ctx, a, ["custo_mensal", "data_pagamento"]);
+      return createMember(deps, a);
+    },
     (a, r) => ({
       member_id: (r as { id?: number })?.id,
       already_existed: (r as { already_existed?: boolean })?.already_existed,
@@ -379,4 +341,14 @@ export function registerTools(server: any, deps: Deps): void {
       has_cargo: !!a.cargo,
       has_custo_mensal: a.custo_mensal != null,
     }));
+
+  registerFinanceiroTools(server, deps);
+
+  if (deps.apps?.enabled) {
+    registerCardsResource(server, deps.apps.r2Origin);
+    registerCardsTools(server, deps);
+    registerCalendarTools(server, deps);
+    registerSendTools(server, deps);
+    registerAttachTools(server, deps);
+  }
 }

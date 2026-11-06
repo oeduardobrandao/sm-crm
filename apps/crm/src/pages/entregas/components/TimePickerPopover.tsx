@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { useTranslation } from 'react-i18next';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import { Clock, X } from 'lucide-react';
 
 interface TimePickerPopoverProps {
@@ -16,6 +17,8 @@ export function TimePickerPopover({
   onCancel,
   previousTime,
 }: TimePickerPopoverProps) {
+  const { t } = useTranslation('postPanels');
+  const dateLocale = useDateFnsLocale();
   const [hour, setHour] = useState(previousTime?.hour ?? 10);
   const [minute, setMinute] = useState(previousTime?.minute ?? 0);
   const ref = useRef<HTMLDivElement>(null);
@@ -35,21 +38,21 @@ export function TimePickerPopover({
     onConfirm(dt);
   };
 
-  const dateLabel = format(date, "d 'de' MMMM, yyyy", { locale: ptBR });
+  const dateLabel = format(date, t('timePicker.dateFormat'), { locale: dateLocale });
 
   return (
     <div ref={ref} className="time-picker-popover">
       <div className="time-picker-header">
         <Clock className="h-3.5 w-3.5" style={{ color: 'var(--primary-color)' }} />
         <span className="time-picker-date">{dateLabel}</span>
-        <button onClick={onCancel} className="time-picker-close" aria-label="Fechar">
+        <button onClick={onCancel} className="time-picker-close" aria-label={t('ui.close')}>
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
       <div className="time-picker-selectors">
         <div className="time-picker-field">
           <select
-            aria-label="Hora"
+            aria-label={t('timePicker.hour')}
             value={hour}
             onChange={(e) => setHour(parseInt(e.target.value, 10))}
             className="time-picker-select"
@@ -64,7 +67,7 @@ export function TimePickerPopover({
         <span className="time-picker-separator">:</span>
         <div className="time-picker-field">
           <select
-            aria-label="Minuto"
+            aria-label={t('timePicker.minute')}
             value={minute}
             onChange={(e) => setMinute(parseInt(e.target.value, 10))}
             className="time-picker-select"
@@ -79,10 +82,10 @@ export function TimePickerPopover({
       </div>
       <div className="time-picker-actions">
         <button onClick={onCancel} className="time-picker-cancel">
-          Cancelar
+          {t('actions.cancel')}
         </button>
         <button onClick={handleConfirm} className="time-picker-confirm">
-          Confirmar
+          {t('actions.confirm')}
         </button>
       </div>
     </div>

@@ -284,12 +284,41 @@ Deno.test("resolveDigestItem: every known type gets its badge", () => {
     ["mention", "info", "Menção"], ["deadline_approaching", "warning", "Prazo"], ["task_assigned", "neutral", "Tarefa"],
     ["post_assigned", "neutral", "Post"], ["event_invited", "neutral", "Agenda"], ["event_updated", "neutral", "Agenda"],
     ["event_cancelled", "neutral", "Agenda"], ["event_client_rsvp", "info", "Resposta"], ["event_guest_rsvp", "info", "Resposta"],
-    ["event_reschedule_requested", "warning", "Remarcação"], ["algo_novo", "neutral", "Notificação"],
+    ["event_reschedule_requested", "warning", "Remarcação"],
+    ["linha_editorial_aprovada", "success", "Linha aprovada"], ["linha_editorial_ajustes", "warning", "Ajustes na linha"],
+    ["algo_novo", "neutral", "Notificação"],
   ];
   for (const [type, tone, label] of cases) {
     const it = resolveDigestItem({ type, metadata: null, link: null });
     assertEquals(it.badge, { tone, label }, type);
   }
+});
+
+Deno.test("resolveDigestItem: linha editorial types name the client and the month, keep the link", () => {
+  const meta = { cliente_nome: "Dr. Rafael Lima", periodo: "2026-11-01", comentarios: 2 };
+  const link = "/entregas?view=linha&clientes=7&mes=2026-11";
+  const ok = resolveDigestItem({ type: "linha_editorial_aprovada", metadata: meta, link });
+  assertEquals(ok.heading, "Dr. Rafael Lima aprovou a linha editorial de novembro");
+  assertEquals(ok.body, "2 comentários");
+  assertEquals(ok.link, link);
+  const aj = resolveDigestItem({ type: "linha_editorial_ajustes", metadata: { ...meta, comentarios: 1 }, link });
+  assertEquals(aj.heading, "Dr. Rafael Lima pediu ajustes na linha editorial de novembro");
+  assertEquals(aj.body, "1 comentário");
+  const zero = resolveDigestItem({ type: "linha_editorial_aprovada", metadata: { ...meta, comentarios: 0 }, link });
+  assertEquals(zero.body, undefined);
+  const vazio = resolveDigestItem({ type: "linha_editorial_ajustes", metadata: null, link: null });
+  assertEquals(vazio.heading, "Cliente pediu ajustes na linha editorial");
+  assert(!vazio.heading.includes("—"));
+});
+
+Deno.test("resolveDigestItem: a renamed linha is named by its title in curly quotes", () => {
+  const meta = { cliente_nome: "Dr. Rafael Lima", periodo: "2026-11-01", comentarios: 0, titulo: "Campanha de Natal" };
+  const ok = resolveDigestItem({ type: "linha_editorial_aprovada", metadata: meta, link: "/" });
+  assertEquals(ok.heading, "Dr. Rafael Lima aprovou a linha editorial “Campanha de Natal”");
+  const aj = resolveDigestItem({ type: "linha_editorial_ajustes", metadata: { ...meta, titulo: "  " }, link: "/" });
+  assertEquals(aj.heading, "Dr. Rafael Lima pediu ajustes na linha editorial de novembro");
+  const nulo = resolveDigestItem({ type: "linha_editorial_aprovada", metadata: { ...meta, titulo: null }, link: "/" });
+  assertEquals(nulo.heading, "Dr. Rafael Lima aprovou a linha editorial de novembro");
 });
 
 Deno.test("digestPreheader: 1, 3 and 25 items", () => {

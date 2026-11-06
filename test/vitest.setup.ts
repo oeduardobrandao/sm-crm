@@ -48,6 +48,64 @@ import ptHubAgenda from '../packages/i18n/locales/pt/hubAgenda.json';
 import enHubAgenda from '../packages/i18n/locales/en/hubAgenda.json';
 import ptHubConvite from '../packages/i18n/locales/pt/hubConvite.json';
 import enHubConvite from '../packages/i18n/locales/en/hubConvite.json';
+import ptEntregas from '../packages/i18n/locales/pt/entregas.json';
+import enEntregas from '../packages/i18n/locales/en/entregas.json';
+import ptWorkflows from '../packages/i18n/locales/pt/workflows.json';
+import enWorkflows from '../packages/i18n/locales/en/workflows.json';
+import ptPostEditor from '../packages/i18n/locales/pt/postEditor.json';
+import enPostEditor from '../packages/i18n/locales/en/postEditor.json';
+import ptLinha from '../packages/i18n/locales/pt/linha.json';
+import enLinha from '../packages/i18n/locales/en/linha.json';
+import ptEntregasViews from '../packages/i18n/locales/pt/entregasViews.json';
+import enEntregasViews from '../packages/i18n/locales/en/entregasViews.json';
+import ptEntregasPhone from '../packages/i18n/locales/pt/entregasPhone.json';
+import enEntregasPhone from '../packages/i18n/locales/en/entregasPhone.json';
+import ptPostPanels from '../packages/i18n/locales/pt/postPanels.json';
+import enPostPanels from '../packages/i18n/locales/en/postPanels.json';
+import ptCalendario from '../packages/i18n/locales/pt/calendario.json';
+import enCalendario from '../packages/i18n/locales/en/calendario.json';
+import ptAgenda from '../packages/i18n/locales/pt/agenda.json';
+import enAgenda from '../packages/i18n/locales/en/agenda.json';
+import ptAgendaEvento from '../packages/i18n/locales/pt/agendaEvento.json';
+import enAgendaEvento from '../packages/i18n/locales/en/agendaEvento.json';
+import ptSettings from '../packages/i18n/locales/pt/settings.json';
+import enSettings from '../packages/i18n/locales/en/settings.json';
+import ptSettingsHub from '../packages/i18n/locales/pt/settingsHub.json';
+import enSettingsHub from '../packages/i18n/locales/en/settingsHub.json';
+import ptBilling from '../packages/i18n/locales/pt/billing.json';
+import enBilling from '../packages/i18n/locales/en/billing.json';
+import ptMcp from '../packages/i18n/locales/pt/mcp.json';
+import enMcp from '../packages/i18n/locales/en/mcp.json';
+import ptTasks from '../packages/i18n/locales/pt/tasks.json';
+import enTasks from '../packages/i18n/locales/en/tasks.json';
+import ptTasksForm from '../packages/i18n/locales/pt/tasksForm.json';
+import enTasksForm from '../packages/i18n/locales/en/tasksForm.json';
+import ptTasksPhone from '../packages/i18n/locales/pt/tasksPhone.json';
+import enTasksPhone from '../packages/i18n/locales/en/tasksPhone.json';
+import ptClientHub from '../packages/i18n/locales/pt/clientHub.json';
+import enClientHub from '../packages/i18n/locales/en/clientHub.json';
+import ptClientBriefing from '../packages/i18n/locales/pt/clientBriefing.json';
+import enClientBriefing from '../packages/i18n/locales/en/clientBriefing.json';
+import ptMessages from '../packages/i18n/locales/pt/messages.json';
+import enMessages from '../packages/i18n/locales/en/messages.json';
+import ptMessagesPhone from '../packages/i18n/locales/pt/messagesPhone.json';
+import enMessagesPhone from '../packages/i18n/locales/en/messagesPhone.json';
+import ptFiles from '../packages/i18n/locales/pt/files.json';
+import enFiles from '../packages/i18n/locales/en/files.json';
+import ptFilesPhone from '../packages/i18n/locales/pt/filesPhone.json';
+import enFilesPhone from '../packages/i18n/locales/en/filesPhone.json';
+import ptFinance from '../packages/i18n/locales/pt/finance.json';
+import enFinance from '../packages/i18n/locales/en/finance.json';
+import ptFinanceV2 from '../packages/i18n/locales/pt/financeV2.json';
+import enFinanceV2 from '../packages/i18n/locales/en/financeV2.json';
+import ptTeam from '../packages/i18n/locales/pt/team.json';
+import enTeam from '../packages/i18n/locales/en/team.json';
+import ptMember from '../packages/i18n/locales/pt/member.json';
+import ptIdeas from '../packages/i18n/locales/pt/ideas.json';
+import ptIdeaDrawer from '../packages/i18n/locales/pt/ideaDrawer.json';
+import enMember from '../packages/i18n/locales/en/member.json';
+import enIdeas from '../packages/i18n/locales/en/ideas.json';
+import enIdeaDrawer from '../packages/i18n/locales/en/ideaDrawer.json';
 
 initI18n({
   pt: {
@@ -58,6 +116,35 @@ initI18n({
     posts: ptPosts,
     auth: ptAuth,
     brand: ptBrand,
+    entregas: ptEntregas,
+    workflows: ptWorkflows,
+    postEditor: ptPostEditor,
+    linha: ptLinha,
+    entregasViews: ptEntregasViews,
+    entregasPhone: ptEntregasPhone,
+    postPanels: ptPostPanels,
+    calendario: ptCalendario,
+    agenda: ptAgenda,
+    agendaEvento: ptAgendaEvento,
+    settings: ptSettings,
+    settingsHub: ptSettingsHub,
+    billing: ptBilling,
+    mcp: ptMcp,
+    tasks: ptTasks,
+    tasksForm: ptTasksForm,
+    tasksPhone: ptTasksPhone,
+    clientHub: ptClientHub,
+    clientBriefing: ptClientBriefing,
+    messages: ptMessages,
+    messagesPhone: ptMessagesPhone,
+    files: ptFiles,
+    filesPhone: ptFilesPhone,
+    finance: ptFinance,
+    financeV2: ptFinanceV2,
+    team: ptTeam,
+    member: ptMember,
+    ideas: ptIdeas,
+    ideaDrawer: ptIdeaDrawer,
     hubHome: ptHubHome,
     hubPostCard: ptHubPostCard,
     hubPosts: ptHubPosts,
@@ -78,6 +165,35 @@ initI18n({
     posts: enPosts,
     auth: enAuth,
     brand: enBrand,
+    entregas: enEntregas,
+    workflows: enWorkflows,
+    postEditor: enPostEditor,
+    linha: enLinha,
+    entregasViews: enEntregasViews,
+    entregasPhone: enEntregasPhone,
+    postPanels: enPostPanels,
+    calendario: enCalendario,
+    agenda: enAgenda,
+    agendaEvento: enAgendaEvento,
+    settings: enSettings,
+    settingsHub: enSettingsHub,
+    billing: enBilling,
+    mcp: enMcp,
+    tasks: enTasks,
+    tasksForm: enTasksForm,
+    tasksPhone: enTasksPhone,
+    clientHub: enClientHub,
+    clientBriefing: enClientBriefing,
+    messages: enMessages,
+    messagesPhone: enMessagesPhone,
+    files: enFiles,
+    filesPhone: enFilesPhone,
+    finance: enFinance,
+    financeV2: enFinanceV2,
+    team: enTeam,
+    member: enMember,
+    ideas: enIdeas,
+    ideaDrawer: enIdeaDrawer,
     hubHome: enHubHome,
     hubPostCard: enHubPostCard,
     hubPosts: enHubPosts,
@@ -110,10 +226,13 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
 // empirically while writing PaginaRichTextEditor.test.tsx, Task 9 of the portal-cliente-layout
 // plan). Zero-sized stubs are enough: tests don't assert real screen coordinates, they only
 // need ProseMirror to finish applying the transaction instead of throwing.
-if (!document.elementFromPoint) {
+// The rest of this file stubs DOM APIs; `@vitest-environment node` files (server-render tests)
+// have no DOM to stub.
+const hasDom = typeof document !== 'undefined';
+if (hasDom && !document.elementFromPoint) {
   document.elementFromPoint = () => null;
 }
-if (!Range.prototype.getBoundingClientRect) {
+if (hasDom && !Range.prototype.getBoundingClientRect) {
   Range.prototype.getBoundingClientRect = () => ({
     x: 0,
     y: 0,
@@ -128,7 +247,7 @@ if (!Range.prototype.getBoundingClientRect) {
     },
   });
 }
-if (!Range.prototype.getClientRects) {
+if (hasDom && !Range.prototype.getClientRects) {
   Range.prototype.getClientRects = () =>
     ({
       length: 0,
@@ -137,22 +256,23 @@ if (!Range.prototype.getClientRects) {
     }) as unknown as DOMRectList;
 }
 
-Object.defineProperty(window, 'matchMedia', {
-  writable: true,
-  value: (query: string) => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-  }),
-});
+if (hasDom)
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }),
+  });
 
 afterEach(() => {
-  cleanup();
+  if (hasDom) cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });

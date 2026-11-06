@@ -30,6 +30,7 @@ import {
 } from '../../../store';
 import { ContactsList } from './ContactsList';
 import { exportContactsCsv } from './contactsCsv';
+import { ContactsPhone } from '../phone/ContactsPhone';
 import { useContactsFilters } from './useContactsFilters';
 
 function ymdToDate(ymd: string | null): Date | undefined {
@@ -41,6 +42,8 @@ function ymdToDate(ymd: string | null): Date | undefined {
 export function ContactsTab() {
   const { t } = useTranslation('automations');
   const isDesktop = useIsDesktop(901);
+  // Phones get the iOS layout (filters sheet); 768-900 keeps the card list.
+  const isPhone = !useIsDesktop(768);
   const { state, setFilters, setPage } = useContactsFilters();
   const { page, ...filters } = state;
 
@@ -117,6 +120,45 @@ export function ContactsTab() {
     if (pageOutOfRange) setPage(1);
   }, [pageOutOfRange, setPage]);
 
+  const onRangeChange = (r: DateRange | undefined) =>
+    setFilters({
+      from: r?.from ? format(r.from, 'yyyy-MM-dd') : null,
+      to: r?.to ? format(r.to, 'yyyy-MM-dd') : r?.from ? format(r.from, 'yyyy-MM-dd') : null,
+    });
+  const emptyText = !hasAnyContact
+    ? t('contacts.emptyNone')
+    : onlyDefaultFilter
+      ? t('contacts.emptyNoneReached')
+      : t('contacts.emptyFiltered');
+
+  if (isPhone) {
+    return (
+      <ContactsPhone
+        filters={filters}
+        setFilters={setFilters}
+        searchInput={searchInput}
+        onSearchInput={setSearchInput}
+        clientOptions={clientOptions}
+        automationOptions={automationOptions}
+        clientesById={clientesById}
+        range={range}
+        onRangeChange={onRangeChange}
+        isPending={listQuery.isPending}
+        isError={listQuery.isError}
+        onRetry={() => listQuery.refetch()}
+        rows={rows}
+        total={total}
+        from={from}
+        to={to}
+        page={page}
+        setPage={setPage}
+        emptyText={emptyText}
+        exporting={exporting}
+        onExport={onExport}
+      />
+    );
+  }
+
   return (
     <div>
       <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0 0 1rem' }}>
@@ -165,16 +207,7 @@ export function ContactsTab() {
         <DateRangePicker
           value={range}
           placeholder={t('contacts.filterPeriod')}
-          onChange={(r) =>
-            setFilters({
-              from: r?.from ? format(r.from, 'yyyy-MM-dd') : null,
-              to: r?.to
-                ? format(r.to, 'yyyy-MM-dd')
-                : r?.from
-                  ? format(r.from, 'yyyy-MM-dd')
-                  : null,
-            })
-          }
+          onChange={onRangeChange}
         />
         <Input
           value={searchInput}
@@ -220,11 +253,7 @@ export function ContactsTab() {
         </div>
       ) : rows.length === 0 ? (
         <p style={{ color: 'var(--text-muted)', padding: '2rem', textAlign: 'center' }}>
-          {!hasAnyContact
-            ? t('contacts.emptyNone')
-            : onlyDefaultFilter
-              ? t('contacts.emptyNoneReached')
-              : t('contacts.emptyFiltered')}
+          {emptyText}
         </p>
       ) : (
         <>

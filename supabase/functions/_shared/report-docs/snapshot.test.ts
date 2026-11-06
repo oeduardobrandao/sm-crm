@@ -1,5 +1,6 @@
 import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { assembleSnapshot } from "./snapshot.ts";
+import { assembleSnapshot, emptyInstagramSection } from "./snapshot.ts";
+import { KPI_IDS } from "./kpis.ts";
 
 Deno.test("assembleSnapshot monta o documento congelado", () => {
   const snap = assembleSnapshot({
@@ -308,4 +309,23 @@ Deno.test("comparison: views/reach nulos no post degradam para 0, sem quebrar o 
   }));
   assertEquals(snap.comparison?.prev_top_share, 1); // um único post soma tudo
   assertEquals(snap.comparison?.prev_outlier, true);
+});
+
+Deno.test("emptyInstagramSection: todo KPI null, listas vazias e instagram_connected false", () => {
+  const empty = emptyInstagramSection();
+  assertEquals(empty.instagram_connected, false);
+  assertEquals(Object.keys(empty.kpis).sort(), [...KPI_IDS].sort());
+  for (const id of KPI_IDS) {
+    assertEquals(empty.kpis[id].value, null, id);
+    assertEquals(empty.kpis[id].prev, null, id);
+  }
+  assertEquals(empty.kpis.engagement_rate.unit, "pct");
+  assertEquals(empty.kpis.posts_count.unit, "count");
+  assertEquals(empty.top_posts, []);
+  assertEquals(empty.follower_trend, []);
+  assertEquals(empty.best_times, []);
+  assertEquals(empty.tags_performance, []);
+  assertEquals(empty.content_breakdown, {});
+  assertEquals(empty.audience, null);
+  assertEquals(empty.comparison, null);
 });

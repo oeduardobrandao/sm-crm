@@ -540,3 +540,261 @@ begin
   raise notice 'PASS 95.12 a same-statement content+enviado_cliente transition resolves the fallback without reading the not-yet-inserted status event';
 end $$;
 rollback;
+
+-- =====================================================================
+-- Legenda Geral no histórico (20261112000001, spec
+-- docs/superpowers/specs/2026-10-30-hub-captions-per-platform-design.md "PR 2" item 4).
+-- Post T0/L0 com destino geral; o helper zera as versões da preparação, então cada
+-- caso começa sem versão nenhuma ou com a ponta que ele mesmo cria.
+-- =====================================================================
+
+create or replace function pg_temp.et_pcv_geral_env(
+  p_geral text, out ws uuid, out usr uuid, out post bigint, out gid bigint)
+language plpgsql as $$
+declare v_cli bigint;
+begin
+  ws := et_make_workspace('pro');
+  usr := gen_random_uuid();
+  insert into auth.users (id) values (usr);
+  insert into workspace_members (user_id, workspace_id, role) values (usr, ws, 'owner');
+  update profiles set conta_id = ws, active_workspace_id = ws where id = usr;
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (usr, ws, 'C', 'C', '#000') returning id into v_cli;
+  insert into workflow_posts (conta_id, cliente_id, status, conteudo_plain, ig_caption)
+    values (ws, v_cli, 'enviado_cliente', 'T0', 'L0') returning id into post;
+  insert into post_targets (conta_id, post_id, platform, caption)
+    values (ws, post, 'geral', p_geral) returning id into gid;
+  delete from post_content_versions where post_id = post;
+end $$;
+
+-- =====================================================================
+-- 13. Save do Geral no CRM coalesce por ator com a edição do post; outro ator abre linha nova.
+-- =====================================================================
+begin;
+do $$
+declare e record; v_row post_content_versions; v_other uuid := gen_random_uuid();
+begin
+  select * into e from pg_temp.et_pcv_geral_env('G0');
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr)::text, true);
+
+  update workflow_posts set ig_caption = 'L1' where id = e.post;   -- baseline + versão do ator
+  update post_targets set caption = 'G1' where id = e.gid;
+  update post_targets set caption = 'G2' where id = e.gid;
+
+  assert (select count(*) from post_content_versions where post_id = e.post) = 2,
+    format('baseline + 1 versão coalescida, veio %s',
+           (select count(*) from post_content_versions where post_id = e.post));
+  select * into v_row from post_content_versions where post_id = e.post order by last_touched_at desc limit 1;
+  assert v_row.geral_caption = 'G2', format('versão leva o Geral mais novo, veio %s', v_row.geral_caption);
+  assert v_row.ig_caption = 'L1', 'e o retrato atual do post';
+  assert v_row.changed_fields = array['geral_caption','ig_caption'], format('changed_fields: %s', v_row.changed_fields);
+  assert v_row.actor_user_id = e.usr and v_row.source = 'workspace_user', 'ator do CRM';
+  assert (select geral_caption from post_content_versions where post_id = e.post order by last_touched_at asc limit 1) = 'G0',
+    'baseline leva o Geral de antes';
+
+  -- outro ator: linha nova
+  insert into auth.users (id) values (v_other);
+  perform set_config('request.jwt.claims', json_build_object('sub', v_other)::text, true);
+  update post_targets set caption = 'G3' where id = e.gid;
+  assert (select count(*) from post_content_versions where post_id = e.post) = 3, 'outro ator abre versão nova';
+  select * into v_row from post_content_versions where post_id = e.post order by last_touched_at desc, id desc limit 1;
+  assert v_row.geral_caption = 'G3' and v_row.changed_fields = array['geral_caption'] and v_row.actor_user_id = v_other,
+    format('versão do outro ator: %s / %s', v_row.geral_caption, v_row.changed_fields);
+  -- mesmo valor de novo: nada
+  update post_targets set caption = 'G3' where id = e.gid;
+  assert (select count(*) from post_content_versions where post_id = e.post) = 3, 'sem mudança, sem versão';
+
+  raise notice 'PASS 95.13 save do Geral coalesce por ator';
+end $$;
+rollback;
+
+-- =====================================================================
+-- 14. INSERT de destino Geral: semeado vazio não grava; com legenda grava (baseline antes).
+--     Versão de workflow_posts sem linha geral grava geral_caption NULL; com linha vazia, ''.
+-- =====================================================================
+begin;
+do $$
+declare
+  v_ws uuid; v_user uuid := gen_random_uuid(); v_cli bigint; v_post bigint; v_row post_content_versions;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into auth.users (id) values (v_user);
+  insert into workspace_members (user_id, workspace_id, role) values (v_user, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_user;
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_user, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  insert into workflow_posts (conta_id, cliente_id, status) values (v_ws, v_cli, 'rascunho') returning id into v_post;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_user)::text, true);
+
+  -- sem linha geral: geral_caption NULL
+  update workflow_posts set conteudo_plain = 'v1' where id = v_post;
+  select * into v_row from post_content_versions where post_id = v_post;
+  assert v_row.geral_caption is null, format('sem linha geral: NULL, veio %s', v_row.geral_caption);
+
+  -- destino semeado com legenda nula / vazia: nada
+  insert into post_targets (conta_id, post_id, platform) values (v_ws, v_post, 'geral');
+  assert (select count(*) from post_content_versions where post_id = v_post) = 1, 'semeado nulo não grava';
+  update post_targets set caption = '' where post_id = v_post and platform = 'geral';
+  assert (select count(*) from post_content_versions where post_id = v_post) = 1, 'nulo -> vazio não grava';
+
+  -- linha geral vazia: a próxima versão do post leva ''
+  update workflow_posts set conteudo_plain = 'v2' where id = v_post;
+  select * into v_row from post_content_versions where post_id = v_post order by last_touched_at desc limit 1;
+  assert v_row.geral_caption = '', format('linha geral vazia: '''', veio %s', v_row.geral_caption);
+  delete from post_targets where post_id = v_post and platform = 'geral';
+  assert (select count(*) from post_content_versions where post_id = v_post) = 1, 'DELETE não grava';
+
+  -- INSERT com legenda grava
+  insert into post_targets (conta_id, post_id, platform, caption) values (v_ws, v_post, 'geral', 'G-novo');
+  select * into v_row from post_content_versions where post_id = v_post order by last_touched_at desc limit 1;
+  assert v_row.geral_caption = 'G-novo' and 'geral_caption' = any (v_row.changed_fields),
+    format('INSERT com legenda grava: %s / %s', v_row.geral_caption, v_row.changed_fields);
+  raise notice 'PASS 95.14 INSERT semeado vazio não grava, com legenda grava';
+end $$;
+rollback;
+
+-- =====================================================================
+-- 15. Um aceite = uma versão: só Geral, Geral + legenda, sem Geral.
+-- =====================================================================
+begin;
+do $$
+declare e record; v_sug bigint; v_before int; v_row post_content_versions;
+begin
+  -- (a) só Geral (nenhuma coluna de workflow_posts muda)
+  select * into e from pg_temp.et_pcv_geral_env('G0');
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr)::text, true);
+  update workflow_posts set ig_caption = 'L0b' where id = e.post;   -- ponta do mesmo ator
+  v_before := (select count(*) from post_content_versions where post_id = e.post);
+  insert into post_edit_suggestions
+    (post_id, conta_id, token, original_geral_caption, suggested_geral_caption, geral_target_id, changed_fields, status)
+    values (e.post, e.ws, 'tok', 'G0', 'G1', e.gid, array['geral_caption'], 'pending')
+    returning id into v_sug;
+  perform accept_edit_suggestion(v_sug, null, array['legenda_geral']);
+  perform set_config('app.event_source', '', true);
+  perform set_config('app.post_edit_suggestion_id', '', true);
+  perform set_config('app.accepting_edit_suggestion', '', true);
+
+  assert (select count(*) from post_content_versions where post_id = e.post) = v_before + 1,
+    format('só Geral: exatamente uma versão nova, veio %s',
+           (select count(*) from post_content_versions where post_id = e.post) - v_before);
+  select * into v_row from post_content_versions where post_id = e.post order by last_touched_at desc, id desc limit 1;
+  assert v_row.source = 'client' and v_row.suggestion_id = v_sug, format('source/suggestion: %s / %s', v_row.source, v_row.suggestion_id);
+  assert v_row.geral_caption = 'G1' and v_row.changed_fields = array['geral_caption'],
+    format('Geral novo: %s / %s', v_row.geral_caption, v_row.changed_fields);
+  assert v_row.ig_caption = 'L0b', 'retrato atual do post';
+  assert coalesce(current_setting('app.edit_suggestion_geral_before', true), '') = '', 'GUC consumido';
+  raise notice 'PASS 95.15a aceite só do Geral grava uma versão';
+end $$;
+rollback;
+
+begin;
+do $$
+declare e record; v_sug bigint; v_before int; v_row post_content_versions;
+begin
+  -- (b) Geral + legenda: a versão do UPDATE de workflow_posts já leva o Geral novo
+  select * into e from pg_temp.et_pcv_geral_env('G0');
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr)::text, true);
+  update workflow_posts set ig_caption = 'L0b' where id = e.post;
+  v_before := (select count(*) from post_content_versions where post_id = e.post);
+  insert into post_edit_suggestions
+    (post_id, conta_id, token, original_ig_caption, suggested_ig_caption,
+     original_geral_caption, suggested_geral_caption, geral_target_id, changed_fields, status)
+    values (e.post, e.ws, 'tok', 'L0b', 'L1', 'G0', 'G1', e.gid, array['ig_caption','geral_caption'], 'pending')
+    returning id into v_sug;
+  perform accept_edit_suggestion(v_sug, null, array['legenda','legenda_geral']);
+  perform set_config('app.event_source', '', true);
+  perform set_config('app.post_edit_suggestion_id', '', true);
+  perform set_config('app.accepting_edit_suggestion', '', true);
+
+  assert (select count(*) from post_content_versions where post_id = e.post) = v_before + 1,
+    format('Geral + legenda: exatamente uma versão nova, veio %s',
+           (select count(*) from post_content_versions where post_id = e.post) - v_before);
+  select * into v_row from post_content_versions where post_id = e.post order by last_touched_at desc, id desc limit 1;
+  assert v_row.source = 'client' and v_row.suggestion_id = v_sug, 'source client + suggestion_id';
+  assert v_row.ig_caption = 'L1' and v_row.geral_caption = 'G1', format('os dois novos: %s / %s', v_row.ig_caption, v_row.geral_caption);
+  assert v_row.changed_fields @> array['ig_caption','geral_caption'], format('changed_fields: %s', v_row.changed_fields);
+  raise notice 'PASS 95.15b aceite de Geral + legenda grava uma versão';
+end $$;
+rollback;
+
+begin;
+do $$
+declare e record; v_sug bigint; v_before int; v_row post_content_versions;
+begin
+  -- (c) sem Geral: a versão leva o Geral atual e não o lista como mudado
+  select * into e from pg_temp.et_pcv_geral_env('G0');
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr)::text, true);
+  update workflow_posts set ig_caption = 'L0b' where id = e.post;
+  v_before := (select count(*) from post_content_versions where post_id = e.post);
+  insert into post_edit_suggestions
+    (post_id, conta_id, token, original_ig_caption, suggested_ig_caption, changed_fields, status)
+    values (e.post, e.ws, 'tok', 'L0b', 'L1', array['ig_caption'], 'pending')
+    returning id into v_sug;
+  perform accept_edit_suggestion(v_sug, null, array['legenda']);
+  perform set_config('app.event_source', '', true);
+  perform set_config('app.post_edit_suggestion_id', '', true);
+  perform set_config('app.accepting_edit_suggestion', '', true);
+
+  assert (select count(*) from post_content_versions where post_id = e.post) = v_before + 1, 'sem Geral: uma versão';
+  select * into v_row from post_content_versions where post_id = e.post order by last_touched_at desc, id desc limit 1;
+  assert v_row.geral_caption = 'G0' and v_row.changed_fields = array['ig_caption'],
+    format('Geral atual, não mudado: %s / %s', v_row.geral_caption, v_row.changed_fields);
+  raise notice 'PASS 95.15c aceite sem Geral grava uma versão';
+end $$;
+rollback;
+
+-- =====================================================================
+-- 16. Aceite de texto + Geral num post sem versão: a baseline leva o Geral de ANTES.
+--     Aceite só de Geral num post sem versão: baseline com o Geral de antes + a versão.
+-- =====================================================================
+begin;
+do $$
+declare e record; v_sug bigint; v_base post_content_versions; v_last post_content_versions;
+begin
+  select * into e from pg_temp.et_pcv_geral_env('G0');
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr)::text, true);
+  insert into post_edit_suggestions
+    (post_id, conta_id, token, original_conteudo_plain, suggested_conteudo_plain,
+     original_geral_caption, suggested_geral_caption, geral_target_id, changed_fields, status)
+    values (e.post, e.ws, 'tok', 'T0', 'T1', 'G0', 'G1', e.gid, array['conteudo_plain','geral_caption'], 'pending')
+    returning id into v_sug;
+  perform accept_edit_suggestion(v_sug, null, array['texto','legenda_geral']);
+  perform set_config('app.event_source', '', true);
+  perform set_config('app.post_edit_suggestion_id', '', true);
+  perform set_config('app.accepting_edit_suggestion', '', true);
+
+  assert (select count(*) from post_content_versions where post_id = e.post) = 2, 'baseline + a versão do aceite';
+  select * into v_base from post_content_versions where post_id = e.post order by last_touched_at asc limit 1;
+  select * into v_last from post_content_versions where post_id = e.post order by last_touched_at desc limit 1;
+  assert v_base.conteudo_plain = 'T0' and v_base.geral_caption = 'G0',
+    format('baseline com o estado de antes: %s / %s', v_base.conteudo_plain, v_base.geral_caption);
+  assert v_last.conteudo_plain = 'T1' and v_last.geral_caption = 'G1' and v_last.source = 'client',
+    format('versão do aceite: %s / %s / %s', v_last.conteudo_plain, v_last.geral_caption, v_last.source);
+  raise notice 'PASS 95.16a baseline do aceite leva o Geral de antes';
+end $$;
+rollback;
+
+begin;
+do $$
+declare e record; v_sug bigint; v_base post_content_versions; v_last post_content_versions;
+begin
+  select * into e from pg_temp.et_pcv_geral_env('G0');
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr)::text, true);
+  insert into post_edit_suggestions
+    (post_id, conta_id, token, original_geral_caption, suggested_geral_caption, geral_target_id, changed_fields, status)
+    values (e.post, e.ws, 'tok', 'G0', 'G1', e.gid, array['geral_caption'], 'pending')
+    returning id into v_sug;
+  perform accept_edit_suggestion(v_sug, null, array['legenda_geral']);
+  perform set_config('app.event_source', '', true);
+  perform set_config('app.post_edit_suggestion_id', '', true);
+  perform set_config('app.accepting_edit_suggestion', '', true);
+
+  assert (select count(*) from post_content_versions where post_id = e.post) = 2, 'baseline + a versão do aceite';
+  select * into v_base from post_content_versions where post_id = e.post order by last_touched_at asc limit 1;
+  select * into v_last from post_content_versions where post_id = e.post order by last_touched_at desc limit 1;
+  assert v_base.geral_caption = 'G0' and v_base.source = 'workspace_user' and v_base.actor_user_id is null,
+    format('baseline: %s / %s', v_base.geral_caption, v_base.source);
+  assert v_last.geral_caption = 'G1' and v_last.source = 'client' and v_last.suggestion_id = v_sug,
+    format('versão: %s / %s', v_last.geral_caption, v_last.source);
+  assert v_base.created_at < v_last.created_at, 'baseline antes da versão';
+  raise notice 'PASS 95.16b aceite só de Geral num post sem versão';
+end $$;
+rollback;

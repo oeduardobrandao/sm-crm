@@ -3,8 +3,6 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
-import UnderlineExt from '@tiptap/extension-underline';
-import Link from '@tiptap/extension-link';
 import Color from '@tiptap/extension-color';
 import { TextStyle } from '@tiptap/extension-text-style';
 import Highlight from '@tiptap/extension-highlight';
@@ -84,14 +82,15 @@ export function ArticleEditor({
 
   const editor = useEditor({
     extensions: [
+      // StarterKit v3 already bundles Link and Underline: registering them again as separate
+      // extensions logs "Duplicate extension names" on every mount, so Link is configured here.
       StarterKit.configure({
         heading: { levels: [2, 3] },
+        link: { openOnClick: false, autolink: true },
       }),
-      UnderlineExt,
       TextStyle,
       Color,
       Highlight.configure({ multicolor: true }),
-      Link.configure({ openOnClick: false, autolink: true }),
       Placeholder.configure({ placeholder: 'Write article content...' }),
       CalloutExtension,
       Youtube.configure({ inline: false, ccLanguage: 'pt' }),

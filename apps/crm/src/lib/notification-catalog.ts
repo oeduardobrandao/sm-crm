@@ -1,3 +1,4 @@
+import { i18n } from '@mesaas/i18n';
 import type { NotificationType } from '@/store/notifications';
 
 export type NotificationCategory =
@@ -96,6 +97,20 @@ export const NOTIFICATION_CATALOG = {
     recipients: ADMINS,
     emailEligible: true,
   },
+  linha_editorial_aprovada: {
+    category: 'aprovacoes_hub',
+    label: 'Linha editorial aprovada',
+    when: 'o cliente aprova a linha editorial do mês no Hub',
+    recipients: RESP_ADMINS,
+    emailEligible: true,
+  },
+  linha_editorial_ajustes: {
+    category: 'aprovacoes_hub',
+    label: 'Ajustes na linha editorial',
+    when: 'o cliente pede ajustes na linha editorial do mês no Hub',
+    recipients: RESP_ADMINS,
+    emailEligible: true,
+  },
   step_activated: {
     category: 'entregas_fluxo',
     label: 'Etapa ativada',
@@ -123,6 +138,14 @@ export const NOTIFICATION_CATALOG = {
     when: 'uma tarefa é criada para você ou reatribuída',
     recipients: 'somente quem foi atribuído',
     emailEligible: true,
+  },
+  task_comment: {
+    category: 'entregas_fluxo',
+    label: 'Comentário em uma tarefa',
+    when: 'alguém comenta em uma tarefa da qual você participa',
+    recipients:
+      'responsável, quem criou e quem já comentou, exceto quem escreveu e quem foi mencionado',
+    emailEligible: false,
   },
   workflow_completed: {
     category: 'entregas_fluxo',
@@ -229,6 +252,20 @@ export const NOTIFICATION_CATALOG = {
     recipients: PARTICIPANTES,
     emailEligible: true,
   },
+  team_message: {
+    category: 'equipe',
+    label: 'Mensagem no chat da equipe',
+    when: 'alguém envia uma mensagem em uma conversa do chat de equipe da qual você participa',
+    recipients: 'participantes da conversa, exceto quem enviou',
+    emailEligible: false,
+  },
+  post_discussion: {
+    category: 'equipe',
+    label: 'Mensagem na discussão de um post',
+    when: 'alguém escreve na discussão de um post que você segue',
+    recipients: 'quem escreveu, foi mencionado ou é responsável pelo post e segue a discussão',
+    emailEligible: false,
+  },
   instagram_connected_by_client: {
     category: 'integracoes',
     label: 'Instagram conectado',
@@ -274,3 +311,29 @@ export function isEmailEligibleType(type: NotificationType): type is Notificatio
 export const EMAIL_ELIGIBLE_TYPES: NotificationEmailType[] = (
   Object.keys(NOTIFICATION_CATALOG) as NotificationType[]
 ).filter(isEmailEligibleType);
+
+/** i18next key segment for a type: `.` and `:` are key/namespace separators. */
+const catalogKey = (type: string) => type.replace(/[.:]/g, '_');
+
+/** Category header in the current UI language (CATEGORY_LABELS keeps the pt copy). */
+export function categoryLabel(category: NotificationCategory): string {
+  return i18n.t(`settings:catalog.category.${catalogKey(category)}`, {
+    defaultValue: CATEGORY_LABELS[category],
+  });
+}
+
+/** label / when / recipients of a catalog type in the current UI language, resolved at
+ * call time (NOTIFICATION_CATALOG keeps the pt copy). */
+export function catalogText(type: NotificationType): {
+  label: string;
+  when: string;
+  recipients: string;
+} {
+  const entry: NotificationCatalogEntry = NOTIFICATION_CATALOG[type];
+  const base = `settings:catalog.types.${catalogKey(type)}`;
+  return {
+    label: i18n.t(`${base}.label`, { defaultValue: entry.label }),
+    when: i18n.t(`${base}.when`, { defaultValue: entry.when }),
+    recipients: i18n.t(`${base}.recipients`, { defaultValue: entry.recipients }),
+  };
+}

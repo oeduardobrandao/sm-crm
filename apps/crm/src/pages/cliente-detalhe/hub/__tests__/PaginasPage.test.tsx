@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import nodePath from 'node:path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, act, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -17,6 +17,10 @@ import type { ClienteDetalheOutletContext } from '../../clienteTabs.model';
 
 vi.mock('@/context/AuthContext', () => ({ useAuth: vi.fn() }));
 vi.mock('@/store/hub');
+
+// Desktop layout by default; the phone describe flips it (jsdom's matchMedia is false).
+const { desktop } = vi.hoisted(() => ({ desktop: { value: true } }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 // Mock de dnd-kit: sem isto, useSortable (de @dnd-kit/sortable) precisa de um DndContext
@@ -33,6 +37,8 @@ vi.mock('@dnd-kit/core', () => ({
   },
   PointerSensor: class {},
   KeyboardSensor: class {},
+  MouseSensor: class {},
+  TouchSensor: class {},
   closestCenter: () => null,
   useSensor: () => ({}),
   useSensors: (...sensors: unknown[]) => sensors,
@@ -722,5 +728,90 @@ describe('PaginasPage', () => {
       // Ainda só a UMA chamada -- o segundo drag nunca chegou a chamar reorderHubPages.
       expect(hubStore.reorderHubPages).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe('PaginasPage no celular', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    desktop.value = false;
+    setAuth('owner');
+    vi.mocked(hubStore.getHubPages).mockResolvedValue([]);
+    vi.mocked(hubStore.upsertHubPage).mockResolvedValue(undefined);
+    vi.mocked(hubStore.removeHubPage).mockResolvedValue(undefined as never);
+    vi.mocked(hubStore.reorderHubPages).mockResolvedValue(undefined);
+    dndHandlers.onDragEnd = undefined;
+  });
+  afterEach(() => {
+    desktop.value = true;
+    cleanup();
+  });
+
+  it('lists the pages as rows, with no editor until one is opened', async () => {
+    renderPaginas({ pages: [PAGE, OUTRA] });
+    expect(await screen.findByRole('button', { name: /Página um/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Outra página/ })).toBeInTheDocument();
+    expect(document.querySelector('[contenteditable="true"]')).toBeNull();
+    expect(screen.queryByRole('heading', { level: 2, name: 'Páginas' })).toBeInTheDocument();
+  });
+
+  it('a row pushes the editor screen under its own nav bar; Salvar saves', async () => {
+    renderPaginas({ pages: [PAGE] });
+    fireEvent.click(await screen.findByRole('button', { name: /Página um/ }));
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Página um' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Voltar para Páginas' })).toBeInTheDocument();
+    await findEditor();
+    const title = screen.getByPlaceholderText('Título da página');
+    fireEvent.change(title, { target: { value: 'Página um revisada' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    await waitFor(() =>
+      expect(hubStore.upsertHubPage).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'p1', title: 'Página um revisada' }),
+      ),
+    );
+  });
+
+  it('Back with unsaved changes asks first; "Sair mesmo assim" returns to the list', async () => {
+    renderPaginas({ pages: [PAGE] });
+    fireEvent.click(await screen.findByRole('button', { name: /Página um/ }));
+    await findEditor();
+    fireEvent.change(screen.getByPlaceholderText('Título da página'), {
+      target: { value: 'Mudou' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar para Páginas' }));
+
+    const sheet = await screen.findByRole('dialog', { name: 'Sair sem salvar?' });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Sair mesmo assim' }));
+    expect(await screen.findByRole('button', { name: /Página um/ })).toBeInTheDocument();
+    expect(hubStore.upsertHubPage).not.toHaveBeenCalled();
+  });
+
+  it('Remover (swipe action) asks in a confirm sheet before removing', async () => {
+    renderPaginas({ pages: [PAGE, OUTRA] });
+    await screen.findByRole('button', { name: /Página um/ });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remover' })[0]);
+    expect(hubStore.removeHubPage).not.toHaveBeenCalled();
+    const sheet = await screen.findByRole('dialog', { name: 'Remover esta página?' });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Remover' }));
+    await waitFor(() => expect(hubStore.removeHubPage).toHaveBeenCalledWith('p1'));
+  });
+
+  it('Reordenar is a mode with grips; a drop persists the new order', async () => {
+    renderPaginas({ pages: [PAGE, OUTRA] });
+    fireEvent.click(await screen.findByRole('button', { name: 'Reordenar' }));
+    expect(screen.getByRole('button', { name: 'Reordenar página Página um' })).toBeInTheDocument();
+    // No swipe/long-press rows while reordering.
+    expect(screen.queryByRole('button', { name: 'Remover' })).not.toBeInTheDocument();
+
+    await act(async () => {
+      dndHandlers.onDragEnd?.({ active: { id: 'p2' }, over: { id: 'p1' } });
+    });
+    await waitFor(() => expect(hubStore.reorderHubPages).toHaveBeenCalledWith(15, ['p2', 'p1']));
+    fireEvent.click(screen.getByRole('button', { name: 'Concluir' }));
+    expect(
+      screen.queryByRole('button', { name: 'Reordenar página Página um' }),
+    ).not.toBeInTheDocument();
   });
 });

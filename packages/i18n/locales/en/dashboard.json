@@ -197,5 +197,93 @@
       "semResposta": "{{days}}d no reply"
     },
     "noMembership": "You no longer have access to this workspace. Switch workspaces or ask an administrator to invite you again."
+  },
+  "inicio": {
+    "scope": {
+      "label": "Deadline scope",
+      "agencia": "Agency",
+      "meus": "Mine only"
+    },
+    "prazos": "Deadlines",
+    "tiles": {
+      "atrasado": "Overdue",
+      "hoje": "Today",
+      "proximos": "Next 7 days"
+    },
+    "tileSub": {
+      "clients_one": "{{count}} client",
+      "clients_other": "{{count}} clients",
+      "oldest_one": "oldest {{count}} day ago",
+      "oldest_other": "oldest {{count}} days ago",
+      "tarefas_one": "{{count}} task",
+      "tarefas_other": "{{count}} tasks",
+      "etapas_one": "{{count}} stage",
+      "etapas_other": "{{count}} stages",
+      "posts_one": "{{count}} post",
+      "posts_other": "{{count}} posts",
+      "outros_one": "{{count}} other",
+      "outros_other": "{{count}} others",
+      "nothing": "Nothing here"
+    },
+    "barsLabel": "Items per day over the next 7 days: {{list}}",
+    "groupBy": "Group by",
+    "modes": {
+      "cliente": "Client",
+      "responsavel": "Assignee",
+      "dia": "Day"
+    },
+    "semCliente": "No client",
+    "semResponsavel": "Unassigned",
+    "semData": "No date",
+    "groupMeta": {
+      "oldest_one": "Oldest was due {{count}} day ago",
+      "oldest_other": "Oldest was due {{count}} days ago",
+      "next": "Next: {{date}}",
+      "clients": "{{names}}",
+      "clientsMore": "{{names}} and {{count}} more"
+    },
+    "items_one": "{{count}} item",
+    "items_other": "{{count}} items",
+    "moreItems_one": "Show {{count}} more item",
+    "moreItems_other": "Show {{count}} more items",
+    "listEmpty": {
+      "atrasado": "Nothing overdue.",
+      "hoje": "Nothing for today.",
+      "proximos": "Nothing in the next 7 days."
+    },
+    "mineMissing": "Your user is not linked to a team member, so nothing is assigned to you. Ask for the link on the Team page.",
+    "health": {
+      "acao": "Need action",
+      "cols": {
+        "cliente": "Client",
+        "situacao": "Status",
+        "seguidores": "Followers · 28d",
+        "engajamento": "Engagement",
+        "alcance": "Reach · 28d",
+        "ultimoPost": "Last post",
+        "producao": "Production",
+        "acao": "Action"
+      },
+      "why": {
+        "reconectar": "Authorization expired or revoked",
+        "desconectado": "Instagram not connected",
+        "sem_sincronizar_one": "Last synced {{count}} day ago",
+        "sem_sincronizar_other": "Last synced {{count}} days ago",
+        "sincronizando": "First sync in progress",
+        "sem_dados": "Not enough data yet",
+        "inativo_one": "{{count}} day without posting",
+        "inativo_other": "{{count}} days without posting",
+        "inativoNever": "No posts published",
+        "reach": "Reach down {{pct}}%",
+        "followers": "Followers down {{pct}}%",
+        "lastPost_one": "Last post {{count}} day ago",
+        "lastPost_other": "Last post {{count}} days ago",
+        "generic": "Below usual performance"
+      },
+      "entregas": "Deliveries",
+      "showing": "Showing {{shown}} of {{total}}",
+      "showAll": "Show all",
+      "showLess": "Show less"
+    }
   }
 }

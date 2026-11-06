@@ -19,6 +19,7 @@ import {
   submitApproval,
   submitBriefingAnswer,
   submitEditSuggestion,
+  submitLinhaAcao,
   updateIdeia,
 } from '../api';
 
@@ -61,6 +62,23 @@ describe('hub api client', () => {
     await expect(submitApproval('token-hub', 12, 'mensagem')).rejects.toThrow(
       'Comentário obrigatório',
     );
+  });
+
+  it('keeps the error message and carries the HTTP status and code', async () => {
+    fetchHarness.queueResponse({
+      ok: false,
+      status: 409,
+      json: { error: 'Não foi possível concluir. Tente novamente.', code: 'itens_com_ajustes' },
+    });
+
+    await expect(
+      submitLinhaAcao('token-hub', { linha_id: 'l1', acao: 'aprovado' }),
+    ).rejects.toMatchObject({
+      name: 'HubApiError',
+      message: 'Não foi possível concluir. Tente novamente.',
+      status: 409,
+      code: 'itens_com_ajustes',
+    });
   });
 
   describe('429 retry', () => {
@@ -223,16 +241,16 @@ describe('hub api client', () => {
       },
     });
 
-    const result = await submitEditSuggestion(
-      'token-hub',
-      42,
-      {
+    const result = await submitEditSuggestion('token-hub', 42, {
+      conteudo: {
         type: 'doc',
         content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Texto editado' }] }],
       },
-      'Texto editado',
-      null,
-    );
+      conteudo_plain: 'Texto editado',
+      captions: { ig_caption: null },
+      touched_fields: ['texto'],
+      bases: { conteudo: null, conteudo_plain: 'Texto original' },
+    });
 
     expect(result.ok).toBe(true);
     expect(result.pending_suggestion?.post_id).toBe(42);
@@ -245,7 +263,50 @@ describe('hub api client', () => {
       post_id: 42,
       suggested_conteudo_plain: 'Texto editado',
       suggested_ig_caption: null,
+      touched_fields: ['texto'],
+      // A null base must survive JSON: the RPC tests key presence, not value.
+      bases: { conteudo: null, conteudo_plain: 'Texto original' },
     });
+    expect(body.bases).toHaveProperty('conteudo', null);
+    // Captions not given are not sent at all (absent = untouched).
+    expect(body).not.toHaveProperty('suggested_tiktok_caption');
+    expect(body).not.toHaveProperty('suggested_geral_caption');
+  });
+
+  it('sends the TikTok and Geral captions and their bases, null base kept', async () => {
+    fetchHarness.queueResponse({ json: { ok: true, pending_suggestion: null } });
+    await submitEditSuggestion('token-hub', 42, {
+      conteudo: null,
+      conteudo_plain: 'Corpo',
+      captions: { ig_caption: 'IG', tiktok_caption: 'TT novo', geral_caption: null },
+      touched_fields: ['legenda_tiktok'],
+      bases: { tiktok_caption: null },
+    });
+    const body = JSON.parse(String(fetchHarness.calls[0].init?.body));
+    expect(body).toMatchObject({
+      suggested_ig_caption: 'IG',
+      suggested_tiktok_caption: 'TT novo',
+      suggested_geral_caption: null,
+      touched_fields: ['legenda_tiktok'],
+    });
+    expect(body.bases).toHaveProperty('tiktok_caption', null);
+  });
+
+  it('keeps the status and code of a 409 target_gone so callers can tell it apart', async () => {
+    fetchHarness.queueResponse({
+      ok: false,
+      status: 409,
+      json: { error: 'Destino removido', code: 'target_gone' },
+    });
+    await expect(
+      submitEditSuggestion('token-hub', 42, {
+        conteudo: null,
+        conteudo_plain: 'x',
+        captions: { ig_caption: null, geral_caption: 'g' },
+        touched_fields: ['legenda_geral'],
+        bases: { geral_caption: '' },
+      }),
+    ).rejects.toMatchObject({ status: 409, code: 'target_gone' });
   });
 
   it('throws on edit suggestion error', async () => {
@@ -255,9 +316,15 @@ describe('hub api client', () => {
       json: { error: 'Post não está em revisão' },
     });
 
-    await expect(submitEditSuggestion('token-hub', 99, null, 'texto', null)).rejects.toThrow(
-      'Post não está em revisão',
-    );
+    await expect(
+      submitEditSuggestion('token-hub', 99, {
+        conteudo: null,
+        conteudo_plain: 'texto',
+        captions: { ig_caption: null },
+        touched_fields: ['legenda'],
+        bases: null,
+      }),
+    ).rejects.toThrow('Post não está em revisão');
   });
 
   it('presigns and finalizes briefing audio on the nested hub-briefing routes', async () => {

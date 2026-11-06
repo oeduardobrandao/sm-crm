@@ -1,12 +1,14 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { getObjectStreamSigned } from "../_shared/r2.ts";
+import { type ClientScope, loadClientScope } from "../_shared/client-scope.ts";
 import {
   buildZipStream,
   checkZipBudget,
   collectFileEntries,
   collectFolderEntries,
   type FileZipDeps,
+  resolveZipRoot,
   ZipBudgetExceededError,
   type ZipPlanEntry,
 } from "./handler.ts";
@@ -55,7 +57,9 @@ Deno.serve(async (req: Request) => {
   }
 
   const payload = await verifyZipToken(token);
-  if (!payload) {
+  // A token without the minting user (file-manage before acesso por cliente) carries no scope to
+  // re-check: refused like an invalid one, never "every client". Tokens live 5 minutes.
+  if (!payload || typeof payload.user_id !== "string" || typeof payload.conta_id !== "string") {
     return new Response(JSON.stringify({ error: "Invalid or expired token" }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -63,15 +67,10 @@ Deno.serve(async (req: Request) => {
   }
 
   const contaId = payload.conta_id as string;
+  const userId = payload.user_id as string;
   const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
-
-  const deps: FileZipDeps = {
-    db: svc,
-    contaId,
-    getObjectStream: getObjectStreamSigned,
-  };
 
   function jsonResponse(body: Record<string, unknown>, status: number): Response {
     return new Response(JSON.stringify(body), {
@@ -79,6 +78,24 @@ Deno.serve(async (req: Request) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+
+  // Acesso por cliente: the minting member's scope, loaded again now (a reassignment or a move in
+  // the token's 5 minutes counts). A read error is a generic 500, never "every client".
+  let scope: ClientScope;
+  try {
+    scope = await loadClientScope(svc, userId, contaId);
+  } catch (err) {
+    console.error("[file-zip] client scope read failed", err instanceof Error ? err.message : String(err));
+    return jsonResponse({ error: "Erro ao preparar o zip" }, 500);
+  }
+
+  const deps: FileZipDeps = {
+    db: svc,
+    contaId,
+    scope,
+    userId,
+    getObjectStream: getObjectStreamSigned,
+  };
 
   // Never surface the raw collect error to the client (security rule: no raw
   // error details out of an edge function) -- the JSON 500 below is returned
@@ -120,18 +137,22 @@ Deno.serve(async (req: Request) => {
 
   if (payload.folder_id) {
     const folderId = payload.folder_id as number;
-    const { data: folder } = await svc
-      .from("folders")
-      .select("name, conta_id")
-      .eq("id", folderId)
-      .single();
-    if (!folder || folder.conta_id !== contaId) {
+    // A folder the member cannot read answers exactly like a missing one.
+    let root: Awaited<ReturnType<typeof resolveZipRoot>>;
+    try {
+      root = await resolveZipRoot(deps, folderId);
+    } catch (err) {
+      console.error("[file-zip] Failed to resolve root folder", err);
+      return jsonResponse({ error: "Erro ao preparar o zip" }, 500);
+    }
+    if (!root) {
       return jsonResponse({ error: "Folder not found" }, 404);
     }
+    const folder = root;
 
     let skippedPaths: string[] = [];
     const collected = await collectEntriesOrRespond(async () => {
-      const result = await collectFolderEntries(deps, folderId);
+      const result = await collectFolderEntries(deps, folderId, root!.client);
       skippedPaths = result.skippedPaths;
       return result.entries;
     });

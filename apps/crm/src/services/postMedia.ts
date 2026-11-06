@@ -1,13 +1,15 @@
 // apps/crm/src/services/postMedia.ts
 import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import { supabase } from '../lib/supabase';
-import type { PostMedia } from '../store';
+import type { PostMedia, ThumbnailSource } from '../store';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 
 const IMAGE_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const VIDEO_MIME = ['video/mp4', 'video/quicktime', 'video/webm'];
-const MAX_SIZE = 400 * 1024 * 1024;
+// Espelha file-upload-url: vídeos até 2 GB, demais arquivos até 400 MB.
+const MAX_IMAGE_SIZE = 400 * 1024 * 1024;
+const MAX_VIDEO_SIZE = 2 * 1024 * 1024 * 1024;
 const MAX_CONCURRENT = 3;
 
 export type UploadProgress = { loaded: number; total: number };
@@ -44,7 +46,9 @@ async function callFn<T>(
 export function validateFile(file: File, kind: 'image' | 'video') {
   const allowed = kind === 'image' ? IMAGE_MIME : VIDEO_MIME;
   if (!allowed.includes(file.type)) throw new Error(`Tipo de arquivo não suportado: ${file.type}`);
-  if (file.size <= 0 || file.size > MAX_SIZE) throw new Error('Arquivo maior que 400 MB');
+  const max = kind === 'video' ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE;
+  if (file.size <= 0 || file.size > max)
+    throw new Error(kind === 'video' ? 'Vídeo maior que 2 GB' : 'Arquivo maior que 400 MB');
 }
 
 export function detectKind(file: File): 'image' | 'video' {
@@ -215,10 +219,15 @@ async function uploadPostMediaUnguarded(args: {
   postId: number;
   file: File;
   thumbnail?: File; // required for video
+  /** Video: the moment (ms) `thumbnail` was captured from; omit for a non-frame image. */
+  thumbnailFrameMs?: number | null;
+  /** Video: 'auto' for the generated frame, 'image' for a picked image (files.thumbnail_source). */
+  thumbnailSource?: ThumbnailSource;
   sortOrder?: number; // position in the carousel; assigned from selection order
   onProgress?: (p: UploadProgress) => void;
 }): Promise<PostMedia> {
-  const { postId, file, thumbnail, sortOrder, onProgress } = args;
+  const { postId, file, thumbnail, thumbnailFrameMs, thumbnailSource, sortOrder, onProgress } =
+    args;
   const kind = detectKind(file);
   validateFile(file, kind);
 
@@ -272,6 +281,10 @@ async function uploadPostMediaUnguarded(args: {
     height,
     duration_seconds,
     blur_data_url,
+    ...(kind === 'video' && thumbnailFrameMs != null
+      ? { thumbnail_frame_ms: thumbnailFrameMs }
+      : {}),
+    ...(kind === 'video' && thumbnailSource ? { thumbnail_source: thumbnailSource } : {}),
   });
 }
 
@@ -286,7 +299,14 @@ export async function reorderPostMedia(id: number, sort_order: number): Promise<
 // Mirrors THUMB_MIME in post-media-manage (gif is valid media but not a poster).
 const VIDEO_THUMB_MIME = ['image/jpeg', 'image/png', 'image/webp'];
 
-export async function updateVideoThumbnail(linkId: number, thumbnail: File): Promise<PostMedia> {
+/** `frameMs`: the moment of the video the new thumbnail was captured from, which TikTok
+ * publishes as the cover. `null` for an uploaded image: TikTok can't use an image, so it
+ * falls back to its default frame. */
+export async function updateVideoThumbnail(
+  linkId: number,
+  thumbnail: File,
+  frameMs: number | null = null,
+): Promise<PostMedia> {
   if (!VIDEO_THUMB_MIME.includes(thumbnail.type)) {
     throw new Error(`Tipo de arquivo não suportado: ${thumbnail.type}`);
   }
@@ -301,7 +321,10 @@ export async function updateVideoThumbnail(linkId: number, thumbnail: File): Pro
   return callFn<PostMedia>(
     'post-media-manage',
     'PATCH',
-    { thumbnail_r2_key: signed.thumbnail_r2_key },
+    {
+      thumbnail_r2_key: signed.thumbnail_r2_key,
+      ...(frameMs != null ? { thumbnail_frame_ms: frameMs } : {}),
+    },
     undefined,
     `/${linkId}`,
   );

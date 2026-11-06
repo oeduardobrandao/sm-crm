@@ -9,5 +9,8 @@ export function throwGraphError(data: any): never {
   if (typeof data.error.code === "number") err.graphCode = data.error.code;
   if (typeof data.error.error_subcode === "number") err.graphSubcode = data.error.error_subcode;
   if (typeof data.error.fbtrace_id === "string") err.fbtraceId = data.error.fbtrace_id;
+  // Texto localizado para o usuário; no COLLABORATOR_INVALID (2207018) ele
+  // lista as contas recusadas, que o escritor de falha guarda.
+  if (typeof data.error.error_user_msg === "string") err.graphUserMsg = data.error.error_user_msg;
   throw err;
 }

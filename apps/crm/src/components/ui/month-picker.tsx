@@ -1,6 +1,7 @@
 import * as React from 'react';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { format, type Locale } from 'date-fns';
+import { useTranslation } from 'react-i18next';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, X } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -17,9 +18,11 @@ export interface MonthPickerProps {
   id?: string;
 }
 
-const MONTHS = Array.from({ length: 12 }, (_, i) =>
-  format(new Date(2000, i, 1), 'MMM', { locale: ptBR }).replace('.', ''),
-);
+function shortMonthNames(locale: Locale): string[] {
+  return Array.from({ length: 12 }, (_, i) =>
+    format(new Date(2000, i, 1), 'MMM', { locale }).replace('.', ''),
+  );
+}
 
 function parseValue(value: string): { year: number; month: number } | null {
   if (!value) return null;
@@ -35,12 +38,14 @@ function formatIso(year: number, month: number): string {
 export function MonthPicker({
   value,
   onChange,
-  placeholder = 'Selecionar mês',
+  placeholder,
   className,
   disabled,
   clearable = true,
   id,
 }: MonthPickerProps) {
+  const { t } = useTranslation();
+  const dateLocale = useDateFnsLocale();
   const parsed = parseValue(value);
   const [open, setOpen] = React.useState(false);
   const [year, setYear] = React.useState(parsed?.year ?? new Date().getFullYear());
@@ -50,7 +55,9 @@ export function MonthPicker({
   }, [open, parsed]);
 
   const rawLabel = parsed
-    ? format(new Date(parsed.year, parsed.month, 1), "MMMM 'de' yyyy", { locale: ptBR })
+    ? format(new Date(parsed.year, parsed.month, 1), t('dateFormat.monthYear'), {
+        locale: dateLocale,
+      })
     : null;
   // Sentence case only: "Agosto de 2026", never "Agosto De 2026".
   const label = rawLabel ? rawLabel.charAt(0).toUpperCase() + rawLabel.slice(1) : null;
@@ -70,12 +77,12 @@ export function MonthPicker({
           )}
         >
           <CalendarIcon className="mr-2 h-4 w-4" />
-          {label ?? <span>{placeholder}</span>}
+          {label ?? <span>{placeholder ?? t('ui.selectMonth')}</span>}
           {clearable && parsed && (
             <span
               role="button"
               tabIndex={0}
-              aria-label="Limpar"
+              aria-label={t('ui.clear')}
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -103,7 +110,7 @@ export function MonthPicker({
             size="icon"
             className="h-7 w-7"
             onClick={() => setYear((y) => y - 1)}
-            aria-label="Ano anterior"
+            aria-label={t('ui.previousYear')}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -114,13 +121,13 @@ export function MonthPicker({
             size="icon"
             className="h-7 w-7"
             onClick={() => setYear((y) => y + 1)}
-            aria-label="Próximo ano"
+            aria-label={t('ui.nextYear')}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
         <div className="grid grid-cols-3 gap-2">
-          {MONTHS.map((name, i) => {
+          {shortMonthNames(dateLocale).map((name, i) => {
             const selected = parsed?.year === year && parsed.month === i;
             return (
               <Button

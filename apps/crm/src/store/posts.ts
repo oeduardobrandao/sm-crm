@@ -2,7 +2,8 @@ import type { ContentFormat } from '@mesaas/platforms';
 import { supabase, getContaId, getUserId } from './core';
 import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import { syncMentions } from './mentions';
-import { fetchAllPagedByIds } from './paging';
+import { fetchAllPaged, fetchAllPagedByIds } from './paging';
+import { isMissingRelationError } from './missingRelation';
 import { sortByPlatformOrder, type PostTargetSummary } from './postTargets';
 import type { Workflow, WorkflowEtapa } from './workflows';
 
@@ -106,7 +107,7 @@ export interface WorkflowPost {
   tiktok_settings?: Record<string, unknown> | null;
   created_at?: string;
   updated_at?: string;
-  created_via?: 'human' | 'agent';
+  created_via?: 'human' | 'agent' | 'linha_editorial';
   /** Set by the storage auto-clean when the post's media was deleted after
    * publication (spec 2026-08-10). Distinguishes "cleaned" from "never had
    * media" so the gallery can render the removal placeholder. */
@@ -119,6 +120,15 @@ export interface WorkflowPost {
    * app. Só válido em tipo 'reels' mirando Instagram; o trigger
    * workflow_posts_z5_clear_ig_trial limpa fora disso. */
   ig_trial_strategy?: 'manual' | 'auto' | null;
+  /** Colaboradores do Instagram (usernames minúsculos, sem @, máx. 3). Só vale em
+   * feed/reels/carrossel mirando Instagram; ausente/NULL = []. */
+  ig_collaborators?: string[];
+  /** Subconjunto de ig_collaborators que o Instagram recusou na última falha.
+   * Só chega pelo select('*') do editor: nunca entra em lista explícita de colunas. */
+  ig_collaborators_refused?: string[];
+  /** Menções do Stories (Graph `user_tags` sem sticker; usernames minúsculos, sem @,
+   * máx. 10). Só vale em stories mirando Instagram; ausente/NULL = []. */
+  ig_user_tags?: string[];
 }
 
 export interface ClientePost {
@@ -136,10 +146,11 @@ export interface ClientePost {
   /** Target platform; absent on legacy rows (treat as 'instagram', the DB default). */
   platform?: WorkflowPost['platform'];
   ig_trial_strategy?: 'manual' | 'auto' | null;
+  ig_collaborators?: string[];
 }
 
 const CLIENTE_POST_COLUMNS =
-  'id, workflow_id, titulo, tipo, status, custom_status_id, scheduled_at, ordem, platform, ig_trial_strategy';
+  'id, workflow_id, titulo, tipo, status, custom_status_id, scheduled_at, ordem, platform, ig_trial_strategy, ig_collaborators';
 
 function mapClientePostRow(row: any): ClientePost {
   return {
@@ -154,6 +165,7 @@ function mapClientePostRow(row: any): ClientePost {
     workflow_titulo: row.workflows?.titulo ?? null,
     platform: row.platform ?? undefined,
     ig_trial_strategy: row.ig_trial_strategy ?? null,
+    ig_collaborators: row.ig_collaborators ?? [],
   };
 }
 
@@ -273,6 +285,8 @@ export interface ScheduledPost {
   tiktok_post_url: string | null;
   instagram_media_id: string | null;
   ig_trial_strategy: 'manual' | 'auto' | null;
+  /** Colaboradores do Instagram; linha antiga/cache sem o campo = []. */
+  ig_collaborators?: string[];
   /** Manual board rank for the Publicações kanban ("manual" column sort).
    * NULL = never manually positioned; sorts after every ranked post in that
    * column, in automatic order. */
@@ -362,7 +376,7 @@ export function applyTikTokTargetState<T extends object>(
  * migrations before the frontend, so by the time this code ships the column
  * already exists; do not reorder that deploy sequence.
  */
-export const POST_CONTEXT_COLUMNS = `id, workflow_id, cliente_id, titulo, tipo, status, custom_status_id, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, publish_error_code, ordem, responsavel_id, platform, instagram_media_id, ig_trial_strategy, board_ordem, ${TIKTOK_TARGET_STATE_EMBED}`;
+export const POST_CONTEXT_COLUMNS = `id, workflow_id, cliente_id, titulo, tipo, status, custom_status_id, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, publish_error_code, ordem, responsavel_id, platform, instagram_media_id, ig_trial_strategy, ig_collaborators, board_ordem, ${TIKTOK_TARGET_STATE_EMBED}`;
 
 // Exported for store/postProcesses.ts, which embeds a workflow_posts row (avulso arm shape).
 /**
@@ -397,6 +411,7 @@ export function mapPostContextRow(row: any): ActivePost {
     tiktok_post_url: tiktok.tiktok_post_url,
     instagram_media_id: row.instagram_media_id ?? null,
     ig_trial_strategy: row.ig_trial_strategy ?? null,
+    ig_collaborators: row.ig_collaborators ?? [],
     board_ordem: row.board_ordem ?? null,
     targets: Array.isArray(row.post_targets) ? sortByPlatformOrder(row.post_targets) : undefined,
   };
@@ -483,12 +498,21 @@ export async function getActivePosts(): Promise<ActivePost[]> {
     .sort(compareScheduledAtAscNullsLast);
 }
 
+export type ThumbnailSource = 'auto' | 'frame' | 'image';
+
 export interface PostMedia {
   id: number;
   post_id: number;
   conta_id: string;
   r2_key: string;
   thumbnail_r2_key: string | null;
+  /** Video: the moment (ms) the thumbnail was captured from, which TikTok publishes as the
+   * cover; null when the thumbnail is an uploaded image or unknown (files from before the
+   * column). Optional because responses from an older post-media-manage omit it. */
+  thumbnail_frame_ms?: number | null;
+  /** Video: where the thumbnail came from (files.thumbnail_source): the frame generated at
+   * upload, a frame the user picked, or an image; null = unknown (files from before it). */
+  thumbnail_source?: ThumbnailSource | null;
   kind: 'image' | 'video';
   mime_type: string;
   size_bytes: number;
@@ -524,6 +548,10 @@ export interface PostApproval {
   action: 'aprovado' | 'correcao' | 'mensagem';
   comentario: string | null;
   is_workspace_user: boolean;
+  /** Autor da mensagem da equipe; null para respostas do cliente (via Hub). */
+  author_user_id: string | null;
+  /** Notas de mídia (post_media_notes) enviadas junto com esta resposta. */
+  media_note_ids: number[];
   created_at: string;
 }
 
@@ -551,6 +579,10 @@ export interface PostContentVersion {
   conteudo_plain: string | null;
   ig_caption: string | null;
   tiktok_caption: string | null;
+  /** Caption of the post's Geral destination at this version. `''` = the Geral row existed with an
+   *  empty caption; NULL = no Geral row, or a version recorded before the column existed
+   *  ("not recorded", never "deleted"). */
+  geral_caption: string | null;
   changed_fields: string[];
   source: 'workspace_user' | 'client' | 'system';
   actor_user_id: string | null;
@@ -836,6 +868,25 @@ export async function getWorkflowPostsCounts(workflowIds: number[]): Promise<Map
   for (const row of rows) {
     counts.set(row.workflow_id, (counts.get(row.workflow_id) ?? 0) + 1);
   }
+  return counts;
+}
+
+export type PostStatusCounts = Partial<Record<WorkflowPost['status'], number>>;
+
+/** Contagem de posts do fluxo por status, agregada no cliente (paginada). */
+export async function getWorkflowPostStatusCounts(workflowId: number): Promise<PostStatusCounts> {
+  const rows = await fetchAllPaged(async (from, to) => {
+    const { data, error } = await supabase
+      .from('workflow_posts')
+      .select('status')
+      .eq('workflow_id', workflowId)
+      .order('id', { ascending: true })
+      .range(from, to);
+    if (error) throw error;
+    return (data ?? []) as { status: WorkflowPost['status'] }[];
+  });
+  const counts: PostStatusCounts = {};
+  for (const row of rows) counts[row.status] = (counts[row.status] ?? 0) + 1;
   return counts;
 }
 
@@ -1339,6 +1390,46 @@ export async function sendPostsToCliente(workflowId: number): Promise<void> {
 }
 
 /**
+ * Statuses a selection send leaves alone: already in the portal, already
+ * approved by the client (re-sending would silently drop that approval) or
+ * owned by the publish pipeline.
+ */
+export const SELECTION_SEND_SKIPPED_STATUSES = [
+  'enviado_cliente',
+  'aprovado_cliente',
+  'agendado',
+  'postado',
+  'falha_publicacao',
+] as const satisfies readonly WorkflowPost['status'][];
+
+export function isSendableFromSelection(status: WorkflowPost['status']): boolean {
+  return !(SELECTION_SEND_SKIPPED_STATUSES as readonly string[]).includes(status);
+}
+
+/**
+ * Sends the SELECTED posts of a fluxo to the client portal from any team-owned
+ * status (rascunho, revisão, aprovado interno, correção). Unlike
+ * `sendPostsToCliente` it does not require `aprovado_interno`. Clears
+ * `custom_status_id` like the status picker does: a custom status must behave
+ * as the canonical one it points at. Returns how many posts actually moved.
+ */
+export async function sendSelectedPostsToCliente(
+  workflowId: number,
+  postIds: number[],
+): Promise<number> {
+  if (postIds.length === 0) return 0;
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .update({ status: 'enviado_cliente', custom_status_id: null })
+    .eq('workflow_id', workflowId)
+    .in('id', postIds)
+    .not('status', 'in', `(${SELECTION_SEND_SKIPPED_STATUSES.join(',')})`)
+    .select('id');
+  if (error) throw error;
+  return data?.length ?? 0;
+}
+
+/**
  * Sends ONE post to the client portal from whatever status the caller saw
  * (`fromStatus`), so a draft can go straight to the client. The UPDATE is
  * conditional on that status: a zero-row result means it already moved --
@@ -1359,39 +1450,29 @@ export async function sendPostToCliente(
   return data;
 }
 
-export async function approvePostsInternally(workflowId: number): Promise<void> {
-  const { error } = await supabase
-    .from('workflow_posts')
-    .update({ status: 'aprovado_cliente' })
-    .eq('workflow_id', workflowId)
-    .not('status', 'in', '(agendado,postado)');
-  if (error) throw error;
-}
-
-/**
- * Re-arm the next client-approval cycle (multi-approval fluxos): posts the client already
- * approved go back to rascunho so a later aprovacao_cliente etapa can send them to the
- * portal again. Scheduled/posted/failed posts are never touched. Mirrors the manual
- * workaround agencies use for double-approval flows; post_approvals history is preserved.
- */
-export async function resetApprovedPostsForNextCycle(workflowId: number): Promise<void> {
-  const { error } = await supabase
-    .from('workflow_posts')
-    .update({ status: 'rascunho' })
-    .eq('workflow_id', workflowId)
-    .eq('status', 'aprovado_cliente');
-  if (error) throw error;
-}
-
 export async function getPostApprovals(postIds: number[]): Promise<PostApproval[]> {
   if (postIds.length === 0) return [];
-  const { data, error } = await supabase
-    .from('post_approvals')
-    .select('*')
-    .in('post_id', postIds)
-    .order('created_at', { ascending: true });
+  const read = (columns: string) =>
+    supabase
+      .from('post_approvals')
+      .select(columns)
+      .in('post_id', postIds)
+      .order('created_at', { ascending: true });
+  let { data, error } = await read('*, post_approval_media_notes(note_id)');
+  // Frontend deployed before migration 20261026000001: keep the conversation, no notes.
+  if (error && isMissingRelationError(error, 'post_approval_media_notes')) {
+    ({ data, error } = await read('*'));
+  }
   if (error) throw error;
-  return data || [];
+  type ApprovalRow = Omit<PostApproval, 'media_note_ids'> & {
+    post_approval_media_notes?: { note_id: number }[] | null;
+  };
+  return ((data || []) as unknown as ApprovalRow[]).map(
+    ({ post_approval_media_notes, ...approval }) => ({
+      ...approval,
+      media_note_ids: (post_approval_media_notes ?? []).map((link) => link.note_id),
+    }),
+  );
 }
 
 export async function getPostStatusEvents(postIds: number[]): Promise<PostStatusEvent[]> {
@@ -1417,7 +1498,7 @@ export async function getPostContentVersions(postIds: number[]): Promise<PostCon
   const { data, error } = await supabase
     .from('post_content_versions')
     .select(
-      'id, post_id, conteudo, conteudo_plain, ig_caption, tiktok_caption, changed_fields, source, actor_user_id, actor_name, suggestion_id, created_at, last_touched_at',
+      'id, post_id, conteudo, conteudo_plain, ig_caption, tiktok_caption, geral_caption, changed_fields, source, actor_user_id, actor_name, suggestion_id, created_at, last_touched_at',
     )
     .in('post_id', postIds)
     .order('last_touched_at', { ascending: true });
@@ -1449,14 +1530,37 @@ export async function replyToPostApproval(
 // POST EDIT SUGGESTIONS
 // =============================================
 
+/**
+ * The logical fields of an edit suggestion. `changed_fields` keeps storing the column names:
+ *   texto          -> conteudo + conteudo_plain (always together)
+ *   legenda        -> ig_caption
+ *   legenda_tiktok -> tiktok_caption (workflow_posts)
+ *   legenda_geral  -> geral_caption (post_targets.caption of the `geral` row)
+ */
+export type SuggestionField = 'texto' | 'legenda' | 'legenda_tiktok' | 'legenda_geral';
+
 export interface PostEditSuggestion {
   id: number;
   post_id: number;
   suggested_conteudo: Record<string, unknown> | null;
   suggested_conteudo_plain: string;
   suggested_ig_caption: string | null;
+  suggested_tiktok_caption: string | null;
+  suggested_geral_caption: string | null;
+  /** Per-field base: what the client started from. NULL on rows created before the base was kept. */
+  original_conteudo: Record<string, unknown> | null;
+  original_conteudo_plain: string | null;
+  original_ig_caption: string | null;
+  original_tiktok_caption: string | null;
+  original_geral_caption: string | null;
+  /** `post_targets.id` of the Geral row when `geral_caption` entered `changed_fields`. A live row
+   *  with another id was removed and re-added: the suggestion no longer applies to it. */
+  geral_target_id: number | null;
+  /** `tiktok_caption` was NULL (TikTok following Instagram) when `ig_caption` entered
+   *  `changed_fields`. */
+  tiktok_followed_ig: boolean | null;
   changed_fields: string[];
-  status: 'pending' | 'accepted' | 'rejected';
+  status: 'pending' | 'accepted' | 'rejected' | 'superseded';
   updated_at: string;
 }
 
@@ -1465,7 +1569,7 @@ export async function getPostEditSuggestions(postIds: number[]): Promise<PostEdi
   const { data, error } = await supabase
     .from('post_edit_suggestions')
     .select(
-      'id, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption, changed_fields, status, updated_at',
+      'id, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption, suggested_tiktok_caption, suggested_geral_caption, original_conteudo, original_conteudo_plain, original_ig_caption, original_tiktok_caption, original_geral_caption, geral_target_id, tiktok_followed_ig, changed_fields, status, updated_at',
     )
     .in('post_id', postIds)
     .eq('status', 'pending');
@@ -1474,14 +1578,84 @@ export async function getPostEditSuggestions(postIds: number[]): Promise<PostEdi
 }
 
 /**
+ * Whether the post has a client edit suggestion nobody reviewed yet. Head count, so no row
+ * travels. Only `pending` counts: `accepted`, `rejected` and `superseded` are closed.
+ */
+export async function hasPendingEditSuggestion(postId: number): Promise<boolean> {
+  const { count, error } = await supabase
+    .from('post_edit_suggestions')
+    .select('id', { count: 'exact', head: true })
+    .eq('post_id', postId)
+    .eq('status', 'pending');
+  if (error) throw error;
+  return (count ?? 0) > 0;
+}
+
+/**
+ * Posts the "aprovar todos" of `advance_workflow_from_approval` moves to `aprovado_cliente`:
+ * every post of the fluxo outside these statuses (the RPC's own NOT IN list,
+ * 20261023000001). Keep both lists together.
+ */
+const APPROVE_ALL_SKIPPED_STATUSES = [
+  'aprovado_cliente',
+  'agendado',
+  'postado',
+  'falha_publicacao',
+];
+
+/**
+ * How many posts the bulk approval is about to move that still carry a pending client
+ * suggestion, for the count line in the approval-exit dialog.
+ */
+export async function countPendingEditSuggestionsInWorkflow(workflowId: number): Promise<number> {
+  const { count, error } = await supabase
+    .from('post_edit_suggestions')
+    .select('id, workflow_posts!inner(workflow_id, status)', { count: 'exact', head: true })
+    .eq('status', 'pending')
+    .eq('workflow_posts.workflow_id', workflowId)
+    .not('workflow_posts.status', 'in', `(${APPROVE_ALL_SKIPPED_STATUSES.join(',')})`);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/**
+ * How many of `postIds` still carry a pending client suggestion, for the count line in the
+ * batch-schedule dialog (moving a post to `agendado` closes the suggestion as superseded).
+ */
+export async function countPendingEditSuggestionsForPosts(postIds: number[]): Promise<number> {
+  if (postIds.length === 0) return 0;
+  const { count, error } = await supabase
+    .from('post_edit_suggestions')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pending')
+    .in('post_id', postIds);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/**
  * `expectedUpdatedAt` is the `updated_at` of the version the team reviewed. The client can
  * keep editing a pending suggestion, so the RPC refuses with `suggestion_changed` when the
  * row moved on since then instead of applying a version nobody on the team has seen.
+ * `fields` is what to apply: a field left out keeps the live value. The RPC raises
+ * `suggestion_conflict` when it is NULL and a changed field was also edited by the team, so the
+ * CRM always passes it. `acknowledged` is the subset of `fields` the team saw in conflict and
+ * chose to take from the client ("Usar a versão do cliente"); the RPC re-checks conflicts on the
+ * live post and raises `suggestion_conflict` for any field in `fields` that conflicts there and
+ * is not acknowledged, so a stale drawer can never overwrite a team edit. No conflict on screen:
+ * pass `[]`.
  */
-export async function acceptEditSuggestion(id: number, expectedUpdatedAt?: string): Promise<void> {
+export async function acceptEditSuggestion(
+  id: number,
+  expectedUpdatedAt: string | undefined,
+  fields: SuggestionField[],
+  acknowledged: SuggestionField[],
+): Promise<void> {
   const { error } = await supabase.rpc('accept_edit_suggestion', {
     p_suggestion_id: id,
     p_expected_updated_at: expectedUpdatedAt ?? null,
+    p_fields: fields,
+    p_acknowledged: acknowledged,
   });
   if (error) throw error;
 }

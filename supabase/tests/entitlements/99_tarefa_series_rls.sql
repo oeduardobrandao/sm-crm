@@ -313,7 +313,13 @@ begin
   -- ---- anon reads nothing ----
   perform set_config('request.jwt.claims', '{"role":"anon"}', true);
   execute 'set local role anon';
-  select count(*) into v_seen from tarefa_series;
+  -- Since the client-scope migration (C2) the policy calls my_client_scope_all(),
+  -- which anon cannot execute: anon gets an error instead of zero rows. Either
+  -- way it reads nothing.
+  begin
+    select count(*) into v_seen from tarefa_series;
+  exception when insufficient_privilege then v_seen := 0;
+  end;
   assert v_seen = 0, 'anon can read tarefa_series';
   execute 'reset role';
 

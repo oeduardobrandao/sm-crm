@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import { captureEvent } from '@/lib/analytics';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
@@ -29,6 +31,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { DatePicker } from '@/components/ui/date-picker';
+import { usePhoneLayout } from '@/components/layout/PhoneLayoutContext';
+import { FormRow } from '@/components/mobile/FormRow';
+import { GroupedList } from '@/components/mobile/GroupedList';
+import { PickerCell } from '@/components/mobile/PickerSheet';
+import { PhoneDateRow } from '../phone/PhoneDateRow';
+import '../phone/tarefasPhone.css';
 import {
   addTarefa,
   aplicarEdicaoSerie,
@@ -68,9 +76,10 @@ export type TarefaFormPayload = {
 
 /** RPC failures carry a pt-BR RAISE message worth showing; PostgREST table
  *  errors do not. Errors from criarTarefaSerie/aplicarEdicaoSerie are
- *  PostgrestError objects whose message is the RAISE text. */
+ *  PostgrestError objects whose message is the RAISE text. The prefixes below
+ *  match that server text, so they stay in Portuguese. */
 function mensagemErro(e: unknown, fallback: string, fromOnCreate: boolean): string {
-  if (isSerieDateConflict(e)) return 'Já existe uma ocorrência desta série nesse dia.';
+  if (isSerieDateConflict(e)) return i18n.t('tasksForm:formDialog.toast.dateConflict');
   const msg =
     e && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : '';
   const conhecida =
@@ -125,6 +134,10 @@ export function TarefaFormDialog({
   lockCliente,
   onCreate,
 }: TarefaFormDialogProps) {
+  // Phones (inside the phone shell, the gate the dialog primitive itself uses): grouped
+  // rows, picker sheets and native date inputs instead of selects and popovers.
+  const { isPhone } = usePhoneLayout();
+  const { t } = useTranslation('tasksForm');
   const [saving, setSaving] = useState(false);
   const [imageUploading, setImageUploading] = useState(false);
   const [tagIds, setTagIds] = useState<number[]>([]);
@@ -243,7 +256,7 @@ export function TarefaFormDialog({
         if (values.repetir === 'never' || !regra) {
           // "Não repete": "Esta e as próximas" by construction, so no dialog
           await aplicarEdicaoSerie(editing.id!, payload, tagIds, regraAtual, true);
-          toast.success('Tarefa atualizada!');
+          toast.success(t('formDialog.toast.updated'));
         } else {
           setEscopo({ payload, regra, regraAlterada: !regraIgual(regra, regraAtual) });
           return; // the dialog's handlers finish the save; `finally` clears saving
@@ -251,27 +264,31 @@ export function TarefaFormDialog({
       } else if (editing && regra) {
         // standalone task promoted to a series: no scope dialog
         await criarTarefaSerie(regra, payload, tagIds, [], editing.id!);
-        toast.success('Tarefa atualizada!');
+        toast.success(t('formDialog.toast.updated'));
       } else if (editing) {
         await updateTarefa(editing.id!, payload);
         await setTarefaTags(editing.id!, tagIds);
-        toast.success('Tarefa atualizada!');
+        toast.success(t('formDialog.toast.updated'));
       } else if (onCreate) {
         await onCreate(payload, tagIds);
       } else if (regra) {
         await criarTarefaSerie(regra, payload, tagIds, []);
         captureEvent('task_created', { status: values.status, recorrente: true });
-        toast.success('Tarefa criada!');
+        toast.success(t('formDialog.toast.created'));
       } else {
         await addTarefa(payload, tagIds);
         captureEvent('task_created', { status: values.status });
-        toast.success('Tarefa criada!');
+        toast.success(t('formDialog.toast.created'));
       }
       onSaved();
       onClose();
     } catch (e) {
       toast.error(
-        mensagemErro(e, editing ? 'Erro ao atualizar tarefa' : 'Erro ao criar tarefa', !!onCreate),
+        mensagemErro(
+          e,
+          editing ? t('formDialog.toast.updateError') : t('formDialog.toast.createError'),
+          !!onCreate,
+        ),
       );
     } finally {
       setSaving(false);
@@ -283,12 +300,12 @@ export function TarefaFormDialog({
     setSaving(true);
     try {
       await run();
-      toast.success('Tarefa atualizada!');
+      toast.success(t('formDialog.toast.updated'));
       setEscopo(null);
       onSaved();
       onClose();
     } catch (e) {
-      toast.error(mensagemErro(e, 'Erro ao atualizar tarefa', false));
+      toast.error(mensagemErro(e, t('formDialog.toast.updateError'), false));
     } finally {
       setSaving(false);
     }
@@ -305,199 +322,345 @@ export function TarefaFormDialog({
       aplicarEdicaoSerie(editing!.id!, escopo!.payload, tagIds, escopo!.regra, false),
     );
 
+  const descriptionField = (
+    <FormField
+      control={form.control}
+      name="descricao"
+      render={({ field }) => (
+        <TarefaDescriptionEditor
+          key={editorRevision}
+          initialContent={editorInitialContent}
+          onUpdate={(doc, plainText) => {
+            setDescriptionDoc(sanitizeTarefaDescriptionDoc(doc));
+            field.onChange(plainText);
+          }}
+          onUploadStateChange={setImageUploading}
+        />
+      )}
+    />
+  );
+
+  const submitLabel = imageUploading
+    ? t('formDialog.uploadingImage')
+    : saving
+      ? t('formDialog.saving')
+      : editing
+        ? t('actions.save')
+        : t('formDialog.create');
+
+  const errors = form.formState.errors;
+  const phoneFields = (
+    <div className="phone-kit phone-tar-form">
+      <GroupedList aria-label={t('formDialog.task')}>
+        <FormRow
+          label={t('formDialog.fieldTitle')}
+          layout="stacked"
+          error={errors.titulo?.message}
+          input={{ placeholder: t('formDialog.titlePlaceholder'), ...form.register('titulo') }}
+        />
+      </GroupedList>
+      <GroupedList header={t('formDialog.fieldDescription')}>
+        <li className="phone-cell phone-form-row">
+          <div className="phone-tar-form__editor">{descriptionField}</div>
+        </li>
+      </GroupedList>
+      <GroupedList aria-label={t('formDialog.details')}>
+        <FormField
+          control={form.control}
+          name="responsavel_id"
+          render={({ field }) => (
+            <PickerCell<string>
+              label={t('formDialog.fieldAssignee')}
+              emptyOption={{ label: t('formDialog.noAssignee') }}
+              searchable={sortedMembros.length > 8}
+              options={sortedMembros
+                .filter((m) => m.id != null)
+                .map((m) => ({ value: String(m.id), label: m.nome }))}
+              value={field.value === 'none' ? null : field.value}
+              onChange={(v) => field.onChange(v ?? 'none')}
+            />
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="cliente_id"
+          render={({ field }) => (
+            <PickerCell<string>
+              label={t('formDialog.fieldClient')}
+              emptyOption={{ label: t('formDialog.noClient') }}
+              searchable={activeClientes.length > 8}
+              disabled={lockCliente}
+              options={activeClientes
+                .filter((c) => c.id != null)
+                .map((c) => ({ value: String(c.id), label: c.nome }))}
+              value={field.value === 'none' ? null : field.value}
+              onChange={(v) => field.onChange(v ?? 'none')}
+            />
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="data_limite"
+          render={({ field }) => (
+            <PhoneDateRow
+              label={t('formDialog.fieldDue')}
+              value={field.value}
+              onChange={field.onChange}
+              emptyLabel={t('formDialog.noDue')}
+              error={errors.data_limite?.message}
+            />
+          )}
+        />
+        {editing && (
+          <FormField
+            control={form.control}
+            name="status"
+            render={({ field }) => (
+              <PickerCell<TarefaFormValues['status']>
+                label={t('formDialog.fieldStatus')}
+                options={STATUS_ORDER.map((st) => ({ value: st, label: STATUS_LABELS[st] }))}
+                value={field.value}
+                onChange={(v) => {
+                  if (v) field.onChange(v);
+                }}
+              />
+            )}
+          />
+        )}
+      </GroupedList>
+      {!onCreate && (
+        <RecorrenciaFields
+          layout="phone"
+          form={form}
+          landing={landing}
+          disabled={repetirBloqueado}
+          disabledHint={repetirBloqueado ? t('formDialog.reopenToRepeat') : undefined}
+        />
+      )}
+      <GroupedList aria-label={t('formDialog.tags')}>
+        <TagPicker
+          layout="phone"
+          tags={tags}
+          selectedIds={tagIds}
+          onSelectedChange={setTagIds}
+          onTagCreated={onTagCreated}
+        />
+      </GroupedList>
+      <div className="phone-tar-form__actions">
+        <button
+          type="button"
+          className="phone-tar-secondary-btn"
+          onClick={onClose}
+          disabled={saving || imageUploading}
+        >
+          {t('actions.cancel')}
+        </button>
+        <button type="submit" className="phone-tar-ink-btn" disabled={saving || imageUploading}>
+          {submitLabel}
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <>
       <Dialog open={open} onOpenChange={(o) => !o && !saving && !imageUploading && onClose()}>
         <DialogContent className="sm:max-w-[640px]">
           <DialogHeader>
             <DialogTitle>
-              {editing ? 'Editar tarefa' : onCreate ? 'Converter em tarefa' : 'Nova tarefa'}
+              {editing
+                ? t('formDialog.titleEdit')
+                : onCreate
+                  ? t('formDialog.titleConvert')
+                  : t('formDialog.titleNew')}
             </DialogTitle>
             <DialogDescription className="sr-only">
               {editing
-                ? 'Edite os campos da tarefa'
+                ? t('formDialog.descEdit')
                 : onCreate
-                  ? 'Preencha os campos para converter a solicitação em tarefa'
-                  : 'Preencha os campos da nova tarefa'}
+                  ? t('formDialog.descConvert')
+                  : t('formDialog.descNew')}
             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4">
-              <FormField
-                control={form.control}
-                name="titulo"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Título</FormLabel>
-                    <FormControl>
-                      <Input placeholder="O que precisa ser feito?" autoFocus {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="descricao"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Descrição</FormLabel>
-                    <TarefaDescriptionEditor
-                      key={editorRevision}
-                      initialContent={editorInitialContent}
-                      onUpdate={(doc, plainText) => {
-                        setDescriptionDoc(sanitizeTarefaDescriptionDoc(doc));
-                        field.onChange(plainText);
-                      }}
-                      onUploadStateChange={setImageUploading}
-                    />
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <div className="grid grid-cols-2 gap-3">
-                <FormField
-                  control={form.control}
-                  name="responsavel_id"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Responsável</FormLabel>
-                      <Select value={field.value} onValueChange={field.onChange}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="none">Sem responsável</SelectItem>
-                          {sortedMembros
-                            .filter((m) => m.id != null)
-                            .map((m) => (
-                              <SelectItem key={m.id} value={String(m.id)}>
-                                {m.nome}
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="cliente_id"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Cliente</FormLabel>
-                      <Select
-                        value={field.value}
-                        onValueChange={field.onChange}
-                        disabled={lockCliente}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="none">Sem cliente</SelectItem>
-                          {activeClientes
-                            .filter((c) => c.id != null)
-                            .map((c) => (
-                              <SelectItem key={c.id} value={String(c.id)}>
-                                {c.nome}
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <FormField
-                  control={form.control}
-                  name="data_limite"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-col">
-                      <FormLabel>Prazo</FormLabel>
-                      <FormControl>
-                        <DatePicker
-                          value={field.value}
-                          onChange={field.onChange}
-                          placeholder="Sem prazo"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                {editing && (
+              {isPhone ? (
+                phoneFields
+              ) : (
+                <>
                   <FormField
                     control={form.control}
-                    name="status"
+                    name="titulo"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="block">Status</FormLabel>
-                        <Select value={field.value} onValueChange={field.onChange}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {STATUS_ORDER.map((s) => (
-                              <SelectItem key={s} value={s}>
-                                {STATUS_LABELS[s]}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <FormLabel>{t('formDialog.fieldTitle')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder={t('formDialog.titlePlaceholder')}
+                            autoFocus
+                            {...field}
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                )}
-              </div>
-              {!onCreate && (
-                <RecorrenciaFields
-                  form={form}
-                  landing={landing}
-                  disabled={repetirBloqueado}
-                  disabledHint={
-                    repetirBloqueado ? 'Reabra a tarefa para torná-la recorrente.' : undefined
-                  }
-                />
+                  <FormField
+                    control={form.control}
+                    name="descricao"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('formDialog.fieldDescription')}</FormLabel>
+                        <TarefaDescriptionEditor
+                          key={editorRevision}
+                          initialContent={editorInitialContent}
+                          onUpdate={(doc, plainText) => {
+                            setDescriptionDoc(sanitizeTarefaDescriptionDoc(doc));
+                            field.onChange(plainText);
+                          }}
+                          onUploadStateChange={setImageUploading}
+                        />
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <FormField
+                      control={form.control}
+                      name="responsavel_id"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('formDialog.fieldAssignee')}</FormLabel>
+                          <Select value={field.value} onValueChange={field.onChange}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="none">{t('formDialog.noAssignee')}</SelectItem>
+                              {sortedMembros
+                                .filter((m) => m.id != null)
+                                .map((m) => (
+                                  <SelectItem key={m.id} value={String(m.id)}>
+                                    {m.nome}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="cliente_id"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('formDialog.fieldClient')}</FormLabel>
+                          <Select
+                            value={field.value}
+                            onValueChange={field.onChange}
+                            disabled={lockCliente}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="none">{t('formDialog.noClient')}</SelectItem>
+                              {activeClientes
+                                .filter((c) => c.id != null)
+                                .map((c) => (
+                                  <SelectItem key={c.id} value={String(c.id)}>
+                                    {c.nome}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <FormField
+                      control={form.control}
+                      name="data_limite"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-col">
+                          <FormLabel>{t('formDialog.fieldDue')}</FormLabel>
+                          <FormControl>
+                            <DatePicker
+                              value={field.value}
+                              onChange={field.onChange}
+                              placeholder={t('formDialog.noDue')}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    {editing && (
+                      <FormField
+                        control={form.control}
+                        name="status"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="block">{t('formDialog.fieldStatus')}</FormLabel>
+                            <Select value={field.value} onValueChange={field.onChange}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {STATUS_ORDER.map((s) => (
+                                  <SelectItem key={s} value={s}>
+                                    {STATUS_LABELS[s]}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+                  </div>
+                  {!onCreate && (
+                    <RecorrenciaFields
+                      form={form}
+                      landing={landing}
+                      disabled={repetirBloqueado}
+                      disabledHint={repetirBloqueado ? t('formDialog.reopenToRepeat') : undefined}
+                    />
+                  )}
+                  <div>
+                    <FormLabel className="mb-2 block">{t('formDialog.tags')}</FormLabel>
+                    <TagPicker
+                      tags={tags}
+                      selectedIds={tagIds}
+                      onSelectedChange={setTagIds}
+                      onTagCreated={onTagCreated}
+                    />
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={onClose}
+                      disabled={saving || imageUploading}
+                    >
+                      {t('actions.cancel')}
+                    </Button>
+                    <Button type="submit" disabled={saving || imageUploading}>
+                      {submitLabel}
+                    </Button>
+                  </DialogFooter>
+                </>
               )}
-              <div>
-                <FormLabel className="mb-2 block">Tags</FormLabel>
-                <TagPicker
-                  tags={tags}
-                  selectedIds={tagIds}
-                  onSelectedChange={setTagIds}
-                  onTagCreated={onTagCreated}
-                />
-              </div>
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={onClose}
-                  disabled={saving || imageUploading}
-                >
-                  Cancelar
-                </Button>
-                <Button type="submit" disabled={saving || imageUploading}>
-                  {imageUploading
-                    ? 'Enviando imagem...'
-                    : saving
-                      ? 'Salvando...'
-                      : editing
-                        ? 'Salvar'
-                        : 'Criar tarefa'}
-                </Button>
-              </DialogFooter>
             </form>
           </Form>
         </DialogContent>

@@ -2,6 +2,8 @@
 // app; nothing here may log, persist, or forward the card fields anywhere else. The token is
 // single-use and expires in 60s: callers tokenize on submit and re-tokenize on every retry.
 
+import { i18n } from '@mesaas/i18n';
+
 const TOKEN_URL = 'https://api.pagar.me/core/v5/tokens';
 
 export interface CardInput {
@@ -21,7 +23,7 @@ export class TokenizationError extends Error {
 
 export async function tokenizeCard(card: CardInput): Promise<string> {
   const publicKey = import.meta.env.VITE_PAGARME_PUBLIC_KEY;
-  if (!publicKey) throw new TokenizationError('Pagamento indisponível no momento.');
+  if (!publicKey) throw new TokenizationError(i18n.t('billing:tokenization.unavailable'));
   let res: Response;
   try {
     res = await fetch(`${TOKEN_URL}?appId=${encodeURIComponent(publicKey)}`, {
@@ -40,13 +42,12 @@ export async function tokenizeCard(card: CardInput): Promise<string> {
       }),
     });
   } catch {
-    throw new TokenizationError('Não foi possível validar o cartão. Verifique sua conexão.');
+    throw new TokenizationError(i18n.t('billing:tokenization.network'));
   }
   if (!res.ok) {
-    throw new TokenizationError('Cartão recusado. Confira os dados ou tente outro cartão.');
+    throw new TokenizationError(i18n.t('billing:tokenization.declined'));
   }
   const data = (await res.json().catch(() => null)) as { id?: string } | null;
-  if (!data?.id)
-    throw new TokenizationError('Cartão recusado. Confira os dados ou tente outro cartão.');
+  if (!data?.id) throw new TokenizationError(i18n.t('billing:tokenization.declined'));
   return data.id;
 }

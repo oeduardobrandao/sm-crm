@@ -26,6 +26,8 @@ const DIGEST_BADGES: Record<string, { tone: BadgeTone; label: string }> = {
   event_client_rsvp: { tone: "info", label: "Resposta" },
   event_guest_rsvp: { tone: "info", label: "Resposta" },
   event_reschedule_requested: { tone: "warning", label: "Remarcação" },
+  linha_editorial_aprovada: { tone: "success", label: "Linha aprovada" },
+  linha_editorial_ajustes: { tone: "warning", label: "Ajustes na linha" },
 };
 const DEFAULT_BADGE = { tone: "neutral" as const, label: "Notificação" };
 

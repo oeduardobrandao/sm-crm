@@ -16,6 +16,13 @@ Deno.test("buildHubUrl: tolerates a trailing slash on the base", () => {
   );
 });
 
+Deno.test("buildHubUrl: drops the hyphens from a UUID token (WhatsApp reads it as Pix)", () => {
+  assertEquals(
+    buildHubUrl("https://app.mesaas.com.br", "agencia-dk", "B6A359FB-af56-470a-8f0a-7e215a67b9b9"),
+    "https://app.mesaas.com.br/agencia-dk/hub/b6a359fbaf56470a8f0a7e215a67b9b9",
+  );
+});
+
 Deno.test("buildHubUrl: returns empty when any part is missing", () => {
   assertEquals(buildHubUrl("https://x.test", null, "tok-1"), "");
   assertEquals(buildHubUrl("https://x.test", "slug", null), "");

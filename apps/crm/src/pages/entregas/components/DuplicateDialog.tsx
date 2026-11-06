@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import {
   Dialog,
   DialogContent,
@@ -22,20 +24,18 @@ export type DuplicateTarget =
   | { kind: 'workflow'; workflowId: number; postsCount: number | null; active: boolean };
 
 const PUBLISH_STATES = new Set(['agendado', 'postado', 'falha_publicacao']);
-const KEEP_HELP =
-  'Posts agendados, postados ou com falha voltam para Aprovado pelo cliente. A data fica, mas é preciso agendar de novo.';
 
 export function duplicateErrorMessage(err: unknown): string {
   const ent = mapEntitlementError(err);
   if (ent) return entitlementMessage(ent);
-  return 'Não foi possível duplicar. Tente novamente.';
+  return i18n.t('workflows:duplicateDialog.error');
 }
 
 function postsLine(n: number | null): string {
-  if (n === null) return 'Todos os posts do fluxo serão copiados com a mídia.';
-  if (n === 0) return 'O fluxo não tem posts. Só as etapas serão copiadas.';
-  if (n === 1) return 'O post do fluxo será copiado com a mídia.';
-  return `Os ${n} posts do fluxo serão copiados com a mídia.`;
+  if (n === null) return i18n.t('workflows:duplicateDialog.postsAll');
+  if (n === 0) return i18n.t('workflows:duplicateDialog.postsNone');
+  if (n === 1) return i18n.t('workflows:duplicateDialog.postsOne');
+  return i18n.t('workflows:duplicateDialog.postsMany', { n });
 }
 
 interface DuplicateDialogProps {
@@ -45,6 +45,7 @@ interface DuplicateDialogProps {
 }
 
 export function DuplicateDialog({ target, onClose, onDuplicated }: DuplicateDialogProps) {
+  const { t } = useTranslation('workflows');
   const [mode, setMode] = useState<'keep' | 'rascunho'>('keep');
   const [pending, setPending] = useState(false);
   // O texto segue o último alvo não nulo: ao fechar, `target` vira null antes
@@ -106,27 +107,32 @@ export function DuplicateDialog({ target, onClose, onDuplicated }: DuplicateDial
     >
       <DialogContent onClick={(e) => e.stopPropagation()}>
         <DialogHeader>
-          <DialogTitle>{isPost ? 'Duplicar post' : 'Duplicar fluxo'}</DialogTitle>
+          <DialogTitle>
+            {isPost ? t('duplicateDialog.titlePost') : t('duplicateDialog.titleFlow')}
+          </DialogTitle>
           <DialogDescription>
             {shown?.kind === 'workflow'
               ? postsLine(shown.postsCount)
-              : 'A cópia leva conteúdo, legendas, mídia e propriedades.'}
+              : t('duplicateDialog.postDesc')}
           </DialogDescription>
         </DialogHeader>
-        <div role="radiogroup" aria-label="Status da cópia" className="space-y-2">
+        <div role="radiogroup" aria-label={t('duplicateDialog.statusAria')} className="space-y-2">
           {option(
             'keep',
-            isPost ? 'Manter status atual' : 'Manter status atuais',
-            showKeepHelp ? KEEP_HELP : undefined,
+            isPost ? t('duplicateDialog.keepPost') : t('duplicateDialog.keepFlow'),
+            showKeepHelp ? t('duplicateDialog.keepHelp') : undefined,
           )}
-          {option('rascunho', isPost ? 'Mudar para Rascunho' : 'Mudar tudo para Rascunho')}
+          {option(
+            'rascunho',
+            isPost ? t('duplicateDialog.draftPost') : t('duplicateDialog.draftFlow'),
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={pending}>
-            Cancelar
+            {t('actions.cancel')}
           </Button>
           <Button onClick={submit} disabled={pending}>
-            {pending ? 'Duplicando...' : 'Duplicar'}
+            {pending ? t('duplicateDialog.duplicating') : t('duplicateDialog.duplicate')}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,3 +1,4 @@
+import { i18n } from '@mesaas/i18n';
 import type { PostProcess, PostProcessStep } from '../../store';
 import { computeDeadlineDate } from './hooks/useEntregasData';
 
@@ -40,8 +41,14 @@ export function canConcluir(process: PostProcess): boolean {
   return nextPendingStepOf(process) === null;
 }
 
+/** Translated label. The return type keeps the pt literals because several card props
+ *  (outside this module) still declare them; the runtime value follows the UI language. */
 export function forwardLabelFor(process: PostProcess): 'Avançar etapa' | 'Concluir processo' {
-  return canConcluir(process) ? 'Concluir processo' : 'Avançar etapa';
+  return (
+    canConcluir(process)
+      ? i18n.t('entregas:shared.forward.concluir')
+      : i18n.t('entregas:shared.forward.avancar')
+  ) as 'Avançar etapa' | 'Concluir processo';
 }
 
 /** p_next_deadline: só quando a etapa a ativar tem prazo relativo e ainda não
@@ -51,10 +58,11 @@ export function nextDeadlineFor(step: PostProcessStep | null, now: Date): string
   return computeDeadlineDate(now.toISOString(), step.prazo_dias, step.tipo_prazo).toISOString();
 }
 
+/** pt copy, kept for compatibility; the function below returns the translated text. */
 export const SEND_TO_PORTAL_REASON = 'O post já está no portal, aguardando o cliente.';
 
 /** No processo individual o post vai ao cliente a partir de qualquer status
  *  ainda não liberado; só não faz sentido reenviar quem já está lá. */
 export function sendToPortalDisabledReasonFor(status: string): string | undefined {
-  return status === 'enviado_cliente' ? SEND_TO_PORTAL_REASON : undefined;
+  return status === 'enviado_cliente' ? i18n.t('entregas:shared.sendToPortalReason') : undefined;
 }

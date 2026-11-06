@@ -1,9 +1,8 @@
-/* Plus Jakarta Sans (incl. the 900 the hero title uses) is loaded once from the
-   document head — do not re-import it here, the duplicate @import chained an extra
-   render-blocking request (PageSpeed: network dependency tree). Fraunces/Instrument
-   Sans are only used below the fold (testimonial + Hub mockup), so lazy-loading them
-   with this chunk is fine. */
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Instrument+Sans:wght@400;500;600;700&display=swap');
+/* No web font for the landing's sans: Apple devices render SF Pro, everything else its
+   system-ui face (Roboto on Android). A downloaded face here swapped in late and shifted
+   the server-rendered hero. Fraunces/Instrument Sans load non-blocking from
+   landing-styles.ts: never @import fonts here, the prerendered `/` links this file from
+   <head>. */
 
 /* ---- animations ---- */
 @keyframes fadeInUp {
@@ -74,12 +73,16 @@
   }
 }
 
+/* Hidden only once the pre-paint script marked the document (html[data-js]): the prerendered
+   HTML without JS shows every section. */
 .lp-root .reveal {
-  opacity: 0;
-  transform: translateY(24px);
   transition:
     opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
     transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+html[data-js] .lp-root .reveal:not(.in) {
+  opacity: 0;
+  transform: translateY(24px);
 }
 .lp-root .reveal.in {
   opacity: 1;
@@ -88,7 +91,7 @@
 
 /* ---- typography utilities ---- */
 .eyebrow-micro {
-  font-family: -apple-system, 'SF Pro Display', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif;
   font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.14em;
@@ -102,7 +105,7 @@
   border-radius: 9999px;
   background: rgba(255, 191, 48, 0.12);
   border: 1px solid rgba(255, 191, 48, 0.28);
-  font-family: -apple-system, 'SF Pro Display', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif;
   font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.12em;
@@ -222,6 +225,11 @@
 }
 
 /* ---- promo banner ---- */
+/* A visitor who dismissed it before: hidden from first paint until the landing hydrates
+   (LandingPage removes #root[data-ssr]) and React drops it from state. */
+html[data-promo-dismissed] #root[data-ssr] .promo-banner {
+  display: none;
+}
 .promo-banner {
   display: flex;
   align-items: center;
@@ -239,7 +247,7 @@
   line-height: 1.4;
 }
 .promo-banner .promo-code {
-  font-family: -apple-system, 'SF Pro Display', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif;
   font-weight: 700;
   background: rgba(18, 21, 26, 0.12);
   border: 1px solid rgba(18, 21, 26, 0.18);
@@ -312,7 +320,7 @@
   display: flex;
   gap: 4px;
 }
-.hdr-nav button {
+.hdr-nav .hdr-nav-link {
   color: #4b5563;
   font-size: 0.88rem;
   font-weight: 500;
@@ -326,7 +334,7 @@
   border: none;
   cursor: pointer;
 }
-.hdr-nav button:hover {
+.hdr-nav .hdr-nav-link:hover {
   color: #12151a;
   background: rgba(30, 36, 48, 0.04);
 }
@@ -380,7 +388,7 @@
 }
 
 .hero-title {
-  font-family: -apple-system, 'SF Pro Display', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif;
   font-size: clamp(2.3rem, 5.2vw, 3.9rem);
   font-weight: 900;
   letter-spacing: -0.024em;
@@ -549,7 +557,7 @@
   z-index: 4;
   padding: 5px 13px;
   border-radius: 9999px;
-  font-family: -apple-system, 'SF Pro Display', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif;
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.07em;
@@ -622,7 +630,7 @@
   color: #6b7280;
   margin-top: 4px;
   letter-spacing: 0.06em;
-  font-family: -apple-system, 'SF Pro Display', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif;
 }
 @keyframes hd-enter {
   from {
@@ -691,7 +699,7 @@
   text-align: center;
   font-size: 11px;
   color: #6b7280;
-  font-family: -apple-system, 'SF Pro Display', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif;
 }
 .feat-shot {
   position: relative;
@@ -750,7 +758,7 @@
   margin-bottom: 12px;
 }
 .av-micro {
-  font-family: -apple-system, 'SF Pro Display', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -761,7 +769,7 @@
   align-items: center;
   padding: 3px 9px;
   border-radius: 9999px;
-  font-family: -apple-system, 'SF Pro Display', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif;
   font-size: 0.66rem;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -904,7 +912,7 @@ section.lp-pad-alt {
   margin: 0 auto 56px;
 }
 .section-head h2 {
-  font-family: -apple-system, 'SF Pro Display', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif;
   font-size: clamp(1.9rem, 3.6vw, 2.9rem);
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -961,7 +969,7 @@ section.lp-pad-alt {
   }
 }
 .feat-copy h3 {
-  font-family: -apple-system, 'SF Pro Display', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif;
   font-size: clamp(1.6rem, 2.6vw, 2.2rem);
   font-weight: 800;
   letter-spacing: -0.018em;
@@ -1042,7 +1050,7 @@ section.lp-pad-alt {
   letter-spacing: 0.01em;
 }
 .agent-copy h2 {
-  font-family: -apple-system, 'SF Pro Display', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif;
   font-size: clamp(1.7rem, 3vw, 2.5rem);
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -1112,7 +1120,7 @@ section.lp-pad-alt {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  font-family: -apple-system, 'SF Pro Display', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif;
   font-size: 0.78rem;
   letter-spacing: 0.1em;
   color: #6b7280;
@@ -1156,7 +1164,7 @@ section.lp-pad-alt {
   position: absolute;
   top: 20px;
   right: 20px;
-  font-family: -apple-system, 'SF Pro Display', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif;
   font-size: 3.2rem;
   font-weight: 900;
   letter-spacing: -0.04em;
@@ -1164,7 +1172,7 @@ section.lp-pad-alt {
   line-height: 1;
 }
 .how-step h3 {
-  font-family: -apple-system, 'SF Pro Display', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif;
   font-size: 1.15rem;
   font-weight: 700;
   margin-top: 14px;
@@ -1568,7 +1576,7 @@ section.lp-pad-alt {
   color: #12151a;
 }
 .pricing-promo-note .promo-code {
-  font-family: -apple-system, 'SF Pro Display', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif;
   font-weight: 700;
   background: #ffbf30;
   color: #12151a;
@@ -1829,7 +1837,7 @@ section.lp-pad-alt {
   position: relative;
 }
 .cta-final-card h2 {
-  font-family: -apple-system, 'SF Pro Display', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif;
   font-size: clamp(1.8rem, 3.8vw, 2.8rem);
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -1876,7 +1884,7 @@ section.lp-pad-alt {
   letter-spacing: 0.14em;
   color: #374151;
   margin-bottom: 16px;
-  font-family: -apple-system, 'SF Pro Display', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif;
 }
 .footer-col ul {
   list-style: none;
@@ -1937,7 +1945,7 @@ section.lp-pad-alt {
 
 /* ---- root ---- */
 .lp-root {
-  font-family: -apple-system, 'SF Pro Text', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: -apple-system, 'SF Pro Text', system-ui, sans-serif;
   color: #12151a;
   background: #fdfdfd;
   line-height: 1.5;
@@ -2014,10 +2022,10 @@ section.lp-pad-alt {
   background: rgba(10, 12, 15, 0.82);
   border-bottom-color: rgba(255, 255, 255, 0.06);
 }
-[data-theme='dark'] .hdr-nav button {
+[data-theme='dark'] .hdr-nav .hdr-nav-link {
   color: #9ca3af;
 }
-[data-theme='dark'] .hdr-nav button:hover {
+[data-theme='dark'] .hdr-nav .hdr-nav-link:hover {
   color: #e8eaf0;
   background: rgba(255, 255, 255, 0.06);
 }

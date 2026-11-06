@@ -2,7 +2,7 @@ import { render as rtlRender, screen, waitFor } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 
 vi.mock('../../api', () => ({
   fetchBootstrap: vi.fn(),
@@ -69,6 +69,68 @@ describe('HubShell', () => {
         'https://cdn.mesaas.com/logo.png',
       );
     });
+  });
+
+  it('accepts a compact token and calls the API with the hyphenated UUID', async () => {
+    mockedFetchBootstrap.mockResolvedValue({
+      workspace: { name: 'Mesaas', logo_url: null, brand_color: '#0f766e' },
+      cliente_nome: 'Clínica Aurora',
+      is_active: true,
+      cliente_id: 14,
+      feature_mensagens: true,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/mesaas/hub/b6a359fbaf56470a8f0a7e215a67b9b9']}>
+        <Routes>
+          <Route path="/:workspace/hub/:token" element={<HubShell />}>
+            <Route index element={<div>Página inicial do hub</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Página inicial do hub')).toBeInTheDocument();
+    });
+    expect(mockedFetchBootstrap).toHaveBeenCalledWith(
+      'mesaas',
+      'b6a359fb-af56-470a-8f0a-7e215a67b9b9',
+    );
+  });
+
+  it('rewrites an old hyphenated link to the compact token, keeping the rest of the URL', async () => {
+    mockedFetchBootstrap.mockResolvedValue({
+      workspace: { name: 'Mesaas', logo_url: null, brand_color: '#0f766e' },
+      cliente_nome: 'Clínica Aurora',
+      is_active: true,
+      cliente_id: 14,
+      feature_mensagens: true,
+    });
+    function ShowLocation() {
+      const { pathname, search } = useLocation();
+      return <div data-testid="loc">{pathname + search}</div>;
+    }
+
+    render(
+      <MemoryRouter
+        initialEntries={['/mesaas/hub/b6a359fb-af56-470a-8f0a-7e215a67b9b9/briefing?x=1']}
+      >
+        <Routes>
+          <Route path="/:workspace/hub/:token" element={<HubShell />}>
+            <Route path="briefing" element={<ShowLocation />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loc')).toHaveTextContent(
+        '/mesaas/hub/b6a359fbaf56470a8f0a7e215a67b9b9/briefing?x=1',
+      );
+    });
+    // Same canonical token either way: the rewrite doesn't refetch bootstrap.
+    expect(mockedFetchBootstrap).toHaveBeenCalledTimes(1);
   });
 
   it('injects resolved --hub-* CSS variables based on workspace brand_color and theme', async () => {

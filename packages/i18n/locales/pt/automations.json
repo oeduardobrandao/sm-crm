@@ -241,5 +241,27 @@
     "viewContacts": "Ver contatos ({{count}})",
     "sectionTitle": "Contatos das automações",
     "viewAll": "Ver todos"
+  },
+  "phone": {
+    "activeCount_one": "{{count}} ativa",
+    "activeCount_other": "{{count}} ativas",
+    "sectionsAria": "Seções de automações",
+    "clientChip": "Cliente: {{name}}",
+    "allShort": "Todos",
+    "filters": "Filtros",
+    "moreActions": "Mais ações",
+    "sendsHeader": "Envios",
+    "statsHeader": "Desempenho",
+    "dmHeader": "Direct",
+    "actionsHeader": "Ações",
+    "preview": "Prévia",
+    "previewValue": "DM e resposta",
+    "mediaPick": "Enviar imagem",
+    "mediaLimit": "até 8 MB",
+    "post": "Post",
+    "choose": "Escolher",
+    "pickPostTitle": "Escolher post",
+    "periodClear": "Limpar período",
+    "showAllContacts": "Todos os contatos"
   }
 }

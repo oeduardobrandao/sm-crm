@@ -76,7 +76,7 @@ describe('ReferenceViewerDialog', () => {
   it('calls onClose when dismissed', async () => {
     const onClose = vi.fn();
     render(<ReferenceViewerDialog item={base} onClose={onClose} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Close' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Fechar' }));
     expect(onClose).toHaveBeenCalled();
   });
 });

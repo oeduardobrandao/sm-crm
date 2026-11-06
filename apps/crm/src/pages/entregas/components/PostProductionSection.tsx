@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Clock, Ban, CircleDot, ChevronDown, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import {
   getPostProcessEvents,
   updatePostProcessStep,
@@ -43,21 +44,6 @@ type PrazoStepMode = 'dias' | 'fixa';
  *  render a partir do rascunho -- 9 dígitos travariam a aba enquanto o
  *  usuário digita. Três dígitos também é o que cabe no input (`w-14`). */
 const MAX_PRAZO_DIAS = 999;
-
-const ESTADO_LABEL: Record<PostProcessStep['estado'], string> = {
-  pendente: 'Pendente',
-  ativo: 'Em andamento',
-  concluido: 'Concluída',
-  herdado: 'Herdada',
-  ignorado: 'Ignorada',
-  interrompido: 'Interrompida',
-};
-
-const PROCESS_LABEL: Record<PostProcess['estado'], string> = {
-  ativo: 'Ativo',
-  concluido: 'Concluído',
-  encerrado: 'Encerrado',
-};
 
 function StepIcon({ estado }: { estado: PostProcessStep['estado'] }) {
   if (estado === 'concluido') return <Check className="h-3 w-3" />;
@@ -105,6 +91,7 @@ export function PostProductionSection({
   postStatus,
   onAvancar,
 }: PostProductionSectionProps) {
+  const { t } = useTranslation('postPanels');
   const qc = useQueryClient();
   const storageKey = `post-production-open:${postId}`;
   const [open, setOpen] = useState(() => {
@@ -280,7 +267,7 @@ export function PostProductionSection({
           const { [step.ordem]: _drop, ...rest } = d;
           return rest;
         }); // revert to server value
-        toast.error(getPostProcessErrorToast(err, 'Erro ao editar etapa'));
+        toast.error(getPostProcessErrorToast(err, t('postProductionSection.editStepError')));
         if (isStaleStateError(err)) qc.invalidateQueries({ queryKey: ['post-process', postId] });
       } finally {
         // Só reabilita quando a FILA esvazia -- com dois saves encadeados,
@@ -294,10 +281,10 @@ export function PostProductionSection({
   };
 
   const origem = process.origem_descricao
-    ? `Desmembrado de ${process.origem_descricao}`
+    ? t('postProductionSection.originSplit', { origin: process.origem_descricao })
     : process.template_nome
-      ? `Template: ${process.template_nome}`
-      : 'Processo individual';
+      ? t('postProductionSection.originTemplate', { name: process.template_nome })
+      : t('postProductionSection.originIndividual');
   const processEvents = events.filter((e) => e.process_id === process.id);
   const nodes = buildPostTimeline({ created_at: undefined }, [], [], processEvents).filter(
     (n) => n.kind === 'process',
@@ -322,8 +309,8 @@ export function PostProductionSection({
     ? [
         summaryStep.nome,
         `${summaryStepIndex + 1}/${process.steps.length}`,
-        summaryPrazo ? formatEtapaDeadlineDay(summaryPrazo) : 'Sem prazo',
-        summaryResponsavel ?? 'Sem responsável',
+        summaryPrazo ? formatEtapaDeadlineDay(summaryPrazo) : t('postProductionSection.noDeadline'),
+        summaryResponsavel ?? t('postProductionSection.noAssignee'),
       ].join(' · ')
     : '';
 
@@ -347,10 +334,10 @@ export function PostProductionSection({
             <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
           )}
           <span id="post-production-title" className="post-production-title">
-            Produção
+            {t('postProductionSection.title')}
           </span>
           <span className={`post-production-state post-production-state--${process.estado}`}>
-            {PROCESS_LABEL[process.estado]}
+            {t(`postProductionSection.processState.${process.estado}`)}
           </span>
         </button>
       </h4>
@@ -364,7 +351,7 @@ export function PostProductionSection({
         postStatus === 'aprovado_cliente' &&
         process.steps.find((s) => s.estado === 'ativo')?.tipo === 'aprovacao_cliente' && (
           <div className="post-production-hint" role="status">
-            <span>Cliente aprovou. Avançar etapa?</span>
+            <span>{t('postProductionSection.clientApprovedHint')}</span>
             {onAvancar && (
               <button type="button" className="sem-processo-link" onClick={onAvancar}>
                 {forwardLabelFor(process)}
@@ -401,13 +388,15 @@ export function PostProductionSection({
                     <div className="history-step-name">
                       {step.nome}
                       {step.tipo === 'aprovacao_cliente' && (
-                        <span className="post-production-tipo"> · Aprovação do cliente</span>
+                        <span className="post-production-tipo">
+                          {t('postProductionSection.clientApprovalTag')}
+                        </span>
                       )}
                     </div>
                     {stepEditable ? (
                       <>
                         <div className="history-step-detail">
-                          <span>{ESTADO_LABEL[step.estado]}</span>
+                          <span>{t(`postProductionSection.stepState.${step.estado}`)}</span>
                         </div>
                         <div className="post-production-step-edit">
                           <Select
@@ -427,13 +416,17 @@ export function PostProductionSection({
                             disabled={savingOrdem !== null}
                           >
                             <SelectTrigger
-                              aria-label={`Responsável da etapa ${step.nome}`}
+                              aria-label={t('postProductionSection.assigneeAria', {
+                                step: step.nome,
+                              })}
                               className="h-7 text-xs w-auto min-w-32"
                             >
-                              <SelectValue placeholder="Sem responsável" />
+                              <SelectValue placeholder={t('postProductionSection.noAssignee')} />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value={NO_RESPONSAVEL}>Sem responsável</SelectItem>
+                              <SelectItem value={NO_RESPONSAVEL}>
+                                {t('postProductionSection.noAssignee')}
+                              </SelectItem>
                               {membros.map((m) => (
                                 <SelectItem key={m.id} value={String(m.id)}>
                                   {m.nome}
@@ -455,7 +448,9 @@ export function PostProductionSection({
                                 min={0}
                                 max={MAX_PRAZO_DIAS}
                                 step={1}
-                                aria-label={`Dias da etapa ${step.nome}`}
+                                aria-label={t('postProductionSection.daysAria', {
+                                  step: step.nome,
+                                })}
                                 className="h-7 text-xs rounded-md border border-input bg-transparent text-foreground px-2 w-14"
                                 value={v.prazoDias ?? ''}
                                 disabled={savingOrdem !== null}
@@ -504,14 +499,20 @@ export function PostProductionSection({
                                 disabled={savingOrdem !== null}
                               >
                                 <SelectTrigger
-                                  aria-label={`Tipo de prazo da etapa ${step.nome}`}
+                                  aria-label={t('postProductionSection.deadlineTypeAria', {
+                                    step: step.nome,
+                                  })}
                                   className="h-7 text-xs w-auto min-w-28"
                                 >
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="uteis">Dias úteis</SelectItem>
-                                  <SelectItem value="corridos">Dias corridos</SelectItem>
+                                  <SelectItem value="uteis">
+                                    {t('postProductionSection.businessDays')}
+                                  </SelectItem>
+                                  <SelectItem value="corridos">
+                                    {t('postProductionSection.calendarDays')}
+                                  </SelectItem>
                                 </SelectContent>
                               </Select>
                               {(() => {
@@ -522,8 +523,8 @@ export function PostProductionSection({
                                 const label = computed
                                   ? formatEtapaDeadlineDay(computed)
                                   : step.iniciado_em
-                                    ? 'sem prazo'
-                                    : 'definida ao iniciar a etapa';
+                                    ? t('postProductionSection.noDeadlineLower')
+                                    : t('postProductionSection.setOnStart');
                                 return (
                                   // Só o texto visível ("20 set") não diz que
                                   // isto é um controle nem o que ele faz. O
@@ -533,7 +534,10 @@ export function PostProductionSection({
                                   <button
                                     type="button"
                                     className="sem-processo-link"
-                                    aria-label={`${label}: usar data fixa na etapa ${step.nome}`}
+                                    aria-label={t('postProductionSection.useFixedDateAria', {
+                                      label,
+                                      step: step.nome,
+                                    })}
                                     disabled={savingOrdem !== null}
                                     onClick={() => setModeOf(step, 'fixa')}
                                   >
@@ -546,7 +550,9 @@ export function PostProductionSection({
                             <>
                               <input
                                 type="date"
-                                aria-label={`Prazo da etapa ${step.nome}`}
+                                aria-label={t('postProductionSection.deadlineAria', {
+                                  step: step.nome,
+                                })}
                                 className="h-7 text-xs rounded-md border border-input bg-transparent text-foreground px-2"
                                 value={v.prazo}
                                 disabled={savingOrdem !== null}
@@ -558,11 +564,13 @@ export function PostProductionSection({
                                 <button
                                   type="button"
                                   className="sem-processo-link"
-                                  aria-label={`Usar dias na etapa ${step.nome}`}
+                                  aria-label={t('postProductionSection.useDaysAria', {
+                                    step: step.nome,
+                                  })}
                                   disabled={savingOrdem !== null}
                                   onClick={() => setModeOf(step, 'dias')}
                                 >
-                                  Usar dias
+                                  {t('postProductionSection.useDays')}
                                 </button>
                               )}
                             </>
@@ -571,11 +579,17 @@ export function PostProductionSection({
                       </>
                     ) : (
                       <div className="history-step-detail">
-                        <span>{ESTADO_LABEL[step.estado]}</span>
+                        <span>{t(`postProductionSection.stepState.${step.estado}`)}</span>
                         {' · '}
-                        <span>{responsavel ? responsavel.nome : 'Sem responsável'}</span>
+                        <span>
+                          {responsavel ? responsavel.nome : t('postProductionSection.noAssignee')}
+                        </span>
                         {' · '}
-                        <span>{prazo ? formatEtapaDeadlineDay(prazo) : 'Sem prazo'}</span>
+                        <span>
+                          {prazo
+                            ? formatEtapaDeadlineDay(prazo)
+                            : t('postProductionSection.noDeadline')}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -585,14 +599,12 @@ export function PostProductionSection({
           </div>
 
           {process.template_id != null && (
-            <p className="post-production-note">
-              Propriedades do template só valem dentro de um fluxo
-            </p>
+            <p className="post-production-note">{t('postProductionSection.templatePropsNote')}</p>
           )}
 
           {nodes.length > 0 && (
             <div className="post-production-history">
-              <div className="post-timeline-title">Histórico do processo</div>
+              <div className="post-timeline-title">{t('postProductionSection.historyTitle')}</div>
               <PostTimelineList nodes={nodes} />
             </div>
           )}

@@ -1,6 +1,8 @@
 import type { ListGroupBy } from './viewQuery';
 import { dayDiff, dayNum, formatEtapaDeadlineDay, type DeadlineInfo } from './etapaPrazo';
-import { filaBucketOf, type FilaBucket } from './minhaFila';
+import { format } from 'date-fns';
+import { getDateFnsLocale, getIntlLocale, i18n } from '@mesaas/i18n';
+import { FILA_BUCKET_LABELS_BY_ORDEM, filaBucketOf, type FilaBucket } from './minhaFila';
 
 // "Agrupar por" da vista Lista (Entregas). Puro: sem React, sem fetch. As faixas
 // de data são as mesmas da Minha fila (filaBucketOf), com "Próximos 7 dias"
@@ -52,22 +54,15 @@ const SEM_ESTOURO: DeadlineInfo = {
   urgente: false,
 };
 
-const DATE_LABELS: Record<'prazo' | 'postagem', Record<DateBucket, string>> = {
-  prazo: {
-    atrasado: 'Atrasado',
-    hoje: 'Hoje',
-    amanha: 'Amanhã',
-    depois: 'Depois',
-    sem_prazo: 'Sem prazo',
-  },
-  postagem: {
-    atrasado: 'Data passada',
-    hoje: 'Hoje',
-    amanha: 'Amanhã',
-    depois: 'Depois',
-    sem_prazo: 'Sem data',
-  },
-};
+/** Same labels as the Minha fila sections: prazo, and postagem = publicacao. */
+function dateLabel(dim: 'prazo' | 'postagem', b: DateBucket): string {
+  return FILA_BUCKET_LABELS_BY_ORDEM[dim === 'prazo' ? 'prazo' : 'publicacao'][b];
+}
+
+function weekdayLabel(date: Date): string {
+  if (getIntlLocale() === 'en-US') return format(date, 'EEEE', { locale: getDateFnsLocale() });
+  return WEEKDAYS[date.getDay()];
+}
 
 // Posição das faixas. Os dias da semana (+2 a +7) ocupam 4..9, entre Amanhã e Depois.
 const DATE_ORDER: Record<DateBucket, number> = {
@@ -97,7 +92,7 @@ function dateSlot(
   if (bucket === 'proximos7' && date) {
     return {
       key: `${dim}:dia:${dayNum(date)}`,
-      label: WEEKDAYS[date.getDay()],
+      label: weekdayLabel(date),
       sub: formatEtapaDeadlineDay(date, now),
       danger: false,
       order: 2 + dayDiff(date, now),
@@ -107,7 +102,7 @@ function dateSlot(
   const b: DateBucket = bucket === 'proximos7' ? 'sem_prazo' : bucket;
   return {
     key: `${dim}:${b}`,
-    label: DATE_LABELS[dim][b],
+    label: dateLabel(dim, b),
     danger: dim === 'prazo' && b === 'atrasado',
     order: DATE_ORDER[b],
   };
@@ -117,7 +112,7 @@ function dateSlot(
 function entitySlot(dim: GroupDim, id: string | null, nome: string, semLabel: string): Slot {
   return {
     key: `${dim}:${id ?? 'none'}`,
-    label: id == null ? semLabel : nome || 'Sem nome',
+    label: id == null ? semLabel : nome || i18n.t('entregas:listGroups.noName'),
     danger: false,
     order: id == null ? 1 : 0,
   };
@@ -133,7 +128,12 @@ function slotOf<T>(row: T, dim: GroupDim, acc: ListGroupAccessors<T>, now: Date)
       return dateSlot('postagem', acc.postagem?.(row) ?? null, SEM_ESTOURO, now);
     case 'cliente': {
       const c = acc.cliente(row);
-      return entitySlot('cliente', c.id == null ? null : String(c.id), c.nome, 'Sem cliente');
+      return entitySlot(
+        'cliente',
+        c.id == null ? null : String(c.id),
+        c.nome,
+        i18n.t('entregas:listGroups.noCliente'),
+      );
     }
     case 'responsavel': {
       const r = acc.responsavel(row);
@@ -141,12 +141,12 @@ function slotOf<T>(row: T, dim: GroupDim, acc: ListGroupAccessors<T>, now: Date)
         'responsavel',
         r.id == null ? null : String(r.id),
         r.nome,
-        'Sem responsável',
+        i18n.t('entregas:listGroups.noResponsavel'),
       );
     }
     case 'etapa': {
       const e = acc.etapa(row);
-      return entitySlot('etapa', e || null, e, 'Sem etapa');
+      return entitySlot('etapa', e || null, e, i18n.t('entregas:listGroups.noEtapa'));
     }
   }
 }

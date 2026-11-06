@@ -7,7 +7,16 @@ import { DetailSkeleton } from '@/components/ui/skeletons';
 import { Button } from '@/components/ui/button';
 import { getCliente, getInitials } from '../../store';
 import { useAuth } from '../../context/AuthContext';
-import { ClienteDetalheHeader } from './ClienteDetalheHeader';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
+import { ClientePhoneSectionShell, useClienteSectionBack } from './phone/ClientePhoneChrome';
+import {
+  ClienteAvatar,
+  ClienteBackButton,
+  ClienteBadges,
+  ClienteDetalheHeader,
+  ClienteEditButton,
+} from './ClienteDetalheHeader';
 import { ClienteDetalheNav } from './ClienteDetalheNav';
 import { ClienteEditDialog } from './ClienteEditDialog';
 import {
@@ -35,6 +44,10 @@ export default function ClienteDetalhePage() {
 
   const clienteId = parseInt(idParam ?? '', 10);
   const validId = !isNaN(clienteId);
+  // Phones (PLAN F3.1): no header + pill strip; the index route is a sections list and
+  // every section renders under one nav bar. Tablet and desktop keep the layout below.
+  const isPhone = !useIsDesktop(768);
+  const sectionBack = useClienteSectionBack(clienteId);
 
   useEffect(() => {
     if (!loading && !user) navigate('/login');
@@ -48,6 +61,38 @@ export default function ClienteDetalhePage() {
     queryFn: () => getCliente(clienteId),
     enabled: validId,
   });
+
+  // Shared by the photo-upload trigger and the header's "Editar" button
+  // (which opens ClienteEditDialog below) -- a custom role with only
+  // `clientes:ver` must not reach either mutation surface, even though it
+  // can view this page (Task 14, revisão externa round 4, P2).
+  const canEditClient = can('clientes', 'editar') === true;
+
+  // Desktop Vidro toolbar: this layout route registers for every tab under it (the
+  // tabs never register). Null until the session, the membership and the client are
+  // all in, so no state below (skeleton, access cards, not-found) shows a name.
+  const inToolbar = usePageToolbar(
+    !loading && user && workspaceRole !== null && !loadingCliente && cliente
+      ? {
+          leading: (
+            <>
+              <ClienteBackButton onBack={() => navigate('/clientes')} />
+              <ClienteAvatar
+                clienteId={clienteId}
+                nome={cliente.nome}
+                initials={getInitials(cliente.nome)}
+                cor={cliente.cor}
+                imageUrl={cliente.foto_url}
+                canEditPhoto={canEditClient}
+              />
+            </>
+          ),
+          title: cliente.nome,
+          subtitle: <ClienteBadges plano={cliente.plano} status={cliente.status} />,
+          primary: canEditClient ? <ClienteEditButton onEdit={() => setEditOpen(true)} /> : null,
+        }
+      : null,
+  );
 
   if (!validId) {
     return <Navigate to="/clientes" replace />;
@@ -68,10 +113,9 @@ export default function ClienteDetalhePage() {
       <div className="page-content">
         <div className="card" style={{ maxWidth: 480, margin: '3rem auto', textAlign: 'center' }}>
           <UserX size={40} style={{ color: 'var(--text-muted)', marginBottom: '1rem' }} />
-          <h3 style={{ marginBottom: '0.75rem' }}>Sem acesso a este workspace</h3>
+          <h3 style={{ marginBottom: '0.75rem' }}>{t('detail.access.noAccessTitle')}</h3>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            Você não tem mais acesso a este workspace. Fale com o proprietário se acha que isso é um
-            engano.
+            {t('detail.access.noAccessText')}
           </p>
         </div>
       </div>
@@ -83,13 +127,12 @@ export default function ClienteDetalhePage() {
       <div className="page-content">
         <div className="card" style={{ maxWidth: 480, margin: '3rem auto', textAlign: 'center' }}>
           <AlertTriangle size={40} style={{ color: 'var(--warning)', marginBottom: '1rem' }} />
-          <h3 style={{ marginBottom: '0.75rem' }}>Não foi possível confirmar seu acesso</h3>
+          <h3 style={{ marginBottom: '0.75rem' }}>{t('detail.access.checkFailedTitle')}</h3>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>
-            Houve um problema ao verificar seu acesso a este workspace. Isso costuma ser temporário
-            — tente novamente.
+            {t('detail.access.checkFailedText')}
           </p>
           <button className="btn-secondary" onClick={() => window.location.reload()}>
-            Tentar novamente
+            {t('detail.access.retry')}
           </button>
         </div>
       </div>
@@ -152,32 +195,55 @@ export default function ClienteDetalhePage() {
     );
   }
 
-  // Shared by the photo-upload trigger and the header's "Editar" button
-  // (which opens ClienteEditDialog below) -- a custom role with only
-  // `clientes:ver` must not reach either mutation surface, even though it
-  // can view this page (Task 14, revisão externa round 4, P2).
-  const canEditClient = can('clientes', 'editar') === true;
+  const outletContext = {
+    clienteId,
+    cliente,
+    onEditCliente: canEditClient ? () => setEditOpen(true) : undefined,
+  } satisfies ClienteDetalheOutletContext;
+
+  if (isPhone) {
+    const tab = CLIENTE_TABS.find((candidate) => candidate.key === current);
+    return (
+      <div className="phone-cli-page">
+        {tab ? (
+          <ClientePhoneSectionShell
+            clienteNome={cliente.nome}
+            tabLabel={t(tab.labelKey)}
+            onBack={sectionBack.onBack}
+            backToClient={sectionBack.toIndex}
+          >
+            <Outlet context={outletContext} />
+          </ClientePhoneSectionShell>
+        ) : (
+          <Outlet context={outletContext} />
+        )}
+        <ClienteEditDialog cliente={cliente} open={editOpen} onOpenChange={setEditOpen} />
+      </div>
+    );
+  }
 
   return (
     <div className="cliente-detalhe-page">
-      <ClienteDetalheHeader
-        clienteId={clienteId}
-        nome={cliente.nome}
-        initials={getInitials(cliente.nome)}
-        cor={cliente.cor}
-        plano={cliente.plano}
-        status={cliente.status}
-        imageUrl={cliente.foto_url}
-        canEditPhoto={canEditClient}
-        canEdit={canEditClient}
-        onBack={() => navigate('/clientes')}
-        onEdit={() => setEditOpen(true)}
-      />
+      {!inToolbar && (
+        <ClienteDetalheHeader
+          clienteId={clienteId}
+          nome={cliente.nome}
+          initials={getInitials(cliente.nome)}
+          cor={cliente.cor}
+          plano={cliente.plano}
+          status={cliente.status}
+          imageUrl={cliente.foto_url}
+          canEditPhoto={canEditClient}
+          canEdit={canEditClient}
+          onBack={() => navigate('/clientes')}
+          onEdit={() => setEditOpen(true)}
+        />
+      )}
 
       <div className="cliente-tabs-shell">
         <ClienteDetalheNav clienteId={clienteId} cliente={cliente} />
         <div className="cliente-tabs-content">
-          <Outlet context={{ clienteId, cliente } satisfies ClienteDetalheOutletContext} />
+          <Outlet context={outletContext} />
         </div>
       </div>
 

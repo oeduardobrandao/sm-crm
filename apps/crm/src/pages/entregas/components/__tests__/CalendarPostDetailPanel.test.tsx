@@ -257,4 +257,18 @@ describe('CalendarPostDetailPanel', () => {
     renderPanel();
     expect(screen.queryByText('Teste')).toBeNull();
   });
+
+  it('lista os colaboradores do Instagram quando existem', () => {
+    renderPanel({ post: { ...post, ig_collaborators: ['a', 'b'] } });
+    expect(screen.getByText('Colaboradores')).toBeTruthy();
+    expect(screen.getByText('@a, @b')).toBeTruthy();
+  });
+
+  it('não mostra a linha Colaboradores sem colaboradores (vazio ou ausente)', () => {
+    const { unmount } = renderPanel({ post: { ...post, ig_collaborators: [] } });
+    expect(screen.queryByText('Colaboradores')).toBeNull();
+    unmount();
+    renderPanel();
+    expect(screen.queryByText('Colaboradores')).toBeNull();
+  });
 });

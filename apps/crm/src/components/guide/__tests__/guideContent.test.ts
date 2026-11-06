@@ -26,6 +26,29 @@ describe('guideContent', () => {
     expect(allPages(trails).some((p) => p.id === 't1p4')).toBe(false);
   });
 
+  it('sem links de portal nem vaga para a equipe (Free), os passos do hub e da equipe saem', () => {
+    const trails = filterTrails(ALL_ON, { max_hub_tokens: 0, max_team_members: 1 });
+    const ids = allPages(trails).map((p) => p.id);
+    expect(ids).not.toContain('t1p4');
+    expect(ids).not.toContain('t2p3');
+    expect(allPages(trails)).toHaveLength(13);
+    expect(requiredSignals(trails)).not.toContain('hasHubToken');
+    expect(requiredSignals(trails)).not.toContain('hasMembro');
+  });
+
+  it('com limites ilimitados (null), carregando ou suficientes, os passos ficam', () => {
+    for (const limits of [
+      null,
+      undefined,
+      { max_hub_tokens: null, max_team_members: null },
+      { max_hub_tokens: 1, max_team_members: 2 },
+    ]) {
+      const ids = allPages(filterTrails(ALL_ON, limits)).map((p) => p.id);
+      expect(ids).toContain('t1p4');
+      expect(ids).toContain('t2p3');
+    }
+  });
+
   it('sinais exigidos derivam da trilha filtrada (hub fora sem a flag)', () => {
     expect(requiredSignals(filterTrails(ALL_ON))).toEqual([
       'hasCliente',

@@ -2,8 +2,19 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Import } from 'lucide-react';
 
 /** Onboarding nudge shown on the dashboard while the workspace has no clientes yet. */
-export function ImportBanner({ clienteCount }: { clienteCount: number }) {
-  if (clienteCount > 0) return null;
+export function ImportBanner({
+  clienteCount,
+  clientScoped = false,
+}: {
+  clienteCount: number;
+  /**
+   * Member restricted to assigned clients (`isClientScoped`): they see zero clients until
+   * one is assigned and never import clients, so the nudge would point at something they
+   * cannot do.
+   */
+  clientScoped?: boolean;
+}) {
+  if (clienteCount > 0 || clientScoped) return null;
   return (
     <div
       className="card animate-up"

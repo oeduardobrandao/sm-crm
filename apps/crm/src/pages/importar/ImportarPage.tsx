@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useContext, useState } from 'react';
+import { Navigate } from 'react-router-dom';
 import { useQuery, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -8,7 +9,13 @@ import {
   type SourceKind,
 } from '@mesaas/import-parsers';
 import { FeatureGate } from '@/components/paywall/FeatureGate';
+import { BottomActionBar } from '@/components/mobile/BottomActionBar';
+import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { getClientes } from '@/store';
+import { AuthContext } from '@/context/AuthContext';
+import { isClientScoped } from '@/lib/permissions';
 import {
   analyzeImport,
   commitBatch,
@@ -30,6 +37,13 @@ import StepUpload, { type UploadError } from './components/StepUpload';
 import StepMapeamento from './components/StepMapeamento';
 import StepPrevia from './components/StepPrevia';
 import StepCommit from './components/StepCommit';
+import {
+  PhoneStepCommit,
+  PhoneStepMapeamento,
+  PhoneStepOrigem,
+  PhoneStepPrevia,
+  PhoneStepUpload,
+} from './phone/ImportarPhoneSteps';
 
 /** Server cap per commit request (handler.ts BATCH_LIMIT). */
 const BATCH_SIZE = 200;
@@ -80,8 +94,20 @@ const STEP_TITLES: [Step, string][] = [
   ['commit', 'Importar'],
 ];
 
+/**
+ * The wizard creates clients, which a member restricted to assigned clients never does
+ * (acesso por cliente): their entries are hidden, and a deep link lands on /clientes.
+ */
 export default function ImportarPage() {
+  const membership = useContext(AuthContext)?.membership ?? null;
+  if (isClientScoped(membership)) return <Navigate to="/clientes" replace />;
+  return <ImportarWizard />;
+}
+
+function ImportarWizard() {
   const queryClient = useQueryClient();
+  // Phones (below 768px) get the kit wizard; 768 and up keep the desktop page.
+  const isPhone = !useIsDesktop(768);
   const [step, setStep] = useState<Step>('origem');
   const [source, setSource] = useState<SourceKind | null>(null);
   const [bundle, setBundle] = useState<ImportBundle | null>(null);
@@ -307,11 +333,141 @@ export default function ImportarPage() {
   const guide = sourceGuide(source ?? 'csv');
   const currentIndex = STEP_TITLES.findIndex(([s]) => s === step);
 
+  const inToolbar = usePageToolbar({ title: 'Importar dados' });
+
+  if (isPhone) {
+    // Same steps, same handlers and the same enable rules as the desktop footers below;
+    // only the layout differs. The step's buttons live in one bottom bar.
+    const bar = (
+      back: (() => void) | null,
+      next: { label: string; disabled: boolean; onClick: () => void },
+    ) => (
+      <BottomActionBar aboveTabBar aria-label="Navegação do assistente" role="group">
+        {back && (
+          <button
+            type="button"
+            className="phone-imp-bar__button phone-imp-bar__button--back"
+            onClick={back}
+          >
+            Voltar
+          </button>
+        )}
+        <button
+          type="button"
+          className="phone-imp-bar__button phone-imp-bar__button--primary"
+          disabled={next.disabled}
+          onClick={next.onClick}
+        >
+          {next.label}
+        </button>
+      </BottomActionBar>
+    );
+    const rowCount = commitRows.length;
+    return (
+      <div className="phone-imp">
+        <PhonePageHeader
+          title="Importar dados"
+          subtitle={`Passo ${currentIndex + 1} de ${STEP_TITLES.length} · ${STEP_TITLES[currentIndex][1]}`}
+        >
+          <ol className="phone-imp-steps" aria-label="Passos">
+            {STEP_TITLES.map(([id, label], i) => (
+              <li
+                key={id}
+                aria-label={label}
+                aria-current={i === currentIndex ? 'step' : undefined}
+                data-done={i <= currentIndex ? '' : undefined}
+              />
+            ))}
+          </ol>
+        </PhonePageHeader>
+
+        <FeatureGate flag="feature_csv_import" label="A importação de dados">
+          {step === 'origem' && (
+            <>
+              <PhoneStepOrigem source={source} onSelect={setSource} />
+              {bar(null, {
+                label: 'Continuar',
+                disabled: !source,
+                onClick: () => setStep('upload'),
+              })}
+            </>
+          )}
+
+          {step === 'upload' && (
+            <>
+              <PhoneStepUpload
+                guide={guide}
+                bundle={bundle}
+                error={uploadError}
+                busy={busy}
+                onFiles={(files) => void handleFiles(files)}
+              />
+              {bar(() => setStep('origem'), {
+                label: 'Continuar',
+                disabled: !bundle || busy,
+                onClick: () => void goToMapping(),
+              })}
+            </>
+          )}
+
+          {step === 'mapeamento' && bundle && proposal && (
+            <>
+              <PhoneStepMapeamento
+                bundle={bundle}
+                proposal={proposal}
+                clientes={existingClientes}
+                clientesStatus={clientesStatus}
+                onRetryClientes={() => void refetchClientes()}
+                error={mappingError}
+                onChange={setProposal}
+              />
+              {bar(() => setStep('upload'), {
+                label: 'Continuar',
+                disabled: clientesStatus !== 'ready',
+                onClick: () => void goToPreview(),
+              })}
+            </>
+          )}
+
+          {step === 'previa' && (
+            <>
+              <PhoneStepPrevia
+                preview={preview}
+                ignoredRows={ignoredRows}
+                busy={busy}
+                error={previewError}
+              />
+              {bar(() => setStep('mapeamento'), {
+                label: `Importar ${rowCount} ${rowCount === 1 ? 'registro' : 'registros'}`,
+                disabled: !preview || busy || rowCount === 0,
+                onClick: startCommit,
+              })}
+            </>
+          )}
+
+          {step === 'commit' && (
+            <PhoneStepCommit
+              progress={progress}
+              results={results}
+              error={commitError}
+              undoResult={undoResult}
+              undoing={undoing}
+              onRetry={() => void runCommit(commitRows, jobId)}
+              onUndo={() => void handleUndo()}
+            />
+          )}
+        </FeatureGate>
+      </div>
+    );
+  }
+
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-6">
+    <div className={`mx-auto max-w-4xl space-y-6${inToolbar ? '' : ' p-6'}`}>
       <div>
-        <h1 className="text-2xl font-bold">Importar dados</h1>
-        <ol className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs uppercase text-muted-foreground">
+        {!inToolbar && <h1 className="text-2xl font-bold">Importar dados</h1>}
+        <ol
+          className={`${inToolbar ? '' : 'mt-2 '}flex flex-wrap gap-x-3 gap-y-1 text-xs uppercase text-muted-foreground`}
+        >
           {STEP_TITLES.map(([id, label], i) => (
             <li
               key={id}

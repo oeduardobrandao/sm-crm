@@ -11,6 +11,8 @@ import {
   type InviteInfo,
 } from '../lib/api';
 import { authStateLabel, statusTags, canActOnInvite } from './workspace-invites';
+import { useIsPhone } from '../hooks/useIsPhone';
+import { InvitesPhone } from './workspace-detail/InvitesPhone';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { Badge } from '../components/ui/badge';
@@ -52,7 +54,12 @@ function confirmedCrossWorkspace(e: unknown, retry: () => void): boolean {
   return true;
 }
 
+/**
+ * Invites of a workspace. Desktop: a panel with the inline invite form. Phone: two rows for the
+ * caller's GroupedList ("Convites", "Convidar") that open a sheet with the same list and form.
+ */
 export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: string }) {
+  const isPhone = useIsPhone();
   const queryClient = useQueryClient();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -60,6 +67,7 @@ export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: str
   const [role, setRole] = useState<'admin' | 'agent'>('agent');
   const [expanded, setExpanded] = useState(false);
 
+  /** Descartar and a successful send: hide the form and clear the draft. */
   const closeForm = () => {
     setFormOpen(false);
     setEmail('');
@@ -127,9 +135,42 @@ export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: str
   const total = data?.total ?? invites.length;
   const hiddenCount = Math.max(0, invites.length - INVITES_PREVIEW_COUNT);
   const shownInvites = expanded ? invites : invites.slice(0, INVITES_PREVIEW_COUNT);
+  const onResend = (inviteId: string) => resendMutation.mutate({ inviteId, confirm: false });
+  const onCancel = (inviteId: string) => {
+    if (window.confirm(CANCEL_WARNING)) cancelMutation.mutate(inviteId);
+  };
+
+  if (isPhone) {
+    return (
+      <InvitesPhone
+        invites={invites}
+        shownInvites={shownInvites}
+        total={total}
+        hiddenCount={hiddenCount}
+        expanded={expanded}
+        onToggleExpanded={() => setExpanded((v) => !v)}
+        isLoading={isLoading}
+        isError={isError}
+        onRetry={() => refetch()}
+        busyId={busyId}
+        onResend={onResend}
+        onCancel={onCancel}
+        formOpen={formOpen}
+        onOpenForm={() => setFormOpen(true)}
+        onCloseForm={closeForm}
+        onHideForm={() => setFormOpen(false)}
+        email={email}
+        onEmailChange={setEmail}
+        role={role}
+        onRoleChange={setRole}
+        onSubmit={() => createMutation.mutate(false)} // unconfirmed; the gate may ask
+        createPending={createMutation.isPending}
+      />
+    );
+  }
 
   return (
-    <Card className="mb-6 mt-6 min-w-0 overflow-hidden">
+    <Card className="min-w-0 overflow-hidden">
       <CardHeader>
         <CardTitle>Convites ({total})</CardTitle>
         <div className="flex items-center gap-3">
@@ -218,10 +259,8 @@ export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: str
                   key={it.id}
                   invite={it}
                   busy={busyId === it.id}
-                  onResend={() => resendMutation.mutate({ inviteId: it.id, confirm: false })}
-                  onCancel={() => {
-                    if (window.confirm(CANCEL_WARNING)) cancelMutation.mutate(it.id);
-                  }}
+                  onResend={() => onResend(it.id)}
+                  onCancel={() => onCancel(it.id)}
                 />
               ))}
             </div>

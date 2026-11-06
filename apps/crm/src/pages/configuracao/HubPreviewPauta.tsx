@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react';
 import { Menu } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { PreviewDims } from './HubPreview';
 
 export function PautaPreviewGreeting({ dims }: { dims: PreviewDims }) {
+  const { t } = useTranslation('settingsHub');
   return (
     <div>
       <div
@@ -14,7 +16,7 @@ export function PautaPreviewGreeting({ dims }: { dims: PreviewDims }) {
           color: 'var(--hub-tx3)',
         }}
       >
-        Quinta, 8 de outubro
+        {t('hubPreview.mock.pautaDate')}
       </div>
       <div
         style={{
@@ -26,7 +28,7 @@ export function PautaPreviewGreeting({ dims }: { dims: PreviewDims }) {
           marginTop: 4,
         }}
       >
-        Bom dia, Ana.
+        {t('hubPreview.mock.pautaGreeting', { name: 'Ana' })}
       </div>
     </div>
   );
@@ -77,18 +79,19 @@ export function PautaPreviewKpiRow({
   );
 }
 
-const PAUTA_PILLS: { label: string; tone: 'wait' | 'ok' | 'sched' }[] = [
-  { label: 'Aguardando', tone: 'wait' },
-  { label: 'Aprovado', tone: 'ok' },
-  { label: 'Agendado', tone: 'sched' },
+const PAUTA_PILLS: { key: string; tone: 'wait' | 'ok' | 'sched' }[] = [
+  { key: 'waiting', tone: 'wait' },
+  { key: 'approved', tone: 'ok' },
+  { key: 'scheduled', tone: 'sched' },
 ];
 
 export function PautaPreviewStatusRow({ dims }: { dims: PreviewDims }) {
+  const { t } = useTranslation('settingsHub');
   return (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }} data-testid="preview-status-pills">
       {PAUTA_PILLS.map((pill) => (
         <span
-          key={pill.label}
+          key={pill.key}
           style={{
             fontSize: dims.pillFont,
             fontWeight: 600,
@@ -99,7 +102,7 @@ export function PautaPreviewStatusRow({ dims }: { dims: PreviewDims }) {
             whiteSpace: 'nowrap',
           }}
         >
-          {pill.label}
+          {t(`hubPreview.mock.pautaPills.${pill.key}`)}
         </span>
       ))}
     </div>

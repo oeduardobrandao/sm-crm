@@ -1,10 +1,11 @@
+import { getIntlLocale } from '@mesaas/i18n';
 import { supabase, getCurrentUser, getCurrentProfile, clearProfileCache } from '@/lib/supabase';
 
 export { supabase, getCurrentUser, getCurrentProfile, clearProfileCache };
 
 // ---- Helpers ----
 export function formatDate(d: string): string {
-  return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR');
+  return new Date(d + 'T00:00:00').toLocaleDateString(getIntlLocale());
 }
 
 export { getInitials } from '@/lib/initials';

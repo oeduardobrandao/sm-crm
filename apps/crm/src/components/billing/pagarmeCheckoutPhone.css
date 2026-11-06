@@ -1,0 +1,108 @@
+/* PagarmeCheckoutDialog on phones (iOS plan F5): a full-screen DialogContent
+   (layout="fullscreen") with a nav bar, a scrolling one-column form and the pay button in
+   a bar pinned to the bottom. Shared by Plano & Cobrança and /comecar, so it carries its
+   own styles. Only phone-* classes and --phone-* tokens. */
+
+.phone-kit.phone-pagarme-checkout {
+  background: var(--phone-bg);
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+
+.phone-pagarme-checkout__nav {
+  display: grid;
+  flex-shrink: 0;
+  grid-template-columns: 76px minmax(0, 1fr) 76px;
+  align-items: center;
+  min-height: 52px;
+  padding: env(safe-area-inset-top, 0px) 8px 0;
+  border-bottom: 1px solid var(--phone-separator);
+  background: var(--phone-bg);
+}
+
+.phone-pagarme-checkout__close {
+  justify-self: start;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-body);
+}
+.phone-pagarme-checkout__close:disabled {
+  color: var(--phone-label-secondary);
+}
+
+.phone-kit .phone-pagarme-checkout__nav-title {
+  margin: 0;
+  overflow: hidden;
+  font-family: var(--font-main);
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: normal;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The form fills the screen under the nav bar: scrolling body, fixed bottom bar. */
+.phone-pagarme-checkout__form {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.phone-pagarme-checkout__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 16px var(--phone-gutter) 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.phone-kit .phone-pagarme-checkout__lead {
+  margin: 0;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+}
+
+/* The desktop pairs (Validade/CVV, CPF/Celular, CEP/Endereço, Cidade/UF) stack into
+   one column. */
+.phone-pagarme-checkout__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.phone-kit.phone-pagarme-checkout .phone-pagarme-checkout__fields .grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+.phone-kit.phone-pagarme-checkout .phone-pagarme-checkout__fields label {
+  font-size: var(--phone-text-footnote);
+}
+
+/* Under 16px iOS zooms the page when an input takes focus. */
+.phone-kit.phone-pagarme-checkout input {
+  height: 44px;
+  font-size: 16px;
+}
+
+.phone-pagarme-checkout__bar {
+  flex-shrink: 0;
+  padding: 10px var(--phone-gutter) max(12px, env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--phone-separator);
+  background: var(--phone-bg);
+}
+.phone-kit.phone-pagarme-checkout .phone-pagarme-checkout__bar button {
+  height: 50px;
+  border-radius: 14px;
+  font-size: var(--phone-text-body);
+}

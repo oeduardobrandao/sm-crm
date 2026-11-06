@@ -90,6 +90,28 @@ Deno.test("createContainerForPost: story image → STORIES image container witho
   }
 });
 
+Deno.test("createContainerForPost: story carries userTags as user_tags without coordinates", async () => {
+  const f = stubFetch();
+  try {
+    const db = dbWithMedia([{ kind: "image", r2_key: "img/story.jpg" }]);
+    await createContainerForPost(db, { ...base, tipo: "stories", useCover: false, userTags: ["julia"] });
+    assertEquals(f.calls[0].body.user_tags, [{ username: "julia" }]);
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("createContainerForPost: userTags are ignored outside stories", async () => {
+  const f = stubFetch();
+  try {
+    const db = dbWithMedia([{ kind: "image", r2_key: "img/1.jpg" }]);
+    await createContainerForPost(db, { ...base, useCover: false, userTags: ["julia"] });
+    assert(!("user_tags" in f.calls[0].body), "feed image must not send user_tags");
+  } finally {
+    f.restore();
+  }
+});
+
 Deno.test("createContainerForPost: story video → STORIES video container without cover", async () => {
   const f = stubFetch();
   try {

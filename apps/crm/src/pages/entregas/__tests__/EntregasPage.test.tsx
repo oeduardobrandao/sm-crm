@@ -1,7 +1,22 @@
-import type { Ref } from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useEffect, type Ref } from 'react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
+
+// The phone header now carries the shell's help links and bell (PhonePageHeader); their
+// own suites cover them, and they need the KB query and notifications.
+// Feedback em mídia: the drawers fetch client notes by path (not through the mocked '@/store').
+vi.mock('@/store/mediaNotes', () => ({
+  getMediaNotes: async () => [],
+  mediaNotesKey: (ids: number[]) => ['media-notes', ids.join(',')],
+  replyToMediaNote: async () => undefined,
+  setMediaNoteStatus: async () => undefined,
+}));
+
+vi.mock('@/components/layout/PhoneShellHeader', () => ({
+  PhoneShellActions: () => <div data-testid="shell-actions" />,
+}));
 
 vi.mock('../hooks/useEntregasData', () => ({
   useEntregasData: vi.fn(),
@@ -9,6 +24,24 @@ vi.mock('../hooks/useEntregasData', () => ({
 
 vi.mock('../hooks/useActivePosts', () => ({
   useActivePosts: vi.fn(() => ({ posts: [], isLoading: false })),
+}));
+
+// VistasTabs reads the saved views through this hook (TanStack Query + the
+// store); this suite has no QueryClientProvider, so the hook is stubbed and a
+// test seeds `savedViewsMock.views` to render saved tabs.
+const savedViewsMock = vi.hoisted(() => ({
+  views: [] as { id: string; name: string; query: string; position: number }[],
+}));
+vi.mock('../hooks/useSavedViews', () => ({
+  useSavedViews: () => ({
+    views: savedViewsMock.views,
+    isLoading: false,
+    isError: false,
+    save: vi.fn(),
+    updateQuery: vi.fn(),
+    rename: vi.fn(),
+    remove: vi.fn(),
+  }),
 }));
 
 const storeMocks = vi.hoisted(() => ({
@@ -50,12 +83,48 @@ vi.mock('sonner', () => ({
 // Real DropdownMenu needs Radix portal/pointer-capture machinery jsdom doesn't
 // implement; render it flat (same pattern as LeadsPage.atlimit.test.tsx) so the
 // Novo dropdown's items are directly clickable without opening anything first.
+// The Vidro toolbar's view picker is a radio group; the flat mock keeps its one live group's
+// value and handler here so each item renders as a clickable menuitemradio.
+const radioGroup = vi.hoisted(() => ({
+  value: undefined as string | undefined,
+  onValueChange: undefined as ((v: string) => void) | undefined,
+}));
 vi.mock('@/components/ui/dropdown-menu', () => ({
+  DropdownMenuRadioGroup: ({
+    children,
+    value,
+    onValueChange,
+    'aria-label': label,
+  }: {
+    children: React.ReactNode;
+    value?: string;
+    onValueChange?: (v: string) => void;
+    'aria-label'?: string;
+  }) => {
+    radioGroup.value = value;
+    radioGroup.onValueChange = onValueChange;
+    return (
+      <div role="group" aria-label={label}>
+        {children}
+      </div>
+    );
+  },
+  DropdownMenuRadioItem: ({ children, value }: { children: React.ReactNode; value: string }) => (
+    <button
+      type="button"
+      role="menuitemradio"
+      aria-checked={radioGroup.value === value}
+      onClick={() => radioGroup.onValueChange?.(value)}
+    >
+      {children}
+    </button>
+  ),
   DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   // VistasTabs' per-vista menu (only rendered once a saved vista exists).
   DropdownMenuSeparator: () => <hr />,
+  DropdownMenuLabel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuItem: ({
     children,
     onClick,
@@ -138,7 +207,12 @@ vi.mock('../components/ApplyProcessDialog', () => ({
   ),
 }));
 
-vi.mock('../components/EntregasFilters', () => ({
+vi.mock('../components/EntregasFilters', async (importOriginal) => ({
+  // The pure helpers the phone header and filters sheet read.
+  countActiveFilters: (await importOriginal<typeof import('../components/EntregasFilters')>())
+    .countActiveFilters,
+  STATUS_OPTIONS: (await importOriginal<typeof import('../components/EntregasFilters')>())
+    .STATUS_OPTIONS,
   EMPTY_FILTERS: {
     filterClientes: [],
     filterMembros: [],
@@ -159,6 +233,7 @@ vi.mock('../components/EntregasFilters', () => ({
     clientes,
     membros,
     mode,
+    trailing,
   }: {
     filters: { filterClientes: number[]; filterMembros: number[]; filterStatus: string[] };
     onChange: (next: {
@@ -169,8 +244,10 @@ vi.mock('../components/EntregasFilters', () => ({
     clientes: Array<{ id: number; nome: string }>;
     membros: Array<{ id: number; nome: string }>;
     mode?: string;
+    trailing?: React.ReactNode;
   }) => (
-    <div>
+    <div data-testid="entregas-filters">
+      {trailing}
       <div>Filters: {filters.filterStatus.join(',')}</div>
       <div>FiltersMode: {mode}</div>
       <div>Clientes: {clientes.length}</div>
@@ -313,7 +390,27 @@ vi.mock('@/hooks/useCurrentMembro', () => ({
 // jsdom's matchMedia is a stub; the Lista's Responsáveis panel is an inline
 // aside on desktop and a Sheet below 901px. Each test picks the branch.
 const isDesktopMock = vi.hoisted(() => ({ value: true }));
-vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => isDesktopMock.value }));
+// Width-aware: `value: true` is a desktop width, `false` the 768-900 compact layout
+// (bottom Sheets). The phone layout (< 768) is `phone: true`.
+const viewportMock = vi.hoisted(() => ({ phone: false }));
+vi.mock('@/hooks/useIsDesktop', () => ({
+  useIsDesktop: (min = 768) => (viewportMock.phone ? 390 : isDesktopMock.value ? 1280 : 800) >= min,
+}));
+// Page-level phone card commands: the board's own instances are covered by the
+// Kanban suites; here they only need to exist.
+vi.mock('../hooks/useWorkflowStageCommands', () => ({
+  useWorkflowStageCommands: () => ({ forward: vi.fn(), revert: vi.fn(), dialogs: null }),
+}));
+vi.mock('../hooks/usePostProcessCommands', () => ({
+  usePostProcessCommands: () => ({
+    avancar: vi.fn(),
+    voltar: vi.fn(),
+    concluir: vi.fn(),
+    reabrir: vi.fn(),
+    remover: vi.fn(),
+    dialogs: null,
+  }),
+}));
 
 // Like FilaMembroPicker: the Lista controls (on the tabs line, after the tabs)
 // are unit-tested on their own (ListToolbar.test.tsx / ResponsaveisPanel.test.tsx).
@@ -558,23 +655,42 @@ vi.mock('../views/PostsListView', () => ({
   ),
 }));
 
+// Counts WorkflowDrawer mounts: a `&discussao=1` link to the post that is already open must
+// refocus without remounting it (a remount drops the typed drafts and unsaved edits).
+const drawerMounts = vi.hoisted(() => ({ count: 0 }));
+function DrawerMountProbe() {
+  useEffect(() => {
+    drawerMounts.count += 1;
+  }, []);
+  return null;
+}
+
 vi.mock('../components/WorkflowDrawer', () => ({
   WorkflowDrawer: ({
     card,
     onClose,
     initialPostId,
+    focusRequest,
+    onDiscussaoFocused,
     onOpenWorkflow,
     onDetachedKeepingProcess,
   }: {
     card: { workflow: { titulo: string } };
     onClose: () => void;
     initialPostId?: number;
+    focusRequest?: number;
+    onDiscussaoFocused?: () => void;
     onOpenWorkflow?: (workflowId: number, seed?: unknown) => void;
     onDetachedKeepingProcess?: (postIds: number[]) => void;
   }) => (
     <div>
       <div>Workflow drawer: {card.workflow.titulo}</div>
       <div data-testid="drawer-initial-post">{initialPostId ?? 'none'}</div>
+      <div data-testid="drawer-focus-discussao">{String(!!focusRequest)}</div>
+      <div data-testid="drawer-focus-request">{focusRequest ?? 0}</div>
+      <DrawerMountProbe />
+      <input aria-label="Drawer draft" />
+      <button onClick={onDiscussaoFocused}>Drawer focused discussao</button>
       <button onClick={onClose}>Close drawer</button>
       <button onClick={() => onOpenWorkflow?.(99)}>Move posts to workflow 99</button>
       <button
@@ -603,15 +719,18 @@ vi.mock('../components/WorkflowDrawer', () => ({
 vi.mock('../components/StandalonePostDrawer', () => ({
   StandalonePostDrawer: ({
     postId,
+    focusRequest,
     onClose,
     onAttached,
   }: {
     postId: number;
+    focusRequest?: number;
     onClose: () => void;
     onAttached: (workflowId: number, postId: number) => void;
   }) => (
     <div>
       <div>Standalone drawer: {postId}</div>
+      <div data-testid="standalone-focus-discussao">{String(!!focusRequest)}</div>
       <button onClick={onClose}>Close standalone drawer</button>
       <button onClick={() => onAttached(2, postId)}>Attach standalone post to fluxo 2</button>
     </div>
@@ -739,6 +858,9 @@ function DeepLinkProbe() {
     <>
       <button onClick={() => navigate('/entregas?drawer=2&post=5')}>Deep link from search</button>
       <button onClick={() => navigate('/entregas?post=5')}>Deep link to bare post</button>
+      <button onClick={() => navigate('/entregas?drawer=2&post=5&discussao=1')}>
+        Deep link with discussao
+      </button>
     </>
   );
 }
@@ -868,6 +990,12 @@ function isoInDays(n: number): string {
   const dia = String(d.getDate()).padStart(2, '0');
   return `${d.getFullYear()}-${mes}-${dia}`;
 }
+
+// Every describe below starts without saved views, at a desktop width.
+beforeEach(() => {
+  savedViewsMock.views = [];
+  viewportMock.phone = false;
+});
 
 describe('EntregasPage', () => {
   beforeEach(() => {
@@ -1295,6 +1423,121 @@ describe('EntregasPage', () => {
 
     expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
     expect(screen.getByTestId('drawer-initial-post')).toHaveTextContent('5');
+  });
+
+  describe('&discussao=1 deep link', () => {
+    const boardWithFluxo2 = () =>
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [{ id: 10, nome: 'Clínica Aurora' }],
+        membros: [{ id: 7, nome: 'Ana' }],
+        templates: [],
+        cards: [
+          makeCard({
+            workflow: { id: 2, titulo: 'Fluxo Profundo', cliente_id: 10, status: 'ativo' },
+          }),
+        ],
+        activeWorkflows: [{ id: 2 }],
+        postEntities: [],
+        activePostProcessCount: 0,
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+
+    it('asks the workflow drawer to focus the discussion and drops discussao from the URL like post', async () => {
+      boardWithFluxo2();
+      renderPage('/entregas?drawer=2&post=5&discussao=1');
+      expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+      expect(screen.getByTestId('drawer-initial-post')).toHaveTextContent('5');
+      expect(screen.getByTestId('drawer-focus-discussao')).toHaveTextContent('true');
+      await waitFor(() => {
+        expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas$/);
+      });
+    });
+
+    it('stops asking once the drawer reports it handled the link', async () => {
+      boardWithFluxo2();
+      renderPage('/entregas?drawer=2&post=5&discussao=1');
+      await screen.findByText('Workflow drawer: Fluxo Profundo');
+      fireEvent.click(screen.getByText('Drawer focused discussao'));
+      expect(screen.getByTestId('drawer-focus-discussao')).toHaveTextContent('false');
+      expect(screen.getByTestId('drawer-initial-post')).toHaveTextContent('5');
+    });
+
+    it('does not focus the discussion without discussao=1', async () => {
+      boardWithFluxo2();
+      renderPage('/entregas?drawer=2&post=5');
+      await screen.findByText('Workflow drawer: Fluxo Profundo');
+      expect(screen.getByTestId('drawer-focus-discussao')).toHaveTextContent('false');
+    });
+
+    it('ignores discussao=1 when the link names no post', async () => {
+      boardWithFluxo2();
+      renderPage('/entregas?drawer=2&discussao=1');
+      await screen.findByText('Workflow drawer: Fluxo Profundo');
+      expect(screen.getByTestId('drawer-focus-discussao')).toHaveTextContent('false');
+    });
+
+    it('works for a post avulso (?post= only)', async () => {
+      boardWithFluxo2();
+      mockedGetStandalonePost.mockResolvedValue({
+        id: 5,
+        workflow_id: null,
+        cliente_nome: 'Clínica Aurora',
+      } as never);
+      renderPage('/entregas?post=5&discussao=1');
+      expect(await screen.findByText('Standalone drawer: 5')).toBeInTheDocument();
+      expect(screen.getByTestId('standalone-focus-discussao')).toHaveTextContent('true');
+      await waitFor(() => {
+        expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas$/);
+      });
+    });
+
+    it('survives the bare-post hand-off to a workflow drawer', async () => {
+      boardWithFluxo2();
+      mockedGetStandalonePost.mockResolvedValue({
+        id: 5,
+        workflow_id: 2,
+        cliente_nome: 'Clínica Aurora',
+      } as never);
+      renderPage('/entregas?post=5&discussao=1');
+      expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+      expect(screen.getByTestId('drawer-focus-discussao')).toHaveTextContent('true');
+    });
+
+    it('a re-link to the post that is already open refocuses without remounting the drawer', async () => {
+      boardWithFluxo2();
+      drawerMounts.count = 0;
+      renderPage('/entregas?drawer=2&post=5&discussao=1');
+      await screen.findByText('Workflow drawer: Fluxo Profundo');
+      expect(screen.getByTestId('drawer-focus-request')).toHaveTextContent('1');
+      expect(drawerMounts.count).toBe(1);
+
+      // The drawer applied the first request and the user starts typing in it.
+      fireEvent.click(screen.getByText('Drawer focused discussao'));
+      expect(screen.getByTestId('drawer-focus-discussao')).toHaveTextContent('false');
+      fireEvent.change(screen.getByLabelText('Drawer draft'), { target: { value: 'rascunho' } });
+
+      // A notification for the same post is clicked.
+      fireEvent.click(screen.getByText('Deep link with discussao'));
+      await waitFor(() => {
+        expect(screen.getByTestId('drawer-focus-request')).toHaveTextContent('2');
+      });
+      expect(screen.getByTestId('drawer-focus-discussao')).toHaveTextContent('true');
+      // Same drawer instance: not remounted, so the draft survives.
+      expect(drawerMounts.count).toBe(1);
+      expect(screen.getByLabelText('Drawer draft')).toHaveValue('rascunho');
+      await waitFor(() => {
+        expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas$/);
+      });
+    });
+
+    it('a link that arrives while already on /entregas works too', async () => {
+      boardWithFluxo2();
+      renderPage('/entregas');
+      fireEvent.click(screen.getByText('Deep link with discussao'));
+      expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+      expect(screen.getByTestId('drawer-focus-discussao')).toHaveTextContent('true');
+    });
   });
 
   describe('bare ?post= deep link (no ?drawer=)', () => {
@@ -2733,10 +2976,9 @@ describe('EntregasPage: Minha fila', () => {
   });
 
   it('a saved vista with membro=12 selects that member', () => {
-    localStorage.setItem(
-      'entregas_saved_views_conta-1',
-      JSON.stringify([{ name: 'Fila do Bruno', query: 'view=fila&membro=12' }]),
-    );
+    savedViewsMock.views = [
+      { id: 'v1', name: 'Fila do Bruno', query: 'view=fila&membro=12', position: 0 },
+    ];
     renderFila('/entregas');
     fireEvent.click(screen.getByRole('button', { name: 'Fila do Bruno' }));
     expect(screen.getByText('Fila view: membro 12 / self 7')).toBeInTheDocument();
@@ -3035,7 +3277,7 @@ describe('EntregasPage: Lista agrupada e painel Responsáveis', () => {
     fireEvent.click(toggle);
     await screen.findByRole('dialog');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
 
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     // O FocusScope do Radix devolve o foco num setTimeout depois de desmontar.
@@ -3110,5 +3352,309 @@ describe('EntregasPage: Lista agrupada e painel Responsáveis', () => {
       renderLista('/entregas?view=list');
       expect(screen.queryByText(/Alternar postados/)).toBeNull();
     });
+  });
+});
+
+describe('EntregasPage on phones (< 768px)', () => {
+  beforeEach(() => {
+    viewportMock.phone = true;
+    localStorage.clear();
+    tourMock.startEntregasTour.mockReset();
+    mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false, isError: false });
+    currentMembroMock.membro = { id: 7, nome: 'Ana' };
+  });
+
+  it('never auto-starts the tour and has no "Ver tour novamente"', () => {
+    renderEntregasPage({ activeWorkflows: [], cards: [] });
+    expect(tourMock.startEntregasTour).not.toHaveBeenCalled();
+    expect(screen.queryByText(/ver tour novamente/i)).toBeNull();
+  });
+
+  it('replaces the desktop header, tabs and filters with the phone header', () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Entregas');
+    expect(screen.getByRole('button', { name: 'Buscar' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Filtros' })).toBeInTheDocument();
+    expect(screen.getByRole('tablist', { name: 'Modo' })).toBeInTheDocument();
+    // Desktop chrome is gone: the view tablist, the inline pills and the explainer.
+    expect(screen.queryByRole('tablist', { name: 'Modos de visualização' })).toBeNull();
+    expect(screen.queryByText(/^FiltersMode:/)).toBeNull();
+    expect(screen.queryByText('Como funciona esta página')).toBeNull();
+  });
+
+  it('the + button offers Novo fluxo and Post avulso', async () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+    fireEvent.click(screen.getByRole('button', { name: 'Novo' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Novo' });
+    expect(within(sheet).getByRole('button', { name: 'Post avulso' })).toBeInTheDocument();
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Novo fluxo' }));
+    expect(await screen.findByText('WizardMock')).toBeInTheDocument();
+  });
+
+  it('the title menu switches views and reaches Templates and Como funciona', async () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+    fireEvent.click(screen.getByRole('button', { name: /Trocar visualização/ }));
+    const menu = await screen.findByRole('dialog', { name: 'Visualizações' });
+    expect(within(menu).getByText('Visualizações salvas')).toBeInTheDocument();
+    expect(
+      within(menu).getByRole('button', { name: 'Salvar visualização atual' }),
+    ).toBeInTheDocument();
+    fireEvent.click(within(menu).getByRole('button', { name: 'Visão geral' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.getByRole('button', { name: /Exibir como: Visão geral/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Trocar visualização/ }));
+    const again = await screen.findByRole('dialog', { name: 'Visualizações' });
+    fireEvent.click(within(again).getByRole('button', { name: 'Templates' }));
+    expect(await screen.findByText('Templates modal')).toBeInTheDocument();
+  });
+
+  it('filters: the sheet applies, chips show each value, and Limpar clears', async () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+    fireEvent.click(screen.getByRole('button', { name: 'Filtros' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Filtros' });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Atrasados' }));
+    expect(within(sheet).getByRole('button', { name: /^Ver \d+$/ })).toBeInTheDocument();
+    fireEvent.click(within(sheet).getByRole('button', { name: /^Ver \d+$/ }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.getByRole('button', { name: 'Filtros, 1 ativos' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Remover filtro Status: Atrasados' }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Limpar' }));
+    expect(screen.queryByRole('button', { name: /Remover filtro/ })).toBeNull();
+  });
+});
+
+describe('EntregasPage: Vidro toolbar', () => {
+  beforeEach(() => {
+    mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false, isError: false });
+    currentMembroMock.membro = { id: 7, nome: 'Ana' };
+    tourMock.startEntregasTour.mockReset();
+    limitsMock.features = null;
+    localStorage.clear();
+    // Dismissed explainer: the header shows its "Como funciona" reopen button.
+    localStorage.setItem('entregas_explainer_dismissed_conta-1', 'true');
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
+  });
+
+  function renderInShell(
+    vidroShell: boolean,
+    entry = '/entregas',
+    cards: unknown[] = [makeCard({ deadline: { estourado: true, urgente: false } })],
+  ) {
+    mockedUseEntregasData.mockReturnValue({
+      clientes: [],
+      membros: [],
+      templates: [],
+      cards,
+      activeWorkflows: [wfFixture],
+      postEntities: [],
+      processByPostId: new Map(),
+      concludedPostProcesses: [],
+      activePostProcessCount: 0,
+      postProcessesVisible: false,
+      isLoading: false,
+      refresh: vi.fn(),
+    } as never);
+    return render(
+      <VidroToolbarHarness vidroShell={vidroShell}>{pageTree(entry)}</VidroToolbarHarness>,
+    );
+  }
+
+  it('fills the toolbar: title, counts subtitle, accessories, actions, Novo and the view tabs', async () => {
+    renderInShell(true);
+
+    const h1s = await screen.findAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(h1s[0]).toHaveTextContent('Entregas');
+
+    // Title row on top, the counts line under it: the title never has to share its row with them.
+    const heading = h1s[0].closest('.vidro-toolbar-heading');
+    expect(heading).not.toBeNull();
+    const counts = screen.getByText('1 fluxo');
+    expect(counts.closest('.vidro-toolbar-subtitle')?.parentElement).toBe(heading);
+    // Native tooltip: a data-tooltip would be clipped by the subtitle's overflow.
+    expect(counts.closest('[title="Totais gerais, sem filtros"]')).not.toBeNull();
+    // Overdue leads the line as a pill that filters the board.
+    const atrasados = screen.getByRole('button', { name: '1 atrasado' });
+    expect(atrasados.closest('.vidro-toolbar-subtitle')).not.toBeNull();
+    expect(atrasados).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByText(/fluxos ativos:/)).toBeNull();
+
+    // One help button holds the description, the explainer and the tour.
+    const help = screen.getByRole('button', { name: 'Ajuda' });
+    expect(help.closest('.vidro-toolbar')).not.toBeNull();
+    expect(
+      screen
+        .getByText('Acompanhe o andamento das entregas e fluxos ativos.')
+        .closest('.vidro-toolbar'),
+    ).not.toBeNull();
+    expect(document.querySelector('.vidro-toolbar [data-tooltip]')).toBeNull();
+
+    const comoFunciona = screen.getAllByRole('button', { name: /como funciona/i });
+    expect(comoFunciona).toHaveLength(1);
+    expect(comoFunciona[0].closest('.vidro-toolbar')).not.toBeNull();
+    const replay = screen.getAllByRole('button', { name: 'Ver tour novamente' });
+    expect(replay).toHaveLength(1);
+    expect(replay[0].closest('.vidro-toolbar')).not.toBeNull();
+
+    const templates = screen.getAllByRole('button', { name: 'Templates' });
+    expect(templates).toHaveLength(1);
+    expect(templates[0].closest('.vidro-toolbar')).not.toBeNull();
+
+    const novo = screen.getAllByRole('button', { name: 'Novo' });
+    expect(novo).toHaveLength(1);
+    expect(novo[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(document.querySelectorAll('[data-tour="novo-fluxo-btn"]')).toHaveLength(1);
+
+    // The view switcher is one dropdown in the toolbar, naming the current view.
+    expect(screen.queryByRole('tablist', { name: 'Modos de visualização' })).toBeNull();
+    const viewPicker = document.querySelector('.vidro-view-picker') as HTMLElement;
+    expect(viewPicker.closest('.vidro-toolbar')).not.toBeNull();
+    expect(viewPicker).toHaveTextContent('Kanban');
+    const views = screen.getByRole('group', { name: 'Modos de visualização' });
+    expect(within(views).getAllByRole('menuitemradio')).toHaveLength(6);
+    expect(within(views).getByRole('menuitemradio', { name: /Kanban/ })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+
+    // The in-page header is gone, and the vistas row (picker + board toggles) moved into the toolbar.
+    expect(document.querySelector('header.header')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Etapas' }).closest('.vidro-toolbar')).not.toBeNull();
+  });
+
+  it('filters the board to overdue from the pill and clears it on a second click', async () => {
+    renderInShell(true, '/entregas', [
+      makeCard({
+        workflow: { id: 1, titulo: 'Atrasado A', cliente_id: 10, status: 'ativo' },
+        deadline: { estourado: true, urgente: false },
+      }),
+      makeCard({
+        workflow: { id: 2, titulo: 'Em dia B', cliente_id: 10, status: 'ativo' },
+        deadline: { estourado: false, urgente: false },
+      }),
+      makeCard({
+        workflow: { id: 3, titulo: 'Urgente C', cliente_id: 10, status: 'ativo' },
+        deadline: { estourado: false, urgente: true },
+      }),
+    ]);
+    expect(
+      await screen.findByText('Kanban view: Atrasado A, Em dia B, Urgente C'),
+    ).toBeInTheDocument();
+
+    const pill = screen.getByRole('button', { name: '1 atrasado' });
+    fireEvent.click(pill);
+    expect(screen.getByText('Kanban view: Atrasado A')).toBeInTheDocument();
+    expect(pill).toHaveAttribute('aria-pressed', 'true');
+
+    // The other pill swaps the filter instead of stacking on it.
+    fireEvent.click(screen.getByRole('button', { name: '1 urgente' }));
+    expect(screen.getByText('Kanban view: Urgente C')).toBeInTheDocument();
+    expect(pill).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(screen.getByRole('button', { name: '1 urgente' }));
+    expect(screen.getByText('Kanban view: Atrasado A, Em dia B, Urgente C')).toBeInTheDocument();
+  });
+
+  it('opens the fluxos kanban from a view that cannot show the filter', async () => {
+    renderInShell(true, '/entregas?view=fila');
+    expect(await screen.findByText(/^Fila view:/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '1 atrasado' }));
+
+    expect(await screen.findByText(/^Kanban view:/)).toBeInTheDocument();
+    expect(document.querySelector('.vidro-view-picker')).toHaveTextContent('Kanban');
+    expect(screen.getByRole('button', { name: '1 atrasado' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
+  it('puts the vista picker and the Etapas/Status toggle in the toolbar, the busca out of it', async () => {
+    renderInShell(true);
+    await screen.findAllByRole('heading', { level: 1 });
+
+    const etapas = screen.getByRole('button', { name: 'Etapas' });
+    expect(etapas.closest('.vista-tabs__controls')).not.toBeNull();
+    expect(etapas.closest('.vidro-toolbar')).not.toBeNull();
+    expect(document.querySelector('.vista-picker')?.closest('.vidro-toolbar')).not.toBeNull();
+    expect(document.querySelectorAll('.vista-tabs')).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Etapas' })).toHaveLength(1);
+    // The busca rides the template tabs row (KanbanView) on the Fluxos board, never the toolbar.
+    expect(
+      screen.queryByPlaceholderText('Buscar fluxo...')?.closest('.vidro-toolbar') ?? null,
+    ).toBeNull();
+  });
+
+  it('puts the busca at the end of the filter pills off the Fluxos board', async () => {
+    renderInShell(true, '/entregas?view=list');
+    expect(await screen.findByText(/^List view:/)).toBeInTheDocument();
+
+    const busca = screen.getByPlaceholderText('Buscar fluxo...');
+    expect(busca.closest('.vidro-toolbar')).toBeNull();
+    expect(busca.closest('[data-testid="entregas-filters"]')).not.toBeNull();
+  });
+
+  it('classic shell keeps the Etapas/Status toggle out of the vista row', async () => {
+    renderInShell(false);
+    await screen.findAllByRole('heading', { level: 1 });
+
+    expect(screen.getByRole('button', { name: 'Etapas' }).closest('.vista-tabs')).toBeNull();
+    expect(document.querySelector('.vista-picker')).toBeNull();
+  });
+
+  it('switches the view from the toolbar dropdown and drops the replay link off the kanban', async () => {
+    renderInShell(true);
+    await screen.findAllByRole('heading', { level: 1 });
+
+    const lista = screen.getByRole('menuitemradio', { name: /Lista/ });
+    expect(lista.closest('.vidro-toolbar')).not.toBeNull();
+    fireEvent.click(lista);
+
+    expect(await screen.findByText(/^List view:/)).toBeInTheDocument();
+    expect(document.querySelector('.vidro-view-picker')).toHaveTextContent('Lista');
+    expect(screen.queryByRole('button', { name: 'Ver tour novamente' })).toBeNull();
+  });
+
+  it('leaves no empty filters row on Minha fila', async () => {
+    const { container } = renderInShell(true, '/entregas?view=fila');
+    expect(await screen.findByText(/^Fila view:/)).toBeInTheDocument();
+
+    expect(container.querySelector('div.flex.flex-wrap.items-center.gap-3')).toBeNull();
+    expect(container.querySelector('div.no-scrollbar.flex-1')).toBeNull();
+  });
+
+  it('keeps the filters but drops the empty view-controls strip on Visão geral', async () => {
+    const { container } = renderInShell(true, '/entregas?view=chart');
+    expect(await screen.findByText(/^Chart view:/)).toBeInTheDocument();
+
+    const row = container.querySelector('div.flex.flex-wrap.items-center.gap-3');
+    expect(row).not.toBeNull();
+    expect(row).toHaveTextContent('FiltersMode:');
+    expect(container.querySelector('div.no-scrollbar.flex-1')).toBeNull();
+  });
+
+  it('keeps the in-page header and tabs when the shell is classic', async () => {
+    renderInShell(false);
+
+    const h1s = await screen.findAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0]).toHaveTextContent('Entregas');
+    expect(h1s[0].closest('header.header')).not.toBeNull();
+    expect(document.querySelector('.vidro-toolbar')).toBeNull();
+    const tablist = screen.getByRole('tablist', { name: 'Modos de visualização' });
+    expect(tablist).not.toHaveClass('vidro-seg');
+    expect(screen.getByText(/fluxos ativos: 1/).tagName).toBe('P');
+    expect(document.querySelector('[title="Totais gerais, sem filtros"]')).toBeNull();
+    expect(screen.queryByRole('button', { name: '1 atrasado' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Ajuda' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Ver tour novamente' })).toBeInTheDocument();
+    expect(document.querySelectorAll('[data-tour="novo-fluxo-btn"]')).toHaveLength(1);
   });
 });

@@ -135,4 +135,47 @@ describe('VideoPlayer', () => {
     });
     expect(onFatalError).not.toHaveBeenCalled();
   });
+
+  it('onVideoElement receives the video element', () => {
+    const onVideoElement = vi.fn();
+    const { container } = render(<VideoPlayer src={SRC} onVideoElement={onVideoElement} />);
+    const video = container.querySelector('video');
+    expect(video).not.toBeNull();
+    expect(onVideoElement).toHaveBeenCalledTimes(1);
+    expect(onVideoElement).toHaveBeenCalledWith(video);
+  });
+
+  it('onVideoElement fires again after fallback switch', async () => {
+    stubCanPlayType('probably');
+    const onVideoElement = vi.fn();
+    const { container } = render(
+      <VideoPlayer hlsSrc={HLS_SRC} src={SRC} onVideoElement={onVideoElement} />,
+    );
+    const first = container.querySelector('video') as HTMLVideoElement;
+    expect(onVideoElement).toHaveBeenLastCalledWith(first);
+
+    fireEvent.error(first);
+
+    await waitFor(() => expect(container.querySelector('video')?.getAttribute('src')).toBe(SRC));
+    const second = container.querySelector('video') as HTMLVideoElement;
+    expect(second).not.toBe(first);
+    const calls = onVideoElement.mock.calls.map(([el]) => el);
+    expect(calls).toEqual([first, null, second]);
+  });
+
+  it('onVideoElement is called with null on unmount', () => {
+    const onVideoElement = vi.fn();
+    const { unmount } = render(<VideoPlayer src={SRC} onVideoElement={onVideoElement} />);
+    unmount();
+    expect(onVideoElement).toHaveBeenLastCalledWith(null);
+  });
+
+  it('a new inline onVideoElement does not re-fire for the same element', () => {
+    const a = vi.fn();
+    const b = vi.fn();
+    const { rerender } = render(<VideoPlayer src={SRC} onVideoElement={a} />);
+    rerender(<VideoPlayer src={SRC} onVideoElement={b} />);
+    expect(a).toHaveBeenCalledTimes(1);
+    expect(b).not.toHaveBeenCalled();
+  });
 });

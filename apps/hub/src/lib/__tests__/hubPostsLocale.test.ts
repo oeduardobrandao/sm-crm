@@ -45,6 +45,8 @@ describe('hubPosts locale files', () => {
       'history.sending',
       'history.sendError',
       'history.motivoLabel',
+      'history.openNotes_one',
+      'history.openNotes_other',
       'correctionReason.title',
       'correctionReason.midia',
       'correctionReason.texto',
@@ -82,6 +84,44 @@ describe('hubPosts locale files', () => {
     ]) {
       expect(keys, key).toContain(key);
     }
+  });
+
+  it('carries the mediaNotes copy in both languages, without em dashes', () => {
+    const keys = flattenKeys(pt);
+    for (const key of [
+      'mediaNotes.title',
+      'mediaNotes.openCount',
+      'mediaNotes.slide',
+      'mediaNotes.point',
+      'mediaNotes.pointInScene',
+      'mediaNotes.previousVersion',
+      'mediaNotes.statusOpen',
+      'mediaNotes.statusResolved',
+      'mediaNotes.comment',
+      'mediaNotes.commentWholeSlide',
+      'mediaNotes.commentAtMoment',
+      'mediaNotes.tapHint',
+      'mediaNotes.composerPoint',
+      'mediaNotes.composerSlide',
+      'mediaNotes.composerMoment',
+      'mediaNotes.composerMomentPoint',
+      'mediaNotes.placeholder',
+      'mediaNotes.send',
+      'mediaNotes.cancel',
+      'mediaNotes.reply',
+      'mediaNotes.sendError',
+      'mediaNotes.approveConfirmTitle_one',
+      'mediaNotes.approveConfirmTitle_other',
+      'mediaNotes.approveConfirmBody',
+      'mediaNotes.approveConfirm',
+      'mediaNotes.team',
+      'mediaNotes.justNow',
+      'mediaNotes.marker',
+    ]) {
+      expect(keys, key).toContain(key);
+    }
+    expect(pt.mediaNotes.title).toBe('Comentários na mídia');
+    expect(JSON.stringify(pt.mediaNotes) + JSON.stringify(en.mediaNotes)).not.toMatch(/—/);
   });
 
   it('no longer carries the removed fluxo filter keys', () => {

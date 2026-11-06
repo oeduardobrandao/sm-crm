@@ -1,6 +1,7 @@
 import { useRef, useState, useImperativeHandle, useCallback, type DragEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { uploadFile } from '@/services/fileService';
 
@@ -29,6 +30,8 @@ export interface FileUploaderProps {
 
 // ─── Video thumbnail helper ────────────────────────────────────────
 
+const THUMBNAIL_FRAME_SECONDS = 0.1;
+
 function captureVideoThumbnail(file: File): Promise<File> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
@@ -36,7 +39,7 @@ function captureVideoThumbnail(file: File): Promise<File> {
     video.preload = 'metadata';
     video.muted = true;
     video.onloadeddata = () => {
-      video.currentTime = 0.1;
+      video.currentTime = THUMBNAIL_FRAME_SECONDS;
     };
     video.onseeked = () => {
       const canvas = document.createElement('canvas');
@@ -72,6 +75,7 @@ export function FileUploader({
   triggerRef,
   canUpload,
 }: FileUploaderProps) {
+  const { t } = useTranslation('files');
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [queue, setQueue] = useState<UploadItem[]>([]);
@@ -97,6 +101,9 @@ export function FileUploader({
         file,
         folderId,
         thumbnail,
+        // captureVideoThumbnail grabs the frame at 0.1 s; that is the TikTok cover frame.
+        thumbnailFrameMs: thumbnail ? THUMBNAIL_FRAME_SECONDS * 1000 : null,
+        thumbnailSource: thumbnail ? 'auto' : null,
         onProgress: ({ loaded, total }) => {
           const progress = total > 0 ? Math.round((loaded / total) * 100) : 0;
           setQueue((prev) =>
@@ -111,7 +118,7 @@ export function FileUploader({
           item.id === itemId ? { ...item, status: 'complete', progress: 100 } : item,
         ),
       );
-      toast.success(`"${file.name}" enviado com sucesso`);
+      toast.success(t('fileUploader.uploadSuccess', { name: file.name }));
       onUploadComplete();
 
       // Auto-dismiss after 3 seconds
@@ -123,7 +130,7 @@ export function FileUploader({
       setQueue((prev) =>
         prev.map((item) => (item.id === itemId ? { ...item, status: 'error' } : item)),
       );
-      toast.error(`Erro ao enviar "${file.name}"`);
+      toast.error(t('fileUploader.uploadError', { name: file.name }));
 
       // Auto-dismiss errors after 5 seconds
       setTimeout(() => {
@@ -245,7 +252,7 @@ export function FileUploader({
             }}
           >
             <p className="text-lg font-semibold" style={{ color: 'var(--primary-color)' }}>
-              Solte os arquivos aqui
+              {t('fileUploader.dropHere')}
             </p>
           </div>
         )}
@@ -253,7 +260,10 @@ export function FileUploader({
 
       {/* Floating upload progress panel */}
       {hasQueue && (
-        <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2" style={{ width: 320 }}>
+        <div
+          className="phone-arq-upload-queue fixed bottom-6 right-6 z-50 flex flex-col gap-2"
+          style={{ width: 320 }}
+        >
           {queue.map((item) => (
             <UploadProgressCard key={item.id} item={item} />
           ))}
@@ -266,6 +276,7 @@ export function FileUploader({
 // ─── Individual progress card ──────────────────────────────────────
 
 function UploadProgressCard({ item }: { item: UploadItem }) {
+  const { t } = useTranslation('files');
   const truncated = item.name.length > 36 ? `${item.name.slice(0, 33)}...` : item.name;
 
   return (
@@ -311,9 +322,9 @@ function UploadProgressCard({ item }: { item: UploadItem }) {
       {/* Status text */}
       <div className="flex justify-between items-center">
         <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          {item.status === 'uploading' && 'Enviando...'}
-          {item.status === 'complete' && 'Concluído'}
-          {item.status === 'error' && 'Erro no envio'}
+          {item.status === 'uploading' && t('fileUploader.status.uploading')}
+          {item.status === 'complete' && t('fileUploader.status.complete')}
+          {item.status === 'error' && t('fileUploader.status.error')}
         </span>
         <span
           className="text-xs font-medium"

@@ -29,4 +29,10 @@ describe('TopBarActions chat button', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Chat' }));
     expect(window.$crisp).toContainEqual(['do', 'chat:open']);
   });
+
+  it('wraps both buttons in a labelled capsule for the vidro variant', () => {
+    render(<TopBarActions variant="capsule" />);
+    expect(screen.getByRole('group', { name: 'Notificações e suporte' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Chat' })).toHaveClass('vidro-capsule-btn');
+  });
 });

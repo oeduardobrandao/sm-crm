@@ -1,8 +1,8 @@
-import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import type { Membro, TarefaWithRelations } from '../../../store';
-import { updateTarefa } from '../../../store';
 import { buildDropId, parseDropId, sortTarefas } from '../tarefasLogic';
 import { useOptimisticTarefas } from '../hooks/useOptimisticTarefas';
+import { assignTarefa } from '../tarefaCommands';
 import { TarefaBoard, type BoardColumn } from './boardShared';
 
 interface MembrosBoardViewProps {
@@ -25,6 +25,7 @@ export function MembrosBoardView({
   onRefresh,
   onlyMembroId = null,
 }: MembrosBoardViewProps) {
+  const { t: tr } = useTranslation('tasks');
   const { merged, applyOverride, clearOverride } = useOptimisticTarefas(tarefas);
   const now = new Date();
 
@@ -35,7 +36,7 @@ export function MembrosBoardView({
   const columns: BoardColumn[] = [
     {
       dropId: buildDropId({ kind: 'membro', membroId: null }),
-      title: 'Sem responsável',
+      title: tr('shared.noAssignee'),
       tarefas: open.filter((t) => t.responsavel_id == null).sort(sortTarefas),
     },
     ...columnMembros
@@ -51,16 +52,10 @@ export function MembrosBoardView({
   const handleDrop = async (tarefa: TarefaWithRelations, dropId: string) => {
     const target = parseDropId(dropId);
     if (!target || target.kind !== 'membro') return;
-    if (tarefa.responsavel_id === target.membroId) return;
-    applyOverride(tarefa.id!, { responsavel_id: target.membroId });
-    try {
-      await updateTarefa(tarefa.id!, { responsavel_id: target.membroId });
-      toast.success('Responsável atualizado!');
-      onRefresh();
-    } catch {
-      clearOverride(tarefa.id!);
-      toast.error('Erro ao atualizar responsável');
-    }
+    await assignTarefa(tarefa, target.membroId, onRefresh, {
+      apply: applyOverride,
+      clear: clearOverride,
+    });
   };
 
   return (
@@ -71,6 +66,7 @@ export function MembrosBoardView({
       onCardClick={onTarefaClick}
       onDropCard={handleDrop}
       onRefresh={onRefresh}
+      phoneChipsLabel={tr('views.chipsMembers')}
     />
   );
 }

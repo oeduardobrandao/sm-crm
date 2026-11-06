@@ -1,11 +1,11 @@
 import { useTranslation } from 'react-i18next';
 import type { HubPost, PendingEditSuggestion } from '../../types';
-import { deriveCaption, pickPostCardKind } from '../../lib/postView';
+import { deriveCaption, pickPostCardKind, resolvePostTargets } from '../../lib/postView';
 import { canonicalDoc, docPlainText } from '../../lib/richDoc';
 import { TextDiff } from '../TextDiff';
 
 export interface SuggestionDiffBlock {
-  field: 'text' | 'caption';
+  field: 'text' | 'caption' | 'tiktok' | 'geral';
   before: string;
   after: string;
 }
@@ -48,6 +48,32 @@ export function suggestionDiffBlocks(
       });
     }
   }
+  // TikTok and Geral: only a column the suggestion changed (its stored copy of any other is the
+  // value as of the client's last save, stale after a team edit). "Before" is the RAW live
+  // value, the one the server compares with (COALESCE to ''), never the caption TikTok shows
+  // when it follows the Instagram one.
+  const changed = suggestion.changed_fields ?? [];
+  const extra: [
+    SuggestionDiffBlock['field'],
+    string | null | undefined,
+    string | null | undefined,
+  ][] = [
+    [
+      'tiktok',
+      changed.includes('tiktok_caption') ? suggestion.suggested_tiktok_caption : null,
+      post.tiktok_caption,
+    ],
+    [
+      'geral',
+      changed.includes('geral_caption') ? suggestion.suggested_geral_caption : null,
+      post.geral_caption,
+    ],
+  ];
+  for (const [field, after, live] of extra) {
+    if (after == null) continue;
+    const before = live ?? '';
+    if (after !== before) blocks.push({ field, before, after });
+  }
   return blocks;
 }
 
@@ -76,6 +102,17 @@ export function SuggestionDiff({
 }) {
   const { t } = useTranslation('hubPosts');
   const blocks = suggestionDiffBlocks(post, suggestion);
+  // With other destinations, "Legenda" alone would not say which one changed.
+  const targets = resolvePostTargets(post);
+  const multiDestination = targets !== null && targets.some((p) => p !== 'instagram');
+  const label = (field: SuggestionDiffBlock['field']) => {
+    if (field === 'text') return t('shared.suggestionDiffTextLabel', 'Texto do post');
+    if (field === 'tiktok') return t('captions.fieldLabel.tiktok', 'Legenda do TikTok');
+    if (field === 'geral') return t('captions.fieldLabel.geral', 'Legenda Geral');
+    return multiDestination
+      ? t('captions.fieldLabel.instagram', 'Legenda do Instagram')
+      : t('shared.suggestionDiffCaptionLabel', 'Legenda');
+  };
   const formatOnlyLine = hasFormatOnlyChange(post, suggestion, blocks) ? (
     <p className="text-[13px] hub-tx3">
       {t('shared.suggestionFormatOnlyDiff', 'Alterações somente de formatação ou imagens.')}
@@ -95,9 +132,7 @@ export function SuggestionDiff({
       {blocks.map((b) => (
         <section key={b.field} className="space-y-1">
           <p className="text-[12px] font-semibold uppercase tracking-[0.06em] hub-tx3">
-            {b.field === 'text'
-              ? t('shared.suggestionDiffTextLabel', 'Texto do post')
-              : t('shared.suggestionDiffCaptionLabel', 'Legenda')}
+            {label(b.field)}
           </p>
           <TextDiff
             before={b.before}

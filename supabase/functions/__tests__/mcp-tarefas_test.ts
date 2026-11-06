@@ -16,7 +16,7 @@ function makeFakeDb(responses: Record<string, Resp[]>) {
   function recorder(table: string) {
     // deno-lint-ignore no-explicit-any
     const rec: any = {};
-    const next = (): Resp => (queues[table] ?? []).shift() ?? { data: null, error: null };
+    const next = (): Resp => (queues[table] ?? []).shift() ?? (table === "workspace_members" ? { data: { role: "agent", client_scope: "todos" }, error: null } : { data: null, error: null });
     for (const m of ["select", "eq", "in", "gte", "order", "limit", "insert", "update", "upsert", "delete"]) {
       rec[m] = (...args: unknown[]) => { calls.push({ table, method: m, args }); return rec; };
     }
@@ -188,7 +188,7 @@ Deno.test("mcp-tarefas: list_tasks tool denies a ctx missing tarefas:read", asyn
   const server = {
     handlers: {} as Record<string, (a: unknown) => Promise<{ content: { type: string; text: string }[]; isError?: boolean }>>,
     // deno-lint-ignore no-explicit-any
-    tool(name: string, _d: any, _s: any, h: any) { this.handlers[name] = h; },
+    registerTool(name: string, _c: any, h: any) { this.handlers[name] = h; },
   };
   // deno-lint-ignore no-explicit-any
   registerTools(server as any, deps);
@@ -207,7 +207,7 @@ Deno.test("mcp-tarefas: create_task audit row carries task_id via the extended e
   const server = {
     handlers: {} as Record<string, (a: unknown) => Promise<unknown>>,
     // deno-lint-ignore no-explicit-any
-    tool(name: string, _d: any, _s: any, h: any) { this.handlers[name] = h; },
+    registerTool(name: string, _c: any, h: any) { this.handlers[name] = h; },
   };
   // deno-lint-ignore no-explicit-any
   registerTools(server as any, deps);

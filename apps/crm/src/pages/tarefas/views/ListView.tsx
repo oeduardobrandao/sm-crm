@@ -1,17 +1,24 @@
 import { useState } from 'react';
-import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { CheckSquare, ChevronDown, ChevronRight } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
-import { avatarColorClass } from '@/lib/avatarColor';
-import { getInitials, updateTarefa, type Membro, type TarefaWithRelations } from '../../../store';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
+import { type Membro, type TarefaWithRelations } from '../../../store';
 import { DUE_BUCKETS, dueBadge, groupByDueBucket } from '../tarefasLogic';
+import { toggleTarefaConcluida } from '../tarefaCommands';
 import { TagPill } from '../components/TagPicker';
+import { TarefaComentariosCount } from '../components/TarefaCard';
+import { TarefasPhoneList } from '../phone/TarefasPhoneList';
 
 interface ListViewProps {
   tarefas: TarefaWithRelations[];
   membros: Membro[];
   onTarefaClick: (tarefa: TarefaWithRelations) => void;
   onRefresh: () => void;
+  /** Opens the "Concluídas" group (the "Concluídas hoje" KPI filter would otherwise
+   * leave the list looking empty). It still collapses on click. */
+  expandConcluidas?: boolean;
 }
 
 function TarefaRow({
@@ -27,6 +34,7 @@ function TarefaRow({
   onClick: () => void;
   onToggleComplete: (concluida: boolean) => void;
 }) {
+  const { t } = useTranslation('tasks');
   const badge = dueBadge(tarefa, now);
   const done = tarefa.status === 'concluida';
   return (
@@ -50,7 +58,7 @@ function TarefaRow({
       <span onClick={(e) => e.stopPropagation()} style={{ display: 'inline-flex' }}>
         <Checkbox
           checked={done}
-          aria-label={done ? 'Reabrir tarefa' : 'Concluir tarefa'}
+          aria-label={done ? t('listView.reopenTask') : t('listView.completeTask')}
           onCheckedChange={(checked) => onToggleComplete(checked === true)}
         />
       </span>
@@ -113,14 +121,18 @@ function TarefaRow({
             {tarefa.subtarefas_concluidas}/{tarefa.subtarefas_total}
           </span>
         )}
+        <TarefaComentariosCount total={tarefa.comentarios_total} />
         {badge && <span className={`board-card-deadline ${badge.className}`}>{badge.label}</span>}
         {membro ? (
-          <span
-            className={`avatar ${avatarColorClass(membro.id ?? membro.nome)}`}
-            style={{ width: 22, height: 22, fontSize: '0.55rem', fontWeight: 800 }}
-            title={membro.nome}
-          >
-            {getInitials(membro.nome)}
+          // `contents` keeps the hover name without adding a box to the row's layout.
+          <span className="contents" title={membro.nome}>
+            <PessoaAvatar
+              nome={membro.nome}
+              fotoUrl={membro.avatar_url}
+              seed={membro.id}
+              size={22}
+              className="!font-extrabold"
+            />
           </span>
         ) : (
           <span style={{ width: 22 }} />
@@ -131,8 +143,32 @@ function TarefaRow({
 }
 
 /** List grouped by due date buckets, with a collapsed "Concluídas" section. */
-export function ListView({ tarefas, membros, onTarefaClick, onRefresh }: ListViewProps) {
-  const [showConcluidas, setShowConcluidas] = useState(false);
+export function ListView({
+  tarefas,
+  membros,
+  onTarefaClick,
+  onRefresh,
+  expandConcluidas = false,
+}: ListViewProps) {
+  const { t: tr } = useTranslation('tasks');
+  const isDesktop = useIsDesktop(768);
+  const [showConcluidas, setShowConcluidas] = useState(expandConcluidas);
+  // Re-open when the prop turns on while mounted (adjust-state-during-render pattern).
+  const [prevExpand, setPrevExpand] = useState(expandConcluidas);
+  if (expandConcluidas !== prevExpand) {
+    setPrevExpand(expandConcluidas);
+    if (expandConcluidas) setShowConcluidas(true);
+  }
+  if (!isDesktop) {
+    return (
+      <TarefasPhoneList
+        tarefas={tarefas}
+        membros={membros}
+        onTarefaClick={onTarefaClick}
+        onRefresh={onRefresh}
+      />
+    );
+  }
   const now = new Date();
   const buckets = groupByDueBucket(tarefas, now);
   const membroById = new Map(membros.filter((m) => m.id != null).map((m) => [m.id!, m]));
@@ -142,15 +178,8 @@ export function ListView({ tarefas, membros, onTarefaClick, onRefresh }: ListVie
     .sort((a, b) => (b.concluida_em ?? '').localeCompare(a.concluida_em ?? ''))
     .slice(0, 50);
 
-  const handleToggleComplete = async (tarefa: TarefaWithRelations, concluida: boolean) => {
-    try {
-      await updateTarefa(tarefa.id!, { status: concluida ? 'concluida' : 'pendente' });
-      toast.success(concluida ? 'Tarefa concluída!' : 'Tarefa reaberta!');
-      onRefresh();
-    } catch {
-      toast.error('Erro ao atualizar tarefa');
-    }
-  };
+  const handleToggleComplete = (tarefa: TarefaWithRelations, concluida: boolean) =>
+    toggleTarefaConcluida(tarefa, concluida, onRefresh);
 
   const membroOf = (t: TarefaWithRelations) =>
     t.responsavel_id != null ? (membroById.get(t.responsavel_id) ?? null) : null;
@@ -159,7 +188,7 @@ export function ListView({ tarefas, membros, onTarefaClick, onRefresh }: ListVie
 
   return (
     <div className="animate-up" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      {totalOpen === 0 && (
+      {totalOpen === 0 && !(expandConcluidas && concluidas.length > 0) && (
         <div
           className="card"
           style={{
@@ -169,9 +198,7 @@ export function ListView({ tarefas, membros, onTarefaClick, onRefresh }: ListVie
             borderRadius: '12px',
           }}
         >
-          <p style={{ fontSize: '0.85rem' }}>
-            Nenhuma tarefa aberta. Crie uma nova ou ajuste os filtros.
-          </p>
+          <p style={{ fontSize: '0.85rem' }}>{tr('listView.emptyOpen')}</p>
         </div>
       )}
       {DUE_BUCKETS.map((bucket) => {
@@ -257,7 +284,7 @@ export function ListView({ tarefas, membros, onTarefaClick, onRefresh }: ListVie
                 color: 'var(--text-muted)',
               }}
             >
-              Concluídas
+              {tr('listView.concluidas')}
             </span>
             <span
               style={{

@@ -70,6 +70,7 @@ const { createMissingStorySegmentContainers, publishReadyStorySegments } = await
 // deno-lint-ignore no-explicit-any
 function makeRpcDb(opts: {
   segments: any[];
+  userTags?: unknown;
   media?: Array<{ sort_order: number; files: { id: number; kind: string; r2_key: string; thumbnail_r2_key: string | null } }>;
 }) {
   const rpcCalls: Array<{ fn: string; params: any }> = [];
@@ -80,7 +81,11 @@ function makeRpcDb(opts: {
         select() { return this; },
         eq() { return this; },
         order() { return Promise.resolve({ data: opts.media ?? [] }); },
-        single() { return Promise.resolve({ data: table === "workflow_posts" ? { story_segments: segs } : null }); },
+        single() {
+          return Promise.resolve({
+            data: table === "workflow_posts" ? { story_segments: segs, ig_user_tags: opts.userTags } : null,
+          });
+        },
         update() { return { eq() { return Promise.resolve({ data: null }); } }; },
       };
     },
@@ -133,6 +138,49 @@ Deno.test("createMissingStorySegmentContainers creates STORIES container per emp
   const setCall = ctx.rpcCalls.find((c) => c.fn === "set_story_segment_field");
   assertEquals(setCall?.params.p_index, 0);
   assertEquals(setCall?.params.p_field, "container_id");
+});
+
+Deno.test("createMissingStorySegmentContainers sends ig_user_tags as user_tags on every new segment", async () => {
+  const ctx = makeRpcDb({
+    segments: [
+      { file_id: 11, container_id: null, media_id: null },
+      { file_id: 12, container_id: null, media_id: null },
+    ],
+    userTags: ["dra.julia", "clinicaviva"],
+    media: [
+      { sort_order: 0, files: { id: 11, kind: "image", r2_key: "a.jpg", thumbnail_r2_key: null } },
+      { sort_order: 1, files: { id: 12, kind: "video", r2_key: "b.mp4", thumbnail_r2_key: null } },
+    ],
+  });
+  const bodies: any[] = [];
+  const restore = stubFetch((_url, body, n) => { bodies.push(body); return { id: `cont-${n}` }; });
+  try {
+    await createMissingStorySegmentContainers(ctx.db, { postId: 1, igUserId: "ig", token: "t" });
+  } finally { restore(); }
+
+  assertEquals(bodies.length, 2);
+  for (const b of bodies) {
+    assertEquals(b.media_type, "STORIES");
+    // No x/y: the account is tagged without a sticker.
+    assertEquals(b.user_tags, [{ username: "dra.julia" }, { username: "clinicaviva" }]);
+  }
+});
+
+Deno.test("createMissingStorySegmentContainers omits user_tags when the list is empty or missing", async () => {
+  for (const userTags of [[], null, undefined, "junk"]) {
+    const ctx = makeRpcDb({
+      segments: [{ file_id: 11, container_id: null, media_id: null }],
+      userTags,
+      media: [{ sort_order: 0, files: { id: 11, kind: "image", r2_key: "a.jpg", thumbnail_r2_key: null } }],
+    });
+    const bodies: any[] = [];
+    const restore = stubFetch((_url, body, n) => { bodies.push(body); return { id: `cont-${n}` }; });
+    try {
+      await createMissingStorySegmentContainers(ctx.db, { postId: 1, igUserId: "ig", token: "t" });
+    } finally { restore(); }
+    assertEquals(bodies.length, 1);
+    assert(!("user_tags" in bodies[0]), `no user_tags key for ${JSON.stringify(userTags)}`);
+  }
 });
 
 Deno.test("publishReadyStorySegments publishes ready segments and reports allDone", async () => {

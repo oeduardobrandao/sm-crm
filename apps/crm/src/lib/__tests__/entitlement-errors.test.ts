@@ -59,3 +59,53 @@ describe('mapEntitlementError feature_multiplatform', () => {
     });
   });
 });
+
+describe('mapEntitlementError keys with digits', () => {
+  it('reads the whole feature_financeiro_v2 key and labels it', () => {
+    expect(
+      mapEntitlementError({
+        message: 'feature_disabled:feature_financeiro_v2',
+      }),
+    ).toEqual({
+      kind: 'feature',
+      key: 'feature_financeiro_v2',
+      label: 'Financeiro v2 (rentabilidade)',
+    });
+  });
+
+  it('labels feature_linha_editorial', () => {
+    expect(mapEntitlementError({ message: 'feature_disabled:feature_linha_editorial' })).toEqual({
+      kind: 'feature',
+      key: 'feature_linha_editorial',
+      label: 'Linha editorial',
+    });
+  });
+
+  it('labels feature_acesso_por_cliente', () => {
+    expect(mapEntitlementError({ message: 'feature_disabled:feature_acesso_por_cliente' })).toEqual(
+      {
+        kind: 'feature',
+        key: 'feature_acesso_por_cliente',
+        label: 'Acesso por cliente',
+      },
+    );
+  });
+
+  it('labels feature_instagram_comments_ai', () => {
+    expect(
+      mapEntitlementError({ message: 'feature_disabled:feature_instagram_comments_ai' }),
+    ).toEqual({
+      kind: 'feature',
+      key: 'feature_instagram_comments_ai',
+      label: 'Comentários com IA',
+    });
+  });
+
+  it('reads a limit key with digits whole', () => {
+    expect(mapEntitlementError({ message: 'plan_limit_exceeded:max_v2_items' })).toEqual({
+      kind: 'limit',
+      key: 'max_v2_items',
+      label: 'max_v2_items',
+    });
+  });
+});

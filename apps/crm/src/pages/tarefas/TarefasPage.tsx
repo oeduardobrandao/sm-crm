@@ -1,17 +1,22 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Calendar, Columns, List, ListChecks, Plus, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { PageSkeleton } from '@/components/ui/skeletons';
 import { useAuth } from '@/context/AuthContext';
 import { useCurrentMembro } from '@/hooks/useCurrentMembro';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import type { TarefaWithRelations } from '../../store';
 import { useTarefasData } from './hooks/useTarefasData';
 import {
   applyTarefaFilters,
+  applyTarefaKpi,
   computeHeaderStats,
   EMPTY_TAREFA_FILTERS,
   type TarefaFilterState,
+  type TarefaKpi,
 } from './tarefasLogic';
 import { loadTarefasEscopo, persistTarefasEscopo, type TarefasEscopo } from './tarefasPrefs';
 import { TarefasStatsHeader } from './components/TarefasStatsHeader';
@@ -22,19 +27,29 @@ import { ListView } from './views/ListView';
 import { MembrosBoardView } from './views/MembrosBoardView';
 import { StatusKanbanView } from './views/StatusKanbanView';
 import { CalendarView } from './views/CalendarView';
+import { TarefasPhoneContext, type TarefasPhoneActions } from './phone/parts';
+import { TarefasPhoneHeader } from './phone/TarefasPhoneHeader';
 
 type ActiveView = 'lista' | 'membros' | 'kanban' | 'calendario';
 
-const VIEW_TABS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
-  { id: 'lista', label: 'Lista', icon: <List className="h-4 w-4" /> },
-  { id: 'membros', label: 'Por membro', icon: <Users className="h-4 w-4" /> },
-  { id: 'kanban', label: 'Kanban', icon: <Columns className="h-4 w-4" /> },
-  { id: 'calendario', label: 'Calendário', icon: <Calendar className="h-4 w-4" /> },
+// Labels resolve per render through `tarefasPage.views.<id>`.
+const VIEW_TABS: { id: ActiveView; icon: React.ReactNode }[] = [
+  { id: 'lista', icon: <List className="h-4 w-4" /> },
+  { id: 'membros', icon: <Users className="h-4 w-4" /> },
+  { id: 'kanban', icon: <Columns className="h-4 w-4" /> },
+  { id: 'calendario', icon: <Calendar className="h-4 w-4" /> },
 ];
 
 export default function TarefasPage() {
+  const { t } = useTranslation('tasks');
+  const isDesktop = useIsDesktop(768);
   const [activeView, setActiveView] = useState<ActiveView>('lista');
   const [filters, setFilters] = useState<TarefaFilterState>(EMPTY_TAREFA_FILTERS);
+  // KPI card filter, kept apart from `filters` so the cards keep counting the unfiltered
+  // scoped set. Desktop only: the phone header shows the stats as text, not cards.
+  const [kpi, setKpi] = useState<TarefaKpi | null>(null);
+  const activeKpi = isDesktop ? kpi : null;
+  const toggleKpi = (next: TarefaKpi) => setKpi((cur) => (cur === next ? null : next));
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<TarefaWithRelations | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -57,41 +72,62 @@ export default function TarefasPage() {
     return tarefas.filter((t) => t.responsavel_id === currentMembroId);
   }, [tarefas, escopo, currentMembroId]);
 
-  // Deep link: /tarefas?tarefa=<id> opens the detail sheet (EntregasPage ?drawer= pattern).
+  // Deep link: /tarefas?tarefa=<id> opens the detail sheet (EntregasPage ?drawer= pattern);
+  // `&comentarios=1` (task_comment notifications) also focuses its comments, once.
   const [searchParams, setSearchParams] = useSearchParams();
   const pendingTarefaId = useRef<number | null>(null);
+  const pendingFocusComments = useRef(false);
+  // The task whose comments the sheet focuses: set when a link opens it, dropped on close or
+  // as soon as another task is selected, so reopening that task by hand opens it plainly.
+  const [focusCommentsId, setFocusCommentsId] = useState<number | null>(null);
+  // Adjusted during render (not in an effect) so the sheet never sees a stale focus for a
+  // frame. openFromLink sets both ids in one batch, so the link's own open survives this.
+  if (focusCommentsId !== null && selectedId !== focusCommentsId) setFocusCommentsId(null);
   const tarefaParam = searchParams.get('tarefa');
+  const comentariosParam = searchParams.get('comentarios');
+  const openFromLink = useCallback((id: number) => {
+    pendingTarefaId.current = null;
+    setFocusCommentsId(pendingFocusComments.current ? id : null);
+    pendingFocusComments.current = false;
+    setSelectedId(id);
+  }, []);
   useEffect(() => {
     if (!tarefaParam) return;
     const parsed = parseInt(tarefaParam, 10);
     if (!isNaN(parsed)) {
       pendingTarefaId.current = parsed;
+      // Read before the params are cleared below: this tick is the only one that sees it.
+      pendingFocusComments.current = comentariosParam === '1';
       setSearchParams({}, { replace: true });
       // Resolve immediately when the list is already loaded (deep link fired
-      // while the page is mounted, e.g. a notification click on /tarefas —
+      // while the page is mounted, e.g. a notification click on /tarefas:
       // the tarefas-keyed effect below would never re-run in that case).
-      if (tarefas.some((t) => t.id === parsed)) {
-        pendingTarefaId.current = null;
-        setSelectedId(parsed);
-      }
+      if (tarefas.some((t) => t.id === parsed)) openFromLink(parsed);
     }
-  }, [tarefaParam, setSearchParams, tarefas]);
+  }, [tarefaParam, comentariosParam, setSearchParams, tarefas, openFromLink]);
 
   useEffect(() => {
     if (pendingTarefaId.current === null || tarefas.length === 0) return;
     const match = tarefas.find((t) => t.id === pendingTarefaId.current);
-    if (match) {
-      pendingTarefaId.current = null;
-      setSelectedId(match.id!);
-    }
-  }, [tarefas]);
+    if (match) openFromLink(match.id!);
+  }, [tarefas, openFromLink]);
+
+  const closeDetail = () => {
+    setSelectedId(null);
+    setFocusCommentsId(null);
+  };
 
   const filteredTarefas = useMemo(
-    () => applyTarefaFilters(scopedTarefas, filters),
-    [scopedTarefas, filters],
+    () => applyTarefaKpi(applyTarefaFilters(scopedTarefas, filters), activeKpi, new Date()),
+    [scopedTarefas, filters, activeKpi],
   );
   const stats = useMemo(() => computeHeaderStats(scopedTarefas, new Date()), [scopedTarefas]);
   const selected = selectedId != null ? (tarefas.find((t) => t.id === selectedId) ?? null) : null;
+  // Phones: the detail screen stays mounted after it closes (last task shown), so its
+  // history entry is popped by the screen itself, not stranded by an unmount.
+  const lastDetailRef = useRef<TarefaWithRelations | null>(null);
+  if (selected) lastDetailRef.current = selected;
+  const detailTarefa = selected ?? lastDetailRef.current;
 
   const openForm = (tarefa: TarefaWithRelations | null) => {
     setEditing(tarefa);
@@ -105,40 +141,229 @@ export default function TarefasPage() {
     setFormOpen(true);
   };
 
+  const phoneActions = useMemo<TarefasPhoneActions>(
+    () => ({
+      membros,
+      onRefresh: refresh,
+      openDetail: (t) => setSelectedId(t.id!),
+      edit: (t) => {
+        setEditing(t);
+        setCreateDataLimite(undefined);
+        setFormOpen(true);
+      },
+    }),
+    [membros, refresh],
+  );
+
+  const subtitle = (
+    <>
+      {t('tarefasPage.subtitle.open', { count: stats.abertas })}
+      {stats.atrasadas > 0 && (
+        <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
+          {' '}
+          · {t('tarefasPage.subtitle.overdue', { count: stats.atrasadas })}
+        </span>
+      )}
+      {stats.vencemHoje > 0 && (
+        <span style={{ color: 'var(--warning)', fontWeight: 600 }}>
+          {' '}
+          · {t('tarefasPage.subtitle.dueToday', { count: stats.vencemHoje })}
+        </span>
+      )}
+    </>
+  );
+
+  const primaryAction = (
+    <Button onClick={() => openForm(null)}>
+      <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('tarefasPage.newTask')}
+    </Button>
+  );
+
+  // The minhas/todas switch: the toolbar's segmented slot gets the Vidro pill, the in-page
+  // header keeps today's inline styles.
+  const escopoOptions = ['minhas', 'todas'] as const;
+  const escopoLabel = (option: TarefasEscopo) =>
+    option === 'minhas' ? t('tarefasPage.escopo.minhas') : t('tarefasPage.escopo.todas');
+  const escopoSwitchVidro =
+    currentMembroId != null ? (
+      <div className="vidro-seg">
+        {escopoOptions.map((option) => (
+          <button
+            key={option}
+            type="button"
+            className="vidro-seg-btn"
+            aria-pressed={escopo === option}
+            onClick={() => handleEscopoChange(option)}
+          >
+            {escopoLabel(option)}
+          </button>
+        ))}
+      </div>
+    ) : null;
+  const escopoSwitch =
+    currentMembroId != null ? (
+      <div
+        style={{
+          display: 'flex',
+          gap: '0.25rem',
+          background: 'var(--surface-2)',
+          padding: '0.25rem',
+          borderRadius: '8px',
+          width: 'fit-content',
+        }}
+        className="animate-up"
+      >
+        {escopoOptions.map((option) => (
+          <button
+            key={option}
+            onClick={() => handleEscopoChange(option)}
+            style={{
+              padding: '0.4rem 0.9rem',
+              borderRadius: '6px',
+              border: 'none',
+              background: escopo === option ? '#000' : 'transparent',
+              color: escopo === option ? '#fff' : 'var(--text-secondary)',
+              fontSize: '0.8rem',
+              fontWeight: escopo === option ? 600 : 400,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {escopoLabel(option)}
+          </button>
+        ))}
+      </div>
+    ) : null;
+
+  const inToolbar = usePageToolbar(
+    isLoading
+      ? null
+      : {
+          title: t('tarefasPage.title'),
+          subtitle,
+          segmented: escopoSwitchVidro,
+          primary: primaryAction,
+        },
+  );
+
   if (isLoading) {
     // The page always opens on the 'lista' view.
     return <PageSkeleton body="list" />;
   }
 
+  const views = (
+    <>
+      {activeView === 'lista' && (
+        <ListView
+          tarefas={filteredTarefas}
+          membros={membros}
+          onTarefaClick={(t) => setSelectedId(t.id!)}
+          onRefresh={refresh}
+          expandConcluidas={activeKpi === 'concluidasHoje'}
+        />
+      )}
+      {activeView === 'membros' && (
+        <MembrosBoardView
+          tarefas={filteredTarefas}
+          membros={membros}
+          onTarefaClick={(t) => setSelectedId(t.id!)}
+          onRefresh={refresh}
+          onlyMembroId={escopo === 'minhas' ? currentMembroId : null}
+        />
+      )}
+      {activeView === 'kanban' && (
+        <StatusKanbanView
+          tarefas={filteredTarefas}
+          membros={membros}
+          onTarefaClick={(t) => setSelectedId(t.id!)}
+          onRefresh={refresh}
+        />
+      )}
+      {activeView === 'calendario' && (
+        <CalendarView
+          tarefas={filteredTarefas}
+          membros={membros}
+          onTarefaClick={(t) => setSelectedId(t.id!)}
+          onRefresh={refresh}
+          onCreateTask={handleCreateForDate}
+        />
+      )}
+    </>
+  );
+
+  const formDialog = (
+    <TarefaFormDialog
+      open={formOpen}
+      onClose={() => setFormOpen(false)}
+      editing={editing}
+      membros={membros}
+      clientes={clientes}
+      tags={tags}
+      onSaved={refresh}
+      onTagCreated={refresh}
+      initialValues={{ data_limite: createDataLimite }}
+    />
+  );
+
+  if (!isDesktop) {
+    return (
+      <TarefasPhoneContext.Provider value={phoneActions}>
+        <div className="phone-tar-page">
+          <TarefasPhoneHeader
+            stats={stats}
+            view={activeView}
+            onViewChange={setActiveView}
+            escopo={currentMembroId != null ? escopo : null}
+            onEscopoChange={handleEscopoChange}
+            filters={filters}
+            onFiltersChange={setFilters}
+            clientes={clientes}
+            membros={membros}
+            tags={tags}
+            resultCount={filteredTarefas.length}
+            onNew={() => openForm(null)}
+          />
+          {tarefas.length === 0 && activeView === 'lista' ? (
+            <div className="phone-tar-empty">
+              <ListChecks aria-hidden="true" />
+              <p>{t('tarefasPage.empty')}</p>
+              <button type="button" className="phone-tar-ink-btn" onClick={() => openForm(null)}>
+                <Plus aria-hidden="true" /> {t('tarefasPage.newTask')}
+              </button>
+            </div>
+          ) : (
+            views
+          )}
+        </div>
+        {formDialog}
+        {detailTarefa && (
+          <TarefaDetailSheet
+            open={selected != null}
+            tarefa={detailTarefa}
+            membros={membros}
+            onClose={closeDetail}
+            // The form opens over the detail screen, which stays put underneath.
+            onEdit={() => openForm(detailTarefa)}
+            onRefresh={refresh}
+          />
+        )}
+      </TarefasPhoneContext.Provider>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <header className="header animate-up">
-        <div className="header-title">
-          <h1>Tarefas</h1>
-          <p>
-            {stats.abertas} aberta{stats.abertas === 1 ? '' : 's'}
-            {stats.atrasadas > 0 && (
-              <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
-                {' '}
-                · {stats.atrasadas} atrasada{stats.atrasadas === 1 ? '' : 's'}
-              </span>
-            )}
-            {stats.vencemHoje > 0 && (
-              <span style={{ color: 'var(--warning)', fontWeight: 600 }}>
-                {' '}
-                · {stats.vencemHoje} vence{stats.vencemHoje === 1 ? '' : 'm'} hoje
-              </span>
-            )}
-          </p>
-        </div>
-        <div className="header-actions">
-          <Button onClick={() => openForm(null)}>
-            <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Nova tarefa
-          </Button>
-        </div>
-      </header>
+      {!inToolbar && (
+        <header className="header animate-up">
+          <div className="header-title">
+            <h1>{t('tarefasPage.title')}</h1>
+            <p>{subtitle}</p>
+          </div>
+          <div className="header-actions">{primaryAction}</div>
+        </header>
+      )}
 
-      <TarefasStatsHeader stats={stats} />
+      <TarefasStatsHeader stats={stats} activeKpi={activeKpi} onKpiClick={toggleKpi} />
 
       <div
         style={{
@@ -149,44 +374,21 @@ export default function TarefasPage() {
           gap: '0.5rem',
         }}
       >
-        <div
-          style={{
-            display: 'flex',
-            gap: '0.25rem',
-            background: 'var(--surface-2)',
-            padding: '0.25rem',
-            borderRadius: '8px',
-            overflowX: 'auto',
-            width: 'fit-content',
-            maxWidth: '100%',
-          }}
-          className="animate-up no-scrollbar"
-        >
-          {VIEW_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveView(tab.id)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                padding: '0.4rem 0.9rem',
-                borderRadius: '6px',
-                border: 'none',
-                background: activeView === tab.id ? '#000' : 'transparent',
-                color: activeView === tab.id ? '#fff' : 'var(--text-secondary)',
-                fontSize: '0.8rem',
-                fontWeight: activeView === tab.id ? 600 : 400,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {tab.icon} {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {currentMembroId != null && (
+        {inToolbar ? (
+          <div className="vidro-seg animate-up no-scrollbar">
+            {VIEW_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                className="vidro-seg-btn"
+                aria-pressed={activeView === tab.id}
+                onClick={() => setActiveView(tab.id)}
+              >
+                {tab.icon} {t(`tarefasPage.views.${tab.id}`)}
+              </button>
+            ))}
+          </div>
+        ) : (
           <div
             style={{
               display: 'flex',
@@ -194,31 +396,38 @@ export default function TarefasPage() {
               background: 'var(--surface-2)',
               padding: '0.25rem',
               borderRadius: '8px',
+              overflowX: 'auto',
               width: 'fit-content',
+              maxWidth: '100%',
             }}
-            className="animate-up"
+            className="animate-up no-scrollbar"
           >
-            {(['minhas', 'todas'] as const).map((option) => (
+            {VIEW_TABS.map((tab) => (
               <button
-                key={option}
-                onClick={() => handleEscopoChange(option)}
+                key={tab.id}
+                onClick={() => setActiveView(tab.id)}
                 style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
                   padding: '0.4rem 0.9rem',
                   borderRadius: '6px',
                   border: 'none',
-                  background: escopo === option ? '#000' : 'transparent',
-                  color: escopo === option ? '#fff' : 'var(--text-secondary)',
+                  background: activeView === tab.id ? '#000' : 'transparent',
+                  color: activeView === tab.id ? '#fff' : 'var(--text-secondary)',
                   fontSize: '0.8rem',
-                  fontWeight: escopo === option ? 600 : 400,
+                  fontWeight: activeView === tab.id ? 600 : 400,
                   cursor: 'pointer',
                   whiteSpace: 'nowrap',
                 }}
               >
-                {option === 'minhas' ? 'Minhas tarefas' : 'Todas as tarefas'}
+                {tab.icon} {t(`tarefasPage.views.${tab.id}`)}
               </button>
             ))}
           </div>
         )}
+
+        {!inToolbar && escopoSwitch}
       </div>
 
       <TarefasFilters
@@ -227,6 +436,8 @@ export default function TarefasPage() {
         clientes={clientes}
         membros={membros}
         tags={tags}
+        kpi={activeKpi}
+        onClearKpi={() => setKpi(null)}
       />
 
       {tarefas.length === 0 && activeView === 'lista' ? (
@@ -240,74 +451,29 @@ export default function TarefasPage() {
           }}
         >
           <ListChecks className="h-8 w-8" style={{ margin: '0 auto 0.75rem', opacity: 0.35 }} />
-          <p style={{ fontSize: '0.85rem', marginBottom: '1rem' }}>
-            Nenhuma tarefa ainda. Crie a primeira tarefa da equipe.
-          </p>
+          <p style={{ fontSize: '0.85rem', marginBottom: '1rem' }}>{t('tarefasPage.empty')}</p>
           <Button onClick={() => openForm(null)}>
-            <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Nova tarefa
+            <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} />{' '}
+            {t('tarefasPage.newTask')}
           </Button>
         </div>
       ) : (
-        <>
-          {activeView === 'lista' && (
-            <ListView
-              tarefas={filteredTarefas}
-              membros={membros}
-              onTarefaClick={(t) => setSelectedId(t.id!)}
-              onRefresh={refresh}
-            />
-          )}
-          {activeView === 'membros' && (
-            <MembrosBoardView
-              tarefas={filteredTarefas}
-              membros={membros}
-              onTarefaClick={(t) => setSelectedId(t.id!)}
-              onRefresh={refresh}
-              onlyMembroId={escopo === 'minhas' ? currentMembroId : null}
-            />
-          )}
-          {activeView === 'kanban' && (
-            <StatusKanbanView
-              tarefas={filteredTarefas}
-              membros={membros}
-              onTarefaClick={(t) => setSelectedId(t.id!)}
-              onRefresh={refresh}
-            />
-          )}
-          {activeView === 'calendario' && (
-            <CalendarView
-              tarefas={filteredTarefas}
-              membros={membros}
-              onTarefaClick={(t) => setSelectedId(t.id!)}
-              onRefresh={refresh}
-              onCreateTask={handleCreateForDate}
-            />
-          )}
-        </>
+        views
       )}
 
-      <TarefaFormDialog
-        open={formOpen}
-        onClose={() => setFormOpen(false)}
-        editing={editing}
-        membros={membros}
-        clientes={clientes}
-        tags={tags}
-        onSaved={refresh}
-        onTagCreated={refresh}
-        initialValues={{ data_limite: createDataLimite }}
-      />
+      {formDialog}
 
       {selected && (
         <TarefaDetailSheet
           tarefa={selected}
           membros={membros}
-          onClose={() => setSelectedId(null)}
+          onClose={closeDetail}
           onEdit={() => {
-            setSelectedId(null);
+            closeDetail();
             openForm(selected);
           }}
           onRefresh={refresh}
+          focusComments={focusCommentsId === selected.id}
         />
       )}
     </div>

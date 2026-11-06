@@ -2,9 +2,8 @@
 // re-commit when the tagline or a post title changes: npm run og:image
 import { mkdirSync } from 'node:fs';
 import { chromium } from '@playwright/test';
+import { CATEGORY_LABEL } from '../../apps/crm/src/content/blog';
 import { loadPostsFromDisk } from './blog-fs';
-
-const CATEGORY_LABEL: Record<string, string> = { comparativo: 'Comparativo', guia: 'Guia' };
 
 const BASE_STYLE = `
   * { margin: 0; box-sizing: border-box; }

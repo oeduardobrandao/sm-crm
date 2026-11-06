@@ -8,3 +8,11 @@ export const kbVideoNewPath = () => '/admin/kb-videos/new';
 export const kbVideoEditPath = (id: number) => `/admin/kb-videos/${id}/edit`;
 export const affiliatesPath = () => '/admin/afiliados';
 export const affiliateDetailPath = (id: string) => `/admin/afiliados/${id}`;
+/** Blog queue. The tab rides in the query string so a detail link keeps the list beside it. */
+export const blogPath = (tab?: string) =>
+  tab && tab !== 'aguardando' ? `/admin/blog?tab=${tab}` : '/admin/blog';
+export const blogPostPath = (id: string, tab?: string) =>
+  tab && tab !== 'aguardando' ? `/admin/blog/${id}?tab=${tab}` : `/admin/blog/${id}`;
+/** Read-only detail of a hand-written post (a file in the CRM). Always on the Publicados tab. */
+export const blogFilePostPath = (slug: string) =>
+  `/admin/blog/arquivo/${encodeURIComponent(slug)}?tab=publicados`;

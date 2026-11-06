@@ -1,9 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
-import { supabase } from '../../lib/supabase';
 import { changeLanguage, SUPPORTED_LANGUAGES } from '@mesaas/i18n';
 import type { Language } from '@mesaas/i18n';
 import { getNavGroups, isNavRouteActive } from './nav-data';
@@ -11,10 +9,12 @@ import type { NavGroup } from './nav-data';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { useEffectiveNavFeatures } from '../../hooks/useEffectiveNavFeatures';
 import { useMensagensUnread } from '../../hooks/useMensagensUnread';
+import { useEquipeChatUnread } from '../../hooks/useEquipeChatUnread';
 import { FlagIcon } from '@mesaas/ui/FlagIcon';
-import { avatarColorClass } from '@/lib/avatarColor';
-import { switchWorkspace } from '@/store/workspace';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
+import { useWorkspaceSwitcher } from '../../hooks/useWorkspaceSwitcher';
 import { GuideNavItem } from '../guide/GuidePill';
+import GlobalSearchTrigger from './GlobalSearchTrigger';
 
 interface SidebarProps {
   isDrawer?: boolean;
@@ -22,13 +22,26 @@ interface SidebarProps {
   onClose?: () => void;
   /** Desktop static sidebar: an icon rail that expands over the content on hover. */
   collapsible?: boolean;
+  /** Tablet rail (Vidro): never pins; its toggle opens the rail over the content until a
+   *  navigation, Escape or a tap outside closes it. Touch has no hover to expand it. */
+  railOnly?: boolean;
   /** Pinned open: always expanded, and the content sits beside it. */
   pinned?: boolean;
   onTogglePinned?: () => void;
+  /** Desktop "Vidro" shell: glass header (logo, workspace, plan) and the search above the nav. */
+  vidroShell?: boolean;
+  /** Account-menu switch between the Vidro and classic looks (not on phones). */
+  look?: { enabled: boolean; optedOut: boolean; onToggle: () => void };
 }
 
 // Hover intent: crossing the rail on the way to the content shouldn't flap it open.
 const HOVER_EXPAND_DELAY_MS = 120;
+
+// A finger tap fires mouseenter before click; on the tablet rail that would expand it after the
+// navigation and keep it open. A trackpad or mouse still hovers.
+function canHover(): boolean {
+  return typeof window.matchMedia !== 'function' || window.matchMedia('(hover: hover)').matches;
+}
 
 const COLLAPSED_GROUPS_STORAGE_KEY = 'sidebar-collapsed-groups';
 
@@ -48,25 +61,31 @@ export default function Sidebar({
   isOpen = false,
   onClose,
   collapsible = false,
+  railOnly = false,
   pinned = false,
   onTogglePinned,
+  vidroShell,
+  look,
 }: SidebarProps) {
   const { user, profile, signOut, workspaceRole, can } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { t, i18n } = useTranslation();
-  const { features: rawFeatures } = useWorkspaceLimits();
+  const { features: rawFeatures, planName } = useWorkspaceLimits();
   const features = useEffectiveNavFeatures(rawFeatures as Record<string, boolean> | null);
   const mensagensUnread = useMensagensUnread();
+  const equipeUnread = useEquipeChatUnread();
+  const mensagensBadge = mensagensUnread + equipeUnread;
   const [isDark, setIsDark] = useState(
     document.documentElement.getAttribute('data-theme') === 'dark',
   );
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [languageMenuOpen, setLanguageMenuOpen] = useState(false);
-  const [workspaces, setWorkspaces] = useState<any[]>([]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(readCollapsedGroups);
   const [hovered, setHovered] = useState(false);
   const [keyboardFocused, setKeyboardFocused] = useState(false);
+  const [railOpen, setRailOpen] = useState(false);
+  const navRef = useRef<HTMLElement>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(
@@ -78,12 +97,18 @@ export default function Sidebar({
 
   // The open account menu holds the overlay: it lives inside the sidebar and
   // would otherwise collapse out from under the pointer.
-  const expanded = !collapsible || pinned || hovered || keyboardFocused || userMenuOpen;
+  const expanded =
+    !collapsible || pinned || hovered || keyboardFocused || userMenuOpen || (railOnly && railOpen);
   const isRail = collapsible && !expanded;
   const isOverlay = collapsible && expanded && !pinned;
 
-  const handleMouseEnter = () => {
-    if (!collapsible) return;
+  // Portaled content (the search dialog and its full-screen overlay) is a descendant of the nav
+  // in React's tree, so its pointer and focus events bubble here although it is not in the nav's
+  // DOM. Only events from the nav's own DOM may expand the rail. Leaves stay unguarded: a leave
+  // toward portal content should still collapse.
+  const handleMouseEnter = (e: React.MouseEvent<HTMLElement>) => {
+    if (!collapsible || !e.currentTarget.contains(e.target as Node)) return;
+    if (railOnly && !canHover()) return;
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     hoverTimer.current = setTimeout(() => setHovered(true), HOVER_EXPAND_DELAY_MS);
   };
@@ -96,9 +121,14 @@ export default function Sidebar({
 
   // Only keyboard focus expands the rail. A mouse click leaves focus on the
   // clicked link, and expanding on any focus would then keep the overlay open
-  // after the pointer leaves.
+  // after the pointer leaves. Focus from portaled content is ignored for the reason above.
   const handleFocus = (e: React.FocusEvent<HTMLElement>) => {
-    if (collapsible && e.target.matches(':focus-visible')) setKeyboardFocused(true);
+    if (
+      collapsible &&
+      e.currentTarget.contains(e.target as Node) &&
+      e.target.matches(':focus-visible')
+    )
+      setKeyboardFocused(true);
   };
 
   const handleBlur = (e: React.FocusEvent<HTMLElement>) => {
@@ -122,17 +152,39 @@ export default function Sidebar({
   const navGroups = getNavGroups(features, workspaceRole, can);
   const activeRoute = location.pathname;
 
-  // Load workspaces for switcher
+  const {
+    workspaces,
+    activeWorkspaceId,
+    activeWorkspaceName,
+    switchTo: handleWorkspaceSwitch,
+  } = useWorkspaceSwitcher();
+
   useEffect(() => {
-    if (!user) return;
-    supabase
-      .from('workspace_members')
-      .select('workspace_id, role, workspaces!inner(id, name)')
-      .eq('user_id', user.id)
-      .then(({ data }) => {
-        if (data && data.length > 1) setWorkspaces(data);
-      });
-  }, [user?.id]);
+    if (!railOnly) setRailOpen(false);
+  }, [railOnly]);
+
+  useEffect(() => {
+    setRailOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!railOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setRailOpen(false);
+    };
+    // Portaled content (the search dialog) is outside the nav's DOM but is not "outside" here.
+    const handlePointerDown = (e: PointerEvent) => {
+      const target = e.target as Element | null;
+      if (navRef.current?.contains(target) || target?.closest?.('[role="dialog"]')) return;
+      setRailOpen(false);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('pointerdown', handlePointerDown);
+    };
+  }, [railOpen]);
 
   useEffect(() => {
     if (!isDrawer || !isOpen) return;
@@ -153,46 +205,94 @@ export default function Sidebar({
 
   const handleNavClick = (route: string) => {
     navigate(route);
+    setRailOpen(false);
     if (isDrawer) onClose?.();
-  };
-
-  const handleWorkspaceSwitch = async (workspaceId: string) => {
-    if (!user) return;
-    try {
-      await switchWorkspace(workspaceId);
-      window.location.reload();
-    } catch {
-      // Previously the error was discarded and the page reloaded regardless, so
-      // a refused switch was indistinguishable from a successful one.
-      toast.error('Não foi possível trocar de workspace.');
-    }
   };
 
   const handleLanguageChange = (lang: Language) => {
     changeLanguage(lang);
   };
 
-  const initials = profile?.nome
-    ? profile.nome
-        .split(' ')
-        .map((w: string) => w?.[0] || '')
-        .join('')
-        .substring(0, 2)
-        .toUpperCase()
-    : 'U';
-
   const userName = profile?.nome || t('sidebar.myAccount');
 
-  // The support group (Novidades/Ajuda) lives in the account menu on desktop
+  // The support group (Novidades/Privacidade) lives in the account menu on desktop
   // instead of the main nav list — see the utilityItems section below.
   // Configurações lives in the main nav list itself (it's not filtered out
   // here), so it isn't repeated in the dropdown.
-  const mainGroups = navGroups.filter((g) => g.id !== 'ajuda-group');
+  // Configurações + Ajuda stay pinned under the scrolling list, always in reach.
+  const mainGroups = navGroups.filter((g) => g.id !== 'ajuda-group' && g.id !== 'config');
+  const pinnedItems = navGroups.find((g) => g.id === 'config')?.items ?? [];
   const utilityItems = navGroups.find((g) => g.id === 'ajuda-group')?.items ?? [];
+
+  const renderItem = (item: NavGroup['items'][number]) => {
+    const isActiveItem = isNavRouteActive(activeRoute, item.route, item.id);
+    const ItemIcon = isActiveItem ? `ph-fill ${item.icon}` : `ph ${item.icon}`;
+    return (
+      <li key={item.id} className="sidebar-sub-item">
+        {item.disabled ? (
+          <div
+            className="sidebar-sub-link sidebar-sub-link--disabled"
+            aria-disabled="true"
+            title={t(item.labelKey, item.label)}
+          >
+            <i className={`ph ${item.icon}`} />
+            <span className="sidebar-sub-label">{t(item.labelKey, item.label)}</span>
+            <span className="nav-badge">{t('sidebar.comingSoon', 'Em breve')}</span>
+          </div>
+        ) : item.locked ? (
+          <a
+            className="sidebar-sub-link sidebar-sub-link--locked"
+            href={`#${item.route}`}
+            data-testid={`nav-locked-${item.id}`}
+            title={t('sidebar.upgradeToUnlock', 'Disponível nos planos Pro e Max')}
+            onClick={(e) => {
+              e.preventDefault();
+              handleNavClick(item.route);
+            }}
+          >
+            <i className={`ph ${item.icon}`} />
+            <span className="sidebar-sub-label">{t(item.labelKey, item.label)}</span>
+            <i className="ph ph-lock nav-lock-icon" aria-hidden="true" />
+          </a>
+        ) : item.newTab ? (
+          <a
+            className="sidebar-sub-link"
+            href={item.route}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => {
+              setRailOpen(false);
+              if (isDrawer) onClose?.();
+            }}
+          >
+            <i className={`ph ${item.icon}`} />
+            <span className="sidebar-sub-label">{t(item.labelKey, item.label)}</span>
+          </a>
+        ) : (
+          <a
+            className={`sidebar-sub-link ${isActiveItem ? 'active' : ''}`}
+            href={`#${item.route}`}
+            onClick={(e) => {
+              e.preventDefault();
+              handleNavClick(item.route);
+            }}
+          >
+            <i className={ItemIcon} />
+            <span className="sidebar-sub-label">{t(item.labelKey, item.label)}</span>
+            {item.id === 'mensagens' && mensagensBadge > 0 && (
+              <span className="nav-badge nav-badge--count" data-testid="mensagens-nav-badge">
+                {mensagensBadge > 99 ? '99+' : mensagensBadge}
+              </span>
+            )}
+          </a>
+        )}
+      </li>
+    );
+  };
 
   const renderGroup = (group: NavGroup) => {
     const groupHasActiveItem = group.items.some((item) =>
-      isNavRouteActive(activeRoute, item.route),
+      isNavRouteActive(activeRoute, item.route, item.id),
     );
     const isCollapsed = collapsedGroups.has(group.id) && !groupHasActiveItem;
     return (
@@ -212,81 +312,41 @@ export default function Sidebar({
           className={`sidebar-group-content${isCollapsed ? ' sidebar-group-content--collapsed' : ''}`}
         >
           <ul className="sidebar-sub-nav" inert={isCollapsed || undefined}>
-            {group.items.map((item) => {
-              const isActiveItem = isNavRouteActive(activeRoute, item.route);
-              const ItemIcon = isActiveItem ? `ph-fill ${item.icon}` : `ph ${item.icon}`;
-              return (
-                <li key={item.id} className="sidebar-sub-item">
-                  {item.disabled ? (
-                    <div
-                      className="sidebar-sub-link sidebar-sub-link--disabled"
-                      aria-disabled="true"
-                    >
-                      <i className={`ph ${item.icon}`} />
-                      <span className="sidebar-sub-label">{t(item.labelKey, item.label)}</span>
-                      <span className="nav-badge">{t('sidebar.comingSoon', 'Em breve')}</span>
-                    </div>
-                  ) : item.locked ? (
-                    <a
-                      className="sidebar-sub-link sidebar-sub-link--locked"
-                      href={`#${item.route}`}
-                      data-testid={`nav-locked-${item.id}`}
-                      title={t('sidebar.upgradeToUnlock', 'Disponível nos planos Pro e Max')}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        handleNavClick(item.route);
-                      }}
-                    >
-                      <i className={`ph ${item.icon}`} />
-                      <span className="sidebar-sub-label">{t(item.labelKey, item.label)}</span>
-                      <i className="ph ph-lock nav-lock-icon" aria-hidden="true" />
-                    </a>
-                  ) : item.newTab ? (
-                    <a
-                      className="sidebar-sub-link"
-                      href={item.route}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => {
-                        if (isDrawer) onClose?.();
-                      }}
-                    >
-                      <i className={`ph ${item.icon}`} />
-                      <span className="sidebar-sub-label">{t(item.labelKey, item.label)}</span>
-                    </a>
-                  ) : (
-                    <a
-                      className={`sidebar-sub-link ${isActiveItem ? 'active' : ''}`}
-                      href={`#${item.route}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        handleNavClick(item.route);
-                      }}
-                    >
-                      <i className={ItemIcon} />
-                      <span className="sidebar-sub-label">{t(item.labelKey, item.label)}</span>
-                      {item.id === 'mensagens' && mensagensUnread > 0 && (
-                        <span
-                          className="nav-badge nav-badge--count"
-                          data-testid="mensagens-nav-badge"
-                        >
-                          {mensagensUnread > 99 ? '99+' : mensagensUnread}
-                        </span>
-                      )}
-                    </a>
-                  )}
-                </li>
-              );
-            })}
+            {group.items.map(renderItem)}
           </ul>
         </div>
       </li>
     );
   };
 
+  const pinButton = railOnly ? (
+    <button
+      type="button"
+      className="sidebar-pin-btn"
+      onClick={() => setRailOpen((v) => !v)}
+      aria-expanded={railOpen}
+      aria-label={railOpen ? 'Fechar menu lateral' : 'Abrir menu lateral'}
+      title={railOpen ? 'Fechar menu lateral' : 'Abrir menu lateral'}
+    >
+      <i className="ph ph-sidebar-simple" />
+    </button>
+  ) : (
+    <button
+      type="button"
+      className="sidebar-pin-btn"
+      onClick={onTogglePinned}
+      aria-pressed={pinned}
+      aria-label={pinned ? 'Recolher menu lateral' : 'Fixar menu lateral aberto'}
+      title={pinned ? 'Recolher menu lateral' : 'Fixar menu lateral aberto'}
+    >
+      <i className="ph ph-sidebar-simple" />
+    </button>
+  );
+
   return (
     <nav
-      className={`sidebar${isDrawer ? ' sidebar--drawer' : ''}${isDrawer && isOpen ? ' sidebar--open' : ''}${isRail ? ' sidebar--rail' : ''}${isOverlay ? ' sidebar--overlay' : ''}`}
+      ref={navRef}
+      className={`sidebar${isDrawer ? ' sidebar--drawer' : ''}${isDrawer && isOpen ? ' sidebar--open' : ''}${isRail ? ' sidebar--rail' : ''}${isOverlay ? ' sidebar--overlay' : ''}${railOnly ? ' sidebar--rail-only' : ''}`}
       id="sidebar"
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
@@ -294,20 +354,38 @@ export default function Sidebar({
       onBlur={handleBlur}
     >
       <div className="sidebar-wrapper">
-        {collapsible && (
-          <div className="sidebar-pin-row">
-            <button
-              type="button"
-              className="sidebar-pin-btn"
-              onClick={onTogglePinned}
-              aria-pressed={pinned}
-              aria-label={pinned ? 'Recolher menu lateral' : 'Fixar menu lateral aberto'}
-              title={pinned ? 'Recolher menu lateral' : 'Fixar menu lateral aberto'}
-            >
-              <i className="ph ph-sidebar-simple" />
-            </button>
+        {vidroShell && (
+          <div className="vidro-sidebar-head">
+            {/* Logo and the open/close toggle on the first row, workspace and plan under it. */}
+            <div className="vidro-sidebar-head-row">
+              <Link
+                to="/dashboard"
+                className="vidro-sidebar-logo"
+                aria-label="Mesaas, ir para o início"
+              >
+                <img
+                  className="vidro-sidebar-wordmark"
+                  src={isDark ? '/logo-white.svg' : '/logo-black.svg'}
+                  alt=""
+                />
+                <img className="vidro-sidebar-mark" src="/icon.svg" alt="" />
+              </Link>
+              {collapsible && pinButton}
+            </div>
+            {(activeWorkspaceName || planName) && (
+              <div className="vidro-sidebar-ws">
+                {activeWorkspaceName && (
+                  <span className="vidro-sidebar-ws-name">{activeWorkspaceName}</span>
+                )}
+                {planName && <span className="vidro-sidebar-ws-plan">{planName}</span>}
+              </div>
+            )}
           </div>
         )}
+        {collapsible && !vidroShell && <div className="sidebar-pin-row">{pinButton}</div>}
+        {/* Closing the palette removes its overlay without a mouseleave reaching the nav, so a
+          hover-expanded rail would stay open over the content: collapse it on close. */}
+        {vidroShell && <GlobalSearchTrigger variant="sidebar" onClose={handleMouseLeave} />}
         <div
           className="sidebar-scrollable"
           style={{ paddingTop: collapsible ? '0.25rem' : '1rem' }}
@@ -316,6 +394,12 @@ export default function Sidebar({
             {mainGroups.map(renderGroup)}
           </ul>
         </div>
+
+        {pinnedItems.length > 0 && (
+          <div className="sidebar-pinned">
+            <ul className="sidebar-sub-nav">{pinnedItems.map(renderItem)}</ul>
+          </div>
+        )}
 
         <div className="sidebar-bottom">
           {isDrawer && (
@@ -340,12 +424,14 @@ export default function Sidebar({
             }}
           >
             <div className="sidebar-user-trigger">
-              <div
-                className={`avatar ${avatarColorClass(user?.id ?? profile?.nome)}`}
-                style={{ width: 32, height: 32, borderRadius: 8, fontSize: '0.8rem' }}
-              >
-                {initials}
-              </div>
+              {/* 'U' keeps the old placeholder initial while the profile loads. */}
+              <PessoaAvatar
+                nome={profile?.nome || 'U'}
+                fotoUrl={profile?.avatar_url}
+                seed={user?.id ?? profile?.nome}
+                size={32}
+                className="!rounded-[8px]"
+              />
               <span className="user-name-text">{userName}</span>
               <i
                 className={`ph ${userMenuOpen ? 'ph-caret-up' : 'ph-caret-down'}`}
@@ -360,17 +446,16 @@ export default function Sidebar({
                 {workspaces.length > 1 && (
                   <div className="user-dropdown-section">
                     <div className="user-dropdown-section-label">{t('sidebar.workspace')}</div>
-                    {workspaces.map((m: any) => {
-                      const isActive =
-                        m.workspaces.id === (profile?.active_workspace_id || profile?.conta_id);
+                    {workspaces.map((w) => {
+                      const isActive = w.id === activeWorkspaceId;
                       return (
                         <button
-                          key={m.workspaces.id}
+                          key={w.id}
                           className={`user-dropdown-item${isActive ? ' user-dropdown-item--active' : ''}`}
-                          onClick={() => !isActive && handleWorkspaceSwitch(m.workspaces.id)}
+                          onClick={() => !isActive && handleWorkspaceSwitch(w.id)}
                         >
                           <i className="ph-bold ph-buildings" />
-                          <span>{m.workspaces.name || 'Workspace'}</span>
+                          <span>{w.name}</span>
                           {isActive && <i className="ph-bold ph-check user-dropdown-item-check" />}
                         </button>
                       );
@@ -468,6 +553,19 @@ export default function Sidebar({
                   <i className={`ph-bold ${isDark ? 'ph-sun' : 'ph-moon'}`} />
                   <span>{isDark ? t('sidebar.lightMode') : t('sidebar.darkMode')}</span>
                 </button>
+
+                {look?.enabled && (collapsible || isDrawer) && (
+                  <button
+                    className="user-dropdown-item"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      look.onToggle();
+                    }}
+                  >
+                    <i className={`ph-bold ${look.optedOut ? 'ph-sparkle' : 'ph-squares-four'}`} />
+                    <span>{look.optedOut ? t('sidebar.lookNew') : t('sidebar.lookClassic')}</span>
+                  </button>
+                )}
 
                 <button
                   id="btn-logout-flutuante"

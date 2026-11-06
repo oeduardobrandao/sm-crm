@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { i18n } from '@mesaas/i18n';
+import { useTranslation } from 'react-i18next';
+import { useState, type ReactNode } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -31,13 +33,15 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import { avatarColorClass } from '@/lib/avatarColor';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { getInitials } from '@/lib/initials';
 import type { Cliente, Membro, WorkflowPost, WorkflowTemplate } from '../../../store';
 import { TIPO_ORDER, TIPO_LABELS, TIPO_COLORS } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import type { StatusKey } from '../statusRegistry';
 import { PRAZO_PRESET_LABELS, PRAZO_PRESET_ORDER, type PrazoPreset } from '../etapaPrazo';
+import { ClienteFoto } from '@/components/ClienteFoto';
+import { useClienteAvatars } from '@/hooks/useClienteAvatars';
 
 export type StatusFilter = 'atrasado' | 'urgente' | 'em_dia';
 
@@ -88,15 +92,35 @@ interface EntregasFiltersProps {
   templates: WorkflowTemplate[];
   etapaNames: string[];
   mode?: FiltersMode;
+  /** Vidro shell: right-aligned item at the end of the desktop pill row (the busca input). */
+  trailing?: ReactNode;
 }
 
-const STATUS_OPTIONS: { value: StatusFilter; label: string; color: string }[] = [
-  { value: 'atrasado', label: 'Atrasados', color: 'var(--danger)' },
-  { value: 'urgente', label: 'Urgentes', color: 'var(--warning)' },
-  { value: 'em_dia', label: 'Em dia', color: 'var(--success)' },
+export const STATUS_OPTIONS: { value: StatusFilter; label: string; color: string }[] = [
+  {
+    value: 'atrasado',
+    get label() {
+      return i18n.t('entregas:entregasFilters.statusAtrasado');
+    },
+    color: 'var(--danger)',
+  },
+  {
+    value: 'urgente',
+    get label() {
+      return i18n.t('entregas:entregasFilters.statusUrgente');
+    },
+    color: 'var(--warning)',
+  },
+  {
+    value: 'em_dia',
+    get label() {
+      return i18n.t('entregas:entregasFilters.statusEmDia');
+    },
+    color: 'var(--success)',
+  },
 ];
 
-function countActiveFilters(filters: FilterState, mode: FiltersMode): number {
+export function countActiveFilters(filters: FilterState, mode: FiltersMode): number {
   const counted =
     mode === 'posts'
       ? [
@@ -130,45 +154,44 @@ interface MultiSelectOption<T extends string | number> {
   avatar?: React.ReactNode;
 }
 
-function membroAvatar(m: { id?: number; nome: string }): React.ReactNode {
+function membroAvatar(m: Pick<Membro, 'id' | 'nome' | 'avatar_url'>): React.ReactNode {
   return (
-    <span
-      className={`avatar ${avatarColorClass(m.id ?? m.nome)}`}
-      style={{ width: 18, height: 18, fontSize: '0.5rem' }}
-      aria-hidden="true"
-    >
-      {getInitials(m.nome)}
-    </span>
+    <PessoaAvatar
+      nome={m.nome}
+      fotoUrl={m.avatar_url}
+      seed={m.id}
+      size={18}
+      className="!text-[0.5rem]"
+    />
   );
 }
 
-function clienteAvatar(c: Cliente): React.ReactNode {
-  return c.foto_url ? (
-    <img
-      src={c.foto_url}
-      alt=""
-      loading="lazy"
+function clienteAvatar(c: Cliente, fotos: string[]): React.ReactNode {
+  return (
+    <ClienteFoto
+      srcs={fotos}
       style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+      fallback={
+        <span
+          aria-hidden="true"
+          style={{
+            width: 18,
+            height: 18,
+            borderRadius: '50%',
+            background: c.cor || 'var(--surface-hover)',
+            color: '#fff',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '0.5rem',
+            fontWeight: 700,
+            flexShrink: 0,
+          }}
+        >
+          {(c.sigla || getInitials(c.nome)).slice(0, 2).toUpperCase()}
+        </span>
+      }
     />
-  ) : (
-    <span
-      aria-hidden="true"
-      style={{
-        width: 18,
-        height: 18,
-        borderRadius: '50%',
-        background: c.cor || 'var(--surface-hover)',
-        color: '#fff',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: '0.5rem',
-        fontWeight: 700,
-        flexShrink: 0,
-      }}
-    >
-      {(c.sigla || getInitials(c.nome)).slice(0, 2).toUpperCase()}
-    </span>
   );
 }
 
@@ -204,6 +227,7 @@ function MultiSelectFilter<T extends string | number>({
   onSelectedChange: (next: T[]) => void;
   isStacked: boolean;
 }) {
+  const { t } = useTranslation('entregas');
   const selectedOptions = options.filter((o) => selected.includes(o.value));
   const first = selectedOptions[0];
   const label = summarizeSelection(options, selected) ?? placeholder;
@@ -239,7 +263,7 @@ function MultiSelectFilter<T extends string | number>({
       <DropdownMenuContent align="start" className="max-h-[320px] overflow-y-auto min-w-[200px]">
         {options.length === 0 && (
           <DropdownMenuItem disabled className="text-xs">
-            Nenhuma opção
+            {t('entregasFilters.noOptions')}
           </DropdownMenuItem>
         )}
         {options.map((o) => {
@@ -285,7 +309,7 @@ function MultiSelectFilter<T extends string | number>({
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => onSelectedChange([])} className="text-xs">
-              Limpar seleção
+              {t('entregasFilters.clearSelection')}
             </DropdownMenuItem>
           </>
         )}
@@ -301,7 +325,7 @@ function prazoSummary(filters: FilterState): string | null {
   if (activeCount === 0) return null;
   return filters.filterPrazo.length > 0
     ? `${PRAZO_PRESET_LABELS[filters.filterPrazo[0]]}${activeCount > 1 ? ` +${activeCount - 1}` : ''}`
-    : 'Personalizado';
+    : i18n.t('entregas:entregasFilters.custom');
 }
 
 /**
@@ -320,7 +344,8 @@ function PrazoEtapaFilter({
 }) {
   const { filterPrazo, filterPrazoFrom, filterPrazoTo } = filters;
   const summary = prazoSummary(filters);
-  const label = summary ?? 'Prazo da etapa';
+  const { t } = useTranslation('entregas');
+  const label = summary ?? t('entregasFilters.prazo');
 
   const togglePreset = (preset: PrazoPreset) => {
     onChange({
@@ -377,11 +402,11 @@ function PrazoEtapaFilter({
         </div>
         <div className="mt-2 border-t pt-2">
           <p className="px-2 pb-1.5 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-            Personalizado
+            {t('entregasFilters.custom')}
           </p>
           <div className="flex items-center gap-2 px-2">
             <label className="flex flex-1 min-w-0 flex-col gap-1 text-[0.65rem] text-muted-foreground">
-              De
+              {t('entregasFilters.from')}
               <Input
                 type="date"
                 value={filterPrazoFrom}
@@ -390,7 +415,7 @@ function PrazoEtapaFilter({
               />
             </label>
             <label className="flex flex-1 min-w-0 flex-col gap-1 text-[0.65rem] text-muted-foreground">
-              Até
+              {t('entregasFilters.to')}
               <Input
                 type="date"
                 value={filterPrazoTo}
@@ -408,7 +433,7 @@ function PrazoEtapaFilter({
             }
             className="mt-2 w-full rounded-sm px-2 py-1.5 text-xs hover:bg-accent text-left"
           >
-            Limpar seleção
+            {t('entregasFilters.clearSelection')}
           </button>
         )}
       </PopoverContent>
@@ -424,10 +449,13 @@ export function EntregasFilters({
   templates,
   etapaNames,
   mode = 'entregas',
+  trailing,
 }: EntregasFiltersProps) {
+  const { t } = useTranslation('entregas');
   const isPosts = mode === 'posts';
   const [sheetOpen, setSheetOpen] = useState(false);
   const statusRegistry = useStatusRegistry();
+  const { fotosDe } = useClienteAvatars(clientes);
   const activeClientes = clientes
     .filter((c) => c.status === 'ativo')
     .sort((a, b) => a.nome.localeCompare(b.nome));
@@ -438,14 +466,14 @@ export function EntregasFilters({
 
   const clienteOptions = activeClientes
     .filter((c) => c.id != null)
-    .map((c) => ({ value: c.id!, label: c.nome, avatar: clienteAvatar(c) }));
+    .map((c) => ({ value: c.id!, label: c.nome, avatar: clienteAvatar(c, fotosDe(c)) }));
   const membroOptions = sortedMembros
     .filter((m) => m.id != null)
     .map((m) => ({ value: m.id!, label: m.nome, avatar: membroAvatar(m) }));
   const etapaOptions = sortedEtapaNames.map((name) => ({ value: name, label: name }));
   const templateOptions = sortedTemplates
-    .filter((t) => t.id != null)
-    .map((t) => ({ value: t.id!, label: t.nome }));
+    .filter((tpl) => tpl.id != null)
+    .map((tpl) => ({ value: tpl.id!, label: tpl.nome }));
   const tipoOptions = TIPO_ORDER.map((tipo) => ({
     value: tipo,
     label: TIPO_LABELS[tipo],
@@ -464,7 +492,7 @@ export function EntregasFilters({
     isPosts ? (
       <>
         <MultiSelectFilter
-          placeholder="Cliente"
+          placeholder={t('entregasFilters.cliente')}
           icon={Users}
           options={clienteOptions}
           selected={filters.filterClientes}
@@ -472,7 +500,7 @@ export function EntregasFilters({
           isStacked={isStacked}
         />
         <MultiSelectFilter
-          placeholder="Status do post"
+          placeholder={t('entregasFilters.postStatus')}
           icon={CircleDot}
           options={postStatusOptions}
           selected={filters.filterPostStatus}
@@ -480,7 +508,7 @@ export function EntregasFilters({
           isStacked={isStacked}
         />
         <MultiSelectFilter
-          placeholder="Responsável"
+          placeholder={t('entregasFilters.responsavel')}
           icon={UserCheck}
           options={membroOptions}
           selected={filters.filterMembros}
@@ -488,7 +516,7 @@ export function EntregasFilters({
           isStacked={isStacked}
         />
         <MultiSelectFilter
-          placeholder="Todas as etapas"
+          placeholder={t('entregasFilters.allEtapas')}
           icon={Milestone}
           options={etapaOptions}
           selected={filters.filterEtapas}
@@ -496,7 +524,7 @@ export function EntregasFilters({
           isStacked={isStacked}
         />
         <MultiSelectFilter
-          placeholder="Todos os tipos"
+          placeholder={t('entregasFilters.allTipos')}
           icon={Shapes}
           options={tipoOptions}
           selected={filters.filterTipos}
@@ -508,7 +536,7 @@ export function EntregasFilters({
     ) : (
       <>
         <MultiSelectFilter
-          placeholder="Status"
+          placeholder={t('entregasFilters.status')}
           icon={Gauge}
           options={STATUS_OPTIONS}
           selected={filters.filterStatus}
@@ -516,7 +544,7 @@ export function EntregasFilters({
           isStacked={isStacked}
         />
         <MultiSelectFilter
-          placeholder="Cliente"
+          placeholder={t('entregasFilters.cliente')}
           icon={Users}
           options={clienteOptions}
           selected={filters.filterClientes}
@@ -524,7 +552,7 @@ export function EntregasFilters({
           isStacked={isStacked}
         />
         <MultiSelectFilter
-          placeholder="Responsável"
+          placeholder={t('entregasFilters.responsavel')}
           icon={UserCheck}
           options={membroOptions}
           selected={filters.filterMembros}
@@ -532,7 +560,7 @@ export function EntregasFilters({
           isStacked={isStacked}
         />
         <MultiSelectFilter
-          placeholder="Responsável do post"
+          placeholder={t('entregasFilters.postResponsavel')}
           icon={UserPen}
           options={membroOptions}
           selected={filters.filterPostResponsaveis}
@@ -542,7 +570,7 @@ export function EntregasFilters({
           isStacked={isStacked}
         />
         <MultiSelectFilter
-          placeholder="Todas as etapas"
+          placeholder={t('entregasFilters.allEtapas')}
           icon={Milestone}
           options={etapaOptions}
           selected={filters.filterEtapas}
@@ -550,7 +578,7 @@ export function EntregasFilters({
           isStacked={isStacked}
         />
         <MultiSelectFilter
-          placeholder="Todos os templates"
+          placeholder={t('entregasFilters.allTemplates')}
           icon={LayoutTemplate}
           options={templateOptions}
           selected={filters.filterTemplates}
@@ -573,9 +601,10 @@ export function EntregasFilters({
             className="h-9 px-3 text-xs font-normal mb-0 shrink-0"
             onClick={() => onChange({ ...EMPTY_FILTERS, filterSearch: filters.filterSearch })}
           >
-            Limpar filtros
+            {t('entregasFilters.clearFilters')}
           </Button>
         )}
+        {trailing != null && <div className="ml-auto shrink-0">{trailing}</div>}
       </div>
 
       {/* Mobile: a single "Filtros" button opening a bottom sheet, instead of
@@ -587,7 +616,7 @@ export function EntregasFilters({
           onClick={() => setSheetOpen(true)}
         >
           <SlidersHorizontal className="h-3.5 w-3.5" />
-          Filtros
+          {t('entregasFilters.filters')}
           {activeCount > 0 && (
             <span
               className="inline-flex items-center justify-center rounded-full text-[0.6rem] font-semibold leading-none"
@@ -607,9 +636,9 @@ export function EntregasFilters({
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent side="bottom" className="rounded-t-[24px] max-h-[85vh] overflow-y-auto pb-24">
           <SheetHeader className="mb-4">
-            <SheetTitle className="text-base">Filtros</SheetTitle>
+            <SheetTitle className="text-base">{t('entregasFilters.filters')}</SheetTitle>
             <SheetDescription className="sr-only">
-              Filtre {isPosts ? 'os posts' : 'os fluxos'}
+              {isPosts ? t('entregasFilters.sheetDescPosts') : t('entregasFilters.sheetDescFluxos')}
             </SheetDescription>
           </SheetHeader>
           <div className="flex flex-col gap-3">{renderControls(true)}</div>
@@ -619,7 +648,7 @@ export function EntregasFilters({
               className="w-full mt-4 text-xs"
               onClick={() => onChange({ ...EMPTY_FILTERS, filterSearch: filters.filterSearch })}
             >
-              Limpar filtros
+              {t('entregasFilters.clearFilters')}
             </Button>
           )}
         </SheetContent>

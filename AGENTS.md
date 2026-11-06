@@ -25,15 +25,18 @@ npm workspaces (`apps/*`, `packages/*`):
 
 ## Verifying a change
 
-**`npm run build` only typechecks the CRM.** CI typechecks all three apps plus the scripts
+**`npm run build` only typechecks the CRM.** CI typechecks all three apps, `apps/mcp-widgets` and the scripts
 project separately, so a Hub or Admin change verified with `npm run build` alone can look
-green locally and still fail CI. Run the same four the CI runs:
+green locally and still fail CI. Run the same five the CI runs:
 
 ```bash
 npx tsc -p apps/crm/tsconfig.json   --noEmit
 npx tsc -p apps/hub/tsconfig.json   --noEmit
 npx tsc -p apps/admin/tsconfig.json --noEmit
+npx tsc -p apps/mcp-widgets/tsconfig.json --noEmit
 npx tsc -p tsconfig.scripts.json
+
+npm run build:mcp-widgets && git diff --exit-code supabase/functions/mcp/ui/generated/cards.ts  # CI fails on a stale cards bundle
 
 npm run test           # vitest
 npm run test:functions # deno test for edge functions
@@ -41,7 +44,7 @@ npm run lint           # eslint apps/ packages/
 npm run format:check   # prettier — apps/**/*.{ts,tsx} and packages/**/*.{ts,tsx} only
 ```
 
-CI enforces these as separate jobs — `typecheck-and-test`, `edge-function-tests`,
+CI enforces these as separate jobs — `lint-and-typecheck`, `unit-tests`, `edge-function-tests`,
 `coverage-threshold`, `format-check`, `migration-version-guard`. A change that skips
 `format:check` or `lint` fails CI even when it is otherwise correct.
 

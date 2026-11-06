@@ -25,7 +25,7 @@ function renderPage() {
 }
 
 describe('LoginPage logo', () => {
-  it('shows the black logo in light mode and the white logo in dark mode', () => {
+  it('renders the black logo (dark:hidden) and the decorative white logo (dark:block)', () => {
     renderPage();
 
     const blackLogo = screen.getByAltText('Mesaas');

@@ -4,6 +4,7 @@ import {
   DEFAULT_TRIGGER_DAYS,
   FREQUENCY_LABEL,
   MAX_PAGES,
+  SECONDARY_LABEL_ERROR_PREFIX,
   addPage,
   emptyForm,
   formToPayload,
@@ -16,6 +17,7 @@ import {
   validateForm,
   withRequireAck,
 } from '../popup-form';
+import { splitCtaError } from '../popups/editor-model';
 
 const popup: GlobalPopup = {
   id: 'p1',
@@ -202,6 +204,17 @@ describe('validateForm', () => {
     expect(validateForm(u)!.cta).toBe('URL do CTA: máximo de 2048 caracteres');
     const s = { ...valid(), secondary_label: 'x'.repeat(41) };
     expect(validateForm(s)!.cta).toBe('Rótulo secundário: máximo de 40 caracteres');
+    expect(validateForm(s)!.cta!.startsWith(SECONDARY_LABEL_ERROR_PREFIX)).toBe(true);
+  });
+
+  it('splitCtaError separa o erro do rótulo secundário do erro do CTA global', () => {
+    const s = { ...valid(), secondary_label: 'x'.repeat(41) };
+    expect(splitCtaError(validateForm(s))).toEqual({
+      secondary: 'Rótulo secundário: máximo de 40 caracteres',
+    });
+    const c = { ...valid(), cta_label: 'Ver', cta_url: '' };
+    expect(splitCtaError(validateForm(c))).toEqual({ cta: 'O CTA precisa de rótulo e URL' });
+    expect(splitCtaError(null)).toEqual({});
   });
 });
 

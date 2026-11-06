@@ -2,7 +2,7 @@
  * Sweep logic for the lifecycle-email cron, dependency-injected so tests can
  * drive it without a network.
  *
- * Protocol per candidate (both sweeps):
+ * Protocol per candidate (every sweep):
  *   claim-upsert (refresh sent_at) → send with a deterministic Resend
  *   Idempotency-Key → set delivered_at.
  * No ownership check and no delete-on-failure: the candidate RPCs exclude
@@ -11,7 +11,12 @@
  * overlapping runs and ambiguous failures safe.
  */
 
-import { firstNameFrom } from "../_shared/lifecycle-emails.ts";
+import {
+  buildTrialReminderEmail,
+  firstNameFrom,
+  formatChargeDate,
+  formatFirstCharge,
+} from "../_shared/lifecycle-emails.ts";
 
 interface DbResult<T> {
   data: T | null;
@@ -29,6 +34,9 @@ export interface LifecycleDb {
         workspace_id?: string;
         sent_at: string;
         attempts: number;
+        ref_at?: string;
+        delivered_at?: null;
+        meta?: Record<string, unknown>;
       },
       opts: { onConflict: string },
     ): PromiseLike<{ error: { message: string } | null }>;
@@ -81,6 +89,14 @@ export interface LifecycleCronDeps {
     stripeSubscriptionId: string | null;
     idempotencyKey: string;
   }) => Promise<void>;
+  // Trial reminder: the handler builds subject/html (pure, testable) and the
+  // dep only ships it from LIFECYCLE_FROM.
+  sendTrialReminder: (p: {
+    to: string;
+    subject: string;
+    html: string;
+    idempotencyKey: string;
+  }) => Promise<void>;
   report: (detail: CronReportDetail) => Promise<void>;
 }
 
@@ -105,10 +121,51 @@ interface ThankCandidate {
   stripe_subscription_id?: string | null;
 }
 
+interface TrialReminderCandidate {
+  workspace_id: string;
+  workspace_name: string;
+  owner_email: string;
+  owner_nome: string | null;
+  plan_name: string | null;
+  provider: string;
+  amount_cents: number | null;
+  amount_interval: string | null;
+  billing_interval: string | null;
+  first_charge_at: string;
+  attempts: number;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The amount and interval the reminder tells the owner they will be charged
+ * (the ledger audit of what was announced). Pagar.me stores the annual total
+ * and the email shows 12 monthly installments, so the ledger records the
+ * installment; Stripe is month or year. Both null when no amount is announced.
+ */
+function announcedCharge(
+  c: TrialReminderCandidate,
+): { amount_cents: number | null; amount_interval: string | null } {
+  if (c.amount_cents == null) return { amount_cents: null, amount_interval: null };
+  if (c.provider === "pagarme") {
+    return { amount_cents: Math.round(c.amount_cents / 12), amount_interval: "month" };
+  }
+  const yearly = c.amount_interval === "year" || c.billing_interval === "year";
+  return { amount_cents: c.amount_cents, amount_interval: yearly ? "year" : "month" };
+}
+
 /** Claim refresh: bumps sent_at and writes attempts = prior + 1 (RPC-supplied). */
 async function claim(
   deps: LifecycleCronDeps,
-  row: { email_type: string; user_id?: string; workspace_id?: string; attempts: number },
+  row: {
+    email_type: string;
+    user_id?: string;
+    workspace_id?: string;
+    attempts: number;
+    ref_at?: string;
+    delivered_at?: null;
+    meta?: Record<string, unknown>;
+  },
   onConflict: string,
 ): Promise<void> {
   const { error } = await deps.db
@@ -140,9 +197,12 @@ async function markDelivered(
 
 export async function runLifecycleEmailCron(
   deps: LifecycleCronDeps,
-): Promise<{ welcomeSent: number; thanksSent: number; failed: number }> {
+): Promise<
+  { welcomeSent: number; thanksSent: number; trialRemindersSent: number; failed: number }
+> {
   let welcomeSent = 0;
   let thanksSent = 0;
+  let trialRemindersSent = 0;
   const errors: Array<{ accountId?: string; error?: string }> = [];
 
   // --- Welcome sweep -------------------------------------------------------
@@ -223,9 +283,76 @@ export async function runLifecycleEmailCron(
     }
   }
 
+  // --- Trial reminder sweep ------------------------------------------------
+  // One reminder per workspace, ~7 days before the first charge. The claim
+  // resets delivered_at and records ref_at (the charge date it was sent for).
+  const reminders = await deps.db.rpc("get_trial_reminder_candidates");
+  if (reminders.error) {
+    errors.push({ error: `trial reminder candidates: ${reminders.error.message}` });
+  } else {
+    for (const c of (reminders.data ?? []) as TrialReminderCandidate[]) {
+      try {
+        const now = deps.now();
+        const untilCharge = new Date(c.first_charge_at).getTime() - now.getTime();
+        // Round, not ceil: a normal send at 7d00m-7d59m must read "7 dias".
+        const daysLeft = Math.round(untilCharge / DAY_MS);
+        if (untilCharge < 7 * DAY_MS) {
+          console.warn(
+            `[lifecycle-email-cron] trial-reminder:late workspace ${c.workspace_id} daysLeft=${daysLeft}`,
+          );
+        }
+        const firstCharge = formatFirstCharge(c);
+        if (firstCharge === null) {
+          console.warn(
+            `[lifecycle-email-cron] trial-reminder:no-amount workspace ${c.workspace_id}`,
+          );
+        }
+        const { subject, html } = buildTrialReminderEmail({
+          firstName: firstNameFrom(c.owner_nome),
+          workspaceName: c.workspace_name,
+          planName: c.plan_name,
+          firstCharge,
+          firstChargeDate: formatChargeDate(c.first_charge_at),
+          daysLeft,
+          appBaseUrl: deps.appBaseUrl,
+        });
+        await claim(
+          deps,
+          {
+            email_type: "trial_reminder",
+            workspace_id: c.workspace_id,
+            attempts: c.attempts + 1,
+            ref_at: c.first_charge_at,
+            delivered_at: null,
+            meta: {
+              to: c.owner_email,
+              ...announcedCharge(c),
+              provider: c.provider,
+              first_charge_at: c.first_charge_at,
+            },
+          },
+          "email_type,workspace_id",
+        );
+        await deps.sendTrialReminder({
+          to: c.owner_email,
+          subject,
+          html,
+          idempotencyKey: `trial_reminder/${c.workspace_id}/${c.first_charge_at}`,
+        });
+        await markDelivered(deps, "trial_reminder", "workspace_id", c.workspace_id);
+        trialRemindersSent++;
+      } catch (e) {
+        errors.push({
+          accountId: c.workspace_id,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+  }
+
   if (errors.length > 0) {
     console.error(`[lifecycle-email-cron] ${errors.length} failure(s)`, errors);
     await deps.report({ failed: errors.length, errors });
   }
-  return { welcomeSent, thanksSent, failed: errors.length };
+  return { welcomeSent, thanksSent, trialRemindersSent, failed: errors.length };
 }

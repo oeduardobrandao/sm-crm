@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Barra lateral</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/mesaas/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<aside style="box-sizing: border-box; width: 248px; height: {{height}}px; padding: 18px 12px 14px; border-radius: 22px; background: rgba(13,16,22,0.55); backdrop-filter: blur(26px) saturate(1.7); border: 1px solid rgba(255,255,255,0.08); box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 12px 40px rgba(0,0,0,0.35); color: #e8eaf0; font-family: var(--font-apple); display: flex; flex-direction: column;">
+<div style="display: flex; align-items: center; gap: 10px; padding: 0 8px 18px;">
+<svg role="img" aria-label="Mesaas" width="28" height="19" viewBox="0 10 250 171"><path d="M130 100.76H250V163.76C250 173.149 242.389 180.76 233 180.76H130V100.76Z" fill="#FE3452"></path><path d="M0 27.76C0 18.37 7.61 10.76 17 10.76H120V90.76H0V27.76Z" fill="#3984FF"></path><rect y="100.76" width="120" height="80" fill="#FF3F3F"></rect><rect x="130" y="11" width="120" height="80" fill="#6AC9D0"></rect></svg>
+<span style="font-family: var(--font-heading); font-size: 17px; font-weight: 700;">Mesaas</span>
+<span style="font-size: 10px; font-weight: 600; letter-spacing: 0.12em; color: #9ca3af;">ADMIN</span>
+</div>
+<nav aria-label="Navegação principal" style="flex-grow: 1; display: flex; flex-direction: column; gap: 14px;">
+<sc-for list="{{groups}}" as="group" hint-placeholder-count="4">
+<div>
+<sc-if value="{{group.label}}" hint-placeholder-val="{{true}}"><h2 style="margin: 0 0 4px 10px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; color: #9ca3af;">{{group.label}}</h2></sc-if>
+<ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px;">
+<sc-for list="{{group.items}}" as="item" hint-placeholder-count="3">
+<li><a href="#" aria-current="{{item.current}}" style="{{item.rowStyle}}"><span aria-hidden="true" style="flex-shrink: 0; width: 24px; height: 24px; border-radius: 7px; background: {{item.tile}}; color: #ffffff; display: flex; align-items: center; justify-content: center;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="{{item.d}}"></path></svg></span><span style="flex-grow: 1;">{{item.label}}</span><span style="font-size: 12px; color: #9ca3af;">{{item.count}}</span></a></li>
+</sc-for>
+</ul>
+</div>
+</sc-for>
+</nav>
+<div style="border-top: 1px solid rgba(235,235,245,0.12); padding: 12px 6px 0; display: flex; flex-direction: column; gap: 10px;">
+<div style="display: flex; align-items: center; gap: 10px;"><span aria-hidden="true" style="flex-shrink: 0; width: 30px; height: 30px; border-radius: 999px; background: #facc15; color: #12151a; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center;">EB</span><span style="min-width: 0; flex-grow: 1;"><span style="display: block; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">eduardo@mesaas.com.br</span><span style="display: block; font-size: 11px; color: #9ca3af;">Admin da plataforma</span></span></div>
+<div style="display: flex; align-items: center; gap: 8px;"><span id="dk-glass" style="flex-grow: 1; font-size: 13px; color: #c7cad1;">Liquid Glass</span><button type="button" role="switch" aria-checked="true" aria-labelledby="dk-glass" style="position: relative; width: 38px; height: 22px; border: 0; border-radius: 999px; background: #34c759;"><span aria-hidden="true" style="position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; border-radius: 999px; background: #fff;"></span></button><button type="button" style="height: 26px; padding: 0 10px; border-radius: 999px; border: 0; background: rgba(118,118,128,0.24); color: #e8eaf0; font-size: 12px; font-family: inherit;">Sair</button></div>
+</div>
+</aside>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"active":{"editor":"enum","options":["dashboard","metricas","workspaces","afiliados","planos","admins","integracoes","banners","popups","artigos","videos"],"default":"dashboard"},"height":{"editor":"int","default":876},"$preview":{"width":248,"height":876}}'>
+class Component extends DCLogic {
+renderVals() {
+const active = this.props.active ?? 'dashboard';
+const base = 'display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 10px; color: #e8eaf0; text-decoration: none; font-size: 14px;';
+const mk = (id, label, tile, d, count) => ({
+  label, tile, d, count: count || '',
+  current: id === active ? 'page' : 'false',
+  rowStyle: id === active ? base + ' background: rgba(232,234,240,0.14); font-weight: 600;' : base,
+});
+return {
+  height: this.props.height ?? 876,
+  groups: [
+    { label: '', items: [
+      mk('dashboard', 'Dashboard', '#facc15', 'M4 3h5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM15 3h5a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM15 12h5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1zM4 16h5a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1z'),
+      mk('metricas', 'Métricas', '#34c759', 'M16 7h6v6M22 7l-8.5 8.5-5-5L2 17'),
+      mk('workspaces', 'Workspaces', '#007aff', 'M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18ZM6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2M10 6h4M10 10h4M10 14h4M10 18h4', '148'),
+      mk('afiliados', 'Afiliados', '#ff9500', 'M11 15h2a2 2 0 1 0 0-4h-3c-.6 0-1.1.2-1.4.6L3 17M7 21l1.6-1.4c.3-.4.8-.6 1.4-.6h4c1.1 0 2.1-.4 2.8-1.2l4.6-4.4a2 2 0 0 0-2.75-2.91l-4.2 3.9M2 16l6 6M16 6.1a2.9 2.9 0 1 1 0 5.8 2.9 2.9 0 0 1 0-5.8zM6 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6z', '9'),
+    ]},
+    { label: 'PLATAFORMA', items: [
+      mk('planos', 'Planos', '#af52de', 'M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73zM12 22V12M3.3 7 12 12l8.7-5'),
+      mk('admins', 'Admins', '#30b0c7', 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75'),
+      mk('integracoes', 'Integrações', '#636366', 'M12 22v-5M9 8V2M15 8V2M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z'),
+    ]},
+    { label: 'COMUNICAÇÃO', items: [
+      mk('banners', 'Banners', '#ff6b35', 'm3 11 18-5v12L3 14v-3zM11.6 16.8a3 3 0 1 1-5.8-1.6'),
+      mk('popups', 'Popups', '#5856d6', 'M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM10 4v4M2 8h20M6 4v4'),
+    ]},
+    { label: 'CENTRAL DE AJUDA', items: [
+      mk('artigos', 'Artigos', '#0a84ff', 'M12 7v14M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z'),
+      mk('videos', 'Vídeos', '#ff3b30', 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM7 3v18M3 7.5h4M3 12h18M3 16.5h4M17 3v18M17 7.5h4M17 16.5h4'),
+    ]},
+  ],
+};
+}
+}
+</script>
+</body>
+</html>

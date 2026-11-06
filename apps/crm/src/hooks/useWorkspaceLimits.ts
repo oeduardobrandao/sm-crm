@@ -57,6 +57,31 @@ export interface FeatureFlags {
    *  read it as `features?.feature_hub_pauta === true`, never through hasFeature
    *  (which treats a missing key as on). */
   feature_hub_pauta?: boolean;
+  /** Rollout flag for the desktop Vidro shell. Optional on purpose: read only as
+   *  `features?.feature_crm_vidro === true`. */
+  feature_crm_vidro?: boolean;
+  /** Linha editorial (spec 2026-10-26-linha-editorial). Optional: read it only as
+   *  `features?.feature_linha_editorial === true`, never through hasFeature. */
+  feature_linha_editorial?: boolean;
+  /** Acesso por cliente (membros restritos a clientes atribuídos). Optional: read it only as
+   *  `features?.feature_acesso_por_cliente === true`, never through hasFeature. */
+  feature_acesso_por_cliente?: boolean;
+  /** Rollout flag for Financeiro v2 (rentabilidade por cliente). Optional on purpose:
+   *  read only as `features?.feature_financeiro_v2 === true` (fail-closed). */
+  feature_financeiro_v2?: boolean;
+  /** Chat de equipe (spec 2026-09-02-team-group-chats). Optional: read it as
+   *  `features?.feature_team_chat === true` (fail-closed while workspace-limits
+   *  has not been redeployed with the column). */
+  feature_team_chat?: boolean;
+  /** YouTube (spec 2026-10-29-youtube-google-meu-negocio). Optional: read it only as
+   *  `features?.feature_youtube === true`, never through hasFeature. */
+  feature_youtube?: boolean;
+  /** Google Meu Negócio (same spec). Optional: read it only as
+   *  `features?.feature_google_business === true`, never through hasFeature. */
+  feature_google_business?: boolean;
+  /** Comentários do Instagram com leitura por IA. Optional: read it only as
+   *  `features?.feature_instagram_comments_ai === true`, never through hasFeature. */
+  feature_instagram_comments_ai?: boolean;
 }
 
 interface WorkspaceLimitsResponse {
@@ -90,7 +115,7 @@ export function useWorkspaceLimits() {
   // null workspace — outside an AuthProvider (e.g. in isolated component tests).
   const auth = useContext(AuthContext);
   const workspaceId = auth?.profile?.conta_id ?? null;
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isSuccess } = useQuery({
     queryKey: ['workspace-limits', workspaceId],
     queryFn: fetchWorkspaceLimits,
     staleTime: 5 * 60 * 1000,
@@ -102,6 +127,7 @@ export function useWorkspaceLimits() {
     features: data?.features ?? null,
     planName: data?.plan_name ?? null,
     isLoading,
+    isSuccess,
     isUnlimited: !isLoading && data?.limits === null,
   };
 }

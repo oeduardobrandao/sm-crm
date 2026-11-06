@@ -24,7 +24,7 @@ export function KbViewStats({
   if (failed) return null;
   if (!stats || stats.views_total === 0) {
     return (
-      <span className={cn('text-xs text-muted-foreground', className)}>Sem visualizações</span>
+      <span className={cn('text-[13px] text-muted-foreground', className)}>Sem visualizações</span>
     );
   }
 
@@ -36,7 +36,7 @@ export function KbViewStats({
 
   return (
     <div className={cn('min-w-0 tabular-nums', className)}>
-      <div className="text-sm" title="Últimos 30 dias">
+      <div className="text-[13px] text-foreground" title="Últimos 30 dias">
         <span className="sr-only">Últimos 30 dias:</span>
         {`${formatViews(stats.views_30d)} · ${formatPeople(stats.users_30d)}`}
       </div>

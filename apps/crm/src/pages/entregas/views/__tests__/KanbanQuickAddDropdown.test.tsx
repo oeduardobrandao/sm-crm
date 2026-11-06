@@ -27,9 +27,7 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
 
 const store = vi.hoisted(() => ({
   completeEtapa: vi.fn(),
-  completeEtapaWithRearm: vi.fn(),
   hasLaterApprovalEtapa: vi.fn(),
-  approvePostsInternally: vi.fn(),
   sendPostsToCliente: vi.fn(),
   revertEtapa: vi.fn(),
   updateWorkflowPositions: vi.fn(),
@@ -71,6 +69,10 @@ vi.mock('../../components/WorkflowCard', () => ({
 
 import { KanbanView } from '../KanbanView';
 import type { BoardCard } from '../../hooks/useEntregasData';
+
+// Desktop layout: the phone branch (below 768px, what jsdom's matchMedia reports)
+// has its own suites.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 function render(ui: React.ReactElement) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });

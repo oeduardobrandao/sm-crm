@@ -244,7 +244,7 @@ describe('store CRUD write operations', () => {
           nome: 'Paulo Editor',
           cargo: 'Editor',
           tipo: 'freelancer_mensal',
-          avatar_url: '',
+          avatar_url: null,
           user_id: 'user-1',
           conta_id: 'conta-1',
         },
@@ -256,12 +256,13 @@ describe('store CRUD write operations', () => {
         cargo: 'Editor',
         tipo: 'freelancer_mensal',
         custo_mensal: 1500,
-        avatar_url: '',
       });
 
       expect(result).toMatchObject({ id: 40, nome: 'Paulo Editor' });
       const call = getLastCall('membros');
       expect(call.payload).toMatchObject({ user_id: 'user-1', conta_id: 'conta-1' });
+      // The photo is written only by set_member_photo: a new row carries no avatar_url.
+      expect(call.payload).not.toHaveProperty('avatar_url');
     });
 
     it('updateMembro patches by id', async () => {

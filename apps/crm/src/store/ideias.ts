@@ -156,6 +156,16 @@ export interface CreateIdeiaInput {
   links: string[];
   visivel_no_hub: boolean;
   autor_membro_id: number | null;
+  /** Id of the AI suggestion this ideia came from; unique per workspace (partial index). */
+  origem_sugestao_id?: string | null;
+}
+
+/** Thrown when the suggestion was already saved as an ideia (unique-index violation). */
+export class DuplicateSuggestionError extends Error {
+  constructor() {
+    super('duplicate_suggestion');
+    this.name = 'DuplicateSuggestionError';
+  }
 }
 
 /** Agency-created ideia. origem/tipo/status are fixed here, never caller-controlled. */
@@ -174,10 +184,16 @@ export async function createIdeia(input: CreateIdeiaInput): Promise<string> {
       origem: 'agencia',
       tipo: 'ideia',
       status: 'nova',
+      ...(input.origem_sugestao_id ? { origem_sugestao_id: input.origem_sugestao_id } : {}),
     })
     .select('id')
     .single();
-  if (error) throw new Error(error.message);
+  if (error) {
+    if ((error as { code?: string }).code === '23505' && input.origem_sugestao_id) {
+      throw new DuplicateSuggestionError();
+    }
+    throw new Error(error.message);
+  }
   return (data as { id: string }).id;
 }
 
@@ -217,4 +233,19 @@ export async function updateIdeia(ideiaId: string, input: UpdateIdeiaInput): Pro
 export async function deleteIdeia(ideiaId: string): Promise<void> {
   const { error } = await supabase.from('ideias').delete().eq('id', ideiaId);
   if (error) throw new Error(error.message);
+}
+
+/** Which of these AI suggestion ids already became an ideia (RLS scopes to the workspace). */
+export async function getSavedSuggestionIds(ids: string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const { data, error } = await supabase
+    .from('ideias')
+    .select('origem_sugestao_id')
+    .in('origem_sugestao_id', ids);
+  if (error) throw new Error(error.message);
+  return new Set(
+    (data ?? [])
+      .map((r: { origem_sugestao_id: string | null }) => r.origem_sugestao_id)
+      .filter((v): v is string => !!v),
+  );
 }

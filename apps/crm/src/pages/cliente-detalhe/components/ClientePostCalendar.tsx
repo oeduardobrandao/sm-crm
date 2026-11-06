@@ -76,7 +76,7 @@ export function ScheduledPostOpenButton({
   );
 }
 
-interface ClientePostCalendarProps {
+export interface ClientePostCalendarProps {
   /** Scheduled-post events for all active workflows plus the client's posts
    *  avulsos. Owned by EntregasTab so a
    *  single refresh (advance/revert/status update) can update both the board

@@ -1,6 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+// These suites cover the desktop table/toolbar; the phone branch has its own *Phone tests.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 import { toLocalISODate } from '@/utils/postDate';
 import { ListView } from '../ListView';
 import type { PostEntity } from '../../boardEntity';

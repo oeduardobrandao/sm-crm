@@ -51,6 +51,6 @@ export const APROVACAO_DE_POST: MarketingPageContent = {
   ],
   cta: {
     title: 'Pare de aprovar post por WhatsApp',
-    sub: 'Crie sua conta grátis e envie o primeiro link de aprovação em minutos.',
+    sub: 'Teste grátis por 30 dias e envie o primeiro link de aprovação em minutos.',
   },
 };

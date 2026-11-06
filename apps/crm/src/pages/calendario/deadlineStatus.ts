@@ -1,3 +1,5 @@
+import { i18n } from '@mesaas/i18n';
+
 /**
  * Builds the human-readable status label for a workflow deadline shown in the
  * "Agendado" panel of the financeiro calendar.
@@ -11,13 +13,13 @@ export function formatDeadlineStatus(
   estourado: boolean | null | undefined,
 ): string {
   if (typeof diasRestantes !== 'number' || Number.isNaN(diasRestantes)) {
-    return 'Sem prazo';
+    return i18n.t('calendario:deadlineStatus.none');
   }
   if (estourado) {
-    return `${Math.abs(diasRestantes)}d atrasado`;
+    return i18n.t('calendario:deadlineStatus.overdue', { count: Math.abs(diasRestantes) });
   }
   if (diasRestantes === 0) {
-    return 'Vence hoje';
+    return i18n.t('calendario:shared.dueToday');
   }
-  return `${diasRestantes}d restante${diasRestantes > 1 ? 's' : ''}`;
+  return i18n.t('calendario:deadlineStatus.remaining', { count: diasRestantes });
 }

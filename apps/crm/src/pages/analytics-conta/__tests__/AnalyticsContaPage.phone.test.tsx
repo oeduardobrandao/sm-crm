@@ -1,0 +1,566 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+// jsdom's matchMedia matches nothing, so the page renders its phone branch (below 768px).
+
+vi.mock('chart.js', () => {
+  class ChartMock {
+    static register = vi.fn();
+    destroy = vi.fn();
+  }
+  return { Chart: ChartMock, registerables: [] };
+});
+
+vi.mock('@/components/layout/PhoneShellHeader', () => ({
+  PhoneShellActions: () => <div data-testid="shell-actions" />,
+}));
+
+vi.mock('sonner', () => ({
+  toast: Object.assign(vi.fn(), {
+    success: vi.fn(),
+    error: vi.fn(),
+    warning: vi.fn(),
+    loading: vi.fn(() => 'toast-1'),
+  }),
+}));
+
+vi.mock('../../../store', () => ({ getClientes: vi.fn() }));
+
+vi.mock('../../../services/instagram', () => ({
+  getInstagramSummary: vi.fn(),
+  syncInstagramData: vi.fn(),
+}));
+
+vi.mock('../../../services/analytics', () => ({
+  getAnalyticsOverview: vi.fn(),
+  getAccountMetrics: vi.fn(),
+  makeDelta: (current: number, previous: number) => ({
+    current,
+    previous,
+    delta: current - previous,
+    deltaPercent: previous !== 0 ? ((current - previous) / Math.abs(previous)) * 100 : 0,
+    direction: current > previous ? 'up' : current < previous ? 'down' : 'stable',
+  }),
+  getPostsAnalytics: vi.fn(),
+  getFollowerHistory: vi.fn(),
+  getAudienceDemographics: vi.fn(),
+  getBestPostingTimes: vi.fn(),
+  getTags: vi.fn(),
+  createTag: vi.fn(),
+  deleteTag: vi.fn(),
+  assignTagToPost: vi.fn(),
+  removeTagFromPost: vi.fn(),
+  getClientReports: vi.fn(),
+  getAccountAIAnalysis: vi.fn(),
+  upsertManualFollowerCount: vi.fn(),
+  sendReportEmail: vi.fn(),
+  getReportDownloadUrl: vi.fn(),
+  getClientRateBaseline: vi.fn(),
+  getStoriesAnalytics: vi.fn(),
+}));
+
+vi.mock('../../../services/reportDocs', () => ({
+  listReportDocs: vi.fn(),
+  deleteReportDoc: vi.fn(),
+}));
+
+import i18n from 'i18next';
+import ptComments from '../../../../../../packages/i18n/locales/pt/analyticsComments.json';
+import enComments from '../../../../../../packages/i18n/locales/en/analyticsComments.json';
+
+i18n.addResourceBundle('pt', 'analyticsComments', ptComments, true, true);
+i18n.addResourceBundle('en', 'analyticsComments', enComments, true, true);
+
+const { limitsFeatures } = vi.hoisted(() => ({
+  limitsFeatures: {
+    feature_tiktok: true,
+    feature_analytics_reports: true,
+    feature_instagram_comments_ai: false,
+  },
+}));
+
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({
+    limits: null,
+    features: limitsFeatures,
+    planName: null,
+    isLoading: false,
+    isSuccess: true,
+    isUnlimited: false,
+  }),
+}));
+
+vi.mock('../../../services/tiktok', () => ({
+  getTikTokSummary: vi.fn(() => Promise.resolve(null)),
+}));
+
+vi.mock('../../../services/instagramComments', async () => {
+  const actual = await vi.importActual<typeof import('../../../services/instagramComments')>(
+    '../../../services/instagramComments',
+  );
+  return { ...actual, getPostComments: vi.fn(), analyzePostComments: vi.fn() };
+});
+
+vi.mock('@/store/ideias', () => ({
+  getSavedSuggestionIds: vi.fn(() => Promise.resolve(new Set())),
+}));
+
+vi.mock('@/components/ideias/NovaIdeiaDialog', () => ({ NovaIdeiaDialog: () => null }));
+
+vi.mock('../reports/NewReportDialog', () => ({
+  NewReportDialog: ({ open }: { open: boolean }) =>
+    open ? <div role="dialog" aria-label="Novo relatório" /> : null,
+}));
+
+import AnalyticsClientShell from '../AnalyticsClientShell';
+import { PostDetailSheet } from '../phone/PostDetailSheet';
+import { getClientes } from '../../../store';
+import { getInstagramSummary } from '../../../services/instagram';
+import {
+  assignTagToPost,
+  createTag,
+  getAccountMetrics,
+  getAnalyticsOverview,
+  getAudienceDemographics,
+  getBestPostingTimes,
+  getClientRateBaseline,
+  getClientReports,
+  getFollowerHistory,
+  getPostsAnalytics,
+  getStoriesAnalytics,
+  getTags,
+  removeTagFromPost,
+  type PostAnalytics,
+} from '../../../services/analytics';
+import { deleteReportDoc, listReportDocs } from '../../../services/reportDocs';
+import { getReportDownloadUrl } from '../../../services/analytics';
+import { toast } from 'sonner';
+import { getPostComments } from '../../../services/instagramComments';
+
+const kpi = (current: number, previous: number) => ({
+  current,
+  previous,
+  delta: current - previous,
+  deltaPercent: 10,
+  direction: 'up' as const,
+});
+
+function post(overrides: Partial<PostAnalytics>): PostAnalytics {
+  return {
+    id: 1,
+    instagram_post_id: 'ig1',
+    caption: 'Post sobre botox',
+    media_type: 'IMAGE',
+    permalink: 'https://instagram.com/p/1',
+    posted_at: '2026-09-20T12:00:00Z',
+    likes: 10,
+    comments: 2,
+    reach: 500,
+    impressions: 800,
+    saved: 4,
+    shares: 1,
+    views: 900,
+    profile_visits: 3,
+    follows: 2,
+    bio_link_clicks: null,
+    follows_per_mil_reach: 4,
+    rates: { share_rate: null, like_rate: null, save_rate: null, comment_rate: null },
+    unavailable_metrics: [],
+    ig_score: 70,
+    thumbnail_url: null,
+    engagement_rate: 3.2,
+    saves_rate: 0.8,
+    tags: [],
+    ...overrides,
+  } as PostAnalytics;
+}
+
+const TAG = { id: 9, tag_name: 'Educativo', color: '#3ecf8e' };
+
+/** The client analytics shell, on the Instagram tab unless told otherwise. */
+function renderPage(tab: 'instagram' | 'relatorios' = 'instagram') {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[`/analytics/42/${tab}`]}>
+        <Routes>
+          <Route path="/analytics/:id/:tab?" element={<AnalyticsClientShell />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+async function ready() {
+  return screen.findByRole('heading', { level: 1, name: 'Clínica Aurora' });
+}
+
+describe('AnalyticsContaPage (phone)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    limitsFeatures.feature_instagram_comments_ai = false;
+    vi.mocked(getClientes).mockResolvedValue([{ id: 42, nome: 'Clínica Aurora' } as never]);
+    vi.mocked(getInstagramSummary).mockResolvedValue({
+      account: { username: 'clinica.aurora', profile_picture_url: null },
+    } as never);
+    vi.mocked(getAnalyticsOverview).mockResolvedValue({
+      data: {
+        engagement: kpi(3.1, 2.8),
+        savesRate: kpi(0.9, 0.7),
+        postsPublished: kpi(6, 5),
+      },
+      fromCache: true,
+      fetchedAt: '2026-10-01T15:00:00Z',
+    } as never);
+    vi.mocked(getAccountMetrics).mockResolvedValue({ current: null, previous: null } as never);
+    vi.mocked(getClientRateBaseline).mockRejectedValue(new Error('sem baseline'));
+    vi.mocked(getPostsAnalytics).mockResolvedValue({
+      posts: [
+        post({ id: 1, tags: [TAG] }),
+        post({
+          id: 2,
+          instagram_post_id: 'ig2',
+          caption: 'Reel de bastidores',
+          media_type: 'VIDEO',
+          profile_visits: null,
+          follows: null,
+        }),
+      ],
+    } as never);
+    vi.mocked(getFollowerHistory).mockResolvedValue({
+      history: [
+        { date: '2026-09-01', follower_count: 1000, source: 'api' },
+        { date: '2026-09-15', follower_count: 1040, source: 'manual' },
+      ],
+      postDates: [],
+    } as never);
+    vi.mocked(getTags).mockResolvedValue([TAG, { id: 10, tag_name: 'Dicas', color: '#f5a342' }]);
+    vi.mocked(getClientReports).mockResolvedValue([
+      {
+        id: 5,
+        report_month: '2026-08',
+        status: 'failed',
+        generation_error: 'Conta sem permissão de insights',
+        include_ai: false,
+        generated_at: null,
+        storage_path: null,
+      } as never,
+    ]);
+    vi.mocked(listReportDocs).mockResolvedValue([
+      {
+        id: 'doc-1',
+        title: 'Relatório de setembro',
+        period_start: '2026-09-01',
+        status: 'ready',
+        created_at: '2026-10-02T10:00:00Z',
+        platforms: ['instagram'],
+      } as never,
+    ]);
+    vi.mocked(getAudienceDemographics).mockResolvedValue({
+      data: {
+        age_gender: [{ age_range: '25-34', male: 80, female: 120 }],
+        cities: [{ name: 'São Paulo, SP', count: 150 }],
+        countries: [],
+        gender_split: { male: 40, female: 60 },
+      },
+      fromCache: false,
+      fetchedAt: '',
+    });
+    vi.mocked(getBestPostingTimes).mockResolvedValue(null);
+    vi.mocked(getStoriesAnalytics).mockResolvedValue(null);
+  });
+
+  it('renders the nav bar, identity and KPI strip instead of the desktop header', async () => {
+    const { container } = renderPage();
+    await ready();
+    expect(container.querySelector('.header')).toBeNull();
+    expect(screen.getByRole('link', { name: '@clinica.aurora' })).toHaveAttribute(
+      'href',
+      'https://instagram.com/clinica.aurora',
+    );
+    expect(screen.getByText(/Dados de/)).toBeInTheDocument();
+    expect(container.querySelector('.phone-stat-grid--scroll')).not.toBeNull();
+    // The nav bar's round button; the report lists live in the Relatórios tab now.
+    expect(screen.getAllByRole('button', { name: 'Gerar relatório' })).toHaveLength(1);
+    expect(screen.queryByText('Relatórios gerados')).toBeNull();
+    expect(screen.getByText('+40 no período')).toBeInTheDocument();
+  });
+
+  it('shows the shell tab control under the identity, Instagram selected', async () => {
+    renderPage();
+    const heading = await ready();
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    const tabs = screen.getByRole('tablist', { name: 'Analytics' });
+    expect(within(tabs).getByRole('tab', { name: 'Instagram' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(heading.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('opens the report dialog from the nav bar', async () => {
+    renderPage();
+    await ready();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Gerar relatório' })[0]);
+    expect(await screen.findByRole('dialog', { name: 'Novo relatório' })).toBeInTheDocument();
+  });
+
+  it('sorts the posts through an action sheet', async () => {
+    renderPage();
+    await ready();
+    fireEvent.click(await screen.findByRole('button', { name: /Ordenar posts: Data/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Alcance' }));
+    await waitFor(() =>
+      expect(getPostsAnalytics).toHaveBeenLastCalledWith(
+        42,
+        30,
+        'reach',
+        'desc',
+        undefined,
+        undefined,
+      ),
+    );
+  });
+
+  it('shows a post in a sheet with visible missing-metric reasons and tag toggles', async () => {
+    renderPage();
+    await ready();
+    const list = await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(within(list).getByRole('button', { name: /Reel de bastidores/ }));
+    const sheet = await screen.findByRole('dialog');
+    expect(within(sheet).getByText('Reel de bastidores')).toBeInTheDocument();
+    expect(
+      within(sheet).getByText(/Visitas ao perfil: O Instagram não fornece este dado para Reels/),
+    ).toBeInTheDocument();
+    expect(within(sheet).getByRole('link', { name: 'Ver no Instagram' })).toBeInTheDocument();
+
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Educativo' }));
+    await waitFor(() => expect(assignTagToPost).toHaveBeenCalledWith(2, 9));
+  });
+
+  it('flag desligada: o sheet do post não tem abas nem busca comentários', async () => {
+    renderPage();
+    await ready();
+    const list = await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(within(list).getByRole('button', { name: /Reel de bastidores/ }));
+    const sheet = await screen.findByRole('dialog');
+    expect(within(sheet).queryByRole('tablist')).not.toBeInTheDocument();
+    expect(getPostComments).not.toHaveBeenCalled();
+  });
+
+  it('sheet do post tem a aba Comentários com a flag', async () => {
+    limitsFeatures.feature_instagram_comments_ai = true;
+    vi.mocked(getPostComments).mockResolvedValue({
+      comments: [
+        {
+          id: 'c1',
+          text: 'Amei o conteúdo',
+          timestamp: '2026-09-21T12:00:00Z',
+          username: 'maria',
+          like_count: 2,
+          replies_count: 0,
+          replies_more: false,
+        },
+      ],
+      total_fetched: 1,
+      truncated: false,
+      comments_count: 1,
+      cached_analysis: null,
+    });
+    renderPage();
+    await ready();
+    const list = await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(within(list).getByRole('button', { name: /Reel de bastidores/ }));
+    const sheet = await screen.findByRole('dialog');
+    const tabs = within(sheet).getByRole('tablist', { name: 'Detalhes do post' });
+    expect(within(tabs).getByRole('tab', { name: 'Insights' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(within(sheet).getByText('Reel de bastidores')).toBeInTheDocument();
+    expect(getPostComments).not.toHaveBeenCalled();
+
+    fireEvent.click(within(tabs).getByRole('tab', { name: 'Comentários' }));
+    expect(await within(sheet).findByText('Amei o conteúdo')).toBeInTheDocument();
+    expect(getPostComments).toHaveBeenCalledWith(42, 'ig2');
+    expect(within(sheet).getByRole('button', { name: 'Analisar comentários' })).toBeDisabled();
+  });
+
+  it('fechar o sheet em Comentários e abrir outro post abre em Insights, sem buscar', async () => {
+    limitsFeatures.feature_instagram_comments_ai = true;
+    vi.mocked(getPostComments).mockResolvedValue({
+      comments: [],
+      total_fetched: 0,
+      truncated: false,
+      comments_count: 0,
+      cached_analysis: null,
+    });
+    renderPage();
+    await ready();
+    const list = await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(within(list).getByRole('button', { name: /Post sobre botox/ }));
+    let sheet = await screen.findByRole('dialog');
+    fireEvent.click(within(sheet).getByRole('tab', { name: 'Comentários' }));
+    await waitFor(() => expect(getPostComments).toHaveBeenCalledWith(42, 'ig1'));
+
+    // The sheet is a Radix dialog: Escape closes it.
+    fireEvent.keyDown(sheet, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    fireEvent.click(within(list).getByRole('button', { name: /Reel de bastidores/ }));
+    sheet = await screen.findByRole('dialog');
+    expect(within(sheet).getByRole('tab', { name: 'Insights' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(within(sheet).getByText('Reel de bastidores')).toBeInTheDocument();
+    expect(getPostComments).not.toHaveBeenCalledWith(42, 'ig2');
+    expect(getPostComments).toHaveBeenCalledTimes(1);
+  });
+
+  it('trocar de post com o sheet em Comentários volta a Insights sem buscar o post novo', async () => {
+    limitsFeatures.feature_instagram_comments_ai = true;
+    vi.mocked(getPostComments).mockResolvedValue({
+      comments: [],
+      total_fetched: 0,
+      truncated: false,
+      comments_count: 0,
+      cached_analysis: null,
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    const sheet = (p: PostAnalytics) => (
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <PostDetailSheet
+            clientId={42}
+            post={p}
+            onOpenChange={() => {}}
+            tags={[]}
+            onToggleTag={async () => {}}
+            onNewTag={() => {}}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const a = post({ id: 1, instagram_post_id: 'ig1' });
+    const b = post({ id: 2, instagram_post_id: 'ig2', caption: 'Reel de bastidores' });
+    const { rerender } = render(sheet(a));
+    fireEvent.click(await screen.findByRole('tab', { name: 'Comentários' }));
+    await waitFor(() => expect(getPostComments).toHaveBeenCalledWith(42, 'ig1'));
+
+    rerender(sheet(b));
+    expect(await screen.findByText('Reel de bastidores')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Insights' })).toHaveAttribute('aria-selected', 'true');
+    expect(getPostComments).not.toHaveBeenCalledWith(42, 'ig2');
+  });
+
+  it('removes a tag from a post by toggling it off', async () => {
+    renderPage();
+    await ready();
+    const list = await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(within(list).getByRole('button', { name: /Post sobre botox/ }));
+    const sheet = await screen.findByRole('dialog');
+    const toggle = within(sheet).getByRole('button', { name: 'Educativo' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(toggle);
+    await waitFor(() => expect(removeTagFromPost).toHaveBeenCalledWith(1, 9));
+  });
+
+  it('creates a tag in a sheet instead of prompt()', async () => {
+    const promptSpy = vi.spyOn(window, 'prompt');
+    vi.mocked(createTag).mockResolvedValue({ id: 11, tag_name: 'Bastidores', color: '#000' });
+    renderPage();
+    await ready();
+    const list = await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(within(list).getByRole('button', { name: /Post sobre botox/ }));
+    await screen.findByRole('dialog');
+    fireEvent.click(screen.getByRole('button', { name: 'Nova tag' }));
+    const input = await screen.findByPlaceholderText('Nome da tag');
+    fireEvent.change(input, { target: { value: 'Bastidores' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Criar tag' }));
+    await waitFor(() => expect(createTag).toHaveBeenCalledWith('Bastidores', expect.any(String)));
+    expect(promptSpy).not.toHaveBeenCalled();
+    promptSpy.mockRestore();
+  });
+
+  it('deletes a report through a confirm sheet instead of window.confirm', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm');
+    renderPage('relatorios');
+    await ready();
+    fireEvent.click(await screen.findByRole('button', { name: /Relatório de setembro/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Excluir' }));
+    expect(await screen.findByText('Excluir este relatório?')).toBeInTheDocument();
+    expect(screen.getByText('O PDF exportado também é removido.')).toBeInTheDocument();
+    const buttons = await screen.findAllByRole('button', { name: 'Excluir' });
+    fireEvent.click(buttons[buttons.length - 1]);
+    await waitFor(() => expect(deleteReportDoc).toHaveBeenCalledWith('doc-1'));
+    expect(confirmSpy).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it('shows why a legacy report failed as text', async () => {
+    renderPage('relatorios');
+    await ready();
+    expect(await screen.findByText('Falha: Conta sem permissão de insights')).toBeInTheDocument();
+  });
+
+  it('downloads a legacy PDF through a toast tap (no window.open after the await)', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    vi.mocked(getClientReports).mockResolvedValue([
+      {
+        id: 6,
+        report_month: '2026-07',
+        status: 'ready',
+        generation_error: null,
+        include_ai: false,
+        generated_at: '2026-08-01T10:00:00Z',
+        storage_path: 'reports/6.pdf',
+      } as never,
+    ]);
+    vi.mocked(getReportDownloadUrl).mockResolvedValue('https://files.example.com/6.pdf');
+    renderPage('relatorios');
+    await ready();
+    fireEvent.click(await screen.findByRole('button', { name: /Jul 2026/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Baixar PDF' }));
+    await waitFor(() => expect(toast.loading).toHaveBeenCalledWith('Preparando PDF…'));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        'PDF pronto.',
+        expect.objectContaining({ id: 'toast-1', action: expect.any(Object) }),
+      ),
+    );
+    expect(openSpy).not.toHaveBeenCalled();
+    const { action } = vi.mocked(toast.success).mock.calls.at(-1)![1] as {
+      action: { onClick: () => void };
+    };
+    action.onClick();
+    expect(openSpy).toHaveBeenCalledWith(
+      'https://files.example.com/6.pdf',
+      '_blank',
+      'noopener,noreferrer',
+    );
+    openSpy.mockRestore();
+  });
+
+  it('applies a custom period from a sheet with an explicit Aplicar', async () => {
+    renderPage();
+    await ready();
+    fireEvent.click(screen.getByRole('radio', { name: 'Personalizado' }));
+    const input = await screen.findByLabelText('Período personalizado em dias');
+    fireEvent.change(input, { target: { value: '45' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }));
+    await waitFor(() => expect(getAnalyticsOverview).toHaveBeenLastCalledWith(42, 45, undefined));
+    expect(await screen.findByText('Últimos 45 dias')).toBeInTheDocument();
+  });
+
+  it('shows the audience by age with exact counts in its section sheet', async () => {
+    renderPage();
+    await ready();
+    fireEvent.click(await screen.findByRole('button', { name: /Demografia da audiência/ }));
+    const sheet = await screen.findByRole('dialog');
+    expect(within(sheet).getByText('Mulheres 120 · Homens 80')).toBeInTheDocument();
+    expect(within(sheet).getByText('60%')).toBeInTheDocument();
+  });
+});

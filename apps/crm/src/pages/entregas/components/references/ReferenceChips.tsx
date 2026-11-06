@@ -1,4 +1,5 @@
 import { FileText, Link2, Play } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { ReferenceItem } from '@/store/postReferences';
 import { sanitizeUrl } from '@/utils/security';
 import { isViewableReference, referenceLabel } from './referenceFormat';
@@ -43,9 +44,10 @@ export interface ReferenceChipsProps {
 
 /** 32px thumb + name chips under a client correction bubble. */
 export function ReferenceChips({ references, onOpen }: ReferenceChipsProps) {
+  const { t } = useTranslation('postPanels');
   if (references.length === 0) return null;
   return (
-    <ul aria-label="Referências anexadas" className="mt-2 flex flex-wrap gap-1.5">
+    <ul aria-label={t('references.attachedAria')} className="mt-2 flex flex-wrap gap-1.5">
       {references.map((item) => {
         const label = referenceLabel(item);
         const body = (

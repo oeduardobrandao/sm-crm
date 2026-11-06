@@ -3,19 +3,33 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeCan, fakeMembership } from '@/test/makeCan';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 // jsdom has no scrollIntoView; Radix's Select calls it when committing a
 // selection, which otherwise throws inside a passive effect.
 Element.prototype.scrollIntoView = vi.fn();
 
-const { mockNavigate, toastSuccessMock, toastErrorMock, mockUseAuth, mockUseWorkspaceLimits } =
-  vi.hoisted(() => ({
-    mockNavigate: vi.fn(),
-    toastSuccessMock: vi.fn(),
-    toastErrorMock: vi.fn(),
-    mockUseAuth: vi.fn(),
-    mockUseWorkspaceLimits: vi.fn(),
-  }));
+const {
+  mockNavigate,
+  toastSuccessMock,
+  toastErrorMock,
+  mockUseAuth,
+  mockUseWorkspaceLimits,
+  viewport,
+  pendingInvites,
+} = vi.hoisted(() => ({
+  mockNavigate: vi.fn(),
+  toastSuccessMock: vi.fn(),
+  toastErrorMock: vi.fn(),
+  mockUseAuth: vi.fn(),
+  mockUseWorkspaceLimits: vi.fn(),
+  // jsdom's matchMedia reports false, so the page renders its phone branch unless a
+  // test flips this to the desktop layout.
+  viewport: { desktop: false },
+  pendingInvites: { rows: [] as unknown[] },
+}));
+
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => viewport.desktop }));
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
@@ -27,6 +41,12 @@ vi.mock('sonner', () => ({
 }));
 
 vi.mock('@/lib/analytics', () => ({ captureEvent: vi.fn() }));
+
+const csvRows = vi.hoisted(() => ({ rows: [] as Record<string, string>[] }));
+vi.mock('@/lib/csv', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/csv')>()),
+  openCSVSelector: (onUpload: (rows: Record<string, string>[]) => void) => onUpload(csvRows.rows),
+}));
 
 vi.mock('@/context/AuthContext', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/context/AuthContext')>();
@@ -52,6 +72,14 @@ vi.mock('@/store', async () => {
   };
 });
 
+const { emailsMock } = vi.hoisted(() => ({
+  emailsMock: vi.fn(async () => [] as { user_id: string; email: string }[]),
+}));
+vi.mock('@/store/workspace', async () => {
+  const actual = await vi.importActual<typeof import('@/store/workspace')>('@/store/workspace');
+  return { ...actual, getWorkspaceMemberEmails: emailsMock };
+});
+
 vi.mock('@/services/invite', () => ({
   inviteUser: vi.fn(),
 }));
@@ -61,7 +89,7 @@ vi.mock('@/lib/supabase', () => ({
     from: vi.fn(() => ({
       select: vi.fn(() => ({
         eq: vi.fn(() => ({
-          eq: vi.fn(async () => ({ data: [] })),
+          eq: vi.fn(async () => ({ data: pendingInvites.rows })),
         })),
       })),
     })),
@@ -81,12 +109,12 @@ const mockedInviteUser = vi.mocked(inviteService.inviteUser);
 const mockedGetWorkspaceRoles = vi.mocked(store.getWorkspaceRoles);
 const mockedUpdateWorkspaceUserRole = vi.mocked(store.updateWorkspaceUserRole);
 
-function renderPage() {
+function renderPage(initialEntry = '/equipe') {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <QueryClientProvider client={queryClient}>
         <EquipePage />
       </QueryClientProvider>
@@ -95,9 +123,28 @@ function renderPage() {
   return { queryClient };
 }
 
+/** Phone: the ink "+" opens an action sheet; "Adicionar Membro" opens the form. */
+async function openAddFromPhone() {
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Adicionar: Adicionar Membro ou Importar CSV' }),
+  );
+  fireEvent.click(await screen.findByRole('button', { name: 'Adicionar Membro' }));
+  return screen.findByRole('dialog', { name: 'Adicionar Membro' });
+}
+
+/** Phone: each row carries its swipe actions in the DOM (the keyboard path). */
+async function openEditFromPhone(nome: string) {
+  const nameEl = await screen.findByText(nome);
+  const row = nameEl.closest('li') as HTMLElement;
+  fireEvent.click(within(row).getByRole('button', { name: 'Editar' }));
+  return screen.findByRole('dialog', { name: 'Editar Membro' });
+}
+
 describe('EquipePage — onSubmit invite orchestration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    viewport.desktop = false;
+    pendingInvites.rows = [];
     mockUseAuth.mockReturnValue({
       canSeeFinancials: true,
       can: makeCan(fakeMembership({ role: 'owner' })),
@@ -121,7 +168,7 @@ describe('EquipePage — onSubmit invite orchestration', () => {
       nome: 'Nova Pessoa',
       cargo: 'Redator',
       tipo: 'clt',
-      avatar_url: '',
+      avatar_url: null,
       crm_user_id: null,
     } as never);
     mockedInviteUser.mockRejectedValueOnce(new Error('rede caiu'));
@@ -129,9 +176,7 @@ describe('EquipePage — onSubmit invite orchestration', () => {
     const { queryClient } = renderPage();
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Adicionar Membro' }));
-
-    const dialog = screen.getByRole('dialog');
+    const dialog = await openAddFromPhone();
     fireEvent.change(within(dialog).getByLabelText('Nome *'), {
       target: { value: 'Nova Pessoa' },
     });
@@ -151,6 +196,8 @@ describe('EquipePage — onSubmit invite orchestration', () => {
     await waitFor(() => {
       expect(mockedAddMembro).toHaveBeenCalledTimes(1);
     });
+    // The photo is set later, on the detail page: a new membro sends no avatar_url.
+    expect(mockedAddMembro.mock.calls[0][0]).not.toHaveProperty('avatar_url');
     await waitFor(() => {
       expect(mockedInviteUser).toHaveBeenCalledWith('nova@exemplo.com', 'agent', 42);
     });
@@ -178,7 +225,7 @@ describe('EquipePage — onSubmit invite orchestration', () => {
         nome: 'Pessoa Existente',
         cargo: 'Designer',
         tipo: 'clt',
-        avatar_url: '',
+        avatar_url: null,
         crm_user_id: null,
       },
     ] as never);
@@ -187,15 +234,7 @@ describe('EquipePage — onSubmit invite orchestration', () => {
 
     renderPage();
 
-    const nameEl = await screen.findByText('Pessoa Existente');
-    // The name itself is also a button (navigates to the detail page) and is
-    // first in DOM order; the edit action is the icon-only pencil button
-    // (no accessible name) that follows it, before the delete button.
-    const card = nameEl.closest('.team-card') as HTMLElement;
-    const editButton = within(card).getAllByRole('button')[1];
-    fireEvent.click(editButton);
-
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await openEditFromPhone('Pessoa Existente');
 
     // Turn on the invite switch first (as an admin might, before deciding to
     // link an existing account instead) — the section only renders while
@@ -232,6 +271,8 @@ describe('EquipePage — onSubmit invite orchestration', () => {
 describe('EquipePage — função no workspace for a linked membro', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    viewport.desktop = false;
+    pendingInvites.rows = [];
     mockUseAuth.mockReturnValue({
       canSeeFinancials: true,
       can: makeCan(fakeMembership({ role: 'owner' })),
@@ -252,7 +293,7 @@ describe('EquipePage — função no workspace for a linked membro', () => {
         nome: 'Pessoa Vinculada',
         cargo: 'Designer',
         tipo: 'clt',
-        avatar_url: '',
+        avatar_url: null,
         crm_user_id: 'u1',
       },
     ] as never);
@@ -266,12 +307,7 @@ describe('EquipePage — função no workspace for a linked membro', () => {
     mockedUpdateWorkspaceUserRole.mockResolvedValue(undefined);
   });
 
-  async function openEdit() {
-    const nameEl = await screen.findByText('Pessoa Vinculada');
-    const card = nameEl.closest('.team-card') as HTMLElement;
-    fireEvent.click(within(card).getAllByRole('button')[1]);
-    return screen.findByRole('dialog');
-  }
+  const openEdit = () => openEditFromPhone('Pessoa Vinculada');
 
   it('changes the linked account role on save', async () => {
     renderPage();
@@ -327,9 +363,11 @@ describe('EquipePage — função no workspace for a linked membro', () => {
  * byte-for-byte — only a CUSTOM role (role_id set) can now diverge from its
  * chassis role.
  */
-describe('EquipePage — mutation buttons gated on equipe:editar', () => {
+describe('EquipePage — mutation buttons gated on equipe:editar (desktop)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    viewport.desktop = true;
+    pendingInvites.rows = [];
     mockUseWorkspaceLimits.mockReturnValue({
       limits: { max_team_members: 10 },
       features: null,
@@ -394,5 +432,405 @@ describe('EquipePage — mutation buttons gated on equipe:editar', () => {
     await waitFor(() => {
       expect(mockedGetWorkspaceUsers).toHaveBeenCalled();
     });
+  });
+});
+
+describe('EquipePage — member photos', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    pendingInvites.rows = [];
+    csvRows.rows = [];
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: true,
+      can: makeCan(fakeMembership({ role: 'owner' })),
+      profile: { id: 'me', nome: 'Eu', conta_id: 'ws-1' },
+    });
+    mockUseWorkspaceLimits.mockReturnValue({
+      limits: { max_team_members: 10 },
+      features: null,
+      planName: 'Pro',
+      isLoading: false,
+      isUnlimited: false,
+    });
+    mockedGetWorkspaceUsers.mockResolvedValue([]);
+    mockedGetWorkspaceRoles.mockResolvedValue([]);
+    mockedGetMembros.mockResolvedValue([
+      {
+        id: 1,
+        nome: 'Ana',
+        cargo: 'Designer',
+        tipo: 'clt',
+        avatar_url: 'https://cdn.exemplo.com/ana.jpg',
+        crm_user_id: 'u1',
+      },
+      { id: 2, nome: 'Bruno', cargo: 'Redator', tipo: 'clt', avatar_url: null, crm_user_id: null },
+    ] as never);
+  });
+
+  it.each([
+    ['desktop', true],
+    ['phone', false],
+  ])('renders member photos (%s)', async (_label, desktop) => {
+    viewport.desktop = desktop;
+    renderPage();
+
+    await screen.findByText('Bruno');
+    const photos = document.querySelectorAll('img.avatar--photo');
+    expect(photos).toHaveLength(1);
+    expect(photos[0]).toHaveAttribute('src', 'https://cdn.exemplo.com/ana.jpg');
+    const initials = [...document.querySelectorAll('div.avatar, span.avatar')].map(
+      (el) => el.textContent,
+    );
+    expect(initials).toContain('B');
+  });
+
+  it('imports CSV rows without an avatar_url key', async () => {
+    viewport.desktop = true;
+    csvRows.rows = [{ nome: 'Carla', cargo: 'Social media', tipo: 'clt' }];
+    mockedAddMembro.mockResolvedValue({ id: 9 } as never);
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Importar CSV' }));
+
+    await waitFor(() => expect(mockedAddMembro).toHaveBeenCalledTimes(1));
+    expect(mockedAddMembro.mock.calls[0][0]).toMatchObject({
+      nome: 'Carla',
+      cargo: 'Social media',
+    });
+    expect(mockedAddMembro.mock.calls[0][0]).not.toHaveProperty('avatar_url');
+  });
+});
+
+describe('EquipePage — mutation actions gated on equipe:editar (phone)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    viewport.desktop = false;
+    pendingInvites.rows = [];
+    mockUseWorkspaceLimits.mockReturnValue({
+      limits: { max_team_members: 10 },
+      features: null,
+      planName: 'Pro',
+      isLoading: false,
+      isUnlimited: false,
+    });
+    mockedGetMembros.mockResolvedValue([
+      { id: 3, nome: 'Bruno', cargo: 'Redator', tipo: 'clt', avatar_url: null, crm_user_id: null },
+    ] as never);
+    mockedGetWorkspaceUsers.mockResolvedValue([]);
+  });
+
+  function renderWithCan(can: ReturnType<typeof makeCan>) {
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: true,
+      can,
+      profile: { id: 'me', nome: 'Eu', conta_id: 'ws-1' },
+    });
+    return renderPage();
+  }
+
+  it('keeps a legacy agent read-only: notice, no "+", no swipe actions', async () => {
+    renderWithCan(makeCan(fakeMembership({ role: 'agent' })));
+
+    expect(await screen.findByText('Bruno')).toBeInTheDocument();
+    expect(screen.getByText('Visualização limitada')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Adicionar: Adicionar Membro ou Importar CSV' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
+    expect(screen.queryByText('sem conta vinculada')).not.toBeInTheDocument();
+  });
+
+  it('gives a custom role with equipe:editar the "+" sheet with Adicionar Membro and Importar CSV', async () => {
+    renderWithCan(
+      makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { equipe: 'editar' } }),
+      ),
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Adicionar: Adicionar Membro ou Importar CSV' }),
+    );
+    const sheet = await screen.findByRole('dialog', { name: 'Adicionar' });
+    expect(within(sheet).getByRole('button', { name: 'Adicionar Membro' })).toBeInTheDocument();
+    expect(within(sheet).getByRole('button', { name: 'Importar CSV' })).toBeInTheDocument();
+    expect(within(sheet).getByText(/Colunas CSV: nome\*, cargo\*/)).toBeInTheDocument();
+  });
+});
+
+describe('EquipePage — login e-mails (desktop)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    viewport.desktop = true;
+    pendingInvites.rows = [];
+    mockUseWorkspaceLimits.mockReturnValue({
+      limits: { max_team_members: 10 },
+      features: null,
+      planName: 'Pro',
+      isLoading: false,
+      isUnlimited: false,
+    });
+    mockedGetMembros.mockResolvedValue([
+      { id: 1, nome: 'Ana', cargo: 'Design', tipo: 'clt', crm_user_id: 'u1' },
+      { id: 2, nome: 'Bia', cargo: 'Redação', tipo: 'clt', crm_user_id: null },
+    ] as never);
+    mockedGetWorkspaceUsers.mockResolvedValue([]);
+    emailsMock.mockResolvedValue([{ user_id: 'u1', email: 'ana@exemplo.com' }]);
+  });
+
+  it('shows the linked account e-mail in Vínculo and matches it in the search', async () => {
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: true,
+      can: makeCan(fakeMembership({ role: 'admin' })),
+      profile: { id: 'me', nome: 'Eu', conta_id: 'ws-1' },
+    });
+    renderPage();
+
+    const anaRow = (await screen.findByText('ana@exemplo.com')).closest('tr') as HTMLElement;
+    expect(within(anaRow).getByText('Ana')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText('Buscar por nome, cargo ou e-mail...'), {
+      target: { value: 'ana@exem' },
+    });
+    expect(screen.getByText('Ana')).toBeInTheDocument();
+    expect(screen.queryByText('Bia')).not.toBeInTheDocument();
+  });
+
+  it('never fetches e-mails for a legacy agent', async () => {
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: false,
+      can: makeCan(fakeMembership({ role: 'agent' })),
+      profile: { id: 'me', nome: 'Eu', conta_id: 'ws-1' },
+    });
+    renderPage();
+
+    await screen.findByText('Ana');
+    expect(emailsMock).not.toHaveBeenCalled();
+    expect(screen.queryByText('ana@exemplo.com')).not.toBeInTheDocument();
+  });
+});
+
+describe('EquipePage on phones', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    viewport.desktop = false;
+    pendingInvites.rows = [];
+    mockUseWorkspaceLimits.mockReturnValue({
+      limits: { max_team_members: 10 },
+      features: null,
+      planName: 'Pro',
+      isLoading: false,
+      isUnlimited: false,
+    });
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: true,
+      can: makeCan(fakeMembership({ role: 'owner' })),
+      profile: { id: 'me', nome: 'Eu', conta_id: 'ws-1' },
+    });
+    mockedGetWorkspaceUsers.mockResolvedValue([]);
+    mockedGetWorkspaceRoles.mockResolvedValue([]);
+    mockedGetMembros.mockResolvedValue([
+      {
+        id: 1,
+        nome: 'Ana',
+        cargo: 'Designer',
+        tipo: 'clt',
+        avatar_url: null,
+        crm_user_id: 'u1',
+        custo_mensal: 3000,
+      },
+      {
+        id: 2,
+        nome: 'Bruno',
+        cargo: 'Redator',
+        tipo: 'freelancer_mensal',
+        avatar_url: null,
+        crm_user_id: null,
+        custo_mensal: 1800,
+      },
+      {
+        id: 4,
+        nome: 'Diego',
+        cargo: 'Editor de vídeo',
+        tipo: 'freelancer_demanda',
+        avatar_url: null,
+        crm_user_id: null,
+        custo_mensal: 900,
+      },
+    ] as never);
+  });
+
+  it('renders the phone header, the link badges and the Membros vs Usuários footnote', async () => {
+    pendingInvites.rows = [
+      {
+        id: 'i1',
+        email: 'diego@exemplo.com',
+        role: 'agent',
+        membro_id: 4,
+        expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+        status: 'pending',
+      },
+    ];
+    renderPage();
+
+    expect(await screen.findByText('Bruno')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Equipe' })).toBeInTheDocument();
+    expect(document.querySelector('.header')).toBeNull();
+    expect(screen.getByText('Redator · Freelancer Mensal')).toBeInTheDocument();
+    const bruno = screen.getByText('Bruno').closest('li') as HTMLElement;
+    expect(within(bruno).getByText('sem conta vinculada')).toBeInTheDocument();
+    const diego = screen.getByText('Diego').closest('li') as HTMLElement;
+    expect(await within(diego).findByText('convite pendente')).toBeInTheDocument();
+    const ana = screen.getByText('Ana').closest('li') as HTMLElement;
+    expect(within(ana).queryByText('sem conta vinculada')).not.toBeInTheDocument();
+    expect(screen.getByText(/Usuários do workspace são contas com acesso ao CRM/)).toBeVisible();
+  });
+
+  it('opens the member when a row is tapped', async () => {
+    renderPage();
+
+    fireEvent.click(await screen.findByText('Bruno'));
+    expect(mockNavigate).toHaveBeenCalledWith('/equipe/2');
+  });
+
+  it('filters by Tipo and sorts by cost from the filters sheet', async () => {
+    renderPage();
+    await screen.findByText('Bruno');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filtros: Tipo e Ordenar por' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Filtros' });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'CLT' }));
+    expect(within(sheet).getByRole('button', { name: 'Ver 1' })).toBeInTheDocument();
+    expect(screen.queryByText('Bruno')).not.toBeInTheDocument();
+
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Todos' }));
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Custo (menor)' }));
+    // The sheet is modal (the page behind it is aria-hidden), so read the rows by class.
+    const names = Array.from(document.querySelectorAll('.phone-crud-row__title')).map(
+      (el) => el.textContent,
+    );
+    expect(names).toEqual(['Diego', 'Bruno', 'Ana']);
+    expect(
+      screen.getByRole('button', { name: 'Filtros: Tipo e Ordenar por, 1 ativos', hidden: true }),
+    ).toBeInTheDocument();
+  });
+
+  it('offers no cost sort without financial access', async () => {
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: false,
+      can: makeCan(fakeMembership({ role: 'owner' })),
+      profile: { id: 'me', nome: 'Eu', conta_id: 'ws-1' },
+    });
+    renderPage();
+    await screen.findByText('Bruno');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filtros: Tipo e Ordenar por' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Filtros' });
+    expect(within(sheet).getByRole('button', { name: 'Nome' })).toBeInTheDocument();
+    expect(within(sheet).queryByRole('button', { name: 'Custo (maior)' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Custo mensal total')).not.toBeInTheDocument();
+  });
+
+  it('shows no member cost to a member restricted to assigned clients (custo_mensal is NULL for them)', async () => {
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: true,
+      can: makeCan(fakeMembership({ role: 'admin' })),
+      profile: { id: 'me', nome: 'Eu', conta_id: 'ws-1' },
+      membership: fakeMembership({ role: 'admin', client_scope: 'atribuidos' }),
+    });
+    renderPage();
+    await screen.findByText('Bruno');
+
+    expect(screen.queryByText('Custo mensal total')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Filtros: Tipo e Ordenar por' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Filtros' });
+    expect(within(sheet).queryByRole('button', { name: 'Custo (maior)' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the ?novo deep link opening the add form', async () => {
+    renderPage('/equipe?novo=1');
+
+    expect(await screen.findByRole('dialog', { name: 'Adicionar Membro' })).toBeInTheDocument();
+  });
+
+  it('asks before removing a member from the swipe action', async () => {
+    renderPage();
+    const row = (await screen.findByText('Bruno')).closest('li') as HTMLElement;
+
+    fireEvent.click(within(row).getByRole('button', { name: 'Remover' }));
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent('Remover este membro?');
+  });
+});
+
+describe('EquipePage in the Vidro toolbar', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    viewport.desktop = true;
+    pendingInvites.rows = [];
+    mockUseWorkspaceLimits.mockReturnValue({
+      limits: { max_team_members: 10 },
+      features: null,
+      planName: 'Pro',
+      isLoading: false,
+      isUnlimited: false,
+    });
+    mockedGetMembros.mockResolvedValue([]);
+    mockedGetWorkspaceUsers.mockResolvedValue([]);
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: true,
+      can: makeCan(fakeMembership({ role: 'admin' })),
+      profile: { id: 'me', nome: 'Eu', conta_id: 'ws-1' },
+    });
+  });
+
+  function renderInHarness(vidroShell: boolean) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <MemoryRouter initialEntries={['/equipe']}>
+        <QueryClientProvider client={queryClient}>
+          <VidroToolbarHarness vidroShell={vidroShell}>
+            <EquipePage />
+          </VidroToolbarHarness>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  it('renders the title, the CSV actions and the primary action once, in the toolbar', async () => {
+    renderInHarness(true);
+
+    const h1s = await screen.findAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    const toolbar = h1s[0].closest('.vidro-toolbar') as HTMLElement;
+    expect(toolbar).not.toBeNull();
+    expect(h1s[0]).toHaveTextContent('Equipe');
+    expect(screen.getAllByRole('button', { name: 'Adicionar Membro' })).toHaveLength(1);
+    expect(within(toolbar).getByRole('button', { name: 'Adicionar Membro' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Importar CSV' })).toHaveLength(1);
+    expect(within(toolbar).getByRole('button', { name: 'Importar CSV' })).toBeInTheDocument();
+    expect(document.querySelector('.header')).toBeNull();
+  });
+
+  it('shows no actions in the toolbar for a role that cannot edit the team', async () => {
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: true,
+      can: makeCan(fakeMembership({ role: 'agent' })),
+      profile: { id: 'me', nome: 'Eu', conta_id: 'ws-1' },
+    });
+    renderInHarness(true);
+
+    const h1s = await screen.findAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'Adicionar Membro' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Importar CSV' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the in-page header when the Vidro shell is off', async () => {
+    renderInHarness(false);
+
+    const h1 = await screen.findByRole('heading', { level: 1, name: 'Equipe' });
+    expect(h1.closest('.header')).not.toBeNull();
+    expect(document.querySelector('.vidro-toolbar')).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Adicionar Membro' })).toHaveLength(1);
   });
 });

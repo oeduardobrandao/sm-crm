@@ -90,6 +90,11 @@ describe('fluxos column sort prefs', () => {
     expect(loadFluxosColumnSorts('conta-2')).toEqual({});
   });
 
+  it('round-trips the publish-date sort', () => {
+    persistFluxosColumnSort('conta-1', 'template:7::Copy', 'publicacao');
+    expect(loadFluxosColumnSorts('conta-1')).toEqual({ 'template:7::Copy': 'publicacao' });
+  });
+
   it('drops junk values on load', () => {
     localStorage.setItem('entregas_fluxos_sorts_conta-1', '{"a":"whatever","b":1}');
     expect(loadFluxosColumnSorts('conta-1')).toEqual({});

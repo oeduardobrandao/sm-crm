@@ -6,7 +6,8 @@
 import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createTikTokIntegrationHandler } from "../tiktok-integration/handlers.ts";
-import { refreshStoredPostMetrics } from "../tiktok-integration/import.ts";
+import { allClientsScope, type ClientScopeLoader } from "../_shared/client-scope.ts";
+import { importTikTokVideos, refreshStoredPostMetrics } from "../tiktok-integration/import.ts";
 import { createSignedState, toUrlSafeBase64 } from "../tiktok-integration/oauth-state.ts";
 import { TIKTOK_API_BASE, decryptTikTokToken } from "../_shared/tiktok.ts";
 import type { ThumbnailStorage } from "../_shared/tiktok-thumbnail-cache.ts";
@@ -52,10 +53,18 @@ function makeDb(db: ReturnType<typeof createSupabaseQueryMock>, storage: Thumbna
   } as any;
 }
 
-function makeHandler(db: ReturnType<typeof createSupabaseQueryMock>, storage: ThumbnailStorage) {
+function makeHandler(
+  db: ReturnType<typeof createSupabaseQueryMock>,
+  storage: ThumbnailStorage,
+  now?: () => Date,
+  // Acesso por cliente: unrestricted unless a test passes its own loader.
+  loadClientScope: ClientScopeLoader = () => Promise.resolve(allClientsScope()),
+) {
   return createTikTokIntegrationHandler({
     buildCorsHeaders: () => ({}),
     createServiceDb: () => makeDb(db, storage),
+    now,
+    loadClientScope,
   });
 }
 
@@ -237,6 +246,9 @@ Deno.test("tiktok-integration: /auth with feature_tiktok=true returns an authori
   const body = await res.json();
   assert(body.url.startsWith("https://www.tiktok.com/v2/auth/authorize/?client_key=test-client-key"));
   assert(body.url.includes("state="));
+  // Always show TikTok's authorization page, so a browser already signed in to another client's
+  // TikTok account does not get linked silently.
+  assertEquals(new URL(body.url).searchParams.get("disable_auto_auth"), "1");
 });
 
 Deno.test("tiktok-integration: /auth requests the scope list without video.upload", async () => {
@@ -351,6 +363,81 @@ Deno.test("tiktok-integration: callback happy path upserts BOTH encrypted tokens
   }
 });
 
+// ─── (e2) callback: account already active on another client of the same workspace ─────
+
+async function callbackStateFor(db: ReturnType<typeof createSupabaseQueryMock>, clientId = "42") {
+  db.queue("oauth_states", "delete", { data: null, error: null });
+  db.queue("oauth_states", "insert", { data: null, error: null });
+  const state = await createSignedState(clientId, "user-1", "ws-1", db);
+  db.queue("oauth_states", "update", {
+    data: { nonce: "x", client_id: Number(clientId), conta_id: "ws-1", provider: "tiktok" },
+    error: null,
+  });
+  return state;
+}
+
+Deno.test("tiktok-integration: callback refuses an account already active on another client of the workspace", async () => {
+  const db = createSupabaseQueryMock();
+  const { storage } = makeStorage();
+  const state = await callbackStateFor(db);
+  db.queue("tiktok_accounts", "select", {
+    data: [{ id: "acct-A", client_id: 7, clientes: { conta_id: "ws-1", nome: "Clínica A" } }],
+    error: null,
+  });
+  db.queue("tiktok_accounts", "update", { data: null, error: null });
+
+  const f = stubTikTokFetch();
+  const handler = makeHandler(db, storage);
+  try {
+    const res = await handler(
+      new Request(`http://x/tiktok-integration/callback?code=abc123&state=${encodeURIComponent(state)}`, { method: "GET" }),
+    );
+    assertEquals(res.status, 302);
+    const location = new URL(res.headers.get("location")!);
+    assertEquals(location.pathname, "/clientes/42");
+    assertEquals(location.searchParams.get("tt_error"), "already_linked");
+    assertEquals(location.searchParams.get("tt_user"), "testuser");
+    assertEquals(location.searchParams.get("tt_other"), "Clínica A");
+
+    assert(!db.calls.some((c) => c.table === "tiktok_accounts" && c.operation === "upsert"), "must not link client 42");
+    assert(!f.calls.some((c) => c.url.startsWith(`${TIKTOK_API_BASE}/oauth/revoke/`)), "must not revoke the shared grant");
+    assert(!f.calls.some((c) => c.url.startsWith(`${TIKTOK_API_BASE}/video/list/`)), "must not import videos");
+
+    const update = db.calls.find((c) => c.table === "tiktok_accounts" && c.operation === "update");
+    assert(update, "the existing link should receive the fresh tokens");
+    assert(update!.modifiers.some((m) => m.method === "eq" && m.args[0] === "id" && m.args[1] === "acct-A"));
+    const payload = update!.payload as Record<string, unknown>;
+    assertEquals(await decryptTikTokToken(payload.encrypted_access_token as string, "access"), "access-tok-123");
+    assertEquals(payload.client_id, undefined);
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("tiktok-integration: callback links normally when the same account is active only in another workspace", async () => {
+  const db = createSupabaseQueryMock();
+  const { storage } = makeStorage();
+  const state = await callbackStateFor(db);
+  db.queue("tiktok_accounts", "select", {
+    data: [{ id: "acct-X", client_id: 99, clientes: { conta_id: "ws-other", nome: "Outra agência" } }],
+    error: null,
+  });
+  db.queue("tiktok_accounts", "upsert", { data: { id: "acct-uuid-1" }, error: null });
+
+  const f = stubTikTokFetch();
+  const handler = makeHandler(db, storage);
+  try {
+    const res = await handler(
+      new Request(`http://x/tiktok-integration/callback?code=abc123&state=${encodeURIComponent(state)}`, { method: "GET" }),
+    );
+    assertEquals(res.status, 302);
+    assertEquals(res.headers.get("location"), "https://app.example.com/clientes/42?tt_connected=1");
+    assert(db.calls.some((c) => c.table === "tiktok_accounts" && c.operation === "upsert"));
+  } finally {
+    f.restore();
+  }
+});
+
 // ─── (f) /disconnect keeps the row, calls /v2/oauth/revoke/ ────────────────────────────
 
 Deno.test("tiktok-integration: disconnect keeps the row with authorization_status='disconnected' and calls /v2/oauth/revoke/", async () => {
@@ -386,6 +473,44 @@ Deno.test("tiktok-integration: disconnect keeps the row with authorization_statu
 
     const deleteCall = db.calls.find((c) => c.table === "tiktok_posts" && c.operation === "delete");
     assert(deleteCall, "expected tiktok_posts to be cleared for the account");
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("tiktok-integration: disconnect does NOT revoke when another client still uses the same TikTok account", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "user-1" });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queue("clientes", "select", { data: { conta_id: "ws-1" }, error: null });
+
+  const { encryptTikTokToken } = await import("../_shared/tiktok.ts");
+  const encAccess = await encryptTikTokToken("shared-access", "access");
+  db.queue("tiktok_accounts", "select", {
+    data: { id: "acct-B", tiktok_open_id: "open-1", encrypted_access_token: encAccess },
+    error: null,
+  });
+  db.queue("tiktok_accounts", "select", { data: [{ id: "acct-A" }], error: null });
+  db.queue("tiktok_posts", "delete", { data: null, error: null });
+  db.queue("tiktok_accounts", "update", { data: null, error: null });
+
+  const { storage } = makeStorage();
+  const f = stubTikTokFetch();
+  const handler = makeHandler(db, storage);
+  try {
+    const res = await handler(authedRequest("/disconnect/42", "POST"));
+    assertEquals(res.status, 200);
+    assert(
+      !f.calls.some((c) => c.url.startsWith(`${TIKTOK_API_BASE}/oauth/revoke/`)),
+      "revoke disconnects the app from the TikTok user, which would break the other client",
+    );
+    const sharedCheck = db.calls.filter((c) => c.table === "tiktok_accounts" && c.operation === "select")[1];
+    assert(sharedCheck.modifiers.some((m) => m.method === "eq" && m.args[0] === "tiktok_open_id" && m.args[1] === "open-1"));
+    assert(sharedCheck.modifiers.some((m) => m.method === "neq" && m.args[0] === "id" && m.args[1] === "acct-B"));
+
+    const update = db.calls.find((c) => c.table === "tiktok_accounts" && c.operation === "update");
+    assert(update, "this client's link is still disconnected locally");
+    assertEquals((update!.payload as Record<string, unknown>).authorization_status, "disconnected");
   } finally {
     f.restore();
   }
@@ -664,6 +789,232 @@ Deno.test("refreshStoredPostMetrics: video.query response omitting one requested
   }
 });
 
+// ─── (k) one write path for video counts: every count write also lands a daily snapshot ──
+
+Deno.test("importTikTokVideos records a snapshot for every upserted video", async () => {
+  const db = createSupabaseQueryMock();
+  const { storage } = makeStorage();
+  const f = stubTikTokFetch({
+    videos: [
+      { id: "v1", create_time: 1700000000, like_count: 1, comment_count: 2, share_count: 3, view_count: 4 },
+      { id: "v2", create_time: 1700000100, like_count: 5, comment_count: 6, share_count: 7, view_count: 8 },
+    ],
+  });
+  try {
+    const n = await importTikTokVideos({ fetch, storage }, makeDb(db, storage), "acct-1", "tok", {
+      now: () => new Date("2026-10-29T01:30:00Z"),
+    });
+    assertEquals(n, 2);
+
+    const snap = db.calls.find((c) => c.table === "tiktok_post_metrics_daily" && c.operation === "upsert");
+    assert(snap, "expected a tiktok_post_metrics_daily upsert");
+    assertEquals(snap!.payload, [
+      { tiktok_account_id: "acct-1", tiktok_video_id: "v1", snapshot_date: "2026-10-28", views: 4, likes: 1, comments: 2, shares: 3 },
+      { tiktok_account_id: "acct-1", tiktok_video_id: "v2", snapshot_date: "2026-10-28", views: 8, likes: 5, comments: 6, shares: 7 },
+    ]);
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("importTikTokVideos records no snapshot when the tiktok_posts upsert fails", async () => {
+  const db = createSupabaseQueryMock();
+  const { storage } = makeStorage();
+  db.queue("tiktok_posts", "select", { data: [], error: null });
+  db.queue("tiktok_posts", "upsert", { data: null, error: { message: "boom" } });
+  const f = stubTikTokFetch();
+  try {
+    const n = await importTikTokVideos({ fetch, storage }, makeDb(db, storage), "acct-1", "tok");
+    assertEquals(n, 0);
+    assertEquals(db.calls.filter((c) => c.table === "tiktok_post_metrics_daily").length, 0);
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("refreshStoredPostMetrics records a snapshot for every updated video", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("tiktok_posts", "select", {
+    data: [{ tiktok_video_id: "v1" }, { tiktok_video_id: "v2" }, { tiktok_video_id: "v3" }],
+    error: null,
+  });
+  // v3 fails to update: it must not get a snapshot row.
+  db.queue(
+    "tiktok_posts",
+    "update",
+    { data: null, error: null },
+    { data: null, error: null },
+    { data: null, error: { message: "boom" } },
+  );
+  const f = stubTikTokFetch();
+  try {
+    // deno-lint-ignore no-explicit-any
+    const updated = await refreshStoredPostMetrics({ svc: db as any, now: () => new Date("2026-10-29T01:30:00Z") }, "acct-1", "tok");
+    assertEquals(updated, 2);
+
+    const snaps = db.calls.filter((c) => c.table === "tiktok_post_metrics_daily" && c.operation === "upsert");
+    assertEquals(snaps.length, 1, "snapshots are written once, at the end of the refresh");
+    assertEquals(snaps[0].payload, [
+      { tiktok_account_id: "acct-1", tiktok_video_id: "v1", snapshot_date: "2026-10-28", views: 10, likes: 1, comments: 2, shares: 3 },
+      { tiktok_account_id: "acct-1", tiktok_video_id: "v2", snapshot_date: "2026-10-28", views: 20, likes: 2, comments: 4, shares: 6 },
+    ]);
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("refreshStoredPostMetrics selects the 200 most recent plus every video posted in the last 90 days", async () => {
+  const db = createSupabaseQueryMock();
+  const recent = Array.from({ length: 200 }, (_, i) => `r${i + 1}`);
+  // 30 videos only the 90-day query knows about, plus two the 200-most-recent query already has.
+  const extra = Array.from({ length: 30 }, (_, i) => `o${i + 1}`);
+  db.queue("tiktok_posts", "select", { data: recent.map((id) => ({ tiktok_video_id: id })), error: null });
+  db.queue("tiktok_posts", "select", {
+    data: [...["r1", "r2"], ...extra].map((id) => ({ tiktok_video_id: id })),
+    error: null,
+  });
+
+  const f = stubTikTokFetch();
+  try {
+    // deno-lint-ignore no-explicit-any
+    const updated = await refreshStoredPostMetrics({ svc: db as any, now: () => new Date("2026-10-28T15:00:00Z") }, "acct-1", "tok");
+    assertEquals(updated, 230);
+
+    const selects = db.calls.filter((c) => c.table === "tiktok_posts" && c.operation === "select");
+    assertEquals(selects.length, 2);
+    const first = selects[0].modifiers;
+    assert(first.some((m) => m.method === "eq" && m.args[0] === "tiktok_account_id" && m.args[1] === "acct-1"));
+    assert(first.some((m) => m.method === "order" && m.args[0] === "posted_at"));
+    assert(first.some((m) => m.method === "limit" && m.args[0] === 200));
+    const second = selects[1].modifiers;
+    assert(second.some((m) => m.method === "eq" && m.args[0] === "tiktok_account_id" && m.args[1] === "acct-1"));
+    // 2026-10-28 minus 89 days = 2026-07-31, at São Paulo midnight (03:00Z): 90 inclusive SP days.
+    assert(
+      second.some((m) => m.method === "gte" && m.args[0] === "posted_at" && m.args[1] === "2026-07-31T03:00:00.000Z"),
+      `unexpected 90-day cutoff: ${JSON.stringify(second)}`,
+    );
+
+    const queryCalls = f.calls.filter((c) => c.url.startsWith(`${TIKTOK_API_BASE}/video/query/`));
+    const batches = queryCalls.map((c) => JSON.parse(c.init?.body as string).filters.video_ids as string[]);
+    assertEquals(batches.length, 12, "230 unique ids -> 12 batches of <=20");
+    assert(batches.every((b) => b.length <= 20));
+    assertEquals(batches.flat(), [...recent, ...extra], "union keeps the first query's order, deduplicated");
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("tiktok-integration: /sync writes tiktok_account_metrics_daily on the São Paulo date", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "user-1" });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queue("clientes", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queueRpc("effective_plan_feature", { data: true, error: null });
+
+  const { encryptTikTokToken } = await import("../_shared/tiktok.ts");
+  const encAccess = await encryptTikTokToken("fresh-access-token", "access");
+  const farFuture = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  db.queue("tiktok_accounts", "select", {
+    data: {
+      id: "acct-1",
+      client_id: "42",
+      tiktok_open_id: "open-1",
+      username: "olduser",
+      display_name: "Old User",
+      avatar_url: null,
+      follower_count: 50,
+      following_count: 5,
+      likes_count: 200,
+      video_count: 3,
+      encrypted_access_token: encAccess,
+      encrypted_refresh_token: null,
+      access_token_expires_at: farFuture,
+      refresh_token_expires_at: farFuture,
+      authorization_status: "active",
+    },
+    error: null,
+  });
+  db.queue("tiktok_accounts", "select", {
+    data: {
+      id: "acct-1",
+      tiktok_open_id: "open-1",
+      encrypted_access_token: encAccess,
+      access_token_expires_at: farFuture,
+    },
+    error: null,
+  });
+  db.queue("tiktok_follower_history", "select", { data: null, error: null });
+
+  const { storage } = makeStorage();
+  const f = stubTikTokFetch();
+  // 01:30Z on the 29th is 22:30 on the 28th in São Paulo: UTC would say 2026-10-29.
+  const handler = makeHandler(db, storage, () => new Date("2026-10-29T01:30:00Z"));
+
+  try {
+    const res = await handler(authedRequest("/sync/42", "POST"));
+    assertEquals(res.status, 200);
+
+    const snap = db.calls.find((c) => c.table === "tiktok_account_metrics_daily" && c.operation === "upsert");
+    assert(snap, "expected a tiktok_account_metrics_daily upsert from /sync");
+    assertEquals(snap!.payload, {
+      tiktok_account_id: "acct-1",
+      snapshot_date: "2026-10-28",
+      follower_count: 100,
+      following_count: 10,
+      likes_count: 500,
+      video_count: 5,
+    });
+    assertEquals((snap!.options as { onConflict?: string }).onConflict, "tiktok_account_id,snapshot_date");
+
+    const history = db.calls.find((c) => c.table === "tiktok_follower_history" && c.operation === "upsert");
+    assertEquals((history!.payload as Record<string, unknown>).date, "2026-10-28");
+    const historyLookup = db.calls.find((c) => c.table === "tiktok_follower_history" && c.operation === "select");
+    assert(historyLookup!.modifiers.some((m) => m.method === "eq" && m.args[0] === "date" && m.args[1] === "2026-10-28"));
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("tiktok-integration: a failing tiktok_account_metrics_daily upsert does not fail /sync", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "user-1" });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queue("clientes", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queueRpc("effective_plan_feature", { data: true, error: null });
+
+  const { encryptTikTokToken } = await import("../_shared/tiktok.ts");
+  const encAccess = await encryptTikTokToken("fresh-access-token", "access");
+  const farFuture = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  db.queue("tiktok_accounts", "select", {
+    data: {
+      id: "acct-1",
+      client_id: "42",
+      tiktok_open_id: "open-1",
+      follower_count: 50,
+      encrypted_access_token: encAccess,
+      access_token_expires_at: farFuture,
+      authorization_status: "active",
+    },
+    error: null,
+  });
+  db.queue("tiktok_accounts", "select", {
+    data: { id: "acct-1", tiktok_open_id: "open-1", encrypted_access_token: encAccess, access_token_expires_at: farFuture },
+    error: null,
+  });
+  db.queue("tiktok_account_metrics_daily", "upsert", { data: null, error: { message: "boom" } });
+
+  const { storage } = makeStorage();
+  const f = stubTikTokFetch();
+  const handler = makeHandler(db, storage);
+  try {
+    const res = await handler(authedRequest("/sync/42", "POST"));
+    assertEquals(res.status, 200);
+    assertEquals((await res.json()).ok, true);
+  } finally {
+    f.restore();
+  }
+});
+
 // ─── (j) disconnect: tiktok_posts delete failing -> 500, no partial disconnect ─────────
 
 Deno.test("tiktok-integration: disconnect returns 500 and does NOT blank tokens/change status when the tiktok_posts delete fails", async () => {
@@ -692,4 +1043,45 @@ Deno.test("tiktok-integration: disconnect returns 500 and does NOT blank tokens/
   } finally {
     f.restore();
   }
+});
+
+// ─── acesso por cliente ──────────────────────────────────────────────────────────────
+
+function summaryDb() {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "user-1" });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queue("clientes", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queue("tiktok_accounts", "select", { data: null, error: null });
+  return db;
+}
+const restrictedTo = (ids: number[]): ClientScopeLoader => () =>
+  Promise.resolve({ all: false, ids: new Set(ids), membroIds: new Set([7]) });
+
+Deno.test("tiktok-integration: restricted member on a hidden client gets the foreign-client 403", async () => {
+  const db = summaryDb();
+  const { storage } = makeStorage();
+  const res = await makeHandler(db, storage, undefined, restrictedTo([99]))(authedRequest("/summary/42"));
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: true, message: "Unauthorized" });
+  assertEquals(db.calls.filter((c) => c.table === "tiktok_accounts").length, 0);
+});
+
+Deno.test("tiktok-integration: restricted member on an assigned client is unchanged", async () => {
+  const db = summaryDb();
+  const { storage } = makeStorage();
+  const res = await makeHandler(db, storage, undefined, restrictedTo([42]))(authedRequest("/summary/42"));
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { exists: false });
+});
+
+Deno.test("tiktok-integration: a scope read error is a 500, never data", async () => {
+  const db = summaryDb();
+  const { storage } = makeStorage();
+  const res = await makeHandler(db, storage, undefined, () => Promise.reject(new Error("JWT expired")))(
+    authedRequest("/summary/42"),
+  );
+  assertEquals(res.status, 500);
+  assertEquals(await res.json(), { error: true, message: "Erro interno" });
+  assertEquals(db.calls.filter((c) => c.table === "tiktok_accounts").length, 0);
 });

@@ -4,13 +4,14 @@ import { Link, useParams } from 'react-router-dom';
 import { ChevronRight, FileText } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
+import { compactHubToken } from '../lib/hubLinks';
 import { fetchPages } from '../api';
 import { ListSkeleton } from '../components/Skeleton';
 
 export function PaginasPage() {
   const { token } = useHub();
   const { workspace } = useParams<{ workspace: string }>();
-  const base = `/${workspace}/hub/${token}`;
+  const base = `/${workspace}/hub/${compactHubToken(token)}`;
   const { t } = useTranslation('hubPages');
 
   const { data, isLoading } = useQuery({

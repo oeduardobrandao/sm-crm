@@ -18,7 +18,18 @@ export function balancedColumns(n: number): number | null {
   return null;
 }
 
-export function TopPostsBlock({ block, snapshot }: BlockProps) {
+function metricsLine(post: SnapshotTopPost, tiktok: boolean): string {
+  const tail = `♥ ${fmtCount(post.likes)} · Com. ${fmtCount(post.comments)}`;
+  // TikTok: sem alcance nem salvamentos na Display API; compartilhamentos no lugar.
+  if (tiktok) return `Vis. ${fmtCount(post.views)} · ${tail} · Comp. ${fmtCount(post.shares)}`;
+  return typeof post.views === 'number'
+    ? `Vis. ${fmtCount(post.views)} · ${tail} · Salv. ${fmtCount(post.saves)}`
+    : `Alc. ${fmtCount(post.reach)} · ${tail} · Salv. ${fmtCount(post.saves)}`;
+}
+
+export function TopPostsBlock({ block, snapshot, platform }: BlockProps) {
+  const tiktok = platform === 'tiktok';
+  const typeLabel = (post: SnapshotTopPost) => (tiktok ? 'Vídeo' : TYPE_LABELS[post.type]);
   const raw = block.config?.count;
   const count = typeof raw === 'number' && raw >= 1 && raw <= 12 ? raw : DEFAULT_COUNT;
   const posts = snapshot.top_posts.slice(0, count);
@@ -55,13 +66,13 @@ export function TopPostsBlock({ block, snapshot }: BlockProps) {
                 opacity: 0.6,
               }}
             >
-              {TYPE_LABELS[post.type]}
+              {typeLabel(post)}
             </div>
           )}
           <div style={{ padding: '0.6rem' }}>
             <p
               style={{ margin: 0, fontSize: '0.7rem', opacity: 0.6 }}
-            >{`${i + 1}º · ${TYPE_LABELS[post.type]}`}</p>
+            >{`${i + 1}º · ${typeLabel(post)}`}</p>
             <p
               style={{
                 margin: '0.2rem 0 0',
@@ -76,9 +87,7 @@ export function TopPostsBlock({ block, snapshot }: BlockProps) {
               {post.caption_preview}
             </p>
             <p style={{ margin: '0.4rem 0 0', fontSize: '0.72rem', opacity: 0.75 }}>
-              {typeof post.views === 'number'
-                ? `Vis. ${fmtCount(post.views)} · ♥ ${fmtCount(post.likes)} · Com. ${fmtCount(post.comments)} · Salv. ${fmtCount(post.saves)}`
-                : `Alc. ${fmtCount(post.reach)} · ♥ ${fmtCount(post.likes)} · Com. ${fmtCount(post.comments)} · Salv. ${fmtCount(post.saves)}`}
+              {metricsLine(post, tiktok)}
             </p>
           </div>
         </article>

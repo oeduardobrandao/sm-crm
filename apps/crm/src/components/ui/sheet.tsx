@@ -2,6 +2,7 @@ import * as React from 'react';
 import * as SheetPrimitive from '@radix-ui/react-dialog';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { cn } from '@/lib/utils';
 
@@ -18,6 +19,7 @@ const SheetOverlay = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Overlay>
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Overlay
+    data-slot="sheet-overlay"
     className={cn(
       // tailwindcss-animate is not registered, so the animate-in utilities are
       // inert; the sheet-overlay class carries the real fade (style.css).
@@ -58,10 +60,13 @@ interface SheetContentProps
   overlayClassName?: string;
 }
 
+// Under the Vidro look, [data-slot='sheet-content'] gets backdrop-filter, which makes it the containing
+// block for position: fixed descendants: a DragOverlay or any other fixed element inside a sheet must be portaled.
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
 >(({ side = 'right', className, children, overlayClassName, style, ...props }, ref) => {
+  const { t } = useTranslation();
   const needsTopSafeArea = side !== 'bottom';
 
   return (
@@ -69,6 +74,7 @@ const SheetContent = React.forwardRef<
       <SheetOverlay className={overlayClassName} />
       <SheetPrimitive.Content
         ref={ref}
+        data-slot="sheet-content"
         className={cn(sheetVariants({ side }), className)}
         style={
           needsTopSafeArea
@@ -88,7 +94,7 @@ const SheetContent = React.forwardRef<
           }
         >
           <X className="h-4 w-4" />
-          <span className="sr-only">Close</span>
+          <span className="sr-only">{t('ui.close')}</span>
         </SheetPrimitive.Close>
       </SheetPrimitive.Content>
     </SheetPortal>

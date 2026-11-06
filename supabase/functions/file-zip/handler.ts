@@ -1,5 +1,16 @@
 import { TextReader, ZipWriter } from "npm:@zip.js/zip.js@2";
 import { chunk } from "../_shared/paginate.ts";
+import type { ClientScope } from "../_shared/client-scope.ts";
+import {
+  type ClientOf,
+  clientAccessible,
+  folderClienteId,
+  folderInfo,
+  folderReadable,
+  borrowedReadable,
+  NOT_IN_WORKSPACE,
+  typedRowClients,
+} from "../_shared/file-client-scope.ts";
 import {
   MAX_FILE_SIZE_BYTES,
   MAX_FOLDER_DEPTH,
@@ -16,8 +27,14 @@ export interface FileZipDeps {
   db: {
     // deno-lint-ignore no-explicit-any
     from(table: string): any;
+    // deno-lint-ignore no-explicit-any
+    rpc(fn: string, params: Record<string, unknown>): any;
   };
   contaId: string;
+  /** Acesso por cliente: the scope of the member who minted the token (file-manage zip-token),
+   * loaded again at redeem, and his user id. Required: there is no "no scope = everything". */
+  scope: ClientScope;
+  userId: string;
   // Returns the object stream or null (missing). index.ts wires the signed
   // streaming getter (_shared/r2.ts getObjectStreamSigned).
   getObjectStream: (key: string) => Promise<ReadableStream<Uint8Array> | null>;
@@ -51,6 +68,40 @@ export class ZipBudgetExceededError extends Error {
   }
 }
 
+/** The zip's root folder, or null when it is missing, in another workspace, or hidden from the
+ * member (migration C3 folder read: an assigned client's folder or the Clientes root). A hidden root
+ * answers exactly like a missing one. `client` is where the walk starts. */
+export async function resolveZipRoot(
+  deps: FileZipDeps,
+  folderId: number,
+): Promise<{ name: string; client: ClientOf } | null> {
+  const { data: folder, error } = await deps.db.from("folders").select("name, conta_id").eq("id", folderId)
+    .maybeSingle();
+  if (error) throw new Error(`[file-zip] root folder read failed: ${error.message}`);
+  if (!folder || folder.conta_id !== deps.contaId) return null;
+  if (deps.scope.all) return { name: folder.name, client: null };
+  const info = await folderInfo(deps.db, folderId, deps.contaId);
+  if (info === NOT_IN_WORKSPACE || !folderReadable(deps.scope, info)) return null;
+  return { name: folder.name, client: info.client };
+}
+
+type ScopedFileRow = { id: number; uploaded_by?: string | null };
+
+/** Rows of one page the member may read (C3 files read): all of them in an assigned client's
+ * folder, otherwise his uploads, files linked to a post he sees and logos of brands he reads. */
+async function readableFiles<T extends ScopedFileRow>(deps: FileZipDeps, rows: T[], client: ClientOf): Promise<T[]> {
+  if (deps.scope.all || clientAccessible(deps.scope, client)) return rows;
+  const own = (f: T) => f.uploaded_by != null && f.uploaded_by === deps.userId;
+  const linked = await borrowedReadable(
+    deps.db,
+    deps.scope,
+    rows.filter((f) => !own(f)).map((f) => Number(f.id)),
+    deps.contaId,
+    deps.userId,
+  );
+  return rows.filter((f) => own(f) || linked.has(Number(f.id)));
+}
+
 /** Walks a folder tree, resolving every nested file into a flat entry list.
  * Both file and subfolder pages use an id-keyset page loop so (a) the
  * entry/size budget is enforced AFTER EVERY PAGE -- collection stops at most
@@ -64,6 +115,10 @@ export class ZipBudgetExceededError extends Error {
 export async function collectFolderEntries(
   deps: FileZipDeps,
   folderId: number,
+  /** The root's client (resolveZipRoot). Restricted members only: a subfolder the member cannot
+   * read (C3) is left out silently, with its subtree, and never named in the LEIA-ME manifest; a
+   * file he cannot read is left out the same way. */
+  rootClient: ClientOf = null,
 ): Promise<FolderCollectResult> {
   const entries: ZipPlanEntry[] = [];
   const skippedPaths: string[] = [];
@@ -77,7 +132,7 @@ export async function collectFolderEntries(
 
   let foldersVisited = 0;
 
-  async function walkFolder(fId: number, pathPrefix: string, depth: number) {
+  async function walkFolder(fId: number, pathPrefix: string, depth: number, client: ClientOf) {
     if (depth > MAX_FOLDER_DEPTH) {
       console.error(`[file-zip] Depth limit exceeded for folder ${fId}`);
       skippedPaths.push(`${pathPrefix}** (subpasta alem do limite de profundidade)`);
@@ -98,7 +153,7 @@ export async function collectFolderEntries(
     while (true) {
       const { data, error } = await deps.db
         .from("files")
-        .select("id, name, r2_key, size_bytes")
+        .select("id, name, r2_key, size_bytes, uploaded_by")
         .eq("folder_id", fId)
         .eq("conta_id", deps.contaId)
         .gt("id", lastFileId)
@@ -112,9 +167,10 @@ export async function collectFolderEntries(
         name: string;
         r2_key: string;
         size_bytes: number | null;
+        uploaded_by?: string | null;
       }[];
       if (rows.length === 0) break;
-      for (const f of rows) {
+      for (const f of await readableFiles(deps, rows, client)) {
         entries.push({
           name: f.name,
           r2Key: f.r2_key,
@@ -140,7 +196,7 @@ export async function collectFolderEntries(
     while (true) {
       const { data, error } = await deps.db
         .from("folders")
-        .select("id, name")
+        .select("id, name, source_type, source_id")
         .eq("parent_id", fId)
         .eq("conta_id", deps.contaId)
         .gt("id", lastFolderId)
@@ -149,10 +205,21 @@ export async function collectFolderEntries(
       if (error) {
         throw new Error(`[file-zip] collectFolderEntries folders page failed: ${error.message}`);
       }
-      const subs = (data ?? []) as { id: number; name: string }[];
+      const subs = (data ?? []) as {
+        id: number;
+        name: string;
+        source_type?: string | null;
+        source_id?: number | null;
+      }[];
       if (subs.length === 0) break;
+      // Each subfolder's client: its own when typed (resolved in batch), none for the Clientes
+      // root, the parent's otherwise. A folder the member cannot read is skipped with its subtree.
+      const typed = deps.scope.all ? new Map<number, number>() : await typedRowClients(deps.db, subs, deps.contaId);
       for (const sub of subs) {
-        await walkFolder(sub.id, pathPrefix + sanitizeZipPath(sub.name) + "/", depth + 1);
+        const rootClients = sub.source_type === "root_clients";
+        const subClient: ClientOf = typed.get(Number(sub.id)) ?? (rootClients ? null : client);
+        if (!deps.scope.all && !rootClients && !clientAccessible(deps.scope, subClient)) continue;
+        await walkFolder(sub.id, pathPrefix + sanitizeZipPath(sub.name) + "/", depth + 1, subClient);
       }
       const newLast = subs[subs.length - 1].id;
       if (newLast <= lastFolderId) {
@@ -162,7 +229,7 @@ export async function collectFolderEntries(
     }
   }
 
-  await walkFolder(folderId, "", 0);
+  await walkFolder(folderId, "", 0, rootClient);
   return { entries, skippedPaths };
 }
 
@@ -176,16 +243,25 @@ export async function collectFileEntries(
   fileIds: number[],
 ): Promise<ZipPlanEntry[]> {
   const entries: ZipPlanEntry[] = [];
+  const folderClients = new Map<number, ClientOf>();
   for (const idsChunk of chunk(fileIds)) {
     const { data, error } = await deps.db
       .from("files")
-      .select("name, r2_key, conta_id, size_bytes")
+      .select("id, name, r2_key, conta_id, size_bytes, folder_id, uploaded_by")
       .eq("conta_id", deps.contaId)
       .in("id", idsChunk);
     if (error) {
       throw new Error(`[file-zip] collectFileEntries query failed: ${error.message}`);
     }
-    for (const f of (data ?? []) as { name: string; r2_key: string; size_bytes: number | null }[]) {
+    const rows = (data ?? []) as {
+      id: number;
+      name: string;
+      r2_key: string;
+      size_bytes: number | null;
+      folder_id?: number | null;
+      uploaded_by?: string | null;
+    }[];
+    for (const f of await readableSelection(deps, rows, folderClients)) {
       entries.push({
         name: f.name,
         r2Key: f.r2_key,
@@ -198,6 +274,33 @@ export async function collectFileEntries(
     if (entries.length > MAX_ZIP_ENTRIES) throw new ZipBudgetExceededError();
   }
   return entries;
+}
+
+/** An explicit selection, filtered like a folder page (C3 files read), each file by its own
+ * folder's client (resolved once per folder). A file the member cannot read is left out. */
+async function readableSelection<T extends ScopedFileRow & { folder_id?: number | null }>(
+  deps: FileZipDeps,
+  rows: T[],
+  folderClients: Map<number, ClientOf>,
+): Promise<T[]> {
+  if (deps.scope.all) return rows;
+  const out = new Set<T>();
+  const rest: T[] = [];
+  for (const f of rows) {
+    let client: ClientOf = null;
+    if (f.folder_id != null) {
+      const fid = Number(f.folder_id);
+      if (!folderClients.has(fid)) {
+        const c = await folderClienteId(deps.db, fid, deps.contaId);
+        folderClients.set(fid, c === NOT_IN_WORKSPACE ? -1 : c);
+      }
+      client = folderClients.get(fid)!;
+    }
+    if (clientAccessible(deps.scope, client)) out.add(f);
+    else rest.push(f);
+  }
+  for (const f of await readableFiles(deps, rest, null)) out.add(f);
+  return rows.filter((f) => out.has(f));
 }
 
 export type ZipBudgetResult = { ok: true } | { ok: false; error: string };

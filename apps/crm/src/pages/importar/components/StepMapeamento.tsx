@@ -50,7 +50,7 @@ export const STATUS_LABELS: Record<PostStatusTarget, string> = {
 
 const FIXED = '__fixo__';
 
-function statusKeys(collection: ImportCollection, mapping: CollectionMapping): string[] {
+export function statusKeys(collection: ImportCollection, mapping: CollectionMapping): string[] {
   if (collection.listNames.length) return collection.listNames;
   const column = mapping.columnRoles.status;
   if (!column) return [];

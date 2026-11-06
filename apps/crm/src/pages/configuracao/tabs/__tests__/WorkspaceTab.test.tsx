@@ -37,6 +37,9 @@ vi.mock('../../../../lib/supabase', () => ({
   },
 }));
 
+// Desktop markup; the phone branch has its own suite (WorkspaceTab.phone.test.tsx).
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 import WorkspaceTab from '../WorkspaceTab';
 
 function renderTab() {
@@ -200,5 +203,43 @@ describe('WorkspaceTab — mutation controls gated on configuracoes:editar', () 
 
     expect(await screen.findByRole('button', { name: /Salvar/ })).not.toBeDisabled();
     expect(screen.queryByText('Somente leitura')).not.toBeInTheDocument();
+  });
+});
+
+describe('WorkspaceTab — import wizard card, acesso por cliente', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    storeMock.getCurrentWorkspace.mockResolvedValue({
+      id: 'ws-1',
+      name: 'Workspace Teste',
+      logo_url: null,
+    });
+  });
+
+  it('hides the import wizard entry for an admin restricted to assigned clients', async () => {
+    const membership = fakeMembership({ role: 'admin', client_scope: 'atribuidos' });
+    useAuthMock.mockReturnValue({
+      profile: { id: 'user-1', conta_id: 'ws-1' },
+      can: makeCan(membership),
+      membership,
+    });
+    renderTab();
+
+    expect(await screen.findByText('Workspace')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Abrir assistente de importação' })).toBeNull();
+  });
+
+  it('todos_unchanged: keeps the entry for an unscoped admin', async () => {
+    const membership = fakeMembership({ role: 'admin', client_scope: 'todos' });
+    useAuthMock.mockReturnValue({
+      profile: { id: 'user-1', conta_id: 'ws-1' },
+      can: makeCan(membership),
+      membership,
+    });
+    renderTab();
+
+    expect(
+      await screen.findByRole('link', { name: 'Abrir assistente de importação' }),
+    ).toHaveAttribute('href', '/importar');
   });
 });

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Login</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/mesaas/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; box-sizing: border-box; padding: 54px 16px 34px; background: linear-gradient(160deg, #eaf0dc 0%, #eab308 100%); color: #12151a; font-family: var(--font-apple); overflow: hidden; display: flex; flex-direction: column;">
+<div style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center; gap: 28px;">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 10px;">
+<svg role="img" aria-label="Mesaas" width="64" height="44" viewBox="0 10 250 171"><path d="M130 100.76H250V163.76C250 173.149 242.389 180.76 233 180.76H130V100.76Z" fill="#FE3452"></path><path d="M0 27.76C0 18.37 7.61 10.76 17 10.76H120V90.76H0V27.76Z" fill="#3984FF"></path><rect y="100.76" width="120" height="80" fill="#FF3F3F"></rect><rect x="130" y="11" width="120" height="80" fill="#6AC9D0"></rect></svg>
+<h1 style="margin: 0; font-family: var(--font-heading); font-size: 28px; font-weight: 700;">Mesaas Admin</h1>
+<p style="margin: 0; font-size: 15px; color: #374151;">Acesso restrito à equipe da plataforma</p>
+</div>
+<form style="display: flex; flex-direction: column; gap: 14px;">
+<div style="border-radius: 16px; overflow: hidden; background: rgba(255,255,255,0.86); backdrop-filter: blur(20px);">
+<label style="display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 16px; border-bottom: 1px solid rgba(60,60,67,0.14);"><span style="width: 64px; font-size: 17px;">E-mail</span><input type="email" value="eduardo@mesaas.com.br" style="flex-grow: 1; min-width: 0; border: 0; background: transparent; font-size: 17px; font-family: inherit; color: #12151a; outline: none;"></label>
+<label style="display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 16px;"><span style="width: 64px; font-size: 17px;">Senha</span><input type="password" value="........" style="flex-grow: 1; min-width: 0; border: 0; background: transparent; font-size: 17px; font-family: inherit; color: #12151a; outline: none;"></label>
+</div>
+<p style="margin: 0 16px; font-size: 13px; color: #991b1b;">Acesso não autorizado.</p>
+<button type="submit" style="height: 52px; border: 0; border-radius: 14px; background: #12151a; color: #ffffff; font-size: 17px; font-weight: 600; font-family: inherit;">Entrar</button>
+</form>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

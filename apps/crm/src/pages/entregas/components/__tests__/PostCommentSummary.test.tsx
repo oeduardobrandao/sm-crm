@@ -9,7 +9,8 @@ const membros: Membro[] = [
   {
     id: 1,
     conta_id: 'conta-1',
-    user_id: 'user-1',
+    user_id: 'creator-1',
+    crm_user_id: 'user-1',
     nome: 'Eduardo Souza',
     email: 'edu@test.com',
     papel: 'owner',
@@ -60,6 +61,32 @@ describe('PostCommentSummary', () => {
   it('returns null when there are no threads', () => {
     const { container } = render(<PostCommentSummary threads={[]} {...defaultProps} />);
     expect(container.innerHTML).toBe('');
+  });
+
+  it('ignores the general discussion thread (count and list)', () => {
+    const geral = makeThread({
+      id: 9,
+      field: 'geral',
+      quoted_text: '',
+      post_comments: [
+        {
+          id: 900,
+          thread_id: 9,
+          author_id: 'user-1',
+          content: 'Mensagem da discussão',
+          created_at: new Date().toISOString(),
+          updated_at: null,
+        },
+      ],
+    });
+    const { container, rerender } = render(
+      <PostCommentSummary threads={[geral]} {...defaultProps} />,
+    );
+    expect(container.innerHTML).toBe('');
+
+    rerender(<PostCommentSummary threads={[makeThread(), geral]} {...defaultProps} />);
+    expect(screen.getByText('(1)')).toBeInTheDocument();
+    expect(screen.queryByText('Mensagem da discussão')).not.toBeInTheDocument();
   });
 
   it('renders the header with thread count', () => {

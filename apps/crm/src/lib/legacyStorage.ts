@@ -62,6 +62,14 @@ export function purgeAnalyticsStorage(): void {
 }
 
 /**
+ * Ad tag storage. Google Ads: `_gcl_au` (conversion linker) and `_gcl_aw` / `_gac_*` when the
+ * visit came from an ad click. Meta Pixel: `_fbp` (browser id) and `_fbc` (ad click).
+ */
+export function purgeMarketingStorage(): void {
+  purge(['_gcl_', '_gac_', '_fbp', '_fbc']);
+}
+
+/**
  * Crisp storage plus Mesaas's own reconciliation cache. Verified in a real browser: the widget
  * writes localStorage keys `crisp-client/session/<website-id>` (+ `:e`) and a cookie
  * `crisp-client%2Fsession%2F<website-id>`, all under the `crisp-client` prefix.

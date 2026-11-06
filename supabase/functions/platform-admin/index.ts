@@ -36,6 +36,7 @@ import {
   type KbVideoStreamDeps,
 } from "./kb-videos.ts";
 import { handleKbViewStats } from "./kb-views.ts";
+import { handleBlogMetrics, handleBlogPostMetrics } from "./blog-metrics.ts";
 import { handleReorderKbArticles } from "./kb-articles.ts";
 import {
   handleGetAffiliate,
@@ -43,7 +44,23 @@ import {
   handleUpdateAffiliate,
   handleUpdateCommissionRule,
 } from "./affiliates.ts";
+import {
+  defaultBlogAdminDeps,
+  handleApproveBlogPost,
+  handleGetBlogPost,
+  handleListBlogPosts,
+  handleRejectBlogPost,
+  handleRepublishBlogPost,
+  handleRequestBlogChanges,
+  handleRetryBlogPublish,
+  handleUnpublishBlogPost,
+  handleUpdateBlogPost,
+} from "./blog-posts.ts";
 import { createStreamDirectUpload, deleteStreamVideo, getStreamVideo, isStreamCleanupEnabled } from "../_shared/stream.ts";
+import { createDemoWorkspace, type DemoDeps, resendDemoAccess } from "./demo-workspace.ts";
+import { handleSetWorkspaceAffiliate } from "./workspace-affiliate.ts";
+import { findAuthUserByEmail } from "../_shared/invite-actions.ts";
+import { sendDemoAccessEmail } from "../_shared/invite-email.ts";
 
 // Registra o loader do Stripe só para este function -- ver _shared/stripe-loader.ts. mcp-admin
 // não registra nada, e cai no fallback do espelho/catálogo (o comportamento desejado para as
@@ -61,6 +78,9 @@ const kbVideoStream: KbVideoStreamDeps = {
   deleteVideo: (uid) => deleteStreamVideo(uid),
   now: () => Date.now(),
 };
+
+// Blog (spec 2026-10-23-blog-automatico §7): deploy hook da Vercel e checagem da página no ar.
+const blogDeps = defaultBlogAdminDeps();
 
 Deno.serve(async (req: Request) => {
   const corsHeaders = buildCorsHeaders(req);
@@ -137,6 +157,16 @@ Deno.serve(async (req: Request) => {
         return await handleDeletePlan(svc, body, headers);
       case "set-workspace-plan":
         return await handleSetWorkspacePlan(svc, body, admin.id, headers);
+      case "create-demo-workspace": {
+        const r = await createDemoWorkspace(demoDeps(svc), body, { adminId: admin.id, userId: user.id });
+        return new Response(JSON.stringify(r.body), { status: r.status, headers });
+      }
+      case "set-workspace-affiliate":
+        return await handleSetWorkspaceAffiliate(svc, body, user.id, headers);
+      case "resend-demo-access": {
+        const r = await resendDemoAccess(demoDeps(svc), body, { adminId: admin.id, userId: user.id });
+        return new Response(JSON.stringify(r.body), { status: r.status, headers });
+      }
       case "unset-workspace-plan":
         return await handleUnsetWorkspacePlan(svc, body, admin.id, headers);
       case "set-workspace-overrides":
@@ -231,6 +261,28 @@ Deno.serve(async (req: Request) => {
         return await handleUpdateAffiliate(svc, body, user.id, headers);
       case "update-affiliate-commission-rule":
         return await handleUpdateCommissionRule(svc, body, user.id, headers);
+      case "blog-metrics":
+        return await handleBlogMetrics(svc, headers);
+      case "blog-post-metrics":
+        return await handleBlogPostMetrics(svc, body, headers);
+      case "list-blog-posts":
+        return await handleListBlogPosts(svc, body, user.id, headers, blogDeps);
+      case "get-blog-post":
+        return await handleGetBlogPost(svc, body, headers);
+      case "update-blog-post":
+        return await handleUpdateBlogPost(svc, body, user.id, headers, blogDeps);
+      case "approve-blog-post":
+        return await handleApproveBlogPost(svc, body, user.id, headers, blogDeps);
+      case "request-blog-changes":
+        return await handleRequestBlogChanges(svc, body, user.id, headers, blogDeps);
+      case "reject-blog-post":
+        return await handleRejectBlogPost(svc, body, user.id, headers, blogDeps);
+      case "unpublish-blog-post":
+        return await handleUnpublishBlogPost(svc, body, user.id, headers, blogDeps);
+      case "republish-blog-post":
+        return await handleRepublishBlogPost(svc, body, user.id, headers, blogDeps);
+      case "retry-blog-publish":
+        return await handleRetryBlogPublish(svc, body, user.id, headers, blogDeps);
       default:
         return new Response(JSON.stringify({ error: "Invalid action" }), { status: 400, headers });
     }
@@ -386,6 +438,48 @@ async function handleDeletePlan(
   if (error) throw error;
 
   return new Response(JSON.stringify({ message: "Plan deleted" }), { status: 200, headers });
+}
+
+// ─── Conta demo (spec 2026-10-26-conta-demo-admin §2) ───────────
+
+function demoDeps(svc: SupabaseClient): DemoDeps {
+  return {
+    db: svc,
+    redirectBase: Deno.env.get("OAUTH_REDIRECT_BASE") || "http://localhost:5173",
+    sendEmail: sendDemoAccessEmail,
+    findUserByEmail: async (email) => {
+      const u = await findAuthUserByEmail(svc, email);
+      return u ? { id: u.id } : null;
+    },
+    getOwnerAuth: async (userId) => {
+      const { data, error } = await svc.auth.admin.getUserById(userId);
+      if (error) throw error;
+      if (!data.user) return null;
+      return { email: data.user.email ?? null, emailConfirmed: Boolean(data.user.email_confirmed_at) };
+    },
+    deleteUser: async (userId) => {
+      const { error } = await svc.auth.admin.deleteUser(userId);
+      if (error) throw error;
+    },
+    createUser: async (email, data) => {
+      const { data: created, error } = await svc.auth.admin.createUser({
+        email,
+        email_confirm: false,
+        user_metadata: data,
+      });
+      if (error) throw error; // raw AuthError: callers read error.code (email_exists)
+      if (!created?.user?.id) throw new Error("create_user_empty");
+      return { userId: created.user.id };
+    },
+    // Mints the link without sending Supabase's own e-mail. For `invite` the user already exists
+    // (createUser above); GoTrue answers 200 with a fresh token for an unconfirmed user.
+    generateLink: async (type, email, redirectTo) => {
+      const { data: link, error } = await svc.auth.admin.generateLink({ type, email, options: { redirectTo } });
+      if (error) throw error;
+      if (!link?.properties?.action_link) throw new Error("generate_link_empty");
+      return { actionLink: link.properties.action_link };
+    },
+  };
 }
 
 // ─── Workspace Plan Assignment ─────────────────────────────────

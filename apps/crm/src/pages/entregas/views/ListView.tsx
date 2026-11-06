@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronUp, ChevronDown, FileText } from 'lucide-react';
+import { i18n } from '@mesaas/i18n';
 import type { BoardCard } from '../hooks/useEntregasData';
 import type { PostEntity } from '../boardEntity';
 import { DEADLINE_STATUS, classifyDeadline } from '../deadlineStatus';
@@ -8,6 +10,14 @@ import type { ListGroupBy } from '../viewQuery';
 import { allGroupsCollapsed, groupListRows, toggleKey } from '../listGrouping';
 import { ListGroupHeaderRow } from '../components/ListGroupHeaderRow';
 import { ListGroupsToggle } from '../components/ListGroupsToggle';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import {
+  PhoneListSections,
+  PhonePostEntityListRow,
+  PhoneRowAside,
+  PhoneWorkflowListRow,
+  type PhoneRowDisplay,
+} from '../phone/PhoneListRows';
 
 interface ListViewProps {
   cards: BoardCard[];
@@ -22,15 +32,8 @@ interface ListViewProps {
   groupBy?: ListGroupBy;
 }
 
-type Column = { key: string; label: string };
-const COLUMNS: Column[] = [
-  { key: 'titulo', label: 'Título' },
-  { key: 'cliente', label: 'Cliente' },
-  { key: 'etapa', label: 'Etapa atual' },
-  { key: 'responsavel', label: 'Responsável' },
-  { key: 'prazo', label: 'Prazo' },
-  { key: 'status', label: 'Status' },
-];
+/** Column keys; each label lives at `listView.columns.<key>`. */
+const COLUMNS = ['titulo', 'cliente', 'etapa', 'responsavel', 'prazo', 'status'] as const;
 
 /** Projeção comum de fluxo e post para a tabela: etapa, responsável e prazo
  *  resolvidos pela entidade. */
@@ -52,6 +55,8 @@ interface ListRow {
   hasDeadline: boolean;
   individual: boolean;
   open: () => void;
+  /** A linha de origem: a versão de celular abre o menu e avança a etapa por ela. */
+  source: { kind: 'workflow'; card: BoardCard } | { kind: 'post'; entity: PostEntity };
 }
 
 const EMPTY_POST_ENTITIES: PostEntity[] = [];
@@ -87,11 +92,13 @@ function sortRows(rows: ListRow[], column: string, direction: 'asc' | 'desc'): L
 }
 
 function formatPrazo(row: ListRow): string {
-  if (!row.hasDeadline) return 'Sem prazo';
+  if (!row.hasDeadline) return i18n.t('entregasViews:listView.semPrazo');
   const d = row.deadline;
-  if (d.estourado) return `${Math.abs(d.diasRestantes)}d atrasado`;
-  if (d.diasRestantes === 0) return `${d.horasRestantes}h restantes`;
-  return `${d.diasRestantes}d restantes`;
+  if (d.estourado)
+    return i18n.t('entregasViews:listView.daysLate', { n: Math.abs(d.diasRestantes) });
+  if (d.diasRestantes === 0)
+    return i18n.t('entregasViews:listView.hoursLeft', { n: d.horasRestantes });
+  return i18n.t('entregasViews:listView.daysLeft', { n: d.diasRestantes });
 }
 
 export function ListView({
@@ -103,7 +110,9 @@ export function ListView({
   onPostClick,
   groupBy = 'nenhum',
 }: ListViewProps) {
+  const { t } = useTranslation('entregasViews');
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  const isPhone = !useIsDesktop(768);
 
   if (cards.length === 0 && postEntities.length === 0) {
     return (
@@ -111,7 +120,7 @@ export function ListView({
         className="card animate-up"
         style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}
       >
-        <p>Nenhuma entrega encontrada. Ajuste os filtros.</p>
+        <p>{t('shared.noEntregasFiltered')}</p>
       </div>
     );
   }
@@ -131,6 +140,7 @@ export function ListView({
       hasDeadline: true,
       individual: false,
       open: () => onCardClick(card),
+      source: { kind: 'workflow', card },
     })),
     ...postEntities.map<ListRow>((e) => ({
       key: e.id,
@@ -146,6 +156,7 @@ export function ListView({
       hasDeadline: e.prazoEfetivo != null,
       individual: true,
       open: () => onPostClick?.(e),
+      source: { kind: 'post', entity: e },
     })),
   ];
   const sorted = sortRows(rows, sort.column, sort.direction);
@@ -176,7 +187,7 @@ export function ListView({
               style={{ marginLeft: '0.5rem' }}
             >
               <FileText size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
-              Individual
+              {t('shared.individual')}
             </span>
           )}
         </td>
@@ -227,22 +238,79 @@ export function ListView({
         );
   const groupKeys = groups?.map((g) => g.key) ?? [];
   const allCollapsed = allGroupsCollapsed(groupKeys, collapsed);
+  const toggleAll = () => setCollapsed(allCollapsed ? new Set() : new Set(groupKeys));
+
+  if (isPhone) {
+    // Celular (D20): linhas agrupadas com ações de deslizar no lugar da tabela, com o
+    // mesmo agrupamento, a mesma ordenação e o mesmo estado de grupos recolhidos.
+    const renderPhoneRow = (row: ListRow) => {
+      const badge = getStatusBadge(row);
+      const display: PhoneRowDisplay = {
+        title: row.titulo,
+        subtitle: [
+          row.clienteNome || t('chartData.semCliente'),
+          row.etapaNome,
+          row.responsavelNome || t('chartData.semResponsavel'),
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        tag: row.individual ? (
+          <span className="phone-ent-l-tag">
+            <FileText aria-hidden="true" />
+            {t('shared.individual')}
+          </span>
+        ) : undefined,
+        aside: (
+          <PhoneRowAside
+            status={badge.label}
+            statusColor={badge.color}
+            deadline={formatPrazo(row)}
+            overdue={row.hasDeadline && row.deadline.estourado}
+          />
+        ),
+      };
+      return row.source.kind === 'workflow' ? (
+        <PhoneWorkflowListRow
+          key={row.key}
+          card={row.source.card}
+          display={display}
+          onOpen={row.open}
+        />
+      ) : (
+        <PhonePostEntityListRow
+          key={row.key}
+          entity={row.source.entity}
+          display={display}
+          onOpen={onPostClick ? row.open : undefined}
+        />
+      );
+    };
+    return (
+      <PhoneListSections
+        label={t('listView.phoneLabel')}
+        groups={groups}
+        rows={sorted}
+        renderRow={renderPhoneRow}
+        collapsed={collapsed}
+        onToggleGroup={(key) => setCollapsed((prev) => toggleKey(prev, key))}
+        allCollapsed={allCollapsed}
+        onToggleAll={toggleAll}
+      />
+    );
+  }
 
   return (
     <div className="animate-up card" style={{ overflow: 'auto' }}>
       {groups && groups.length > 1 && (
-        <ListGroupsToggle
-          allCollapsed={allCollapsed}
-          onToggle={() => setCollapsed(allCollapsed ? new Set() : new Set(groupKeys))}
-        />
+        <ListGroupsToggle allCollapsed={allCollapsed} onToggle={toggleAll} />
       )}
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
         <thead>
           <tr>
             {COLUMNS.map((col) => (
               <th
-                key={col.key}
-                onClick={() => handleSort(col.key)}
+                key={col}
+                onClick={() => handleSort(col)}
                 style={{
                   padding: '0.75rem 1rem',
                   textAlign: 'left',
@@ -250,13 +318,13 @@ export function ListView({
                   userSelect: 'none',
                   whiteSpace: 'nowrap',
                   borderBottom: '1px solid var(--border-color)',
-                  color: sort.column === col.key ? 'var(--accent)' : 'var(--text-secondary)',
+                  color: sort.column === col ? 'var(--accent)' : 'var(--text-secondary)',
                   fontWeight: 600,
                 }}
               >
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                  {col.label}
-                  {sort.column === col.key ? (
+                  {t(`listView.columns.${col}`)}
+                  {sort.column === col ? (
                     sort.direction === 'asc' ? (
                       <ChevronUp className="h-3 w-3" />
                     ) : (

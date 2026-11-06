@@ -1,9 +1,9 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import ptClients from '../../../../../../packages/i18n/locales/pt/clients.json';
 import enClients from '../../../../../../packages/i18n/locales/en/clients.json';
+import { readCrmCss } from '@/test/readCrmCss';
 
-const css = readFileSync('apps/crm/style.css', 'utf8');
+const css = readCrmCss();
 
 /**
  * These two checks are pure CSS/i18n contracts with no dependency on which

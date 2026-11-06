@@ -1,8 +1,19 @@
-import { Fragment, useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import {
+  Fragment,
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import {
   DndContext,
   DragOverlay,
+  MouseSensor,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   useDroppable,
@@ -28,25 +39,19 @@ import { sortCardsByPrazo } from '../etapaPrazo';
 import {
   loadFluxosColumnSorts,
   persistFluxosColumnSort,
+  FLUXOS_COLUMN_SORTS,
+  FLUXOS_COLUMN_SORT_LABELS,
   type FluxosColumnSort,
 } from '../entregasPrefs';
 import { toast } from 'sonner';
-import {
-  hasLaterApprovalEtapa,
-  revertEtapa,
-  updateWorkflowPositions,
-  reorderFluxosBoard,
-  approvePostsInternally,
-  sendPostsToCliente,
-} from '../../../store';
-import { completeEtapaForAdvance, notifyRearmOutcome } from '../advanceEtapa';
-import { decideApprovalAdvance } from '../approvalAdvance';
+import { useTranslation } from 'react-i18next';
+import { updateWorkflowPositions, reorderFluxosBoard } from '../../../store';
 import {
   buildBoardRows,
   columnKey,
   parseColumnKey,
   findCardColumn,
-  isValidDropTarget,
+  workflowDropDirection,
 } from '../boardRows';
 import type { BoardRow, BoardColumn } from '../boardRows';
 import {
@@ -54,6 +59,7 @@ import {
   toWorkflowEntities,
   sortEntitiesByPrazo,
   sortEntitiesByPosicao,
+  sortEntitiesByPublicacao,
   derivePostStepFields,
   type BoardEntity,
   type PostEntity,
@@ -72,12 +78,6 @@ import type { Membro, WorkflowEtapa, WorkflowTemplate } from '../../../store';
 import { WorkflowCard } from '../components/WorkflowCard';
 import { PostProcessCard } from '../components/PostProcessCard';
 import { ExampleBoard } from '../components/ExampleBoard';
-import { AutoScheduleBatchDialog } from '../components/AutoScheduleBatchDialog';
-import {
-  RevertConfirmDialog,
-  ForwardConfirmDialog,
-  ClientApprovalChoiceDialog,
-} from '../components/WorkflowModals';
 import {
   previousStepOf,
   nextPendingStepOf,
@@ -86,6 +86,11 @@ import {
   type ProcessTarget,
 } from '../postProcessCommands';
 import { usePostProcessCommands } from '../hooks/usePostProcessCommands';
+import { useWorkflowStageCommands } from '../hooks/useWorkflowStageCommands';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
+import { PhoneKanbanBoard } from '../phone/PhoneKanbanBoard';
+import { usePostDiscussaoNaoLidas } from '../discussao/usePostDiscussaoNaoLidas';
 
 interface KanbanViewBaseProps {
   /** Persistencia das prefs de ordenacao por coluna; opcional para os testes. */
@@ -110,6 +115,9 @@ interface KanbanViewBaseProps {
   onDuplicateWorkflowClick?: (card: BoardCard, postsCount: number | null) => void;
   /** "Duplicar post" no kebab do card de post individual. */
   onDuplicatePostClick?: (entity: PostEntity) => void;
+  /** false esconde "Encerrar processo" daquele post (acesso por cliente: post do
+   *  próprio membro num cliente fora do escopo dele, onde remove_post_process é recusado). */
+  canRemoveProcess?: (entity: PostEntity) => boolean;
   /** Quick-add: opens the new-workflow wizard preloaded with the row's template. */
   onAddWorkflow?: (templateId: number | null) => void;
   /** Opens the existing "Gerenciar Templates" modal from the board's trailing "+" tab. */
@@ -161,6 +169,8 @@ interface KanbanViewBaseProps {
    *  ciclo tem precedência -- é um "nudge, não enforcement": os posts continuam
    *  aprovado_cliente e o indicador persistente da Task 5 ainda os oferece. */
   recurringWfId?: number | null;
+  /** Vidro shell: right-aligned item on the template tabs row (the busca input). */
+  tabsTrailing?: ReactNode;
 }
 
 // Discriminated union: a caller either passes neither prop, or passes both together.
@@ -255,9 +265,14 @@ export function fullMixedColumnOrder(
   const source: BoardEntity[] = column
     ? [...toWorkflowEntities(column.cards), ...column.posts]
     : [...toWorkflowEntities(visibleColumnCards), ...visibleColumnPosts];
-  const ordered =
-    sortMode === 'prazo' ? sortEntitiesByPrazo(source) : sortEntitiesByPosicao(source);
-  return ordered.map(sortableIdOf);
+  return sortMixedEntities(source, sortMode).map(sortableIdOf);
+}
+
+/** Ordem exibida de uma coluna mista pelo modo escolhido no header. */
+function sortMixedEntities(entities: BoardEntity[], sortMode: FluxosColumnSort): BoardEntity[] {
+  if (sortMode === 'prazo') return sortEntitiesByPrazo(entities);
+  if (sortMode === 'publicacao') return sortEntitiesByPublicacao(entities);
+  return sortEntitiesByPosicao(entities);
 }
 
 // Aplica os overlays otimistas (etapa e position pendentes de um drag ainda
@@ -331,6 +346,7 @@ function SortableCard({
   onDeleteClick,
   onDuplicateClick,
   postsCount,
+  discussaoNaoLidas,
   approvedPostsCount,
   clearedClienteCount,
   revisaoInternaCount,
@@ -347,6 +363,7 @@ function SortableCard({
   onDeleteClick?: () => void;
   onDuplicateClick?: () => void;
   postsCount: number;
+  discussaoNaoLidas?: number;
   approvedPostsCount: number;
   clearedClienteCount: number;
   revisaoInternaCount: number;
@@ -376,6 +393,7 @@ function SortableCard({
         onDeleteClick={onDeleteClick}
         onDuplicateClick={onDuplicateClick}
         postsCount={postsCount}
+        discussaoNaoLidas={discussaoNaoLidas}
         approvedPostsCount={approvedPostsCount}
         clearedClienteCount={clearedClienteCount}
         revisaoInternaCount={revisaoInternaCount}
@@ -397,6 +415,8 @@ function SortablePostCard({
   onRemoveProcessClick,
   onDeleteClick,
   onDuplicateClick,
+  showPublishDate,
+  discussaoNaoLidas,
 }: {
   entity: PostEntity;
   onClick?: () => void;
@@ -405,6 +425,8 @@ function SortablePostCard({
   onRemoveProcessClick?: () => void;
   onDeleteClick?: () => void;
   onDuplicateClick?: () => void;
+  showPublishDate?: boolean;
+  discussaoNaoLidas?: number;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: entity.id,
@@ -431,6 +453,8 @@ function SortablePostCard({
         onDuplicateClick={onDuplicateClick}
         canRevert={previousStepOf(entity.process) != null}
         forwardLabel={forwardLabelFor(entity.process)}
+        showPublishDate={showPublishDate}
+        discussaoNaoLidas={discussaoNaoLidas}
       />
     </div>
   );
@@ -454,11 +478,13 @@ export function KanbanView({
   onAddWorkflow,
   onCreateTemplate,
   createTemplateDisabled,
+  tabsTrailing,
   onAddPostIndividual,
   onDeleteWorkflowClick,
   onDeletePostClick,
   onDuplicateWorkflowClick,
   onDuplicatePostClick,
+  canRemoveProcess,
   membros,
   templates,
   postsCounts,
@@ -477,6 +503,21 @@ export function KanbanView({
   tiktokEnabled,
   recurringWfId,
 }: KanbanViewProps) {
+  const { t } = useTranslation('entregasViews');
+  // Vidro: the column headers drop their inline etapa tints (the CSS paints a neutral header
+  // with a coloured dot from --col-tint) and the tabs show template names as typed.
+  const vidroShell = useVidroShell();
+  // Discussion badges: ONE batched RPC per board load. Fluxo cards ask by workflow id (the
+  // board knows workflows, not their posts), individual post cards by post id.
+  const discussaoWorkflowIds = useMemo(() => cards.map((c) => c.workflow.id!), [cards]);
+  const discussaoPostIds = useMemo(
+    () => (postEntities ?? EMPTY_POST_ENTITIES).map((e) => e.process.post_id),
+    [postEntities],
+  );
+  const { byPost: discussaoByPost, byWorkflow: discussaoByWorkflow } = usePostDiscussaoNaoLidas({
+    postIds: discussaoPostIds,
+    workflowIds: discussaoWorkflowIds,
+  });
   // Server data is canonical: the board always re-derives from the cards prop,
   // so any edit (título, responsável, prazo…) shows as soon as the refetch
   // lands — no reload needed. Optimistic changes (dnd moves and reorders) live
@@ -522,9 +563,7 @@ export function KanbanView({
       const stepCards = displayCards(rowKey, ordem, column.cards);
       if (column.posts.length === 0) return toWorkflowEntities(stepCards);
       const all = [...toWorkflowEntities(stepCards), ...column.posts];
-      return sortModeFor(columnKey(rowKey, ordem)) === 'prazo'
-        ? sortEntitiesByPrazo(all)
-        : sortEntitiesByPosicao(all);
+      return sortMixedEntities(all, sortModeFor(columnKey(rowKey, ordem)));
     },
     [displayCards, sortModeFor],
   );
@@ -532,6 +571,7 @@ export function KanbanView({
   // sintético -- o overlay lê a entidade real (WorkflowEntity | PostEntity) e
   // decide o componente a renderizar pelo `kind`.
   const [activeEntity, setActiveEntity] = useState<BoardEntity | null>(null);
+  const [activeShowsPublishDate, setActiveShowsPublishDate] = useState(false);
   // Valid adjacent column currently hovered during a drag ("rowKey::ordem"),
   // plus the dragged card's height so the slot opens exactly its size.
   const [dropSlot, setDropSlot] = useState<{ colKey: string; index: number } | null>(null);
@@ -545,24 +585,6 @@ export function KanbanView({
     ids: BoardSortableId[];
     optimisticPos: number;
   } | null>(null);
-  const [revertTarget, setRevertTarget] = useState<{ workflowId: number; title: string } | null>(
-    null,
-  );
-  const [approvalChoice, setApprovalChoice] = useState<{
-    card: BoardCard;
-    willRearm: boolean;
-  } | null>(null);
-  /** Fluxo cujo resumo de agendamento em lote está aberto (peça 2 da spec), com o
-   *  booleano do gate de segurança (fix B da revisão final) capturado no MOMENTO
-   *  em que `!willRearm` foi checado em handleApproveInternally -- não
-   *  recalculado depois, no render, quando o card já pode não estar mais no
-   *  mesmo estado. AutoScheduleBatchDialog agora exige essa prop e a usa como
-   *  seu próprio gate interno. */
-  const [batchSchedule, setBatchSchedule] = useState<{
-    workflowId: number;
-    isFinalApprovalCycle: boolean;
-  } | null>(null);
-  const [forwardTarget, setForwardTarget] = useState<BoardCard | null>(null);
   const [activeRowKey, setActiveRowKey] = useState<string | null>(null);
   // Comandos de um processo individual (Task 7), compartilhados pelos botões
   // Avançar/Voltar do card e pelo drag entre colunas (spec §12.2: o MESMO
@@ -585,7 +607,7 @@ export function KanbanView({
     },
     // Um drag entre colunas abre um destes diálogos (avancar/voltar) através
     // do hook e seta pendingInsertRef ANTES de abrir. Cancelar sem confirmar
-    // não passa por onOptimisticStep (que só roda em run/decideThenRun) --
+    // não passa por onOptimisticStep (que só roda em run) --
     // sem isto, o ref fica preso e o próximo comando do MESMO post disparado
     // por BOTÃO (não-drag) herda a posição capturada pelo drag abandonado
     // quando o catch-up effect casar o movedId (Task 8, achado da revisão).
@@ -609,6 +631,57 @@ export function KanbanView({
       await reorderFluxosBoard(plan.args);
     }
   }, []);
+
+  // Cadeia de etapas do fluxo (Forward/ClientApprovalChoice/Revert, ciclo
+  // recorrente, agendamento em lote), compartilhada com o celular. Os ganchos
+  // abaixo mantêm os overlays otimistas e a posição capturada por um drag
+  // entre colunas exatamente como antes da extração.
+  const stage = useWorkflowStageCommands<{ insert: typeof pendingInsertRef.current }>({
+    onRefresh,
+    onRecurring,
+    postsCounts,
+    clearedClienteCounts,
+    schedulingEnabled,
+    tiktokEnabled,
+    recurringWfId,
+    resolveCard: (workflowId) => localCards.find((c) => c.workflow.id === workflowId),
+    onBeforeMove: (card, target) => {
+      const wfId = card.workflow.id!;
+      // Slide the card into the target column immediately; the backend persists
+      // in the background.
+      if (target) setPendingEtapas((prev) => new Map(prev).set(wfId, target));
+      const insert =
+        pendingInsertRef.current?.movedId === String(wfId) ? pendingInsertRef.current : null;
+      if (insert && target)
+        setPendingPositions((prev) => new Map(prev).set(wfId, insert.optimisticPos));
+      return { insert };
+    },
+    onMoveSucceeded: async (_card, ctx) => {
+      const insert = ctx?.insert;
+      if (!insert) return;
+      pendingInsertRef.current = null;
+      try {
+        await persistColumnOrder(insert.ids);
+      } catch (err) {
+        // A etapa já avançou/voltou; a posição é best-effort. Sem a RPC em prod
+        // (migration não aplicada) isto é o único sinal.
+        console.warn('[entregas] falha ao gravar posição após mover etapa', err);
+      }
+    },
+    onMoveFailed: (card) => {
+      pendingInsertRef.current = null;
+      const wfId = card.workflow.id!;
+      setPendingEtapas((prev) => {
+        if (!prev.has(wfId)) return prev;
+        const next = new Map(prev);
+        next.delete(wfId);
+        return next;
+      });
+    },
+    onAbandon: () => {
+      pendingInsertRef.current = null;
+    },
+  });
 
   // Drop overlay entries the server already reflects. A cross-column insert
   // stores a FRACTIONAL position (e.g. 0.5) that the persisted integer will
@@ -794,9 +867,20 @@ export function KanbanView({
   }, []);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  // Celular: a pressão longa é do menu do card (ContextMenu); o arrasto só
+  // existe no modo Reordenar, pela alça, com o atraso de toque do kit.
+  const isPhone = !useIsDesktop(768);
+  const phoneSensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+  );
 
   const findCard = (id: string) => localCards.find((c) => String(c.workflow.id) === id);
   const findPost = (id: string) => posts.find((p) => p.id === id);
+  const templateEtapasOf = (card: BoardCard) =>
+    card.workflow.template_id != null
+      ? templates.find((tpl) => tpl.id === card.workflow.template_id)?.etapas
+      : undefined;
 
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
@@ -804,9 +888,15 @@ export function KanbanView({
       const card = findCard(id);
       const post = card ? undefined : findPost(id);
       setActiveEntity(card ? toWorkflowEntity(card) : (post ?? null));
+      // O clone do DragOverlay mostra a mesma pill que o card na coluna de origem.
+      const origin = post ? findCardColumn(id, boardRows) : null;
+      setActiveShowsPublishDate(
+        origin != null &&
+          sortModeFor(columnKey(origin.row.key, origin.column.ordem)) === 'publicacao',
+      );
       setDragHeight(event.active.rect.current?.initial?.height ?? 120);
     },
-    [localCards, posts],
+    [localCards, posts, boardRows, sortModeFor],
   );
 
   // Opens a slot in the hovered column when the drop would be accepted there:
@@ -821,8 +911,6 @@ export function KanbanView({
         setDropSlot(null);
         return;
       }
-      const draggedSteps = draggedCard ? draggedCard.allEtapas : draggedPost!.steps;
-      const draggedOrdem = draggedCard ? draggedCard.etapa.ordem : draggedPost!.etapaOrdem;
       const overId = String(over.id);
       const rows = buildBoardRows(localEntities, templates, { signatureRows });
       const activeLocation = findCardColumn(activeId, rows);
@@ -851,12 +939,17 @@ export function KanbanView({
         setDropSlot(null);
         return;
       }
-      // Fluxo: adjacência por ordem (como hoje). Post: o MESMO alvo dos
-      // botões (spec §12.2: drag e botão dão o mesmo resultado) -- avançar
-      // vai para a próxima etapa PENDENTE, voltar para a anterior por ordem,
-      // qualquer estado. (draggedSteps/draggedOrdem só valem no ramo fluxo.)
+      // Fluxo: a coluna da etapa seguinte ou da anterior do próprio fluxo
+      // (workflowDropDirection). Post: o MESMO alvo dos botões (spec §12.2:
+      // drag e botão dão o mesmo resultado) -- avançar vai para a próxima
+      // etapa PENDENTE, voltar para a anterior por ordem, qualquer estado.
       const valid = draggedCard
-        ? isValidDropTarget(draggedSteps, draggedOrdem, targetColumn.ordem)
+        ? workflowDropDirection(
+            templateEtapasOf(draggedCard),
+            draggedCard.allEtapas,
+            draggedCard.etapa.ordem,
+            targetColumn.ordem,
+          ) !== null
         : nextPendingStepOf(draggedPost!.process)?.ordem === targetColumn.ordem ||
           previousStepOf(draggedPost!.process)?.ordem === targetColumn.ordem;
       if (!valid) {
@@ -960,30 +1053,38 @@ export function KanbanView({
         // Optimistic reorder overlay (fluxos e posts); rolled back if
         // persistence fails.
         applyOptimisticOrder(merged);
-        if (sortModeFor(colKeyStr) === 'prazo') setColumnSort(colKeyStr, 'manual');
+        if (sortModeFor(colKeyStr) !== 'manual') setColumnSort(colKeyStr, 'manual');
 
         try {
           await persistColumnOrder(merged);
           onRefresh();
         } catch (err) {
           rollbackOptimisticOrder(merged);
-          toast.error(getPostProcessErrorToast(err, 'Erro ao salvar ordem dos cartões'));
+          toast.error(getPostProcessErrorToast(err, t('kanbanView.saveOrderError')));
         }
       } else {
-        // Between-column move: a coluna alvo precisa existir na sequência de
-        // etapas do PRÓPRIO fluxo arrastado (linhas por template aceitam
-        // fluxos com listas divergentes; ver isValidDropTarget). Post: o
+        // Between-column move: a coluna alvo precisa ser a da etapa seguinte ou
+        // da anterior do PRÓPRIO fluxo arrastado (linhas por template aceitam
+        // fluxos com listas divergentes; ver workflowDropDirection). Post: o
         // MESMO alvo dos botões (spec §12.2) -- avançar vai para a próxima
         // etapa PENDENTE, voltar para a anterior por ordem, qualquer estado,
         // então um herdado/ignorado/concluído entre as duas colunas nunca
         // manda o comando errado.
         if (targetRow.key !== activeLocation.row.key) return; // troca de linha por drag fica bloqueada (spec §4.2)
+        const direction = draggedCard
+          ? workflowDropDirection(
+              templateEtapasOf(draggedCard),
+              draggedCard.allEtapas,
+              draggedCard.etapa.ordem,
+              targetColumn.ordem,
+            )
+          : null;
         const valid = draggedCard
-          ? isValidDropTarget(draggedCard.allEtapas, draggedCard.etapa.ordem, targetColumn.ordem)
+          ? direction !== null
           : nextPendingStepOf(draggedPost!.process)?.ordem === targetColumn.ordem ||
             previousStepOf(draggedPost!.process)?.ordem === targetColumn.ordem;
         if (!valid) {
-          toast.error('Só é possível mover para a etapa adjacente');
+          toast.error(t('kanbanView.adjacentOnly'));
           return;
         }
 
@@ -1019,22 +1120,18 @@ export function KanbanView({
         };
 
         if (draggedPost) {
-          const t = targetOf(draggedPost);
+          const target = targetOf(draggedPost);
           const forward = nextPendingStepOf(draggedPost.process)?.ordem === targetColumn.ordem;
-          if (forward) commands.avancar(t);
-          else commands.voltar(t);
+          if (forward) commands.avancar(target);
+          else commands.voltar(target);
           return;
         }
 
-        const diff = targetColumn.ordem - draggedCard!.etapa.ordem;
-        if (diff === 1) {
-          handleForwardCard(draggedCard!);
+        if (direction === 'forward') {
+          stage.forward(draggedCard!);
         } else {
           // Backward — show confirm dialog
-          setRevertTarget({
-            workflowId: draggedCard!.workflow.id!,
-            title: draggedCard!.workflow.titulo,
-          });
+          stage.revert(draggedCard!);
         }
       }
     },
@@ -1047,7 +1144,8 @@ export function KanbanView({
       signatureRows,
       dropSlot,
       onRefresh,
-      onRecurring,
+      stage.forward,
+      stage.revert,
       templates,
       displayMixed,
       sortModeFor,
@@ -1056,191 +1154,36 @@ export function KanbanView({
       applyOptimisticOrder,
       rollbackOptimisticOrder,
       commands,
+      t,
     ],
   );
 
-  const handleForwardCard = useCallback((card: BoardCard) => {
-    setForwardTarget(card);
-  }, []);
-
-  // opts.rearm === false keeps the plain completeEtapa (post statuses untouched) — used by
-  // "Avançar etapa sem alterar posts", whose literal contract is to leave posts alone.
-  const advanceEtapa = useCallback(
-    async (card: BoardCard, successMessage: string, opts?: { rearm?: boolean }) => {
-      const wfId = card.workflow.id!;
-      // Slide the card into the next column immediately; the backend persists
-      // in the background. On the last etapa there is no next column — the
-      // card leaves the board when the refetch lands.
-      const nextEtapa = card.allEtapas.find((e) => e.ordem === card.etapa.ordem + 1);
-      if (nextEtapa) setPendingEtapas((prev) => new Map(prev).set(wfId, nextEtapa));
-      const insert =
-        pendingInsertRef.current?.movedId === String(wfId) ? pendingInsertRef.current : null;
-      if (insert && nextEtapa)
-        setPendingPositions((prev) => new Map(prev).set(wfId, insert.optimisticPos));
-      try {
-        const result = await completeEtapaForAdvance(card.workflow.id!, card.etapa.id!, opts);
-        if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
-          // Recurring-completion wins over the batch-schedule nudge (fix round 1's
-          // render-time gate). Fix round 2: also CLEAR batchSchedule here, not
-          // just suppress it -- otherwise, once the user dismisses
-          // RecurringWorkflowDialog (recurringWfId -> null again), the gate flips
-          // back open and the nudge resurfaces for a workflow already dealt with.
-          // The opportunity for this advance is meant to be gone for good.
-          setBatchSchedule((prev) => (prev?.workflowId === wfId ? null : prev));
-          onRecurring(card.workflow.id!);
-        } else {
-          toast.success(successMessage);
-        }
-        notifyRearmOutcome(result);
-        if (insert) {
-          pendingInsertRef.current = null;
-          try {
-            await persistColumnOrder(insert.ids);
-          } catch (err) {
-            // A etapa já avançou/voltou; a posição é best-effort. Sem a RPC em prod
-            // (migration não aplicada) isto é o único sinal.
-            console.warn('[entregas] falha ao gravar posição após mover etapa', err);
-          }
-        }
-        onRefresh();
-      } catch (err: unknown) {
-        pendingInsertRef.current = null;
-        if (nextEtapa)
-          setPendingEtapas((prev) => {
-            const next = new Map(prev);
-            next.delete(wfId);
-            return next;
-          });
-        toast.error((err as Error).message || 'Erro ao avançar etapa');
-      }
-    },
-    [onRefresh, onRecurring, persistColumnOrder],
-  );
-
-  const executeForward = useCallback(
-    (card: BoardCard) => {
-      const wfId = card.workflow.id!;
-      const decision = decideApprovalAdvance({
-        tipo: card.etapa.tipo,
-        total: postsCounts.get(wfId) ?? 0,
-        // "Cleared" (approved / scheduled / posted / publish-failed), not just
-        // aprovado_cliente — otherwise a workflow whose approved posts are already
-        // scheduled would wrongly prompt the approval dialog on advance.
-        cleared: clearedClienteCounts.get(wfId) ?? 0,
-        temAprovacaoAdiante: hasLaterApprovalEtapa(card.allEtapas, card.etapa.id!),
-      });
-      if (decision.kind === 'choose') setApprovalChoice({ card, willRearm: decision.willRearm });
-      else advanceEtapa(card, 'Etapa concluída!');
-    },
-    [advanceEtapa, postsCounts, clearedClienteCounts],
-  );
-
-  const handleForwardConfirm = () => {
-    if (!forwardTarget) return;
-    const card = forwardTarget;
-    setForwardTarget(null);
-    executeForward(card);
-  };
-
-  const handleApproveInternally = async () => {
-    if (!approvalChoice) return;
-    const card = approvalChoice.card;
-    const { willRearm } = approvalChoice;
-    setApprovalChoice(null);
-    try {
-      await approvePostsInternally(card.workflow.id!);
-    } catch (err: unknown) {
-      // The advance never runs, so the drag's captured drop position must not
-      // survive to reorder a later, unrelated advance of this workflow.
-      pendingInsertRef.current = null;
-      toast.error((err as Error).message || 'Erro ao aprovar internamente');
-      return;
-    }
-    // Aviso de agendamento em lote (spec peça 2), aberto AQUI e não depois de
-    // advanceEtapa: advanceEtapa captura o próprio erro e devolve void, então
-    // não existe sinal de sucesso para esperar (decisão 4). O gate !willRearm já
-    // garante que nenhum rearm vai devolver estes posts para rascunho.
-    //
-    // isFinalApprovalCycle: !willRearm -- capturado AQUI, no mesmo instante em
-    // que willRearm foi checado, e carregado junto com o workflowId (fix B da
-    // revisão final). AutoScheduleBatchDialog agora exige essa prop como seu
-    // próprio gate interno; sem carregá-la junto do id, o valor teria que ser
-    // recalculado no render, quando `card` pode já não refletir mais o mesmo
-    // estado que motivou a decisão.
-    if (
-      !willRearm &&
-      schedulingEnabled === true &&
-      card.cliente?.auto_publish_on_approval === true
-    ) {
-      setBatchSchedule({ workflowId: card.workflow.id!, isFinalApprovalCycle: !willRearm });
-    }
-    await advanceEtapa(card, 'Posts aprovados internamente — etapa concluída!');
-  };
-
-  const handleSendToPortal = async () => {
-    if (!approvalChoice) return;
-    const card = approvalChoice.card;
-    setApprovalChoice(null);
-    // Send-only: the workflow does not move, so the drag's captured drop
-    // position is dead the moment this choice is made.
-    pendingInsertRef.current = null;
-    try {
-      await sendPostsToCliente(card.workflow.id!);
-      toast.success('Posts enviados ao portal do cliente!');
-      onRefresh();
-    } catch (err: unknown) {
-      toast.error((err as Error).message || 'Erro ao enviar ao portal');
-    }
-  };
-
-  const handleAdvanceWithoutApproval = () => {
-    if (!approvalChoice) return;
-    const card = approvalChoice.card;
-    setApprovalChoice(null);
-    advanceEtapa(card, 'Etapa avançada — status dos posts mantidos.', { rearm: false });
-  };
-
-  const handleRevertConfirm = async () => {
-    if (!revertTarget) return;
-    const card = localCards.find((c) => c.workflow.id === revertTarget.workflowId);
-    const prevEtapa = card?.allEtapas.find((e) => e.ordem === card.etapa.ordem - 1);
-    if (card && prevEtapa)
-      setPendingEtapas((prev) => new Map(prev).set(revertTarget.workflowId, prevEtapa));
-    const insert =
-      pendingInsertRef.current?.movedId === String(revertTarget.workflowId)
-        ? pendingInsertRef.current
-        : null;
-    if (insert && card && prevEtapa)
-      setPendingPositions((prev) =>
-        new Map(prev).set(revertTarget.workflowId, insert.optimisticPos),
-      );
-    try {
-      await revertEtapa(revertTarget.workflowId);
-      toast.success('Etapa revertida!');
-      if (insert) {
-        pendingInsertRef.current = null;
-        try {
-          await persistColumnOrder(insert.ids);
-        } catch (err) {
-          // A etapa já avançou/voltou; a posição é best-effort. Sem a RPC em prod
-          // (migration não aplicada) isto é o único sinal.
-          console.warn('[entregas] falha ao gravar posição após mover etapa', err);
-        }
-      }
-      onRefresh();
-    } catch (err: unknown) {
-      pendingInsertRef.current = null;
-      setPendingEtapas((prev) => {
-        const next = new Map(prev);
-        next.delete(revertTarget.workflowId);
-        return next;
-      });
-      toast.error((err as Error).message || 'Erro ao reverter etapa');
-    }
-    setRevertTarget(null);
-  };
-
   if (localCards.length === 0 && posts.length === 0) {
+    if (isPhone) {
+      // Celular: sem a tour (ela ancora colunas do desktop), o quadro de exemplo
+      // não teria quem o explique; um estado vazio com a ação principal no lugar.
+      return (
+        <div className="phone-ent-board__empty phone-ent-board__empty--page">
+          <p>
+            {showExample
+              ? t('kanbanView.emptyExample')
+              : postProcessesEnabled
+                ? t('kanbanView.emptyWithProcesses')
+                : t('kanbanView.empty')}
+          </p>
+          {onAddWorkflow && (
+            <button
+              type="button"
+              className="phone-ent-board__add"
+              onClick={() => onAddWorkflow(null)}
+            >
+              <Plus aria-hidden="true" />
+              {t('kanbanView.newWorkflow')}
+            </button>
+          )}
+        </div>
+      );
+    }
     if (showExample && onDismissExample) {
       return <ExampleBoard onDismiss={onDismissExample} />;
     }
@@ -1256,11 +1199,77 @@ export function KanbanView({
       >
         <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem', opacity: 0.3 }}>▣</div>
         <p style={{ fontSize: '0.82rem', fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
-          {postProcessesEnabled
-            ? 'Nenhum fluxo ou post individual encontrado. Ajuste os filtros ou crie um novo fluxo.'
-            : 'Nenhuma entrega encontrada. Ajuste os filtros ou crie um novo fluxo.'}
+          {postProcessesEnabled ? t('kanbanView.emptyWithProcesses') : t('kanbanView.empty')}
         </p>
       </div>
+    );
+  }
+
+  if (isPhone) {
+    const countsFor = (id: number) => ({
+      discussaoNaoLidas: discussaoByWorkflow.get(id),
+      postsCount: postsCounts.get(id) ?? 0,
+      approvedPostsCount: approvedPostsCounts.get(id) ?? 0,
+      clearedClienteCount: clearedClienteCounts.get(id) ?? 0,
+      revisaoInternaCount: revisaoInternaCounts.get(id) ?? 0,
+      awaitingClienteCount: awaitingClienteCounts.get(id) ?? 0,
+    });
+    return (
+      <>
+        <PhoneKanbanBoard
+          rows={boardRows}
+          activeRowKey={activeRowKey}
+          onActiveRowKeyChange={setActiveRowKey}
+          displayMixed={displayMixed}
+          sortModeFor={sortModeFor}
+          setColumnSort={setColumnSort}
+          sensors={phoneSensors}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+          onDragCancel={() => {
+            setActiveEntity(null);
+            setDropSlot(null);
+            pendingInsertRef.current = null;
+          }}
+          activeEntity={activeEntity}
+          membros={membros}
+          onRefresh={onRefresh}
+          countsFor={countsFor}
+          discussaoNaoLidasForPost={(postId) => discussaoByPost.get(postId)?.naoLidas ?? 0}
+          workflow={{
+            open: onCardClick,
+            edit: onEditClick,
+            forward: stage.forward,
+            revert: stage.revert,
+            duplicate: onDuplicateWorkflowClick
+              ? (card) => onDuplicateWorkflowClick(card, postsCounts.get(card.workflow.id!) ?? null)
+              : undefined,
+            remove: onDeleteWorkflowClick,
+          }}
+          post={{
+            open: onPostClick,
+            forward: (entity) =>
+              canConcluir(entity.process)
+                ? commands.concluir(targetOf(entity))
+                : commands.avancar(targetOf(entity)),
+            forwardLabel: (entity) => forwardLabelFor(entity.process),
+            canRevert: (entity) => previousStepOf(entity.process) != null,
+            revert: (entity) => commands.voltar(targetOf(entity)),
+            removeProcess: (entity) => commands.remover(targetOf(entity)),
+            canRemoveProcess,
+            duplicate: onDuplicatePostClick,
+            remove: onDeletePostClick,
+          }}
+          onAddWorkflow={onAddWorkflow}
+          onAddPostIndividual={onAddPostIndividual}
+          onCreateTemplate={onCreateTemplate}
+          createTemplateDisabled={createTemplateDisabled}
+          postProcessesEnabled={postProcessesEnabled}
+        />
+        {stage.dialogs}
+        {commands.dialogs}
+      </>
     );
   }
 
@@ -1279,13 +1288,23 @@ export function KanbanView({
         const mixed: BoardEntity[] = displayMixed(row.key, column.ordem, column);
         const countLabel =
           stepCards.length > 0 && stepPosts.length > 0
-            ? `${stepCards.length} ${stepCards.length === 1 ? 'fluxo' : 'fluxos'} · ${stepPosts.length} ${stepPosts.length === 1 ? 'post' : 'posts'}`
+            ? `${t('kanbanView.countWorkflows', { count: stepCards.length })} · ${t('kanbanView.countPosts', { count: stepPosts.length })}`
             : String(stepCards.length + stepPosts.length);
         return (
-          <div key={column.ordem} className="board-column" style={{ borderColor: `${tint}30` }}>
+          <div
+            key={column.ordem}
+            className="board-column"
+            style={
+              vidroShell ? ({ '--col-tint': tint } as CSSProperties) : { borderColor: `${tint}30` }
+            }
+          >
             <div
               className="board-column-header"
-              style={{ background: `${tint}30`, borderBottomColor: `${tint}30` }}
+              style={
+                vidroShell
+                  ? ({ '--col-tint': tint } as CSSProperties)
+                  : { background: `${tint}30`, borderBottomColor: `${tint}30` }
+              }
               {...(column.tipo === 'aprovacao_cliente' ? { 'data-tour': 'wf-col-aprovacao' } : {})}
             >
               <span
@@ -1296,27 +1315,25 @@ export function KanbanView({
                   minWidth: 0,
                 }}
               >
-                <span className="board-column-title" style={{ color: tint }}>
+                <span
+                  className="board-column-title"
+                  style={vidroShell ? undefined : { color: tint }}
+                >
                   {stepName}
                 </span>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      aria-label={`Ordenar coluna ${stepName}`}
+                      aria-label={t('kanbanView.sortColumn', { name: stepName })}
                       className="board-column-sort"
-                      style={{ color: tint }}
+                      style={vidroShell ? undefined : { color: tint }}
                     >
                       <ArrowUpDown size={12} aria-hidden="true" />
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="min-w-[150px]">
-                    {(
-                      [
-                        ['prazo', 'Prazo'],
-                        ['manual', 'Manual'],
-                      ] as const
-                    ).map(([mode, label]) => (
+                    {FLUXOS_COLUMN_SORTS.map((mode) => (
                       <DropdownMenuItem
                         key={mode}
                         className="gap-2 text-xs"
@@ -1326,7 +1343,7 @@ export function KanbanView({
                           className="h-3.5 w-3.5"
                           style={{ visibility: sortMode === mode ? 'visible' : 'hidden' }}
                         />
-                        {label}
+                        {FLUXOS_COLUMN_SORT_LABELS[mode]}
                       </DropdownMenuItem>
                     ))}
                   </DropdownMenuContent>
@@ -1334,29 +1351,36 @@ export function KanbanView({
               </span>
               <span
                 className="board-column-count"
-                style={{ background: `${tint}3d`, color: tint, borderColor: 'transparent' }}
+                style={
+                  vidroShell
+                    ? undefined
+                    : { background: `${tint}3d`, color: tint, borderColor: 'transparent' }
+                }
               >
                 {countLabel}
               </span>
             </div>
-            <DroppableColumnBody tint={tint} id={`${COL_PREFIX}${colKeyStr}`}>
+            <DroppableColumnBody
+              tint={vidroShell ? undefined : tint}
+              id={`${COL_PREFIX}${colKeyStr}`}
+            >
               {colIdx === 0 &&
                 onAddWorkflow &&
                 (row.templateId != null && postProcessesEnabled && onAddPostIndividual ? (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button type="button" className="board-add-card">
-                        <Plus className="h-3.5 w-3.5" /> Novo ▾
+                        <Plus className="h-3.5 w-3.5" /> {t('kanbanView.newMenu')}
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="min-w-[150px]">
                       <DropdownMenuItem onSelect={() => onAddWorkflow(row.templateId)}>
-                        Fluxo
+                        {t('kanbanView.workflowOption')}
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onSelect={() => onAddPostIndividual(row.templateId as number)}
                       >
-                        Post individual
+                        {t('shared.individualPost')}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -1366,7 +1390,7 @@ export function KanbanView({
                     className="board-add-card"
                     onClick={() => onAddWorkflow(row.templateId)}
                   >
-                    <Plus className="h-3.5 w-3.5" /> Novo fluxo
+                    <Plus className="h-3.5 w-3.5" /> {t('kanbanView.newWorkflow')}
                   </button>
                 ))}
               <SortableContext
@@ -1374,7 +1398,7 @@ export function KanbanView({
                 strategy={verticalListSortingStrategy}
               >
                 {mixed.length === 0 && colKeyStr !== dropSlot?.colKey ? (
-                  <div className="board-empty">Nenhuma entrega</div>
+                  <div className="board-empty">{t('kanbanView.columnEmpty')}</div>
                 ) : (
                   mixed.map((entity, idx) => {
                     const slot = colKeyStr === dropSlot?.colKey && dropSlot.index === idx && (
@@ -1397,12 +1421,20 @@ export function KanbanView({
                                 : commands.avancar(targetOf(entity))
                             }
                             onRevertClick={() => commands.voltar(targetOf(entity))}
-                            onRemoveProcessClick={() => commands.remover(targetOf(entity))}
+                            onRemoveProcessClick={
+                              canRemoveProcess?.(entity) === false
+                                ? undefined
+                                : () => commands.remover(targetOf(entity))
+                            }
                             onDeleteClick={
                               onDeletePostClick ? () => onDeletePostClick(entity) : undefined
                             }
                             onDuplicateClick={
                               onDuplicatePostClick ? () => onDuplicatePostClick(entity) : undefined
+                            }
+                            showPublishDate={sortMode === 'publicacao'}
+                            discussaoNaoLidas={
+                              discussaoByPost.get(entity.process.post_id)?.naoLidas
                             }
                           />
                         </Fragment>
@@ -1419,13 +1451,8 @@ export function KanbanView({
                           onPostsClick={onPostsClick}
                           membros={membros}
                           onRefresh={onRefresh}
-                          onRevertClick={() =>
-                            setRevertTarget({
-                              workflowId: card.workflow.id!,
-                              title: card.workflow.titulo,
-                            })
-                          }
-                          onForwardClick={() => handleForwardCard(card)}
+                          onRevertClick={() => stage.revert(card)}
+                          onForwardClick={() => stage.forward(card)}
                           onDeleteClick={
                             onDeleteWorkflowClick ? () => onDeleteWorkflowClick(card) : undefined
                           }
@@ -1439,6 +1466,7 @@ export function KanbanView({
                               : undefined
                           }
                           postsCount={postsCounts.get(card.workflow.id!) ?? 0}
+                          discussaoNaoLidas={discussaoByWorkflow.get(card.workflow.id!)}
                           approvedPostsCount={approvedPostsCounts.get(card.workflow.id!) ?? 0}
                           clearedClienteCount={clearedClienteCounts.get(card.workflow.id!) ?? 0}
                           revisaoInternaCount={revisaoInternaCounts.get(card.workflow.id!) ?? 0}
@@ -1467,6 +1495,38 @@ export function KanbanView({
   // "+", which is how a second template gets created.
   const useTabs = boardRows.length >= 1;
   const activeRow = boardRows.find((r) => r.key === activeRowKey) ?? boardRows[0];
+  const tabStrip = activeRow && (
+    <div className="board-tabs no-scrollbar" role="tablist">
+      {boardRows.map((row) => (
+        <button
+          key={row.key}
+          type="button"
+          role="tab"
+          aria-selected={row.key === activeRow.key}
+          className={`board-tab${row.key === activeRow.key ? ' active' : ''}`}
+          onClick={() => setActiveRowKey(row.key)}
+        >
+          {vidroShell ? row.name : row.label}
+          <span className="board-tab-count">{rowCardCount(row)}</span>
+        </button>
+      ))}
+      {onCreateTemplate && (
+        <button
+          type="button"
+          className="board-tab board-tab-add"
+          aria-label={t('kanbanView.newTemplate')}
+          title={
+            createTemplateDisabled ? t('shared.planLimitReached') : t('kanbanView.newTemplate')
+          }
+          disabled={createTemplateDisabled}
+          onClick={onCreateTemplate}
+        >
+          <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+          {t('kanbanView.newTemplate')}
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <>
@@ -1482,107 +1542,49 @@ export function KanbanView({
         onDragEnd={handleDragEnd}
       >
         <div className="board-rows-wrapper animate-up">
+          {!(useTabs && activeRow) && tabsTrailing != null && (
+            <div className="board-tabs-row">
+              <div className="board-tabs-row__trailing">{tabsTrailing}</div>
+            </div>
+          )}
           {useTabs && activeRow && (
             <div>
-              <div className="board-tabs no-scrollbar" role="tablist">
-                {boardRows.map((row) => (
-                  <button
-                    key={row.key}
-                    type="button"
-                    role="tab"
-                    aria-selected={row.key === activeRow.key}
-                    className={`board-tab${row.key === activeRow.key ? ' active' : ''}`}
-                    onClick={() => setActiveRowKey(row.key)}
-                  >
-                    {row.label}
-                    <span className="board-tab-count">{rowCardCount(row)}</span>
-                  </button>
-                ))}
-                {onCreateTemplate && (
-                  <button
-                    type="button"
-                    className="board-tab board-tab-add"
-                    aria-label="Novo template"
-                    title={createTemplateDisabled ? 'Limite do plano atingido' : 'Novo template'}
-                    disabled={createTemplateDisabled}
-                    onClick={onCreateTemplate}
-                  >
-                    <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                    Novo template
-                  </button>
-                )}
-              </div>
+              {tabsTrailing != null ? (
+                <div className="board-tabs-row">
+                  {tabStrip}
+                  <div className="board-tabs-row__trailing">{tabsTrailing}</div>
+                </div>
+              ) : (
+                tabStrip
+              )}
               {renderRowBoard(activeRow)}
             </div>
           )}
         </div>
-        <DragOverlay>
+        <DragOverlay className="vidro-drag-clone">
           {activeEntity?.kind === 'workflow' && (
             <WorkflowCard
               card={activeEntity.card}
               isDragOverlay
               postsCount={postsCounts.get(activeEntity.card.workflow.id!) ?? 0}
+              discussaoNaoLidas={discussaoByWorkflow.get(activeEntity.card.workflow.id!)}
               approvedPostsCount={approvedPostsCounts.get(activeEntity.card.workflow.id!) ?? 0}
               clearedClienteCount={clearedClienteCounts.get(activeEntity.card.workflow.id!) ?? 0}
               revisaoInternaCount={revisaoInternaCounts.get(activeEntity.card.workflow.id!) ?? 0}
               awaitingClienteCount={awaitingClienteCounts.get(activeEntity.card.workflow.id!) ?? 0}
             />
           )}
-          {activeEntity?.kind === 'post' && <PostProcessCard entity={activeEntity} isDragOverlay />}
+          {activeEntity?.kind === 'post' && (
+            <PostProcessCard
+              entity={activeEntity}
+              isDragOverlay
+              showPublishDate={activeShowsPublishDate}
+              discussaoNaoLidas={discussaoByPost.get(activeEntity.process.post_id)?.naoLidas}
+            />
+          )}
         </DragOverlay>
       </DndContext>
-      <ForwardConfirmDialog
-        open={!!forwardTarget}
-        entityTitle={forwardTarget?.workflow.titulo || ''}
-        nextEtapaName={
-          forwardTarget
-            ? ([...forwardTarget.allEtapas]
-                .sort((a, b) => a.ordem - b.ordem)
-                .find((e) => e.ordem > forwardTarget.etapa.ordem)?.nome ?? '')
-            : ''
-        }
-        onConfirm={handleForwardConfirm}
-        onCancel={() => {
-          pendingInsertRef.current = null;
-          setForwardTarget(null);
-        }}
-      />
-      <RevertConfirmDialog
-        open={!!revertTarget}
-        entityTitle={revertTarget?.title || ''}
-        onConfirm={handleRevertConfirm}
-        onCancel={() => {
-          pendingInsertRef.current = null;
-          setRevertTarget(null);
-        }}
-      />
-      <ClientApprovalChoiceDialog
-        open={!!approvalChoice}
-        entityTitle={approvalChoice?.card.workflow.titulo || ''}
-        willRearm={approvalChoice?.willRearm ?? false}
-        onApproveInternally={handleApproveInternally}
-        onSendToPortal={handleSendToPortal}
-        onAdvanceWithoutChanges={handleAdvanceWithoutApproval}
-        onCancel={() => {
-          pendingInsertRef.current = null;
-          setApprovalChoice(null);
-        }}
-      />
-      <AutoScheduleBatchDialog
-        // Exclusão mútua com RecurringWorkflowDialog (fix pós-review da Task 4):
-        // recurringWfId != null significa que o pai já vai abrir (ou já abriu) o
-        // diálogo de conclusão de ciclo para este mesmo avanço -- ele tem
-        // precedência, então o resumo em lote nem monta com um workflowId
-        // não-nulo neste render.
-        workflowId={recurringWfId == null ? (batchSchedule?.workflowId ?? null) : null}
-        tiktokFeatureEnabled={tiktokEnabled === true}
-        isFinalApprovalCycle={batchSchedule?.isFinalApprovalCycle ?? false}
-        onClose={() => setBatchSchedule(null)}
-        onScheduled={() => {
-          setBatchSchedule(null);
-          onRefresh();
-        }}
-      />
+      {stage.dialogs}
       {commands.dialogs}
     </>
   );

@@ -1,6 +1,7 @@
 import { assert, assertEquals, readJson } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createFileManageHandler } from "../file-manage/handler.ts";
+import { allClientsScope, type ClientScope } from "../_shared/client-scope.ts";
 
 Deno.env.set("ZIP_TOKEN_SECRET", "test-secret-key-for-unit-tests");
 Deno.env.set("SUPABASE_URL", "https://test.supabase.co");
@@ -16,6 +17,8 @@ function makeHandler(
     createDb: () => db as never,
     signUrl: async (key) => `https://signed.example.com/${key}`,
     now: () => "2026-05-01T12:00:00.000Z",
+    // Acesso por cliente: unrestricted unless a test overrides it.
+    loadClientScope: () => Promise.resolve(allClientsScope()),
     ...overrides,
   });
 }
@@ -305,7 +308,7 @@ Deno.test("zip-token: rejects when no folder_id or file_ids", async () => {
 Deno.test("zip-token: returns 413 when file count limit exceeded", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
-  const manyFiles = Array.from({ length: 501 }, (_, i) => ({ size_bytes: 1000 }));
+  const manyFiles = Array.from({ length: 501 }, (_, i) => ({ id: i + 1, size_bytes: 1000 }));
   db.queue("files", "select", { data: manyFiles, error: null });
   const handler = makeHandler(db);
   const fileIds = Array.from({ length: 501 }, (_, i) => i + 1);
@@ -327,12 +330,15 @@ Deno.test("zip-token: returns token and download_url for folder", async () => {
   assertEquals(typeof body.download_url, "string");
   assertEquals(body.download_url.includes("file-zip"), true);
   assertEquals(body.download_url.includes("token="), true);
+  // The minting member travels in the token: file-zip loads his client scope again at redeem.
+  const payload = JSON.parse(JSON.parse(atob(body.token)).payload);
+  assertEquals([payload.user_id, payload.conta_id, payload.folder_id], ["user-1", "conta-1", 5]);
 });
 
 Deno.test("zip-token: returns token and download_url for file_ids", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
-  db.queue("files", "select", { data: [{ size_bytes: 500 }, { size_bytes: 300 }], error: null });
+  db.queue("files", "select", { data: [{ id: 10, size_bytes: 500 }, { id: 20, size_bytes: 300 }], error: null });
   const handler = makeHandler(db);
   const res = await handler(req("POST", "/zip-token", { file_ids: [10, 20] }));
   assertEquals(res.status, 200);

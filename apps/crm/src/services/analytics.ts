@@ -23,11 +23,11 @@ import {
   type ActionSortKey,
 } from '../lib/post-action-metrics';
 
-const EDGE_URL = import.meta.env.VITE_SUPABASE_URL + '/functions/v1/instagram-analytics';
+export const EDGE_URL = import.meta.env.VITE_SUPABASE_URL + '/functions/v1/instagram-analytics';
 
 // ---- Edge function helper (for demographics/online-followers only) ----
 
-async function getAuthHeaders() {
+export async function getAuthHeaders() {
   const {
     data: { session },
   } = await supabase.auth.getSession();

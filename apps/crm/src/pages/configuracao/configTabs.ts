@@ -13,6 +13,7 @@ import {
   Users,
 } from 'lucide-react';
 import type { PermissionAction, PermissionCheck, PermissionModule } from '@/lib/permissions';
+import type { FeatureFlags } from '@/hooks/useWorkspaceLimits';
 
 /**
  * `'all'` = every member, regardless of role or membership state (used for a
@@ -27,88 +28,121 @@ export type ConfigPermission =
   | 'owner'
   | 'all';
 
+/** Section id of a tab in the settings nav; its label is `settings:tabs.groups.<id>`. */
+export type ConfigTabGroup = 'conta' | 'workspace' | 'avancado';
+
 export interface ConfigTab {
   /** Path segment under /configuracao. */
   path: string;
-  label: string;
+  /** i18n key (namespace `settings`) of the tab's label. */
+  labelKey: string;
   /** Permission gate for the tab. See `ConfigPermission`. */
   permission: ConfigPermission;
   /**
    * Section heading in the settings nav. Consecutive tabs sharing a group
-   * render under one label, so tabs of the same group must stay adjacent.
+   * render under one label, so tabs of the same group must stay adjacent. An id, never
+   * a translated string: the label is `settings:tabs.groups.<group>`.
    */
-  group: string;
+  group: ConfigTabGroup;
   icon: LucideIcon;
 }
 
 /**
  * Single source of truth for the Configurações tab strip. The layout renders the
  * strip from this list and also guards direct URL access against it, so a tab
- * can never be hidden in the nav yet reachable by typing its address.
+ * the role cannot open is never reachable by typing its address.
+ *
+ * One deliberate exception goes the other way: `contas-conectadas` is listed in the
+ * nav only while the workspace has YouTube or Google Meu Negócio (see
+ * `visibleConfigTabs`), yet stays reachable by URL and from the client tabs with both
+ * flags off, so a downgraded workspace can still remove a Google account's access.
  *
  * `permission` mirrors the guard each destination already enforces internally
- * (CobrancaPage is owner-only; IntegracoesClaudePage is owner/admin) — those
+ * (CobrancaPage is owner-only) — those
  * checks stay in place as the real gate; this list only avoids advertising a
  * tab that would render a "no access" screen.
  */
 export const CONFIG_TABS: ConfigTab[] = [
-  { path: 'perfil', label: 'Perfil', permission: 'all', group: 'Conta', icon: User },
-  { path: 'notificacoes', label: 'Notificações', permission: 'all', group: 'Conta', icon: Bell },
+  { path: 'perfil', labelKey: 'tabs.perfil', permission: 'all', group: 'conta', icon: User },
+  {
+    path: 'notificacoes',
+    labelKey: 'tabs.notificacoes',
+    permission: 'all',
+    group: 'conta',
+    icon: Bell,
+  },
   {
     path: 'workspace',
-    label: 'Workspace',
+    labelKey: 'tabs.workspace',
     permission: { module: 'configuracoes', action: 'ver' },
-    group: 'Workspace',
+    group: 'workspace',
     icon: Building2,
   },
   {
     path: 'membros',
-    label: 'Membros',
+    labelKey: 'tabs.membros',
     permission: { module: 'equipe', action: 'ver' },
-    group: 'Workspace',
+    group: 'workspace',
     icon: Users,
   },
-  { path: 'papeis', label: 'Papéis', permission: 'owner', group: 'Workspace', icon: ShieldCheck },
+  {
+    path: 'papeis',
+    labelKey: 'tabs.papeis',
+    permission: 'owner',
+    group: 'workspace',
+    icon: ShieldCheck,
+  },
   {
     path: 'relatorios',
-    label: 'Relatórios',
+    labelKey: 'tabs.relatorios',
     permission: { module: 'configuracoes', action: 'ver' },
-    group: 'Workspace',
+    group: 'workspace',
     icon: BarChart3,
   },
   {
     path: 'status',
-    label: 'Status de posts',
+    labelKey: 'tabs.status',
     permission: { module: 'configuracoes', action: 'ver' },
-    group: 'Workspace',
+    group: 'workspace',
     icon: Tags,
   },
   {
     path: 'hub',
-    label: 'Hub',
+    labelKey: 'tabs.hub',
     permission: { module: 'configuracoes', action: 'ver' },
-    group: 'Workspace',
+    group: 'workspace',
     icon: Globe,
   },
   {
+    // Nav-listed only with feature_youtube or feature_google_business (visibleConfigTabs);
+    // the route itself checks the permission only.
+    path: 'contas-conectadas',
+    labelKey: 'tabs.contasConectadas',
+    permission: { module: 'configuracoes', action: 'ver' },
+    group: 'workspace',
+    icon: Plug,
+  },
+  {
     path: 'armazenamento',
-    label: 'Armazenamento',
+    labelKey: 'tabs.armazenamento',
     permission: 'owner',
-    group: 'Workspace',
+    group: 'workspace',
     icon: HardDrive,
   },
   {
     path: 'mcp',
-    label: 'Agentes (MCP)',
-    permission: { module: 'configuracoes', action: 'ver' },
-    group: 'Avançado',
+    labelKey: 'tabs.mcp',
+    // Every member can connect Claude with the scopes their own role allows. The page shows
+    // API keys and everyone's connections only with `configuracoes:ver`.
+    permission: 'all',
+    group: 'avancado',
     icon: Plug,
   },
   {
     path: 'cobranca',
-    label: 'Plano & Cobrança',
+    labelKey: 'tabs.cobranca',
     permission: 'owner',
-    group: 'Avançado',
+    group: 'avancado',
     icon: CreditCard,
   },
 ];
@@ -131,10 +165,28 @@ export function canAccessConfigTab(
   return can(tab.permission.module, tab.permission.action) === true;
 }
 
-/** Tabs to show in the nav for the current permission set, in display order. */
+/** The plan flags `visibleConfigTabs` reads. */
+export type ConfigTabFeatures = Pick<FeatureFlags, 'feature_youtube' | 'feature_google_business'>;
+
+/** Tabs advertised only while a plan flag is on. Their route stays permission-only. */
+function listedForFeatures(path: string, features: ConfigTabFeatures | null | undefined): boolean {
+  if (path === 'contas-conectadas') {
+    return features?.feature_youtube === true || features?.feature_google_business === true;
+  }
+  return true;
+}
+
+/**
+ * Tabs to show in the nav for the current permission set, in display order. `features`
+ * (the workspace's plan flags) hides `contas-conectadas` unless YouTube or Google Meu
+ * Negócio is on; while it is still loading (null) that tab stays hidden.
+ */
 export function visibleConfigTabs(
   can: ConfigCanFn,
   workspaceRole: string | null | undefined,
+  features?: ConfigTabFeatures | null,
 ): ConfigTab[] {
-  return CONFIG_TABS.filter((t) => canAccessConfigTab(t.path, can, workspaceRole));
+  return CONFIG_TABS.filter(
+    (t) => canAccessConfigTab(t.path, can, workspaceRole) && listedForFeatures(t.path, features),
+  );
 }

@@ -1,0 +1,7 @@
+/* Workspace on phones. */
+.phone-kit .phone-workspace-logo {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  object-fit: cover;
+}

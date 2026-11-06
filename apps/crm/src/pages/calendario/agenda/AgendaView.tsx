@@ -16,8 +16,9 @@ import type {
 } from '@fullcalendar/core';
 import type { EventResizeDoneArg } from '@fullcalendar/interaction';
 import { addDays, format, isSameMonth, isSameYear } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { getDateFnsLocale, i18n, useIntlLocale } from '@mesaas/i18n';
 import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import type { AgendaOcorrencia } from '../../../store/agenda';
@@ -26,39 +27,68 @@ import type { CamadaItem } from '../camadas/tipos';
 
 export type AgendaViewType = 'dayGridMonth' | 'timeGridWeek' | 'timeGridDay' | 'listWeek';
 
-const VIEW_OPTIONS: { value: AgendaViewType; label: string }[] = [
-  { value: 'dayGridMonth', label: 'Mês' },
-  { value: 'timeGridWeek', label: 'Semana' },
-  { value: 'timeGridDay', label: 'Dia' },
-  { value: 'listWeek', label: 'Lista' },
-];
+const VIEW_OPTIONS: AgendaViewType[] = ['dayGridMonth', 'timeGridWeek', 'timeGridDay', 'listWeek'];
 
-const NAV_LABELS: Record<AgendaViewType, { prev: string; next: string }> = {
-  dayGridMonth: { prev: 'Mês anterior', next: 'Próximo mês' },
-  timeGridWeek: { prev: 'Semana anterior', next: 'Próxima semana' },
-  timeGridDay: { prev: 'Dia anterior', next: 'Próximo dia' },
-  listWeek: { prev: 'Semana anterior', next: 'Próxima semana' },
+/** Short view-key segment used by the `view.*` and `nav.*` translation keys. */
+const VIEW_KEY: Record<AgendaViewType, 'month' | 'week' | 'day' | 'list'> = {
+  dayGridMonth: 'month',
+  timeGridWeek: 'week',
+  timeGridDay: 'day',
+  listWeek: 'list',
 };
+
+/** Prev/next aria-labels per view, resolved through i18n on every read. */
+export const NAV_LABELS: Record<AgendaViewType, { prev: string; next: string }> = (() => {
+  const o = {} as Record<AgendaViewType, { prev: string; next: string }>;
+  for (const v of VIEW_OPTIONS) {
+    const k = VIEW_KEY[v];
+    o[v] = {
+      get prev() {
+        return i18n.t(`agenda:nav.${k}.prev`);
+      },
+      get next() {
+        return i18n.t(`agenda:nav.${k}.next`);
+      },
+    };
+  }
+  return o;
+})();
 
 const capitalizar = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** Period title without FullCalendar's en-dash ranges: "5 a 11 de outubro de 2026",
  *  "Outubro de 2026", "Segunda, 5 de outubro de 2026". `fim` is exclusive. */
 export function tituloDoPeriodo(view: string, inicio: Date, fim: Date): string {
+  const locale = getDateFnsLocale();
+  const fmt = (d: Date, key: string) => format(d, i18n.t(key), { locale });
   if (view === 'dayGridMonth') {
-    return capitalizar(format(inicio, "MMMM 'de' yyyy", { locale: ptBR }));
+    return capitalizar(fmt(inicio, 'common:dateFormat.monthYear'));
   }
   if (view === 'timeGridDay') {
-    const dia = format(inicio, 'EEEE', { locale: ptBR }).replace('-feira', '');
-    return `${capitalizar(dia)}, ${format(inicio, "d 'de' MMMM 'de' yyyy", { locale: ptBR })}`;
+    const dia = format(inicio, 'EEEE', { locale }).replace('-feira', '');
+    return i18n.t('agenda:periodo.day', {
+      weekday: capitalizar(dia),
+      date: fmt(inicio, 'agenda:logic.fullDateFormat'),
+    });
   }
   const ultimo = addDays(fim, -1);
-  const fimTxt = format(ultimo, "d 'de' MMMM 'de' yyyy", { locale: ptBR });
-  if (isSameMonth(inicio, ultimo)) return `${format(inicio, 'd')} a ${fimTxt}`;
-  if (isSameYear(inicio, ultimo)) {
-    return `${format(inicio, "d 'de' MMMM", { locale: ptBR })} a ${fimTxt}`;
+  if (isSameMonth(inicio, ultimo)) {
+    return i18n.t('agenda:periodo.range', {
+      start: fmt(inicio, 'agenda:periodo.sameMonthStartFormat'),
+      end: fmt(ultimo, 'agenda:periodo.sameMonthEndFormat'),
+    });
   }
-  return `${format(inicio, "d 'de' MMMM 'de' yyyy", { locale: ptBR })} a ${fimTxt}`;
+  const fimTxt = fmt(ultimo, 'agenda:logic.fullDateFormat');
+  if (isSameYear(inicio, ultimo)) {
+    return i18n.t('agenda:periodo.range', {
+      start: fmt(inicio, 'agenda:logic.dayMonthFormat'),
+      end: fimTxt,
+    });
+  }
+  return i18n.t('agenda:periodo.range', {
+    start: fmt(inicio, 'agenda:logic.fullDateFormat'),
+    end: fimTxt,
+  });
 }
 
 /** Height per view. A fixed height keeps the time grid's own scroller (so
@@ -106,6 +136,7 @@ function ConteudoDaCamada({ arg, item }: { arg: EventContentArg; item: CamadaIte
 }
 
 export function ConteudoDoEvento({ arg }: { arg: EventContentArg }) {
+  const { t } = useTranslation('agenda');
   const camada = arg.event.extendedProps.camada as CamadaItem | undefined;
   if (camada) return <ConteudoDaCamada arg={arg} item={camada} />;
   // Undefined for the selectMirror placeholder and the quick-create draft chip.
@@ -113,7 +144,11 @@ export function ConteudoDoEvento({ arg }: { arg: EventContentArg }) {
   const { start, end, allDay, title } = arg.event;
   const mes = arg.view.type === 'dayGridMonth';
   const horario =
-    !allDay && start ? (end && !mes ? `${hora(start)} a ${hora(end)}` : hora(start)) : '';
+    !allDay && start
+      ? end && !mes
+        ? t('view.timeRange', { start: hora(start), end: hora(end) })
+        : hora(start)
+      : '';
   const detalhe = [horario, !mes && o?.local ? o.local : ''].filter(Boolean).join(' · ');
 
   if (mes || allDay) {
@@ -148,11 +183,10 @@ export function ConteudoDoEvento({ arg }: { arg: EventContentArg }) {
   );
 }
 
-const SEMANA_CURTA = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
-
 function CabecalhoDoDia({ arg }: { arg: DayHeaderContentArg }) {
+  const { t } = useTranslation('agenda');
   // `dow`, not arg.date: month headers carry a 1970 UTC placeholder date.
-  const semana = SEMANA_CURTA[arg.dow];
+  const semana = t(`view.weekdayShort.${arg.dow}`);
   if (arg.view.type === 'dayGridMonth') return <span className="agenda-dia__semana">{semana}</span>;
   return (
     <span className="agenda-dia">
@@ -180,6 +214,12 @@ export interface AgendaViewProps {
   /** The parent gives the card a fixed height: every view fills it and scrolls
    *  inside (the time grid scrolls its hours, the list its rows). */
   preencher?: boolean;
+  /** Phones: no toolbar (AgendaTab's header has the period controls) and FullCalendar
+   *  only for the Dia view. */
+  semToolbar?: boolean;
+  /** Honoured at mount only (FullCalendar): where a remount lands. */
+  initialView?: AgendaViewType;
+  initialDate?: Date;
 }
 
 export default function AgendaView({
@@ -194,66 +234,80 @@ export default function AgendaView({
   onCamadaClick,
   onMover,
   preencher = false,
+  semToolbar = false,
+  initialView,
+  initialDate,
 }: AgendaViewProps) {
+  const { t } = useTranslation('agenda');
+  const intlLocale = useIntlLocale();
   const api = () => calRef.current?.getApi();
   // Read once: FullCalendar re-applies scrollTime whenever the option changes.
   const [scrollTime] = useState(() => format(new Date(), 'HH:00:00'));
-  const opcoes = isMobile ? VIEW_OPTIONS.filter((v) => v.value !== 'timeGridWeek') : VIEW_OPTIONS;
+  // Mount-time only, like FullCalendar reads them: later changes must not re-render it.
+  const [vistaInicial] = useState(() => initialView ?? (isMobile ? 'listWeek' : 'timeGridWeek'));
+  const [dataInicial] = useState(initialDate);
+  const opcoes = (isMobile ? VIEW_OPTIONS.filter((v) => v !== 'timeGridWeek') : VIEW_OPTIONS).map(
+    (value) => ({ value, label: t(`view.${VIEW_KEY[value]}`) }),
+  );
   const nav = NAV_LABELS[view];
 
   return (
-    <section className="agenda-view" aria-label={titulo || 'Agenda'}>
-      <div className="agenda-toolbar">
-        <div className="agenda-toolbar__nav">
-          <Button type="button" variant="outline" size="sm" onClick={() => api()?.today()}>
-            Hoje
-          </Button>
-          <button
-            type="button"
-            className="agenda-icon-btn"
-            aria-label={nav.prev}
-            onClick={() => api()?.prev()}
-          >
-            <ChevronLeft size={16} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            className="agenda-icon-btn"
-            aria-label={nav.next}
-            onClick={() => api()?.next()}
-          >
-            <ChevronRight size={16} aria-hidden="true" />
-          </button>
-          <h2 className="agenda-toolbar__titulo">{titulo}</h2>
-        </div>
-        <ToggleGroup
-          type="single"
-          className="agenda-segmented"
-          aria-label="Visão"
-          value={view}
-          // Radix fires '' when the active item is clicked again: a segmented
-          // control always keeps one value.
-          onValueChange={(next) => next && api()?.changeView(next)}
-        >
-          {opcoes.map((o) => (
-            <ToggleGroupItem
-              key={o.value}
-              value={o.value}
-              aria-label={o.label}
-              className="agenda-segmented__item"
+    <section className="agenda-view" aria-label={titulo || t('view.sectionLabel')}>
+      {!semToolbar && (
+        <div className="agenda-toolbar">
+          <div className="agenda-toolbar__nav">
+            <Button type="button" variant="outline" size="sm" onClick={() => api()?.today()}>
+              {t('view.today')}
+            </Button>
+            <button
+              type="button"
+              className="agenda-icon-btn"
+              aria-label={nav.prev}
+              onClick={() => api()?.prev()}
             >
-              {o.label}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-      </div>
+              <ChevronLeft size={16} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="agenda-icon-btn"
+              aria-label={nav.next}
+              onClick={() => api()?.next()}
+            >
+              <ChevronRight size={16} aria-hidden="true" />
+            </button>
+            <h2 className="agenda-toolbar__titulo">{titulo}</h2>
+          </div>
+          <ToggleGroup
+            type="single"
+            className="agenda-segmented"
+            aria-label={t('view.viewLabel')}
+            value={view}
+            // Radix fires '' when the active item is clicked again: a segmented
+            // control always keeps one value.
+            onValueChange={(next) => next && api()?.changeView(next)}
+          >
+            {opcoes.map((o) => (
+              <ToggleGroupItem
+                key={o.value}
+                value={o.value}
+                aria-label={o.label}
+                className="agenda-segmented__item"
+              >
+                {o.label}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+        </div>
+      )}
 
       <div className="agenda-fc">
         <FullCalendar
           ref={calRef}
           plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
-          locale={ptBrLocale}
-          initialView={isMobile ? 'listWeek' : 'timeGridWeek'}
+          // FullCalendar ships English as its built-in default locale.
+          locale={intlLocale === 'en-US' ? 'en' : ptBrLocale}
+          initialView={vistaInicial}
+          initialDate={dataInicial}
           headerToolbar={false}
           firstDay={1}
           nowIndicator
@@ -263,11 +317,11 @@ export default function AgendaView({
           slotMinTime="06:00:00"
           scrollTime={scrollTime}
           height={preencher ? '100%' : alturaDaVisao(view, isMobile)}
-          allDayText="Dia inteiro"
-          noEventsText="Nenhum evento neste período."
-          moreLinkText={(n) => `+${n} mais`}
-          defaultRangeSeparator=" a "
-          titleRangeSeparator=" a "
+          allDayText={t('view.allDay')}
+          noEventsText={t('view.noEvents')}
+          moreLinkText={(n) => t('view.moreLink', { n })}
+          defaultRangeSeparator={t('view.rangeSeparator')}
+          titleRangeSeparator={t('view.rangeSeparator')}
           slotLabelFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
           eventTimeFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
           // Month chips as tinted blocks like the week grid (default is a dot row).

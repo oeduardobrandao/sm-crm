@@ -1,5 +1,6 @@
 import { usePageMeta } from '../../lib/usePageMeta';
 import { CookiePreferencesLink } from '../../components/consent/CookiePreferencesLink';
+import { legalNetworkList } from '../../lib/googleLegalLaunch';
 
 export default function TermosPage() {
   usePageMeta('/termos-de-uso');
@@ -46,7 +47,7 @@ export default function TermosPage() {
                 <ul>
                   <li>Gestão de clientes, leads e contratos;</li>
                   <li>Quadro Kanban para organização de entregas e conteúdos;</li>
-                  <li>Integração com plataformas de redes sociais (Instagram, Meta);</li>
+                  <li>Integração com plataformas de redes sociais ({legalNetworkList()});</li>
                   <li>Portal do cliente (Hub) para aprovação de conteúdos;</li>
                   <li>Controle financeiro de receitas e despesas;</li>
                   <li>Gestão de equipe (CLT e freelancers);</li>
@@ -80,9 +81,9 @@ export default function TermosPage() {
             content: (
               <>
                 <p>
-                  O Mesaas permite a integração com plataformas de terceiros, como Instagram e Meta,
-                  por meio de suas APIs oficiais. Ao conectar sua conta, você autoriza o Mesaas a
-                  acessar dados conforme as permissões solicitadas.
+                  O Mesaas permite a integração com plataformas de terceiros, como{' '}
+                  {legalNetworkList()}, por meio de suas APIs oficiais. Ao conectar sua conta, você
+                  autoriza o Mesaas a acessar dados conforme as permissões solicitadas.
                 </p>
                 <p>O Mesaas não se responsabiliza por:</p>
                 <ul>
@@ -127,10 +128,17 @@ export default function TermosPage() {
             content: (
               <>
                 <p>
-                  O Mesaas oferece planos de assinatura com diferentes funcionalidades e limites.
-                  Durante o período beta, todas as funcionalidades estão disponíveis gratuitamente.
+                  O Mesaas oferece um plano gratuito (Free), com limites de uso, e planos pagos de
+                  assinatura com mais recursos e limites maiores, descritos na página de preços.
                 </p>
-                <p>Quando os planos pagos entrarem em vigor:</p>
+                <p>
+                  Teste grátis: cada workspace pode testar um plano pago uma única vez, por 30 dias.
+                  Para iniciar o teste pedimos um cartão de crédito. Nada é cobrado durante o teste.
+                  Enviamos um e-mail 7 dias antes da primeira cobrança, com o valor e a data. Se
+                  você não cancelar até o fim do teste, a assinatura começa e a primeira cobrança é
+                  feita automaticamente.
+                </p>
+                <p>Nos planos pagos:</p>
                 <ul>
                   <li>
                     As assinaturas serão renovadas automaticamente ao final de cada ciclo, salvo
@@ -298,7 +306,7 @@ export default function TermosPage() {
           fontSize: '0.9rem',
         }}
       >
-        Última atualização: abril de 2025
+        Última atualização: outubro de 2026
         <br />
         Mesaas — EBS IT SOLUTIONS · CNPJ 63.758.902/0001-01
       </p>

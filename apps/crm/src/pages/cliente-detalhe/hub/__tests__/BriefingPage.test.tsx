@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Cliente } from '@/store';
@@ -21,6 +21,10 @@ import type { ClienteDetalheOutletContext } from '../../clienteTabs.model';
 
 vi.mock('@/context/AuthContext', () => ({ useAuth: vi.fn() }));
 vi.mock('@/store/hub');
+
+// Desktop layout by default; the phone describe flips it (jsdom's matchMedia is false).
+const { desktop } = vi.hoisted(() => ({ desktop: { value: true } }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
 // BriefingAudioPlayer fires its own useQuery on mount for every question with an
 // audio_r2_key -- mocked so that test doesn't hit the real Supabase-backed
 // fetchBriefingAudio (no session in jsdom) and so the resolved player is
@@ -447,5 +451,141 @@ describe('BriefingPage', () => {
       ]);
       expect(await screen.findByRole('button', { name: /Resposta em áudio/ })).toBeInTheDocument();
     });
+  });
+});
+
+describe('BriefingPage no celular', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    desktop.value = false;
+    setAuth('owner');
+    vi.mocked(hubStore.getBriefings).mockResolvedValue([]);
+    vi.mocked(hubStore.getHubBriefingQuestions).mockResolvedValue([]);
+    vi.mocked(hubStore.getBriefingTemplates).mockResolvedValue([]);
+  });
+  afterEach(() => {
+    desktop.value = true;
+    cleanup();
+  });
+
+  const QUESTIONS: QuestionFixture[] = [
+    {
+      id: 'q1',
+      question: 'Qual o público?',
+      answer: 'Mulheres 30+',
+      section: 'Público',
+      display_order: 0,
+      audio_r2_key: null,
+    },
+    {
+      id: 'q2',
+      question: 'Qual o tom?',
+      answer: null,
+      section: 'Público',
+      display_order: 1,
+      audio_r2_key: null,
+    },
+    {
+      id: 'q3',
+      question: 'Concorrentes?',
+      answer: null,
+      section: 'Mercado',
+      display_order: 2,
+      audio_r2_key: null,
+    },
+  ];
+
+  it('titles the screen with the briefing (a picker) and keeps sections collapsed', () => {
+    renderBriefing(QUESTIONS);
+    expect(
+      screen.getByRole('button', { name: 'Trocar briefing: Briefing principal' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('1 de 3 respondidas')).toBeInTheDocument();
+    const toggle = screen.getByTestId('secao-toggle-Público');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Qual o público?')).not.toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(screen.getByText('Qual o público?')).toBeInTheDocument();
+  });
+
+  it('filters with the segmented control (sections open to show the matches)', () => {
+    renderBriefing(QUESTIONS);
+    fireEvent.click(screen.getByRole('radio', { name: /Sem resposta 2/ }));
+    expect(screen.getByText('Qual o tom?')).toBeInTheDocument();
+    expect(screen.getByText('Concorrentes?')).toBeInTheDocument();
+    expect(screen.queryByText('Qual o público?')).not.toBeInTheDocument();
+  });
+
+  it('edits a question from its swipe action', async () => {
+    vi.mocked(hubStore.updateHubBriefingQuestion).mockResolvedValue(undefined as never);
+    renderBriefing(QUESTIONS);
+    fireEvent.click(screen.getByTestId('secao-toggle-Mercado'));
+    const editButtons = screen.getAllByRole('button', { name: 'Editar' });
+    fireEvent.click(editButtons[0]);
+    const input = screen.getByRole('textbox', { name: 'Editar pergunta' });
+    fireEvent.change(input, { target: { value: 'Quem são os concorrentes?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    await waitFor(() =>
+      expect(hubStore.updateHubBriefingQuestion).toHaveBeenCalledWith(
+        'q3',
+        'Quem são os concorrentes?',
+      ),
+    );
+  });
+
+  it('"…" removes the briefing only after the confirm sheet', async () => {
+    vi.mocked(hubStore.deleteBriefing).mockResolvedValue(undefined as never);
+    const confirmSpy = vi.spyOn(window, 'confirm');
+    renderBriefing(QUESTIONS);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mais ações do briefing' }));
+    const menu = await screen.findByRole('dialog');
+    for (const label of [
+      'Renomear',
+      'Importar CSV',
+      'Salvar como template',
+      'Copiar como Markdown',
+      'Copiar como CSV',
+      'Baixar CSV',
+      'Reordenar',
+    ]) {
+      expect(within(menu).getByRole('button', { name: label })).toBeInTheDocument();
+    }
+    fireEvent.click(within(menu).getByRole('button', { name: 'Remover briefing' }));
+
+    const confirm = await screen.findByRole('dialog', { name: 'Remover este briefing?' });
+    expect(hubStore.deleteBriefing).not.toHaveBeenCalled();
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Remover briefing' }));
+    await waitFor(() => expect(hubStore.deleteBriefing).toHaveBeenCalledWith(BRIEFING_ID));
+    expect(confirmSpy).not.toHaveBeenCalled();
+  });
+
+  it('Reordenar shows grips on every section and question, and Concluir leaves the mode', async () => {
+    renderBriefing(QUESTIONS);
+    fireEvent.click(screen.getByRole('button', { name: 'Mais ações do briefing' }));
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Reordenar' }),
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Reordenar seção Público' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Reordenar pergunta Qual o tom?' }),
+    ).toBeInTheDocument();
+    // No swipe/long-press rows while reordering (one owner per hold).
+    expect(screen.queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Concluir' }));
+    expect(
+      screen.queryByRole('button', { name: 'Reordenar seção Público' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('the title picker lists the briefings plus Novo briefing', async () => {
+    renderBriefing(QUESTIONS);
+    fireEvent.click(screen.getByRole('button', { name: 'Trocar briefing: Briefing principal' }));
+    const picker = await screen.findByRole('dialog', { name: 'Briefings' });
+    expect(within(picker).getByRole('button', { name: /Briefing principal/ })).toBeInTheDocument();
+    expect(within(picker).getByRole('button', { name: 'Novo briefing' })).toBeInTheDocument();
   });
 });

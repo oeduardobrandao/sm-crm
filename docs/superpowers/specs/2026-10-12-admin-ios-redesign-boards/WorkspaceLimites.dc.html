@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Limites de recursos</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/mesaas/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; background: #0a0c0f; color: #e8eaf0; font-family: var(--font-apple); overflow: hidden;">
+<div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(0,0,0,0.6);"></div>
+<section role="dialog" aria-modal="true" aria-labelledby="lm-title" style="position: absolute; left: 0; right: 0; top: 64px; bottom: 0; border-radius: 38px 38px 0 0; background: #12151a; overflow: hidden;">
+<div aria-hidden="true" style="width: 36px; height: 5px; margin: 6px auto 0; border-radius: 999px; background: rgba(235,235,245,0.3);"></div>
+<div style="display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 6px 16px 4px;"><button type="button" style="justify-self: start; border: 0; background: transparent; color: #facc15; font-size: 17px; font-family: inherit; padding: 8px 0;">Cancelar</button><h2 id="lm-title" style="margin: 0; font-size: 17px; font-weight: 600;">Limites</h2><button type="button" style="justify-self: end; border: 0; background: transparent; color: #facc15; font-size: 17px; font-weight: 600; font-family: inherit; padding: 8px 0;">Salvar</button></div>
+<p style="margin: 4px 32px 12px; font-size: 13px; color: #9ca3af; text-align: center;">Valores diferentes do plano viram override deste workspace. Vazio = ilimitado.</p>
+<h3 style="margin: 0 0 8px 32px; font-size: 13px; font-weight: 600; color: #9ca3af;">RECURSOS</h3>
+<ul style="list-style: none; margin: 0 16px 18px; padding: 0; border-radius: 16px; overflow: hidden; background: #1a1e26;">
+<li><label style="display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 6px 16px; box-sizing: border-box; border-bottom: 1px solid rgba(235,235,245,0.12);"><span style="flex-grow: 1;"><span style="display: block; font-size: 17px;">Máx. de clientes</span><span style="display: block; font-size: 13px; color: #facc15;">Override · plano: 10</span></span><input inputmode="numeric" value="15" style="width: 72px; text-align: right; border: 0; background: transparent; color: #facc15; font-size: 17px; font-weight: 600; font-family: inherit;"></label></li>
+<li><label style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px; border-bottom: 1px solid rgba(235,235,245,0.12);"><span style="flex-grow: 1; font-size: 17px;">Máx. de membros da equipe</span><input inputmode="numeric" value="5" style="width: 72px; text-align: right; border: 0; background: transparent; color: #9ca3af; font-size: 17px; font-family: inherit;"></label></li>
+<li><label style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px; border-bottom: 1px solid rgba(235,235,245,0.12);"><span style="flex-grow: 1; font-size: 17px;">Máx. de modelos de fluxo</span><input inputmode="numeric" placeholder="∞" style="width: 72px; text-align: right; border: 0; background: transparent; color: #9ca3af; font-size: 17px; font-family: inherit;"></label></li>
+<li><label style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px; border-bottom: 1px solid rgba(235,235,245,0.12);"><span style="flex-grow: 1; font-size: 17px;">Máx. de contas Instagram</span><input inputmode="numeric" value="10" style="width: 72px; text-align: right; border: 0; background: transparent; color: #9ca3af; font-size: 17px; font-family: inherit;"></label></li>
+<li><label style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px; border-bottom: 1px solid rgba(235,235,245,0.12);"><span style="flex-grow: 1; font-size: 17px;">Máx. de leads</span><input inputmode="numeric" value="500" style="width: 72px; text-align: right; border: 0; background: transparent; color: #9ca3af; font-size: 17px; font-family: inherit;"></label></li>
+<li><label style="display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 6px 16px; box-sizing: border-box; border-bottom: 1px solid rgba(235,235,245,0.12);"><span style="flex-grow: 1;"><span style="display: block; font-size: 17px;">Armazenamento</span><span style="display: block; font-size: 13px; color: #facc15;">Override · plano: 5 GB</span></span><input value="10 GB" style="width: 72px; text-align: right; border: 0; background: transparent; color: #facc15; font-size: 17px; font-weight: 600; font-family: inherit;"></label></li>
+<li><label style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px;"><span style="flex-grow: 1; font-size: 17px;">Máx. de chaves MCP</span><input inputmode="numeric" value="3" style="width: 72px; text-align: right; border: 0; background: transparent; color: #9ca3af; font-size: 17px; font-family: inherit;"></label></li>
+</ul>
+<h3 style="margin: 0 0 8px 32px; font-size: 13px; font-weight: 600; color: #9ca3af;">LIMITES DE TAXA</h3>
+<ul style="list-style: none; margin: 0 16px 18px; padding: 0; border-radius: 16px; overflow: hidden; background: #1a1e26;">
+<li><label style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px; border-bottom: 1px solid rgba(235,235,245,0.12);"><span style="flex-grow: 1; font-size: 17px;">Sincronizações do Instagram/dia</span><input inputmode="numeric" value="24" style="width: 60px; text-align: right; border: 0; background: transparent; color: #9ca3af; font-size: 17px; font-family: inherit;"></label></li>
+<li><label style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px; border-bottom: 1px solid rgba(235,235,245,0.12);"><span style="flex-grow: 1; font-size: 17px;">Análises de IA por mês</span><input inputmode="numeric" value="60" style="width: 60px; text-align: right; border: 0; background: transparent; color: #9ca3af; font-size: 17px; font-family: inherit;"></label></li>
+<li><label style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px;"><span style="flex-grow: 1; font-size: 17px;">Relatórios por mês</span><input inputmode="numeric" value="20" style="width: 60px; text-align: right; border: 0; background: transparent; color: #9ca3af; font-size: 17px; font-family: inherit;"></label></li>
+</ul>
+<ul style="list-style: none; margin: 0 16px; padding: 0; border-radius: 16px; overflow: hidden; background: #1a1e26;"><li><button type="button" style="width: 100%; min-height: 44px; border: 0; background: transparent; color: #ff6b5e; font-size: 17px; font-family: inherit;">Restaurar padrões do plano</button></li></ul>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

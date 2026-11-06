@@ -1,4 +1,6 @@
 import type { ReferenceItem } from '@/store/postReferences';
+import { format } from 'date-fns';
+import { i18n, getDateFnsLocale, getIntlLocale } from '@mesaas/i18n';
 import { MESES_ABREV } from '@/utils/postDate';
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -8,7 +10,7 @@ export function formatReferenceSize(bytes: number | null | undefined): string | 
   if (bytes == null || !Number.isFinite(bytes) || bytes <= 0) return null;
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
   const mb = bytes / (1024 * 1024);
-  return `${mb.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB`;
+  return `${mb.toLocaleString(getIntlLocale(), { maximumFractionDigits: 1 })} MB`;
 }
 
 function sameLocalDay(a: Date, b: Date): boolean {
@@ -24,11 +26,18 @@ export function formatReferenceDate(iso: string, now: Date = new Date()): string
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
   const time = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-  if (sameLocalDay(d, now)) return `hoje, ${time}`;
+  if (sameLocalDay(d, now)) return i18n.t('postPanels:references.today', { time });
   const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-  if (sameLocalDay(d, yesterday)) return `ontem, ${time}`;
-  const ano = d.getFullYear() !== now.getFullYear() ? ` ${d.getFullYear()}` : '';
-  return `${d.getDate()} ${MESES_ABREV[d.getMonth()]}${ano}, ${time}`;
+  if (sameLocalDay(d, yesterday)) return i18n.t('postPanels:references.yesterday', { time });
+  // pt keeps the hand-rolled abbreviations (byte-identical output); other languages use date-fns.
+  const month =
+    getIntlLocale() === 'pt-BR'
+      ? MESES_ABREV[d.getMonth()]
+      : format(d, 'MMM', { locale: getDateFnsLocale() });
+  const vars = { day: d.getDate(), month, time };
+  return d.getFullYear() !== now.getFullYear()
+    ? i18n.t('postPanels:references.dateWithYear', { ...vars, year: d.getFullYear() })
+    : i18n.t('postPanels:references.date', vars);
 }
 
 /** "0:42" / "1:02:05". Null when unknown. */
@@ -49,6 +58,7 @@ export function isViewableReference(item: ReferenceItem): boolean {
 }
 
 export function referenceLabel(item: ReferenceItem): string {
-  if (item.kind === 'link') return item.link_title?.trim() || item.link_domain || 'Link';
-  return item.name?.trim() || 'Arquivo';
+  if (item.kind === 'link')
+    return item.link_title?.trim() || item.link_domain || i18n.t('postPanels:references.link');
+  return item.name?.trim() || i18n.t('postPanels:references.file');
 }

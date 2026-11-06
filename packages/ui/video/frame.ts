@@ -38,6 +38,16 @@ export function captureFrameFromElement(video: HTMLVideoElement): Promise<File> 
 }
 
 export function extractVideoFrame(source: File | string, timeSeconds?: number): Promise<File> {
+  return extractVideoFrameWithTime(source, timeSeconds).then((frame) => frame.file);
+}
+
+/** Like extractVideoFrame, plus the moment the frame was actually taken from (the
+ * element's currentTime after the seek, which may snap to a nearby frame). The CRM stores
+ * it as files.thumbnail_frame_ms, the cover TikTok publishes. */
+export function extractVideoFrameWithTime(
+  source: File | string,
+  timeSeconds?: number,
+): Promise<{ file: File; timeSeconds: number }> {
   return new Promise((resolve, reject) => {
     const isFile = source instanceof File;
     const url = isFile ? URL.createObjectURL(source) : source;
@@ -64,8 +74,9 @@ export function extractVideoFrame(source: File | string, timeSeconds?: number): 
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      const taken = video.currentTime;
       cleanup();
-      resolve(file);
+      resolve({ file, timeSeconds: taken });
     };
     const timer = setTimeout(
       () => fail(new Error('Tempo esgotado ao ler o vídeo')),

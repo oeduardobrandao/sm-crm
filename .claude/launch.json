@@ -41,6 +41,12 @@
       "runtimeArgs": ["run", "dev:admin:staging"],
       "port": 5178,
       "autoPort": true
+    },
+    {
+      "name": "mcp-widgets",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--config", "apps/mcp-widgets/vite.config.ts", "--port", "5199"],
+      "port": 5199
     }
   ]
 }

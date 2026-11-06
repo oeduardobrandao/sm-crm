@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { FileText, Download, ExternalLink } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
+import { compactHubToken } from '../lib/hubLinks';
 import { fetchReportList, fetchReportPdfUrl, type HubReportListItem } from '../api';
 import { CardGridSkeleton } from '../components/Skeleton';
 
@@ -138,7 +139,7 @@ function ReportCard({ report, base }: { report: LegacyReport; base: string }) {
 export function RelatoriosPage() {
   const { token } = useHub();
   const { workspace } = useParams<{ workspace: string; token: string }>();
-  const base = `/${workspace}/hub/${token}`;
+  const base = `/${workspace}/hub/${compactHubToken(token)}`;
   const { t } = useTranslation('hubReports');
 
   const { data, isLoading, isError } = useQuery({

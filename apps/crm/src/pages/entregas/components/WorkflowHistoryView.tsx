@@ -1,3 +1,5 @@
+import { getIntlLocale, useIntlLocale } from '@mesaas/i18n';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import {
   Plus,
@@ -15,11 +17,11 @@ import { getWorkflowEvents, type WorkflowEvent } from '../../../store';
 import { buildWorkflowTimeline, type WorkflowTimelineNode } from './workflowTimeline';
 
 function formatNodeDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+  return new Date(iso).toLocaleDateString(getIntlLocale(), { day: '2-digit', month: 'short' });
 }
 
 function formatNodeDateFull(iso: string): string {
-  return new Date(iso).toLocaleString('pt-BR', {
+  return new Date(iso).toLocaleString(getIntlLocale(), {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -51,6 +53,8 @@ function EventTypeIcon({ eventType }: { eventType: WorkflowEvent['event_type'] }
 }
 
 export function WorkflowHistoryList({ nodes }: { nodes: WorkflowTimelineNode[] }) {
+  // Re-render on a language switch so the dates follow it.
+  useIntlLocale();
   return (
     <div className="history-timeline">
       {nodes.map((node, i) => (
@@ -97,6 +101,7 @@ interface WorkflowHistoryViewProps {
 }
 
 export function WorkflowHistoryView({ workflowId }: WorkflowHistoryViewProps) {
+  const { t } = useTranslation('entregas');
   const { data: events, isLoading } = useQuery({
     queryKey: ['workflow-events', workflowId],
     queryFn: () => getWorkflowEvents(workflowId),
@@ -109,7 +114,7 @@ export function WorkflowHistoryView({ workflowId }: WorkflowHistoryViewProps) {
   const nodes = buildWorkflowTimeline(events ?? []);
 
   if (nodes.length === 0) {
-    return <div className="workflow-history-empty">Nenhum evento registrado ainda.</div>;
+    return <div className="workflow-history-empty">{t('workflowHistory.empty')}</div>;
   }
 
   return <WorkflowHistoryList nodes={nodes} />;

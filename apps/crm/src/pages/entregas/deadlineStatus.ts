@@ -1,3 +1,4 @@
+import { i18n } from '@mesaas/i18n';
 import type { BoardCard } from './hooks/useEntregasData';
 
 /** Matches StatusFilter in components/EntregasFilters.tsx — same string values. */
@@ -14,9 +15,27 @@ export const DEADLINE_STATUS: Record<
   DeadlineStatus,
   { label: string; cssVar: string; fallback: string }
 > = {
-  em_dia: { label: 'Em dia', cssVar: '--success', fallback: '#3ecf8e' },
-  urgente: { label: 'Urgente', cssVar: '--warning', fallback: '#f5a342' },
-  atrasado: { label: 'Atrasado', cssVar: '--danger', fallback: '#f55a42' },
+  em_dia: {
+    get label() {
+      return i18n.t('entregas:deadlineStatus.em_dia');
+    },
+    cssVar: '--success',
+    fallback: '#3ecf8e',
+  },
+  urgente: {
+    get label() {
+      return i18n.t('entregas:deadlineStatus.urgente');
+    },
+    cssVar: '--warning',
+    fallback: '#f5a342',
+  },
+  atrasado: {
+    get label() {
+      return i18n.t('entregas:deadlineStatus.atrasado');
+    },
+    cssVar: '--danger',
+    fallback: '#f55a42',
+  },
 };
 
 /** Single source of the estourado/urgente precedence rule. */

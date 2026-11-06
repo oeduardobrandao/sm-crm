@@ -1,10 +1,12 @@
-import { useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import type { HubPost } from '../../types';
+import type { HubMediaNote, HubPost } from '../../types';
+import { openCountByLink } from '../../lib/mediaNotes';
 import { OptimizedImage } from '../OptimizedImage';
 import { VideoPrewarm } from '../VideoPrewarm';
 import { MediaUnavailable } from '../MediaUnavailable';
+import { MediaPinLayer } from './mediaNotes/MediaPinLayer';
 import {
   resolveTarget,
   applyEdgeResistance,
@@ -12,6 +14,7 @@ import {
 } from '../../lib/carouselGesture';
 
 const SNAP_MS = 260;
+const NO_NOTES: HubMediaNote[] = [];
 
 function prefersReducedMotion(): boolean {
   return (
@@ -24,6 +27,16 @@ interface PostMediaPaneProps {
   post: HubPost;
   onOpenLightbox: (index: number) => void;
   priority?: boolean;
+  /** The post's media notes (the layer scopes them to the current slide). */
+  notes?: HubMediaNote[];
+  /** Pin placement mode: slides stop opening the lightbox and image slides take taps as pins. */
+  placing?: boolean;
+  /** The spot being commented on, shown as "+" on the current slide. */
+  pending?: { x: number; y: number } | null;
+  onPlace?: (linkId: number, p: { x: number; y: number }) => void;
+  currentIndexChange?: (index: number) => void;
+  /** Move to this media link. A fresh `seq` re-triggers even for the same link. */
+  jumpTo?: { linkId: number; seq: number } | null;
 }
 
 /**
@@ -31,7 +44,17 @@ interface PostMediaPaneProps {
  * feed/reels/carrossel, story frames with tap zones for stories. Keyboard
  * arrows are deliberately NOT bound here: in the dialog they move between posts.
  */
-export function PostMediaPane({ post, onOpenLightbox, priority }: PostMediaPaneProps) {
+export function PostMediaPane({
+  post,
+  onOpenLightbox,
+  priority,
+  notes = NO_NOTES,
+  placing = false,
+  pending = null,
+  onPlace,
+  currentIndexChange,
+  jumpTo = null,
+}: PostMediaPaneProps) {
   const { t } = useTranslation('hubPosts');
   const media = post.media ?? [];
   const isStory = post.tipo === 'stories';
@@ -53,6 +76,57 @@ export function PostMediaPane({ post, onOpenLightbox, priority }: PostMediaPaneP
   const suppressClickRef = useRef(false);
   const prewarmVideoUrl = media.find((mm) => mm.kind === 'video')?.url ?? null;
   const reduceMotion = prefersReducedMotion();
+
+  const openByLink = useMemo(() => openCountByLink(notes), [notes]);
+  const currentMedia = media[current];
+  // Pins live on image slides only: video notes are made in the lightbox.
+  const pinMedia =
+    currentMedia?.kind === 'image' && !currentMedia.media_lost_at ? currentMedia : null;
+  const placingHere = placing && pinMedia !== null;
+  const currentOpen = currentMedia ? (openByLink.get(currentMedia.id) ?? 0) : 0;
+
+  const indexChangeRef = useRef(currentIndexChange);
+  indexChangeRef.current = currentIndexChange;
+  useEffect(() => {
+    indexChangeRef.current?.(current);
+  }, [current]);
+
+  useEffect(() => {
+    if (!jumpTo) return;
+    const index = media.findIndex((mm) => mm.id === jumpTo.linkId);
+    if (index >= 0) {
+      setCurrent(index);
+      setDragOffset(0);
+      setIsDragging(false);
+    }
+    // media identity changes on every refetch; a jump is keyed by seq only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpTo?.seq]);
+
+  const pinLayer = pinMedia && !isDragging && dragOffset === 0 && (
+    <div className="absolute inset-0 z-[15] pointer-events-none">
+      <MediaPinLayer
+        notes={notes}
+        linkId={pinMedia.id}
+        naturalWidth={pinMedia.width}
+        naturalHeight={pinMedia.height}
+        placing={placingHere}
+        pending={pending}
+        onPlace={(p) => onPlace?.(pinMedia.id, p)}
+      />
+    </div>
+  );
+
+  const openBadge = currentOpen > 0 && (
+    <span
+      data-testid="slide-open-badge"
+      // Phones: under the top counters, clear of the post arrows and the comment buttons
+      // at the bottom of the media. md+: bottom left.
+      className="absolute top-11 left-3 md:top-auto md:bottom-3 z-20 rounded-full bg-black/55 text-white text-[12px] px-2 py-0.5"
+    >
+      {t('mediaNotes.openCount', { count: currentOpen })}
+    </span>
+  );
 
   function goTo(target: number) {
     setCurrent(Math.max(0, Math.min(media.length - 1, target)));
@@ -120,6 +194,7 @@ export function PostMediaPane({ post, onOpenLightbox, priority }: PostMediaPaneP
     );
   }
   function openAt(index: number) {
+    if (placingHere) return;
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
       return;
@@ -168,7 +243,6 @@ export function PostMediaPane({ post, onOpenLightbox, priority }: PostMediaPaneP
     );
 
   if (isStory) {
-    const currentMedia = media[current];
     return (
       <div className="relative w-full h-full bg-[#111] flex items-center justify-center">
         <VideoPrewarm src={prewarmVideoUrl} />
@@ -199,17 +273,21 @@ export function PostMediaPane({ post, onOpenLightbox, priority }: PostMediaPaneP
               <button
                 type="button"
                 onClick={() => goTo(current - 1)}
+                disabled={placingHere}
                 className="absolute left-0 top-0 w-1/3 h-full z-10"
                 aria-label={t('storyCard.prevAriaLabel', 'Anterior')}
               />
               <button
                 type="button"
                 onClick={() => (current >= media.length - 1 ? openAt(current) : goTo(current + 1))}
+                disabled={placingHere}
                 className="absolute right-0 top-0 w-1/3 h-full z-10"
                 aria-label={t('storyCard.nextAriaLabel', 'Próximo')}
               />
             </>
           )}
+          {pinLayer}
+          {openBadge}
           {counter}
         </div>
       </div>
@@ -269,16 +347,20 @@ export function PostMediaPane({ post, onOpenLightbox, priority }: PostMediaPaneP
           <ChevronRight size={18} />
         </button>
       )}
+      {pinLayer}
       {media.length > 1 && (
         <div className="absolute bottom-3 left-0 right-0 z-20 flex justify-center gap-1.5">
-          {media.map((_, i) => (
+          {media.map((mm, i) => (
             <span
               key={i}
-              className={`h-1.5 rounded-full transition-all ${i === current ? 'w-4 bg-white' : 'w-1.5 bg-white/45'}`}
+              className={`h-1.5 rounded-full transition-all ${i === current ? 'w-4' : 'w-1.5'} ${
+                openByLink.has(mm.id) ? 'bg-amber-300' : i === current ? 'bg-white' : 'bg-white/45'
+              }`}
             />
           ))}
         </div>
       )}
+      {openBadge}
       {counter}
     </div>
   );

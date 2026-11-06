@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Download } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import type { ReferenceItem } from '@/store/postReferences';
 import { sanitizeUrl } from '@/utils/security';
@@ -7,6 +8,7 @@ import { referenceLabel } from './referenceFormat';
 
 // Reference videos are plain R2 files (never Cloudflare Stream), so codecs the browser cannot
 // decode (HEVC .mov in Chrome) fail here; the download is the way out.
+/** pt copy, kept for existing imports; the dialog renders `references.videoPlaybackError`. */
 export const VIDEO_PLAYBACK_ERROR = 'Não foi possível reproduzir aqui. Baixe o arquivo.';
 
 export interface ReferenceViewerDialogProps {
@@ -30,6 +32,7 @@ export function ReferenceViewerDialog({ item, onClose }: ReferenceViewerDialogPr
 }
 
 function ReferenceViewerContent({ item }: { item: ReferenceItem }) {
+  const { t } = useTranslation('postPanels');
   const [failed, setFailed] = useState(false);
   const label = referenceLabel(item);
   const src = sanitizeUrl(item.url);
@@ -40,14 +43,14 @@ function ReferenceViewerContent({ item }: { item: ReferenceItem }) {
       <div className="min-w-0 space-y-1 pr-8">
         <DialogTitle className="truncate text-[15px]">{label}</DialogTitle>
         <DialogDescription className={item.note ? 'text-[13px]' : 'sr-only'}>
-          {item.note || 'Referência enviada pelo cliente'}
+          {item.note || t('references.sentByClient')}
         </DialogDescription>
       </div>
       <div className="flex min-h-[200px] items-center justify-center overflow-hidden rounded-lg bg-stone-950">
         {item.file_kind === 'video' ? (
           failed ? (
             <p role="alert" className="px-6 py-10 text-center text-[13px] text-stone-200">
-              {VIDEO_PLAYBACK_ERROR}
+              {t('references.videoPlaybackError')}
             </p>
           ) : (
             <video
@@ -73,7 +76,7 @@ function ReferenceViewerContent({ item }: { item: ReferenceItem }) {
             className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-[12.5px] font-medium text-[var(--text-main)] transition-colors hover:bg-[var(--surface-hover)]"
           >
             <Download className="h-3.5 w-3.5" aria-hidden="true" />
-            Baixar
+            {t('references.download')}
           </a>
         </div>
       )}

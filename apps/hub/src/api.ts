@@ -21,6 +21,8 @@ import type {
   HubPostsResponse,
   HubDashboardResponse,
   PendingEditSuggestion,
+  SuggestionBases,
+  SuggestionField,
   HubMensagensResponse,
   MensagensCursor,
   HubAgendaCursor,
@@ -28,6 +30,8 @@ import type {
   HubAgendaResponse,
   ConviteItem,
   ConviteResponse,
+  HubLinhaAcaoBody,
+  HubLinhasResponse,
 } from './types';
 
 const BASE = import.meta.env.VITE_SUPABASE_URL as string;
@@ -60,6 +64,22 @@ function sleep(ms: number, signal?: AbortSignal) {
   });
 }
 
+/**
+ * What request() throws on a non-OK answer. The message stays the body's `error` (callers
+ * match on it, e.g. the agenda-convite contract); `status` and `code` are there for the
+ * callers that need to tell one failure from another.
+ */
+export class HubApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = 'HubApiError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
 function throwIfAborted(signal?: AbortSignal) {
   if (signal?.aborted) throw new DOMException('Request superseded', 'AbortError');
 }
@@ -79,8 +99,12 @@ async function request<T>(input: string, init: RequestInit, signal?: AbortSignal
       await sleep(RETRY_AFTER_429_MS[attempt], signal);
       continue;
     }
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+    const body = (await res.json().catch(() => ({}))) as { error?: string; code?: unknown };
+    throw new HubApiError(
+      body.error ?? `HTTP ${res.status}`,
+      res.status,
+      typeof body.code === 'string' ? body.code : undefined,
+    );
   }
 }
 
@@ -88,7 +112,7 @@ function get<T>(fn: string, params: Record<string, string>): Promise<T> {
   return request<T>(edgeUrl(fn, params), { headers: { apikey: ANON } });
 }
 
-function post<T>(fn: string, body: unknown, signal?: AbortSignal): Promise<T> {
+export function post<T>(fn: string, body: unknown, signal?: AbortSignal): Promise<T> {
   return request<T>(
     `${BASE}/functions/v1/${fn}`,
     {
@@ -161,16 +185,44 @@ export async function reorderPostSchedules(
   return res.json() as Promise<{ ok: boolean; updated: number }>;
 }
 
+/** What one edit-suggestion save sends. Untouched fields still carry their draft value; the
+ * server only records the ones in `touched_fields` (each with its raw base in `bases`). */
+export interface EditSuggestionPayload {
+  conteudo: Record<string, unknown> | null;
+  conteudo_plain: string;
+  captions: {
+    ig_caption: string | null;
+    /** Omitted (undefined) = not sent at all. */
+    tiktok_caption?: string | null;
+    geral_caption?: string | null;
+  };
+  touched_fields: SuggestionField[];
+  bases: SuggestionBases | null;
+}
+
+/**
+ * Errors worth telling apart (HubApiError.status/code): 409 `target_gone` (the destination
+ * was removed from the post), 409 `retry` (a concurrent write, safe to resend), 400
+ * `caption_too_long` (TikTok caption above its limit).
+ */
 export function submitEditSuggestion(
   token: string,
   post_id: number,
-  suggested_conteudo: Record<string, unknown> | null,
-  suggested_conteudo_plain: string,
-  suggested_ig_caption: string | null,
+  payload: EditSuggestionPayload,
 ) {
   return post<{ ok: boolean; pending_suggestion: PendingEditSuggestion | null }>(
     'hub-edit-suggestion',
-    { token, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption },
+    {
+      token,
+      post_id,
+      suggested_conteudo: payload.conteudo,
+      suggested_conteudo_plain: payload.conteudo_plain,
+      suggested_ig_caption: payload.captions.ig_caption,
+      suggested_tiktok_caption: payload.captions.tiktok_caption,
+      suggested_geral_caption: payload.captions.geral_caption,
+      touched_fields: payload.touched_fields,
+      bases: payload.bases,
+    },
   );
 }
 
@@ -552,4 +604,28 @@ export function conviteIcsUrl(token: string, ocorrenciaId: number) {
   const url = new URL(`${BASE}/functions/v1/agenda-convite/ocorrencia/${ocorrenciaId}.ics`);
   url.searchParams.set('token', token);
   return url.toString();
+}
+
+// ── Linha editorial ─────────────────────────────────────────────────────────
+
+export function fetchLinhas(token: string) {
+  return get<HubLinhasResponse>('hub-linha-editorial', { token });
+}
+
+/**
+ * Comment on a row, decide a row (`item_id` with aprovado, ajustes or pendente, which
+ * returns the linha's counts), or finish the whole linha (no `item_id`). Every failure
+ * (404 gone or not this client's, 409 already decided, 422 empty comment) comes back with the
+ * same generic message, so callers show one "try again" and refetch the list to resync. The
+ * one exception is a finish with `aprovado` while a row has an ajuste: a 409 whose
+ * `HubApiError.code` is `itens_com_ajustes`.
+ */
+export function submitLinhaAcao(token: string, body: HubLinhaAcaoBody) {
+  return post<{
+    ok: true;
+    status?: string;
+    aprovados?: number;
+    ajustes?: number;
+    pendentes?: number;
+  }>('hub-linha-editorial', { token, ...body });
 }

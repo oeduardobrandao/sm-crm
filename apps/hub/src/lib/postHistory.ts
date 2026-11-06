@@ -1,5 +1,6 @@
 import type {
   CorrectionReason,
+  HubMediaNote,
   PostHistoryApproval,
   PostHistoryEvent,
   PostHistoryResponse,
@@ -35,6 +36,14 @@ export type HistoryEntry =
       comentario: string | null;
       motivo: CorrectionReason | null;
       byTeam: boolean;
+      /** Client-visible media notes still open when this decision was sent. */
+      openNoteCount: number;
+    }
+  | {
+      kind: 'note';
+      key: string;
+      at: string;
+      note: HubMediaNote;
     }
   | {
       kind: 'status';
@@ -80,7 +89,13 @@ function snapshotText(event: PostHistoryEvent, body: boolean): string | null {
   return event.snapshot.ig_caption || extractCaptionFromScript(event.snapshot.conteudo_plain ?? '');
 }
 
-const KIND_ORDER: Record<HistoryEntry['kind'], number> = { send: 0, approval: 1, status: 2 };
+/** A note sits after the decision made at the same instant and before the status change. */
+const KIND_ORDER: Record<HistoryEntry['kind'], number> = {
+  send: 0,
+  approval: 1,
+  note: 1.5,
+  status: 2,
+};
 
 /**
  * `bodyPost` is true for a text-only post: its versions are compared on the whole body
@@ -138,8 +153,13 @@ export function buildHistoryEntries(
       comentario: approval.comentario,
       motivo: approval.motivo,
       byTeam: approval.is_workspace_user,
+      openNoteCount: approval.open_note_count ?? 0,
       id: approval.id,
     });
+  }
+
+  for (const note of [...(history.media_notes ?? [])].sort(byCreatedAtThenId)) {
+    entries.push({ kind: 'note', key: `note-${note.id}`, at: note.created_at, note, id: note.id });
   }
 
   entries.sort((a, b) => {

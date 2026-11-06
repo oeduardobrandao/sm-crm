@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import { toast } from 'sonner';
 import { Copy, Link2, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -22,7 +23,7 @@ import {
 
 function formatDate(iso: string): string {
   try {
-    return new Date(iso).toLocaleDateString('pt-BR');
+    return new Date(iso).toLocaleDateString(getIntlLocale());
   } catch {
     return iso;
   }

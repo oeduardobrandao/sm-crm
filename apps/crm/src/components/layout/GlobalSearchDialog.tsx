@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import {
   Users,
   FileText,
@@ -36,12 +36,15 @@ import { getAllHubPages } from '@/store/hub';
 import { getKbSearchIndex } from '@/store/kb';
 import { getPostStatusDefinitions } from '@/store/postStatuses';
 import { useAuth } from '@/context/AuthContext';
+import { DialogClose } from '@/components/ui/dialog';
+import { useSheetHistory } from '@/components/mobile/useSheetHistory';
+import { usePhoneLayout } from './PhoneLayoutContext';
 import {
   buildSearchItems,
   countByType,
   filterSearchItems,
   groupSearchItems,
-  SEARCH_TYPE_LABELS,
+  searchTypeLabel,
   SEARCH_TYPE_ORDER,
   type SearchType,
 } from './searchModel';
@@ -80,6 +83,13 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
   const financialsAllowed = canSeeFinancials === true;
   // Mesmo gate do item Tarefas na sidebar (nav-data).
   const tarefasAllowed = can('tarefas', 'ver') === true;
+
+  // No celular (dentro do shell) a busca é uma tela cheia com o campo fixo no topo: o
+  // teclado do iOS cobriria a metade de baixo de um diálogo centralizado (FBusca).
+  const { isPhone } = usePhoneLayout();
+  const close = useCallback(() => onOpenChange(false), [onOpenChange]);
+  // Entrada no histórico: o Voltar do iOS/Android fecha a busca, não a página.
+  const { closeThen } = useSheetHistory(isPhone && open, close);
 
   const [query, setQuery] = useState('');
   const [activeType, setActiveType] = useState<SearchType | 'all'>('all');
@@ -178,6 +188,9 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
         articles: articles ?? [],
         statusDefs: statusDefs ?? [],
       }),
+    // buildSearchItems reads i18n at call time for prefixes and dates; `t` changes identity on
+    // a language switch, so listing it re-runs the build then.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       clientes,
       contratos,
@@ -190,6 +203,7 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
       pages,
       articles,
       statusDefs,
+      t,
     ],
   );
 
@@ -202,33 +216,53 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
   const hasQuery = query.trim().length > 0;
 
   const go = (route: string) => {
+    if (isPhone) {
+      // Fecha antes: a rota nova substitui a entrada da busca no histórico.
+      closeThen(() => navigate(route));
+      return;
+    }
     onOpenChange(false);
     navigate(route);
   };
+
+  const input = (
+    <CommandInput
+      ref={inputRef}
+      placeholder={t('topbar.searchPlaceholder', 'Buscar...')}
+      value={query}
+      onValueChange={setQuery}
+    />
+  );
 
   return (
     <CommandDialog
       open={open}
       onOpenChange={onOpenChange}
       commandProps={{ shouldFilter: false }}
-      contentClassName="sm:max-w-3xl"
+      layout={isPhone ? 'fullscreen' : 'default'}
+      contentClassName={isPhone ? 'phone-kit phone-search' : 'sm:max-w-3xl'}
     >
-      <CommandInput
-        ref={inputRef}
-        placeholder={t('topbar.searchPlaceholder', 'Buscar...')}
-        value={query}
-        onValueChange={setQuery}
-      />
+      {isPhone ? (
+        <div className="phone-search__bar">
+          {input}
+          <DialogClose className="phone-search__cancel">{t('search.cancel')}</DialogClose>
+        </div>
+      ) : (
+        input
+      )}
 
       {hasQuery && matches.length > 0 && (
         <div
           role="group"
           aria-label="Filtrar por tipo"
-          className="flex gap-1.5 overflow-x-auto border-b px-3 py-2 [scrollbar-width:none]"
+          className={cn(
+            'flex gap-1.5 overflow-x-auto border-b px-3 py-2 [scrollbar-width:none]',
+            isPhone && 'phone-search__types',
+          )}
         >
           <TypePill
             icon={Layers}
-            label="Tudo"
+            label={t('search.types.all')}
             count={counts.total}
             active={effectiveType === 'all'}
             onClick={() => selectType('all')}
@@ -237,7 +271,7 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
             <TypePill
               key={type}
               icon={TYPE_ICONS[type]}
-              label={SEARCH_TYPE_LABELS[type]}
+              label={searchTypeLabel(type)}
               count={counts[type] ?? 0}
               active={effectiveType === type}
               onClick={() => selectType(type)}
@@ -246,15 +280,17 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
         </div>
       )}
 
-      <CommandList className="max-h-[min(60vh,560px)]">
+      <CommandList
+        className={
+          isPhone ? 'phone-search__list max-h-none min-h-0 flex-1' : 'max-h-[min(60vh,560px)]'
+        }
+      >
         {isLoading ? (
           <div className="py-6 text-center">
             <Loader2 className="mx-auto h-4 w-4 animate-spin text-muted-foreground" />
           </div>
         ) : !hasQuery ? (
-          <div className="py-6 text-center text-sm text-muted-foreground">
-            Digite para buscar clientes, posts, tarefas, fluxos, artigos de ajuda…
-          </div>
+          <div className="py-6 text-center text-sm text-muted-foreground">{t('search.hint')}</div>
         ) : matches.length === 0 ? (
           <div className="py-6 text-center text-sm">
             {t('topbar.noResults', 'Nenhum resultado.')}
@@ -263,7 +299,7 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
           groups.map((group) => {
             const Icon = TYPE_ICONS[group.type];
             return (
-              <CommandGroup key={group.type} heading={SEARCH_TYPE_LABELS[group.type]}>
+              <CommandGroup key={group.type} heading={searchTypeLabel(group.type)}>
                 {group.items.map((item) => (
                   <CommandItem key={item.key} value={item.key} onSelect={() => go(item.route)}>
                     <Icon className="h-4 w-4 shrink-0" />
@@ -301,7 +337,9 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
                       onSelect={() => go(`/ajuda?q=${encodeURIComponent(query.trim())}`)}
                     >
                       <ArrowRight className="h-4 w-4 shrink-0" />
-                      <span className="truncate">Ver todos em Ajuda</span>
+                      <span className="truncate">
+                        {t('search.seeAllIn', { type: searchTypeLabel('ajuda') })}
+                      </span>
                       <span className="ml-auto truncate text-xs text-muted-foreground">
                         +{group.hiddenCount}
                       </span>
@@ -313,7 +351,7 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
                     >
                       <ArrowRight className="h-4 w-4 shrink-0" />
                       <span className="truncate">
-                        Ver todos em {SEARCH_TYPE_LABELS[group.type]}
+                        {t('search.seeAllIn', { type: searchTypeLabel(group.type) })}
                       </span>
                       <span className="ml-auto truncate text-xs text-muted-foreground">
                         +{group.hiddenCount}

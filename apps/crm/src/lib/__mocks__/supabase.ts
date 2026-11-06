@@ -37,50 +37,68 @@ type AuthChangeCallback = (
 ) => void;
 let authChangeCallback: AuthChangeCallback | null = null;
 
-// Minimal postgres_changes realtime stand-in for AuthContext's live-revocation
-// subscriptions. AuthProvider registers ONE UPDATE listener per table it
-// watches (workspace_members, and now workspace_roles) — this mock keys its
-// registered callback/filter by table so both can be subscribed at once
-// without one clobbering the other, while staying a single-listener-per-table
-// stand-in (all AuthProvider ever registers per table).
+// Minimal postgres_changes realtime stand-in, shared by every feature that
+// subscribes via supabase.channel(...).on('postgres_changes', ...).subscribe():
+// AuthContext's live-revocation channels (UPDATE on workspace_members and
+// workspace_roles) and useEquipeChatRealtime's message channel (INSERT on
+// equipe_mensagens).
+// Listeners register into a shared LIST (keyed by event+table) rather than a
+// single slot, so multiple simultaneously-subscribed channels don't clobber
+// each other.
 type PostgresChangesCallback = (payload: { new: Record<string, unknown> }) => void;
 type PostgresChangesFilter = {
   event: string;
   schema: string;
   table: string;
-  filter: string;
+  filter?: string;
 };
-// Only set from inside subscribe(): a channel that registers a callback via
-// on() but never calls subscribe() must NOT route emits to it. A real
-// (unsubscribed) supabase-js channel delivers nothing either — deleting the
-// `.subscribe()` call in AuthContext must make tests that rely on the
-// subscription fail, not silently pass.
-const subscriptionsByTable = new Map<
-  string,
-  { callback: PostgresChangesCallback; filter: PostgresChangesFilter }
->();
+interface ChannelListener {
+  event: string;
+  table: string;
+  filter: PostgresChangesFilter;
+  callback: PostgresChangesCallback;
+  // The channel object this listener belongs to — lets removeChannel() (see
+  // below) deregister exactly this channel's entries instead of only
+  // recording that removal was requested. A hook that forgets to clean up
+  // (or unmounts without calling supabase.removeChannel) must keep routing
+  // emits to its now-orphaned listener, and a hook that DOES clean up must
+  // stop receiving them — either direction needs this reference to tell them
+  // apart.
+  channel: unknown;
+}
+// Only entries whose channel actually called .subscribe() land here — a
+// channel that registers a callback via on() but never calls subscribe()
+// must NOT route emits to it. A real (unsubscribed) supabase-js channel
+// delivers nothing either — deleting a `.subscribe()` call at a call site
+// must make tests that rely on the subscription fail, not silently pass.
+let activeListeners: ChannelListener[] = [];
+const channelCallNames: string[] = [];
 export const removedChannelCalls: unknown[] = [];
 
-function makeChannelMock() {
-  let pendingCallback: PostgresChangesCallback | null = null;
-  let pendingFilter: PostgresChangesFilter | null = null;
+function findListener(event: string, table: string): ChannelListener | null {
+  // Last-registered-wins: mirrors the pre-widening mock, where a fresh
+  // subscribe() overwrote the single module-level slot outright.
+  for (let i = activeListeners.length - 1; i >= 0; i--) {
+    const listener = activeListeners[i];
+    if (listener.event === event && listener.table === table) return listener;
+  }
+  return null;
+}
+
+function makeChannelMock(name: string) {
+  channelCallNames.push(name);
+  const pendingListeners: Array<Omit<ChannelListener, 'channel'>> = [];
   const channel = {
     on(
       _event: 'postgres_changes',
       filter: PostgresChangesFilter,
       callback: PostgresChangesCallback,
     ) {
-      pendingCallback = callback;
-      pendingFilter = filter;
+      pendingListeners.push({ event: filter.event, table: filter.table, filter, callback });
       return channel;
     },
     subscribe() {
-      if (pendingCallback && pendingFilter) {
-        subscriptionsByTable.set(pendingFilter.table, {
-          callback: pendingCallback,
-          filter: pendingFilter,
-        });
-      }
+      activeListeners.push(...pendingListeners.map((listener) => ({ ...listener, channel })));
       return channel;
     },
   };
@@ -90,9 +108,16 @@ function makeChannelMock() {
 export const supabase = {
   from: (table: string) => queryMock.from(table),
   rpc: (name: string, params: Record<string, unknown>) => queryMock.rpc(name, params),
-  channel: (_name: string) => makeChannelMock(),
+  channel: (name: string) => makeChannelMock(name),
   removeChannel: (ch: unknown) => {
     removedChannelCalls.push(ch);
+    // Real cleanup, not just a call-count record: drop this channel's own
+    // listeners from activeListeners so a subsequent emit no longer routes
+    // to it. Without this, a hook that forgot to unsubscribe on unmount
+    // would still pass an "unmount calls removeChannel" test that only
+    // checks the call count, while still silently reacting to events after
+    // teardown.
+    activeListeners = activeListeners.filter((listener) => listener.channel !== ch);
     return Promise.resolve('ok');
   },
   functions: {
@@ -156,7 +181,8 @@ export function __resetSupabaseMock() {
   queryMock.reset();
   profileResponses = [];
   functionsInvokeResponses = [];
-  subscriptionsByTable.clear();
+  activeListeners = [];
+  channelCallNames.length = 0;
   removedChannelCalls.length = 0;
   currentUser = { id: 'user-1' };
   currentProfile = {
@@ -226,19 +252,33 @@ export function __emitAuthChange(
 }
 
 export function __emitWorkspaceMemberUpdate(newRow: Record<string, unknown>) {
-  subscriptionsByTable.get('workspace_members')?.callback({ new: newRow });
+  findListener('UPDATE', 'workspace_members')?.callback({ new: newRow });
 }
 
 // Only non-null once subscribe() has actually been called — see the comment
-// above subscriptionsByTable.
+// above activeListeners.
 export function __getWorkspaceMemberSubscription(): PostgresChangesFilter | null {
-  return subscriptionsByTable.get('workspace_members')?.filter ?? null;
+  return findListener('UPDATE', 'workspace_members')?.filter ?? null;
 }
 
 export function __emitWorkspaceRolesUpdate(newRow: Record<string, unknown>) {
-  subscriptionsByTable.get('workspace_roles')?.callback({ new: newRow });
+  findListener('UPDATE', 'workspace_roles')?.callback({ new: newRow });
 }
 
 export function __getWorkspaceRolesSubscription(): PostgresChangesFilter | null {
-  return subscriptionsByTable.get('workspace_roles')?.filter ?? null;
+  return findListener('UPDATE', 'workspace_roles')?.filter ?? null;
+}
+
+// equipe-chat realtime (useEquipeChatRealtime): single INSERT listener on
+// equipe_mensagens, same routing rules as the workspace_members pair above.
+export function __emitEquipeMensagemInsert(row: unknown) {
+  findListener('INSERT', 'equipe_mensagens')?.callback({ new: row as Record<string, unknown> });
+}
+
+export function __getEquipeMensagemSubscription(): PostgresChangesFilter | null {
+  return findListener('INSERT', 'equipe_mensagens')?.filter ?? null;
+}
+
+export function __getChannelCalls(): string[] {
+  return [...channelCallNames];
 }

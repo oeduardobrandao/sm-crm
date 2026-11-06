@@ -111,7 +111,7 @@ export default function GlobalBannerContainer({ children }: GlobalBannerContaine
                   e.stopPropagation();
                   dismiss(b.id);
                 }}
-                aria-label="Dismiss banner"
+                aria-label="Dispensar aviso"
               >
                 ×
               </button>

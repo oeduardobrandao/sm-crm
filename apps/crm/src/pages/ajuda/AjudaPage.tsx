@@ -4,6 +4,8 @@ import { useSearchParams } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { CardGridSkeleton } from '@/components/ui/skeletons';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { getPublishedArticles } from '@/store/kb';
 import { ALL_CATEGORIES, CATEGORY_LABELS } from './categoryConfig';
 import { filterArticles } from './filterArticles';
@@ -13,10 +15,12 @@ import { VideoPlaylistHero } from './videos/VideoPlaylistHero';
 import { VideoResultCard } from './videos/VideoResultCard';
 import { useKbVideoSeries } from './videos/useKbVideos';
 import { filterVideos } from './videos/playlist';
+import { AjudaPhone } from './phone/AjudaPhone';
 
 export default function AjudaPage() {
   // `?q=` vem do item "Ver todos em Ajuda" da busca global (⌘K).
   const [searchParams] = useSearchParams();
+  const isDesktop = useIsDesktop(768);
   const [search, setSearch] = useState(() => searchParams.get('q') ?? '');
 
   const { data: articles = [], isLoading } = useQuery({
@@ -39,13 +43,32 @@ export default function AjudaPage() {
 
   const isSearching = search.trim().length > 0;
 
+  const inToolbar = usePageToolbar({ title: 'Central de Ajuda' });
+
+  if (!isDesktop) {
+    return (
+      <AjudaPhone
+        search={search}
+        onSearchChange={setSearch}
+        requestedVideoSlug={searchParams.get('video')}
+        isLoading={isLoading}
+        isSearching={isSearching}
+        sections={sections}
+        articles={filteredArticles}
+        videos={filteredVideos}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <div className="header">
-        <div className="header-title">
-          <h1>Central de Ajuda</h1>
+      {!inToolbar && (
+        <div className="header">
+          <div className="header-title">
+            <h1>Central de Ajuda</h1>
+          </div>
         </div>
-      </div>
+      )}
 
       <VideoPlaylistHero requestedSlug={searchParams.get('video')} />
 

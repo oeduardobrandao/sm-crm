@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { GripVertical } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
@@ -20,6 +21,7 @@ export function SortableQuestion({
   disabled?: boolean;
   children: ReactNode;
 }) {
+  const { t } = useTranslation('clientBriefing');
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
     disabled,
@@ -35,7 +37,7 @@ export function SortableQuestion({
       <button
         type="button"
         className="mt-3 shrink-0 cursor-grab touch-none text-muted-foreground hover:text-foreground disabled:cursor-default disabled:opacity-30"
-        aria-label="Reordenar pergunta"
+        aria-label={t('reorder.question')}
         disabled={disabled}
         {...attributes}
         {...listeners}
@@ -61,6 +63,7 @@ export function SortableSection({
   header: ReactNode;
   children?: ReactNode;
 }) {
+  const { t } = useTranslation('clientBriefing');
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
   });
@@ -76,7 +79,7 @@ export function SortableSection({
         <button
           type="button"
           className="shrink-0 cursor-grab touch-none text-muted-foreground hover:text-foreground"
-          aria-label="Reordenar seção"
+          aria-label={t('reorder.section')}
           {...attributes}
           {...listeners}
         >

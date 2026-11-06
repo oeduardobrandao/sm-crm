@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useMemo, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -19,6 +20,7 @@ import {
   ArrowUpCircle,
   Wallet,
   TrendingUp,
+  Repeat,
 } from 'lucide-react';
 import { StatCard } from '@/components/StatCard';
 import { StatCardGrid } from '@/components/StatCardGrid';
@@ -31,6 +33,18 @@ import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { CardListSkeleton, TableSkeleton } from '@/components/ui/skeletons';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePhoneLayout } from '@/components/layout/PhoneLayoutContext';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
+import { Cell, GroupedList } from '@/components/mobile/GroupedList';
+import { FormRow } from '@/components/mobile/FormRow';
+import { PickerCell } from '@/components/mobile/PickerSheet';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { FinanceiroPhone } from './phone/FinanceiroPhone';
+import { FinanceiroScopeBadge } from './v2/FinanceiroScopeBadge';
+import { isClientScoped } from '@/lib/permissions';
+import { useLocation } from 'react-router-dom';
+import { RecorrentesDialog } from './RecorrentesDialog';
 import {
   Select,
   SelectContent,
@@ -83,6 +97,9 @@ import {
   getClientes,
   getMembros,
   getTransacoes,
+  getRecorrentes,
+  addRecorrente,
+  referenciaRecorrente,
   projetarAgendamentos,
   addTransacao,
   updateTransacao,
@@ -94,6 +111,7 @@ import { useAuth } from '../../context/AuthContext';
 import { handleEntitlementMutationError } from '@/lib/entitlement-toast';
 import { formatFinancialBRL } from '@/lib/financialAccess';
 
+// Stored in transacoes.categoria as is, so these stay Portuguese in every UI language.
 const CATEGORIAS = [
   'Mensalidade',
   'Produção',
@@ -105,16 +123,18 @@ const CATEGORIAS = [
 ];
 type FilterType = 'todas' | 'entradas' | 'saidas';
 
-const transacaoSchema = z.object({
-  descricao: z.string().min(1, 'Descrição obrigatória'),
-  valor: z
-    .string()
-    .min(1, 'Valor obrigatório')
-    .refine((v) => Number(v) > 0, 'Valor deve ser positivo'),
-  data: z.string().min(1, 'Data obrigatória'),
-  categoria: z.string().min(1, 'Categoria obrigatória'),
-});
-type TransacaoFormValues = z.infer<typeof transacaoSchema>;
+function createTransacaoSchema(t: (key: string) => string) {
+  return z.object({
+    descricao: z.string().min(1, t('form.errors.descriptionRequired')),
+    valor: z
+      .string()
+      .min(1, t('form.errors.amountRequired'))
+      .refine((v) => Number(v) > 0, t('form.errors.amountPositive')),
+    data: z.string().min(1, t('form.errors.dateRequired')),
+    categoria: z.string().min(1, t('form.errors.categoryRequired')),
+  });
+}
+type TransacaoFormValues = z.infer<ReturnType<typeof createTransacaoSchema>>;
 
 function isoToDate(iso: string): Date | undefined {
   if (!iso) return undefined;
@@ -137,10 +157,22 @@ const rowKey = (t: Transacao) =>
   t.referencia_agendamento ? `proj-${t.referencia_agendamento}` : `id-${t.id}`;
 
 export default function FinanceiroPage() {
+  const { t } = useTranslation('finance');
+  const transacaoSchema = useMemo(() => createTransacaoSchema(t), [t]);
   // Same 900px split as the .financeiro-desktop-table / .financeiro-mobile-cards CSS below, so the
   // skeleton takes the shape of whichever layout is about to render.
   const isDesktop = useIsDesktop(901);
-  const { canSeeFinancials, profile } = useAuth();
+  // Below 768px the page is the phone list (PLAN F2d); 768-900 keeps the cards above.
+  const isPhone = !useIsDesktop(768);
+  // The form body follows the dialog primitive, which turns into a sheet only inside the
+  // phone shell (PhoneLayoutContext), so a dialog rendered elsewhere keeps its fields.
+  const { isPhone: phoneForm } = usePhoneLayout();
+  const { canSeeFinancials, profile, membership } = useAuth();
+  // Acesso por cliente: under Financeiro v2 this page is the Lançamentos tab, whose layout
+  // already shows the badge in the tab bar; only the legacy v1 page shows its own.
+  const { pathname } = useLocation();
+  const showScopeBadge =
+    isClientScoped(membership) && !/^\/financeiro\/lancamentos\/?$/i.test(pathname);
   const qc = useQueryClient();
   const [filter, setFilter] = useState<FilterType>('todas');
   const [search, setSearch] = useState('');
@@ -156,6 +188,15 @@ export default function FinanceiroPage() {
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  // "Repetir todo mês" on a new lançamento.
+  const [recorrente, setRecorrente] = useState(false);
+  const [recorrentesOpen, setRecorrentesOpen] = useState(false);
+  // Phone bulk-confirm mode ("Selecionar"). Leaving it drops the selection.
+  const [phoneSelecting, setPhoneSelectingState] = useState(false);
+  const setPhoneSelecting = (next: boolean) => {
+    setPhoneSelectingState(next);
+    if (!next) setSelectedKeys(new Set());
+  };
 
   const form = useForm<TransacaoFormValues>({
     resolver: zodResolver(transacaoSchema),
@@ -169,49 +210,62 @@ export default function FinanceiroPage() {
     queryFn: getTransacoes,
   });
 
-  const projected = projetarAgendamentos(transacoesFisicas, clientes, membros, canSeeFinancials);
-  const allTransacoes = projected.filter((t) => !monthFilter || t.data.startsWith(monthFilter));
+  const { data: recorrentes = [] } = useQuery({
+    queryKey: ['transacoes-recorrentes'],
+    queryFn: getRecorrentes,
+    enabled: canSeeFinancials === true,
+  });
+
+  const projected = projetarAgendamentos(
+    transacoesFisicas,
+    clientes,
+    membros,
+    canSeeFinancials,
+    recorrentes,
+    isClientScoped(membership),
+  );
+  const allTransacoes = projected.filter((tr) => !monthFilter || tr.data.startsWith(monthFilter));
 
   const recebido = allTransacoes
-    .filter((t) => t.tipo === 'entrada' && t.status === 'pago')
-    .reduce((s, t) => s + t.valor, 0);
+    .filter((tr) => tr.tipo === 'entrada' && tr.status === 'pago')
+    .reduce((s, tr) => s + tr.valor, 0);
   const aReceber = allTransacoes
-    .filter((t) => t.tipo === 'entrada' && t.status === 'agendado')
-    .reduce((s, t) => s + t.valor, 0);
+    .filter((tr) => tr.tipo === 'entrada' && tr.status === 'agendado')
+    .reduce((s, tr) => s + tr.valor, 0);
   const aPagar = allTransacoes
-    .filter((t) => t.tipo === 'saida' && t.status === 'agendado')
-    .reduce((s, t) => s + t.valor, 0);
+    .filter((tr) => tr.tipo === 'saida' && tr.status === 'agendado')
+    .reduce((s, tr) => s + tr.valor, 0);
   const saldoAtual =
     recebido -
     allTransacoes
-      .filter((t) => t.tipo === 'saida' && t.status === 'pago')
-      .reduce((s, t) => s + t.valor, 0);
+      .filter((tr) => tr.tipo === 'saida' && tr.status === 'pago')
+      .reduce((s, tr) => s + tr.valor, 0);
   const saldoProjetado = saldoAtual + aReceber - aPagar;
 
   const filtered = allTransacoes
-    .filter((t) => {
-      if (filter === 'entradas') return t.tipo === 'entrada';
-      if (filter === 'saidas') return t.tipo === 'saida';
+    .filter((tr) => {
+      if (filter === 'entradas') return tr.tipo === 'entrada';
+      if (filter === 'saidas') return tr.tipo === 'saida';
       return true;
     })
     .filter(
-      (t) =>
+      (tr) =>
         !search ||
-        t.descricao.toLowerCase().includes(search.toLowerCase()) ||
-        t.categoria?.toLowerCase().includes(search.toLowerCase()),
+        tr.descricao.toLowerCase().includes(search.toLowerCase()) ||
+        tr.categoria?.toLowerCase().includes(search.toLowerCase()),
     );
 
-  const agendadas = filtered.filter((t) => t.status === 'agendado');
-  const selecionadas = agendadas.filter((t) => selectedKeys.has(rowKey(t)));
+  const agendadas = filtered.filter((tr) => tr.status === 'agendado');
+  const selecionadas = agendadas.filter((tr) => selectedKeys.has(rowKey(tr)));
   const allSelected = agendadas.length > 0 && selecionadas.length === agendadas.length;
 
   const toggleAll = () => {
     setSelectedKeys(allSelected ? new Set() : new Set(agendadas.map(rowKey)));
   };
-  const toggleOne = (t: Transacao) => {
+  const toggleOne = (tr: Transacao) => {
     setSelectedKeys((prev) => {
       const next = new Set(prev);
-      const k = rowKey(t);
+      const k = rowKey(tr);
       if (next.has(k)) next.delete(k);
       else next.add(k);
       return next;
@@ -221,18 +275,19 @@ export default function FinanceiroPage() {
   const openAdd = (tipo: 'entrada' | 'saida') => {
     setEditing(null);
     setModalTipo(tipo);
+    setRecorrente(false);
     form.reset({ descricao: '', valor: '', data: '', categoria: '' });
     setModalOpen(true);
   };
 
-  const openEdit = (t: Transacao) => {
-    setEditing(t);
-    setModalTipo(t.tipo);
+  const openEdit = (tr: Transacao) => {
+    setEditing(tr);
+    setModalTipo(tr.tipo);
     form.reset({
-      descricao: t.descricao,
-      valor: String(t.valor),
-      data: t.data,
-      categoria: t.categoria || '',
+      descricao: tr.descricao,
+      valor: String(tr.valor),
+      data: tr.data,
+      categoria: tr.categoria || '',
     });
     setModalOpen(true);
   };
@@ -242,7 +297,8 @@ export default function FinanceiroPage() {
     try {
       const payload: Omit<Transacao, 'id' | 'user_id' | 'conta_id'> = {
         descricao: values.descricao,
-        detalhe: '',
+        // Keeps "Recorrente" (or an imported detalhe) on an edited row.
+        detalhe: editing?.detalhe ?? '',
         valor: Number(values.valor),
         data: values.data,
         categoria: values.categoria,
@@ -251,10 +307,30 @@ export default function FinanceiroPage() {
       };
       if (editing?.id) {
         await updateTransacao(editing.id, payload);
-        toast.success('Transação atualizada');
+        toast.success(t('page.toasts.updated'));
+      } else if (recorrente) {
+        // The template starts in the month of the chosen date, and this lançamento is that
+        // month's occurrence, so the month is not projected again as agendado.
+        const [ano, mes, dia] = values.data.split('-').map(Number);
+        const r = await addRecorrente({
+          tipo: modalTipo,
+          descricao: values.descricao.trim(),
+          categoria: values.categoria,
+          valor: Number(values.valor),
+          dia,
+          inicio: `${values.data.slice(0, 7)}-01`,
+        });
+        await addTransacao({
+          ...payload,
+          // Saved to the database, so it stays Portuguese.
+          detalhe: 'Recorrente',
+          referencia_agendamento: referenciaRecorrente(r.id!, ano, mes),
+        });
+        toast.success(t('page.toasts.createdRecurring'));
+        qc.invalidateQueries({ queryKey: ['transacoes-recorrentes'] });
       } else {
         await addTransacao(payload);
-        toast.success('Transação registrada');
+        toast.success(t('page.toasts.created'));
       }
       qc.invalidateQueries({ queryKey: ['transacoes'] });
       setModalOpen(false);
@@ -266,7 +342,7 @@ export default function FinanceiroPage() {
       // handleEntitlementMutationError shows the upgrade toast itself; only
       // fall through to the generic one when it declines.
       if (!handleEntitlementMutationError(e, profile?.conta_id ?? null))
-        toast.error('Erro ao salvar');
+        toast.error(t('toast.saveError'));
     } finally {
       setSaving(false);
     }
@@ -274,11 +350,11 @@ export default function FinanceiroPage() {
 
   // Scheduled rows with an id are updated in place; projected occurrences
   // (referencia_agendamento) are materialized as a new paid row.
-  const confirmOne = async (t: Transacao) => {
-    if (t.id && !t.referencia_agendamento) {
-      await updateTransacao(t.id, { status: 'pago' });
+  const confirmOne = async (tr: Transacao) => {
+    if (tr.id && !tr.referencia_agendamento) {
+      await updateTransacao(tr.id, { status: 'pago' });
     } else {
-      const { id, user_id, conta_id, ...rest } = t;
+      const { id, user_id, conta_id, ...rest } = tr;
       await addTransacao({ ...rest, status: 'pago' });
     }
   };
@@ -287,46 +363,45 @@ export default function FinanceiroPage() {
     if (!confirmT) return;
     try {
       await confirmOne(confirmT);
-      toast.success('Pagamento confirmado');
+      toast.success(t('page.toasts.paymentConfirmed'));
       qc.invalidateQueries({ queryKey: ['transacoes'] });
     } catch {
-      toast.error('Erro ao confirmar pagamento');
+      toast.error(t('page.toasts.confirmError'));
     }
     setConfirmT(null);
   };
 
   const handleBulkConfirm = async () => {
     const pendentes = filtered.filter(
-      (t) => t.status === 'agendado' && selectedKeys.has(rowKey(t)),
+      (tr) => tr.status === 'agendado' && selectedKeys.has(rowKey(tr)),
     );
     let ok = 0;
     let fail = 0;
-    for (const t of pendentes) {
+    for (const tr of pendentes) {
       try {
-        await confirmOne(t);
+        await confirmOne(tr);
         ok++;
       } catch {
         fail++;
       }
     }
-    if (ok > 0) toast.success(ok === 1 ? '1 pagamento confirmado' : `${ok} pagamentos confirmados`);
-    if (fail > 0)
-      toast.error(
-        `${fail} não ${fail === 1 ? 'pôde' : 'puderam'} ser confirmado${fail === 1 ? '' : 's'}`,
-      );
+    if (ok > 0) toast.success(t('page.toasts.bulkConfirmed', { count: ok }));
+    if (fail > 0) toast.error(t('page.toasts.bulkFailed', { count: fail }));
     qc.invalidateQueries({ queryKey: ['transacoes'] });
     setSelectedKeys(new Set());
     setBulkConfirmOpen(false);
+    // Runs after the awaited writes, so the confirm dialog closed long before.
+    setPhoneSelectingState(false);
   };
 
   const handleDelete = async () => {
     if (deleteId == null) return;
     try {
       await removeTransacao(deleteId);
-      toast.success('Transação removida');
+      toast.success(t('page.toasts.removed'));
       qc.invalidateQueries({ queryKey: ['transacoes'] });
     } catch {
-      toast.error('Erro ao remover');
+      toast.error(t('toast.deleteError'));
     }
     setDeleteId(null);
   };
@@ -353,102 +428,441 @@ export default function FinanceiroPage() {
             /* skip row */
           }
         }
-        toast.success(
-          `${count} transação${count !== 1 ? 'ões' : ''} importada${count !== 1 ? 's' : ''} com sucesso!`,
-        );
+        toast.success(t('page.toasts.imported', { count }));
         qc.invalidateQueries({ queryKey: ['transacoes'] });
       },
       (err) => toast.error(err.message),
     );
   };
 
-  return (
-    <div className="page-content">
-      <div className="header">
-        <div
-          className="header-title"
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-        >
-          <h1>Financeiro</h1>
-          <span
-            data-tooltip="Visão das finanças, receitas projetadas e despesas."
-            data-tooltip-dir="right"
-            style={{ display: 'flex' }}
-          >
-            <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
-          </span>
-        </div>
-        <div className="header-actions">
-          <HelpTooltip
-            content={
-              <div className="space-y-1.5">
-                <p>
-                  <strong>Colunas CSV:</strong> descricao*, valor*, data* (AAAA-MM-DD), tipo
-                  (entrada|saida), categoria, detalhe
-                </p>
-                <p>
-                  <strong>Categorias válidas:</strong> Mensalidade, Produção, Tráfego, Salário,
-                  Imposto, Ferramenta, Outro
-                </p>
-              </div>
-            }
-          >
-            <span style={{ display: 'flex' }}>
-              <HelpCircle
-                className="h-4 w-4"
-                style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
-              />
-            </span>
-          </HelpTooltip>
+  const categoria = useWatch({ control: form.control, name: 'categoria' });
+  const { errors } = form.formState;
+  // FTransacaoForm: grouped rows, a native date control and a checkmark list for Categoria.
+  const phoneFields = (
+    <>
+      <GroupedList aria-label={t('form.groupLabel')}>
+        <FormRow
+          label={t('form.description')}
+          error={errors.descricao?.message}
+          input={{ ...form.register('descricao'), autoComplete: 'off' }}
+        />
+        <FormRow
+          label={t('form.amount')}
+          error={errors.valor?.message}
+          input={{
+            ...form.register('valor'),
+            type: 'number',
+            inputMode: 'decimal',
+            min: 0,
+            step: 0.01,
+            placeholder: '0,00',
+          }}
+        />
+        <FormRow label={t('form.date')} error={errors.data?.message}>
+          {(field) => (
+            <input
+              {...field}
+              {...form.register('data')}
+              type="date"
+              className="phone-form-row__input"
+            />
+          )}
+        </FormRow>
+      </GroupedList>
+      <GroupedList footer={errors.categoria?.message}>
+        <PickerCell
+          label={t('form.category')}
+          placeholder={t('form.selectPlaceholder')}
+          options={CATEGORIAS.map((c) => ({ value: c, label: c }))}
+          value={categoria || null}
+          onChange={(v) =>
+            form.setValue('categoria', v ?? '', {
+              shouldDirty: true,
+              shouldValidate: form.formState.isSubmitted,
+            })
+          }
+        />
+      </GroupedList>
+      {!editing && (
+        <GroupedList footer={t('shared.repeatMonthlyHint')}>
+          <Cell
+            label={t('shared.repeatMonthly')}
+            switch={{ checked: recorrente, onCheckedChange: setRecorrente }}
+          />
+        </GroupedList>
+      )}
+    </>
+  );
+
+  const dialogs = (
+    <>
+      {/* Modal de edição/criação */}
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent onConfirmClose={() => setModalOpen(false)}>
+          <DialogHeader>
+            <DialogTitle>
+              {editing
+                ? t('page.editTitle')
+                : modalTipo === 'entrada'
+                  ? t('page.addIncomeTitle')
+                  : t('page.addExpenseTitle')}
+            </DialogTitle>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              {phoneForm ? (
+                phoneFields
+              ) : (
+                <>
+                  <FormField
+                    control={form.control}
+                    name="descricao"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('form.description')}</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="valor"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('form.amount')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={0}
+                            step={0.01}
+                            {...field}
+                            value={field.value ?? ''}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="data"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>{t('form.date')}</FormLabel>
+                        <FormControl>
+                          <DatePicker
+                            value={isoToDate(field.value)}
+                            onChange={(d) => field.onChange(dateToIso(d))}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="categoria"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('form.category')}</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder={t('form.selectPlaceholder')} />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {CATEGORIAS.map((c) => (
+                              <SelectItem key={c} value={c}>
+                                {c}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  {!editing && (
+                    <div className="flex items-start gap-3">
+                      <Switch
+                        id="transacao-recorrente"
+                        checked={recorrente}
+                        onCheckedChange={setRecorrente}
+                        className="mt-0.5"
+                      />
+                      <div className="flex flex-col gap-0.5">
+                        <Label htmlFor="transacao-recorrente">{t('shared.repeatMonthly')}</Label>
+                        <span className="text-xs text-muted-foreground">
+                          {t('shared.repeatMonthlyHint')}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
+                  {t('actions.cancel')}
+                </Button>
+                <Button type="submit" disabled={saving}>
+                  {saving && <Spinner size="sm" />}
+                  {t('actions.save')}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      <RecorrentesDialog
+        open={recorrentesOpen}
+        onOpenChange={setRecorrentesOpen}
+        recorrentes={recorrentes}
+        categorias={CATEGORIAS}
+        access={canSeeFinancials}
+        onChanged={() => qc.invalidateQueries({ queryKey: ['transacoes-recorrentes'] })}
+      />
+
+      {/* Confirmar pagamento */}
+      <AlertDialog
+        open={!!confirmT}
+        onOpenChange={(open) => {
+          if (!open) setConfirmT(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('page.confirmPaymentTitle')}</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('actions.no')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmPago}>{t('actions.yes')}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmar pagamentos em lote */}
+      <AlertDialog
+        open={bulkConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open) setBulkConfirmOpen(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('page.bulkConfirmTitle', { count: selecionadas.length })}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('actions.no')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBulkConfirm}>{t('actions.yes')}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmar exclusão */}
+      <AlertDialog
+        open={deleteId != null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('page.deleteTitle')}</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('actions.no')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>{t('actions.yes')}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+
+  const infoTooltip = (
+    <span
+      data-tooltip={t('shared.description')}
+      data-tooltip-dir="right"
+      style={{ display: 'flex' }}
+    >
+      <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
+    </span>
+  );
+  const csvActions = (
+    <>
+      {canSeeFinancials === true && (
+        <>
           <Button
             variant="outline"
             size="icon"
-            onClick={handleCSVImport}
+            onClick={() => setRecorrentesOpen(true)}
             className="header-actions-icon-only"
+            aria-label={t('shared.recurring')}
           >
-            <Upload className="h-4 w-4" />
+            <Repeat className="h-4 w-4" />
           </Button>
-          <Button variant="outline" onClick={handleCSVImport} className="header-actions-full-only">
-            <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Importar CSV
+          <Button
+            variant="outline"
+            onClick={() => setRecorrentesOpen(true)}
+            className="header-actions-full-only"
+          >
+            <Repeat className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('shared.recurring')}
           </Button>
-          <Button onClick={() => openAdd('entrada')}>
-            <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Entrada
-          </Button>
-          <Button variant="outline" onClick={() => openAdd('saida')}>
-            <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Saída
-          </Button>
+        </>
+      )}
+      <HelpTooltip
+        content={
+          <div className="space-y-1.5">
+            <p>
+              <Trans t={t} i18nKey="page.csvHelpColumns" components={{ b: <strong /> }} />
+            </p>
+            <p>
+              <Trans t={t} i18nKey="page.csvHelpCategories" components={{ b: <strong /> }} />
+            </p>
+          </div>
+        }
+      >
+        <span style={{ display: 'flex' }}>
+          <HelpCircle
+            className="h-4 w-4"
+            style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
+          />
+        </span>
+      </HelpTooltip>
+      <Button
+        variant="outline"
+        size="icon"
+        onClick={handleCSVImport}
+        className="header-actions-icon-only"
+      >
+        <Upload className="h-4 w-4" />
+      </Button>
+      <Button variant="outline" onClick={handleCSVImport} className="header-actions-full-only">
+        <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('actions.importCsv')}
+      </Button>
+    </>
+  );
+  const primaryAction = (
+    <Button onClick={() => openAdd('entrada')}>
+      <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('shared.income')}
+    </Button>
+  );
+  const saidaAction = (
+    <Button variant="outline" onClick={() => openAdd('saida')}>
+      <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('shared.expense')}
+    </Button>
+  );
+  // Toolbar: classic order, Entrada then Saída, both after the shell capsule.
+  const titleAccessory = showScopeBadge ? (
+    <>
+      {infoTooltip}
+      <FinanceiroScopeBadge />
+    </>
+  ) : (
+    infoTooltip
+  );
+  const inToolbar = usePageToolbar({
+    title: t('shared.title'),
+    titleAccessory,
+    actions: csvActions,
+    primary: (
+      <>
+        {primaryAction}
+        {saidaAction}
+      </>
+    ),
+  });
+
+  if (isPhone) {
+    return (
+      <>
+        <FinanceiroPhone
+          isLoading={isLoading}
+          transacoes={filtered}
+          canSeeFinancials={canSeeFinancials}
+          clientScoped={showScopeBadge}
+          kpis={{ recebido, aReceber, aPagar, saldoAtual, saldoProjetado }}
+          filter={filter}
+          onFilterChange={setFilter}
+          search={search}
+          onSearchChange={setSearch}
+          monthFilter={monthFilter}
+          onMonthFilterChange={setMonthFilter}
+          onAdd={openAdd}
+          onImport={handleCSVImport}
+          onRecorrentes={canSeeFinancials === true ? () => setRecorrentesOpen(true) : undefined}
+          onEdit={openEdit}
+          onConfirm={setConfirmT}
+          onDelete={setDeleteId}
+          selecting={phoneSelecting}
+          onSelectingChange={setPhoneSelecting}
+          rowKey={rowKey}
+          selectedKeys={selectedKeys}
+          onToggle={toggleOne}
+          onToggleAll={toggleAll}
+          allSelected={allSelected}
+          selectedCount={selecionadas.length}
+          onBulkConfirm={() => setBulkConfirmOpen(true)}
+        />
+        {dialogs}
+      </>
+    );
+  }
+
+  return (
+    <div className="page-content">
+      {!inToolbar && (
+        <div className="header">
+          <div
+            className="header-title"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+          >
+            <h1>{t('shared.title')}</h1>
+            {titleAccessory}
+          </div>
+          <div className="header-actions">
+            {csvActions}
+            {primaryAction}
+            {saidaAction}
+          </div>
         </div>
-      </div>
+      )}
 
       <StatCardGrid style={{ marginBottom: '1.5rem' }}>
         {(
           [
             {
-              label: 'Recebido',
+              label: t('shared.kpis.received'),
               value: formatFinancialBRL(recebido, canSeeFinancials),
               icon: CheckCircle2,
               tone: 'green' as const,
             },
             {
-              label: 'A receber',
+              label: t('shared.kpis.toReceive'),
               value: formatFinancialBRL(aReceber, canSeeFinancials),
               icon: ArrowDownCircle,
               tone: 'amber' as const,
             },
             {
-              label: 'A pagar',
+              label: t('shared.kpis.toPay'),
               value: formatFinancialBRL(aPagar, canSeeFinancials),
               icon: ArrowUpCircle,
               tone: 'red' as const,
             },
             {
-              label: 'Saldo atual',
+              label: t('shared.kpis.currentBalance'),
               value: formatFinancialBRL(saldoAtual, canSeeFinancials),
               icon: Wallet,
               tone: saldoAtual >= 0 ? ('green' as const) : ('red' as const),
             },
             {
-              label: 'Saldo projetado',
+              label: t('shared.kpis.projectedBalance'),
               value: formatFinancialBRL(saldoProjetado, canSeeFinancials),
               icon: TrendingUp,
               tone: saldoProjetado >= 0 ? ('green' as const) : ('red' as const),
@@ -489,7 +903,7 @@ export default function FinanceiroPage() {
           />
           <Input
             className="h-9"
-            placeholder="Buscar por descrição ou categoria..."
+            placeholder={t('shared.searchPlaceholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ paddingLeft: '2rem' }}
@@ -505,9 +919,9 @@ export default function FinanceiroPage() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="todas">Todas</SelectItem>
-            <SelectItem value="entradas">Entradas</SelectItem>
-            <SelectItem value="saidas">Saídas</SelectItem>
+            <SelectItem value="todas">{t('shared.filters.all')}</SelectItem>
+            <SelectItem value="entradas">{t('shared.filters.income')}</SelectItem>
+            <SelectItem value="saidas">{t('shared.filters.expenses')}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -527,7 +941,8 @@ export default function FinanceiroPage() {
               style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}
             >
               <Button onClick={() => setBulkConfirmOpen(true)}>
-                <Check className="h-3 w-3" /> Confirmar selecionadas ({selecionadas.length})
+                <Check className="h-3 w-3" />{' '}
+                {t('page.confirmSelected', { n: selecionadas.length })}
               </Button>
             </div>
           )}
@@ -540,68 +955,70 @@ export default function FinanceiroPage() {
                       checked={allSelected}
                       onCheckedChange={toggleAll}
                       disabled={agendadas.length === 0}
-                      aria-label="Selecionar todas as agendadas"
+                      aria-label={t('page.selectAllScheduled')}
                     />
                   </TableHead>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Descrição</TableHead>
-                  <TableHead>Categoria</TableHead>
-                  <TableHead>Valor</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Ações</TableHead>
+                  <TableHead>{t('form.date')}</TableHead>
+                  <TableHead>{t('form.description')}</TableHead>
+                  <TableHead>{t('form.category')}</TableHead>
+                  <TableHead>{t('page.columns.amount')}</TableHead>
+                  <TableHead>{t('filter.status')}</TableHead>
+                  <TableHead>{t('page.columns.actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((t, i) => (
-                  <TableRow key={t.id ?? `proj-${i}`}>
+                {filtered.map((tr, i) => (
+                  <TableRow key={tr.id ?? `proj-${i}`}>
                     <TableCell style={{ paddingLeft: '0.75rem' }}>
-                      {t.status === 'agendado' && (
+                      {tr.status === 'agendado' && (
                         <Checkbox
-                          checked={selectedKeys.has(rowKey(t))}
-                          onCheckedChange={() => toggleOne(t)}
-                          aria-label="Selecionar transação"
+                          checked={selectedKeys.has(rowKey(tr))}
+                          onCheckedChange={() => toggleOne(tr)}
+                          aria-label={t('page.selectTransaction')}
                         />
                       )}
                     </TableCell>
-                    <TableCell data-label="Data">{formatDate(t.data)}</TableCell>
-                    <TableCell data-label="Descrição">
-                      <div>{t.descricao}</div>
-                      {t.detalhe && <div style={{ fontSize: 12, color: '#888' }}>{t.detalhe}</div>}
+                    <TableCell data-label={t('form.date')}>{formatDate(tr.data)}</TableCell>
+                    <TableCell data-label={t('form.description')}>
+                      <div>{tr.descricao}</div>
+                      {tr.detalhe && (
+                        <div style={{ fontSize: 12, color: '#888' }}>{tr.detalhe}</div>
+                      )}
                     </TableCell>
-                    <TableCell data-label="Categoria">{t.categoria}</TableCell>
-                    <TableCell data-label="Valor">
+                    <TableCell data-label={t('form.category')}>{tr.categoria}</TableCell>
+                    <TableCell data-label={t('page.columns.amount')}>
                       <span
                         style={{
-                          color: t.tipo === 'entrada' ? '#3ecf8e' : '#ef4444',
+                          color: tr.tipo === 'entrada' ? '#3ecf8e' : '#ef4444',
                           fontWeight: 600,
                         }}
                       >
-                        {t.tipo === 'entrada' ? '+' : '-'}
-                        {formatFinancialBRL(t.valor, canSeeFinancials)}
+                        {tr.tipo === 'entrada' ? '+' : '-'}
+                        {formatFinancialBRL(tr.valor, canSeeFinancials)}
                       </span>
                     </TableCell>
-                    <TableCell data-label="Status">
-                      <Badge variant={t.status === 'pago' ? 'success' : 'neutral'}>
-                        {t.status === 'pago' ? 'Pago' : 'Agendado'}
+                    <TableCell data-label={t('filter.status')}>
+                      <Badge variant={tr.status === 'pago' ? 'success' : 'neutral'}>
+                        {tr.status === 'pago' ? t('status.pago') : t('status.agendado')}
                       </Badge>
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1" style={{ justifyContent: 'flex-end' }}>
-                        {t.status === 'agendado' ? (
-                          <Button size="sm" variant="outline" onClick={() => setConfirmT(t)}>
-                            <Check className="h-3 w-3" /> Confirmar
+                        {tr.status === 'agendado' ? (
+                          <Button size="sm" variant="outline" onClick={() => setConfirmT(tr)}>
+                            <Check className="h-3 w-3" /> {t('actions.confirm')}
                           </Button>
                         ) : (
                           <>
-                            <Button size="icon" variant="ghost" onClick={() => openEdit(t)}>
+                            <Button size="icon" variant="ghost" onClick={() => openEdit(tr)}>
                               <Edit2 className="h-4 w-4" />
                             </Button>
-                            {t.id && (
+                            {tr.id && (
                               <Button
                                 size="icon"
                                 variant="ghost"
                                 className="text-destructive"
-                                onClick={() => setDeleteId(t.id!)}
+                                onClick={() => setDeleteId(tr.id!)}
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
@@ -618,8 +1035,8 @@ export default function FinanceiroPage() {
 
           {/* Mobile cards */}
           <div className="financeiro-mobile-cards">
-            {filtered.map((t, i) => (
-              <div key={t.id ?? `proj-${i}`} className="team-card card animate-up">
+            {filtered.map((tr, i) => (
+              <div key={tr.id ?? `proj-${i}`} className="team-card card animate-up">
                 <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div
@@ -630,13 +1047,13 @@ export default function FinanceiroPage() {
                         flexWrap: 'wrap',
                       }}
                     >
-                      <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{t.descricao}</span>
+                      <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{tr.descricao}</span>
                       <Badge
-                        variant={t.status === 'pago' ? 'success' : 'neutral'}
+                        variant={tr.status === 'pago' ? 'success' : 'neutral'}
                         size="sm"
                         style={{ pointerEvents: 'none' }}
                       >
-                        {t.status === 'pago' ? 'Pago' : 'Agendado'}
+                        {tr.status === 'pago' ? t('status.pago') : t('status.agendado')}
                       </Badge>
                     </div>
                     <div
@@ -650,28 +1067,28 @@ export default function FinanceiroPage() {
                     >
                       <span
                         style={{
-                          color: t.tipo === 'entrada' ? '#3ecf8e' : '#ef4444',
+                          color: tr.tipo === 'entrada' ? '#3ecf8e' : '#ef4444',
                           fontWeight: 600,
                           fontSize: '0.85rem',
                         }}
                       >
-                        {t.tipo === 'entrada' ? '+' : '-'}
-                        {formatFinancialBRL(t.valor, canSeeFinancials)}
+                        {tr.tipo === 'entrada' ? '+' : '-'}
+                        {formatFinancialBRL(tr.valor, canSeeFinancials)}
                       </span>
                       <span style={{ fontSize: '0.75rem', color: '#888' }}>&bull;</span>
                       <span style={{ fontSize: '0.75rem', color: '#888' }}>
-                        {formatDate(t.data)}
+                        {formatDate(tr.data)}
                       </span>
-                      {t.categoria && (
+                      {tr.categoria && (
                         <>
                           <span style={{ fontSize: '0.75rem', color: '#888' }}>&bull;</span>
-                          <span style={{ fontSize: '0.75rem', color: '#888' }}>{t.categoria}</span>
+                          <span style={{ fontSize: '0.75rem', color: '#888' }}>{tr.categoria}</span>
                         </>
                       )}
                     </div>
                   </div>
-                  {t.status === 'agendado' ? (
-                    <Button size="sm" className="shrink-0 mb-0" onClick={() => setConfirmT(t)}>
+                  {tr.status === 'agendado' ? (
+                    <Button size="sm" className="shrink-0 mb-0" onClick={() => setConfirmT(tr)}>
                       <Check className="h-3 w-3" />
                     </Button>
                   ) : (
@@ -682,19 +1099,19 @@ export default function FinanceiroPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openEdit(t)}>
+                        <DropdownMenuItem onClick={() => openEdit(tr)}>
                           <Edit2 className="h-4 w-4 mr-2" />
-                          Editar
+                          {t('actions.edit')}
                         </DropdownMenuItem>
-                        {t.id && (
+                        {tr.id && (
                           <>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               className="text-destructive"
-                              onClick={() => setDeleteId(t.id!)}
+                              onClick={() => setDeleteId(tr.id!)}
                             >
                               <Trash2 className="h-4 w-4 mr-2" />
-                              Remover
+                              {t('actions.delete')}
                             </DropdownMenuItem>
                           </>
                         )}
@@ -708,163 +1125,7 @@ export default function FinanceiroPage() {
         </>
       )}
 
-      {/* Modal de edição/criação */}
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent onConfirmClose={() => setModalOpen(false)}>
-          <DialogHeader>
-            <DialogTitle>
-              {editing
-                ? 'Editar Transação'
-                : modalTipo === 'entrada'
-                  ? 'Registrar Entrada'
-                  : 'Registrar Saída'}
-            </DialogTitle>
-          </DialogHeader>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="descricao"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Descrição</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="valor"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Valor (R$)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min={0}
-                        step={0.01}
-                        {...field}
-                        value={field.value ?? ''}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="data"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>Data</FormLabel>
-                    <FormControl>
-                      <DatePicker
-                        value={isoToDate(field.value)}
-                        onChange={(d) => field.onChange(dateToIso(d))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="categoria"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Categoria</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione..." />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {CATEGORIAS.map((c) => (
-                          <SelectItem key={c} value={c}>
-                            {c}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
-                  Cancelar
-                </Button>
-                <Button type="submit" disabled={saving}>
-                  {saving && <Spinner size="sm" />}
-                  Salvar
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Confirmar pagamento */}
-      <AlertDialog
-        open={!!confirmT}
-        onOpenChange={(open) => {
-          if (!open) setConfirmT(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar pagamento?</AlertDialogTitle>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Não</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmPago}>Sim</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Confirmar pagamentos em lote */}
-      <AlertDialog
-        open={bulkConfirmOpen}
-        onOpenChange={(open) => {
-          if (!open) setBulkConfirmOpen(false);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {selecionadas.length === 1
-                ? 'Confirmar 1 pagamento?'
-                : `Confirmar ${selecionadas.length} pagamentos?`}
-            </AlertDialogTitle>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Não</AlertDialogCancel>
-            <AlertDialogAction onClick={handleBulkConfirm}>Sim</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Confirmar exclusão */}
-      <AlertDialog
-        open={deleteId != null}
-        onOpenChange={(open) => {
-          if (!open) setDeleteId(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remover esta transação?</AlertDialogTitle>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Não</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>Sim</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {dialogs}
     </div>
   );
 }

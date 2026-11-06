@@ -2,6 +2,8 @@
 // do front. O teste de paridade em __tests__/instagramLimits.test.ts importa
 // os dois arquivos e falha se divergirem. Alterou lá? Altere aqui.
 
+import { i18n } from '@mesaas/i18n';
+
 export interface PostMediaLike {
   id: number;
   kind: 'image' | 'video';
@@ -14,7 +16,10 @@ export interface PostMediaLike {
 
 export interface ValidationError {
   file_id: number;
+  /** Translated display text. Never match on it: use `code`. */
   message: string;
+  /** Stable id for the issues callers branch on (video width / size overage). */
+  code?: 'width' | 'size';
 }
 
 export const ALLOWED_IMAGE_MIMES = new Set(['image/jpeg', 'image/png']);
@@ -55,55 +60,62 @@ export function validateMedia(
   const videoArMax = carousel ? IMAGE_AR_MAX : VIDEO_AR_MAX;
 
   const videoMaxDuration = opts?.forStories ? STORY_VIDEO_MAX_DURATION : VIDEO_MAX_DURATION;
-  const videoDurationLabel = opts?.forStories ? '3–60 segundos' : '3 segundos a 15 minutos';
+  const videoDurationLabel = opts?.forStories
+    ? i18n.t('entregas:igLimits.durationStories')
+    : i18n.t('entregas:igLimits.durationVideo');
   for (const f of files) {
     if (f.kind === 'image') {
       if (!ALLOWED_IMAGE_MIMES.has(f.mime_type)) {
-        errors.push({ file_id: f.id, message: 'Imagens devem estar em formato JPEG ou PNG' });
+        errors.push({ file_id: f.id, message: i18n.t('entregas:igLimits.imageFormat') });
         continue;
       }
       if (f.size_bytes > IMAGE_MAX_BYTES) {
-        errors.push({ file_id: f.id, message: 'Imagem excede 8 MB (limite do Instagram)' });
+        errors.push({ file_id: f.id, message: i18n.t('entregas:igLimits.imageSize') });
       }
       if (f.width && f.height) {
         const ar = f.width / f.height;
         if (!opts?.forStories && (ar < IMAGE_AR_MIN || ar > IMAGE_AR_MAX)) {
           errors.push({
             file_id: f.id,
-            message: `Proporção da imagem fora do permitido (3:4 a 1.91:1)`,
+            message: i18n.t('entregas:igLimits.imageRatio'),
           });
         }
       }
     } else if (f.kind === 'video') {
       if (!ALLOWED_VIDEO_MIMES.has(f.mime_type)) {
-        errors.push({ file_id: f.id, message: 'Vídeos devem estar em formato MP4 ou MOV' });
+        errors.push({ file_id: f.id, message: i18n.t('entregas:igLimits.videoFormat') });
         continue;
       }
       if (f.size_bytes > videoMaxBytes) {
         errors.push({
           file_id: f.id,
-          message: `Vídeo excede ${opts?.forStories ? 100 : 300} MB (limite do Instagram)`,
+          code: 'size',
+          message: i18n.t('entregas:igLimits.videoSize', { mb: opts?.forStories ? 100 : 300 }),
         });
       }
       if (f.duration_seconds != null) {
         if (f.duration_seconds < VIDEO_MIN_DURATION || f.duration_seconds > videoMaxDuration) {
           errors.push({
             file_id: f.id,
-            message: `Duração do vídeo fora do permitido (${videoDurationLabel})`,
+            message: i18n.t('entregas:igLimits.videoDuration', { range: videoDurationLabel }),
           });
         }
       }
       if (f.width && f.height) {
         const ar = f.width / f.height;
         if (f.width > VIDEO_MAX_WIDTH) {
-          errors.push({ file_id: f.id, message: 'Vídeo excede a largura máxima de 1920 pixels' });
+          errors.push({
+            file_id: f.id,
+            code: 'width',
+            message: i18n.t('entregas:igLimits.videoWidth'),
+          });
         }
         if (ar < videoArMin || ar > videoArMax) {
           errors.push({
             file_id: f.id,
             message: carousel
-              ? 'Proporção do vídeo fora do permitido (3:4 a 1.91:1)'
-              : 'Proporção do vídeo fora do permitido',
+              ? i18n.t('entregas:igLimits.videoRatioCarousel')
+              : i18n.t('entregas:igLimits.videoRatio'),
           });
         }
       }

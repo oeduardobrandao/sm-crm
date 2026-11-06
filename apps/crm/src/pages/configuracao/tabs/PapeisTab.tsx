@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +33,7 @@ import {
   type PermissionLevel,
   type PermissionModule,
 } from '@/lib/permissions';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useAuth } from '../../../context/AuthContext';
 import {
   createWorkspaceRole,
@@ -40,126 +43,29 @@ import {
   updateWorkspaceRole,
   type WorkspaceRole,
 } from '../../../store';
-
-const MODULE_LABELS: Record<PermissionModule, string> = {
-  clientes: 'Clientes',
-  entregas: 'Entregas',
-  calendario: 'Calendário',
-  aprovacoes: 'Aprovações',
-  arquivos: 'Arquivos',
-  ideias: 'Ideias',
-  tarefas: 'Tarefas',
-  leads: 'Leads',
-  financeiro: 'Financeiro',
-  contratos: 'Contratos',
-  equipe: 'Equipe',
-  analytics: 'Analytics e Relatórios',
-  automacoes: 'Automações',
-  configuracoes: 'Configurações do workspace',
-};
-
-/** Group headers reused as-is for the list's expanded chip rows (Pode editar /
- * Pode ver / Sem acesso, in that order — see PermissionChipGroups). */
-const LEVEL_LABELS: Record<PermissionLevel, string> = {
-  none: 'Sem acesso',
-  ver: 'Pode ver',
-  editar: 'Pode editar',
-};
-
-/** Short labels for the form's 3-state segmented control (variant 1 of the
- * approved mockup drops the "Pode" prefix on Ver/Editar to fit the pill). */
-const LEVEL_SEGMENT_LABELS: Record<PermissionLevel, string> = {
-  none: 'Sem acesso',
-  ver: 'Ver',
-  editar: 'Editar',
-};
-
-/** Grouped single-column sections for the edit/create form (papeis-form-edicao,
- * variant 1 — "Lista única, agrupada por área"). Order matches the mockup. */
-const MODULE_GROUPS: { label: string; modules: PermissionModule[] }[] = [
-  {
-    label: 'Trabalho',
-    modules: ['entregas', 'calendario', 'aprovacoes', 'ideias', 'tarefas', 'arquivos'],
-  },
-  { label: 'Clientes e análise', modules: ['clientes', 'analytics', 'leads'] },
-  {
-    label: 'Gestão',
-    modules: ['financeiro', 'contratos', 'equipe', 'automacoes', 'configuracoes'],
-  },
-];
-
-/** Modules whose permission is enforced server-side (RLS / RPC), shown with the
- * "servidor" tag in the form per the mockup — the rest are CRM-UI-only gates. */
-const SERVER_ENFORCED_MODULES = new Set<PermissionModule>([
-  'leads',
-  'financeiro',
-  'contratos',
-  'equipe',
-  'automacoes',
-  'configuracoes',
-]);
-
-type RolePermissions = Record<PermissionModule, PermissionLevel>;
-
-function buildPermissions(level: PermissionLevel): RolePermissions {
-  return PERMISSION_MODULES.reduce((acc, mod) => {
-    acc[mod] = level;
-    return acc;
-  }, {} as RolePermissions);
-}
-
-const ADMIN_PERMISSIONS: RolePermissions = buildPermissions('editar');
-const BLANK_PERMISSIONS: RolePermissions = buildPermissions('none');
-
-type PresetChoice = 'administrador' | 'agente' | 'em_branco';
-
-const PRESET_ORDER: PresetChoice[] = ['agente', 'administrador', 'em_branco'];
-const PRESET_LABELS: Record<PresetChoice, string> = {
-  agente: 'Agente',
-  administrador: 'Administrador',
-  em_branco: 'Em branco',
-};
-
-function presetPermissions(preset: PresetChoice): RolePermissions {
-  if (preset === 'administrador') return { ...ADMIN_PERMISSIONS };
-  if (preset === 'agente') return { ...AGENT_ROLE_PRESET };
-  return { ...BLANK_PERMISSIONS };
-}
-
-/** Merges a stored (possibly partial/legacy-shaped) permissions jsonb onto the full module set. */
-function normalizePermissions(raw: Record<string, string> | null | undefined): RolePermissions {
-  const merged = { ...BLANK_PERMISSIONS };
-  for (const mod of PERMISSION_MODULES) {
-    const value = raw?.[mod];
-    if (value === 'none' || value === 'ver' || value === 'editar') merged[mod] = value;
-  }
-  return merged;
-}
-
-/** "N editar · N ver · N sem acesso", omitting any segment with a zero count
- * (a role with no "ver" modules never shows "0 ver"). Used for every role's
- * one-line summary except Administrador, which has a fixed override string. */
-function summarizePermissions(permissions: RolePermissions): string {
-  let editar = 0;
-  let ver = 0;
-  let none = 0;
-  for (const mod of PERMISSION_MODULES) {
-    const level = permissions[mod];
-    if (level === 'editar') editar += 1;
-    else if (level === 'ver') ver += 1;
-    else none += 1;
-  }
-  const parts: string[] = [];
-  if (editar > 0) parts.push(`${editar} editar`);
-  if (ver > 0) parts.push(`${ver} ver`);
-  if (none > 0) parts.push(`${none} sem acesso`);
-  return parts.join(' · ');
-}
-
-/** Fixed summary for Administrador — real Financeiro access varies per admin
- * (their own "Ver financeiro" switch on the Equipe tab), so a computed count
- * would be misleading; the mockup calls this out explicitly instead. */
-const ADMIN_SUMMARY = 'Edita tudo · Financeiro conforme o acesso de cada admin';
+import {
+  adminPermissionOverrides,
+  ADMIN_PERMISSIONS,
+  adminSummary,
+  levelLabel,
+  LEVEL_ORDER,
+  levelSegmentLabel,
+  memberCountLabel,
+  MODULE_GROUPS,
+  moduleGroupLabel,
+  moduleLabel,
+  normalizePermissions,
+  presetLabel,
+  PRESET_ORDER,
+  presetPermissions,
+  SERVER_ENFORCED_MODULES,
+  summarizePermissions,
+  type PermissionOverrides,
+  type PresetChoice,
+  type RoleFormState,
+  type RolePermissions,
+} from './phone/papeisModel';
+import { PapeisPhone } from './phone/PapeisPhone';
 
 /**
  * Maps manage-workspace-roles error codes to user-facing copy.
@@ -172,39 +78,21 @@ function roleErrorMessage(err: unknown): string {
   const code = err instanceof Error ? err.message : '';
   switch (code) {
     case 'not_owner':
-      return 'Você não tem permissão para gerenciar papéis.';
+      return i18n.t('settings:papeis.errors.notOwner');
     case 'invalid_name':
-      return 'Informe um nome para o papel.';
+      return i18n.t('settings:papeis.errors.invalidName');
     case 'invalid_permissions':
-      return 'Permissões inválidas.';
+      return i18n.t('settings:papeis.errors.invalidPermissions');
     case 'duplicate_name':
-      return 'Já existe um papel com este nome.';
+      return i18n.t('settings:papeis.errors.duplicateName');
     case 'role_in_use':
-      return 'Reatribua os membros antes de excluir este papel.';
+      return i18n.t('settings:papeis.errors.roleInUse');
     case 'role_not_found':
-      return 'Este papel não existe mais.';
+      return i18n.t('settings:papeis.errors.roleNotFound');
     default:
-      return 'Algo deu errado. Tente novamente.';
+      return i18n.t('settings:papeis.errors.generic');
   }
 }
-
-interface RoleFormState {
-  roleId: string | null;
-  nome: string;
-  permissions: RolePermissions;
-  preset: PresetChoice;
-}
-
-/** Text override for one module's chip, e.g. the Administrador card's
- * Financeiro chip (real access varies per admin, not a fixed level). */
-type PermissionOverrides = Partial<Record<PermissionModule, string>>;
-
-/** Financeiro access for a restricted admin depends on that member's own "Ver
- * financeiro" switch (Equipe tab) — never a fixed level, so the read-only
- * Administrador card must not claim one. */
-const ADMIN_PERMISSION_OVERRIDES: PermissionOverrides = {
-  financeiro: 'Conforme o acesso financeiro de cada admin',
-};
 
 interface ChipEntry {
   mod: PermissionModule;
@@ -314,7 +202,7 @@ function PermissionChipGroups({
                 paddingTop: 3,
               }}
             >
-              {LEVEL_LABELS[level]}
+              {levelLabel(level)}
             </span>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
               {entries.map((entry) =>
@@ -324,7 +212,7 @@ function PermissionChipGroups({
                   </PermissionChip>
                 ) : (
                   <PermissionChip key={entry.mod} variant={level}>
-                    {MODULE_LABELS[entry.mod]}
+                    {moduleLabel(entry.mod)}
                   </PermissionChip>
                 ),
               )}
@@ -355,6 +243,7 @@ function RoleRow({
   onEdit?: () => void;
   onDelete?: () => void;
 }) {
+  const { t } = useTranslation('settings');
   const [expanded, setExpanded] = useState(false);
   return (
     <div
@@ -411,11 +300,11 @@ function RoleRow({
               <span style={{ fontWeight: 500 }}>{nome}</span>
               {isSystem ? (
                 <Badge variant="neutral" size="sm">
-                  Padrão do sistema
+                  {t('papeis.systemDefault')}
                 </Badge>
               ) : (
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  {memberCount === 1 ? '1 membro' : `${memberCount} membros`}
+                  {memberCountLabel(memberCount)}
                 </span>
               )}
             </div>
@@ -425,10 +314,10 @@ function RoleRow({
         {!isSystem && (
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
             <Button size="sm" variant="outline" onClick={onEdit}>
-              Editar
+              {t('actions.edit')}
             </Button>
             <Button size="sm" variant="ghost" className="text-destructive" onClick={onDelete}>
-              Excluir
+              {t('papeis.delete')}
             </Button>
           </div>
         )}
@@ -441,58 +330,16 @@ function RoleRow({
 }
 
 function ServerTag() {
-  return (
-    <span
-      style={{
-        fontSize: '0.62rem',
-        color: 'var(--text-muted)',
-        border: '1px solid var(--border-color)',
-        borderRadius: 5,
-        padding: '1px 5px',
-        marginLeft: 7,
-        fontWeight: 600,
-        verticalAlign: 1,
-        display: 'inline-block',
-      }}
-    >
-      servidor
-    </span>
-  );
-}
-
-function segmentItemStyle(
-  level: PermissionLevel,
-  active: boolean,
-  isFirst: boolean,
-): React.CSSProperties {
-  const base: React.CSSProperties = {
-    borderRadius: 0,
-    fontSize: '0.7rem',
-    fontWeight: 600,
-    padding: '0.3rem 0.7rem',
-    borderLeft: isFirst ? 'none' : '1px solid var(--border-color)',
-  };
-  if (!active) {
-    return { ...base, background: 'var(--card-bg)', color: 'var(--text-muted)' };
-  }
-  if (level === 'none') {
-    return { ...base, background: 'var(--surface-2)', color: 'var(--text-main)' };
-  }
-  if (level === 'ver') {
-    return {
-      ...base,
-      background: 'var(--card-bg)',
-      color: 'var(--text-main)',
-      boxShadow: 'inset 0 0 0 2px var(--text-main)',
-    };
-  }
-  return { ...base, background: 'var(--text-main)', color: 'var(--card-bg)' };
+  const { t } = useTranslation('settings');
+  return <span className="papeis-server-tag">{t('papeis.server')}</span>;
 }
 
 /** 3-state segmented control (Sem acesso / Ver / Editar) replacing the old
  * per-module Select — one click per module, every state visible at once.
  * Built on the same Radix ToggleGroup used by PlatformSelector, which gives
- * radiogroup semantics (role="radio" per item) and keyboard nav for free. */
+ * radiogroup semantics (role="radio" per item) and keyboard nav for free.
+ * Skinned with the Agenda's segmented classes so every level shares one
+ * selected look; `.papeis-seg` only sizes the three segments equally. */
 function LevelSegmented({
   mod,
   value,
@@ -502,7 +349,7 @@ function LevelSegmented({
   value: PermissionLevel;
   onChange: (level: PermissionLevel) => void;
 }) {
-  const levels: PermissionLevel[] = ['none', 'ver', 'editar'];
+  const { t } = useTranslation('settings');
   const handleChange = (next: string) => {
     if (!next || next === value) return;
     onChange(next as PermissionLevel);
@@ -512,23 +359,12 @@ function LevelSegmented({
       type="single"
       value={value}
       onValueChange={handleChange}
-      aria-label={`Nível de acesso para ${MODULE_LABELS[mod]}`}
-      style={{
-        display: 'inline-flex',
-        border: '1px solid var(--border-color)',
-        borderRadius: 999,
-        overflow: 'hidden',
-        gap: 0,
-        flexShrink: 0,
-      }}
+      aria-label={t('papeis.levelAria', { module: moduleLabel(mod) })}
+      className="agenda-segmented papeis-seg"
     >
-      {levels.map((level, i) => (
-        <ToggleGroupItem
-          key={level}
-          value={level}
-          style={segmentItemStyle(level, value === level, i === 0)}
-        >
-          {LEVEL_SEGMENT_LABELS[level]}
+      {LEVEL_ORDER.map((level) => (
+        <ToggleGroupItem key={level} value={level} className="agenda-segmented__item">
+          {levelSegmentLabel(level)}
         </ToggleGroupItem>
       ))}
     </ToggleGroup>
@@ -537,11 +373,13 @@ function LevelSegmented({
 
 /** Owner-only "Papéis" tab: system presets (read-only) + CRUD of custom papéis. */
 export default function PapeisTab() {
+  const { t } = useTranslation('settings');
   const { workspaceRole } = useAuth();
   const isOwner = workspaceRole === 'owner';
   const queryClient = useQueryClient();
+  const isPhone = !useIsDesktop(768);
 
-  const { data: roles } = useQuery({
+  const { data: roles, isLoading: rolesLoading } = useQuery({
     queryKey: ['workspace-roles'],
     queryFn: getWorkspaceRoles,
     enabled: isOwner,
@@ -568,7 +406,7 @@ export default function PapeisTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspace-roles'] });
       closeDialog();
-      toast.success('Papel criado!');
+      toast.success(i18n.t('settings:papeis.created'));
     },
     onError: (err: unknown) => toast.error(roleErrorMessage(err)),
   });
@@ -579,7 +417,7 @@ export default function PapeisTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspace-roles'] });
       closeDialog();
-      toast.success('Papel atualizado!');
+      toast.success(i18n.t('settings:papeis.updated'));
     },
     onError: (err: unknown) => toast.error(roleErrorMessage(err)),
   });
@@ -589,7 +427,7 @@ export default function PapeisTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspace-roles'] });
       setDeleteTarget(null);
-      toast.success('Papel excluído.');
+      toast.success(i18n.t('settings:papeis.deleted'));
     },
     onError: (err: unknown) => {
       toast.error(roleErrorMessage(err));
@@ -634,7 +472,7 @@ export default function PapeisTab() {
     if (!form) return;
     const nome = form.nome.trim();
     if (!nome) {
-      toast.error('Informe um nome para o papel.');
+      toast.error(t('papeis.errors.invalidName'));
       return;
     }
     if (form.roleId) {
@@ -647,6 +485,31 @@ export default function PapeisTab() {
   const saving = createMutation.isPending || updateMutation.isPending;
   const editingMemberCount = form?.roleId ? (memberCounts?.[form.roleId] ?? 0) : 0;
 
+  if (isPhone) {
+    return (
+      <PapeisPhone
+        roles={customRoles}
+        rolesLoading={rolesLoading}
+        memberCounts={memberCounts}
+        form={form}
+        saving={saving}
+        onOpenCreate={openCreateDialog}
+        onOpenEdit={openEditDialog}
+        onCloseForm={closeDialog}
+        onNomeChange={(nome) => setForm((f) => (f ? { ...f, nome } : f))}
+        onPresetChange={handlePresetChange}
+        onLevelChange={handleLevelChange}
+        onSave={handleSave}
+        deleteTarget={deleteTarget}
+        onRequestDelete={setDeleteTarget}
+        onCancelDelete={() => setDeleteTarget(null)}
+        onConfirmDelete={(role, onDeleted) =>
+          deleteMutation.mutate(role.id, { onSuccess: onDeleted })
+        }
+      />
+    );
+  }
+
   return (
     <>
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
@@ -658,22 +521,22 @@ export default function PapeisTab() {
             marginBottom: '1rem',
           }}
         >
-          <h3 className="config-title">Papéis</h3>
+          <h3 className="config-title">{t('tabs.papeis')}</h3>
           <Button onClick={openCreateDialog}>
-            <Plus className="h-4 w-4" /> Novo papel
+            <Plus className="h-4 w-4" /> {t('papeis.newRole')}
           </Button>
         </div>
 
         <RoleRow
-          nome="Administrador"
+          nome={t('papeis.presets.administrador')}
           isSystem
           memberCount={0}
           permissions={ADMIN_PERMISSIONS}
-          summary={ADMIN_SUMMARY}
-          permissionOverrides={ADMIN_PERMISSION_OVERRIDES}
+          summary={adminSummary()}
+          permissionOverrides={adminPermissionOverrides()}
         />
         <RoleRow
-          nome="Agente"
+          nome={t('papeis.presets.agente')}
           isSystem
           memberCount={0}
           permissions={AGENT_ROLE_PRESET}
@@ -701,14 +564,16 @@ export default function PapeisTab() {
         open={dialogOpen}
         onOpenChange={(open) => (open ? setDialogOpen(true) : closeDialog())}
       >
-        <DialogContent style={{ maxWidth: 660, maxHeight: '85vh', overflowY: 'auto' }}>
+        <DialogContent style={{ maxWidth: 680 }}>
           <DialogHeader>
-            <DialogTitle>{form?.roleId ? 'Editar papel' : 'Criar papel'}</DialogTitle>
+            <DialogTitle>
+              {form?.roleId ? t('papeis.editRole') : t('papeis.createRole')}
+            </DialogTitle>
           </DialogHeader>
           {form && (
             <div className="space-y-3">
               <div className="space-y-1">
-                <Label htmlFor="papeis-nome">Nome</Label>
+                <Label htmlFor="papeis-nome">{t('shared.name')}</Label>
                 <Input
                   id="papeis-nome"
                   value={form.nome}
@@ -718,7 +583,7 @@ export default function PapeisTab() {
 
               {!form.roleId && (
                 <div className="space-y-1">
-                  <Label>Começar de</Label>
+                  <Label>{t('papeis.startFrom')}</Label>
                   <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
                     {PRESET_ORDER.map((preset) => {
                       const selected = form.preset === preset;
@@ -739,7 +604,7 @@ export default function PapeisTab() {
                             color: selected ? 'var(--card-bg)' : 'var(--text-muted)',
                           }}
                         >
-                          {PRESET_LABELS[preset]}
+                          {presetLabel(preset)}
                         </button>
                       );
                     })}
@@ -749,68 +614,43 @@ export default function PapeisTab() {
 
               {form.roleId && editingMemberCount > 0 && (
                 <p role="alert" style={{ fontSize: '0.8rem', color: 'var(--warning)', margin: 0 }}>
-                  As mudanças valem na hora para{' '}
-                  {editingMemberCount === 1 ? 'o 1 membro' : `os ${editingMemberCount} membros`} com
-                  este papel.
+                  {t('papeis.changesApply', { count: editingMemberCount })}
                 </p>
               )}
 
               <div>
                 {MODULE_GROUPS.map((group) => (
-                  <div key={group.label}>
-                    <div
-                      className="papeis-form-group-label"
-                      style={{
-                        fontSize: '0.68rem',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.06em',
-                        color: 'var(--text-light)',
-                        fontWeight: 700,
-                        margin: '1rem 0 0.2rem',
-                      }}
-                    >
-                      {group.label}
+                  <section key={group.key} className="papeis-form-group">
+                    <div className="papeis-form-group-label">{moduleGroupLabel(group.key)}</div>
+                    <div className="papeis-form-panel">
+                      {group.modules.map((mod) => (
+                        <div key={mod} className="papeis-form-row">
+                          <Label className="papeis-form-row__label">
+                            {moduleLabel(mod)}
+                            {SERVER_ENFORCED_MODULES.has(mod) && <ServerTag />}
+                          </Label>
+                          <LevelSegmented
+                            mod={mod}
+                            value={form.permissions[mod]}
+                            onChange={(level) => handleLevelChange(mod, level)}
+                          />
+                        </div>
+                      ))}
                     </div>
-                    {group.modules.map((mod) => (
-                      <div
-                        key={mod}
-                        className="papeis-form-row"
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          gap: '0.75rem',
-                          padding: '0.4rem 0',
-                          borderBottom: '1px solid var(--border-color)',
-                        }}
-                      >
-                        <Label>
-                          {MODULE_LABELS[mod]}
-                          {SERVER_ENFORCED_MODULES.has(mod) && <ServerTag />}
-                        </Label>
-                        <LevelSegmented
-                          mod={mod}
-                          value={form.permissions[mod]}
-                          onChange={(level) => handleLevelChange(mod, level)}
-                        />
-                      </div>
-                    ))}
-                  </div>
+                  </section>
                 ))}
               </div>
 
-              <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>
-                Módulos com selo &quot;servidor&quot; são aplicados no banco. Os demais são
-                aplicados na interface do CRM.
-              </p>
+              <p className="papeis-form-note">{t('papeis.serverNote')}</p>
             </div>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={closeDialog}>
-              Cancelar
+              {t('actions.cancel')}
             </Button>
             <Button onClick={handleSave} disabled={saving}>
-              {saving && <Spinner size="sm" />} {form?.roleId ? 'Salvar alterações' : 'Criar papel'}
+              {saving && <Spinner size="sm" />}{' '}
+              {form?.roleId ? t('papeis.saveChanges') : t('papeis.createRole')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -824,15 +664,17 @@ export default function PapeisTab() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir papel &quot;{deleteTarget?.nome}&quot;?</AlertDialogTitle>
-            <AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription>
+            <AlertDialogTitle>
+              {t('papeis.deleteTitle', { name: deleteTarget?.nome ?? '' })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>{t('papeis.deleteBody')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
             >
-              Excluir
+              {t('papeis.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

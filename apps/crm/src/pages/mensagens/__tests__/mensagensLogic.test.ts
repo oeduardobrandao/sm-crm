@@ -5,6 +5,7 @@ import {
   feedItemKey,
   isEventRow,
   matchesTipo,
+  mediaNoteLabel,
   sortConversas,
   unreadTotal,
   TIPO_FILTERS,
@@ -44,6 +45,31 @@ describe('mensagensLogic', () => {
     expect(matchesTipo(aprovacao, 'aprovacoes')).toBe(true);
     expect(matchesTipo(sugestao, 'sugestoes')).toBe(true);
     for (const _f of TIPO_FILTERS) expect(matchesTipo(base, 'todas')).toBe(true);
+  });
+
+  it('matchesTipo puts media notes under todas and aprovacoes only', () => {
+    const nota = { ...base, source: 'media_note' as const, action: 'nota' };
+    const resposta = {
+      ...base,
+      source: 'media_note_reply' as const,
+      action: 'resposta_nota',
+      is_workspace_user: true,
+    };
+    for (const n of [nota, resposta]) {
+      expect(matchesTipo(n, 'todas')).toBe(true);
+      expect(matchesTipo(n, 'aprovacoes')).toBe(true);
+      expect(matchesTipo(n, 'mensagens')).toBe(false);
+      expect(matchesTipo(n, 'sugestoes')).toBe(false);
+      expect(isEventRow(n)).toBe(false);
+    }
+  });
+
+  it('mediaNoteLabel labels only the two media note sources', () => {
+    expect(mediaNoteLabel({ ...base, source: 'media_note' })).toBe('Comentário na mídia');
+    expect(mediaNoteLabel({ ...base, source: 'media_note_reply' })).toBe(
+      'Resposta a um comentário na mídia',
+    );
+    expect(mediaNoteLabel(base)).toBeNull();
   });
 
   it('unreadTotal sums per-cliente rows', () => {
@@ -139,6 +165,27 @@ describe('mensagensLogic', () => {
     expect(
       conversaPreview({ ...conversaBase, last_source: 'edit_suggestion', last_action: 'pending' }),
     ).toBe('Sugestão de edição enviada');
+  });
+
+  it('conversaPreview for media_note', () => {
+    expect(
+      conversaPreview({
+        ...conversaBase,
+        last_source: 'media_note',
+        last_action: 'nota',
+        last_content: 'trocar a cor',
+      }),
+    ).toBe('Comentário na mídia: trocar a cor');
+    expect(
+      conversaPreview({
+        ...conversaBase,
+        last_source: 'media_note_reply',
+        last_action: 'resposta_nota',
+        last_is_workspace_user: true,
+        last_author_name: 'Ana',
+        last_content: 'feito',
+      }),
+    ).toBe('Ana: feito');
   });
 
   it('isEventRow/eventLabel mirror the thread event semantics', () => {

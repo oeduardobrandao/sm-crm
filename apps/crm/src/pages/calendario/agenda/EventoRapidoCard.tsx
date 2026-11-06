@@ -4,10 +4,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery } from '@tanstack/react-query';
 import { addDays, startOfDay } from 'date-fns';
 import { Clock, MapPin, Users, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useAuth } from '@/context/AuthContext';
 import type { AgendaTipo } from '@/store/agenda';
@@ -75,7 +77,9 @@ export function EventoRapidoCard({
   onClose,
   onMaisOpcoes,
 }: EventoRapidoCardProps) {
+  const { t } = useTranslation('agenda');
   const { user } = useAuth();
+  const vidro = useVidroShell();
   const form = useForm<EventoFormValues>({
     resolver: zodResolver(eventoFormSchema),
     defaultValues: valoresIniciaisCriar(inicial),
@@ -93,8 +97,12 @@ export function EventoRapidoCard({
     () =>
       (usuarios as { id: string; nome: string | null; avatar_url?: string | null }[])
         .filter((u) => u.id && u.id !== organizadorId)
-        .map((u) => ({ id: u.id, nome: u.nome || 'Sem nome', avatar_url: u.avatar_url ?? null })),
-    [usuarios, organizadorId],
+        .map((u) => ({
+          id: u.id,
+          nome: u.nome || t('shared.semNome'),
+          avatar_url: u.avatar_url ?? null,
+        })),
+    [usuarios, organizadorId, t],
   );
 
   const virtualRef = useMemo(() => ({ current: ancoraVirtual(anchor) }), [anchor]);
@@ -138,14 +146,21 @@ export function EventoRapidoCard({
         sideOffset={8}
         collisionPadding={16}
         updatePositionStrategy="always"
-        aria-label="Novo evento"
+        aria-label={t('rapido.novoEvento')}
         className="agenda-rapido w-[448px] max-w-[calc(100vw-32px)] p-0"
+        // Under Vidro, overlays.css paints the menu glass; these inline surface styles would beat it.
         style={{
-          background: 'var(--card-bg)',
-          borderColor: 'var(--border-color)',
-          borderRadius: 12,
+          ...(vidro
+            ? undefined
+            : {
+                background: 'var(--card-bg)',
+                borderColor: 'var(--border-color)',
+                borderRadius: 12,
+              }),
           color: 'var(--text-main)',
-          boxShadow: 'var(--shadow-popover, 0 12px 32px rgba(0, 0, 0, 0.16))',
+          ...(vidro
+            ? undefined
+            : { boxShadow: 'var(--shadow-popover, 0 12px 32px rgba(0, 0, 0, 0.16))' }),
         }}
         // The title takes focus, not the close button that precedes it.
         onOpenAutoFocus={(e) => {
@@ -169,7 +184,7 @@ export function EventoRapidoCard({
                 size="icon"
                 className="mb-0 h-8 w-8 rounded-lg"
                 style={{ color: 'var(--text-muted)' }}
-                aria-label="Fechar"
+                aria-label={t('ui.close')}
                 disabled={salvando}
                 onClick={fechar}
               >
@@ -185,8 +200,8 @@ export function EventoRapidoCard({
                   <FormControl>
                     <input
                       {...field}
-                      aria-label="Título"
-                      placeholder="Adicionar título"
+                      aria-label={t('rapido.titulo')}
+                      placeholder={t('rapido.tituloPlaceholder')}
                       autoFocus
                       maxLength={200}
                       autoComplete="off"
@@ -204,25 +219,25 @@ export function EventoRapidoCard({
               render={({ field }) => (
                 <ToggleGroup
                   type="single"
-                  aria-label="Tipo"
+                  aria-label={t('rapido.tipo')}
                   className="agenda-rapido__tipos"
                   value={field.value}
                   // Radix fires '' when the active pill is clicked again: keep one.
-                  onValueChange={(t) => t && field.onChange(t as AgendaTipo)}
+                  onValueChange={(v) => v && field.onChange(v as AgendaTipo)}
                 >
-                  {TIPOS.map((t) => (
+                  {TIPOS.map((tp) => (
                     <ToggleGroupItem
-                      key={t}
-                      value={t}
-                      aria-label={TIPO_LABEL[t]}
+                      key={tp}
+                      value={tp}
+                      aria-label={TIPO_LABEL[tp]}
                       className="agenda-rapido__tipo"
                     >
                       <span
                         className="agenda-rapido__tipo-dot"
-                        style={{ background: TIPO_COR[t] }}
+                        style={{ background: TIPO_COR[tp] }}
                         aria-hidden="true"
                       />
-                      {TIPO_LABEL[t]}
+                      {TIPO_LABEL[tp]}
                     </ToggleGroupItem>
                   ))}
                 </ToggleGroup>
@@ -234,7 +249,7 @@ export function EventoRapidoCard({
                 <QuandoCampos form={form} rotulo={false} empilhado />
               </div>
               <button type="button" className="agenda-rapido__repetir" onClick={maisOpcoes}>
-                Não se repete
+                {t('repetir.nao')}
               </button>
             </Linha>
 
@@ -265,8 +280,8 @@ export function EventoRapidoCard({
                     <FormControl>
                       <LocalAutocomplete
                         {...field}
-                        aria-label="Local"
-                        placeholder="Adicionar local"
+                        aria-label={t('rapido.local')}
+                        placeholder={t('rapido.localPlaceholder')}
                         maxLength={300}
                         className="h-10"
                       />
@@ -285,10 +300,10 @@ export function EventoRapidoCard({
                 disabled={salvando}
                 onClick={maisOpcoes}
               >
-                Mais opções
+                {t('rapido.maisOpcoes')}
               </Button>
               <Button type="submit" className="mb-0" disabled={salvando}>
-                Salvar
+                {t('actions.save')}
               </Button>
             </div>
           </form>

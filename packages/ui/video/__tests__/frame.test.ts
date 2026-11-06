@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { captureFrameFromElement, extractVideoFrame } from '../frame';
+import { captureFrameFromElement, extractVideoFrame, extractVideoFrameWithTime } from '../frame';
 
 class MockVideo {
   static instances: MockVideo[] = [];
@@ -187,5 +187,34 @@ describe('extractVideoFrame', () => {
     const file = await extractVideoFrame(createVideoFile());
 
     expect(file.type).toBe('image/jpeg');
+  });
+});
+
+describe('extractVideoFrameWithTime', () => {
+  it('reports the moment the frame was taken (the default 0.5 s seek)', async () => {
+    const frame = await extractVideoFrameWithTime(createVideoFile());
+
+    expect(frame.file.type).toBe('image/jpeg');
+    expect(frame.timeSeconds).toBe(0.5);
+  });
+
+  it('reports where the element actually landed, read before cleanup resets it', async () => {
+    const promise = extractVideoFrameWithTime(createVideoFile(), 7.25);
+    const video = MockVideo.instances[0];
+    // A browser can snap the seek to a nearby decodable frame.
+    const realSeek = Object.getOwnPropertyDescriptor(MockVideo.prototype, 'currentTime')!;
+    Object.defineProperty(video, 'currentTime', {
+      configurable: true,
+      get: () => video.currentTimeValue,
+      set: (value: number) => {
+        realSeek.set!.call(video, value === 7.25 ? 7.24 : value);
+      },
+    });
+    video.load = () => {
+      video.currentTimeValue = 0;
+    };
+    const frame = await promise;
+
+    expect(frame.timeSeconds).toBe(7.24);
   });
 });

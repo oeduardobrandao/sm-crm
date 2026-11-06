@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
-import { ChevronUp, ChevronDown, CircleDashed, Plus, Route } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { ChevronUp, ChevronDown, CircleDashed, Plus, Route, Users } from 'lucide-react';
 import type { ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { Button } from '@/components/ui/button';
-import { TableSkeleton } from '@/components/ui/skeletons';
+import { CardListSkeleton, TableSkeleton } from '@/components/ui/skeletons';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
-import { getInitials } from '@/lib/initials';
+import { BoardClienteAvatar } from '../components/BoardClienteAvatar';
 import { formatPostDate } from '@/utils/postDate';
 import { formatEtapaDeadlineDay, formatEtapaPrazo } from '../etapaPrazo';
 import { postStageOf, postResponsavelIdOf, type PostStage } from '../postStage';
@@ -17,6 +18,13 @@ import type { PostEntity } from '../boardEntity';
 import { POST_STATUS_ORDER, TIPO_LABELS } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import { PostStatusChip } from '../components/PostStatusChip';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import {
+  PhoneActivePostListRow,
+  PhoneListSections,
+  PhoneRowAside,
+  type PhoneRowDisplay,
+} from '../phone/PhoneListRows';
 
 interface PostsListViewProps {
   posts: ActivePost[];
@@ -48,18 +56,18 @@ interface PostsListViewProps {
   hiddenPostados?: number;
 }
 
-type Column = { key: string; label: string };
-const COLUMNS: Column[] = [
-  { key: 'titulo', label: 'Título' },
-  { key: 'cliente', label: 'Cliente' },
-  { key: 'fluxo', label: 'Fluxo' },
-  { key: 'etapa', label: 'Etapa atual' },
-  { key: 'tipo', label: 'Tipo' },
-  { key: 'status', label: 'Status' },
-  { key: 'responsavel', label: 'Responsável' },
-  { key: 'prazo_etapa', label: 'Prazo da etapa' },
-  { key: 'agendado', label: 'Agendado para' },
-];
+/** Column keys; each label lives at `postsListView.columns.<key>`. */
+const COLUMNS = [
+  'titulo',
+  'cliente',
+  'fluxo',
+  'etapa',
+  'tipo',
+  'status',
+  'responsavel',
+  'prazo_etapa',
+  'agendado',
+] as const;
 
 const oneLineCell: React.CSSProperties = {
   padding: '0.6rem 1rem',
@@ -100,12 +108,14 @@ export function PostsListView({
   membroNomeById = EMPTY_NOMES,
   hiddenPostados = 0,
 }: PostsListViewProps) {
+  const { t } = useTranslation('entregasViews');
   const [sort, setSort] = useState<{ column: string; direction: 'asc' | 'desc' }>({
     column: 'agendado',
     direction: 'asc',
   });
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   const statusRegistry = useStatusRegistry();
+  const isPhone = !useIsDesktop(768);
 
   // A post avulso has no workflow_id to look up -- undefined here means the same
   // "no card" state every caller below already treats as "no fluxo".
@@ -174,7 +184,11 @@ export function PostsListView({
   }, [posts, sort, cardsByWorkflowId, postEntityByPostId, membroNomeById]);
 
   if (isLoading) {
-    return <TableSkeleton rows={8} columns={COLUMNS.length} />;
+    return isPhone ? (
+      <CardListSkeleton rows={6} />
+    ) : (
+      <TableSkeleton rows={8} columns={COLUMNS.length} />
+    );
   }
 
   if (posts.length === 0) {
@@ -184,19 +198,15 @@ export function PostsListView({
         style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}
       >
         {hiddenPostados > 0 ? (
-          <p>
-            {hiddenPostados === 1
-              ? 'Nenhum post a mostrar. 1 post postado está oculto.'
-              : `Nenhum post a mostrar. ${hiddenPostados} posts postados estão ocultos.`}
-          </p>
+          <p>{t('shared.hiddenPostados', { count: hiddenPostados })}</p>
         ) : filtersActive ? (
-          <p>Nenhum post encontrado. Ajuste os filtros.</p>
+          <p>{t('shared.noPostsFiltered')}</p>
         ) : (
           <>
-            <p>Nenhum post por aqui ainda.</p>
+            <p>{t('shared.noPostsYet')}</p>
             <Button type="button" onClick={onCreateAvulso} style={{ marginTop: '1rem' }}>
               <Plus className="h-4 w-4" />
-              Criar post avulso
+              {t('shared.createAvulso')}
             </Button>
           </>
         )}
@@ -221,6 +231,7 @@ export function PostsListView({
     const stage = stageOf(p);
     const processEtapa = workflowId == null ? postEntityByPostId?.get(p.id)?.etapaNome : undefined;
     const prazo = stage?.hasPrazo ? formatEtapaPrazo(stage.deadline) : null;
+    const collaborators = p.ig_collaborators ?? [];
     const prazoDate = stage?.prazoDate ?? null;
     return (
       <tr
@@ -233,29 +244,19 @@ export function PostsListView({
         onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
         onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
       >
-        <td style={oneLineCell}>{p.titulo || 'Post sem título'}</td>
+        <td style={oneLineCell}>{p.titulo || t('shared.untitledPost')}</td>
         <td style={{ padding: '0.6rem 1rem' }}>
           {p.cliente_id != null ? (
             <TooltipProvider delayDuration={200}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  {card?.clienteAvatarUrl ? (
-                    <img
-                      src={card.clienteAvatarUrl}
-                      alt={p.cliente_nome}
-                      loading="lazy"
-                      decoding="async"
-                      className="board-post-cliente-avatar"
-                      style={{ display: 'block' }}
-                    />
-                  ) : (
-                    <span
-                      className="board-post-cliente-avatar board-post-cliente-avatar--initials"
-                      style={{ background: card?.cliente?.cor || 'var(--surface-hover)' }}
-                    >
-                      {getInitials(p.cliente_nome || '?')}
-                    </span>
-                  )}
+                  <BoardClienteAvatar
+                    srcs={[card?.clienteAvatarUrl, card?.cliente?.foto_url]}
+                    nome={p.cliente_nome || '?'}
+                    cor={card?.cliente?.cor}
+                    alt={p.cliente_nome}
+                    imgStyle={{ display: 'block' }}
+                  />
                 </TooltipTrigger>
                 <TooltipContent>{p.cliente_nome || '—'}</TooltipContent>
               </Tooltip>
@@ -269,12 +270,12 @@ export function PostsListView({
             processEtapa ? (
               <span className="post-fluxo-tag post-fluxo-tag--avulso post-fluxo-tag--individual">
                 <Route size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
-                Individual · {processEtapa}
+                {t('shared.individual')} · {processEtapa}
               </span>
             ) : (
               <span className="post-fluxo-tag post-fluxo-tag--avulso">
                 <CircleDashed size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
-                Avulso
+                {t('shared.avulso')}
               </span>
             )
           ) : card ? (
@@ -285,7 +286,7 @@ export function PostsListView({
                 e.stopPropagation();
                 onFluxoClick(workflowId);
               }}
-              title={`Abrir fluxo: ${p.workflow_titulo}`}
+              title={t('shared.openWorkflowTitle', { title: p.workflow_titulo ?? '' })}
             >
               {p.workflow_titulo}
             </button>
@@ -297,7 +298,18 @@ export function PostsListView({
         <td style={{ padding: '0.6rem 1rem' }}>
           <span className="post-tipo-badge">{TIPO_LABELS[p.tipo]}</span>
           {p.ig_trial_strategy && (
-            <span className="post-tipo-badge post-tipo-badge--trial">Teste</span>
+            <span className="post-tipo-badge post-tipo-badge--trial">{t('shared.trial')}</span>
+          )}
+          {collaborators.length > 0 && (
+            <span
+              className="post-tipo-badge post-tipo-badge--collab"
+              title={t('shared.collaboratorsTitle', {
+                list: collaborators.map((u) => `@${u}`).join(', '),
+              })}
+            >
+              <Users className="h-3 w-3" aria-hidden="true" />
+              {t('shared.collab', { n: collaborators.length })}
+            </span>
           )}
         </td>
         <td style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap' }}>
@@ -305,7 +317,7 @@ export function PostsListView({
         </td>
         <td
           style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap' }}
-          title={stage ? `Etapa: ${stage.etapaNome}` : undefined}
+          title={stage ? t('postsListView.etapaTitle', { name: stage.etapaNome }) : undefined}
         >
           {membroNome(p) || '—'}
         </td>
@@ -351,22 +363,91 @@ export function PostsListView({
         );
   const groupKeys = groups?.map((g) => g.key) ?? [];
   const allCollapsed = allGroupsCollapsed(groupKeys, collapsed);
+  const toggleAll = () => setCollapsed(allCollapsed ? new Set() : new Set(groupKeys));
+
+  if (isPhone) {
+    // Celular (D20): linhas agrupadas com ações de deslizar no lugar da tabela. As
+    // colunas que não cabem na linha (fluxo, tipo, agendado) vão para a terceira linha.
+    const renderPhoneRow = (p: ActivePost) => {
+      const workflowId = p.workflow_id;
+      const openable = workflowId == null || openableWorkflowIds.has(workflowId);
+      const card = cardOf(p);
+      const stage = stageOf(p);
+      const processEtapa =
+        workflowId == null ? postEntityByPostId?.get(p.id)?.etapaNome : undefined;
+      const prazo = stage?.hasPrazo ? formatEtapaPrazo(stage.deadline) : null;
+      const fluxo =
+        workflowId == null
+          ? processEtapa
+            ? t('shared.individual')
+            : t('shared.avulso')
+          : p.workflow_titulo || t('postsListView.fluxoFallback');
+      const display: PhoneRowDisplay = {
+        title: p.titulo || t('shared.untitledPost'),
+        subtitle: [
+          p.cliente_nome || t('chartData.semCliente'),
+          stage?.etapaNome,
+          membroNome(p) || t('chartData.semResponsavel'),
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        meta: [
+          fluxo,
+          TIPO_LABELS[p.tipo],
+          p.ig_trial_strategy ? t('shared.trial') : null,
+          (p.ig_collaborators?.length ?? 0) > 0
+            ? t('shared.collab', { n: p.ig_collaborators?.length })
+            : null,
+          p.scheduled_at
+            ? t('postsListView.scheduledMeta', { date: formatPostDate(p.scheduled_at) })
+            : null,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        aside: (
+          <PhoneRowAside
+            status={<PostStatusChip post={p} registry={statusRegistry} />}
+            deadline={prazo?.label}
+            overdue={!!stage?.deadline.estourado}
+          />
+        ),
+      };
+      return (
+        <PhoneActivePostListRow
+          key={p.id}
+          post={p}
+          display={display}
+          onOpen={openable ? () => onPostClick(p) : undefined}
+          onOpenFluxo={workflowId != null && card ? () => onFluxoClick(workflowId) : undefined}
+        />
+      );
+    };
+    return (
+      <PhoneListSections
+        label={t('postsListView.phoneLabel')}
+        groups={groups}
+        rows={sorted}
+        renderRow={renderPhoneRow}
+        collapsed={collapsed}
+        onToggleGroup={(key) => setCollapsed((prev) => toggleKey(prev, key))}
+        allCollapsed={allCollapsed}
+        onToggleAll={toggleAll}
+      />
+    );
+  }
 
   return (
     <div className="animate-up card" style={{ overflow: 'auto' }}>
       {groups && groups.length > 1 && (
-        <ListGroupsToggle
-          allCollapsed={allCollapsed}
-          onToggle={() => setCollapsed(allCollapsed ? new Set() : new Set(groupKeys))}
-        />
+        <ListGroupsToggle allCollapsed={allCollapsed} onToggle={toggleAll} />
       )}
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
         <thead>
           <tr>
             {COLUMNS.map((col) => (
               <th
-                key={col.key}
-                onClick={() => handleSort(col.key)}
+                key={col}
+                onClick={() => handleSort(col)}
                 style={{
                   padding: '0.75rem 1rem',
                   textAlign: 'left',
@@ -374,13 +455,13 @@ export function PostsListView({
                   userSelect: 'none',
                   whiteSpace: 'nowrap',
                   borderBottom: '1px solid var(--border-color)',
-                  color: sort.column === col.key ? 'var(--accent)' : 'var(--text-secondary)',
+                  color: sort.column === col ? 'var(--accent)' : 'var(--text-secondary)',
                   fontWeight: 600,
                 }}
               >
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                  {col.label}
-                  {sort.column === col.key ? (
+                  {t(`postsListView.columns.${col}`)}
+                  {sort.column === col ? (
                     sort.direction === 'asc' ? (
                       <ChevronUp className="h-3 w-3" />
                     ) : (

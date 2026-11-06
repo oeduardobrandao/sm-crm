@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { getPropertyDefinitions, type PostPropertyValue, type Membro } from '../../../store';
 import { PropertyValue } from './PropertyValue';
 import { PropertyDefinitionPanel } from './PropertyDefinitionPanel';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
 
 interface Props {
   templateId: number;
@@ -22,8 +24,10 @@ export function PropertyPanel({
   membros,
   readOnly,
 }: Props) {
+  const { t } = useTranslation('workflows');
   const qc = useQueryClient();
   const [showPanel, setShowPanel] = useState(false);
+  const vidroShell = useVidroShell();
 
   const { data: definitions = [] } = useQuery({
     queryKey: ['property-definitions', templateId],
@@ -49,7 +53,7 @@ export function PropertyPanel({
             gap: 4,
           }}
         >
-          <Plus className="h-3 w-3" /> Adicionar propriedade
+          <Plus className="h-3 w-3" /> {t('shared.addProperty')}
         </button>
       </div>
     );
@@ -59,7 +63,8 @@ export function PropertyPanel({
     <div style={{ marginBottom: '1rem' }}>
       <div
         style={{
-          background: 'var(--card-bg)',
+          // Under the Vidro shell the panel shows through (spec: inline-style escapes).
+          background: vidroShell ? undefined : 'var(--card-bg)',
           border: '1px solid var(--border-color)',
           borderRadius: 8,
           padding: '10px 12px',
@@ -74,7 +79,7 @@ export function PropertyPanel({
             marginBottom: 6,
           }}
         >
-          Propriedades
+          {t('propertyPanel.title')}
         </div>
         {definitions.map((def) => {
           const pv = propertyValues.find((v) => v.property_definition_id === def.id);
@@ -106,7 +111,7 @@ export function PropertyPanel({
               marginTop: 2,
             }}
           >
-            <Plus className="h-3 w-3" /> Adicionar propriedade
+            <Plus className="h-3 w-3" /> {t('shared.addProperty')}
           </button>
         )}
       </div>

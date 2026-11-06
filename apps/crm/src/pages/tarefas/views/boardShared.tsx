@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   DndContext,
   DragOverlay,
@@ -12,8 +13,10 @@ import {
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { Plus } from 'lucide-react';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import type { Membro, TarefaWithRelations } from '../../../store';
 import { TarefaCard } from '../components/TarefaCard';
+import { TarefaPhoneBoard } from '../phone/TarefaPhoneBoard';
 
 /** Solid text/count color plus a matching translucent header wash -- same
  *  rgba-tint-over-solid-text language as the `.deadline-*` badge classes. */
@@ -50,6 +53,8 @@ interface TarefaBoardProps {
    * drops resolve to the hovered card's column). */
   onDropCard: (tarefa: TarefaWithRelations, dropId: string) => void;
   onRefresh: () => void;
+  /** Phones: accessible name of the column chips ("Status", "Membros", "Prazos"). */
+  phoneChipsLabel?: string;
 }
 
 function DraggableTarefaCard({
@@ -147,9 +152,27 @@ export function TarefaBoard({
   onCardClick,
   onDropCard,
   onRefresh,
+  phoneChipsLabel,
 }: TarefaBoardProps) {
+  const { t: tr } = useTranslation('tasks');
+  const isDesktop = useIsDesktop(768);
   const [activeTarefa, setActiveTarefa] = useState<TarefaWithRelations | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  // Phones: one column at a time, moves through the card menu (D30), no drag.
+  if (!isDesktop) {
+    return (
+      <TarefaPhoneBoard
+        columns={columns}
+        membros={membros}
+        now={now}
+        onCardClick={onCardClick}
+        onDropCard={onDropCard}
+        onRefresh={onRefresh}
+        chipsLabel={phoneChipsLabel}
+      />
+    );
+  }
 
   const allTarefas = columns.flatMap((c) => c.tarefas);
   const findTarefa = (id: string) => allTarefas.find((t) => String(t.id) === id);
@@ -183,7 +206,7 @@ export function TarefaBoard({
           {columns.map((col) => (
             <div key={col.dropId} className="board-column">
               <div
-                className="board-column-header"
+                className={`board-column-header${col.accent ? ' board-column-header--accent' : ''}`}
                 style={
                   col.accent
                     ? { background: col.accent.bg, borderBottom: `1px solid ${col.accent.border}` }
@@ -214,11 +237,11 @@ export function TarefaBoard({
               <DroppableColumnBody id={col.dropId} droppable={col.droppable}>
                 {col.onAddClick && (
                   <button type="button" className="board-add-card" onClick={col.onAddClick}>
-                    <Plus className="h-3.5 w-3.5" /> Adicionar tarefa
+                    <Plus className="h-3.5 w-3.5" /> {tr('views.addTask')}
                   </button>
                 )}
                 {col.tarefas.length === 0 ? (
-                  <div className="board-empty">Nenhuma tarefa</div>
+                  <div className="board-empty">{tr('views.noTasks')}</div>
                 ) : (
                   col.tarefas.map((t) => (
                     <DraggableTarefaCard

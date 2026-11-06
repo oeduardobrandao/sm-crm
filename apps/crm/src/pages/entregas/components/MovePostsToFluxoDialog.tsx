@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -83,34 +85,34 @@ export function getMoveErrorToast(err: unknown): string {
   if (entitlement) return entitlementMessage(entitlement);
   const identifier = getErrorIdentifier(err);
   if (identifier === 'workflow_not_found') {
-    return 'Fluxo de destino não encontrado.';
+    return i18n.t('workflows:movePosts.notFound');
   }
   if (identifier === 'workflow_not_active') {
-    return 'O fluxo de destino não está mais ativo.';
+    return i18n.t('workflows:movePosts.notActive');
   }
   if (identifier === 'workflow_different_client') {
-    return 'O fluxo de destino pertence a outro cliente.';
+    return i18n.t('workflows:movePosts.differentClient');
   }
   if (identifier === 'workflow_template_mismatch') {
-    return 'O fluxo de destino precisa usar o mesmo modelo do fluxo atual.';
+    return i18n.t('workflows:movePosts.templateMismatch');
   }
   if (identifier === 'post_not_found') {
-    return 'Um ou mais posts não foram encontrados.';
+    return i18n.t('workflows:movePosts.postNotFound');
   }
   if (
     identifier === 'post_not_in_source_flow' ||
     identifier === 'post_not_in_flow' ||
     identifier === 'posts_in_multiple_flows'
   ) {
-    return 'Os posts selecionados precisam estar todos neste fluxo.';
+    return i18n.t('workflows:movePosts.notInFlow');
   }
   if (identifier === 'invalid_start_etapa') {
-    return 'Escolha uma etapa válida para o novo fluxo.';
+    return i18n.t('workflows:movePosts.invalidStage');
   }
   if (identifier === 'titulo_required') {
-    return 'Informe um nome para o novo fluxo.';
+    return i18n.t('workflows:movePosts.titleRequired');
   }
-  return 'Erro ao mover posts para outro fluxo';
+  return i18n.t('workflows:movePosts.genericError');
 }
 
 /** Moves a batch of posts out of their flow into another one: a NEW flow
@@ -126,6 +128,7 @@ export function MovePostsToFluxoDialog({
   isTotalSelection,
   onMoved,
 }: MovePostsToFluxoDialogProps) {
+  const { t } = useTranslation('workflows');
   const qc = useQueryClient();
   const sourceWorkflowId = sourceWorkflow.id!;
   const clienteId = sourceWorkflow.cliente_id;
@@ -147,7 +150,7 @@ export function MovePostsToFluxoDialog({
   useEffect(() => {
     if (open) {
       setDestino('novo');
-      setTitulo(`${sourceWorkflow.titulo} (continuação)`);
+      setTitulo(t('movePosts.continuation', { title: sourceWorkflow.titulo }));
       setStartOrdem(defaultStartOrdem);
       setSelectedTargetId(null);
       setArchiveEmptyFlow(false);
@@ -188,9 +191,7 @@ export function MovePostsToFluxoDialog({
         destino === 'novo'
           ? titulo.trim()
           : (targetFluxos.find((w) => w.id === selectedTargetId)?.titulo ?? '');
-      toast.success(
-        `${n} post${n === 1 ? '' : 's'} movido${n === 1 ? '' : 's'} para "${targetTitulo}"`,
-      );
+      toast.success(t('movePosts.moved', { count: n, title: targetTitulo }));
       qc.invalidateQueries({ queryKey: ['active-posts'] });
       qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', sourceWorkflowId] });
       qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', result.target_workflow_id] });
@@ -219,10 +220,8 @@ export function MovePostsToFluxoDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
-          <DialogTitle>Mover para outro fluxo</DialogTitle>
-          <DialogDescription className="sr-only">
-            Mova os posts selecionados para um novo fluxo ou para um fluxo existente do mesmo modelo
-          </DialogDescription>
+          <DialogTitle>{t('shared.moveToOtherFlow')}</DialogTitle>
+          <DialogDescription className="sr-only">{t('movePosts.srDesc')}</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
@@ -235,15 +234,15 @@ export function MovePostsToFluxoDialog({
                 checked={destino === 'novo'}
                 onChange={() => setDestino('novo')}
               />
-              Novo fluxo
+              {t('movePosts.newFlow')}
             </label>
             <div className="ml-6 flex flex-col gap-2">
               <Input
                 value={titulo}
                 onChange={(e) => setTitulo(e.target.value)}
-                placeholder="Nome do novo fluxo"
+                placeholder={t('movePosts.newFlowName')}
                 disabled={destino !== 'novo'}
-                aria-label="Nome do novo fluxo"
+                aria-label={t('movePosts.newFlowName')}
               />
               <div className="flex flex-col gap-1">
                 <Select
@@ -251,8 +250,8 @@ export function MovePostsToFluxoDialog({
                   onValueChange={(v) => setStartOrdem(parseInt(v, 10))}
                   disabled={destino !== 'novo'}
                 >
-                  <SelectTrigger aria-label="Começar na etapa">
-                    <SelectValue placeholder="Começar na etapa" />
+                  <SelectTrigger aria-label={t('movePosts.startAt')}>
+                    <SelectValue placeholder={t('movePosts.startAt')} />
                   </SelectTrigger>
                   <SelectContent>
                     {orderedEtapas.map((e) => (
@@ -263,7 +262,7 @@ export function MovePostsToFluxoDialog({
                   </SelectContent>
                 </Select>
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  Etapas anteriores entram como concluídas.
+                  {t('movePosts.previousDone')}
                 </p>
               </div>
             </div>
@@ -279,16 +278,16 @@ export function MovePostsToFluxoDialog({
                 onChange={() => setDestino('existente')}
                 disabled={sourceWorkflow.template_id == null}
               />
-              Fluxo existente
+              {t('movePosts.existingFlow')}
             </label>
             <div className="ml-6">
               {sourceWorkflow.template_id == null ? (
                 <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                  Este fluxo não usa um modelo. Para mover os posts, crie um novo fluxo.
+                  {t('movePosts.noTemplate')}
                 </p>
               ) : destino === 'existente' && targetFluxos.length === 0 ? (
                 <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                  Nenhum outro fluxo ativo com o mesmo modelo para este cliente.
+                  {t('movePosts.noTargets')}
                 </p>
               ) : destino === 'existente' ? (
                 <div className="flex flex-col gap-2 max-h-48 overflow-y-auto">
@@ -318,21 +317,19 @@ export function MovePostsToFluxoDialog({
                 id="move-archive-empty-flow"
                 checked={archiveEmptyFlow}
                 onCheckedChange={(checked) => setArchiveEmptyFlow(checked === true)}
-                aria-label="Arquivar o fluxo de origem depois de mover"
+                aria-label={t('movePosts.archiveSource')}
               />
-              <Label htmlFor="move-archive-empty-flow">
-                Arquivar o fluxo de origem depois de mover
-              </Label>
+              <Label htmlFor="move-archive-empty-flow">{t('movePosts.archiveSource')}</Label>
             </div>
           )}
         </div>
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
-            Cancelar
+            {t('actions.cancel')}
           </Button>
           <Button type="button" onClick={handleConfirm} disabled={!canConfirm}>
-            {saving ? 'Movendo...' : 'Mover'}
+            {saving ? t('movePosts.moving') : t('movePosts.move')}
           </Button>
         </DialogFooter>
       </DialogContent>

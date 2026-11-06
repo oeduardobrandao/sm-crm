@@ -19,7 +19,7 @@ describe('SheetContent', () => {
     renderSheet('right');
 
     const contentPaddingTop = screen.getByTestId('sheet-content').style.paddingTop;
-    const closeTop = screen.getByRole('button', { name: 'Close' }).style.top;
+    const closeTop = screen.getByRole('button', { name: 'Fechar' }).style.top;
 
     expect(contentPaddingTop).toContain('1.5rem');
     expect(contentPaddingTop).toContain('safe-area-inset-top');
@@ -31,6 +31,6 @@ describe('SheetContent', () => {
     renderSheet('bottom');
 
     expect(screen.getByTestId('sheet-content').style.paddingTop).toBe('');
-    expect(screen.getByRole('button', { name: 'Close' }).style.top).toBe('');
+    expect(screen.getByRole('button', { name: 'Fechar' }).style.top).toBe('');
   });
 });

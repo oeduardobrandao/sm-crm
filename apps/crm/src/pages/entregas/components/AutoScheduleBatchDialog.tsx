@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -11,14 +12,10 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { getWorkflowPosts } from '@/store';
+import { countPendingEditSuggestionsForPosts, getWorkflowPosts } from '@/store';
 import { partitionByScheduleEligibility, targetsTikTokService } from '../autoScheduleNudge';
 import { scheduleApprovedPost } from '../scheduleApprovedPost';
 import { declarationBrandedFlag, TikTokPostingDeclaration } from './TikTokPostingDeclaration';
-
-function plural(n: number, one: string, many: string): string {
-  return n === 1 ? one : many;
-}
 
 export interface AutoScheduleBatchDialogProps {
   /** null fecha o diálogo. Não-null abre e busca os posts desse fluxo. */
@@ -29,8 +26,8 @@ export interface AutoScheduleBatchDialogProps {
   tiktokFeatureEnabled: boolean;
   /** Espelho client-side do ciclo final de aprovação (PR#400) para O FLUXO de
    *  `workflowId`, avaliado pelo caller no ponto de escrita/render que tem o
-   *  `card` (ou o `willRearm` derivado dele) em mãos. Ver nota de segurança
-   *  abaixo -- este componente NÃO recalcula isso por conta própria. */
+   *  `card` (ou a "aprovação adiante" derivada dele) em mãos. Ver nota de
+   *  segurança abaixo -- este componente NÃO recalcula isso por conta própria. */
   isFinalApprovalCycle: boolean;
   onClose: () => void;
   onScheduled: () => void;
@@ -38,23 +35,24 @@ export interface AutoScheduleBatchDialogProps {
 
 /**
  * Resumo da aprovação em lote (peça 2 da spec). Os gates (auto_publish_on_approval,
- * feature_post_scheduling, !willRearm) são do caller; aqui só a contagem e o loop.
+ * feature_post_scheduling, nenhuma aprovação adiante) são do caller; aqui só a
+ * contagem e o loop.
  *
  * Segurança (PR#400 / fix da revisão final, item B): `isFinalApprovalCycle` é um
  * gate OBRIGATÓRIO que este componente aplica sozinho (linha do early return
- * abaixo), não só um valor que os três callers (KanbanView, EntregasTab,
- * WorkflowDrawer) prometem já ter checado antes de setar `workflowId`. Os três
- * hoje calculam esse booleano por dois caminhos equivalentes mas estruturalmente
- * diferentes (KanbanView/EntregasTab: `!willRearm`, um cálculo baseado em ORDEM
- * via `hasLaterApprovalEtapa`; WorkflowDrawer: `isFinalClientApprovalCycle(card.allEtapas)`,
- * baseado em STATUS) -- concordam em todo estado alcançável hoje, mas nada além
- * deste early return impede um quarto caller futuro, ou um refactor de
- * `willRearm`, de reabrir exatamente a falha do PR#400. Por isso o gate mora
- * AQUI, não só nos três call sites.
+ * abaixo), não só um valor que os callers (useWorkflowStageCommands, usado pelo
+ * KanbanView e pela EntregasTab, e o WorkflowDrawer) prometem já ter checado antes
+ * de setar `workflowId`. Eles hoje calculam esse booleano por dois caminhos
+ * equivalentes mas estruturalmente diferentes (useWorkflowStageCommands: sem
+ * aprovação adiante, um cálculo baseado em ORDEM via `hasLaterApprovalEtapa`;
+ * WorkflowDrawer: `isFinalClientApprovalCycle(card.allEtapas)`, baseado em STATUS)
+ * -- concordam em todo estado alcançável hoje, mas nada além deste early return
+ * impede um caller futuro, ou um refactor desse cálculo, de reabrir exatamente a
+ * falha do PR#400. Por isso o gate mora AQUI, não só nos call sites.
  *
  * Por que buscar em vez de usar um snapshot do board: nem KanbanView nem
  * EntregasTab têm as linhas de workflow_posts do fluxo (só contagens por fluxo),
- * e approvePostsInternally devolve void. A busca depois da escrita também é mais
+ * e a escrita de aprovação devolve void. A busca depois da escrita também é mais
  * fresca do que qualquer snapshot anterior a ela. Ver a nota de desvio no plano
  * docs/superpowers/plans/2026-09-17-manual-approval-auto-schedule-nudge.md.
  *
@@ -68,6 +66,7 @@ export function AutoScheduleBatchDialog({
   onClose,
   onScheduled,
 }: AutoScheduleBatchDialogProps) {
+  const { t } = useTranslation('workflows');
   const [running, setRunning] = useState(false);
 
   const {
@@ -118,6 +117,23 @@ export function AutoScheduleBatchDialog({
     (p) => declarationBrandedFlag(p.tiktok_settings) !== false,
   );
 
+  // Posts do lote que ainda carregam uma sugestão do cliente sem revisão: agendar fecha a
+  // sugestão como superseded. Só informativo (uma linha, sem pergunta por post, como no diálogo
+  // de saída de aprovação); uma busca que falha só esconde a linha.
+  const eligibleIds = eligible
+    .map((p) => p.id)
+    .filter((id): id is number => id != null)
+    .sort((a, b) => a - b);
+  const suggestionsQuery = useQuery({
+    queryKey: ['auto-schedule-batch-suggestions', workflowId, eligibleIds],
+    queryFn: () => countPendingEditSuggestionsForPosts(eligibleIds),
+    enabled: workflowId != null && !isFetching && eligibleIds.length > 0,
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+  });
+  const pendingSuggestionCount = suggestionsQuery.isFetching ? 0 : (suggestionsQuery.data ?? 0);
+
   // Nada aprovado (aprovação em lote sem efeito, ou tudo já agendado): não vale
   // um diálogo vazio.
   useEffect(() => {
@@ -144,10 +160,13 @@ export function AutoScheduleBatchDialog({
     setRunning(false);
     onClose();
     if (fail === 0) {
-      toast.success(`${ok} ${plural(ok, 'post agendado', 'posts agendados')}.`);
+      toast.success(t('autoScheduleBatch.scheduled', { count: ok }));
     } else {
       toast.error(
-        `${ok} ${plural(ok, 'post agendado', 'posts agendados')}, ${fail} ${plural(fail, 'falhou', 'falharam')}.`,
+        t('autoScheduleBatch.partial', {
+          scheduled: t('autoScheduleBatch.scheduledPart', { count: ok }),
+          failed: t('autoScheduleBatch.failedPart', { count: fail }),
+        }),
       );
     }
     if (ok > 0) onScheduled();
@@ -162,20 +181,24 @@ export function AutoScheduleBatchDialog({
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Agendar os posts aprovados?</AlertDialogTitle>
+          <AlertDialogTitle>{t('autoScheduleBatch.title')}</AlertDialogTitle>
           <AlertDialogDescription>
             {isLoading
-              ? 'Carregando os posts do fluxo…'
-              : `${approved.length} ${plural(approved.length, 'post aprovado', 'posts aprovados')}. ${eligible.length} ${plural(eligible.length, 'já tem data definida e pode', 'já têm data definida e podem')} ser agendado agora. Este cliente agenda a publicação automaticamente quando o próprio cliente aprova pelo portal.`}
+              ? t('autoScheduleBatch.loading')
+              : [
+                  t('autoScheduleBatch.approved', { count: approved.length }),
+                  t('autoScheduleBatch.eligible', { count: eligible.length }),
+                  t('autoScheduleBatch.autoNote'),
+                ].join(' ')}
           </AlertDialogDescription>
         </AlertDialogHeader>
 
         {missingDate.length > 0 && (
           <div className="px-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-            <p className="font-semibold">Sem data válida, agende manualmente:</p>
+            <p className="font-semibold">{t('autoScheduleBatch.missingDate')}</p>
             <ul>
               {missingDate.map((p) => (
-                <li key={p.id}>{p.titulo || 'Post sem título'}</li>
+                <li key={p.id}>{p.titulo || t('shared.postUntitled')}</li>
               ))}
             </ul>
           </div>
@@ -183,13 +206,19 @@ export function AutoScheduleBatchDialog({
 
         {tiktokBlocked.length > 0 && (
           <div className="px-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-            <p className="font-semibold">Bloqueado: requer o recurso do TikTok.</p>
+            <p className="font-semibold">{t('autoScheduleBatch.tiktokBlocked')}</p>
             <ul>
               {tiktokBlocked.map((p) => (
-                <li key={p.id}>{p.titulo || 'Post sem título'}</li>
+                <li key={p.id}>{p.titulo || t('shared.postUntitled')}</li>
               ))}
             </ul>
           </div>
+        )}
+
+        {pendingSuggestionCount > 0 && (
+          <p className="px-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+            {t('approvalExit.pendingSuggestions', { count: pendingSuggestionCount })}
+          </p>
         )}
 
         {tiktokEligible.length > 0 && (
@@ -197,7 +226,7 @@ export function AutoScheduleBatchDialog({
         )}
 
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={running}>Agora não</AlertDialogCancel>
+          <AlertDialogCancel disabled={running}>{t('autoScheduleBatch.notNow')}</AlertDialogCancel>
           {/* isFetching trava a ação enquanto a busca está em voo: com staleTime 0
               toda reabertura refetcha, e agir sobre a lista anterior mandaria
               posts já agendados ao servidor (422). Botão totalmente OMITIDO (não
@@ -206,7 +235,7 @@ export function AutoScheduleBatchDialog({
               CTA morto. */}
           {eligible.length > 0 && (
             <Button onClick={handleScheduleAll} disabled={running || isFetching}>
-              {`Agendar ${eligible.length} ${plural(eligible.length, 'post', 'posts')}`}
+              {t('autoScheduleBatch.scheduleN', { count: eligible.length })}
             </Button>
           )}
         </AlertDialogFooter>

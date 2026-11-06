@@ -1,3 +1,4 @@
+import { i18n } from '@mesaas/i18n';
 import { scheduleInstagramPost } from '@/services/instagram';
 import { scheduleTikTokPost } from '@/services/tiktok';
 import type { WorkflowPost } from '@/store';
@@ -9,9 +10,9 @@ import { targetsTikTokService } from './autoScheduleNudge';
 export type SchedulablePost = Pick<WorkflowPost, 'id' | 'platform' | 'scheduled_at'>;
 
 export function scheduleSuccessMessage(platform: Platform): string {
-  if (platform === 'both') return 'Post agendado para publicação no Instagram e no TikTok';
-  if (platform === 'tiktok') return 'Post agendado para publicação no TikTok';
-  return 'Post agendado para publicação no Instagram';
+  if (platform === 'both') return i18n.t('entregas:scheduleSuccess.both');
+  if (platform === 'tiktok') return i18n.t('entregas:scheduleSuccess.tiktok');
+  return i18n.t('entregas:scheduleSuccess.instagram');
 }
 
 /**
@@ -28,7 +29,7 @@ export async function scheduleApprovedPost(
   post: SchedulablePost,
 ): Promise<{ ok: boolean; status: string }> {
   if (post.platform === 'other') {
-    throw new Error('Este post não tem destino com publicação automática.');
+    throw new Error(i18n.t('entregas:scheduleSuccess.noAutoDestination'));
   }
   const platform: Platform = post.platform ?? 'instagram';
   if (targetsTikTokService(platform)) return scheduleTikTokPost(post.id!, post.scheduled_at!);

@@ -8,8 +8,9 @@ import {
   ScheduledPostOpenButton,
   type PostCalendarEvent,
 } from '../ClientePostCalendar';
+import { readCrmCss } from '@/test/readCrmCss';
 
-const css = readFileSync('apps/crm/style.css', 'utf8');
+const css = readCrmCss();
 const source = readFileSync(
   'apps/crm/src/pages/cliente-detalhe/components/ClientePostCalendar.tsx',
   'utf8',

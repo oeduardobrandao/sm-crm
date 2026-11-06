@@ -4,6 +4,7 @@ import { computeDeliveryDeadlines, getNextDeliveryDate } from '../hooks/useEntre
 import type { EtapaFormData } from '../components/SortableEtapaList';
 import type { PlatformId } from '@mesaas/platforms';
 import { mapEntitlementError, entitlementMessage } from '@/lib/entitlement-errors';
+import { i18n } from '@mesaas/i18n';
 
 export type WizardSource =
   | { kind: 'preset'; presetId: string; presetNome: string }
@@ -64,7 +65,7 @@ export async function createWorkflowFromWizard(
   const valid = input.etapas.filter((e) => e.nome.trim());
 
   if (valid.length === 0) {
-    throw new Error('Um fluxo precisa de pelo menos uma etapa nomeada.');
+    throw new Error(i18n.t('workflows:wizard.needsNamedStage'));
   }
 
   // 1. Template first — a failure here must never block fluxo creation.
@@ -90,8 +91,10 @@ export async function createWorkflowFromWizard(
       // of a generic failure the user can't act on.
       const entitlement = mapEntitlementError(err);
       warning = entitlement
-        ? `O fluxo será criado, mas o modelo não foi salvo: ${entitlementMessage(entitlement).replace(/^Você/, 'você')}`
-        : 'O fluxo será criado, mas não foi possível salvar o modelo.';
+        ? i18n.t('workflows:wizard.templateNotSavedReason', {
+            reason: entitlementMessage(entitlement).replace(/^Você/, 'você'),
+          })
+        : i18n.t('workflows:wizard.templateNotSaved');
     }
   }
 

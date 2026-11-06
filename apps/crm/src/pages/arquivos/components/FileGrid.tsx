@@ -2,7 +2,8 @@ import { useRef, useMemo, useState, useCallback } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
-import { ptBR } from 'date-fns/locale/pt-BR';
+import { useTranslation } from 'react-i18next';
+import { i18n, useDateFnsLocale } from '@mesaas/i18n';
 import { Folder, FileText, FileVideo, FileImage, Link as LinkIcon } from 'lucide-react';
 import type { FileRecord, Folder as FolderType, FolderContents } from '../types';
 import { FileContextMenu } from './FileContextMenu';
@@ -19,9 +20,9 @@ export function formatBytes(bytes: number): string {
 }
 
 function kindLabel(kind: FileRecord['kind']): string {
-  if (kind === 'image') return 'Imagem';
-  if (kind === 'video') return 'Vídeo';
-  return 'Documento';
+  if (kind === 'image') return i18n.t('files:shared.kind.image');
+  if (kind === 'video') return i18n.t('files:shared.kind.video');
+  return i18n.t('files:shared.kind.document');
 }
 
 function FileIcon({ kind, className }: { kind: FileRecord['kind']; className?: string }) {
@@ -53,7 +54,7 @@ interface FileGridProps {
   canEdit: boolean;
 }
 
-function sortFolders(folders: FolderType[], sortBy: SortBy): FolderType[] {
+export function sortFolders(folders: FolderType[], sortBy: SortBy): FolderType[] {
   return [...folders].sort((a, b) => {
     switch (sortBy) {
       case 'size':
@@ -67,7 +68,7 @@ function sortFolders(folders: FolderType[], sortBy: SortBy): FolderType[] {
   });
 }
 
-function sortFiles(files: FileRecord[], sortBy: SortBy): FileRecord[] {
+export function sortFiles(files: FileRecord[], sortBy: SortBy): FileRecord[] {
   return [...files].sort((a, b) => {
     switch (sortBy) {
       case 'size':
@@ -102,6 +103,8 @@ export function FileGrid(props: FileGridProps) {
     classifySelection,
     canEdit,
   } = props;
+  const { t } = useTranslation('files');
+  const dateLocale = useDateFnsLocale();
   const queryClient = useQueryClient();
   const prefetchTimeout = useRef<number | undefined>(undefined);
   const ghostRef = useRef<HTMLDivElement | null>(null);
@@ -129,14 +132,14 @@ export function FileGrid(props: FileGridProps) {
 
       const ghost = document.createElement('div');
       const count = fileIds.length + folderIds.length;
-      ghost.textContent = `Mover ${count} ${count === 1 ? 'item' : 'itens'}`;
+      ghost.textContent = t('shared.dragGhost', { count });
       ghost.style.cssText =
         'position:fixed;top:-100px;left:-100px;padding:6px 12px;border-radius:8px;background:#1a1e26;color:#eab308;font-size:12px;font-weight:700;border:1px solid rgba(234,179,8,0.4);white-space:nowrap;pointer-events:none;z-index:9999;';
       document.body.appendChild(ghost);
       e.dataTransfer.setDragImage(ghost, 0, 0);
       ghostRef.current = ghost;
     },
-    [selectedIds, selectionCount, classifySelection],
+    [selectedIds, selectionCount, classifySelection, t],
   );
 
   const handleDragEnd = useCallback(() => {
@@ -193,13 +196,13 @@ export function FileGrid(props: FileGridProps) {
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev)
         queryClient.setQueryData(['folder-contents', currentFolderId ?? null], ctx.prev);
-      toast.error('Erro ao renomear');
+      toast.error(t('fileGrid.renameError'));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['folder-contents'] });
       queryClient.invalidateQueries({ queryKey: ['folder-tree'] });
     },
-    onSuccess: () => toast.success('Nome atualizado'),
+    onSuccess: () => toast.success(t('fileGrid.renameSuccess')),
   });
 
   function handleRenameCommit(id: number, type: 'file' | 'folder', newName: string) {
@@ -244,7 +247,7 @@ export function FileGrid(props: FileGridProps) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-[var(--text-muted)]">
         <Folder className="h-12 w-12 mb-3 opacity-30" />
-        <p className="text-sm">Nenhum arquivo nesta pasta</p>
+        <p className="text-sm">{t('fileGrid.emptyFolder')}</p>
       </div>
     );
   }
@@ -252,15 +255,25 @@ export function FileGrid(props: FileGridProps) {
   if (viewMode === 'list') {
     return (
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table data-slot="table" className="w-full text-sm">
           <thead>
             <tr className="border-b border-[var(--border-color)] text-[var(--text-muted)] text-left">
               {selectionCount > 0 && <th className="pb-2 pr-2 w-8" />}
-              <th className="pb-2 pr-4 font-medium text-xs uppercase tracking-wide">Nome</th>
-              <th className="pb-2 pr-4 font-medium text-xs uppercase tracking-wide">Tipo</th>
-              <th className="pb-2 pr-4 font-medium text-xs uppercase tracking-wide">Tamanho</th>
-              <th className="pb-2 pr-4 font-medium text-xs uppercase tracking-wide">Data</th>
-              <th className="pb-2 font-medium text-xs uppercase tracking-wide">Em uso</th>
+              <th className="pb-2 pr-4 font-medium text-xs uppercase tracking-wide">
+                {t('fileGrid.columns.name')}
+              </th>
+              <th className="pb-2 pr-4 font-medium text-xs uppercase tracking-wide">
+                {t('fileGrid.columns.type')}
+              </th>
+              <th className="pb-2 pr-4 font-medium text-xs uppercase tracking-wide">
+                {t('fileGrid.columns.size')}
+              </th>
+              <th className="pb-2 pr-4 font-medium text-xs uppercase tracking-wide">
+                {t('fileGrid.columns.date')}
+              </th>
+              <th className="pb-2 font-medium text-xs uppercase tracking-wide">
+                {t('fileGrid.columns.inUse')}
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border-color)]">
@@ -333,24 +346,28 @@ export function FileGrid(props: FileGridProps) {
                         )}
                         {folder.source === 'system' && (
                           <span className="text-[0.6rem] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-muted)]">
-                            AUTO
+                            {t('shared.autoBadge')}
                           </span>
                         )}
                       </div>
                     </td>
-                    <td className="py-2.5 pr-4 text-[var(--text-muted)]">Pasta</td>
+                    <td className="py-2.5 pr-4 text-[var(--text-muted)]">
+                      {t('fileGrid.folderType')}
+                    </td>
                     <td className="py-2.5 pr-4 text-[var(--text-muted)] font-mono text-xs">
                       {folder.total_size_bytes != null ? formatBytes(folder.total_size_bytes) : '—'}
                     </td>
                     <td className="py-2.5 pr-4 text-[var(--text-muted)]">
                       {formatDistanceToNow(new Date(folder.created_at), {
                         addSuffix: true,
-                        locale: ptBR,
+                        locale: dateLocale,
                       })}
                     </td>
                     <td className="py-2.5 text-[var(--text-muted)]">
                       {folder.file_count != null ? (
-                        <span className="text-xs">{folder.file_count} arquivos</span>
+                        <span className="text-xs">
+                          {t('fileGrid.fileCount', { count: folder.file_count })}
+                        </span>
                       ) : (
                         '—'
                       )}
@@ -437,13 +454,13 @@ export function FileGrid(props: FileGridProps) {
                     <td className="py-2.5 pr-4 text-[var(--text-muted)]">
                       {formatDistanceToNow(new Date(file.created_at), {
                         addSuffix: true,
-                        locale: ptBR,
+                        locale: dateLocale,
                       })}
                     </td>
                     <td className="py-2.5">
                       {file.reference_count > 0 ? (
                         <span
-                          title="Em uso em posts ou relatórios"
+                          title={t('fileGrid.inUseTitle')}
                           className="inline-flex items-center gap-1 text-[0.65rem] font-semibold px-1.5 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-muted)]"
                         >
                           <LinkIcon className="h-2.5 w-2.5" />
@@ -527,6 +544,7 @@ export function FileGrid(props: FileGridProps) {
                   } catch {}
                 }
               }}
+              data-slot="card"
               className={`group relative flex flex-col items-center gap-2 p-4 rounded-sm bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 text-left${isSelected ? ' ring-2 ring-[var(--primary-color)]' : ''}${dragOverFolderId === folder.id ? ' ring-2 ring-[var(--primary-color)] bg-[rgba(234,179,8,0.08)]' : ''}${(folder as any)._optimistic ? ' opacity-50 animate-pulse pointer-events-none' : ''}`}
             >
               {/* Hover checkbox */}
@@ -573,7 +591,7 @@ export function FileGrid(props: FileGridProps) {
               )}
               {folder.source === 'system' && (
                 <span className="text-[0.6rem] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-muted)]">
-                  AUTO
+                  {t('shared.autoBadge')}
                 </span>
               )}
             </button>
@@ -606,6 +624,7 @@ export function FileGrid(props: FileGridProps) {
               draggable
               onDragStart={(e) => handleDragStart(e, file.id, 'file')}
               onDragEnd={handleDragEnd}
+              data-slot="card"
               className={`group flex flex-col rounded-sm bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 overflow-hidden text-left${isSelected ? ' ring-2 ring-[var(--primary-color)]' : ''}`}
             >
               {/* Thumbnail area */}
@@ -649,7 +668,7 @@ export function FileGrid(props: FileGridProps) {
 
                 {file.reference_count > 0 && (
                   <span
-                    title="Em uso em posts ou relatórios"
+                    title={t('fileGrid.inUseTitle')}
                     className="absolute top-2 right-2 inline-flex items-center gap-1 text-[0.6rem] font-semibold px-1.5 py-0.5 rounded bg-[var(--card-bg)] border border-[var(--border-color)] text-[var(--text-muted)]"
                   >
                     <LinkIcon className="h-2.5 w-2.5" />

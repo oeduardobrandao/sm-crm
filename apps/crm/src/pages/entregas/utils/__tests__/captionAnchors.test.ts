@@ -187,6 +187,15 @@ describe('anchorsFromThreads / patchesFromAnchors', () => {
         anchor_end: null,
         orphaned: true,
       },
+      {
+        ...base,
+        id: 4,
+        quoted_text: '',
+        field: 'geral',
+        anchor_start: null,
+        anchor_end: null,
+        orphaned: false,
+      },
     ]);
     expect(anchors).toEqual([
       { id: 2, start: 6, end: 11, quotedText: 'brave', orphaned: false },

@@ -5,9 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const store = vi.hoisted(() => ({
   completeEtapa: vi.fn(),
-  completeEtapaWithRearm: vi.fn(),
   hasLaterApprovalEtapa: vi.fn(),
-  approvePostsInternally: vi.fn(),
   sendPostsToCliente: vi.fn(),
   revertEtapa: vi.fn(),
   updateWorkflowPositions: vi.fn(),
@@ -113,6 +111,10 @@ vi.mock('../../components/PostProcessCard', () => ({
 import { KanbanView } from '../KanbanView';
 import type { BoardCard } from '../../hooks/useEntregasData';
 import type { PostEntity } from '../../boardEntity';
+
+// Desktop layout: the phone branch (below 768px, what jsdom's matchMedia reports)
+// has its own suites.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 // usePostProcessCommands usa useQueryClient (fase 4): todo render do KanbanView
 // agora precisa de um QueryClientProvider por cima, mesmo em testes que só
@@ -308,6 +310,14 @@ describe('KanbanView com posts individuais', () => {
         entity.process.revisao,
       ),
     );
+  });
+
+  it('canRemoveProcess false esconde "Encerrar processo" daquele post (acesso por cliente)', () => {
+    const a = postEntity(9, 0, 'Post Individual A');
+    const canRemoveProcess = vi.fn((e: PostEntity) => e.id !== a.id);
+    renderBoard([a], vi.fn(), { canRemoveProcess });
+    expect(screen.queryByRole('button', { name: 'Encerrar processo' })).toBeNull();
+    expect(canRemoveProcess).toHaveBeenCalledWith(a);
   });
 
   it('kebab do post: "Excluir post" chama onDeletePostClick com a entidade', () => {

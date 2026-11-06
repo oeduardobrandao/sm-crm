@@ -54,6 +54,9 @@ export interface GuidePage {
   /** Presente: a página conclui quando o sinal fica true. Ausente: conclui ao ser vista. */
   signal?: SignalKey;
   entitlementFlag?: string;
+  /** Escondida quando o plano tem o limite abaixo do mínimo (ex.: Free tem 0 links de portal e 1
+   * usuário). Só vale com os limites carregados e finitos; `null` no limite é ilimitado. */
+  minLimit?: { key: 'max_hub_tokens' | 'max_team_members'; min: number };
   bridgeTo?: 't2' | 't3';
   conclude?: boolean;
 }
@@ -145,6 +148,7 @@ export const GUIDE_TRAILS: GuideTrail[] = [
         },
         signal: 'hasHubToken',
         entitlementFlag: 'feature_hub_portal',
+        minLimit: { key: 'max_hub_tokens', min: 1 },
       },
       {
         id: 't1p5',
@@ -217,6 +221,7 @@ export const GUIDE_TRAILS: GuideTrail[] = [
           to: () => '/equipe?novo=1',
         },
         signal: 'hasMembro',
+        minLimit: { key: 'max_team_members', min: 2 },
       },
       {
         id: 't2p4',
@@ -351,10 +356,23 @@ export const GUIDE_TRAILS: GuideTrail[] = [
   },
 ];
 
-export function filterTrails(hasFeature: (flag: string) => boolean): GuideTrail[] {
+export type GuideLimits = Partial<Record<'max_hub_tokens' | 'max_team_members', number | null>>;
+
+function meetsMinLimit(page: GuidePage, limits: GuideLimits | null | undefined): boolean {
+  if (!page.minLimit || !limits) return true; // limits loading or unlimited: keep the step
+  const value = limits[page.minLimit.key];
+  return value == null || value >= page.minLimit.min;
+}
+
+export function filterTrails(
+  hasFeature: (flag: string) => boolean,
+  limits?: GuideLimits | null,
+): GuideTrail[] {
   return GUIDE_TRAILS.map((t) => ({
     ...t,
-    pages: t.pages.filter((p) => !p.entitlementFlag || hasFeature(p.entitlementFlag)),
+    pages: t.pages.filter(
+      (p) => (!p.entitlementFlag || hasFeature(p.entitlementFlag)) && meetsMinLimit(p, limits),
+    ),
   })).filter((t) => t.pages.length > 0);
 }
 

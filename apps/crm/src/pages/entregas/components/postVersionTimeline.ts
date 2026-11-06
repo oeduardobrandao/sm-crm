@@ -1,4 +1,5 @@
 import type { PostApproval, PostContentVersion, PostStatusEvent } from '../../../store';
+import { i18n } from '@mesaas/i18n';
 import { STATUS_LABELS, isVisibleToClient } from '../postLabels';
 
 // Deliberately separate from postTimeline.ts: that module feeds a passive,
@@ -31,8 +32,8 @@ export type VersionTimelineNode =
     };
 
 function actorLabelFor(source: PostStatusEvent['source'], actorName: string | null): string {
-  if (source === 'client') return 'Cliente';
-  if (source === 'system') return 'Sistema';
+  if (source === 'client') return i18n.t('postPanels:shared.actor.client');
+  if (source === 'system') return i18n.t('postPanels:shared.actor.system');
   return actorName ?? '—';
 }
 

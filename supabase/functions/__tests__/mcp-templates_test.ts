@@ -19,7 +19,7 @@ function makeFakeDb(responses: Record<string, Resp[]>) {
     }
     // deno-lint-ignore no-explicit-any
     (rec as any).then = (resolve: (r: Resp) => unknown) => {
-      const r = (queues[table] ?? []).shift() ?? { data: [], error: null };
+      const r = (queues[table] ?? []).shift() ?? (table === "workspace_members" ? { data: { role: "agent", client_scope: "todos" }, error: null } : { data: [], error: null });
       return Promise.resolve(resolve(r));
     };
     return rec;

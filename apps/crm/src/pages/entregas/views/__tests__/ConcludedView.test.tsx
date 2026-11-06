@@ -55,6 +55,10 @@ vi.mock('@/hooks/useWorkspaceLimits', () => ({
 import { toast } from 'sonner';
 import { ConcludedView } from '../ConcludedView';
 
+// Desktop layout: the phone branch (below 768px, what jsdom's matchMedia reports)
+// has its own suites.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 const concluded = {
   id: 9,
   conta_id: 'c',

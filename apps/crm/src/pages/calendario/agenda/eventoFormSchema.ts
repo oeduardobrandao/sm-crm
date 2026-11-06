@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { addDays, differenceInCalendarDays, format, startOfDay } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { getDateFnsLocale, getIntlLocale, i18n } from '@mesaas/i18n';
 import type {
   AgendaConvidadoInput,
   AgendaCor,
@@ -82,8 +82,13 @@ const regraSchema = z.object({
   contagem: z.number().int().nullable(),
 });
 
+/** Messages resolve at validation time, so they follow the current UI language. */
+const schemaT = (key: string, opts?: Record<string, unknown>): string =>
+  i18n.t(`agendaEvento:schema.${key}`, opts);
+const msg = (key: string, opts?: Record<string, unknown>) => () => schemaT(key, opts);
+
 function maxChars(n: number) {
-  return z.string().max(n, `Use no máximo ${n} caracteres.`);
+  return z.string().max(n, { error: msg('maxChars', { n }) });
 }
 
 /** Date + 'HH:mm' as a local Date. */
@@ -109,17 +114,17 @@ export const eventoFormSchema = z
     regra: regraSchema.nullable(),
     participantes: z
       .array(z.string())
-      .max(MAX_PARTICIPANTES, `Adicione no máximo ${MAX_PARTICIPANTES} pessoas.`),
+      .max(MAX_PARTICIPANTES, { error: msg('maxParticipants', { max: MAX_PARTICIPANTES }) }),
     /** External guests (e-mails lower-case). Hidden, and not sent, while `privado`. */
     convidados: z
       .array(z.object({ email: z.string().email(), nome: z.string().nullable() }))
-      .max(MAX_CONVIDADOS, `Convide no máximo ${MAX_CONVIDADOS} pessoas.`),
+      .max(MAX_CONVIDADOS, { error: msg('maxGuests', { max: MAX_CONVIDADOS }) }),
     local: maxChars(300),
     link_reuniao: maxChars(500),
     descricao: maxChars(5000),
     lembretes: z
       .array(z.number().int())
-      .max(MAX_LEMBRETES, `Use no máximo ${MAX_LEMBRETES} lembretes.`),
+      .max(MAX_LEMBRETES, { error: msg('maxReminders', { max: MAX_LEMBRETES }) }),
     privado: z.boolean(),
     /** Share with the cliente (Hub + e-mail). Only meaningful with a cliente and not privado. */
     compartilhado_cliente: z.boolean(),
@@ -129,7 +134,7 @@ export const eventoFormSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['titulo'],
-        message: 'Informe um título.',
+        message: schemaT('titleRequired'),
       });
     }
     const fimAntes = v.dia_inteiro
@@ -140,7 +145,7 @@ export const eventoFormSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: [campoFim],
-        message: 'O fim precisa ser depois do início.',
+        message: schemaT('endBeforeStart'),
       });
     } else if (v.dia_inteiro) {
       // Mirrors the database cap ('agenda: o evento é longo demais').
@@ -148,7 +153,7 @@ export const eventoFormSchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: [campoFim],
-          message: `O evento pode durar no máximo ${MAX_DIAS_DIA_INTEIRO} dias.`,
+          message: schemaT('maxDays', { max: MAX_DIAS_DIA_INTEIRO }),
         });
       }
     } else {
@@ -160,7 +165,7 @@ export const eventoFormSchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: [campoFim],
-          message: `O evento pode durar no máximo ${MAX_DIAS_COM_HORARIO} dias.`,
+          message: schemaT('maxDays', { max: MAX_DIAS_COM_HORARIO }),
         });
       }
     }
@@ -169,14 +174,14 @@ export const eventoFormSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['link_reuniao'],
-        message: 'Informe um link que comece com http:// ou https://.',
+        message: schemaT('linkInvalid'),
       });
     }
     if (v.repetir !== 'nao' && v.regra === null) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['repetir'],
-        message: 'Escolha como o evento se repete.',
+        message: schemaT('repeatRequired'),
       });
     }
   });
@@ -383,19 +388,6 @@ export type CampoSerie =
   | 'participantes'
   | 'convidados';
 
-const CAMPO_SERIE_LABEL: Record<CampoSerie, string> = {
-  regra: 'a repetição',
-  lembretes: 'os lembretes',
-  tipo: 'o tipo',
-  cor: 'a cor',
-  cliente_id: 'o cliente',
-  privado: 'a opção Evento privado',
-  compartilhado_cliente: 'o compartilhamento com o cliente',
-  dia_inteiro: 'a opção Dia inteiro',
-  participantes: 'os participantes',
-  convidados: 'os convidados externos',
-};
-
 /** Series-level fields that changed, so "Este evento" is not allowed. A rule
  *  that only followed the date does not count (the "esta" payload omits it). */
 export function camposDeSerieAlterados(
@@ -426,8 +418,10 @@ export function camposDeSerieAlterados(
 /** Helper under the disabled "Este evento" option. */
 export function motivoSerie(campos: CampoSerie[]): string | null {
   if (campos.length === 0) return null;
-  if (campos.length > 1) return 'Vale para toda a série.';
-  return `Vale para toda a série: você mudou ${CAMPO_SERIE_LABEL[campos[0]]}.`;
+  if (campos.length > 1) return i18n.t('agendaEvento:schema.seriesReason');
+  return i18n.t('agendaEvento:schema.seriesReasonField', {
+    field: i18n.t(`agendaEvento:schema.seriesFields.${campos[0]}`),
+  });
 }
 
 const CHAVES_EDICAO = [
@@ -559,7 +553,8 @@ export function opcoesMensaisPersonalizadas(inicio: Date): { id: ModoMensal; lab
         o.id === 'mensal_dia' || o.id === 'mensal_ordinal' || o.id === 'mensal_ultima',
     )
     .map((o) => {
-      const texto = o.label.replace(/^Mensal: /, '');
+      // Drops the preset's frequency prefix: "Mensal: no dia 5" (pt), "Monthly on day 5" (en).
+      const texto = o.label.replace(/^(?:[^:]+:\s*|Monthly\s+)/, '');
       return { id: o.id, label: texto.charAt(0).toUpperCase() + texto.slice(1) };
     });
 }
@@ -614,18 +609,19 @@ function inteiroEntre(s: string, min: number, max: number): number | null {
 
 /** First problem with the custom state, or null when Concluir can proceed. */
 export function validarPersonalizada(s: RecorrenciaPersonalizada, inicio: Date): string | null {
-  if (inteiroEntre(s.intervalo, 1, 99) === null) return 'Use um número de 1 a 99.';
+  const erro = (key: string) => i18n.t(`agendaEvento:schema.custom.${key}`);
+  if (inteiroEntre(s.intervalo, 1, 99) === null) return erro('intervalRange');
   if (s.freq === 'weekly' && s.dias_semana.length === 0) {
-    return 'Escolha ao menos um dia da semana.';
+    return erro('weekdayRequired');
   }
   if (s.termina === 'em') {
-    if (!s.ate) return 'Escolha a data final.';
+    if (!s.ate) return erro('endDateRequired');
     if (toDateOnlyString(s.ate) < toDateOnlyString(inicio)) {
-      return 'A data final precisa ser igual ou depois do início.';
+      return erro('endDateBeforeStart');
     }
   }
   if (s.termina === 'apos' && inteiroEntre(s.contagem, 1, 730) === null) {
-    return 'Use um número de 1 a 730.';
+    return erro('countRange');
   }
   return null;
 }
@@ -656,8 +652,13 @@ export function personalizadaParaRegra(s: RecorrenciaPersonalizada, inicio: Date
 
 // ---- Copy --------------------------------------------------------------------------
 
-/** "segunda, 6 de outubro" from a 'yyyy-MM-dd...' timestamp (the RPC's dtstart). */
+/** "segunda, 6 de outubro" ("Tuesday, October 6" in English) from a 'yyyy-MM-dd...'
+ *  timestamp (the RPC's dtstart). */
 export function rotuloDtstart(dtstart: string): string {
   const d = parseDateOnly(dtstart.slice(0, 10));
-  return `${WEEKDAY_NAMES[d.getDay()]}, ${format(d, "d 'de' MMMM", { locale: ptBR })}`;
+  const locale = getDateFnsLocale();
+  // WEEKDAY_NAMES keeps the lowercase pt form; English takes date-fns' capitalized weekday name.
+  const diaSemana =
+    getIntlLocale() === 'en-US' ? format(d, 'EEEE', { locale }) : WEEKDAY_NAMES[d.getDay()];
+  return `${diaSemana}, ${format(d, i18n.t('agendaEvento:schema.dtstartDate'), { locale })}`;
 }

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import type { WorkflowTemplate } from '../../../../store';
 import { STANDARD_PRESETS, presetDurationDays, type WorkflowPreset } from '../presets';
 
@@ -15,6 +16,7 @@ export function StepTemplate({
   onSelectTemplate: (t: SelectableTemplate) => void;
   onSelectZero: () => void;
 }) {
+  const { t } = useTranslation('workflows');
   return (
     <div>
       <div
@@ -29,11 +31,11 @@ export function StepTemplate({
           lineHeight: 1.7,
         }}
       >
-        <b>Fluxo</b> · o ciclo de trabalho de um cliente (ex.: posts de agosto)
+        <b>{t('wizard.glossary.fluxo')}</b> · {t('wizard.glossary.fluxoDesc')}
         <br />
-        <b>Modelo</b> · a receita reutilizável de etapas que cria fluxos
+        <b>{t('wizard.glossary.modelo')}</b> · {t('wizard.glossary.modeloDesc')}
         <br />
-        <b>Post</b> · o conteúdo dentro do fluxo, cada um com o próprio status
+        <b>{t('wizard.glossary.post')}</b> · {t('wizard.glossary.postDesc')}
       </div>
       <div style={{ marginBottom: '1.25rem' }}>
         <h5
@@ -44,16 +46,16 @@ export function StepTemplate({
             marginBottom: 6,
           }}
         >
-          Seus modelos
+          {t('wizard.yourTemplates')}
         </h5>
         {/* A template without an id cannot be selected as a source — don't render a dead row. */}
         {templates
-          .filter((t): t is SelectableTemplate => t.id != null)
-          .map((t) => (
+          .filter((tpl): tpl is SelectableTemplate => tpl.id != null)
+          .map((tpl) => (
             <button
-              key={t.id}
+              key={tpl.id}
               type="button"
-              onClick={() => onSelectTemplate(t)}
+              onClick={() => onSelectTemplate(tpl)}
               style={{
                 display: 'flex',
                 width: '100%',
@@ -67,10 +69,10 @@ export function StepTemplate({
               }}
             >
               <span>
-                📋 <span>{t.nome}</span>
+                📋 <span>{tpl.nome}</span>
               </span>
               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                {t.etapas.length} etapas
+                {t('wizard.stagesCount', { n: tpl.etapas.length })}
               </span>
             </button>
           ))}
@@ -88,7 +90,7 @@ export function StepTemplate({
             cursor: 'pointer',
           }}
         >
-          ＋ <span>Começar do zero</span>
+          ＋ <span>{t('wizard.startFromScratch')}</span>
         </button>
       </div>
       <h5
@@ -99,7 +101,7 @@ export function StepTemplate({
           marginBottom: 6,
         }}
       >
-        Sugeridos
+        {t('wizard.suggested')}
       </h5>
       <div
         style={{
@@ -129,7 +131,7 @@ export function StepTemplate({
                 <Icon className="h-5 w-5" />
                 {p.recorrente && (
                   <span className="badge badge-warning" style={{ fontSize: '0.6rem' }}>
-                    Recorrente
+                    {t('wizard.recurring')}
                   </span>
                 )}
               </div>
@@ -153,10 +155,10 @@ export function StepTemplate({
                 ))}
               </div>
               <p style={{ fontSize: '0.68rem', color: 'var(--text-muted)', margin: 0 }}>
-                {p.etapas.length} etapas · ~{presetDurationDays(p)} dias
+                {t('wizard.presetSummary', { n: p.etapas.length, d: presetDurationDays(p) })}
                 {approvals > 0 && (
                   <span style={{ marginLeft: 6, color: '#1d4ed8', fontWeight: 600 }}>
-                    {approvals > 1 ? `${approvals} aprovações externas` : 'Aprovação externa'}
+                    {t('wizard.externalApprovals', { count: approvals })}
                   </span>
                 )}
               </p>

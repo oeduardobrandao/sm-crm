@@ -1,8 +1,8 @@
 import { useId } from 'react';
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Checkbox } from '@/components/ui/checkbox';
-import { avatarColorClass } from '@/lib/avatarColor';
-import { getInitials } from '@/lib/initials';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import type { Membro } from '../../../store';
 
 // Ordem alfabética pt-BR, sem diferenciar acento nem caixa (como FilaMembroPicker).
@@ -35,6 +35,7 @@ export function ResponsaveisPanel({
   // Prefixo único por instância do painel: a contagem de cada membro vira a
   // descrição do checkbox dele (aria-describedby), e dois painéis na página não
   // podem repetir o id.
+  const { t } = useTranslation('workflows');
   const panelId = useId();
   const sorted = membros.filter((m) => m.id != null).sort(byNome);
   const toggle = (id: number, checked: boolean) =>
@@ -47,7 +48,7 @@ export function ResponsaveisPanel({
       <div className={`flex items-start justify-between gap-2${onClose ? '' : ' pr-8'}`}>
         <div className="min-w-0">
           <h2 className="text-sm font-semibold" style={{ color: 'var(--text-main)' }}>
-            Responsáveis
+            {t('responsaveisPanel.title')}
           </h2>
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
             {caption}
@@ -61,13 +62,13 @@ export function ResponsaveisPanel({
               style={{ color: 'var(--text-muted)', background: 'none', border: 'none' }}
               onClick={() => onChange([])}
             >
-              Limpar
+              {t('ui.clear')}
             </button>
           )}
           {onClose && (
             <button
               type="button"
-              aria-label="Fechar painel de responsáveis"
+              aria-label={t('responsaveisPanel.closeAria')}
               onClick={onClose}
               className="rounded-md p-1 hover:bg-[var(--surface-hover)]"
               style={{ color: 'var(--text-muted)' }}
@@ -79,7 +80,7 @@ export function ResponsaveisPanel({
       </div>
       {sorted.length === 0 ? (
         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          Nenhum membro na equipe.
+          {t('responsaveisPanel.empty')}
         </p>
       ) : (
         <ul className="flex flex-col gap-0.5">
@@ -89,13 +90,7 @@ export function ResponsaveisPanel({
             return (
               <li key={id}>
                 <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-[var(--surface-hover)]">
-                  <span
-                    className={`avatar ${avatarColorClass(id)}`}
-                    style={{ width: 22, height: 22, fontSize: '0.55rem', flexShrink: 0 }}
-                    aria-hidden="true"
-                  >
-                    {getInitials(m.nome)}
-                  </span>
+                  <PessoaAvatar nome={m.nome} fotoUrl={m.avatar_url} seed={id} size={22} />
                   <span className="min-w-0 flex-1 truncate" style={{ color: 'var(--text-main)' }}>
                     {m.nome}
                   </span>

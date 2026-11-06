@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Plus, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import {
   Command,
   CommandEmpty,
@@ -9,8 +10,7 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { avatarColorClass } from '@/lib/avatarColor';
-import { getInitials } from '@/lib/initials';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 
 export interface PessoaEquipe {
   /** auth uid (getWorkspaceUsers().id = profiles.id = auth.users.id). */
@@ -27,29 +27,22 @@ interface PessoasComboboxProps {
   disabled?: boolean;
 }
 
-const AVATAR = { width: 22, height: 22, fontSize: 10, flexShrink: 0 } as const;
-
 function Avatar({ pessoa }: { pessoa: PessoaEquipe }) {
-  if (pessoa.avatar_url) {
-    return (
-      <img
-        src={pessoa.avatar_url}
-        alt=""
-        className="avatar"
-        style={{ ...AVATAR, objectFit: 'cover' }}
-      />
-    );
-  }
   return (
-    <span className={`avatar ${avatarColorClass(pessoa.id)}`} style={AVATAR} aria-hidden="true">
-      {getInitials(pessoa.nome)}
-    </span>
+    <PessoaAvatar
+      nome={pessoa.nome}
+      fotoUrl={pessoa.avatar_url}
+      seed={pessoa.id}
+      size={22}
+      className="!text-[10px]"
+    />
   );
 }
 
 /** Multi-select of team members as avatar chips plus a searchable list
  *  (Popover + cmdk). Ids are auth uids. */
 export function PessoasCombobox({ pessoas, value, onChange, max, disabled }: PessoasComboboxProps) {
+  const { t } = useTranslation('agendaEvento');
   const [aberto, setAberto] = useState(false);
   const porId = useMemo(() => new Map(pessoas.map((p) => [p.id, p])), [pessoas]);
   const disponiveis = useMemo(
@@ -67,7 +60,7 @@ export function PessoasCombobox({ pessoas, value, onChange, max, disabled }: Pes
       style={{ borderColor: 'var(--border-color)', background: 'var(--card-bg)' }}
     >
       {value.map((id) => {
-        const p = porId.get(id) ?? { id, nome: 'Pessoa da equipe' };
+        const p = porId.get(id) ?? { id, nome: t('pessoasCombobox.memberFallback') };
         return (
           <span
             key={id}
@@ -78,7 +71,7 @@ export function PessoasCombobox({ pessoas, value, onChange, max, disabled }: Pes
             {p.nome}
             <button
               type="button"
-              aria-label={`Remover ${p.nome}`}
+              aria-label={t('pessoasCombobox.remove', { name: p.nome })}
               disabled={disabled}
               onClick={() => onChange(value.filter((v) => v !== id))}
               className="rounded px-0.5"
@@ -98,14 +91,14 @@ export function PessoasCombobox({ pessoas, value, onChange, max, disabled }: Pes
             style={{ color: 'var(--text-light)' }}
           >
             <Plus className="h-3.5 w-3.5" />
-            Adicionar pessoa da equipe
+            {t('pessoasCombobox.add')}
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-72 p-0" align="start">
           <Command>
-            <CommandInput placeholder="Buscar pessoa" />
+            <CommandInput placeholder={t('pessoasCombobox.search')} />
             <CommandList>
-              <CommandEmpty>Ninguém encontrado.</CommandEmpty>
+              <CommandEmpty>{t('pessoasCombobox.empty')}</CommandEmpty>
               <CommandGroup>
                 {disponiveis.map((p) => (
                   <CommandItem

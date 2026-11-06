@@ -1,5 +1,6 @@
 import { ReactNode, useContext, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useEntitlements } from '../../hooks/useEntitlements';
 import { AuthContext } from '../../context/AuthContext';
 import { reportPaywallHit } from '../../lib/paywall-report';
@@ -14,6 +15,7 @@ export function FeatureGate({
   label?: string;
   children: ReactNode;
 }) {
+  const { t } = useTranslation();
   const { hasFeature, isLoading } = useEntitlements();
   const navigate = useNavigate();
   // Read the context directly (not useAuth) so the gate stays usable outside
@@ -33,7 +35,7 @@ export function FeatureGate({
   if (isLoading || hasFeature(flag)) return <>{children}</>;
   return (
     <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-      <p>{label ?? 'Este recurso'} não está disponível no seu plano.</p>
+      <p>{t('paywall.notAvailable', { label: label ?? t('paywall.thisFeature') })}</p>
       <button
         className="mt-2 underline text-primary"
         onClick={() => {
@@ -43,7 +45,7 @@ export function FeatureGate({
           navigate('/configuracao/cobranca');
         }}
       >
-        Fazer upgrade
+        {t('usage.upgrade')}
       </button>
     </div>
   );

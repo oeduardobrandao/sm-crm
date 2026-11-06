@@ -40,6 +40,17 @@ describe('prefetchHubShell', () => {
     expect(mockedFetchPosts).toHaveBeenCalledWith('token-publico');
   });
 
+  it('prefetches with the hyphenated UUID when the link carries the compact token', () => {
+    const qc = createHubQueryClient();
+    prefetchHubShell(qc, '/mesaas/hub/b6a359fbaf56470a8f0a7e215a67b9b9/briefing');
+
+    expect(mockedFetchBootstrap).toHaveBeenCalledWith(
+      'mesaas',
+      'b6a359fb-af56-470a-8f0a-7e215a67b9b9',
+    );
+    expect(mockedFetchPosts).toHaveBeenCalledWith('b6a359fb-af56-470a-8f0a-7e215a67b9b9');
+  });
+
   it('does nothing outside a hub link', () => {
     const qc = createHubQueryClient();
     prefetchHubShell(qc, '/relatorios/print/doc-1');

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { PostStatusDefinition } from '../../../store';
 import {
   buildStatusRegistry,
+  canonicalOfStatusKey,
   customKey,
   groupOptionsByOwner,
   isStatusKeyToken,
@@ -103,6 +104,18 @@ describe('statusKeyToPatch', () => {
       status: 'aprovado_interno',
       custom_status_id: null,
     });
+  });
+});
+
+describe('canonicalOfStatusKey', () => {
+  it('resolves a canonical key to itself and a custom key to its behaves_as', () => {
+    const registry = buildStatusRegistry([def({ id: UUID_A, behaves_as: 'aprovado_cliente' })]);
+    expect(canonicalOfStatusKey('agendado', registry)).toBe('agendado');
+    expect(canonicalOfStatusKey(customKey(UUID_A), registry)).toBe('aprovado_cliente');
+  });
+
+  it('is undefined for a custom key the registry does not hold', () => {
+    expect(canonicalOfStatusKey(customKey(UUID_C), buildStatusRegistry([]))).toBeUndefined();
   });
 });
 

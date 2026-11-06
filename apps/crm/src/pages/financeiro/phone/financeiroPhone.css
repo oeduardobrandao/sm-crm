@@ -1,0 +1,132 @@
+/* ===== FINANCEIRO ON PHONES (PLAN F2d, FFinanceiro + FFinanceiroSelecao mockups) =======
+   Summary card and month sheet of the phone branch. Rows, pills and the selection bar
+   come from components/phone-crud/phoneCrud.css. Every class is `phone-fin-*` and reads
+   the kit's `--phone-*` tokens. */
+
+/* ---- Resumo do mês: two big balances over three small totals ---- */
+.phone-kit.phone-fin-summary {
+  margin: 0 0 14px;
+  padding: 12px 16px;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+  color: var(--phone-label);
+}
+.phone-fin-summary__main,
+.phone-fin-summary__minor {
+  display: flex;
+  gap: 12px;
+}
+.phone-fin-summary__main {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--phone-separator);
+}
+.phone-fin-summary__minor {
+  padding-top: 10px;
+}
+.phone-fin-summary__cell {
+  flex: 1;
+  min-width: 0;
+}
+.phone-fin-summary__label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--phone-label-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.phone-fin-summary__main .phone-fin-summary__label {
+  font-size: var(--phone-text-footnote);
+}
+.phone-fin-summary__big {
+  display: block;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.phone-fin-summary__big--in {
+  color: #15803d;
+}
+.phone-fin-summary__big--out {
+  color: #b91c1c;
+}
+[data-theme='dark'] .phone-fin-summary__big--in {
+  color: #3ecf8e;
+}
+[data-theme='dark'] .phone-fin-summary__big--out {
+  color: #f87171;
+}
+.phone-fin-summary__small {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.phone-fin-summary__dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+}
+.phone-fin-summary__dot--in {
+  background: #15803d;
+}
+.phone-fin-summary__dot--pending {
+  background: #b45309;
+}
+.phone-fin-summary__dot--out {
+  background: #b91c1c;
+}
+
+/* ---- Month sheet ---- */
+.phone-fin-month {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 24px;
+  color: var(--phone-label);
+}
+.phone-fin-month__year {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.phone-fin-month__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.phone-fin-month__item,
+.phone-fin-month__all {
+  height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--phone-cell);
+  color: var(--phone-label);
+  font-family: var(--font-main);
+  font-size: var(--phone-text-subhead);
+  text-transform: capitalize;
+  cursor: pointer;
+}
+.phone-fin-month__item[aria-pressed='true'],
+.phone-fin-month__all[aria-pressed='true'] {
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+  font-weight: 600;
+}
+.phone-fin-month__all {
+  text-transform: none;
+}
+.phone-fin-month__item:focus-visible,
+.phone-fin-month__all:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}

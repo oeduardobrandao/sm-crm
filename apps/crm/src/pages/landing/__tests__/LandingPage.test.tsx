@@ -10,10 +10,21 @@ const authState = vi.hoisted(() => ({
 
 vi.mock('@/services/billing', () => ({
   listPublicPricingPlans: vi.fn(),
+  getEffectivePlanWithSource: vi.fn(),
+  getWorkspaceSubscription: vi.fn(),
+  hasUsedTrial: (
+    sub: { hasEverSubscribed?: boolean } | null | undefined,
+    plan: { wasDemo?: boolean } | null | undefined,
+  ) => Boolean(sub?.hasEverSubscribed || plan?.wasDemo),
 }));
 
-import { listPublicPricingPlans } from '@/services/billing';
+import {
+  getEffectivePlanWithSource,
+  getWorkspaceSubscription,
+  listPublicPricingPlans,
+} from '@/services/billing';
 import LandingPage from '../LandingPage';
+import { HERO_MACBOOK_SIZES, HERO_MACBOOK_SRCSET } from '../landing-visuals';
 
 vi.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: authState.user, loading: false, profile: null, role: 'owner' }),
@@ -23,6 +34,7 @@ vi.mock('@/context/AuthContext', () => ({
 const PAID_FEATURES = {
   feature_analytics_reports: true,
   feature_post_scheduling: true,
+  feature_tiktok: true,
   feature_leads: true,
   feature_financial: true,
   feature_contracts: true,
@@ -44,9 +56,11 @@ const PRICING_PLANS: PublicPricingPlan[] = [
     max_workflow_templates: 1,
     max_instagram_accounts: 1,
     max_hub_tokens: 0,
+    rate_report_generations_per_month: 0,
     storage_quota_bytes: 100 * 1024 ** 2,
     feature_analytics_reports: false,
     feature_post_scheduling: false,
+    feature_tiktok: false,
     feature_leads: false,
     feature_financial: false,
     feature_contracts: false,
@@ -68,6 +82,7 @@ const PRICING_PLANS: PublicPricingPlan[] = [
     max_workflow_templates: 3,
     max_instagram_accounts: 5,
     max_hub_tokens: 5,
+    rate_report_generations_per_month: 10,
     storage_quota_bytes: 5 * 1024 ** 3,
     ...PAID_FEATURES,
     pagarme_12x_enabled: false,
@@ -84,6 +99,7 @@ const PRICING_PLANS: PublicPricingPlan[] = [
     max_workflow_templates: null,
     max_instagram_accounts: 15,
     max_hub_tokens: 15,
+    rate_report_generations_per_month: 30,
     storage_quota_bytes: 10 * 1024 ** 3,
     ...PAID_FEATURES,
     pagarme_12x_enabled: false,
@@ -100,6 +116,7 @@ const PRICING_PLANS: PublicPricingPlan[] = [
     max_workflow_templates: null,
     max_instagram_accounts: null,
     max_hub_tokens: null,
+    rate_report_generations_per_month: null,
     storage_quota_bytes: 25 * 1024 ** 3,
     ...PAID_FEATURES,
     pagarme_12x_enabled: false,
@@ -171,6 +188,14 @@ describe('LandingPage', () => {
     MockIntersectionObserver.instances = [];
     vi.stubGlobal('IntersectionObserver', MockIntersectionObserver);
     vi.mocked(listPublicPricingPlans).mockResolvedValue(PRICING_PLANS);
+    // Signed-in visitor on Free who never trialed: the trial copy stays on the paid CTAs.
+    vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+      planId: 'free',
+      planSource: 'system',
+      wasDemo: false,
+      trialOfferSeenAt: null,
+    });
+    vi.mocked(getWorkspaceSubscription).mockResolvedValue(null);
     document.body.classList.remove('landing-page');
     document.documentElement.removeAttribute('data-theme');
     localStorage.clear();
@@ -192,6 +217,21 @@ describe('LandingPage', () => {
     expect(screen.queryByRole('button', { name: 'Alternar tema' })).not.toBeInTheDocument();
   });
 
+  it('serves responsive srcsets for the screenshots, hero matching the preload contract', () => {
+    renderLandingPage();
+
+    const macbook = document.querySelector('img.lp2-hd-macbook');
+    expect(macbook).toHaveAttribute('srcset', HERO_MACBOOK_SRCSET);
+    expect(macbook).toHaveAttribute('sizes', HERO_MACBOOK_SIZES);
+    expect(macbook).toHaveAttribute('fetchpriority', 'high');
+    const shots = document.querySelectorAll('img.lp2-shot, img.lp2-hd-iphone');
+    expect(shots.length).toBe(5);
+    shots.forEach((img) => {
+      expect(img.getAttribute('srcset')).toMatch(/-dark-\d+w\.webp \d+w/);
+      expect(img).toHaveAttribute('sizes');
+    });
+  });
+
   it('shows the promo banner and hides it (persisted) after dismissing', () => {
     renderLandingPage();
 
@@ -206,7 +246,7 @@ describe('LandingPage', () => {
     expect(localStorage.getItem('mesaas_promo_dismissed')).toBe('1');
   });
 
-  it('wires scroll buttons to the right sections and exposes the auth CTAs', async () => {
+  it('wires scroll buttons and nav links to the right sections and exposes the auth CTAs', async () => {
     renderLandingPage();
     triggerPricingIntersection();
     await screen.findByRole('heading', { name: 'Start', level: 3 });
@@ -219,14 +259,19 @@ describe('LandingPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Ver como funciona/i }));
     expect(featuresScroll).toHaveBeenCalledWith({ behavior: 'smooth' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Agente IA' }));
-    expect(agenteScroll).toHaveBeenCalledWith({ behavior: 'smooth' });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Preços' }));
-    expect(pricingScroll).toHaveBeenCalledWith({ behavior: 'smooth' });
-
-    fireEvent.click(screen.getByRole('button', { name: 'FAQ' }));
-    expect(faqScroll).toHaveBeenCalledWith({ behavior: 'smooth' });
+    // Header nav items are real anchors (they still work in the server HTML without JS);
+    // with JS the click scrolls smoothly instead of jumping.
+    const nav = within(document.querySelector<HTMLElement>('.hdr-nav')!);
+    for (const [name, id, scroll] of [
+      ['Agente IA', 'agente', agenteScroll],
+      ['Preços', 'pricing', pricingScroll],
+      ['FAQ', 'faq', faqScroll],
+    ] as const) {
+      const link = nav.getByRole('link', { name });
+      expect(link).toHaveAttribute('href', `#${id}`);
+      expect(fireEvent.click(link)).toBe(false); // default prevented: no jump, no hash
+      expect(scroll).toHaveBeenCalledWith({ behavior: 'smooth' });
+    }
 
     const registerLinks = screen
       .getAllByRole('link')
@@ -276,8 +321,9 @@ describe('LandingPage', () => {
     expect(
       within(freeCard as HTMLElement).getByRole('link', { name: 'Acessar painel' }),
     ).toHaveAttribute('href', '/dashboard');
+    // The trial label waits for the subscription lookups, so it appears after the cards.
     expect(
-      within(startCard as HTMLElement).getByRole('link', { name: 'Começar teste grátis' }),
+      await within(startCard as HTMLElement).findByRole('link', { name: 'Começar teste grátis' }),
     ).toHaveAttribute('href', '/configuracao/cobranca');
 
     const comparison = screen.getByRole('table', { name: 'Comparação detalhada dos planos' });
@@ -526,6 +572,7 @@ describe('LandingPage', () => {
         max_workflow_templates: null,
         max_instagram_accounts: null,
         max_hub_tokens: null,
+        rate_report_generations_per_month: null,
         storage_quota_bytes: null,
         ...PAID_FEATURES,
       },

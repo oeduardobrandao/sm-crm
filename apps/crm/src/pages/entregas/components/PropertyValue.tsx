@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { getIntlLocale, i18n } from '@mesaas/i18n';
 import { sanitizeUrl } from '../../../router';
 import {
   upsertPostPropertyValue,
@@ -22,19 +24,20 @@ interface Props {
 
 function formatDisplayValue(definition: TemplatePropertyDefinition, value: unknown): string {
   if (value == null) return '';
-  if (definition.type === 'checkbox') return (value as boolean) ? 'Sim' : 'Não';
+  if (definition.type === 'checkbox')
+    return i18n.t((value as boolean) ? 'common:actions.yes' : 'common:actions.no');
   if (definition.type === 'date') {
     const raw = String(value);
     const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    return m ? `${m[3]}/${m[2]}/${m[1]}` : raw;
+    return m ? i18n.t('workflows:propertyValue.dateValue', { d: m[3], m: m[2], y: m[1] }) : raw;
   }
   if (definition.type === 'number') {
     const fmt = (definition.config.format as string) ?? 'integer';
     const num = Number(value);
     if (fmt === 'currency')
-      return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      return num.toLocaleString(getIntlLocale(), { style: 'currency', currency: 'BRL' });
     if (fmt === 'percentage') return `${num}%`;
-    if (fmt === 'decimal') return num.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+    if (fmt === 'decimal') return num.toLocaleString(getIntlLocale(), { minimumFractionDigits: 2 });
     return String(Math.round(num));
   }
   if (definition.type === 'person') {
@@ -52,6 +55,7 @@ export function PropertyValue({
   membros,
   readOnly,
 }: Props) {
+  const { t } = useTranslation('workflows');
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [localValue, setLocalValue] = useState<unknown>(initialValue);
@@ -85,7 +89,7 @@ export function PropertyValue({
         await upsertPostPropertyValue(postId, definition.id!, val);
         qc.invalidateQueries({ queryKey: ['workflow-posts-with-props'] });
       } catch {
-        toast.error('Erro ao salvar propriedade');
+        toast.error(t('propertyValue.saveError'));
       }
     }, 1500);
   };
@@ -114,7 +118,7 @@ export function PropertyValue({
       }
       setNewOptionLabel('');
     } catch {
-      toast.error('Erro ao criar opção');
+      toast.error(t('propertyValue.optionError'));
     }
   };
 
@@ -144,7 +148,7 @@ export function PropertyValue({
                   : 'text'
           }
           value={(localValue as string) ?? ''}
-          placeholder={`Inserir ${definition.name.toLowerCase()}…`}
+          placeholder={t('propertyValue.inputPlaceholder', { name: definition.name.toLowerCase() })}
           onChange={(e) => handleChange(e.target.value)}
           onBlur={() => setEditing(false)}
           autoFocus
@@ -211,7 +215,7 @@ export function PropertyValue({
             }}
             autoFocus
           >
-            <option value="">Nenhum</option>
+            <option value="">{t('propertyValue.none')}</option>
             {allOptions.map((opt) => (
               <option key={opt.id} value={opt.id}>
                 {opt.label}
@@ -221,7 +225,7 @@ export function PropertyValue({
           <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
             <input
               className="drawer-input"
-              placeholder="+ Nova opção"
+              placeholder={t('propertyValue.newOption')}
               value={newOptionLabel}
               onChange={(e) => setNewOptionLabel(e.target.value)}
               onKeyDown={(e) => {
@@ -271,7 +275,7 @@ export function PropertyValue({
           <div style={{ display: 'flex', gap: 4 }}>
             <input
               className="drawer-input"
-              placeholder="+ Nova opção"
+              placeholder={t('propertyValue.newOption')}
               value={newOptionLabel}
               onChange={(e) => setNewOptionLabel(e.target.value)}
               onKeyDown={(e) => {
@@ -305,7 +309,7 @@ export function PropertyValue({
               setEditing(false);
             }}
           >
-            <option value="">Selecionar membro…</option>
+            <option value="">{t('propertyValue.selectMember')}</option>
             {membros.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.nome}
@@ -314,7 +318,7 @@ export function PropertyValue({
           </select>
           <input
             className="drawer-input"
-            placeholder="Ou nome externo…"
+            placeholder={t('propertyValue.externalName')}
             value={val.membro_id ? '' : (val.name ?? '')}
             onChange={(e) => handleChange({ name: e.target.value })}
             style={{ fontSize: '0.82rem', padding: '3px 6px' }}
@@ -329,7 +333,11 @@ export function PropertyValue({
 
   const renderDisplay = () => {
     if (definition.type === 'created_time') {
-      return <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Auto</span>;
+      return (
+        <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+          {t('propertyValue.auto')}
+        </span>
+      );
     }
     if (
       localValue == null ||
@@ -338,13 +346,15 @@ export function PropertyValue({
     ) {
       return (
         <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-          Vazio
+          {t('propertyValue.empty')}
         </span>
       );
     }
     if (definition.type === 'checkbox') {
       return (
-        <span style={{ fontSize: '0.82rem' }}>{(localValue as boolean) ? '☑ Sim' : '☐ Não'}</span>
+        <span style={{ fontSize: '0.82rem' }}>
+          {(localValue as boolean) ? t('propertyValue.checkedYes') : t('propertyValue.checkedNo')}
+        </span>
       );
     }
     if (definition.type === 'select' || definition.type === 'status') {
@@ -352,7 +362,7 @@ export function PropertyValue({
       if (!opt)
         return (
           <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-            Vazio
+            {t('propertyValue.empty')}
           </span>
         );
       return (

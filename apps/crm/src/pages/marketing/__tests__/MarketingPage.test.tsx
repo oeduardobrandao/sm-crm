@@ -31,5 +31,8 @@ describe('MarketingPage', () => {
     expect(screen.getByText('Seção')).toBeInTheDocument();
     expect(screen.getByText('P?')).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: /Criar conta grátis/ }).length).toBeGreaterThan(0);
+    expect(
+      screen.getByText('O Free não pede cartão · planos pagos com 30 dias grátis'),
+    ).toBeVisible();
   });
 });

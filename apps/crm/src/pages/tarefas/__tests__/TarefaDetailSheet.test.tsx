@@ -1,8 +1,10 @@
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
-import type { TarefaWithRelations } from '../../../store';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { fakeMembership } from '@/test/makeCan';
+import type { Membro, TarefaEvento, TarefaWithRelations } from '../../../store';
 
 const {
   deleteTarefaMock,
@@ -11,13 +13,24 @@ const {
   getSubtarefasMock,
   toastSuccessMock,
   toastErrorMock,
+  getTarefaEventosMock,
+  getTarefaComentariosMock,
+  updateTarefaMock,
 } = vi.hoisted(() => ({
+  getTarefaEventosMock: vi.fn(),
+  getTarefaComentariosMock: vi.fn(),
+  updateTarefaMock: vi.fn(),
   deleteTarefaMock: vi.fn(),
   deleteSerieMock: vi.fn(),
   definirEstadoMock: vi.fn(),
   getSubtarefasMock: vi.fn(),
   toastSuccessMock: vi.fn(),
   toastErrorMock: vi.fn(),
+}));
+
+const ctxAuth = vi.hoisted(() => ({
+  membership: null as unknown,
+  getClienteContexto: vi.fn(),
 }));
 
 vi.mock('../../../store', async (importOriginal) => {
@@ -28,10 +41,40 @@ vi.mock('../../../store', async (importOriginal) => {
     deleteTarefaSerieCompleta: deleteSerieMock,
     definirEstadoSerie: definirEstadoMock,
     getSubtarefas: getSubtarefasMock,
-    updateTarefa: vi.fn(),
+    updateTarefa: updateTarefaMock,
+    getTarefaEventos: getTarefaEventosMock,
+    // The comments section (TarefaComentarios.test.tsx covers it): an empty thread, so no
+    // own-comment "Editar"/"Excluir" buttons collide with the header's.
+    getTarefaComentarios: getTarefaComentariosMock,
+    getWorkspaceUsers: vi.fn(async () => []),
+    getMembros: vi.fn(async () => []),
+    getClientes: vi.fn(async () => []),
+    getTarefas: vi.fn(async () => []),
+    getClienteContexto: ctxAuth.getClienteContexto,
   };
 });
 vi.mock('sonner', () => ({ toast: { success: toastSuccessMock, error: toastErrorMock } }));
+vi.mock('@/lib/supabase');
+vi.mock('@mesaas/app-lifecycle', () => ({
+  useUnsavedWork: vi.fn(),
+  trackUnsavedWork: vi.fn((p: Promise<unknown>) => p),
+}));
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({
+    features: null,
+    isUnlimited: false,
+    limits: null,
+    isLoading: false,
+  }),
+}));
+vi.mock('@/context/AuthContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/context/AuthContext')>()),
+  useAuth: () => ({
+    user: { id: 'user-me' },
+    profile: { conta_id: 'conta-1' },
+    membership: ctxAuth.membership,
+  }),
+}));
 // Same reasoning as TarefaCard.test.tsx: Radix DropdownMenu does not open under jsdom.
 vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -82,6 +125,7 @@ function makeTarefa(overrides: Partial<TarefaWithRelations> = {}): TarefaWithRel
     tags: [],
     subtarefas_total: 0,
     subtarefas_concluidas: 0,
+    comentarios_total: 0,
     cliente_nome: null,
     cliente_cor: null,
     serie: null,
@@ -89,28 +133,47 @@ function makeTarefa(overrides: Partial<TarefaWithRelations> = {}): TarefaWithRel
   };
 }
 
-function renderSheet(tarefa: TarefaWithRelations, onRefresh = vi.fn()) {
+function renderSheet(
+  tarefa: TarefaWithRelations,
+  onRefresh = vi.fn(),
+  extra: Partial<React.ComponentProps<typeof TarefaDetailSheet>> = {},
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   render(
     <QueryClientProvider client={qc}>
-      <TarefaDetailSheet
-        tarefa={tarefa}
-        membros={[]}
-        onClose={() => {}}
-        onEdit={() => {}}
-        onRefresh={onRefresh}
-      />
+      <MemoryRouter>
+        <TarefaDetailSheet
+          tarefa={tarefa}
+          membros={[]}
+          onClose={() => {}}
+          onEdit={() => {}}
+          onRefresh={onRefresh}
+          {...extra}
+        />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
   return onRefresh;
 }
 
+const scrollIntoViewMock = vi.fn();
+const originalScrollIntoView = Element.prototype.scrollIntoView;
+
 beforeEach(() => {
   vi.clearAllMocks();
+  ctxAuth.membership = null;
+  Element.prototype.scrollIntoView = scrollIntoViewMock;
   getSubtarefasMock.mockResolvedValue([]);
+  getTarefaEventosMock.mockResolvedValue([]);
+  getTarefaComentariosMock.mockResolvedValue([]);
+  updateTarefaMock.mockResolvedValue(undefined);
   deleteTarefaMock.mockResolvedValue(undefined);
   deleteSerieMock.mockResolvedValue(undefined);
   definirEstadoMock.mockResolvedValue(undefined);
+});
+
+afterEach(() => {
+  Element.prototype.scrollIntoView = originalScrollIntoView;
 });
 
 describe('TarefaDetailSheet series', () => {
@@ -211,5 +274,168 @@ describe('TarefaDetailSheet series', () => {
     expect(
       screen.queryByText('A próxima ocorrência será criada normalmente.'),
     ).not.toBeInTheDocument();
+  });
+});
+
+const ANA_UID = 'user-ana';
+const MEMBROS = [{ id: 1, nome: 'Ana', crm_user_id: ANA_UID }] as unknown as Membro[];
+
+function evento(overrides: Partial<TarefaEvento>): TarefaEvento {
+  return {
+    id: 1,
+    tarefa_id: 42,
+    tipo: 'status',
+    actor_user_id: ANA_UID,
+    actor_nome: 'Ana',
+    de: 'pendente',
+    para: 'em_andamento',
+    txid: 1,
+    created_at: '2026-10-28T12:00:00Z',
+    ...overrides,
+  };
+}
+
+describe('TarefaDetailSheet header, history and comments', () => {
+  it('header has Histórico, Editar, Excluir buttons by name and no bottom action row', async () => {
+    const onEdit = vi.fn();
+    renderSheet(makeTarefa(), vi.fn(), { onEdit });
+    const actions = screen.getByRole('group', { name: 'Ações da tarefa' });
+    expect(within(actions).getByRole('button', { name: 'Histórico' })).toBeInTheDocument();
+    expect(within(actions).getByRole('button', { name: 'Editar' })).toBeInTheDocument();
+    expect(within(actions).getByRole('button', { name: 'Excluir' })).toBeInTheDocument();
+    // The old Edit/Delete row at the bottom is gone: one of each, in the header.
+    expect(screen.getAllByRole('button', { name: 'Editar' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Excluir' })).toHaveLength(1);
+    fireEvent.click(within(actions).getByRole('button', { name: 'Editar' }));
+    expect(onEdit).toHaveBeenCalled();
+  });
+
+  it('Histórico swaps the body to the timeline and Voltar returns', async () => {
+    getTarefaEventosMock.mockResolvedValue([evento({})]);
+    renderSheet(makeTarefa(), vi.fn(), { membros: MEMBROS });
+    expect(getTarefaEventosMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Histórico' }));
+
+    expect(
+      await screen.findByText('Ana mudou o status de A fazer para Em andamento'),
+    ).toBeInTheDocument();
+    expect(getTarefaEventosMock).toHaveBeenCalledWith(42);
+    expect(screen.getByRole('heading', { name: 'Histórico' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Em andamento' })).not.toBeInTheDocument();
+    expect(document.getElementById('tarefa-comentarios')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar' }));
+    expect(screen.getByRole('button', { name: 'Em andamento' })).toBeInTheDocument();
+    expect(
+      screen.queryByText('Ana mudou o status de A fazer para Em andamento'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('history shows loading then nodes, and an error line with Tentar novamente on failure', async () => {
+    let resolve!: (v: TarefaEvento[]) => void;
+    getTarefaEventosMock.mockReturnValueOnce(new Promise((r) => (resolve = r)));
+    renderSheet(makeTarefa(), vi.fn(), { membros: MEMBROS });
+    fireEvent.click(screen.getByRole('button', { name: 'Histórico' }));
+    expect(screen.getByRole('status', { name: 'Carregando histórico' })).toBeInTheDocument();
+    resolve([evento({})]);
+    expect(
+      await screen.findByText('Ana mudou o status de A fazer para Em andamento'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: 'Carregando histórico' })).not.toBeInTheDocument();
+  });
+
+  it('history error shows a retry that refetches', async () => {
+    getTarefaEventosMock
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce([evento({})]);
+    renderSheet(makeTarefa(), vi.fn(), { membros: MEMBROS });
+    fireEvent.click(screen.getByRole('button', { name: 'Histórico' }));
+    expect(await screen.findByText('Não foi possível carregar o histórico.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+    expect(
+      await screen.findByText('Ana mudou o status de A fazer para Em andamento'),
+    ).toBeInTheDocument();
+    expect(getTarefaEventosMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('reopening the history after a change made from the sheet shows the new entry', async () => {
+    getTarefaEventosMock.mockResolvedValue([evento({})]);
+    renderSheet(makeTarefa(), vi.fn(), { membros: MEMBROS });
+    fireEvent.click(screen.getByRole('button', { name: 'Histórico' }));
+    await screen.findByText('Ana mudou o status de A fazer para Em andamento');
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Em andamento' }));
+    await waitFor(() =>
+      expect(updateTarefaMock).toHaveBeenCalledWith(42, { status: 'em_andamento' }),
+    );
+    getTarefaEventosMock.mockResolvedValue([
+      evento({ id: 2, de: 'em_andamento', para: 'concluida', created_at: '2026-10-28T13:00:00Z' }),
+      evento({}),
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Histórico' }));
+    expect(
+      await screen.findByText('Ana mudou o status de Em andamento para Concluída'),
+    ).toBeInTheDocument();
+  });
+
+  it('comments section renders last', async () => {
+    renderSheet(makeTarefa());
+    expect(
+      await screen.findByText('Nenhum comentário ainda. Use @ para mencionar alguém.'),
+    ).toBeInTheDocument();
+    const section = document.getElementById('tarefa-comentarios');
+    expect(section).not.toBeNull();
+    expect(section!.parentElement!.lastElementChild).toBe(section);
+    // After the checklist.
+    const subtaskInput = screen.getByPlaceholderText('Nova subtarefa...');
+    expect(
+      subtaskInput.compareDocumentPosition(section!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('focusComments scrolls to the comments once; Histórico and Voltar do not refocus', async () => {
+    renderSheet(makeTarefa(), vi.fn(), { focusComments: true });
+    await waitFor(() => expect(scrollIntoViewMock).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Histórico' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Voltar' }));
+    await screen.findByText('Nenhum comentário ainda. Use @ para mencionar alguém.');
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    expect(scrollIntoViewMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('without focusComments nothing scrolls', async () => {
+    renderSheet(makeTarefa());
+    await screen.findByText('Nenhum comentário ainda. Use @ para mencionar alguém.');
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    expect(scrollIntoViewMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('client identity for a restricted member (acesso por cliente)', () => {
+  beforeEach(() => {
+    ctxAuth.getClienteContexto.mockResolvedValue({
+      id: 7,
+      nome: 'Clínica Sol',
+      sigla: 'CS',
+      cor: null,
+      foto_url: null,
+    });
+  });
+
+  it('scoped and missing: shows the client name from get_cliente_contexto', async () => {
+    ctxAuth.membership = fakeMembership({ role: 'agent', client_scope: 'atribuidos' });
+    renderSheet(makeTarefa({ cliente_id: 7, cliente_nome: null }));
+
+    expect(await screen.findByText('Clínica Sol')).toBeInTheDocument();
+    expect(ctxAuth.getClienteContexto).toHaveBeenCalledWith(7);
+  });
+
+  it('todos_unchanged: an unscoped member never calls the RPC', async () => {
+    ctxAuth.membership = fakeMembership({ role: 'agent', client_scope: 'todos' });
+    renderSheet(makeTarefa({ cliente_id: 7, cliente_nome: null }));
+
+    expect((await screen.findAllByText('Relatório')).length).toBeGreaterThan(0);
+    expect(screen.queryByText('Clínica Sol')).toBeNull();
+    expect(ctxAuth.getClienteContexto).not.toHaveBeenCalled();
   });
 });

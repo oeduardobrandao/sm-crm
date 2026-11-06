@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm, useWatch } from 'react-hook-form';
+import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -29,9 +31,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
+import { usePhoneLayout } from '@/components/layout/PhoneLayoutContext';
+import { GroupedList } from '@/components/mobile/GroupedList';
+import { FormRow } from '@/components/mobile/FormRow';
+import { PickerCell } from '@/components/mobile/PickerSheet';
 import { useAuth } from '@/context/AuthContext';
 import { captureEvent } from '@/lib/analytics';
-import { stripFinancialFields } from '@/lib/financialAccess';
+import { stripFinancialFields, type FinancialAccess } from '@/lib/financialAccess';
+import { isClientScoped } from '@/lib/permissions';
 import { supabase } from '@/lib/supabase';
 import { inviteUser } from '@/services/invite';
 import {
@@ -43,7 +50,9 @@ import {
   updateWorkspaceUserRole,
   type Membro,
 } from '@/store';
+import { useFinanceiroV2 } from '@/hooks/useFinanceiroV2';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
+import { useWorkspaceMemberEmails } from '@/hooks/useWorkspaceMemberEmails';
 import { inviteSuccessMessage } from '../configuracao/inviteHelpers';
 import { InviteSection } from './InviteSection';
 import { computeSeatState, derivePendingInvites, membroInviteErrorMessage } from './inviteSupport';
@@ -63,8 +72,12 @@ interface MembroFormDialogProps {
 }
 
 export function MembroFormDialog({ open, membro, membros, onOpenChange }: MembroFormDialogProps) {
+  const { t } = useTranslation('team');
   const qc = useQueryClient();
-  const { canSeeFinancials, can, workspaceRole, profile, user } = useAuth();
+  const { canSeeFinancials, can, workspaceRole, profile, user, membership } = useAuth();
+  // A member restricted to assigned clients reads membros_v.custo_mensal as NULL and cannot
+  // write it: no cost field, and the save leaves custo_mensal out.
+  const costAccess: FinancialAccess = isClientScoped(membership) ? false : canSeeFinancials;
   const canManageWorkspace = can('equipe', 'editar') === true;
   const canAssignRoles = workspaceRole === 'owner' || workspaceRole === 'admin';
   const [saving, setSaving] = useState(false);
@@ -74,6 +87,16 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
   });
   const inviteEnabled = useWatch({ control: form.control, name: 'inviteEnabled' });
   const crmUserId = useWatch({ control: form.control, name: 'crmUserId' });
+  const tipo = useWatch({ control: form.control, name: 'tipo' });
+  const crmRole = useWatch({ control: form.control, name: 'crmRole' });
+  // Phone rows follow the dialog primitive, which becomes a sheet only inside the phone
+  // shell (PhoneLayoutContext); a dialog rendered elsewhere keeps the desktop fields.
+  const { isPhone } = usePhoneLayout();
+  // With Financeiro v2 the cost lives in the member's acordo. Editing an existing member no
+  // longer shows or writes custo_mensal / data_pagamento (a stale hidden value must not be
+  // written back); creating one keeps the fields, the database seeds the first acordo from them.
+  const { ativo: financeiroV2 } = useFinanceiroV2();
+  const custoNoAcordo = financeiroV2 && !!membro;
 
   const { data: workspaceUsers = [] } = useQuery({
     queryKey: ['workspace-users'],
@@ -92,6 +115,7 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
       ),
     [membros, membro?.id],
   );
+  const memberEmails = useWorkspaceMemberEmails();
   const availableWorkspaceUsers = useMemo(
     () => workspaceUsers.filter((u: { id: string }) => !linkedElsewhere.has(u.id)),
     [workspaceUsers, linkedElsewhere],
@@ -168,18 +192,21 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
     if (canSeeFinancials !== true) onOpenChange(false);
   }, [canSeeFinancials, onOpenChange]);
 
+  const { errors } = form.formState;
+
   const onSubmit = async (values: MembroFormValues) => {
     const diaPag = values.diaPag ? parseInt(values.diaPag, 10) : undefined;
     setSaving(true);
     try {
-      const payload: Omit<Membro, 'id' | 'user_id' | 'conta_id' | 'avatar_url'> = {
+      const payload: Partial<Omit<Membro, 'id' | 'user_id' | 'conta_id' | 'avatar_url'>> = {
         nome: values.nome,
         cargo: values.cargo,
         tipo: values.tipo,
-        custo_mensal: values.custo ? Number(values.custo) : null,
-        data_pagamento: diaPag,
+        ...(custoNoAcordo
+          ? {}
+          : { custo_mensal: values.custo ? Number(values.custo) : null, data_pagamento: diaPag }),
       };
-      const safePayload = stripFinancialFields(payload, canSeeFinancials, ['custo_mensal']);
+      const safePayload = stripFinancialFields(payload, costAccess, ['custo_mensal']);
       const desiredCrmUser =
         values.crmUserId === '' || values.crmUserId == null ? null : values.crmUserId;
       let membroId: number | undefined;
@@ -192,10 +219,9 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
         await updateMembro(membro.id, safePayload);
         membroId = membro.id;
       } else {
-        const created = await addMembro({
-          ...safePayload,
-          avatar_url: '',
-        } as Omit<Membro, 'id' | 'user_id' | 'conta_id'>);
+        const created = await addMembro(
+          safePayload as Omit<Membro, 'id' | 'user_id' | 'conta_id' | 'avatar_url'>,
+        );
         membroId = created.id;
       }
 
@@ -216,9 +242,7 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
           );
         } catch (err) {
           roleFailed = true;
-          toast.error(
-            'Membro salvo, mas não foi possível alterar a função: ' + (err as Error).message,
-          );
+          toast.error(t('membroFormDialog.roleFailed', { message: (err as Error).message }));
         }
       }
 
@@ -238,7 +262,7 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
           toast.error(membroInviteErrorMessage(err));
         }
       } else if (!roleFailed) {
-        toast.success(membro?.id ? 'Membro atualizado' : 'Membro adicionado');
+        toast.success(membro?.id ? t('membroFormDialog.updated') : t('membroFormDialog.added'));
       }
 
       qc.invalidateQueries({ queryKey: ['membros'] });
@@ -248,8 +272,8 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
     } catch (err) {
       const message =
         err instanceof Error && err.message === 'crm_user_already_linked'
-          ? 'Esta conta CRM já está vinculada a outro membro deste workspace'
-          : 'Erro ao salvar';
+          ? t('membroFormDialog.alreadyLinked')
+          : t('membroFormDialog.saveError');
       toast.error(message);
     } finally {
       setSaving(false);
@@ -260,150 +284,269 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent aria-describedby={undefined} onConfirmClose={() => onOpenChange(false)}>
         <DialogHeader>
-          <DialogTitle>{membro ? 'Editar Membro' : 'Adicionar Membro'}</DialogTitle>
+          <DialogTitle>
+            {membro ? t('membroFormDialog.editTitle') : t('shared.addMember')}
+          </DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="nome"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Nome *</FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="cargo"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Cargo *</FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="tipo"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Tipo</FormLabel>
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="clt">CLT</SelectItem>
-                      <SelectItem value="freelancer_mensal">Freelancer Mensal</SelectItem>
-                      <SelectItem value="freelancer_demanda">Freelancer Demanda</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            {canSeeFinancials === true && (
-              <FormField
-                control={form.control}
-                name="custo"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Custo Mensal (R$)</FormLabel>
-                    <FormControl>
-                      <Input type="number" min={0} step={0.01} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
-            <FormField
-              control={form.control}
-              name="diaPag"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Dia de Pagamento (1-31)</FormLabel>
-                  <FormControl>
-                    <Input type="number" min={1} max={31} {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            {canManageWorkspace && !!membro && (
-              <FormField
-                control={form.control}
-                name="crmUserId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Conta CRM</FormLabel>
-                    <Select
-                      value={field.value ? field.value : '__none__'}
-                      onValueChange={(value) => {
-                        field.onChange(value === '__none__' ? '' : value);
+            {isPhone ? (
+              <>
+                <GroupedList aria-label={t('membroFormDialog.membroAria')}>
+                  <FormRow
+                    label={t('membroFormDialog.name')}
+                    error={errors.nome?.message}
+                    input={{ ...form.register('nome'), autoComplete: 'off' }}
+                  />
+                  <FormRow
+                    label={t('membroFormDialog.role')}
+                    error={errors.cargo?.message}
+                    input={{ ...form.register('cargo'), autoComplete: 'off' }}
+                  />
+                </GroupedList>
+                <GroupedList>
+                  <PickerCell
+                    label={t('membroFormDialog.type')}
+                    options={[
+                      { value: 'clt', label: t('shared.tipo.clt') },
+                      { value: 'freelancer_mensal', label: t('shared.tipo.freelancer_mensal') },
+                      { value: 'freelancer_demanda', label: t('shared.tipo.freelancer_demanda') },
+                    ]}
+                    value={tipo}
+                    onChange={(v) => v && form.setValue('tipo', v, { shouldDirty: true })}
+                  />
+                  {costAccess === true && !custoNoAcordo && (
+                    <FormRow
+                      label={t('membroFormDialog.cost')}
+                      error={errors.custo?.message}
+                      input={{
+                        ...form.register('custo'),
+                        type: 'number',
+                        inputMode: 'decimal',
+                        min: 0,
+                        step: 0.01,
+                        placeholder: t('membroFormDialog.costPlaceholder'),
+                      }}
+                    />
+                  )}
+                  {!custoNoAcordo && (
+                    <FormRow
+                      label={t('membroFormDialog.payDay')}
+                      error={errors.diaPag?.message}
+                      input={{
+                        ...form.register('diaPag'),
+                        type: 'number',
+                        inputMode: 'numeric',
+                        min: 1,
+                        max: 31,
+                      }}
+                    />
+                  )}
+                </GroupedList>
+                {canManageWorkspace && !!membro && (
+                  <GroupedList footer={t('membroFormDialog.linkHelp')}>
+                    <PickerCell
+                      label={t('membroFormDialog.crmAccount')}
+                      searchable={availableWorkspaceUsers.length > 8}
+                      emptyOption={{ label: t('membroFormDialog.notLinked') }}
+                      options={availableWorkspaceUsers.map((u: { id: string; nome?: string }) => ({
+                        value: u.id,
+                        label: u.nome || u.id,
+                        subtitle: memberEmails.get(u.id),
+                        searchText: [u.nome || u.id, memberEmails.get(u.id)]
+                          .filter(Boolean)
+                          .join(' '),
+                      }))}
+                      value={crmUserId || null}
+                      onChange={(v) => {
+                        form.setValue('crmUserId', v ?? '', { shouldDirty: true });
                         form.setValue('crmRole', '');
                       }}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Não vinculado" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="__none__">Não vinculado</SelectItem>
-                        {availableWorkspaceUsers.map((user: { id: string; nome?: string }) => (
-                          <SelectItem key={user.id} value={user.id}>
-                            {user.nome || user.id}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormDescription>
-                      Vincular um membro a um usuário do workspace permite que ele acesse o CRM e
-                      veja suas atribuições.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
+                    />
+                    {canEditLinkedRole && (
+                      <PickerCell
+                        label={t('shared.workspaceRole')}
+                        options={[
+                          { value: 'admin', label: t('shared.roleOption.admin') },
+                          { value: 'agent', label: t('shared.roleOption.agent') },
+                          ...workspaceRoles.map((r) => ({
+                            value: `custom:${r.id}`,
+                            label: r.nome,
+                          })),
+                        ]}
+                        value={crmRole || currentLinkedRole || null}
+                        onChange={(v) => v && form.setValue('crmRole', v, { shouldDirty: true })}
+                      />
+                    )}
+                  </GroupedList>
                 )}
-              />
+              </>
+            ) : (
+              <>
+                <FormField
+                  control={form.control}
+                  name="nome"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('membroFormDialog.name')}</FormLabel>
+                      <FormControl>
+                        <Input {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="cargo"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('membroFormDialog.role')}</FormLabel>
+                      <FormControl>
+                        <Input {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="tipo"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('membroFormDialog.type')}</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="clt">{t('shared.tipo.clt')}</SelectItem>
+                          <SelectItem value="freelancer_mensal">
+                            {t('shared.tipo.freelancer_mensal')}
+                          </SelectItem>
+                          <SelectItem value="freelancer_demanda">
+                            {t('shared.tipo.freelancer_demanda')}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {costAccess === true && !custoNoAcordo && (
+                  <FormField
+                    control={form.control}
+                    name="custo"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('membroFormDialog.cost')}</FormLabel>
+                        <FormControl>
+                          <Input type="number" min={0} step={0.01} {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+                {!custoNoAcordo && (
+                  <FormField
+                    control={form.control}
+                    name="diaPag"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('membroFormDialog.payDay')}</FormLabel>
+                        <FormControl>
+                          <Input type="number" min={1} max={31} {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+                {canManageWorkspace && !!membro && (
+                  <FormField
+                    control={form.control}
+                    name="crmUserId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('membroFormDialog.crmAccount')}</FormLabel>
+                        <Select
+                          value={field.value ? field.value : '__none__'}
+                          onValueChange={(value) => {
+                            field.onChange(value === '__none__' ? '' : value);
+                            form.setValue('crmRole', '');
+                          }}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder={t('membroFormDialog.notLinked')} />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="__none__">
+                              {t('membroFormDialog.notLinked')}
+                            </SelectItem>
+                            {availableWorkspaceUsers.map((user: { id: string; nome?: string }) => (
+                              <SelectItem key={user.id} value={user.id}>
+                                {user.nome || user.id}
+                                {memberEmails.get(user.id) && (
+                                  <span style={{ color: 'var(--text-muted)' }}>
+                                    {' · '}
+                                    {memberEmails.get(user.id)}
+                                  </span>
+                                )}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>{t('membroFormDialog.linkHelp')}</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+                {canEditLinkedRole && (
+                  <FormField
+                    control={form.control}
+                    name="crmRole"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('shared.workspaceRole')}</FormLabel>
+                        <Select
+                          value={field.value || currentLinkedRole}
+                          onValueChange={field.onChange}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="admin">{t('shared.roleOption.admin')}</SelectItem>
+                            <SelectItem value="agent">{t('shared.roleOption.agent')}</SelectItem>
+                            {workspaceRoles.map((r) => (
+                              <SelectItem key={r.id} value={`custom:${r.id}`}>
+                                {r.nome}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+              </>
             )}
-            {canEditLinkedRole && (
-              <FormField
-                control={form.control}
-                name="crmRole"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Função no workspace</FormLabel>
-                    <Select value={field.value || currentLinkedRole} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="agent">Agente</SelectItem>
-                        {workspaceRoles.map((r) => (
-                          <SelectItem key={r.id} value={`custom:${r.id}`}>
-                            {r.nome}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            {custoNoAcordo && costAccess === true && (
+              <p className="text-sm text-muted-foreground">
+                {t('membroFormDialog.costInAgreement')}{' '}
+                <Link to={`/equipe/${membro?.id}`} className="underline underline-offset-2">
+                  {t('membroFormDialog.openAgreement')}
+                </Link>
+              </p>
             )}
             {canManageWorkspace && !membro?.crm_user_id && (
               <InviteSection
@@ -412,15 +555,18 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
                 pendingInvite={membro?.id ? (pendingByMembroId.get(membro.id) ?? null) : null}
                 canManageWorkspace={canManageWorkspace}
                 canAssignRoles={canAssignRoles}
+                phone={isPhone}
               />
             )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Cancelar
+                {t('actions.cancel')}
               </Button>
               <Button type="submit" disabled={saving}>
                 {saving && <Spinner size="sm" />}{' '}
-                {inviteEnabled && !crmUserId ? 'Salvar e convidar' : 'Salvar'}
+                {inviteEnabled && !crmUserId
+                  ? t('membroFormDialog.saveAndInvite')
+                  : t('actions.save')}
               </Button>
             </DialogFooter>
           </form>

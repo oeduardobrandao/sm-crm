@@ -8,11 +8,15 @@ export default defineConfig(() => {
     envDir: path.resolve(__dirname, '../..'),
     publicDir: path.resolve(__dirname, '../../public'),
     plugins: [react()],
+    // Footer copyright year, fixed at build time so the prerendered HTML and the hydrating
+    // client render agree (a render-time `new Date()` could differ across New Year).
+    define: { __BUILD_YEAR__: JSON.stringify(String(new Date().getFullYear())) },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
         '@mesaas/i18n': path.resolve(__dirname, '../../packages/i18n/index.ts'),
         '@mesaas/ui': path.resolve(__dirname, '../../packages/ui'),
+        '@mesaas/ios-kit': path.resolve(__dirname, '../../packages/ios-kit'),
         '@mesaas/report-blocks': path.resolve(__dirname, '../../packages/report-blocks'),
         '@mesaas/import-parsers': path.resolve(__dirname, '../../packages/import-parsers/index.ts'),
         '@mesaas/app-lifecycle': path.resolve(__dirname, '../../packages/app-lifecycle/index.ts'),

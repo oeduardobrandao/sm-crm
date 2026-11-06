@@ -1,17 +1,42 @@
 import { useEffect, useState } from 'react';
-import { Calendar as CalendarIcon, CheckSquare, Repeat, User2 } from 'lucide-react';
+import { Calendar as CalendarIcon, CheckSquare, MessageCircle, Repeat, User2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { avatarColorClass } from '@/lib/avatarColor';
-import { getInitials, updateTarefa, type Membro, type TarefaWithRelations } from '../../../store';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
+import { updateTarefa, type Membro, type TarefaWithRelations } from '../../../store';
 import { dueBadge } from '../tarefasLogic';
 import { describeRecorrencia } from '../recorrenciaLogic';
 import { TagPill } from './TagPicker';
+
+/** "MessageCircle n" next to the subtask counter on board cards and list rows; nothing at 0. */
+export function TarefaComentariosCount({ total }: { total: number }) {
+  const { t } = useTranslation('tasks');
+  if (total <= 0) return null;
+  const label = t('shared.commentCount', { count: total });
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      title={label}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.25rem',
+        fontSize: '0.68rem',
+        color: 'var(--text-muted)',
+      }}
+    >
+      <MessageCircle className="h-3 w-3" aria-hidden="true" />
+      {total}
+    </span>
+  );
+}
 
 interface TarefaCardProps {
   tarefa: TarefaWithRelations;
@@ -34,6 +59,7 @@ export function TarefaCard({
   onRefresh,
   hideAssignee,
 }: TarefaCardProps) {
+  const { t } = useTranslation('tasks');
   const badge = dueBadge(tarefa, now);
   const [assignOpen, setAssignOpen] = useState(false);
   const [localMembro, setLocalMembro] = useState<Membro | null | undefined>(undefined);
@@ -93,7 +119,7 @@ export function TarefaCard({
           {tarefa.serie && (
             <span
               role="img"
-              aria-label="Tarefa recorrente"
+              aria-label={t('shared.recurringTask')}
               title={describeRecorrencia(tarefa.serie)}
               style={{
                 display: 'inline-flex',
@@ -117,6 +143,7 @@ export function TarefaCard({
             <DropdownMenuTrigger asChild>
               <span
                 style={{ flexShrink: 0, cursor: membros.length > 0 ? 'pointer' : 'default' }}
+                title={displayMembro?.nome}
                 onPointerDown={(e) => {
                   if (membros.length === 0) return;
                   e.stopPropagation();
@@ -127,16 +154,16 @@ export function TarefaCard({
                 }}
               >
                 {displayMembro ? (
-                  <span
-                    className={`avatar ${avatarColorClass(displayMembro.id ?? displayMembro.nome)}`}
-                    style={{ width: 20, height: 20, fontSize: '0.55rem', fontWeight: 800 }}
-                    title={displayMembro.nome}
-                  >
-                    {getInitials(displayMembro.nome)}
-                  </span>
+                  <PessoaAvatar
+                    nome={displayMembro.nome}
+                    fotoUrl={displayMembro.avatar_url}
+                    seed={displayMembro.id}
+                    size={20}
+                    className="!text-[0.55rem] !font-extrabold"
+                  />
                 ) : (
                   <span
-                    title="Sem responsável"
+                    title={t('shared.noAssignee')}
                     style={{
                       width: 20,
                       height: 20,
@@ -164,11 +191,11 @@ export function TarefaCard({
                       setLocalMembro(m);
                       try {
                         await updateTarefa(tarefa.id!, { responsavel_id: m.id ?? null });
-                        toast.success('Responsável atualizado!');
+                        toast.success(t('commands.assigneeUpdated'));
                         onRefresh();
                       } catch {
                         setLocalMembro(undefined);
-                        toast.error('Erro ao atualizar responsável');
+                        toast.error(t('commands.assigneeError'));
                       }
                     }}
                     style={{
@@ -179,12 +206,13 @@ export function TarefaCard({
                       fontSize: '0.75rem',
                     }}
                   >
-                    <span
-                      className={`avatar ${avatarColorClass(m.id ?? m.nome)}`}
-                      style={{ width: 16, height: 16, fontSize: '0.5rem' }}
-                    >
-                      {getInitials(m.nome)}
-                    </span>
+                    <PessoaAvatar
+                      nome={m.nome}
+                      fotoUrl={m.avatar_url}
+                      seed={m.id}
+                      size={16}
+                      className="!text-[0.5rem]"
+                    />
                     {m.nome}
                   </DropdownMenuItem>
                 ))}
@@ -228,6 +256,7 @@ export function TarefaCard({
             {tarefa.subtarefas_concluidas}/{tarefa.subtarefas_total}
           </span>
         )}
+        <TarefaComentariosCount total={tarefa.comentarios_total} />
       </div>
       {tarefa.cliente_nome && (
         <div

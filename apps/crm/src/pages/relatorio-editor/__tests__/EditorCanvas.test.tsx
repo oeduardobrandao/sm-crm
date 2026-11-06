@@ -1,19 +1,27 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 import { EditorCanvas } from '../EditorCanvas';
 import { makeSnapshotFixture } from '@mesaas/report-blocks/fixtures';
+import type { ReportPlatform } from '@mesaas/report-blocks/platform';
 import type { ReportLayout } from '@mesaas/report-blocks/types';
+import { sectionizeLayout } from '@mesaas/report-blocks/types';
+import { readCrmCss } from '@/test/readCrmCss';
 
-const layout = (): ReportLayout => ({
-  version: 1,
-  blocks: [
-    { id: 'a', type: 'cover', size: 'full' },
-    { id: 'b', type: 'kpi_reach', size: 'third' },
-  ],
-});
+vi.mock('@/components/ui/dropdown-menu', () => import('./dropdownMenuMock'));
+
+// O canvas recebe o layout canônico (as páginas rodam sectionizeLayout ao
+// abrir); os fixtures legados passam pelo mesmo caminho.
+const layout = (): ReportLayout =>
+  sectionizeLayout({
+    version: 1,
+    blocks: [
+      { id: 'a', type: 'cover', size: 'full' },
+      { id: 'b', type: 'kpi_reach', size: 'third' },
+    ],
+  });
+const contentIds = (l: ReportLayout) =>
+  l.blocks.filter((b) => b.type !== 'section').map((b) => b.id);
 
 describe('EditorCanvas', () => {
   it('renderiza os widgets com chrome: alça, largura e excluir por bloco', () => {
@@ -32,7 +40,7 @@ describe('EditorCanvas', () => {
     render(<EditorCanvas layout={layout()} snapshot={makeSnapshotFixture()} onChange={onChange} />);
     fireEvent.click(screen.getAllByLabelText('Excluir bloco')[1]);
     expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange.mock.calls[0][0].blocks.map((b: { id: string }) => b.id)).toEqual(['a']);
+    expect(contentIds(onChange.mock.calls[0][0])).toEqual(['a']);
   });
 
   it('com onRemoveBlock: excluir chama onRemoveBlock(id) e NÃO onChange', () => {
@@ -56,7 +64,8 @@ describe('EditorCanvas', () => {
     const onChange = vi.fn();
     render(<EditorCanvas layout={layout()} snapshot={makeSnapshotFixture()} onChange={onChange} />);
     fireEvent.click(screen.getAllByLabelText('Aumentar largura')[0]);
-    expect(onChange.mock.calls[0][0].blocks[1].size).toBe('half');
+    const next: ReportLayout = onChange.mock.calls[0][0];
+    expect(next.blocks.find((b) => b.id === 'b')?.size).toBe('half');
   });
 
   it('diminuir largura em third não dispara onChange (no-op preservado)', () => {
@@ -150,7 +159,7 @@ describe('EditorCanvas', () => {
   });
 
   it('toolbar do editor é alcançável por teclado (focus-within na célula, sem display none)', () => {
-    const css = readFileSync(join(__dirname, '../../../../style.css'), 'utf8');
+    const css = readCrmCss();
     expect(css.length).toBeGreaterThan(100000);
     const block = css.slice(css.indexOf('.rb-edit-toolbar'));
     expect(block).toContain('.rb-edit-cell:focus-within .rb-edit-toolbar');
@@ -173,6 +182,40 @@ describe('EditorCanvas', () => {
     fireEvent.change(title, { target: { value: 'Julho especial' } });
     expect(onConfigChange).toHaveBeenCalledWith('c', { title: 'Julho especial' });
     expect(screen.queryByLabelText('Aumentar largura')).not.toBeInTheDocument();
+  });
+
+  it('layout com bloco TikTok: capa deriva o kicker e o bloco TikTok lê snapshot.tiktok', () => {
+    const l: ReportLayout = {
+      version: 1,
+      blocks: [
+        { id: 'c', type: 'cover', size: 'full' },
+        { id: 't', type: 'tiktok_kpi_views', size: 'third' },
+      ],
+    };
+    render(
+      <EditorCanvas
+        layout={l}
+        snapshot={makeSnapshotFixture()}
+        onChange={() => {}}
+        onConfigChange={() => {}}
+      />,
+    );
+    expect(screen.getByRole('textbox', { name: 'Texto de destaque da capa' })).toHaveValue(
+      'Relatório mensal · TikTok',
+    );
+    expect(screen.getByText('152.300')).toBeInTheDocument();
+  });
+
+  it('bloco TikTok sem seção TikTok no snapshot: placeholder de sem dados', () => {
+    const { container } = render(
+      <EditorCanvas
+        layout={{ version: 1, blocks: [{ id: 't', type: 'tiktok_kpi_views', size: 'third' }] }}
+        snapshot={makeSnapshotFixture({ tiktok: null })}
+        onChange={() => {}}
+      />,
+    );
+    expect(container.querySelector('.rb-kpi')).toBeNull();
+    expect(container.querySelector('[data-block-id="t"]')).toHaveTextContent(/sem dados/i);
   });
 
   it('bloco image: botão Ajustes da imagem na toolbar e área de soltar no corpo', () => {
@@ -228,5 +271,321 @@ describe('EditorCanvas', () => {
     );
     expect(screen.queryByLabelText('Ajustes da imagem')).not.toBeInTheDocument();
     expect(screen.queryByText('Espaço para imagem')).not.toBeInTheDocument();
+  });
+});
+
+// ── Seções (spec 2026-10-28-report-platform-sections §Editor) ──
+
+const sectioned = (): ReportLayout => ({
+  version: 1,
+  blocks: [
+    { id: 'g', type: 'section', size: 'full' },
+    { id: 'cv', type: 'cover', size: 'full' },
+    { id: 'ig', type: 'section', size: 'full', config: { platform: 'instagram' } },
+    { id: 'r', type: 'kpi_reach', size: 'third' },
+    { id: 'v', type: 'kpi_views', size: 'third' },
+    { id: 'tt', type: 'section', size: 'full', config: { platform: 'tiktok' } },
+    { id: 'tv', type: 'tiktok_kpi_views', size: 'third' },
+  ],
+});
+
+function renderSectioned(overrides: Partial<Parameters<typeof EditorCanvas>[0]> = {}) {
+  const props = {
+    layout: sectioned(),
+    snapshot: makeSnapshotFixture(),
+    onChange: vi.fn(),
+    onAddWidget: vi.fn(),
+    onAddSection: vi.fn(),
+    onRemoveSection: vi.fn(),
+    onSectionConfigChange: vi.fn(),
+    enabledPlatforms: ['instagram', 'tiktok'] as ReportPlatform[],
+    ...overrides,
+  };
+  const utils = render(<EditorCanvas {...props} />);
+  return { ...utils, props };
+}
+
+const frame = (name: string) => screen.getByRole('region', { name: `Seção ${name}` });
+const frameIds = (container: HTMLElement) =>
+  [...container.querySelectorAll('[data-section-id]')].map((el) =>
+    el.getAttribute('data-section-id'),
+  );
+const cellIds = (el: HTMLElement) =>
+  [...el.querySelectorAll('[data-block-id]')].map((c) => c.getAttribute('data-block-id'));
+
+describe('EditorCanvas: seções', () => {
+  it('um frame por seção, com cabeçalho e os blocos dentro, cada um com o próprio grid', () => {
+    const { container } = renderSectioned();
+    expect(frameIds(container)).toEqual(['g', 'ig', 'tt']);
+    expect(cellIds(frame('Geral'))).toEqual(['cv']);
+    expect(cellIds(frame('Instagram'))).toEqual(['r', 'v']);
+    expect(cellIds(frame('TikTok'))).toEqual(['tv']);
+    for (const name of ['Geral', 'Instagram', 'TikTok']) {
+      expect(frame(name).querySelectorAll('.rb-grid.rb-mode-edit')).toHaveLength(1);
+      expect(
+        within(frame(name)).getByRole('textbox', { name: `Título da seção ${name}` }),
+      ).toBeInTheDocument();
+    }
+    // Marcador não vira célula de bloco.
+    expect(container.querySelector('[data-block-id="ig"]')).toBeNull();
+  });
+
+  it('nenhum selo de plataforma por bloco (a seção já diz)', () => {
+    const { container } = renderSectioned();
+    const tv = container.querySelector('[data-block-id="tv"]') as HTMLElement;
+    expect(within(tv).queryByText('TikTok')).not.toBeInTheDocument();
+    const r = container.querySelector('[data-block-id="r"]') as HTMLElement;
+    expect(within(r).queryByText('Instagram')).not.toBeInTheDocument();
+  });
+
+  it('"Adicionar widget" do rodapé abre o drawer com o alvo da seção', () => {
+    const { props } = renderSectioned();
+    const btn = within(frame('TikTok')).getByRole('button', {
+      name: 'Adicionar widget na seção TikTok',
+    });
+    expect(btn).toHaveTextContent('Adicionar widget');
+    fireEvent.click(btn);
+    expect(props.onAddWidget).toHaveBeenCalledWith({ sectionId: 'tt' });
+  });
+
+  it('seção TikTok sem feature_tiktok: renderiza e pode ser removida, mas sem "Adicionar widget"', () => {
+    const { props } = renderSectioned({ enabledPlatforms: ['instagram'] });
+    const tt = frame('TikTok');
+    expect(cellIds(tt)).toEqual(['tv']);
+    expect(within(tt).queryByRole('button', { name: /Adicionar widget/ })).toBeNull();
+    expect(
+      within(frame('Instagram')).getByRole('button', {
+        name: 'Adicionar widget na seção Instagram',
+      }),
+    ).toBeInTheDocument();
+    fireEvent.click(within(tt).getByRole('button', { name: 'Remover seção' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remover' }));
+    expect(props.onRemoveSection).toHaveBeenCalledWith('tt');
+  });
+
+  it('mover para baixo troca as seções', () => {
+    const { props } = renderSectioned();
+    fireEvent.click(within(frame('Instagram')).getByRole('button', { name: 'Mover para baixo' }));
+    const next: ReportLayout = props.onChange.mock.calls[0][0];
+    expect(next.blocks.map((b) => b.id)).toEqual(['g', 'cv', 'tt', 'tv', 'ig', 'r', 'v']);
+  });
+
+  it('ocultar título liga hideHeader na seção de plataforma', () => {
+    const { props } = renderSectioned();
+    fireEvent.click(
+      within(frame('Instagram')).getByRole('button', { name: 'Ocultar título no relatório' }),
+    );
+    const next: ReportLayout = props.onChange.mock.calls[0][0];
+    expect(next.blocks.find((b) => b.id === 'ig')?.config).toEqual({
+      platform: 'instagram',
+      hideHeader: true,
+    });
+  });
+
+  it('renomear passa por onSectionConfigChange', () => {
+    const { props } = renderSectioned();
+    fireEvent.change(
+      within(frame('Instagram')).getByRole('textbox', { name: 'Título da seção Instagram' }),
+      { target: { value: 'Instagram da clínica' } },
+    );
+    expect(props.onSectionConfigChange).toHaveBeenCalledWith('ig', {
+      title: 'Instagram da clínica',
+    });
+  });
+
+  it('"Adicionar seção" entre as seções e depois da última, com a âncora certa', () => {
+    const { props } = renderSectioned({ layout: sectioned() });
+    const triggers = screen.getAllByRole('button', { name: 'Adicionar seção' });
+    expect(triggers).toHaveLength(3);
+    // Com o mock, cada menu lista os itens: o Geral do 2º menu entra depois do Instagram.
+    const gerais = screen.getAllByRole('button', { name: /^Geral\s*Texto, imagens/ });
+    fireEvent.click(gerais[1]);
+    expect(props.onAddSection).toHaveBeenCalledWith('general', 'ig');
+    fireEvent.click(gerais[2]);
+    expect(props.onAddSection).toHaveBeenCalledWith('general', 'tt');
+  });
+
+  it('layout vazio: só "Adicionar seção"', () => {
+    const { props } = renderSectioned({ layout: { version: 1, blocks: [] } });
+    expect(screen.getAllByRole('button', { name: 'Adicionar seção' })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: /^Instagram/ }));
+    expect(props.onAddSection).toHaveBeenCalledWith('instagram', null);
+  });
+
+  it('sem feature_tiktok o "Adicionar seção" não oferece TikTok; documento sem dados desabilita', () => {
+    renderSectioned({
+      layout: { version: 1, blocks: [{ id: 'g', type: 'section', size: 'full' }] },
+      enabledPlatforms: ['instagram'],
+    });
+    expect(screen.queryByRole('button', { name: /^TikTok/ })).toBeNull();
+  });
+
+  it('documento sem TikTok no snapshot: TikTok desabilitado com a dica', () => {
+    renderSectioned({
+      layout: { version: 1, blocks: [{ id: 'g', type: 'section', size: 'full' }] },
+      availablePlatforms: ['instagram'],
+    });
+    const tt = screen.getByRole('button', { name: /^TikTok/ });
+    expect(tt).toBeDisabled();
+    expect(tt).toHaveTextContent(
+      'Sem dados do TikTok neste relatório. Atualize os dados depois de conectar a conta.',
+    );
+  });
+
+  const withGoogle = (): ReportLayout => ({
+    version: 1,
+    blocks: [
+      { id: 'g', type: 'section', size: 'full' },
+      { id: 'cv', type: 'cover', size: 'full' },
+      { id: 'ig', type: 'section', size: 'full', config: { platform: 'instagram' } },
+      { id: 'r', type: 'kpi_reach', size: 'third' },
+      { id: 'gb', type: 'section', size: 'full', config: { platform: 'google' } },
+      { id: 'gc', type: 'gbp_kpi_calls', size: 'third' },
+    ],
+  });
+
+  it('seção do Google sem feature_google_business: renderiza, mas sem "Adicionar widget"', () => {
+    renderSectioned({ layout: withGoogle(), enabledPlatforms: ['instagram', 'tiktok'] });
+    const gb = frame('Google Meu Negócio');
+    expect(cellIds(gb)).toEqual(['gc']);
+    expect(within(gb).queryByRole('button', { name: /Adicionar widget/ })).toBeNull();
+    expect(
+      within(frame('Instagram')).getByRole('button', {
+        name: 'Adicionar widget na seção Instagram',
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('seção do Google com a flag: "Adicionar widget" abre o drawer com o alvo da seção', () => {
+    const { props } = renderSectioned({
+      layout: withGoogle(),
+      enabledPlatforms: ['instagram', 'google'],
+    });
+    fireEvent.click(
+      within(frame('Google Meu Negócio')).getByRole('button', {
+        name: 'Adicionar widget na seção Google Meu Negócio',
+      }),
+    );
+    expect(props.onAddWidget).toHaveBeenCalledWith({ sectionId: 'gb' });
+  });
+
+  it('seção do Google: sem @, com o número de unidades do snapshot no lugar', () => {
+    const snapshot = makeSnapshotFixture();
+    const units = snapshot.google!.units;
+    const { unmount } = renderSectioned({ layout: withGoogle(), snapshot });
+    const gb = frame('Google Meu Negócio');
+    expect(within(gb).getByText(`${units.length} unidades`)).toBeInTheDocument();
+    expect(gb.querySelector('.rb-section-frame-handle')?.textContent).not.toContain('@');
+    unmount();
+    renderSectioned({
+      layout: withGoogle(),
+      snapshot: { ...snapshot, google: { ...snapshot.google!, units: units.slice(0, 1) } },
+    });
+    expect(within(frame('Google Meu Negócio')).getByText('1 unidade')).toBeInTheDocument();
+  });
+
+  it('seção do Google sem dados no snapshot: nem @ nem contagem', () => {
+    renderSectioned({ layout: withGoogle(), snapshot: { ...makeSnapshotFixture(), google: null } });
+    expect(frame('Google Meu Negócio').querySelector('.rb-section-frame-handle')).toBeNull();
+  });
+
+  it('com feature_google_business o "Adicionar seção" oferece o Google', () => {
+    const { props } = renderSectioned({
+      layout: { version: 1, blocks: [{ id: 'g', type: 'section', size: 'full' }] },
+      enabledPlatforms: ['instagram', 'google'],
+    });
+    expect(screen.queryByRole('button', { name: /^TikTok/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /^Google Meu Negócio/ }));
+    expect(props.onAddSection).toHaveBeenCalledWith('google', 'g');
+  });
+
+  // dnd-kit mede os droppables com getBoundingClientRect, que no jsdom é sempre
+  // zero: um retângulo fixo por frame e por célula, na ordem do documento. A
+  // alça herda o retângulo do frame/célula que a contém (as coordenadas
+  // iniciais do teclado partem dela) e o DragOverlay, o do item arrastado (é
+  // onde ele nasce).
+  const TOPS: Record<string, number> = { g: 0, cv: 100, ig: 300, r: 400, v: 500, tt: 700, tv: 800 };
+  function mockRects(_container: HTMLElement) {
+    return vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      const overlay =
+        this.closest('[data-drag-overlay]') ?? this.querySelector('[data-drag-overlay]');
+      const owner = this.closest('[data-section-id], [data-block-id]');
+      const id =
+        overlay?.getAttribute('data-drag-overlay') ??
+        owner?.getAttribute('data-block-id') ??
+        owner?.getAttribute('data-section-id');
+      const top = id != null ? (TOPS[id] ?? 0) : 0;
+      return {
+        x: 0,
+        y: top,
+        top,
+        left: 0,
+        right: 800,
+        bottom: top + 80,
+        width: 800,
+        height: 80,
+        toJSON: () => ({}),
+      } as DOMRect;
+    });
+  }
+
+  // O KeyboardSensor só passa a ouvir as teclas seguintes depois de um tique.
+  const tick = () => act(() => new Promise((r) => setTimeout(r, 0)));
+
+  it('arrastar a seção pelo cabeçalho (teclado) reordena as seções', async () => {
+    const { container, props } = renderSectioned();
+    mockRects(container);
+    const handle = within(frame('Instagram')).getByRole('button', { name: 'Reordenar seção' });
+    handle.focus();
+    fireEvent.keyDown(handle, { code: 'Space', key: ' ' });
+    await tick();
+    fireEvent.keyDown(handle, { code: 'ArrowDown', key: 'ArrowDown' });
+    await tick();
+    fireEvent.keyDown(handle, { code: 'Space', key: ' ' });
+    await tick();
+    expect(props.onChange).toHaveBeenCalledTimes(1);
+    const next: ReportLayout = props.onChange.mock.calls[0][0];
+    expect(next.blocks.map((b) => b.id)).toEqual(['g', 'cv', 'tt', 'tv', 'ig', 'r', 'v']);
+  });
+
+  it('arrastar um bloco (teclado): reordena dentro da seção, nunca sai dela', async () => {
+    const { container, props } = renderSectioned();
+    mockRects(container);
+    const cell = (id: string) => container.querySelector(`[data-block-id="${id}"]`) as HTMLElement;
+    // r desce para o lugar de v (mesma seção).
+    let handle = within(cell('r')).getByRole('button', { name: 'Reordenar bloco' });
+    handle.focus();
+    fireEvent.keyDown(handle, { code: 'Space', key: ' ' });
+    await tick();
+    fireEvent.keyDown(handle, { code: 'ArrowDown', key: 'ArrowDown' });
+    await tick();
+    fireEvent.keyDown(handle, { code: 'Space', key: ' ' });
+    await tick();
+    expect(props.onChange).toHaveBeenCalledTimes(1);
+    expect(props.onChange.mock.calls[0][0].blocks.map((b: { id: string }) => b.id)).toEqual([
+      'g',
+      'cv',
+      'ig',
+      'v',
+      'r',
+      'tt',
+      'tv',
+    ]);
+    props.onChange.mockClear();
+    await tick();
+    // v é o último do Instagram: abaixo dele só há a seção TikTok, fora do alcance.
+    handle = within(cell('v')).getByRole('button', { name: 'Reordenar bloco' });
+    handle.focus();
+    fireEvent.keyDown(handle, { code: 'Space', key: ' ' });
+    await tick();
+    fireEvent.keyDown(handle, { code: 'ArrowDown', key: 'ArrowDown' });
+    await tick();
+    fireEvent.keyDown(handle, { code: 'ArrowDown', key: 'ArrowDown' });
+    await tick();
+    fireEvent.keyDown(handle, { code: 'Space', key: ' ' });
+    await tick();
+    expect(props.onChange).not.toHaveBeenCalled();
   });
 });

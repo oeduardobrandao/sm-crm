@@ -5,6 +5,16 @@ import { McpKeyContext, McpInputError } from "../_shared/mcp-token.ts";
 import { MCP_PROP_MODO, MCP_PROP_ANOTACAO } from "./seed.ts";
 import { throwTaskWriteError } from "./task-errors.ts";
 import {
+  assertClientAccess,
+  type ClientScope,
+  ClientScopeError,
+  hasClientAccess,
+  isOwnItem,
+  loadClientScope,
+  visibleClientIds,
+} from "../_shared/client-scope.ts";
+import { chunk, fetchAllRows } from "../_shared/paginate.ts";
+import {
   allowlistClient,
   allowlistMember,
   buildPostFeedback,
@@ -20,11 +30,13 @@ import {
   IG_RATE_WEIGHTS,
   instantiateTemplateEtapas,
   isPlanLimitExceeded,
+  MediaNoteRow,
   MEMBER_PUBLIC_FIELDS,
   MIN_SAMPLE,
   normalizeTemplateEtapas,
   pageContentToMarkdown,
   performanceTier,
+  PostMeta,
   projectTemplateEtapas,
   quartiles,
   Quartiles,
@@ -49,6 +61,13 @@ export interface PostMetricRow {
   impressions: number; unavailable: string[]; media_type: string;
 }
 
+/** One tool as `register` saw it (name, scope, ownerOnly), for the structural tests. */
+export interface RegisteredTool {
+  name: string;
+  scope: string;
+  ownerOnly: boolean;
+}
+
 export interface Deps {
   db: SupabaseClient;
   ctx: McpKeyContext;
@@ -62,20 +81,113 @@ export interface Deps {
   headObject?: (key: string) => Promise<{ contentLength: number; contentType: string | null } | null>;
   /** Plan storage quota in bytes (null = unlimited). */
   storageQuota?: (contaId: string) => Promise<number | null>;
+  /** Opt-in collector: `register` pushes every tool here when set. Only the structural tests pass
+   * one; production leaves it unset, so concurrent requests in one isolate share no state. */
+  registry?: RegisteredTool[];
+  /** Cards (MCP Apps): `enabled` from MCP_APPS for this workspace, `oauth` when the connection is an
+   * OAuth grant (widget-only tools register only then), `r2Origin` for the resource CSP. */
+  apps?: { enabled: boolean; oauth: boolean; r2Origin: string | null };
+  /** DNS lookup for fetchImageSafely (same shape as mcp-admin/deps.ts). */
+  resolveDns?: (hostname: string, recordType: "A" | "AAAA") => Promise<string[]>;
+  /** Outbound fetch for fetchImageSafely. */
+  fetchUrl?: (url: string, init: RequestInit) => Promise<Response>;
+  /** Client scope ("acesso por cliente") of the key/grant's user, lazy and memoized per request.
+   * index.ts wires it; when absent, {@link scopeOf} loads it from `db` (never "all" by default). */
+  clientScope?: () => Promise<ClientScope>;
 }
 
 const sign = (d: Deps) => d.signUrl ?? ((key: string) => signGetUrl(key, 3600));
 
+// ---- client scope (acesso por cliente) ---------------------------------------
+
+/** Lazy, memoized scope getter for one request. `role` is the ctx role read in the same request
+ * (resolveCtx), so an owner skips the extra read; anyone else loads the scope (fail closed). */
+export function clientScopeGetter(db: SupabaseClient, ctx: McpKeyContext): () => Promise<ClientScope> {
+  let memo: Promise<ClientScope> | null = null;
+  return () => {
+    memo ??= ctx.role === "owner"
+      ? Promise.resolve({ all: true, ids: new Set<number>(), membroIds: new Set<number>() })
+      : loadClientScope(db, ctx.created_by, ctx.conta_id);
+    return memo;
+  };
+}
+
+const fallbackScopes = new WeakMap<Deps, Promise<ClientScope>>();
+
+/** The request's client scope. Without an injected getter it is loaded from `d.db` (memoized per
+ * Deps object), so a missing getter never silently means "all clients". */
+export function scopeOf(d: Deps): Promise<ClientScope> {
+  if (d.clientScope) return d.clientScope();
+  let p = fallbackScopes.get(d);
+  if (!p) {
+    p = loadClientScope(d.db, d.ctx.created_by, d.ctx.conta_id);
+    fallbackScopes.set(d, p);
+  }
+  return p;
+}
+
+/** Throws ClientScopeError unless the request may WRITE rows of `clienteId` (no "é dele"). */
+export async function assertClientWrite(d: Deps, clienteId: number | null | undefined): Promise<void> {
+  assertClientAccess(await scopeOf(d), clienteId ?? null, false);
+}
+
+/** True when the request may READ a post: its client is visible, or the post is the user's
+ * (`workflow_posts.responsavel_id` in the user's membros; the table has no author uuid column). */
+export async function canReadPost(
+  d: Deps,
+  post: { cliente_id?: number | null; responsavel_id?: number | null },
+): Promise<boolean> {
+  const scope = await scopeOf(d);
+  return hasClientAccess(
+    scope,
+    post.cliente_id ?? null,
+    isOwnItem(scope, { responsavelId: post.responsavel_id ?? null }, d.ctx.created_by),
+  );
+}
+
+/** Write gate for a row already fetched by id. A row the request cannot even READ answers exactly
+ * like a missing one (`notFound`), so sequential ids cannot be probed. A readable row whose client
+ * is not assigned (the user's own post in a hidden client) is refused with ClientScopeError: writes
+ * never use "é dele". Pass `isOwn = false` for tables without an "é dele" read in the MCP. */
+export async function assertRowWritable(
+  d: Deps,
+  row: { cliente_id?: number | null; responsavel_id?: number | null },
+  notFound: string,
+  isOwn?: boolean,
+): Promise<void> {
+  const readable = isOwn === false ? await canReadClientOrNull(d, row.cliente_id) : await canReadPost(d, row);
+  if (!readable) throw new McpInputError(notFound);
+  await assertClientWrite(d, row.cliente_id ?? null);
+}
+
+async function canReadClientOrNull(d: Deps, clienteId: number | null | undefined): Promise<boolean> {
+  return hasClientAccess(await scopeOf(d), clienteId ?? null, false);
+}
+
+/** True when the request may read the client itself (no "é dele" for a client in v1). */
+export async function canReadClient(d: Deps, clienteId: number): Promise<boolean> {
+  return hasClientAccess(await scopeOf(d), clienteId, false);
+}
+
+/** Ids for list filters: `null` = no filter; `[]` = nothing visible (callers return empty). */
+export async function listClientIds(d: Deps): Promise<number[] | null> {
+  return visibleClientIds(await scopeOf(d));
+}
+
 // ---- clients -----------------------------------------------------------------
 
 export async function listClients(d: Deps, args: { status?: string }): Promise<any[]> {
+  const visible = await listClientIds(d);
+  if (visible?.length === 0) return [];
   let q = d.db.from("clientes").select(CLIENT_PUBLIC_FIELDS.join(",")).eq("conta_id", d.ctx.conta_id);
+  if (visible) q = q.in("id", visible);
   if (args.status) q = q.eq("status", args.status);
   const { data } = await q.order("nome");
   return ((data ?? []) as any[]).map(allowlistClient);
 }
 
 export async function getClient(d: Deps, args: { client_id: number }): Promise<any | null> {
+  if (!(await canReadClient(d, args.client_id))) return null;
   const { data } = await d.db
     .from("clientes")
     .select(CLIENT_PUBLIC_FIELDS.join(","))
@@ -83,6 +195,13 @@ export async function getClient(d: Deps, args: { client_id: number }): Promise<a
     .eq("id", args.client_id)
     .maybeSingle();
   return data ? allowlistClient(data as any) : null;
+}
+
+/** Verify a client belongs to this workspace AND is visible to the request's client scope;
+ * returns its row or null (a hidden client reads exactly like a missing one). */
+async function visibleClient(d: Deps, clientId: number): Promise<any | null> {
+  if (!(await canReadClient(d, clientId))) return null;
+  return await verifyClient(d, clientId);
 }
 
 /** Verify a client belongs to this workspace; returns its row (public fields) or null. */
@@ -97,7 +216,7 @@ async function verifyClient(d: Deps, clientId: number): Promise<any | null> {
 }
 
 export async function getBrandProfile(d: Deps, args: { client_id: number }): Promise<any | null> {
-  const client = await verifyClient(d, args.client_id);
+  const client = await visibleClient(d, args.client_id);
   if (!client) return null;
 
   const { data: brand } = await d.db
@@ -188,6 +307,9 @@ export async function createClient(
     status?: string;
   },
 ): Promise<any> {
+  // A restricted member never creates clients, and the find-or-create below would otherwise
+  // hand back (and fill) an existing client outside their assignments.
+  if (!(await scopeOf(d)).all) throw new ClientScopeError();
   const nome = args.nome.trim();
   // Find-or-create: clientes.nome has no unique constraint, so scan the workspace's
   // rows ordered by id and match lower(trim()) in code. The FIRST match of the
@@ -286,7 +408,6 @@ export async function createMember(
       nome,
       cargo: args.cargo?.trim() ?? "",
       tipo: args.tipo ?? "clt",
-      avatar_url: "",
       custo_mensal: args.custo_mensal ?? null,
       data_pagamento: args.data_pagamento ?? null,
     })
@@ -453,7 +574,12 @@ export async function listPosts(
     throw new McpInputError("ig_score sort requires client_id");
   }
 
+  const visible = await listClientIds(d);
+  if (visible?.length === 0) return derived ? { posts: [], truncated: false, cap: DERIVED_SORT_CAP } : [];
+
   let q = d.db.from("workflow_posts").select(POST_COLS).eq("conta_id", d.ctx.conta_id);
+  // Acesso por cliente: lists show only the assigned clients' posts (no "é dele" in lists).
+  if (visible) q = q.in("cliente_id", visible);
 
   // cliente_id e sempre igual ao cliente do workflow para posts anexados (invariante
   // da Task 1), entao filtrar direto por ele preserva o comportamento anterior e
@@ -546,12 +672,14 @@ export async function listPosts(
 export async function getPost(d: Deps, args: { post_id: number }): Promise<any | null> {
   const { data: post } = await d.db
     .from("workflow_posts")
-    .select(POST_COLS)
+    .select(`${POST_COLS}, responsavel_id`)
     .eq("conta_id", d.ctx.conta_id)
     .eq("id", args.post_id)
     .maybeSingle();
   if (!post) return null;
   const p = post as any;
+  // Hidden client and not the user's post: same answer as a missing post.
+  if (!(await canReadPost(d, p))) return null;
 
   const [props, metricMaps] = await Promise.all([
     loadPostProps(d, [p.id]),
@@ -641,7 +769,7 @@ export async function getPerformanceBaseline(
   d: Deps,
   args: { client_id: number },
 ): Promise<any | null> {
-  const client = await verifyClient(d, args.client_id);
+  const client = await visibleClient(d, args.client_id);
   if (!client) return null;
 
   const dists = await loadClientRateDistributions(d, args.client_id);
@@ -680,8 +808,9 @@ export async function loadClientRateDistributions(
   clientId: number,
 ): Promise<{ sampleSize: number; overall: DistBuckets; byFormat: Record<string, DistBuckets> }> {
   // Workspace-ownership guard: callers pass an agent-supplied client_id, so a
-  // non-owned/unknown client must yield empty buckets (no cross-tenant leak).
-  const client = await verifyClient(d, clientId);
+  // non-owned/unknown client must yield empty buckets (no cross-tenant leak). A client hidden by
+  // the request's client scope also yields empty buckets (its analytics are not "context").
+  const client = await visibleClient(d, clientId);
   if (!client) return { sampleSize: 0, overall: emptyBuckets(), byFormat: {} };
 
   const { data: accounts } = await d.db
@@ -744,10 +873,13 @@ export async function listWorkflows(
   d: Deps,
   args: { client_id?: number; status?: string },
 ): Promise<any[]> {
+  const visible = await listClientIds(d);
+  if (visible?.length === 0) return [];
   let q = d.db
     .from("workflows")
     .select("id, cliente_id, titulo, status, etapa_atual, created_via, created_at")
     .eq("conta_id", d.ctx.conta_id);
+  if (visible) q = q.in("cliente_id", visible);
   if (args.client_id !== undefined) q = q.eq("cliente_id", args.client_id);
   if (args.status) q = q.eq("status", args.status);
   const { data } = await q.order("created_at", { ascending: false });
@@ -758,10 +890,13 @@ export async function listIdeas(
   d: Deps,
   args: { client_id?: number; status?: string; tipo?: string },
 ): Promise<any[]> {
+  const visible = await listClientIds(d);
+  if (visible?.length === 0) return [];
   let q = d.db
     .from("ideias")
     .select("id, cliente_id, titulo, descricao, status, tipo, tarefa_id, links, created_at, origem, visivel_no_hub, audio_transcript")
     .eq("workspace_id", d.ctx.conta_id);
+  if (visible) q = q.in("cliente_id", visible);
   if (args.client_id !== undefined) q = q.eq("cliente_id", args.client_id);
   if (args.status) q = q.eq("status", args.status);
   if (args.tipo) q = q.eq("tipo", args.tipo);
@@ -810,10 +945,14 @@ export async function listTasks(
   args: { status?: string; responsavel_id?: number; cliente_id?: number; limit?: number },
 ): Promise<any[]> {
   const limit = Math.min(Math.max(1, args.limit ?? 50), 200);
+  const visible = await listClientIds(d);
+  if (visible?.length === 0) return [];
   let q = d.db
     .from("tarefas")
     .select(`${TASK_SELECT}, clientes(nome), tarefa_tag_links(tarefa_tags(id, nome, cor)), subtarefas(id, concluida)`)
     .eq("conta_id", d.ctx.conta_id);
+  // Restricted: only tasks of assigned clients (tasks without a client are left out, even the user's).
+  if (visible) q = q.in("cliente_id", visible);
   if (args.status) q = q.eq("status", args.status);
   if (args.responsavel_id !== undefined) q = q.eq("responsavel_id", args.responsavel_id);
   if (args.cliente_id !== undefined) q = q.eq("cliente_id", args.cliente_id);
@@ -830,6 +969,9 @@ export async function createTask(
   args: { titulo: string; descricao?: string; responsavel_id?: number; cliente_id?: number; data_limite?: string },
 ): Promise<any> {
   // WITH CHECK da RLS nao protege writes service-role: validacao explicita aqui.
+  // Acesso por cliente: a restricted member only writes tasks of assigned clients (never a task
+  // without a client); no "é dele" exception on writes.
+  await assertClientWrite(d, args.cliente_id ?? null);
   if (args.responsavel_id != null) await assertMembroInWorkspace(d, args.responsavel_id);
   if (args.cliente_id != null) await assertClienteInWorkspace(d, args.cliente_id);
   const { data, error } = await d.db
@@ -870,9 +1012,11 @@ export async function updateTask(
   }
 
   const { data: existing } = await d.db
-    .from("tarefas").select("id")
+    .from("tarefas").select("id, cliente_id")
     .eq("conta_id", d.ctx.conta_id).eq("id", args.task_id).maybeSingle();
   if (!existing) throw new McpInputError("Tarefa não encontrada neste workspace.");
+  // No "é dele" read for tasks in the MCP: a hidden task answers like a missing one.
+  await assertRowWritable(d, existing as any, "Tarefa não encontrada neste workspace.", false);
 
   if (Object.hasOwn(args, "responsavel_id") && args.responsavel_id != null) {
     await assertMembroInWorkspace(d, args.responsavel_id);
@@ -909,10 +1053,13 @@ export async function listPages(
   d: Deps,
   args: { client_id?: number },
 ): Promise<any[]> {
+  const visible = await listClientIds(d);
+  if (visible?.length === 0) return [];
   let q = d.db
     .from("hub_pages")
     .select("id, cliente_id, title, content, display_order, created_at")
     .eq("conta_id", d.ctx.conta_id);
+  if (visible) q = q.in("cliente_id", visible);
   if (args.client_id !== undefined) q = q.eq("cliente_id", args.client_id);
   const { data, error } = await q
     .order("cliente_id")
@@ -981,6 +1128,24 @@ export async function listPostFeedback(
 ): Promise<any[]> {
   const limit = Math.min(Math.max(1, args.limit ?? 25), 100);
 
+  // Acesso por cliente. One post: read by id, with the "é dele" rule (a hidden post answers like
+  // a post without feedback). Otherwise: only the assigned clients' posts.
+  let visible = await listClientIds(d);
+  if (args.post_id !== undefined) {
+    if (visible) {
+      const { data: post, error } = await d.db
+        .from("workflow_posts")
+        .select("id, cliente_id, responsavel_id")
+        .eq("conta_id", d.ctx.conta_id)
+        .eq("id", args.post_id)
+        .maybeSingle();
+      if (error) throw error;
+      if (!post || !(await canReadPost(d, post as any))) return [];
+    }
+    visible = null; // the post itself is the filter
+  }
+  if (visible?.length === 0) return [];
+
   // Shared tenant + content filters, applied to BOTH post_approvals reads.
   // client_id filtra direto por workflow_posts.cliente_id: cobre anexados e
   // avulsos igualmente, sem precisar resolver workflow_id -> cliente antes.
@@ -988,21 +1153,62 @@ export async function listPostFeedback(
     q = q.eq("workflow_posts.conta_id", d.ctx.conta_id); // never read post_approvals by bare post_id
     if (args.post_id !== undefined) q = q.eq("post_id", args.post_id);
     if (args.client_id !== undefined) q = q.eq("workflow_posts.cliente_id", args.client_id);
+    if (visible) q = q.in("workflow_posts.cliente_id", visible);
     if (args.action) q = q.eq("action", args.action);
     if (args.since) q = q.gte("created_at", args.since);
     return q;
   };
 
-  // Phase 1 — pick post ids (capped scan).
-  const { data: scanData, error: scanErr } = await applyFilters(
-    d.db.from("post_approvals").select("post_id, created_at, workflow_posts!inner(conta_id)"),
-  ).order("created_at", { ascending: false }).limit(FEEDBACK_SCAN_CAP);
+  // Same tenant + filters for the client-note scan. Notes are not approvals, so an
+  // `action` filter (which only approvals carry) turns the note SCAN off: notes never
+  // make a post qualify then. The notes of the posts the approvals picked are still
+  // loaded in phase 2. `since` filters on the note's own created_at only (replies and
+  // later activity on an older note do not requalify it).
+  // Internal notes are never read: list_post_feedback is the client-feedback view.
+  const scanNotes = async (): Promise<any[]> => {
+    if (args.action) return [];
+    let q = d.db.from("post_media_notes")
+      .select("post_id, created_at, workflow_posts!inner(titulo, status, conta_id, cliente_id)")
+      .eq("conta_id", d.ctx.conta_id)
+      .eq("visibility", "client");
+    if (args.post_id !== undefined) q = q.eq("post_id", args.post_id);
+    if (args.client_id !== undefined) q = q.eq("workflow_posts.cliente_id", args.client_id);
+    if (visible) q = q.in("workflow_posts.cliente_id", visible);
+    if (args.since) q = q.gte("created_at", args.since);
+    const { data, error } = await q.order("created_at", { ascending: false }).limit(FEEDBACK_SCAN_CAP);
+    // Notes are additive: a failed scan (e.g. this function deployed before migration
+    // 20261026000001) leaves the approvals feed working instead of failing the tool.
+    if (error) {
+      console.error("[mcp] list_post_feedback note scan failed:", error);
+      return [];
+    }
+    return (data ?? []) as any[];
+  };
+
+  // Phase 1 — pick post ids (capped scans of approvals and client notes, newest first).
+  const [{ data: scanData, error: scanErr }, noteScanRows] = await Promise.all([
+    applyFilters(
+      d.db.from("post_approvals").select("post_id, created_at, workflow_posts!inner(conta_id)"),
+    ).order("created_at", { ascending: false }).limit(FEEDBACK_SCAN_CAP),
+    scanNotes(),
+  ]);
   if (scanErr) throw scanErr;
   const scanRows = (scanData ?? []) as any[];
-  if (scanRows.length === FEEDBACK_SCAN_CAP) {
+  if (scanRows.length === FEEDBACK_SCAN_CAP || noteScanRows.length === FEEDBACK_SCAN_CAP) {
     console.warn(`[mcp] list_post_feedback hit SCAN_CAP=${FEEDBACK_SCAN_CAP} for conta ${d.ctx.conta_id}`);
   }
-  const chosenIds = topDistinctPostIds(scanRows, limit);
+  const postMeta = new Map<number, PostMeta>();
+  for (const r of noteScanRows) {
+    if (!r.workflow_posts || postMeta.has(r.post_id)) continue;
+    postMeta.set(r.post_id, {
+      titulo: r.workflow_posts.titulo,
+      status: r.workflow_posts.status,
+      cliente_id: r.workflow_posts.cliente_id,
+    });
+  }
+  const merged = [...scanRows, ...noteScanRows]
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0));
+  const chosenIds = topDistinctPostIds(merged, limit);
   if (chosenIds.length === 0) return [];
 
   // Phase 2a (feedback) + 2b (timeline), in parallel.
@@ -1017,7 +1223,15 @@ export async function listPostFeedback(
     .eq("conta_id", d.ctx.conta_id)
     .in("post_id", chosenIds)
     .order("created_at", { ascending: true });
-  const [{ data: fbData, error: fbErr }, { data: evData, error: evErr }] = await Promise.all([feedbackP, eventsP]);
+  const [{ data: fbData, error: fbErr }, { data: evData, error: evErr }, mediaNotes] = await Promise.all([
+    feedbackP,
+    eventsP,
+    loadClientMediaNotesForPosts(d, chosenIds).catch((e) => {
+      // Same degrade as the scan: the feedback and timeline still answer.
+      console.error("[mcp] list_post_feedback note load failed:", e);
+      return [] as MediaNoteRow[];
+    }),
+  ]);
   if (fbErr) throw fbErr;
   if (evErr) throw evErr;
 
@@ -1043,7 +1257,70 @@ export async function listPostFeedback(
     created_at: e.created_at,
   }));
 
-  return buildPostFeedback(feedbackRows, statusEvents);
+  return buildPostFeedback(feedbackRows, statusEvents, mediaNotes, postMeta);
+}
+
+/**
+ * Client-visible notes of the chosen posts with their replies. Complete threads: the
+ * `since` filter only picks which posts qualify, it never cuts a thread. The tenant
+ * filter is on every read (service role bypasses RLS). `file_id` and `hub_token` are
+ * never selected. Paginated, so the 1000-row PostgREST cap cannot truncate silently.
+ */
+async function loadClientMediaNotesForPosts(
+  d: Deps,
+  postIds: number[],
+): Promise<MediaNoteRow[]> {
+  if (postIds.length === 0) return [];
+  const notes = await fetchAllRows<any>((from, to) =>
+    d.db.from("post_media_notes_v")
+      .select(
+        "id, post_id, media_kind, slide_index_at_creation, current_slide_index, is_previous_version, " +
+        "t_seconds, x, visibility, author_kind, body, status, created_at",
+      )
+      .eq("conta_id", d.ctx.conta_id)
+      .eq("visibility", "client")
+      .in("post_id", postIds)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
+  if (notes.length === 0) return [];
+
+  const replyChunks = await Promise.all(
+    chunk(notes.map((n) => n.id as number)).map((ids) =>
+      fetchAllRows<any>((from, to) =>
+        d.db.from("post_media_note_replies")
+          .select("note_id, author_kind, body, created_at")
+          .eq("conta_id", d.ctx.conta_id)
+          .in("note_id", ids)
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to)
+      )
+    ),
+  );
+  const repliesByNote = new Map<number, NonNullable<MediaNoteRow["replies"]>>();
+  for (const r of replyChunks.flat()) {
+    const arr = repliesByNote.get(r.note_id) ?? [];
+    arr.push({ author_kind: r.author_kind, body: r.body, created_at: r.created_at });
+    repliesByNote.set(r.note_id, arr);
+  }
+  return notes.map((n) => ({
+    id: n.id,
+    post_id: n.post_id,
+    media_kind: n.media_kind,
+    slide_index_at_creation: n.slide_index_at_creation,
+    current_slide_index: n.current_slide_index ?? null,
+    is_previous_version: n.is_previous_version === true,
+    t_seconds: n.t_seconds == null ? null : Number(n.t_seconds),
+    x: n.x ?? null,
+    visibility: n.visibility,
+    author_kind: n.author_kind,
+    body: n.body,
+    status: n.status,
+    created_at: n.created_at,
+    replies: repliesByNote.get(n.id) ?? [],
+  }));
 }
 
 // ---- writes ------------------------------------------------------------------
@@ -1051,7 +1328,7 @@ export async function listPostFeedback(
 async function verifyActiveWorkflow(d: Deps, workflowId: number): Promise<any | null> {
   const { data } = await d.db
     .from("workflows")
-    .select("id")
+    .select("id, cliente_id")
     .eq("conta_id", d.ctx.conta_id)
     .eq("id", workflowId)
     .eq("status", "ativo")
@@ -1070,6 +1347,8 @@ export async function createWorkflow(
   d: Deps,
   args: { client_id: number; titulo: string; template_id?: number },
 ): Promise<any> {
+  // Scope first: a restricted member gets the same refusal whether the client exists or not.
+  await assertClientWrite(d, args.client_id);
   const client = await verifyClient(d, args.client_id);
   if (!client) throw new McpInputError("Cliente não encontrado neste workspace.");
 
@@ -1142,6 +1421,8 @@ export async function createPost(
   if (hasWorkflow) {
     const wf = await verifyActiveWorkflow(d, args.workflow_id!);
     if (!wf) throw new McpInputError("Fluxo não encontrado, ou inativo, neste workspace.");
+    // A workflow of a hidden client answers like a missing one.
+    await assertRowWritable(d, wf as any, "Fluxo não encontrado, ou inativo, neste workspace.", false);
 
     const { data: last } = await d.db
       .from("workflow_posts")
@@ -1176,6 +1457,7 @@ export async function createPost(
   // Post avulso: sem fluxo, preso direto ao cliente. ordem conta so entre os
   // avulsos deste cliente (workflow_id is null), nunca entre posts ja anexados
   // a um fluxo do mesmo cliente.
+  await assertClientWrite(d, args.cliente_id!);
   const client = await verifyClient(d, args.cliente_id!);
   if (!client) throw new McpInputError("Cliente não encontrado neste workspace.");
 
@@ -1235,13 +1517,15 @@ export async function updatePost(
   // Prefetch for granular errors (distinguish not-found from not-editable).
   const { data: existing } = await d.db
     .from("workflow_posts")
-    .select("id, status")
+    .select("id, status, cliente_id, responsavel_id")
     .eq("conta_id", d.ctx.conta_id)
     .eq("id", args.post_id)
     .maybeSingle();
   if (!existing) {
     throw new McpInputError("Post não encontrado neste workspace.");
   }
+  // Hidden post -> same not-found; own post in a hidden client -> "limitado" (writes have no é dele).
+  await assertRowWritable(d, existing as any, "Post não encontrado neste workspace.");
   const currentStatus = (existing as any).status as string;
   if (!EDITABLE_STATUSES.includes(currentStatus)) {
     throw new McpInputError(`Post em estado '${currentStatus}' não pode ser editado pelo agente.`);
@@ -1297,13 +1581,14 @@ export async function setPostProperty(
   // excluir avulsos).
   const { data: post, error: postErr } = await d.db
     .from("workflow_posts")
-    .select("id, status, workflow_id, workflows(template_id, conta_id)")
+    .select("id, status, workflow_id, cliente_id, responsavel_id, workflows(template_id, conta_id)")
     .eq("conta_id", d.ctx.conta_id)
     .eq("id", args.post_id)
     .maybeSingle();
   if (postErr) throw postErr;
   if (!post) throw new McpInputError("Post não encontrado neste workspace.");
   const p = post as any;
+  await assertRowWritable(d, p, "Post não encontrado neste workspace.");
   if (!EDITABLE_STATUSES.includes(p.status)) {
     throw new McpInputError(`Post em estado '${p.status}' não pode ser editado pelo agente.`);
   }

@@ -52,6 +52,6 @@ export const AGENTE_DE_CONTEUDO_IA: MarketingPageContent = {
   ],
   cta: {
     title: 'Coloque um agente de conteúdo no seu time',
-    sub: 'Crie sua conta grátis e conecte o Claude ao seu workspace.',
+    sub: 'O agente está em um dos planos pagos. Teste esse plano grátis por 30 dias e conecte o Claude ao seu workspace.',
   },
 };

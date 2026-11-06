@@ -1,6 +1,6 @@
 // PR 2: o editor do relatório de blocos. Canvas dnd + drawer + TipTap +
 // autosave. View/print continuam no BlockRenderer do pacote (Hub, PR 3).
-import { useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, MoreHorizontal, Plus } from 'lucide-react';
@@ -14,8 +14,13 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Spinner } from '@/components/ui/spinner';
 import { DocSkeleton } from '@/components/ui/skeletons';
-import type { ReportBlock } from '@mesaas/report-blocks/types';
+import type { ReportBlock, ReportDocSnapshot } from '@mesaas/report-blocks/types';
+import { sectionizeLayout, toSections } from '@mesaas/report-blocks/types';
 import '@mesaas/report-blocks/styles.css';
+import {
+  platformSectionBlocks,
+  type PlatformSectionOpts,
+} from '../../../../../supabase/functions/_shared/report-docs/default-layout.ts';
 import {
   exportReportPdf,
   getReportDoc,
@@ -24,31 +29,64 @@ import {
 } from '../../services/reportDocs';
 import { getHubToken, getWorkspaceSlug } from '../../store/hub';
 import { useLayoutAutosave } from './useLayoutAutosave';
-import { useBlockEditing } from './useBlockEditing';
+import { enabledReportPlatforms, useBlockEditing } from './useBlockEditing';
 import { usePreventStrayFileDrop } from './usePreventStrayFileDrop';
 import { configCoalesceKey, useLayoutHistory } from './useLayoutHistory';
 import { UndoRedoButtons } from './UndoRedoButtons';
 import { useStuckHeader } from './useStuckHeader';
 import { EditorCanvas } from './EditorCanvas';
 import { TextBlockEditor } from './TextBlockEditor';
-import { AddWidgetDrawer } from './AddWidgetDrawer';
+import { AddWidgetDrawer, documentPlatforms } from './AddWidgetDrawer';
 import { LayersPanel } from './LayersPanel';
 import { SaveTemplateDialog } from './SaveTemplateDialog';
 import { ApplyTemplateDialog } from './ApplyTemplateDialog';
 import { AppearancePopover } from './AppearancePopover';
-import { moveBlock, normalizeCoverSize, updateBlockConfig, updateBlockText } from './layoutOps';
+import {
+  normalizeCoverSize,
+  resolveDragEnd,
+  updateBlockConfig,
+  updateBlockText,
+  updateSectionConfig,
+} from './layoutOps';
 import { applyTemplateLayout, layoutHasFilledImage } from './templateOps';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
+import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
+import { ReportExportBar, ReportPhoneView } from './phone/ReportPhoneView';
+import { compactHubToken } from '@/lib/hubLinks';
+
+/** Opções da seção padrão de uma plataforma a partir do snapshot, as mesmas
+ * do generate (report-docs/generate.ts). */
+function snapshotSectionOpts(snapshot: ReportDocSnapshot): PlatformSectionOpts {
+  return {
+    hasAudience: snapshot.audience !== null,
+    hasBestTimes: snapshot.best_times.length > 0,
+    hasTags: snapshot.tags_performance.length > 0,
+    hasTikTokBestTimes: (snapshot.tiktok?.best_times.length ?? 0) > 0,
+    hasGbpUnits: (snapshot.google?.unit_rows.length ?? 0) > 1,
+  };
+}
 
 function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   const qc = useQueryClient();
   const snapshot = doc.data_snapshot!;
+  const { features } = useWorkspaceLimits();
+  // TikTok e Google Meu Negócio só com a flag (fail closed enquanto o plano não respondeu).
+  const enabledPlatforms = useMemo(() => enabledReportPlatforms(features), [features]);
+  // Defesa contra um layout persistido com um cover de size != full (achado de
+  // review externo 2026-08-25): corrige em memória ANTES do estado inicial do
+  // autosave existir. Sem isso, a primeira edição seguinte (de QUALQUER bloco)
+  // trava o autosave pra sempre -- validateLayout rejeita o layout inteiro e
+  // não há retry para esse caso. Pelo mesmo motivo o layout entra seccionado
+  // (spec 2026-10-28-report-platform-sections): um documento legado abre com as
+  // seções e a primeira gravação já leva os marcadores. Canônico = mesma ref,
+  // então abrir não grava nada.
+  const initialLayout = useMemo(
+    () => sectionizeLayout(normalizeCoverSize(doc.layout)),
+    [doc.layout],
+  );
   const { layout, applyLayout, title, setTitle, saving } = useLayoutAutosave(doc.id, {
-    // Defesa contra um layout persistido com um cover de size != full (achado de
-    // review externo 2026-08-25): corrige em memória ANTES do estado inicial do
-    // autosave existir. Sem isso, a primeira edição seguinte (de QUALQUER bloco)
-    // trava o autosave pra sempre -- validateLayout rejeita o layout inteiro e
-    // não há retry para esse caso.
-    layout: normalizeCoverSize(doc.layout),
+    layout: initialLayout,
     title: doc.title,
   });
   // renderTextBlock/insert leem o layout por ref: o closure do canvas pode ser
@@ -64,15 +102,31 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
     setDrawerOpen,
     highlightId,
     highlightAndScroll,
+    insertTarget,
     openWidgetDrawer,
     handleInsert,
     handleRemoveBlock,
-  } = useBlockEditing(layoutRef, commit);
+    handleRemoveSection,
+    handleAddSection,
+  } = useBlockEditing(layoutRef, commit, { enabledPlatforms });
+  const drawerSection = insertTarget
+    ? (toSections(layout).find((s) => s.marker.id === insertTarget.sectionId) ?? null)
+    : null;
 
   const [saveTplOpen, setSaveTplOpen] = useState(false);
   const [applyTplOpen, setApplyTplOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  // Celular (D27): só leitura e exportação. Os hooks acima continuam montados (a
+  // ordem não muda quando a largura cruza 768px) e "Aplicar template" grava pelo
+  // mesmo autosave do desktop.
+  const isPhone = !useIsDesktop(768);
+  // URL do PDF gerado no celular: vira o link "Abrir PDF" que a pessoa toca.
+  const [phonePdfUrl, setPhonePdfUrl] = useState<string | null>(null);
+  // O PDF reflete o layout e os dados do momento em que foi gerado.
+  useEffect(() => {
+    setPhonePdfUrl(null);
+  }, [layout, snapshot]);
 
   // Link "Ver como cliente": só existe quando o Hub tem um token ativo, não
   // expirado, e o workspace tem slug. Mesma checagem de validade que o
@@ -82,7 +136,9 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
     queryFn: async () => {
       const [tok, slug] = await Promise.all([getHubToken(doc.client_id), getWorkspaceSlug()]);
       return tok && slug && tok.is_active && tok.expires_at > new Date().toISOString()
-        ? { url: `${window.location.origin}/${slug}/hub/${tok.token}/relatorios/doc/${doc.id}` }
+        ? {
+            url: `${window.location.origin}/${slug}/hub/${compactHubToken(tok.token)}/relatorios/doc/${doc.id}`,
+          }
         : null;
     },
   });
@@ -120,6 +176,24 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
     }
   }
 
+  // Celular: a mesma exportação, sem abrir aba por código. Depois do await o
+  // toque original já expirou e o iOS Safari bloqueia a aba nova; a barra passa
+  // a mostrar um link "Abrir PDF" (ReportExportBar) para um toque novo.
+  async function handleExportPdfPhone() {
+    setExporting(true);
+    setPhonePdfUrl(null);
+    const toastId = toast.loading('Gerando PDF... isso pode levar até um minuto.');
+    try {
+      const { url } = await exportReportPdf(doc.id);
+      setPhonePdfUrl(url);
+      toast.success('PDF gerado. Toque em Abrir PDF.', { id: toastId });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao exportar PDF', { id: toastId });
+    } finally {
+      setExporting(false);
+    }
+  }
+
   async function handleRefreshData() {
     setRefreshing(true);
     try {
@@ -131,6 +205,59 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
     } finally {
       setRefreshing(false);
     }
+  }
+
+  const applyTemplateDialog = (
+    <ApplyTemplateDialog
+      open={applyTplOpen}
+      onOpenChange={setApplyTplOpen}
+      warnImagesRemoved={layoutHasFilledImage(layout)}
+      onApply={(tpl) => {
+        commit(normalizeCoverSize(applyTemplateLayout(tpl.layout, layoutRef.current)));
+        toast.success('Template aplicado.');
+      }}
+    />
+  );
+
+  if (isPhone) {
+    const clientName = snapshot.account.client_name;
+    return (
+      <>
+        <ReportPhoneView
+          title={title}
+          subtitle={clientName ? `${clientName} · ${snapshot.period.label}` : snapshot.period.label}
+          fallbackTo={`/analytics/${doc.client_id}/relatorios`}
+          layout={layout}
+          snapshot={snapshot}
+          actions={[
+            {
+              label: refreshing ? 'Atualizando…' : 'Atualizar dados',
+              disabled: refreshing,
+              onSelect: handleRefreshData,
+            },
+            ...(hubViewLink
+              ? [
+                  {
+                    label: 'Ver como cliente',
+                    // Dentro do toque: window.open fora do gesto é bloqueado no iOS.
+                    immediate: true,
+                    onSelect: () => window.open(hubViewLink.url, '_blank', 'noopener'),
+                  },
+                ]
+              : []),
+            { label: 'Aplicar template', onSelect: () => setApplyTplOpen(true) },
+          ]}
+          bottomBar={
+            <ReportExportBar
+              exporting={exporting}
+              pdfUrl={phonePdfUrl}
+              onExport={handleExportPdfPhone}
+            />
+          }
+        />
+        {applyTemplateDialog}
+      </>
+    );
   }
 
   // Padding vive em .rb-editor-with-rail (style.css): inline aqui
@@ -220,6 +347,20 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
         }
         highlightId={highlightId}
         imageContext={{ mode: 'report', clientId: doc.client_id }}
+        enabledPlatforms={enabledPlatforms}
+        availablePlatforms={documentPlatforms(snapshot)}
+        onAddWidget={openWidgetDrawer}
+        onAddSection={(kind, afterId) =>
+          handleAddSection(
+            kind,
+            afterId,
+            kind === 'general' ? [] : platformSectionBlocks(kind, snapshotSectionOpts(snapshot)),
+          )
+        }
+        onRemoveSection={handleRemoveSection}
+        onSectionConfigChange={(id, patch) =>
+          commit(updateSectionConfig(layoutRef.current, id, patch), configCoalesceKey(id, patch))
+        }
         renderTextBlock={(block: ReportBlock) => (
           <TextBlockEditor
             key={block.id}
@@ -234,27 +375,27 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
       <LayersPanel
         layout={layout}
         highlightId={highlightId}
-        onReorder={(activeId, overId) => commit(moveBlock(layoutRef.current, activeId, overId))}
+        enabledPlatforms={enabledPlatforms}
+        onReorder={(activeId, overId) =>
+          commit(resolveDragEnd(layoutRef.current, activeId, overId))
+        }
         onLocate={highlightAndScroll}
         onAddAt={openWidgetDrawer}
-        onAddEnd={() => openWidgetDrawer(null)}
       />
 
-      <AddWidgetDrawer open={drawerOpen} onOpenChange={setDrawerOpen} onInsert={handleInsert} />
+      <AddWidgetDrawer
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        onInsert={handleInsert}
+        section={drawerSection}
+        hasCover={layout.blocks.some((b) => b.type === 'cover')}
+      />
       <SaveTemplateDialog
         open={saveTplOpen}
         onOpenChange={setSaveTplOpen}
         getLayout={() => layoutRef.current}
       />
-      <ApplyTemplateDialog
-        open={applyTplOpen}
-        onOpenChange={setApplyTplOpen}
-        warnImagesRemoved={layoutHasFilledImage(layout)}
-        onApply={(tpl) => {
-          commit(normalizeCoverSize(applyTemplateLayout(tpl.layout, layoutRef.current)));
-          toast.success('Template aplicado.');
-        }}
-      />
+      {applyTemplateDialog}
     </div>
   );
 }
@@ -262,6 +403,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
 export default function RelatorioEditorPage() {
   // Arquivo solto fora das áreas de soltar não pode descarregar o editor.
   usePreventStrayFileDrop();
+  const isPhone = !useIsDesktop(768);
   const { id } = useParams<{ id: string }>();
   const { data: doc, isLoading } = useQuery({
     queryKey: ['report-doc', id],
@@ -279,7 +421,8 @@ export default function RelatorioEditorPage() {
 
   if (!doc || !doc.data_snapshot) {
     return (
-      <div style={{ padding: '2rem' }}>
+      <div style={{ padding: isPhone ? 0 : '2rem' }}>
+        {isPhone && <PhoneNavBar fallbackTo="/analytics" />}
         <p style={{ color: 'var(--text-muted)' }}>Relatório não encontrado.</p>
       </div>
     );

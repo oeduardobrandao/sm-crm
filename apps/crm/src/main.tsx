@@ -1,32 +1,25 @@
 import React from 'react';
-import ReactDOM from 'react-dom/client';
+import * as Sentry from '@sentry/react';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
-import { installDeployRecovery, installSilentUpdate } from '@mesaas/app-lifecycle';
+import {
+  installDeployRecovery,
+  installSilentUpdate,
+  installTranslateGuard,
+} from '@mesaas/app-lifecycle';
 import { initSentry } from '@/lib/sentry';
 import { installConsentEffects } from './lib/consentEffects';
 import { captureReferral } from './lib/referral';
 import { initI18n } from '@mesaas/i18n';
-import ptCommon from '../../../packages/i18n/locales/pt/common.json';
-import enCommon from '../../../packages/i18n/locales/en/common.json';
-import ptDashboard from '../../../packages/i18n/locales/pt/dashboard.json';
-import enDashboard from '../../../packages/i18n/locales/en/dashboard.json';
-import ptClients from '../../../packages/i18n/locales/pt/clients.json';
-import enClients from '../../../packages/i18n/locales/en/clients.json';
-import ptLeads from '../../../packages/i18n/locales/pt/leads.json';
-import enLeads from '../../../packages/i18n/locales/en/leads.json';
-import ptPosts from '../../../packages/i18n/locales/pt/posts.json';
-import enPosts from '../../../packages/i18n/locales/en/posts.json';
-import ptAuth from '../../../packages/i18n/locales/pt/auth.json';
-import enAuth from '../../../packages/i18n/locales/en/auth.json';
-import ptBrand from '../../../packages/i18n/locales/pt/brand.json';
-import enBrand from '../../../packages/i18n/locales/en/brand.json';
-import ptAutomations from '../../../packages/i18n/locales/pt/automations.json';
-import enAutomations from '../../../packages/i18n/locales/en/automations.json';
-import App, { queryClient } from './App';
+import { I18N_LAZY, I18N_RESOURCES } from './boot/i18nResources';
+import { mountApp } from './boot/mountApp';
+import { markSsrMount } from './lib/ssrMount';
+import App, { preloadLanding, queryClient } from './App';
 import '../style.css';
 
 // Before anything else: a tab open across a deploy loads chunks that no longer exist.
 installDeployRecovery();
+// Browser page translation rewrites text nodes React still owns; keep it from crashing the app.
+installTranslateGuard();
 
 initSentry();
 
@@ -37,28 +30,14 @@ installConsentEffects();
 // Programa de afiliados: grava o ?ref= de qualquer página do site para o cadastro (lib/referral.ts).
 captureReferral(window.location.search);
 
-initI18n({
-  pt: {
-    common: ptCommon,
-    dashboard: ptDashboard,
-    clients: ptClients,
-    leads: ptLeads,
-    posts: ptPosts,
-    auth: ptAuth,
-    brand: ptBrand,
-    automations: ptAutomations,
-  },
-  en: {
-    common: enCommon,
-    dashboard: enDashboard,
-    clients: enClients,
-    leads: enLeads,
-    posts: enPosts,
-    auth: enAuth,
-    brand: enBrand,
-    automations: enAutomations,
-  },
-});
+const container = document.getElementById('root')!;
+// The prerendered landing (scripts/seo writes the marker) is hydrated, not re-rendered. Its HTML
+// is in `pt`, so i18n starts in `pt` there; App's SavedLanguageSync applies the saved language
+// right after hydration.
+const isSsr = container.dataset.ssr === 'landing' && window.location.pathname === '/';
+if (isSsr) markSsrMount();
+
+initI18n(I18N_RESOURCES, { lazy: I18N_LAZY, ...(isSsr ? { initialLanguage: 'pt' as const } : {}) });
 
 // Minimal DATA router (single splat route; App keeps its own descendant <Routes>). It was
 // introduced because `useBlocker` needs data-router context, for the Estúdio autosave's
@@ -71,4 +50,15 @@ const router = createBrowserRouter([{ path: '*', element: <App /> }]);
 // the tab has been hidden or idle for a while, never starting over unsaved work or an in-flight mutation.
 installSilentUpdate({ router, holdWhile: () => queryClient.isMutating() > 0 });
 
-ReactDOM.createRoot(document.getElementById('root')!).render(<RouterProvider router={router} />);
+// Client-rendered documents: on the landing, render once its chunk is in (a short wait); a failed
+// or slow import renders anyway after 2s and falls back to the route's lazy() loading, so a stalled
+// chunk never leaves the page blank.
+// Prerendered landing: hydrate once the chunk is in; a failed chunk is reported once, retried once,
+// and otherwise the server HTML stays as is (mountApp).
+void mountApp({
+  container,
+  element: <RouterProvider router={router} />,
+  isSsr,
+  preload: window.location.pathname === '/' ? preloadLanding : () => Promise.resolve(),
+  report: (err) => Sentry.captureException(err, { tags: { boot: 'ssr-hydration' } }),
+});

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import {
   Dialog,
@@ -37,6 +38,7 @@ function PickerNode({
   selected: number | null;
   onSelect: (id: number) => void;
 }) {
+  const { t } = useTranslation('files');
   const [expanded, setExpanded] = useState(false);
   const { data: children = [] } = useQuery({
     queryKey: ['folder-tree', folder.id],
@@ -97,7 +99,7 @@ function PickerNode({
         <span className="truncate text-xs">{folder.name}</span>
         {folder.source === 'system' && (
           <span className="text-[0.55rem] uppercase tracking-wide font-semibold px-1 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-muted)] ml-auto flex-shrink-0">
-            AUTO
+            {t('shared.autoBadge')}
           </span>
         )}
       </button>
@@ -130,6 +132,7 @@ export function FolderPickerModal({
   sourceFolderIds,
   currentFolderId,
 }: FolderPickerModalProps) {
+  const { t } = useTranslation('files');
   const [selected, setSelected] = useState<number | null>(null);
 
   const { data: rootFolders = [] } = useQuery({
@@ -173,7 +176,7 @@ export function FolderPickerModal({
             }`}
           >
             <Home className="h-4 w-4" />
-            <span className="text-xs font-medium">Raiz (Todos os Arquivos)</span>
+            <span className="text-xs font-medium">{t('folderPickerModal.root')}</span>
           </button>
 
           {(rootFolders as FolderType[]).map((folder) => (
@@ -194,14 +197,14 @@ export function FolderPickerModal({
             onClick={() => onOpenChange(false)}
             className="px-4 py-2 text-xs rounded-md border border-[var(--border-color)] hover:bg-[var(--surface-hover)] transition-colors"
           >
-            Cancelar
+            {t('actions.cancel')}
           </button>
           <button
             onClick={() => onConfirm(selected)}
             disabled={isLoading}
             className="px-4 py-2 text-xs rounded-md bg-[var(--primary-color)] text-[#12151a] font-bold hover:bg-[var(--primary-hover)] transition-colors disabled:opacity-50"
           >
-            {isLoading ? 'Movendo…' : confirmLabel}
+            {isLoading ? t('folderPickerModal.moving') : confirmLabel}
           </button>
         </DialogFooter>
       </DialogContent>

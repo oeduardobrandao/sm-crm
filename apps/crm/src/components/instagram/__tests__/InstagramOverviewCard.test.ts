@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderInstagramOverviewCard } from '../InstagramOverviewCard';
+import { readCrmCss } from '@/test/readCrmCss';
 
-const css = readFileSync('apps/crm/style.css', 'utf8');
+const css = readCrmCss();
 const overviewSource = readFileSync(
   'apps/crm/src/components/instagram/InstagramOverviewCard.ts',
   'utf8',

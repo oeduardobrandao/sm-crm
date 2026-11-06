@@ -1,15 +1,30 @@
+import { i18n } from '@mesaas/i18n';
 import type { NicheCalendarDef } from './types';
 
 export const medicoDef: NicheCalendarDef = {
   key: 'medico',
-  label: 'Médico',
-  title: 'Calendário Médico',
-  subtitle: 'Brasil & Mundial — Datas de Saúde & Conscientização',
+  get label() {
+    return i18n.t('calendario:niches.medico.label');
+  },
+  get title() {
+    return i18n.t('calendario:niches.medico.title');
+  },
+  get subtitle() {
+    return i18n.t('calendario:niches.medico.subtitle');
+  },
   filterLabels: {
-    cancer: 'Câncer',
-    cardio: 'Cardiologia',
-    'saude-mental': 'Saúde Mental',
-    infeccao: 'Infecção',
+    get cancer() {
+      return i18n.t('calendario:niches.medico.filterLabels.cancer');
+    },
+    get cardio() {
+      return i18n.t('calendario:niches.medico.filterLabels.cardio');
+    },
+    get 'saude-mental'() {
+      return i18n.t('calendario:niches.medico.filterLabels.saude-mental');
+    },
+    get infeccao() {
+      return i18n.t('calendario:niches.medico.filterLabels.infeccao');
+    },
   },
   data: [
     {

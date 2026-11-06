@@ -20,12 +20,18 @@ import {
   ChevronDown,
   ChevronRight,
   LayoutTemplate,
+  Check,
+  MoreHorizontal,
+  ArrowUpDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import {
   DndContext,
   PointerSensor,
   KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   closestCenter,
@@ -71,6 +77,14 @@ import {
 } from '@/lib/briefingReorder';
 import { HubRoleGate } from './HubRoleGate';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { ActionSheet, type ActionSheetAction } from '@/components/mobile/ActionSheet';
+import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
+import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
+import { SegmentedControl } from '@/components/mobile/SegmentedControl';
+import { PhoneEmptyCard, PhoneRow, editRemoveActions } from '../phone/PhoneRows';
+import { PhoneInlineEdit, PhoneSortableRow } from '../phone/PhoneEditing';
+import { ClientePhoneNavActions, useClientePhoneHeader } from '../phone/ClientePhoneChrome';
 
 type BriefingFilter = 'todas' | 'sem-resposta' | 'respondidas';
 
@@ -132,19 +146,19 @@ function downloadTextFile(filename: string, mime: string, text: string) {
 }
 
 export default function BriefingPage() {
+  const { t } = useTranslation('clientBriefing');
   const { clienteId, cliente } = useOutletContext<ClienteDetalheOutletContext>();
   const qc = useQueryClient();
+  const isPhone = !useIsDesktop(768);
 
   if (!cliente.conta_id) return null;
 
   return (
     <div className="hub-page">
-      <header className="hub-page__head">
+      <header className="hub-page__head" hidden={isPhone}>
         <div>
-          <h2 className="hub-page__title">Briefing</h2>
-          <p className="hub-page__sub">
-            Perguntas para orientar a produção de conteúdo do cliente.
-          </p>
+          <h2 className="hub-page__title">{t('page.title')}</h2>
+          <p className="hub-page__sub">{t('page.subtitle')}</p>
         </div>
       </header>
       <HubRoleGate>
@@ -158,6 +172,7 @@ export default function BriefingPage() {
           key={clienteId}
           clienteId={clienteId}
           contaId={cliente.conta_id}
+          clienteNome={cliente.nome}
           onSaved={() => qc.invalidateQueries({ queryKey: ['hub-briefing-questions', clienteId] })}
         />
       </HubRoleGate>
@@ -168,12 +183,15 @@ export default function BriefingPage() {
 function BriefingEditor({
   clienteId,
   contaId,
+  clienteNome,
   onSaved,
 }: {
   clienteId: number;
   contaId: string;
+  clienteNome?: string;
   onSaved: () => void;
 }) {
+  const { t } = useTranslation('clientBriefing');
   const qc = useQueryClient();
   const { data: briefings = [] } = useQuery({
     queryKey: ['briefings', clienteId],
@@ -213,6 +231,23 @@ function BriefingEditor({
   // briefing com dezenas de respostas em áudio não pode disparar todas essas
   // chamadas só porque a página abriu -- só a seção que o usuário expandir.
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+
+  // Phones (below 768px): the briefing's title is the picker, so the section shell's
+  // large title steps aside; the rest of the desktop toolbar lives in a "…" sheet.
+  const isPhone = !useIsDesktop(768);
+  useClientePhoneHeader({ hideTitle: isPhone });
+  const [phoneMenuOpen, setPhoneMenuOpen] = useState(false);
+  const [phonePickerOpen, setPhonePickerOpen] = useState(false);
+  const [phoneTemplatesOpen, setPhoneTemplatesOpen] = useState(false);
+  const [phoneRemoveOpen, setPhoneRemoveOpen] = useState(false);
+  const [reordering, setReordering] = useState(false);
+  // Reordenar on phones: a drag starts only from a grip, and only after a short hold, so
+  // a swipe over the list keeps scrolling (MouseSensor keeps it usable with a mouse).
+  const phoneSensors = useSensors(
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   // Default selection: first briefing once loaded (or when the selected one is deleted).
   useEffect(() => {
@@ -255,7 +290,7 @@ function BriefingEditor({
       await reorderBriefingQuestions(updates);
       qc.invalidateQueries({ queryKey: key });
     } catch {
-      toast.error('Erro ao reordenar.');
+      toast.error(t('editor.reorderError'));
       qc.invalidateQueries({ queryKey: key });
     }
   }
@@ -290,10 +325,13 @@ function BriefingEditor({
     setEditingSectionName(null);
     setFilter('todas');
     setExpandedSections(new Set());
+    setReordering(false);
   }
 
   async function handleCreateBriefing() {
     try {
+      // The default title is saved to the database as the briefing's title (user data), so it
+      // stays in Portuguese; the user renames it right away.
       const b = await addBriefing(clienteId, contaId, 'Novo briefing');
       // Seed the cache so the default-selection effect finds the new briefing
       // synchronously; otherwise it can't match selectedId against the stale
@@ -305,7 +343,7 @@ function BriefingEditor({
       setRenameText(b.title);
       refresh();
     } catch (e: any) {
-      toast.error(e.message ?? 'Erro ao criar briefing.');
+      toast.error(e.message ?? t('editor.createError'));
     }
   }
 
@@ -316,31 +354,26 @@ function BriefingEditor({
       setRenaming(false);
       refresh();
     } catch (e: any) {
-      toast.error(e.message ?? 'Erro ao renomear briefing.');
+      toast.error(e.message ?? t('editor.renameError'));
     }
   }
 
-  async function handleDeleteBriefing() {
+  async function handleDeleteBriefing(confirmed = false) {
     if (!selectedId) return;
-    if (
-      !window.confirm(
-        'Remover este briefing e todas as suas perguntas? Essa ação não pode ser desfeita.',
-      )
-    )
-      return;
+    if (!confirmed && !window.confirm(t('editor.confirmRemove'))) return;
     try {
       await deleteBriefing(selectedId);
       setSelectedId(null);
       refresh();
-      toast.success('Briefing removido.');
+      toast.success(t('editor.removed'));
     } catch (e: any) {
-      toast.error(e.message ?? 'Erro ao remover briefing.');
+      toast.error(e.message ?? t('editor.removeError'));
     }
   }
 
   function handleCSVImport() {
     if (!selectedId) {
-      toast.error('Crie ou selecione um briefing primeiro.');
+      toast.error(t('editor.selectFirst'));
       return;
     }
     const briefingId = selectedId;
@@ -364,12 +397,10 @@ function BriefingEditor({
           }
         }
         if (count > 0) {
-          toast.success(
-            `${count} pergunta${count !== 1 ? 's' : ''} importada${count !== 1 ? 's' : ''} com sucesso!`,
-          );
+          toast.success(t('editor.imported', { count }));
           refresh();
         } else {
-          toast.error('Nenhuma pergunta válida encontrada. Verifique a coluna "pergunta".');
+          toast.error(t('shared.noValidQuestions'));
         }
         setImportingCsv(false);
       },
@@ -389,9 +420,9 @@ function BriefingEditor({
       setSelectedId(b.id);
       setFilter('todas');
       refresh();
-      toast.success('Template aplicado! Ajuste as perguntas como quiser.');
+      toast.success(t('editor.templateApplied'));
     } catch (e: any) {
-      toast.error(e.message ?? 'Erro ao aplicar template.');
+      toast.error(e.message ?? t('editor.applyTemplateError'));
     } finally {
       setApplying(false);
     }
@@ -434,7 +465,7 @@ function BriefingEditor({
       setNewQuestions((prev) => ({ ...prev, [key]: '' }));
       refresh();
     } catch (e: any) {
-      toast.error(e.message ?? 'Erro ao adicionar pergunta.');
+      toast.error(e.message ?? t('editor.addQuestionError'));
     } finally {
       setAddingFor(null);
     }
@@ -447,7 +478,7 @@ function BriefingEditor({
       setEditingId(null);
       refresh();
     } catch (e: any) {
-      toast.error(e.message ?? 'Erro ao salvar pergunta.');
+      toast.error(e.message ?? t('editor.saveQuestionError'));
     }
   }
 
@@ -455,9 +486,9 @@ function BriefingEditor({
     try {
       await deleteHubBriefingQuestion(id);
       refresh();
-      toast.success('Pergunta removida.');
+      toast.success(t('editor.questionRemoved'));
     } catch (e: any) {
-      toast.error(e.message ?? 'Erro ao remover pergunta.');
+      toast.error(e.message ?? t('editor.removeQuestionError'));
     }
   }
 
@@ -472,7 +503,7 @@ function BriefingEditor({
       return;
     }
     if (allNamedSections.some((candidate) => candidate.name === nextName)) {
-      toast.error('Já existe uma seção com esse nome.');
+      toast.error(t('editor.duplicateSection'));
       return;
     }
 
@@ -502,9 +533,9 @@ function BriefingEditor({
       });
       setEditingSectionName(null);
       refresh();
-      toast.success('Seção renomeada.');
+      toast.success(t('editor.sectionRenamed'));
     } catch (e: any) {
-      toast.error(e.message ?? 'Erro ao renomear seção.');
+      toast.error(e.message ?? t('editor.renameSectionError'));
     } finally {
       setSavingSectionName(false);
     }
@@ -572,10 +603,10 @@ function BriefingEditor({
                       />
                       <div className="flex gap-2">
                         <Button size="sm" onClick={() => handleSaveEdit(q.id)}>
-                          <Save size={14} className="mr-1.5" /> Salvar
+                          <Save size={14} className="mr-1.5" /> {t('actions.save')}
                         </Button>
                         <Button size="sm" variant="outline" onClick={() => setEditingId(null)}>
-                          Cancelar
+                          {t('actions.cancel')}
                         </Button>
                       </div>
                     </div>
@@ -590,7 +621,9 @@ function BriefingEditor({
                             {q.answer}
                           </p>
                         ) : (
-                          <p className="text-xs text-muted-foreground italic">Sem resposta ainda</p>
+                          <p className="text-xs text-muted-foreground italic">
+                            {t('editor.noAnswerYet')}
+                          </p>
                         )}
                         <BriefingAudioPlayer question={q} />
                       </div>
@@ -598,7 +631,7 @@ function BriefingEditor({
                         <Button
                           size="icon"
                           variant="ghost"
-                          aria-label="Editar pergunta"
+                          aria-label={t('editor.editQuestion')}
                           onClick={() => {
                             setEditingId(q.id);
                             setEditText(q.question);
@@ -609,7 +642,7 @@ function BriefingEditor({
                         <Button
                           size="icon"
                           variant="ghost"
-                          aria-label="Remover pergunta"
+                          aria-label={t('shared.removeQuestion')}
                           onClick={() => handleDelete(q.id)}
                         >
                           <Trash2 size={14} />
@@ -631,7 +664,7 @@ function BriefingEditor({
             onKeyDown={(e) => {
               if (e.key === 'Enter') handleAddQuestion(sectionKey);
             }}
-            placeholder="Nova pergunta..."
+            placeholder={t('editor.newQuestionPlaceholder')}
             className="flex-1"
           />
           <Button
@@ -641,7 +674,7 @@ function BriefingEditor({
               addingFor === (sectionKey ?? '') || !(newQuestions[sectionKey ?? ''] ?? '').trim()
             }
           >
-            <Plus size={14} className="mr-1.5" /> Adicionar
+            <Plus size={14} className="mr-1.5" /> {t('actions.add')}
           </Button>
         </div>
       </div>
@@ -671,9 +704,9 @@ function BriefingEditor({
     const md = briefingToMarkdown(selectedBriefing?.title ?? '', sections);
     try {
       await navigator.clipboard.writeText(md);
-      toast.success('Briefing copiado como Markdown!');
+      toast.success(t('editor.copiedMarkdown'));
     } catch {
-      toast.error('Não foi possível copiar.');
+      toast.error(t('editor.copyError'));
     }
   }
 
@@ -681,9 +714,9 @@ function BriefingEditor({
     const sections = buildBriefingExportSections(questions, selectedId, firstId);
     try {
       await navigator.clipboard.writeText(briefingToCSV(sections));
-      toast.success('Briefing copiado como CSV!');
+      toast.success(t('editor.copiedCsv'));
     } catch {
-      toast.error('Não foi possível copiar.');
+      toast.error(t('editor.copyError'));
     }
   }
 
@@ -695,7 +728,7 @@ function BriefingEditor({
       'text/csv;charset=utf-8',
       csv,
     );
-    toast.success('CSV exportado!');
+    toast.success(t('editor.csvExported'));
   }
 
   function scrollToSection(name: string, index: number) {
@@ -712,10 +745,475 @@ function BriefingEditor({
     });
   }
 
+  if (isPhone) {
+    const questionRow = (q: HubBriefingQuestionRow) =>
+      editingId === q.id ? (
+        <PhoneInlineEdit
+          key={q.id}
+          label={t('editor.editQuestion')}
+          value={editText}
+          onChange={setEditText}
+          onSave={() => void handleSaveEdit(q.id)}
+          onCancel={() => setEditingId(null)}
+        />
+      ) : (
+        <PhoneRow
+          key={q.id}
+          title={q.question}
+          subtitle={
+            isAnswered(q) ? (
+              <span className="phone-cli-brief__answer">{q.answer}</span>
+            ) : (
+              <span className="phone-cli-brief__answer--empty">{t('editor.noAnswerYet')}</span>
+            )
+          }
+          meta={<BriefingAudioPlayer question={q} />}
+          menuLabel={t('editor.questionActions', { question: q.question })}
+          actions={editRemoveActions(
+            () => {
+              setEditingId(q.id);
+              setEditText(q.question);
+            },
+            () => void handleDelete(q.id),
+          )}
+        />
+      );
+
+    const addRow = (sectionKey: string | null) => (
+      <PhoneInlineEdit
+        key="__add"
+        label={t('editor.newQuestion')}
+        placeholder={t('editor.newQuestionPlaceholder')}
+        saveLabel={t('actions.add')}
+        autoFocus={false}
+        value={newQuestions[sectionKey ?? ''] ?? ''}
+        onChange={(v) => setNewQuestions((prev) => ({ ...prev, [sectionKey ?? '']: v }))}
+        onSave={() => void handleAddQuestion(sectionKey)}
+        saving={addingFor === (sectionKey ?? '')}
+      />
+    );
+
+    const menuActions: ActionSheetAction[] = selectedBriefing
+      ? [
+          {
+            label: t('editor.rename'),
+            icon: <Pencil aria-hidden="true" />,
+            onSelect: () => {
+              setRenaming(true);
+              setRenameText(selectedBriefing.title);
+            },
+          },
+          {
+            label: t('actions.importCsv'),
+            icon: <Upload aria-hidden="true" />,
+            disabled: importingCsv,
+            // The file picker only opens inside the tap on iOS Safari.
+            immediate: true,
+            onSelect: handleCSVImport,
+          },
+          {
+            label: t('editor.saveAsTemplate'),
+            icon: <LayoutTemplate aria-hidden="true" />,
+            disabled: !canExport,
+            onSelect: handleSaveAsTemplate,
+          },
+          {
+            label: t('editor.copyMarkdown'),
+            icon: <Copy aria-hidden="true" />,
+            disabled: !canExport,
+            immediate: true,
+            onSelect: () => void handleCopyMarkdown(),
+          },
+          {
+            label: t('editor.copyCsv'),
+            icon: <Copy aria-hidden="true" />,
+            disabled: !canExport,
+            immediate: true,
+            onSelect: () => void handleCopyCSV(),
+          },
+          {
+            label: t('editor.downloadCsv'),
+            icon: <Download aria-hidden="true" />,
+            disabled: !canExport,
+            immediate: true,
+            onSelect: handleDownloadCSV,
+          },
+          {
+            label: t('editor.reorder'),
+            icon: <ArrowUpDown aria-hidden="true" />,
+            disabled: briefingQuestions.length < 2,
+            onSelect: () => {
+              setEditingId(null);
+              setReordering(true);
+            },
+          },
+          {
+            label: t('editor.removeBriefing'),
+            icon: <Trash2 aria-hidden="true" />,
+            destructive: true,
+            onSelect: () => setPhoneRemoveOpen(true),
+          },
+        ]
+      : [];
+
+    const pickerActions: ActionSheetAction[] = [
+      ...briefings.map((b) => ({
+        label: (
+          <span className="phone-cli-brief__picker">
+            {b.title || t('editor.untitled')}
+            {b.id === selectedId && <Check aria-label={t('editor.selected')} />}
+          </span>
+        ),
+        onSelect: () => {
+          setSelectedId(b.id);
+          resetBriefingViewState();
+        },
+      })),
+      {
+        label: t('editor.newBriefing'),
+        icon: <Plus aria-hidden="true" />,
+        onSelect: () => void handleCreateBriefing(),
+      },
+      {
+        label: t('editor.useTemplate'),
+        icon: <LayoutTemplate aria-hidden="true" />,
+        disabled: applying || templates.length === 0,
+        onSelect: () => setPhoneTemplatesOpen(true),
+      },
+      { label: t('shared.templates'), onSelect: () => setTemplatesOpen(true) },
+    ];
+
+    const titleText = selectedBriefing
+      ? selectedBriefing.title || t('editor.untitled')
+      : t('editor.briefing');
+
+    return (
+      <div className="phone-cli-brief">
+        {selectedBriefing && (
+          <ClientePhoneNavActions>
+            <PhoneIconButton
+              label={t('editor.moreActions')}
+              aria-haspopup="dialog"
+              onClick={() => setPhoneMenuOpen(true)}
+            >
+              <MoreHorizontal aria-hidden="true" />
+            </PhoneIconButton>
+          </ClientePhoneNavActions>
+        )}
+
+        <header className="phone-kit phone-large-title phone-cli-brief__title">
+          <h1 className="phone-large-title__title">
+            <button
+              type="button"
+              className="phone-cli-brief__picker"
+              aria-haspopup="dialog"
+              aria-label={t('editor.switchBriefing', { title: titleText })}
+              onClick={() => setPhonePickerOpen(true)}
+            >
+              {titleText}
+              <ChevronDown aria-hidden="true" />
+            </button>
+          </h1>
+          <p className="phone-large-title__subtitle">
+            {clienteNome ? t('editor.briefingOf', { name: clienteNome }) : t('editor.briefing')}
+          </p>
+        </header>
+
+        {renaming && selectedBriefing && (
+          <PhoneInlineEdit
+            as="div"
+            label={t('editor.briefingName')}
+            value={renameText}
+            onChange={setRenameText}
+            onSave={() => void handleRenameBriefing()}
+            onCancel={() => setRenaming(false)}
+          />
+        )}
+
+        {importingCsv && (
+          <div
+            className="csv-progress mb-3"
+            role="progressbar"
+            aria-label={t('shared.importingCsv')}
+          />
+        )}
+
+        {!selectedBriefing ? (
+          <PhoneEmptyCard title={t('editor.emptyTitle')} hint={t('editor.emptyPhoneHint')} />
+        ) : reordering ? (
+          <>
+            <div className="phone-cli-reorder-bar">
+              <span>{t('editor.reorderHint')}</span>
+              <button
+                type="button"
+                className="phone-cli-cal__step"
+                onClick={() => setReordering(false)}
+              >
+                {t('editor.done')}
+              </button>
+            </div>
+            {allNamedSections.length > 1 && (
+              <section className="phone-kit phone-group">
+                <h2 className="phone-group__header">{t('editor.sections')}</h2>
+                <DndContext
+                  sensors={phoneSensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleSectionDragEnd}
+                >
+                  <SortableContext
+                    items={allNamedSections.map((sec) => SECTION_PREFIX + sec.name)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <ul className="phone-group__list">
+                      {allNamedSections.map((sec) => (
+                        <PhoneSortableRow
+                          key={sec.name}
+                          id={SECTION_PREFIX + sec.name}
+                          handleLabel={t('editor.reorderSectionNamed', { name: sec.name })}
+                        >
+                          {sec.name}
+                        </PhoneSortableRow>
+                      ))}
+                    </ul>
+                  </SortableContext>
+                </DndContext>
+              </section>
+            )}
+            {allSections.map((sec) => (
+              <section key={sec.name || '__none'} className="phone-kit phone-group">
+                <h2 className="phone-group__header">{sec.name || t('editor.noSection')}</h2>
+                <DndContext
+                  sensors={phoneSensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={(e) => handleQuestionDragEnd(sec.name, e)}
+                >
+                  <SortableContext
+                    items={sec.questions.map((q) => q.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <ul className="phone-group__list">
+                      {sec.questions.map((q) => (
+                        <PhoneSortableRow
+                          key={q.id}
+                          id={q.id}
+                          handleLabel={t('editor.reorderQuestionNamed', { question: q.question })}
+                        >
+                          {q.question}
+                        </PhoneSortableRow>
+                      ))}
+                    </ul>
+                  </SortableContext>
+                </DndContext>
+              </section>
+            ))}
+          </>
+        ) : (
+          <>
+            <SegmentedControl
+              aria-label={t('editor.filterQuestions')}
+              className="phone-cli-brief__filters"
+              value={filter}
+              onChange={setFilter}
+              options={[
+                { value: 'todas', label: t('editor.filterAllCount', { n: totalCount }) },
+                {
+                  value: 'sem-resposta',
+                  label: t('editor.filterUnansweredCount', { n: unansweredCount }),
+                },
+                {
+                  value: 'respondidas',
+                  label: t('editor.filterAnsweredCount', { n: answeredCount }),
+                },
+              ]}
+            />
+            <div
+              className="phone-cli-brief__progress"
+              role="progressbar"
+              aria-label={t('editor.progress')}
+              aria-valuenow={answeredCount}
+              aria-valuemin={0}
+              aria-valuemax={totalCount}
+            >
+              <div
+                className="phone-cli-brief__progress-bar"
+                style={{ width: `${totalCount > 0 ? (answeredCount / totalCount) * 100 : 0}%` }}
+              />
+            </div>
+            <p className="phone-cli-brief__progress-label">
+              {t('editor.progressLabel', { answered: answeredCount, total: totalCount })}
+            </p>
+
+            {filteredQuestions.length === 0 && briefingQuestions.length > 0 && (
+              <PhoneEmptyCard title={t('editor.noFilterMatch')} />
+            )}
+
+            {(unsectioned || allNamedSections.length === 0) && (
+              <section className="phone-kit phone-group">
+                <ul className="phone-group__list" aria-label={t('editor.unsectionedQuestions')}>
+                  {(unsectioned?.questions ?? []).map(questionRow)}
+                  {addRow(null)}
+                </ul>
+              </section>
+            )}
+
+            {filter === 'todas' && namedSections.length > 1 && (
+              <div className="phone-cli-brief__expand">
+                <button type="button" className="phone-cli-link-button" onClick={toggleAllSections}>
+                  {namedSections.every((sec) => expandedSections.has(sec.name))
+                    ? t('editor.collapseAll')
+                    : t('editor.expandAll')}
+                </button>
+              </div>
+            )}
+
+            {namedSections.map((sec) => {
+              const isCollapsed = filter === 'todas' && !expandedSections.has(sec.name);
+              const answered = sec.questions.filter(isAnswered).length;
+              return (
+                <section key={sec.name} className="phone-kit phone-cli-brief__section">
+                  {editingSectionName === sec.name ? (
+                    <PhoneInlineEdit
+                      as="div"
+                      label={t('editor.sectionName')}
+                      value={sectionNameText}
+                      onChange={setSectionNameText}
+                      saving={savingSectionName}
+                      onSave={() => void handleRenameSection(sec)}
+                      onCancel={() => setEditingSectionName(null)}
+                    />
+                  ) : (
+                    <div className="phone-cli-brief__section-head">
+                      <button
+                        type="button"
+                        className="phone-cli-brief__toggle"
+                        aria-expanded={!isCollapsed}
+                        disabled={filter !== 'todas'}
+                        data-testid={`secao-toggle-${sec.name}`}
+                        onClick={() => toggleSection(sec.name)}
+                      >
+                        {isCollapsed ? (
+                          <ChevronRight aria-hidden="true" />
+                        ) : (
+                          <ChevronDown aria-hidden="true" />
+                        )}
+                        <span className="phone-cli-brief__toggle-name">{sec.name}</span>
+                        <span className="phone-cli-brief__toggle-count">
+                          {answered}/{sec.questions.length}
+                        </span>
+                      </button>
+                      <PhoneIconButton
+                        label={t('editor.renameSectionNamed', { name: sec.name })}
+                        onClick={() => {
+                          setEditingSectionName(sec.name);
+                          setSectionNameText(sec.name);
+                        }}
+                      >
+                        <Pencil aria-hidden="true" />
+                      </PhoneIconButton>
+                    </div>
+                  )}
+                  {!isCollapsed && (
+                    <div className="phone-group">
+                      <ul
+                        className="phone-group__list"
+                        aria-label={t('editor.sectionQuestions', { name: sec.name })}
+                      >
+                        {sec.questions.map(questionRow)}
+                        {addRow(sec.name)}
+                      </ul>
+                    </div>
+                  )}
+                </section>
+              );
+            })}
+
+            {pendingSections.map((name) => (
+              <section key={name} className="phone-kit phone-group">
+                <h2 className="phone-group__header">{name}</h2>
+                <ul className="phone-group__list">{addRow(name)}</ul>
+              </section>
+            ))}
+
+            {addingSectionInput ? (
+              <PhoneInlineEdit
+                as="div"
+                label={t('editor.sectionName')}
+                placeholder={t('editor.sectionNamePlaceholder')}
+                saveLabel={t('editor.createSection')}
+                value={newSectionName}
+                onChange={setNewSectionName}
+                onSave={handleAddSection}
+                onCancel={() => {
+                  setAddingSectionInput(false);
+                  setNewSectionName('');
+                }}
+              />
+            ) : (
+              <button
+                type="button"
+                className="phone-cli-button phone-cli-button--secondary phone-cli-button--block"
+                onClick={() => setAddingSectionInput(true)}
+              >
+                <Plus aria-hidden="true" /> {t('editor.newSection')}
+              </button>
+            )}
+          </>
+        )}
+
+        <ActionSheet
+          open={phonePickerOpen}
+          onOpenChange={setPhonePickerOpen}
+          title={t('editor.briefings')}
+          actions={pickerActions}
+        />
+        <ActionSheet
+          open={phoneTemplatesOpen}
+          onOpenChange={setPhoneTemplatesOpen}
+          title={t('editor.useTemplate')}
+          actions={templates.map((tpl) => ({
+            label: `${tpl.title} (${(tpl.questions ?? []).length})`,
+            onSelect: () => void handleApplyTemplate(tpl.id),
+          }))}
+        />
+        <ActionSheet
+          open={phoneMenuOpen}
+          onOpenChange={setPhoneMenuOpen}
+          title={titleText}
+          hideTitle
+          actions={menuActions}
+        />
+        <PhoneConfirmSheet
+          open={phoneRemoveOpen}
+          title={t('editor.removeConfirmTitle')}
+          message={t('editor.removeConfirmMessage')}
+          actions={[
+            {
+              label: t('editor.removeBriefing'),
+              destructive: true,
+              onSelect: () => {
+                setPhoneRemoveOpen(false);
+                void handleDeleteBriefing(true);
+              },
+            },
+          ]}
+          onCancel={() => setPhoneRemoveOpen(false)}
+        />
+        <BriefingTemplatesModal
+          open={templatesOpen}
+          onOpenChange={(v) => {
+            setTemplatesOpen(v);
+            if (!v) setTemplateDraft(null);
+          }}
+          initialDraft={templateDraft}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="hub-briefing__shell">
       <aside className="hub-briefing__rail">
-        <h3 className="font-semibold">Briefings</h3>
+        <h3 className="font-semibold">{t('editor.briefings')}</h3>
 
         <div className="hub-briefing__rail-toolbar">
           <Button
@@ -724,7 +1222,7 @@ function BriefingEditor({
             className="w-full justify-start"
             onClick={handleCreateBriefing}
           >
-            <Plus size={14} className="mr-1.5" /> Novo briefing
+            <Plus size={14} className="mr-1.5" /> {t('editor.newBriefing')}
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -734,13 +1232,13 @@ function BriefingEditor({
                 className="w-full justify-start"
                 disabled={applying || templates.length === 0}
               >
-                Usar template <ChevronDown size={14} className="ml-auto" />
+                {t('editor.useTemplate')} <ChevronDown size={14} className="ml-auto" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
-              {templates.map((t) => (
-                <DropdownMenuItem key={t.id} onClick={() => handleApplyTemplate(t.id)}>
-                  {t.title} ({(t.questions ?? []).length})
+              {templates.map((tpl) => (
+                <DropdownMenuItem key={tpl.id} onClick={() => handleApplyTemplate(tpl.id)}>
+                  {tpl.title} ({(tpl.questions ?? []).length})
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
@@ -751,17 +1249,17 @@ function BriefingEditor({
             className="w-full justify-start"
             onClick={() => setTemplatesOpen(true)}
           >
-            Templates
+            {t('shared.templates')}
           </Button>
         </div>
 
         {briefings.length === 0 ? (
-          <p className="hub-briefing__rail-empty">Nenhum briefing ainda.</p>
+          <p className="hub-briefing__rail-empty">{t('editor.emptyTitle')}</p>
         ) : (
           <div
             className="hub-briefing__list"
             role="tablist"
-            aria-label="Briefings"
+            aria-label={t('editor.briefings')}
             aria-orientation="vertical"
           >
             {briefings.map((b) => (
@@ -777,15 +1275,15 @@ function BriefingEditor({
                   resetBriefingViewState();
                 }}
               >
-                {b.title || <span className="italic opacity-60">Sem título</span>}
+                {b.title || <span className="italic opacity-60">{t('editor.untitled')}</span>}
               </button>
             ))}
           </div>
         )}
 
         {allNamedSections.length > 0 && (
-          <nav className="hub-briefing__section-index" aria-label="Seções do briefing">
-            <p className="hub-briefing__section-index-label">Seções</p>
+          <nav className="hub-briefing__section-index" aria-label={t('editor.sectionIndex')}>
+            <p className="hub-briefing__section-index-label">{t('editor.sections')}</p>
             {allNamedSections.map((s, sectionIndex) => {
               const sectionAnswered = s.questions.filter(isAnswered).length;
               // O rail lista TODAS as seções para a contagem cobrir o briefing inteiro
@@ -800,9 +1298,7 @@ function BriefingEditor({
                   data-testid={`secao-${s.name}`}
                   className="hub-briefing__section-link"
                   disabled={!hasTarget}
-                  title={
-                    hasTarget ? undefined : 'Nenhuma pergunta desta seção bate com o filtro atual'
-                  }
+                  title={hasTarget ? undefined : t('editor.sectionNoMatch')}
                   onClick={hasTarget ? () => scrollToSection(s.name, sectionIndex) : undefined}
                 >
                   <span className="hub-briefing__section-link-name">{s.name}</span>
@@ -818,9 +1314,7 @@ function BriefingEditor({
 
       <div className="hub-briefing__main">
         {!selectedBriefing ? (
-          <p className="text-sm text-muted-foreground py-6">
-            Nenhum briefing ainda. Crie um com "Novo briefing".
-          </p>
+          <p className="text-sm text-muted-foreground py-6">{t('editor.emptyDesktop')}</p>
         ) : (
           <>
             {/* Selected briefing header: rename / delete / import / export */}
@@ -839,17 +1333,19 @@ function BriefingEditor({
                       className="flex-1"
                     />
                     <Button size="sm" onClick={handleRenameBriefing}>
-                      <Save size={14} className="mr-1.5" /> Salvar
+                      <Save size={14} className="mr-1.5" /> {t('actions.save')}
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => setRenaming(false)}>
-                      Cancelar
+                      {t('actions.cancel')}
                     </Button>
                   </div>
                 ) : (
                   <>
                     <p className="text-sm font-semibold">
                       {selectedBriefing.title || (
-                        <span className="font-normal italic text-muted-foreground">Sem título</span>
+                        <span className="font-normal italic text-muted-foreground">
+                          {t('editor.untitled')}
+                        </span>
                       )}
                     </p>
                     <div className="flex gap-1">
@@ -861,13 +1357,13 @@ function BriefingEditor({
                           setRenameText(selectedBriefing.title);
                         }}
                       >
-                        <Pencil size={14} className="mr-1.5" /> Renomear
+                        <Pencil size={14} className="mr-1.5" /> {t('editor.rename')}
                       </Button>
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={handleDeleteBriefing}
-                        aria-label="Remover briefing"
+                        onClick={() => void handleDeleteBriefing()}
+                        aria-label={t('editor.removeBriefing')}
                       >
                         <Trash2 size={14} />
                       </Button>
@@ -883,10 +1379,10 @@ function BriefingEditor({
                   onClick={handleCSVImport}
                   disabled={!selectedId || importingCsv}
                 >
-                  <Upload size={14} className="mr-1.5" /> Importar CSV
+                  <Upload size={14} className="mr-1.5" /> {t('actions.importCsv')}
                 </Button>
                 <span
-                  data-tooltip="Colunas: pergunta*, secao, resposta"
+                  data-tooltip={t('editor.csvColumns')}
                   data-tooltip-dir="bottom"
                   style={{ display: 'flex' }}
                 >
@@ -901,24 +1397,24 @@ function BriefingEditor({
                   onClick={handleSaveAsTemplate}
                   disabled={!canExport}
                 >
-                  <LayoutTemplate size={14} className="mr-1.5" /> Salvar como template
+                  <LayoutTemplate size={14} className="mr-1.5" /> {t('editor.saveAsTemplate')}
                 </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button size="sm" variant="outline" disabled={!canExport}>
-                      <Download size={14} className="mr-1.5" /> Exportar
+                      <Download size={14} className="mr-1.5" /> {t('editor.export')}
                       <ChevronDown size={14} className="ml-1.5" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem onClick={handleCopyMarkdown}>
-                      <Copy size={14} className="mr-2" /> Copiar como Markdown
+                      <Copy size={14} className="mr-2" /> {t('editor.copyMarkdown')}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={handleCopyCSV}>
-                      <Copy size={14} className="mr-2" /> Copiar como CSV
+                      <Copy size={14} className="mr-2" /> {t('editor.copyCsv')}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={handleDownloadCSV}>
-                      <Download size={14} className="mr-2" /> Baixar CSV
+                      <Download size={14} className="mr-2" /> {t('editor.downloadCsv')}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -926,12 +1422,20 @@ function BriefingEditor({
             </div>
 
             {importingCsv && (
-              <div className="csv-progress mb-3" role="progressbar" aria-label="Importando CSV" />
+              <div
+                className="csv-progress mb-3"
+                role="progressbar"
+                aria-label={t('shared.importingCsv')}
+              />
             )}
 
             {/* Filtro por estado + progresso -- sempre sobre o briefing inteiro */}
             <div className="hub-briefing__filters">
-              <div className="hub-briefing__chips" role="group" aria-label="Filtrar perguntas">
+              <div
+                className="hub-briefing__chips"
+                role="group"
+                aria-label={t('editor.filterQuestions')}
+              >
                 <button
                   type="button"
                   data-testid="chip-todas"
@@ -939,7 +1443,8 @@ function BriefingEditor({
                   className="hub-briefing__chip"
                   onClick={() => setFilter('todas')}
                 >
-                  Todas <span className="hub-briefing__chip-count">{totalCount}</span>
+                  {t('editor.filterAll')}{' '}
+                  <span className="hub-briefing__chip-count">{totalCount}</span>
                 </button>
                 <button
                   type="button"
@@ -948,7 +1453,8 @@ function BriefingEditor({
                   className="hub-briefing__chip"
                   onClick={() => setFilter('sem-resposta')}
                 >
-                  Sem resposta <span className="hub-briefing__chip-count">{unansweredCount}</span>
+                  {t('editor.filterUnanswered')}{' '}
+                  <span className="hub-briefing__chip-count">{unansweredCount}</span>
                 </button>
                 <button
                   type="button"
@@ -957,14 +1463,15 @@ function BriefingEditor({
                   className="hub-briefing__chip"
                   onClick={() => setFilter('respondidas')}
                 >
-                  Respondidas <span className="hub-briefing__chip-count">{answeredCount}</span>
+                  {t('editor.filterAnswered')}{' '}
+                  <span className="hub-briefing__chip-count">{answeredCount}</span>
                 </button>
               </div>
               <div className="hub-briefing__progress-wrap">
                 <div
                   className="hub-briefing__progress"
                   role="progressbar"
-                  aria-label="Progresso do briefing"
+                  aria-label={t('editor.progress')}
                   aria-valuenow={answeredCount}
                   aria-valuemin={0}
                   aria-valuemax={totalCount}
@@ -977,15 +1484,13 @@ function BriefingEditor({
                   />
                 </div>
                 <p className="hub-briefing__progress-label">
-                  {answeredCount} de {totalCount} respondidas
+                  {t('editor.progressLabel', { answered: answeredCount, total: totalCount })}
                 </p>
               </div>
             </div>
 
             {filteredQuestions.length === 0 && briefingQuestions.length > 0 && (
-              <p className="text-sm text-muted-foreground py-4">
-                Nenhuma pergunta corresponde a este filtro.
-              </p>
+              <p className="text-sm text-muted-foreground py-4">{t('editor.noFilterMatch')}</p>
             )}
 
             {/* Unsectioned questions */}
@@ -1004,8 +1509,8 @@ function BriefingEditor({
                   className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
                 >
                   {namedSections.every((s) => expandedSections.has(s.name))
-                    ? 'Recolher tudo'
-                    : 'Expandir tudo'}
+                    ? t('editor.collapseAll')
+                    : t('editor.expandAll')}
                 </button>
               </div>
             )}
@@ -1044,7 +1549,7 @@ function BriefingEditor({
                                 if (e.key === 'Enter') void handleRenameSection(s);
                                 if (e.key === 'Escape') setEditingSectionName(null);
                               }}
-                              aria-label="Nome da seção"
+                              aria-label={t('editor.sectionName')}
                               className="h-8 flex-1"
                               autoFocus
                             />
@@ -1053,7 +1558,7 @@ function BriefingEditor({
                               onClick={() => void handleRenameSection(s)}
                               disabled={!sectionNameText.trim() || savingSectionName}
                             >
-                              <Save size={14} className="mr-1.5" /> Salvar
+                              <Save size={14} className="mr-1.5" /> {t('actions.save')}
                             </Button>
                             <Button
                               size="sm"
@@ -1061,7 +1566,7 @@ function BriefingEditor({
                               onClick={() => setEditingSectionName(null)}
                               disabled={savingSectionName}
                             >
-                              Cancelar
+                              {t('actions.cancel')}
                             </Button>
                           </div>
                         ) : (
@@ -1104,7 +1609,7 @@ function BriefingEditor({
                             <Button
                               size="sm"
                               variant="ghost"
-                              aria-label={`Renomear seção ${s.name}`}
+                              aria-label={t('editor.renameSectionNamed', { name: s.name })}
                               onClick={() => {
                                 setEditingSectionName(s.name);
                                 setSectionNameText(s.name);
@@ -1146,12 +1651,12 @@ function BriefingEditor({
                       setNewSectionName('');
                     }
                   }}
-                  placeholder="Nome da seção..."
+                  placeholder={t('editor.sectionNamePlaceholder')}
                   className="flex-1"
                   autoFocus
                 />
                 <Button size="sm" onClick={handleAddSection} disabled={!newSectionName.trim()}>
-                  Criar seção
+                  {t('editor.createSection')}
                 </Button>
                 <Button
                   size="sm"
@@ -1161,12 +1666,12 @@ function BriefingEditor({
                     setNewSectionName('');
                   }}
                 >
-                  Cancelar
+                  {t('actions.cancel')}
                 </Button>
               </div>
             ) : (
               <Button size="sm" variant="outline" onClick={() => setAddingSectionInput(true)}>
-                <Plus size={14} className="mr-1.5" /> Nova seção
+                <Plus size={14} className="mr-1.5" /> {t('editor.newSection')}
               </Button>
             )}
           </>

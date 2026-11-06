@@ -1,0 +1,440 @@
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const {
+  generateMock,
+  navigateMock,
+  invalidateQueriesMock,
+  queryState,
+  listTemplatesMock,
+  useQueryCalls,
+  canMock,
+} = vi.hoisted(() => {
+  const queryState: Record<string, { data?: unknown; isLoading?: boolean }> = {};
+  return {
+    generateMock: vi.fn(),
+    navigateMock: vi.fn(),
+    invalidateQueriesMock: vi.fn(),
+    queryState,
+    listTemplatesMock: vi.fn(),
+    useQueryCalls: [] as Array<Record<string, unknown>>,
+    canMock: vi.fn(),
+  };
+});
+vi.mock('../../../../services/reportDocs', () => ({ generateReportDoc: generateMock }));
+vi.mock('../../../../services/reportTemplates', () => ({ listReportTemplates: listTemplatesMock }));
+vi.mock('react-router-dom', () => ({ useNavigate: () => navigateMock }));
+vi.mock('../../../../context/AuthContext', () => ({ useAuth: () => ({ can: canMock }) }));
+vi.mock('@tanstack/react-query', () => ({
+  useQuery: (options: { queryKey: unknown[] } & Record<string, unknown>) => {
+    useQueryCalls.push(options);
+    const key = String(options.queryKey[0]);
+    return queryState[key] ?? { data: undefined, isLoading: false };
+  },
+  useQueryClient: () => ({ invalidateQueries: invalidateQueriesMock }),
+}));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
+// Select mockado no padrão da casa (ver AutomationFormDialog.test.tsx): o
+// Radix real precisa de pointer events reais para abrir a listbox, que este
+// repo não tem via @testing-library/user-event. O mock troca o listbox por
+// botões clicáveis, mantendo value/onValueChange reais.
+vi.mock('@/components/ui/select', async () => {
+  const ReactModule = await vi.importActual<typeof import('react')>('react');
+
+  interface SelectContextValue {
+    value?: string;
+    onValueChange?: (value: string) => void;
+  }
+  const SelectContext = ReactModule.createContext<SelectContextValue>({});
+
+  function Select({
+    value,
+    onValueChange,
+    children,
+  }: {
+    value?: string;
+    onValueChange?: (value: string) => void;
+    children: React.ReactNode;
+  }) {
+    return (
+      <SelectContext.Provider value={{ value, onValueChange }}>
+        <div>{children}</div>
+      </SelectContext.Provider>
+    );
+  }
+
+  const SelectTrigger = ReactModule.forwardRef<
+    HTMLButtonElement,
+    React.ButtonHTMLAttributes<HTMLButtonElement>
+  >(({ children, type = 'button', ...props }, ref) => (
+    <button ref={ref} type={type} {...props}>
+      {children}
+    </button>
+  ));
+
+  function SelectValue({ placeholder }: { placeholder?: string }) {
+    const { value } = ReactModule.useContext(SelectContext);
+    return <span>{value || (placeholder ?? '')}</span>;
+  }
+
+  function SelectContent({ children }: { children: React.ReactNode }) {
+    return <div>{children}</div>;
+  }
+
+  function SelectItem({ value, children }: { value: string; children: React.ReactNode }) {
+    const { onValueChange } = ReactModule.useContext(SelectContext);
+    return (
+      <button type="button" onClick={() => onValueChange?.(value)}>
+        {children}
+      </button>
+    );
+  }
+
+  return { Select, SelectTrigger, SelectValue, SelectContent, SelectItem };
+});
+
+import { NewReportDialog } from '../NewReportDialog';
+
+beforeEach(() => {
+  for (const key of Object.keys(queryState)) delete queryState[key];
+  useQueryCalls.length = 0;
+  canMock.mockReturnValue(true);
+});
+
+describe('NewReportDialog', () => {
+  it('fechado e sem templates carregados, não entra em loop de renders', async () => {
+    // Fora do act(): dentro dele o React esvazia os efeitos de forma síncrona e um loop
+    // travaria o teste em vez de falhar. Assim o loop cede ao scheduler e dá para contar.
+    const g = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+    const prevActEnv = g.IS_REACT_ACT_ENVIRONMENT;
+    g.IS_REACT_ACT_ENVIRONMENT = false;
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    try {
+      root.render(<NewReportDialog open={false} onOpenChange={() => {}} clientId={42} />);
+      await new Promise((r) => setTimeout(r, 100));
+      // A query dos modelos é chamada uma vez por render: o loop a chamava milhares de vezes.
+      expect(useQueryCalls.length).toBeLessThan(5);
+    } finally {
+      root.unmount();
+      errorSpy.mockRestore();
+      g.IS_REACT_ACT_ENVIRONMENT = prevActEnv;
+    }
+  });
+
+  it('gera com o mês selecionado, invalida a lista e navega para o documento', async () => {
+    generateMock.mockResolvedValue({ id: 'doc-9' });
+    render(<NewReportDialog open onOpenChange={() => {}} clientId={42} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+    await waitFor(() => expect(generateMock).toHaveBeenCalled());
+    const [clientId, month] = generateMock.mock.calls[0];
+    expect(clientId).toBe(42);
+    expect(month).toMatch(/^\d{4}-\d{2}$/);
+    await waitFor(() =>
+      expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['report-docs', 42] }),
+    );
+    expect(navigateMock).toHaveBeenCalledWith('/relatorios/doc-9');
+  });
+
+  it('erro mostra toast, mantém o dialog aberto e não invalida a lista', async () => {
+    const { toast } = await import('sonner');
+    generateMock.mockRejectedValue(new Error('Seu plano não inclui relatórios.'));
+    render(<NewReportDialog open onOpenChange={() => {}} clientId={42} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('Seu plano não inclui relatórios.'),
+    );
+    expect(invalidateQueriesMock).not.toHaveBeenCalled();
+  });
+
+  it('lista os templates e usa o default (is_default) como seleção inicial', async () => {
+    queryState['report-templates'] = {
+      data: [
+        { id: 'tpl-1', name: 'Mensal padrão', layout: {}, is_default: true, created_at: 'x' },
+        { id: 'tpl-2', name: 'Trimestral', layout: {}, is_default: false, created_at: 'x' },
+      ],
+    };
+    generateMock.mockResolvedValue({ id: 'doc-9' });
+    render(<NewReportDialog open onOpenChange={() => {}} clientId={42} />);
+    expect(
+      await screen.findByRole('button', { name: /Mensal padrão · padrão/ }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+    await waitFor(() => expect(generateMock).toHaveBeenCalled());
+    const [, , templateId] = generateMock.mock.calls[0];
+    expect(templateId).toBe('tpl-1');
+  });
+
+  it('sem template default, a seleção inicial é "Padrão do sistema" e envia a sentinela "system"', async () => {
+    // Achado de review externo (PR #379): "Padrão do sistema" tem que ir
+    // verbatim como "system", nunca omitido -- omitir é o bug original, já
+    // que o servidor lê ausente como "usa o default do workspace".
+    queryState['report-templates'] = {
+      data: [{ id: 'tpl-2', name: 'Trimestral', layout: {}, is_default: false, created_at: 'x' }],
+    };
+    generateMock.mockResolvedValue({ id: 'doc-9' });
+    render(<NewReportDialog open onOpenChange={() => {}} clientId={42} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+    await waitFor(() => expect(generateMock).toHaveBeenCalled());
+    const [, , templateId] = generateMock.mock.calls[0];
+    expect(templateId).toBe('system');
+  });
+
+  it('com um default presente, escolher "Padrão do sistema" explicitamente envia a sentinela "system" (não o uuid do default)', async () => {
+    // O bug real: workspace tem um template is_default, o dialog pré-seleciona
+    // ele, mas o usuário troca explicitamente para "Padrão do sistema" -- isso
+    // tem que gerar com o layout do sistema, não silenciosamente com o
+    // default que o usuário acabou de recusar.
+    queryState['report-templates'] = {
+      data: [
+        { id: 'tpl-1', name: 'Mensal padrão', layout: {}, is_default: true, created_at: 'x' },
+        { id: 'tpl-2', name: 'Trimestral', layout: {}, is_default: false, created_at: 'x' },
+      ],
+    };
+    generateMock.mockResolvedValue({ id: 'doc-9' });
+    render(<NewReportDialog open onOpenChange={() => {}} clientId={42} />);
+    await screen.findByRole('button', { name: /Mensal padrão · padrão/ });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Padrão do sistema' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+    await waitFor(() => expect(generateMock).toHaveBeenCalled());
+    const [, , templateId] = generateMock.mock.calls[0];
+    expect(templateId).toBe('system');
+  });
+
+  // Achado 3: a inicialização do template selecionado rodava em [open,
+  // templates] -- um refetch em segundo plano de ['report-templates']
+  // enquanto o dialog seguia aberto (array com identidade nova, mesmo
+  // conteúdo) disparava o efeito de novo e resetava a escolha manual do
+  // usuário de volta pro default. Prova o fix: seleciona manualmente,
+  // simula o refetch (rerender com um array NOVO) e confere que a escolha
+  // sobrevive.
+  it('template selecionado manualmente não é resetado por um refetch em segundo plano de report-templates', async () => {
+    const templatesV1 = [
+      { id: 'tpl-1', name: 'Mensal padrão', layout: {}, is_default: true, created_at: 'x' },
+      { id: 'tpl-2', name: 'Trimestral', layout: {}, is_default: false, created_at: 'x' },
+    ];
+    queryState['report-templates'] = { data: templatesV1 };
+    generateMock.mockResolvedValue({ id: 'doc-9' });
+    const { rerender } = render(<NewReportDialog open onOpenChange={() => {}} clientId={42} />);
+    await screen.findByRole('button', { name: /Mensal padrão · padrão/ });
+
+    // Usuário troca manualmente para o outro template.
+    fireEvent.click(screen.getByRole('button', { name: 'Trimestral' }));
+
+    // Refetch em segundo plano: mesmo conteúdo, array com identidade NOVA.
+    queryState['report-templates'] = { data: templatesV1.map((t) => ({ ...t })) };
+    rerender(<NewReportDialog open onOpenChange={() => {}} clientId={42} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+    await waitFor(() => expect(generateMock).toHaveBeenCalled());
+    const [, , templateId] = generateMock.mock.calls[0];
+    expect(templateId).toBe('tpl-2'); // segue Trimestral, não voltou pro default
+  });
+
+  it('permite trocar para outro template e passa o id escolhido em generateReportDoc', async () => {
+    queryState['report-templates'] = {
+      data: [
+        { id: 'tpl-1', name: 'Mensal padrão', layout: {}, is_default: true, created_at: 'x' },
+        { id: 'tpl-2', name: 'Trimestral', layout: {}, is_default: false, created_at: 'x' },
+      ],
+    };
+    generateMock.mockResolvedValue({ id: 'doc-9' });
+    render(<NewReportDialog open onOpenChange={() => {}} clientId={42} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Trimestral' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+    await waitFor(() => expect(generateMock).toHaveBeenCalled());
+    const [, , templateId] = generateMock.mock.calls[0];
+    expect(templateId).toBe('tpl-2');
+  });
+
+  it('mostra "Ver e editar modelos" abrindo Configuração › Relatórios em nova aba', () => {
+    render(<NewReportDialog open onOpenChange={() => {}} clientId={42} />);
+    const link = screen.getByRole('link', { name: /Ver e editar modelos/ });
+    expect(link).toHaveAttribute('href', '/configuracao/relatorios');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'));
+  });
+
+  it('sem configuracoes:ver, não mostra o link', () => {
+    canMock.mockReturnValue(false);
+    render(<NewReportDialog open onOpenChange={() => {}} clientId={42} />);
+    expect(screen.queryByRole('link', { name: /Ver e editar modelos/ })).toBeNull();
+  });
+
+  // F4 (revisão final): o template selecionado pode ser excluído em outra
+  // aba enquanto o dialog segue aberto; o refetch tira a linha da lista mas
+  // `templateId` mantinha o id antigo, o Select ficava em branco e gerar
+  // falhava.
+  it('F4: template selecionado deixa de existir na lista -> volta para "Padrão do sistema"', async () => {
+    const templatesV1 = [
+      { id: 'tpl-1', name: 'Mensal padrão', layout: {}, is_default: true, created_at: 'x' },
+      { id: 'tpl-2', name: 'Trimestral', layout: {}, is_default: false, created_at: 'x' },
+    ];
+    queryState['report-templates'] = { data: templatesV1 };
+    generateMock.mockResolvedValue({ id: 'doc-9' });
+    const { rerender } = render(<NewReportDialog open onOpenChange={() => {}} clientId={42} />);
+    await screen.findByRole('button', { name: /Mensal padrão · padrão/ });
+
+    // Usuário troca manualmente para o Trimestral.
+    fireEvent.click(screen.getByRole('button', { name: 'Trimestral' }));
+
+    // Refetch depois de o Trimestral ser excluído em outra aba.
+    queryState['report-templates'] = { data: [templatesV1[0]] };
+    rerender(<NewReportDialog open onOpenChange={() => {}} clientId={42} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+    await waitFor(() => expect(generateMock).toHaveBeenCalled());
+    const [, , templateId] = generateMock.mock.calls[0];
+    expect(templateId).toBe('system');
+  });
+
+  it('F4: não mexe na sentinela "Padrão do sistema" mesmo se a lista ainda não carregou', async () => {
+    queryState['report-templates'] = { data: undefined, isLoading: true };
+    generateMock.mockResolvedValue({ id: 'doc-9' });
+    render(<NewReportDialog open onOpenChange={() => {}} clientId={42} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+    await waitFor(() => expect(generateMock).toHaveBeenCalled());
+    const [, , templateId] = generateMock.mock.calls[0];
+    expect(templateId).toBe('system');
+  });
+
+  it('a lista de modelos refaz sempre que a janela volta ao foco', () => {
+    render(<NewReportDialog open onOpenChange={() => {}} clientId={42} />);
+    const templatesQuery = useQueryCalls.find(
+      (o) => (o.queryKey as unknown[])[0] === 'report-templates',
+    );
+    expect(templatesQuery?.refetchOnWindowFocus).toBe('always');
+  });
+
+  describe('Plataformas', () => {
+    it('com as duas conectadas: dois checkboxes marcados; desmarcar o TikTok envia ["instagram"]', async () => {
+      generateMock.mockResolvedValue({ id: 'doc-9' });
+      render(
+        <NewReportDialog
+          open
+          onOpenChange={() => {}}
+          clientId={42}
+          connected={['instagram', 'tiktok']}
+        />,
+      );
+      const ig = screen.getByRole('checkbox', { name: 'Instagram' });
+      const tt = screen.getByRole('checkbox', { name: 'TikTok' });
+      expect(ig).toBeChecked();
+      expect(tt).toBeChecked();
+      fireEvent.click(tt);
+      expect(tt).not.toBeChecked();
+      fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+      await waitFor(() => expect(generateMock).toHaveBeenCalled());
+      expect(generateMock.mock.calls[0][3]).toEqual(['instagram']);
+    });
+
+    it('com Google Meu Negócio: três checkboxes na ordem das seções; desmarcar o Google envia ["instagram","tiktok"]', async () => {
+      generateMock.mockResolvedValue({ id: 'doc-9' });
+      render(
+        <NewReportDialog
+          open
+          onOpenChange={() => {}}
+          clientId={42}
+          connected={['instagram', 'tiktok', 'google']}
+        />,
+      );
+      expect(screen.getAllByRole('checkbox').map((c) => c.getAttribute('id'))).toEqual([
+        'new-report-platform-instagram',
+        'new-report-platform-tiktok',
+        'new-report-platform-google',
+      ]);
+      const gmn = screen.getByRole('checkbox', { name: 'Google Meu Negócio' });
+      expect(gmn).toBeChecked();
+      fireEvent.click(gmn);
+      fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+      await waitFor(() => expect(generateMock).toHaveBeenCalled());
+      expect(generateMock.mock.calls[0][3]).toEqual(['instagram', 'tiktok']);
+    });
+
+    it('com as duas conectadas e nada mudado, não envia platforms (o servidor usa todas)', async () => {
+      generateMock.mockResolvedValue({ id: 'doc-9' });
+      render(
+        <NewReportDialog
+          open
+          onOpenChange={() => {}}
+          clientId={42}
+          connected={['instagram', 'tiktok']}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+      await waitFor(() => expect(generateMock).toHaveBeenCalled());
+      expect(generateMock.mock.calls[0][3]).toBeUndefined();
+    });
+
+    it('nenhuma marcada desabilita o Gerar', () => {
+      render(
+        <NewReportDialog
+          open
+          onOpenChange={() => {}}
+          clientId={42}
+          connected={['instagram', 'tiktok']}
+        />,
+      );
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Instagram' }));
+      fireEvent.click(screen.getByRole('checkbox', { name: 'TikTok' }));
+      expect(screen.getByRole('button', { name: 'Gerar relatório' })).toBeDisabled();
+    });
+
+    it('uma plataforma só esconde o fieldset e não envia platforms', async () => {
+      generateMock.mockResolvedValue({ id: 'doc-9' });
+      render(<NewReportDialog open onOpenChange={() => {}} clientId={42} connected={['tiktok']} />);
+      expect(screen.queryByRole('group', { name: 'Plataformas' })).toBeNull();
+      expect(screen.queryByRole('checkbox')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+      await waitFor(() => expect(generateMock).toHaveBeenCalled());
+      expect(generateMock.mock.calls[0][3]).toBeUndefined();
+    });
+
+    it('desmarcar e marcar de volta não conta como estreitar: não envia platforms', async () => {
+      generateMock.mockResolvedValue({ id: 'doc-9' });
+      render(
+        <NewReportDialog
+          open
+          onOpenChange={() => {}}
+          clientId={42}
+          connected={['instagram', 'tiktok']}
+        />,
+      );
+      fireEvent.click(screen.getByRole('checkbox', { name: 'TikTok' }));
+      fireEvent.click(screen.getByRole('checkbox', { name: 'TikTok' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+      await waitFor(() => expect(generateMock).toHaveBeenCalled());
+      expect(generateMock.mock.calls[0][3]).toBeUndefined();
+    });
+
+    it('sem a prop connected (chamador sem resumo das redes) não envia platforms', async () => {
+      generateMock.mockResolvedValue({ id: 'doc-9' });
+      render(<NewReportDialog open onOpenChange={() => {}} clientId={42} />);
+      expect(screen.queryByRole('checkbox')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+      await waitFor(() => expect(generateMock).toHaveBeenCalled());
+      expect(generateMock.mock.calls[0][3]).toBeUndefined();
+    });
+
+    it('mostra o texto de ajuda sob Modelo', () => {
+      render(
+        <NewReportDialog
+          open
+          onOpenChange={() => {}}
+          clientId={42}
+          connected={['instagram', 'tiktok']}
+        />,
+      );
+      expect(
+        screen.getByText(
+          'No padrão do sistema, cada plataforma marcada ganha sua seção. Num modelo seu, os blocos do modelo valem.',
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+});

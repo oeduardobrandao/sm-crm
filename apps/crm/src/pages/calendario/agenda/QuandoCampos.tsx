@@ -1,4 +1,5 @@
 import { useWatch, type UseFormReturn } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { addDays, differenceInCalendarDays, startOfDay } from 'date-fns';
 import { DatePicker } from '@/components/ui/date-picker';
 import { FormControl, FormField, FormItem } from '@/components/ui/form';
@@ -47,6 +48,7 @@ export function QuandoCampos({
   rotulo = true,
   empilhado = false,
 }: QuandoCamposProps) {
+  const { t } = useTranslation('agendaEvento');
   const colunaData = empilhado ? 'basis-full' : 'basis-full sm:basis-0';
   const v = useWatch({ control: form.control }) as EventoFormValues;
   const { errors } = form.formState;
@@ -94,12 +96,12 @@ export function QuandoCampos({
     <div className="flex flex-col gap-2.5">
       <div className="flex flex-wrap items-end gap-2.5">
         <div className={`flex min-w-[180px] flex-[1.3] flex-col gap-2 ${colunaData}`}>
-          {rotulo && <Label>Quando</Label>}
+          {rotulo && <Label>{t('quandoCampos.when')}</Label>}
           <DatePicker
             value={v.data_inicio}
             onChange={mudarDataInicio}
-            placeholder="Data de início"
-            displayFormat="EEE, d 'de' MMM 'de' yyyy"
+            placeholder={t('quandoCampos.startDate')}
+            displayFormat={t('quandoCampos.dateFormat')}
             clearable={false}
             className="mb-0 h-10 w-full"
           />
@@ -107,7 +109,7 @@ export function QuandoCampos({
         {!diaInteiro && (
           <div className="min-w-[96px] flex-[.8]">
             <Select value={v.hora_inicio} onValueChange={mudarHoraInicio}>
-              <SelectTrigger aria-label="Hora de início" className="h-10">
+              <SelectTrigger aria-label={t('quandoCampos.startTime')} className="h-10">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="max-h-72">
@@ -121,7 +123,7 @@ export function QuandoCampos({
           </div>
         )}
         <span className="pb-2.5 text-sm" style={{ color: 'var(--text-muted)' }}>
-          até
+          {t('quandoCampos.until')}
         </span>
         {!diaInteiro && (
           <FormField
@@ -131,7 +133,7 @@ export function QuandoCampos({
               <FormItem className="min-w-[140px] flex-[.8]">
                 <Select value={field.value} onValueChange={field.onChange}>
                   <FormControl>
-                    <SelectTrigger aria-label="Hora de fim" className="h-10">
+                    <SelectTrigger aria-label={t('quandoCampos.endTime')} className="h-10">
                       <SelectValue />
                     </SelectTrigger>
                   </FormControl>
@@ -156,8 +158,8 @@ export function QuandoCampos({
                 <DatePicker
                   value={field.value}
                   onChange={(d) => d && field.onChange(startOfDay(d))}
-                  placeholder="Data de fim"
-                  displayFormat="EEE, d 'de' MMM 'de' yyyy"
+                  placeholder={t('quandoCampos.endDate')}
+                  displayFormat={t('quandoCampos.dateFormat')}
                   clearable={false}
                   className="mb-0 h-10 w-full"
                 />
@@ -173,7 +175,7 @@ export function QuandoCampos({
       )}
       {fusoDiferente && (
         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          Horários no fuso {fusoDiferente}
+          {t('quandoCampos.timezone', { tz: fusoDiferente })}
         </p>
       )}
     </div>

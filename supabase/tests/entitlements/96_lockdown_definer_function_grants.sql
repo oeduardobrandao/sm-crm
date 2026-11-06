@@ -4,6 +4,23 @@
 -- Grant-surface assertions for 20260924000001_lockdown_definer_function_grants.sql,
 -- plus the service-role-only helpers/trigger functions/generator added by
 -- 20260925000030_tarefa_series.sql (the last seven entries of the first array).
+-- _financeiro_calcular (20261027000003_financeiro_v2_calculo.sql) is the Financeiro v2
+-- allocation core: called by the read RPCs and the pg_cron close job, never by a user.
+-- _financeiro_sincronizar_legado / _financeiro_inicio_editavel (20261027000004_financeiro_v2_escrita.sql)
+-- are the write RPCs' legacy write-through and "vale a partir de" check.
+-- _financeiro_normalizar / _financeiro_encerrar_atribuicoes / _financeiro_v2_legado_trigger
+-- (20261027000005_financeiro_v2_seed_legado.sql) are the seed's cargo matching, the
+-- shared encerrado cutoff and the legacy-capture trigger function on clientes/membros.
+-- financeiro_rolar_periodos (20261027000006_financeiro_v2_periodos_job.sql) is the hourly
+-- pg_cron period close job: it runs across every workspace, never called by a user.
+--
+-- close_suggestion_on_publish (20261106000001) is the trigger function that closes a pending
+-- edit suggestion as 'superseded' when its post is published.
+--
+-- upsert_edit_suggestion gained p_suggested_captions in 20261112000001 (9 args).
+-- _record_post_geral_caption_version / post_targets_geral_caption_version (same migration)
+-- record the Geral caption in post_content_versions: called by the post_targets trigger and
+-- by accept_edit_suggestion, never by a user.
 --
 -- Locally there is no hosted pg_default_acl granting anon/authenticated EXECUTE
 -- at function-creation time (see _helpers.sql), so `anon`/`authenticated` already
@@ -39,11 +56,11 @@ declare
     'public.ideia_audio_release(uuid, uuid, text)',
     'public.ideia_audio_apply_transcript(uuid, uuid, text, text, int)',
     'public.ideia_file_insert_with_quota(jsonb)',
-    'public.upsert_edit_suggestion(bigint, uuid, text, jsonb, text, text)',
+    'public.upsert_edit_suggestion(bigint, uuid, text, jsonb, text, text, text[], jsonb, jsonb)',
     'public.create_edit_suggestion_notification(bigint)',
     'public.create_post_approval_notification(bigint, text, text)',
-    'public.insert_notification_batch(uuid, uuid[], text, text, jsonb, uuid)',
-    'public.resolve_notification_targets(uuid, bigint, text[])',
+    'public.insert_notification_batch(uuid, uuid[], text, text, jsonb, uuid, bigint)',
+    'public.resolve_notification_targets(uuid, bigint, text[], bigint)',
     'public.notification_deadline_candidates()',
     'public.bulk_move_items(uuid, bigint[], bigint[], bigint)',
     'public.file_insert_with_quota(jsonb)',
@@ -76,7 +93,17 @@ declare
     'public.agenda_claim_emails_lembrete(int)',
     'public.agenda_marcar_email_lembrete(bigint, uuid, int, timestamptz, boolean)',
     'public.rebuild_instagram_automation_contacts(uuid, uuid)',
-    'public.instagram_automation_contact_source(uuid, uuid)'
+    'public.instagram_automation_contact_source(uuid, uuid)',
+    'public._financeiro_calcular(uuid, date)',
+    'public._financeiro_sincronizar_legado(uuid, date)',
+    'public._financeiro_inicio_editavel(uuid, date)',
+    'public._financeiro_normalizar(text)',
+    'public._financeiro_encerrar_atribuicoes(uuid, bigint, date)',
+    'public._financeiro_v2_legado_trigger()',
+    'public.financeiro_rolar_periodos(date)',
+    'public.close_suggestion_on_publish()',
+    'public._record_post_geral_caption_version(bigint, text, text)',
+    'public.post_targets_geral_caption_version()'
   ];
   -- check_resource_limit and rls_auto_enable are deliberately excluded: they have
   -- no CREATE FUNCTION in any migration in this repo (prod-only drift, locked down

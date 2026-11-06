@@ -1,0 +1,14 @@
+/* EditWorkflowModal's phone body (below 768px). Only `phone-edit-wf*` classes. */
+.phone-edit-wf {
+  display: flex;
+  flex-direction: column;
+  color: var(--phone-label);
+}
+.phone-edit-wf__chips {
+  padding: 10px 16px;
+}
+.phone-edit-wf__save {
+  width: 100%;
+  min-height: 44px;
+  margin: 0 0 20px;
+}

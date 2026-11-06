@@ -1,6 +1,7 @@
 import { assert, assertEquals, readJson } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
-import { createFileUploadFinalizeHandler } from "../file-upload-finalize/handler.ts";
+import { createFileUploadFinalizeHandler, videoThumbnailOrigin } from "../file-upload-finalize/handler.ts";
+import { allClientsScope, type ClientScope } from "../_shared/client-scope.ts";
 
 const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://app.mesaas.com" });
 
@@ -9,6 +10,7 @@ function makeHandler(
   opts?: {
     headObject?: (key: string) => Promise<{ contentLength: number } | null>;
     streamCopy?: (r2Key: string, meta: { file_id: string; conta_id: string }) => Promise<string>;
+    loadClientScope?: () => Promise<ClientScope>;
   },
 ) {
   return createFileUploadFinalizeHandler({
@@ -17,6 +19,8 @@ function makeHandler(
     headObject: opts?.headObject ?? (async () => ({ contentLength: 5000 })),
     signUrl: async (key) => `https://signed.example.com/${key}`,
     streamCopy: opts?.streamCopy,
+    // Acesso por cliente: unrestricted unless a test passes a scope.
+    loadClientScope: opts?.loadClientScope ?? (() => Promise.resolve(allClientsScope())),
   });
 }
 
@@ -327,6 +331,84 @@ Deno.test("file-upload-finalize: video finalize with thumbnail returns both sign
   assertEquals(body.thumbnail_url, `https://signed.example.com/${videoBody.thumbnail_r2_key}`);
 });
 
+const frameVideoBody = {
+  ...baseBody,
+  kind: "video" as const,
+  mime_type: "video/mp4",
+  r2_key: "contas/conta-1/files/vid.mp4",
+  thumbnail_r2_key: "contas/conta-1/files/vid.thumb.jpg",
+};
+
+Deno.test("file-upload-finalize: video with thumbnail_frame_ms stores it after the insert and returns it", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queueRpc("file_insert_with_quota", { data: { id: 21, r2_key: frameVideoBody.r2_key, kind: "video" }, error: null });
+  db.queue("files", "update", { data: null, error: null });
+  const res = await makeHandler(db)(authedRequest({ ...frameVideoBody, thumbnail_frame_ms: 500 }));
+  assertEquals(res.status, 200);
+  const json = await readJson(res);
+  assertEquals(json.thumbnail_frame_ms, 500);
+  // A frame without a source is the auto-generated one.
+  assertEquals(json.thumbnail_source, "auto");
+  const update = db.calls.find((c) => c.table === "files" && c.operation === "update");
+  assertEquals(update?.payload, { thumbnail_frame_ms: 500, thumbnail_source: "auto" });
+  assertEquals(update?.modifiers, [{ method: "eq", args: ["id", 21] }]);
+});
+
+Deno.test("file-upload-finalize: invalid or non-video thumbnail_frame_ms is dropped (no update, null)", async () => {
+  const cases: Array<Record<string, unknown>> = [
+    { ...frameVideoBody, thumbnail_frame_ms: -1 },
+    { ...frameVideoBody, thumbnail_frame_ms: 12.5 },
+    { ...frameVideoBody, thumbnail_frame_ms: "500" },
+    { ...frameVideoBody },
+    { ...baseBody, thumbnail_frame_ms: 500 },
+  ];
+  for (const body of cases) {
+    const db = createSupabaseQueryMock();
+    setupAuth(db);
+    db.queueRpc("file_insert_with_quota", { data: { id: 22, r2_key: body.r2_key, kind: body.kind }, error: null });
+    const res = await makeHandler(db)(authedRequest(body));
+    assertEquals(res.status, 200);
+    const json = await readJson(res);
+    assertEquals(json.thumbnail_frame_ms, null);
+    assertEquals(json.thumbnail_source, null);
+    assertEquals(db.calls.some((c) => c.table === "files" && c.operation === "update"), false);
+  }
+});
+
+Deno.test("file-upload-finalize: a manual image thumbnail is stored as source image, without a frame", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queueRpc("file_insert_with_quota", { data: { id: 24, r2_key: frameVideoBody.r2_key, kind: "video" }, error: null });
+  db.queue("files", "update", { data: null, error: null });
+  const res = await makeHandler(db)(
+    authedRequest({ ...frameVideoBody, thumbnail_source: "image", thumbnail_frame_ms: 500 }),
+  );
+  assertEquals(res.status, 200);
+  const update = db.calls.find((c) => c.table === "files" && c.operation === "update");
+  assertEquals(update?.payload, { thumbnail_frame_ms: null, thumbnail_source: "image" });
+});
+
+Deno.test("videoThumbnailOrigin: resolves the stored frame and source", () => {
+  assertEquals(videoThumbnailOrigin(500, undefined), { frameMs: 500, source: "auto" });
+  assertEquals(videoThumbnailOrigin(500, "frame"), { frameMs: 500, source: "frame" });
+  assertEquals(videoThumbnailOrigin(500, "image"), { frameMs: null, source: "image" });
+  assertEquals(videoThumbnailOrigin(undefined, "image"), { frameMs: null, source: "image" });
+  assertEquals(videoThumbnailOrigin(500, "bogus"), { frameMs: 500, source: "auto" });
+  assertEquals(videoThumbnailOrigin(-1, undefined), { frameMs: null, source: null });
+  assertEquals(videoThumbnailOrigin(undefined, undefined), { frameMs: null, source: null });
+});
+
+Deno.test("file-upload-finalize: a failed frame update still finalizes, reporting no frame", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queueRpc("file_insert_with_quota", { data: { id: 23, r2_key: frameVideoBody.r2_key, kind: "video" }, error: null });
+  db.queue("files", "update", { data: null, error: { message: "boom" } });
+  const res = await makeHandler(db)(authedRequest({ ...frameVideoBody, thumbnail_frame_ms: 500 }));
+  assertEquals(res.status, 200);
+  assertEquals((await readJson(res)).thumbnail_frame_ms, null);
+});
+
 // ─── Security regression tests ────────────────────────────────
 
 Deno.test("file-upload-finalize: rejects image kind with wrong MIME type", async () => {
@@ -417,9 +499,12 @@ Deno.test("file-upload-finalize: video finalize with streamCopy set kicks off St
     mime_type: "video/mp4",
     r2_key: "contas/conta-1/files/vid-stream.mp4",
     thumbnail_r2_key: "contas/conta-1/files/vid-stream.thumb.jpg",
+    post_id: 7,
   };
   const insertedFile = { id: 20, r2_key: videoBody.r2_key, name: "clip.mp4", kind: "video" };
   db.queueRpc("file_insert_with_quota", { data: insertedFile, error: null });
+  db.queue("workflow_posts", "select", { data: { conta_id: "conta-1" }, error: null });
+  db.queue("post_file_links", "insert", { data: null, error: null });
   db.queue("files", "update", { data: null, error: null }); // pending
   db.queue("files", "update", { data: null, error: null }); // uid
   let streamCopyArgs: [string, { file_id: string; conta_id: string }] | null = null;
@@ -446,9 +531,12 @@ Deno.test("file-upload-finalize: video finalize with streamCopy rejecting still 
     mime_type: "video/mp4",
     r2_key: "contas/conta-1/files/vid-stream-fail.mp4",
     thumbnail_r2_key: "contas/conta-1/files/vid-stream-fail.thumb.jpg",
+    post_id: 7,
   };
   const insertedFile = { id: 21, r2_key: videoBody.r2_key, name: "clip2.mp4", kind: "video" };
   db.queueRpc("file_insert_with_quota", { data: insertedFile, error: null });
+  db.queue("workflow_posts", "select", { data: { conta_id: "conta-1" }, error: null });
+  db.queue("post_file_links", "insert", { data: null, error: null });
   db.queue("files", "update", { data: null, error: null }); // pending
   const streamCopy = async () => {
     throw new Error("stream copy failed");
@@ -476,9 +564,12 @@ Deno.test("file-upload-finalize: video finalize skips streamCopy when the pendin
     mime_type: "video/mp4",
     r2_key: "contas/conta-1/files/vid-pending-fails.mp4",
     thumbnail_r2_key: "contas/conta-1/files/vid-pending-fails.thumb.jpg",
+    post_id: 7,
   };
   const insertedFile = { id: 24, r2_key: videoBody.r2_key, name: "clip4.mp4", kind: "video" };
   db.queueRpc("file_insert_with_quota", { data: insertedFile, error: null });
+  db.queue("workflow_posts", "select", { data: { conta_id: "conta-1" }, error: null });
+  db.queue("post_file_links", "insert", { data: null, error: null });
   db.queue("files", "update", { data: null, error: { message: "connection reset" } }); // pending write FAILS
   let streamCopyCalled = false;
   const streamCopy = async () => {
@@ -502,9 +593,12 @@ Deno.test("file-upload-finalize: video finalize does not credit the uid write wh
     mime_type: "video/mp4",
     r2_key: "contas/conta-1/files/vid-uid-save-fails.mp4",
     thumbnail_r2_key: "contas/conta-1/files/vid-uid-save-fails.thumb.jpg",
+    post_id: 7,
   };
   const insertedFile = { id: 25, r2_key: videoBody.r2_key, name: "clip5.mp4", kind: "video" };
   db.queueRpc("file_insert_with_quota", { data: insertedFile, error: null });
+  db.queue("workflow_posts", "select", { data: { conta_id: "conta-1" }, error: null });
+  db.queue("post_file_links", "insert", { data: null, error: null });
   db.queue("files", "update", { data: null, error: null }); // pending write ok
   db.queue("files", "update", { data: null, error: { message: "connection reset" } }); // uid write FAILS
   const streamCopy = async () => "stream-uid-never-persisted";
@@ -518,6 +612,34 @@ Deno.test("file-upload-finalize: video finalize does not credit the uid write wh
   // Row is left with stream_status='pending' and no stream_uid recorded -- exactly the
   // repairable state the ingest catch-up sweep selects for, not an unrepairable
   // stream_uid-set/stream_status-null orphan.
+});
+
+Deno.test("file-upload-finalize: video finalize without post_id does not call streamCopy and writes no stream fields", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const videoBody = {
+    ...baseBody,
+    kind: "video" as const,
+    mime_type: "video/mp4",
+    r2_key: "contas/conta-1/files/vid-library.mp4",
+    thumbnail_r2_key: "contas/conta-1/files/vid-library.thumb.jpg",
+  };
+  const insertedFile = { id: 26, r2_key: videoBody.r2_key, name: "lib.mp4", kind: "video" };
+  db.queueRpc("file_insert_with_quota", { data: insertedFile, error: null });
+  let called = false;
+  const streamCopy = async () => {
+    called = true;
+    return "uid";
+  };
+  const handler = makeHandler(db, { streamCopy });
+  const res = await handler(authedRequest(videoBody));
+  assertEquals(res.status, 200);
+  assertEquals(called, false);
+  const streamWrites = db.calls.filter(
+    (c) => c.table === "files" && c.operation === "update" &&
+      c.payload && ("stream_status" in (c.payload as any) || "stream_uid" in (c.payload as any)),
+  );
+  assertEquals(streamWrites.length, 0);
 });
 
 Deno.test("file-upload-finalize: image finalize does not call streamCopy", async () => {
@@ -555,4 +677,58 @@ Deno.test("file-upload-finalize: video finalize without streamCopy dep leaves st
   assertEquals(res.status, 200);
   const updateCalls = db.calls.filter((c) => c.table === "files" && c.operation === "update");
   assertEquals(updateCalls.length, 0);
+});
+
+// ─── acesso por cliente ─────────────────────────────────────────
+
+const restricted = (ids: number[], membroIds: number[] = []) => () =>
+  Promise.resolve<ClientScope>({ all: false, ids: new Set(ids), membroIds: new Set(membroIds) });
+
+Deno.test("file-upload-finalize: own post in a hidden client is limitado, a hidden post is 404, no insert", async () => {
+  for (const [responsavel, status] of [[9, 403], [8, 404]] as const) {
+    const db = createSupabaseQueryMock();
+    setupAuth(db);
+    db.queue(
+      "workflow_posts",
+      "select",
+      { data: { conta_id: "conta-1", cliente_id: 42, responsavel_id: responsavel }, error: null },
+      { data: { cliente_id: 42, responsavel_id: responsavel }, error: null },
+    );
+    const res = await makeHandler(db, { loadClientScope: restricted([7], [9]) })(authedRequest({ ...baseBody, post_id: 7 }));
+    assertEquals(res.status, status);
+    assertEquals(db.calls.some((c) => c.table === "rpc:file_insert_with_quota"), false);
+  }
+});
+
+Deno.test("file-upload-finalize: assigned client's post is unchanged; scope error is a 500", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queueRpc("file_insert_with_quota", { data: { id: 13 }, error: null });
+  db.queue(
+    "workflow_posts",
+    "select",
+    { data: { conta_id: "conta-1", cliente_id: 42, responsavel_id: null }, error: null },
+    { data: { cliente_id: 42, responsavel_id: null }, error: null },
+  );
+  db.queue("post_file_links", "insert", { data: null, error: null });
+  const ok = await makeHandler(db, { loadClientScope: restricted([42]) })(authedRequest({ ...baseBody, post_id: 7 }));
+  assertEquals(ok.status, 200);
+
+  const broken = createSupabaseQueryMock();
+  setupAuth(broken);
+  broken.queue("workflow_posts", "select", { data: { conta_id: "conta-1", cliente_id: 42 }, error: null });
+  const res = await makeHandler(broken, { loadClientScope: () => Promise.reject(new Error("boom")) })(
+    authedRequest({ ...baseBody, post_id: 7 }),
+  );
+  assertEquals(res.status, 500);
+  assertEquals(broken.calls.some((c) => c.table === "rpc:file_insert_with_quota"), false);
+});
+
+Deno.test("file-upload-finalize: a restricted file with neither folder nor post is limitado (no client, C3)", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const res = await makeHandler(db, { loadClientScope: restricted([42]) })(authedRequest({ ...baseBody }));
+  assertEquals(res.status, 403);
+  assertEquals((await readJson(res)).error, "Seu acesso é limitado aos clientes atribuídos.");
+  assertEquals(db.calls.some((c) => c.table === "rpc:file_insert_with_quota"), false);
 });

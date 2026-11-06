@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { addMinutes, format, isBefore } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { useTranslation } from 'react-i18next';
+import { getIntlLocale, useDateFnsLocale } from '@mesaas/i18n';
 import { Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -22,7 +23,7 @@ interface SuggestTimeButtonProps {
 }
 
 function formatPct(value: number): string {
-  return value.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+  return value.toLocaleString(getIntlLocale(), { maximumFractionDigits: 1 });
 }
 
 function SuggestionRow({
@@ -32,16 +33,20 @@ function SuggestionRow({
   suggestion: TimeSuggestion;
   onSelect: (date: Date) => void;
 }) {
+  const { t } = useTranslation('postPanels');
+  const dateLocale = useDateFnsLocale();
   const { date, slot } = suggestion;
-  const day = format(date, 'EEEE, dd/MM', { locale: ptBR });
+  const day = format(date, t('suggestTime.dayFormat'), { locale: dateLocale });
   return (
     <button type="button" className="suggest-time-row" onClick={() => onSelect(date)}>
       <span className="suggest-time-row__when">
-        {day.charAt(0).toUpperCase() + day.slice(1)} às {format(date, 'HH')}h
+        {t('suggestTime.when', {
+          day: day.charAt(0).toUpperCase() + day.slice(1),
+          hour: format(date, 'HH'),
+        })}
       </span>
       <span className="suggest-time-row__why">
-        {formatPct(slot.value)}% de engajamento médio ·{' '}
-        {slot.postCount === 1 ? '1 post' : `${slot.postCount} posts`}
+        {t('suggestTime.why', { pct: formatPct(slot.value), count: slot.postCount })}
       </span>
     </button>
   );
@@ -53,6 +58,7 @@ function SuggestionRow({
  * history, so the scheduler looks exactly as before for those clients.
  */
 export function SuggestTimeButton({ clientId, value, onPick, disabled }: SuggestTimeButtonProps) {
+  const { t } = useTranslation('postPanels');
   const { features } = useWorkspaceLimits();
   const [open, setOpen] = useState(false);
   const enabled = !!features?.feature_best_times;
@@ -81,7 +87,7 @@ export function SuggestTimeButton({ clientId, value, onPick, disabled }: Suggest
   const pick = (date: Date) => {
     // The list can sit open past a slot; this path skips the picker's own 15-min clamp.
     if (isBefore(date, addMinutes(new Date(), SUGGESTION_MIN_LEAD_MINUTES))) {
-      toast.info('Esse horário já passou. A lista foi atualizada.');
+      toast.info(t('suggestTime.slotPassed'));
       setRefreshTick((n) => n + 1);
       return;
     }
@@ -93,25 +99,23 @@ export function SuggestTimeButton({ clientId, value, onPick, disabled }: Suggest
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button type="button" className="suggest-time-trigger" disabled={disabled}>
-          <Sparkles className="h-3 w-3" /> Sugerir horário
+          <Sparkles className="h-3 w-3" /> {t('suggestTime.trigger')}
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-72 p-0" align="end" style={{ zIndex: 9999 }}>
         {suggestions?.sameDay && (
           <div className="suggest-time-group">
-            <div className="suggest-time-group__label">Melhor horário neste dia</div>
+            <div className="suggest-time-group__label">{t('suggestTime.bestThisDay')}</div>
             <SuggestionRow suggestion={suggestions.sameDay} onSelect={pick} />
           </div>
         )}
         <div className="suggest-time-group">
-          <div className="suggest-time-group__label">Próximos melhores horários</div>
+          <div className="suggest-time-group__label">{t('suggestTime.upcoming')}</div>
           {suggestions?.upcoming.map((s) => (
             <SuggestionRow key={s.date.getTime()} suggestion={s} onSelect={pick} />
           ))}
         </div>
-        <p className="suggest-time-foot">
-          Baseado em {data.totalPosts} posts do Instagram nos últimos 90 dias.
-        </p>
+        <p className="suggest-time-foot">{t('suggestTime.basedOn', { total: data.totalPosts })}</p>
       </PopoverContent>
     </Popover>
   );

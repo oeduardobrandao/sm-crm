@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Crop, Maximize, RotateCcw, Play, Pause, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import {
   Dialog,
   DialogContent,
@@ -15,6 +17,7 @@ import { probeImage, probeVideo } from '@/services/postMedia';
 import { validateMedia, STORY_VIDEO_MAX_BYTES, VIDEO_MAX_BYTES } from '../instagramLimits';
 import { getPlacement, getPresets, type Adjustment } from '../media-editor/geometry';
 import { adjustedFilename, drawAdjustment, jpegFromCanvas } from '../media-editor/render';
+import { useTransientOverlayHistory } from './postEditorPhone/useTransientOverlayHistory';
 
 interface Props {
   media: PostMedia;
@@ -25,6 +28,11 @@ interface Props {
   isCarousel?: boolean;
   onClose: () => void;
   onUpdated: () => void;
+  /** The replacement was saved. Unlike `onUpdated`, never called from the failure path. */
+  onReplaced?: () => void;
+  /** `phone`: full-screen dark editor (EditorMidia mockup) with Cancelar / Aplicar in the
+   *  header and its own history entry, so Back cancels it. Same logic either way. */
+  layout?: 'default' | 'phone';
 }
 const primary =
   'rounded-lg bg-[#12151a] px-4 py-2.5 text-sm font-semibold text-white hover:bg-black disabled:opacity-40';
@@ -32,13 +40,31 @@ const option = 'rounded-lg border px-3 py-2 text-sm transition-colors';
 const selected =
   'border-amber-400 bg-amber-50 text-stone-900 dark:bg-amber-900/30 dark:text-amber-100';
 
-export function MediaAdjustmentDialog({
+export function MediaAdjustmentDialog(props: Props) {
+  return props.layout === 'phone' ? (
+    <PhoneMediaAdjustmentDialog {...props} />
+  ) : (
+    <MediaAdjustmentDialogBody {...props} dismiss={props.onClose} />
+  );
+}
+
+/** The history entry only exists on phones, so desktop never needs a router here. */
+function PhoneMediaAdjustmentDialog(props: Props) {
+  const { dismiss } = useTransientOverlayHistory(true, props.onClose);
+  return <MediaAdjustmentDialogBody {...props} dismiss={dismiss} />;
+}
+
+function MediaAdjustmentDialogBody({
   media,
   forStories,
   isCarousel = false,
-  onClose,
   onUpdated,
-}: Props) {
+  onReplaced,
+  layout = 'default',
+  dismiss,
+}: Props & { dismiss: () => void }) {
+  const { t } = useTranslation('posts');
+  const phone = layout === 'phone';
   const video = media.kind === 'video';
   const presets = getPresets(media.kind, forStories, isCarousel);
   const portraitOnly = forStories || (video && !isCarousel);
@@ -84,12 +110,9 @@ export function MediaAdjustmentDialog({
     const timer = setTimeout(() => controller.abort(), 120_000);
     void (async () => {
       try {
-        if (!media.url) throw new Error('Não foi possível carregar esta mídia.');
+        if (!media.url) throw new Error(i18n.t('posts:mediaAdjustment.loadFailed'));
         const response = await fetch(media.url, { signal: controller.signal });
-        if (!response.ok)
-          throw new Error(
-            'Não foi possível carregar esta mídia. Feche e abra o editor para tentar novamente.',
-          );
+        if (!response.ok) throw new Error(i18n.t('posts:mediaAdjustment.loadFailedReopen'));
         const total = Number(response.headers.get('content-length')) || 0;
         let blob: Blob;
         if (response.body && total > 0) {
@@ -123,7 +146,7 @@ export function MediaAdjustmentDialog({
           setError(
             e instanceof Error && e.name !== 'AbortError'
               ? e.message
-              : 'O carregamento demorou demais. Tente novamente.',
+              : i18n.t('posts:mediaAdjustment.loadTimeout'),
           );
       } finally {
         clearTimeout(timer);
@@ -162,7 +185,7 @@ export function MediaAdjustmentDialog({
   function close() {
     if (stage === 'saving') return;
     operation.current?.abort();
-    onClose();
+    dismiss();
   }
 
   async function apply() {
@@ -178,13 +201,20 @@ export function MediaAdjustmentDialog({
     try {
       let output: File;
       let thumbnail: File | undefined;
+      let thumbnailFrameMs: number | null = null;
       if (video) {
         if (dimensions.duration < 3 || dimensions.duration > (forStories ? 60 : 900)) {
           throw new Error(
-            `A duração deve ser de 3 segundos a ${forStories ? '60 segundos' : '15 minutos'}. O ajuste de proporção não altera a duração.`,
+            t(
+              forStories
+                ? 'mediaAdjustment.durationErrorStories'
+                : 'mediaAdjustment.durationErrorFeed',
+            ),
           );
         }
         thumbnail = await jpegFromCanvas(canvasRef.current, 'cover.jpg');
+        // The preview canvas shows the paused frame, so that moment is the TikTok cover.
+        thumbnailFrameMs = Math.round((videoRef.current?.currentTime ?? time) * 1000);
         const { exportVideo } = await import('../media-editor/exportVideo');
         controller.signal.throwIfAborted();
         output = await exportVideo(
@@ -235,19 +265,21 @@ export function MediaAdjustmentDialog({
           if (!controller.signal.aborted) setProgress(Math.round((p.loaded / p.total) * 100));
         },
         controller.signal,
+        thumbnailFrameMs,
+        // Regenerated from the preview, not chosen as a cover: the default kind.
+        thumbnailFrameMs === null ? null : 'auto',
       );
       controller.signal.throwIfAborted();
-      toast.success('Proporção ajustada. O original foi preservado em Arquivos.');
+      toast.success(t('mediaAdjustment.applied'));
+      onReplaced?.();
       onUpdated();
-      onClose();
+      dismiss();
     } catch (e) {
       // HTTP cancellation cannot undo a transaction already received by the server.
       // Reconcile the cache even when navigating away during an uncertain save.
       if (attemptedSave) onUpdated();
       if (!controller.signal.aborted) {
-        setError(
-          e instanceof Error ? e.message : 'Não foi possível aplicar o ajuste. Tente novamente.',
-        );
+        setError(e instanceof Error ? e.message : t('mediaAdjustment.applyFailed'));
       }
     } finally {
       busy.current = false;
@@ -267,30 +299,75 @@ export function MediaAdjustmentDialog({
       }}
     >
       <DialogContent
-        className="max-w-4xl w-[calc(100%-2rem)] max-h-[92dvh] overflow-y-auto p-0 z-[9021]"
+        className={
+          phone
+            ? 'phone-kit phone-crop overflow-y-auto z-[9021]'
+            : 'max-w-4xl w-[calc(100%-2rem)] max-h-[92dvh] overflow-y-auto p-0 z-[9021]'
+        }
         overlayClassName="z-[9020]"
+        layout={phone ? 'fullscreen' : 'default'}
+        data-theme={phone ? 'dark' : undefined}
         onInteractOutside={(e) => e.preventDefault()}
       >
-        <DialogHeader className="px-6 pt-6 pr-12">
-          <DialogTitle>Ajustar proporção</DialogTitle>
-          <DialogDescription className="break-all">
-            {media.original_filename} · {video ? 'Vídeo' : 'Imagem'}
-          </DialogDescription>
-          <p className="text-xs text-muted-foreground">
-            Instagram · {forStories ? 'Stories' : portraitOnly ? 'Reel' : 'Feed / Carrossel'}
-          </p>
-        </DialogHeader>
-        <div className="grid gap-5 px-6 pb-5 md:grid-cols-[minmax(0,1fr)_260px]">
+        {phone ? (
+          <div className="phone-crop__header">
+            <button
+              type="button"
+              className="phone-crop__header-button"
+              onClick={close}
+              disabled={stage === 'saving'}
+            >
+              {stage === 'exporting' ? t('mediaAdjustment.stop') : t('actions.cancel')}
+            </button>
+            <DialogTitle className="phone-crop__title">{t('mediaAdjustment.title')}</DialogTitle>
+            <button
+              type="button"
+              className="phone-crop__header-button phone-crop__header-button--primary"
+              onClick={() => void apply()}
+              disabled={!dimensions || !!stage || !!durationInvalid}
+            >
+              {t('mediaAdjustment.apply')}
+            </button>
+            <DialogDescription className="sr-only">
+              {media.original_filename} · {video ? t('shared.video') : t('shared.image')}
+            </DialogDescription>
+          </div>
+        ) : (
+          <DialogHeader className="px-6 pt-6 pr-12">
+            <DialogTitle>{t('mediaAdjustment.title')}</DialogTitle>
+            <DialogDescription className="break-all">
+              {media.original_filename} · {video ? t('shared.video') : t('shared.image')}
+            </DialogDescription>
+            <p className="text-xs text-muted-foreground">
+              {t(
+                forStories
+                  ? 'mediaAdjustment.targetStories'
+                  : portraitOnly
+                    ? 'mediaAdjustment.targetReel'
+                    : 'mediaAdjustment.targetFeed',
+              )}
+            </p>
+          </DialogHeader>
+        )}
+        <div
+          className={
+            phone
+              ? 'phone-crop__body grid gap-5 px-4 pb-5'
+              : 'grid gap-5 px-6 pb-5 md:grid-cols-[minmax(0,1fr)_260px]'
+          }
+        >
           <div className="min-w-0">
             <div className="flex min-h-64 items-center justify-center rounded-xl bg-[#12151a] p-3">
               {!dimensions && (
                 <div className="p-6 text-center text-sm text-white/70">
                   {error ? (
-                    'Prévia indisponível'
+                    t('mediaAdjustment.previewUnavailable')
                   ) : (
                     <>
                       <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />
-                      Carregando mídia{loadProgress != null ? ` (${loadProgress}%)` : '…'}
+                      {loadProgress != null
+                        ? t('mediaAdjustment.loadingProgress', { pct: loadProgress })
+                        : t('mediaAdjustment.loading')}
                     </>
                   )}
                 </div>
@@ -306,7 +383,7 @@ export function MediaAdjustmentDialog({
                   className="block w-full touch-none rounded-sm outline-none focus:ring-2 focus:ring-amber-400"
                   tabIndex={0}
                   role="img"
-                  aria-label="Prévia do ajuste. Arraste ou use as setas para reposicionar."
+                  aria-label={t('mediaAdjustment.canvasLabel')}
                   onPointerDown={(e) => {
                     if (stage || adjustment.mode !== 'crop') return;
                     e.currentTarget.setPointerCapture(e.pointerId);
@@ -408,7 +485,7 @@ export function MediaAdjustmentDialog({
                       duration: v.duration,
                     });
                   }}
-                  onError={() => setError('Não foi possível ler o vídeo neste navegador.')}
+                  onError={() => setError(t('mediaAdjustment.videoReadError'))}
                   onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
                   onSeeked={(e) => setTime(e.currentTarget.currentTime)}
                   onPlay={() => setPlaying(true)}
@@ -427,7 +504,7 @@ export function MediaAdjustmentDialog({
                       duration: 0,
                     })
                   }
-                  onError={() => setError('Não foi possível ler a imagem.')}
+                  onError={() => setError(t('mediaAdjustment.imageReadError'))}
                 />
               ))}
             {video && dimensions && (
@@ -435,20 +512,20 @@ export function MediaAdjustmentDialog({
                 <button
                   type="button"
                   disabled={!!stage}
-                  aria-label={playing ? 'Pausar vídeo' : 'Reproduzir vídeo'}
+                  aria-label={playing ? t('mediaAdjustment.pause') : t('mediaAdjustment.play')}
                   onClick={() => {
                     if (playing) videoRef.current?.pause();
                     else
                       void videoRef.current
                         ?.play()
-                        .catch(() => setError('Não foi possível reproduzir o vídeo.'));
+                        .catch(() => setError(t('mediaAdjustment.playError')));
                   }}
                   className="rounded-lg p-2 hover:bg-muted"
                 >
                   {playing ? <Pause size={16} /> : <Play size={16} />}
                 </button>
                 <Slider
-                  aria-label="Posição do vídeo"
+                  aria-label={t('mediaAdjustment.videoPosition')}
                   min={0}
                   max={dimensions.duration || 1}
                   step={0.1}
@@ -468,13 +545,13 @@ export function MediaAdjustmentDialog({
             )}
             <p className="mt-3 text-center text-xs text-muted-foreground">
               {adjustment.mode === 'crop'
-                ? 'Arraste ou use as setas para reposicionar'
-                : 'Todo o conteúdo será mantido, sem distorção'}
+                ? t('mediaAdjustment.dragHint')
+                : t('mediaAdjustment.fitHint')}
             </p>
           </div>
           <fieldset disabled={!!stage} className="min-w-0 space-y-5">
             <div>
-              <p className="mb-2 text-sm font-semibold">Proporção</p>
+              <p className="mb-2 text-sm font-semibold">{t('mediaAdjustment.ratio')}</p>
               <div className="grid grid-cols-2 gap-2">
                 {presets.map((p) => (
                   <button
@@ -484,7 +561,9 @@ export function MediaAdjustmentDialog({
                     onClick={() => setAdjustment((a) => ({ ...a, ...p, x: 0.5, y: 0.5, zoom: 1 }))}
                     className={`${option} ${adjustment.width === p.width && adjustment.height === p.height ? selected : 'border-border hover:bg-muted'}`}
                   >
-                    <span className="block font-semibold">{p.label}</span>
+                    <span className="block font-semibold">
+                      {p.label === '1,91:1' ? t('mediaAdjustment.landscapeRatio') : p.label}
+                    </span>
                     <span className="text-[10px]">
                       {p.width} × {p.height}
                     </span>
@@ -493,7 +572,7 @@ export function MediaAdjustmentDialog({
               </div>
               {portraitOnly && (
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Formato recomendado. Outras proporções aceitas não impedem a publicação.
+                  {t('mediaAdjustment.recommended')}
                 </p>
               )}
             </div>
@@ -508,24 +587,24 @@ export function MediaAdjustmentDialog({
                     className={`flex items-center justify-center gap-1.5 rounded-md py-2 text-sm ${adjustment.mode === mode ? 'bg-background shadow-sm' : 'text-muted-foreground'}`}
                   >
                     {mode === 'crop' ? <Crop size={14} /> : <Maximize size={14} />}
-                    {mode === 'crop' ? 'Recortar' : 'Encaixar'}
+                    {mode === 'crop' ? t('mediaAdjustment.crop') : t('mediaAdjustment.fit')}
                   </button>
                 ))}
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
                 {adjustment.mode === 'crop'
-                  ? 'Preenche o quadro cortando as bordas.'
-                  : 'Mantém o conteúdo inteiro e preenche o fundo.'}
+                  ? t('mediaAdjustment.cropDescription')
+                  : t('mediaAdjustment.fitDescription')}
               </p>
             </div>
             {adjustment.mode === 'crop' ? (
               <label className="block text-sm font-semibold">
-                Zoom{' '}
+                {t('mediaAdjustment.zoom')}{' '}
                 <span className="float-right font-normal">
                   {Math.round(adjustment.zoom * 100)}%
                 </span>
                 <Slider
-                  aria-label="Zoom"
+                  aria-label={t('mediaAdjustment.zoom')}
                   min={1}
                   max={3}
                   step={0.01}
@@ -538,7 +617,7 @@ export function MediaAdjustmentDialog({
               </label>
             ) : (
               <div>
-                <p className="mb-2 text-sm font-semibold">Fundo</p>
+                <p className="mb-2 text-sm font-semibold">{t('mediaAdjustment.background')}</p>
                 <div className="flex gap-2">
                   {(['blur', 'solid'] as const).map((bg) => (
                     <button
@@ -548,19 +627,21 @@ export function MediaAdjustmentDialog({
                       onClick={() => setAdjustment((a) => ({ ...a, background: bg }))}
                       className={`${option} ${adjustment.background === bg ? selected : 'border-border'}`}
                     >
-                      {bg === 'blur' ? 'Desfocado' : 'Cor sólida'}
+                      {bg === 'blur'
+                        ? t('mediaAdjustment.blurred')
+                        : t('mediaAdjustment.solidColor')}
                     </button>
                   ))}
                 </div>
                 {adjustment.background === 'solid' && (
                   <label className="mt-3 flex items-center gap-2 text-xs">
                     <input
-                      aria-label="Cor do fundo"
+                      aria-label={t('mediaAdjustment.backgroundColor')}
                       type="color"
                       value={adjustment.color}
                       onChange={(e) => setAdjustment((a) => ({ ...a, color: e.target.value }))}
                     />
-                    Cor do fundo
+                    {t('mediaAdjustment.backgroundColor')}
                   </label>
                 )}
               </div>
@@ -571,15 +652,19 @@ export function MediaAdjustmentDialog({
               className="flex items-center gap-1.5 text-xs text-muted-foreground underline"
             >
               <RotateCcw size={13} />
-              Redefinir
+              {t('mediaAdjustment.reset')}
             </button>
             <div className="border-t pt-4 text-xs leading-6 text-muted-foreground">
-              <p>
-                Saída: {adjustment.width} × {adjustment.height} px
-              </p>
+              <p>{t('mediaAdjustment.output', { w: adjustment.width, h: adjustment.height })}</p>
               <p>{video ? 'MP4 · H.264 / AAC' : 'JPEG · sRGB'}</p>
-              <p>Tamanho máximo: {maxBytes / 1024 / 1024} MB</p>
-              {video && <p>Duração: 3 s–{forStories ? '60 s' : '15 min'}</p>}
+              <p>{t('mediaAdjustment.maxSize', { mb: maxBytes / 1024 / 1024 })}</p>
+              {video && (
+                <p>
+                  {t(
+                    forStories ? 'mediaAdjustment.durationStories' : 'mediaAdjustment.durationFeed',
+                  )}
+                </p>
+              )}
             </div>
           </fieldset>
         </div>
@@ -588,15 +673,14 @@ export function MediaAdjustmentDialog({
             role="alert"
             className="mx-6 mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200"
           >
-            {error ||
-              'A duração está fora do permitido. O ajuste de proporção não altera a duração do vídeo.'}
+            {error || t('mediaAdjustment.durationInvalid')}
             {!source && (
               <button
                 type="button"
                 onClick={() => setAttempt((a) => a + 1)}
                 className="ml-2 underline"
               >
-                Tentar novamente
+                {t('mediaAdjustment.retry')}
               </button>
             )}
           </div>
@@ -605,31 +689,39 @@ export function MediaAdjustmentDialog({
           <div role="status" className="mx-6 mb-4 text-sm">
             <div className="mb-2 flex items-center gap-2">
               <Loader2 size={16} className="animate-spin" />
-              {stage === 'saving'
-                ? 'Salvando mídia'
-                : video
-                  ? 'Processando vídeo'
-                  : 'Processando imagem'}
-              … {progress}%
+              {t(
+                stage === 'saving'
+                  ? 'mediaAdjustment.stageSaving'
+                  : video
+                    ? 'mediaAdjustment.stageVideo'
+                    : 'mediaAdjustment.stageImage',
+                { pct: progress },
+              )}
             </div>
             <progress className="h-1.5 w-full accent-amber-400" max={100} value={progress} />
             <p className="mt-1 text-xs text-muted-foreground">
               {stage === 'saving'
-                ? 'Aguarde a confirmação do salvamento.'
-                : 'Mantenha esta janela aberta até concluir.'}
+                ? t('mediaAdjustment.savingHint')
+                : t('mediaAdjustment.processingHint')}
             </p>
           </div>
         )}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/30 px-6 py-4">
-          <p className="text-xs text-muted-foreground">O original será preservado em Arquivos.</p>
-          <div className="flex gap-2">
+        <div
+          className={
+            phone
+              ? 'phone-crop__footer px-4 pb-6'
+              : 'flex flex-wrap items-center justify-between gap-3 border-t bg-muted/30 px-6 py-4'
+          }
+        >
+          <p className="text-xs text-muted-foreground">{t('mediaAdjustment.originalKept')}</p>
+          <div className={phone ? 'hidden' : 'flex gap-2'}>
             <button
               type="button"
               onClick={close}
               disabled={stage === 'saving'}
               className="rounded-lg border px-4 py-2 text-sm disabled:opacity-40"
             >
-              {stage === 'exporting' ? 'Cancelar processamento' : 'Cancelar'}
+              {stage === 'exporting' ? t('mediaAdjustment.cancelProcessing') : t('actions.cancel')}
             </button>
             <button
               type="button"
@@ -637,7 +729,7 @@ export function MediaAdjustmentDialog({
               disabled={!dimensions || !!stage || !!durationInvalid}
               className={primary}
             >
-              Aplicar ajuste
+              {t('mediaAdjustment.applyAdjustment')}
             </button>
           </div>
         </div>

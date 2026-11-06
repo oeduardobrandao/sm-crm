@@ -2,6 +2,7 @@ import { createElement, useCallback, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { addDays, format } from 'date-fns';
 import { toast } from 'sonner';
+import { i18n } from '@mesaas/i18n';
 import {
   AGENDA_QUERY_KEY,
   editarEvento,
@@ -88,7 +89,7 @@ export function useAgendaMutations(): {
         editarEvento(o.ocorrencia_id, 'esta', payload, null)
           .then(() => {
             void invalidar();
-            toast('Evento movido. Para mudar o dia de todos, edite o evento.');
+            toast(i18n.t('agenda:mutations.movidoSerie'));
           })
           .catch((err: unknown) => {
             revert();
@@ -103,12 +104,12 @@ export function useAgendaMutations(): {
           // null: the move pushed the event past the materialization horizon,
           // so there is no occurrence to undo on.
           if (typeof novoId !== 'number') {
-            toast('Evento movido');
+            toast(i18n.t('agenda:mutations.movido'));
             return;
           }
-          toast('Evento movido', {
+          toast(i18n.t('agenda:mutations.movido'), {
             action: {
-              label: 'Desfazer',
+              label: i18n.t('agenda:mutations.desfazer'),
               onClick: () => {
                 // The RPC may regenerate the row on a date move: undo the id it returned.
                 editarEvento(novoId, 'todas', payloadOriginal(o), null)
@@ -138,7 +139,7 @@ export function useAgendaMutations(): {
     editarEvento(o.ocorrencia_id, escopo, payload, null)
       .then(() => {
         void invalidar();
-        toast('Evento movido');
+        toast(i18n.t('agenda:mutations.movido'));
       })
       .catch((err: unknown) => {
         revert();

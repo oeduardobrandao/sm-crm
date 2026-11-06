@@ -26,6 +26,35 @@ function ctx(a?: string, b?: string): string | undefined {
   return [a, b].filter(Boolean).join(" · ") || undefined;
 }
 
+const MESES = [
+  "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+];
+
+/** Lowercase pt-BR month of 'YYYY-MM-DD', read from the text (no timezone shift). */
+function monthName(periodo: string | undefined): string {
+  const mm = periodo ? /^\d{4}-(\d{2})/.exec(periodo) : null;
+  return (mm && MESES[Number(mm[1]) - 1]) || "";
+}
+
+function linhaEditorialItem(
+  m: Record<string, unknown> | null,
+  link: string,
+  verb: string,
+): RenderedNotification {
+  const mes = monthName(s(m, "periodo"));
+  const titulo = s(m, "titulo")?.trim();
+  // Custom title (spec §14.2) in curly quotes, else the month.
+  const ref = titulo ? ` “${titulo}”` : mes ? ` de ${mes}` : "";
+  const n = typeof m?.comentarios === "number" ? m.comentarios : 0;
+  return {
+    priority: 4,
+    heading: `${s(m, "cliente_nome") ?? "Cliente"} ${verb} linha editorial${ref}`,
+    body: n > 0 ? `${n} ${n === 1 ? "comentário" : "comentários"}` : undefined,
+    link,
+  };
+}
+
 function eventHeading(prefix: string, titulo?: string): string {
   return titulo ? `${prefix}: ${titulo}` : prefix;
 }
@@ -119,6 +148,10 @@ export function renderNotification(row: NotificationRow): RenderedNotification {
         context: s(m, "cliente_nome"),
         link,
       };
+    case "linha_editorial_aprovada":
+      return linhaEditorialItem(m, link, "aprovou a");
+    case "linha_editorial_ajustes":
+      return linhaEditorialItem(m, link, "pediu ajustes na");
     // Push-only types (not in the email digest's allowlist). Copy follows the
     // CRM bell (apps/crm/src/lib/notification-config.ts) without its em dashes.
     case "post_edit_suggestion":

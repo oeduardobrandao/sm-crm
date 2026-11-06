@@ -1,3 +1,6 @@
+// Shell-only CSS (Phosphor, app.css, Vidro) rides this lazy chunk instead of the entry's
+// render-blocking stylesheet, so the public pages never download it.
+import '@/styles/app-shell';
 import { Navigate, useLocation } from 'react-router-dom';
 import { ReactNode } from 'react';
 import { useAuth } from '../../context/AuthContext';
@@ -6,6 +9,7 @@ import { PageSkeleton } from '@/components/ui/skeletons';
 import { UpgradeLockedScreen } from '@/components/paywall/UpgradeLockedScreen';
 import { resolveRouteGate } from './routePermissions';
 import { isLayoutGuardedPath } from './AppLayout';
+import { useTrialOfferRedirect } from './useTrialOfferRedirect';
 
 const FEATURE_GATED: Record<string, { flag: string; label: string }> = {
   '/analytics': { flag: 'feature_analytics_reports', label: 'Relatórios e Analytics' },
@@ -16,13 +20,14 @@ const FEATURE_GATED: Record<string, { flag: string; label: string }> = {
   '/contratos': { flag: 'feature_contracts', label: 'Contratos' },
   '/ideias': { flag: 'feature_ideas', label: 'Ideias' },
   '/post-express': { flag: 'feature_post_scheduling', label: 'Agendamento de Posts' },
-  '/mensagens': { flag: 'feature_mensagens', label: 'Mensagens' },
 };
 
 export default function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, profile, role, can, loading } = useAuth();
   const location = useLocation();
   const { features, isLoading: limitsLoading, isUnlimited } = useWorkspaceLimits();
+  // Hook order: this must stay above every early return below.
+  const trialOffer = useTrialOfferRedirect(location.pathname.toLowerCase());
 
   if (loading || limitsLoading) {
     // The shell (sidebar, top bar) is not mounted yet and the page is unknown, so this is a
@@ -81,6 +86,24 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
     }
   }
 
+  // /mensagens abriga dois recursos gateados separadamente (chat com
+  // clientes + chat de equipe): bloqueia so quando AMBAS as flags estao off.
+  // feature_team_chat usa `!== true` (fail-closed) em vez de `=== false`
+  // (fail-open, como feature_mensagens): ate o redeploy de workspace-limits
+  // que passa a devolver essa coluna nova, ela chega `undefined` para todo
+  // workspace. Com `=== false` o bloqueio nunca dispararia nessa janela e
+  // /mensagens ficaria destravada mesmo com feature_mensagens:false -- uma
+  // regressao do paywall hoje em producao.
+  if (
+    !isUnlimited &&
+    features &&
+    pathname.startsWith('/mensagens') &&
+    features.feature_mensagens === false &&
+    features.feature_team_chat !== true
+  ) {
+    return <UpgradeLockedScreen featureLabel="Mensagens" feature="feature_mensagens" />;
+  }
+
   if (!isUnlimited && features) {
     for (const [path, { flag, label }] of Object.entries(FEATURE_GATED)) {
       if (pathname.startsWith(path) && features[flag as keyof typeof features] === false) {
@@ -98,6 +121,18 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
   if (needsSetup) {
     return <Navigate to="/workspace-setup" replace />;
   }
+
+  if (trialOffer.pending) {
+    return (
+      <PageSkeleton
+        style={{
+          minHeight: '100vh',
+          padding: 'clamp(1.25rem, 3vw, 2.5rem) clamp(1rem, 3vw, 3rem)',
+        }}
+      />
+    );
+  }
+  if (trialOffer.redirect) return <Navigate to="/comecar" replace />;
 
   return <>{children}</>;
 }

@@ -33,6 +33,7 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
 
 import { PostProcessCard } from '../PostProcessCard';
 import type { PostEntity } from '../../boardEntity';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 function render(ui: React.ReactElement) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -82,6 +83,22 @@ function makeEntity(overrides: Partial<PostEntity> = {}): PostEntity {
 }
 
 describe('PostProcessCard', () => {
+  it('showPublishDate: a pill mostra a data de publicação no lugar do prazo, sem tom de urgência', () => {
+    const scheduledAt = new Date(new Date().getFullYear(), 9, 25, 14, 0).toISOString();
+    const base = makeEntity();
+    const entity = makeEntity({
+      process: { ...base.process, post: { ...base.process.post, scheduled_at: scheduledAt } },
+      prazoEfetivo: new Date(),
+      deadline: { diasRestantes: -3, horasRestantes: 0, estourado: true, urgente: true } as never,
+    });
+    render(<PostProcessCard entity={entity} showPublishDate />);
+
+    const pill = screen.getByText('25 out').closest('.board-card-deadline-pill')!;
+    expect(pill.className).toContain('deadline-neutral');
+    expect(pill.textContent).toContain('Publicação em 25 de outubro');
+    expect(screen.queryByText(/atrasado/)).not.toBeInTheDocument();
+  });
+
   it('sem prazo efetivo: o card fica deadline-ok mesmo com diasRestantes <= 3', () => {
     // dl.diasRestantes (2) <= 3 would compute 'deadline-caution' unconditionally
     // if the card ignored hasDeadline, even though prazoEfetivo is null.
@@ -227,5 +244,55 @@ describe('PostProcessCard: Duplicar post', () => {
   it('sem onDuplicateClick não mostra o item', () => {
     render(<PostProcessCard entity={makeEntity()} />);
     expect(screen.queryByRole('menuitem', { name: /Duplicar post/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('PostProcessCard: ações do card sob o Vidro', () => {
+  function renderCard(vidro: boolean) {
+    const ui = (
+      <PostProcessCard
+        entity={makeEntity()}
+        onForwardClick={vi.fn()}
+        forwardLabel="Avançar etapa"
+      />
+    );
+    render(vidro ? <VidroToolbarHarness>{ui}</VidroToolbarHarness> : ui);
+    return {
+      kebab: screen.getByRole('button', { name: 'Mais opções' }),
+      forward: screen.getByRole('button', { name: 'Avançar etapa' }),
+    };
+  }
+
+  it('flag desligada: mantém btn-edit-workflow e o estilo inline', () => {
+    const { kebab, forward } = renderCard(false);
+    expect(kebab).toHaveClass('btn-edit-workflow', 'board-card-kebab');
+    expect(forward).toHaveClass('btn-edit-workflow', 'btn-forward-etapa');
+    expect(kebab).not.toHaveClass('vidro-board-action');
+    expect(forward).not.toHaveClass('vidro-board-action');
+    expect(kebab.style.borderRadius).toBe('8px');
+    expect(kebab.style.padding).toBe('0px 0.5rem');
+    expect(forward.style.borderRadius).toBe('8px');
+  });
+
+  it('Vidro: troca btn-edit-workflow por vidro-board-action e solta raio e padding inline', () => {
+    const { kebab, forward } = renderCard(true);
+    expect(kebab).toHaveClass('vidro-board-action', 'board-card-kebab');
+    expect(forward).toHaveClass('vidro-board-action', 'btn-forward-etapa');
+    expect(kebab).not.toHaveClass('btn-edit-workflow');
+    expect(forward).not.toHaveClass('btn-edit-workflow');
+    expect(kebab.style.borderRadius).toBe('');
+    expect(kebab.style.padding).toBe('');
+    expect(kebab.style.height).toBe('26px');
+    expect(forward.style.borderRadius).toBe('');
+    expect(forward.style.padding).toBe('');
+    expect(forward.style.marginLeft).toBe('auto');
+    expect(forward.style.color).toBe('rgb(62, 207, 142)');
+  });
+  it('discussaoNaoLidas: selo de mensagens novas só quando > 0', () => {
+    const { unmount } = render(<PostProcessCard entity={makeEntity()} discussaoNaoLidas={4} />);
+    expect(screen.getByLabelText('4 mensagens novas na discussão')).toHaveTextContent('4');
+    unmount();
+    render(<PostProcessCard entity={makeEntity()} discussaoNaoLidas={0} />);
+    expect(screen.queryByLabelText(/na discussão/)).not.toBeInTheDocument();
   });
 });

@@ -1,7 +1,7 @@
 import type { BlockProps } from '../BlockRenderer';
 import { fmtCount } from '../format';
 
-export function PostListBlock({ block, snapshot }: BlockProps) {
+export function PostListBlock({ block, snapshot, platform }: BlockProps) {
   const raw = block.config?.count;
   const count = typeof raw === 'number' && raw >= 1 && raw <= 12 ? raw : 12;
   const posts = snapshot.top_posts.slice(0, count);
@@ -32,7 +32,10 @@ export function PostListBlock({ block, snapshot }: BlockProps) {
             {post.caption_preview}
           </span>
           <span style={{ fontSize: '0.75rem', opacity: 0.75 }}>
-            {fmtCount(typeof post.views === 'number' ? post.views : post.reach)}
+            {/* TikTok: sempre visualizações (reach é 0 na visão TikTok). */}
+            {fmtCount(
+              platform === 'tiktok' || typeof post.views === 'number' ? post.views : post.reach,
+            )}
           </span>
         </div>
       ))}

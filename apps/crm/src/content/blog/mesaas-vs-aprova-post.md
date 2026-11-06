@@ -3,6 +3,7 @@ title: Mesaas ou Aprova Post: qual usar na sua agência em 2026
 h1: Mesaas ou Aprova Post: qual ferramenta de aprovação usar na sua agência
 description: Comparamos Mesaas e Aprova Post na aprovação de posts com o cliente: link sem login, fluxo de revisão, agendamento no Instagram e gestão da agência.
 date: 2026-07-25
+updated: 2026-10-30
 category: comparativo
 ---
 
@@ -37,7 +38,7 @@ O Aprova Post é uma ferramenta dedicada à aprovação de conteúdo, voltada pa
 - Agendamento da publicação no Instagram a partir da própria ferramenta.
 - Vídeo enviado por link do Google Drive, convertido para visualização direta na página de aprovação, sem download.
 
-É um escopo coerente com a proposta: resolver bem o ciclo enviar, revisar e aprovar — e essa cobertura de formatos vai além da que entregamos hoje. A ferramenta não se apresenta como CRM de agência, e não encontramos no site informação sobre relatórios, briefing, financeiro ou contratos.
+É um escopo coerente com a proposta: resolver bem o ciclo enviar, revisar e aprovar. A ferramenta não se apresenta como CRM de agência, e não encontramos no site informação sobre relatórios, briefing, financeiro ou contratos.
 
 ## O que o Mesaas entrega
 
@@ -48,7 +49,7 @@ O cliente recebe um link único, sem conta e sem senha, e vê o post como ele va
 A diferença está no que acontece em volta dessa etapa:
 
 - **Antes:** o cliente responde o briefing e envia ideias pelo mesmo link. A equipe planeja no calendário editorial de cada cliente e acompanha tudo no kanban de entregas, do rascunho ao publicado.
-- **Depois:** post aprovado entra no agendamento e é publicado automaticamente no Instagram na data e hora marcadas, via API oficial do Meta, em Feed, Reels ou Carrossel. Sem exportar arquivo e repostar em outra ferramenta.
+- **Depois:** post aprovado entra no agendamento e é publicado automaticamente na data e hora marcadas. No Instagram, via API oficial do Meta, em Feed, Reels ou Carrossel; no TikTok, nos planos Pro e Max, em vídeo ou carrossel de fotos. Sem exportar arquivo e repostar em outra ferramenta.
 - **Em volta:** as métricas da conta voltam pela mesma API e viram relatório para o cliente, enquanto contratos, mensalidades e despesas ficam no financeiro.
 
 Tudo isso chega ao cliente por um [portal do cliente](/portal-do-cliente) com a cor e a identidade da sua agência. Há ainda um agente de conteúdo com IA que se conecta ao workspace por MCP: ele lê o briefing de cada cliente e escreve o rascunho dentro do fluxo, para passar pela sua revisão e pela aprovação do cliente.
@@ -57,19 +58,20 @@ Tudo isso chega ao cliente por um [portal do cliente](/portal-do-cliente) com a 
 
 Na coluna do Aprova Post, **Não informado** significa que não localizamos a informação no site oficial — não que o recurso não exista. O agendamento é o caso mais claro: eles anunciam publicação no Instagram sem sair da ferramenta, mas o site não indica qual integração é usada.
 
-| Recurso | Mesaas | Aprova Post |
-| --- | --- | --- |
-| Aprovação por link, sem login do cliente | Sim | Sim |
-| Comentários e histórico por post | Sim | Sim |
-| Agendamento e publicação no Instagram (API oficial do Meta) | Sim | Não informado |
-| Portal do cliente com a marca da agência | Sim | Sim |
-| Briefing e ideias enviadas pelo cliente | Sim | Não informado |
-| Calendário editorial por cliente | Sim | Sim |
-| Kanban de entregas para a equipe | Sim | Não informado |
-| Relatórios de métricas do Instagram | Sim | Não informado |
-| Contratos e financeiro da agência | Sim | Não informado |
-| Agente de conteúdo com IA (MCP) | Sim | Não informado |
-| Plano gratuito | Sim | Não informado |
+| Recurso                                                     | Mesaas                 | Aprova Post   |
+| ----------------------------------------------------------- | ---------------------- | ------------- |
+| Aprovação por link, sem login do cliente                    | Sim                    | Sim           |
+| Comentários e histórico por post                            | Sim                    | Sim           |
+| Agendamento e publicação no Instagram (API oficial do Meta) | Sim                    | Não informado |
+| Agendamento e publicação no TikTok                          | Sim (planos Pro e Max) | Não informado |
+| Portal do cliente com a marca da agência                    | Sim                    | Sim           |
+| Briefing e ideias enviadas pelo cliente                     | Sim                    | Não informado |
+| Calendário editorial por cliente                            | Sim                    | Sim           |
+| Kanban de entregas para a equipe                            | Sim                    | Não informado |
+| Relatórios de métricas do Instagram                         | Sim                    | Não informado |
+| Contratos e financeiro da agência                           | Sim                    | Não informado |
+| Agente de conteúdo com IA (MCP)                             | Sim                    | Não informado |
+| Plano gratuito                                              | Sim                    | Não informado |
 
 Dados sobre concorrentes conferidos diretamente no site de cada ferramenta, em julho de 2026.
 

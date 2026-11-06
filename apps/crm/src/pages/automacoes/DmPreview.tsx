@@ -10,6 +10,7 @@ import type { DmButton } from '@/store';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { getInitials } from '@/store';
 import { sanitizeExternalUrl } from '@/utils/security';
+import { useFotoFallback } from '@/components/ClienteFoto';
 
 const IG = {
   surface: '#ffffff',
@@ -23,13 +24,27 @@ export function Avatar({
   clientName,
   clientSigla,
   clientCor,
+  clientFotos = [],
   size,
 }: {
   clientName: string | null;
   clientSigla?: string | null;
   clientCor?: string | null;
+  /** The client's photo candidates, best first; initials when none loads. */
+  clientFotos?: string[];
   size: number;
 }) {
+  const foto = useFotoFallback(clientFotos);
+  if (foto.src)
+    return (
+      <img
+        src={foto.src}
+        alt=""
+        className="avatar avatar--photo"
+        style={{ width: size, height: size, flexShrink: 0 }}
+        onError={foto.onError}
+      />
+    );
   return (
     <div
       className={`avatar ${clientCor ? '' : avatarColorClass(clientName)}`}
@@ -50,6 +65,7 @@ export default function DmPreview({
   clientName,
   clientSigla,
   clientCor,
+  clientFotos,
   text,
   buttons,
   mediaUrl,
@@ -58,6 +74,7 @@ export default function DmPreview({
   clientName: string | null;
   clientSigla?: string | null;
   clientCor?: string | null;
+  clientFotos?: string[];
   text: string;
   buttons: DmButton[];
   /** Preview de leitura (blob: local ou URL assinada) da mídia do cartão.
@@ -129,6 +146,7 @@ export default function DmPreview({
             clientName={clientName}
             clientSigla={clientSigla}
             clientCor={clientCor}
+            clientFotos={clientFotos}
             size={28}
           />
           <div style={{ minWidth: 0 }}>
@@ -179,6 +197,7 @@ export default function DmPreview({
                 clientName={clientName}
                 clientSigla={clientSigla}
                 clientCor={clientCor}
+                clientFotos={clientFotos}
                 size={22}
               />
               <div

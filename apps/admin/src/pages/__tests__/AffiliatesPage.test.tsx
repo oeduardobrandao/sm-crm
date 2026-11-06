@@ -129,6 +129,60 @@ describe('AffiliatesPage', () => {
     expect(screen.getByText('Sem conta Stripe')).toBeInTheDocument();
   });
 
+  it('keeps Disponível in view: the rules card only sits beside the list from 2xl', async () => {
+    vi.mocked(listAffiliates).mockResolvedValue({
+      affiliates: [
+        {
+          id: 'a1',
+          code: 'ana7k3f',
+          nome: 'Ana',
+          email: 'ana@x.com',
+          status: 'active',
+          stripe_account_id: null,
+          stripe_details_submitted: false,
+          stripe_transfers_active: false,
+          created_at: '2026-10-01T00:00:00Z',
+          summary: SUMMARY,
+        },
+      ],
+      rules: RULES,
+    });
+    wrap(<AffiliatesPage />);
+    await screen.findAllByRole('link', { name: 'Ana' });
+    const table = screen.getAllByRole('table')[0];
+    expect(within(table).getByRole('columnheader', { name: 'Disponível' })).toBeInTheDocument();
+    const grid = table.closest('.grid')!;
+    expect(grid.className).toContain('2xl:grid-cols-');
+    expect(grid.className).not.toMatch(/(^|\s)xl:grid-cols-/);
+  });
+
+  it('ranks affiliates by available balance and totals the KPI row', async () => {
+    const base = {
+      code: 'x',
+      email: 'x@x.com',
+      status: 'active' as const,
+      stripe_account_id: null,
+      stripe_details_submitted: false,
+      stripe_transfers_active: false,
+      created_at: '2026-10-01T00:00:00Z',
+    };
+    vi.mocked(listAffiliates).mockResolvedValue({
+      affiliates: [
+        { ...base, id: 'low', nome: 'Baixo', summary: { ...SUMMARY, available_cents: 1000 } },
+        { ...base, id: 'high', nome: 'Alto', summary: { ...SUMMARY, available_cents: 9000 } },
+      ],
+      rules: RULES,
+    });
+    wrap(<AffiliatesPage />);
+    await screen.findAllByRole('link', { name: 'Alto' });
+    const names = screen
+      .getAllByRole('link')
+      .map((l) => l.textContent)
+      .filter((t) => t === 'Alto' || t === 'Baixo');
+    expect(names).toEqual(['Alto', 'Baixo']);
+    expect(screen.getByText('de 6 indicações')).toBeInTheDocument();
+  });
+
   it('edits a commission rule from the table', async () => {
     vi.mocked(listAffiliates).mockResolvedValue({ affiliates: [], rules: RULES });
     const user = userEvent.setup();
@@ -206,15 +260,67 @@ describe('AffiliateDetailPage', () => {
   });
 
   it('shows the Stripe account, the referred workspace and payout failures', async () => {
+    const user = userEvent.setup();
     wrap(<AffiliateDetailPage />, '/admin/afiliados/a1');
     expect(await screen.findByText('Ana Souza', { selector: 'h1' })).toBeInTheDocument();
     expect(screen.getByText('Recebe pelo Stripe')).toBeInTheDocument();
     expect(screen.getByText('acct_1')).toBeInTheDocument();
+    // The history is a tablist now: one panel at a time.
+    await user.click(screen.getByRole('tab', { name: 'Indicações' }));
     expect(screen.getByRole('link', { name: 'Agência X' })).toHaveAttribute(
       'href',
       '/admin/workspaces/ws-1',
     );
+    await user.click(screen.getByRole('tab', { name: 'Repasses' }));
     expect(screen.getByText('balance_insufficient')).toBeInTheDocument();
+  });
+
+  it('comissões: dates and money stay on one line and the Stripe card stacks below 2xl', async () => {
+    const user = userEvent.setup();
+    const detail = await vi.mocked(getAffiliate)();
+    vi.mocked(getAffiliate).mockResolvedValue({
+      ...detail,
+      commissions: [
+        {
+          id: 'c1',
+          workspace_id: 'ws-1',
+          workspace_name: 'Agência X',
+          stripe_invoice_id: 'in_1Q0abcdEFGH',
+          invoice_amount_cents: 19700,
+          plan_id: 'pro',
+          billing_reason: 'subscription_cycle',
+          commissionable_cents: 19700,
+          covered_months: 1,
+          rate_bps: 2500,
+          commission_cents: 4925,
+          refunded_amount_cents: 0,
+          disputed: false,
+          net_cents: 4925,
+          paid_at: '2026-10-09T10:00:00Z',
+          available_at: '2026-11-08T10:00:00Z',
+        },
+      ],
+    });
+    wrap(<AffiliateDetailPage />, '/admin/afiliados/a1');
+    await user.click(await screen.findByRole('tab', { name: 'Comissões' }));
+    const row = screen.getByText('Agência X').closest('tr')!;
+    const cells = row.querySelectorAll('td');
+    for (const i of [0, 2, 3, 4, 5]) expect(cells[i]).toHaveClass('whitespace-nowrap');
+    const grid = row.closest('.grid')!;
+    expect(grid.className).toContain('2xl:grid-cols-');
+    expect(grid.className).not.toMatch(/(^|\s)xl:grid-cols-/);
+  });
+
+  it('hero: back link to Afiliados, the name as the h1 and the status beside it', async () => {
+    wrap(<AffiliateDetailPage />, '/admin/afiliados/a1');
+    const h1 = await screen.findByRole('heading', { level: 1, name: 'Ana Souza' });
+    expect(screen.getByRole('link', { name: /Afiliados/ })).toHaveAttribute(
+      'href',
+      '/admin/afiliados',
+    );
+    const status = screen.getByText('Ativo');
+    expect(h1).not.toContainElement(status);
+    expect(h1.parentElement).toContainElement(status);
   });
 
   it('suspends the affiliate', async () => {

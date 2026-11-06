@@ -24,4 +24,22 @@ describe('ImportBanner', () => {
     const { container } = renderBanner(3);
     expect(container.firstChild).toBeNull();
   });
+
+  it('renders nothing for a member restricted to assigned clients (no client import)', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <ImportBanner clienteCount={0} clientScoped />
+      </MemoryRouter>,
+    );
+    expect(container.firstChild).toBeNull();
+  });
+
+  it('todos_unchanged: an unscoped member still sees the nudge', () => {
+    render(
+      <MemoryRouter>
+        <ImportBanner clienteCount={0} clientScoped={false} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('Migrando do Notion, Trello ou ClickUp?')).toBeInTheDocument();
+  });
 });

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { User } from 'lucide-react';
 import {
   Select,
@@ -9,7 +10,7 @@ import {
 import type { Membro } from '../../../store';
 
 // Ordem alfabética pt-BR, sem diferenciar acento nem caixa ("Débora" junto de "Davi").
-const byNome = (a: Membro, b: Membro) =>
+export const byNome = (a: Membro, b: Membro) =>
   a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' });
 
 /** Seletor "Fila de" da Minha fila. Mora na linha das abas (VistasTabs
@@ -27,6 +28,7 @@ export function FilaMembroPicker({
   /** null = "o próprio usuário" (escolher a si mesmo no seletor). */
   onChange: (membroId: number | null) => void;
 }) {
+  const { t } = useTranslation('entregas');
   return (
     <Select
       value={membroId != null ? String(membroId) : ''}
@@ -36,14 +38,17 @@ export function FilaMembroPicker({
         onChange(id === currentMembroId ? null : id);
       }}
     >
-      <SelectTrigger className="fila-picker h-8 rounded-full text-xs gap-1.5" aria-label="Fila de">
+      <SelectTrigger
+        className="fila-picker h-8 rounded-full text-xs gap-1.5"
+        aria-label={t('filaMembroPicker.aria')}
+      >
         <User className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />
-        <SelectValue placeholder="Escolha um membro" />
+        <SelectValue placeholder={t('filaMembroPicker.placeholder')} />
       </SelectTrigger>
       <SelectContent>
         {[...membros].sort(byNome).map((m) => (
           <SelectItem key={m.id} value={String(m.id)}>
-            {m.id === currentMembroId ? `${m.nome} (você)` : m.nome}
+            {m.id === currentMembroId ? t('filaMembroPicker.you', { name: m.nome }) : m.nome}
           </SelectItem>
         ))}
       </SelectContent>

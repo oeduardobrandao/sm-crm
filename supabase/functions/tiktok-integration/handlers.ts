@@ -9,6 +9,7 @@
 import { insertAuditLog } from "../_shared/audit.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
+import { saoPauloDate } from "../_shared/sao-paulo-date.ts";
 import {
   TIKTOK_AUTH_URL,
   TIKTOK_API_BASE,
@@ -21,6 +22,11 @@ import {
   requireTikTokClientCredentials,
 } from "../_shared/tiktok.ts";
 import { createSignedState, verifySignedState } from "./oauth-state.ts";
+import {
+  type ClientScopeLoader,
+  hasClientAccess,
+  loadClientScope as realLoadClientScope,
+} from "../_shared/client-scope.ts";
 import { importTikTokVideos, cacheTikTokAvatar, refreshStoredPostMetrics, type ThumbnailStorage } from "./import.ts";
 
 type DbClient = {
@@ -37,7 +43,14 @@ type DbClient = {
 export interface TikTokIntegrationDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createServiceDb: () => DbClient;
+  /** Clock override for tests; defaults to the real time. */
+  now?: () => Date;
+  /** Acesso por cliente: the caller's client scope (defaults to the real loader). */
+  loadClientScope?: ClientScopeLoader;
 }
+
+/** The authenticated caller plus a way to load their client scope in a workspace. */
+type Caller = { id: string; loadScope: ClientScopeLoader };
 
 const PROFILE_FIELDS =
   "open_id,union_id,avatar_url,display_name,username,profile_deep_link,follower_count,following_count,likes_count,video_count";
@@ -94,11 +107,24 @@ async function verifyClientOwnership(svc: DbClient, clientId: string, contaId: s
 async function requireOwnership(
   svc: DbClient,
   clientId: string,
-  userId: string,
+  user: Caller,
   cors: Record<string, string>,
 ): Promise<string | Response> {
-  const { data: profile } = await svc.from("profiles").select("conta_id").eq("id", userId).single();
+  const { data: profile } = await svc.from("profiles").select("conta_id").eq("id", user.id).single();
   if (!profile?.conta_id || !(await verifyClientOwnership(svc, clientId, profile.conta_id))) {
+    return json(cors, { error: true, message: "Unauthorized" }, 403);
+  }
+  // Acesso por cliente: a client outside the caller's scope answers exactly like a foreign one.
+  // A scope read error is a generic 500 (logged), never "all clients"; it is answered here so the
+  // outer catch's message sniffing ("expired") can never map it to TOKEN_EXPIRED.
+  let scope;
+  try {
+    scope = await user.loadScope(svc, user.id, profile.conta_id as string);
+  } catch (err) {
+    console.error("[tiktok-integration] client scope:", err instanceof Error ? err.message : String(err));
+    return json(cors, { error: true, message: "Erro interno" }, 500);
+  }
+  if (!hasClientAccess(scope, parseInt(clientId, 10), false)) {
     return json(cors, { error: true, message: "Unauthorized" }, 403);
   }
   return profile.conta_id as string;
@@ -109,14 +135,14 @@ async function requireOwnership(
 async function handleAuth(
   svc: DbClient,
   path: string,
-  user: { id: string },
+  user: Caller,
   req: Request,
   cors: Record<string, string>,
 ): Promise<Response> {
   const clientId = path.split("/")[2];
   if (!isValidClientId(clientId)) return json(cors, { error: true, message: "Client ID required" }, 400);
 
-  const ownership = await requireOwnership(svc, clientId, user.id, cors);
+  const ownership = await requireOwnership(svc, clientId, user, cors);
   if (ownership instanceof Response) return ownership;
   const contaId = ownership;
 
@@ -127,10 +153,49 @@ async function handleAuth(
   const { clientKey } = requireTikTokClientCredentials();
   const redirectUri = resolveFunctionBaseUrl(req);
   const state = await createSignedState(clientId, user.id, contaId, svc);
+  // disable_auto_auth=1: always show TikTok's authorization page. With the default, a browser
+  // already signed in to TikTok (e.g. right after connecting another client) skipped the page and
+  // silently linked that same account, without the user ever seeing which account was used.
   const authorizeUrl =
-    `${TIKTOK_AUTH_URL}?client_key=${clientKey}&scope=${TIKTOK_SCOPES}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
+    `${TIKTOK_AUTH_URL}?client_key=${clientKey}&scope=${TIKTOK_SCOPES}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&disable_auto_auth=1`;
 
   return json(cors, { url: authorizeUrl });
+}
+
+/** Another client of the same workspace with this TikTok account actively linked, if any. */
+async function findActiveLinkInWorkspace(
+  svc: DbClient,
+  openId: string,
+  clientId: string,
+  contaId: string,
+): Promise<{ id: string; clientName: string } | null> {
+  const { data, error } = await svc
+    .from("tiktok_accounts")
+    .select("id, client_id, clientes!inner(conta_id, nome)")
+    .eq("tiktok_open_id", openId)
+    .eq("authorization_status", "active")
+    .neq("client_id", parseInt(clientId, 10))
+    .eq("clientes.conta_id", contaId) as {
+      data: Array<{ id: string; clientes: { conta_id: string; nome: string | null } | null }> | null;
+      error: unknown;
+    };
+  if (error) throw new Error("Failed to check existing TikTok links");
+  const row = (data ?? []).find((r) => r.clientes?.conta_id === contaId);
+  return row ? { id: row.id, clientName: row.clientes?.nome ?? "" } : null;
+}
+
+/** True when another client (any workspace) still holds an active link to this TikTok account. */
+async function openIdHasOtherActiveLink(svc: DbClient, openId: string, accountId: string): Promise<boolean> {
+  const { data, error } = await svc
+    .from("tiktok_accounts")
+    .select("id")
+    .eq("tiktok_open_id", openId)
+    .eq("authorization_status", "active")
+    .neq("id", accountId)
+    .limit(1) as { data: unknown[] | null; error: unknown };
+  // On a read error, assume shared: skipping a revoke is harmless, revoking a shared grant is not.
+  if (error) return true;
+  return (data ?? []).length > 0;
 }
 
 // ─── GET /callback (public — no JWT) ──────────────────────────────────────────────────
@@ -189,6 +254,34 @@ async function handleCallback(svc: DbClient, url: URL, req: Request): Promise<Re
   const accessTokenExpiresAt = new Date(now + (expires_in ?? 0) * 1000).toISOString();
   const refreshTokenExpiresAt = new Date(now + (refresh_expires_in ?? 0) * 1000).toISOString();
 
+  // One TikTok account per client within a workspace. Linking an account that is already active
+  // on another client of the same workspace is almost always the browser's TikTok session being
+  // reused by mistake, and it later made "disconnect" on the wrong client revoke the app grant
+  // that the right client depends on. Refuse it and say which client holds the account. The fresh
+  // tokens go onto that client's row (a new authorization may supersede the old tokens), and the
+  // new token is never revoked here: revoke disconnects the whole app from the TikTok user.
+  const conflict = await findActiveLinkInWorkspace(svc, open_id, clientId, contaId);
+  if (conflict) {
+    const { error: refreshErr } = await svc.from("tiktok_accounts").update({
+      encrypted_access_token: encryptedAccess,
+      encrypted_refresh_token: encryptedRefresh,
+      access_token_expires_at: accessTokenExpiresAt,
+      refresh_token_expires_at: refreshTokenExpiresAt,
+      scopes: String(scope ?? "").split(",").filter(Boolean),
+    }).eq("id", conflict.id);
+    if (refreshErr) {
+      console.error(
+        "[tiktok-integration] callback: refreshing tokens of the existing link failed:",
+        (refreshErr as { message?: string })?.message,
+      );
+    }
+    const params = new URLSearchParams({ tt_error: "already_linked" });
+    const username = String(profile.username ?? "").slice(0, 60);
+    if (username) params.set("tt_user", username);
+    if (conflict.clientName) params.set("tt_other", conflict.clientName.slice(0, 120));
+    return Response.redirect(`${oauthRedirectBase()}/clientes/${clientId}?${params.toString()}`, 302);
+  }
+
   // TikTok avatar_url is also a short-lived signed CDN link — cache it up front (keyed by
   // client_id, which is stable and known before the account row exists) rather than waiting
   // for the first /sync, unlike instagram-integration which only caches on sync.
@@ -238,7 +331,7 @@ async function handleCallback(svc: DbClient, url: URL, req: Request): Promise<Re
   // Follower snapshot + initial import are best-effort: connecting the account must succeed
   // even if these secondary calls fail (mirrors instagram-integration's callback).
   try {
-    const today = new Date().toISOString().split("T")[0];
+    const today = saoPauloDate(new Date());
     const { data: existingEntry } = await svc
       .from("tiktok_follower_history")
       .select("source")
@@ -267,13 +360,14 @@ async function handleCallback(svc: DbClient, url: URL, req: Request): Promise<Re
 async function handleSync(
   svc: DbClient,
   path: string,
-  user: { id: string },
+  user: Caller,
   cors: Record<string, string>,
+  now: () => Date,
 ): Promise<Response> {
   const clientId = path.split("/")[2];
   if (!isValidClientId(clientId)) return json(cors, { error: true, message: "Invalid client ID" }, 400);
 
-  const ownership = await requireOwnership(svc, clientId, user.id, cors);
+  const ownership = await requireOwnership(svc, clientId, user, cors);
   if (ownership instanceof Response) return ownership;
   const contaId = ownership;
 
@@ -310,7 +404,7 @@ async function handleSync(
 
   const cachedAvatar = await cacheTikTokAvatar(fetch, svc.storage, clientId, (profile.avatar_url as string) ?? null);
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = saoPauloDate(now());
   const { data: existingEntry } = await svc
     .from("tiktok_follower_history")
     .select("source")
@@ -345,11 +439,26 @@ async function handleSync(
     }
   }
 
+  // Daily account snapshot, so a manual sync produces a data point the same day (the cron
+  // writes the same row). Best-effort like the other /sync writes.
+  const { error: snapshotErr } = await svc.from("tiktok_account_metrics_daily").upsert({
+    tiktok_account_id: account.id,
+    snapshot_date: today,
+    follower_count: profile.follower_count ?? account.follower_count ?? null,
+    following_count: profile.following_count ?? account.following_count ?? null,
+    likes_count: profile.likes_count ?? account.likes_count ?? null,
+    video_count: profile.video_count ?? account.video_count ?? null,
+  }, { onConflict: "tiktok_account_id,snapshot_date" });
+  if (snapshotErr) {
+    console.error("[tiktok-integration] sync: account metrics snapshot failed:", (snapshotErr as { message?: string }).message);
+  }
+
   const syncedPosts = await importTikTokVideos({ fetch, storage: svc.storage }, svc, account.id, accessToken, {
     maxVideos: 100,
+    now,
   });
 
-  const refreshedPosts = await refreshStoredPostMetrics({ svc }, account.id, accessToken);
+  const refreshedPosts = await refreshStoredPostMetrics({ svc, now }, account.id, accessToken);
 
   return json(cors, { ok: true, synced_posts: syncedPosts, refreshed_posts: refreshedPosts });
 }
@@ -359,13 +468,13 @@ async function handleSync(
 async function handleRefresh(
   svc: DbClient,
   path: string,
-  user: { id: string },
+  user: Caller,
   cors: Record<string, string>,
 ): Promise<Response> {
   const clientId = path.split("/")[2];
   if (!isValidClientId(clientId)) return json(cors, { error: true, message: "Invalid client ID" }, 400);
 
-  const ownership = await requireOwnership(svc, clientId, user.id, cors);
+  const ownership = await requireOwnership(svc, clientId, user, cors);
   if (ownership instanceof Response) return ownership;
 
   // deno-lint-ignore no-explicit-any
@@ -389,23 +498,29 @@ async function handleRefresh(
 async function handleDisconnect(
   svc: DbClient,
   path: string,
-  user: { id: string },
+  user: Caller,
   cors: Record<string, string>,
 ): Promise<Response> {
   const clientId = path.split("/")[2];
   if (!isValidClientId(clientId)) return json(cors, { error: true, message: "Invalid client ID" }, 400);
 
-  const ownership = await requireOwnership(svc, clientId, user.id, cors);
+  const ownership = await requireOwnership(svc, clientId, user, cors);
   if (ownership instanceof Response) return ownership;
 
   const { data: account } = await svc
     .from("tiktok_accounts")
-    .select("id, encrypted_access_token")
+    .select("id, tiktok_open_id, encrypted_access_token")
     .eq("client_id", clientId)
-    .maybeSingle() as { data: { id: string; encrypted_access_token: string | null } | null };
+    .maybeSingle() as { data: { id: string; tiktok_open_id: string; encrypted_access_token: string | null } | null };
 
   if (account) {
-    if (account.encrypted_access_token) {
+    // TikTok's revoke "disconnects your app from the user's TikTok account": it kills the grant
+    // for every client linked to that TikTok account, not just this one. Only revoke when this is
+    // the last active link; otherwise disconnecting the wrong client also broke the right one.
+    const shared = account.encrypted_access_token
+      ? await openIdHasOtherActiveLink(svc, account.tiktok_open_id, account.id)
+      : false;
+    if (account.encrypted_access_token && !shared) {
       try {
         const accessToken = await decryptTikTokToken(account.encrypted_access_token, "access");
         const { clientKey, clientSecret } = requireTikTokClientCredentials();
@@ -459,13 +574,13 @@ async function handleDisconnect(
 async function handleSummary(
   svc: DbClient,
   path: string,
-  user: { id: string },
+  user: Caller,
   cors: Record<string, string>,
 ): Promise<Response> {
   const clientId = path.split("/")[2];
   if (!isValidClientId(clientId)) return json(cors, { error: true, message: "Invalid client ID" }, 400);
 
-  const ownership = await requireOwnership(svc, clientId, user.id, cors);
+  const ownership = await requireOwnership(svc, clientId, user, cors);
   if (ownership instanceof Response) return ownership;
 
   const SUMMARY_FIELDS =
@@ -495,14 +610,14 @@ async function handleSummary(
 async function handlePosts(
   svc: DbClient,
   path: string,
-  user: { id: string },
+  user: Caller,
   url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
   const clientId = path.split("/")[2];
   if (!isValidClientId(clientId)) return json(cors, { error: true, message: "Invalid client ID" }, 400);
 
-  const ownership = await requireOwnership(svc, clientId, user.id, cors);
+  const ownership = await requireOwnership(svc, clientId, user, cors);
   if (ownership instanceof Response) return ownership;
 
   const pageStr = url.searchParams.get("page") || "1";
@@ -570,11 +685,11 @@ export function createTikTokIntegrationHandler(deps: TikTokIntegrationDeps) {
     const isCallback = path === "/callback" || (path === "" && url.searchParams.has("code"));
 
     try {
-      let user: { id: string } | undefined;
+      let user: Caller | undefined;
       if (!isCallback) {
         const authResult = await requireUser(req, svc, cors);
         if (authResult instanceof Response) return authResult;
-        user = authResult;
+        user = { id: authResult.id, loadScope: deps.loadClientScope ?? realLoadClientScope };
       }
 
       if (req.method === "GET" && path.startsWith("/auth/")) {
@@ -584,7 +699,7 @@ export function createTikTokIntegrationHandler(deps: TikTokIntegrationDeps) {
         return await handleCallback(svc, url, req);
       }
       if (req.method === "POST" && path.startsWith("/sync/")) {
-        return await handleSync(svc, path, user!, cors);
+        return await handleSync(svc, path, user!, cors, deps.now ?? (() => new Date()));
       }
       if (req.method === "POST" && path.startsWith("/refresh/")) {
         return await handleRefresh(svc, path, user!, cors);

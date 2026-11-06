@@ -1,8 +1,8 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { MemoryRouter, useNavigate, type NavigateFunction } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { NicheCalendarDef } from '../nicheCalendars/types';
 
@@ -39,6 +39,12 @@ const { NICHE_A, NICHE_B } = vi.hoisted(() => {
   };
   return { NICHE_A: nicheA, NICHE_B: nicheB };
 });
+
+// jsdom's matchMedia is always false, which is the phone layout: the suites below are the
+// desktop page unless a test flips this.
+const { layout } = vi.hoisted(() => ({ layout: { desktop: true } }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => layout.desktop }));
+vi.mock('@/components/layout/PhoneShellHeader', () => ({ PhoneShellActions: () => null }));
 
 vi.mock('../nicheCalendars/registry', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../nicheCalendars/registry')>();
@@ -128,6 +134,7 @@ vi.mock('@/components/ui/select', async () => {
 
 import * as store from '../../../store';
 import CalendarioPage from '../CalendarioPage';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 const nav: { current: NavigateFunction | null } = { current: null };
 function NavProbe() {
@@ -404,3 +411,217 @@ describe('CalendarioPage — payment confirm (flag off)', () => {
     });
   });
 });
+
+describe('CalendarioPage — phone (flag off, below 768px)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    armStore();
+    mockLoading.current = false;
+    mockFeatures.current = { feature_agenda: false };
+    layout.desktop = false;
+  });
+  afterEach(() => {
+    layout.desktop = true;
+  });
+
+  it('page header with the Calendário / Datas comemorativas segmented control', () => {
+    const { container } = renderPage();
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Calendário' })).toBeInTheDocument();
+    expect(screen.getByText('Visão geral mensal.')).toBeInTheDocument();
+    expect(container.querySelector('.calendar-tabs')).toBeNull();
+    expect(screen.getByRole('radio', { name: 'Calendário' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    expect(document.title).toBe('Calendário | Mesaas');
+    expect(screen.getByText('Nenhuma movimentação neste dia.')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Datas comemorativas' }));
+    expect(document.title).toBe('Datas Comemorativas | Mesaas');
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Calendário Nicho A' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Evento Exclusivo A')).toBeInTheDocument();
+    expect(screen.getByText('1 data exibida')).toBeInTheDocument();
+  });
+
+  it('month grid marks the day and the day list confirms a receivable with the same payload', async () => {
+    mockFinanceiro.current = true;
+    const hoje = new Date();
+    vi.mocked(store.getClientes).mockResolvedValue([
+      {
+        id: 12,
+        nome: 'Clínica Sorriso',
+        sigla: 'CS',
+        cor: '#123',
+        plano: 'pro',
+        email: '',
+        telefone: '',
+        status: 'ativo',
+        valor_mensal: 1500,
+        data_pagamento: hoje.getDate(),
+      },
+    ]);
+    vi.mocked(store.addTransacao).mockResolvedValue({} as never);
+    renderPage();
+
+    expect(
+      await screen.findByRole('button', {
+        name: new RegExp(`^${hoje.getDate()} de .*1 recebimento`),
+      }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar Clínica Sorriso' }));
+    expect(await screen.findByText('Confirmar Agendamento')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+
+    await waitFor(() => expect(store.addTransacao).toHaveBeenCalledTimes(1));
+    const mm = String(hoje.getMonth() + 1).padStart(2, '0');
+    expect(store.addTransacao).toHaveBeenCalledWith(
+      expect.objectContaining({
+        descricao: 'Clínica Sorriso',
+        categoria: 'Mensalidade Cliente',
+        valor: 1500,
+        tipo: 'entrada',
+        referencia_agendamento: `cliente_12_${hoje.getFullYear()}_${mm}`,
+      }),
+    );
+  });
+
+  it('Datas comemorativas: niche picker, chips and search; switching niche resets them', async () => {
+    renderPage();
+    fireEvent.click(screen.getByRole('radio', { name: 'Datas comemorativas' }));
+
+    const chips = screen.getByRole('group', { name: 'Filtrar datas' });
+    fireEvent.click(within(chips).getByRole('button', { name: 'Mundial' }));
+    expect(screen.queryByText('Evento Exclusivo A')).not.toBeInTheDocument();
+    expect(screen.getByText('Nenhuma data encontrada.')).toBeInTheDocument();
+    fireEvent.click(within(chips).getByRole('button', { name: 'Todos' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Buscar data' }));
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Buscar data' }), {
+      target: { value: 'não existe' },
+    });
+    expect(screen.queryByText('Evento Exclusivo A')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Nicho/ }));
+    const sheet = await screen.findByRole('dialog', { name: 'Nicho' });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Nicho B' }));
+
+    await waitFor(() => expect(screen.getByText('Evento Exclusivo B')).toBeInTheDocument());
+    expect(screen.getByRole('searchbox', { name: 'Buscar data' })).toHaveValue('');
+    expect(localStorage.getItem('mesaas:calendario:ultimoNicho')).toBe('niche-b');
+  });
+});
+
+describe('CalendarioPage — Agenda on a phone', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    armStore();
+    mockLoading.current = false;
+    mockFeatures.current = { feature_agenda: true };
+    layout.desktop = false;
+  });
+  afterEach(() => {
+    layout.desktop = true;
+  });
+
+  it('leaves the page header to AgendaTab (its phone header has the period and filters)', async () => {
+    const { container } = renderPage();
+    expect(await screen.findByTestId('agenda-tab')).toBeInTheDocument();
+    expect(container.querySelector('.header')).toBeNull();
+    expect(screen.queryByText('Eventos, reuniões e gravações da equipe.')).not.toBeInTheDocument();
+    expect(document.title).toBe('Agenda | Mesaas');
+  });
+});
+
+function renderPageInShell(vidroShell: boolean) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={['/calendario']}>
+        <VidroToolbarHarness vidroShell={vidroShell}>
+          <CalendarioPage />
+        </VidroToolbarHarness>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+describe.each([true, false])(
+  'CalendarioPage in the Vidro toolbar (vidroShell %s)',
+  (vidroShell) => {
+    beforeEach(() => {
+      localStorage.clear();
+      armStore();
+      mockLoading.current = false;
+    });
+
+    describe('classic page (Agenda off)', () => {
+      beforeEach(() => {
+        mockFeatures.current = { feature_agenda: false };
+      });
+
+      it(
+        vidroShell ? 'title, subtitle and tabs live in the toolbar' : 'keeps the in-page header',
+        () => {
+          const { container } = renderPageInShell(vidroShell);
+
+          const h1s = screen.getAllByRole('heading', { level: 1 });
+          expect(h1s).toHaveLength(1);
+          expect(h1s[0]).toHaveTextContent('Calendário');
+          expect(screen.getAllByText('Visão geral mensal.')).toHaveLength(1);
+          expect(document.querySelectorAll('.calendar-tabs')).toHaveLength(1);
+          if (vidroShell) {
+            expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+            expect(document.querySelector('.vidro-toolbar .calendar-tabs')).not.toBeNull();
+            expect(document.querySelector('.vidro-toolbar-subtitle')).toHaveTextContent(
+              'Visão geral mensal.',
+            );
+            expect(container.querySelector('.header')).toBeNull();
+          } else {
+            expect(h1s[0].closest('.header')).not.toBeNull();
+            expect(document.querySelector('.vidro-toolbar')).toBeNull();
+          }
+        },
+      );
+
+      it('the tabs still switch, and the toolbar title follows the niche', () => {
+        renderPageInShell(vidroShell);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Datas Comemorativas' }));
+
+        expect(screen.getByRole('button', { name: 'Datas Comemorativas' })).toHaveClass('active');
+        const h1s = screen.getAllByRole('heading', { level: 1 });
+        expect(h1s).toHaveLength(1);
+        expect(h1s[0]).toHaveTextContent('Calendário Nicho A');
+        expect(screen.getAllByText('Subtítulo A')).toHaveLength(1);
+        expect(Boolean(h1s[0].closest('.vidro-toolbar'))).toBe(vidroShell);
+      });
+    });
+
+    describe('Agenda (flag on)', () => {
+      beforeEach(() => {
+        mockFeatures.current = { feature_agenda: true };
+      });
+
+      it(
+        vidroShell
+          ? 'title and subtitle live in the toolbar, AgendaTab stays in content'
+          : 'keeps the in-page header',
+        async () => {
+          const { container } = renderPageInShell(vidroShell);
+
+          expect(await screen.findByTestId('agenda-tab')).toBeInTheDocument();
+          const h1s = screen.getAllByRole('heading', { level: 1 });
+          expect(h1s).toHaveLength(1);
+          expect(h1s[0]).toHaveTextContent('Agenda');
+          expect(screen.getAllByText('Eventos, reuniões e gravações da equipe.')).toHaveLength(1);
+          expect(Boolean(h1s[0].closest('.vidro-toolbar'))).toBe(vidroShell);
+          expect(Boolean(container.querySelector('.header'))).toBe(!vidroShell);
+          expect(screen.getByTestId('agenda-tab').closest('.vidro-toolbar')).toBeNull();
+        },
+      );
+    });
+  },
+);

@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 import { addMonths } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { DatePicker } from '@/components/ui/date-picker';
 import {
@@ -53,6 +54,7 @@ export function RecorrenciaPersonalizadaDialog({
   onCancel,
   onConcluir,
 }: RecorrenciaPersonalizadaDialogProps) {
+  const { t } = useTranslation('agendaEvento');
   const nome = useId();
   const [s, setS] = useState<RecorrenciaPersonalizada>(() => regraParaPersonalizada(regra, inicio));
 
@@ -73,16 +75,16 @@ export function RecorrenciaPersonalizadaDialog({
       <DialogContent className="max-h-[90vh] overflow-y-auto p-6 sm:max-w-[440px]">
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold tracking-normal">
-            Repetição personalizada
+            {t('recorrenciaPersonalizada.title')}
           </DialogTitle>
           <DialogDescription className="sr-only">
-            Defina de quanto em quanto tempo o evento se repete e quando termina.
+            {t('recorrenciaPersonalizada.description')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-[18px]">
           <div className="flex flex-wrap items-center gap-2.5 text-sm">
-            <label htmlFor={`${nome}-intervalo`}>Repetir a cada</label>
+            <label htmlFor={`${nome}-intervalo`}>{t('recorrenciaPersonalizada.repeatEvery')}</label>
             <Input
               id={`${nome}-intervalo`}
               inputMode="numeric"
@@ -91,7 +93,10 @@ export function RecorrenciaPersonalizadaDialog({
               className="h-10 w-16 text-center"
             />
             <Select value={s.freq} onValueChange={(v) => set({ freq: v as AgendaRegra['freq'] })}>
-              <SelectTrigger aria-label="Unidade da repetição" className="h-10 w-auto min-w-28">
+              <SelectTrigger
+                aria-label={t('recorrenciaPersonalizada.unit')}
+                className="h-10 w-auto min-w-28"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -106,7 +111,9 @@ export function RecorrenciaPersonalizadaDialog({
 
           {s.freq === 'weekly' && (
             <div>
-              <div className="mb-2 text-[13px] font-semibold">Nos dias</div>
+              <div className="mb-2 text-[13px] font-semibold">
+                {t('recorrenciaPersonalizada.onDays')}
+              </div>
               <div className="flex gap-1.5">
                 {DIAS.map((d) => {
                   const on = s.dias_semana.includes(d);
@@ -138,7 +145,7 @@ export function RecorrenciaPersonalizadaDialog({
 
           {s.freq === 'monthly' && (
             <Select value={s.mensal} onValueChange={(v) => set({ mensal: v as ModoMensal })}>
-              <SelectTrigger aria-label="Dia do mês" className="h-10">
+              <SelectTrigger aria-label={t('recorrenciaPersonalizada.dayOfMonth')} className="h-10">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -152,7 +159,9 @@ export function RecorrenciaPersonalizadaDialog({
           )}
 
           <fieldset className="m-0 border-0 p-0">
-            <legend className="mb-1 text-[13px] font-semibold">Termina</legend>
+            <legend className="mb-1 text-[13px] font-semibold">
+              {t('recorrenciaPersonalizada.ends')}
+            </legend>
             <label className="flex items-center gap-2.5 py-2 text-sm">
               <input
                 type="radio"
@@ -161,7 +170,7 @@ export function RecorrenciaPersonalizadaDialog({
                 onChange={() => set({ termina: 'nunca' })}
                 className="h-[18px] w-[18px]"
               />
-              Nunca
+              {t('recorrenciaPersonalizada.never')}
             </label>
             <div className="flex items-center gap-2.5 py-2 text-sm">
               <label className="flex w-16 items-center gap-2.5">
@@ -172,13 +181,13 @@ export function RecorrenciaPersonalizadaDialog({
                   onChange={() => set({ termina: 'em', ate: s.ate ?? addMonths(inicio, 3) })}
                   className="h-[18px] w-[18px]"
                 />
-                Em
+                {t('recorrenciaPersonalizada.on')}
               </label>
               <DatePicker
                 value={s.ate}
                 onChange={(d) => set({ termina: 'em', ate: d })}
-                placeholder="Data final"
-                displayFormat="d 'de' MMM 'de' yyyy"
+                placeholder={t('recorrenciaPersonalizada.endDate')}
+                displayFormat={t('recorrenciaPersonalizada.endDateFormat')}
                 clearable={false}
                 disabled={s.termina !== 'em'}
                 className="h-10"
@@ -193,17 +202,17 @@ export function RecorrenciaPersonalizadaDialog({
                   onChange={() => set({ termina: 'apos' })}
                   className="h-[18px] w-[18px]"
                 />
-                Após
+                {t('recorrenciaPersonalizada.after')}
               </label>
               <Input
-                aria-label="Número de ocorrências"
+                aria-label={t('recorrenciaPersonalizada.occurrencesCount')}
                 inputMode="numeric"
                 value={s.contagem}
                 disabled={s.termina !== 'apos'}
                 onChange={(e) => set({ contagem: e.target.value })}
                 className="h-10 w-16 text-center"
               />
-              ocorrências
+              {t('recorrenciaPersonalizada.occurrences')}
             </div>
           </fieldset>
 
@@ -221,7 +230,7 @@ export function RecorrenciaPersonalizadaDialog({
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button type="button" variant="outline" onClick={onCancel}>
-            Cancelar
+            {t('actions.cancel')}
           </Button>
           <Button
             type="button"
@@ -232,7 +241,7 @@ export function RecorrenciaPersonalizadaDialog({
               }
             }}
           >
-            Concluir
+            {t('recorrenciaPersonalizada.done')}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -10,9 +10,10 @@ import {
 } from '../postDestinations';
 
 // Cor só no ponto; o texto fica em --text-muted para passar AA (o verde e o
-// laranja do sistema não passam como cor de texto em fundo claro).
+// laranja do sistema não passam como cor de texto em fundo claro). Pendente segue a
+// cor do texto, para continuar visível quando a aba ativa do Vidro inverte a pílula.
 const DOT: Record<DestinationState, string> = {
-  pendente: 'var(--text-light)',
+  pendente: 'currentColor',
   aguardando_aprovacao: 'var(--warning)',
   agendado: 'var(--teal)',
   processando: 'var(--teal)',
@@ -42,8 +43,7 @@ export function DestinationStatusPill({
       role="img"
       aria-label={name}
       title={name}
-      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium"
-      style={{ background: 'var(--surface-hover)', color: 'var(--text-muted)' }}
+      className="destination-status-pill inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium"
     >
       {showIcon && <Icon size={11} aria-hidden="true" style={{ flexShrink: 0 }} />}
       {showLabel && <span aria-hidden="true">{label}</span>}

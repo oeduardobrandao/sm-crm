@@ -60,6 +60,8 @@ function makePlan(overrides: Partial<Plan> = {}): Plan {
     feature_agenda: false,
     feature_multiplatform: false,
     feature_hub_pauta: false,
+    feature_crm_vidro: false,
+    feature_financeiro_v2: false,
     rate_instagram_syncs_per_day: 15,
     rate_ai_analyses_per_month: 15,
     rate_report_generations_per_month: 15,
@@ -131,6 +133,12 @@ describe('plan-form mapping', () => {
     const form = planToForm(makePlan({ pagarme_12x_enabled: true, pagarme_plan_id_annual: null }));
     expect(form.pagarme_12x_enabled).toBe(true);
     expect(form.pagarme_plan_id_annual).toBe('');
+  });
+
+  it('emptyFormState starts a new plan with only the launched Vidro look on', () => {
+    const { features } = emptyFormState();
+    expect(features.feature_crm_vidro).toBe(true);
+    expect(Object.entries(features).filter(([, on]) => on)).toEqual([['feature_crm_vidro', true]]);
   });
 
   it('emptyFormState defaults pagarme 12x to disabled with no plan id', () => {

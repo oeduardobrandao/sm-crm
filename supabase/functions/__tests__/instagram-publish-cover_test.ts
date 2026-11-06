@@ -25,7 +25,7 @@ Deno.test("createVideoContainer includes cover_url when a cover is provided", as
   const f = stubFetch(ok);
   try {
     const res = await createVideoContainer(
-      "ig-1", "tok", "https://v/video.mp4", "cap", "https://v/cover.jpg",
+      "ig-1", "tok", "https://v/video.mp4", "cap", { coverUrl: "https://v/cover.jpg" },
     );
     assertEquals(res.id, "container-123");
     assertEquals(f.calls.length, 1);
@@ -50,7 +50,7 @@ Deno.test("createVideoContainer omits cover_url when no cover is provided", asyn
 Deno.test("createVideoContainer: trialStrategy adiciona trial_params (string JSON)", async () => {
   const f = stubFetch(ok);
   try {
-    await createVideoContainer("ig-1", "tok", "https://v/video.mp4", "cap", undefined, "auto");
+    await createVideoContainer("ig-1", "tok", "https://v/video.mp4", "cap", { trialStrategy: "auto" });
     assertEquals(
       f.calls[0].body.trial_params,
       JSON.stringify({ graduation_strategy: "SS_PERFORMANCE" }),

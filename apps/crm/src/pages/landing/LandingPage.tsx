@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
 import {
   ArrowRight,
@@ -18,7 +18,6 @@ import {
   Heart,
   Users,
 } from 'lucide-react';
-import { useAuth } from '@/context/AuthContext';
 import { LANDING } from '@/content/landing.content';
 import { usePageMeta } from '@/lib/usePageMeta';
 
@@ -28,13 +27,14 @@ import {
   LandingFooter,
   SkipLink,
   useLandingChrome,
+  useLandingAuth,
   scrollTo,
 } from './LandingChrome';
 import { PricingSection } from './PricingSection';
 import { FaqSection } from './FaqSection';
 import { Testimonials } from './Testimonials';
 
-import './landing.css';
+import './landing-styles';
 import './landing-v2.css';
 
 /** Some landing.content.ts strings embed literal `<strong>…</strong>` markup
@@ -67,6 +67,14 @@ export default function LandingPage() {
   const rootRef = useRef<HTMLDivElement>(null);
 
   useLandingChrome();
+
+  // The prerendered `/` ships `<div id="root" data-ssr="landing">`, and the pre-paint CSS hides
+  // stored-state UI (dismissed promo, decided cookie banner) only under `#root[data-ssr]`. This
+  // effect runs once this boundary has hydrated, in the same passive flush as the post-hydration
+  // re-render, so the CSS hands over to React state without a gap (a frame may paint before it).
+  useEffect(() => {
+    document.getElementById('root')?.removeAttribute('data-ssr');
+  }, []);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -116,9 +124,41 @@ export default function LandingPage() {
   );
 }
 
+const PROMO_DISMISSED_KEY = 'mesaas_promo_dismissed';
+const promoListeners = new Set<() => void>();
+/** Remembers a dismissal when storage is unavailable (private mode, blocked site data). */
+let promoDismissedThisSession = false;
+
+function readPromoDismissed(): boolean {
+  try {
+    return localStorage.getItem(PROMO_DISMISSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function subscribePromo(listener: () => void): () => void {
+  promoListeners.add(listener);
+  return () => promoListeners.delete(listener);
+}
+
+function dismissPromo(): void {
+  try {
+    localStorage.setItem(PROMO_DISMISSED_KEY, '1');
+  } catch {
+    // Storage unavailable: the session flag keeps it hidden until reload.
+    promoDismissedThisSession = true;
+  }
+  promoListeners.forEach((listener) => listener());
+}
+
 function PromoBanner() {
-  const [dismissed, setDismissed] = useState(
-    () => localStorage.getItem('mesaas_promo_dismissed') === '1',
+  // Server and hydrating render: not dismissed (the pre-paint CSS hides it for visitors who
+  // dismissed it before). The stored value applies right after hydration.
+  const dismissed = useSyncExternalStore(
+    subscribePromo,
+    () => readPromoDismissed() || promoDismissedThisSession,
+    () => false,
   );
   if (dismissed) return null;
   return (
@@ -129,14 +169,7 @@ function PromoBanner() {
       <a href="/login?tab=register" className="promo-banner-cta">
         Começar teste grátis
       </a>
-      <button
-        className="promo-banner-close"
-        aria-label="Fechar aviso"
-        onClick={() => {
-          localStorage.setItem('mesaas_promo_dismissed', '1');
-          setDismissed(true);
-        }}
-      >
+      <button className="promo-banner-close" aria-label="Fechar aviso" onClick={dismissPromo}>
         <X size={16} />
       </button>
     </div>
@@ -144,7 +177,7 @@ function PromoBanner() {
 }
 
 function Hero() {
-  const { user, loading } = useAuth();
+  const { user, ready } = useLandingAuth();
 
   return (
     <section className="hero-wrap" id="top">
@@ -159,16 +192,15 @@ function Hero() {
           <div className="lp2-offer">
             <span className="lp2-offer-text">{LANDING.hero.note}</span>
             <div className="hero-ctas">
-              {!loading &&
-                (user ? (
-                  <a href="/dashboard" className="lp-btn lp-btn-cta lg">
-                    Acessar painel <ArrowRight size={16} />
-                  </a>
-                ) : (
-                  <a href="/login?tab=register" className="lp-btn lp-btn-cta lg">
-                    Começar teste grátis <ArrowRight size={16} />
-                  </a>
-                ))}
+              {!ready ? null : user ? (
+                <a href="/dashboard" className="lp-btn lp-btn-cta lg">
+                  Acessar painel <ArrowRight size={16} />
+                </a>
+              ) : (
+                <a href="/login?tab=register" className="lp-btn lp-btn-cta lg">
+                  Começar teste grátis <ArrowRight size={16} />
+                </a>
+              )}
               <button onClick={() => scrollTo('features')} className="lp-btn lp-btn-outline lg">
                 Ver como funciona
               </button>
@@ -198,6 +230,28 @@ function Ticker() {
   );
 }
 
+/** Bento screenshots (1400px sources) with 480/760/1100w downscales. */
+function featSrcSet(name: string) {
+  return [480, 760, 1100]
+    .map((w) => `/landing/${name}-${w}w.webp ${w}w`)
+    .concat(`/landing/${name}.webp 1400w`)
+    .join(', ');
+}
+/* Rendered widths from landing-v2.css. <=900px the bento is one column with
+ * 24px card padding; above, it is a 3-column grid (20px gap, 44px card
+ * padding) inside the 1200px container. The 130%/115% widths in the CSS are
+ * capped by Tailwind preflight's `img { max-width: 100% }`, so every shot
+ * lays out at 100% of its card (measured in the browser). */
+const SHOT_SIZES_MOBILE =
+  '(max-width: 720px) calc(100vw - 88px), (max-width: 900px) calc(100vw - 104px)';
+/** .lp2-shot--bottom: a wide (span 2) card. */
+const SHOT_SIZES_BOTTOM = `${SHOT_SIZES_MOBILE}, (max-width: 1200px) calc(66.67vw - 132px), 668px`;
+/** .lp2-shot--bleed: a single-column card. */
+const SHOT_SIZES_BLEED = `${SHOT_SIZES_MOBILE}, (max-width: 1200px) calc(33.33vw - 120px), 280px`;
+/** .lp2-shot--right: full width of the wide card up to 1100px, then the
+ * grid column beside the 360px copy column (+40px gap). */
+const SHOT_SIZES_RIGHT = `${SHOT_SIZES_MOBILE}, (max-width: 1100px) calc(66.67vw - 132px), (max-width: 1200px) calc(66.67vw - 532px), 268px`;
+
 const METRIC_TILES = [
   { icon: <Users size={16} />, label: 'Seguidores', value: '45.798', delta: '+12%' },
   { icon: <Eye size={16} />, label: 'Alcance (28d)', value: '96.826', delta: '+8%' },
@@ -223,6 +277,8 @@ function MetricsVisual() {
       <img
         className="lp2-shot lp2-shot--right"
         src="/landing/feat-analytics-dark.webp"
+        srcSet={featSrcSet('feat-analytics-dark')}
+        sizes={SHOT_SIZES_RIGHT}
         width={1400}
         height={1095}
         alt="Métricas do Instagram no Mesaas: seguidores, alcance e engajamento"
@@ -265,6 +321,8 @@ const FEATURE_VISUALS: {
       <img
         className="lp2-shot lp2-shot--bottom"
         src="/landing/feat-entregas-dark.webp"
+        srcSet={featSrcSet('feat-entregas-dark')}
+        sizes={SHOT_SIZES_BOTTOM}
         width={1400}
         height={1095}
         alt="Kanban de entregas do Mesaas com fluxos por etapa"
@@ -292,6 +350,8 @@ const FEATURE_VISUALS: {
       <img
         className="lp2-shot lp2-shot--bleed"
         src="/landing/feat-hub-dark.webp"
+        srcSet={featSrcSet('feat-hub-dark')}
+        sizes={SHOT_SIZES_BLEED}
         width={1400}
         height={1050}
         alt="Portal do cliente do Mesaas com aprovações por link"
@@ -308,6 +368,8 @@ const FEATURE_VISUALS: {
       <img
         className="lp2-shot lp2-shot--bleed"
         src="/landing/feat-calendario-dark.webp"
+        srcSet={featSrcSet('feat-calendario-dark')}
+        sizes={SHOT_SIZES_BLEED}
         width={1400}
         height={1095}
         alt="Calendário editorial mensal do Mesaas"
@@ -434,7 +496,7 @@ function HowItWorks() {
 }
 
 function CtaFinal() {
-  const { user, loading } = useAuth();
+  const { user, ready } = useLandingAuth();
 
   return (
     <section className="cta-final-wrap">
@@ -451,27 +513,26 @@ function CtaFinal() {
                 Pronto para sair <em>das planilhas?</em>
               </h2>
               <p>
-                Crie sua conta grátis e organize seus clientes ainda hoje. Sem cartão de crédito,
-                sem compromisso.
+                Teste qualquer plano pago por 30 dias e organize seus clientes ainda hoje. Cancele
+                quando quiser.
               </p>
             </>
           )}
           <div className="lp2-cta-row">
-            {!loading &&
-              (user ? (
-                <a href="/dashboard" className="lp-btn lp-btn-cta lg">
-                  Acessar painel <ArrowRight size={16} />
+            {!ready ? null : user ? (
+              <a href="/dashboard" className="lp-btn lp-btn-cta lg">
+                Acessar painel <ArrowRight size={16} />
+              </a>
+            ) : (
+              <>
+                <a href="/login?tab=register" className="lp-btn lp-btn-cta lg">
+                  Começar teste grátis <ArrowRight size={16} />
                 </a>
-              ) : (
-                <>
-                  <a href="/login?tab=register" className="lp-btn lp-btn-cta lg">
-                    Começar teste grátis <ArrowRight size={16} />
-                  </a>
-                  <a href="/login" className="lp-btn lp-btn-outline lg">
-                    Entrar <ChevronRight size={16} />
-                  </a>
-                </>
-              ))}
+                <a href="/login" className="lp-btn lp-btn-outline lg">
+                  Entrar <ChevronRight size={16} />
+                </a>
+              </>
+            )}
           </div>
         </div>
       </div>

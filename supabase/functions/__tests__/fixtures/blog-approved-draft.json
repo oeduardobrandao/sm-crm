@@ -1,0 +1,42 @@
+{
+  "_comment": "Rascunho que validateBlogDraft aceita (Deno) e que, com os campos que approve-blog-post grava, o dbPostSchema do build aceita (Vitest). Lido por supabase/functions/__tests__/blog-draft-build-parity_test.ts e scripts/seo/__tests__/blog-draft-build-parity.test.ts.",
+  "slug": "aprovacao-por-link-reduz-retrabalho",
+  "category": "tendencia",
+  "title": "Aprovação por link: o que muda no retrabalho da agência",
+  "h1": "Aprovação por link reduz o retrabalho da agência",
+  "description": "Levantamento com agências mostra quanto tempo a aprovação por link economiza frente ao WhatsApp, e como montar o fluxo sem perder o histórico.",
+  "lede": "Agências que trocaram o WhatsApp por um link de aprovação aprovam posts em horas, não em dias. Separamos o que os dados mostram.",
+  "body_md": "Parágrafo de abertura com um [estudo citado](https://exemplo.org/pesquisa).\n\n![Pessoa revisando um post no celular](img:revisao)\n\n## Os números\n\n```infografico\n{\"tipo\":\"barras\",\"titulo\":\"Tempo médio até a aprovação\",\"fonte\":0,\"itens\":[{\"rotulo\":\"Aprovação pelo WhatsApp\",\"valor\":48,\"exibicao\":\"48 h\"},{\"rotulo\":\"Aprovação por link\",\"valor\":6,\"exibicao\":\"6 h\"}]}\n```\n\nTexto de fechamento do artigo.",
+  "cover_image": {
+    "url": "https://mesaas.supabase.co/storage/v1/object/public/blog-images/drafts/2026-10/capa.jpg",
+    "alt": "Mesa de trabalho com o calendário editorial aberto",
+    "credit": "Ana Souza / Unsplash",
+    "license": "Unsplash",
+    "source_url": "https://unsplash.com/photos/capa"
+  },
+  "images": [
+    {
+      "key": "revisao",
+      "url": "https://mesaas.supabase.co/storage/v1/object/public/blog-images/drafts/2026-10/revisao.jpg",
+      "alt": "Pessoa revisando um post no celular",
+      "credit": "Bruno Lima / Wikimedia Commons",
+      "license": "CC BY 4.0",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Revisao.jpg"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Pesquisa de mercado sobre agências de social media",
+      "publisher": "Instituto Exemplo",
+      "url": "https://exemplo.org/pesquisa",
+      "published_at": "2026-10-01"
+    },
+    {
+      "title": "Guia oficial de aprovação de conteúdo",
+      "publisher": "Portal Exemplo",
+      "url": "https://exemplo.com.br/guia"
+    }
+  ],
+  "feature_slug": "aprovacao-de-post",
+  "topic_reason": "Tema com busca alta entre agências que ainda aprovam pelo WhatsApp."
+}

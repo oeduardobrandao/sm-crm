@@ -84,6 +84,7 @@ describe('store core helpers and CRUD', () => {
         papel_nome: null,
         avatar_url: 'https://cdn.mesaas.com/mariana.jpg',
         created_at: '2026-03-01T10:00:00.000Z',
+        client_scope: 'todos',
       },
     ]);
     expect(getLastCall('workspace_members').modifiers).toContainEqual({
@@ -125,6 +126,7 @@ describe('store core helpers and CRUD', () => {
         can_see_financials: false,
         avatar_url: null,
         created_at: '2026-03-02T10:00:00.000Z',
+        client_scope: 'todos',
       },
     ]);
   });
@@ -175,8 +177,81 @@ describe('store core helpers and CRUD', () => {
         can_see_financials: true,
         avatar_url: null,
         created_at: '2026-03-03T10:00:00.000Z',
+        client_scope: 'todos',
       },
     ]);
+  });
+
+  // Acesso por cliente: the roster projects client_scope.
+  it('projects client_scope (atribuidos) from the enriched select', async () => {
+    mockedSupabase.__queueSupabaseResult('workspace_members', 'select', {
+      data: [
+        {
+          user_id: 'user-5',
+          role: 'agent',
+          role_id: null,
+          joined_at: '2026-04-04T10:00:00.000Z',
+          can_see_financials: false,
+          workspace_roles: null,
+          client_scope: 'atribuidos',
+          profiles: { id: 'user-5', nome: 'Restrita', avatar_url: null, created_at: 'x' },
+        },
+      ],
+      error: null,
+    });
+    const users = await store.getWorkspaceUsers();
+    expect(users[0].client_scope).toBe('atribuidos');
+  });
+
+  // Pre-migration DB (today's prod): client_scope column missing. Must step
+  // down to the roles select (role_id/papel_nome kept), every member 'todos'.
+  it('falls back to the roles select and reports every member as todos when client_scope is missing', async () => {
+    mockedSupabase.__queueSupabaseResult(
+      'workspace_members',
+      'select',
+      {
+        data: null,
+        error: { code: '42703', message: 'column workspace_members.client_scope does not exist' },
+      },
+      {
+        data: [
+          {
+            user_id: 'user-6',
+            role: 'agent',
+            role_id: 'role-1',
+            joined_at: '2026-04-05T10:00:00.000Z',
+            can_see_financials: false,
+            workspace_roles: { nome: 'Editor' },
+            profiles: { id: 'user-6', nome: 'Com Papel', avatar_url: null, created_at: 'y' },
+          },
+        ],
+        error: null,
+      },
+    );
+    const users = await store.getWorkspaceUsers();
+    expect(users).toEqual([
+      {
+        id: 'user-6',
+        nome: 'Com Papel',
+        role: 'agent',
+        role_id: 'role-1',
+        papel_nome: 'Editor',
+        can_see_financials: false,
+        avatar_url: null,
+        created_at: 'y',
+        client_scope: 'todos',
+      },
+    ]);
+  });
+
+  it('a permission error (42501) that mentions client_scope throws instead of stepping down', async () => {
+    const permError = { code: '42501', message: 'permission denied for column client_scope' };
+    mockedSupabase.__queueSupabaseResult('workspace_members', 'select', {
+      data: null,
+      error: permError,
+    });
+
+    await expect(store.getWorkspaceUsers()).rejects.toBe(permError);
   });
 
   it('rethrows a non-schema error instead of falling back (a network blip must not be swallowed)', async () => {

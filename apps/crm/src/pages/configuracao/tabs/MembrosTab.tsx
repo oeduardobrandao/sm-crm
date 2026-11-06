@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus } from 'lucide-react';
+import { Lock, Plus } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -30,12 +31,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { avatarColorClass } from '@/lib/avatarColor';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { captureEvent } from '@/lib/analytics';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useWorkspaceMemberEmails } from '@/hooks/useWorkspaceMemberEmails';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
 import {
-  getInitials,
+  getWorkspaceMemberClienteIds,
   getWorkspaceRoles,
   getWorkspaceUsers,
   removeWorkspaceUser,
@@ -49,10 +53,28 @@ import {
   computeEffectiveInviteStatus,
   inviteSuccessMessage,
 } from '../inviteHelpers';
+import { MembrosPhone, type ClientAccessView } from './phone/MembrosPhone';
+import {
+  ClientAccessDialog,
+  ClientAccessSheet,
+  type ClientAccessMember,
+} from './ClientAccessDialog';
+import { inviteRoleLabel } from './phone/membrosPhoneHelpers';
+
+/** The roster rows with each member's login e-mail (empty when not visible). */
+function useMemberEmailsMerge(wsUsers: Record<string, string>[] | undefined) {
+  const emails = useWorkspaceMemberEmails();
+  return useMemo(
+    () => (wsUsers ?? []).map((u) => ({ ...u, email: emails.get(u.id) ?? '' })),
+    [wsUsers, emails],
+  );
+}
 
 /** Workspace members and pending invites. */
 export default function MembrosTab() {
+  const { t } = useTranslation('settings');
   const { user, profile, workspaceRole, can } = useAuth();
+  const isPhone = !useIsDesktop(768);
   const canViewTeam = can('equipe', 'ver') === true;
   // Mutations (invite, edit role, remove, cancel/resend invite) all require
   // `editar` — a custom role granted only `equipe:ver` can reach this tab
@@ -84,11 +106,84 @@ export default function MembrosTab() {
   const canActOnMember = (u: Record<string, string>) =>
     u.id !== user?.id && (u.role !== 'owner' || isOwner);
 
-  const { data: wsUsers, refetch: refetchWsUsers } = useQuery({
+  const {
+    data: wsUsers,
+    refetch: refetchWsUsers,
+    isLoading: wsUsersLoading,
+  } = useQuery({
     queryKey: ['workspace-users'],
     queryFn: getWorkspaceUsers,
     enabled: canViewTeam,
   });
+  // Acesso por cliente. The flag gates moving someone INTO 'atribuidos' (and
+  // the column itself); a member already restricted keeps the column visible
+  // with the flag off, so the owner can still release them.
+  const { features } = useWorkspaceLimits();
+  const canRestrictClients = features?.feature_acesso_por_cliente === true;
+  const isClientRestricted = (u: Record<string, string>) =>
+    u.role !== 'owner' && u.client_scope === 'atribuidos';
+  const anyRestricted = (wsUsers ?? []).some(isClientRestricted);
+  const showClientAccess = canRestrictClients || anyRestricted;
+  // Every assignment in ONE read, for the per-member counts and the dialog's
+  // preselection. Owner only: RLS shows anyone else just their own rows, so a
+  // non-owner viewer gets count-free labels instead of a wrong number.
+  const {
+    data: memberClienteIds,
+    isSuccess: memberClienteIdsReady,
+    isFetching: memberClienteIdsFetching,
+  } = useQuery({
+    queryKey: ['workspace-member-clientes'],
+    queryFn: getWorkspaceMemberClienteIds,
+    enabled: canViewTeam && isOwner && anyRestricted,
+  });
+  const clientAccessOf = (u: Record<string, string>): ClientAccessView => {
+    if (u.role === 'owner') return { kind: 'owner', count: null, editable: false, ready: true };
+    if (!isClientRestricted(u)) {
+      return { kind: 'todos', count: null, editable: isOwner && canRestrictClients, ready: true };
+    }
+    const count = isOwner && memberClienteIdsReady ? (memberClienteIds?.[u.id]?.length ?? 0) : null;
+    // Not while refetching (right after a save the cache still holds the old
+    // ids, and opening then would preselect them).
+    return {
+      kind: 'atribuidos',
+      count,
+      editable: isOwner,
+      ready: count !== null && !memberClienteIdsFetching,
+    };
+  };
+  // Stays mounted after closing, with a real `open`: the phone sheet pops its
+  // history entry only when `open` turns false (unmounting it open left a dead
+  // entry, so the next Back seemed to do nothing). `seq` remounts a fresh form
+  // on every open.
+  const [clientAccessTarget, setClientAccessTarget] = useState<{
+    member: ClientAccessMember;
+    initialIds: number[];
+    open: boolean;
+    seq: number;
+  } | null>(null);
+  const openClientAccess = (u: Record<string, string>) =>
+    setClientAccessTarget((prev) => ({
+      member: {
+        user_id: u.id,
+        nome: u.nome,
+        client_scope: isClientRestricted(u) ? 'atribuidos' : 'todos',
+      },
+      initialIds: memberClienteIds?.[u.id] ?? [],
+      open: true,
+      seq: (prev?.seq ?? 0) + 1,
+    }));
+  const clientAccessProps = clientAccessTarget && {
+    open: clientAccessTarget.open,
+    onOpenChange: (open: boolean) =>
+      setClientAccessTarget((prev) => (prev ? { ...prev, open } : prev)),
+    member: clientAccessTarget.member,
+    initialIds: clientAccessTarget.initialIds,
+    canRestrict: canRestrictClients,
+  };
+
+  // Login e-mails come from their own RPC (equipe:editar only); merged in so
+  // both layouts read `email` off the row like any other field.
+  const memberEmails = useMemberEmailsMerge(wsUsers);
 
   // Gated on `canManageTeam` (equipe:editar): the roster still needs this
   // list for the Convidar dialog's role select, which stays open to any
@@ -140,22 +235,29 @@ export default function MembrosTab() {
     setEditRoleOpen(true);
   };
 
-  const handleEditRoleSave = async () => {
-    if (!editRoleUser) return;
+  // Shared by the desktop dialog's Salvar and the phone role picker (which saves on
+  // pick). Resolves true when the role was saved.
+  const saveRole = async (userId: string, roleValue: string): Promise<boolean> => {
     setEditRoleLoading(true);
     try {
-      const value = editRoleValue.startsWith('custom:')
-        ? { roleId: editRoleValue.slice(7) }
-        : { role: editRoleValue as 'admin' | 'agent' };
-      await updateWorkspaceUserRole(editRoleUser.id, value);
+      const value = roleValue.startsWith('custom:')
+        ? { roleId: roleValue.slice(7) }
+        : { role: roleValue as 'admin' | 'agent' };
+      await updateWorkspaceUserRole(userId, value);
       refetchWsUsers();
-      setEditRoleOpen(false);
-      toast.success('Função atualizada!');
+      toast.success(t('membros.roleUpdated'));
+      return true;
     } catch (err: unknown) {
-      toast.error('Erro: ' + (err as Error).message);
+      toast.error(t('shared.error', { message: (err as Error).message }));
+      return false;
     } finally {
       setEditRoleLoading(false);
     }
+  };
+
+  const handleEditRoleSave = async () => {
+    if (!editRoleUser) return;
+    if (await saveRole(editRoleUser.id, editRoleValue)) setEditRoleOpen(false);
   };
 
   const handleRemoveUser = async () => {
@@ -163,9 +265,9 @@ export default function MembrosTab() {
     try {
       await removeWorkspaceUser(removeUserId);
       refetchWsUsers();
-      toast.success('Membro removido.');
+      toast.success(t('membros.memberRemoved'));
     } catch (err: unknown) {
-      toast.error('Erro: ' + (err as Error).message);
+      toast.error(t('shared.error', { message: (err as Error).message }));
     } finally {
       setRemoveUserId(null);
     }
@@ -181,10 +283,10 @@ export default function MembrosTab() {
     setFinancialAccessLoadingId(memberId);
     try {
       await setWorkspaceUserFinancialAccess(memberId, checked);
-      toast.success(checked ? 'Acesso financeiro liberado.' : 'Acesso financeiro restrito.');
+      toast.success(checked ? t('membros.financialOn') : t('membros.financialOff'));
       await refetchWsUsers();
     } catch {
-      toast.error('Não foi possível atualizar o acesso.');
+      toast.error(t('membros.financialError'));
     } finally {
       setFinancialAccessLoadingId(null);
     }
@@ -199,7 +301,7 @@ export default function MembrosTab() {
 
   const handleInvite = async () => {
     if (!inviteEmail) {
-      toast.error('Email é obrigatório.');
+      toast.error(t('membros.emailRequired'));
       return;
     }
     setInviteLoading(true);
@@ -227,7 +329,11 @@ export default function MembrosTab() {
         body: JSON.stringify(body),
       });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error || result.message || `Erro ${res.status}`);
+      if (!res.ok) {
+        throw new Error(
+          result.error || result.message || t('membros.httpError', { status: res.status }),
+        );
+      }
       refetchInvites();
       setInviteOpen(false);
       setInviteEmail('');
@@ -235,7 +341,7 @@ export default function MembrosTab() {
       toast.success(inviteSuccessMessage(result));
       captureEvent('invite_sent', { source: 'configuracao' });
     } catch (err: unknown) {
-      toast.error('Erro ao convidar: ' + (err as Error).message);
+      toast.error(t('membros.inviteError', { message: (err as Error).message }));
     } finally {
       setInviteLoading(false);
     }
@@ -255,11 +361,11 @@ export default function MembrosTab() {
         },
       );
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error || `Erro ${res.status}`);
+      if (!res.ok) throw new Error(result.error || t('membros.httpError', { status: res.status }));
       await refetchInvites();
-      toast.success('Convite cancelado.');
+      toast.success(t('membros.inviteCanceled'));
     } catch (err: unknown) {
-      toast.error('Erro: ' + (err as Error).message);
+      toast.error(t('shared.error', { message: (err as Error).message }));
     } finally {
       setCancelInviteId(null);
     }
@@ -290,13 +396,64 @@ export default function MembrosTab() {
         }),
       });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error || `Erro ${res.status}`);
+      if (!res.ok) throw new Error(result.error || t('membros.httpError', { status: res.status }));
       refetchInvites();
-      toast.success(result.message || 'Convite reenviado!');
+      toast.success(result.message || t('membros.inviteResent'));
     } catch (err: unknown) {
-      toast.error('Erro: ' + (err as Error).message);
+      toast.error(t('shared.error', { message: (err as Error).message }));
     }
   };
+
+  if (isPhone) {
+    // Phone: grouped lists, a member sub-screen and kit sheets. The desktop dialogs
+    // below are not mounted here.
+    return (
+      <>
+        <MembrosPhone
+          clientAccess={
+            showClientAccess ? { viewOf: clientAccessOf, onOpen: openClientAccess } : undefined
+          }
+          currentUserId={user?.id}
+          loading={wsUsersLoading}
+          members={memberEmails}
+          invites={invites ?? []}
+          workspaceRoles={workspaceRoles}
+          canManageTeam={canManageTeam}
+          canAssignRoles={canAssignRoles}
+          isOwner={isOwner}
+          canActOnMember={canActOnMember}
+          roleSaving={editRoleLoading}
+          onSaveRole={saveRole}
+          financialAccessLoadingId={financialAccessLoadingId}
+          onToggleFinancialAccess={handleToggleFinancialAccess}
+          removeUserId={removeUserId}
+          onRequestRemove={setRemoveUserId}
+          onConfirmRemove={handleRemoveUser}
+          inviteOpen={inviteOpen}
+          onInviteOpenChange={(open) => {
+            if (!open) {
+              setInviteEmail('');
+              setInviteRole('agent');
+            }
+            setInviteOpen(open);
+          }}
+          inviteEmail={inviteEmail}
+          onInviteEmailChange={setInviteEmail}
+          inviteRole={inviteRole}
+          onInviteRoleChange={setInviteRole}
+          inviteLoading={inviteLoading}
+          onInvite={handleInvite}
+          cancelInviteId={cancelInviteId}
+          onRequestCancelInvite={setCancelInviteId}
+          onConfirmCancelInvite={handleCancelInvite}
+          onResendInvite={handleResendInvite}
+        />
+        {clientAccessProps && (
+          <ClientAccessSheet key={clientAccessTarget?.seq} {...clientAccessProps} />
+        )}
+      </>
+    );
+  }
 
   return (
     <>
@@ -309,23 +466,24 @@ export default function MembrosTab() {
             marginBottom: '1rem',
           }}
         >
-          <h3 className="config-title">Membros do Workspace</h3>
+          <h3 className="config-title">{t('membros.title')}</h3>
           {canManageTeam && (
             <Button onClick={() => setInviteOpen(true)}>
-              <Plus className="h-4 w-4" /> Convidar
+              <Plus className="h-4 w-4" /> {t('membros.invite')}
             </Button>
           )}
         </div>
 
         <div style={{ marginBottom: '1rem' }}>
-          {(wsUsers ?? []).map((u: Record<string, string>) => (
+          {memberEmails.map((u: Record<string, string>) => (
             <div key={u.id} className="config-member-row">
-              <div
-                className={`avatar ${avatarColorClass(u.id ?? u.nome)}`}
-                style={{ width: 36, height: 36, fontWeight: 700 }}
-              >
-                {getInitials(u.nome || '?')}
-              </div>
+              <PessoaAvatar
+                nome={u.nome || '?'}
+                fotoUrl={u.avatar_url}
+                seed={u.id}
+                size={36}
+                className="font-bold"
+              />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div
                   style={{
@@ -337,6 +495,20 @@ export default function MembrosTab() {
                 >
                   {u.nome}
                 </div>
+                {u.email && (
+                  <div
+                    style={{
+                      fontSize: '0.8rem',
+                      color: 'var(--text-muted)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      marginBottom: '0.15rem',
+                    }}
+                  >
+                    {u.email}
+                  </div>
+                )}
                 {u.papel_nome ? (
                   // Custom papel: same badge look as RoleBadge (badge
                   // badge-neutral), but with the papel's own name instead of
@@ -358,21 +530,36 @@ export default function MembrosTab() {
                   }}
                 >
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    Ver financeiro
+                    {t('membros.financialLabel')}
                   </span>
                   <Switch
                     checked={Boolean(u.can_see_financials)}
                     disabled={financialAccessLoadingId === u.id}
                     onCheckedChange={(checked) => handleToggleFinancialAccess(u.id, checked)}
-                    aria-label={`Acesso financeiro de ${u.nome}`}
+                    aria-label={t('membros.financialAria', { name: u.nome })}
                   />
+                </div>
+              )}
+              {showClientAccess && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    flexShrink: 0,
+                  }}
+                >
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    {t('membros.clientAccess.column')}
+                  </span>
+                  <ClientAccessCell view={clientAccessOf(u)} onOpen={() => openClientAccess(u)} />
                 </div>
               )}
               {canManageTeam && canActOnMember(u) && (
                 <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                   {canAssignRoles && (
                     <Button size="sm" variant="outline" onClick={() => handleEditRole(u)}>
-                      Função
+                      {t('membros.role')}
                     </Button>
                   )}
                   <Button
@@ -381,7 +568,7 @@ export default function MembrosTab() {
                     className="text-destructive"
                     onClick={() => setRemoveUserId(u.id)}
                   >
-                    Remover
+                    {t('shared.remove')}
                   </Button>
                 </div>
               )}
@@ -400,7 +587,7 @@ export default function MembrosTab() {
                 textTransform: 'uppercase',
               }}
             >
-              Convites
+              {t('membros.invites')}
             </h4>
             {(invites ?? []).map((inv: Record<string, string>) => (
               <div key={inv.id} className="config-member-row">
@@ -426,9 +613,7 @@ export default function MembrosTab() {
                   >
                     <InviteStatusBadge status={inv.status} />
                     <span style={{ marginLeft: 8, color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                      {(
-                        { owner: 'dono', admin: 'admin', agent: 'agente' } as Record<string, string>
-                      )[inv.role] ?? inv.role}
+                      {inviteRoleLabel(inv.role)}
                     </span>
                     <InviteTimeLeft expiresAt={inv.expires_at} status={inv.status} />
                   </div>
@@ -437,7 +622,7 @@ export default function MembrosTab() {
                   <div style={{ display: 'flex', gap: 8 }}>
                     {(inv.status === 'expired' || inv.status === 'pending') && (
                       <Button size="sm" variant="outline" onClick={() => handleResendInvite(inv)}>
-                        Reenviar
+                        {t('membros.resend')}
                       </Button>
                     )}
                     <Button
@@ -446,7 +631,7 @@ export default function MembrosTab() {
                       className="text-destructive"
                       onClick={() => setCancelInviteId(inv.id)}
                     >
-                      Cancelar
+                      {t('actions.cancel')}
                     </Button>
                   </div>
                 )}
@@ -460,17 +645,19 @@ export default function MembrosTab() {
       <Dialog open={editRoleOpen} onOpenChange={setEditRoleOpen}>
         <DialogContent onConfirmClose={() => setEditRoleOpen(false)}>
           <DialogHeader>
-            <DialogTitle>Editar função — {editRoleUser?.nome}</DialogTitle>
+            <DialogTitle>
+              {t('membros.editRoleTitle', { name: editRoleUser?.nome ?? '' })}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-1">
-            <Label>Função</Label>
+            <Label>{t('membros.role')}</Label>
             <Select value={editRoleValue} onValueChange={setEditRoleValue}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="admin">Admin</SelectItem>
-                <SelectItem value="agent">Agente</SelectItem>
+                <SelectItem value="admin">{t('invite.roles.admin')}</SelectItem>
+                <SelectItem value="agent">{t('invite.roles.agent')}</SelectItem>
                 {workspaceRoles.map((r) => (
                   <SelectItem key={r.id} value={`custom:${r.id}`}>
                     {r.nome}
@@ -481,10 +668,10 @@ export default function MembrosTab() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditRoleOpen(false)}>
-              Cancelar
+              {t('actions.cancel')}
             </Button>
             <Button onClick={handleEditRoleSave} disabled={editRoleLoading}>
-              {editRoleLoading && <Spinner size="sm" />} Salvar
+              {editRoleLoading && <Spinner size="sm" />} {t('actions.save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -509,11 +696,11 @@ export default function MembrosTab() {
           }}
         >
           <DialogHeader>
-            <DialogTitle>Convidar Membro</DialogTitle>
+            <DialogTitle>{t('membros.inviteTitle')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label>Email *</Label>
+              <Label>{t('membros.emailLabel')}</Label>
               <Input
                 type="email"
                 value={inviteEmail}
@@ -527,14 +714,16 @@ export default function MembrosTab() {
                 um beco sem saída: o convite só falhava depois de enviado.
                 Agente é a única opção que esse ator pode de fato usar. */}
             <div className="space-y-1">
-              <Label>Função</Label>
+              <Label>{t('membros.role')}</Label>
               <Select value={inviteRole} onValueChange={setInviteRole}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {canAssignRoles && <SelectItem value="admin">Admin</SelectItem>}
-                  <SelectItem value="agent">Agente</SelectItem>
+                  {canAssignRoles && (
+                    <SelectItem value="admin">{t('invite.roles.admin')}</SelectItem>
+                  )}
+                  <SelectItem value="agent">{t('invite.roles.agent')}</SelectItem>
                   {canAssignRoles &&
                     workspaceRoles.map((r) => (
                       <SelectItem key={r.id} value={`custom:${r.id}`}>
@@ -545,7 +734,7 @@ export default function MembrosTab() {
               </Select>
               {!canAssignRoles && (
                 <p className="text-xs text-[color:var(--text-muted)]">
-                  Apenas donos e admins convidam com função elevada ou papel.
+                  {t('membros.onlyOwnersAdmins')}
                 </p>
               )}
             </div>
@@ -559,14 +748,18 @@ export default function MembrosTab() {
                 setInviteRole('agent');
               }}
             >
-              Cancelar
+              {t('actions.cancel')}
             </Button>
             <Button onClick={handleInvite} disabled={inviteLoading}>
-              {inviteLoading && <Spinner size="sm" />} Enviar Convite
+              {inviteLoading && <Spinner size="sm" />} {t('membros.sendInvite')}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {clientAccessProps && (
+        <ClientAccessDialog key={clientAccessTarget?.seq} {...clientAccessProps} />
+      )}
 
       {/* Remove User Confirm */}
       <AlertDialog
@@ -577,11 +770,11 @@ export default function MembrosTab() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover membro?</AlertDialogTitle>
+            <AlertDialogTitle>{t('membros.removeTitle')}</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRemoveUser}>Remover</AlertDialogAction>
+            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRemoveUser}>{t('shared.remove')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -595,14 +788,53 @@ export default function MembrosTab() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Cancelar convite?</AlertDialogTitle>
+            <AlertDialogTitle>{t('membros.cancelInviteTitle')}</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Não</AlertDialogCancel>
-            <AlertDialogAction onClick={handleCancelInvite}>Sim</AlertDialogAction>
+            <AlertDialogCancel>{t('actions.no')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleCancelInvite}>{t('actions.yes')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+/** The Clientes cell: a button for the owner, plain text for everyone else. */
+function ClientAccessCell({ view, onOpen }: { view: ClientAccessView; onOpen: () => void }) {
+  const { t } = useTranslation('settings');
+  if (view.kind === 'owner') {
+    return (
+      <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+        {t('membros.clientAccess.all')}
+      </span>
+    );
+  }
+  const restricted = view.kind === 'atribuidos';
+  const label = !restricted
+    ? t('membros.clientAccess.allClients')
+    : view.count !== null
+      ? t('membros.clientAccess.count', { count: view.count })
+      : t('membros.clientAccess.restricted');
+  if (!view.editable) {
+    return <span style={{ fontSize: 13 }}>{label}</span>;
+  }
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      onClick={onOpen}
+      disabled={!view.ready}
+      style={{
+        height: 32,
+        borderRadius: 8,
+        fontSize: 13,
+        ...(restricted ? { borderColor: 'var(--text-main)', fontWeight: 600 } : {}),
+      }}
+    >
+      {restricted && <Lock size={14} aria-hidden="true" />}
+      {label}
+    </Button>
   );
 }

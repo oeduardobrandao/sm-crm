@@ -6,6 +6,13 @@ import { insertAuditLog } from "../_shared/audit.ts";
 import { createJsonResponder } from "../_shared/http.ts";
 import { hasPermissionFor } from "../_shared/permissions.ts";
 import {
+  CLIENT_SCOPE_MESSAGE,
+  type ClientScope,
+  type ClientScopeLoader,
+  loadClientScope as realLoadClientScope,
+  rowVisibility,
+} from "../_shared/client-scope.ts";
+import {
   listPostReferences,
   parsePositiveId,
   referenceError,
@@ -26,6 +33,8 @@ export interface PostReferencesHandlerDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: () => DbClient;
   signGetUrl: SignGetUrl;
+  /** Acesso por cliente: the caller's client scope (defaults to the real loader). */
+  loadClientScope?: ClientScopeLoader;
 }
 
 export function createPostReferencesHandler(deps: PostReferencesHandlerDeps) {
@@ -47,6 +56,16 @@ export function createPostReferencesHandler(deps: PostReferencesHandlerDeps) {
     if (!profile?.conta_id) return json({ error: "Profile not found" }, 403);
     const contaId = profile.conta_id as string;
 
+    // Acesso por cliente: a post outside the caller's scope answers exactly like a missing one
+    // (reads honor "é dele"; the delete does not). A scope read error is a generic 500.
+    let scope: ClientScope;
+    try {
+      scope = await (deps.loadClientScope ?? realLoadClientScope)(db, user.id, contaId);
+    } catch (err) {
+      console.error("[post-references] client scope:", err);
+      return send(referenceError("internal"));
+    }
+
     const url = new URL(req.url);
     const parts = url.pathname.split("/").filter(Boolean);
     const idx = parts.indexOf("post-references");
@@ -59,8 +78,8 @@ export function createPostReferencesHandler(deps: PostReferencesHandlerDeps) {
       const postId = parsePositiveId(url.searchParams.get("post_id"));
       if (postId === null) return send(referenceError("not_found"));
       const { data: post } = await db.from("workflow_posts")
-        .select("id").eq("id", postId).eq("conta_id", contaId).maybeSingle();
-      if (!post) return send(referenceError("not_found"));
+        .select("id, cliente_id, responsavel_id").eq("id", postId).eq("conta_id", contaId).maybeSingle();
+      if (!post || rowVisibility(scope, post, user.id) === "hidden") return send(referenceError("not_found"));
       const listed = await listPostReferences({
         db, post_id: postId, conta_id: contaId, signGetUrl: deps.signGetUrl, includeDownload: true,
       });
@@ -77,6 +96,19 @@ export function createPostReferencesHandler(deps: PostReferencesHandlerDeps) {
       if (refId === null) return send(referenceError("not_found"));
       const canEdit = await hasPermissionFor(db, user.id, contaId, "entregas", "editar");
       if (!canEdit) return json({ error: "forbidden" }, 403);
+
+      if (!scope.all) {
+        // Restricted member: the reference's post must be in scope before anything is deleted.
+        const { data: ref } = await db.from("post_references")
+          .select("post_id").eq("id", refId).eq("conta_id", contaId).maybeSingle();
+        const { data: refPost } = ref?.post_id
+          ? await db.from("workflow_posts").select("cliente_id, responsavel_id")
+            .eq("id", ref.post_id).eq("conta_id", contaId).maybeSingle()
+          : { data: null };
+        const vis = refPost ? rowVisibility(scope, refPost, user.id) : "hidden";
+        if (vis === "hidden") return send(referenceError("not_found"));
+        if (vis === "own_only") return json({ error: CLIENT_SCOPE_MESSAGE }, 403);
+      }
 
       const { data: deleted, error } = await db.from("post_references")
         .delete()

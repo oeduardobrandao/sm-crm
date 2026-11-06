@@ -1,4 +1,4 @@
-import type { ContentFormat } from '@mesaas/platforms';
+import type { ContentFormat, PlatformId } from '@mesaas/platforms';
 export interface WorkspaceInfo {
   name: string;
   logo_url: string | null;
@@ -41,6 +41,11 @@ export interface HubBootstrap {
    * feature_agenda: absent = classic look.
    */
   feature_hub_pauta?: boolean;
+  /**
+   * Linha editorial (feature_linha_editorial). Optional for the same reason as
+   * feature_agenda: absent = off.
+   */
+  feature_linha_editorial?: boolean;
   /** Absent on a stale/pre-migration bootstrap response — treat as neutral (no customization). */
   hub_theme?: HubThemeInfo;
 }
@@ -79,6 +84,9 @@ export interface HubPost {
   /** Reel de teste (Instagram trial reel): publicado só para não-seguidores até
    * a graduação. Absent em payloads antigos em cache — tratar como null. */
   ig_trial_strategy?: 'manual' | 'auto' | null;
+  /** Instagram collaborators (collab post), lowercase usernames without `@`. Absent em
+   * payloads antigos em cache — tratar como []. */
+  ig_collaborators?: string[];
   status:
     | 'rascunho'
     | 'revisao_interna'
@@ -96,6 +104,14 @@ export interface HubPost {
   ig_caption: string | null;
   instagram_permalink: string | null;
   tiktok_post_url?: string | null;
+  /** Destinations (post_targets rows) in PLATFORM_IDS order. Absent on stale cached payloads
+   * and before the hub-posts deploy: derive from `platform` (see resolvePostTargets). */
+  targets?: PlatformId[];
+  /** Own TikTok caption. Null = TikTok publishes the Instagram caption. Absent on old payloads. */
+  tiktok_caption?: string | null;
+  /** Caption of the Geral destination (post_targets.caption). Null when the row has none or
+   * there is no Geral destination; absent (undefined) on old payloads. */
+  geral_caption?: string | null;
   published_at: string | null;
   publish_error: string | null;
   /** Set when the storage auto-clean removed this post's media after
@@ -114,6 +130,41 @@ export interface HubPost {
    * saw it. Absent on stale cached payloads and before the function deploy: treat
    * as null (not in production). */
   em_producao?: EmProducaoReason | null;
+}
+
+/** A reply on a media note. Mirrors HubMediaNoteReplyDTO (supabase/functions/_shared). */
+export interface HubMediaNoteReply {
+  id: number;
+  author: 'client' | 'team';
+  author_name: string | null;
+  body: string;
+  created_at: string;
+}
+
+/**
+ * A note pinned to a carousel slide, a video moment and/or a spot on post media.
+ * Mirrors HubMediaNoteDTO. `link_id` is the current `HubPostMedia.id`, null when the
+ * note belongs to a previous version of the media (`is_previous_version`).
+ */
+export interface HubMediaNote {
+  id: number;
+  post_id: number;
+  media_kind: 'image' | 'video';
+  link_id: number | null;
+  /** 0-based. */
+  slide_index: number;
+  is_previous_version: boolean;
+  t_seconds: number | null;
+  /** Both or neither, each 0..1. */
+  x: number | null;
+  y: number | null;
+  author: 'client' | 'team';
+  author_name: string | null;
+  body: string;
+  status: 'open' | 'resolved';
+  resolved_at: string | null;
+  created_at: string;
+  replies: HubMediaNoteReply[];
 }
 
 export interface HubPostProperty {
@@ -136,11 +187,39 @@ export interface HubSelectOption {
   color: string;
 }
 
+/**
+ * The logical fields a client edit suggestion can touch: `texto` = conteudo + conteudo_plain,
+ * `legenda` = ig_caption, `legenda_tiktok` = tiktok_caption, `legenda_geral` = the Geral
+ * destination's caption (post_targets.caption).
+ */
+export type SuggestionField = 'texto' | 'legenda' | 'legenda_tiktok' | 'legenda_geral';
+
+/**
+ * The values the client started editing from, per touched field (texto: `conteudo` +
+ * `conteudo_plain`; legenda: `ig_caption`). The server compares them with the live post to
+ * detect a team edit made in between. A touched field's keys are always present, `null`
+ * included: the RPC tests key presence, and JSON.stringify drops `undefined`.
+ */
+export interface SuggestionBases {
+  conteudo?: Record<string, unknown> | null;
+  conteudo_plain?: string | null;
+  ig_caption?: string | null;
+  /** Raw `tiktok_caption` (null = TikTok was following the Instagram caption). */
+  tiktok_caption?: string | null;
+  /** Raw Geral caption (post_targets.caption of the geral row). */
+  geral_caption?: string | null;
+}
+
 export interface PendingEditSuggestion {
   id: number;
   suggested_conteudo: Record<string, unknown> | null;
   suggested_conteudo_plain: string;
   suggested_ig_caption: string | null;
+  /** Absent on cached payloads and before the hub-posts deploy. Read only when
+   * `tiktok_caption` is in `changed_fields`. */
+  suggested_tiktok_caption?: string | null;
+  /** Same, for `geral_caption`. */
+  suggested_geral_caption?: string | null;
   changed_fields: string[];
   updated_at: string;
 }
@@ -181,11 +260,17 @@ export interface PostHistoryApproval {
   motivo: CorrectionReason | null;
   is_workspace_user: boolean;
   created_at: string;
+  /** Client-visible media notes that were open when this decision was sent. Absent on
+   * stale cached payloads and before the function deploy: treat as 0. */
+  open_note_count?: number;
 }
 
 export interface PostHistoryResponse {
   events: PostHistoryEvent[];
   approvals: PostHistoryApproval[];
+  /** Client-visible media notes of the post, present once it has been sent to the client.
+   * Absent on stale cached payloads and before the function deploy: treat as []. */
+  media_notes?: HubMediaNote[];
 }
 
 export interface HubBrand {
@@ -337,6 +422,9 @@ export interface InstagramFeedData {
 export interface HubPostsResponse {
   posts: HubPost[];
   postApprovals: PostApproval[];
+  /** Client-visible media notes for the posts in this response. Absent on stale cached
+   * payloads: treat as []. */
+  mediaNotes?: HubMediaNote[];
   propertyValues: HubPostProperty[];
   workflowSelectOptions: HubSelectOption[];
   instagramProfile: InstagramProfile | null;
@@ -400,7 +488,7 @@ export interface HubDashboardResponse {
 }
 
 export interface MensagemFeedItem {
-  source: 'post_feedback' | 'edit_suggestion' | 'mensagem';
+  source: 'post_feedback' | 'edit_suggestion' | 'mensagem' | 'media_note' | 'media_note_reply';
   item_id: number;
   cliente_id: number;
   cliente_nome: string;
@@ -487,4 +575,73 @@ export interface ConviteResponse {
   organizador_nome: string | null;
   titulo: string;
   itens: ConviteItem[];
+}
+
+// ── Linha editorial (hub-linha-editorial) ───────────────────────────────────
+
+export type HubLinhaStatus = 'enviada' | 'ajustes' | 'aprovada';
+/** The `acao` of a stored resposta. */
+export type HubLinhaAcao = 'comentario' | 'aprovado' | 'ajustes';
+/** The `acao` a POST may carry: `pendente` undoes a row decision (needs `item_id`). */
+export type HubLinhaAcaoEnvio = HubLinhaAcao | 'pendente';
+/** The client's decision on one row; null = pending. */
+export type HubLinhaItemAprovacao = 'aprovado' | 'ajustes' | null;
+export type HubLinhaFormato = 'feed' | 'carrossel' | 'reels' | 'stories';
+
+export interface HubLinhaItem {
+  id: string;
+  /** YYYY-MM-DD, null = "sem data". */
+  data: string | null;
+  tipo: HubLinhaFormato;
+  titulo: string;
+  direcao: string;
+  /** `{ [coluna_id]: value }`, only keys of the visible columns. */
+  valores: Record<string, unknown>;
+  aprovacao: HubLinhaItemAprovacao;
+}
+
+export interface HubLinhaColuna {
+  id: string;
+  nome: string;
+  /** text, number, select, multiselect, date, person, checkbox or url. */
+  tipo: string;
+  config: { options?: { id: string; label: string; color?: string }[] };
+  ordem: number;
+}
+
+export interface HubLinhaResposta {
+  id: string;
+  /** null = a comment on the whole linha. */
+  item_id: string | null;
+  acao: HubLinhaAcao;
+  comentario: string | null;
+  is_workspace_user: boolean;
+  created_at: string;
+}
+
+export interface HubLinha {
+  id: string;
+  /** First day of the month, YYYY-MM-DD. */
+  periodo: string;
+  status: HubLinhaStatus;
+  enviada_at: string | null;
+  decidida_at: string | null;
+  rodada: number;
+  /** Custom title set by the agency (null: "Linha editorial de {mês}"). */
+  titulo: string | null;
+  itens: HubLinhaItem[];
+  colunas: HubLinhaColuna[];
+  /** Current rodada only. */
+  respostas: HubLinhaResposta[];
+}
+
+export interface HubLinhasResponse {
+  linhas: HubLinha[];
+}
+
+export interface HubLinhaAcaoBody {
+  linha_id: string;
+  acao: HubLinhaAcaoEnvio;
+  item_id?: string;
+  comentario?: string;
 }

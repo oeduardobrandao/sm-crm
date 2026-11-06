@@ -1,9 +1,9 @@
-import { readFileSync } from 'node:fs';
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { InstagramPostCarousel } from '../InstagramPostCarousel';
+import { readCrmCss } from '@/test/readCrmCss';
 
-const css = readFileSync('apps/crm/style.css', 'utf8');
+const css = readCrmCss();
 
 describe('InstagramPostCarousel', () => {
   it('keeps the caller-supplied arbitrary ordering and neutral section copy', () => {

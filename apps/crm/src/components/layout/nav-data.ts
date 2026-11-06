@@ -8,6 +8,12 @@ export interface NavItem {
   icon: string;
   /** Open the route in a new browser tab instead of in-app SPA navigation. */
   newTab?: boolean;
+  /**
+   * Public page outside the CRM shell (no AppLayout). The phone Mais sheet opens it in a
+   * new tab/window like `newTab`, so the user never lands outside the shell with no tab
+   * bar and no way back. Desktop navigation is unaffected.
+   */
+  outsideShell?: boolean;
   /** Renders as an inert row with a "coming soon" badge instead of a working link. */
   disabled?: boolean;
   /** Flag off: em vez de sumir, renderiza esmaecido com cadeado, clicável
@@ -171,6 +177,27 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         labelKey: 'nav.instagram',
         icon: 'ph-instagram-logo',
       },
+      {
+        id: 'analytics-tiktok',
+        route: '/analytics/tiktok',
+        label: 'TikTok',
+        labelKey: 'nav.tiktok',
+        icon: 'ph-tiktok-logo',
+      },
+      {
+        id: 'analytics-youtube',
+        route: '/analytics/youtube',
+        label: 'YouTube',
+        labelKey: 'nav.youtube',
+        icon: 'ph-youtube-logo',
+      },
+      {
+        id: 'analytics-google',
+        route: '/analytics/google',
+        label: 'Google Meu Negócio',
+        labelKey: 'nav.googleBusiness',
+        icon: 'ph-storefront',
+      },
     ],
   },
   {
@@ -187,7 +214,14 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         icon: 'ph-sparkle',
         newTab: true,
       },
-      { id: 'ajuda', route: '/ajuda', label: 'Ajuda', labelKey: 'nav.ajuda', icon: 'ph-question' },
+      {
+        id: 'politica-de-privacidade',
+        route: '/politica-de-privacidade',
+        label: 'Privacidade',
+        labelKey: 'nav.privacidade',
+        icon: 'ph-shield-check',
+        outsideShell: true,
+      },
     ],
   },
   {
@@ -203,31 +237,62 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         labelKey: 'nav.configuracoes',
         icon: 'ph-gear',
       },
-      {
-        id: 'politica-de-privacidade',
-        route: '/politica-de-privacidade',
-        label: 'Privacidade',
-        labelKey: 'nav.privacidade',
-        icon: 'ph-shield-check',
-      },
+      { id: 'ajuda', route: '/ajuda', label: 'Ajuda', labelKey: 'nav.ajuda', icon: 'ph-question' },
     ],
   },
 ];
 
 export const PRIMARY_NAV_IDS = ['dashboard', 'clientes', 'analytics', 'entregas'];
 
-/** Maps nav item id → feature flag key. If the flag is false, the item is hidden. */
-const NAV_FEATURE: Record<string, string> = {
+/**
+ * Maps nav item id → feature flag key(s). If the flag is false, the item is
+ * hidden. An array entry is OR'd, but asymmetrically: the FIRST flag is the
+ * legacy, already-deployed one and keeps fail-open semantics (`!== false` --
+ * visible unless explicitly off); every OTHER flag is a newer addition and
+ * is fail-closed (`=== true` -- visible only once explicitly on). This
+ * matters during a rollout window: a brand-new flag like `feature_team_chat`
+ * arrives `undefined` for every workspace until `workspace-limits` is
+ * redeployed with the new column. Fail-open on it would show the item to
+ * everyone in that window; fail-closed instead preserves today's behaviour
+ * (nav item follows the legacy flag alone) until the redeploy lands, after
+ * which either flag being explicitly true also shows the item.
+ */
+const NAV_FEATURE: Record<string, string | string[]> = {
   mcp: 'feature_mcp',
   leads: 'feature_leads',
   financeiro: 'feature_financial',
   contratos: 'feature_contracts',
   ideias: 'feature_ideas',
-  mensagens: 'feature_mensagens',
+  mensagens: ['feature_mensagens', 'feature_team_chat'],
   analytics: 'feature_analytics_reports',
+  'analytics-tiktok': 'feature_analytics_reports',
+  'analytics-youtube': 'feature_analytics_reports',
+  'analytics-google': 'feature_analytics_reports',
   'analytics-fluxos': 'feature_analytics_reports',
   'post-express': 'feature_post_scheduling',
   automacoes: 'feature_instagram_automation',
+};
+
+/**
+ * Maps nav item id -> a flag that must be explicitly `true` for the item to show.
+ * Unlike NAV_FEATURE this is fail-closed and applies even while `features` is
+ * null (plan loading, or the unlimited path): the item stays hidden until the
+ * plan says yes. Checked on top of NAV_FEATURE, never instead of it.
+ */
+const NAV_FEATURE_REQUIRED_TRUE: Record<string, string> = {
+  'analytics-tiktok': 'feature_tiktok',
+};
+
+/**
+ * Maps nav item id -> a flag that must be explicitly `true` for the item to be
+ * usable. Fail-closed like NAV_FEATURE_REQUIRED_TRUE (null features included),
+ * but instead of removing the item it keeps it as `disabled: true`, which the
+ * sidebar and the phone "Mais" sheet render as an inert "Em breve" row.
+ * Disabled-then-enabled while the plan loads is fine; the reverse is not.
+ */
+const NAV_FEATURE_SOON: Record<string, string> = {
+  'analytics-youtube': 'feature_youtube',
+  'analytics-google': 'feature_google_business',
 };
 
 /**
@@ -261,6 +326,9 @@ export const NAV_MODULE: Partial<Record<string, [PermissionModule, PermissionAct
   contratos: ['contratos', 'ver'],
   equipe: ['equipe', 'ver'],
   analytics: ['analytics', 'ver'],
+  'analytics-tiktok': ['analytics', 'ver'],
+  'analytics-youtube': ['analytics', 'ver'],
+  'analytics-google': ['analytics', 'ver'],
   'analytics-fluxos': ['analytics', 'ver'],
   automacoes: ['automacoes', 'ver'],
   importar: ['clientes', 'editar'],
@@ -300,6 +368,26 @@ export function getNavGroups(
     }))
     .filter((g) => g.items.length > 0);
 
+  // Fail-closed flags: hidden unless explicitly true, null features included.
+  groups = groups
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((i) => {
+        const required = NAV_FEATURE_REQUIRED_TRUE[i.id];
+        return !required || features?.[required] === true;
+      }),
+    }))
+    .filter((g) => g.items.length > 0);
+
+  // "Em breve" flags: kept in the list but inert unless explicitly true.
+  groups = groups.map((g) => ({
+    ...g,
+    items: g.items.map((i) => {
+      const flag = NAV_FEATURE_SOON[i.id];
+      return !flag || features?.[flag] === true ? i : { ...i, disabled: true };
+    }),
+  }));
+
   // Hide feature-gated nav items when the flag is explicitly false, unless
   // the item opts into staying visible-but-locked.
   if (features) {
@@ -309,7 +397,15 @@ export function getNavGroups(
         items: g.items
           .map((i) => {
             const flag = NAV_FEATURE[i.id];
-            if (!flag || features[flag] !== false) return i;
+            if (!flag) return i;
+            // Array semantics: flag[0] is the legacy flag (fail-open, `!==
+            // false`); any additional flag is new and fail-closed (`===
+            // true`) so an unredeployed/undefined new flag can't widen
+            // access -- see the NAV_FEATURE doc comment above.
+            const isEnabled = Array.isArray(flag)
+              ? features[flag[0]] !== false || flag.slice(1).some((f) => features[f] === true)
+              : features[flag] !== false;
+            if (isEnabled) return i;
             return i.showLockedWhenGated ? { ...i, locked: true } : null;
           })
           .filter((i): i is NavItem => i !== null),
@@ -326,9 +422,31 @@ export function getNavGroups(
  * -- plain `pathname.startsWith(route)` marks '/analytics-fluxos' active for
  * the '/analytics' (Instagram) item too, since the string '/analytics-fluxos'
  * starts with '/analytics'. Requiring the boundary '/' after `route` rules
- * that out while still matching real sub-routes like '/analytics/tiktok'.
+ * that out while still matching real sub-routes like '/analytics/12'.
+ *
+ * Platform paths (TikTok, YouTube, Google Meu Negócio) are the exception, and
+ * only when `itemId` is passed (the sidebar): '/analytics/<platform>' and a
+ * client's '/analytics/<id>/<platform>' tab belong to that platform's item,
+ * whose own regex alone decides its active state, so the `analytics`
+ * (Instagram) item is NOT active there even though they are children of
+ * '/analytics'. Without an item id (the phone tab bar's single Analytics tab)
+ * every '/analytics*' child path still matches '/analytics', platforms included.
  */
-export function isNavRouteActive(pathname: string, route: string): boolean {
+const PLATFORM_ANALYTICS_PATH: Record<string, RegExp> = {
+  'analytics-tiktok': /^\/analytics\/(?:tiktok|[^/]+\/tiktok)\/?$/,
+  'analytics-youtube': /^\/analytics\/(?:youtube|[^/]+\/youtube)\/?$/,
+  'analytics-google': /^\/analytics\/(?:google|[^/]+\/google)\/?$/,
+};
+
+export function isNavRouteActive(pathname: string, route: string, itemId?: string): boolean {
+  const platformPath = itemId ? PLATFORM_ANALYTICS_PATH[itemId] : undefined;
+  if (platformPath) return platformPath.test(pathname);
+  if (
+    itemId === 'analytics' &&
+    Object.values(PLATFORM_ANALYTICS_PATH).some((re) => re.test(pathname))
+  ) {
+    return false;
+  }
   return pathname === route || pathname.startsWith(`${route}/`);
 }
 
@@ -336,11 +454,110 @@ export function getMoreSheetGroups(
   features: Record<string, boolean> | null,
   workspaceRole: 'owner' | 'admin' | 'agent' | null,
   can: (module: PermissionModule, action?: PermissionAction) => PermissionCheck,
+  /** Ids already on the tab bar. Defaults to the old fixed bar. */
+  excludeIds: readonly string[] = PRIMARY_NAV_IDS,
 ): NavGroup[] {
   return getNavGroups(features, workspaceRole, can)
     .map((g) => ({
       ...g,
-      items: g.items.filter((i) => !PRIMARY_NAV_IDS.includes(i.id)),
+      items: g.items.filter((i) => !excludeIds.includes(i.id)),
     }))
     .filter((g) => g.items.length > 0);
+}
+
+/** One slot of the phone tab bar. `navId` is the nav-data item it stands for. */
+export interface PhoneTab {
+  navId: string;
+  route: string;
+  label: string;
+  labelKey: string;
+}
+
+const PHONE_TAB: Record<string, PhoneTab> = {
+  dashboard: { navId: 'dashboard', route: '/dashboard', label: 'Início', labelKey: 'nav.home' },
+  entregas: { navId: 'entregas', route: '/entregas', label: 'Entregas', labelKey: 'nav.entregas' },
+  // With feature_agenda on, /calendario IS the Agenda (CalendarioPage renders AgendaPagina).
+  calendario: {
+    navId: 'calendario',
+    route: '/calendario',
+    label: 'Agenda',
+    labelKey: 'nav.agenda',
+  },
+  mensagens: {
+    navId: 'mensagens',
+    route: '/mensagens',
+    label: 'Mensagens',
+    labelKey: 'nav.mensagens',
+  },
+  clientes: { navId: 'clientes', route: '/clientes', label: 'Clientes', labelKey: 'nav.clientes' },
+  analytics: {
+    navId: 'analytics',
+    route: '/analytics',
+    label: 'Analytics',
+    labelKey: 'nav.analytics',
+  },
+};
+
+/** Preferred tabs in bar order (D18). */
+const PHONE_PRIMARY_IDS = ['dashboard', 'entregas', 'calendario', 'mensagens'] as const;
+/** Fill a missing tab's slot, in this order. Otherwise they head the Mais sheet. */
+const PHONE_FALLBACK_IDS = ['clientes', 'analytics'] as const;
+export const PHONE_TAB_SLOTS = 4;
+
+export interface PhoneNav {
+  /** Up to four tabs; "Mais" is the fifth slot, always rendered by MobileNav. */
+  tabs: PhoneTab[];
+  /** Clientes / Analytics when they didn't make the bar, shown first in Mais. */
+  shortcuts: NavItem[];
+  /** Everything else for the Mais sheet, minus what is on the bar or in `shortcuts`. */
+  moreGroups: NavGroup[];
+}
+
+/**
+ * Phone tab bar (D18): Início, Entregas, Agenda, Mensagens, Mais.
+ *
+ * Availability comes from `getNavGroups`, the same permission and plan filter as the
+ * sidebar, so the bar can't offer a page the sidebar hides. Agenda additionally needs
+ * `agendaEnabled` (the workspace's `feature_agenda`): without it `/calendario` is the
+ * editorial calendar, which stays in Mais as "Calendário". This is deliberately NOT a
+ * `calendario` entry in NAV_FEATURE, which would hide that calendar on desktop too.
+ *
+ * A tab that isn't available gives its slot to Clientes, then Analytics, so the bar
+ * keeps five items whenever enough pages are available.
+ */
+export function getPhoneNav(
+  features: Record<string, boolean> | null,
+  workspaceRole: 'owner' | 'admin' | 'agent' | null,
+  can: (module: PermissionModule, action?: PermissionAction) => PermissionCheck,
+  { agendaEnabled }: { agendaEnabled: boolean },
+): PhoneNav {
+  const groups = getNavGroups(features, workspaceRole, can);
+  const usable = new Map<string, NavItem>();
+  for (const group of groups) {
+    for (const item of group.items) {
+      if (!item.locked && !item.disabled) usable.set(item.id, item);
+    }
+  }
+  const isAvailable = (id: string) => usable.has(id) && (id !== 'calendario' || agendaEnabled);
+
+  const fallbacks = PHONE_FALLBACK_IDS.filter((id) => usable.has(id));
+  const tabIds: string[] = [];
+  for (const id of PHONE_PRIMARY_IDS) {
+    if (isAvailable(id)) tabIds.push(id);
+    else if (fallbacks.length > 0) tabIds.push(fallbacks.shift()!);
+  }
+  // A missing tab with no fallback left just shrinks the bar; leftovers stay for Mais.
+  const tabs = tabIds.slice(0, PHONE_TAB_SLOTS).map((id) => PHONE_TAB[id]);
+  const onBar = new Set(tabs.map((t) => t.navId));
+  // Named as on the tab bar ("Analytics", not the sidebar's "Instagram" under an
+  // Analytics heading): in Mais they sit on their own, without that heading.
+  const shortcuts = PHONE_FALLBACK_IDS.filter((id) => usable.has(id) && !onBar.has(id)).map(
+    (id) => ({ ...usable.get(id)!, label: PHONE_TAB[id].label, labelKey: PHONE_TAB[id].labelKey }),
+  );
+  const exclude = [...onBar, ...shortcuts.map((s) => s.id)];
+  return {
+    tabs,
+    shortcuts,
+    moreGroups: getMoreSheetGroups(features, workspaceRole, can, exclude),
+  };
 }

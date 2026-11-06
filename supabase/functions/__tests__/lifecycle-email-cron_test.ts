@@ -1,4 +1,4 @@
-import { assert } from "./assert.ts";
+import { assert, assertEquals } from "./assert.ts";
 import {
   type CronReportDetail,
   type LifecycleCronDeps,
@@ -25,11 +25,26 @@ function makeFakeDb(opts: {
     billing_interval?: string | null;
     stripe_subscription_id?: string | null;
   }>;
+  trialCandidates?: Array<{
+    workspace_id: string;
+    workspace_name?: string;
+    owner_email?: string;
+    owner_nome?: string | null;
+    plan_name?: string | null;
+    provider?: string;
+    amount_cents?: number | null;
+    amount_interval?: string | null;
+    billing_interval?: string | null;
+    first_charge_at: string;
+  }>;
+  trialRpcError?: string;
 }) {
   type Row = {
     email_type: string;
     user_id?: string;
     workspace_id?: string;
+    ref_at?: string;
+    meta?: Record<string, unknown>;
     delivered: boolean;
     stale: boolean;
     attempts: number;
@@ -70,6 +85,28 @@ function makeFakeDb(opts: {
           error: null,
         });
       }
+      if (name === "get_trial_reminder_candidates") {
+        if (opts.trialRpcError) {
+          return Promise.resolve({ data: null, error: { message: opts.trialRpcError } });
+        }
+        return Promise.resolve({
+          data: (opts.trialCandidates ?? [])
+            .filter((c) => eligible("trial_reminder", c.workspace_id))
+            .map((c) => ({
+              workspace_name: "Agencia X",
+              owner_email: "dono@x.test",
+              owner_nome: "Bruno Lima",
+              plan_name: "Pro",
+              provider: "stripe",
+              amount_cents: 13990,
+              amount_interval: "month",
+              billing_interval: "month",
+              ...c,
+              attempts: attemptsOf("trial_reminder", c.workspace_id),
+            })),
+          error: null,
+        });
+      }
       throw new Error(`unexpected rpc ${name}`);
     },
     from(table: string) {
@@ -82,6 +119,9 @@ function makeFakeDb(opts: {
             workspace_id?: string;
             sent_at: string;
             attempts: number;
+            ref_at?: string;
+            delivered_at?: null;
+            meta?: Record<string, unknown>;
           },
           o: { onConflict: string },
         ) {
@@ -95,6 +135,8 @@ function makeFakeDb(opts: {
           if (existing) {
             existing.stale = false;
             existing.attempts = row.attempts;
+            existing.ref_at = row.ref_at;
+            existing.meta = row.meta;
           } else rows.push({ ...row, delivered: false, stale: false });
           return Promise.resolve({ error: null });
         },
@@ -122,6 +164,7 @@ function makeFakeDb(opts: {
 
 function makeDeps(db: ReturnType<typeof makeFakeDb>, overrides?: Partial<LifecycleCronDeps>) {
   const sent: Array<{ kind: string; to: string; firstName: string | null; key: string }> = [];
+  const reminders: Array<{ to: string; subject: string; html: string; key: string }> = [];
   const founderSent: Array<{ kind: string; key: string; payload: Record<string, unknown> }> = [];
   const deps: LifecycleCronDeps = {
     db: db as unknown as LifecycleCronDeps["db"],
@@ -143,10 +186,14 @@ function makeDeps(db: ReturnType<typeof makeFakeDb>, overrides?: Partial<Lifecyc
       founderSent.push({ kind: "founder_subscription", key: p.idempotencyKey, payload: { ...p } });
       return Promise.resolve();
     },
+    sendTrialReminder: (p) => {
+      reminders.push({ to: p.to, subject: p.subject, html: p.html, key: p.idempotencyKey });
+      return Promise.resolve();
+    },
     report: () => Promise.resolve(),
     ...overrides,
   };
-  return { deps, sent, founderSent };
+  return { deps, sent, founderSent, reminders };
 }
 
 Deno.test("welcome sweep claims, sends with first name + key, marks delivered", async () => {
@@ -329,4 +376,165 @@ Deno.test("founder-notice failure leaves the claim undelivered; retry re-sends b
   assert(totalUserSends === 2 && sent[1].key === "welcome/u1");
   assert(founderSent.length === 1 && founderSent[0].key === "founder_signup/u1");
   assert(db.rows[0].delivered, "claim not delivered after successful retry");
+});
+
+// ─── Trial reminder sweep ───────────────────────────────────────────────────
+// makeDeps pins now() to 2026-07-30T12:00:00Z.
+
+Deno.test("trial reminder sweep claims with ref_at, sends with its key, marks delivered", async () => {
+  const chargeAt = "2026-08-06T12:00:00Z"; // exactly 7 days out
+  const db = makeFakeDb({ trialCandidates: [{ workspace_id: "w1", first_charge_at: chargeAt }] });
+  const { deps, reminders } = makeDeps(db);
+  const result = await runLifecycleEmailCron(deps);
+  assert(result.trialRemindersSent === 1 && result.failed === 0);
+  assert(reminders.length === 1 && reminders[0].to === "dono@x.test");
+  assert(reminders[0].key === `trial_reminder/w1/${chargeAt}`, `key was ${reminders[0].key}`);
+  assert(reminders[0].subject === "Seu teste do Mesaas Pro termina em 7 dias", reminders[0].subject);
+  assert(reminders[0].html.includes("Oi, Bruno,"));
+  assert(reminders[0].html.includes("R$ 139,90 por mês"));
+  const row = db.rows.find((r) => r.email_type === "trial_reminder")!;
+  assert(row.workspace_id === "w1" && row.ref_at === chargeAt && row.delivered);
+  assert(row.attempts === 1);
+  assertEquals(row.meta, {
+    to: "dono@x.test",
+    amount_cents: 13990,
+    amount_interval: "month",
+    provider: "stripe",
+    first_charge_at: chargeAt,
+  });
+});
+
+Deno.test("trial reminder: ledger meta records the Pagar.me installment, not the annual total", async () => {
+  const chargeAt = "2026-08-06T12:00:00Z";
+  const db = makeFakeDb({
+    trialCandidates: [{
+      workspace_id: "w1",
+      provider: "pagarme",
+      amount_cents: 155880,
+      amount_interval: "year",
+      billing_interval: "year",
+      first_charge_at: chargeAt,
+    }],
+  });
+  const { deps, reminders } = makeDeps(db);
+  await runLifecycleEmailCron(deps);
+  assert(reminders[0].html.includes("12x de R$ 129,90"));
+  const row = db.rows.find((r) => r.email_type === "trial_reminder")!;
+  assertEquals(row.meta, {
+    to: "dono@x.test",
+    amount_cents: 12990,
+    amount_interval: "month",
+    provider: "pagarme",
+    first_charge_at: chargeAt,
+  });
+});
+
+Deno.test("trial reminder: ledger meta amount is null when no amount is announced", async () => {
+  const db = makeFakeDb({
+    trialCandidates: [{ workspace_id: "w1", first_charge_at: "2026-08-06T12:00:00Z", amount_cents: null }],
+  });
+  const { deps } = makeDeps(db);
+  await runLifecycleEmailCron(deps);
+  const row = db.rows.find((r) => r.email_type === "trial_reminder")!;
+  assert(row.meta?.amount_cents === null && row.meta?.amount_interval === null);
+});
+
+Deno.test("trial reminder: a null plan_name is claimed, sent without a plan name, and delivered", async () => {
+  const db = makeFakeDb({
+    trialCandidates: [{ workspace_id: "w1", plan_name: null, first_charge_at: "2026-08-06T12:00:00Z" }],
+  });
+  const { deps, reminders } = makeDeps(db);
+  const result = await runLifecycleEmailCron(deps);
+  assert(result.trialRemindersSent === 1 && result.failed === 0);
+  assertEquals(reminders[0].subject, "Seu teste do Mesaas termina em 7 dias");
+  assert(!reminders[0].html.includes("null") && !reminders[0].html.includes("undefined"));
+  assert(reminders[0].html.includes("Seu teste grátis no workspace Agencia X termina em"));
+  const row = db.rows.find((r) => r.email_type === "trial_reminder")!;
+  assert(row.delivered && row.attempts === 1);
+});
+
+Deno.test("trial reminder: a send 7d30m before the charge still says 7 dias", async () => {
+  const db = makeFakeDb({
+    trialCandidates: [{ workspace_id: "w1", first_charge_at: "2026-08-06T12:30:00Z" }],
+  });
+  const { deps, reminders } = makeDeps(db);
+  await runLifecycleEmailCron(deps);
+  assert(reminders[0].subject === "Seu teste do Mesaas Pro termina em 7 dias", reminders[0].subject);
+});
+
+Deno.test("trial reminder: a late send (under 7d) says the rounded days left", async () => {
+  const db = makeFakeDb({
+    trialCandidates: [{ workspace_id: "w1", first_charge_at: "2026-08-03T10:00:00Z" }],
+  });
+  const { deps, reminders } = makeDeps(db);
+  await runLifecycleEmailCron(deps);
+  assert(reminders[0].subject === "Seu teste do Mesaas Pro termina em 4 dias", reminders[0].subject);
+});
+
+Deno.test("trial reminder: no amount still sends, with the generic charge line", async () => {
+  const db = makeFakeDb({
+    trialCandidates: [{ workspace_id: "w1", first_charge_at: "2026-08-06T12:00:00Z", amount_cents: null }],
+  });
+  const { deps, reminders } = makeDeps(db);
+  const result = await runLifecycleEmailCron(deps);
+  assert(result.trialRemindersSent === 1);
+  assert(reminders[0].html.includes("valor do seu plano"));
+});
+
+Deno.test("trial reminder: delivered workspaces are not re-sent", async () => {
+  const db = makeFakeDb({
+    trialCandidates: [{ workspace_id: "w1", first_charge_at: "2026-08-06T12:00:00Z" }],
+  });
+  const { deps, reminders } = makeDeps(db);
+  await runLifecycleEmailCron(deps);
+  await runLifecycleEmailCron(deps);
+  assert(reminders.length === 1);
+});
+
+Deno.test("trial reminder: a send failure on one candidate does not stop the next", async () => {
+  const db = makeFakeDb({
+    trialCandidates: [
+      { workspace_id: "w1", owner_email: "a@x.test", first_charge_at: "2026-08-06T12:00:00Z" },
+      { workspace_id: "w2", owner_email: "b@x.test", first_charge_at: "2026-08-06T12:00:00Z" },
+    ],
+  });
+  const delivered: string[] = [];
+  const { deps } = makeDeps(db, {
+    sendTrialReminder: (p) => {
+      if (p.to === "a@x.test") return Promise.reject(new Error("resend down"));
+      delivered.push(p.idempotencyKey);
+      return Promise.resolve();
+    },
+  });
+  const result = await runLifecycleEmailCron(deps);
+  assert(result.trialRemindersSent === 1 && result.failed === 1);
+  assert(delivered.length === 1 && delivered[0].startsWith("trial_reminder/w2/"));
+  const w1 = db.rows.find((r) => r.workspace_id === "w1")!;
+  assert(!w1.delivered, "failed send must leave an undelivered claim");
+});
+
+Deno.test("trial reminder: an RPC error is reported and the other sweeps still run", async () => {
+  const db = makeFakeDb({
+    welcomeCandidates: [{ user_id: "u1", email: "ana@x.test", nome: "Ana" }],
+    thankCandidates: [{
+      workspace_id: "w9",
+      workspace_name: "Agencia Y",
+      owner_email: "dono@x.test",
+      owner_nome: "Bruno",
+    }],
+    trialRpcError: "function does not exist",
+  });
+  let reported: CronReportDetail | null = null;
+  const { deps } = makeDeps(db, {
+    report: (d: CronReportDetail) => {
+      reported = d;
+      return Promise.resolve();
+    },
+  });
+  const result = await runLifecycleEmailCron(deps);
+  assert(result.welcomeSent === 1 && result.thanksSent === 1 && result.trialRemindersSent === 0);
+  assert(result.failed === 1);
+  assert(
+    (reported as CronReportDetail | null)?.errors[0].error?.includes("trial reminder candidates"),
+  );
 });

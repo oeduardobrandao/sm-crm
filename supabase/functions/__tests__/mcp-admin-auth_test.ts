@@ -53,7 +53,7 @@ Deno.test("validateAdminScopes: aceita subconjunto não vazio da allowlist e rej
   assertEquals(validateAdminScopes([]), false);
   assertEquals(validateAdminScopes(["posts:read"]), false); // escopo do mcp de workspace
   assertEquals(validateAdminScopes("kb:read"), false);
-  assertEquals(ADMIN_MCP_ALLOWED_SCOPES.length, 7);
+  assertEquals(ADMIN_MCP_ALLOWED_SCOPES.length, 9);
 });
 
 Deno.test("adminScopesFromClaim: filtra pela allowlist do admin", () => {

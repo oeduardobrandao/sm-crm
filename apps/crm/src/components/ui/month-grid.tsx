@@ -7,10 +7,12 @@ import {
   subMonths,
   format,
 } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { useTranslation } from 'react-i18next';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-const WEEK_DAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+// Monday-first; `weekdaysShort` in common.json is indexed Sunday = 0.
+const WEEK_DAY_INDEXES = [1, 2, 3, 4, 5, 6, 0];
 
 export interface MonthGridProps {
   currentMonth: Date;
@@ -59,8 +61,10 @@ export function MonthGrid({
   headerClassName,
   showNavigation = true,
 }: MonthGridProps) {
+  const { t } = useTranslation();
+  const dateLocale = useDateFnsLocale();
   const allDays = getMonthDays(currentMonth);
-  const monthLabel = format(currentMonth, 'MMMM yyyy', { locale: ptBR });
+  const monthLabel = format(currentMonth, 'MMMM yyyy', { locale: dateLocale });
 
   return (
     <div className={headerClassName}>
@@ -75,7 +79,7 @@ export function MonthGrid({
         >
           <button
             onClick={() => onMonthChange(subMonths(currentMonth, 1))}
-            aria-label="Mês anterior"
+            aria-label={t('ui.previousMonth')}
             className="month-grid-nav-btn"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -93,7 +97,7 @@ export function MonthGrid({
           </span>
           <button
             onClick={() => onMonthChange(addMonths(currentMonth, 1))}
-            aria-label="Próximo mês"
+            aria-label={t('ui.nextMonth')}
             className="month-grid-nav-btn"
           >
             <ChevronRight className="h-4 w-4" />
@@ -110,7 +114,7 @@ export function MonthGrid({
           marginBottom: 6,
         }}
       >
-        {WEEK_DAYS.map((d) => (
+        {WEEK_DAY_INDEXES.map((i) => t(`weekdaysShort.${i}`)).map((d) => (
           <div
             key={d}
             style={{

@@ -1,0 +1,219 @@
+/* Configurações > Hub on phones (iOS plan F5). Only phone-hub-* classes under
+   .phone-kit and --phone-* tokens: the Hub imports the CRM stylesheet. */
+
+/* Section rows: grey icon tile with an ink glyph (FConfigHub mockup). */
+.phone-kit .phone-hub-section-cell .phone-cell__icon--tile {
+  color: var(--phone-label);
+}
+
+.phone-kit .phone-hub-color-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.phone-kit .phone-hub-color-dot {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
+}
+
+/* Live preview row: a miniature phone in the draft's resolved Hub colours. */
+.phone-kit .phone-hub-preview-cell .phone-cell__icon {
+  width: auto;
+  height: auto;
+}
+.phone-kit .phone-hub-thumb {
+  display: block;
+  width: 64px;
+  height: 120px;
+  padding: 4px;
+  box-sizing: border-box;
+  border-radius: 14px;
+  background: var(--phone-ink);
+}
+.phone-kit .phone-hub-thumb__screen {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  height: 100%;
+  padding: 7px 5px;
+  box-sizing: border-box;
+  border-radius: 10px;
+  background: var(--hub-bg);
+  overflow: hidden;
+}
+.phone-kit .phone-hub-thumb__top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.phone-kit .phone-hub-thumb__logo {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--hub-primary);
+}
+.phone-kit .phone-hub-thumb__bar {
+  width: 22px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--hub-bd);
+}
+.phone-kit .phone-hub-thumb__title {
+  width: 34px;
+  height: 5px;
+  margin-top: 3px;
+  border-radius: 2px;
+  background: var(--hub-txt);
+}
+.phone-kit .phone-hub-thumb__card {
+  height: 24px;
+  border: 1px solid var(--hub-card-bd);
+  border-radius: 5px;
+  background: var(--hub-card-bg);
+}
+.phone-kit .phone-hub-thumb__cta {
+  height: 10px;
+  margin-top: auto;
+  border-radius: 999px;
+  background: var(--hub-primary);
+}
+
+/* A free-content card inside a grouped list (option grid, picker). */
+.phone-kit .phone-hub-block {
+  list-style: none;
+}
+
+/* Option grids that fit 390px: 3 or 2 equal columns. */
+.phone-kit .phone-hub-grid {
+  display: grid;
+  gap: 8px;
+}
+.phone-kit .phone-hub-grid--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.phone-kit .phone-hub-grid--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.phone-kit .phone-hub-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 6px;
+  border: 1px solid var(--phone-separator);
+  border-radius: 12px;
+  background: var(--phone-cell);
+  color: var(--phone-label);
+  font: inherit;
+  text-align: center;
+}
+.phone-kit .phone-hub-option[aria-pressed='true'] {
+  border-color: transparent;
+  box-shadow:
+    0 0 0 1px var(--phone-cell),
+    0 0 0 3px var(--phone-accent);
+}
+.phone-kit .phone-hub-option:disabled {
+  opacity: 0.5;
+}
+.phone-kit .phone-hub-option__glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 32px;
+}
+.phone-kit .phone-hub-option__label {
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.phone-kit .phone-hub-option__sublabel {
+  font-size: 11px;
+  color: var(--phone-label-secondary);
+  overflow-wrap: anywhere;
+}
+.phone-kit .phone-hub-specimen {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.phone-kit .phone-hub-segment-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.phone-kit .phone-hub-segment-label svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Brand colour presets: 44px touch targets. */
+.phone-kit .phone-hub-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.phone-kit .phone-hub-swatch {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--phone-separator);
+  border-radius: 12px;
+}
+.phone-kit .phone-hub-swatch[aria-pressed='true'] {
+  box-shadow:
+    0 0 0 2px var(--phone-cell),
+    0 0 0 4px var(--phone-accent);
+}
+.phone-kit .phone-hub-swatch:disabled {
+  opacity: 0.5;
+}
+.phone-kit .phone-hub-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.phone-kit .phone-hub-picker-swatch {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border: 1px solid var(--phone-separator);
+  border-radius: 10px;
+}
+
+.phone-kit .phone-hub-dark-logo {
+  display: block;
+  width: 64px;
+  height: 64px;
+  padding: 4px;
+  box-sizing: border-box;
+  object-fit: contain;
+  border: 1px solid var(--phone-separator);
+  border-radius: 10px;
+  background: #12151a;
+}
+
+.phone-kit .phone-hub-alert {
+  margin: 0 var(--phone-gutter) 16px;
+  font-size: var(--phone-text-footnote);
+  line-height: 1.4;
+  color: var(--phone-destructive);
+}
+
+/* Preview sheet: the preview scales to the sheet, never scrolls the page sideways. */
+.phone-hub-preview-sheet .phone-sheet__body {
+  overflow-x: hidden;
+}
+.phone-kit .phone-hub-preview,
+.phone-hub-preview {
+  min-width: 0;
+  max-width: 100%;
+}

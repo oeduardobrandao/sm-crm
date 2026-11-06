@@ -1,9 +1,9 @@
-import { readFileSync } from 'node:fs';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { Badge } from '../badge';
+import { readCrmCss } from '@/test/readCrmCss';
 
-const css = readFileSync('apps/crm/style.css', 'utf8');
+const css = readCrmCss();
 
 const VARIANTS = ['neutral', 'success', 'warning', 'danger', 'info', 'primary', 'outline'] as const;
 

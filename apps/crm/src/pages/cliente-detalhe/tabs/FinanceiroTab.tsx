@@ -1,10 +1,24 @@
+import { useState, type ReactNode } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { FileText, ReceiptText, Wallet, CheckCircle2, Clock } from 'lucide-react';
+import { useIntlLocale } from '@mesaas/i18n';
+import {
+  FileText,
+  ReceiptText,
+  Wallet,
+  CheckCircle2,
+  Clock,
+  Percent,
+  TrendingUp,
+  Users,
+} from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { StatCard } from '@/components/StatCard';
 import { StatCardGrid } from '@/components/StatCardGrid';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import {
   Table,
   TableBody,
@@ -13,10 +27,46 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { getContratos, getTransacoes, formatDate, type Contrato, type Transacao } from '@/store';
+import {
+  getClienteVersoes,
+  getContratos,
+  getRentabilidade,
+  getTransacoes,
+  formatDate,
+  type Cliente,
+  type ClienteVersao,
+  type Contrato,
+  type Transacao,
+} from '@/store';
 import { formatFinancialBRL } from '@/lib/financialAccess';
 import { ClienteFinanceEmptyState } from '../ClienteFinanceEmptyState';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useFinanceiroV2 } from '@/hooks/useFinanceiroV2';
+import { abaixoDaMeta, formatMargem } from '../../financeiro/v2/format';
+import { EquipeNoClienteCard } from './EquipeNoClienteCard';
+import { ClienteMensalidadeDialog, type MensalidadeInicial } from './ClienteMensalidadeDialog';
+import { Cell, GroupedList } from '@/components/mobile/GroupedList';
+import '../phone/clienteDetalhePhone.css';
+
+const STATUS_TONE: Record<string, 'success' | 'warning' | 'danger' | 'neutral'> = {
+  ativo: 'success',
+  vigente: 'success',
+  pago: 'success',
+  pausado: 'warning',
+  a_assinar: 'warning',
+  encerrado: 'danger',
+  agendado: 'neutral',
+};
+
+function PhoneStatusChip({ status }: { status: string }) {
+  const { t: tc } = useTranslation();
+  return (
+    <span className="phone-cli-chip" data-tone={STATUS_TONE[status] ?? 'neutral'}>
+      {tc(`status.${status}`, { defaultValue: status })}
+    </span>
+  );
+}
 
 function StatusBadge({ status }: { status: string }) {
   const { t: tc } = useTranslation();
@@ -33,6 +83,163 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`badge ${map[status] ?? 'badge-neutral'}`}>
       {tc(`status.${status}`, { defaultValue: status })}
     </span>
+  );
+}
+
+/** The version in force at `inicio`: the one with the greatest `vale_desde` not after it. */
+function versaoEfetiva(versoes: ClienteVersao[], inicio: string): ClienteVersao | undefined {
+  return versoes
+    .filter((v) => v.vale_desde <= inicio)
+    .reduce<
+      ClienteVersao | undefined
+    >((best, v) => (!best || v.vale_desde > best.vale_desde ? v : best), undefined);
+}
+
+/**
+ * Financeiro v2 replacement for the KPI strip: this client's entry of the current
+ * period's rentabilidade (mensalidade, team cost, profit, margin) plus the team card and the
+ * mensalidade dialog. Before the workspace is seeded it renders `legacy` (today's cards).
+ */
+function FinanceiroV2Section({ cliente, legacy }: { cliente: Cliente; legacy: ReactNode }) {
+  const clienteId = cliente.id!;
+  const { t } = useTranslation('clients');
+  const { t: tc } = useTranslation();
+  const intlLocale = useIntlLocale();
+  const { canSeeFinancials, can } = useAuth();
+  const canEdit = can('financeiro', 'editar') === true;
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const rent = useQuery({
+    queryKey: ['financeiro-v2', 'rentabilidade', 'atual'],
+    queryFn: () => getRentabilidade(),
+  });
+  const versoes = useQuery({
+    queryKey: ['financeiro-v2', 'cliente', clienteId],
+    queryFn: () => getClienteVersoes(clienteId),
+  });
+
+  if (rent.isError || versoes.isError) {
+    return (
+      <p role="alert" className="mb-6 text-sm text-destructive">
+        {t('financeiroV2.loadError')}
+      </p>
+    );
+  }
+  if (!rent.isSuccess || !versoes.isSuccess) return <Spinner className="mx-auto mb-6" />;
+  if (!rent.data.seeded) return <>{legacy}</>;
+
+  const { periodo, funcoes, membros, meta_margem } = rent.data;
+  const entry = rent.data.clientes.find((c) => c.cliente_id === clienteId);
+  const versao = versaoEfetiva(versoes.data, periodo.inicio);
+  const dia = versao ? versao.dia_pagamento : (cliente.data_pagamento ?? null);
+  const inicial: MensalidadeInicial = versao
+    ? {
+        valor_mensal: versao.valor_mensal,
+        dia_pagamento: versao.dia_pagamento,
+        status: versao.status,
+      }
+    : { valor_mensal: cliente.valor_mensal ?? 0, dia_pagamento: dia, status: 'ativo' };
+
+  const metaTexto = meta_margem.toLocaleString(intlLocale, { maximumFractionDigits: 1 });
+  const money = (v: number) => formatFinancialBRL(v, canSeeFinancials);
+  const pausado = entry?.status === 'pausado';
+  const pessoas = new Set(entry?.pessoas.map((p) => p.membro_id)).size;
+
+  return (
+    <>
+      <StatCardGrid
+        id="sec-financeiro"
+        className="cliente-finance-kpis"
+        style={{ marginBottom: '1.5rem' }}
+      >
+        <StatCard
+          label={t('financeiroV2.monthlyFee')}
+          value={entry ? money(entry.receita) : '-'}
+          sub={dia ? t('financeiroV2.dueDay', { day: dia }) : undefined}
+          footNote={
+            canEdit ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setDialogOpen(true)}
+                aria-label={t('financeiroV2.editMonthlyFee')}
+              >
+                {tc('actions.edit')}
+              </Button>
+            ) : undefined
+          }
+          icon={Wallet}
+          tone="blue"
+          compactValue
+        />
+        <StatCard
+          label={t('financeiroV2.teamCost')}
+          value={entry ? money(entry.custo) : '-'}
+          sub={entry ? t('financeiroV2.peopleServing', { count: pessoas }) : undefined}
+          icon={Users}
+          tone="violet"
+          compactValue
+        />
+        <StatCard
+          label={t('financeiroV2.monthlyProfit')}
+          value={entry ? money(entry.lucro) : '-'}
+          sub={
+            entry ? t('financeiroV2.annualProfit', { value: money(entry.lucro * 12) }) : undefined
+          }
+          icon={TrendingUp}
+          tone="green"
+          compactValue
+        />
+        <StatCard
+          label={t('financeiroV2.margin')}
+          value={entry && !pausado ? formatMargem(entry.margem) : '-'}
+          valueColor={
+            entry && !pausado && abaixoDaMeta(entry.margem, meta_margem)
+              ? 'var(--danger-text)'
+              : undefined
+          }
+          sub={
+            entry ? (
+              <>
+                {t('financeiroV2.agencyTarget', { value: metaTexto })}{' '}
+                {pausado && (
+                  <Badge variant="warning" size="sm">
+                    {tc('status.pausado')}
+                  </Badge>
+                )}
+              </>
+            ) : undefined
+          }
+          icon={Percent}
+          tone="amber"
+          compactValue
+        />
+      </StatCardGrid>
+      {!entry && (
+        <p className="mb-6 text-sm text-muted-foreground">
+          {versao?.status === 'encerrado'
+            ? t('financeiroV2.closedInPeriod')
+            : t('financeiroV2.notInPeriod')}
+        </p>
+      )}
+      {entry && (
+        <EquipeNoClienteCard
+          cliente={entry}
+          funcoes={funcoes}
+          membros={membros}
+          periodoInicio={periodo.inicio}
+        />
+      )}
+      {canEdit && (
+        <ClienteMensalidadeDialog
+          clienteId={clienteId}
+          inicial={inicial}
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+        />
+      )}
+    </>
   );
 }
 
@@ -83,6 +290,10 @@ export default function FinanceiroTab() {
   const { clienteId, cliente } = useOutletContext<ClienteDetalheOutletContext>();
   const { canSeeFinancials } = useAuth();
   const { t } = useTranslation('clients');
+  const isPhone = !useIsDesktop(768);
+  const { ativo: v2Ativo } = useFinanceiroV2();
+  // Financeiro v2 needs the same visibility as the legacy cards; otherwise nothing changes.
+  const v2 = v2Ativo && canSeeFinancials === true;
 
   const { data: transacoes } = useQuery({
     queryKey: ['transacoes'],
@@ -110,36 +321,105 @@ export default function FinanceiroTab() {
     .filter((t) => t.tipo === 'entrada' && t.status === 'agendado')
     .reduce((s, t) => s + Number(t.valor), 0);
 
+  const kpis = (
+    <StatCardGrid
+      id="sec-financeiro"
+      className="cliente-finance-kpis"
+      style={{ marginBottom: '1.5rem' }}
+    >
+      <StatCard
+        label={t('detail.monthlyValue')}
+        value={formatFinancialBRL(cliente.valor_mensal, canSeeFinancials)}
+        icon={Wallet}
+        tone="blue"
+        compactValue
+      />
+      <StatCard
+        label={t('detail.totalReceived')}
+        value={formatFinancialBRL(receitaTotal, canSeeFinancials)}
+        icon={CheckCircle2}
+        tone="green"
+        compactValue
+      />
+      <StatCard
+        label={t('detail.pending')}
+        value={formatFinancialBRL(pendente, canSeeFinancials)}
+        valueColor="var(--warning)"
+        icon={Clock}
+        tone="amber"
+        compactValue
+      />
+    </StatCardGrid>
+  );
+
+  const header = v2 ? <FinanceiroV2Section cliente={cliente} legacy={kpis} /> : kpis;
+
+  if (isPhone) {
+    return (
+      <>
+        {header}
+        {contratosCliente.length === 0 ? (
+          <section className="phone-cli-finance-empty" aria-label={t('detail.contracts')}>
+            <h2 className="phone-group__header">{t('detail.contracts')}</h2>
+            <ClienteFinanceEmptyState
+              icon={FileText}
+              title={t('detail.noContracts')}
+              description={t('detail.noContractsDescription')}
+              actionLabel={t('detail.manageContracts')}
+              actionHref="/contratos"
+            />
+          </section>
+        ) : (
+          <GroupedList header={t('detail.contracts')} className="phone-cli-wrap">
+            {contratosCliente.map((r) => (
+              <Cell
+                key={r.id ?? `${r.titulo}-${r.data_inicio}`}
+                label={r.titulo}
+                subtitle={`${t('detail.contractRange', { start: formatDate(r.data_inicio), end: formatDate(r.data_fim) })} · ${formatFinancialBRL(r.valor_total, canSeeFinancials)}`}
+                accessory={<PhoneStatusChip status={r.status} />}
+              />
+            ))}
+          </GroupedList>
+        )}
+        {transacoesCliente.length === 0 ? (
+          <section className="phone-cli-finance-empty" aria-label={t('detail.transactions')}>
+            <h2 className="phone-group__header">{t('detail.transactions')}</h2>
+            <ClienteFinanceEmptyState
+              icon={ReceiptText}
+              title={t('detail.noTransactions')}
+              description={t('detail.noTransactionsDescription')}
+              actionLabel={t('detail.viewFinancial')}
+              actionHref="/financeiro"
+            />
+          </section>
+        ) : (
+          <GroupedList header={t('detail.transactions')} className="phone-cli-wrap">
+            {transacoesCliente.map((r) => (
+              <Cell
+                key={r.id ?? `${r.descricao}-${r.data}`}
+                label={r.descricao}
+                subtitle={formatDate(r.data)}
+                value={
+                  <span
+                    className="phone-cli-amount"
+                    data-tone={r.tipo === 'entrada' ? 'in' : 'out'}
+                  >
+                    {r.tipo === 'entrada' ? '+' : '-'}
+                    {formatFinancialBRL(r.valor, canSeeFinancials)}
+                  </span>
+                }
+                accessory={<PhoneStatusChip status={r.status ?? 'pago'} />}
+              />
+            ))}
+          </GroupedList>
+        )}
+      </>
+    );
+  }
+
   return (
     <>
-      <StatCardGrid
-        id="sec-financeiro"
-        className="cliente-finance-kpis"
-        style={{ marginBottom: '1.5rem' }}
-      >
-        <StatCard
-          label={t('detail.monthlyValue')}
-          value={formatFinancialBRL(cliente.valor_mensal, canSeeFinancials)}
-          icon={Wallet}
-          tone="blue"
-          compactValue
-        />
-        <StatCard
-          label={t('detail.totalReceived')}
-          value={formatFinancialBRL(receitaTotal, canSeeFinancials)}
-          icon={CheckCircle2}
-          tone="green"
-          compactValue
-        />
-        <StatCard
-          label={t('detail.pending')}
-          value={formatFinancialBRL(pendente, canSeeFinancials)}
-          valueColor="var(--warning)"
-          icon={Clock}
-          tone="amber"
-          compactValue
-        />
-      </StatCardGrid>
+      {header}
 
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
         <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">

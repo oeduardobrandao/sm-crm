@@ -1,0 +1,63 @@
+{
+  "shared": {
+    "title": "Mensagens",
+    "closeSearch": "Fechar busca",
+    "sortBy": "Ordenar: {{label}}",
+    "sortTitle": "Ordenar conversas",
+    "sortRecentes": "Mais recentes",
+    "sortAntigas": "Mais antigas",
+    "loadError": "Não foi possível carregar as conversas.",
+    "unreadBadge": "{{n}} não lidas",
+    "loadingOlder": "Carregando…",
+    "loadOlder": "Carregar mensagens anteriores",
+    "threadError": "Não foi possível carregar as mensagens.",
+    "retry": "Tentar novamente",
+    "threadEmpty": "Nenhuma mensagem nesta conversa ainda.",
+    "sendMessage": "Enviar mensagem"
+  },
+  "mensagensList": {
+    "info": "Toda a comunicação com os clientes, agrupada por conversa. Cada item leva ao post de origem.",
+    "searchClient": "Buscar cliente",
+    "searchPlaceholder": "Buscar cliente...",
+    "noResults": "Nenhum cliente encontrado.",
+    "empty": "Nenhuma conversa ainda. As mensagens dos clientes aparecem aqui.",
+    "listLabel": "Conversas"
+  },
+  "equipeList": {
+    "info": "Grupos e mensagens diretas com a sua equipe.",
+    "searchConversation": "Buscar conversa",
+    "searchPlaceholder": "Buscar conversa...",
+    "newConversation": "Nova conversa",
+    "noResults": "Nenhuma conversa encontrada.",
+    "empty": "Nenhuma conversa ainda. Crie uma para falar com a equipe.",
+    "listLabel": "Conversas da equipe"
+  },
+  "conversationThread": {
+    "typeFilter": "Tipo de mensagem",
+    "teamAuthor": "Equipe",
+    "requestedCorrection": "Pediu correção",
+    "postFallback": "Post",
+    "replyingAbout": "Respondendo sobre: <b>{{titulo}}</b>",
+    "cancelReply": "Cancelar resposta",
+    "replyPlaceholder": "Responder sobre o post…",
+    "replyLabel": "Responder sobre o post",
+    "messagePlaceholder": "Enviar mensagem…",
+    "messageLabel": "Mensagem"
+  },
+  "equipeThread": {
+    "details": "Ver detalhes da conversa",
+    "removeAttachment": "Remover {{name}}",
+    "attachFile": "Anexar arquivo",
+    "composerPlaceholder": "Mensagem para a equipe…"
+  },
+  "postChip": {
+    "open": "Abrir post",
+    "openDiscussion": "Abrir na discussão do post",
+    "reply": "Responder sobre este post",
+    "actionsLabel": "Ações do post {{titulo}}",
+    "viewPost": "Ver post"
+  },
+  "threadShell": {
+    "back": "Voltar para as conversas"
+  }
+}

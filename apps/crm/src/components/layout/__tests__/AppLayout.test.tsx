@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useEffect, useState } from 'react';
 import type { FinancialAccess } from '../../../lib/financialAccess';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 
@@ -15,12 +16,16 @@ vi.mock('../Sidebar', () => ({
     collapsible,
     pinned,
     onTogglePinned,
+    vidroShell,
+    railOnly,
   }: {
     isDrawer?: boolean;
     isOpen?: boolean;
     collapsible?: boolean;
+    railOnly?: boolean;
     pinned?: boolean;
     onTogglePinned?: () => void;
+    vidroShell?: boolean;
   }) => (
     <div
       data-testid="sidebar"
@@ -28,6 +33,8 @@ vi.mock('../Sidebar', () => ({
       data-open={String(Boolean(isOpen))}
       data-collapsible={String(Boolean(collapsible))}
       data-pinned={String(Boolean(pinned))}
+      data-vidro-shell={String(Boolean(vidroShell))}
+      data-rail-only={String(Boolean(railOnly))}
     >
       Sidebar
       <button type="button" onClick={onTogglePinned}>
@@ -65,6 +72,33 @@ vi.mock('../TopBar', () => ({
   ),
 }));
 
+const vidroState = vi.hoisted(() => ({
+  active: false,
+  enabled: false,
+  optedOut: false,
+  settled: true,
+  setOptedOut: (() => {}) as (v: boolean) => void,
+}));
+
+// The real hook reads useWorkspaceLimits (useQuery), which this suite has no QueryClient for.
+vi.mock('../../../hooks/useVidro', () => ({
+  useVidro: () => vidroState,
+}));
+
+vi.mock('../PageToolbar', () => ({
+  default: ({ capsule }: { capsule?: React.ReactNode }) => (
+    <div data-testid="page-toolbar">{capsule}</div>
+  ),
+}));
+
+vi.mock('../TopBarActions', () => ({
+  default: ({ variant }: { variant?: string }) => <div data-testid={'actions-' + variant} />,
+}));
+
+vi.mock('../PhoneShellHeader', () => ({
+  default: () => <div data-testid="phone-shell-header">Phone header</div>,
+}));
+
 vi.mock('../GlobalBannerContainer', () => ({
   default: ({ children }: { children?: React.ReactNode }) => (
     <div data-testid="global-banner">{children}</div>
@@ -80,7 +114,7 @@ vi.mock('../IncidentBanner', () => ({
 }));
 
 vi.mock('../../help/ContextHelpLinks', () => ({
-  ContextHelpLinks: () => null,
+  ContextHelpLinks: () => <div data-testid="context-help" />,
 }));
 
 // The guide feature has its own dedicated test suites (GuideContext,
@@ -104,11 +138,33 @@ vi.mock('../../guide/GuideDialog', () => ({
 }));
 
 vi.mock('../GlobalPopupHost', () => ({
-  default: () => null,
+  default: () => <div data-testid="popup-host" />,
+}));
+
+vi.mock('../VidroIntro', () => ({
+  default: ({ onClassic }: { onClassic: () => void }) => (
+    <button type="button" data-testid="vidro-intro" onClick={onClassic}>
+      intro
+    </button>
+  ),
 }));
 
 import { useAuth } from '../../../context/AuthContext';
 import AppLayout from '../AppLayout';
+import { usePhoneChrome, usePhoneLayout } from '../PhoneLayoutContext';
+
+/** A page that brings its own phone header and hides the tab bar (F0a.1). */
+function ChromePage() {
+  usePhoneChrome({ pageHeader: true, tabBar: false });
+  const { isPhone } = usePhoneLayout();
+  return (
+    <div>
+      <div>Chrome screen</div>
+      <span data-testid="is-phone">{String(isPhone)}</span>
+      <Link to="/clientes">Ir para clientes</Link>
+    </div>
+  );
+}
 
 const mockedUseAuth = vi.mocked(useAuth);
 
@@ -139,6 +195,11 @@ function setCanSeeFinancials(
 
 beforeEach(() => {
   localStorage.clear();
+  vidroState.active = false;
+  vidroState.enabled = false;
+  vidroState.optedOut = false;
+  vidroState.settled = true;
+  vidroState.setOptedOut = () => {};
   // Default: unrestricted. Non-financial routes render regardless of this
   // value, so only the financial-guard tests below need to vary it.
   setCanSeeFinancials(true);
@@ -174,9 +235,9 @@ function createMediaQuery(initialMatches: boolean) {
   };
 }
 
-function mockMatchMedia(tabletMatches: boolean) {
+function mockMatchMedia(tabletMatches: boolean, mobileMatches = false) {
   const tabletQuery = createMediaQuery(tabletMatches);
-  const mobileQuery = createMediaQuery(false);
+  const mobileQuery = createMediaQuery(mobileMatches);
 
   vi.stubGlobal(
     'matchMedia',
@@ -190,7 +251,11 @@ function mockMatchMedia(tabletMatches: boolean) {
 }
 
 function renderLayout(pathname = '/dashboard') {
-  return render(
+  return render(layoutTree(pathname));
+}
+
+function layoutTree(pathname = '/dashboard') {
+  return (
     <MemoryRouter initialEntries={[pathname]}>
       <Routes>
         <Route element={<AppLayout />}>
@@ -206,9 +271,10 @@ function renderLayout(pathname = '/dashboard') {
           <Route path="/clientes" element={<div>Clientes screen</div>} />
           <Route path="/financeiro" element={<div>Financeiro screen</div>} />
           <Route path="/contratos" element={<div>Contratos screen</div>} />
+          <Route path="/chrome" element={<ChromePage />} />
         </Route>
       </Routes>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
 }
 
@@ -224,6 +290,68 @@ describe('AppLayout', () => {
     expect(screen.getByTestId('sidebar')).toHaveAttribute('data-open', 'false');
     expect(screen.queryByRole('button', { name: 'Abrir menu' })).not.toBeInTheDocument();
     expect(screen.getByTestId('mobile-nav')).toBeInTheDocument();
+  });
+
+  it('renders the phone shell header instead of the TopBar below 768px (AUDIT #1)', async () => {
+    setViewport(390);
+    mockMatchMedia(false);
+
+    renderLayout();
+    await screen.findByTestId('global-banner');
+
+    expect(screen.getByTestId('phone-shell-header')).toBeInTheDocument();
+    expect(screen.queryByTestId('topbar')).not.toBeInTheDocument();
+    // The related-articles button moves into the phone header (AUDIT #3): not in <main>.
+    expect(
+      document.getElementById('app')?.querySelector('[data-testid="context-help"]'),
+    ).toBeNull();
+  });
+
+  it('applies the page phone chrome to .app-container and clears it on the next route', async () => {
+    setViewport(390);
+    mockMatchMedia(false);
+
+    renderLayout('/chrome');
+    await screen.findByText('Chrome screen');
+
+    const container = document.querySelector('.app-container')!;
+    expect(container).toHaveAttribute('data-phone-page-header');
+    expect(container).toHaveAttribute('data-phone-tab-bar', 'hidden');
+    // The page header carries the bell, so the shell's own bar is not mounted.
+    expect(screen.queryByTestId('phone-shell-header')).not.toBeInTheDocument();
+    expect(screen.getByTestId('is-phone')).toHaveTextContent('true');
+
+    fireEvent.click(screen.getByRole('link', { name: 'Ir para clientes' }));
+    await screen.findByText('Clientes screen');
+
+    expect(container).not.toHaveAttribute('data-phone-page-header');
+    expect(container).not.toHaveAttribute('data-phone-tab-bar');
+    expect(screen.getByTestId('phone-shell-header')).toBeInTheDocument();
+  });
+
+  it('reports desktop through usePhoneLayout from 768px up', async () => {
+    setViewport(1280);
+    mockMatchMedia(false);
+
+    renderLayout('/chrome');
+    await screen.findByText('Chrome screen');
+
+    expect(screen.getByTestId('is-phone')).toHaveTextContent('false');
+    expect(screen.getByTestId('topbar')).toBeInTheDocument();
+  });
+
+  it('keeps the TopBar and the in-page related-articles button from 768px up', async () => {
+    setViewport(1280);
+    mockMatchMedia(false);
+
+    renderLayout();
+    await screen.findByTestId('global-banner');
+
+    expect(screen.getByTestId('topbar')).toBeInTheDocument();
+    expect(screen.queryByTestId('phone-shell-header')).not.toBeInTheDocument();
+    expect(
+      document.getElementById('app')?.querySelector('[data-testid="context-help"]'),
+    ).not.toBeNull();
   });
 
   it('opens and closes the tablet drawer, then resets when leaving tablet mode', async () => {
@@ -455,5 +583,319 @@ describe('AppLayout contract guard wiring', () => {
     expect(screen.queryByText('Contratos screen')).not.toBeInTheDocument();
     expect(screen.queryByText('Acesso a contratos restrito')).not.toBeInTheDocument();
     expect(screen.getByTestId('crm-skeleton')).toBeInTheDocument();
+  });
+});
+
+describe('AppLayout Vidro shell', () => {
+  it('replaces the TopBar with the glass panel and page toolbar at desktop width', async () => {
+    vidroState.active = true;
+    vidroState.enabled = true;
+    setViewport(1280);
+    mockMatchMedia(false);
+
+    renderLayout();
+    await screen.findByTestId('global-banner');
+
+    expect(screen.queryByTestId('topbar')).not.toBeInTheDocument();
+    const panel = document.querySelector('.vidro-panel');
+    expect(panel).not.toBeNull();
+    expect(panel).toContainElement(screen.getByTestId('page-toolbar'));
+    expect(panel).toContainElement(document.getElementById('app'));
+    expect(panel).toContainElement(screen.getByTestId('actions-capsule'));
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-vidro-shell', 'true');
+  });
+
+  it('keeps the panel and the same <main> when the window narrows to tablet', async () => {
+    vidroState.active = true;
+    vidroState.enabled = true;
+    localStorage.setItem('sidebar-pinned', '1');
+    setViewport(1280);
+    const tabletQuery = mockMatchMedia(false);
+
+    const { container } = renderLayout();
+    await screen.findByTestId('global-banner');
+    const main = document.getElementById('app');
+    expect(document.querySelector('.vidro-panel')).toContainElement(main);
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-pinned', 'true');
+
+    act(() => {
+      tabletQuery.dispatch(true);
+    });
+    expect(document.querySelector('.vidro-panel')).toContainElement(main);
+    expect(screen.queryByTestId('topbar')).not.toBeInTheDocument();
+    expect(document.getElementById('app')).toBe(main);
+    // Tablet: the rail, never pinned and never the drawer; the stored pin is kept.
+    const sidebar = screen.getByTestId('sidebar');
+    expect(sidebar).toHaveAttribute('data-rail-only', 'true');
+    expect(sidebar).toHaveAttribute('data-drawer', 'false');
+    expect(sidebar).toHaveAttribute('data-pinned', 'false');
+    expect(container.querySelector('.app-container')).toHaveAttribute(
+      'data-sidebar-collapsed',
+      'true',
+    );
+    expect(localStorage.getItem('sidebar-pinned')).toBe('1');
+
+    act(() => {
+      tabletQuery.dispatch(false);
+    });
+    expect(document.querySelector('.vidro-panel')).toContainElement(main);
+    expect(document.getElementById('app')).toBe(main);
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-rail-only', 'false');
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-pinned', 'true');
+  });
+
+  it('keeps the same <main> mounted when the user opts out of the look', async () => {
+    vidroState.active = true;
+    vidroState.enabled = true;
+    setViewport(1280);
+    mockMatchMedia(false);
+
+    const { rerender } = renderLayout();
+    await screen.findByTestId('global-banner');
+    const main = document.getElementById('app');
+    expect(document.querySelector('.vidro-panel')).toContainElement(main);
+
+    vidroState.active = false;
+    vidroState.optedOut = true;
+    rerender(layoutTree());
+
+    expect(document.querySelector('.vidro-panel')).toBeNull();
+    expect(screen.getByTestId('topbar')).toBeInTheDocument();
+    expect(document.getElementById('app')).toBe(main);
+  });
+
+  it('wraps <main> in a layout-neutral div when the flag is off', async () => {
+    setViewport(1280);
+    mockMatchMedia(false);
+
+    const { container } = renderLayout();
+    await screen.findByTestId('global-banner');
+
+    // Same tree shape as with the flag on, so a flag flip never remounts the page. The wrapper is
+    // out of the layout through an inline style (no class, so no CSS outside the vidro guards).
+    const wrapper = document.getElementById('app')?.parentElement;
+    expect(wrapper?.parentElement).toBe(container.querySelector('.app-container'));
+    expect(wrapper).toHaveStyle({ display: 'contents' });
+    expect(wrapper).not.toHaveAttribute('class');
+  });
+
+  it('keeps the same <main> and page state when the flag flips on a refetch', async () => {
+    setViewport(1280);
+    mockMatchMedia(false);
+    let mounts = 0;
+    function CounterPage() {
+      const [n, setN] = useState(0);
+      useEffect(() => {
+        mounts += 1;
+      }, []);
+      return (
+        <button type="button" onClick={() => setN((v) => v + 1)}>
+          count {n}
+        </button>
+      );
+    }
+    const tree = () => (
+      <MemoryRouter initialEntries={['/contador']}>
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route path="/contador" element={<CounterPage />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const { rerender, container } = render(tree());
+    await screen.findByTestId('global-banner');
+    const main = document.getElementById('app');
+    fireEvent.click(await screen.findByRole('button', { name: 'count 0' }));
+    expect(screen.getByRole('button', { name: 'count 1' })).toBeInTheDocument();
+    const appContainer = container.querySelector('.app-container');
+
+    // false -> true: the flag arrives on a successful refetch.
+    vidroState.enabled = true;
+    vidroState.active = true;
+    rerender(tree());
+    expect(document.querySelector('.vidro-panel')).toContainElement(main);
+    expect(document.getElementById('app')).toBe(main);
+    expect(main?.parentElement?.parentElement).toBe(appContainer);
+    expect(screen.getByRole('button', { name: 'count 1' })).toBeInTheDocument();
+
+    // true -> false: the kill switch lands on the next refetch.
+    vidroState.enabled = false;
+    vidroState.active = false;
+    rerender(tree());
+    expect(document.querySelector('.vidro-panel')).toBeNull();
+    expect(document.getElementById('app')).toBe(main);
+    expect(main?.parentElement?.parentElement).toBe(appContainer);
+    expect(screen.getByRole('button', { name: 'count 1' })).toBeInTheDocument();
+    expect(mounts).toBe(1);
+  });
+
+  it('uses the glass panel and the rail at tablet width when vidro is active', async () => {
+    vidroState.active = true;
+    vidroState.enabled = true;
+    setViewport(900);
+    mockMatchMedia(true);
+
+    renderLayout();
+    await screen.findByTestId('global-banner');
+
+    expect(screen.queryByTestId('topbar')).not.toBeInTheDocument();
+    expect(document.querySelector('.vidro-panel')).toContainElement(document.getElementById('app'));
+    expect(document.querySelector('.tablet-drawer-backdrop')).toBeNull();
+    const sidebar = screen.getByTestId('sidebar');
+    expect(sidebar).toHaveAttribute('data-vidro-shell', 'true');
+    expect(sidebar).toHaveAttribute('data-rail-only', 'true');
+    expect(sidebar).toHaveAttribute('data-drawer', 'false');
+  });
+
+  it('keeps the classic drawer and TopBar at tablet width when the user opted out', async () => {
+    vidroState.active = false;
+    vidroState.enabled = true;
+    vidroState.optedOut = true;
+    setViewport(900);
+    mockMatchMedia(true);
+
+    renderLayout();
+    await screen.findByTestId('global-banner');
+
+    expect(screen.getByTestId('topbar')).toBeInTheDocument();
+    expect(document.querySelector('.vidro-panel')).toBeNull();
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-drawer', 'true');
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-rail-only', 'false');
+  });
+
+  it('keeps the classic TopBar at desktop width when vidro is inactive', async () => {
+    setViewport(1280);
+    mockMatchMedia(false);
+
+    renderLayout();
+    await screen.findByTestId('global-banner');
+
+    expect(screen.getByTestId('topbar')).toBeInTheDocument();
+    expect(document.querySelector('.vidro-panel')).toBeNull();
+    expect(screen.queryByTestId('page-toolbar')).not.toBeInTheDocument();
+  });
+});
+
+describe('Vidro launch intro', () => {
+  function vidroOn() {
+    vidroState.active = true;
+    vidroState.enabled = true;
+    setViewport(1280);
+    mockMatchMedia(false);
+  }
+
+  it('takes the popup slot the first time the look is on at desktop width', async () => {
+    vidroOn();
+    renderLayout();
+    expect(await screen.findByTestId('vidro-intro')).toBeInTheDocument();
+    expect(screen.queryByTestId('popup-host')).not.toBeInTheDocument();
+  });
+
+  it('leaves the slot to the popup host once seen, in classic, or on phones', async () => {
+    vidroOn();
+    localStorage.setItem('vidro-intro:u1', '1');
+    const first = renderLayout();
+    expect(await screen.findByTestId('popup-host')).toBeInTheDocument();
+    expect(screen.queryByTestId('vidro-intro')).not.toBeInTheDocument();
+    first.unmount();
+
+    localStorage.clear();
+    vidroState.active = false;
+    vidroState.optedOut = true;
+    const second = renderLayout();
+    expect(await screen.findByTestId('popup-host')).toBeInTheDocument();
+    second.unmount();
+
+    vidroState.active = true;
+    vidroState.optedOut = false;
+    setViewport(390);
+    mockMatchMedia(false, true);
+    renderLayout();
+    expect(await screen.findByTestId('popup-host')).toBeInTheDocument();
+    expect(screen.queryByTestId('vidro-intro')).not.toBeInTheDocument();
+  });
+
+  it('waits for the look to settle before choosing', async () => {
+    vidroOn();
+    vidroState.settled = false;
+    const { rerender } = renderLayout();
+    await screen.findByTestId('global-banner');
+    expect(screen.queryByTestId('popup-host')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('vidro-intro')).not.toBeInTheDocument();
+
+    vidroState.settled = true;
+    rerender(layoutTree());
+    expect(await screen.findByTestId('vidro-intro')).toBeInTheDocument();
+  });
+
+  it('skips accounts created after the launch', async () => {
+    vidroOn();
+    mockedUseAuth.mockReturnValue({
+      ...mockedUseAuth(),
+      user: { id: 'u1', created_at: '2026-11-02T12:00:00Z' } as never,
+    });
+    renderLayout();
+    expect(await screen.findByTestId('popup-host')).toBeInTheDocument();
+  });
+
+  it('opts the user out from the intro', async () => {
+    vidroOn();
+    const setOptedOut = vi.fn();
+    vidroState.setOptedOut = setOptedOut;
+    renderLayout();
+    fireEvent.click(await screen.findByTestId('vidro-intro'));
+    expect(setOptedOut).toHaveBeenCalledWith(true);
+  });
+});
+
+describe('sidebar default under Vidro', () => {
+  beforeEach(() => {
+    localStorage.removeItem('sidebar-pinned');
+    setViewport(1280);
+    mockMatchMedia(false);
+  });
+
+  it('starts pinned when nothing is stored and the look is active', async () => {
+    Object.assign(vidroState, { enabled: true, active: true, optedOut: false });
+    renderLayout();
+    await screen.findByTestId('global-banner');
+    expect(document.querySelector('.app-container')).not.toHaveAttribute('data-sidebar-collapsed');
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-pinned', 'true');
+  });
+
+  it('keeps the rail when the user stored 0', async () => {
+    localStorage.setItem('sidebar-pinned', '0');
+    Object.assign(vidroState, { enabled: true, active: true, optedOut: false });
+    renderLayout();
+    await screen.findByTestId('global-banner');
+    expect(document.querySelector('.app-container')).toHaveAttribute('data-sidebar-collapsed');
+  });
+
+  it('rail when nothing is stored and the look is classic', async () => {
+    Object.assign(vidroState, { enabled: true, active: false, optedOut: true });
+    renderLayout();
+    await screen.findByTestId('global-banner');
+    expect(document.querySelector('.app-container')).toHaveAttribute('data-sidebar-collapsed');
+  });
+
+  it('never writes storage on its own', async () => {
+    Object.assign(vidroState, { enabled: true, active: true, optedOut: false });
+    renderLayout();
+    await screen.findByTestId('global-banner');
+    expect(localStorage.getItem('sidebar-pinned')).toBeNull();
+  });
+
+  it('from unset under Vidro, the pin toggle stores 0 and shows the rail', async () => {
+    Object.assign(vidroState, { enabled: true, active: true, optedOut: false });
+    renderLayout();
+    await screen.findByTestId('global-banner');
+    fireEvent.click(screen.getByRole('button', { name: 'Pin' }));
+    expect(localStorage.getItem('sidebar-pinned')).toBe('0');
+    expect(document.querySelector('.app-container')).toHaveAttribute(
+      'data-sidebar-collapsed',
+      'true',
+    );
   });
 });

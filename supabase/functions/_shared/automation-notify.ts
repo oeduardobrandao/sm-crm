@@ -48,6 +48,8 @@ export async function notifyAutomationFailure(
       p_workspace_id: args.contaId,
       p_responsavel_id: null,
       p_roles_filter: ["owner", "admin"],
+      // Admin restrito só recebe o aviso de cliente que ele vê (20261117000011).
+      p_cliente_id: args.clientId,
     });
     if (targetsErr) throw targetsErr;
 
@@ -63,6 +65,7 @@ export async function notifyAutomationFailure(
       // ou `client_id` nao pode sobrescreve-los em silencio -- o dedupe acima
       // agora depende do `reason` gravado aqui ser o de verdade.
       p_metadata: { ...args.extraMetadata, client_id: args.clientId, reason: args.reason },
+      p_cliente_id: args.clientId,
     });
     if (insertErr) throw insertErr;
   } catch (err) {

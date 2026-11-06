@@ -1,7 +1,12 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Desktop editor: jsdom's matchMedia reports no match, which would render the phone editor.
+vi.mock('@/pages/entregas/components/postEditorPhone/useIsPhoneEditor', () => ({
+  useIsPhoneEditor: () => false,
+}));
 vi.mock('sonner', () => ({
   toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), info: vi.fn() }),
 }));
@@ -35,9 +40,56 @@ vi.mock('@/services/inlineImage', () => ({
   stripSignedUrls: vi.fn((c: unknown) => c),
   resolveInlineImageUrls: vi.fn(async () => ({})),
 }));
-vi.mock('@/pages/entregas/components/PostEditor', () => ({ PostEditor: () => <div /> }));
+const editorMock = vi.hoisted(() => ({ focusThread: vi.fn() }));
+vi.mock('@/pages/entregas/components/PostEditor', async () => {
+  const { useImperativeHandle } = await import('react');
+  return {
+    PostEditor: function PostEditorStub({
+      ref,
+    }: {
+      ref?: import('react').Ref<{ focusThread(id: number): void }>;
+    }) {
+      useImperativeHandle(ref, () => ({ focusThread: editorMock.focusThread }));
+      return <div />;
+    },
+  };
+});
 vi.mock('@/pages/entregas/components/PropertyPanel', () => ({ PropertyPanel: () => null }));
-vi.mock('@/pages/entregas/components/PostCommentSummary', () => ({ default: () => null }));
+const discussaoMock = vi.hoisted(() => ({
+  result: { marker: 'discussao-result' },
+  useDiscussao: vi.fn(),
+}));
+vi.mock('@/pages/entregas/discussao/useDiscussao', () => ({
+  useDiscussao: (args: unknown) => {
+    discussaoMock.useDiscussao(args);
+    return discussaoMock.result;
+  },
+}));
+vi.mock('@/pages/entregas/discussao/DiscussaoEquipe', () => ({
+  DiscussaoEquipe: ({
+    discussao,
+    chatBridge,
+    onThreadClick,
+  }: {
+    discussao: unknown;
+    chatBridge?: ReactNode;
+    onThreadClick: (threadId: number) => void;
+  }) => (
+    <section data-testid="discussao-stub" data-shared={String(discussao === discussaoMock.result)}>
+      {chatBridge}
+      <button type="button" onClick={() => onThreadClick(5)}>
+        stub-ver-no-texto
+      </button>
+    </section>
+  ),
+}));
+vi.mock('@/pages/entregas/discussao/DiscutirNoChat', () => ({
+  DiscutirNoChat: ({ variant, post }: { variant: string; post: unknown }) => (
+    <button type="button" data-testid="bridge-stub" data-variant={variant}>
+      {JSON.stringify(post)}
+    </button>
+  ),
+}));
 vi.mock('@/pages/entregas/components/PostMediaGallery', () => ({
   PostMediaGallery: () => null,
   hasVideoMissingThumbnail: () => false,
@@ -46,7 +98,13 @@ vi.mock('@/pages/entregas/components/InstagramCaptionField', () => ({
   InstagramCaptionField: () => <div data-testid="ig-caption-stub" />,
 }));
 vi.mock('@/pages/entregas/components/PlatformSelector', () => ({
-  PlatformSelector: () => <div data-testid="platform-selector-stub" />,
+  PlatformSelector: ({ onChange }: { onChange: (p: string) => void }) => (
+    <div data-testid="platform-selector-stub">
+      <button type="button" onClick={() => onChange('tiktok')}>
+        stub-only-tiktok
+      </button>
+    </div>
+  ),
 }));
 vi.mock('@/pages/entregas/components/TikTokSettingsPanel', () => ({
   TikTokSettingsPanel: ({ hideCaption }: { hideCaption?: boolean }) => (
@@ -64,6 +122,7 @@ vi.mock('@/pages/entregas/components/references/PostClientReferences', () => ({
 }));
 vi.mock('@/pages/entregas/components/TrialReelPanel', () => ({ TrialReelPanel: () => null }));
 vi.mock('@/pages/entregas/components/ScheduleButton', () => ({
+  useScheduleActions: () => ({}),
   ScheduleButton: ({
     explainMissingInstagramAccount,
   }: {
@@ -73,7 +132,14 @@ vi.mock('@/pages/entregas/components/ScheduleButton', () => ({
 vi.mock('@/pages/entregas/components/PostAutomationSection', () => ({
   PostAutomationSection: () => null,
 }));
-vi.mock('@/pages/entregas/components/PublishErrorBlock', () => ({ PublishErrorBlock: () => null }));
+vi.mock('@/pages/entregas/components/PublishErrorBlock', () => ({
+  PublishErrorBlock: ({ onEditCollaborators }: { onEditCollaborators?: () => void }) =>
+    onEditCollaborators ? (
+      <button type="button" onClick={onEditCollaborators}>
+        stub-editar-colaboradores
+      </button>
+    ) : null,
+}));
 vi.mock('@/pages/entregas/components/SuggestTimeButton', () => ({ SuggestTimeButton: () => null }));
 vi.mock('@/pages/entregas/components/PostVersionHistorySheet', () => ({
   PostVersionHistorySheet: () => null,
@@ -83,6 +149,7 @@ vi.mock('@/components/ui/date-time-picker', () => ({ DateTimePicker: () => null 
 import { toast } from 'sonner';
 import * as store from '@/store';
 import { PostEditorBody, type PostEditorBodyProps } from '../PostEditorBody';
+import { TIPO_LABELS } from '../../postLabels';
 import type { WorkflowPost } from '@/store';
 
 const basePost = {
@@ -339,5 +406,353 @@ describe('PostEditorBody, feature_multiplatform ON', () => {
     renderBody({ post: { ...basePost, is_express: true } });
     await screen.findByRole('tab', { name: /Instagram/ });
     expect(screen.queryByRole('group', { name: 'Destinos' })).toBeNull();
+  });
+});
+
+const STORIES_TOAST = 'Colaboradores removidos: Stories não aceitam colaboradores.';
+const NOT_INSTAGRAM_TOAST = 'Colaboradores removidos: o post não vai mais para o Instagram.';
+const collabGroup = () => screen.queryByRole('group', { name: 'Colaboradores', hidden: true });
+
+describe('PostEditorBody, colaboradores do Instagram (desktop, single-platform)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    limitsMock.features = { feature_tiktok: true };
+  });
+
+  it('feed + Instagram com conta: mostra o campo (fixture sem ig_collaborators: 0 de 3)', () => {
+    renderBody({ hasInstagramAccount: true });
+    expect(collabGroup()).toBeInTheDocument();
+    expect(screen.getByText('0 de 3')).toBeInTheDocument();
+  });
+
+  it('não mostra em stories, em post só-TikTok nem sem conta conectada', () => {
+    const a = renderBody({ hasInstagramAccount: true, post: { ...basePost, tipo: 'stories' } });
+    expect(collabGroup()).toBeNull();
+    a.unmount();
+    const b = renderBody({ hasInstagramAccount: true, post: { ...basePost, platform: 'tiktok' } });
+    expect(collabGroup()).toBeNull();
+    b.unmount();
+    renderBody({ hasInstagramAccount: false });
+    expect(collabGroup()).toBeNull();
+  });
+
+  it('mostra os chips salvos e salva pela via onFieldChange', () => {
+    const onFieldChange = vi.fn();
+    renderBody({
+      hasInstagramAccount: true,
+      onFieldChange,
+      post: { ...basePost, ig_collaborators: ['dra.julia'] },
+    });
+    expect(screen.getByTestId('collab-chip-dra.julia')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Remover @dra.julia' }));
+    expect(onFieldChange).toHaveBeenCalledWith('ig_collaborators', []);
+  });
+
+  it('dois @ seguidos antes do servidor responder: o segundo mantém o primeiro', async () => {
+    let release!: () => void;
+    const onFieldChange = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderBody({ hasInstagramAccount: true, onFieldChange });
+    const input = screen.getByPlaceholderText('Adicionar @usuário');
+    fireEvent.change(input, { target: { value: 'dra.julia' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.change(input, { target: { value: 'clinicaviva' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(screen.getByTestId('collab-chip-dra.julia')).toBeInTheDocument();
+    expect(screen.getByTestId('collab-chip-clinicaviva')).toBeInTheDocument();
+    expect(onFieldChange).toHaveBeenCalledTimes(1);
+    release();
+    await waitFor(() => expect(onFieldChange).toHaveBeenCalledTimes(2));
+    expect(onFieldChange).toHaveBeenLastCalledWith('ig_collaborators', [
+      'dra.julia',
+      'clinicaviva',
+    ]);
+  });
+
+  it('gravação recusada: o chip otimista volta ao valor salvo', async () => {
+    const onFieldChange = vi.fn(() => Promise.resolve(false));
+    renderBody({
+      hasInstagramAccount: true,
+      onFieldChange,
+      post: { ...basePost, ig_collaborators: ['dra.julia'] },
+    });
+    const input = screen.getByPlaceholderText('Adicionar @usuário');
+    fireEvent.change(input, { target: { value: 'clinicaviva' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(screen.getByTestId('collab-chip-clinicaviva')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId('collab-chip-clinicaviva')).toBeNull());
+    expect(screen.getByTestId('collab-chip-dra.julia')).toBeInTheDocument();
+  });
+
+  it('agendado: campo travado, sem input', () => {
+    renderBody({
+      hasInstagramAccount: true,
+      post: { ...basePost, status: 'agendado', ig_collaborators: ['dra.julia'] },
+    });
+    expect(screen.queryByPlaceholderText('Adicionar @usuário')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Remover @dra.julia' })).toBeNull();
+  });
+
+  it('chips recusados só quando a falha é COLLABORATOR_INVALID', () => {
+    const a = renderBody({
+      hasInstagramAccount: true,
+      post: {
+        ...basePost,
+        status: 'falha_publicacao',
+        publish_error_code: 'COLLABORATOR_INVALID',
+        ig_collaborators: ['dra.julia', 'clinicaviva'],
+        ig_collaborators_refused: ['dra.julia'],
+      },
+    });
+    expect(screen.getByTestId('collab-chip-dra.julia')).toHaveAttribute('data-refused', 'true');
+    expect(screen.getByTestId('collab-chip-clinicaviva')).not.toHaveAttribute('data-refused');
+    a.unmount();
+    renderBody({
+      hasInstagramAccount: true,
+      post: {
+        ...basePost,
+        status: 'rascunho',
+        ig_collaborators: ['dra.julia'],
+        ig_collaborators_refused: ['dra.julia'],
+      },
+    });
+    expect(screen.getByTestId('collab-chip-dra.julia')).not.toHaveAttribute('data-refused');
+  });
+
+  it('tipo → stories com colaboradores limpa a lista e avisa', () => {
+    const onFieldChange = vi.fn();
+    renderBody({
+      hasInstagramAccount: true,
+      onFieldChange,
+      post: { ...basePost, ig_collaborators: ['dra.julia'] },
+    });
+    fireEvent.click(screen.getByRole('radio', { name: TIPO_LABELS.stories }));
+    expect(onFieldChange).toHaveBeenCalledWith('tipo', 'stories');
+    expect(onFieldChange).toHaveBeenCalledWith('ig_collaborators', []);
+    expect(toast.info).toHaveBeenCalledWith(STORIES_TOAST);
+  });
+
+  it('tipo → stories sem colaboradores (ou campo ausente): não limpa nem avisa', () => {
+    const onFieldChange = vi.fn();
+    renderBody({ hasInstagramAccount: true, onFieldChange });
+    fireEvent.click(screen.getByRole('radio', { name: TIPO_LABELS.stories }));
+    expect(onFieldChange).toHaveBeenCalledWith('tipo', 'stories');
+    expect(onFieldChange).not.toHaveBeenCalledWith('ig_collaborators', expect.anything());
+    expect(toast.info).not.toHaveBeenCalled();
+  });
+
+  it('tipo → reels com colaboradores mantém a lista', () => {
+    const onFieldChange = vi.fn();
+    renderBody({
+      hasInstagramAccount: true,
+      onFieldChange,
+      post: { ...basePost, ig_collaborators: ['dra.julia'] },
+    });
+    fireEvent.click(screen.getByRole('radio', { name: TIPO_LABELS.reels }));
+    expect(onFieldChange).not.toHaveBeenCalledWith('ig_collaborators', expect.anything());
+    expect(toast.info).not.toHaveBeenCalled();
+  });
+
+  it('plataforma → só TikTok com colaboradores limpa a lista e avisa', () => {
+    const onFieldChange = vi.fn();
+    renderBody({
+      hasInstagramAccount: true,
+      onFieldChange,
+      post: { ...basePost, ig_collaborators: ['dra.julia'] },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'stub-only-tiktok' }));
+    expect(onFieldChange).toHaveBeenCalledWith('platform', 'tiktok');
+    expect(onFieldChange).toHaveBeenCalledWith('ig_collaborators', []);
+    expect(toast.info).toHaveBeenCalledWith(NOT_INSTAGRAM_TOAST);
+  });
+
+  it('Editar colaboradores (bloco de erro) foca o input do campo', async () => {
+    renderBody({
+      hasInstagramAccount: true,
+      post: {
+        ...basePost,
+        status: 'falha_publicacao',
+        publish_error_code: 'COLLABORATOR_INVALID',
+        publish_error: 'x',
+        ig_collaborators: ['dra.julia'],
+        ig_collaborators_refused: ['dra.julia'],
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'stub-editar-colaboradores' }));
+    await waitFor(() => expect(screen.getByPlaceholderText('Adicionar @usuário')).toHaveFocus());
+  });
+});
+
+describe('PostEditorBody, colaboradores do Instagram (desktop, feature_multiplatform ON)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    limitsMock.features = { feature_tiktok: true, feature_multiplatform: true };
+    vi.mocked(store.getBoardPlatforms).mockResolvedValue(['instagram', 'geral']);
+  });
+
+  it('o campo fica na aba do Instagram, abaixo da legenda, só com conta conectada', async () => {
+    vi.mocked(store.getPostTargets).mockResolvedValue([target('instagram'), target('geral')]);
+    const a = renderBody({ hasInstagramAccount: true });
+    await screen.findByRole('tab', { name: /Instagram/ });
+    const panel = screen.getByTestId('ig-caption-stub').parentElement!;
+    expect(within(panel).getByRole('group', { name: 'Colaboradores', hidden: true })).toBeTruthy();
+    a.unmount();
+    renderBody({ hasInstagramAccount: false });
+    await screen.findByRole('tab', { name: /Instagram/ });
+    expect(collabGroup()).toBeNull();
+  });
+
+  it('desligar o Instagram com colaboradores avisa depois do sucesso (Review Focus 4)', async () => {
+    vi.mocked(store.getPostTargets).mockResolvedValue([target('instagram'), target('geral')]);
+    renderBody({
+      hasInstagramAccount: true,
+      post: { ...basePost, ig_collaborators: ['dra.julia'] },
+    });
+    const ig = await screen.findByRole('button', { name: /Instagram/ });
+    await waitFor(() => expect(ig).not.toBeDisabled());
+    fireEvent.click(ig);
+    await waitFor(() => expect(store.removePostDestination).toHaveBeenCalledWith(42, 'instagram'));
+    await waitFor(() => expect(toast.info).toHaveBeenCalledWith(NOT_INSTAGRAM_TOAST));
+  });
+
+  it('desligar o Instagram sem colaboradores não avisa', async () => {
+    vi.mocked(store.getPostTargets).mockResolvedValue([target('instagram'), target('geral')]);
+    renderBody({ hasInstagramAccount: true });
+    const ig = await screen.findByRole('button', { name: /Instagram/ });
+    await waitFor(() => expect(ig).not.toBeDisabled());
+    fireEvent.click(ig);
+    await waitFor(() => expect(store.removePostDestination).toHaveBeenCalledWith(42, 'instagram'));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(toast.info).not.toHaveBeenCalled();
+  });
+
+  it('desligar o Instagram com falha no servidor não avisa', async () => {
+    vi.mocked(store.getPostTargets).mockResolvedValue([target('instagram'), target('geral')]);
+    vi.mocked(store.removePostDestination).mockRejectedValueOnce(new Error('boom'));
+    renderBody({
+      hasInstagramAccount: true,
+      post: { ...basePost, ig_collaborators: ['dra.julia'] },
+    });
+    const ig = await screen.findByRole('button', { name: /Instagram/ });
+    await waitFor(() => expect(ig).not.toBeDisabled());
+    fireEvent.click(ig);
+    await waitFor(() => expect(store.removePostDestination).toHaveBeenCalledWith(42, 'instagram'));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(toast.info).not.toHaveBeenCalledWith(NOT_INSTAGRAM_TOAST);
+  });
+
+  it('Editar colaboradores troca para a aba do Instagram e foca o input', async () => {
+    vi.mocked(store.getPostTargets).mockResolvedValue([target('instagram'), target('geral', 'G')]);
+    renderBody({
+      hasInstagramAccount: true,
+      post: {
+        ...basePost,
+        status: 'falha_publicacao',
+        publish_error_code: 'COLLABORATOR_INVALID',
+        publish_error: 'x',
+        ig_collaborators: ['dra.julia'],
+      },
+    });
+    // Radix Tabs ativa no mousedown.
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: /Geral/ }), { button: 0 });
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: /Geral/ })).toHaveAttribute('aria-selected', 'true'),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'stub-editar-colaboradores' }));
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: /Instagram/ })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      ),
+    );
+    await waitFor(() => expect(screen.getByPlaceholderText('Adicionar @usuário')).toHaveFocus());
+  });
+});
+
+describe('PostEditorBody, Discussão da equipe and Conversa com o cliente', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    limitsMock.features = { feature_tiktok: true };
+  });
+
+  it('labels the client thread as client-visible and drops "Comentários internos"', () => {
+    renderBody();
+    expect(screen.getByRole('heading', { name: 'Conversa com o cliente' })).toBeInTheDocument();
+    expect(screen.getByText('O cliente vê')).toBeInTheDocument();
+    expect(screen.queryByText('Comentários internos')).toBeNull();
+    expect(screen.queryByText(/^Comentários$/)).toBeNull();
+    expect(screen.getByPlaceholderText('Responder ao cliente…')).toBeInTheDocument();
+  });
+
+  it('renders the team discussion with the hook result computed once for the post', () => {
+    renderBody();
+    expect(screen.getByTestId('discussao-stub')).toHaveAttribute('data-shared', 'true');
+    expect(discussaoMock.useDiscussao).toHaveBeenLastCalledWith(
+      expect.objectContaining({ postId: 42, currentUserId: 'user-1', enabled: true }),
+    );
+  });
+
+  it("hands the hook only this post's threads", () => {
+    const mk = (id: number, postId: number) =>
+      ({ id, post_id: postId, field: 'geral', status: 'active', post_comments: [] }) as never;
+    renderBody({ commentThreads: [mk(1, 42), mk(2, 99)] });
+    const args = discussaoMock.useDiscussao.mock.lastCall?.[0] as { threads: { id: number }[] };
+    expect(args.threads.map((t) => t.id)).toEqual([1]);
+  });
+
+  it('Ver no texto on a Roteiro thread focuses it in the editor', async () => {
+    const roteiro = {
+      id: 5,
+      post_id: 42,
+      field: 'conteudo',
+      status: 'active',
+      post_comments: [],
+    } as never;
+    renderBody({ commentThreads: [roteiro] });
+    fireEvent.click(screen.getByRole('button', { name: 'stub-ver-no-texto' }));
+    await waitFor(() => expect(editorMock.focusThread).toHaveBeenCalledWith(5));
+  });
+
+  it('keeps the hook disabled while the post row is collapsed', () => {
+    renderBody({ isExpanded: false });
+    expect(screen.queryByTestId('discussao-stub')).toBeNull();
+    expect(discussaoMock.useDiscussao).toHaveBeenLastCalledWith(
+      expect.objectContaining({ enabled: false }),
+    );
+  });
+});
+
+describe('PostEditorBody, Discutir no chat bridge (desktop)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    limitsMock.features = { feature_tiktok: true };
+  });
+
+  it('hands the popover bridge and the post to the Discussão da equipe section', () => {
+    renderBody();
+    const bridge = within(screen.getByTestId('discussao-stub')).getByTestId('bridge-stub');
+    expect(bridge).toHaveAttribute('data-variant', 'popover');
+    expect(JSON.parse(bridge.textContent ?? '')).toEqual({
+      id: 42,
+      titulo: 'Post',
+      workflowId: 10,
+    });
+  });
+
+  it('sends a null workflowId for a standalone post', () => {
+    renderBody({ post: { ...basePost, workflow_id: null } });
+    expect(JSON.parse(screen.getByTestId('bridge-stub').textContent ?? '')).toMatchObject({
+      workflowId: null,
+    });
+  });
+
+  it('renders neither the section nor the bridge for an unsaved post', () => {
+    renderBody({ post: { ...basePost, id: undefined } });
+    expect(screen.queryByTestId('discussao-stub')).toBeNull();
+    expect(screen.queryByTestId('bridge-stub')).toBeNull();
   });
 });

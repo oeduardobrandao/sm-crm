@@ -16,7 +16,7 @@ function makeFakeDb(responses: Record<string, Resp[]>) {
   function recorder(table: string) {
     // deno-lint-ignore no-explicit-any
     const rec: any = {};
-    const next = (): Resp => (queues[table] ?? []).shift() ?? { data: null, error: null };
+    const next = (): Resp => (queues[table] ?? []).shift() ?? (table === "workspace_members" ? { data: { role: "agent", client_scope: "todos" }, error: null } : { data: null, error: null });
     for (const m of ["select", "eq", "in", "gte", "order", "limit", "range", "insert", "update", "upsert", "delete"]) {
       rec[m] = (...args: unknown[]) => { calls.push({ table, method: m, args }); return rec; };
     }
@@ -194,10 +194,25 @@ Deno.test("mcp-import: createMember inserts with defaults and ctx stamps, no cus
   assertEquals(row.user_id, "user-1");
   assertEquals(row.tipo, "clt");
   assertEquals(row.cargo, "");
-  assertEquals(row.avatar_url, "");
   assertEquals(row.custo_mensal, 3000);
   assertEquals(out.already_existed, false);
   assert(!("custo_mensal" in out), "custo_mensal never echoed");
+  assert(!("data_pagamento" in out), "data_pagamento never echoed");
+  const sel = calls.find((c) => c.table === "membros" && c.method === "select" && String(c.args[0]).includes("crm_user_id") && !String(c.args[0]).includes("custo_mensal"))!.args[0] as string;
+  assert(!sel.includes("data_pagamento"), "insert returns no financial field");
+});
+
+Deno.test("mcp-import: create_member does not send avatar_url", async () => {
+  const { db, calls } = makeFakeDb({
+    membros: [
+      { data: [], error: null },
+      { data: { id: 7, nome: "Bia", cargo: "", tipo: "clt", data_pagamento: null, crm_user_id: null, created_at: "2026-10-21" }, error: null },
+    ],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  await createMember(deps, { nome: "Bia" });
+  const row = insertPayload(calls, "membros")!;
+  assert(!Object.hasOwn(row, "avatar_url"), "insert payload must not carry avatar_url");
 });
 
 Deno.test("mcp-import: createMember matches nome, fills empty cargo and NULL custo only", async () => {
@@ -219,6 +234,7 @@ Deno.test("mcp-import: createMember matches nome, fills empty cargo and NULL cus
   assertEquals(out.already_existed, true);
   assertEquals(out.filled_fields, ["cargo"]);
   assertEquals(out.tipo, "freelancer_mensal", "existing tipo reported");
+  assert(!("custo_mensal" in out) && !("data_pagamento" in out), "already_existed return carries no financial field");
 });
 
 Deno.test("mcp-import: createMember same nome in another workspace still inserts (scan is conta-scoped)", async () => {
@@ -249,6 +265,9 @@ Deno.test("mcp-import: listMembers projects public fields, scoped and ordered", 
   assert(has(calls, "membros", "order", ["created_at", { ascending: false }]), "newest first");
   assertEquals(out.length, 1);
   assert(!("custo_mensal" in out[0]), "custo_mensal stripped even if selected by accident");
+  assert(!("data_pagamento" in out[0]), "data_pagamento stripped: list_members carries no financial field");
+  const sel = calls.find((c) => c.table === "membros" && c.method === "select")!.args[0] as string;
+  assert(!sel.includes("data_pagamento") && !sel.includes("custo_mensal"), "no financial column selected");
   assertEquals(out[0].nome, "Ana");
 });
 
@@ -256,7 +275,7 @@ function makeFakeServer() {
   return {
     handlers: {} as Record<string, (a: unknown) => Promise<{ content: { type: string; text: string }[]; isError?: boolean }>>,
     // deno-lint-ignore no-explicit-any
-    tool(name: string, _d: any, _s: any, h: any) { this.handlers[name] = h; },
+    registerTool(name: string, _c: any, h: any) { this.handlers[name] = h; },
   };
 }
 
@@ -310,4 +329,41 @@ Deno.test("mcp-import: create_member audit row carries member_id via the extende
   await server.handlers["create_member"]({ nome: "João" });
   const auditRow = insertPayload(calls, "audit_log")! as Record<string, any>;
   assertEquals(auditRow.resource_id, "5", "resource_id from member_id");
+});
+
+Deno.test("mcp-import: an OAuth ctx without financeiro:editar can't set financial fields", async () => {
+  const { db, calls } = makeFakeDb({});
+  const noFinCtx: McpKeyContext = {
+    conta_id: "workspace-A",
+    scopes: ["clientes:write", "membros:write"],
+    key_id: "oauth:claude",
+    created_by: "user-1",
+    can_write_financials: false,
+  };
+  const server = makeFakeServer();
+  registerTools(server as any, { db, ctx: noFinCtx } as unknown as Deps);
+  const client = await server.handlers["create_client"]({ nome: "X", valor_mensal: 1500 });
+  assert(client.isError === true && client.content[0].text.includes("valor_mensal"), "create_client refused");
+  const member = await server.handlers["create_member"]({ nome: "Y", custo_mensal: 900, data_pagamento: 5 });
+  assert(
+    member.isError === true && member.content[0].text.includes("custo_mensal, data_pagamento"),
+    "create_member refused",
+  );
+  assertEquals(calls.length, 0, "refused before any db access");
+});
+
+Deno.test("mcp-import: the financial gate leaves calls without financial fields alone", async () => {
+  const { requireFinancialWrite } = await import("../_shared/mcp-token.ts");
+  const ctx: McpKeyContext = { conta_id: "w", scopes: [], key_id: "k", created_by: "u", can_write_financials: false };
+  requireFinancialWrite(ctx, { nome: "X" }, ["valor_mensal"]);
+  // Only an explicit true writes them. Both resolvers always set the flag, so unset means a
+  // context nobody resolved, which fails closed.
+  requireFinancialWrite({ ...ctx, can_write_financials: true }, { valor_mensal: 1 }, ["valor_mensal"]);
+  let refused: unknown;
+  try {
+    requireFinancialWrite({ ...ctx, can_write_financials: undefined }, { valor_mensal: 1 }, ["valor_mensal"]);
+  } catch (e) {
+    refused = e;
+  }
+  assert(refused instanceof Error && refused.message.includes("valor_mensal"), "unset flag refused");
 });

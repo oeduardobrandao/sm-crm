@@ -5,12 +5,14 @@ import {
   queryOptions,
 } from '@tanstack/react-query';
 import { matchPath } from 'react-router-dom';
+import { canonicalHubToken } from './lib/hubLinks';
 import {
   fetchAgenda,
   fetchAgendaItem,
   fetchAgendaPeriodo,
   fetchBootstrap,
   fetchConvite,
+  fetchLinhas,
   fetchPost,
   fetchPosts,
   fetchPostsInRange,
@@ -81,6 +83,18 @@ export function invalidateHubPosts(qc: QueryClient, token: string) {
     qc.invalidateQueries({ queryKey: [HUB_POSTS_KEY, token, 'range'], refetchType: 'none' }),
   ]);
 }
+
+// ── Linha editorial ─────────────────────────────────────────────────────────
+
+export const HUB_LINHAS_KEY = 'hub-linhas';
+
+/** Gate it with `enabled` at the call site: the endpoint answers 403 when the flag is off. */
+export const hubLinhasQuery = (token: string) =>
+  queryOptions({
+    queryKey: [HUB_LINHAS_KEY, token],
+    queryFn: () => fetchLinhas(token),
+    staleTime: 30_000,
+  });
 
 // ── Agenda ──────────────────────────────────────────────────────────────────
 
@@ -187,8 +201,9 @@ export function createHubQueryClient() {
  */
 export function prefetchHubShell(queryClient: QueryClient, pathname: string) {
   const match = matchPath({ path: '/:workspace/hub/:token', end: false }, pathname);
-  const { workspace, token } = match?.params ?? {};
-  if (!workspace || !token) return;
+  const { workspace, token: urlToken } = match?.params ?? {};
+  if (!workspace || !urlToken) return;
+  const token = canonicalHubToken(urlToken);
   void queryClient.prefetchQuery(hubBootstrapQuery(workspace, token));
   void queryClient.prefetchQuery(hubPostsQuery(token));
 }

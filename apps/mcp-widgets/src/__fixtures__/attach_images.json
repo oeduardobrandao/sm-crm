@@ -1,0 +1,51 @@
+{
+  "card": "attach_image",
+  "v": 1,
+  "post": {
+    "id": 777,
+    "titulo": "5 mitos sobre protetor solar",
+    "tipo": "carrossel",
+    "status": "rascunho"
+  },
+  "client": {
+    "id": 42,
+    "nome": "Dra. Marina Arrais"
+  },
+  "media": [
+    {
+      "position": 1,
+      "url": "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%204%205%22%3E%3Crect%20width%3D%224%22%20height%3D%225%22%20fill%3D%22%23e7e2d6%22%2F%3E%3C%2Fsvg%3E",
+      "link_id": 501
+    },
+    {
+      "position": 2,
+      "url": "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%204%205%22%3E%3Crect%20width%3D%224%22%20height%3D%225%22%20fill%3D%22%23dfe6dc%22%2F%3E%3C%2Fsvg%3E",
+      "link_id": 502
+    },
+    {
+      "position": 3,
+      "url": "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%204%205%22%3E%3Crect%20width%3D%224%22%20height%3D%225%22%20fill%3D%22%23d6dfe7%22%2F%3E%3C%2Fsvg%3E",
+      "link_id": 503
+    }
+  ],
+  "max": 10,
+  "eligible": true,
+  "image": {
+    "download_url": "https://files.oaiusercontent.com/file-a?sig=x",
+    "file_id": "file-a"
+  },
+  "images": [
+    {
+      "download_url": "https://files.oaiusercontent.com/file-a?sig=x",
+      "file_id": "file-a"
+    },
+    {
+      "download_url": "https://files.oaiusercontent.com/file-b?sig=x",
+      "file_id": "file-b"
+    },
+    {
+      "download_url": "https://files.oaiusercontent.com/file-c?sig=x",
+      "file_id": "file-c"
+    }
+  ]
+}

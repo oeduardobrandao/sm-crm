@@ -2,12 +2,13 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { getDetails, approve, deny, listWorkspaces, recordGrant } = vi.hoisted(() => ({
+const { getDetails, approve, deny, listWorkspaces, recordGrant, prepare } = vi.hoisted(() => ({
   getDetails: vi.fn(),
   approve: vi.fn(),
   deny: vi.fn(),
   listWorkspaces: vi.fn(),
   recordGrant: vi.fn(),
+  prepare: vi.fn(),
 }));
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -27,6 +28,7 @@ vi.mock('../../../lib/supabase', () => ({
 vi.mock('@/services/mcp-oauth', () => ({
   listEligibleWorkspaces: listWorkspaces,
   recordOAuthGrant: recordGrant,
+  prepareOAuthAuthorization: prepare,
 }));
 
 import ConsentPage from '../ConsentPage';
@@ -60,13 +62,78 @@ beforeEach(() => {
     error: null,
   });
   listWorkspaces.mockResolvedValue({
-    workspaces: [{ id: 'conta-1', name: 'Agência X', role: 'owner', feature_mcp: true }],
+    workspaces: [
+      {
+        id: 'conta-1',
+        name: 'Agência X',
+        role: 'owner',
+        feature_mcp: true,
+        allowed_scopes: ALL_SCOPES,
+      },
+    ],
     platform_admin: false,
   });
   recordGrant.mockResolvedValue({ ok: true });
+  prepare.mockResolvedValue('ok');
 });
 
+const ALL_SCOPES = [
+  'clientes:read',
+  'posts:read',
+  'workflows:read',
+  'ideias:read',
+  'tarefas:read',
+  'membros:read',
+  'posts:write',
+  'templates:write',
+  'tarefas:write',
+  'clientes:write',
+  'membros:write',
+  'financeiro:read',
+  'financeiro:write',
+];
+
 describe('ConsentPage', () => {
+  describe('reconnecting after a revoked connection', () => {
+    it('prepares the authorization before asking Supabase for its details', async () => {
+      const order: string[] = [];
+      prepare.mockImplementation(async () => {
+        order.push('prepare');
+        return 'repaired';
+      });
+      getDetails.mockImplementation(async () => {
+        order.push('details');
+        return { data: DETAILS, error: null };
+      });
+      renderPage();
+
+      expect(await screen.findByText(/Conectar Claude/)).toBeInTheDocument();
+      expect(prepare).toHaveBeenCalledWith('auth-1');
+      expect(order).toEqual(['prepare', 'details']);
+    });
+
+    it('still follows an auto-approved redirect when the connection is active', async () => {
+      getDetails.mockResolvedValue({
+        data: { redirect_url: 'https://claude.ai/cb?code=x' },
+        error: null,
+      });
+      renderPage();
+
+      await waitFor(() =>
+        expect(window.location.assign).toHaveBeenCalledWith('https://claude.ai/cb?code=x'),
+      );
+      expect(prepare).toHaveBeenCalledWith('auth-1');
+    });
+
+    it('carries on to the consent screen when prepare fails', async () => {
+      prepare.mockRejectedValue(new Error('Erro 400'));
+      renderPage();
+
+      expect(await screen.findByText(/Conectar Claude/)).toBeInTheDocument();
+      expect(getDetails).toHaveBeenCalledWith('auth-1');
+    });
+  });
+
   it('shows the client + workspace and records the grant on approve', async () => {
     renderPage();
 
@@ -114,7 +181,15 @@ describe('ConsentPage', () => {
 
   it('mostra "Administração da plataforma" só para platform admins e envia target platform', async () => {
     listWorkspaces.mockResolvedValue({
-      workspaces: [{ id: 'conta-1', name: 'Agência X', role: 'owner', feature_mcp: true }],
+      workspaces: [
+        {
+          id: 'conta-1',
+          name: 'Agência X',
+          role: 'owner',
+          feature_mcp: true,
+          allowed_scopes: ALL_SCOPES,
+        },
+      ],
       platform_admin: true,
     });
     renderPage();
@@ -135,7 +210,7 @@ describe('ConsentPage', () => {
     expect(recordGrant).toHaveBeenCalledWith({
       authorization_id: 'auth-1',
       target: 'platform',
-      scopes: ['banners:read', 'popups:read', 'kb:read', 'platform:read', 'kb:write'],
+      scopes: ['banners:read', 'popups:read', 'kb:read', 'platform:read', 'blog:read', 'kb:write'],
     });
     await waitFor(() => expect(approve).toHaveBeenCalledWith('auth-1'));
   });
@@ -162,7 +237,106 @@ describe('ConsentPage', () => {
     expect(recordGrant).toHaveBeenCalledWith({
       authorization_id: 'auth-1',
       target: 'platform',
-      scopes: ['banners:read', 'popups:read', 'kb:read', 'platform:read'],
+      scopes: ['banners:read', 'popups:read', 'kb:read', 'platform:read', 'blog:read'],
+    });
+  });
+
+  describe('financeiro scopes (owner-only)', () => {
+    it('non-owner sees financeiro scopes disabled with the owner-only helper text', async () => {
+      listWorkspaces.mockResolvedValue({
+        workspaces: [
+          {
+            id: 'conta-1',
+            name: 'Agência X',
+            role: 'admin',
+            feature_mcp: true,
+            // The server leaves owner-only scopes out of allowed_scopes for a non-owner.
+            allowed_scopes: ALL_SCOPES.filter((s) => !s.startsWith('financeiro:')),
+          },
+        ],
+        platform_admin: false,
+      });
+      renderPage();
+      await screen.findByText('Agência X');
+
+      expect(screen.getByLabelText('Financeiro (leitura, só donos)')).toBeDisabled();
+      expect(screen.getByLabelText('Financeiro (escrita, só donos)')).toBeDisabled();
+      expect(screen.getAllByText('Somente o dono do workspace')).toHaveLength(2);
+      // Other scopes stay editable.
+      expect(screen.getByLabelText('Posts (escrita)')).not.toBeDisabled();
+    });
+
+    it('owner can tick them, and they are sent in the grant', async () => {
+      renderPage();
+      await screen.findByText('Agência X');
+
+      const read = screen.getByLabelText('Financeiro (leitura, só donos)');
+      expect(read).not.toBeDisabled();
+      expect(screen.queryByText('Somente o dono do workspace')).toBeNull();
+      fireEvent.click(read);
+      fireEvent.click(screen.getByRole('button', { name: 'Autorizar' }));
+
+      await waitFor(() => expect(recordGrant).toHaveBeenCalledTimes(1));
+      expect(recordGrant.mock.calls[0][0].scopes).toContain('financeiro:read');
+    });
+
+    it('strips financeiro scopes the request named when the workspace role is not owner', async () => {
+      getDetails.mockResolvedValue({
+        data: { ...DETAILS, scope: 'posts:read financeiro:read' },
+        error: null,
+      });
+      listWorkspaces.mockResolvedValue({
+        workspaces: [
+          {
+            id: 'conta-1',
+            name: 'Agência X',
+            role: 'admin',
+            feature_mcp: true,
+            // The server leaves owner-only scopes out of allowed_scopes for a non-owner.
+            allowed_scopes: ALL_SCOPES.filter((s) => !s.startsWith('financeiro:')),
+          },
+        ],
+        platform_admin: false,
+      });
+      renderPage();
+      await screen.findByText('Agência X');
+      expect(screen.getByLabelText('Financeiro (leitura, só donos)')).not.toBeChecked();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Autorizar' }));
+      await waitFor(() => expect(recordGrant).toHaveBeenCalledTimes(1));
+      expect(recordGrant.mock.calls[0][0].scopes).toEqual(['posts:read']);
+    });
+  });
+
+  it('disables the scopes the role does not allow and never submits them', async () => {
+    listWorkspaces.mockResolvedValue({
+      workspaces: [
+        {
+          id: 'conta-1',
+          name: 'Agência X',
+          role: 'agent',
+          feature_mcp: true,
+          // Default agent role: Equipe is off, so membros:* is not grantable.
+          allowed_scopes: ALL_SCOPES.filter((s) => !s.startsWith('membros:')),
+        },
+      ],
+      platform_admin: false,
+    });
+    renderPage();
+
+    const membros = await screen.findByLabelText('Equipe (leitura)');
+    expect(membros).toBeDisabled();
+    expect(membros).not.toBeChecked();
+    expect(screen.getByLabelText('Equipe (escrita)')).toBeDisabled();
+    expect(screen.getByLabelText('Clientes (leitura)')).toBeChecked();
+    expect(screen.getByText(/não fazem parte do seu papel/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Autorizar' }));
+    await waitFor(() => expect(recordGrant).toHaveBeenCalledTimes(1));
+    expect(recordGrant).toHaveBeenCalledWith({
+      authorization_id: 'auth-1',
+      conta_id: 'conta-1',
+      scopes: ['clientes:read', 'posts:read', 'workflows:read', 'ideias:read', 'tarefas:read'],
     });
   });
 });

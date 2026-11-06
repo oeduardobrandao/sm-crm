@@ -1,9 +1,29 @@
-import { CONTENT_FORMATS, CONTENT_FORMAT_LABELS } from '@mesaas/platforms';
+import { CONTENT_FORMATS } from '@mesaas/platforms';
+import { i18n } from '@mesaas/i18n';
 import { formatPostDateFull } from '@/utils/postDate';
 import type { ClientePost, WorkflowPost } from '../../store';
 
+/**
+ * A label map whose values are resolved through i18n on every read (enumerable getters
+ * over a fixed key list), so it follows the UI language instead of freezing at module
+ * load. Unknown keys stay `undefined`, which keeps `MAP[x] ?? fallback` working.
+ */
+export function lazyLabels<K extends string>(
+  keys: readonly K[],
+  keyFor: (k: K) => string,
+): Record<K, string> {
+  const o = {} as Record<K, string>;
+  for (const k of keys) {
+    Object.defineProperty(o, k, { enumerable: true, get: () => i18n.t(keyFor(k)) });
+  }
+  return o;
+}
+
 /** Rótulos neutros de formato (registro de plataformas). O valor gravado continua sendo o tipo. */
-export const TIPO_LABELS: Record<WorkflowPost['tipo'], string> = CONTENT_FORMAT_LABELS;
+export const TIPO_LABELS: Record<WorkflowPost['tipo'], string> = lazyLabels(
+  CONTENT_FORMATS,
+  (k) => `entregas:shared.tipo.${k}`,
+);
 
 export const TIPO_COLORS: Record<WorkflowPost['tipo'], string> = {
   feed: '#eab308',
@@ -24,12 +44,10 @@ export const TIPO_BADGE_COLORS: Record<WorkflowPost['tipo'], { bg: string; text:
     ]),
   ) as Record<WorkflowPost['tipo'], { bg: string; text: string }>;
 
-export const PLATFORM_LABELS: Record<NonNullable<WorkflowPost['platform']>, string> = {
-  instagram: 'Instagram',
-  tiktok: 'TikTok',
-  both: 'Ambas',
-  other: 'Geral',
-};
+export const PLATFORM_LABELS: Record<NonNullable<WorkflowPost['platform']>, string> = lazyLabels(
+  ['instagram', 'tiktok', 'both', 'other'] as const,
+  (k) => `entregas:shared.platform.${k}`,
+);
 
 /** Pipeline order of post statuses — column order for the Publicações kanban
  *  and sort order for status columns. */
@@ -45,17 +63,10 @@ export const POST_STATUS_ORDER = [
   'falha_publicacao',
 ] as const satisfies readonly WorkflowPost['status'][];
 
-export const STATUS_LABELS: Record<WorkflowPost['status'], string> = {
-  rascunho: 'Rascunho',
-  revisao_interna: 'Em revisão',
-  aprovado_interno: 'Aprovado internamente',
-  enviado_cliente: 'Enviado ao cliente',
-  aprovado_cliente: 'Aprovado pelo cliente',
-  correcao_cliente: 'Correção solicitada',
-  agendado: 'Agendado',
-  postado: 'Postado',
-  falha_publicacao: 'Falha na publicação',
-};
+export const STATUS_LABELS: Record<WorkflowPost['status'], string> = lazyLabels(
+  POST_STATUS_ORDER,
+  (k) => `entregas:shared.status.${k}`,
+);
 
 export const STATUS_CLASS: Record<WorkflowPost['status'], string> = {
   rascunho: 'post-status--rascunho',
@@ -82,11 +93,10 @@ export const LOCKED_STATUSES = new Set<WorkflowPost['status']>([
   'falha_publicacao',
 ]);
 
-export const LOCKED_TOOLTIPS: Record<string, string> = {
-  agendado: 'Post já agendado no Instagram — cancele o agendamento para mover',
-  postado: 'Post já publicado',
-  falha_publicacao: 'Post com falha de publicação — resolva o erro antes de reagendar',
-};
+export const LOCKED_TOOLTIPS: Record<string, string> = lazyLabels(
+  ['agendado', 'postado', 'falha_publicacao'] as const,
+  (k) => `entregas:shared.lockedTooltip.${k}`,
+);
 
 /**
  * A presentational-only state, NOT a DB status. A post is "publicando" once it is
@@ -114,10 +124,10 @@ export function getPostPublishState(p: {
   return isDue || tiktokPublishing ? 'publicando' : 'agendado';
 }
 
-export const PUBLISH_STATE_LABELS: Record<PostPublishState, string> = {
-  ...STATUS_LABELS,
-  publicando: 'Publicando…',
-};
+export const PUBLISH_STATE_LABELS: Record<PostPublishState, string> = lazyLabels(
+  [...POST_STATUS_ORDER, 'publicando'] as const,
+  (k) => (k === 'publicando' ? 'entregas:shared.publicando' : `entregas:shared.status.${k}`),
+);
 
 export const PUBLISH_STATE_CLASS: Record<PostPublishState, string> = {
   ...STATUS_CLASS,
@@ -127,7 +137,9 @@ export const PUBLISH_STATE_CLASS: Record<PostPublishState, string> = {
 /** Key for the tipo dashes/dots, in TIPO_ORDER. Consumed by DateTimePicker's legend. */
 export const TIPO_LEGEND: { color: string; label: string }[] = TIPO_ORDER.map((tipo) => ({
   color: TIPO_COLORS[tipo],
-  label: TIPO_LABELS[tipo],
+  get label() {
+    return TIPO_LABELS[tipo];
+  },
 }));
 
 export type DayMarker = { colors: string[]; label: string };
@@ -206,11 +218,10 @@ export const STATUS_OWNER_ORDER = [
 ] as const satisfies readonly StatusOwner[];
 
 /** `<optgroup label>` copy — reads as "who puts a post in this status". */
-export const STATUS_OWNER_LABELS: Record<StatusOwner, string> = {
-  equipe: 'Você define',
-  cliente: 'O cliente define — pelo portal',
-  sistema: 'O sistema define — automático',
-};
+export const STATUS_OWNER_LABELS: Record<StatusOwner, string> = lazyLabels(
+  STATUS_OWNER_ORDER,
+  (k) => `entregas:shared.statusOwner.${k}`,
+);
 
 /**
  * What happens to this post on its own, in one sentence, or null when nothing
@@ -235,19 +246,17 @@ export function getStatusAutomationHint(p: {
   const state = getPostPublishState(p);
   switch (state) {
     case 'publicando':
-      return 'Publicando agora. O status vira "Postado" sozinho assim que a rede confirmar.';
+    case 'enviado_cliente':
+    case 'aprovado_cliente':
+    case 'correcao_cliente':
+    case 'falha_publicacao':
+      return i18n.t(`entregas:shared.automationHint.${state}`);
     case 'agendado':
       return p.scheduled_at
-        ? `Publica sozinho em ${formatPostDateFull(p.scheduled_at)}. Data, tipo, plataforma e legenda ficam travados até você cancelar o agendamento.`
-        : 'Publica sozinho na data agendada. Data, tipo, plataforma e legenda ficam travados até você cancelar o agendamento.';
-    case 'enviado_cliente':
-      return 'Visível para o cliente no portal. O status muda sozinho quando ele aprovar ou pedir correção.';
-    case 'aprovado_cliente':
-      return 'O cliente aprovou pelo portal. Continua visível para ele.';
-    case 'correcao_cliente':
-      return 'O cliente pediu correção pelo portal. Nada acontece sozinho a partir daqui.';
-    case 'falha_publicacao':
-      return 'A publicação falhou. O sistema tenta de novo sozinho até 3 vezes; erros não recuperáveis param na hora.';
+        ? i18n.t('entregas:shared.automationHint.agendadoAt', {
+            date: formatPostDateFull(p.scheduled_at),
+          })
+        : i18n.t('entregas:shared.automationHint.agendado');
     default:
       return null;
   }
@@ -288,19 +297,13 @@ export function isVisibleToClient(status: WorkflowPost['status']): boolean {
  * Anywhere a real icon can be drawn, use VISIBILITY_TEXT_LABEL with a lucide
  * icon instead, or the line ends up with two icons saying the same thing.
  */
-export const VISIBILITY_OPTION_SUFFIX = {
-  visible: '👁 o cliente vê',
-  internal: '🔒 interno',
-} as const;
+export const VISIBILITY_OPTION_SUFFIX: { readonly visible: string; readonly internal: string } =
+  lazyLabels(['visible', 'internal'] as const, (k) => `entregas:shared.visibilityOption.${k}`);
 
 /** Same two labels, icon-free, for use alongside a real icon. */
-export const VISIBILITY_TEXT_LABEL = {
-  visible: 'o cliente vê',
-  internal: 'interno',
-} as const;
+export const VISIBILITY_TEXT_LABEL: { readonly visible: string; readonly internal: string } =
+  lazyLabels(['visible', 'internal'] as const, (k) => `entregas:shared.visibilityText.${k}`);
 
 /** Row-badge copy — the tooltip carries the sentence the badge cannot. */
-export const VISIBILITY_BADGE_LABEL = {
-  visible: 'Visível para o cliente no portal',
-  internal: 'Interno — o cliente não vê este post',
-} as const;
+export const VISIBILITY_BADGE_LABEL: { readonly visible: string; readonly internal: string } =
+  lazyLabels(['visible', 'internal'] as const, (k) => `entregas:shared.visibilityBadge.${k}`);

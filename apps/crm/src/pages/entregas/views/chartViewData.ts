@@ -1,3 +1,4 @@
+import { i18n } from '@mesaas/i18n';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { classifyDeadline, type DeadlineStatus } from '../deadlineStatus';
 import { dayNum, etapaDeadlineDate } from '../etapaPrazo';
@@ -59,18 +60,26 @@ function byVolume(a: StackedRow, b: StackedRow): number {
   return a.label.localeCompare(b.label, 'pt-BR');
 }
 
-export function buildClienteRows(cards: BoardCard[]): StackedRow[] {
+/** `semLabel` names the no-cliente bucket; defaults to the current UI language. */
+export function buildClienteRows(
+  cards: BoardCard[],
+  semLabel: string = i18n.t('entregasViews:chartData.semCliente'),
+): StackedRow[] {
   const rows = groupRows(cards, (card) => ({
     key: card.cliente?.id == null ? '' : String(card.cliente.id),
-    label: card.cliente?.nome ?? 'Sem cliente',
+    label: card.cliente?.nome ?? semLabel,
   }));
   return rows.sort(byRisk).slice(0, ROW_CAP);
 }
 
-export function buildResponsavelRows(cards: BoardCard[]): StackedRow[] {
+/** `semLabel` names the no-responsável bucket; defaults to the current UI language. */
+export function buildResponsavelRows(
+  cards: BoardCard[],
+  semLabel: string = i18n.t('entregasViews:chartData.semResponsavel'),
+): StackedRow[] {
   const rows = groupRows(cards, (card) => ({
     key: card.membro?.id == null ? '' : String(card.membro.id),
-    label: card.membro?.nome ?? 'Sem responsável',
+    label: card.membro?.nome ?? semLabel,
   }));
   return rows.sort(byRisk).slice(0, ROW_CAP);
 }
@@ -92,19 +101,20 @@ export interface AgingBucket {
   toDaysAgo: number;
 }
 
+/** `labelKey` is resolved at call time so the axis follows the UI language. */
 const AGING_BUCKETS: {
-  label: string;
+  labelKey: string;
   max: number;
   fromDaysAgo: number | null;
   toDaysAgo: number;
 }[] = [
   // '1 dia' reaches back to today because a card can be estourada by hours and
   // still be due today; its drill-down range has to contain that day too.
-  { label: '1 dia', max: 1, fromDaysAgo: 1, toDaysAgo: 0 },
-  { label: '2 a 3', max: 3, fromDaysAgo: 3, toDaysAgo: 2 },
-  { label: '4 a 7', max: 7, fromDaysAgo: 7, toDaysAgo: 4 },
-  { label: '8 a 14', max: 14, fromDaysAgo: 14, toDaysAgo: 8 },
-  { label: '15+', max: Infinity, fromDaysAgo: null, toDaysAgo: 15 },
+  { labelKey: 'aging1', max: 1, fromDaysAgo: 1, toDaysAgo: 0 },
+  { labelKey: 'aging2to3', max: 3, fromDaysAgo: 3, toDaysAgo: 2 },
+  { labelKey: 'aging4to7', max: 7, fromDaysAgo: 7, toDaysAgo: 4 },
+  { labelKey: 'aging8to14', max: 14, fromDaysAgo: 14, toDaysAgo: 8 },
+  { labelKey: 'aging15plus', max: Infinity, fromDaysAgo: null, toDaysAgo: 15 },
 ];
 
 /**
@@ -128,9 +138,13 @@ function calendarDaysBetween(later: Date, earlier: Date): number {
  * off deadline.diasRestantes instead would drift on the boundaries, because
  * that number is derived from hours.
  */
-export function buildAgingBuckets(cards: BoardCard[], now: Date = new Date()): AgingBucket[] {
+export function buildAgingBuckets(
+  cards: BoardCard[],
+  now: Date = new Date(),
+  labelFor: (labelKey: string) => string = (key) => i18n.t(`entregasViews:chartData.${key}`),
+): AgingBucket[] {
   const buckets: AgingBucket[] = AGING_BUCKETS.map((b) => ({
-    label: b.label,
+    label: labelFor(b.labelKey),
     count: 0,
     fromDaysAgo: b.fromDaysAgo,
     toDaysAgo: b.toDaysAgo,

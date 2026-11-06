@@ -8,7 +8,8 @@ import {
   softwareApplicationJsonLd,
   webSiteJsonLd,
 } from '../jsonld';
-import { parsePost } from '../blog.schema';
+import { parseDbPost, parsePost } from '../blog.schema';
+import { DB_POST_META, DB_POST_BODY } from './blogDbFixture';
 
 describe('jsonld builders', () => {
   test('Organization has name, url, logo and the brand profiles in sameAs', () => {
@@ -78,6 +79,19 @@ describe('blog jsonld', () => {
     expect(ld.author.name).toBe('Eduardo Brandão');
     expect(ld.publisher.name).toBe('Mesaas');
     expect(ld.image).toBe('https://www.mesaas.com.br/og/blog/artigo.png');
+  });
+
+  test('an equipe post credits the Organization and uses its cover as image', () => {
+    const ld = blogPostingJsonLd(parseDbPost(DB_POST_META, DB_POST_BODY)) as Record<string, any>;
+    expect(ld.author['@type']).toBe('Organization');
+    expect(ld.author.name).toBe('Equipe Mesaas');
+    expect(ld.author.url).toBe('https://www.mesaas.com.br/');
+    expect(ld.image).toBe(DB_POST_META.cover.url);
+  });
+
+  test('a file post keeps the Person author', () => {
+    const ld = blogPostingJsonLd(post) as Record<string, any>;
+    expect(ld.author['@type']).toBe('Person');
   });
 
   test('Blog index lists its posts', () => {

@@ -1,6 +1,7 @@
 // Serviço do relatório interativo de blocos. Geração via edge function;
 // leitura direta via PostgREST com RLS (padrão getClientReports).
 import { supabase } from '../lib/supabase';
+import { layoutPlatforms, type ReportPlatform } from '@mesaas/report-blocks/platform';
 import type { ReportLayout } from '../../../../supabase/functions/_shared/report-docs/layout';
 import type { ReportDocSnapshot } from '../../../../supabase/functions/_shared/report-docs/snapshot';
 
@@ -20,10 +21,15 @@ export interface ReportDocumentRow {
   updated_at: string;
 }
 
+export type { ReportPlatform };
+
 export type ReportDocListItem = Pick<
   ReportDocumentRow,
   'id' | 'title' | 'period_start' | 'status' | 'created_at'
->;
+> & {
+  /** Plataformas dos blocos do layout (derivado no cliente; vazio = só blocos neutros). */
+  platforms: ReportPlatform[];
+};
 
 async function getAuthHeaders() {
   const {
@@ -45,10 +51,16 @@ export async function generateReportDoc(
   clientId: number,
   month: string,
   templateId?: string,
+  /** Plataformas do layout; omitido = o servidor usa todas as conectadas. */
+  platforms?: ReportPlatform[],
 ): Promise<{ id: string }> {
   const headers = await getAuthHeaders();
-  const body: { clientId: number; month: string; templateId?: string } = { clientId, month };
+  const body: { clientId: number; month: string; templateId?: string; platforms?: string[] } = {
+    clientId,
+    month,
+  };
   if (templateId) body.templateId = templateId;
+  if (platforms) body.platforms = platforms;
   const res = await fetch(`${EDGE_URL}/generate`, {
     method: 'POST',
     headers,
@@ -61,7 +73,9 @@ export async function generateReportDoc(
         ? 'Seu plano não inclui relatórios.'
         : data?.error === 'invalid_template'
           ? 'Template inválido. Tente outro ou o layout padrão.'
-          : `Erro ao gerar relatório (${res.status})`,
+          : data?.error === 'invalid_platforms'
+            ? 'Uma das plataformas escolhidas não está mais conectada. Atualize a página e tente de novo.'
+            : `Erro ao gerar relatório (${res.status})`,
     );
   }
   return data;
@@ -117,13 +131,21 @@ export async function getReportDoc(id: string): Promise<ReportDocumentRow | null
 }
 
 export async function listReportDocs(clientId: number): Promise<ReportDocListItem[]> {
+  // Só os blocos do layout (tema, capa etc. ficam de fora): a lista só precisa
+  // deles para derivar as plataformas.
   const { data, error } = await supabase
     .from('report_documents')
-    .select('id, title, period_start, status, created_at')
+    .select('id, title, period_start, status, created_at, blocks:layout->blocks')
     .eq('client_id', clientId)
     .order('period_start', { ascending: false });
   if (error) throw new Error(error.message);
-  return (data as ReportDocListItem[]) ?? [];
+  const rows = (data ?? []) as unknown as Array<
+    Omit<ReportDocListItem, 'platforms'> & { blocks: ReportLayout['blocks'] | null }
+  >;
+  return rows.map(({ blocks, ...doc }) => ({
+    ...doc,
+    platforms: layoutPlatforms({ blocks: Array.isArray(blocks) ? blocks : [] } as ReportLayout),
+  }));
 }
 
 /** Atualiza as únicas colunas com grant de escrita para authenticated
