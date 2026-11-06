@@ -87,4 +87,23 @@ describe('metaPixelLoader', () => {
     expect(pixelScripts()).toHaveLength(1);
     expect(queuedCalls().at(-1)).toEqual(['track', 'Purchase', { value: 97, currency: 'BRL' }]);
   });
+
+  it('sends custom events with trackCustom and reports whether they went out', async () => {
+    seedConsent({ marketing: true });
+    const { trackMetaCustomEvent } = await import('../metaPixelLoader');
+    expect(trackMetaCustomEvent('IniciouCadastro', { origem: 'formulario' })).toBe(true);
+    expect(pixelScripts()).toHaveLength(1);
+    expect(queuedCalls().at(-1)).toEqual([
+      'trackCustom',
+      'IniciouCadastro',
+      { origem: 'formulario' },
+    ]);
+  });
+
+  it('reports a custom event as not sent without marketing consent', async () => {
+    seedConsent({ marketing: false });
+    const { trackMetaCustomEvent } = await import('../metaPixelLoader');
+    expect(trackMetaCustomEvent('IniciouCadastro')).toBe(false);
+    expect(window.fbq).toBeUndefined();
+  });
 });

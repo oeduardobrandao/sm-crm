@@ -167,7 +167,7 @@ Monorepo with npm workspaces:
 - `VITE_SUPABASE_URL` -- Supabase project URL
 - `VITE_SUPABASE_ANON_KEY` -- Supabase anon key
 - `VITE_GOOGLE_ADS_ID` -- Google Ads tag ID (`AW-…`). Optional: unset, gtag.js never loads. Vercel **Production** only, so preview/staging/dev clicks stay out of the Ads account. Loads only with the `marketing` ("Publicidade") cookie consent via `lib/googleAdsLoader.ts`; conversions go through `trackGoogleAdsConversion(label)`. Build-time, so a change needs a redeploy
-- `VITE_META_PIXEL_ID` -- Meta Pixel (dataset) ID. Same rules as `VITE_GOOGLE_ADS_ID` (Production only, `marketing` consent, build-time), via `lib/metaPixelLoader.ts`; events go through `trackMetaEvent(name, params)`. `autoConfig` and SPA PageView tracking (`disablePushState`) are off on purpose, so signed-in CRM URLs never reach Meta. Checkout returns send Google "Compra" and Meta `Purchase` together from `reportPurchaseConversion()`
+- `VITE_META_PIXEL_ID` -- Meta Pixel (dataset) ID. Same rules as `VITE_GOOGLE_ADS_ID` (Production only, `marketing` consent, build-time), via `lib/metaPixelLoader.ts`; events go through `trackMetaEvent(name, params)` (standard) or `trackMetaCustomEvent(name, params)` (`trackCustom`, e.g. `IniciouCadastro` on the first focus in the signup form, once per page load, `pages/login/signupStarted.ts`). `autoConfig` and SPA PageView tracking (`disablePushState`) are off on purpose, so signed-in CRM URLs never reach Meta. Checkout returns send Google "Compra" and Meta `Purchase` together from `reportPurchaseConversion()`
 
 ### Edge functions (Deno.env)
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
